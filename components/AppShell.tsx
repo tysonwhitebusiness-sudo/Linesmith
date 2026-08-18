@@ -47,6 +47,7 @@ import { PeopleIcon, BarsIcon, ShieldIcon, TargetIcon, SlidersIcon, FlameIcon, S
 import { GameLinesView } from './GameLinesView';
 import { useGolfLines } from './useGolfLines';
 import { TournamentLinesView } from './TournamentLinesView';
+import { TournamentNotStartedNotice } from './TournamentNotStartedNotice';
 import { TeamLogo, GameMatchupLabel, nflTeamLogoUrl } from './SubjectAvatar';
 import { buildSlate, type SlateEntry, type SlateGame } from '@/lib/odds/matching';
 import { useFilters, applyFilters, filtersActive, activeFilterCount } from './useFilters';
@@ -473,6 +474,12 @@ export function AppShell({ sport }: { sport: Sport }) {
 
   const eventContext = snapshot ? [snapshot.eventName, snapshot.eventDetail].filter(Boolean).join(' · ') : null;
 
+  // ESPN doesn't publish tee times/pairings until close to the event — until
+  // it does, `event.golfers` (adapter.ts) is empty, so `subjects` is empty
+  // too. That's a real, temporary state (not a filter producing zero rows),
+  // so Scan/Players get their own notice instead of a generic "no results".
+  const golfFieldPending = sport === 'golf' && snapshot != null && snapshot.status === 'pre' && (snapshot.subjects?.length ?? 0) === 0;
+
   const renderList = (list: PickCandidate[], emptyMessage: string, showReasons = false, defaultSortColumn?: ScanTableProps['defaultSortColumn']) => {
     if (dataLoading && list.length === 0) {
       return dense ? <ScanTableSkeleton /> : <ScanListSkeleton />;
@@ -639,6 +646,8 @@ export function AppShell({ sport }: { sport: Sport }) {
                   <GameLinesView entries={slate.entries} onNavigate={(gamePk) => router.push(`/${sport}/game/${gamePk}`)} />
                 )}
               </>
+            ) : golfFieldPending ? (
+              <TournamentNotStartedNotice eventName={snapshot?.eventName} />
             ) : (
               <div className="flex items-start gap-4">
                 {/* Redesign Brief — sidebar layout: the same filter state as the
@@ -885,7 +894,9 @@ export function AppShell({ sport }: { sport: Sport }) {
         ) : null}
 
         {tab === 'Players' ? (
-          snapshot ? (
+          golfFieldPending ? (
+            <TournamentNotStartedNotice eventName={snapshot?.eventName} />
+          ) : snapshot ? (
             <PlayerDetailPanel
               sport={sport}
               snapshot={snapshot}

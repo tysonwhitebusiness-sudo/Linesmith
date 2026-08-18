@@ -8,6 +8,12 @@
       "port": 3000
     },
     {
+      "name": "linesmith-prod",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start"],
+      "port": 3000
+    },
+    {
       "name": "design-preview",
       "runtimeExecutable": "node",
       "runtimeArgs": ["scripts/design-preview-server.js"],

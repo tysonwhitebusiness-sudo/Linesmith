@@ -11,6 +11,7 @@ import { gradientCardStyle } from '@/lib/ui/heat';
 import { SubjectAvatar } from './SubjectAvatar';
 import { TournamentLinesView } from './TournamentLinesView';
 import { tournamentLogoUrl } from '@/lib/sports/golf/tournamentLogos';
+import { TournamentNotStartedNotice } from './TournamentNotStartedNotice';
 import { SunIcon, CloudIcon, CloudRainIcon, WindIcon } from './icons';
 
 /** Picks a weather icon from actual conditions — rain wins over wind wins over clouds wins over sun, since that's the order they start mattering for a round. */
@@ -1413,6 +1414,9 @@ export function GolfScheduleView({
                 weather={weather}
                 currentRound={currentRound}
               />
+              {subjects.length === 0 ? (
+                <TournamentNotStartedNotice eventName={active.name} detail={formatDateRange(active.startDate, active.endDate)} />
+              ) : null}
               <LiveLeaderboardCard subjects={subjects} candidates={candidates} currentRound={currentRound} />
               <AllMatchupsCard candidates={candidates} currentRound={currentRound} holesByGolfer={holesByGolfer} />
               <BigMoversCard candidates={candidates} currentRound={currentRound} holesByGolfer={holesByGolfer} />
