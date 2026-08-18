@@ -1,18 +1,24 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import { candidateKey } from '@/lib/core/types';
 import { sortByComingUp } from '@/lib/core/pickEngine';
 import type { SlateGame } from '@/lib/odds/matching';
-import { projectLine } from '@/lib/odds/display';
+import { buildSlate, teamKey } from '@/lib/odds/matching';
+import { projectLine, formatAmerican } from '@/lib/odds/display';
 import { computeMoneylineEdge, computeTotalEdge } from '@/lib/odds/gameEdge';
 import type { UnifiedLinesResult, UnifiedGameLine } from '@/lib/odds/types';
-import type { RecentGameResult } from '@/lib/sports/mlb/statsapi';
-import type { GameContextState } from './useGameContext';
+import type { MoneylineResult } from '@/lib/sports/mlb/gameModel';
+import type { TeamGrades } from '@/lib/sports/nfl/nflTeamGrades';
+import { toPicksPanelGame, toRecentResultRow, toInjuryRow, type RecentResultRow, type InjuryRow } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
+import { useGameContext, type GameContextState } from './useGameContext';
+import { useBullpen, type BullpenState } from './useBullpen';
+import { useNflGameDetail } from './useNflGameDetail';
 import type { PickRow } from './useSlip';
-import { SubjectAvatar, TeamLogo } from './SubjectAvatar';
+import { SubjectAvatar, TeamLogo, nflTeamLogoUrl } from './SubjectAvatar';
+import { TwoSidedStatRankRow } from './StatRankRow';
 import { MarketLabel, MarketLine } from './MarketLabel';
 import { OddsChip, StoredOddsChip, EdgeBadge } from './OddsChip';
 import { BookLogo } from './BookLogo';
@@ -23,16 +29,20 @@ import { useMarketCalibration, type MarketCalibrationState } from './useMarketCa
 import { isGoodBet, candidateGoodBetSignals } from '@/lib/odds/goodBets';
 import { isOk, type WindowedStat } from '@/lib/core/windowedStat';
 import { InsufficientMark } from './StatCells';
-import {
-  computeRecommendedMoneylinePick,
-  computeTotalLean,
-  type RecommendedMoneylinePick,
-  type TotalLean,
-} from '@/lib/odds/recommendedPick';
 import { useGamePickHistory, type GamePickView } from './useGamePickRecord';
-import type { BullpenState } from './useBullpen';
 import { PitchingMatchupCard } from './PitchingMatchupCard';
-import { GameHeroCard } from './GameHeroCard';
+import { BatterPitcherMatchupCard } from './BatterPitcherMatchupCard';
+import { NflPlayerVsDefenseCard } from './NflPlayerVsDefenseCard';
+import { NflTeamScopePanel } from './NflTeamScopePanel';
+import { GradeChip } from './GradeChip';
+import { GameHeroCard, LiveTab } from './GameHeroCard';
+import {
+  toGameDetailData as toMlbGameDetailData,
+  type GameDetailData,
+  type StatComparisonData,
+  type RankingsData,
+} from '@/lib/sports/mlb/adapters/gameDetailAdapter';
+import { toGameDetailData as toNflGameDetailData } from '@/lib/sports/nfl/adapters/gameDetailAdapter';
 import { heatFill, heatInk } from '@/lib/ui/heat';
 
 /**
@@ -82,6 +92,12 @@ export interface StatKeyDef {
   decimals: number;
 }
 
+/** What the three Rankings views actually read off `game.away`/`game.home` — narrower than `GameDetailGame` so a non-MLB caller (NFL) can pass a minimal compatible object instead of fabricating MLB-only TeamGameContext fields (record, lastTen, forStatsSeason, ...) it has no use for. */
+export interface RankableTeamStats {
+  forRanks: Record<string, string | null>;
+  againstRanks: Record<string, string | null>;
+}
+
 function teamLogoUrl(teamId?: number): string | undefined {
   return teamId ? `https://www.mlbstatic.com/team-logos/${teamId}.svg` : undefined;
 }
@@ -90,7 +106,7 @@ function fmtRecord(r: { wins: number; losses: number } | null): string {
   return r ? `${r.wins}-${r.losses}` : '—';
 }
 
-function recordFrom(games: RecentGameResult[]): { wins: number; losses: number } | null {
+function recordFrom(games: { win: boolean | null }[]): { wins: number; losses: number } | null {
   if (games.length === 0) return null;
   return { wins: games.filter((g) => g.win).length, losses: games.filter((g) => !g.win).length };
 }
@@ -187,7 +203,7 @@ function metaLine(candidate: PickCandidate): string {
   return [team, opponent ? `${isHome ? 'vs' : '@'} ${opponent}` : null].filter(Boolean).join(' · ');
 }
 
-interface ScoredCandidate {
+export interface ScoredCandidate {
   candidate: PickCandidate;
   meta: string;
   score: number | null;
@@ -627,7 +643,7 @@ const GROUPED_CAP = 3;
 const RANKED_CAP = 6;
 const TILES_CAP = 4;
 
-function LeftRail({
+export function LeftRail({
   candidates,
   selectedPlayerId,
   selectedMarket,
@@ -635,6 +651,8 @@ function LeftRail({
   propRows,
   userSportsbook,
   sharedCalibration,
+  goodBetsGated = true,
+  teamScopePanel: TeamScopePanelOverride,
 }: {
   candidates: PickCandidate[];
   selectedPlayerId?: string;
@@ -644,6 +662,15 @@ function LeftRail({
   userSportsbook: string;
   /** Reuse GameDetail's own already-fetched calibration instead of this component independently fetching an identical copy — same idiom as PlayerDetail's sharedCalibration. Omitted, LeftRail fetches its own (e.g. if ever mounted outside GameDetail). */
   sharedCalibration?: MarketCalibrationState;
+  /** Default true (MLB's existing behavior, unaffected). Set false for a sport with no graded history to gate against (e.g. NFL) — every real candidate then flows into scoring/grouping/view-modes untouched instead of being filtered down to an empty rail. */
+  goodBetsGated?: boolean;
+  /** Overrides the team-scope panel's content when goodBetsGated is false — the default TeamScopePanel is hardcoded Good-Bets-only copy ("below bar"), which would be dishonest for a sport with nothing being gated. */
+  teamScopePanel?: (props: {
+    rawTeamCandidates: PickCandidate[];
+    topPlayerPicks: ScoredCandidate[];
+    onSelectCandidate: (subjectId: string, dimension: string) => void;
+    onGoPlayers: () => void;
+  }) => ReactNode;
 }) {
   const [scope, setScope] = useState<'player' | 'team'>('player');
   const [view, setView] = useState<'grouped' | 'ranked' | 'tiles'>('grouped');
@@ -660,21 +687,23 @@ function LeftRail({
   // price-ceiling bar Scan's Good Bets tab does.
   const goodBets = useMemo(
     () =>
-      candidates.filter((c) => {
-        const info = resolveCandidateEdge(c, propRows, userSportsbook);
-        return isGoodBet(
-          {
-            edge: info.edge,
-            marketProb: info.marketProb,
-            sampleSize: c.sampleSize,
-            dimension: c.dimension,
-            priceAmerican: info.price,
-            ...candidateGoodBetSignals(c),
-          },
-          calibration.trustedMarkets,
-        );
-      }),
-    [candidates, propRows, userSportsbook, calibration.trustedMarkets],
+      goodBetsGated
+        ? candidates.filter((c) => {
+            const info = resolveCandidateEdge(c, propRows, userSportsbook);
+            return isGoodBet(
+              {
+                edge: info.edge,
+                marketProb: info.marketProb,
+                sampleSize: c.sampleSize,
+                dimension: c.dimension,
+                priceAmerican: info.price,
+                ...candidateGoodBetSignals(c),
+              },
+              calibration.trustedMarkets,
+            );
+          })
+        : candidates,
+    [candidates, propRows, userSportsbook, calibration.trustedMarkets, goodBetsGated],
   );
   const playerCandidates = useMemo(
     () => sortByComingUp(goodBets.filter((c) => (c.subjectMeta as Record<string, unknown> | undefined)?.isTeamCandidate !== true)),
@@ -753,12 +782,21 @@ function LeftRail({
           leaving blank space below it. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {scope === 'team' ? (
-          <TeamScopePanel
-            rawTeamCandidates={rawTeamCandidates}
-            topPlayerPicks={topPlayerPicks}
-            onSelectCandidate={onSelectCandidate}
-            onGoPlayers={() => setScope('player')}
-          />
+          TeamScopePanelOverride ? (
+            <TeamScopePanelOverride
+              rawTeamCandidates={rawTeamCandidates}
+              topPlayerPicks={topPlayerPicks}
+              onSelectCandidate={onSelectCandidate}
+              onGoPlayers={() => setScope('player')}
+            />
+          ) : (
+            <TeamScopePanel
+              rawTeamCandidates={rawTeamCandidates}
+              topPlayerPicks={topPlayerPicks}
+              onSelectCandidate={onSelectCandidate}
+              onGoPlayers={() => setScope('player')}
+            />
+          )
         ) : byScore.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-4 py-7 text-center">
             <p className="text-body font-semibold">No props at {minScore}+</p>
@@ -891,33 +929,43 @@ function RecordPanel({
   );
 }
 
-function RecordsSection({
-  game,
-  awayRecent,
-  homeRecent,
+export interface RecordsSectionTeam {
+  abbr: string;
+  logoUrl?: string;
+  divisionRank?: string | null;
+  season: { wins: number; losses: number } | null;
+  seasonHome: { wins: number; losses: number } | null;
+  seasonAway: { wins: number; losses: number } | null;
+  /** Most-recent-first, sliced to the last 5 by the caller (matches computeStreak's own "already sliced" contract). */
+  recent: RecentResultRow[];
+  /** Meetings within the tracked H2H window — MLB: 45 days; each sport's adapter decides its own window. */
+  h2h: RecentResultRow[];
+}
+
+export function RecordsSection({
+  away,
+  home,
   loading,
 }: {
-  game: GameDetailGame;
-  awayRecent?: { recent: RecentGameResult[]; h2h: RecentGameResult[] };
-  homeRecent?: { recent: RecentGameResult[]; h2h: RecentGameResult[] };
+  away: RecordsSectionTeam;
+  home: RecordsSectionTeam;
   loading: boolean;
 }) {
   const [tab, setTab] = useState<'season' | 'last5' | 'h2h'>('season');
-  const [awayAbbr, homeAbbr] = (game.matchup ?? '').split('@').map((s) => s.trim());
 
   const data = useMemo(() => {
     if (tab === 'season') {
       return {
-        away: game.away?.record ?? null,
-        home: game.home?.record ?? null,
-        awayHome: game.away?.homeRecord ?? null,
-        awayAway: game.away?.awayRecord ?? null,
-        homeHome: game.home?.homeRecord ?? null,
-        homeAway: game.home?.awayRecord ?? null,
+        away: away.season,
+        home: home.season,
+        awayHome: away.seasonHome,
+        awayAway: away.seasonAway,
+        homeHome: home.seasonHome,
+        homeAway: home.seasonAway,
       };
     }
-    const awaySet = tab === 'last5' ? (awayRecent?.recent.slice(0, 5) ?? []) : (awayRecent?.h2h ?? []);
-    const homeSet = tab === 'last5' ? (homeRecent?.recent.slice(0, 5) ?? []) : (homeRecent?.h2h ?? []);
+    const awaySet = tab === 'last5' ? away.recent : away.h2h;
+    const homeSet = tab === 'last5' ? home.recent : home.h2h;
     return {
       away: recordFrom(awaySet),
       home: recordFrom(homeSet),
@@ -926,7 +974,7 @@ function RecordsSection({
       homeHome: recordFrom(homeSet.filter((g) => g.isHome)),
       homeAway: recordFrom(homeSet.filter((g) => !g.isHome)),
     };
-  }, [tab, game, awayRecent, homeRecent]);
+  }, [tab, away, home]);
 
   const awayPct = data.away && data.away.wins + data.away.losses > 0 ? data.away.wins / (data.away.wins + data.away.losses) : null;
   const homePct = data.home && data.home.wins + data.home.losses > 0 ? data.home.wins / (data.home.wins + data.home.losses) : null;
@@ -958,10 +1006,10 @@ function RecordsSection({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_1px_1fr]">
           <RecordPanel
-            abbr={awayAbbr}
-            logoUrl={teamLogoUrl(game.awayTeamId)}
+            abbr={away.abbr}
+            logoUrl={away.logoUrl}
             record={data.away}
-            standing={tab === 'season' && game.away?.divisionRank ? `${game.away.divisionRank} in division` : null}
+            standing={tab === 'season' && away.divisionRank ? `${away.divisionRank} in division` : null}
             home={data.awayHome}
             away={data.awayAway}
             leading={awayLeads}
@@ -969,10 +1017,10 @@ function RecordsSection({
           />
           <div className="hidden bg-line-soft sm:block" />
           <RecordPanel
-            abbr={homeAbbr}
-            logoUrl={teamLogoUrl(game.homeTeamId)}
+            abbr={home.abbr}
+            logoUrl={home.logoUrl}
             record={data.home}
-            standing={tab === 'season' && game.home?.divisionRank ? `${game.home.divisionRank} in division` : null}
+            standing={tab === 'season' && home.divisionRank ? `${home.divisionRank} in division` : null}
             home={data.homeHome}
             away={data.homeAway}
             leading={homeLeads}
@@ -1024,34 +1072,48 @@ function StatComparisonRow({ label, away, home, decimals }: { label: string; awa
   );
 }
 
-function StatComparison({ game, statKeys }: { game: GameDetailGame; statKeys: StatKeyDef[] }) {
-  const [awayAbbr, homeAbbr] = (game.matchup ?? '').split('@').map((s) => s.trim());
-  const battingKeys = statKeys.filter((k) => k.decimals !== 3);
-  const rateKeys = statKeys.filter((k) => k.decimals === 3);
-
-  const group = (keys: StatKeyDef[], title: string) =>
-    keys.length === 0 ? null : (
-      <div>
-        <div className="mb-1 text-label font-semibold uppercase tracking-[.18em] text-ink-faint">{title}</div>
-        {keys.map((k) => (
-          <StatComparisonRow key={k.key} label={k.label} away={game.away?.forStats[k.key] ?? null} home={game.home?.forStats[k.key] ?? null} decimals={k.decimals} />
-        ))}
-      </div>
-    );
-
+/**
+ * The Stat comparison section — MLB's away/home magnitude bars
+ * (`StatComparisonRow`, grouped Batting/Rate) or NFL's ranked rows
+ * (`TwoSidedStatRankRow`, grouped by box-score category). Genuinely
+ * different visual language, not just different data — `data.bars`/
+ * `data.ranked` are mutually exclusive per sport (see `StatComparisonData`'s
+ * own doc comment), so which one renders is a presence check, not a sport
+ * check.
+ */
+function StatComparison({ data }: { data: StatComparisonData }) {
   return (
     <section className="lb-card p-5">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-meta font-semibold uppercase tracking-[.18em] text-ink-secondary">Team stat comparison</h2>
         <div className="flex items-center gap-3 text-micro uppercase tracking-wide text-ink-faint">
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm" style={{ backgroundColor: '#b6b7ba' }} />{awayAbbr}</span>
-          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-masters" />{homeAbbr}</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm" style={{ backgroundColor: '#b6b7ba' }} />{data.awayAbbr}</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-masters" />{data.homeAbbr}</span>
         </div>
       </div>
-      <div className="space-y-3">
-        {group(battingKeys, 'Batting')}
-        {group(rateKeys, 'Rate')}
-      </div>
+      {data.bars ? (
+        <div className="space-y-3">
+          {data.bars.map((g) => (
+            <div key={g.label}>
+              <div className="mb-1 text-label font-semibold uppercase tracking-[.18em] text-ink-faint">{g.label}</div>
+              {g.rows.map((r) => (
+                <StatComparisonRow key={r.key} label={r.label} away={r.away} home={r.home} decimals={r.decimals} />
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : data.ranked ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {data.ranked.map((g) => (
+            <div key={g.label}>
+              <div className="mb-1 text-center text-label font-semibold uppercase tracking-[.18em] text-ink-faint">{g.label}</div>
+              {g.rows.map((r) => (
+                <TwoSidedStatRankRow key={r.key} label={r.label} subject={r.away} opponent={r.home} />
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1061,7 +1123,7 @@ function StatComparison({ game, statKeys }: { game: GameDetailGame; statKeys: St
 // ---------------------------------------------------------------------------
 
 /** Most recent first; a positive run = current win streak, negative = current losing streak. */
-export function computeStreak(games: RecentGameResult[]): number {
+export function computeStreak(games: { win: boolean | null }[]): number {
   if (games.length === 0) return 0;
   const first = games[0].win;
   let n = 0;
@@ -1072,7 +1134,7 @@ export function computeStreak(games: RecentGameResult[]): number {
   return first ? n : -n;
 }
 
-function GameTile({ g }: { g: RecentGameResult }) {
+function GameTile({ g }: { g: RecentResultRow }) {
   const win = g.win;
   return (
     <div
@@ -1086,7 +1148,7 @@ function GameTile({ g }: { g: RecentGameResult }) {
         >
           {win ? 'W' : 'L'}
         </span>
-        <span className="text-emphasis tabular-nums" style={{ color: win ? '#0f7a4f' : '#c23b2c' }}>{g.runsFor}-{g.runsAgainst}</span>
+        <span className="text-emphasis tabular-nums" style={{ color: win ? '#0f7a4f' : '#c23b2c' }}>{g.scoreFor}-{g.scoreAgainst}</span>
       </div>
       <div className="mt-1 flex items-center justify-center gap-1 text-ink-muted">
         {g.isHome ? 'vs' : '@'} {g.opponentAbbr}
@@ -1096,12 +1158,12 @@ function GameTile({ g }: { g: RecentGameResult }) {
   );
 }
 
-function BoxScorePanel({ abbr, teamId, games }: { abbr: string; teamId?: number; games: RecentGameResult[] }) {
+function BoxScorePanel({ abbr, logoUrl, games }: { abbr: string; logoUrl?: string; games: RecentResultRow[] }) {
   const rec = recordFrom(games);
   return (
     <div className="overflow-hidden rounded-lg border border-line-soft">
       <div className="flex items-center gap-2 bg-surface-header px-3 py-2">
-        <TeamLogo logoUrl={teamLogoUrl(teamId)} abbreviation={abbr} size={18} />
+        <TeamLogo logoUrl={logoUrl} abbreviation={abbr} size={18} />
         <span className="text-label uppercase tracking-wide text-ink-muted">{fmtRecord(rec)} last five</span>
       </div>
       {games.length === 0 ? (
@@ -1109,20 +1171,20 @@ function BoxScorePanel({ abbr, teamId, games }: { abbr: string; teamId?: number;
       ) : (
         <div className="divide-y divide-line-hair">
           {games.map((g) => (
-            <div key={g.gamePk} className="px-3 py-2">
+            <div key={g.gameId} className="px-3 py-2">
               <div className="grid grid-cols-[20px_1fr_54px] items-center gap-2 text-dense">
                 <span className="font-semibold" style={{ color: g.win ? '#0f7a4f' : '#c23b2c' }}>{g.win ? 'W' : 'L'}</span>
                 <span className="truncate text-ink-muted">
                   {g.isHome ? 'vs' : '@'} {g.opponentAbbr} <span className="text-ink-faint">· {shortDate(g.date)}</span>
                 </span>
-                <span className="text-right tabular-nums">{g.runsFor}-{g.runsAgainst}</span>
+                <span className="text-right tabular-nums">{g.scoreFor}-{g.scoreAgainst}</span>
               </div>
               <div className="mt-1.5 flex gap-1">
                 <div className="h-2 flex-1 overflow-hidden rounded-full bg-line-soft">
-                  <div className="h-full rounded-full" style={{ width: `${Math.min((g.runsFor / 12) * 100, 100)}%`, backgroundColor: g.win ? '#0f7a4f' : '#b6b7ba' }} />
+                  <div className="h-full rounded-full" style={{ width: `${Math.min((g.scoreFor / 12) * 100, 100)}%`, backgroundColor: g.win ? '#0f7a4f' : '#b6b7ba' }} />
                 </div>
                 <div className="h-2 flex-1 overflow-hidden rounded-full bg-line-soft">
-                  <div className="h-full rounded-full" style={{ width: `${Math.min((g.runsAgainst / 12) * 100, 100)}%`, backgroundColor: '#dcdee1' }} />
+                  <div className="h-full rounded-full" style={{ width: `${Math.min((g.scoreAgainst / 12) * 100, 100)}%`, backgroundColor: '#dcdee1' }} />
                 </div>
               </div>
             </div>
@@ -1133,21 +1195,20 @@ function BoxScorePanel({ abbr, teamId, games }: { abbr: string; teamId?: number;
   );
 }
 
-function LastFiveGames({ game, awayRecent, homeRecent, loading }: {
-  game: GameDetailGame;
-  awayRecent?: { recent: RecentGameResult[] };
-  homeRecent?: { recent: RecentGameResult[] };
+export interface LastFiveGamesTeam {
+  abbr: string;
+  logoUrl?: string;
+  /** Most-recent-first, sliced to the last 5 by the caller. */
+  games: RecentResultRow[];
+}
+
+export function LastFiveGames({ away, home, loading }: {
+  away: LastFiveGamesTeam;
+  home: LastFiveGamesTeam;
   loading: boolean;
 }) {
   const [mode, setMode] = useState<'form' | 'box'>('form');
-  const [awayAbbr, homeAbbr] = (game.matchup ?? '').split('@').map((s) => s.trim());
-  const awayGames = (awayRecent?.recent ?? []).slice(0, 5);
-  const homeGames = (homeRecent?.recent ?? []).slice(0, 5);
-
-  const teams = [
-    { abbr: awayAbbr, teamId: game.awayTeamId, games: awayGames },
-    { abbr: homeAbbr, teamId: game.homeTeamId, games: homeGames },
-  ];
+  const teams = [away, home];
 
   return (
     <section className="lb-card p-4">
@@ -1169,13 +1230,13 @@ function LastFiveGames({ game, awayRecent, homeRecent, loading }: {
         </div>
       ) : mode === 'form' ? (
         <div className="space-y-3">
-          {teams.map(({ abbr, teamId, games }) => {
+          {teams.map(({ abbr, logoUrl, games }) => {
             const streak = computeStreak(games);
             return (
               <div key={abbr} className="flex items-center gap-3">
                 <div className="w-[130px] shrink-0">
                   <div className="flex items-center gap-1.5">
-                    <TeamLogo logoUrl={teamLogoUrl(teamId)} abbreviation={abbr} size={20} />
+                    <TeamLogo logoUrl={logoUrl} abbreviation={abbr} size={20} />
                     <span className="text-body font-semibold">{abbr}</span>
                   </div>
                   <div className="mt-0.5 text-title font-medium">{fmtRecord(recordFrom(games))}</div>
@@ -1185,7 +1246,7 @@ function LastFiveGames({ game, awayRecent, homeRecent, loading }: {
                   {games.length === 0 ? (
                     <span className="self-center text-meta text-ink-faint">No recent results in this window.</span>
                   ) : (
-                    games.map((g) => <GameTile key={g.gamePk} g={g} />)
+                    games.map((g) => <GameTile key={g.gameId} g={g} />)
                   )}
                 </div>
               </div>
@@ -1194,8 +1255,8 @@ function LastFiveGames({ game, awayRecent, homeRecent, loading }: {
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {teams.map(({ abbr, teamId, games }) => (
-            <BoxScorePanel key={abbr} abbr={abbr} teamId={teamId} games={games} />
+          {teams.map(({ abbr, logoUrl, games }) => (
+            <BoxScorePanel key={abbr} abbr={abbr} logoUrl={logoUrl} games={games} />
           ))}
         </div>
       )}
@@ -1220,15 +1281,33 @@ function rankHeatStyle(rank: number | null): { bg: string; fg: string } {
   return { bg: heatFill(t, 0.16), fg: heatInk(t) };
 }
 
-function tierFor(rank: number | null): { label: string; bg: string; fg: string } | null {
+/** Elite/Bottom cutoffs scale proportionally with poolSize (8/30 and 22/30 of a 30-team pool) so a 32-team league gets the same top-~27%/bottom-~27% split, not a literal 30-team-sized band. */
+function tierFor(rank: number | null, poolSize = 30): { label: string; bg: string; fg: string } | null {
   if (rank == null) return null;
-  const t = (30 - rank) / 29;
-  if (rank <= 8) return { label: 'Elite', bg: heatFill(t, 0.1), fg: heatInk(t) };
-  if (rank <= 22) return { label: 'Middle', bg: '#f1f2f3', fg: '#616366' };
+  const t = (poolSize - rank) / (poolSize - 1);
+  const eliteCutoff = Math.round((poolSize * 8) / 30);
+  const bottomCutoff = Math.round((poolSize * 22) / 30);
+  if (rank <= eliteCutoff) return { label: 'Elite', bg: heatFill(t, 0.1), fg: heatInk(t) };
+  if (rank <= bottomCutoff) return { label: 'Middle', bg: '#f1f2f3', fg: '#616366' };
   return { label: 'Bottom', bg: heatFill(t, 0.1), fg: heatInk(t) };
 }
 
-function RankingsHeatGrid({ game, statKeys, awayAbbr, homeAbbr }: { game: GameDetailGame; statKeys: StatKeyDef[]; awayAbbr: string; homeAbbr: string }) {
+export function RankingsHeatGrid({
+  game,
+  statKeys,
+  awayAbbr,
+  homeAbbr,
+  awayLogoUrl,
+  homeLogoUrl,
+}: {
+  game: { away?: RankableTeamStats; home?: RankableTeamStats };
+  statKeys: StatKeyDef[];
+  awayAbbr: string;
+  homeAbbr: string;
+  /** Resolved by the caller (each sport builds its own logo URL differently — MLB by numeric team id, NFL by abbreviation) rather than this component assuming one convention. */
+  awayLogoUrl?: string;
+  homeLogoUrl?: string;
+}) {
   return (
     <div className="lb-scroll-x overflow-auto">
       <table className="w-full min-w-[480px] text-dense">
@@ -1236,11 +1315,11 @@ function RankingsHeatGrid({ game, statKeys, awayAbbr, homeAbbr }: { game: GameDe
           <tr className="bg-surface-header">
             <th className="px-3 py-2 text-left text-label font-medium uppercase tracking-[.1em] text-ink-faint">Stat</th>
             <th className="border-l border-line-soft px-2 py-2 text-right text-label font-medium uppercase tracking-[.1em] text-ink-secondary">
-              <span className="inline-flex items-center justify-end gap-1"><TeamLogo logoUrl={teamLogoUrl(game.awayTeamId)} size={12} />{awayAbbr} for</span>
+              <span className="inline-flex items-center justify-end gap-1"><TeamLogo logoUrl={awayLogoUrl} size={12} />{awayAbbr} for</span>
             </th>
             <th className="px-2 py-2 text-right text-label font-medium uppercase tracking-[.1em] text-ink-faint">{awayAbbr} agn</th>
             <th className="border-l border-line-soft px-2 py-2 text-right text-label font-medium uppercase tracking-[.1em] text-ink-secondary">
-              <span className="inline-flex items-center justify-end gap-1"><TeamLogo logoUrl={teamLogoUrl(game.homeTeamId)} size={12} />{homeAbbr} for</span>
+              <span className="inline-flex items-center justify-end gap-1"><TeamLogo logoUrl={homeLogoUrl} size={12} />{homeAbbr} for</span>
             </th>
             <th className="px-2 py-2 text-right text-label font-medium uppercase tracking-[.1em] text-ink-faint">{homeAbbr} agn</th>
           </tr>
@@ -1273,20 +1352,21 @@ function RankingsHeatGrid({ game, statKeys, awayAbbr, homeAbbr }: { game: GameDe
   );
 }
 
-/** Only stats where both teams actually have a rank plot meaningfully on a shared 1–30 scale — ER/RBI (often null) would otherwise show as a dot pinned to one edge. */
-function RankingsScale({ game, statKeys, awayAbbr, homeAbbr }: { game: GameDetailGame; statKeys: StatKeyDef[]; awayAbbr: string; homeAbbr: string }) {
+/** Only stats where both teams actually have a rank plot meaningfully on a shared scale — ER/RBI (often null) would otherwise show as a dot pinned to one edge. */
+export function RankingsScale({ game, statKeys, awayAbbr, homeAbbr, poolSize = 30 }: { game: { away?: RankableTeamStats; home?: RankableTeamStats }; statKeys: StatKeyDef[]; awayAbbr: string; homeAbbr: string; /** Size of the ranked pool (30 for MLB, 32 for NFL) — the scale's divisor, so a mid-pack rank still lands visually mid-scale regardless of league size. */ poolSize?: number }) {
   const rows = statKeys
     .map((k) => ({ key: k.key, label: k.label, away: parseRank(game.away?.forRanks[k.key]), home: parseRank(game.home?.forRanks[k.key]) }))
     .filter((r): r is { key: string; label: string; away: number; home: number } => r.away != null && r.home != null);
 
-  const pos = (rank: number) => ((rank - 1) / 29) * 100;
+  const pos = (rank: number) => ((rank - 1) / (poolSize - 1)) * 100;
+  const mid = Math.round((poolSize + 1) / 2);
 
   return (
     <div className="p-4">
       <div className="mb-3 flex justify-between text-micro uppercase tracking-[.1em] text-ink-faint">
         <span>1st</span>
-        <span>15th</span>
-        <span>30th</span>
+        <span>{ordinal(mid)}</span>
+        <span>{ordinal(poolSize)}</span>
       </div>
       <div className="space-y-4">
         {rows.map((r) => {
@@ -1316,7 +1396,7 @@ function RankingsScale({ game, statKeys, awayAbbr, homeAbbr }: { game: GameDetai
   );
 }
 
-function RankingsTiers({ game, statKeys, awayAbbr, homeAbbr }: { game: GameDetailGame; statKeys: StatKeyDef[]; awayAbbr: string; homeAbbr: string }) {
+export function RankingsTiers({ game, statKeys, awayAbbr, homeAbbr, poolSize = 30 }: { game: { away?: RankableTeamStats; home?: RankableTeamStats }; statKeys: StatKeyDef[]; awayAbbr: string; homeAbbr: string; poolSize?: number }) {
   const columns = [
     { label: `${awayAbbr} for`, ranks: game.away?.forRanks },
     { label: `${awayAbbr} agn`, ranks: game.away?.againstRanks },
@@ -1331,7 +1411,7 @@ function RankingsTiers({ game, statKeys, awayAbbr, homeAbbr }: { game: GameDetai
           <div className="space-y-1.5">
             {statKeys.map((k) => {
               const rank = parseRank(col.ranks?.[k.key]);
-              const tier = tierFor(rank);
+              const tier = tierFor(rank, poolSize);
               return (
                 <div key={k.key} className="flex items-center justify-between gap-2 text-meta">
                   <span className="text-ink-muted">{k.label}</span>
@@ -1352,9 +1432,9 @@ function RankingsTiers({ game, statKeys, awayAbbr, homeAbbr }: { game: GameDetai
   );
 }
 
-function Rankings({ game, statKeys }: { game: GameDetailGame; statKeys: StatKeyDef[] }) {
+function Rankings({ data }: { data: RankingsData }) {
   const [view, setView] = useState<'heat' | 'scale' | 'tiers'>('heat');
-  const [awayAbbr, homeAbbr] = (game.matchup ?? '').split('@').map((s) => s.trim());
+  const game = { away: data.away, home: data.home };
   return (
     <section className="lb-card overflow-hidden">
       <CardHeader
@@ -1370,11 +1450,11 @@ function Rankings({ game, statKeys }: { game: GameDetailGame; statKeys: StatKeyD
           />
         }
       >
-        Rankings · of 30
+        Rankings · of {data.poolSize}
       </CardHeader>
-      {view === 'heat' ? <RankingsHeatGrid game={game} statKeys={statKeys} awayAbbr={awayAbbr} homeAbbr={homeAbbr} /> : null}
-      {view === 'scale' ? <RankingsScale game={game} statKeys={statKeys} awayAbbr={awayAbbr} homeAbbr={homeAbbr} /> : null}
-      {view === 'tiers' ? <RankingsTiers game={game} statKeys={statKeys} awayAbbr={awayAbbr} homeAbbr={homeAbbr} /> : null}
+      {view === 'heat' ? <RankingsHeatGrid game={game} statKeys={data.statKeys} awayAbbr={data.awayAbbr} homeAbbr={data.homeAbbr} awayLogoUrl={data.awayLogoUrl} homeLogoUrl={data.homeLogoUrl} /> : null}
+      {view === 'scale' ? <RankingsScale game={game} statKeys={data.statKeys} awayAbbr={data.awayAbbr} homeAbbr={data.homeAbbr} poolSize={data.poolSize} /> : null}
+      {view === 'tiers' ? <RankingsTiers game={game} statKeys={data.statKeys} awayAbbr={data.awayAbbr} homeAbbr={data.homeAbbr} poolSize={data.poolSize} /> : null}
     </section>
   );
 }
@@ -1392,11 +1472,11 @@ function severityColor(status: string): string {
   return '#323335'; // ink-secondary
 }
 
-function InjuryPanel({ abbr, teamId, rows, subtle }: { abbr: string; teamId?: number; rows: import('@/lib/sports/mlb/statsapi').InjuryEntry[]; subtle?: boolean }) {
+function InjuryPanel({ abbr, logoUrl, rows, subtle }: { abbr: string; logoUrl?: string; rows: InjuryRow[]; subtle?: boolean }) {
   return (
     <div className={subtle ? 'bg-surface-subtle' : ''}>
       <div className="flex items-center gap-2 px-4 py-2.5">
-        <TeamLogo logoUrl={teamLogoUrl(teamId)} abbreviation={abbr} size={22} />
+        <TeamLogo logoUrl={logoUrl} abbreviation={abbr} size={22} />
         <span className="text-body font-semibold">{abbr}</span>
         <span className="ml-auto text-meta text-ink-faint">{rows.length}</span>
       </div>
@@ -1409,7 +1489,7 @@ function InjuryPanel({ abbr, teamId, rows, subtle }: { abbr: string; teamId?: nu
               <span className="h-[30px] w-[3px] shrink-0 rounded-full" style={{ backgroundColor: severityColor(r.status) }} />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-body font-medium">{r.playerName}</div>
-                <div className="text-label uppercase tracking-[.1em] text-ink-faint">{r.position || 'P'} · {r.injury ?? 'Not reported'}</div>
+                <div className="text-label uppercase tracking-[.1em] text-ink-faint">{r.position || 'P'} · {r.note ?? 'Not reported'}</div>
               </div>
               <span className="shrink-0 text-meta text-ink-muted">{r.status}</span>
             </div>
@@ -1420,25 +1500,28 @@ function InjuryPanel({ abbr, teamId, rows, subtle }: { abbr: string; teamId?: nu
   );
 }
 
-function Injuries({ game, gameContext }: { game: GameDetailGame; gameContext: GameContextState }) {
-  const [awayAbbr, homeAbbr] = (game.matchup ?? '').split('@').map((s) => s.trim());
-  const awayInjuries = (game.awayTeamId ? gameContext.injuries[game.awayTeamId] : undefined) ?? [];
-  const homeInjuries = (game.homeTeamId ? gameContext.injuries[game.homeTeamId] : undefined) ?? [];
-  const total = awayInjuries.length + homeInjuries.length;
+export interface InjuriesTeam {
+  abbr: string;
+  logoUrl?: string;
+  rows: InjuryRow[];
+}
+
+export function Injuries({ away, home, loading }: { away: InjuriesTeam; home: InjuriesTeam; loading: boolean }) {
+  const total = away.rows.length + home.rows.length;
 
   return (
     <section className="lb-card overflow-hidden">
       <CardHeader right={<span className="text-dense text-ink-soft">{total} player{total === 1 ? '' : 's'} out</span>}>Injuries</CardHeader>
-      {gameContext.loading ? (
+      {loading ? (
         <div className="space-y-2 p-4">
           <div className="h-10 animate-pulse rounded bg-line-soft" />
           <div className="h-10 animate-pulse rounded bg-line-soft" />
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_1px_1fr]">
-          <InjuryPanel abbr={awayAbbr} teamId={game.awayTeamId} rows={awayInjuries} />
+          <InjuryPanel abbr={away.abbr} logoUrl={away.logoUrl} rows={away.rows} />
           <div className="hidden bg-line-soft sm:block" />
-          <InjuryPanel abbr={homeAbbr} teamId={game.homeTeamId} rows={homeInjuries} subtle />
+          <InjuryPanel abbr={home.abbr} logoUrl={home.logoUrl} rows={home.rows} subtle />
         </div>
       )}
     </section>
@@ -1449,7 +1532,27 @@ function Injuries({ game, gameContext }: { game: GameDetailGame; gameContext: Ga
 // Right panel — picks
 // ---------------------------------------------------------------------------
 
-function PicksPanel({
+/**
+ * Narrowed `game` shape `PicksPanel` actually needs — same narrowing
+ * precedent `RankableTeamStats` established for the Rankings views (above).
+ * `sport` replaces what used to be a hardcoded `'mlb'` literal inside
+ * `addLeg`; `homeTeamId`/`awayTeamId` are `null` for a sport with no numeric
+ * team ids (e.g. NFL) rather than omitted — `gameMarketCandidate` already
+ * normalizes an absent value to `null` internally, so this is a faithful,
+ * zero-behavior-change generalization. See `docs/sport-adapter-design.md` §1d.
+ */
+export interface PicksPanelGame {
+  id: string;
+  sport: Sport;
+  awayAbbr: string;
+  homeAbbr: string;
+  homeTeamId: number | null;
+  awayTeamId: number | null;
+  /** MLB-only in practice; `null` for a sport with no probability model yet — moneylineEdge/totalEdge and EdgeBadge naturally don't render when this is null. */
+  gameModel: MoneylineResult | null;
+}
+
+export function PicksPanel({
   game,
   gameCandidateSubjectIds,
   picks,
@@ -1459,7 +1562,7 @@ function PicksPanel({
   gameLine,
   disabled,
 }: {
-  game: GameDetailGame;
+  game: PicksPanelGame;
   gameCandidateSubjectIds: Set<string>;
   picks: PickRow[];
   onRemovePick: (id: number) => void;
@@ -1468,14 +1571,13 @@ function PicksPanel({
   gameLine: UnifiedGameLine | null;
   disabled: boolean;
 }) {
-  const [awayAbbr, homeAbbr] = (game.matchup ?? '').split('@').map((s) => s.trim());
+  const { awayAbbr, homeAbbr } = game;
   const scoped = picks.filter(
-    (p) => gameCandidateSubjectIds.has(p.subjectId) || p.subjectId.startsWith(`game-${game.gamePk}-`),
+    (p) => gameCandidateSubjectIds.has(p.subjectId) || p.subjectId.startsWith(`game-${game.id}-`),
   );
   const projected = gameLine ? projectLine(gameLine) : null;
-  const gameModel = game.gameModel ?? null;
-  const moneylineEdge = computeMoneylineEdge(gameModel, projected?.moneyline);
-  const totalEdge = computeTotalEdge(gameModel, projected?.total);
+  const moneylineEdge = computeMoneylineEdge(game.gameModel, projected?.moneyline);
+  const totalEdge = computeTotalEdge(game.gameModel, projected?.total);
 
   const addLeg = (
     dimension: string,
@@ -1487,10 +1589,10 @@ function PicksPanel({
   ) => {
     if (price == null || disabled) return;
     onAdd(
-      gameMarketCandidate('mlb', game.gamePk ?? 'unknown', subjectName, dimension, category, categoryLabel, {
+      gameMarketCandidate(game.sport, game.id, subjectName, dimension, category, categoryLabel, {
         ...meta,
-        homeTeamId: game.homeTeamId ?? null,
-        awayTeamId: game.awayTeamId ?? null,
+        homeTeamId: game.homeTeamId,
+        awayTeamId: game.awayTeamId,
       }),
       { americanOdds: String(price), source: 'odds-api' },
     );
@@ -1510,7 +1612,7 @@ function PicksPanel({
               <li key={p.id} className="flex items-center justify-between gap-2 text-dense">
                 <div className="min-w-0 truncate">
                   <span className="font-medium">{p.subjectName}</span>{' '}
-                  <MarketLabel sport="mlb" dimension={p.dimension} category={p.category} mode="compact" />
+                  <MarketLabel sport={game.sport} dimension={p.dimension} category={p.category} mode="compact" />
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   <StoredOddsChip
@@ -1604,15 +1706,13 @@ function PicksPanel({
 // ---------------------------------------------------------------------------
 
 export interface GameDetailProps {
-  game: GameDetailGame;
-  statKeys: StatKeyDef[];
+  sport: Sport;
+  /** MLB: `gamePk` as a string. NFL: the game id already used by its own routes/API. */
+  gameId: string;
+  /** Page-filtered player-level candidates for this game — the page still owns snapshot filtering (and, for MLB, the global filter sidebar), same as before this component owned its own data-fetching. */
   candidates: PickCandidate[];
-  allCandidates: PickCandidate[];
   snapshot: SportSnapshot | null;
   odds: UnifiedLinesResult | null;
-  gameLine: UnifiedGameLine | null;
-  gameContext: GameContextState;
-  bullpen: BullpenState;
   picks: PickRow[];
   pickedKeys: Set<string>;
   onAdd: (candidate: PickCandidate, odds?: { americanOdds: string; source: string }) => void;
@@ -1623,16 +1723,146 @@ export interface GameDetailProps {
   eventContext: string | null;
 }
 
+/**
+ * The Matchup section. MLB: a single `PitchingMatchupCard` (today's two
+ * starters, no toggle — `data.tabs` is a one-entry list). NFL: a Team/Player
+ * toggle. See `GameMatchupData`'s own doc comment for why these stay two
+ * different card types instead of one forced shape.
+ */
+function MatchupSection({
+  data,
+  matchupTab,
+  onMatchupTabChange,
+  onMatchupPlayerChange,
+}: {
+  data: GameDetailData['matchup'];
+  matchupTab: string | null;
+  onMatchupTabChange: (key: string) => void;
+  onMatchupPlayerChange: (id: string) => void;
+}) {
+  if (!data) return null;
+  const activeTab = matchupTab ?? data.tabs[0]?.key ?? null;
+
+  if (data.pitching) {
+    return <PitchingMatchupCard game={data.pitching.game} bullpen={data.pitching.bullpen} bullpenLoading={data.pitching.bullpenLoading} />;
+  }
+
+  return (
+    <section className="lb-card overflow-hidden">
+      <div className="flex items-center justify-between gap-2 bg-accent-soft px-3 py-1.5">
+        <h2 className="text-[10.5px] font-bold uppercase tracking-wide text-masters">Matchup</h2>
+        <SegmentedToggle value={activeTab ?? ''} onChange={onMatchupTabChange} options={data.tabs.map((t) => ({ key: t.key, label: t.label }))} />
+      </div>
+      <div className="space-y-3 p-3">
+        {activeTab === 'team' ? (
+          <>
+            {data.teamAway ? <BatterPitcherMatchupCard {...data.teamAway} /> : <p className="p-3 text-center text-[12px] text-ink-muted">No opponent stats available yet.</p>}
+            {data.teamHome ? <BatterPitcherMatchupCard {...data.teamHome} /> : null}
+          </>
+        ) : activeTab === 'player' && data.selectedPlayerCard ? (
+          <>
+            <select
+              value={data.selectedPlayerId ?? ''}
+              onChange={(e) => onMatchupPlayerChange(e.target.value)}
+              aria-label="Pick a player"
+              className="rounded-lg border border-line bg-card px-2 py-1 text-[12px] focus:border-masters focus:outline-none"
+            >
+              {(data.playerOptions ?? []).map((p) => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
+            </select>
+            <NflPlayerVsDefenseCard {...data.selectedPlayerCard} />
+          </>
+        ) : (
+          <p className="p-3 text-center text-[12px] text-ink-muted">No skill-position players with season stats yet.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+const GRADE_ROWS: Array<{ key: keyof TeamGrades; label: string }> = [
+  { key: 'offense', label: 'Offense' },
+  { key: 'defense', label: 'Defense' },
+  { key: 'specialTeams', label: 'Special teams' },
+  { key: 'passingOffense', label: 'Passing offense' },
+  { key: 'rushingOffense', label: 'Rushing offense' },
+  { key: 'receivingOffense', label: 'Receiving offense' },
+  { key: 'secondary', label: 'Secondary' },
+  { key: 'linebackers', label: 'Linebackers' },
+  { key: 'dLine', label: 'D-line' },
+];
+
+/** NFL-only unit-grade table — MLB has no grading model, so `data.unitGrades` is always null there and this section never renders. */
+function UnitGradesSection({ data }: { data: NonNullable<GameDetailData['unitGrades']> }) {
+  return (
+    <section className="lb-card overflow-hidden">
+      <h2 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Unit grades</h2>
+      <div className="overflow-hidden">
+        <table className="w-full border-collapse text-[11px]">
+          <thead>
+            <tr>
+              <th className="border-b border-line px-2 py-1 text-left font-semibold text-ink-muted">Unit</th>
+              <th className="border-b border-line px-2 py-1 text-right font-semibold text-ink-muted">{data.awayAbbr}</th>
+              <th className="border-b border-line px-2 py-1 text-right font-semibold text-ink-muted">{data.homeAbbr}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {GRADE_ROWS.map((row) => {
+              const a = data.away?.[row.key] ?? null;
+              const h = data.home?.[row.key] ?? null;
+              return (
+                <tr key={row.key} className="border-b border-line/50">
+                  <td className="px-2 py-1 text-left text-ink-muted">{row.label}</td>
+                  <td className="px-2 py-1 text-right font-semibold tabular-nums">{a ? `${a.grade}` : '—'}</td>
+                  <td className="px-2 py-1 text-right font-semibold tabular-nums">{h ? `${h.grade}` : '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+/** NFL-only flat "every candidate for this game" list — MLB's `LeftRail` already covers this ground, so `data.propsForGame` stays null there. */
+function PropsForGameSection({ data, playerHref }: { data: NonNullable<GameDetailData['propsForGame']>; playerHref: (subjectId: string) => string }) {
+  return (
+    <section className="lb-card overflow-hidden">
+      <h2 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
+        Props for this game ({data.candidates.length})
+      </h2>
+      {data.candidates.length === 0 ? (
+        <p className="p-6 text-center text-[12px] text-ink-muted">No props tracked for this game yet.</p>
+      ) : (
+        <ul className="divide-y divide-line/60">
+          {data.candidates.map((c) => (
+            <li key={candidateKey(c)}>
+              <Link href={playerHref(c.subjectId)} className="flex items-center justify-between gap-2 px-3 py-2 text-[12px] hover:bg-surface-subtle">
+                <span className="flex min-w-0 items-center gap-2">
+                  <SubjectAvatar name={c.subjectName} size={24} />
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{c.subjectName}</span>
+                    <span className="block truncate text-[10.5px] text-ink-faint">{c.dimensionLabel}</span>
+                  </span>
+                </span>
+                {c.odds ? <OddsChip price={c.odds.americanOdds} source={c.odds.source} capturedAt={c.odds.capturedAt} size="sm" /> : null}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export function GameDetail({
-  game,
-  statKeys,
+  sport,
+  gameId,
   candidates,
-  allCandidates,
   snapshot,
   odds,
-  gameLine,
-  gameContext,
-  bullpen,
   picks,
   pickedKeys,
   onAdd,
@@ -1642,46 +1872,120 @@ export function GameDetail({
   onSelectCandidate,
   eventContext,
 }: GameDetailProps) {
-  const isLive = /live|in progress/i.test(game.state ?? '');
-  const isFinal = /final/i.test(game.state ?? '');
+  const [matchupTab, setMatchupTab] = useState<string | null>(null);
+  const [matchupPlayerId, setMatchupPlayerId] = useState<string | null>(null);
 
-  const gameIdStr = game.gamePk != null ? String(game.gamePk) : undefined;
-  const props = usePropOdds(gameIdStr, snapshot?.fetchedAt);
+  useEffect(() => {
+    setMatchupTab(null);
+    setMatchupPlayerId(null);
+  }, [gameId]);
 
-  const selectedCandidates = useMemo(
-    () => (selectedPlayerId ? candidates.filter((c) => c.subjectId === selectedPlayerId) : []),
-    [candidates, selectedPlayerId],
+  // Every hook below is always called (rules of hooks) — NFL's real data
+  // model is three bespoke endpoint calls (`useNflGameDetail`) instead of
+  // MLB's own composed hooks over an already-resolved slate game, so both
+  // sets run unconditionally and the unused half's queries simply go
+  // nowhere, same pattern `TeamDetail.tsx`/`PlayerDetail.tsx` already use.
+  const games = useMemo(
+    () => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as GameDetailGame[],
+    [snapshot],
   );
+  const statKeys = useMemo(
+    () => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.statKeys ?? []) as StatKeyDef[],
+    [snapshot],
+  );
+  const mlbGame = games.find((g) => String(g.gamePk) === gameId);
+  const gameContext = useGameContext(mlbGame?.awayTeamId, mlbGame?.homeTeamId);
+  const bullpen = useBullpen(mlbGame?.awayTeamId, mlbGame?.homeTeamId);
+  const mlbGameLine = useMemo(() => {
+    if (!mlbGame) return null;
+    const slate = buildSlate(games, odds?.lines ?? []);
+    return slate.entries.find((e) => Number(e.game.gamePk) === Number(gameId))?.line ?? null;
+  }, [games, odds, mlbGame, gameId]);
 
-  const gameCandidateSubjectIds = useMemo(() => new Set(candidates.map((c) => c.subjectId)), [candidates]);
+  const nflGame = useNflGameDetail(sport === 'nfl' ? gameId : undefined);
+  const nflGameLine = useMemo(() => {
+    if (!nflGame.meta) return null;
+    const fromSlate = odds?.lines
+      ? odds.lines.find(
+          (l) => teamKey(l.awayTeam) === teamKey(nflGame.meta!.game.awayTeamName) && teamKey(l.homeTeam) === teamKey(nflGame.meta!.game.homeTeamName),
+        )
+      : undefined;
+    const sgo = nflGame.meta.sportsGameOddsLine;
+    if (!fromSlate) return sgo;
+    if (!sgo) return fromSlate;
+    return { ...fromSlate, moneyline: fromSlate.moneyline ?? sgo.moneyline, spread: fromSlate.spread ?? sgo.spread, total: fromSlate.total ?? sgo.total, bookCount: Math.max(fromSlate.bookCount, sgo.bookCount) };
+  }, [nflGame.meta, odds]);
 
-  const awayRecent = game.awayTeamId != null ? gameContext.recent[game.awayTeamId] : undefined;
-  const homeRecent = game.homeTeamId != null ? gameContext.recent[game.homeTeamId] : undefined;
-
-  // P1-7 — Recommended Pick badge, computed once here rather than inside
-  // GameHeroCard so it uses the exact same gameLine every other odds display
-  // on this page reads from.
-  const matchupProjected = gameLine ? projectLine(gameLine) : null;
+  const props = usePropOdds(gameId, snapshot?.fetchedAt);
   const calibration = useMarketCalibration();
-  const recommendedPick = computeRecommendedMoneylinePick(game.gameModel, matchupProjected?.moneyline, calibration.trustedMarkets);
-  const totalLean = computeTotalLean(game.gameModel, matchupProjected?.total);
-
   const pickHistory = useGamePickHistory('mlb');
-  const gamePick = useMemo(
-    () => pickHistory.rows.find((r) => r.gameId === gameIdStr) ?? null,
-    [pickHistory.rows, gameIdStr],
-  );
+  const gamePick = useMemo(() => pickHistory.rows.find((r) => r.gameId === gameId) ?? null, [pickHistory.rows, gameId]);
+
+  const data: GameDetailData | null =
+    sport === 'nfl'
+      ? nflGame.meta
+        ? toNflGameDetailData({
+            meta: nflGame.meta,
+            home: nflGame.home,
+            away: nflGame.away,
+            gameLine: nflGameLine ?? null,
+            scope: { matchupPlayerId },
+            candidates,
+          })
+        : null
+      : mlbGame
+        ? toMlbGameDetailData({
+            game: mlbGame,
+            statKeys,
+            gameContext,
+            bullpen: { byTeam: bullpen.byTeam, loading: bullpen.loading },
+            gameLine: mlbGameLine,
+            trustedMarkets: calibration.trustedMarkets,
+            gamePick,
+            pickLoading: calibration.loading,
+            candidates,
+          })
+        : null;
+
+  const detailError = sport === 'nfl' ? nflGame.error : null;
+  if (detailError) return <div className="lb-card border-bad/30 bg-bad/5 p-3 text-sm text-bad">{detailError}</div>;
+  if (!data) {
+    return (
+      <div className="lb-card overflow-hidden">
+        <div className="lb-skel h-24 w-full" />
+      </div>
+    );
+  }
+
+  const isFinal = data.hero.isFinal;
+  const selectedCandidates = selectedPlayerId ? candidates.filter((c) => c.subjectId === selectedPlayerId) : [];
+  const gameCandidateSubjectIds = new Set(candidates.map((c) => c.subjectId));
+  const playerHref = (subjectId: string) => `/${sport}/player/${encodeURIComponent(subjectId)}`;
 
   return (
     <div className="grid gap-3 lg:grid-cols-[280px_1fr_260px]">
       <LeftRail
-        candidates={candidates}
+        candidates={data.leftRail.candidates}
         selectedPlayerId={selectedPlayerId}
         selectedMarket={selectedMarket}
         onSelectCandidate={onSelectCandidate}
         propRows={props.rows}
         userSportsbook={props.userSportsbook}
         sharedCalibration={calibration}
+        goodBetsGated={data.leftRail.goodBetsGated}
+        teamScopePanel={
+          data.leftRail.nflTeamScope
+            ? (railProps) => (
+                <NflTeamScopePanel
+                  rawTeamCandidates={railProps.rawTeamCandidates}
+                  gameLine={data.leftRail.nflTeamScope!.gameLine}
+                  homeAbbr={data.leftRail.nflTeamScope!.homeAbbr}
+                  onAdd={onAdd}
+                  pickedKeys={pickedKeys}
+                />
+              )
+            : undefined
+        }
       />
 
       <div className="min-w-0 space-y-3">
@@ -1710,35 +2014,84 @@ export function GameDetail({
         ) : (
           <>
             <GameHeroCard
-              game={game}
-              isLive={isLive}
-              isFinal={isFinal}
-              liveScore={game.liveScore}
-              awayRecent={awayRecent}
-              homeRecent={homeRecent}
-              recommendedPick={recommendedPick}
-              totalLean={totalLean}
-              gamePick={gamePick}
-              pickLoading={calibration.loading}
+              away={{ ...data.hero.away, renderBadges: data.hero.awayGrades ? () => (
+                <>
+                  <GradeChip label="OFF" grade={data.hero.awayGrades?.offense ?? null} />
+                  <GradeChip label="DEF" grade={data.hero.awayGrades?.defense ?? null} />
+                  <GradeChip label="ST" grade={data.hero.awayGrades?.specialTeams ?? null} />
+                </>
+              ) : undefined }}
+              home={{ ...data.hero.home, renderBadges: data.hero.homeGrades ? () => (
+                <>
+                  <GradeChip label="OFF" grade={data.hero.homeGrades?.offense ?? null} />
+                  <GradeChip label="DEF" grade={data.hero.homeGrades?.defense ?? null} />
+                  <GradeChip label="ST" grade={data.hero.homeGrades?.specialTeams ?? null} />
+                </>
+              ) : undefined }}
+              isLive={data.hero.isLive}
+              isFinal={data.hero.isFinal}
+              liveScore={data.hero.liveScore}
+              livePeriodLabel={data.hero.livePeriodLabel}
+              renderLiveExtra={data.hero.liveExtraText ? () => <span className="text-[10px] text-ink-faint">{data.hero.liveExtraText}</span> : undefined}
+              startTimeLabel={data.hero.startTimeLabel}
+              startTimeCaption={data.hero.startTimeCaption}
+              model={data.hero.model}
+              pickLockAt={data.hero.pickLockAt}
+              pickLoading={data.hero.pickLoading}
+              venue={data.hero.venue}
+              renderCenterPregameExtra={
+                data.hero.pregameLines !== undefined
+                  ? () =>
+                      data.hero.pregameLines ? (
+                        <div className="flex flex-col items-center gap-0.5 text-[10.5px]">
+                          {data.hero.pregameLines.moneyline ? (
+                            <span className="tabular-nums text-ink-muted">
+                              ML {formatAmerican(data.hero.pregameLines.moneyline.away)} / {formatAmerican(data.hero.pregameLines.moneyline.home)}
+                            </span>
+                          ) : null}
+                          {data.hero.pregameLines.spread ? (
+                            <span className="tabular-nums text-ink-faint">
+                              Spread {data.hero.pregameLines.spread.homePoint != null ? (data.hero.pregameLines.spread.homePoint > 0 ? `+${data.hero.pregameLines.spread.homePoint}` : data.hero.pregameLines.spread.homePoint) : '—'}
+                            </span>
+                          ) : null}
+                          {data.hero.pregameLines.total?.point != null ? <span className="tabular-nums text-ink-faint">O/U {data.hero.pregameLines.total.point}</span> : null}
+                        </div>
+                      ) : (
+                        <span className="text-[10.5px] text-ink-faint">No game line yet</span>
+                      )
+                  : undefined
+              }
+              renderLiveDetail={
+                data.hero.mlbLiveGame
+                  ? (active) => <LiveTab game={data.hero.mlbLiveGame!} gamePk={data.hero.mlbGamePk ?? undefined} active={active} isFinal={isFinal} />
+                  : undefined
+              }
             />
-            <PitchingMatchupCard game={game} bullpen={bullpen.byTeam} bullpenLoading={bullpen.loading} />
-            <RecordsSection game={game} awayRecent={awayRecent} homeRecent={homeRecent} loading={gameContext.loading} />
-            <StatComparison game={game} statKeys={statKeys} />
-            <LastFiveGames game={game} awayRecent={awayRecent} homeRecent={homeRecent} loading={gameContext.loading} />
-            <Rankings game={game} statKeys={statKeys} />
-            <Injuries game={game} gameContext={gameContext} />
+            <MatchupSection
+              data={data.matchup}
+              matchupTab={matchupTab}
+              onMatchupTabChange={setMatchupTab}
+              onMatchupPlayerChange={setMatchupPlayerId}
+            />
+            <RecordsSection away={data.records.away} home={data.records.home} loading={data.records.loading} />
+            {data.statComparison ? <StatComparison data={data.statComparison} /> : null}
+            <LastFiveGames away={data.lastFive.away} home={data.lastFive.home} loading={data.lastFive.loading} />
+            {data.rankings ? <Rankings data={data.rankings} /> : null}
+            {data.unitGrades ? <UnitGradesSection data={data.unitGrades} /> : null}
+            <Injuries away={data.injuries.away} home={data.injuries.home} loading={data.injuries.loading} />
+            {data.propsForGame ? <PropsForGameSection data={data.propsForGame} playerHref={playerHref} /> : null}
           </>
         )}
       </div>
 
       <PicksPanel
-        game={game}
+        game={data.picksPanelGame}
         gameCandidateSubjectIds={gameCandidateSubjectIds}
         picks={picks}
         onRemovePick={onRemovePick}
         onAdd={onAdd}
         eventContext={eventContext}
-        gameLine={gameLine}
+        gameLine={sport === 'nfl' ? nflGameLine : mlbGameLine}
         disabled={isFinal}
       />
     </div>

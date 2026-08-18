@@ -5,7 +5,6 @@ import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import type { UnifiedLinesResult } from '@/lib/odds/types';
 import { SubjectAvatar, TeamLogo } from './SubjectAvatar';
 import { PlayerDetail, FilterChip } from './PlayerDetail';
-import { NflPlayerDetail } from './NflPlayerDetail';
 import { PlayerSkeleton } from './Skeleton';
 import { useGolfPlayerStats } from './useGolfPlayerStats';
 
@@ -181,16 +180,6 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
       <div className="min-w-0 space-y-3">
         {!activeSubjectId ? (
           <div className="lb-card p-8 text-center text-sm text-ink-muted">No players on today&apos;s slate.</div>
-        ) : sport === 'nfl' ? (
-          <NflPlayerDetail
-            candidates={mine}
-            snapshot={snapshot}
-            odds={odds}
-            market={market}
-            onMarketChange={setMarket}
-            onAdd={onAdd}
-            addedKeys={addedKeys}
-          />
         ) : (
           <PlayerDetail
             candidates={mine}

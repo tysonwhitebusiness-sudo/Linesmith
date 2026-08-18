@@ -7,7 +7,7 @@ import { useSnapshot } from '@/components/useSnapshot';
 import { useSlip } from '@/components/useSlip';
 import { TopBar } from '@/components/TopBar';
 import SlipModal from '@/components/SlipModal';
-import { NflTeamDetailPanel } from '@/components/NflTeamDetailPanel';
+import { TeamDetailPanel } from '@/components/TeamDetailPanel';
 
 /** `/nfl/team/[teamId]` — deep link into one team, same shell as the Teams index. */
 export default function NflTeamPage() {
@@ -42,7 +42,7 @@ export default function NflTeamPage() {
 
       <main className="px-3 py-3">
         {error ? <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad">{error}</div> : null}
-        <NflTeamDetailPanel initialTeamId={teamId} onAdd={onAdd} addedKeys={slip.pickedKeys} />
+        <TeamDetailPanel sport={sport} initialTeamId={teamId} snapshot={snapshot} onAdd={onAdd} addedKeys={slip.pickedKeys} />
       </main>
 
       <SlipModal

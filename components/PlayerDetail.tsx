@@ -1,26 +1,12 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
 import type { PickCandidate, SportSnapshot, HistoryEntry } from '@/lib/core/types';
-import {
-  categoriseByLine,
-  entryValue,
-  fixedWindow,
-  openWindow,
-  subsetWindow,
-  isOk,
-  OVER,
-  UNDER,
-  type WindowedStat,
-} from '@/lib/core/windowedStat';
+import { entryValue, isOk, type WindowedStat } from '@/lib/core/windowedStat';
 import { compareInk, gradientCardStyle, deltaGradientStyle, heatFill, toneFill } from '@/lib/ui/heat';
 import { markFor, TONE_CLASS } from '@/lib/ui/marks';
-import { teamPrimaryColor, withAlpha } from '@/lib/sports/mlb/teamColors';
-import { teamNameFor } from '@/lib/sports/mlb/teamAliases';
-import { projectLine } from '@/lib/odds/display';
-import { computeMoneylineEdge, computeTotalEdge } from '@/lib/odds/gameEdge';
-import { buildSlate, liveFor, type SlateEntry, type SlateGame } from '@/lib/odds/matching';
+import { withAlpha } from '@/lib/sports/mlb/teamColors';
 import { useLiveGame } from './useLiveGame';
 import { useTeamStatcast } from './useTeamStatcast';
 import { StatRankRow } from './StatRankRow';
@@ -32,20 +18,30 @@ import { OddsChip, GetOddsButton, EdgeBadge } from './OddsChip';
 import { BookLogo } from './BookLogo';
 import { usePropOdds, resolveCandidateEdge } from './usePropOdds';
 import { PropOddsBoard } from './PropOddsPanel';
-import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import { SegmentedToggle } from './SegmentedToggle';
 import { computePropScore } from '@/lib/odds/props/propScore';
 import { useMarketCalibration, type MarketCalibrationState } from './useMarketCalibration';
 import { PropScoreBadge } from './PropScoreBadge';
 import { BatterPitcherMatchupCard } from './BatterPitcherMatchupCard';
-import type { GameDetailGame, StatKeyDef } from './GameDetail';
+import { NflPlayerVsDefenseCard } from './NflPlayerVsDefenseCard';
 import { GolfPlayerStatsCard } from './GolfPlayerStatsCard';
 import type { AdvancedStat, GolferStrokesGained } from '@/lib/sports/golf/pgatourStats';
 import type { PlayerSeasonLog } from '@/lib/sports/golf/playerSeason';
 import type { GolfCategory } from '@/lib/sports/golf/adapter';
+import {
+  toPlayerDetailData as toMlbPlayerDetailData,
+  type GamelogColumnDef,
+  type GamelogRow,
+  type PlayerDetailData,
+} from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import { toPlayerDetailData as toGolfPlayerDetailData } from '@/lib/sports/golf/adapters/playerDetailAdapter';
+import { toPlayerDetailData as toNflPlayerDetailData } from '@/lib/sports/nfl/adapters/playerDetailAdapter';
 
 /**
- * Everything known about one player's one market.
+ * Everything known about one player's one market — sport-agnostic. Reads a
+ * `PlayerDetailData` built by the active candidate's own sport adapter
+ * (`lib/sports/{mlb,golf,nfl}/adapters/playerDetailAdapter.ts`); adding a new
+ * sport here means writing one more adapter, not another branch in this file.
  *
  * Built as a component rather than a page so Game Detail can swap it into its
  * main pane without a second implementation — the route is a thin wrapper.
@@ -55,34 +51,7 @@ import type { GolfCategory } from '@/lib/sports/golf/adapter';
  * every window, the chart and its baseline recompute together off one number.
  */
 
-// ---------------------------------------------------------------------------
-// Gamelog columns
-// ---------------------------------------------------------------------------
-
-/**
- * The per-game stat columns, keyed to what the Stats API returns on a split.
- *
- * Kept in step with `GAME_LOG_FIELDS` in `statsapi.ts` — a key absent from that
- * allow-list arrives undefined and renders as a dash, which looks like a zero
- * game rather than a missing field.
- */
-const GAMELOG_COLUMNS: Array<{ key: string; label: string }> = [
-  { key: 'plateAppearances', label: 'PA' },
-  { key: 'atBats', label: 'AB' },
-  { key: 'hits', label: 'H' },
-  { key: 'runs', label: 'R' },
-  { key: 'rbi', label: 'RBI' },
-  { key: 'totalBases', label: 'TB' },
-  { key: 'doubles', label: '2B' },
-  { key: 'triples', label: '3B' },
-  { key: 'homeRuns', label: 'HR' },
-  { key: 'baseOnBalls', label: 'BB' },
-  { key: 'strikeOuts', label: 'SO' },
-  { key: 'stolenBases', label: 'SB' },
-  { key: 'hitByPitch', label: 'HBP' },
-  { key: 'earnedRuns', label: 'ER' },
-  { key: 'inningsPitched', label: 'IP' },
-];
+const HERO_FALLBACK_COLOR = '#616366';
 
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
   return (entry.raw ?? {}) as Record<string, unknown>;
@@ -120,15 +89,6 @@ export interface OpposingStarterStat {
   poolSize: number;
 }
 
-/** Shape adapter.ts's `ownStatcastSummary` attaches to `subjectMeta.ownStatcastSummary` — the composite headline for the Quality of Contact card's per-stat tiles. */
-interface OwnStatcastSummary {
-  overallRank: number | null;
-  poolSize: number;
-  position: string;
-  positionRank: number | null;
-  positionPoolSize: number;
-}
-
 export function ordinal(rank: number): string {
   const suffix = rank % 100 >= 11 && rank % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][rank % 10] ?? 'th');
   return `${rank}${suffix}`;
@@ -137,57 +97,6 @@ export function ordinal(rank: number): string {
 /** "#12 " to lead a pitcher's name with their overall composite rank — empty string (not "#N/A") until the rankings have been computed for the season, so a name just reads plainly instead of showing a placeholder. */
 export function pitcherRankPrefix(overallRank: { rank: number | null; poolSize: number } | undefined): string {
   return overallRank?.rank != null ? `#${overallRank.rank} ` : '';
-}
-
-/** Same convention, batter side — leads the PlayerDetail header with the batter's own overall Statcast composite rank. */
-function ownStatcastRankPrefix(summary: OwnStatcastSummary | undefined): string {
-  return summary?.overallRank != null ? `#${summary.overallRank} ` : '';
-}
-
-/** `forRanks` are pre-formatted ordinal strings ("28th") — pulls the raw int back out. Duplicated from GameDetail.tsx's own local helper (same small-duplication convention already used elsewhere in this file). */
-function parseRank(s: string | null | undefined): number | null {
-  const m = /^(\d+)/.exec(s ?? '');
-  return m ? Number(m[1]) : null;
-}
-
-/** Converts a team's season `forStats`/`forRanks` into the same `OpposingStarterStat[]` shape as the ranked player-level stats, for the "Pitcher vs. lineup" matchup card's opponent side — reuses the team context Game Detail/Team Detail already read off the same slate game, no new fetch. */
-function teamSeasonStatRows(team: GameDetailGame['home'], statKeys: StatKeyDef[]): OpposingStarterStat[] {
-  if (!team) return [];
-  return statKeys
-    .map((k): OpposingStarterStat | null => {
-      const value = team.forStats[k.key];
-      const rank = parseRank(team.forRanks[k.key]);
-      if (value == null || rank == null) return null;
-      return { key: k.key, label: k.label, value, decimals: k.decimals, rank, poolSize: 30 };
-    })
-    .filter((s): s is OpposingStarterStat => s != null);
-}
-
-/** Columns with at least one real value — a batter shouldn't show ER and IP. */
-function usedColumns(history: PickCandidate['history']) {
-  return GAMELOG_COLUMNS.filter(({ key }) =>
-    history.some((entry) => {
-      const value = rawOf(entry)[key];
-      return value != null && value !== '' && Number(value) !== 0;
-    }),
-  );
-}
-
-/** The 5 headline stats shown as label+value pairs on a gamelog card — a subset of GAMELOG_COLUMNS, labeled inline since a card row has no column header to label it. */
-const STAT_BADGE_DEFS: Array<{ key: string; label: string }> = [
-  { key: 'hits', label: 'H' },
-  { key: 'runs', label: 'R' },
-  { key: 'rbi', label: 'RBI' },
-  { key: 'baseOnBalls', label: 'BB' },
-  { key: 'strikeOuts', label: 'SO' },
-];
-
-function fieldSeries(history: PickCandidate['history'], key: string): number[] {
-  return history.map((entry) => Number(rawOf(entry)[key]) || 0);
-}
-
-function fieldSum(history: PickCandidate['history'], key: string): number {
-  return fieldSeries(history, key).reduce((a, b) => a + b, 0);
 }
 
 /** Baseball convention drops the leading zero — ".179", never "0.179". */
@@ -333,29 +242,27 @@ export function DistributionChart({
 // Gamelog — summary strip + per-game cards
 // ---------------------------------------------------------------------------
 
-/** One game, card form — the alternative to a gamelog table row. Same fields (team, date/opponent, per-game stats), read as a scannable list instead of a dense grid. */
-function GamelogCard({ entry, columns }: { entry: PickCandidate['history'][number]; columns: Array<{ key: string; label: string }> }) {
-  const raw = rawOf(entry);
-  const entryOpponentId = raw.opponentId as number | undefined;
-  const hits = Number(raw.hits) || 0;
-  const atBats = Number(raw.atBats) || 0;
-  const runs = Number(raw.runs) || 0;
+/** One game, card form — the alternative to a gamelog table row. Same fields (team, date/opponent, per-game stats), read as a scannable list instead of a dense grid. Reads an already-resolved `GamelogRow` (adapter output) — never `entry.raw` — so it works the same for MLB and NFL. */
+function GamelogCard({ row, columns, badges }: { row: GamelogRow; columns: GamelogColumnDef[]; badges: GamelogColumnDef[] }) {
+  const hits = Number(row.values.hits) || 0;
+  const atBats = Number(row.values.atBats) || 0;
+  const runs = Number(row.values.runs) || 0;
   // "0-4" is the standard box-score AB line; only meaningful when this
-  // entry actually carries batting fields (a pitcher's log won't).
+  // gamelog actually carries batting fields at all (NFL's won't).
   const hasBattingLine = columns.some((c) => c.key === 'hits') && columns.some((c) => c.key === 'atBats');
-  const badges = STAT_BADGE_DEFS.filter((d) => columns.some((c) => c.key === d.key));
+  const usedBadges = badges.filter((d) => columns.some((c) => c.key === d.key));
 
   return (
     <div
       className="flex items-center gap-3 border-l-[3px] px-3 py-2.5 transition-colors hover:bg-surface-subtle"
-      style={{ borderLeftColor: entryOpponentId != null ? teamPrimaryColor(entryOpponentId) : 'transparent' }}
+      style={{ borderLeftColor: row.accentColor ?? 'transparent' }}
     >
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line bg-card">
-        {entryOpponentId != null ? <TeamLogo logoUrl={mlbLogoUrl(entryOpponentId)} size={18} /> : null}
+        {row.opponentLogoUrl ? <TeamLogo logoUrl={row.opponentLogoUrl} size={18} /> : null}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-1.5">
-          <span className="truncate text-[12px] font-semibold text-ink">{entry.periodLabel ?? `Game #${entry.period}`}</span>
+          <span className="truncate text-[12px] font-semibold text-ink">{row.periodLabel}</span>
           {hasBattingLine ? (
             <span className="shrink-0 text-[11px] tabular-nums text-ink-muted">
               {hits}-{atBats}
@@ -364,8 +271,8 @@ function GamelogCard({ entry, columns }: { entry: PickCandidate['history'][numbe
           ) : null}
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-          {badges.map((badge) => {
-            const value = raw[badge.key];
+          {usedBadges.map((badge) => {
+            const value = row.values[badge.key];
             return (
               <span key={badge.key} className="flex items-center gap-1 text-[11px]">
                 <span className="font-semibold uppercase tracking-wide text-masters">{badge.label}</span>
@@ -750,17 +657,10 @@ function PastRoundMatchupsCard({ active, meta }: { active: PickCandidate; meta: 
 /**
  * Golf's Form card — which hole(s) this golfer has scored the same on in
  * every round played so far, i.e. every `hole-N` candidate the adapter
- * already flagged `consistent`. Reads `candidates` (every hole for this
- * golfer), not just `active`, since the pattern worth surfacing might not be
- * on whichever hole tab happens to be open. Requires at least 2 rounds
- * played — a "pattern" from one data point is noise, same floor the rest of
- * the app holds everywhere else (see windowedStat.ts).
+ * already flagged `consistent`. Reads the adapter's precomputed
+ * `data.golfFormHoles` rather than re-filtering `candidates` itself.
  */
-function ConsistentHolesForm({ candidates }: { candidates: PickCandidate[] }) {
-  const consistentHoles = candidates
-    .filter((c) => /^hole-\d+$/.test(c.dimension) && c.consistent && c.sampleSize >= 2)
-    .sort((a, b) => b.sampleSize - a.sampleSize || a.dimension.localeCompare(b.dimension, undefined, { numeric: true }));
-
+function ConsistentHolesForm({ holes }: { holes: PickCandidate[] }) {
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
       <h3 className="flex items-center gap-1.5 bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
@@ -768,10 +668,10 @@ function ConsistentHolesForm({ candidates }: { candidates: PickCandidate[] }) {
         Form
       </h3>
       <ul className="space-y-2 p-3">
-        {consistentHoles.length === 0 ? (
+        {holes.length === 0 ? (
           <li className="text-[12px] text-ink-faint">No hole has the same result in every round yet.</li>
         ) : (
-          consistentHoles.slice(0, 5).map((c) => (
+          holes.slice(0, 5).map((c) => (
             <li key={c.dimension} className="flex items-baseline justify-between gap-2 text-[12px]">
               <span className="truncate text-ink-muted">{c.dimensionLabel}</span>
               <span className={`shrink-0 font-semibold tabular-nums ${TONE_CLASS[markFor(c.category).tone]}`}>
@@ -904,6 +804,35 @@ function ScorecardChart({
 }
 
 // ---------------------------------------------------------------------------
+// Scope chips — one generic row driven entirely by `PlayerDetailData.chips`.
+// Each key encodes which filter it represents (`venue:home`, `opponent`,
+// `lastN:10`, `round:2`); active-state and the click handler both parse that
+// convention here, in the one place scope state actually lives, rather than
+// forcing the adapter to also carry an `active` flag per chip.
+// ---------------------------------------------------------------------------
+
+function ScopeChips({
+  chips,
+  isActive,
+  onSelect,
+}: {
+  chips: Array<{ key: string; label: string }>;
+  isActive: (key: string) => boolean;
+  onSelect: (key: string) => void;
+}) {
+  if (chips.length === 0) return null;
+  return (
+    <div className="lb-scroll-x flex items-center gap-1.5">
+      {chips.map((chip) => (
+        <FilterChip key={chip.key} active={isActive(chip.key)} onClick={() => onSelect(chip.key)}>
+          {chip.label}
+        </FilterChip>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // The detail view
 // ---------------------------------------------------------------------------
 
@@ -921,7 +850,7 @@ export interface PlayerDetailProps {
   embedded?: boolean;
   /** Golf only — season/advanced stats, rendered inside the main column below
       everything else so it sits beside the context rail instead of spanning
-      full-width underneath it. Omitted entirely for MLB. */
+      full-width underneath it. Omitted entirely for MLB/NFL. */
   golfStats?: {
     strokesGained: GolferStrokesGained | null;
     seasonLog: PlayerSeasonLog | null;
@@ -969,8 +898,6 @@ export function PlayerDetail({
   useEffect(() => {
     setSelectedGolfCategory(null);
   }, [active?.dimension]);
-  const effectiveGolfCategory: GolfCategory = selectedGolfCategory ?? ((active?.category as GolfCategory) ?? 'par');
-  const previewingOtherGolfCategory = active?.sport === 'golf' && effectiveGolfCategory !== active.category;
 
   // Line adjustment is an offset so switching markets doesn't carry a
   // threshold from one stat onto another where it would mean nothing.
@@ -982,6 +909,20 @@ export function PlayerDetail({
   const [gamelogView, setGamelogView] = useState<'cards' | 'table'>('cards');
   const [kpiScope, setKpiScope] = useState<'season' | 'l15'>('season');
   const [showAllAtBats, setShowAllAtBats] = useState(false);
+  const [selectedRound, setSelectedRound] = useState<number | null>(null);
+
+  // A different subject entirely (not just a market tab within the same
+  // player) resets every scope control — mirrors NflPlayerDetail.tsx's own
+  // reset effect, generalized so a host that keeps this component mounted
+  // across a player-to-player navigation doesn't carry stale scope over.
+  useEffect(() => {
+    setLineOffset(0);
+    setOpponentOnly(false);
+    setVenue('all');
+    setLastN('all');
+    setShowAllGames(false);
+    setSelectedRound(null);
+  }, [active?.subjectId]);
 
   // /api/mlb only sends full box-score detail for each candidate's most
   // recent ~20 games (see historyTrim.ts) — older entries still carry
@@ -1004,155 +945,70 @@ export function PlayerDetail({
       cancelled = true;
     };
   }, [showAllGames, active, fullHistoryCache]);
-  const activeHistory = active ? (fullHistoryCache[`${active.subjectId}:${active.dimension}`] ?? active.history) : [];
 
   const meta = (active?.subjectMeta ?? {}) as Record<string, unknown>;
-  const teamAbbr = typeof meta.team === 'string' ? meta.team : undefined;
-  const opponentAbbr = typeof meta.opponent === 'string' ? meta.opponent : undefined;
-  const opponentId = typeof meta.opponentId === 'number' ? meta.opponentId : undefined;
-  const isHome = meta.isHome === true;
 
-  const baseLine = active?.line ?? 0.5;
-  const line = Math.max(0.5, baseLine + lineOffset);
-  // The pattern names the side; the stepper only moves the threshold.
-  const wantOver = directionMark(active?.category ?? '') !== 'U';
-
-  const games: SlateGame[] = useMemo(
-    () => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as SlateGame[],
-    [snapshot],
-  );
-  const statKeys = useMemo(
-    () => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.statKeys ?? []) as StatKeyDef[],
-    [snapshot],
-  );
-
-  const slate = useMemo(() => buildSlate(games as SlateEntry['game'][], odds?.lines ?? []), [games, odds]);
-  const todaysGame = teamAbbr ? slate.byAbbrev.get(teamAbbr.toUpperCase()) : undefined;
-  const live = todaysGame ? liveFor(todaysGame) : {};
-  // `live.liveScore` comes from the odds/OddsHarvester scraper and is only
-  // populated when that live-score feed happens to be enabled — it's a real
-  // "degraded state" per the odds design doc, not a reliable "is this game
-  // live" signal. The MLB Stats API's own game state (already surfaced as
-  // `todaysGame.game.state`, e.g. "In Progress") is the one that's always
-  // present whenever a game genuinely is live, so that's what gates polling.
-  const gameIsInProgress = /in progress/i.test(todaysGame?.game?.state ?? '');
-  // Called above the `!active` early return (rules of hooks) — `active` is
-  // safe to read optionally here since it's assigned above, just possibly
-  // undefined until the guard below.
-  const playerLive = useLiveGame(
-    typeof meta.gamePk === 'number' ? meta.gamePk : undefined,
-    gameIsInProgress,
-    15_000,
-    active?.subjectId,
-  );
-
-  // pitchHand is only ever set on pitcher-role candidates (adapter.ts) — the
-  // one reliable "is this subject a pitcher" signal already in subjectMeta.
-  const isPitcherSubject = typeof meta.pitchHand === 'string';
-  // A pitcher has no single opposing pitcher to compare against — only fetch
-  // the opposing team's hitting rollup when actually needed.
-  const opponentTeamStatcast = useTeamStatcast(isPitcherSubject ? opponentId : undefined);
-
-  /**
-   * The games in scope, then those games re-read against the current line.
-   *
-   * Filters apply first so every number below — windows, chart, gamelog — is
-   * describing the same set of games. Applying them at different points is how
-   * a chart and its summary end up disagreeing.
-   */
-  const scoped = useMemo(() => {
-    if (!active) return [];
-    let list = activeHistory;
-
-    if (opponentOnly && opponentId != null) {
-      list = list.filter((e) => (rawOf(e).opponentId as number | undefined) === opponentId);
-    }
-    if (venue !== 'all') {
-      list = list.filter((e) => rawOf(e).isHome === (venue === 'home'));
-    }
-    if (lastN !== 'all') list = list.slice(-lastN);
-
-    return list;
-  }, [active, activeHistory, opponentOnly, opponentId, venue, lastN]);
-
-  const measured = useMemo(() => categoriseByLine(scoped, line), [scoped, line]);
-  const wanted = wantOver ? OVER : UNDER;
-
-  const windows = useMemo(
-    () => ({
-      l5: fixedWindow(measured, wanted, 5),
-      l10: fixedWindow(measured, wanted, 10),
-      l15: fixedWindow(measured, wanted, 15),
-      szn: openWindow(measured, wanted, { minimum: 1 }),
-      h2h:
-        opponentId == null
-          ? ({ status: 'insufficient', available: 0, required: 1 } as WindowedStat)
-          : subsetWindow(
-              categoriseByLine(activeHistory, line),
-              wanted,
-              (e) => (rawOf(e).opponentId as number | undefined) === opponentId,
-              { minimum: 1 },
-            ),
-    }),
-    [measured, wanted, opponentId, activeHistory, line],
-  );
-
-  // Golf's round selector — replaces venue/lastN for this sport. Rounds come
-  // from the active hole's own history rather than a fixed 1-4, so a
-  // 2-round-old tournament doesn't show two dead R3/R4 chips.
-  const golfRounds = useMemo(
-    () => Array.from(new Set(activeHistory.map((h) => h.period))).sort((a, b) => a - b),
-    [activeHistory],
-  );
-  const [selectedRound, setSelectedRound] = useState<number | null>(null);
-  // Defaults to the most recent round — "usually the live one" — but a
-  // manual pick sticks until the golfer/hole changes (handled by the market
-  // tab's own onClick resetting lineOffset already; round follows suit there).
+  // Round number this golfer's scope is currently reading, for highlighting
+  // the right "Round N" chip and gating the round-scores' `hit` glyph. Cheap
+  // to compute for every sport (an MLB/NFL history's own `period` numbers
+  // just go unused); real duplication of the golf adapter's own
+  // `effectiveRound`, same small-duplication convention already used
+  // elsewhere in this file (`golfScoreHeat`/`relDisplay` etc.).
+  const golfRounds = active ? Array.from(new Set(active.history.map((h) => h.period))).sort((a, b) => a - b) : [];
   const effectiveRound = selectedRound ?? golfRounds[golfRounds.length - 1] ?? 1;
 
-  // Every hole this golfer has a candidate for, scored at `effectiveRound` —
-  // the scorecard chart's data. Reads `candidates` (every market for this
-  // golfer), not just `active`, since a single hole's own history only ever
-  // covers that one hole.
-  const scorecardHoles = useMemo(() => {
-    if (active.sport !== 'golf') return [];
-    return candidates
-      .filter((c) => /^hole-\d+$/.test(c.dimension))
-      .map((c) => {
-        const parMatch = /Par (\d+)/.exec(c.dimensionLabel);
-        const par = parMatch ? Number(parMatch[1]) : null;
-        const entry = c.history.find((h) => h.period === effectiveRound);
-        const value = entry ? entryValue(entry) : null;
-        // adapter.ts stashes the raw stroke count alongside relativeToPar —
-        // that's the chart's bar height (see ScorecardChart's own comment for
-        // why: relativeToPar alone can't tell a 4-shot birdie on a par 5 from
-        // a 4-shot bogey on a par 3 apart, and those are very different holes
-        // even though both read "the same size" on a deviation-only scale).
-        // Falls back to par + relativeToPar on the rare entry ESPN sent a
-        // relative score for but no raw stroke count.
-        const raw = (entry?.raw ?? null) as { strokes?: number | null } | null;
-        const strokes = raw?.strokes ?? (value != null && par != null ? par + value : null);
-        return {
-          hole: Number(c.dimension.slice('hole-'.length)),
-          par,
-          value,
-          strokes,
-        };
-      })
-      .sort((a, b) => a.hole - b.hole);
-  }, [active.sport, candidates, effectiveRound]);
+  // Hooks that fetch live data stay in the component — an adapter is a pure
+  // function, it can't call `useLiveGame`/`useTeamStatcast` itself. `enabled:
+  // false` (via the subjectId/opponentId args going undefined) just skips the
+  // fetch when the active subject doesn't need it; the hook itself always
+  // runs (rules of hooks).
+  const gamePk = typeof meta.gamePk === 'number' ? meta.gamePk : undefined;
+  const opponentId = typeof meta.opponentId === 'number' ? meta.opponentId : undefined;
+  const isPitcherSubject = typeof meta.pitchHand === 'string';
+  // Cheap enough to recompute here just to gate the live poll's interval —
+  // the adapter recomputes the authoritative version for `data.liveGame`.
+  const gameIsInProgressHint = active?.sport === 'mlb' && typeof meta.gamePk === 'number';
+  const playerLive = useLiveGame(gamePk, gameIsInProgressHint, 15_000, active?.subjectId);
+  const opponentTeamStatcast = useTeamStatcast(isPitcherSubject ? opponentId : undefined);
 
-  const gamePk = typeof meta.gamePk === 'number' ? String(meta.gamePk) : undefined;
-  // Hooks always run (rules of hooks) — `enabled: false` just skips the
-  // fetch inside them when a parent already supplied the same data (see
-  // `sharedPropOdds`/`sharedCalibration` on this component's props).
-  const propOddsFetched = usePropOdds(gamePk, snapshot?.fetchedAt, !sharedPropOdds);
+  const gamePkStr = typeof meta.gamePk === 'number' || typeof meta.gamePk === 'string' ? String(meta.gamePk) : undefined;
+  const propOddsFetched = usePropOdds(gamePkStr, snapshot?.fetchedAt, !sharedPropOdds);
   const propOdds = sharedPropOdds ?? propOddsFetched;
-  const activeMarketKey = active ? candidateDimensionToMarketKey(active.dimension) : null;
   const calibrationFetched = useMarketCalibration(!sharedCalibration);
   const calibration = sharedCalibration ?? calibrationFetched;
 
-  if (!active) {
+  const data: PlayerDetailData | null = !active
+    ? null
+    : active.sport === 'golf'
+      ? toGolfPlayerDetailData({
+          candidates,
+          market: active.dimension,
+          snapshot,
+          scope: { selectedRound, selectedCategory: selectedGolfCategory },
+          propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
+          golfStats,
+        })
+      : active.sport === 'nfl'
+        ? toNflPlayerDetailData({
+            candidates,
+            market: active.dimension,
+            snapshot,
+            scope: { lineOffset, opponentOnly, lastN, showAllGames },
+            propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
+          })
+        : toMlbPlayerDetailData({
+            candidates,
+            market: active.dimension,
+            snapshot,
+            odds,
+            scope: { lineOffset, opponentOnly, venue, lastN, showAllGames, kpiScope },
+            fullHistoryOverride: fullHistoryCache[`${active.subjectId}:${active.dimension}`],
+            propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
+            opponentTeamStatcast,
+            live: playerLive,
+          });
+
+  if (!active || !data) {
     return <div className="lb-card p-8 text-center text-sm text-ink-muted">No tracked markets for this player.</div>;
   }
 
@@ -1170,38 +1026,33 @@ export function PlayerDetail({
       ? { americanOdds: String(activeEdgeInfo.price), source: activeEdgeInfo.priceSource ?? 'odds-api', bookmaker: activeEdgeInfo.bookmaker }
       : undefined;
 
-  const columns = usedColumns(scoped);
-  // Newest first, capped at 15 unless expanded — the same slice the card and
-  // table views both render, so toggling between them never reorders games.
-  const gamelogRows = [...scoped].reverse().slice(0, showAllGames ? undefined : 15);
-  // Headline stats for the summary strip — either the full scoped set (season)
-  // or just its most recent 15 games, per the kpiScope toggle.
-  const kpiSource = kpiScope === 'l15' ? scoped.slice(-15) : scoped;
-  const summaryStats = isPitcherSubject
-    ? [
-        { label: 'Strikeouts', display: String(fieldSum(kpiSource, 'strikeOuts')) },
-        { label: 'Walks', display: String(fieldSum(kpiSource, 'baseOnBalls')) },
-        { label: 'Hits allowed', display: String(fieldSum(kpiSource, 'hits')) },
-        { label: 'Earned runs', display: String(fieldSum(kpiSource, 'earnedRuns')) },
-      ]
-    : [
-        {
-          label: 'Batting avg',
-          display: formatAvg(fieldSum(kpiSource, 'atBats') > 0 ? fieldSum(kpiSource, 'hits') / fieldSum(kpiSource, 'atBats') : 0),
-        },
-        { label: 'Strikeouts', display: String(fieldSum(kpiSource, 'strikeOuts')) },
-        { label: 'Walks', display: String(fieldSum(kpiSource, 'baseOnBalls')) },
-        { label: 'Stolen bases', display: String(fieldSum(kpiSource, 'stolenBases')) },
-      ];
-  const projected = todaysGame?.line ? projectLine(todaysGame.line) : null;
-  const gameStatus = todaysGame?.game?.state;
+  const effectiveGolfCategory: GolfCategory = data.lineControl?.kind === 'category' ? (data.lineControl.value as GolfCategory) : 'par';
+  const previewingOtherGolfCategory = data.lineControl?.kind === 'category' && active.sport === 'golf' && effectiveGolfCategory !== active.category;
+  const lineText = data.lineControl?.kind === 'stepper' ? `${data.lineControl.wantOver ? 'O' : 'U'} ${data.lineControl.line}` : null;
+  const baseLine = data.lineControl?.kind === 'stepper' ? data.lineControl.baseLine : active.line ?? 0.5;
 
-  // G6 — same edge math as Game Detail's picks panel, for whichever side is
-  // this player's team.
-  const gameModel = todaysGame?.game?.gameModel ?? null;
-  const moneylineEdge = computeMoneylineEdge(gameModel, projected?.moneyline);
-  const totalEdge = computeTotalEdge(gameModel, projected?.total);
-  const rankLabel = ownStatcastRankPrefix(meta.ownStatcastSummary as OwnStatcastSummary | undefined).trim();
+  function isChipActive(key: string): boolean {
+    if (key.startsWith('venue:')) return venue === key.slice('venue:'.length);
+    if (key === 'opponent') return opponentOnly;
+    if (key.startsWith('lastN:')) {
+      const raw = key.slice('lastN:'.length);
+      return raw === 'all' ? lastN === 'all' : lastN === Number(raw);
+    }
+    if (key.startsWith('round:')) return effectiveRound === Number(key.slice('round:'.length));
+    return false;
+  }
+  function selectChip(key: string) {
+    if (key.startsWith('venue:')) {
+      setVenue(key.slice('venue:'.length) as 'all' | 'home' | 'away');
+    } else if (key === 'opponent') {
+      setOpponentOnly((v) => !v);
+    } else if (key.startsWith('lastN:')) {
+      const raw = key.slice('lastN:'.length);
+      setLastN(raw === 'all' ? 'all' : Number(raw));
+    } else if (key.startsWith('round:')) {
+      setSelectedRound(Number(key.slice('round:'.length)));
+    }
+  }
 
   return (
     <div className="space-y-3">
@@ -1209,59 +1060,50 @@ export function PlayerDetail({
         <section
           className="lb-card-hero overflow-hidden"
           style={{
-            background: `linear-gradient(135deg, ${withAlpha(teamPrimaryColor(typeof meta.teamId === 'number' ? meta.teamId : undefined), '26')} 0%, #ffffff 62%)`,
+            background: `linear-gradient(135deg, ${withAlpha(data.subject.accentColor ?? HERO_FALLBACK_COLOR, '26')} 0%, #ffffff 62%)`,
             borderTop: '3px solid #141619',
           }}
         >
           <div className="flex flex-wrap items-center gap-4 px-4 py-4">
             <div className="relative h-[76px] w-[76px] shrink-0">
               <SubjectAvatar
-                name={active.subjectName}
-                headshotUrl={typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined}
-                fallbackUrl={typeof meta.teamLogoUrl === 'string' ? meta.teamLogoUrl : undefined}
+                name={data.subject.name}
+                headshotUrl={data.subject.headshotUrl}
+                fallbackUrl={data.subject.teamLogoUrl}
                 size={76}
                 shape="rounded"
               />
               <span className="absolute -bottom-1.5 -right-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-white shadow-sm">
-                <TeamLogo logoUrl={typeof meta.teamLogoUrl === 'string' ? meta.teamLogoUrl : undefined} size={18} />
+                <TeamLogo logoUrl={data.subject.teamLogoUrl} size={18} />
               </span>
             </div>
 
             <div className="min-w-0 flex-1">
               <h1 className="truncate text-[24px] font-bold leading-tight text-ink">
-                {active.subjectName}
+                {data.subject.rankPrefix ? <span className="text-ink-faint">{data.subject.rankPrefix}</span> : null}
+                {data.subject.name}
               </h1>
               <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-ink-muted">
-                {typeof meta.position === 'string' ? <span>{meta.position}</span> : null}
-                <TeamLogo
-                  logoUrl={typeof meta.teamLogoUrl === 'string' ? meta.teamLogoUrl : undefined}
-                  abbreviation={teamAbbr}
-                  size={14}
-                />
-                {opponentAbbr ? (
+                {data.subject.position ? <span>{data.subject.position}</span> : null}
+                <TeamLogo logoUrl={data.subject.teamLogoUrl} abbreviation={data.subject.teamAbbr} size={14} />
+                {data.subject.opponentAbbr ? (
                   <>
-                    <span>{isHome ? 'vs' : '@'}</span>
-                    <TeamLogo logoUrl={opponentId != null ? mlbLogoUrl(opponentId) : undefined} abbreviation={opponentAbbr} size={14} />
+                    <span>{meta.isHome === true ? 'vs' : '@'}</span>
+                    <TeamLogo logoUrl={data.subject.opponentLogoUrl} abbreviation={data.subject.opponentAbbr} size={14} />
                   </>
                 ) : null}
-                {todaysGame?.game?.firstPitch ? (
+                {data.subject.gameStartTime ? (
                   <span className="text-ink-faint">
-                    {new Date(todaysGame.game.firstPitch).toLocaleTimeString('en-US', {
+                    {new Date(data.subject.gameStartTime).toLocaleTimeString('en-US', {
                       hour: 'numeric',
                       minute: '2-digit',
                     })}
                   </span>
                 ) : null}
-                {gameStatus ? <span className="text-ink-faint">· {gameStatus}</span> : null}
+                {data.subject.gameStatus ? <span className="text-ink-faint">· {data.subject.gameStatus}</span> : null}
               </p>
+              {data.subject.rankDetail ? <p className="mt-0.5 text-[10.5px] text-ink-faint">{data.subject.rankDetail}</p> : null}
             </div>
-
-            {rankLabel ? (
-              <div className="shrink-0 text-center">
-                <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Rank</div>
-                <div className="mt-0.5 text-[20px] font-bold tabular-nums text-ink">{rankLabel}</div>
-              </div>
-            ) : null}
 
             <span className="hidden h-11 w-px shrink-0 bg-masters/20 sm:block" />
 
@@ -1274,7 +1116,7 @@ export function PlayerDetail({
                   line to show, only which category is currently selected
                   (the picker below the market tabs). */}
               <div className="mt-0.5 text-[16px] font-bold text-ink">
-                {active.sport === 'golf' ? golfCategoryLabel(active.dimension, effectiveGolfCategory) : `${wantOver ? 'O' : 'U'} ${line}`}
+                {data.lineControl?.kind === 'category' ? golfCategoryLabel(active.dimension, effectiveGolfCategory) : lineText}
               </div>
             </div>
 
@@ -1317,7 +1159,7 @@ export function PlayerDetail({
           instead, since which of the 3 bets you're checking is the actual
           equivalent of moving an O/U line for this sport. */}
       <section className="lb-card flex flex-wrap items-center gap-3 p-2.5">
-        {active.sport === 'golf' ? (
+        {data.lineControl?.kind === 'category' ? (
           <GolfCategoryPicker dimension={active.dimension} value={effectiveGolfCategory} onChange={setSelectedGolfCategory} />
         ) : (
           <div className="flex items-center gap-2">
@@ -1330,7 +1172,7 @@ export function PlayerDetail({
               −
             </button>
             <span className="min-w-[64px] rounded-lg border border-line px-3 py-1.5 text-center text-[14px] font-bold tabular-nums" aria-live="polite">
-              {wantOver ? 'O' : 'U'} {line}
+              {lineText}
             </span>
             <button
               type="button"
@@ -1407,79 +1249,35 @@ export function PlayerDetail({
         ) : null}
       </section>
 
-      {/* Scope filters — one set, governing every number below. Golf swaps
-          this for the round selector: there's no venue/opponent to split by,
-          and "last N games" means nothing against a 4-round tournament — a
-          round IS the natural unit, and it drives the scorecard chart below
-          rather than the windows (those show every round side by side
-          already, see the R1-R4 boxes). */}
-      {active.sport === 'golf' ? (
-        <div className="lb-scroll-x flex items-center gap-1.5">
-          {golfRounds.map((r) => (
-            <FilterChip key={r} active={effectiveRound === r} onClick={() => setSelectedRound(r)}>
-              Round {r}
-            </FilterChip>
-          ))}
-        </div>
-      ) : (
-        <div className="lb-scroll-x flex items-center gap-1.5">
-          <FilterChip active={venue === 'all'} onClick={() => setVenue('all')}>
-            All venues
-          </FilterChip>
-          <FilterChip active={venue === 'home'} onClick={() => setVenue(venue === 'home' ? 'all' : 'home')}>
-            Home
-          </FilterChip>
-          <FilterChip active={venue === 'away'} onClick={() => setVenue(venue === 'away' ? 'all' : 'away')}>
-            Away
-          </FilterChip>
-          {opponentId != null ? (
-            <FilterChip active={opponentOnly} onClick={() => setOpponentOnly((v) => !v)}>
-              vs {opponentAbbr}
-            </FilterChip>
-          ) : null}
-          <span className="mx-1 h-4 w-px bg-line" />
-          {([5, 10, 15, 'all'] as const).map((n) => (
-            <FilterChip key={String(n)} active={lastN === n} onClick={() => setLastN(n)}>
-              {n === 'all' ? 'All games' : `Last ${n}`}
-            </FilterChip>
-          ))}
-        </div>
-      )}
+      {/* Scope filters — one generic chip row, driven by `data.chips`. Golf's
+          round selector, MLB's venue+opponent+lastN, and NFL's opponent+lastN
+          are all just different chip sets over the same key convention. */}
+      <ScopeChips chips={data.chips} isActive={isChipActive} onSelect={selectChip} />
 
       {/* Window boxes — golf shows each round's actual score plus the
           tournament average, rather than a hit-rate over a game count it
           rarely has enough of. */}
-      {active.sport === 'golf' ? (
+      {data.roundScores ? (
         <div className="flex gap-1.5 overflow-x-auto lb-scroll-x">
-          {golfRounds.map((r) => {
-            const entry = activeHistory.find((h) => h.period === r);
-            return (
-              <RoundScoreBox
-                key={r}
-                label={`R${r}`}
-                value={entry ? entryValue(entry) : null}
-                hit={entry ? entry.category === effectiveGolfCategory : null}
-              />
-            );
-          })}
-          <RoundScoreBox
-            label="AVG"
-            format={relDisplayAvg}
-            value={(() => {
-              const values = golfRounds.map((r) => entryValue(activeHistory.find((h) => h.period === r)!)).filter((v): v is number => v !== null);
-              return values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null;
-            })()}
-          />
+          {data.roundScores.map((r) => (
+            <RoundScoreBox
+              key={r.key}
+              label={r.label}
+              value={r.value}
+              format={r.format === 'average' ? relDisplayAvg : relDisplay}
+              hit={r.hit}
+            />
+          ))}
         </div>
-      ) : (
+      ) : data.windows ? (
         <div className="flex gap-1.5 overflow-x-auto lb-scroll-x">
-          <WindowBox label="L5" stat={windows.l5} />
-          <WindowBox label="L10" stat={windows.l10} />
-          <WindowBox label="L15" stat={windows.l15} />
-          <WindowBox label="H2H" stat={windows.h2h} showCount />
-          <WindowBox label="SZN" stat={windows.szn} showCount />
+          <WindowBox label="L5" stat={data.windows.l5} />
+          <WindowBox label="L10" stat={data.windows.l10} />
+          <WindowBox label="L15" stat={data.windows.l15} />
+          <WindowBox label="H2H" stat={data.windows.h2h} showCount />
+          <WindowBox label="SZN" stat={data.windows.szn} showCount />
         </div>
-      )}
+      ) : null}
 
       {/* Main content (left) + persistent context rail (right, sticky at lg+) */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_260px] lg:items-start">
@@ -1491,8 +1289,9 @@ export function PlayerDetail({
               mound) on the left, and whether each of this player's tracked
               lines has hit yet on the right — the same
               STAT_MARKET_BY_DIMENSION table grading.ts uses to settle
-              picks, just run mid-game via liveMarketValues. */}
-          {gameIsInProgress && playerLive.loading && !playerLive.data ? (
+              picks, just run mid-game via liveMarketValues. MLB only —
+              `data.liveGame` is always null for golf/NFL. */}
+          {data.liveGame?.gameIsInProgress && data.liveGame.loading && !data.liveGame.live ? (
             <div className="lb-card overflow-hidden">
               <div className="lb-skel h-7 w-full" />
               <div className="p-3">
@@ -1500,18 +1299,14 @@ export function PlayerDetail({
               </div>
             </div>
           ) : null}
-          {playerLive.data?.player ? (
+          {data.liveGame?.live?.player ? (
             (() => {
-              const live = playerLive.data!;
+              const live = data.liveGame!.live!;
               // `live.currentPitcher` — not derived from inning half, which
               // can point at whoever started the inning rather than whoever
               // is actually on the mound after a mid-inning pitching change.
               const currentPitcher = live.currentPitcher;
-              const awayTeamId = todaysGame?.game?.awayTeamId;
-              const homeTeamId = todaysGame?.game?.homeTeamId;
-              const trackable = candidates.filter(
-                (c) => live.liveValues?.[c.dimension] != null && directionMark(c.category) !== null,
-              );
+              const { awayTeamId, homeTeamId, awayAbbrev, homeAbbrev, trackableCandidates } = data.liveGame!;
               return (
                 <section className="lb-card overflow-hidden">
                   <h3 className="flex items-center gap-1.5 bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
@@ -1524,13 +1319,13 @@ export function PlayerDetail({
                       <div className="rounded-lg bg-masters px-3 py-2.5 text-white">
                         <div className="flex items-center justify-between gap-2">
                           <span className="flex items-center gap-1.5 text-[12px] font-semibold">
-                            {awayTeamId != null ? <TeamLogo logoUrl={mlbLogoUrl(awayTeamId)} size={16} /> : null} {todaysGame?.awayAbbrev}
+                            {awayTeamId != null ? <TeamLogo logoUrl={mlbLogoUrl(awayTeamId)} size={16} /> : null} {awayAbbrev}
                           </span>
                           <span className="text-[28px] font-bold leading-none tabular-nums">{live.score.away}</span>
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-2">
                           <span className="flex items-center gap-1.5 text-[12px] font-semibold">
-                            {homeTeamId != null ? <TeamLogo logoUrl={mlbLogoUrl(homeTeamId)} size={16} /> : null} {todaysGame?.homeAbbrev}
+                            {homeTeamId != null ? <TeamLogo logoUrl={mlbLogoUrl(homeTeamId)} size={16} /> : null} {homeAbbrev}
                           </span>
                           <span className="text-[28px] font-bold leading-none tabular-nums">{live.score.home}</span>
                         </div>
@@ -1589,7 +1384,7 @@ export function PlayerDetail({
                           <div className="flex items-center gap-2">
                             <SubjectAvatar
                               name={active.subjectName}
-                              headshotUrl={typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined}
+                              headshotUrl={data.subject.headshotUrl}
                               size={36}
                             />
                             <div className="min-w-0 flex-1">
@@ -1659,10 +1454,10 @@ export function PlayerDetail({
                     {/* Right — line tracker */}
                     <div className="space-y-1.5">
                       <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Today&apos;s lines</div>
-                      {trackable.length === 0 ? (
+                      {trackableCandidates.length === 0 ? (
                         <p className="text-[11px] text-ink-faint">No live-trackable lines for this player&apos;s markets.</p>
                       ) : (
-                        trackable.map((c) => (
+                        trackableCandidates.map((c) => (
                           <LineTrackerRow key={`${c.dimension}-${c.category}`} candidate={c} liveValue={live.liveValues?.[c.dimension]} />
                         ))
                       )}
@@ -1676,32 +1471,29 @@ export function PlayerDetail({
           {/* Chart — golf gets the 18-hole scorecard for the selected round
               instead of DistributionChart, which measures one hole across
               rounds rather than every hole within one. */}
-          {active.sport === 'golf' ? (
+          {data.chart.kind === 'scorecard' ? (
             <section className="lb-card lb-card-interactive overflow-hidden">
               <div className="flex items-baseline justify-between gap-2 bg-accent-soft px-3 py-1.5">
-                <h2 className="text-[12px] font-semibold text-masters">Round {effectiveRound} scorecard</h2>
-                <span className="text-[10px] text-masters/70">green under par, red over</span>
+                <h2 className="text-[12px] font-semibold text-masters">{data.chart.title}</h2>
+                <span className="text-[10px] text-masters/70">{data.chart.subtitle}</span>
               </div>
               <div className="p-2.5">
-                <ScorecardChart holes={scorecardHoles} />
+                <ScorecardChart holes={data.chart.data} />
               </div>
             </section>
           ) : (
             <section className="lb-card overflow-hidden">
               <div className="flex items-baseline justify-between gap-2 bg-accent-soft px-3 py-1.5">
-                <h2 className="text-[12px] font-semibold text-masters">
-                  {scoped.length} game{scoped.length === 1 ? '' : 's'} in scope
-                </h2>
-                <span className="text-[10px] text-masters/70">
-                  green cleared {wantOver ? 'over' : 'under'} {line}
-                </span>
+                <h2 className="text-[12px] font-semibold text-masters">{data.chart.title}</h2>
+                <span className="text-[10px] text-masters/70">{data.chart.subtitle}</span>
               </div>
               <div className="p-2.5">
                 <DistributionChart
-                  history={scoped}
-                  line={line}
-                  wantOver={wantOver}
-                  refreshKey={`${active.dimension}|${line}|${opponentOnly}|${venue}|${lastN}|${snapshot?.fetchedAt ?? ''}`}
+                  history={data.chart.data}
+                  line={data.chart.line}
+                  wantOver={data.chart.wantOver}
+                  refreshKey={`${active.dimension}|${data.chart.line}|${opponentOnly}|${venue}|${lastN}|${snapshot?.fetchedAt ?? ''}`}
+                  logoFor={data.chart.logoFor}
                 />
               </div>
             </section>
@@ -1711,77 +1503,26 @@ export function PlayerDetail({
               Past Round Matchups card on the right rail. Only renders once
               ESPN has posted a tee time for the round in progress/next and
               at least one other golfer shares it. */}
-          {active.sport === 'golf' && meta.liveRoundMatchup ? (
+          {data.liveMatchup ? (
             <LiveMatchupCard
-              matchup={meta.liveRoundMatchup as LiveRoundMatchupMeta}
-              selfName={active.subjectName}
-              selfHeadshotUrl={typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined}
+              matchup={data.liveMatchup as unknown as LiveRoundMatchupMeta}
+              selfName={data.subject.name}
+              selfHeadshotUrl={data.subject.headshotUrl}
             />
           ) : null}
 
-          {/* Batter vs. opposing starter — season stats + quality-of-contact comparison. */}
-          {!isPitcherSubject && Array.isArray(meta.ownStatcast) && meta.ownStatcast.length > 0 && typeof meta.opposingStarter === 'string' ? (
-            <BatterPitcherMatchupCard
-              subjectName={active.subjectName}
-              subjectHeadshotUrl={typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined}
-              subjectTeamAbbr={teamAbbr}
-              subjectTeamLogoUrl={typeof meta.teamLogoUrl === 'string' ? meta.teamLogoUrl : undefined}
-              subjectStats={[
-                ...(meta.ownStatcast as OpposingStarterStat[]),
-                ...((meta.ownBattingStats as OpposingStarterStat[] | undefined) ?? []),
-              ]}
-              opponentName={meta.opposingStarter}
-              opponentId={typeof meta.opposingStarterId === 'number' ? meta.opposingStarterId : undefined}
-              opponentHand={typeof meta.opposingHand === 'string' ? meta.opposingHand : undefined}
-              opponentRoleLabel="Allows"
-              opponentTeamAbbr={opponentAbbr}
-              opponentTeamLogoUrl={opponentId != null ? mlbLogoUrl(opponentId) : undefined}
-              opponentStats={(meta.opposingStarterStats as OpposingStarterStat[] | undefined) ?? []}
-            />
-          ) : null}
+          {/* Batter vs. opposing starter / pitcher vs. lineup — MLB only. */}
+          {(data.matchups ?? []).map((m, i) => (
+            <BatterPitcherMatchupCard key={i} {...m} />
+          ))}
 
-          {/* Pitcher vs. opposing lineup — a starting pitcher faces a whole
-              batting order, not one hitter, so the "opponent" side is the
-              opposing team's aggregate hitting rollup (useTeamStatcast) —
-              same 4 stat keys, same 1=best rank orientation, drop-in
-              compatible with the same card. */}
-          {isPitcherSubject && Array.isArray(meta.ownPitcherStats) && meta.ownPitcherStats.length > 0 && opponentTeamStatcast.loading ? (
-            <div className="lb-card overflow-hidden">
-              <div className="lb-skel h-7 w-full" />
-              <div className="space-y-2 p-3">
-                <div className="lb-skel h-14 w-full rounded-lg" />
-                <div className="lb-skel h-24 w-full rounded-lg" />
-              </div>
-            </div>
-          ) : null}
-          {isPitcherSubject && Array.isArray(meta.ownPitcherStats) && meta.ownPitcherStats.length > 0 && opponentTeamStatcast.hitting.length > 0 ? (
-            <BatterPitcherMatchupCard
-              title="Pitcher vs. lineup"
-              subjectName={active.subjectName}
-              subjectHeadshotUrl={typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined}
-              subjectTeamAbbr={teamAbbr}
-              subjectTeamLogoUrl={typeof meta.teamLogoUrl === 'string' ? meta.teamLogoUrl : undefined}
-              subjectStats={meta.ownPitcherStats as OpposingStarterStat[]}
-              subjectRoleLabel="Allows"
-              opponentName={opponentAbbr ? `${opponentAbbr} lineup` : 'Opposing lineup'}
-              opponentHeadshotUrl={opponentId != null ? mlbLogoUrl(opponentId) : undefined}
-              opponentTeamAbbr={opponentAbbr}
-              opponentTeamLogoUrl={opponentId != null ? mlbLogoUrl(opponentId) : undefined}
-              opponentStats={[
-                ...opponentTeamStatcast.hitting,
-                ...teamSeasonStatRows(
-                  (isHome ? (todaysGame?.game as GameDetailGame | undefined)?.away : (todaysGame?.game as GameDetailGame | undefined)?.home),
-                  statKeys,
-                ),
-              ]}
-              opponentRoleLabel="Produces"
-            />
-          ) : null}
+          {/* Player vs. defense — NFL only. */}
+          {data.nflMatchup ? <NflPlayerVsDefenseCard {...data.nflMatchup} /> : null}
 
           {/* All books, at the line as posted (not the stepped alternate) — every
               book's price for the exact market this candidate tracks, Fanatics
               shown first per update-09 § 5. */}
-          {activeMarketKey ? (
+          {data.propOddsBoard ? (
             <section className="lb-card overflow-hidden">
               <div className="flex items-center justify-between gap-2 bg-accent-soft px-3 py-1.5">
                 <h2 className="text-[12px] font-semibold text-masters">All books</h2>
@@ -1794,7 +1535,7 @@ export function PlayerDetail({
                   ) : null}
                   <button
                     type="button"
-                    disabled={!gamePk || propOdds.scan.loading}
+                    disabled={!gamePkStr || propOdds.scan.loading}
                     onClick={() => void propOdds.runScan()}
                     title="Refresh SharpAPI + Odds-API.io for this player's game right now — free, doesn't wait for the ~3-minute automatic cycle."
                     className="rounded-md border border-line px-2 py-0.5 text-[11px] font-medium text-ink-muted hover:border-masters/40 hover:text-masters disabled:opacity-40"
@@ -1806,183 +1547,180 @@ export function PlayerDetail({
               <div className="p-2.5">
                 {propOdds.scan.error ? <p className="mb-1.5 text-[10px] text-warn">{propOdds.scan.error}</p> : null}
                 <PropOddsBoard
-                  allRows={propOdds.rows}
-                  subjectId={active.subjectId}
-                  marketKey={activeMarketKey}
-                  line={active.line ?? null}
-                  userSportsbook={propOdds.userSportsbook}
+                  allRows={data.propOddsBoard.allRows}
+                  subjectId={data.propOddsBoard.subjectId}
+                  marketKey={data.propOddsBoard.marketKey}
+                  line={data.propOddsBoard.line}
+                  userSportsbook={data.propOddsBoard.userSportsbook}
                 />
               </div>
             </section>
           ) : null}
 
-          {/* Gamelog — MLB-only: box-score-shaped columns (batting average,
-              strikeouts, walks, stolen bases) don't apply to golf's
-              hole-by-hole history, which the Hole tabs above already cover
-              on their own terms. Golf gets its own season summary
-              (GolfPlayerStatsCard, rendered above this component on the
-              golf player page) instead of this section. */}
-          {active?.sport === 'mlb' ? (
-          <section className="lb-card overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-2 bg-accent-soft px-2.5 py-1.5">
-              <h2 className="text-[12px] font-semibold text-masters">
-                {showAllGames ? `All ${scoped.length} games` : `Last ${Math.min(scoped.length, 15)} games`}
-              </h2>
-              <div className="flex items-center gap-2">
-                {scoped.length > 15 ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowAllGames((v) => !v)}
-                    className="text-[11px] font-medium text-masters hover:underline"
-                  >
-                    {showAllGames ? 'Show last 15' : `Show all ${scoped.length}`}
-                  </button>
-                ) : null}
-                <div className="flex rounded-lg border border-line bg-card p-0.5" role="tablist" aria-label="Gamelog view">
-                  {(['cards', 'table'] as const).map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      role="tab"
-                      aria-selected={gamelogView === v}
-                      onClick={() => setGamelogView(v)}
-                      className={`rounded-md px-2.5 py-0.5 text-[11px] font-medium capitalize transition-colors ${
-                        gamelogView === v ? 'bg-masters text-white' : 'text-ink-muted hover:text-ink'
-                      }`}
-                    >
-                      {v}
-                    </button>
-                  ))}
+          {/* Gamelog — MLB and NFL both have a real box-score history; golf's
+              hole-by-hole tabs above cover that ground on their own terms
+              instead (golf's `data.gamelog` is always null). */}
+          {data.gamelog ? (
+            <section className="lb-card overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-accent-soft px-2.5 py-1.5">
+                <h2 className="text-[12px] font-semibold text-masters">
+                  {showAllGames ? `All ${data.gamelog.rows.length} games` : `Last ${Math.min(data.gamelog.rows.length, 15)} games`}
+                </h2>
+                <div className="flex items-center gap-2">
+                  {(() => {
+                    // `data.gamelog.rows` is already capped at 15 unless
+                    // `showAllGames` — so the "show all" affordance itself has
+                    // to key off whether the scoped set (not the capped rows)
+                    // has more than 15. Since the adapter doesn't return the
+                    // pre-cap count separately, cross-check against the chart's
+                    // own (uncapped) scope size for a distribution chart; golf
+                    // never reaches this branch.
+                    const scopedCount = data.chart.kind === 'distribution' ? data.chart.data.length : data.gamelog.rows.length;
+                    return scopedCount > 15 ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllGames((v) => !v)}
+                        className="text-[11px] font-medium text-masters hover:underline"
+                      >
+                        {showAllGames ? 'Show last 15' : `Show all ${scopedCount}`}
+                      </button>
+                    ) : null;
+                  })()}
+                  <div className="flex rounded-lg border border-line bg-card p-0.5" role="tablist" aria-label="Gamelog view">
+                    {(['cards', 'table'] as const).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        role="tab"
+                        aria-selected={gamelogView === v}
+                        onClick={() => setGamelogView(v)}
+                        className={`rounded-md px-2.5 py-0.5 text-[11px] font-medium capitalize transition-colors ${
+                          gamelogView === v ? 'bg-masters text-white' : 'text-ink-muted hover:text-ink'
+                        }`}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {scoped.length === 0 ? (
-              <p className="p-6 text-center text-sm text-ink-muted">No games match this scope.</p>
-            ) : (
-              <>
-                {/* Summary strip — headline totals, scoped to season or just the last 15 games. */}
-                <div className="border-b border-line-soft px-3 py-2.5">
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <h3 className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Season stats</h3>
-                    <SegmentedToggle
-                      value={kpiScope}
-                      onChange={setKpiScope}
-                      className="rounded-lg border border-line bg-card p-0.5"
-                      buttonClassName="rounded-md px-2 py-0.5 text-[10px]"
-                      gliderClassName="rounded-md"
-                      options={[
-                        { key: 'season', label: 'Season' },
-                        { key: 'l15', label: 'L15' },
-                      ]}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-4">
-                    {summaryStats.map((stat) => (
-                      <div key={stat.label} className="min-w-0">
-                        <div className="truncate text-[9px] font-semibold uppercase tracking-wide text-ink-faint">{stat.label}</div>
-                        <div className="mt-0.5 text-[16px] font-bold leading-none tabular-nums text-ink">{stat.display}</div>
+              {data.gamelog.rows.length === 0 ? (
+                <p className="p-6 text-center text-sm text-ink-muted">No games match this scope.</p>
+              ) : (
+                <>
+                  {/* Summary strip — headline totals, MLB only (NFL/golf omit it). */}
+                  {data.gamelog.summaryStrip ? (
+                    <div className="border-b border-line-soft px-3 py-2.5">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <h3 className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Season stats</h3>
+                        <SegmentedToggle
+                          value={kpiScope}
+                          onChange={setKpiScope}
+                          className="rounded-lg border border-line bg-card p-0.5"
+                          buttonClassName="rounded-md px-2 py-0.5 text-[10px]"
+                          gliderClassName="rounded-md"
+                          options={[
+                            { key: 'season', label: 'Season' },
+                            { key: 'l15', label: 'L15' },
+                          ]}
+                        />
                       </div>
-                    ))}
-                  </div>
-                </div>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-4">
+                        {data.gamelog.summaryStrip.map((stat) => (
+                          <div key={stat.label} className="min-w-0">
+                            <div className="truncate text-[9px] font-semibold uppercase tracking-wide text-ink-faint">{stat.label}</div>
+                            <div className="mt-0.5 text-[16px] font-bold leading-none tabular-nums text-ink">{stat.display}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
 
-                {gamelogView === 'cards' ? (
-                  <div className="divide-y divide-line-soft">
-                    {gamelogRows.map((entry, index) => (
-                      <GamelogCard key={index} entry={entry} columns={columns} />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="lb-scroll-x overflow-auto">
-                    <table className="w-full border-collapse text-[11px]">
-                      <thead>
-                        <tr>
-                          <th className="sticky left-0 top-0 z-30 border-b border-line bg-paper px-2 py-1 text-left font-semibold text-ink-muted">
-                            Game
-                          </th>
-                          {columns.map((column) => (
-                            <th
-                              key={column.key}
-                              className="sticky top-0 z-20 whitespace-nowrap border-b border-line bg-paper px-2 py-1 text-right font-semibold text-ink-muted"
-                            >
-                              {column.label}
+                  {gamelogView === 'cards' ? (
+                    <div className="divide-y divide-line-soft">
+                      {data.gamelog.rows.map((row) => (
+                        <GamelogCard key={row.key} row={row} columns={data.gamelog!.columns} badges={data.gamelog!.cardBadges ?? []} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="lb-scroll-x overflow-auto">
+                      <table className="w-full border-collapse text-[11px]">
+                        <thead>
+                          <tr>
+                            <th className="sticky left-0 top-0 z-30 border-b border-line bg-paper px-2 py-1 text-left font-semibold text-ink-muted">
+                              Game
                             </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(() => {
-                          let lastOpponentId: number | undefined | null = null;
-                          return gamelogRows.map((entry, index) => {
-                            const raw = rawOf(entry);
-                            const entryOpponentId = raw.opponentId as number | undefined;
-                            const entryIsHome = raw.isHome === true;
-                            // A group header precedes the first row of each run of
-                            // same-opponent games — including the very first row,
-                            // since `lastOpponentId` starts at a sentinel no real
-                            // opponent id (including undefined) can equal.
-                            const startsNewGroup = entryOpponentId !== lastOpponentId;
-                            lastOpponentId = entryOpponentId;
-                            return (
-                              <Fragment key={index}>
-                                {startsNewGroup ? (
-                                  <tr>
-                                    <td colSpan={columns.length + 1} className="border-b border-line-soft bg-surface-subtle px-2 py-1.5">
-                                      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ink">
-                                        {entryOpponentId != null ? <TeamLogo logoUrl={mlbLogoUrl(entryOpponentId)} size={14} /> : null}
-                                        {entryOpponentId != null
-                                          ? `${entryIsHome ? 'vs' : '@'} ${teamNameFor(entryOpponentId)}`
-                                          : 'Opponent unknown'}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ) : null}
-                                <tr className="group border-b border-line/60 transition-colors last:border-0 hover:bg-surface-subtle hover:shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)]">
-                                  {/* Date and opponent travel together as one pinned group. No
-                                      transform on hover here — this row has a sticky first
-                                      column, and a transformed ancestor can break a sticky
-                                      descendant's positioning across browsers. */}
-                                  <td className="sticky left-0 z-10 whitespace-nowrap bg-card px-2 py-1 font-medium transition-colors group-hover:bg-surface-subtle">
-                                    {/* periodLabel already carries date + vs/@ + opponent
-                                        (adapter.ts) — the group header above says who, so
-                                        only the date needs to show here. */}
-                                    {entry.periodLabel?.split(' ')[0] ?? `#${entry.period}`}
-                                  </td>
-                                  {columns.map((column) => {
-                                    const value = raw[column.key];
-                                    return (
-                                      <td key={column.key} className="px-2 py-1 text-right tabular-nums">
-                                        {value == null || value === '' ? (
-                                          <span className="text-ink-faint">–</span>
-                                        ) : (
-                                          String(value)
-                                        )}
+                            {data.gamelog.columns.map((column) => (
+                              <th
+                                key={column.key}
+                                className="sticky top-0 z-20 whitespace-nowrap border-b border-line bg-paper px-2 py-1 text-right font-semibold text-ink-muted"
+                              >
+                                {column.label}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(() => {
+                            let lastOpponentLabel: string | null = null;
+                            return data.gamelog.rows.map((row) => {
+                              const startsNewGroup = row.opponentLabel !== lastOpponentLabel;
+                              lastOpponentLabel = row.opponentLabel;
+                              return (
+                                <Fragment key={row.key}>
+                                  {startsNewGroup ? (
+                                    <tr>
+                                      <td colSpan={data.gamelog!.columns.length + 1} className="border-b border-line-soft bg-surface-subtle px-2 py-1.5">
+                                        <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ink">
+                                          {row.opponentLogoUrl ? <TeamLogo logoUrl={row.opponentLogoUrl} size={14} /> : null}
+                                          {row.opponentLabel}
+                                        </span>
                                       </td>
-                                    );
-                                  })}
-                                </tr>
-                              </Fragment>
-                            );
-                          });
-                        })()}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </>
-            )}
-          </section>
+                                    </tr>
+                                  ) : null}
+                                  <tr className="group border-b border-line/60 transition-colors last:border-0 hover:bg-surface-subtle hover:shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)]">
+                                    {/* Date and opponent travel together as one pinned group. No
+                                        transform on hover here — this row has a sticky first
+                                        column, and a transformed ancestor can break a sticky
+                                        descendant's positioning across browsers. */}
+                                    <td className="sticky left-0 z-10 whitespace-nowrap bg-card px-2 py-1 font-medium transition-colors group-hover:bg-surface-subtle">
+                                      {row.periodLabel}
+                                    </td>
+                                    {data.gamelog!.columns.map((column) => {
+                                      const value = row.values[column.key];
+                                      return (
+                                        <td key={column.key} className="px-2 py-1 text-right tabular-nums">
+                                          {value == null || value === '' ? (
+                                            <span className="text-ink-faint">–</span>
+                                          ) : (
+                                            String(value)
+                                          )}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                </Fragment>
+                              );
+                            });
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
           ) : null}
 
-          {active.sport === 'golf' && golfStats ? (
+          {data.seasonStatsCard ? (
             <GolfPlayerStatsCard
               name={active.subjectName}
-              headshotUrl={typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined}
-              strokesGained={golfStats.strokesGained}
-              seasonLog={golfStats.seasonLog}
-              advancedStats={golfStats.advancedStats}
-              loading={golfStats.loading}
+              headshotUrl={data.subject.headshotUrl}
+              strokesGained={data.seasonStatsCard.strokesGained}
+              seasonLog={data.seasonStatsCard.seasonLog}
+              advancedStats={data.seasonStatsCard.advancedStats}
+              loading={data.seasonStatsCard.loading}
             />
           ) : null}
         </div>
@@ -1995,44 +1733,44 @@ export function PlayerDetail({
               Today&apos;s line
             </h3>
             <div className="p-3">
-              {live.liveScore ? (
+              {data.model?.todaysLine?.liveScore ? (
                 <p className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-good">
                   <span className="inline-block h-1.5 w-1.5 animate-lb-pulse rounded-full bg-good" />
-                  {live.liveScore.away}–{live.liveScore.home} {live.livePeriod ?? ''}
+                  {data.model.todaysLine.liveScore.away}–{data.model.todaysLine.liveScore.home} {data.model.todaysLine.livePeriod ?? ''}
                 </p>
               ) : null}
-              {projected?.available && projected.moneyline ? (
+              {data.model?.todaysLine?.moneyline ? (
                 <div className="space-y-1.5">
                   <div className="rounded-lg border border-line bg-card p-2">
                     <div className="mb-1 flex items-center justify-between">
                       <span className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">Moneyline</span>
-                      <BookLogo bookId={projected.moneyline.book} size={13} withLabel />
+                      <BookLogo bookId={data.model.todaysLine.moneyline.book} size={13} withLabel />
                     </div>
                     <div className="flex gap-1.5">
-                      <OddsChip price={projected.moneyline.away} source={projected.source} side={todaysGame?.awayAbbrev} size="md" className="flex-1 justify-center" />
-                      <OddsChip price={projected.moneyline.home} source={projected.source} side={todaysGame?.homeAbbrev} size="md" className="flex-1 justify-center" />
+                      <OddsChip price={data.model.todaysLine.moneyline.away} source={data.model.todaysLine.moneyline.source} side={data.subject.opponentAbbr} size="md" className="flex-1 justify-center" />
+                      <OddsChip price={data.model.todaysLine.moneyline.home} source={data.model.todaysLine.moneyline.source} side={data.subject.teamAbbr} size="md" className="flex-1 justify-center" />
                     </div>
-                    {moneylineEdge ? (
+                    {data.model.todaysLine.moneylineEdge ? (
                       <div className="mt-1 flex gap-1.5">
-                        <EdgeBadge edge={moneylineEdge.away} modelProb={moneylineEdge.awayModelProb} marketProb={moneylineEdge.awayMarketProb} label={todaysGame?.awayAbbrev ?? 'Away'} />
-                        <EdgeBadge edge={moneylineEdge.home} modelProb={moneylineEdge.homeModelProb} marketProb={moneylineEdge.homeMarketProb} label={todaysGame?.homeAbbrev ?? 'Home'} />
+                        <EdgeBadge edge={data.model.todaysLine.moneylineEdge.away} modelProb={data.model.todaysLine.moneylineEdge.awayModelProb} marketProb={data.model.todaysLine.moneylineEdge.awayMarketProb} label={data.subject.opponentAbbr ?? 'Away'} />
+                        <EdgeBadge edge={data.model.todaysLine.moneylineEdge.home} modelProb={data.model.todaysLine.moneylineEdge.homeModelProb} marketProb={data.model.todaysLine.moneylineEdge.homeMarketProb} label={data.subject.teamAbbr ?? 'Home'} />
                       </div>
                     ) : null}
                   </div>
-                  {projected.total?.point != null ? (
+                  {data.model.todaysLine.total ? (
                     <div className="rounded-lg border border-line bg-card p-2">
                       <div className="mb-1 flex items-center justify-between">
-                        <span className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">Total {projected.total.point}</span>
-                        <BookLogo bookId={projected.total.book} size={13} withLabel />
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">Total {data.model.todaysLine.total.point}</span>
+                        <BookLogo bookId={data.model.todaysLine.total.book} size={13} withLabel />
                       </div>
                       <div className="flex gap-1.5">
-                        <OddsChip price={projected.total.overPrice} source={projected.source} side={`O${projected.total.point}`} size="md" className="flex-1 justify-center" />
-                        <OddsChip price={projected.total.underPrice} source={projected.source} side={`U${projected.total.point}`} size="md" className="flex-1 justify-center" />
+                        <OddsChip price={data.model.todaysLine.total.overPrice} source={data.model.todaysLine.total.source} side={`O${data.model.todaysLine.total.point}`} size="md" className="flex-1 justify-center" />
+                        <OddsChip price={data.model.todaysLine.total.underPrice} source={data.model.todaysLine.total.source} side={`U${data.model.todaysLine.total.point}`} size="md" className="flex-1 justify-center" />
                       </div>
-                      {totalEdge ? (
+                      {data.model.todaysLine.totalEdge ? (
                         <div className="mt-1 flex gap-1.5">
-                          <EdgeBadge edge={totalEdge.over} modelProb={totalEdge.overModelProb} marketProb={totalEdge.overMarketProb} label="Over" />
-                          <EdgeBadge edge={totalEdge.under} modelProb={totalEdge.underModelProb} marketProb={totalEdge.underMarketProb} label="Under" />
+                          <EdgeBadge edge={data.model.todaysLine.totalEdge.over} modelProb={data.model.todaysLine.totalEdge.overModelProb} marketProb={data.model.todaysLine.totalEdge.overMarketProb} label="Over" />
+                          <EdgeBadge edge={data.model.todaysLine.totalEdge.under} modelProb={data.model.todaysLine.totalEdge.underModelProb} marketProb={data.model.todaysLine.totalEdge.underMarketProb} label="Under" />
                         </div>
                       ) : null}
                     </div>
@@ -2046,57 +1784,58 @@ export function PlayerDetail({
 
           {active.sport === 'golf' ? (
             <PastRoundMatchupsCard active={active} meta={meta} />
-          ) : (
+          ) : data.mlbContextMatchup ? (
             (() => {
+              const m = data.mlbContextMatchup!;
               const matchupBody = (
                 <>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5">
-                      <TeamLogo logoUrl={typeof meta.teamLogoUrl === 'string' ? meta.teamLogoUrl : undefined} abbreviation={teamAbbr} size={20} />
+                      <TeamLogo logoUrl={m.teamLogoUrl} abbreviation={m.teamAbbr} size={20} />
                       <span className="text-[10px] font-semibold text-ink-faint">@</span>
-                      <TeamLogo logoUrl={opponentId != null ? mlbLogoUrl(opponentId) : undefined} abbreviation={opponentAbbr} size={20} />
+                      <TeamLogo logoUrl={m.opponentId != null ? mlbLogoUrl(m.opponentId) : undefined} abbreviation={m.opponentAbbr} size={20} />
                     </div>
-                    {todaysGame?.game?.firstPitch ? (
+                    {m.firstPitch ? (
                       <span className="text-[10px] font-medium text-ink-faint">
-                        {new Date(todaysGame.game.firstPitch).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        {new Date(m.firstPitch).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                       </span>
                     ) : null}
                   </div>
                   <p className="mt-2 text-[12px]">
-                    {typeof meta.opposingStarter === 'string' ? (
+                    {m.opposingStarter ? (
                       <>
                         Facing{' '}
                         <span className="font-semibold">
-                          {pitcherRankPrefix(meta.opposingStarterOverallRank as { rank: number | null; poolSize: number } | undefined)}
-                          {meta.opposingStarter}
+                          {m.opposingStarterRankPrefix}
+                          {m.opposingStarter}
                         </span>
-                        {typeof meta.opposingHand === 'string' ? ` (${meta.opposingHand}HP)` : ''}
+                        {m.opposingHand ? ` (${m.opposingHand}HP)` : ''}
                       </>
                     ) : (
                       <span className="text-ink-faint">Opposing starter not announced.</span>
                     )}
                   </p>
-                  {typeof meta.matchupRank === 'number' ? (
+                  {m.matchupRank != null ? (
                     <p className="mt-1 text-[11px] text-ink-muted">
-                      {opponentAbbr} rank {meta.matchupRank} of 30 in {typeof meta.matchupStatLabel === 'string' ? meta.matchupStatLabel : 'this stat'}.
+                      {m.opponentAbbr} rank {m.matchupRank} of 30 in {m.matchupStatLabel ?? 'this stat'}.
                     </p>
                   ) : null}
-                  {active.context?.weather ? (
+                  {m.weather ? (
                     <p className="mt-1.5 text-[11px] text-ink-faint">
-                      {active.context.weather.tempF != null ? `${active.context.weather.tempF}°F · ` : ''}
-                      Wind {active.context.weather.windMph} mph {active.context.weather.windDir}
+                      {m.weather.tempF != null ? `${m.weather.tempF}°F · ` : ''}
+                      Wind {m.weather.windMph} mph {m.weather.windDir}
                     </p>
                   ) : null}
                 </>
               );
               const header = (
                 <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
-                  Matchup{opponentId != null ? ' →' : ''}
+                  Matchup{m.opponentId != null ? ' →' : ''}
                 </h3>
               );
-              return opponentId != null ? (
+              return m.opponentTeamHref ? (
                 <Link
-                  href={`/mlb/team/${opponentId}`}
+                  href={m.opponentTeamHref}
                   className="block overflow-hidden rounded-card border border-line bg-card transition-all duration-150 hover:-translate-y-px hover:shadow-card-hover"
                 >
                   {header}
@@ -2109,9 +1848,9 @@ export function PlayerDetail({
                 </section>
               );
             })()
-          )}
+          ) : null}
 
-          {Array.isArray(meta.ownStatcast) && meta.ownStatcast.length > 0 ? (
+          {data.hitterStats ? (
             <section className="lb-card overflow-hidden">
               <h3 className="bg-accent-soft px-3 py-1.5 text-[9.5px] font-bold uppercase tracking-wide text-masters">Hitter stats</h3>
               <div className="p-3">
@@ -2119,11 +1858,11 @@ export function PlayerDetail({
                     below, now that these carry a real league-wide rank
                     (ownBattingStats, adapter.ts) instead of being plain
                     unranked tiles. */}
-                {Array.isArray(meta.ownBattingStats) && meta.ownBattingStats.length > 0 ? (
+                {data.hitterStats.seasonAverages && data.hitterStats.seasonAverages.length > 0 ? (
                   <div className="mb-3">
                     <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Season averages</div>
                     <div className="space-y-1.5">
-                      {(meta.ownBattingStats as OpposingStarterStat[]).map((s) => (
+                      {data.hitterStats.seasonAverages.map((s) => (
                         <StatRankRow key={s.key} stat={s} />
                       ))}
                     </div>
@@ -2131,19 +1870,11 @@ export function PlayerDetail({
                 ) : null}
 
                 <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Quality of contact</div>
-                {meta.ownStatcastSummary ? (
-                  <p className="mb-2 text-[9px] text-ink-faint">
-                    {(() => {
-                      const s = meta.ownStatcastSummary as OwnStatcastSummary;
-                      const parts: string[] = [];
-                      if (s.overallRank != null) parts.push(`${ordinal(s.overallRank)} of ${s.poolSize} overall`);
-                      if (s.positionRank != null) parts.push(`${ordinal(s.positionRank)} of ${s.positionPoolSize} at ${s.position}`);
-                      return parts.join(' · ');
-                    })()}
-                  </p>
+                {data.hitterStats.summaryLine ? (
+                  <p className="mb-2 text-[9px] text-ink-faint">{data.hitterStats.summaryLine}</p>
                 ) : null}
                 <div className="space-y-1.5">
-                  {(meta.ownStatcast as OpposingStarterStat[]).map((s) => (
+                  {data.hitterStats.own.map((s) => (
                     <StatRankRow key={s.key} stat={s} />
                   ))}
                 </div>
@@ -2151,8 +1882,36 @@ export function PlayerDetail({
             </section>
           ) : null}
 
+          {/* Season stats — NFL only. Same context-rail slot MLB's "Hitter
+              stats" card occupies above (they're mutually exclusive by
+              sport) — originally sat in the main column, moved here to
+              match MLB's placement now that both are the same generic
+              component. */}
+          {data.nflSeasonStats ? (
+            <section className="lb-card overflow-hidden">
+              <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
+                Season stats
+                {data.nflSeasonStats.rankedAmongLabel ? (
+                  <span className="ml-1.5 font-normal normal-case text-ink-faint">· ranked among {data.nflSeasonStats.rankedAmongLabel}s</span>
+                ) : null}
+              </h3>
+              <div className="space-y-1.5 p-3">
+                {data.nflSeasonStats.rows.map((r) =>
+                  r.rank ? (
+                    <StatRankRow key={r.key} stat={{ key: r.key, label: r.label, value: r.value, decimals: r.decimals, rank: r.rank.rank, poolSize: r.rank.poolSize }} />
+                  ) : (
+                    <div key={r.key} className="flex items-baseline justify-between gap-2 text-[12px]">
+                      <span className="w-20 shrink-0 text-ink-faint">{r.label}</span>
+                      <span className="font-semibold tabular-nums">{r.value}</span>
+                    </div>
+                  ),
+                )}
+              </div>
+            </section>
+          ) : null}
+
           {active.sport === 'golf' ? (
-            <ConsistentHolesForm candidates={candidates} />
+            <ConsistentHolesForm holes={data.golfFormHoles ?? []} />
           ) : (
             <section className="lb-card overflow-hidden">
               <h3 className="flex items-center gap-1.5 bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
@@ -2160,7 +1919,7 @@ export function PlayerDetail({
                 Form
               </h3>
               <ul className="space-y-2 p-3">
-                {(active.supportingSplits ?? []).slice(0, 4).map((split) => (
+                {(data.formWindows ?? []).slice(0, 4).map((split) => (
                   <li key={`${split.kind}-${split.label}`}>
                     <div className="flex items-baseline justify-between gap-2 text-[12px]">
                       <span className="truncate text-ink-muted">{split.label}</span>
@@ -2182,7 +1941,7 @@ export function PlayerDetail({
                     ) : null}
                   </li>
                 ))}
-                {(active.supportingSplits ?? []).length === 0 ? (
+                {(data.formWindows ?? []).length === 0 ? (
                   <li className="text-[12px] text-ink-faint">No corroborating splits yet.</li>
                 ) : null}
               </ul>

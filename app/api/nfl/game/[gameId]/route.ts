@@ -3,6 +3,7 @@ import { fetchScoreboard } from '@/lib/sports/multiSport/teamSportEspn';
 import { getLeagueInjuries } from '@/lib/sports/nfl/espn';
 import { getNflLiveGameState } from '@/lib/sports/nfl/liveGameState';
 import { getSportsGameOddsGameLine } from '@/lib/odds/props/providers/sportsGameOdds';
+import { getTeamDefenseAllowedWithRank } from '@/lib/sports/nfl/nflverse';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gam
       return NextResponse.json({ error: `No NFL game with id ${gameId}` }, { status: 404 });
     }
 
-    const [injuries, liveState, sgo] = await Promise.all([
+    const [injuries, liveState, sgo, defenseAllowedByTeam] = await Promise.all([
       getLeagueInjuries(),
       getNflLiveGameState(gameId),
       getSportsGameOddsGameLine({
@@ -37,6 +38,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gam
         awayTeamName: game.awayTeamName,
         gameDate: game.date,
       }),
+      getTeamDefenseAllowedWithRank(),
     ]);
 
     return NextResponse.json({
@@ -46,6 +48,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gam
       liveState,
       sportsGameOddsLine: sgo.line,
       warnings: sgo.warnings,
+      // `/api/nfl/team/{id}`'s own opponentDefenseAllowed is scoped to that
+      // team's own next game per nflverse's schedule — not reliably this
+      // game (known nflverse/ESPN schedule mismatch). This stat isn't
+      // opponent-conditional though ("what PIT's defense allows" already
+      // answers "what PIT will allow against NYJ") — just needs pulling by
+      // the right abbreviation for *this* game's actual two teams.
+      homeDefenseAllowed: defenseAllowedByTeam[game.homeAbbr] ?? [],
+      awayDefenseAllowed: defenseAllowedByTeam[game.awayAbbr] ?? [],
     });
   } catch (error) {
     return NextResponse.json(

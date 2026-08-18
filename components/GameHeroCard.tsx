@@ -1,16 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import type { RecentGameResult } from '@/lib/sports/mlb/statsapi';
 import type { RecommendedMoneylinePick, TotalLean } from '@/lib/odds/recommendedPick';
 import type { GamePickView } from './useGamePickRecord';
 import { TeamLogo, mlbTeamLogoUrl, SubjectAvatar, mlbHeadshotUrl } from './SubjectAvatar';
 import { LockIcon, ClockIcon } from './icons';
 import { useLiveGame } from './useLiveGame';
 import { useBullpen, type TeamBullpen, type RankedPitcherSummary } from './useBullpen';
-import { computeStreak, type GameDetailGame } from './GameDetail';
-import { teamPrimaryColor, withAlpha } from '@/lib/sports/mlb/teamColors';
+import type { GameDetailGame } from './GameDetail';
 import type { BoxScoreTeam, BoxScoreBatter, BoxScorePitcher, LiveInningPlay, LiveTotals } from '@/lib/sports/mlb/liveGame';
 
 /**
@@ -65,6 +63,81 @@ function fmtRecord(r: { wins: number; losses: number } | null): string {
 function streakLabel(streak: number): string | null {
   if (streak === 0) return null;
   return streak > 0 ? `W${streak}` : `L${-streak}`;
+}
+
+// ---------------------------------------------------------------------------
+// Generic interfaces — docs/sport-adapter-design.md §2. Each sport's adapter
+// (lib/sports/{sport}/adapters/gameHeroCardAdapter.ts for MLB; built inline
+// at NflGameDetail.tsx's own call site for NFL, matching how PicksPanelGame
+// was wired for NFL) produces these from real per-sport data. Team-color
+// tint and logo URL are pre-resolved strings rather than a raw teamId,
+// because each sport's own teamPrimaryColor()/logo-URL helper takes a
+// different key type (MLB: numeric id, NFL: abbreviation) — exactly the
+// same reason `RankableTeamStats`/`PicksPanelGame` narrowed the way they did.
+// ---------------------------------------------------------------------------
+
+export interface GameHeroTeamPanelData {
+  abbr: string;
+  teamId?: number;
+  name?: string;
+  href?: string;
+  logoUrl?: string;
+  record: { wins: number; losses: number } | null;
+  divisionRank?: string | null;
+  streak?: number | null;
+  /** Pre-resolved via the sport's own teamPrimaryColor()+withAlpha(). */
+  tintColor: string;
+  /** NFL's OFF/DEF/ST GradeChip row — real data MLB has no equivalent for. undefined for MLB. */
+  renderBadges?: () => ReactNode;
+}
+
+export interface GameHeroModel {
+  recommendedPick: RecommendedMoneylinePick | null;
+  totalLean: TotalLean | null;
+  gamePick: GamePickView | null;
+}
+
+export interface VenueForecastData {
+  venue?: string;
+  weather?: { tempF?: number; windMph?: number; windDir?: string; rainPct?: number };
+  weatherNarrative?: string | null;
+}
+
+export interface GameHeroCardProps {
+  away: GameHeroTeamPanelData;
+  home: GameHeroTeamPanelData;
+  isLive: boolean;
+  isFinal: boolean;
+  liveScore?: { home: string; away: string };
+  /** Pre-formatted live status text — MLB: "Top 7th"; NFL: "Q3 · 8:42". */
+  livePeriodLabel?: string;
+  /** NFL's down/distance/field-position sub-line, shown under the live status pill. MLB has no equivalent (its live detail is the separate expanded LiveTab). */
+  renderLiveExtra?: () => ReactNode;
+  /** Pre-formatted pregame start-time text — each sport already formats this differently today (MLB: time-of-day only; NFL: full weekday/date/time), so this stays a plain formatted string rather than a shared Date-formatting rule. */
+  startTimeLabel: string;
+  /** MLB: "FIRST PITCH". NFL's original design had no caption under the kickoff time — omit for NFL. */
+  startTimeCaption?: string;
+  /** Pick-lock panel (winner/total lean) — real data only MLB has a model for today. null renders nothing, same as NFL's current "no EdgeBadge" posture. */
+  model?: GameHeroModel | null;
+  /** When the pick-lock panel's picks lock — MLB: 3 hours before first pitch. Meaningless (and unused) when `model` is null. */
+  pickLockAt?: Date | null;
+  /** MLB: `calibration.loading` — shows a pulsing skeleton in the pick panels while still loading. */
+  pickLoading?: boolean;
+  /** Weather footer — real data only MLB has today. null renders nothing. */
+  venue?: VenueForecastData | null;
+  /** NFL's raw moneyline/spread/total price strip shown in the pregame center column — MLB has no equivalent (its pregame odds live in the pick-lock panel below, not inline center). undefined for MLB. */
+  renderCenterPregameExtra?: () => ReactNode;
+  /**
+   * Presence gates whether the Matchup/Live tab switcher renders at all.
+   * MLB supplies its rich LiveTab (bases/box score/bullpen — see the
+   * exported `LiveTab` below) and gets tabs; NFL has no equivalent expanded
+   * live view today (its live state is already fully shown inline via
+   * `isLive`/`liveScore`/`livePeriodLabel`) and supplies nothing, so no tabs
+   * render — matching NFL's current untabbed design. Receives the tab's own
+   * active/inactive state so a live-polling child (like `LiveTab`) can gate
+   * its own fetch interval, the same way it already reads `active` today.
+   */
+  renderLiveDetail?: (active: boolean) => ReactNode;
 }
 
 function ChangedBadge({ from }: { from: string }) {
@@ -231,50 +304,48 @@ function PickPanel({
 // Matchup tab
 // ---------------------------------------------------------------------------
 
-function TeamPanel({
-  side,
-  abbr,
-  teamId,
-  name,
-  record,
-  divisionRank,
-  streak,
-}: {
-  side: 'away' | 'home';
-  abbr: string;
-  teamId?: number;
-  name?: string;
-  record: { wins: number; losses: number } | null;
-  divisionRank: string | null;
-  streak: number;
-}) {
+function TeamPanel({ side, team }: { side: 'away' | 'home'; team: GameHeroTeamPanelData }) {
   const away = side === 'away';
-  const meta = [fmtRecord(record), divisionRank ? `${divisionRank} in division` : null, streakLabel(streak)].filter(Boolean).join(' · ');
+  const meta = [
+    fmtRecord(team.record),
+    team.divisionRank ? `${team.divisionRank} in division` : null,
+    team.streak != null ? streakLabel(team.streak) : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   // A soft wash of the team's own primary color rather than a fixed
   // cream/blue pair — every matchup reads in that team's own colors instead
-  // of an arbitrary away/home palette.
-  const tint = withAlpha(teamPrimaryColor(teamId), '26');
-  return (
-    <Link
-      href={teamId ? `/mlb/team/${teamId}` : '#'}
-      className={`flex flex-col gap-2.5 px-[26px] py-7 ${away ? '' : 'items-end text-right'}`}
-      style={{
-        background: away
-          ? `linear-gradient(90deg, ${tint}, #ffffff)`
-          : `linear-gradient(270deg, ${tint}, #ffffff)`,
-      }}
-    >
+  // of an arbitrary away/home palette. tintColor is pre-resolved by the
+  // caller's adapter (each sport keys teamPrimaryColor() differently).
+  const content = (
+    <>
       <div className={`flex items-center gap-3 ${away ? '' : 'flex-row-reverse'}`}>
         <div className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-xl bg-white" style={{ border: `1px solid ${C.cardBorder}` }}>
-          <TeamLogo logoUrl={mlbTeamLogoUrl(teamId)} size={36} />
+          <TeamLogo logoUrl={team.logoUrl} size={36} />
         </div>
         <div>
           <div className="text-meta tracking-[.12em]" style={{ color: C.faintMono }}>{away ? 'AWAY' : 'HOME'}</div>
-          <div className="text-display-sm font-bold tracking-[-.02em]" style={{ color: C.ink }}>{name ?? abbr}</div>
+          <div className="text-display-sm font-bold tracking-[-.02em]" style={{ color: C.ink }}>{team.name ?? team.abbr}</div>
         </div>
       </div>
       <div className="text-body" style={{ color: C.recordText }}>{meta || '—'}</div>
+      {team.renderBadges ? <div className={`flex flex-wrap gap-1 ${away ? '' : 'justify-end'}`}>{team.renderBadges()}</div> : null}
+    </>
+  );
+  const className = `flex flex-col gap-2.5 px-[26px] py-7 ${away ? '' : 'items-end text-right'}`;
+  const style = {
+    background: away
+      ? `linear-gradient(90deg, ${team.tintColor}, #ffffff)`
+      : `linear-gradient(270deg, ${team.tintColor}, #ffffff)`,
+  };
+  return team.href ? (
+    <Link href={team.href} className={className} style={style}>
+      {content}
     </Link>
+  ) : (
+    <div className={className} style={style}>
+      {content}
+    </div>
   );
 }
 
@@ -282,14 +353,22 @@ function CenterStatus({
   isLive,
   isFinal,
   liveScore,
-  livePeriod,
-  firstPitch,
+  livePeriodLabel,
+  renderLiveExtra,
+  startTimeLabel,
+  startTimeCaption,
+  renderCenterPregameExtra,
 }: {
   isLive: boolean;
   isFinal: boolean;
   liveScore?: { home: string; away: string };
-  livePeriod?: string;
-  firstPitch: string | null | undefined;
+  livePeriodLabel?: string;
+  /** NFL's down/distance/field-position sub-line, shown under the live status pill. MLB has no equivalent (its live detail is the separate expanded LiveTab, not inline here). */
+  renderLiveExtra?: () => ReactNode;
+  startTimeLabel: string;
+  /** MLB: "FIRST PITCH". NFL's original design showed no caption at all under the kickoff time — omit for NFL to match. */
+  startTimeCaption?: string;
+  renderCenterPregameExtra?: () => ReactNode;
 }) {
   if (isLive && liveScore) {
     return (
@@ -300,12 +379,13 @@ function CenterStatus({
         <div className="text-display-lg font-extrabold leading-none tabular-nums tracking-[-.04em]" style={{ color: C.ink }}>
           {liveScore.away}–{liveScore.home}
         </div>
-        {livePeriod ? (
+        {livePeriodLabel ? (
           <div className="flex items-center gap-1.5 rounded-full px-2.5 py-1" style={{ backgroundColor: C.statusPillBg }}>
             <span className="h-1.5 w-1.5 animate-lb-pulse rounded-full" style={{ backgroundColor: C.pulseDot }} />
-            <span className="text-meta font-medium uppercase tracking-[.1em]" style={{ color: C.pulseDot }}>{livePeriod}</span>
+            <span className="text-meta font-medium uppercase tracking-[.1em]" style={{ color: C.pulseDot }}>{livePeriodLabel}</span>
           </div>
         ) : null}
+        {renderLiveExtra ? <div className="mt-0.5">{renderLiveExtra()}</div> : null}
       </div>
     );
   }
@@ -327,45 +407,55 @@ function CenterStatus({
       className="flex flex-col items-center justify-center gap-1.5 px-[30px] py-7"
       style={{ borderLeft: `1px solid ${C.divider}`, borderRight: `1px solid ${C.divider}` }}
     >
-      <div className="text-display-sm font-bold" style={{ color: C.ink }}>
-        {firstPitch ? new Date(firstPitch).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'TBD'}
-      </div>
-      <div className="text-meta tracking-[.1em]" style={{ color: C.faintMono }}>FIRST PITCH</div>
+      <div className="text-display-sm font-bold" style={{ color: C.ink }}>{startTimeLabel}</div>
+      {startTimeCaption ? <div className="text-meta tracking-[.1em]" style={{ color: C.faintMono }}>{startTimeCaption}</div> : null}
+      {renderCenterPregameExtra ? <div className="mt-1">{renderCenterPregameExtra()}</div> : null}
     </div>
   );
 }
 
-function MatchupTab({
-  game,
+function HeroBody({
+  away,
+  home,
   isLive,
   isFinal,
   liveScore,
-  awayRecent,
-  homeRecent,
-  recommendedPick,
-  totalLean,
-  gamePick,
+  livePeriodLabel,
+  renderLiveExtra,
+  startTimeLabel,
+  startTimeCaption,
+  renderCenterPregameExtra,
+  model,
+  pickLockAt,
   pickLoading,
+  venue,
 }: {
-  game: GameDetailGame;
+  away: GameHeroTeamPanelData;
+  home: GameHeroTeamPanelData;
   isLive: boolean;
   isFinal: boolean;
   liveScore?: { home: string; away: string };
-  awayRecent?: { recent: RecentGameResult[] };
-  homeRecent?: { recent: RecentGameResult[] };
-  recommendedPick?: RecommendedMoneylinePick | null;
-  totalLean?: TotalLean | null;
-  gamePick: GamePickView | null;
+  livePeriodLabel?: string;
+  renderLiveExtra?: () => ReactNode;
+  startTimeLabel: string;
+  startTimeCaption?: string;
+  renderCenterPregameExtra?: () => ReactNode;
+  model?: GameHeroModel | null;
+  /** When the pick-lock panel's picks lock — MLB: 3 hours before first pitch. Only meaningful when `model` is supplied. */
+  pickLockAt: Date | null;
+  /** MLB: `calibration.loading` — shows a pulsing skeleton in the pick panels while the model's calibration data is still loading. Always false/undefined for a sport with no model. */
   pickLoading?: boolean;
+  venue?: VenueForecastData | null;
 }) {
-  const [awayAbbr, homeAbbr] = (game.matchup ?? '').split('@').map((s) => s.trim());
+  const gamePick = model?.gamePick ?? null;
+  const recommendedPick = model?.recommendedPick ?? null;
+  const totalLean = model?.totalLean ?? null;
 
   const mlLocked = gamePick?.moneyline.locked ?? false;
-  const mlSide: 'home' | 'away' | null = mlLocked ? gamePick?.moneyline.pickSide ?? null : recommendedPick?.side ?? null;
   const mlTeam = mlLocked
     ? gamePick?.moneyline.pickTeamName ?? null
     : recommendedPick
-      ? (recommendedPick.side === 'home' ? gamePick?.homeTeamName : gamePick?.awayTeamName) ?? (recommendedPick.side === 'home' ? homeAbbr : awayAbbr)
+      ? (recommendedPick.side === 'home' ? gamePick?.homeTeamName : gamePick?.awayTeamName) ?? (recommendedPick.side === 'home' ? home.abbr : away.abbr)
       : null;
   const mlPercent = mlLocked ? gamePick?.moneyline.confidence?.pct ?? null : recommendedPick ? Math.round(recommendedPick.modelProb * 100) : null;
 
@@ -375,32 +465,23 @@ function MatchupTab({
   const totalPercent = totalLocked ? gamePick?.total.confidence?.pct ?? null : totalLean ? Math.round(totalLean.probability * 100) : null;
   const totalHeadline = totalSide ? `${totalSide === 'over' ? 'Over' : 'Under'} ${totalLine ?? ''}` : null;
 
-  const lockTime = game.firstPitch ? new Date(new Date(game.firstPitch).getTime() - 3 * 60 * 60 * 1000) : null;
-
-  const showPicks = pickLoading || mlTeam || totalHeadline;
+  const showPicks = model != null && (pickLoading || mlTeam || totalHeadline);
 
   return (
     <div>
       <div className="grid grid-cols-[1fr_auto_1fr]">
-        <TeamPanel
-          side="away"
-          abbr={awayAbbr}
-          teamId={game.awayTeamId}
-          name={game.awayTeamName ?? awayAbbr}
-          record={game.away?.record ?? null}
-          divisionRank={game.away?.divisionRank ?? null}
-          streak={computeStreak((awayRecent?.recent ?? []).slice(0, 5))}
+        <TeamPanel side="away" team={away} />
+        <CenterStatus
+          isLive={isLive}
+          isFinal={isFinal}
+          liveScore={liveScore}
+          livePeriodLabel={livePeriodLabel}
+          renderLiveExtra={renderLiveExtra}
+          startTimeLabel={startTimeLabel}
+          startTimeCaption={startTimeCaption}
+          renderCenterPregameExtra={renderCenterPregameExtra}
         />
-        <CenterStatus isLive={isLive} isFinal={isFinal} liveScore={liveScore} livePeriod={game.livePeriod} firstPitch={game.firstPitch} />
-        <TeamPanel
-          side="home"
-          abbr={homeAbbr}
-          teamId={game.homeTeamId}
-          name={game.homeTeamName ?? homeAbbr}
-          record={game.home?.record ?? null}
-          divisionRank={game.home?.divisionRank ?? null}
-          streak={computeStreak((homeRecent?.recent ?? []).slice(0, 5))}
-        />
+        <TeamPanel side="home" team={home} />
       </div>
 
       {showPicks ? (
@@ -417,7 +498,7 @@ function MatchupTab({
                 headline={mlTeam}
                 percent={mlPercent}
                 locked={mlLocked}
-                lockTime={lockTime}
+                lockTime={pickLockAt}
                 changedFrom={gamePick?.moneyline.changed && gamePick.moneyline.initialTeamName ? gamePick.moneyline.initialTeamName : null}
               />
             </div>
@@ -427,7 +508,7 @@ function MatchupTab({
                 headline={totalHeadline}
                 percent={totalPercent}
                 locked={totalLocked}
-                lockTime={lockTime}
+                lockTime={pickLockAt}
                 changedFrom={
                   gamePick?.total.changed && gamePick.total.initialSide
                     ? `${gamePick.total.initialSide === 'over' ? 'Over' : 'Under'} ${gamePick.total.initialLine ?? ''}`
@@ -439,7 +520,7 @@ function MatchupTab({
         )
       ) : null}
 
-      <VenueForecastFooter venue={game.venue} weather={game.weather} weatherNarrative={game.weatherNarrative} />
+      {venue ? <VenueForecastFooter venue={venue.venue} weather={venue.weather} weatherNarrative={venue.weatherNarrative} /> : null}
     </div>
   );
 }
@@ -879,7 +960,7 @@ function LiveCenterStatus({
   );
 }
 
-function LiveTab({
+export function LiveTab({
   game,
   gamePk,
   active,
@@ -984,29 +1065,47 @@ function LiveTab({
 // ---------------------------------------------------------------------------
 
 export function GameHeroCard({
-  game,
+  away,
+  home,
   isLive,
   isFinal,
   liveScore,
-  awayRecent,
-  homeRecent,
-  recommendedPick,
-  totalLean,
-  gamePick,
+  livePeriodLabel,
+  renderLiveExtra,
+  startTimeLabel,
+  startTimeCaption,
+  renderCenterPregameExtra,
+  model,
+  pickLockAt,
   pickLoading,
-}: {
-  game: GameDetailGame;
-  isLive: boolean;
-  isFinal: boolean;
-  liveScore?: { home: string; away: string };
-  awayRecent?: { recent: RecentGameResult[] };
-  homeRecent?: { recent: RecentGameResult[] };
-  recommendedPick?: RecommendedMoneylinePick | null;
-  totalLean?: TotalLean | null;
-  gamePick: GamePickView | null;
-  pickLoading?: boolean;
-}) {
+  venue,
+  renderLiveDetail,
+}: GameHeroCardProps) {
   const [tab, setTab] = useState<'matchup' | 'live'>(isLive ? 'live' : 'matchup');
+  const tabbed = renderLiveDetail != null;
+
+  const body = (
+    <HeroBody
+      away={away}
+      home={home}
+      isLive={isLive}
+      isFinal={isFinal}
+      liveScore={liveScore}
+      livePeriodLabel={livePeriodLabel}
+      renderLiveExtra={renderLiveExtra}
+      startTimeLabel={startTimeLabel}
+      startTimeCaption={startTimeCaption}
+      renderCenterPregameExtra={renderCenterPregameExtra}
+      model={model}
+      pickLockAt={pickLockAt ?? null}
+      pickLoading={pickLoading}
+      venue={venue}
+    />
+  );
+
+  if (!tabbed) {
+    return <section className="lb-card-hero overflow-hidden">{body}</section>;
+  }
 
   return (
     <section className="lb-card-hero overflow-hidden">
@@ -1036,22 +1135,7 @@ export function GameHeroCard({
         ) : null}
       </div>
 
-      {tab === 'matchup' ? (
-        <MatchupTab
-          game={game}
-          isLive={isLive}
-          isFinal={isFinal}
-          liveScore={liveScore}
-          awayRecent={awayRecent}
-          homeRecent={homeRecent}
-          recommendedPick={recommendedPick}
-          totalLean={totalLean}
-          gamePick={gamePick}
-          pickLoading={pickLoading}
-        />
-      ) : (
-        <LiveTab game={game} gamePk={game.gamePk} active={tab === 'live'} isFinal={isFinal} />
-      )}
+      {tab === 'matchup' ? body : renderLiveDetail(tab === 'live')}
     </section>
   );
 }

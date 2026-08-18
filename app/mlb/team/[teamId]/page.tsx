@@ -63,7 +63,7 @@ export default function TeamPage() {
 
       <main className="px-3 py-3">
         {error ? <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad">{error}</div> : null}
-        <TeamDetailPanel initialTeamId={teamId} snapshot={snapshot} odds={odds.result} onAdd={onAdd} addedKeys={slip.pickedKeys} />
+        <TeamDetailPanel sport={sport} initialTeamId={teamId} snapshot={snapshot} odds={odds.result} onAdd={onAdd} addedKeys={slip.pickedKeys} />
       </main>
 
       <SlipModal

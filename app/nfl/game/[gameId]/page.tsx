@@ -1,14 +1,14 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { PickCandidate } from '@/lib/core/types';
 import { useSnapshot } from '@/components/useSnapshot';
 import { useSlip } from '@/components/useSlip';
 import { useGameLines } from '@/components/useGameLines';
 import { GamesStrip } from '@/components/GamesStrip';
 import { TopBar } from '@/components/TopBar';
-import { NflGameDetail } from '@/components/NflGameDetail';
+import { GameDetail } from '@/components/GameDetail';
 import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import SlipModal from '@/components/SlipModal';
 
@@ -24,6 +24,7 @@ interface NflGamesStripGame {
 export default function NflGameDetailPage() {
   const params = useParams<{ gameId: string }>();
   const router = useRouter();
+  const search = useSearchParams();
   const sport = 'nfl' as const;
   const gameId = String(params?.gameId ?? '');
 
@@ -31,6 +32,19 @@ export default function NflGameDetailPage() {
   const slip = useSlip(sport);
   const odds = useGameLines(sport, snapshot?.fetchedAt ?? null);
   const [slipOpen, setSlipOpen] = useState(false);
+
+  const selectedPlayerId = search.get('player') ?? undefined;
+  const selectedMarket = search.get('market') ?? undefined;
+
+  const onSelectCandidate = (subjectId: string | null, dimension?: string) => {
+    const qs = new URLSearchParams();
+    if (subjectId) {
+      qs.set('player', subjectId);
+      if (dimension) qs.set('market', dimension);
+    }
+    const suffix = qs.toString();
+    router.replace(`/nfl/game/${gameId}${suffix ? `?${suffix}` : ''}`);
+  };
 
   const games = useMemo(
     () => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as NflGamesStripGame[],
@@ -91,13 +105,20 @@ export default function NflGameDetailPage() {
         ) : !selectedGame ? (
           <div className="lb-card p-6 text-center text-sm text-ink-muted">Game not found.</div>
         ) : (
-          <NflGameDetail
+          <GameDetail
+            sport={sport}
             gameId={gameId}
             candidates={gameCandidates}
             picks={slip.picks}
             pickedKeys={slip.pickedKeys}
             onAdd={onAdd}
+            onRemovePick={slip.removePick}
             odds={odds.result}
+            snapshot={snapshot}
+            selectedPlayerId={selectedPlayerId}
+            selectedMarket={selectedMarket}
+            onSelectCandidate={onSelectCandidate}
+            eventContext={eventContext}
           />
         )}
       </main>

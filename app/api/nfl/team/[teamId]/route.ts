@@ -1,4 +1,4 @@
-import { getStandings } from '@/lib/sports/nfl/espn';
+import { getStandings, type NflStandingsTeam } from '@/lib/sports/nfl/espn';
 import { fetchTeamRoster } from '@/lib/sports/multiSport/teamSportEspn';
 import {
   getTeamRecentResults,
@@ -29,6 +29,24 @@ export const dynamic = 'force-dynamic';
 // constituent (standings, 30min) so this layer never serves data staler than
 // what any underlying source promises.
 const CACHE_TTL_MS = 30 * 60 * 1000;
+
+function ordinal(n: number): string {
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
+  return `${n}${suffix}`;
+}
+
+/** conference/division are already on NflStandingsTeam (getStandings), but no rank within the division — computed here from the same win% ordering RecordsSection's MLB equivalent (statsapi.ts) uses. */
+function computeDivisionRank(team: NflStandingsTeam, allTeams: NflStandingsTeam[]): string | null {
+  const divisionTeams = allTeams.filter((t) => t.conference === team.conference && t.division === team.division);
+  if (divisionTeams.length === 0) return null;
+  const sorted = [...divisionTeams].sort((a, b) => {
+    const aPct = a.wins + a.losses > 0 ? a.wins / (a.wins + a.losses) : 0;
+    const bPct = b.wins + b.losses > 0 ? b.wins / (b.wins + b.losses) : 0;
+    return bPct - aPct;
+  });
+  const idx = sorted.findIndex((t) => t.teamId === team.teamId);
+  return idx >= 0 ? ordinal(idx + 1) : null;
+}
 
 /**
  * Everything NflTeamDetail needs in one call, rather than MLB's pattern of
@@ -95,7 +113,7 @@ async function buildTeamPayload(teamId: string): Promise<Record<string, unknown>
   };
 
   return {
-    team,
+    team: { ...team, divisionRank: computeDivisionRank(team, standings) },
     roster,
     recentResults,
     teamStats: teamStatsByTeam[team.abbreviation] ?? [],

@@ -6,14 +6,11 @@ import type { PickCandidate } from '@/lib/core/types';
 import { useSnapshot } from '@/components/useSnapshot';
 import { useSlip } from '@/components/useSlip';
 import { useGameLines } from '@/components/useGameLines';
-import { useGameContext } from '@/components/useGameContext';
-import { useBullpen } from '@/components/useBullpen';
 import { GamesStrip } from '@/components/GamesStrip';
 import { TopBar } from '@/components/TopBar';
-import { GameDetail, type GameDetailGame, type StatKeyDef } from '@/components/GameDetail';
+import { GameDetail, type GameDetailGame } from '@/components/GameDetail';
 import SlipModal from '@/components/SlipModal';
 import { ScanListSkeleton } from '@/components/Skeleton';
-import { buildSlate } from '@/lib/odds/matching';
 import { useFilters, applyFilters } from '@/components/useFilters';
 
 /**
@@ -43,20 +40,8 @@ export default function GameDetailPage() {
     () => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as GameDetailGame[],
     [snapshot],
   );
-  const statKeys = useMemo(
-    () => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.statKeys ?? []) as StatKeyDef[],
-    [snapshot],
-  );
 
   const selectedGame = useMemo(() => games.find((g) => Number(g.gamePk) === gameId), [games, gameId]);
-
-  const gameLine = useMemo(() => {
-    const slate = buildSlate(games, odds.result?.lines ?? []);
-    return slate.entries.find((e) => Number(e.game.gamePk) === gameId)?.line ?? null;
-  }, [games, odds.result, gameId]);
-
-  const gameContext = useGameContext(selectedGame?.awayTeamId, selectedGame?.homeTeamId);
-  const bullpen = useBullpen(selectedGame?.awayTeamId, selectedGame?.homeTeamId);
 
   const gameCandidates = useMemo(() => {
     const all = snapshot?.candidates ?? [];
@@ -127,15 +112,11 @@ export default function GameDetailPage() {
           <div className="lb-card p-6 text-center text-sm text-ink-muted">Game not found.</div>
         ) : (
           <GameDetail
-            game={selectedGame}
-            statKeys={statKeys}
+            sport={sport}
+            gameId={String(gameId)}
             candidates={filtered}
-            allCandidates={snapshot?.candidates ?? []}
             snapshot={snapshot}
             odds={odds.result}
-            gameLine={gameLine}
-            gameContext={gameContext}
-            bullpen={bullpen}
             picks={slip.picks}
             pickedKeys={slip.pickedKeys}
             onAdd={onAdd}

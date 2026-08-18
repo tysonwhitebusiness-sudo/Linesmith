@@ -7,7 +7,7 @@ import { useSlip } from '@/components/useSlip';
 import { useGameLines } from '@/components/useGameLines';
 import { TopBar } from '@/components/TopBar';
 import { GamesStrip } from '@/components/GamesStrip';
-import { NflPlayerDetail } from '@/components/NflPlayerDetail';
+import { PlayerDetail } from '@/components/PlayerDetail';
 import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import SlipModal from '@/components/SlipModal';
 import { PlayerSkeleton } from '@/components/Skeleton';
@@ -111,7 +111,7 @@ export default function NflPlayerDetailPage() {
             No tracked markets for this player on today&apos;s slate.
           </div>
         ) : (
-          <NflPlayerDetail
+          <PlayerDetail
             candidates={mine}
             snapshot={snapshot}
             odds={odds.result}
