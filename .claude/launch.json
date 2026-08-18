@@ -1,0 +1,25 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "linesmith-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "design-preview",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/design-preview-server.js"],
+      "port": 8123,
+      "autoPort": true
+    },
+    {
+      "name": "linesmith-dev-verify",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/dev-verify.js"],
+      "port": 3001,
+      "autoPort": true
+    }
+  ]
+}

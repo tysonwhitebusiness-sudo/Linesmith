@@ -1,0 +1,276 @@
+'use client';
+
+import type { OddsInfo } from '@/lib/core/types';
+import { formatAmerican, americanToDecimal } from '@/lib/odds/display';
+import { devigTwoWay } from '@/lib/odds/devig';
+import { compareInk } from '@/lib/ui/heat';
+
+/**
+ * A price, with where it came from.
+ *
+ * One implementation for the table, the cards, both detail pages and the slip,
+ * so a number never changes shape depending on which screen it's on. Source
+ * attribution is not optional decoration here: Linesmith mixes a live game-line
+ * feed with prices the user typed in or imported from a screenshot, and a
+ * hand-entered price from an hour ago should not look identical to a fetched one.
+ */
+
+export type OddsProvenance =
+  | 'manual'
+  | 'screenshot'
+  | 'odds-api'
+  | 'oddsharvester'
+  | 'both'
+  | 'sharpapi'
+  | 'oddsapiio'
+  | 'sportsgameodds'
+  | 'oddspapi'
+  | 'theoddsapi'
+  | 'unknown';
+
+const PROVENANCE_LABEL: Record<OddsProvenance, string> = {
+  manual: 'Entered by hand',
+  screenshot: 'Imported from a screenshot',
+  'odds-api': 'the-odds-api',
+  oddsharvester: 'OddsPortal',
+  both: 'the-odds-api + OddsPortal',
+  sharpapi: 'SharpAPI',
+  oddsapiio: 'Odds-API.io',
+  sportsgameodds: 'SportsGameOdds',
+  oddspapi: 'OddsPapi',
+  theoddsapi: 'The Odds API',
+  unknown: 'Source not recorded',
+};
+
+/** One-character provenance mark. Quiet by design — it annotates, not announces. */
+const PROVENANCE_MARK: Record<OddsProvenance, string> = {
+  manual: '✎',
+  screenshot: '⧉',
+  'odds-api': '',
+  oddsharvester: '',
+  both: '',
+  sharpapi: '',
+  oddsapiio: '',
+  sportsgameodds: '',
+  oddspapi: '',
+  theoddsapi: '',
+  unknown: '?',
+};
+
+function normalise(source: string | undefined): OddsProvenance {
+  switch (source) {
+    case 'manual':
+    case 'screenshot':
+    case 'odds-api':
+    case 'oddsharvester':
+    case 'both':
+    case 'sharpapi':
+    case 'oddsapiio':
+    case 'sportsgameodds':
+    case 'oddspapi':
+    case 'theoddsapi':
+      return source;
+    default:
+      return 'unknown';
+  }
+}
+
+export interface OddsChipProps {
+  /** American odds. Accepts the string form the slip stores. */
+  price: number | string | null | undefined;
+  source?: string;
+  /** Marks this as the best price on the row. */
+  best?: boolean;
+  /** Prefix, e.g. "O" / "U" / "ML". */
+  side?: string;
+  capturedAt?: string;
+  /**
+   * Provider-reported staleness, in seconds — `null`/`undefined` means the
+   * provider doesn't disclose one (Odds-API.io), which is not the same as
+   * zero and must not be shown as though the price were live. A price
+   * fetched at 4:12 that was already 60s stale when fetched is not a 4:12
+   * snapshot — the marker and tooltip say so rather than only showing fetch
+   * time.
+   */
+  delaySeconds?: number | null;
+  isDelayed?: boolean | null;
+  size?: 'sm' | 'md';
+  className?: string;
+}
+
+export function OddsChip({
+  price,
+  source,
+  best = false,
+  side,
+  capturedAt,
+  delaySeconds,
+  isDelayed,
+  size = 'sm',
+  className = '',
+}: OddsChipProps) {
+  const numeric = typeof price === 'string' ? Number(price.replace('+', '')) : price;
+  const provenance = normalise(source);
+  const mark = PROVENANCE_MARK[provenance];
+  const delayed = isDelayed ?? (delaySeconds != null && delaySeconds > 0);
+
+  const title = [
+    PROVENANCE_LABEL[provenance],
+    capturedAt ? `captured ${new Date(capturedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : null,
+    delayed ? (delaySeconds != null ? `~${delaySeconds}s delayed at source` : 'delayed at source (provider does not disclose by how much)') : null,
+    best ? 'best available' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  if (numeric == null || !Number.isFinite(numeric)) {
+    return <span className={`text-[11px] text-ink-faint ${className}`}>—</span>;
+  }
+
+  return (
+    <span
+      className={`inline-flex items-baseline gap-1 rounded-md border tabular-nums ${
+        best ? 'border-masters/40 bg-accent-soft text-masters' : 'border-line text-ink'
+      } ${size === 'md' ? 'px-2 py-1 text-[13px]' : 'px-1.5 py-0.5 text-[11px]'} ${className}`}
+      title={title}
+    >
+      {side ? <span className="text-ink-faint">{side}</span> : null}
+      <span className="font-semibold">{formatAmerican(numeric)}</span>
+      {mark ? (
+        <span className="text-[9px] text-ink-faint" aria-hidden>
+          {mark}
+        </span>
+      ) : null}
+      {delayed ? (
+        <span className="text-[9px] text-warn" aria-hidden>
+          ⏱
+        </span>
+      ) : null}
+      <span className="sr-only">{title}</span>
+    </span>
+  );
+}
+
+/**
+ * Over and under stacked, the way every book quotes a two-sided prop.
+ *
+ * A side that isn't priced is left out rather than padded with a dash — half a
+ * market is a real state, and a placeholder makes it look like a failure.
+ */
+export function OddsPair({
+  over,
+  under,
+  source,
+  label,
+  className = '',
+}: {
+  over?: number | string | null;
+  under?: number | string | null;
+  source?: string;
+  /** Book or source name printed above the pair. */
+  label?: string;
+  className?: string;
+}) {
+  const hasOver = over != null && Number.isFinite(Number(over));
+  const hasUnder = under != null && Number.isFinite(Number(under));
+  if (!hasOver && !hasUnder) return null;
+
+  return (
+    <span className={`inline-flex flex-col items-stretch gap-0.5 ${className}`}>
+      {label ? <span className="text-[9px] uppercase tracking-wide text-ink-faint">{label}</span> : null}
+      {hasOver ? <OddsChip price={over} source={source} side="O" /> : null}
+      {hasUnder ? <OddsChip price={under} source={source} side="U" /> : null}
+    </span>
+  );
+}
+
+/** Overflow marker for rows carrying more books than fit. */
+export function MoreBooksChip({ count, onClick }: { count: number; onClick?: () => void }) {
+  if (count <= 0) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      className="rounded-md border border-line px-1.5 py-0.5 text-[11px] font-medium text-ink-muted disabled:cursor-default"
+      aria-label={`${count} more source${count === 1 ? '' : 's'}`}
+    >
+      +{count}
+    </button>
+  );
+}
+
+/**
+ * What a row shows when nothing has been priced yet.
+ *
+ * An empty cell reads as "no odds exist"; this reads as "none fetched", which is
+ * the true state and is also the affordance for changing it.
+ */
+export function GetOddsButton({ onClick, label = 'Get odds' }: { onClick?: () => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!onClick}
+      className="rounded-md border border-dashed border-line px-1.5 py-0.5 text-[10px] text-ink-faint transition-colors hover:border-masters/40 hover:text-masters disabled:hover:border-line disabled:hover:text-ink-faint"
+    >
+      {label}
+    </button>
+  );
+}
+
+/** Implied probability from a two-sided price, vig removed. Null if one-sided. */
+export function impliedPair(
+  over: number | null | undefined,
+  under: number | null | undefined,
+): { over: number; under: number } | null {
+  const devigged = devigTwoWay(americanToDecimal(over), americanToDecimal(under));
+  return devigged ? { over: devigged.a, under: devigged.b } : null;
+}
+
+/**
+ * The IP column: over and under implied probability, stacked.
+ *
+ * Renders nothing at all when the market is one-sided — normalising a single
+ * price would mean inventing its opposite, and the audit confirmed the
+ * reference leaves this cell genuinely blank rather than dashed.
+ */
+export function ImpliedProbabilityCell({
+  over,
+  under,
+}: {
+  over?: number | null;
+  under?: number | null;
+}) {
+  const implied = impliedPair(over, under);
+  if (!implied) return null;
+
+  return (
+    <span className="flex flex-col items-end leading-tight tabular-nums">
+      <span className="text-[11px] text-ink">O{(implied.over * 100).toFixed(1)}%</span>
+      <span className="text-[11px] text-ink-muted">U{(implied.under * 100).toFixed(1)}%</span>
+    </span>
+  );
+}
+
+/** The slip's stored `OddsInfo` as a chip. */
+export function StoredOddsChip({ odds, size = 'sm' }: { odds: OddsInfo | undefined; size?: 'sm' | 'md' }) {
+  if (!odds) return null;
+  return <OddsChip price={odds.americanOdds} source={odds.source} capturedAt={odds.capturedAt} size={size} />;
+}
+
+/** G6 — same de-vigged-edge visual language as Scan's Edge column, reused for the game-level model on Game Detail and Player Detail's Game Odds card. */
+export function EdgeBadge({ edge, modelProb, marketProb, label }: { edge: number; modelProb: number; marketProb: number; label: string }) {
+  return (
+    <span
+      className="flex-1 rounded px-1 py-0.5 text-center text-[10px] font-semibold"
+      style={{ backgroundColor: compareInk(Math.min(1, Math.max(0, 0.5 + edge * 2))) }}
+      title={`${label}: model ${(modelProb * 100).toFixed(1)}% vs. market ${(marketProb * 100).toFixed(1)}% (de-vigged). Early — check /diagnostics for how well-calibrated this model actually is before trusting this.`}
+    >
+      {edge > 0 ? '+' : ''}
+      {(edge * 100).toFixed(1)}%
+    </span>
+  );
+}
+
+export default OddsChip;

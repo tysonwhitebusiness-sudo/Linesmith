@@ -1,0 +1,32 @@
+node_modules/
+.next/
+.next-verify/
+out/
+build/
+.env
+.env.local
+.env*.local
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/*.json
+data/historical-odds-import/
+*.log
+.DS_Store
+next-env.d.ts
+*.tsbuildinfo
+.claude/scheduled_tasks.lock
+
+# Playwright MCP scratch output (page snapshots, screenshots)
+.playwright-mcp/
+
+# Local scratch files
+*.bak
+scan_row_logos.png
+
+# Oddsharvester vendored dependency — exclude its venv (huge, non-portable,
+# neither gitignore covered it) and upstream's integration-test replay
+# fixtures (large, unmodified, recoverable from jordantete/OddsHarvester).
+oddsharvester/.venv/
+oddsharvester/tests/integration/fixtures/**/*.har

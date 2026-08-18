@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-paper text-ink antialiased;
+    /* Room for the fixed slip bar on small screens. */
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Tap targets on iOS shouldn't flash grey. */
+  button {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer components {
+  /* Design refresh: separation is borders only, no ambient shadow — a card
+     sitting in a list reads fine on a border alone; shadows stay reserved for
+     things that are actually floating (drawers/modals use shadow-drawer/-pop
+     directly, not this class). */
+  .lb-card {
+    @apply rounded-card border border-line bg-card;
+  }
+
+  /* The one card allowed real elevation — reserved for a single top-of-page
+     hero/live card per page (currently just GameHeroCard). Formalized so
+     the shadow+radius pairing is a deliberate, reusable variant rather than
+     a one-off hand-rolled style. */
+  .lb-card-hero {
+    @apply border border-line bg-card;
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  /* Cards you can act on lift slightly, so they read as surfaces not boxes. */
+  .lb-card-interactive {
+    @apply transition-shadow duration-150;
+  }
+  @media (hover: hover) {
+    .lb-card-interactive:hover {
+      @apply shadow-card-hover;
+    }
+  }
+  .lb-card-interactive:active {
+    @apply shadow-card-hover;
+  }
+
+  .lb-chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+
+  .lb-tab {
+    @apply whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors;
+  }
+
+  /* Compact filter control: icon + label + current value, in one scrollable row. */
+  .lb-filter {
+    @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-line
+      bg-card px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors;
+  }
+  .lb-filter-active {
+    @apply border-masters bg-accent-soft text-masters;
+  }
+
+  /* A number that is meant to be the first thing the eye lands on. */
+  .lb-stat {
+    @apply text-lg font-semibold leading-none tabular-nums;
+  }
+  .lb-stat-label {
+    @apply mt-1 text-[10px] font-medium uppercase tracking-wider text-ink-faint;
+  }
+
+  /* Primary CTA press feel (Slip, Add to slip, Submit, Rescan): a graphite
+     glow lifts on hover and the button presses down on tap. Layers on top
+     of each button's own bg-masters/sizing classes rather than replacing
+     them, since CTA buttons vary in size across the app. */
+  .lb-btn-primary {
+    @apply transition-all duration-300;
+  }
+  @media (hover: hover) {
+    .lb-btn-primary:hover {
+      box-shadow: 7px 5px 32px -10px oklch(20% 0.006 260 / 0.55);
+    }
+  }
+  .lb-btn-primary:active {
+    transform: scale(0.97);
+    box-shadow: 7px 5px 32px -6px oklch(20% 0.006 260 / 0.6);
+  }
+
+  .lb-skel {
+    @apply rounded bg-line/70;
+    background-image: linear-gradient(
+      90deg,
+      rgba(211, 212, 215, 0) 0%,
+      rgba(255, 255, 255, 0.85) 50%,
+      rgba(211, 212, 215, 0) 100%
+    );
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    @apply animate-lb-shimmer;
+  }
+}
+
+/* Horizontal tab strips scroll rather than wrap on a phone. */
+.lb-scroll-x {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.lb-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+/* Dense table view: header row sticks while a long list scrolls under it. */
+.lb-dense th {
+  @apply sticky top-0 z-10 bg-paper/95 px-2 py-1.5 text-left text-[10px] font-semibold uppercase
+    tracking-wider text-ink-faint backdrop-blur;
+}
+.lb-dense td {
+  @apply border-t border-line px-2 py-2 align-middle text-[13px];
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-skel,
+  .animate-lb-pulse {
+    animation: none !important;
+  }
+}
