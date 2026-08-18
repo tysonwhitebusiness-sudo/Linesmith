@@ -11,8 +11,7 @@
 import { NextResponse } from 'next/server';
 import { getTeamStatcastRollup, type TeamStatcastRollup } from '@/lib/sports/mlb/teamStatcast';
 import { easternDate } from '@/lib/sports/mlb/statsapi';
-import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
-import { triggerBackgroundRebuild, awaitRebuild } from '@/lib/staleCache';
+import { cachedRoute } from '@/lib/cachedRoute';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,18 +38,6 @@ function mapToRecord<V>(map: Map<number, V>): Record<number, V> {
   return out;
 }
 
-async function rebuild(cacheKey: string, season: number): Promise<StatcastCachePayload> {
-  const rollup = await getTeamStatcastRollup(season);
-  const payload: StatcastCachePayload = {
-    computedAt: rollup.computedAt,
-    season,
-    hitting: mapToRecord(rollup.hittingByTeam),
-    pitching: mapToRecord(rollup.pitchingByTeam),
-  };
-  try { writeSnapshotCache(cacheKey, JSON.stringify(payload)); } catch { /* ok */ }
-  return payload;
-}
-
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const teamId = Number(url.searchParams.get('teamId'));
@@ -60,50 +47,25 @@ export async function GET(request: Request) {
   }
 
   const season = Number(easternDate().slice(0, 4));
-  const cacheKey = `mlb:team-statcast:${season}`;
 
-  try {
-    const cached = readSnapshotCache(cacheKey);
-    const age = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
-
-    let payload: StatcastCachePayload;
-    let xCache: 'hit' | 'stale' | 'miss';
-    if (cached && age < CACHE_TTL_MS) {
-      payload = JSON.parse(cached.payload);
-      xCache = 'hit';
-    } else if (cached) {
-      triggerBackgroundRebuild(cacheKey, () => rebuild(cacheKey, season));
-      payload = JSON.parse(cached.payload);
-      xCache = 'stale';
-    } else {
-      payload = await awaitRebuild(cacheKey, () => rebuild(cacheKey, season));
-      xCache = 'miss';
-    }
-
-    return NextResponse.json(
-      {
-        hitting: payload.hitting[teamId] ?? [],
-        pitching: payload.pitching[teamId] ?? [],
-        computedAt: payload.computedAt,
+  return cachedRoute({
+    cacheKey: `mlb:team-statcast:${season}`,
+    ttlMs: CACHE_TTL_MS,
+    build: async (): Promise<StatcastCachePayload> => {
+      const rollup = await getTeamStatcastRollup(season);
+      return {
+        computedAt: rollup.computedAt,
         season,
-      },
-      { headers: { 'cache-control': 'no-store', 'x-cache': xCache } },
-    );
-  } catch (error) {
-    console.error('[api/mlb/team-statcast]', error);
-    const stale = readSnapshotCache(cacheKey);
-    if (stale) {
-      const payload: StatcastCachePayload = JSON.parse(stale.payload);
-      return NextResponse.json({
-        hitting: payload.hitting[teamId] ?? [],
-        pitching: payload.pitching[teamId] ?? [],
-        computedAt: payload.computedAt,
-        season,
-      });
-    }
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Team Statcast lookup failed' },
-      { status: 502 },
-    );
-  }
+        hitting: mapToRecord(rollup.hittingByTeam),
+        pitching: mapToRecord(rollup.pitchingByTeam),
+      };
+    },
+    transform: (payload) => ({
+      hitting: payload.hitting[teamId] ?? [],
+      pitching: payload.pitching[teamId] ?? [],
+      computedAt: payload.computedAt,
+      season,
+    }),
+    errorMessage: 'Team Statcast lookup failed',
+  });
 }

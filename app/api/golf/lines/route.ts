@@ -8,12 +8,21 @@
  * that on its own 5-minute cycle.
  */
 
-import { NextResponse } from 'next/server';
 import { getGolfTournamentLines } from '@/lib/odds/golfLines';
 import { readSnapshotCache } from '@/lib/db/client';
 import type { SubjectSummary } from '@/lib/core/types';
+import { cachedRoute } from '@/lib/cachedRoute';
 
 export const dynamic = 'force-dynamic';
+
+// getGolfTournamentLines already TTLs and force-bypasses against its own
+// odds_cache table (5min, lib/odds/golfLines.ts — a different table from
+// snapshot_cache, so no key-collision risk), but that layer is blocking on a
+// miss. This outer layer adds real stale-while-revalidate on top: a stale
+// hit here is served instantly while a background rebuild (which itself
+// still respects the inner 5min TTL) refreshes it. TTL matches the inner
+// layer so this never serves data staler than what it already promises.
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 function readGolfSubjects(): SubjectSummary[] {
   const cached = readSnapshotCache('golf:snapshot');
@@ -30,15 +39,11 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const force = url.searchParams.get('force') !== null;
 
-  try {
-    const subjects = readGolfSubjects();
-    const result = await getGolfTournamentLines(subjects, force);
-    return NextResponse.json(result, { headers: { 'cache-control': 'no-store' } });
-  } catch (error) {
-    console.error('[api/golf/lines]', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Golf lines lookup failed.' },
-      { status: 502 },
-    );
-  }
+  return cachedRoute({
+    cacheKey: 'golf:lines:route',
+    ttlMs: CACHE_TTL_MS,
+    force,
+    build: () => getGolfTournamentLines(readGolfSubjects(), force),
+    errorMessage: 'Golf lines lookup failed.',
+  });
 }

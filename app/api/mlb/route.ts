@@ -1,10 +1,7 @@
-import { NextResponse } from 'next/server';
 import { easternDate } from '@/lib/sports/mlb/statsapi';
-import { readSnapshotCache } from '@/lib/db/client';
-import { jsonPassthrough } from '@/lib/db/jsonPassthrough';
-import { triggerBackgroundRebuild, awaitRebuild } from '@/lib/staleCache';
 import { rebuildMlbSnapshot, TODAY_CACHE_KEY, CACHE_TTL_MS, FUTURE_DATE_CACHE_TTL_MS } from '@/lib/sports/mlb/snapshotRebuild';
 import { ensureSchedulerStarted } from '@/lib/scheduler';
+import { cachedRoute } from '@/lib/cachedRoute';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -32,55 +29,15 @@ export async function GET(request: Request) {
   const cacheKey = isToday ? TODAY_CACHE_KEY : `mlb:snapshot:${date}`;
   const ttl = isToday ? CACHE_TTL_MS : FUTURE_DATE_CACHE_TTL_MS;
 
-  try {
-    const cached = readSnapshotCache(cacheKey);
-    const age = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
-
-    if (cached && age < ttl) {
-      return jsonPassthrough(cached.payload, 'hit');
-    }
-
-    if (cached) {
-      // Stale but present — never make a real request wait on a rebuild.
-      // Serve what's cached now, refresh quietly behind it (deduped, so
-      // concurrent requests during the same stale window share one rebuild
-      // rather than each starting their own).
-      triggerBackgroundRebuild(cacheKey, () => rebuildMlbSnapshot(date, cacheKey, isToday));
-      return jsonPassthrough(cached.payload, 'stale');
-    }
-
-    // Nothing cached yet at all — this request has no choice but to wait
-    // for the first build. Should only happen on a truly cold start; the
-    // proactive scheduler in instrumentation.ts exists specifically to make
-    // this the rare case, not the common one. Routed through the same
-    // dedup pool as the stale-path and the scheduler itself — if the
-    // scheduler's own boot-time tick is already rebuilding this exact key,
-    // this request joins that instead of starting a second, redundant
-    // (and, per snapshotRebuild.ts's mapLimit comment, actively slower)
-    // concurrent rebuild.
-    const started = Date.now();
-    const snapshot = await awaitRebuild(cacheKey, () => rebuildMlbSnapshot(date, cacheKey, isToday));
-    const elapsed = Date.now() - started;
-
-    return NextResponse.json(snapshot, {
-      headers: {
-        'cache-control': 'no-store',
-        'x-cache': 'miss',
-        'x-elapsed-ms': String(elapsed),
-      },
-    });
-  } catch (error) {
-    console.error('[api/mlb]', error);
-
-    // Serve stale cache on error
-    const stale = readSnapshotCache(cacheKey);
-    if (stale) {
-      return jsonPassthrough(stale.payload, 'stale');
-    }
-
-    return NextResponse.json(
-      { error: 'MLB snapshot failed', detail: error instanceof Error ? error.message : String(error) },
-      { status: 502 },
-    );
-  }
+  // rebuildMlbSnapshot writes its own cache entry (and a second raw-candidates
+  // side-key) — it's also called directly by the proactive scheduler outside
+  // any route, so it has to own that write regardless of caller. skipWrite
+  // avoids cachedRoute serializing the same multi-MB payload to SQLite again.
+  return cachedRoute({
+    cacheKey,
+    ttlMs: ttl,
+    build: () => rebuildMlbSnapshot(date, cacheKey, isToday),
+    skipWrite: true,
+    errorMessage: 'MLB snapshot failed',
+  });
 }

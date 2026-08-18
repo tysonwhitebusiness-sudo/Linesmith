@@ -14,9 +14,7 @@
 
 import { NextResponse } from 'next/server';
 import { easternDate, getScheduleRange, extractTeamResults } from '@/lib/sports/mlb/statsapi';
-import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
-import { jsonPassthrough } from '@/lib/db/jsonPassthrough';
-import { triggerBackgroundRebuild, awaitRebuild } from '@/lib/staleCache';
+import { cachedRoute } from '@/lib/cachedRoute';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,42 +33,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'teamId is required' }, { status: 400 });
   }
 
-  const cacheKey = `mlb:team-form:${teamId}`;
-
-  async function rebuild() {
-    const today = easternDate();
-    const season = today.slice(0, 4);
-    const games = await getScheduleRange(`${season}-03-01`, today);
-    const results = extractTeamResults(games, teamId);
-    const payload = { teamId, results, fetchedAt: new Date().toISOString() };
-    try { writeSnapshotCache(cacheKey, JSON.stringify(payload)); } catch { /* ok */ }
-    return payload;
-  }
-
-  try {
-    const cached = readSnapshotCache(cacheKey);
-    const age = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
-
-    if (cached && age < CACHE_TTL_MS) {
-      return jsonPassthrough(cached.payload, 'hit');
-    }
-    if (cached) {
-      triggerBackgroundRebuild(cacheKey, rebuild);
-      return jsonPassthrough(cached.payload, 'stale');
-    }
-
-    const started = Date.now();
-    const payload = await awaitRebuild(cacheKey, rebuild);
-    return NextResponse.json(payload, {
-      headers: { 'cache-control': 'no-store', 'x-cache': 'miss', 'x-elapsed-ms': String(Date.now() - started) },
-    });
-  } catch (error) {
-    console.error('[api/mlb/team-form]', error);
-    const stale = readSnapshotCache(cacheKey);
-    if (stale) return jsonPassthrough(stale.payload, 'stale');
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Team form lookup failed' },
-      { status: 502 },
-    );
-  }
+  return cachedRoute({
+    cacheKey: `mlb:team-form:${teamId}`,
+    ttlMs: CACHE_TTL_MS,
+    build: async () => {
+      const today = easternDate();
+      const season = today.slice(0, 4);
+      const games = await getScheduleRange(`${season}-03-01`, today);
+      const results = extractTeamResults(games, teamId);
+      return { teamId, results, fetchedAt: new Date().toISOString() };
+    },
+    errorMessage: 'Team form lookup failed',
+  });
 }

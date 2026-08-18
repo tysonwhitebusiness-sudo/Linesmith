@@ -1,4 +1,3 @@
-import { NextResponse } from 'next/server';
 import { getStandings } from '@/lib/sports/nfl/espn';
 import { fetchTeamRoster } from '@/lib/sports/multiSport/teamSportEspn';
 import {
@@ -12,9 +11,7 @@ import {
 import { buildNflMoneylineCandidate, buildNflGameTotalCandidate, buildNflTeamTotalCandidate } from '@/lib/sports/nfl/teamFormCandidates';
 import { getAllTeamGrades } from '@/lib/sports/nfl/nflTeamGrades';
 import { getNflPlayerRankings } from '@/lib/sports/nfl/nflPlayerRankings';
-import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
-import { jsonPassthrough } from '@/lib/db/jsonPassthrough';
-import { triggerBackgroundRebuild, awaitRebuild } from '@/lib/staleCache';
+import { cachedRoute } from '@/lib/cachedRoute';
 
 export const dynamic = 'force-dynamic';
 
@@ -117,39 +114,12 @@ async function buildTeamPayload(teamId: string): Promise<Record<string, unknown>
 
 export async function GET(_request: Request, { params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = await params;
-  const cacheKey = `nfl:team:${teamId}`;
 
-  async function rebuild() {
-    const payload = await buildTeamPayload(teamId);
-    if (payload) {
-      try { writeSnapshotCache(cacheKey, JSON.stringify(payload)); } catch { /* ok */ }
-    }
-    return payload;
-  }
-
-  try {
-    const cached = readSnapshotCache(cacheKey);
-    const age = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
-
-    if (cached && age < CACHE_TTL_MS) {
-      return jsonPassthrough(cached.payload, 'hit');
-    }
-    if (cached) {
-      triggerBackgroundRebuild(cacheKey, rebuild);
-      return jsonPassthrough(cached.payload, 'stale');
-    }
-
-    const payload = await awaitRebuild(cacheKey, rebuild);
-    if (!payload) {
-      return NextResponse.json({ error: `No NFL team with id ${teamId}` }, { status: 404 });
-    }
-    return NextResponse.json(payload, { headers: { 'cache-control': 'no-store', 'x-cache': 'miss' } });
-  } catch (error) {
-    const stale = readSnapshotCache(cacheKey);
-    if (stale) return jsonPassthrough(stale.payload, 'stale');
-    return NextResponse.json(
-      { error: 'NFL team detail failed', detail: error instanceof Error ? error.message : String(error) },
-      { status: 502 },
-    );
-  }
+  return cachedRoute({
+    cacheKey: `nfl:team:${teamId}`,
+    ttlMs: CACHE_TTL_MS,
+    build: () => buildTeamPayload(teamId),
+    notFoundMessage: `No NFL team with id ${teamId}`,
+    errorMessage: 'NFL team detail failed',
+  });
 }

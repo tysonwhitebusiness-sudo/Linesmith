@@ -18,9 +18,7 @@ import {
   getStandings,
   getPeopleSeasonStats,
 } from '@/lib/sports/mlb/statsapi';
-import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
-import { jsonPassthrough } from '@/lib/db/jsonPassthrough';
-import { triggerBackgroundRebuild, awaitRebuild } from '@/lib/staleCache';
+import { cachedRoute } from '@/lib/cachedRoute';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,43 +93,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ team
     return NextResponse.json({ error: 'Invalid teamId' }, { status: 400 });
   }
 
-  const cacheKey = `mlb:team:${teamId}`;
-
-  async function rebuild() {
-    const payload = await buildTeamPayload(teamId);
-    if (payload) {
-      try { writeSnapshotCache(cacheKey, JSON.stringify(payload)); } catch { /* ok */ }
-    }
-    return payload;
-  }
-
-  try {
-    const cached = readSnapshotCache(cacheKey);
-    const age = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
-
-    if (cached && age < CACHE_TTL_MS) {
-      return jsonPassthrough(cached.payload, 'hit');
-    }
-    if (cached) {
-      triggerBackgroundRebuild(cacheKey, rebuild);
-      return jsonPassthrough(cached.payload, 'stale');
-    }
-
-    const started = Date.now();
-    const payload = await awaitRebuild(cacheKey, rebuild);
-    if (!payload) {
-      return NextResponse.json({ error: 'Team not found' }, { status: 404 });
-    }
-    return NextResponse.json(payload, {
-      headers: { 'cache-control': 'no-store', 'x-cache': 'miss', 'x-elapsed-ms': String(Date.now() - started) },
-    });
-  } catch (error) {
-    console.error('[api/mlb/team]', error);
-    const stale = readSnapshotCache(cacheKey);
-    if (stale) return jsonPassthrough(stale.payload, 'stale');
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Team lookup failed' },
-      { status: 502 },
-    );
-  }
+  return cachedRoute({
+    cacheKey: `mlb:team:${teamId}`,
+    ttlMs: CACHE_TTL_MS,
+    build: () => buildTeamPayload(teamId),
+    notFoundMessage: 'Team not found',
+    errorMessage: 'Team lookup failed',
+  });
 }

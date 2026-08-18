@@ -7,10 +7,22 @@
  * api/golf/field-stats/route.ts uses) rather than re-fetching ESPN — the
  * candidates it already carries have exactly the per-hole/per-round history
  * these models need.
+ *
+ * The tournament-winner simulation (`predictTournament`, 3000 iterations)
+ * and the season strokes-gained fetch it depends on are the expensive part
+ * of this route — and, unlike the hole/round sections, neither one actually
+ * depends on `subjectId`/`hole` at all: every request runs the exact same
+ * simulation over the exact same field regardless of which golfer or hole
+ * was asked about. A single cachedRoute()-per-full-request key would have
+ * multiplied that cost by the number of distinct subjectId/hole combos
+ * queried instead of sharing it, so the expensive, query-independent piece
+ * is cached separately (getSharedPredictions below) from the cheap,
+ * per-request hole/round math, which stays computed fresh every time.
  */
 
 import { NextResponse } from 'next/server';
-import { readSnapshotCache } from '@/lib/db/client';
+import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
+import { triggerBackgroundRebuild, awaitRebuild } from '@/lib/staleCache';
 import { getSeasonStrokesGained } from '@/lib/sports/golf/pgatourStats';
 import { predictHoleScore, type HoleFieldObservation } from '@/lib/sports/golf/models/holeScoreModel';
 import { predictRoundScore, ROUND_SCORE_SD, type RoundFieldObservation } from '@/lib/sports/golf/models/roundScoreModel';
@@ -34,6 +46,110 @@ function readGolfSnapshot(): SportSnapshot | null {
   }
 }
 
+interface SharedPredictions {
+  fetchedAt: string;
+  fieldAvgSgTotal: number | null;
+  fieldSgSampleSize: number;
+  sgByEspnId: Record<string, number | null>;
+  tournament: ReturnType<typeof predictTournament> | null;
+}
+
+const SHARED_CACHE_KEY = 'golf:predictions:shared:route';
+// Matches golf:snapshot's own 5-min TTL (api/golf/route.ts) — the tournament
+// simulation is built from round-in-progress live data carried on that same
+// snapshot, so caching this materially longer risks simulating a golfer
+// who's already been cut/withdrawn per a newer snapshot.
+const SHARED_TTL_MS = 5 * 60 * 1000;
+
+async function buildSharedPredictions(snapshot: SportSnapshot): Promise<SharedPredictions> {
+  const subjects: SubjectSummary[] = snapshot.subjects ?? [];
+  const sgResult = await getSeasonStrokesGained(subjects);
+  const sgByEspnIdMap = new Map(sgResult.golfers.filter((g) => g.espnId !== null).map((g) => [g.espnId as string, g.avgPerRound]));
+  const matchedSg = [...sgByEspnIdMap.values()].filter((v): v is number => v != null);
+  const fieldAvgSgTotal = matchedSg.length > 0 ? matchedSg.reduce((a, b) => a + b, 0) / matchedSg.length : null;
+
+  const roundCandidates = (snapshot.candidates ?? []).filter((c: PickCandidate) => c.dimension === 'round-score');
+  let tournament: ReturnType<typeof predictTournament> | null = null;
+
+  if (roundCandidates.length > 0) {
+    const cutOutPattern = /^(cut|wd|dq)$/i;
+    const subjectsById = new Map(subjects.map((s) => [s.subjectId, s]));
+
+    const projections: GolferProjection[] = roundCandidates
+      .filter((c) => {
+        const position = (subjectsById.get(c.subjectId)?.meta as Record<string, unknown> | undefined)?.position;
+        return typeof position !== 'string' || !cutOutPattern.test(position.trim());
+      })
+      .map((c) => {
+        const completedRounds = [...c.history]
+          .sort((a, b) => a.period - b.period)
+          .map((h) => (h.raw as Record<string, unknown> | undefined)?.relativeToPar as number)
+          .filter((v) => Number.isFinite(v));
+
+        const golferSgTotal = sgByEspnIdMap.get(c.subjectId) ?? null;
+        const fieldObservations: RoundFieldObservation[] = roundCandidates.flatMap((rc) =>
+          rc.history.map((h) => ({ relativeToPar: (h.raw as Record<string, unknown> | undefined)?.relativeToPar as number })).filter((o) => Number.isFinite(o.relativeToPar)),
+        );
+        const golferOwnObservations: RoundFieldObservation[] = completedRounds.map((relativeToPar) => ({ relativeToPar }));
+        const windMph = (snapshot.context?.weather as Record<string, unknown> | undefined)?.windMph as number | undefined;
+
+        const { expectedRelativeToPar } = predictRoundScore({
+          fieldObservations,
+          golferOwnObservations,
+          golferSgTotal,
+          fieldAvgSgTotal,
+          windMph: windMph ?? null,
+        });
+
+        return { espnId: c.subjectId, completedRounds, projectedRoundMean: expectedRelativeToPar };
+      });
+
+    // The real cut already happened once round 3 is underway — the CUT/WD/DQ
+    // filter above already reflects who actually survived, so re-simulating
+    // a cut at that point would double-apply it against golfers who cleared
+    // it for real. Only model the cut while it's still ahead of the field.
+    const roundsInProgress = Math.max(0, ...projections.map((p) => p.completedRounds.length));
+    const cutAlreadyDecided = roundsInProgress >= CUT_AFTER_ROUND;
+
+    tournament = predictTournament({
+      golfers: projections,
+      totalRounds: TOTAL_ROUNDS,
+      cutSize: cutAlreadyDecided ? null : CUT_SIZE,
+      cutAfterRound: CUT_AFTER_ROUND,
+      iterations: SIM_ITERATIONS,
+      roundScoreSd: ROUND_SCORE_SD,
+    });
+  }
+
+  return {
+    fetchedAt: snapshot.fetchedAt,
+    fieldAvgSgTotal,
+    fieldSgSampleSize: matchedSg.length,
+    sgByEspnId: Object.fromEntries(sgByEspnIdMap),
+    tournament,
+  };
+}
+
+async function getSharedPredictions(snapshot: SportSnapshot): Promise<SharedPredictions> {
+  async function rebuild() {
+    const result = await buildSharedPredictions(snapshot);
+    try { writeSnapshotCache(SHARED_CACHE_KEY, JSON.stringify(result)); } catch { /* ok */ }
+    return result;
+  }
+
+  const cached = readSnapshotCache(SHARED_CACHE_KEY);
+  const age = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
+
+  if (cached && age < SHARED_TTL_MS) {
+    return JSON.parse(cached.payload) as SharedPredictions;
+  }
+  if (cached) {
+    triggerBackgroundRebuild(SHARED_CACHE_KEY, rebuild);
+    return JSON.parse(cached.payload) as SharedPredictions;
+  }
+  return awaitRebuild(SHARED_CACHE_KEY, rebuild);
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const subjectId = url.searchParams.get('subjectId');
@@ -44,16 +160,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'No golf snapshot cached yet — load /golf at least once first.' }, { status: 503 });
   }
 
-  const subjects: SubjectSummary[] = snapshot.subjects ?? [];
-  const sgResult = await getSeasonStrokesGained(subjects);
-  const sgByEspnId = new Map(sgResult.golfers.filter((g) => g.espnId !== null).map((g) => [g.espnId as string, g.avgPerRound]));
-  const matchedSg = [...sgByEspnId.values()].filter((v): v is number => v != null);
-  const fieldAvgSgTotal = matchedSg.length > 0 ? matchedSg.reduce((a, b) => a + b, 0) / matchedSg.length : null;
+  const shared = await getSharedPredictions(snapshot);
+  const sgByEspnId = new Map(Object.entries(shared.sgByEspnId));
 
   const response: Record<string, unknown> = {
-    fetchedAt: snapshot.fetchedAt,
-    fieldAvgSgTotal,
-    fieldSgSampleSize: matchedSg.length,
+    fetchedAt: shared.fetchedAt,
+    fieldAvgSgTotal: shared.fieldAvgSgTotal,
+    fieldSgSampleSize: shared.fieldSgSampleSize,
   };
 
   if (holeParam) {
@@ -86,7 +199,7 @@ export async function GET(request: Request) {
         fieldObservations,
         golferOwnObservations,
         golferSgTotal,
-        fieldAvgSgTotal,
+        fieldAvgSgTotal: shared.fieldAvgSgTotal,
       }),
     };
   }
@@ -116,65 +229,14 @@ export async function GET(request: Request) {
         fieldObservations,
         golferOwnObservations,
         golferSgTotal,
-        fieldAvgSgTotal,
+        fieldAvgSgTotal: shared.fieldAvgSgTotal,
         windMph: windMph ?? null,
       }),
     };
   }
 
-  // Tournament winner — every golfer still posting round-score history,
-  // minus anyone ESPN already marked CUT/WD/DQ (their tournament is over;
-  // simulating them further would credit a win to someone who can't win).
-  if (roundCandidates.length > 0) {
-    const cutOutPattern = /^(cut|wd|dq)$/i;
-    const subjectsById = new Map(subjects.map((s) => [s.subjectId, s]));
-
-    const projections: GolferProjection[] = roundCandidates
-      .filter((c) => {
-        const position = (subjectsById.get(c.subjectId)?.meta as Record<string, unknown> | undefined)?.position;
-        return typeof position !== 'string' || !cutOutPattern.test(position.trim());
-      })
-      .map((c) => {
-        const completedRounds = [...c.history]
-          .sort((a, b) => a.period - b.period)
-          .map((h) => (h.raw as Record<string, unknown> | undefined)?.relativeToPar as number)
-          .filter((v) => Number.isFinite(v));
-
-        const golferSgTotal = sgByEspnId.get(c.subjectId) ?? null;
-        const fieldObservations: RoundFieldObservation[] = roundCandidates.flatMap((rc) =>
-          rc.history.map((h) => ({ relativeToPar: (h.raw as Record<string, unknown> | undefined)?.relativeToPar as number })).filter((o) => Number.isFinite(o.relativeToPar)),
-        );
-        const golferOwnObservations: RoundFieldObservation[] = completedRounds.map((relativeToPar) => ({ relativeToPar }));
-        const windMph = (snapshot.context?.weather as Record<string, unknown> | undefined)?.windMph as number | undefined;
-
-        const { expectedRelativeToPar } = predictRoundScore({
-          fieldObservations,
-          golferOwnObservations,
-          golferSgTotal,
-          fieldAvgSgTotal,
-          windMph: windMph ?? null,
-        });
-
-        return { espnId: c.subjectId, completedRounds, projectedRoundMean: expectedRelativeToPar };
-      });
-
-    // The real cut already happened once round 3 is underway — the CUT/WD/DQ
-    // filter above already reflects who actually survived, so re-simulating
-    // a cut at that point would double-apply it against golfers who cleared
-    // it for real. Only model the cut while it's still ahead of the field.
-    const roundsInProgress = Math.max(0, ...projections.map((p) => p.completedRounds.length));
-    const cutAlreadyDecided = roundsInProgress >= CUT_AFTER_ROUND;
-
-    const tournament = predictTournament({
-      golfers: projections,
-      totalRounds: TOTAL_ROUNDS,
-      cutSize: cutAlreadyDecided ? null : CUT_SIZE,
-      cutAfterRound: CUT_AFTER_ROUND,
-      iterations: SIM_ITERATIONS,
-      roundScoreSd: ROUND_SCORE_SD,
-    });
-
-    response.tournament = tournament;
+  if (shared.tournament) {
+    response.tournament = shared.tournament;
   }
 
   return NextResponse.json(response, { headers: { 'cache-control': 'no-store' } });

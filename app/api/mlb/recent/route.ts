@@ -13,8 +13,15 @@
 
 import { NextResponse } from 'next/server';
 import { easternDate, getScheduleRange, shiftDate, extractTeamResults } from '@/lib/sports/mlb/statsapi';
+import { cachedRoute } from '@/lib/cachedRoute';
 
 export const dynamic = 'force-dynamic';
+
+// getScheduleRange already has its own 30-min in-process TTL cache
+// (statsapi.ts, same one /api/mlb/team-form relies on) — reset on every
+// server restart. TTL here matches it so this layer never serves data
+// staler than what the underlying source promises.
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -28,27 +35,27 @@ export async function GET(request: Request) {
 
   const today = easternDate();
 
-  try {
-    const games = await getScheduleRange(shiftDate(today, -days), today);
-    const resultsA = extractTeamResults(games, teamA);
-    const resultsB = extractTeamResults(games, teamB);
+  return cachedRoute({
+    cacheKey: `mlb:recent:${teamA}:${teamB}:${days}`,
+    ttlMs: CACHE_TTL_MS,
+    build: async () => {
+      const games = await getScheduleRange(shiftDate(today, -days), today);
+      const resultsA = extractTeamResults(games, teamA);
+      const resultsB = extractTeamResults(games, teamB);
 
-    return NextResponse.json({
-      [teamA]: {
-        recent: resultsA.slice(0, 10),
-        h2h: resultsA.filter((r) => r.opponentId === teamB),
-      },
-      [teamB]: {
-        recent: resultsB.slice(0, 10),
-        h2h: resultsB.filter((r) => r.opponentId === teamA),
-      },
-      windowDays: days,
-      fetchedAt: new Date().toISOString(),
-    });
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Recent-results lookup failed' },
-      { status: 502 },
-    );
-  }
+      return {
+        [teamA]: {
+          recent: resultsA.slice(0, 10),
+          h2h: resultsA.filter((r) => r.opponentId === teamB),
+        },
+        [teamB]: {
+          recent: resultsB.slice(0, 10),
+          h2h: resultsB.filter((r) => r.opponentId === teamA),
+        },
+        windowDays: days,
+        fetchedAt: new Date().toISOString(),
+      };
+    },
+    errorMessage: 'Recent-results lookup failed',
+  });
 }

@@ -14,12 +14,9 @@
  * changes as picks get graded, not on every page load.
  */
 
-import { NextResponse } from 'next/server';
-import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
-import { jsonPassthrough } from '@/lib/db/jsonPassthrough';
-import { triggerBackgroundRebuild, awaitRebuild } from '@/lib/staleCache';
 import { computeCalibrationPayload, calibrationCacheKey, CALIBRATION_TTL_MS } from '@/lib/odds/props/calibrationSnapshot';
 import type { CalibrationScope } from '@/lib/db/client';
+import { cachedRoute } from '@/lib/cachedRoute';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,34 +29,11 @@ export async function GET(request: Request) {
   // blended with the rest of its scope. Model Health's split calibration
   // panel is the only caller that passes this.
   const dimension = url.searchParams.get('dimension');
-  const cacheKey = calibrationCacheKey(scope, dimension);
 
-  const cached = readSnapshotCache(cacheKey);
-  const age = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
-
-  if (cached && age < CALIBRATION_TTL_MS) {
-    return jsonPassthrough(cached.payload, 'hit');
-  }
-
-  if (cached) {
-    triggerBackgroundRebuild(cacheKey, async () => {
-      const payload = await computeCalibrationPayload(scope, dimension);
-      writeSnapshotCache(cacheKey, JSON.stringify(payload));
-    });
-    return jsonPassthrough(cached.payload, 'stale');
-  }
-
-  // Nothing cached yet — joins the same dedup pool the stale-path and the
-  // proactive scheduler use, so this doesn't duplicate a rebuild already in
-  // flight for this exact key.
-  const payload = await awaitRebuild(cacheKey, async () => {
-    const result = await computeCalibrationPayload(scope, dimension);
-    try {
-      writeSnapshotCache(cacheKey, JSON.stringify(result));
-    } catch {
-      // Non-critical — next request just recomputes.
-    }
-    return result;
+  return cachedRoute({
+    cacheKey: calibrationCacheKey(scope, dimension),
+    ttlMs: CALIBRATION_TTL_MS,
+    build: () => computeCalibrationPayload(scope, dimension),
+    errorMessage: 'Calibration lookup failed',
   });
-  return NextResponse.json(payload, { headers: { 'x-cache': 'miss' } });
 }
