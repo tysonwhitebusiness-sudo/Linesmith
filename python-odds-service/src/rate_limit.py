@@ -1,51 +1,62 @@
 """Process-wide, per-provider rate limiting — mirrors lib/odds/props/budget.ts's
-`minuteWindows` Map exactly: one shared, module-level state every caller of a
-given provider draws from, not a counter local to whichever job/function
-happens to be calling.
+`minuteWindows` Map: one shared, module-level state every caller of a given
+provider draws from, not a counter local to whichever job/function happens
+to be calling.
 
-This was a real bug in the first pass of this harness: fetch_sportsgameodds
-tracked its own window per call, so SportsGameOddsJob, NflJob, and CfbJob
-each thought they had a fresh 10/min allowance even when they fired back to
-back against the same real vendor-side counter. Confirmed live: the exact
-same 5 SportsGameOdds event IDs 429'd in two separate runs 48 minutes apart —
-not random rate pressure, but this specific structural gap.
+Generalized to an arbitrary window duration (not just 60s), added after a
+real production incident: SportsGameOdds's 10/min cap was the only one
+wired up, but Odds-API.io has a real, vendor-confirmed 100/hour cap
+(`x-ratelimit-limit: 100` in its own response headers) that nothing in this
+harness ever read or enforced — Tier 1's 15-per-cycle, every-2.5-min odds
+calls generate ~360/hour of demand against that 100/hour ceiling, a 3.6x
+overshoot with zero backoff. See docs/phase2-python-service-architecture-2026-08-19.md's
+incident writeup for the full root-cause trace.
 """
 import time
 
-_windows: dict[str, tuple[float, int]] = {}  # provider_id -> (window_start_monotonic, count_in_window)
+_windows: dict[str, tuple[float, int]] = {}  # key -> (window_start_monotonic, count_in_window)
 
 
-def within_per_minute_rate(provider_id: str, rate_per_min: int) -> bool:
-    """Check-and-consume, same semantics as budget.ts's withinPerMinuteRate:
-    returns True and spends a token if capacity exists (resetting the window
-    if it's expired), False (no token spent) if the window is already full."""
+def within_rate(key: str, limit: int, window_seconds: float) -> bool:
+    """Check-and-consume: returns True and spends a slot if capacity exists
+    (resetting the window if expired), False (no slot spent) if the window
+    is already full."""
     now = time.monotonic()
-    window_start, count = _windows.get(provider_id, (now, 0))
-    if now - window_start >= 60.0:
-        _windows[provider_id] = (now, 1)
+    window_start, count = _windows.get(key, (now, 0))
+    if now - window_start >= window_seconds:
+        _windows[key] = (now, 1)
         return True
-    if count >= rate_per_min:
+    if count >= limit:
         return False
-    _windows[provider_id] = (window_start, count + 1)
+    _windows[key] = (window_start, count + 1)
     return True
 
 
-def has_capacity(provider_id: str, rate_per_min: int) -> bool:
-    """Peek without consuming — same role as budget.ts's hasPerMinuteCapacity:
-    used at a yield point to decide whether a wait is even needed, without
-    spending a token just by checking."""
+def has_capacity(key: str, limit: int, window_seconds: float) -> bool:
+    """Peek without consuming."""
     now = time.monotonic()
-    window_start, count = _windows.get(provider_id, (now, 0))
-    if now - window_start >= 60.0:
+    window_start, count = _windows.get(key, (now, 0))
+    if now - window_start >= window_seconds:
         return True
-    return count < rate_per_min
+    return count < limit
 
 
-def seconds_until_capacity(provider_id: str) -> float:
-    """How long until the current window resets — the real duration a
-    pacing wait needs to cover, used both for a plain sleep and to bound how
-    long a yield point should keep checking for other due work."""
+def seconds_until_capacity(key: str, window_seconds: float) -> float:
     now = time.monotonic()
-    window_start, _ = _windows.get(provider_id, (now, 0))
-    elapsed = now - window_start
-    return max(0.0, 60.0 - elapsed)
+    window_start, _ = _windows.get(key, (now, 0))
+    return max(0.0, window_seconds - (now - window_start))
+
+
+def force_exhausted(key: str, limit: int, window_seconds: float) -> None:
+    """Called when a REAL 429 comes back despite our own tracking saying
+    capacity was available (clock drift, other traffic on the same account,
+    a limit that's actually tighter than configured). Immediately marks this
+    window as fully spent so nothing else in this process keeps hammering a
+    provider that just told us, authoritatively, that it's out of room —
+    this is the backoff investigation item 4 found missing: previously a 429
+    was just logged and the loop moved on to the next call regardless."""
+    now = time.monotonic()
+    window_start, _ = _windows.get(key, (now, 0))
+    if now - window_start >= window_seconds:
+        window_start = now
+    _windows[key] = (window_start, limit)

@@ -43,6 +43,26 @@ class SequentialQueue:
         # for that same job, since the loop had no memory of what already
         # ran via a yield. Tracked here so the burst loop can skip it.
         self._ever_run: set[str] = set()
+        # Real bug #3, caught by a genuine production run on Render: a job's
+        # timeout was measured as pure wall-clock time since it started,
+        # which includes any nested job(s) it yielded to. refreshCfbJob's
+        # own yield chain (backing off SportsGameOdds, yielding to Tier 1
+        # three times) legitimately took 480s of REAL nested work — none of
+        # it CfbJob's own — and that alone was enough to blow through
+        # refreshSportsGameOddsJob's 600s budget one level up, cancelling a
+        # job that was never actually doing 600s of its own work.
+        #
+        # First attempt at a fix (crediting excused time only AFTER a nested
+        # call finished) was itself wrong — caught by verify_timeout_fix.py
+        # before it ever reached a real test: the outer job's own polling
+        # loop kept counting elapsed time in real time while the nested call
+        # was still in progress, so it hit its own limit before the credit
+        # was ever applied. Fixed by marking a job "paused" the MOMENT it
+        # yields (not after), so live elapsed-time checks correctly exclude
+        # time it's currently blocked on a nested job, not just time from
+        # nested jobs that already finished.
+        self._excused_seconds: dict[str, float] = {}  # finalized, from yields that have already returned
+        self._paused_since: dict[str, float] = {}  # job name -> monotonic timestamp it entered its current yield, if any
 
     def _most_overdue(self, exclude: set[str] = frozenset()) -> tuple[str, callable, float, float] | None:
         """Returns (name, fn, interval, ratio) for whichever eligible job has
@@ -62,6 +82,19 @@ class SequentialQueue:
         scored.sort(key=lambda x: x[0], reverse=True)
         ratio, name, fn, interval = scored[0]
         return name, fn, interval, ratio
+
+    def _own_elapsed(self, name: str, start: float) -> float:
+        """Elapsed time counted against `name`'s own timeout budget — total
+        wall-clock time since it started, minus (a) time already excused
+        from yields that have finished, and (b) time it's *currently*
+        blocked on an in-progress yield, checked live rather than only after
+        that yield returns."""
+        now = time.monotonic()
+        excused = self._excused_seconds.get(name, 0.0)
+        paused_since = self._paused_since.get(name)
+        if paused_since is not None:
+            excused += now - paused_since
+        return (now - start) - excused
 
     async def run_forever(self) -> None:
         # Fire every job once immediately, in registry order — mirrors
@@ -114,27 +147,73 @@ class SequentialQueue:
             return False
         name, fn, _, ratio = candidate
         print(f"[queue]   {caller} yields -> running {name} (ratio was {ratio:.2f})", flush=True)
-        await self._run_one(name, fn)
+        # Mark `caller` paused BEFORE the nested call starts, not after it
+        # finishes — this is what makes live timeout checks against `caller`
+        # correctly exclude time it's still waiting on, not just time from
+        # already-completed yields. A multi-level chain (NflJob yields ->
+        # CfbJob yields -> Tier1) is handled correctly by construction: each
+        # level's own pause window spans exactly as long as its own direct
+        # nested call takes, whatever that call does internally.
+        self._paused_since[caller] = time.monotonic()
+        try:
+            await self._run_one(name, fn)
+        finally:
+            paused_start = self._paused_since.pop(caller, None)
+            if paused_start is not None:
+                self._excused_seconds[caller] = self._excused_seconds.get(caller, 0.0) + (
+                    time.monotonic() - paused_start
+                )
         return True
 
     async def _run_one(self, name: str, fn) -> None:
         self._running.add(name)
         self._ever_run.add(name)
+        self._excused_seconds[name] = 0.0
         print(f"[queue] starting {name}", flush=True)
+        start = time.monotonic()
+        yield_fn = functools.partial(self.maybe_yield, name)
+        task = asyncio.ensure_future(fn(yield_fn=yield_fn))
         try:
-            yield_fn = functools.partial(self.maybe_yield, name)
-            summary = await asyncio.wait_for(fn(yield_fn=yield_fn), timeout=JOB_TIMEOUT_SECONDS)
+            while True:
+                done, _pending = await asyncio.wait({task}, timeout=1.0)
+                if task in done:
+                    break
+                own_elapsed = self._own_elapsed(name, start)
+                if own_elapsed >= JOB_TIMEOUT_SECONDS:
+                    task.cancel()
+                    try:
+                        await task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                    total_excused = (time.monotonic() - start) - own_elapsed
+                    print(
+                        f"[queue] {name} exceeded {JOB_TIMEOUT_SECONDS}s of its OWN time "
+                        f"(excused {total_excused:.0f}s spent on nested yields) — cancelled",
+                        flush=True,
+                    )
+                    return
+
+            try:
+                summary = task.result()
+            except Exception as e:
+                # A job's own code already catches its own exceptions
+                # (jobs.py's _run_timed) — this is a last-resort net so a
+                # genuinely unexpected bug still can't take the whole queue
+                # down with it.
+                print(f"[queue] {name} raised unexpectedly: {type(e).__name__}: {e}", flush=True)
+                return
+
             print(
                 f"[queue] finished {name}: {summary.get('elapsed_seconds')}s, "
                 f"games={summary.get('games')}, rows_matched={summary.get('rows_matched')}, "
+                f"rows_written={summary.get('rows_written')}, unresolved={summary.get('unresolved')}, "
                 f"ok={summary.get('ok')}, warnings={len(summary.get('warnings', []))}",
                 flush=True,
             )
             if summary.get("warnings"):
                 for w in summary["warnings"][:5]:
                     print(f"    warn: {w}", flush=True)
-        except asyncio.TimeoutError:
-            print(f"[queue] {name} exceeded {JOB_TIMEOUT_SECONDS}s timeout — cancelled", flush=True)
         finally:
             self.last_run_end[name] = time.monotonic()
             self._running.discard(name)
+            self._excused_seconds.pop(name, None)

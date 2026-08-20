@@ -50,17 +50,39 @@ SHARPAPI_ENABLED = env_bool("SHARPAPI_ENABLED") and bool(SHARPAPI_KEY)
 ODDSAPIIO_KEY = env("ODDSAPIIO_KEY")
 ODDSAPIIO_BOOKS = env("ODDSAPIIO_BOOKS", "Fanatics,BetMGM")
 ODDSAPIIO_ENABLED = env_bool("ODDSAPIIO_ENABLED") and bool(ODDSAPIIO_KEY)
+# Vendor-confirmed live (2026-08-19): a 429 response's own x-ratelimit-limit
+# header reads exactly 100, matching this configured default — the config
+# value was never wrong, it just was never read anywhere in this harness.
+ODDSAPIIO_RATE_PER_HOUR = int(env("ODDSAPIIO_RATE_PER_HOUR", "100"))
+# Separate from ODDSAPIIO_RATE_PER_HOUR — that's vendor rate-limit compliance
+# (rolling window, enforced inside fetch_oddsapiio itself via rate_limit.py).
+# This is a persisted, calendar-day BUDGET cap, same env var TS's
+# oddsApiIoConfig().dailyLimit already reads (config.ts:44) — ported here
+# because tier1Refresh.ts pre-checks it before every fetch and the Python
+# port never did, a real gap closed by job_runner.py's ProviderSpec model.
+ODDSAPIIO_DAILY_LIMIT = int(env("ODDSAPIIO_DAILY_LIMIT", "500"))
 
 SPORTSGAMEODDS_KEY = env("SPORTSGAMEODDS_KEY")
 SPORTSGAMEODDS_ENABLED = env_bool("SPORTSGAMEODDS_ENABLED") and bool(SPORTSGAMEODDS_KEY)
 SPORTSGAMEODDS_RATE_PER_MIN = int(env("SPORTSGAMEODDS_RATE_PER_MIN", "10"))
+# TS's sportsGameOddsRefresh.ts/multiSportRefresh.ts both gate on the SOFT
+# cap (not the informational hard monthlyLimit) before every fetch — same
+# env var as config.ts:55 (SPORTSGAMEODDS_SOFT_CAP). Never pre-checked in
+# the Python port before job_runner.py.
+SPORTSGAMEODDS_MONTHLY_SOFT_CAP = int(env("SPORTSGAMEODDS_SOFT_CAP", "2000"))
 
 PARLAYAPI_KEY = env("PARLAYAPI_KEY")
 PARLAYAPI_ENABLED = env_bool("PARLAYAPI_ENABLED") and bool(PARLAYAPI_KEY)
+# ParlayAPI (NFL/CFB) gates on its HARD monthly limit (multiSportRefresh.ts's
+# `budget.exhausted`), unlike SportsGameOdds's soft-cap gate — a real,
+# deliberate difference between the two, preserved here rather than
+# collapsed into one shared constant.
+PARLAYAPI_MONTHLY_LIMIT = int(env("PARLAYAPI_MONTHLY_LIMIT", "1000"))
 PARLAYAPI_MLB_KEY = env("PARLAYAPI_MLB_KEY")
 PARLAYAPI_MLB_ENABLED = env_bool("PARLAYAPI_MLB_ENABLED") and bool(PARLAYAPI_MLB_KEY)
 
 PROPLINE_KEY = env("PROPLINE_KEY")
 PROPLINE_ENABLED = env_bool("PROPLINE_ENABLED") and bool(PROPLINE_KEY)
+PROPLINE_DAILY_LIMIT = int(env("PROPLINE_DAILY_LIMIT", "1000"))
 PROPLINE_2_KEY = env("PROPLINE_2_KEY")
 PROPLINE_2_ENABLED = env_bool("PROPLINE_2_ENABLED") and bool(PROPLINE_2_KEY)
