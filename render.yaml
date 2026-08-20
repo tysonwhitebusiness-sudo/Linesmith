@@ -1,0 +1,36 @@
+services:
+  - type: worker
+    name: line-buddy-odds-worker
+    runtime: python
+    rootDir: python-odds-service
+    buildCommand: pip install -r requirements.txt
+    startCommand: python src/main.py
+    # Deliberately off. Once this is on, a push to the connected branch
+    # deploys AND the worker starts running forever, immediately spending
+    # real budget against every enabled provider (SharpAPI, Odds-API.io,
+    # SportsGameOdds, Propline) on a live schedule. Flip this on (or trigger
+    # one deploy manually from the dashboard) only when that's a deliberate
+    # choice, not a side effect of pushing something unrelated.
+    autoDeploy: false
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      # Secrets — intentionally NOT given values here. `sync: false` makes
+      # Render prompt for each in its dashboard on first setup; nothing
+      # sensitive ever goes into this file or the repo.
+      - key: DATABASE_URL
+        sync: false
+      - key: SHARPAPI_KEY
+        sync: false
+      - key: ODDSAPIIO_KEY
+        sync: false
+      - key: SPORTSGAMEODDS_KEY
+        sync: false
+      - key: PARLAYAPI_KEY
+        sync: false
+      - key: PARLAYAPI_MLB_KEY
+        sync: false
+      - key: PROPLINE_KEY
+        sync: false
+      - key: PROPLINE_2_KEY
+        sync: false
