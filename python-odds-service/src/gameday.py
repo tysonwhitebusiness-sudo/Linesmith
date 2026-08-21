@@ -22,9 +22,21 @@ cycle (no separate lookup):
   - cold: no non-final game within the warm window. No real fetch at all —
           the free schedule check alone is enough to notice when a game
           enters the warm window next cycle.
+
+Daily backstop (2026-08-20 addition): a cold week (bye weeks, offseason
+gaps between game days) can otherwise go days with zero real paid fetches —
+fine for line freshness (nothing's moving without a game), but it means
+things that DO change without a kickoff (injury news, futures/props on
+upcoming games) never get picked up. One guaranteed real fetch/day at
+DAILY_BACKSTOP_HOUR_CENTRAL, only when the cycle would otherwise have been
+cold (hot/warm already fetch for real regardless). Real cost: 1 extra
+fetch/day x 30 = 30 credits/month on top of the ~500/month the tiering
+itself uses — checked against the 1,000 hard cap before adding this, still
+~47% headroom.
 """
 import time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import db
 
@@ -32,6 +44,9 @@ HOT_BEFORE_HOURS = 6.0   # start refreshing hard 6h before kickoff
 HOT_AFTER_HOURS = 4.0    # stay hot through a real game's rough duration + settling
 WARM_BEFORE_HOURS = 24.0  # "the night before" a next-day game
 WARM_THROTTLE_SECONDS = 4 * 3600.0  # "a few times" over a ~24h warm window, not every cycle
+
+_CENTRAL = ZoneInfo("America/Chicago")
+DAILY_BACKSTOP_HOUR_CENTRAL = 15  # 3pm Central
 
 
 def _parse_game_time(raw: str) -> datetime | None:
@@ -74,14 +89,35 @@ def compute_tier(games: list, now: datetime | None = None) -> str:
     return "cold"
 
 
+async def _daily_backstop_due(sport: str, now: datetime) -> bool:
+    """True once per real Central calendar day, only once we're past
+    DAILY_BACKSTOP_HOUR_CENTRAL — tracked by date string, not a rolling
+    timestamp, so it can't drift late/early across DST changes the way an
+    elapsed-seconds throttle would."""
+    central_now = now.astimezone(_CENTRAL)
+    if central_now.hour < DAILY_BACKSTOP_HOUR_CENTRAL:
+        return False
+    today_key = central_now.strftime("%Y-%m-%d")
+    cache_key = f"gameday-tier:{sport}:daily-backstop-date"
+    last = await db.read_snapshot(cache_key)
+    if last == today_key:
+        return False
+    await db.write_snapshot(cache_key, today_key)
+    return True
+
+
 async def should_fetch_paid_providers(sport: str, games: list) -> tuple[str, bool]:
     """Returns (tier, should_fetch). Only warm tier needs the persisted
-    throttle read/write — hot always fetches, cold never does, so those two
-    never touch the DB for this decision."""
-    tier = compute_tier(games)
+    throttle read/write — hot always fetches, cold never does (except the
+    daily backstop below), so those two rarely touch the DB for this
+    decision."""
+    now = datetime.now(timezone.utc)
+    tier = compute_tier(games, now=now)
     if tier == "hot":
         return tier, True
     if tier == "cold":
+        if await _daily_backstop_due(sport, now):
+            return "cold-backstop", True
         return tier, False
 
     cache_key = f"gameday-tier:{sport}:last-warm-fetch"
