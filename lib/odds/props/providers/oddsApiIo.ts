@@ -38,13 +38,23 @@ interface OddsApiIoOddsResponse {
 let eventsCache: { fetchedAt: number; events: OddsApiIoEvent[] } | null = null;
 const EVENTS_TTL_MS = 5 * 60_000;
 
-async function getEvents(apiKey: string): Promise<OddsApiIoEvent[]> {
-  if (eventsCache && Date.now() - eventsCache.fetchedAt < EVENTS_TTL_MS) return eventsCache.events;
+/** wasFetched=true whenever a real request reached the vendor (success or
+ * failure) — matches fetchGameProps' own odds-call discipline of counting
+ * cost.requests:1 even when !res.ok. Real, live-confirmed bug fixed here
+ * (2026-08-20): this never counted spend for the events call under ANY
+ * outcome before — success included — so this call alone (run on every Tier
+ * 1 refresh, ~5min cache vs. tier1Refresh.ts's 2.5min cycle) silently spent
+ * real vendor budget while this app's own dailyStatus tracker stayed
+ * blind to it. See docs/api-capability-audit-2026-08-20.md. */
+async function getEvents(apiKey: string): Promise<{ events: OddsApiIoEvent[]; wasFetched: boolean }> {
+  if (eventsCache && Date.now() - eventsCache.fetchedAt < EVENTS_TTL_MS) {
+    return { events: eventsCache.events, wasFetched: false };
+  }
   const res = await fetch(`${BASE}/events?sport=baseball&apiKey=${apiKey}`, { cache: 'no-store' });
-  if (!res.ok) return eventsCache?.events ?? [];
+  if (!res.ok) return { events: eventsCache?.events ?? [], wasFetched: true };
   const events = (await res.json()) as OddsApiIoEvent[];
   eventsCache = { fetchedAt: Date.now(), events };
-  return events;
+  return { events, wasFetched: true };
 }
 
 function findEvent(events: OddsApiIoEvent[], game: GameLookupContext): OddsApiIoEvent | undefined {
@@ -67,7 +77,7 @@ export const oddsApiIoAdapter: ProviderAdapter = {
   meta: {
     id: 'oddsapiio',
     label: 'Odds-API.io',
-    tier: 'tier1',
+    scheduled: true, // Tier 1's MLB loop — see types.ts's ProviderMeta.scheduled doc
     get enabled() {
       return oddsApiIoConfig().enabled;
     },
@@ -82,10 +92,11 @@ export const oddsApiIoAdapter: ProviderAdapter = {
       return { rows: [], unresolved: [], cost: {}, warnings: ['Odds-API.io is disabled.'] };
     }
 
-    const events = await getEvents(config.key);
+    const { events, wasFetched } = await getEvents(config.key);
+    const eventsCost = wasFetched ? 1 : 0;
     const event = findEvent(events, game);
     if (!event) {
-      return { rows: [], unresolved: [], cost: {}, warnings: [`Odds-API.io has no event matching ${game.awayAbbr} @ ${game.homeAbbr}.`] };
+      return { rows: [], unresolved: [], cost: { requests: eventsCost }, warnings: [`Odds-API.io has no event matching ${game.awayAbbr} @ ${game.homeAbbr}.`] };
     }
 
     const res = await fetch(
@@ -93,7 +104,7 @@ export const oddsApiIoAdapter: ProviderAdapter = {
       { cache: 'no-store' },
     );
     if (!res.ok) {
-      return { rows: [], unresolved: [], cost: { requests: 1 }, warnings: [`Odds-API.io odds request failed (${res.status}).`] };
+      return { rows: [], unresolved: [], cost: { requests: eventsCost + 1 }, warnings: [`Odds-API.io odds request failed (${res.status}).`] };
     }
     const json = (await res.json()) as OddsApiIoOddsResponse;
 
@@ -162,6 +173,6 @@ export const oddsApiIoAdapter: ProviderAdapter = {
       }
     }
 
-    return { rows, unresolved, cost: { requests: 1 }, warnings: [] };
+    return { rows, unresolved, cost: { requests: eventsCost + 1 }, warnings: [] };
   },
 };

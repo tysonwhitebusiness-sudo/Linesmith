@@ -241,23 +241,38 @@ _ODDSAPIIO_EVENTS_TTL_S = 5 * 60
 _oddsapiio_events_cache: tuple[float, list] | None = None
 
 
-async def _get_oddsapiio_events(client: httpx.AsyncClient, api_key: str) -> tuple[list, bool]:
-    """Returns (events, was_fetched) — was_fetched controls whether this
-    counts as real request spend, mirroring oddsApiIo.ts's own cost accounting."""
+async def _get_oddsapiio_events(client: httpx.AsyncClient, api_key: str) -> tuple[list, bool, str | None]:
+    """Returns (events, was_fetched, warning). was_fetched=True whenever a
+    real HTTP request reached the vendor and got a response back — success,
+    a cache-miss fallback, OR a real failure with no stale cache to serve —
+    matching SharpAPI/Propline's "count the attempt, not just the success"
+    discipline (their out.requests is set right after the response arrives,
+    before checking status).
+
+    Real, live-confirmed bug fixed here (2026-08-20): this used to raise
+    RuntimeError on a failure-with-no-cache instead of returning, so the
+    caller's `if was_fetched: out.requests += 1` never ran — while the
+    vendor charged for that real 429 response regardless. The events call
+    runs almost every Tier 1 cycle (90s cache vs. 2.5min job interval), so
+    on its own it could burn the whole 500/day budget while our own tracker
+    kept reading 0 spent, meaning the daily-cap pre-check could never
+    actually engage. See docs/api-capability-audit-2026-08-20.md."""
     global _oddsapiio_events_cache
     now = time.monotonic()
     if _oddsapiio_events_cache and now - _oddsapiio_events_cache[0] < _ODDSAPIIO_EVENTS_TTL_S:
-        return _oddsapiio_events_cache[1], False
+        return _oddsapiio_events_cache[1], False, None
 
     res = await client.get(f"https://api.odds-api.io/v3/events?sport=baseball&apiKey={api_key}", timeout=TIMEOUT)
     if res.status_code != 200:
-        # Serve stale cache on a failed refresh, same fallback oddsApiIo.ts uses.
+        # Serve stale cache on a failed refresh, same fallback oddsApiIo.ts
+        # uses — but a real request still happened and the vendor still
+        # charged for it either way, so this must still count as spent.
         if _oddsapiio_events_cache:
-            return _oddsapiio_events_cache[1], True
-        raise RuntimeError(f"oddsapiio events HTTP {res.status_code}")
+            return _oddsapiio_events_cache[1], True, None
+        return [], True, f"oddsapiio events HTTP {res.status_code}"
     events = res.json()
     _oddsapiio_events_cache = (now, events)
-    return events, True
+    return events, True, None
 
 
 _ODDSAPIIO_ODDS_RATE_KEY = "oddsapiio_odds"
@@ -305,15 +320,14 @@ async def fetch_oddsapiio(
     if not games:
         return out
     try:
-        events, was_fetched = await _get_oddsapiio_events(client, api_key)
+        events, was_fetched, events_warning = await _get_oddsapiio_events(client, api_key)
     except httpx.HTTPError as e:
         out.warnings.append(f"oddsapiio events request failed: {e}")
         return out
-    except RuntimeError as e:
-        out.warnings.append(str(e))
-        return out
     if was_fetched:
         out.requests += 1
+    if events_warning:
+        out.warnings.append(events_warning)
 
     skipped_for_capacity = 0
     for game in games:

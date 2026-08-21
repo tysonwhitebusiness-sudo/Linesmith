@@ -24,7 +24,7 @@ export const theOddsApiAdapter: ProviderAdapter = {
   meta: {
     id: 'theoddsapi',
     label: 'The Odds API',
-    tier: 'tier2',
+    scheduled: false, // disabled by default, game-lines only — see types.ts's ProviderMeta.scheduled doc
     get enabled() {
       return theOddsApiConfig().enabled;
     },

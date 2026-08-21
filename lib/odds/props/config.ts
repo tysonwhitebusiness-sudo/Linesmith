@@ -56,6 +56,25 @@ export function sportsGameOddsConfig(): ProviderConfig & { ratePerMin: number; m
   };
 }
 
+/**
+ * SportsGameOdds — second account (2026-08-20, see
+ * docs/api-capability-audit-2026-08-20.md), dedicated to the NFL/CFB
+ * multi-sport path so its real object budget never competes with MLB's
+ * usage on the primary account.
+ */
+export function sportsGameOddsMultisportConfig(): ProviderConfig & { ratePerMin: number; monthlyLimit: number; softCap: number } {
+  return {
+    id: 'sportsgameodds_multisport',
+    enabled: truthy(process.env.SPORTSGAMEODDS_MULTISPORT_ENABLED, true) && !!process.env.SPORTSGAMEODDS_MULTISPORT_KEY,
+    key: process.env.SPORTSGAMEODDS_MULTISPORT_KEY ?? null,
+    // Same real plan tier/rate as the primary account — separate accounts,
+    // same vendor plan.
+    ratePerMin: num(process.env.SPORTSGAMEODDS_RATE_PER_MIN, 10),
+    monthlyLimit: num(process.env.SPORTSGAMEODDS_MONTHLY_LIMIT, 2500),
+    softCap: num(process.env.SPORTSGAMEODDS_SOFT_CAP, 2000),
+  };
+}
+
 export function oddsPapiConfig(): ProviderConfig & { monthlyLimit: number; softCap: number } {
   return {
     id: 'oddspapi',
@@ -103,6 +122,45 @@ export function parlayApiMlbConfig(): ProviderConfig & { monthlyLimit: number; s
     key: process.env.PARLAYAPI_MLB_KEY ?? null,
     monthlyLimit: num(process.env.PARLAYAPI_MLB_MONTHLY_LIMIT, 1000),
     softCap: num(process.env.PARLAYAPI_MLB_SOFT_CAP, 800),
+  };
+}
+
+/**
+ * ParlayAPI — per-sport keys (2026-08-20, see
+ * docs/api-capability-audit-2026-08-20.md), real separate free accounts
+ * replacing the shared `parlayApiConfig()` key's role for these 3 sports
+ * (ParlayAPI's only other real player-prop coverage — confirmed live: NFL,
+ * CFB, Soccer/EPL; Tennis has none). `parlayApiConfig()` above stays defined
+ * only as a legacy fallback, no longer the live source once these are wired
+ * into `multiSportRefresh.ts`.
+ */
+export function parlayApiNflConfig(): ProviderConfig & { monthlyLimit: number; softCap: number } {
+  return {
+    id: 'parlayapi_nfl',
+    enabled: truthy(process.env.PARLAYAPI_NFL_ENABLED, true) && !!process.env.PARLAYAPI_NFL_KEY,
+    key: process.env.PARLAYAPI_NFL_KEY ?? null,
+    monthlyLimit: num(process.env.PARLAYAPI_NFL_MONTHLY_LIMIT, 1000),
+    softCap: num(process.env.PARLAYAPI_NFL_SOFT_CAP, 800),
+  };
+}
+
+export function parlayApiCfbConfig(): ProviderConfig & { monthlyLimit: number; softCap: number } {
+  return {
+    id: 'parlayapi_cfb',
+    enabled: truthy(process.env.PARLAYAPI_CFB_ENABLED, true) && !!process.env.PARLAYAPI_CFB_KEY,
+    key: process.env.PARLAYAPI_CFB_KEY ?? null,
+    monthlyLimit: num(process.env.PARLAYAPI_CFB_MONTHLY_LIMIT, 1000),
+    softCap: num(process.env.PARLAYAPI_CFB_SOFT_CAP, 800),
+  };
+}
+
+export function parlayApiSoccerConfig(): ProviderConfig & { monthlyLimit: number; softCap: number } {
+  return {
+    id: 'parlayapi_soccer',
+    enabled: truthy(process.env.PARLAYAPI_SOCCER_ENABLED, true) && !!process.env.PARLAYAPI_SOCCER_KEY,
+    key: process.env.PARLAYAPI_SOCCER_KEY ?? null,
+    monthlyLimit: num(process.env.PARLAYAPI_SOCCER_MONTHLY_LIMIT, 1000),
+    softCap: num(process.env.PARLAYAPI_SOCCER_SOFT_CAP, 800),
   };
 }
 

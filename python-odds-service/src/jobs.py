@@ -35,6 +35,7 @@ import httpx
 
 import config
 import db
+import gameday
 from game_context import load_mlb_games, load_sport_games
 from job_runner import run_provider_specs
 from providers import ProviderSpec, fetch_oddsapiio, fetch_parlayapi, fetch_propline, fetch_sharpapi, fetch_sportsgameodds
@@ -99,6 +100,9 @@ async def job_tier1(yield_fn=None) -> dict:
 
 
 def _sportsgameodds_spec(yield_fn) -> ProviderSpec:
+    """MLB's SportsGameOdds identity — the original account. Kept dedicated to
+    MLB only (2026-08-20) so its real quota no longer competes with NFL/CFB's
+    usage; see _sportsgameodds_multisport_spec for that separate account."""
     return ProviderSpec(
         provider_id="sportsgameodds",
         enabled=config.SPORTSGAMEODDS_ENABLED,
@@ -120,32 +124,78 @@ async def job_sportsgameodds(yield_fn=None) -> dict:
         )
 
 
-def _multisport_specs(sport: str, parlay_key: str | None, yield_fn) -> list[ProviderSpec]:
-    return [
-        ProviderSpec(
-            provider_id="parlayapi",
-            enabled=config.PARLAYAPI_ENABLED,
-            fetch=lambda client, games, yf: fetch_parlayapi(client, parlay_key, games, sport),
-            cap_kind="monthly",
-            cap_limit=config.PARLAYAPI_MONTHLY_LIMIT,  # hard limit, not a soft cap — matches multiSportRefresh.ts's `budget.exhausted` gate
+def _sportsgameodds_multisport_spec(yield_fn) -> ProviderSpec:
+    """Second SportsGameOdds account (2026-08-20, see
+    docs/api-capability-audit-2026-08-20.md), dedicated to NFL/CFB. A real,
+    separate account — tracked under its own provider_id so its spend is
+    never conflated with MLB's, same reasoning as ParlayAPI's per-sport keys
+    below."""
+    return ProviderSpec(
+        provider_id="sportsgameodds_multisport",
+        enabled=config.SPORTSGAMEODDS_MULTISPORT_ENABLED,
+        fetch=lambda client, games, yf: fetch_sportsgameodds(
+            client, config.SPORTSGAMEODDS_MULTISPORT_KEY, games, config.SPORTSGAMEODDS_RATE_PER_MIN, yield_fn=yf
         ),
-        _sportsgameodds_spec(yield_fn),
-    ]
+        cap_kind="monthly",
+        cap_limit=config.SPORTSGAMEODDS_MONTHLY_SOFT_CAP,  # same real plan tier as the primary account, same soft-cap discipline
+        spend_unit="objects",
+    )
+
+
+# Per-sport ParlayAPI identities (2026-08-20, see
+# docs/api-capability-audit-2026-08-20.md) — real, separate free accounts,
+# one per sport ParlayAPI actually has real player-prop coverage for
+# (confirmed live: NFL, CFB, Soccer/EPL — Tennis has none). Replaces the old
+# shared PARLAYAPI_KEY's role for these 3 sports; that key stays defined in
+# config.py only as a legacy fallback, no longer the live source here.
+_PARLAYAPI_SPORT_CONFIG: dict[str, tuple[str, str | None, bool, int]] = {
+    "nfl": ("parlayapi_nfl", config.PARLAYAPI_NFL_KEY, config.PARLAYAPI_NFL_ENABLED, config.PARLAYAPI_NFL_MONTHLY_LIMIT),
+    "cfb": ("parlayapi_cfb", config.PARLAYAPI_CFB_KEY, config.PARLAYAPI_CFB_ENABLED, config.PARLAYAPI_CFB_MONTHLY_LIMIT),
+    "soccer_epl": (
+        "parlayapi_soccer",
+        config.PARLAYAPI_SOCCER_KEY,
+        config.PARLAYAPI_SOCCER_ENABLED,
+        config.PARLAYAPI_SOCCER_MONTHLY_LIMIT,
+    ),
+}
+
+
+def _parlayapi_sport_spec(sport: str) -> ProviderSpec:
+    provider_id, key, enabled, cap_limit = _PARLAYAPI_SPORT_CONFIG[sport]
+    return ProviderSpec(
+        provider_id=provider_id,
+        enabled=enabled,
+        fetch=lambda client, games, yield_fn: fetch_parlayapi(client, key, games, sport),
+        cap_kind="monthly",
+        cap_limit=cap_limit,  # hard limit, not a soft cap — matches multiSportRefresh.ts's `budget.exhausted` gate
+    )
 
 
 async def _job_multisport(job_name: str, sport: str, yield_fn) -> dict:
-    games = await load_sport_games(sport)
+    # The free ESPN schedule fetch (game_context.py) always runs every cycle
+    # regardless of tier — it's what tells us which tier we're even in.
+    # Only the paid provider fetch below is gated. See gameday.py's docstring
+    # for the real numbers behind why (flat cadence spent the same 1 credit
+    # whether the nearest game was 6 minutes or 6 days out).
+    # Same is_final filter MLB's job_tier1/job_sportsgameodds already apply —
+    # now real for these sports too (2026-08-20), not always-False.
+    games = [g for g in await load_sport_games(sport) if not g.is_final]
+    tier, should_fetch = await gameday.should_fetch_paid_providers(sport, games)
+    if not should_fetch:
+        return await _run_timed(job_name, _return_dict(gameday.skip_summary(games, tier)))
+
+    specs = [_parlayapi_sport_spec(sport), _sportsgameodds_multisport_spec(yield_fn)]
     async with httpx.AsyncClient() as client:
         return await _run_timed(
-            job_name,
-            run_provider_specs(
-                client, games, _multisport_specs(sport, config.PARLAYAPI_KEY, yield_fn), yield_fn=yield_fn, concurrent=True
-            ),
+            job_name, run_provider_specs(client, games, specs, yield_fn=yield_fn, concurrent=True)
         )
 
 
+async def _return_dict(d: dict) -> dict:
+    return d
+
+
 async def job_nfl(yield_fn=None) -> dict:
-    # ParlayAPI's general key covers NFL (per config.ts's parlayApiConfig, not the MLB-dedicated key).
     return await _job_multisport("refreshNflJob", "nfl", yield_fn)
 
 
@@ -173,13 +223,24 @@ def _soccer_epl_specs() -> list[ProviderSpec]:
             fetch=lambda client, games, yield_fn: fetch_propline(client, config.PROPLINE_2_KEY, games, "soccer_epl"),
             cap_kind="none",
         ),
+        # New (2026-08-20): ParlayAPI-soccer is a genuinely separate real
+        # provider from Propline, not a redundant second call for the same
+        # data — confirmed live coverage (787 rows, team-total-heavy), so
+        # it adds real, additional matched props rather than just duplicate
+        # rows for the same games. SportsGameOdds is NOT added here — its
+        # soccer coverage is MLS/UCL, not EPL (see the capability audit).
+        _parlayapi_sport_spec("soccer_epl"),
     ]
 
 
 async def job_soccer_epl(yield_fn=None) -> dict:
     # Propline has no per-minute cap in config.ts (dailyLimit only) — no
     # pacing-wait shape to yield at, same as Tier 1.
-    games = await load_sport_games("soccer_epl")
+    games = [g for g in await load_sport_games("soccer_epl") if not g.is_final]
+    tier, should_fetch = await gameday.should_fetch_paid_providers("soccer_epl", games)
+    if not should_fetch:
+        return await _run_timed("refreshSoccerEplJob", _return_dict(gameday.skip_summary(games, tier)))
+
     async with httpx.AsyncClient() as client:
         return await _run_timed(
             "refreshSoccerEplJob", run_provider_specs(client, games, _soccer_epl_specs(), concurrent=False)
@@ -187,12 +248,22 @@ async def job_soccer_epl(yield_fn=None) -> dict:
 
 
 # Job registry the queue iterates — (name, coroutine factory, interval_seconds).
-# Intervals match lib/scheduler.ts exactly (TIER1_INTERVAL_MS etc.) — refreshCalibration
-# intentionally excluded, see module docstring.
+# Tier1/SportsGameOdds-MLB intervals match lib/scheduler.ts's original
+# constants — refreshCalibration intentionally excluded, see module docstring.
+#
+# NFL/CFB/Soccer intervals rewritten 2026-08-20 for gameday-proximity gating
+# (see gameday.py): this is now the OUTER poll cadence, not the real-spend
+# cadence — most cycles at this interval cost nothing (gameday.py's tier
+# check gates the actual paid fetch). 20min lets "hot" tier (within 6h of any
+# kickoff) genuinely refresh hard, matching the explicit ask ("run a lot more
+# refreshes on gameday") — the interval alone no longer has to protect the
+# budget the way the old flat 3h/45min intervals did, gameday.py's tiering
+# does that job now. See measure_gameday_budget.py for the real worst-case
+# monthly cost this produces, checked before landing on 20min specifically.
 JOB_REGISTRY = [
     ("refreshTier1", job_tier1, 2.5 * 60),
     ("refreshSportsGameOddsJob", job_sportsgameodds, 90 * 60),
-    ("refreshNflJob", job_nfl, 3 * 60 * 60),
-    ("refreshCfbJob", job_cfb, 3 * 60 * 60),
-    ("refreshSoccerEplJob", job_soccer_epl, 45 * 60),
+    ("refreshNflJob", job_nfl, 20 * 60),
+    ("refreshCfbJob", job_cfb, 20 * 60),
+    ("refreshSoccerEplJob", job_soccer_epl, 20 * 60),
 ]

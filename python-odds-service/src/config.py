@@ -70,6 +70,14 @@ SPORTSGAMEODDS_RATE_PER_MIN = int(env("SPORTSGAMEODDS_RATE_PER_MIN", "10"))
 # env var as config.ts:55 (SPORTSGAMEODDS_SOFT_CAP). Never pre-checked in
 # the Python port before job_runner.py.
 SPORTSGAMEODDS_MONTHLY_SOFT_CAP = int(env("SPORTSGAMEODDS_SOFT_CAP", "2000"))
+# Second account (2026-08-20, see docs/api-capability-audit-2026-08-20.md) —
+# dedicated to the NFL/CFB job so it draws a real, separate object budget
+# instead of competing with MLB's job on the same shared account. Rate limit
+# and soft cap default to the same real numbers as the primary account
+# (same vendor plan tier), tracked under its own provider_id
+# ("sportsgameodds_multisport") so its spend is never conflated with MLB's.
+SPORTSGAMEODDS_MULTISPORT_KEY = env("SPORTSGAMEODDS_MULTISPORT_KEY")
+SPORTSGAMEODDS_MULTISPORT_ENABLED = env_bool("SPORTSGAMEODDS_MULTISPORT_ENABLED") and bool(SPORTSGAMEODDS_MULTISPORT_KEY)
 
 PARLAYAPI_KEY = env("PARLAYAPI_KEY")
 PARLAYAPI_ENABLED = env_bool("PARLAYAPI_ENABLED") and bool(PARLAYAPI_KEY)
@@ -80,6 +88,22 @@ PARLAYAPI_ENABLED = env_bool("PARLAYAPI_ENABLED") and bool(PARLAYAPI_KEY)
 PARLAYAPI_MONTHLY_LIMIT = int(env("PARLAYAPI_MONTHLY_LIMIT", "1000"))
 PARLAYAPI_MLB_KEY = env("PARLAYAPI_MLB_KEY")
 PARLAYAPI_MLB_ENABLED = env_bool("PARLAYAPI_MLB_ENABLED") and bool(PARLAYAPI_MLB_KEY)
+
+# Per-sport keys (2026-08-20, see docs/api-capability-audit-2026-08-20.md) —
+# real, separate free accounts replacing the shared PARLAYAPI_KEY's role for
+# these 3 sports (that key stays defined above only as a fallback/legacy
+# path, no longer the live source once these are wired into jobs.py).
+PARLAYAPI_NFL_KEY = env("PARLAYAPI_NFL_KEY")
+PARLAYAPI_NFL_ENABLED = env_bool("PARLAYAPI_NFL_ENABLED") and bool(PARLAYAPI_NFL_KEY)
+PARLAYAPI_NFL_MONTHLY_LIMIT = int(env("PARLAYAPI_NFL_MONTHLY_LIMIT", "1000"))
+
+PARLAYAPI_CFB_KEY = env("PARLAYAPI_CFB_KEY")
+PARLAYAPI_CFB_ENABLED = env_bool("PARLAYAPI_CFB_ENABLED") and bool(PARLAYAPI_CFB_KEY)
+PARLAYAPI_CFB_MONTHLY_LIMIT = int(env("PARLAYAPI_CFB_MONTHLY_LIMIT", "1000"))
+
+PARLAYAPI_SOCCER_KEY = env("PARLAYAPI_SOCCER_KEY")
+PARLAYAPI_SOCCER_ENABLED = env_bool("PARLAYAPI_SOCCER_ENABLED") and bool(PARLAYAPI_SOCCER_KEY)
+PARLAYAPI_SOCCER_MONTHLY_LIMIT = int(env("PARLAYAPI_SOCCER_MONTHLY_LIMIT", "1000"))
 
 PROPLINE_KEY = env("PROPLINE_KEY")
 PROPLINE_ENABLED = env_bool("PROPLINE_ENABLED") and bool(PROPLINE_KEY)

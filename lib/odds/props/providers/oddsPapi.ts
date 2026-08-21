@@ -85,7 +85,7 @@ async function getMarketsCatalog(): Promise<OpMarketCatalogEntry[]> {
   if (!res.ok) return [];
   const json = (await res.json()) as OpMarketCatalogEntry[] | { data: OpMarketCatalogEntry[] };
   const arr = Array.isArray(json) ? json : json.data;
-  recordMonthlySpend('oddspapi', 1, 0);
+  await recordMonthlySpend('oddspapi', 1, 0);
   marketsCache = arr;
   return arr;
 }
@@ -98,7 +98,7 @@ async function getFixtures(): Promise<OpFixture[]> {
   if (!res.ok) return fixturesCache?.fixtures ?? [];
   const json = (await res.json()) as OpFixture[] | { data: OpFixture[] };
   const fixtures = Array.isArray(json) ? json : json.data;
-  recordMonthlySpend('oddspapi', 1, 0);
+  await recordMonthlySpend('oddspapi', 1, 0);
   fixturesCache = { fetchedAt: Date.now(), fixtures };
   return fixtures;
 }
@@ -146,7 +146,7 @@ export const oddsPapiAdapter: ProviderAdapter = {
   meta: {
     id: 'oddspapi',
     label: 'OddsPapi',
-    tier: 'tier2',
+    scheduled: false, // click-only (sharp-price/line-history) — see types.ts's ProviderMeta.scheduled doc
     get enabled() {
       return oddsPapiConfig().enabled;
     },
@@ -169,7 +169,7 @@ export const oddsPapiAdapter: ProviderAdapter = {
 /** Game Detail's "Check sharp price" action. */
 export async function fetchSharpPrice(game: GameLookupContext): Promise<SharpPriceResult> {
   const config = oddsPapiConfig();
-  const budget = monthlyStatus('oddspapi', config.monthlyLimit, config.softCap, 'requests');
+  const budget = await monthlyStatus('oddspapi', config.monthlyLimit, config.softCap, 'requests');
   if (!config.enabled || !config.key) {
     return { available: false, pinnacle: null, otherBooks: [], fetchedAt: new Date().toISOString(), monthlyRemaining: budget.remaining, warnings: ['OddsPapi is disabled.'] };
   }
@@ -186,7 +186,7 @@ export async function fetchSharpPrice(game: GameLookupContext): Promise<SharpPri
   if (!res.ok) {
     return { available: false, pinnacle: null, otherBooks: [], fetchedAt: new Date().toISOString(), monthlyRemaining: budget.remaining, warnings: [`OddsPapi odds request failed (${res.status}).`] };
   }
-  recordMonthlySpend('oddspapi', 1, 0);
+  await recordMonthlySpend('oddspapi', 1, 0);
   const json = (await res.json()) as OpOddsResponse;
   const catalog = await getMarketsCatalog();
 
@@ -202,7 +202,7 @@ export async function fetchSharpPrice(game: GameLookupContext): Promise<SharpPri
     otherBooks.push({ ...extractGameLine(catalog, data), bookmaker: normalized });
   }
 
-  const remaining = monthlyStatus('oddspapi', config.monthlyLimit, config.softCap, 'requests').remaining;
+  const remaining = (await monthlyStatus('oddspapi', config.monthlyLimit, config.softCap, 'requests')).remaining;
   return {
     available: !!pinnacle,
     pinnacle,
@@ -216,7 +216,7 @@ export async function fetchSharpPrice(game: GameLookupContext): Promise<SharpPri
 /** Game Detail's "Line history" action — game-level markets only. */
 export async function fetchLineHistory(game: GameLookupContext): Promise<LineHistoryResult> {
   const config = oddsPapiConfig();
-  const budget = monthlyStatus('oddspapi', config.monthlyLimit, config.softCap, 'requests');
+  const budget = await monthlyStatus('oddspapi', config.monthlyLimit, config.softCap, 'requests');
   if (!config.enabled || !config.key) {
     return { available: false, points: [], monthlyRemaining: budget.remaining, warnings: ['OddsPapi is disabled.'] };
   }
@@ -238,7 +238,7 @@ export async function fetchLineHistory(game: GameLookupContext): Promise<LineHis
   }
   // Phase 0 observed this endpoint not incrementing request_count on this account — still recorded here
   // as a request-shaped spend so the local counter never claims a call that happened was free for certain.
-  recordMonthlySpend('oddspapi', 1, 0);
+  await recordMonthlySpend('oddspapi', 1, 0);
   const json = (await res.json()) as {
     bookmakers: Record<string, { markets: Record<string, { outcomes: Record<string, { players: Record<string, Array<{ createdAt: string; price: number }>> }> }> }>;
   };
@@ -272,6 +272,6 @@ export async function fetchLineHistory(game: GameLookupContext): Promise<LineHis
     }
   }
 
-  const remaining = monthlyStatus('oddspapi', config.monthlyLimit, config.softCap, 'requests').remaining;
+  const remaining = (await monthlyStatus('oddspapi', config.monthlyLimit, config.softCap, 'requests')).remaining;
   return { available: points.length > 0, points, monthlyRemaining: remaining, warnings: [] };
 }

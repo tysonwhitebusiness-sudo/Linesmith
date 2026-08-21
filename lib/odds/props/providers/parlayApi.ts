@@ -21,7 +21,7 @@
  */
 
 import type { FetchResult, GameLookupContext, NormalizedPropRow, ProviderAdapter, SportKey, UnresolvedRow } from '../types';
-import { parlayApiConfig, parlayApiMlbConfig } from '../config';
+import { parlayApiConfig, parlayApiMlbConfig, parlayApiNflConfig, parlayApiCfbConfig, parlayApiSoccerConfig } from '../config';
 import { buildRosterIndex, normalizeBookmaker, resolveMarketKey, resolvePlayer, unresolvedBookmaker, unresolvedMarket, unresolvedPlayer } from '../entityResolution';
 
 const BASE = 'https://parlay-api.com/v1';
@@ -73,12 +73,49 @@ async function fetchBoard(configKey: string, apiKey: string, sportKey: string): 
   return { rows, wasFetched: true, creditsUsed: Number.isFinite(used) ? used : 0 };
 }
 
-function buildAdapter(id: 'parlayapi' | 'parlayapi_mlb', getConfig: typeof parlayApiConfig): ProviderAdapter {
+type ParlayApiId = 'parlayapi' | 'parlayapi_mlb' | 'parlayapi_nfl' | 'parlayapi_cfb' | 'parlayapi_soccer';
+
+const LABELS: Record<ParlayApiId, string> = {
+  parlayapi: 'ParlayAPI',
+  parlayapi_mlb: 'ParlayAPI (MLB)',
+  parlayapi_nfl: 'ParlayAPI (NFL)',
+  parlayapi_cfb: 'ParlayAPI (CFB)',
+  parlayapi_soccer: 'ParlayAPI (Soccer)',
+};
+
+// Real behavior, not the old flat tier tag (see types.ts's ProviderMeta.scheduled
+// doc) — parlayapi_mlb was never called automatically by anything (registered
+// but unused outside a manual action), the other 4 identities genuinely are
+// (parlayapi via multiSportRefresh.ts pre-2026-08-20; the 3 new per-sport
+// identities replace that role for NFL/CFB/Soccer specifically).
+const SCHEDULED: Record<ParlayApiId, boolean> = {
+  parlayapi: true,
+  parlayapi_mlb: false,
+  parlayapi_nfl: true,
+  parlayapi_cfb: true,
+  parlayapi_soccer: true,
+};
+
+function buildAdapter(id: ParlayApiId, getConfig: () => ReturnType<typeof parlayApiConfig>): ProviderAdapter {
   return {
     meta: {
       id,
-      label: id === 'parlayapi_mlb' ? 'ParlayAPI (MLB)' : 'ParlayAPI',
-      tier: 'tier1',
+      label: LABELS[id],
+      // Real incident, 2026-08-20: 'parlayapi'/'parlayapi_mlb' being tagged
+      // the old 'tier1' pulled ParlayAPI into tier1Providers(), the MLB-only
+      // loop every other comment in this codebase describes as "SharpAPI +
+      // Odds-API.io" — tier1Refresh.ts's per-provider gating and cost
+      // recording only ever had branches for those two, so ParlayAPI ran in
+      // that loop with zero rate-limit checking and zero budget recording,
+      // invisibly, likely for as long as this adapter has existed. Confirmed
+      // via provider_usage: the MLB-dedicated key showed zero recorded spend
+      // despite the vendor confirming it's credit-exhausted — spend was
+      // happening, just never tracked. ParlayAPI's real, intentional home is
+      // the multi-sport path in multiSportRefresh.ts, which calls providers
+      // directly by id (not through any tier grouping) and records cost
+      // correctly — see registry.ts's providersForSport() for what actually
+      // decides participation now.
+      scheduled: SCHEDULED[id],
       get enabled() {
         return getConfig().enabled;
       },
@@ -154,3 +191,6 @@ function buildAdapter(id: 'parlayapi' | 'parlayapi_mlb', getConfig: typeof parla
 
 export const parlayApiAdapter = buildAdapter('parlayapi', parlayApiConfig);
 export const parlayApiMlbAdapter = buildAdapter('parlayapi_mlb', parlayApiMlbConfig);
+export const parlayApiNflAdapter = buildAdapter('parlayapi_nfl', parlayApiNflConfig);
+export const parlayApiCfbAdapter = buildAdapter('parlayapi_cfb', parlayApiCfbConfig);
+export const parlayApiSoccerAdapter = buildAdapter('parlayapi_soccer', parlayApiSoccerConfig);

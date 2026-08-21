@@ -100,7 +100,8 @@ interface DiagnosticsData {
 interface PropsProviderMeta {
   id: string;
   label: string;
-  tier: 'tier1' | 'tier2';
+  /** Renamed from 'tier' 2026-08-20 — see lib/odds/props/types.ts's ProviderMeta.scheduled doc. */
+  scheduled: boolean;
   enabled: boolean;
   delaySeconds: number | null;
   books: string[];
@@ -1724,7 +1725,7 @@ export default function DiagnosticsPage() {
                       <thead>
                         <tr className="border-b border-line text-left text-ink-faint">
                           <th className="py-1.5 pr-2">Provider</th>
-                          <th className="py-1.5 pr-2">Tier</th>
+                          <th className="py-1.5 pr-2">Schedule</th>
                           <th className="py-1.5 pr-2">Status</th>
                           <th className="py-1.5 pr-2">Delay</th>
                           <th className="py-1.5 pr-2 text-right">Budget used</th>
@@ -1738,7 +1739,7 @@ export default function DiagnosticsPage() {
                             <tr key={p.id} className="border-b border-line/50">
                               <td className="py-1.5 pr-2 font-medium">{p.label}</td>
                               <td className="py-1.5 pr-2">
-                                <span className="lb-chip bg-ink/5 text-ink-muted">{p.tier}</span>
+                                <span className="lb-chip bg-ink/5 text-ink-muted">{p.scheduled ? 'Scheduled' : 'Manual'}</span>
                               </td>
                               <td className="py-1.5 pr-2">
                                 <div className="flex items-center gap-1.5">

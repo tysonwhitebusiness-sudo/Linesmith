@@ -42,6 +42,36 @@ async def read_snapshot(cache_key: str) -> str | None:
     return row["payload"] if row else None
 
 
+async def read_snapshot_with_age(cache_key: str) -> tuple[str, float] | None:
+    """Same as read_snapshot but also returns age in seconds — mirrors
+    lib/db/client.ts's readSnapshotCache (payload + fetchedAt), needed for
+    TTL-checked caches like ESPN roster data (game_context.py). Returns None
+    if the key doesn't exist."""
+    pool = await get_pool()
+    row = await pool.fetchrow("SELECT payload, fetched_at FROM snapshot_cache WHERE cache_key = $1", cache_key)
+    if row is None:
+        return None
+    age = (datetime.now(timezone.utc) - row["fetched_at"]).total_seconds()
+    return row["payload"], age
+
+
+async def write_snapshot(cache_key: str, payload: str) -> None:
+    """Generic snapshot write — mirrors lib/db/client.ts's writeSnapshotCache.
+    Same table/shape TS uses, so a cache entry either app writes is readable
+    by the other (e.g. ESPN roster data — game_context.py can now write its
+    own instead of depending on the TS app having run recently)."""
+    pool = await get_pool()
+    await pool.execute(
+        """
+        INSERT INTO snapshot_cache (cache_key, payload, fetched_at)
+        VALUES ($1, $2, now())
+        ON CONFLICT (cache_key) DO UPDATE SET payload = excluded.payload, fetched_at = excluded.fetched_at
+        """,
+        cache_key,
+        payload,
+    )
+
+
 def eastern_date_key(now: datetime | None = None) -> str:
     now = now or datetime.now(timezone.utc)
     return now.astimezone(_EASTERN).strftime("%Y-%m-%d")
@@ -49,6 +79,26 @@ def eastern_date_key(now: datetime | None = None) -> str:
 
 def eastern_month_key(now: datetime | None = None) -> str:
     return eastern_date_key(now)[:7]
+
+
+def utc_date_key(now: datetime | None = None) -> str:
+    """Day-boundary for the DAILY-cap providers specifically (Odds-API.io,
+    Propline, Propline_2) — live-confirmed 2026-08-20 via each vendor's own
+    response headers (`x-daily-reset`, and Odds-API.io's error text) that
+    they all reset at midnight UTC, not midnight Eastern. Using
+    eastern_date_key() here undercounted real spend for up to ~4-5 hours
+    every single day (the EDT/UTC offset), which is very likely why
+    Odds-API.io's real account showed "500/500 exhausted" while this
+    harness's own tracker read 0 spent — see
+    docs/api-capability-audit-2026-08-20.md. Monthly-cap providers
+    (SportsGameOdds, ParlayAPI) keep eastern_month_key() — a calendar month
+    only disagrees between timezones in a few-hour window once a month, a
+    much smaller edge case than this daily one. Fixed in budget.ts's
+    dailyStatus()/recordDailySpend() at the same time — both apps read/write
+    the same provider_usage rows, so a day-key change unsynced between them
+    would fragment the shared budget instead of fixing it."""
+    now = now or datetime.now(timezone.utc)
+    return now.strftime("%Y-%m-%d")
 
 
 async def daily_status(provider_id: str, limit: int) -> int:
@@ -63,7 +113,7 @@ async def daily_status(provider_id: str, limit: int) -> int:
     row = await pool.fetchrow(
         "SELECT request_count FROM provider_usage WHERE provider_id = $1 AND period_kind = 'daily' AND period_key = $2",
         provider_id,
-        eastern_date_key(),
+        utc_date_key(),
     )
     return row["request_count"] if row else 0
 
@@ -91,7 +141,7 @@ async def monthly_status(provider_id: str, limit: int, unit: str = "requests") -
 async def record_daily_spend(provider_id: str, requests: int = 0, objects: int = 0) -> None:
     if requests == 0 and objects == 0:
         return
-    await _increment_usage(provider_id, "daily", eastern_date_key(), requests, objects)
+    await _increment_usage(provider_id, "daily", utc_date_key(), requests, objects)
 
 
 async def record_monthly_spend(provider_id: str, requests: int = 0, objects: int = 0) -> None:

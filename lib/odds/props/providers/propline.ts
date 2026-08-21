@@ -87,7 +87,26 @@ function buildAdapter(id: 'propline' | 'propline_2', getConfig: typeof proplineC
     meta: {
       id,
       label: id === 'propline_2' ? 'Propline (Soccer)' : 'Propline',
-      tier: 'tier1',
+      // 'propline' (MLB, general key) genuinely belongs in tier1 — this
+      // file's own header comment says so, and unlike ParlayAPI it's meant
+      // to run in tier1Refresh.ts's MLB loop. 'propline_2' (Soccer/EPL key)
+      // does NOT — its real home is refreshSoccerEpl() in
+      // multiSportRefresh.ts. Found alongside the ParlayAPI incident,
+      // 2026-08-20: sharing one buildAdapter meant propline_2 inherited the
+      // same 'tier1' tag and was ALSO silently running in the MLB-only
+      // loop, spending its Soccer-dedicated budget on redundant MLB calls
+      // with zero rate-limit or budget tracking, same root cause as
+      // ParlayAPI's bug. 'propline' itself staying tier1 still needed
+      // tier1Refresh.ts's own rate-limit/budget-recording gap fixed
+      // separately — being correctly tagged didn't mean it was correctly
+      // handled once it got there.
+      // Both genuinely run automatically — 'propline' via Tier 1's MLB loop,
+      // 'propline_2' via multiSportRefresh.ts's refreshSoccerEpl(). The old
+      // flat tier tag conflated "which loop" with "scheduled at all" and
+      // mistagged propline_2 as tier2 for it, even though it always was a
+      // real scheduled job just via a different path — see types.ts's
+      // ProviderMeta.scheduled doc.
+      scheduled: true,
       get enabled() {
         return getConfig().enabled;
       },

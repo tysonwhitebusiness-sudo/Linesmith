@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     case 'cfb':
       return NextResponse.json({ sport: 'cfb', results: (await refreshCfb()).map(trim) });
     case 'soccer_epl':
-      return NextResponse.json({ sport: 'soccer_epl', result: trim(await refreshSoccerEpl()) });
+      return NextResponse.json({ sport: 'soccer_epl', results: (await refreshSoccerEpl()).map(trim) });
     default:
       return NextResponse.json({ error: 'sport must be one of nfl, cfb, soccer_epl' }, { status: 400 });
   }

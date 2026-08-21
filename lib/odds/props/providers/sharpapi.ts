@@ -219,6 +219,9 @@ export async function getSharpApiGameLines(
     commenceTime: acc.commenceTime,
     homeTeam: acc.homeTeam,
     awayTeam: acc.awayTeam,
+    // SharpAPI's own game-line board doesn't build a per-book breakdown the
+    // way oddsApi.ts now does — out of scope for that fix, left empty here.
+    bookmakers: [],
     moneyline:
       acc.moneylineHome || acc.moneylineAway
         ? {
@@ -258,7 +261,7 @@ export const sharpApiAdapter: ProviderAdapter = {
   meta: {
     id: 'sharpapi',
     label: 'SharpAPI',
-    tier: 'tier1',
+    scheduled: true, // Tier 1's MLB loop — see types.ts's ProviderMeta.scheduled doc
     get enabled() {
       return sharpApiConfig().enabled;
     },

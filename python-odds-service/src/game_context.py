@@ -1,30 +1,40 @@
-"""Reads real game context from Postgres — the same snapshot_cache table the
-TS app writes to, not a live ESPN/MLB-API call of its own. MLB reads
-'mlb:snapshot' (existing, proactively kept fresh by the TS refreshMlb job);
-NFL/CFB/Soccer read 'odds-context:{sport}' (new in Phase 2 Step 3 —
-lib/odds/props/multiSportGameContext.ts's write-through).
+"""Reads real game context. MLB reads 'mlb:snapshot' from Postgres (existing,
+proactively kept fresh by the TS refreshMlb job — that one's still TS-owned).
 
-Rough parsing only. MLB's shape has zero schema enforcement today (documented
-gap in docs/phase2-python-odds-migration-audit-2026-08-19.md) — this
-replicates gameContext.ts's exact quirk (team abbreviations derived by
+NFL/CFB/Soccer fetch DIRECTLY from ESPN (2026-08-20 rewrite) — this used to
+read a Postgres snapshot ('odds-context:{sport}') that only got refreshed as
+a side effect of TS's loadGameContextsForSport running. Real bug found the
+same night: once lib/scheduler.ts's cutover removed the automatic calls to
+refreshNfl/refreshCfb/refreshSoccerEpl (see docs/phase2-hardening-gameplan-
+2026-08-20.md), NOTHING wrote that snapshot anymore except a manual API
+trigger — so this worker's own NFL/CFB/Soccer jobs would have silently gone
+stale over time with no error, reading an ever-older game list. Now
+self-sufficient: direct port of lib/sports/multiSport/teamSportEspn.ts's
+fetchScoreboard/fetchTeamRoster (same URLs, same 14-day/7-day lookahead
+window, same 1h roster TTL, same shared snapshot_cache table for the roster
+cache specifically — reusable by either app, whichever ran more recently).
+
+Rough parsing only for MLB. MLB's shape has zero schema enforcement today
+(documented gap in docs/phase2-python-odds-migration-audit-2026-08-19.md) —
+this replicates gameContext.ts's exact quirk (team abbreviations derived by
 splitting `matchup` on '@', not read from a dedicated field) since that's
 what the real payload actually contains.
 
-Roster parsing added to feed entity_resolution.resolve_player — ported
-directly from lib/odds/props/gameContext.ts's buildContextForGame, not
-reconstructed from memory: MLB's roster is built by filtering the
-snapshot's top-level `subjects[]` down to whichever ones have
-`meta.gamePk` equal to this game's gamePk (no role/batter-vs-pitcher
-filtering — the TS reference doesn't filter on that either, so this
-doesn't either), pulling `teamAbbr` from `meta.team` when it's a string.
-NFL/CFB/Soccer are simpler: `roster` is already embedded per-game in the
-Step 3 snapshot payload, built from the same RosterEntry shape at write
-time (multiSportGameContext.ts), so it's parsed directly.
+Roster parsing added to feed entity_resolution.resolve_player — MLB's roster
+is built by filtering the snapshot's top-level `subjects[]` down to whichever
+ones have `meta.gamePk` equal to this game's gamePk (ported directly from
+gameContext.ts's buildContextForGame, no role/batter-vs-pitcher filtering,
+matching the TS reference exactly), pulling `teamAbbr` from `meta.team` when
+it's a string.
 """
+import asyncio
 import json
 import re
+from datetime import datetime, timedelta, timezone
 
-from db import read_snapshot
+import httpx
+
+from db import read_snapshot, read_snapshot_with_age, write_snapshot
 from entity_resolution import RosterEntry
 
 
@@ -113,37 +123,153 @@ async def load_mlb_games() -> list[Game]:
     return games
 
 
-async def load_sport_games(sport: str) -> list[Game]:
-    """sport: 'nfl' | 'cfb' | 'soccer_epl' — reads the Phase 2 Step 3 snapshot."""
-    payload = await read_snapshot(f"odds-context:{sport}")
-    if not payload:
-        return []
-    data = json.loads(payload)
-    raw_games = data.get("games") or []
-    games: list[Game] = []
-    for g in raw_games:
-        raw_roster = g.get("roster") or []
-        roster = [
-            RosterEntry(
-                subject_id=r.get("subjectId"),
-                subject_name=r.get("subjectName"),
-                team_abbr=r.get("teamAbbr"),
-                position=r.get("position"),
-                headshot_url=r.get("headshotUrl"),
-            )
-            for r in raw_roster
-        ]
-        games.append(
-            Game(
-                sport=sport,
-                game_id=str(g.get("gameId")),
-                away_team_name=g.get("awayTeamName") or "",
-                home_team_name=g.get("homeTeamName") or "",
-                away_abbr=g.get("awayAbbr") or "",
-                home_abbr=g.get("homeAbbr") or "",
-                game_date=g.get("gameDate") or "",
-                is_final=False,  # not tracked in this snapshot shape yet
-                roster=roster,
-            )
+_ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports"
+
+# Direct port of multiSportGameContext.ts's SPORT_CONFIG (team-sport entries
+# only — tennis isn't part of this worker's scope).
+_ESPN_SPORT_CONFIG: dict[str, tuple[str, str]] = {
+    "nfl": ("football", "nfl"),
+    "cfb": ("football", "college-football"),
+    "soccer_epl": ("soccer", "eng.1"),
+}
+
+_ROSTER_TTL_SECONDS = 60 * 60  # 1h — matches teamSportEspn.ts's ROSTER_TTL_MS
+
+
+def _date_range_param(days_ahead: int) -> str:
+    start = datetime.now(timezone.utc)
+    end = start + timedelta(days=days_ahead)
+    return f"{start.strftime('%Y%m%d')}-{end.strftime('%Y%m%d')}"
+
+
+async def _fetch_espn_scoreboard(client: httpx.AsyncClient, espn_sport: str, espn_league: str, days_ahead: int) -> list[dict]:
+    """Direct port of teamSportEspn.ts's fetchScoreboard — same URL, same
+    date-range window, same graceful-empty-on-failure behavior (a fetch
+    failure here must never crash the job; the caller just sees no games
+    this cycle and tries again next cycle)."""
+    try:
+        res = await client.get(
+            f"{_ESPN_BASE}/{espn_sport}/{espn_league}/scoreboard?dates={_date_range_param(days_ahead)}",
+            timeout=httpx.Timeout(10.0),
         )
+    except httpx.HTTPError:
+        return []
+    if res.status_code != 200:
+        return []
+    data = res.json()
+    games: list[dict] = []
+    for ev in data.get("events") or []:
+        competitions = ev.get("competitions") or []
+        comp = competitions[0] if competitions else {}
+        competitors = comp.get("competitors") or []
+        home = next((c for c in competitors if c.get("homeAway") == "home"), None)
+        away = next((c for c in competitors if c.get("homeAway") == "away"), None)
+        if not home or not away:
+            continue
+        # Real, live-confirmed shape (2026-08-20): comp.status.type.completed.
+        # Ported from nothing — the old snapshot-based path (and TS's own
+        # GameLookupContext type, which has no isFinal field at all) never
+        # tracked this for NFL/CFB/Soccer, unlike MLB's real is_final
+        # parsing. Real gap: SportsGameOdds bills per-game, so a finished
+        # game left in the list means a genuinely wasted live HTTP request
+        # (and rate-limit consumption) for a market that's already closed.
+        status = ((comp.get("status") or {}).get("type") or {})
+        games.append(
+            {
+                "gameId": str(ev.get("id")),
+                "date": ev.get("date"),
+                "homeTeamId": str(home["team"]["id"]),
+                "homeTeamName": home["team"]["displayName"],
+                "homeAbbr": home["team"]["abbreviation"],
+                "awayTeamId": str(away["team"]["id"]),
+                "awayTeamName": away["team"]["displayName"],
+                "awayAbbr": away["team"]["abbreviation"],
+                "isFinal": bool(status.get("completed")),
+            }
+        )
+    return games
+
+
+async def _fetch_espn_roster(client: httpx.AsyncClient, espn_sport: str, espn_league: str, team_id: str) -> list[dict]:
+    """Direct port of teamSportEspn.ts's fetchTeamRoster — same 1h TTL, same
+    shared snapshot_cache table/key format (espn-roster:{sport}:{league}:{id}),
+    so this and the TS app's own roster fetches share one real cache
+    regardless of which one last populated it. Field names in the cached
+    payload MUST match TS's real EspnAthlete shape exactly (subjectId,
+    fullName, positionAbbr, headshotUrl) — a mismatched shape here breaks on
+    a real cache entry TS already wrote, caught live 2026-08-20 (first
+    attempt used subjectName/position, not fullName/positionAbbr, and
+    KeyError'd reading a real pre-existing cache row). Returns raw dicts, not
+    RosterEntry — team_abbr isn't intrinsic to a roster entry (it's "which
+    side of this specific game"), same reason TS's fetchTeamRoster doesn't
+    set it either; the caller attaches it per-game."""
+    cache_key = f"espn-roster:{espn_sport}:{espn_league}:{team_id}"
+    cached = await read_snapshot_with_age(cache_key)
+    if cached and cached[1] < _ROSTER_TTL_SECONDS:
+        return json.loads(cached[0])
+
+    try:
+        res = await client.get(f"{_ESPN_BASE}/{espn_sport}/{espn_league}/teams/{team_id}/roster", timeout=httpx.Timeout(10.0))
+    except httpx.HTTPError:
+        return json.loads(cached[0]) if cached else []
+    if res.status_code != 200:
+        return json.loads(cached[0]) if cached else []
+
+    data = res.json()
+    athletes: list[dict] = []
+    for entry in data.get("athletes") or []:
+        raw_list = entry.get("items") if "items" in entry else [entry]
+        for a in raw_list or []:
+            athletes.append(
+                {
+                    "subjectId": f"espn:{espn_sport}:{a.get('id')}",
+                    "fullName": a.get("fullName"),
+                    "positionAbbr": (a.get("position") or {}).get("abbreviation"),
+                    "headshotUrl": (a.get("headshot") or {}).get("href"),
+                }
+            )
+    await write_snapshot(cache_key, json.dumps(athletes))
+    return athletes
+
+
+async def load_sport_games(sport: str) -> list[Game]:
+    """sport: 'nfl' | 'cfb' | 'soccer_epl' — fetches directly from ESPN
+    (2026-08-20), not from the Postgres snapshot TS used to keep fresh. See
+    this module's docstring for why that snapshot could no longer be trusted."""
+    espn_sport, espn_league = _ESPN_SPORT_CONFIG[sport]
+    days_ahead = 7 if sport == "soccer_epl" else 14
+
+    async with httpx.AsyncClient() as client:
+        raw_games = await _fetch_espn_scoreboard(client, espn_sport, espn_league, days_ahead)
+
+        games: list[Game] = []
+        for g in raw_games:
+            home_raw, away_raw = await asyncio.gather(
+                _fetch_espn_roster(client, espn_sport, espn_league, g["homeTeamId"]),
+                _fetch_espn_roster(client, espn_sport, espn_league, g["awayTeamId"]),
+            )
+            # .get() throughout, not direct indexing — a real TS-written cache
+            # entry can be MISSING positionAbbr/headshotUrl entirely (JS's
+            # JSON.stringify drops undefined-valued keys, unlike Python's
+            # None -> null), not just null.
+            roster = [
+                RosterEntry(subject_id=r["subjectId"], subject_name=r.get("fullName"), team_abbr=g["homeAbbr"], position=r.get("positionAbbr"), headshot_url=r.get("headshotUrl"))
+                for r in home_raw
+            ] + [
+                RosterEntry(subject_id=r["subjectId"], subject_name=r.get("fullName"), team_abbr=g["awayAbbr"], position=r.get("positionAbbr"), headshot_url=r.get("headshotUrl"))
+                for r in away_raw
+            ]
+            games.append(
+                Game(
+                    sport=sport,
+                    game_id=g["gameId"],
+                    away_team_name=g["awayTeamName"],
+                    home_team_name=g["homeTeamName"],
+                    away_abbr=g["awayAbbr"],
+                    home_abbr=g["homeAbbr"],
+                    game_date=g["date"] or "",
+                    is_final=g.get("isFinal", False),
+                    roster=roster,
+                )
+            )
     return games

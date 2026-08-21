@@ -14,10 +14,14 @@ export type ProviderId =
   | 'sharpapi'
   | 'oddsapiio'
   | 'sportsgameodds'
+  | 'sportsgameodds_multisport'
   | 'oddspapi'
   | 'theoddsapi'
   | 'parlayapi'
   | 'parlayapi_mlb'
+  | 'parlayapi_nfl'
+  | 'parlayapi_cfb'
+  | 'parlayapi_soccer'
   | 'propline'
   | 'propline_2';
 
@@ -28,8 +32,6 @@ export type ProviderId =
  * pick the right per-provider sport key; MLB-only adapters can ignore it.
  */
 export type SportKey = 'mlb' | 'nfl' | 'cfb' | 'soccer_epl' | 'tennis_atp' | 'tennis_wta';
-
-export type ProviderTier = 'tier1' | 'tier2';
 
 /**
  * Canonical market keys a prop can resolve to. Deliberately the same
@@ -87,7 +89,20 @@ export interface FetchResult {
 export interface ProviderMeta {
   id: ProviderId;
   label: string;
-  tier: ProviderTier;
+  /**
+   * True if this identity is meant to run automatically (via a per-sport
+   * refresh, whichever app currently owns scheduling — see
+   * docs/api-capability-audit-2026-08-20.md §4), false if it's click-only
+   * (a manual "more books"/"sharp price" action). Replaces the old flat
+   * `tier: 'tier1' | 'tier2'` field (2026-08-20) — that field conflated
+   * "should this run automatically" with "which budget/loop does it draw
+   * from," which is exactly the shape that let two providers silently run
+   * with zero rate-limit checking (see
+   * docs/phase2-hardening-gameplan-2026-08-20.md items 3-4). Which
+   * providers actually run for which sport now lives in
+   * `registry.ts`'s `providersForSport()`, not in this flag.
+   */
+  scheduled: boolean;
   /** Read fresh from config on every access — missing key or `_ENABLED=false` means false. */
   enabled: boolean;
   /** Null when the provider doesn't self-disclose a delay (Odds-API.io) — must not be assumed real-time. */

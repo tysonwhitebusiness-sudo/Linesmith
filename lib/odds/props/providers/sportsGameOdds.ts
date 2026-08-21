@@ -1,5 +1,9 @@
 /**
- * SportsGameOdds — Tier 2, "More books". User-triggered only, never scheduled.
+ * SportsGameOdds — also powers the click-only "More books" panel, but is
+ * genuinely scheduled too (a dedicated MLB job, plus NFL/CFB via
+ * multiSportRefresh.ts) — the old header claim that it was "never scheduled"
+ * was already stale before 2026-08-20's rename, since sportsGameOddsRefresh.ts
+ * existed and was wired into scheduler.ts.
  *
  * Verified live in docs/odds-provider-verification.md § 3: confirmed exactly
  * 1 object billed per event returned, with the full player-prop board
@@ -12,10 +16,15 @@
  * request to exactly the two teams playing, narrowed by a time window, is
  * what keeps this to exactly 1 billed object per "More books" click instead
  * of pulling (and billing for) the whole day's slate.
+ *
+ * Second identity (2026-08-20, see docs/api-capability-audit-2026-08-20.md):
+ * `sportsgameodds_multisport` is a real, separate free account dedicated to
+ * NFL/CFB (via multiSportRefresh.ts) so its spend never competes with MLB's
+ * — same reasoning as ParlayAPI's per-sport identities below in parlayApi.ts.
  */
 
 import type { FetchResult, GameLookupContext, NormalizedPropRow, ProviderAdapter, SportKey, UnresolvedRow } from '../types';
-import { sportsGameOddsConfig } from '../config';
+import { sportsGameOddsConfig, sportsGameOddsMultisportConfig } from '../config';
 import { buildRosterIndex, normalizeBookmaker, resolveMarketKey, resolvePlayer, unresolvedBookmaker, unresolvedMarket, unresolvedPlayer } from '../entityResolution';
 import type { GameLine } from '../../oddsApi';
 
@@ -84,118 +93,127 @@ function nameFromPlayerId(playerId: string): string {
     .join(' ');
 }
 
-export const sportsGameOddsAdapter: ProviderAdapter = {
-  meta: {
-    id: 'sportsgameodds',
-    label: 'SportsGameOdds',
-    tier: 'tier2',
-    get enabled() {
-      return sportsGameOddsConfig().enabled;
+function buildAdapter(id: 'sportsgameodds' | 'sportsgameodds_multisport', getConfig: typeof sportsGameOddsConfig): ProviderAdapter {
+  return {
+    meta: {
+      id,
+      label: id === 'sportsgameodds_multisport' ? 'SportsGameOdds (NFL/CFB)' : 'SportsGameOdds',
+      // Both run automatically — 'sportsgameodds' via a dedicated MLB job
+      // (sportsGameOddsRefresh.ts / Python's job_sportsgameodds),
+      // 'sportsgameodds_multisport' via multiSportRefresh.ts's NFL/CFB path.
+      // See types.ts's ProviderMeta.scheduled doc.
+      scheduled: true,
+      get enabled() {
+        return getConfig().enabled;
+      },
+      // ~5 minutes observed in Phase 0 — not self-disclosed by the provider as a fixed constant.
+      delaySeconds: 300,
+      books: ['draftkings', 'fanduel', 'betmgm', 'caesars', 'espnbet', 'bovada', 'pointsbet', 'unibet'],
     },
-    // ~5 minutes observed in Phase 0 — not self-disclosed by the provider as a fixed constant.
-    delaySeconds: 300,
-    books: ['draftkings', 'fanduel', 'betmgm', 'caesars', 'espnbet', 'bovada', 'pointsbet', 'unibet'],
-  },
 
-  async fetchGameProps(game: GameLookupContext): Promise<FetchResult> {
-    const config = sportsGameOddsConfig();
-    if (!config.enabled || !config.key) {
-      return { rows: [], unresolved: [], cost: {}, warnings: ['SportsGameOdds is disabled.'] };
-    }
-
-    const leagueId = LEAGUE_IDS[game.sport];
-    if (!leagueId) {
-      return { rows: [], unresolved: [], cost: {}, warnings: [`SportsGameOdds has no league mapping for ${game.sport}.`] };
-    }
-
-    const homeId = sgoTeamId(game.homeTeamName, leagueId);
-    const awayId = sgoTeamId(game.awayTeamName, leagueId);
-    const gameTime = new Date(game.gameDate);
-    const startsAfter = new Date(gameTime.getTime() - 3 * 3_600_000).toISOString();
-    const startsBefore = new Date(gameTime.getTime() + 3 * 3_600_000).toISOString();
-
-    const url =
-      `${BASE}/events?leagueID=${leagueId}&teamID=${homeId},${awayId}` +
-      `&startsAfter=${startsAfter}&startsBefore=${startsBefore}&oddsAvailable=true&limit=5`;
-
-    const res = await fetch(url, { headers: { 'X-Api-Key': config.key }, cache: 'no-store' });
-    if (!res.ok) {
-      return { rows: [], unresolved: [], cost: {}, warnings: [`SportsGameOdds request failed (${res.status}).`] };
-    }
-    const json = (await res.json()) as SgoEventsResponse;
-    const events = json.data ?? [];
-    // The billing model is 1 object per item in `data` — bill for exactly what came back, even if the
-    // team-ID scoping (a derived, unverified-by-docs pattern) returned more than the intended single game.
-    const cost = { objects: events.length };
-
-    const event = events.find(
-      (e) => (e.teams.home.teamID === homeId && e.teams.away.teamID === awayId) ||
-             (e.teams.home.teamID === awayId && e.teams.away.teamID === homeId),
-    );
-    if (!event) {
-      return {
-        rows: [],
-        unresolved: [],
-        cost,
-        warnings: [`SportsGameOdds returned no event matching ${game.awayAbbr} @ ${game.homeAbbr} (derived team IDs ${awayId}/${homeId}).`],
-      };
-    }
-
-    const rosterIndex = buildRosterIndex(game.roster);
-    const rows: NormalizedPropRow[] = [];
-    const unresolved: UnresolvedRow[] = [];
-
-    for (const odd of Object.values(event.odds)) {
-      if (!odd.playerID) continue; // team/game-level market, not a player prop
-      if (odd.sideID !== 'over' && odd.sideID !== 'under') continue;
-
-      const marketKey = resolveMarketKey(odd.statID);
-      if (!marketKey) {
-        unresolved.push(unresolvedMarket(odd.statID, `player ${odd.playerID}`));
-        continue;
+    async fetchGameProps(game: GameLookupContext): Promise<FetchResult> {
+      const config = getConfig();
+      if (!config.enabled || !config.key) {
+        return { rows: [], unresolved: [], cost: {}, warnings: [`${id} is disabled.`] };
       }
 
-      const rawName = event.players?.[odd.playerID]?.name ?? nameFromPlayerId(odd.playerID);
-      const player =
-        resolvePlayer(rawName, game.homeAbbr, rosterIndex) ?? resolvePlayer(rawName, game.awayAbbr, rosterIndex);
-      if (!player) {
-        unresolved.push(unresolvedPlayer(rawName, `SportsGameOdds playerID ${odd.playerID}`));
-        continue;
+      const leagueId = LEAGUE_IDS[game.sport];
+      if (!leagueId) {
+        return { rows: [], unresolved: [], cost: {}, warnings: [`SportsGameOdds has no league mapping for ${game.sport}.`] };
       }
 
-      const line = odd.bookOverUnder != null ? Number(odd.bookOverUnder) : null;
+      const homeId = sgoTeamId(game.homeTeamName, leagueId);
+      const awayId = sgoTeamId(game.awayTeamName, leagueId);
+      const gameTime = new Date(game.gameDate);
+      const startsAfter = new Date(gameTime.getTime() - 3 * 3_600_000).toISOString();
+      const startsBefore = new Date(gameTime.getTime() + 3 * 3_600_000).toISOString();
 
-      for (const [bookRaw, book] of Object.entries(odd.byBookmaker ?? {})) {
-        if (!book.available) continue;
-        const bookmaker = normalizeBookmaker(bookRaw);
-        if (!bookmaker) {
-          unresolved.push(unresolvedBookmaker(bookRaw, `SportsGameOdds`));
+      const url =
+        `${BASE}/events?leagueID=${leagueId}&teamID=${homeId},${awayId}` +
+        `&startsAfter=${startsAfter}&startsBefore=${startsBefore}&oddsAvailable=true&limit=5`;
+
+      const res = await fetch(url, { headers: { 'X-Api-Key': config.key }, cache: 'no-store' });
+      if (!res.ok) {
+        return { rows: [], unresolved: [], cost: {}, warnings: [`SportsGameOdds request failed (${res.status}).`] };
+      }
+      const json = (await res.json()) as SgoEventsResponse;
+      const events = json.data ?? [];
+      // The billing model is 1 object per item in `data` — bill for exactly what came back, even if the
+      // team-ID scoping (a derived, unverified-by-docs pattern) returned more than the intended single game.
+      const cost = { objects: events.length };
+
+      const event = events.find(
+        (e) => (e.teams.home.teamID === homeId && e.teams.away.teamID === awayId) ||
+               (e.teams.home.teamID === awayId && e.teams.away.teamID === homeId),
+      );
+      if (!event) {
+        return {
+          rows: [],
+          unresolved: [],
+          cost,
+          warnings: [`SportsGameOdds returned no event matching ${game.awayAbbr} @ ${game.homeAbbr} (derived team IDs ${awayId}/${homeId}).`],
+        };
+      }
+
+      const rosterIndex = buildRosterIndex(game.roster);
+      const rows: NormalizedPropRow[] = [];
+      const unresolved: UnresolvedRow[] = [];
+
+      for (const odd of Object.values(event.odds)) {
+        if (!odd.playerID) continue; // team/game-level market, not a player prop
+        if (odd.sideID !== 'over' && odd.sideID !== 'under') continue;
+
+        const marketKey = resolveMarketKey(odd.statID);
+        if (!marketKey) {
+          unresolved.push(unresolvedMarket(odd.statID, `player ${odd.playerID}`));
           continue;
         }
-        const american = Number(book.odds);
-        if (!Number.isFinite(american)) continue;
 
-        rows.push({
-          providerId: 'sportsgameodds',
-          gameId: game.gameId,
-          subjectId: player.subjectId,
-          subjectName: player.subjectName,
-          marketKey,
-          line: book.overUnder != null ? Number(book.overUnder) : line,
-          side: odd.sideID,
-          bookmaker,
-          americanOdds: american,
-          decimalOdds: null,
-          fetchedAt: book.lastUpdatedAt,
-          isDelayed: true,
-          delaySeconds: Math.round((Date.now() - new Date(book.lastUpdatedAt).getTime()) / 1000),
-        });
+        const rawName = event.players?.[odd.playerID]?.name ?? nameFromPlayerId(odd.playerID);
+        const player =
+          resolvePlayer(rawName, game.homeAbbr, rosterIndex) ?? resolvePlayer(rawName, game.awayAbbr, rosterIndex);
+        if (!player) {
+          unresolved.push(unresolvedPlayer(rawName, `SportsGameOdds playerID ${odd.playerID}`));
+          continue;
+        }
+
+        const line = odd.bookOverUnder != null ? Number(odd.bookOverUnder) : null;
+
+        for (const [bookRaw, book] of Object.entries(odd.byBookmaker ?? {})) {
+          if (!book.available) continue;
+          const bookmaker = normalizeBookmaker(bookRaw);
+          if (!bookmaker) {
+            unresolved.push(unresolvedBookmaker(bookRaw, `SportsGameOdds`));
+            continue;
+          }
+          const american = Number(book.odds);
+          if (!Number.isFinite(american)) continue;
+
+          rows.push({
+            providerId: id,
+            gameId: game.gameId,
+            subjectId: player.subjectId,
+            subjectName: player.subjectName,
+            marketKey,
+            line: book.overUnder != null ? Number(book.overUnder) : line,
+            side: odd.sideID,
+            bookmaker,
+            americanOdds: american,
+            decimalOdds: null,
+            fetchedAt: book.lastUpdatedAt,
+            isDelayed: true,
+            delaySeconds: Math.round((Date.now() - new Date(book.lastUpdatedAt).getTime()) / 1000),
+          });
+        }
       }
-    }
 
-    return { rows, unresolved, cost, warnings: [] };
-  },
-};
+      return { rows, unresolved, cost, warnings: [] };
+    },
+  };
+}
+
+export const sportsGameOddsAdapter = buildAdapter('sportsgameodds', sportsGameOddsConfig);
+export const sportsGameOddsMultisportAdapter = buildAdapter('sportsgameodds_multisport', sportsGameOddsMultisportConfig);
 
 // ---------------------------------------------------------------------------
 // Game-level lines (moneyline/spread/total) — the exact same event lookup
@@ -306,6 +324,8 @@ export async function getSportsGameOddsGameLine(
     commenceTime: game.gameDate,
     homeTeam: event.teams.home.names.long,
     awayTeam: event.teams.away.names.long,
+    // No per-book breakdown built here — out of scope for oddsApi.ts's fix.
+    bookmakers: [],
     moneyline:
       moneylineHome || moneylineAway
         ? {
