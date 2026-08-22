@@ -8,14 +8,28 @@
 
 import type { WindowedStat } from './windowedStat';
 
-export type Sport = 'golf' | 'mlb' | 'nfl';
+export type Sport = 'golf' | 'mlb' | 'nfl' | 'soccer';
 
-export const SPORTS: Sport[] = ['golf', 'mlb', 'nfl'];
+export const SPORTS: Sport[] = ['golf', 'mlb', 'nfl', 'soccer'];
 
 export const SPORT_LABEL: Record<Sport, string> = {
   golf: 'Golf',
   mlb: 'MLB',
   nfl: 'NFL',
+  soccer: 'Soccer',
+};
+
+/** Soccer is the first sport with more than one competition — a real, closed
+ * union per docs/soccer-gameplan-2026-08-22.md §6a, not an open string, so a
+ * new league is a deliberate type-level addition, not silently possible by
+ * typo. Scope for this build: EPL + MLS (§8's final scope note). */
+export type SoccerLeague = 'epl' | 'mls';
+
+export const SOCCER_LEAGUES: SoccerLeague[] = ['epl', 'mls'];
+
+export const SOCCER_LEAGUE_LABEL: Record<SoccerLeague, string> = {
+  epl: 'Premier League',
+  mls: 'MLS',
 };
 
 /** Which real-world unit `liveState.distanceToSubject` is counted in. */

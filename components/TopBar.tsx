@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Sport } from '@/lib/core/types';
-import { SPORTS, SPORT_LABEL } from '@/lib/core/types';
+import type { Sport, SoccerLeague } from '@/lib/core/types';
+import { SPORTS, SPORT_LABEL, SOCCER_LEAGUES, SOCCER_LEAGUE_LABEL } from '@/lib/core/types';
 import { BrandedLoader } from './BrandedLoader';
 import { AccountMenu } from './AccountMenu';
 
@@ -26,6 +26,9 @@ export type Tab = (typeof TABS)[number];
 
 export interface TopBarProps {
   sport: Sport;
+  /** Soccer only — which competition, since it's the first sport with more than one. */
+  league?: SoccerLeague;
+  onLeagueChange?: (league: SoccerLeague) => void;
   /** Omitted on pages with no tab row of their own, e.g. Game Detail. */
   tab?: Tab;
   onTabChange?: (tab: Tab) => void;
@@ -43,6 +46,8 @@ export interface TopBarProps {
 
 export function TopBar({
   sport,
+  league,
+  onLeagueChange,
   tab,
   onTabChange,
   pendingTab = null,
@@ -83,7 +88,7 @@ export function TopBar({
         <select
           id="lb-sport"
           value={sport}
-          onChange={(e) => navigate('sport', `/${e.target.value}`)}
+          onChange={(e) => navigate('sport', e.target.value === 'soccer' ? '/soccer/epl' : `/${e.target.value}`)}
           disabled={isPending && pendingTarget === 'sport'}
           className="cursor-pointer rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-none disabled:cursor-wait disabled:opacity-70"
         >
@@ -93,6 +98,25 @@ export function TopBar({
             </option>
           ))}
         </select>
+        {sport === 'soccer' && league && onLeagueChange ? (
+          <>
+            <label className="sr-only" htmlFor="lb-league">
+              League
+            </label>
+            <select
+              id="lb-league"
+              value={league}
+              onChange={(e) => onLeagueChange(e.target.value as SoccerLeague)}
+              className="cursor-pointer rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-none"
+            >
+              {SOCCER_LEAGUES.map((l) => (
+                <option key={l} value={l}>
+                  {SOCCER_LEAGUE_LABEL[l]}
+                </option>
+              ))}
+            </select>
+          </>
+        ) : null}
         {isPending && pendingTarget === 'sport' ? <BrandedLoader size="inline" label="Switching sport" /> : null}
       </div>
 
@@ -100,12 +124,14 @@ export function TopBar({
       <nav className="lb-scroll-x flex min-w-0 flex-1 items-center justify-center gap-1">
         {leading}
         {tab && onTabChange
-          ? TABS.filter((t) => (t !== 'Teams' || sport === 'mlb' || sport === 'nfl') && (t !== 'Schedule' || sport === 'golf')).map((t) => (
+          ? TABS.filter(
+              (t) => (t !== 'Teams' || sport === 'mlb' || sport === 'nfl' || sport === 'soccer') && (t !== 'Schedule' || sport === 'golf'),
+            ).map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => {
-                  if (t === 'Teams') navigate(t, `/${sport}/teams`);
+                  if (t === 'Teams') navigate(t, sport === 'soccer' ? `/soccer/${league}/teams` : `/${sport}/teams`);
                   else if (t === 'Schedule') navigate(t, '/golf/schedule');
                   else onTabChange(t);
                 }}

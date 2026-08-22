@@ -80,12 +80,12 @@ import { writeSnapshotCache } from '@/lib/db/client';
  */
 interface OddsContextSnapshotV1 {
   schemaVersion: 1;
-  sport: 'nfl' | 'cfb' | 'soccer_epl';
+  sport: 'nfl' | 'cfb' | 'soccer_epl' | 'soccer_mls';
   generatedAt: string;
   games: GameLookupContext[];
 }
 
-async function writeOddsContextSnapshot(sport: 'nfl' | 'cfb' | 'soccer_epl', games: GameLookupContext[]): Promise<void> {
+async function writeOddsContextSnapshot(sport: 'nfl' | 'cfb' | 'soccer_epl' | 'soccer_mls', games: GameLookupContext[]): Promise<void> {
   try {
     const snapshot: OddsContextSnapshotV1 = { schemaVersion: 1, sport, generatedAt: new Date().toISOString(), games };
     await writeSnapshotCache(`odds-context:${sport}`, JSON.stringify(snapshot));
@@ -108,6 +108,7 @@ const SPORT_CONFIG: Record<Exclude<SportKey, 'mlb'>, TeamSportConfig | TennisCon
   nfl: { kind: 'team', espnSport: 'football', espnLeague: 'nfl' },
   cfb: { kind: 'team', espnSport: 'football', espnLeague: 'college-football' },
   soccer_epl: { kind: 'team', espnSport: 'soccer', espnLeague: 'eng.1' },
+  soccer_mls: { kind: 'team', espnSport: 'soccer', espnLeague: 'usa.1' },
   tennis_atp: { kind: 'tennis', tour: 'atp' },
   tennis_wta: { kind: 'tennis', tour: 'wta' },
 };
@@ -137,7 +138,7 @@ export async function loadGameContextsForSport(sport: Exclude<SportKey, 'mlb'>):
       }));
   }
 
-  const games = await fetchScoreboard(config.espnSport, config.espnLeague, sport === 'soccer_epl' ? 7 : 14);
+  const games = await fetchScoreboard(config.espnSport, config.espnLeague, sport === 'soccer_epl' || sport === 'soccer_mls' ? 7 : 14);
   const contexts: GameLookupContext[] = [];
   for (const g of games) {
     const [homeRoster, awayRoster] = await Promise.all([
@@ -164,7 +165,7 @@ export async function loadGameContextsForSport(sport: Exclude<SportKey, 'mlb'>):
   // hand regardless of whether the write below succeeds. The cast is safe:
   // `config.kind === 'team'` (we're past the tennis branch's early return)
   // means `sport` can only be one of SPORT_CONFIG's three team-sport keys.
-  void writeOddsContextSnapshot(sport as 'nfl' | 'cfb' | 'soccer_epl', contexts);
+  void writeOddsContextSnapshot(sport as 'nfl' | 'cfb' | 'soccer_epl' | 'soccer_mls', contexts);
 
   return contexts;
 }

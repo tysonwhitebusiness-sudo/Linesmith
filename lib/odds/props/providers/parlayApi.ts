@@ -31,6 +31,11 @@ const SPORT_KEYS: Record<SportKey, string> = {
   nfl: 'americanfootball_nfl',
   cfb: 'americanfootball_ncaaf',
   soccer_epl: 'soccer_epl',
+  // Type-completeness only — this old TS scheduler path isn't being wired up
+  // for MLS (new odds-provider work belongs in python-odds-service/ only,
+  // per CLAUDE.md). Real value matches Python's providers.py for consistency
+  // if this ever were called.
+  soccer_mls: 'soccer_usa_mls',
   tennis_atp: 'tennis_atp',
   tennis_wta: 'tennis_wta',
 };

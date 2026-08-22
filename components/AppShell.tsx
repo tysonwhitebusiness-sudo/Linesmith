@@ -2,7 +2,7 @@
 
 import { startTransition, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import type { PickCandidate, Sport } from '@/lib/core/types';
+import type { PickCandidate, Sport, SoccerLeague } from '@/lib/core/types';
 import { SPORTS, SPORT_LABEL, candidateKey } from '@/lib/core/types';
 import {
   readForm,
@@ -121,7 +121,7 @@ function LinesmithRecordBar({ record }: { record: { moneyline: { wins: number; l
   );
 }
 
-export function AppShell({ sport }: { sport: Sport }) {
+export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeague }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   // P4 — undefined previews today; a date string previews that future slate
@@ -130,8 +130,12 @@ export function AppShell({ sport }: { sport: Sport }) {
   // NFL reuses MLB's whole odds/props pipeline shape (real provider rows in
   // the same prop_odds table, same date-agnostic "today's slate" concept) —
   // golf is the one genuinely different case (tournament field, no daily date).
+  // Soccer's props are embedded directly per-candidate by buildSoccerSnapshot
+  // (same as NFL's own adapter), not fetched via this separate slate-wide
+  // path — /api/props/lines is MLB-scoped underneath (loadAllGameContexts()
+  // only knows MLB games), so it wouldn't return anything for soccer anyway.
   const hasPropsPipeline = sport === 'mlb' || sport === 'nfl';
-  const { snapshot, loading, error, lastFetched, refresh } = useSnapshot(sport, sport === 'mlb' ? scanDate : undefined);
+  const { snapshot, loading, error, lastFetched, refresh } = useSnapshot(sport, sport === 'mlb' ? scanDate : undefined, league);
   const slip = useSlip(sport);
 
   // Odds ride the snapshot's own refresh cycle rather than polling separately —
@@ -162,10 +166,10 @@ export function AppShell({ sport }: { sport: Sport }) {
       setPendingTab(null);
     });
   };
-  // NFL defaults to All rather than Good Bets — the Good Bets scoring engine
-  // needs graded-outcome data to calibrate a threshold against, which a
-  // brand-new sport doesn't have yet (same reasoning as hiding it below).
-  const [scanView, setScanView] = useState<ScanView>(() => (sport === 'nfl' ? 'All' : 'Good Bets'));
+  // NFL/soccer default to All rather than Good Bets — the Good Bets scoring
+  // engine needs graded-outcome data to calibrate a threshold against, which
+  // a brand-new sport doesn't have yet (same reasoning as hiding it below).
+  const [scanView, setScanView] = useState<ScanView>(() => (sport === 'nfl' || sport === 'soccer' ? 'All' : 'Good Bets'));
   const calibration = useMarketCalibration();
   const gamePickHistory = useGamePickHistory(sport);
   const [scanScope, setScanScope] = useState<'players' | 'games'>('players');
@@ -276,7 +280,7 @@ export function AppShell({ sport }: { sport: Sport }) {
     // switching sports shouldn't land on a tab that no longer has a button.
     setScanView((v) => {
       if (sport === 'golf' && v === 'Home Runs') return 'Good Bets';
-      if (sport === 'nfl' && (v === 'Home Runs' || v === 'Good Bets')) return 'All';
+      if ((sport === 'nfl' || sport === 'soccer') && (v === 'Home Runs' || v === 'Good Bets')) return 'All';
       return v;
     });
   }, [sport, clearAll]);
@@ -544,6 +548,8 @@ export function AppShell({ sport }: { sport: Sport }) {
       <header className="sticky top-0 z-20 border-b border-line bg-paper/95 backdrop-blur">
         <TopBar
           sport={sport}
+          league={league}
+          onLeagueChange={(next) => router.push(`/soccer/${next}`)}
           tab={tab}
           onTabChange={handleTabChange}
           pendingTab={pendingTab}
@@ -699,7 +705,7 @@ export function AppShell({ sport }: { sport: Sport }) {
                           graded history yet (see scanView default above). */}
                       {SCAN_VIEWS.filter((v) => {
                         if (sport === 'golf') return v !== 'Home Runs';
-                        if (sport === 'nfl') return v !== 'Home Runs' && v !== 'Good Bets';
+                        if (sport === 'nfl' || sport === 'soccer') return v !== 'Home Runs' && v !== 'Good Bets';
                         return true;
                       }).map((v) => (
                         <button

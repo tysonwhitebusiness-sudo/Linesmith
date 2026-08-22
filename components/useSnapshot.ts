@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Sport, SportSnapshot, PickCandidate } from '@/lib/core/types';
+import type { Sport, SoccerLeague, SportSnapshot, PickCandidate } from '@/lib/core/types';
 
 /**
  * Reverses the wire-side dedup from lib/sports/mlb/historyTrim.ts: the
@@ -59,8 +59,12 @@ export interface SnapshotState {
  * today's. Omit for today. Switching dates clears the old snapshot the same
  * way switching sports does, since the games underneath are a different set
  * entirely.
+ *
+ * `league` (soccer only) — which competition, since `/api/soccer/[league]`
+ * is league-scoped (soccer is the first sport with more than one). Switching
+ * leagues clears the old snapshot the same way switching sports does.
  */
-export function useSnapshot(sport: Sport, date?: string): SnapshotState {
+export function useSnapshot(sport: Sport, date?: string, league?: SoccerLeague): SnapshotState {
   const [snapshot, setSnapshot] = useState<SportSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +74,7 @@ export function useSnapshot(sport: Sport, date?: string): SnapshotState {
   const inFlight = useRef<AbortController | null>(null);
   const sportRef = useRef(sport);
   const dateRef = useRef(date);
+  const leagueRef = useRef(league);
   const hasData = useRef(false);
 
   const load = useCallback(async () => {
@@ -80,7 +85,7 @@ export function useSnapshot(sport: Sport, date?: string): SnapshotState {
     // Only show loading skeleton on first load — refreshes keep current data visible.
     if (!hasData.current) setLoading(true);
     try {
-      const url = date ? `/api/${sport}?date=${date}` : `/api/${sport}`;
+      const url = sport === 'soccer' ? `/api/soccer/${league}` : date ? `/api/${sport}?date=${date}` : `/api/${sport}`;
       const res = await fetch(url, { signal: controller.signal, cache: 'no-store' });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.detail ?? json?.error ?? `Request failed (${res.status})`);
@@ -94,16 +99,17 @@ export function useSnapshot(sport: Sport, date?: string): SnapshotState {
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [sport, date]);
+  }, [sport, date, league]);
 
   useEffect(() => {
-    // When switching sports or the previewed date, keep the old snapshot
-    // until the new one arrives instead of blanking the UI, but only if
-    // neither actually changed — otherwise the games underneath are a
-    // completely different set and stale data would be misleading.
-    if (sportRef.current !== sport || dateRef.current !== date) {
+    // When switching sports, the previewed date, or the soccer league, keep
+    // the old snapshot until the new one arrives instead of blanking the UI,
+    // but only if none actually changed — otherwise the games underneath are
+    // a completely different set and stale data would be misleading.
+    if (sportRef.current !== sport || dateRef.current !== date || leagueRef.current !== league) {
       sportRef.current = sport;
       dateRef.current = date;
+      leagueRef.current = league;
       setSnapshot(null);
       hasData.current = false;
     }
@@ -113,7 +119,7 @@ export function useSnapshot(sport: Sport, date?: string): SnapshotState {
       clearInterval(timer);
       inFlight.current?.abort();
     };
-  }, [load, sport, date]);
+  }, [load, sport, date, league]);
 
   useEffect(() => {
     const onVisibility = () => {
