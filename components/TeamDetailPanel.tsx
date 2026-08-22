@@ -11,6 +11,7 @@ import { useAllNflTeams } from './useAllNflTeams';
 import { useAllSoccerTeams } from './useAllSoccerTeams';
 import { useAllCfbTeams } from './useAllCfbTeams';
 import { useAllNbaTeams } from './useAllNbaTeams';
+import { useAllNhlTeams } from './useAllNhlTeams';
 
 /**
  * The Teams page's shell — a searchable list of all teams beside the same
@@ -334,6 +335,45 @@ function NbaTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys }: Omit<TeamDe
   );
 }
 
+function NhlTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys }: Omit<TeamDetailPanelProps, 'sport' | 'snapshot' | 'odds'>) {
+  const [search, setSearch] = useState('');
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+  const { teams, loading, error } = useAllNhlTeams();
+
+  const sortedTeams = useMemo(() => [...teams].sort((a, b) => a.name.localeCompare(b.name)), [teams]);
+  const activeTeamId = selectedTeamId ?? initialTeamId ?? sortedTeams[0]?.teamId ?? 0;
+
+  const [detailReady, setDetailReady] = useState(false);
+  useEffect(() => {
+    setDetailReady(false);
+  }, [activeTeamId]);
+
+  return (
+    <TeamListShell
+      sortedTeams={sortedTeams}
+      loading={loading}
+      error={error}
+      search={search}
+      onSearchChange={setSearch}
+      activeTeamId={activeTeamId}
+      onSelect={setSelectedTeamId}
+    >
+      {!detailReady && <BrandedLoader size="page" />}
+      <div style={{ display: detailReady ? 'block' : 'none' }}>
+        <TeamDetail
+          sport="nhl"
+          teamId={activeTeamId}
+          standingsTeams={teams}
+          standingsLoading={loading}
+          onAdd={onAdd}
+          addedKeys={addedKeys}
+          onReadyChange={setDetailReady}
+        />
+      </div>
+    </TeamListShell>
+  );
+}
+
 export function TeamDetailPanel({ sport, league, initialTeamId, snapshot, odds, onAdd, addedKeys }: TeamDetailPanelProps) {
   return sport === 'nfl' ? (
     <NflTeamDetailPanelBody initialTeamId={initialTeamId} onAdd={onAdd} addedKeys={addedKeys} />
@@ -341,6 +381,8 @@ export function TeamDetailPanel({ sport, league, initialTeamId, snapshot, odds, 
     <CfbTeamDetailPanelBody initialTeamId={initialTeamId} onAdd={onAdd} addedKeys={addedKeys} />
   ) : sport === 'nba' ? (
     <NbaTeamDetailPanelBody initialTeamId={initialTeamId} onAdd={onAdd} addedKeys={addedKeys} />
+  ) : sport === 'nhl' ? (
+    <NhlTeamDetailPanelBody initialTeamId={initialTeamId} onAdd={onAdd} addedKeys={addedKeys} />
   ) : sport === 'soccer' && league ? (
     <SoccerTeamDetailPanelBody league={league} initialTeamId={initialTeamId} onAdd={onAdd} addedKeys={addedKeys} />
   ) : (

@@ -228,6 +228,19 @@ MARKET_KEY_ALIASES: dict[str, str] = {
     "pts+ast": "points-assists",
     "rebounds-assists": "rebounds-assists",
     "reb+ast": "rebounds-assists",
+
+    # --- NHL (2026-08-22) — kept in lockstep with entityResolution.ts's
+    # own NHL section.
+    "goals": "goals",
+    "player_goals": "goals",
+    "shots-on-goal": "shots-on-goal",
+    "shots on goal": "shots-on-goal",
+    "player_shots_on_goal": "shots-on-goal",
+    "blocked-shots": "blocked-shots",
+    "blocked_shots": "blocked-shots",
+    "player_blocked_shots": "blocked-shots",
+    "goals-against": "goals-against",
+    "goals_against": "goals-against",
 }
 
 _MARKET_KEY_WS_RE = re.compile(r"[\s_]+")

@@ -19,6 +19,7 @@ import { useNflTeamDetail } from './useNflTeamDetail';
 import { useSoccerTeamDetail } from './useSoccerTeamDetail';
 import { useCfbTeamDetail } from './useCfbTeamDetail';
 import { useNbaTeamDetail } from './useNbaTeamDetail';
+import { useNhlTeamDetail } from './useNhlTeamDetail';
 import { StandingsTables } from './StandingsTables';
 import type { TeamStandingRow } from './useAllTeams';
 import { teamPrimaryColor as mlbTeamPrimaryColor, withAlpha } from '@/lib/sports/mlb/teamColors';
@@ -36,6 +37,7 @@ import { toTeamDetailData as toNflTeamDetailData } from '@/lib/sports/nfl/adapte
 import { toTeamDetailData as toSoccerTeamDetailData } from '@/lib/sports/soccer/adapters/teamDetailAdapter';
 import { toTeamDetailData as toCfbTeamDetailData } from '@/lib/sports/cfb/adapters/teamDetailAdapter';
 import { toTeamDetailData as toNbaTeamDetailData } from '@/lib/sports/nba/adapters/teamDetailAdapter';
+import { toTeamDetailData as toNhlTeamDetailData } from '@/lib/sports/nhl/adapters/teamDetailAdapter';
 
 const POSITION_ORDER = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'QB', 'RB', 'FB', 'WR', 'TE', 'K', 'OL', 'DL', 'LB', 'DB', 'S', 'CB'];
 
@@ -76,6 +78,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
   const soccerTeam = useSoccerTeamDetail(sport === 'soccer' ? teamId : undefined, sport === 'soccer' ? league : undefined);
   const cfbTeam = useCfbTeamDetail(sport === 'cfb' ? teamId : undefined);
   const nbaTeam = useNbaTeamDetail(sport === 'nba' ? teamId : undefined);
+  const nhlTeam = useNhlTeamDetail(sport === 'nhl' ? teamId : undefined);
 
   const [market, setMarket] = useState<string | undefined>(undefined);
   const [lineOffset, setLineOffset] = useState(0);
@@ -141,7 +144,11 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
             ? nbaTeam.data
               ? toNbaTeamDetailData({ data: nbaTeam.data, standingsTeams })
               : null
-            : roster.data
+            : sport === 'nhl'
+              ? nhlTeam.data
+                ? toNhlTeamDetailData({ data: nhlTeam.data, standingsTeams })
+                : null
+              : roster.data
               ? toMlbTeamDetailData({
                 teamId,
                 snapshot: snapshot ?? null,
@@ -169,7 +176,9 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
           ? cfbTeam.loading && !cfbTeam.data
           : sport === 'nba'
             ? nbaTeam.loading && !nbaTeam.data
-            : roster.loading && !roster.data;
+            : sport === 'nhl'
+              ? nhlTeam.loading && !nhlTeam.data
+              : roster.loading && !roster.data;
   const detailError =
     sport === 'nfl'
       ? nflTeam.error
@@ -179,7 +188,9 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
           ? cfbTeam.error
           : sport === 'nba'
             ? nbaTeam.error
-            : roster.error;
+            : sport === 'nhl'
+              ? nhlTeam.error
+              : roster.error;
 
   // Combined readiness for `onReadyChange` — must run before any early
   // return below (rules of hooks). An error also counts as "ready" — a
@@ -197,7 +208,9 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
             ? !cfbTeam.loading
             : sport === 'nba'
               ? !nbaTeam.loading
-              : !form.loading && !teamStatcast.loading && !batterRanks.loading));
+              : sport === 'nhl'
+                ? !nhlTeam.loading
+                : !form.loading && !teamStatcast.loading && !batterRanks.loading));
   useEffect(() => {
     onReadyChange?.(internalReady);
   }, [internalReady, onReadyChange]);
@@ -243,7 +256,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
   const accentColor =
     sport === 'nfl'
       ? nflTeamPrimaryColor(team.abbr)
-      : sport === 'soccer' || sport === 'cfb' || sport === 'nba'
+      : sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl'
         ? '#3a3a3a'
         : mlbTeamPrimaryColor(team.teamId);
 
@@ -654,7 +667,9 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
                   ? `/cfb/team/${id}`
                   : sport === 'nba'
                     ? `/nba/team/${id}`
-                    : `/mlb/team/${id}`
+                    : sport === 'nhl'
+                      ? `/nhl/team/${id}`
+                      : `/mlb/team/${id}`
           }
         />
       </section>
@@ -694,7 +709,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
           </section>
         ) : null}
 
-        {sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' ? (
+        {sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl' ? (
           <section className="lb-card overflow-hidden">
             <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Form</h3>
             {data.form ? (
@@ -719,7 +734,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
           </section>
         ) : null}
 
-        {sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' ? (
+        {sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl' ? (
           data.nextGame ? (
             <section className="lb-card overflow-hidden">
               <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Next game</h3>
@@ -763,7 +778,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
           </section>
         ) : null}
 
-        {(sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba') && data.recentResults && data.recentResults.length > 0 ? (
+        {(sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl') && data.recentResults && data.recentResults.length > 0 ? (
           <section className="lb-card overflow-hidden">
             <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Recent results</h3>
             <ul className="space-y-1.5 p-3 text-[10.5px]">

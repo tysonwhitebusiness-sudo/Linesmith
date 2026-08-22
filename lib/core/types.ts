@@ -8,9 +8,9 @@
 
 import type { WindowedStat } from './windowedStat';
 
-export type Sport = 'golf' | 'mlb' | 'nfl' | 'soccer' | 'cfb' | 'nba';
+export type Sport = 'golf' | 'mlb' | 'nfl' | 'soccer' | 'cfb' | 'nba' | 'nhl';
 
-export const SPORTS: Sport[] = ['golf', 'mlb', 'nfl', 'soccer', 'cfb', 'nba'];
+export const SPORTS: Sport[] = ['golf', 'mlb', 'nfl', 'soccer', 'cfb', 'nba', 'nhl'];
 
 export const SPORT_LABEL: Record<Sport, string> = {
   golf: 'Golf',
@@ -19,6 +19,7 @@ export const SPORT_LABEL: Record<Sport, string> = {
   soccer: 'Soccer',
   cfb: 'CFB',
   nba: 'NBA',
+  nhl: 'NHL',
 };
 
 /** Soccer is the first sport with more than one competition — a real, closed

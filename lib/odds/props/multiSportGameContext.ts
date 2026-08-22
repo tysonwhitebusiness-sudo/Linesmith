@@ -27,6 +27,7 @@
 import type { GameLookupContext, SportKey } from './types';
 import { fetchScoreboard, fetchTeamRoster } from '@/lib/sports/multiSport/teamSportEspn';
 import { fetchTennisMatches } from '@/lib/sports/multiSport/espnTennis';
+import { fetchWeekSchedule, fetchTeamRoster as fetchNhlTeamRoster } from '@/lib/sports/nhl/nhle';
 import { writeSnapshotCache } from '@/lib/db/client';
 
 /**
@@ -103,13 +104,18 @@ interface TennisConfig {
   kind: 'tennis';
   tour: 'atp' | 'wta';
 }
+/** NHL has no ESPN dependency at all — real official api-web.nhle.com data (nhle.ts). Its own `kind`, not shoehorned into TeamSportConfig, since roster/schedule resolution is genuinely different (team-abbrev-keyed, not ESPN's numeric-id scheme). */
+interface NhlConfig {
+  kind: 'nhl';
+}
 
-const SPORT_CONFIG: Record<Exclude<SportKey, 'mlb'>, TeamSportConfig | TennisConfig> = {
+const SPORT_CONFIG: Record<Exclude<SportKey, 'mlb'>, TeamSportConfig | TennisConfig | NhlConfig> = {
   nfl: { kind: 'team', espnSport: 'football', espnLeague: 'nfl' },
   cfb: { kind: 'team', espnSport: 'football', espnLeague: 'college-football' },
   soccer_epl: { kind: 'team', espnSport: 'soccer', espnLeague: 'eng.1' },
   soccer_mls: { kind: 'team', espnSport: 'soccer', espnLeague: 'usa.1' },
   nba: { kind: 'team', espnSport: 'basketball', espnLeague: 'nba' },
+  nhl: { kind: 'nhl' },
   tennis_atp: { kind: 'tennis', tour: 'atp' },
   tennis_wta: { kind: 'tennis', tour: 'wta' },
 };
@@ -137,6 +143,32 @@ export async function loadGameContextsForSport(sport: Exclude<SportKey, 'mlb'>):
           { subjectId: m.player2SubjectId, subjectName: m.player2Name },
         ],
       }));
+  }
+
+  if (config.kind === 'nhl') {
+    const games = await fetchWeekSchedule();
+    const contexts: GameLookupContext[] = [];
+    for (const g of games) {
+      const [homeRoster, awayRoster] = await Promise.all([fetchNhlTeamRoster(g.homeAbbr), fetchNhlTeamRoster(g.awayAbbr)]);
+      contexts.push({
+        sport,
+        gameId: g.gameId,
+        awayTeamName: g.awayTeamName,
+        homeTeamName: g.homeTeamName,
+        awayAbbr: g.awayAbbr,
+        homeAbbr: g.homeAbbr,
+        gameDate: g.date,
+        roster: [
+          ...homeRoster.map((p) => ({ subjectId: p.subjectId, subjectName: p.fullName, teamAbbr: g.homeAbbr, position: p.position ?? undefined, headshotUrl: p.headshotUrl ?? undefined })),
+          ...awayRoster.map((p) => ({ subjectId: p.subjectId, subjectName: p.fullName, teamAbbr: g.awayAbbr, position: p.position ?? undefined, headshotUrl: p.headshotUrl ?? undefined })),
+        ],
+      });
+    }
+    // No odds-context snapshot write for NHL — same reasoning tennis is
+    // excluded for (see this module's own header comment): no proactive
+    // Python scheduler job reads it yet, so there's no "existing cadence"
+    // to piggyback the write onto.
+    return contexts;
   }
 
   const games = await fetchScoreboard(config.espnSport, config.espnLeague, sport === 'soccer_epl' || sport === 'soccer_mls' ? 7 : 14);

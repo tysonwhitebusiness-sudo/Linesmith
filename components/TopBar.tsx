@@ -126,7 +126,7 @@ export function TopBar({
         {tab && onTabChange
           ? TABS.filter(
               (t) =>
-                (t !== 'Teams' || sport === 'mlb' || sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba') &&
+                (t !== 'Teams' || sport === 'mlb' || sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl') &&
                 (t !== 'Schedule' || sport === 'golf'),
             ).map((t) => (
               <button

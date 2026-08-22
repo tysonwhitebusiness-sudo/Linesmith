@@ -169,7 +169,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // NFL/soccer default to All rather than Good Bets — the Good Bets scoring
   // engine needs graded-outcome data to calibrate a threshold against, which
   // a brand-new sport doesn't have yet (same reasoning as hiding it below).
-  const [scanView, setScanView] = useState<ScanView>(() => (sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' ? 'All' : 'Good Bets'));
+  const [scanView, setScanView] = useState<ScanView>(() => (sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl' ? 'All' : 'Good Bets'));
   const calibration = useMarketCalibration();
   const gamePickHistory = useGamePickHistory(sport);
   const [scanScope, setScanScope] = useState<'players' | 'games'>('players');
@@ -280,7 +280,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
     // switching sports shouldn't land on a tab that no longer has a button.
     setScanView((v) => {
       if (sport === 'golf' && v === 'Home Runs') return 'Good Bets';
-      if ((sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba') && (v === 'Home Runs' || v === 'Good Bets')) return 'All';
+      if ((sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl') && (v === 'Home Runs' || v === 'Good Bets')) return 'All';
       return v;
     });
   }, [sport, clearAll]);
@@ -567,7 +567,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
             close to game day); the honest "no price yet" states already used
             throughout Scan cover that rather than needing special-case copy
             here. */}
-        {sport === 'mlb' || sport === 'nfl' || sport === 'cfb' || sport === 'nba' ? (
+        {sport === 'mlb' || sport === 'nfl' || sport === 'cfb' || sport === 'nba' || sport === 'nhl' ? (
           <DateGameStrip
             scanDate={scanDate}
             onSetDate={setScanDate}
@@ -710,7 +710,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                           graded history yet (see scanView default above). */}
                       {SCAN_VIEWS.filter((v) => {
                         if (sport === 'golf') return v !== 'Home Runs';
-                        if (sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba') return v !== 'Home Runs' && v !== 'Good Bets';
+                        if (sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl') return v !== 'Home Runs' && v !== 'Good Bets';
                         return true;
                       }).map((v) => (
                         <button

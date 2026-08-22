@@ -229,6 +229,22 @@ const MARKET_KEY_ALIASES: Record<string, MarketKey> = {
   'pts+ast': 'points-assists',
   'rebounds-assists': 'rebounds-assists',
   'reb+ast': 'rebounds-assists',
+
+  // --- NHL (2026-08-22) — same "not yet live-verified" caveat as NBA's
+  // section above (no PARLAYAPI_NHL_KEY, no confirmed real SportsGameOdds
+  // NHL statID). `assists`/`points`/`hits` already aliased above (shared
+  // canonical keys with soccer/MLB/NBA — no real collision since sport +
+  // gameId always scope which one a candidate actually means).
+  goals: 'goals',
+  player_goals: 'goals',
+  'shots-on-goal': 'shots-on-goal',
+  'shots on goal': 'shots-on-goal',
+  player_shots_on_goal: 'shots-on-goal',
+  'blocked-shots': 'blocked-shots',
+  blocked_shots: 'blocked-shots',
+  player_blocked_shots: 'blocked-shots',
+  'goals-against': 'goals-against',
+  goals_against: 'goals-against',
 };
 
 /**
