@@ -131,6 +131,7 @@ _ESPN_SPORT_CONFIG: dict[str, tuple[str, str]] = {
     "nfl": ("football", "nfl"),
     "cfb": ("football", "college-football"),
     "soccer_epl": ("soccer", "eng.1"),
+    "soccer_mls": ("soccer", "usa.1"),
 }
 
 _ROSTER_TTL_SECONDS = 60 * 60  # 1h — matches teamSportEspn.ts's ROSTER_TTL_MS
@@ -233,11 +234,12 @@ async def _fetch_espn_roster(client: httpx.AsyncClient, espn_sport: str, espn_le
 
 
 async def load_sport_games(sport: str) -> list[Game]:
-    """sport: 'nfl' | 'cfb' | 'soccer_epl' — fetches directly from ESPN
-    (2026-08-20), not from the Postgres snapshot TS used to keep fresh. See
-    this module's docstring for why that snapshot could no longer be trusted."""
+    """sport: 'nfl' | 'cfb' | 'soccer_epl' | 'soccer_mls' — fetches directly
+    from ESPN (2026-08-20), not from the Postgres snapshot TS used to keep
+    fresh. See this module's docstring for why that snapshot could no
+    longer be trusted."""
     espn_sport, espn_league = _ESPN_SPORT_CONFIG[sport]
-    days_ahead = 7 if sport == "soccer_epl" else 14
+    days_ahead = 7 if sport in ("soccer_epl", "soccer_mls") else 14
 
     async with httpx.AsyncClient() as client:
         raw_games = await _fetch_espn_scoreboard(client, espn_sport, espn_league, days_ahead)

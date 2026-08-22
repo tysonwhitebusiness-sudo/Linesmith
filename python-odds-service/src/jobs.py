@@ -158,6 +158,17 @@ _PARLAYAPI_SPORT_CONFIG: dict[str, tuple[str, str | None, bool, int]] = {
         config.PARLAYAPI_SOCCER_ENABLED,
         config.PARLAYAPI_SOCCER_MONTHLY_LIMIT,
     ),
+    # MLS reuses EPL's identity (same provider_id "parlayapi_soccer") rather
+    # than a new key — no dedicated MLS ParlayAPI account exists yet (see
+    # docs/soccer-gameplan-2026-08-22.md §3.4/§9). Real consequence: EPL and
+    # MLS now share one soccer-wide monthly budget instead of each having
+    # their own — flagged, not silently absorbed.
+    "soccer_mls": (
+        "parlayapi_soccer",
+        config.PARLAYAPI_SOCCER_KEY,
+        config.PARLAYAPI_SOCCER_ENABLED,
+        config.PARLAYAPI_SOCCER_MONTHLY_LIMIT,
+    ),
 }
 
 
@@ -245,6 +256,41 @@ async def job_soccer_epl(yield_fn=None) -> dict:
     async with httpx.AsyncClient() as client:
         return await _run_timed(
             "refreshSoccerEplJob", run_provider_specs(client, games, _soccer_epl_specs(), concurrent=False)
+        )
+
+
+def _soccer_mls_specs(yield_fn) -> list[ProviderSpec]:
+    """MLS gets the same Propline/ParlayAPI shape as EPL (§9), plus a real
+    SportsGameOdds spec EPL doesn't get — SGO's soccer coverage is MLS/UCL
+    specifically, confirmed live (docs/soccer-gameplan-2026-08-22.md §2):
+    a real MLS event returned 160 game-level odds entries (3-way
+    moneyline/spread/total/odd-even) alongside 1,580 player-prop entries.
+    Reuses the NFL/CFB SportsGameOdds account (`_sportsgameodds_multisport_spec`)
+    rather than provisioning a 4th key — no new MLS-dedicated SGO account
+    exists, same reuse-and-flag posture as the ParlayAPI identity above.
+    """
+    return [
+        ProviderSpec(
+            provider_id="propline_2",
+            enabled=config.PROPLINE_2_ENABLED,
+            fetch=lambda client, games, yield_fn: fetch_propline(client, config.PROPLINE_2_KEY, games, "soccer_mls"),
+            cap_kind="none",
+        ),
+        _parlayapi_sport_spec("soccer_mls"),
+        _sportsgameodds_multisport_spec(yield_fn),
+    ]
+
+
+async def job_soccer_mls(yield_fn=None) -> dict:
+    games = [g for g in await load_sport_games("soccer_mls") if not g.is_final]
+    tier, should_fetch = await gameday.should_fetch_paid_providers("soccer_mls", games)
+    if not should_fetch:
+        return await _run_timed("refreshSoccerMlsJob", _return_dict(gameday.skip_summary(games, tier)))
+
+    async with httpx.AsyncClient() as client:
+        return await _run_timed(
+            "refreshSoccerMlsJob",
+            run_provider_specs(client, games, _soccer_mls_specs(yield_fn), yield_fn=yield_fn, concurrent=False),
         )
 
 
@@ -606,6 +652,7 @@ JOB_REGISTRY = [
     ("refreshNflJob", job_nfl, 20 * 60),
     ("refreshCfbJob", job_cfb, 20 * 60),
     ("refreshSoccerEplJob", job_soccer_epl, 20 * 60),
+    ("refreshSoccerMlsJob", job_soccer_mls, 20 * 60),
     # Grading isn't time-critical (a final score doesn't need grading within
     # seconds) and the fetch it drives is TTL-cached — 15min is conservative,
     # not a real constraint being protected.

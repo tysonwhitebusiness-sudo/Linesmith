@@ -406,7 +406,7 @@ async def fetch_oddsapiio(
     return out
 
 
-_SGO_LEAGUE_IDS = {"mlb": "MLB", "nfl": "NFL", "cfb": "NCAAF"}
+_SGO_LEAGUE_IDS = {"mlb": "MLB", "nfl": "NFL", "cfb": "NCAAF", "soccer_mls": "MLS"}
 
 
 def _sgo_team_id(full_name: str, league_id: str) -> str:
@@ -537,7 +537,7 @@ async def fetch_sportsgameodds(
     return out
 
 
-_PROPLINE_SPORT_KEYS = {"mlb": "baseball_mlb", "soccer_epl": "soccer_epl"}
+_PROPLINE_SPORT_KEYS = {"mlb": "baseball_mlb", "soccer_epl": "soccer_epl", "soccer_mls": "soccer_mls"}
 
 
 async def fetch_propline(client: httpx.AsyncClient, api_key: str, games: list[Game], sport: str) -> FetchOutcome:
@@ -623,6 +623,10 @@ _PARLAYAPI_SPORT_KEYS = {
     "nfl": "americanfootball_nfl",
     "cfb": "americanfootball_ncaaf",
     "soccer_epl": "soccer_epl",
+    # ParlayAPI's own key differs from Propline's for MLS (soccer_usa_mls vs
+    # soccer_mls) — confirmed live per docs/soccer-gameplan-2026-08-22.md §3,
+    # a real per-vendor naming mismatch, not a typo.
+    "soccer_mls": "soccer_usa_mls",
 }
 
 
