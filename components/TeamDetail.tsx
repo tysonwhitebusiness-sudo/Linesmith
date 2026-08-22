@@ -17,6 +17,7 @@ import { useTeamRoster } from './useTeamRoster';
 import { useTeamForm } from './useTeamForm';
 import { useNflTeamDetail } from './useNflTeamDetail';
 import { useSoccerTeamDetail } from './useSoccerTeamDetail';
+import { useCfbTeamDetail } from './useCfbTeamDetail';
 import { StandingsTables } from './StandingsTables';
 import type { TeamStandingRow } from './useAllTeams';
 import { teamPrimaryColor as mlbTeamPrimaryColor, withAlpha } from '@/lib/sports/mlb/teamColors';
@@ -32,6 +33,7 @@ import {
 } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import { toTeamDetailData as toNflTeamDetailData } from '@/lib/sports/nfl/adapters/teamDetailAdapter';
 import { toTeamDetailData as toSoccerTeamDetailData } from '@/lib/sports/soccer/adapters/teamDetailAdapter';
+import { toTeamDetailData as toCfbTeamDetailData } from '@/lib/sports/cfb/adapters/teamDetailAdapter';
 
 const POSITION_ORDER = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'QB', 'RB', 'FB', 'WR', 'TE', 'K', 'OL', 'DL', 'LB', 'DB', 'S', 'CB'];
 
@@ -70,6 +72,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
   const batterRanks = useTeamBatterRanks(teamId);
   const nflTeam = useNflTeamDetail(sport === 'nfl' ? teamId : undefined);
   const soccerTeam = useSoccerTeamDetail(sport === 'soccer' ? teamId : undefined, sport === 'soccer' ? league : undefined);
+  const cfbTeam = useCfbTeamDetail(sport === 'cfb' ? teamId : undefined);
 
   const [market, setMarket] = useState<string | undefined>(undefined);
   const [lineOffset, setLineOffset] = useState(0);
@@ -127,28 +130,38 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
         ? soccerTeam.data && league
           ? toSoccerTeamDetailData({ league, data: soccerTeam.data, standingsTeams })
           : null
-        : roster.data
-        ? toMlbTeamDetailData({
-            teamId,
-            snapshot: snapshot ?? null,
-            odds: odds ?? null,
-            roster: roster.data,
-            formResults: form.results,
-            teamStatcast,
-            batterRanksByPersonId: batterRanks.byPersonId,
-            bullpen: { byTeam: bullpen.byTeam, loading: bullpen.loading },
-            standingsTeams,
-            market,
-            lineOffset,
-            opponentOnly,
-            venue,
-            lastN,
-          })
-        : null;
+        : sport === 'cfb'
+          ? cfbTeam.data
+            ? toCfbTeamDetailData({ data: cfbTeam.data, standingsTeams })
+            : null
+          : roster.data
+            ? toMlbTeamDetailData({
+                teamId,
+                snapshot: snapshot ?? null,
+                odds: odds ?? null,
+                roster: roster.data,
+                formResults: form.results,
+                teamStatcast,
+                batterRanksByPersonId: batterRanks.byPersonId,
+                bullpen: { byTeam: bullpen.byTeam, loading: bullpen.loading },
+                standingsTeams,
+                market,
+                lineOffset,
+                opponentOnly,
+                venue,
+                lastN,
+              })
+            : null;
 
   const detailLoading =
-    sport === 'nfl' ? nflTeam.loading && !nflTeam.data : sport === 'soccer' ? soccerTeam.loading && !soccerTeam.data : roster.loading && !roster.data;
-  const detailError = sport === 'nfl' ? nflTeam.error : sport === 'soccer' ? soccerTeam.error : roster.error;
+    sport === 'nfl'
+      ? nflTeam.loading && !nflTeam.data
+      : sport === 'soccer'
+        ? soccerTeam.loading && !soccerTeam.data
+        : sport === 'cfb'
+          ? cfbTeam.loading && !cfbTeam.data
+          : roster.loading && !roster.data;
+  const detailError = sport === 'nfl' ? nflTeam.error : sport === 'soccer' ? soccerTeam.error : sport === 'cfb' ? cfbTeam.error : roster.error;
 
   // Combined readiness for `onReadyChange` — must run before any early
   // return below (rules of hooks). An error also counts as "ready" — a
@@ -158,7 +171,13 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
     (!detailLoading &&
       data !== null &&
       !bullpen.loading &&
-      (sport === 'nfl' ? !nflTeam.loading : sport === 'soccer' ? !soccerTeam.loading : !form.loading && !teamStatcast.loading && !batterRanks.loading));
+      (sport === 'nfl'
+        ? !nflTeam.loading
+        : sport === 'soccer'
+          ? !soccerTeam.loading
+          : sport === 'cfb'
+            ? !cfbTeam.loading
+            : !form.loading && !teamStatcast.loading && !batterRanks.loading));
   useEffect(() => {
     onReadyChange?.(internalReady);
   }, [internalReady, onReadyChange]);
@@ -201,7 +220,8 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
   // header hero's own neutral-gradient fallback (`withAlpha` below) reads
   // fine against a flat default, same as any MLB/NFL team missing from
   // their own tables would.
-  const accentColor = sport === 'nfl' ? nflTeamPrimaryColor(team.abbr) : sport === 'soccer' ? '#3a3a3a' : mlbTeamPrimaryColor(team.teamId);
+  const accentColor =
+    sport === 'nfl' ? nflTeamPrimaryColor(team.abbr) : sport === 'soccer' || sport === 'cfb' ? '#3a3a3a' : mlbTeamPrimaryColor(team.teamId);
 
   return (
     <div className="space-y-3">
@@ -601,7 +621,9 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
           teams={standingsTeams}
           loading={standingsLoading}
           highlightTeamId={teamId}
-          teamHref={(id) => (sport === 'nfl' ? `/nfl/team/${id}` : sport === 'soccer' ? `/soccer/${league}/team/${id}` : `/mlb/team/${id}`)}
+          teamHref={(id) =>
+            sport === 'nfl' ? `/nfl/team/${id}` : sport === 'soccer' ? `/soccer/${league}/team/${id}` : sport === 'cfb' ? `/cfb/team/${id}` : `/mlb/team/${id}`
+          }
         />
       </section>
       </div>
@@ -640,7 +662,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
           </section>
         ) : null}
 
-        {sport === 'nfl' || sport === 'soccer' ? (
+        {sport === 'nfl' || sport === 'soccer' || sport === 'cfb' ? (
           <section className="lb-card overflow-hidden">
             <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Form</h3>
             {data.form ? (
@@ -665,7 +687,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
           </section>
         ) : null}
 
-        {sport === 'nfl' || sport === 'soccer' ? (
+        {sport === 'nfl' || sport === 'soccer' || sport === 'cfb' ? (
           data.nextGame ? (
             <section className="lb-card overflow-hidden">
               <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Next game</h3>
@@ -709,7 +731,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
           </section>
         ) : null}
 
-        {(sport === 'nfl' || sport === 'soccer') && data.recentResults && data.recentResults.length > 0 ? (
+        {(sport === 'nfl' || sport === 'soccer' || sport === 'cfb') && data.recentResults && data.recentResults.length > 0 ? (
           <section className="lb-card overflow-hidden">
             <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Recent results</h3>
             <ul className="space-y-1.5 p-3 text-[10.5px]">
