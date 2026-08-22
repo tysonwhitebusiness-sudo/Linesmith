@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useSnapshot } from '@/components/useSnapshot';
 import { useSlip } from '@/components/useSlip';
@@ -9,7 +9,7 @@ import { TopBar } from '@/components/TopBar';
 import { GamesStrip } from '@/components/GamesStrip';
 import { PlayerDetail } from '@/components/PlayerDetail';
 import SlipModal from '@/components/SlipModal';
-import { PlayerSkeleton } from '@/components/Skeleton';
+import { BrandedLoader } from '@/components/BrandedLoader';
 import type { SlateGame } from '@/lib/odds/matching';
 
 /**
@@ -33,6 +33,16 @@ export default function PlayerDetailPage() {
   const slip = useSlip(sport);
   const odds = useGameLines(sport, snapshot?.fetchedAt ?? null);
   const [slipOpen, setSlipOpen] = useState(false);
+
+  // Holds the full-page loader until PlayerDetail's OWN data-fetching hooks
+  // (live game, opponent Statcast, prop odds, calibration) settle too — not
+  // just this page's outer snapshot fetch — so the page appears all at once
+  // instead of its sub-sections popping in piecemeal. Resets whenever the
+  // viewed player changes, since a new player means a fresh round of fetches.
+  const [detailReady, setDetailReady] = useState(false);
+  useEffect(() => {
+    setDetailReady(false);
+  }, [playerId]);
 
   const mine = useMemo(
     () => (snapshot?.candidates ?? []).filter((c) => c.subjectId === playerId),
@@ -88,25 +98,33 @@ export default function PlayerDetailPage() {
         ) : null}
 
         {loading && mine.length === 0 ? (
-          <PlayerSkeleton />
+          <BrandedLoader size="page" />
         ) : mine.length === 0 ? (
           <div className="lb-card p-8 text-center text-sm text-ink-muted">
             No tracked markets for this player on today&apos;s slate.
           </div>
         ) : (
-          <PlayerDetail
-            candidates={mine}
-            snapshot={snapshot}
-            odds={odds.result}
-            market={market}
-            // Replace rather than push: stepping through a player's markets
-            // shouldn't bury the Scan table under a stack of history entries.
-            onMarketChange={(next) =>
-              router.replace(`/mlb/player/${encodeURIComponent(playerId)}?market=${encodeURIComponent(next)}`)
-            }
-            onAdd={(candidate, odds) => slip.addPick(candidate, eventContext, odds)}
-            addedKeys={slip.pickedKeys}
-          />
+          <>
+            {/* PlayerDetail stays mounted (hidden) while its own hooks settle,
+                so they don't re-fetch once the loader clears. */}
+            {!detailReady && <BrandedLoader size="page" />}
+            <div style={{ display: detailReady ? 'block' : 'none' }}>
+              <PlayerDetail
+                candidates={mine}
+                snapshot={snapshot}
+                odds={odds.result}
+                market={market}
+                // Replace rather than push: stepping through a player's markets
+                // shouldn't bury the Scan table under a stack of history entries.
+                onMarketChange={(next) =>
+                  router.replace(`/mlb/player/${encodeURIComponent(playerId)}?market=${encodeURIComponent(next)}`)
+                }
+                onAdd={(candidate, odds) => slip.addPick(candidate, eventContext, odds)}
+                addedKeys={slip.pickedKeys}
+                onReadyChange={setDetailReady}
+              />
+            </div>
+          </>
         )}
       </main>
 

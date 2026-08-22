@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { PickCandidate } from '@/lib/core/types';
 import { useSnapshot } from '@/components/useSnapshot';
@@ -11,6 +11,7 @@ import { TopBar } from '@/components/TopBar';
 import { GameDetail } from '@/components/GameDetail';
 import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import SlipModal from '@/components/SlipModal';
+import { BrandedLoader } from '@/components/BrandedLoader';
 
 interface NflGamesStripGame {
   gamePk: string | number;
@@ -32,6 +33,12 @@ export default function NflGameDetailPage() {
   const slip = useSlip(sport);
   const odds = useGameLines(sport, snapshot?.fetchedAt ?? null);
   const [slipOpen, setSlipOpen] = useState(false);
+
+  // See the MLB player page's identical block for why this exists.
+  const [detailReady, setDetailReady] = useState(false);
+  useEffect(() => {
+    setDetailReady(false);
+  }, [gameId]);
 
   const selectedPlayerId = search.get('player') ?? undefined;
   const selectedMarket = search.get('market') ?? undefined;
@@ -105,21 +112,27 @@ export default function NflGameDetailPage() {
         ) : !selectedGame ? (
           <div className="lb-card p-6 text-center text-sm text-ink-muted">Game not found.</div>
         ) : (
-          <GameDetail
-            sport={sport}
-            gameId={gameId}
-            candidates={gameCandidates}
-            picks={slip.picks}
-            pickedKeys={slip.pickedKeys}
-            onAdd={onAdd}
-            onRemovePick={slip.removePick}
-            odds={odds.result}
-            snapshot={snapshot}
-            selectedPlayerId={selectedPlayerId}
-            selectedMarket={selectedMarket}
-            onSelectCandidate={onSelectCandidate}
-            eventContext={eventContext}
-          />
+          <>
+            {!detailReady && <BrandedLoader size="page" />}
+            <div style={{ display: detailReady ? 'block' : 'none' }}>
+              <GameDetail
+                sport={sport}
+                gameId={gameId}
+                candidates={gameCandidates}
+                picks={slip.picks}
+                pickedKeys={slip.pickedKeys}
+                onAdd={onAdd}
+                onRemovePick={slip.removePick}
+                odds={odds.result}
+                snapshot={snapshot}
+                selectedPlayerId={selectedPlayerId}
+                selectedMarket={selectedMarket}
+                onSelectCandidate={onSelectCandidate}
+                eventContext={eventContext}
+                onReadyChange={setDetailReady}
+              />
+            </div>
+          </>
         )}
       </main>
 

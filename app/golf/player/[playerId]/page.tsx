@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useSnapshot } from '@/components/useSnapshot';
 import { useSlip } from '@/components/useSlip';
@@ -9,7 +9,7 @@ import { TopBar } from '@/components/TopBar';
 import { GolferStrip } from '@/components/GolferStrip';
 import { PlayerDetail } from '@/components/PlayerDetail';
 import SlipModal from '@/components/SlipModal';
-import { PlayerSkeleton } from '@/components/Skeleton';
+import { BrandedLoader } from '@/components/BrandedLoader';
 
 /**
  * One golfer, one market — `/golf/player/[playerId]?market=[dimension]` —
@@ -31,6 +31,15 @@ export default function GolfPlayerDetailPage() {
   const slip = useSlip(sport);
   const playerStats = useGolfPlayerStats(playerId || null);
   const [slipOpen, setSlipOpen] = useState(false);
+
+  // See the MLB player page's identical block for why this exists.
+  // `playerStats` is fetched at this page level (not inside PlayerDetail),
+  // so it's folded into `fullyReady` directly rather than via the callback.
+  const [detailReady, setDetailReady] = useState(false);
+  useEffect(() => {
+    setDetailReady(false);
+  }, [playerId]);
+  const fullyReady = detailReady && !playerStats.loading;
 
   const mine = useMemo(
     () => (snapshot?.candidates ?? []).filter((c) => c.subjectId === playerId),
@@ -73,29 +82,35 @@ export default function GolfPlayerDetailPage() {
         ) : null}
 
         {loading && mine.length === 0 ? (
-          <PlayerSkeleton />
+          <BrandedLoader size="page" />
         ) : mine.length === 0 ? (
           <div className="lb-card p-8 text-center text-sm text-ink-muted">
             No tracked markets for this golfer on today&apos;s event.
           </div>
         ) : (
-          <PlayerDetail
-            candidates={mine}
-            snapshot={snapshot}
-            odds={null}
-            market={market}
-            onMarketChange={(next) =>
-              router.replace(`/golf/player/${encodeURIComponent(playerId)}?market=${encodeURIComponent(next)}`)
-            }
-            onAdd={(candidate) => slip.addPick(candidate, eventContext)}
-            addedKeys={slip.pickedKeys}
-            golfStats={{
-              strokesGained: playerStats.result?.strokesGained ?? null,
-              seasonLog: playerStats.result?.seasonLog ?? null,
-              advancedStats: playerStats.result?.advancedStats ?? [],
-              loading: playerStats.loading,
-            }}
-          />
+          <>
+            {!fullyReady && <BrandedLoader size="page" />}
+            <div style={{ display: fullyReady ? 'block' : 'none' }}>
+              <PlayerDetail
+                candidates={mine}
+                snapshot={snapshot}
+                odds={null}
+                market={market}
+                onMarketChange={(next) =>
+                  router.replace(`/golf/player/${encodeURIComponent(playerId)}?market=${encodeURIComponent(next)}`)
+                }
+                onAdd={(candidate) => slip.addPick(candidate, eventContext)}
+                addedKeys={slip.pickedKeys}
+                golfStats={{
+                  strokesGained: playerStats.result?.strokesGained ?? null,
+                  seasonLog: playerStats.result?.seasonLog ?? null,
+                  advancedStats: playerStats.result?.advancedStats ?? [],
+                  loading: playerStats.loading,
+                }}
+                onReadyChange={setDetailReady}
+              />
+            </div>
+          </>
         )}
       </main>
 

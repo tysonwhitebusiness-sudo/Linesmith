@@ -76,10 +76,13 @@ const PICK_COLUMNS = `
   created_at      AS "createdAt"
 `;
 
-export async function listPicks(sport?: string): Promise<PickRow[]> {
+export async function listPicks(sport: string | undefined, userId: string): Promise<PickRow[]> {
   return sport
-    ? pgAll<PickRow>(`SELECT ${PICK_COLUMNS} FROM picks WHERE sport = ? ORDER BY created_at DESC, id DESC`, [sport])
-    : pgAll<PickRow>(`SELECT ${PICK_COLUMNS} FROM picks ORDER BY created_at DESC, id DESC`);
+    ? pgAll<PickRow>(`SELECT ${PICK_COLUMNS} FROM picks WHERE user_id = ? AND sport = ? ORDER BY created_at DESC, id DESC`, [
+        userId,
+        sport,
+      ])
+    : pgAll<PickRow>(`SELECT ${PICK_COLUMNS} FROM picks WHERE user_id = ? ORDER BY created_at DESC, id DESC`, [userId]);
 }
 
 export interface PickInput {
@@ -103,17 +106,17 @@ export interface PickInput {
   sampleSize?: number | null;
 }
 
-/** Insert, or update the odds if this exact leg is already on the slip. */
-export async function addPick(input: PickInput): Promise<PickRow> {
+/** Insert, or update the odds if this exact leg is already on this user's slip. */
+export async function addPick(input: PickInput, userId: string): Promise<PickRow> {
   const capturedAt = input.americanOdds ? new Date().toISOString() : null;
 
   await pgRun(
     `INSERT INTO picks
-       (sport, subject_id, subject_name, dimension, dimension_label, category, category_label,
+       (user_id, sport, subject_id, subject_name, dimension, dimension_label, category, category_label,
         line, game_id, team_id, team, opponent_id, opponent,
         american_odds, odds_source, odds_captured_at, bookmaker, event_context, sample_size)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT (sport, subject_id, dimension, category) DO UPDATE SET
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (user_id, sport, subject_id, dimension, category) DO UPDATE SET
        line             = COALESCE(excluded.line, picks.line),
        game_id          = COALESCE(excluded.game_id, picks.game_id),
        team_id          = COALESCE(excluded.team_id, picks.team_id),
@@ -126,6 +129,7 @@ export async function addPick(input: PickInput): Promise<PickRow> {
        bookmaker        = COALESCE(excluded.bookmaker, picks.bookmaker),
        event_context    = COALESCE(excluded.event_context, picks.event_context)`,
     [
+      userId,
       input.sport,
       input.subjectId,
       input.subjectName,
@@ -149,29 +153,32 @@ export async function addPick(input: PickInput): Promise<PickRow> {
   );
 
   return (await pgGet<PickRow>(
-    `SELECT ${PICK_COLUMNS} FROM picks WHERE sport = ? AND subject_id = ? AND dimension = ? AND category = ?`,
-    [input.sport, input.subjectId, input.dimension, input.category],
+    `SELECT ${PICK_COLUMNS} FROM picks WHERE user_id = ? AND sport = ? AND subject_id = ? AND dimension = ? AND category = ?`,
+    [userId, input.sport, input.subjectId, input.dimension, input.category],
   )) as PickRow;
 }
 
 /** Manual/screenshot edits clear `bookmaker` — neither identifies a specific book, so a stale book logo next to a hand-typed price would misattribute it. */
-export async function updatePickOdds(id: number, americanOdds: string | null, source: string): Promise<PickRow | null> {
-  await pgRun(`UPDATE picks SET american_odds = ?, odds_source = ?, odds_captured_at = ?, bookmaker = NULL WHERE id = ?`, [
-    americanOdds,
-    americanOdds ? source : null,
-    americanOdds ? new Date().toISOString() : null,
-    id,
-  ]);
-  return (await pgGet<PickRow>(`SELECT ${PICK_COLUMNS} FROM picks WHERE id = ?`, [id])) ?? null;
+export async function updatePickOdds(
+  id: number,
+  americanOdds: string | null,
+  source: string,
+  userId: string,
+): Promise<PickRow | null> {
+  await pgRun(
+    `UPDATE picks SET american_odds = ?, odds_source = ?, odds_captured_at = ?, bookmaker = NULL WHERE id = ? AND user_id = ?`,
+    [americanOdds, americanOdds ? source : null, americanOdds ? new Date().toISOString() : null, id, userId],
+  );
+  return (await pgGet<PickRow>(`SELECT ${PICK_COLUMNS} FROM picks WHERE id = ? AND user_id = ?`, [id, userId])) ?? null;
 }
 
-export async function deletePick(id: number): Promise<void> {
-  await pgRun('DELETE FROM picks WHERE id = ?', [id]);
+export async function deletePick(id: number, userId: string): Promise<void> {
+  await pgRun('DELETE FROM picks WHERE id = ? AND user_id = ?', [id, userId]);
 }
 
-export async function clearPicks(sport?: string): Promise<void> {
-  if (sport) await pgRun('DELETE FROM picks WHERE sport = ?', [sport]);
-  else await pgRun('DELETE FROM picks');
+export async function clearPicks(sport: string | undefined, userId: string): Promise<void> {
+  if (sport) await pgRun('DELETE FROM picks WHERE user_id = ? AND sport = ?', [userId, sport]);
+  else await pgRun('DELETE FROM picks WHERE user_id = ?', [userId]);
 }
 
 // ---------------------------------------------------------------------------
@@ -231,41 +238,45 @@ const BET_COLUMNS = `
   settled_at      AS "settledAt"
 `;
 
-export async function listBets(sport?: string): Promise<BetRow[]> {
+export async function listBets(sport: string | undefined, userId: string): Promise<BetRow[]> {
   return sport
-    ? pgAll<BetRow>(`SELECT ${BET_COLUMNS} FROM bets WHERE sport = ? ORDER BY submitted_at DESC, id DESC`, [sport])
-    : pgAll<BetRow>(`SELECT ${BET_COLUMNS} FROM bets ORDER BY submitted_at DESC, id DESC`);
+    ? pgAll<BetRow>(`SELECT ${BET_COLUMNS} FROM bets WHERE user_id = ? AND sport = ? ORDER BY submitted_at DESC, id DESC`, [
+        userId,
+        sport,
+      ])
+    : pgAll<BetRow>(`SELECT ${BET_COLUMNS} FROM bets WHERE user_id = ? ORDER BY submitted_at DESC, id DESC`, [userId]);
 }
 
-export async function getBet(id: number): Promise<BetRow | null> {
-  return (await pgGet<BetRow>(`SELECT ${BET_COLUMNS} FROM bets WHERE id = ?`, [id])) ?? null;
+export async function getBet(id: number, userId: string): Promise<BetRow | null> {
+  return (await pgGet<BetRow>(`SELECT ${BET_COLUMNS} FROM bets WHERE id = ? AND user_id = ?`, [id, userId])) ?? null;
 }
 
 /**
  * Move a set of slip legs into `bets` — copy then delete, in one
  * transaction, so a crash mid-submit can't leave a leg on neither table nor
  * duplicated on both. Legs the caller doesn't own (already removed, wrong
- * sport) are silently skipped rather than erroring the whole batch.
+ * sport, or belonging to a different user) are silently skipped rather than
+ * erroring the whole batch.
  */
-export async function submitPicksAsBets(ids: number[]): Promise<BetRow[]> {
+export async function submitPicksAsBets(ids: number[], userId: string): Promise<BetRow[]> {
   return pgTransaction(async (tx) => {
     const submitted: BetRow[] = [];
     for (const id of ids) {
-      const pick = await tx.get<PickRow>(`SELECT ${PICK_COLUMNS} FROM picks WHERE id = ?`, [id]);
+      const pick = await tx.get<PickRow>(`SELECT ${PICK_COLUMNS} FROM picks WHERE id = ? AND user_id = ?`, [id, userId]);
       if (!pick) continue;
       const inserted = await tx.get<BetRow>(
         `INSERT INTO bets
-           (sport, subject_id, subject_name, dimension, dimension_label, category, category_label,
+           (user_id, sport, subject_id, subject_name, dimension, dimension_label, category, category_label,
             line, game_id, team_id, team, opponent_id, opponent, american_odds, odds_source, bookmaker,
             event_context, sample_size)
-         VALUES (@sport, @subjectId, @subjectName, @dimension, @dimensionLabel, @category, @categoryLabel,
+         VALUES (@userId, @sport, @subjectId, @subjectName, @dimension, @dimensionLabel, @category, @categoryLabel,
                  @line, @gameId, @teamId, @team, @opponentId, @opponent, @americanOdds, @oddsSource, @bookmaker,
                  @eventContext, @sampleSize)
          RETURNING ${BET_COLUMNS}`,
-        pick,
+        { ...pick, userId },
       );
       submitted.push(inserted as BetRow);
-      await tx.run('DELETE FROM picks WHERE id = ?', [id]);
+      await tx.run('DELETE FROM picks WHERE id = ? AND user_id = ?', [id, userId]);
     }
     return submitted;
   });
@@ -333,23 +344,23 @@ export interface WatchRow {
   createdAt: string;
 }
 
-export async function listWatchlist(sport?: string): Promise<WatchRow[]> {
+export async function listWatchlist(sport: string | undefined, userId: string): Promise<WatchRow[]> {
   const columns = `id, sport, subject_id AS "subjectId", subject_name AS "subjectName", created_at AS "createdAt"`;
   return sport
-    ? pgAll<WatchRow>(`SELECT ${columns} FROM watchlist WHERE sport = ? ORDER BY subject_name`, [sport])
-    : pgAll<WatchRow>(`SELECT ${columns} FROM watchlist ORDER BY subject_name`);
+    ? pgAll<WatchRow>(`SELECT ${columns} FROM watchlist WHERE user_id = ? AND sport = ? ORDER BY subject_name`, [userId, sport])
+    : pgAll<WatchRow>(`SELECT ${columns} FROM watchlist WHERE user_id = ? ORDER BY subject_name`, [userId]);
 }
 
-export async function addWatch(sport: string, subjectId: string, subjectName: string): Promise<void> {
+export async function addWatch(sport: string, subjectId: string, subjectName: string, userId: string): Promise<void> {
   await pgRun(
-    `INSERT INTO watchlist (sport, subject_id, subject_name) VALUES (?, ?, ?)
-     ON CONFLICT (sport, subject_id) DO UPDATE SET subject_name = excluded.subject_name`,
-    [sport, subjectId, subjectName],
+    `INSERT INTO watchlist (user_id, sport, subject_id, subject_name) VALUES (?, ?, ?, ?)
+     ON CONFLICT (user_id, sport, subject_id) DO UPDATE SET subject_name = excluded.subject_name`,
+    [userId, sport, subjectId, subjectName],
   );
 }
 
-export async function removeWatch(sport: string, subjectId: string): Promise<void> {
-  await pgRun('DELETE FROM watchlist WHERE sport = ? AND subject_id = ?', [sport, subjectId]);
+export async function removeWatch(sport: string, subjectId: string, userId: string): Promise<void> {
+  await pgRun('DELETE FROM watchlist WHERE sport = ? AND subject_id = ? AND user_id = ?', [sport, subjectId, userId]);
 }
 
 // ---------------------------------------------------------------------------

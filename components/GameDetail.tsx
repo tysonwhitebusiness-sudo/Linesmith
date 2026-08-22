@@ -1738,6 +1738,13 @@ export interface GameDetailProps {
   selectedMarket?: string;
   onSelectCandidate: (subjectId: string | null, dimension?: string) => void;
   eventContext: string | null;
+  /**
+   * Fires whenever this component's own data-fetching hooks (game context,
+   * bullpen, prop odds, calibration, pick history — MLB; the `useNflGameDetail`
+   * meta fetch — NFL) settle, not just when the parent's outer snapshot fetch
+   * resolves. See `PlayerDetail`'s identically-named prop for why this exists.
+   */
+  onReadyChange?: (ready: boolean) => void;
 }
 
 /**
@@ -1888,6 +1895,7 @@ export function GameDetail({
   selectedMarket,
   onSelectCandidate,
   eventContext,
+  onReadyChange,
 }: GameDetailProps) {
   const [matchupTab, setMatchupTab] = useState<string | null>(null);
   const [matchupPlayerId, setMatchupPlayerId] = useState<string | null>(null);
@@ -1965,6 +1973,28 @@ export function GameDetail({
         : null;
 
   const detailError = sport === 'nfl' ? nflGame.error : null;
+
+  // Combined readiness for `onReadyChange` — must run before any early
+  // return below (rules of hooks). `data` itself already gates on the outer
+  // game resolving (mlbGame/nflGame.meta); gameContext/bullpen/pickHistory
+  // are this component's own sub-fetches that would otherwise pop in after
+  // `data` first renders. `props`/`calibration` (usePropOdds/
+  // useMarketCalibration) are deliberately EXCLUDED — `calibration.loading`
+  // does gate a real skeleton (GameHeroCard's pick-lock panel, via
+  // `pickLoading`), but `/api/props/calibration` was measured taking 60+
+  // seconds on a cold cache in this codebase (a real, separate performance
+  // issue — see the session's own notes), so blocking the entire page on it
+  // would be strictly worse than the pre-existing behavior of letting that
+  // one panel show its own brief skeleton while the rest of the page is
+  // already interactive. An error also counts as "ready" — a stuck loader
+  // would be worse than showing the error state below.
+  const internalReady =
+    Boolean(detailError) ||
+    (data !== null && !pickHistory.loading && (sport === 'nfl' ? true : !gameContext.loading && !bullpen.loading));
+  useEffect(() => {
+    onReadyChange?.(internalReady);
+  }, [internalReady, onReadyChange]);
+
   if (detailError) return <div className="lb-card border-bad/30 bg-bad/5 p-3 text-sm text-bad">{detailError}</div>;
   if (!data) {
     return (

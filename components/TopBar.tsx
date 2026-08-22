@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { Sport } from '@/lib/core/types';
 import { SPORTS, SPORT_LABEL } from '@/lib/core/types';
 import { BrandedLoader } from './BrandedLoader';
+import { AccountMenu } from './AccountMenu';
 
 /**
  * The application chrome, one row tall.
@@ -203,6 +204,8 @@ export function TopBar({
           Slip
           <span className="rounded bg-white/20 px-1 tabular-nums">{slipCount}</span>
         </button>
+
+        <AccountMenu />
       </div>
     </div>
   );

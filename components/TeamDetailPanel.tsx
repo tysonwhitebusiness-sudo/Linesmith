@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import type { UnifiedLinesResult } from '@/lib/odds/types';
 import { TeamLogo } from './SubjectAvatar';
 import { TeamDetail } from './TeamDetail';
+import { BrandedLoader } from './BrandedLoader';
 import { useAllTeams, type TeamStandingRow } from './useAllTeams';
 import { useAllNflTeams } from './useAllNflTeams';
 
@@ -125,6 +126,15 @@ function MlbTeamDetailPanel({ initialTeamId, snapshot, odds, onAdd, addedKeys }:
   const sortedTeams = useMemo(() => [...teams].sort((a, b) => a.name.localeCompare(b.name)), [teams]);
   const activeTeamId = selectedTeamId ?? initialTeamId ?? sortedTeams[0]?.teamId ?? 0;
 
+  // Holds a loader over just the detail pane (not the team list — switching
+  // teams should stay browsable while the newly-selected one loads) until
+  // TeamDetail's own data-fetching hooks settle. See PlayerDetail's
+  // identically-named prop for why this exists.
+  const [detailReady, setDetailReady] = useState(false);
+  useEffect(() => {
+    setDetailReady(false);
+  }, [activeTeamId]);
+
   return (
     <TeamListShell
       sortedTeams={sortedTeams}
@@ -135,16 +145,20 @@ function MlbTeamDetailPanel({ initialTeamId, snapshot, odds, onAdd, addedKeys }:
       activeTeamId={activeTeamId}
       onSelect={setSelectedTeamId}
     >
-      <TeamDetail
-        sport="mlb"
-        teamId={activeTeamId}
-        snapshot={snapshot}
-        odds={odds ?? null}
-        onAdd={onAdd}
-        addedKeys={addedKeys}
-        standingsTeams={teams}
-        standingsLoading={loading}
-      />
+      {!detailReady && <BrandedLoader size="page" />}
+      <div style={{ display: detailReady ? 'block' : 'none' }}>
+        <TeamDetail
+          sport="mlb"
+          teamId={activeTeamId}
+          snapshot={snapshot}
+          odds={odds ?? null}
+          onAdd={onAdd}
+          addedKeys={addedKeys}
+          standingsTeams={teams}
+          standingsLoading={loading}
+          onReadyChange={setDetailReady}
+        />
+      </div>
     </TeamListShell>
   );
 }
@@ -157,6 +171,12 @@ function NflTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys }: Omit<TeamDe
   const sortedTeams = useMemo(() => [...teams].sort((a, b) => a.name.localeCompare(b.name)), [teams]);
   const activeTeamId = selectedTeamId ?? initialTeamId ?? sortedTeams[0]?.teamId ?? 0;
 
+  // See MlbTeamDetailPanel's identical block for why this exists.
+  const [detailReady, setDetailReady] = useState(false);
+  useEffect(() => {
+    setDetailReady(false);
+  }, [activeTeamId]);
+
   return (
     <TeamListShell
       sortedTeams={sortedTeams}
@@ -167,7 +187,18 @@ function NflTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys }: Omit<TeamDe
       activeTeamId={activeTeamId}
       onSelect={setSelectedTeamId}
     >
-      <TeamDetail sport="nfl" teamId={activeTeamId} standingsTeams={teams} standingsLoading={loading} onAdd={onAdd} addedKeys={addedKeys} />
+      {!detailReady && <BrandedLoader size="page" />}
+      <div style={{ display: detailReady ? 'block' : 'none' }}>
+        <TeamDetail
+          sport="nfl"
+          teamId={activeTeamId}
+          standingsTeams={teams}
+          standingsLoading={loading}
+          onAdd={onAdd}
+          addedKeys={addedKeys}
+          onReadyChange={setDetailReady}
+        />
+      </div>
     </TeamListShell>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { PickCandidate, Sport } from '@/lib/core/types';
 import { candidateKey } from '@/lib/core/types';
 
@@ -35,11 +36,27 @@ export interface WatchRow {
   subjectName: string;
 }
 
-/** Slip and watchlist state, both persisted server-side in SQLite. */
+/** Slip and watchlist state, both persisted server-side in Postgres, scoped to the signed-in user. */
 export function useSlip(sport: Sport) {
+  const router = useRouter();
   const [picks, setPicks] = useState<PickRow[]>([]);
   const [watchlist, setWatchlist] = useState<WatchRow[]>([]);
   const [busy, setBusy] = useState(false);
+
+  // Picks/bets/watchlist require auth (middleware.ts) — a write attempt while
+  // signed out would otherwise fail silently (fire-and-forget fetch, no
+  // res.ok check below), leaving the user thinking they clicked "Add" and
+  // nothing happened. Sends them to sign in instead, with `next` pointing
+  // back to where they were.
+  const redirectToLoginOn401 = useCallback(
+    (res: Response) => {
+      if (res.status === 401) {
+        router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      }
+      return res;
+    },
+    [router],
+  );
 
   const loadPicks = useCallback(async () => {
     const res = await fetch(`/api/picks?sport=${sport}`, { cache: 'no-store' });
@@ -74,7 +91,7 @@ export function useSlip(sport: Sport) {
         const meta = (candidate.subjectMeta ?? {}) as Record<string, unknown>;
         const gamePk = meta.gamePk;
         const teamId = meta.teamId ?? meta.homeTeamId; // homeTeamId covers gameMarketCandidate, which has no single "own team"
-        await fetch('/api/picks', {
+        const res = await fetch('/api/picks', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
@@ -98,26 +115,27 @@ export function useSlip(sport: Sport) {
             bookmaker: odds?.bookmaker ?? null,
           }),
         });
+        redirectToLoginOn401(res);
         await loadPicks();
       } finally {
         setBusy(false);
       }
     },
-    [loadPicks],
+    [loadPicks, redirectToLoginOn401],
   );
 
   const removePick = useCallback(
     async (id: number) => {
-      await fetch(`/api/picks?id=${id}`, { method: 'DELETE' });
+      redirectToLoginOn401(await fetch(`/api/picks?id=${id}`, { method: 'DELETE' }));
       await loadPicks();
     },
-    [loadPicks],
+    [loadPicks, redirectToLoginOn401],
   );
 
   const clearSlip = useCallback(async () => {
-    await fetch(`/api/picks?all=1&sport=${sport}`, { method: 'DELETE' });
+    redirectToLoginOn401(await fetch(`/api/picks?all=1&sport=${sport}`, { method: 'DELETE' }));
     await loadPicks();
-  }, [loadPicks, sport]);
+  }, [loadPicks, redirectToLoginOn401, sport]);
 
   /** Move slip legs to Live Bets. Submitted legs disappear from the slip immediately. */
   const submitPicks = useCallback(
@@ -129,42 +147,49 @@ export function useSlip(sport: Sport) {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ ids }),
         });
+        redirectToLoginOn401(res);
         await loadPicks();
         return res.ok ? ((await res.json()).bets ?? []) : [];
       } finally {
         setBusy(false);
       }
     },
-    [loadPicks],
+    [loadPicks, redirectToLoginOn401],
   );
 
   const setOdds = useCallback(
     async (id: number, americanOdds: string, source = 'manual') => {
-      await fetch('/api/picks', {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ id, americanOdds, source }),
-      });
+      redirectToLoginOn401(
+        await fetch('/api/picks', {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ id, americanOdds, source }),
+        }),
+      );
       await loadPicks();
     },
-    [loadPicks],
+    [loadPicks, redirectToLoginOn401],
   );
 
   const toggleWatch = useCallback(
     async (subjectId: string, subjectName: string) => {
       const watched = watchlist.some((w) => w.subjectId === subjectId);
       if (watched) {
-        await fetch(`/api/watchlist?sport=${sport}&subjectId=${encodeURIComponent(subjectId)}`, { method: 'DELETE' });
+        redirectToLoginOn401(
+          await fetch(`/api/watchlist?sport=${sport}&subjectId=${encodeURIComponent(subjectId)}`, { method: 'DELETE' }),
+        );
       } else {
-        await fetch('/api/watchlist', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ sport, subjectId, subjectName }),
-        });
+        redirectToLoginOn401(
+          await fetch('/api/watchlist', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ sport, subjectId, subjectName }),
+          }),
+        );
       }
       await loadWatchlist();
     },
-    [loadWatchlist, sport, watchlist],
+    [loadWatchlist, redirectToLoginOn401, sport, watchlist],
   );
 
   /** Keys already on the slip, so cards can show an added state. */

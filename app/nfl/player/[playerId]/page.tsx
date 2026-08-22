@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useSnapshot } from '@/components/useSnapshot';
 import { useSlip } from '@/components/useSlip';
@@ -10,7 +10,7 @@ import { GamesStrip } from '@/components/GamesStrip';
 import { PlayerDetail } from '@/components/PlayerDetail';
 import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import SlipModal from '@/components/SlipModal';
-import { PlayerSkeleton } from '@/components/Skeleton';
+import { BrandedLoader } from '@/components/BrandedLoader';
 import type { SlateGame } from '@/lib/odds/matching';
 
 /** NFL's version of the MLB player-detail page — same shape, `/nfl` routes. */
@@ -31,6 +31,12 @@ export default function NflPlayerDetailPage() {
   const slip = useSlip(sport);
   const odds = useGameLines(sport, snapshot?.fetchedAt ?? null);
   const [slipOpen, setSlipOpen] = useState(false);
+
+  // See the MLB player page's identical block for why this exists.
+  const [detailReady, setDetailReady] = useState(false);
+  useEffect(() => {
+    setDetailReady(false);
+  }, [playerId]);
 
   const games: SlateGame[] = useMemo(
     () => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as SlateGame[],
@@ -105,23 +111,29 @@ export default function NflPlayerDetailPage() {
         ) : null}
 
         {loading && mine.length === 0 ? (
-          <PlayerSkeleton />
+          <BrandedLoader size="page" />
         ) : mine.length === 0 ? (
           <div className="lb-card p-8 text-center text-sm text-ink-muted">
             No tracked markets for this player on today&apos;s slate.
           </div>
         ) : (
-          <PlayerDetail
-            candidates={mine}
-            snapshot={snapshot}
-            odds={odds.result}
-            market={market}
-            onMarketChange={(next) =>
-              router.replace(`/nfl/player/${encodeURIComponent(playerId)}?market=${encodeURIComponent(next)}`)
-            }
-            onAdd={(candidate, odds) => slip.addPick(candidate, eventContext, odds)}
-            addedKeys={slip.pickedKeys}
-          />
+          <>
+            {!detailReady && <BrandedLoader size="page" />}
+            <div style={{ display: detailReady ? 'block' : 'none' }}>
+              <PlayerDetail
+                candidates={mine}
+                snapshot={snapshot}
+                odds={odds.result}
+                market={market}
+                onMarketChange={(next) =>
+                  router.replace(`/nfl/player/${encodeURIComponent(playerId)}?market=${encodeURIComponent(next)}`)
+                }
+                onAdd={(candidate, odds) => slip.addPick(candidate, eventContext, odds)}
+                addedKeys={slip.pickedKeys}
+                onReadyChange={setDetailReady}
+              />
+            </div>
+          </>
         )}
       </main>
 

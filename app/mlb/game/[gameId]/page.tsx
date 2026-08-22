@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type { PickCandidate } from '@/lib/core/types';
 import { useSnapshot } from '@/components/useSnapshot';
@@ -10,7 +10,7 @@ import { GamesStrip } from '@/components/GamesStrip';
 import { TopBar } from '@/components/TopBar';
 import { GameDetail, type GameDetailGame } from '@/components/GameDetail';
 import SlipModal from '@/components/SlipModal';
-import { ScanListSkeleton } from '@/components/Skeleton';
+import { BrandedLoader } from '@/components/BrandedLoader';
 import { useFilters, applyFilters } from '@/components/useFilters';
 
 /**
@@ -32,6 +32,12 @@ export default function GameDetailPage() {
   const odds = useGameLines(sport, snapshot?.fetchedAt ?? null);
   const { filters } = useFilters();
   const [slipOpen, setSlipOpen] = useState(false);
+
+  // See the MLB player page's identical block for why this exists.
+  const [detailReady, setDetailReady] = useState(false);
+  useEffect(() => {
+    setDetailReady(false);
+  }, [gameId]);
 
   const selectedPlayerId = search.get('player') ?? undefined;
   const selectedMarket = search.get('market') ?? undefined;
@@ -102,30 +108,31 @@ export default function GameDetailPage() {
         ) : null}
 
         {loading && !selectedGame ? (
-          <div className="space-y-3">
-            <div className="lb-card p-4">
-              <div className="h-20 animate-pulse rounded-lg bg-line/30" />
-            </div>
-            <ScanListSkeleton />
-          </div>
+          <BrandedLoader size="page" />
         ) : !selectedGame ? (
           <div className="lb-card p-6 text-center text-sm text-ink-muted">Game not found.</div>
         ) : (
-          <GameDetail
-            sport={sport}
-            gameId={String(gameId)}
-            candidates={filtered}
-            snapshot={snapshot}
-            odds={odds.result}
-            picks={slip.picks}
-            pickedKeys={slip.pickedKeys}
-            onAdd={onAdd}
-            onRemovePick={slip.removePick}
-            selectedPlayerId={selectedPlayerId}
-            selectedMarket={selectedMarket}
-            onSelectCandidate={onSelectCandidate}
-            eventContext={eventContext}
-          />
+          <>
+            {!detailReady && <BrandedLoader size="page" />}
+            <div style={{ display: detailReady ? 'block' : 'none' }}>
+              <GameDetail
+                sport={sport}
+                gameId={String(gameId)}
+                candidates={filtered}
+                snapshot={snapshot}
+                odds={odds.result}
+                picks={slip.picks}
+                pickedKeys={slip.pickedKeys}
+                onAdd={onAdd}
+                onRemovePick={slip.removePick}
+                selectedPlayerId={selectedPlayerId}
+                selectedMarket={selectedMarket}
+                onSelectCandidate={onSelectCandidate}
+                eventContext={eventContext}
+                onReadyChange={setDetailReady}
+              />
+            </div>
+          </>
         )}
       </main>
 

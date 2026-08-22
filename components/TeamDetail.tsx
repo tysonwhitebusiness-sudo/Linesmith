@@ -44,9 +44,16 @@ export interface TeamDetailProps {
   /** All teams' standings, for the division tables at the bottom of every team page. Passed down from `TeamDetailPanel` rather than fetched again here — it's already loading the same list for the sidebar. */
   standingsTeams: TeamStandingRow[];
   standingsLoading: boolean;
+  /**
+   * Fires whenever this component's own data-fetching hooks (roster, form,
+   * team Statcast, batter ranks, bullpen — MLB; `useNflTeamDetail` — NFL)
+   * settle, not just when `data` first resolves. See `PlayerDetail`'s
+   * identically-named prop for why this exists.
+   */
+  onReadyChange?: (ready: boolean) => void;
 }
 
-export function TeamDetail({ sport, teamId, snapshot, odds, onAdd, addedKeys, standingsTeams, standingsLoading }: TeamDetailProps) {
+export function TeamDetail({ sport, teamId, snapshot, odds, onAdd, addedKeys, standingsTeams, standingsLoading, onReadyChange }: TeamDetailProps) {
   // Every hook below is always called (rules of hooks) — NFL's real data
   // model is one bespoke endpoint (`useNflTeamDetail`) instead of MLB's
   // several composed hooks, so both sets run unconditionally and the unused
@@ -132,6 +139,19 @@ export function TeamDetail({ sport, teamId, snapshot, odds, onAdd, addedKeys, st
 
   const detailLoading = sport === 'nfl' ? nflTeam.loading && !nflTeam.data : roster.loading && !roster.data;
   const detailError = sport === 'nfl' ? nflTeam.error : roster.error;
+
+  // Combined readiness for `onReadyChange` — must run before any early
+  // return below (rules of hooks). An error also counts as "ready" — a
+  // stuck loader would be worse than showing the error state below.
+  const internalReady =
+    Boolean(detailError) ||
+    (!detailLoading &&
+      data !== null &&
+      !bullpen.loading &&
+      (sport === 'nfl' ? !nflTeam.loading : !form.loading && !teamStatcast.loading && !batterRanks.loading));
+  useEffect(() => {
+    onReadyChange?.(internalReady);
+  }, [internalReady, onReadyChange]);
 
   if (detailLoading) {
     return (

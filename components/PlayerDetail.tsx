@@ -869,6 +869,16 @@ export interface PlayerDetailProps {
    */
   sharedPropOdds?: ReturnType<typeof usePropOdds>;
   sharedCalibration?: MarketCalibrationState;
+  /**
+   * Fires whenever this component's OWN data-fetching hooks (live game,
+   * opponent team Statcast, prop odds, market calibration — see the "Hooks
+   * that fetch live data stay in the component" block below) settle, not
+   * just when the parent's outer snapshot fetch resolves. A host page uses
+   * this to hold a full-page loader until the whole page is genuinely ready
+   * instead of mounting this component the instant snapshot data exists and
+   * letting its sub-sections pop in piecemeal as each hook finishes.
+   */
+  onReadyChange?: (ready: boolean) => void;
 }
 
 export function PlayerDetail({
@@ -883,6 +893,7 @@ export function PlayerDetail({
   golfStats,
   sharedPropOdds,
   sharedCalibration,
+  onReadyChange,
 }: PlayerDetailProps) {
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
 
@@ -976,6 +987,22 @@ export function PlayerDetail({
   const propOdds = sharedPropOdds ?? propOddsFetched;
   const calibrationFetched = useMarketCalibration(!sharedCalibration);
   const calibration = sharedCalibration ?? calibrationFetched;
+
+  // Combined readiness for `onReadyChange` — deliberately only the hooks
+  // that actually gate a visible `lb-skel` shimmer today (playerLive feeds
+  // the live-stats card's skeleton at `data.liveGame.loading`;
+  // opponentTeamStatcast feeds the opposing-starter stat tiles the same
+  // way). usePropOdds/useMarketCalibration are excluded on purpose: neither
+  // has a skeleton anywhere — PropOddsBoard and the trust-tier badge both
+  // render straight through an empty/neutral default while loading, so
+  // there's no "pop-in" for this prop to fix — and `/api/props/calibration`
+  // was measured taking 60+ seconds on a cold cache in this codebase, so
+  // blocking the whole page on it would make load times far worse for a
+  // display element nobody was complaining about.
+  const internalReady = !playerLive.loading && !opponentTeamStatcast.loading;
+  useEffect(() => {
+    onReadyChange?.(internalReady);
+  }, [internalReady, onReadyChange]);
 
   const data: PlayerDetailData | null = !active
     ? null
