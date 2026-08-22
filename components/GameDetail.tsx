@@ -19,6 +19,7 @@ import { useGameContext, type GameContextState } from './useGameContext';
 import { useBullpen, type BullpenState } from './useBullpen';
 import { useNflGameDetail } from './useNflGameDetail';
 import { useSoccerGameDetail } from './useSoccerGameDetail';
+import { useCfbGameDetail } from './useCfbGameDetail';
 import type { PickRow } from './useSlip';
 import { SubjectAvatar, TeamLogo, nflTeamLogoUrl } from './SubjectAvatar';
 import { TwoSidedStatRankRow } from './StatRankRow';
@@ -47,6 +48,7 @@ import {
 } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
 import { toGameDetailData as toNflGameDetailData } from '@/lib/sports/nfl/adapters/gameDetailAdapter';
 import { toGameDetailData as toSoccerGameDetailData } from '@/lib/sports/soccer/adapters/gameDetailAdapter';
+import { toGameDetailData as toCfbGameDetailData } from '@/lib/sports/cfb/adapters/gameDetailAdapter';
 import type { SoccerLeague } from '@/lib/core/types';
 import { heatFill, heatInk } from '@/lib/ui/heat';
 
@@ -1935,6 +1937,7 @@ export function GameDetail({
 
   const nflGame = useNflGameDetail(sport === 'nfl' ? gameId : undefined);
   const soccerGame = useSoccerGameDetail(sport === 'soccer' ? league : undefined, sport === 'soccer' ? gameId : undefined);
+  const cfbGame = useCfbGameDetail(sport === 'cfb' ? gameId : undefined);
   const nflGameLine = useMemo(() => {
     if (!nflGame.meta) return null;
     const fromSlate = odds?.lines
@@ -1975,21 +1978,31 @@ export function GameDetail({
               candidates,
             })
           : null
-        : mlbGame
-          ? toMlbGameDetailData({
-              game: mlbGame,
-              statKeys,
-              gameContext,
-              bullpen: { byTeam: bullpen.byTeam, loading: bullpen.loading },
-              gameLine: mlbGameLine,
-              trustedMarkets: calibration.trustedMarkets,
-              gamePick,
-              pickLoading: calibration.loading,
-              candidates,
-            })
-          : null;
+        : sport === 'cfb'
+          ? cfbGame.meta?.game
+            ? toCfbGameDetailData({
+                meta: cfbGame.meta,
+                home: cfbGame.home,
+                away: cfbGame.away,
+                candidates,
+              })
+            : null
+          : mlbGame
+            ? toMlbGameDetailData({
+                game: mlbGame,
+                statKeys,
+                gameContext,
+                bullpen: { byTeam: bullpen.byTeam, loading: bullpen.loading },
+                gameLine: mlbGameLine,
+                trustedMarkets: calibration.trustedMarkets,
+                gamePick,
+                pickLoading: calibration.loading,
+                candidates,
+              })
+            : null;
 
-  const detailError = sport === 'nfl' ? nflGame.error : sport === 'soccer' ? soccerGame.error : null;
+  const detailError =
+    sport === 'nfl' ? nflGame.error : sport === 'soccer' ? soccerGame.error : sport === 'cfb' ? cfbGame.error : null;
 
   // Combined readiness for `onReadyChange` — must run before any early
   // return below (rules of hooks). `data` itself already gates on the outer
@@ -2007,7 +2020,7 @@ export function GameDetail({
   // would be worse than showing the error state below.
   const internalReady =
     Boolean(detailError) ||
-    (data !== null && !pickHistory.loading && (sport === 'nfl' || sport === 'soccer' ? true : !gameContext.loading && !bullpen.loading));
+    (data !== null && !pickHistory.loading && (sport === 'nfl' || sport === 'soccer' || sport === 'cfb' ? true : !gameContext.loading && !bullpen.loading));
   useEffect(() => {
     onReadyChange?.(internalReady);
   }, [internalReady, onReadyChange]);
