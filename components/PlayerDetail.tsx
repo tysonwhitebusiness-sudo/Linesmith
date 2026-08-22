@@ -37,6 +37,7 @@ import {
 import { toPlayerDetailData as toGolfPlayerDetailData } from '@/lib/sports/golf/adapters/playerDetailAdapter';
 import { toPlayerDetailData as toNflPlayerDetailData } from '@/lib/sports/nfl/adapters/playerDetailAdapter';
 import { toPlayerDetailData as toSoccerPlayerDetailData } from '@/lib/sports/soccer/adapters/playerDetailAdapter';
+import { toPlayerDetailData as toCfbPlayerDetailData } from '@/lib/sports/cfb/adapters/playerDetailAdapter';
 
 /**
  * Everything known about one player's one market — sport-agnostic. Reads a
@@ -1032,6 +1033,14 @@ export function PlayerDetail({
               scope: { lineOffset, opponentOnly, lastN, showAllGames },
               propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
             })
+          : active.sport === 'cfb'
+            ? toCfbPlayerDetailData({
+                candidates,
+                market: active.dimension,
+                snapshot,
+                scope: { lineOffset, opponentOnly, lastN, showAllGames },
+                propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
+              })
           : toMlbPlayerDetailData({
             candidates,
             market: active.dimension,
