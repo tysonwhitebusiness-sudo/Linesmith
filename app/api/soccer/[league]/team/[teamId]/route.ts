@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { fetchAllTeams, type SoccerTeam } from '@/lib/sports/soccer/espn';
+import { fetchAllTeams, fetchGameSummary, type SoccerTeam } from '@/lib/sports/soccer/espn';
 import { fetchScoreboard, fetchTeamRoster } from '@/lib/sports/multiSport/teamSportEspn';
 import type { SoccerLeague } from '@/lib/core/types';
 import { SOCCER_LEAGUES } from '@/lib/core/types';
@@ -35,6 +35,8 @@ async function buildTeamPayload(league: SoccerLeague, teamId: string) {
   const nextGame = teamGames.filter((g) => Date.parse(g.date) >= now).sort((a, b) => Date.parse(a.date) - Date.parse(b.date))[0] ?? null;
   const recentGames = teamGames.filter((g) => Date.parse(g.date) < now).sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
 
+  const nextGameLine = nextGame ? (await fetchGameSummary(league, nextGame.gameId)).pregameLine : null;
+
   return {
     team,
     roster: roster.map((p) => ({
@@ -44,6 +46,7 @@ async function buildTeamPayload(league: SoccerLeague, teamId: string) {
       headshotUrl: p.headshotUrl ?? null,
     })),
     nextGame,
+    nextGameLine,
     // No final-score field exists on EspnTeamSportGame yet (schedule-shape
     // only) — recent results list real fixtures, without a win/loss/score
     // outcome until that's wired. Honest "played, outcome unknown" rather

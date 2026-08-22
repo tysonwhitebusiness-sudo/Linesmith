@@ -597,7 +597,12 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
           the same information twice. */}
       <section>
         <h2 className="mb-2 rounded-lg bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Standings</h2>
-        <StandingsTables teams={standingsTeams} loading={standingsLoading} highlightTeamId={teamId} />
+        <StandingsTables
+          teams={standingsTeams}
+          loading={standingsLoading}
+          highlightTeamId={teamId}
+          teamHref={(id) => (sport === 'nfl' ? `/nfl/team/${id}` : sport === 'soccer' ? `/soccer/${league}/team/${id}` : `/mlb/team/${id}`)}
+        />
       </section>
       </div>
 

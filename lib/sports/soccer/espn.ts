@@ -70,3 +70,177 @@ export async function soccerTeamLogoByAbbr(league: SoccerLeague): Promise<Map<st
   const teams = await fetchAllTeams(league);
   return new Map(teams.filter((t) => t.logoUrl).map((t) => [t.abbreviation, t.logoUrl as string]));
 }
+
+// ---------------------------------------------------------------------------
+// Standings — real gap closed per docs/soccer-gameplan-2026-08-22.md §11.
+//
+// EPL and MLS have genuinely different response shapes: EPL's standings
+// response has one `children[0]` (a single table), MLS has two — Eastern
+// and Western conference — confirmed live both ways this session. Don't
+// assume `children[0]` covers every league; flatten however many groups
+// come back.
+// ---------------------------------------------------------------------------
+
+export interface SoccerStanding {
+  teamId: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  points: number;
+  goalDifferential: number;
+  gamesPlayed: number;
+  rank: number;
+  groupName: string | null;
+}
+
+interface RawStandingsResponse {
+  children?: Array<{
+    name?: string;
+    standings?: {
+      entries?: Array<{
+        team: { id: string };
+        stats?: Array<{ name: string; value: number }>;
+      }>;
+    };
+  }>;
+}
+
+function statValue(stats: Array<{ name: string; value: number }> | undefined, name: string): number {
+  return stats?.find((s) => s.name === name)?.value ?? 0;
+}
+
+export async function fetchStandings(league: SoccerLeague): Promise<SoccerStanding[]> {
+  const cacheKey = `soccer:standings:${league}`;
+  const cached = await readSnapshotCache(cacheKey);
+  if (cached && Date.now() - Date.parse(cached.fetchedAt) < 30 * 60_000) {
+    return JSON.parse(cached.payload) as SoccerStanding[];
+  }
+
+  const slug = ESPN_LEAGUE_SLUG[league];
+  let res: Response;
+  try {
+    res = await fetch(`https://site.api.espn.com/apis/v2/sports/soccer/${slug}/standings`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    return cached ? (JSON.parse(cached.payload) as SoccerStanding[]) : [];
+  }
+  if (!res.ok) return cached ? (JSON.parse(cached.payload) as SoccerStanding[]) : [];
+
+  const json = (await res.json()) as RawStandingsResponse;
+  const standings: SoccerStanding[] = [];
+  for (const group of json.children ?? []) {
+    for (const entry of group.standings?.entries ?? []) {
+      standings.push({
+        teamId: entry.team.id,
+        wins: statValue(entry.stats, 'wins'),
+        losses: statValue(entry.stats, 'losses'),
+        draws: statValue(entry.stats, 'ties'),
+        points: statValue(entry.stats, 'points'),
+        goalDifferential: statValue(entry.stats, 'pointDifferential'),
+        gamesPlayed: statValue(entry.stats, 'gamesPlayed'),
+        rank: statValue(entry.stats, 'rank'),
+        groupName: group.name ?? null,
+      });
+    }
+  }
+
+  await writeSnapshotCache(cacheKey, JSON.stringify(standings));
+  return standings;
+}
+
+// ---------------------------------------------------------------------------
+// Game summary — single-book pregame line + live in-game state, both
+// confirmed live per docs/soccer-gameplan-2026-08-22.md §11 (real DraftKings
+// moneyline/spread/total on both a completed and an upcoming EPL match).
+// ---------------------------------------------------------------------------
+
+export interface SoccerPregameLine {
+  book: string;
+  moneylineHome: number | null;
+  moneylineAway: number | null;
+  moneylineDraw: number | null;
+  spread: number | null;
+  overUnder: number | null;
+  overOdds: number | null;
+  underOdds: number | null;
+}
+
+export interface SoccerLiveEvent {
+  clock: string | null;
+  text: string;
+  type: string | null;
+}
+
+export interface SoccerGameSummary {
+  pregameLine: SoccerPregameLine | null;
+  keyEvents: SoccerLiveEvent[];
+  /** Per-player match stats, keyed by ESPN athlete id — e.g. `{"284199": [{name: "totalGoals", value: 1}, ...]}`. Real per-match history source for a completed match (see adapter.ts's history-building, §11.2 item 7). */
+  playerStatsByAthleteId: Record<string, Array<{ name: string; value: number }>>;
+}
+
+interface RawSummaryResponse {
+  odds?: Array<{
+    provider?: { name?: string };
+    homeTeamOdds?: { moneyLine?: number };
+    awayTeamOdds?: { moneyLine?: number };
+    drawOdds?: { moneyLine?: number };
+    spread?: number;
+    overUnder?: number;
+    overOdds?: number;
+    underOdds?: number;
+  }>;
+  keyEvents?: Array<{ clock?: { displayValue?: string }; text?: string; type?: { text?: string } }>;
+  rosters?: Array<{
+    roster?: Array<{
+      athlete: { id: string };
+      stats?: Array<{ name: string; value: number }>;
+    }>;
+  }>;
+}
+
+export async function fetchGameSummary(league: SoccerLeague, eventId: string): Promise<SoccerGameSummary> {
+  const slug = ESPN_LEAGUE_SLUG[league];
+  const empty: SoccerGameSummary = { pregameLine: null, keyEvents: [], playerStatsByAthleteId: {} };
+  let res: Response;
+  try {
+    res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}/summary?event=${eventId}`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    return empty;
+  }
+  if (!res.ok) return empty;
+
+  const json = (await res.json()) as RawSummaryResponse;
+  const rawOdds = json.odds?.[0];
+  const pregameLine: SoccerPregameLine | null = rawOdds
+    ? {
+        book: rawOdds.provider?.name ?? 'Unknown',
+        moneylineHome: rawOdds.homeTeamOdds?.moneyLine ?? null,
+        moneylineAway: rawOdds.awayTeamOdds?.moneyLine ?? null,
+        moneylineDraw: rawOdds.drawOdds?.moneyLine ?? null,
+        spread: rawOdds.spread ?? null,
+        overUnder: rawOdds.overUnder ?? null,
+        overOdds: rawOdds.overOdds ?? null,
+        underOdds: rawOdds.underOdds ?? null,
+      }
+    : null;
+
+  const keyEvents: SoccerLiveEvent[] = (json.keyEvents ?? []).map((e) => ({
+    clock: e.clock?.displayValue ?? null,
+    text: e.text ?? '',
+    type: e.type?.text ?? null,
+  }));
+
+  const playerStatsByAthleteId: Record<string, Array<{ name: string; value: number }>> = {};
+  for (const teamRoster of json.rosters ?? []) {
+    for (const p of teamRoster.roster ?? []) {
+      if (p.stats) playerStatsByAthleteId[p.athlete.id] = p.stats;
+    }
+  }
+
+  return { pregameLine, keyEvents, playerStatsByAthleteId };
+}

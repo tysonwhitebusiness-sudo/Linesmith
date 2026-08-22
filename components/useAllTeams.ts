@@ -15,6 +15,16 @@ export interface TeamStandingRow {
   divisionRank: string;
   gamesBack: string;
   lastTen: { wins: number; losses: number } | null;
+  /**
+   * Soccer only — points-based tables need draws/points/goal differential,
+   * a genuinely different shape from MLB/NFL's win-loss-pct convention
+   * (docs/soccer-gameplan-2026-08-22.md §6c/§7.7: "real gap, not a
+   * drop-in"). `undefined` for every other sport; `StandingsTables`
+   * renders the Pts/GD columns only when a group's rows actually have them.
+   */
+  draws?: number;
+  points?: number;
+  goalDifferential?: number;
 }
 
 export interface AllTeamsState {
