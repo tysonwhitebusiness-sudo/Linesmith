@@ -63,6 +63,20 @@ interface HealthCheckRow {
   checkedAt: string;
 }
 
+interface AiSummary {
+  severity: 'ok' | 'warning' | 'critical';
+  summary: string;
+  highlights: string[];
+  generatedAt: string;
+  tokensUsed: number;
+}
+
+const AI_SEVERITY_CLASS: Record<AiSummary['severity'], string> = {
+  ok: 'bg-good/15 text-good border border-good/30',
+  warning: 'bg-warn/10 text-warn border border-warn/30',
+  critical: 'bg-bad/10 text-bad border border-bad/30',
+};
+
 interface DiagnosticsData {
   timestamp: string;
   oddsApi: {
@@ -1105,6 +1119,9 @@ export default function DiagnosticsPage() {
   const [activeGroup, setActiveGroup] = useState<AdminGroup>('health');
   const [healthChecks, setHealthChecks] = useState<HealthCheckRow[] | null>(null);
   const [healthChecksError, setHealthChecksError] = useState<string | null>(null);
+  const [aiSummary, setAiSummary] = useState<AiSummary | null>(null);
+  const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
 
   const fetchHealthChecks = useCallback(async () => {
     setHealthChecksError(null);
@@ -1115,6 +1132,21 @@ export default function DiagnosticsPage() {
       setHealthChecks(json.checks);
     } catch (err) {
       setHealthChecksError(err instanceof Error ? err.message : 'Fetch failed');
+    }
+  }, []);
+
+  const fetchAiSummary = useCallback(async (refresh = false) => {
+    setAiSummaryLoading(true);
+    setAiSummaryError(null);
+    try {
+      const res = await fetch(`/api/diagnostics/ai-summary${refresh ? '?refresh=1' : ''}`, { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.detail ?? json.error ?? `HTTP ${res.status}`);
+      setAiSummary(json as AiSummary);
+    } catch (err) {
+      setAiSummaryError(err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      setAiSummaryLoading(false);
     }
   }, []);
 
@@ -1395,6 +1427,7 @@ export default function DiagnosticsPage() {
     void fetchEloSanity();
     void fetchSystemHealth();
     void fetchHealthChecks();
+    void fetchAiSummary();
   }, [
     fetchData,
     fetchPropsData,
@@ -1408,6 +1441,7 @@ export default function DiagnosticsPage() {
     fetchEloSanity,
     fetchSystemHealth,
     fetchHealthChecks,
+    fetchAiSummary,
   ]);
 
   const handleForceRefresh = () => {
@@ -1478,7 +1512,46 @@ export default function DiagnosticsPage() {
           <>
             {activeGroup === 'health' && (
               <>
-                {/* System health summary — Phase 04, backed by job_health_checks (health_check.py's persisted results). This is the home Phase 05's DeepSeek summary card attaches to. */}
+                {/* Phase 05 — DeepSeek plain-English summary over job_health_checks + provider_usage + recent system_events. Summarizer only, never autonomous triage — see docs/four-feature-gameplan-2026-08-22.md's Phase 05 scope note. */}
+                <section className="lb-card p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="text-sm font-semibold">AI Summary</h2>
+                    <button
+                      type="button"
+                      onClick={() => fetchAiSummary(true)}
+                      disabled={aiSummaryLoading}
+                      className="rounded-md border border-line px-2.5 py-1 text-[12px] font-medium text-ink-muted transition-colors hover:bg-accent-soft/30 disabled:opacity-50"
+                    >
+                      {aiSummaryLoading ? 'Asking…' : 'Ask again'}
+                    </button>
+                  </div>
+                  {aiSummaryError ? (
+                    <p className="text-sm text-bad">Failed: {aiSummaryError}</p>
+                  ) : aiSummary === null ? (
+                    <p className="text-sm text-ink-muted">{aiSummaryLoading ? 'Asking DeepSeek…' : 'No summary yet.'}</p>
+                  ) : (
+                    <>
+                      <div className="mb-2 flex items-center gap-2">
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${AI_SEVERITY_CLASS[aiSummary.severity]}`}>
+                          {aiSummary.severity}
+                        </span>
+                        <span className="text-[11px] text-ink-faint">
+                          {new Date(aiSummary.generatedAt).toLocaleString()} · {aiSummary.tokensUsed} tokens
+                        </span>
+                      </div>
+                      <p className="mb-2 text-[13px] text-ink">{aiSummary.summary}</p>
+                      {aiSummary.highlights.length > 0 ? (
+                        <ul className="list-inside list-disc space-y-0.5 text-[12px] text-ink-muted">
+                          {aiSummary.highlights.map((h, i) => (
+                            <li key={i}>{h}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </>
+                  )}
+                </section>
+
+                {/* System health summary — Phase 04, backed by job_health_checks (health_check.py's persisted results). */}
                 <section className="lb-card p-4">
                   <h2 className="mb-3 text-sm font-semibold">Job Health Checks</h2>
                   {healthChecksError ? (
