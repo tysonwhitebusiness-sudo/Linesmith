@@ -18,6 +18,7 @@ import { toPicksPanelGame, toRecentResultRow, toInjuryRow, type RecentResultRow,
 import { useGameContext, type GameContextState } from './useGameContext';
 import { useBullpen, type BullpenState } from './useBullpen';
 import { useNflGameDetail } from './useNflGameDetail';
+import { useSoccerGameDetail } from './useSoccerGameDetail';
 import type { PickRow } from './useSlip';
 import { SubjectAvatar, TeamLogo, nflTeamLogoUrl } from './SubjectAvatar';
 import { TwoSidedStatRankRow } from './StatRankRow';
@@ -45,6 +46,8 @@ import {
   type RankingsData,
 } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
 import { toGameDetailData as toNflGameDetailData } from '@/lib/sports/nfl/adapters/gameDetailAdapter';
+import { toGameDetailData as toSoccerGameDetailData } from '@/lib/sports/soccer/adapters/gameDetailAdapter';
+import type { SoccerLeague } from '@/lib/core/types';
 import { heatFill, heatInk } from '@/lib/ui/heat';
 
 /**
@@ -1724,8 +1727,10 @@ export function PicksPanel({
 
 export interface GameDetailProps {
   sport: Sport;
-  /** MLB: `gamePk` as a string. NFL: the game id already used by its own routes/API. */
+  /** MLB: `gamePk` as a string. NFL: the game id already used by its own routes/API. Soccer: same as NFL, ESPN's own event id. */
   gameId: string;
+  /** Soccer-only — which league's game/team routes to call. Required (and unused) for every other sport. */
+  league?: SoccerLeague;
   /** Page-filtered player-level candidates for this game — the page still owns snapshot filtering (and, for MLB, the global filter sidebar), same as before this component owned its own data-fetching. */
   candidates: PickCandidate[];
   snapshot: SportSnapshot | null;
@@ -1884,6 +1889,7 @@ function PropsForGameSection({ data, playerHref }: { data: NonNullable<GameDetai
 export function GameDetail({
   sport,
   gameId,
+  league,
   candidates,
   snapshot,
   odds,
@@ -1928,6 +1934,7 @@ export function GameDetail({
   }, [games, odds, mlbGame, gameId]);
 
   const nflGame = useNflGameDetail(sport === 'nfl' ? gameId : undefined);
+  const soccerGame = useSoccerGameDetail(sport === 'soccer' ? league : undefined, sport === 'soccer' ? gameId : undefined);
   const nflGameLine = useMemo(() => {
     if (!nflGame.meta) return null;
     const fromSlate = odds?.lines
@@ -1958,21 +1965,31 @@ export function GameDetail({
             candidates,
           })
         : null
-      : mlbGame
-        ? toMlbGameDetailData({
-            game: mlbGame,
-            statKeys,
-            gameContext,
-            bullpen: { byTeam: bullpen.byTeam, loading: bullpen.loading },
-            gameLine: mlbGameLine,
-            trustedMarkets: calibration.trustedMarkets,
-            gamePick,
-            pickLoading: calibration.loading,
-            candidates,
-          })
-        : null;
+      : sport === 'soccer'
+        ? soccerGame.meta?.game && league
+          ? toSoccerGameDetailData({
+              league,
+              meta: soccerGame.meta,
+              home: soccerGame.home,
+              away: soccerGame.away,
+              candidates,
+            })
+          : null
+        : mlbGame
+          ? toMlbGameDetailData({
+              game: mlbGame,
+              statKeys,
+              gameContext,
+              bullpen: { byTeam: bullpen.byTeam, loading: bullpen.loading },
+              gameLine: mlbGameLine,
+              trustedMarkets: calibration.trustedMarkets,
+              gamePick,
+              pickLoading: calibration.loading,
+              candidates,
+            })
+          : null;
 
-  const detailError = sport === 'nfl' ? nflGame.error : null;
+  const detailError = sport === 'nfl' ? nflGame.error : sport === 'soccer' ? soccerGame.error : null;
 
   // Combined readiness for `onReadyChange` — must run before any early
   // return below (rules of hooks). `data` itself already gates on the outer
@@ -1990,7 +2007,7 @@ export function GameDetail({
   // would be worse than showing the error state below.
   const internalReady =
     Boolean(detailError) ||
-    (data !== null && !pickHistory.loading && (sport === 'nfl' ? true : !gameContext.loading && !bullpen.loading));
+    (data !== null && !pickHistory.loading && (sport === 'nfl' || sport === 'soccer' ? true : !gameContext.loading && !bullpen.loading));
   useEffect(() => {
     onReadyChange?.(internalReady);
   }, [internalReady, onReadyChange]);

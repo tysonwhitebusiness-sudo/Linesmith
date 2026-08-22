@@ -13,10 +13,36 @@
  */
 
 import type { TeamStandingRow } from '@/components/useAllTeams';
-import type { RosterPlayer, TeamDetailData, TeamNextGame } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
+import type { RecentResultRow, RosterPlayer, TeamDetailData, TeamNextGame } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import type { SoccerTeam, SoccerPregameLine } from '@/lib/sports/soccer/espn';
 import type { EspnTeamSportGame } from '@/lib/sports/multiSport/teamSportEspn';
 import type { SoccerLeague } from '@/lib/core/types';
+
+/**
+ * Real final scores from ESPN's scoreboard `score`/`status` fields
+ * (teamSportEspn.ts) mapped to one team's perspective — `win`/`isDraw` stay
+ * `null`/`false` for a game ESPN hasn't posted a completed status for yet.
+ * Shared by this file's own `recentResults` and `gameDetailAdapter.ts`'s
+ * records/last-five sections, so both read the exact same real derivation.
+ */
+export function toSoccerRecentResultRows(games: EspnTeamSportGame[], teamId: string): RecentResultRow[] {
+  return games.map((g) => {
+    const isHome = g.homeTeamId === teamId;
+    const scoreFor = isHome ? g.homeScore : g.awayScore;
+    const scoreAgainst = isHome ? g.awayScore : g.homeScore;
+    const resolved = g.status?.completed === true && scoreFor != null && scoreAgainst != null;
+    return {
+      gameId: g.gameId,
+      date: g.date,
+      win: resolved ? scoreFor > scoreAgainst : null,
+      isDraw: resolved ? scoreFor === scoreAgainst : false,
+      opponentAbbr: isHome ? g.awayAbbr : g.homeAbbr,
+      isHome,
+      scoreFor: scoreFor ?? 0,
+      scoreAgainst: scoreAgainst ?? 0,
+    };
+  });
+}
 
 export interface SoccerTeamDetailApiResponse {
   team: SoccerTeam;
@@ -101,26 +127,6 @@ export function toTeamDetailData(input: SoccerTeamDetailInput): TeamDetailData {
     nextGame: nextGameData,
     advancedStats: null,
     form: null,
-    // Real final scores from ESPN's scoreboard `score`/`status` fields
-    // (teamSportEspn.ts) — `win`/`isDraw` stay `null`/`false` for a game
-    // ESPN hasn't posted a completed status for yet, the same honest
-    // "unresolved" state as before, now only for genuinely unresolved games
-    // rather than every game.
-    recentResults: recentGames.map((g) => {
-      const isHome = g.homeTeamId === team.teamId;
-      const scoreFor = isHome ? g.homeScore : g.awayScore;
-      const scoreAgainst = isHome ? g.awayScore : g.homeScore;
-      const resolved = g.status?.completed === true && scoreFor != null && scoreAgainst != null;
-      return {
-        gameId: g.gameId,
-        date: g.date,
-        win: resolved ? scoreFor > scoreAgainst : null,
-        isDraw: resolved ? scoreFor === scoreAgainst : false,
-        opponentAbbr: isHome ? g.awayAbbr : g.homeAbbr,
-        isHome,
-        scoreFor: scoreFor ?? 0,
-        scoreAgainst: scoreAgainst ?? 0,
-      };
-    }),
+    recentResults: toSoccerRecentResultRows(recentGames, team.teamId),
   };
 }

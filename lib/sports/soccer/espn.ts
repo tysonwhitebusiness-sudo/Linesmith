@@ -173,7 +173,24 @@ export interface SoccerLiveEvent {
   type: string | null;
 }
 
+export interface SoccerGameMeta {
+  gameId: string;
+  date: string;
+  homeTeamId: string;
+  homeTeamName: string;
+  homeAbbr: string;
+  homeLogoUrl?: string;
+  homeScore: number | null;
+  awayTeamId: string;
+  awayTeamName: string;
+  awayAbbr: string;
+  awayLogoUrl?: string;
+  awayScore: number | null;
+  status: { completed: boolean; state: 'pre' | 'in' | 'post'; shortDetail: string } | null;
+}
+
 export interface SoccerGameSummary {
+  game: SoccerGameMeta | null;
   pregameLine: SoccerPregameLine | null;
   keyEvents: SoccerLiveEvent[];
   /** Per-player match stats, keyed by ESPN athlete id — e.g. `{"284199": [{name: "totalGoals", value: 1}, ...]}`. Real per-match history source for a completed match (see adapter.ts's history-building, §11.2 item 7). */
@@ -181,6 +198,17 @@ export interface SoccerGameSummary {
 }
 
 interface RawSummaryResponse {
+  header?: {
+    competitions?: Array<{
+      date?: string;
+      status?: { type?: { completed?: boolean; state?: string; shortDetail?: string } };
+      competitors?: Array<{
+        homeAway: 'home' | 'away';
+        score?: string;
+        team: { id: string; displayName: string; abbreviation: string; logos?: Array<{ href: string }> };
+      }>;
+    }>;
+  };
   odds?: Array<{
     provider?: { name?: string };
     homeTeamOdds?: { moneyLine?: number };
@@ -202,7 +230,7 @@ interface RawSummaryResponse {
 
 export async function fetchGameSummary(league: SoccerLeague, eventId: string): Promise<SoccerGameSummary> {
   const slug = ESPN_LEAGUE_SLUG[league];
-  const empty: SoccerGameSummary = { pregameLine: null, keyEvents: [], playerStatsByAthleteId: {} };
+  const empty: SoccerGameSummary = { game: null, pregameLine: null, keyEvents: [], playerStatsByAthleteId: {} };
   let res: Response;
   try {
     res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}/summary?event=${eventId}`, {
@@ -215,6 +243,33 @@ export async function fetchGameSummary(league: SoccerLeague, eventId: string): P
   if (!res.ok) return empty;
 
   const json = (await res.json()) as RawSummaryResponse;
+
+  const comp = json.header?.competitions?.[0];
+  const homeC = comp?.competitors?.find((c) => c.homeAway === 'home');
+  const awayC = comp?.competitors?.find((c) => c.homeAway === 'away');
+  const statusType = comp?.status?.type;
+  const game: SoccerGameMeta | null =
+    homeC && awayC
+      ? {
+          gameId: eventId,
+          date: comp?.date ?? '',
+          homeTeamId: homeC.team.id,
+          homeTeamName: homeC.team.displayName,
+          homeAbbr: homeC.team.abbreviation,
+          homeLogoUrl: homeC.team.logos?.[0]?.href,
+          homeScore: homeC.score != null ? Number(homeC.score) : null,
+          awayTeamId: awayC.team.id,
+          awayTeamName: awayC.team.displayName,
+          awayAbbr: awayC.team.abbreviation,
+          awayLogoUrl: awayC.team.logos?.[0]?.href,
+          awayScore: awayC.score != null ? Number(awayC.score) : null,
+          status:
+            statusType?.state != null
+              ? { completed: statusType.completed === true, state: statusType.state as 'pre' | 'in' | 'post', shortDetail: statusType.shortDetail ?? '' }
+              : null,
+        }
+      : null;
+
   const rawOdds = json.odds?.[0];
   const pregameLine: SoccerPregameLine | null = rawOdds
     ? {
@@ -242,5 +297,5 @@ export async function fetchGameSummary(league: SoccerLeague, eventId: string): P
     }
   }
 
-  return { pregameLine, keyEvents, playerStatsByAthleteId };
+  return { game, pregameLine, keyEvents, playerStatsByAthleteId };
 }
