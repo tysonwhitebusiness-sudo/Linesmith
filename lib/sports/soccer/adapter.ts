@@ -19,6 +19,7 @@
 import type { PickCandidate, SportSnapshot, SubjectSummary, SoccerLeague } from '@/lib/core/types';
 import { loadGameContextsForSport } from '@/lib/odds/props/multiSportGameContext';
 import { readPropOddsForGame, type PropOddsRow } from '@/lib/db/client';
+import { soccerTeamLogoByAbbr } from './espn';
 
 const LEAGUE_TO_SPORT_KEY: Record<SoccerLeague, 'soccer_epl' | 'soccer_mls'> = {
   epl: 'soccer_epl',
@@ -49,17 +50,10 @@ function bestRow(rows: PropOddsRow[], side: string): PropOddsRow | null {
   return matching.reduce((best, r) => (r.americanOdds > best.americanOdds ? r : best), matching[0]);
 }
 
-function teamLogoUrl(abbr: string | undefined): string | undefined {
-  // ESPN doesn't expose a stable per-league logo CDN path the way it does
-  // for NFL/MLB (crest URLs vary by competition) — left unset rather than
-  // guessing a URL pattern that would silently 404. SubjectAvatar already
-  // renders an initials fallback when this is undefined.
-  return undefined;
-}
-
 export async function buildSoccerSnapshot(league: SoccerLeague): Promise<SportSnapshot> {
   const sportKey = LEAGUE_TO_SPORT_KEY[league];
-  const games = await loadGameContextsForSport(sportKey);
+  const [games, logoByAbbr] = await Promise.all([loadGameContextsForSport(sportKey), soccerTeamLogoByAbbr(league)]);
+  const teamLogoUrl = (abbr: string | undefined): string | undefined => (abbr ? logoByAbbr.get(abbr) : undefined);
   const candidates: PickCandidate[] = [];
   const subjectsMap = new Map<string, SubjectSummary>();
   const warnings: string[] = [];
@@ -92,7 +86,14 @@ export async function buildSoccerSnapshot(league: SoccerLeague): Promise<SportSn
       const opponentAbbr = teamAbbr ? (isHome ? game.awayAbbr : game.homeAbbr) : undefined;
 
       const best = bestRow(marketRows, 'over') ?? bestRow(marketRows, 'yes') ?? marketRows[0];
-      const line = meta.kind === 'binary' ? 0.5 : (best.line ?? undefined);
+      // Binary markets deliberately get `line: undefined` here, matching
+      // Propline's real `line: null` rows — the UI's own `active.line ?? 0.5`
+      // fallback (PlayerDetail.tsx, NFL's adapter's identical pattern) still
+      // displays a stepper as "O 0.5" for these, but propOddsBoard's
+      // `rowsFor()` filter does an exact `row.line === line` match against
+      // the *real* prop_odds rows — inventing 0.5 here made every real book
+      // row fail that match and the board render permanently empty.
+      const line = meta.kind === 'binary' ? undefined : (best.line ?? undefined);
       const category = meta.kind === 'binary' ? 'yes' : 'over';
       const categoryLabel = meta.kind === 'binary' ? 'Yes' : 'Over';
 

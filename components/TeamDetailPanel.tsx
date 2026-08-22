@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
+import type { PickCandidate, Sport, SoccerLeague, SportSnapshot } from '@/lib/core/types';
 import type { UnifiedLinesResult } from '@/lib/odds/types';
 import { TeamLogo } from './SubjectAvatar';
 import { TeamDetail } from './TeamDetail';
 import { BrandedLoader } from './BrandedLoader';
 import { useAllTeams, type TeamStandingRow } from './useAllTeams';
 import { useAllNflTeams } from './useAllNflTeams';
+import { useAllSoccerTeams } from './useAllSoccerTeams';
 
 /**
  * The Teams page's shell — a searchable list of all teams beside the same
@@ -29,6 +30,8 @@ import { useAllNflTeams } from './useAllNflTeams';
  */
 export interface TeamDetailPanelProps {
   sport: Sport;
+  /** Soccer only. */
+  league?: SoccerLeague;
   /** Omit to auto-load the first team (alphabetically) once the list loads — the Teams tab's landing behaviour. */
   initialTeamId?: number;
   snapshot: SportSnapshot | null;
@@ -203,9 +206,57 @@ function NflTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys }: Omit<TeamDe
   );
 }
 
-export function TeamDetailPanel({ sport, initialTeamId, snapshot, odds, onAdd, addedKeys }: TeamDetailPanelProps) {
+function SoccerTeamDetailPanelBody({ league, initialTeamId, onAdd, addedKeys }: { league: SoccerLeague } & Omit<TeamDetailPanelProps, 'sport' | 'snapshot' | 'odds' | 'league'>) {
+  const [search, setSearch] = useState('');
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+  const { teams, loading, error } = useAllSoccerTeams(league);
+
+  const sortedTeams = useMemo(() => [...teams].sort((a, b) => a.name.localeCompare(b.name)), [teams]);
+  const activeTeamId = selectedTeamId ?? initialTeamId ?? sortedTeams[0]?.teamId ?? 0;
+
+  // Switching leagues means switching team pools entirely — same reset as switching teams.
+  useEffect(() => {
+    setSelectedTeamId(null);
+  }, [league]);
+
+  // See MlbTeamDetailPanel's identical block for why this exists.
+  const [detailReady, setDetailReady] = useState(false);
+  useEffect(() => {
+    setDetailReady(false);
+  }, [activeTeamId]);
+
+  return (
+    <TeamListShell
+      sortedTeams={sortedTeams}
+      loading={loading}
+      error={error}
+      search={search}
+      onSearchChange={setSearch}
+      activeTeamId={activeTeamId}
+      onSelect={setSelectedTeamId}
+    >
+      {!detailReady && <BrandedLoader size="page" />}
+      <div style={{ display: detailReady ? 'block' : 'none' }}>
+        <TeamDetail
+          sport="soccer"
+          league={league}
+          teamId={activeTeamId}
+          standingsTeams={teams}
+          standingsLoading={loading}
+          onAdd={onAdd}
+          addedKeys={addedKeys}
+          onReadyChange={setDetailReady}
+        />
+      </div>
+    </TeamListShell>
+  );
+}
+
+export function TeamDetailPanel({ sport, league, initialTeamId, snapshot, odds, onAdd, addedKeys }: TeamDetailPanelProps) {
   return sport === 'nfl' ? (
     <NflTeamDetailPanelBody initialTeamId={initialTeamId} onAdd={onAdd} addedKeys={addedKeys} />
+  ) : sport === 'soccer' && league ? (
+    <SoccerTeamDetailPanelBody league={league} initialTeamId={initialTeamId} onAdd={onAdd} addedKeys={addedKeys} />
   ) : (
     <MlbTeamDetailPanel initialTeamId={initialTeamId} snapshot={snapshot} odds={odds} onAdd={onAdd} addedKeys={addedKeys} />
   );

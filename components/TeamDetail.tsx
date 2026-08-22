@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
+import type { PickCandidate, Sport, SoccerLeague, SportSnapshot } from '@/lib/core/types';
 import { isOk } from '@/lib/core/windowedStat';
 import { DistributionChart, WindowBox, FilterChip } from './PlayerDetail';
 import { StatRankRow } from './StatRankRow';
@@ -16,6 +16,7 @@ import { SubjectAvatar, TeamLogo, nflTeamLogoUrl } from './SubjectAvatar';
 import { useTeamRoster } from './useTeamRoster';
 import { useTeamForm } from './useTeamForm';
 import { useNflTeamDetail } from './useNflTeamDetail';
+import { useSoccerTeamDetail } from './useSoccerTeamDetail';
 import { StandingsTables } from './StandingsTables';
 import type { TeamStandingRow } from './useAllTeams';
 import { teamPrimaryColor as mlbTeamPrimaryColor, withAlpha } from '@/lib/sports/mlb/teamColors';
@@ -30,13 +31,16 @@ import {
   type TeamDetailData,
 } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import { toTeamDetailData as toNflTeamDetailData } from '@/lib/sports/nfl/adapters/teamDetailAdapter';
+import { toTeamDetailData as toSoccerTeamDetailData } from '@/lib/sports/soccer/adapters/teamDetailAdapter';
 
 const POSITION_ORDER = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'QB', 'RB', 'FB', 'WR', 'TE', 'K', 'OL', 'DL', 'LB', 'DB', 'S', 'CB'];
 
 export interface TeamDetailProps {
   sport: Sport;
   teamId: number;
-  /** MLB only — drives `TeamDetail`'s line stepper/edge badge. NFL builds its candidates from `/api/nfl/team/[teamId]` directly and reads neither. */
+  /** Soccer only. */
+  league?: SoccerLeague;
+  /** MLB only — drives `TeamDetail`'s line stepper/edge badge. NFL/soccer build their candidates from their own `/api/{sport}/team/[teamId]` directly and read neither. */
   snapshot?: SportSnapshot | null;
   odds?: UnifiedLinesResult | null;
   onAdd?: (candidate: PickCandidate, oddsInfo?: { americanOdds: string; source: string }) => void;
@@ -53,7 +57,7 @@ export interface TeamDetailProps {
   onReadyChange?: (ready: boolean) => void;
 }
 
-export function TeamDetail({ sport, teamId, snapshot, odds, onAdd, addedKeys, standingsTeams, standingsLoading, onReadyChange }: TeamDetailProps) {
+export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, addedKeys, standingsTeams, standingsLoading, onReadyChange }: TeamDetailProps) {
   // Every hook below is always called (rules of hooks) — NFL's real data
   // model is one bespoke endpoint (`useNflTeamDetail`) instead of MLB's
   // several composed hooks, so both sets run unconditionally and the unused
@@ -65,6 +69,7 @@ export function TeamDetail({ sport, teamId, snapshot, odds, onAdd, addedKeys, st
   const teamStatcast = useTeamStatcast(teamId);
   const batterRanks = useTeamBatterRanks(teamId);
   const nflTeam = useNflTeamDetail(sport === 'nfl' ? teamId : undefined);
+  const soccerTeam = useSoccerTeamDetail(sport === 'soccer' ? teamId : undefined, sport === 'soccer' ? league : undefined);
 
   const [market, setMarket] = useState<string | undefined>(undefined);
   const [lineOffset, setLineOffset] = useState(0);
@@ -118,7 +123,11 @@ export function TeamDetail({ sport, teamId, snapshot, odds, onAdd, addedKeys, st
             standingsTeams,
           })
         : null
-      : roster.data
+      : sport === 'soccer'
+        ? soccerTeam.data && league
+          ? toSoccerTeamDetailData({ league, data: soccerTeam.data, standingsTeams })
+          : null
+        : roster.data
         ? toMlbTeamDetailData({
             teamId,
             snapshot: snapshot ?? null,
@@ -137,8 +146,9 @@ export function TeamDetail({ sport, teamId, snapshot, odds, onAdd, addedKeys, st
           })
         : null;
 
-  const detailLoading = sport === 'nfl' ? nflTeam.loading && !nflTeam.data : roster.loading && !roster.data;
-  const detailError = sport === 'nfl' ? nflTeam.error : roster.error;
+  const detailLoading =
+    sport === 'nfl' ? nflTeam.loading && !nflTeam.data : sport === 'soccer' ? soccerTeam.loading && !soccerTeam.data : roster.loading && !roster.data;
+  const detailError = sport === 'nfl' ? nflTeam.error : sport === 'soccer' ? soccerTeam.error : roster.error;
 
   // Combined readiness for `onReadyChange` — must run before any early
   // return below (rules of hooks). An error also counts as "ready" — a
@@ -148,7 +158,7 @@ export function TeamDetail({ sport, teamId, snapshot, odds, onAdd, addedKeys, st
     (!detailLoading &&
       data !== null &&
       !bullpen.loading &&
-      (sport === 'nfl' ? !nflTeam.loading : !form.loading && !teamStatcast.loading && !batterRanks.loading));
+      (sport === 'nfl' ? !nflTeam.loading : sport === 'soccer' ? !soccerTeam.loading : !form.loading && !teamStatcast.loading && !batterRanks.loading));
   useEffect(() => {
     onReadyChange?.(internalReady);
   }, [internalReady, onReadyChange]);
@@ -186,7 +196,12 @@ export function TeamDetail({ sport, teamId, snapshot, odds, onAdd, addedKeys, st
     });
   const visibleRoster = data.rosterPageSize == null || rosterShowAll ? filteredRoster : filteredRoster.slice(0, data.rosterPageSize);
 
-  const accentColor = sport === 'nfl' ? nflTeamPrimaryColor(team.abbr) : mlbTeamPrimaryColor(team.teamId);
+  // No per-club color table exists for soccer yet (NFL/MLB's are both
+  // hand-maintained lookup tables keyed by league-specific ids) — the
+  // header hero's own neutral-gradient fallback (`withAlpha` below) reads
+  // fine against a flat default, same as any MLB/NFL team missing from
+  // their own tables would.
+  const accentColor = sport === 'nfl' ? nflTeamPrimaryColor(team.abbr) : sport === 'soccer' ? '#3a3a3a' : mlbTeamPrimaryColor(team.teamId);
 
   return (
     <div className="space-y-3">
@@ -620,7 +635,7 @@ export function TeamDetail({ sport, teamId, snapshot, odds, onAdd, addedKeys, st
           </section>
         ) : null}
 
-        {sport === 'nfl' ? (
+        {sport === 'nfl' || sport === 'soccer' ? (
           <section className="lb-card overflow-hidden">
             <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Form</h3>
             {data.form ? (
@@ -645,7 +660,7 @@ export function TeamDetail({ sport, teamId, snapshot, odds, onAdd, addedKeys, st
           </section>
         ) : null}
 
-        {sport === 'nfl' ? (
+        {sport === 'nfl' || sport === 'soccer' ? (
           data.nextGame ? (
             <section className="lb-card overflow-hidden">
               <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Next game</h3>
@@ -689,14 +704,14 @@ export function TeamDetail({ sport, teamId, snapshot, odds, onAdd, addedKeys, st
           </section>
         ) : null}
 
-        {sport === 'nfl' && data.recentResults && data.recentResults.length > 0 ? (
+        {(sport === 'nfl' || sport === 'soccer') && data.recentResults && data.recentResults.length > 0 ? (
           <section className="lb-card overflow-hidden">
             <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Recent results</h3>
             <ul className="space-y-1.5 p-3 text-[10.5px]">
               {data.recentResults.slice(0, 5).map((g) => (
                 <li key={g.gameId} className="flex items-center justify-between">
                   <span className="flex items-center gap-1.5 text-ink-muted">
-                    <TeamLogo logoUrl={nflTeamLogoUrl(g.opponentAbbr)} size={14} /> {g.isHome ? 'vs' : '@'} {g.opponentAbbr}
+                    <TeamLogo logoUrl={sport === 'nfl' ? nflTeamLogoUrl(g.opponentAbbr) : undefined} abbreviation={g.opponentAbbr} size={14} /> {g.isHome ? 'vs' : '@'} {g.opponentAbbr}
                   </span>
                   <span className={`font-semibold ${g.win ? 'text-good' : 'text-ink-faint'}`}>
                     {g.win != null ? `${g.win ? 'W' : 'L'} ${g.scoreFor}-${g.scoreAgainst}` : '—'}
