@@ -20,42 +20,14 @@ import { readSnapshotCache } from '@/lib/db/client';
 import { teamKey } from '@/lib/odds/matching';
 import { computeTotalModel } from '@/lib/sports/mlb/gameModel';
 import { logGameTotalPredictions, type GameTotalPrediction } from '@/lib/odds/props/pickHistoryLog';
-import { runTotalLockCycle, runMoneylineLockCycle, type MoneylineDiagnostics } from '@/lib/core/gamePickLock';
-import { getGamePick, attachMoneylinePrice, attachTotalPrice, getActiveModelWeights, getEarliestObservedTotalPoint, logSystemEvent } from '@/lib/db/client';
-import { devigTwoWay } from '@/lib/odds/devig';
-import { americanToDecimal } from '@/lib/odds/display';
-import { predictHomeWinProb, MIN_GAMES_FOR_ELO_TRUST } from '@/lib/sports/mlb/eloModel';
-import { getTeamBullpenEra, easternDate } from '@/lib/sports/mlb/statsapi';
-import { applyFittedMoneylineWeights, computeMoneylineConfidenceInterval, applyFittedTotalWeights, computeTotalConfidenceInterval, poissonOverProbability } from '@/lib/sports/mlb/gameModel';
-import { loadGameSim } from '@/lib/sports/mlb/gameSimCache';
+import type { MoneylineDiagnostics } from '@/lib/core/gamePickLock';
+import { getGamePick, attachMoneylinePrice, attachTotalPrice, logSystemEvent } from '@/lib/db/client';
 import type { UnifiedGameLine } from '@/lib/odds/types';
-
-/** Shared by both lock passes below — Elo only gets a say once both teams have enough rated games this season to mean something (see eloModel.ts). */
-function eloProbForGame(elo: {
-  home: { elo: number; gamesPlayed: number };
-  away: { elo: number; gamesPlayed: number };
-  homeRestDays: number;
-  awayRestDays: number;
-  homeTravelMiles: number;
-  awayTravelMiles: number;
-  homePitcherAdj: number;
-  awayPitcherAdj: number;
-} | null): number | null {
-  if (!elo || elo.home.gamesPlayed < MIN_GAMES_FOR_ELO_TRUST || elo.away.gamesPlayed < MIN_GAMES_FOR_ELO_TRUST) return null;
-  return predictHomeWinProb(elo.home.elo, elo.away.elo, {
-    homeRestDays: elo.homeRestDays,
-    awayRestDays: elo.awayRestDays,
-    homeTravelMiles: elo.homeTravelMiles,
-    awayTravelMiles: elo.awayTravelMiles,
-    homePitcherAdj: elo.homePitcherAdj,
-    awayPitcherAdj: elo.awayPitcherAdj,
-  });
-}
 
 export const dynamic = 'force-dynamic';
 
 /**
- * The one shape all four snapshot-reading functions below need, unioned
+ * The one shape both snapshot-reading functions below need, unioned
  * together — each only reads the subset of fields relevant to it. Read and
  * parsed once per request (see `readGamesFromSnapshot`) instead of each
  * function independently re-reading and re-parsing the same
@@ -77,21 +49,11 @@ interface SnapshotGame {
     awayWinProb: number;
     diagnostics: MoneylineDiagnostics;
   } | null;
-  elo?: {
-    home: { elo: number; gamesPlayed: number };
-    away: { elo: number; gamesPlayed: number };
-    homeRestDays: number;
-    awayRestDays: number;
-    homeTravelMiles: number;
-    awayTravelMiles: number;
-    homePitcherAdj: number;
-    awayPitcherAdj: number;
-  } | null;
 }
 
 /** Reads and parses `snapshot_cache['mlb:snapshot']` once; `[]` on a missing cache or a parse failure — every caller below already treats an empty `games` array as its own no-op, matching each function's original independent early-return. */
-function readGamesFromSnapshot(): SnapshotGame[] {
-  const cached = readSnapshotCache('mlb:snapshot');
+async function readGamesFromSnapshot(): Promise<SnapshotGame[]> {
+  const cached = await readSnapshotCache('mlb:snapshot');
   if (!cached) return [];
   try {
     const snapshot = JSON.parse(cached.payload);
@@ -108,7 +70,7 @@ function readGamesFromSnapshot(): SnapshotGame[] {
  * SQLite cache (read once by the caller) rather than this route paying for
  * a fresh MLB API pull just to find a gamePk.
  */
-function logTotalPredictionsFromLines(lines: UnifiedGameLine[], games: SnapshotGame[]): void {
+async function logTotalPredictionsFromLines(lines: UnifiedGameLine[], games: SnapshotGame[]): Promise<void> {
   if (lines.length === 0) return;
 
   const predictions: GameTotalPrediction[] = [];
@@ -125,195 +87,7 @@ function logTotalPredictionsFromLines(lines: UnifiedGameLine[], games: SnapshotG
     });
     predictions.push({ gamePk: game.gamePk, totalLine: line.total.point, overProb: model.overProb });
   }
-  if (predictions.length > 0) logGameTotalPredictions('mlb', predictions);
-}
-
-/**
- * Linesmith Pick lock system — total (O/U) half. Needs the same
- * line-to-game match as `logTotalPredictionsFromLines` above (this is the
- * only route that has both the model's runs projection and the sportsbook's
- * actual posted total line), so it re-reads the same cached snapshot rather
- * than threading the match through two functions.
- */
-async function runTotalLockFromLines(lines: UnifiedGameLine[], games: SnapshotGame[]): Promise<void> {
-  if (lines.length === 0) return;
-
-  // Phase 0 — same "read once per request, fold in instead of double-
-  // blending" pattern as the moneyline pass below.
-  const fittedTotal = getActiveModelWeights('mlb', 'total');
-
-  const inputs = [];
-  for (const line of lines) {
-    if (line.total?.point == null) continue;
-    const game = games.find(
-      (g) => teamKey(g.awayTeamName ?? '') === teamKey(line.awayTeam) && teamKey(g.homeTeamName ?? '') === teamKey(line.homeTeam),
-    );
-    if (!game?.gameModel) continue;
-    const model = computeTotalModel({
-      homeExpectedRuns: game.gameModel.homeExpectedRuns,
-      awayExpectedRuns: game.gameModel.awayExpectedRuns,
-      line: line.total.point,
-    });
-    let marketOverProb: number | null = null;
-    if (line.total.overPrice != null && line.total.underPrice != null) {
-      const devigged = devigTwoWay(americanToDecimal(line.total.overPrice), americanToDecimal(line.total.underPrice));
-      marketOverProb = devigged?.a ?? null;
-    }
-
-    const eloRawProb = eloProbForGame(game.elo ?? null);
-
-    let overProb = model.overProb;
-    let marketOverProbForBlend: number | null = marketOverProb;
-    let probLowerOver: number | null = null;
-    let probUpperOver: number | null = null;
-
-    if (fittedTotal) {
-      const eloForFit = eloRawProb ?? 0.5;
-      const marketForFit = marketOverProb ?? 0.5;
-      // How far today's line has moved since this app first observed it —
-      // 0 (no signal) if this is the first time we've seen this event's
-      // total, matching training's neutral-impute convention for a missing
-      // opening reference.
-      const openingPoint = getEarliestObservedTotalPoint(line.eventId);
-      const lineMovement = openingPoint != null ? line.total.point - openingPoint : 0;
-
-      const season = Number(easternDate().slice(0, 4));
-      const [homeBullpenEra, awayBullpenEra] = await Promise.all([
-        getTeamBullpenEra(game.homeTeamId, season),
-        getTeamBullpenEra(game.awayTeamId, season),
-      ]);
-
-      // simOverProb — real per-game simulation once gameSimCache.ts has one
-      // cached for this matchup (see its own header for the refresh
-      // cadence); falls back to model.overProb, the honest neutral point,
-      // for a game with no cached sim yet (no resolvable lineup/starter,
-      // or the very first snapshot rebuild of the day hasn't reached it).
-      const simCache = loadGameSim(game.gamePk);
-      const simOverProbForFit = simCache ? poissonOverProbability(simCache.expectedTotal, line.total.point) : model.overProb;
-      overProb = applyFittedTotalWeights(model.overProb, game.gameModel.diagnostics, eloForFit, marketForFit, lineMovement, homeBullpenEra, awayBullpenEra, simOverProbForFit, fittedTotal);
-      marketOverProbForBlend = null; // already folded into overProb above — don't blend it in again
-
-      const interval = computeTotalConfidenceInterval(model.overProb, game.gameModel.diagnostics, eloForFit, marketForFit, lineMovement, homeBullpenEra, awayBullpenEra, simOverProbForFit, fittedTotal);
-      if (interval) {
-        probLowerOver = interval.lowerOver;
-        probUpperOver = interval.upperOver;
-      }
-    }
-
-    inputs.push({
-      gameId: String(game.gamePk),
-      homeTeamId: game.homeTeamId,
-      awayTeamId: game.awayTeamId,
-      homeTeamName: game.homeTeamName ?? line.homeTeam,
-      awayTeamName: game.awayTeamName ?? line.awayTeam,
-      matchup: game.matchup,
-      commenceTime: game.firstPitch ?? null,
-      isPreGame: game.status === 'pre',
-      line: line.total.point,
-      overProb,
-      marketOverProb: marketOverProbForBlend,
-      probLowerOver,
-      probUpperOver,
-    });
-  }
-  if (inputs.length > 0) runTotalLockCycle('mlb', inputs);
-}
-
-/**
- * Linesmith Pick lock system — moneyline half. Unlike the total lock (which
- * only ever considers games with a posted total line), this runs for EVERY
- * game in the snapshot regardless of whether a market price exists yet —
- * every game still gets a pick (idea #10), just without a market blend when
- * there's nothing to blend against. Market probability is attached
- * opportunistically when a matching two-sided price is found.
- */
-function runMoneylineLockFromSnapshot(lines: UnifiedGameLine[], games: SnapshotGame[]): void {
-  // Phase 3's fitted weights, if a fit has ever cleared its holdout guardrail
-  // — read once per request, not per game. When active, Elo is already one
-  // of the fit's own features (see modelFit.ts), so it's folded in here
-  // instead of also being blended a second time as a separate stage below —
-  // double-counting the same signal would just be a worse-calibrated guess.
-  const fitted = getActiveModelWeights('mlb', 'moneyline');
-
-  const inputs = [];
-  for (const g of games) {
-    if (!g.gameModel) continue;
-    const line = lines.find(
-      (l) => teamKey(l.awayTeam) === teamKey(g.awayTeamName ?? '') && teamKey(l.homeTeam) === teamKey(g.homeTeamName ?? ''),
-    );
-    let marketHomeProb: number | null = null;
-    if (line?.moneyline?.home != null && line.moneyline.away != null) {
-      const devigged = devigTwoWay(americanToDecimal(line.moneyline.away), americanToDecimal(line.moneyline.home));
-      marketHomeProb = devigged?.b ?? null; // devigTwoWay(a=away, b=home) — see lib/odds/gameEdge.ts's own usage
-    }
-
-    // Elo only gets a say once both teams have enough rated games this
-    // season to mean something — early on it's mostly still the flat 1500
-    // starting value, which would just be noise blended into a real pick.
-    // predictHomeWinProb folds rest, travel, and the starting-pitcher
-    // adjustment in on top of the raw ratings — none of which touch the
-    // STORED rating (see eloModel.ts), only this one prediction.
-    const eloTrusted = !!g.elo && g.elo.home.gamesPlayed >= MIN_GAMES_FOR_ELO_TRUST && g.elo.away.gamesPlayed >= MIN_GAMES_FOR_ELO_TRUST;
-    const eloRawProb = eloTrusted
-      ? predictHomeWinProb(g.elo!.home.elo, g.elo!.away.elo, {
-          homeRestDays: g.elo!.homeRestDays,
-          awayRestDays: g.elo!.awayRestDays,
-          homeTravelMiles: g.elo!.homeTravelMiles,
-          awayTravelMiles: g.elo!.awayTravelMiles,
-          homePitcherAdj: g.elo!.homePitcherAdj,
-          awayPitcherAdj: g.elo!.awayPitcherAdj,
-        })
-      : null;
-
-    let homeWinProb = g.gameModel.homeWinProb;
-    let eloHomeProb: number | null = eloRawProb; // used as a separate blend stage only when NOT already folded into a fit
-    let marketHomeProbForBlend: number | null = marketHomeProb; // same — folded into the fit instead of blended again when a fit is active
-    let probLowerHome: number | null = null;
-    let probUpperHome: number | null = null;
-
-    if (fitted) {
-      // modelFit.ts imputes 0.5 (neutral) for Elo and market prob when
-      // untrusted/unavailable during training — matching that exactly here,
-      // rather than skipping the term, since the fitted coefficients were
-      // validated against that specific imputation.
-      const eloForFit = eloRawProb ?? 0.5;
-      const marketForFit = marketHomeProb ?? 0.5;
-      // simWinProb — real per-game simulation once gameSimCache.ts has one
-      // cached for this matchup; falls back to the neutral 0.5 (same
-      // convention as eloProb/marketProb above) for a game with no cached
-      // sim yet.
-      const simCache = loadGameSim(g.gamePk);
-      const simWinProbForFit = simCache?.homeWinProb ?? 0.5;
-      homeWinProb = applyFittedMoneylineWeights(g.gameModel.diagnostics, eloForFit, marketForFit, simWinProbForFit, fitted);
-      eloHomeProb = null; // already folded into homeWinProb above — don't blend it in again
-      marketHomeProbForBlend = null; // same
-
-      const interval = computeMoneylineConfidenceInterval(g.gameModel.diagnostics, eloForFit, marketForFit, simWinProbForFit, fitted);
-      if (interval) {
-        probLowerHome = interval.lowerHome;
-        probUpperHome = interval.upperHome;
-      }
-    }
-
-    inputs.push({
-      gameId: String(g.gamePk),
-      homeTeamId: g.homeTeamId,
-      awayTeamId: g.awayTeamId,
-      homeTeamName: g.homeTeamName ?? line?.homeTeam ?? '',
-      awayTeamName: g.awayTeamName ?? line?.awayTeam ?? '',
-      matchup: g.matchup,
-      commenceTime: g.firstPitch ?? null,
-      isPreGame: g.status === 'pre',
-      homeWinProb,
-      awayWinProb: 1 - homeWinProb,
-      diagnostics: g.gameModel.diagnostics,
-      marketHomeProb: marketHomeProbForBlend,
-      eloHomeProb,
-      probLowerHome,
-      probUpperHome,
-    });
-  }
-  if (inputs.length > 0) runMoneylineLockCycle('mlb', inputs);
+  if (predictions.length > 0) await logGameTotalPredictions('mlb', predictions);
 }
 
 /**
@@ -322,7 +96,7 @@ function runMoneylineLockFromSnapshot(lines: UnifiedGameLine[], games: SnapshotG
  * which side gets picked (that's decided from the model alone); this only
  * fills in the reference price shown next to an already-decided pick.
  */
-function attachPricesFromLines(lines: UnifiedGameLine[], games: SnapshotGame[]): void {
+async function attachPricesFromLines(lines: UnifiedGameLine[], games: SnapshotGame[]): Promise<void> {
   if (lines.length === 0) return;
 
   for (const line of lines) {
@@ -331,18 +105,18 @@ function attachPricesFromLines(lines: UnifiedGameLine[], games: SnapshotGame[]):
     );
     if (!game) continue;
     const gameId = String(game.gamePk);
-    const pick = getGamePick('mlb', gameId);
+    const pick = await getGamePick('mlb', gameId);
     if (!pick) continue;
 
-    if (line.moneyline?.home != null && pick.mlInitialSide === 'home') attachMoneylinePrice('mlb', gameId, 'initial', 'home', line.moneyline.home);
-    if (line.moneyline?.away != null && pick.mlInitialSide === 'away') attachMoneylinePrice('mlb', gameId, 'initial', 'away', line.moneyline.away);
-    if (line.moneyline?.home != null && pick.mlFinalSide === 'home') attachMoneylinePrice('mlb', gameId, 'final', 'home', line.moneyline.home);
-    if (line.moneyline?.away != null && pick.mlFinalSide === 'away') attachMoneylinePrice('mlb', gameId, 'final', 'away', line.moneyline.away);
+    if (line.moneyline?.home != null && pick.mlInitialSide === 'home') await attachMoneylinePrice('mlb', gameId, 'initial', 'home', line.moneyline.home);
+    if (line.moneyline?.away != null && pick.mlInitialSide === 'away') await attachMoneylinePrice('mlb', gameId, 'initial', 'away', line.moneyline.away);
+    if (line.moneyline?.home != null && pick.mlFinalSide === 'home') await attachMoneylinePrice('mlb', gameId, 'final', 'home', line.moneyline.home);
+    if (line.moneyline?.away != null && pick.mlFinalSide === 'away') await attachMoneylinePrice('mlb', gameId, 'final', 'away', line.moneyline.away);
 
-    if (line.total?.overPrice != null && pick.totalInitialSide === 'over') attachTotalPrice('mlb', gameId, 'initial', 'over', line.total.overPrice);
-    if (line.total?.underPrice != null && pick.totalInitialSide === 'under') attachTotalPrice('mlb', gameId, 'initial', 'under', line.total.underPrice);
-    if (line.total?.overPrice != null && pick.totalFinalSide === 'over') attachTotalPrice('mlb', gameId, 'final', 'over', line.total.overPrice);
-    if (line.total?.underPrice != null && pick.totalFinalSide === 'under') attachTotalPrice('mlb', gameId, 'final', 'under', line.total.underPrice);
+    if (line.total?.overPrice != null && pick.totalInitialSide === 'over') await attachTotalPrice('mlb', gameId, 'initial', 'over', line.total.overPrice);
+    if (line.total?.underPrice != null && pick.totalInitialSide === 'under') await attachTotalPrice('mlb', gameId, 'initial', 'under', line.total.underPrice);
+    if (line.total?.overPrice != null && pick.totalFinalSide === 'over') await attachTotalPrice('mlb', gameId, 'final', 'over', line.total.overPrice);
+    if (line.total?.underPrice != null && pick.totalFinalSide === 'under') await attachTotalPrice('mlb', gameId, 'final', 'under', line.total.underPrice);
   }
 }
 
@@ -386,36 +160,40 @@ export async function GET(request: Request) {
     const enabled = oddsApiResult.enabled || harvesterResult.matches.length > 0;
 
     try {
-      logGameOddsHistory(lines);
+      await logGameOddsHistory(lines);
     } catch (error) {
       console.error('[api/odds/lines] logGameOddsHistory failed', error);
     }
 
-    // Read once, shared by all four passes below — each independently
+    // Read once, shared by both passes below — each independently
     // re-reading and re-parsing the same snapshot_cache['mlb:snapshot']
     // payload cost real time on every request (this is a multi-MB blob).
-    const games = readGamesFromSnapshot();
+    const games = await readGamesFromSnapshot();
 
     try {
-      logTotalPredictionsFromLines(lines, games);
+      await logTotalPredictionsFromLines(lines, games);
     } catch (error) {
       console.error('[api/odds/lines] logTotalPredictionsFromLines failed', error);
     }
 
-    try {
-      await runTotalLockFromLines(lines, games);
-    } catch (error) {
-      console.error('[api/odds/lines] runTotalLockFromLines failed', error);
-    }
+    // Both lock passes (moneyline + total) used to run here — moved to the
+    // Python worker's mlbOddsLinesCycleJob (Phase P of docs/mlb-prediction-
+    // engine-ts-cutover-gameplan-2026-08-22.md, 2026-08-22, deployed to
+    // Render and confirmed live via health_check.py's eloFreshness check
+    // against real finished games). That job reads the same shared
+    // snapshot_cache['mlb:snapshot'] this route reads and writes through
+    // the same idempotent `_captured_at IS NULL` guard on game_picks, so
+    // removing this duplicate path doesn't change what the table contains
+    // — it just stops writing it twice, on a real 5-minute SequentialQueue
+    // cadence instead of "whichever page load happens to land near
+    // 6am/3-hours-before". See health_check.py's check_game_picks_freshness
+    // (covers both the initial and final moneyline capture windows) for the
+    // ongoing verification this removal is safe. attachPricesFromLines
+    // below is NOT yet ported to Python (see odds_lines_cycle.py's own
+    // docstring) — stays here for now.
 
     try {
-      runMoneylineLockFromSnapshot(lines, games);
-    } catch (error) {
-      console.error('[api/odds/lines] runMoneylineLockFromSnapshot failed', error);
-    }
-
-    try {
-      attachPricesFromLines(lines, games);
+      await attachPricesFromLines(lines, games);
     } catch (error) {
       console.error('[api/odds/lines] attachPricesFromLines failed', error);
     }
@@ -445,7 +223,7 @@ export async function GET(request: Request) {
     );
   } catch (error) {
     console.error('[api/odds/lines]', error);
-    logSystemEvent({ level: 'error', source: 'api/odds/lines', message: error instanceof Error ? error.message : 'Odds lookup failed.' });
+    await logSystemEvent({ level: 'error', source: 'api/odds/lines', message: error instanceof Error ? error.message : 'Odds lookup failed.' });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Odds lookup failed.' },
       { status: 502 },

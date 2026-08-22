@@ -194,19 +194,22 @@ async def check_game_picks_freshness() -> dict:
     the initial/final moneyline+total locks — this is the ongoing
     verification that removal was safe.
 
-    Scoped to the moneyline initial capture only: run_moneyline_lock_cycle
-    runs for every game with a computed gameModel regardless of whether a
-    market price exists yet (see odds_lines_cycle.py's
-    run_moneyline_lock_from_snapshot), so it's the one universal ground-truth
-    signal available without also replicating the market-lines fetch here.
-    A missing capture right at 6am isn't necessarily a problem — the job
-    runs on a 5min interval, so allow for that before treating a gap as real
-    staleness.
+    Covers both moneyline capture windows: the 6am CT initial read, and the
+    final read frozen 3 hours before each game's own first pitch (checked
+    per-game against that game's real commence_time, not a single global
+    cutoff — see game_pick_lock.py's _is_final_lock_due). Deliberately
+    scoped to moneyline only, not total: run_moneyline_lock_cycle runs for
+    every game with a computed gameModel regardless of whether a market
+    price exists yet (see odds_lines_cycle.py's run_moneyline_lock_from_snapshot),
+    so it's the one universal ground-truth signal available without also
+    replicating the market-lines fetch here. A missing capture right at the
+    moment a window opens isn't necessarily a problem — the job runs on a
+    5min interval, so allow for that before treating a gap as real staleness.
     """
     import httpx
 
     from predict import statsapi as sa
-    from predict.game_pick_lock import _is_past_initial_window
+    from predict.game_pick_lock import _is_final_lock_due, _is_past_initial_window
 
     now = datetime.now(timezone.utc)
     if not _is_past_initial_window(now):
@@ -231,21 +234,31 @@ async def check_game_picks_freshness() -> dict:
         return {"name": "gamePicksFreshness", "status": "healthy — no MLB games today have a computed game model yet", "healthy": True}
 
     pick_rows = await pool.fetch(
-        "SELECT game_id FROM game_picks WHERE sport = 'mlb' AND game_id = ANY($1::text[]) AND ml_initial_captured_at IS NOT NULL",
+        "SELECT game_id, ml_initial_captured_at, ml_final_captured_at FROM game_picks WHERE sport = 'mlb' AND game_id = ANY($1::text[])",
         [str(g.game_pk) for g in eligible],
     )
-    captured = {r["game_id"] for r in pick_rows}
-    missing = [g.game_pk for g in eligible if str(g.game_pk) not in captured]
+    by_id = {r["game_id"]: r for r in pick_rows}
 
-    if missing:
+    missing_initial = [g.game_pk for g in eligible if by_id.get(str(g.game_pk), {}).get("ml_initial_captured_at") is None]
+    missing_final = [
+        g.game_pk
+        for g in eligible
+        if _is_final_lock_due(g.game_date, now) and by_id.get(str(g.game_pk), {}).get("ml_final_captured_at") is None
+    ]
+
+    if missing_initial or missing_final:
+        bits = []
+        if missing_initial:
+            bits.append(f"{len(missing_initial)} missing initial capture (game_pks: {missing_initial[:5]}{'...' if len(missing_initial) > 5 else ''})")
+        if missing_final:
+            bits.append(f"{len(missing_final)} missing final capture past their 3hr-before-first-pitch lock (game_pks: {missing_final[:5]}{'...' if len(missing_final) > 5 else ''})")
         return {
             "name": "gamePicksFreshness",
-            "status": f"STALE — {len(missing)} of {len(eligible)} modeled games today have no ml_initial_captured_at row in game_picks "
-            f"(game_pks: {missing[:5]}{'...' if len(missing) > 5 else ''}) — if the 6am window just passed in the last "
+            "status": f"STALE — {', '.join(bits)} of {len(eligible)} modeled games today — if a window just opened in the last "
             "~5min this may not have run yet; otherwise mlbOddsLinesCycleJob's write path needs investigating",
             "healthy": False,
         }
-    return {"name": "gamePicksFreshness", "status": f"healthy — all {len(eligible)} modeled games today have an initial moneyline capture", "healthy": True}
+    return {"name": "gamePicksFreshness", "status": f"healthy — all {len(eligible)} modeled games today have every moneyline capture due so far", "healthy": True}
 
 
 async def main() -> int:
