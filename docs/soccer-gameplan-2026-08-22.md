@@ -349,3 +349,107 @@ EPL + MLS only, not the wider league list.
 Nothing in section 10 changes any decision above it — this is a status update, not a re-plan. A future
 session picking this back up should start from "Not built" above, using §6/§9 as the reference, the same
 way this session started from §9 for what it did build.
+
+---
+
+## 11. Full remaining scope, consolidated (2026-08-22, same day — supersedes §10 for prioritization)
+
+**Read this section first if you're picking this doc up.** §10 above under-scoped what was actually
+achievable: it declared per-match player history "genuinely not available" and treated that as license to
+also skip standings, game-lines, and live state, which the doc's own §5 table had *already* confirmed were
+real and available. This section corrects that and adds one major new finding: **real per-match history
+sources exist for both leagues, free, no auth.** This changes the ceiling on what soccer can look like —
+it's no longer capped at MLB/NFL-minus-history; full parity is realistic.
+
+### 11.0 The one big new finding
+
+Understat's `/getLeagueData/{league}/{season}` (already referenced in §9's checklist) returns **season
+aggregates only** — that part of §5/§10 was right. But Understat *also* has a per-player endpoint nobody
+had checked: `understat.com/getPlayerData/{playerId}` returns a real `matches[]` array — one entry per
+match, with `goals`, `shots`, `xG`, `assists`, `xA`, `key_passes`, opponent, date, home/away — going back
+across multiple seasons. Confirmed live this session (Martin Odegaard, id 2517: real per-match rows for
+2026 and 2025). Requires the same cookie-priming §9 already flagged (hit `understat.com/` once first, then
+call with `X-Requested-With: XMLHttpRequest`) — same mechanism, more valuable payload than previously
+credited.
+
+Understat only covers big-5 leagues (EPL yes, MLS no) — so MLS still needed its own answer. It has one:
+**American Soccer Analysis** (`app.americansocceranalysis.com/api/v1`) is a real, free, no-auth REST API
+(OpenAPI spec at `/api/v1/openapi.json`) covering MLS, NWSL, and USL. `/mls/games/shots?game_id=X` returns
+**every shot in a match** — player name, xG, goal outcome, minute — confirmed live against a real August
+2026 MLS game. Aggregated per player across a team's recent games, this is MLS's per-match history source,
+richer than what ESPN's own boxscore offers (has xG, ESPN doesn't). `/mls/players/xgoals?season_name=2026`
+also gives real season-aggregate xG/xA/shots/key_passes per player — a second, independent way to satisfy
+§7.2's "spike ASA for MLS season stats" item, now resolved rather than open. `/mls/teams`/`/mls/players`
+give `team_name`/`player_name` for name-based matching (same `normalizeName`/`scoreNameMatch` machinery
+`lib/odds/props/screenshotImport.ts` already has, reusable as-is).
+
+Net effect: **every "real, open gap" in §5's original table is now closed** except cross-provider entity
+resolution itself (a real, standard integration task, not a data-availability question).
+
+### 11.1 Final data-source table (authoritative — supersedes §5 and §10's table)
+
+| Need | EPL source | MLS source | Status |
+|---|---|---|---|
+| Schedule, rosters, logos | ESPN (`teamSportEspn.ts`) | ESPN (same) | ✅ Built |
+| Player props (current prices) | Propline/ParlayAPI via Python worker | Same | ✅ Built |
+| Standings (W/D/L/pts/GD/rank) | ESPN `apis/v2/sports/soccer/eng.1/standings` — confirmed live, real fields (`wins`,`losses`,`ties`,`points`,`pointDifferential`,`rank`) | ESPN `apis/v2/sports/soccer/usa.1/standings` — confirmed live, 2 conference `children` (East/West, 15 teams each) not 1 | ❌ Not built |
+| Game-level single-book line ("Today's Line") | ESPN match `summary?event=X`'s `pickcenter`/`odds[0]` — confirmed live on both a completed and an upcoming EPL match, real DraftKings moneyline/spread/total | Same endpoint family, `usa.1` — not separately re-verified but same shape expected (ESPN's soccer summary API is uniform across leagues per §1's own confirmed pattern) | ❌ Not built |
+| Live in-game state | ESPN summary's `keyEvents`/`commentary`/`boxscore` (§2, already confirmed live) | Same | ❌ Not built |
+| **Per-match player history** (powers L5/L10/L15/H2H windows, gamelog, distribution chart) | **Understat `getPlayerData/{id}` → `matches[]`** — confirmed live, real per-match goals/shots/xG/assists/xA/key_passes across seasons | **ASA `/mls/games/shots?game_id=X`** aggregated per player across a team's recent `game_id`s (from `/mls/games?season_name=Y`) — confirmed live, real per-shot rows with player name + xG + goal outcome | ❌ Not built, not previously identified as solvable |
+| Season/advanced stats card | Understat `getLeagueData` → `players[id]` (season totals: goals/xG/assists/xA/xGChain/xGBuildup) — confirmed live | ASA `/mls/players/xgoals?season_name=Y` (season totals: shots/goals/xgoals/xassists/key_passes/points_added) — confirmed live | ❌ Not built |
+| Entity resolution (ESPN subjectId ↔ 3rd-party player) | Understat has no id crosswalk to ESPN — match by `normalizeName(player_name)`, reuse `screenshotImport.ts`'s existing fuzzy matcher | ASA same — `player_name` field, same matcher | ❌ Not built — real integration work, not a data gap |
+
+### 11.2 Consolidated build checklist (do in this order — later items depend on earlier ones)
+
+1. **`lib/sports/soccer/espn.ts` additions**: `fetchStandings(league)` (handle EPL's 1-children vs MLS's
+   2-children shape — don't assume `children[0]` universally), `fetchGameSummary(league, eventId)` returning
+   the single-book line + live state + per-player match `stats[]` from `rosters[].roster[].stats`. This last
+   piece is also EPL's *fallback* per-match source if Understat's cookie-priming ever breaks — cheaper to
+   build once and let both leagues use it as a floor.
+2. **Standings**: wire `fetchStandings` into the teams route (`app/api/soccer/[league]/teams/route.ts`,
+   replacing the `wins: 0, losses: 0` placeholder) and into `TeamDetail.tsx`'s `data.record` (currently
+   hardcoded `null` in `lib/sports/soccer/adapters/teamDetailAdapter.ts`). Extend `TeamStandingRow`-adjacent
+   display with draws/points/GD per §6c/§7.7's original ask — additive columns, don't break MLB/NFL's
+   existing win-loss-only rendering.
+3. **Game-level line**: wire `fetchGameSummary`'s odds into `TeamNextGame.moneyline`/`.total`
+   (`teamDetailAdapter.ts`) and into a real `GameDetailData.hero.pregameLines` once Game Detail exists (§11.5).
+4. **`lib/sports/soccer/understat.ts`** (EPL only): cookie-priming request, `getPlayerData/{id}` for
+   per-match history, `getLeagueData/EPL/{season}` for season aggregates. Own module per §9's original
+   plan — this is the file that was "approved to build" and never was.
+5. **`lib/sports/soccer/americanSocceranalysis.ts`** (MLS only, new — not in any earlier version of this
+   doc): `fetchTeamGames(seasonName)`, `fetchGameShots(gameId)`, `fetchPlayerSeasonXg(seasonName)`,
+   `fetchTeams()`. Aggregate `games/shots` per player across a team's last N `game_id`s for the per-match
+   history array.
+6. **Entity resolution**: one shared name-matcher module (or reuse `screenshotImport.ts`'s
+   `normalizeName`/`scoreNameMatch` directly — it's already generic, not screenshot-specific) mapping ESPN
+   roster `subjectName` → Understat/ASA `player_name`, cached per league (a 20-30 team roster's worth of
+   names, refreshed daily is plenty — these don't change mid-season except transfers).
+7. **Real per-match `HistoryEntry[]`** in `lib/sports/soccer/adapter.ts`'s candidate-building loop: once
+   steps 4-6 land, each candidate can carry real `history` (currently hardcoded `[]`) — this is what unlocks
+   real `windows`/`chart`/`gamelog` in `playerDetailAdapter.ts`, all currently `null` by design because this
+   didn't exist yet.
+8. **Rebuild `playerDetailAdapter.ts`'s thin sections** now that real history exists: `windows` (L5/L10/L15/
+   H2H/SZN via the same `fixedWindow`/`openWindow`/`subsetWindow` engine every other sport uses — no new
+   engine needed, just real input), `chart` (real distribution instead of the "0 games in scope" placeholder),
+   `gamelog` (real per-match rows), `seasonStatsCard`-equivalent (xG/xA/shots season totals — needs a new
+   named field, `soccerSeasonStats` or similar, per CLAUDE.md rule 4, since MLB/NFL/golf have no xG concept).
+9. **Rebuild `teamDetailAdapter.ts`'s thin sections**: `windows`/`distribution`/`statGroups` become real once
+   team-level Understat `history[]` (already confirmed present in `getLeagueData`'s `teams` key, per-match
+   xG/xGA/result) or ASA `/mls/teams/xgoals` season rollups are wired in.
+10. **Game Detail** (`app/soccer/[league]/game/[gameId]/`, entirely unbuilt — not mentioned in §10's status
+    at all): now unblocked by items 1-3 above (single-book line, live state) plus items 4-9 (real player/team
+    form for the matchup panel). Build last — it's the page most dependent on everything above already
+    working.
+
+### 11.3 What's still genuinely open after all of the above
+
+- **NWSL/USL are not in scope** (ASA covers them too, real bonus coverage, but out of this build's EPL+MLS
+  boundary per §8 — noted only so a future "add another league" pass knows the data side is already solved).
+- **Understat's cookie-priming is a real fragility point** — if it breaks (site changes, rate-limiting), EPL's
+  per-match history has no independent fallback *for the xG-specific fields*, though ESPN's own summary
+  `stats[]` (item 1 above) covers goals/assists/shots/cards as a floor even then.
+- **Rate/volume budgeting for match-history backfill**: building history for a full 20-25 man roster over a
+  10-game window is ~10 ASA/Understat calls per team (one per game, shared across that game's ~36 players),
+  not per-player — cheap, but should still run as a scheduled/cached job (matching the `cachedRoute`/
+  `snapshot_cache` pattern everything else in this codebase uses), not a live per-request fetch.
+
