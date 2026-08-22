@@ -1029,6 +1029,7 @@ export function PlayerDetail({
               candidates,
               market: active.dimension,
               snapshot,
+              scope: { lineOffset, opponentOnly, lastN, showAllGames },
               propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
             })
           : toMlbPlayerDetailData({

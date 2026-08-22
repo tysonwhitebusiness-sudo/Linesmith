@@ -16,6 +16,7 @@
 
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import { normalizeName, scoreNameMatch } from '@/lib/odds/screenshotImport';
+import { awaitRebuild, triggerBackgroundRebuild } from '@/lib/staleCache';
 
 const BASE = 'https://app.americansocceranalysis.com/api/v1';
 
@@ -24,10 +25,10 @@ export function currentAsaSeason(now: Date = new Date()): string {
   return String(now.getUTCFullYear());
 }
 
-async function fetchJson<T>(path: string): Promise<T | null> {
+async function fetchJson<T>(path: string, timeoutMs = 10_000): Promise<T | null> {
   let res: Response;
   try {
-    res = await fetch(`${BASE}${path}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
+    res = await fetch(`${BASE}${path}`, { cache: 'no-store', signal: AbortSignal.timeout(timeoutMs) });
   } catch {
     return null;
   }
@@ -64,17 +65,44 @@ interface RawAsaPlayer {
   season_name?: string[] | Record<string, never>;
 }
 
-/** All-time roster list — no season filter (that endpoint 500s), so this is fetched once and cached long, then narrowed by each player's own `season_name` array. */
+/**
+ * All-time roster list — no season filter (that endpoint 500s), so this is
+ * fetched once and cached long, then narrowed by each player's own
+ * `season_name` array. Confirmed live to genuinely take well over the
+ * default 10s under real load (one live test took several minutes to
+ * return ~3,562 players) — not broken, just slow, and unpredictably so.
+ *
+ * A fixed timeout on the request itself doesn't fit that: too short and
+ * every rebuild fails before this endpoint ever gets a chance to answer,
+ * too long and one MLS snapshot rebuild ties up a request (and a shared
+ * Postgres connection) for minutes. So this uses the same
+ * `triggerBackgroundRebuild`/`awaitRebuild` dedup guard `lib/staleCache.ts`
+ * already provides for exactly this shape of problem: stale-but-usable
+ * data (or no data at all) is served without blocking, a background fetch
+ * refreshes it, and only the very first cold start — nothing cached at
+ * all yet — actually waits.
+ */
 async function fetchAllPlayers(): Promise<RawAsaPlayer[]> {
   const cacheKey = 'soccer:asa:players:all';
   const cached = await readSnapshotCache(cacheKey);
   if (cached && Date.now() - Date.parse(cached.fetchedAt) < 24 * 60 * 60_000) {
     return JSON.parse(cached.payload) as RawAsaPlayer[];
   }
-  const data = await fetchJson<RawAsaPlayer[]>('/mls/players');
-  if (!data) return cached ? (JSON.parse(cached.payload) as RawAsaPlayer[]) : [];
-  await writeSnapshotCache(cacheKey, JSON.stringify(data));
-  return data;
+
+  const rebuild = async (): Promise<RawAsaPlayer[] | null> => {
+    const data = await fetchJson<RawAsaPlayer[]>('/mls/players', 240_000);
+    if (!data) return null;
+    await writeSnapshotCache(cacheKey, JSON.stringify(data));
+    return data;
+  };
+
+  if (cached) {
+    triggerBackgroundRebuild(cacheKey, rebuild);
+    return JSON.parse(cached.payload) as RawAsaPlayer[];
+  }
+
+  const data = await awaitRebuild(cacheKey, rebuild);
+  return data ?? [];
 }
 
 interface RawAsaPlayerXgoals {

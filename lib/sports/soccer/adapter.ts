@@ -84,7 +84,7 @@ function toHistoryEntries(matches: NormalizedMatch[], marketKey: string, startin
       result: String(value),
       category: value > startingLine ? 'over' : 'under',
       periodLabel: `${m.isHome ? 'vs' : '@'} ${m.opponent}`,
-      raw: { opponentAbbr: m.opponent, date: m.date },
+      raw: { opponentAbbr: m.opponent, date: m.date, isHome: m.isHome, goals: m.goals, shots: m.shots, assists: m.assists },
     } satisfies HistoryEntry;
   });
 }
