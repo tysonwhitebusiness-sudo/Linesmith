@@ -1,4 +1,4 @@
-"""Staleness/health monitor for the 5 registered jobs — the gap Render's
+"""Staleness/health monitor for every job in JOB_REGISTRY — the gap Render's
 `notifyOnFail` doesn't cover. `notifyOnFail` only fires on a process crash;
 it says nothing about a job that's technically still running but stuck
 (hung in a yield loop, wedged on a provider that never times out, or just
@@ -13,6 +13,15 @@ and checks two things per job:
      something more overdue runs first — see job_queue.py's _most_overdue.
      Only a genuinely missed *second* cycle is a real staleness signal.)
   2. Did its last run report ok=True?
+
+check_elo_freshness, check_game_model_freshness, and
+check_game_picks_freshness are a second, more targeted kind of check: they
+don't read a job's own self-reported breadcrumb, they verify the actual
+DATA each job is supposed to be maintaining (team_elo_history,
+mlb_game_model_cache, game_picks respectively) against ground truth (real
+games/schedule/capture windows from the live Stats API) — catching a job
+that runs successfully and reports ok=True while silently failing to write
+real rows, which the generic per-job check above cannot detect.
 
 Exit code is 0 if everything's healthy, 1 if anything is stale or failed —
 meant to be run manually for a spot-check, or on a schedule (Render cron
@@ -64,8 +73,184 @@ async def check_job(name: str, interval_seconds: float) -> dict:
     return {"name": name, "status": "; ".join(status_bits), "healthy": healthy, "raw": summary}
 
 
+async def check_elo_freshness() -> dict:
+    """Verifies team_elo_history is actually being kept current against
+    REAL finished games — a stronger, more specific signal than check_job's
+    generic "did it run and not crash," which can't distinguish "ran
+    successfully, wrote 0 rows because nothing was due yet" from "ran
+    successfully, wrote 0 rows despite a real game finishing" (a silent
+    logic bug in the write path itself). Added alongside Phase J of the TS
+    cutover gameplan (docs/mlb-prediction-engine-ts-cutover-gameplan-2026-08-22.md):
+    that phase made maintainMlbEloJob the ONLY writer of team_elo_history
+    (removed snapshotRebuild.ts's redundant write), so a silent gap here no
+    longer gets backstopped by TS's own duplicate path — this check is the
+    real, ongoing verification that removal was safe, not a one-time test.
+
+    A missing game right after it goes Final isn't necessarily a problem —
+    maintainMlbEloJob runs on a 15min interval, so allow for that before
+    treating a gap as a real staleness signal.
+    """
+    import httpx
+
+    from predict import statsapi as sa
+
+    today = sa.eastern_date()
+    async with httpx.AsyncClient() as client:
+        games = await sa.get_schedule_range(client, today, today)
+
+    finished = [g for g in games if g.abstract_state == "Final"]
+    if not finished:
+        return {"name": "eloFreshness", "status": "healthy — no finished MLB games today yet", "healthy": True}
+
+    pool = await db.get_pool()
+    rows = await pool.fetch(
+        "SELECT DISTINCT game_pk FROM team_elo_history WHERE game_pk = ANY($1::int[])",
+        [g.game_pk for g in finished],
+    )
+    covered = {r["game_pk"] for r in rows}
+    missing = [g.game_pk for g in finished if g.game_pk not in covered]
+
+    if missing:
+        return {
+            "name": "eloFreshness",
+            "status": f"STALE — {len(missing)} of {len(finished)} finished games today have no team_elo_history row "
+            f"(game_pks: {missing[:5]}{'...' if len(missing) > 5 else ''}) — if one just went Final in "
+            "the last ~15min this may just not have synced yet; otherwise maintainMlbEloJob's write path needs investigating",
+            "healthy": False,
+        }
+    return {"name": "eloFreshness", "status": f"healthy — all {len(finished)} finished games today are reflected in team_elo_history", "healthy": True}
+
+
+async def check_game_model_freshness() -> dict:
+    """Same idea as check_elo_freshness, for Phase N's mlb_game_model_cache
+    — verifies every real still-upcoming ('pre') game today actually has a
+    fresh row, against live ground truth (the real schedule + real posted/
+    projected lineups), not just "did computeMlbGameModelJob report ok".
+    This is the check Phase O's adapter.ts cutover depends on: a stale or
+    missing row here is exactly the case that cutover's live-compute
+    fallback exists to catch, but this check is what tells a human whether
+    that fallback is quietly doing all the work (a sign something's wrong)
+    or genuinely idle (the healthy case).
+
+    "Fresh" here means computed within the last 2x this job's own registered
+    interval — reuses JOB_REGISTRY's own interval for computeMlbGameModelJob
+    rather than a second hardcoded number that could drift out of sync with it.
+    """
+    from predict import statsapi as sa
+    from predict.game_model_cache import build_slate_game_inputs
+
+    today = sa.eastern_date()
+    interval = next(interval for name, _, interval in JOB_REGISTRY if name == "computeMlbGameModelJob")
+
+    import httpx
+
+    async with httpx.AsyncClient() as client:
+        inputs = await build_slate_game_inputs(client, today)
+    pre_game = [g for g in inputs if g.status == "pre"]
+    if not pre_game:
+        return {"name": "gameModelFreshness", "status": "healthy — no pre-game MLB games today", "healthy": True}
+
+    pool = await db.get_pool()
+    rows = await pool.fetch(
+        "SELECT game_id, computed_at FROM mlb_game_model_cache WHERE sport = 'mlb' AND game_id = ANY($1::text[])",
+        [str(g.game_pk) for g in pre_game],
+    )
+    by_id = {r["game_id"]: r["computed_at"] for r in rows}
+    now = datetime.now(timezone.utc)
+
+    missing = []
+    stale = []
+    for g in pre_game:
+        computed_at = by_id.get(str(g.game_pk))
+        if computed_at is None:
+            missing.append(g.game_pk)
+        elif (now - computed_at).total_seconds() > interval * STALE_MULTIPLIER:
+            stale.append(g.game_pk)
+
+    if missing or stale:
+        bits = []
+        if missing:
+            bits.append(f"{len(missing)} missing (game_pks: {missing[:5]}{'...' if len(missing) > 5 else ''})")
+        if stale:
+            bits.append(f"{len(stale)} stale (game_pks: {stale[:5]}{'...' if len(stale) > 5 else ''})")
+        return {
+            "name": "gameModelFreshness",
+            "status": f"STALE — {', '.join(bits)} of {len(pre_game)} pre-game matchups today — adapter.ts's live-compute fallback (Phase O) is covering the gap, but computeMlbGameModelJob needs investigating",
+            "healthy": False,
+        }
+    return {"name": "gameModelFreshness", "status": f"healthy — all {len(pre_game)} pre-game matchups today have a fresh mlb_game_model_cache row", "healthy": True}
+
+
+async def check_game_picks_freshness() -> dict:
+    """Same idea as check_elo_freshness/check_game_model_freshness, for
+    Phase P's cutover of route.ts's moneyline lock cycle onto
+    mlbOddsLinesCycleJob — verifies real game_picks rows are actually being
+    captured against ground truth (today's real schedule + the real 6am CT
+    initial-capture window from game_pick_lock.py), not just "did the job
+    report ok". Added alongside Phase P of the TS cutover gameplan
+    (docs/mlb-prediction-engine-ts-cutover-gameplan-2026-08-22.md): that
+    phase removed route.ts's own runMoneylineLockFromSnapshot/
+    runTotalLockFromLines, making mlbOddsLinesCycleJob the only writer of
+    the initial/final moneyline+total locks — this is the ongoing
+    verification that removal was safe.
+
+    Scoped to the moneyline initial capture only: run_moneyline_lock_cycle
+    runs for every game with a computed gameModel regardless of whether a
+    market price exists yet (see odds_lines_cycle.py's
+    run_moneyline_lock_from_snapshot), so it's the one universal ground-truth
+    signal available without also replicating the market-lines fetch here.
+    A missing capture right at 6am isn't necessarily a problem — the job
+    runs on a 5min interval, so allow for that before treating a gap as real
+    staleness.
+    """
+    import httpx
+
+    from predict import statsapi as sa
+    from predict.game_pick_lock import _is_past_initial_window
+
+    now = datetime.now(timezone.utc)
+    if not _is_past_initial_window(now):
+        return {"name": "gamePicksFreshness", "status": "healthy — before today's 6am CT initial-capture window", "healthy": True}
+
+    today = sa.eastern_date()
+    async with httpx.AsyncClient() as client:
+        games = await sa.get_schedule_range(client, today, today)
+
+    # Mirrors run_moneyline_lock_from_snapshot's own precondition: a game
+    # only gets a capture attempt once mlb_game_model_cache actually has a
+    # row for it (Phase O), so a game missing that isn't a gamePicks bug —
+    # it's covered by check_game_model_freshness above instead.
+    pool = await db.get_pool()
+    model_rows = await pool.fetch(
+        "SELECT game_id FROM mlb_game_model_cache WHERE sport = 'mlb' AND game_id = ANY($1::text[])",
+        [str(g.game_pk) for g in games],
+    )
+    modeled = {r["game_id"] for r in model_rows}
+    eligible = [g for g in games if str(g.game_pk) in modeled]
+    if not eligible:
+        return {"name": "gamePicksFreshness", "status": "healthy — no MLB games today have a computed game model yet", "healthy": True}
+
+    pick_rows = await pool.fetch(
+        "SELECT game_id FROM game_picks WHERE sport = 'mlb' AND game_id = ANY($1::text[]) AND ml_initial_captured_at IS NOT NULL",
+        [str(g.game_pk) for g in eligible],
+    )
+    captured = {r["game_id"] for r in pick_rows}
+    missing = [g.game_pk for g in eligible if str(g.game_pk) not in captured]
+
+    if missing:
+        return {
+            "name": "gamePicksFreshness",
+            "status": f"STALE — {len(missing)} of {len(eligible)} modeled games today have no ml_initial_captured_at row in game_picks "
+            f"(game_pks: {missing[:5]}{'...' if len(missing) > 5 else ''}) — if the 6am window just passed in the last "
+            "~5min this may not have run yet; otherwise mlbOddsLinesCycleJob's write path needs investigating",
+            "healthy": False,
+        }
+    return {"name": "gamePicksFreshness", "status": f"healthy — all {len(eligible)} modeled games today have an initial moneyline capture", "healthy": True}
+
+
 async def main() -> int:
-    results = await asyncio.gather(*(check_job(name, interval) for name, _, interval in JOB_REGISTRY))
+    job_results = await asyncio.gather(*(check_job(name, interval) for name, _, interval in JOB_REGISTRY))
+    results = [*job_results, await check_elo_freshness(), await check_game_model_freshness(), await check_game_picks_freshness()]
 
     print(f"[health_check] {datetime.now(timezone.utc).isoformat()}", flush=True)
     all_healthy = True

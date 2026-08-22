@@ -105,6 +105,20 @@ PARLAYAPI_SOCCER_KEY = env("PARLAYAPI_SOCCER_KEY")
 PARLAYAPI_SOCCER_ENABLED = env_bool("PARLAYAPI_SOCCER_ENABLED") and bool(PARLAYAPI_SOCCER_KEY)
 PARLAYAPI_SOCCER_MONTHLY_LIMIT = int(env("PARLAYAPI_SOCCER_MONTHLY_LIMIT", "1000"))
 
+# The-odds-api.com — MLB whole-slate game lines (moneyline/spread/total),
+# the one real, live market-blend input the pick-lock cycle uses for MLB
+# (OddsHarvester, the other source lib/odds/merge.ts blends in, is confirmed
+# dead — see docs/mlb-prediction-engine-python-port-gameplan-2026-08-21.md's
+# Phase F audit). Same env var names lib/odds/oddsApi.ts already reads —
+# shared credit budget, one real vendor account regardless of which app calls it.
+ODDS_API_KEY = env("ODDS_API_KEY")
+ODDS_API_ENABLED = bool(ODDS_API_KEY)
+ODDS_API_TTL_MINUTES = int(env("ODDS_API_TTL_MINUTES", "360"))
+ODDS_API_MARKETS = env("ODDS_API_MARKETS", "h2h,spreads,totals")
+# Stop auto-refreshing when this few credits remain, so the month can't run
+# dry — matches oddsApi.ts's DEFAULT_RESERVE exactly.
+ODDS_API_RESERVE = int(env("ODDS_API_RESERVE", "25"))
+
 PROPLINE_KEY = env("PROPLINE_KEY")
 PROPLINE_ENABLED = env_bool("PROPLINE_ENABLED") and bool(PROPLINE_KEY)
 PROPLINE_DAILY_LIMIT = int(env("PROPLINE_DAILY_LIMIT", "1000"))

@@ -28,6 +28,7 @@ pre-checked in this port at all — each now has the same real gate its TS
 equivalent does (tier1Refresh.ts, sportsGameOddsRefresh.ts,
 multiSportRefresh.ts).
 """
+import json
 import time
 from datetime import datetime, timezone
 
@@ -247,6 +248,259 @@ async def job_soccer_epl(yield_fn=None) -> dict:
         )
 
 
+async def job_grade_finished_mlb_picks(yield_fn=None) -> dict:
+    """Phase E of the MLB prediction-engine port (see
+    docs/mlb-prediction-engine-python-port-gameplan-2026-08-21.md) — grades
+    already-captured Linesmith Picks (game_picks table) against real final
+    scores. This is the one piece of predict/game_pick_lock.py's cycle that
+    doesn't need Phase G's live model-probability feed: grading only needs
+    a final score, which predict/statsapi.py's direct MLB Stats API access
+    (Phase B) already provides in full.
+
+    Safe to run alongside TS's own grading (snapshotRebuild.ts, still
+    live and unchanged) — both read/write the exact same game_picks table,
+    and db.grade_game_pick's `WHERE graded_at IS NULL` guard makes a race
+    between the two a harmless no-op, not a correctness problem.
+
+    The moneyline/total CAPTURE cycle (run_moneyline_lock_cycle /
+    run_total_lock_cycle) is deliberately NOT wired in here — it needs real
+    MoneylineLockInput/TotalLockInput data (gameModel/Elo/sim
+    probabilities), which doesn't exist in Python until Phase G's live
+    orchestrator replaces adapter.ts's live-compute path. Wiring a capture
+    job in now with no real data to feed it would be premature.
+    """
+    return await _run_timed("gradeFinishedMlbPicksJob", _grade_finished_mlb_picks_inner())
+
+
+async def _grade_finished_mlb_picks_inner() -> dict:
+    from predict import statsapi as sa
+    from predict.game_pick_lock import FinishedGameInput, grade_finished_game_picks
+
+    today = sa.eastern_date()
+    async with httpx.AsyncClient() as client:
+        games = await sa.get_schedule_range(client, today, today)
+
+    finished = [
+        FinishedGameInput(
+            game_id=str(g.game_pk),
+            is_final=g.abstract_state == "Final",
+            home_score=(g.teams.get("home") or {}).get("score"),
+            away_score=(g.teams.get("away") or {}).get("score"),
+        )
+        for g in games
+    ]
+    await grade_finished_game_picks("mlb", finished)
+    return {"games": len(games), "finished": sum(1 for f in finished if f.is_final)}
+
+
+async def job_mlb_game_lines(yield_fn=None) -> dict:
+    """Phase F of the MLB prediction-engine port — refreshes the shared
+    odds_cache row for MLB game lines (predict/mlb_game_lines.py, a direct
+    port of lib/odds/oddsApi.ts's getMlbGameLines).
+
+    Deliberately NOT a ProviderSpec — see predict/mlb_game_lines.py's module
+    docstring for the real audit finding this phase required: TS's game-
+    lines architecture is request/TTL-driven (whoever hits
+    app/api/odds/lines next after the cache goes stale triggers a refetch),
+    not a scheduled per-game job like player props, so it doesn't fit
+    job_runner.py's cap-check/fetch/record/write shape at all — one
+    whole-slate call, one long TTL (6h default), a bespoke credit-header
+    budget instead of provider_usage.
+
+    This job just calls the SAME function on a real interval instead of
+    leaving the trigger to "whoever loads the page next" — get_mlb_game_
+    lines's own internal TTL/reserve check means most of these ticks are a
+    free cache read, not a real spend; the real API is only hit once the
+    6h TTL has actually lapsed. Writes to the exact odds_cache row TS's
+    own getMlbGameLines already reads via the same cache key — this is the
+    same "Python writes, TS reads" cutover already proven for player props.
+    """
+    return await _run_timed("mlbGameLinesJob", _mlb_game_lines_inner())
+
+
+async def _mlb_game_lines_inner() -> dict:
+    from predict.mlb_game_lines import get_mlb_game_lines
+
+    async with httpx.AsyncClient() as client:
+        result = await get_mlb_game_lines(client)
+    return {
+        "games": len(result.lines),
+        "from_cache": result.from_cache,
+        "requests_remaining": result.requests_remaining,
+        "warnings": result.warnings,
+    }
+
+
+async def job_mlb_odds_lines_cycle(yield_fn=None) -> dict:
+    """Phase G of the MLB prediction-engine port — the orchestrating job
+    tying Phases A-F together: predict/odds_lines_cycle.py, a bounded port
+    of app/api/odds/lines/route.ts's MLB path (see that module's own
+    docstring for exactly what is and isn't ported and why).
+
+    This is the actual "genuine correctness upgrade" Phase E's own module
+    docstring promised and couldn't yet deliver without this phase's data:
+    real captures on a real SequentialQueue interval, not "whichever page
+    load happens to land near 6am/3-hours-before." 5min matches TS's own
+    snapshot-rebuild cadence (snapshotRebuild.ts's CACHE_TTL_MS) — frequent
+    enough that the 6am and per-game 3-hour windows are each caught
+    reasonably promptly, cheap because get_mlb_game_lines's own 6h TTL
+    means most ticks are a plain cache read, not a real vendor spend.
+
+    Safe to run alongside TS's still-live route.ts for the same reason
+    Phase E's grading job is: every actual write goes through
+    capture_moneyline_pick/capture_total_pick's `_captured_at IS NULL`
+    guard, so a race between the two is a harmless no-op, not a
+    correctness problem.
+    """
+    return await _run_timed("mlbOddsLinesCycleJob", _mlb_odds_lines_cycle_inner())
+
+
+async def _mlb_odds_lines_cycle_inner() -> dict:
+    from predict.odds_lines_cycle import run_mlb_odds_lines_cycle
+
+    async with httpx.AsyncClient() as client:
+        return await run_mlb_odds_lines_cycle(client)
+
+
+async def job_maintain_mlb_elo(yield_fn=None) -> dict:
+    """Phase I of the TS cutover gameplan
+    (docs/mlb-prediction-engine-ts-cutover-gameplan-2026-08-22.md) — Python
+    independently writes team_elo_history/pitcher_game_score_history for
+    today's finished games, using the already-built, already-tested
+    elo_model.update_elo_for_finished_game / log_pitcher_game_score (Phase
+    C). Mirrors job_grade_finished_mlb_picks's shape exactly (Phase E):
+    same statsapi.get_schedule_range source, same today-only scope matching
+    TS's own snapshotRebuild.ts.
+
+    Idempotent (UNIQUE constraints on both tables), so running alongside
+    TS's own snapshotRebuild.ts writes is safe from day one — this job's
+    whole point is to prove Python can maintain these tables correctly
+    BEFORE Phase J removes TS's redundant writes. Do not start Phase J
+    until this has run unattended, successfully, across several real game
+    days (a single clean run is not enough confidence to remove TS's only
+    other writer of a table adapter.ts reads on every live page load).
+    """
+    return await _run_timed("maintainMlbEloJob", _maintain_mlb_elo_inner())
+
+
+async def _maintain_mlb_elo_inner() -> dict:
+    from predict import elo_model
+    from predict import statsapi as sa
+
+    today = sa.eastern_date()
+    season = int(today[:4])
+    async with httpx.AsyncClient() as client:
+        games = await sa.get_schedule_range(client, today, today)
+
+        elo_updates = 0
+        pitcher_score_attempts = 0
+        for g in games:
+            if g.abstract_state != "Final":
+                continue
+            home = g.teams.get("home") or {}
+            away = g.teams.get("away") or {}
+            home_team_id = (home.get("team") or {}).get("id")
+            away_team_id = (away.get("team") or {}).get("id")
+            game_date = g.game_date or today
+
+            home_runs = home.get("score")
+            away_runs = away.get("score")
+            if home_runs is not None and away_runs is not None and home_runs != away_runs and home_team_id and away_team_id:
+                await elo_model.update_elo_for_finished_game(season, g.game_pk, game_date, home_team_id, away_team_id, home_runs, away_runs)
+                elo_updates += 1
+
+            home_starter_id = (home.get("probablePitcher") or {}).get("id")
+            away_starter_id = (away.get("probablePitcher") or {}).get("id")
+            if home_starter_id and home_team_id:
+                await elo_model.log_pitcher_game_score(client, g.game_pk, season, home_starter_id, home_team_id, game_date)
+                pitcher_score_attempts += 1
+            if away_starter_id and away_team_id:
+                await elo_model.log_pitcher_game_score(client, g.game_pk, season, away_starter_id, away_team_id, game_date)
+                pitcher_score_attempts += 1
+
+    return {"games": len(games), "elo_updates": elo_updates, "pitcher_score_attempts": pitcher_score_attempts}
+
+
+async def job_compute_mlb_game_model(yield_fn=None) -> dict:
+    """Phase N of the TS cutover gameplan
+    (docs/mlb-prediction-engine-ts-cutover-gameplan-2026-08-22.md) —
+    computes gameModel + Elo independently in Python (Phase M) for today's
+    still-upcoming games and persists them to mlb_game_model_cache.
+    Additive only: nothing reads this table yet (that's Phase O). Only
+    computes for status == 'pre' — a prediction for a game already live or
+    final isn't a prediction, same principle grade_finished_game_picks
+    already documents for the pick-lock side.
+
+    Scoped to today only, matching odds_lines_cycle.py's own
+    read_games_from_snapshot (TS's mlb:snapshot key is today-only too);
+    extending this to future dates is a real, separate scope decision, not
+    assumed here.
+    """
+    return await _run_timed("computeMlbGameModelJob", _compute_mlb_game_model_inner())
+
+
+async def _compute_mlb_game_model_inner() -> dict:
+    from predict import statsapi as sa
+    from predict.game_model_cache import build_slate_context, build_slate_game_inputs, compute_elo_for_game, compute_game_model_for_game
+
+    today = sa.eastern_date()
+    season = int(today[:4])
+    async with httpx.AsyncClient() as client:
+        inputs = await build_slate_game_inputs(client, today)
+        pre_game = [g for g in inputs if g.status == "pre"]
+
+        starter_ids = [sid for g in pre_game for sid in (g.home_starter_id, g.away_starter_id) if sid]
+        context = await build_slate_context(client, season, today, starter_ids)
+        batter_ids = [pid for g in pre_game for pid in g.home_lineup_ids + g.away_lineup_ids]
+        batters = await sa.get_people_with_game_logs(client, batter_ids, "hitting", season)
+
+        written = 0
+        skipped_no_model = 0
+        for g in pre_game:
+            model = await compute_game_model_for_game(client, context, batters, g)
+            if model is None:
+                skipped_no_model += 1
+                continue
+            elo = await compute_elo_for_game(season, g.home_team_id, g.away_team_id, g.game_date_iso, g.home_starter_id, g.away_starter_id)
+
+            await db.write_game_model_cache(
+                db.GameModelCacheRow(
+                    sport="mlb",
+                    game_id=str(g.game_pk),
+                    home_expected_runs=model.home_expected_runs,
+                    away_expected_runs=model.away_expected_runs,
+                    home_win_prob=model.home_win_prob,
+                    away_win_prob=model.away_win_prob,
+                    diagnostics_json=json.dumps(
+                        {
+                            "rawLog5HomeWinProb": model.diagnostics.raw_log5_home_win_prob,
+                            "homeVenueEdge": model.diagnostics.home_venue_edge,
+                            "awayVenueEdge": model.diagnostics.away_venue_edge,
+                            "homeRecentEdge": model.diagnostics.home_recent_edge,
+                            "awayRecentEdge": model.diagnostics.away_recent_edge,
+                            "rawHomeRecentEdge": model.diagnostics.raw_home_recent_edge,
+                            "rawAwayRecentEdge": model.diagnostics.raw_away_recent_edge,
+                            "parkFactor": model.diagnostics.park_factor,
+                        }
+                    ),
+                    home_elo=elo.home_elo,
+                    home_games_played=elo.home_games_played,
+                    away_elo=elo.away_elo,
+                    away_games_played=elo.away_games_played,
+                    home_rest_days=elo.home_rest_days,
+                    away_rest_days=elo.away_rest_days,
+                    home_travel_miles=elo.home_travel_miles,
+                    away_travel_miles=elo.away_travel_miles,
+                    home_pitcher_adj=elo.home_pitcher_adj,
+                    away_pitcher_adj=elo.away_pitcher_adj,
+                    computed_at=datetime.now(timezone.utc).isoformat(),
+                )
+            )
+            written += 1
+
+    return {"games": len(inputs), "pre_game": len(pre_game), "written": written, "skipped_no_model": skipped_no_model}
+
+
 # Job registry the queue iterates — (name, coroutine factory, interval_seconds).
 # Tier1/SportsGameOdds-MLB intervals match lib/scheduler.ts's original
 # constants — refreshCalibration intentionally excluded, see module docstring.
@@ -266,4 +520,27 @@ JOB_REGISTRY = [
     ("refreshNflJob", job_nfl, 20 * 60),
     ("refreshCfbJob", job_cfb, 20 * 60),
     ("refreshSoccerEplJob", job_soccer_epl, 20 * 60),
+    # Grading isn't time-critical (a final score doesn't need grading within
+    # seconds) and the fetch it drives is TTL-cached — 15min is conservative,
+    # not a real constraint being protected.
+    ("gradeFinishedMlbPicksJob", job_grade_finished_mlb_picks, 15 * 60),
+    # Outer poll cadence, not the real-spend cadence — get_mlb_game_lines's
+    # own 6h TTL is what actually protects the monthly credit budget; this
+    # just needs to check often enough that a lapsed TTL doesn't sit stale
+    # for hours before the next tick notices. 30min errs toward checking
+    # more often since most ticks cost nothing (a plain cache read).
+    ("mlbGameLinesJob", job_mlb_game_lines, 30 * 60),
+    # Matches TS's own snapshot-rebuild cadence (snapshotRebuild.ts's
+    # CACHE_TTL_MS) — frequent enough that the 6am and each game's 3-hour
+    # windows are caught reasonably promptly, cheap since most of what this
+    # does per tick is cache reads (get_mlb_game_lines, the snapshot).
+    ("mlbOddsLinesCycleJob", job_mlb_odds_lines_cycle, 5 * 60),
+    # Not time-critical (Elo credit for a finished game doesn't need to land
+    # within seconds) — matches gradeFinishedMlbPicksJob's own interval and
+    # reasoning.
+    ("maintainMlbEloJob", job_maintain_mlb_elo, 15 * 60),
+    # Not gating any real-time capture yet (nothing reads this table until
+    # Phase O) — 15min just keeps it reasonably current as lineups post and
+    # standings/Elo move through the day, matching maintainMlbEloJob's cadence.
+    ("computeMlbGameModelJob", job_compute_mlb_game_model, 15 * 60),
 ]
