@@ -136,7 +136,27 @@ loader does NOT reappear on a background poll).
 
 ---
 
-## 03 — Accounts & auth (the foundational item)
+## 03 — Accounts & auth (the foundational item) — DONE (2026-08-22)
+
+Built and verified end-to-end. `@supabase/ssr` client/server helpers,
+`middleware.ts` gating `/api/picks|bets|watchlist/**` + `/bets`/`/bet/*`,
+3 migrations applied (user_id columns, user-scoped unique constraints —
+a real pre-existing collision bug found along the way, see the migration
+file's own comment — and RLS default-deny policies closing a real gap:
+the anon key about to ship client-side could otherwise read/write any
+user's rows directly via Supabase's REST API). Operator account created
+via the admin API (pre-confirmed, no email round-trip), the 2 pre-auth
+`bets` rows backfilled onto it. `useSlip.ts` redirects to `/login` on a
+401. `AccountMenu.tsx` seeds from `getSession()` rather than racing a
+separate `getUser()` call against `onAuthStateChange`'s `INITIAL_SESSION`
+event, which could leave the logged-out "Sign in" button stuck behind
+its placeholder.
+
+Verified via direct DB queries + a throwaway isolation-test account: RLS
+enabled on all three tables, a second account sees none of the
+operator's data, `/bets` redirects a logged-out visitor to `/login`,
+`npm run build` succeeds. Stripe/entitlements remain explicitly
+out of scope for this phase, per the plan below.
 
 ### Current state (verified this session, not just carried from the audit)
 - `package.json`: no `@supabase/supabase-js`, no `@supabase/ssr`, no
@@ -248,7 +268,28 @@ off. Budget it as its own multi-session effort, not a quick pass.
 
 ---
 
-## 04 — Diagnostics → admin center
+## 04 — Diagnostics → admin center — DONE (2026-08-22)
+
+Built and verified. `/diagnostics` and `/api/diagnostics/**` gated to the
+operator's account specifically via `middleware.ts`'s `ADMIN_USER_IDS`
+allowlist (real system/model internals, not something any signed-up
+account should see). `job_health_checks` table + `db.write_health_check_results()`
+close the "computed but never persisted" gap in `health_check.py` — ran
+it against the real DB, all 19 checks landed correctly. New
+`/api/diagnostics/health` route reads it directly (pattern 2, no
+`cachedRoute()` needed).
+
+The flat 15-section scroll is regrouped into 6 tabs (System Health /
+Data Pipelines / Model & Calibration / Usage & Spend / Pick History /
+Debug) by wrapping the existing sections in `activeGroup`-gated
+conditionals — lower-risk than a full multi-file extraction since
+section internals were never touched, only which tab renders them. The
+System Health tab's new "Job Health Checks" card is what Phase 05's
+DeepSeek summary sits next to. `npm run build` succeeds cleanly.
+
+Not done: handing the new grouped structure to an external design pass
+(`docs/prompt-4-diagnostics.md`'s own follow-on, per this doc's original
+step 7) — that's a separate, later action, not part of this build.
 
 ### Current state (verified this session)
 - `app/diagnostics/page.tsx` is **2,757 lines** (confirmed via direct
@@ -349,7 +390,22 @@ as step 6 actually lands before this goes to a real public launch).
 
 ---
 
-## 05 — DeepSeek AI health monitor
+## 05 — DeepSeek AI health monitor — DONE (2026-08-22)
+
+Built and verified. `lib/ai/deepseekClient.ts` (plain `fetch`, no new
+npm dependency) + `/api/diagnostics/ai-summary` feed `job_health_checks`
++ recent `provider_usage` + recent `system_events` into DeepSeek's JSON
+mode, cached 20min via `cachedRoute()`, `?refresh=1` for the UI's "Ask
+again" button. Spend tracked through `provider_usage` directly (token
+count as `objectCount`) rather than through `budget.ts`'s odds-scoped
+`ProviderId`-typed wrappers — DeepSeek isn't an odds provider, widening
+that type for one unrelated caller wasn't worth the coupling.
+
+Verified end-to-end against real data before wiring into the route: a
+real DB read → real DeepSeek call → correctly parsed structured
+`{severity, summary, highlights}` → spend row written. Summarizer only,
+per this section's own scope line below — no autonomous triage.
+`npm run build` succeeds cleanly.
 
 ### Current state (verified this session)
 - `lib/odds/screenshotImport.ts` is the one existing LLM integration to
