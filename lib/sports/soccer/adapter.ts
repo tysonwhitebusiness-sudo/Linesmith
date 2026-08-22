@@ -3,23 +3,25 @@
  * directly from real `prop_odds` rows, not from a player-history engine
  * like MLB's/NFL's adapters do.
  *
- * Why: MLB/NFL build candidates from real per-game stat history first,
- * with a real book price as an optional overlay. Soccer has no equivalent
- * per-match history source today — Understat (season-aggregate, big-5
- * leagues only) isn't a game-by-game log, and MLS/non-big-5 leagues have
- * no season-stats source confirmed at all (both real, open gaps per
- * docs/soccer-gameplan-2026-08-22.md §5, not something this file invents
- * a fix for). So every soccer candidate starts with `history: []` — an
- * honest "insufficient" state the windowed-stat engine already renders
- * correctly, not a placeholder waiting on code that doesn't exist yet.
- * Once a real per-match history source exists for a league, this is
- * where it plugs in.
+ * Real per-match history (docs/soccer-gameplan-2026-08-22.md §11): EPL
+ * uses Understat (`understat.ts`), MLS uses American Soccer Analysis
+ * (`americanSocceranalysis.ts`) — both confirmed live sources, wired in
+ * below. Only a subset of the 14 real market keys have a matching
+ * per-match stat field either source actually carries (goals, shots,
+ * assists — see `HISTORY_FIELD` below); markets with no real per-match
+ * field (first/last-goalscorer, shots-on-target, tackles,
+ * passes/dribbles/crosses-attempted, yellow-cards, saves) still get
+ * `history: []`, the same honest "insufficient" state as before — a real,
+ * partial improvement matching what the data actually supports, not
+ * fabricated coverage.
  */
 
-import type { PickCandidate, SportSnapshot, SubjectSummary, SoccerLeague } from '@/lib/core/types';
+import type { HistoryEntry, PickCandidate, SportSnapshot, SubjectSummary, SoccerLeague } from '@/lib/core/types';
 import { loadGameContextsForSport } from '@/lib/odds/props/multiSportGameContext';
 import { readPropOddsForGame, type PropOddsRow } from '@/lib/db/client';
 import { soccerTeamLogoByAbbr } from './espn';
+import { currentUnderstatSeason, buildUnderstatNameIndex, matchUnderstatIndex, fetchUnderstatPlayerMatches, type UnderstatMatch } from './understat';
+import { currentAsaSeason, loadAsaSeasonContext, matchAsaIndex, asaPlayerMatches, type AsaMatchStat } from './americanSocceranalysis';
 
 const LEAGUE_TO_SPORT_KEY: Record<SoccerLeague, 'soccer_epl' | 'soccer_mls'> = {
   epl: 'soccer_epl',
@@ -48,6 +50,140 @@ function bestRow(rows: PropOddsRow[], side: string): PropOddsRow | null {
   const matching = rows.filter((r) => r.side === side);
   if (matching.length === 0) return null;
   return matching.reduce((best, r) => (r.americanOdds > best.americanOdds ? r : best), matching[0]);
+}
+
+/** Which markets have a real per-match stat field in Understat/ASA, and how to compute it — the rest stay `history: []`, a real data limitation, not an oversight. */
+const HISTORY_FIELD: Record<string, (m: { goals: number; shots: number; assists: number }) => number> = {
+  'anytime-goalscorer': (m) => m.goals,
+  'two-plus-goals': (m) => m.goals,
+  shots: (m) => m.shots,
+  assists: (m) => m.assists,
+  'goals-assists': (m) => m.goals + m.assists,
+};
+
+interface NormalizedMatch {
+  matchId: string;
+  date: string;
+  opponent: string;
+  isHome: boolean;
+  goals: number;
+  shots: number;
+  assists: number;
+}
+
+function toHistoryEntries(matches: NormalizedMatch[], marketKey: string, startingLine: number): HistoryEntry[] {
+  const field = HISTORY_FIELD[marketKey];
+  if (!field) return [];
+  // Most recent last — matches the "ascending = older -> newer" convention
+  // every other sport's HistoryEntry.period already follows.
+  const chronological = [...matches].sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+  return chronological.map((m, i) => {
+    const value = field(m);
+    return {
+      period: i + 1,
+      result: String(value),
+      category: value > startingLine ? 'over' : 'under',
+      periodLabel: `${m.isHome ? 'vs' : '@'} ${m.opponent}`,
+      raw: { opponentAbbr: m.opponent, date: m.date },
+    } satisfies HistoryEntry;
+  });
+}
+
+/** Runs `fn` over `items` with at most `limit` in flight at once — Understat/ASA are free, unauthenticated, real production endpoints; hitting either with 100+ simultaneous requests for one snapshot rebuild is a good way to get rate-limited or blocked, unlike this codebase's own metered providers which already have their own budget gates. */
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+/**
+ * Real per-match history, mutating candidates in place. Only fetches for
+ * subjects that actually have a HISTORY_FIELD-supported candidate — most
+ * of a roster's real props are markets with no per-match source (see the
+ * file header), so this is a fraction of every subject, not all of them.
+ */
+async function attachRealHistory(candidates: PickCandidate[], league: SoccerLeague): Promise<void> {
+  const eligibleSubjects = new Map<string, PickCandidate[]>();
+  for (const c of candidates) {
+    if (!HISTORY_FIELD[c.dimension]) continue;
+    const bucket = eligibleSubjects.get(c.subjectId) ?? [];
+    bucket.push(c);
+    eligibleSubjects.set(c.subjectId, bucket);
+  }
+  if (eligibleSubjects.size === 0) return;
+
+  const season = league === 'epl' ? currentUnderstatSeason() : currentAsaSeason();
+
+  // Season-wide name index (and, for MLS, the season's game/roster context)
+  // loaded exactly once per rebuild, not once per subject — each subject
+  // resolution below is then pure in-memory matching, no repeated cache
+  // round-trips. See understat.ts/americanSocceranalysis.ts's own comments
+  // on why per-subject re-fetching of this same season-wide data was a real
+  // problem (redundant DB traffic against a pool already shared with every
+  // other sport's scheduler jobs).
+  const understatIndex = league === 'epl' ? await buildUnderstatNameIndex(season) : null;
+  const asaContext = league === 'mls' ? await loadAsaSeasonContext(season) : null;
+
+  await mapWithConcurrency([...eligibleSubjects.entries()], 5, async ([subjectId, subjectCandidates]) => {
+    const subjectName = subjectCandidates[0].subjectName;
+    let matches: NormalizedMatch[] = [];
+    try {
+      if (league === 'epl' && understatIndex) {
+        const resolved = matchUnderstatIndex(understatIndex, subjectName);
+        if (resolved) {
+          const raw = await fetchUnderstatPlayerMatches(resolved.understatId, resolved.teamTitle);
+          matches = raw.map((m: UnderstatMatch) => ({
+            matchId: m.matchId,
+            date: m.date,
+            opponent: m.opponent,
+            isHome: m.isHome,
+            goals: m.goals,
+            shots: m.shots,
+            assists: m.assists,
+          }));
+        }
+      } else if (asaContext) {
+        const resolved = matchAsaIndex(asaContext.nameIndex, subjectName);
+        if (resolved) {
+          const raw = asaPlayerMatches(asaContext, resolved.asaPlayerId, resolved.teamId);
+          matches = raw.map((m: AsaMatchStat) => ({
+            matchId: m.gameId,
+            date: m.date,
+            opponent: m.opponent,
+            isHome: m.isHome,
+            goals: m.goals,
+            shots: m.shots,
+            assists: m.assists,
+          }));
+        }
+      }
+    } catch {
+      // Real-world Understat hiccup (timeout, format change) fetching this
+      // one player's match log — this subject's candidates simply keep
+      // their existing `history: []` rather than taking the whole snapshot
+      // rebuild down over one player's data. (ASA's path is pure/no I/O
+      // once `asaContext` is loaded, so this only meaningfully guards the
+      // Understat per-player fetch above.)
+      return;
+    }
+    if (matches.length === 0) return;
+
+    for (const candidate of subjectCandidates) {
+      const startingLine = candidate.line ?? 0.5;
+      const entries = toHistoryEntries(matches, candidate.dimension, startingLine);
+      if (entries.length === 0) continue;
+      candidate.history = entries;
+      candidate.sampleSize = entries.length;
+      candidate.consistent = entries.every((e) => e.category === entries[0].category);
+    }
+  });
 }
 
 export async function buildSoccerSnapshot(league: SoccerLeague): Promise<SportSnapshot> {
@@ -138,6 +274,8 @@ export async function buildSoccerSnapshot(league: SoccerLeague): Promise<SportSn
       }
     }
   }
+
+  await attachRealHistory(candidates, league);
 
   return {
     sport: 'soccer',
