@@ -200,6 +200,34 @@ MARKET_KEY_ALIASES: dict[str, str] = {
     "crosses_attempted": "crosses-attempted",
     "yellowcards": "yellow-cards",
     "goalie_saves": "saves",
+
+    # --- NBA (2026-08-22) — kept in lockstep with entityResolution.ts's
+    # own NBA section; see that file's comment for the same "not yet
+    # live-verified" caveat.
+    "points": "points",
+    "player_points": "points",
+    "rebounds": "rebounds",
+    "player_rebounds": "rebounds",
+    # "assists" itself already aliased above (shared with soccer's identical key).
+    "player_assists": "assists",
+    "three-pointers-made": "three-pointers-made",
+    "threes made": "three-pointers-made",
+    "three_pointers_made": "three-pointers-made",
+    "player_threes": "three-pointers-made",
+    "steals": "steals",
+    "player_steals": "steals",
+    "blocks": "blocks",
+    "player_blocks": "blocks",
+    "turnovers": "turnovers",
+    "player_turnovers": "turnovers",
+    "points-rebounds-assists": "points-rebounds-assists",
+    "pts+reb+ast": "points-rebounds-assists",
+    "points-rebounds": "points-rebounds",
+    "pts+reb": "points-rebounds",
+    "points-assists": "points-assists",
+    "pts+ast": "points-assists",
+    "rebounds-assists": "rebounds-assists",
+    "reb+ast": "rebounds-assists",
 }
 
 _MARKET_KEY_WS_RE = re.compile(r"[\s_]+")

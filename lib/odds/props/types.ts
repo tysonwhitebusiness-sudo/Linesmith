@@ -31,7 +31,7 @@ export type ProviderId =
  * sport (ParlayAPI, Propline, SportsGameOdds's new leagues) reads this to
  * pick the right per-provider sport key; MLB-only adapters can ignore it.
  */
-export type SportKey = 'mlb' | 'nfl' | 'cfb' | 'soccer_epl' | 'soccer_mls' | 'tennis_atp' | 'tennis_wta';
+export type SportKey = 'mlb' | 'nfl' | 'cfb' | 'nba' | 'soccer_epl' | 'soccer_mls' | 'tennis_atp' | 'tennis_wta';
 
 /**
  * Canonical market keys a prop can resolve to. Deliberately the same

@@ -196,6 +196,39 @@ const MARKET_KEY_ALIASES: Record<string, MarketKey> = {
   crosses_attempted: 'crosses-attempted',
   yellowcards: 'yellow-cards',
   goalie_saves: 'saves',
+
+  // --- NBA (2026-08-22) — dimension names equal their own canonical
+  // MarketKey directly, same "just confirming it's real" convention NFL's
+  // section documents above. Not yet live-verified against a real
+  // provider payload (no PARLAYAPI_NBA_KEY yet, SportsGameOdds's real
+  // NBA statID strings unconfirmed — see lib/sports/nba/adapter.ts's
+  // header and the Python backend commit). Common the-odds-api/SGO-style
+  // raw variants included defensively; correct/extend once real rows
+  // are observed in production.
+  points: 'points',
+  player_points: 'points',
+  rebounds: 'rebounds',
+  player_rebounds: 'rebounds',
+  // `assists` itself already aliased above (shared with soccer's identical key).
+  player_assists: 'assists',
+  'three-pointers-made': 'three-pointers-made',
+  'threes made': 'three-pointers-made',
+  three_pointers_made: 'three-pointers-made',
+  player_threes: 'three-pointers-made',
+  steals: 'steals',
+  player_steals: 'steals',
+  blocks: 'blocks',
+  player_blocks: 'blocks',
+  turnovers: 'turnovers',
+  player_turnovers: 'turnovers',
+  'points-rebounds-assists': 'points-rebounds-assists',
+  'pts+reb+ast': 'points-rebounds-assists',
+  'points-rebounds': 'points-rebounds',
+  'pts+reb': 'points-rebounds',
+  'points-assists': 'points-assists',
+  'pts+ast': 'points-assists',
+  'rebounds-assists': 'rebounds-assists',
+  'reb+ast': 'rebounds-assists',
 };
 
 /**

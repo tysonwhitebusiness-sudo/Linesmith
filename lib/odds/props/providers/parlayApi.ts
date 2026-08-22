@@ -38,6 +38,10 @@ const SPORT_KEYS: Record<SportKey, string> = {
   soccer_mls: 'soccer_usa_mls',
   tennis_atp: 'tennis_atp',
   tennis_wta: 'tennis_wta',
+  // Type-completeness only, same reasoning as soccer_mls above — this old
+  // TS scheduler path isn't wired up for NBA either; real NBA provider
+  // work lives in python-odds-service/ (see jobs.py's job_nba).
+  nba: 'basketball_nba',
 };
 
 interface ParlayPropRow {
