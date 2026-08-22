@@ -25,7 +25,7 @@ async function buildTeamPayload(league: SoccerLeague, teamId: string) {
   const [teams, roster, games] = await Promise.all([
     fetchAllTeams(league),
     fetchTeamRoster('soccer', slug, teamId),
-    fetchScoreboard('soccer', slug, 21),
+    fetchScoreboard('soccer', slug, 21, 30),
   ]);
   const team = teams.find((t: SoccerTeam) => t.teamId === teamId);
   if (!team) return null;

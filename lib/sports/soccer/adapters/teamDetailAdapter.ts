@@ -101,19 +101,25 @@ export function toTeamDetailData(input: SoccerTeamDetailInput): TeamDetailData {
     nextGame: nextGameData,
     advancedStats: null,
     form: null,
-    // recentGames has no final-score field yet (the ESPN scoreboard call
-    // this route uses is schedule-shape only) — `win: null` renders as
-    // the engine's existing "unresolved" state, honest rather than guessed.
+    // Real final scores from ESPN's scoreboard `score`/`status` fields
+    // (teamSportEspn.ts) — `win`/`isDraw` stay `null`/`false` for a game
+    // ESPN hasn't posted a completed status for yet, the same honest
+    // "unresolved" state as before, now only for genuinely unresolved games
+    // rather than every game.
     recentResults: recentGames.map((g) => {
       const isHome = g.homeTeamId === team.teamId;
+      const scoreFor = isHome ? g.homeScore : g.awayScore;
+      const scoreAgainst = isHome ? g.awayScore : g.homeScore;
+      const resolved = g.status?.completed === true && scoreFor != null && scoreAgainst != null;
       return {
         gameId: g.gameId,
         date: g.date,
-        win: null,
+        win: resolved ? scoreFor > scoreAgainst : null,
+        isDraw: resolved ? scoreFor === scoreAgainst : false,
         opponentAbbr: isHome ? g.awayAbbr : g.homeAbbr,
         isHome,
-        scoreFor: 0,
-        scoreAgainst: 0,
+        scoreFor: scoreFor ?? 0,
+        scoreAgainst: scoreAgainst ?? 0,
       };
     }),
   };

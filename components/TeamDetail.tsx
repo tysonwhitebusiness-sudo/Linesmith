@@ -718,8 +718,8 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
                   <span className="flex items-center gap-1.5 text-ink-muted">
                     <TeamLogo logoUrl={sport === 'nfl' ? nflTeamLogoUrl(g.opponentAbbr) : undefined} abbreviation={g.opponentAbbr} size={14} /> {g.isHome ? 'vs' : '@'} {g.opponentAbbr}
                   </span>
-                  <span className={`font-semibold ${g.win ? 'text-good' : 'text-ink-faint'}`}>
-                    {g.win != null ? `${g.win ? 'W' : 'L'} ${g.scoreFor}-${g.scoreAgainst}` : '—'}
+                  <span className={`font-semibold ${g.win ? 'text-good' : g.isDraw ? 'text-ink-muted' : 'text-ink-faint'}`}>
+                    {g.isDraw ? `D ${g.scoreFor}-${g.scoreAgainst}` : g.win != null ? `${g.win ? 'W' : 'L'} ${g.scoreFor}-${g.scoreAgainst}` : '—'}
                   </span>
                 </li>
               ))}

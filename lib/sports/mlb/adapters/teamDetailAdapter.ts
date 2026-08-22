@@ -60,6 +60,8 @@ export interface RecentResultRow {
   gameId: string;
   date: string;
   win: boolean | null;
+  /** Soccer-only: a real draw, distinct from `win: null`'s existing "result not yet known" meaning — MLB/NFL never set this (no draws), so `win`'s two-state boolean semantics stay unchanged for them. */
+  isDraw?: boolean;
   opponentAbbr: string;
   isHome: boolean;
   scoreFor: number;

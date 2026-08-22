@@ -26,16 +26,21 @@ export interface EspnTeamSportGame {
   awayTeamId: string;
   awayTeamName: string;
   awayAbbr: string;
+  /** Real final/current score + completion state — `undefined` for a game ESPN hasn't posted a score for yet (future/scheduled). Shared by every sport on this fetcher (NFL/CFB/Soccer today). */
+  status?: { completed: boolean; state: 'pre' | 'in' | 'post'; shortDetail: string };
+  homeScore?: number;
+  awayScore?: number;
 }
 
 interface RawCompetitor {
   homeAway: 'home' | 'away';
   team: { id: string; displayName: string; abbreviation: string };
+  score?: string;
 }
 
-function dateRangeParam(daysAhead: number): string {
+function dateRangeParam(daysAhead: number, daysBack: number): string {
   const fmt = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '');
-  const start = new Date();
+  const start = new Date(Date.now() - daysBack * 86_400_000);
   const end = new Date(Date.now() + daysAhead * 86_400_000);
   return `${fmt(start)}-${fmt(end)}`;
 }
@@ -46,11 +51,16 @@ function dateRangeParam(daysAhead: number): string {
  * session) already price 1-2 weeks out — a same-day-only scoreboard query
  * would miss most of what's actually priced. Soccer/daily sports can use a
  * narrower window; team sports default wide.
+ *
+ * `daysBack` defaults to 0 (today forward only) — every existing caller
+ * before this param was added only ever wanted upcoming games. A caller
+ * that also needs real recent/past results (a team page's "recent form")
+ * passes a real `daysBack` explicitly.
  */
-export async function fetchScoreboard(espnSport: string, espnLeague: string, daysAhead = 14): Promise<EspnTeamSportGame[]> {
+export async function fetchScoreboard(espnSport: string, espnLeague: string, daysAhead = 14, daysBack = 0): Promise<EspnTeamSportGame[]> {
   let res: Response;
   try {
-    res = await fetch(`${BASE}/${espnSport}/${espnLeague}/scoreboard?dates=${dateRangeParam(daysAhead)}`, {
+    res = await fetch(`${BASE}/${espnSport}/${espnLeague}/scoreboard?dates=${dateRangeParam(daysAhead, daysBack)}`, {
       cache: 'no-store',
       signal: AbortSignal.timeout(10_000),
     });
@@ -58,7 +68,16 @@ export async function fetchScoreboard(espnSport: string, espnLeague: string, day
     return [];
   }
   if (!res.ok) return [];
-  const json = (await res.json()) as { events?: Array<{ id: string; date: string; competitions?: Array<{ competitors?: RawCompetitor[] }> }> };
+  const json = (await res.json()) as {
+    events?: Array<{
+      id: string;
+      date: string;
+      competitions?: Array<{
+        competitors?: RawCompetitor[];
+        status?: { type?: { completed?: boolean; state?: string; shortDetail?: string } };
+      }>;
+    }>;
+  };
 
   const games: EspnTeamSportGame[] = [];
   for (const ev of json.events ?? []) {
@@ -66,6 +85,7 @@ export async function fetchScoreboard(espnSport: string, espnLeague: string, day
     const home = comp?.competitors?.find((c) => c.homeAway === 'home');
     const away = comp?.competitors?.find((c) => c.homeAway === 'away');
     if (!home || !away) continue;
+    const statusType = comp?.status?.type;
     games.push({
       gameId: String(ev.id),
       date: ev.date,
@@ -75,6 +95,12 @@ export async function fetchScoreboard(espnSport: string, espnLeague: string, day
       awayTeamId: String(away.team.id),
       awayTeamName: away.team.displayName,
       awayAbbr: away.team.abbreviation,
+      status:
+        statusType?.state != null
+          ? { completed: statusType.completed === true, state: statusType.state as 'pre' | 'in' | 'post', shortDetail: statusType.shortDetail ?? '' }
+          : undefined,
+      homeScore: home.score != null ? Number(home.score) : undefined,
+      awayScore: away.score != null ? Number(away.score) : undefined,
     });
   }
   return games;
