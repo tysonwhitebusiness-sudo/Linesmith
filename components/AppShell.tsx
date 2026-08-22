@@ -169,7 +169,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // NFL/soccer default to All rather than Good Bets — the Good Bets scoring
   // engine needs graded-outcome data to calibrate a threshold against, which
   // a brand-new sport doesn't have yet (same reasoning as hiding it below).
-  const [scanView, setScanView] = useState<ScanView>(() => (sport === 'nfl' || sport === 'soccer' ? 'All' : 'Good Bets'));
+  const [scanView, setScanView] = useState<ScanView>(() => (sport === 'nfl' || sport === 'soccer' || sport === 'cfb' ? 'All' : 'Good Bets'));
   const calibration = useMarketCalibration();
   const gamePickHistory = useGamePickHistory(sport);
   const [scanScope, setScanScope] = useState<'players' | 'games'>('players');
@@ -280,7 +280,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
     // switching sports shouldn't land on a tab that no longer has a button.
     setScanView((v) => {
       if (sport === 'golf' && v === 'Home Runs') return 'Good Bets';
-      if ((sport === 'nfl' || sport === 'soccer') && (v === 'Home Runs' || v === 'Good Bets')) return 'All';
+      if ((sport === 'nfl' || sport === 'soccer' || sport === 'cfb') && (v === 'Home Runs' || v === 'Good Bets')) return 'All';
       return v;
     });
   }, [sport, clearAll]);
@@ -567,7 +567,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
             close to game day); the honest "no price yet" states already used
             throughout Scan cover that rather than needing special-case copy
             here. */}
-        {sport === 'mlb' || sport === 'nfl' ? (
+        {sport === 'mlb' || sport === 'nfl' || sport === 'cfb' ? (
           <DateGameStrip
             scanDate={scanDate}
             onSetDate={setScanDate}
@@ -575,6 +575,11 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
             selectedGamePk={selectedGamePk}
             onSelectGame={selectGame}
             onNavigateToGame={(gamePk) => router.push(`/${sport}/game/${gamePk}`)}
+            // CFB's logo URLs are keyed by ESPN's numeric team id, not
+            // abbreviation (unlike NFL's predictable `{abbr}.png` CDN
+            // pattern), so there's no synchronous abbr->url template to
+            // hand this prop — DateGameStrip's own text-chip fallback
+            // covers it, same as MLB's existing `undefined` here.
             logoFor={sport === 'nfl' ? nflTeamLogoUrl : undefined}
           />
         ) : null}
@@ -705,7 +710,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                           graded history yet (see scanView default above). */}
                       {SCAN_VIEWS.filter((v) => {
                         if (sport === 'golf') return v !== 'Home Runs';
-                        if (sport === 'nfl' || sport === 'soccer') return v !== 'Home Runs' && v !== 'Good Bets';
+                        if (sport === 'nfl' || sport === 'soccer' || sport === 'cfb') return v !== 'Home Runs' && v !== 'Good Bets';
                         return true;
                       }).map((v) => (
                         <button
