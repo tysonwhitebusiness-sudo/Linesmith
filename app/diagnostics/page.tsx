@@ -44,6 +44,25 @@ interface MergedLine {
   hasLiveData: boolean;
 }
 
+/** Phase 04 admin-center IA groups (docs/four-feature-gameplan-2026-08-22.md) — replaces the old flat 15-section scroll. */
+type AdminGroup = 'health' | 'pipelines' | 'model' | 'spend' | 'picks' | 'debug';
+const ADMIN_GROUPS: { id: AdminGroup; label: string }[] = [
+  { id: 'health', label: 'System Health' },
+  { id: 'pipelines', label: 'Data Pipelines' },
+  { id: 'model', label: 'Model & Calibration' },
+  { id: 'spend', label: 'Usage & Spend' },
+  { id: 'picks', label: 'Pick History' },
+  { id: 'debug', label: 'Debug' },
+];
+
+interface HealthCheckRow {
+  name: string;
+  healthy: boolean;
+  status: string;
+  detail: unknown;
+  checkedAt: string;
+}
+
 interface DiagnosticsData {
   timestamp: string;
   oddsApi: {
@@ -1083,6 +1102,21 @@ export default function DiagnosticsPage() {
   const [batterRanksLoaded, setBatterRanksLoaded] = useState(false);
   const [batterSearch, setBatterSearch] = useState('');
   const [batterPositionFilter, setBatterPositionFilter] = useState<(typeof BATTER_POSITION_FILTERS)[number]>('all');
+  const [activeGroup, setActiveGroup] = useState<AdminGroup>('health');
+  const [healthChecks, setHealthChecks] = useState<HealthCheckRow[] | null>(null);
+  const [healthChecksError, setHealthChecksError] = useState<string | null>(null);
+
+  const fetchHealthChecks = useCallback(async () => {
+    setHealthChecksError(null);
+    try {
+      const res = await fetch('/api/diagnostics/health', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as { checks: HealthCheckRow[] };
+      setHealthChecks(json.checks);
+    } catch (err) {
+      setHealthChecksError(err instanceof Error ? err.message : 'Fetch failed');
+    }
+  }, []);
 
   const fetchData = useCallback(async (force = false) => {
     setLoading(true);
@@ -1360,6 +1394,7 @@ export default function DiagnosticsPage() {
     void fetchDriftCheck();
     void fetchEloSanity();
     void fetchSystemHealth();
+    void fetchHealthChecks();
   }, [
     fetchData,
     fetchPropsData,
@@ -1372,6 +1407,7 @@ export default function DiagnosticsPage() {
     fetchDriftCheck,
     fetchEloSanity,
     fetchSystemHealth,
+    fetchHealthChecks,
   ]);
 
   const handleForceRefresh = () => {
@@ -1387,6 +1423,7 @@ export default function DiagnosticsPage() {
     void fetchDriftCheck();
     void fetchEloSanity();
     void fetchSystemHealth();
+    void fetchHealthChecks();
   };
 
   if (loading && !data) {
@@ -1416,11 +1453,19 @@ export default function DiagnosticsPage() {
             {forcing ? 'Refreshing…' : 'Rescan now'}
           </button>
         </div>
-        <nav className="mt-2 flex gap-3 overflow-x-auto text-[11px] text-ink-muted">
-          <a href="#pick-history" className="shrink-0 hover:text-masters">Picks</a>
-          <a href="#model-health" className="shrink-0 hover:text-masters">Model Health</a>
-          <a href="#data-sources" className="shrink-0 hover:text-masters">Data Sources</a>
-          <a href="#debug" className="shrink-0 hover:text-masters">Debug</a>
+        <nav className="mt-2 flex gap-1 overflow-x-auto text-[12px]">
+          {ADMIN_GROUPS.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              onClick={() => setActiveGroup(g.id)}
+              className={`shrink-0 rounded-md px-2.5 py-1.5 font-medium transition-colors ${
+                activeGroup === g.id ? 'bg-masters text-white' : 'text-ink-muted hover:bg-accent-soft/40 hover:text-ink'
+              }`}
+            >
+              {g.label}
+            </button>
+          ))}
         </nav>
       </header>
 
@@ -1431,9 +1476,49 @@ export default function DiagnosticsPage() {
 
         {data ? (
           <>
-            {/* Status overview */}
-            <section className="lb-card p-4">
-              <h2 className="mb-3 text-sm font-semibold">Status Overview</h2>
+            {activeGroup === 'health' && (
+              <>
+                {/* System health summary — Phase 04, backed by job_health_checks (health_check.py's persisted results). This is the home Phase 05's DeepSeek summary card attaches to. */}
+                <section className="lb-card p-4">
+                  <h2 className="mb-3 text-sm font-semibold">Job Health Checks</h2>
+                  {healthChecksError ? (
+                    <p className="text-sm text-bad">Failed to load: {healthChecksError}</p>
+                  ) : healthChecks === null ? (
+                    <p className="text-sm text-ink-muted">Loading…</p>
+                  ) : healthChecks.length === 0 ? (
+                    <p className="text-sm text-ink-muted">
+                      No checks recorded yet — health_check.py hasn't run against this database. It's meant to run on a
+                      schedule (Render cron or similar); run it manually for a spot-check in the meantime.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="mb-3 flex gap-3 text-[12px]">
+                        <span className="lb-chip bg-good/15 text-good">
+                          {healthChecks.filter((c) => c.healthy).length} healthy
+                        </span>
+                        <span className="lb-chip bg-bad/10 text-bad">
+                          {healthChecks.filter((c) => !c.healthy).length} unhealthy
+                        </span>
+                        <span className="text-ink-faint">as of {new Date(healthChecks[0].checkedAt).toLocaleString()}</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        {healthChecks.map((c) => (
+                          <div key={c.name} className="flex items-start gap-2 text-[12px]">
+                            <HealthDot ok={c.healthy} />
+                            <div>
+                              <span className="font-medium">{c.name}</span>
+                              <span className="text-ink-muted"> — {c.status}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </section>
+
+                {/* Status overview */}
+                <section className="lb-card p-4">
+                  <h2 className="mb-3 text-sm font-semibold">Status Overview</h2>
               <div className="grid grid-cols-2 gap-3 text-[13px] sm:grid-cols-4">
                 <div>
                   <div className="text-ink-faint">Odds API</div>
@@ -1503,7 +1588,11 @@ export default function DiagnosticsPage() {
                 {forcing ? ' (refreshing…)' : ''}
               </div>
             </section>
+              </>
+            )}
 
+            {activeGroup === 'model' && (
+              <>
             {/* Pitcher role rankings — starters/closers/relievers, traditional + FIP/K-BB% + Statcast, 24h cached. Not fetched on mount — a cold cache takes a couple minutes (season-long Statcast backfill), so loading is opt-in via the button below rather than slowing every diagnostics page visit. */}
             <section id="pitcher-rankings" className="lb-card p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -1623,7 +1712,11 @@ export default function DiagnosticsPage() {
                 </>
               ) : null}
             </section>
+              </>
+            )}
 
+            {activeGroup === 'picks' && (
+              <>
             {/* Linesmith Pick lock system — history + record */}
             <section id="pick-history" className="lb-card p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -1702,7 +1795,11 @@ export default function DiagnosticsPage() {
                 </>
               )}
             </section>
+              </>
+            )}
 
+            {activeGroup === 'spend' && (
+              <>
             {/* Player-prop providers (update-09's five-provider feed) */}
             <section className="lb-card p-4">
               <h2 className="mb-3 text-sm font-semibold">
@@ -1807,7 +1904,11 @@ export default function DiagnosticsPage() {
                 </>
               )}
             </section>
+              </>
+            )}
 
+            {activeGroup === 'model' && (
+              <>
             {/* Phase C.0 — model calibration: does predicted probability match reality */}
             <section className="lb-card p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -2234,7 +2335,11 @@ export default function DiagnosticsPage() {
                 )}
               </div>
             </section>
+              </>
+            )}
 
+            {activeGroup === 'pipelines' && (
+              <>
             {/* Data Sources & System — MLB Stats API health (recentFetchErrors existed but had no UI home), pipeline freshness for the season-scoped sources, DB row counts, and the new persisted error log. */}
             <section id="data-sources" className="lb-card p-4">
               <h2 className="mb-3 text-sm font-semibold">Data Sources &amp; System</h2>
@@ -2635,7 +2740,11 @@ export default function DiagnosticsPage() {
                 </div>
               )}
             </section>
+              </>
+            )}
 
+            {activeGroup === 'debug' && (
+              <>
             {/* Debug drawer — raw dumps and env vars, demoted below everything a normal check-in actually needs. */}
             <div id="debug" className="space-y-4">
             <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Debug</p>
@@ -2749,6 +2858,8 @@ export default function DiagnosticsPage() {
               </div>
             </details>
             </div>
+              </>
+            )}
           </>
         ) : null}
       </main>

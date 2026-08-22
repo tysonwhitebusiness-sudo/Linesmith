@@ -428,6 +428,8 @@ async def main() -> int:
         print(f"  [{marker}] {r['name']}: {r['status']}", flush=True)
         all_healthy = all_healthy and r["healthy"]
 
+    await db.write_health_check_results(results)
+
     print(f"\n[health_check] overall: {'HEALTHY' if all_healthy else 'UNHEALTHY'}", flush=True)
     return 0 if all_healthy else 1
 

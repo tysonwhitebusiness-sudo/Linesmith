@@ -379,6 +379,41 @@ async def _write_job_run_log_inner(job_name: str, summary: dict) -> None:
     )
 
 
+async def write_health_check_results(results: list[dict]) -> None:
+    """Persists health_check.py's check_* results (Phase 04 of
+    docs/four-feature-gameplan-2026-08-22.md) so the admin center has
+    something to read besides a terminal — health_check.py's main() has
+    always computed these, just never kept them anywhere. Same non-fatal
+    contract as write_job_run_log: a monitoring write failing is never
+    allowed to make the actual check's result unavailable to the caller
+    (main() still prints it either way)."""
+    try:
+        await _write_health_check_results_inner(results)
+    except Exception as e:
+        print(f"[db] write_health_check_results failed (non-fatal): {type(e).__name__}: {e}", flush=True)
+
+
+async def _write_health_check_results_inner(results: list[dict]) -> None:
+    pool = await get_pool()
+    now = datetime.now(timezone.utc)
+    for r in results:
+        detail = r.get("raw")
+        await pool.execute(
+            """
+            INSERT INTO job_health_checks (check_name, healthy, status, detail, checked_at)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (check_name) DO UPDATE SET
+              healthy = excluded.healthy, status = excluded.status,
+              detail = excluded.detail, checked_at = excluded.checked_at
+            """,
+            r["name"],
+            bool(r["healthy"]),
+            r["status"],
+            json.dumps(detail) if detail is not None else None,
+            now,
+        )
+
+
 def _to_date(iso_str: str):
     """Postgres DATE columns need a real datetime.date via asyncpg (unlike
     node-postgres's driver, asyncpg doesn't implicitly text-parse a string

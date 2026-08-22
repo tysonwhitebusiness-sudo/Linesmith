@@ -19,13 +19,27 @@ const PROTECTED_API_PREFIXES = ['/api/picks', '/api/bets', '/api/watchlist'];
 const PROTECTED_API_EXCLUDE = ['/api/picks/game-history'];
 const PROTECTED_PAGE_PREFIXES = ['/bets', '/bet/'];
 
+/**
+ * Admin surface (Phase 04). `/diagnostics` is real system/model-internals
+ * data (spend, calibration, provider budgets) — "logged in" isn't enough
+ * here the way it is for `/bets`; it's restricted to the operator
+ * specifically, not any account that signs up. A small allowlist rather
+ * than a `profiles.role` column because there's exactly one operator today
+ * — revisit if this app ever grows real multi-admin needs.
+ */
+const ADMIN_USER_IDS = ['038048de-c950-4798-9bfb-9da68c89f936'];
+const ADMIN_API_PREFIXES = ['/api/diagnostics'];
+const ADMIN_PAGE_PREFIXES = ['/diagnostics'];
+
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isProtectedApi =
     PROTECTED_API_PREFIXES.some((p) => pathname.startsWith(p)) && !PROTECTED_API_EXCLUDE.some((p) => pathname.startsWith(p));
   const isProtectedPage = PROTECTED_PAGE_PREFIXES.some((p) => pathname.startsWith(p));
+  const isAdminApi = ADMIN_API_PREFIXES.some((p) => pathname.startsWith(p));
+  const isAdminPage = ADMIN_PAGE_PREFIXES.some((p) => pathname.startsWith(p));
 
-  if (!isProtectedApi && !isProtectedPage) {
+  if (!isProtectedApi && !isProtectedPage && !isAdminApi && !isAdminPage) {
     return NextResponse.next();
   }
 
@@ -50,6 +64,28 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  if (isAdminApi || isAdminPage) {
+    if (!user) {
+      if (isAdminApi) {
+        return NextResponse.json({ error: 'Unauthorized', detail: 'Sign in required.' }, { status: 401 });
+      }
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      url.searchParams.set('next', pathname);
+      return NextResponse.redirect(url);
+    }
+    if (!ADMIN_USER_IDS.includes(user.id)) {
+      if (isAdminApi) {
+        return NextResponse.json({ error: 'Forbidden', detail: 'Admin access required.' }, { status: 403 });
+      }
+      const url = request.nextUrl.clone();
+      url.pathname = '/';
+      url.search = '';
+      return NextResponse.redirect(url);
+    }
+    return response;
+  }
+
   if (!user) {
     if (isProtectedApi) {
       return NextResponse.json({ error: 'Unauthorized', detail: 'Sign in required.' }, { status: 401 });
@@ -64,5 +100,13 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/api/picks/:path*', '/api/bets/:path*', '/api/watchlist/:path*', '/bets/:path*', '/bet/:path*'],
+  matcher: [
+    '/api/picks/:path*',
+    '/api/bets/:path*',
+    '/api/watchlist/:path*',
+    '/bets/:path*',
+    '/bet/:path*',
+    '/api/diagnostics/:path*',
+    '/diagnostics/:path*',
+  ],
 };
