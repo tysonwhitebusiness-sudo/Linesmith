@@ -63,5 +63,6 @@ export async function GET(request: Request) {
       };
     },
     errorMessage: 'Bullpen lookup failed',
+    request,
   });
 }

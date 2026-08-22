@@ -35,5 +35,6 @@ export async function GET(request: Request) {
     ttlMs: CALIBRATION_TTL_MS,
     build: () => computeCalibrationPayload(scope, dimension),
     errorMessage: 'Calibration lookup failed',
+    request,
   });
 }

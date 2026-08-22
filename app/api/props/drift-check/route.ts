@@ -31,13 +31,13 @@ interface DriftResult {
   status: 'on-track' | 'underperforming' | 'insufficient-sample' | 'no-active-model';
 }
 
-function checkMarket(sport: string, market: 'moneyline' | 'total'): DriftResult {
-  const active = getActiveModelWeights(sport, market);
+async function checkMarket(sport: string, market: 'moneyline' | 'total'): Promise<DriftResult> {
+  const active = await getActiveModelWeights(sport, market);
   if (!active) {
     return { market, activeVersion: null, expectedBrier: null, liveBrier: null, liveGames: 0, status: 'no-active-model' };
   }
 
-  const { brier, games } = liveCalibrationBrier(sport, market, ROLLING_WINDOW);
+  const { brier, games } = await liveCalibrationBrier(sport, market, ROLLING_WINDOW);
 
   if (games < MIN_SAMPLE || brier == null) {
     return { market, activeVersion: active.version, expectedBrier: active.holdoutBrier, liveBrier: brier, liveGames: games, status: 'insufficient-sample' };
@@ -51,10 +51,11 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sport = searchParams.get('sport') ?? 'mlb';
 
+  const [moneyline, total] = await Promise.all([checkMarket(sport, 'moneyline'), checkMarket(sport, 'total')]);
   return NextResponse.json({
     rollingWindow: ROLLING_WINDOW,
     minSample: MIN_SAMPLE,
-    moneyline: checkMarket(sport, 'moneyline'),
-    total: checkMarket(sport, 'total'),
+    moneyline,
+    total,
   });
 }

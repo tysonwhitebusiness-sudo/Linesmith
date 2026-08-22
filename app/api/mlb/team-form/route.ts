@@ -44,5 +44,6 @@ export async function GET(request: Request) {
       return { teamId, results, fetchedAt: new Date().toISOString() };
     },
     errorMessage: 'Team form lookup failed',
+    request,
   });
 }

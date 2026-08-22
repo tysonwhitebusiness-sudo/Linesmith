@@ -314,18 +314,18 @@ function cacheKey(season: string): string {
 
 export async function getAllTeamGrades(season: string = MOST_RECENT_STATS_SEASON, forceRefresh = false): Promise<Record<string, TeamGrades>> {
   if (!forceRefresh) {
-    const cached = readSnapshotCache(cacheKey(season));
+    const cached = await readSnapshotCache(cacheKey(season));
     if (cached && Date.now() - Date.parse(cached.fetchedAt) < CACHE_TTL_MS) {
       return JSON.parse(cached.payload) as Record<string, TeamGrades>;
     }
   }
   const result = await computeAllTeamGrades(season);
-  writeSnapshotCache(cacheKey(season), JSON.stringify(result));
+  await writeSnapshotCache(cacheKey(season), JSON.stringify(result));
   return result;
 }
 
-export function getCachedAllTeamGrades(season: string = MOST_RECENT_STATS_SEASON): Record<string, TeamGrades> | null {
-  const cached = readSnapshotCache(cacheKey(season));
+export async function getCachedAllTeamGrades(season: string = MOST_RECENT_STATS_SEASON): Promise<Record<string, TeamGrades> | null> {
+  const cached = await readSnapshotCache(cacheKey(season));
   if (!cached) return null;
   try {
     return JSON.parse(cached.payload) as Record<string, TeamGrades>;

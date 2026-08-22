@@ -9,7 +9,7 @@ import type { UnifiedGameLine } from './types';
 import { decimalToAmerican } from './display';
 import { writeGameOddsHistory, type GameOddsHistoryInput } from '../db/client';
 
-export function logGameOddsHistory(lines: UnifiedGameLine[]): void {
+export async function logGameOddsHistory(lines: UnifiedGameLine[]): Promise<void> {
   const rows: GameOddsHistoryInput[] = [];
 
   for (const line of lines) {
@@ -51,5 +51,5 @@ export function logGameOddsHistory(lines: UnifiedGameLine[]): void {
     }
   }
 
-  writeGameOddsHistory(rows);
+  await writeGameOddsHistory(rows);
 }

@@ -7,8 +7,8 @@ import { readSnapshotCache } from '@/lib/db/client';
 
 const SNAPSHOT_CACHE_KEY = 'mlb:snapshot';
 
-export function isGameFinal(gameId: string): boolean {
-  const cached = readSnapshotCache(SNAPSHOT_CACHE_KEY);
+export async function isGameFinal(gameId: string): Promise<boolean> {
+  const cached = await readSnapshotCache(SNAPSHOT_CACHE_KEY);
   if (!cached) return false;
   try {
     const snapshot = JSON.parse(cached.payload) as {

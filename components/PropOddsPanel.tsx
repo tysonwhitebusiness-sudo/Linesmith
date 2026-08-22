@@ -94,6 +94,58 @@ export function PropOddsSummary({
   );
 }
 
+/** "hits" -> "Hits", "total-bases" -> "Total Bases". Local and simple rather than pulling in MarketLabel's dimension/category-keyed lookup, which this row shape doesn't carry. */
+function formatMarketKey(marketKey: string): string {
+  return marketKey
+    .split('-')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/**
+ * Line-shopping right rail for a whole game — every player+market+line with
+ * a real price comparison to show, not just one player's slice the way
+ * PropOddsBoard alone is scoped. Groups `allRows` by subject+market+line and
+ * only surfaces a card when 2+ distinct bookmakers have a price for it (a
+ * single-book market has nothing to shop between); each qualifying group
+ * renders through PropOddsBoard so the actual per-book breakdown logic isn't
+ * duplicated.
+ */
+export function GamePropLineShoppingRail({ allRows, userSportsbook }: { allRows: PropOddsRow[]; userSportsbook: string }) {
+  const groups = new Map<string, { subjectId: string; subjectName: string; marketKey: string; line: number | null; bookmakers: Set<string> }>();
+  for (const row of allRows) {
+    const key = `${row.subjectId}|${row.marketKey}|${row.line ?? 'null'}`;
+    const entry = groups.get(key) ?? { subjectId: row.subjectId, subjectName: row.subjectName, marketKey: row.marketKey, line: row.line, bookmakers: new Set<string>() };
+    entry.bookmakers.add(row.bookmaker);
+    groups.set(key, entry);
+  }
+
+  const qualifying = [...groups.values()]
+    .filter((g) => g.bookmakers.size >= 2)
+    .sort((a, b) => a.subjectName.localeCompare(b.subjectName) || a.marketKey.localeCompare(b.marketKey));
+
+  if (qualifying.length === 0) {
+    return <p className="text-[12px] text-ink-faint">No prop yet has prices from 2+ books to compare.</p>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {qualifying.map((g) => (
+        <div key={`${g.subjectId}|${g.marketKey}|${g.line ?? 'null'}`}>
+          <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-ink-muted">
+            <span className="truncate">{g.subjectName}</span>
+            <span className="shrink-0 text-ink-faint">
+              {formatMarketKey(g.marketKey)}
+              {g.line != null ? ` ${g.line}` : ''}
+            </span>
+          </div>
+          <PropOddsBoard allRows={allRows} subjectId={g.subjectId} marketKey={g.marketKey} line={g.line} userSportsbook={userSportsbook} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** Full per-book breakdown for a Player Detail-style panel. */
 export function PropOddsBoard({
   allRows,

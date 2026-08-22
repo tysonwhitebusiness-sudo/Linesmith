@@ -130,7 +130,7 @@ async function buildTeamPayload(teamId: string): Promise<Record<string, unknown>
   };
 }
 
-export async function GET(_request: Request, { params }: { params: Promise<{ teamId: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = await params;
 
   return cachedRoute({
@@ -139,5 +139,6 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tea
     build: () => buildTeamPayload(teamId),
     notFoundMessage: `No NFL team with id ${teamId}`,
     errorMessage: 'NFL team detail failed',
+    request,
   });
 }

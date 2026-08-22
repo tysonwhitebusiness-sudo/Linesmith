@@ -20,7 +20,7 @@ const XLSX_SEASONS = [2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019
 
 export async function POST() {
   try {
-    const summaries = ingestAllHistoricalOdds(DOWNLOADS_DIR, XLSX_SEASONS);
+    const summaries = await ingestAllHistoricalOdds(DOWNLOADS_DIR, XLSX_SEASONS);
 
     // mlb-odds-scraper JSON output (any *.json dropped into the same import
     // directory) — a third source for seasons the xlsx/CSV archives don't
@@ -34,11 +34,11 @@ export async function POST() {
       }
     }
 
-    const coverage = historicalOddsCoverage();
+    const coverage = await historicalOddsCoverage();
     return NextResponse.json({ summaries, coverage });
   } catch (error) {
     console.error('[api/props/ingest-historical-odds]', error);
-    logSystemEvent({ level: 'error', source: 'api/props/ingest-historical-odds', message: error instanceof Error ? error.message : String(error) });
+    await logSystemEvent({ level: 'error', source: 'api/props/ingest-historical-odds', message: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: 'Ingestion failed', detail: error instanceof Error ? error.message : String(error) },
       { status: 502 },
@@ -47,5 +47,5 @@ export async function POST() {
 }
 
 export async function GET() {
-  return NextResponse.json({ coverage: historicalOddsCoverage() });
+  return NextResponse.json({ coverage: await historicalOddsCoverage() });
 }

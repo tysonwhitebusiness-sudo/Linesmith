@@ -58,5 +58,6 @@ export async function GET(request: Request) {
       return { batters, computedAt: rankings.computedAt, season };
     },
     errorMessage: 'Team batter rankings lookup failed',
+    request,
   });
 }

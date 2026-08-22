@@ -51,5 +51,6 @@ export async function GET(request: Request) {
       };
     },
     errorMessage: 'Injury lookup failed',
+    request,
   });
 }

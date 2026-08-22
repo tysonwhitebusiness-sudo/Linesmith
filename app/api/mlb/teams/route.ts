@@ -51,11 +51,12 @@ async function buildTeamsPayload() {
   return { teams: rows, fetchedAt: new Date().toISOString() };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   return cachedRoute({
     cacheKey: 'mlb:teams',
     ttlMs: CACHE_TTL_MS,
     build: buildTeamsPayload,
     errorMessage: 'Teams lookup failed',
+    request,
   });
 }

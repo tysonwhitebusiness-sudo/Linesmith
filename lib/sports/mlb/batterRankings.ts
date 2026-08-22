@@ -196,7 +196,7 @@ function cacheKey(season: number): string {
 /** Position-and-overall-ranked, composite-scored batter pool — 24h cached so a normal page load never pays for a Statcast/StatsAPI refresh. `forceRefresh` bypasses the cache (used by a manual "refresh now" trigger). */
 export async function getBatterRankings(season: number, forceRefresh = false): Promise<BatterRankings> {
   if (!forceRefresh) {
-    const cached = readSnapshotCache(cacheKey(season));
+    const cached = await readSnapshotCache(cacheKey(season));
     if (cached) {
       const age = Date.now() - Date.parse(cached.fetchedAt);
       if (age < CACHE_TTL_MS) {
@@ -274,7 +274,7 @@ export async function getBatterRankings(season: number, forceRefresh = false): P
   }
 
   const result: BatterRankings = { season, computedAt: new Date().toISOString(), batters: overall.ranked };
-  writeSnapshotCache(cacheKey(season), JSON.stringify(result));
+  await writeSnapshotCache(cacheKey(season), JSON.stringify(result));
   return result;
 }
 
@@ -287,8 +287,8 @@ export async function getBatterRankings(season: number, forceRefresh = false): P
  * cache, which is fine for a manually-triggered refresh but not for a
  * function every scan request goes through.
  */
-export function getCachedBatterRankings(season: number): BatterRankings | null {
-  const cached = readSnapshotCache(cacheKey(season));
+export async function getCachedBatterRankings(season: number): Promise<BatterRankings | null> {
+  const cached = await readSnapshotCache(cacheKey(season));
   if (!cached) return null;
   try {
     return JSON.parse(cached.payload) as BatterRankings;

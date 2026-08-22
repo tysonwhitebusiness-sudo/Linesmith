@@ -55,7 +55,10 @@ export function mergeLines(
       moneyline: line.moneyline,
       spread: line.spread,
       total: line.total,
-      bookmakers: [],
+      // `?? []` guards a cache entry written before `bookmakers` existed on
+      // GameLine — old JSON in odds_cache won't have this field until its
+      // next real fetch, up to the 6h TTL away.
+      bookmakers: line.bookmakers ?? [],
       bookCount: line.bookCount,
       source: 'odds-api',
     });
@@ -69,11 +72,19 @@ export function mergeLines(
     const bookmakers: BookmakerOdds[] = match.bookmakers;
 
     if (existing) {
-      existing.bookmakers = bookmakers;
+      // Union, not overwrite — the-odds-api's own per-book prices (seeded in
+      // Pass 1) used to be silently discarded here whenever a harvester
+      // match existed for the same game. OddsHarvester's entries still win
+      // on a same-bookmaker conflict (its richer/live data was already the
+      // de-facto priority before this fix), but a bookmaker only the-odds-api
+      // covered is no longer thrown away.
+      const harvesterBooks = new Set(bookmakers.map((b) => b.bookmaker));
+      existing.bookmakers = [...bookmakers, ...existing.bookmakers.filter((b) => !harvesterBooks.has(b.bookmaker))];
       existing.livePeriod = match.livePeriod ?? existing.livePeriod;
       existing.liveScore = match.liveScore ?? existing.liveScore;
       existing.source = 'both';
-      existing.bookCount = Math.max(existing.bookCount, bookmakers.length);
+      // Reflects the post-union distinct-book count, not just harvester's own.
+      existing.bookCount = Math.max(existing.bookCount, existing.bookmakers.length);
       // Fill in missing eventId / commenceTime if the-odds-api didn't have them
       if (!existing.eventId) existing.eventId = match.matchUrl;
     } else {

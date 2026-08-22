@@ -32,9 +32,9 @@ function num(value: unknown): number | null {
  * Score. `sport` here is always 'mlb' in practice (the only sport with
  * props), matching `liveMarketSkill`'s own scope.
  */
-function trustTierMap(sport: string): Map<string, MarketTrust> {
+async function trustTierMap(sport: string): Promise<Map<string, MarketTrust>> {
   const map = new Map<string, MarketTrust>();
-  for (const m of liveMarketSkill(sport)) {
+  for (const m of await liveMarketSkill(sport)) {
     map.set(m.dimension, trustTierFromLiveBSS(m.bss, m.n));
   }
   return map;
@@ -112,13 +112,13 @@ export function candidateToSurfacedEntry(
  * edge once odds do arrive even though this locked row's snapshot predates
  * it.
  */
-export function logSnapshotCandidates(sport: Sport, snapshot: SportSnapshot): void {
+export async function logSnapshotCandidates(sport: Sport, snapshot: SportSnapshot): Promise<void> {
   const candidates = (snapshot.candidates ?? []).filter(isPlayerCandidate);
   const gameIds = new Set(candidates.map((c) => subjectMeta(c).gamePk).filter((id): id is number | string => id != null).map(String));
-  const propRows = [...gameIds].flatMap((gameId) => readPropOddsForGame(gameId));
-  const trustTiers = trustTierMap(sport);
+  const propRows = (await Promise.all([...gameIds].map((gameId) => readPropOddsForGame(gameId)))).flat();
+  const trustTiers = await trustTierMap(sport);
   const entries = candidates.map((c) => candidateToSurfacedEntry(sport, c, propRows, trustTiers));
-  logSurfaced(entries);
+  await logSurfaced(entries);
 }
 
 interface SnapshotGame {
@@ -138,7 +138,7 @@ interface SnapshotGame {
  * total line, which this function has no access to — that gets joined in
  * at grading time once game odds history (C0-7) exists.
  */
-export function logGameModelPredictions(sport: Sport, snapshot: SportSnapshot): void {
+export async function logGameModelPredictions(sport: Sport, snapshot: SportSnapshot): Promise<void> {
   const games = ((snapshot.context?.other as Record<string, unknown> | undefined)?.games ?? []) as SnapshotGame[];
   const entries: SurfacedEntry[] = [];
   for (const g of games) {
@@ -172,7 +172,7 @@ export function logGameModelPredictions(sport: Sport, snapshot: SportSnapshot): 
       modelProb: g.gameModel.awayWinProb,
     });
   }
-  logSurfaced(entries);
+  await logSurfaced(entries);
 }
 
 export interface GameTotalPrediction {
@@ -191,7 +191,7 @@ export interface GameTotalPrediction {
  * only needs `model_prob` + `outcome`, so this still gives the total market
  * a real, improving trust signal for the Good Bets engine to key off.
  */
-export function logGameTotalPredictions(sport: Sport, predictions: GameTotalPrediction[]): void {
+export async function logGameTotalPredictions(sport: Sport, predictions: GameTotalPrediction[]): Promise<void> {
   const entries: SurfacedEntry[] = predictions.map((p) => ({
     sport,
     subjectId: `game-${p.gamePk}`,
@@ -206,5 +206,5 @@ export function logGameTotalPredictions(sport: Sport, predictions: GameTotalPred
     eventContext: null,
     modelProb: p.overProb,
   }));
-  logSurfaced(entries);
+  await logSurfaced(entries);
 }

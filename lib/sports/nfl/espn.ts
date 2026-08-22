@@ -16,7 +16,7 @@ import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 const BASE = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
 
 async function cachedJson<T>(cacheKey: string, url: string, ttlMs: number): Promise<T | null> {
-  const cached = readSnapshotCache(cacheKey);
+  const cached = await readSnapshotCache(cacheKey);
   if (cached && Date.now() - Date.parse(cached.fetchedAt) < ttlMs) {
     return JSON.parse(cached.payload) as T;
   }
@@ -28,7 +28,7 @@ async function cachedJson<T>(cacheKey: string, url: string, ttlMs: number): Prom
   }
   if (!res.ok) return cached ? (JSON.parse(cached.payload) as T) : null;
   const json = (await res.json()) as T;
-  writeSnapshotCache(cacheKey, JSON.stringify(json));
+  await writeSnapshotCache(cacheKey, JSON.stringify(json));
   return json;
 }
 

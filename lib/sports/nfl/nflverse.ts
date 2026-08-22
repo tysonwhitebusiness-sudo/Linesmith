@@ -87,7 +87,7 @@ function espnAbbr(nflverseAbbr: string): string {
 }
 
 async function fetchNflverseCsv(release: string, file: string, cacheKey: string, ttlMs: number): Promise<Record<string, string>[]> {
-  const cached = readSnapshotCache(cacheKey);
+  const cached = await readSnapshotCache(cacheKey);
   if (cached && Date.now() - Date.parse(cached.fetchedAt) < ttlMs) {
     return JSON.parse(cached.payload) as Record<string, string>[];
   }
@@ -104,7 +104,7 @@ async function fetchNflverseCsv(release: string, file: string, cacheKey: string,
   }
   if (!res.ok) return cached ? (JSON.parse(cached.payload) as Record<string, string>[]) : [];
   const rows = parseCsv(await res.text());
-  writeSnapshotCache(cacheKey, JSON.stringify(rows));
+  await writeSnapshotCache(cacheKey, JSON.stringify(rows));
   return rows;
 }
 

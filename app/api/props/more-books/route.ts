@@ -26,16 +26,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'SportsGameOdds is not configured.' }, { status: 409 });
   }
 
-  if (isGameFinal(gameId)) {
+  if (await isGameFinal(gameId)) {
     return NextResponse.json({ error: 'This game is final — More Books is disabled.' }, { status: 409 });
   }
 
-  const budget = monthlyStatus('sportsgameodds', config.monthlyLimit, config.softCap, 'objects');
+  const budget = await monthlyStatus('sportsgameodds', config.monthlyLimit, config.softCap, 'objects');
   if (budget.exhausted) {
     return NextResponse.json({ error: 'SportsGameOdds monthly budget is exhausted.', budget }, { status: 429 });
   }
 
-  const last = lastPropFetch('sportsgameodds', gameId);
+  const last = await lastPropFetch('sportsgameodds', gameId);
   if (last && Date.now() - Date.parse(last) < COOLDOWN_MS) {
     const retryInMs = COOLDOWN_MS - (Date.now() - Date.parse(last));
     return NextResponse.json(
@@ -44,17 +44,17 @@ export async function POST(request: Request) {
     );
   }
 
-  const game = loadGameContext(gameId);
+  const game = await loadGameContext(gameId);
   if (!game) return NextResponse.json({ error: 'Game not found in the current slate.' }, { status: 404 });
 
   const result = await runProviderFetch('sportsgameodds', game);
   const objects = result.cost.objects ?? 0;
-  recordMonthlySpend('sportsgameodds', 0, objects);
+  await recordMonthlySpend('sportsgameodds', 0, objects);
 
   return NextResponse.json({
     rowsAdded: result.rows.length,
     warnings: result.warnings,
-    budget: monthlyStatus('sportsgameodds', config.monthlyLimit, config.softCap, 'objects'),
-    rows: readPropOddsForGame(gameId),
+    budget: await monthlyStatus('sportsgameodds', config.monthlyLimit, config.softCap, 'objects'),
+    rows: await readPropOddsForGame(gameId),
   });
 }

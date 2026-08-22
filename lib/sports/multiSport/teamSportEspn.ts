@@ -104,7 +104,7 @@ function isGrouped(entry: RosterAthleteEntry): entry is { items?: RawAthlete[] }
 
 export async function fetchTeamRoster(espnSport: string, espnLeague: string, teamId: string): Promise<EspnAthlete[]> {
   const cacheKey = `espn-roster:${espnSport}:${espnLeague}:${teamId}`;
-  const cached = readSnapshotCache(cacheKey);
+  const cached = await readSnapshotCache(cacheKey);
   if (cached && Date.now() - Date.parse(cached.fetchedAt) < ROSTER_TTL_MS) {
     return JSON.parse(cached.payload) as EspnAthlete[];
   }
@@ -125,6 +125,6 @@ export async function fetchTeamRoster(espnSport: string, espnLeague: string, tea
       });
     }
   }
-  writeSnapshotCache(cacheKey, JSON.stringify(athletes));
+  await writeSnapshotCache(cacheKey, JSON.stringify(athletes));
   return athletes;
 }

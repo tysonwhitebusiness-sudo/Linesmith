@@ -67,5 +67,6 @@ export async function GET(request: Request) {
       season,
     }),
     errorMessage: 'Team Statcast lookup failed',
+    request,
   });
 }

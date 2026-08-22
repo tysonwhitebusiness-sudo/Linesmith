@@ -31,9 +31,9 @@ function positionRank(position: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function gradeGolfHoleRoundPredictions(): { graded: number } {
+export async function gradeGolfHoleRoundPredictions(): Promise<{ graded: number }> {
   try {
-    const gradeable = findGradeableHolePredictions();
+    const gradeable = await findGradeableHolePredictions();
     if (gradeable.length === 0) return { graded: 0 };
 
     const rows: GradedHolePredictionInput[] = gradeable.map((p) => {
@@ -41,10 +41,10 @@ export function gradeGolfHoleRoundPredictions(): { graded: number } {
       const brierComponent = (p.predictedProb - hit) ** 2;
       return { id: p.id, hit, actualCategory: p.actualCategory, brierComponent };
     });
-    writeGradedHolePredictions(rows);
+    await writeGradedHolePredictions(rows);
     return { graded: rows.length };
   } catch (err) {
-    logSystemEvent({
+    await logSystemEvent({
       level: 'error',
       source: 'golf/models/grading',
       message: 'Failed to grade hole/round predictions',
@@ -54,9 +54,9 @@ export function gradeGolfHoleRoundPredictions(): { graded: number } {
   }
 }
 
-export function gradeGolfTournamentPredictions(): { graded: number } {
+export async function gradeGolfTournamentPredictions(): Promise<{ graded: number }> {
   try {
-    const gradeable = findGradeableTournamentPredictions();
+    const gradeable = await findGradeableTournamentPredictions();
     if (gradeable.length === 0) return { graded: 0 };
 
     const rows: GradedTournamentPredictionInput[] = gradeable.map((p) => {
@@ -78,10 +78,10 @@ export function gradeGolfTournamentPredictions(): { graded: number } {
         brierMadeCut: (p.probMadeCut - madeCut) ** 2,
       };
     });
-    writeGradedTournamentPredictions(rows);
+    await writeGradedTournamentPredictions(rows);
     return { graded: rows.length };
   } catch (err) {
-    logSystemEvent({
+    await logSystemEvent({
       level: 'error',
       source: 'golf/models/grading',
       message: 'Failed to grade tournament predictions',
@@ -91,8 +91,8 @@ export function gradeGolfTournamentPredictions(): { graded: number } {
   }
 }
 
-export function gradeAllGolfPredictions(): { holeRound: number; tournament: number } {
-  const holeRound = gradeGolfHoleRoundPredictions();
-  const tournament = gradeGolfTournamentPredictions();
+export async function gradeAllGolfPredictions(): Promise<{ holeRound: number; tournament: number }> {
+  const holeRound = await gradeGolfHoleRoundPredictions();
+  const tournament = await gradeGolfTournamentPredictions();
   return { holeRound: holeRound.graded, tournament: tournament.graded };
 }

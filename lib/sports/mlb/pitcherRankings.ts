@@ -140,7 +140,7 @@ function cacheKey(season: number): string {
 /** Role-classified, ranked, composite-scored pitcher pools — 24h cached so a normal page load never pays for a Statcast refresh. `forceRefresh` bypasses the cache (used by a manual "refresh now" trigger). */
 export async function getPitcherRoleRankings(season: number, forceRefresh = false): Promise<PitcherRoleRankings> {
   if (!forceRefresh) {
-    const cached = readSnapshotCache(cacheKey(season));
+    const cached = await readSnapshotCache(cacheKey(season));
     if (cached) {
       const age = Date.now() - Date.parse(cached.fetchedAt);
       if (age < CACHE_TTL_MS) {
@@ -159,7 +159,7 @@ export async function getPitcherRoleRankings(season: number, forceRefresh = fals
     relievers: buildPool('reliever', pools.relievers, statcast),
   };
 
-  writeSnapshotCache(cacheKey(season), JSON.stringify(result));
+  await writeSnapshotCache(cacheKey(season), JSON.stringify(result));
   return result;
 }
 
@@ -172,8 +172,8 @@ export async function getPitcherRoleRankings(season: number, forceRefresh = fals
  * fine for a manually-triggered diagnostics refresh but not for a function
  * every scan request goes through.
  */
-export function getCachedPitcherRoleRankings(season: number): PitcherRoleRankings | null {
-  const cached = readSnapshotCache(cacheKey(season));
+export async function getCachedPitcherRoleRankings(season: number): Promise<PitcherRoleRankings | null> {
+  const cached = await readSnapshotCache(cacheKey(season));
   if (!cached) return null;
   try {
     return JSON.parse(cached.payload) as PitcherRoleRankings;

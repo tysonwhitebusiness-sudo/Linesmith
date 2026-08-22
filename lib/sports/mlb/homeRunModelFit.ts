@@ -143,7 +143,7 @@ export async function buildHomeRunSeasonRows(season: number): Promise<HomeRunTra
   const batterIds = batterPool.map((b) => b.personId);
   const logsById = await getPeopleWithGameLogs(batterIds, 'hitting', season);
   const venueByGame = await buildGamePkVenueMap(season);
-  const parkFactorByVenue = new Map(readParkFactors(season).map((r) => [r.venueId, r.factor]));
+  const parkFactorByVenue = new Map((await readParkFactors(season)).map((r) => [r.venueId, r.factor]));
 
   // Pass 1 — same season-aggregate rates the live lookup will later share,
   // computed here from the batter logs this call already fetched for pass 2
@@ -265,7 +265,7 @@ export async function fitHomeRunWeights(trainSeasons: number[], holdoutSeasons: 
   // baseline on seasons it never trained on — same gate as Moneyline/Totals.
   const activated = holdoutBrier < baselineHoldoutBrier;
 
-  const savedRow = writeModelWeights(
+  const savedRow = await writeModelWeights(
     {
       sport: 'mlb',
       market: 'home-run',

@@ -202,6 +202,8 @@ A repo-wide search (excluding `node_modules`, `.next`) for `setInterval`, `cron`
 | `refreshSoccerEplJob` | 45 min (`SOCCER_EPL_INTERVAL_MS`, line 56) | `refreshSoccerEpl()` → Propline (second key) | same tables |
 | `refreshCalibration` | 2 min (`CALIBRATION_INTERVAL_MS`, line 37) | `computeCalibrationPayload()` for scopes `['all','player','game']` | `snapshot_cache`, keys from `calibrationCacheKey(scope, null)` |
 
+*Note (2026-08-19): `computeCalibrationPayload()` is pure Postgres aggregation with no odds-provider calls — for Phase 2 purposes this is not an odds job (see `docs/phase2-python-service-architecture-2026-08-19.md`), it doesn't move to Python alongside the five that do.*
+
 Tennis is explicitly not scheduled here (`multiSportRefresh.ts:125` comment: SharpAPI is already the proven primary for it).
 
 A manual/on-demand trigger also exists, separate from the scheduler: `POST /api/props/multi-sport-refresh { sport }` (`app/api/props/multi-sport-refresh/route.ts:20-33`) calls `refreshNfl()`/`refreshCfb()`/`refreshSoccerEpl()` directly. Nothing in the repo calls this route automatically.

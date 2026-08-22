@@ -178,12 +178,12 @@ export async function buildNflSnapshot(): Promise<SportSnapshot> {
   // nflPlayerRankings.ts's own doc comment: the live snapshot build can't
   // afford a cold full-pool recompute). Null until something else (the team
   // route, or a future scheduled job) has computed it at least once.
-  const playerRankings = getCachedNflPlayerRankings();
+  const playerRankings = await getCachedNflPlayerRankings();
 
   for (const game of games) {
     // Real book prices, keyed by subjectId|marketKey — an overlay, not a gate.
     const rowsByKey = new Map<string, PropOddsRow[]>();
-    for (const row of readPropOddsForGame(game.gameId)) {
+    for (const row of await readPropOddsForGame(game.gameId)) {
       if (!(row.marketKey in NFLVERSE_STAT_COLUMN_BY_MARKET)) continue;
       const key = `${row.subjectId}|${row.marketKey}`;
       const bucket = rowsByKey.get(key) ?? [];

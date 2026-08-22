@@ -9,6 +9,7 @@ import { gradeConfidence } from '@/lib/core/confidence';
 import { TeamLogo } from './SubjectAvatar';
 import { OddsChip, EdgeBadge } from './OddsChip';
 import { BookLogo } from './BookLogo';
+import { BookmakerBreakdown } from './GameLine';
 import { useGamePickHistory, type GamePickView } from './useGamePickRecord';
 import { useMarketCalibration } from './useMarketCalibration';
 import { ConfidenceChip } from './ConfidenceChip';
@@ -183,6 +184,15 @@ export function GameLinesView({ entries, onNavigate }: { entries: SlateEntry[]; 
                 ) : null}
               </div>
             )}
+
+            {projected?.available ? (
+              <BookmakerBreakdown
+                bookmakers={projected.bookmakers}
+                selectedBook={projected.headlineBook}
+                awayLabel={entry.awayAbbrev ?? entry.game.awayTeamName ?? 'Away'}
+                homeLabel={entry.homeAbbrev ?? entry.game.homeTeamName ?? 'Home'}
+              />
+            ) : null}
           </section>
         );
       })}

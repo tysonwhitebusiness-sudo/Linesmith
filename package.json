@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -H 0.0.0.0 -p 3000",
+    "dev": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 3000",
     "typecheck": "tsc --noEmit"
@@ -12,6 +12,8 @@
     "@anthropic-ai/sdk": "^0.116.0",
     "better-sqlite3": "^13.0.3",
     "next": "^15.5.4",
+    "pg": "^8.23.0",
+    "pg-copy-streams": "^7.0.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "xlsx": "^0.18.5"
@@ -19,6 +21,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.10.2",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "autoprefixer": "^10.4.20",

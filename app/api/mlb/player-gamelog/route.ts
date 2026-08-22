@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'subjectId and dimension are required' }, { status: 400 });
   }
 
-  const cached = readSnapshotCache(fullRawCacheKey(date));
+  const cached = await readSnapshotCache(fullRawCacheKey(date));
   if (!cached) {
     return NextResponse.json({ error: 'No full history cached for this date yet' }, { status: 404 });
   }

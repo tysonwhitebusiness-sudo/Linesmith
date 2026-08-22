@@ -658,7 +658,7 @@ export async function getGolfSnapshot(now: Date = new Date()): Promise<SportSnap
             roundScoreSd: ROUND_SCORE_SD,
           });
 
-          logGolfTournamentPredictions(
+          await logGolfTournamentPredictions(
             tournamentPrediction.outcomes.map((o) => ({
               eventId: event.id,
               espnId: o.espnId,
@@ -672,10 +672,10 @@ export async function getGolfSnapshot(now: Date = new Date()): Promise<SportSnap
       }
     }
 
-    logGolfModelPredictions(predictionLogRows);
+    await logGolfModelPredictions(predictionLogRows);
   } catch (err) {
     warnings.push('Golf prediction models failed to compute this poll — Scan/Player Detail scores unavailable until next refresh.');
-    logSystemEvent({
+    await logSystemEvent({
       level: 'error',
       source: 'golf/adapter/predictions',
       message: 'Failed to compute golf prediction models for this poll',
@@ -686,14 +686,14 @@ export async function getGolfSnapshot(now: Date = new Date()): Promise<SportSnap
   // Silent side path — starts golf's own history accumulation (see
   // historyIngest.ts) without changing anything about what this function
   // returns or how long it takes to fail.
-  ingestGolfHistory(event, weather, now);
+  void ingestGolfHistory(event, weather, now);
 
   // Grades any prediction logged above that now has a matching real result
   // (see grading.ts) — run after ingestGolfHistory specifically, since
   // that's what just wrote the golf_hole_scores/golf_round_scores rows a
   // prediction grades against. Non-fatal by construction (grading.ts
   // swallows its own errors), so no try/catch needed here.
-  gradeAllGolfPredictions();
+  void gradeAllGolfPredictions();
 
   return {
     sport: 'golf',

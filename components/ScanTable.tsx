@@ -17,7 +17,7 @@ import { compareInk, gradientCardStyle } from '@/lib/ui/heat';
 import { MarketLine } from './MarketLabel';
 import { SubjectAvatar, TeamLogo } from './SubjectAvatar';
 import { AverageCell, GradientRateCell, GradientStreakCell, GradientDeltaCell } from './StatCells';
-import { OddsChip } from './OddsChip';
+import { OddsChip, NoOddsCell } from './OddsChip';
 import { BookLogo } from './BookLogo';
 import { resolveCandidateEdge, type PropOddsRow } from './usePropOdds';
 import {
@@ -195,7 +195,17 @@ function GolfLineCell({ candidate }: { candidate: PickCandidate }) {
 }
 
 /** Odds — shared between MLB's column order and golf's (which now places it after Hole rather than first). */
-function OddsCell({ row, candidate, onAdd }: { row: Row; candidate: PickCandidate; onAdd?: ScanTableProps['onAdd'] }) {
+function OddsCell({
+  row,
+  candidate,
+  onAdd,
+  pending,
+}: {
+  row: Row;
+  candidate: PickCandidate;
+  onAdd?: ScanTableProps['onAdd'];
+  pending: boolean;
+}) {
   return (
     <td className="px-2 py-1 text-center">
       {row.price != null ? (
@@ -203,20 +213,9 @@ function OddsCell({ row, candidate, onAdd }: { row: Row; candidate: PickCandidat
           <BookLogo bookId={row.bookmaker} size={11} />
           <OddsChip price={row.price} source={row.priceSource} capturedAt={row.priceCapturedAt} />
         </span>
-      ) : onAdd ? (
-        <button
-          type="button"
-          onClick={() => {
-            // No prop-price feed exists; adding to the slip is where a price can actually be recorded.
-            onAdd(candidate);
-          }}
-          title="No price posted for this market yet — this row can still qualify for Good Bets on performance or matchup alone, but check your sportsbook directly before betting it."
-          className="rounded px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap bg-[#fdf1d8] text-[#93630a] transition-colors hover:bg-[#fbe6b8]"
-        >
-          No Odds — Check Book
-        </button>
       ) : (
-        <span className="text-ink-faint">—</span>
+        // No prop-price feed exists; adding to the slip is where a price can actually be recorded.
+        <NoOddsCell pending={pending} onAdd={onAdd ? () => onAdd(candidate) : undefined} />
       )}
     </td>
   );
@@ -511,6 +510,18 @@ export function ScanTable({
     return built;
   }, [candidates, sortCol, sortDir, propRows, userSportsbook, showReasons, trustedMarkets, trustTiers]);
 
+  // Cheapest real signal for "is the odds refresh for this slate still in
+  // flight, or has it already run and this row genuinely has no coverage" —
+  // see NoOddsCell's doc comment in OddsChip.tsx. Golf excluded: no book
+  // prices hole props at all (a permanent, structural gap, not a transient
+  // one — see golfColumns' own comment above), so EVERY golf row always has
+  // price == null and the heuristic would misread that as "still loading"
+  // forever instead of the real "Check Book" state.
+  const oddsPending = useMemo(
+    () => sport !== 'golf' && rows.length > 0 && rows.every((r) => r.price == null),
+    [rows, sport],
+  );
+
   const handleSort = (column: SortColumn) => {
     if (sortCol === column) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -685,7 +696,7 @@ export function ScanTable({
                         {holeNumberOf(candidate.dimension) ?? <span className="text-ink-faint">—</span>}
                       </td>
 
-                      <OddsCell row={row} candidate={candidate} onAdd={onAdd} />
+                      <OddsCell row={row} candidate={candidate} onAdd={onAdd} pending={oddsPending} />
 
                       {/* Thru — where the golfer actually is live, so the Hole
                           column's target reads as "N holes away" at a glance
@@ -720,7 +731,7 @@ export function ScanTable({
                     </>
                   ) : (
                     <>
-                      <OddsCell row={row} candidate={candidate} onAdd={onAdd} />
+                      <OddsCell row={row} candidate={candidate} onAdd={onAdd} pending={oddsPending} />
 
                       {/* 3 — Implied probability */}
                       <td className="px-2 py-1 text-center tabular-nums">

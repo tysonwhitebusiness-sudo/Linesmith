@@ -56,7 +56,7 @@ function parseSeasonLog(json: any): SeasonEventResult[] {
 
 export async function getPlayerSeasonLog(espnId: string, season = new Date().getFullYear()): Promise<PlayerSeasonLog> {
   const cacheKey = `${CACHE_KEY_PREFIX}${espnId}:${season}`;
-  const cached = readSnapshotCache(cacheKey);
+  const cached = await readSnapshotCache(cacheKey);
   const ageMs = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
 
   if (cached && ageMs < TTL_MS) {
@@ -65,7 +65,7 @@ export async function getPlayerSeasonLog(espnId: string, season = new Date().get
 
   const json = await fetchAthleteSeason(espnId, season);
   const events = json ? parseSeasonLog(json) : [];
-  if (json) writeSnapshotCache(cacheKey, JSON.stringify(events));
+  if (json) await writeSnapshotCache(cacheKey, JSON.stringify(events));
 
   return { espnId, season, events, fetchedAt: new Date().toISOString(), fromCache: false };
 }

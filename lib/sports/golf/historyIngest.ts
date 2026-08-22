@@ -54,11 +54,11 @@ function madeCutFrom(positionDisplayName: string | undefined): boolean {
   return !/^(cut|wd|dq)$/i.test(positionDisplayName.trim());
 }
 
-export function ingestGolfHistory(event: EspnGolfEvent, weather: WeatherContext | undefined, now: Date): void {
+export async function ingestGolfHistory(event: EspnGolfEvent, weather: WeatherContext | undefined, now: Date): Promise<void> {
   try {
     const course = event.course;
 
-    writeGolfTournament({
+    await writeGolfTournament({
       eventId: event.id,
       name: event.name,
       courseName: course?.name ?? null,
@@ -142,14 +142,17 @@ export function ingestGolfHistory(event: EspnGolfEvent, weather: WeatherContext 
       }
     }
 
-    writeGolfHoleScores(holeRows);
-    writeGolfRoundScores(roundRows);
-    if (resultRows.length > 0) writeGolfTournamentResults(resultRows);
+    await writeGolfHoleScores(holeRows);
+    await writeGolfRoundScores(roundRows);
+    if (resultRows.length > 0) await writeGolfTournamentResults(resultRows);
   } catch (err) {
     // Never let a history-write failure break the live snapshot this runs
     // alongside — same non-fatal contract as every other best-effort side
-    // path in this app (see logSystemEvent's own call sites).
-    logSystemEvent({
+    // path in this app (see logSystemEvent's own call sites). Everything
+    // above is now properly awaited specifically so this catch can actually
+    // catch a failed write — an unawaited rejection inside a sync function
+    // would have skipped straight past this block as an unhandled rejection.
+    await logSystemEvent({
       level: 'error',
       source: 'golf/historyIngest',
       message: 'Failed to persist golf history for this poll',

@@ -25,5 +25,5 @@ export async function POST(request: Request) {
   if (!gameId) return NextResponse.json({ error: 'gameId is required' }, { status: 400 });
 
   const summary = await refreshTier1(gameId);
-  return NextResponse.json({ summary, rows: readPropOddsForGame(gameId) });
+  return NextResponse.json({ summary, rows: await readPropOddsForGame(gameId) });
 }

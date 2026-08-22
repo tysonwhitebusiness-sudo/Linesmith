@@ -262,7 +262,7 @@ interface SerializedRankings { season: string; computedAt: string; players: Rank
 /** 24h-cached position-pooled composites — a normal page load never pays for a recompute across the full player pool. */
 export async function getNflPlayerRankings(season: string = MOST_RECENT_STATS_SEASON, forceRefresh = false): Promise<NflPlayerRankings> {
   if (!forceRefresh) {
-    const cached = readSnapshotCache(cacheKey(season));
+    const cached = await readSnapshotCache(cacheKey(season));
     if (cached && Date.now() - Date.parse(cached.fetchedAt) < CACHE_TTL_MS) {
       const parsed = JSON.parse(cached.payload) as SerializedRankings;
       return { season: parsed.season, computedAt: parsed.computedAt, byGsis: new Map(parsed.players.map((p) => [p.gsisId, p])) };
@@ -270,13 +270,13 @@ export async function getNflPlayerRankings(season: string = MOST_RECENT_STATS_SE
   }
   const result = await computeRankings(season);
   const serialized: SerializedRankings = { season: result.season, computedAt: result.computedAt, players: [...result.byGsis.values()] };
-  writeSnapshotCache(cacheKey(season), JSON.stringify(serialized));
+  await writeSnapshotCache(cacheKey(season), JSON.stringify(serialized));
   return result;
 }
 
 /** Same bundle, but never recomputes — reads whatever's cached, however stale, null if nothing's been computed yet. Safe to call from the live snapshot-build path (mirrors `getCachedBatterRankings`'s exact reasoning: the live path can't afford a cold full-pool recompute). */
-export function getCachedNflPlayerRankings(season: string = MOST_RECENT_STATS_SEASON): NflPlayerRankings | null {
-  const cached = readSnapshotCache(cacheKey(season));
+export async function getCachedNflPlayerRankings(season: string = MOST_RECENT_STATS_SEASON): Promise<NflPlayerRankings | null> {
+  const cached = await readSnapshotCache(cacheKey(season));
   if (!cached) return null;
   try {
     const parsed = JSON.parse(cached.payload) as SerializedRankings;

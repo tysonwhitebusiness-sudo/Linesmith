@@ -46,8 +46,8 @@ export interface GameSimInput {
   venueId?: number;
 }
 
-/** Cheap synchronous read for the live prediction path — never runs a simulation itself. Null (not a thrown error) whenever nothing's cached yet, so callers fall back to their existing neutral impute. */
-export function loadGameSim(gamePk: number | string): GameSimCacheRow | null {
+/** Cheap read for the live prediction path — never runs a simulation itself. Null (not a thrown error) whenever nothing's cached yet, so callers fall back to their existing neutral impute. */
+export async function loadGameSim(gamePk: number | string): Promise<GameSimCacheRow | null> {
   return readGameSimCache('mlb', String(gamePk));
 }
 
@@ -71,7 +71,7 @@ export async function ensureGameSims(inputs: GameSimInput[]): Promise<void> {
     if (g.homeLineup.length < 9 || g.awayLineup.length < 9 || !g.homeStarterId || !g.awayStarterId) continue;
 
     const lineupSource: 'posted' | 'projected' = g.homeLineupProjected || g.awayLineupProjected ? 'projected' : 'posted';
-    const existing = loadGameSim(g.gamePk);
+    const existing = await loadGameSim(g.gamePk);
     // Nothing left to improve once we have a posted-lineup row. And a
     // projected row is never worth replacing with ANOTHER projected row —
     // the projected lineup/starter don't change between rebuilds, so
@@ -92,7 +92,7 @@ export async function ensureGameSims(inputs: GameSimInput[]): Promise<void> {
         venueId: g.venueId ?? null,
       };
       const result = await simulateGameForContext(context, LIVE_SIM_N);
-      writeGameSimCache({
+      await writeGameSimCache({
         sport: 'mlb',
         gameId: String(g.gamePk),
         homeWinProb: result.homeWinProb,

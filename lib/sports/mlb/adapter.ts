@@ -60,7 +60,7 @@ import type {
 } from './statsapi';
 import { battersUntil, measuredGamePace, mlbEta } from './timing';
 import { getWeather } from '../../weather/openMeteo';
-import { leagueBaseRates, getActiveModelWeights, type ModelWeightsRow } from '../../db/client';
+import { leagueBaseRates, getActiveModelWeights, readGameModelCache, type ModelWeightsRow } from '../../db/client';
 import { computeModelProbability } from '../../odds/props/edgeModel';
 import { applyFittedHomeRunWeights, applyLineupConfidence, parkHrFactorCentered, expectedPaCentered, pitcherMatchupSignal } from './homeRunModel';
 import { loadTeamHrRateAllowedCache, type TeamHrRateAllowedCache } from './homeRunLiveMatchup';
@@ -251,6 +251,28 @@ function weatherRunsFactor(venueName: string | undefined, tempF: number | undefi
 const HISTORY_WINDOW = 15;
 /** How far back to pull linescores/probables for derived history. */
 const RANGE_DAYS = 45;
+/**
+ * Phase O of docs/mlb-prediction-engine-ts-cutover-gameplan-2026-08-22.md —
+ * a mlb_game_model_cache row older than this is treated as missing, not
+ * trusted stale data, and this file falls back to computing gameModel/Elo
+ * live instead. 2x the Python worker's own 15min computeMlbGameModelJob
+ * interval, matching health_check.py's own STALE_MULTIPLIER convention for
+ * exactly the same reason: the queue is priority-ordered, not a strict
+ * timer, so a single legitimately-late cycle shouldn't trigger fallback —
+ * only a genuinely stopped job should.
+ */
+const GAME_MODEL_CACHE_MAX_AGE_MS = 30 * 60_000;
+
+interface GameEloContext {
+  home: { elo: number; gamesPlayed: number };
+  away: { elo: number; gamesPlayed: number };
+  homeRestDays: number;
+  awayRestDays: number;
+  homeTravelMiles: number;
+  awayTravelMiles: number;
+  homePitcherAdj: number;
+  awayPitcherAdj: number;
+}
 
 // ---------------------------------------------------------------------------
 // Slate assembly
@@ -1789,7 +1811,7 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
   // ever loaded /diagnostics's Pitcher Rankings card for just quietly
   // contributes no Statcast columns rather than blocking or failing this
   // request, which every scan goes through.
-  const statcastRates = getCachedStatcastPitcherRates(season);
+  const statcastRates = await getCachedStatcastPitcherRates(season);
   const leaguePitcherStatsEnriched = leaguePitcherStats.map((p) => {
     const sc = statcastRates.get(p.personId);
     if (!sc) return p;
@@ -1813,7 +1835,7 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
   // from its one cache, not two slightly-different calculations of "how good
   // is this pitcher". Cache-only for the same hot-path-safety reason as the
   // Statcast merge above.
-  const roleRankings = getCachedPitcherRoleRankings(season);
+  const roleRankings = await getCachedPitcherRoleRankings(season);
   const starterOverallRankById = new Map(
     roleRankings?.starters.map((p) => [p.personId, { rank: p.overallRank, poolSize: p.poolSize }]) ?? [],
   );
@@ -1822,14 +1844,14 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
   // composite ranks, same "one ranking, read from its one cache" reasoning
   // as `starterOverallRankById` above (see batterRankings.ts). Cache-only
   // for the same hot-path-safety reason as the Statcast merge above.
-  const batterRankings = getCachedBatterRankings(season);
+  const batterRankings = await getCachedBatterRankings(season);
   const batterRankingsById = new Map(batterRankings?.batters.map((b) => [b.personId, b]) ?? []);
 
   // Phase C.1's Beta prior center per market — real, not assumed, from every
   // graded outcome pick_history has seen so far. Empty on a totally fresh
   // install (no grading has happened yet); computeModelProbability treats a
   // missing rate as "no candidates for this market" rather than guessing.
-  const leagueRates = new Map(leagueBaseRates('mlb').map((r) => [r.dimension, r.rate]));
+  const leagueRates = new Map((await leagueBaseRates('mlb')).map((r) => [r.dimension, r.rate]));
 
   // Home Run model plan, Phase 6 — read once per snapshot, not per candidate.
   // Null until a fit actually beats the live Beta-Binomial baseline on
@@ -1837,17 +1859,17 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
   // falls back to the plain Beta-Binomial modelProb, unchanged, when this is
   // null — same "only override when fitted is present" shape as
   // app/api/odds/lines/route.ts's `if (fitted)` for moneyline/total.
-  const homeRunModel = getActiveModelWeights('mlb', 'home-run');
+  const homeRunModel = await getActiveModelWeights('mlb', 'home-run');
   // Named distinctly from the game-level `parkFactorCache` declared later in
   // this function (moneyline/total's own park-factor pass) — same
   // loadParkFactorCache(season) call, just a separate local binding so the
   // two independent scopes don't collide.
-  const hrParkFactorCache = loadParkFactorCache(season);
+  const hrParkFactorCache = await loadParkFactorCache(season);
   // Live pitcher-matchup signal — cheap cached read (see homeRunLiveMatchup.ts).
   // Refreshed periodically via POST /api/mlb/refresh-hr-matchup, not here;
   // falls back to the neutral league rate on its own if that's never been run
   // yet for this season, so this call is always safe.
-  const hrTeamMatchupCache = loadTeamHrRateAllowedCache(season);
+  const hrTeamMatchupCache = await loadTeamHrRateAllowedCache(season);
 
   // Handedness for every listed starter in the window, for the vs-hand split.
   const starterIds = [...startersByGame.values()].flatMap((s) => [s.homeId, s.awayId]).filter((id): id is number => !!id);
@@ -2201,7 +2223,7 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
    */
   // Loaded once per snapshot build (cached table read, no network call) rather
   // than per game — a park's factor doesn't change within a single request.
-  const parkFactorCache = loadParkFactorCache(season);
+  const parkFactorCache = await loadParkFactorCache(season);
 
   const gameModelFor = (g: SlateGame) => {
     const home = teamContext(g.home.teamId);
@@ -2250,9 +2272,73 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
   // team's still-pregame state across its two games.
   const eloByTeam = new Map<number, CurrentElo>();
   for (const g of games) {
-    if (!eloByTeam.has(g.home.teamId)) eloByTeam.set(g.home.teamId, getCurrentElo(g.home.teamId, season));
-    if (!eloByTeam.has(g.away.teamId)) eloByTeam.set(g.away.teamId, getCurrentElo(g.away.teamId, season));
+    if (!eloByTeam.has(g.home.teamId)) eloByTeam.set(g.home.teamId, await getCurrentElo(g.home.teamId, season));
+    if (!eloByTeam.has(g.away.teamId)) eloByTeam.set(g.away.teamId, await getCurrentElo(g.away.teamId, season));
   }
+
+  /**
+   * Phase O of the TS cutover gameplan
+   * (docs/mlb-prediction-engine-ts-cutover-gameplan-2026-08-22.md): Python's
+   * computeMlbGameModelJob independently computes gameModel + Elo for every
+   * pre-game matchup and writes it to mlb_game_model_cache on a 15min
+   * cadence. Prefer that here — it's now the same computation this file
+   * would otherwise do itself, just computed once by the worker instead of
+   * once per snapshot rebuild. Falls back to the exact prior live-compute
+   * path (gameModelFor + getCurrentElo/restAndTravelFromState/
+   * pitcherAdjustment, unchanged below) whenever the cache row is missing
+   * OR older than GAME_MODEL_CACHE_MAX_AGE_MS — a stale row (the job
+   * stopped running) must never silently keep serving an old prediction
+   * forever, it should degrade to exactly today's behavior instead.
+   */
+  const gameModelAndEloFor = async (
+    g: SlateGame,
+  ): Promise<{ gameModel: ReturnType<typeof computeMoneylineModel> | null; elo: GameEloContext }> => {
+    const cached = await readGameModelCache('mlb', String(g.gamePk));
+    if (cached && Date.now() - Date.parse(cached.computedAt) <= GAME_MODEL_CACHE_MAX_AGE_MS) {
+      return {
+        gameModel: {
+          homeWinProb: cached.homeWinProb,
+          awayWinProb: cached.awayWinProb,
+          homeExpectedRuns: cached.homeExpectedRuns,
+          awayExpectedRuns: cached.awayExpectedRuns,
+          diagnostics: cached.diagnostics,
+        },
+        elo: {
+          home: { elo: cached.homeElo, gamesPlayed: cached.homeGamesPlayed },
+          away: { elo: cached.awayElo, gamesPlayed: cached.awayGamesPlayed },
+          homeRestDays: cached.homeRestDays,
+          awayRestDays: cached.awayRestDays,
+          homeTravelMiles: cached.homeTravelMiles,
+          awayTravelMiles: cached.awayTravelMiles,
+          homePitcherAdj: cached.homePitcherAdj,
+          awayPitcherAdj: cached.awayPitcherAdj,
+        },
+      };
+    }
+
+    // Fallback — identical to the live computation this replaced.
+    const home = eloByTeam.get(g.home.teamId)!;
+    const away = eloByTeam.get(g.away.teamId)!;
+    const homeRT = restAndTravelFromState(home, g.gameDate, g.home.teamId);
+    const awayRT = restAndTravelFromState(away, g.gameDate, g.home.teamId);
+    const [homePitcherAdj, awayPitcherAdj] = await Promise.all([
+      pitcherAdjustment(g.home.starterId ?? null, g.home.teamId, season, g.gameDate),
+      pitcherAdjustment(g.away.starterId ?? null, g.away.teamId, season, g.gameDate),
+    ]);
+    return {
+      gameModel: gameModelFor(g),
+      elo: {
+        home: { elo: home.elo, gamesPlayed: home.gamesPlayed },
+        away: { elo: away.elo, gamesPlayed: away.gamesPlayed },
+        homeRestDays: homeRT.restDays,
+        awayRestDays: awayRT.restDays,
+        homeTravelMiles: homeRT.miles,
+        awayTravelMiles: awayRT.miles,
+        homePitcherAdj,
+        awayPitcherAdj,
+      },
+    };
+  };
 
   return {
     sport: 'mlb',
@@ -2263,7 +2349,7 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
     subjects,
     context: {
       other: {
-        games: games.map((g) => ({
+        games: await Promise.all(games.map(async (g) => ({
           gamePk: g.gamePk,
           matchup: `${g.away.abbreviation} @ ${g.home.abbreviation}`,
           // Full names are what the Odds API keys its events on.
@@ -2287,27 +2373,9 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
           weatherNarrative: weatherNarrative(g.weather, g.gameDate, g.venueName),
           away: teamContext(g.away.teamId),
           home: teamContext(g.home.teamId),
-          gameModel: gameModelFor(g),
-          elo: (() => {
-            const home = eloByTeam.get(g.home.teamId)!;
-            const away = eloByTeam.get(g.away.teamId)!;
-            // Today's game is played at the home team's park either way —
-            // that's the destination for both teams' travel calculation.
-            const homeRT = restAndTravelFromState(home, g.gameDate, g.home.teamId);
-            const awayRT = restAndTravelFromState(away, g.gameDate, g.home.teamId);
-            return {
-              home: { elo: home.elo, gamesPlayed: home.gamesPlayed },
-              away: { elo: away.elo, gamesPlayed: away.gamesPlayed },
-              homeRestDays: homeRT.restDays,
-              awayRestDays: awayRT.restDays,
-              homeTravelMiles: homeRT.miles,
-              awayTravelMiles: awayRT.miles,
-              homePitcherAdj: pitcherAdjustment(g.home.starterId ?? null, g.home.teamId, season, g.gameDate),
-              awayPitcherAdj: pitcherAdjustment(g.away.starterId ?? null, g.away.teamId, season, g.gameDate),
-            };
-          })(),
+          ...(await gameModelAndEloFor(g)),
           ...liveScoreboard(g),
-        })),
+        }))),
         statKeys: TEAM_STAT_KEYS,
       },
     },

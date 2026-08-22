@@ -104,7 +104,7 @@ export interface BackfillSummary {
 }
 
 export async function backfillModelCalibration(season: number): Promise<BackfillSummary> {
-  const subjectIds = listKnownSubjects('mlb')
+  const subjectIds = (await listKnownSubjects('mlb'))
     .map(Number)
     .filter((id) => Number.isFinite(id));
   if (subjectIds.length === 0) return { subjectsConsidered: 0, rowsWritten: 0 };
@@ -125,7 +125,7 @@ export async function backfillModelCalibration(season: number): Promise<Backfill
       const person = def.isPitcher ? pitchingPerson : hittingPerson;
       if (!person || person.gameLog.length === 0) continue;
       const entries = backfillOnePlayerMarket(String(id), person.fullName, person.gameLog, def);
-      if (entries.length > 0) rowsWritten += writeBackfill(entries);
+      if (entries.length > 0) rowsWritten += await writeBackfill(entries);
     }
   }
 

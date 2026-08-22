@@ -65,12 +65,12 @@ export async function computeParkFactors(season: number): Promise<ParkFactorResu
 /** Recomputes and persists — the diagnostics-triggered refresh path. */
 export async function refreshParkFactors(season: number): Promise<ParkFactorResult[]> {
   const results = await computeParkFactors(season);
-  writeParkFactors(season, results);
+  await writeParkFactors(season, results);
   return results;
 }
 
 /** Live-path lookup table, read once per snapshot build rather than per game. */
-export function loadParkFactorCache(season: number): Map<number, number> {
-  const rows = readParkFactors(season);
+export async function loadParkFactorCache(season: number): Promise<Map<number, number>> {
+  const rows = await readParkFactors(season);
   return new Map(rows.map((r) => [r.venueId, r.factor]));
 }

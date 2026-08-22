@@ -27,7 +27,7 @@ export async function refreshTeamHrRateAllowed(season: number): Promise<void> {
     gamesFaced: teamGamesFaced.get(teamId) ?? 0,
     gamesWithHrAllowed: teamGamesWithHrAllowed.get(teamId) ?? 0,
   }));
-  writeTeamHrRateAllowed(season, leagueHrRate, rows);
+  await writeTeamHrRateAllowed(season, leagueHrRate, rows);
 }
 
 export interface TeamHrRateAllowedCache {
@@ -39,8 +39,8 @@ export interface TeamHrRateAllowedCache {
 const FALLBACK_LEAGUE_HR_RATE = 0.11;
 
 /** Live-path lookup, read once per snapshot build rather than per candidate — same pattern as parkFactors.ts's loadParkFactorCache. Falls back to a fixed neutral league rate (not 0 — see homeRunModel.ts's pitcherMatchupSignal, whose log-odds baseline is the league rate, not zero) when the cache has never been refreshed for this season yet. */
-export function loadTeamHrRateAllowedCache(season: number): TeamHrRateAllowedCache {
-  const rows = readTeamHrRateAllowed(season);
+export async function loadTeamHrRateAllowedCache(season: number): Promise<TeamHrRateAllowedCache> {
+  const rows = await readTeamHrRateAllowed(season);
   if (rows.length === 0) {
     return { leagueHrRate: FALLBACK_LEAGUE_HR_RATE, rateFor: () => FALLBACK_LEAGUE_HR_RATE };
   }

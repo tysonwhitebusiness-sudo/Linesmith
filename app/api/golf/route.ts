@@ -6,7 +6,7 @@ export const revalidate = 0;
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-export async function GET() {
+export async function GET(request: Request) {
   // Stale-serve-then-refresh-in-background — a stale cache used to still
   // block the response on a full ESPN+weather+PGA-Tour rebuild (measured
   // 14.3s on a cold cache).
@@ -15,5 +15,6 @@ export async function GET() {
     ttlMs: CACHE_TTL_MS,
     build: getGolfSnapshot,
     errorMessage: 'Golf snapshot failed',
+    request,
   });
 }

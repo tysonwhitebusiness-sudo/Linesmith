@@ -205,7 +205,7 @@ export async function getGolfTournamentLines(subjects: SubjectSummary[], force =
     return disabled('SharpAPI is disabled or SHARPAPI_KEY is not set — Match Winner odds are turned off.');
   }
 
-  const cached = readOddsCache(CACHE_KEY);
+  const cached = await readOddsCache(CACHE_KEY);
   const ageMs = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
   if (cached && ageMs < TTL_MS && !force) {
     const rows = JSON.parse(cached.payload) as SharpApiGolfRow[];
@@ -221,6 +221,6 @@ export async function getGolfTournamentLines(subjects: SubjectSummary[], force =
     return { ...disabled('SharpAPI request failed and there is no cached copy yet.'), enabled: true };
   }
 
-  writeOddsCache(CACHE_KEY, JSON.stringify(board.data), null, null);
+  await writeOddsCache(CACHE_KEY, JSON.stringify(board.data), null, null);
   return resolveFromBoard(board.data, subjects, new Date().toISOString(), false, []);
 }

@@ -22,17 +22,26 @@ import { recentFetchErrors } from '@/lib/sports/mlb/statsapi';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  return NextResponse.json({
-    tables: dbTableRowCounts(),
-    dataAccumulation: dataAccumulationSnapshot(),
-    elo: eloCoverage(),
-    parkFactors: parkFactorCoverage(),
-    historicalOdds: historicalOddsCoverage(),
-    statsApiErrors: recentFetchErrors(),
-    recentEvents: listRecentSystemEvents(50),
+  const [tables, dataAccumulation, elo, parkFactors, historicalOdds, recentEvents, golfCalibration] = await Promise.all([
+    dbTableRowCounts(),
+    dataAccumulationSnapshot(),
+    eloCoverage(),
+    parkFactorCoverage(),
+    historicalOddsCoverage(),
+    listRecentSystemEvents(50),
     // Golf Phase A models' "how is it performing" check — see project
     // memory's golf model gameplan. Every field stays null until at least
     // one logged prediction has actually been graded against a real result.
-    golfCalibration: golfCalibrationSummary(),
+    golfCalibrationSummary(),
+  ]);
+  return NextResponse.json({
+    tables,
+    dataAccumulation,
+    elo,
+    parkFactors,
+    historicalOdds,
+    statsApiErrors: recentFetchErrors(),
+    recentEvents,
+    golfCalibration,
   });
 }

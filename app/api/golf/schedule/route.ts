@@ -27,5 +27,6 @@ export async function GET(request: Request) {
     ttlMs: CACHE_TTL_MS,
     build: () => getSeasonSchedule(year),
     errorMessage: 'Golf schedule lookup failed.',
+    request,
   });
 }

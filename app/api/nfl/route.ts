@@ -11,11 +11,12 @@ ensureSchedulerStarted();
 // than the underlying prop_odds rows change.
 const TTL_MS = 4 * 60_000;
 
-export async function GET() {
+export async function GET(request: Request) {
   return cachedRoute({
     cacheKey: 'nfl:snapshot',
     ttlMs: TTL_MS,
     build: buildNflSnapshot,
     errorMessage: 'NFL snapshot failed',
+    request,
   });
 }

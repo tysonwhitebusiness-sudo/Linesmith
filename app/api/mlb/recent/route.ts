@@ -57,5 +57,6 @@ export async function GET(request: Request) {
       };
     },
     errorMessage: 'Recent-results lookup failed',
+    request,
   });
 }

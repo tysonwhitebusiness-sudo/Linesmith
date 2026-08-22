@@ -38,7 +38,7 @@ export async function POST(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const requested = parseSeasonList(searchParams.get('seasons'));
-    const seasons = requested ?? [...new Set(historicalOddsCoverage().map((r) => r.season))].sort((a, b) => a - b);
+    const seasons = requested ?? [...new Set((await historicalOddsCoverage()).map((r) => r.season))].sort((a, b) => a - b);
 
     const results = [];
     for (const season of seasons) {
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('[api/props/game-total-backfill]', error);
-    logSystemEvent({ level: 'error', source: 'api/props/game-total-backfill', message: error instanceof Error ? error.message : String(error) });
+    await logSystemEvent({ level: 'error', source: 'api/props/game-total-backfill', message: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: 'Total backfill failed', detail: error instanceof Error ? error.message : String(error) },
       { status: 502 },

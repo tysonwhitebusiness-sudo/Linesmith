@@ -42,7 +42,7 @@ const RECORD_START_DATE = easternDate();
 
 export async function computeCalibrationPayload(scope: CalibrationScope, dimension: string | null) {
   const sport = 'mlb';
-  const byMarket = calibrationByMarket(sport);
+  const byMarket = await calibrationByMarket(sport);
   const trustedDimensions = byMarket.filter((m) => isMarketTrusted(m.brierScore, m.n)).map((m) => m.dimension);
   // The record itself only ever covers moneyline/total, and only once
   // they're trusted — narrower than `trustedDimensions`, which still
@@ -53,15 +53,16 @@ export async function computeCalibrationPayload(scope: CalibrationScope, dimensi
   // above, which is raw-Brier-based and drives Good Bets gating). Sent as a
   // plain object, not a Map — JSON has no Map type, and useMarketCalibration
   // rebuilds the Map client-side.
-  const trustTiers = Object.fromEntries(liveMarketSkill(sport).map((m) => [m.dimension, trustTierFromLiveBSS(m.bss, m.n)]));
+  const liveSkill = await liveMarketSkill(sport);
+  const trustTiers = Object.fromEntries(liveSkill.map((m) => [m.dimension, trustTierFromLiveBSS(m.bss, m.n)]));
 
   return {
-    counts: dimension ? calibrationCountsForDimension(sport, dimension) : calibrationCounts(sport, scope),
-    buckets: dimension ? calibrationBucketsForDimension(sport, dimension) : calibrationBuckets(sport, scope),
+    counts: dimension ? await calibrationCountsForDimension(sport, dimension) : await calibrationCounts(sport, scope),
+    buckets: dimension ? await calibrationBucketsForDimension(sport, dimension) : await calibrationBuckets(sport, scope),
     byMarket,
-    overallBrierScore: dimension ? (byMarket.find((m) => m.dimension === dimension)?.brierScore ?? null) : overallBrierScore(sport, scope),
-    goodBets: goodBetsRecord(sport, recordDimensions, `${RECORD_START_DATE} 00:00:00`),
+    overallBrierScore: dimension ? (byMarket.find((m) => m.dimension === dimension)?.brierScore ?? null) : await overallBrierScore(sport, scope),
+    goodBets: await goodBetsRecord(sport, recordDimensions, `${RECORD_START_DATE} 00:00:00`),
     trustTiers,
-    scoreRecord: scoreRecord(sport),
+    scoreRecord: await scoreRecord(sport),
   };
 }

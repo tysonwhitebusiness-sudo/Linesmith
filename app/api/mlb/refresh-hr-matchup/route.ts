@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ season, refreshedAt: new Date().toISOString() });
   } catch (error) {
     console.error('[api/mlb/refresh-hr-matchup]', error);
-    logSystemEvent({ level: 'error', source: 'api/mlb/refresh-hr-matchup', message: error instanceof Error ? error.message : String(error) });
+    await logSystemEvent({ level: 'error', source: 'api/mlb/refresh-hr-matchup', message: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: 'Refresh failed', detail: error instanceof Error ? error.message : String(error) },
       { status: 502 },

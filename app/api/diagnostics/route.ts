@@ -171,7 +171,7 @@ export async function GET(request: Request) {
     );
   } catch (error) {
     console.error('[api/diagnostics]', error);
-    logSystemEvent({ level: 'error', source: 'api/diagnostics', message: error instanceof Error ? error.message : 'Diagnostics failed.' });
+    await logSystemEvent({ level: 'error', source: 'api/diagnostics', message: error instanceof Error ? error.message : 'Diagnostics failed.' });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Diagnostics failed.' },
       { status: 502 },

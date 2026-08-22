@@ -36,8 +36,8 @@ const SIM_ITERATIONS = 3000;
 
 export const dynamic = 'force-dynamic';
 
-function readGolfSnapshot(): SportSnapshot | null {
-  const cached = readSnapshotCache('golf:snapshot');
+async function readGolfSnapshot(): Promise<SportSnapshot | null> {
+  const cached = await readSnapshotCache('golf:snapshot');
   if (!cached) return null;
   try {
     return JSON.parse(cached.payload) as SportSnapshot;
@@ -133,11 +133,11 @@ async function buildSharedPredictions(snapshot: SportSnapshot): Promise<SharedPr
 async function getSharedPredictions(snapshot: SportSnapshot): Promise<SharedPredictions> {
   async function rebuild() {
     const result = await buildSharedPredictions(snapshot);
-    try { writeSnapshotCache(SHARED_CACHE_KEY, JSON.stringify(result)); } catch { /* ok */ }
+    try { await writeSnapshotCache(SHARED_CACHE_KEY, JSON.stringify(result)); } catch { /* ok */ }
     return result;
   }
 
-  const cached = readSnapshotCache(SHARED_CACHE_KEY);
+  const cached = await readSnapshotCache(SHARED_CACHE_KEY);
   const age = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
 
   if (cached && age < SHARED_TTL_MS) {
@@ -155,7 +155,7 @@ export async function GET(request: Request) {
   const subjectId = url.searchParams.get('subjectId');
   const holeParam = url.searchParams.get('hole');
 
-  const snapshot = readGolfSnapshot();
+  const snapshot = await readGolfSnapshot();
   if (!snapshot) {
     return NextResponse.json({ error: 'No golf snapshot cached yet — load /golf at least once first.' }, { status: 503 });
   }

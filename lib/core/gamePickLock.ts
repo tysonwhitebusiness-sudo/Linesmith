@@ -110,7 +110,7 @@ export interface MoneylineLockInput {
   probUpperHome: number | null;
 }
 
-export function runMoneylineLockCycle(sport: string, games: MoneylineLockInput[], now: Date = new Date()): void {
+export async function runMoneylineLockCycle(sport: string, games: MoneylineLockInput[], now: Date = new Date()): Promise<void> {
   for (const g of games) {
     if (!g.commenceTime || !g.isPreGame) continue;
     const identity: GamePickIdentity = {
@@ -123,7 +123,7 @@ export function runMoneylineLockCycle(sport: string, games: MoneylineLockInput[]
       matchup: g.matchup,
       commenceTime: g.commenceTime,
     };
-    ensureGamePickRow(identity);
+    await ensureGamePickRow(identity);
 
     // Blend on the home probability directly, then re-derive the side from
     // the BLENDED number — not the model's own side first. Blending can flip
@@ -165,10 +165,10 @@ export function runMoneylineLockCycle(sport: string, games: MoneylineLockInput[]
     });
 
     if (isPastInitialWindow(now)) {
-      captureMoneylinePick({ sport, gameId: g.gameId, slot: 'initial', side, prob, late: isInitialLate(now), featuresJson, probLower, probUpper });
+      await captureMoneylinePick({ sport, gameId: g.gameId, slot: 'initial', side, prob, late: isInitialLate(now), featuresJson, probLower, probUpper });
     }
     if (isFinalLockDue(g.commenceTime, now)) {
-      captureMoneylinePick({ sport, gameId: g.gameId, slot: 'final', side, prob, late: isFinalLockLate(g.commenceTime, now), featuresJson, probLower, probUpper });
+      await captureMoneylinePick({ sport, gameId: g.gameId, slot: 'final', side, prob, late: isFinalLockLate(g.commenceTime, now), featuresJson, probLower, probUpper });
     }
   }
 }
@@ -195,10 +195,10 @@ export interface TotalLockInput {
   probUpperOver: number | null;
 }
 
-export function runTotalLockCycle(sport: string, games: TotalLockInput[], now: Date = new Date()): void {
+export async function runTotalLockCycle(sport: string, games: TotalLockInput[], now: Date = new Date()): Promise<void> {
   for (const g of games) {
     if (!g.commenceTime || !g.isPreGame) continue;
-    ensureGamePickRow({
+    await ensureGamePickRow({
       sport,
       gameId: g.gameId,
       homeTeamId: g.homeTeamId,
@@ -231,10 +231,10 @@ export function runTotalLockCycle(sport: string, games: TotalLockInput[], now: D
     });
 
     if (isPastInitialWindow(now)) {
-      captureTotalPick({ sport, gameId: g.gameId, slot: 'initial', side, prob, line: g.line, late: isInitialLate(now), featuresJson, probLower, probUpper });
+      await captureTotalPick({ sport, gameId: g.gameId, slot: 'initial', side, prob, line: g.line, late: isInitialLate(now), featuresJson, probLower, probUpper });
     }
     if (isFinalLockDue(g.commenceTime, now)) {
-      captureTotalPick({ sport, gameId: g.gameId, slot: 'final', side, prob, line: g.line, late: isFinalLockLate(g.commenceTime, now), featuresJson, probLower, probUpper });
+      await captureTotalPick({ sport, gameId: g.gameId, slot: 'final', side, prob, line: g.line, late: isFinalLockLate(g.commenceTime, now), featuresJson, probLower, probUpper });
     }
   }
 }
@@ -251,10 +251,10 @@ export interface FinishedGameInput {
 }
 
 /** Grades against the locked (final) pick, falling back to the initial one if a final lock never happened. */
-export function gradeFinishedGamePicks(sport: string, games: FinishedGameInput[]): void {
+export async function gradeFinishedGamePicks(sport: string, games: FinishedGameInput[]): Promise<void> {
   for (const g of games) {
     if (!g.isFinal || g.homeScore == null || g.awayScore == null || g.homeScore === g.awayScore) continue;
-    const row = getGamePick(sport, g.gameId);
+    const row = await getGamePick(sport, g.gameId);
     if (!row || row.gradedAt) continue;
 
     const mlSide = row.mlFinalSide ?? row.mlInitialSide;
@@ -275,7 +275,7 @@ export function gradeFinishedGamePicks(sport: string, games: FinishedGameInput[]
     }
 
     if (mlOutcome || totalOutcome) {
-      gradeGamePick({ sport, gameId: g.gameId, homeScore: g.homeScore, awayScore: g.awayScore, mlOutcome, totalOutcome });
+      await gradeGamePick({ sport, gameId: g.gameId, homeScore: g.homeScore, awayScore: g.awayScore, mlOutcome, totalOutcome });
     }
   }
 }

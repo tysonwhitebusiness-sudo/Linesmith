@@ -16,8 +16,8 @@ export async function GET() {
     const season = Number(easternDate().slice(0, 4));
     const teams = await getAllTeams();
 
-    const ratings = teams.map((t) => {
-      const current = getCurrentElo(t.id, season);
+    const ratings = await Promise.all(teams.map(async (t) => {
+      const current = await getCurrentElo(t.id, season);
       return {
         teamId: t.id,
         name: t.name,
@@ -25,7 +25,7 @@ export async function GET() {
         elo: Math.round(current.elo),
         gamesPlayed: current.gamesPlayed,
       };
-    });
+    }));
 
     ratings.sort((a, b) => b.elo - a.elo);
 

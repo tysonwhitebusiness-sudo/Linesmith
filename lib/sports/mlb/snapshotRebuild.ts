@@ -14,7 +14,6 @@ import { fullRawCacheKey } from './playerGamelogCache';
 import { logSnapshotCandidates, logGameModelPredictions } from '@/lib/odds/props/pickHistoryLog';
 import { gradeFinishedGames } from '@/lib/odds/props/grading';
 import { gradeFinishedGamePicks } from '@/lib/core/gamePickLock';
-import { updateEloForFinishedGame, logPitcherGameScore } from './eloModel';
 import type { SportSnapshot } from '@/lib/core/types';
 
 export const TODAY_CACHE_KEY = 'mlb:snapshot';
@@ -39,7 +38,7 @@ export async function rebuildMlbSnapshot(date: string, cacheKey: string, isToday
   // history for older games — see player-gamelog/route.ts. Never sent to a
   // browser in bulk, so its size doesn't matter the way the main response's does.
   try {
-    writeSnapshotCache(fullRawCacheKey(date), JSON.stringify(snapshot.candidates));
+    await writeSnapshotCache(fullRawCacheKey(date), JSON.stringify(snapshot.candidates));
   } catch {
     // Non-critical — "show all games" on an older date just won't find extra detail
   }
@@ -55,7 +54,7 @@ export async function rebuildMlbSnapshot(date: string, cacheKey: string, isToday
   snapshot.context = { ...snapshot.context, other: { ...snapshot.context?.other, playerGamelogs } };
 
   try {
-    writeSnapshotCache(cacheKey, JSON.stringify(snapshot));
+    await writeSnapshotCache(cacheKey, JSON.stringify(snapshot));
   } catch {
     // Non-critical — next request will just rebuild again
   }
@@ -65,8 +64,8 @@ export async function rebuildMlbSnapshot(date: string, cacheKey: string, isToday
     // genuine rebuild (not every cache hit) — the candidate set hasn't
     // changed between hits, and INSERT OR IGNORE would just no-op anyway.
     try {
-      logSnapshotCandidates('mlb', snapshot);
-      logGameModelPredictions('mlb', snapshot);
+      await logSnapshotCandidates('mlb', snapshot);
+      await logGameModelPredictions('mlb', snapshot);
     } catch (error) {
       console.error('[snapshotRebuild] logSnapshotCandidates failed', error);
     }
@@ -96,7 +95,7 @@ export async function rebuildMlbSnapshot(date: string, cacheKey: string, isToday
         liveScore?: { home: string; away: string };
       }>;
 
-      gradeFinishedGamePicks(
+      await gradeFinishedGamePicks(
         'mlb',
         games.map((g) => {
           const home = g.liveScore ? Number(g.liveScore.home) : null;
@@ -113,59 +112,15 @@ export async function rebuildMlbSnapshot(date: string, cacheKey: string, isToday
       console.error('[snapshotRebuild] gamePickLock (moneyline) failed', error);
     }
 
-    // Elo rating update — one team-pair update per game that just went
-    // Final, so tomorrow's prediction sees today's result immediately
-    // instead of waiting for the next backfill. Idempotent (safe to call on
-    // every refresh cycle for a game already recorded).
-    try {
-      const season = Number(today.slice(0, 4));
-      const games = ((snapshot.context?.other as Record<string, unknown> | undefined)?.games ?? []) as Array<{
-        gamePk: number | string;
-        status: 'pre' | 'live' | 'done';
-        homeTeamId: number;
-        awayTeamId: number;
-        firstPitch?: string | null;
-        liveScore?: { home: string; away: string };
-      }>;
-      for (const g of games) {
-        if (g.status !== 'done' || !g.liveScore) continue;
-        const homeRuns = Number(g.liveScore.home);
-        const awayRuns = Number(g.liveScore.away);
-        if (!Number.isFinite(homeRuns) || !Number.isFinite(awayRuns) || homeRuns === awayRuns) continue;
-        updateEloForFinishedGame(season, Number(g.gamePk), g.firstPitch ?? today, g.homeTeamId, g.awayTeamId, homeRuns, awayRuns);
-      }
-    } catch (error) {
-      console.error('[snapshotRebuild] Elo update failed', error);
-    }
-
-    // Starting pitcher Game Score logging — one row per starter once their
-    // game is Final, feeding the rolling trend the live pitcher adjustment
-    // (Elo item 4) reads. writePitcherGameScore's UNIQUE constraint makes
-    // this idempotent across refresh cycles. Runs concurrently rather than
-    // blocking the response — each is one getLiveFeed call, and there are
-    // at most ~15 of these on a given day.
-    try {
-      const season = Number(today.slice(0, 4));
-      const games = ((snapshot.context?.other as Record<string, unknown> | undefined)?.games ?? []) as Array<{
-        gamePk: number | string;
-        status: 'pre' | 'live' | 'done';
-        homeTeamId: number;
-        awayTeamId: number;
-        homeStarterId?: number | null;
-        awayStarterId?: number | null;
-        firstPitch?: string | null;
-      }>;
-      const jobs: Promise<void>[] = [];
-      for (const g of games) {
-        if (g.status !== 'done') continue;
-        const gameDate = g.firstPitch ?? today;
-        if (g.homeStarterId) jobs.push(logPitcherGameScore(Number(g.gamePk), season, g.homeStarterId, g.homeTeamId, gameDate));
-        if (g.awayStarterId) jobs.push(logPitcherGameScore(Number(g.gamePk), season, g.awayStarterId, g.awayTeamId, gameDate));
-      }
-      if (jobs.length > 0) void Promise.allSettled(jobs);
-    } catch (error) {
-      console.error('[snapshotRebuild] pitcher Game Score logging failed', error);
-    }
+    // Elo rating updates and starting-pitcher Game Score logging used to
+    // happen here — moved to the Python worker's maintainMlbEloJob (Phase
+    // J of docs/mlb-prediction-engine-ts-cutover-gameplan-2026-08-22.md,
+    // 2026-08-22). That job reads the same team_elo_history/
+    // pitcher_game_score_history tables via the same idempotent UNIQUE-
+    // constraint writes this code used, so removing this duplicate path
+    // doesn't change what either table contains — it just stops writing it
+    // twice. See health_check.py's staleness check on that job for the
+    // ongoing verification this removal is safe.
   }
 
   return snapshot;

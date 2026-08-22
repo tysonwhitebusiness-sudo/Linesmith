@@ -24,8 +24,8 @@ export const dynamic = 'force-dynamic';
 // layer so this never serves data staler than what it already promises.
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-function readGolfSubjects(): SubjectSummary[] {
-  const cached = readSnapshotCache('golf:snapshot');
+async function readGolfSubjects(): Promise<SubjectSummary[]> {
+  const cached = await readSnapshotCache('golf:snapshot');
   if (!cached) return [];
   try {
     const snapshot = JSON.parse(cached.payload);
@@ -43,7 +43,8 @@ export async function GET(request: Request) {
     cacheKey: 'golf:lines:route',
     ttlMs: CACHE_TTL_MS,
     force,
-    build: () => getGolfTournamentLines(readGolfSubjects(), force),
+    build: async () => getGolfTournamentLines(await readGolfSubjects(), force),
     errorMessage: 'Golf lines lookup failed.',
+    request,
   });
 }

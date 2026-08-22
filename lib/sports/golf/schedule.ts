@@ -57,7 +57,7 @@ async function fetchScheduleFromEspn(year: number): Promise<ScheduleEvent[] | nu
 /** The full season schedule, oldest first. */
 export async function getSeasonSchedule(year = new Date().getFullYear()): Promise<{ events: ScheduleEvent[]; fetchedAt: string; fromCache: boolean; warnings: string[] }> {
   const cacheKey = `${CACHE_KEY_PREFIX}${year}`;
-  const cached = readSnapshotCache(cacheKey);
+  const cached = await readSnapshotCache(cacheKey);
   const ageMs = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
 
   if (cached && ageMs < TTL_MS) {
@@ -77,6 +77,6 @@ export async function getSeasonSchedule(year = new Date().getFullYear()): Promis
     return { events: [], fetchedAt: new Date().toISOString(), fromCache: false, warnings: ['ESPN schedule request failed and there is no cached copy yet.'] };
   }
 
-  writeSnapshotCache(cacheKey, JSON.stringify(events));
+  await writeSnapshotCache(cacheKey, JSON.stringify(events));
   return { events, fetchedAt: new Date().toISOString(), fromCache: false, warnings: [] };
 }

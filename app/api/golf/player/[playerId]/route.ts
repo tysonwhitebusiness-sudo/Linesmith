@@ -21,8 +21,8 @@ export const dynamic = 'force-dynamic';
 // 24h here matches all three sources' own promise while surviving restarts.
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
-function readGolfSubjects(): SubjectSummary[] {
-  const cached = readSnapshotCache('golf:snapshot');
+async function readGolfSubjects(): Promise<SubjectSummary[]> {
+  const cached = await readSnapshotCache('golf:snapshot');
   if (!cached) return [];
   try {
     const snapshot = JSON.parse(cached.payload);
@@ -40,7 +40,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ play
     cacheKey: `golf:player:route:${playerId}:${year}`,
     ttlMs: CACHE_TTL_MS,
     build: async () => {
-      const subjects = readGolfSubjects();
+      const subjects = await readGolfSubjects();
       const [strokesGained, seasonLog, advanced] = await Promise.all([
         getGolferStrokesGained(playerId, subjects),
         getPlayerSeasonLog(playerId),
@@ -49,5 +49,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ play
       return { strokesGained, seasonLog, advancedStats: advanced.stats, advancedWarnings: advanced.warnings };
     },
     errorMessage: 'Golf player lookup failed.',
+    request,
   });
 }

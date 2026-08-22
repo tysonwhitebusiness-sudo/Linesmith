@@ -206,8 +206,8 @@ function cacheKey(season: number): string {
   return `mlb:statcast-agg:${season}:v2`;
 }
 
-function loadStore(season: number): StatcastAggregateStore {
-  const cached = readSnapshotCache(cacheKey(season));
+async function loadStore(season: number): Promise<StatcastAggregateStore> {
+  const cached = await readSnapshotCache(cacheKey(season));
   if (!cached) return { season, lastIngestedDate: null, byPitcher: {}, byBatter: {} };
   try {
     const parsed = JSON.parse(cached.payload) as StatcastAggregateStore;
@@ -218,8 +218,8 @@ function loadStore(season: number): StatcastAggregateStore {
   return { season, lastIngestedDate: null, byPitcher: {}, byBatter: {} };
 }
 
-function saveStore(store: StatcastAggregateStore): void {
-  writeSnapshotCache(cacheKey(store.season), JSON.stringify(store));
+async function saveStore(store: StatcastAggregateStore): Promise<void> {
+  await writeSnapshotCache(cacheKey(store.season), JSON.stringify(store));
 }
 
 const CHUNK_DAYS = 6; // ~3,000 rows/day * 6 ≈ 18,000, safely under Savant's ~25,000-row cap per request
@@ -268,7 +268,7 @@ function ensureFresh(season: number): Promise<StatcastAggregateStore> {
 }
 
 async function ensureFreshUncached(season: number): Promise<StatcastAggregateStore> {
-  const store = loadStore(season);
+  const store = await loadStore(season);
   const throughDate = shiftDate(easternDate(), -1);
   const seasonFloor = `${season}-03-01`;
   const cursor = store.lastIngestedDate ? shiftDate(store.lastIngestedDate, 1) : seasonFloor;
@@ -300,7 +300,7 @@ async function ensureFreshUncached(season: number): Promise<StatcastAggregateSto
     byPitcher: Object.fromEntries([...byPitcher.entries()].map(([id, agg]) => [String(id), agg])),
     byBatter: Object.fromEntries([...byBatter.entries()].map(([id, agg]) => [String(id), agg])),
   };
-  saveStore(updated);
+  await saveStore(updated);
   return updated;
 }
 
@@ -350,8 +350,8 @@ export async function getSeasonStatcastPitcherRates(season: number): Promise<Map
  * callers should treat that as "no Statcast data available yet", not an
  * error, and fall back to whatever stats don't depend on it.
  */
-export function getCachedStatcastPitcherRates(season: number): Map<number, StatcastPitcherRates> {
-  return ratesFromAggs(loadStore(season).byPitcher);
+export async function getCachedStatcastPitcherRates(season: number): Promise<Map<number, StatcastPitcherRates>> {
+  return ratesFromAggs((await loadStore(season)).byPitcher);
 }
 
 /** Batter-side equivalent — same store, same cursor, just the `byBatter` half of it. See `getSeasonStatcastPitcherRates`. */
@@ -361,8 +361,8 @@ export async function getSeasonStatcastBatterRates(season: number): Promise<Map<
 }
 
 /** Cache-only batter rates, safe for a live request. See `getCachedStatcastPitcherRates`. */
-export function getCachedStatcastBatterRates(season: number): Map<number, StatcastBatterRates> {
-  return ratesFromAggs(loadStore(season).byBatter);
+export async function getCachedStatcastBatterRates(season: number): Promise<Map<number, StatcastBatterRates>> {
+  return ratesFromAggs((await loadStore(season)).byBatter);
 }
 
 // ---------------------------------------------------------------------------

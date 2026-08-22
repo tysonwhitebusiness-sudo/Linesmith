@@ -99,7 +99,7 @@ const TTL_MS = 24 * 60 * 60 * 1000;
 
 async function loadSeasonRows(year: number): Promise<{ rows: PgaTourStatRow[]; fetchedAt: string; fromCache: boolean; warnings: string[] }> {
   const cacheKey = `${CACHE_KEY_PREFIX}${year}`;
-  const cached = readSnapshotCache(cacheKey);
+  const cached = await readSnapshotCache(cacheKey);
   const ageMs = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
 
   if (cached && ageMs < TTL_MS) {
@@ -119,7 +119,7 @@ async function loadSeasonRows(year: number): Promise<{ rows: PgaTourStatRow[]; f
     return { rows: [], fetchedAt: new Date().toISOString(), fromCache: false, warnings: ['pgatour.com stats request failed and there is no cached copy yet.'] };
   }
 
-  writeSnapshotCache(cacheKey, JSON.stringify(rows));
+  await writeSnapshotCache(cacheKey, JSON.stringify(rows));
   return { rows, fetchedAt: new Date().toISOString(), fromCache: false, warnings: [] };
 }
 
@@ -241,7 +241,7 @@ const STAT_CACHE_PREFIX = 'golf:pgatour-stat:';
  */
 async function loadStatRows(statId: string, year: number): Promise<{ rows: PgaTourStatRow[]; warning?: string }> {
   const cacheKey = `${STAT_CACHE_PREFIX}${statId}:${year}`;
-  const cached = readSnapshotCache(cacheKey);
+  const cached = await readSnapshotCache(cacheKey);
   const ageMs = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
 
   // Filtered on every read, not just on write: a cache entry written before
@@ -263,7 +263,7 @@ async function loadStatRows(statId: string, year: number): Promise<{ rows: PgaTo
   }
 
   const rows = rawRows.filter((r) => typeof r.playerName === 'string');
-  writeSnapshotCache(cacheKey, JSON.stringify(rows));
+  await writeSnapshotCache(cacheKey, JSON.stringify(rows));
   return { rows };
 }
 

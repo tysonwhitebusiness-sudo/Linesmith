@@ -108,7 +108,7 @@ export interface BetGradingSummary {
 
 /** Call whenever Live Bets is loaded — cheap (one live-feed fetch per open game) when there's nothing to grade. */
 export async function gradeOpenBets(): Promise<BetGradingSummary> {
-  const gameIds = listOpenBetGameIds();
+  const gameIds = await listOpenBetGameIds();
   const summary: BetGradingSummary = { gamesChecked: gameIds.length, gamesFinal: 0, betsGraded: 0, betsSkipped: 0 };
 
   for (const gameId of gameIds) {
@@ -119,12 +119,12 @@ export async function gradeOpenBets(): Promise<BetGradingSummary> {
     const state = feed?.gameData?.status?.abstractGameState;
     if (!feed || !state) continue;
 
-    if (state === 'Live') markBetsLive(gameId);
+    if (state === 'Live') await markBetsLive(gameId);
     if (state !== 'Final') continue; // not final yet — try again next load
 
     summary.gamesFinal += 1;
     const innings = feed.linescore?.innings ?? [];
-    const rows = listOpenBetsForGame(gameId);
+    const rows = await listOpenBetsForGame(gameId);
     const results: BetGradeResult[] = [];
     for (const row of rows) {
       const graded =
@@ -139,7 +139,7 @@ export async function gradeOpenBets(): Promise<BetGradingSummary> {
       }
       results.push(graded);
     }
-    writeBetGrades(results);
+    await writeBetGrades(results);
     summary.betsGraded += results.length;
   }
 

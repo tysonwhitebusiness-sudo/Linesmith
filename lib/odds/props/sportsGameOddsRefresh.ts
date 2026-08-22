@@ -19,7 +19,7 @@
 
 import { runProviderFetch } from './registry';
 import { loadAllGameContexts } from './gameContext';
-import { monthlyStatus, recordMonthlySpend } from './budget';
+import { monthlyStatus, recordMonthlySpend, withinPerMinuteRate } from './budget';
 import { sportsGameOddsConfig } from './config';
 import { isGameFinal } from './gameState';
 
@@ -39,15 +39,15 @@ export async function refreshSportsGameOdds(): Promise<SportsGameOddsRefreshSumm
     return summary;
   }
 
-  const games = loadAllGameContexts();
+  const games = await loadAllGameContexts();
   // Tracked locally and advanced after every spend, same reasoning as
   // tier1Refresh.ts's oddsApiIoSpentToday — a status snapshot read once at
   // the top of the loop would go stale after the first fetch and let a
   // slate-wide sweep run past the soft cap before the next status check.
-  let spentThisRun = monthlyStatus('sportsgameodds', config.monthlyLimit, config.softCap, 'objects').used;
+  let spentThisRun = (await monthlyStatus('sportsgameodds', config.monthlyLimit, config.softCap, 'objects')).used;
 
   for (const game of games) {
-    if (isGameFinal(game.gameId)) {
+    if (await isGameFinal(game.gameId)) {
       summary.skipped.push(`${game.gameId} (final)`);
       continue;
     }
@@ -58,6 +58,15 @@ export async function refreshSportsGameOdds(): Promise<SportsGameOddsRefreshSumm
       summary.skipped.push(`${game.gameId} (soft cap)`);
       continue;
     }
+    // Matches multiSportRefresh.ts's refreshWithSportsGameOdds — this
+    // adapter does no caching of its own (unlike SharpAPI), so every game in
+    // this loop is a real network call and the per-minute limit is a
+    // genuine risk on a slate with more concurrent games than the
+    // provider's per-minute allowance.
+    if (!withinPerMinuteRate('sportsgameodds', config.ratePerMin)) {
+      summary.skipped.push(`${game.gameId} (rate limit — will pick up next cycle)`);
+      continue;
+    }
 
     const result = await runProviderFetch('sportsgameodds', game);
     summary.rowsWritten += result.rows.length;
@@ -65,7 +74,7 @@ export async function refreshSportsGameOdds(): Promise<SportsGameOddsRefreshSumm
 
     const objects = result.cost.objects ?? 0;
     if (objects > 0) {
-      recordMonthlySpend('sportsgameodds', 0, objects);
+      await recordMonthlySpend('sportsgameodds', 0, objects);
       spentThisRun += objects;
     }
     summary.gamesRefreshed += 1;

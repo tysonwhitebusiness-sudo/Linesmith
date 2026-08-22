@@ -192,12 +192,12 @@ export const PITCHER_ADJ_MULTIPLIER = 4.7;
 export const PITCHER_TREND_STARTS = 5;
 
 /** 0 (neutral, no adjustment) when there isn't enough real signal yet — a rookie/call-up with no starts on record, or a team with no baseline starts logged this season. Same "honest gap" discipline as every other sample-gated adjustment in this app. */
-export function pitcherAdjustment(pitcherId: number | null, teamId: number, season: number, gameDate: string): number {
+export async function pitcherAdjustment(pitcherId: number | null, teamId: number, season: number, gameDate: string): Promise<number> {
   if (!pitcherId) return 0;
-  const trend = recentPitcherGameScores(pitcherId, PITCHER_TREND_STARTS);
+  const trend = await recentPitcherGameScores(pitcherId, PITCHER_TREND_STARTS);
   if (trend.length === 0) return 0;
   const pitcherAvg = trend.reduce((s, v) => s + v, 0) / trend.length;
-  const baseline = teamBaselineGameScore(teamId, season, gameDate);
+  const baseline = await teamBaselineGameScore(teamId, season, gameDate);
   if (baseline == null) return 0;
   return (pitcherAvg - baseline) * PITCHER_ADJ_MULTIPLIER;
 }
@@ -229,7 +229,7 @@ export async function logPitcherGameScore(
     strikeouts: Number(stats.strikeOuts ?? 0),
   };
   const gameScore = computeGameScore(line);
-  writePitcherGameScore([{ pitcherId, teamId, season, gamePk, gameDate, gameScore }]);
+  await writePitcherGameScore([{ pitcherId, teamId, season, gamePk, gameDate, gameScore }]);
 }
 
 // ---------------------------------------------------------------------------
@@ -328,9 +328,9 @@ export async function backfillElo(season: number): Promise<EloHistoryRow[]> {
   const gamesPlayed = new Map<number, number>();
   const entries: EloHistoryRow[] = [];
 
-  const startingRatingFor = (teamId: number): number => {
+  const startingRatingFor = async (teamId: number): Promise<number> => {
     if (ratings.has(teamId)) return ratings.get(teamId)!;
-    const prior = getLatestEloBeforeSeason(teamId, season);
+    const prior = await getLatestEloBeforeSeason(teamId, season);
     const start = prior ? regressToMean(prior.elo) : STARTING_ELO;
     ratings.set(teamId, start);
     return start;
@@ -341,8 +341,8 @@ export async function backfillElo(season: number): Promise<EloHistoryRow[]> {
     const awayId = g.teams.away.team.id;
     const homeRuns = g.teams.home.score as number;
     const awayRuns = g.teams.away.score as number;
-    const homeElo = startingRatingFor(homeId);
-    const awayElo = startingRatingFor(awayId);
+    const homeElo = await startingRatingFor(homeId);
+    const awayElo = await startingRatingFor(awayId);
 
     const result = updateElo(homeElo, awayElo, homeRuns, awayRuns);
     ratings.set(homeId, result.newHomeElo);
@@ -379,7 +379,7 @@ export async function backfillElo(season: number): Promise<EloHistoryRow[]> {
 
 export async function refreshEloBackfill(season: number): Promise<{ gamesWalked: number; rowsWritten: number }> {
   const entries = await backfillElo(season);
-  const rowsWritten = writeEloHistory(entries);
+  const rowsWritten = await writeEloHistory(entries);
   return { gamesWalked: entries.length / 2, rowsWritten };
 }
 
@@ -400,8 +400,8 @@ export interface CurrentElo {
  * played, otherwise their regressed prior-season rating, otherwise the flat
  * starting value for a team with no history at all.
  */
-export function getCurrentElo(teamId: number, season: number): CurrentElo {
-  const thisSeason = dbGetCurrentElo(teamId, season);
+export async function getCurrentElo(teamId: number, season: number): Promise<CurrentElo> {
+  const thisSeason = await dbGetCurrentElo(teamId, season);
   if (thisSeason) {
     return {
       elo: thisSeason.elo,
@@ -410,7 +410,7 @@ export function getCurrentElo(teamId: number, season: number): CurrentElo {
       lastLocationTeamId: thisSeason.wasHome ? teamId : thisSeason.opponentTeamId,
     };
   }
-  const prior = getLatestEloBeforeSeason(teamId, season);
+  const prior = await getLatestEloBeforeSeason(teamId, season);
   if (prior) {
     return {
       elo: regressToMean(prior.elo),
@@ -423,7 +423,7 @@ export function getCurrentElo(teamId: number, season: number): CurrentElo {
 }
 
 /** Updates both teams' STORED (unadjusted) Elo after one specific game goes Final — idempotent via writeEloHistory's UNIQUE constraint. */
-export function updateEloForFinishedGame(
+export async function updateEloForFinishedGame(
   season: number,
   gamePk: number,
   gameDate: string,
@@ -431,11 +431,11 @@ export function updateEloForFinishedGame(
   awayTeamId: number,
   homeRuns: number,
   awayRuns: number,
-): void {
-  const home = getCurrentElo(homeTeamId, season);
-  const away = getCurrentElo(awayTeamId, season);
+): Promise<void> {
+  const home = await getCurrentElo(homeTeamId, season);
+  const away = await getCurrentElo(awayTeamId, season);
   const result = updateElo(home.elo, away.elo, homeRuns, awayRuns);
-  writeEloHistory([
+  await writeEloHistory([
     { teamId: homeTeamId, season, gamePk, gameDate, elo: result.newHomeElo, gamesPlayed: home.gamesPlayed + 1, opponentTeamId: awayTeamId, wasHome: true },
     { teamId: awayTeamId, season, gamePk, gameDate, elo: result.newAwayElo, gamesPlayed: away.gamesPlayed + 1, opponentTeamId: homeTeamId, wasHome: false },
   ]);
@@ -457,6 +457,6 @@ export function restAndTravelFromState(state: CurrentElo, gameDate: string, toda
 }
 
 /** Rest + travel for one team's upcoming game — the live-path counterpart used at prediction time, sourced from Elo history so it works whether the team's last game was this season or last. */
-export function restAndTravelFor(teamId: number, season: number, gameDate: string, todayHomeTeamId: number): { restDays: number; miles: number } {
-  return restAndTravelFromState(getCurrentElo(teamId, season), gameDate, todayHomeTeamId);
+export async function restAndTravelFor(teamId: number, season: number, gameDate: string, todayHomeTeamId: number): Promise<{ restDays: number; miles: number }> {
+  return restAndTravelFromState(await getCurrentElo(teamId, season), gameDate, todayHomeTeamId);
 }

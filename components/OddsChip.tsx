@@ -4,6 +4,8 @@ import type { OddsInfo } from '@/lib/core/types';
 import { formatAmerican, americanToDecimal } from '@/lib/odds/display';
 import { devigTwoWay } from '@/lib/odds/devig';
 import { compareInk } from '@/lib/ui/heat';
+import { Chip } from './Chip';
+import { Skeleton } from './Skeleton';
 
 /**
  * A price, with where it came from.
@@ -181,6 +183,44 @@ export function OddsPair({
       {hasOver ? <OddsChip price={over} source={source} side="O" /> : null}
       {hasUnder ? <OddsChip price={under} source={source} side="U" /> : null}
     </span>
+  );
+}
+
+/**
+ * Rendered instead of a real price when nothing's arrived for this row yet.
+ * Two real, different situations — not one generic "no odds":
+ *
+ *  - `pending`: NOTHING in the table has a price yet this cycle — the odds
+ *    refresh is still in flight (Tier 1 runs every ~2.5min; other sports
+ *    every 20min-90min, see gameday.py for the sport-dependent cadence),
+ *    not a real gap. Shown as a shimmer, matching this app's actual loading
+ *    convention (`Skeleton`/`.lb-skel`) instead of a warning — there's
+ *    nothing for the user to do but wait for the next cycle.
+ *  - otherwise: OTHER rows in the same table ARE priced, so this cycle's
+ *    fetch already ran — this specific market/bookmaker genuinely isn't
+ *    covered. A real, standing state, styled off the semantic `warn` tone
+ *    (`Chip`) instead of the bespoke hex (`#fdf1d8`/`#93630a`) this used to
+ *    hardcode — same amber `warn` used for weather/live-state chips
+ *    elsewhere, not a one-off color.
+ *
+ * The caller decides `pending` — cheapest real signal is "does ANY row in
+ * the current table have a price," computed once at the table level.
+ */
+export function NoOddsCell({ pending, onAdd }: { pending: boolean; onAdd?: () => void }) {
+  if (pending) {
+    return <Skeleton w={74} h={18} rounded="rounded-full" className="inline-block" />;
+  }
+  if (!onAdd) return <span className="text-ink-faint">—</span>;
+  return (
+    <button type="button" onClick={onAdd} className="transition-opacity hover:opacity-80">
+      <Chip
+        tone="warn"
+        className="whitespace-nowrap"
+        title="No price posted for this market yet — this row can still qualify for Good Bets on performance or matchup alone, but check your sportsbook directly before betting it."
+      >
+        No Odds — Check Book
+      </Chip>
+    </button>
   );
 }
 

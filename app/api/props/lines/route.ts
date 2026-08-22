@@ -34,13 +34,13 @@ export async function GET(request: Request) {
   void triggerFreshen();
 
   if (subjectId && gameId) {
-    return NextResponse.json({ rows: readPropOddsForSubject(gameId, subjectId) });
+    return NextResponse.json({ rows: await readPropOddsForSubject(gameId, subjectId) });
   }
   if (gameId) {
-    return NextResponse.json({ rows: readPropOddsForGame(gameId) });
+    return NextResponse.json({ rows: await readPropOddsForGame(gameId) });
   }
 
-  const games = loadAllGameContexts();
-  const rows = games.flatMap((g) => readPropOddsForGame(g.gameId));
+  const games = await loadAllGameContexts();
+  const rows = (await Promise.all(games.map((g) => readPropOddsForGame(g.gameId)))).flat();
   return NextResponse.json({ rows });
 }

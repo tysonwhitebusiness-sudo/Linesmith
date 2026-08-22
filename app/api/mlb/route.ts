@@ -39,5 +39,6 @@ export async function GET(request: Request) {
     build: () => rebuildMlbSnapshot(date, cacheKey, isToday),
     skipWrite: true,
     errorMessage: 'MLB snapshot failed',
+    request,
   });
 }

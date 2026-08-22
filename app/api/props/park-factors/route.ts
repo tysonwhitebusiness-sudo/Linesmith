@@ -43,7 +43,7 @@ function parseSeasonList(raw: string | null): number[] | null {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const season = Number(searchParams.get('season')) || Number(easternDate().slice(0, 4));
-  const rows = readParkFactors(season);
+  const rows = await readParkFactors(season);
   return NextResponse.json({ season, rows: rows.sort((a, b) => b.factor - a.factor) });
 }
 
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ seasons, bySeason });
   } catch (error) {
     console.error('[api/props/park-factors]', error);
-    logSystemEvent({ level: 'error', source: 'api/props/park-factors', message: error instanceof Error ? error.message : String(error) });
+    await logSystemEvent({ level: 'error', source: 'api/props/park-factors', message: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: 'Park factor computation failed', detail: error instanceof Error ? error.message : String(error) },
       { status: 502 },

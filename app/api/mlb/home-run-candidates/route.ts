@@ -30,7 +30,7 @@ function modelProbOf(candidate: PickCandidate): number | null {
 }
 
 export async function GET() {
-  const cached = readSnapshotCache(TODAY_CACHE_KEY);
+  const cached = await readSnapshotCache(TODAY_CACHE_KEY);
   if (!cached) {
     return NextResponse.json({ candidates: [], fetchedAt: null });
   }

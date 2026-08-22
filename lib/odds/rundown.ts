@@ -192,6 +192,8 @@ export function toGameLine(rundownLine: RundownGameLine): GameLine {
     commenceTime: rundownLine.date,
     homeTeam: rundownLine.homeTeam,
     awayTeam: rundownLine.awayTeam,
+    // No per-book breakdown built here — out of scope for oddsApi.ts's fix.
+    bookmakers: [],
     moneyline: mlHome || mlAway ? { home: mlHome?.price, away: mlAway?.price, book: 'TheRundown' } : undefined,
     spread:
       spHome || spAway

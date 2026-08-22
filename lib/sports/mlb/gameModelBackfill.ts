@@ -108,7 +108,7 @@ export async function backfillGameModel(season: number): Promise<GameBackfillSum
     accByTeam.set(awayId, away);
   }
 
-  const rowsWritten = writeBackfill(entries);
+  const rowsWritten = await writeBackfill(entries);
   return { gamesConsidered: finals.length, rowsWritten };
 }
 
@@ -134,7 +134,7 @@ export async function backfillTotalModel(season: number): Promise<GameBackfillSu
     .filter((g) => g.abstractState === 'Final' && g.teams.home.score != null && g.teams.away.score != null)
     .sort((a, b) => (a.gameDate < b.gameDate ? -1 : 1));
 
-  const parkFactorByVenue = new Map(readParkFactors(season).map((r) => [r.venueId, r.factor]));
+  const parkFactorByVenue = new Map((await readParkFactors(season)).map((r) => [r.venueId, r.factor]));
   const accByTeam = new Map<number, TeamAccumulator>();
   const entries: BackfillEntry[] = [];
 
@@ -149,7 +149,7 @@ export async function backfillTotalModel(season: number): Promise<GameBackfillSu
 
     if (homeAcc && awayAcc && homeAcc.games >= WARMUP_GAMES && awayAcc.games >= WARMUP_GAMES) {
       const gameDateEastern = easternDate(new Date(game.gameDate));
-      const odds = getHistoricalOdds(season, gameDateEastern, homeId, awayId);
+      const odds = await getHistoricalOdds(season, gameDateEastern, homeId, awayId);
       const actualTotal = homeRuns + awayRuns;
 
       if (odds?.totalLine != null && actualTotal !== odds.totalLine) {
@@ -189,6 +189,6 @@ export async function backfillTotalModel(season: number): Promise<GameBackfillSu
     accByTeam.set(awayId, away);
   }
 
-  const rowsWritten = writeBackfill(entries);
+  const rowsWritten = await writeBackfill(entries);
   return { gamesConsidered: finals.length, rowsWritten };
 }

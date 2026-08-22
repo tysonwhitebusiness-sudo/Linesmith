@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const sport = new URL(request.url).searchParams.get('sport') ?? undefined;
-  return NextResponse.json({ watchlist: listWatchlist(sport) });
+  return NextResponse.json({ watchlist: await listWatchlist(sport) });
 }
 
 export async function POST(request: Request) {
@@ -13,8 +13,8 @@ export async function POST(request: Request) {
   if (!body.sport || !body.subjectId || !body.subjectName) {
     return NextResponse.json({ error: 'sport, subjectId and subjectName are required' }, { status: 400 });
   }
-  addWatch(body.sport, body.subjectId, body.subjectName);
-  return NextResponse.json({ watchlist: listWatchlist(body.sport) }, { status: 201 });
+  await addWatch(body.sport, body.subjectId, body.subjectName);
+  return NextResponse.json({ watchlist: await listWatchlist(body.sport) }, { status: 201 });
 }
 
 export async function DELETE(request: Request) {
@@ -24,6 +24,6 @@ export async function DELETE(request: Request) {
   if (!sport || !subjectId) {
     return NextResponse.json({ error: 'sport and subjectId are required' }, { status: 400 });
   }
-  removeWatch(sport, subjectId);
-  return NextResponse.json({ watchlist: listWatchlist(sport) });
+  await removeWatch(sport, subjectId);
+  return NextResponse.json({ watchlist: await listWatchlist(sport) });
 }

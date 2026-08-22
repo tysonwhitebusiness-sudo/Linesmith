@@ -19,8 +19,8 @@ interface SlateGameLike {
   firstPitch?: string;
 }
 
-function readCachedSnapshot(): SportSnapshot | null {
-  const cached = readSnapshotCache(SNAPSHOT_CACHE_KEY);
+async function readCachedSnapshot(): Promise<SportSnapshot | null> {
+  const cached = await readSnapshotCache(SNAPSHOT_CACHE_KEY);
   if (!cached) return null;
   try {
     return JSON.parse(cached.payload) as SportSnapshot;
@@ -57,15 +57,15 @@ function buildContextForGame(snapshot: SportSnapshot, game: SlateGameLike): Game
 }
 
 /** Every game on today's cached slate, ready for a provider fetch. Empty if the snapshot hasn't loaded yet. */
-export function loadAllGameContexts(): GameLookupContext[] {
-  const snapshot = readCachedSnapshot();
+export async function loadAllGameContexts(): Promise<GameLookupContext[]> {
+  const snapshot = await readCachedSnapshot();
   if (!snapshot) return [];
   const games = ((snapshot.context?.other as Record<string, unknown> | undefined)?.games ?? []) as SlateGameLike[];
   return games.map((g) => buildContextForGame(snapshot, g)).filter((c): c is GameLookupContext => c !== null);
 }
 
-export function loadGameContext(gameId: string): GameLookupContext | null {
-  const snapshot = readCachedSnapshot();
+export async function loadGameContext(gameId: string): Promise<GameLookupContext | null> {
+  const snapshot = await readCachedSnapshot();
   if (!snapshot) return null;
   const games = ((snapshot.context?.other as Record<string, unknown> | undefined)?.games ?? []) as SlateGameLike[];
   const game = games.find((g) => String(g.gamePk) === gameId);

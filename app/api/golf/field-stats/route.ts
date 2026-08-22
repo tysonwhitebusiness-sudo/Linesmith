@@ -22,8 +22,8 @@ export const dynamic = 'force-dynamic';
 // matches the source's own promise while surviving restarts.
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
-function readGolfSubjects(): SubjectSummary[] {
-  const cached = readSnapshotCache('golf:snapshot');
+async function readGolfSubjects(): Promise<SubjectSummary[]> {
+  const cached = await readSnapshotCache('golf:snapshot');
   if (!cached) return [];
   try {
     const snapshot = JSON.parse(cached.payload);
@@ -33,14 +33,14 @@ function readGolfSubjects(): SubjectSummary[] {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const year = new Date().getFullYear();
 
   return cachedRoute({
     cacheKey: `golf:field-stats:route:${year}`,
     ttlMs: CACHE_TTL_MS,
     build: async () => {
-      const subjects = readGolfSubjects();
+      const subjects = await readGolfSubjects();
       const result = await getSeasonStrokesGained(subjects);
       // Only golfers actually in today's field resolved to a real espnId —
       // the rest of the tour rode along in the same fetch but isn't relevant here.
@@ -48,5 +48,6 @@ export async function GET() {
       return { ...result, golfers };
     },
     errorMessage: 'Golf field stats lookup failed.',
+    request,
   });
 }

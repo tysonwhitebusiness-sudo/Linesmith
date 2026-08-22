@@ -13,11 +13,21 @@
  * export, can't be set from inside a helper) and call `cachedRoute()` from
  * its `GET` handler with a cache key, a TTL, and a `build()` function that
  * does the real work with no caching of its own.
+ *
+ * Gzip compression (2026-08-21): Next's built-in `compress: true` covers
+ * page/static responses but was confirmed live NOT to apply to Route
+ * Handler responses under `next start` (checked real response headers —
+ * `/` got `content-encoding: gzip`, `/api/mlb` and `/api/selftest` didn't,
+ * regardless of whether the handler used `NextResponse.json` or a raw
+ * `Response`). Passing `request` here is what lets `jsonPassthrough`/
+ * `jsonResponse` negotiate it correctly via `Accept-Encoding` — every
+ * `cachedRoute()` caller gets this for free by supplying `request`, current
+ * and future, rather than each route needing its own compression logic.
  */
 
 import { NextResponse } from 'next/server';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
-import { jsonPassthrough } from '@/lib/db/jsonPassthrough';
+import { jsonPassthrough, jsonResponse } from '@/lib/db/jsonPassthrough';
 import { triggerBackgroundRebuild, awaitRebuild } from '@/lib/staleCache';
 
 export interface CachedRouteOptions<T, R = T> {
@@ -36,7 +46,7 @@ export interface CachedRouteOptions<T, R = T> {
   /**
    * Post-read projection applied identically on hit/stale/miss — e.g.
    * `mlb/team-statcast`'s per-team slice out of a season-wide cached blob.
-   * When set, every response goes through `NextResponse.json(transform(...))`
+   * When set, every response goes through `jsonResponse(transform(...), ...)`
    * instead of the raw `jsonPassthrough`, since the wire payload differs
    * from what's actually stored in the cache.
    */
@@ -60,36 +70,46 @@ export interface CachedRouteOptions<T, R = T> {
    * mirroring `getMlbGameLines(force)`'s own bypass one layer down).
    */
   force?: boolean;
+  /**
+   * The route's own `Request` — read only for its `Accept-Encoding` header,
+   * to negotiate gzip via `jsonPassthrough`/`jsonResponse`. Omit only when
+   * a route genuinely has no `Request` in scope (a bare `GET()`); the route
+   * still works, it just always sends uncompressed. Widening a `GET()` to
+   * `GET(request: Request)` to pass this through is the whole ask — nothing
+   * else is ever read from `request` here.
+   */
+  request?: Request;
 }
 
 export async function cachedRoute<T, R = T>(opts: CachedRouteOptions<T, R>): Promise<Response> {
-  const { cacheKey, ttlMs, build, notFoundMessage, transform, routeName, errorMessage, skipWrite, force } = opts;
+  const { cacheKey, ttlMs, build, notFoundMessage, transform, routeName, errorMessage, skipWrite, force, request } = opts;
+  const acceptEncoding = request?.headers.get('accept-encoding') ?? null;
 
-  function respond(payload: T, cacheState: 'hit' | 'stale'): Response {
+  function respondCached(rawPayload: string, cacheState: 'hit' | 'stale'): Response {
     if (transform) {
-      return NextResponse.json(transform(payload), { headers: { 'cache-control': 'no-store', 'x-cache': cacheState } });
+      return jsonResponse(transform(JSON.parse(rawPayload) as T), { 'cache-control': 'no-store', 'x-cache': cacheState }, acceptEncoding);
     }
-    return jsonPassthrough(JSON.stringify(payload), cacheState);
+    return jsonPassthrough(rawPayload, cacheState, cacheKey, acceptEncoding);
   }
 
   async function rebuild(): Promise<T | null | undefined> {
     const payload = await build();
     if (payload != null && !skipWrite) {
-      try { writeSnapshotCache(cacheKey, JSON.stringify(payload)); } catch { /* ok */ }
+      try { await writeSnapshotCache(cacheKey, JSON.stringify(payload)); } catch { /* ok */ }
     }
     return payload;
   }
 
   try {
-    const cached = force ? null : readSnapshotCache(cacheKey);
+    const cached = force ? null : await readSnapshotCache(cacheKey);
     const age = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
 
     if (cached && age < ttlMs) {
-      return transform ? respond(JSON.parse(cached.payload) as T, 'hit') : jsonPassthrough(cached.payload, 'hit');
+      return respondCached(cached.payload, 'hit');
     }
     if (cached) {
       triggerBackgroundRebuild(cacheKey, rebuild);
-      return transform ? respond(JSON.parse(cached.payload) as T, 'stale') : jsonPassthrough(cached.payload, 'stale');
+      return respondCached(cached.payload, 'stale');
     }
 
     const started = Date.now();
@@ -101,14 +121,16 @@ export async function cachedRoute<T, R = T>(opts: CachedRouteOptions<T, R>): Pro
       throw new Error(`cachedRoute: build() returned null/undefined for "${cacheKey}" with no notFoundMessage set`);
     }
     const body = transform ? transform(payload) : payload;
-    return NextResponse.json(body, {
-      headers: { 'cache-control': 'no-store', 'x-cache': 'miss', 'x-elapsed-ms': String(Date.now() - started) },
-    });
+    return jsonResponse(
+      body,
+      { 'cache-control': 'no-store', 'x-cache': 'miss', 'x-elapsed-ms': String(Date.now() - started) },
+      acceptEncoding,
+    );
   } catch (error) {
     console.error(`[${routeName ?? cacheKey}]`, error);
-    const stale = readSnapshotCache(cacheKey);
+    const stale = await readSnapshotCache(cacheKey);
     if (stale) {
-      return transform ? respond(JSON.parse(stale.payload) as T, 'stale') : jsonPassthrough(stale.payload, 'stale');
+      return respondCached(stale.payload, 'stale');
     }
     return NextResponse.json(
       { error: errorMessage ?? 'Request failed', detail: error instanceof Error ? error.message : String(error) },

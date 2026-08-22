@@ -16,6 +16,8 @@
  */
 
 import { readOddsCache, writeOddsCache } from '../db/client';
+import { americanToDecimal } from './display';
+import type { BookmakerOdds } from './types';
 
 const BASE = 'https://api.the-odds-api.com/v4';
 const SPORT_KEY = 'baseball_mlb';
@@ -44,6 +46,15 @@ export interface GameLine {
   moneyline?: { home?: number; away?: number; book?: string };
   spread?: { homePoint?: number; homePrice?: number; awayPoint?: number; awayPrice?: number; book?: string };
   total?: { point?: number; overPrice?: number; underPrice?: number; book?: string };
+  /**
+   * Every book's own price for this game (decimal odds, matching
+   * BookmakerOdds's existing contract from the OddsHarvester side) — added
+   * so a line-shopping view has real per-book data to show instead of only
+   * the single collapsed price above. `moneyline`/`spread`/`total` above are
+   * unchanged in shape and still the "one number a user could actually get"
+   * summary; this is additive, not a replacement.
+   */
+  bookmakers: BookmakerOdds[];
   bookCount: number;
 }
 
@@ -75,7 +86,18 @@ function disabled(warning: string): GameLinesResult {
 /**
  * Collapse every bookmaker's quote into one line per game, taking the best
  * available price for each side so the number shown is one a user could
- * actually have got somewhere.
+ * actually have got somewhere — for all three markets now. Previously
+ * spread/total only kept whichever book was encountered first, discarding
+ * every other book's price without comparison (unlike moneyline, which
+ * always compared); fixed here so all three markets use the same genuine
+ * best-of-all-books logic. Each side is still maximized independently, so
+ * — same caveat that already applied to moneyline — the two sides of a
+ * spread/total can end up attributed to different books.
+ *
+ * Also retains every book's own price in `bookmakers` (decimal odds) rather
+ * than discarding the losing books once the best price is found — this is
+ * what `writeOddsCache` now persists alongside the collapsed summary, since
+ * it's the same JSON blob this function returns.
  */
 export function summariseOddsEvent(event: any): GameLine {
   const line: GameLine = {
@@ -83,16 +105,31 @@ export function summariseOddsEvent(event: any): GameLine {
     commenceTime: event.commence_time,
     homeTeam: event.home_team,
     awayTeam: event.away_team,
+    bookmakers: [],
     bookCount: Array.isArray(event.bookmakers) ? event.bookmakers.length : 0,
   };
 
+  const bookmakers: BookmakerOdds[] = [];
+
   for (const book of event.bookmakers ?? []) {
+    const entry: BookmakerOdds = { bookmaker: book.title };
+    let hasData = false;
+
     for (const market of book.markets ?? []) {
       const outcomes: any[] = market.outcomes ?? [];
 
       if (market.key === 'h2h') {
         const home = outcomes.find((o) => o.name === event.home_team);
         const away = outcomes.find((o) => o.name === event.away_team);
+        if (home?.price != null) {
+          entry.homeOdds = americanToDecimal(home.price);
+          hasData = true;
+        }
+        if (away?.price != null) {
+          entry.awayOdds = americanToDecimal(away.price);
+          hasData = true;
+        }
+
         const current = line.moneyline ?? {};
         // "Best" for American odds is simply the largest number.
         if (home?.price != null && (current.home == null || home.price > current.home)) {
@@ -103,31 +140,68 @@ export function summariseOddsEvent(event: any): GameLine {
         }
       }
 
-      if (market.key === 'spreads' && !line.spread) {
+      if (market.key === 'spreads') {
         const home = outcomes.find((o) => o.name === event.home_team);
         const away = outcomes.find((o) => o.name === event.away_team);
-        line.spread = {
-          homePoint: home?.point,
-          homePrice: home?.price,
-          awayPoint: away?.point,
-          awayPrice: away?.price,
-          book: book.title,
-        };
+        if (home?.point != null) {
+          entry.spreadHome = home.point;
+          hasData = true;
+        }
+        if (home?.price != null) {
+          entry.spreadHomePrice = americanToDecimal(home.price);
+          hasData = true;
+        }
+        if (away?.point != null) {
+          entry.spreadAway = away.point;
+          hasData = true;
+        }
+        if (away?.price != null) {
+          entry.spreadAwayPrice = americanToDecimal(away.price);
+          hasData = true;
+        }
+
+        if (home?.price != null && (line.spread?.homePrice == null || home.price > line.spread.homePrice)) {
+          line.spread = { ...(line.spread ?? {}), homePoint: home.point, homePrice: home.price, book: book.title };
+        }
+        if (away?.price != null && (line.spread?.awayPrice == null || away.price > line.spread.awayPrice)) {
+          line.spread = { ...(line.spread ?? {}), awayPoint: away.point, awayPrice: away.price, book: book.title };
+        }
       }
 
-      if (market.key === 'totals' && !line.total) {
+      if (market.key === 'totals') {
         const over = outcomes.find((o) => o.name === 'Over');
         const under = outcomes.find((o) => o.name === 'Under');
-        line.total = {
-          point: over?.point ?? under?.point,
-          overPrice: over?.price,
-          underPrice: under?.price,
-          book: book.title,
-        };
+        if (over?.point != null || under?.point != null) {
+          entry.point = over?.point ?? under?.point;
+          hasData = true;
+        }
+        if (over?.price != null) {
+          entry.overPrice = americanToDecimal(over.price);
+          hasData = true;
+        }
+        if (under?.price != null) {
+          entry.underPrice = americanToDecimal(under.price);
+          hasData = true;
+        }
+
+        // `point` is tracked alongside whichever side most recently won —
+        // over and under can theoretically differ in point across books,
+        // and this single-field shape (kept as-is; not the fix this pass is
+        // scoped to) can't represent both simultaneously, same class of
+        // limitation moneyline already has for `book` above.
+        if (over?.price != null && (line.total?.overPrice == null || over.price > line.total.overPrice)) {
+          line.total = { ...(line.total ?? {}), point: over.point ?? line.total?.point, overPrice: over.price, book: book.title };
+        }
+        if (under?.price != null && (line.total?.underPrice == null || under.price > line.total.underPrice)) {
+          line.total = { ...(line.total ?? {}), point: line.total?.point ?? under.point, underPrice: under.price, book: book.title };
+        }
       }
     }
+
+    if (hasData) bookmakers.push(entry);
   }
 
+  line.bookmakers = bookmakers;
   return line;
 }
 
@@ -143,7 +217,7 @@ export async function getMlbGameLines(force = false): Promise<GameLinesResult> {
   }
 
   const cacheKey = `${SPORT_KEY}:${markets}:us`;
-  const cached = readOddsCache(cacheKey);
+  const cached = await readOddsCache(cacheKey);
   const warnings: string[] = [];
 
   const ageMinutes = cached ? (Date.now() - Date.parse(cached.fetchedAt)) / 60000 : Infinity;
@@ -201,7 +275,7 @@ export async function getMlbGameLines(force = false): Promise<GameLinesResult> {
     const events = (await res.json()) as any[];
     const lines = events.map(summariseOddsEvent);
 
-    writeOddsCache(cacheKey, JSON.stringify(lines), requestsRemaining, requestsUsed);
+    await writeOddsCache(cacheKey, JSON.stringify(lines), requestsRemaining, requestsUsed);
 
     if (requestsRemaining != null && requestsRemaining <= reserve * 2) {
       warnings.push(`${requestsRemaining} Odds API credits left this month.`);

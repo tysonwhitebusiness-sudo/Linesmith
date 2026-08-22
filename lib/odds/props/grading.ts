@@ -67,9 +67,9 @@ function findClosestPricePair(
 }
 
 /** Market probability + edge, when the row has a model prediction and a genuine two-sided price exists to join against. */
-function joinMarketSide(row: UngradedRow, gameId: string): Partial<GradeResult> {
+async function joinMarketSide(row: UngradedRow, gameId: string): Promise<Partial<GradeResult>> {
   if (!row.marketKey || row.modelProb == null) return {};
-  const points = readPropOddsHistoryForKey(gameId, row.subjectId, row.marketKey, row.line);
+  const points = await readPropOddsHistoryForKey(gameId, row.subjectId, row.marketKey, row.line);
   if (points.length === 0) return {};
   const pair = findClosestPricePair(points, row.surfacedAt);
   if (!pair) return {};
@@ -164,7 +164,7 @@ export interface GradingSummary {
 
 /** Call on a schedule (piggybacked on the snapshot refresh cycle) — cheap when there's nothing to grade. */
 export async function gradeFinishedGames(): Promise<GradingSummary> {
-  const gameIds = listUngradedGameIds();
+  const gameIds = await listUngradedGameIds();
   const summary: GradingSummary = { gamesChecked: gameIds.length, gamesFinal: 0, rowsGraded: 0, rowsSkipped: 0 };
 
   for (const gameId of gameIds) {
@@ -177,7 +177,7 @@ export async function gradeFinishedGames(): Promise<GradingSummary> {
     summary.gamesFinal += 1;
 
     const innings = feed.linescore?.innings ?? [];
-    const rows = listUngradedForGame(gameId);
+    const rows = await listUngradedForGame(gameId);
     const results: GradeResult[] = [];
     for (const row of rows) {
       const graded =
@@ -190,9 +190,9 @@ export async function gradeFinishedGames(): Promise<GradingSummary> {
         summary.rowsSkipped += 1;
         continue;
       }
-      results.push({ ...graded, ...joinMarketSide(row, gameId) });
+      results.push({ ...graded, ...(await joinMarketSide(row, gameId)) });
     }
-    writeGrades(results);
+    await writeGrades(results);
     summary.rowsGraded += results.length;
   }
 

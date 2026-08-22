@@ -51,7 +51,7 @@ function findColIndex(header: Array<string | null>, candidates: string[]): numbe
   return -1;
 }
 
-export function ingestSbrXlsx(filePath: string, season: number): IngestSummary {
+export async function ingestSbrXlsx(filePath: string, season: number): Promise<IngestSummary> {
   const summary: IngestSummary = { source: `sbr-xlsx-${season}`, rowsRead: 0, gamesWritten: 0, unresolvedTeams: [], skippedNoMatchup: 0 };
   const wb = XLSX.readFile(filePath);
   const sheet = wb.Sheets[wb.SheetNames[0]];
@@ -193,7 +193,7 @@ export function ingestSbrXlsx(filePath: string, season: number): IngestSummary {
     });
   }
 
-  summary.gamesWritten = writeHistoricalOdds(entries);
+  summary.gamesWritten = await writeHistoricalOdds(entries);
   summary.unresolvedTeams = [...unresolved];
   return summary;
 }
@@ -207,7 +207,7 @@ function parseCsvLine(line: string): string[] {
   return line.split(',');
 }
 
-export function ingestLongCsv(filePath: string): IngestSummary {
+export async function ingestLongCsv(filePath: string): Promise<IngestSummary> {
   // Filename included so a multi-file ingestion run (see ingestAllHistoricalOdds)
   // reports which specific file each summary came from, not an indistinguishable "long-csv" for all of them.
   const fileName = filePath.split(/[/\\]/).pop() ?? filePath;
@@ -419,7 +419,7 @@ export function ingestLongCsv(filePath: string): IngestSummary {
     });
   }
 
-  summary.gamesWritten = writeHistoricalOdds(entries);
+  summary.gamesWritten = await writeHistoricalOdds(entries);
   summary.unresolvedTeams = [...unresolved];
   return summary;
 }
@@ -596,22 +596,22 @@ export async function ingestScraperJson(filePath: string): Promise<IngestSummary
     }
   }
 
-  summary.gamesWritten = writeHistoricalOdds(entries);
+  summary.gamesWritten = await writeHistoricalOdds(entries);
   summary.unresolvedTeams = [...unresolved];
   return summary;
 }
 
-export function ingestAllHistoricalOdds(downloadsDir: string, xlsxSeasons: number[]): IngestSummary[] {
+export async function ingestAllHistoricalOdds(downloadsDir: string, xlsxSeasons: number[]): Promise<IngestSummary[]> {
   const summaries: IngestSummary[] = [];
   for (const season of xlsxSeasons) {
     const path = `${downloadsDir}/mlb-odds-${season}.xlsx`;
     if (!fs.existsSync(path)) continue;
-    summaries.push(ingestSbrXlsx(path, season));
+    summaries.push(await ingestSbrXlsx(path, season));
   }
   if (fs.existsSync(downloadsDir)) {
     const longCsvFiles = fs.readdirSync(downloadsDir).filter((f) => LONG_CSV_PATTERN.test(f));
     for (const file of longCsvFiles) {
-      summaries.push(ingestLongCsv(`${downloadsDir}/${file}`));
+      summaries.push(await ingestLongCsv(`${downloadsDir}/${file}`));
     }
   }
   return summaries;

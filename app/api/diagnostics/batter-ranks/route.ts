@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     return NextResponse.json(rankings);
   } catch (error) {
     console.error('[api/diagnostics/batter-ranks]', error);
-    logSystemEvent({
+    await logSystemEvent({
       level: 'error',
       source: 'api/diagnostics/batter-ranks',
       message: error instanceof Error ? error.message : String(error),

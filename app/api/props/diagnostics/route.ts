@@ -25,11 +25,11 @@ export async function GET() {
     userSportsbook: normalizeBookmaker(userSportsbook()) ?? userSportsbook().toLowerCase(),
     providers: allProviderMeta(),
     budgets: {
-      oddsapiio: dailyStatus('oddsapiio', oddsApiIo.dailyLimit),
-      sportsgameodds: monthlyStatus('sportsgameodds', sgo.monthlyLimit, sgo.softCap, 'objects'),
-      oddspapi: monthlyStatus('oddspapi', op.monthlyLimit, op.softCap, 'requests'),
-      theoddsapi: monthlyStatus('theoddsapi', toa.monthlyLimit, null, 'requests'),
+      oddsapiio: await dailyStatus('oddsapiio', oddsApiIo.dailyLimit),
+      sportsgameodds: await monthlyStatus('sportsgameodds', sgo.monthlyLimit, sgo.softCap, 'objects'),
+      oddspapi: await monthlyStatus('oddspapi', op.monthlyLimit, op.softCap, 'requests'),
+      theoddsapi: await monthlyStatus('theoddsapi', toa.monthlyLimit, null, 'requests'),
     },
-    unresolved: listUnresolved(),
+    unresolved: await listUnresolved(),
   });
 }

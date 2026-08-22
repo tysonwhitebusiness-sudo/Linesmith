@@ -11,7 +11,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ bet
     return NextResponse.json({ error: 'Invalid betId' }, { status: 400 });
   }
   await gradeOpenBets();
-  const bet = getBet(id);
+  const bet = await getBet(id);
   if (!bet) return NextResponse.json({ error: 'Bet not found' }, { status: 404 });
   return NextResponse.json({ bet });
 }

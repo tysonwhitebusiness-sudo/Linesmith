@@ -172,7 +172,7 @@ export async function backfillFromOddsPapi(startDate: string, endDate: string): 
   let requestsUsedThisRun = 0;
 
   const [fixtures, marketCatalog] = await Promise.all([fetchFixtures(apiKey), fetchMarketCatalog(apiKey)]);
-  recordMonthlySpend('oddspapi', 2, 0);
+  await recordMonthlySpend('oddspapi', 2, 0);
   requestsUsedThisRun += 2;
 
   const handicapByTotalsMarketId = new Map<number, number>();
@@ -229,12 +229,12 @@ export async function backfillFromOddsPapi(startDate: string, endDate: string): 
     matched += 1;
 
     const season = Number(gameDate.slice(0, 4));
-    if (getHistoricalOdds(season, gameDate, resolved.homeId, resolved.awayId)) {
+    if (await getHistoricalOdds(season, gameDate, resolved.homeId, resolved.awayId)) {
       alreadySkipped += 1;
       continue;
     }
 
-    const budget = monthlyStatus('oddspapi', config.monthlyLimit, config.softCap, 'requests');
+    const budget = await monthlyStatus('oddspapi', config.monthlyLimit, config.softCap, 'requests');
     if (budget.exhausted) {
       stoppedOnBudget = true;
       break;
@@ -246,7 +246,7 @@ export async function backfillFromOddsPapi(startDate: string, endDate: string): 
     // credit," and Phase 0 already found this endpoint isn't reliably
     // metered the same way the odds/fixtures/markets calls are anyway.
     if (hist) {
-      recordMonthlySpend('oddspapi', 1, 0);
+      await recordMonthlySpend('oddspapi', 1, 0);
       requestsUsedThisRun += 1;
     } else {
       fetchFailures[status] = (fetchFailures[status] ?? 0) + 1;
@@ -340,11 +340,11 @@ export async function backfillFromOddsPapi(startDate: string, endDate: string): 
       source: 'oddspapi-historical',
       bookCount,
     };
-    writeHistoricalOdds([entry]);
+    await writeHistoricalOdds([entry]);
     ingested += 1;
   }
 
-  const finalBudget = monthlyStatus('oddspapi', config.monthlyLimit, config.softCap, 'requests');
+  const finalBudget = await monthlyStatus('oddspapi', config.monthlyLimit, config.softCap, 'requests');
   return {
     dateRange: [startDate, endDate],
     fixturesInRange: inRange.length,

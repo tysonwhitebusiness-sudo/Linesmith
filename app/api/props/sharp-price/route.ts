@@ -28,11 +28,11 @@ export async function POST(request: Request) {
   if (!config.enabled) {
     return NextResponse.json({ error: 'OddsPapi is not configured.' }, { status: 409 });
   }
-  if (isGameFinal(gameId)) {
+  if (await isGameFinal(gameId)) {
     return NextResponse.json({ error: 'This game is final — Check Sharp Price is disabled.' }, { status: 409 });
   }
 
-  const budget = monthlyStatus('oddspapi', config.monthlyLimit, config.softCap, 'requests');
+  const budget = await monthlyStatus('oddspapi', config.monthlyLimit, config.softCap, 'requests');
   if (budget.exhausted) {
     return NextResponse.json({ error: 'OddsPapi monthly budget is exhausted.', budget }, { status: 429 });
   }
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const game = loadGameContext(gameId);
+  const game = await loadGameContext(gameId);
   if (!game) return NextResponse.json({ error: 'Game not found in the current slate.' }, { status: 404 });
 
   const result = await fetchSharpPrice(game);

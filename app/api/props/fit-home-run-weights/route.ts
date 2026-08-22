@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     return NextResponse.json(summary);
   } catch (error) {
     console.error('[api/props/fit-home-run-weights]', error);
-    logSystemEvent({ level: 'error', source: 'api/props/fit-home-run-weights', message: error instanceof Error ? error.message : String(error) });
+    await logSystemEvent({ level: 'error', source: 'api/props/fit-home-run-weights', message: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: 'Home run fitting failed', detail: error instanceof Error ? error.message : String(error) },
       { status: 502 },

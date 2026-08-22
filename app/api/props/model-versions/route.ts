@@ -15,9 +15,11 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sport = searchParams.get('sport') ?? 'mlb';
 
-  const moneyline = listModelWeightVersions(sport, 'moneyline');
-  const total = listModelWeightVersions(sport, 'total');
-  const homeRun = listModelWeightVersions(sport, 'home-run');
+  const [moneyline, total, homeRun] = await Promise.all([
+    listModelWeightVersions(sport, 'moneyline'),
+    listModelWeightVersions(sport, 'total'),
+    listModelWeightVersions(sport, 'home-run'),
+  ]);
 
   const activeMoneyline = moneyline.find((v) => v.active);
   const activeTotal = total.find((v) => v.active);

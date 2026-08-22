@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   const sport = new URL(request.url).searchParams.get('sport') ?? undefined;
   await gradeOpenBets();
-  return NextResponse.json({ bets: listBets(sport) });
+  return NextResponse.json({ bets: await listBets(sport) });
 }
 
 /** Submit a set of slip legs (by pick id) to Live Bets. */
@@ -18,6 +18,6 @@ export async function POST(request: Request) {
   if (ids.length === 0) {
     return NextResponse.json({ error: 'ids is required' }, { status: 400 });
   }
-  const bets = submitPicksAsBets(ids);
+  const bets = await submitPicksAsBets(ids);
   return NextResponse.json({ bets }, { status: 201 });
 }

@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   const sport = new URL(request.url).searchParams.get('sport') ?? undefined;
-  return NextResponse.json({ picks: listPicks(sport) });
+  return NextResponse.json({ picks: await listPicks(sport) });
 }
 
 export async function POST(request: Request) {
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `Missing required field(s): ${missing.join(', ')}` }, { status: 400 });
   }
 
-  const pick = addPick({
+  const pick = await addPick({
     sport: body.sport!,
     subjectId: body.subjectId!,
     subjectName: body.subjectName!,
@@ -48,7 +48,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'id is required' }, { status: 400 });
   }
   const odds = body.americanOdds?.trim() ? body.americanOdds.trim() : null;
-  const pick = updatePickOdds(body.id, odds, body.source ?? 'manual');
+  const pick = await updatePickOdds(body.id, odds, body.source ?? 'manual');
   if (!pick) return NextResponse.json({ error: 'Pick not found' }, { status: 404 });
   return NextResponse.json({ pick });
 }
@@ -59,11 +59,11 @@ export async function DELETE(request: Request) {
   const all = params.get('all');
 
   if (all !== null) {
-    clearPicks(params.get('sport') ?? undefined);
+    await clearPicks(params.get('sport') ?? undefined);
     return NextResponse.json({ ok: true });
   }
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
-  deletePick(Number(id));
+  await deletePick(Number(id));
   return NextResponse.json({ ok: true });
 }

@@ -99,5 +99,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ team
     build: () => buildTeamPayload(teamId),
     notFoundMessage: 'Team not found',
     errorMessage: 'Team lookup failed',
+    request,
   });
 }

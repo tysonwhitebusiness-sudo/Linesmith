@@ -129,8 +129,8 @@ export async function GET(request: Request) {
   const date = params.get('date'); // YYYY-MM-DD exact match — kept for the Scan page's single-day badge
   const from = params.get('from'); // YYYY-MM-DD, inclusive
   const to = params.get('to'); // YYYY-MM-DD, inclusive
-  const record = gamePickRecord(sport);
-  let rows = listGamePickHistory(sport).map(toView);
+  const record = await gamePickRecord(sport);
+  let rows = (await listGamePickHistory(sport)).map(toView);
   if (date) {
     rows = rows.filter((r) => r.commenceTime && easternDate(new Date(r.commenceTime)) === date);
   } else if (from || to) {

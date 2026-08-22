@@ -219,7 +219,7 @@ async function buildTrainingSet(seasons: number[]): Promise<TrainingSetResult> {
       .filter((g) => g.abstractState === 'Final' && g.teams.home.score != null && g.teams.away.score != null)
       .sort((a, b) => (a.gameDate < b.gameDate ? -1 : 1));
 
-    const parkFactorByVenue = new Map(readParkFactors(season).map((r) => [r.venueId, r.factor]));
+    const parkFactorByVenue = new Map((await readParkFactors(season)).map((r) => [r.venueId, r.factor]));
     const teamState = new Map<number, TeamState>(); // reset per season — standings reset
 
     for (const g of finals) {
@@ -284,7 +284,7 @@ async function buildTrainingSet(seasons: number[]): Promise<TrainingSetResult> {
             : 0.5;
 
         const gameDateEastern = easternDate(new Date(g.gameDate));
-        const odds = getHistoricalOdds(season, gameDateEastern, homeId, awayId);
+        const odds = await getHistoricalOdds(season, gameDateEastern, homeId, awayId);
         let marketProbCentered = 0;
         if (odds?.mlHomeConsensusProb != null) {
           marketProbCentered = odds.mlHomeConsensusProb - 0.5;
@@ -437,7 +437,7 @@ export async function fitMoneylineWeights(trainSeasons: number[], holdoutSeasons
   // currently-active formula on data it never trained on.
   const activated = holdoutBrier < baselineHoldoutBrier;
 
-  const savedRow = writeModelWeights(
+  const savedRow = await writeModelWeights(
     {
       sport: 'mlb',
       market: 'moneyline',
@@ -593,7 +593,7 @@ export async function fitTotalWeights(trainSeasons: number[], holdoutSeasons: nu
   // formula on seasons it never trained on.
   const activated = holdoutBrier < baselineHoldoutBrier;
 
-  const savedRow = writeModelWeights(
+  const savedRow = await writeModelWeights(
     {
       sport: 'mlb',
       market: 'total',

@@ -10,6 +10,8 @@ import { buildSlate, teamKey } from '@/lib/odds/matching';
 import { projectLine, formatAmerican } from '@/lib/odds/display';
 import { computeMoneylineEdge, computeTotalEdge } from '@/lib/odds/gameEdge';
 import type { UnifiedLinesResult, UnifiedGameLine } from '@/lib/odds/types';
+import { BookmakerBreakdown } from './GameLine';
+import { GamePropLineShoppingRail } from './PropOddsPanel';
 import type { MoneylineResult } from '@/lib/sports/mlb/gameModel';
 import type { TeamGrades } from '@/lib/sports/nfl/nflTeamGrades';
 import { toPicksPanelGame, toRecentResultRow, toInjuryRow, type RecentResultRow, type InjuryRow } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
@@ -1561,6 +1563,8 @@ export function PicksPanel({
   eventContext,
   gameLine,
   disabled,
+  propRows,
+  userSportsbook,
 }: {
   game: PicksPanelGame;
   gameCandidateSubjectIds: Set<string>;
@@ -1570,6 +1574,8 @@ export function PicksPanel({
   eventContext: string | null;
   gameLine: UnifiedGameLine | null;
   disabled: boolean;
+  propRows: PropOddsRow[];
+  userSportsbook: string;
 }) {
   const { awayAbbr, homeAbbr } = game;
   const scoped = picks.filter(
@@ -1694,8 +1700,19 @@ export function PicksPanel({
                 ) : null}
               </div>
             ) : null}
+            <BookmakerBreakdown
+              bookmakers={projected.bookmakers}
+              selectedBook={projected.headlineBook}
+              awayLabel={awayAbbr}
+              homeLabel={homeAbbr}
+            />
           </div>
         )}
+      </section>
+
+      <section className="lb-card p-3">
+        <h2 className="mb-2 text-meta font-semibold uppercase tracking-wide text-ink-muted">Line shopping</h2>
+        <GamePropLineShoppingRail allRows={propRows} userSportsbook={userSportsbook} />
       </section>
     </aside>
   );
@@ -2093,6 +2110,8 @@ export function GameDetail({
         eventContext={eventContext}
         gameLine={sport === 'nfl' ? nflGameLine : mlbGameLine}
         disabled={isFinal}
+        propRows={props.rows}
+        userSportsbook={props.userSportsbook}
       />
     </div>
   );
