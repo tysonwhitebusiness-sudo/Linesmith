@@ -501,6 +501,92 @@ async def _compute_mlb_game_model_inner() -> dict:
     return {"games": len(inputs), "pre_game": len(pre_game), "written": written, "skipped_no_model": skipped_no_model}
 
 
+async def job_compute_mlb_prop_predictions(yield_fn=None) -> dict:
+    """Player-prop predictions — port of adapter.ts's prediction-relevant
+    candidate-building logic (predict/prop_candidates.py) plus Prop Score
+    v1 (predict/prop_pick_history.py), run on a schedule instead of inside
+    every live snapshot request. No status ('pre'/'live'/'done') gate,
+    matching adapter.ts's own unconditional candidate loop — see
+    prop_candidates.build_todays_candidates's docstring for why. Writes
+    via db.log_surfaced's first-surfaced-wins INSERT ... ON CONFLICT DO
+    NOTHING — whichever cycle is first to surface a (subject, dimension,
+    category, game) tuple today locks its model_prob for the day, same as
+    the TS original's logSnapshotCandidates."""
+    return await _run_timed("computeMlbPropPredictionsJob", _compute_mlb_prop_predictions_inner())
+
+
+async def _compute_mlb_prop_predictions_inner() -> dict:
+    from predict import prop_candidates as pc
+    from predict import prop_pick_history
+    from predict import statsapi as sa
+
+    today = sa.eastern_date()
+    season = int(today[:4])
+    async with httpx.AsyncClient() as client:
+        ctx = await pc.build_snapshot_context(client, season)
+        candidates = await pc.build_todays_candidates(client, today, season, ctx)
+        await prop_pick_history.log_snapshot_candidates("mlb", candidates)
+
+    by_dimension: dict[str, int] = {}
+    for c in candidates:
+        by_dimension[c.dimension] = by_dimension.get(c.dimension, 0) + 1
+
+    return {"candidates": len(candidates), "by_dimension": by_dimension}
+
+
+async def job_golf_predictions(yield_fn=None) -> dict:
+    """Port of golf's own inline "Phase A prediction models" block
+    (adapter.ts, adjacent to candidatesForGolfer/roundScoreCandidate) —
+    compute models -> log predictions -> ingest history -> grade, moved
+    from "inside every live snapshot request" to a scheduled interval.
+    Golf has no pick-lock system (see predict/golf_history.py's own
+    docstring) — this faithfully reproduces the real poll-and-upsert-
+    until-graded capture pattern, not a new scheduled-lock design."""
+    return await _run_timed("golfPredictionsJob", _golf_predictions_inner())
+
+
+async def _golf_predictions_inner() -> dict:
+    from predict import golf_candidates, golf_grading, golf_history
+    from predict.golf_espn import fetch_golf_event
+    from predict.golf_venues import venue_coords
+    from predict.weather import get_weather
+
+    async with httpx.AsyncClient() as client:
+        event = await fetch_golf_event(client)
+        if event is None:
+            return {"event": None, "reason": "ESPN golf feed unavailable"}
+
+        wind_mph = temp_f = precip_prob = None
+        coords = venue_coords(event.course.name if event.course else None)
+        if coords:
+            weather = await get_weather(client, coords[0], coords[1], False)
+            if weather:
+                wind_mph, temp_f, precip_prob = weather.wind_mph, weather.temp_f, weather.rain_pct
+
+        try:
+            prediction_summary = await golf_candidates.compute_and_log_golf_predictions(client, event, wind_mph)
+            predictions_ok = True
+            hole_round_logged = prediction_summary.hole_round_predictions_logged
+            tournament_logged = prediction_summary.tournament_predictions_logged
+        except Exception as err:  # noqa: BLE001 — a model failure must never break history/grading below
+            await db.log_system_event("error", "golf/predictions", "Failed to compute golf prediction models for this poll", str(err))
+            predictions_ok = False
+            hole_round_logged = tournament_logged = 0
+
+        await golf_history.ingest_golf_history(event, wind_mph, temp_f, precip_prob)
+        graded = await golf_grading.grade_all_golf_predictions()
+
+    return {
+        "event": event.id,
+        "event_name": event.name,
+        "golfers": len(event.golfers),
+        "predictions_ok": predictions_ok,
+        "hole_round_predictions_logged": hole_round_logged,
+        "tournament_predictions_logged": tournament_logged,
+        "graded": graded,
+    }
+
+
 # Job registry the queue iterates — (name, coroutine factory, interval_seconds).
 # Tier1/SportsGameOdds-MLB intervals match lib/scheduler.ts's original
 # constants — refreshCalibration intentionally excluded, see module docstring.
@@ -543,4 +629,14 @@ JOB_REGISTRY = [
     # Phase O) — 15min just keeps it reasonably current as lineups post and
     # standings/Elo move through the day, matching maintainMlbEloJob's cadence.
     ("computeMlbGameModelJob", job_compute_mlb_game_model, 15 * 60),
+    # Matches mlbOddsLinesCycleJob's 5min cadence — the "first-surfaced-
+    # wins" capture pattern needs to run often enough that a candidate's
+    # model_prob locks in early, not whatever a much-later refresh would
+    # have computed.
+    ("computeMlbPropPredictionsJob", job_compute_mlb_prop_predictions, 5 * 60),
+    # Moved from "inside every live golf page request" (adapter.ts) to a
+    # schedule — 5min matches the MLB props job's own "first-surfaced-
+    # wins" cadence; golf's capture pattern is the same idea (poll-and-
+    # upsert-until-graded), just simpler (no lock windows).
+    ("golfPredictionsJob", job_golf_predictions, 5 * 60),
 ]

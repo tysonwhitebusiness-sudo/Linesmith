@@ -1,33 +1,38 @@
 """Direct port of app/api/odds/lines/route.ts's MLB path — not a
 reimplementation. This is Phase G of the prediction-engine port: the
-orchestrating job tying Phases A-F together into a real, always-on capture
-cycle for the Linesmith Pick lock system.
+orchestrating job tying earlier phases together into a real, always-on
+capture cycle for the Linesmith Pick lock system.
 
-Scope, deliberately bounded (see docs/mlb-prediction-engine-python-port-
-gameplan-2026-08-21.md's Phase G audit): this reads the MLB snapshot's
-already-computed gameModel/Elo fields from the shared snapshot_cache table
-(TS's adapter.ts still computes and publishes them every ~5 minutes) rather
-than recomputing them independently in Python. Cutting adapter.ts's own
-live-compute over to a Postgres read is real surgery on a 2321-line file
-that serves live production pages — CLAUDE.md's own "hard to reverse,
-affects shared systems" bar — and was deliberately NOT attempted in this
-pass. What Phase G *does* deliver is real: this cycle runs on a genuine
-SequentialQueue interval regardless of whether anyone loads the TS page
-near 6am/3-hours-before, which is the actual "genuine correctness upgrade"
-Phase E's own module docstring promised and could not yet deliver without
-this phase's data. Safe to run alongside TS's own route.ts (still live,
-unchanged) for the same reason Phase E's grading job is safe: both write
-through capture_moneyline_pick/capture_total_pick's `_captured_at IS NULL`
-guard, so a race is a harmless no-op.
+Originally (Phase G) this read the MLB snapshot's already-computed
+gameModel/Elo fields from the shared snapshot_cache table instead of
+recomputing them independently — a deliberate, disclosed scope decision at
+the time (cutting adapter.ts's own live-compute over to a Postgres read
+was real surgery on a 2321-line file serving live production pages).
+Phases K-O later built exactly that independent Postgres-backed path
+(mlb_game_model_cache, populated by computeMlbGameModelJob) for adapter.ts
+itself to read cache-first. This module was NOT updated to use it at the
+time — verification after Phase P's real-world deploy caught the actual
+cost: mlbOddsLinesCycleJob (the ONLY writer of game_picks after Phase P)
+still depended on TS's snapshot_cache['mlb:snapshot'] staying fresh, which
+it doesn't do reliably right at an eastern-date rollover (verified live:
+73 minutes stale, still holding the prior day's finished slate, with zero
+games available to capture against in the gap). `read_games_from_snapshot`
+now reads from statsapi.get_slate + mlb_game_model_cache directly — the
+same Postgres-native source adapter.ts's own Phase O fallback uses — so
+this job no longer depends on TS staying fresh at all, closing that gap
+for real rather than hoping the next page load or scheduler tick arrives
+in time.
 
-Also deliberately NOT ported here (secondary/polish, not core to "the pick
-gets captured on time"): logGameOddsHistory (history logging — TS's still-
-live route.ts keeps writing this table, and Python only READS from it via
-get_earliest_observed_total_point), logTotalPredictionsFromLines
-(calibration logging), attachPricesFromLines (best-effort reference-price
-attachment to an already-locked pick, never changes which side is picked).
-mergeLines's OddsHarvester half is skipped entirely — confirmed dead by the
-user this session, and with an empty harvester match list mergeLines
+This cycle runs on a genuine SequentialQueue interval regardless of
+whether anyone loads the TS page near 6am/3-hours-before, which is the
+"genuine correctness upgrade" Phase E's own module docstring promised.
+Safe to run alongside TS's own route.ts (when still live) for the same
+reason Phase E's grading job is: both write through
+capture_moneyline_pick/capture_total_pick's `_captured_at IS NULL` guard,
+so a race is a harmless no-op.
+
+mergeLines's OddsHarvester half is skipped entirely — confirmed dead by
+the user this session, and with an empty harvester match list mergeLines
 reduces to a straight field carry-over from GameLine, which is what
 _to_unified below does directly.
 """
@@ -61,8 +66,17 @@ from .game_pick_lock import (
 )
 from .game_sim_cache import load_game_sim
 from .mlb_game_lines import GameLine, get_mlb_game_lines
-from .odds_math import american_to_decimal, devig_two_way
+from .odds_math import american_to_decimal, decimal_to_american, devig_two_way
+from . import statsapi
 from .statsapi import eastern_date, get_team_bullpen_era
+
+
+def _status_for(abstract_state: str | None) -> str:
+    """Same mapping as game_model_cache.py's own status_for — duplicated
+    as a one-line dict lookup rather than imported, since game_model_cache
+    already imports SnapshotElo/SnapshotGameModel FROM this module and
+    importing back would be circular."""
+    return {"Live": "live", "Preview": "pre", "Final": "done"}.get(abstract_state or "", "unknown")
 
 
 def _team_key(name: str) -> str:
@@ -125,62 +139,142 @@ def _parse_diagnostics(d: dict) -> MoneylineDiagnostics:
     )
 
 
-def _parse_snapshot_game(g: dict) -> SnapshotGame:
-    gm = g.get("gameModel")
-    elo = g.get("elo")
-    return SnapshotGame(
-        game_pk=str(g.get("gamePk")),
-        home_team_id=g.get("homeTeamId"),
-        away_team_id=g.get("awayTeamId"),
-        away_team_name=g.get("awayTeamName"),
-        home_team_name=g.get("homeTeamName"),
-        matchup=g.get("matchup"),
-        first_pitch=g.get("firstPitch"),
-        status=g.get("status"),
-        game_model=(
-            SnapshotGameModel(
-                home_expected_runs=gm.get("homeExpectedRuns"),
-                away_expected_runs=gm.get("awayExpectedRuns"),
-                home_win_prob=gm.get("homeWinProb"),
-                away_win_prob=gm.get("awayWinProb"),
-                diagnostics=_parse_diagnostics(gm.get("diagnostics") or {}),
+async def read_games_from_snapshot(client: httpx.AsyncClient) -> list[SnapshotGame]:
+    """Today's real games with real gameModel/Elo — sourced entirely from
+    Python's own state (statsapi.get_slate + mlb_game_model_cache), never
+    from TS's snapshot_cache['mlb:snapshot'].
+
+    This used to read that TS-owned cache directly (see this module's
+    original header comment, preserved above for history), which was a
+    deliberate, disclosed scope decision at the time. Verification after
+    Phase P's real-world deploy caught the actual cost of that decision:
+    the moment the eastern date rolls over, mlb:snapshot keeps serving
+    YESTERDAY's finished slate until something else (a real page load, or
+    TS's own proactive scheduler) happens to rebuild it — verified live,
+    73 minutes stale, still holding a `done` game from the prior day —
+    which meant mlbOddsLinesCycleJob (the ONLY writer of game_picks after
+    Phase P) silently had zero games to capture against for the entire gap.
+    mlb_game_model_cache has no such dependency: computeMlbGameModelJob
+    populates it directly from the live Stats API on its own schedule, so
+    reading from it here removes the TS-freshness dependency entirely.
+    `[]` on a missing/incomplete slate, matching the prior function's own
+    graceful-empty convention (every caller already treats an empty list
+    as its own no-op).
+    """
+    today = eastern_date()
+    slate = await statsapi.get_slate(client, today)
+    games: list[SnapshotGame] = []
+    for g in slate:
+        teams = g.teams or {}
+        home_team = ((teams.get("home") or {}).get("team")) or {}
+        away_team = ((teams.get("away") or {}).get("team")) or {}
+        home_name = home_team.get("name")
+        away_name = away_team.get("name")
+        home_id = home_team.get("id")
+        away_id = away_team.get("id")
+        if home_id is None or away_id is None:
+            continue
+
+        cache_row = await db.read_game_model_cache("mlb", str(g.game_pk))
+        game_model = None
+        elo = None
+        if cache_row is not None:
+            diag = _parse_diagnostics(json.loads(cache_row.diagnostics_json))
+            game_model = SnapshotGameModel(
+                home_expected_runs=cache_row.home_expected_runs,
+                away_expected_runs=cache_row.away_expected_runs,
+                home_win_prob=cache_row.home_win_prob,
+                away_win_prob=cache_row.away_win_prob,
+                diagnostics=diag,
             )
-            if gm
-            else None
-        ),
-        elo=(
-            SnapshotElo(
-                home_elo=elo["home"]["elo"],
-                home_games_played=elo["home"]["gamesPlayed"],
-                away_elo=elo["away"]["elo"],
-                away_games_played=elo["away"]["gamesPlayed"],
-                home_rest_days=elo.get("homeRestDays"),
-                away_rest_days=elo.get("awayRestDays"),
-                home_travel_miles=elo.get("homeTravelMiles"),
-                away_travel_miles=elo.get("awayTravelMiles"),
-                home_pitcher_adj=elo.get("homePitcherAdj"),
-                away_pitcher_adj=elo.get("awayPitcherAdj"),
+            elo = SnapshotElo(
+                home_elo=cache_row.home_elo,
+                home_games_played=cache_row.home_games_played,
+                away_elo=cache_row.away_elo,
+                away_games_played=cache_row.away_games_played,
+                home_rest_days=cache_row.home_rest_days,
+                away_rest_days=cache_row.away_rest_days,
+                home_travel_miles=cache_row.home_travel_miles,
+                away_travel_miles=cache_row.away_travel_miles,
+                home_pitcher_adj=cache_row.home_pitcher_adj,
+                away_pitcher_adj=cache_row.away_pitcher_adj,
             )
-            if elo
-            else None
-        ),
-    )
+
+        games.append(
+            SnapshotGame(
+                game_pk=str(g.game_pk),
+                home_team_id=home_id,
+                away_team_id=away_id,
+                away_team_name=away_name,
+                home_team_name=home_name,
+                matchup=f"{away_name} @ {home_name}" if away_name and home_name else "",
+                first_pitch=g.game_date,
+                status=_status_for(g.abstract_state),
+                game_model=game_model,
+                elo=elo,
+            )
+        )
+    return games
 
 
-async def read_games_from_snapshot() -> list[SnapshotGame]:
-    """Reads and parses snapshot_cache['mlb:snapshot'] once — [] on a
-    missing cache or a parse failure, matching the TS source's own
-    graceful-empty convention (every caller already treats an empty list as
-    its own no-op)."""
-    payload = await db.read_snapshot("mlb:snapshot")
-    if not payload:
-        return []
-    try:
-        snapshot = json.loads(payload)
-        games = ((snapshot.get("context") or {}).get("other") or {}).get("games") or []
-        return [_parse_snapshot_game(g) for g in games]
-    except (ValueError, KeyError, TypeError):
-        return []
+# ---------------------------------------------------------------------------
+# Odds history logging (Track A1 of docs/full-prediction-engine-python-
+# port-gameplan-2026-08-22.md) — direct port of lib/odds/gameOddsLog.ts's
+# logGameOddsHistory. This is the only writer game_odds_history needs;
+# get_earliest_observed_total_point (used by run_total_lock_from_lines
+# below) already reads from this table, so this closes the loop that used
+# to depend on route.ts still running to keep it fresh.
+# ---------------------------------------------------------------------------
+
+
+def _game_odds_history_rows(lines: list[GameLine]) -> list[db.GameOddsHistoryInput]:
+    """Real bug caught during verification, fixed here rather than carried
+    over: the "best available" price (line.moneyline/line.total, whose
+    `book` field names whichever bookmaker happened to have the best price
+    for that side) and that SAME bookmaker's own entry in `bookmakers[]`
+    can legitimately disagree — they're populated from different parts of
+    the-odds-api's response. Appending both as separate rows (what a naive
+    port of the TS loop does) means a single poll can hand
+    write_game_odds_history two different "current" prices for the
+    identical (event, market, side, bookmaker) key — and since nothing
+    about that discrepancy resolves itself between polls, every future
+    call re-detects both as "changed" from whatever the other one last
+    set, forever, verified live as unbounded row growth. Deduping to one
+    row per key — keeping whichever was written LAST below, i.e. the
+    bookmaker's own `bookmakers[]` entry when one exists, since that's the
+    more specific, book-attributed source — makes "did the price change"
+    well-defined again.
+    """
+    rows: dict[tuple[str, str, str, str], db.GameOddsHistoryInput] = {}
+
+    def add(event_id: str, market: str, side: str, bookmaker: str, american_odds: int, point: float | None) -> None:
+        rows[(event_id, market, side, bookmaker)] = db.GameOddsHistoryInput(event_id, market, side, bookmaker, american_odds, point)
+
+    for line in lines:
+        if line.moneyline and line.moneyline.home is not None and line.moneyline.book:
+            add(line.event_id, "moneyline", "home", line.moneyline.book, int(line.moneyline.home), None)
+        if line.moneyline and line.moneyline.away is not None and line.moneyline.book:
+            add(line.event_id, "moneyline", "away", line.moneyline.book, int(line.moneyline.away), None)
+        if line.total and line.total.over_price is not None and line.total.point is not None and line.total.book:
+            add(line.event_id, "total", "over", line.total.book, int(line.total.over_price), line.total.point)
+        if line.total and line.total.under_price is not None and line.total.point is not None and line.total.book:
+            add(line.event_id, "total", "under", line.total.book, int(line.total.under_price), line.total.point)
+
+        for book in line.bookmakers:
+            home_american = decimal_to_american(book.home_odds)
+            away_american = decimal_to_american(book.away_odds)
+            if home_american is not None:
+                add(line.event_id, "moneyline", "home", book.bookmaker, home_american, None)
+            if away_american is not None:
+                add(line.event_id, "moneyline", "away", book.bookmaker, away_american, None)
+
+            over_american = decimal_to_american(book.over_price)
+            under_american = decimal_to_american(book.under_price)
+            if over_american is not None and book.point is not None:
+                add(line.event_id, "total", "over", book.bookmaker, over_american, book.point)
+            if under_american is not None and book.point is not None:
+                add(line.event_id, "total", "under", book.bookmaker, under_american, book.point)
+    return list(rows.values())
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +291,12 @@ async def run_total_lock_from_lines(client: httpx.AsyncClient, lines: list[GameL
 
     season = int(eastern_date()[:4])
     inputs: list[TotalLockInput] = []
+    # Track A2 of docs/full-prediction-engine-python-port-gameplan-2026-08-22.md
+    # — direct port of route.ts's logTotalPredictionsFromLines. Logs the
+    # RAW (un-fitted) model.over_prob computed below, same as the TS
+    # original's own separate computeTotalModel call — calibration data,
+    # deliberately not the fitted/blended over_prob used for the lock cycle.
+    predictions: list[db.GameTotalPrediction] = []
 
     for line in lines:
         if line.total is None or line.total.point is None:
@@ -206,6 +306,7 @@ async def run_total_lock_from_lines(client: httpx.AsyncClient, lines: list[GameL
             continue
 
         model = compute_total_model(TotalModelInput(home_expected_runs=game.game_model.home_expected_runs, away_expected_runs=game.game_model.away_expected_runs, line=line.total.point))
+        predictions.append(db.GameTotalPrediction(game_pk=game.game_pk, total_line=line.total.point, over_prob=model.over_prob))
 
         market_over_prob = None
         if line.total.over_price is not None and line.total.under_price is not None:
@@ -262,6 +363,8 @@ async def run_total_lock_from_lines(client: httpx.AsyncClient, lines: list[GameL
             )
         )
 
+    if predictions:
+        await db.log_game_total_predictions("mlb", predictions)
     if inputs:
         await run_total_lock_cycle("mlb", inputs, now)
 
@@ -361,6 +464,46 @@ async def run_moneyline_lock_from_snapshot(lines: list[GameLine], games: list[Sn
 
 
 # ---------------------------------------------------------------------------
+# Reference-price attachment (Track A3 of docs/full-prediction-engine-
+# python-port-gameplan-2026-08-22.md) — direct port of route.ts's
+# attachPricesFromLines. Best-effort: fills in the reference price shown
+# next to an already-locked game_picks row, matched the same way the lock
+# cycles themselves match. Never influences which side was picked.
+# ---------------------------------------------------------------------------
+
+
+async def attach_prices_from_lines(lines: list[GameLine], games: list[SnapshotGame]) -> None:
+    if not lines:
+        return
+    for line in lines:
+        game = next((g for g in games if g.away_team_name and g.home_team_name and _team_key(g.away_team_name) == _team_key(line.away_team) and _team_key(g.home_team_name) == _team_key(line.home_team)), None)
+        if game is None:
+            continue
+        game_id = game.game_pk
+        pick = await db.get_game_pick("mlb", game_id)
+        if pick is None:
+            continue
+
+        if line.moneyline and line.moneyline.home is not None and pick.ml_initial_side == "home":
+            await db.attach_moneyline_price("mlb", game_id, "initial", "home", int(line.moneyline.home))
+        if line.moneyline and line.moneyline.away is not None and pick.ml_initial_side == "away":
+            await db.attach_moneyline_price("mlb", game_id, "initial", "away", int(line.moneyline.away))
+        if line.moneyline and line.moneyline.home is not None and pick.ml_final_side == "home":
+            await db.attach_moneyline_price("mlb", game_id, "final", "home", int(line.moneyline.home))
+        if line.moneyline and line.moneyline.away is not None and pick.ml_final_side == "away":
+            await db.attach_moneyline_price("mlb", game_id, "final", "away", int(line.moneyline.away))
+
+        if line.total and line.total.over_price is not None and pick.total_initial_side == "over":
+            await db.attach_total_price("mlb", game_id, "initial", "over", int(line.total.over_price))
+        if line.total and line.total.under_price is not None and pick.total_initial_side == "under":
+            await db.attach_total_price("mlb", game_id, "initial", "under", int(line.total.under_price))
+        if line.total and line.total.over_price is not None and pick.total_final_side == "over":
+            await db.attach_total_price("mlb", game_id, "final", "over", int(line.total.over_price))
+        if line.total and line.total.under_price is not None and pick.total_final_side == "under":
+            await db.attach_total_price("mlb", game_id, "final", "under", int(line.total.under_price))
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -371,9 +514,11 @@ async def run_mlb_odds_lines_cycle(client: httpx.AsyncClient, now=None) -> dict:
     docstring. Fetches market lines, reads the shared snapshot, and runs
     both lock cycles."""
     result = await get_mlb_game_lines(client)
-    games = await read_games_from_snapshot()
+    games = await read_games_from_snapshot(client)
 
+    await db.write_game_odds_history(_game_odds_history_rows(result.lines))
     await run_total_lock_from_lines(client, result.lines, games, now)
     await run_moneyline_lock_from_snapshot(result.lines, games, now)
+    await attach_prices_from_lines(result.lines, games)
 
     return {"lines": len(result.lines), "games": len(games), "from_cache": result.from_cache, "warnings": result.warnings}

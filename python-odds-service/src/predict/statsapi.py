@@ -448,6 +448,55 @@ class PitcherStatLine:
     values: dict = field(default_factory=dict)
 
 
+# Team-level opponent rank (rank_teams) is whole-staff, bullpen included —
+# real, but blunt: a batter facing a team's ace tonight is facing a
+# different pitcher than the one who dragged that team's bullpen ERA down.
+# This ranks the individual starter against every other MLB starter, for
+# exactly the stats a batter-prop matchup bullet cares about.
+PITCHER_RANK_KEYS: list[dict] = [
+    {"key": "era", "decimals": 2},
+    {"key": "strikeOuts", "decimals": 0},
+    {"key": "baseOnBalls", "decimals": 0},
+    {"key": "hits", "decimals": 0},
+    {"key": "homeRuns", "decimals": 0},
+    {"key": "whip", "decimals": 2},
+    {"key": "fip", "decimals": 2},
+    {"key": "kbbPct", "decimals": 1},
+    # Statcast quality metrics — only populated for pitchers merged with
+    # savant.py's rates before ranking; get_league_starting_pitcher_stats
+    # (the live per-scan hot path) never sets these, so they silently drop
+    # out of that pool's cards rather than showing as zero/undefined.
+    {"key": "whiffPct", "decimals": 1},
+    {"key": "barrelPct", "decimals": 1},
+    {"key": "exitVelo", "decimals": 1},
+    {"key": "hardHitPct", "decimals": 1},
+]
+
+# Lower reads as better pitching for these; strikeouts/K-BB%/whiff% are the
+# ones that invert (more is better), same reasoning as
+# PITCHING_RANK_INVERTED_KEYS above.
+PITCHER_RANK_LOWER_IS_BETTER = {"era", "baseOnBalls", "hits", "homeRuns", "whip", "fip", "barrelPct", "exitVelo", "hardHitPct"}
+
+
+def rank_pitchers(lines: list[PitcherStatLine]) -> dict[int, dict[str, int]]:
+    """Rank among starters only (not the full 700+ league pool, which would
+    dilute a rookie starter's rank with relief-only arms). 1 = best."""
+    ranks: dict[int, dict[str, int]] = {line.person_id: {} for line in lines}
+
+    for entry in PITCHER_RANK_KEYS:
+        key = entry["key"]
+        lower_is_better = key in PITCHER_RANK_LOWER_IS_BETTER
+        with_value = [line for line in lines if line.values.get(key) is not None]
+        with_value.sort(key=lambda line: line.values[key], reverse=not lower_is_better)
+
+        for index, line in enumerate(with_value):
+            bucket = ranks.get(line.person_id)
+            if bucket is not None:
+                bucket[key] = index + 1
+
+    return ranks
+
+
 @dataclass
 class LeaguePitcherSeasonRow:
     raw: RawPitcherSeasonLine

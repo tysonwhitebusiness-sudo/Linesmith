@@ -297,6 +297,57 @@ async def write_prop_odds(rows: list[PropOddsInput]) -> None:
                 )
 
 
+@dataclass
+class PropOddsRow:
+    id: int
+    provider_id: str
+    game_id: str
+    subject_id: str
+    subject_name: str
+    market_key: str
+    line: float | None
+    side: str
+    bookmaker: str
+    american_odds: int
+    decimal_odds: float | None
+    fetched_at: str
+    is_delayed: bool
+    delay_seconds: int | None
+
+
+def _map_prop_odds_row(r) -> PropOddsRow:
+    return PropOddsRow(
+        id=r["id"],
+        provider_id=r["provider_id"],
+        game_id=r["game_id"],
+        subject_id=r["subject_id"],
+        subject_name=r["subject_name"],
+        market_key=r["market_key"],
+        line=r["line"],
+        side=r["side"],
+        bookmaker=r["bookmaker"],
+        american_odds=r["american_odds"],
+        decimal_odds=r["decimal_odds"],
+        fetched_at=r["fetched_at"].isoformat(),
+        is_delayed=bool(r["is_delayed"]),
+        delay_seconds=r["delay_seconds"],
+    )
+
+
+async def read_prop_odds_for_game(game_id: str) -> list[PropOddsRow]:
+    """Direct port of lib/db/client.ts's readPropOddsForGame."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT id, provider_id, game_id, subject_id, subject_name, market_key, line, side,
+               bookmaker, american_odds, decimal_odds, fetched_at, is_delayed, delay_seconds
+        FROM prop_odds WHERE game_id = $1 ORDER BY subject_id, market_key, bookmaker
+        """,
+        game_id,
+    )
+    return [_map_prop_odds_row(r) for r in rows]
+
+
 async def write_job_run_log(job_name: str, summary: dict) -> None:
     """Diagnostic breadcrumb only — a distinct namespace from anything the TS
     app reads, so a human can inspect recent run history without this harness
@@ -568,6 +619,323 @@ async def read_park_factors(season: int) -> list[ParkFactorRow]:
     ]
 
 
+async def write_park_factors(season: int, rows: list) -> None:
+    """Direct port of lib/db/client.ts's writeParkFactors — not a
+    simplified reimplementation. Each row needs venue_id/venue_name/factor/
+    games attributes (matches predict.park_factors.ParkFactorResult).
+    Upsert keyed on (venue_id, season) — a park's character doesn't change
+    mid-season, so a re-run just refreshes the same rows."""
+    if not rows:
+        return
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for r in rows:
+                await conn.execute(
+                    """
+                    INSERT INTO park_factors (venue_id, season, venue_name, factor, games, computed_at)
+                    VALUES ($1, $2, $3, $4, $5, now())
+                    ON CONFLICT (venue_id, season) DO UPDATE SET
+                      venue_name = excluded.venue_name, factor = excluded.factor,
+                      games = excluded.games, computed_at = excluded.computed_at
+                    """,
+                    r.venue_id,
+                    season,
+                    r.venue_name,
+                    r.factor,
+                    r.games,
+                )
+
+
+@dataclass
+class TeamHrRateAllowedRow:
+    team_id: int
+    season: int
+    games_faced: int
+    games_with_hr_allowed: int
+    league_hr_rate: float
+    computed_at: str
+
+
+async def read_team_hr_rate_allowed(season: int) -> list[TeamHrRateAllowedRow]:
+    """Direct port of lib/db/client.ts's readTeamHrRateAllowed."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        "SELECT team_id, season, games_faced, games_with_hr_allowed, league_hr_rate, computed_at FROM team_hr_rate_allowed WHERE season = $1",
+        season,
+    )
+    return [
+        TeamHrRateAllowedRow(
+            team_id=r["team_id"],
+            season=r["season"],
+            games_faced=r["games_faced"],
+            games_with_hr_allowed=r["games_with_hr_allowed"],
+            league_hr_rate=r["league_hr_rate"],
+            computed_at=r["computed_at"].isoformat(),
+        )
+        for r in rows
+    ]
+
+
+async def write_team_hr_rate_allowed(season: int, league_hr_rate: float, rows: list) -> None:
+    """Direct port of lib/db/client.ts's writeTeamHrRateAllowed. Each row
+    needs team_id/games_faced/games_with_hr_allowed attributes. Upsert
+    keyed on (team_id, season)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for r in rows:
+                await conn.execute(
+                    """
+                    INSERT INTO team_hr_rate_allowed (team_id, season, games_faced, games_with_hr_allowed, league_hr_rate, computed_at)
+                    VALUES ($1, $2, $3, $4, $5, now())
+                    ON CONFLICT (team_id, season) DO UPDATE SET
+                      games_faced = excluded.games_faced, games_with_hr_allowed = excluded.games_with_hr_allowed,
+                      league_hr_rate = excluded.league_hr_rate, computed_at = excluded.computed_at
+                    """,
+                    r.team_id,
+                    season,
+                    r.games_faced,
+                    r.games_with_hr_allowed,
+                    league_hr_rate,
+                )
+
+
+@dataclass
+class LeagueBaseRate:
+    dimension: str
+    rate: float
+    n: int
+
+
+async def league_base_rates(sport: str) -> list[LeagueBaseRate]:
+    """League-wide P(actual > line) per market, from every graded row this
+    app has ever seen — the center of the Beta-Binomial prior. Direct port
+    of lib/db/client.ts's leagueBaseRates."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT dimension,
+               AVG(CASE WHEN actual_value > line THEN 1.0 ELSE 0.0 END)::float8 AS rate,
+               COUNT(*) AS n
+        FROM pick_history
+        WHERE sport = $1 AND outcome IS NOT NULL AND actual_value IS NOT NULL AND line IS NOT NULL
+        GROUP BY dimension
+        """,
+        sport,
+    )
+    return [LeagueBaseRate(dimension=r["dimension"], rate=r["rate"], n=r["n"]) for r in rows]
+
+
+@dataclass
+class LiveMarketSkill:
+    dimension: str
+    n: int
+    bss: float | None
+
+
+async def live_market_skill(sport: str) -> list[LiveMarketSkill]:
+    """Direct port of lib/db/client.ts's liveMarketSkill — live (non-
+    backfill) Brier Skill Score per dimension, the input to
+    predict.market_trust.trust_tier_from_live_bss."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT dimension,
+               COUNT(*) AS n,
+               SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) AS wins,
+               AVG((model_prob - (CASE WHEN outcome = 'win' THEN 1.0 ELSE 0.0 END)) *
+                   (model_prob - (CASE WHEN outcome = 'win' THEN 1.0 ELSE 0.0 END)))::float8 AS brier
+        FROM pick_history
+        WHERE sport = $1 AND model_prob IS NOT NULL AND outcome IS NOT NULL
+              AND (event_context IS NULL OR event_context != 'backfill')
+        GROUP BY dimension
+        """,
+        sport,
+    )
+    out: list[LiveMarketSkill] = []
+    for r in rows:
+        n = r["n"]
+        p = r["wins"] / n
+        naive_brier = p * (1 - p)
+        bss = 1 - r["brier"] / naive_brier if naive_brier > 0 else None
+        out.append(LiveMarketSkill(dimension=r["dimension"], n=n, bss=bss))
+    return out
+
+
+@dataclass
+class GameOddsHistoryInput:
+    event_id: str
+    market: str  # 'moneyline' | 'total'
+    side: str  # 'home' | 'away' for moneyline, 'over' | 'under' for total
+    bookmaker: str
+    american_odds: int
+    point: float | None
+
+
+async def write_game_odds_history(rows: list[GameOddsHistoryInput]) -> None:
+    """Direct port of lib/odds/gameOddsLog.ts's writeGameOddsHistory (via
+    lib/db/client.ts) — not a simplified reimplementation. Log-on-change
+    only: one new row per (event_id, market, side, bookmaker) key only when
+    the latest observed american_odds for that key actually differs from
+    what's already there, so calling this every 5 minutes with an unchanged
+    price is a harmless no-op, not a growing pile of duplicate rows. Unlike
+    write_prop_odds, there is no separate "current state" table to also
+    upsert — game_odds_history IS the append-only log; ORDER BY
+    observed_at DESC, id DESC LIMIT 1 is how the "current" price for a key
+    is read.
+
+    Real bug caught during verification: `observed_at` is captured ONCE
+    for the whole batch (matching TS's one-timestamp-per-request
+    convention). Two rows for the same key within one call are real and
+    expected — the "best available" price is sometimes attributed to a
+    book that ALSO appears in `bookmakers[]` with its own, occasionally
+    different, price — so they can tie exactly on `observed_at`. Sorting
+    by `observed_at DESC` alone with no secondary key then picks an
+    arbitrary one of the tied rows as "current," which can make the very
+    next call see a "prior" price that doesn't match either of this call's
+    two rows — making BOTH look like changes and re-inserting them every
+    single cycle, forever. Verified live: without the `id DESC`
+    tiebreaker, the same two prices for one key kept re-inserting on every
+    call with unchanged input data. `id DESC` (monotonic insertion order)
+    fixes it.
+    """
+    if not rows:
+        return
+    observed_at = datetime.now(timezone.utc)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for r in rows:
+                prior = await conn.fetchrow(
+                    """
+                    SELECT american_odds FROM game_odds_history
+                    WHERE event_id = $1 AND market = $2 AND side = $3 AND bookmaker = $4
+                    ORDER BY observed_at DESC, id DESC LIMIT 1
+                    """,
+                    r.event_id,
+                    r.market,
+                    r.side,
+                    r.bookmaker,
+                )
+                if prior is None or prior["american_odds"] != r.american_odds:
+                    await conn.execute(
+                        """
+                        INSERT INTO game_odds_history (event_id, market, side, bookmaker, american_odds, point, observed_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        """,
+                        r.event_id,
+                        r.market,
+                        r.side,
+                        r.bookmaker,
+                        r.american_odds,
+                        r.point,
+                        observed_at,
+                    )
+
+
+@dataclass
+class SurfacedEntry:
+    sport: str
+    subject_id: str
+    subject_name: str
+    dimension: str
+    category: str
+    market_key: str | None
+    line: float | None
+    game_id: str | None
+    sample_size: int
+    distance: int | None
+    event_context: str | None
+    model_prob: float | None = None
+    market_prob: float | None = None
+    edge: float | None = None
+    price_source: str | None = None
+    bookmaker: str | None = None
+    price_captured_at: str | None = None
+    prop_score: float | None = None
+    score_grade: str | None = None
+    trust_tier: str | None = None
+    model_version: int | None = None
+
+
+async def log_surfaced(entries: list[SurfacedEntry]) -> None:
+    """Direct port of lib/db/client.ts's logSurfaced — one row per
+    real-world proposition surfaced, keyed on (sport, subject_id,
+    dimension, category, game_id), idempotent via ON CONFLICT DO NOTHING
+    since a candidate still surfacing on the next cycle is the same
+    proposition, not a new data point.
+    """
+    if not entries:
+        return
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for r in entries:
+                await conn.execute(
+                    """
+                    INSERT INTO pick_history
+                      (sport, subject_id, subject_name, dimension, category, market_key, line, game_id,
+                       sample_size, distance, event_context, model_prob, market_prob, edge, price_source, bookmaker, price_captured_at,
+                       prop_score, score_grade, trust_tier, model_version)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+                    ON CONFLICT (sport, subject_id, dimension, category, game_id) DO NOTHING
+                    """,
+                    r.sport,
+                    r.subject_id,
+                    r.subject_name,
+                    r.dimension,
+                    r.category,
+                    r.market_key,
+                    r.line,
+                    r.game_id,
+                    r.sample_size,
+                    r.distance,
+                    r.event_context,
+                    r.model_prob,
+                    r.market_prob,
+                    r.edge,
+                    r.price_source,
+                    r.bookmaker,
+                    r.price_captured_at,
+                    r.prop_score,
+                    r.score_grade,
+                    r.trust_tier,
+                    r.model_version,
+                )
+
+
+@dataclass
+class GameTotalPrediction:
+    game_pk: str
+    total_line: float
+    over_prob: float
+
+
+async def log_game_total_predictions(sport: str, predictions: list[GameTotalPrediction]) -> None:
+    """Direct port of lib/odds/props/pickHistoryLog.ts's
+    logGameTotalPredictions — wraps log_surfaced with the same fixed
+    dimension='total'/category='over'/subject_id=f'game-{gamePk}' shape."""
+    entries = [
+        SurfacedEntry(
+            sport=sport,
+            subject_id=f"game-{p.game_pk}",
+            subject_name="Total",
+            dimension="total",
+            category="over",
+            market_key=None,
+            line=p.total_line,
+            game_id=str(p.game_pk),
+            sample_size=0,
+            distance=None,
+            event_context=None,
+            model_prob=p.over_prob,
+        )
+        for p in predictions
+    ]
+    await log_surfaced(entries)
+
+
 # ---------------------------------------------------------------------------
 # Live per-game simulation cache (Phase D of the prediction-engine port)
 # ---------------------------------------------------------------------------
@@ -804,6 +1172,36 @@ async def get_game_pick(sport: str, game_id: str) -> GamePickRow | None:
     return _map_game_pick_row(row) if row else None
 
 
+async def attach_moneyline_price(sport: str, game_id: str, slot: str, side: str, american_odds: int) -> None:
+    """Direct port of lib/db/client.ts's attachMoneylinePrice — Track A3.
+    Idempotent by construction (`..._price IS NULL` guard): fills the
+    reference price shown next to an already-locked pick, never touches
+    which side was picked or its probability."""
+    col = "ml_initial" if slot == "initial" else "ml_final"
+    pool = await get_pool()
+    await pool.execute(
+        f"UPDATE game_picks SET {col}_price = $1 WHERE sport = $2 AND game_id = $3 AND {col}_side = $4 AND {col}_price IS NULL",
+        american_odds,
+        sport,
+        game_id,
+        side,
+    )
+
+
+async def attach_total_price(sport: str, game_id: str, slot: str, side: str, american_odds: int) -> None:
+    """Direct port of lib/db/client.ts's attachTotalPrice — Track A3, same
+    shape as attach_moneyline_price above."""
+    col = "total_initial" if slot == "initial" else "total_final"
+    pool = await get_pool()
+    await pool.execute(
+        f"UPDATE game_picks SET {col}_price = $1 WHERE sport = $2 AND game_id = $3 AND {col}_side = $4 AND {col}_price IS NULL",
+        american_odds,
+        sport,
+        game_id,
+        side,
+    )
+
+
 async def list_game_picks_for_lock_cycle(sport: str) -> list[GamePickRow]:
     """Games with at least one open slot to fill or grade — the lock
     engine's work list."""
@@ -1030,6 +1428,147 @@ async def get_active_model_weights(sport: str, market: str) -> ModelWeightsRow |
     )
 
 
+@dataclass
+class ModelWeightsInput:
+    sport: str
+    market: str  # 'moneyline' | 'total' | 'home-run'
+    feature_names: list[str]
+    weights: list[float]
+    intercept: float
+    train_games: int
+    train_brier: float
+    holdout_games: int
+    holdout_brier: float
+    baseline_holdout_brier: float | None
+    covariance: list[list[float]] | None
+    train_seasons: list[int]
+    holdout_seasons: list[int]
+
+
+async def write_model_weights(input: ModelWeightsInput, activate: bool) -> ModelWeightsRow:
+    """Direct port of lib/db/client.ts's writeModelWeights — not a
+    simplified reimplementation. Versions are per (sport, market),
+    monotonically increasing; activating a new version deactivates every
+    prior version for that same (sport, market) in the same transaction,
+    so `get_active_model_weights` never has more than one active row to
+    choose from."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            max_version_row = await conn.fetchrow(
+                "SELECT MAX(version) AS v FROM model_weights WHERE sport = $1 AND market = $2",
+                input.sport,
+                input.market,
+            )
+            next_version = (max_version_row["v"] or 0) + 1
+
+            if activate:
+                await conn.execute(
+                    "UPDATE model_weights SET active = false WHERE sport = $1 AND market = $2",
+                    input.sport,
+                    input.market,
+                )
+
+            await conn.execute(
+                """
+                INSERT INTO model_weights
+                  (sport, market, version, feature_names, weights_json, intercept, train_games, train_brier,
+                   holdout_games, holdout_brier, baseline_holdout_brier, active, fitted_at, covariance_json,
+                   train_seasons_json, holdout_seasons_json)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now(), $13, $14, $15)
+                """,
+                input.sport,
+                input.market,
+                next_version,
+                json.dumps(input.feature_names),
+                json.dumps(input.weights),
+                input.intercept,
+                input.train_games,
+                input.train_brier,
+                input.holdout_games,
+                input.holdout_brier,
+                input.baseline_holdout_brier,
+                activate,
+                json.dumps(input.covariance) if input.covariance is not None else None,
+                json.dumps(input.train_seasons),
+                json.dumps(input.holdout_seasons),
+            )
+
+            row = await conn.fetchrow(
+                "SELECT * FROM model_weights WHERE sport = $1 AND market = $2 AND version = $3",
+                input.sport,
+                input.market,
+                next_version,
+            )
+
+    return ModelWeightsRow(
+        id=row["id"],
+        sport=row["sport"],
+        market=row["market"],
+        version=row["version"],
+        feature_names=json.loads(row["feature_names"]),
+        weights=json.loads(row["weights_json"]),
+        intercept=row["intercept"],
+        train_games=row["train_games"],
+        train_brier=row["train_brier"],
+        holdout_games=row["holdout_games"],
+        holdout_brier=row["holdout_brier"],
+        baseline_holdout_brier=row["baseline_holdout_brier"],
+        active=row["active"],
+        fitted_at=row["fitted_at"].isoformat(),
+        covariance=_json_or_none(row["covariance_json"]),
+        train_seasons=_json_or_none(row["train_seasons_json"]),
+        holdout_seasons=_json_or_none(row["holdout_seasons_json"]),
+    )
+
+
+@dataclass
+class HistoricalOddsRow:
+    ml_home_consensus_prob: float | None
+    ml_away_consensus_prob: float | None
+    total_line: float | None
+    total_over_consensus_prob: float | None
+    total_under_consensus_prob: float | None
+    ml_home_open_prob: float | None
+    ml_away_open_prob: float | None
+    total_open_line: float | None
+    total_open_over_prob: float | None
+    total_open_under_prob: float | None
+    book_count: int | None
+
+
+async def get_historical_odds(season: int, game_date: str, home_team_id: int, away_team_id: int) -> HistoricalOddsRow | None:
+    """Direct port of lib/db/client.ts's getHistoricalOdds."""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT ml_home_consensus_prob, ml_away_consensus_prob, total_line, total_over_consensus_prob,
+               total_under_consensus_prob, ml_home_open_prob, ml_away_open_prob,
+               total_open_line, total_open_over_prob, total_open_under_prob, book_count
+        FROM historical_odds WHERE season = $1 AND game_date = $2 AND home_team_id = $3 AND away_team_id = $4
+        """,
+        season,
+        _to_date(game_date),
+        home_team_id,
+        away_team_id,
+    )
+    if row is None:
+        return None
+    return HistoricalOddsRow(
+        ml_home_consensus_prob=row["ml_home_consensus_prob"],
+        ml_away_consensus_prob=row["ml_away_consensus_prob"],
+        total_line=row["total_line"],
+        total_over_consensus_prob=row["total_over_consensus_prob"],
+        total_under_consensus_prob=row["total_under_consensus_prob"],
+        ml_home_open_prob=row["ml_home_open_prob"],
+        ml_away_open_prob=row["ml_away_open_prob"],
+        total_open_line=row["total_open_line"],
+        total_open_over_prob=row["total_open_over_prob"],
+        total_open_under_prob=row["total_open_under_prob"],
+        book_count=row["book_count"],
+    )
+
+
 async def get_earliest_observed_total_point(event_id: str) -> float | None:
     pool = await get_pool()
     row = await pool.fetchrow(
@@ -1145,3 +1684,428 @@ async def read_game_model_cache(sport: str, game_id: str) -> GameModelCacheRow |
         away_pitcher_adj=row["away_pitcher_adj"],
         computed_at=row["computed_at"].isoformat(),
     )
+
+
+# ---------------------------------------------------------------------------
+# System events — lightweight error log (direct port of lib/db/client.ts's
+# logSystemEvent)
+# ---------------------------------------------------------------------------
+
+SYSTEM_EVENTS_ROW_CAP = 500
+
+
+async def log_system_event(level: str, source: str, message: str, detail: str | None = None) -> None:
+    pool = await get_pool()
+    await pool.execute(
+        "INSERT INTO system_events (level, source, message, detail) VALUES ($1, $2, $3, $4)",
+        level,
+        source,
+        message,
+        detail,
+    )
+    await pool.execute(
+        "DELETE FROM system_events WHERE id NOT IN (SELECT id FROM system_events ORDER BY occurred_at DESC LIMIT $1)",
+        SYSTEM_EVENTS_ROW_CAP,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Golf history (direct port of lib/db/client.ts's golf write functions) —
+# Track C of the prediction-engine port.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class GolfTournamentInput:
+    event_id: str
+    name: str
+    course_name: str | None
+    season: int
+    start_date: str | None
+    holes_json: str | None
+    field_size: int | None
+
+
+async def write_golf_tournament(input: GolfTournamentInput) -> None:
+    pool = await get_pool()
+    await pool.execute(
+        """
+        INSERT INTO golf_tournaments (event_id, name, course_name, season, start_date, holes_json, field_size, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+        ON CONFLICT (event_id) DO UPDATE SET
+          name = excluded.name, course_name = excluded.course_name, start_date = excluded.start_date,
+          holes_json = excluded.holes_json, field_size = excluded.field_size, updated_at = excluded.updated_at
+        """,
+        input.event_id,
+        input.name,
+        input.course_name,
+        input.season,
+        _to_date(input.start_date) if input.start_date else None,
+        input.holes_json,
+        input.field_size,
+    )
+
+
+@dataclass
+class GolfHoleScoreInput:
+    event_id: str
+    espn_id: str
+    round: int
+    hole: int
+    par: int | None
+    strokes: int | None
+    relative_to_par: float
+    category: str  # 'birdie' | 'par' | 'bogey'
+
+
+async def write_golf_hole_scores(rows: list[GolfHoleScoreInput]) -> int:
+    """Idempotent on the (event, golfer, round, hole) key — re-polling an
+    already-ingested hole is a silent no-op, so the caller can just hand
+    every completed hole it sees on every poll without tracking what's new."""
+    if not rows:
+        return 0
+    written = 0
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for r in rows:
+                status = await conn.execute(
+                    """
+                    INSERT INTO golf_hole_scores (event_id, espn_id, round, hole, par, strokes, relative_to_par, category, ingested_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+                    ON CONFLICT (event_id, espn_id, round, hole) DO NOTHING
+                    """,
+                    r.event_id,
+                    r.espn_id,
+                    r.round,
+                    r.hole,
+                    r.par,
+                    r.strokes,
+                    r.relative_to_par,
+                    r.category,
+                )
+                if _rowcount_from_status(status) > 0:
+                    written += 1
+    return written
+
+
+@dataclass
+class GolfRoundScoreInput:
+    event_id: str
+    espn_id: str
+    round: int
+    total_strokes: int | None
+    relative_to_par: float
+    tee_wave: str | None  # 'AM' | 'PM' | None
+    wind_mph: float | None
+    temp_f: float | None
+    precip_prob: float | None
+
+
+async def write_golf_round_scores(rows: list[GolfRoundScoreInput]) -> int:
+    if not rows:
+        return 0
+    written = 0
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for r in rows:
+                status = await conn.execute(
+                    """
+                    INSERT INTO golf_round_scores (event_id, espn_id, round, total_strokes, relative_to_par, tee_wave, wind_mph, temp_f, precip_prob, ingested_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+                    ON CONFLICT (event_id, espn_id, round) DO NOTHING
+                    """,
+                    r.event_id,
+                    r.espn_id,
+                    r.round,
+                    r.total_strokes,
+                    r.relative_to_par,
+                    r.tee_wave,
+                    r.wind_mph,
+                    r.temp_f,
+                    r.precip_prob,
+                )
+                if _rowcount_from_status(status) > 0:
+                    written += 1
+    return written
+
+
+@dataclass
+class GolfTournamentResultInput:
+    event_id: str
+    espn_id: str
+    position: str | None
+    made_cut: bool
+    total_score: int | None
+
+
+async def write_golf_tournament_results(rows: list[GolfTournamentResultInput]) -> int:
+    if not rows:
+        return 0
+    written = 0
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for r in rows:
+                await conn.execute(
+                    """
+                    INSERT INTO golf_tournament_results (event_id, espn_id, position, made_cut, total_score, finished_at)
+                    VALUES ($1, $2, $3, $4, $5, now())
+                    ON CONFLICT (event_id, espn_id) DO UPDATE SET
+                      position = excluded.position, made_cut = excluded.made_cut,
+                      total_score = excluded.total_score, finished_at = excluded.finished_at
+                    """,
+                    r.event_id,
+                    r.espn_id,
+                    r.position,
+                    r.made_cut,
+                    r.total_score,
+                )
+                written += 1
+    return written
+
+
+# ---------------------------------------------------------------------------
+# Golf model performance tracking (direct port of lib/db/client.ts's
+# logGolfModelPredictions/logGolfTournamentPredictions and grading reads)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class GolfModelPredictionInput:
+    event_id: str
+    espn_id: str
+    dimension: str
+    round: int
+    category: str  # 'birdie' | 'par' | 'bogey'
+    predicted_prob: float
+    league_rate: float | None
+
+
+async def log_golf_model_predictions(rows: list[GolfModelPredictionInput]) -> int:
+    """Upserts the LATEST prediction per (event, golfer, dimension, round)
+    — but only while ungraded. Once a real outcome has graded a row, a
+    later poll's "prediction" (made after the fact) must never overwrite it."""
+    if not rows:
+        return 0
+    written = 0
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for r in rows:
+                status = await conn.execute(
+                    """
+                    INSERT INTO golf_model_predictions (event_id, espn_id, dimension, round, category, predicted_prob, league_rate, predicted_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+                    ON CONFLICT (event_id, espn_id, dimension, round) DO UPDATE SET
+                      category = excluded.category, predicted_prob = excluded.predicted_prob,
+                      league_rate = excluded.league_rate, predicted_at = excluded.predicted_at
+                    WHERE golf_model_predictions.graded_at IS NULL
+                    """,
+                    r.event_id,
+                    r.espn_id,
+                    r.dimension,
+                    r.round,
+                    r.category,
+                    r.predicted_prob,
+                    r.league_rate,
+                )
+                if _rowcount_from_status(status) > 0:
+                    written += 1
+    return written
+
+
+@dataclass
+class GolfTournamentPredictionInput:
+    event_id: str
+    espn_id: str
+    prob_win: float
+    prob_top5: float
+    prob_top10: float
+    prob_made_cut: float
+
+
+async def log_golf_tournament_predictions(rows: list[GolfTournamentPredictionInput]) -> int:
+    if not rows:
+        return 0
+    written = 0
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for r in rows:
+                status = await conn.execute(
+                    """
+                    INSERT INTO golf_tournament_predictions (event_id, espn_id, prob_win, prob_top5, prob_top10, prob_made_cut, predicted_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, now())
+                    ON CONFLICT (event_id, espn_id) DO UPDATE SET
+                      prob_win = excluded.prob_win, prob_top5 = excluded.prob_top5, prob_top10 = excluded.prob_top10,
+                      prob_made_cut = excluded.prob_made_cut, predicted_at = excluded.predicted_at
+                    WHERE golf_tournament_predictions.graded_at IS NULL
+                    """,
+                    r.event_id,
+                    r.espn_id,
+                    r.prob_win,
+                    r.prob_top5,
+                    r.prob_top10,
+                    r.prob_made_cut,
+                )
+                if _rowcount_from_status(status) > 0:
+                    written += 1
+    return written
+
+
+@dataclass
+class GradeableHolePrediction:
+    id: int
+    event_id: str
+    espn_id: str
+    dimension: str
+    round: int
+    category: str
+    predicted_prob: float
+    actual_category: str
+
+
+async def find_gradeable_hole_predictions() -> list[GradeableHolePrediction]:
+    pool = await get_pool()
+    hole_rows = await pool.fetch(
+        """
+        SELECT p.id AS id, p.event_id AS event_id, p.espn_id AS espn_id, p.dimension AS dimension, p.round AS round,
+               p.category AS category, p.predicted_prob AS predicted_prob, hs.category AS actual_category
+        FROM golf_model_predictions p
+        JOIN golf_hole_scores hs
+          ON hs.event_id = p.event_id AND hs.espn_id = p.espn_id AND hs.round = p.round
+         AND hs.hole = CAST(SUBSTRING(p.dimension FROM 6) AS INTEGER)
+        WHERE p.graded_at IS NULL AND p.dimension LIKE 'hole-%'
+        """
+    )
+    round_rows = await pool.fetch(
+        """
+        SELECT p.id AS id, p.event_id AS event_id, p.espn_id AS espn_id, p.dimension AS dimension, p.round AS round,
+               p.category AS category, p.predicted_prob AS predicted_prob, rs.category AS actual_category
+        FROM golf_model_predictions p
+        JOIN (
+          SELECT event_id, espn_id, round,
+                 CASE WHEN relative_to_par < 0 THEN 'birdie' WHEN relative_to_par = 0 THEN 'par' ELSE 'bogey' END AS category
+          FROM golf_round_scores
+        ) rs ON rs.event_id = p.event_id AND rs.espn_id = p.espn_id AND rs.round = p.round
+        WHERE p.graded_at IS NULL AND p.dimension = 'round-score'
+        """
+    )
+    return [
+        GradeableHolePrediction(
+            id=r["id"],
+            event_id=r["event_id"],
+            espn_id=r["espn_id"],
+            dimension=r["dimension"],
+            round=r["round"],
+            category=r["category"],
+            predicted_prob=r["predicted_prob"],
+            actual_category=r["actual_category"],
+        )
+        for r in [*hole_rows, *round_rows]
+    ]
+
+
+@dataclass
+class GradedHolePredictionInput:
+    id: int
+    hit: int  # 0 | 1
+    actual_category: str
+    brier_component: float
+
+
+async def write_graded_hole_predictions(rows: list[GradedHolePredictionInput]) -> None:
+    if not rows:
+        return
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for r in rows:
+                await conn.execute(
+                    "UPDATE golf_model_predictions SET graded_at = now(), actual_category = $1, hit = $2, brier_component = $3 WHERE id = $4",
+                    r.actual_category,
+                    bool(r.hit),
+                    r.brier_component,
+                    r.id,
+                )
+
+
+@dataclass
+class GradeableTournamentPrediction:
+    event_id: str
+    espn_id: str
+    prob_win: float
+    prob_top5: float
+    prob_top10: float
+    prob_made_cut: float
+    position: str | None
+    made_cut: bool
+
+
+async def find_gradeable_tournament_predictions() -> list[GradeableTournamentPrediction]:
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT p.event_id AS event_id, p.espn_id AS espn_id, p.prob_win AS prob_win, p.prob_top5 AS prob_top5,
+               p.prob_top10 AS prob_top10, p.prob_made_cut AS prob_made_cut, r.position AS position, r.made_cut AS made_cut
+        FROM golf_tournament_predictions p
+        JOIN golf_tournament_results r ON r.event_id = p.event_id AND r.espn_id = p.espn_id
+        WHERE p.graded_at IS NULL
+        """
+    )
+    return [
+        GradeableTournamentPrediction(
+            event_id=r["event_id"],
+            espn_id=r["espn_id"],
+            prob_win=r["prob_win"],
+            prob_top5=r["prob_top5"],
+            prob_top10=r["prob_top10"],
+            prob_made_cut=r["prob_made_cut"],
+            position=r["position"],
+            made_cut=r["made_cut"],
+        )
+        for r in rows
+    ]
+
+
+@dataclass
+class GradedTournamentPredictionInput:
+    event_id: str
+    espn_id: str
+    won: int  # 0 | 1
+    top5: int
+    top10: int
+    made_cut: int
+    brier_win: float
+    brier_top5: float
+    brier_top10: float
+    brier_made_cut: float
+
+
+async def write_graded_tournament_predictions(rows: list[GradedTournamentPredictionInput]) -> None:
+    if not rows:
+        return
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for r in rows:
+                await conn.execute(
+                    """
+                    UPDATE golf_tournament_predictions SET
+                      graded_at = now(), actual_won = $1, actual_top5 = $2, actual_top10 = $3, actual_made_cut = $4,
+                      brier_win = $5, brier_top5 = $6, brier_top10 = $7, brier_made_cut = $8
+                    WHERE event_id = $9 AND espn_id = $10
+                    """,
+                    bool(r.won),
+                    bool(r.top5),
+                    bool(r.top10),
+                    bool(r.made_cut),
+                    r.brier_win,
+                    r.brier_top5,
+                    r.brier_top10,
+                    r.brier_made_cut,
+                    r.event_id,
+                    r.espn_id,
+                )

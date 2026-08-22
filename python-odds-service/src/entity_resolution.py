@@ -204,6 +204,32 @@ MARKET_KEY_ALIASES: dict[str, str] = {
 
 _MARKET_KEY_WS_RE = re.compile(r"[\s_]+")
 
+# The distinct set of canonical market keys (every value MARKET_KEY_ALIASES
+# maps to, across every provider/sport) — same set entityResolution.ts's
+# CANONICAL_MARKET_KEYS builds via `new Set(Object.values(MARKET_KEY_ALIASES))`.
+CANONICAL_MARKET_KEYS = set(MARKET_KEY_ALIASES.values())
+
+
+def candidate_dimension_to_market_key(dimension: str) -> str | None:
+    """Which canonical market key a candidate's own dimension resolves to
+    — every generic counting-stat dimension was deliberately named to
+    equal its canonical MarketKey one-for-one, so this is mostly just
+    confirming the dimension is a real, resolvable market."""
+    if dimension == "hit-in-game":
+        return "hits"
+    if dimension in CANONICAL_MARKET_KEYS:
+        return dimension
+    return None
+
+
+def candidate_category_to_side(category: str) -> str | None:
+    """Which side of the prop line a candidate's category corresponds to."""
+    if category in ("hit", "run", "over"):
+        return "over"
+    if category in ("no-hit", "no-run", "under"):
+        return "under"
+    return None
+
 
 def resolve_market_key(raw_label: str) -> str | None:
     """Resolve a raw stat label to a canonical market key, or None if

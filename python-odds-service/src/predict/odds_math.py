@@ -11,6 +11,12 @@ def american_to_decimal(price: float | None) -> float | None:
     return price / 100 + 1 if price > 0 else 100 / -price + 1
 
 
+def decimal_to_american(decimal: float | None) -> int | None:
+    if decimal is None or not math.isfinite(decimal) or decimal <= 1:
+        return None
+    return round((decimal - 1) * 100) if decimal >= 2 else round(-100 / (decimal - 1))
+
+
 def devig_two_way(a_decimal: float | None, b_decimal: float | None) -> tuple[float, float] | None:
     """Standard multiplicative de-vig: each side's raw implied probability
     (1/decimal) divided by the sum of both raw probabilities, so they sum

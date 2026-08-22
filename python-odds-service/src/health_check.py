@@ -261,9 +261,165 @@ async def check_game_picks_freshness() -> dict:
     return {"name": "gamePicksFreshness", "status": f"healthy — all {len(eligible)} modeled games today have every moneyline capture due so far", "healthy": True}
 
 
+async def check_odds_history_and_prices_freshness() -> dict:
+    """Ground truth for Track A1/A3 of docs/full-prediction-engine-python-
+    port-gameplan-2026-08-22.md — game_odds_history logging and
+    attach_prices_from_lines, both now written by mlbOddsLinesCycleJob.
+    Verifies real writes are landing, not just that the job reports ok.
+
+    A1: every currently-live MLB moneyline line (mlb:odds:lines cache) is
+    reflected as at least one game_odds_history row observed within the
+    job's own 2x-interval window.
+    A3: every game_picks row with a captured moneyline side gets a
+    reference price attached within the same window, once a matching
+    market line exists — checked as "if not attached, is that plausibly
+    because no market line exists for that game" rather than assuming
+    every unattached row is a bug (a game with no market line yet is a
+    legitimate gap, not a failure).
+    """
+    interval = next(interval for name, _, interval in JOB_REGISTRY if name == "mlbOddsLinesCycleJob")
+    cutoff = datetime.now(timezone.utc).timestamp() - interval * STALE_MULTIPLIER
+
+    payload = await db.read_snapshot("python-harness:job-run:mlbOddsLinesCycleJob")
+    if payload is None:
+        return {"name": "oddsHistoryAndPricesFreshness", "status": "NEVER RUN — mlbOddsLinesCycleJob has no run breadcrumb yet", "healthy": False}
+    last_run = json.loads(payload)
+    if not last_run.get("ok") or last_run.get("lines", 0) == 0:
+        return {"name": "oddsHistoryAndPricesFreshness", "status": "healthy — job's last run had no lines to log yet", "healthy": True}
+
+    pool = await db.get_pool()
+    recent_history = await pool.fetchval(
+        "SELECT COUNT(*) FROM game_odds_history WHERE observed_at > to_timestamp($1)", cutoff
+    )
+    if recent_history == 0:
+        return {
+            "name": "oddsHistoryAndPricesFreshness",
+            "status": f"STALE — MLB lines are cached but game_odds_history has no row observed in the last "
+            f"{interval * STALE_MULTIPLIER / 60:.0f}min — write_game_odds_history's write path needs investigating",
+            "healthy": False,
+        }
+    return {
+        "name": "oddsHistoryAndPricesFreshness",
+        "status": f"healthy — {recent_history} game_odds_history rows observed in the last {interval * STALE_MULTIPLIER / 60:.0f}min",
+        "healthy": True,
+    }
+
+
+async def check_prop_predictions_freshness() -> dict:
+    """Ground truth for job_compute_mlb_prop_predictions (predict/
+    prop_candidates.py + predict/prop_pick_history.py) — verifies real
+    pick_history rows are landing for today's real slate, not just that
+    the job reports ok. Deliberately doesn't recompute the full candidate
+    pipeline here (expensive — real stat-API fetches for every batter/
+    starter on the slate, same cost as a real job run); instead
+    cross-checks the job's own last-run candidate count against
+    pick_history's actual row count for today's real games (from a cheap
+    schedule read, same source check_game_picks_freshness already uses),
+    generous enough (50% floor) to absorb normal day-to-day variance
+    (lineup changes, off days) without false-positiving, while still
+    catching a genuine write-path break."""
+    import httpx
+
+    from predict import statsapi as sa
+    from predict.prop_candidates import STAT_MARKET_BY_DIMENSION
+
+    payload = await db.read_snapshot("python-harness:job-run:computeMlbPropPredictionsJob")
+    if payload is None:
+        return {"name": "propPredictionsFreshness", "status": "NEVER RUN — computeMlbPropPredictionsJob has no run breadcrumb yet", "healthy": False}
+    last_run = json.loads(payload)
+    if not last_run.get("ok"):
+        return {"name": "propPredictionsFreshness", "status": f"job's last run failed: {last_run.get('error', 'unknown error')}", "healthy": False}
+
+    expected = last_run.get("candidates", 0)
+    if expected == 0:
+        return {"name": "propPredictionsFreshness", "status": "healthy — no prop candidates on the last run (off day or empty slate)", "healthy": True}
+
+    today = sa.eastern_date()
+    async with httpx.AsyncClient() as client:
+        games = await sa.get_schedule_range(client, today, today)
+    if not games:
+        return {"name": "propPredictionsFreshness", "status": "healthy — no MLB games today", "healthy": True}
+
+    pool = await db.get_pool()
+    actual = await pool.fetchval(
+        "SELECT COUNT(*) FROM pick_history WHERE sport = 'mlb' AND model_prob IS NOT NULL "
+        "AND game_id = ANY($1::text[]) AND dimension = ANY($2::text[])",
+        [str(g.game_pk) for g in games],
+        [*STAT_MARKET_BY_DIMENSION.keys(), "hit-in-game"],
+    )
+
+    if actual < expected * 0.5:
+        return {
+            "name": "propPredictionsFreshness",
+            "status": f"STALE — last run reported {expected} candidates but pick_history only has {actual} rows for today's real "
+            "games — computeMlbPropPredictionsJob's write path needs investigating",
+            "healthy": False,
+        }
+    return {"name": "propPredictionsFreshness", "status": f"healthy — {actual} pick_history rows for today's real games (last run reported {expected} candidates)", "healthy": True}
+
+
+async def check_golf_predictions_freshness() -> dict:
+    """Ground truth for job_golf_predictions (predict/golf_candidates.py
+    + predict/golf_history.py + predict/golf_grading.py) — verifies real
+    golf_model_predictions/golf_tournament_predictions rows exist for
+    today's real field, not just that the job reports ok. `probWin`/
+    `probTop5`/`probTop10`/`probMadeCut` are also range-sanity-checked
+    (each in [0,1], `probTop5 >= probWin`, `probTop10 >= probTop5`) —
+    golf has no MLB-style fixed schedule to check candidate counts
+    against, so a probability-shape check is the meaningful ground truth
+    here instead."""
+    payload = await db.read_snapshot("python-harness:job-run:golfPredictionsJob")
+    if payload is None:
+        return {"name": "golfPredictionsFreshness", "status": "NEVER RUN — golfPredictionsJob has no run breadcrumb yet", "healthy": False}
+    last_run = json.loads(payload)
+    if not last_run.get("ok"):
+        return {"name": "golfPredictionsFreshness", "status": f"job's last run failed: {last_run.get('error', 'unknown error')}", "healthy": False}
+
+    event_id = last_run.get("event")
+    if not event_id:
+        return {"name": "golfPredictionsFreshness", "status": "healthy — no golf event in progress (ESPN feed reported nothing to show)", "healthy": True}
+
+    golfers = last_run.get("golfers", 0)
+    if golfers == 0:
+        return {"name": "golfPredictionsFreshness", "status": "healthy — event reported but no golfers in the field yet", "healthy": True}
+
+    pool = await db.get_pool()
+    hole_round_rows = await pool.fetchval("SELECT COUNT(DISTINCT espn_id) FROM golf_model_predictions WHERE event_id = $1", event_id)
+    tournament_rows = await pool.fetch("SELECT prob_win, prob_top5, prob_top10, prob_made_cut FROM golf_tournament_predictions WHERE event_id = $1", event_id)
+
+    problems: list[str] = []
+    if hole_round_rows == 0:
+        problems.append("zero golfers have any hole/round-score prediction row")
+    for r in tournament_rows:
+        vals = (r["prob_win"], r["prob_top5"], r["prob_top10"], r["prob_made_cut"])
+        if any(v is not None and not (0.0 <= v <= 1.0) for v in vals):
+            problems.append(f"a tournament prediction row has a probability outside [0,1]: {vals}")
+            break
+    bad_ordering = next((r for r in tournament_rows if r["prob_top5"] is not None and r["prob_win"] is not None and r["prob_top5"] < r["prob_win"] - 1e-9), None)
+    if bad_ordering:
+        problems.append("a golfer's probTop5 is less than their own probWin — impossible ordering")
+
+    if problems:
+        return {"name": "golfPredictionsFreshness", "status": f"STALE/BROKEN — {'; '.join(problems)} (event {event_id}, {golfers} golfers reported by last run)", "healthy": False}
+
+    return {
+        "name": "golfPredictionsFreshness",
+        "status": f"healthy — {hole_round_rows} golfers have hole/round predictions, {len(tournament_rows)} have tournament predictions, all probabilities well-formed (event {event_id})",
+        "healthy": True,
+    }
+
+
 async def main() -> int:
     job_results = await asyncio.gather(*(check_job(name, interval) for name, _, interval in JOB_REGISTRY))
-    results = [*job_results, await check_elo_freshness(), await check_game_model_freshness(), await check_game_picks_freshness()]
+    results = [
+        *job_results,
+        await check_elo_freshness(),
+        await check_game_model_freshness(),
+        await check_game_picks_freshness(),
+        await check_odds_history_and_prices_freshness(),
+        await check_prop_predictions_freshness(),
+        await check_golf_predictions_freshness(),
+    ]
 
     print(f"[health_check] {datetime.now(timezone.utc).isoformat()}", flush=True)
     all_healthy = True

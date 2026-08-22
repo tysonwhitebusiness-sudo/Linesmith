@@ -124,3 +124,8 @@ PROPLINE_ENABLED = env_bool("PROPLINE_ENABLED") and bool(PROPLINE_KEY)
 PROPLINE_DAILY_LIMIT = int(env("PROPLINE_DAILY_LIMIT", "1000"))
 PROPLINE_2_KEY = env("PROPLINE_2_KEY")
 PROPLINE_2_ENABLED = env_bool("PROPLINE_2_ENABLED") and bool(PROPLINE_2_KEY)
+
+# Which book's own price live_edge.py's resolve_candidate_edge prefers
+# before falling back to the best available price across books — same
+# default as lib/odds/props/config.ts's userSportsbook().
+USER_SPORTSBOOK = env("USER_SPORTSBOOK", "Fanatics")
