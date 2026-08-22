@@ -132,6 +132,7 @@ _ESPN_SPORT_CONFIG: dict[str, tuple[str, str]] = {
     "cfb": ("football", "college-football"),
     "soccer_epl": ("soccer", "eng.1"),
     "soccer_mls": ("soccer", "usa.1"),
+    "nba": ("basketball", "nba"),
 }
 
 _ROSTER_TTL_SECONDS = 60 * 60  # 1h — matches teamSportEspn.ts's ROSTER_TTL_MS

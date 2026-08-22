@@ -169,6 +169,11 @@ _PARLAYAPI_SPORT_CONFIG: dict[str, tuple[str, str | None, bool, int]] = {
         config.PARLAYAPI_SOCCER_ENABLED,
         config.PARLAYAPI_SOCCER_MONTHLY_LIMIT,
     ),
+    # No real ParlayAPI NBA account yet — PARLAYAPI_NBA_ENABLED naturally
+    # stays False until config.py's PARLAYAPI_NBA_KEY is set on Render (see
+    # that file's comment). Declared anyway so job_nba can reuse
+    # _job_multisport generically instead of a bespoke job body.
+    "nba": ("parlayapi_nba", config.PARLAYAPI_NBA_KEY, config.PARLAYAPI_NBA_ENABLED, config.PARLAYAPI_NBA_MONTHLY_LIMIT),
 }
 
 
@@ -219,6 +224,15 @@ async def job_cfb(yield_fn=None) -> dict:
     # does, and this is what makes that generic rather than an NFL special
     # case, per the instruction not to special-case this to NFL alone.
     return await _job_multisport("refreshCfbJob", "cfb", yield_fn)
+
+
+async def job_nba(yield_fn=None) -> dict:
+    # Real coverage today: SportsGameOdds only (shared multisport account,
+    # already provisioned) — ParlayAPI NBA naturally no-ops until a real
+    # PARLAYAPI_NBA_KEY exists (see config.py/_PARLAYAPI_SPORT_CONFIG's
+    # comments). Reuses _job_multisport generically, same as NFL/CFB —
+    # nothing NBA-specific needed in the shared runner.
+    return await _job_multisport("refreshNbaJob", "nba", yield_fn)
 
 
 def _soccer_epl_specs() -> list[ProviderSpec]:
@@ -651,6 +665,7 @@ JOB_REGISTRY = [
     ("refreshSportsGameOddsJob", job_sportsgameodds, 90 * 60),
     ("refreshNflJob", job_nfl, 20 * 60),
     ("refreshCfbJob", job_cfb, 20 * 60),
+    ("refreshNbaJob", job_nba, 20 * 60),
     ("refreshSoccerEplJob", job_soccer_epl, 20 * 60),
     ("refreshSoccerMlsJob", job_soccer_mls, 20 * 60),
     # Grading isn't time-critical (a final score doesn't need grading within

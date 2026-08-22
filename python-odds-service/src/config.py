@@ -105,6 +105,19 @@ PARLAYAPI_SOCCER_KEY = env("PARLAYAPI_SOCCER_KEY")
 PARLAYAPI_SOCCER_ENABLED = env_bool("PARLAYAPI_SOCCER_ENABLED") and bool(PARLAYAPI_SOCCER_KEY)
 PARLAYAPI_SOCCER_MONTHLY_LIMIT = int(env("PARLAYAPI_SOCCER_MONTHLY_LIMIT", "1000"))
 
+# NBA (2026-08-22) — no real ParlayAPI NBA account exists yet (ParlayAPI's
+# real per-sport-key pattern above means NBA needs its own dedicated key,
+# same as NFL/CFB/soccer did — not something this session can create
+# itself; account creation is out of scope for an agent). Declared the same
+# way every other sport's key is, so it activates with zero code changes
+# the moment a real PARLAYAPI_NBA_KEY is set on Render — until then this
+# naturally stays disabled (env() returns None, so ENABLED evaluates
+# False), and NBA's real backend coverage is SportsGameOdds-only (see
+# job_nba in jobs.py).
+PARLAYAPI_NBA_KEY = env("PARLAYAPI_NBA_KEY")
+PARLAYAPI_NBA_ENABLED = env_bool("PARLAYAPI_NBA_ENABLED") and bool(PARLAYAPI_NBA_KEY)
+PARLAYAPI_NBA_MONTHLY_LIMIT = int(env("PARLAYAPI_NBA_MONTHLY_LIMIT", "1000"))
+
 # The-odds-api.com — MLB whole-slate game lines (moneyline/spread/total),
 # the one real, live market-blend input the pick-lock cycle uses for MLB
 # (OddsHarvester, the other source lib/odds/merge.ts blends in, is confirmed

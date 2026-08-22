@@ -406,7 +406,7 @@ async def fetch_oddsapiio(
     return out
 
 
-_SGO_LEAGUE_IDS = {"mlb": "MLB", "nfl": "NFL", "cfb": "NCAAF", "soccer_mls": "MLS"}
+_SGO_LEAGUE_IDS = {"mlb": "MLB", "nfl": "NFL", "cfb": "NCAAF", "soccer_mls": "MLS", "nba": "NBA"}
 
 
 def _sgo_team_id(full_name: str, league_id: str) -> str:
@@ -627,6 +627,15 @@ _PARLAYAPI_SPORT_KEYS = {
     # soccer_mls) — confirmed live per docs/soccer-gameplan-2026-08-22.md §3,
     # a real per-vendor naming mismatch, not a typo.
     "soccer_mls": "soccer_usa_mls",
+    # Best-guess standard the-odds-api-compatible key (both ParlayAPI and
+    # Propline advertise drop-in compatibility with that convention) — not
+    # yet live-verified against a real call the way NFL/CFB/soccer's keys
+    # were, since no PARLAYAPI_NBA_KEY exists yet (see config.py). Real
+    # risk: if this string is wrong once a key is added, the fetch just
+    # returns 0 rows (fetch_parlayapi's own real behavior on an unmatched
+    # sport key already handles that gracefully) — confirm/correct this
+    # against production logs the first time PARLAYAPI_NBA_KEY is set.
+    "nba": "basketball_nba",
 }
 
 
