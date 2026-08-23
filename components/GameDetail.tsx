@@ -22,6 +22,7 @@ import { useSoccerGameDetail } from './useSoccerGameDetail';
 import { useCfbGameDetail } from './useCfbGameDetail';
 import { useNbaGameDetail } from './useNbaGameDetail';
 import { useNhlGameDetail } from './useNhlGameDetail';
+import { useTennisGameDetail } from './useTennisGameDetail';
 import type { PickRow } from './useSlip';
 import { SubjectAvatar, TeamLogo, nflTeamLogoUrl } from './SubjectAvatar';
 import { TwoSidedStatRankRow } from './StatRankRow';
@@ -53,7 +54,8 @@ import { toGameDetailData as toSoccerGameDetailData } from '@/lib/sports/soccer/
 import { toGameDetailData as toCfbGameDetailData } from '@/lib/sports/cfb/adapters/gameDetailAdapter';
 import { toGameDetailData as toNbaGameDetailData } from '@/lib/sports/nba/adapters/gameDetailAdapter';
 import { toGameDetailData as toNhlGameDetailData } from '@/lib/sports/nhl/adapters/gameDetailAdapter';
-import type { SoccerLeague } from '@/lib/core/types';
+import { toGameDetailData as toTennisGameDetailData } from '@/lib/sports/tennis/adapters/gameDetailAdapter';
+import type { SoccerLeague, TennisTour } from '@/lib/core/types';
 import { heatFill, heatInk } from '@/lib/ui/heat';
 
 /**
@@ -1735,8 +1737,8 @@ export interface GameDetailProps {
   sport: Sport;
   /** MLB: `gamePk` as a string. NFL: the game id already used by its own routes/API. Soccer: same as NFL, ESPN's own event id. */
   gameId: string;
-  /** Soccer-only — which league's game/team routes to call. Required (and unused) for every other sport. */
-  league?: SoccerLeague;
+  /** Soccer/tennis-only — which league or tour's game route to call. Required (and unused) for every other sport. */
+  league?: SoccerLeague | TennisTour;
   /** Page-filtered player-level candidates for this game — the page still owns snapshot filtering (and, for MLB, the global filter sidebar), same as before this component owned its own data-fetching. */
   candidates: PickCandidate[];
   snapshot: SportSnapshot | null;
@@ -1940,10 +1942,11 @@ export function GameDetail({
   }, [games, odds, mlbGame, gameId]);
 
   const nflGame = useNflGameDetail(sport === 'nfl' ? gameId : undefined);
-  const soccerGame = useSoccerGameDetail(sport === 'soccer' ? league : undefined, sport === 'soccer' ? gameId : undefined);
+  const soccerGame = useSoccerGameDetail(sport === 'soccer' ? (league as SoccerLeague | undefined) : undefined, sport === 'soccer' ? gameId : undefined);
   const cfbGame = useCfbGameDetail(sport === 'cfb' ? gameId : undefined);
   const nbaGame = useNbaGameDetail(sport === 'nba' ? gameId : undefined);
   const nhlGame = useNhlGameDetail(sport === 'nhl' ? gameId : undefined);
+  const tennisGame = useTennisGameDetail(sport === 'tennis' ? (league as TennisTour | undefined) : undefined, sport === 'tennis' ? gameId : undefined);
   const nflGameLine = useMemo(() => {
     if (!nflGame.meta) return null;
     const fromSlate = odds?.lines
@@ -1977,7 +1980,7 @@ export function GameDetail({
       : sport === 'soccer'
         ? soccerGame.meta?.game && league
           ? toSoccerGameDetailData({
-              league,
+              league: league as SoccerLeague,
               meta: soccerGame.meta,
               home: soccerGame.home,
               away: soccerGame.away,
@@ -2011,6 +2014,18 @@ export function GameDetail({
                     candidates,
                   })
                 : null
+              : sport === 'tennis'
+                ? tennisGame.meta && league
+                  ? toTennisGameDetailData({
+                      tour: league as TennisTour,
+                      meta: tennisGame.meta,
+                      player1Recent: tennisGame.player1Recent,
+                      player2Recent: tennisGame.player2Recent,
+                      player1H2h: tennisGame.player1H2h,
+                      player2H2h: tennisGame.player2H2h,
+                      candidates,
+                    })
+                  : null
               : mlbGame
                 ? toMlbGameDetailData({
                     game: mlbGame,
@@ -2036,7 +2051,9 @@ export function GameDetail({
             ? nbaGame.error
             : sport === 'nhl'
               ? nhlGame.error
-              : null;
+              : sport === 'tennis'
+                ? tennisGame.error
+                : null;
 
   // Combined readiness for `onReadyChange` — must run before any early
   // return below (rules of hooks). `data` itself already gates on the outer
@@ -2056,7 +2073,7 @@ export function GameDetail({
     Boolean(detailError) ||
     (data !== null &&
       !pickHistory.loading &&
-      (sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl'
+      (sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl' || sport === 'tennis'
         ? true
         : !gameContext.loading && !bullpen.loading));
   useEffect(() => {

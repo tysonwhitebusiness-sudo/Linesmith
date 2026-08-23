@@ -533,9 +533,15 @@ export function ScanTable({
   };
 
   const openDetail = (candidate: PickCandidate) => {
-    router.push(
-      `/${candidate.sport}/player/${encodeURIComponent(candidate.subjectId)}?market=${encodeURIComponent(candidate.dimension)}`,
-    );
+    // Soccer/tennis routes are league/tour-scoped (`/soccer/[league]/player/...`,
+    // `/tennis/[tour]/player/...`) — every other sport's own player route
+    // has no such segment. `subjectMeta.league` carries the real scope both
+    // adapters already stamp onto every candidate (soccer's `league` field,
+    // tennis's `tour`-mirroring `league` field in lib/sports/tennis/adapter.ts).
+    const meta = (candidate.subjectMeta ?? {}) as Record<string, unknown>;
+    const league = typeof meta.league === 'string' ? meta.league : undefined;
+    const base = (candidate.sport === 'soccer' || candidate.sport === 'tennis') && league ? `/${candidate.sport}/${league}` : `/${candidate.sport}`;
+    router.push(`${base}/player/${encodeURIComponent(candidate.subjectId)}?market=${encodeURIComponent(candidate.dimension)}`);
   };
 
   if (loading && candidates.length === 0) return <ScanTableSkeleton />;

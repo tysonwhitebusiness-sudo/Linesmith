@@ -8,9 +8,9 @@
 
 import type { WindowedStat } from './windowedStat';
 
-export type Sport = 'golf' | 'mlb' | 'nfl' | 'soccer' | 'cfb' | 'nba' | 'nhl';
+export type Sport = 'golf' | 'mlb' | 'nfl' | 'soccer' | 'cfb' | 'nba' | 'nhl' | 'tennis';
 
-export const SPORTS: Sport[] = ['golf', 'mlb', 'nfl', 'soccer', 'cfb', 'nba', 'nhl'];
+export const SPORTS: Sport[] = ['golf', 'mlb', 'nfl', 'soccer', 'cfb', 'nba', 'nhl', 'tennis'];
 
 export const SPORT_LABEL: Record<Sport, string> = {
   golf: 'Golf',
@@ -20,6 +20,7 @@ export const SPORT_LABEL: Record<Sport, string> = {
   cfb: 'CFB',
   nba: 'NBA',
   nhl: 'NHL',
+  tennis: 'Tennis',
 };
 
 /** Soccer is the first sport with more than one competition — a real, closed
@@ -33,6 +34,16 @@ export const SOCCER_LEAGUES: SoccerLeague[] = ['epl', 'mls'];
 export const SOCCER_LEAGUE_LABEL: Record<SoccerLeague, string> = {
   epl: 'Premier League',
   mls: 'MLS',
+};
+
+/** Tennis is the second sport with more than one "competition" — same shape as SoccerLeague, a real closed union. */
+export type TennisTour = 'atp' | 'wta';
+
+export const TENNIS_TOURS: TennisTour[] = ['atp', 'wta'];
+
+export const TENNIS_TOUR_LABEL: Record<TennisTour, string> = {
+  atp: "ATP (Men's)",
+  wta: "WTA (Women's)",
 };
 
 /** Which real-world unit `liveState.distanceToSubject` is counted in. */

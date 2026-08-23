@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Sport, SoccerLeague } from '@/lib/core/types';
-import { SPORTS, SPORT_LABEL, SOCCER_LEAGUES, SOCCER_LEAGUE_LABEL } from '@/lib/core/types';
+import type { Sport, SoccerLeague, TennisTour } from '@/lib/core/types';
+import { SPORTS, SPORT_LABEL, SOCCER_LEAGUES, SOCCER_LEAGUE_LABEL, TENNIS_TOURS, TENNIS_TOUR_LABEL } from '@/lib/core/types';
 import { BrandedLoader } from './BrandedLoader';
 import { AccountMenu } from './AccountMenu';
 
@@ -26,9 +26,9 @@ export type Tab = (typeof TABS)[number];
 
 export interface TopBarProps {
   sport: Sport;
-  /** Soccer only — which competition, since it's the first sport with more than one. */
-  league?: SoccerLeague;
-  onLeagueChange?: (league: SoccerLeague) => void;
+  /** Soccer/tennis only — which competition or tour, since these are the sports with more than one. */
+  league?: SoccerLeague | TennisTour;
+  onLeagueChange?: (league: SoccerLeague | TennisTour) => void;
   /** Omitted on pages with no tab row of their own, e.g. Game Detail. */
   tab?: Tab;
   onTabChange?: (tab: Tab) => void;
@@ -88,7 +88,9 @@ export function TopBar({
         <select
           id="lb-sport"
           value={sport}
-          onChange={(e) => navigate('sport', e.target.value === 'soccer' ? '/soccer/epl' : `/${e.target.value}`)}
+          onChange={(e) =>
+            navigate('sport', e.target.value === 'soccer' ? '/soccer/epl' : e.target.value === 'tennis' ? '/tennis/atp' : `/${e.target.value}`)
+          }
           disabled={isPending && pendingTarget === 'sport'}
           className="cursor-pointer rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-none disabled:cursor-wait disabled:opacity-70"
         >
@@ -112,6 +114,25 @@ export function TopBar({
               {SOCCER_LEAGUES.map((l) => (
                 <option key={l} value={l}>
                   {SOCCER_LEAGUE_LABEL[l]}
+                </option>
+              ))}
+            </select>
+          </>
+        ) : null}
+        {sport === 'tennis' && league && onLeagueChange ? (
+          <>
+            <label className="sr-only" htmlFor="lb-tour">
+              Tour
+            </label>
+            <select
+              id="lb-tour"
+              value={league}
+              onChange={(e) => onLeagueChange(e.target.value as TennisTour)}
+              className="cursor-pointer rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-none"
+            >
+              {TENNIS_TOURS.map((t) => (
+                <option key={t} value={t}>
+                  {TENNIS_TOUR_LABEL[t]}
                 </option>
               ))}
             </select>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Sport, SoccerLeague, SportSnapshot, PickCandidate } from '@/lib/core/types';
+import type { Sport, SoccerLeague, TennisTour, SportSnapshot, PickCandidate } from '@/lib/core/types';
 
 /**
  * Reverses the wire-side dedup from lib/sports/mlb/historyTrim.ts: the
@@ -60,11 +60,12 @@ export interface SnapshotState {
  * way switching sports does, since the games underneath are a different set
  * entirely.
  *
- * `league` (soccer only) — which competition, since `/api/soccer/[league]`
- * is league-scoped (soccer is the first sport with more than one). Switching
- * leagues clears the old snapshot the same way switching sports does.
+ * `league` (soccer/tennis only) — which competition/tour, since
+ * `/api/soccer/[league]` and `/api/tennis/[tour]` are scoped that way
+ * (soccer and tennis are the two sports with more than one). Switching
+ * leagues/tours clears the old snapshot the same way switching sports does.
  */
-export function useSnapshot(sport: Sport, date?: string, league?: SoccerLeague): SnapshotState {
+export function useSnapshot(sport: Sport, date?: string, league?: SoccerLeague | TennisTour): SnapshotState {
   const [snapshot, setSnapshot] = useState<SportSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,7 +86,14 @@ export function useSnapshot(sport: Sport, date?: string, league?: SoccerLeague):
     // Only show loading skeleton on first load — refreshes keep current data visible.
     if (!hasData.current) setLoading(true);
     try {
-      const url = sport === 'soccer' ? `/api/soccer/${league}` : date ? `/api/${sport}?date=${date}` : `/api/${sport}`;
+      const url =
+        sport === 'soccer'
+          ? `/api/soccer/${league}`
+          : sport === 'tennis'
+            ? `/api/tennis/${league}`
+            : date
+              ? `/api/${sport}?date=${date}`
+              : `/api/${sport}`;
       const res = await fetch(url, { signal: controller.signal, cache: 'no-store' });
       const json = await res.json();
       if (!res.ok) throw new Error(json?.detail ?? json?.error ?? `Request failed (${res.status})`);

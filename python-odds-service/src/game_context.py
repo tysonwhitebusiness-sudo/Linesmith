@@ -311,7 +311,15 @@ async def load_tennis_games(sport: str) -> list[Game]:
                 away = next((c for c in competitors if c.get("homeAway") == "away"), None)
                 home_athlete = (home or {}).get("athlete") or {}
                 away_athlete = (away or {}).get("athlete") or {}
-                if not home_athlete.get("id") or not away_athlete.get("id"):
+                # The athlete id is the competitor object's own "id", NOT
+                # athlete["id"] — the nested athlete dict carries guid/
+                # displayName/fullName/flag/links but no bare id field
+                # (confirmed live against ESPN's real response). Reading
+                # athlete["id"] here always misses, which silently dropped
+                # every tennis match (this loader returned an empty list).
+                home_id = (home or {}).get("id")
+                away_id = (away or {}).get("id")
+                if not home_id or not away_id:
                     continue
                 status = ((comp.get("status") or {}).get("type") or {})
                 games.append(
@@ -325,8 +333,8 @@ async def load_tennis_games(sport: str) -> list[Game]:
                         game_date=comp.get("date") or "",
                         is_final=bool(status.get("completed")),
                         roster=[
-                            RosterEntry(subject_id=f"espn:tennis:{home_athlete['id']}", subject_name=home_athlete.get("fullName")),
-                            RosterEntry(subject_id=f"espn:tennis:{away_athlete['id']}", subject_name=away_athlete.get("fullName")),
+                            RosterEntry(subject_id=f"espn:tennis:{home_id}", subject_name=home_athlete.get("fullName")),
+                            RosterEntry(subject_id=f"espn:tennis:{away_id}", subject_name=away_athlete.get("fullName")),
                         ],
                     )
                 )
