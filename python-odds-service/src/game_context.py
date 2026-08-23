@@ -276,3 +276,58 @@ async def load_sport_games(sport: str) -> list[Game]:
                 )
             )
     return games
+
+
+_TENNIS_TOUR_LEAGUE = {"tennis_atp": "atp", "tennis_wta": "wta"}
+
+
+async def load_tennis_games(sport: str) -> list[Game]:
+    """Direct port of espnTennis.ts's fetchTennisMatches — structurally
+    different from every other team-sport loader above: one ESPN "event" is
+    a whole tournament, containing groupings (Men's/Women's Singles) of
+    individual match "competitions". A match's own competitors[] already
+    carries both players directly — no separate roster fetch, the two
+    players IN the match are the entire roster relevant to that match's
+    props, same as the TS version. subjectId matches TS's own scheme
+    (`espn:tennis:{athleteId}`) so entity resolution stays consistent
+    with whatever the TS side already writes for the same real athlete.
+    """
+    tour = _TENNIS_TOUR_LEAGUE[sport]
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(f"{_ESPN_BASE}/tennis/{tour}/scoreboard", timeout=httpx.Timeout(10.0))
+    except httpx.HTTPError:
+        return []
+    if res.status_code != 200:
+        return []
+    data = res.json()
+
+    games: list[Game] = []
+    for ev in data.get("events") or []:
+        for grouping in ev.get("groupings") or []:
+            for comp in grouping.get("competitions") or []:
+                competitors = comp.get("competitors") or []
+                home = next((c for c in competitors if c.get("homeAway") == "home"), None)
+                away = next((c for c in competitors if c.get("homeAway") == "away"), None)
+                home_athlete = (home or {}).get("athlete") or {}
+                away_athlete = (away or {}).get("athlete") or {}
+                if not home_athlete.get("id") or not away_athlete.get("id"):
+                    continue
+                status = ((comp.get("status") or {}).get("type") or {})
+                games.append(
+                    Game(
+                        sport=sport,
+                        game_id=str(comp.get("id")),
+                        away_team_name=away_athlete.get("fullName") or "",
+                        home_team_name=home_athlete.get("fullName") or "",
+                        away_abbr=away_athlete.get("fullName") or "",
+                        home_abbr=home_athlete.get("fullName") or "",
+                        game_date=comp.get("date") or "",
+                        is_final=bool(status.get("completed")),
+                        roster=[
+                            RosterEntry(subject_id=f"espn:tennis:{home_athlete['id']}", subject_name=home_athlete.get("fullName")),
+                            RosterEntry(subject_id=f"espn:tennis:{away_athlete['id']}", subject_name=away_athlete.get("fullName")),
+                        ],
+                    )
+                )
+    return games

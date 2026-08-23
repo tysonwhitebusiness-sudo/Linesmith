@@ -164,11 +164,13 @@ def _normalize_row(
     )
 
 
-async def fetch_sharpapi(client: httpx.AsyncClient, api_key: str, games: list[Game]) -> FetchOutcome:
+async def fetch_sharpapi(
+    client: httpx.AsyncClient, api_key: str, games: list[Game], sport: str = "baseball", league: str = "mlb"
+) -> FetchOutcome:
     out = FetchOutcome(provider_id="sharpapi")
     if not games:
         return out
-    url = "https://api.sharpapi.io/api/v1/odds?sport=baseball&league=mlb&is_player_prop=true&limit=500"
+    url = f"https://api.sharpapi.io/api/v1/odds?sport={sport}&league={league}&is_player_prop=true&limit=500"
     try:
         res = await client.get(url, headers={"X-API-Key": api_key}, timeout=TIMEOUT)
     except httpx.HTTPError as e:

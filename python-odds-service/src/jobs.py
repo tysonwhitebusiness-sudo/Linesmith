@@ -37,7 +37,7 @@ import httpx
 import config
 import db
 import gameday
-from game_context import load_mlb_games, load_sport_games
+from game_context import load_mlb_games, load_sport_games, load_tennis_games
 from job_runner import run_provider_specs
 from providers import ProviderSpec, fetch_oddsapiio, fetch_parlayapi, fetch_propline, fetch_sharpapi, fetch_sportsgameodds
 
@@ -306,6 +306,47 @@ async def job_soccer_mls(yield_fn=None) -> dict:
             "refreshSoccerMlsJob",
             run_provider_specs(client, games, _soccer_mls_specs(yield_fn), yield_fn=yield_fn, concurrent=False),
         )
+
+
+def _tennis_specs(tour: str) -> list[ProviderSpec]:
+    """SharpAPI is tennis's real, already-proven primary (per the multi-
+    sport audit — "SharpAPI's tennis coverage rides the on-demand path" in
+    the old TS scheduler). Reuses the shared MLB SHARPAPI_KEY rather than a
+    new dedicated key — no separate tennis SharpAPI account exists, same
+    reuse-and-flag posture as MLS's ParlayAPI/SportsGameOdds reuse above.
+    Real `sport`/`league` query values (`tennis`/`atp` or `tennis/wta`) are
+    a reasoned guess (matching the tennis_atp/tennis_wta SportKey
+    convention already used elsewhere) — not yet live-verified against a
+    real call, same caveat as NBA's/NHL's own market-key guesses.
+    """
+    return [
+        ProviderSpec(
+            provider_id="sharpapi",
+            enabled=config.SHARPAPI_ENABLED,
+            fetch=lambda client, games, yield_fn: fetch_sharpapi(client, config.SHARPAPI_KEY, games, sport="tennis", league=tour),
+            cap_kind="none",
+        ),
+    ]
+
+
+async def _job_tennis(job_name: str, sport_key: str, tour: str, yield_fn) -> dict:
+    games = [g for g in await load_tennis_games(sport_key) if not g.is_final]
+    tier, should_fetch = await gameday.should_fetch_paid_providers(sport_key, games)
+    if not should_fetch:
+        return await _run_timed(job_name, _return_dict(gameday.skip_summary(games, tier)))
+
+    async with httpx.AsyncClient() as client:
+        return await _run_timed(
+            job_name, run_provider_specs(client, games, _tennis_specs(tour), yield_fn=yield_fn, concurrent=False)
+        )
+
+
+async def job_tennis_atp(yield_fn=None) -> dict:
+    return await _job_tennis("refreshTennisAtpJob", "tennis_atp", "atp", yield_fn)
+
+
+async def job_tennis_wta(yield_fn=None) -> dict:
+    return await _job_tennis("refreshTennisWtaJob", "tennis_wta", "wta", yield_fn)
 
 
 async def job_grade_finished_mlb_picks(yield_fn=None) -> dict:
@@ -668,6 +709,8 @@ JOB_REGISTRY = [
     ("refreshNbaJob", job_nba, 20 * 60),
     ("refreshSoccerEplJob", job_soccer_epl, 20 * 60),
     ("refreshSoccerMlsJob", job_soccer_mls, 20 * 60),
+    ("refreshTennisAtpJob", job_tennis_atp, 20 * 60),
+    ("refreshTennisWtaJob", job_tennis_wta, 20 * 60),
     # Grading isn't time-critical (a final score doesn't need grading within
     # seconds) and the fetch it drives is TTL-cached — 15min is conservative,
     # not a real constraint being protected.
