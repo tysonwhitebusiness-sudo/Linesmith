@@ -95,6 +95,13 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
         markets=["1x2"],
         load_games=functools.partial(load_sport_games, "soccer_epl"),
     ),
+    "soccer_mls": ScrapeTarget(
+        sport="soccer_mls",
+        harvester_sport="football",
+        leagues=["usa-mls"],
+        markets=["1x2"],
+        load_games=functools.partial(load_sport_games, "soccer_mls"),
+    ),
 }
 
 
@@ -109,40 +116,83 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
 # ---------------------------------------------------------------------------
 
 
+# Word-boundary-guarded aliases (never a blind substring replace — "la"
+# would otherwise corrupt "Dallas"/"Atlanta"/etc.), verified against real
+# mismatches this session, not guessed: "utd" (EPL: "Manchester Utd" vs our
+# own "Manchester United"), "lafc" and standalone "la" (MLS: ESPN's own
+# acronyms "LAFC"/"LA Galaxy" vs OddsPortal's spelled-out "Los Angeles
+# FC"/"Los Angeles Galaxy" — LAFC has no separate nickname, "Los Angeles FC"
+# IS its full name, not a different club).
+_NAME_ALIASES: list[tuple[str, str]] = [
+    (r"\butd\b", "united"),
+    (r"\blafc\b", "los angeles fc"),
+    (r"\bla\b", "los angeles"),
+]
+
+# Below this many characters, substring containment risks a coincidental
+# false match rather than a real shortened-name relationship — real bug
+# caught before shipping: naive containment on "la" (2 chars) happened to
+# match "LA Galaxy" against "Los Angeles Galaxy" here, but only because "la"
+# coincidentally appears inside "gaLAxy" itself; the same check would just
+# as readily mismatch "la" against "Atlanta" or "Dallas" in a league that
+# had one. The alias table above is the real fix for known short forms;
+# this guard is what makes the FALLBACK safe for names it doesn't cover.
+_MIN_CONTAINMENT_LEN = 4
+
+
 def _norm(name: str) -> str:
-    # "utd" -> "united" BEFORE stripping non-alpha (order matters: stripping
-    # first would turn "Manchester Utd" into "manchesterutd", a completely
-    # different string from "united"'s expansion, not a substring of it
-    # either way) - a real, common OddsPortal abbreviation, verified live
-    # against EPL ("Manchester Utd" vs our own ESPN-sourced "Manchester
-    # United"), not a guessed normalization.
-    name = re.sub(r"\butd\b", "united", name.lower())
+    name = name.lower()
+    for pattern, replacement in _NAME_ALIASES:
+        name = re.sub(pattern, replacement, name)
     return re.sub(r"[^a-z]", "", name)
 
 
+def _norm_words(name: str) -> frozenset[str]:
+    """Word-set form for the reordering fallback below — "Red Bull New
+    York" vs "New York Red Bulls" (MLS, verified live) share every
+    significant word, just not the same order, which no amount of prefix/
+    substring matching on the joined string can bridge."""
+    name = name.lower()
+    for pattern, replacement in _NAME_ALIASES:
+        name = re.sub(pattern, replacement, name)
+    words = re.findall(r"[a-z]+", name)
+    return frozenset(w.rstrip("s") for w in words if len(w) >= 3)  # rstrip("s"): Bull vs Bulls
+
+
 def _match_game(games: list[Game], home_team: str, away_team: str) -> Game | None:
-    """Exact match first; falls back to substring containment in either
-    direction — a real, necessary fallback, not a nice-to-have: OddsPortal
-    routinely shortens club names (verified live against EPL: "Nottingham"
-    for "Nottingham Forest", "Hull" for "Hull City", "Newcastle" for
-    "Newcastle United", "Brighton" for "Brighton & Hove Albion", "Leeds" for
-    "Leeds United", "Ipswich" for "Ipswich Town", "Everton"/"Bournemouth"
-    for "AFC Bournemouth") — exact-only matching missed 7 of 10 real EPL
-    matches in one live test. Containment (not equality) after normalization
-    handles all of these; MLB never exposed this since "City Nickname" team
-    names don't have this shortened-vs-full variance the way club names do.
+    """Three tiers, exact first: OddsPortal routinely shortens club names
+    in ways plain equality can't survive. Real mismatches found live and
+    fixed here, not guessed in advance — MLB's simple "City Nickname" names
+    never exposed any of this:
+      - substring containment (EPL: "Nottingham" for "Nottingham Forest",
+        "Hull" for "Hull City", "Newcastle" for "Newcastle United", etc.)
+      - word-set equality, order-independent (MLS: "Red Bull New York" vs
+        "New York Red Bulls")
+    Both fallbacks apply to home and away independently — a team on one
+    side matching via containment doesn't require the other side to match
+    the same way.
     """
     home_n, away_n = _norm(home_team), _norm(away_team)
     for g in games:
         game_home_n, game_away_n = _norm(g.home_team_name), _norm(g.away_team_name)
         if game_home_n == home_n and game_away_n == away_n:
             return g
+
+    def side_matches(a: str, b: str) -> bool:
+        if len(a) < _MIN_CONTAINMENT_LEN or len(b) < _MIN_CONTAINMENT_LEN:
+            return a == b
+        return a in b or b in a
+
     for g in games:
         game_home_n, game_away_n = _norm(g.home_team_name), _norm(g.away_team_name)
-        home_match = home_n in game_home_n or game_home_n in home_n
-        away_match = away_n in game_away_n or game_away_n in away_n
-        if home_match and away_match:
+        if side_matches(home_n, game_home_n) and side_matches(away_n, game_away_n):
             return g
+
+    home_w, away_w = _norm_words(home_team), _norm_words(away_team)
+    for g in games:
+        if _norm_words(g.home_team_name) == home_w and _norm_words(g.away_team_name) == away_w:
+            return g
+
     return None
 
 
