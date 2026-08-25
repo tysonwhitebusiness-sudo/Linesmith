@@ -164,19 +164,47 @@ def test_is_running_in_docker_true(mock_exists):
     mock_exists.assert_called_once_with("/.dockerenv")
 
 
+@patch.dict("os.environ", {}, clear=True)
 @patch("os.path.exists", return_value=False)
 def test_is_running_in_docker_false(mock_exists):
-    """Test detection of Docker environment when /.dockerenv doesn't exist."""
+    """No /.dockerenv AND no CI env vars set — genuinely not Docker/CI.
+    Environment cleared explicitly: this test's own assertion would be a
+    false failure if run under a real CI runner (which sets CI=true) without
+    isolating it from that ambient env — the thing being tested here is the
+    /.dockerenv-only path, not "what CI happens to be set right now"."""
     assert is_running_in_docker() is False
     mock_exists.assert_called_once_with("/.dockerenv")
 
 
+@patch.dict("os.environ", {}, clear=True)
 @patch("os.path.exists", side_effect=PermissionError("Permission denied"))
 def test_is_running_in_docker_permission_error(mock_exists):
     """Test handling of permission error when checking for Docker environment."""
     # Should default to False when there's an error checking the file
     assert is_running_in_docker() is False
     mock_exists.assert_called_once_with("/.dockerenv")
+
+
+@patch.dict("os.environ", {"CI": "true"}, clear=True)
+@patch("os.path.exists", return_value=False)
+def test_is_running_in_docker_true_under_ci_env_var(mock_exists):
+    """No /.dockerenv, but CI=true — a bare CI runner (GitHub Actions
+    ubuntu-latest, no container involved) has the same real constraints
+    (constrained /dev/shm, no sandbox-capable environment) the Docker flag
+    set exists for for, even though there's no /.dockerenv file. Verified
+    live: without this, a GitHub Actions run got the non-Docker Chromium
+    flags, missing --disable-dev-shm-usage/--no-sandbox, and the browser
+    never produced a real page (0 height, 0 event rows)."""
+    assert is_running_in_docker() is True
+
+
+@patch.dict("os.environ", {"GITHUB_ACTIONS": "true"}, clear=True)
+@patch("os.path.exists", return_value=False)
+def test_is_running_in_docker_true_under_github_actions_env_var(mock_exists):
+    """Same as above via GITHUB_ACTIONS specifically, in case a workflow
+    ever runs with CI unset but GITHUB_ACTIONS still set (GitHub sets both
+    by default, but this covers the narrower signal too)."""
+    assert is_running_in_docker() is True
 
 
 def test_clean_html_text():

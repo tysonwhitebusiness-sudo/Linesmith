@@ -115,13 +115,29 @@ def get_supported_markets(sport: Sport | str) -> list[str]:
 
 def is_running_in_docker() -> bool:
     """
-    Detect if the app is running inside a Docker container.
+    Detect if the app is running inside a Docker container, OR any CI runner
+    with the same real constraints Docker was actually detected FOR here —
+    constrained /dev/shm and no sandbox-capable environment, not literally
+    "is there a container." The /.dockerenv check alone misses a real case:
+    a bare GitHub Actions runner (ubuntu-latest, no Docker involved at all)
+    has exactly those constraints, but no /.dockerenv file, so it silently
+    fell through to PLAYWRIGHT_BROWSER_ARGS (missing --disable-dev-shm-usage
+    and --no-sandbox) instead of PLAYWRIGHT_BROWSER_ARGS_DOCKER — observed
+    live: Chromium never produced a real page (0 height, odds-format
+    dropdown timeout, 0 event rows), the exact "anti-bot" fingerprint this
+    package's own gotchas doc describes, except the actual cause here was
+    the renderer never properly starting, not a block. CI/GITHUB_ACTIONS are
+    both env vars every major CI platform sets by default (not something a
+    caller has to opt into), so this generalizes past GitHub Actions
+    specifically.
 
     Returns:
-        bool: True if running in Docker, False otherwise.
+        bool: True if running in Docker or a CI runner, False otherwise.
     """
     try:
-        return os.path.exists("/.dockerenv")
+        if os.path.exists("/.dockerenv"):
+            return True
+        return os.environ.get("CI", "").lower() == "true" or os.environ.get("GITHUB_ACTIONS", "").lower() == "true"
     except (PermissionError, OSError) as e:
         logger.warning(f"Error checking Docker environment: {e!s}")
         return False
