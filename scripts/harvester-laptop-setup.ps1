@@ -11,11 +11,23 @@
 #
 # Usage:
 #   .\scripts\harvester-laptop-setup.ps1
-#   .\scripts\harvester-laptop-setup.ps1 -IntervalMinutes 30
-#   .\scripts\harvester-laptop-setup.ps1 -SkipDependencyInstall   # re-register the task only
+#   .\scripts\harvester-laptop-setup.ps1 -IntervalMinutes 90 -StaggerMinutes 15
+#   .\scripts\harvester-laptop-setup.ps1 -SkipDependencyInstall   # re-register the tasks only
 
 param(
-    [int]$IntervalMinutes = 20,
+    # How often EACH sport's own task re-fires. Must stay >= Sports.Count *
+    # StaggerMinutes (checked below) or a sport's next scheduled run could
+    # land before the prior staggered cycle has even finished the last
+    # sport, defeating the stagger entirely.
+    [int]$IntervalMinutes = 90,
+    # Gap between each sport's task start time within one cycle. Sized off
+    # this session's real measured worst case (tennis, 485s/8m5s against the
+    # 700s internal budget in harvester_scrape.py) plus real margin for
+    # venv/python startup and asyncpg connect - one sport's Chromium
+    # instance should always be fully done before the next one starts, so
+    # this laptop (running nothing else) never has two scrapes competing for
+    # the same CPU/memory at once.
+    [int]$StaggerMinutes = 15,
     [switch]$SkipDependencyInstall
 )
 
@@ -25,7 +37,26 @@ $pyOddsDir = Join-Path $repoRoot "python-odds-service"
 $oddsharvesterDir = Join-Path $repoRoot "oddsharvester"
 $venvDir = Join-Path $pyOddsDir ".venv"
 $venvPython = Join-Path $venvDir "Scripts\python.exe"
-$taskName = "LinesmithOddsHarvester"
+$taskNamePrefix = "LinesmithOddsHarvester"
+# Must match harvester_scrape.py's SCRAPE_CONFIG keys exactly - kept as an
+# explicit list here (not read from the .py file) so each sport gets its own
+# Scheduled Task rather than one task running every sport back-to-back in a
+# single process. That single-task shape was the original design and it was
+# a real, serious bug: with no CLI argument, harvester_scrape.py's main()
+# runs every configured sport sequentially in one execution - measured this
+# session at MLB 438s + soccer_epl ~200s + soccer_mls ~195s + tennis 485s =
+# ~22 minutes total, against a single task's old 10-minute
+# -ExecutionTimeLimit. Task Scheduler would forcibly kill the process
+# mid-run, silently dropping whatever sport was still queued - and it only
+# gets worse as more sports (NFL, CFB, ...) are added. One task per sport,
+# each invoking `harvester_scrape.py <sport>` with its own generous time
+# limit and a staggered start so they never compete for the same CPU/memory
+# at once, is the fix.
+$sports = @("mlb", "soccer_epl", "soccer_mls", "tennis")
+if ($IntervalMinutes -lt ($sports.Count * $StaggerMinutes)) {
+    Write-Error "IntervalMinutes ($IntervalMinutes) must be >= Sports.Count * StaggerMinutes ($($sports.Count) * $StaggerMinutes = $($sports.Count * $StaggerMinutes)), or a sport's next run could land before the staggered cycle finishes."
+    exit 1
+}
 
 Write-Host "== OddsHarvester laptop setup ==" -ForegroundColor Cyan
 Write-Host "Repo root: $repoRoot"
@@ -80,38 +111,15 @@ if (-not (Test-Path $envLocalPath)) {
     Write-Host "DATABASE_URL found in .env.local." -ForegroundColor Green
 }
 
-# --- 5. Scheduled task -------------------------------------------------------
+# --- 5. Scheduled tasks, one per sport ---------------------------------------
 # Task Scheduler does NOT capture a launched program's stdout/stderr anywhere
 # by default (real gap, found live: LastTaskResult read 0 while the actual
 # run had produced no fresh health-check write and there was no way to see
-# why). Routing through a tiny generated .bat wrapper that redirects output
-# to a log file is the reliable fix - avoids the notoriously fragile
-# cmd.exe /c nested-quoting rules a raw -Argument string would need instead.
-$logPath = Join-Path $pyOddsDir "harvester-scrape.log"
-$batPath = Join-Path $pyOddsDir "run-harvester.bat"
-@"
-@echo off
-echo ---- %date% %time% ---- >> "$logPath"
-"$venvPython" src\harvester_scrape.py >> "$logPath" 2>&1
-"@ | Set-Content -Path $batPath -Encoding ASCII
-
-$existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-if ($existing) {
-    Write-Host "Removing existing '$taskName' task to re-register with current settings..."
-    Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
-}
-
-$action = New-ScheduledTaskAction -Execute $batPath -WorkingDirectory $pyOddsDir
-$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
-    -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes) `
-    -RepetitionDuration (New-TimeSpan -Days 3650)   # PowerShell has no "forever"  -  10 years stands in for it
-$settings = New-ScheduledTaskSettingsSet `
-    -StartWhenAvailable `
-    -DontStopOnIdleEnd `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
-    -RestartCount 3 `
-    -RestartInterval (New-TimeSpan -Minutes 2) `
-    -MultipleInstances IgnoreNew
+# why). Routing through a tiny generated .bat wrapper per sport that
+# redirects output to its own log file is the reliable fix - avoids the
+# notoriously fragile cmd.exe /c nested-quoting rules a raw -Argument string
+# would need instead, and per-sport logs mean one sport's failure doesn't
+# bury another's output in the same file.
 # Interactive: runs while this account is logged in (screen locked is fine,
 # fully logged out is not) and needs NO elevation to register. S4U (runs
 # even fully logged out, no password stored) was tried first and requires
@@ -121,33 +129,67 @@ $settings = New-ScheduledTaskSettingsSet `
 # screen locked, over needing an elevated PowerShell window every re-setup.
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 
-try {
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
-        -Description "Scrapes OddsPortal.com for game odds every $IntervalMinutes minutes. See scripts/harvester-laptop-setup.ps1." `
-        -ErrorAction Stop | Out-Null
-} catch {
-    Write-Host ""
-    Write-Error "Register-ScheduledTask failed: $($_.Exception.Message)"
-    Write-Host "Re-run this script from an elevated ('Run as Administrator') PowerShell if this is an access-denied error." -ForegroundColor Yellow
-    exit 1
+$registeredTaskNames = @()
+for ($i = 0; $i -lt $sports.Count; $i++) {
+    $sport = $sports[$i]
+    $taskName = "$taskNamePrefix-$sport"
+    $logPath = Join-Path $pyOddsDir "harvester-scrape-$sport.log"
+    $batPath = Join-Path $pyOddsDir "run-harvester-$sport.bat"
+    @"
+@echo off
+echo ---- %date% %time% ---- >> "$logPath"
+"$venvPython" src\harvester_scrape.py $sport >> "$logPath" 2>&1
+"@ | Set-Content -Path $batPath -Encoding ASCII
+
+    $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    if ($existing) {
+        Write-Host "Removing existing '$taskName' task to re-register with current settings..."
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+    }
+
+    $action = New-ScheduledTaskAction -Execute $batPath -WorkingDirectory $pyOddsDir
+    $startAt = (Get-Date).AddMinutes($i * $StaggerMinutes)
+    $trigger = New-ScheduledTaskTrigger -Once -At $startAt `
+        -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes) `
+        -RepetitionDuration (New-TimeSpan -Days 3650)   # PowerShell has no "forever"  -  10 years stands in for it
+    $settings = New-ScheduledTaskSettingsSet `
+        -StartWhenAvailable `
+        -DontStopOnIdleEnd `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes 15) `
+        -RestartCount 3 `
+        -RestartInterval (New-TimeSpan -Minutes 2) `
+        -MultipleInstances IgnoreNew
+
+    try {
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
+            -Description "Scrapes OddsPortal.com for $sport game odds every $IntervalMinutes minutes, staggered $($i * $StaggerMinutes) min into the cycle. See scripts/harvester-laptop-setup.ps1." `
+            -ErrorAction Stop | Out-Null
+    } catch {
+        Write-Host ""
+        Write-Error "Register-ScheduledTask failed for '$taskName': $($_.Exception.Message)"
+        Write-Host "Re-run this script from an elevated ('Run as Administrator') PowerShell if this is an access-denied error." -ForegroundColor Yellow
+        exit 1
+    }
+    $registeredTaskNames += $taskName
+    Write-Host "Registered '$taskName' - first run at $($startAt.ToString('HH:mm:ss')), then every $IntervalMinutes min." -ForegroundColor Green
 }
 
 Write-Host ""
-Write-Host "Task '$taskName' registered  -  runs every $IntervalMinutes minutes while this account is logged in (screen can be locked)." -ForegroundColor Green
+Write-Host "$($sports.Count) tasks registered ($($registeredTaskNames -join ', '))  -  each runs while this account is logged in (screen can be locked)." -ForegroundColor Green
 Write-Host ""
-Write-Host "IMPORTANT  -  two things or the task silently stops firing:" -ForegroundColor Yellow
+Write-Host "IMPORTANT  -  two things or the tasks silently stop firing:" -ForegroundColor Yellow
 Write-Host "  1. Prevent sleep while plugged in: Settings > System > Power & battery >"
 Write-Host "     Screen and sleep > 'When plugged in, put my device to sleep after' -> Never"
 Write-Host "  2. Stay logged in to this account (locking the screen is fine, signing out is not)."
 Write-Host ""
-Write-Host "Run it once right now to verify, instead of waiting $IntervalMinutes minutes:"
-Write-Host "  Start-ScheduledTask -TaskName '$taskName'"
+Write-Host "Run one right now to verify, instead of waiting for its staggered start:"
+Write-Host "  Start-ScheduledTask -TaskName '$taskNamePrefix-mlb'"
 Write-Host ""
-Write-Host "Real output (stdout/stderr) lands here - Task Scheduler itself doesn't capture it:"
-Write-Host "  Get-Content '$logPath' -Tail 40"
+Write-Host "Real output (stdout/stderr) lands here per sport - Task Scheduler itself doesn't capture it:"
+Write-Host "  Get-Content '$(Join-Path $pyOddsDir "harvester-scrape-mlb.log")' -Tail 40"
 Write-Host ""
-Write-Host "Check its last run result (LastTaskResult 0 = success):"
-Write-Host "  Get-ScheduledTaskInfo -TaskName '$taskName'"
+Write-Host "Check a task's last run result (LastTaskResult 0 = success):"
+Write-Host "  Get-ScheduledTaskInfo -TaskName '$taskNamePrefix-mlb'"
 Write-Host ""
-Write-Host "Stop/remove it entirely:"
-Write-Host "  Unregister-ScheduledTask -TaskName '$taskName' -Confirm:`$false"
+Write-Host "Stop/remove all of them:"
+Write-Host "  Get-ScheduledTask -TaskName '$taskNamePrefix-*' | Unregister-ScheduledTask -Confirm:`$false"

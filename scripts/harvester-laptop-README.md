@@ -23,45 +23,57 @@ On the laptop that will stay on:
    .\scripts\harvester-laptop-setup.ps1
    ```
    This creates a Python virtual environment, installs dependencies
-   (including Playwright's Chromium), and registers a Windows Scheduled Task
-   (`LinesmithOddsHarvester`) that runs the scraper every 20 minutes — whether
-   you're logged in or not, without ever storing a Windows password anywhere.
+   (including Playwright's Chromium), and registers **one Windows Scheduled
+   Task per sport** (`LinesmithOddsHarvester-mlb`, `-soccer_epl`,
+   `-soccer_mls`, `-tennis`), each running the scraper for just that one
+   sport every 90 minutes, staggered 15 minutes apart, while this account is
+   logged in — no Windows password stored anywhere, no admin rights needed
+   to register them. One task per sport (not one task looping every sport
+   back-to-back) is deliberate: running every sport in a single process took
+   ~22 minutes total this session, which alone would already exceed a
+   single task's execution-time limit, and only grows as more sports are
+   added.
 
-5. **Turn off sleep while plugged in** (Task Scheduler won't fire during full
-   sleep, only during idle-but-awake):
-   `Settings > System > Power & battery > Screen and sleep > "When plugged in,
-   put my device to sleep after" -> Never`
+5. **Two things, or the task silently stops firing:**
+   - Turn off sleep while plugged in:
+     `Settings > System > Power & battery > Screen and sleep > "When plugged
+     in, put my device to sleep after" -> Never`
+   - Stay logged in to this account. Locking the screen (Win+L) is fine and
+     expected — the task keeps running. Signing all the way out stops it.
 
 ## Verifying it's actually working
 
-Run it once immediately instead of waiting 20 minutes:
+Run one sport's task once immediately instead of waiting for its staggered
+start:
 ```powershell
-Start-ScheduledTask -TaskName 'LinesmithOddsHarvester'
+Start-ScheduledTask -TaskName 'LinesmithOddsHarvester-mlb'
 Start-Sleep -Seconds 30
-Get-ScheduledTaskInfo -TaskName 'LinesmithOddsHarvester'
+Get-ScheduledTaskInfo -TaskName 'LinesmithOddsHarvester-mlb'
 ```
 `LastTaskResult` should read `0` (success). Anything else means it exited
-non-zero — see Troubleshooting below.
+non-zero — see Troubleshooting below. Swap `mlb` for `soccer_epl`,
+`soccer_mls`, or `tennis` to check the others; `Get-ScheduledTask -TaskName
+'LinesmithOddsHarvester-*'` lists all of them at once.
 
 **Confirm real data landed**, without needing DB access on the laptop itself:
 open `/diagnostics` on the deployed app and look for `oddsharvester_scrape_mlb`
-in the health-checks list (it's the same generic `job_health_checks` table
-`health_check.py` already uses — nothing new to build to see it there).
-`healthy: true` with a real `matched` count means rows are in
-`game_odds_book_lines`.
+(and `_soccer_epl`, `_soccer_mls`, `_tennis`) in the health-checks list (it's
+the same generic `job_health_checks` table `health_check.py` already uses —
+nothing new to build to see it there). `healthy: true` with a real `matched`
+count means rows are in `game_odds_book_lines`.
 
 ## Day to day
 
 Nothing to do — it just runs. Re-run the setup script any time you change the
-interval or want to reinstall dependencies:
+interval/stagger or want to reinstall dependencies:
 ```powershell
-.\scripts\harvester-laptop-setup.ps1 -IntervalMinutes 30
+.\scripts\harvester-laptop-setup.ps1 -IntervalMinutes 90 -StaggerMinutes 15
 .\scripts\harvester-laptop-setup.ps1 -SkipDependencyInstall   # re-register only, skip reinstalling deps
 ```
 
 Stop it entirely:
 ```powershell
-Unregister-ScheduledTask -TaskName 'LinesmithOddsHarvester' -Confirm:$false
+Get-ScheduledTask -TaskName 'LinesmithOddsHarvester-*' | Unregister-ScheduledTask -Confirm:$false
 ```
 
 ## Troubleshooting

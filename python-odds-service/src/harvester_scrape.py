@@ -31,13 +31,23 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import db
-from game_context import Game, load_mlb_games, load_sport_games
+from game_context import Game, load_mlb_games, load_sport_games, load_tennis_games
 from oddsharvester.core.scraper_app import run_scraper
 from oddsharvester.utils.command_enum import CommandEnum
 from predict.mlb_game_lines import BookmakerOdds, GameLine
 from predict.odds_lines_cycle import _game_odds_book_line_rows, _game_odds_history_rows
 
 HEALTH_CHECK_NAME = "oddsharvester_scrape"
+
+
+async def _load_combined_tennis_games() -> list[Game]:
+    """ATP + WTA together, each Game keeping its own real .sport
+    ('tennis_atp'/'tennis_wta') — needed because OddsHarvester itself
+    doesn't distinguish tours at the scrape level (no per-tour league key
+    exists, see the "tennis" ScrapeTarget's own comment), so one scrape's
+    results have to be matched against both tours' rosters at once."""
+    atp, wta = await asyncio.gather(load_tennis_games("tennis_atp"), load_tennis_games("tennis_wta"))
+    return atp + wta
 
 # ---------------------------------------------------------------------------
 # Per-sport scrape configuration. Phase 1 pilot: MLB only (verified against
@@ -51,9 +61,19 @@ HEALTH_CHECK_NAME = "oddsharvester_scrape"
 
 @dataclass
 class ScrapeTarget:
-    sport: str  # our own sport key, e.g. 'mlb' — matches Game.sport / game_id join
+    sport: str  # our own sport key, e.g. 'mlb' — matches Game.sport / game_id join.
+                # For a combined multi-tour target (tennis), this is a label
+                # only; the real per-row sport comes from each MATCHED
+                # Game's own .sport field, not this one — see run_target.
     harvester_sport: str  # OddsHarvester's sport key, e.g. 'baseball'
-    leagues: list[str]  # OddsHarvester league keys, e.g. ['mlb']
+    # Exactly one of leagues/None is set. Most sports have a real umbrella
+    # league key (MLB's "mlb", EPL's "england-premier-league"); tennis does
+    # not — OddsPortal has 150+ per-tournament keys, no "all ATP" league —
+    # so leagues=None falls back to a date-scoped, tournament-agnostic
+    # scrape instead (verified live: returns real matches across every
+    # active tournament for that date, ATP/WTA/challenger/ITF all mixed
+    # together, same as the site's own /matches/tennis/<date>/ listing).
+    leagues: list[str] | None
     markets: list[str]  # OddsHarvester market tokens for this sport
     load_games: callable  # async () -> list[Game]
 
@@ -101,6 +121,22 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
         leagues=["usa-mls"],
         markets=["1x2"],
         load_games=functools.partial(load_sport_games, "soccer_mls"),
+    ),
+    # No per-tour league key exists (OddsPortal has 150+ individual
+    # tournament keys, no umbrella "ATP"/"WTA") — leagues=None falls back to
+    # a date-scoped, tour-agnostic scrape (see _run_harvester_cli), verified
+    # live to return real matches across whatever tournaments are active.
+    # `sport="tennis"` here is a label only; each row's REAL sport
+    # (tennis_atp vs tennis_wta) comes from whichever tour's own roster the
+    # match's players matched against, tracked per-game in run_target, since
+    # ATP and WTA results are mixed together in one scrape's output with no
+    # tour field of their own to read.
+    "tennis": ScrapeTarget(
+        sport="tennis",
+        harvester_sport="tennis",
+        leagues=None,
+        markets=["match_winner"],
+        load_games=_load_combined_tennis_games,
     ),
 }
 
@@ -193,7 +229,35 @@ def _match_game(games: list[Game], home_team: str, away_team: str) -> Game | Non
         if _norm_words(g.home_team_name) == home_w and _norm_words(g.away_team_name) == away_w:
             return g
 
+    for g in games:
+        if _player_name_matches(home_team, g.home_team_name) and _player_name_matches(away_team, g.away_team_name):
+            return g
+
     return None
+
+
+# OddsPortal renders tennis players as "Surname F." (verified against the
+# vendored package's own real fixture: "Djokovic N.", "Sinner J.") — a
+# structurally different problem from the team-name cases above, not just a
+# shorter version of the same string. Our own ESPN-sourced Game names are
+# "Firstname Lastname" (game_context.py's load_tennis_games reads ESPN's
+# fullName field directly). Neither containment nor the word-set fallback
+# can bridge this: a single-letter initial gets filtered out of
+# _norm_words entirely (its len<3 guard), so "Djokovic N." reduces to just
+# {"djokovic"} while "Novak Djokovic" reduces to {"novak", "djokovic"} —
+# never equal. Needs its own real parse, not a looser generic heuristic.
+_SURNAME_INITIAL_RE = re.compile(r"^(.+?)\s+([A-Za-z])\.?$")
+
+
+def _player_name_matches(oddsportal_name: str, full_name: str) -> bool:
+    m = _SURNAME_INITIAL_RE.match(oddsportal_name.strip())
+    if not m:
+        return _norm(oddsportal_name) == _norm(full_name)  # non-tennis or already full-form input
+    surname, initial = m.group(1).lower(), m.group(2).lower()
+    full_words = re.findall(r"[a-z]+", full_name.lower())
+    if surname.replace(" ", "") not in "".join(full_words):
+        return False
+    return any(w.startswith(initial) and w != surname for w in full_words) or len(full_words) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -304,6 +368,17 @@ def _record_to_game_line(record: dict, game_id: str) -> GameLine:
                     b.away_odds = away
                 if draw is not None:
                     b.draw_odds = draw
+            elif market_token == "match_winner":
+                # Tennis's own moneyline keys — "player_1"/"player_2", not
+                # "1"/"2" (verified against the vendored package's own real
+                # fixture) — home/away here means the two players in the
+                # SAME order match_link/home_team/away_team already use.
+                home = _parse_decimal_odds(row.get("player_1"))
+                away = _parse_decimal_odds(row.get("player_2"))
+                if home is not None:
+                    b.home_odds = home
+                if away is not None:
+                    b.away_odds = away
             elif point is not None:
                 over = _parse_decimal_odds(row.get("odds_over"))
                 under = _parse_decimal_odds(row.get("odds_under"))
@@ -352,17 +427,21 @@ def _record_to_game_line(record: dict, game_id: str) -> GameLine:
 # CLI invocation
 # ---------------------------------------------------------------------------
 
-# Real measured costs this session, 15 MLB matches, concurrency 1, no other
-# load: home_away alone = 3m30s (210s); home_away + 2 total lines = 7m18s
-# (438s) after fixing the whole-number-line click bug (each extra market
-# needs its own real tab-click + page-load + parse cycle per match — ~110s
-# added per line, not a bug, genuinely how much UI interaction costs). 550s
-# leaves real margin above the observed 438s while staying under the
-# scheduled task's own 10-minute execution limit (scripts/harvester-laptop-
-# setup.ps1's -ExecutionTimeLimit) — re-measure before adding a 3rd total
-# line or another sport's markets to this same run, don't assume it scales
-# linearly forever.
-SCRAPE_TIMEOUT_SECONDS = 550
+# Real measured costs this session, concurrency 1, no other load:
+# MLB (15 matches): home_away alone = 3m30s (210s); home_away + 2 total
+# lines = 7m18s (438s) after fixing the whole-number-line click bug (each
+# extra market needs its own real tab-click + page-load + parse cycle per
+# match — ~110s added per line, not a bug, genuinely how much UI interaction
+# costs). Tennis (44 matches, single market): 8m5s (485s) — a bigger match
+# count on a single-market sport costs about as much as a smaller match
+# count with extra markets, same per-match UI-interaction floor either way.
+# 485s against the old 550s budget left only 65s of real margin — too tight
+# for a genuinely less powerful laptop, so both this and the scheduled
+# task's own -ExecutionTimeLimit (scripts/harvester-laptop-setup.ps1) were
+# widened together. Re-measure before adding a 3rd total line, another
+# market, or a sport with a much larger per-day match count — don't assume
+# either number scales linearly forever.
+SCRAPE_TIMEOUT_SECONDS = 700
 
 
 async def _run_harvester_cli(target: ScrapeTarget) -> list[dict]:
@@ -427,20 +506,30 @@ async def _run_harvester_cli(target: ScrapeTarget) -> list[dict]:
     Concurrency fixed at 1 (oddsharvester's own default is 3) — a real run
     this session crashed mid-scrape ("Page crashed"/"Target crashed") at
     the default, trading some wall-clock time for stability.
+
+    When target.leagues is None (tennis — no umbrella league key exists),
+    falls back to date=<today> instead of kickoff_within_hours: the CLI's
+    own validation requires date, leagues, OR match-links, and the
+    no-league listing page (`/matches/tennis/<date>/`) is scoped by date in
+    the URL itself, not by a client-side kickoff_within_hours post-filter
+    the way the league-page path is — confirmed live before relying on it,
+    not assumed from the league-page behavior.
     """
+    kwargs: dict = dict(
+        command=CommandEnum.UPCOMING_MATCHES,
+        sport=target.harvester_sport,
+        markets=target.markets,
+        headless=True,
+        concurrency_tasks=1,
+    )
+    if target.leagues is not None:
+        kwargs["leagues"] = target.leagues
+        kwargs["kickoff_within_hours"] = 168.0
+    else:
+        kwargs["date"] = datetime.now(timezone.utc).strftime("%Y%m%d")
+
     try:
-        result = await asyncio.wait_for(
-            run_scraper(
-                command=CommandEnum.UPCOMING_MATCHES,
-                sport=target.harvester_sport,
-                leagues=target.leagues,
-                markets=target.markets,
-                headless=True,
-                concurrency_tasks=1,
-                kickoff_within_hours=168.0,
-            ),
-            timeout=SCRAPE_TIMEOUT_SECONDS,
-        )
+        result = await asyncio.wait_for(run_scraper(**kwargs), timeout=SCRAPE_TIMEOUT_SECONDS)
     except asyncio.TimeoutError:
         raise RuntimeError(f"oddsharvester scrape for {target.sport} exceeded {SCRAPE_TIMEOUT_SECONDS}s")
 
@@ -479,9 +568,29 @@ async def run_target(target: ScrapeTarget) -> dict:
         raise
 
     matched_lines: list[GameLine] = []
+    # game_id -> that game's OWN real sport, not target.sport uniformly —
+    # needed for tennis, where one scrape covers both tours at once (no
+    # per-tour league key exists to scrape them separately) and target.sport
+    # is a label for the whole target, not any single match's real tour.
+    # Every other sport's games are already all the same sport as target.sport,
+    # so this is a no-op for them, not tennis-specific plumbing bolted on.
+    game_id_to_sport: dict[str, str] = {}
     unmatched = 0
+    doubles_skipped = 0
     for record in records:
         home_raw, away_raw = record.get("home_team") or "", record.get("away_team") or ""
+        # Tennis only: OddsPortal's date-scoped board (leagues=None) mixes in
+        # doubles alongside singles, rendered as "Surname1 I./Surname2 C. M."
+        # per side. load_tennis_games only ever builds singles Games (each
+        # competition's competitors[] is a two-player list, one per side) —
+        # there is no 4-player Game shape anywhere in this codebase for
+        # doubles to match against, so these can never match and shouldn't be
+        # counted/logged as a real matching failure. Verified live: this is
+        # exactly what most of the "unmatched" tennis records turned out to
+        # be (see harvester_scrape's tennis config comment).
+        if target.sport == "tennis" and ("/" in home_raw or "/" in away_raw):
+            doubles_skipped += 1
+            continue
         game = _match_game(games, home_raw, away_raw)
         if game is None:
             unmatched += 1
@@ -492,6 +601,7 @@ async def run_target(target: ScrapeTarget) -> dict:
             print(f"[harvester_scrape] unmatched: '{away_raw}' @ '{home_raw}' not found in our own {len(games)}-game list", flush=True)
             continue
         matched_lines.append(_record_to_game_line(record, game.game_id))
+        game_id_to_sport[game.game_id] = game.sport
 
     # Anti-bot detection: OddsHarvester's own docs (gotchas §6) confirm a
     # blocked scrape returns 0 rows with NO exception — a "successful" run
@@ -501,16 +611,27 @@ async def run_target(target: ScrapeTarget) -> dict:
     healthy = len(records) > 0 or len(games) == 0
     status = (
         f"{len(matched_lines)}/{len(records)} matched, {unmatched} unmatched"
+        + (f", {doubles_skipped} doubles skipped" if doubles_skipped else "")
         if records
         else f"0 records returned for {len(games)} scheduled game(s) — possible anti-bot block"
     )
     await _write_health(target.sport, healthy=healthy, status=status, matched=len(matched_lines), records=len(records))
 
     if matched_lines:
-        await db.write_game_odds_book_lines(_game_odds_book_line_rows_for_source(matched_lines, target.sport, "oddsharvester"))
+        book_rows = _game_odds_book_line_rows_for_source(matched_lines, target.sport, "oddsharvester")
+        for r in book_rows:
+            r.sport = game_id_to_sport.get(r.game_id, r.sport)
+        await db.write_game_odds_book_lines(book_rows)
         await db.write_game_odds_history(_game_odds_history_rows_tagged(matched_lines, "oddsharvester"))
 
-    return {"sport": target.sport, "ok": True, "records": len(records), "matched": len(matched_lines), "unmatched": unmatched}
+    return {
+        "sport": target.sport,
+        "ok": True,
+        "records": len(records),
+        "matched": len(matched_lines),
+        "unmatched": unmatched,
+        "doubles_skipped": doubles_skipped,
+    }
 
 
 def _game_odds_book_line_rows_for_source(lines: list[GameLine], sport: str, source: str) -> list[db.GameOddsBookLineInput]:
