@@ -1,29 +1,21 @@
-name: OddsHarvester scrape
+name: OddsHarvester scrape (manual diagnostic only)
 
-# Scrapes OddsPortal.com for per-bookmaker game odds and writes them into the
-# same Postgres DB python-odds-service (the Render worker) reads/writes —
-# see python-odds-service/src/harvester_scrape.py for the full rationale.
-# Deliberately NOT part of that worker: a live Chromium process is
-# 300-500MB+, well past that service's hard 512MB budget, and it has no
-# natural point to cooperatively yield to the worker's own job queue the way
-# NFL's rate-limit sleeps do. Runs here instead, on GitHub's own runners —
-# free within included minutes, no Render cost, and completely isolated from
-# the worker's own memory/scheduling.
+# NO LONGER THE PRODUCTION SCRAPE PATH — see scripts/harvester-laptop/ for
+# that. Real run evidence (2026-08-25, workflow 89041102402): OddsPortal
+# returns a hard HTTP 429 (zero bytes, Varnish/nginx edge) to GitHub
+# Actions' shared runner IPs — not a code/config problem on our side, a
+# genuine IP-level rate limit. GitHub's IP ranges are heavily shared across
+# every public repo's CI traffic, so this isn't something fixable here; the
+# actual scrape now runs on a dedicated always-on machine with a normal
+# residential IP instead (OddsPortal's own docs describe residential IPs as
+# getting normal, un-blocked treatment).
 #
-# Requires a repo secret DATABASE_URL — the same Postgres connection string
-# python-odds-service's own config.py reads (Settings > Secrets and
-# variables > Actions).
+# Kept as `workflow_dispatch`-only (no schedule) for exactly one purpose:
+# re-checking whether GitHub's IPs are still blocked, without needing the
+# laptop, if this is ever worth re-testing. Never runs on its own.
 
 on:
-  schedule:
-    # Every 20 minutes. GitHub's schedule trigger is best-effort, not exact —
-    # see OddsHarvester's own docs on why this fits a scraper better than a
-    # tight interval anyway (avoid hammering a site that anti-bot-blocks on
-    # suspiciously regular traffic).
-    - cron: '*/20 * * * *'
   workflow_dispatch:
-    # Manual trigger — the Phase 1 verification path (run once against MLB,
-    # confirm rows land correctly) before trusting the schedule.
     inputs:
       sports:
         description: 'Space-separated sport keys to scrape (default: all configured)'
