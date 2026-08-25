@@ -49,7 +49,7 @@ class NavigationManager:
                     self.logger.info(f"Market switch confirmed via URL code: {market_name} is active")
                     return True
 
-                active_tab = await page.query_selector("li.active, li[class*='active'], .active")
+                active_tab = await page.query_selector(OddsPortalSelectors.MARKET_TAB_ACTIVE)
                 if active_tab:
                     tab_text = await active_tab.text_content()
                     if tab_text and market_name.lower() in tab_text.lower():
@@ -73,6 +73,7 @@ class NavigationManager:
             page=page,
             selector=OddsPortalSelectors.SUB_MARKET_SELECTOR,
             text=text,
+            click_ancestor=OddsPortalSelectors.SUB_MARKET_CLICK_ANCESTOR,
         )
 
     async def close_specific_market(self, page: Page, specific_market: str, main_market: str | None = None) -> bool:
@@ -83,6 +84,7 @@ class NavigationManager:
             page=page,
             selector=OddsPortalSelectors.SUB_MARKET_SELECTOR,
             text=text,
+            click_ancestor=OddsPortalSelectors.SUB_MARKET_CLICK_ANCESTOR,
         )
 
     async def wait_for_page_load(self, page: Page) -> None:

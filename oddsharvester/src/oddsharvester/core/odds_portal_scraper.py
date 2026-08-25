@@ -133,7 +133,9 @@ class OddsPortalScraper(BaseScraper):
             return self._links_only_result(
                 rows=[{"match_link": link} for link in link_result.links],
                 context={"sport": sport, "league": league, "season": season},
-                failed_page_urls=[f"{base_url}#/page/{p}" for p in link_result.failed_pages],
+                failed_page_urls=[
+                    f"{base_url}{OddsPortalSelectors.page_fragment(p)}" for p in link_result.failed_pages
+                ],
             )
 
         # Extract odds from all collected links
@@ -221,7 +223,7 @@ class OddsPortalScraper(BaseScraper):
             timeout=30,
             scroll_pause_time=2,
             max_scroll_attempts=3,
-            content_check_selector="div[class*='eventRow']",
+            content_check_selector=OddsPortalSelectors.LISTING_ROW_SELECTOR,
         )
 
         # League page shows all upcoming dates; when a specific date is requested,
@@ -306,13 +308,13 @@ class OddsPortalScraper(BaseScraper):
 
         if match_links:
             links = [normalize_inplay_match_url(link) for link in match_links]
-            await current_page.goto(ODDSPORTAL_BASE_URL, timeout=GOTO_TIMEOUT_LONG_MS, wait_until="networkidle")
+            await current_page.goto(ODDSPORTAL_BASE_URL, timeout=GOTO_TIMEOUT_LONG_MS, wait_until="domcontentloaded")
             await self._prepare_page_for_scraping(page=current_page)
         else:
             url = URLBuilder.get_live_matches_url(sport=sport, base_url=self.base_url)
             self.logger.info(f"Fetching live matches from {url}")
 
-            await current_page.goto(url, timeout=GOTO_TIMEOUT_MS, wait_until="networkidle")
+            await current_page.goto(url, timeout=GOTO_TIMEOUT_MS, wait_until="domcontentloaded")
             await self._prepare_page_for_scraping(page=current_page)
             await self.scroller.scroll_until_loaded(
                 page=current_page,
@@ -387,7 +389,7 @@ class OddsPortalScraper(BaseScraper):
         if not current_page:
             raise RuntimeError("Playwright has not been initialized. Call `start_playwright()` first.")
 
-        await current_page.goto(ODDSPORTAL_BASE_URL, timeout=GOTO_TIMEOUT_LONG_MS, wait_until="networkidle")
+        await current_page.goto(ODDSPORTAL_BASE_URL, timeout=GOTO_TIMEOUT_LONG_MS, wait_until="domcontentloaded")
         await self._prepare_page_for_scraping(page=current_page)
         return await self.extract_match_odds(
             sport=sport,
@@ -422,7 +424,7 @@ class OddsPortalScraper(BaseScraper):
         """Build the failure entries for listing pages that could not be collected."""
         return [
             FailedUrl(
-                url=f"{base_url}#/page/{page}",
+                url=f"{base_url}{OddsPortalSelectors.page_fragment(page)}",
                 error_type=ErrorType.LISTING_PAGE,
                 error_message="Failed to collect links from listing page",
             )
@@ -573,9 +575,9 @@ class OddsPortalScraper(BaseScraper):
             try:
                 tab = await self.playwright_manager.context.new_page()
 
-                page_url = f"{base_url}#/page/{page_number}"
+                page_url = f"{base_url}{OddsPortalSelectors.page_fragment(page_number)}"
                 self.logger.info(f"Navigating to: {page_url}")
-                await tab.goto(page_url, timeout=GOTO_TIMEOUT_MS, wait_until="networkidle")
+                await tab.goto(page_url, timeout=GOTO_TIMEOUT_MS, wait_until="domcontentloaded")
                 delay = random.randint(PAGE_COLLECTION_DELAY_MIN_MS, PAGE_COLLECTION_DELAY_MAX_MS)  # noqa: S311
                 await tab.wait_for_timeout(delay)
 
@@ -585,7 +587,7 @@ class OddsPortalScraper(BaseScraper):
                     timeout=30,
                     scroll_pause_time=2,
                     max_scroll_attempts=3,
-                    content_check_selector="div[class*='eventRow']",
+                    content_check_selector=OddsPortalSelectors.LISTING_ROW_SELECTOR,
                 )
                 if not scroll_success:
                     self.logger.warning(f"Scrolling may not have completed for page {page_number}")

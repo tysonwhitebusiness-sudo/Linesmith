@@ -8,42 +8,45 @@ from oddsharvester.core.odds_portal_market_extractor import OddsPortalMarketExtr
 from oddsharvester.core.sport_market_registry import SportMarketRegistry
 from oddsharvester.core.sport_period_registry import SportPeriodRegistry
 
-# Sample HTML for testing
+# Sample HTML for testing (table markup, 2026-08 redesign)
 SAMPLE_HTML_ODDS = """
-<div class="border-black-borders flex h-9">
-    <img class="bookmaker-logo" title="Bookmaker1">
-    <div class="flex-center flex-col font-bold">1.90</div>
-    <div class="flex-center flex-col font-bold">3.50</div>
-    <div class="flex-center flex-col font-bold">4.20</div>
-</div>
-<div class="border-black-borders flex h-9">
-    <img class="bookmaker-logo" title="Bookmaker2">
-    <div class="flex-center flex-col font-bold">1.85</div>
-    <div class="flex-center flex-col font-bold">3.60</div>
-    <div class="flex-center flex-col font-bold">4.10</div>
-</div>
+<table><tbody>
+<tr class="h-9">
+    <td><a data-testid="outrights-expanded-bookmaker-name">Bookmaker1</a></td>
+    <td><div data-testid="odd-container">1.90</div></td>
+    <td><div data-testid="odd-container">3.50</div></td>
+    <td><div data-testid="odd-container">4.20</div></td>
+    <td><div data-testid="payout-container">94.1%</div></td>
+</tr>
+<tr class="h-9">
+    <td><a data-testid="outrights-expanded-bookmaker-name">Bookmaker2</a></td>
+    <td><div data-testid="odd-container">1.85</div></td>
+    <td><div data-testid="odd-container">3.60</div></td>
+    <td><div data-testid="odd-container">4.10</div></td>
+    <td><div data-testid="payout-container">94.0%</div></td>
+</tr>
+</tbody></table>
 """
 
 SAMPLE_HTML_ODDS_HISTORY = """
-<div>
-    <h3>Odds movement</h3>
-    <div class="flex flex-col gap-1">
-        <div class="flex gap-3">
-            <div class="font-normal">10 Jun, 14:30</div>
+<div class="flex w-max flex-col gap-2">
+    <h3 class="text-sm font-semibold uppercase leading-6">Odds movement</h3>
+    <div class="flex flex-row gap-3">
+        <div class="flex flex-col gap-1">
+            <div class="text-[10px] font-normal">10 Jun, 14:30</div>
+            <div class="text-[10px] font-normal">10 Jun, 12:00</div>
         </div>
-        <div class="flex gap-3">
-            <div class="font-normal">10 Jun, 12:00</div>
+        <div class="flex flex-col gap-1">
+            <div class="text-[10px] font-bold">1.95</div>
+            <div class="text-[10px] font-bold">1.90</div>
         </div>
-    </div>
-    <div class="flex flex-col gap-1">
-        <div class="font-bold">1.95</div>
-        <div class="font-bold">1.90</div>
+        <div class="flex flex-col gap-1">
+            <div class="text-[10px] font-bold text-green-dark">+0.05</div>
+        </div>
     </div>
     <div class="mt-2 gap-1">
-        <div class="flex gap-1">
-            <div>10 Jun, 08:00</div>
-            <div class="font-bold">1.85</div>
-        </div>
+        <div class="text-[10px] font-bold">Opening odds:</div>
+        <div class="flex gap-1"><div class="font-normal">10 Jun, 08:00</div><div class="font-bold">1.85</div></div>
     </div>
 </div>
 """
@@ -471,7 +474,7 @@ class TestOddsPortalMarketExtractor:
         # Create mock for bookmaker row
         bookmaker_row = AsyncMock()
         logo_img = AsyncMock()
-        logo_img.get_attribute = AsyncMock(return_value=bookmaker_name)
+        logo_img.text_content = AsyncMock(return_value=bookmaker_name)
         bookmaker_row.query_selector = AsyncMock(return_value=logo_img)
 
         # Create mock for odds blocks
@@ -507,7 +510,7 @@ class TestOddsPortalMarketExtractor:
         # Create mock for bookmaker row
         bookmaker_row = AsyncMock()
         logo_img = AsyncMock()
-        logo_img.get_attribute = AsyncMock(return_value="DifferentBookmaker")
+        logo_img.text_content = AsyncMock(return_value="DifferentBookmaker")
         bookmaker_row.query_selector = AsyncMock(return_value=logo_img)
 
         # Create mock for page

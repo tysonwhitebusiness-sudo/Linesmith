@@ -1,0 +1,57 @@
+name: OddsHarvester scrape
+
+# Scrapes OddsPortal.com for per-bookmaker game odds and writes them into the
+# same Postgres DB python-odds-service (the Render worker) reads/writes —
+# see python-odds-service/src/harvester_scrape.py for the full rationale.
+# Deliberately NOT part of that worker: a live Chromium process is
+# 300-500MB+, well past that service's hard 512MB budget, and it has no
+# natural point to cooperatively yield to the worker's own job queue the way
+# NFL's rate-limit sleeps do. Runs here instead, on GitHub's own runners —
+# free within included minutes, no Render cost, and completely isolated from
+# the worker's own memory/scheduling.
+#
+# Requires a repo secret DATABASE_URL — the same Postgres connection string
+# python-odds-service's own config.py reads (Settings > Secrets and
+# variables > Actions).
+
+on:
+  schedule:
+    # Every 20 minutes. GitHub's schedule trigger is best-effort, not exact —
+    # see OddsHarvester's own docs on why this fits a scraper better than a
+    # tight interval anyway (avoid hammering a site that anti-bot-blocks on
+    # suspiciously regular traffic).
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+    # Manual trigger — the Phase 1 verification path (run once against MLB,
+    # confirm rows land correctly) before trusting the schedule.
+    inputs:
+      sports:
+        description: 'Space-separated sport keys to scrape (default: all configured)'
+        required: false
+        default: ''
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install python-odds-service dependencies
+        run: pip install -r python-odds-service/requirements.txt
+
+      - name: Install oddsharvester package
+        run: pip install ./oddsharvester
+
+      - name: Install Playwright + Chromium
+        run: playwright install --with-deps chromium
+
+      - name: Run scrape
+        working-directory: python-odds-service
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python src/harvester_scrape.py ${{ github.event.inputs.sports }}

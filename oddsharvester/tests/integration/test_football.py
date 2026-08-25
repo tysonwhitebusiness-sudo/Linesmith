@@ -11,14 +11,14 @@ LEICESTER_BRENTFORD = {
     "sport": "football",
     "league": "premier-league",
     "match_id": "leicester-brentford-xQ77QTN0",
-    "url": "https://www.oddsportal.com/football/england/premier-league/leicester-brentford-xQ77QTN0",
+    "url": "https://www.oddsportal.com/football/h2h/brentford-xYe7DwID/leicester-KrrdAMyI/#xQ77QTN0",
 }
 
 REAL_MADRID_BARCELONA = {
     "sport": "football",
     "league": "super-cup-2025",
     "match_id": "real-madrid-barcelona-bZrHkILa",
-    "url": "https://www.oddsportal.com/football/spain/super-cup-2025/real-madrid-barcelona-bZrHkILa/",
+    "url": "https://www.oddsportal.com/football/h2h/barcelona-SKbpVP5K/real-madrid-W8mj7MDD/#bZrHkILa",
 }
 
 
@@ -289,7 +289,6 @@ class TestFootballBasicMarkets:
         assert record["match_date_venue_local"] is not None
         assert record["match_date"].endswith("UTC")
 
-    @pytest.mark.live_only
     def test_fb_007_real_madrid_barcelona(
         self,
         run_scraper,

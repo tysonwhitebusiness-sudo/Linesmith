@@ -801,11 +801,19 @@ async def live_market_skill(sport: str) -> list[LiveMarketSkill]:
 @dataclass
 class GameOddsHistoryInput:
     event_id: str
-    market: str  # 'moneyline' | 'total'
-    side: str  # 'home' | 'away' for moneyline, 'over' | 'under' for total
+    market: str  # 'moneyline' | 'spread' | 'total'
+    side: str  # 'home' | 'away' for moneyline/spread, 'over' | 'under' for total
     bookmaker: str
     american_odds: int
     point: float | None
+    # Which writer produced this row — 'the-odds-api' | 'oddsharvester'. Part
+    # of the dedup key below, not a display-only field: two independent,
+    # uncoordinated writers (the existing the-odds-api port and the new
+    # OddsHarvester GitHub Actions workflow) both write into this table, and
+    # without `source` distinguishing them, one would silently overwrite the
+    # other's reading of the same nominal bookmaker on every cycle they
+    # disagree — the exact class of bug this field exists to prevent.
+    source: str = "the-odds-api"
 
 
 async def write_game_odds_history(rows: list[GameOddsHistoryInput]) -> None:
@@ -834,6 +842,11 @@ async def write_game_odds_history(rows: list[GameOddsHistoryInput]) -> None:
     tiebreaker, the same two prices for one key kept re-inserting on every
     call with unchanged input data. `id DESC` (monotonic insertion order)
     fixes it.
+
+    `source` is now part of the dedup key (2026-08-25, OddsHarvester
+    integration) — see GameOddsHistoryInput's own docstring. Existing
+    callers that don't pass it default to 'the-odds-api', preserving every
+    row this function has ever written before this change.
     """
     if not rows:
         return
@@ -845,19 +858,20 @@ async def write_game_odds_history(rows: list[GameOddsHistoryInput]) -> None:
                 prior = await conn.fetchrow(
                     """
                     SELECT american_odds FROM game_odds_history
-                    WHERE event_id = $1 AND market = $2 AND side = $3 AND bookmaker = $4
+                    WHERE event_id = $1 AND market = $2 AND side = $3 AND bookmaker = $4 AND source = $5
                     ORDER BY observed_at DESC, id DESC LIMIT 1
                     """,
                     r.event_id,
                     r.market,
                     r.side,
                     r.bookmaker,
+                    r.source,
                 )
                 if prior is None or prior["american_odds"] != r.american_odds:
                     await conn.execute(
                         """
-                        INSERT INTO game_odds_history (event_id, market, side, bookmaker, american_odds, point, observed_at)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7)
+                        INSERT INTO game_odds_history (event_id, market, side, bookmaker, american_odds, point, observed_at, source)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                         """,
                         r.event_id,
                         r.market,
@@ -866,6 +880,7 @@ async def write_game_odds_history(rows: list[GameOddsHistoryInput]) -> None:
                         r.american_odds,
                         r.point,
                         observed_at,
+                        r.source,
                     )
 
 
@@ -1605,12 +1620,79 @@ async def get_historical_odds(season: int, game_date: str, home_team_id: int, aw
 
 
 async def get_earliest_observed_total_point(event_id: str) -> float | None:
+    """Scoped to source = 'the-odds-api' (2026-08-25): this feeds the total
+    model's opening-line feature, which was fit against the-odds-api's
+    history only. Now that OddsHarvester also writes rows here, an
+    unscoped query could pick up an OddsHarvester observation as the
+    "opening" point instead — a real behavior change for an existing,
+    already-fitted model, not something to let happen as a side effect of
+    adding a second writer."""
     pool = await get_pool()
     row = await pool.fetchrow(
-        "SELECT point FROM game_odds_history WHERE event_id = $1 AND market = 'total' AND point IS NOT NULL ORDER BY observed_at ASC LIMIT 1",
+        "SELECT point FROM game_odds_history WHERE event_id = $1 AND market = 'total' AND point IS NOT NULL AND source = 'the-odds-api' ORDER BY observed_at ASC LIMIT 1",
         event_id,
     )
     return row["point"] if row else None
+
+
+@dataclass
+class GameOddsBookLineInput:
+    """One bookmaker's current price for one game/market/side — the row
+    shape behind the bookmaker-column/market-row heat-mapped table on Game
+    Detail. Distinct from GameOddsHistoryInput: this is a pure upsert (one
+    current row per key), not an append-only log — game_odds_history stays
+    the archive, this is just "what does the grid show right now." `source`
+    is part of the key for the same reason as game_odds_history: OddsHarvester
+    and the-odds-api are independent writers and must never overwrite each
+    other's reading of a nominal bookmaker."""
+
+    sport: str
+    game_id: str
+    market: str  # 'moneyline' | 'spread' | 'total'
+    side: str
+    bookmaker: str
+    source: str
+    american_odds: int
+    point: float | None = None
+    decimal_odds: float | None = None
+
+
+async def write_game_odds_book_lines(rows: list[GameOddsBookLineInput]) -> None:
+    """Upserts current per-bookmaker game-line prices. Safe to call with a
+    fresh full snapshot every cycle — ON CONFLICT DO UPDATE means a
+    bookmaker that drops out of this cycle's results simply stops being
+    refreshed (its last-known row stays, timestamped), it is never deleted;
+    only a matching (sport, game_id, market, side, bookmaker, source) key
+    is ever touched, so this can never affect a different source's rows."""
+    if not rows:
+        return
+    fetched_at = datetime.now(timezone.utc)
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for r in rows:
+                await conn.execute(
+                    """
+                    INSERT INTO game_odds_book_lines
+                        (sport, game_id, market, side, bookmaker, source, point, american_odds, decimal_odds, fetched_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                    ON CONFLICT (sport, game_id, market, side, bookmaker, source) DO UPDATE SET
+                        point = excluded.point,
+                        american_odds = excluded.american_odds,
+                        decimal_odds = excluded.decimal_odds,
+                        fetched_at = excluded.fetched_at
+                    """,
+                    r.sport,
+                    r.game_id,
+                    r.market,
+                    r.side,
+                    r.bookmaker,
+                    r.source,
+                    r.point,
+                    r.american_odds,
+                    r.decimal_odds,
+                    fetched_at,
+                )
 
 
 # ---------------------------------------------------------------------------

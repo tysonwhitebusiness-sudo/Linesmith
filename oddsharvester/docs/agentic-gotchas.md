@@ -16,10 +16,17 @@ The gotchas are grouped by theme:
 - **§6** — Operational: anti-bot detection symptoms.
 - **§7** — Regional mirror domains and the `--base-url` option.
 - **§8** — Volleyball O/U and AH each split into a Sets axis and a Points axis.
+- **§19** — The 2026-08 frontend redesign (data-testid DOM, H2H links, hash-driven views).
 
 ---
 
 ## §1 — SSR ships stale or phantom data that contradicts the requested URL
+
+> **2026-08 redesign note (§19):** the SSR no longer renders any match content
+> and `react-event-header` is gone, so the case-a/case-b discrimination and the
+> `eventData.id` resync below are historical. The lesson that survives: SSR
+> payloads (now the JSON-LD) still describe the *next upcoming* matchup, never
+> trust them for the fragment match.
 
 **Severity:** High — has produced silent data corruption three times under
 three different shapes.
@@ -911,6 +918,10 @@ scope id as baseball's `FT incl. OT`, per §7's period-scope map).
 
 ### No per-bookmaker odds on cricket detail pages (any region)
 
+**Superseded by the 2026-08 redesign (§19):** redesigned cricket detail pages
+DO render a per-bookmaker odds table (verified live 2026-08-24; the ODI
+integration fixture now asserts non-empty odds). Kept for history:
+
 Cricket match-detail pages carry no per-bookmaker odds table. `home_away_market`
 comes back empty on every match tested, including marquee internationals
 (verified: England vs India, One Day International) and through a non-France
@@ -1362,6 +1373,116 @@ exist. Two facts, both measured on 2026-07-29:
 Browser-extension automation is the wrong tool for such a sweep: Chrome throttles
 timers in a hidden tab and any long loop stalls. Drive the project's own Playwright
 instead.
+
+---
+
+## §19 — The 2026-08 frontend redesign: data-testid DOM, H2H links everywhere, hash-driven match views
+
+**Severity:** Critical — every command returned zero data overnight (issue #85);
+this section records the new invariants the whole scraper is built on.
+
+Around 2026-08-10 OddsPortal shipped a full frontend redesign. Old selector
+generations died at once, and several long-standing behaviours flipped:
+
+### What changed (all verified live 2026-08-24)
+
+- **Listing rows** (upcoming and `/results/`): `div[class*='eventRow']` is gone;
+  rows are `[data-testid='game-row']`. Date headers are **siblings** of the row
+  groups (inside a `secondary-header` element), no longer children of the first
+  row — `extract_match_rows` walks headers and rows interleaved in document
+  order.
+- **Match links**: every listing row links to an H2H fragment URL
+  (`/<sport>/h2h/<home>/<away>/#<eventId>`). The old per-league match URLs
+  return **404** (this killed all pre-redesign integration fixture URLs).
+- **Pagination**: `a.pagination-link` is gone; digits are `<button>`s (current
+  page a `<span>`) inside `nav.pagination`, whose parent stays `display:none`
+  until the listing is scrolled to the bottom (read `text_content`, not
+  `inner_text`). The page fragment is now **`#page/N`** — the old `#/page/N`
+  is silently ignored and renders page 1 (a silent-truncation trap, cf. §17).
+- **Match pages**: SSR renders **no match content** — only an H2H landing
+  ("Select a match from the listings … `#MHaHJHqA:1X2;2`"). `#react-event-header`
+  and its embedded JSON no longer exist; the event id appears nowhere in the
+  DOM. The SSR JSON-LD (`SportsEvent`) describes the **next upcoming** meeting
+  of the two teams — same stale-upcoming trap as §1b — so venue data is only
+  trusted when its startDate matches the DOM date.
+- **Hash-driven match view**: content renders only for the full fragment form
+  `#<id>:<marketCode>;<scope>`, and **only after an in-page hashchange** — a
+  direct page load with the full hash stays on the landing skeleton. The nudge
+  (bare `#<id>`, then the full form + a dispatched `HashChangeEvent`) can fire
+  before the SPA has booted, so `_hydrate_match_view` retries it; hydration
+  complete = `game-time-item` rendered. Market and period switching are pure
+  hash rewrites (`MARKET_TAB_CODES` codes, `;<scope>` period ids — both were
+  already language-independent, §7).
+- **Because the SPA fetches the match by the fragment id, the rendered DOM is
+  always the requested match.** The §1a/§1b SSR-vs-DOM discrimination and
+  eventData.id resync machinery are obsolete (annotated in §1); the failure
+  mode left is "never hydrated", raised as a retryable
+  `H2HFragmentResolutionError` typed HEADER_NOT_FOUND (proxy-neutral).
+- **Odds are a real `<table>`**: one leaf `<tr>` per bookmaker — name in
+  `[data-testid='outrights-expanded-bookmaker-name']`, prices in
+  `odd-container` / `odd-container-winning` cells, payout in
+  `payout-container`. Collapsed submarket line rows use
+  **`odd-container-default`** cells and carry a decorative `<img alt="arrow">`
+  that the name-fallback chain happily returns — filtering odds cells to
+  `odd-container(-winning)` exactly is what keeps line rows out of bookmaker
+  parsing. Peripheral rows (`my-coupon-row`, `user-predictions-row`,
+  `odds-alert-row`) and the `betting-exchanges-section` (Back/Lay prices) sit
+  in the same tables and must be skipped. Expanded submarkets nest a full
+  bookmaker table inside a following `<tr>` — only leaf `<tr>`s (no nested
+  `tr`) are rows.
+- **Sub-nav tabs** (`sub-nav-active-tab`/`sub-nav-inactive-tab`) carry both the
+  bookies filter (All/Classic/Crypto Bookies) and the period tabs;
+  `bookies-filter-nav` and `kickoff-events-nav` containers are gone.
+- **live-info persists after full time** with a "Final result …" text that can
+  arrive as a single chunk — end-of-match detection matches terminal markers
+  by prefix (updates §16's assumption that live-info disappears).
+- **Cricket now has per-bookmaker odds** (supersedes §14's empty-market rule).
+- A **Login modal** (`[data-testid='modal']`, close button
+  `button[aria-label='Close']`) can block rendering on cold profiles;
+  `_dismiss_login_modal` runs before hydration.
+- `/matches/<sport>/YYYYMMDD/` 301-redirects to `/<sport>/YYYY-MM-DD/` and
+  `/inplay-odds/live-now/<sport>/` to `/inplay-odds/?sport=<sport>` — old URLs
+  still work via redirect.
+- **Data regressions**: `match_info` (eventData.staticInfo) has no DOM
+  equivalent and is always None; venue trio only survives on matches whose
+  JSON-LD date matches (in practice: the next upcoming meeting).
+
+### Detection signal
+
+Sudden across-the-board "Found 0 event rows" / empty markets with valid pages
+loading in a real browser, while `[data-testid='game-row']` counts are non-zero
+where the old selector finds nothing. Distinguish from anti-bot (§6): a block
+zeroes *both* selector generations.
+
+### Community and in-play specifics (resolved 2026-08-24, same rework)
+
+- **Community moved**: `/predictions/` is 404; Top Predictions live at
+  `/community/predictions/#sport/<sport>/` with the same testids except that
+  `betting-tip-header` cells now sit *inside* each `game-row`, and
+  `participant-name` is a data-testid (no longer a class). Wait for
+  `sport-country-league-item`, not a bare `game-row` — other widgets render
+  game-rows earlier and parse as skippable rows.
+- **Match votes**: `window.pageVar.predictionData.communityData` (absolute
+  counts, all markets) is gone. Votes surface only as the "User Predictions"
+  percentage row (`user-predictions-row` > `prediction-container`) of the
+  hydrated market view, labeled by the `betting-tip-header` cells.
+- **User profiles** (`/profile/<name>/`): the header and the statistics table
+  (a real `<table>`, header line `stats-table-header-line` as a `<tr>`) render
+  on load; the predictions list moved behind the **Feed** tab
+  (`navigation-inactive-tab`, click-only) whose AJAX
+  (`/proxy/ajax-communityFeed/profile/<id>/<timestamp>/`) is cache-busted and
+  therefore not HAR-replayable — the one residual replay hole.
+- **In-play match views** (`/…/inplay-odds/#<id>`): they hydrate on their own
+  (no full-form hash nudge — forcing `#<id>:1X2;2` can flip the view to
+  Pre-match Odds) and use their *own* hash market codes (`O/U`, not
+  `over-under`), so market switching is click-first there. There is no
+  `live-info`: the live score is the red digits (`text-red*`) flanking the
+  names in `game-participants`, and the page shows no period/clock
+  (`live_period` is now always None). The default bookies filter is
+  Classic Bookies, which hides the crypto bookmakers that carry most live
+  odds for a French IP — "All Bookies" is what makes live odds appear.
+
+**Reference:** issue #85; branch `fix/oddsportal-redesign-85`.
 
 ---
 

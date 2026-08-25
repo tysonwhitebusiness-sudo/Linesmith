@@ -248,7 +248,14 @@ def _game_odds_history_rows(lines: list[GameLine]) -> list[db.GameOddsHistoryInp
     rows: dict[tuple[str, str, str, str], db.GameOddsHistoryInput] = {}
 
     def add(event_id: str, market: str, side: str, bookmaker: str, american_odds: int, point: float | None) -> None:
-        rows[(event_id, market, side, bookmaker)] = db.GameOddsHistoryInput(event_id, market, side, bookmaker, american_odds, point)
+        # source is explicit here, not left to GameOddsHistoryInput's
+        # default — this is the-odds-api's own writer, and OddsHarvester
+        # (a separate writer, see docs/... this session's gameplan) now
+        # shares this table, so every writer should say so at its own call
+        # site rather than lean on a shared default.
+        rows[(event_id, market, side, bookmaker)] = db.GameOddsHistoryInput(
+            event_id, market, side, bookmaker, american_odds, point, source="the-odds-api"
+        )
 
     for line in lines:
         if line.moneyline and line.moneyline.home is not None and line.moneyline.book:
@@ -267,6 +274,58 @@ def _game_odds_history_rows(lines: list[GameLine]) -> list[db.GameOddsHistoryInp
                 add(line.event_id, "moneyline", "home", book.bookmaker, home_american, None)
             if away_american is not None:
                 add(line.event_id, "moneyline", "away", book.bookmaker, away_american, None)
+
+            over_american = decimal_to_american(book.over_price)
+            under_american = decimal_to_american(book.under_price)
+            if over_american is not None and book.point is not None:
+                add(line.event_id, "total", "over", book.bookmaker, over_american, book.point)
+            if under_american is not None and book.point is not None:
+                add(line.event_id, "total", "under", book.bookmaker, under_american, book.point)
+    return list(rows.values())
+
+
+def _game_odds_book_line_rows(lines: list[GameLine]) -> list[db.GameOddsBookLineInput]:
+    """Current per-bookmaker prices for the bookmaker-grid UI (2026-08-25,
+    OddsHarvester integration) — a sibling to _game_odds_history_rows above,
+    not a replacement: that function feeds the append-only archive, this
+    feeds the current-state table the grid actually reads. Covers spread too
+    (the-odds-api's own BookmakerOdds carries spread_home/spread_away
+    fields that _game_odds_history_rows never reads, since the total model
+    it feeds has no use for spread) — every book this source reports is
+    written, same dedup-by-key discipline as above, keyed additionally by
+    'the-odds-api' as this row's source.
+    """
+    rows: dict[tuple[str, str, str, str], db.GameOddsBookLineInput] = {}
+
+    def add(game_id: str, market: str, side: str, bookmaker: str, american_odds: int, point: float | None) -> None:
+        decimal_odds = None if american_odds is None else american_to_decimal(american_odds)
+        rows[(market, side, bookmaker, game_id)] = db.GameOddsBookLineInput(
+            sport="mlb",
+            game_id=game_id,
+            market=market,
+            side=side,
+            bookmaker=bookmaker,
+            source="the-odds-api",
+            american_odds=american_odds,
+            point=point,
+            decimal_odds=decimal_odds,
+        )
+
+    for line in lines:
+        for book in line.bookmakers:
+            home_american = decimal_to_american(book.home_odds)
+            away_american = decimal_to_american(book.away_odds)
+            if home_american is not None:
+                add(line.event_id, "moneyline", "home", book.bookmaker, home_american, None)
+            if away_american is not None:
+                add(line.event_id, "moneyline", "away", book.bookmaker, away_american, None)
+
+            spread_home_american = decimal_to_american(book.spread_home_price)
+            spread_away_american = decimal_to_american(book.spread_away_price)
+            if spread_home_american is not None:
+                add(line.event_id, "spread", "home", book.bookmaker, spread_home_american, book.spread_home)
+            if spread_away_american is not None:
+                add(line.event_id, "spread", "away", book.bookmaker, spread_away_american, book.spread_away)
 
             over_american = decimal_to_american(book.over_price)
             under_american = decimal_to_american(book.under_price)
@@ -517,6 +576,7 @@ async def run_mlb_odds_lines_cycle(client: httpx.AsyncClient, now=None) -> dict:
     games = await read_games_from_snapshot(client)
 
     await db.write_game_odds_history(_game_odds_history_rows(result.lines))
+    await db.write_game_odds_book_lines(_game_odds_book_line_rows(result.lines))
     await run_total_lock_from_lines(client, result.lines, games, now)
     await run_moneyline_lock_from_snapshot(result.lines, games, now)
     await attach_prices_from_lines(result.lines, games)

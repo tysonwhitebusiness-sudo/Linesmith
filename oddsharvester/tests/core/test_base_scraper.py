@@ -1,5 +1,4 @@
 from datetime import UTC, date, datetime, timedelta
-import json as _json
 import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -160,50 +159,33 @@ async def test_set_odds_format_timeout(setup_base_scraper_mocks):
 
 
 @pytest.mark.asyncio
-@patch("oddsharvester.core.base_scraper.BeautifulSoup")
-@patch("oddsharvester.core.base_scraper.re")
-async def test_extract_match_links(re_mock, bs4_mock, setup_base_scraper_mocks):
-    """Test extracting match links from a page."""
+async def test_extract_match_links(setup_base_scraper_mocks):
+    """Rows are [data-testid='game-row'] elements linking to H2H-fragment URLs
+    (2026-08 redesign); short hrefs (<= 3 path segments) are filtered out."""
     mocks = setup_base_scraper_mocks
     scraper = mocks["scraper"]
     page_mock = mocks["page_mock"]
+    page_mock.content = AsyncMock(
+        return_value="""
+        <html><body>
+          <div data-testid="game-row">
+            <a href="/football/h2h/h-beer-sheva-EXAD1YZP/sabah-baku-fNGcxbyr/#0KccwcGq">m1</a>
+            <a href="/">short - filtered</a>
+          </div>
+          <div data-testid="game-row">
+            <a href="/football/h2h/celtic-QFKRRD8M/lask-linz-MipWYeKQ/#OOklm0j3">m2</a>
+          </div>
+        </body></html>
+        """
+    )
 
-    # Mock BeautifulSoup and its methods
-    soup_mock = MagicMock()
-    bs4_mock.return_value = soup_mock
-
-    # Mock regex compile
-    pattern_mock = MagicMock()
-    re_mock.compile.return_value = pattern_mock
-
-    # Mock finding event rows and links
-    event_row1 = MagicMock()
-    event_row2 = MagicMock()
-
-    link1 = {"href": "/football/england/premier-league/arsenal-chelsea/abcd1234"}
-    link2 = {"href": "/football/england/premier-league/liverpool-man-utd/efgh5678"}
-    link3 = {"href": "/"}  # Should be filtered out
-
-    event_row1.find_all.return_value = [link1, link3]
-    event_row2.find_all.return_value = [link2]
-
-    soup_mock.find_all.return_value = [event_row1, event_row2]
-
-    # Call the method under test
     result = await scraper.extract_match_links(page=page_mock)
 
-    # Verify interactions
     page_mock.content.assert_called_once()
-    bs4_mock.assert_called_once()
-    re_mock.compile.assert_called_once_with("^eventRow")
-    soup_mock.find_all.assert_called_once_with(class_=pattern_mock)
-
-    # Verify results
-    expected_links = [
-        f"{ODDSPORTAL_BASE_URL}/football/england/premier-league/arsenal-chelsea/abcd1234",
-        f"{ODDSPORTAL_BASE_URL}/football/england/premier-league/liverpool-man-utd/efgh5678",
+    assert result == [
+        f"{ODDSPORTAL_BASE_URL}/football/h2h/h-beer-sheva-EXAD1YZP/sabah-baku-fNGcxbyr/#0KccwcGq",
+        f"{ODDSPORTAL_BASE_URL}/football/h2h/celtic-QFKRRD8M/lask-linz-MipWYeKQ/#OOklm0j3",
     ]
-    assert sorted(result) == sorted(expected_links)
 
 
 @pytest.mark.asyncio
@@ -235,20 +217,20 @@ async def test_extract_match_links_error(bs4_mock, setup_base_scraper_mocks):
 # - Edge: row missing both elements (DOM drift fail-safe -> keep)
 _LISTING_HTML = """
 <html><body>
-<div class="eventRow row-a">
+<div data-testid="game-row">
   <div data-testid="time-item"><p>21:00</p></div>
   <div data-testid="game-status-box"></div>
   <a href="/football/england/premier-league/upcoming-match/aaaa1111">link</a>
 </div>
-<div class="eventRow row-b">
+<div data-testid="game-row">
   <div data-testid="time-item"><p>18:00</p></div>
   <div data-testid="game-status-box">FinishedFIN</div>
   <a href="/football/england/premier-league/finished-match/bbbb2222">link</a>
 </div>
-<div class="eventRow row-c">
+<div data-testid="game-row">
   <a href="/football/england/premier-league/no-status-box/cccc3333">link</a>
 </div>
-<div class="eventRow row-d">
+<div data-testid="game-row">
   <div data-testid="time-item"><p class="text-red-dark">1S</p></div>
   <div data-testid="game-status-box"></div>
   <a href="/volleyball/world/friendly/live-match/dddd4444">link</a>
@@ -295,7 +277,9 @@ class TestRowHasStarted:
     """Unit tests for the _row_has_started helper (GitHub issue #58)."""
 
     def _row(self, html: str):
-        return BeautifulSoup(f"<div class='eventRow'>{html}</div>", "lxml").find(class_="eventRow")
+        return BeautifulSoup(f'<div data-testid="game-row">{html}</div>', "lxml").find(
+            attrs={"data-testid": "game-row"}
+        )
 
     def test_upcoming_clock_time_means_not_started(self):
         assert (
@@ -413,22 +397,22 @@ def _make_league_page_html() -> str:
     """Build a minimal OddsPortal-like HTML page with 3 date groups."""
     return """
     <html><body>
-      <div class="eventRow">
-        <div data-testid="date-header">Today, 14 Apr</div>
+        <div data-testid="secondary-header"><div data-testid="date-header">Today, 14 Apr</div></div>
+        <div data-testid="game-row">
         <a href="/football/england/premier-league/match-one/aaaaaaa1">Match 1</a>
       </div>
-      <div class="eventRow">
+      <div data-testid="game-row">
         <a href="/football/england/premier-league/match-two/aaaaaaa2">Match 2</a>
       </div>
-      <div class="eventRow">
-        <div data-testid="date-header">18 Apr 2026</div>
+        <div data-testid="secondary-header"><div data-testid="date-header">18 Apr 2026</div></div>
+        <div data-testid="game-row">
         <a href="/football/england/premier-league/match-three/aaaaaaa3">Match 3</a>
       </div>
-      <div class="eventRow">
+      <div data-testid="game-row">
         <a href="/football/england/premier-league/match-four/aaaaaaa4">Match 4</a>
       </div>
-      <div class="eventRow">
-        <div data-testid="date-header">19 Apr 2026</div>
+        <div data-testid="secondary-header"><div data-testid="date-header">19 Apr 2026</div></div>
+        <div data-testid="game-row">
         <a href="/football/england/premier-league/match-five/aaaaaaa5">Match 5</a>
       </div>
     </body></html>
@@ -486,12 +470,12 @@ async def test_extract_match_links_unparseable_header_fails_safe(setup_base_scra
     page_mock.content = AsyncMock(
         return_value="""
         <html><body>
-          <div class="eventRow">
-            <div data-testid="date-header">Some gibberish</div>
+            <div data-testid="secondary-header"><div data-testid="date-header">Some gibberish</div></div>
+            <div data-testid="game-row">
             <a href="/football/england/premier-league/match-x/xxxxxxx1">Match X</a>
           </div>
-          <div class="eventRow">
-            <div data-testid="date-header">18 Apr 2026</div>
+            <div data-testid="secondary-header"><div data-testid="date-header">18 Apr 2026</div></div>
+            <div data-testid="game-row">
             <a href="/football/england/premier-league/match-y/yyyyyyy1">Match Y</a>
           </div>
         </body></html>
@@ -550,11 +534,11 @@ async def test_extract_match_links_deduplicates_preserving_order(setup_base_scra
     page_mock.content = AsyncMock(
         return_value="""
         <html><body>
-          <div class="eventRow">
+          <div data-testid="game-row">
             <a href="/football/england/premier-league/match-one/aaaaaaa1">L1</a>
             <a href="/football/england/premier-league/match-one/aaaaaaa1">L1 dup</a>
           </div>
-          <div class="eventRow">
+          <div data-testid="game-row">
             <a href="/football/england/premier-league/match-two/aaaaaaa2">L2</a>
           </div>
         </body></html>
@@ -581,8 +565,8 @@ async def test_extract_match_links_uses_playwright_manager_timezone(setup_base_s
     page_mock.content = AsyncMock(
         return_value="""
         <html><body>
-          <div class="eventRow">
-            <div data-testid="date-header">Today, 14 Apr</div>
+            <div data-testid="secondary-header"><div data-testid="date-header">Today, 14 Apr</div></div>
+            <div data-testid="game-row">
             <a href="/football/england/premier-league/tokyo-match/tttttttt">Tokyo match</a>
           </div>
         </body></html>
@@ -615,16 +599,16 @@ def _make_kickoff_window_html() -> str:
     """
     return """
     <html><body>
-      <div class="eventRow">
-        <div data-testid="date-header">18 Apr 2026</div>
+        <div data-testid="secondary-header"><div data-testid="date-header">18 Apr 2026</div></div>
+        <div data-testid="game-row">
         <div data-testid="time-item"><p>13:00</p></div>
         <a href="/football/england/premier-league/soon-match/aaaaaaa1">Soon</a>
       </div>
-      <div class="eventRow">
+      <div data-testid="game-row">
         <div data-testid="time-item"><p>13:30</p></div>
         <a href="/football/england/premier-league/edge-match/aaaaaaa2">Edge</a>
       </div>
-      <div class="eventRow">
+      <div data-testid="game-row">
         <div data-testid="time-item"><p>16:00</p></div>
         <a href="/football/england/premier-league/late-match/aaaaaaa3">Late</a>
       </div>
@@ -671,12 +655,12 @@ async def test_extract_match_links_kickoff_window_unparseable_time_fails_safe(se
     page_mock.content = AsyncMock(
         return_value="""
         <html><body>
-          <div class="eventRow">
-            <div data-testid="date-header">18 Apr 2026</div>
+            <div data-testid="secondary-header"><div data-testid="date-header">18 Apr 2026</div></div>
+            <div data-testid="game-row">
             <div data-testid="time-item"><p class="text-red-dark">1H</p></div>
             <a href="/football/england/premier-league/live-match/bbbbbbb1">Live</a>
           </div>
-          <div class="eventRow">
+          <div data-testid="game-row">
             <div data-testid="time-item"><p>16:00</p></div>
             <a href="/football/england/premier-league/late-match/bbbbbbb2">Late</a>
           </div>
@@ -700,7 +684,7 @@ async def test_extract_match_links_kickoff_window_row_without_date_header_fails_
     page_mock.content = AsyncMock(
         return_value="""
         <html><body>
-          <div class="eventRow">
+          <div data-testid="game-row">
             <div data-testid="time-item"><p>16:00</p></div>
             <a href="/football/england/premier-league/orphan-match/ccccccc1">Orphan</a>
           </div>
@@ -725,18 +709,18 @@ async def test_extract_match_links_kickoff_window_composes_with_skip_started(set
     page_mock.content = AsyncMock(
         return_value="""
         <html><body>
-          <div class="eventRow">
-            <div data-testid="date-header">18 Apr 2026</div>
+            <div data-testid="secondary-header"><div data-testid="date-header">18 Apr 2026</div></div>
+            <div data-testid="game-row">
             <div data-testid="time-item"><p>13:00</p></div>
             <div data-testid="game-status-box"></div>
             <a href="/football/england/premier-league/near-upcoming/ddddddd1">Near</a>
           </div>
-          <div class="eventRow">
+          <div data-testid="game-row">
             <div data-testid="time-item"><p>11:00</p></div>
             <div data-testid="game-status-box">FinishedFIN</div>
             <a href="/football/england/premier-league/finished/ddddddd2">Finished</a>
           </div>
-          <div class="eventRow">
+          <div data-testid="game-row">
             <div data-testid="time-item"><p>16:00</p></div>
             <div data-testid="game-status-box"></div>
             <a href="/football/england/premier-league/far-future/ddddddd3">Far</a>
@@ -758,7 +742,9 @@ class TestRowKickoffDatetime:
     """Unit tests for the _row_kickoff_datetime helper (GitHub issue #77)."""
 
     def _row(self, html: str):
-        return BeautifulSoup(f"<div class='eventRow'>{html}</div>", "lxml").find(class_="eventRow")
+        return BeautifulSoup(f'<div data-testid="game-row">{html}</div>', "lxml").find(
+            attrs={"data-testid": "game-row"}
+        )
 
     def test_valid_time_and_date_returns_aware_datetime(self):
         row = self._row('<div data-testid="time-item"><p>21:00</p></div>')
@@ -796,12 +782,12 @@ def _make_kickoff_column_html() -> str:
     """One date group, a normal row and a started row (live period marker)."""
     return """
     <html><body>
-      <div class="eventRow">
-        <div data-testid="date-header">18 Apr 2026</div>
+        <div data-testid="secondary-header"><div data-testid="date-header">18 Apr 2026</div></div>
+        <div data-testid="game-row">
         <div data-testid="time-item"><p>20:30</p></div>
         <a href="/football/england/premier-league/normal-match/aaaaaaa1">Normal</a>
       </div>
-      <div class="eventRow">
+      <div data-testid="game-row">
         <div data-testid="time-item"><p>1H</p></div>
         <a href="/football/england/premier-league/started-match/aaaaaaa2">Started</a>
       </div>
@@ -864,8 +850,8 @@ async def test_extract_match_rows_unparseable_date_header_yields_null_kickoff(se
     page_mock.content = AsyncMock(
         return_value="""
         <html><body>
-          <div class="eventRow">
-            <div data-testid="date-header">Not A Date</div>
+            <div data-testid="secondary-header"><div data-testid="date-header">Not A Date</div></div>
+            <div data-testid="game-row">
             <div data-testid="time-item"><p>20:30</p></div>
             <a href="/football/england/premier-league/orphan-match/aaaaaaa3">Orphan</a>
           </div>
@@ -888,8 +874,8 @@ async def test_extract_match_rows_missing_time_item_yields_null_kickoff(setup_ba
     page_mock.content = AsyncMock(
         return_value="""
         <html><body>
-          <div class="eventRow">
-            <div data-testid="date-header">18 Apr 2026</div>
+            <div data-testid="secondary-header"><div data-testid="date-header">18 Apr 2026</div></div>
+            <div data-testid="game-row">
             <a href="/football/england/premier-league/no-time/aaaaaaa4">No time</a>
           </div>
         </body></html>
@@ -912,8 +898,8 @@ async def test_extract_match_rows_shares_one_kickoff_across_a_rows_links(setup_b
     page_mock.content = AsyncMock(
         return_value="""
         <html><body>
-          <div class="eventRow">
-            <div data-testid="date-header">18 Apr 2026</div>
+            <div data-testid="secondary-header"><div data-testid="date-header">18 Apr 2026</div></div>
+            <div data-testid="game-row">
             <div data-testid="time-item"><p>20:30</p></div>
             <a href="/football/england/premier-league/first-match/aaaaaaa5">First</a>
             <a href="/football/england/premier-league/second-match/aaaaaaa6">Second</a>
@@ -949,39 +935,39 @@ class TestIsOffscreenRow:
     """Unit tests for the _is_offscreen_row helper."""
 
     def test_no_style_attr_is_visible(self):
-        row = BeautifulSoup('<div class="eventRow"></div>', "lxml").div
+        row = BeautifulSoup('<div data-testid="game-row"></div>', "lxml").div
         assert _is_offscreen_row(row) is False
 
     def test_empty_style_is_visible(self):
-        row = BeautifulSoup('<div class="eventRow" style=""></div>', "lxml").div
+        row = BeautifulSoup('<div data-testid="game-row" style=""></div>', "lxml").div
         assert _is_offscreen_row(row) is False
 
     def test_left_minus_9999_marks_offscreen(self):
         row = BeautifulSoup(
-            '<div class="eventRow" style="position: absolute; left: -9999px;"></div>',
+            '<div data-testid="game-row" style="position: absolute; left: -9999px;"></div>',
             "lxml",
         ).div
         assert _is_offscreen_row(row) is True
 
     def test_top_minus_9999_marks_offscreen(self):
-        row = BeautifulSoup('<div class="eventRow" style="top:-9999px"></div>', "lxml").div
+        row = BeautifulSoup('<div data-testid="game-row" style="top:-9999px"></div>', "lxml").div
         assert _is_offscreen_row(row) is True
 
     def test_display_none_marks_offscreen(self):
-        row = BeautifulSoup('<div class="eventRow" style="display: none;"></div>', "lxml").div
+        row = BeautifulSoup('<div data-testid="game-row" style="display: none;"></div>', "lxml").div
         assert _is_offscreen_row(row) is True
 
     def test_visibility_hidden_marks_offscreen(self):
-        row = BeautifulSoup('<div class="eventRow" style="visibility:hidden"></div>', "lxml").div
+        row = BeautifulSoup('<div data-testid="game-row" style="visibility:hidden"></div>', "lxml").div
         assert _is_offscreen_row(row) is True
 
     def test_uppercase_style_normalized(self):
-        row = BeautifulSoup('<div class="eventRow" style="DISPLAY: NONE"></div>', "lxml").div
+        row = BeautifulSoup('<div data-testid="game-row" style="DISPLAY: NONE"></div>', "lxml").div
         assert _is_offscreen_row(row) is True
 
     def test_unrelated_style_is_visible(self):
         row = BeautifulSoup(
-            '<div class="eventRow" style="color: red; padding-left: 9999px;"></div>',
+            '<div data-testid="game-row" style="color: red; padding-left: 9999px;"></div>',
             "lxml",
         ).div
         assert _is_offscreen_row(row) is False
@@ -1004,11 +990,11 @@ async def test_extract_match_links_skips_offscreen_phantom_row(setup_base_scrape
     page_mock.content = AsyncMock(
         return_value="""
         <html><body>
-          <div class="eventRow" id="4CyOBFbK" set="92939"
+          <div data-testid="game-row" id="4CyOBFbK" set="92939"
                style="position: absolute; left: -9999px; height: 0px; overflow: hidden;">
             <a href="/football/h2h/galatasaray-0j2eUlMC/kasimpasa-EXCPojim/#Aonqhgqt">phantom</a>
           </div>
-          <div class="eventRow" id="4CyOBFbK" set="92939">
+          <div data-testid="game-row" id="4CyOBFbK" set="92939">
             <a href="/football/h2h/galatasaray-riaqqurF/kasimpasa-dOlaIG4l/#4CyOBFbK">real</a>
           </div>
         </body></html>
@@ -1032,11 +1018,11 @@ async def test_extract_match_links_offscreen_skipped_before_date_filter(setup_ba
     page_mock.content = AsyncMock(
         return_value="""
         <html><body>
-          <div class="eventRow">
-            <div data-testid="date-header">17 May 2026</div>
+            <div data-testid="secondary-header"><div data-testid="date-header">17 May 2026</div></div>
+            <div data-testid="game-row">
             <a href="/football/h2h/real-aaa/match-bbb/#x1">real</a>
           </div>
-          <div class="eventRow" style="position:absolute;left:-9999px;">
+          <div data-testid="game-row" style="position:absolute;left:-9999px;">
             <a href="/football/h2h/phantom-ccc/match-ddd/#x2">phantom</a>
           </div>
         </body></html>
@@ -1058,12 +1044,12 @@ async def test_extract_match_links_offscreen_row_does_not_carry_date_header(setu
     page_mock.content = AsyncMock(
         return_value="""
         <html><body>
-          <div class="eventRow" style="display:none;">
+          <div data-testid="game-row" style="display:none;">
             <div data-testid="date-header">17 May 2026</div>
             <a href="/football/h2h/phantom-ccc/match-ddd/#x2">phantom</a>
           </div>
-          <div class="eventRow">
-            <div data-testid="date-header">17 May 2026</div>
+            <div data-testid="secondary-header"><div data-testid="date-header">17 May 2026</div></div>
+            <div data-testid="game-row">
             <a href="/football/h2h/real-aaa/match-bbb/#x1">real</a>
           </div>
         </body></html>
@@ -1167,8 +1153,10 @@ async def test_scrape_match_data(setup_base_scraper_mocks):
     scraper = mocks["scraper"]
     page_mock = mocks["page_mock"]
 
-    # Mock _extract_match_details_event_header
-    scraper._extract_match_details_event_header = AsyncMock(
+    # Mock _extract_match_details
+    scraper._hydrate_match_view = AsyncMock()
+    scraper._dismiss_login_modal = AsyncMock()
+    scraper._extract_match_details = AsyncMock(
         return_value={"home_team": "Arsenal", "away_team": "Chelsea", "match_date": "2023-05-01 20:00:00 UTC"}
     )
 
@@ -1200,7 +1188,7 @@ async def test_scrape_match_data(setup_base_scraper_mocks):
         wait_until="domcontentloaded",
     )
 
-    scraper._extract_match_details_event_header.assert_called_once_with(
+    scraper._extract_match_details.assert_called_once_with(
         page_mock, "https://oddsportal.com/football/england/arsenal-chelsea/123456"
     )
 
@@ -1240,8 +1228,10 @@ async def test_scrape_match_data_no_details(setup_base_scraper_mocks):
     scraper = mocks["scraper"]
     page_mock = mocks["page_mock"]
 
-    # Mock _extract_match_details_event_header returning None
-    scraper._extract_match_details_event_header = AsyncMock(return_value=None)
+    # Mock _extract_match_details returning None
+    scraper._hydrate_match_view = AsyncMock()
+    scraper._dismiss_login_modal = AsyncMock()
+    scraper._extract_match_details = AsyncMock(return_value=None)
 
     page_mock.wait_for_timeout = AsyncMock()
     page_mock.wait_for_selector = AsyncMock()
@@ -1291,244 +1281,6 @@ async def test_scrape_match_data_swallows_post_navigation_error(setup_base_scrap
         match_link="https://www.oddsportal.com/football/x/y/",
     )
 
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_extract_match_details_event_header(setup_base_scraper_mocks):
-    """Happy path: minimal valid JSON + no DOM landmarks → JSON-only extraction."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    json_blob = (
-        '{"eventBody": {"startDate": 1681753200, "homeResult": 2, "awayResult": 1, '
-        '"partialresult": "1-0", "venue": "Emirates Stadium", "venueTown": "London", '
-        '"venueCountry": "England"}, "eventData": {"home": "Arsenal", "away": "Chelsea", '
-        '"tournamentName": "Premier League"}}'
-    )
-    page_mock.content = AsyncMock(
-        return_value=f"<html><body><div id=\"react-event-header\" data='{json_blob}'></div></body></html>"
-    )
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock,
-        match_link="https://www.oddsportal.com/football/england/arsenal-chelsea-123456",
-    )
-
-    assert result["match_link"] == "https://www.oddsportal.com/football/england/arsenal-chelsea-123456"
-    assert result["home_team"] == "Arsenal"
-    assert result["away_team"] == "Chelsea"
-    assert result["league_name"] == "Premier League"
-    assert result["home_score"] == "2"
-    assert result["away_score"] == "1"
-    assert result["partial_results"] == "1-0"
-    assert result["venue"] == "Emirates Stadium"
-    assert result["venue_town"] == "London"
-    assert result["venue_country"] == "England"
-    assert "match_date" in result
-    assert "scraped_date" in result
-
-
-@pytest.mark.asyncio
-async def test_local_kickoff_disabled_adds_no_keys(setup_base_scraper_mocks):
-    """When local_kickoff is False (default), no venue_timezone/local kickoff keys are added."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    json_blob = (
-        '{"eventBody": {"startDate": 1681753200, "venueTown": "London", "venueCountry": "England"}, '
-        '"eventData": {"home": "Arsenal", "away": "Chelsea"}}'
-    )
-    page_mock.content = AsyncMock(
-        return_value=f"<html><body><div id=\"react-event-header\" data='{json_blob}'></div></body></html>"
-    )
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock,
-        match_link="https://www.oddsportal.com/football/england/arsenal-chelsea-123456",
-    )
-
-    assert "venue_timezone" not in result
-    assert "match_date_venue_local" not in result
-
-
-@pytest.mark.asyncio
-async def test_local_kickoff_enabled_adds_local_fields(setup_base_scraper_mocks):
-    """When local_kickoff is True and the venue resolves, venue_timezone/match_date_venue_local are added."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    scraper.local_kickoff = True
-    page_mock = mocks["page_mock"]
-
-    json_blob = (
-        '{"eventBody": {"startDate": 1681753200, "venueTown": "London", "venueCountry": "England"}, '
-        '"eventData": {"home": "Arsenal", "away": "Chelsea"}}'
-    )
-    page_mock.content = AsyncMock(
-        return_value=f"<html><body><div id=\"react-event-header\" data='{json_blob}'></div></body></html>"
-    )
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock,
-        match_link="https://www.oddsportal.com/football/england/arsenal-chelsea-123456",
-    )
-
-    assert result["venue_timezone"] == "Europe/London"
-    assert result["match_date_venue_local"] is not None
-
-
-@pytest.mark.asyncio
-async def test_local_kickoff_enabled_unresolved_venue_sets_none(setup_base_scraper_mocks, caplog):
-    """Unresolved venue leaves both fields None and logs a debug message so gaps can be reported."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    scraper.local_kickoff = True
-    page_mock = mocks["page_mock"]
-
-    json_blob = (
-        '{"eventBody": {"startDate": 1681753200, "venueTown": "Poseidonis", "venueCountry": "Atlantis"}, '
-        '"eventData": {"home": "Arsenal", "away": "Chelsea"}}'
-    )
-    page_mock.content = AsyncMock(
-        return_value=f"<html><body><div id=\"react-event-header\" data='{json_blob}'></div></body></html>"
-    )
-
-    with caplog.at_level(logging.DEBUG):
-        result = await scraper._extract_match_details_event_header(
-            page=page_mock,
-            match_link="https://www.oddsportal.com/football/england/arsenal-chelsea-123456",
-        )
-
-    assert result["venue_timezone"] is None
-    assert result["match_date_venue_local"] is None
-    assert "Unresolved venue timezone" in caplog.text
-
-
-@pytest.mark.asyncio
-async def test_extract_match_details_extracts_match_info(setup_base_scraper_mocks):
-    """eventData.staticInfo note labels are joined into the match_info field."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    json_blob = (
-        '{"eventBody": {"startDate": 1681753200}, '
-        '"eventData": {"home": "Arsenal", "away": "Chelsea", '
-        '"staticInfo": [{"name": "1st leg 2:1"}, {"name": "Neutral venue"}]}}'
-    )
-    page_mock.content = AsyncMock(
-        return_value=f"<html><body><div id=\"react-event-header\" data='{json_blob}'></div></body></html>"
-    )
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock,
-        match_link="https://www.oddsportal.com/football/england/arsenal-chelsea-123456",
-    )
-
-    assert result["match_info"] == "1st leg 2:1, Neutral venue"
-
-
-@pytest.mark.asyncio
-async def test_extract_match_details_declares_null_season(setup_base_scraper_mocks):
-    """Every row carries a season column; commands with no season leave it null (issue #78)."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    json_blob = '{"eventBody": {"startDate": 1681753200}, "eventData": {"home": "Arsenal", "away": "Chelsea"}}'
-    page_mock.content = AsyncMock(
-        return_value=f"<html><body><div id=\"react-event-header\" data='{json_blob}'></div></body></html>"
-    )
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock,
-        match_link="https://www.oddsportal.com/football/england/arsenal-chelsea-123456",
-    )
-
-    assert "season" in result
-    assert result["season"] is None
-    # Column position is part of the schema contract: the CSV header follows key order.
-    keys = list(result.keys())
-    season_idx = keys.index("season")
-    match_date_idx = keys.index("match_date")
-    match_link_idx = keys.index("match_link")
-    assert season_idx == match_date_idx + 1, f"season at index {season_idx}, expected {match_date_idx + 1}"
-    assert match_link_idx == season_idx + 1, f"match_link at index {match_link_idx}, expected {season_idx + 1}"
-
-
-@pytest.mark.asyncio
-async def test_extract_match_details_match_info_none_when_absent(setup_base_scraper_mocks):
-    """Ordinary matches carry no staticInfo → match_info is None."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    json_blob = '{"eventBody": {"startDate": 1681753200}, "eventData": {"home": "Arsenal", "away": "Chelsea"}}'
-    page_mock.content = AsyncMock(
-        return_value=f"<html><body><div id=\"react-event-header\" data='{json_blob}'></div></body></html>"
-    )
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock,
-        match_link="https://www.oddsportal.com/football/england/arsenal-chelsea-123456",
-    )
-
-    assert result["match_info"] is None
-
-
-@pytest.mark.asyncio
-async def test_extract_match_details_match_info_skips_nameless_and_empty(setup_base_scraper_mocks):
-    """Blank, whitespace-only, and nameless entries are skipped; all-empty yields None."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    json_blob = (
-        '{"eventBody": {"startDate": 1681753200}, '
-        '"eventData": {"home": "Arsenal", "away": "Chelsea", '
-        '"staticInfo": [{"name": ""}, {"name": "   "}, {"foo": "bar"}]}}'
-    )
-    page_mock.content = AsyncMock(
-        return_value=f"<html><body><div id=\"react-event-header\" data='{json_blob}'></div></body></html>"
-    )
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock,
-        match_link="https://www.oddsportal.com/football/england/arsenal-chelsea-123456",
-    )
-
-    assert result["match_info"] is None
-
-
-@pytest.mark.asyncio
-async def test_extract_match_details_missing_div(setup_base_scraper_mocks):
-    """When the react-event-header div is absent, return None."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-    page_mock.content = AsyncMock(return_value="<html><body></body></html>")
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock, match_link="https://www.oddsportal.com/football/england/test-match"
-    )
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_extract_match_details_invalid_json(setup_base_scraper_mocks):
-    """When the data attribute isn't valid JSON, return None."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-    page_mock.content = AsyncMock(
-        return_value='<html><body><div id="react-event-header" data="not-json{"></div></body></html>'
-    )
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock, match_link="https://www.oddsportal.com/football/england/test-match"
-    )
     assert result is None
 
 
@@ -1601,8 +1353,6 @@ def test_resolved_browser_timezone_uses_configured_tz(setup_base_scraper_mocks):
 
 
 def test_resolved_browser_timezone_falls_back_on_unknown(setup_base_scraper_mocks, caplog):
-    import logging
-
     mocks = setup_base_scraper_mocks
     scraper = mocks["scraper"]
     mocks["playwright_manager_mock"].timezone_id = "Not/A/Real/Zone"
@@ -1619,7 +1369,6 @@ def test_resolved_browser_timezone_falls_back_on_malformed_key(setup_base_scrape
     """ZoneInfo raises ValueError (not ZoneInfoNotFoundError) for malformed keys,
     e.g. ones containing "..". Must fall back to UTC like the unknown-zone case.
     """
-    import logging
 
     mocks = setup_base_scraper_mocks
     scraper = mocks["scraper"]
@@ -1635,7 +1384,6 @@ def test_resolved_browser_timezone_survives_missing_tzdata(setup_base_scraper_mo
     raises ZoneInfoNotFoundError. The fallback must not construct a ZoneInfo at
     all (it must return the stdlib UTC constant) or it will crash the same way.
     """
-    import logging
 
     mocks = setup_base_scraper_mocks
     scraper = mocks["scraper"]
@@ -1698,8 +1446,6 @@ def test_parse_match_date_from_dom_returns_none_when_div_missing(setup_base_scra
 
 
 def test_parse_match_date_from_dom_returns_none_on_unparseable_text(setup_base_scraper_mocks, caplog):
-    import logging
-
     scraper = setup_base_scraper_mocks["scraper"]
     setup_base_scraper_mocks["playwright_manager_mock"].timezone_id = "UTC"
     soup = BeautifulSoup(_make_date_html(date_str="not a date,", time_str="??:??"), "html.parser")
@@ -1747,7 +1493,7 @@ def _make_league_html(text: str | None = "Premier League 2024/2025", with_link: 
         f'<a data-testid="0">Football</a>'
         f'<a data-testid="1">England</a>'
         f'<a data-testid="2">Premier League</a>'
-        f'<a data-testid="3">{text}</a>'
+        f'<a data-testid="{text}">{text}</a>'
         f"</div></body></html>"
     )
 
@@ -1836,134 +1582,6 @@ def test_parse_results_from_dom_normalizes_nbsp_in_partial(setup_base_scraper_mo
     assert partial == "(1:0, 1:1)"
 
 
-@pytest.mark.asyncio
-async def test_extract_match_details_dom_first_overrides_wrong_json(setup_base_scraper_mocks):
-    """
-    Regression for PR #54: when the JSON eventBody contains wrong values
-    but the DOM has the correct ones, DOM wins for the 5 affected fields
-    while JSON still provides venue trio.
-    """
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-    mocks["playwright_manager_mock"].timezone_id = "UTC"
-
-    # Wrong JSON values (simulating the PR #54 bug for Barcelona-Leganes)
-    wrong_json = (
-        '{"eventBody": {"startDate": 1745000000, "homeResult": 0, "awayResult": 1, '
-        '"partialresult": "0:0, 0:1", "venue": "Camp Nou", "venueTown": "Barcelona", '
-        '"venueCountry": "Spain"}, "eventData": {"home": "Leganes", "away": "Barcelona", '
-        '"tournamentName": "LaLiga 2024/2025"}}'
-    )
-
-    page_mock.content = AsyncMock(
-        return_value=f"""
-        <html><body>
-          <div id="react-event-header" data='{wrong_json}'></div>
-          <section>
-            <div data-testid="game-time-item"><p>Sun</p><p>17 Nov 2019,</p><p>20:00</p></div>
-            <div data-testid="game-host"><p>Leganes</p></div>
-            <div data-testid="game-guest"><p>Barcelona</p></div>
-            <div data-testid="breadcrumbs-line">
-              <a data-testid="3">LaLiga 2019/2020</a>
-            </div>
-            <div><div class="flex flex-wrap">Final result 2:0 (1:0, 1:0)</div></div>
-          </section>
-        </body></html>
-        """
-    )
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock, match_link="https://example.test/barcelona-leganes"
-    )
-
-    # DOM-sourced fields override the (wrong) JSON
-    assert result["match_date"] == "2019-11-17 20:00:00 UTC"
-    assert result["home_team"] == "Leganes"
-    assert result["away_team"] == "Barcelona"
-    assert result["league_name"] == "LaLiga"
-    assert result["home_score"] == "2"
-    assert result["away_score"] == "0"
-    assert result["partial_results"] == "(1:0, 1:0)"
-    # Venue trio still from JSON
-    assert result["venue"] == "Camp Nou"
-    assert result["venue_town"] == "Barcelona"
-    assert result["venue_country"] == "Spain"
-
-
-@pytest.mark.asyncio
-async def test_extract_match_details_falls_back_to_json_per_field(setup_base_scraper_mocks):
-    """
-    When DOM is partial (only teams + date present), other affected fields
-    fall back to the JSON values individually.
-    """
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-    mocks["playwright_manager_mock"].timezone_id = "UTC"
-
-    json_blob = (
-        '{"eventBody": {"startDate": 1681753200, "homeResult": 9, "awayResult": 9, '
-        '"partialresult": "json-partial", "venue": "Vaa", "venueTown": "Vt", '
-        '"venueCountry": "Vc"}, "eventData": {"home": "JsonHome", "away": "JsonAway", '
-        '"tournamentName": "JsonLeague"}}'
-    )
-
-    page_mock.content = AsyncMock(
-        return_value=f"""
-        <html><body>
-          <div id="react-event-header" data='{json_blob}'></div>
-          <div data-testid="game-time-item"><p>x</p><p>17 Apr 2023,</p><p>17:40</p></div>
-          <div data-testid="game-host"><p>DomHome</p></div>
-          <div data-testid="game-guest"><p>DomAway</p></div>
-          <!-- No breadcrumb, no result block -->
-        </body></html>
-        """
-    )
-
-    result = await scraper._extract_match_details_event_header(page=page_mock, match_link="https://example.test/m")
-
-    # DOM provided
-    assert result["home_team"] == "DomHome"
-    assert result["away_team"] == "DomAway"
-    assert result["match_date"] == "2023-04-17 17:40:00 UTC"
-    # JSON fallback for missing-from-DOM fields
-    assert result["league_name"] == "JsonLeague"
-    assert result["home_score"] == "9"
-    assert result["away_score"] == "9"
-    assert result["partial_results"] == "json-partial"
-
-
-@pytest.mark.asyncio
-async def test_extract_match_details_full_json_fallback_when_dom_absent(setup_base_scraper_mocks):
-    """When no DOM landmarks are present, behavior matches the pre-fix JSON path."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    json_blob = (
-        '{"eventBody": {"startDate": 1681753200, "homeResult": 2, "awayResult": 1, '
-        '"partialresult": "1-0", "venue": "Emirates", "venueTown": "London", '
-        '"venueCountry": "England"}, "eventData": {"home": "Arsenal", "away": "Chelsea", '
-        '"tournamentName": "Premier League"}}'
-    )
-
-    page_mock.content = AsyncMock(
-        return_value=f"<html><body><div id=\"react-event-header\" data='{json_blob}'></div></body></html>"
-    )
-
-    result = await scraper._extract_match_details_event_header(page=page_mock, match_link="https://example.test/m")
-
-    assert result["home_team"] == "Arsenal"
-    assert result["away_team"] == "Chelsea"
-    assert result["league_name"] == "Premier League"
-    assert result["home_score"] == "2"
-    assert result["away_score"] == "1"
-    assert result["partial_results"] == "1-0"
-    assert result["match_date"] == "2023-04-17 17:40:00 UTC"
-    assert result["venue"] == "Emirates"
-
-
 def test_extract_fragment_match_id_returns_fragment_when_present():
     url = "https://www.oddsportal.com/baseball/h2h/a-team/b-team/#WbDmMwm1"
     assert _extract_fragment_match_id(url) == "WbDmMwm1"
@@ -1987,222 +1605,19 @@ def test_extract_fragment_match_id_strips_whitespace():
     assert _extract_fragment_match_id("https://www.oddsportal.com/x/#abc   ") == "abc"
 
 
-def _make_react_event_header_html(event_id: str, start_date: int = 1681753200) -> str:
-    payload = {
-        "eventBody": {"startDate": start_date},
-        "eventData": {
-            "id": event_id,
-            "home": "Royals",
-            "away": "Mariners",
-            "tournamentName": "MLB",
-        },
-    }
-    return f"<html><body><div id=\"react-event-header\" data='{_json.dumps(payload)}'></div></body></html>"
-
-
-@pytest.mark.asyncio
-async def test_resolve_h2h_fragment_mismatch_success_returns_updated_payload(setup_base_scraper_mocks):
-    """When wait_for_function succeeds, re-parsed soup + json reflect the requested match id."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    page_mock.evaluate = AsyncMock()
-    page_mock.wait_for_function = AsyncMock()
-    page_mock.content = AsyncMock(return_value=_make_react_event_header_html("WbDmMwm1"))
-
-    result = await scraper._resolve_h2h_fragment_mismatch(
-        page=page_mock,
-        fragment="WbDmMwm1",
-    )
-
-    assert result is not None
-    _soup, json_data = result
-    assert json_data["eventData"]["id"] == "WbDmMwm1"
-    page_mock.evaluate.assert_awaited_once()
-    page_mock.wait_for_function.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_resolve_h2h_fragment_mismatch_timeout_raises_retryable(setup_base_scraper_mocks):
-    """A resync timeout is a transient render race: raise so retry/backoff can see it."""
-    from oddsharvester.core.exceptions import H2HFragmentResolutionError
-
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    page_mock.evaluate = AsyncMock()
-    page_mock.wait_for_function = AsyncMock(side_effect=TimeoutError("timeout"))
-
-    with pytest.raises(H2HFragmentResolutionError) as excinfo:
-        await scraper._resolve_h2h_fragment_mismatch(page=page_mock, fragment="WbDmMwm1")
-
-    assert excinfo.value.is_retryable is True
-    assert "WbDmMwm1" in str(excinfo.value)
-
-
-@pytest.mark.asyncio
-async def test_resolve_h2h_fragment_mismatch_passes_fragment_to_evaluate(setup_base_scraper_mocks):
-    """The hashchange trigger must receive the fragment as the JS argument, not interpolated."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    page_mock.evaluate = AsyncMock()
-    page_mock.wait_for_function = AsyncMock()
-    page_mock.content = AsyncMock(return_value=_make_react_event_header_html("abc"))
-
-    await scraper._resolve_h2h_fragment_mismatch(page=page_mock, fragment="abc")
-
-    args, kwargs = page_mock.evaluate.await_args
-    # The fragment is the second positional arg to page.evaluate(expression, arg)
-    # Accept either positional or keyword form, but the value must equal "abc"
-    if len(args) >= 2:
-        assert args[1] == "abc"
-    else:
-        assert kwargs.get("arg") == "abc"
-
-
-@pytest.mark.asyncio
-async def test_extract_match_details_h2h_fragment_match_skips_resync(setup_base_scraper_mocks):
-    """When URL fragment equals eventData.id, no resync attempt is made."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    page_mock.content = AsyncMock(return_value=_make_react_event_header_html("WbDmMwm1"))
-    page_mock.evaluate = AsyncMock()
-    page_mock.wait_for_function = AsyncMock()
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock,
-        match_link="https://www.oddsportal.com/baseball/h2h/a/b/#WbDmMwm1",
-    )
-
-    assert result is not None
-    page_mock.evaluate.assert_not_awaited()
-    page_mock.wait_for_function.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_extract_match_details_h2h_fragment_mismatch_resolved(setup_base_scraper_mocks):
-    """Initial SSR has wrong id; after resync, the corrected payload is used."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    # First content() call returns the wrong-match SSR (eventData.id = "WRONG_4t78m9X0",
-    # startDate = 2026-05-22 23:40 UTC). After resync, the second call returns the
-    # correct match (eventData.id = "WbDmMwm1", startDate = 2025-04-15 17:00 UTC).
-    wrong_html = _make_react_event_header_html("WRONG_4t78m9X0", start_date=1779493200)
-    correct_html = _make_react_event_header_html("WbDmMwm1", start_date=1744736400)
-    page_mock.content = AsyncMock(side_effect=[wrong_html, correct_html])
-    page_mock.evaluate = AsyncMock()
-    page_mock.wait_for_function = AsyncMock()
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock,
-        match_link="https://www.oddsportal.com/baseball/h2h/a/b/#WbDmMwm1",
-    )
-
-    assert result is not None
-    # The wrong upcoming-match date must not leak through
-    assert "2026-05-22" not in (result["match_date"] or "")
-    # The corrected match's date should be present
-    assert "2025-04-15" in (result["match_date"] or "")
-    page_mock.evaluate.assert_awaited_once()
-    page_mock.wait_for_function.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_extract_match_details_h2h_fragment_resync_timeout_propagates(setup_base_scraper_mocks):
-    """The resync failure must survive the broad handler in _extract_match_details_event_header."""
-    from oddsharvester.core.exceptions import H2HFragmentResolutionError
-
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    page_mock.content = AsyncMock(return_value=_make_react_event_header_html("WRONG_4t78m9X0"))
-    page_mock.evaluate = AsyncMock()
-    page_mock.wait_for_function = AsyncMock(side_effect=TimeoutError("timeout"))
-
-    with pytest.raises(H2HFragmentResolutionError):
-        await scraper._extract_match_details_event_header(
-            page=page_mock,
-            match_link="https://www.oddsportal.com/baseball/h2h/a/b/#WbDmMwm1",
-        )
-
-
-@pytest.mark.asyncio
-async def test_extract_match_details_h2h_fragment_mismatch_dom_resolved_no_resync(setup_base_scraper_mocks):
-    """Regression guard for PR #54 vs issue #60 conflict.
-
-    When the URL fragment mismatches the SSR eventData.id BUT the DOM has
-    already hydrated to the fragment-targeted historic match (DOM date differs
-    from the stale JSON date), the scraper must take the PR #54 DOM-first path:
-    NO hash-resync is attempted and the match is NOT dropped. Resyncing here is
-    impossible (the embedded JSON id never updates to the fragment) so the
-    issue #60 resync-or-drop logic must not regress these matches.
-    """
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-    mocks["playwright_manager_mock"].timezone_id = "UTC"
-
-    # SSR JSON = stale recent match (id "STALE_recent7", 2025-04 startDate),
-    # while the DOM is hydrated to the requested 2020 historic match.
-    stale_json = (
-        '{"eventBody": {"startDate": 1745000000, "homeResult": 0, "awayResult": 1, '
-        '"partialresult": "0:0, 0:1", "venue": "Camp Nou", "venueTown": "Barcelona", '
-        '"venueCountry": "Spain"}, "eventData": {"id": "STALE_recent7", '
-        '"home": "Leganes", "away": "Barcelona", "tournamentName": "LaLiga 2024/2025"}}'
-    )
-    page_mock.content = AsyncMock(
-        return_value=f"""
-        <html><body>
-          <div id="react-event-header" data='{stale_json}'></div>
-          <section>
-            <div data-testid="game-time-item"><p>Tue</p><p>16 Jun 2020,</p><p>20:00</p></div>
-            <div data-testid="game-host"><p>Barcelona</p></div>
-            <div data-testid="game-guest"><p>Leganes</p></div>
-            <div data-testid="breadcrumbs-line"><a data-testid="3">LaLiga 2019/2020</a></div>
-            <div><div class="flex flex-wrap">Final result 2:0 (1:0, 1:0)</div></div>
-          </section>
-        </body></html>
-        """
-    )
-    page_mock.evaluate = AsyncMock()
-    page_mock.wait_for_function = AsyncMock()
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock,
-        match_link="https://www.oddsportal.com/football/h2h/barcelona-x/leganes-y/#hYV97ShC",
-    )
-
-    # PR #54 path taken: match kept, DOM (2020) values win, no resync attempted.
-    assert result is not None
-    assert result["match_date"] == "2020-06-16 20:00:00 UTC"
-    assert result["home_team"] == "Barcelona"
-    assert result["away_team"] == "Leganes"
-    assert result["home_score"] == "2"
-    assert result["away_score"] == "0"
-    page_mock.evaluate.assert_not_awaited()
-    page_mock.wait_for_function.assert_not_awaited()
-
-
 @pytest.mark.asyncio
 async def test_scrape_match_data_propagates_h2h_fragment_error(setup_base_scraper_mocks):
-    """The resync failure must also survive the broad handler in _scrape_match_data."""
+    """The hydration failure must survive the broad handler in _scrape_match_data."""
     from oddsharvester.core.exceptions import H2HFragmentResolutionError
 
     mocks = setup_base_scraper_mocks
     scraper = mocks["scraper"]
 
-    scraper._extract_match_details_event_header = AsyncMock(
-        side_effect=H2HFragmentResolutionError("page never updated eventData.id to match the fragment")
+    scraper._dismiss_login_modal = AsyncMock()
+    scraper._hydrate_match_view = AsyncMock(
+        side_effect=H2HFragmentResolutionError("match view hydration failed: never rendered match content")
     )
+    scraper._extract_match_details = AsyncMock()
 
     with pytest.raises(H2HFragmentResolutionError):
         await scraper._scrape_match_data(
@@ -2212,49 +1627,12 @@ async def test_scrape_match_data_propagates_h2h_fragment_error(setup_base_scrape
         )
 
 
-@pytest.mark.asyncio
-async def test_extract_match_details_missing_header_div_still_returns_none(setup_base_scraper_mocks):
-    """Regression guard: a genuinely absent react-event-header stays a soft None,
-    not a retryable error. Retrying a structural failure would waste a full page load."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    page_mock.content = AsyncMock(return_value="<html><body>no header here</body></html>")
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock,
-        match_link="https://www.oddsportal.com/baseball/h2h/a/b/#WbDmMwm1",
-    )
-
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_extract_match_details_unparseable_header_data_still_returns_none(setup_base_scraper_mocks):
-    """Regression guard: malformed embedded JSON stays a soft None."""
-    mocks = setup_base_scraper_mocks
-    scraper = mocks["scraper"]
-    page_mock = mocks["page_mock"]
-
-    page_mock.content = AsyncMock(
-        return_value="<html><body><div id=\"react-event-header\" data='{not json'></div></body></html>"
-    )
-
-    result = await scraper._extract_match_details_event_header(
-        page=page_mock,
-        match_link="https://www.oddsportal.com/baseball/h2h/a/b/#WbDmMwm1",
-    )
-
-    assert result is None
-
-
 # -- base_url storage and match-link join -------------------------------------
 
 _SERIE_A_HREF = "/football/italy/serie-a/match-xyz/"
 _SERIE_A_HTML = f"""
 <html><body>
-  <div class="eventRow">
+  <div data-testid="game-row">
     <a href="{_SERIE_A_HREF}">Serie A match</a>
   </div>
 </body></html>
@@ -2500,6 +1878,12 @@ class TestParseLiveInfo:
         html = '<div data-testid="live-info"><div>Final\u00a0result</div><div>0:2</div></div>'
         assert _parse_live_info(self._soup(html)) is None
 
+    def test_returns_none_for_finished_match_single_chunk(self):
+        """2026-08 redesign: the persistent live-info can serve the whole terminal
+        text as one chunk ("Final result 1:2 (0:1, 1:1)")."""
+        html = '<div data-testid="live-info">Final result 1:2 (0:1, 1:1)</div>'
+        assert _parse_live_info(self._soup(html)) is None
+
     def test_normalizes_non_breaking_space_in_period(self):
         html = '<div data-testid="live-info"><div>1st\u00a0Set</div><div>0:0</div></div>'
         assert _parse_live_info(self._soup(html))["live_period"] == "1st Set"
@@ -2624,7 +2008,9 @@ async def test_scrape_match_data_live_mode_adds_live_fields(setup_base_scraper_m
     scraper = mocks["scraper"]
     page_mock = mocks["page_mock"]
     page_mock.content = AsyncMock(return_value=f"<html><body>{LIVE_INFO_TENNIS_HTML}</body></html>")
-    scraper._extract_match_details_event_header = AsyncMock(return_value={"home_team": "A"})
+    scraper._hydrate_match_view = AsyncMock()
+    scraper._dismiss_login_modal = AsyncMock()
+    scraper._extract_match_details = AsyncMock(return_value={"home_team": "A"})
 
     data = await scraper._scrape_match_data(
         page=page_mock, sport="tennis", match_link="https://x/inplay-odds/#a", live_mode=True
@@ -2644,7 +2030,9 @@ async def test_scrape_match_data_live_mode_flags_ended_match(setup_base_scraper_
     scraper = mocks["scraper"]
     page_mock = mocks["page_mock"]
     page_mock.content = AsyncMock(return_value="<html><body><div>FT 2:1</div></body></html>")
-    scraper._extract_match_details_event_header = AsyncMock(return_value={"home_team": "A"})
+    scraper._hydrate_match_view = AsyncMock()
+    scraper._dismiss_login_modal = AsyncMock()
+    scraper._extract_match_details = AsyncMock(return_value={"home_team": "A"})
 
     data = await scraper._scrape_match_data(
         page=page_mock, sport="football", match_link="https://x/inplay-odds/#a", live_mode=True
@@ -2660,7 +2048,9 @@ async def test_scrape_match_data_without_live_mode_adds_no_live_fields(setup_bas
     scraper = mocks["scraper"]
     page_mock = mocks["page_mock"]
     page_mock.content = AsyncMock(return_value=f"<html><body>{LIVE_INFO_TENNIS_HTML}</body></html>")
-    scraper._extract_match_details_event_header = AsyncMock(return_value={"home_team": "A"})
+    scraper._hydrate_match_view = AsyncMock()
+    scraper._dismiss_login_modal = AsyncMock()
+    scraper._extract_match_details = AsyncMock(return_value={"home_team": "A"})
 
     data = await scraper._scrape_match_data(page=page_mock, sport="tennis", match_link="https://x/")
 
@@ -2677,7 +2067,9 @@ async def test_extract_match_odds_retries_h2h_fragment_failure(setup_base_scrape
     mocks = setup_base_scraper_mocks
     scraper = mocks["scraper"]
 
-    scraper._extract_match_details_event_header = AsyncMock(
+    scraper._hydrate_match_view = AsyncMock()
+    scraper._dismiss_login_modal = AsyncMock()
+    scraper._extract_match_details = AsyncMock(
         side_effect=[
             H2HFragmentResolutionError("page never updated eventData.id to match the fragment"),
             {"match_link": "https://www.oddsportal.com/football/h2h/a/b/#WbDmMwm1", "home_team": "A"},
@@ -2693,7 +2085,7 @@ async def test_extract_match_odds_retries_h2h_fragment_failure(setup_base_scrape
 
     assert result.stats.successful == 1
     assert result.stats.failed == 0
-    assert scraper._extract_match_details_event_header.await_count == 2
+    assert scraper._extract_match_details.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -2707,7 +2099,9 @@ async def test_extract_match_odds_h2h_failure_is_reported_retryable(setup_base_s
     mocks = setup_base_scraper_mocks
     scraper = mocks["scraper"]
 
-    scraper._extract_match_details_event_header = AsyncMock(
+    scraper._hydrate_match_view = AsyncMock()
+    scraper._dismiss_login_modal = AsyncMock()
+    scraper._extract_match_details = AsyncMock(
         side_effect=H2HFragmentResolutionError("page never updated eventData.id to match the fragment")
     )
 
@@ -2726,3 +2120,378 @@ async def test_extract_match_odds_h2h_failure_is_reported_retryable(setup_base_s
     assert result.get_retryable_urls() == ["https://www.oddsportal.com/football/h2h/a/b/#WbDmMwm1"]
 
     mocks["playwright_manager_mock"].report_page_result.assert_called_once_with("direct", is_proxy_failure=False)
+
+
+# -- match details + hydration on the redesigned DOM (issue #85) --------------
+
+
+def _make_hydrated_match_html(
+    date_p: str = "24 May 2026,",
+    time_p: str = "17:00",
+    score_text: str = "Final result 1:2 (0:1, 1:1)",
+    league: str = "Premier League 2025/2026",
+    ld_json: str | None = None,
+) -> str:
+    """Match page as rendered after SPA hydration (verified live 2026-08-24)."""
+    ld_block = f'<script type="application/ld+json">{ld_json}</script>' if ld_json else ""
+    return f"""
+    <html><head>{ld_block}</head><body>
+      <div data-testid="breadcrumbs-line">
+        <a>&lt;{league}</a>
+        <a data-testid="Home">Home</a>
+        <a data-testid="Football">Football</a>
+        <a data-testid="England">England</a>
+        <a data-testid="{league}">{league}</a>
+        <span data-testid="breadcrumb-current-page">Crystal Palace - Arsenal</span>
+      </div>
+      <div data-testid="game-participants">
+        <div data-testid="game-host"><p class="participant-name">Crystal Palace</p></div>
+        <div data-testid="game-guest"><p class="participant-name">Arsenal</p></div>
+      </div>
+      <section>
+        <div data-testid="game-time-item"><p>Sunday,</p><p>{date_p}</p><p>{time_p}</p></div>
+        <div data-testid="live-info">{score_text}</div>
+      </section>
+    </body></html>
+    """
+
+
+_MATCHING_LD_JSON = (
+    '{"@context":"https://schema.org","@type":["Event","SportsEvent"],"sport":"Football",'
+    '"name":"Crystal Palace - Arsenal","startDate":"2026-05-24T18:00:00+01:00",'
+    '"location":{"@type":"Place","name":"Selhurst Park",'
+    '"address":{"addressLocality":"London","addressCountry":"England"}}}'
+)
+
+_STALE_LD_JSON = _MATCHING_LD_JSON.replace("2026-05-24T18:00:00+01:00", "2026-12-26T16:00:00+01:00")
+
+
+@pytest.mark.asyncio
+async def test_extract_match_details_from_hydrated_dom(setup_base_scraper_mocks):
+    """Happy path: every field comes from the DOM; venue from the matching JSON-LD."""
+    mocks = setup_base_scraper_mocks
+    scraper = mocks["scraper"]
+    page_mock = mocks["page_mock"]
+    mocks["playwright_manager_mock"].timezone_id = "UTC"
+
+    page_mock.content = AsyncMock(return_value=_make_hydrated_match_html(ld_json=_MATCHING_LD_JSON, time_p="17:00"))
+
+    result = await scraper._extract_match_details(
+        page=page_mock,
+        match_link="https://www.oddsportal.com/football/h2h/arsenal-hA1Zm19f/crystal-palace-AovF1Mia/#UNC9hLMj",
+    )
+
+    assert result["home_team"] == "Crystal Palace"
+    assert result["away_team"] == "Arsenal"
+    assert result["league_name"] == "Premier League"
+    assert result["match_date"] == "2026-05-24 17:00:00 UTC"
+    assert result["home_score"] == "1"
+    assert result["away_score"] == "2"
+    assert result["partial_results"] == "(0:1, 1:1)"
+    assert result["venue"] == "Selhurst Park"
+    assert result["venue_town"] == "London"
+    assert result["venue_country"] == "England"
+    assert result["match_info"] is None
+    assert "scraped_date" in result
+
+
+@pytest.mark.asyncio
+async def test_extract_match_details_ignores_stale_ld_json_venue(setup_base_scraper_mocks):
+    """The SSR JSON-LD describes the *next upcoming* meeting (gotchas 1b): a
+    startDate that does not match the DOM date must not contribute venue data."""
+    mocks = setup_base_scraper_mocks
+    scraper = mocks["scraper"]
+    page_mock = mocks["page_mock"]
+    mocks["playwright_manager_mock"].timezone_id = "UTC"
+
+    page_mock.content = AsyncMock(return_value=_make_hydrated_match_html(ld_json=_STALE_LD_JSON))
+
+    result = await scraper._extract_match_details(page=page_mock, match_link="https://example.test/m#id1")
+
+    assert result is not None
+    assert result["venue"] is None
+    assert result["venue_town"] is None
+    assert result["venue_country"] is None
+
+
+@pytest.mark.asyncio
+async def test_extract_match_details_returns_none_without_landmarks(setup_base_scraper_mocks):
+    """A non-hydrated page (H2H landing skeleton) has neither teams nor kickoff."""
+    mocks = setup_base_scraper_mocks
+    scraper = mocks["scraper"]
+    page_mock = mocks["page_mock"]
+    page_mock.content = AsyncMock(
+        return_value="<html><body><h1>LASK - Celtic</h1><p>Select a match from the listings</p></body></html>"
+    )
+
+    result = await scraper._extract_match_details(page=page_mock, match_link="https://example.test/m#id1")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_extract_match_details_declares_null_season(setup_base_scraper_mocks):
+    """Every row carries a season column; commands with no season leave it null (issue #78)."""
+    mocks = setup_base_scraper_mocks
+    scraper = mocks["scraper"]
+    page_mock = mocks["page_mock"]
+    mocks["playwright_manager_mock"].timezone_id = "UTC"
+    page_mock.content = AsyncMock(return_value=_make_hydrated_match_html())
+
+    result = await scraper._extract_match_details(page=page_mock, match_link="https://example.test/m#id1")
+
+    assert result["season"] is None
+    # Column position is part of the schema contract: the CSV header follows key order.
+    keys = list(result.keys())
+    assert keys.index("season") == keys.index("match_date") + 1
+    assert keys.index("match_link") == keys.index("season") + 1
+
+
+@pytest.mark.asyncio
+async def test_local_kickoff_disabled_adds_no_keys(setup_base_scraper_mocks):
+    mocks = setup_base_scraper_mocks
+    scraper = mocks["scraper"]
+    page_mock = mocks["page_mock"]
+    mocks["playwright_manager_mock"].timezone_id = "UTC"
+    page_mock.content = AsyncMock(return_value=_make_hydrated_match_html(ld_json=_MATCHING_LD_JSON))
+
+    result = await scraper._extract_match_details(page=page_mock, match_link="https://example.test/m#id1")
+
+    assert "venue_timezone" not in result
+    assert "match_date_venue_local" not in result
+
+
+@pytest.mark.asyncio
+async def test_local_kickoff_enabled_adds_local_fields(setup_base_scraper_mocks):
+    mocks = setup_base_scraper_mocks
+    scraper = mocks["scraper"]
+    scraper.local_kickoff = True
+    page_mock = mocks["page_mock"]
+    mocks["playwright_manager_mock"].timezone_id = "UTC"
+    page_mock.content = AsyncMock(return_value=_make_hydrated_match_html(ld_json=_MATCHING_LD_JSON))
+
+    result = await scraper._extract_match_details(page=page_mock, match_link="https://example.test/m#id1")
+
+    assert result["venue_timezone"] == "Europe/London"
+    assert result["match_date_venue_local"] is not None
+
+
+@pytest.mark.asyncio
+async def test_local_kickoff_enabled_unresolved_venue_sets_none(setup_base_scraper_mocks):
+    """Without a trustworthy JSON-LD venue, both local-kickoff fields stay None."""
+    mocks = setup_base_scraper_mocks
+    scraper = mocks["scraper"]
+    scraper.local_kickoff = True
+    page_mock = mocks["page_mock"]
+    mocks["playwright_manager_mock"].timezone_id = "UTC"
+    page_mock.content = AsyncMock(return_value=_make_hydrated_match_html(ld_json=_STALE_LD_JSON))
+
+    result = await scraper._extract_match_details(page=page_mock, match_link="https://example.test/m#id1")
+
+    assert result["venue_timezone"] is None
+    assert result["match_date_venue_local"] is None
+
+
+@pytest.mark.asyncio
+async def test_extract_match_details_teams_via_participant_name_testid(setup_base_scraper_mocks):
+    """Live pages carry the team name in a [data-testid='participant-name'] element
+    that is not necessarily a <p>."""
+    mocks = setup_base_scraper_mocks
+    scraper = mocks["scraper"]
+    page_mock = mocks["page_mock"]
+    mocks["playwright_manager_mock"].timezone_id = "UTC"
+    html = (
+        _make_hydrated_match_html()
+        .replace(
+            '<p class="participant-name">Crystal Palace</p>', '<div data-testid="participant-name">Crystal Palace</div>'
+        )
+        .replace('<p class="participant-name">Arsenal</p>', '<div data-testid="participant-name">Arsenal</div>')
+    )
+    page_mock.content = AsyncMock(return_value=html)
+
+    result = await scraper._extract_match_details(page=page_mock, match_link="https://example.test/m#id1")
+
+    assert result["home_team"] == "Crystal Palace"
+    assert result["away_team"] == "Arsenal"
+
+
+def test_extract_fragment_match_id_strips_market_suffix():
+    # The hydrated SPA rewrites the fragment to '<id>:<market>;<scope>'.
+    assert _extract_fragment_match_id("https://www.oddsportal.com/x/h2h/a/b/#OOklm0j3:1X2;2") == "OOklm0j3"
+
+
+@pytest.mark.asyncio
+async def test_hydrate_match_view_success_first_attempt(setup_base_scraper_mocks):
+    mocks = setup_base_scraper_mocks
+    scraper = mocks["scraper"]
+    page_mock = mocks["page_mock"]
+    page_mock.evaluate = AsyncMock()
+    page_mock.wait_for_selector = AsyncMock()
+
+    await scraper._hydrate_match_view(
+        page=page_mock, match_link="https://www.oddsportal.com/football/h2h/a/b/#UNC9hLMj", sport="football"
+    )
+
+    args, kwargs = page_mock.evaluate.await_args
+    payload = args[1] if len(args) >= 2 else kwargs.get("arg")
+    assert payload["fragment"] == "UNC9hLMj"
+    assert payload["code"] == "1X2"
+    assert payload["scope"] == 2
+    page_mock.wait_for_selector.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_hydrate_match_view_two_outcome_sport_uses_home_away(setup_base_scraper_mocks):
+    mocks = setup_base_scraper_mocks
+    scraper = mocks["scraper"]
+    page_mock = mocks["page_mock"]
+    page_mock.evaluate = AsyncMock()
+    page_mock.wait_for_selector = AsyncMock()
+
+    await scraper._hydrate_match_view(
+        page=page_mock, match_link="https://www.oddsportal.com/tennis/h2h/a/b/#WbDmMwm1", sport="tennis"
+    )
+
+    args, kwargs = page_mock.evaluate.await_args
+    payload = args[1] if len(args) >= 2 else kwargs.get("arg")
+    assert payload["code"] == "home-away"
+
+
+@pytest.mark.asyncio
+async def test_hydrate_match_view_exhaustion_raises_retryable(setup_base_scraper_mocks):
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+    from oddsharvester.core.exceptions import H2HFragmentResolutionError
+
+    mocks = setup_base_scraper_mocks
+    scraper = mocks["scraper"]
+    page_mock = mocks["page_mock"]
+    page_mock.evaluate = AsyncMock()
+    page_mock.query_selector = AsyncMock(return_value=None)
+    page_mock.wait_for_selector = AsyncMock(side_effect=PlaywrightTimeoutError("timeout"))
+
+    with pytest.raises(H2HFragmentResolutionError) as excinfo:
+        await scraper._hydrate_match_view(
+            page=page_mock, match_link="https://www.oddsportal.com/football/h2h/a/b/#UNC9hLMj", sport="football"
+        )
+
+    assert excinfo.value.is_retryable is True
+    assert "hydration" in str(excinfo.value)
+    assert page_mock.evaluate.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_hydrate_match_view_without_fragment_waits_directly(setup_base_scraper_mocks):
+    """Legacy non-fragment match URLs skip the hash nudge entirely."""
+    mocks = setup_base_scraper_mocks
+    scraper = mocks["scraper"]
+    page_mock = mocks["page_mock"]
+    page_mock.evaluate = AsyncMock()
+    page_mock.wait_for_selector = AsyncMock()
+
+    await scraper._hydrate_match_view(
+        page=page_mock, match_link="https://www.oddsportal.com/football/england/x-y/abcd1234/", sport="football"
+    )
+
+    page_mock.evaluate.assert_not_awaited()
+    page_mock.wait_for_selector.assert_awaited_once()
+
+
+# -- live (in-play) on the redesigned DOM (issue #85 follow-up) ---------------
+
+_INPLAY_HEADER_HTML = """
+<div data-testid="game-participants">
+  <div class="my-3 flex w-full gap-2">
+    <div data-testid="game-host"><a data-testid="participant-name" href="/tennis/team/x/">Kopp S.</a></div>
+    <div class="shrink-0 text-right font-semibold text-red-dark">1</div>
+  </div>
+  <div class="relative inline-block"><span class="max-mm:!hidden text-red-dark">:</span></div>
+  <div class="flex w-full gap-2">
+    <div data-testid="game-guest"><a data-testid="participant-name" href="/tennis/team/y/">Ribeiro E.</a></div>
+    <div class="shrink-0 text-right font-semibold text-red-dark">2</div>
+  </div>
+</div>
+"""
+
+
+class TestParseLiveInfoInplayRedesign:
+    def _soup(self, html: str) -> BeautifulSoup:
+        return BeautifulSoup(html, "lxml")
+
+    def test_parses_red_score_digits_from_game_participants(self):
+        """In-play pages carry no live-info element; the live score is the red
+        digits flanking the participant names (verified live 2026-08-24)."""
+        result = _parse_live_info(self._soup(f"<html><body>{_INPLAY_HEADER_HTML}</body></html>"))
+        assert result == {
+            "live_period": None,
+            "live_score_home": 1,
+            "live_score_away": 2,
+            "live_score_raw": "1:2",
+        }
+
+    def test_header_without_red_digits_means_not_live(self):
+        html = """
+        <html><body><div data-testid="game-participants">
+          <div data-testid="game-host"><a data-testid="participant-name">LASK</a></div>
+          <div data-testid="game-guest"><a data-testid="participant-name">Celtic</a></div>
+        </div></body></html>
+        """
+        assert _parse_live_info(self._soup(html)) is None
+
+    def test_live_info_element_still_wins_when_present(self):
+        """Legacy live-info containers (older captures) keep working unchanged."""
+        html = '<div data-testid="live-info"><div>HT</div><div>2:1</div></div>'
+        result = _parse_live_info(self._soup(html))
+        assert result["live_score_home"] == 2
+        assert result["live_period"] == "HT"
+
+    def test_finished_match_standard_page_still_none(self):
+        html = f"""
+        <html><body>
+          <div data-testid="live-info">Final result 1:2 (0:1, 1:1)</div>
+          {_INPLAY_HEADER_HTML}
+        </body></html>
+        """
+        assert _parse_live_info(self._soup(html)) is None
+
+
+@pytest.mark.asyncio
+async def test_hydrate_match_view_inplay_waits_without_market_nudge(setup_base_scraper_mocks):
+    """/inplay-odds/ pages hydrate on their own and route their own market codes;
+    forcing '#id:1X2;2' can flip the view to Pre-match Odds. Wait first."""
+    mocks = setup_base_scraper_mocks
+    scraper = mocks["scraper"]
+    page_mock = mocks["page_mock"]
+    page_mock.evaluate = AsyncMock()
+    page_mock.wait_for_selector = AsyncMock()
+
+    await scraper._hydrate_match_view(
+        page=page_mock,
+        match_link="https://www.oddsportal.com/tennis/h2h/a/b/inplay-odds/#niGX35MH",
+        sport="tennis",
+    )
+
+    page_mock.evaluate.assert_not_awaited()
+    page_mock.wait_for_selector.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_hydrate_match_view_inplay_nudges_bare_id_on_timeout(setup_base_scraper_mocks):
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+    mocks = setup_base_scraper_mocks
+    scraper = mocks["scraper"]
+    page_mock = mocks["page_mock"]
+    page_mock.evaluate = AsyncMock()
+    page_mock.query_selector = AsyncMock(return_value=None)
+    page_mock.wait_for_selector = AsyncMock(side_effect=[PlaywrightTimeoutError("t"), None])
+
+    await scraper._hydrate_match_view(
+        page=page_mock,
+        match_link="https://www.oddsportal.com/tennis/h2h/a/b/inplay-odds/#niGX35MH",
+        sport="tennis",
+    )
+
+    args, kwargs = page_mock.evaluate.await_args
+    payload = args[1] if len(args) >= 2 else kwargs.get("arg")
+    assert payload["fragment"] == "niGX35MH"
+    assert payload.get("bare") is True

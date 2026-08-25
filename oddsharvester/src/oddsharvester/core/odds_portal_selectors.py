@@ -8,34 +8,46 @@ class OddsPortalSelectors:
     # Cookie banner
     COOKIE_BANNER = "#onetrust-accept-btn-handler"
 
-    # Listing pagination. The Next/Prev anchors share the class and carry no rel attribute.
-    PAGINATION_LINK = "a.pagination-link"
+    # 2026-08 redesign (issue #85). Digits are <button>s, the current page a <span>;
+    # the widget's parent stays display:none until the listing is scrolled to the
+    # bottom, so read text_content (not inner_text) on the items.
+    PAGINATION_CONTAINER = "nav.pagination"
+    PAGINATION_ITEM = "nav.pagination button, nav.pagination span"
 
-    # Market navigation tabs
-    MARKET_TAB_SELECTORS: ClassVar[list[str]] = [
-        "ul.visible-links.bg-black-main.odds-tabs > li",
-        "ul.odds-tabs > li",
-        "ul[class*='odds-tabs'] > li",
-        "div[class*='odds-tabs'] li",
-        "li[class*='tab']",
-        "nav li",
-    ]
+    # Listing rows and their date grouping (redesign): rows carry
+    # data-testid='game-row'; date headers are siblings (inside a
+    # 'secondary-header' element), not children of the first row of a group.
+    LISTING_ROW_SELECTOR = "div[data-testid='game-row']"
+    DATE_HEADER_TESTID = "date-header"
 
-    # Every market tab (visible + 'More' overflow) carries the `odds-item` class.
-    MARKET_TAB_ITEM_SELECTOR = "li.odds-item"
+    # Match view (redesign): content renders only after an in-page hashchange to
+    # '#<id>:<market>;<scope>'; game-time-item is the hydration-complete signal.
+    MATCH_CONTENT_READY_SELECTOR = "div[data-testid='game-time-item']"
 
-    # `data-testid='more-button'` is language-independent (text is localized).
-    MORE_BUTTON_SELECTORS: ClassVar[list[str]] = [
-        "button[data-testid='more-button']",
-        "button.toggle-odds:has-text('More')",
-        "button[class*='toggle-odds']",
-        ".visible-btn-odds:has-text('More')",
-        "li:has-text('More')",
-        "li:has-text('more')",
-        "li[class*='more']",
-        "li button:has-text('More')",
-        "li a:has-text('More')",
-    ]
+    # Market tabs (redesign)
+    MARKET_TAB_ACTIVE = "[data-testid='sports-nav-active-tab']"
+    MARKET_TAB_ANY = "[data-testid='sports-nav-active-tab'], [data-testid='sports-nav-inactive-tab']"
+
+    # Sub-nav row: bookies filter (All/Classic/Crypto Bookies) and period tabs.
+    SUB_NAV_TAB_ANY = "[data-testid='sub-nav-active-tab'], [data-testid='sub-nav-inactive-tab']"
+    SUB_NAV_TAB_ACTIVE_TESTID = "sub-nav-active-tab"
+
+    # Odds table (redesign): one <tr> per bookmaker; peripheral rows to skip.
+    BOOKMAKER_NAME_TESTID = "outrights-expanded-bookmaker-name"
+    BOOKMAKER_NAME_CSS = "[data-testid='outrights-expanded-bookmaker-name']"
+    BOOKMAKER_ROW_WITH_NAME_CSS = "tr:has([data-testid='outrights-expanded-bookmaker-name'])"
+    ODD_CELL_CSS = "[data-testid^='odd-container']"
+    ODD_CELL_TESTID_PREFIX = "odd-container"
+    PAYOUT_TESTID = "payout-container"
+    TABLE_SKIP_ROW_TESTIDS: ClassVar[tuple[str, ...]] = ("my-coupon-row", "user-predictions-row", "odds-alert-row")
+
+    # Login modal observed blocking match-page rendering on cold profiles.
+    LOGIN_MODAL_CLOSE = "[data-testid='modal'] button[aria-label='Close']"
+
+    @staticmethod
+    def page_fragment(n: int) -> str:
+        """Listing page fragment for the redesigned SPA ('#page/N', no leading slash)."""
+        return f"#page/{n}"
 
     # English main_market -> language-independent market code in the URL fragment
     # (e.g. '#<id>:over-under;2'). Localized-mirror fallback; see gotchas §7.
@@ -52,19 +64,10 @@ class OddsPortalSelectors:
         "Draw No Bet": "dnb",
     }
 
-    # Market navigation - sub-market selection
-    SUB_MARKET_SELECTOR = "div.flex.w-full.items-center.justify-start.pl-3.font-bold p"
-
-    # Bookmaker filter navigation
-    BOOKIES_FILTER_CONTAINER = "div[data-testid='bookies-filter-nav']"
-    BOOKIES_FILTER_ACTIVE_CLASS = "active-item-calendar"
-
-    # Period selection navigation
-    PERIOD_SELECTOR_CONTAINER = "div[data-testid='kickoff-events-nav']"
-    PERIOD_ACTIVE_CLASS = "active-item-calendar"
-    # Real period tabs carry data-testid='sub-nav-active-tab'/'sub-nav-inactive-tab';
-    # peripheral entries (e.g. a 'Todos los bonos' bonus link) do not.
-    PERIOD_TAB_SELECTOR = f"{PERIOD_SELECTOR_CONTAINER} > div[data-testid^='sub-nav-']"
+    # Market navigation - sub-market selection. Line rows are clickable <tr>s
+    # whose full label sits in a span (redesign); click the enclosing <tr>.
+    SUB_MARKET_SELECTOR = "tr.cursor-pointer span"
+    SUB_MARKET_CLICK_ANCESTOR = "tr"
 
     # Language-independent period scope codes — the ';<scope>' segment of the URL
     # fragment ('#<id>:<market>;<scope>'). Scope ids are global OddsPortal period
@@ -84,12 +87,11 @@ class OddsPortalSelectors:
     }
 
     # Match details — data-testid values for DOM-based extraction
-    # (used by base_scraper._extract_match_details_event_header DOM helpers)
+    # (used by base_scraper._extract_match_details DOM helpers)
     MATCH_DETAILS_GAME_TIME_TESTID = "game-time-item"
     MATCH_DETAILS_GAME_HOST_TESTID = "game-host"
     MATCH_DETAILS_GAME_GUEST_TESTID = "game-guest"
     MATCH_DETAILS_BREADCRUMBS_TESTID = "breadcrumbs-line"
-    MATCH_DETAILS_BREADCRUMB_LEAGUE_TESTID = "3"
 
     # Community Top Predictions page (/predictions/). All data-testid based; see
     # docs/agentic-gotchas.md (community predictions entry).
@@ -98,7 +100,7 @@ class OddsPortalSelectors:
     COMMUNITY_GAME_ROW = "div[data-testid='game-row']"
     COMMUNITY_DATE_TIME = "div[data-testid='date-time-item']"
     COMMUNITY_PARTICIPANTS = "div[data-testid='event-participants']"
-    COMMUNITY_PARTICIPANT_NAME = "p.participant-name"
+    COMMUNITY_PARTICIPANT_NAME = "[data-testid='participant-name']"
     COMMUNITY_ODD_CELL = "p[data-testid='odd-container-default']"
     COMMUNITY_PREDICTION_CELL = "div[data-testid='prediction-container']"
     COMMUNITY_BREADCRUMB_SPORT = "a[data-testid='header-sport-item']"
@@ -112,6 +114,9 @@ class OddsPortalSelectors:
     COMMUNITY_PROFILE_ROI = "[data-testid='user-roi']"
     COMMUNITY_PROFILE_MEMBER_INFO = "[data-testid='member-info']"
     COMMUNITY_PROFILE_STATS_HEADER = "[data-testid='stats-table-header-line']"
+    # Profile sub-tabs (Feed / Followers / Following); the active one carries
+    # 'tab-navigation-active-tab' instead.
+    COMMUNITY_PROFILE_TAB = "[data-testid='navigation-inactive-tab']"
 
     # Live (in-play) pages. `live-info` is the match-page live header (period,
     # score, partial result); it disappears once the match ends. `game-row` is
@@ -119,6 +124,16 @@ class OddsPortalSelectors:
     LIVE_INFO_TESTID = "live-info"
     LIVE_PARTIAL_RESULT_TESTID = "partial-result"
     GAME_ROW_TESTID = "game-row"
+
+    @staticmethod
+    def event_id_from_url(url: str) -> str | None:
+        """Return the event id from a '#<id>' or '#<id>:<market>;<scope>' fragment, else None."""
+        if not isinstance(url, str) or "#" not in url:
+            return None
+        fragment = url.split("#", 1)[1].strip().split(":", 1)[0]
+        if not fragment or "/" in fragment:
+            return None
+        return fragment
 
     @staticmethod
     def market_code_from_url(url: str) -> str | None:
@@ -172,53 +187,13 @@ class OddsPortalSelectors:
                 return tail
         return specific_market
 
-    @staticmethod
-    def get_dropdown_selectors_for_market(market_name: str) -> list[str]:
-        """Generate dropdown selectors for a specific market name."""
-        return [
-            f"li:has-text('{market_name}')",
-            f"a:has-text('{market_name}')",
-            f"button:has-text('{market_name}')",
-            f"div:has-text('{market_name}')",
-            f"span:has-text('{market_name}')",
-        ]
-
-    @staticmethod
-    def get_bookies_filter_selector(filter_value: str) -> str:
-        """
-        Generate selector for a specific bookmaker filter option.
-
-        Args:
-            filter_value: The filter value (e.g., 'all', 'classic', 'crypto').
-
-        Returns:
-            str: CSS selector for the filter option.
-        """
-        return f"div[data-testid='bookies-filter-nav'] div[data-testid='{filter_value}']"
-
-    # Bookmaker elements — BeautifulSoup class patterns
-    BOOKMAKER_ROW_CLASS = "border-black-borders"
-    BOOKMAKER_ROW_FALLBACK_CLASS = r"^border-black-borders flex h-9"
-    BOOKMAKER_LOGO_CLASS = "bookmaker-logo"
-    ODDS_BLOCK_CLASS_PATTERN = r"flex-center.*flex-col.*font-bold"
     # OddsPortal strikes through an odds value when the feed's per-outcome `act`
     # flag is false (bookmaker no longer offering that bet). A CSS selector, not a
     # class regex: soupsieve matches class tokens exactly. See gotchas §18.
     ODDS_BLOCKED_SELECTOR = ".line-through"
-    # Scope marker: the bookmaker table header sits inside the container that holds
-    # only the real bookmaker rows. Used to scope row search and skip peripheral
-    # sections (Previous Matches, H2H, etc.) whose rows share `border-black-borders`.
-    BOOKMAKER_TABLE_HEADER_TESTID = "bookmaker-table-header-line"
-
-    # Bookmaker elements — Playwright CSS selectors
-    BOOKMAKER_ROW_CSS = "div.border-black-borders.flex.h-9"
-    BOOKMAKER_LOGO_CSS = "img.bookmaker-logo"
-    ODDS_BLOCK_CSS = "div.flex-center.flex-col.font-bold"
     # Match the tooltip header by class: its text is localized on regional mirrors.
     ODDS_MOVEMENT_HEADER = "h3.font-semibold.uppercase.leading-6"
 
-    # Event listing — BeautifulSoup class pattern
-    EVENT_ROW_CLASS_PATTERN = "^eventRow"
     # Per-row status indicators on the listing page (issue #58 / gotchas §9).
     # Both are required to detect started matches: live flips only time-item,
     # finished fills only game-status-box.
@@ -226,7 +201,4 @@ class OddsPortalSelectors:
     EVENT_ROW_GAME_STATUS_BOX_TESTID = "game-status-box"
 
     # Submarket name — BeautifulSoup class
-    SUBMARKET_CLEAN_NAME_CLASS = "max-sm:!hidden"
-
-    # Debug selectors
-    DROPDOWN_DEBUG_ELEMENTS = "li, a, button, div, span"
+    SUBMARKET_CLEAN_NAME_CLASS = "max-sm:hidden"
