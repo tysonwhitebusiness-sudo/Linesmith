@@ -236,6 +236,33 @@ class TestSportMarketRegistrar:
         # Over/Under markets
         assert "over_under_7_5" in baseball_markets
 
+    def test_whole_number_line_matches_real_page_rendering(self):
+        """Regression test for a real bug (verified live 2026-08-25, not
+        documented anywhere in docs/agentic-gotchas.md before this fix):
+        a whole-number line built specific_market="Over/Under +9.0", but a
+        real match page renders that row as "Over/Under +9" (no trailing
+        decimal for whole numbers - confirmed by direct DOM inspection of a
+        live MLB match). submarket_match_text's substring matcher can never
+        bridge "+9.0" vs "+9", so the click-and-select step silently failed
+        for every whole-number line, on every sport that has one - not a
+        baseball-specific issue, since every sport's over_under/handicap
+        registration in this module builds numeric_part the same way.
+        """
+        SportMarketRegistrar.register_baseball_markets()
+        baseball_markets = SportMarketRegistry.get_market_mapping(Sport.BASEBALL.value)
+
+        extractor_mock = MagicMock()
+        page_mock = MagicMock()
+
+        baseball_markets["over_under_9_0"](extractor_mock, page_mock)
+        whole_number_call = extractor_mock.extract_market_odds.call_args
+        assert whole_number_call.kwargs["specific_market"] == "Over/Under +9"
+
+        extractor_mock.reset_mock()
+        baseball_markets["over_under_8_5"](extractor_mock, page_mock)
+        half_point_call = extractor_mock.extract_market_odds.call_args
+        assert half_point_call.kwargs["specific_market"] == "Over/Under +8.5"
+
     def test_register_american_football_markets(self):
         """Test registering markets for American Football."""
         # Act

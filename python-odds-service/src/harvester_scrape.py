@@ -65,21 +65,21 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
         leagues=["mlb"],
         # Baseball has no handicap/spread market on OddsPortal at all
         # (confirmed live this session, and in the vendored package's own
-        # README). PHASE 1 SCOPE: moneyline only. Three real runs this
-        # session tried to also cover totals (6 tokens, then 3, then 2) and
-        # every one exceeded a 300s budget — even ONE extra total line
-        # pushed past it, on top of a market (over_under_9_0) that failed
-        # its "find and click" selector on nearly every match (today's real
-        # lines mostly aren't sitting there), each failure costing a real
-        # UI-interaction timeout for zero benefit. home_away ALONE is the
-        # only configuration that has ever actually completed successfully
-        # end to end through this script (twice, ~210s both times, 100%
-        # success) — shipping that proven baseline rather than continuing to
-        # guess at market/timing combinations. Adding totals coverage is a
-        # deliberate future increment: add ONE line, measure its real added
-        # cost on the actual dedicated machine, then decide whether a second
-        # is affordable — not a band chosen up front.
-        markets=["home_away"],
+        # README). Earlier attempts to add totals coverage all exceeded
+        # budget — root cause was a real upstream bug (fixed in
+        # sport_market_registry.py, see _format_line_number): whole-number
+        # lines like over_under_9_0 built click-text "+9.0" against a page
+        # that actually renders "+9", so every whole-number line failed its
+        # click on every match, each failure costing a real timeout for zero
+        # benefit. Fixed and reverified live: 15/15 matches, 100% success,
+        # 438s real (see SCRAPE_TIMEOUT_SECONDS above). Also surfaced a real,
+        # useful finding: most books quote BOTH 8.5 and 9.0 simultaneously
+        # (not "9.0 doesn't exist" as first assumed) — the conflict-warning
+        # logic in _record_to_game_line currently keeps only the first and
+        # logs the rest, since BookmakerOdds holds one line per book; capturing
+        # both simultaneously would need a schema change (point in the key),
+        # a real open decision, not something to make unilaterally here.
+        markets=["home_away", "over_under_8_5", "over_under_9_0"],
         load_games=load_mlb_games,
     ),
 }
@@ -257,14 +257,17 @@ def _record_to_game_line(record: dict, game_id: str) -> GameLine:
 # CLI invocation
 # ---------------------------------------------------------------------------
 
-# A clean timed run this session (15 MLB matches, concurrency 1, no other
-# load) took 3m30s (210s) end to end, 100% success — concurrency 1 trades
-# speed for the crash-avoidance fix below, and a full MLB slate genuinely
-# needs more than 180s at that concurrency. 300s leaves real margin above
-# the observed 210s while staying comfortably under the scheduled task's
-# own 10-minute execution limit (scripts/harvester-laptop-setup.ps1's
-# -ExecutionTimeLimit).
-SCRAPE_TIMEOUT_SECONDS = 300
+# Real measured costs this session, 15 MLB matches, concurrency 1, no other
+# load: home_away alone = 3m30s (210s); home_away + 2 total lines = 7m18s
+# (438s) after fixing the whole-number-line click bug (each extra market
+# needs its own real tab-click + page-load + parse cycle per match — ~110s
+# added per line, not a bug, genuinely how much UI interaction costs). 550s
+# leaves real margin above the observed 438s while staying under the
+# scheduled task's own 10-minute execution limit (scripts/harvester-laptop-
+# setup.ps1's -ExecutionTimeLimit) — re-measure before adding a 3rd total
+# line or another sport's markets to this same run, don't assume it scales
+# linearly forever.
+SCRAPE_TIMEOUT_SECONDS = 550
 
 
 async def _run_harvester_cli(target: ScrapeTarget) -> list[dict]:

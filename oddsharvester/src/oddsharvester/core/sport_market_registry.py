@@ -28,6 +28,29 @@ from oddsharvester.utils.sport_market_constants import (
 )
 
 
+def _format_line_number(numeric_part: str) -> str:
+    """Formats a line value the way OddsPortal's own UI renders it.
+
+    Real bug, verified live 2026-08-25 (baseball, `.com`): a whole-number
+    line like `over_under_9_0` builds `numeric_part = "9.0"` via the
+    `.replace("_", ".")` pattern used at every one of this module's ~20 call
+    sites, producing search text "Over/Under +9.0". The actual rendered row
+    reads "Over/Under +9" — no trailing zero for whole-number lines (verified
+    by direct DOM inspection of a live match page: "+8.5" renders with its
+    decimal, "+9" does not). `submarket_match_text`'s substring matcher can
+    never bridge that gap ("+9.0" is not a substring of "+9" or vice versa),
+    so every whole-number Over/Under or Asian Handicap line silently fails
+    its click-and-select step on every sport that uses one, not just
+    baseball's own over_under_9_0/over_under_8_0/etc.
+
+    Not documented anywhere in docs/agentic-gotchas.md as of this fix —
+    checked directly before concluding it was new, not a rediscovery.
+    """
+    if numeric_part.endswith(".0"):
+        return numeric_part[:-2]
+    return numeric_part
+
+
 class SportMarketRegistry:
     """Registry to dynamically store market mappings for each sport."""
 
@@ -94,7 +117,7 @@ class SportMarketRegistrar:
                 {
                     over_under.value: cls.create_market_lambda(
                         main_market="Over/Under",
-                        specific_market=f"Over/Under +{over_under.value.replace('over_under_', '').replace('_', '.')}",
+                        specific_market=f"Over/Under +{_format_line_number(over_under.value.replace('over_under_', '').replace('_', '.'))}",
                         odds_labels=["odds_over", "odds_under"],
                     )
                 },
@@ -116,7 +139,7 @@ class SportMarketRegistrar:
         # Register Asian Handicap Markets
         for handicap in FootballAsianHandicapMarket:
             raw_handicap = handicap.value.replace("asian_handicap_", "")
-            formatted_handicap = raw_handicap.replace("_", ".")
+            formatted_handicap = _format_line_number(raw_handicap.replace("_", "."))
             SportMarketRegistry.register(
                 Sport.FOOTBALL,
                 {
@@ -140,7 +163,7 @@ class SportMarketRegistrar:
 
         # Register Over/Under Sets Markets
         for over_under in TennisOverUnderSetsMarket:
-            numeric_part = over_under.value.replace("over_under_sets_", "").replace("_", ".")
+            numeric_part = _format_line_number(over_under.value.replace("over_under_sets_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.TENNIS,
                 {
@@ -154,7 +177,7 @@ class SportMarketRegistrar:
 
         # Register Over/Under Games Markets
         for over_under in TennisOverUnderGamesMarket:
-            numeric_part = over_under.value.replace("over_under_games_", "").replace("_", ".")
+            numeric_part = _format_line_number(over_under.value.replace("over_under_games_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.TENNIS,
                 {
@@ -168,7 +191,7 @@ class SportMarketRegistrar:
 
         # Register Asian Handicap Games Markets
         for handicap in TennisAsianHandicapGamesMarket:
-            numeric_part = handicap.value.replace("asian_handicap_", "").replace("_games", "").replace("_", ".")
+            numeric_part = _format_line_number(handicap.value.replace("asian_handicap_", "").replace("_games", "").replace("_", "."))
             specific_market = f"Asian Handicap {numeric_part} Games"
             SportMarketRegistry.register(
                 Sport.TENNIS,
@@ -183,7 +206,7 @@ class SportMarketRegistrar:
 
         # Register Asian Handicap Sets Markets
         for handicap in TennisAsianHandicapSetsMarket:
-            numeric_part = handicap.value.replace("asian_handicap_", "").replace("_sets", "").replace("_", ".")
+            numeric_part = _format_line_number(handicap.value.replace("asian_handicap_", "").replace("_sets", "").replace("_", "."))
             specific_market = f"Asian Handicap {numeric_part} Sets"
             SportMarketRegistry.register(
                 Sport.TENNIS,
@@ -222,7 +245,7 @@ class SportMarketRegistrar:
 
         # Register Over/Under Games Markets
         for over_under in BasketballOverUnderMarket:
-            numeric_part = over_under.value.replace("over_under_games_", "").replace("_", ".")
+            numeric_part = _format_line_number(over_under.value.replace("over_under_games_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.BASKETBALL,
                 {
@@ -236,7 +259,7 @@ class SportMarketRegistrar:
 
         # Register Asian Handicap Markets
         for handicap in BasketballAsianHandicapMarket:
-            numeric_part = handicap.value.replace("asian_handicap_games_", "").replace("_games", "").replace("_", ".")
+            numeric_part = _format_line_number(handicap.value.replace("asian_handicap_games_", "").replace("_games", "").replace("_", "."))
             specific_market = f"Asian Handicap {numeric_part}"
             SportMarketRegistry.register(
                 Sport.BASKETBALL,
@@ -264,7 +287,7 @@ class SportMarketRegistrar:
 
         # Over/Under Markets
         for over_under in RugbyOverUnderMarket:
-            numeric_part = over_under.value.replace("over_under_", "").replace("_", ".")
+            numeric_part = _format_line_number(over_under.value.replace("over_under_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.RUGBY_LEAGUE,
                 {
@@ -278,7 +301,7 @@ class SportMarketRegistrar:
 
         # Handicap Markets
         for handicap in RugbyHandicapMarket:
-            numeric_part = handicap.value.replace("handicap_", "").replace("_", ".")
+            numeric_part = _format_line_number(handicap.value.replace("handicap_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.RUGBY_LEAGUE,
                 {
@@ -305,7 +328,7 @@ class SportMarketRegistrar:
 
         # Over/Under Markets
         for over_under in RugbyOverUnderMarket:
-            numeric_part = over_under.value.replace("over_under_", "").replace("_", ".")
+            numeric_part = _format_line_number(over_under.value.replace("over_under_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.RUGBY_UNION,
                 {
@@ -319,7 +342,7 @@ class SportMarketRegistrar:
 
         # Handicap Markets
         for handicap in RugbyHandicapMarket:
-            numeric_part = handicap.value.replace("handicap_", "").replace("_", ".")
+            numeric_part = _format_line_number(handicap.value.replace("handicap_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.RUGBY_UNION,
                 {
@@ -347,7 +370,7 @@ class SportMarketRegistrar:
 
         # Over/Under Markets
         for over_under in IceHockeyOverUnderMarket:
-            numeric_part = over_under.value.replace("over_under_", "").replace("_", ".")
+            numeric_part = _format_line_number(over_under.value.replace("over_under_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.ICE_HOCKEY,
                 {
@@ -372,7 +395,7 @@ class SportMarketRegistrar:
 
         # Over/Under Markets
         for over_under in BaseballOverUnderMarket:
-            numeric_part = over_under.value.replace("over_under_", "").replace("_", ".")
+            numeric_part = _format_line_number(over_under.value.replace("over_under_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.BASEBALL,
                 {
@@ -397,7 +420,7 @@ class SportMarketRegistrar:
 
         # Register Over/Under Markets
         for over_under in AmericanFootballOverUnderMarket:
-            numeric_part = over_under.value.replace("over_under_", "").replace("_", ".")
+            numeric_part = _format_line_number(over_under.value.replace("over_under_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.AMERICAN_FOOTBALL,
                 {
@@ -411,7 +434,7 @@ class SportMarketRegistrar:
 
         # Register Asian Handicap Markets
         for handicap in AmericanFootballAsianHandicapMarket:
-            numeric_part = handicap.value.replace("asian_handicap_", "").replace("_", ".")
+            numeric_part = _format_line_number(handicap.value.replace("asian_handicap_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.AMERICAN_FOOTBALL,
                 {
@@ -438,7 +461,7 @@ class SportMarketRegistrar:
 
         # Over/Under Markets
         for over_under in HandballOverUnderMarket:
-            numeric_part = over_under.value.replace("over_under_", "").replace("_", ".")
+            numeric_part = _format_line_number(over_under.value.replace("over_under_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.HANDBALL,
                 {
@@ -452,7 +475,7 @@ class SportMarketRegistrar:
 
         # Asian Handicap Markets
         for asian_handicap in HandballAsianHandicapMarket:
-            numeric_part = asian_handicap.value.replace("handicap_", "").replace("_", ".")
+            numeric_part = _format_line_number(asian_handicap.value.replace("handicap_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.HANDBALL,
                 {
@@ -482,7 +505,7 @@ class SportMarketRegistrar:
 
         # Over/Under Sets
         for over_under in VolleyballOverUnderSetsMarket:
-            numeric_part = over_under.value.replace("over_under_sets_", "").replace("_", ".")
+            numeric_part = _format_line_number(over_under.value.replace("over_under_sets_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.VOLLEYBALL,
                 {
@@ -496,7 +519,7 @@ class SportMarketRegistrar:
 
         # Over/Under Points
         for over_under in VolleyballOverUnderPointsMarket:
-            numeric_part = over_under.value.replace("over_under_points_", "").replace("_", ".")
+            numeric_part = _format_line_number(over_under.value.replace("over_under_points_", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.VOLLEYBALL,
                 {
@@ -510,7 +533,7 @@ class SportMarketRegistrar:
 
         # Asian Handicap Sets
         for handicap in VolleyballAsianHandicapSetsMarket:
-            numeric_part = handicap.value.replace("asian_handicap_", "").replace("_sets", "").replace("_", ".")
+            numeric_part = _format_line_number(handicap.value.replace("asian_handicap_", "").replace("_sets", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.VOLLEYBALL,
                 {
@@ -524,7 +547,7 @@ class SportMarketRegistrar:
 
         # Asian Handicap Points
         for handicap in VolleyballAsianHandicapPointsMarket:
-            numeric_part = handicap.value.replace("asian_handicap_", "").replace("_points", "").replace("_", ".")
+            numeric_part = _format_line_number(handicap.value.replace("asian_handicap_", "").replace("_points", "").replace("_", "."))
             SportMarketRegistry.register(
                 Sport.VOLLEYBALL,
                 {
