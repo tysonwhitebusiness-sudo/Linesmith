@@ -55,3 +55,25 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python src/harvester_scrape.py ${{ github.event.inputs.sports }}
+
+      # Two real runs both failed identically (odds-format dropdown
+      # timeout, page height 0, 0 event rows) even after fixing the
+      # Chromium CI-flags gap — that fix made no observable difference, so
+      # guessing a third blind patch isn't warranted. This captures what
+      # OddsPortal actually serves to this runner's IP (status/headers/
+      # screenshot/HTML) instead — only runs when the scrape step above
+      # failed, and never blocks a successful run.
+      - name: Diagnose failure (screenshot + HTML + response status)
+        if: failure()
+        working-directory: python-odds-service
+        env:
+          HARVESTER_DIAGNOSE_OUT: ${{ github.workspace }}/diagnose-out
+        run: python src/harvester_diagnose.py
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harvester-diagnose
+          path: diagnose-out/
+          retention-days: 7
