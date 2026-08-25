@@ -18,8 +18,10 @@ param(
     # How often EACH sport's own task re-fires. Must stay >= Sports.Count *
     # StaggerMinutes (checked below) or a sport's next scheduled run could
     # land before the prior staggered cycle has even finished the last
-    # sport, defeating the stagger entirely.
-    [int]$IntervalMinutes = 90,
+    # sport, defeating the stagger entirely. 120 gives 6 sports * 15 min
+    # stagger (90 min to start them all) real slack, not just the bare
+    # minimum the check would accept.
+    [int]$IntervalMinutes = 120,
     # Gap between each sport's task start time within one cycle. Sized off
     # this session's real measured worst case (tennis, 485s/8m5s against the
     # 700s internal budget in harvester_scrape.py) plus real margin for
@@ -52,7 +54,7 @@ $taskNamePrefix = "LinesmithOddsHarvester"
 # each invoking `harvester_scrape.py <sport>` with its own generous time
 # limit and a staggered start so they never compete for the same CPU/memory
 # at once, is the fix.
-$sports = @("mlb", "soccer_epl", "soccer_mls", "tennis")
+$sports = @("mlb", "soccer_epl", "soccer_mls", "tennis", "nfl", "cfb")
 if ($IntervalMinutes -lt ($sports.Count * $StaggerMinutes)) {
     Write-Error "IntervalMinutes ($IntervalMinutes) must be >= Sports.Count * StaggerMinutes ($($sports.Count) * $StaggerMinutes = $($sports.Count * $StaggerMinutes)), or a sport's next run could land before the staggered cycle finishes."
     exit 1

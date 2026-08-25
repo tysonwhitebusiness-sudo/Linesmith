@@ -122,6 +122,34 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
         markets=["1x2"],
         load_games=functools.partial(load_sport_games, "soccer_mls"),
     ),
+    # NFL/CFB: moneyline only, not "home_away + totals" like MLB. This isn't
+    # laziness - it's a real limit of how OddsHarvester's totals/handicap
+    # markets work: each market token is a FIXED numeric line (e.g.
+    # over_under_44_5), clicked by exact page text, not "whatever the
+    # current live total is". MLB's real totals cluster tightly (7.5-9.5)
+    # so two fixed lines (8.5/9.0) cover nearly every real game. NFL/CFB
+    # totals routinely range from the 30s to the 60s and spreads from
+    # pick'em to two-plus scores - no small fixed set of lines would hit
+    # more than a fraction of real games, and every miss costs a full
+    # click-timeout (measured this session: MLB's own whole-number-line bug
+    # made exactly this mistake look like ~110s wasted per failed match).
+    # Revisit only if a genuinely different extraction approach (reading
+    # whatever line is actually rendered, rather than clicking a
+    # pre-guessed one) becomes available.
+    "nfl": ScrapeTarget(
+        sport="nfl",
+        harvester_sport="american-football",
+        leagues=["nfl"],
+        markets=["home_away"],
+        load_games=functools.partial(load_sport_games, "nfl"),
+    ),
+    "cfb": ScrapeTarget(
+        sport="cfb",
+        harvester_sport="american-football",
+        leagues=["ncaa"],
+        markets=["home_away"],
+        load_games=functools.partial(load_sport_games, "cfb"),
+    ),
     # No per-tour league key exists (OddsPortal has 150+ individual
     # tournament keys, no umbrella "ATP"/"WTA") — leagues=None falls back to
     # a date-scoped, tour-agnostic scrape (see _run_harvester_cli), verified
@@ -165,6 +193,23 @@ _NAME_ALIASES: list[tuple[str, str]] = [
     (r"\bla\b", "los angeles"),
 ]
 
+# Whole-name aliases, anchored (^...$) rather than substring - deliberately
+# NOT added to _NAME_ALIASES above, because college football is full of
+# real, distinct "X" vs "X State" school pairs (Michigan/Michigan State,
+# Ohio/Ohio State, Washington/Washington State, ...) where a substring or
+# missing-word rule would risk silently cross-matching two different real
+# teams. These are narrow, exact full-name equivalents verified live this
+# session, not a general pattern: OddsPortal spells NC State out in full
+# ("North Carolina State") where ESPN's own name already uses the
+# abbreviated "NC State Wolfpack"; OddsPortal renders Sacramento State's
+# "California State" system prefix as "CS Sacramento" where ESPN uses
+# "Sacramento State Hornets". Anchored so they can only ever replace the
+# ENTIRE name, never a substring within some other school's longer name.
+_FULL_NAME_ALIASES: dict[str, str] = {
+    "north carolina state": "nc state",
+    "cs sacramento": "sacramento state",
+}
+
 # Below this many characters, substring containment risks a coincidental
 # false match rather than a real shortened-name relationship — real bug
 # caught before shipping: naive containment on "la" (2 chars) happened to
@@ -178,6 +223,7 @@ _MIN_CONTAINMENT_LEN = 4
 
 def _norm(name: str) -> str:
     name = name.lower()
+    name = _FULL_NAME_ALIASES.get(name, name)
     for pattern, replacement in _NAME_ALIASES:
         name = re.sub(pattern, replacement, name)
     return re.sub(r"[^a-z]", "", name)
@@ -189,6 +235,7 @@ def _norm_words(name: str) -> frozenset[str]:
     significant word, just not the same order, which no amount of prefix/
     substring matching on the joined string can bridge."""
     name = name.lower()
+    name = _FULL_NAME_ALIASES.get(name, name)
     for pattern, replacement in _NAME_ALIASES:
         name = re.sub(pattern, replacement, name)
     words = re.findall(r"[a-z]+", name)
@@ -196,32 +243,47 @@ def _norm_words(name: str) -> frozenset[str]:
 
 
 def _match_game(games: list[Game], home_team: str, away_team: str) -> Game | None:
-    """Three tiers, exact first: OddsPortal routinely shortens club names
-    in ways plain equality can't survive. Real mismatches found live and
-    fixed here, not guessed in advance — MLB's simple "City Nickname" names
-    never exposed any of this:
+    """Per-side matching (side_matches), tried exact first, then two safe
+    fallbacks, then two whole-game fallbacks below that need both sides at
+    once. OddsPortal routinely shortens club names in ways plain equality
+    can't survive - real mismatches found live and fixed here, not guessed
+    in advance (MLB's simple "City Nickname" names never exposed any of
+    this):
+      - abbreviation match (CFB: OddsPortal's bare "TCU"/"USC" against
+        ESPN's own curated home_abbr/away_abbr field, e.g. ESPN's real name
+        "TCU Horned Frogs" carries abbr "TCU" - safe and precise since
+        ESPN's abbreviations are already unique, official per-team codes,
+        unlike a raw 3-char substring check which would need the same
+        _MIN_CONTAINMENT_LEN guard short acronyms fall below)
       - substring containment (EPL: "Nottingham" for "Nottingham Forest",
         "Hull" for "Hull City", "Newcastle" for "Newcastle United", etc.)
+    Below that, two whole-game fallbacks that can't be decided per side:
       - word-set equality, order-independent (MLS: "Red Bull New York" vs
         "New York Red Bulls")
-    Both fallbacks apply to home and away independently — a team on one
-    side matching via containment doesn't require the other side to match
-    the same way.
+      - tennis's "Surname F." player-name parsing (see _player_name_matches)
+    A team matching via one mechanism on one side never requires the other
+    side to match the same way - each side picks whichever check succeeds
+    first.
     """
+    def side_matches(raw_norm: str, game_full_name: str, game_abbr: str) -> bool:
+        game_n = _norm(game_full_name)
+        if raw_norm == game_n:
+            return True
+        # Abbreviation match: safe and precise on its own, independent of
+        # _MIN_CONTAINMENT_LEN, since ESPN's abbr codes are already unique,
+        # official per-team identifiers (e.g. "TCU Horned Frogs" carries
+        # abbr "TCU") - not a coincidental short substring the way a raw
+        # 3-char containment check would risk.
+        abbr_n = re.sub(r"[^a-z]", "", game_abbr.lower())
+        if abbr_n and raw_norm == abbr_n:
+            return True
+        if len(raw_norm) < _MIN_CONTAINMENT_LEN or len(game_n) < _MIN_CONTAINMENT_LEN:
+            return False
+        return raw_norm in game_n or game_n in raw_norm
+
     home_n, away_n = _norm(home_team), _norm(away_team)
     for g in games:
-        game_home_n, game_away_n = _norm(g.home_team_name), _norm(g.away_team_name)
-        if game_home_n == home_n and game_away_n == away_n:
-            return g
-
-    def side_matches(a: str, b: str) -> bool:
-        if len(a) < _MIN_CONTAINMENT_LEN or len(b) < _MIN_CONTAINMENT_LEN:
-            return a == b
-        return a in b or b in a
-
-    for g in games:
-        game_home_n, game_away_n = _norm(g.home_team_name), _norm(g.away_team_name)
-        if side_matches(home_n, game_home_n) and side_matches(away_n, game_away_n):
+        if side_matches(home_n, g.home_team_name, g.home_abbr) and side_matches(away_n, g.away_team_name, g.away_abbr):
             return g
 
     home_w, away_w = _norm_words(home_team), _norm_words(away_team)
