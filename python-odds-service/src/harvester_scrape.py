@@ -32,6 +32,7 @@ import db
 from game_context import Game, load_mlb_games
 from predict.mlb_game_lines import BookmakerOdds, GameLine
 from predict.odds_lines_cycle import _game_odds_book_line_rows, _game_odds_history_rows
+from predict.statsapi import eastern_date
 
 HEALTH_CHECK_NAME = "oddsharvester_scrape"
 
@@ -256,22 +257,37 @@ SCRAPE_TIMEOUT_SECONDS = 180
 async def _run_harvester_cli(target: ScrapeTarget) -> list[dict]:
     """Launches the vendored oddsharvester CLI as a real OS subprocess (a
     genuine child process, not something this script's own event loop
-    blocks on inline) in live mode, one call covering every configured
-    league for this sport (the CLI natively takes a comma-separated -l
-    list), full per-bookmaker detail (deliberately NOT --preview-only,
-    which returns best-price-only with no bookmaker breakdown — the whole
-    point of this integration is the per-book grid)."""
+    blocks on inline), one call covering every configured league for this
+    sport (the CLI natively takes a comma-separated -l list), full
+    per-bookmaker detail (deliberately NOT --preview-only, which returns
+    best-price-only with no bookmaker breakdown — the whole point of this
+    integration is the per-book grid).
+
+    Uses `upcoming` mode scoped to today's US Eastern date, NOT `live` mode
+    — a real, disclosed bug from this session's first end-to-end run: `live`
+    mode only returns matches CURRENTLY in play, which for MLB is empty
+    something like 20 of 24 hours a day (games mostly run evening ET). A
+    grid meant to show "today's current odds" needs pre-match coverage,
+    which is what `upcoming` actually returns; `live` mode is the wrong
+    entry point for this table's purpose even though it's what the old,
+    dead TS integration also happened to use. Same output schema either
+    way (verified: both modes route through the same market-extraction
+    code) — this only changes which matches get discovered, not how a
+    discovered match's odds are parsed.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         out_path = os.path.join(tmp, "out.json")
         args = [
             sys.executable,
             "-m",
             "oddsharvester",
-            "live",
+            "upcoming",
             "-s",
             target.harvester_sport,
             "-l",
             ",".join(target.leagues),
+            "-d",
+            eastern_date().replace("-", ""),
             "-m",
             ",".join(target.markets),
             "--headless",
@@ -296,10 +312,13 @@ async def _run_harvester_cli(target: ScrapeTarget) -> list[dict]:
                 f"oddsharvester scrape for {target.sport} exited {proc.returncode}: {stdout.decode(errors='replace')[-2000:]}"
             )
 
-        # README's own documented behavior: zero live matches is a normal
-        # outcome and the command exits 0 without writing a file — not an
-        # error, but the caller needs to tell that apart from a genuine
-        # anti-bot zero-rows failure (see run_target below).
+        # README documents this behavior for `live` mode specifically (zero
+        # live matches -> exit 0, no file written); kept as a defensive
+        # fallback here too in case `upcoming` behaves the same way on a
+        # genuinely empty date, but for `upcoming` scoped to a date our own
+        # snapshot already confirmed has real scheduled games, this should
+        # not normally happen — see run_target's healthy check below, which
+        # treats it as a real signal worth flagging, not a shrug.
         if not os.path.exists(out_path):
             return []
 
