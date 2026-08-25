@@ -25,14 +25,21 @@ On the laptop that will stay on:
    This creates a Python virtual environment, installs dependencies
    (including Playwright's Chromium), and registers **one Windows Scheduled
    Task per sport** (`LinesmithOddsHarvester-mlb`, `-soccer_epl`,
-   `-soccer_mls`, `-tennis`, `-nfl`, `-cfb`), each running the scraper for
-   just that one sport every 120 minutes, staggered 15 minutes apart, while
-   this account is logged in — no Windows password stored anywhere, no
-   admin rights needed to register them. One task per sport (not one task
-   looping every sport back-to-back) is deliberate: running every sport in
-   a single process took ~22 minutes total with only 4 sports this session,
-   which alone would already exceed a single task's execution-time limit,
-   and only grows as more sports are added.
+   `-soccer_mls`, `-tennis`, `-nfl`, `-cfb`, `-nba`, `-nhl`), each running
+   the scraper for just that one sport every 150 minutes, staggered 15
+   minutes apart, while this account is logged in — no Windows password
+   stored anywhere, no admin rights needed to register them. One task per
+   sport (not one task looping every sport back-to-back) is deliberate:
+   running every sport in a single process took ~22 minutes total with only
+   4 sports this session, which alone would already exceed a single task's
+   execution-time limit, and only grows as more sports are added.
+
+   `nba` and `nhl` are included even though both are genuinely off-season
+   right now (NBA preseason starts October, NHL mid-September) — their
+   tasks run, find no real games in the current lookahead window, and exit
+   in a couple seconds without ever launching Chromium. Nothing further to
+   set up once each season's real schedule shows up; the existing task just
+   starts finding real games and scraping them.
 
 5. **Two things, or the task silently stops firing:**
    - Turn off sleep while plugged in:
@@ -50,9 +57,11 @@ Start-ScheduledTask -TaskName 'LinesmithOddsHarvester-mlb'
 Start-Sleep -Seconds 30
 Get-ScheduledTaskInfo -TaskName 'LinesmithOddsHarvester-mlb'
 ```
-`LastTaskResult` should read `0` (success). Anything else means it exited
+`LastTaskResult` should read `0` (success) — note that `nba`/`nhl` return
+`0` even while finding zero games, since "no games right now" is a normal,
+expected off-season outcome, not a failure. Anything else means it exited
 non-zero — see Troubleshooting below. Swap `mlb` for `soccer_epl`,
-`soccer_mls`, `tennis`, `nfl`, or `cfb` to check the others;
+`soccer_mls`, `tennis`, `nfl`, `cfb`, `nba`, or `nhl` to check the others;
 `Get-ScheduledTask -TaskName 'LinesmithOddsHarvester-*'` lists all of them
 at once.
 
@@ -62,14 +71,16 @@ open `/diagnostics` on the deployed app and look for `oddsharvester_scrape_mlb`
 health-checks list (it's the same generic `job_health_checks` table
 `health_check.py` already uses — nothing new to build to see it there).
 `healthy: true` with a real `matched` count means rows are in
-`game_odds_book_lines`.
+`game_odds_book_lines`. `oddsharvester_scrape_nba`/`_nhl` won't appear there
+at all until each real season starts — the health-check write only happens
+once a scrape actually runs, and "no games loaded" exits before that point.
 
 ## Day to day
 
 Nothing to do — it just runs. Re-run the setup script any time you change the
 interval/stagger or want to reinstall dependencies:
 ```powershell
-.\scripts\harvester-laptop-setup.ps1 -IntervalMinutes 120 -StaggerMinutes 15
+.\scripts\harvester-laptop-setup.ps1 -IntervalMinutes 150 -StaggerMinutes 15
 .\scripts\harvester-laptop-setup.ps1 -SkipDependencyInstall   # re-register only, skip reinstalling deps
 ```
 

@@ -27,11 +27,12 @@ import asyncio
 import functools
 import re
 import sys
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import db
-from game_context import Game, load_mlb_games, load_sport_games, load_tennis_games
+from game_context import Game, load_mlb_games, load_nhl_games, load_sport_games, load_tennis_games
 from oddsharvester.core.scraper_app import run_scraper
 from oddsharvester.utils.command_enum import CommandEnum
 from predict.mlb_game_lines import BookmakerOdds, GameLine
@@ -150,6 +151,33 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
         markets=["home_away"],
         load_games=functools.partial(load_sport_games, "cfb"),
     ),
+    # NBA/NHL: wired up ahead of their real seasons starting (both are
+    # genuinely off-season right now - NBA preseason starts October, NHL
+    # mid-September) so the config exists before the odds pipeline is
+    # "locked in" and prediction-model work for these sports begins. The
+    # matching logic (_match_game, _FULL_NAME_ALIASES, accent-stripping) was
+    # verified against real data either way: NBA reuses load_sport_games's
+    # existing ESPN loader (same as NFL/CFB), and NHL's real official
+    # regular-season schedule (gameType 2, load_nhl_games) was fetched live
+    # for October dates to confirm parsing - the season being months away
+    # doesn't mean the schedule doesn't already exist. Moneyline only, same
+    # reasoning as NFL/CFB: NBA/NHL totals and spreads vary too widely per
+    # game for a fixed set of OddsHarvester market tokens to be worth the
+    # click-timeout cost.
+    "nba": ScrapeTarget(
+        sport="nba",
+        harvester_sport="basketball",
+        leagues=["nba"],
+        markets=["home_away"],
+        load_games=functools.partial(load_sport_games, "nba"),
+    ),
+    "nhl": ScrapeTarget(
+        sport="nhl",
+        harvester_sport="ice-hockey",
+        leagues=["nhl"],
+        markets=["home_away"],
+        load_games=load_nhl_games,
+    ),
     # No per-tour league key exists (OddsPortal has 150+ individual
     # tournament keys, no umbrella "ATP"/"WTA") — leagues=None falls back to
     # a date-scoped, tour-agnostic scrape (see _run_harvester_cli), verified
@@ -221,8 +249,27 @@ _FULL_NAME_ALIASES: dict[str, str] = {
 _MIN_CONTAINMENT_LEN = 4
 
 
+def _strip_accents(name: str) -> str:
+    """NFKD-decompose then drop combining marks (unicode category 'Mn') -
+    "Montréal" -> "Montreal", "José" -> "Jose". Without this, the plain-a-z
+    regex both _norm and _norm_words apply next silently DROPS accented
+    letters instead of transliterating them ("Montréal" -> "montral", losing
+    the e entirely) rather than matching what OddsPortal's plain-ASCII
+    spelling normalizes to ("Montreal" -> "montreal") - real bug, not a data
+    problem: confirmed live this session that ESPN's/NHL's own payloads
+    already carry the correct real "é" character (json.dumps(...,
+    ensure_ascii=True) on the raw NHL API response showed a clean \\u00e9);
+    a Windows terminal's inability to DISPLAY that character as anything but
+    a garbled replacement glyph earlier this session was mistaken for actual
+    data corruption and wrongly written off as an out-of-scope upstream
+    encoding bug. It wasn't - it was this normalization gap, and it would
+    have silently broken every single Montreal Canadiens (NHL) game."""
+    decomposed = unicodedata.normalize("NFKD", name)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
 def _norm(name: str) -> str:
-    name = name.lower()
+    name = _strip_accents(name.lower())
     name = _FULL_NAME_ALIASES.get(name, name)
     for pattern, replacement in _NAME_ALIASES:
         name = re.sub(pattern, replacement, name)
@@ -234,7 +281,7 @@ def _norm_words(name: str) -> frozenset[str]:
     York" vs "New York Red Bulls" (MLS, verified live) share every
     significant word, just not the same order, which no amount of prefix/
     substring matching on the joined string can bridge."""
-    name = name.lower()
+    name = _strip_accents(name.lower())
     name = _FULL_NAME_ALIASES.get(name, name)
     for pattern, replacement in _NAME_ALIASES:
         name = re.sub(pattern, replacement, name)

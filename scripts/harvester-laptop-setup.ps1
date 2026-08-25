@@ -18,10 +18,12 @@ param(
     # How often EACH sport's own task re-fires. Must stay >= Sports.Count *
     # StaggerMinutes (checked below) or a sport's next scheduled run could
     # land before the prior staggered cycle has even finished the last
-    # sport, defeating the stagger entirely. 120 gives 6 sports * 15 min
-    # stagger (90 min to start them all) real slack, not just the bare
-    # minimum the check would accept.
-    [int]$IntervalMinutes = 120,
+    # sport, defeating the stagger entirely. 150 gives 8 sports * 15 min
+    # stagger (120 min to start them all) real slack, not just the bare
+    # minimum the check would accept - sized for the worst case where every
+    # sport is in-season and running a full scrape, not today's off-season
+    # nba/nhl quick-exit.
+    [int]$IntervalMinutes = 150,
     # Gap between each sport's task start time within one cycle. Sized off
     # this session's real measured worst case (tennis, 485s/8m5s against the
     # 700s internal budget in harvester_scrape.py) plus real margin for
@@ -54,7 +56,14 @@ $taskNamePrefix = "LinesmithOddsHarvester"
 # each invoking `harvester_scrape.py <sport>` with its own generous time
 # limit and a staggered start so they never compete for the same CPU/memory
 # at once, is the fix.
-$sports = @("mlb", "soccer_epl", "soccer_mls", "tennis", "nfl", "cfb")
+# nba/nhl included even though both are genuinely off-season right now
+# (NBA preseason starts October, NHL mid-September): harvester_scrape.py's
+# run_target bails out in a couple seconds, before ever launching Chromium,
+# when its own game loader finds no real games in the current window - so
+# registering these tasks now is cheap and harmless, and means the laptop
+# picks up real odds the moment each season's real schedule enters the
+# lookahead window, with no further setup needed once that happens.
+$sports = @("mlb", "soccer_epl", "soccer_mls", "tennis", "nfl", "cfb", "nba", "nhl")
 if ($IntervalMinutes -lt ($sports.Count * $StaggerMinutes)) {
     Write-Error "IntervalMinutes ($IntervalMinutes) must be >= Sports.Count * StaggerMinutes ($($sports.Count) * $StaggerMinutes = $($sports.Count * $StaggerMinutes)), or a sport's next run could land before the staggered cycle finishes."
     exit 1

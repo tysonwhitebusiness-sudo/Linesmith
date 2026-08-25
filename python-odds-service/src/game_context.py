@@ -278,6 +278,92 @@ async def load_sport_games(sport: str) -> list[Game]:
     return games
 
 
+_NHL_BASE = "https://api-web.nhle.com/v1"
+
+
+def _nhl_team_display_name(team: dict) -> str:
+    """Direct port of nhle.ts's teamDisplayName: NHL's schedule payload has
+    no single "team name" field, just placeName ("Toronto") + commonName
+    ("Maple Leafs") that TS already joins the same way — falls back to the
+    abbreviation on the rare payload that's missing both (matches TS)."""
+    place = (team.get("placeName") or {}).get("default")
+    common = (team.get("commonName") or {}).get("default")
+    name = " ".join(p for p in (place, common) if p)
+    return name or team.get("abbrev", "")
+
+
+async def _fetch_nhl_week(client: httpx.AsyncClient, from_date: str) -> list[dict]:
+    """One call = one 7-day window (NHL's own API shape, unlike ESPN's
+    single date-range param) — see lib/sports/nhl/nhle.ts's fetchWeekSchedule,
+    ported here directly rather than through ESPN: this repo deliberately
+    uses the NHL's own real official API for NHL, not ESPN (see NHL's TS
+    adapter for why). gameType == 2 keeps only real regular-season games,
+    same filter TS's fetchWeekSchedule/fetchTeamSeasonSchedule both apply -
+    excludes preseason (gameType 1) and playoffs (gameType 3)."""
+    try:
+        res = await client.get(f"{_NHL_BASE}/schedule/{from_date}", timeout=httpx.Timeout(10.0))
+    except httpx.HTTPError:
+        return []
+    if res.status_code != 200:
+        return []
+    data = res.json()
+    games: list[dict] = []
+    for day in data.get("gameWeek") or []:
+        for g in day.get("games") or []:
+            if g.get("gameType") != 2:
+                continue
+            home, away = g.get("homeTeam") or {}, g.get("awayTeam") or {}
+            if not home.get("id") or not away.get("id"):
+                continue
+            games.append(
+                {
+                    "gameId": str(g.get("id")),
+                    "date": g.get("startTimeUTC"),
+                    "homeTeamId": str(home["id"]),
+                    "homeTeamName": _nhl_team_display_name(home),
+                    "homeAbbr": home.get("abbrev", ""),
+                    "awayTeamId": str(away["id"]),
+                    "awayTeamName": _nhl_team_display_name(away),
+                    "awayAbbr": away.get("abbrev", ""),
+                    "isFinal": g.get("gameState") in ("OFF", "FINAL"),
+                }
+            )
+    return games
+
+
+async def load_nhl_games() -> list[Game]:
+    """No roster — nothing in this app resolves NHL player props through
+    game_context yet (unlike MLB/NFL/soccer's roster-fed entity resolution
+    above), so fetching per-team rosters here would be speculative work for
+    a caller that doesn't exist. Add it the same way load_sport_games does
+    if/when NHL prop resolution is built. Two sequential 7-day-window calls
+    (today, today+7) match the ~14-day lookahead every other non-MLB sport
+    loader uses; deduplicated by gameId since NHL's own week boundaries
+    could in principle overlap depending on time-of-day at call time."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    next_week = (datetime.now(timezone.utc) + timedelta(days=7)).strftime("%Y-%m-%d")
+    async with httpx.AsyncClient() as client:
+        week1, week2 = await asyncio.gather(_fetch_nhl_week(client, today), _fetch_nhl_week(client, next_week))
+
+    by_id: dict[str, dict] = {}
+    for g in week1 + week2:
+        by_id[g["gameId"]] = g
+
+    return [
+        Game(
+            sport="nhl",
+            game_id=g["gameId"],
+            away_team_name=g["awayTeamName"],
+            home_team_name=g["homeTeamName"],
+            away_abbr=g["awayAbbr"],
+            home_abbr=g["homeAbbr"],
+            game_date=g["date"] or "",
+            is_final=g["isFinal"],
+        )
+        for g in by_id.values()
+    ]
+
+
 _TENNIS_TOUR_LEAGUE = {"tennis_atp": "atp", "tennis_wta": "wta"}
 
 
