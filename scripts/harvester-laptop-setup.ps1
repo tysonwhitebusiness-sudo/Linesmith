@@ -81,13 +81,27 @@ if (-not (Test-Path $envLocalPath)) {
 }
 
 # --- 5. Scheduled task -------------------------------------------------------
+# Task Scheduler does NOT capture a launched program's stdout/stderr anywhere
+# by default (real gap, found live: LastTaskResult read 0 while the actual
+# run had produced no fresh health-check write and there was no way to see
+# why). Routing through a tiny generated .bat wrapper that redirects output
+# to a log file is the reliable fix - avoids the notoriously fragile
+# cmd.exe /c nested-quoting rules a raw -Argument string would need instead.
+$logPath = Join-Path $pyOddsDir "harvester-scrape.log"
+$batPath = Join-Path $pyOddsDir "run-harvester.bat"
+@"
+@echo off
+echo ---- %date% %time% ---- >> "$logPath"
+"$venvPython" src\harvester_scrape.py >> "$logPath" 2>&1
+"@ | Set-Content -Path $batPath -Encoding ASCII
+
 $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
 if ($existing) {
     Write-Host "Removing existing '$taskName' task to re-register with current settings..."
     Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
 }
 
-$action = New-ScheduledTaskAction -Execute $venvPython -Argument "src\harvester_scrape.py" -WorkingDirectory $pyOddsDir
+$action = New-ScheduledTaskAction -Execute $batPath -WorkingDirectory $pyOddsDir
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
     -RepetitionInterval (New-TimeSpan -Minutes $IntervalMinutes) `
     -RepetitionDuration (New-TimeSpan -Days 3650)   # PowerShell has no "forever"  -  10 years stands in for it
@@ -98,29 +112,42 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartCount 3 `
     -RestartInterval (New-TimeSpan -Minutes 2) `
     -MultipleInstances IgnoreNew
-# S4U: runs whether the user is logged in or not, WITHOUT storing a Windows
-# password anywhere (this script never handles or sees one)  -  needs "Log on
-# as a batch job" rights, already granted by default to standard accounts on
-# most Windows editions. If registration fails, see troubleshooting below.
-$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Limited
+# Interactive: runs while this account is logged in (screen locked is fine,
+# fully logged out is not) and needs NO elevation to register. S4U (runs
+# even fully logged out, no password stored) was tried first and requires
+# admin rights to register on a standard account - confirmed live, it threw
+# "Access is denied" as a non-admin here. Interactive is the right tradeoff
+# for an always-on laptop where the account simply stays logged in with the
+# screen locked, over needing an elevated PowerShell window every re-setup.
+$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
-    -Description "Scrapes OddsPortal.com for game odds every $IntervalMinutes minutes. See scripts/harvester-laptop-setup.ps1." | Out-Null
+try {
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
+        -Description "Scrapes OddsPortal.com for game odds every $IntervalMinutes minutes. See scripts/harvester-laptop-setup.ps1." `
+        -ErrorAction Stop | Out-Null
+} catch {
+    Write-Host ""
+    Write-Error "Register-ScheduledTask failed: $($_.Exception.Message)"
+    Write-Host "Re-run this script from an elevated ('Run as Administrator') PowerShell if this is an access-denied error." -ForegroundColor Yellow
+    exit 1
+}
 
 Write-Host ""
-Write-Host "Task '$taskName' registered  -  runs every $IntervalMinutes minutes, starting now, whether logged in or not." -ForegroundColor Green
+Write-Host "Task '$taskName' registered  -  runs every $IntervalMinutes minutes while this account is logged in (screen can be locked)." -ForegroundColor Green
 Write-Host ""
-Write-Host "IMPORTANT  -  prevent sleep while plugged in, or the task silently stops firing:" -ForegroundColor Yellow
-Write-Host "  Settings > System > Power & battery > Screen and sleep > 'When plugged in, put my device to sleep after' -> Never"
+Write-Host "IMPORTANT  -  two things or the task silently stops firing:" -ForegroundColor Yellow
+Write-Host "  1. Prevent sleep while plugged in: Settings > System > Power & battery >"
+Write-Host "     Screen and sleep > 'When plugged in, put my device to sleep after' -> Never"
+Write-Host "  2. Stay logged in to this account (locking the screen is fine, signing out is not)."
 Write-Host ""
 Write-Host "Run it once right now to verify, instead of waiting $IntervalMinutes minutes:"
 Write-Host "  Start-ScheduledTask -TaskName '$taskName'"
+Write-Host ""
+Write-Host "Real output (stdout/stderr) lands here - Task Scheduler itself doesn't capture it:"
+Write-Host "  Get-Content '$logPath' -Tail 40"
 Write-Host ""
 Write-Host "Check its last run result (LastTaskResult 0 = success):"
 Write-Host "  Get-ScheduledTaskInfo -TaskName '$taskName'"
 Write-Host ""
 Write-Host "Stop/remove it entirely:"
 Write-Host "  Unregister-ScheduledTask -TaskName '$taskName' -Confirm:`$false"
-Write-Host ""
-Write-Host "Troubleshooting: if Register-ScheduledTask above failed with an access-denied" -ForegroundColor DarkGray
-Write-Host "error, re-run this script from an elevated ('Run as Administrator') PowerShell." -ForegroundColor DarkGray

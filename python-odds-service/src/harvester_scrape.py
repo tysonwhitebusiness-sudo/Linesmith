@@ -1,48 +1,43 @@
 """OddsHarvester runner — scrapes OddsPortal.com (via the vendored
-`oddsharvester/` CLI, a Playwright browser automation tool) and writes the
-result into the same Postgres tables `python-odds-service`'s own the-odds-api
-port writes (see predict/odds_lines_cycle.py's `_game_odds_book_line_rows`),
-tagged `source='oddsharvester'`.
+`oddsharvester/` package, called in-process — see `_run_harvester_cli`'s own
+docstring for why it's an in-process library call and not a subprocess) and
+writes the result into the same Postgres tables `python-odds-service`'s own
+the-odds-api port writes (see predict/odds_lines_cycle.py's
+`_game_odds_book_line_rows`), tagged `source='oddsharvester'`.
 
 Deliberately NOT part of the SequentialQueue/JOB_REGISTRY this package's own
 main.py runs (see job_queue.py) — a live Chromium process is 300-500MB+ on
 its own, well past what that worker's hard 512MB budget has room for, and a
 Playwright scrape has no natural cooperative-yield point the way NFL's
 rate-limit sleeps do, so it would stall every other job for its full runtime
-if it ran there. This module is invoked instead by a GitHub Actions scheduled
-workflow (.github/workflows/oddsharvester-scrape.yml) running on GitHub's own
-runners — entirely separate compute, same shared Postgres DB, communicating
+if it ran there. Runs instead on a dedicated always-on machine on a Windows
+Scheduled Task (see scripts/harvester-laptop-setup.ps1) — GitHub Actions was
+tried first and abandoned after confirming (real HTTP 429s, see that
+script's own header) that OddsPortal blocks GitHub's shared runner IPs
+wholesale; a residential/office IP doesn't share that problem. Communicates
 with the rest of this app the same way every other cross-app boundary here
-already does: shared tables, byte-for-byte agreed schema, no HTTP/RPC layer.
+already does: shared Postgres tables, byte-for-byte agreed schema, no
+HTTP/RPC layer.
 
 Run directly: `python src/harvester_scrape.py [sport ...]` (defaults to every
 sport in SCRAPE_CONFIG). Requires DATABASE_URL (same Postgres both apps use)
 and the `oddsharvester` package installed with its Playwright browser.
 """
 import asyncio
-import json
-import os
 import re
 import sys
-import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import db
 from game_context import Game, load_mlb_games
+from oddsharvester.core.scraper_app import run_scraper
+from oddsharvester.utils.command_enum import CommandEnum
 from predict.mlb_game_lines import BookmakerOdds, GameLine
 from predict.odds_lines_cycle import _game_odds_book_line_rows, _game_odds_history_rows
 from predict.statsapi import eastern_date
 
 HEALTH_CHECK_NAME = "oddsharvester_scrape"
-
-# Absolute, not built from a bare relative __file__ — a relative computation
-# here would resolve differently depending on which directory the script
-# happens to be invoked FROM (repo root vs. python-odds-service/ vs. src/,
-# all real invocation shapes across the GitHub Actions workflow and local
-# manual runs), not just where the file itself lives on disk.
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_ODDSHARVESTER_DIR = os.path.join(_REPO_ROOT, "oddsharvester")
 
 # ---------------------------------------------------------------------------
 # Per-sport scrape configuration. Phase 1 pilot: MLB only (verified against
@@ -70,10 +65,21 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
         leagues=["mlb"],
         # Baseball has no handicap/spread market on OddsPortal at all
         # (confirmed live this session, and in the vendored package's own
-        # README) — moneyline + a representative band of real MLB run-line
-        # totals is the complete real market set for this sport, not a
-        # partial list.
-        markets=["home_away", "over_under_7_5", "over_under_8_0", "over_under_8_5", "over_under_9_0", "over_under_9_5"],
+        # README). PHASE 1 SCOPE: moneyline only. Three real runs this
+        # session tried to also cover totals (6 tokens, then 3, then 2) and
+        # every one exceeded a 300s budget — even ONE extra total line
+        # pushed past it, on top of a market (over_under_9_0) that failed
+        # its "find and click" selector on nearly every match (today's real
+        # lines mostly aren't sitting there), each failure costing a real
+        # UI-interaction timeout for zero benefit. home_away ALONE is the
+        # only configuration that has ever actually completed successfully
+        # end to end through this script (twice, ~210s both times, 100%
+        # success) — shipping that proven baseline rather than continuing to
+        # guess at market/timing combinations. Adding totals coverage is a
+        # deliberate future increment: add ONE line, measure its real added
+        # cost on the actual dedicated machine, then decide whether a second
+        # is affordable — not a band chosen up front.
+        markets=["home_away"],
         load_games=load_mlb_games,
     ),
 }
@@ -251,79 +257,91 @@ def _record_to_game_line(record: dict, game_id: str) -> GameLine:
 # CLI invocation
 # ---------------------------------------------------------------------------
 
-SCRAPE_TIMEOUT_SECONDS = 180
+# A clean timed run this session (15 MLB matches, concurrency 1, no other
+# load) took 3m30s (210s) end to end, 100% success — concurrency 1 trades
+# speed for the crash-avoidance fix below, and a full MLB slate genuinely
+# needs more than 180s at that concurrency. 300s leaves real margin above
+# the observed 210s while staying comfortably under the scheduled task's
+# own 10-minute execution limit (scripts/harvester-laptop-setup.ps1's
+# -ExecutionTimeLimit).
+SCRAPE_TIMEOUT_SECONDS = 300
 
 
 async def _run_harvester_cli(target: ScrapeTarget) -> list[dict]:
-    """Launches the vendored oddsharvester CLI as a real OS subprocess (a
-    genuine child process, not something this script's own event loop
-    blocks on inline), one call covering every configured league for this
-    sport (the CLI natively takes a comma-separated -l list), full
-    per-bookmaker detail (deliberately NOT --preview-only, which returns
-    best-price-only with no bookmaker breakdown — the whole point of this
-    integration is the per-book grid).
+    """Calls the vendored oddsharvester package's own scraper function
+    IN-PROCESS — not a subprocess at all, deliberately.
+
+    Real bug found and fixed this session, the actual root cause behind
+    every earlier "hangs indefinitely" symptom (which earlier fixes this
+    session — moving off asyncio.create_subprocess_exec, redirecting stdout
+    to a file instead of a pipe — never actually resolved, despite each
+    looking plausible at the time): launching the CLI as `python -m
+    oddsharvester ...` from THIS already-running script adds an EXTRA
+    process generation to the tree (this script -> CLI subprocess ->
+    Chromium, a great-grandchild), on top of what the CLI already does
+    itself (process -> Chromium, a grandchild) when run directly. Proven by
+    a controlled A/B comparison run back-to-back on the same loaded
+    machine: the bare CLI (shell -> python -> Chromium) reliably completed
+    in ~210s both times; this script's subprocess-of-a-subprocess wrapper
+    (shell -> python -> python -> Chromium) never completed even once,
+    timing out at 180s, then 300s, then 450s, regardless of which
+    subprocess-launching mechanism was used to create that middle process.
+    The fix removes the extra generation entirely: oddsharvester's CLI
+    command (cli/commands/upcoming.py) is a thin wrapper over
+    oddsharvester.core.scraper_app.run_scraper — calling that directly
+    means Chromium is this script's own grandchild again, matching the
+    process-tree shape that was always proven to work.
+
+    One real, disclosed side effect of calling the library function instead
+    of the CLI: oddsharvester's own logging setup (invoked by its CLI entry
+    point, not by run_scraper itself) is bypassed, so its internal INFO logs
+    won't appear in this script's own output. Not a concern for Phase 1
+    (the health-check row and this function's own return value are what
+    matter operationally) but worth knowing if a future debugging session
+    goes looking for that log stream and doesn't find it.
 
     Uses `upcoming` mode scoped to today's US Eastern date, NOT `live` mode
-    — a real, disclosed bug from this session's first end-to-end run: `live`
-    mode only returns matches CURRENTLY in play, which for MLB is empty
-    something like 20 of 24 hours a day (games mostly run evening ET). A
-    grid meant to show "today's current odds" needs pre-match coverage,
-    which is what `upcoming` actually returns; `live` mode is the wrong
-    entry point for this table's purpose even though it's what the old,
-    dead TS integration also happened to use. Same output schema either
-    way (verified: both modes route through the same market-extraction
-    code) — this only changes which matches get discovered, not how a
-    discovered match's odds are parsed.
+    — a separate, earlier bug from this session's first end-to-end run:
+    `live` mode only returns matches CURRENTLY in play, which for MLB is
+    empty something like 20 of 24 hours a day (games mostly run evening
+    ET). A grid meant to show "today's current odds" needs pre-match
+    coverage, which is what `upcoming` actually returns. Concurrency fixed
+    at 1 (oddsharvester's own default is 3) — a real run this session
+    crashed mid-scrape ("Page crashed"/"Target crashed") at the default,
+    trading some wall-clock time for stability.
     """
-    with tempfile.TemporaryDirectory() as tmp:
-        out_path = os.path.join(tmp, "out.json")
-        args = [
-            sys.executable,
-            "-m",
-            "oddsharvester",
-            "upcoming",
-            "-s",
-            target.harvester_sport,
-            "-l",
-            ",".join(target.leagues),
-            "-d",
-            eastern_date().replace("-", ""),
-            "-m",
-            ",".join(target.markets),
-            "--headless",
-            "-o",
-            out_path,
-        ]
-        proc = await asyncio.create_subprocess_exec(
-            *args,
-            cwd=_ODDSHARVESTER_DIR,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
+    try:
+        result = await asyncio.wait_for(
+            run_scraper(
+                command=CommandEnum.UPCOMING_MATCHES,
+                sport=target.harvester_sport,
+                date=eastern_date().replace("-", ""),
+                leagues=target.leagues,
+                markets=target.markets,
+                headless=True,
+                concurrency_tasks=1,
+            ),
+            timeout=SCRAPE_TIMEOUT_SECONDS,
         )
-        try:
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=SCRAPE_TIMEOUT_SECONDS)
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            raise RuntimeError(f"oddsharvester scrape for {target.sport} exceeded {SCRAPE_TIMEOUT_SECONDS}s")
+    except asyncio.TimeoutError:
+        raise RuntimeError(f"oddsharvester scrape for {target.sport} exceeded {SCRAPE_TIMEOUT_SECONDS}s")
 
-        if proc.returncode != 0:
-            raise RuntimeError(
-                f"oddsharvester scrape for {target.sport} exited {proc.returncode}: {stdout.decode(errors='replace')[-2000:]}"
-            )
+    if result is None:
+        raise RuntimeError(f"oddsharvester scrape for {target.sport}: run_scraper returned None (fatal init error)")
 
-        # README documents this behavior for `live` mode specifically (zero
-        # live matches -> exit 0, no file written); kept as a defensive
-        # fallback here too in case `upcoming` behaves the same way on a
-        # genuinely empty date, but for `upcoming` scoped to a date our own
-        # snapshot already confirmed has real scheduled games, this should
-        # not normally happen — see run_target's healthy check below, which
-        # treats it as a real signal worth flagging, not a shrug.
-        if not os.path.exists(out_path):
-            return []
+    # README documents an all-matches-failed outcome as a genuinely normal
+    # "zero live matches" case for `live` mode; for `upcoming` scoped to a
+    # date our own snapshot already confirmed has real scheduled games,
+    # zero successes with real failures recorded is a real signal worth
+    # surfacing, not a shrug — same "log loudly" discipline as the totals-
+    # merge conflict warning above.
+    if not result.success and result.failed:
+        raise RuntimeError(
+            f"oddsharvester scrape for {target.sport}: all {len(result.failed)} match(es) failed "
+            f"(first: {result.failed[0].error_message})"
+        )
 
-        with open(out_path, encoding="utf-8") as f:
-            return json.load(f)
+    return result.success
 
 
 # ---------------------------------------------------------------------------
