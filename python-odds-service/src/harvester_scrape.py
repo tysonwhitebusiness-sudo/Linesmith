@@ -24,18 +24,18 @@ sport in SCRAPE_CONFIG). Requires DATABASE_URL (same Postgres both apps use)
 and the `oddsharvester` package installed with its Playwright browser.
 """
 import asyncio
+import functools
 import re
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import db
-from game_context import Game, load_mlb_games
+from game_context import Game, load_mlb_games, load_sport_games
 from oddsharvester.core.scraper_app import run_scraper
 from oddsharvester.utils.command_enum import CommandEnum
 from predict.mlb_game_lines import BookmakerOdds, GameLine
 from predict.odds_lines_cycle import _game_odds_book_line_rows, _game_odds_history_rows
-from predict.statsapi import eastern_date
 
 HEALTH_CHECK_NAME = "oddsharvester_scrape"
 
@@ -82,6 +82,19 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
         markets=["home_away", "over_under_8_5", "over_under_9_0"],
         load_games=load_mlb_games,
     ),
+    # Soccer's real moneyline market is "1x2" (three-way: home/draw/away),
+    # not "home_away" (baseball's two-way convention) — draw_odds is a real
+    # field on BookmakerOdds now (added alongside this), not silently
+    # dropped. Starting moneyline-only, matching the same "prove minimal,
+    # then measure the real cost of adding more" approach that worked for
+    # MLB, rather than assuming totals/btts fit the same budget.
+    "soccer_epl": ScrapeTarget(
+        sport="soccer_epl",
+        harvester_sport="football",
+        leagues=["england-premier-league"],
+        markets=["1x2"],
+        load_games=functools.partial(load_sport_games, "soccer_epl"),
+    ),
 }
 
 
@@ -97,13 +110,38 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
 
 
 def _norm(name: str) -> str:
-    return re.sub(r"[^a-z]", "", name.lower())
+    # "utd" -> "united" BEFORE stripping non-alpha (order matters: stripping
+    # first would turn "Manchester Utd" into "manchesterutd", a completely
+    # different string from "united"'s expansion, not a substring of it
+    # either way) - a real, common OddsPortal abbreviation, verified live
+    # against EPL ("Manchester Utd" vs our own ESPN-sourced "Manchester
+    # United"), not a guessed normalization.
+    name = re.sub(r"\butd\b", "united", name.lower())
+    return re.sub(r"[^a-z]", "", name)
 
 
 def _match_game(games: list[Game], home_team: str, away_team: str) -> Game | None:
+    """Exact match first; falls back to substring containment in either
+    direction — a real, necessary fallback, not a nice-to-have: OddsPortal
+    routinely shortens club names (verified live against EPL: "Nottingham"
+    for "Nottingham Forest", "Hull" for "Hull City", "Newcastle" for
+    "Newcastle United", "Brighton" for "Brighton & Hove Albion", "Leeds" for
+    "Leeds United", "Ipswich" for "Ipswich Town", "Everton"/"Bournemouth"
+    for "AFC Bournemouth") — exact-only matching missed 7 of 10 real EPL
+    matches in one live test. Containment (not equality) after normalization
+    handles all of these; MLB never exposed this since "City Nickname" team
+    names don't have this shortened-vs-full variance the way club names do.
+    """
     home_n, away_n = _norm(home_team), _norm(away_team)
     for g in games:
-        if _norm(g.home_team_name) == home_n and _norm(g.away_team_name) == away_n:
+        game_home_n, game_away_n = _norm(g.home_team_name), _norm(g.away_team_name)
+        if game_home_n == home_n and game_away_n == away_n:
+            return g
+    for g in games:
+        game_home_n, game_away_n = _norm(g.home_team_name), _norm(g.away_team_name)
+        home_match = home_n in game_home_n or game_home_n in home_n
+        away_match = away_n in game_away_n or game_away_n in away_n
+        if home_match and away_match:
             return g
     return None
 
@@ -202,13 +240,20 @@ def _record_to_game_line(record: dict, game_id: str) -> GameLine:
                 continue
             b = book_for(name)
 
-            if market_token == "home_away":
+            if market_token in ("home_away", "1x2"):
+                # 1x2 (soccer's real three-way moneyline: home/draw/away) is
+                # the same "1"/"2" home/away convention plus a real third
+                # outcome, "X" — home_away (two-way sports: baseball, etc.)
+                # simply never has an "X" key to read.
                 home = _parse_decimal_odds(row.get("1"))
                 away = _parse_decimal_odds(row.get("2"))
+                draw = _parse_decimal_odds(row.get("X"))
                 if home is not None:
                     b.home_odds = home
                 if away is not None:
                     b.away_odds = away
+                if draw is not None:
+                    b.draw_odds = draw
             elif point is not None:
                 over = _parse_decimal_odds(row.get("odds_over"))
                 under = _parse_decimal_odds(row.get("odds_under"))
@@ -303,26 +348,46 @@ async def _run_harvester_cli(target: ScrapeTarget) -> list[dict]:
     matter operationally) but worth knowing if a future debugging session
     goes looking for that log stream and doesn't find it.
 
-    Uses `upcoming` mode scoped to today's US Eastern date, NOT `live` mode
-    — a separate, earlier bug from this session's first end-to-end run:
-    `live` mode only returns matches CURRENTLY in play, which for MLB is
-    empty something like 20 of 24 hours a day (games mostly run evening
-    ET). A grid meant to show "today's current odds" needs pre-match
-    coverage, which is what `upcoming` actually returns. Concurrency fixed
-    at 1 (oddsharvester's own default is 3) — a real run this session
-    crashed mid-scrape ("Page crashed"/"Target crashed") at the default,
-    trading some wall-clock time for stability.
+    Uses `upcoming` mode, NOT `live` mode — a separate, earlier bug from this
+    session's first end-to-end run: `live` mode only returns matches
+    CURRENTLY in play, which for MLB is empty something like 20 of 24 hours
+    a day (games mostly run evening ET). A grid meant to show "today's
+    current odds" needs pre-match coverage, which is what `upcoming`
+    actually returns.
+
+    Scoped by `kickoff_within_hours`, NOT `-d <today>` — a second real bug
+    found live testing Soccer/EPL: `-d <today>` only returns matches on
+    TODAY's exact calendar date, so any sport with a real gap between game
+    days (EPL doesn't play daily — verified live: 0 matches today, 20 real
+    upcoming matches sitting 3+ days out) reads as "0 records" on every
+    off-day, which this function's own healthy-check would then wrongly
+    flag as a possible anti-bot block. kickoff_within_hours scopes to
+    "matches happening soon" regardless of which exact calendar date that
+    falls on — correct for MLB's daily cadence too, not just a soccer-only
+    fix. First tried 72h; verified live it still only caught 1 of a real
+    20-match EPL slate (weekly-cadence leagues can sit right at that
+    boundary depending which day of the week the scrape happens to run).
+    168h (a full week) reliably catches an entire upcoming matchday
+    regardless of scrape day, for any sport on a weekly or sub-weekly
+    cadence — this only changes which of the ALREADY-listed upcoming
+    matches get visited for full odds detail, not how many pages get
+    fetched to build that list, so it doesn't meaningfully change scrape
+    cost the way adding more requested markets does.
+
+    Concurrency fixed at 1 (oddsharvester's own default is 3) — a real run
+    this session crashed mid-scrape ("Page crashed"/"Target crashed") at
+    the default, trading some wall-clock time for stability.
     """
     try:
         result = await asyncio.wait_for(
             run_scraper(
                 command=CommandEnum.UPCOMING_MATCHES,
                 sport=target.harvester_sport,
-                date=eastern_date().replace("-", ""),
                 leagues=target.leagues,
                 markets=target.markets,
                 headless=True,
                 concurrency_tasks=1,
+                kickoff_within_hours=168.0,
             ),
             timeout=SCRAPE_TIMEOUT_SECONDS,
         )
@@ -366,9 +431,15 @@ async def run_target(target: ScrapeTarget) -> dict:
     matched_lines: list[GameLine] = []
     unmatched = 0
     for record in records:
-        game = _match_game(games, record.get("home_team") or "", record.get("away_team") or "")
+        home_raw, away_raw = record.get("home_team") or "", record.get("away_team") or ""
+        game = _match_game(games, home_raw, away_raw)
         if game is None:
             unmatched += 1
+            # Diagnostic only, not silent — team-name conventions vary more
+            # across sports than MLB's simple "City Nickname" ever exposed
+            # (soccer clubs especially: abbreviations, "FC"/"AFC" suffixes,
+            # etc.), so a real mismatch needs to be SEEN to fix, not guessed.
+            print(f"[harvester_scrape] unmatched: '{away_raw}' @ '{home_raw}' not found in our own {len(games)}-game list", flush=True)
             continue
         matched_lines.append(_record_to_game_line(record, game.game_id))
 

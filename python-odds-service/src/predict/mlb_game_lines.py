@@ -61,6 +61,10 @@ class BookmakerOdds:
     bookmaker: str
     home_odds: float | None = None
     away_odds: float | None = None
+    # Soccer's 1x2 market has a real third outcome the-odds-api's MLB path
+    # never needed (baseball has no draw) — added when OddsHarvester started
+    # covering soccer, optional so every existing MLB caller is unaffected.
+    draw_odds: float | None = None
     over_price: float | None = None
     under_price: float | None = None
     point: float | None = None

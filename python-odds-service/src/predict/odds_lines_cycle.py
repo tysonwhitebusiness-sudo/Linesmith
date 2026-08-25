@@ -315,10 +315,13 @@ def _game_odds_book_line_rows(lines: list[GameLine]) -> list[db.GameOddsBookLine
         for book in line.bookmakers:
             home_american = decimal_to_american(book.home_odds)
             away_american = decimal_to_american(book.away_odds)
+            draw_american = decimal_to_american(book.draw_odds)
             if home_american is not None:
                 add(line.event_id, "moneyline", "home", book.bookmaker, home_american, None)
             if away_american is not None:
                 add(line.event_id, "moneyline", "away", book.bookmaker, away_american, None)
+            if draw_american is not None:
+                add(line.event_id, "moneyline", "draw", book.bookmaker, draw_american, None)
 
             spread_home_american = decimal_to_american(book.spread_home_price)
             spread_away_american = decimal_to_american(book.spread_away_price)
