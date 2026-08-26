@@ -39,7 +39,15 @@ import db
 import gameday
 from game_context import load_mlb_games, load_sport_games, load_tennis_games
 from job_runner import run_provider_specs
-from providers import ProviderSpec, fetch_oddsapiio, fetch_parlayapi, fetch_propline, fetch_sharpapi, fetch_sportsgameodds
+from providers import (
+    ProviderSpec,
+    fetch_oddsapiio,
+    fetch_parlayapi,
+    fetch_propline,
+    fetch_sharpapi,
+    fetch_sharpapi_game_lines,
+    fetch_sportsgameodds,
+)
 
 
 async def _run_timed(job_name: str, coro) -> dict:
@@ -65,6 +73,20 @@ def _tier1_specs() -> list[ProviderSpec]:
             enabled=config.SHARPAPI_ENABLED,
             fetch=lambda client, games, yield_fn: fetch_sharpapi(client, config.SHARPAPI_KEY, games),
             cap_kind="none",  # job-level (not per-game) call frequency already stays well under its per-minute vendor limit
+        ),
+        ProviderSpec(
+            # Recovered game-lines board (2026-08-26 odds-architecture
+            # rebuild) — a second, genuinely separate request against the
+            # same SharpAPI account (is_player_prop=false). Real added
+            # volume, not a free parse: still cap_kind="none" because
+            # SharpAPI's documented free-tier limit is 12 req/min and Tier
+            # 1's real cadence is ~1 cycle/2.5min, so even two calls per
+            # cycle stays far under that — see fetch_sharpapi_game_lines's
+            # own docstring for the arithmetic.
+            provider_id="sharpapi_lines",
+            enabled=config.SHARPAPI_ENABLED,
+            fetch=lambda client, games, yield_fn: fetch_sharpapi_game_lines(client, config.SHARPAPI_KEY, games),
+            cap_kind="none",
         ),
         ProviderSpec(
             provider_id="oddsapiio",
@@ -324,6 +346,17 @@ def _tennis_specs(tour: str) -> list[ProviderSpec]:
             provider_id="sharpapi",
             enabled=config.SHARPAPI_ENABLED,
             fetch=lambda client, games, yield_fn: fetch_sharpapi(client, config.SHARPAPI_KEY, games, sport="tennis", league=tour),
+            cap_kind="none",
+        ),
+        ProviderSpec(
+            # Tennis has no spread/total concept (moneyline — and games/sets
+            # handicap markets this doesn't yet cover — is the real market),
+            # so this mainly recovers moneyline here; same market_type
+            # matching as MLB, same unverified-live caveat as this file's
+            # own tennis sport/league query values above.
+            provider_id="sharpapi_lines",
+            enabled=config.SHARPAPI_ENABLED,
+            fetch=lambda client, games, yield_fn: fetch_sharpapi_game_lines(client, config.SHARPAPI_KEY, games, sport="tennis", league=tour),
             cap_kind="none",
         ),
     ]

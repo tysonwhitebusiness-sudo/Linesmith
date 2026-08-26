@@ -65,7 +65,7 @@ from .game_pick_lock import (
     run_total_lock_cycle,
 )
 from .game_sim_cache import load_game_sim
-from .mlb_game_lines import GameLine, get_mlb_game_lines
+from .mlb_game_lines import GameLine, game_lines_from_book_lines, get_mlb_game_lines
 from .odds_math import american_to_decimal, decimal_to_american, devig_two_way
 from . import statsapi
 from .staking import BootstrapResult, bootstrap_roi_ci, cap_exposure, kelly_fraction, min_edge_gate
@@ -285,7 +285,7 @@ def _game_odds_history_rows(lines: list[GameLine]) -> list[db.GameOddsHistoryInp
     return list(rows.values())
 
 
-def _game_odds_book_line_rows(lines: list[GameLine]) -> list[db.GameOddsBookLineInput]:
+def _game_odds_book_line_rows(lines: list[GameLine], games: list[SnapshotGame]) -> list[db.GameOddsBookLineInput]:
     """Current per-bookmaker prices for the bookmaker-grid UI (2026-08-25,
     OddsHarvester integration) — a sibling to _game_odds_history_rows above,
     not a replacement: that function feeds the append-only archive, this
@@ -295,6 +295,20 @@ def _game_odds_book_line_rows(lines: list[GameLine]) -> list[db.GameOddsBookLine
     it feeds has no use for spread) — every book this source reports is
     written, same dedup-by-key discipline as above, keyed additionally by
     'the-odds-api' as this row's source.
+
+    Real bug fixed here (2026-08-26, odds-architecture rebuild): this used
+    to key rows by `line.event_id` — the-odds-api's OWN event UUID, not the
+    real MLB game_id every other writer (OddsHarvester's
+    _game_odds_book_line_rows_for_source, keyed by the real matched game's
+    game_id) and every real reader (Game Detail, keyed by the URL's real
+    gamePk) actually uses. That silently made every the-odds-api row in
+    this table unreachable by any real query — the rows existed, just under
+    an ID nothing would ever ask for. Matched here the same way
+    run_total_lock_from_lines/run_moneyline_lock_from_snapshot already
+    match a GameLine to its real game in this same file (team-name
+    equality via _team_key) — a line with no matching game on today's
+    slate (an exhibition/off-slate event the-odds-api still returned) is
+    skipped, same "no match, no row" discipline those functions already use.
     """
     rows: dict[tuple[str, str, str, str], db.GameOddsBookLineInput] = {}
 
@@ -313,30 +327,44 @@ def _game_odds_book_line_rows(lines: list[GameLine]) -> list[db.GameOddsBookLine
         )
 
     for line in lines:
+        game = next(
+            (
+                g
+                for g in games
+                if g.away_team_name
+                and g.home_team_name
+                and _team_key(g.away_team_name) == _team_key(line.away_team)
+                and _team_key(g.home_team_name) == _team_key(line.home_team)
+            ),
+            None,
+        )
+        if game is None:
+            continue
+        game_id = game.game_pk
         for book in line.bookmakers:
             home_american = decimal_to_american(book.home_odds)
             away_american = decimal_to_american(book.away_odds)
             draw_american = decimal_to_american(book.draw_odds)
             if home_american is not None:
-                add(line.event_id, "moneyline", "home", book.bookmaker, home_american, None)
+                add(game_id, "moneyline", "home", book.bookmaker, home_american, None)
             if away_american is not None:
-                add(line.event_id, "moneyline", "away", book.bookmaker, away_american, None)
+                add(game_id, "moneyline", "away", book.bookmaker, away_american, None)
             if draw_american is not None:
-                add(line.event_id, "moneyline", "draw", book.bookmaker, draw_american, None)
+                add(game_id, "moneyline", "draw", book.bookmaker, draw_american, None)
 
             spread_home_american = decimal_to_american(book.spread_home_price)
             spread_away_american = decimal_to_american(book.spread_away_price)
             if spread_home_american is not None:
-                add(line.event_id, "spread", "home", book.bookmaker, spread_home_american, book.spread_home)
+                add(game_id, "spread", "home", book.bookmaker, spread_home_american, book.spread_home)
             if spread_away_american is not None:
-                add(line.event_id, "spread", "away", book.bookmaker, spread_away_american, book.spread_away)
+                add(game_id, "spread", "away", book.bookmaker, spread_away_american, book.spread_away)
 
             over_american = decimal_to_american(book.over_price)
             under_american = decimal_to_american(book.under_price)
             if over_american is not None and book.point is not None:
-                add(line.event_id, "total", "over", book.bookmaker, over_american, book.point)
+                add(game_id, "total", "over", book.bookmaker, over_american, book.point)
             if under_american is not None and book.point is not None:
-                add(line.event_id, "total", "under", book.bookmaker, under_american, book.point)
+                add(game_id, "total", "under", book.bookmaker, under_american, book.point)
     return list(rows.values())
 
 
@@ -612,18 +640,75 @@ async def attach_prices_from_lines(lines: list[GameLine], games: list[SnapshotGa
 # ---------------------------------------------------------------------------
 
 
+def _primary_mlb_lines(games: list[SnapshotGame], sharpapi_lines: list[GameLine], the_odds_api_lines: list[GameLine]) -> list[GameLine]:
+    """MLB source-of-truth flip (2026-08-26, odds-architecture rebuild,
+    Phase 2): SharpAPI's recovered game-lines board — free, already fetched
+    for player props (see providers.fetch_sharpapi_game_lines) — is now
+    MLB's PRIMARY game-lines source, matching every other sport's real
+    pattern (they've never depended on a single paid, credit-limited API as
+    their sole foundation the way MLB's the-odds-api dependency did). The
+    odds-api is not removed — it keeps running and keeps writing its own
+    `source='the-odds-api'` rows into game_odds_book_lines (Phase 6's grid
+    reads every source) — it's demoted to a per-game FALLBACK here: a game
+    SharpAPI doesn't have a line for yet still gets one from the-odds-api
+    rather than being left with no market signal at all, but a game
+    SharpAPI does cover no longer depends on the-odds-api's fetch
+    succeeding. sharpapi_lines is keyed by the real game_id (see
+    mlb_game_lines.game_lines_from_book_lines); the_odds_api_lines still
+    needs team-name matching since get_mlb_game_lines's own event_id is
+    the-odds-api's foreign UUID, unchanged by this flip."""
+    sharpapi_by_game = {line.event_id: line for line in sharpapi_lines}
+    primary: list[GameLine] = []
+    for game in games:
+        if game.game_pk in sharpapi_by_game:
+            primary.append(sharpapi_by_game[game.game_pk])
+            continue
+        fallback = next(
+            (
+                l
+                for l in the_odds_api_lines
+                if game.away_team_name
+                and game.home_team_name
+                and _team_key(l.away_team) == _team_key(game.away_team_name)
+                and _team_key(l.home_team) == _team_key(game.home_team_name)
+            ),
+            None,
+        )
+        if fallback is not None:
+            primary.append(fallback)
+    return primary
+
+
 async def run_mlb_odds_lines_cycle(client: httpx.AsyncClient, now=None) -> dict:
     """The full MLB path of app/api/odds/lines/route.ts's GET handler,
     minus the secondary/polish pieces documented in this module's
     docstring. Fetches market lines, reads the shared snapshot, and runs
-    both lock cycles."""
+    both lock cycles.
+
+    Feeds the lock cycles/price-attach from _primary_mlb_lines (SharpAPI-
+    primary, the-odds-api fallback) rather than the-odds-api's result.lines
+    directly — see that function's own docstring. game_odds_history/
+    game_odds_book_lines still log the-odds-api's own rows unconditionally
+    (a real, independent source — Phase 6's grid reads every source, not
+    just whichever one is primary for the model)."""
     result = await get_mlb_game_lines(client)
     games = await read_games_from_snapshot(client)
 
-    await db.write_game_odds_history(_game_odds_history_rows(result.lines))
-    await db.write_game_odds_book_lines(_game_odds_book_line_rows(result.lines))
-    await run_total_lock_from_lines(client, result.lines, games, now)
-    await run_moneyline_lock_from_snapshot(result.lines, games, now)
-    await attach_prices_from_lines(result.lines, games)
+    sharpapi_rows = await db.read_game_odds_book_lines_for_source("mlb", "sharpapi")
+    sharpapi_lines = game_lines_from_book_lines(sharpapi_rows, games)
+    primary_lines = _primary_mlb_lines(games, sharpapi_lines, result.lines)
 
-    return {"lines": len(result.lines), "games": len(games), "from_cache": result.from_cache, "warnings": result.warnings}
+    await db.write_game_odds_history(_game_odds_history_rows(result.lines))
+    await db.write_game_odds_book_lines(_game_odds_book_line_rows(result.lines, games))
+    await run_total_lock_from_lines(client, primary_lines, games, now)
+    await run_moneyline_lock_from_snapshot(primary_lines, games, now)
+    await attach_prices_from_lines(primary_lines, games)
+
+    return {
+        "lines": len(primary_lines),
+        "lines_from_sharpapi": len(sharpapi_lines),
+        "lines_from_the_odds_api_fallback": len(primary_lines) - len(sharpapi_lines),
+        "games": len(games),
+        "from_cache": result.from_cache,
+        "warnings": result.warnings,
+    }

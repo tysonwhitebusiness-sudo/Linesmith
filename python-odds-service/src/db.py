@@ -2013,6 +2013,54 @@ async def get_earliest_observed_total_point(event_id: str) -> float | None:
 
 
 @dataclass
+class GameOddsBookLineRow:
+    sport: str
+    game_id: str
+    market: str
+    side: str
+    bookmaker: str
+    source: str
+    american_odds: int
+    point: float | None
+    decimal_odds: float | None
+    fetched_at: str
+
+
+def _map_game_odds_book_line_row(r) -> GameOddsBookLineRow:
+    return GameOddsBookLineRow(
+        sport=r["sport"],
+        game_id=r["game_id"],
+        market=r["market"],
+        side=r["side"],
+        bookmaker=r["bookmaker"],
+        source=r["source"],
+        american_odds=r["american_odds"],
+        point=r["point"],
+        decimal_odds=r["decimal_odds"],
+        fetched_at=r["fetched_at"].isoformat(),
+    )
+
+
+async def read_game_odds_book_lines_for_source(sport: str, source: str) -> list[GameOddsBookLineRow]:
+    """Every current row a given source has written for a sport — the read
+    half of write_game_odds_book_lines. Not filtered to "today's games";
+    callers cross-reference against their own real slate (a source's row
+    for a game that's no longer on today's slate is simply ignored by that
+    join, same discipline _game_odds_book_line_rows already uses when a
+    GameLine doesn't match any current SnapshotGame)."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT sport, game_id, market, side, bookmaker, source, american_odds, point, decimal_odds, fetched_at
+        FROM game_odds_book_lines WHERE sport = $1 AND source = $2
+        """,
+        sport,
+        source,
+    )
+    return [_map_game_odds_book_line_row(r) for r in rows]
+
+
+@dataclass
 class GameOddsBookLineInput:
     """One bookmaker's current price for one game/market/side — the row
     shape behind the bookmaker-column/market-row heat-mapped table on Game

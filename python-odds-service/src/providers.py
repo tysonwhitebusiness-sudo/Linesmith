@@ -27,7 +27,7 @@ from typing import Awaitable, Callable, Literal
 import httpx
 
 import rate_limit
-from db import PropOddsInput
+from db import GameOddsBookLineInput, PropOddsInput
 from entity_resolution import (
     RosterIndex,
     UnresolvedRow,
@@ -55,6 +55,15 @@ def _decimal_to_american(decimal: float | None) -> int | None:
 class FetchOutcome:
     provider_id: str
     rows: list[PropOddsInput] = field(default_factory=list)
+    # Real game-level moneyline/spread/total rows recovered from a provider's
+    # existing player-prop response (or a genuinely separate game-lines call,
+    # for providers where that's what it takes — see fetch_sharpapi_game_
+    # lines below). Populating this is the entire "recover the data" fix per
+    # provider: job_runner.py's run_provider_specs already writes whatever
+    # lands here via db.write_game_odds_book_lines, the same shared table
+    # the-odds-api and OddsHarvester already write into (source-keyed, so
+    # every writer coexists without overwriting another's rows).
+    game_line_rows: list[GameOddsBookLineInput] = field(default_factory=list)
     unresolved: list[UnresolvedRow] = field(default_factory=list)
     requests: int = 0
     objects: int = 0
@@ -228,6 +237,112 @@ async def fetch_sharpapi(
                 is_delayed=delay_seconds > 0,
                 delay_seconds=delay_seconds,
             )
+    return out
+
+
+_SHARPAPI_MONEYLINE_TYPE = "moneyline"
+_SHARPAPI_SPREAD_TYPES = {"spread", "run_line", "puck_line", "point_spread"}
+_SHARPAPI_TOTAL_TYPES = {"total_points", "total_runs", "total_goals"}
+
+
+def _sharpapi_game_line_rows(
+    compact: list[tuple], games: list[Game]
+) -> list[GameOddsBookLineInput]:
+    """Pure row-building step, split out from fetch_sharpapi_game_lines for
+    direct unit testing (this codebase has no HTTP-mocking convention —
+    every other provider's tests exercise the pure parsing logic directly,
+    see test_providers.py). `compact` is a list of (home, away, sportsbook,
+    market_type, team_side, selection_type, line, american_odds) tuples,
+    already filtered to non-player, main-line rows."""
+    rows: list[GameOddsBookLineInput] = []
+    for game in games:
+        for home, away, sportsbook, market_type, team_side, selection_type, line, american in compact:
+            if not _team_match(home, away, game):
+                continue
+            if american is None or not sportsbook:
+                continue
+
+            if market_type == _SHARPAPI_MONEYLINE_TYPE:
+                if team_side not in ("home", "away"):
+                    continue
+                market, side, point = "moneyline", team_side, None
+            elif market_type in _SHARPAPI_SPREAD_TYPES:
+                if team_side not in ("home", "away") or line is None:
+                    continue
+                market, side, point = "spread", team_side, line
+            elif market_type in _SHARPAPI_TOTAL_TYPES:
+                if selection_type not in ("over", "under") or line is None:
+                    continue
+                market, side, point = "total", selection_type, line
+            else:
+                continue
+
+            rows.append(
+                GameOddsBookLineInput(
+                    sport=game.sport,
+                    game_id=game.game_id,
+                    market=market,
+                    side=side,
+                    bookmaker=sportsbook,
+                    source="sharpapi",
+                    american_odds=american,
+                    point=point,
+                )
+            )
+    return rows
+
+
+async def fetch_sharpapi_game_lines(
+    client: httpx.AsyncClient, api_key: str, games: list[Game], sport: str = "baseball", league: str = "mlb"
+) -> FetchOutcome:
+    """SharpAPI's team-level board — the `is_player_prop=false` variant of
+    the same endpoint fetch_sharpapi already calls, ported from
+    sharpapi.ts's getSharpApiGameLines (which only kept the single best
+    price per side; this keeps every real bookmaker's own row instead,
+    since the bookmaker grid needs all of them). A genuinely separate
+    request, not a free second parse of the props response — SharpAPI's own
+    documented free-tier limit is 12 req/min (sharpapi.ts's module
+    docstring), and Tier 1's real cadence is roughly one cycle per 2.5 min,
+    so even this second call type per cycle stays far under that; no daily
+    cap needed on top of the existing cap_kind="none" the props spec
+    already uses for the same reason.
+
+    is_main_line filters out alternate lines — the grid shows the market's
+    real number, not every juice variant a book offers around it.
+    """
+    out = FetchOutcome(provider_id="sharpapi_lines")
+    if not games:
+        return out
+    url = f"https://api.sharpapi.io/api/v1/odds?sport={sport}&league={league}&is_player_prop=false&limit=500"
+    try:
+        res = await client.get(url, headers={"X-API-Key": api_key}, timeout=TIMEOUT)
+    except httpx.HTTPError as e:
+        out.warnings.append(f"sharpapi game-lines request failed: {e}")
+        return out
+    out.requests = 1
+    if res.status_code != 200:
+        out.warnings.append(f"sharpapi game-lines HTTP {res.status_code}")
+        return out
+
+    body = res.json()  # fallback materialization — see module docstring
+    raw_rows = body.get("data") or []
+    compact = [
+        (
+            r.get("home_team"),
+            r.get("away_team"),
+            r.get("sportsbook"),
+            r.get("market_type"),
+            r.get("team_side"),
+            r.get("selection_type"),
+            r.get("line"),
+            r.get("odds_american"),
+        )
+        for r in raw_rows
+        if not r.get("is_player_prop") and r.get("is_main_line")
+    ]
+    del raw_rows, body
+
+    out.game_line_rows = _sharpapi_game_line_rows(compact, games)
     return out
 
 
@@ -428,6 +543,73 @@ def _sgo_name_from_player_id(player_id: str) -> str:
     return " ".join(p[:1] + p[1:].lower() for p in stripped.split("_") if p)
 
 
+_SGO_GAME_LEVEL_BET_TYPES = {"ml", "sp", "ou"}
+
+
+def _sgo_game_line_rows(event: dict, sport: str, game_id: str) -> list[GameOddsBookLineInput]:
+    """Real moneyline/spread/total, per real bookmaker, for one event —
+    walks the exact same event["odds"] the player-prop loop below already
+    receives in the same response (`if not player_id: continue` previously
+    discarded every one of these rows). betTypeID 'ml'/'sp'/'ou',
+    periodID 'game' (vs. inning/half-scoped), sideID confirmed live this
+    session (MLB) — see sportsGameOdds.ts's getSportsGameOddsGameLine,
+    which this reimplements at per-bookmaker granularity (every book's own
+    price) rather than that function's best-price-only aggregation, since
+    the bookmaker grid needs every book, not just the best one.
+    """
+    rows: list[GameOddsBookLineInput] = []
+    for odd in (event.get("odds") or {}).values():
+        if odd.get("playerID"):
+            continue  # player prop, not a game-level line
+        if odd.get("periodID") != "game":
+            continue
+        bet_type = odd.get("betTypeID")
+        if bet_type not in _SGO_GAME_LEVEL_BET_TYPES:
+            continue
+        side_id = odd.get("sideID")
+
+        for book_raw, book in (odd.get("byBookmaker") or {}).items():
+            if not book.get("available"):
+                continue
+            try:
+                american = int(float(book.get("odds")))
+            except (TypeError, ValueError):
+                continue
+
+            if bet_type == "ml":
+                if side_id not in ("home", "away"):
+                    continue
+                market, side, point = "moneyline", side_id, None
+            elif bet_type == "sp":
+                if side_id not in ("home", "away"):
+                    continue
+                spread_raw = book.get("spread")
+                if spread_raw is None:
+                    continue
+                market, side, point = "spread", side_id, float(spread_raw)
+            else:  # "ou"
+                if side_id not in ("over", "under"):
+                    continue
+                ou_raw = book.get("overUnder")
+                if ou_raw is None:
+                    continue
+                market, side, point = "total", side_id, float(ou_raw)
+
+            rows.append(
+                GameOddsBookLineInput(
+                    sport=sport,
+                    game_id=game_id,
+                    market=market,
+                    side=side,
+                    bookmaker=book_raw,
+                    source="sportsgameodds",
+                    american_odds=american,
+                    point=point,
+                )
+            )
+    return rows
+
+
 async def fetch_sportsgameodds(
     client: httpx.AsyncClient,
     api_key: str,
@@ -488,6 +670,7 @@ async def fetch_sportsgameodds(
         out.objects += len(events)
         roster_index = build_roster_index(game.roster)
         for event in events:
+            out.game_line_rows.extend(_sgo_game_line_rows(event, game.sport, game.game_id))
             players = event.get("players") or {}
             odds = event.get("odds") or {}
             for odd in odds.values():
@@ -540,6 +723,69 @@ async def fetch_sportsgameodds(
 
 
 _PROPLINE_SPORT_KEYS = {"mlb": "baseball_mlb", "soccer_epl": "soccer_epl", "soccer_mls": "soccer_mls"}
+
+# the-odds-api-compatible market keys Propline's own /markets endpoint
+# already returns alongside player-prop keys for an event — real, requested,
+# real dollars already paid for in the same odds call, previously routed
+# through _normalize_row's player-resolution pipeline (which has no player
+# to resolve here, since these are team/total outcomes), landing every one
+# of these rows in `unresolved` as a bogus "unresolved player" rather than
+# ever reaching game_odds_book_lines.
+_PROPLINE_GAME_LEVEL_MARKET_KEYS = {"h2h", "spreads", "totals"}
+
+
+def _propline_game_line_rows(bookmakers: list[dict], game: Game, sport: str) -> list[GameOddsBookLineInput]:
+    """Real moneyline ('h2h')/spread/total for one event, per real bookmaker
+    — the the-odds-api-compatible shape (outcome.name is a team name for
+    h2h/spreads, 'Over'/'Under' for totals; outcome.price is already
+    American, matching this file's existing player-prop path which reads
+    outcome.get('price') the same way with no conversion)."""
+    rows: list[GameOddsBookLineInput] = []
+    for bm in bookmakers:
+        bookmaker_raw = bm.get("key")
+        if not bookmaker_raw:
+            continue
+        for market in bm.get("markets") or []:
+            market_key = market.get("key")
+            if market_key not in _PROPLINE_GAME_LEVEL_MARKET_KEYS:
+                continue
+            for outcome in market.get("outcomes") or []:
+                price = outcome.get("price")
+                if price is None:
+                    continue
+                name = outcome.get("name") or ""
+                if market_key == "totals":
+                    if name.lower() not in ("over", "under"):
+                        continue
+                    market_out, side, point = "total", name.lower(), outcome.get("point")
+                    if point is None:
+                        continue
+                else:
+                    if name == game.home_team_name:
+                        side = "home"
+                    elif name == game.away_team_name:
+                        side = "away"
+                    else:
+                        continue  # outcome name didn't match either team — don't guess
+                    if market_key == "h2h":
+                        market_out, point = "moneyline", None
+                    else:  # "spreads"
+                        market_out, point = "spread", outcome.get("point")
+                        if point is None:
+                            continue
+                rows.append(
+                    GameOddsBookLineInput(
+                        sport=sport,
+                        game_id=game.game_id,
+                        market=market_out,
+                        side=side,
+                        bookmaker=bookmaker_raw,
+                        source="propline",
+                        american_odds=price,
+                        point=point,
+                    )
+                )
+    return rows
 
 
 async def fetch_propline(client: httpx.AsyncClient, api_key: str, games: list[Game], sport: str) -> FetchOutcome:
@@ -596,11 +842,16 @@ async def fetch_propline(client: httpx.AsyncClient, api_key: str, games: list[Ga
             out.warnings.append(f"propline odds HTTP {odds_res.status_code} for {game.game_id}")
             continue
 
+        bookmakers_json = odds_res.json().get("bookmakers") or []
+        out.game_line_rows.extend(_propline_game_line_rows(bookmakers_json, game, sport))
+
         roster_index = build_roster_index(game.roster)
-        for bm in odds_res.json().get("bookmakers") or []:
+        for bm in bookmakers_json:
             bookmaker_raw = bm.get("key")
             for market in bm.get("markets") or []:
                 market_label = market.get("key")
+                if market_label in _PROPLINE_GAME_LEVEL_MARKET_KEYS:
+                    continue  # handled by _propline_game_line_rows above — no player to resolve here
                 for outcome in market.get("outcomes") or []:
                     raw_name = outcome.get("description") or outcome.get("name")
                     side = "under" if "under" in (outcome.get("name") or "").lower() else "over"

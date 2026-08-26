@@ -84,11 +84,18 @@ async def run_provider_specs(
 
     outcomes = [o for o in results if o is not None]
     all_rows = [r for o in outcomes for r in o.rows]
+    all_game_line_rows = [r for o in outcomes for r in o.game_line_rows]
     await db.write_prop_odds(all_rows)
+    # Same shared, source-keyed table the-odds-api and OddsHarvester already
+    # write into (see supabase/migrations/20260825150000_game_odds_book_
+    # lines.sql) — a provider gets its game-lines written for free just by
+    # populating FetchOutcome.game_line_rows, no new job-level plumbing.
+    await db.write_game_odds_book_lines(all_game_line_rows)
     return {
         "games": len(games),
         "rows_matched": sum(o.rows_matched for o in outcomes),
         "rows_written": len(all_rows),
+        "game_lines_written": len(all_game_line_rows),
         "unresolved": sum(len(o.unresolved) for o in outcomes),
         "requests": sum(o.requests for o in outcomes),
         "objects": sum(o.objects for o in outcomes),

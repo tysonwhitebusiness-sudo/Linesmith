@@ -224,6 +224,104 @@ def summarise_odds_event(event: dict) -> GameLine:
 
 
 # ---------------------------------------------------------------------------
+# Building GameLines from game_odds_book_lines (2026-08-26, MLB source-of-
+# truth flip — Phase 2 of the odds-architecture rebuild). Lets any source
+# already writing into that shared table (SharpAPI's recovered game-lines
+# board, in practice) feed the same lock-cycle/attach-price consumers this
+# module's own the-odds-api fetch has always fed, via the same GameLine
+# shape — those consumers don't know or care which source produced the
+# GameLine they're handed.
+# ---------------------------------------------------------------------------
+
+
+def game_lines_from_book_lines(rows: list, games: list) -> list[GameLine]:
+    """Aggregates per-bookmaker game_odds_book_lines rows (already filtered
+    to one source and one sport by the caller — see db.
+    read_game_odds_book_lines_for_source) into real GameLine objects, one
+    per game that has at least one row. Best-price-per-side summary
+    (largest American number wins), same "best available" convention as
+    summarise_odds_event above — every bookmaker's own row is retained in
+    `bookmakers` regardless.
+
+    `games` is the real current slate (predict.odds_lines_cycle.
+    SnapshotGame) — a row whose game_id doesn't match any current game is
+    silently ignored (a stale row for a game no longer on today's slate),
+    matching the same discipline _game_odds_book_line_rows itself already
+    uses in reverse.
+    """
+    games_by_id = {g.game_pk: g for g in games}
+    by_game: dict[str, dict[str, BookmakerOdds]] = {}
+
+    for r in rows:
+        game = games_by_id.get(r.game_id)
+        if game is None:
+            continue
+        book_map = by_game.setdefault(r.game_id, {})
+        entry = book_map.setdefault(r.bookmaker, BookmakerOdds(bookmaker=r.bookmaker))
+        decimal_odds = r.decimal_odds if r.decimal_odds is not None else american_to_decimal(r.american_odds)
+
+        if r.market == "moneyline":
+            if r.side == "home":
+                entry.home_odds = decimal_odds
+            elif r.side == "away":
+                entry.away_odds = decimal_odds
+            elif r.side == "draw":
+                entry.draw_odds = decimal_odds
+        elif r.market == "spread":
+            if r.side == "home":
+                entry.spread_home, entry.spread_home_price = r.point, decimal_odds
+            elif r.side == "away":
+                entry.spread_away, entry.spread_away_price = r.point, decimal_odds
+        elif r.market == "total":
+            entry.point = r.point
+            if r.side == "over":
+                entry.over_price = decimal_odds
+            elif r.side == "under":
+                entry.under_price = decimal_odds
+
+    lines: list[GameLine] = []
+    for game_id, book_map in by_game.items():
+        game = games_by_id[game_id]
+        line = GameLine(
+            event_id=game_id,
+            commence_time=game.first_pitch or "",
+            home_team=game.home_team_name or "",
+            away_team=game.away_team_name or "",
+            bookmakers=list(book_map.values()),
+            book_count=len(book_map),
+        )
+        for r in rows:
+            if r.game_id != game_id:
+                continue
+            american = r.american_odds
+            if r.market == "moneyline":
+                if line.moneyline is None:
+                    line.moneyline = MoneylineSummary()
+                if r.side == "home" and (line.moneyline.home is None or american > line.moneyline.home):
+                    line.moneyline.home, line.moneyline.book = american, r.bookmaker
+                if r.side == "away" and (line.moneyline.away is None or american > line.moneyline.away):
+                    line.moneyline.away, line.moneyline.book = american, r.bookmaker
+            elif r.market == "spread":
+                if line.spread is None:
+                    line.spread = SpreadSummary()
+                if r.side == "home" and (line.spread.home_price is None or american > line.spread.home_price):
+                    line.spread.home_point, line.spread.home_price, line.spread.book = r.point, american, r.bookmaker
+                if r.side == "away" and (line.spread.away_price is None or american > line.spread.away_price):
+                    line.spread.away_point, line.spread.away_price, line.spread.book = r.point, american, r.bookmaker
+            elif r.market == "total":
+                if line.total is None:
+                    line.total = TotalSummary()
+                if r.side == "over" and (line.total.over_price is None or american > line.total.over_price):
+                    line.total.point = r.point if r.point is not None else line.total.point
+                    line.total.over_price, line.total.book = american, r.bookmaker
+                if r.side == "under" and (line.total.under_price is None or american > line.total.under_price):
+                    line.total.point = line.total.point if line.total.point is not None else r.point
+                    line.total.under_price, line.total.book = american, r.bookmaker
+        lines.append(line)
+    return lines
+
+
+# ---------------------------------------------------------------------------
 # JSON shape — MUST match the real TS GameLine interface's camelCase field
 # names exactly (see module docstring). Round-trips through the shared
 # odds_cache table.
