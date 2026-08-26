@@ -8,7 +8,23 @@ import click
 
 from oddsharvester.core.sport_period_registry import SportPeriodRegistry
 from oddsharvester.utils.sport_league_constants import SPORTS_LEAGUES_URLS_MAPPING
-from oddsharvester.utils.sport_market_constants import FOOTBALL_UMBRELLA_MARKETS, Sport
+from oddsharvester.utils.sport_market_constants import (
+    AMERICAN_FOOTBALL_UMBRELLA_MARKETS,
+    BASKETBALL_UMBRELLA_MARKETS,
+    FOOTBALL_UMBRELLA_MARKETS,
+    ICE_HOCKEY_UMBRELLA_MARKETS,
+    Sport,
+)
+
+# Mirrors odds_portal_market_extractor.py's own _SPORT_UMBRELLA_MARKETS — kept as a separate
+# local dict rather than a shared import, matching how FOOTBALL_UMBRELLA_MARKETS etc. are
+# already imported independently into both modules.
+_SPORT_UMBRELLA_MARKETS = {
+    Sport.FOOTBALL: FOOTBALL_UMBRELLA_MARKETS,
+    Sport.AMERICAN_FOOTBALL: AMERICAN_FOOTBALL_UMBRELLA_MARKETS,
+    Sport.BASKETBALL: BASKETBALL_UMBRELLA_MARKETS,
+    Sport.ICE_HOCKEY: ICE_HOCKEY_UMBRELLA_MARKETS,
+}
 from oddsharvester.utils.utils import get_supported_markets
 
 
@@ -107,7 +123,7 @@ def validate_markets(ctx, param, value):
             return value
 
     supported = get_supported_markets(sport)
-    umbrella_tokens = FOOTBALL_UMBRELLA_MARKETS if sport is Sport.FOOTBALL else {}
+    umbrella_tokens = _SPORT_UMBRELLA_MARKETS.get(sport, {})
     invalid = [m for m in value if m not in supported and m not in umbrella_tokens]
 
     if invalid:

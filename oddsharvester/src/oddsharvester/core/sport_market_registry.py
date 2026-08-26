@@ -11,6 +11,7 @@ from oddsharvester.utils.sport_market_constants import (
     FootballOverUnderMarket,
     HandballAsianHandicapMarket,
     HandballOverUnderMarket,
+    IceHockeyAsianHandicapMarket,
     IceHockeyOverUnderMarket,
     RugbyHandicapMarket,
     RugbyOverUnderMarket,
@@ -378,6 +379,23 @@ class SportMarketRegistrar:
                         main_market="Over/Under",
                         specific_market=f"Over/Under +{numeric_part}",
                         odds_labels=["odds_over", "odds_under"],
+                    )
+                },
+            )
+
+        # Register Asian Handicap (puck line) Markets — 2026-08-26, same
+        # registration shape as football's own Asian Handicap (odds_labels
+        # "1"/"2" for home/away price at that line, matching
+        # register_american_football_markets's identical convention).
+        for handicap in IceHockeyAsianHandicapMarket:
+            numeric_part = _format_line_number(handicap.value.replace("asian_handicap_", "").replace("_", "."))
+            SportMarketRegistry.register(
+                Sport.ICE_HOCKEY,
+                {
+                    handicap.value: cls.create_market_lambda(
+                        main_market="Asian Handicap",
+                        specific_market=f"Asian Handicap {numeric_part}",
+                        odds_labels=["1", "2"],
                     )
                 },
             )

@@ -129,6 +129,41 @@ FOOTBALL_UMBRELLA_MARKETS: dict[str, str] = {
 }
 """Umbrella tokens for football that expand to all lines of a market family."""
 
+AMERICAN_FOOTBALL_UMBRELLA_MARKETS: dict[str, str] = {
+    "over_under": "Over/Under",
+    "asian_handicap": "Asian Handicap",
+}
+"""Umbrella tokens for American football (2026-08-26) — same shape as football's, since
+AmericanFootballOverUnderMarket/AmericanFootballAsianHandicapMarket already cover a wide
+enough numeric range (see those enums) for real NFL/CFB lines to resolve via
+line_tokens.line_name_to_token. Kept as a separate dict, not merged into
+FOOTBALL_UMBRELLA_MARKETS: the two sports' Market enums are genuinely different (this is
+line_name_to_token's whole reason for being keyed by (sport, main_market)), so a shared dict
+would misleadingly imply the umbrella expansion is sport-agnostic when the token-validity
+check underneath it is not."""
+
+BASKETBALL_UMBRELLA_MARKETS: dict[str, str] = {
+    "over_under": "Over/Under",
+    "asian_handicap": "Asian Handicap",
+}
+"""Umbrella tokens for basketball (2026-08-26) — BasketballOverUnderMarket/
+BasketballAsianHandicapMarket already cover a real range (100.5+ for totals, ±25.5 for
+handicap), wide enough for real NBA lines. Token *shape* differs from football/American
+football (a "_games" prefix and, for handicap, a "_games" suffix too — see
+line_tokens.py's own _MARKET_CONFIG entry and BasketballAsianHandicapMarket's real values),
+but the umbrella-token *names* ("over_under"/"asian_handicap") stay the same — the shape
+difference is handled entirely inside line_name_to_token, not here."""
+
+ICE_HOCKEY_UMBRELLA_MARKETS: dict[str, str] = {
+    "over_under": "Over/Under",
+    "asian_handicap": "Asian Handicap",
+}
+"""Umbrella tokens for ice hockey (2026-08-26) — IceHockeyAsianHandicapMarket is new
+(built this session; no prior handicap enum existed for ice hockey at all), deliberately
+narrow (±4.5, no whole-number lines — the NHL puck line is a real, standardized ±1.5/±2.5
+convention, not a wide per-game-varying spread like football's). Token shape matches
+football's plain prefix-only convention (no "_games" suffix quirk)."""
+
 
 class TennisMarket(Enum):
     """Tennis-specific markets."""
@@ -681,6 +716,33 @@ class IceHockeyOverUnderMarket(Enum):
     OVER_UNDER_9_5 = "over_under_9_5"
     OVER_UNDER_10_5 = "over_under_10_5"
     OVER_UNDER_11_5 = "over_under_11_5"
+
+
+class IceHockeyAsianHandicapMarket(Enum):
+    """Asian Handicap (puck line) market values for ice hockey (2026-08-26).
+
+    Deliberately a much narrower range than football/basketball's handicap
+    enums, not an oversight: the NHL puck line is a real, standardized
+    betting convention almost always set at ±1.5 goals, with ±2.5 offered
+    as a real but less common alternate line for lopsided matchups —
+    unlike football/basketball, where the real spread genuinely varies
+    game to game across a wide range. A whole-number entry is never
+    included: goal-differential handicaps are always offered at the
+    half-point (no game can push/tie against a .5 line), so there is no
+    whole-number rendering case to cover the way _format_line_number's own
+    docstring describes for over/under lines.
+    """
+
+    HANDICAP_MINUS_4_5 = "asian_handicap_-4_5"
+    HANDICAP_MINUS_3_5 = "asian_handicap_-3_5"
+    HANDICAP_MINUS_2_5 = "asian_handicap_-2_5"
+    HANDICAP_MINUS_1_5 = "asian_handicap_-1_5"
+    HANDICAP_MINUS_0_5 = "asian_handicap_-0_5"
+    HANDICAP_PLUS_0_5 = "asian_handicap_+0_5"
+    HANDICAP_PLUS_1_5 = "asian_handicap_+1_5"
+    HANDICAP_PLUS_2_5 = "asian_handicap_+2_5"
+    HANDICAP_PLUS_3_5 = "asian_handicap_+3_5"
+    HANDICAP_PLUS_4_5 = "asian_handicap_+4_5"
 
 
 class AmericanFootballMarket(Enum):

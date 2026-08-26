@@ -20,7 +20,24 @@ from oddsharvester.core.market_extraction import (
 from oddsharvester.core.market_extraction.line_tokens import line_name_to_token
 from oddsharvester.core.sport_market_registry import SportMarketRegistry
 from oddsharvester.core.sport_period_registry import SportPeriodRegistry
-from oddsharvester.utils.sport_market_constants import FOOTBALL_UMBRELLA_MARKETS, Sport
+from oddsharvester.utils.sport_market_constants import (
+    AMERICAN_FOOTBALL_UMBRELLA_MARKETS,
+    BASKETBALL_UMBRELLA_MARKETS,
+    FOOTBALL_UMBRELLA_MARKETS,
+    ICE_HOCKEY_UMBRELLA_MARKETS,
+    Sport,
+)
+
+# sport value -> that sport's umbrella-token map. Extend here (plus a matching entry in
+# line_tokens._MARKET_CONFIG) when another sport's Over/Under or Asian Handicap enum is wide
+# enough to cover real rendered lines — see AMERICAN_FOOTBALL_UMBRELLA_MARKETS's own docstring
+# for why this isn't a single shared dict across sports.
+_SPORT_UMBRELLA_MARKETS: dict[str, dict[str, str]] = {
+    Sport.FOOTBALL.value: FOOTBALL_UMBRELLA_MARKETS,
+    Sport.AMERICAN_FOOTBALL.value: AMERICAN_FOOTBALL_UMBRELLA_MARKETS,
+    Sport.BASKETBALL.value: BASKETBALL_UMBRELLA_MARKETS,
+    Sport.ICE_HOCKEY.value: ICE_HOCKEY_UMBRELLA_MARKETS,
+}
 
 
 class OddsPortalMarketExtractor:
@@ -87,7 +104,7 @@ class OddsPortalMarketExtractor:
         # running the normal per-market extraction loop below.
         expanded_markets: list[str] = []
         for market in markets:
-            umbrella_main_market = FOOTBALL_UMBRELLA_MARKETS.get(market) if sport == Sport.FOOTBALL.value else None
+            umbrella_main_market = _SPORT_UMBRELLA_MARKETS.get(sport, {}).get(market)
             if umbrella_main_market is None:
                 if market not in expanded_markets:
                     expanded_markets.append(market)
@@ -99,7 +116,7 @@ class OddsPortalMarketExtractor:
                 )
                 line_tokens: list[str] = []
                 for line_name in line_names:
-                    token = line_name_to_token(umbrella_main_market, line_name)
+                    token = line_name_to_token(sport, umbrella_main_market, line_name)
                     if token is not None and token not in line_tokens:
                         line_tokens.append(token)
             except Exception as e:

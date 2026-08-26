@@ -17,6 +17,7 @@ The gotchas are grouped by theme:
 - **§7** — Regional mirror domains and the `--base-url` option.
 - **§8** — Volleyball O/U and AH each split into a Sets axis and a Points axis.
 - **§19** — The 2026-08 frontend redesign (data-testid DOM, H2H links, hash-driven views).
+- **§20** — Umbrella-market (dynamic line discovery) extension checklist per sport.
 
 ---
 
@@ -1483,6 +1484,26 @@ zeroes *both* selector generations.
   odds for a French IP — "All Bookies" is what makes live odds appear.
 
 **Reference:** issue #85; branch `fix/oddsportal-redesign-85`.
+
+---
+
+## §20 — Umbrella-market line discovery needs a per-sport enum + config entry, not just a gate flip
+
+**Severity:** Medium — silently returns zero discovered lines for a sport whose gate is flipped on but whose enum/config isn't wired, which reads exactly like "OddsPortal has no lines for this match" rather than "this sport isn't configured yet."
+
+The `over_under`/`asian_handicap` umbrella tokens (`extract_visible_submarkets_passive` discovers every rendered line via passive/preview mode, `line_name_to_token` maps each discovered label back to a real registered token, then the normal per-token full-extraction loop runs — see `odds_portal_market_extractor.py`'s `scrape_markets`) were football-only until 2026-08-26, when American Football was added (real NFL/CFB totals/spread coverage, a downstream consumer's need). Extending to a third sport is **three separate pieces, not one flag**:
+
+1. That sport's `XxxOverUnderMarket`/`XxxAsianHandicapMarket` enum must already cover a **wide enough real numeric range** — `line_name_to_token`'s membership check silently drops any discovered line whose token isn't a registered enum member (degrades open, logged at WARNING only, never raises). American Football's enums already existed pre-wired for the old fixed-token approach and just needed a wider gate; a sport whose enum is narrow or absent needs that enum built first, with real ranges (not guessed) — see gotcha discipline generally: verify against real rendered lines, don't assume a similar sport's range transfers.
+2. `line_tokens.py`'s `_MARKET_CONFIG` needs a `(Sport.X.value, "Over/Under")`/`(Sport.X.value, "Asian Handicap")` entry pointing at that sport's own enum — **not** football's or American football's. This dict is keyed by `(sport, main_market)` specifically *because* the same rendered label ("Over/Under") means a different valid-value range per sport; collapsing to a single main_market-keyed lookup would let one sport's line silently validate against another's enum.
+3. A per-sport `XXX_UMBRELLA_MARKETS: dict[str, str]` constant (`{"over_under": "Over/Under", "asian_handicap": "Asian Handicap"}`, mirroring `FOOTBALL_UMBRELLA_MARKETS`) registered in `_SPORT_UMBRELLA_MARKETS` (`odds_portal_market_extractor.py`) and in `validators.py`'s CLI market-validation branch — both are per-sport `if`/dict-lookup sites, not automatically inherited from another sport's wiring.
+
+Known real gaps as of 2026-08-26, not yet built (flagged here rather than silently assumed done next time this file is read): **Basketball** already has both enums registered but with a token *prefix* (`over_under_games_...`, a Sets/Points-style axis split, see §8's volleyball precedent) that `line_tokens.py`'s current prefix-stripping logic (`"Over/Under +"` → `over_under_`) does not match — a Basketball `_MARKET_CONFIG` entry needs its own prefix handling, not a copy of football's. **Ice Hockey** has an Over/Under enum but no Asian Handicap/spread enum at all yet. **Tennis/soccer_mls** were not evaluated in this pass.
+
+### Detection signal
+
+A sport's umbrella token (`over_under` in its `markets` list) returns 0 rows/no market data with no error and no WARNING about invalid lines, on a match confirmed (by another means — e.g. a competing odds source, or `--headless=false`) to have real total/spread lines listed. Check, in order: is `Sport.X` present in `_SPORT_UMBRELLA_MARKETS`? Is `(Sport.X.value, main_market)` present in `line_tokens._MARKET_CONFIG`? Does that sport's enum's token prefix actually match what `line_name_to_token`'s prefix-stripping expects (verify against a real rendered line name, not assumed from another sport)?
+
+**Reference:** `line_tokens.py`, `odds_portal_market_extractor.py`'s `_SPORT_UMBRELLA_MARKETS`, `sport_market_constants.py`'s `AMERICAN_FOOTBALL_UMBRELLA_MARKETS`. Built for python-odds-service's odds-architecture rebuild (game_odds_book_lines totals/spread coverage for NFL/CFB).
 
 ---
 

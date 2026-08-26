@@ -24,6 +24,7 @@ sport in SCRAPE_CONFIG). Requires DATABASE_URL (same Postgres both apps use)
 and the `oddsharvester` package installed with its Playwright browser.
 """
 import asyncio
+import dataclasses
 import functools
 import re
 import sys
@@ -33,6 +34,7 @@ from datetime import datetime, timezone
 
 import db
 from game_context import Game, load_mlb_games, load_nhl_games, load_sport_games, load_tennis_games
+from oddsharvester.core.market_extraction.line_tokens import line_name_to_token
 from oddsharvester.core.scraper_app import run_scraper
 from oddsharvester.utils.command_enum import CommandEnum
 from predict.mlb_game_lines import BookmakerOdds, GameLine
@@ -77,6 +79,20 @@ class ScrapeTarget:
     leagues: list[str] | None
     markets: list[str]  # OddsHarvester market tokens for this sport
     load_games: callable  # async () -> list[Game]
+    # False (default, MLB/tennis/soccer's real, proven shape): `markets` is
+    # requested exactly as given, every cycle — correct for sports where a
+    # small fixed set of lines (MLB's 8.5/9.0) or no totals/spread at all
+    # covers real games well.
+    # True (NFL/CFB, 2026-08-26): `markets` is the BASE set only
+    # (typically just "home_away") — real totals/spread lines are instead
+    # discovered per match via a cheap preview pass, matched against a real
+    # reference total/spread already recovered from another provider
+    # (Phase 1's SportsGameOdds/SharpAPI/Propline rows), and only the ONE
+    # discovered line closest to that real reference gets the full
+    # per-bookmaker extraction — "no alternate lines" per explicit
+    # direction, after a live run discovered 41 real-but-irrelevant
+    # alternate total lines for one NFL game. See run_dynamic_lines_target.
+    dynamic_lines: bool = False
 
 
 SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
@@ -106,15 +122,20 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
     # Soccer's real moneyline market is "1x2" (three-way: home/draw/away),
     # not "home_away" (baseball's two-way convention) — draw_odds is a real
     # field on BookmakerOdds now (added alongside this), not silently
-    # dropped. Starting moneyline-only, matching the same "prove minimal,
-    # then measure the real cost of adding more" approach that worked for
-    # MLB, rather than assuming totals/btts fit the same budget.
+    # dropped. Totals/spread now dynamic_lines too (2026-08-26) — football's
+    # own umbrella markets (FOOTBALL_UMBRELLA_MARKETS) already existed
+    # before this session, just never requested here; reusing the same
+    # reference-based, one-real-line-per-match mechanism NFL/CFB use rather
+    # than blindly expanding every discovered line, since soccer's real
+    # total/spread range hasn't been live-verified to be as tightly
+    # clustered as MLB's — safer to not assume.
     "soccer_epl": ScrapeTarget(
         sport="soccer_epl",
         harvester_sport="football",
         leagues=["england-premier-league"],
         markets=["1x2"],
         load_games=functools.partial(load_sport_games, "soccer_epl"),
+        dynamic_lines=True,
     ),
     "soccer_mls": ScrapeTarget(
         sport="soccer_mls",
@@ -122,27 +143,27 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
         leagues=["usa-mls"],
         markets=["1x2"],
         load_games=functools.partial(load_sport_games, "soccer_mls"),
+        dynamic_lines=True,
     ),
-    # NFL/CFB: moneyline only, not "home_away + totals" like MLB. This isn't
-    # laziness - it's a real limit of how OddsHarvester's totals/handicap
-    # markets work: each market token is a FIXED numeric line (e.g.
-    # over_under_44_5), clicked by exact page text, not "whatever the
-    # current live total is". MLB's real totals cluster tightly (7.5-9.5)
-    # so two fixed lines (8.5/9.0) cover nearly every real game. NFL/CFB
-    # totals routinely range from the 30s to the 60s and spreads from
-    # pick'em to two-plus scores - no small fixed set of lines would hit
-    # more than a fraction of real games, and every miss costs a full
-    # click-timeout (measured this session: MLB's own whole-number-line bug
-    # made exactly this mistake look like ~110s wasted per failed match).
-    # Revisit only if a genuinely different extraction approach (reading
-    # whatever line is actually rendered, rather than clicking a
-    # pre-guessed one) becomes available.
+    # NFL/CFB: home_away + real totals/spread coverage via dynamic-lines
+    # discovery (2026-08-26, odds-architecture rebuild Phase 4) — see
+    # ScrapeTarget.dynamic_lines and run_dynamic_lines_target's own
+    # docstring for the full mechanism. `markets` here is intentionally
+    # just the base moneyline; the real total/spread tokens are computed
+    # per match at run time, not listed statically. A first live pass using
+    # the vendored umbrella-expansion mechanism directly (expand every
+    # discovered line, full-extract every one) found a real problem before
+    # this landed: one NFL game alone discovered 41 alternate total lines
+    # (14.5 through 54.5), each getting its own full per-bookmaker
+    # extraction attempt for essentially no signal — that approach is not
+    # used here.
     "nfl": ScrapeTarget(
         sport="nfl",
         harvester_sport="american-football",
         leagues=["nfl"],
         markets=["home_away"],
         load_games=functools.partial(load_sport_games, "nfl"),
+        dynamic_lines=True,
     ),
     "cfb": ScrapeTarget(
         sport="cfb",
@@ -150,6 +171,7 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
         leagues=["ncaa"],
         markets=["home_away"],
         load_games=functools.partial(load_sport_games, "cfb"),
+        dynamic_lines=True,
     ),
     # NBA/NHL: wired up ahead of their real seasons starting (both are
     # genuinely off-season right now - NBA preseason starts October, NHL
@@ -160,22 +182,43 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
     # existing ESPN loader (same as NFL/CFB), and NHL's real official
     # regular-season schedule (gameType 2, load_nhl_games) was fetched live
     # for October dates to confirm parsing - the season being months away
-    # doesn't mean the schedule doesn't already exist. Moneyline only, same
-    # reasoning as NFL/CFB: NBA/NHL totals and spreads vary too widely per
-    # game for a fixed set of OddsHarvester market tokens to be worth the
-    # click-timeout cost.
+    # doesn't mean the schedule doesn't already exist.
+    #
+    # NBA: totals/spread now dynamic_lines too (2026-08-26), the same
+    # reference-based mechanism as NFL/CFB — a real reference IS available:
+    # SportsGameOdds already covers NBA (Phase 1's recovered game-lines).
+    # Reuses BasketballOverUnderMarket/BasketballAsianHandicapMarket
+    # (line_tokens.py's own per-sport handling for basketball's "_games"
+    # prefix/suffix token quirk). Not yet live-verified (NBA preseason
+    # starts October) — same "wired ahead of season start" precedent this
+    # config already follows.
     "nba": ScrapeTarget(
         sport="nba",
         harvester_sport="basketball",
         leagues=["nba"],
         markets=["home_away"],
         load_games=functools.partial(load_sport_games, "nba"),
+        dynamic_lines=True,
     ),
+    # NHL: NOT dynamic_lines — deliberately different from NBA/NFL/CFB.
+    # No provider recovers a real NHL reference total/spread anywhere in
+    # this codebase (NHL is absent from _SGO_LEAGUE_IDS, _PROPLINE_SPORT_
+    # KEYS, and every other provider's sport list in providers.py) — per
+    # the odds-architecture plan, OddsHarvester IS NHL's sole game-lines
+    # source, so run_dynamic_lines_target's own reference lookup would
+    # always find nothing and permanently fall back to home_away-only,
+    # silently never producing totals/spread. Same fixed-line approach as
+    # MLB instead: real NHL totals cluster tightly (~5.5-6.5) and the real
+    # puck line is almost always exactly +-1.5 (rarely +-2.5) — a small
+    # static set covers nearly every real game without needing any
+    # reference. Both signed handicap tokens are requested; whichever
+    # side isn't the real favorite simply isn't found on that match's page
+    # (the same safe "not found" handling every other market already has).
     "nhl": ScrapeTarget(
         sport="nhl",
         harvester_sport="ice-hockey",
         leagues=["nhl"],
-        markets=["home_away"],
+        markets=["home_away", "over_under_5_5", "over_under_6_5", "asian_handicap_-1_5", "asian_handicap_+1_5"],
         load_games=load_nhl_games,
     ),
     # No per-tour league key exists (OddsPortal has 150+ individual
@@ -413,10 +456,22 @@ def _parse_decimal_odds(raw: str | float | None) -> float | None:
 # ---------------------------------------------------------------------------
 
 _OU_POINT_RE = re.compile(r"^over_under_(\d+)(?:_(\d+))?$")
+# Asian Handicap tokens are SIGNED (asian_handicap_-3_5, asian_handicap_+2, asian_handicap_0)
+# — see AmericanFootballAsianHandicapMarket's own values — unlike over/under tokens, which
+# are always positive (a total line is never negative).
+_HANDICAP_POINT_RE = re.compile(r"^asian_handicap_([+-]?\d+)(?:_(\d+))?$")
 
 
 def _market_point(market_token: str) -> float | None:
     m = _OU_POINT_RE.match(market_token)
+    if not m:
+        return None
+    whole, frac = m.group(1), m.group(2)
+    return float(f"{whole}.{frac}") if frac else float(whole)
+
+
+def _handicap_point(market_token: str) -> float | None:
+    m = _HANDICAP_POINT_RE.match(market_token)
     if not m:
         return None
     whole, frac = m.group(1), m.group(2)
@@ -451,11 +506,19 @@ def _record_to_game_line(record: dict, game_id: str) -> GameLine:
     # unnoticed for months.
     seen_total_point: dict[str, float] = {}
 
+    # Same one-line-per-book limitation as seen_total_point below, mirrored for
+    # spread/handicap: BookmakerOdds has exactly one spread_home/spread_away slot per
+    # book, but the umbrella "asian_handicap" expansion (2026-08-26) can request
+    # several real discovered handicap lines in one scrape. First real value wins,
+    # conflicts logged rather than silently dropped — same discipline as totals.
+    seen_handicap_point: dict[str, float] = {}
+
     for key, rows in record.items():
         if not key.endswith("_market") or not isinstance(rows, list):
             continue
         market_token = key[: -len("_market")]
         point = _market_point(market_token)
+        handicap_point = _handicap_point(market_token)
 
         for row in rows:
             name = row.get("bookmaker_name")
@@ -508,11 +571,34 @@ def _record_to_game_line(record: dict, game_id: str) -> GameLine:
                 if under is not None:
                     b.under_price = under
                 b.point = point
-            # Handicap/spread markets aren't in the MLB pilot's SCRAPE_CONFIG
-            # (baseball has no such market on OddsPortal) — a future sport
-            # that needs them extends this branch once that sport's real
-            # handicap row shape is confirmed against a live fixture, not
-            # guessed.
+            elif handicap_point is not None:
+                # register_american_football_markets registers Asian Handicap
+                # rows with odds_labels=["1", "2"] (same convention as
+                # home_away's own moneyline "1"/"2") — "1" is the home team's
+                # price AT this handicap, "2" the away team's. A single
+                # discovered token is one signed line (e.g. -3.5) applied to
+                # home; away's own line is the standard Asian-Handicap mirror
+                # (+3.5) by definition, not independently reported by OddsPortal.
+                home_price = _parse_decimal_odds(row.get("1"))
+                away_price = _parse_decimal_odds(row.get("2"))
+                if home_price is None and away_price is None:
+                    continue
+                prior_point = seen_handicap_point.get(name)
+                if prior_point is not None and prior_point != handicap_point:
+                    print(
+                        f"[harvester_scrape] {name} has real handicap data at both {prior_point} and "
+                        f"{handicap_point} for {record.get('away_team')} @ {record.get('home_team')} — "
+                        f"keeping {prior_point}, discarding {handicap_point} (BookmakerOdds holds one line per book)",
+                        flush=True,
+                    )
+                    continue
+                seen_handicap_point[name] = handicap_point
+                if home_price is not None:
+                    b.spread_home = handicap_point
+                    b.spread_home_price = home_price
+                if away_price is not None:
+                    b.spread_away = -handicap_point
+                    b.spread_away_price = away_price
 
     # Disclosed gap, not a silent drop: OddsHarvester's live mode also
     # returns live_score_home/live_score_away/live_period, but GameLine
@@ -530,6 +616,206 @@ def _record_to_game_line(record: dict, game_id: str) -> GameLine:
         bookmakers=list(books.values()),
         book_count=len(books),
     )
+
+
+# ---------------------------------------------------------------------------
+# Dynamic-lines discovery (2026-08-26) — sports whose real total/spread
+# range is too wide for a small fixed set of guessed lines (NFL, CFB — see
+# their own ScrapeTarget.dynamic_lines comment). Real totals/spreads are
+# discovered per match, then narrowed to just the ONE line closest to a
+# real reference value already recovered from another provider (Phase 1's
+# SportsGameOdds/SharpAPI/Propline rows) — "no alternate lines" per
+# explicit direction, after a live run found OddsPortal renders dozens of
+# real alternate lines under one Over/Under tab for American football,
+# almost all of them thin/single-book and irrelevant to "the" game line.
+# ---------------------------------------------------------------------------
+
+_LINE_NUMBER_RE = re.compile(r"([+-]?\d+(?:\.\d+)?)")
+
+
+def _parse_line_number(submarket_name: str) -> float | None:
+    """"Over/Under +44.5" -> 44.5, "Asian Handicap -2.5" -> -2.5. None if no
+    number is found (a genuinely malformed/unexpected label — skip rather
+    than guess)."""
+    m = _LINE_NUMBER_RE.search(submarket_name)
+    return float(m.group(1)) if m else None
+
+
+def _reference_points_by_game(rows: list) -> dict[tuple[str, str], float]:
+    """(game_id, market) -> the real reference point, picking the freshest
+    row from any source OTHER than oddsharvester itself (Phase 1's
+    recovered SportsGameOdds/SharpAPI/Propline rows — this function exists
+    specifically to give OddsHarvester's own discovery something real to
+    target, so it must never consider OddsHarvester's own prior guesses as
+    that reference). 'total' is side-independent (over/under share one
+    point); 'spread' uses the home side's own signed point, matching
+    handicap_point's own sign convention in _record_to_game_line above."""
+    best: dict[tuple[str, str], tuple[float, str]] = {}
+    for r in rows:
+        if r.source == "oddsharvester" or r.point is None:
+            continue
+        if r.market == "total":
+            key = (r.game_id, "total")
+        elif r.market == "spread" and r.side == "home":
+            key = (r.game_id, "spread")
+        else:
+            continue
+        cur = best.get(key)
+        if cur is None or r.fetched_at > cur[1]:
+            best[key] = (r.point, r.fetched_at)
+    return {k: v[0] for k, v in best.items()}
+
+
+def _closest_line_token(discovered_rows: list, main_market: str, harvester_sport: str, reference: float) -> str | None:
+    """Among a match's discovered lines for one main market (real rendered
+    rows, from a cheap preview-mode pass — see run_dynamic_lines_target),
+    finds the one numerically closest to `reference` and converts it to a
+    real registered token via oddsharvester's own line_name_to_token (the
+    same conversion the umbrella-expansion mechanism uses internally) —
+    never a token that isn't already a real, registered, wide-enough enum
+    value. None if no discovered row has a parseable number."""
+    best_label: str | None = None
+    best_distance: float | None = None
+    for row in discovered_rows:
+        label = row.get("submarket_name")
+        if not label:
+            continue
+        value = _parse_line_number(label)
+        if value is None:
+            continue
+        distance = abs(value - reference)
+        if best_distance is None or distance < best_distance:
+            best_label, best_distance = label, distance
+    if best_label is None:
+        return None
+    return line_name_to_token(harvester_sport, main_market, best_label)
+
+
+async def run_dynamic_lines_target(target: ScrapeTarget, games: list[Game]) -> list[dict]:
+    """Real totals/spread for a dynamic_lines sport (NFL/CFB), narrowed to
+    one real line per match instead of every alternate OddsPortal renders.
+
+    Two passes, reusing existing, unmodified oddsharvester entry points —
+    no per-match plumbing added to the vendored package itself:
+
+    1. A cheap discovery pass (`preview_submarkets_only=True`, the same
+       collapsed-odds read the "best price" preview feature already uses)
+       across the whole league — one page read per match, no clicking,
+       returns every real line OddsPortal is currently rendering plus its
+       best/highest collapsed price, for both Over/Under and Asian
+       Handicap.
+    2. Each discovered match is matched (_match_game, the same fuzzy
+       team-name matcher this module already uses) against a real
+       reference total/spread already recovered from another provider
+       (Phase 1). The ONE discovered line closest to that real reference,
+       per market, becomes a concrete target token (e.g. "over_under_44_5").
+       A game with no real reference yet gets no totals/spread this cycle —
+       never a blind guess at which of many discovered lines is real.
+    3. One targeted `scrape_matches` call (match_links=[...], markets=
+       [*target.markets, <every match's own target tokens>]) — target.markets
+       is the sport's real base moneyline token ("home_away" for NFL/CFB,
+       "1x2" for soccer — never hardcoded here, since a hardcoded
+       "home_away" would silently request the wrong market for soccer).
+       Same shared-browser-session, semaphore-controlled per-match loop the
+       base-market-only scrapes already use. A token computed for a
+       DIFFERENT match simply isn't found on a given match's own page
+       (existing, already-safe "not found" handling — a harmless extra
+       click attempt, not an error).
+
+    `games` is passed in rather than loaded here — run_target already loads
+    it once for the later team-name matching pass, no reason to load twice.
+    """
+    reference_points = _reference_points_by_game(await db.read_game_odds_book_lines_for_sport(target.sport))
+    if not reference_points:
+        print(
+            f"[harvester_scrape] {target.sport}: no reference totals/spreads recovered yet from any other "
+            f"provider — scraping {target.markets} only this cycle",
+            flush=True,
+        )
+        return await _run_harvester_cli(dataclasses.replace(target, dynamic_lines=False))
+
+    discovery_kwargs: dict = dict(
+        command=CommandEnum.UPCOMING_MATCHES,
+        sport=target.harvester_sport,
+        markets=["over_under", "asian_handicap"],
+        preview_submarkets_only=True,
+        headless=True,
+        concurrency_tasks=1,
+    )
+    if target.leagues is not None:
+        discovery_kwargs["leagues"] = target.leagues
+        discovery_kwargs["kickoff_within_hours"] = 168.0
+    else:
+        discovery_kwargs["date"] = datetime.now(timezone.utc).strftime("%Y%m%d")
+
+    try:
+        discovery = await asyncio.wait_for(run_scraper(**discovery_kwargs), timeout=SCRAPE_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        raise RuntimeError(f"oddsharvester discovery pass for {target.sport} exceeded {SCRAPE_TIMEOUT_SECONDS}s")
+    if discovery is None:
+        raise RuntimeError(f"oddsharvester discovery pass for {target.sport}: run_scraper returned None")
+
+    match_targets: dict[str, set[str]] = {}
+    for record in discovery.success:
+        home_raw, away_raw = record.get("home_team") or "", record.get("away_team") or ""
+        game = _match_game(games, home_raw, away_raw)
+        match_link = record.get("match_link")
+        if game is None or not match_link:
+            continue
+        tokens: set[str] = set()
+
+        ref_total = reference_points.get((game.game_id, "total"))
+        if ref_total is not None:
+            token = _closest_line_token(record.get("over_under_market") or [], "Over/Under", target.harvester_sport, ref_total)
+            if token:
+                tokens.add(token)
+
+        ref_spread = reference_points.get((game.game_id, "spread"))
+        if ref_spread is not None:
+            token = _closest_line_token(record.get("asian_handicap_market") or [], "Asian Handicap", target.harvester_sport, ref_spread)
+            if token:
+                tokens.add(token)
+
+        if tokens:
+            match_targets[match_link] = tokens
+
+    if not match_targets:
+        print(
+            f"[harvester_scrape] {target.sport}: discovery found no lines close enough to any real "
+            f"reference — {target.markets} only this cycle",
+            flush=True,
+        )
+        return await _run_harvester_cli(dataclasses.replace(target, dynamic_lines=False))
+
+    all_tokens = sorted({t for tokens in match_targets.values() for t in tokens})
+    print(
+        f"[harvester_scrape] {target.sport}: targeting {len(all_tokens)} real discovered line(s) across "
+        f"{len(match_targets)} matched game(s): {all_tokens}",
+        flush=True,
+    )
+
+    try:
+        result = await asyncio.wait_for(
+            run_scraper(
+                command=CommandEnum.UPCOMING_MATCHES,
+                match_links=list(match_targets.keys()),
+                sport=target.harvester_sport,
+                markets=[*target.markets, *all_tokens],
+                headless=True,
+                concurrency_tasks=1,
+            ),
+            timeout=SCRAPE_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        raise RuntimeError(f"oddsharvester targeted scrape for {target.sport} exceeded {SCRAPE_TIMEOUT_SECONDS}s")
+    if result is None:
+        raise RuntimeError(f"oddsharvester targeted scrape for {target.sport}: run_scraper returned None")
+    if not result.success and result.failed:
+        raise RuntimeError(
+            f"oddsharvester targeted scrape for {target.sport}: all {len(result.failed)} match(es) failed "
+            f"(first: {result.failed[0].error_message})"
+        )
+    return result.success
 
 
 # ---------------------------------------------------------------------------
@@ -675,7 +961,7 @@ async def run_target(target: ScrapeTarget) -> dict:
         return {"sport": target.sport, "ok": False, "reason": "no games loaded from snapshot"}
 
     try:
-        records = await _run_harvester_cli(target)
+        records = await run_dynamic_lines_target(target, games) if target.dynamic_lines else await _run_harvester_cli(target)
     except Exception as e:
         await _write_health(target.sport, healthy=False, status=f"scrape failed: {type(e).__name__}: {e}", matched=0, records=0)
         raise

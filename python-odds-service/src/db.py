@@ -2041,6 +2041,25 @@ def _map_game_odds_book_line_row(r) -> GameOddsBookLineRow:
     )
 
 
+async def read_game_odds_book_lines_for_sport(sport: str) -> list[GameOddsBookLineRow]:
+    """Every current row for a sport, across every source — unlike
+    read_game_odds_book_lines_for_source below, not scoped to one writer.
+    Used to build a per-game reference total/spread from whichever
+    non-OddsHarvester provider already has real data for a game (Phase 1's
+    recovered SportsGameOdds/SharpAPI/Propline rows), so OddsHarvester's own
+    dynamic line-discovery has something real to target instead of guessing
+    which of many discovered lines is the actual current one."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT sport, game_id, market, side, bookmaker, source, american_odds, point, decimal_odds, fetched_at
+        FROM game_odds_book_lines WHERE sport = $1
+        """,
+        sport,
+    )
+    return [_map_game_odds_book_line_row(r) for r in rows]
+
+
 async def read_game_odds_book_lines_for_source(sport: str, source: str) -> list[GameOddsBookLineRow]:
     """Every current row a given source has written for a sport — the read
     half of write_game_odds_book_lines. Not filtered to "today's games";
