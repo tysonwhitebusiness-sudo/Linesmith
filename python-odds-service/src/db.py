@@ -33,8 +33,41 @@ async def get_pool() -> asyncpg.Pool:
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        _pool = await asyncpg.create_pool(dsn=DATABASE_URL, ssl=ctx, min_size=1, max_size=5)
+        # server_settings applies statement_timeout as a session default on
+        # every connection this pool ever opens — a single query (or a lock
+        # wait inside one) that runs past 15s gets killed by Postgres itself
+        # with a clean QueryCanceledError, instead of hanging indefinitely.
+        # This is the query-execution half of the same 2026-08-22 hang fix
+        # pool.acquire(timeout=...) below is the connection-acquisition half
+        # of: acquire() only bounds getting a connection, not what happens
+        # once a query is running on it — a real, plausible mechanism for
+        # that incident, since write_prop_odds/write_game_odds_book_lines
+        # both loop many individual INSERT/UPDATE statements inside one
+        # transaction, and this exact table was, at the time, also being
+        # written concurrently by the TS app's own now-removed
+        # triggerFreshen() leftover (see app/api/props/lines/route.ts) — two
+        # independent writers racing the same upsert keys, neither side
+        # timeout-protected, is exactly the shape of thing that can leave
+        # one side waiting on a row lock forever. Set at the connection
+        # level (not per-transaction SET LOCAL) so it's automatic for every
+        # query this pool ever runs, including any added later, rather than
+        # something each new call site has to remember.
+        _pool = await asyncpg.create_pool(
+            dsn=DATABASE_URL, ssl=ctx, min_size=1, max_size=5, server_settings={"statement_timeout": "15000"}
+        )
     return _pool
+
+
+# Every `pool.acquire()` call in this file passes `timeout=15.0` — without
+# an explicit timeout, asyncpg's Pool.acquire() waits forever if every
+# pooled connection is checked out. A real, confirmed contributor to a
+# 4-day worker hang (2026-08-22 incident): every acquire() call site in
+# this file had no timeout at the time, so a starved pool at the wrong
+# moment blocked its caller indefinitely — no exception, no log line,
+# nothing for job_queue.py's own watchdog to ever see (a fully blocking
+# wait like that can also starve the watchdog's own polling loop of a turn
+# on the event loop). A clean TimeoutError here is always better than an
+# unbounded wait, watchdog or not.
 
 
 async def read_snapshot(cache_key: str) -> str | None:
@@ -228,7 +261,7 @@ async def write_prop_odds(rows: list[PropOddsInput]) -> None:
         return
     fetched_at = datetime.now(timezone.utc)
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
                 prior = await conn.fetchrow(
@@ -460,7 +493,7 @@ async def write_elo_history(rows: list[EloHistoryInput]) -> int:
         return 0
     pool = await get_pool()
     written = 0
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
                 status = await conn.execute(
@@ -566,7 +599,7 @@ async def write_pitcher_game_score(rows: list[PitcherGameScoreInput]) -> int:
         return 0
     pool = await get_pool()
     written = 0
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
                 status = await conn.execute(
@@ -663,7 +696,7 @@ async def write_park_factors(season: int, rows: list) -> None:
     if not rows:
         return
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
                 await conn.execute(
@@ -717,7 +750,7 @@ async def write_team_hr_rate_allowed(season: int, league_hr_rate: float, rows: l
     needs team_id/games_faced/games_with_hr_allowed attributes. Upsert
     keyed on (team_id, season)."""
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
                 await conn.execute(
@@ -852,7 +885,7 @@ async def write_game_odds_history(rows: list[GameOddsHistoryInput]) -> None:
         return
     observed_at = datetime.now(timezone.utc)
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
                 prior = await conn.fetchrow(
@@ -919,7 +952,7 @@ async def log_surfaced(entries: list[SurfacedEntry]) -> None:
     if not entries:
         return
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in entries:
                 await conn.execute(
@@ -1582,7 +1615,7 @@ async def write_model_weights(input: ModelWeightsInput, activate: bool) -> Model
     so `get_active_model_weights` never has more than one active row to
     choose from."""
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             max_version_row = await conn.fetchrow(
                 "SELECT MAX(version) AS v FROM model_weights WHERE sport = $1 AND market = $2",
@@ -1713,7 +1746,7 @@ async def write_calibration(input: CalibrationInput, activate: bool) -> Calibrat
     version deactivates every prior version for that same (sport, market)
     in the same transaction."""
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             max_version_row = await conn.fetchrow(
                 "SELECT MAX(version) AS v FROM model_calibration WHERE sport = $1 AND market = $2",
@@ -1882,7 +1915,7 @@ async def write_model_artifact(input: ModelArtifactInput, activate: bool) -> Mod
     (sport, market, model_name) instead of (sport, market) — see the
     migration's own comment for why."""
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             max_version_row = await conn.fetchrow(
                 "SELECT MAX(version) AS v FROM model_artifacts WHERE sport = $1 AND market = $2 AND model_name = $3",
@@ -2048,14 +2081,23 @@ async def read_game_odds_book_lines_for_sport(sport: str) -> list[GameOddsBookLi
     non-OddsHarvester provider already has real data for a game (Phase 1's
     recovered SportsGameOdds/SharpAPI/Propline rows), so OddsHarvester's own
     dynamic line-discovery has something real to target instead of guessing
-    which of many discovered lines is the actual current one."""
+    which of many discovered lines is the actual current one.
+
+    `sport` is normalized through the same _GENERIC_SPORT_KEY map
+    write_game_odds_book_lines uses — callers here (harvester_scrape.py's
+    run_dynamic_lines_target) pass their own internal routing key
+    (target.sport, e.g. 'soccer_epl'), but the table is only ever keyed by
+    the generic app-facing value, so querying with the raw internal key
+    would silently return zero rows for exactly the sports that need this
+    reference lookup most (soccer/tennis, which don't have MLB's simpler
+    1:1 internal-key-to-app-sport mapping)."""
     pool = await get_pool()
     rows = await pool.fetch(
         """
         SELECT sport, game_id, market, side, bookmaker, source, american_odds, point, decimal_odds, fetched_at
         FROM game_odds_book_lines WHERE sport = $1
         """,
-        sport,
+        _GENERIC_SPORT_KEY.get(sport, sport),
     )
     return [_map_game_odds_book_line_row(r) for r in rows]
 
@@ -2066,14 +2108,18 @@ async def read_game_odds_book_lines_for_source(sport: str, source: str) -> list[
     callers cross-reference against their own real slate (a source's row
     for a game that's no longer on today's slate is simply ignored by that
     join, same discipline _game_odds_book_line_rows already uses when a
-    GameLine doesn't match any current SnapshotGame)."""
+    GameLine doesn't match any current SnapshotGame). `sport` normalized
+    through _GENERIC_SPORT_KEY, same reasoning as read_game_odds_book_lines_
+    for_sport above — no real caller passes an internal league/tour key
+    today, but the table is only ever keyed generically, so this stays
+    correct if one does later."""
     pool = await get_pool()
     rows = await pool.fetch(
         """
         SELECT sport, game_id, market, side, bookmaker, source, american_odds, point, decimal_odds, fetched_at
         FROM game_odds_book_lines WHERE sport = $1 AND source = $2
         """,
-        sport,
+        _GENERIC_SPORT_KEY.get(sport, sport),
         source,
     )
     return [_map_game_odds_book_line_row(r) for r in rows]
@@ -2101,6 +2147,35 @@ class GameOddsBookLineInput:
     decimal_odds: float | None = None
 
 
+# game_odds_book_lines is keyed by the app's generic Sport type (lib/core/
+# types.ts: 'mlb' | 'nfl' | 'soccer' | 'cfb' | 'nba' | 'nhl' | 'tennis' |
+# 'golf') — every TS reader (readGameOddsBookLines/readGameOddsBookLinesFor
+# Sport) queries by exactly that value. Python's OWN internal job/provider-
+# routing keys are more granular where a sport needs per-league/per-tour
+# wiring (soccer_epl/soccer_mls need different ESPN league codes and
+# provider sets; tennis_atp/tennis_wta need different tour rosters — see
+# game_context.py's load_sport_games/load_tennis_games, jobs.py's
+# _soccer_epl_specs/_job_tennis) and every GameOddsBookLineInput builder
+# (harvester_scrape.py, providers.py's _sgo_game_line_rows/
+# _propline_game_line_rows/_sharpapi_game_line_rows) constructs its rows
+# from `Game.sport`/a job's own `sport` param, which carries that granular
+# key — never the generic one. Confirmed live: before this normalization,
+# game_odds_book_lines held real, fresh rows tagged 'soccer_epl'/
+# 'soccer_mls'/'tennis_atp'/'tennis_wta', and every TS query for the
+# generic 'soccer'/'tennis' silently returned zero rows — Soccer and
+# Tennis's Game Detail/Scan pages never actually received real per-book
+# data through this table despite the jobs themselves working correctly.
+# Normalizing once here, at the one write choke point every builder already
+# goes through, means a new granular key added to Python's own routing
+# later doesn't need a matching fix repeated at each of N call sites.
+_GENERIC_SPORT_KEY = {
+    "soccer_epl": "soccer",
+    "soccer_mls": "soccer",
+    "tennis_atp": "tennis",
+    "tennis_wta": "tennis",
+}
+
+
 async def write_game_odds_book_lines(rows: list[GameOddsBookLineInput]) -> None:
     """Upserts current per-bookmaker game-line prices. Safe to call with a
     fresh full snapshot every cycle — ON CONFLICT DO UPDATE means a
@@ -2112,7 +2187,7 @@ async def write_game_odds_book_lines(rows: list[GameOddsBookLineInput]) -> None:
         return
     fetched_at = datetime.now(timezone.utc)
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
                 await conn.execute(
@@ -2126,7 +2201,7 @@ async def write_game_odds_book_lines(rows: list[GameOddsBookLineInput]) -> None:
                         decimal_odds = excluded.decimal_odds,
                         fetched_at = excluded.fetched_at
                     """,
-                    r.sport,
+                    _GENERIC_SPORT_KEY.get(r.sport, r.sport),
                     r.game_id,
                     r.market,
                     r.side,
@@ -2327,7 +2402,7 @@ async def write_golf_hole_scores(rows: list[GolfHoleScoreInput]) -> int:
         return 0
     written = 0
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
                 status = await conn.execute(
@@ -2368,7 +2443,7 @@ async def write_golf_round_scores(rows: list[GolfRoundScoreInput]) -> int:
         return 0
     written = 0
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
                 status = await conn.execute(
@@ -2406,7 +2481,7 @@ async def write_golf_tournament_results(rows: list[GolfTournamentResultInput]) -
         return 0
     written = 0
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
                 await conn.execute(
@@ -2452,7 +2527,7 @@ async def log_golf_model_predictions(rows: list[GolfModelPredictionInput]) -> in
         return 0
     written = 0
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
                 status = await conn.execute(
@@ -2492,7 +2567,7 @@ async def log_golf_tournament_predictions(rows: list[GolfTournamentPredictionInp
         return 0
     written = 0
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
                 status = await conn.execute(
@@ -2581,7 +2656,7 @@ async def write_graded_hole_predictions(rows: list[GradedHolePredictionInput]) -
     if not rows:
         return
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
                 await conn.execute(
@@ -2649,7 +2724,7 @@ async def write_graded_tournament_predictions(rows: list[GradedTournamentPredict
     if not rows:
         return
     pool = await get_pool()
-    async with pool.acquire() as conn:
+    async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
                 await conn.execute(

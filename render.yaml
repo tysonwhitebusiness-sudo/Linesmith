@@ -34,3 +34,35 @@ services:
         sync: false
       - key: PROPLINE_2_KEY
         sync: false
+
+  # Real gap this closes: the worker above going fully silent for 4 real
+  # days (2026-08-22 -> 2026-08-26, a hang inside a job that never crashed,
+  # never restarted, and never got noticed) went undetected because nothing
+  # independent of that same process was ever watching it. health_check.py
+  # already does the right checks (per-job staleness, real ground-truth data
+  # checks, game_odds_book_lines freshness) — it just never ran on its own
+  # schedule. A cron job is a genuinely separate process/container from the
+  # worker, so a worker that's fully frozen (not crashed, not restarted,
+  # event loop wedged) can't also freeze this — the one failure mode this
+  # is specifically for.
+  #
+  # Read-only against already-written data (snapshot_cache breadcrumbs,
+  # real Postgres tables) — makes zero provider API calls, spends zero
+  # budget, so this is safe to auto-deploy unlike the worker above. Exit
+  # code is 1 on any unhealthy check (see health_check.py's own docstring);
+  # Render's own cron-job failure notification is what actually pages
+  # someone — wire that up in the dashboard (Settings -> Notifications) once
+  # this is deployed, since a green "job ran" in Render's UI without that
+  # doesn't alert anyone on its own.
+  - type: cron
+    name: line-buddy-odds-worker-health-check
+    runtime: python
+    rootDir: python-odds-service
+    buildCommand: pip install -r requirements.txt
+    schedule: "*/15 * * * *"
+    startCommand: python src/health_check.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      - key: DATABASE_URL
+        sync: false

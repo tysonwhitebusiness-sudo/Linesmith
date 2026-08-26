@@ -58,6 +58,27 @@ _cache: dict[str, _CacheEntry] = {}
 # each firing its own.
 _refreshing: set[str] = set()
 
+# Dedicated, persistent client for background refreshes only — deliberately
+# NOT the caller's own `client` argument. Real bug found live (Render logs,
+# 2026-08-22): every caller passes a short-lived client from its own
+# `async with httpx.AsyncClient() as client:` block, which closes as soon as
+# that caller's own job function returns. `asyncio.create_task` only
+# schedules the background refresh — it doesn't run before the caller's
+# `async with` exits — so a refresh queued near the end of a job's run would
+# fire against an already-closed client (`RuntimeError: Cannot send a
+# request, as the client has been closed`), crash, and leave an unretrieved
+# task exception. A refresh client that outlives any single caller's own
+# client removes the race at its root instead of requiring every caller to
+# remember to await pending refreshes before closing its own client.
+_background_client: httpx.AsyncClient | None = None
+
+
+def _get_background_client() -> httpx.AsyncClient:
+    global _background_client
+    if _background_client is None or _background_client.is_closed:
+        _background_client = httpx.AsyncClient()
+    return _background_client
+
 _FETCH_ERROR_LIMIT = 20
 _fetch_errors: list[dict] = []
 
@@ -118,7 +139,17 @@ async def _cached_json(client: httpx.AsyncClient, key: str, url: str, ttl_s: flo
 
             async def _background_refresh():
                 try:
-                    await _fetch_and_cache(client, key, url, ttl_s, retries)
+                    # Deliberately the module's own long-lived client, not
+                    # the caller's `client` — see _background_client's
+                    # comment above for why.
+                    await _fetch_and_cache(_get_background_client(), key, url, ttl_s, retries)
+                except Exception as e:
+                    # Best-effort: a failed background refresh just leaves
+                    # the cache stale until the next attempt, same as any
+                    # other _get_json failure. Logged, not silent — but
+                    # never allowed to surface as an unretrieved task
+                    # exception, which is noise, not a real signal.
+                    print(f"[statsapi] background refresh failed for {key}: {type(e).__name__}: {e}", flush=True)
                 finally:
                     _refreshing.discard(key)
 

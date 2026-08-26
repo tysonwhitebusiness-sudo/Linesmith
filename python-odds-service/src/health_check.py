@@ -389,6 +389,72 @@ async def check_prop_predictions_freshness() -> dict:
     return {"name": "propPredictionsFreshness", "status": f"healthy — {actual} pick_history rows for today's real games (last run reported {expected} candidates)", "healthy": True}
 
 
+GAME_ODDS_BOOK_LINES_SPORTS = ["mlb", "nfl", "cfb", "nba", "nhl", "soccer", "tennis"]  # every sport odds-architecture-rebuild-2026-08-25.md covers except golf, which has no game-line concept at all
+
+
+async def check_game_odds_book_lines_freshness() -> dict:
+    """The blind spot the whole odds-architecture rebuild plan called out
+    explicitly: /diagnostics and every job-level check above verify a job
+    RAN, not that its output actually reached game_odds_book_lines — the
+    shared table every real source (OddsHarvester, the-odds-api,
+    SportsGameOdds, SharpAPI, Propline, ESPN) writes into and every sport's
+    Game Detail/Scan page reads through. This is what would have caught
+    NHL sitting at zero rows before Phase 4/5 shipped real OddsHarvester
+    coverage for it, automatically, instead of requiring a manual audit.
+
+    Deliberately per-sport, not per-(sport,source): which sources SHOULD be
+    live for a given sport changes as jobs.py's ProviderSpec lists change
+    (see CLAUDE.md's own provider-job architecture section), and hardcoding
+    that expectation here would just be a second copy to drift out of sync
+    with jobs.py — the exact duplication problem CLAUDE.md's job_runner
+    section describes for the cap-checking case. Per-source counts are
+    still reported in the status text as real diagnostic detail; only the
+    sport-wide freshness gates healthy/unhealthy.
+
+    No per-sport schedule fetch (unlike check_elo_freshness etc.) — building
+    a real schedule integration for all seven of these sports here would be
+    its own project. Instead: a sport with real rows sometime in the last 7
+    days is treated as "currently tracked" and expected to have a row within
+    the last 24h; a sport with zero rows in 7 days is reported but not
+    failed, since that's honestly indistinguishable from a real off-season
+    without a schedule to check against.
+    """
+    pool = await db.get_pool()
+    now = datetime.now(timezone.utc)
+    problems: list[str] = []
+    healthy_bits: list[str] = []
+    quiet_bits: list[str] = []
+
+    for sport in GAME_ODDS_BOOK_LINES_SPORTS:
+        rows = await pool.fetch(
+            "SELECT source, MAX(fetched_at) AS latest, COUNT(*) AS n FROM game_odds_book_lines "
+            "WHERE sport = $1 AND fetched_at > now() - interval '7 days' GROUP BY source",
+            sport,
+        )
+        if not rows:
+            quiet_bits.append(f"{sport}: no rows from any source in the last 7 days")
+            continue
+
+        latest_overall = max(r["latest"] for r in rows)
+        age_hours = (now - latest_overall).total_seconds() / 3600
+        sources_desc = ", ".join(f"{r['source']}={r['n']}" for r in rows)
+        if age_hours > 24:
+            problems.append(f"{sport}: freshest row {age_hours:.0f}h old (last 7d by source: {sources_desc})")
+        else:
+            healthy_bits.append(f"{sport} (last 7d by source: {sources_desc}, freshest {age_hours:.1f}h ago)")
+
+    healthy = len(problems) == 0
+    bits = []
+    if problems:
+        bits.append("STALE — " + "; ".join(problems))
+    if healthy_bits:
+        bits.append("healthy: " + "; ".join(healthy_bits))
+    if quiet_bits:
+        bits.append("no recent activity (not failed — no schedule check to confirm this is a real gap vs. off-season): " + "; ".join(quiet_bits))
+
+    return {"name": "gameOddsBookLinesFreshness", "status": " | ".join(bits) if bits else "no sports configured", "healthy": healthy}
+
+
 async def check_golf_predictions_freshness() -> dict:
     """Ground truth for job_golf_predictions (predict/golf_candidates.py
     + predict/golf_history.py + predict/golf_grading.py) — verifies real
@@ -451,6 +517,7 @@ async def main() -> int:
         await check_odds_history_and_prices_freshness(),
         await check_prop_predictions_freshness(),
         await check_golf_predictions_freshness(),
+        await check_game_odds_book_lines_freshness(),
     ]
 
     print(f"[health_check] {datetime.now(timezone.utc).isoformat()}", flush=True)
