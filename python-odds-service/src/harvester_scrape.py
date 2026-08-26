@@ -536,21 +536,25 @@ def _record_to_game_line(record: dict, game_id: str) -> GameLine:
 # CLI invocation
 # ---------------------------------------------------------------------------
 
-# Real measured costs this session, concurrency 1, no other load:
+# Real measured costs, concurrency 1, no other load:
 # MLB (15 matches): home_away alone = 3m30s (210s); home_away + 2 total
 # lines = 7m18s (438s) after fixing the whole-number-line click bug (each
 # extra market needs its own real tab-click + page-load + parse cycle per
 # match — ~110s added per line, not a bug, genuinely how much UI interaction
-# costs). Tennis (44 matches, single market): 8m5s (485s) — a bigger match
-# count on a single-market sport costs about as much as a smaller match
-# count with extra markets, same per-match UI-interaction floor either way.
-# 485s against the old 550s budget left only 65s of real margin — too tight
-# for a genuinely less powerful laptop, so both this and the scheduled
-# task's own -ExecutionTimeLimit (scripts/harvester-laptop-setup.ps1) were
-# widened together. Re-measure before adding a 3rd total line, another
-# market, or a sport with a much larger per-day match count — don't assume
-# either number scales linearly forever.
-SCRAPE_TIMEOUT_SECONDS = 700
+# costs). Tennis, single market, but match COUNT varies a lot night to
+# night since it isn't scoped to one tournament: 44 matches = 8m5s (485s);
+# a genuinely busier night, 107 matches, = 20m47s (1247s) - confirmed live
+# by removing the timeout entirely and letting it run to real completion,
+# not guessed. 1247s alone already exceeded the scheduled task's OLD
+# 15-minute -ExecutionTimeLimit (900s) - Windows would have force-killed a
+# busy tennis night mid-scrape even with an unlimited Python-side timeout,
+# so both this constant AND harvester-laptop-setup.ps1's own
+# -ExecutionTimeLimit were widened together again, this time with real
+# margin above the worst case actually observed (1247s) rather than the
+# closest-so-far number. Re-measure before adding a 3rd total line, another
+# market, or trusting this margin forever - tennis's own match count isn't
+# bounded by anything in this codebase, so an even busier night is possible.
+SCRAPE_TIMEOUT_SECONDS = 1800
 
 
 async def _run_harvester_cli(target: ScrapeTarget) -> list[dict]:

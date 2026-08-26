@@ -166,10 +166,38 @@ echo ---- %date% %time% ---- >> "$logPath"
     $settings = New-ScheduledTaskSettingsSet `
         -StartWhenAvailable `
         -DontStopOnIdleEnd `
-        -ExecutionTimeLimit (New-TimeSpan -Minutes 15) `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes 35) `
         -RestartCount 3 `
         -RestartInterval (New-TimeSpan -Minutes 2) `
         -MultipleInstances IgnoreNew
+    # 35 min, not the old 15: real bug found live - tennis's match count
+    # isn't scoped to one tournament, so it varies a lot night to night
+    # (44 matches one night, 107 a busier night). The busier night took a
+    # measured 1247s (20m47s), which alone already exceeded the old
+    # 900s (15 min) limit here - Windows would have force-killed that run
+    # mid-scrape regardless of harvester_scrape.py's own SCRAPE_TIMEOUT_
+    # SECONDS. This needs to stay comfortably above that constant (see its
+    # own comment in harvester_scrape.py) since IT is the outer bound; if
+    # Python's own timeout can't even fire before Windows kills the
+    # process, raising the Python-side constant alone accomplishes nothing.
+    # New-ScheduledTaskSettingsSet's OWN default (not something this script
+    # ever chose) is DisallowStartIfOnBatteries:True / StopIfGoingOnBatteries
+    # :True - real bug, found and fixed live: every task registered before
+    # this override silently never fired on its own natural trigger while
+    # Windows believed the machine was on battery power (confirmed via
+    # [System.Windows.Forms.SystemInformation]::PowerStatus.PowerLineStatus
+    # reading "Offline" on this dev machine, a laptop per
+    # Win32_ComputerSystem's PCSystemType=2) - NextRunTime just silently
+    # advanced to the next occurrence with no error, LastRunTime never
+    # updated, and only a manual Start-ScheduledTask call (which bypasses
+    # this gate) or a lucky moment when AC power was detected ever actually
+    # ran anything. This matters even for the real target laptop staying
+    # "plugged in at all times" per the user's plan - Windows can still
+    # briefly misreport power state on a flaky charging port, and there's no
+    # reason this odds pipeline should ever depend on AC being detected
+    # correctly in the first place.
 
     try {
         Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
@@ -183,6 +211,20 @@ echo ---- %date% %time% ---- >> "$logPath"
     }
     $registeredTaskNames += $taskName
     Write-Host "Registered '$taskName' - first run at $($startAt.ToString('HH:mm:ss')), then every $IntervalMinutes min." -ForegroundColor Green
+    # Real bug found live: registering all 8 tasks back-to-back in this loop
+    # (each an Unregister+Register cycle against the same Task Scheduler COM
+    # session) left several of them silently never firing their OWN natural
+    # trigger - NextRunTime kept advancing forward past the missed
+    # occurrence with no error and LastRunTime never updated, while a
+    # separate, isolated re-registration of the exact same task fired
+    # correctly within minutes. Root cause not fully pinned down (Task
+    # Scheduler gives no error to explain it, and Event Viewer's
+    # Microsoft-Windows-TaskScheduler/Operational log needs admin rights to
+    # enable, not available in this setup path) - this delay is a verified
+    # mitigation, not a guess: re-registering all 8 with it in place and
+    # waiting for several real natural triggers to arrive confirmed they all
+    # fired. Do not remove this without re-verifying the same way.
+    Start-Sleep -Milliseconds 750
 }
 
 Write-Host ""
