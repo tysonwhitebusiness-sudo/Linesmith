@@ -35,3 +35,8 @@ scan_row_logos.png
 # fixtures (large, unmodified, recoverable from jordantete/OddsHarvester).
 oddsharvester/.venv/
 oddsharvester/tests/integration/fixtures/**/*.har
+
+# CatBoost's own training-log side effect (predict/mlb_tree_models.py sets
+# allow_writing_files=False, but this stays as a fallback for any other
+# CatBoostClassifier() call that doesn't).
+python-odds-service/catboost_info/

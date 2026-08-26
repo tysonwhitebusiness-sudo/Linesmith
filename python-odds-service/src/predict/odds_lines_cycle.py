@@ -68,6 +68,7 @@ from .game_sim_cache import load_game_sim
 from .mlb_game_lines import GameLine, get_mlb_game_lines
 from .odds_math import american_to_decimal, decimal_to_american, devig_two_way
 from . import statsapi
+from .staking import BootstrapResult, bootstrap_roi_ci, cap_exposure, kelly_fraction, min_edge_gate
 from .statsapi import eastern_date, get_team_bullpen_era
 
 
@@ -458,6 +459,7 @@ def _elo_prob_for_game(elo: SnapshotElo | None) -> float | None:
 async def run_moneyline_lock_from_snapshot(lines: list[GameLine], games: list[SnapshotGame], now=None) -> None:
     fitted_row = await db.get_active_model_weights("mlb", "moneyline")
     fitted = FittedMoneylineWeights(weights=fitted_row.weights, intercept=fitted_row.intercept, covariance=fitted_row.covariance) if fitted_row else None
+    calibration_row = await db.get_active_calibration("mlb", "moneyline")
 
     inputs: list[MoneylineLockInput] = []
     for g in games:
@@ -522,7 +524,7 @@ async def run_moneyline_lock_from_snapshot(lines: list[GameLine], games: list[Sn
         )
 
     if inputs:
-        await run_moneyline_lock_cycle("mlb", inputs, now)
+        await run_moneyline_lock_cycle("mlb", inputs, now, calibration=calibration_row)
 
 
 # ---------------------------------------------------------------------------
@@ -534,9 +536,45 @@ async def run_moneyline_lock_from_snapshot(lines: list[GameLine], games: list[Sn
 # ---------------------------------------------------------------------------
 
 
+async def _attach_moneyline_kelly_stake(game_id: str, slot: str, side: str, prob: float | None, american_odds: int, edge_significant: bool | None) -> None:
+    """Kelly needs decimal odds, which aren't known until the real price
+    attaches (this function's own caller, right after
+    db.attach_moneyline_price) — see predict/staking.py's own module
+    docstring. prob=None (a pick captured before this slot had a
+    probability recorded, shouldn't happen in practice but guarded anyway)
+    skips the stake computation entirely rather than crashing the whole
+    attach cycle over one game."""
+    if prob is None:
+        return
+    decimal_odds = american_to_decimal(american_odds)
+    if decimal_odds is None:
+        return
+    if not min_edge_gate(prob, decimal_odds):
+        stake = 0.0
+    else:
+        stake = cap_exposure(kelly_fraction(prob, decimal_odds))
+    await db.attach_moneyline_kelly_stake("mlb", game_id, slot, side, stake, edge_significant)
+
+
+async def _current_moneyline_edge_significant(sport: str) -> bool | None:
+    """None when there isn't enough graded history yet to say anything
+    (bootstrap_roi_ci needs at least one pick, and predict/staking.py's own
+    documented convention treats anything under 20 as too thin to trust) —
+    a real "not yet known" state, not a false negative. Computed once per
+    attach_prices_from_lines call, not once per pick — this is a sport-wide
+    signal (is the moneyline edge real across everything graded so far),
+    not a per-game one."""
+    picks = await db.get_graded_moneyline_picks_for_significance(sport)
+    if len(picks) < 20:
+        return None
+    result: BootstrapResult = bootstrap_roi_ci(picks)
+    return result.significant
+
+
 async def attach_prices_from_lines(lines: list[GameLine], games: list[SnapshotGame]) -> None:
     if not lines:
         return
+    edge_significant = await _current_moneyline_edge_significant("mlb")
     for line in lines:
         game = next((g for g in games if g.away_team_name and g.home_team_name and _team_key(g.away_team_name) == _team_key(line.away_team) and _team_key(g.home_team_name) == _team_key(line.home_team)), None)
         if game is None:
@@ -548,12 +586,16 @@ async def attach_prices_from_lines(lines: list[GameLine], games: list[SnapshotGa
 
         if line.moneyline and line.moneyline.home is not None and pick.ml_initial_side == "home":
             await db.attach_moneyline_price("mlb", game_id, "initial", "home", int(line.moneyline.home))
+            await _attach_moneyline_kelly_stake(game_id, "initial", "home", pick.ml_initial_prob, int(line.moneyline.home), edge_significant)
         if line.moneyline and line.moneyline.away is not None and pick.ml_initial_side == "away":
             await db.attach_moneyline_price("mlb", game_id, "initial", "away", int(line.moneyline.away))
+            await _attach_moneyline_kelly_stake(game_id, "initial", "away", pick.ml_initial_prob, int(line.moneyline.away), edge_significant)
         if line.moneyline and line.moneyline.home is not None and pick.ml_final_side == "home":
             await db.attach_moneyline_price("mlb", game_id, "final", "home", int(line.moneyline.home))
+            await _attach_moneyline_kelly_stake(game_id, "final", "home", pick.ml_final_prob, int(line.moneyline.home), edge_significant)
         if line.moneyline and line.moneyline.away is not None and pick.ml_final_side == "away":
             await db.attach_moneyline_price("mlb", game_id, "final", "away", int(line.moneyline.away))
+            await _attach_moneyline_kelly_stake(game_id, "final", "away", pick.ml_final_prob, int(line.moneyline.away), edge_significant)
 
         if line.total and line.total.over_price is not None and pick.total_initial_side == "over":
             await db.attach_total_price("mlb", game_id, "initial", "over", int(line.total.over_price))

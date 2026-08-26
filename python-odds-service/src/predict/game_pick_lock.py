@@ -43,6 +43,7 @@ from zoneinfo import ZoneInfo
 
 import db
 
+from .calibration import apply_calibration
 from .probability_blend import ELO_BLEND_WEIGHT, MARKET_BLEND_WEIGHT, blend_probability
 
 _CHICAGO = ZoneInfo("America/Chicago")
@@ -136,7 +137,17 @@ class MoneylineLockInput:
     prob_upper_home: float | None
 
 
-async def run_moneyline_lock_cycle(sport: str, games: list[MoneylineLockInput], now: datetime | None = None) -> None:
+async def run_moneyline_lock_cycle(sport: str, games: list[MoneylineLockInput], now: datetime | None = None, calibration: "db.CalibrationRow | None" = None) -> None:
+    """calibration: an active predict/calibration.py CalibrationRow for
+    this (sport, 'moneyline'), or None (default — current behavior,
+    unchanged). When present, calibrates the model's own raw probability
+    BEFORE the market blend, not after — blending an uncalibrated model
+    signal with the market and hoping the blend accidentally fixes
+    calibration is strictly worse than calibrating the model's own signal
+    first, then blending two individually-more-honest probabilities (also
+    matches the reference methodology's own ordering). apply_calibration
+    already no-ops when calibration is None, so every call site below
+    works identically whether or not a fitted calibration is active."""
     now = now if now is not None else datetime.now(timezone.utc)
     for g in games:
         if not g.commence_time or not g.is_pre_game:
@@ -153,12 +164,15 @@ async def run_moneyline_lock_cycle(sport: str, games: list[MoneylineLockInput], 
         )
         await db.ensure_game_pick_row(identity)
 
-        # Blend on the home probability directly, then re-derive the side
-        # from the BLENDED number — not the model's own side first.
-        # Blending can flip which side is actually favored. Sequential
-        # composition: market blends into the model first, then Elo nudges
-        # the market-informed number at a smaller weight.
-        after_market_prob = blend_probability(g.home_win_prob, g.market_home_prob, MARKET_BLEND_WEIGHT)
+        # Calibrate the raw model probability first (no-op if calibration
+        # is None), THEN blend on the calibrated home probability, then
+        # re-derive the side from the BLENDED number — not the model's own
+        # side first. Blending can flip which side is actually favored.
+        # Sequential composition: market blends into the (calibrated) model
+        # first, then Elo nudges the market-informed number at a smaller
+        # weight.
+        calibrated_home_prob = apply_calibration(g.home_win_prob, calibration)
+        after_market_prob = blend_probability(calibrated_home_prob, g.market_home_prob, MARKET_BLEND_WEIGHT)
         blended_home_prob = blend_probability(after_market_prob, g.elo_home_prob, ELO_BLEND_WEIGHT)
         side = "home" if blended_home_prob >= 0.5 else "away"
         prob = blended_home_prob if side == "home" else 1 - blended_home_prob
@@ -178,6 +192,8 @@ async def run_moneyline_lock_cycle(sport: str, games: list[MoneylineLockInput], 
                 "awayRecentEdge": g.diagnostics.away_recent_edge,
                 "parkFactor": g.diagnostics.park_factor,
                 "modelHomeProb": g.home_win_prob,
+                "calibratedModelHomeProb": calibrated_home_prob,
+                "calibrationMethod": calibration.method if calibration is not None else None,
                 "marketHomeProb": g.market_home_prob,
                 "marketBlendWeight": MARKET_BLEND_WEIGHT if g.market_home_prob is not None else None,
                 "afterMarketProb": after_market_prob,

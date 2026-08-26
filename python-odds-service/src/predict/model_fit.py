@@ -118,12 +118,50 @@ class TrainingSetResult:
     bullpen_coverage: MarketCoverage
 
 
+# In-process memo cache keyed by the exact seasons tuple requested — added
+# after a real, measured cost problem, not a preemptive optimization: the
+# cross-sport prediction framework's walk-forward CV (predict/walkforward.py)
+# and multi-model benchmarking harness (predict/model_benchmark.py) mean
+# several independent candidates (predict/mlb_model_candidates.py's
+# formula/catboost/xgboost/lightgbm/mlp, plus predict/mlb_stacking.py's own
+# sub-calls) now each request build_training_set for the SAME season lists
+# repeatedly within one benchmark run — confirmed live: building a single
+# season's training set (real per-team stats + a 300-iteration Monte Carlo
+# sim PER GAME) measured ~15 real minutes; test_mlb_tree_models.py's three
+# separate build_training_set calls (2023 train, 2022 score, one more inside
+# the tree_fit_fn adapter check) took 33 minutes total before this cache
+# existed. Safe to cache unconditionally: for any season fully in the past
+# (every season this framework's walk-forward folds ever use, 2010-2025),
+# build_training_set(seasons) is a pure function of `seasons` — the
+# underlying finalized game/stat data doesn't change. NOT safe (and never
+# hit by this cache) for a season still in progress, since range_end is
+# statsapi.eastern_date() in that case — the cache key doesn't distinguish
+# "today" from "yesterday" for an in-progress season, so a caller building
+# a training set for the CURRENT season should bypass this cache; nothing
+# in this framework does that today (walk-forward folds only ever use
+# fully-completed past seasons).
+_training_set_cache: dict[tuple[int, ...], "TrainingSetResult"] = {}
+
+
 async def build_training_set(client: httpx.AsyncClient, seasons: list[int]) -> TrainingSetResult:
     """Walks every season in `seasons` in order, in one continuous pass, so
     Elo carries forward across season boundaries (with regression-to-mean
     applied at each team's own first game of a new season). Team win/loss/
     form state and park factors reset each season (standings genuinely do
-    reset); Elo does not. `seasons` must already be sorted ascending."""
+    reset); Elo does not. `seasons` must already be sorted ascending.
+
+    Memoized by the exact seasons tuple — see _training_set_cache's own
+    comment above for why this is safe and why it was added."""
+    cache_key = tuple(seasons)
+    cached = _training_set_cache.get(cache_key)
+    if cached is not None:
+        return cached
+    result = await _build_training_set_uncached(client, seasons)
+    _training_set_cache[cache_key] = result
+    return result
+
+
+async def _build_training_set_uncached(client: httpx.AsyncClient, seasons: list[int]) -> TrainingSetResult:
     rows: list[TrainingRow] = []
     total_rows: list[TrainingRow] = []
     elo_rating: dict[int, float] = {}

@@ -1303,6 +1303,34 @@ async def attach_total_kelly_stake(sport: str, game_id: str, slot: str, side: st
     )
 
 
+async def get_graded_moneyline_picks_for_significance(sport: str) -> list[tuple[float, float, bool]]:
+    """(stake_fraction, decimal_odds, won) tuples for every FINAL-slot
+    moneyline pick that's both graded and has a real attached price and
+    Kelly stake — predict/staking.py's bootstrap_roi_ci input shape. Final
+    slot only (not initial+final both), matching game_pick_lock.py's own
+    "the final lock is the pick that actually counts" convention — using
+    both would double-count the same underlying game. american_to_decimal
+    lives in predict/odds_math.py; imported locally to avoid db.py taking
+    a dependency on predict/ at module load time (every other predict/*
+    module already depends on db, not the other way around)."""
+    from predict.odds_math import american_to_decimal
+
+    pool = await get_pool()
+    rows = await pool.fetch(
+        "SELECT ml_final_kelly_stake_fraction, ml_final_price, ml_outcome FROM game_picks "
+        "WHERE sport = $1 AND graded_at IS NOT NULL AND ml_outcome IS NOT NULL "
+        "AND ml_final_kelly_stake_fraction IS NOT NULL AND ml_final_price IS NOT NULL",
+        sport,
+    )
+    picks: list[tuple[float, float, bool]] = []
+    for r in rows:
+        decimal_odds = american_to_decimal(r["ml_final_price"])
+        if decimal_odds is None:
+            continue
+        picks.append((r["ml_final_kelly_stake_fraction"], decimal_odds, r["ml_outcome"] == "win"))
+    return picks
+
+
 async def list_game_picks_for_lock_cycle(sport: str) -> list[GamePickRow]:
     """Games with at least one open slot to fill or grade — the lock
     engine's work list."""

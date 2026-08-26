@@ -121,6 +121,37 @@ async def check_elo_freshness() -> dict:
     return {"name": "eloFreshness", "status": f"healthy — all {len(finished)} finished games today are reflected in team_elo_history", "healthy": True}
 
 
+MAX_MODEL_AGE_DAYS = 45  # deliberately generous manual-retrain cadence — no automated job exists to compare against (see predict/run_walkforward.py's own docstring on why model-fitting stays a manual CLI, never JOB_REGISTRY), so this can't reuse check_job's 2x-registered-interval convention.
+
+
+async def check_mlb_model_freshness() -> dict:
+    """Verifies an active predict/mlb_* moneyline model actually exists
+    and isn't stale — the cross-sport prediction framework's own
+    ground-truth check, same "did it run" vs. "is the DATA actually
+    current" distinction check_elo_freshness's own docstring makes.
+    Expected to report STALE on a fresh environment where
+    run_walkforward.py --activate has never been run — that's a real,
+    honest signal (still running on the hand-coded formula only), not a
+    bug in this check."""
+    row = await db.get_active_model_weights("mlb", "moneyline")
+    if row is None:
+        return {
+            "name": "mlbModelFreshness",
+            "status": "STALE — no active mlb/moneyline model_weights row (still running on the hand-coded formula only) — "
+            "run `python src/run_walkforward.py --sport mlb --market moneyline --activate`",
+            "healthy": False,
+        }
+    fitted_at = datetime.fromisoformat(row.fitted_at)
+    age_days = (datetime.now(timezone.utc) - fitted_at).total_seconds() / 86400
+    if age_days > MAX_MODEL_AGE_DAYS:
+        return {
+            "name": "mlbModelFreshness",
+            "status": f"STALE — active model_weights (version {row.version}) fitted {age_days:.0f}d ago, past the {MAX_MODEL_AGE_DAYS}d manual-retrain cadence",
+            "healthy": False,
+        }
+    return {"name": "mlbModelFreshness", "status": f"healthy — active model_weights (version {row.version}) fitted {age_days:.0f}d ago", "healthy": True}
+
+
 async def check_game_model_freshness() -> dict:
     """Same idea as check_elo_freshness, for Phase N's mlb_game_model_cache
     — verifies every real still-upcoming ('pre') game today actually has a
@@ -414,6 +445,7 @@ async def main() -> int:
     results = [
         *job_results,
         await check_elo_freshness(),
+        await check_mlb_model_freshness(),
         await check_game_model_freshness(),
         await check_game_picks_freshness(),
         await check_odds_history_and_prices_freshness(),
