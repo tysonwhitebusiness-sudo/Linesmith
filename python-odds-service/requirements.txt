@@ -2,3 +2,17 @@ httpx>=0.27
 asyncpg>=0.29
 tzdata>=2024.1
 psutil>=5.9  # measure_memory.py only — not imported by the real worker entry point
+
+# Cross-sport prediction framework's model ensemble (predict/mlb_tree_models.py,
+# predict/mlb_mlp.py) — a deliberate, repo-wide departure from every other
+# module in predict/ staying hand-rolled/dependency-free (see
+# logistic_regression.py's own docstring on why THAT module stays pure
+# Python). Hand-rolling four separate gradient-boosting/NN implementations
+# from scratch would be both enormous and far more bug-prone than using the
+# real, battle-tested libraries the reference system (quant-predictor) itself
+# uses. scikit-learn also provides MLPClassifier (the neural-net candidate) —
+# no separate deep-learning framework needed for that piece.
+scikit-learn>=1.4
+catboost>=1.2
+xgboost>=2.0
+lightgbm>=4.3
