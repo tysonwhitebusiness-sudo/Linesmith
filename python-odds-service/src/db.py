@@ -1746,6 +1746,182 @@ async def write_calibration(input: CalibrationInput, activate: bool) -> Calibrat
 
 
 @dataclass
+class WalkforwardResultInput:
+    sport: str
+    market: str
+    model_name: str
+    fold_index: int | None  # None for the final held-out test row
+    is_final_test: bool
+    train_seasons: list[int]
+    val_seasons: list[int]
+    train_games: int
+    val_games: int
+    log_loss: float
+    brier_score: float
+
+
+async def write_walkforward_result(input: WalkforwardResultInput) -> None:
+    """Append-only — every fold of every candidate a run_benchmark() call
+    evaluates gets its own row; no versioning/activation here (that's
+    model_artifacts'/model_weights' job), this is a benchmarking log."""
+    pool = await get_pool()
+    await pool.execute(
+        """
+        INSERT INTO walkforward_results
+          (sport, market, model_name, fold_index, is_final_test, train_seasons_json, val_seasons_json,
+           train_games, val_games, log_loss, brier_score, fitted_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+        """,
+        input.sport,
+        input.market,
+        input.model_name,
+        input.fold_index,
+        input.is_final_test,
+        json.dumps(input.train_seasons),
+        json.dumps(input.val_seasons),
+        input.train_games,
+        input.val_games,
+        input.log_loss,
+        input.brier_score,
+    )
+
+
+@dataclass
+class ModelArtifactRow:
+    id: int
+    sport: str
+    market: str
+    model_name: str
+    version: int
+    artifact_json: dict | None
+    artifact_blob: bytes | None
+    train_games: int
+    train_log_loss: float
+    train_brier: float
+    holdout_games: int
+    holdout_log_loss: float
+    holdout_brier: float
+    active: bool
+    fitted_at: str
+
+
+async def get_active_model_artifact(sport: str, market: str, model_name: str) -> ModelArtifactRow | None:
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "SELECT * FROM model_artifacts WHERE sport = $1 AND market = $2 AND model_name = $3 AND active = true ORDER BY version DESC LIMIT 1",
+        sport,
+        market,
+        model_name,
+    )
+    if row is None:
+        return None
+    return ModelArtifactRow(
+        id=row["id"],
+        sport=row["sport"],
+        market=row["market"],
+        model_name=row["model_name"],
+        version=row["version"],
+        artifact_json=_json_or_none(row["artifact_json"]),
+        artifact_blob=row["artifact_blob"],
+        train_games=row["train_games"],
+        train_log_loss=row["train_log_loss"],
+        train_brier=row["train_brier"],
+        holdout_games=row["holdout_games"],
+        holdout_log_loss=row["holdout_log_loss"],
+        holdout_brier=row["holdout_brier"],
+        active=row["active"],
+        fitted_at=row["fitted_at"].isoformat(),
+    )
+
+
+@dataclass
+class ModelArtifactInput:
+    sport: str
+    market: str
+    model_name: str
+    artifact_json: dict | None
+    artifact_blob: bytes | None
+    train_games: int
+    train_log_loss: float
+    train_brier: float
+    holdout_games: int
+    holdout_log_loss: float
+    holdout_brier: float
+
+
+async def write_model_artifact(input: ModelArtifactInput, activate: bool) -> ModelArtifactRow:
+    """Same versioned-transaction shape as write_model_weights, scoped per
+    (sport, market, model_name) instead of (sport, market) — see the
+    migration's own comment for why."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            max_version_row = await conn.fetchrow(
+                "SELECT MAX(version) AS v FROM model_artifacts WHERE sport = $1 AND market = $2 AND model_name = $3",
+                input.sport,
+                input.market,
+                input.model_name,
+            )
+            next_version = (max_version_row["v"] or 0) + 1
+
+            if activate:
+                await conn.execute(
+                    "UPDATE model_artifacts SET active = false WHERE sport = $1 AND market = $2 AND model_name = $3",
+                    input.sport,
+                    input.market,
+                    input.model_name,
+                )
+
+            await conn.execute(
+                """
+                INSERT INTO model_artifacts
+                  (sport, market, model_name, version, artifact_json, artifact_blob, train_games, train_log_loss,
+                   train_brier, holdout_games, holdout_log_loss, holdout_brier, active, fitted_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
+                """,
+                input.sport,
+                input.market,
+                input.model_name,
+                next_version,
+                json.dumps(input.artifact_json) if input.artifact_json is not None else None,
+                input.artifact_blob,
+                input.train_games,
+                input.train_log_loss,
+                input.train_brier,
+                input.holdout_games,
+                input.holdout_log_loss,
+                input.holdout_brier,
+                activate,
+            )
+
+            row = await conn.fetchrow(
+                "SELECT * FROM model_artifacts WHERE sport = $1 AND market = $2 AND model_name = $3 AND version = $4",
+                input.sport,
+                input.market,
+                input.model_name,
+                next_version,
+            )
+
+    return ModelArtifactRow(
+        id=row["id"],
+        sport=row["sport"],
+        market=row["market"],
+        model_name=row["model_name"],
+        version=row["version"],
+        artifact_json=_json_or_none(row["artifact_json"]),
+        artifact_blob=row["artifact_blob"],
+        train_games=row["train_games"],
+        train_log_loss=row["train_log_loss"],
+        train_brier=row["train_brier"],
+        holdout_games=row["holdout_games"],
+        holdout_log_loss=row["holdout_log_loss"],
+        holdout_brier=row["holdout_brier"],
+        active=row["active"],
+        fitted_at=row["fitted_at"].isoformat(),
+    )
+
+
+@dataclass
 class HistoricalOddsRow:
     ml_home_consensus_prob: float | None
     ml_away_consensus_prob: float | None
