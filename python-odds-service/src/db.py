@@ -1113,6 +1113,8 @@ class GamePickRow:
     ml_initial_price: int | None
     ml_initial_prob_lower: float | None
     ml_initial_prob_upper: float | None
+    ml_initial_kelly_stake_fraction: float | None
+    ml_initial_edge_significant: bool | None
     ml_final_side: str | None
     ml_final_prob: float | None
     ml_final_captured_at: str | None
@@ -1120,6 +1122,8 @@ class GamePickRow:
     ml_final_price: int | None
     ml_final_prob_lower: float | None
     ml_final_prob_upper: float | None
+    ml_final_kelly_stake_fraction: float | None
+    ml_final_edge_significant: bool | None
     total_initial_side: str | None
     total_initial_prob: float | None
     total_initial_line: float | None
@@ -1128,6 +1132,8 @@ class GamePickRow:
     total_initial_price: int | None
     total_initial_prob_lower: float | None
     total_initial_prob_upper: float | None
+    total_initial_kelly_stake_fraction: float | None
+    total_initial_edge_significant: bool | None
     total_final_side: str | None
     total_final_prob: float | None
     total_final_line: float | None
@@ -1136,6 +1142,8 @@ class GamePickRow:
     total_final_price: int | None
     total_final_prob_lower: float | None
     total_final_prob_upper: float | None
+    total_final_kelly_stake_fraction: float | None
+    total_final_edge_significant: bool | None
     final_home_score: int | None
     final_away_score: int | None
     ml_outcome: str | None
@@ -1151,13 +1159,15 @@ _GAME_PICK_COLUMNS = """
   id, sport, game_id, home_team_id, away_team_id, home_team_name, away_team_name,
   matchup, commence_time,
   ml_initial_side, ml_initial_prob, ml_initial_captured_at, ml_initial_late, ml_initial_price,
-  ml_initial_prob_lower, ml_initial_prob_upper,
+  ml_initial_prob_lower, ml_initial_prob_upper, ml_initial_kelly_stake_fraction, ml_initial_edge_significant,
   ml_final_side, ml_final_prob, ml_final_captured_at, ml_final_late, ml_final_price,
-  ml_final_prob_lower, ml_final_prob_upper,
+  ml_final_prob_lower, ml_final_prob_upper, ml_final_kelly_stake_fraction, ml_final_edge_significant,
   total_initial_side, total_initial_prob, total_initial_line, total_initial_captured_at,
   total_initial_late, total_initial_price, total_initial_prob_lower, total_initial_prob_upper,
+  total_initial_kelly_stake_fraction, total_initial_edge_significant,
   total_final_side, total_final_prob, total_final_line, total_final_captured_at,
   total_final_late, total_final_price, total_final_prob_lower, total_final_prob_upper,
+  total_final_kelly_stake_fraction, total_final_edge_significant,
   final_home_score, final_away_score, ml_outcome, total_outcome, graded_at,
   initial_ml_features_json, final_ml_features_json, initial_total_features_json, final_total_features_json
 """
@@ -1181,6 +1191,8 @@ def _map_game_pick_row(row) -> GamePickRow:
         ml_initial_price=row["ml_initial_price"],
         ml_initial_prob_lower=row["ml_initial_prob_lower"],
         ml_initial_prob_upper=row["ml_initial_prob_upper"],
+        ml_initial_kelly_stake_fraction=row["ml_initial_kelly_stake_fraction"],
+        ml_initial_edge_significant=row["ml_initial_edge_significant"],
         ml_final_side=row["ml_final_side"],
         ml_final_prob=row["ml_final_prob"],
         ml_final_captured_at=_iso_or_none(row["ml_final_captured_at"]),
@@ -1188,6 +1200,8 @@ def _map_game_pick_row(row) -> GamePickRow:
         ml_final_price=row["ml_final_price"],
         ml_final_prob_lower=row["ml_final_prob_lower"],
         ml_final_prob_upper=row["ml_final_prob_upper"],
+        ml_final_kelly_stake_fraction=row["ml_final_kelly_stake_fraction"],
+        ml_final_edge_significant=row["ml_final_edge_significant"],
         total_initial_side=row["total_initial_side"],
         total_initial_prob=row["total_initial_prob"],
         total_initial_line=row["total_initial_line"],
@@ -1196,6 +1210,8 @@ def _map_game_pick_row(row) -> GamePickRow:
         total_initial_price=row["total_initial_price"],
         total_initial_prob_lower=row["total_initial_prob_lower"],
         total_initial_prob_upper=row["total_initial_prob_upper"],
+        total_initial_kelly_stake_fraction=row["total_initial_kelly_stake_fraction"],
+        total_initial_edge_significant=row["total_initial_edge_significant"],
         total_final_side=row["total_final_side"],
         total_final_prob=row["total_final_prob"],
         total_final_line=row["total_final_line"],
@@ -1204,6 +1220,8 @@ def _map_game_pick_row(row) -> GamePickRow:
         total_final_price=row["total_final_price"],
         total_final_prob_lower=row["total_final_prob_lower"],
         total_final_prob_upper=row["total_final_prob_upper"],
+        total_final_kelly_stake_fraction=row["total_final_kelly_stake_fraction"],
+        total_final_edge_significant=row["total_final_edge_significant"],
         final_home_score=row["final_home_score"],
         final_away_score=row["final_away_score"],
         ml_outcome=row["ml_outcome"],
@@ -1246,6 +1264,39 @@ async def attach_total_price(sport: str, game_id: str, slot: str, side: str, ame
     await pool.execute(
         f"UPDATE game_picks SET {col}_price = $1 WHERE sport = $2 AND game_id = $3 AND {col}_side = $4 AND {col}_price IS NULL",
         american_odds,
+        sport,
+        game_id,
+        side,
+    )
+
+
+async def attach_moneyline_kelly_stake(sport: str, game_id: str, slot: str, side: str, stake_fraction: float, edge_significant: bool | None) -> None:
+    """predict/staking.py's counterpart to attach_moneyline_price — same
+    idempotent shape (only fills once), called right after the price
+    attach since Kelly needs the decimal odds that price attach is what
+    first makes known."""
+    col = "ml_initial" if slot == "initial" else "ml_final"
+    pool = await get_pool()
+    await pool.execute(
+        f"UPDATE game_picks SET {col}_kelly_stake_fraction = $1, {col}_edge_significant = $2 "
+        f"WHERE sport = $3 AND game_id = $4 AND {col}_side = $5 AND {col}_kelly_stake_fraction IS NULL",
+        stake_fraction,
+        edge_significant,
+        sport,
+        game_id,
+        side,
+    )
+
+
+async def attach_total_kelly_stake(sport: str, game_id: str, slot: str, side: str, stake_fraction: float, edge_significant: bool | None) -> None:
+    """Same shape as attach_moneyline_kelly_stake, for the total market."""
+    col = "total_initial" if slot == "initial" else "total_final"
+    pool = await get_pool()
+    await pool.execute(
+        f"UPDATE game_picks SET {col}_kelly_stake_fraction = $1, {col}_edge_significant = $2 "
+        f"WHERE sport = $3 AND game_id = $4 AND {col}_side = $5 AND {col}_kelly_stake_fraction IS NULL",
+        stake_fraction,
+        edge_significant,
         sport,
         game_id,
         side,
@@ -1569,6 +1620,128 @@ async def write_model_weights(input: ModelWeightsInput, activate: bool) -> Model
         covariance=_json_or_none(row["covariance_json"]),
         train_seasons=_json_or_none(row["train_seasons_json"]),
         holdout_seasons=_json_or_none(row["holdout_seasons_json"]),
+    )
+
+
+@dataclass
+class CalibrationRow:
+    id: int
+    sport: str
+    market: str
+    version: int
+    method: str  # 'platt' | 'isotonic'
+    params: dict
+    train_games: int
+    train_log_loss: float
+    holdout_games: int
+    holdout_log_loss: float
+    baseline_holdout_log_loss: float | None
+    active: bool
+    fitted_at: str
+
+
+async def get_active_calibration(sport: str, market: str) -> CalibrationRow | None:
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "SELECT * FROM model_calibration WHERE sport = $1 AND market = $2 AND active = true ORDER BY version DESC LIMIT 1",
+        sport,
+        market,
+    )
+    if row is None:
+        return None
+    return CalibrationRow(
+        id=row["id"],
+        sport=row["sport"],
+        market=row["market"],
+        version=row["version"],
+        method=row["method"],
+        params=json.loads(row["params_json"]),
+        train_games=row["train_games"],
+        train_log_loss=row["train_log_loss"],
+        holdout_games=row["holdout_games"],
+        holdout_log_loss=row["holdout_log_loss"],
+        baseline_holdout_log_loss=row["baseline_holdout_log_loss"],
+        active=row["active"],
+        fitted_at=row["fitted_at"].isoformat(),
+    )
+
+
+@dataclass
+class CalibrationInput:
+    sport: str
+    market: str
+    method: str  # 'platt' | 'isotonic'
+    params: dict
+    train_games: int
+    train_log_loss: float
+    holdout_games: int
+    holdout_log_loss: float
+    baseline_holdout_log_loss: float | None
+
+
+async def write_calibration(input: CalibrationInput, activate: bool) -> CalibrationRow:
+    """Same versioned-transaction shape as write_model_weights: versions
+    are per (sport, market), monotonically increasing; activating a new
+    version deactivates every prior version for that same (sport, market)
+    in the same transaction."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            max_version_row = await conn.fetchrow(
+                "SELECT MAX(version) AS v FROM model_calibration WHERE sport = $1 AND market = $2",
+                input.sport,
+                input.market,
+            )
+            next_version = (max_version_row["v"] or 0) + 1
+
+            if activate:
+                await conn.execute(
+                    "UPDATE model_calibration SET active = false WHERE sport = $1 AND market = $2",
+                    input.sport,
+                    input.market,
+                )
+
+            await conn.execute(
+                """
+                INSERT INTO model_calibration
+                  (sport, market, version, method, params_json, train_games, train_log_loss,
+                   holdout_games, holdout_log_loss, baseline_holdout_log_loss, active, fitted_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+                """,
+                input.sport,
+                input.market,
+                next_version,
+                input.method,
+                json.dumps(input.params),
+                input.train_games,
+                input.train_log_loss,
+                input.holdout_games,
+                input.holdout_log_loss,
+                input.baseline_holdout_log_loss,
+                activate,
+            )
+
+            row = await conn.fetchrow(
+                "SELECT * FROM model_calibration WHERE sport = $1 AND market = $2 AND version = $3",
+                input.sport,
+                input.market,
+                next_version,
+            )
+
+    return CalibrationRow(
+        id=row["id"],
+        sport=row["sport"],
+        market=row["market"],
+        version=row["version"],
+        method=row["method"],
+        params=json.loads(row["params_json"]),
+        train_games=row["train_games"],
+        train_log_loss=row["train_log_loss"],
+        holdout_games=row["holdout_games"],
+        holdout_log_loss=row["holdout_log_loss"],
+        baseline_holdout_log_loss=row["baseline_holdout_log_loss"],
+        active=row["active"],
+        fitted_at=row["fitted_at"].isoformat(),
     )
 
 
