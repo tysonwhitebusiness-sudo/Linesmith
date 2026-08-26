@@ -980,7 +980,19 @@ async def log_surfaced(entries: list[SurfacedEntry]) -> None:
                     r.edge,
                     r.price_source,
                     r.bookmaker,
-                    r.price_captured_at,
+                    # r.price_captured_at is a str (SurfacedEntry/CandidateEdgeInfo/
+                    # PropOddsRow all type it as str, matching TS's JSON-serializable
+                    # fetchedAt: string shape — correct for the JSON responses those
+                    # types also feed) but pick_history.price_captured_at is a real
+                    # TIMESTAMPTZ column; asyncpg requires an actual datetime for a
+                    # timestamptz parameter, not an ISO string. Real bug found live
+                    # 2026-08-26: computeMlbPropPredictionsJob failing every run with
+                    # "expected a datetime.date or datetime.datetime instance, got
+                    # 'str'" the moment a candidate actually had a real price
+                    # (chosen.fetched_at non-null) to log. Parsed back here, at the
+                    # one place that needs a real datetime, rather than changing the
+                    # type through the whole chain and risking the JSON use case.
+                    datetime.fromisoformat(r.price_captured_at) if r.price_captured_at else None,
                     r.prop_score,
                     r.score_grade,
                     r.trust_tier,
