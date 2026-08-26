@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fetchGameSummary } from '@/lib/sports/nba/espn';
+import { recordEspnPregameLine } from '@/lib/odds/espnBookLines';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gam
     if (!summary.game) {
       return NextResponse.json({ error: `No NBA game with id ${gameId}` }, { status: 404 });
     }
+    void recordEspnPregameLine('nba', gameId, summary.pregameLine);
     return NextResponse.json(summary);
   } catch (error) {
     return NextResponse.json({ error: 'NBA game detail failed', detail: String(error) }, { status: 500 });

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { fetchGameSummary } from '@/lib/sports/soccer/espn';
 import type { SoccerLeague } from '@/lib/core/types';
 import { SOCCER_LEAGUES } from '@/lib/core/types';
+import { recordEspnPregameLine } from '@/lib/odds/espnBookLines';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ lea
     if (!summary.game) {
       return NextResponse.json({ error: `No ${league} game with id ${gameId}` }, { status: 404 });
     }
+    // sport key matches the rest of this schema's soccer convention
+    // (soccer_epl/soccer_mls — see providers.py's _PROPLINE_SPORT_KEYS),
+    // not the bare 'epl'/'mls' this route's own param uses.
+    void recordEspnPregameLine(`soccer_${league}`, gameId, summary.pregameLine);
     return NextResponse.json(summary);
   } catch (error) {
     return NextResponse.json({ error: 'Soccer game detail failed', detail: String(error) }, { status: 500 });

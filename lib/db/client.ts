@@ -575,6 +575,66 @@ export async function writeGameOddsHistory(rows: GameOddsHistoryInput[]): Promis
   });
 }
 
+export interface GameOddsBookLineInput {
+  sport: string;
+  gameId: string;
+  market: 'moneyline' | 'spread' | 'total';
+  side: string;
+  bookmaker: string;
+  /** Which writer produced this row — part of the row's identity (see the
+   * table's UNIQUE constraint), not a display-only field: OddsHarvester,
+   * the-odds-api, and now this ESPN writer all populate the same table
+   * independently, and must never overwrite each other's reading of a
+   * nominal bookmaker. Matches python-odds-service/src/db.py's
+   * GameOddsBookLineInput.source exactly (same shared table, both apps
+   * write into it). */
+  source: string;
+  americanOdds: number;
+  point?: number | null;
+  decimalOdds?: number | null;
+}
+
+/**
+ * Current per-bookmaker game-line prices, TS-side counterpart to
+ * python-odds-service/src/db.py's write_game_odds_book_lines — same shared
+ * table, same upsert-on-(sport, game_id, market, side, bookmaker, source)
+ * semantics. Added for ESPN's pregame lines (2026-08-26, odds-architecture
+ * rebuild Phase 3): CFB/NBA/Soccer's real, single-book moneyline/spread/
+ * total data recast into this shared schema instead of staying its own
+ * differently-shaped pipeline, so the read side (Phase 5/6) never needs a
+ * sport-specific case for "only has one book."
+ */
+export async function writeGameOddsBookLines(rows: GameOddsBookLineInput[]): Promise<void> {
+  if (rows.length === 0) return;
+  const fetchedAt = new Date().toISOString();
+  await pgTransaction(async (tx) => {
+    for (const r of rows) {
+      await tx.run(
+        `INSERT INTO game_odds_book_lines
+           (sport, game_id, market, side, bookmaker, source, point, american_odds, decimal_odds, fetched_at)
+         VALUES (@sport, @gameId, @market, @side, @bookmaker, @source, @point, @americanOdds, @decimalOdds, @fetchedAt)
+         ON CONFLICT (sport, game_id, market, side, bookmaker, source) DO UPDATE SET
+           point         = excluded.point,
+           american_odds = excluded.american_odds,
+           decimal_odds  = excluded.decimal_odds,
+           fetched_at    = excluded.fetched_at`,
+        {
+          sport: r.sport,
+          gameId: r.gameId,
+          market: r.market,
+          side: r.side,
+          bookmaker: r.bookmaker,
+          source: r.source,
+          point: r.point ?? null,
+          americanOdds: r.americanOdds,
+          decimalOdds: r.decimalOdds ?? null,
+          fetchedAt,
+        },
+      );
+    }
+  });
+}
+
 /**
  * Live-side counterpart to historical_odds' opening line — the earliest
  * point value this app has itself observed for this event's total market,
