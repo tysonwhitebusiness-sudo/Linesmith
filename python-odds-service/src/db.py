@@ -69,8 +69,20 @@ async def get_pool() -> asyncpg.Pool:
         last_error: Exception | None = None
         for attempt in range(_POOL_CREATE_RETRIES):
             try:
+                # max_size=3, down from 5 (2026-08-27): live-confirmed the
+                # real structural cause of the health-check cron's
+                # EMAXCONNSESSION failures — the TS app's own pool
+                # (lib/db/pgClient.ts) is max:10, and 10 + this worker's old
+                # max:5 == the pooler's entire 15-connection cap, claimed
+                # between just those two persistent services with zero
+                # headroom left for anything else. This isn't a retry-able
+                # transient spike; it's two always-on processes structurally
+                # entitled to the whole budget. Trimmed here (not the TS
+                # side, which is live and in active use) to leave 2 real
+                # connections of headroom for the cron job and any other
+                # periodic/one-off consumer.
                 _pool = await asyncpg.create_pool(
-                    dsn=DATABASE_URL, ssl=ctx, min_size=1, max_size=5, server_settings={"statement_timeout": "15000"}
+                    dsn=DATABASE_URL, ssl=ctx, min_size=1, max_size=3, server_settings={"statement_timeout": "15000"}
                 )
                 break
             except Exception as e:
