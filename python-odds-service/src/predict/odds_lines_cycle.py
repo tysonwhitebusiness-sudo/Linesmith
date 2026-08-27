@@ -228,7 +228,7 @@ async def read_games_from_snapshot(client: httpx.AsyncClient) -> list[SnapshotGa
 # ---------------------------------------------------------------------------
 
 
-def _game_odds_history_rows(lines: list[GameLine]) -> list[db.GameOddsHistoryInput]:
+def _game_odds_history_rows(lines: list[GameLine], games: list[SnapshotGame] | None = None) -> list[db.GameOddsHistoryInput]:
     """Real bug caught during verification, fixed here rather than carried
     over: the "best available" price (line.moneyline/line.total, whose
     `book` field names whichever bookmaker happened to have the best price
@@ -245,7 +245,32 @@ def _game_odds_history_rows(lines: list[GameLine]) -> list[db.GameOddsHistoryInp
     bookmaker's own `bookmakers[]` entry when one exists, since that's the
     more specific, book-attributed source — makes "did the price change"
     well-defined again.
+
+    Second real bug, found 2026-08-27 while building predict/clv_backtest.py
+    (docs/mlb-market-centric-model-gameplan-2026-08-27.md's Phase 0): this
+    used to key every row by `line.event_id` — the-odds-api's OWN foreign
+    UUID, not the real MLB game_pk `game_picks.game_id` (and every other
+    real reader) uses. The exact same bug `_game_odds_book_line_rows`
+    below already had fixed for `game_odds_book_lines` on 2026-08-26, never
+    applied here — confirmed live: 0 of the current game_odds_history rows
+    written by this function match any real game_picks.game_id. Matched
+    here the same way (team-name equality via _team_key against `games`,
+    the real current slate); a line with no matching game on today's slate
+    is skipped, same "no match, no row" discipline used everywhere else in
+    this file. Every row this function has EVER written before this fix is
+    keyed by a UUID nothing will ever query again — a real, disclosed gap
+    for the pre-2026-08-27 backtest window, not fixable retroactively
+    without re-fetching the-odds-api's historical events.
+
+    `games` is optional, same reasoning as _game_odds_book_line_rows just
+    above (found the same latent bug in its own caller,
+    harvester_scrape.py's _game_odds_history_rows_tagged, at the same
+    time) — `games=None` trusts `line.event_id` as already correct
+    (OddsHarvester's case, resolved upstream with a richer matcher than
+    this function's plain _team_key); only the-odds-api's caller passes
+    `games` and needs this function's own matching.
     """
+    resolve = games is not None
     rows: dict[tuple[str, str, str, str], db.GameOddsHistoryInput] = {}
 
     def add(event_id: str, market: str, side: str, bookmaker: str, american_odds: int, point: float | None) -> None:
@@ -259,33 +284,51 @@ def _game_odds_history_rows(lines: list[GameLine]) -> list[db.GameOddsHistoryInp
         )
 
     for line in lines:
+        if resolve:
+            game = next(
+                (
+                    g
+                    for g in games
+                    if g.away_team_name
+                    and g.home_team_name
+                    and _team_key(g.away_team_name) == _team_key(line.away_team)
+                    and _team_key(g.home_team_name) == _team_key(line.home_team)
+                ),
+                None,
+            )
+            if game is None:
+                continue
+            game_id = game.game_pk
+        else:
+            game_id = line.event_id
+
         if line.moneyline and line.moneyline.home is not None and line.moneyline.book:
-            add(line.event_id, "moneyline", "home", line.moneyline.book, int(line.moneyline.home), None)
+            add(game_id, "moneyline", "home", line.moneyline.book, int(line.moneyline.home), None)
         if line.moneyline and line.moneyline.away is not None and line.moneyline.book:
-            add(line.event_id, "moneyline", "away", line.moneyline.book, int(line.moneyline.away), None)
+            add(game_id, "moneyline", "away", line.moneyline.book, int(line.moneyline.away), None)
         if line.total and line.total.over_price is not None and line.total.point is not None and line.total.book:
-            add(line.event_id, "total", "over", line.total.book, int(line.total.over_price), line.total.point)
+            add(game_id, "total", "over", line.total.book, int(line.total.over_price), line.total.point)
         if line.total and line.total.under_price is not None and line.total.point is not None and line.total.book:
-            add(line.event_id, "total", "under", line.total.book, int(line.total.under_price), line.total.point)
+            add(game_id, "total", "under", line.total.book, int(line.total.under_price), line.total.point)
 
         for book in line.bookmakers:
             home_american = decimal_to_american(book.home_odds)
             away_american = decimal_to_american(book.away_odds)
             if home_american is not None:
-                add(line.event_id, "moneyline", "home", book.bookmaker, home_american, None)
+                add(game_id, "moneyline", "home", book.bookmaker, home_american, None)
             if away_american is not None:
-                add(line.event_id, "moneyline", "away", book.bookmaker, away_american, None)
+                add(game_id, "moneyline", "away", book.bookmaker, away_american, None)
 
             over_american = decimal_to_american(book.over_price)
             under_american = decimal_to_american(book.under_price)
             if over_american is not None and book.point is not None:
-                add(line.event_id, "total", "over", book.bookmaker, over_american, book.point)
+                add(game_id, "total", "over", book.bookmaker, over_american, book.point)
             if under_american is not None and book.point is not None:
-                add(line.event_id, "total", "under", book.bookmaker, under_american, book.point)
+                add(game_id, "total", "under", book.bookmaker, under_american, book.point)
     return list(rows.values())
 
 
-def _game_odds_book_line_rows(lines: list[GameLine], games: list[SnapshotGame]) -> list[db.GameOddsBookLineInput]:
+def _game_odds_book_line_rows(lines: list[GameLine], games: list[SnapshotGame] | None = None) -> list[db.GameOddsBookLineInput]:
     """Current per-bookmaker prices for the bookmaker-grid UI (2026-08-25,
     OddsHarvester integration) — a sibling to _game_odds_history_rows above,
     not a replacement: that function feeds the append-only archive, this
@@ -309,7 +352,25 @@ def _game_odds_book_line_rows(lines: list[GameLine], games: list[SnapshotGame]) 
     equality via _team_key) — a line with no matching game on today's
     slate (an exhibition/off-slate event the-odds-api still returned) is
     skipped, same "no match, no row" discipline those functions already use.
+
+    `games` is optional (2026-08-27, found while auditing this for
+    docs/mlb-market-centric-model-gameplan-2026-08-27.md's CLV backtest):
+    harvester_scrape.py's caller (_game_odds_book_line_rows_for_source)
+    was calling this with a single argument, which would raise TypeError
+    the moment `games` became required in the fix above and this call site
+    was never updated — a real, latent bug. `games=None` restores that
+    caller's original, correct behavior: OddsHarvester's own matcher
+    already resolves `line.event_id` to the real game_id before this
+    function ever sees it (harvester_scrape.py's _record_to_game_line),
+    using a much richer alias/fuzzy-match table than this function's plain
+    _team_key — re-matching here with the simpler key would silently DROP
+    real rows whose OddsPortal-scraped team name doesn't happen to match
+    _team_key's bare ASCII-lowercase form, even though they were already
+    correctly identified. Only the-odds-api's caller (whose event_id is a
+    genuinely unresolved foreign UUID) passes `games` and needs this
+    function's own matching.
     """
+    resolve = games is not None
     rows: dict[tuple[str, str, str, str], db.GameOddsBookLineInput] = {}
 
     def add(game_id: str, market: str, side: str, bookmaker: str, american_odds: int, point: float | None) -> None:
@@ -327,20 +388,23 @@ def _game_odds_book_line_rows(lines: list[GameLine], games: list[SnapshotGame]) 
         )
 
     for line in lines:
-        game = next(
-            (
-                g
-                for g in games
-                if g.away_team_name
-                and g.home_team_name
-                and _team_key(g.away_team_name) == _team_key(line.away_team)
-                and _team_key(g.home_team_name) == _team_key(line.home_team)
-            ),
-            None,
-        )
-        if game is None:
-            continue
-        game_id = game.game_pk
+        if resolve:
+            game = next(
+                (
+                    g
+                    for g in games
+                    if g.away_team_name
+                    and g.home_team_name
+                    and _team_key(g.away_team_name) == _team_key(line.away_team)
+                    and _team_key(g.home_team_name) == _team_key(line.home_team)
+                ),
+                None,
+            )
+            if game is None:
+                continue
+            game_id = game.game_pk
+        else:
+            game_id = line.event_id
         for book in line.bookmakers:
             home_american = decimal_to_american(book.home_odds)
             away_american = decimal_to_american(book.away_odds)
@@ -698,7 +762,7 @@ async def run_mlb_odds_lines_cycle(client: httpx.AsyncClient, now=None) -> dict:
     sharpapi_lines = game_lines_from_book_lines(sharpapi_rows, games)
     primary_lines = _primary_mlb_lines(games, sharpapi_lines, result.lines)
 
-    await db.write_game_odds_history(_game_odds_history_rows(result.lines))
+    await db.write_game_odds_history(_game_odds_history_rows(result.lines, games))
     await db.write_game_odds_book_lines(_game_odds_book_line_rows(result.lines, games))
     await run_total_lock_from_lines(client, primary_lines, games, now)
     await run_moneyline_lock_from_snapshot(primary_lines, games, now)

@@ -994,6 +994,45 @@ async def write_game_odds_history(rows: list[GameOddsHistoryInput]) -> None:
 
 
 @dataclass
+class ClosingPriceRow:
+    american_odds: int
+    observed_at: datetime
+    bookmaker: str
+
+
+async def get_closing_price(
+    event_id: str, market: str, side: str, before: datetime, bookmaker_like: str
+) -> ClosingPriceRow | None:
+    """The last real observed price for one (event, market, side) at a
+    specific reference book, strictly before `before` (a game's own
+    commence_time) — this is what predict/clv_backtest.py means by "the
+    closing line," read from game_odds_history's real observation log
+    rather than game_picks' own two fixed capture-window snapshots (which
+    can price a DIFFERENT side at the final capture than what was actually
+    picked at the initial one, if the model's own pick flipped — wrong
+    input for CLV, which needs the closing price of the side you actually
+    entered). `bookmaker_like` is matched case-insensitively — the same
+    nominal book shows up under inconsistent casing between writers
+    (the-odds-api's 'DraftKings' vs oddsharvester's lowercase 'draftkings'),
+    confirmed live 2026-08-27, not yet worth a full normalization pass."""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT american_odds, observed_at, bookmaker FROM game_odds_history
+        WHERE event_id = $1 AND market = $2 AND side = $3
+          AND LOWER(bookmaker) = LOWER($4) AND observed_at < $5
+        ORDER BY observed_at DESC, id DESC LIMIT 1
+        """,
+        event_id,
+        market,
+        side,
+        bookmaker_like,
+        before,
+    )
+    return ClosingPriceRow(american_odds=row["american_odds"], observed_at=row["observed_at"], bookmaker=row["bookmaker"]) if row else None
+
+
+@dataclass
 class SurfacedEntry:
     sport: str
     subject_id: str
@@ -1458,6 +1497,22 @@ async def list_game_picks_for_lock_cycle(sport: str) -> list[GamePickRow]:
     pool = await get_pool()
     rows = await pool.fetch(
         f"SELECT {_GAME_PICK_COLUMNS} FROM game_picks WHERE sport = $1 AND (ml_final_captured_at IS NULL OR total_final_captured_at IS NULL OR graded_at IS NULL)",
+        sport,
+    )
+    return [_map_game_pick_row(r) for r in rows]
+
+
+async def list_captured_game_picks(sport: str) -> list[GamePickRow]:
+    """Every pick that got at least an initial moneyline capture — the
+    analysis/backtest read path (predict/clv_backtest.py), distinct from
+    list_game_picks_for_lock_cycle's live "still has open work" filter
+    above. Includes both graded and still-in-flight games; callers that
+    need only graded outcomes filter on ml_outcome/total_outcome
+    themselves, since a CLV backtest cares about entry-vs-close price
+    movement, which doesn't require the game to be final yet."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        f"SELECT {_GAME_PICK_COLUMNS} FROM game_picks WHERE sport = $1 AND ml_initial_captured_at IS NOT NULL ORDER BY commence_time",
         sport,
     )
     return [_map_game_pick_row(r) for r in rows]
@@ -2160,6 +2215,33 @@ def _map_game_odds_book_line_row(r) -> GameOddsBookLineRow:
         decimal_odds=r["decimal_odds"],
         fetched_at=r["fetched_at"].isoformat(),
     )
+
+
+async def get_current_book_line(sport: str, game_id: str, market: str, side: str, bookmaker_like: str) -> GameOddsBookLineRow | None:
+    """Single-row lookup against game_odds_book_lines — the CURRENT-state
+    table (one row per key, upserted on every write; not an append-only
+    log the way game_odds_history is). For a game that's already finished,
+    "current" effectively means "whatever the last real price was before
+    writers stopped updating it," which is a reasonable, honest proxy for
+    a closing price when game_odds_history has no correctly-keyed
+    historical row for the same game (see predict/clv_backtest.py, which
+    uses this as its fallback reference — real but short-window data,
+    since this table has only existed since 2026-08-25). `bookmaker_like`
+    matched case-insensitively, same reasoning as get_closing_price above."""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT sport, game_id, market, side, bookmaker, source, american_odds, point, decimal_odds, fetched_at
+        FROM game_odds_book_lines
+        WHERE sport = $1 AND game_id = $2 AND market = $3 AND side = $4 AND LOWER(bookmaker) = LOWER($5)
+        """,
+        _GENERIC_SPORT_KEY.get(sport, sport),
+        game_id,
+        market,
+        side,
+        bookmaker_like,
+    )
+    return _map_game_odds_book_line_row(row) if row else None
 
 
 async def read_game_odds_book_lines_for_sport(sport: str) -> list[GameOddsBookLineRow]:

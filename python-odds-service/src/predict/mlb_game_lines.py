@@ -50,7 +50,7 @@ import httpx
 import config
 import db
 
-from .odds_math import american_to_decimal
+from .odds_math import american_to_decimal, decimal_to_american, is_plausible_decimal_odds
 
 BASE = "https://api.the-odds-api.com/v4"
 SPORT_KEY = "baseball_mlb"
@@ -290,31 +290,63 @@ def game_lines_from_book_lines(rows: list, games: list) -> list[GameLine]:
             bookmakers=list(book_map.values()),
             book_count=len(book_map),
         )
+        # Real bug fixed here 2026-08-27, found while building
+        # predict/clv_backtest.py
+        # (docs/mlb-market-centric-model-gameplan-2026-08-27.md's Phase 0):
+        # this used to compare raw American-odds integers directly
+        # (`american > line.moneyline.home`) with no plausibility bound —
+        # confirmed live picking a garbage propline outlier (tab_au, +3300
+        # American) over every real book's real price on a real game.
+        # (Raw-integer comparison is not itself the bug — American odds
+        # are monotonic with decimal/payout value across their whole valid
+        # range, -100 and +100 both mapping to decimal 2.0 at the
+        # boundary, so `>` on the integers already agreed with `>` on
+        # decimal value; double-checked before writing this, not assumed.
+        # The actual gap was the missing sanity bound on what counts as a
+        # real price at all.) is_plausible_decimal_odds rejects the same
+        # class of garbage row lib/odds/display.ts's bestMoneylineFromBooks
+        # was already fixed for on the TS side, same session — one shared
+        # constant (odds_math.MAX_PLAUSIBLE_DECIMAL_ODDS), both languages.
+        # Comparing via decimal here anyway (not just gating the raw int)
+        # keeps this call site consistent with every other "best price"
+        # selector in the codebase, all of which work in decimal.
+        home_best_decimal = away_best_decimal = None
+        spread_home_best_decimal = spread_away_best_decimal = None
+        total_over_best_decimal = total_under_best_decimal = None
         for r in rows:
             if r.game_id != game_id:
                 continue
-            american = r.american_odds
+            decimal = r.decimal_odds if r.decimal_odds is not None else american_to_decimal(r.american_odds)
+            if not is_plausible_decimal_odds(decimal):
+                continue
+            american = decimal_to_american(decimal)
             if r.market == "moneyline":
                 if line.moneyline is None:
                     line.moneyline = MoneylineSummary()
-                if r.side == "home" and (line.moneyline.home is None or american > line.moneyline.home):
+                if r.side == "home" and (home_best_decimal is None or decimal > home_best_decimal):
+                    home_best_decimal = decimal
                     line.moneyline.home, line.moneyline.book = american, r.bookmaker
-                if r.side == "away" and (line.moneyline.away is None or american > line.moneyline.away):
+                if r.side == "away" and (away_best_decimal is None or decimal > away_best_decimal):
+                    away_best_decimal = decimal
                     line.moneyline.away, line.moneyline.book = american, r.bookmaker
             elif r.market == "spread":
                 if line.spread is None:
                     line.spread = SpreadSummary()
-                if r.side == "home" and (line.spread.home_price is None or american > line.spread.home_price):
+                if r.side == "home" and (spread_home_best_decimal is None or decimal > spread_home_best_decimal):
+                    spread_home_best_decimal = decimal
                     line.spread.home_point, line.spread.home_price, line.spread.book = r.point, american, r.bookmaker
-                if r.side == "away" and (line.spread.away_price is None or american > line.spread.away_price):
+                if r.side == "away" and (spread_away_best_decimal is None or decimal > spread_away_best_decimal):
+                    spread_away_best_decimal = decimal
                     line.spread.away_point, line.spread.away_price, line.spread.book = r.point, american, r.bookmaker
             elif r.market == "total":
                 if line.total is None:
                     line.total = TotalSummary()
-                if r.side == "over" and (line.total.over_price is None or american > line.total.over_price):
+                if r.side == "over" and (total_over_best_decimal is None or decimal > total_over_best_decimal):
+                    total_over_best_decimal = decimal
                     line.total.point = r.point if r.point is not None else line.total.point
                     line.total.over_price, line.total.book = american, r.bookmaker
-                if r.side == "under" and (line.total.under_price is None or american > line.total.under_price):
+                if r.side == "under" and (total_under_best_decimal is None or decimal > total_under_best_decimal):
+                    total_under_best_decimal = decimal
                     line.total.point = line.total.point if line.total.point is not None else r.point
                     line.total.under_price, line.total.book = american, r.bookmaker
         lines.append(line)
