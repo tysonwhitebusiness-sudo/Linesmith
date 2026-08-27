@@ -22,7 +22,7 @@ class PlayerGameStat:
     stats: dict[str, float] = field(default_factory=dict)  # ESPN stat name -> real value
 
 
-async def fetch_player_gamelog(client: httpx.AsyncClient, espn_sport: str, espn_league: str, athlete_id: str) -> list[PlayerGameStat]:
+async def fetch_player_gamelog(client: httpx.AsyncClient, espn_sport: str, espn_league: str, athlete_id: str, season: int | None = None) -> list[PlayerGameStat]:
     """Regular season only, deliberately — a player's playoff sample is
     real but small and a structurally different level of competition; a
     prop-score baseline should be built on the same competitive context a
@@ -31,8 +31,16 @@ async def fetch_player_gamelog(client: httpx.AsyncClient, espn_sport: str, espn_
     per-field rather than dropping the whole game, since the simple
     counting stats (points, rebounds, assists, etc.) this module actually
     needs are real plain numbers in every sport checked so far."""
+    # Real bug found live 2026-08-27: with no `season` param, this
+    # endpoint's default only returned a partial, tail-end slice of a
+    # player's real season (confirmed live: 16 games for a player whose
+    # real full season, requested explicitly via ?season=, has 74) — not
+    # obviously partial from the response shape alone, easy to silently
+    # under-sample a real player's history without ever raising an error.
+    # Always pass a real season explicitly rather than trust the default.
     url = f"{_ESPN_COMMON_BASE}/{espn_sport}/{espn_league}/athletes/{athlete_id}/gamelog"
-    res = await client.get(url, timeout=httpx.Timeout(15.0))
+    params = {"season": season} if season is not None else None
+    res = await client.get(url, params=params, timeout=httpx.Timeout(15.0))
     if res.status_code != 200:
         return []
     data = res.json()
