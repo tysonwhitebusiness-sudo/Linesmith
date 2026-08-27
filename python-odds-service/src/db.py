@@ -1065,6 +1065,13 @@ class SurfacedEntry:
     score_grade: str | None = None
     trust_tier: str | None = None
     model_version: int | None = None
+    # Which real reference actually produced market_prob/edge (2026-08-27
+    # redesign, docs/edge-redesign-and-prop-score-gameplan-2026-08-27.md):
+    # a named sharp book ('pinnacle'/'circa'/'novig'/'kalshi', Tier 1) or
+    # 'consensus' (Tier 2, median across available books) — None when
+    # neither existed for this candidate (edge/market_prob are also None
+    # in that case).
+    edge_source: str | None = None
 
 
 async def log_surfaced(entries: list[SurfacedEntry]) -> None:
@@ -1085,8 +1092,8 @@ async def log_surfaced(entries: list[SurfacedEntry]) -> None:
                     INSERT INTO pick_history
                       (sport, subject_id, subject_name, dimension, category, market_key, line, game_id,
                        sample_size, distance, event_context, model_prob, market_prob, edge, price_source, bookmaker, price_captured_at,
-                       prop_score, score_grade, trust_tier, model_version)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+                       prop_score, score_grade, trust_tier, model_version, edge_source)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
                     ON CONFLICT (sport, subject_id, dimension, category, game_id) DO NOTHING
                     """,
                     r.sport,
@@ -1122,6 +1129,7 @@ async def log_surfaced(entries: list[SurfacedEntry]) -> None:
                     r.score_grade,
                     r.trust_tier,
                     r.model_version,
+                    r.edge_source,
                 )
 
 

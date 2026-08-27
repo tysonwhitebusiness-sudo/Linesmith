@@ -87,6 +87,7 @@ def candidate_to_surfaced_entry(
         prop_score=prop_score,
         score_grade=score_grade,
         trust_tier=trust_tier,
+        edge_source=edge_info.edge_source if edge_info else None,
     )
 
 
