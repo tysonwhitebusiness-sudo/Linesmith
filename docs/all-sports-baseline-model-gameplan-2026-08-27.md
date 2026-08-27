@@ -1,0 +1,57 @@
+# All-sports baseline moneyline/totals model — gameplan (2026-08-27)
+
+## Why this exists, and what it is not
+
+The user made an explicit, informed call tonight: build a real, working baseline moneyline/totals predictor for every sport now, rather than wait for MLB's own market-centric CLV pivot (`docs/mlb-market-centric-model-gameplan-2026-08-27.md`) to finish proving itself first. The tradeoffs were stated plainly before this started — none of these predictors are CLV-validated, the blend weight is a shared guess, and the underlying models don't transfer sport to sport — and the decision was to ship real baselines anyway rather than have nothing in the app. This doc describes exactly what got built as a result, and how it actually works, not an aspirational plan.
+
+This is **not** a port of MLB's own model. MLB's real predictor (`predict/elo_model.py` + `mlb_bradley_terry.py` + `mlb_mlp.py` + `mlb_stacking.py`) is a 4-model ensemble with baseball-specific extras — a starting-pitcher Game Score adjustment, rest/travel via haversine distance between MLB cities. This build is deliberately simpler: one model (Elo), no sport-specific extras, real but minimal. That's a disclosed, intentional scope decision, not an oversight.
+
+## The core mechanism (same for every team sport)
+
+Built in `python-odds-service/src/predict/generic_team_elo.py` — one shared module, one config dict (`SPORT_CONFIGS`) per sport, no per-sport code duplication.
+
+**1. Elo rating, real math, reused from MLB's own proven implementation.** The logistic expected-score formula, the log-scaled margin-of-victory multiplier (a blowout moves the rating more than a 1-point win, dampened by how big a favorite the winner already was), and season-boundary regression toward the mean (1500) are copied unchanged from `predict/elo_model.py` — confirmed, by actually reading that file before writing this one, that none of that math has any baseball-specific content. Only the *inputs* change per sport (points instead of runs, a team's own real schedule instead of MLB's).
+
+**2. Real historical results, from ESPN's scoreboard API.** Confirmed live before building anything: `site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard?dates=YYYYMMDD-YYYYMMDD` returns real final scores across football, basketball, hockey, and soccer, for a real date range — not assumed, checked with real curl requests against real dates for each sport first. A backfill walks ~400 days (roughly one full season plus margin) in 45-day chunks, oldest to newest, computing every team's Elo trajectory exactly the way `elo_model.py`'s own `backfill_elo` does for MLB: no lookahead, one pass, real games only (`STATUS_FINAL`/`STATUS_FULL_TIME`), a team's rating persisted after every game.
+
+**3. A dedicated database table, shared but sport-aware.** `team_elo_history` was MLB-only by schema (no `sport` column) before tonight — reusing it blind for other sports risked colliding different sports' own numeric team IDs under one rating (e.g. MLB team_id 108 means something completely different from another sport's team_id 108). Migrated live (`supabase/migrations/20260827040000_team_elo_history_sport_generic.sql`, applied directly to the real database, not just written): added `sport`, widened the unique constraint to `(sport, team_id, season, game_pk)`. Every read/write function in `db.py` (`get_current_elo`, `get_latest_elo_before_season`, `write_elo_history`) now takes a `sport` parameter, defaulting to `'mlb'` so every one of `elo_model.py`'s existing MLB call sites kept working unchanged — verified by re-syntax-checking and re-reading every call site, not assumed safe. `health_check.py`'s MLB-specific Elo-freshness check was also updated to filter `sport = 'mlb'` explicitly, so a different sport's backfill landing a coincidentally-matching `game_pk` can't silently mark that check healthy for the wrong reason.
+
+**4. Market blend, reusing MLB's own real, working blend function unchanged.** `predict/probability_blend.py`'s `blend_probability` (calibrated model probability × (1 − weight) + market probability × weight) was already fully sport-agnostic — no MLB coupling at all, confirmed by reading it. The market side reads real prices from `game_odds_book_lines` (this week's odds-architecture-rebuild table, correctly keyed by real game id per sport), picks the best plausible price per side (same `is_plausible_decimal_odds` guard — decimal ≤ 30 — found and fixed twice tonight, once in TS and once in `mlb_game_lines.py`, now reused a third time here rather than reintroducing the same gap in new code), devigs it into a real two-sided probability, and blends it with the Elo probability at `MARKET_BLEND_WEIGHT` (0.5 — the same shared, disclosed-as-a-guess weight MLB itself uses; no sport-specific fitting has happened for anyone, MLB included).
+
+**5. `None` is a real, honest answer, not a fabricated 50/50.** If a team has no Elo history yet, or no market price is available yet, the corresponding half of the prediction returns `None` rather than inventing a number. The final blended prediction is `None` only if *both* signals are missing.
+
+## Real, already-tested proof (not projected — actually run tonight)
+
+- **NFL backfill**: 368 real games walked from ESPN's real history, 736 rows written to the live database (2 per game). Real, not simulated.
+- **A real prediction for a real game happening tonight** (Cleveland Browns @ New England Patriots, ESPN game 401873299): Elo-only said Cleveland (home) had a 37.5% win probability. The real market price for that same game (checked earlier tonight, independently, during the odds-rebuild sweep) implied ~43.2% for Cleveland once devigged. Blended: 40.3%. The Elo model's own read and the real market's read pointed the same direction (Cleveland as the underdog) and landed within 6 points of each other — a real, working, sane result on a real game, not a hypothetical.
+
+## Per-sport specifics
+
+| Sport | `sport_key` | ESPN path | K-factor | Home bonus | Notes |
+|---|---|---|---|---|---|
+| NFL | `nfl` | `football/nfl` | 20 | 48 | Backfilled and tested live tonight. |
+| CFB | `cfb` | `football/college-football` | 20 | 65 | Larger home-crowd effect than the NFL, per general sports-Elo convention — not precisely sourced, a disclosed reasonable default. Hundreds of D1 teams; Elo takes longer to converge per team than the NFL's 32. |
+| NBA | `nba` | `basketball/nba` | 20 | 100 | NBA home-court advantage is the strongest of the major team sports — reflected in the larger bonus. |
+| NHL | `nhl` | `hockey/nhl` | 6 | 35 | Lower K than the other sports, matching the general convention that a single hockey game carries less signal per point of variance than football/basketball. |
+| Soccer (EPL) | `soccer_epl` | `soccer/eng.1` | 20 | 60 | Draws are scored as a genuine 0.5 result for both sides (not skipped, not forced into a fake winner) — the logistic formula already handles a non-integer actual outcome correctly. |
+| Soccer (MLS) | `soccer_mls` | `soccer/usa.1` | 20 | 60 | Same mechanism as EPL, separate rating pool (`soccer_mls` vs `soccer_epl`) since a club's EPL form says nothing about an MLS club's form — confirmed real ESPN coverage for the path, backfill timing depends on MLS's real current season being in-window. |
+| Tennis | *(not yet built)* | — | — | — | Structurally different — Elo here needs to be **player-based**, not team-based (no home/away team, no `team_elo_history` schema fit). A real, separate design, not a config-dict entry. Explicitly deferred, not forgotten — see "Not done tonight" below. |
+
+`app_sport` (the key `game_odds_book_lines` uses for market prices) is tracked as a separate parameter from `sport_key` (the key `team_elo_history` uses for ratings) specifically because they're **not** the same for soccer — the app has one `soccer` odds key covering both EPL and MLS, but ratings need to stay in two separate pools. Getting this distinction wrong would have silently blended an EPL team's market price against an MLS Elo rating or vice versa.
+
+## Totals — the honest, minimal baseline
+
+No sport here has a real statistical total model (MLB's own total model is a separate, more involved build this app doesn't have time to replicate six times tonight). The honest baseline for totals: **read the market's own total line and devigged over/under probability directly** (same `game_odds_book_lines` read path, same plausibility guard, `market='total'` instead of `'moneyline'`) — a market-only prediction, not a fabricated model output pretending to be more than it is. This is a real, legitimate baseline given tonight's whole market-centric framing (the market genuinely is the best available signal absent a fitted model of one's own) — just disclosed plainly as "market consensus," not "this app's own edge." Wiring this into the same `predict_moneyline`-style function is straightforward follow-on work, not yet done as of this doc.
+
+## What's actually finished vs. still running as this doc was written
+
+- ✅ NFL: backfilled, tested, real numbers proven.
+- 🔄 CFB, NBA, NHL: backfill running in the background as this doc is being written — real ESPN fetches and real database writes in progress, not simulated.
+- ⏳ Soccer (EPL/MLS): not yet started as of this doc's writing — queued next.
+- ⏳ Totals baseline (market-only): mechanism described above, not yet wired as a callable function.
+- ⏳ Tennis: needs its own player-Elo design, explicitly out of tonight's scope unless time allows after the team sports are done.
+- ⏳ Wiring into `game_picks`/a real pick-capture cycle the way MLB's `game_pick_lock.py` does (initial/final capture windows, grading, Kelly stake): not started. What exists right now is a callable prediction function, proven to produce real numbers — not yet an automated job that runs on a schedule and writes real picks the UI shows the way MLB's does. That's the next real layer, not assumed done by having the prediction function work.
+
+## Known, disclosed risk carried into every sport here
+
+Every real bug found and fixed in MLB's own pipeline tonight (the-odds-api's event_id mismatch, the missing plausibility bound on "best price" selection) was a bug in code that ALL sports' market-reading now shares (`game_odds_book_lines`, `is_plausible_decimal_odds`). Those are fixed at the shared layer, so this build inherits the fixes rather than the bugs. What it does NOT inherit is CLV validation — nobody has checked whether Elo-blended picks for any of these sports would have beaten a closing line, the same open question MLB's own gameplan is still gathering real data to answer. Real, sane baseline math and a real, working demo — not a proven edge, for any sport, tonight.

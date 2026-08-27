@@ -558,13 +558,18 @@ class EloHistoryInput:
     games_played: int
     opponent_team_id: int | None
     was_home: bool
+    # Required, not defaulted — team_elo_history was MLB-only by schema
+    # until 2026-08-27's migration added this column; every writer must
+    # say explicitly which sport's rating this is rather than risk a new
+    # sport silently defaulting into MLB's own rows and corrupting both.
+    sport: str
 
 
 async def write_elo_history(rows: list[EloHistoryInput]) -> int:
     """Direct port of lib/db/client.ts's writeEloHistory. Append-only,
-    idempotent via UNIQUE(team_id, season, game_pk) — safe to call for an
-    already-recorded game (no-op) or to re-run a full backfill without
-    duplicating rows."""
+    idempotent via UNIQUE(sport, team_id, season, game_pk) — safe to call
+    for an already-recorded game (no-op) or to re-run a full backfill
+    without duplicating rows."""
     if not rows:
         return 0
     pool = await get_pool()
@@ -574,10 +579,11 @@ async def write_elo_history(rows: list[EloHistoryInput]) -> int:
             for r in rows:
                 status = await conn.execute(
                     """
-                    INSERT INTO team_elo_history (team_id, season, game_pk, game_date, elo, games_played, opponent_team_id, was_home)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    ON CONFLICT (team_id, season, game_pk) DO NOTHING
+                    INSERT INTO team_elo_history (sport, team_id, season, game_pk, game_date, elo, games_played, opponent_team_id, was_home)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    ON CONFLICT (sport, team_id, season, game_pk) DO NOTHING
                     """,
+                    r.sport,
                     r.team_id,
                     r.season,
                     r.game_pk,
@@ -601,16 +607,19 @@ class CurrentEloRow:
     was_home: bool
 
 
-async def get_current_elo(team_id: int, season: int) -> CurrentEloRow | None:
+async def get_current_elo(team_id: int, season: int, sport: str = "mlb") -> CurrentEloRow | None:
     """A team's most recent rating THIS season — None if they haven't
-    played a rated game yet this season."""
+    played a rated game yet this season. `sport` defaults to 'mlb' so
+    every pre-existing call site (elo_model.py) keeps working unchanged;
+    new sports pass their own explicitly."""
     pool = await get_pool()
     row = await pool.fetchrow(
         """
         SELECT elo, games_played, game_date, opponent_team_id, was_home
-        FROM team_elo_history WHERE team_id = $1 AND season = $2
+        FROM team_elo_history WHERE sport = $1 AND team_id = $2 AND season = $3
         ORDER BY game_date DESC, id DESC LIMIT 1
         """,
+        sport,
         team_id,
         season,
     )
@@ -625,16 +634,17 @@ async def get_current_elo(team_id: int, season: int) -> CurrentEloRow | None:
     )
 
 
-async def get_latest_elo_before_season(team_id: int, season: int) -> CurrentEloRow | None:
+async def get_latest_elo_before_season(team_id: int, season: int, sport: str = "mlb") -> CurrentEloRow | None:
     """A team's most recent rating from ANY season before the given one —
     the season-reversion path's source value."""
     pool = await get_pool()
     row = await pool.fetchrow(
         """
         SELECT elo, games_played, game_date, opponent_team_id, was_home
-        FROM team_elo_history WHERE team_id = $1 AND season < $2
+        FROM team_elo_history WHERE sport = $1 AND team_id = $2 AND season < $3
         ORDER BY season DESC, game_date DESC, id DESC LIMIT 1
         """,
+        sport,
         team_id,
         season,
     )

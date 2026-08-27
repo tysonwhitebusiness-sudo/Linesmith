@@ -104,7 +104,12 @@ async def check_elo_freshness() -> dict:
 
     pool = await db.get_pool()
     rows = await pool.fetch(
-        "SELECT DISTINCT game_pk FROM team_elo_history WHERE game_pk = ANY($1::int[])",
+        # sport='mlb' explicit since 2026-08-27's migration made this table
+        # sport-generic — without it, another sport's Elo backfill landing
+        # game_pk values that coincidentally match today's MLB game_pks
+        # would silently mark this MLB-specific check healthy for the
+        # wrong reason.
+        "SELECT DISTINCT game_pk FROM team_elo_history WHERE sport = 'mlb' AND game_pk = ANY($1::int[])",
         [g.game_pk for g in finished],
     )
     covered = {r["game_pk"] for r in rows}

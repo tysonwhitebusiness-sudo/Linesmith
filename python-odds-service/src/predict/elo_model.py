@@ -353,8 +353,8 @@ async def backfill_elo(client: httpx.AsyncClient, season: int) -> list[db.EloHis
         games_played[home_id] = home_games
         games_played[away_id] = away_games
 
-        entries.append(db.EloHistoryInput(team_id=home_id, season=season, game_pk=g.game_pk, game_date=g.game_date, elo=result.new_home_elo, games_played=home_games, opponent_team_id=away_id, was_home=True))
-        entries.append(db.EloHistoryInput(team_id=away_id, season=season, game_pk=g.game_pk, game_date=g.game_date, elo=result.new_away_elo, games_played=away_games, opponent_team_id=home_id, was_home=False))
+        entries.append(db.EloHistoryInput(team_id=home_id, season=season, game_pk=g.game_pk, game_date=g.game_date, elo=result.new_home_elo, games_played=home_games, opponent_team_id=away_id, was_home=True, sport="mlb"))
+        entries.append(db.EloHistoryInput(team_id=away_id, season=season, game_pk=g.game_pk, game_date=g.game_date, elo=result.new_away_elo, games_played=away_games, opponent_team_id=home_id, was_home=False, sport="mlb"))
 
     return entries
 
@@ -411,8 +411,8 @@ async def update_elo_for_finished_game(season: int, game_pk: int, game_date: str
     result = update_elo(home.elo, away.elo, home_runs, away_runs)
     await db.write_elo_history(
         [
-            db.EloHistoryInput(team_id=home_team_id, season=season, game_pk=game_pk, game_date=game_date, elo=result.new_home_elo, games_played=home.games_played + 1, opponent_team_id=away_team_id, was_home=True),
-            db.EloHistoryInput(team_id=away_team_id, season=season, game_pk=game_pk, game_date=game_date, elo=result.new_away_elo, games_played=away.games_played + 1, opponent_team_id=home_team_id, was_home=False),
+            db.EloHistoryInput(team_id=home_team_id, season=season, game_pk=game_pk, game_date=game_date, elo=result.new_home_elo, games_played=home.games_played + 1, opponent_team_id=away_team_id, was_home=True, sport="mlb"),
+            db.EloHistoryInput(team_id=away_team_id, season=season, game_pk=game_pk, game_date=game_date, elo=result.new_away_elo, games_played=away.games_played + 1, opponent_team_id=home_team_id, was_home=False, sport="mlb"),
         ]
     )
 

@@ -48,8 +48,8 @@ async def main():
     try:
         print("=== write_elo_history: first write (no prior row) ===")
         rows = [
-            db.EloHistoryInput(team_id=TEST_HOME_TEAM, season=TEST_SEASON, game_pk=999999001, game_date="1900-04-01", elo=1520.0, games_played=1, opponent_team_id=TEST_AWAY_TEAM, was_home=True),
-            db.EloHistoryInput(team_id=TEST_AWAY_TEAM, season=TEST_SEASON, game_pk=999999001, game_date="1900-04-01", elo=1480.0, games_played=1, opponent_team_id=TEST_HOME_TEAM, was_home=False),
+            db.EloHistoryInput(team_id=TEST_HOME_TEAM, season=TEST_SEASON, game_pk=999999001, game_date="1900-04-01", elo=1520.0, games_played=1, opponent_team_id=TEST_AWAY_TEAM, was_home=True, sport="mlb"),
+            db.EloHistoryInput(team_id=TEST_AWAY_TEAM, season=TEST_SEASON, game_pk=999999001, game_date="1900-04-01", elo=1480.0, games_played=1, opponent_team_id=TEST_HOME_TEAM, was_home=False, sport="mlb"),
         ]
         written = await db.write_elo_history(rows)
         check("2 rows written on first insert", written, 2)
@@ -67,8 +67,8 @@ async def main():
 
         print("\n=== write_elo_history: second game, later date ===")
         rows2 = [
-            db.EloHistoryInput(team_id=TEST_HOME_TEAM, season=TEST_SEASON, game_pk=999999002, game_date="1900-04-03", elo=1535.0, games_played=2, opponent_team_id=TEST_AWAY_TEAM, was_home=True),
-            db.EloHistoryInput(team_id=TEST_AWAY_TEAM, season=TEST_SEASON, game_pk=999999002, game_date="1900-04-03", elo=1465.0, games_played=2, opponent_team_id=TEST_HOME_TEAM, was_home=False),
+            db.EloHistoryInput(team_id=TEST_HOME_TEAM, season=TEST_SEASON, game_pk=999999002, game_date="1900-04-03", elo=1535.0, games_played=2, opponent_team_id=TEST_AWAY_TEAM, was_home=True, sport="mlb"),
+            db.EloHistoryInput(team_id=TEST_AWAY_TEAM, season=TEST_SEASON, game_pk=999999002, game_date="1900-04-03", elo=1465.0, games_played=2, opponent_team_id=TEST_HOME_TEAM, was_home=False, sport="mlb"),
         ]
         written3 = await db.write_elo_history(rows2)
         check("2 more rows written for the second game", written3, 2)
