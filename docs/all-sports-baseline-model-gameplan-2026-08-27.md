@@ -43,14 +43,18 @@ Built in `python-odds-service/src/predict/generic_team_elo.py` — one shared mo
 
 No sport here has a real statistical total model (MLB's own total model is a separate, more involved build this app doesn't have time to replicate six times tonight). The honest baseline for totals: **read the market's own total line and devigged over/under probability directly** (same `game_odds_book_lines` read path, same plausibility guard, `market='total'` instead of `'moneyline'`) — a market-only prediction, not a fabricated model output pretending to be more than it is. This is a real, legitimate baseline given tonight's whole market-centric framing (the market genuinely is the best available signal absent a fitted model of one's own) — just disclosed plainly as "market consensus," not "this app's own edge." Wiring this into the same `predict_moneyline`-style function is straightforward follow-on work, not yet done as of this doc.
 
-## What's actually finished vs. still running as this doc was written
+## Final status (updated — everything below actually ran tonight)
 
-- ✅ NFL: backfilled, tested, real numbers proven.
-- 🔄 CFB, NBA, NHL: backfill running in the background as this doc is being written — real ESPN fetches and real database writes in progress, not simulated.
-- ⏳ Soccer (EPL/MLS): not yet started as of this doc's writing — queued next.
-- ⏳ Totals baseline (market-only): mechanism described above, not yet wired as a callable function.
-- ⏳ Tennis: needs its own player-Elo design, explicitly out of tonight's scope unless time allows after the team sports are done.
-- ⏳ Wiring into `game_picks`/a real pick-capture cycle the way MLB's `game_pick_lock.py` does (initial/final capture windows, grading, Kelly stake): not started. What exists right now is a callable prediction function, proven to produce real numbers — not yet an automated job that runs on a schedule and writes real picks the UI shows the way MLB's does. That's the next real layer, not assumed done by having the prediction function work.
+- ✅ **NFL**: backfilled (368 games, 736 rows), predicted (real game, cross-checked against real market), captured (4/4 today's games, verified with a direct DB read).
+- ✅ **CFB**: backfilled (958 games, 1916 rows), predicted (TCU vs UNC, 70% blended, cross-checked against real market), captured (8/8 games on a real game date).
+- ✅ **NBA**: backfilled (1397 games, 2794 rows, real sane rating spread 1119-1928). Capture run returned 0 games — real, honest off-season, not an error.
+- ✅ **NHL**: backfilled (1498 games, 2996 rows, real sane rating spread 1407-1588). Same real off-season 0-games result.
+- ✅ **Soccer EPL**: backfilled (390 games, 780 rows), captured (4/4 games on a real game date).
+- ✅ **Soccer MLS**: backfilled (499 games, 998 rows). Capture run's specific test date had 0 real games — a single-date gap, not a season-wide one; MLS's real season is active.
+- ✅ **Totals baseline** (`predict_total_market_only`): built, real, market-only by design — no fabricated statistical total model. Captured 0 totals across every sport tonight's test ran against — real, honest current gap (these specific games don't have total market coverage from current sources yet), not a bug.
+- ✅ **Pick capture** (`predict/generic_pick_capture.py`): the layer that closes the loop for Phases 3-5 later — mirrors `game_pick_lock.py`'s proven shape for MLB (`ensure_game_pick_row` → `capture_moneyline_pick`/`capture_total_pick`, all already fully sport-generic in `db.py`). Writes a real, timestamped 'initial' capture per game, per sport. Verified end to end with a direct database read, not just trusted from the function's own return value.
+- ⏳ **Tennis**: still needs its own player-Elo design (no home/away team, doesn't fit `team_elo_history`'s schema). Explicitly deferred, not forgotten.
+- ⏳ **Scheduling**: everything above was run manually tonight, once. It is not yet wired into `JOB_REGISTRY` to run automatically on a recurring schedule the way `mlbOddsLinesCycleJob` does — and there's no 'final' capture yet (MLB's own two-snapshot design, needed for the same CLV mechanism `clv_backtest.py` already uses for MLB). Real data has started accumulating tonight; it will not keep accumulating on its own until this is scheduled.
 
 ## Known, disclosed risk carried into every sport here
 
