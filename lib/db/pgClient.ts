@@ -47,29 +47,32 @@ function getPool(): Pool {
       // round-trips through readSnapshotCache/writeSnapshotCache for its own
       // caching, so when this pool degrades, every sport's real per-match
       // history silently goes empty at once — this is what actually broke.
-      // max: 10 — reverted 2026-08-27 to its original value. Was trimmed
-      // twice that same day (10->6->4), alongside python-odds-service's
-      // worker (5->3->2), purely to free session-mode room for the
-      // health-check cron's own connection — pg_stat_activity showed ~6 of
-      // Supavisor's 15 session-mode slots are permanent Supabase platform
-      // overhead (pg_net, pg_cron scheduler, Supavisor's own auth_query/
-      // management connections, postgres_exporter, PostgREST), leaving a
-      // real app-level budget of ~9, not 15. That justification is gone:
-      // the cron now connects via DB_POOLER_MODE=transaction (port 6543,
-      // config.py), a separate Supavisor pool that never touches this
-      // 15-connection session-mode cap at all. The trim's real cost showed
-      // up live the same night — a single Game Detail page load fires
-      // several routes in parallel (bullpen/injuries/recent/odds/lines/
-      // picks), and at max=4 those genuinely queued into
-      // connectionTimeoutMillis failures under completely normal one-page
-      // concurrency, confirmed via a live pg_stat_activity read showing
-      // 14/15 slots already in use. idleTimeoutMillis lower than
-      // Supavisor's own recycle window so this pool proactively closes and
-      // reopens connections instead of getting caught using one Supavisor
-      // already dropped. connectionTimeoutMillis so a saturated pool fails
-      // fast with a clear error instead of hanging indefinitely (pg's own
-      // default is 0 = wait forever).
-      max: 10,
+      // max: 6 (2026-08-27, settled value, third change this same day).
+      // Trimmed 10->6->4 earlier to free session-mode room for the
+      // health-check cron's own connection, then reverted all the way back
+      // to 10 once the cron moved to a separate transaction-mode pool
+      // (config.py's DB_POOLER_MODE) that no longer needs that room —
+      // but max:10 immediately reproduced a real, live EMAXCONNSESSION on
+      // this app itself (hit directly: GET /api/nfl/game/401873299 threw
+      // it). pg_stat_activity confirmed ~6 of Supavisor's 15 session-mode
+      // slots are permanent Supabase platform overhead (pg_net, pg_cron
+      // scheduler, Supavisor's own auth_query/management connections,
+      // postgres_exporter, PostgREST), leaving a real budget of ~9 — and
+      // `max` is a ceiling each pool is ALLOWED to reach under real
+      // concurrent load, not a fixed reservation, so this pool's max:10
+      // alone could already claim the entire remaining budget the moment
+      // it's genuinely busy, before python-odds-service's worker (which
+      // runs constantly in production) touches it at all. Settled on 6
+      // here + 3 on the worker (db.py) = 9, matching the real measured
+      // budget exactly — deliberately zero slack for ad-hoc local scripts,
+      // but no structural overcommit between the two real, permanent
+      // consumers. idleTimeoutMillis lower than Supavisor's own recycle
+      // window so this pool proactively closes and reopens connections
+      // instead of getting caught using one Supavisor already dropped.
+      // connectionTimeoutMillis so a saturated pool fails fast with a
+      // clear error instead of hanging indefinitely (pg's own default is
+      // 0 = wait forever).
+      max: 6,
       idleTimeoutMillis: 15_000,
       connectionTimeoutMillis: 10_000,
     });
