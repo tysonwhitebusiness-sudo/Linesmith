@@ -470,6 +470,60 @@ async def check_game_odds_book_lines_freshness() -> dict:
     return {"name": "gameOddsBookLinesFreshness", "status": " | ".join(bits) if bits else "no sports configured", "healthy": healthy}
 
 
+# Real, disclosed egress-risk thresholds — not fit against anything,
+# same "reasoned starting default" status as every other hand-set
+# constant in this codebase. Confirmed live 2026-08-27: snapshot_cache's
+# total size (1,086 MB at the time) and its single largest payload
+# (mlb:snapshot, 11.22MB, re-transferred on every cache-hit HTTP request
+# before the same-day cache-control fix — see lib/db/jsonPassthrough.ts's
+# cacheControlFor) were the dominant driver of a real 103GB overage
+# against a 5GB Supabase plan. Deliberately set BELOW current real state
+# (1,086MB / 11.22MB) so this check honestly reports unhealthy until the
+# actual data-shape fix (splitting the MLB snapshot into scoped, smaller
+# caches, plus a retention policy for the dated mlb:full-raw:{date}/
+# mlb:snapshot:{date} archive blobs) — real, larger work explicitly
+# deferred, not done here — actually lands. A false "healthy" here would
+# be worse than a currently-true "still needs attention."
+SNAPSHOT_CACHE_TOTAL_WARN_MB = 800
+SNAPSHOT_CACHE_SINGLE_KEY_WARN_MB = 10
+
+
+async def check_snapshot_cache_size() -> dict:
+    """Catches runaway snapshot_cache growth (the exact class of problem
+    that produced a real 103GB egress overage before anyone noticed) in
+    days via this cron's own 15min cadence, not after a full billing
+    cycle has already blown through its cap. Two real signals: total
+    table size, and the single largest payload (a large individual
+    cache key means every hit-or-miss request for it is expensive
+    regardless of how often it's actually re-fetched)."""
+    pool = await db.get_pool()
+    total_row = await pool.fetchrow("SELECT SUM(LENGTH(payload)) AS total_bytes, COUNT(*) AS n FROM snapshot_cache")
+    total_bytes = total_row["total_bytes"] or 0
+    total_mb = total_bytes / 1024 / 1024
+
+    biggest = await pool.fetch("SELECT cache_key, LENGTH(payload) AS bytes FROM snapshot_cache ORDER BY LENGTH(payload) DESC LIMIT 5")
+    biggest_desc = ", ".join(f"{r['cache_key']} ({r['bytes'] / 1024 / 1024:.1f}MB)" for r in biggest)
+    max_single_mb = (biggest[0]["bytes"] / 1024 / 1024) if biggest else 0.0
+
+    problems = []
+    if total_mb > SNAPSHOT_CACHE_TOTAL_WARN_MB:
+        problems.append(f"total size {total_mb:.0f}MB exceeds {SNAPSHOT_CACHE_TOTAL_WARN_MB}MB")
+    if max_single_mb > SNAPSHOT_CACHE_SINGLE_KEY_WARN_MB:
+        problems.append(f"largest single payload {max_single_mb:.1f}MB exceeds {SNAPSHOT_CACHE_SINGLE_KEY_WARN_MB}MB")
+
+    if problems:
+        return {
+            "name": "snapshotCacheSize",
+            "status": f"STALE — {'; '.join(problems)} — top keys: {biggest_desc}",
+            "healthy": False,
+        }
+    return {
+        "name": "snapshotCacheSize",
+        "status": f"healthy — {total_mb:.0f}MB total across {total_row['n']} rows, largest single payload {max_single_mb:.1f}MB",
+        "healthy": True,
+    }
+
+
 async def check_golf_predictions_freshness() -> dict:
     """Ground truth for job_golf_predictions (predict/golf_candidates.py
     + predict/golf_history.py + predict/golf_grading.py) — verifies real
@@ -533,6 +587,7 @@ async def main() -> int:
         await check_prop_predictions_freshness(),
         await check_golf_predictions_freshness(),
         await check_game_odds_book_lines_freshness(),
+        await check_snapshot_cache_size(),
     ]
 
     print(f"[health_check] {datetime.now(timezone.utc).isoformat()}", flush=True)

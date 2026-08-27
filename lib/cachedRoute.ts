@@ -27,7 +27,7 @@
 
 import { NextResponse } from 'next/server';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
-import { jsonPassthrough, jsonResponse } from '@/lib/db/jsonPassthrough';
+import { cacheControlFor, jsonPassthrough, jsonResponse } from '@/lib/db/jsonPassthrough';
 import { triggerBackgroundRebuild, awaitRebuild } from '@/lib/staleCache';
 
 export interface CachedRouteOptions<T, R = T> {
@@ -87,7 +87,12 @@ export async function cachedRoute<T, R = T>(opts: CachedRouteOptions<T, R>): Pro
 
   function respondCached(rawPayload: string, cacheState: 'hit' | 'stale'): Response {
     if (transform) {
-      return jsonResponse(transform(JSON.parse(rawPayload) as T), { 'cache-control': 'no-store', 'x-cache': cacheState }, acceptEncoding);
+      // Same real HTTP-layer caching as jsonPassthrough's own cacheState
+      // handling (see that function's docstring) — a transform()ed value
+      // is still deterministic per (cacheKey, transform) for a given
+      // cache generation, so a genuine 'hit' is just as safe to let a
+      // CDN/browser dedupe for a short window.
+      return jsonResponse(transform(JSON.parse(rawPayload) as T), { 'cache-control': cacheControlFor(cacheState), 'x-cache': cacheState }, acceptEncoding);
     }
     return jsonPassthrough(rawPayload, cacheState, cacheKey, acceptEncoding);
   }

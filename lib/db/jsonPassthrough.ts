@@ -51,6 +51,30 @@ function gzip(payload: string): Buffer {
  */
 const compressedCache = new Map<string, { raw: string; gzipped: Buffer }>();
 
+/**
+ * Real HTTP-layer caching, added 2026-08-27 to fix a confirmed, live
+ * egress problem: every cachedRoute() response set cache-control:
+ * no-store unconditionally, meaning a warm Postgres-level cache HIT was
+ * still re-transferred in full on every single HTTP request — the real
+ * MLB snapshot (11MB, `mlb:snapshot`) confirmed as 81% of snapshot_cache
+ * and the dominant driver of a 103GB overage against a 5GB Supabase
+ * plan. This doesn't touch the app-level snapshot_cache TTL at all
+ * (still whatever each route's own ttlMs says) — it's a short, separate
+ * window that only dedupes a burst of near-simultaneous requests
+ * (multiple tabs/users loading the same page seconds apart, or a client
+ * re-fetching faster than the data could possibly have changed) from
+ * re-hitting Postgres for literally identical bytes.
+ *
+ * 'stale' deliberately keeps no-store: a stale response already means
+ * the app knows a rebuild is due (triggerBackgroundRebuild just fired) —
+ * caching it further downstream would compound how long real users see
+ * old data after that rebuild actually lands. Only a genuine 'hit'
+ * (confirmed fresh per the app's own TTL) gets the short public window.
+ */
+export function cacheControlFor(cacheState: 'hit' | 'stale'): string {
+  return cacheState === 'hit' ? 'public, s-maxage=30, stale-while-revalidate=60' : 'no-store';
+}
+
 export function jsonPassthrough(payload: string, cacheState: 'hit' | 'stale', cacheKey: string, acceptEncoding: string | null): Response {
   if (shouldCompress(payload, acceptEncoding)) {
     let cached = compressedCache.get(cacheKey);
@@ -68,13 +92,13 @@ export function jsonPassthrough(payload: string, cacheState: 'hit' | 'stale', ca
         'content-type': 'application/json',
         'content-encoding': 'gzip',
         vary: 'accept-encoding',
-        'cache-control': 'no-store',
+        'cache-control': cacheControlFor(cacheState),
         'x-cache': cacheState,
       },
     });
   }
   return new Response(payload, {
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-cache': cacheState },
+    headers: { 'content-type': 'application/json', 'cache-control': cacheControlFor(cacheState), 'x-cache': cacheState },
   });
 }
 
