@@ -19,9 +19,10 @@ Because `live_edge.py` is already the one shared file MLB's `prop_candidates.py`
 | Book | Games covered | Rows |
 |---|---|---|
 | Pinnacle | 50 / 134 (37%) | 326 |
+| Circa | 0 / 134 (0%) | 0 |
 | Novig | 56 / 134 (42%) | 2,066 |
 | Kalshi | 56 / 134 (42%) | 2,312 |
-| **Any of the three** | **56 / 134 (42%)** | — |
+| **Any of the four** | **56 / 134 (42%)** | — |
 
 Novig (a peer-to-peer no-vig exchange) and Kalshi (a CFTC-regulated prediction market) both cover more games than Pinnacle, and both are structurally low/no-vig *by design*, not just by reputation — arguably as legitimate a sharp reference as Pinnacle, sometimes more directly so since there's less residual vig to devig away in the first place.
 
@@ -29,7 +30,7 @@ Novig (a peer-to-peer no-vig exchange) and Kalshi (a CFTC-regulated prediction m
 
 ## Proposed design: three tiers, not one
 
-**Tier 1 — named sharp book**, priority order Pinnacle → Novig → Kalshi (first one with a genuine two-sided price for this exact candidate wins). Pinnacle first because it's the most established, most-cited-in-research sharp book; Novig/Kalshi as strong, real fallbacks with denser coverage. This priority order is a reasoned starting default, not fit against real outcomes yet — flagged honestly, same as every other hand-set constant in this codebase.
+**Tier 1 — named sharp book**, priority order Pinnacle → Circa → Novig → Kalshi (first one with a genuine two-sided price for this exact candidate wins). Pinnacle first because it's the most established, most-cited-in-research sharp book; Circa second, the other real, widely-recognized sharp reference (Las Vegas-based, well known for taking large sharp action and moving fast); Novig/Kalshi as strong, real fallbacks with denser coverage. This priority order is a reasoned starting default, not fit against real outcomes yet — flagged honestly, same as every other hand-set constant in this codebase. Checked live before building: **Circa has zero rows in `prop_odds` or `game_odds_book_lines` today** — added to the priority list so it's recognized the moment any provider surfaces it, not because it contributes real coverage right now. The 3.3% Tier-1 combo-coverage number below does not change by adding it.
 
 **Tier 2 — computed consensus**, when no Tier-1 book has a price for this candidate: the median (not mean, to resist one outlier book skewing it — the same class of problem `is_plausible_decimal_odds` was built to guard against elsewhere tonight) devigged probability across every book that *does* have a genuine two-sided price for this candidate. Real, still meaningfully better than "one arbitrary retail book," and covers a much larger share of the 36,955 real combos than Tier 1 alone — real number to be measured once built, not promised in advance.
 
