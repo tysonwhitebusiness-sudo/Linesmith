@@ -12,6 +12,7 @@ disconnect as entity_resolution.py. Wiring the two together into an actual
 write-enabled job is a separate decision, made once the rate-limit
 situation is fully resolved.
 """
+import asyncio
 import json
 import ssl
 from dataclasses import dataclass
@@ -25,6 +26,19 @@ from config import DATABASE_URL
 _pool: asyncpg.Pool | None = None
 
 _EASTERN = ZoneInfo("America/New_York")
+
+# Real, live-confirmed condition (2026-08-26): the shared Supabase pooler
+# caps at 15 total connections across every consumer — this worker, the
+# health-check cron job, the TS app, and any local script hitting the same
+# database. A cron job spinning up a brand-new pool every 15 minutes can
+# land on a moment where that cap is momentarily saturated by something
+# else's own short-lived connections, and asyncpg.create_pool() has always
+# failed outright on the first attempt rather than retrying — even TS's own
+# withConnectionRetry (lib/db/pgClient.ts) doesn't cover this specific
+# error (it only retries connection-reset/timeout, not "pool full"). A
+# transient EMAXCONNSESSION deserves a short retry, not an immediate crash.
+_POOL_CREATE_RETRIES = 3
+_POOL_CREATE_RETRY_DELAY_S = 3.0
 
 
 async def get_pool() -> asyncpg.Pool:
@@ -52,9 +66,24 @@ async def get_pool() -> asyncpg.Pool:
         # level (not per-transaction SET LOCAL) so it's automatic for every
         # query this pool ever runs, including any added later, rather than
         # something each new call site has to remember.
-        _pool = await asyncpg.create_pool(
-            dsn=DATABASE_URL, ssl=ctx, min_size=1, max_size=5, server_settings={"statement_timeout": "15000"}
-        )
+        last_error: Exception | None = None
+        for attempt in range(_POOL_CREATE_RETRIES):
+            try:
+                _pool = await asyncpg.create_pool(
+                    dsn=DATABASE_URL, ssl=ctx, min_size=1, max_size=5, server_settings={"statement_timeout": "15000"}
+                )
+                break
+            except Exception as e:
+                last_error = e
+                if attempt < _POOL_CREATE_RETRIES - 1:
+                    print(
+                        f"[db] pool creation failed (attempt {attempt + 1}/{_POOL_CREATE_RETRIES}): "
+                        f"{type(e).__name__}: {e} — retrying in {_POOL_CREATE_RETRY_DELAY_S}s",
+                        flush=True,
+                    )
+                    await asyncio.sleep(_POOL_CREATE_RETRY_DELAY_S)
+        else:
+            raise last_error
     return _pool
 
 
