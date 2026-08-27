@@ -352,3 +352,46 @@ async def predict_moneyline(sport_key: str, app_sport: str, home_team_id: int, a
     else:
         blended = blend_probability(elo_prob, market_home_prob, MARKET_BLEND_WEIGHT)
     return MoneylinePrediction(elo_home_prob=elo_prob, market_home_prob=market_home_prob, blended_home_prob=blended)
+
+
+# ---------------------------------------------------------------------------
+# Totals — no sport here has a real statistical total model (MLB's own is a
+# separate, more involved build). The honest baseline: the market's own
+# devigged over/under, not a fabricated model output pretending to be more
+# than it is. Real, legitimate given the whole market-centric framing this
+# session — the market genuinely is the best available signal absent a
+# fitted model of one's own; disclosed as "market consensus," not "this
+# app's own edge."
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class TotalPrediction:
+    point: float | None
+    over_prob: float | None
+    under_prob: float | None
+
+
+async def predict_total_market_only(app_sport: str, game_id: str) -> TotalPrediction:
+    rows = await db.read_game_odds_book_lines_for_sport(app_sport)
+    over_best: float | None = None
+    under_best: float | None = None
+    point: float | None = None
+    for r in rows:
+        if r.game_id != game_id or r.market != "total" or r.side not in ("over", "under"):
+            continue
+        decimal = r.decimal_odds if r.decimal_odds is not None else american_to_decimal(r.american_odds)
+        if not is_plausible_decimal_odds(decimal):
+            continue
+        if r.side == "over" and (over_best is None or decimal > over_best):
+            over_best = decimal
+            point = r.point if r.point is not None else point
+        if r.side == "under" and (under_best is None or decimal > under_best):
+            under_best = decimal
+            point = point if point is not None else r.point
+    if over_best is None or under_best is None:
+        return TotalPrediction(point=point, over_prob=None, under_prob=None)
+    devigged = devig_two_way(over_best, under_best)
+    if devigged is None:
+        return TotalPrediction(point=point, over_prob=None, under_prob=None)
+    return TotalPrediction(point=point, over_prob=devigged[0], under_prob=devigged[1])
