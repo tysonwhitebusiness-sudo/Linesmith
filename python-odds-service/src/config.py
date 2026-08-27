@@ -44,6 +44,23 @@ def env_bool(key: str, default: bool = True) -> bool:
 
 DATABASE_URL = env("DATABASE_URL")
 
+# "session" (default, used by the worker) or "transaction" (health_check.py
+# only, see render.yaml's cron job env var) — see db.py's get_pool() for why
+# this exists: Supavisor's session-mode pooler (port 5432) holds a dedicated
+# physical backend connection per client for the client's whole lifetime,
+# and its 15-connection cap is shared across every consumer (this worker,
+# the TS app, any local script) plus Supabase's own permanent platform
+# overhead. The transaction-mode pooler (same host, port 6543) multiplexes
+# many logical clients over far fewer physical backends, releasing the
+# backend back to the pool between transactions — much more headroom for a
+# process like health_check.py that only ever runs a handful of short,
+# independent reads and doesn't need session-level state to persist across
+# them. Not used for the worker itself: write_prop_odds/write_game_odds_book_lines
+# etc. run multi-statement transactions and rely on session-level
+# server_settings sticking for the connection's lifetime, which transaction
+# mode doesn't guarantee.
+DB_POOLER_MODE = (env("DB_POOLER_MODE", "session") or "session").strip().lower()
+
 SHARPAPI_KEY = env("SHARPAPI_KEY")
 SHARPAPI_ENABLED = env_bool("SHARPAPI_ENABLED") and bool(SHARPAPI_KEY)
 

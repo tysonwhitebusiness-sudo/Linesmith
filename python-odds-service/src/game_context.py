@@ -419,8 +419,8 @@ async def load_tennis_games(sport: str) -> list[Game]:
                         game_date=comp.get("date") or "",
                         is_final=bool(status.get("completed")),
                         roster=[
-                            RosterEntry(subject_id=f"espn:tennis:{home_id}", subject_name=home_athlete.get("fullName")),
-                            RosterEntry(subject_id=f"espn:tennis:{away_id}", subject_name=away_athlete.get("fullName")),
+                            RosterEntry(subject_id=f"espn:tennis:{home_id}", subject_name=home_athlete.get("fullName") or ""),
+                            RosterEntry(subject_id=f"espn:tennis:{away_id}", subject_name=away_athlete.get("fullName") or ""),
                         ],
                     )
                 )

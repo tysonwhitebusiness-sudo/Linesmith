@@ -66,3 +66,11 @@ services:
         value: 3.12.10
       - key: DATABASE_URL
         sync: false
+      # Transaction-mode pooler (port 6543), not session-mode (5432) like
+      # the worker — see config.py's DB_POOLER_MODE docstring. Session
+      # mode's connection cap kept refusing this cron's own brand-new
+      # connection even after trimming every other consumer's pool size
+      # (2026-08-26); transaction mode multiplexes over far fewer physical
+      # backends and doesn't hold one dedicated to this short-lived process.
+      - key: DB_POOLER_MODE
+        value: transaction

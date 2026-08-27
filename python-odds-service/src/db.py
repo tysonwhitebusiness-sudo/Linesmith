@@ -14,6 +14,7 @@ situation is fully resolved.
 """
 import asyncio
 import json
+import re
 import ssl
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -21,7 +22,7 @@ from zoneinfo import ZoneInfo
 
 import asyncpg
 
-from config import DATABASE_URL
+from config import DATABASE_URL, DB_POOLER_MODE
 
 _pool: asyncpg.Pool | None = None
 
@@ -41,12 +42,24 @@ _POOL_CREATE_RETRIES = 3
 _POOL_CREATE_RETRY_DELAY_S = 3.0
 
 
+def _transaction_mode_dsn(dsn: str) -> str:
+    """Session-mode DSNs (config.py's DATABASE_URL) point at Supavisor's
+    port 5432. Transaction mode is the same host/user/db, just port 6543 —
+    swap it rather than requiring a second, easy-to-drift env var."""
+    swapped, n = re.subn(r":5432(/|$)", r":6543\1", dsn, count=1)
+    if n == 0:
+        raise ValueError(f"DB_POOLER_MODE=transaction but DATABASE_URL has no :5432 to swap to :6543: {dsn!r}")
+    return swapped
+
+
 async def get_pool() -> asyncpg.Pool:
     global _pool
     if _pool is None:
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
+        transaction_mode = DB_POOLER_MODE == "transaction"
+        dsn = _transaction_mode_dsn(DATABASE_URL) if transaction_mode else DATABASE_URL
         # server_settings applies statement_timeout as a session default on
         # every connection this pool ever opens — a single query (or a lock
         # wait inside one) that runs past 15s gets killed by Postgres itself
@@ -80,8 +93,20 @@ async def get_pool() -> asyncpg.Pool:
                 # the real app-level budget was always ~9, not 15, so the
                 # first trim (3+6=9) left zero room for the cron's own
                 # connection. Trimmed further against that real number.
+                # statement_cache_size=0 (transaction mode only): asyncpg
+                # caches prepared statements per physical connection, but a
+                # transaction-mode pooler can hand a client a different
+                # physical backend on every transaction — a cached statement
+                # id from backend A is meaningless on backend B. Session mode
+                # doesn't have this problem (one dedicated backend for the
+                # connection's life), so the default (cache on) stays there.
                 _pool = await asyncpg.create_pool(
-                    dsn=DATABASE_URL, ssl=ctx, min_size=1, max_size=2, server_settings={"statement_timeout": "15000"}
+                    dsn=dsn,
+                    ssl=ctx,
+                    min_size=1,
+                    max_size=2,
+                    server_settings={"statement_timeout": "15000"},
+                    statement_cache_size=0 if transaction_mode else 100,
                 )
                 break
             except Exception as e:

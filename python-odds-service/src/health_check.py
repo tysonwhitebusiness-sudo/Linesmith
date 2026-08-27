@@ -298,9 +298,19 @@ async def check_odds_history_and_prices_freshness() -> dict:
     attach_prices_from_lines, both now written by mlbOddsLinesCycleJob.
     Verifies real writes are landing, not just that the job reports ok.
 
-    A1: every currently-live MLB moneyline line (mlb:odds:lines cache) is
-    reflected as at least one game_odds_history row observed within the
-    job's own 2x-interval window.
+    A1: at least one game_odds_history row has been observed recently
+    enough to prove the write path is actually capable of firing — NOT
+    "a row landed this exact 2x-interval cycle." db.write_game_odds_history
+    is deliberately log-on-change-only (see its own docstring: "calling
+    this every 5 minutes with an unchanged price is a harmless no-op"), so
+    a stable market can legitimately go many consecutive job cycles with
+    zero new rows without anything being broken — real, confirmed live
+    2026-08-26: this check originally used the same 2x-interval (10min)
+    window every other check_job uses, and false-positived STALE during a
+    genuinely quiet, price-unchanged stretch. Widened to 24h, a real
+    ground-truth bar (an active MLB slate moves at least one price
+    somewhere within a day from injury news/lineup changes/normal market
+    movement) instead of assuming every cycle writes.
     A3: every game_picks row with a captured moneyline side gets a
     reference price attached within the same window, once a matching
     market line exists — checked as "if not attached, is that plausibly
@@ -308,8 +318,7 @@ async def check_odds_history_and_prices_freshness() -> dict:
     every unattached row is a bug (a game with no market line yet is a
     legitimate gap, not a failure).
     """
-    interval = next(interval for name, _, interval in JOB_REGISTRY if name == "mlbOddsLinesCycleJob")
-    cutoff = datetime.now(timezone.utc).timestamp() - interval * STALE_MULTIPLIER
+    HISTORY_FRESHNESS_WINDOW_S = 24 * 3600
 
     payload = await db.read_snapshot("python-harness:job-run:mlbOddsLinesCycleJob")
     if payload is None:
@@ -318,6 +327,7 @@ async def check_odds_history_and_prices_freshness() -> dict:
     if not last_run.get("ok") or last_run.get("lines", 0) == 0:
         return {"name": "oddsHistoryAndPricesFreshness", "status": "healthy — job's last run had no lines to log yet", "healthy": True}
 
+    cutoff = datetime.now(timezone.utc).timestamp() - HISTORY_FRESHNESS_WINDOW_S
     pool = await db.get_pool()
     recent_history = await pool.fetchval(
         "SELECT COUNT(*) FROM game_odds_history WHERE observed_at > to_timestamp($1)", cutoff
@@ -325,13 +335,13 @@ async def check_odds_history_and_prices_freshness() -> dict:
     if recent_history == 0:
         return {
             "name": "oddsHistoryAndPricesFreshness",
-            "status": f"STALE — MLB lines are cached but game_odds_history has no row observed in the last "
-            f"{interval * STALE_MULTIPLIER / 60:.0f}min — write_game_odds_history's write path needs investigating",
+            "status": "STALE — MLB lines are cached but game_odds_history has no row observed in the last 24h — "
+            "write_game_odds_history's write path needs investigating",
             "healthy": False,
         }
     return {
         "name": "oddsHistoryAndPricesFreshness",
-        "status": f"healthy — {recent_history} game_odds_history rows observed in the last {interval * STALE_MULTIPLIER / 60:.0f}min",
+        "status": f"healthy — {recent_history} game_odds_history rows observed in the last 24h",
         "healthy": True,
     }
 
