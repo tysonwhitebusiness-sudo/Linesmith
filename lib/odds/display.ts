@@ -9,6 +9,20 @@
 import type { BookmakerOdds, UnifiedGameLine } from './types';
 import { devigTwoWay } from './devig';
 
+/** Above this, a decimal price is a bad row, not a real long-shot line —
+ * confirmed live 2026-08-27 (MLB game 822692): a single garbage `tab_au`
+ * row (decimal 101, i.e. +10000 American) got picked as the "best"
+ * moneyline price across 21 real bookmakers, since bestMoneylineFromBooks
+ * (and the total/spread equivalents below) had no sanity bound — it just
+ * maximizes whatever's there. 30 (~+2900 American) is well above any real
+ * two-outcome moneyline/spread/total price ever seen in this data, so it
+ * costs nothing to reject while still catching the actual bad row. */
+const MAX_PLAUSIBLE_DECIMAL_ODDS = 30;
+
+function isPlausibleDecimalOdds(decimal: number | null | undefined): decimal is number {
+  return decimal != null && Number.isFinite(decimal) && decimal > 1 && decimal <= MAX_PLAUSIBLE_DECIMAL_ODDS;
+}
+
 /** Decimal → American. `1.91` → `-110`, `3.50` → `+250`. */
 export function decimalToAmerican(decimal: number | undefined | null): number | undefined {
   if (decimal == null || !Number.isFinite(decimal) || decimal <= 1) return undefined;
@@ -150,25 +164,88 @@ export interface ProjectedLine {
   headlineBook: string | null;
 }
 
-/** Best available moneyline across a per-book breakdown, compared in decimal. */
+/** Best available moneyline across a per-book breakdown, compared in decimal.
+ * `draw` (soccer only) is maximized independently, same as home/away — a
+ * book's own draw price is unrelated to whichever book has the best home
+ * or away price, so there's no "coherence" concern the way total/spread
+ * points have. */
 export function bestMoneylineFromBooks(books: BookmakerOdds[]): UnifiedGameLine['moneyline'] | undefined {
   let homeBest: { decimal: number; book: string } | undefined;
   let awayBest: { decimal: number; book: string } | undefined;
+  let drawBest: { decimal: number; book: string } | undefined;
 
   for (const b of books) {
-    if (b.homeOdds != null && Number.isFinite(b.homeOdds) && (homeBest == null || b.homeOdds > homeBest.decimal)) {
+    if (isPlausibleDecimalOdds(b.homeOdds) && (homeBest == null || b.homeOdds > homeBest.decimal)) {
       homeBest = { decimal: b.homeOdds, book: b.bookmaker };
     }
-    if (b.awayOdds != null && Number.isFinite(b.awayOdds) && (awayBest == null || b.awayOdds > awayBest.decimal)) {
+    if (isPlausibleDecimalOdds(b.awayOdds) && (awayBest == null || b.awayOdds > awayBest.decimal)) {
       awayBest = { decimal: b.awayOdds, book: b.bookmaker };
+    }
+    if (isPlausibleDecimalOdds(b.drawOdds) && (drawBest == null || b.drawOdds > drawBest.decimal)) {
+      drawBest = { decimal: b.drawOdds, book: b.bookmaker };
+    }
+  }
+
+  if (!homeBest && !awayBest && !drawBest) return undefined;
+  return {
+    home: decimalToAmerican(homeBest?.decimal),
+    away: decimalToAmerican(awayBest?.decimal),
+    draw: decimalToAmerican(drawBest?.decimal),
+    // Two sides can come from different books; name one only when they agree.
+    book: homeBest && awayBest && homeBest.book === awayBest.book ? homeBest.book : undefined,
+  };
+}
+
+/** Best available total across a per-book breakdown — over and under sides
+ * maximized independently (same disclosed convention as moneyline/spread
+ * above: the two sides can come from different books). Point comes from
+ * whichever side's best book set it; when both sides disagree on the
+ * point (a real possibility with multiple sources), the over side's point
+ * wins, matching this codebase's existing tie-break convention
+ * (predict/mlb_game_lines.py's summarise_odds_event does the same). */
+export function bestTotalFromBooks(books: BookmakerOdds[]): UnifiedGameLine['total'] | undefined {
+  let overBest: { decimal: number; book: string; point?: number } | undefined;
+  let underBest: { decimal: number; book: string; point?: number } | undefined;
+
+  for (const b of books) {
+    if (isPlausibleDecimalOdds(b.overPrice) && (overBest == null || b.overPrice > overBest.decimal)) {
+      overBest = { decimal: b.overPrice, book: b.bookmaker, point: b.point };
+    }
+    if (isPlausibleDecimalOdds(b.underPrice) && (underBest == null || b.underPrice > underBest.decimal)) {
+      underBest = { decimal: b.underPrice, book: b.bookmaker, point: b.point };
+    }
+  }
+
+  if (!overBest && !underBest) return undefined;
+  return {
+    point: overBest?.point ?? underBest?.point,
+    overPrice: decimalToAmerican(overBest?.decimal),
+    underPrice: decimalToAmerican(underBest?.decimal),
+    book: overBest && underBest && overBest.book === underBest.book ? overBest.book : undefined,
+  };
+}
+
+/** Best available spread across a per-book breakdown — home and away sides
+ * maximized independently, same convention as bestTotalFromBooks. */
+export function bestSpreadFromBooks(books: BookmakerOdds[]): UnifiedGameLine['spread'] | undefined {
+  let homeBest: { decimal: number; book: string; point?: number } | undefined;
+  let awayBest: { decimal: number; book: string; point?: number } | undefined;
+
+  for (const b of books) {
+    if (isPlausibleDecimalOdds(b.spreadHomePrice) && (homeBest == null || b.spreadHomePrice > homeBest.decimal)) {
+      homeBest = { decimal: b.spreadHomePrice, book: b.bookmaker, point: b.spreadHome };
+    }
+    if (isPlausibleDecimalOdds(b.spreadAwayPrice) && (awayBest == null || b.spreadAwayPrice > awayBest.decimal)) {
+      awayBest = { decimal: b.spreadAwayPrice, book: b.bookmaker, point: b.spreadAway };
     }
   }
 
   if (!homeBest && !awayBest) return undefined;
   return {
-    home: decimalToAmerican(homeBest?.decimal),
-    away: decimalToAmerican(awayBest?.decimal),
-    // Two sides can come from different books; name one only when they agree.
+    homePoint: homeBest?.point,
+    homePrice: decimalToAmerican(homeBest?.decimal),
+    awayPoint: awayBest?.point,
+    awayPrice: decimalToAmerican(awayBest?.decimal),
     book: homeBest && awayBest && homeBest.book === awayBest.book ? homeBest.book : undefined,
   };
 }
