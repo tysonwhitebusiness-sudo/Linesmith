@@ -496,6 +496,31 @@ async def _mlb_odds_lines_cycle_inner() -> dict:
         return await run_mlb_odds_lines_cycle(client)
 
 
+async def job_generic_capture(yield_fn=None) -> dict:
+    """Real pick-capture for every sport predict/generic_team_elo.py
+    covers (NFL/CFB/NBA/NHL/Soccer EPL/Soccer MLS) — the missing half of
+    the data-accumulation loop for docs/mlb-market-centric-model-
+    gameplan-2026-08-27.md's Phases 3-5, generalized: market price data
+    for these sports already accumulates on its own via
+    refreshNflJob/refreshCfbJob/etc above, but nothing was recording what
+    the baseline Elo+market-blended model itself predicted, at what
+    price, when — without that there's no dataset to ever CLV-backtest
+    later. Mirrors mlbOddsLinesCycleJob's own cadence reasoning (5min):
+    frequent enough that a game's real kickoff-relative final-capture
+    window is caught reasonably promptly, cheap since most of what this
+    does per tick is real, cache-fast DB reads plus a handful of ESPN
+    scoreboard calls (5 sports' worth, not per-game)."""
+    return await _run_timed("genericCaptureJob", _generic_capture_inner())
+
+
+async def _generic_capture_inner() -> dict:
+    from predict.generic_pick_capture import capture_all_sports_today
+
+    async with httpx.AsyncClient() as client:
+        results = await capture_all_sports_today(client)
+    return {"per_sport": results}
+
+
 async def job_maintain_mlb_elo(yield_fn=None) -> dict:
     """Phase I of the TS cutover gameplan
     (docs/mlb-prediction-engine-ts-cutover-gameplan-2026-08-22.md) — Python
@@ -777,4 +802,7 @@ JOB_REGISTRY = [
     # wins" cadence; golf's capture pattern is the same idea (poll-and-
     # upsert-until-graded), just simpler (no lock windows).
     ("golfPredictionsJob", job_golf_predictions, 5 * 60),
+    # Matches mlbOddsLinesCycleJob's own 5min cadence and reasoning — see
+    # job_generic_capture's own docstring.
+    ("genericCaptureJob", job_generic_capture, 5 * 60),
 ]
