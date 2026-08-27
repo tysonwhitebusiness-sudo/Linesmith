@@ -30,15 +30,80 @@ declare global {
 
 function getPool(): Pool {
   if (!global.__linesmithPgPool) {
-    global.__linesmithPgPool = new Pool({
+    const pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       // Supabase's certs chain fine in practice; rejectUnauthorized:false
       // matches what Supabase's own connection-string guidance shows for
       // node-postgres when no custom CA bundle is configured.
       ssl: { rejectUnauthorized: false },
+      // Real regression (2026-08-23): this pool talks to Supavisor's
+      // Session-mode pooler (port 5432, small hard connection ceiling), with
+      // no idle/connection timeout tuned at all. Supavisor recycles idle
+      // session-mode connections on its own schedule; an unconfigured `pg`
+      // client happily keeps using a connection past that point and gets
+      // "Connection terminated unexpectedly" the next time it's queried.
+      // Every real-history fetcher (understat.ts/cfbd.ts/
+      // americanSocceranalysis.ts/tennismylife.ts/sportsdataverse.ts/nhle.ts)
+      // round-trips through readSnapshotCache/writeSnapshotCache for its own
+      // caching, so when this pool degrades, every sport's real per-match
+      // history silently goes empty at once — this is what actually broke.
+      // max: 10 — reverted 2026-08-27 to its original value. Was trimmed
+      // twice that same day (10->6->4), alongside python-odds-service's
+      // worker (5->3->2), purely to free session-mode room for the
+      // health-check cron's own connection — pg_stat_activity showed ~6 of
+      // Supavisor's 15 session-mode slots are permanent Supabase platform
+      // overhead (pg_net, pg_cron scheduler, Supavisor's own auth_query/
+      // management connections, postgres_exporter, PostgREST), leaving a
+      // real app-level budget of ~9, not 15. That justification is gone:
+      // the cron now connects via DB_POOLER_MODE=transaction (port 6543,
+      // config.py), a separate Supavisor pool that never touches this
+      // 15-connection session-mode cap at all. The trim's real cost showed
+      // up live the same night — a single Game Detail page load fires
+      // several routes in parallel (bullpen/injuries/recent/odds/lines/
+      // picks), and at max=4 those genuinely queued into
+      // connectionTimeoutMillis failures under completely normal one-page
+      // concurrency, confirmed via a live pg_stat_activity read showing
+      // 14/15 slots already in use. idleTimeoutMillis lower than
+      // Supavisor's own recycle window so this pool proactively closes and
+      // reopens connections instead of getting caught using one Supavisor
+      // already dropped. connectionTimeoutMillis so a saturated pool fails
+      // fast with a clear error instead of hanging indefinitely (pg's own
+      // default is 0 = wait forever).
+      max: 10,
+      idleTimeoutMillis: 15_000,
+      connectionTimeoutMillis: 10_000,
     });
+    // Without this, an error on an idle pooled client is an unhandled
+    // 'error' event on the Pool itself — in a plain Node process that's an
+    // uncaught exception that can crash the whole server. This is exactly
+    // the shape of error a recycled/dropped Supavisor connection produces.
+    pool.on('error', (err) => {
+      console.error('[pgPool] idle client error (connection recycled by Supavisor or network blip)', err);
+    });
+    global.__linesmithPgPool = pool;
   }
   return global.__linesmithPgPool;
+}
+
+/** Real, transient connection-drop errors this pool is now expected to hit occasionally under normal Supavisor session recycling — worth one retry before giving up, since the *next* `pool.query()` call gets a fresh connection from the pool rather than the one that just died. Not retried for genuine query errors (bad SQL, constraint violations, etc.) — only the specific error shapes a dropped/reset connection actually produces. */
+function isTransientConnectionError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.includes('Connection terminated unexpectedly') ||
+    message.includes('terminating connection due to administrator command') ||
+    message.includes('ECONNRESET') ||
+    message.includes('ETIMEDOUT')
+  );
+}
+
+async function withConnectionRetry<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (!isTransientConnectionError(err)) throw err;
+    console.warn('[pgPool] transient connection error, retrying once', err instanceof Error ? err.message : err);
+    return await fn();
+  }
 }
 
 export type SqlParams = any[] | Record<string, any> | undefined;
@@ -72,20 +137,26 @@ export interface PgRunResult {
 
 export async function pgGet<T = any>(sql: string, params?: SqlParams): Promise<T | undefined> {
   const { text, values } = compile(sql, params);
-  const res = await getPool().query(text, values);
-  return res.rows[0] as T | undefined;
+  return withConnectionRetry(async () => {
+    const res = await getPool().query(text, values);
+    return res.rows[0] as T | undefined;
+  });
 }
 
 export async function pgAll<T = any>(sql: string, params?: SqlParams): Promise<T[]> {
   const { text, values } = compile(sql, params);
-  const res = await getPool().query(text, values);
-  return res.rows as T[];
+  return withConnectionRetry(async () => {
+    const res = await getPool().query(text, values);
+    return res.rows as T[];
+  });
 }
 
 export async function pgRun(sql: string, params?: SqlParams): Promise<PgRunResult> {
   const { text, values } = compile(sql, params);
-  const res = await getPool().query(text, values);
-  return { changes: res.rowCount ?? 0, rows: res.rows };
+  return withConnectionRetry(async () => {
+    const res = await getPool().query(text, values);
+    return { changes: res.rowCount ?? 0, rows: res.rows };
+  });
 }
 
 export interface PgTx {

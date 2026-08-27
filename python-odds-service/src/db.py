@@ -82,17 +82,27 @@ async def get_pool() -> asyncpg.Pool:
         last_error: Exception | None = None
         for attempt in range(_POOL_CREATE_RETRIES):
             try:
-                # max_size=2, down from 3 (2026-08-27, same day, second
-                # trim): the first round (worker 5->3, TS app 10->6 in
-                # lib/db/pgClient.ts) still hit EMAXCONNSESSION on every
-                # cron run. Queried pg_stat_activity directly and found why:
-                # ~6 of the pooler's 15 connections are permanent Supabase
-                # platform overhead (pg_net, pg_cron scheduler, Supavisor's
-                # own auth_query/management connections, postgres_exporter,
-                # PostgREST) that were never available to this app at all —
-                # the real app-level budget was always ~9, not 15, so the
-                # first trim (3+6=9) left zero room for the cron's own
-                # connection. Trimmed further against that real number.
+                # max_size=5 — reverted 2026-08-27 to its original value.
+                # Was trimmed twice that same day (5->3->2), alongside TS's
+                # own pool (lib/db/pgClient.ts, 10->6->4), purely to free
+                # session-mode room for the health-check cron's own
+                # connection — pg_stat_activity showed ~6 of Supavisor's 15
+                # session-mode slots are permanent Supabase platform
+                # overhead (pg_net, pg_cron scheduler, Supavisor's own
+                # auth_query/management connections, postgres_exporter,
+                # PostgREST), leaving a real app-level budget of ~9, not 15.
+                # That justification is gone: the cron now connects via
+                # DB_POOLER_MODE=transaction (port 6543, config.py), a
+                # separate Supavisor pool that never touches this
+                # 15-connection session-mode cap at all. The trim's real
+                # cost showed up live the same night on the TS side — a
+                # single Game Detail page load fires several routes in
+                # parallel and genuinely queued into connection timeouts
+                # under completely normal one-page concurrency at max=4,
+                # confirmed via a live pg_stat_activity read showing 14/15
+                # slots already in use — reverted here too rather than
+                # leaving this worker under-provisioned relative to its own
+                # original, working value for the same reason.
                 # statement_cache_size=0 (transaction mode only): asyncpg
                 # caches prepared statements per physical connection, but a
                 # transaction-mode pooler can hand a client a different
@@ -104,7 +114,7 @@ async def get_pool() -> asyncpg.Pool:
                     dsn=dsn,
                     ssl=ctx,
                     min_size=1,
-                    max_size=2,
+                    max_size=5,
                     server_settings={"statement_timeout": "15000"},
                     statement_cache_size=0 if transaction_mode else 100,
                 )
