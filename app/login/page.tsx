@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { safeNext } from '@/lib/core/safeNext';
 
 /**
  * Auth phase (Phase 03 of docs/four-feature-gameplan-2026-08-22.md) — a
@@ -15,24 +16,6 @@ export default function LoginPage() {
       <LoginForm />
     </Suspense>
   );
-}
-
-/**
- * Exported for the Phase 0 gate's open-redirect matrix — the gate tests
- * `//evil.com`, `https://evil.com`, `/\evil.com`, `%2F%2Fevil.com`,
- * `javascript:alert(1)` and a legitimate `/nfl`, and asserting on the real
- * function beats re-deriving the rule in a test.
- */
-export function safeNext(raw: string | null | undefined): string {
-  if (!raw) return '/';
-  // useSearchParams already percent-decodes, so "%2F%2Fevil" arrives here as
-  // "//evil" and is caught by the protocol-relative check below.
-  if (!raw.startsWith('/')) return '/';
-  if (raw.startsWith('//')) return '/';
-  // Browsers normalise "/\" to "//" — same protocol-relative escape, different
-  // spelling.
-  if (raw.startsWith('/\\')) return '/';
-  return raw;
 }
 
 function LoginForm() {
