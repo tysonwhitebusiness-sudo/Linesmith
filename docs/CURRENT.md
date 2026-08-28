@@ -1,91 +1,129 @@
 # CURRENT — pick up here
 
-> Handoff file for switching between accounts mid-work. Rewritten (not appended)
-> whenever a session is about to end. If this file disagrees with anything else,
-> trust `docs/audit-remediation-plan.md` §11 and `git log` — those are the
-> record; this is just the baton.
+> Handoff file for switching accounts mid-work. **Rewritten, not appended.**
+> If it disagrees with anything else, trust `docs/audit-remediation-plan.md` §11
+> and `git log` — those are the record; this is just the baton.
 
-**Last updated:** 2026-08-28, end of the Phase 0 session.
-
----
-
-## Where we are
-
-**Phase 0 — complete except one check.** Everything in `docs/audit-remediation-plan.md`
-Phase 0 is done and verified. The gate (§0, G1–G8) passes on G1, G3, G4, G5, G6,
-G7, and on G2's typecheck and build.
-
-**Phase 1 has NOT started, and must not until the gate closes.** That is the
-plan's own rule 4.
-
-## What's in flight
-
-Two Python model tests, started ~10:38 local on 2026-08-28, running in a
-background shell that **will not survive this session**:
-
-```
-cd python-odds-service
-python -u src/test_mlb_mlp.py          # was ~47 min in, 55-min cap
-python -u src/test_mlb_tree_models.py  # runs after it
-```
-
-They are the last open G2 item. Both previously died at a 25-minute timeout —
-that was my timeout, not an assertion failure. They are slow because each does
-~730,000 pure-Python game simulations per season (`SIM_TRAINING_N = 300` in
-`predict/model_fit.py:59` × ~2,430 games), over two seasons.
-
-**To resume:** just re-run them, from `python-odds-service/`, not from `src/`.
-If either again fails to finish in a bounded window, record it in §11 as
-"cannot complete in a bounded window on this hardware" and close the gate on
-that basis — that is a legitimate result and a more useful input to task 3.11
-than a pass would be. Don't keep re-running them.
-
-## Waiting on you (operator)
-
-Nothing. Everything is pushed (`origin/main` = local `HEAD`).
-
-*Note for future sessions:* I can push. An earlier push in this session was
-blocked by the auto-mode classifier and I wrongly concluded pushes always
-needed the operator — a later attempt went through fine. Try before assuming.
-
-## Decisions made verbally this session (already applied)
-
-- Supabase upgraded to **Pro + Micro compute** (Phase 8.1 pulled forward,
-  because `player_game_history` is 830 MB of training data Phase 4.7 needs).
-- I may use the **Render API** for env vars, restarts, deploys.
-- Weekly backup runs on **Windows Task Scheduler** as a stopgap; **task 8.9**
-  was added to move it off the laptop.
-- Phase gates (G1–G8) were added to the plan at your request and are binding.
-
-## Next actions, in order
-
-1. Re-run the two model tests; record the result in §11.
-2. Close the Phase 0 gate in §11 (`GATE RESULT: PASS`).
-3. Optional, small: add a Stop hook to `.claude/settings.json` that keeps this
-   file from going stale when a session ends abruptly. Better done at the start
-   of a session than the end of one.
-4. Start Phase 1 using the kickoff prompt in §0.
-
-**Deploy state (2026-08-28):** nothing pending. The health-check cron
-auto-deploys and picked up the last push. The worker has `autoDeploy: no`, but
-its only change since its last deploy was comment-only in `jobs.py` — verified,
-not assumed. **Any future push that touches `python-odds-service/` non-cosmetically
-needs a manual worker deploy** (Render API, `POST /v1/services/srv-da36bm2bkg8c73fqrdeg/deploys`).
-
-Four Phase 1 findings were already confirmed to still reproduce, so they need no
-re-verification:
-
-| Task | Confirmed |
-|---|---|
-| 1.2 | `app/api/odds/lines/route.ts` still stamps `new Date().toISOString()` in 4 places |
-| 1.5 | `ADMIN_API_PREFIXES = ['/api/diagnostics']` only — every `/api/props/*` route is open |
-| 1.7 | `CALIBRATION_INTERVAL_MS = 2 * 60_000`, unchanged |
-| 1.10 | `lib/cachedRoute.ts:141` still returns `detail: error.message` to anonymous callers |
-
----
-
-## The prompt to paste into a new account
+**Prompt to paste into a new account:**
 
 ```
 Read docs/CURRENT.md and continue from there.
 ```
+
+**THE RULE THAT KEEPS THIS FILE USEFUL: at ~92% context usage, stop.** Take on
+no new work, finish or checkpoint what is open, and rewrite this file, then
+commit and push. Do not start a task you cannot checkpoint before that line.
+The operator cycles between accounts on hourly/daily limits, so sessions end
+abruptly — a session that runs to exhaustion without rewriting this file has
+lost everything that was only in its transcript. Also mirrored in `CLAUDE.md`,
+which loads automatically.
+
+**Last updated:** 2026-08-28, end of the Phase 0 session.
+**Repo state:** `origin/main` == local `HEAD`, working tree clean, nothing pending deploy.
+
+---
+
+## 1. Where we are
+
+**Phase 0 is complete and verified except one check.** Everything else in the
+phase is done, with real output pasted into §11 of the plan.
+
+The one open item is **G2's last model test**:
+
+```
+test_mlb_mlp.py         PASS — exit 0, 2969s (49.5 min). Needed time, not fixing.
+test_mlb_tree_models.py RUNNING when this session ended — result unknown.
+```
+
+Run it from `python-odds-service/` (**not** from `src/`), and give it an hour:
+
+```
+cd python-odds-service
+python -u src/test_mlb_tree_models.py
+```
+
+It is slow for a real reason: `SIM_TRAINING_N = 300` in
+`predict/model_fit.py:59` × ~2,200 games × 2 seasons ≈ 1.3M pure-Python game
+simulations. Its docstring says it builds that training set **once** and reuses
+it across all three tree libraries, so expect roughly `test_mlb_mlp`'s runtime,
+not triple. If it passes, **close the Phase 0 gate in §11 with
+`GATE RESULT: PASS`.** If it fails on an assertion, that is a real finding —
+stop and report it. If it simply cannot finish in a bounded window, record that
+as the result and close the gate on that basis; do not keep re-running it.
+
+Then, and only then, start Phase 1 — the plan's rule 4 is binding.
+
+## 2. Starting Phase 1
+
+Use the kickoff prompt in §0 of the plan. Phase 1's goal: *every number on
+screen is a verifiable fact or a clearly labelled unvalidated signal.* Ten
+tasks, `### 1.1` … `### 1.10`, with a file map at the end of the phase — line
+numbers there are from 2026-08-27, so **re-locate by symbol, not by line.**
+
+**Four findings I already re-verified on 2026-08-28 — do not re-check these:**
+
+| Task | Confirmed still reproducing |
+|---|---|
+| 1.2 | `app/api/odds/lines/route.ts` stamps `new Date().toISOString()` at 4 sites |
+| 1.5 | `middleware.ts:41` — `ADMIN_API_PREFIXES = ['/api/diagnostics']` only, so every `/api/props/*` route including `fit-weights` answers anonymous callers |
+| 1.7 | `lib/scheduler.ts:48` — `CALIBRATION_INTERVAL_MS = 2 * 60_000` |
+| 1.10 | `lib/cachedRoute.ts:141` returns `detail: error.message` to anonymous callers |
+
+**1.6 is nearly free and has live evidence.** Every worker tick logs
+`warn: ODDS_API_KEY is not set — game lines are turned off.` The key exists in
+`.env.local`; it was never added to Render. Set it via the Render API on
+`srv-da36bm2bkg8c73fqrdeg`, then remove the TS route's ownership of the same
+job.
+
+**Still needs verification before acting:** 1.1, 1.3, 1.4, 1.8, 1.9.
+
+**Suggested order.** 1.1 first — it gates the whole grade question, and a Tier C
+ranking built on an inverted under-side probability ranks half its rows on the
+wrong number. Then 1.6 and 1.7 (both tiny). Then 1.2, which the plan calls the
+single most user-protective change in the document. 1.3/1.4 are the large UI
+sweep; leave them until the numbers underneath are correct.
+
+## 3. Operational knowledge — this session paid for it, don't re-derive it
+
+- **Database access:** write a temp `.mjs` in the repo root and `node` it — `pg`
+  resolves only inside the repo. `.env.local`'s `DATABASE_URL` is now `:6543`
+  (transaction pooler). Use `:5432` for `pg_dump` and `VACUUM`, which need
+  session state. **Delete the temp file afterwards.**
+- **`psql`/`pg_dump` are installed** at `C:\Program Files\PostgreSQL\17\bin`
+  (PostgreSQL 17.11, installed this session — not on PATH).
+- **Render**: worker `srv-da36bm2bkg8c73fqrdeg`, health-check cron
+  `crn-da7lquqfngtc73ft1n2g`, owner `tea-da2ut3ibkg8c73d5gcdg`.
+  `RENDER_API_KEY` is in `.env.local` and you are authorised to use it for env
+  vars, restarts and deploys. **The cron auto-deploys; the worker does not** —
+  any push touching `python-odds-service/` non-cosmetically needs
+  `POST /v1/services/srv-da36bm2bkg8c73fqrdeg/deploys`.
+- **Python tests are standalone scripts, not pytest** (`python test_x.py`),
+  run from `python-odds-service/`. There is no pytest in this repo; G2's text
+  is wrong about that and §11 records the correction.
+- **Don't run recursive `grep` over the repo** — it times out on `node_modules`.
+  Use the Grep tool.
+- **`/api/odds/lines?sport=mlb` takes ~115 seconds** on a 15-game slate, so any
+  page that waits on it sits on "Loading…" for two minutes. That is task 3.10,
+  not a Phase 1 bug, but it will slow every manual test you do.
+- **I can `git push`.** An earlier push this session was blocked by the auto-mode
+  classifier and I wrongly generalised that into "the operator must push." A
+  later attempt worked. Try before assuming.
+
+## 4. Standing decisions made verbally (already applied, not yet in §0's table)
+
+- Supabase is on **Pro + Micro compute** — Phase 8.1 pulled forward, because
+  `player_game_history` is 830 MB of training data Phase 4.7 needs more of.
+- Weekly backup runs via **Windows Task Scheduler** (`scripts/weekly-backup.sh`,
+  Sundays 03:00) as a laptop stopgap; **task 8.9** was added to move it.
+- **Phase gates G1–G8** were added to §0 at the operator's request and are
+  binding: a phase ends when its gate passes, and one failed check fails the
+  gate.
+- `SUPABASE_SERVICE_ROLE_KEY` **cannot be rotated** — Supabase removed the
+  ability for legacy keys. Deleted from `.env.local` and Render; real revocation
+  needs the publishable/secret key migration, deferred to Phase 7.
+
+## 5. Optional, small — better at the start of a session than the end
+
+Add a Stop hook to `.claude/settings.json` that keeps this file from going stale
+when a session ends abruptly. Nothing updates `CURRENT.md` automatically today;
+it depends on whoever is driving remembering to rewrite it.

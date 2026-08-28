@@ -2,6 +2,25 @@
 
 Project-specific guidance for working in this codebase.
 
+## Session handoff — read `docs/CURRENT.md` first
+
+This project is worked across three rotating Claude accounts that hit hourly and
+daily limits mid-task, so sessions end abruptly rather than winding down.
+`docs/CURRENT.md` is the baton: where the work is, what is in flight, what is
+blocked on the operator, and the next actions. Read it before doing anything
+else, and trust `docs/audit-remediation-plan.md` §11 and `git log` over it if
+they disagree.
+
+**At ~92% context usage, stop and hand off.** Take on no new work, finish or
+checkpoint whatever is open, rewrite `docs/CURRENT.md`, then commit and push.
+Don't start a task you can't checkpoint before that line, and don't leave a
+long-running process as the only record of anything — write down what you're
+waiting on before you start waiting.
+
+Rewrite `CURRENT.md` rather than appending to it. An append-only handoff file
+becomes another long document nobody reads, which defeats the point.
+
+
 ## API route caching
 
 Every new `app/api/**/route.ts` GET handler that does a live external fetch or non-trivial computation must go through one of these two patterns — not a third, hand-rolled one:
