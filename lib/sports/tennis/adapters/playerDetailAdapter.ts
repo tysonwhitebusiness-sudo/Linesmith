@@ -35,6 +35,7 @@ export interface TennisPlayerDetailScope {
   opponentOnly: boolean;
   lastN: number | 'all';
   showAllGames: boolean;
+  kpiScope: 'season' | 'l15';
 }
 
 export interface TennisPlayerDetailInput {
@@ -160,11 +161,18 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     liveGame: null,
     liveMatchup: null,
-    matchups: null,
+    // No matchup card yet — tennis is a player-vs-player sport (no team
+    // position groups), and no ranked-player list exists in this codebase
+    // yet for a "pick any opponent" head-to-head picker (see
+    // docs/matchup-card-rebuild-gameplan-2026-08-23.md §6/§9 phase 5).
+    matchupExplorer: null,
     seasonStatsCard: null,
-    mlbContextMatchup: null,
     golfFormHoles: null,
-    nflMatchup: null,
     nflSeasonStats: null,
+    // No per-player live stat source for tennis beyond set/game score
+    // (which lives on the match, not a per-player "stat" a line can
+    // target) — `statistics[]` (serve stats) was confirmed empty on every
+    // real match checked while building Part 1's TennisLiveTab.
+    liveLineTracker: null,
   };
 }

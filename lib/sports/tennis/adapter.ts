@@ -20,6 +20,7 @@
 
 import type { HistoryEntry, PickCandidate, SportSnapshot, SubjectSummary, TennisTour } from '@/lib/core/types';
 import { loadGameContextsForSport } from '@/lib/odds/props/multiSportGameContext';
+import { shortDate } from '@/lib/core/windowedStat';
 import { readPropOddsForGame, type PropOddsRow } from '@/lib/db/client';
 import { currentTennisSeason, loadTennisSeasonContext, matchTennisIndex, type TennisMatch } from './tennismylife';
 
@@ -55,7 +56,7 @@ function toHistoryEntries(matches: TennisMatch[], marketKey: string, startingLin
       period: i + 1,
       result: String(value),
       category: value > startingLine ? 'over' : 'under',
-      periodLabel: `vs ${m.opponent}`,
+      periodLabel: `${shortDate(m.date)} vs ${m.opponent}`,
       raw: { opponentName: m.opponent, date: m.date, tournamentName: m.tournamentName, surface: m.surface, isWinner: m.isWinner, aces: m.aces, gamesWon: m.gamesWon, gamesLost: m.gamesLost, wonAtLeastOneSet: m.wonAtLeastOneSet },
     } satisfies HistoryEntry;
   });
@@ -75,7 +76,7 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
   return results;
 }
 
-async function attachRealHistory(candidates: PickCandidate[], tour: TennisTour): Promise<void> {
+async function attachRealHistory(candidates: PickCandidate[], tour: TennisTour, subjectsMap?: Map<string, SubjectSummary>): Promise<void> {
   const eligibleSubjects = new Map<string, PickCandidate[]>();
   for (const c of candidates) {
     const bucket = eligibleSubjects.get(c.subjectId) ?? [];
@@ -87,7 +88,7 @@ async function attachRealHistory(candidates: PickCandidate[], tour: TennisTour):
   const season = currentTennisSeason();
   const context = await loadTennisSeasonContext(tour, season);
 
-  await mapWithConcurrency([...eligibleSubjects.entries()], 5, async ([, subjectCandidates]) => {
+  await mapWithConcurrency([...eligibleSubjects.entries()], 5, async ([subjectId, subjectCandidates]) => {
     const subjectName = subjectCandidates[0].subjectName;
     const matches = matchTennisIndex(context, subjectName);
     if (!matches || matches.length === 0) return;
@@ -100,6 +101,65 @@ async function attachRealHistory(candidates: PickCandidate[], tour: TennisTour):
       candidate.sampleSize = entries.length;
       candidate.consistent = entries.every((e) => e.category === entries[0].category);
     }
+
+    // Real per-player season line for the Players-tab sidebar list
+    // (2026-08-24) — same role MLB's/NFL's own subjects carry via
+    // `statusLine`, just never populated for tennis before.
+    const subject = subjectsMap?.get(subjectId);
+    if (subject && !subject.statusLine) {
+      const wins = matches.filter((m) => m.isWinner).length;
+      const avgAces = matches.reduce((s, m) => s + m.aces, 0) / matches.length;
+      subject.statusLine = `${wins}-${matches.length - wins} · ${avgAces.toFixed(1)} aces/match`;
+    }
+  });
+}
+
+/**
+ * Real, honestly-priceless candidates for every market this sport tracks —
+ * for a player with no real `prop_odds` row on today's slate. Same contract
+ * as NHL's/NBA's `buildSyntheticPlayerCandidates`: `odds` stays undefined
+ * so PlayerDetail's existing "Add to slip to record a price" empty state
+ * renders; only the LINE is synthetic (real-history average for the two
+ * threshold markets, real 0.5 split for the binary "to-win-a-set" market —
+ * same 0.5-threshold trick `toHistoryEntries` already uses for real
+ * binary candidates). `loadTennisSeasonContext` already merges current +
+ * prior season on its own, so no extra off-season fallback is needed here.
+ */
+export async function buildSyntheticPlayerCandidates(subjectId: string, subjectName: string, tour: TennisTour): Promise<PickCandidate[]> {
+  const context = await loadTennisSeasonContext(tour, currentTennisSeason());
+  // Real full history — `loadTennisSeasonContext` already merges the
+  // current + prior real season (see its own doc comment), and there's no
+  // reason to throw most of it away before building candidates; every
+  // other sport's synthetic-candidate builder uses its full real fetched
+  // history the same way (2026-08-24 fix — this used to cap at the last 25
+  // matches for no real reason, understating a full season's real sample).
+  const matches = matchTennisIndex(context, subjectName) ?? [];
+
+  return Object.entries(MARKET_META).map(([marketKey, meta]) => {
+    const field = HISTORY_FIELD[marketKey];
+    const values = matches.map(field);
+    const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+    const defaultLine = meta.kind === 'binary' ? 0.5 : Math.max(0.5, Math.round(avg * 2) / 2);
+    const entries = toHistoryEntries(matches, marketKey, defaultLine);
+    const category = meta.kind === 'binary' ? 'yes' : 'over';
+    const categoryLabel = meta.kind === 'binary' ? 'Yes' : 'Over';
+
+    return {
+      sport: 'tennis',
+      subjectId,
+      subjectName,
+      subjectMeta: { tour, league: tour },
+      dimension: marketKey,
+      dimensionLabel: meta.label,
+      category,
+      categoryLabel,
+      line: meta.kind === 'binary' ? undefined : defaultLine,
+      history: entries,
+      consistent: entries.length > 0 && entries.every((e) => e.category === entries[0].category),
+      sampleSize: entries.length,
+      liveState: { status: 'unknown', distanceToSubject: null, distanceUnit: 'games', etaMinutes: null, etaConfidence: null },
+      odds: undefined,
+    } satisfies PickCandidate;
   });
 }
 
@@ -111,6 +171,24 @@ export async function buildTennisSnapshot(tour: TennisTour): Promise<SportSnapsh
   const warnings: string[] = [];
 
   for (const game of games) {
+    // Real players, browsable regardless of whether a sportsbook has
+    // posted a real prop for this match yet — a scheduled ATP/WTA match's
+    // two real players are already known from `loadGameContextsForSport`'s
+    // own real roster, no reason to gate that on `prop_odds` having a row.
+    // Real bug found 2026-08-23: subjects only ever populated from inside
+    // the prop-rows loop below, so with zero real tennis prop_odds rows
+    // (the Python SharpAPI job's first live run hasn't happened yet), the
+    // Players tab showed nobody at all despite real live matches existing.
+    for (const entry of game.roster) {
+      if (subjectsMap.has(entry.subjectId)) continue;
+      const opponentEntry = game.roster.find((r) => r.subjectId !== entry.subjectId);
+      subjectsMap.set(entry.subjectId, {
+        subjectId: entry.subjectId,
+        subjectName: entry.subjectName,
+        meta: { opponent: opponentEntry?.subjectName, tour, gamePk: game.gameId, gameDate: game.gameDate },
+      });
+    }
+
     const rows = await readPropOddsForGame(game.gameId);
     if (rows.length === 0) continue;
 
@@ -177,7 +255,7 @@ export async function buildTennisSnapshot(tour: TennisTour): Promise<SportSnapsh
     }
   }
 
-  await attachRealHistory(candidates, tour);
+  await attachRealHistory(candidates, tour, subjectsMap);
 
   return {
     sport: 'tennis',

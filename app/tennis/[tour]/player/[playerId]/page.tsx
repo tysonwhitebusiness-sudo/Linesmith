@@ -10,6 +10,8 @@ import { TopBar } from '@/components/TopBar';
 import { PlayerDetail } from '@/components/PlayerDetail';
 import SlipModal from '@/components/SlipModal';
 import { BrandedLoader } from '@/components/BrandedLoader';
+import { SubjectAvatar } from '@/components/SubjectAvatar';
+import { useSyntheticPlayerCandidates } from '@/components/useSyntheticPlayerCandidates';
 
 function isTennisTour(v: string): v is TennisTour {
   return (TENNIS_TOURS as string[]).includes(v);
@@ -38,6 +40,25 @@ export default function TennisPlayerDetailPage() {
   }, [playerId]);
 
   const mine = useMemo(() => (snapshot?.candidates ?? []).filter((c) => c.subjectId === playerId), [snapshot, playerId]);
+
+  // Tennis's game-hero links don't carry identity query params (unlike
+  // NBA/NHL's roster-href pattern) — resolve identity from `snapshot.subjects`
+  // instead, which `buildTennisSnapshot` already populates for every real
+  // scheduled player regardless of whether they have an active prop.
+  const subject = useMemo(() => (snapshot?.subjects ?? []).find((s) => s.subjectId === playerId) ?? null, [snapshot, playerId]);
+  const subjectMeta = (subject?.meta ?? {}) as Record<string, unknown>;
+  const opponentName = typeof subjectMeta.opponent === 'string' ? subjectMeta.opponent : undefined;
+  const hasIdentity = Boolean(subject?.subjectName);
+
+  const synthetic = useSyntheticPlayerCandidates({
+    sport,
+    subjectId: playerId,
+    name: subject?.subjectName,
+    tour,
+    enabled: mine.length === 0 && hasIdentity,
+  });
+  const effectiveCandidates = mine.length > 0 ? mine : synthetic.candidates;
+  const waitingOnSynthetic = mine.length === 0 && hasIdentity && synthetic.loading;
 
   return (
     <div className="min-h-screen pb-10">
@@ -68,9 +89,23 @@ export default function TennisPlayerDetailPage() {
           <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad">{error}</div>
         ) : null}
 
-        {loading && mine.length === 0 ? (
+        {(loading && mine.length === 0 && !hasIdentity) || waitingOnSynthetic ? (
           <BrandedLoader size="page" />
-        ) : mine.length === 0 ? (
+        ) : effectiveCandidates.length === 0 && hasIdentity ? (
+          <div className="lb-card p-6">
+            <div className="flex items-center gap-3">
+              <SubjectAvatar name={subject?.subjectName ?? ''} size={56} />
+              <div className="min-w-0">
+                <p className="truncate text-[16px] font-semibold text-ink">{subject?.subjectName}</p>
+                {opponentName ? <p className="text-[13px] text-ink-muted">vs {opponentName}</p> : null}
+              </div>
+            </div>
+            <p className="mt-4 text-[13px] text-ink-muted">
+              No real match history found for this player yet — no props tracked, and no real match-log data to
+              build a pattern from.
+            </p>
+          </div>
+        ) : effectiveCandidates.length === 0 ? (
           <div className="lb-card p-8 text-center text-sm text-ink-muted">
             No tracked markets for this player on today&apos;s slate.
           </div>
@@ -79,7 +114,7 @@ export default function TennisPlayerDetailPage() {
             {!detailReady && <BrandedLoader size="page" />}
             <div style={{ display: detailReady ? 'block' : 'none' }}>
               <PlayerDetail
-                candidates={mine}
+                candidates={effectiveCandidates}
                 snapshot={snapshot}
                 odds={null}
                 market={market}

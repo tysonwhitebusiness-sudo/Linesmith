@@ -9,17 +9,23 @@
  * `adapter.ts`'s player-level history uses), left-rail props. `matchup`/
  * `statComparison`/`rankings`/`unitGrades`/`propsForGame` stay `null` — no
  * grading model or opponent-conditional stat source for tennis, same
- * honest gap soccer's/CFB's adapters already document. No `pregameLines`
- * either: tennis's real markets (aces/games-won/to-win-a-set) aren't
- * moneyline-shaped, so there's no real game-level price to surface here —
- * the per-player prop board is the whole story for tennis, same reasoning
- * NHL's adapter documents for its own missing pregame line.
+ * honest gap soccer's/CFB's adapters already document. `pregameLines`
+ * (2026-08-26, odds-architecture rebuild) now real when recovered: tennis
+ * DOES have a real game-level moneyline (who wins the match — SharpAPI's
+ * tennis coverage, OddsHarvester's `match_winner` token), which is a
+ * different thing from the per-player PROP markets (aces/games-won/
+ * to-win-a-set) that genuinely aren't moneyline-shaped — this adapter's
+ * own earlier comment conflated the two. `spread`/`total` stay unset
+ * regardless (no such market exists for tennis — `gameLine.spread`/
+ * `.total` are simply never populated by any writer, not fabricated null
+ * here).
  */
 
 import type { PickCandidate, TennisTour } from '@/lib/core/types';
 import type { EspnTennisMatchDetail } from '@/lib/sports/multiSport/espnTennis';
 import type { GameDetailData, RecentResultRow } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
+import type { UnifiedGameLine } from '@/lib/odds/types';
 
 interface RecentResultRowWire {
   gameId: string;
@@ -49,10 +55,18 @@ export interface TennisGameDetailInput {
   player2H2h: RecentResultRowWire[];
   /** Page-filtered player-level candidates for this match. */
   candidates: PickCandidate[];
+  /** The real per-match bookmaker grid (odds-architecture rebuild Phase 6)
+   * — see CfbGameDetailInput's identical field for the full reasoning.
+   * home/away here follow the same player1/player2 -> home/away mapping
+   * this adapter's hero already uses (arbitrary, no real home/away for an
+   * individual sport), so home/away odds land on the correct player as
+   * long as the writer (harvester_scrape.py's tennis matching) resolves
+   * against the same ESPN-sourced game identity this page does. */
+  gameLine: UnifiedGameLine | null;
 }
 
 export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
-  const { tour, meta, player1Recent, player2Recent, player1H2h, player2H2h, candidates } = input;
+  const { tour, meta, player1Recent, player2Recent, player1H2h, player2H2h, candidates, gameLine } = input;
 
   const p1Recent = toRows(player1Recent);
   const p2Recent = toRows(player2Recent);
@@ -93,7 +107,11 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
     pickLockAt: null,
     pickLoading: false,
     venue: null,
-    pregameLines: null,
+    // No spread/total slot: tennis genuinely has no such market — see this
+    // file's header. Moneyline only, when recovered.
+    pregameLines: gameLine?.moneyline
+      ? { moneyline: { away: gameLine.moneyline.away ?? null, home: gameLine.moneyline.home ?? null } }
+      : null,
   };
 
   const records: { away: RecordsSectionTeam; home: RecordsSectionTeam; loading: boolean } = {
@@ -110,6 +128,7 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
 
   return {
     gameId: meta.matchId,
+    gameLine,
     hero,
     matchup: null,
     records,
