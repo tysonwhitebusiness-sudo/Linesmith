@@ -45,7 +45,15 @@ import { writeSnapshotCache } from '@/lib/db/client';
 import { awaitRebuild } from '@/lib/staleCache';
 
 const MLB_INTERVAL_MS = 4 * 60_000;
-const CALIBRATION_INTERVAL_MS = 2 * 60_000;
+// 30 minutes, not 2 (Phase 1.7, audit finding P2 C2). At 2 minutes this tick
+// drove roughly 36 full scans of pick_history — now 365k rows — per tick across
+// the three scopes below, which is a large, continuous database cost for a
+// payload that barely changes: calibration is an aggregate over months of
+// graded history, so a 2-minute refresh cannot show anything a 30-minute one
+// misses. The reactive stale-serve path still covers any scope this doesn't
+// pre-warm, so the only thing a longer interval costs is a slightly colder
+// cache on the first request after a gap.
+const CALIBRATION_INTERVAL_MS = 30 * 60_000;
 /** The scope defaults real traffic actually asks for without a `dimension` param — the Model Health page's per-dimension split view is rarer and still served correctly by the reactive stale-serve path, just without proactive pre-warming. */
 const CALIBRATION_SCOPES = ['all', 'player', 'game'] as const;
 

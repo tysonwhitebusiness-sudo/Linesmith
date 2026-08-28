@@ -40,6 +40,14 @@ services:
       # dashboard.
       - key: CFBD_API_KEY
         sync: false
+      # Phase 1.6 (standing decision Q9) — its absence was an oversight, not a
+      # choice. Without it mlbGameLinesJob logged "ODDS_API_KEY is not set —
+      # game lines are turned off" on every tick, while the TS route
+      # app/api/odds/game-lines held the only working copy of the key. Set in
+      # the dashboard; declared here so the next person sees the worker needs
+      # it.
+      - key: ODDS_API_KEY
+        sync: false
 
   # Real gap this closes: the worker above going fully silent for 4 real
   # days (2026-08-22 -> 2026-08-26, a hang inside a job that never crashed,
