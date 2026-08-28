@@ -100,6 +100,36 @@ export interface OddsChipProps {
   className?: string;
 }
 
+/**
+ * How old a captured price is, in words, plus whether that age is a problem.
+ *
+ * Phase 1.2 (audit finding P3 C4). The chip used to render
+ * `captured 2:49 AM` — time only, no date, inside the `title` attribute. A
+ * price captured at 02:49 this morning and one captured at 02:49 six days ago
+ * were indistinguishable, and only visible on hover. The visible warning
+ * marker keyed off `delaySeconds`, the provider's advertised feed delay, which
+ * never exceeds 60 in the real data and so never fired for staleness.
+ *
+ * STALE_AFTER_MS matches _MAX_ROW_AGE_SECONDS in
+ * python-odds-service/src/predict/live_edge.py, so what the UI calls stale and
+ * what the edge computation refuses to use are the same thing.
+ */
+const STALE_AFTER_MS = 30 * 60_000;
+
+function priceAge(capturedAt: string | undefined): { label: string; stale: boolean } | null {
+  if (!capturedAt) return null;
+  const ms = Date.parse(capturedAt);
+  if (!Number.isFinite(ms)) return null;
+  const minutes = Math.floor((Date.now() - ms) / 60_000);
+  if (minutes < 0) return null;
+  const stale = Date.now() - ms > STALE_AFTER_MS;
+  if (minutes < 1) return { label: 'just now', stale };
+  if (minutes < 60) return { label: `${minutes}m ago`, stale };
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return { label: `${hours}h ago`, stale };
+  return { label: `${Math.floor(hours / 24)}d ago`, stale };
+}
+
 export function OddsChip({
   price,
   source,
@@ -116,9 +146,13 @@ export function OddsChip({
   const mark = PROVENANCE_MARK[provenance];
   const delayed = isDelayed ?? (delaySeconds != null && delaySeconds > 0);
 
+  const age = priceAge(capturedAt);
+
   const title = [
     PROVENANCE_LABEL[provenance],
-    capturedAt ? `captured ${new Date(capturedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : null,
+    // Full date AND time, not time-of-day alone — "captured 2:49 AM" read
+    // identically for a price from this morning and one from six days ago.
+    capturedAt ? `captured ${new Date(capturedAt).toLocaleString()}${age ? ` (${age.label})` : ''}` : null,
     delayed ? (delaySeconds != null ? `~${delaySeconds}s delayed at source` : 'delayed at source (provider does not disclose by how much)') : null,
     best ? 'best available' : null,
   ]
@@ -146,6 +180,14 @@ export function OddsChip({
       {delayed ? (
         <span className="text-[9px] text-warn" aria-hidden>
           ⏱
+        </span>
+      ) : null}
+      {/* Age on the face of the chip, not buried in a tooltip — a stale price
+          is the one thing a bettor must not have to hover to discover. Only
+          rendered once it is actually stale, so a fresh board stays quiet. */}
+      {age?.stale ? (
+        <span className="text-[9px] font-medium text-warn" title={`price is ${age.label}`}>
+          {age.label}
         </span>
       ) : null}
       <span className="sr-only">{title}</span>

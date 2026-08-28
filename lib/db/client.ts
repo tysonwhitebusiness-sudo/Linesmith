@@ -781,8 +781,18 @@ function mergeGameOddsBookLineRows(gameId: string, rows: GameOddsBookLineRow[]):
   }
 
   const bookmakers = [...books.values()];
+  // The newest real fetch time across the rows that survived the per-book
+  // dedup above. This loop already compares fetchedAt to pick the latest row
+  // per book+market+side, then used to throw the value away — which is why
+  // /api/odds/lines had nothing truthful to report and stamped now() instead
+  // (Phase 1.2, audit P3 C4).
+  const lastFetchedAt = [...latest.values()].reduce<string | undefined>(
+    (newest, r) => (!newest || r.fetchedAt > newest ? r.fetchedAt : newest),
+    undefined,
+  );
   return {
     eventId: gameId,
+    lastFetchedAt,
     // Not tracked per-row (game_odds_book_lines has no team-name/commence-
     // time columns — every writer already knows its own game's identity
     // from the games list it matched against). Callers already have real

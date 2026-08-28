@@ -49,6 +49,21 @@ export interface UnifiedGameLine {
   /** How many distinct books contributed data. */
   bookCount: number;
   /**
+   * When the newest underlying price was actually fetched — NOT when this
+   * object was built (Phase 1.2, audit finding P3 C4).
+   *
+   * `mergeGameOddsBookLineRows` reads `fetched_at` off every row to pick the
+   * latest per book+market+side, then used to discard it, leaving callers with
+   * no per-row timestamp at all. `/api/odds/lines` filled that gap by stamping
+   * `new Date().toISOString()` unconditionally — so during the 17.5-hour outage
+   * the audit observed, day-old prices were served with a timestamp asserting
+   * they had just been fetched.
+   *
+   * Optional because not every producer of a UnifiedGameLine has a real
+   * timestamp to offer; absent is honest, `now()` is not.
+   */
+  lastFetchedAt?: string;
+  /**
    * Which source(s) contributed to this line. `odds-api`/`oddsharvester`/
    * `both` are MLB's existing values (see merge.ts); `sharpapi`/`rundown`/
    * `sportsgameodds`/`multiple` are NFL's (see nflGameLines.ts) — kept in the

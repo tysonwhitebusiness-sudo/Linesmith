@@ -135,6 +135,27 @@ async function attachPricesFromLines(lines: UnifiedGameLine[], games: SnapshotGa
   }
 }
 
+/**
+ * The newest real `fetched_at` across the lines being returned, or null.
+ *
+ * Phase 1.2 (audit finding P3 C4). Both response branches below used to stamp
+ * `fetchedAt: new Date().toISOString()` unconditionally, so a response assembled
+ * from prices that were 17.5 hours old asserted it had just been fetched — the
+ * audit caught exactly that during a worker outage. A bettor acting on a stale
+ * price loses real money, which is why the plan calls this the single most
+ * user-protective change in it.
+ *
+ * Null when no line carries a timestamp. An absent value is honest; `now()` is
+ * a claim, and it was false.
+ */
+function newestFetchedAt(lines: UnifiedGameLine[]): string | null {
+  let newest: string | null = null;
+  for (const l of lines) {
+    if (l.lastFetchedAt && (!newest || l.lastFetchedAt > newest)) newest = l.lastFetchedAt;
+  }
+  return newest;
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const sport = url.searchParams.get('sport') ?? 'mlb';
@@ -152,11 +173,11 @@ export async function GET(request: Request) {
         {
           enabled: lines.length > 0,
           lines,
-          fetchedAt: new Date().toISOString(),
+          fetchedAt: newestFetchedAt(lines),
           fromCache: false,
           sources: {
             oddsApi: { enabled: false, fetchedAt: null, requestsRemaining: null },
-            oddsHarvester: { enabled: lines.length > 0, fetchedAt: new Date().toISOString(), matches: lines.length },
+            oddsHarvester: { enabled: lines.length > 0, fetchedAt: newestFetchedAt(lines), matches: lines.length },
           },
           nextRefreshAt: null,
           warnings: [],
@@ -250,7 +271,7 @@ export async function GET(request: Request) {
       {
         enabled,
         lines,
-        fetchedAt: new Date().toISOString(),
+        fetchedAt: newestFetchedAt(lines),
         fromCache: false,
         sources: {
           // Legacy shape (UnifiedLinesResult.sources) predates this
@@ -259,8 +280,8 @@ export async function GET(request: Request) {
           // that type in this same pass. `oddsApi.enabled` reflects
           // whether the-odds-api itself is still configured, not whether
           // any single response used its data specifically.
-          oddsApi: { enabled: true, fetchedAt: new Date().toISOString(), requestsRemaining: null },
-          oddsHarvester: { enabled, fetchedAt: new Date().toISOString(), matches: lines.length },
+          oddsApi: { enabled: true, fetchedAt: newestFetchedAt(lines), requestsRemaining: null },
+          oddsHarvester: { enabled, fetchedAt: newestFetchedAt(lines), matches: lines.length },
         },
         nextRefreshAt: null,
         warnings,
