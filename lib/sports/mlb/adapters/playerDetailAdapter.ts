@@ -28,7 +28,7 @@
  * JSX inside `PlayerDetail.tsx`.
  */
 
-import type { HistoryEntry, PickCandidate, SplitEvidence, SportSnapshot, WeatherContext } from '@/lib/core/types';
+import type { HistoryEntry, PickCandidate, SplitEvidence, Sport, SportSnapshot, WeatherContext } from '@/lib/core/types';
 import {
   categoriseByLine,
   entryValue,
@@ -43,8 +43,6 @@ import {
 import { directionMark } from '@/components/MarketLabel';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import type { GameDetailGame, StatKeyDef } from '@/components/GameDetail';
-import type { BatterPitcherMatchupProps } from '@/components/BatterPitcherMatchupCard';
-import type { NflPlayerVsDefenseCardProps } from '@/components/NflPlayerVsDefenseCard';
 import type { TeamStatcastState } from '@/components/useTeamStatcast';
 import type { LiveGameState } from '@/components/useLiveGame';
 import type { UnifiedLinesResult } from '@/lib/odds/types';
@@ -185,21 +183,71 @@ export interface LiveGameSlotData {
   homeAbbrev?: string;
 }
 
-/** MLB context-rail "Matchup" card data (`renderContextMatchup?`) — `PlayerDetail.tsx:2047-2112`'s non-golf branch. */
-export interface MlbContextMatchupData {
-  teamAbbr?: string;
-  teamLogoUrl?: string;
-  opponentAbbr?: string;
-  opponentId?: number;
-  opponentTeamHref?: string;
-  firstPitch?: string | null;
-  opposingStarter?: string | null;
-  /** "#N " prefix, empty string when no overall rank is computed yet — same convention as `pitcherRankPrefix`. */
-  opposingStarterRankPrefix: string;
-  opposingHand?: string | null;
-  matchupRank?: number | null;
-  matchupStatLabel?: string | null;
-  weather?: WeatherContext | null;
+/**
+ * Universal matchup card data — one canonical shape for every sport, per
+ * `docs/matchup-card-rebuild-gameplan-2026-08-23.md` §5/§10. Replaces the
+ * old `matchups` (MLB) / `mlbContextMatchup` (MLB) / `nflMatchup`
+ * (NFL, soccer) trio outright — same "MLB owns the canonical type" rule as
+ * every other shared interface in this file, just applied to a rebuild
+ * instead of a first pass.
+ *
+ * Design notes (see the gameplan for the full reasoning):
+ * - `positionGroups: null` means the sport has no meaningful position-group
+ *   split (yet) — the component renders a single implicit group instead of
+ *   a tab strip. Every stats map is still keyed by group key even then,
+ *   using the literal key `'_default'`.
+ * - `subjectStatsByGroup` is opponent-independent (a player's own season
+ *   production doesn't change when you pick a different opponent to
+ *   compare against) — hoisted out of the per-opponent map so picking a
+ *   different opponent is a pure client-side re-index, not new data.
+ * - A stat key present in BOTH the subject's and the opponent's row list
+ *   for a group renders as a two-sided bar (the same "quality of contact"
+ *   framing `BatterPitcherMatchupCard` used); a key present on only one
+ *   side renders solo. No caller-declared list of "which keys are shared"
+ *   needed — whichever keys actually collide, collide.
+ * - `opponentOptions: null` means no custom-opponent picker yet for this
+ *   sport (today's real next-game opponent is the only one available) —
+ *   `opponentMeta`/`opponentStatsByGroup` still only need the default
+ *   opponent's entry in that case.
+ */
+export interface MatchupStatRow {
+  key: string;
+  label: string;
+  value: number;
+  decimals: number;
+  rank: number | null;
+  poolSize: number | null;
+}
+
+export interface MatchupPositionGroup {
+  key: string;
+  label: string;
+}
+
+export interface MatchupOpponentOption {
+  id: string;
+  abbr: string;
+  name: string;
+  logoUrl?: string | null;
+}
+
+export interface MatchupExplorerData {
+  subjectName: string;
+  subjectHeadshotUrl?: string | null;
+  subjectFallbackUrl?: string | null;
+  subjectTeamAbbr?: string | null;
+  subjectTeamLogoUrl?: string | null;
+  /** Defaults to 'Produces'/'Allows' at render time when omitted. */
+  subjectRoleLabel?: string;
+  opponentRoleLabel?: string;
+  positionGroups: MatchupPositionGroup[] | null;
+  subjectStatsByGroup: Record<string, MatchupStatRow[]>;
+  defaultOpponentId: string;
+  opponentOptions: MatchupOpponentOption[] | null;
+  opponentMeta: Record<string, MatchupOpponentOption & { hand?: string | null }>;
+  opponentStatsByGroup: Record<string, Record<string, MatchupStatRow[]>>;
+  /** Extra context line under the identity header — MLB's first-pitch time/weather, etc. Plain text, sport-specific content already formatted by the adapter. */
+  contextLine?: string | null;
 }
 
 export interface PlayerDetailData {
@@ -276,8 +324,36 @@ export interface PlayerDetailData {
   liveGame?: LiveGameSlotData | null;
   /** Golf only — the round-in-progress hole-by-hole scorecard vs. a tee-time groupmate. */
   liveMatchup?: import('@/lib/sports/golf/adapter').LiveRoundMatchup | null;
-  /** MLB: one or two `BatterPitcherMatchupCard` prop sets (batter-vs-starter, and/or pitcher-vs-lineup). NFL's `NflPlayerVsDefenseCard` is a genuinely different shape and isn't modeled here. */
-  matchups?: BatterPitcherMatchupProps[] | null;
+  /**
+   * Universal matchup card (see `MatchupExplorerData`'s own header comment)
+   * — every sport populates this now, `null` only for a sport this hasn't
+   * been wired up for yet. Replaces the old `matchups`/`mlbContextMatchup`/
+   * `nflMatchup` trio outright, per
+   * `docs/matchup-card-rebuild-gameplan-2026-08-23.md` §10's "replace
+   * outright" decision — golf keeps its own genuinely different
+   * `liveMatchup`/`golfContextMatchup` untouched (§3 of that doc).
+   */
+  matchupExplorer?: MatchupExplorerData | null;
+  /**
+   * Live line tracker (docs/live-matchup-and-line-tracker-gameplan-
+   * 2026-08-23.md, Part 2) — what this subject can be tracked on today, not
+   * the user's saved tracked lines themselves (those are per-user mutable
+   * state, fetched client-side through `/api/tracked-lines` by
+   * `LiveLineTrackerCard`, same "user-owned state stays out of the cached
+   * adapter payload" reasoning as watchlist). `gameId` is this sport's own
+   * live-game id (feeds `/api/{sport}/game/{gameId}/live`, the same Part 1
+   * routes the hero card's Live tab already uses) — null if the subject has
+   * no game today. `availableStats` is empty for a sport with no
+   * player-level live data source (soccer, tennis) rather than omitted, so
+   * the card can render an honest "nothing trackable yet" state instead of
+   * hiding entirely. `null` only for golf (no live-game concept at all).
+   */
+  liveLineTracker?: {
+    subjectId: string;
+    sport: Sport;
+    gameId: string | null;
+    availableStats: Array<{ key: string; label: string }>;
+  } | null;
   /** Golf only — season/advanced stats card, passed straight through from the caller's already-fetched `golfStats` prop. */
   seasonStatsCard?: {
     strokesGained: import('@/lib/sports/golf/pgatourStats').GolferStrokesGained | null;
@@ -285,12 +361,8 @@ export interface PlayerDetailData {
     advancedStats: import('@/lib/sports/golf/pgatourStats').AdvancedStat[];
     loading: boolean;
   } | null;
-  /** MLB's context-rail matchup card. Golf's equivalent (`PastRoundMatchupsCard`) is `golfContextMatchup` in the golf adapter — genuinely different shapes, not unified. */
-  mlbContextMatchup?: MlbContextMatchupData | null;
   /** Golf only — every hole this golfer has scored identically in every round played so far (`ConsistentHolesForm`'s own filter, `PlayerDetail.tsx:760-762`), precomputed as a convenience since it's otherwise re-derivable from `candidates` alone. */
   golfFormHoles?: PickCandidate[] | null;
-  /** PHASE 2 ADDITION — NFL only. `NflPlayerVsDefenseCard`'s "own stats vs. opponent's ranked defense" card (`NflPlayerDetail.tsx:406-419`) is a genuinely different shape from MLB's `BatterPitcherMatchupProps` (no player-level rank source exists for NFL, only real 32-team defense ranks — see that card's own header comment), so it isn't folded into `matchups` above. */
-  nflMatchup?: NflPlayerVsDefenseCardProps | null;
   /** PHASE 2 ADDITION — NFL only. Position-gated season totals, ranked where a real rank exists (`seasonTotalsRows`, `NflPlayerDetail.tsx:104-136`). MLB/golf have no equivalent "raw season totals" card (MLB's own season numbers live in the gamelog summary strip instead). */
   nflSeasonStats?: {
     rows: Array<{ key: string; label: string; value: number; decimals: number; rank?: { rank: number; poolSize: number } }>;
@@ -601,58 +673,82 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
         }
       : null;
 
-  // ---- Matchup cards (PlayerDetail.tsx:1722-1779) ----
-  const matchups: BatterPitcherMatchupProps[] = [];
-  if (!isPitcherSubject && Array.isArray(meta.ownStatcast) && meta.ownStatcast.length > 0 && typeof meta.opposingStarter === 'string') {
-    matchups.push({
-      subjectName: active.subjectName,
-      subjectHeadshotUrl: headshotUrl,
-      subjectTeamAbbr: teamAbbr,
-      subjectTeamLogoUrl: teamLogoUrl,
-      subjectStats: [...(meta.ownStatcast as OpposingStarterStat[]), ...((meta.ownBattingStats as OpposingStarterStat[] | undefined) ?? [])],
-      opponentName: meta.opposingStarter,
-      opponentId: typeof meta.opposingStarterId === 'number' ? meta.opposingStarterId : undefined,
-      opponentHand: typeof meta.opposingHand === 'string' ? meta.opposingHand : undefined,
-      opponentRoleLabel: 'Allows',
-      opponentTeamAbbr: opponentAbbr,
-      opponentTeamLogoUrl: opponentId != null ? mlbLogoUrl(opponentId) : undefined,
-      opponentStats: (meta.opposingStarterStats as OpposingStarterStat[] | undefined) ?? [],
-    });
-  }
-  if (isPitcherSubject && Array.isArray(meta.ownPitcherStats) && meta.ownPitcherStats.length > 0 && opponentTeamStatcast && opponentTeamStatcast.hitting.length > 0) {
-    const opponentGameSide = isHome ? (todaysGame?.game as GameDetailGame | undefined)?.away : (todaysGame?.game as GameDetailGame | undefined)?.home;
-    matchups.push({
-      title: 'Pitcher vs. lineup',
-      subjectName: active.subjectName,
-      subjectHeadshotUrl: headshotUrl,
-      subjectTeamAbbr: teamAbbr,
-      subjectTeamLogoUrl: teamLogoUrl,
-      subjectStats: meta.ownPitcherStats as OpposingStarterStat[],
-      subjectRoleLabel: 'Allows',
-      opponentName: opponentAbbr ? `${opponentAbbr} lineup` : 'Opposing lineup',
-      opponentHeadshotUrl: opponentId != null ? mlbLogoUrl(opponentId) : undefined,
-      opponentTeamAbbr: opponentAbbr,
-      opponentTeamLogoUrl: opponentId != null ? mlbLogoUrl(opponentId) : undefined,
-      opponentStats: [...opponentTeamStatcast.hitting, ...teamSeasonStatRows(opponentGameSide, statKeys)],
-      opponentRoleLabel: 'Produces',
-    });
-  }
+  // ---- Universal matchup card (replaces PlayerDetail.tsx:1722-1779's
+  // BatterPitcherMatchupCard mapping + :2047-2112's context-rail card —
+  // see MatchupExplorerData's header comment / the rebuild gameplan) ----
+  const toMatchupStatRow = (s: OpposingStarterStat): MatchupStatRow => ({
+    key: s.key,
+    label: s.label,
+    value: s.value,
+    decimals: s.decimals,
+    rank: s.rank ?? null,
+    poolSize: s.poolSize ?? null,
+  });
 
-  // ---- Context-rail matchup card (PlayerDetail.tsx:2047-2112) ----
-  const mlbContextMatchup: MlbContextMatchupData = {
-    teamAbbr,
-    teamLogoUrl,
-    opponentAbbr,
-    opponentId,
-    opponentTeamHref: opponentId != null ? `/mlb/team/${opponentId}` : undefined,
-    firstPitch: todaysGame?.game?.firstPitch ?? null,
-    opposingStarter: typeof meta.opposingStarter === 'string' ? meta.opposingStarter : null,
-    opposingStarterRankPrefix: rankPrefix((meta.opposingStarterOverallRank as { rank: number | null } | undefined)?.rank),
-    opposingHand: typeof meta.opposingHand === 'string' ? meta.opposingHand : null,
-    matchupRank: typeof meta.matchupRank === 'number' ? meta.matchupRank : null,
-    matchupStatLabel: typeof meta.matchupStatLabel === 'string' ? meta.matchupStatLabel : null,
-    weather: active.context?.weather ?? null,
-  };
+  let matchupExplorer: MatchupExplorerData | null = null;
+  if (!isPitcherSubject && Array.isArray(meta.ownStatcast) && meta.ownStatcast.length > 0 && typeof meta.opposingStarter === 'string') {
+    const opponentId2 = 'today';
+    const weather = active.context?.weather ?? null;
+    const contextParts = [
+      todaysGame?.game?.firstPitch ? `First pitch ${todaysGame.game.firstPitch}` : null,
+      typeof meta.opposingHand === 'string' ? `${meta.opposingHand}HP` : null,
+      weather ? `${weather.tempF != null ? `${weather.tempF}°F · ` : ''}Wind ${weather.windMph} mph ${weather.windDir}`.trim() : null,
+    ].filter((s): s is string => !!s && s.trim().length > 0);
+    matchupExplorer = {
+      subjectName: active.subjectName,
+      subjectHeadshotUrl: headshotUrl,
+      subjectTeamAbbr: teamAbbr,
+      subjectTeamLogoUrl: teamLogoUrl,
+      subjectRoleLabel: 'Produces',
+      opponentRoleLabel: 'Allows',
+      positionGroups: null,
+      subjectStatsByGroup: {
+        _default: [...(meta.ownStatcast as OpposingStarterStat[]), ...((meta.ownBattingStats as OpposingStarterStat[] | undefined) ?? [])].map(toMatchupStatRow),
+      },
+      defaultOpponentId: opponentId2,
+      opponentOptions: null,
+      opponentMeta: {
+        [opponentId2]: {
+          id: opponentId2,
+          abbr: opponentAbbr ?? '',
+          name: meta.opposingStarter,
+          logoUrl: opponentId != null ? mlbLogoUrl(opponentId) : undefined,
+          hand: typeof meta.opposingHand === 'string' ? meta.opposingHand : null,
+        },
+      },
+      opponentStatsByGroup: {
+        [opponentId2]: { _default: ((meta.opposingStarterStats as OpposingStarterStat[] | undefined) ?? []).map(toMatchupStatRow) },
+      },
+      contextLine: contextParts.length > 0 ? contextParts.join(' · ') : null,
+    };
+  } else if (isPitcherSubject && Array.isArray(meta.ownPitcherStats) && meta.ownPitcherStats.length > 0 && opponentTeamStatcast && opponentTeamStatcast.hitting.length > 0) {
+    const opponentGameSide = isHome ? (todaysGame?.game as GameDetailGame | undefined)?.away : (todaysGame?.game as GameDetailGame | undefined)?.home;
+    const opponentId2 = 'today';
+    matchupExplorer = {
+      subjectName: active.subjectName,
+      subjectHeadshotUrl: headshotUrl,
+      subjectTeamAbbr: teamAbbr,
+      subjectTeamLogoUrl: teamLogoUrl,
+      subjectRoleLabel: 'Allows',
+      opponentRoleLabel: 'Produces',
+      positionGroups: null,
+      subjectStatsByGroup: { _default: (meta.ownPitcherStats as OpposingStarterStat[]).map(toMatchupStatRow) },
+      defaultOpponentId: opponentId2,
+      opponentOptions: null,
+      opponentMeta: {
+        [opponentId2]: {
+          id: opponentId2,
+          abbr: opponentAbbr ?? '',
+          name: opponentAbbr ? `${opponentAbbr} lineup` : 'Opposing lineup',
+          logoUrl: opponentId != null ? mlbLogoUrl(opponentId) : undefined,
+        },
+      },
+      opponentStatsByGroup: {
+        [opponentId2]: { _default: [...opponentTeamStatcast.hitting, ...teamSeasonStatRows(opponentGameSide, statKeys)].map(toMatchupStatRow) },
+      },
+      contextLine: todaysGame?.game?.firstPitch ? `First pitch ${todaysGame.game.firstPitch}` : null,
+    };
+  }
 
   // ---- Hero rank prefix (PlayerDetail.tsx:143-145, 1259-1264) ----
   const ownStatcastSummary = ownStatcastSummaryFull;
@@ -686,14 +782,39 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     liveGame,
     liveMatchup: null,
-    matchups: matchups.length > 0 ? matchups : null,
+    matchupExplorer,
     seasonStatsCard: null,
-    mlbContextMatchup,
     golfFormHoles: null,
-    nflMatchup: null,
     nflSeasonStats: null,
+    liveLineTracker: {
+      subjectId: active.subjectId,
+      sport: 'mlb',
+      gameId: todaysGame?.game?.gamePk != null ? String(todaysGame.game.gamePk) : null,
+      availableStats: MLB_TRACKABLE_STATS,
+    },
   };
 }
+
+/**
+ * Curated, not exhaustive — batting stats only (this app's MLB player pages
+ * are batter-focused, per `hitterStats`'s own "Quality of Contact" framing
+ * above); a pitcher subject simply won't see a live value light up for
+ * these yet. Keys are deliberately the exact same market `dimension`
+ * strings `STAT_MARKET_BY_DIMENSION` (`lib/sports/mlb/adapter.ts`) already
+ * uses for grading/live-value lookups — not a new vocabulary — so the
+ * tracker's live-value hook can call `liveMarketValues()` directly with no
+ * translation layer.
+ */
+const MLB_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
+  { key: 'hit-in-game', label: 'Hits' },
+  { key: 'home-runs', label: 'Home Runs' },
+  { key: 'rbis', label: 'RBI' },
+  { key: 'total-bases', label: 'Total Bases' },
+  { key: 'walks', label: 'Walks' },
+  { key: 'batter-strikeouts', label: 'Strikeouts' },
+  { key: 'doubles', label: 'Doubles' },
+  { key: 'stolen-bases', label: 'Stolen Bases' },
+];
 
 // Only isOk is needed elsewhere via this module's re-export surface today;
 // kept imported (not re-exported) so callers of formWindows can branch the

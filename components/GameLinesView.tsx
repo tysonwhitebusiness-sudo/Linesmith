@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import type { Sport } from '@/lib/core/types';
 import type { SlateEntry } from '@/lib/odds/matching';
 import { projectLine } from '@/lib/odds/display';
 import { computeMoneylineEdge, computeTotalEdge } from '@/lib/odds/gameEdge';
@@ -92,10 +93,31 @@ function PickStrip({
  * interleaved into ScanTable's rows: that table is keyed on a player+market
  * candidate, and a game-level line doesn't have either, so it gets its own
  * small view rather than forcing an awkward row shape onto both.
+ *
+ * Generic across all 7 non-golf sports (odds-architecture rebuild Phase
+ * 6.5 — was MLB-only in practice before, since `entries[i].line` only
+ * ever populated for MLB/NFL and the team-logo/link block below assumed
+ * MLB's own numeric team-id scheme). The odds grid itself needs nothing
+ * sport-specific (`BookmakerBreakdown`/`projectLine`/`OddsChip` already
+ * are). The team logo + `/​{sport}/team/{id}` link stays gated on
+ * `game.awayTeamId`/`homeTeamId` being present rather than being made
+ * sport-aware here: those are MLB's own numeric ids (SlateGame's own doc
+ * comment), other sports' games simply don't set them, so the guard
+ * already degrades to a plain abbreviation with no link/logo instead of
+ * ever constructing a wrong URL — the real odds data still renders either
+ * way, which is the part this phase is actually about.
  */
-export function GameLinesView({ entries, onNavigate }: { entries: SlateEntry[]; onNavigate: (gamePk: number) => void }) {
-  const pickHistory = useGamePickHistory('mlb');
-  const calibration = useMarketCalibration();
+export function GameLinesView({
+  entries,
+  sport,
+  onNavigate,
+}: {
+  entries: SlateEntry[];
+  sport: Sport;
+  onNavigate: (gamePk: number) => void;
+}) {
+  const pickHistory = useGamePickHistory(sport);
+  const calibration = useMarketCalibration(true, sport);
   const picksByGame = new Map(pickHistory.rows.map((r) => [r.gameId, r]));
 
   if (entries.length === 0) {
@@ -126,15 +148,23 @@ export function GameLinesView({ entries, onNavigate }: { entries: SlateEntry[]; 
             />
             <div className="mb-2 flex w-full items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-[13px] font-medium">
-                <Link href={`/mlb/team/${entry.game.awayTeamId}`} className="flex items-center gap-1.5 hover:underline">
-                  <TeamLogo logoUrl={teamLogoUrl(entry.game.awayTeamId)} abbreviation={entry.awayAbbrev} size={20} />
-                  {entry.awayAbbrev}
-                </Link>
+                {entry.game.awayTeamId != null ? (
+                  <Link href={`/mlb/team/${entry.game.awayTeamId}`} className="flex items-center gap-1.5 hover:underline">
+                    <TeamLogo logoUrl={teamLogoUrl(entry.game.awayTeamId)} abbreviation={entry.awayAbbrev} size={20} />
+                    {entry.awayAbbrev}
+                  </Link>
+                ) : (
+                  <span>{entry.awayAbbrev}</span>
+                )}
                 <span className="text-ink-faint">@</span>
-                <Link href={`/mlb/team/${entry.game.homeTeamId}`} className="flex items-center gap-1.5 hover:underline">
-                  <TeamLogo logoUrl={teamLogoUrl(entry.game.homeTeamId)} abbreviation={entry.homeAbbrev} size={20} />
-                  {entry.homeAbbrev}
-                </Link>
+                {entry.game.homeTeamId != null ? (
+                  <Link href={`/mlb/team/${entry.game.homeTeamId}`} className="flex items-center gap-1.5 hover:underline">
+                    <TeamLogo logoUrl={teamLogoUrl(entry.game.homeTeamId)} abbreviation={entry.homeAbbrev} size={20} />
+                    {entry.homeAbbrev}
+                  </Link>
+                ) : (
+                  <span>{entry.homeAbbrev}</span>
+                )}
               </span>
               <button type="button" onClick={() => onNavigate(gamePk)} className="text-[11px] text-masters">
                 {entry.game.state === 'Final' ? 'Final · ' : ''}View game →

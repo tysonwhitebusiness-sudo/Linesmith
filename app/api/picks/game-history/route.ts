@@ -10,6 +10,7 @@ import { NextResponse } from 'next/server';
 import { gamePickRecord, listGamePickHistory, type GamePickRow } from '@/lib/db/client';
 import { gradeConfidence, type ConfidenceGrade } from '@/lib/core/confidence';
 import { americanToDecimalOdds, stakeSuggestion, type StakeSuggestion } from '@/lib/core/kelly';
+import { simulatedProfit } from '@/lib/picks/bankroll';
 import { easternDate } from '@/lib/sports/mlb/statsapi';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +30,8 @@ interface MoneylinePickView {
   changed: boolean;
   initialTeamName: string | null;
   outcome: 'win' | 'loss' | null;
+  /** Real dollar P&L on a simulated flat $10 bet — null until both a price and a graded outcome exist. */
+  simulatedProfit: number | null;
 }
 
 interface TotalPickView {
@@ -47,6 +50,8 @@ interface TotalPickView {
   initialSide: 'over' | 'under' | null;
   initialLine: number | null;
   outcome: 'win' | 'loss' | null;
+  /** Real dollar P&L on a simulated flat $10 bet — null until both a price and a graded outcome exist. */
+  simulatedProfit: number | null;
 }
 
 interface GamePickView {
@@ -66,6 +71,7 @@ function teamName(row: GamePickRow, side: 'home' | 'away' | null): string | null
   if (!side) return null;
   return side === 'home' ? row.homeTeamName : row.awayTeamName;
 }
+
 
 function toView(row: GamePickRow): GamePickView {
   const mlSide = row.mlFinalSide ?? row.mlInitialSide;
@@ -104,6 +110,7 @@ function toView(row: GamePickRow): GamePickView {
       changed: row.mlInitialSide != null && row.mlFinalSide != null && row.mlInitialSide !== row.mlFinalSide,
       initialTeamName: teamName(row, row.mlInitialSide),
       outcome: row.mlOutcome,
+      simulatedProfit: simulatedProfit(mlPrice, row.mlOutcome),
     },
     total: {
       pickSide: totalSide,
@@ -119,6 +126,7 @@ function toView(row: GamePickRow): GamePickView {
       initialSide: row.totalInitialSide,
       initialLine: row.totalInitialLine,
       outcome: row.totalOutcome,
+      simulatedProfit: simulatedProfit(totalPrice, row.totalOutcome),
     },
   };
 }

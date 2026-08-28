@@ -23,6 +23,9 @@
  */
 
 import { pgGet, pgAll, pgRun, pgTransaction } from './pgClient';
+import type { BookmakerOdds, UnifiedGameLine } from '../odds/types';
+import { americanToDecimal, bestMoneylineFromBooks, bestSpreadFromBooks, bestTotalFromBooks } from '../odds/display';
+import { simulatedProfit } from '../picks/bankroll';
 
 // ---------------------------------------------------------------------------
 // Picks
@@ -364,6 +367,57 @@ export async function removeWatch(sport: string, subjectId: string, userId: stri
 }
 
 // ---------------------------------------------------------------------------
+// Tracked lines (docs/live-matchup-and-line-tracker-gameplan-2026-08-23.md,
+// Part 2) — sibling to watchlist, not a repurposing of it: "track this
+// subject+stat+threshold", not "follow this subject". Same shape/pattern.
+// ---------------------------------------------------------------------------
+
+export interface TrackedLineRow {
+  id: number;
+  sport: string;
+  subjectId: string;
+  subjectName: string;
+  statKey: string;
+  statLabel: string;
+  side: 'over' | 'under';
+  line: number;
+  source: 'manual' | 'prop_odds';
+  createdAt: string;
+}
+
+const TRACKED_LINE_COLUMNS = `id, sport, subject_id AS "subjectId", subject_name AS "subjectName",
+  stat_key AS "statKey", stat_label AS "statLabel", side, line, source, created_at AS "createdAt"`;
+
+export async function listTrackedLines(sport: string | undefined, userId: string): Promise<TrackedLineRow[]> {
+  return sport
+    ? pgAll<TrackedLineRow>(`SELECT ${TRACKED_LINE_COLUMNS} FROM tracked_lines WHERE user_id = ? AND sport = ? ORDER BY created_at DESC`, [userId, sport])
+    : pgAll<TrackedLineRow>(`SELECT ${TRACKED_LINE_COLUMNS} FROM tracked_lines WHERE user_id = ? ORDER BY created_at DESC`, [userId]);
+}
+
+export async function addTrackedLine(
+  sport: string,
+  subjectId: string,
+  subjectName: string,
+  statKey: string,
+  statLabel: string,
+  side: 'over' | 'under',
+  line: number,
+  source: 'manual' | 'prop_odds',
+  userId: string,
+): Promise<void> {
+  await pgRun(
+    `INSERT INTO tracked_lines (user_id, sport, subject_id, subject_name, stat_key, stat_label, side, line, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (user_id, sport, subject_id, stat_key) DO UPDATE SET side = excluded.side, line = excluded.line, source = excluded.source, stat_label = excluded.stat_label`,
+    [userId, sport, subjectId, subjectName, statKey, statLabel, side, line, source],
+  );
+}
+
+export async function removeTrackedLine(sport: string, subjectId: string, statKey: string, userId: string): Promise<void> {
+  await pgRun('DELETE FROM tracked_lines WHERE sport = ? AND subject_id = ? AND stat_key = ? AND user_id = ?', [sport, subjectId, statKey, userId]);
+}
+
+// ---------------------------------------------------------------------------
 // Odds cache (the-odds-api.com)
 // ---------------------------------------------------------------------------
 
@@ -635,20 +689,186 @@ export async function writeGameOddsBookLines(rows: GameOddsBookLineInput[]): Pro
   });
 }
 
+interface GameOddsBookLineRow {
+  market: string;
+  side: string;
+  bookmaker: string;
+  source: string;
+  americanOdds: number;
+  point: number | null;
+  decimalOdds: number | null;
+  fetchedAt: string;
+}
+
 /**
- * Live-side counterpart to historical_odds' opening line — the earliest
- * point value this app has itself observed for this event's total market,
- * across any book. Only reflects movement since this app started polling
- * that event, not the sportsbook's true open — an honest, disclosed gap.
+ * Every real source's rows for one game, read straight from
+ * game_odds_book_lines — the shared table OddsHarvester, the-odds-api,
+ * SportsGameOdds, SharpAPI, Propline, and ESPN all write into (odds-
+ * architecture rebuild Phases 1-4). Not exported: readGameOddsBookLines/
+ * getBestGameOddsLine below are the two real callers, each applying its
+ * own merge policy on top of the same raw rows — keeping the raw read in
+ * one place means both stay consistent about what "the data" actually is.
  */
-export async function getEarliestObservedTotalPoint(eventId: string): Promise<number | null> {
-  const row = await pgGet<{ point: number }>(
-    `SELECT point FROM game_odds_history
-     WHERE event_id = ? AND market = 'total' AND point IS NOT NULL
-     ORDER BY observed_at ASC LIMIT 1`,
-    [eventId],
+async function readRawGameOddsBookLines(sport: string, gameId: string): Promise<GameOddsBookLineRow[]> {
+  return pgAll<GameOddsBookLineRow>(
+    `SELECT market, side, bookmaker, source, american_odds AS "americanOdds",
+            point, decimal_odds AS "decimalOdds", fetched_at AS "fetchedAt"
+     FROM game_odds_book_lines WHERE sport = ? AND game_id = ?`,
+    [sport, gameId],
   );
-  return row?.point ?? null;
+}
+
+/**
+ * The full bookmaker-comparison grid for one game — every real book from
+ * every real source, merged into the same UnifiedGameLine shape the
+ * existing pipeline (BookmakerBreakdown, PicksPanel, projectLine) already
+ * consumes, so those components work unchanged once fed from here instead
+ * of MLB/NFL's old per-sport hooks. `null` when nothing has been recovered
+ * for this game yet — never a fabricated empty line.
+ *
+ * Merge policy for the same bookmaker reported by multiple sources with
+ * different prices: freshest `fetched_at` wins per (bookmaker, market,
+ * side) — every source already timestamps its writes, and this avoids
+ * needing a hand-ranked source-priority table that would need maintenance
+ * as sources change. This is the plan's own recommended default, not
+ * silently assumed.
+ */
+/**
+ * Merges one game's raw rows into the UnifiedGameLine shape — shared by
+ * readGameOddsBookLines (one game) and readGameOddsBookLinesForSport
+ * (every game in a sport, one query) so both apply the exact same merge
+ * policy rather than two hand-kept-in-sync copies.
+ */
+function mergeGameOddsBookLineRows(gameId: string, rows: GameOddsBookLineRow[]): UnifiedGameLine | null {
+  if (rows.length === 0) return null;
+
+  const latest = new Map<string, GameOddsBookLineRow>();
+  for (const r of rows) {
+    const key = `${r.bookmaker}|${r.market}|${r.side}`;
+    const cur = latest.get(key);
+    if (!cur || r.fetchedAt > cur.fetchedAt) latest.set(key, r);
+  }
+
+  const books = new Map<string, BookmakerOdds>();
+  const sources = new Set<string>();
+  for (const r of latest.values()) {
+    sources.add(r.source);
+    let entry = books.get(r.bookmaker);
+    if (!entry) {
+      entry = { bookmaker: r.bookmaker };
+      books.set(r.bookmaker, entry);
+    }
+    const decimal = r.decimalOdds ?? americanToDecimal(r.americanOdds);
+    if (decimal == null) continue;
+
+    if (r.market === 'moneyline') {
+      if (r.side === 'home') entry.homeOdds = decimal;
+      else if (r.side === 'away') entry.awayOdds = decimal;
+      else if (r.side === 'draw') entry.drawOdds = decimal;
+    } else if (r.market === 'spread') {
+      if (r.side === 'home') {
+        entry.spreadHome = r.point ?? undefined;
+        entry.spreadHomePrice = decimal;
+      } else if (r.side === 'away') {
+        entry.spreadAway = r.point ?? undefined;
+        entry.spreadAwayPrice = decimal;
+      }
+    } else if (r.market === 'total') {
+      if (r.point != null) entry.point = r.point;
+      if (r.side === 'over') entry.overPrice = decimal;
+      else if (r.side === 'under') entry.underPrice = decimal;
+    }
+  }
+
+  const bookmakers = [...books.values()];
+  return {
+    eventId: gameId,
+    // Not tracked per-row (game_odds_book_lines has no team-name/commence-
+    // time columns — every writer already knows its own game's identity
+    // from the games list it matched against). Callers already have real
+    // team names/commence time from their own sport's game data; left
+    // blank here rather than duplicating a value this table doesn't own.
+    // buildSlate (lib/odds/matching.ts) matches on `eventId` against the
+    // real game id first, before falling back to team-name matching, so a
+    // blank homeTeam/awayTeam here doesn't block matching the way it would
+    // have before that change.
+    commenceTime: '',
+    homeTeam: '',
+    awayTeam: '',
+    moneyline: bestMoneylineFromBooks(bookmakers),
+    spread: bestSpreadFromBooks(bookmakers),
+    total: bestTotalFromBooks(bookmakers),
+    bookmakers,
+    bookCount: bookmakers.length,
+    source:
+      sources.size > 1
+        ? 'game-odds-book-lines'
+        : ((sources.values().next().value as UnifiedGameLine['source'] | undefined) ?? 'game-odds-book-lines'),
+  };
+}
+
+export async function readGameOddsBookLines(sport: string, gameId: string): Promise<UnifiedGameLine | null> {
+  const rows = await readRawGameOddsBookLines(sport, gameId);
+  return mergeGameOddsBookLineRows(gameId, rows);
+}
+
+/**
+ * Every real line for every game currently recovered for a sport, one
+ * query — the Scan-page/slate equivalent of readGameOddsBookLines above.
+ * Feeds `/api/odds/lines`'s non-MLB/NFL branch, which existing consumers
+ * (useGameLines, buildSlate, GameLinesView) already read generically; the
+ * gap being closed here is purely "no route ever populated this for
+ * sports other than MLB/NFL," not a new consumption path.
+ */
+export async function readGameOddsBookLinesForSport(sport: string): Promise<UnifiedGameLine[]> {
+  const rows = await pgAll<GameOddsBookLineRow & { gameId: string }>(
+    `SELECT game_id AS "gameId", market, side, bookmaker, source, american_odds AS "americanOdds",
+            point, decimal_odds AS "decimalOdds", fetched_at AS "fetchedAt"
+     FROM game_odds_book_lines WHERE sport = ?`,
+    [sport],
+  );
+  const byGame = new Map<string, GameOddsBookLineRow[]>();
+  for (const r of rows) {
+    const list = byGame.get(r.gameId);
+    if (list) list.push(r);
+    else byGame.set(r.gameId, [r]);
+  }
+  const lines: UnifiedGameLine[] = [];
+  for (const [gameId, gameRows] of byGame) {
+    const line = mergeGameOddsBookLineRows(gameId, gameRows);
+    if (line) lines.push(line);
+  }
+  return lines;
+}
+
+/**
+ * Per-sport/source row counts and freshest write, for /api/diagnostics'
+ * real "is data actually reaching game_odds_book_lines" check (odds-
+ * architecture rebuild Phase 7 — the blind spot the whole rebuild plan
+ * called out: every check before this verified a job ran, never that its
+ * output reached the table every sport's Game Detail/Scan page actually
+ * reads). Mirrors python-odds-service/src/health_check.py's
+ * check_game_odds_book_lines_freshness — same 7-day/24h windows, same
+ * per-sport (not per-source) health verdict for the same reason: which
+ * sources SHOULD be live for a sport changes as jobs.py's ProviderSpec
+ * lists change, and hardcoding that expectation here would just be a
+ * second copy to drift out of sync with the real one.
+ */
+export interface GameOddsBookLinesHealthRow {
+  sport: string;
+  source: string;
+  count: number;
+  latestFetchedAt: string;
+}
+
+export async function readGameOddsBookLinesHealth(): Promise<GameOddsBookLinesHealthRow[]> {
+  return pgAll<GameOddsBookLinesHealthRow>(
+    `SELECT sport, source, COUNT(*) AS count, MAX(fetched_at) AS "latestFetchedAt"
+     FROM game_odds_book_lines
+     WHERE fetched_at > now() - interval '7 days'
+     GROUP BY sport, source
+     ORDER BY sport, source`,
+  );
 }
 
 export async function readPropOddsForGame(gameId: string): Promise<PropOddsRow[]> {
@@ -1217,6 +1437,120 @@ export async function goodBetsRecord(
   return { wins: row!.wins, losses, total: row!.total, winRate: row!.total > 0 ? row!.wins / row!.total : null };
 }
 
+export interface PropPickRow {
+  subjectId: string;
+  subjectName: string;
+  dimension: string;
+  category: string;
+  marketKey: string | null;
+  line: number | null;
+  gameId: string | null;
+  sampleSize: number | null;
+  modelProb: number | null;
+  marketProb: number | null;
+  edge: number | null;
+  priceSource: string | null;
+  bookmaker: string | null;
+  propScore: number | null;
+  scoreGrade: string | null;
+  trustTier: string | null;
+  /** Real bettable american-odds price at candidate-generation time — Phase 7's simulated $10 bankroll input. Added 2026-08-27; null for any row surfaced before that migration. */
+  price: number | null;
+}
+
+/**
+ * Today's real, un-graded player-prop candidates for one sport — Phase 6
+ * of docs/daily-picks-full-model-build-2026-08-27.md, generalizing
+ * app/api/mlb/home-run-candidates/route.ts's real filter+sort+slice
+ * pattern for the six sports predict/generic_prop_production.py (Python
+ * worker) now writes into. `outcome IS NULL` is the "today's real slate"
+ * filter, deliberately not a date match: a candidate only ever gets
+ * graded once its game finishes, so "ungraded" and "belongs to a
+ * game that hasn't finished yet" are the same real condition here — no
+ * separate join to game_picks for commence_time needed. A real, disclosed
+ * edge case this doesn't close: a candidate that was somehow never graded
+ * (a grading-job bug, not a real production gap as of this write) would
+ * linger in this pool past its own game day; not observed in practice
+ * and not attempted to guard against here.
+ *
+ * `dimensions.exclude`/`dimensions.only` is how the two real callers stay
+ * in sync with each other: app/api/picks/props/route.ts excludes a
+ * sport's rare-market dimension(s) from the regular top-10 list,
+ * app/api/picks/rare-markets/route.ts includes ONLY them for the top-5
+ * list — both read lib/picks/rareMarketDimensions.ts's same real set, so
+ * they can never drift into double-counting or dropping a dimension.
+ */
+export async function readTodaysPropCandidates(
+  sport: string,
+  dimensions: { exclude?: string[]; only?: string[] } = {},
+  limit = 500,
+): Promise<PropPickRow[]> {
+  const params: any[] = [sport];
+  let dimensionClause = '';
+  if (dimensions.only && dimensions.only.length > 0) {
+    dimensionClause = `AND dimension IN (${dimensions.only.map(() => '?').join(',')})`;
+    params.push(...dimensions.only);
+  } else if (dimensions.exclude && dimensions.exclude.length > 0) {
+    dimensionClause = `AND dimension NOT IN (${dimensions.exclude.map(() => '?').join(',')})`;
+    params.push(...dimensions.exclude);
+  }
+  params.push(limit);
+  return pgAll<PropPickRow>(
+    `SELECT subject_id AS "subjectId", subject_name AS "subjectName", dimension, category,
+            market_key AS "marketKey", line, game_id AS "gameId", sample_size AS "sampleSize",
+            model_prob AS "modelProb", market_prob AS "marketProb", edge, price_source AS "priceSource",
+            bookmaker, prop_score AS "propScore", score_grade AS "scoreGrade", trust_tier AS "trustTier", price
+     FROM pick_history
+     WHERE sport = ? AND outcome IS NULL AND model_prob IS NOT NULL ${dimensionClause}
+     ORDER BY prop_score DESC NULLS LAST, model_prob DESC
+     LIMIT ?`,
+    params,
+  );
+}
+
+export interface PnlSummary {
+  wins: number;
+  losses: number;
+  profit: number;
+}
+
+/**
+ * Real graded-picks P&L for one sport/dimension-scope — sums
+ * lib/picks/bankroll.ts's simulatedProfit() over every graded, priced
+ * pick_history row. `dimensions.only`/`dimensions.exclude` mirror
+ * readTodaysPropCandidates's own scoping (rare-market vs regular props).
+ * Rows with a graded outcome but no price (pre-2026-08-27 rows, or a
+ * candidate that never had a live price) contribute a real win/loss to
+ * the count but null to profit — same "can't compute a dollar amount
+ * without a real price" honesty simulatedProfit() itself already
+ * enforces, just aggregated here instead of per-row.
+ */
+export async function propsPnlForSport(sport: string, dimensions: { exclude?: string[]; only?: string[] } = {}): Promise<PnlSummary> {
+  const params: any[] = [sport];
+  let dimensionClause = '';
+  if (dimensions.only && dimensions.only.length > 0) {
+    dimensionClause = `AND dimension IN (${dimensions.only.map(() => '?').join(',')})`;
+    params.push(...dimensions.only);
+  } else if (dimensions.exclude && dimensions.exclude.length > 0) {
+    dimensionClause = `AND dimension NOT IN (${dimensions.exclude.map(() => '?').join(',')})`;
+    params.push(...dimensions.exclude);
+  }
+  const rows = await pgAll<{ outcome: 'win' | 'loss'; price: number | null }>(
+    `SELECT outcome, price FROM pick_history WHERE sport = ? AND outcome IS NOT NULL ${dimensionClause}`,
+    params,
+  );
+  let wins = 0;
+  let losses = 0;
+  let profit = 0;
+  for (const r of rows) {
+    if (r.outcome === 'win') wins += 1;
+    else losses += 1;
+    const p = simulatedProfit(r.price, r.outcome);
+    if (p != null) profit += p;
+  }
+  return { wins, losses, profit };
+}
+
 // ---------------------------------------------------------------------------
 // Linesmith Pick lock system (game_picks)
 // ---------------------------------------------------------------------------
@@ -1498,6 +1832,43 @@ export async function gamePickRecord(sport: string): Promise<GamePickRecord> {
     moneyline: { wins: ml!.wins ?? 0, losses: ml!.losses ?? 0 },
     total: { wins: total!.wins ?? 0, losses: total!.losses ?? 0 },
   };
+}
+
+/**
+ * Real games P&L for one sport — Phase 7's bankroll, the game_picks
+ * counterpart to propsPnlForSport. Sums simulatedProfit() across BOTH
+ * moneyline and total markets (the "games" bucket is the combined real
+ * bet across whichever market(s) actually locked and graded for a game,
+ * matching app/api/picks/game-history/route.ts's own toView() price/
+ * outcome selection: final price if a final lock happened, else initial).
+ */
+export async function gamesPnlForSport(sport: string): Promise<PnlSummary> {
+  const rows = await pgAll<{
+    mlOutcome: 'win' | 'loss' | null;
+    mlPrice: number | null;
+    totalOutcome: 'win' | 'loss' | null;
+    totalPrice: number | null;
+  }>(
+    `SELECT ml_outcome AS "mlOutcome", COALESCE(ml_final_price, ml_initial_price) AS "mlPrice",
+            total_outcome AS "totalOutcome", COALESCE(total_final_price, total_initial_price) AS "totalPrice"
+     FROM game_picks WHERE sport = ? AND (ml_outcome IS NOT NULL OR total_outcome IS NOT NULL)`,
+    [sport],
+  );
+  let wins = 0;
+  let losses = 0;
+  let profit = 0;
+  for (const r of rows) {
+    if (r.mlOutcome === 'win') wins += 1;
+    else if (r.mlOutcome === 'loss') losses += 1;
+    const mlProfit = simulatedProfit(r.mlPrice, r.mlOutcome);
+    if (mlProfit != null) profit += mlProfit;
+
+    if (r.totalOutcome === 'win') wins += 1;
+    else if (r.totalOutcome === 'loss') losses += 1;
+    const totalProfit = simulatedProfit(r.totalPrice, r.totalOutcome);
+    if (totalProfit != null) profit += totalProfit;
+  }
+  return { wins, losses, profit };
 }
 
 /** Full pick history, newest game first, for the diagnostics table. */

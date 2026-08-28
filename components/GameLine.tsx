@@ -10,14 +10,11 @@ import {
   formatClock,
   formatPoint,
   formatStamp,
-  homeShare,
   isInPlay,
-  rankOf,
   shortTeam,
   sourceLabel,
   type ProjectedLine,
 } from '@/lib/odds/display';
-import { compareInk, rankToHeat } from '@/lib/ui/heat';
 
 // ---------------------------------------------------------------------------
 // Numbers as the anchor
@@ -102,29 +99,25 @@ export function LiveScoreBar({
 // Per-bookmaker comparison
 // ---------------------------------------------------------------------------
 
-/**
- * How one book splits the matchup, as a 60px segmented bar.
- *
- * Green is the home side's normalised implied probability, so a wider green
- * segment means that book leans harder toward the home team than its peers.
- */
-function ProbabilitySplit({ share }: { share: number | null }) {
-  if (share === null) {
-    return <span className="block h-1.5 w-[60px] rounded-full bg-line" aria-hidden />;
-  }
-  const pct = Math.round(share * 100);
-  return (
-    <span
-      className="flex h-1.5 w-[60px] overflow-hidden rounded-full bg-line"
-      title={`${pct}% home / ${100 - pct}% away (vig removed)`}
-      aria-hidden
-    >
-      <span className="h-full bg-masters" style={{ width: `${pct}%` }} />
-      <span className="h-full flex-1 bg-accent/40" />
-    </span>
-  );
+/** One priceable line: which side of which market, how to read its ranking price (decimal, for best-of-row heat) and how to render its cell (point + price, or price alone). */
+interface GridRow {
+  key: string;
+  label: string;
+  rankPrice: (b: BookmakerOdds) => number | undefined;
+  cell: (b: BookmakerOdds) => { point?: number; price?: number } | undefined;
 }
 
+/**
+ * The real per-book grid — bookmakers as columns, markets as rows, best
+ * price in each row highlighted. Replaces the old moneyline-only per-book
+ * list: `BookmakerOdds` has always carried spread/total fields too (see
+ * `mergeGameOddsBookLineRows`, lib/db/client.ts), this component just never
+ * read them until now.
+ *
+ * A row only appears if at least one book actually has that side priced —
+ * a sport/game with no spread market (or a book that hasn't posted totals
+ * yet) doesn't get an empty row of dashes.
+ */
 export function BookmakerBreakdown({
   bookmakers,
   selectedBook,
@@ -138,15 +131,60 @@ export function BookmakerBreakdown({
 }) {
   if (bookmakers.length === 0) return null;
 
-  // "Best" is only meaningful against the other prices on screen, so each side
-  // is ranked within its own observed range.
-  const awayPrices = bookmakers.map((b) => b.awayOdds).filter((v): v is number => v != null && Number.isFinite(v));
-  const homePrices = bookmakers.map((b) => b.homeOdds).filter((v): v is number => v != null && Number.isFinite(v));
-  const awayRange = rankOf(awayPrices);
-  const homeRange = rankOf(homePrices);
+  const allRows: GridRow[] = [
+    {
+      key: 'ml-away',
+      label: `${awayLabel} ML`,
+      rankPrice: (b) => b.awayOdds,
+      cell: (b) => (b.awayOdds != null ? { price: b.awayOdds } : undefined),
+    },
+    {
+      key: 'ml-home',
+      label: `${homeLabel} ML`,
+      rankPrice: (b) => b.homeOdds,
+      cell: (b) => (b.homeOdds != null ? { price: b.homeOdds } : undefined),
+    },
+    {
+      key: 'spread-away',
+      label: `${awayLabel} Spread`,
+      rankPrice: (b) => b.spreadAwayPrice,
+      cell: (b) => (b.spreadAwayPrice != null ? { point: b.spreadAway, price: b.spreadAwayPrice } : undefined),
+    },
+    {
+      key: 'spread-home',
+      label: `${homeLabel} Spread`,
+      rankPrice: (b) => b.spreadHomePrice,
+      cell: (b) => (b.spreadHomePrice != null ? { point: b.spreadHome, price: b.spreadHomePrice } : undefined),
+    },
+    {
+      key: 'total-over',
+      label: 'Over',
+      rankPrice: (b) => b.overPrice,
+      cell: (b) => (b.overPrice != null ? { point: b.point, price: b.overPrice } : undefined),
+    },
+    {
+      key: 'total-under',
+      label: 'Under',
+      rankPrice: (b) => b.underPrice,
+      cell: (b) => (b.underPrice != null ? { point: b.point, price: b.underPrice } : undefined),
+    },
+  ];
+  const rows = allRows.filter((row) => bookmakers.some((b) => row.cell(b) != null));
 
-  const priceStyle = (decimal: number | undefined, range: { min: number; max: number } | null) =>
-    decimal == null || range == null ? undefined : { color: compareInk(rankToHeat(decimal, range.min, range.max)) };
+  if (rows.length === 0) return null;
+
+  // "Best" means the single best price in the row, full stop — not a
+  // gradient. A continuous heat scale (this component's first pass) made
+  // near-best prices look green too, which reads as "multiple winners" when
+  // there's only ever one best number to shop for. Ties for the literal max
+  // both count as best (genuinely equally good); anything short of the max
+  // gets no colour at all rather than a fading tint.
+  const bestByRow = new Map(
+    rows.map((row) => {
+      const prices = bookmakers.map(row.rankPrice).filter((v): v is number => v != null && Number.isFinite(v));
+      return [row.key, prices.length > 1 ? Math.max(...prices) : undefined];
+    }),
+  );
 
   return (
     <details className="group mt-2.5 rounded-lg border border-line bg-paper/60 open:shadow-pop">
@@ -160,42 +198,56 @@ export function BookmakerBreakdown({
         </span>
       </summary>
 
-      <ul className="border-t border-line px-2.5 py-1.5">
-        {bookmakers.map((book) => {
-          const selected = selectedBook === book.bookmaker;
-          return (
-            <li
-              key={book.bookmaker}
-              className={`flex items-center gap-2 rounded px-1 py-1 ${
-                selected ? 'bg-accent-soft' : ''
-              }`}
-            >
-              <span
-                className={`min-w-0 flex-1 truncate text-[11px] ${
-                  selected ? 'font-semibold text-masters' : 'text-ink-muted'
-                }`}
-              >
-                {book.bookmaker}
-              </span>
-              <ProbabilitySplit share={homeShare(book.homeOdds, book.awayOdds)} />
-              <span
-                className="w-11 shrink-0 text-right text-[12px] font-semibold tabular-nums"
-                style={priceStyle(book.awayOdds, awayRange)}
-              >
-                {formatAmerican(decimalToAmerican(book.awayOdds))}
-              </span>
-              <span
-                className="w-11 shrink-0 text-right text-[12px] font-semibold tabular-nums"
-                style={priceStyle(book.homeOdds, homeRange)}
-              >
-                {formatAmerican(decimalToAmerican(book.homeOdds))}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-      <p className="px-2.5 pb-2 text-[10px] text-ink-faint">
-        Colour compares each price against the others listed — green is the best of these books.
+      <div className="overflow-x-auto border-t border-line">
+        <table className="w-full border-collapse text-[10.5px]">
+          <thead>
+            <tr>
+              <th className="sticky left-0 z-10 bg-paper/95 px-1.5 py-1 text-left font-medium text-ink-faint">Market</th>
+              {bookmakers.map((book) => {
+                const selected = selectedBook === book.bookmaker;
+                return (
+                  <th
+                    key={book.bookmaker}
+                    className={`w-[42px] max-w-[42px] px-0.5 py-1 text-right font-medium ${selected ? 'text-masters' : 'text-ink-muted'}`}
+                    title={book.bookmaker}
+                  >
+                    <span className="block truncate">{book.bookmaker}</span>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.key} className="border-t border-line/60">
+                <td className="sticky left-0 z-10 whitespace-nowrap bg-paper/95 px-1.5 py-1 text-ink-muted">{row.label}</td>
+                {bookmakers.map((book) => {
+                  const cell = row.cell(book);
+                  const selected = selectedBook === book.bookmaker;
+                  const best = cell != null && bestByRow.get(row.key) === cell.price;
+                  return (
+                    <td
+                      key={book.bookmaker}
+                      className={`px-0.5 py-1 text-right tabular-nums leading-tight ${selected ? 'bg-accent-soft/50' : ''}`}
+                    >
+                      {cell ? (
+                        <span className="flex flex-col items-end">
+                          {cell.point != null ? <span className="text-[9px] text-ink-faint">{formatPoint(cell.point)}</span> : null}
+                          <span className={best ? 'font-bold text-good' : 'font-semibold'}>{formatAmerican(decimalToAmerican(cell.price))}</span>
+                        </span>
+                      ) : (
+                        <span className="text-ink-faint">—</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="px-2.5 py-2 text-[10px] text-ink-faint">
+        Colour compares each price against the others in its row — green is the best of these books. Points can differ by book; check the number next to the price.
       </p>
     </details>
   );

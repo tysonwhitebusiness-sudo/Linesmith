@@ -32,6 +32,7 @@ import type { HistoryEntry, LiveState, PickCandidate, SplitEvidence, SportSnapsh
 import { candidateKey } from '@/lib/core/types';
 import { subsetWindow } from '@/lib/core/windowedStat';
 import { loadGameContextsForSport } from '@/lib/odds/props/multiSportGameContext';
+import { favorableFromRank } from '@/lib/odds/props/matchupFavorable';
 import { readPropOddsForGame, type PropOddsRow } from '@/lib/db/client';
 import {
   getEspnToGsisMap,
@@ -43,6 +44,7 @@ import {
   MOST_RECENT_STATS_SEASON,
   NFLVERSE_STAT_COLUMN_BY_MARKET,
   type PlayerSeasonStats,
+  type NflverseTeamStatLine,
 } from './nflverse';
 import { getCachedNflPlayerRankings } from './nflPlayerRankings';
 
@@ -96,6 +98,45 @@ const MATCHUP_GROUP_BY_POSITION: Record<string, string[]> = {
   WR: ['Passing', 'Receiving'],
   TE: ['Passing', 'Receiving'],
 };
+
+// X-signal (Phase 3 of docs/scan-playerdetail-parity-gameplan-2026-08-27.md)
+// — a real, disclosed subset: getTeamDefenseAllowedWithRank's own
+// DEFENSE_STAT_DEFS (nflverse.ts) only covers 5 real defense-allowed
+// lines, not every market this adapter tracks. A dimension with no entry
+// here (receiving-yards/receiving-tds/interceptions-thrown/pass-attempts/
+// rushing-attempts/anytime-td) gets matchupFavorable=null, same "absent,
+// not fabricated" rule the rest of this codebase already follows —
+// receiving-yards specifically has no real "yards allowed" line distinct
+// from pass-yards-allowed in nflverse's own team-week data.
+const DEFENSE_ALLOWED_KEY_BY_MARKET: Record<string, string> = {
+  'passing-yards': 'pass-yards-allowed',
+  'passing-tds': 'pass-tds-allowed',
+  'rushing-yards': 'rush-yards-allowed',
+  'rushing-tds': 'rush-tds-allowed',
+  receptions: 'receptions-allowed',
+};
+
+// Real, fixed — NFL has exactly 32 teams, same hardcoded-not-computed
+// convention lib/sports/mlb/adapter.ts's own TEAM_POOL_SIZE uses (its
+// pool is exactly the sport's real team count, not a value derived from
+// however many teams happen to have data this pull).
+const NFL_TEAM_POOL_SIZE = 32;
+
+/**
+ * The X (matchup-favorability) signal — real opponent rank (1 = best
+ * defense, fewest allowed) thresholded into a tercile via the shared
+ * favorableFromRank() (lib/odds/props/matchupFavorable.ts, Phase B of
+ * docs/x-signal-remaining-sports-gameplan-2026-08-27.md) — same rule this
+ * function used to implement inline, now the one real implementation
+ * every sport shares instead of N copies that could drift.
+ */
+function matchupFavorableFor(marketKey: string, opponentDefenseAllowed: NflverseTeamStatLine[]): boolean | null {
+  const defenseKey = DEFENSE_ALLOWED_KEY_BY_MARKET[marketKey];
+  if (!defenseKey) return null;
+  const line = opponentDefenseAllowed.find((l) => l.key === defenseKey);
+  if (!line) return null;
+  return favorableFromRank(line.rank, NFL_TEAM_POOL_SIZE);
+}
 
 const MARKET_LABELS: Record<string, string> = {
   'passing-yards': 'Passing Yards',
@@ -298,6 +339,12 @@ export async function buildNflSnapshot(): Promise<SportSnapshot> {
             // component already reads — see the string-vs-number note this
             // file used to carry; unchanged reasoning.
             gamePk: game.gameId,
+            // X-signal — a single real boolean per candidate, not the full
+            // opponentDefenseAllowed array (see the comment above
+            // subjectsMap's own meta.opponentDefenseAllowed for why that
+            // array stays off individual candidates: real payload-size
+            // history, not a style choice).
+            matchupFavorable: matchupFavorableFor(marketKey, opponentDefenseAllowed),
           },
           supportingSplits: [vsOpponentSplit],
           dimension: marketKey,

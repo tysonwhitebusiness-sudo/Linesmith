@@ -148,14 +148,14 @@ export function TopBar({
           ? TABS.filter(
               (t) =>
                 (t !== 'Teams' || sport === 'mlb' || sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl') &&
-                (t !== 'Schedule' || sport === 'golf'),
+                (t !== 'Schedule' || sport === 'golf' || sport === 'tennis'),
             ).map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => {
                   if (t === 'Teams') navigate(t, sport === 'soccer' ? `/soccer/${league}/teams` : `/${sport}/teams`);
-                  else if (t === 'Schedule') navigate(t, '/golf/schedule');
+                  else if (t === 'Schedule') navigate(t, sport === 'tennis' ? `/tennis/${league}/schedule` : '/golf/schedule');
                   else onTabChange(t);
                 }}
                 aria-current={t === tab ? 'page' : undefined}

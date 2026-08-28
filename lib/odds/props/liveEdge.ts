@@ -57,8 +57,47 @@ export interface CandidateEdgeInfo {
  * estimate for this — removed, its numbers weren't verifiable) or a
  * >10-minute-old quote yields no edge rather than an unreliable one.
  */
+/**
+ * A pre-resolved edge, already computed server-side by predict/
+ * generic_prop_production.py (Python worker) at surface time and
+ * persisted straight onto `pick_history` — the SAME real de-vig logic
+ * this file's own resolveCandidateEdge implements, just already run once
+ * against whatever live prop_odds existed when that candidate first
+ * surfaced. Attached to `PickCandidate.subjectMeta.pickHistoryEdge`
+ * client-side (components/AppShell.tsx) for the five sports whose own
+ * adapter.ts never populates a live propRows feed of their own (NFL/CFB/
+ * NBA/NHL/Soccer — see AppShell.tsx's needsModelDataMerge). `impliedRaw`
+ * is real, disclosed-missing here: it needs the RAW single-book price
+ * (present) but this shape only carries the already-devigged edge/
+ * marketProb, not which specific book/side pair produced them, so it's
+ * left null rather than recomputed from a mismatched pairing.
+ */
+export interface PreResolvedEdge {
+  price: number | null;
+  priceSource?: string;
+  priceCapturedAt?: string;
+  bookmaker?: string;
+  edge: number | null;
+  marketProb: number | null;
+}
+
 export function resolveCandidateEdge(candidate: PickCandidate, propRows: PropOddsRow[], userSportsbook: string): CandidateEdgeInfo {
   const m = (candidate.subjectMeta ?? {}) as Record<string, unknown>;
+  const preResolved = m.pickHistoryEdge as PreResolvedEdge | undefined;
+  if (preResolved) {
+    const decimal = preResolved.price != null ? americanToDecimal(preResolved.price) : undefined;
+    return {
+      price: preResolved.price,
+      priceSource: preResolved.priceSource,
+      priceCapturedAt: preResolved.priceCapturedAt,
+      bookmaker: preResolved.bookmaker,
+      bookCount: preResolved.bookmaker ? 1 : 0,
+      impliedRaw: decimal != null ? 1 / decimal : null,
+      edge: preResolved.edge,
+      modelProb: typeof m.modelProb === 'number' ? m.modelProb : null,
+      marketProb: preResolved.marketProb,
+    };
+  }
   const side = candidateCategoryToSide(candidate.category) === 'under' ? 'under' : 'over';
   const marketKey = candidateDimensionToMarketKey(candidate.dimension);
   const matched = marketKey ? rowsFor(propRows, candidate.subjectId, marketKey, candidate.line ?? null) : [];

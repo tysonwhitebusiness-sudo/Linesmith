@@ -8,11 +8,38 @@
  * for NBA yet. `propOddsBoard` is real and independent of history.
  */
 
-import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
+import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import type { PropOddsRow } from '@/lib/db/client';
-import type { ChipDef, GamelogRow, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { NbaTeamDefenseAllowed } from '@/lib/sports/nba/teamDefenseAllowed';
+
+// Local copy rather than importing lib/sports/nba/adapter.ts's version —
+// that module pulls in server-only DB/pg code (lib/db/client.ts), which
+// breaks the client bundle when imported from a client-rendered adapter
+// (this file is reachable from components/PlayerDetail.tsx). Same
+// convention CFB's teamDetailAdapter.ts already documents for its own
+// local `normalizeTeamName` copy.
+function nbaTeamLogoUrl(abbreviation: string | undefined): string | undefined {
+  return abbreviation ? `https://a.espncdn.com/i/teamlogos/nba/500/${abbreviation.toLowerCase()}.png` : undefined;
+}
+
+function fieldSum(entries: PickCandidate['history'], key: string): number {
+  return entries.reduce((s, e) => s + (Number((e.raw as Record<string, unknown> | undefined)?.[key]) || 0), 0);
+}
+
+const NBA_MATCHUP_GROUPS = [
+  { key: 'Guards', label: 'Guards' },
+  { key: 'Forwards', label: 'Forwards' },
+  { key: 'Centers', label: 'Centers' },
+] as const;
+
+function nbaDefenseRow(team: NbaTeamDefenseAllowed, groupKey: string): { key: string; label: string; value: number; decimals: number; rank: number; poolSize: number }[] {
+  if (groupKey === 'Guards') return [{ key: 'ptsAllowedGuards', label: 'Pts/Gm Allowed', value: team.guardPtsAllowedPerGame, decimals: 1, rank: team.guardRank, poolSize: team.poolSize }];
+  if (groupKey === 'Forwards') return [{ key: 'ptsAllowedForwards', label: 'Pts/Gm Allowed', value: team.forwardPtsAllowedPerGame, decimals: 1, rank: team.forwardRank, poolSize: team.poolSize }];
+  return [{ key: 'ptsAllowedCenters', label: 'Pts/Gm Allowed', value: team.centerPtsAllowedPerGame, decimals: 1, rank: team.centerRank, poolSize: team.poolSize }];
+}
 
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
   return (entry.raw ?? {}) as Record<string, unknown>;
@@ -33,6 +60,7 @@ export interface NbaPlayerDetailScope {
   opponentOnly: boolean;
   lastN: number | 'all';
   showAllGames: boolean;
+  kpiScope: 'season' | 'l15';
 }
 
 export interface NbaPlayerDetailInput {
@@ -41,10 +69,12 @@ export interface NbaPlayerDetailInput {
   snapshot: SportSnapshot | null;
   scope: NbaPlayerDetailScope;
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
+  /** League-wide defense-allowed leaderboard, see the identical field on `CfbPlayerDetailInput` for the full reasoning. */
+  teamDefenseAllowed?: NbaTeamDefenseAllowed[];
 }
 
 export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, snapshot, scope, propOdds } = input;
+  const { candidates, market, snapshot, scope, propOdds, teamDefenseAllowed = [] } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -94,6 +124,13 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
     { key: 'lastN:all', label: 'All games' },
   ];
 
+  // Real opponent logo — `toHistoryEntries` (adapter.ts) already embeds
+  // `opponentLogoUrl` via `nbaTeamLogoUrl` on every real history entry;
+  // this just reads it, same as NHL's own `logoFor` (2026-08-24 fix — this
+  // used to fall through to `DistributionChart`'s MLB-only numeric-id
+  // default, which is always undefined for NBA, so bars never got a logo).
+  const logoFor = (entry: PickCandidate['history'][number]) => rawOf(entry).opponentLogoUrl as string | undefined;
+
   const chart: PlayerDetailChart =
     scoped.length > 0
       ? {
@@ -103,6 +140,7 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
           data: scoped,
           line,
           wantOver,
+          logoFor,
         }
       : {
           kind: 'distribution',
@@ -111,6 +149,7 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
           data: [],
           line,
           wantOver,
+          logoFor,
         };
 
   const columns = GAMELOG_COLUMNS.filter((c) => scoped.some((e) => rawOf(e)[c.key] != null));
@@ -127,15 +166,76 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
     return {
       key: `${entry.period}-${index}`,
       periodLabel: entry.periodLabel ?? `Game #${entry.period}`,
+      opponentLogoUrl: raw.opponentLogoUrl as string | undefined,
       opponentLabel: oppAbbr ? `${isHome ? 'vs' : '@'} ${oppAbbr}` : 'Opponent unknown',
       values,
     };
   });
 
+  // Real summary strip (2026-08-24) — same "top card" MLB/NHL already show,
+  // scoped to L15 or full season per the existing KPI-scope toggle.
+  const kpiSource = scope.kpiScope === 'l15' ? scoped.slice(-15) : scoped;
+  const summaryStrip: SummaryStat[] | undefined =
+    kpiSource.length > 0
+      ? [
+          { label: 'Points', display: (fieldSum(kpiSource, 'points') / kpiSource.length).toFixed(1) },
+          { label: 'Rebounds', display: (fieldSum(kpiSource, 'rebounds') / kpiSource.length).toFixed(1) },
+          { label: 'Assists', display: (fieldSum(kpiSource, 'assists') / kpiSource.length).toFixed(1) },
+        ]
+      : undefined;
+
   const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
   const propOddsBoard: PropOddsBoardProps | null =
     activeMarketKey && propOdds
       ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: active.line ?? null, userSportsbook: propOdds.userSportsbook }
+      : null;
+
+  // ---- Real season totals (sportsdataverse.ts, summed across every real game — adapter.ts) ----
+  const seasonStats = meta.seasonStats as
+    | { games: number; points: number; rebounds: number; assists: number; steals: number; blocks: number; turnovers: number; threesMade: number }
+    | undefined;
+  const nflSeasonStats: PlayerDetailData['nflSeasonStats'] = seasonStats
+    ? {
+        rows: [
+          { key: 'games', label: 'Games', value: seasonStats.games, decimals: 0 },
+          { key: 'points', label: 'Points', value: seasonStats.points, decimals: 0 },
+          { key: 'rebounds', label: 'Rebounds', value: seasonStats.rebounds, decimals: 0 },
+          { key: 'assists', label: 'Assists', value: seasonStats.assists, decimals: 0 },
+          { key: 'steals', label: 'Steals', value: seasonStats.steals, decimals: 0 },
+          { key: 'blocks', label: 'Blocks', value: seasonStats.blocks, decimals: 0 },
+          { key: 'threesMade', label: '3PM', value: seasonStats.threesMade, decimals: 0 },
+          { key: 'turnovers', label: 'Turnovers', value: seasonStats.turnovers, decimals: 0 },
+        ],
+      }
+    : null;
+
+  // ---- Universal matchup card — NBA's first real matchup card ----
+  const subjectPtsPerGame = seasonStats && seasonStats.games > 0 ? seasonStats.points / seasonStats.games : null;
+  const matchupExplorer: MatchupExplorerData | null =
+    teamDefenseAllowed.length > 0
+      ? {
+          subjectName: active.subjectName,
+          subjectHeadshotUrl: headshotUrl,
+          subjectTeamAbbr: teamAbbr,
+          subjectTeamLogoUrl: teamLogoUrl,
+          positionGroups: [...NBA_MATCHUP_GROUPS],
+          subjectStatsByGroup: Object.fromEntries(
+            NBA_MATCHUP_GROUPS.map((g) => [
+              g.key,
+              subjectPtsPerGame != null ? [{ key: `ptsAllowed${g.key}`, label: 'Pts/Gm', value: subjectPtsPerGame, decimals: 1, rank: null, poolSize: null }] : [],
+            ]),
+          ),
+          defaultOpponentId: opponentAbbr && teamDefenseAllowed.some((t) => t.abbr === opponentAbbr) ? opponentAbbr : teamDefenseAllowed[0].abbr,
+          opponentOptions: teamDefenseAllowed.map((t) => ({ id: t.abbr, abbr: t.abbr, name: t.abbr })),
+          // Real logo for every real opponent option, not just today's
+          // matched one (2026-08-24 fix) — `nbaTeamLogoUrl` is a plain
+          // predictable ESPN CDN template, no per-team fetch needed, so
+          // there's no reason the custom-opponent picker's other entries
+          // should ever fall back to a text-initials avatar.
+          opponentMeta: Object.fromEntries(teamDefenseAllowed.map((t) => [t.abbr, { id: t.abbr, abbr: t.abbr, name: t.abbr, logoUrl: nbaTeamLogoUrl(t.abbr) }])),
+          opponentStatsByGroup: Object.fromEntries(teamDefenseAllowed.map((t) => [t.abbr, Object.fromEntries(NBA_MATCHUP_GROUPS.map((g) => [g.key, nbaDefenseRow(t, g.key)]))])),
+          contextLine: opponentAbbr ? `Real next-game opponent: ${opponentAbbr}` : null,
+        }
       : null;
 
   return {
@@ -158,7 +258,7 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
     windows,
     roundScores: null,
     chart,
-    gamelog: scoped.length > 0 || active.history.length > 0 ? { columns, rows, cardBadges: columns } : null,
+    gamelog: scoped.length > 0 || active.history.length > 0 ? { columns, rows, summaryStrip, cardBadges: columns } : null,
     propOddsBoard,
     model: null,
     hitterStats: null,
@@ -166,11 +266,24 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     liveGame: null,
     liveMatchup: null,
-    matchups: null,
+    matchupExplorer,
     seasonStatsCard: null,
-    mlbContextMatchup: null,
     golfFormHoles: null,
-    nflMatchup: null,
-    nflSeasonStats: null,
+    nflSeasonStats,
+    liveLineTracker: {
+      subjectId: active.subjectId,
+      sport: 'nba',
+      gameId: todaysGame?.gamePk ?? null,
+      availableStats: NBA_TRACKABLE_STATS,
+    },
   };
 }
+
+const NBA_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
+  { key: 'points', label: 'Points' },
+  { key: 'rebounds', label: 'Rebounds' },
+  { key: 'assists', label: 'Assists' },
+  { key: 'steals', label: 'Steals' },
+  { key: 'blocks', label: 'Blocks' },
+  { key: 'turnovers', label: 'Turnovers' },
+];

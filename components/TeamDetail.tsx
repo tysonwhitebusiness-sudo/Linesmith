@@ -134,19 +134,19 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
         : null
       : sport === 'soccer'
         ? soccerTeam.data && league
-          ? toSoccerTeamDetailData({ league, data: soccerTeam.data, standingsTeams })
+          ? toSoccerTeamDetailData({ league, data: soccerTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams })
           : null
         : sport === 'cfb'
           ? cfbTeam.data
-            ? toCfbTeamDetailData({ data: cfbTeam.data, standingsTeams })
+            ? toCfbTeamDetailData({ data: cfbTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams })
             : null
           : sport === 'nba'
             ? nbaTeam.data
-              ? toNbaTeamDetailData({ data: nbaTeam.data, standingsTeams })
+              ? toNbaTeamDetailData({ data: nbaTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams })
               : null
             : sport === 'nhl'
               ? nhlTeam.data
-                ? toNhlTeamDetailData({ data: nhlTeam.data, standingsTeams })
+                ? toNhlTeamDetailData({ data: nhlTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams })
                 : null
               : roster.data
               ? toMlbTeamDetailData({
@@ -308,7 +308,18 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_260px] lg:items-start">
       <div className="min-w-0 space-y-3">
       {!data.candidates.length ? (
-        <div className="lb-card p-8 text-center text-sm text-ink-muted">No form data available yet for this team.</div>
+        <div className="lb-card p-8 text-center text-sm text-ink-muted">
+          No form data available yet for this team.
+          {snapshot?.seasonStatus && !snapshot.seasonStatus.started ? (
+            <>
+              {' '}
+              {snapshot.seasonStatus.label ?? 'The season hasn’t started yet'}
+              {snapshot.seasonStatus.nextGameDate
+                ? ` — first real games are ${new Date(snapshot.seasonStatus.nextGameDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}.`
+                : '.'}
+            </>
+          ) : null}
+        </div>
       ) : !active ? null : (
         <>
           {/* Market tabs */}

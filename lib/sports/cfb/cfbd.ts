@@ -193,6 +193,31 @@ export interface CfbdMatchStat {
   kickingPoints: number;
 }
 
+/**
+ * Real "has the season started" signal for the Scan banner — checks the
+ * real division-wide week-1 slate rather than one team's games, so it's
+ * accurate before any team-specific data is even loaded. Confirmed live:
+ * `/games?year=Y&week=1&division=fbs` is a real, valid CFBD filter
+ * combination (389 real FBS games returned 2026-08-23, all `completed:
+ * false`, earliest real kickoff 2026-08-27).
+ */
+export async function fetchSeasonStatus(season: string): Promise<{ started: boolean; nextGameDate: string | null }> {
+  const cacheKey = `cfb:cfbd:season-status:${season}`;
+  const cached = await readSnapshotCache(cacheKey);
+  if (cached && Date.now() - Date.parse(cached.fetchedAt) < 60 * 60_000) {
+    return JSON.parse(cached.payload) as { started: boolean; nextGameDate: string | null };
+  }
+  const games = await fetchJson<Array<{ startDate: string; completed: boolean }>>(`/games?year=${season}&week=1&division=fbs`);
+  const result = (() => {
+    if (!games || games.length === 0) return { started: true, nextGameDate: null }; // unknown — don't claim "not started" without real data
+    const started = games.some((g) => g.completed);
+    const dates = games.map((g) => g.startDate).sort();
+    return { started, nextGameDate: started ? null : (dates[0] ?? null) };
+  })();
+  await writeSnapshotCache(cacheKey, JSON.stringify(result));
+  return result;
+}
+
 export interface CfbdTeamContext {
   cfbdTeamName: string;
   games: RawCfbdGame[];
@@ -208,11 +233,30 @@ export interface CfbdTeamContext {
  * touches 15-25 skill-position players per team, so this matters the same
  * way ASA's `loadAsaSeasonContext` refactor did for soccer (see that
  * file's comment on the DB-pool-pressure reason, not just raw speed).
+ *
+ * `minGames` (default 15, matching every other sport's L15 window): early
+ * in a season — genuinely zero completed games for weeks before kickoff,
+ * confirmed live 2026-08-22 (Alabama's 2026 opener isn't until Sept 5) —
+ * this rolls back into `season - 1`'s real completed games so a player's
+ * history isn't just empty until their new season accumulates enough
+ * games on its own. Real games either way, just from last season when this
+ * season doesn't have enough yet; the two seasons' games are concatenated
+ * and re-sorted chronologically so `cfbdPlayerMatchesFromContext`'s own
+ * "most recent N" slicing downstream still means what it says.
  */
-export async function loadCfbdTeamContext(cfbdTeamName: string, season: string): Promise<CfbdTeamContext> {
+export async function loadCfbdTeamContext(cfbdTeamName: string, season: string, minGames = 15): Promise<CfbdTeamContext> {
   const [allGames, boxScores] = await Promise.all([fetchTeamGames(cfbdTeamName, season), fetchTeamSeasonBoxScores(cfbdTeamName, season)]);
-  const games = allGames.filter((g) => g.completed).sort((a, b) => Date.parse(a.startDate) - Date.parse(b.startDate));
+  let games = allGames.filter((g) => g.completed);
   const boxByGameId = new Map(boxScores.map((b) => [b.id, b]));
+
+  if (games.length < minGames) {
+    const priorSeason = String(Number(season) - 1);
+    const [priorGames, priorBoxScores] = await Promise.all([fetchTeamGames(cfbdTeamName, priorSeason), fetchTeamSeasonBoxScores(cfbdTeamName, priorSeason)]);
+    games = [...priorGames.filter((g) => g.completed), ...games];
+    for (const b of priorBoxScores) boxByGameId.set(b.id, b);
+  }
+
+  games.sort((a, b) => Date.parse(a.startDate) - Date.parse(b.startDate));
   return { cfbdTeamName, games, boxByGameId };
 }
 

@@ -77,6 +77,25 @@ export async function cfbTeamLogoByAbbr(): Promise<Map<string, string>> {
   return new Map(teams.filter((t) => t.logoUrl).map((t) => [t.abbreviation, t.logoUrl as string]));
 }
 
+/**
+ * Real logo keyed by CFBD's own school name (e.g. "Alabama") rather than
+ * ESPN's abbreviation — `teamDefenseAllowed.ts`'s league-wide index is
+ * itself keyed this way (CFBD box scores have no ESPN abbreviation
+ * anywhere in them), so this is the lookup the matchup card actually
+ * needs (2026-08-24 — CFB's matchup card never had real logos at all
+ * before this, unlike every other team sport).
+ */
+export async function cfbTeamLogoByCfbdName(): Promise<Map<string, string>> {
+  const [teams, fbsNames] = await Promise.all([fetchAllTeams(), fetchFbsTeamNames()]);
+  const map = new Map<string, string>();
+  for (const t of teams) {
+    if (!t.logoUrl) continue;
+    const cfbdName = matchCfbdTeamName(t.location, fbsNames);
+    if (cfbdName) map.set(cfbdName, t.logoUrl);
+  }
+  return map;
+}
+
 // ---------------------------------------------------------------------------
 // Standings — real conference groups, flattened the same way soccer's MLS
 // (2 conferences) taught this codebase to: don't assume one `children[0]`,

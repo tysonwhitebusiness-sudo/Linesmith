@@ -29,11 +29,16 @@ export async function GET(request: Request) {
   // blended with the rest of its scope. Model Health's split calibration
   // panel is the only caller that passes this.
   const dimension = url.searchParams.get('dimension');
+  // Real, not cosmetic (Phase 2 of docs/scan-playerdetail-parity-gameplan-
+  // 2026-08-27.md) — default 'mlb' preserves every existing caller's
+  // behavior exactly; every other sport's Scan/PlayerDetail page now
+  // passes its own real sport instead of silently reading MLB's data.
+  const sport = url.searchParams.get('sport') ?? 'mlb';
 
   return cachedRoute({
-    cacheKey: calibrationCacheKey(scope, dimension),
+    cacheKey: calibrationCacheKey(sport, scope, dimension),
     ttlMs: CALIBRATION_TTL_MS,
-    build: () => computeCalibrationPayload(scope, dimension),
+    build: () => computeCalibrationPayload(sport, scope, dimension),
     errorMessage: 'Calibration lookup failed',
     request,
   });

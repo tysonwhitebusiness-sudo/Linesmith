@@ -198,7 +198,7 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
     lineControl: { kind: 'category', dimension: active.dimension, value: effectiveGolfCategory, categories: ['birdie', 'par', 'bogey'] },
     liveGame: null,
     liveMatchup,
-    matchups: null,
+    matchupExplorer: null,
     seasonStatsCard: golfStats
       ? {
           strokesGained: golfStats.strokesGained,
@@ -207,9 +207,11 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
           loading: golfStats.loading,
         }
       : null,
-    mlbContextMatchup: null,
     golfFormHoles,
-    nflMatchup: null,
     nflSeasonStats: null,
+    // No live-game concept at all for golf (individual, round-based, not a
+    // head-to-head game with a gameId) — the round-in-progress equivalent
+    // already lives in `liveMatchup` above, a genuinely different feature.
+    liveLineTracker: null,
   };
 }

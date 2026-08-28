@@ -22,8 +22,9 @@ import { SegmentedToggle } from './SegmentedToggle';
 import { computePropScore } from '@/lib/odds/props/propScore';
 import { useMarketCalibration, type MarketCalibrationState } from './useMarketCalibration';
 import { PropScoreBadge } from './PropScoreBadge';
-import { BatterPitcherMatchupCard } from './BatterPitcherMatchupCard';
-import { NflPlayerVsDefenseCard } from './NflPlayerVsDefenseCard';
+import { MatchupExplorerCard } from './MatchupExplorerCard';
+import { LiveLineTrackerCard } from './LiveLineTrackerCard';
+import { useTeamDefenseAllowed } from './useTeamDefenseAllowed';
 import { GolfPlayerStatsCard } from './GolfPlayerStatsCard';
 import type { AdvancedStat, GolferStrokesGained } from '@/lib/sports/golf/pgatourStats';
 import type { PlayerSeasonLog } from '@/lib/sports/golf/playerSeason';
@@ -884,6 +885,19 @@ export interface PlayerDetailProps {
    * letting its sub-sections pop in piecemeal as each hook finishes.
    */
   onReadyChange?: (ready: boolean) => void;
+  /**
+   * The subject being viewed even when `candidates` is empty — set by
+   * `PlayerDetailPanel` (the embedded Players-tab picker) so a real roster
+   * player with zero active props still gets an honest identity card
+   * instead of a bare "No tracked markets" dead end. Looked up against
+   * `snapshot.subjects` (which now includes every real roster player, not
+   * just ones with candidates — see the sport adapters' `attachFullRosterSubjects`/
+   * roster-loop fixes). The standalone `/{sport}/player/[playerId]` pages
+   * already have their own richer identity fallback (real team/position
+   * carried via the roster link's own URL query params) and don't need
+   * this — they never reach this component when `candidates` is empty.
+   */
+  fallbackSubjectId?: string;
 }
 
 export function PlayerDetail({
@@ -899,6 +913,7 @@ export function PlayerDetail({
   sharedPropOdds,
   sharedCalibration,
   onReadyChange,
+  fallbackSubjectId,
 }: PlayerDetailProps) {
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
 
@@ -987,10 +1002,18 @@ export function PlayerDetail({
   const playerLive = useLiveGame(gamePk, gameIsInProgressHint, 15_000, active?.subjectId);
   const opponentTeamStatcast = useTeamStatcast(isPitcherSubject ? opponentId : undefined);
 
+  // Universal matchup card's league-wide defense-allowed leaderboards — one
+  // fetch per sport, shared across every subject on the page (see
+  // docs/matchup-card-rebuild-gameplan-2026-08-23.md §4.2/§8). `enabled`
+  // gates the fetch, not the hook call itself (rules of hooks).
+  const cfbTeamDefense = useTeamDefenseAllowed<import('@/lib/sports/cfb/teamDefenseAllowed').CfbTeamDefenseAllowed>('/api/cfb/team-defense-allowed', active?.sport === 'cfb');
+  const nbaTeamDefense = useTeamDefenseAllowed<import('@/lib/sports/nba/teamDefenseAllowed').NbaTeamDefenseAllowed>('/api/nba/team-defense-allowed', active?.sport === 'nba');
+  const nhlTeamDefense = useTeamDefenseAllowed<import('@/lib/sports/nhl/teamDefenseAllowed').NhlTeamDefenseAllowed>('/api/nhl/team-defense-allowed', active?.sport === 'nhl');
+
   const gamePkStr = typeof meta.gamePk === 'number' || typeof meta.gamePk === 'string' ? String(meta.gamePk) : undefined;
   const propOddsFetched = usePropOdds(gamePkStr, snapshot?.fetchedAt, !sharedPropOdds);
   const propOdds = sharedPropOdds ?? propOddsFetched;
-  const calibrationFetched = useMarketCalibration(!sharedCalibration);
+  const calibrationFetched = useMarketCalibration(!sharedCalibration, active?.sport ?? 'mlb');
   const calibration = sharedCalibration ?? calibrationFetched;
 
   // Combined readiness for `onReadyChange` — deliberately only the hooks
@@ -1025,7 +1048,7 @@ export function PlayerDetail({
             candidates,
             market: active.dimension,
             snapshot,
-            scope: { lineOffset, opponentOnly, lastN, showAllGames },
+            scope: { lineOffset, opponentOnly, lastN, showAllGames, kpiScope },
             propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
           })
         : active.sport === 'soccer'
@@ -1033,7 +1056,7 @@ export function PlayerDetail({
               candidates,
               market: active.dimension,
               snapshot,
-              scope: { lineOffset, opponentOnly, lastN, showAllGames },
+              scope: { lineOffset, opponentOnly, lastN, showAllGames, kpiScope },
               propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
             })
           : active.sport === 'cfb'
@@ -1041,31 +1064,34 @@ export function PlayerDetail({
                 candidates,
                 market: active.dimension,
                 snapshot,
-                scope: { lineOffset, opponentOnly, lastN, showAllGames },
+                scope: { lineOffset, opponentOnly, lastN, showAllGames, kpiScope },
                 propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
+                teamDefenseAllowed: cfbTeamDefense.teams,
               })
             : active.sport === 'nba'
               ? toNbaPlayerDetailData({
                   candidates,
                   market: active.dimension,
                   snapshot,
-                  scope: { lineOffset, opponentOnly, lastN, showAllGames },
+                  scope: { lineOffset, opponentOnly, lastN, showAllGames, kpiScope },
                   propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
+                  teamDefenseAllowed: nbaTeamDefense.teams,
                 })
               : active.sport === 'nhl'
                 ? toNhlPlayerDetailData({
                     candidates,
                     market: active.dimension,
                     snapshot,
-                    scope: { lineOffset, opponentOnly, lastN, showAllGames },
+                    scope: { lineOffset, opponentOnly, lastN, showAllGames, kpiScope },
                     propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
+                    teamDefenseAllowed: nhlTeamDefense.teams,
                   })
                 : active.sport === 'tennis'
                   ? toTennisPlayerDetailData({
                       candidates,
                       market: active.dimension,
                       snapshot,
-                      scope: { lineOffset, opponentOnly, lastN, showAllGames },
+                      scope: { lineOffset, opponentOnly, lastN, showAllGames, kpiScope },
                       propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
                     })
           : toMlbPlayerDetailData({
@@ -1081,6 +1107,42 @@ export function PlayerDetail({
           });
 
   if (!active || !data) {
+    const fallbackSubject = fallbackSubjectId ? (snapshot?.subjects ?? []).find((s) => s.subjectId === fallbackSubjectId) : undefined;
+    if (fallbackSubject) {
+      const meta = (fallbackSubject.meta ?? {}) as Record<string, unknown>;
+      const headshotUrl = typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined;
+      const teamLogoUrl = typeof meta.teamLogoUrl === 'string' ? meta.teamLogoUrl : undefined;
+      const team = typeof meta.team === 'string' ? meta.team : undefined;
+      const position = typeof meta.position === 'string' ? meta.position : undefined;
+      const seasonStatus = snapshot?.seasonStatus;
+      return (
+        <div className="lb-card p-6">
+          <div className="flex items-center gap-3">
+            <SubjectAvatar name={fallbackSubject.subjectName} headshotUrl={headshotUrl} size={56} />
+            <div className="min-w-0">
+              <p className="truncate text-[16px] font-semibold text-ink">{fallbackSubject.subjectName}</p>
+              {team || position ? (
+                <p className="flex items-center gap-1.5 text-[13px] text-ink-muted">
+                  {team && teamLogoUrl ? <TeamLogo logoUrl={teamLogoUrl} size={16} /> : null}
+                  {team}
+                  {team && position ? ' · ' : ''}
+                  {position}
+                </p>
+              ) : null}
+            </div>
+          </div>
+          <p className="mt-4 text-[13px] text-ink-muted">
+            No tracked props for this player right now — that&apos;s real, not missing data. A player only gets a
+            tracked market once a sportsbook posts a real line for their next game.
+            {seasonStatus && !seasonStatus.started
+              ? seasonStatus.nextGameDate
+                ? ` ${seasonStatus.label ?? 'The season hasn’t started yet'} — first real games are ${new Date(seasonStatus.nextGameDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}.`
+                : ` ${seasonStatus.label ?? 'The season hasn’t started yet'}.`
+              : ''}
+          </p>
+        </div>
+      );
+    }
     return <div className="lb-card p-8 text-center text-sm text-ink-muted">No tracked markets for this player.</div>;
   }
 
@@ -1583,13 +1645,16 @@ export function PlayerDetail({
             />
           ) : null}
 
-          {/* Batter vs. opposing starter / pitcher vs. lineup — MLB only. */}
-          {(data.matchups ?? []).map((m, i) => (
-            <BatterPitcherMatchupCard key={i} {...m} />
-          ))}
+          {/* Universal matchup card — every sport (see
+              docs/matchup-card-rebuild-gameplan-2026-08-23.md). Replaces the
+              old MLB `matchups`/NFL `nflMatchup` cards outright. */}
+          {data.matchupExplorer ? <MatchupExplorerCard data={data.matchupExplorer} /> : null}
 
-          {/* Player vs. defense — NFL only. */}
-          {data.nflMatchup ? <NflPlayerVsDefenseCard {...data.nflMatchup} /> : null}
+          {/* Live line tracker — docs/live-matchup-and-line-tracker-gameplan-
+              2026-08-23.md, Part 2. null for golf/soccer/tennis (no
+              per-player live data source yet, see each adapter's own
+              null-with-reason comment). */}
+          {data.liveLineTracker ? <LiveLineTrackerCard data={data.liveLineTracker} subjectName={data.subject.name} /> : null}
 
           {/* All books, at the line as posted (not the stepped alternate) — every
               book's price for the exact market this candidate tracks, Fanatics
@@ -1681,7 +1746,11 @@ export function PlayerDetail({
                 <p className="p-6 text-center text-sm text-ink-muted">No games match this scope.</p>
               ) : (
                 <>
-                  {/* Summary strip — headline totals, MLB only (NFL/golf omit it). */}
+                  {/* Summary strip — headline totals. Golf has no gamelog at all
+                      (data.gamelog is always null there); every sport with a
+                      real gamelog populates this the same way MLB's adapter
+                      does, so it renders generically off whatever the active
+                      sport's adapter returns. */}
                   {data.gamelog.summaryStrip ? (
                     <div className="border-b border-line-soft px-3 py-2.5">
                       <div className="mb-2 flex items-center justify-between gap-2">
@@ -1854,73 +1923,14 @@ export function PlayerDetail({
             </div>
           </section>
 
-          {active.sport === 'golf' ? (
-            <PastRoundMatchupsCard active={active} meta={meta} />
-          ) : data.mlbContextMatchup ? (
-            (() => {
-              const m = data.mlbContextMatchup!;
-              const matchupBody = (
-                <>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      <TeamLogo logoUrl={m.teamLogoUrl} abbreviation={m.teamAbbr} size={20} />
-                      <span className="text-[10px] font-semibold text-ink-faint">@</span>
-                      <TeamLogo logoUrl={m.opponentId != null ? mlbLogoUrl(m.opponentId) : undefined} abbreviation={m.opponentAbbr} size={20} />
-                    </div>
-                    {m.firstPitch ? (
-                      <span className="text-[10px] font-medium text-ink-faint">
-                        {new Date(m.firstPitch).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="mt-2 text-[12px]">
-                    {m.opposingStarter ? (
-                      <>
-                        Facing{' '}
-                        <span className="font-semibold">
-                          {m.opposingStarterRankPrefix}
-                          {m.opposingStarter}
-                        </span>
-                        {m.opposingHand ? ` (${m.opposingHand}HP)` : ''}
-                      </>
-                    ) : (
-                      <span className="text-ink-faint">Opposing starter not announced.</span>
-                    )}
-                  </p>
-                  {m.matchupRank != null ? (
-                    <p className="mt-1 text-[11px] text-ink-muted">
-                      {m.opponentAbbr} rank {m.matchupRank} of 30 in {m.matchupStatLabel ?? 'this stat'}.
-                    </p>
-                  ) : null}
-                  {m.weather ? (
-                    <p className="mt-1.5 text-[11px] text-ink-faint">
-                      {m.weather.tempF != null ? `${m.weather.tempF}°F · ` : ''}
-                      Wind {m.weather.windMph} mph {m.weather.windDir}
-                    </p>
-                  ) : null}
-                </>
-              );
-              const header = (
-                <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
-                  Matchup{m.opponentId != null ? ' →' : ''}
-                </h3>
-              );
-              return m.opponentTeamHref ? (
-                <Link
-                  href={m.opponentTeamHref}
-                  className="block overflow-hidden rounded-card border border-line bg-card transition-all duration-150 hover:-translate-y-px hover:shadow-card-hover"
-                >
-                  {header}
-                  <div className="p-3">{matchupBody}</div>
-                </Link>
-              ) : (
-                <section className="lb-card overflow-hidden">
-                  {header}
-                  <div className="p-3">{matchupBody}</div>
-                </section>
-              );
-            })()
-          ) : null}
+          {/* Golf keeps its own genuinely different context-rail card
+              (§3 of the matchup-card rebuild gameplan). Every other sport's
+              equivalent content now lives in the universal
+              `MatchupExplorerCard` rendered in the main column above —
+              the old MLB-only context-rail "Matchup →" card was fully
+              subsumed by it (same data, more views), so it isn't
+              duplicated here. */}
+          {active.sport === 'golf' ? <PastRoundMatchupsCard active={active} meta={meta} /> : null}
 
           {data.hitterStats ? (
             <section className="lb-card overflow-hidden">

@@ -14,14 +14,86 @@
  * and independent of history, same as every other sport's adapter.
  */
 
-import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
+import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import type { PropOddsRow } from '@/lib/db/client';
-import type { ChipDef, GamelogRow, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+// Type-only import — `teamDefenseAllowed.ts` itself pulls in `lib/db/client`
+// (Postgres, server-only), so only its TYPE is safe to bring into this
+// client-bundled adapter; the matching logic below is a local pure copy,
+// same reasoning as this file's own `normalizeTeamName` above.
+import type { CfbTeamDefenseAllowed } from '@/lib/sports/cfb/teamDefenseAllowed';
+
+function fuzzyMatchCfbTeamName(teams: CfbTeamDefenseAllowed[], espnName: string): CfbTeamDefenseAllowed | null {
+  const normalizedEspn = normalizeTeamName(espnName);
+  if (!normalizedEspn) return null;
+  for (const t of teams) {
+    const normalizedCfbd = normalizeTeamName(t.teamName);
+    if (normalizedCfbd === normalizedEspn) return t;
+  }
+  for (const t of teams) {
+    const normalizedCfbd = normalizeTeamName(t.teamName);
+    if (normalizedCfbd && (normalizedEspn.includes(normalizedCfbd) || normalizedCfbd.includes(normalizedEspn))) return t;
+  }
+  return null;
+}
+
+const CFB_MATCHUP_GROUPS = [
+  { key: 'passing', label: 'Passing' },
+  { key: 'rushing', label: 'Rushing' },
+  { key: 'receiving', label: 'Receiving' },
+] as const;
+
+function cfbDefenseRow(team: CfbTeamDefenseAllowed, groupKey: string): { key: string; label: string; value: number; decimals: number; rank: number; poolSize: number }[] {
+  if (groupKey === 'passing') return [{ key: 'passingYdsAllowed', label: 'Pass Yds/Gm Allowed', value: team.passingYdsAllowedPerGame, decimals: 1, rank: team.passingRank, poolSize: team.poolSize }];
+  if (groupKey === 'rushing') return [{ key: 'rushingYdsAllowed', label: 'Rush Yds/Gm Allowed', value: team.rushingYdsAllowedPerGame, decimals: 1, rank: team.rushingRank, poolSize: team.poolSize }];
+  return [{ key: 'receivingYdsAllowed', label: 'Rec Yds/Gm Allowed', value: team.receivingYdsAllowedPerGame, decimals: 1, rank: team.receivingRank, poolSize: team.poolSize }];
+}
 
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
   return (entry.raw ?? {}) as Record<string, unknown>;
+}
+
+interface CfbSeasonStats {
+  games: number;
+  passingYards: number;
+  rushingYards: number;
+  receivingYards: number;
+  receptions: number;
+  longestRush: number;
+  longestReception: number;
+  kickingPoints: number;
+}
+
+/**
+ * Local copy of `screenshotImport.ts`'s `normalizeName` — that module also
+ * pulls in the Anthropic SDK (server-only, `node:path` etc.), which breaks
+ * the client bundle when imported from a `playerDetailAdapter.ts` (rendered
+ * client-side via `PlayerDetail.tsx`). Same normalization, no SDK import.
+ */
+function normalizeTeamName(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[.'`'-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * CFBD's own opponent name ("Alabama") and ESPN's full display name
+ * ("Alabama Crimson Tide") are real but differently-conventioned —
+ * substring match rather than exact equality, same real fix
+ * `adapter.ts`'s own H2H split needed (found together, same class of bug
+ * as soccer's identical opponent-name/abbreviation mismatch).
+ */
+function isOpponentMatch(rawOpponent: string | undefined, opponentName: string | undefined): boolean {
+  if (!rawOpponent || !opponentName) return false;
+  const a = normalizeTeamName(rawOpponent);
+  const b = normalizeTeamName(opponentName);
+  return a !== '' && b !== '' && (a.includes(b) || b.includes(a));
 }
 
 const GAMELOG_COLUMNS = [
@@ -39,6 +111,7 @@ export interface CfbPlayerDetailScope {
   opponentOnly: boolean;
   lastN: number | 'all';
   showAllGames: boolean;
+  kpiScope: 'season' | 'l15';
 }
 
 export interface CfbPlayerDetailInput {
@@ -47,10 +120,12 @@ export interface CfbPlayerDetailInput {
   snapshot: SportSnapshot | null;
   scope: CfbPlayerDetailScope;
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
+  /** League-wide defense-allowed leaderboard (`useTeamDefenseAllowed('/api/cfb/team-defense-allowed', ...)`, `PlayerDetail.tsx`) — fetched once, shared across every subject on the page, so picking a custom opponent in the matchup card is a pure client re-index. `[]` while loading or when CFBD has no data yet (no `CFBD_API_KEY`, or season hasn't started) — the matchup card degrades to no card at all in that case, same "null when a sport genuinely has no data" rule as everything else in this file. */
+  teamDefenseAllowed?: CfbTeamDefenseAllowed[];
 }
 
 export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, snapshot, scope, propOdds } = input;
+  const { candidates, market, snapshot, scope, propOdds, teamDefenseAllowed = [] } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -58,6 +133,7 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
   const meta = (active.subjectMeta ?? {}) as Record<string, unknown>;
   const teamAbbr = typeof meta.team === 'string' ? meta.team : undefined;
   const opponentAbbr = typeof meta.opponent === 'string' ? meta.opponent : undefined;
+  const opponentName = typeof meta.opponentName === 'string' ? meta.opponentName : undefined;
   const headshotUrl = typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined;
   const teamLogoUrl = typeof meta.teamLogoUrl === 'string' ? meta.teamLogoUrl : undefined;
   const opponentLogoUrl = typeof meta.opponentLogoUrl === 'string' ? meta.opponentLogoUrl : undefined;
@@ -73,8 +149,8 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
   const wantOver = true; // every CFB market here is a counting-stat over/under, not a two-sided pick.
 
   let scoped = active.history;
-  if (scope.opponentOnly && opponentAbbr) {
-    scoped = scoped.filter((e) => (rawOf(e).opponentAbbr as string | undefined) === opponentAbbr);
+  if (scope.opponentOnly && opponentName) {
+    scoped = scoped.filter((e) => isOpponentMatch(rawOf(e).opponentAbbr as string | undefined, opponentName));
   }
   if (scope.lastN !== 'all') scoped = scoped.slice(-scope.lastN);
 
@@ -87,9 +163,9 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
     l15: fixedWindow(measured, wanted, 15),
     szn: openWindow(measured, wanted, { minimum: 1 }),
     h2h:
-      !opponentAbbr
+      !opponentName
         ? { status: 'insufficient', available: 0, required: 1 }
-        : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => (rawOf(e).opponentAbbr as string | undefined) === opponentAbbr, { minimum: 1 }),
+        : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => isOpponentMatch(rawOf(e).opponentAbbr as string | undefined, opponentName), { minimum: 1 }),
   };
 
   const chips: ChipDef[] = [
@@ -100,6 +176,11 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
     { key: 'lastN:all', label: 'All games' },
   ];
 
+  // Real opponent logo — `toHistoryEntries` (adapter.ts) now embeds
+  // `opponentLogoUrl` via `cfbTeamLogoByCfbdName`; this just reads it
+  // (2026-08-24 fix — CFB's chart/gamelog never had opponent logos before).
+  const logoFor = (entry: PickCandidate['history'][number]) => rawOf(entry).opponentLogoUrl as string | undefined;
+
   const chart: PlayerDetailChart =
     scoped.length > 0
       ? {
@@ -109,6 +190,7 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
           data: scoped,
           line,
           wantOver,
+          logoFor,
         }
       : {
           kind: 'distribution',
@@ -117,6 +199,7 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
           data: [],
           line,
           wantOver,
+          logoFor,
         };
 
   const columns = GAMELOG_COLUMNS.filter((c) => scoped.some((e) => rawOf(e)[c.key] != null));
@@ -133,15 +216,81 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
     return {
       key: `${entry.period}-${index}`,
       periodLabel: entry.periodLabel ?? `Game #${entry.period}`,
+      opponentLogoUrl: raw.opponentLogoUrl as string | undefined,
       opponentLabel: oppAbbr ? `${isHome ? 'vs' : '@'} ${oppAbbr}` : 'Opponent unknown',
       values,
     };
   });
 
+  // Real summary strip (2026-08-24) — top-of-card headline stats, scoped by
+  // the existing KPI-scope toggle, built generically from whichever real
+  // columns this player actually has (passing/rushing/receiving/kicking
+  // differ by position — no fixed 3-stat set fits every CFB player the way
+  // NBA's points/rebounds/assists does).
+  const kpiSource = scope.kpiScope === 'l15' ? scoped.slice(-15) : scoped;
+  const summaryStrip: SummaryStat[] | undefined =
+    kpiSource.length > 0 && columns.length > 0
+      ? columns.slice(0, 4).map((col) => ({
+          label: col.label,
+          display: String(kpiSource.reduce((s, e) => s + (Number(rawOf(e)[col.key]) || 0), 0)),
+        }))
+      : undefined;
+
   const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
   const propOddsBoard: PropOddsBoardProps | null =
     activeMarketKey && propOdds
       ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: active.line ?? null, userSportsbook: propOdds.userSportsbook }
+      : null;
+
+  // ---- Real season totals (CollegeFootballData.com, summed across every real game — adapter.ts) ----
+  const seasonStats = meta.seasonStats as CfbSeasonStats | undefined;
+  const nflSeasonStats: PlayerDetailData['nflSeasonStats'] = seasonStats
+    ? {
+        rows: [
+          { key: 'games', label: 'Games', value: seasonStats.games, decimals: 0 },
+          ...(seasonStats.passingYards > 0 ? [{ key: 'passingYards', label: 'Pass Yds', value: seasonStats.passingYards, decimals: 0 }] : []),
+          ...(seasonStats.rushingYards > 0 ? [{ key: 'rushingYards', label: 'Rush Yds', value: seasonStats.rushingYards, decimals: 0 }] : []),
+          ...(seasonStats.receivingYards > 0 ? [{ key: 'receivingYards', label: 'Rec Yds', value: seasonStats.receivingYards, decimals: 0 }] : []),
+          ...(seasonStats.receptions > 0 ? [{ key: 'receptions', label: 'Receptions', value: seasonStats.receptions, decimals: 0 }] : []),
+          ...(seasonStats.kickingPoints > 0 ? [{ key: 'kickingPoints', label: 'Kicking Pts', value: seasonStats.kickingPoints, decimals: 0 }] : []),
+          ...(seasonStats.longestRush > 0 ? [{ key: 'longestRush', label: 'Long Rush', value: seasonStats.longestRush, decimals: 0 }] : []),
+          ...(seasonStats.longestReception > 0 ? [{ key: 'longestReception', label: 'Long Rec', value: seasonStats.longestReception, decimals: 0 }] : []),
+        ],
+      }
+    : null;
+
+  // ---- Universal matchup card — CFB's first real matchup card ----
+  const opponentKeyOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const subjectGamesPlayed = seasonStats && seasonStats.games > 0 ? seasonStats.games : null;
+  const subjectStatsByGroupCfb: Record<string, { key: string; label: string; value: number; decimals: number; rank: null; poolSize: null }[]> = {
+    passing: seasonStats && subjectGamesPlayed && seasonStats.passingYards > 0 ? [{ key: 'passingYdsAllowed', label: 'Pass Yds/Gm', value: seasonStats.passingYards / subjectGamesPlayed, decimals: 1, rank: null, poolSize: null }] : [],
+    rushing: seasonStats && subjectGamesPlayed && seasonStats.rushingYards > 0 ? [{ key: 'rushingYdsAllowed', label: 'Rush Yds/Gm', value: seasonStats.rushingYards / subjectGamesPlayed, decimals: 1, rank: null, poolSize: null }] : [],
+    receiving: seasonStats && subjectGamesPlayed && seasonStats.receivingYards > 0 ? [{ key: 'receivingYdsAllowed', label: 'Rec Yds/Gm', value: seasonStats.receivingYards / subjectGamesPlayed, decimals: 1, rank: null, poolSize: null }] : [],
+  };
+  const matchupExplorer: MatchupExplorerData | null =
+    teamDefenseAllowed.length > 0
+      ? {
+          subjectName: active.subjectName,
+          subjectHeadshotUrl: headshotUrl,
+          subjectTeamAbbr: teamAbbr,
+          subjectTeamLogoUrl: teamLogoUrl,
+          positionGroups: [...CFB_MATCHUP_GROUPS],
+          subjectStatsByGroup: subjectStatsByGroupCfb,
+          defaultOpponentId: (() => {
+            const match = opponentAbbr ? fuzzyMatchCfbTeamName(teamDefenseAllowed, opponentAbbr) : (opponentName ? fuzzyMatchCfbTeamName(teamDefenseAllowed, opponentName) : null);
+            return match ? opponentKeyOf(match.teamName) : opponentKeyOf(teamDefenseAllowed[0].teamName);
+          })(),
+          opponentOptions: teamDefenseAllowed.map((t) => ({ id: opponentKeyOf(t.teamName), abbr: t.teamName.slice(0, 4).toUpperCase(), name: t.teamName, logoUrl: t.logoUrl })),
+          // Real logo for every real opponent (2026-08-24 fix) — CFB's
+          // matchup card never had logos at all before this;
+          // `teamDefenseAllowed` now carries a real one per team via
+          // `cfbTeamLogoByCfbdName` (teamDefenseAllowed.ts).
+          opponentMeta: Object.fromEntries(teamDefenseAllowed.map((t) => [opponentKeyOf(t.teamName), { id: opponentKeyOf(t.teamName), abbr: t.teamName.slice(0, 4).toUpperCase(), name: t.teamName, logoUrl: t.logoUrl }])),
+          opponentStatsByGroup: Object.fromEntries(
+            teamDefenseAllowed.map((t) => [opponentKeyOf(t.teamName), Object.fromEntries(CFB_MATCHUP_GROUPS.map((g) => [g.key, cfbDefenseRow(t, g.key)]))]),
+          ),
+          contextLine: opponentName ? `Real next-game opponent: ${opponentName}` : null,
+        }
       : null;
 
   return {
@@ -164,7 +313,7 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
     windows,
     roundScores: null,
     chart,
-    gamelog: scoped.length > 0 || active.history.length > 0 ? { columns, rows, cardBadges: columns } : null,
+    gamelog: scoped.length > 0 || active.history.length > 0 ? { columns, rows, summaryStrip, cardBadges: columns } : null,
     propOddsBoard,
     model: null,
     hitterStats: null,
@@ -172,11 +321,25 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     liveGame: null,
     liveMatchup: null,
-    matchups: null,
+    matchupExplorer,
     seasonStatsCard: null,
-    mlbContextMatchup: null,
     golfFormHoles: null,
-    nflMatchup: null,
-    nflSeasonStats: null,
+    nflSeasonStats,
+    liveLineTracker: {
+      subjectId: active.subjectId,
+      sport: 'cfb',
+      gameId: todaysGame?.gamePk ?? null,
+      availableStats: FOOTBALL_TRACKABLE_STATS,
+    },
   };
 }
+
+const FOOTBALL_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
+  { key: 'passing_yards', label: 'Passing Yards' },
+  { key: 'passing_tds', label: 'Passing TDs' },
+  { key: 'rushing_yards', label: 'Rushing Yards' },
+  { key: 'rushing_tds', label: 'Rushing TDs' },
+  { key: 'receiving_yards', label: 'Receiving Yards' },
+  { key: 'receiving_tds', label: 'Receiving TDs' },
+  { key: 'receptions', label: 'Receptions' },
+];

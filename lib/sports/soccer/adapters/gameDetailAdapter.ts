@@ -7,10 +7,12 @@
  * hero (score, real pregame moneyline/total from `SoccerPregameLine`),
  * records + last-five (from each team's `recentResults`, same real-score
  * derivation `teamDetailAdapter.ts` uses), left-rail props. `matchup`/
- * `statComparison`/`rankings`/`unitGrades`/`injuries` stay `null` — no
- * grading model or opponent-conditional stat source for soccer yet, same
- * honest gap `teamDetailAdapter.ts`/`playerDetailAdapter.ts` already
- * document. `propsForGame` also stays `null`: it's documented as an
+ * `statComparison` are now real for EPL (2026-08-24), from `home`/`away`'s
+ * own `teamSeasonStats` (each team's real Understat row, opponent-
+ * independent so safe to reuse regardless of which specific game this is)
+ * — stay `null` for MLS, no Understat source. `rankings`/`unitGrades`/
+ * `injuries` stay `null` — no grading model or injuries source for soccer.
+ * `propsForGame` also stays `null`: it's documented as an
  * NFL-only slot MLB already skips in favor of `leftRail`, and its shared
  * `playerHref` builder (`/${sport}/player/{id}`) has no league segment —
  * soccer's real player route needs one (`/soccer/{league}/player/{id}`),
@@ -23,8 +25,25 @@ import type { PickCandidate, SoccerLeague } from '@/lib/core/types';
 import type { SoccerGameSummary } from '@/lib/sports/soccer/espn';
 import type { SoccerTeamDetailApiResponse } from './teamDetailAdapter';
 import { toSoccerRecentResultRows } from './teamDetailAdapter';
-import type { GameDetailData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
+import type { GameDetailData, GameMatchupData, StatComparisonData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
+import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
+import type { UnifiedGameLine } from '@/lib/odds/types';
+
+function offenseRows(t: SoccerTeamDetailApiResponse | null): OpposingStarterStat[] {
+  if (!t?.teamSeasonStats) return [];
+  const s = t.teamSeasonStats;
+  return [{ key: 'goalsFor', label: 'Goals Scored/Gm', value: s.goalsForPerGame, decimals: 2, rank: s.offenseRank, poolSize: s.poolSize }];
+}
+
+function defenseRows(t: SoccerTeamDetailApiResponse | null): OpposingStarterStat[] {
+  if (!t?.teamSeasonStats) return [];
+  const s = t.teamSeasonStats;
+  return [
+    { key: 'goalsAgainst', label: 'Goals Allowed/Gm', value: s.goalsAgainstPerGame, decimals: 2, rank: s.rank, poolSize: s.poolSize },
+    { key: 'xGA', label: 'xG Allowed/Gm', value: s.xGAPerGame, decimals: 2, rank: s.rank, poolSize: s.poolSize },
+  ];
+}
 
 function toOptionalRecord(games: ReturnType<typeof toSoccerRecentResultRows>): { wins: number; losses: number } | null {
   if (games.length === 0) return null;
@@ -40,10 +59,13 @@ export interface SoccerGameDetailInput {
   away: SoccerTeamDetailApiResponse | null;
   /** Page-filtered player-level candidates for this game. */
   candidates: PickCandidate[];
+  /** The real per-game bookmaker grid (odds-architecture rebuild Phase 6)
+   * — see CfbGameDetailInput's identical field for the full reasoning. */
+  gameLine: UnifiedGameLine | null;
 }
 
 export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
-  const { league, meta, home, away, candidates } = input;
+  const { league, meta, home, away, candidates, gameLine } = input;
   const game = meta.game;
   if (!game) throw new Error('toGameDetailData called without a resolved game — caller must gate on meta.game first');
 
@@ -83,13 +105,25 @@ export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
     pickLockAt: null,
     pickLoading: false,
     venue: null,
-    pregameLines: meta.pregameLine
+    // Prefers the merged, multi-source gameLine over ESPN's own single-book
+    // pregameLine — same precedence CFB's adapter uses, see its comment.
+    // gameLine.moneyline.draw now carries the real third outcome ESPN's own
+    // moneylineDraw always had but this slot never surfaced until now.
+    pregameLines: gameLine
       ? {
-          moneyline: { away: meta.pregameLine.moneylineAway, home: meta.pregameLine.moneylineHome },
-          spread: meta.pregameLine.spread != null ? { homePoint: meta.pregameLine.spread } : null,
-          total: meta.pregameLine.overUnder != null ? { point: meta.pregameLine.overUnder } : null,
+          moneyline: gameLine.moneyline
+            ? { away: gameLine.moneyline.away ?? null, home: gameLine.moneyline.home ?? null, draw: gameLine.moneyline.draw ?? null }
+            : null,
+          spread: gameLine.spread ? { homePoint: gameLine.spread.homePoint ?? null } : null,
+          total: gameLine.total?.point != null ? { point: gameLine.total.point } : null,
         }
-      : null,
+      : meta.pregameLine
+        ? {
+            moneyline: { away: meta.pregameLine.moneylineAway, home: meta.pregameLine.moneylineHome, draw: meta.pregameLine.moneylineDraw },
+            spread: meta.pregameLine.spread != null ? { homePoint: meta.pregameLine.spread } : null,
+            total: meta.pregameLine.overUnder != null ? { point: meta.pregameLine.overUnder } : null,
+          }
+        : null,
   };
 
   const records: { away: RecordsSectionTeam; home: RecordsSectionTeam; loading: boolean } = {
@@ -122,12 +156,64 @@ export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
     loading: false,
   };
 
+  // ---- Real matchup + stat comparison (EPL only) — each side's own real Understat row, opponent-independent ----
+  const awayOffense = offenseRows(away);
+  const homeOffense = offenseRows(home);
+  const teamAway =
+    away && awayOffense.length > 0 && defenseRows(home).length > 0
+      ? {
+          title: 'Team matchup — attack vs. defense',
+          subjectName: away.team.name,
+          subjectHeadshotUrl: away.team.logoUrl ?? undefined,
+          subjectTeamAbbr: game.awayAbbr,
+          subjectTeamLogoUrl: away.team.logoUrl ?? undefined,
+          subjectStats: awayOffense,
+          subjectRoleLabel: 'Produces',
+          opponentName: `${game.homeAbbr} defense`,
+          opponentHeadshotUrl: game.homeLogoUrl,
+          opponentTeamAbbr: game.homeAbbr,
+          opponentTeamLogoUrl: game.homeLogoUrl,
+          opponentStats: defenseRows(home),
+          opponentRoleLabel: 'Allows',
+        }
+      : null;
+  const teamHome =
+    home && homeOffense.length > 0 && defenseRows(away).length > 0
+      ? {
+          title: 'Team matchup — attack vs. defense',
+          subjectName: home.team.name,
+          subjectHeadshotUrl: home.team.logoUrl ?? undefined,
+          subjectTeamAbbr: game.homeAbbr,
+          subjectTeamLogoUrl: home.team.logoUrl ?? undefined,
+          subjectStats: homeOffense,
+          subjectRoleLabel: 'Produces',
+          opponentName: `${game.awayAbbr} defense`,
+          opponentHeadshotUrl: game.awayLogoUrl,
+          opponentTeamAbbr: game.awayAbbr,
+          opponentTeamLogoUrl: game.awayLogoUrl,
+          opponentStats: defenseRows(away),
+          opponentRoleLabel: 'Allows',
+        }
+      : null;
+  const matchup: GameMatchupData | null =
+    teamAway || teamHome ? { tabs: [{ key: 'team', label: 'Team' }], teamAway, teamHome } : null;
+
+  const statComparison: StatComparisonData | null =
+    awayOffense.length > 0 && homeOffense.length > 0
+      ? {
+          awayAbbr: game.awayAbbr,
+          homeAbbr: game.homeAbbr,
+          ranked: [{ label: 'Attack (per game)', rows: [{ key: 'goalsFor', label: 'Goals Scored/Gm', away: awayOffense[0], home: homeOffense[0] }] }],
+        }
+      : null;
+
   return {
     gameId: game.gameId,
+    gameLine,
     hero,
-    matchup: null,
+    matchup,
     records,
-    statComparison: null,
+    statComparison,
     lastFive,
     rankings: null,
     unitGrades: null,

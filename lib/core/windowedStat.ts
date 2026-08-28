@@ -22,6 +22,25 @@
 
 import type { HistoryEntry } from './types';
 
+/**
+ * "MM-DD" — the exact date-prefix convention `HistoryEntry.periodLabel` is
+ * built with everywhere MLB's own adapter constructs one (`date.slice(5,
+ * 10)` on an ISO date string) and, more importantly, the convention
+ * `DistributionChart` (components/PlayerDetail.tsx) already depends on: it
+ * recovers just the date for a bar's under-bar label via
+ * `periodLabel.split(' ')[0]`, which only works when the date is a single
+ * space-free token in front — "Aug 4 vs OTT" would silently truncate to
+ * "Aug", not "Aug 4". Every other sport's per-game history builder
+ * (NHL/NBA/CFB/soccer/tennis) built `periodLabel` as just "vs OTT"/"@ NYR"
+ * with no date at all, which is why both the chart's under-bar label and
+ * the gamelog card's date were blank everywhere but MLB — this is the one
+ * place that gap gets closed, so every sport's history builder should call
+ * this rather than re-deriving its own date formatting.
+ */
+export function shortDate(iso: string): string {
+  return iso.length >= 10 ? iso.slice(5, 10) : iso;
+}
+
 // ---------------------------------------------------------------------------
 // The result type
 // ---------------------------------------------------------------------------

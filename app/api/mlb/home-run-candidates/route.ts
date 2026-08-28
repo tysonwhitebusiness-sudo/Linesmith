@@ -1,5 +1,5 @@
 /**
- * GET /api/mlb/home-run-candidates — today's top 15 home-run candidates,
+ * GET /api/mlb/home-run-candidates — today's top 5 home-run candidates,
  * ranked by the standalone home-run model's own probability (the active
  * fitted version when one exists, the Beta-Binomial baseline otherwise — see
  * adapter.ts's Phase 6 wiring). Same filter+sort AppShell's `views.homeRuns`
@@ -21,7 +21,11 @@ import type { PickCandidate } from '@/lib/core/types';
 export const dynamic = 'force-dynamic';
 
 const TODAY_CACHE_KEY = 'mlb:snapshot';
-const TOP_N = 15;
+// Trimmed from 15 to 5 (Phase 8 of docs/daily-picks-full-model-build-
+// 2026-08-27.md) — a deliberate, disclosed change for consistency with
+// every other sport's own rare-market tab (app/api/picks/rare-markets/
+// route.ts's own TOP_N), not an oversight.
+const TOP_N = 5;
 
 function modelProbOf(candidate: PickCandidate): number | null {
   const meta = candidate.subjectMeta as Record<string, unknown> | undefined;

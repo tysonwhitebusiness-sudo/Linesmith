@@ -90,8 +90,22 @@ export interface Slate {
 
 export function buildSlate(games: SlateGame[], lines: UnifiedGameLine[]): Slate {
   const byMatchup = new Map<string, UnifiedGameLine>();
+  // Real game-id matching (2026-08-26, odds-architecture rebuild Phase 6) —
+  // preferred over team-name matching when available. the-odds-api's own
+  // lines carry a foreign event UUID as `eventId`, which never coincides
+  // with `game.gamePk`, so this is a pure addition for them (falls through
+  // to the existing team-name path, unchanged). Lines built from
+  // readGameOddsBookLines (lib/db/client.ts) set `eventId` to the real
+  // game id directly, so those match here without needing OddsPortal's
+  // often-shortened team-name strings to survive team-name normalization —
+  // the exact fragility class this session already found and fixed
+  // per-sport in harvester_scrape.py's own _match_game.
+  const byGameId = new Map<string, UnifiedGameLine>();
   for (const line of lines) {
-    byMatchup.set(`${teamKey(line.awayTeam)}@${teamKey(line.homeTeam)}`, line);
+    if (line.eventId) byGameId.set(String(line.eventId), line);
+    if (line.awayTeam && line.homeTeam) {
+      byMatchup.set(`${teamKey(line.awayTeam)}@${teamKey(line.homeTeam)}`, line);
+    }
   }
 
   const entries: SlateEntry[] = [];
@@ -100,9 +114,10 @@ export function buildSlate(games: SlateGame[], lines: UnifiedGameLine[]): Slate 
   for (const game of games) {
     const [awayAbbrev, homeAbbrev] = splitMatchup(game.matchup);
     const line =
-      game.awayTeamName && game.homeTeamName
+      (game.gamePk != null ? byGameId.get(String(game.gamePk)) : undefined) ??
+      (game.awayTeamName && game.homeTeamName
         ? byMatchup.get(`${teamKey(game.awayTeamName)}@${teamKey(game.homeTeamName)}`)
-        : undefined;
+        : undefined);
 
     const entry: SlateEntry = { game, line, awayAbbrev, homeAbbrev };
     entries.push(entry);

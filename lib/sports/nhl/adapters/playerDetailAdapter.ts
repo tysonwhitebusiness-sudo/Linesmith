@@ -8,11 +8,26 @@
  * NHL yet. `propOddsBoard` is real and independent of history.
  */
 
-import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
+import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import type { PropOddsRow } from '@/lib/db/client';
-import type { ChipDef, GamelogRow, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { NhlTeamDefenseAllowed } from '@/lib/sports/nhl/teamDefenseAllowed';
+
+const NHL_MATCHUP_GROUPS = [
+  { key: 'Forwards', label: 'Forwards' },
+  { key: 'Defense', label: 'Defense' },
+] as const;
+
+function nhlDefenseRow(team: NhlTeamDefenseAllowed, groupKey: string): { key: string; label: string; value: number; decimals: number; rank: number; poolSize: number }[] {
+  if (groupKey === 'Forwards') return [{ key: 'ptsAllowedForwards', label: 'Pts/Gm Allowed', value: team.forwardPtsAllowedPerGame, decimals: 1, rank: team.forwardRank, poolSize: team.poolSize }];
+  return [{ key: 'ptsAllowedDefense', label: 'Pts/Gm Allowed', value: team.defensePtsAllowedPerGame, decimals: 1, rank: team.defenseRank, poolSize: team.poolSize }];
+}
+
+function fieldSum(entries: PickCandidate['history'], key: string): number {
+  return entries.reduce((s, e) => s + (Number(rawOf(e)[key]) || 0), 0);
+}
 
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
   return (entry.raw ?? {}) as Record<string, unknown>;
@@ -34,6 +49,7 @@ export interface NhlPlayerDetailScope {
   opponentOnly: boolean;
   lastN: number | 'all';
   showAllGames: boolean;
+  kpiScope: 'season' | 'l15';
 }
 
 export interface NhlPlayerDetailInput {
@@ -42,10 +58,12 @@ export interface NhlPlayerDetailInput {
   snapshot: SportSnapshot | null;
   scope: NhlPlayerDetailScope;
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
+  /** League-wide defense-allowed leaderboard, see the identical field on `CfbPlayerDetailInput` for the full reasoning. */
+  teamDefenseAllowed?: NhlTeamDefenseAllowed[];
 }
 
 export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, snapshot, scope, propOdds } = input;
+  const { candidates, market, snapshot, scope, propOdds, teamDefenseAllowed = [] } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -104,6 +122,7 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
           data: scoped,
           line,
           wantOver,
+          logoFor: (entry) => rawOf(entry).opponentLogoUrl as string | undefined,
         }
       : {
           kind: 'distribution',
@@ -128,15 +147,94 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
     return {
       key: `${entry.period}-${index}`,
       periodLabel: entry.periodLabel ?? `Game #${entry.period}`,
+      opponentLogoUrl: raw.opponentLogoUrl as string | undefined,
       opponentLabel: oppAbbr ? `${isHome ? 'vs' : '@'} ${oppAbbr}` : 'Opponent unknown',
       values,
     };
   });
 
+  // Headline totals above the gamelog — real per-game raw fields summed over
+  // whichever scope (Season/L15) the toggle is set to, same "kpiSource"
+  // convention MLB's adapter uses. Goalie vs skater branch mirrors
+  // `nflSeasonStats` below.
+  const kpiSource = scope.kpiScope === 'l15' ? scoped.slice(-15) : scoped;
+  const isGoalieHistory = kpiSource.some((e) => (rawOf(e).saves as number) > 0 || (rawOf(e).goalsAgainst as number) > 0);
+  const summaryStrip: SummaryStat[] | undefined =
+    kpiSource.length > 0
+      ? isGoalieHistory
+        ? [
+            { label: 'Saves', display: String(fieldSum(kpiSource, 'saves')) },
+            { label: 'Goals against', display: String(fieldSum(kpiSource, 'goalsAgainst')) },
+          ]
+        : [
+            { label: 'Goals', display: String(fieldSum(kpiSource, 'goals')) },
+            { label: 'Assists', display: String(fieldSum(kpiSource, 'assists')) },
+            { label: 'Points', display: String(fieldSum(kpiSource, 'points')) },
+            { label: 'Shots', display: String(fieldSum(kpiSource, 'shots')) },
+          ]
+      : undefined;
+
   const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
   const propOddsBoard: PropOddsBoardProps | null =
     activeMarketKey && propOdds
       ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: active.line ?? null, userSportsbook: propOdds.userSportsbook }
+      : null;
+
+  // ---- Real season totals (nhle.ts, summed across every real game — adapter.ts) ----
+  const seasonStats = meta.seasonStats as
+    | { games: number; goals: number; assists: number; points: number; shots: number; hits: number; blockedShots: number; saves: number; goalsAgainst: number }
+    | undefined;
+  const nflSeasonStats: PlayerDetailData['nflSeasonStats'] = seasonStats
+    ? {
+        rows: [
+          { key: 'games', label: 'Games', value: seasonStats.games, decimals: 0 },
+          ...(seasonStats.saves > 0 || seasonStats.goalsAgainst > 0
+            ? [
+                { key: 'saves', label: 'Saves', value: seasonStats.saves, decimals: 0 },
+                { key: 'goalsAgainst', label: 'Goals Against', value: seasonStats.goalsAgainst, decimals: 0 },
+              ]
+            : [
+                { key: 'goals', label: 'Goals', value: seasonStats.goals, decimals: 0 },
+                { key: 'assists', label: 'Assists', value: seasonStats.assists, decimals: 0 },
+                { key: 'points', label: 'Points', value: seasonStats.points, decimals: 0 },
+                { key: 'shots', label: 'Shots on Goal', value: seasonStats.shots, decimals: 0 },
+                { key: 'hits', label: 'Hits', value: seasonStats.hits, decimals: 0 },
+                { key: 'blockedShots', label: 'Blocked Shots', value: seasonStats.blockedShots, decimals: 0 },
+              ]),
+        ],
+      }
+    : null;
+
+  // ---- Universal matchup card — NHL's first real matchup card. Goalies
+  // skip this: "points allowed to forwards/D" is a skater-vs-skater-defense
+  // framing that doesn't translate to a goalie's own performance. ----
+  const isGoalieSubject = seasonStats ? seasonStats.saves > 0 || seasonStats.goalsAgainst > 0 : false;
+  const subjectPtsPerGame = seasonStats && seasonStats.games > 0 && !isGoalieSubject ? seasonStats.points / seasonStats.games : null;
+  const matchupExplorer: MatchupExplorerData | null =
+    !isGoalieSubject && teamDefenseAllowed.length > 0
+      ? {
+          subjectName: active.subjectName,
+          subjectHeadshotUrl: headshotUrl,
+          subjectTeamAbbr: teamAbbr,
+          subjectTeamLogoUrl: teamLogoUrl,
+          positionGroups: [...NHL_MATCHUP_GROUPS],
+          subjectStatsByGroup: Object.fromEntries(
+            NHL_MATCHUP_GROUPS.map((g) => [
+              g.key,
+              subjectPtsPerGame != null ? [{ key: `ptsAllowed${g.key}`, label: 'Pts/Gm', value: subjectPtsPerGame, decimals: 1, rank: null, poolSize: null }] : [],
+            ]),
+          ),
+          defaultOpponentId: opponentAbbr && teamDefenseAllowed.some((t) => t.abbr === opponentAbbr) ? opponentAbbr : teamDefenseAllowed[0].abbr,
+          opponentOptions: teamDefenseAllowed.map((t) => ({ id: t.abbr, abbr: t.abbr, name: t.abbr })),
+          // Real logo for every real opponent option (2026-08-24 fix), not
+          // just today's matched one — `teamDefenseAllowed` now carries its
+          // own real `logoUrl` per team (teamDefenseAllowed.ts), so there's
+          // no reason the custom-opponent picker's other entries should
+          // ever fall back to a text-initials avatar.
+          opponentMeta: Object.fromEntries(teamDefenseAllowed.map((t) => [t.abbr, { id: t.abbr, abbr: t.abbr, name: t.abbr, logoUrl: t.logoUrl ?? (t.abbr === opponentAbbr ? opponentLogoUrl : undefined) }])),
+          opponentStatsByGroup: Object.fromEntries(teamDefenseAllowed.map((t) => [t.abbr, Object.fromEntries(NHL_MATCHUP_GROUPS.map((g) => [g.key, nhlDefenseRow(t, g.key)]))])),
+          contextLine: opponentAbbr ? `Real next-game opponent: ${opponentAbbr}` : null,
+        }
       : null;
 
   return {
@@ -159,7 +257,7 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
     windows,
     roundScores: null,
     chart,
-    gamelog: scoped.length > 0 || active.history.length > 0 ? { columns, rows, cardBadges: columns } : null,
+    gamelog: scoped.length > 0 || active.history.length > 0 ? { columns, rows, summaryStrip, cardBadges: columns } : null,
     propOddsBoard,
     model: null,
     hitterStats: null,
@@ -167,11 +265,24 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     liveGame: null,
     liveMatchup: null,
-    matchups: null,
+    matchupExplorer,
     seasonStatsCard: null,
-    mlbContextMatchup: null,
     golfFormHoles: null,
-    nflMatchup: null,
-    nflSeasonStats: null,
+    nflSeasonStats,
+    liveLineTracker: {
+      subjectId: active.subjectId,
+      sport: 'nhl',
+      gameId: todaysGame?.gamePk ?? null,
+      availableStats: NHL_TRACKABLE_STATS,
+    },
   };
 }
+
+const NHL_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
+  { key: 'goals', label: 'Goals' },
+  { key: 'assists', label: 'Assists' },
+  { key: 'points', label: 'Points' },
+  { key: 'shots_on_goal', label: 'Shots on Goal' },
+  { key: 'hits', label: 'Hits' },
+  { key: 'blocked_shots', label: 'Blocked Shots' },
+];

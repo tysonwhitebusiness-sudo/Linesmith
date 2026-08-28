@@ -6,17 +6,42 @@
  * with real scores, real record/rank from standings.
  */
 
+import { categoriseByLine, entryValue, fixedWindow, openWindow, subsetWindow, OVER, UNDER, type WindowedStat } from '@/lib/core/windowedStat';
+import { directionMark } from '@/components/MarketLabel';
+import type { PickCandidate } from '@/lib/core/types';
 import type { TeamStandingRow } from '@/components/useAllTeams';
-import type { RecentResultRow, RosterPlayer, TeamDetailData, TeamNextGame } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
+import type { GameRow, RecentResultRow, RosterPlayer, TeamDetailData, TeamDistributionChartData, TeamNextGame, TeamWindowedForm } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import type { NbaTeam, NbaPregameLine } from '@/lib/sports/nba/espn';
 import type { EspnTeamSportGame } from '@/lib/sports/multiSport/teamSportEspn';
+import { buildNbaMoneylineCandidate, buildNbaGameTotalCandidate, buildNbaPointsForCandidate } from '@/lib/sports/nba/teamFormCandidates';
+import type { EspnInjuryRow } from '@/lib/sports/multiSport/teamSportEspn';
+
+function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
+  return (entry.raw ?? {}) as Record<string, unknown>;
+}
+
+interface NbaRosterSeasonStats {
+  games: number;
+  points: number;
+  rebounds: number;
+  assists: number;
+}
+
+function seasonLineText(s: NbaRosterSeasonStats | null): string {
+  if (!s || s.games === 0) return 'No stats yet this season';
+  return `${(s.points / s.games).toFixed(1)} pts · ${(s.rebounds / s.games).toFixed(1)} reb · ${(s.assists / s.games).toFixed(1)} ast`;
+}
 
 export interface NbaTeamDetailApiResponse {
   team: NbaTeam;
-  roster: Array<{ subjectId: string; fullName: string; position: string | null; headshotUrl: string | null }>;
+  roster: Array<{ subjectId: string; fullName: string; position: string | null; headshotUrl: string | null; seasonStats: NbaRosterSeasonStats | null }>;
   nextGame: EspnTeamSportGame | null;
   nextGameLine: NbaPregameLine | null;
   recentGames: EspnTeamSportGame[];
+  /** Real, confirmed live 2026-08-24 against ESPN's NBA injuries feed. */
+  injuries: EspnInjuryRow[];
+  /** Real logo per real NBA abbreviation (2026-08-24) — feeds the distribution chart's `logoFor`. */
+  logoByAbbr: Record<string, string>;
 }
 
 function ordinal(rank: number): string {
@@ -43,25 +68,44 @@ export function toNbaRecentResultRows(games: EspnTeamSportGame[], teamId: string
   });
 }
 
+export interface NbaTeamDetailScope {
+  market: string | undefined;
+  lineOffset: number;
+  opponentOnly: boolean;
+  venue: 'all' | 'home' | 'away';
+  lastN: number | 'all';
+}
+
 export interface NbaTeamDetailInput {
   data: NbaTeamDetailApiResponse;
+  scope: NbaTeamDetailScope;
   standingsTeams: TeamStandingRow[];
 }
 
 export function toTeamDetailData(input: NbaTeamDetailInput): TeamDetailData {
-  const { data, standingsTeams } = input;
-  const { team, roster, nextGame, nextGameLine, recentGames } = data;
+  const { data, scope, standingsTeams } = input;
+  const { team, roster, nextGame, nextGameLine, recentGames, logoByAbbr } = data;
 
-  const rosterPlayers: RosterPlayer[] = roster.map((p) => ({
-    subjectId: p.subjectId,
-    name: p.fullName,
-    position: p.position ?? '',
-    teamAbbr: team.abbreviation,
-    headshotUrl: p.headshotUrl ?? undefined,
-    seasonLineText: 'No season stats source yet for NBA',
-    hasStats: false,
-    href: `/nba/player/${encodeURIComponent(p.subjectId)}`,
-  }));
+  const rosterPlayers: RosterPlayer[] = roster.map((p) => {
+    const identityParams = new URLSearchParams({
+      name: p.fullName,
+      team: team.abbreviation,
+      teamName: team.name,
+      teamLogoUrl: team.logoUrl ?? '',
+      ...(p.position ? { pos: p.position } : {}),
+      ...(p.headshotUrl ? { headshot: p.headshotUrl } : {}),
+    });
+    return {
+      subjectId: p.subjectId,
+      name: p.fullName,
+      position: p.position ?? '',
+      teamAbbr: team.abbreviation,
+      headshotUrl: p.headshotUrl ?? undefined,
+      seasonLineText: seasonLineText(p.seasonStats),
+      hasStats: p.seasonStats != null && p.seasonStats.games > 0,
+      href: `/nba/player/${encodeURIComponent(p.subjectId)}?${identityParams.toString()}`,
+    };
+  });
 
   const opponentIsHome = nextGame ? nextGame.homeTeamId === team.teamId : false;
   const opponentAbbr = nextGame ? (opponentIsHome ? nextGame.awayAbbr : nextGame.homeAbbr) : undefined;
@@ -80,6 +124,61 @@ export function toTeamDetailData(input: NbaTeamDetailInput): TeamDetailData {
 
   const ownStanding = standingsTeams.find((s) => s.teamId === Number(team.teamId));
 
+  // ---- Real team-level candidates from this team's own recent results ----
+  const today = nextGame && opponentAbbr ? { opponentAbbr, isHome: !opponentIsHome, gamePk: nextGame.gameId } : null;
+  const moneyline = buildNbaMoneylineCandidate({ teamId: team.teamId, teamName: team.name, teamAbbr: team.abbreviation, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr });
+  const total = buildNbaGameTotalCandidate({ teamId: team.teamId, teamName: team.name, teamAbbr: team.abbreviation, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr }, nextGameLine?.overUnder ?? null);
+  const pointsFor = buildNbaPointsForCandidate({ teamId: team.teamId, teamName: team.name, teamAbbr: team.abbreviation, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr });
+  const candidates = [moneyline, total, pointsFor].filter((c): c is PickCandidate => c != null);
+
+  const active = candidates.find((c) => c.dimension === scope.market) ?? candidates[0] ?? null;
+  const wantOver = active ? directionMark(active.category) !== 'U' : true;
+  const baseLine = active?.line ?? 0.5;
+  const line = Math.max(0, baseLine + scope.lineOffset);
+  const isMoneylineMarket = active?.dimension === 'moneyline';
+
+  const scoped: PickCandidate['history'] = (() => {
+    if (!active) return [];
+    let list = active.history;
+    if (scope.opponentOnly && opponentAbbr) {
+      list = list.filter((e) => (rawOf(e).opponentAbbr as string | undefined) === opponentAbbr);
+    }
+    if (scope.venue !== 'all') list = list.filter((e) => rawOf(e).isHome === (scope.venue === 'home'));
+    if (scope.lastN !== 'all') list = list.slice(-scope.lastN);
+    return list;
+  })();
+
+  const measured = categoriseByLine(scoped, line);
+  const wanted = wantOver ? OVER : UNDER;
+
+  const windows: TeamWindowedForm | null = active
+    ? {
+        l5: fixedWindow(measured, wanted, 5),
+        l10: fixedWindow(measured, wanted, 10),
+        l15: fixedWindow(measured, wanted, 15),
+        szn: openWindow(measured, wanted, { minimum: 1 }),
+        h2h:
+          !opponentAbbr
+            ? ({ status: 'insufficient', available: 0, required: 1 } as WindowedStat)
+            : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => (rawOf(e).opponentAbbr as string | undefined) === opponentAbbr, { minimum: 1 }),
+      }
+    : null;
+
+  const gameRows: GameRow[] = scoped.map((entry, index) => {
+    const value = entryValue(entry);
+    const cleared = value == null ? null : wantOver ? value > line : value <= line;
+    const resultText = isMoneylineMarket ? (value === 1 ? 'W' : value === 0 ? 'L' : '—') : value != null ? String(value) : '—';
+    return { key: `${entry.period}-${index}`, periodLabel: entry.periodLabel ?? '', opponentTeamId: null, opponentLogoUrl: rawOf(entry).opponentLogoUrl as string | undefined, value, resultText, cleared };
+  });
+
+  // Real opponent logo (2026-08-24) — `teamFormCandidates.ts` now embeds
+  // `opponentLogoUrl` on every real history entry via `logoByAbbr`.
+  const distributionLogoFor = (entry: PickCandidate['history'][number]) => rawOf(entry).opponentLogoUrl as string | undefined;
+
+  const distribution: TeamDistributionChartData | null = active
+    ? { history: scoped, line, wantOver, refreshKey: `${active.dimension}|${line}|${scope.opponentOnly}|${scope.venue}|${scope.lastN}|${team.teamId}`, logoFor: distributionLogoFor }
+    : null;
+
   return {
     team: { teamId: Number(team.teamId), name: team.name, abbr: team.abbreviation, logoUrl: team.logoUrl ?? '' },
     record: ownStanding
@@ -90,10 +189,10 @@ export function toTeamDetailData(input: NbaTeamDetailInput): TeamDetailData {
         }
       : null,
     grades: null,
-    candidates: [],
-    games: [],
-    windows: null,
-    distribution: null,
+    candidates,
+    games: gameRows,
+    windows,
+    distribution,
     matchup: null,
     statGroups: [],
     roster: rosterPlayers,
@@ -102,7 +201,7 @@ export function toTeamDetailData(input: NbaTeamDetailInput): TeamDetailData {
     standingsTeams,
     nextGame: nextGameData,
     advancedStats: null,
-    form: null,
+    form: windows,
     recentResults: toNbaRecentResultRows(recentGames, team.teamId),
   };
 }

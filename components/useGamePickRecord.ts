@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { StakeSuggestion } from '@/lib/core/kelly';
 import type { Sport } from '@/lib/core/types';
 
 export interface ConfidenceGrade {
@@ -13,11 +14,15 @@ export interface MoneylinePickView {
   pickTeamName: string | null;
   price: number | null;
   confidence: ConfidenceGrade | null;
+  probLower: number | null;
+  probUpper: number | null;
+  stake: StakeSuggestion | null;
   locked: boolean;
   late: boolean;
   changed: boolean;
   initialTeamName: string | null;
   outcome: 'win' | 'loss' | null;
+  simulatedProfit: number | null;
 }
 
 export interface TotalPickView {
@@ -25,12 +30,16 @@ export interface TotalPickView {
   line: number | null;
   price: number | null;
   confidence: ConfidenceGrade | null;
+  probLower: number | null;
+  probUpper: number | null;
+  stake: StakeSuggestion | null;
   locked: boolean;
   late: boolean;
   changed: boolean;
   initialSide: 'over' | 'under' | null;
   initialLine: number | null;
   outcome: 'win' | 'loss' | null;
+  simulatedProfit: number | null;
 }
 
 export interface GamePickView {

@@ -239,6 +239,22 @@ export interface RankingsData {
 
 export interface GameDetailData {
   gameId: string;
+  /**
+   * The real per-game bookmaker grid — every real book from every real
+   * source, merged (readGameOddsBookLines, lib/db/client.ts — odds-
+   * architecture rebuild Phase 6). Populated by every sport's own adapter
+   * from the SAME unified read (GameDetail.tsx fetches it once via
+   * useGameOddsBookLines and threads it into every sport's adapter call),
+   * not a sport-specific derivation — this is what BookmakerBreakdown/
+   * PicksPanel actually render, replacing the old `mlbGameLine`/
+   * `nflGameLine` ad hoc local-state approach that only ever existed for
+   * those two sports. `null` when nothing's been recovered for this game
+   * yet. Distinct from `hero.pregameLines` below (a narrow, compact
+   * best-price-only summary for the hero strip) and `leftRail.
+   * nflTeamScope` (NFL's own specific left-rail panel override) — both of
+   * those are real, separate UI slots this field doesn't replace.
+   */
+  gameLine: UnifiedGameLine | null;
   hero: {
     away: GameHeroTeamPanelData;
     home: GameHeroTeamPanelData;
@@ -261,7 +277,9 @@ export interface GameDetailData {
      * renders the slot, with its own "No game line yet" fallback text.
      */
     pregameLines?: {
-      moneyline?: { away: number | null; home: number | null } | null;
+      /** `draw` is soccer-only (its real third moneyline outcome) — every
+       * other sport's derivation simply never sets it. */
+      moneyline?: { away: number | null; home: number | null; draw?: number | null } | null;
       spread?: { homePoint: number | null } | null;
       total?: { point: number | null } | null;
     } | null;
@@ -434,6 +452,7 @@ export function toGameDetailData(input: MlbGameDetailInput): GameDetailData {
 
   return {
     gameId: game.gamePk != null ? String(game.gamePk) : 'unknown',
+    gameLine,
     hero,
     matchup,
     records,

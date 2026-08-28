@@ -164,8 +164,14 @@ export function usePropOdds(gameId: string | undefined, refreshKey?: string | nu
  * game of the day, versus `usePropOdds`'s single-game scope for Game Detail
  * and Player Detail. Same cache-backed route with `gameId` omitted, which
  * `/api/props/lines` already supports.
+ *
+ * `sport` (default 'mlb') is real, not cosmetic — a genuine bug fixed
+ * 2026-08-27: without it, /api/props/lines' whole-slate branch always
+ * resolved MLB's own games regardless of which sport's Scan page was
+ * asking, so every NFL candidate silently lost its price-gate match and
+ * the whole "All" list emptied out right after loading finished.
  */
-export function useSlatePropOdds(refreshKey?: string | null, enabled = true) {
+export function useSlatePropOdds(refreshKey?: string | null, enabled = true, sport: string = 'mlb') {
   const [rows, setRows] = useState<PropOddsRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [userSportsbook, setUserSportsbook] = useState<string>('fanatics');
@@ -180,7 +186,7 @@ export function useSlatePropOdds(refreshKey?: string | null, enabled = true) {
     void (async () => {
       setLoading(true);
       try {
-        const res = await fetch('/api/props/lines', { cache: 'no-store' });
+        const res = await fetch(`/api/props/lines?sport=${sport}`, { cache: 'no-store' });
         if (!cancelled && res.ok) setRows((await res.json()).rows ?? []);
       } finally {
         if (!cancelled) setLoading(false);
@@ -189,7 +195,7 @@ export function useSlatePropOdds(refreshKey?: string | null, enabled = true) {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey, enabled]);
+  }, [refreshKey, enabled, sport]);
 
   useEffect(() => {
     if (!enabled) return;

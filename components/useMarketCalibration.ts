@@ -56,8 +56,14 @@ export interface MarketCalibrationState {
  * `enabled` (default `true`) — set `false` when a parent has already fetched
  * this and is passing its result down instead (see `GameDetail`'s nested
  * `PlayerDetail`), same idiom as `usePropOdds`'s own `enabled` param.
+ *
+ * `sport` (default `'mlb'`, Phase 2 of docs/scan-playerdetail-parity-
+ * gameplan-2026-08-27.md) — every caller before this fix implicitly got
+ * MLB's own calibration regardless of which sport's page it was on; the
+ * default preserves that for any caller that doesn't pass one, but every
+ * real call site should now pass its own sport.
  */
-export function useMarketCalibration(enabled = true): MarketCalibrationState {
+export function useMarketCalibration(enabled = true, sport = 'mlb'): MarketCalibrationState {
   const [byMarket, setByMarket] = useState<MarketCalibration[]>([]);
   const [record, setRecord] = useState<GoodBetsRecord | null>(null);
   const [trustTiersRaw, setTrustTiersRaw] = useState<Record<string, MarketTrust>>({});
@@ -73,7 +79,7 @@ export function useMarketCalibration(enabled = true): MarketCalibrationState {
     const controller = new AbortController();
     void (async () => {
       try {
-        const res = await fetch('/api/props/calibration', { cache: 'no-store', signal: controller.signal });
+        const res = await fetch(`/api/props/calibration?sport=${sport}`, { cache: 'no-store', signal: controller.signal });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         setByMarket(json.byMarket ?? []);
@@ -88,7 +94,7 @@ export function useMarketCalibration(enabled = true): MarketCalibrationState {
       }
     })();
     return () => controller.abort();
-  }, [enabled]);
+  }, [enabled, sport]);
 
   const trustedMarkets = useMemo(() => {
     const set = new Set<string>();

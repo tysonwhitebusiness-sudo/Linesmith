@@ -6,7 +6,6 @@ import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import { candidateKey } from '@/lib/core/types';
 import { sortByComingUp } from '@/lib/core/pickEngine';
 import type { SlateGame } from '@/lib/odds/matching';
-import { buildSlate, teamKey } from '@/lib/odds/matching';
 import { projectLine, formatAmerican } from '@/lib/odds/display';
 import { computeMoneylineEdge, computeTotalEdge } from '@/lib/odds/gameEdge';
 import type { UnifiedLinesResult, UnifiedGameLine } from '@/lib/odds/types';
@@ -23,6 +22,9 @@ import { useCfbGameDetail } from './useCfbGameDetail';
 import { useNbaGameDetail } from './useNbaGameDetail';
 import { useNhlGameDetail } from './useNhlGameDetail';
 import { useTennisGameDetail } from './useTennisGameDetail';
+import { useGameOddsBookLines } from './useGameOddsBookLines';
+import { useAllNbaTeams } from './useAllNbaTeams';
+import { useAllNhlTeams } from './useAllNhlTeams';
 import type { PickRow } from './useSlip';
 import { SubjectAvatar, TeamLogo, nflTeamLogoUrl } from './SubjectAvatar';
 import { TwoSidedStatRankRow } from './StatRankRow';
@@ -43,6 +45,11 @@ import { NflPlayerVsDefenseCard } from './NflPlayerVsDefenseCard';
 import { NflTeamScopePanel } from './NflTeamScopePanel';
 import { GradeChip } from './GradeChip';
 import { GameHeroCard, LiveTab } from './GameHeroCard';
+import { NhlLiveTab } from './NhlLiveTab';
+import { NbaLiveTab } from './NbaLiveTab';
+import { SoccerLiveTab } from './SoccerLiveTab';
+import { FootballLiveTab } from './FootballLiveTab';
+import { TennisLiveTab } from './TennisLiveTab';
 import {
   toGameDetailData as toMlbGameDetailData,
   type GameDetailData,
@@ -689,7 +696,7 @@ export function LeftRail({
   const [view, setView] = useState<'grouped' | 'ranked' | 'tiles'>('grouped');
   const [scoreFilter, setScoreFilter] = useState<ScoreFilterKey>('all');
   const [expanded, setExpanded] = useState(false);
-  const calibrationFetched = useMarketCalibration(!sharedCalibration);
+  const calibrationFetched = useMarketCalibration(!sharedCalibration, candidates[0]?.sport ?? 'mlb');
   const calibration = sharedCalibration ?? calibrationFetched;
 
   useEffect(() => setExpanded(false), [scope, view, scoreFilter]);
@@ -1711,21 +1718,73 @@ export function PicksPanel({
                 ) : null}
               </div>
             ) : null}
-            <BookmakerBreakdown
-              bookmakers={projected.bookmakers}
-              selectedBook={projected.headlineBook}
-              awayLabel={awayAbbr}
-              homeLabel={homeAbbr}
-            />
           </div>
         )}
       </section>
 
-      <section className="lb-card p-3">
-        <h2 className="mb-2 text-meta font-semibold uppercase tracking-wide text-ink-muted">Line shopping</h2>
-        <GamePropLineShoppingRail allRows={propRows} userSportsbook={userSportsbook} />
-      </section>
+      <LineShoppingSection projected={projected} awayAbbr={awayAbbr} homeAbbr={homeAbbr} propRows={propRows} userSportsbook={userSportsbook} />
     </aside>
+  );
+}
+
+/**
+ * Game and player-prop line shopping used to be two stacked cards (a
+ * BookmakerBreakdown grid inside "Add to picks", a separate "Player props"
+ * card below it) — same underlying idea (compare real book prices), so a
+ * Game/Player toggle on one card replaces two, rather than widening either.
+ */
+function LineShoppingSection({
+  projected,
+  awayAbbr,
+  homeAbbr,
+  propRows,
+  userSportsbook,
+}: {
+  projected: ReturnType<typeof projectLine> | null;
+  awayAbbr: string;
+  homeAbbr: string;
+  propRows: PropOddsRow[];
+  userSportsbook: string;
+}) {
+  const [view, setView] = useState<'game' | 'player'>('game');
+
+  return (
+    <section className="lb-card p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="text-meta font-semibold uppercase tracking-wide text-ink-muted">Line shopping</h2>
+        <div className="inline-flex rounded-md border border-line p-0.5 text-[11px]">
+          <button
+            type="button"
+            onClick={() => setView('game')}
+            className={`rounded px-2 py-0.5 font-medium ${view === 'game' ? 'bg-accent-soft text-masters' : 'text-ink-faint'}`}
+          >
+            Game
+          </button>
+          <button
+            type="button"
+            onClick={() => setView('player')}
+            className={`rounded px-2 py-0.5 font-medium ${view === 'player' ? 'bg-accent-soft text-masters' : 'text-ink-faint'}`}
+          >
+            Player
+          </button>
+        </div>
+      </div>
+
+      {view === 'game' ? (
+        projected?.available ? (
+          <BookmakerBreakdown
+            bookmakers={projected.bookmakers}
+            selectedBook={projected.headlineBook}
+            awayLabel={awayAbbr}
+            homeLabel={homeAbbr}
+          />
+        ) : (
+          <p className="text-dense text-ink-faint">No game line for this matchup yet.</p>
+        )
+      ) : (
+        <GamePropLineShoppingRail allRows={propRows} userSportsbook={userSportsbook} />
+      )}
+    </section>
   );
 }
 
@@ -1935,33 +1994,28 @@ export function GameDetail({
   const mlbGame = games.find((g) => String(g.gamePk) === gameId);
   const gameContext = useGameContext(mlbGame?.awayTeamId, mlbGame?.homeTeamId);
   const bullpen = useBullpen(mlbGame?.awayTeamId, mlbGame?.homeTeamId);
-  const mlbGameLine = useMemo(() => {
-    if (!mlbGame) return null;
-    const slate = buildSlate(games, odds?.lines ?? []);
-    return slate.entries.find((e) => Number(e.game.gamePk) === Number(gameId))?.line ?? null;
-  }, [games, odds, mlbGame, gameId]);
 
   const nflGame = useNflGameDetail(sport === 'nfl' ? gameId : undefined);
   const soccerGame = useSoccerGameDetail(sport === 'soccer' ? (league as SoccerLeague | undefined) : undefined, sport === 'soccer' ? gameId : undefined);
   const cfbGame = useCfbGameDetail(sport === 'cfb' ? gameId : undefined);
   const nbaGame = useNbaGameDetail(sport === 'nba' ? gameId : undefined);
   const nhlGame = useNhlGameDetail(sport === 'nhl' ? gameId : undefined);
+  // Real division rank for the Records section (2026-08-24) — always
+  // called (rules of hooks), mostly idle for other sports, same convention
+  // every other per-sport hook on this page already follows.
+  const nbaStandings = useAllNbaTeams(sport === 'nba');
+  const nhlStandings = useAllNhlTeams(sport === 'nhl');
   const tennisGame = useTennisGameDetail(sport === 'tennis' ? (league as TennisTour | undefined) : undefined, sport === 'tennis' ? gameId : undefined);
-  const nflGameLine = useMemo(() => {
-    if (!nflGame.meta) return null;
-    const fromSlate = odds?.lines
-      ? odds.lines.find(
-          (l) => teamKey(l.awayTeam) === teamKey(nflGame.meta!.game.awayTeamName) && teamKey(l.homeTeam) === teamKey(nflGame.meta!.game.homeTeamName),
-        )
-      : undefined;
-    const sgo = nflGame.meta.sportsGameOddsLine;
-    if (!fromSlate) return sgo;
-    if (!sgo) return fromSlate;
-    return { ...fromSlate, moneyline: fromSlate.moneyline ?? sgo.moneyline, spread: fromSlate.spread ?? sgo.spread, total: fromSlate.total ?? sgo.total, bookCount: Math.max(fromSlate.bookCount, sgo.bookCount) };
-  }, [nflGame.meta, odds]);
+  // The real per-game bookmaker grid, for every sport (odds-architecture
+  // rebuild Phase 6) — replaces the old per-sport `mlbGameLine`/
+  // `nflGameLine` derivations (each pulling from a different ad hoc
+  // live-fetch mechanism, only ever populated for those two sports) with
+  // one uniform read from game_odds_book_lines that works the same way
+  // for all 7 sports below (golf has no game-detail page).
+  const gameOddsBookLine = useGameOddsBookLines(sport, gameId).line;
 
   const props = usePropOdds(gameId, snapshot?.fetchedAt);
-  const calibration = useMarketCalibration();
+  const calibration = useMarketCalibration(true, sport);
   const pickHistory = useGamePickHistory('mlb');
   const gamePick = useMemo(() => pickHistory.rows.find((r) => r.gameId === gameId) ?? null, [pickHistory.rows, gameId]);
 
@@ -1972,7 +2026,7 @@ export function GameDetail({
             meta: nflGame.meta,
             home: nflGame.home,
             away: nflGame.away,
-            gameLine: nflGameLine ?? null,
+            gameLine: gameOddsBookLine,
             scope: { matchupPlayerId },
             candidates,
           })
@@ -1985,6 +2039,7 @@ export function GameDetail({
               home: soccerGame.home,
               away: soccerGame.away,
               candidates,
+              gameLine: gameOddsBookLine,
             })
           : null
         : sport === 'cfb'
@@ -1994,6 +2049,7 @@ export function GameDetail({
                 home: cfbGame.home,
                 away: cfbGame.away,
                 candidates,
+                gameLine: gameOddsBookLine,
               })
             : null
           : sport === 'nba'
@@ -2003,6 +2059,8 @@ export function GameDetail({
                   home: nbaGame.home,
                   away: nbaGame.away,
                   candidates,
+                  standingsTeams: nbaStandings.teams,
+                  gameLine: gameOddsBookLine,
                 })
               : null
             : sport === 'nhl'
@@ -2012,6 +2070,8 @@ export function GameDetail({
                     home: nhlGame.home,
                     away: nhlGame.away,
                     candidates,
+                    standingsTeams: nhlStandings.teams,
+                    gameLine: gameOddsBookLine,
                   })
                 : null
               : sport === 'tennis'
@@ -2024,6 +2084,7 @@ export function GameDetail({
                       player1H2h: tennisGame.player1H2h,
                       player2H2h: tennisGame.player2H2h,
                       candidates,
+                      gameLine: gameOddsBookLine,
                     })
                   : null
               : mlbGame
@@ -2032,7 +2093,7 @@ export function GameDetail({
                     statKeys,
                     gameContext,
                     bullpen: { byTeam: bullpen.byTeam, loading: bullpen.loading },
-                    gameLine: mlbGameLine,
+                    gameLine: gameOddsBookLine,
                     trustedMarkets: calibration.trustedMarkets,
                     gamePick,
                     pickLoading: calibration.loading,
@@ -2196,7 +2257,17 @@ export function GameDetail({
               renderLiveDetail={
                 data.hero.mlbLiveGame
                   ? (active) => <LiveTab game={data.hero.mlbLiveGame!} gamePk={data.hero.mlbGamePk ?? undefined} active={active} isFinal={isFinal} />
-                  : undefined
+                  : sport === 'nhl'
+                    ? (active) => <NhlLiveTab gameId={data.gameId} away={data.hero.away} home={data.hero.home} active={active} isFinal={isFinal} />
+                    : sport === 'nba'
+                      ? (active) => <NbaLiveTab eventId={data.gameId} away={data.hero.away} home={data.hero.home} active={active} isFinal={isFinal} />
+                      : sport === 'soccer'
+                        ? (active) => <SoccerLiveTab league={league as string} eventId={data.gameId} away={data.hero.away} home={data.hero.home} active={active} isFinal={isFinal} />
+                        : sport === 'nfl' || sport === 'cfb'
+                          ? (active) => <FootballLiveTab sport={sport} eventId={data.gameId} away={data.hero.away} home={data.hero.home} active={active} isFinal={isFinal} />
+                          : sport === 'tennis'
+                            ? (active) => <TennisLiveTab tour={league as string} matchId={data.gameId} away={data.hero.away} home={data.hero.home} active={active} isFinal={isFinal} />
+                            : undefined
               }
             />
             <MatchupSection
@@ -2223,7 +2294,7 @@ export function GameDetail({
         onRemovePick={onRemovePick}
         onAdd={onAdd}
         eventContext={eventContext}
-        gameLine={sport === 'nfl' ? nflGameLine : mlbGameLine}
+        gameLine={gameOddsBookLine}
         disabled={isFinal}
         propRows={props.rows}
         userSportsbook={props.userSportsbook}

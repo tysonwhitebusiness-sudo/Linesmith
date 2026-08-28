@@ -3,14 +3,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TeamStandingRow, AllTeamsState } from './useAllTeams';
 
-/** NBA's version of useAllTeams — same TeamStandingRow shape, /api/nba/teams instead. */
-export function useAllNbaTeams(): AllTeamsState {
+/**
+ * NBA's version of useAllTeams — same TeamStandingRow shape, /api/nba/teams
+ * instead. `enabled` (default true, matches every existing caller's
+ * behavior) lets a shared multi-sport component like `GameDetail.tsx` call
+ * this unconditionally (rules of hooks) while only actually fetching when
+ * NBA is the active sport — same "always called, mostly idle" convention
+ * every other per-sport hook on that page already follows.
+ */
+export function useAllNbaTeams(enabled = true): AllTeamsState {
   const [teams, setTeams] = useState<TeamStandingRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef<AbortController | null>(null);
 
   const load = useCallback(() => {
+    if (!enabled) return;
     inFlight.current?.abort();
     const controller = new AbortController();
     inFlight.current = controller;
@@ -30,7 +38,7 @@ export function useAllNbaTeams(): AllTeamsState {
         if (!controller.signal.aborted) setLoading(false);
       }
     })();
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     load();

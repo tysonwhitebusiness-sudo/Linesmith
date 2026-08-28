@@ -10,6 +10,7 @@ import { useGamePickHistory, type GamePickView } from './useGamePickRecord';
 import { useSlip } from './useSlip';
 import { ScanCard } from './ScanCard';
 import { StarIcon } from './icons';
+import { RARE_MARKET_TAB_LABEL } from '@/lib/picks/rareMarketDimensions';
 
 function pickTime(iso: string | null): string {
   if (!iso) return 'TBD';
@@ -272,17 +273,200 @@ function TopHomeRunCandidates({ sport, active }: { sport: Sport; active: boolean
   );
 }
 
-type TodaysPicksTab = 'games' | 'homeRuns';
+// ---------------------------------------------------------------------------
+// Generic player-prop / rare-market picks — every sport but MLB, whose own
+// richer TopHomeRunCandidates/ScanCard experience above stays as-is (Phase 8
+// of docs/daily-picks-full-model-build-2026-08-27.md: MLB keeps its own
+// route, just trimmed from Top 15 to Top 5 for consistency with this list's
+// own TOP_N). Reads directly from pick_history via app/api/picks/props and
+// app/api/picks/rare-markets — no rich matchup-card context the way MLB's
+// snapshot-backed ScanCard has, just the real score/probability/line every
+// sport's own pick_history row already carries.
+// ---------------------------------------------------------------------------
+
+export interface PropPickView {
+  subjectId: string;
+  subjectName: string;
+  dimension: string;
+  category: string;
+  marketKey: string | null;
+  line: number | null;
+  gameId: string | null;
+  sampleSize: number | null;
+  modelProb: number | null;
+  marketProb: number | null;
+  edge: number | null;
+  priceSource: string | null;
+  bookmaker: string | null;
+  propScore: number | null;
+  scoreGrade: string | null;
+  trustTier: string | null;
+  price: number | null;
+}
+
+interface PropPicksState {
+  candidates: PropPickView[];
+  loading: boolean;
+  error: string | null;
+}
+
+function usePropPicks(url: string | null): PropPicksState {
+  const [state, setState] = useState<PropPicksState>({ candidates: [], loading: false, error: null });
+
+  useEffect(() => {
+    if (!url) return;
+    let cancelled = false;
+    setState((s) => ({ ...s, loading: true, error: null }));
+    fetch(url, { cache: 'no-store' })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Request failed (${res.status})`);
+        return res.json();
+      })
+      .then((data: { candidates: PropPickView[] }) => {
+        if (!cancelled) setState({ candidates: data.candidates ?? [], loading: false, error: null });
+      })
+      .catch((err) => {
+        if (!cancelled) setState({ candidates: [], loading: false, error: err instanceof Error ? err.message : 'Fetch failed' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  return state;
+}
+
+function dimensionLabel(dimension: string): string {
+  return dimension
+    .split('-')
+    .map((w) => w[0]?.toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function PropPickListCard({ row }: { row: PropPickView }) {
+  return (
+    <div className="lb-card flex items-center justify-between gap-3 p-3">
+      <div className="min-w-0">
+        <div className="truncate text-[13px] font-semibold">{row.subjectName}</div>
+        <div className="text-[11px] text-ink-faint">
+          {dimensionLabel(row.dimension)}
+          {row.line != null ? ` ${row.line}+` : ''}
+          {row.price != null ? <span className="ml-1.5 tabular-nums text-ink-muted">{formatAmerican(row.price)}</span> : null}
+        </div>
+      </div>
+      <div className="shrink-0 text-right">
+        {row.scoreGrade ? <div className="text-[13px] font-bold">{row.scoreGrade}</div> : null}
+        {row.modelProb != null ? <div className="text-[11px] text-ink-faint">{Math.round(row.modelProb * 100)}%</div> : null}
+      </div>
+    </div>
+  );
+}
+
+function PropPicksList({ url, emptyMessage }: { url: string | null; emptyMessage: string }) {
+  const { candidates, loading, error } = usePropPicks(url);
+
+  if (error) {
+    return <p className="p-6 text-center text-[13px] text-bad">{error}</p>;
+  }
+  if (loading && candidates.length === 0) {
+    return <p className="p-6 text-center text-[13px] text-ink-muted">Loading…</p>;
+  }
+  if (candidates.length === 0) {
+    return <p className="p-6 text-center text-[13px] text-ink-muted">{emptyMessage}</p>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {candidates.map((row) => (
+        <PropPickListCard key={`${row.subjectId}-${row.dimension}-${row.gameId ?? ''}`} row={row} />
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bankroll — Phase 7's four real dollar P&L numbers, kept separate on
+// purpose (blending them would hide which model, if any, is actually
+// profitable — see app/api/picks/bankroll/route.ts's own docstring).
+// ---------------------------------------------------------------------------
+
+interface PnlSummary {
+  wins: number;
+  losses: number;
+  profit: number;
+}
+
+const EMPTY_PNL: PnlSummary = { wins: 0, losses: 0, profit: 0 };
+
+interface BankrollState {
+  games: PnlSummary;
+  playerProps: PnlSummary;
+  rareMarkets: PnlSummary;
+  total: PnlSummary;
+  loading: boolean;
+}
+
+function useBankroll(sport: Sport, enabled: boolean): BankrollState {
+  const [state, setState] = useState<BankrollState>({ games: EMPTY_PNL, playerProps: EMPTY_PNL, rareMarkets: EMPTY_PNL, total: EMPTY_PNL, loading: false });
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    setState((s) => ({ ...s, loading: true }));
+    fetch(`/api/picks/bankroll?sport=${sport}`, { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data: Omit<BankrollState, 'loading'>) => {
+        if (!cancelled) setState({ ...data, loading: false });
+      })
+      .catch(() => {
+        if (!cancelled) setState((s) => ({ ...s, loading: false }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sport, enabled]);
+
+  return state;
+}
+
+function formatDollars(n: number): string {
+  const sign = n > 0 ? '+' : n < 0 ? '-' : '';
+  return `${sign}$${Math.abs(n).toFixed(2)}`;
+}
+
+function BankrollLine({ bankroll }: { bankroll: BankrollState }) {
+  const seenAny = bankroll.total.wins + bankroll.total.losses > 0;
+  if (bankroll.loading && !seenAny) return <>Loading record…</>;
+  if (!seenAny) return <>No graded picks yet.</>;
+  return (
+    <>
+      Games {formatDollars(bankroll.games.profit)} ({bankroll.games.wins}-{bankroll.games.losses}) · Props{' '}
+      {formatDollars(bankroll.playerProps.profit)} ({bankroll.playerProps.wins}-{bankroll.playerProps.losses}) · Rare{' '}
+      {formatDollars(bankroll.rareMarkets.profit)} ({bankroll.rareMarkets.wins}-{bankroll.rareMarkets.losses}) · Total{' '}
+      <span className="font-semibold text-ink">{formatDollars(bankroll.total.profit)}</span>
+    </>
+  );
+}
+
+type TodaysPicksTab = 'games' | 'props' | 'rareMarkets';
+
+const TAB_LABEL: Record<Exclude<TodaysPicksTab, 'rareMarkets'>, string> = {
+  games: 'Games',
+  props: 'Player Props',
+};
 
 /** Button + modal, self-contained so any page can drop it in without wiring state. */
 export function TodaysPicksButton({ sport, date }: { sport: Sport; date?: string }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TodaysPicksTab>('games');
   const history = useGamePickHistory(sport, 5 * 60 * 1000, open ? date : undefined);
-  // Home-run candidates are MLB-only — the tab itself is hidden for any
-  // other sport, so this component stays droppable anywhere without a
-  // caller having to know that detail.
-  const showHomeRunsTab = sport === 'mlb';
+  const bankroll = useBankroll(sport, open);
+  // A sport with no real rare-market dimension (Golf/Tennis — out of scope
+  // for this whole build) simply has no third tab, rather than an empty
+  // one with nothing to ever show.
+  const rareMarketLabel = RARE_MARKET_TAB_LABEL[sport];
+  const showRareMarketsTab = rareMarketLabel !== '';
+  const isMlb = sport === 'mlb';
 
   return (
     <>
@@ -311,14 +495,7 @@ export function TodaysPicksButton({ sport, date }: { sport: Sport; date?: string
               <div>
                 <h2 className="text-sm font-semibold">Today&apos;s Picks</h2>
                 <p className="text-[11px] text-ink-faint">
-                  {history.record ? (
-                    <>
-                      Season so far — ML {history.record.moneyline.wins}-{history.record.moneyline.losses} · O/U{' '}
-                      {history.record.total.wins}-{history.record.total.losses}
-                    </>
-                  ) : (
-                    'Loading record…'
-                  )}
+                  <BankrollLine bankroll={bankroll} />
                 </p>
               </div>
               <button
@@ -331,38 +508,50 @@ export function TodaysPicksButton({ sport, date }: { sport: Sport; date?: string
               </button>
             </div>
 
-            {showHomeRunsTab ? (
-              <div className="flex gap-1 border-b border-line px-4 pt-2">
+            <div className="flex gap-1 border-b border-line px-4 pt-2">
+              {(['games', 'props'] as const).map((t) => (
                 <button
+                  key={t}
                   type="button"
-                  onClick={() => setTab('games')}
+                  onClick={() => setTab(t)}
                   className={`rounded-t-md px-3 py-1.5 text-[12px] font-semibold transition-colors ${
-                    tab === 'games' ? 'border-b-2 border-masters text-masters' : 'text-ink-faint hover:text-ink'
+                    tab === t ? 'border-b-2 border-masters text-masters' : 'text-ink-faint hover:text-ink'
                   }`}
                 >
-                  Games
+                  {TAB_LABEL[t]}
                 </button>
+              ))}
+              {showRareMarketsTab ? (
                 <button
                   type="button"
-                  onClick={() => setTab('homeRuns')}
+                  onClick={() => setTab('rareMarkets')}
                   className={`rounded-t-md px-3 py-1.5 text-[12px] font-semibold transition-colors ${
-                    tab === 'homeRuns' ? 'border-b-2 border-masters text-masters' : 'text-ink-faint hover:text-ink'
+                    tab === 'rareMarkets' ? 'border-b-2 border-masters text-masters' : 'text-ink-faint hover:text-ink'
                   }`}
                 >
-                  Top 15 Home Runs
+                  {isMlb ? 'Top 5 Home Runs' : rareMarketLabel}
                 </button>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
 
             <div className="overflow-y-auto p-4">
-              {tab === 'homeRuns' && showHomeRunsTab ? (
-                <TopHomeRunCandidates sport={sport} active={open && tab === 'homeRuns'} />
-              ) : history.error ? (
-                <p className="p-4 text-center text-[13px] text-bad">{history.error}</p>
-              ) : history.loading && history.rows.length === 0 ? (
-                <p className="p-6 text-center text-[13px] text-ink-muted">Loading…</p>
+              {tab === 'games' ? (
+                history.error ? (
+                  <p className="p-4 text-center text-[13px] text-bad">{history.error}</p>
+                ) : history.loading && history.rows.length === 0 ? (
+                  <p className="p-6 text-center text-[13px] text-ink-muted">Loading…</p>
+                ) : (
+                  <TodaysPicksTable rows={history.rows} />
+                )
+              ) : tab === 'props' ? (
+                <PropPicksList url={open ? `/api/picks/props?sport=${sport}` : null} emptyMessage="No player-prop picks available yet today — check back once the slate loads." />
+              ) : isMlb ? (
+                <TopHomeRunCandidates sport={sport} active={open && tab === 'rareMarkets'} />
               ) : (
-                <TodaysPicksTable rows={history.rows} />
+                <PropPicksList
+                  url={open ? `/api/picks/rare-markets?sport=${sport}` : null}
+                  emptyMessage={`No ${rareMarketLabel.toLowerCase()} picks available yet today — check back once the slate loads.`}
+                />
               )}
             </div>
           </div>

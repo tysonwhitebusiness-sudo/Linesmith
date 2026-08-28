@@ -335,6 +335,7 @@ export function toGameDetailData(input: NflGameDetailInput): GameDetailData {
 
   return {
     gameId: game.gameId,
+    gameLine,
     hero,
     matchup,
     records,

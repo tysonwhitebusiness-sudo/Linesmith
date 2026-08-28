@@ -8,8 +8,9 @@
 
 import type { SoccerLeague } from '@/lib/core/types';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
+import { normalizeName } from '@/lib/odds/screenshotImport';
 
-const ESPN_LEAGUE_SLUG: Record<SoccerLeague, string> = { epl: 'eng.1', mls: 'usa.1' };
+export const ESPN_LEAGUE_SLUG: Record<SoccerLeague, string> = { epl: 'eng.1', mls: 'usa.1' };
 
 export interface SoccerTeam {
   teamId: string;
@@ -69,6 +70,30 @@ export async function fetchAllTeams(league: SoccerLeague): Promise<SoccerTeam[]>
 export async function soccerTeamLogoByAbbr(league: SoccerLeague): Promise<Map<string, string>> {
   const teams = await fetchAllTeams(league);
   return new Map(teams.filter((t) => t.logoUrl).map((t) => [t.abbreviation, t.logoUrl as string]));
+}
+
+/**
+ * Real logo, fuzzy-matched by real team name — Understat's/ASA's own
+ * opponent field on a per-match history entry is a real club name
+ * ("Newcastle United"), not an ESPN abbreviation, so `soccerTeamLogoByAbbr`
+ * doesn't help there (2026-08-24, closes the chart/gamelog opponent-logo
+ * gap the same way CFB's `cfbTeamLogoByCfbdName` does). Same exact-then-
+ * substring fallback `matchUnderstatTeamName` already uses for this same
+ * real ESPN-vs-third-party naming gap.
+ */
+export async function soccerTeamLogoByName(league: SoccerLeague): Promise<Map<string, string>> {
+  const teams = await fetchAllTeams(league);
+  return new Map(teams.filter((t) => t.logoUrl).map((t) => [normalizeName(t.name), t.logoUrl as string]));
+}
+
+export function matchSoccerTeamLogo(index: Map<string, string>, name: string): string | undefined {
+  const normalized = normalizeName(name);
+  const exact = index.get(normalized);
+  if (exact) return exact;
+  for (const [key, logoUrl] of index) {
+    if (key && (normalized.includes(key) || key.includes(normalized))) return logoUrl;
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------

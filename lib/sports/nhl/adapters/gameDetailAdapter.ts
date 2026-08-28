@@ -1,7 +1,12 @@
 /**
  * `GameDetail.tsx` adapter — NHL half. Mirrors CFB's/NBA's game adapter:
- * real hero (score, real status — no pregame line, see nhle.ts's header),
- * real records + last-five, real left-rail props.
+ * real hero (score, real status), real records + last-five, real left-rail
+ * props. Pregame line (2026-08-26, odds-architecture rebuild Phase 5) now
+ * real: OddsHarvester is NHL's sole game-lines source (no other provider
+ * covers NHL anywhere in this codebase — see harvester_scrape.py's own
+ * SCRAPE_CONFIG comment for "nhl"), so `gameLine` here either carries
+ * OddsHarvester's real data or is `null` — no merge-with-ESPN concern the
+ * way CFB/NBA/soccer have, since there's nothing else to merge with.
  */
 
 import type { PickCandidate } from '@/lib/core/types';
@@ -10,6 +15,8 @@ import type { NhlTeamDetailApiResponse } from './teamDetailAdapter';
 import { toNhlRecentResultRows } from './teamDetailAdapter';
 import type { GameDetailData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
+import type { TeamStandingRow } from '@/components/useAllTeams';
+import type { UnifiedGameLine } from '@/lib/odds/types';
 
 function toOptionalRecord(games: ReturnType<typeof toNhlRecentResultRows>): { wins: number; losses: number } | null {
   if (games.length === 0) return null;
@@ -18,15 +25,30 @@ function toOptionalRecord(games: ReturnType<typeof toNhlRecentResultRows>): { wi
   return { wins, losses };
 }
 
+function ordinal(rank: number): string {
+  const suffix = rank % 100 >= 11 && rank % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][rank % 10] ?? 'th');
+  return `${rank}${suffix}`;
+}
+
+/** Real division rank string (2026-08-24) — same shape `teamDetailAdapter.ts`'s own `record.divisionRank` already uses. */
+function divisionRankText(teamId: string, standingsTeams: TeamStandingRow[]): string {
+  const standing = standingsTeams.find((s) => s.teamId === Number(teamId));
+  return standing?.divisionRank ? `${ordinal(Number(standing.divisionRank))}, ${standing.divisionName}` : '';
+}
+
 export interface NhlGameDetailInput {
   meta: NhlGameMeta;
   home: NhlTeamDetailApiResponse | null;
   away: NhlTeamDetailApiResponse | null;
   candidates: PickCandidate[];
+  standingsTeams: TeamStandingRow[];
+  /** The real per-game bookmaker grid (odds-architecture rebuild Phase 5/6)
+   * — OddsHarvester is NHL's only real source, see this file's header. */
+  gameLine: UnifiedGameLine | null;
 }
 
 export function toGameDetailData(input: NhlGameDetailInput): GameDetailData {
-  const { meta, home, away, candidates } = input;
+  const { meta, home, away, candidates, standingsTeams, gameLine } = input;
   const game = meta.game;
   if (!game) throw new Error('toGameDetailData called without a resolved game — caller must gate on meta.game first');
 
@@ -66,14 +88,24 @@ export function toGameDetailData(input: NhlGameDetailInput): GameDetailData {
     pickLockAt: null,
     pickLoading: false,
     venue: null,
-    pregameLines: null,
+    pregameLines: gameLine
+      ? {
+          moneyline: gameLine.moneyline ? { away: gameLine.moneyline.away ?? null, home: gameLine.moneyline.home ?? null } : null,
+          spread: gameLine.spread ? { homePoint: gameLine.spread.homePoint ?? null } : null,
+          total: gameLine.total?.point != null ? { point: gameLine.total.point } : null,
+        }
+      : null,
   };
 
   const records: { away: RecordsSectionTeam; home: RecordsSectionTeam; loading: boolean } = {
     away: {
       abbr: game.awayAbbr,
       logoUrl: away?.team.logoUrl ?? undefined,
-      divisionRank: null,
+      // Real when `standingsTeams` has it — currently always '' because
+      // `/api/nhl/teams` itself hardcodes `divisionRank: ''` (no real
+      // NHL conference-rank source wired yet, one level deeper than this
+      // fix; wiring stays correct/harmless for whenever that lands.
+      divisionRank: away ? divisionRankText(away.team.teamId, standingsTeams) : null,
       season: toOptionalRecord(awayRecent),
       seasonHome: null,
       seasonAway: null,
@@ -83,7 +115,7 @@ export function toGameDetailData(input: NhlGameDetailInput): GameDetailData {
     home: {
       abbr: game.homeAbbr,
       logoUrl: home?.team.logoUrl ?? undefined,
-      divisionRank: null,
+      divisionRank: home ? divisionRankText(home.team.teamId, standingsTeams) : null,
       season: toOptionalRecord(homeRecent),
       seasonHome: null,
       seasonAway: null,
@@ -101,6 +133,7 @@ export function toGameDetailData(input: NhlGameDetailInput): GameDetailData {
 
   return {
     gameId: game.gameId,
+    gameLine,
     hero,
     matchup: null,
     records,
@@ -109,8 +142,8 @@ export function toGameDetailData(input: NhlGameDetailInput): GameDetailData {
     rankings: null,
     unitGrades: null,
     injuries: {
-      away: { abbr: game.awayAbbr, logoUrl: away?.team.logoUrl ?? undefined, rows: [] },
-      home: { abbr: game.homeAbbr, logoUrl: home?.team.logoUrl ?? undefined, rows: [] },
+      away: { abbr: game.awayAbbr, logoUrl: away?.team.logoUrl ?? undefined, rows: away?.injuries.map((i) => ({ playerName: i.playerName, status: i.status, position: i.position, note: i.note })) ?? [] },
+      home: { abbr: game.homeAbbr, logoUrl: home?.team.logoUrl ?? undefined, rows: home?.injuries.map((i) => ({ playerName: i.playerName, status: i.status, position: i.position, note: i.note })) ?? [] },
       loading: false,
     },
     propsForGame: null,

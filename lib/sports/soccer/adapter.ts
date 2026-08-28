@@ -16,17 +16,30 @@
  * fabricated coverage.
  */
 
-import type { HistoryEntry, PickCandidate, SportSnapshot, SubjectSummary, SoccerLeague } from '@/lib/core/types';
+import type { HistoryEntry, PickCandidate, SplitEvidence, SportSnapshot, SubjectSummary, SoccerLeague } from '@/lib/core/types';
+import { subsetWindow, shortDate } from '@/lib/core/windowedStat';
 import { loadGameContextsForSport } from '@/lib/odds/props/multiSportGameContext';
 import { readPropOddsForGame, type PropOddsRow } from '@/lib/db/client';
-import { soccerTeamLogoByAbbr } from './espn';
-import { currentUnderstatSeason, buildUnderstatNameIndex, matchUnderstatIndex, fetchUnderstatPlayerMatches, type UnderstatMatch } from './understat';
+import { soccerTeamLogoByAbbr, soccerTeamLogoByName, matchSoccerTeamLogo, ESPN_LEAGUE_SLUG } from './espn';
+import { fetchSeasonStatus } from '@/lib/sports/multiSport/teamSportEspn';
+import { currentUnderstatSeason, buildUnderstatNameIndex, matchUnderstatIndex, fetchUnderstatPlayerMatches, buildUnderstatTeamDefenseIndex, matchUnderstatTeamName, type UnderstatMatch, type UnderstatSeasonStats, type UnderstatTeamDefense } from './understat';
+import { normalizeName } from '@/lib/odds/screenshotImport';
 import { currentAsaSeason, loadAsaSeasonContext, matchAsaIndex, asaPlayerMatches, type AsaMatchStat } from './americanSocceranalysis';
+import { favorableFromRank } from '@/lib/odds/props/matchupFavorable';
 
 const LEAGUE_TO_SPORT_KEY: Record<SoccerLeague, 'soccer_epl' | 'soccer_mls'> = {
   epl: 'soccer_epl',
   mls: 'soccer_mls',
 };
+
+// X-signal (Phase A of docs/x-signal-remaining-sports-gameplan-2026-08-27.
+// md) — the three real dimensions Understat's own single defensive signal
+// (goals against per game) is actually meaningful for, matching the
+// Python-side port's own _SOCCER_X_SIGNAL_DIMENSIONS precedent exactly.
+// yellow-cards (a discipline/referee signal) and saves (a GOALKEEPER's own
+// stat, where the relevant "matchup" is the OPPONENT's attack strength,
+// the inverse relationship) deliberately stay out.
+const SOCCER_X_SIGNAL_DIMENSIONS = new Set(['assists', 'shots', 'shots-on-target']);
 
 /** The 14 real soccer market keys (see python-odds-service/src/entity_resolution.py's MARKET_KEY_ALIASES soccer block) — `binary` = a yes/no proposition with no real line (Propline sends `line: null`), `threshold` = a real over/under number. */
 const MARKET_META: Record<string, { label: string; kind: 'binary' | 'threshold' }> = {
@@ -71,7 +84,7 @@ interface NormalizedMatch {
   assists: number;
 }
 
-function toHistoryEntries(matches: NormalizedMatch[], marketKey: string, startingLine: number): HistoryEntry[] {
+function toHistoryEntries(matches: NormalizedMatch[], marketKey: string, startingLine: number, logoByName?: Map<string, string>): HistoryEntry[] {
   const field = HISTORY_FIELD[marketKey];
   if (!field) return [];
   // Most recent last — matches the "ascending = older -> newer" convention
@@ -83,8 +96,28 @@ function toHistoryEntries(matches: NormalizedMatch[], marketKey: string, startin
       period: i + 1,
       result: String(value),
       category: value > startingLine ? 'over' : 'under',
-      periodLabel: `${m.isHome ? 'vs' : '@'} ${m.opponent}`,
-      raw: { opponentAbbr: m.opponent, date: m.date, isHome: m.isHome, goals: m.goals, shots: m.shots, assists: m.assists },
+      periodLabel: `${shortDate(m.date)} ${m.isHome ? 'vs' : '@'} ${m.opponent}`,
+      // Real regression found while building the matchup/FORM cards
+      // (2026-08-23): this is Understat/ASA's own opponent TEAM NAME
+      // ("Newcastle United"), never an ESPN abbreviation despite the field's
+      // name — `playerDetailAdapter.ts`'s opponent-only filter/H2H window
+      // compare it against `subjectMeta.opponentName` (also a real team
+      // name, set in `buildSoccerSnapshot`), never `subjectMeta.opponent`
+      // (the ESPN abbreviation) — comparing across those two namespaces is
+      // exactly the bug that silently broke soccer's H2H window and
+      // "vs opponent" filter chip since they were first built: every
+      // comparison failed silently, `H2H` was permanently `insufficient`.
+      // `opponentLogoUrl` (2026-08-24) — fuzzy-matched the same way, real
+      // gap the chart/gamelog never had a logo for before.
+      raw: {
+        opponentAbbr: m.opponent,
+        opponentLogoUrl: logoByName ? matchSoccerTeamLogo(logoByName, m.opponent) : undefined,
+        date: m.date,
+        isHome: m.isHome,
+        goals: m.goals,
+        shots: m.shots,
+        assists: m.assists,
+      },
     } satisfies HistoryEntry;
   });
 }
@@ -109,7 +142,43 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
  * of a roster's real props are markets with no per-match source (see the
  * file header), so this is a fraction of every subject, not all of them.
  */
-async function attachRealHistory(candidates: PickCandidate[], league: SoccerLeague): Promise<void> {
+/** Understat's raw `position` field is a space-joined multi-role tag (e.g. "D F M", "GK S") — this reduces it to one real primary bucket for "ranked among {bucket}s", same convention NFL's own position-gated ranking uses. Substitute ("S") is never primary on its own; it's a modifier tag Understat adds alongside a real position. */
+function primaryPosition(raw: string): 'GK' | 'D' | 'M' | 'F' | null {
+  const tokens = raw.split(' ').filter((t) => t !== 'S');
+  if (tokens.includes('GK')) return 'GK';
+  if (tokens.includes('F')) return 'F';
+  if (tokens.includes('M')) return 'M';
+  if (tokens.includes('D')) return 'D';
+  return null;
+}
+
+interface PositionRank {
+  rank: number;
+  poolSize: number;
+  positionLabel: string;
+}
+
+/** Real rank-by-goals within each real primary-position bucket, computed once per rebuild from the same merged current+prior season index `attachRealHistory` already builds — no extra fetch. */
+function buildPositionRanks(index: Map<string, UnderstatSeasonStats & { name: string }>): Map<string, PositionRank> {
+  const byPosition = new Map<string, Array<UnderstatSeasonStats & { name: string }>>();
+  for (const entry of index.values()) {
+    const pos = primaryPosition(entry.position);
+    if (!pos) continue;
+    const bucket = byPosition.get(pos) ?? [];
+    bucket.push(entry);
+    byPosition.set(pos, bucket);
+  }
+  const ranks = new Map<string, PositionRank>();
+  for (const [pos, entries] of byPosition) {
+    const sorted = [...entries].sort((a, b) => b.goals - a.goals);
+    sorted.forEach((entry, i) => {
+      ranks.set(normalizeName(entry.name), { rank: i + 1, poolSize: sorted.length, positionLabel: pos });
+    });
+  }
+  return ranks;
+}
+
+async function attachRealHistory(candidates: PickCandidate[], league: SoccerLeague, subjectsMap?: Map<string, SubjectSummary>): Promise<void> {
   const eligibleSubjects = new Map<string, PickCandidate[]>();
   for (const c of candidates) {
     if (!HISTORY_FIELD[c.dimension]) continue;
@@ -130,14 +199,24 @@ async function attachRealHistory(candidates: PickCandidate[], league: SoccerLeag
   // other sport's scheduler jobs).
   const understatIndex = league === 'epl' ? await buildUnderstatNameIndex(season) : null;
   const asaContext = league === 'mls' ? await loadAsaSeasonContext(season) : null;
+  // Real opponent logo, once per rebuild — see toHistoryEntries's own comment.
+  const logoByName = await soccerTeamLogoByName(league);
+  // Real "vs opponent's defense"/"ranked among position" data — EPL only for
+  // now (Understat's team `history[]` has real goals-against per match; MLS's
+  // equivalent needs ASA's own `/mls/teams/xgoals` season rollup, not yet
+  // wired — see americanSocceranalysis.ts's own header for what IS built).
+  const teamDefenseIndex = league === 'epl' && understatIndex ? await buildUnderstatTeamDefenseIndex(season) : null;
+  const positionRanks = understatIndex ? buildPositionRanks(understatIndex) : null;
 
   await mapWithConcurrency([...eligibleSubjects.entries()], 5, async ([subjectId, subjectCandidates]) => {
     const subjectName = subjectCandidates[0].subjectName;
     let matches: NormalizedMatch[] = [];
+    let seasonStats: (UnderstatSeasonStats & { name: string }) | null = null;
     try {
       if (league === 'epl' && understatIndex) {
         const resolved = matchUnderstatIndex(understatIndex, subjectName);
         if (resolved) {
+          seasonStats = resolved;
           const raw = await fetchUnderstatPlayerMatches(resolved.understatId, resolved.teamTitle);
           matches = raw.map((m: UnderstatMatch) => ({
             matchId: m.matchId,
@@ -173,17 +252,144 @@ async function attachRealHistory(candidates: PickCandidate[], league: SoccerLeag
       // Understat per-player fetch above.)
       return;
     }
-    if (matches.length === 0) return;
 
     for (const candidate of subjectCandidates) {
+      const meta = (candidate.subjectMeta ?? {}) as Record<string, unknown>;
+      if (seasonStats) {
+        meta.seasonStats = { games: seasonStats.games, goals: seasonStats.goals, xG: seasonStats.xG, assists: seasonStats.assists, xA: seasonStats.xA, shots: seasonStats.shots, keyPasses: seasonStats.keyPasses };
+        const posRank = positionRanks?.get(normalizeName(seasonStats.name));
+        if (posRank) meta.seasonRank = posRank;
+      }
+      const opponentName = typeof meta.opponentName === 'string' ? meta.opponentName : undefined;
+      if (opponentName && teamDefenseIndex) {
+        const defense = matchUnderstatTeamName(teamDefenseIndex, opponentName);
+        if (defense) {
+          meta.opponentDefense = defense;
+          // X-signal (Phase A of docs/x-signal-remaining-sports-gameplan-
+          // 2026-08-27.md) — real attacking-output dimensions only,
+          // matching the Python side's own _SOCCER_X_SIGNAL_DIMENSIONS
+          // precedent (a team's overall goals-against rate isn't a
+          // meaningful signal for yellow-cards/saves the way it is for a
+          // player's own attacking output).
+          if (SOCCER_X_SIGNAL_DIMENSIONS.has(candidate.dimension)) {
+            meta.matchupFavorable = favorableFromRank(defense.rank, defense.poolSize);
+          }
+        }
+      }
+      candidate.subjectMeta = meta;
+    }
+
+    // Real per-player season line for the Players-tab sidebar list
+    // (2026-08-24) — same role MLB's/NFL's own subjects carry via
+    // `statusLine`, just never populated for soccer before. EPL uses the
+    // real Understat season aggregate already resolved above; MLS has no
+    // such aggregate wired (see this function's own header), so it sums
+    // real match-level goals/assists instead — same real data, no fewer
+    // real games than a proper season total would use.
+    const subject = subjectsMap?.get(subjectId);
+    if (subject && !subject.statusLine) {
+      if (seasonStats) {
+        subject.statusLine = `${seasonStats.goals} G · ${seasonStats.assists} A`;
+      } else if (matches.length > 0) {
+        const goals = matches.reduce((s, m) => s + m.goals, 0);
+        const assists = matches.reduce((s, m) => s + m.assists, 0);
+        subject.statusLine = `${goals} G · ${assists} A`;
+      }
+    }
+
+    if (matches.length === 0) return;
+    for (const candidate of subjectCandidates) {
       const startingLine = candidate.line ?? 0.5;
-      const entries = toHistoryEntries(matches, candidate.dimension, startingLine);
+      const entries = toHistoryEntries(matches, candidate.dimension, startingLine, logoByName);
       if (entries.length === 0) continue;
       candidate.history = entries;
       candidate.sampleSize = entries.length;
       candidate.consistent = entries.every((e) => e.category === entries[0].category);
+
+      // Real "Form" H2H split — how this exact market has gone the real
+      // times this player has faced this exact real opponent, same shape
+      // NFL's own vsOpponentSplit uses. Almost always thin (these two teams
+      // meet 2x/season at most), so an honest `insufficient` is a real
+      // result, not a reason to fabricate one.
+      const candidateMeta = candidate.subjectMeta as Record<string, unknown> | undefined;
+      const opponentAbbrLabel = candidateMeta?.opponent as string | undefined;
+      const opponentName = candidateMeta?.opponentName as string | undefined;
+      if (opponentAbbrLabel && opponentName) {
+        const vsOpponentSplit: SplitEvidence = {
+          kind: 'head-to-head',
+          label: `vs ${opponentAbbrLabel}`,
+          stat: subsetWindow(entries, 'over', (e) => (e.raw as Record<string, unknown> | undefined)?.opponentAbbr === opponentName, { minimum: 1 }),
+        };
+        candidate.supportingSplits = [vsOpponentSplit];
+      }
     }
   });
+}
+
+/**
+ * Real, honestly-priceless candidates for every real per-match-supported
+ * market (see `HISTORY_FIELD`) — for a player with no real `prop_odds` row
+ * on today's slate. Same contract as CFB's/tennis's/NHL's/NBA's
+ * `buildSyntheticPlayerCandidates`: `odds` stays undefined so
+ * `PlayerDetail`'s existing "Add to slip to record a price" empty state
+ * renders; only the LINE is synthetic (real-history average, or a real 0.5
+ * split for a binary market). Reuses the exact same Understat(EPL)/ASA(MLS)
+ * resolution `attachRealHistory` above already runs per-candidate.
+ */
+export async function buildSyntheticPlayerCandidates(subjectId: string, subjectName: string, league: SoccerLeague): Promise<PickCandidate[]> {
+  const season = league === 'epl' ? currentUnderstatSeason() : currentAsaSeason();
+
+  let matches: NormalizedMatch[] = [];
+  try {
+    if (league === 'epl') {
+      const understatIndex = await buildUnderstatNameIndex(season);
+      const resolved = matchUnderstatIndex(understatIndex, subjectName);
+      if (resolved) {
+        const raw = await fetchUnderstatPlayerMatches(resolved.understatId, resolved.teamTitle);
+        matches = raw.map((m: UnderstatMatch) => ({ matchId: m.matchId, date: m.date, opponent: m.opponent, isHome: m.isHome, goals: m.goals, shots: m.shots, assists: m.assists }));
+      }
+    } else {
+      const asaContext = await loadAsaSeasonContext(season);
+      const resolved = matchAsaIndex(asaContext.nameIndex, subjectName);
+      if (resolved) {
+        const raw = asaPlayerMatches(asaContext, resolved.asaPlayerId, resolved.teamId);
+        matches = raw.map((m: AsaMatchStat) => ({ matchId: m.gameId, date: m.date, opponent: m.opponent, isHome: m.isHome, goals: m.goals, shots: m.shots, assists: m.assists }));
+      }
+    }
+  } catch {
+    return [];
+  }
+  if (matches.length === 0) return [];
+  const logoByName = await soccerTeamLogoByName(league);
+
+  return Object.entries(MARKET_META)
+    .filter(([marketKey]) => HISTORY_FIELD[marketKey])
+    .map(([marketKey, meta]) => {
+      const field = HISTORY_FIELD[marketKey];
+      const values = matches.map(field);
+      const avg = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+      const defaultLine = meta.kind === 'binary' ? 0.5 : Math.max(0.5, Math.round(avg * 2) / 2);
+      const entries = toHistoryEntries(matches, marketKey, defaultLine, logoByName);
+      const category = meta.kind === 'binary' ? 'yes' : 'over';
+      const categoryLabel = meta.kind === 'binary' ? 'Yes' : 'Over';
+
+      return {
+        sport: 'soccer',
+        subjectId,
+        subjectName,
+        subjectMeta: { league },
+        dimension: marketKey,
+        dimensionLabel: meta.label,
+        category,
+        categoryLabel,
+        line: meta.kind === 'binary' ? undefined : defaultLine,
+        history: entries,
+        consistent: entries.length > 0 && entries.every((e) => e.category === entries[0].category),
+        sampleSize: entries.length,
+        liveState: { status: 'unknown', distanceToSubject: null, distanceUnit: 'games', etaMinutes: null, etaConfidence: null },
+        odds: undefined,
+      } satisfies PickCandidate;
+    });
 }
 
 export async function buildSoccerSnapshot(league: SoccerLeague): Promise<SportSnapshot> {
@@ -195,6 +401,18 @@ export async function buildSoccerSnapshot(league: SoccerLeague): Promise<SportSn
   const warnings: string[] = [];
 
   for (const game of games) {
+    // Real players, browsable regardless of whether a sportsbook has
+    // posted a real prop for this game yet — see tennis/adapter.ts's
+    // identical fix for the full story on this bug.
+    for (const entry of game.roster) {
+      if (subjectsMap.has(entry.subjectId)) continue;
+      subjectsMap.set(entry.subjectId, {
+        subjectId: entry.subjectId,
+        subjectName: entry.subjectName,
+        meta: { headshotUrl: entry.headshotUrl, teamLogoUrl: teamLogoUrl(entry.teamAbbr), position: entry.position, league },
+      });
+    }
+
     const rows = await readPropOddsForGame(game.gameId);
     if (rows.length === 0) continue;
 
@@ -220,6 +438,7 @@ export async function buildSoccerSnapshot(league: SoccerLeague): Promise<SportSn
       const teamAbbr = rosterEntry?.teamAbbr;
       const isHome = teamAbbr === game.homeAbbr;
       const opponentAbbr = teamAbbr ? (isHome ? game.awayAbbr : game.homeAbbr) : undefined;
+      const opponentName = teamAbbr ? (isHome ? game.awayTeamName : game.homeTeamName) : undefined;
 
       const best = bestRow(marketRows, 'over') ?? bestRow(marketRows, 'yes') ?? marketRows[0];
       // Binary markets deliberately get `line: undefined` here, matching
@@ -240,6 +459,7 @@ export async function buildSoccerSnapshot(league: SoccerLeague): Promise<SportSn
         subjectMeta: {
           team: teamAbbr,
           opponent: opponentAbbr,
+          opponentName,
           isHome,
           headshotUrl: rosterEntry?.headshotUrl,
           teamLogoUrl: teamLogoUrl(teamAbbr),
@@ -275,7 +495,13 @@ export async function buildSoccerSnapshot(league: SoccerLeague): Promise<SportSn
     }
   }
 
-  await attachRealHistory(candidates, league);
+  await attachRealHistory(candidates, league, subjectsMap);
+  // Real "has this league's season actually started" signal (2026-08-24) —
+  // MLS's real off-season (~Dec-Feb) and EPL's real summer break (~May-Aug)
+  // used to leave Scan silently empty with zero explanation, unlike every
+  // other seasonal sport (CFB/NBA/NHL) which already tells the user why.
+  const seasonStatus = await fetchSeasonStatus('soccer', ESPN_LEAGUE_SLUG[league]);
+  const leagueLabel = league === 'epl' ? 'Premier League' : 'MLS';
 
   return {
     sport: 'soccer',
@@ -297,6 +523,11 @@ export async function buildSoccerSnapshot(league: SoccerLeague): Promise<SportSn
     },
     warnings: [...new Set(warnings)],
     fetchedAt: new Date().toISOString(),
+    seasonStatus: {
+      started: seasonStatus.started,
+      nextGameDate: seasonStatus.nextGameDate,
+      label: seasonStatus.started ? undefined : `The ${leagueLabel} season is between seasons right now`,
+    },
   };
 }
 

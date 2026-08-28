@@ -33,15 +33,33 @@ import { easternDate } from '@/lib/sports/mlb/statsapi';
 
 export const CALIBRATION_TTL_MS = 2 * 60 * 1000; // 2 minutes
 
-export function calibrationCacheKey(scope: CalibrationScope, dimension: string | null): string {
-  return `props:calibration:${scope}:${dimension ?? 'none'}`;
+/**
+ * `sport` is now part of the cache key (Phase 2 of docs/scan-playerdetail-
+ * parity-gameplan-2026-08-27.md) — before this, every sport's request read
+ * and wrote the exact same cache entry, so whichever sport happened to
+ * populate it first silently served its numbers to every other sport for
+ * up to CALIBRATION_TTL_MS. Same real cache-key-collision class CLAUDE.md's
+ * golf/schedule postmortem already documents; this is that bug's second
+ * real occurrence, not a hypothetical one.
+ */
+export function calibrationCacheKey(sport: string, scope: CalibrationScope, dimension: string | null): string {
+  return `props:calibration:${sport}:${scope}:${dimension ?? 'none'}`;
 }
 
 /** When the Good Bets record was rescoped to game picks only, excluding the historical player-prop backfill — see goodBetsRecord's own comment. */
 const RECORD_START_DATE = easternDate();
 
-export async function computeCalibrationPayload(scope: CalibrationScope, dimension: string | null) {
-  const sport = 'mlb';
+/**
+ * `sport` used to be a hardcoded `'mlb'` literal here — not a default,
+ * every one of these six queries always read MLB's own pick_history rows
+ * regardless of which sport's page asked (Phase 2 of docs/scan-
+ * playerdetail-parity-gameplan-2026-08-27.md). Real, confirmed-live bug:
+ * NFL/CFB/NBA/NHL/Soccer's Market Trust badges never populated and their
+ * Good Bets tabs had zero qualifying markets, not because those sports
+ * lacked real graded pick_history rows (Phase 7's grading job is sport-
+ * generic), but because this function never looked at them.
+ */
+export async function computeCalibrationPayload(sport: string, scope: CalibrationScope, dimension: string | null) {
   const byMarket = await calibrationByMarket(sport);
   const trustedDimensions = byMarket.filter((m) => isMarketTrusted(m.brierScore, m.n)).map((m) => m.dimension);
   // The record itself only ever covers moneyline/total, and only once

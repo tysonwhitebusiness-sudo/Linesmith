@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import { OddsChip } from './OddsChip';
 import { BookLogo, bookLabel } from './BookLogo';
 import { bestPrice, rowsFor, userBookPrice, type PropOddsRow } from './usePropOdds';
@@ -103,45 +104,76 @@ function formatMarketKey(marketKey: string): string {
 }
 
 /**
- * Line-shopping right rail for a whole game — every player+market+line with
- * a real price comparison to show, not just one player's slice the way
- * PropOddsBoard alone is scoped. Groups `allRows` by subject+market+line and
- * only surfaces a card when 2+ distinct bookmakers have a price for it (a
- * single-book market has nothing to shop between); each qualifying group
- * renders through PropOddsBoard so the actual per-book breakdown logic isn't
- * duplicated.
+ * Line-shopping right rail for a whole game, player-scoped: picking through
+ * every player in the boxscore as one flat list stopped being readable once
+ * a game had any real player-prop coverage, so this asks "which player?"
+ * first and only renders that player's own markets once one's chosen —
+ * nothing loads until a selection is made.
+ *
+ * Unlike the old all-players list, a market isn't hidden just because only
+ * one bookmaker has a price for it — PropOddsBoard already renders a single
+ * book as its own one-line row with no fabricated second column, so a
+ * player with a single-book market still gets that real price shown, not
+ * silently dropped for having "nothing to shop against."
  */
 export function GamePropLineShoppingRail({ allRows, userSportsbook }: { allRows: PropOddsRow[]; userSportsbook: string }) {
-  const groups = new Map<string, { subjectId: string; subjectName: string; marketKey: string; line: number | null; bookmakers: Set<string> }>();
-  for (const row of allRows) {
-    const key = `${row.subjectId}|${row.marketKey}|${row.line ?? 'null'}`;
-    const entry = groups.get(key) ?? { subjectId: row.subjectId, subjectName: row.subjectName, marketKey: row.marketKey, line: row.line, bookmakers: new Set<string>() };
-    entry.bookmakers.add(row.bookmaker);
-    groups.set(key, entry);
-  }
+  const subjects = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const row of allRows) if (!byId.has(row.subjectId)) byId.set(row.subjectId, row.subjectName);
+    return [...byId.entries()]
+      .map(([subjectId, subjectName]) => ({ subjectId, subjectName }))
+      .sort((a, b) => a.subjectName.localeCompare(b.subjectName));
+  }, [allRows]);
 
-  const qualifying = [...groups.values()]
-    .filter((g) => g.bookmakers.size >= 2)
-    .sort((a, b) => a.subjectName.localeCompare(b.subjectName) || a.marketKey.localeCompare(b.marketKey));
+  const [selectedId, setSelectedId] = useState('');
 
-  if (qualifying.length === 0) {
-    return <p className="text-[12px] text-ink-faint">No prop yet has prices from 2+ books to compare.</p>;
+  const markets = useMemo(() => {
+    if (!selectedId) return [];
+    const byKey = new Map<string, { marketKey: string; line: number | null }>();
+    for (const row of allRows) {
+      if (row.subjectId !== selectedId) continue;
+      const key = `${row.marketKey}|${row.line ?? 'null'}`;
+      if (!byKey.has(key)) byKey.set(key, { marketKey: row.marketKey, line: row.line });
+    }
+    return [...byKey.values()].sort((a, b) => a.marketKey.localeCompare(b.marketKey) || (a.line ?? 0) - (b.line ?? 0));
+  }, [allRows, selectedId]);
+
+  if (subjects.length === 0) {
+    return <p className="text-[12px] text-ink-faint">No player props tracked for this game yet.</p>;
   }
 
   return (
     <div className="space-y-3">
-      {qualifying.map((g) => (
-        <div key={`${g.subjectId}|${g.marketKey}|${g.line ?? 'null'}`}>
-          <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-ink-muted">
-            <span className="truncate">{g.subjectName}</span>
-            <span className="shrink-0 text-ink-faint">
-              {formatMarketKey(g.marketKey)}
-              {g.line != null ? ` ${g.line}` : ''}
-            </span>
-          </div>
-          <PropOddsBoard allRows={allRows} subjectId={g.subjectId} marketKey={g.marketKey} line={g.line} userSportsbook={userSportsbook} />
+      <select
+        value={selectedId}
+        onChange={(e) => setSelectedId(e.target.value)}
+        className="w-full rounded-md border border-line bg-card px-2 py-1.5 text-[12px] text-ink"
+      >
+        <option value="">Select a player…</option>
+        {subjects.map((s) => (
+          <option key={s.subjectId} value={s.subjectId}>
+            {s.subjectName}
+          </option>
+        ))}
+      </select>
+
+      {!selectedId ? (
+        <p className="text-[12px] text-ink-faint">Pick a player above to see their shoppable lines.</p>
+      ) : markets.length === 0 ? (
+        <p className="text-[12px] text-ink-faint">No prop prices tracked yet for this player.</p>
+      ) : (
+        <div className="space-y-3">
+          {markets.map((m) => (
+            <div key={`${m.marketKey}|${m.line ?? 'null'}`}>
+              <div className="mb-1 text-[11px] font-medium text-ink-muted">
+                {formatMarketKey(m.marketKey)}
+                {m.line != null ? ` ${m.line}` : ''}
+              </div>
+              <PropOddsBoard allRows={allRows} subjectId={selectedId} marketKey={m.marketKey} line={m.line} userSportsbook={userSportsbook} />
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }

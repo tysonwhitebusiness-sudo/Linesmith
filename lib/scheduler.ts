@@ -65,9 +65,14 @@ async function refreshMlb() {
 async function refreshCalibration() {
   try {
     for (const scope of CALIBRATION_SCOPES) {
-      const key = calibrationCacheKey(scope, null);
+      // MLB only — this proactive scheduler job predates Phase 2 of docs/
+      // scan-playerdetail-parity-gameplan-2026-08-27.md's sport param and
+      // was never asked to warm every sport's cache proactively; the other
+      // sports still get a real, correct payload on demand via the route's
+      // own cachedRoute() build path, just without this warm-cache head start.
+      const key = calibrationCacheKey('mlb', scope, null);
       await awaitRebuild(key, async () => {
-        const payload = await computeCalibrationPayload(scope, null);
+        const payload = await computeCalibrationPayload('mlb', scope, null);
         await writeSnapshotCache(key, JSON.stringify(payload));
         return payload;
       });

@@ -7,6 +7,10 @@ import { SubjectAvatar, TeamLogo } from './SubjectAvatar';
 import { PlayerDetail, FilterChip } from './PlayerDetail';
 import { PlayerSkeleton } from './Skeleton';
 import { useGolfPlayerStats } from './useGolfPlayerStats';
+import { useSyntheticPlayerCandidates } from './useSyntheticPlayerCandidates';
+
+/** Sports with a real GET /api/{sport}/player/[id]/candidates route wired — see useSyntheticPlayerCandidates.ts. */
+const SYNTHETIC_CANDIDATES_SPORTS = new Set<Sport>(['nhl', 'nba', 'tennis', 'cfb', 'soccer']);
 
 /**
  * The Players tab — a picker beside the same `PlayerDetail` component the
@@ -100,6 +104,23 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
   }, [candidates, activeSubjectId, sport, snapshot]);
   const golfPlayerStats = useGolfPlayerStats(sport === 'golf' ? activeSubjectId : null);
 
+  const activeSubject = snapshot?.subjects.find((s) => s.subjectId === activeSubjectId) ?? null;
+  const activeMeta = (activeSubject?.meta ?? {}) as Record<string, unknown>;
+  const synthetic = useSyntheticPlayerCandidates({
+    sport,
+    subjectId: activeSubjectId,
+    team: typeof activeMeta.team === 'string' ? activeMeta.team : undefined,
+    position: typeof activeMeta.position === 'string' ? activeMeta.position : undefined,
+    name: activeSubject?.subjectName,
+    headshotUrl: typeof activeMeta.headshotUrl === 'string' ? activeMeta.headshotUrl : undefined,
+    teamLogoUrl: typeof activeMeta.teamLogoUrl === 'string' ? activeMeta.teamLogoUrl : undefined,
+    tour: typeof activeMeta.tour === 'string' ? activeMeta.tour : undefined,
+    league: typeof activeMeta.league === 'string' ? activeMeta.league : undefined,
+    enabled: mine.length === 0 && !!activeSubjectId && SYNTHETIC_CANDIDATES_SPORTS.has(sport),
+  });
+  const effectiveCandidates = mine.length > 0 ? mine : synthetic.candidates;
+  const waitingOnSynthetic = mine.length === 0 && synthetic.loading && SYNTHETIC_CANDIDATES_SPORTS.has(sport);
+
   if (loading && (snapshot?.subjects ?? []).length === 0) return <PlayerSkeleton />;
 
   return (
@@ -180,15 +201,18 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
       <div className="min-w-0 space-y-3">
         {!activeSubjectId ? (
           <div className="lb-card p-8 text-center text-sm text-ink-muted">No players on today&apos;s slate.</div>
+        ) : waitingOnSynthetic ? (
+          <PlayerSkeleton />
         ) : (
           <PlayerDetail
-            candidates={mine}
+            candidates={effectiveCandidates}
             snapshot={snapshot}
             odds={odds}
             market={market}
             onMarketChange={setMarket}
             onAdd={onAdd}
             addedKeys={addedKeys}
+            fallbackSubjectId={activeSubjectId}
             golfStats={
               sport === 'golf'
                 ? {

@@ -95,6 +95,57 @@ const NFL_MARKETS: Record<string, { full: string; compact: string }> = {
   'rushing-attempts': { full: 'Rushing Attempts', compact: 'Rush Att' },
   // Game/team-level, shared vocabulary with MLB's own moneyline/spread/total keys below.
   'team-total-points': { full: 'Team Total Points', compact: 'Team Pts' },
+  // CFB's teamFormCandidates.ts uses this exact key (not NFL's own
+  // 'team-total-points') for the identical "this team's own score" market —
+  // both point here rather than duplicating the label.
+  'team-points-for': { full: 'Team Points', compact: 'Team Pts' },
+};
+
+const NHL_MARKETS: Record<string, { full: string; compact: string }> = {
+  goals: { full: 'Goals', compact: 'G' },
+  assists: { full: 'Assists', compact: 'A' },
+  points: { full: 'Points', compact: 'PTS' },
+  'shots-on-goal': { full: 'Shots on Goal', compact: 'SOG' },
+  hits: { full: 'Hits', compact: 'HITS' },
+  'blocked-shots': { full: 'Blocked Shots', compact: 'BLK' },
+  saves: { full: 'Saves', compact: 'SV' },
+  'goals-against': { full: 'Goals Against', compact: 'GA' },
+  'team-goals-for': { full: 'Team Goals', compact: 'Team G' },
+};
+
+const NBA_MARKETS: Record<string, { full: string; compact: string }> = {
+  points: { full: 'Points', compact: 'PTS' },
+  rebounds: { full: 'Rebounds', compact: 'REB' },
+  assists: { full: 'Assists', compact: 'AST' },
+  'three-pointers-made': { full: '3-Pointers Made', compact: '3PM' },
+  steals: { full: 'Steals', compact: 'STL' },
+  blocks: { full: 'Blocks', compact: 'BLK' },
+  turnovers: { full: 'Turnovers', compact: 'TO' },
+  'points-rebounds-assists': { full: 'Pts + Reb + Ast', compact: 'PRA' },
+  'points-rebounds': { full: 'Pts + Reb', compact: 'PR' },
+  'points-assists': { full: 'Pts + Ast', compact: 'PA' },
+  'rebounds-assists': { full: 'Reb + Ast', compact: 'RA' },
+  'team-points-for': { full: 'Team Points', compact: 'Team Pts' },
+};
+
+const SOCCER_MARKETS: Record<string, { full: string; compact: string }> = {
+  'anytime-goalscorer': { full: 'Anytime Goalscorer', compact: 'Anytime G' },
+  'first-goalscorer': { full: 'First Goalscorer', compact: '1st Gscorer' },
+  'last-goalscorer': { full: 'Last Goalscorer', compact: 'Last Gscorer' },
+  'two-plus-goals': { full: '2+ Goals', compact: '2+ G' },
+  assists: { full: 'Assists', compact: 'A' },
+  shots: { full: 'Shots', compact: 'SH' },
+  'shots-on-target': { full: 'Shots on Target', compact: 'SOT' },
+  'goals-assists': { full: 'Goals + Assists', compact: 'G+A' },
+  tackles: { full: 'Tackles', compact: 'TKL' },
+  'passes-attempted': { full: 'Passes Attempted', compact: 'Pass Att' },
+  'team-goals-for': { full: 'Team Goals', compact: 'Team G' },
+};
+
+const TENNIS_MARKETS: Record<string, { full: string; compact: string }> = {
+  aces: { full: 'Aces', compact: 'Aces' },
+  'games-won': { full: 'Games Won', compact: 'Gms Won' },
+  'to-win-a-set': { full: 'To Win a Set', compact: 'Win Set' },
 };
 
 const NFL_CATEGORY_LABELS: Record<string, string> = {
@@ -136,23 +187,54 @@ function golfLabel(dimension: string, mode: MarketLabelMode): string {
   const hole = dimension.match(/^hole-(\d+)$/);
   if (hole) return mode === 'compact' ? `H${hole[1]}` : `Hole ${hole[1]}`;
   if (dimension === 'round-score') return mode === 'compact' ? 'Rd Score' : 'Round Score';
+  return titleCase(dimension);
+}
+
+/** Generic kebab-case → Title Case, the last-resort fallback below — an unmapped
+ * dimension still renders cleanly ("Shots On Target") instead of printing its raw
+ * wire key ("shots-on-target") verbatim. Every sport's table exists so its real
+ * markets get a hand-tuned label instead of relying on this, but this is what
+ * keeps a brand-new/unmapped market from ever looking "sloppy behind the scenes". */
+function titleCase(dimension: string): string {
   return dimension
     .split('-')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 }
 
+const SPORT_MARKETS: Partial<Record<Sport, Record<string, { full: string; compact: string }>>> = {
+  nfl: NFL_MARKETS,
+  cfb: NFL_MARKETS,
+  nhl: NHL_MARKETS,
+  nba: NBA_MARKETS,
+  soccer: SOCCER_MARKETS,
+  tennis: TENNIS_MARKETS,
+};
+
 /** Resolve a dimension key to its display text. Exported for sorting and aria. */
 export function marketText(sport: Sport, dimension: string, mode: MarketLabelMode = 'full'): string {
   if (sport === 'golf') return golfLabel(dimension, mode);
-  const table = sport === 'nfl' ? NFL_MARKETS : MLB_MARKETS;
-  const entry = table[dimension];
-  if (!entry) return dimension;
+  // Sport-specific table first (its own real markets), then MLB's table as a
+  // fallback for the shared game/team-level vocabulary every sport reuses
+  // (moneyline, game-total, spread) — mirrors the reuse CFB already gets from
+  // NFL_MARKETS in SPORT_MARKETS above — then a clean generic fallback rather
+  // than ever printing the raw dimension key.
+  const entry = SPORT_MARKETS[sport]?.[dimension] ?? MLB_MARKETS[dimension];
+  if (!entry) return titleCase(dimension);
   return mode === 'compact' ? entry.compact : entry.full;
 }
 
+const SHARED_CATEGORY_LABELS: Record<string, string> = {
+  over: 'Over',
+  under: 'Under',
+  yes: 'Yes',
+  no: 'No',
+  unknown: 'Unrecorded',
+};
+
 export function categoryText(sport: Sport, category: string): string {
-  const labels = sport === 'golf' ? GOLF_CATEGORY_LABELS : sport === 'nfl' ? NFL_CATEGORY_LABELS : MLB_CATEGORY_LABELS;
+  const labels =
+    sport === 'golf' ? GOLF_CATEGORY_LABELS : sport === 'nfl' ? NFL_CATEGORY_LABELS : sport === 'mlb' ? MLB_CATEGORY_LABELS : SHARED_CATEGORY_LABELS;
   return labels[category] ?? category;
 }
 

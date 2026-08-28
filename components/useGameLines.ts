@@ -18,10 +18,15 @@ export interface GameLinesState {
  * changes, which the caller ties to the snapshot's own 3-minute cycle. A
  * second poll would spend Odds API credits on a schedule nobody chose.
  *
- * MLB and NFL have game-line feeds; golf returns immediately with nothing.
+ * Every sport except golf has a game-line feed (odds-architecture rebuild
+ * Phase 6 — /api/odds/lines reads game_odds_book_lines directly for every
+ * sport now, not just MLB/NFL's old special-cased paths). Golf has no
+ * game-line concept (no team-vs-team line to build) and keeps its own
+ * separate tournament-lines pipeline (useTournamentLines), so it still
+ * returns immediately with nothing here.
  */
 export function useGameLines(sport: Sport, refreshKey?: string | null): GameLinesState {
-  const hasLines = sport === 'mlb' || sport === 'nfl';
+  const hasLines = sport !== 'golf';
   const [result, setResult] = useState<UnifiedLinesResult | null>(null);
   const [loading, setLoading] = useState(hasLines);
   const [error, setError] = useState<string | null>(null);

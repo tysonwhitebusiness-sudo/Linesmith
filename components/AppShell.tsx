@@ -14,6 +14,15 @@ import { useSnapshot } from './useSnapshot';
 import { useSlip } from './useSlip';
 import { useGameLines } from './useGameLines';
 import { useSlatePropOdds, rowsFor, resolveCandidateEdge } from './usePropOdds';
+import { usePickHistoryModelData, needsModelDataMerge, mergeModelData } from './usePickHistoryModelData';
+import { useTeamDefenseAllowed } from './useTeamDefenseAllowed';
+import type { CfbTeamDefenseAllowed } from '@/lib/sports/cfb/teamDefenseAllowed';
+import { cfbMatchupFavorableFor } from '@/lib/sports/cfb/teamDefenseAllowedMatch';
+import type { NbaTeamDefenseAllowed } from '@/lib/sports/nba/teamDefenseAllowed';
+import { nbaMatchupFavorableFor } from '@/lib/sports/nba/matchupFavorable';
+import type { NhlTeamDefenseAllowed } from '@/lib/sports/nhl/teamDefenseAllowed';
+import { nhlMatchupFavorableFor } from '@/lib/sports/nhl/matchupFavorable';
+import { mergeMatchupFavorable } from '@/lib/odds/props/matchupFavorable';
 import { useMarketCalibration } from './useMarketCalibration';
 import { useGamePickHistory } from './useGamePickRecord';
 import { TodaysPicksButton } from './TodaysPicksModal';
@@ -135,6 +144,15 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // path — /api/props/lines is MLB-scoped underneath (loadAllGameContexts()
   // only knows MLB games), so it wouldn't return anything for soccer anyway.
   const hasPropsPipeline = sport === 'mlb' || sport === 'nfl';
+  // Today's Picks (docs/daily-picks-full-model-build-2026-08-27.md) —
+  // real game/prop/rare-market picks now exist in pick_history for every
+  // sport predict/generic_prop_production.py covers, not just MLB/NFL's
+  // own live-odds pipeline above (a genuinely separate concern: this flag
+  // gates the Today's Picks button, hasPropsPipeline gates the Scan
+  // tab's slate-wide book-price table). Golf/Tennis stay out — no daily-
+  // games concept (golf) or no design yet (tennis), same as the rest of
+  // this build.
+  const hasTodaysPicks = sport === 'mlb' || sport === 'nfl' || sport === 'cfb' || sport === 'nba' || sport === 'nhl' || sport === 'soccer';
   const { snapshot, loading, error, lastFetched, refresh } = useSnapshot(sport, sport === 'mlb' ? scanDate : undefined, league);
   const slip = useSlip(sport);
 
@@ -143,11 +161,29 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   const odds = useGameLines(sport, snapshot?.fetchedAt ?? null);
   const golfLines = useGolfLines(snapshot?.fetchedAt ?? null, sport === 'golf');
   // Slate-wide Tier 1 prop prices for Scan's dense table.
-  const slateProps = useSlatePropOdds(snapshot?.fetchedAt ?? null, hasPropsPipeline);
+  const slateProps = useSlatePropOdds(snapshot?.fetchedAt ?? null, hasPropsPipeline, sport);
   // Scan's price gate (below) depends on slateProps having actually
   // resolved — without this, the gate would read an empty rows array as
   // "nothing has real odds" and flash an empty Scan table on every load.
   const dataLoading = loading || (hasPropsPipeline && slateProps.loading);
+  // Scan-table Score-column fix (2026-08-27) — these five sports' own
+  // adapter.ts files never populated subjectMeta.modelProb (no real model
+  // existed for them until predict/generic_prop_production.py). mlb/golf
+  // already have their own real, independently-fitted models wired in at
+  // snapshot-build time; merging pick_history's generic model on top there
+  // would silently overwrite a better number with a worse one.
+  const shouldMergeModelData = needsModelDataMerge(sport);
+  const modelData = usePickHistoryModelData(sport, snapshot?.fetchedAt ?? null, shouldMergeModelData);
+  // X-signal for CFB (Phase C of docs/x-signal-remaining-sports-gameplan-
+  // 2026-08-27.md) — same client-side merge shape as modelData above, since
+  // CFB's real opponent-rank data is fetched by a separate route/hook
+  // rather than being available server-side at adapter build time the way
+  // NFL's/Soccer's own X-signal is.
+  const cfbTeamDefense = useTeamDefenseAllowed<CfbTeamDefenseAllowed>('/api/cfb/team-defense-allowed', sport === 'cfb');
+  // X-signal for NBA/NHL (Phase D/E of the same gameplan) — identical shape
+  // to CFB above, one hook per sport since each has its own route/type.
+  const nbaTeamDefense = useTeamDefenseAllowed<NbaTeamDefenseAllowed>('/api/nba/team-defense-allowed', sport === 'nba');
+  const nhlTeamDefense = useTeamDefenseAllowed<NhlTeamDefenseAllowed>('/api/nhl/team-defense-allowed', sport === 'nhl');
 
   // Lets the Teams pages' tab row link straight back to Players (not just
   // Scan) without Teams needing to live inside this component's own state.
@@ -170,7 +206,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // engine needs graded-outcome data to calibrate a threshold against, which
   // a brand-new sport doesn't have yet (same reasoning as hiding it below).
   const [scanView, setScanView] = useState<ScanView>(() => (sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl' || sport === 'tennis' ? 'All' : 'Good Bets'));
-  const calibration = useMarketCalibration();
+  const calibration = useMarketCalibration(true, sport);
   const gamePickHistory = useGamePickHistory(sport);
   const [scanScope, setScanScope] = useState<'players' | 'games'>('players');
   // Golf only: Hole Props (the existing per-hole pattern-scan market) vs.
@@ -286,10 +322,35 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   }, [sport, clearAll]);
 
   const candidates = useMemo(() => {
-    const base = snapshot?.candidates ?? [];
+    // Scan-table Score/Edge fix (Phase 1 of docs/scan-playerdetail-parity-
+    // gameplan-2026-08-27.md) — shared with every PlayerDetail page route
+    // via usePickHistoryModelData.ts's own mergeModelData, so Scan and
+    // PlayerDetail can never compute this differently from each other.
+    let base = shouldMergeModelData ? mergeModelData(snapshot?.candidates ?? [], modelData.rowsByKey) : (snapshot?.candidates ?? []);
+    if (sport === 'cfb' && cfbTeamDefense.teams.length > 0) {
+      base = mergeMatchupFavorable(base, (c) =>
+        cfbMatchupFavorableFor(c.dimension, (c.subjectMeta as Record<string, unknown> | undefined)?.opponentName as string | undefined, cfbTeamDefense.teams),
+      );
+    }
+    // NBA/NHL: a candidate's own subjectMeta never carries `position` (only
+    // the separate SubjectSummary does — real gap found building this,
+    // see nba/matchupFavorable.ts's header), so it's resolved once here
+    // from snapshot.subjects rather than per-candidate.
+    if (sport === 'nba' && nbaTeamDefense.teams.length > 0) {
+      const positionBySubjectId = new Map((snapshot?.subjects ?? []).map((s) => [s.subjectId, s.meta?.position as string | undefined]));
+      base = mergeMatchupFavorable(base, (c) =>
+        nbaMatchupFavorableFor(positionBySubjectId.get(c.subjectId), (c.subjectMeta as Record<string, unknown> | undefined)?.opponent as string | undefined, nbaTeamDefense.teams),
+      );
+    }
+    if (sport === 'nhl' && nhlTeamDefense.teams.length > 0) {
+      const positionBySubjectId = new Map((snapshot?.subjects ?? []).map((s) => [s.subjectId, s.meta?.position as string | undefined]));
+      base = mergeMatchupFavorable(base, (c) =>
+        nhlMatchupFavorableFor(positionBySubjectId.get(c.subjectId), (c.subjectMeta as Record<string, unknown> | undefined)?.opponent as string | undefined, nhlTeamDefense.teams),
+      );
+    }
     if (sport !== 'golf') return base;
     return base.filter((c) => (golfMarketView === 'rounds' ? c.dimension === 'round-score' : c.dimension !== 'round-score'));
-  }, [snapshot, sport, golfMarketView]);
+  }, [snapshot, sport, golfMarketView, shouldMergeModelData, modelData.rowsByKey, cfbTeamDefense.teams, nbaTeamDefense.teams, nhlTeamDefense.teams]);
 
   // Extract today's games from the snapshot for the Games strip.
   const games: SlateGame[] = useMemo(() => {
@@ -600,6 +661,30 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
           </div>
         ) : null}
 
+        {/* Real "season hasn't started yet" state — a sport can have real
+            pre-season props posted (candidates.length > 0) well before a
+            single game has actually been played, so this is a distinct
+            signal from an empty Scan table, not implied by one. Only a
+            sport whose adapter actually computed `seasonStatus` shows this
+            (see lib/core/types.ts's own doc comment) — mid-season sports
+            simply never set the field. */}
+        {snapshot?.seasonStatus && !snapshot.seasonStatus.started ? (
+          <div className="lb-card mb-3 flex items-center gap-3 border-line bg-accent-soft/30 p-3">
+            <img src="/brand/linesmith-mark.png" alt="" width={28} height={18} className="h-[22px] w-auto shrink-0 select-none" />
+            <div className="min-w-0 text-[13px]">
+              <p className="font-semibold text-ink">
+                {snapshot.seasonStatus.label ?? `The ${SPORT_LABEL[sport]} season hasn't started yet`}
+              </p>
+              <p className="text-ink-muted">
+                {snapshot.seasonStatus.nextGameDate
+                  ? `First real game: ${new Date(snapshot.seasonStatus.nextGameDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}. `
+                  : null}
+                Any props below are real pre-season lines — check back once games are underway for live form.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         {/* Collapsed by default — a long roster (NFL's ~1,700 leaguewide
             skill players vs. crosswalk gaps for rookies/practice-squad
             names) can produce dozens of these, and a permanently-open wall
@@ -621,7 +706,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
 
         {tab === 'Scan' ? (
           <>
-            {hasPropsPipeline ? (
+            {hasTodaysPicks ? (
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <TodaysPicksButton sport={sport} date={easternDate()} />
                 <LinesmithRecordBar record={gamePickHistory.record} />
@@ -656,6 +741,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                 ) : (
                   <GameLinesView
                     entries={slate.entries}
+                    sport={sport}
                     onNavigate={(gamePk) =>
                       router.push(sport === 'soccer' || sport === 'tennis' ? `/${sport}/${league}/game/${gamePk}` : `/${sport}/game/${gamePk}`)
                     }

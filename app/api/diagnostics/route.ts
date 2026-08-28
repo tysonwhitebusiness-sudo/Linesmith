@@ -7,71 +7,85 @@
 
 import { NextResponse } from 'next/server';
 import { getMlbGameLines } from '@/lib/odds/oddsApi';
-import { readHarvesterOutput } from '@/lib/odds/oddsHarvester';
-import { mergeLines } from '@/lib/odds/merge';
-import { readOddsCache, logSystemEvent } from '@/lib/db/client';
+import { readOddsCache, logSystemEvent, readGameOddsBookLinesHealth, type GameOddsBookLinesHealthRow } from '@/lib/db/client';
 import { recentFetchErrors } from '@/lib/sports/mlb/statsapi';
-import fs from 'node:fs';
-import path from 'node:path';
-import type { GameLine } from '@/lib/odds/oddsApi';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+/**
+ * Every sport odds-architecture-rebuild-2026-08-25.md covers except golf
+ * (no game-line concept at all). Same list, same reasoning, as python-odds-
+ * service/src/health_check.py's GAME_ODDS_BOOK_LINES_SPORTS — kept as two
+ * short hardcoded lists rather than one shared file because TS and Python
+ * don't share a module boundary here; if this list and health_check.py's
+ * ever needs to change, change both.
+ */
+const GAME_ODDS_BOOK_LINES_SPORTS = ['mlb', 'nfl', 'cfb', 'nba', 'nhl', 'soccer', 'tennis'];
+const STALE_HOURS = 24;
 
-interface HarvesterFileInfo {
-  filename: string;
-  exists: boolean;
-  sizeBytes: number | null;
-  modifiedAt: string | null;
-  matchCount: number | null;
-  error: string | null;
+interface SportOddsHealth {
+  sport: string;
+  healthy: boolean;
+  status: string;
+  sources: { source: string; count: number; latestFetchedAt: string; ageHours: number }[];
 }
 
-function inspectHarvesterFile(sport: string, mode: 'live' | 'upcoming'): HarvesterFileInfo {
-  const filename = `${sport}_${mode}.json`;
-  const filePath = path.join(DATA_DIR, filename);
-
-  try {
-    const stat = fs.statSync(filePath);
-    const result = readHarvesterOutput(sport, mode);
-    return {
-      filename,
-      exists: true,
-      sizeBytes: stat.size,
-      modifiedAt: stat.mtime.toISOString(),
-      matchCount: result.matches.length,
-      error: result.error ?? null,
-    };
-  } catch {
-    return {
-      filename,
-      exists: false,
-      sizeBytes: null,
-      modifiedAt: null,
-      matchCount: null,
-      error: 'File not found',
-    };
+/**
+ * Real "is data actually reaching game_odds_book_lines" check — the blind
+ * spot this whole rebuild plan called out (Phase 7): every check before
+ * this verified a background job ran, never that its output reached the
+ * shared table every sport's Game Detail/Scan page actually reads. Ported
+ * from health_check.py's check_game_odds_book_lines_freshness so a human
+ * looking at this page in the browser sees the same real signal a human
+ * running the Python CLI does. Per-sport, not per-(sport,source): see that
+ * function's own docstring for why a hardcoded expected-source list per
+ * sport isn't the right call here.
+ */
+function summarizeGameOddsBookLinesHealth(rows: GameOddsBookLinesHealthRow[]): SportOddsHealth[] {
+  const bySport = new Map<string, GameOddsBookLinesHealthRow[]>();
+  for (const r of rows) {
+    const list = bySport.get(r.sport);
+    if (list) list.push(r);
+    else bySport.set(r.sport, [r]);
   }
+
+  const now = Date.now();
+  return GAME_ODDS_BOOK_LINES_SPORTS.map((sport) => {
+    const sportRows = bySport.get(sport) ?? [];
+    const sources = sportRows.map((r) => ({
+      source: r.source,
+      count: r.count,
+      latestFetchedAt: r.latestFetchedAt,
+      ageHours: (now - new Date(r.latestFetchedAt).getTime()) / 3_600_000,
+    }));
+
+    if (sources.length === 0) {
+      return { sport, healthy: true, status: 'no rows in the last 7 days (not failed — could be a real off-season gap)', sources };
+    }
+
+    const freshestAgeHours = Math.min(...sources.map((s) => s.ageHours));
+    const healthy = freshestAgeHours <= STALE_HOURS;
+    const sourcesDesc = sources.map((s) => `${s.source}=${s.count}`).join(', ');
+    return {
+      sport,
+      healthy,
+      status: healthy
+        ? `healthy — freshest row ${freshestAgeHours.toFixed(1)}h ago (last 7d by source: ${sourcesDesc})`
+        : `STALE — freshest row ${freshestAgeHours.toFixed(0)}h old, past the ${STALE_HOURS}h threshold (last 7d by source: ${sourcesDesc})`,
+      sources,
+    };
+  });
 }
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const force = url.searchParams.get('force') !== null;
-  const sport = url.searchParams.get('sport') ?? 'mlb';
-  // OddsHarvester uses "baseball" as the sport key, not "mlb".
-  const harvesterSport = sport === 'mlb' ? 'baseball' : sport;
 
   try {
     // Run all health checks in parallel
-    const [oddsApiResult, liveFile, upcomingFile, cacheRow] = await Promise.all([
+    const [oddsApiResult, cacheRow, gameOddsBookLinesRows] = await Promise.all([
       getMlbGameLines(force),
-      Promise.resolve(inspectHarvesterFile(harvesterSport, 'live')),
-      Promise.resolve(inspectHarvesterFile(harvesterSport, 'upcoming')),
-      Promise.resolve(readOddsCache('baseball_mlb:h2h,spreads,totals:us')),
+      readOddsCache('baseball_mlb:h2h,spreads,totals:us'),
+      readGameOddsBookLinesHealth(),
     ]);
-
-    // Merge to see the combined view
-    const harvesterResult = readHarvesterOutput(harvesterSport, 'live');
-    const merged = mergeLines(oddsApiResult.lines, harvesterResult.matches);
 
     // Per-source line details
     const oddsApiLineDetail = oddsApiResult.lines.map((l) => ({
@@ -83,36 +97,7 @@ export async function GET(request: Request) {
       bookCount: l.bookCount,
     }));
 
-    const harvesterLineDetail = harvesterResult.matches.map((m) => ({
-      matchUrl: m.matchUrl,
-      matchup: `${m.awayTeam} @ ${m.homeTeam}`,
-      matchDate: m.matchDate,
-      bookmakers: m.bookmakers.map((b) => ({
-        name: b.bookmaker,
-        homeOdds: b.homeOdds ?? null,
-        awayOdds: b.awayOdds ?? null,
-        totalPoint: b.point ?? null,
-        overPrice: b.overPrice ?? null,
-        underPrice: b.underPrice ?? null,
-      })),
-      livePeriod: m.livePeriod ?? null,
-      liveScore: m.liveScore ?? null,
-    }));
-
-    const mergedLineDetail = merged.map((l) => ({
-      eventId: l.eventId,
-      matchup: `${l.awayTeam} @ ${l.homeTeam}`,
-      source: l.source,
-      moneyline: l.moneyline ?? null,
-      total: l.total?.point ?? null,
-      bookCount: l.bookCount,
-      bookmakers: l.bookmakers.map((b) => ({
-        name: b.bookmaker,
-        homeOdds: b.homeOdds ?? null,
-        awayOdds: b.awayOdds ?? null,
-      })),
-      hasLiveData: Boolean(l.liveScore || l.livePeriod),
-    }));
+    const gameOddsBookLinesHealth = summarizeGameOddsBookLinesHealth(gameOddsBookLinesRows);
 
     return NextResponse.json(
       {
@@ -143,21 +128,15 @@ export async function GET(request: Request) {
           lines: oddsApiLineDetail,
         },
 
-        oddsHarvester: {
-          live: liveFile,
-          upcoming: upcomingFile,
-          lines: harvesterLineDetail,
-        },
-
-        merged: {
-          totalLines: merged.length,
-          bySource: {
-            'odds-api': merged.filter((l) => l.source === 'odds-api').length,
-            oddsharvester: merged.filter((l) => l.source === 'oddsharvester').length,
-            both: merged.filter((l) => l.source === 'both').length,
-          },
-          withLiveData: merged.filter((l) => l.liveScore || l.livePeriod).length,
-          lines: mergedLineDetail,
+        // Real "is data actually reaching game_odds_book_lines" check
+        // (odds-architecture rebuild Phase 7) — every sport's Game Detail/
+        // Scan page reads through this one shared table; this is the
+        // signal that would have caught NHL sitting at zero real rows
+        // before Phase 4/5 shipped it real OddsHarvester coverage,
+        // automatically, instead of a manual audit finding it.
+        gameOddsBookLines: {
+          allHealthy: gameOddsBookLinesHealth.every((s) => s.healthy),
+          bySport: gameOddsBookLinesHealth,
         },
 
         env: {

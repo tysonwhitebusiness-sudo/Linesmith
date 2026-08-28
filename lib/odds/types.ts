@@ -13,6 +13,10 @@ export interface BookmakerOdds {
   bookmaker: string;
   homeOdds?: number; // decimal
   awayOdds?: number;
+  /** Soccer's real third moneyline outcome — baseball/football/basketball/hockey never
+   * set this. Added alongside game_odds_book_lines's multi-source read path, which
+   * writes a real 'draw' side for soccer's moneyline (the-odds-api, ESPN). */
+  drawOdds?: number;
   overPrice?: number;
   underPrice?: number;
   point?: number;
@@ -31,8 +35,8 @@ export interface UnifiedGameLine {
   commenceTime: string;
   homeTeam: string;
   awayTeam: string;
-  /** Best available moneyline (for quick display). */
-  moneyline?: { home?: number; away?: number; book?: string };
+  /** Best available moneyline (for quick display). `draw` is soccer-only. */
+  moneyline?: { home?: number; away?: number; draw?: number; book?: string };
   /** Best available spread. */
   spread?: { homePoint?: number; homePrice?: number; awayPoint?: number; awayPrice?: number; book?: string };
   /** Best available total. */
@@ -49,9 +53,27 @@ export interface UnifiedGameLine {
    * `both` are MLB's existing values (see merge.ts); `sharpapi`/`rundown`/
    * `sportsgameodds`/`multiple` are NFL's (see nflGameLines.ts) — kept in the
    * same union rather than a second type so `UnifiedGameLine` stays one
-   * shape across sports.
+   * shape across sports. `the-odds-api`/`espn`/`propline`/`game-odds-book-
+   * lines` are the real `source` column values game_odds_book_lines's
+   * multi-source read path (readGameOddsBookLines, lib/db/client.ts) can
+   * report — `game-odds-book-lines` specifically means "more than one real
+   * source contributed, no single tag is accurate" (a genuinely different
+   * case from NFL's pre-existing `multiple`, which meant "more than one of
+   * a fixed set of NFL-only providers" — kept distinct rather than reusing
+   * `multiple` so a reader can't conflate the two provenances).
    */
-  source: 'odds-api' | 'oddsharvester' | 'both' | 'sharpapi' | 'rundown' | 'sportsgameodds' | 'multiple';
+  source:
+    | 'odds-api'
+    | 'oddsharvester'
+    | 'both'
+    | 'sharpapi'
+    | 'rundown'
+    | 'sportsgameodds'
+    | 'multiple'
+    | 'the-odds-api'
+    | 'espn'
+    | 'propline'
+    | 'game-odds-book-lines';
 }
 
 // ---------------------------------------------------------------------------

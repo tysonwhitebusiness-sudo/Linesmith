@@ -12,13 +12,14 @@ import type { GameDetailGame } from './GameDetail';
 import type { BoxScoreTeam, BoxScoreBatter, BoxScorePitcher, LiveInningPlay, LiveTotals } from '@/lib/sports/mlb/liveGame';
 
 /**
- * Game hero card — top-of-page matchup summary, rebuilt against
- * `Game Hero Card.html`. A Matchup/Live tab pair sits over the same
- * team/pick/weather footer: Matchup is the always-available overview (score
- * or first pitch, Linesmith's picks, venue/weather), Live is a detailed
- * in-game view (count/outs/bases, by-inning line score, live pitching
- * lines) only meaningful — and only enabled — once the game is actually in
- * progress.
+ * Game hero card — top-of-page matchup summary. One card, state-driven, no
+ * manual tab click (2026-08-24 redesign — see the Unified Game Card
+ * gameplan): the always-available matchup overview (score-or-kickoff,
+ * Linesmith's picks, venue/weather) sits on top, and a detailed live/final
+ * section (count/outs/bases, by-inning line score, live pitching lines —
+ * whatever `renderLiveDetail` supplies for that sport) appears underneath
+ * automatically the instant the game goes live, and stays in place —
+ * frozen on its last real value, not removed — once the game is final.
  *
  * `C` used to be this card's own one-off palette, independent of the shared
  * `masters`/`ink-*` tokens the rest of the redesigned cards use — that
@@ -32,7 +33,7 @@ import type { BoxScoreTeam, BoxScoreBatter, BoxScorePitcher, LiveInningPlay, Liv
  * now the `live` token group in tailwind.config.ts instead of one-off hex.
  */
 
-const C = {
+export const C = {
   cardBorder: '#d3d4d7', // line
   divider: '#dcdee1', // line-soft
   tabTrack: '#f1f2f3', // surface-subtle
@@ -128,14 +129,14 @@ export interface GameHeroCardProps {
   /** NFL's raw moneyline/spread/total price strip shown in the pregame center column — MLB has no equivalent (its pregame odds live in the pick-lock panel below, not inline center). undefined for MLB. */
   renderCenterPregameExtra?: () => ReactNode;
   /**
-   * Presence gates whether the Matchup/Live tab switcher renders at all.
-   * MLB supplies its rich LiveTab (bases/box score/bullpen — see the
-   * exported `LiveTab` below) and gets tabs; NFL has no equivalent expanded
-   * live view today (its live state is already fully shown inline via
-   * `isLive`/`liveScore`/`livePeriodLabel`) and supplies nothing, so no tabs
-   * render — matching NFL's current untabbed design. Receives the tab's own
-   * active/inactive state so a live-polling child (like `LiveTab`) can gate
-   * its own fetch interval, the same way it already reads `active` today.
+   * Presence gates whether a live/final detail section renders below the
+   * matchup body at all — every sport supplies one today (MLB's rich
+   * `LiveTab` — bases/box score/bullpen; NHL/NBA/soccer/tennis/NFL/CFB's
+   * own `*LiveTab`). It renders automatically once `isLive || isFinal`, no
+   * click required — receives that same boolean so a live-polling child can
+   * gate its own fetch (a `false` here means pregame — nothing to fetch
+   * yet; `true` covers both "poll me, I'm live" and "fetch me once, I'm
+   * final", the same distinction `isFinal` already lets the child make).
    */
   renderLiveDetail?: (active: boolean) => ReactNode;
 }
@@ -1064,6 +1065,29 @@ export function LiveTab({
 // Root
 // ---------------------------------------------------------------------------
 
+/**
+ * Live/final section header — replaces the old manual Matchup/Live tab
+ * switcher. State is read off the game itself (`isLive`/`isFinal`), never a
+ * click: this band appears the instant a game goes live and stays in place,
+ * unchanged, once it's final — the live detail below it freezes on its last
+ * real value rather than disappearing, matching every other frozen-not-
+ * removed section on this card (odds, injuries).
+ */
+function LiveSectionBand({ isLive }: { isLive: boolean }) {
+  return (
+    <div className="flex items-center gap-2 px-[26px] py-2.5" style={{ borderTop: `1px solid ${C.divider}`, borderBottom: `1px solid ${C.divider}`, backgroundColor: C.tabTrack }}>
+      {isLive ? (
+        <>
+          <span className="h-1.5 w-1.5 animate-lb-pulse rounded-full" style={{ backgroundColor: C.pulseDot }} />
+          <span className="text-meta font-semibold uppercase tracking-[.14em]" style={{ color: C.olive }}>Live</span>
+        </>
+      ) : (
+        <span className="text-meta font-semibold uppercase tracking-[.14em]" style={{ color: C.faintMono }}>Final box score</span>
+      )}
+    </div>
+  );
+}
+
 export function GameHeroCard({
   away,
   home,
@@ -1081,9 +1105,6 @@ export function GameHeroCard({
   venue,
   renderLiveDetail,
 }: GameHeroCardProps) {
-  const [tab, setTab] = useState<'matchup' | 'live'>(isLive ? 'live' : 'matchup');
-  const tabbed = renderLiveDetail != null;
-
   const body = (
     <HeroBody
       away={away}
@@ -1103,39 +1124,17 @@ export function GameHeroCard({
     />
   );
 
-  if (!tabbed) {
-    return <section className="lb-card-hero overflow-hidden">{body}</section>;
-  }
+  const showLiveDetail = renderLiveDetail != null && (isLive || isFinal);
 
   return (
     <section className="lb-card-hero overflow-hidden">
-      <div className="flex items-center gap-2.5 px-[26px] py-3" style={{ borderBottom: `1px solid ${C.divider}` }}>
-        <div className="flex rounded-full p-[3px]" style={{ backgroundColor: C.tabTrack }}>
-          <button
-            type="button"
-            onClick={() => setTab('matchup')}
-            className="rounded-full px-3.5 py-1.5 text-dense font-medium tracking-[.08em]"
-            style={{ backgroundColor: tab === 'matchup' ? C.tabActiveBg : 'transparent', color: tab === 'matchup' ? C.tabActiveText : C.tabInactiveText }}
-          >
-            Matchup
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('live')}
-            className="rounded-full px-3.5 py-1.5 text-dense font-medium tracking-[.08em]"
-            style={{ backgroundColor: tab === 'live' ? C.tabActiveBg : 'transparent', color: tab === 'live' ? C.tabActiveText : C.tabInactiveText }}
-          >
-            Live
-          </button>
+      {body}
+      {showLiveDetail ? (
+        <div>
+          <LiveSectionBand isLive={isLive} />
+          {renderLiveDetail(isLive || isFinal)}
         </div>
-        {isLive ? (
-          <div className="ml-auto text-meta tracking-[.08em]" style={{ color: C.faintMono }}>
-            REFRESHES AT EACH HALF-INNING
-          </div>
-        ) : null}
-      </div>
-
-      {tab === 'matchup' ? body : renderLiveDetail(tab === 'live')}
+      ) : null}
     </section>
   );
 }

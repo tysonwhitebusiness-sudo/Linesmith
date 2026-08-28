@@ -13,8 +13,17 @@
  * arrives with `history: []` — real "no source yet" for that specific market,
  * not fabricated.
  *
- * `model`/`hitterStats`/`matchups` stay `null` — no grading/ranking model or
- * per-player season-stats source wired for soccer yet (docs/soccer-gameplan-2026-08-22.md §5).
+ * `nflMatchup`/`nflSeasonStats` (2026-08-23): despite the field names, both
+ * are sport-agnostic in shape (`NflPlayerVsDefenseCardProps`/plain ranked
+ * rows) — reused directly rather than forking a `soccerMatchup` type, since
+ * the UI concept is genuinely the same, just populated with real goals/xG
+ * instead of rush yards (CLAUDE.md's sport-adapter rule 4: reuse when
+ * genuinely the same shape, branch only when genuinely different). Built
+ * from real Understat season aggregates + real per-team goals-against rate
+ * (`adapter.ts`'s `attachRealHistory`, which already attaches
+ * `subjectMeta.seasonStats`/`.seasonRank`/`.opponentDefense`) — EPL only for
+ * now, MLS's equivalent needs ASA's own team-season endpoint wired in.
+ * `model`/`hitterStats` stay `null` — no grading/ranking model for soccer yet.
  * `propOddsBoard` is real and independent of history, same as before.
  */
 
@@ -22,7 +31,31 @@ import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import type { PropOddsRow } from '@/lib/db/client';
-import type { ChipDef, GamelogRow, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+
+interface SoccerSeasonStats {
+  games: number;
+  goals: number;
+  xG: number;
+  assists: number;
+  xA: number;
+  shots: number;
+  keyPasses: number;
+}
+interface SoccerSeasonRank {
+  rank: number;
+  poolSize: number;
+  positionLabel: string;
+}
+interface SoccerOpponentDefense {
+  teamTitle: string;
+  gamesPlayed: number;
+  goalsAgainstPerGame: number;
+  xGAPerGame: number;
+  goalsForPerGame: number;
+  rank: number;
+  poolSize: number;
+}
 
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
   return (entry.raw ?? {}) as Record<string, unknown>;
@@ -39,6 +72,7 @@ export interface SoccerPlayerDetailScope {
   opponentOnly: boolean;
   lastN: number | 'all';
   showAllGames: boolean;
+  kpiScope: 'season' | 'l15';
 }
 
 export interface SoccerPlayerDetailInput {
@@ -58,6 +92,12 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
   const meta = (active.subjectMeta ?? {}) as Record<string, unknown>;
   const teamAbbr = typeof meta.team === 'string' ? meta.team : undefined;
   const opponentAbbr = typeof meta.opponent === 'string' ? meta.opponent : undefined;
+  // Real team name (Understat/ASA's own opponent identifier, e.g. "Newcastle
+  // United") — history entries' `raw.opponentAbbr` carries this same real
+  // name despite its field name (see adapter.ts's comment), never the ESPN
+  // abbreviation `opponentAbbr` above holds. Filtering/H2H below must
+  // compare against this, or every comparison silently fails.
+  const opponentName = typeof meta.opponentName === 'string' ? meta.opponentName : undefined;
   const headshotUrl = typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined;
   const teamLogoUrl = typeof meta.teamLogoUrl === 'string' ? meta.teamLogoUrl : undefined;
   const opponentLogoUrl = typeof meta.opponentLogoUrl === 'string' ? meta.opponentLogoUrl : undefined;
@@ -74,8 +114,8 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
 
   // ---- Scope filters (mirrors NflPlayerDetail's opponent + lastN; no venue filter) ----
   let scoped = active.history;
-  if (scope.opponentOnly && opponentAbbr) {
-    scoped = scoped.filter((e) => (rawOf(e).opponentAbbr as string | undefined) === opponentAbbr);
+  if (scope.opponentOnly && opponentName) {
+    scoped = scoped.filter((e) => (rawOf(e).opponentAbbr as string | undefined) === opponentName);
   }
   if (scope.lastN !== 'all') scoped = scoped.slice(-scope.lastN);
 
@@ -88,9 +128,9 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     l15: fixedWindow(measured, wanted, 15),
     szn: openWindow(measured, wanted, { minimum: 1 }),
     h2h:
-      !opponentAbbr
+      !opponentName
         ? { status: 'insufficient', available: 0, required: 1 }
-        : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => (rawOf(e).opponentAbbr as string | undefined) === opponentAbbr, { minimum: 1 }),
+        : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => (rawOf(e).opponentAbbr as string | undefined) === opponentName, { minimum: 1 }),
   };
 
   const chips: ChipDef[] = [
@@ -101,6 +141,12 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     { key: 'lastN:all', label: 'All games' },
   ];
 
+  // Real opponent logo — `toHistoryEntries` (adapter.ts) now embeds
+  // `opponentLogoUrl` via `soccerTeamLogoByName`/`matchSoccerTeamLogo`; this
+  // just reads it (2026-08-24 fix — soccer's chart/gamelog never had
+  // opponent logos before).
+  const logoFor = (entry: PickCandidate['history'][number]) => rawOf(entry).opponentLogoUrl as string | undefined;
+
   const chart: PlayerDetailChart =
     scoped.length > 0
       ? {
@@ -110,6 +156,7 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
           data: scoped,
           line,
           wantOver,
+          logoFor,
         }
       : {
           kind: 'distribution',
@@ -118,6 +165,7 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
           data: [],
           line,
           wantOver,
+          logoFor,
         };
 
   // ---- Gamelog: real goals/shots/assists per match (whichever were captured on `raw`) ----
@@ -135,15 +183,82 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     return {
       key: `${entry.period}-${index}`,
       periodLabel: entry.periodLabel ?? `Game #${entry.period}`,
+      opponentLogoUrl: raw.opponentLogoUrl as string | undefined,
       opponentLabel: oppAbbr ? `${isHome ? 'vs' : '@'} ${oppAbbr}` : 'Opponent unknown',
       values,
     };
   });
 
+  // Real summary strip (2026-08-24) — top-of-card headline stats, scoped by
+  // the existing KPI-scope toggle.
+  const kpiSource = scope.kpiScope === 'l15' ? scoped.slice(-15) : scoped;
+  const summaryStrip: SummaryStat[] | undefined =
+    kpiSource.length > 0 && columns.length > 0
+      ? columns.slice(0, 4).map((col) => ({
+          label: col.label,
+          display: String(kpiSource.reduce((s, e) => s + (Number(rawOf(e)[col.key]) || 0), 0)),
+        }))
+      : undefined;
+
   const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
   const propOddsBoard: PropOddsBoardProps | null =
     activeMarketKey && propOdds
       ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: active.line ?? null, userSportsbook: propOdds.userSportsbook }
+      : null;
+
+  // ---- Real season totals + opponent defense (Understat, EPL) ----
+  const seasonStats = meta.seasonStats as SoccerSeasonStats | undefined;
+  const seasonRank = meta.seasonRank as SoccerSeasonRank | undefined;
+  const opponentDefense = meta.opponentDefense as SoccerOpponentDefense | undefined;
+
+  const nflSeasonStats: PlayerDetailData['nflSeasonStats'] = seasonStats
+    ? {
+        rows: [
+          { key: 'games', label: 'Games', value: seasonStats.games, decimals: 0 },
+          { key: 'goals', label: 'Goals', value: seasonStats.goals, decimals: 0, rank: seasonRank ? { rank: seasonRank.rank, poolSize: seasonRank.poolSize } : undefined },
+          { key: 'xG', label: 'xG', value: seasonStats.xG, decimals: 2 },
+          { key: 'assists', label: 'Assists', value: seasonStats.assists, decimals: 0 },
+          { key: 'xA', label: 'xA', value: seasonStats.xA, decimals: 2 },
+          { key: 'shots', label: 'Shots', value: seasonStats.shots, decimals: 0 },
+          { key: 'keyPasses', label: 'Key Passes', value: seasonStats.keyPasses, decimals: 0 },
+        ],
+        rankedAmongLabel: seasonRank?.positionLabel,
+      }
+    : null;
+
+  // Team-wide only — real per-position (striker/midfielder/defender) split
+  // needs match-level shot data joined to the scorer's position, which
+  // Understat's team-aggregate endpoints don't expose; not attempted
+  // tonight rather than fabricate a plausible-looking split (see
+  // docs/matchup-card-rebuild-gameplan-2026-08-23.md §6's soccer row).
+  const matchupExplorer: MatchupExplorerData | null =
+    seasonStats && opponentDefense && opponentAbbr
+      ? {
+          subjectName: active.subjectName,
+          subjectHeadshotUrl: headshotUrl,
+          subjectTeamAbbr: teamAbbr,
+          subjectTeamLogoUrl: teamLogoUrl,
+          positionGroups: null,
+          subjectStatsByGroup: {
+            _default: [
+              { key: 'goals', label: 'Goals/Gm', value: seasonStats.games > 0 ? seasonStats.goals / seasonStats.games : 0, decimals: 2, rank: null, poolSize: null },
+              { key: 'shots', label: 'Shots/Gm', value: seasonStats.games > 0 ? seasonStats.shots / seasonStats.games : 0, decimals: 2, rank: null, poolSize: null },
+              { key: 'xG', label: 'xG/Gm', value: seasonStats.games > 0 ? seasonStats.xG / seasonStats.games : 0, decimals: 2, rank: null, poolSize: null },
+            ],
+          },
+          defaultOpponentId: 'today',
+          opponentOptions: null,
+          opponentMeta: { today: { id: 'today', abbr: opponentAbbr, name: opponentAbbr, logoUrl: opponentLogoUrl } },
+          opponentStatsByGroup: {
+            today: {
+              _default: [
+                { key: 'goals', label: 'Goals Allowed/Gm', value: opponentDefense.goalsAgainstPerGame, decimals: 2, rank: opponentDefense.rank, poolSize: opponentDefense.poolSize },
+                { key: 'xG', label: 'xG Allowed/Gm', value: opponentDefense.xGAPerGame, decimals: 2, rank: opponentDefense.rank, poolSize: opponentDefense.poolSize },
+              ],
+            },
+          },
+          contextLine: null,
+        }
       : null;
 
   return {
@@ -166,7 +281,7 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     windows,
     roundScores: null,
     chart,
-    gamelog: scoped.length > 0 || active.history.length > 0 ? { columns, rows, cardBadges: columns } : null,
+    gamelog: scoped.length > 0 || active.history.length > 0 ? { columns, rows, summaryStrip, cardBadges: columns } : null,
     propOddsBoard,
     model: null,
     hitterStats: null,
@@ -174,11 +289,17 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     liveGame: null,
     liveMatchup: null,
-    matchups: null,
+    matchupExplorer,
     seasonStatsCard: null,
-    mlbContextMatchup: null,
     golfFormHoles: null,
-    nflMatchup: null,
-    nflSeasonStats: null,
+    nflSeasonStats,
+    // No player-level live data source — ESPN's soccer summary endpoint
+    // carries no `boxscore.players` for this sport (verified live, see
+    // lib/sports/soccer/liveGame.ts's header comment), a real data-shape
+    // gap, not an oversight. `availableStats: []` (rather than omitting
+    // the slot) would still need a live gameId to be honest about "why
+    // empty" — simpler and equally honest to leave the whole slot null
+    // until soccer gets a real per-player live source.
+    liveLineTracker: null,
   };
 }

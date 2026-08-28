@@ -3,13 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TeamStandingRow, AllTeamsState } from './useAllTeams';
 
-export function useAllNhlTeams(): AllTeamsState {
+/** `enabled` (default true) — see `useAllNbaTeams`'s doc comment for why. */
+export function useAllNhlTeams(enabled = true): AllTeamsState {
   const [teams, setTeams] = useState<TeamStandingRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef<AbortController | null>(null);
 
   const load = useCallback(() => {
+    if (!enabled) return;
     inFlight.current?.abort();
     const controller = new AbortController();
     inFlight.current = controller;
@@ -29,7 +31,7 @@ export function useAllNhlTeams(): AllTeamsState {
         if (!controller.signal.aborted) setLoading(false);
       }
     })();
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
     load();

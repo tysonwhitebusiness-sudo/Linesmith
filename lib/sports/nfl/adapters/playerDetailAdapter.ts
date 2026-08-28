@@ -17,7 +17,7 @@
  * already take.
  */
 
-import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
+import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import {
   categoriseByLine,
   fixedWindow,
@@ -39,9 +39,11 @@ import type {
   ChipDef,
   GamelogColumnDef,
   GamelogRow,
+  MatchupExplorerData,
   PlayerDetailChart,
   PlayerDetailData,
   PropOddsBoardProps,
+  SummaryStat,
   WindowedStat5,
 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 
@@ -167,6 +169,7 @@ export interface NflPlayerDetailScope {
   opponentOnly: boolean;
   lastN: number | 'all';
   showAllGames: boolean;
+  kpiScope: 'season' | 'l15';
 }
 
 export interface NflPlayerDetailInput {
@@ -299,6 +302,25 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     };
   });
 
+  // Real summary strip (2026-08-24) — top-of-card headline stats, scoped by
+  // the existing KPI-scope toggle, built generically from this player's
+  // real position-filtered columns (`GAMELOG_COLUMNS_BY_POSITION`) the same
+  // way CFB's/soccer's now do.
+  const kpiSource = scope.kpiScope === 'l15' ? scoped.slice(-15) : scoped;
+  const summaryStrip: SummaryStat[] | undefined =
+    kpiSource.length > 0 && columns.length > 0
+      ? columns.slice(0, 4).map((col) => ({
+          label: col.label,
+          display: String(
+            kpiSource.reduce((s, e) => {
+              const week = (rawOf(e).week as string | undefined) ?? undefined;
+              const box = week != null ? weeklyBoxScores[week] : undefined;
+              return s + (Number(box?.[col.key]) || 0);
+            }, 0),
+          ),
+        }))
+      : undefined;
+
   // ---- Prop odds board (universal, no branch) ----
   const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
   const propOddsBoard: PropOddsBoardProps | null =
@@ -309,23 +331,43 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   // ---- Form (NflPlayerDetail.tsx:559-571 — same `active.supportingSplits`, already sport-agnostic) ----
   const formWindows = active.supportingSplits ?? null;
 
-  // ---- Vs. Defense matchup card (NflPlayerDetail.tsx:406-419) ----
+  // ---- Universal matchup card (was "Vs. Defense", NflPlayerDetail.tsx:406-419)
+  // — no player-level rank source exists for NFL (only the real 32-team
+  // defense ranks do, per NflPlayerVsDefenseCard's own header comment), so
+  // `subjectStatsByGroup` rows carry `rank: null` while `opponentStatsByGroup`
+  // rows carry the real rank/poolSize `toStatRow` already attaches.
+  // `positionGroups: null` (single implicit group) — `MATCHUP_GROUP_BY_POSITION`
+  // already narrows the shown categories to the ones relevant to this
+  // player's own position, so there's nothing left to tab between for one
+  // specific player (unlike CFB/NBA/NHL's team-wide scouting view, which
+  // tabs across every group since any team could be picked as the opponent).
   const matchupOwnRows = playerMatchupRows(seasonStats, position);
   const matchupOpponentStats = opponentDefenseAllowed.map(toStatRow);
   const matchupGroup = position ? MATCHUP_GROUP_BY_POSITION[position] : undefined;
-  const nflMatchup =
+  const nflOpponentId = 'today';
+  const matchupExplorer: MatchupExplorerData | null =
     opponentAbbr && matchupGroup
       ? {
-          title: 'Vs. Defense',
-          playerName: active.subjectName,
-          playerHeadshotUrl: headshotUrl,
-          playerFallbackUrl: teamLogoUrl,
-          playerTeamAbbr: teamAbbr,
-          playerTeamLogoUrl: teamLogoUrl,
-          ownRows: matchupOwnRows,
-          opponentAbbr,
-          opponentLogoUrl,
-          opponentStats: matchupOpponentStats,
+          subjectName: active.subjectName,
+          subjectHeadshotUrl: headshotUrl,
+          subjectFallbackUrl: teamLogoUrl,
+          subjectTeamAbbr: teamAbbr,
+          subjectTeamLogoUrl: teamLogoUrl,
+          subjectRoleLabel: 'Produces',
+          opponentRoleLabel: 'Allows',
+          positionGroups: null,
+          subjectStatsByGroup: {
+            _default: matchupOwnRows.map((r) => ({ key: r.label.toLowerCase().replace(/[^a-z0-9]+/g, '-'), label: r.label, value: r.value, decimals: r.decimals, rank: null, poolSize: null })),
+          },
+          defaultOpponentId: nflOpponentId,
+          opponentOptions: null,
+          opponentMeta: {
+            [nflOpponentId]: { id: nflOpponentId, abbr: opponentAbbr, name: `${opponentAbbr} defense`, logoUrl: opponentLogoUrl },
+          },
+          opponentStatsByGroup: {
+            [nflOpponentId]: { _default: matchupOpponentStats.map((s) => ({ key: s.key, label: s.label, value: s.value, decimals: s.decimals, rank: s.rank ?? null, poolSize: s.poolSize ?? null })) },
+          },
+          contextLine: null,
         }
       : null;
 
@@ -361,7 +403,7 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     windows,
     roundScores: null,
     chart,
-    gamelog: { columns, rows, cardBadges: columns.slice(0, 4) },
+    gamelog: { columns, rows, summaryStrip, cardBadges: columns.slice(0, 4) },
     propOddsBoard,
     model: null,
     hitterStats: null,
@@ -369,11 +411,25 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     liveGame: null,
     liveMatchup: null,
-    matchups: null,
+    matchupExplorer,
     seasonStatsCard: null,
-    mlbContextMatchup: null,
     golfFormHoles: null,
-    nflMatchup,
     nflSeasonStats,
+    liveLineTracker: {
+      subjectId: active.subjectId,
+      sport: 'nfl',
+      gameId: todaysGame?.gamePk ?? null,
+      availableStats: FOOTBALL_TRACKABLE_STATS,
+    },
   };
 }
+
+const FOOTBALL_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
+  { key: 'passing_yards', label: 'Passing Yards' },
+  { key: 'passing_tds', label: 'Passing TDs' },
+  { key: 'rushing_yards', label: 'Rushing Yards' },
+  { key: 'rushing_tds', label: 'Rushing TDs' },
+  { key: 'receiving_yards', label: 'Receiving Yards' },
+  { key: 'receiving_tds', label: 'Receiving TDs' },
+  { key: 'receptions', label: 'Receptions' },
+];

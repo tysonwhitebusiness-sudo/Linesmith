@@ -1,22 +1,37 @@
 /**
- * Unified game lines — merges the-odds-api.com with OddsHarvester.
+ * Unified game lines, for every sport — reads game_odds_book_lines
+ * directly (odds-architecture rebuild Phase 6), the shared table every
+ * real source (the-odds-api, OddsHarvester, SportsGameOdds, SharpAPI,
+ * Propline, ESPN) writes into.
  *
  * GET /api/odds/lines?sport=mlb
- * GET /api/odds/lines?sport=mlb&force=1   (bypass cache)
+ * GET /api/odds/lines?sport=cfb
  *
- * The-odds-api provides best-line summaries with an SLA. OddsHarvester adds
- * per-bookmaker detail and live in-play data from OddsPortal.com. When
- * OddsHarvester output is missing or stale the endpoint degrades gracefully —
- * it never fails because the sidecar isn't running.
+ * NFL used to keep its own separate path (getNflGameLines, SharpAPI +
+ * TheRundown) but that pipeline hardcoded `bookmakers: []` on every line —
+ * it never actually fed the per-book comparison grid, only ever a single
+ * aggregate number. NFL now reads through the same shared-table branch as
+ * every other non-MLB sport below: real per-book rows already land there
+ * from SportsGameOdds (`_sgo_game_line_rows`, sport-agnostic) and
+ * OddsHarvester (`dynamic_lines=True` for NFL, harvester_scrape.py) —
+ * genuinely richer than the old empty-bookmakers pipeline it replaces.
+ * `getNflGameLines`/`nflGameLines.ts` has no other callers left after this
+ * (confirmed via grep) and is dead code as of this change. MLB keeps its
+ * own real side effects below (odds-history logging, total-prediction
+ * logging, price attachment) — real production pick-lock plumbing, not
+ * something this change removes, just re-sourced from the shared table
+ * instead of the old the-odds-api + OddsHarvester-flat-file merge
+ * (mergeLines/readHarvesterOutput, both now retired — the flat file was
+ * already dead, nothing wrote to it in a deployed context).
+ *
+ * No `force`/cache-bypass param anymore: there's no cache layer left to
+ * bypass — this is a direct table read every request, same as
+ * `/api/props/lines`'s own reasoning (CLAUDE.md pattern 2).
  */
 
 import { NextResponse } from 'next/server';
-import { getMlbGameLines } from '@/lib/odds/oddsApi';
-import { readHarvesterOutput } from '@/lib/odds/oddsHarvester';
-import { mergeLines } from '@/lib/odds/merge';
-import { getNflGameLines } from '@/lib/odds/nflGameLines';
 import { logGameOddsHistory } from '@/lib/odds/gameOddsLog';
-import { readSnapshotCache } from '@/lib/db/client';
+import { readSnapshotCache, readGameOddsBookLinesForSport } from '@/lib/db/client';
 import { teamKey } from '@/lib/odds/matching';
 import { computeTotalModel } from '@/lib/sports/mlb/gameModel';
 import { logGameTotalPredictions, type GameTotalPrediction } from '@/lib/odds/props/pickHistoryLog';
@@ -123,52 +138,85 @@ async function attachPricesFromLines(lines: UnifiedGameLine[], games: SnapshotGa
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const sport = url.searchParams.get('sport') ?? 'mlb';
-  const force = url.searchParams.get('force') !== null;
 
-  // NFL has none of MLB's model/pick-lock machinery below (Elo, gameModel,
-  // devig blending) — it returns as soon as its own merged lines are ready,
-  // additive only, never touching the MLB path underneath.
-  if (sport === 'nfl') {
+  // Every sport other than MLB: no model/pick-lock machinery, no
+  // real side effects — just the real per-game bookmaker grid for the
+  // whole slate, straight from game_odds_book_lines (odds-architecture
+  // rebuild Phase 6). `force` doesn't apply here (there's no live
+  // upstream fetch to bypass a cache for — the table is populated by
+  // background jobs on their own schedule).
+  if (sport !== 'mlb') {
     try {
-      const result = await getNflGameLines();
-      return NextResponse.json(result, { headers: { 'cache-control': 'no-store' } });
-    } catch (error) {
-      console.error('[api/odds/lines] nfl', error);
+      const lines = await readGameOddsBookLinesForSport(sport);
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : 'NFL odds lookup failed.' },
+        {
+          enabled: lines.length > 0,
+          lines,
+          fetchedAt: new Date().toISOString(),
+          fromCache: false,
+          sources: {
+            oddsApi: { enabled: false, fetchedAt: null, requestsRemaining: null },
+            oddsHarvester: { enabled: lines.length > 0, fetchedAt: new Date().toISOString(), matches: lines.length },
+          },
+          nextRefreshAt: null,
+          warnings: [],
+        },
+        { headers: { 'cache-control': 'no-store' } },
+      );
+    } catch (error) {
+      console.error(`[api/odds/lines] ${sport}`, error);
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Odds lookup failed.' },
         { status: 502 },
       );
     }
   }
 
   try {
-    // Fire both in parallel — the-odds-api is a network call, OddsHarvester
-    // is a local file read. Neither blocks the other.
-    const [oddsApiResult, harvesterResult] = await Promise.all([
-      getMlbGameLines(force),
-      // OddsHarvester uses "baseball" as the sport key, not "mlb".
-      Promise.resolve(readHarvesterOutput('baseball', 'live')),
-    ]);
+    // Read once, needed both to build real lines below (real team names/
+    // commence time — game_odds_book_lines doesn't store either, see
+    // readGameOddsBookLines's own comment) and by the side-effect passes
+    // further down, which independently re-reading and re-parsing the same
+    // snapshot_cache['mlb:snapshot'] payload would cost real time on every
+    // request (this is a multi-MB blob).
+    const games = await readGamesFromSnapshot();
 
-    const lines = mergeLines(oddsApiResult.lines, harvesterResult.matches);
-
-    const warnings = [...oddsApiResult.warnings];
-    if (harvesterResult.error) {
-      warnings.push(`OddsHarvester: ${harvesterResult.error}`);
+    // Real per-game bookmaker grid, every real source merged (odds-
+    // architecture rebuild Phase 2/6) — replaces the old the-odds-api +
+    // OddsHarvester-flat-file merge (mergeLines/readHarvesterOutput, both
+    // now retired): the-odds-api's own rows are still in this same
+    // game_odds_book_lines table (source='the-odds-api', written by
+    // odds_lines_cycle.py), just one source among several instead of the
+    // sole input. One query for the whole slate (readGameOddsBookLinesForSport)
+    // rather than one query per game — a real, measured regression caught
+    // live before this shipped: the per-game version took 62s for a real
+    // 15-game slate (sequential round-trips through the Supavisor pooler),
+    // against ~200ms for one batched query. Real team names/commence time
+    // filled in per game afterward (in memory, matched by the real game
+    // id readGameOddsBookLinesForSport already sets as `eventId`) since
+    // the shared table itself doesn't carry them.
+    const gamesById = new Map(games.map((g) => [String(g.gamePk), g]));
+    const lines: UnifiedGameLine[] = [];
+    for (const line of await readGameOddsBookLinesForSport('mlb')) {
+      const game = gamesById.get(line.eventId);
+      if (!game) continue;
+      lines.push({
+        ...line,
+        eventId: line.eventId,
+        homeTeam: game.homeTeamName ?? '',
+        awayTeam: game.awayTeamName ?? '',
+        commenceTime: game.firstPitch ?? '',
+      });
     }
 
-    const enabled = oddsApiResult.enabled || harvesterResult.matches.length > 0;
+    const warnings: string[] = [];
+    const enabled = lines.length > 0;
 
     try {
       await logGameOddsHistory(lines);
     } catch (error) {
       console.error('[api/odds/lines] logGameOddsHistory failed', error);
     }
-
-    // Read once, shared by both passes below — each independently
-    // re-reading and re-parsing the same snapshot_cache['mlb:snapshot']
-    // payload cost real time on every request (this is a multi-MB blob).
-    const games = await readGamesFromSnapshot();
 
     try {
       await logTotalPredictionsFromLines(lines, games);
@@ -202,21 +250,19 @@ export async function GET(request: Request) {
       {
         enabled,
         lines,
-        fetchedAt: oddsApiResult.fetchedAt ?? harvesterResult.fetchedAt,
-        fromCache: oddsApiResult.fromCache,
+        fetchedAt: new Date().toISOString(),
+        fromCache: false,
         sources: {
-          oddsApi: {
-            enabled: oddsApiResult.enabled,
-            fetchedAt: oddsApiResult.fetchedAt,
-            requestsRemaining: oddsApiResult.requestsRemaining,
-          },
-          oddsHarvester: {
-            enabled: harvesterResult.matches.length > 0,
-            fetchedAt: harvesterResult.fetchedAt,
-            matches: harvesterResult.matches.length,
-          },
+          // Legacy shape (UnifiedLinesResult.sources) predates this
+          // multi-source table and doesn't cleanly represent "up to 6 real
+          // sources merged" — approximated here rather than redesigning
+          // that type in this same pass. `oddsApi.enabled` reflects
+          // whether the-odds-api itself is still configured, not whether
+          // any single response used its data specifically.
+          oddsApi: { enabled: true, fetchedAt: new Date().toISOString(), requestsRemaining: null },
+          oddsHarvester: { enabled, fetchedAt: new Date().toISOString(), matches: lines.length },
         },
-        nextRefreshAt: oddsApiResult.nextRefreshAt,
+        nextRefreshAt: null,
         warnings,
       },
       { headers: { 'cache-control': 'no-store' } },

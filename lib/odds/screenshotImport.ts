@@ -11,6 +11,9 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import type { SubjectSummary } from '../core/types';
+import { normalizeName } from '../core/normalizeName';
+
+export { normalizeName } from '../core/normalizeName';
 
 export interface ExtractedLeg {
   subjectName: string;
@@ -142,18 +145,6 @@ export async function extractLegsFromScreenshot(
 // ---------------------------------------------------------------------------
 // Fuzzy matching against the live slate
 // ---------------------------------------------------------------------------
-
-/** Strip accents, punctuation and case so "Suárez" and "Suarez" compare equal. */
-export function normalizeName(name: string): string {
-  return name
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[.'`’-]/g, ' ')
-    .replace(/\b(jr|sr|ii|iii|iv)\b/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 function levenshtein(a: string, b: string): number {
   if (a === b) return 0;

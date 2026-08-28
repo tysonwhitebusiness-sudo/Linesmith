@@ -247,6 +247,18 @@ export interface SportSnapshot {
   /** Non-fatal problems worth surfacing rather than hiding. */
   warnings: string[];
   fetchedAt: string;
+  /**
+   * Real "has this sport's season actually started" signal, computed from
+   * the sport's own real schedule (e.g. CFB: zero completed games in the
+   * current CFBD season) — distinct from `candidates.length === 0`, since a
+   * sport can have real pre-season props posted before a single game has
+   * been played. `null`/omitted when the sport doesn't track this (MLB/NFL
+   * currently mid-season, golf's tournament-week framing doesn't fit this
+   * shape). Scan renders a real "season hasn't started — first game is
+   * {date}" banner when `started === false`, instead of an empty table with
+   * no explanation.
+   */
+  seasonStatus?: { started: boolean; nextGameDate: string | null; label?: string } | null;
 }
 
 export interface SubjectSummary {
