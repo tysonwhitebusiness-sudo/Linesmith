@@ -773,11 +773,31 @@ async def _compute_mlb_prop_predictions_inner() -> dict:
 async def job_golf_predictions(yield_fn=None) -> dict:
     """Port of golf's own inline "Phase A prediction models" block
     (adapter.ts, adjacent to candidatesForGolfer/roundScoreCandidate) —
-    compute models -> log predictions -> ingest history -> grade, moved
-    from "inside every live snapshot request" to a scheduled interval.
-    Golf has no pick-lock system (see predict/golf_history.py's own
-    docstring) — this faithfully reproduces the real poll-and-upsert-
-    until-graded capture pattern, not a new scheduled-lock design."""
+    compute models -> log predictions -> ingest history -> grade, on a
+    scheduled interval. Golf has no pick-lock system (see
+    predict/golf_history.py's own docstring) — this faithfully reproduces
+    the real poll-and-upsert-until-graded capture pattern, not a new
+    scheduled-lock design.
+
+    This docstring used to say the work had been "moved from inside every
+    live snapshot request". **That was false for six days.** adapter.ts
+    kept all four of its write calls (logGolfTournamentPredictions ~661,
+    logGolfModelPredictions ~675, void ingestGolfHistory ~689, void
+    gradeAllGolfPredictions ~696) and kept running them on every golf page
+    load, alongside this job, into the same six tables — finding P2 H1,
+    which resolved an earlier phase's open question about what was writing
+    golf_model_predictions while the worker was hung. The answer was
+    adapter.ts. pg_stat_user_tables showed 5,243 updates against 4 inserts
+    while every worker job's last run was hours stale.
+
+    The TS calls were deleted in task 2.4 (2026-08-28), so this job is now
+    the sole writer of all six golf tables in fact and not only on paper.
+    Verified by observation, not by reading this file: golfPredictionsJob's
+    own run breadcrumb at 22:51:07Z that day reported
+    hole_round_predictions_logged=556, tournament_predictions_logged=30,
+    predictions_ok=true, immediately before the deletion — the point being
+    that a comment claiming a migration happened is worth nothing without
+    the observation showing the remaining writer works."""
     return await _run_timed("golfPredictionsJob", _golf_predictions_inner())
 
 

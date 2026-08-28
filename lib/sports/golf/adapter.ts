@@ -18,13 +18,11 @@ import type { EspnCourse, EspnGolfer, EspnGolfEvent } from './espn';
 import { fieldMedianPace, golfEta, holesUntil, teeTimeForDisplay } from './timing';
 import { getWeather } from '../../weather/openMeteo';
 import { resolveCourseCoords } from './venues';
-import { ingestGolfHistory } from './historyIngest';
-import { logSystemEvent, logGolfModelPredictions, logGolfTournamentPredictions, type GolfModelPredictionInput } from '../../db/client';
+import { logSystemEvent } from '../../db/client';
 import { getSeasonStrokesGained } from './pgatourStats';
 import { predictHoleScore, priorHoleCategoryRate, type HoleFieldObservation } from './models/holeScoreModel';
 import { predictRoundScore, fieldBaselineBucketProbs, ROUND_SCORE_SD, type RoundFieldObservation } from './models/roundScoreModel';
 import { predictTournament, type GolferProjection, type TournamentPrediction } from './models/tournamentWinModel';
-import { gradeAllGolfPredictions } from './models/grading';
 
 export type GolfCategory = 'birdie' | 'par' | 'bogey';
 
@@ -555,7 +553,6 @@ export async function getGolfSnapshot(now: Date = new Date()): Promise<SportSnap
     // Logged once per poll for grading later (see grading.ts) — the "how is
     // it performing" half of the model gameplan. Collected here, written in
     // one batch after the loop below rather than one DB write per candidate.
-    const predictionLogRows: GolfModelPredictionInput[] = [];
 
     const historyObservations = (history: PickCandidate['history']) =>
       history
@@ -589,12 +586,6 @@ export async function getGolfSnapshot(now: Date = new Date()): Promise<SportSnap
           const leagueRate = priorHoleCategoryRate(par, category);
           c.subjectMeta = { ...c.subjectMeta, modelProb, leagueRate, modelSampleSize: prediction.fieldSampleSize };
 
-          // Only the round currently ahead of this golfer is a real
-          // "prediction" worth grading — a hole/round already in history is
-          // hindsight, not a forecast, and would grade itself as a trivial
-          // 100% hit.
-          const nextRound = c.history.length > 0 ? Math.max(...c.history.map((h) => h.period)) + 1 : 1;
-          predictionLogRows.push({ eventId: event.id, espnId: c.subjectId, dimension, round: nextRound, category, predictedProb: modelProb, leagueRate });
         }
       } else if (dimension === 'round-score') {
         const fieldObservations: RoundFieldObservation[] = group.flatMap((c) => historyObservations(c.history));
@@ -613,9 +604,6 @@ export async function getGolfSnapshot(now: Date = new Date()): Promise<SportSnap
           const modelProb = { birdie: prediction.probUnderPar, par: prediction.probEvenPar, bogey: prediction.probOverPar }[category];
           const leagueRate = { birdie: leagueBuckets.probUnderPar, par: leagueBuckets.probEvenPar, bogey: leagueBuckets.probOverPar }[category];
           c.subjectMeta = { ...c.subjectMeta, modelProb, leagueRate, modelSampleSize: prediction.fieldSampleSize };
-
-          const nextRound = c.history.length > 0 ? Math.max(...c.history.map((h) => h.period)) + 1 : 1;
-          predictionLogRows.push({ eventId: event.id, espnId: c.subjectId, dimension, round: nextRound, category, predictedProb: modelProb, leagueRate });
         }
 
         // Tournament winner — one sim for the whole field, attached at event
@@ -657,22 +645,9 @@ export async function getGolfSnapshot(now: Date = new Date()): Promise<SportSnap
             iterations: 3000,
             roundScoreSd: ROUND_SCORE_SD,
           });
-
-          await logGolfTournamentPredictions(
-            tournamentPrediction.outcomes.map((o) => ({
-              eventId: event.id,
-              espnId: o.espnId,
-              probWin: o.probWin,
-              probTop5: o.probTop5,
-              probTop10: o.probTop10,
-              probMadeCut: o.probMadeCut,
-            })),
-          );
         }
       }
     }
-
-    await logGolfModelPredictions(predictionLogRows);
   } catch (err) {
     warnings.push('Golf prediction models failed to compute this poll — Scan/Player Detail scores unavailable until next refresh.');
     await logSystemEvent({
@@ -683,17 +658,21 @@ export async function getGolfSnapshot(now: Date = new Date()): Promise<SportSnap
     });
   }
 
-  // Silent side path — starts golf's own history accumulation (see
-  // historyIngest.ts) without changing anything about what this function
-  // returns or how long it takes to fail.
-  void ingestGolfHistory(event, weather, now);
-
-  // Grades any prediction logged above that now has a matching real result
-  // (see grading.ts) — run after ingestGolfHistory specifically, since
-  // that's what just wrote the golf_hole_scores/golf_round_scores rows a
-  // prediction grades against. Non-fatal by construction (grading.ts
-  // swallows its own errors), so no try/catch needed here.
-  void gradeAllGolfPredictions();
+  // Golf's four write paths used to run here, on every golf page load:
+  // logGolfTournamentPredictions, logGolfModelPredictions, and the two
+  // floating `void` promises ingestGolfHistory + gradeAllGolfPredictions.
+  // All four are now owned solely by the Python worker's golfPredictionsJob
+  // (jobs.py -> _golf_predictions_inner), every 5 minutes — finding P2 H1,
+  // task 2.4. That job already did all four; this path was a second,
+  // separately-maintained writer of the same six golf tables, from ported
+  // model code that could drift.
+  //
+  // The models above still run — they produce what this page renders. What
+  // moved is the persistence, not the computation.
+  //
+  // The two `void` calls were also unhandled rejections by construction,
+  // and were failing for real: system_events held 46 x golf/historyIngest
+  // and 15 x golf/models/grading errors with nowhere to surface.
 
   return {
     sport: 'golf',
