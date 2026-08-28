@@ -17,17 +17,35 @@ import { Skeleton } from './Skeleton';
  * hand-entered price from an hour ago should not look identical to a fetched one.
  */
 
+import type { ProviderId } from '@/lib/odds/props/types';
+
+/**
+ * Derived from ProviderId rather than hand-listed (Phase 1.9, audit finding
+ * P3 M11).
+ *
+ * The hand-written union covered 8 of ProviderId's 13 members. `propline` was
+ * not among them — and propline is **87,472 of the 98,257 prop_odds rows
+ * written in the last two days, 89%**. Every one of those prices fell through
+ * `normalise`'s default and rendered as "Source not recorded", on a chip whose
+ * whole purpose is provenance. Also missing: propline_2, parlayapi and its four
+ * per-sport identities, and sportsgameodds_multisport.
+ *
+ * Deriving it means `Record<OddsProvenance, string>` below now fails to compile
+ * if someone adds a provider to ProviderId without giving it a label. The
+ * previous shape let that drift silently, which is exactly how 89% of prices
+ * ended up anonymous.
+ *
+ * The four non-provider members are real states a price can be in that no
+ * provider owns: entered by hand, imported from a screenshot, corroborated by
+ * two sources, or genuinely unattributed.
+ */
 export type OddsProvenance =
+  | ProviderId
   | 'manual'
   | 'screenshot'
   | 'odds-api'
   | 'oddsharvester'
   | 'both'
-  | 'sharpapi'
-  | 'oddsapiio'
-  | 'sportsgameodds'
-  | 'oddspapi'
-  | 'theoddsapi'
   | 'unknown';
 
 const PROVENANCE_LABEL: Record<OddsProvenance, string> = {
@@ -41,6 +59,16 @@ const PROVENANCE_LABEL: Record<OddsProvenance, string> = {
   sportsgameodds: 'SportsGameOdds',
   oddspapi: 'OddsPapi',
   theoddsapi: 'The Odds API',
+  // The five that were missing. Propline alone accounts for ~89% of recent
+  // rows; its absence is the whole of P3 M11.
+  propline: 'Propline',
+  propline_2: 'Propline',
+  parlayapi: 'ParlayAPI',
+  parlayapi_mlb: 'ParlayAPI',
+  parlayapi_nfl: 'ParlayAPI',
+  parlayapi_cfb: 'ParlayAPI',
+  parlayapi_soccer: 'ParlayAPI',
+  sportsgameodds_multisport: 'SportsGameOdds',
   unknown: 'Source not recorded',
 };
 
@@ -56,25 +84,27 @@ const PROVENANCE_MARK: Record<OddsProvenance, string> = {
   sportsgameodds: '',
   oddspapi: '',
   theoddsapi: '',
+  propline: '',
+  propline_2: '',
+  parlayapi: '',
+  parlayapi_mlb: '',
+  parlayapi_nfl: '',
+  parlayapi_cfb: '',
+  parlayapi_soccer: '',
+  sportsgameodds_multisport: '',
   unknown: '?',
 };
 
+/**
+ * A hand-maintained switch was the second half of the same drift: even once a
+ * provider is in the type, it still renders as unknown until someone adds a
+ * `case` for it. Checking membership of PROVENANCE_LABEL instead means the
+ * label map is the single source of truth, and the compiler already forces
+ * that map to be exhaustive over ProviderId.
+ */
 function normalise(source: string | undefined): OddsProvenance {
-  switch (source) {
-    case 'manual':
-    case 'screenshot':
-    case 'odds-api':
-    case 'oddsharvester':
-    case 'both':
-    case 'sharpapi':
-    case 'oddsapiio':
-    case 'sportsgameodds':
-    case 'oddspapi':
-    case 'theoddsapi':
-      return source;
-    default:
-      return 'unknown';
-  }
+  if (source && source in PROVENANCE_LABEL) return source as OddsProvenance;
+  return 'unknown';
 }
 
 export interface OddsChipProps {
