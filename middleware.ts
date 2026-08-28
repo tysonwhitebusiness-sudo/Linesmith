@@ -25,7 +25,7 @@ import { NextResponse, type NextRequest } from 'next/server';
  * same posture again — readTodaysPropCandidates with no dimension filter,
  * no userId.
  */
-const PROTECTED_API_PREFIXES = ['/api/picks', '/api/bets', '/api/watchlist', '/api/tracked-lines'];
+const PROTECTED_API_PREFIXES = ['/api/picks', '/api/bets', '/api/watchlist', '/api/tracked-lines', '/api/props/scan-player', '/api/props/more-books', '/api/props/sharp-price'];
 const PROTECTED_API_EXCLUDE = ['/api/picks/game-history', '/api/picks/props', '/api/picks/rare-markets', '/api/picks/bankroll', '/api/picks/model-data'];
 const PROTECTED_PAGE_PREFIXES = ['/bets', '/bet/'];
 
@@ -38,7 +38,36 @@ const PROTECTED_PAGE_PREFIXES = ['/bets', '/bet/'];
  * — revisit if this app ever grows real multi-admin needs.
  */
 const ADMIN_USER_IDS = ['038048de-c950-4798-9bfb-9da68c89f936'];
-const ADMIN_API_PREFIXES = ['/api/diagnostics'];
+/**
+ * Phase 1.5 (audit finding P4 H2). Before this, `/api/diagnostics` was the ONLY
+ * admin prefix, which left every `/api/props/*` route answering anonymous
+ * callers — including `fit-weights`, which retrains a model AND activates it,
+ * and the various `*-backfill` routes, which write to `pick_history`. An
+ * unauthenticated stranger could replace the model this app renders from.
+ *
+ * Gated as a whole prefix with a short exclude list, rather than enumerating
+ * ~20 admin routes: a new operator route added under /api/props is then
+ * protected by default, and forgetting to add it to a list can only ever make
+ * something MORE restricted, never less. That is the safe direction for the
+ * mistake to point.
+ */
+const ADMIN_API_PREFIXES = ['/api/diagnostics', '/api/props', '/api/odds/import'];
+/**
+ * Genuinely public reads that happen to live under /api/props:
+ *  - `lines` and `line-history` are price data the app renders for everyone.
+ *  - `calibration` is the model-health payload the public scoreboard reads.
+ * `scan-player`, `more-books` and `sharp-price` are user-triggered provider
+ * calls — they spend real budget, so they need a signed-in user, but not the
+ * operator specifically. They move to PROTECTED_API_PREFIXES below.
+ */
+const ADMIN_API_EXCLUDE = [
+  '/api/props/lines',
+  '/api/props/line-history',
+  '/api/props/calibration',
+  '/api/props/scan-player',
+  '/api/props/more-books',
+  '/api/props/sharp-price',
+];
 const ADMIN_PAGE_PREFIXES = ['/diagnostics'];
 
 export async function middleware(request: NextRequest) {
@@ -46,7 +75,8 @@ export async function middleware(request: NextRequest) {
   const isProtectedApi =
     PROTECTED_API_PREFIXES.some((p) => pathname.startsWith(p)) && !PROTECTED_API_EXCLUDE.some((p) => pathname.startsWith(p));
   const isProtectedPage = PROTECTED_PAGE_PREFIXES.some((p) => pathname.startsWith(p));
-  const isAdminApi = ADMIN_API_PREFIXES.some((p) => pathname.startsWith(p));
+  const isAdminApi =
+    ADMIN_API_PREFIXES.some((p) => pathname.startsWith(p)) && !ADMIN_API_EXCLUDE.some((p) => pathname.startsWith(p));
   const isAdminPage = ADMIN_PAGE_PREFIXES.some((p) => pathname.startsWith(p));
 
   if (!isProtectedApi && !isProtectedPage && !isAdminApi && !isAdminPage) {
@@ -119,5 +149,10 @@ export const config = {
     '/bet/:path*',
     '/api/diagnostics/:path*',
     '/diagnostics/:path*',
+    // Phase 1.5 — a prefix in ADMIN_API_PREFIXES does nothing unless the
+    // matcher also routes it here. Missing matcher entries are why these were
+    // reachable in the first place.
+    '/api/props/:path*',
+    '/api/odds/import/:path*',
   ],
 };
