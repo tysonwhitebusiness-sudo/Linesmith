@@ -1219,41 +1219,76 @@ async def write_game_odds_history(rows: list[GameOddsHistoryInput]) -> None:
     integration) — see GameOddsHistoryInput's own docstring. Existing
     callers that don't pass it default to 'the-odds-api', preserving every
     row this function has ever written before this change.
+
+    BATCHED 2026-08-28 (task 2.3, pulling forward P4 H1's fix #2 which
+    task 3.10 owns generally). This was one SELECT plus one conditional
+    INSERT per row, inside a single transaction holding one pooled
+    connection. Measured on the real workload task 2.3 hands it — the
+    ~3,500 propline/sharpapi rows in game_odds_book_lines — that shape ran
+    for over 290 seconds and had not finished. mlbOddsLinesCycleJob's
+    interval is 300s and SequentialQueue's per-job timeout is 600s, so
+    shipping 2.3 on the per-row loop would have produced a job that
+    overran its own interval and eventually got cancelled mid-write.
+
+    Now: one DISTINCT ON query for every prior price, an in-memory diff,
+    and one executemany for the rows that actually changed. Semantics are
+    unchanged — still log-on-change, still keyed on
+    (event_id, market, side, bookmaker, source), still the
+    (observed_at DESC, id DESC) ordering whose tiebreaker is load-bearing
+    above.
     """
     if not rows:
         return
     observed_at = datetime.now(timezone.utc)
+
+    # Deduplicate within the batch first, keeping the LAST row for a key —
+    # same rule the per-row loop this replaced had by construction (a later
+    # write simply overwrote an earlier one's effect). Two rows for one key
+    # in a single call are real and expected; see _game_odds_history_rows
+    # in predict/odds_lines_cycle.py for why.
+    latest_in_batch: dict[tuple[str, str, str, str, str], GameOddsHistoryInput] = {}
+    for r in rows:
+        latest_in_batch[(r.event_id, r.market, r.side, r.bookmaker, r.source)] = r
+
     pool = await get_pool()
     async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
-            for r in rows:
-                prior = await conn.fetchrow(
-                    """
-                    SELECT american_odds FROM game_odds_history
-                    WHERE event_id = $1 AND market = $2 AND side = $3 AND bookmaker = $4 AND source = $5
-                    ORDER BY observed_at DESC, id DESC LIMIT 1
-                    """,
-                    r.event_id,
-                    r.market,
-                    r.side,
-                    r.bookmaker,
-                    r.source,
+            # One query for every prior price, not one per row. DISTINCT ON
+            # with the same (observed_at DESC, id DESC) ordering the per-row
+            # SELECT used — the id tiebreaker is load-bearing, see this
+            # function's docstring.
+            keys = list(latest_in_batch.keys())
+            prior_rows = await conn.fetch(
+                """
+                SELECT DISTINCT ON (event_id, market, side, bookmaker, source)
+                       event_id, market, side, bookmaker, source, american_odds
+                FROM game_odds_history
+                WHERE (event_id, market, side, bookmaker, source) IN (
+                    SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])
                 )
-                if prior is None or prior["american_odds"] != r.american_odds:
-                    await conn.execute(
-                        """
-                        INSERT INTO game_odds_history (event_id, market, side, bookmaker, american_odds, point, observed_at, source)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                        """,
-                        r.event_id,
-                        r.market,
-                        r.side,
-                        r.bookmaker,
-                        r.american_odds,
-                        r.point,
-                        observed_at,
-                        r.source,
-                    )
+                ORDER BY event_id, market, side, bookmaker, source, observed_at DESC, id DESC
+                """,
+                [k[0] for k in keys],
+                [k[1] for k in keys],
+                [k[2] for k in keys],
+                [k[3] for k in keys],
+                [k[4] for k in keys],
+            )
+            prior = {
+                (p["event_id"], p["market"], p["side"], p["bookmaker"], p["source"]): p["american_odds"]
+                for p in prior_rows
+            }
+
+            changed = [r for k, r in latest_in_batch.items() if prior.get(k) != r.american_odds]
+            if not changed:
+                return
+            await conn.executemany(
+                """
+                INSERT INTO game_odds_history (event_id, market, side, bookmaker, american_odds, point, observed_at, source)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                """,
+                [(r.event_id, r.market, r.side, r.bookmaker, r.american_odds, r.point, observed_at, r.source) for r in changed],
+            )
 
 
 @dataclass

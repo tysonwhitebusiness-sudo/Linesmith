@@ -743,6 +743,62 @@ def _primary_mlb_lines(games: list[SnapshotGame], sharpapi_lines: list[GameLine]
     return primary
 
 
+# Sources whose game_odds_history rows are already written by somebody
+# else, and must NOT be re-logged from game_odds_book_lines below:
+#   the-odds-api  — _game_odds_history_rows(result.lines) in this same
+#                   cycle logs its live fetch directly.
+#   oddsharvester — harvester_scrape.py's _game_odds_history_rows_tagged
+#                   writes its own, on its own schedule.
+# Re-logging either would not just duplicate rows, it would FLAP: the live
+# fetch and the stored book_lines row for one key can carry slightly
+# different prices, and with log-on-change semantics each write then makes
+# the other look changed, forever. That exact failure is documented twice
+# already in this file (_game_odds_history_rows) and in
+# db.write_game_odds_history.
+_HISTORY_SOURCES_ALREADY_LOGGED = frozenset({"the-odds-api", "oddsharvester"})
+
+
+async def log_history_from_book_lines(sport: str = "mlb") -> int:
+    """Archives the book-line sources nothing else archives — task 2.3.
+
+    Until now this ran in TypeScript, inside /api/odds/lines's GET handler
+    (finding P4 H1: three write passes on an unauthenticated GET). Deleting
+    that pass without this one would have silently stopped archiving every
+    propline and sharpapi price, while row counts and `source` totals both
+    kept looking healthy — because of the second half of this docstring.
+
+    **The TypeScript pass mislabelled everything it wrote.** It read
+    game_odds_book_lines across all four MLB sources (propline, the-odds-api,
+    sharpapi, oddsharvester) but called writeGameOddsHistory, which never
+    sets `source`, so every row took the column DEFAULT of 'the-odds-api'.
+    Measured 2026-08-28: game_odds_history's 'the-odds-api' bucket carries
+    30 distinct bookmakers in 48h, where the-odds-api's own book_lines rows
+    only cover 9. So a large share of rows labelled 'the-odds-api' are
+    really propline's and sharpapi's. That is finding P3 L3's concern with
+    numbers attached, and it is not retroactively fixable — the true source
+    was never recorded. Rows written from here carry their real source.
+
+    Returns the number of candidate rows handed to write_game_odds_history,
+    which dedups on change; a quiet slate legitimately writes nothing."""
+    rows: list[db.GameOddsHistoryInput] = []
+    for r in await db.read_game_odds_book_lines_for_sport(sport):
+        if r.source in _HISTORY_SOURCES_ALREADY_LOGGED:
+            continue
+        rows.append(
+            db.GameOddsHistoryInput(
+                event_id=r.game_id,
+                market=r.market,
+                side=r.side,
+                bookmaker=r.bookmaker,
+                american_odds=r.american_odds,
+                point=r.point,
+                source=r.source,
+            )
+        )
+    await db.write_game_odds_history(rows)
+    return len(rows)
+
+
 async def run_mlb_odds_lines_cycle(client: httpx.AsyncClient, now=None) -> dict:
     """The full MLB path of app/api/odds/lines/route.ts's GET handler,
     minus the secondary/polish pieces documented in this module's
@@ -764,6 +820,8 @@ async def run_mlb_odds_lines_cycle(client: httpx.AsyncClient, now=None) -> dict:
 
     await db.write_game_odds_history(_game_odds_history_rows(result.lines, games))
     await db.write_game_odds_book_lines(_game_odds_book_line_rows(result.lines, games))
+    # Task 2.3 — took over from /api/odds/lines's GET-path write.
+    book_line_history_rows = await log_history_from_book_lines("mlb")
     await run_total_lock_from_lines(client, primary_lines, games, now)
     await run_moneyline_lock_from_snapshot(primary_lines, games, now)
     await attach_prices_from_lines(primary_lines, games)
@@ -773,6 +831,7 @@ async def run_mlb_odds_lines_cycle(client: httpx.AsyncClient, now=None) -> dict:
         "lines_from_sharpapi": len(sharpapi_lines),
         "lines_from_the_odds_api_fallback": len(primary_lines) - len(sharpapi_lines),
         "games": len(games),
+        "book_line_history_rows": book_line_history_rows,
         "from_cache": result.from_cache,
         "warnings": result.warnings,
     }
