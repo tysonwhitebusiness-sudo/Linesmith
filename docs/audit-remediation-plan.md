@@ -2197,6 +2197,207 @@ Observations recorded for later phases, not acted on here:
 
 ---
 
+---
+
+### Phase 1 — 2026-08-28
+
+**Tasks complete. GATE NOT YET RUN** — see the gate status at the end.
+
+--- task verifications ---
+
+**1.1 · Inverted under-side probability** *(P3 C3)*. Re-verified by the audit's
+own method before changing anything — the 36 graded under-side rows scored
+against their own outcomes:
+
+```
+market_prob as stored     0.3756      market_prob flipped   0.1956
+model_prob  as stored     0.3139      model_prob  flipped   0.2661
+```
+
+matching the audit to four decimals. Not historical: **1,208 under-side rows
+exist** (audit measured ~500) and **422 were written in the last 7 days**, the
+most recent 20 minutes before the fix.
+
+**The audit's scope was out of date.** It names three TypeScript files, true on
+2026-08-27. Since then Python became the live writer
+(`computeMlbPropPredictionsJob` → `prop_pick_history` → `resolve_candidate_edge`)
+and carries the same bug — and Python's edge was **redesigned** on 2026-08-27 to
+`market_prob - implied_raw`, so the sign error outlived the calculation it was
+found in and corrupts a quantity the audit never analysed. Fixed at the source
+in both languages. `test_under_side_probability.py` added; its strongest
+assertion is that the fixed edge is the exact negation of the buggy one.
+
+**1.2 · Stale odds presented as live** *(P3 C4, P5 T4)*. All three parts.
+
+(a) The gate could never fire. Measured across the whole `prop_odds` table:
+
+```
+provider     rows      min_delay  max_delay  rows over the 600 threshold
+propline     157,058   null       null       0
+oddsapiio     13,114   null       null       0
+sharpapi      12,775   60         60         0
+```
+
+Maximum value in the table is 60. Now checks real row age too, at 30 minutes —
+a measured choice, not the 10 the old comment claimed: 10 would mark every
+non-MLB sport stale by construction, since generic-sport jobs are gameday-gated
+at 20-minute intervals. `test_price_staleness.py` added.
+
+(b) `/api/odds/lines` stamped `fetchedAt: new Date().toISOString()` in both
+branches, unconditionally, because `mergeGameOddsBookLineRows` threw the real
+timestamp away. `UnifiedGameLine.lastFetchedAt` now carries it; null when
+genuinely unknown, because an absent timestamp is honest and `now()` was a false
+claim.
+
+(c) The chip rendered `captured 2:49 AM` — no date, hover-only. Confirmed fixed
+in the live DOM:
+
+```
+-226
+6h ago
+SharpAPI · captured 8/28/2026, 7:58:18 AM (6h ago)
+```
+
+**1.3 · Tier D and E hidden** *(P3 C2, P3 C5, P5 T2; Q1, Q6)*. Two commits so
+the UI is never half-applied. Scan lost the Edge column, the Score column and
+the `+X.X% edge` tooltip; detail pages lost `EdgeBadge` (neutralised in the
+component, so restoring it is deleting an early return rather than finding four
+call sites), the moneyline/total confidence percentages, and
+TodaysPicksModal's two `PickRow` percentages.
+
+Live DOM after, headers only:
+
+```
+Player | Odds | IP | DVP | Avg L10 | Diff | L5 | L10 | L15 | H2H | Strk | SZN | Reason
+```
+
+Deliberately kept: the picks themselves (a pick with no number is not a
+probability claim), their graded outcomes (facts), IP (derived from the posted
+price — Tier B), and the Home Runs tab's *ordering* by `modelProb`, which is
+Tier C — no number is rendered. Everything keeps computing and logging per Q6.
+
+**1.4 · Strengthen Tier A + B** *(P5 T3)*. **Verified as already satisfied — no
+code changed.**
+
+I nearly changed something here and was wrong to want to. `lib/core/windowedStat.ts`
+— which P3 §2.4 praised as verified correct — makes `fixedWindow` return
+`insufficient` when `history.length < required`, with no partial credit. So when
+L10 shows a rate the denominator is *always exactly 10*, and adding a fraction
+would render `10/10` as noise. The module's own docstring says the fraction is
+for `openWindow` only, "because the denominator varies". `showFraction`/
+`showCount` are used on exactly H2H and SZN, in both ScanTable and PlayerDetail.
+
+T3's real subject is `pick_history` win rates — "a win rate over 11 games and
+one over 1,100 must not render identically". Observed in the live DOM:
+
+```
+Today's Picks   ML 64-49 (56.6%)   O/U 53-53 (50.0%)
+SZN             71.0%  66/93
+H2H             100%   7/7
+H2H (thin)      Not enough games — 0 of the 1 this window needs
+```
+
+Every variable-denominator rate discloses its sample; the insufficient case says
+so in words. Recorded as not reproducing rather than "fixed", per the kickoff
+prompt's instruction.
+
+**1.5 · Operator surface gated** *(P4 H2)*. `ADMIN_API_PREFIXES` held only
+`/api/diagnostics`, so every `/api/props/*` route answered anonymous callers —
+including `fit-weights`, which retrains **and activates** a model. Gated by
+prefix with a short exclude list, so a new operator route is protected by
+default and a forgotten list entry can only over-restrict. Verified against a
+real production build:
+
+```
+unauthenticated, must be blocked
+  /api/props/fit-weights            401      /api/props/drift-check     401
+  /api/props/backfill               401      /api/props/system-health   401
+  /api/props/elo-backfill           401      /api/odds/import           401
+  /api/props/fit-home-run-weights   401      /api/diagnostics           401
+
+must stay public
+  /api/props/lines        200      /api/props/calibration   200
+  /api/odds/lines?sport=nfl 200    /api/props/line-history  405
+                                   (POST-only; 405 not 401 proves it passed
+                                    through rather than being blocked)
+```
+
+Operator confirmed the signed-in legs 2026-08-28.
+
+**1.6 · `ODDS_API_KEY` supplied** *(Q9)*. Set on the Render worker and declared
+in `render.yaml`; every tick had been logging "ODDS_API_KEY is not set — game
+lines are turned off" while `app/api/odds/game-lines` held the only working
+copy. That route is now read-only: its `?force` bypassed the TTL and spent from
+the same monthly budget the worker draws on, from an endpoint with **no frontend
+consumer at all**.
+
+**1.7 · Calibration timer** *(P2 C2)*. 2min → 30min. `refreshMlb` deliberately
+left alone (P2 M9 warns against changing both at once).
+
+**1.8 · `event_context` filter** *(P3 H5)*. The calibration deciding which
+markets may power Good Bets was measuring a different model.
+
+```
+MLB calibration rows    before 354,862    after 38,535    (316,327 backfill)
+```
+
+landing on the plan's predicted ~40k. Not cosmetic — per dimension:
+
+```
+dimension       n_all    n_live   brier_all   brier_live
+total           31,853      200      0.2714       0.2763
+rbis            27,371    4,287      0.2147       0.1907
+total-bases     27,364    4,280      0.2328       0.2062
+runs            27,363    4,280      0.2408       0.2137
+doubles         24,343      838      0.1378       0.1626
+```
+
+`total` was being judged on 31,853 rows of which **200 are live**.
+
+**1.9 · "Source not recorded"** *(P3 M11)*. Not data loss —
+`prop_odds.provider_id` was correct throughout. `OddsProvenance` was a
+hand-written union covering 8 of `ProviderId`'s 13 members, and `propline` was
+not one of them:
+
+```
+provider     rows written in the last 2 days
+propline     87,472   (89%)
+sharpapi      8,296
+oddsapiio     2,489
+```
+
+so ~89% of prices came out anonymous. Fixed structurally: `OddsProvenance` now
+derives from `ProviderId`, so the label map fails to compile if a provider is
+added without one. Verified in the live DOM:
+
+```
+{ url: "/mlb", total_price_chips: 10, source_not_recorded: 0,
+  pct: "0.0%", sources: ["SharpAPI", "Propline"] }
+```
+
+against an exit criterion of under 5%.
+
+**1.10 · Internal error detail** *(P4 M4)*. `cachedRoute`'s catch returned
+`detail: error.message` to anonymous callers; `pg` errors name tables and
+columns, `fetch` errors name upstream hosts and sometimes carry a key in a query
+string. Now a correlation id, with detail kept server-side and still returned
+outside production. Two public hand-rolled routes fixed too.
+
+--- gate status: NOT RUN ---
+
+G1  every VERIFY re-run in one sitting   : NOT DONE — verified per task as work proceeded
+G2  typecheck / build / tests            : typecheck and build green after every commit.
+                                           Full Python suite NOT re-run since Phase 0.
+G3  smoke walk                           : PARTIAL — /mlb hydrated and inspected; other sports not walked
+G4  findings no longer reproduce         : done per task, above
+G5  write paths still landing            : NOT CHECKED since the Python deploys
+G6  orphans                              : none added
+G7  adversarial read-back                : NOT DONE
+G8  known NOT done                       : (1) the 1,208-row 1.1 backfill — deferred by operator, and
+                                               `edge = -edge` is wrong for Python-era rows whose
+                                               implied_raw is not stored, so some may be uncorrectable
+                                           (2) remaining `detail:` returns on now-admin-gated routes
+
 *Written 2026-08-28 from the Phase 1–5 audit findings and the operator's answers
 of the same date. Every measurement cited was taken from the live system;
 re-verify anything load-bearing before acting on it.*
