@@ -124,6 +124,53 @@ replacement.
 | Q10 | OddsHarvester moves to a dedicated machine | 8 |
 | Q11 | Propline's `totals` contents unknown → empirical route | 5 |
 
+**Added 2026-08-28, at Phase 2 kickoff.** Four decisions taken when the phase
+was scoped against live code rather than against the audit's own dates. Each
+one changed a task, so each is recorded here rather than left in a chat log.
+
+| # | Decision | Lands in |
+|---|---|---|
+| Q12 | The three user-triggered provider buttons (**Scan**, **More Books**, **Check Sharp Price**) are **deleted outright** — UI, routes, and whatever TS provider machinery goes unreachable with them. Not ported. | 2.5 |
+| Q13 | **Python computes every model number in the app; TypeScript assembles the page.** The three unported model writes move to Python, and `adapter.ts` stops recomputing the prop model / home-run model / game sims — it reads Python's results **cache-first**, the shape it already uses for the game model. Both scheduler timers go behind `withJobLock`. | 2.7 |
+| Q14 | The leakage fix takes the audit's **steps 1–3** plus an audit query over existing rows. Contaminated rows are **reported, not deleted** — the delete/keep call stays with the operator. | 2.2 |
+| Q15 | **The 48-hour observation window is removed from the Phase 2 gate** — see the note under "Phase 2 gate". Verification of sustained Python-only writes moves to after Phase 9. | 2 |
+
+Q12 is a **product** decision as much as a structural one: it removes the only
+user-initiated odds refresh in the app.
+
+**Q13 was answered three times, and the first two answers were based on my
+mis-sizing.** Recording the path because the correction is the useful part:
+
+1. First framing — "port `rebuildMlbSnapshot` to Python" — implied rewriting
+   `adapter.ts`, 2,412 lines, and I estimated 1.5–3 weeks.
+2. On measurement, four of the six writes in `rebuildMlbSnapshot` were **already
+   in Python** (`computeMlbPropPredictionsJob`, `gradeFinishedMlbPicksJob`,
+   `computeMlbGameModelJob`, plus the Elo/pitcher moves from earlier phases). I
+   then recommended leaving `adapter.ts` alone behind `withJobLock`, on the
+   claim that it was render work rather than model math.
+3. **That claim was wrong**, and the operator caught it. `adapter.ts` imports
+   and runs `computeModelProbability` (730, 1640), `applyFittedHomeRunWeights`
+   (1674), `ensureGameSims` (1993) and `computeMoneylineModel` (2265). It is
+   live model math on a 4-minute timer.
+
+What the measurement did establish is that the port itself largely **exists**:
+`prop_candidates.py`, `home_run_model.py` and `sim_engine.py` all run today, and
+`adapter.ts:2323` already reads `mlb_game_model_cache` cache-first with a TS
+fallback. So the real task is not a rewrite — it is extending that proven
+cache-first pattern from the game model to the prop side, so `adapter.ts` reads
+numbers instead of recomputing them. **Estimate: 2–4 days.**
+
+Known risk, flagged before starting: Python writes prop results to
+`pick_history`, which is a first-write-wins **log**, not a live feed. This
+probably needs a new `mlb_prop_model_cache` table mirroring
+`mlb_game_model_cache`. If the shapes don't line up, this runs to the long end
+of the estimate.
+
+The general lesson, which is the same one the audit itself is about: **the plan's
+own task descriptions are claims about the code, and they go stale too.** Three
+of Phase 2's eight tasks were mis-sized in the plan because the code moved after
+the audit was written. Size against the tree, not the prose.
+
 ### Phase order and dependencies
 
 ```
@@ -563,11 +610,20 @@ G1-G8 apply. Additionally:
 # Phase 2 — The ownership boundary
 
 **Goal:** exactly one language writes each table. Per Q2 — **Python writes,
-TypeScript renders.** **Duration:** 2 weeks. **Depends on:** 0, 1.
+TypeScript renders.** **Duration:** 5–8 working days (re-estimated 2026-08-28
+against the tree, task by task; 2.7 is 2–4 of them and carries nearly all the
+regression risk). **Depends on:** 0, 1.
 
 This is the phase that prevents the audit's root cause from recurring. P3 §4
 found 22 of 35 tables with writers in both languages, no locking, and "direct
 ports" that had already drifted.
+
+**Three of these eight tasks were mis-scoped in this plan** — 2.3 because the
+port it asks for already happened, 2.5 because the destination it names does
+not exist, 2.7 because its title described a symptom rather than its content.
+All three were caught by reading the tree at kickoff. The kickoff prompt's
+"verify it still reproduces" step is not a formality; it changed most of this
+phase.
 
 ### 2.1 · Write the ownership map first *(P2 M9, P3 §4)*
 
@@ -588,45 +644,143 @@ same tables. Doing them before the boundary is decided means doing them twice.
 
 ### 2.2 · Fix the generic-sports leakage, re-enable those jobs *(P3 H4)*
 
-The jobs disabled in 0.8. Predictions must use only data strictly prior to
-`commence_time`.
+The six `genericPropProduction*Job` entries disabled in 0.8 and currently in
+`DISABLED_JOBS` (`python-odds-service/src/jobs.py`, which names this task as
+their owner). Predictions must use only data strictly prior to `commence_time`.
+
+**Scope is Q14 — the audit's steps 1–3, plus an audit query. Not step 4's
+deletions.**
+
+1. **Start filter.** `generic_prop_production.run_sport` (~line 364) loops over
+   `generic_pick_capture.fetch_scheduled_games`, whose docstring says it
+   deliberately keeps games at any status. Skip any game where
+   `commence_time <= now`. `_is_final_capture_due` already parses
+   `commence_time` correctly — reuse it inverted rather than writing a second
+   parser.
+2. **Migration: store `commence_time` on `pick_history`.** Not optional garnish
+   — **the VERIFY below cannot be run without it.** Today there is no column
+   recording when the predicted game actually started, so no row, past or
+   future, can be audited for leakage.
+3. **Belt and braces in `fetch_player_gamelog`:** drop any gamelog entry whose
+   event id equals the game being predicted. Makes the guarantee local instead
+   of dependent on every caller remembering the filter.
+4. **Audit query, report only.** The existing rows (P3 H4 cites n=207 NFL,
+   which §11 established came from *local* runs, never production) get checked
+   against real kickoff times and the count written into §11. **Change nothing
+   about them** — the delete/keep call stays with the operator, per Q14.
+
+Then move the six entries from `DISABLED_JOBS` back into `JOB_REGISTRY`, deploy,
+and confirm the deployed SHA contains the fix *before* the first tick runs.
+Re-enabling ahead of the deploy is the one ordering that reproduces the exact
+bug this task exists to fix.
 
 **VERIFY:** for a sample of new rows, every input feature's timestamp precedes
 `commence_time`. Log the query.
 
-### 2.3 · Move `/api/odds/lines`' writes to Python *(P4 H1)*
+### 2.3 · Delete `/api/odds/lines`' writes *(P4 H1)*
 
-Three write passes on an unauthenticated GET: `logGameOddsHistory`,
-`logTotalPredictionsFromLines`, `attachPricesFromLines`. `odds_lines_cycle.py`
-already owns the lock passes; its docstring notes `attachPricesFromLines` is
-unported. Port all three; the route becomes a pure read.
+**Retitled 2026-08-28: P4 H1's "port all three" is stale.** Checked against the
+tree at Phase 2 kickoff, all three passes already exist in Python and run every
+5 minutes as `mlbOddsLinesCycleJob`:
 
-**VERIFY:** with the dev server **stopped**,
-`SELECT count(*) FROM game_odds_history WHERE observed_at > now() - interval '24 hours';`
-still grows.
+| TS pass, `app/api/odds/lines/route.ts` | Python |
+|---|---|
+| `logGameOddsHistory` | `db.write_game_odds_history`, `odds_lines_cycle.py:770` |
+| `logTotalPredictionsFromLines` | `db.log_game_total_predictions`, via `run_total_lock_from_lines:522` |
+| `attachPricesFromLines` | `attach_prices_from_lines`, `odds_lines_cycle.py:666` |
+
+The route's own comment claiming `attachPricesFromLines` is "NOT yet ported"
+is false, and `odds_lines_cycle.py`'s docstring says the same — both are 2.8's
+job to correct.
+
+So this task is **deletion plus one real gap**, not a port. Delete the three
+calls; the route becomes a pure read.
+
+**The gap, which a naive deletion would silently introduce:** the TS pass logs
+history for every row in `game_odds_book_lines` — *all* sources merged
+(the-odds-api, OddsHarvester, SportsGameOdds, SharpAPI, Propline, ESPN). The
+Python job logs only the-odds-api's own freshly-fetched lines. Deleting the TS
+pass as-is therefore **shrinks `game_odds_history` source coverage** while every
+row count still looks healthy. Widen the Python side to log from the shared
+table first, in the same commit.
+
+**VERIFY:** `game_odds_history` keeps growing with the dev server stopped, **and**
+`SELECT source, count(*) FROM game_odds_history WHERE observed_at > now() -
+interval '2 hours' GROUP BY source;` returns the same set of sources it did
+before the deletion. Row count alone does not prove this one.
 
 ### 2.4 · Remove the TypeScript golf writes *(P2 H1)*
 
-`lib/sports/golf/adapter.ts` ~675 (`logGolfModelPredictions`), ~689
-(`ingestGolfHistory`), ~696 (`gradeAllGolfPredictions`) run on every golf page
-load, alongside the Python `golfPredictionsJob` whose registry comment falsely
-claims the TS path was removed.
+`lib/sports/golf/adapter.ts` runs these on every golf page load, alongside the
+Python `golfPredictionsJob` whose registry comment falsely claims the TS path
+was removed:
 
-**VERIFY:** `golf_model_predictions` keeps advancing for 24 h with the dev
-server stopped. Fix the false comment in `jobs.py` in the same commit.
+- ~661 `logGolfTournamentPredictions` — **a fourth write P2 H1's fix text omits.**
+  H1's own finding body lists `golf_tournament_predictions` among the tables
+  with two writers, so it belongs here; only the "delete lines 675/689/696"
+  instruction missed it. Deleting three of four would leave the double-write
+  open on exactly one table and look finished.
+- ~675 `logGolfModelPredictions`
+- ~689 `void ingestGolfHistory(...)`
+- ~696 `void gradeAllGolfPredictions()`
 
-### 2.5 · Port the user-triggered provider routes *(P2 M1)*
+The last two are `void`-ed floating promises whose rejections are already
+showing up unhandled in `system_events` (46 × history-ingest, 15 × grading).
 
-`scan-player`, `more-books`, `sharp-price` call TS provider code
-(`tier1Refresh.ts`, `registry.ts`, `providers/*.ts`). Move to Python endpoints
-or queued jobs, then **delete** the TS provider machinery.
+**Delete the four write calls, not the computation.** The tournament simulation
+and prediction rows are still needed for what the page renders this request;
+what goes is the persistence. Confirm before deleting that the Python job
+covers all five golf tables, and that the worker is healthy — with the worker
+down, the TS path is the *only* writer, so removing it stops golf entirely.
 
-**VERIFY (rule 2):** TS files deleted from the repo, and 48 h of `prop_odds`
-writes observed with only Python running.
+**VERIFY:** `golf_model_predictions` and `golf_tournament_predictions` both
+advance from Python within one job interval (5 min) of the deletion, dev server
+stopped. Fix the false comment in `jobs.py` in the same commit.
+
+### 2.5 · Delete the user-triggered provider routes *(P2 M1)* — **Q12**
+
+**Retitled 2026-08-28. This is a deletion, not a port**, per operator decision
+Q12. Two things forced the rewrite:
+
+1. **There is no Python endpoint to move to.** `python-odds-service/src/main.py`
+   runs `SequentialQueue` and nothing else — it is a Render *background worker*
+   with no inbound URL. "Move to Python endpoints" was never available as
+   written. The alternatives were a queued job table (async, latency bounded by
+   whatever is ahead in the queue — a bad fit for a button you press and wait
+   on) or a second paid Render web service.
+2. **The operator elected to remove the feature instead.** These three buttons
+   are the app's only user-initiated odds refresh; everything else is ambient.
+
+**Delete, in this order:**
+
+- The UI actions — `runMoreBooks` / `runSharpPrice` / `runScan` and their
+  state in `components/usePropOdds.ts` (~81, 88, 109, 127, 140, 161), then
+  every consumer rendering them.
+- The three routes: `app/api/props/{scan-player,more-books,sharp-price}/`.
+- Their `middleware.ts` entries (both `PROTECTED_API_PREFIXES` at :28 and the
+  list at :68–70).
+- Then whatever TS provider machinery is *actually* unreachable afterwards.
+
+**Do not delete the provider layer wholesale.** P2 M1 traced it and ruled most
+of it live; re-traced at kickoff, these still have real readers and must survive
+unless they independently go dead: `registry.ts` (`allProviderMeta` →
+`/api/props/diagnostics`), `config.ts` (five importers incl.
+`oddsPapiHistoricalIngest.ts`), `providers/sportsGameOdds.ts` (→
+`/api/nfl/game/[gameId]`), `providers/oddsPapi.ts` (→ `/api/props/line-history`).
+`tier1Refresh.ts` has `scan-player` as its **only** importer and does die here.
+
+**Produce the deletion list before deleting**, and put it in the commit message
+— this is irreversible and it is the operator's product surface.
+
+**VERIFY:** `npm run typecheck && npm run build` green; a grep across both trees
+for every deleted symbol returning nothing, run *after* deletion; and
+`prop_odds` still advancing from Python (`refreshTier1`, 2.5 min) within one
+interval, dev server stopped.
 
 ### 2.6 · Delete confirmed-dead code *(P2 M2)*
 
-Verified zero importers this session:
+Re-verified at Phase 2 kickoff (2026-08-28) — all three still present, still
+zero importers:
 - `lib/odds/nflGameLines.ts`
 - `lib/odds/rundown.ts` (only importer is `nflGameLines.ts`)
 - `lib/odds/props/sportsGameOddsRefresh.ts`
@@ -634,17 +788,78 @@ Verified zero importers this session:
 Plus P2 Step 4's list in order, `npm run typecheck` after each. Move
 `better-sqlite3` + types to `devDependencies`.
 
-### 2.7 · Move the in-process schedulers to `JOB_REGISTRY`
+**Two corrections to P2 M2's inventory, from re-checking it at kickoff:**
 
-`lib/scheduler.ts`'s two `setInterval` timers (`refreshMlb`,
-`refreshCalibration`) are per-process. On any platform running more than one
-instance, every timer runs N times and every write happens N times. Consistent
-with Q2 anyway.
+- **`/api/{cfb,nba,nhl,soccer,tennis}/player/[playerId]/candidates` are LIVE.**
+  M2 marked them "VERIFY — likely called from a client path my static scan
+  missed." They are: `components/useSyntheticPlayerCandidates.ts:48–51` builds
+  those URLs. **Do not delete.** This is the "verify it still reproduces" rule
+  earning its place — the finding was a guess and the guess was wrong.
+- **`/api/props/line-history` has no caller.** M2 listed it alongside the
+  candidates routes as probably-live. It isn't: the only references anywhere are
+  its own file and `middleware.ts:65`. It becomes another verify-then-delete
+  item — and note it is OddsPapi-backed, so if it goes, 2.5's surviving
+  `providers/oddsPapi.ts` may go dead too. Sequence it **after** 2.5 and
+  re-check.
 
+`/api/golf/predictions` (public, unauthenticated, 3,000-iteration simulation,
+no frontend caller) and `/api/odds/game-lines` (legacy plural, superseded):
+**delete both.** Neither has a caller and both are live paid/compute surface.
+
+### 2.7 · Python computes every model number; TypeScript renders — **Q13**
+
+**Retitled and rescoped 2026-08-28.** The original title ("move the schedulers
+to `JOB_REGISTRY`") described only the multi-instance symptom. The real content
+is the model boundary. See Q13's note in §0 for how this was mis-sized twice
+before being measured.
+
+**The symptom.** `lib/scheduler.ts`'s two `setInterval` timers (`refreshMlb` at
+4 min, `refreshCalibration` at 30 min) are per-process. Run N app instances —
+which deploying in Phase 8 means — and every timer fires N times.
+
+**The actual problem.** `adapter.ts` (2,412 lines), which `refreshMlb` drives,
+runs live model math in TypeScript on that timer: `computeModelProbability`
+(730, 1640), `applyFittedHomeRunWeights` (1674), `ensureGameSims` (1993),
+`computeMoneylineModel` (2265), plus Elo, park factors and Statcast rates. This
+is the audit's root finding in its purest form — Python computes the same
+numbers, every 5 minutes, in `prop_candidates.py` / `home_run_model.py` /
+`sim_engine.py`, and the two are never reconciled.
+
+**a · Cache-first cutover.** `adapter.ts:2323` already does exactly this for the
+game model: read `mlb_game_model_cache`, use it when present and fresh, fall
+back to TS compute when the row is missing or stale. **Extend that proven
+pattern to the prop side** — prop probabilities, home-run model, game sims.
+Cache-first is what makes this safe: worst case if Python is down is today's
+behaviour, not a broken page.
+
+> **Design decision to make and record, not to escalate:** Python's prop output
+> lands in `pick_history`, a first-write-wins **log** — today's number is frozen
+> at whatever the first tick saw. A page needs the *current* number. This likely
+> wants a new `mlb_prop_model_cache` mirroring `mlb_game_model_cache`. Whatever
+> is chosen, write down why in the commit.
+
+**b · Port the three genuinely-unported writes.** Four of the six writes in
+`rebuildMlbSnapshot` are already in Python. These three are not:
+
+| Write | Size |
+|---|---|
+| `logGameModelPredictions` → `pick_history` | ~40 lines; reads `mlb_game_model_cache`, which already exists |
+| `gradeFinishedGames` → `pick_history` (`grading.ts`, 208 lines) | MLB prop grading; `statsapi.py` has the live feed, `generic_prop_grading.py` is the shape to copy |
+| `computeCalibrationPayload` → `snapshot_cache` (86 lines) | ~12 aggregate queries; mostly transcribing SQL |
+
+**c · Lock both timers.** `withJobLock` already exists in `lib/db/pgClient.ts`
+and is currently **unused** — its callers were the deleted provider jobs. Wrap
+both timers so N instances produce one rebuild per interval.
+
+**Estimate: 2–4 days**, the long end if the prop shapes don't line up.
 **Doing this now, not at deploy time, is what makes Phase 8 safe.**
 
-**VERIFY:** with two app processes running locally, `snapshot_cache` for
-`mlb:snapshot` is written once per interval, not twice.
+**VERIFY:** (a) `adapter.ts` no longer calls `computeModelProbability`,
+`applyFittedHomeRunWeights` or `ensureGameSims` outside a cache-miss fallback —
+shown by grep; (b) a rendered MLB prop probability equals the Python-computed
+value for the same subject/dimension/game, compared row to row, not eyeballed;
+(c) with two app processes running locally, `snapshot_cache['mlb:snapshot']` is
+written once per interval, not twice.
 
 ### 2.8 · Correct every misleading comment *(P2 M6, P2 H7)*
 
@@ -655,9 +870,22 @@ twice. Per rule 3, each correction ships with the observation proving it.
 ### Phase 2 exit
 
 - [ ] `docs/table-ownership.md` committed, all 35 tables
-- [ ] 48 h of writes to every shared table with the dev server stopped
-- [ ] Leakage verification query logged
+- [ ] ~~48 h of writes to every shared table with the dev server stopped~~ —
+      **removed 2026-08-28 by operator decision (Q15).** Replaced by the
+      write-advance check below.
+- [ ] For every table a TS writer was removed from: `max(timestamp)` advances
+      from Python within one job interval of the deletion, observed and logged
+- [ ] Leakage verification query logged; the six `genericPropProduction*Job`
+      entries back in `JOB_REGISTRY`, and `DISABLED_JOBS` empty or its remaining
+      entries re-justified with a date and owning phase
+- [ ] `game_odds_history` source coverage unchanged after 2.3 — the
+      `GROUP BY source` query, not just a row count
+- [ ] All four golf writes gone; both golf tables advancing from Python
+- [ ] Scan / More Books / Check Sharp Price gone from UI, routes and
+      `middleware.ts`; deletion list in the commit message
 - [ ] Dead files deleted, not commented out
+- [ ] `adapter.ts` computes no model probability outside a cache-miss fallback
+- [ ] A rendered prop probability matches Python's value for the same row
 - [ ] Two local instances → one write per interval
 - [ ] `CLAUDE.md` describes what actually runs
 
@@ -667,12 +895,23 @@ twice. Per rule 3, each correction ships with the observation proving it.
 
 G1-G8 apply. Additionally:
 
-- **48 hours, every shared table, dev server stopped.** Not a sample - all 22
-  tables from `audit-handoff-phase-4-5.md` 1.2, each with `max(timestamp)` at
-  T+0 and T+48h. Rule 2 is this phase's entire point; this is where it is
-  proved.
+- ~~**48 hours, every shared table, dev server stopped.**~~ **Removed
+  2026-08-28 by operator decision (Q15)**, to keep build velocity; sustained
+  Python-only writes get verified after Phase 9 instead. Recorded here rather
+  than deleted, because this was the check Rule 2 pointed at and dropping it
+  silently is exactly the failure mode this plan exists to prevent.
+
+  **Replaced by:** for every table a TS writer is removed from, `max(timestamp)`
+  advances from Python **within one job interval** of the deletion — minutes,
+  not days, and logged in §11 per table. This is weaker: it proves the Python
+  writer works *now*, not that it keeps working unattended. That gap is the
+  known cost of Q15 and belongs in the sign-off's "known not done" list.
 - **Deletion means zero importers.** For every deleted file, a grep across both
   trees showing no remaining reference, run *after* the deletion.
+- **The model boundary is real, not asserted.** 2.7's VERIFY (b) — a rendered
+  prop probability compared row-to-row against Python's own value. A grep
+  showing the TS call sites are gone proves the code path changed; it does not
+  prove the number the user sees now comes from Python.
 - **`docs/table-ownership.md` re-derived, not reviewed.** Regenerate the writer
   list by grepping both trees fresh, and diff it against the committed doc.
   They must match exactly.
