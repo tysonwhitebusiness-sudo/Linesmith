@@ -14,6 +14,7 @@ gate's note on task 3.11).
 Run with:  python -u src/test_under_side_probability.py
 """
 import sys
+from datetime import datetime, timezone
 
 sys.path.insert(0, "src")
 
@@ -64,7 +65,13 @@ def _row(side: str, american: int) -> PropOddsRow:
         bookmaker="testbook",
         american_odds=american,
         decimal_odds=None,
-        fetched_at="2026-08-28T00:00:00Z",
+        # A CURRENT timestamp, not a hardcoded one. Phase 1.2a taught this the
+        # hard way: once _too_stale started checking real row age, a fixture
+        # pinned to a fixed date aged past the 30-minute threshold and
+        # _two_sided_devigged_for_row began returning None — so this file
+        # started failing on a change that had nothing to do with the sign it
+        # tests. A fixture that decays with the calendar is a time bomb.
+        fetched_at=datetime.now(timezone.utc).isoformat(),
         is_delayed=False,
         delay_seconds=None,
     )
