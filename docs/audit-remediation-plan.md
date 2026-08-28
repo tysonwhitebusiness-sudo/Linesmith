@@ -1417,6 +1417,21 @@ Actions run 89041102402).
 
 **VERIFY:** unplug the original laptop; `game_odds_book_lines` still advances.
 
+### 8.9 · Move the weekly backup off the laptop *(Phase 0.1)*
+
+0.1's `scripts/weekly-backup.sh` runs on one laptop via Task Scheduler. It
+inherits every problem 8.7 names for OddsHarvester: no run with the lid shut,
+no monitoring, and no alert when it stops. It is a deliberate stopgap — a
+backup that usually happens beats one dump from August — but "usually" is not a
+backup strategy for the one dataset no public source can regenerate.
+
+Move it to the same always-on box as 8.7, and push the dump off that machine
+too: a local dump on a machine that dies with the machine is half a backup.
+Object storage (B2/R2/S3) is a few dollars a month at ~45MB/week.
+
+**VERIFY:** shut the laptop for a full week; a new dump still appears, and its
+restore drill still passes per 0.1.
+
 ### 8.8 · Close the migration-verification question *(P2 H6)*
 
 `data/linebuddy.db` is not on this machine — I checked. If it exists on a
@@ -1678,6 +1693,28 @@ vanilla cluster; they would apply on a real Supabase target. No data affected.
 
 *Tooling note:* neither `pg_dump` nor Docker was available. Installed
 PostgreSQL 17.11 via winget.
+
+**Weekly schedule (0.1's closing sentence, initially missed and then done).**
+`scripts/weekly-backup.sh` — the same nine tables, 8 dumps retained, plus a
+sanity floor that treats a dump under 1MB as a failure, since a truncated dump
+that looks like success is worse than an obvious error. Registered as the
+Windows task "Linesmith weekly DB backup", Sundays 03:00.
+
+Verified by letting the scheduler run it, not by running the script:
+```
+LastRunTime : 08/28/2026 11:02:20   LastResult : 0   NextRunTime : 08/30/2026 03:00:00
+linesmith-20260828-1102.dump   44,368,410 bytes
+```
+
+**The first registration silently did not work**, and the reason is worth
+keeping. `New-ScheduledTaskSettingsSet` defaults to
+`DisallowStartIfOnBatteries = True`, so on a laptop the task sat in `Queued`
+forever and ran nothing — while `Get-ScheduledTaskInfo` still reported
+`LastResult: 0`. A backup that is configured, reports success, and never runs
+is the same failure shape as the health-check cron that hung: **the state
+nothing reports is the state that hurts you.** Fixed with
+`-AllowStartIfOnBatteries -DontStopIfGoingOnBatteries`, then re-verified by
+triggering it and watching a real dump land.
 
 **0.2 · Under the ceiling.** Partially achieved, deliberately.
 
@@ -2123,14 +2160,8 @@ G7 read-back         : PASS, with one correction made. Swept all 216 files in th
                        - 21 of 27 new routes use cachedRoute. No hand-rolled third pattern found.
 G8 known NOT done    : (1) SUPABASE_SERVICE_ROLE_KEY cannot be rotated — Supabase removed the ability.
                            Needs the publishable/secret key migration; belongs with Phase 7.
-                       (1b) THE WEEKLY BACKUP IS NOT SCHEDULED. 0.1 ends "Schedule it weekly once
-                           proven," and it is proven — but only one dump exists, taken by hand on
-                           2026-08-27. No Windows scheduled task, no cron, nothing. This is a real
-                           miss in 0.1 rather than a deferral: the phase's own goal is "nothing can
-                           lose data," and a single manual dump that nobody repeats decays into no
-                           backup within a week. Supabase Pro's daily backups now exist and reduce
-                           the exposure, but 8.1 is explicit that they protect against Supabase's
-                           failures, not against yours.
+                       (1b) CLOSED. Weekly backup scheduled — see 0.1's addendum below. Remains a
+                           laptop stopgap; task 8.9 moves it.
                        (3) Database 1,280 MB — over the old 500 MB ceiling by design; Pro makes it moot.
                        (4) ODDS_API_KEY still missing on the worker (Phase 1.6, not Phase 0).
                        (5) Four model-training tests still running; G2 is not complete until they report.
