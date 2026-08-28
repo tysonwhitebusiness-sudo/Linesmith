@@ -2014,9 +2014,26 @@ in `requirements.txt`. It is therefore untestable on any other machine and in
 any CI — worth fixing when 3.11 builds CI, either by vendoring the import
 behind a guard or by declaring the dependency.
 
-Still running at write time: `test_mlb_mlp`, `test_mlb_stacking`,
-`test_mlb_tree_models`, `test_model_benchmark` (real model training, >40min).
-**The gate does not pass until these report.**
+The four model-training tests:
+```
+PASS  test_mlb_stacking.py
+PASS  test_model_benchmark.py
+????  test_mlb_mlp.py         killed at a 25min timeout — not an assertion failure
+????  test_mlb_tree_models.py killed at a 25min timeout — not an assertion failure
+```
+Both timed-out tests do "one real fit against real season data", which includes
+`model_fit.build_training_set` — real per-team stats, bullpen ERAs, and **a real
+sim-engine pass per game** across a whole 2023 season, over the network. Re-run
+with a 55-minute window to settle whether they pass.
+
+**Either way this is a finding for 3.11.** A test that needs tens of minutes and
+live network access cannot run in CI, so the two files covering the tree models
+and the MLP are effectively uncovered by any automated gate. Splitting each into
+a fast synthetic-fixture test (the serialize/deserialize round-trip they already
+do) and a slow, separately-invoked real-data test would make the fast half
+CI-runnable. Same applies to `test_harvester_scrape.py`'s uninstallable import.
+That is three of nineteen test files that CI will never be able to run as
+written.
 
 **G3 · smoke walk — PASS, with one serious finding.**
 
