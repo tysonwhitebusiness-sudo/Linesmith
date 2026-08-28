@@ -379,8 +379,18 @@ export function StoredOddsChip({ odds, size = 'sm' }: { odds: OddsInfo | undefin
  * This showed `+4.2%` — an edge, Tier E — on PlayerDetail, GameDetail,
  * GameHeroCard and GameLinesView, with a tooltip disclosing the model and
  * market probabilities behind it. The app's own graded history does not
- * support any of those numbers: the model loses to the market, and P3 C5
- * measured the negative-edge bucket *outperforming* the positive one.
+ * support any of those numbers. P3 C5 bucketed 3,615 graded picks by the edge
+ * they were shown with, against what the market implied:
+ *
+ *     edge >= 3% (the Good Bets bar)  n=1,070   realized -0.18 pts vs market
+ *     edge 0-3%                       n=  564   realized -0.56 pts
+ *     edge < 0                        n=1,981   realized -4.52 pts
+ *
+ * Picks clearing the 3% bar realize *exactly* the market's own probability —
+ * the claimed edge converts to zero measured excess. (The negative bucket
+ * missing by 4.52 points is the interesting part: it suggests the model
+ * correctly identifies bets to avoid, a possible fade signal, which task 4.6
+ * investigates rather than builds on.)
  *
  * Neutralised here rather than at the four call sites on purpose. One place
  * decides, one reason is written down once, and when task 4.2's activation
