@@ -496,12 +496,23 @@ async def check_snapshot_cache_size() -> dict:
     table size, and the single largest payload (a large individual
     cache key means every hit-or-miss request for it is expensive
     regardless of how often it's actually re-fetched)."""
+    # pg_column_size, not LENGTH. LENGTH(payload) counts CHARACTERS of the
+    # uncompressed text; pg_column_size returns what the value actually
+    # occupies after TOAST compression, which is the number a storage alarm
+    # is about. They differ by ~6.4x here: this check reported "largest
+    # single payload 72.4MB" for mlb:full-raw:2026-08-26 while that row cost
+    # 11.2MB on disk (measured 2026-08-28). The thresholds below were
+    # themselves calibrated against the compressed figure — the comment on
+    # SNAPSHOT_CACHE_SINGLE_KEY_WARN_MB cites 11.22MB, which is a
+    # pg_column_size number — so the check was comparing an uncompressed
+    # measurement against a compressed threshold and overstating every
+    # reading. Found by Phase 0's gate (docs/audit-remediation-plan.md).
     pool = await db.get_pool()
-    total_row = await pool.fetchrow("SELECT SUM(LENGTH(payload)) AS total_bytes, COUNT(*) AS n FROM snapshot_cache")
+    total_row = await pool.fetchrow("SELECT SUM(pg_column_size(payload)) AS total_bytes, COUNT(*) AS n FROM snapshot_cache")
     total_bytes = total_row["total_bytes"] or 0
     total_mb = total_bytes / 1024 / 1024
 
-    biggest = await pool.fetch("SELECT cache_key, LENGTH(payload) AS bytes FROM snapshot_cache ORDER BY LENGTH(payload) DESC LIMIT 5")
+    biggest = await pool.fetch("SELECT cache_key, pg_column_size(payload) AS bytes FROM snapshot_cache ORDER BY pg_column_size(payload) DESC LIMIT 5")
     biggest_desc = ", ".join(f"{r['cache_key']} ({r['bytes'] / 1024 / 1024:.1f}MB)" for r in biggest)
     max_single_mb = (biggest[0]["bytes"] / 1024 / 1024) if biggest else 0.0
 
