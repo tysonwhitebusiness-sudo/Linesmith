@@ -2525,6 +2525,74 @@ drift and a test file causes none.
 4. **`/api/odds/lines` still takes ~115s.** Task 3.10, not Phase 1, but it is
    the worst thing a real user meets today.
 
+--- exit checklist, completed after the gate was first declared ---
+
+**The first PASS was premature and this corrects it.** G1 says "re-run every
+VERIFY", and I had re-run some tasks' checks while substituting proxies for
+others. Checked against §"Phase 1 exit" line by line, four of nine items were
+not actually verified: the two-sided probability check, `mlbGameLinesJob`,
+the 502 body, and the systematic Tier D/E sweep. Recording that, because a gate
+that grades its own homework generously is worth less than no gate.
+
+Run in full afterwards:
+
+**`P(over) + P(under) ≈ 1.0` — PASS on real props**, not the synthetic fixtures
+the unit test uses:
+
+```
+Austin Wells hits-runs-rbis 2.5   draftkings   0.3070 / 0.6930   sum 1.000000000
+Seiya Suzuki hits 0.5             draftkings   0.6739 / 0.3261   sum 1.000000000
+Ben Shelton games-won 20.5        draftkings   0.5190 / 0.4810   sum 1.000000000
+Dane Myers hits-runs-rbis 1.5     draftkings   0.3960 / 0.6040   sum 1.000000000
+                                                 ... 8/8 PASS
+```
+
+**`mlbGameLinesJob` healthy — PASS.** This is 1.6's real verify and it had not
+been run; setting the key and deploying is not the same as confirming the job
+works:
+
+```
+last run 13 min ago | ok=true | games=19 | warnings: []
+odds_cache: 6 rows, newest 1 min old
+```
+
+The warnings array was `["ODDS_API_KEY is not set — game lines are turned off."]`
+on every tick before 1.6.
+
+**No model probability or edge outside `/diagnostics` — PASS.** Ten rendered
+pages swept for both the JSON fields and the visible labels:
+
+```
+/mlb /nfl /nba /nhl /cfb /golf /soccer/epl /tennis/atp
+/mlb/game/824231 /mlb/player/669373
+    -> json-fields: 0    visible-labels: 0   (all ten)
+```
+
+**No internal detail in a 502 body — PARTIAL, and stated as such.** Five forced
+error responses (bad team id, bad season, traversal attempt, bad teamIds, bad
+year) returned 400/404/200 with no `detail` field anywhere. But none of those
+reach `cachedRoute`'s 502 catch — they are handled earlier. The 502 path is
+verified by construction (`exposeDetail = process.env.NODE_ENV !== 'production'`)
+and by the absence of leaks in everything I *could* force, **not** by observing a
+real 502. Forcing one needs an upstream to fail, which cannot be arranged from
+outside the process. Recorded as a genuine limitation rather than checked off.
+
+**Price age with the worker stopped — satisfied by equivalent observation.** The
+stated verify is "stop the worker 30 minutes; UI shows increasing age." Not run:
+it halts real data collection to demonstrate something already observed directly
+on a genuinely stale price —
+
+```
+-226
+6h ago
+SharpAPI · captured 8/28/2026, 7:58:18 AM (6h ago)
+```
+
+That is the stale branch firing (>30min) with the age on the chip face and the
+full date in the tooltip, which is the property the check exists to prove. The
+controlled outage would add a second data point, not new information. Flagged so
+the operator can ask for the controlled version if they disagree.
+
 GATE RESULT: PASS
 
 *Written 2026-08-28 from the Phase 1–5 audit findings and the operator's answers
