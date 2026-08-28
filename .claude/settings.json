@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"C:/Users/occy3/Documents/line-buddy/scripts/session-handoff-check.sh\"",
+            "timeout": 15,
+            "statusMessage": "Checking session handoff state"
+          }
+        ]
+      }
+    ]
+  }
+}
