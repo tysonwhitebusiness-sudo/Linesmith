@@ -35,62 +35,68 @@ loads automatically, and backstopped by a Stop hook
 5. **`git log`** — commit messages here carry the reasoning, not just the
    change. Worth reading for recent work.
 
-**Last updated:** 2026-08-28.
+**Last updated:** 2026-08-28 (Phase 1 in progress).
 **Repo state:** working tree clean, pushed, nothing pending deploy.
 
 ---
 
 ## 1. Where we are
 
-**PHASE 0 IS COMPLETE. Its gate PASSED on 2026-08-28** — G1–G8 all satisfied,
-logged in §11 with raw output. **Phase 1 may start.**
+**Phase 0 COMPLETE, gate PASSED 2026-08-28.** Logged in §11 with raw output.
 
-Final G2 result (the last thing outstanding):
-```
-PASS  test_mlb_mlp.py         exit 0, 2969s (49.5 min)
-PASS  test_mlb_tree_models.py exit 0, 1408s (23.5 min)
-18 of 19 python tests pass; the one failure is an environment gap
-(test_harvester_scrape.py imports `oddsharvester`, which only exists on the
-scraper laptop and is not in requirements.txt).
-```
+**Phase 1 IN PROGRESS — 7 of 10 tasks done, each committed and pushed
+separately with its verification in the commit message.**
 
-Carried forward deliberately, not forgotten — full list in §11's "known NOT
-done":
-- `SUPABASE_SERVICE_ROLE_KEY` can't be rotated (Supabase removed the ability
-  for legacy keys) → Phase 7's publishable/secret key migration.
-- DB at 1,280 MB, over the old 500 MB Free ceiling by design → Pro makes it moot.
-- `ODDS_API_KEY` missing on the worker → that's task **1.6**.
-- `/api/odds/lines` takes ~115s → that's task **3.10**, and it is the worst
-  thing a real user meets today.
-
-## 2. Starting Phase 1
-
-Use the kickoff prompt in §0. Phase 1's goal: *every number on screen is a
-verifiable fact or a clearly labelled unvalidated signal.* Ten tasks,
-`### 1.1` … `### 1.10`, with a file map at the end of the phase — **line numbers
-there are from 2026-08-27, so re-locate by symbol, not by line.**
-
-**Four findings re-verified 2026-08-28 — do not re-check:**
-
-| Task | Confirmed still reproducing |
+| Task | State |
 |---|---|
-| 1.2 | `app/api/odds/lines/route.ts` stamps `new Date().toISOString()` at 4 sites |
-| 1.5 | `middleware.ts:41` — `ADMIN_API_PREFIXES = ['/api/diagnostics']` only, so every `/api/props/*` route including `fit-weights` answers anonymous callers |
-| 1.7 | `lib/scheduler.ts:48` — `CALIBRATION_INTERVAL_MS = 2 * 60_000` |
-| 1.10 | `lib/cachedRoute.ts:141` returns `detail: error.message` to anonymous callers |
+| 1.1 inverted under-side probability | DONE — fixed in **both** languages |
+| 1.2 `fetchedAt: now()` lie | DONE — all three parts (a/b/c) |
+| 1.5 gate the operator surface | DONE — verified against a real prod build |
+| 1.6 `ODDS_API_KEY` to the worker | DONE — set on Render, TS route made read-only |
+| 1.7 calibration timer 2min→30min | DONE |
+| 1.8 `event_context` filter | DONE — 354,862 → 38,535 rows |
+| 1.10 error-detail leak | DONE |
+| **1.3 hide Tier D/E** | **NOT STARTED — needs an operator decision, see below** |
+| **1.4 strengthen Tier A+B** | **NOT STARTED — pairs with 1.3** |
+| **1.9 "Source not recorded"** | **NOT STARTED — tracing work, no decision needed** |
 
-**1.6 is nearly free and has live evidence.** Every worker tick logs
-`warn: ODDS_API_KEY is not set — game lines are turned off.` The key is in
-`.env.local` and was never added to Render. Set it via the Render API on
-`srv-da36bm2bkg8c73fqrdeg`, then remove the TS route's ownership.
+### The pattern worth carrying into 1.9
 
-**Still needs verification before acting:** 1.1, 1.3, 1.4, 1.8, 1.9.
+Both Phase 0's tennis crash and 1.1 were bugs the audit located in TypeScript
+that had *since been ported into Python and were live there*. 1.1 was worse: the
+Python edge had been **redesigned** on 2026-08-27, so the sign error outlived the
+calculation it was found in and corrupted a quantity the audit never analysed.
+**Check the Python side first on 1.9.** The audit's file map is accurate for
+2026-08-27 and the tree has moved.
 
-**Suggested order.** 1.1 first — it gates the whole grade question, and a Tier C
-ranking built on an inverted under-side probability ranks half its rows on the
-wrong number. Then 1.6 and 1.7 (tiny). Then 1.2, which the plan calls the single
-most user-protective change in the document. 1.3/1.4 are the large UI sweep —
-leave them until the numbers underneath are correct.
+### Deferred deliberately
+
+- **The 1.1 backfill of 1,208 under-side rows.** Operator decision, 2026-08-28.
+  Beyond size, there is a real correctness problem: the audit prescribes
+  `edge = -edge`, which is only right for rows written under the old
+  model-vs-market formula. Python-era rows use `market_prob - implied_raw`, and
+  `implied_raw` is not stored, so some may be **uncorrectable**. Phase 4 should
+  know this before leaning on that history.
+- **The non-admin leg of 1.5's matrix.** Anonymous (401) and public (200) legs
+  are verified. A signed-in NON-admin should get 403 on admin routes and 200 on
+  scan-player — that needs a second account.
+- **Remaining `detail:` leaks** on `/api/diagnostics/*` and `/api/props/*`
+  backfill routes. 1.5 just put those behind admin auth, so re-check after
+  rather than editing twice.
+
+## 2. The open question blocking 1.3 / 1.4
+
+1.3 removes the Edge % column and Good Bets' edge track, and hides model
+probabilities on Scan, Player Detail and Game Detail. 1.4 replaces them with
+Tier A/B substance (sample sizes, window definitions, best price with the book
+named).
+
+**What has not been decided is what the Scan table's Score column becomes.**
+Prop Score is Tier C-ish (a ranking), but it is computed *from* `model_prob` and
+`edge`, which Q1 says may never be shown as probability or edge. Options put to
+the operator: keep it as an unnumbered rank, keep a number with no units, or
+remove it until 6.7 brings ranking back deliberately. Do not guess — the whole
+phase is about not asserting things.
 
 ## 3. Operational knowledge — this session paid for it, don't re-derive it
 
