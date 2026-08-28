@@ -17,10 +17,37 @@ export default function LoginPage() {
   );
 }
 
+/**
+ * Exported for the Phase 0 gate's open-redirect matrix — the gate tests
+ * `//evil.com`, `https://evil.com`, `/\evil.com`, `%2F%2Fevil.com`,
+ * `javascript:alert(1)` and a legitimate `/nfl`, and asserting on the real
+ * function beats re-deriving the rule in a test.
+ */
+export function safeNext(raw: string | null | undefined): string {
+  if (!raw) return '/';
+  // useSearchParams already percent-decodes, so "%2F%2Fevil" arrives here as
+  // "//evil" and is caught by the protocol-relative check below.
+  if (!raw.startsWith('/')) return '/';
+  if (raw.startsWith('//')) return '/';
+  // Browsers normalise "/\" to "//" — same protocol-relative escape, different
+  // spelling.
+  if (raw.startsWith('/\\')) return '/';
+  return raw;
+}
+
 function LoginForm() {
   const router = useRouter();
   const search = useSearchParams();
-  const next = search.get('next') ?? '/';
+  // `next` is attacker-controllable (it's just a query param on a link anyone
+  // can send), and it is fed straight to router.push after a successful sign-in
+  // — so it has to be constrained to a same-origin path or it's an open
+  // redirect: /login?next=https://evil.example lands a freshly-authenticated
+  // user on someone else's page (Phase 0.6 of docs/audit-remediation-plan.md,
+  // finding P4 M5). Accept only a path starting with a single "/": that rejects
+  // absolute URLs ("https://…"), protocol-relative ones ("//evil.example"),
+  // the backslash variant browsers normalise to protocol-relative ("/\evil"),
+  // and scheme payloads like "javascript:".
+  const next = safeNext(search.get('next'));
 
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
   const [email, setEmail] = useState('');

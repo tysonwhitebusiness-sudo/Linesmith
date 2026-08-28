@@ -30,6 +30,7 @@ multiSportRefresh.ts).
 """
 import json
 import time
+import traceback
 from datetime import datetime, timezone
 
 import httpx
@@ -61,6 +62,17 @@ async def _run_timed(job_name: str, coro) -> dict:
     except Exception as e:  # rough harness — log and move on, never let one job's exception kill the queue
         summary["ok"] = False
         summary["error"] = f"{type(e).__name__}: {e}"
+        # The one-line message alone is not enough to act on. P3 L4 recorded
+        # both tennis jobs failing with "TypeError: normalize() argument 2 must
+        # be str, not None" and that string identified neither the call site
+        # nor the row that carried the None — by the time anyone looked, the
+        # upstream payload had moved on and the failure no longer reproduced
+        # (re-run green on 2026-08-28, 172 + 194 rows). Keeping the tail of the
+        # traceback means the next occurrence is diagnosable from the
+        # breadcrumb alone instead of needing to be caught live. Tail, not
+        # head: the innermost frames are the ones that name the real call
+        # site, and the whole summary is a JSON blob in snapshot_cache.
+        summary["traceback"] = "".join(traceback.format_exc().splitlines(keepends=True)[-12:])
     summary["elapsed_seconds"] = round(time.monotonic() - t0, 2)
     await db.write_job_run_log(job_name, summary)
     return summary
@@ -521,6 +533,66 @@ async def _generic_capture_inner() -> dict:
     return {"per_sport": results}
 
 
+async def job_grade_finished_generic_picks(yield_fn=None) -> dict:
+    """Phase 1 of docs/daily-picks-full-model-build-2026-08-27.md — grades
+    the six sports predict/generic_pick_capture.py already captures picks
+    for (NFL/CFB/NBA/NHL/Soccer-EPL/Soccer-MLS) against real ESPN final
+    scores. Mirrors job_grade_finished_mlb_picks's shape exactly, using
+    generic_team_elo.py's own already-proven-live ESPN scoreboard fetch
+    instead of predict/statsapi.py (MLB-only). Registered alongside (not
+    merged with) gradeFinishedMlbPicksJob — same db.grade_game_pick `WHERE
+    graded_at IS NULL` guard makes any future overlap a harmless no-op."""
+    return await _run_timed("gradeFinishedGenericPicksJob", _grade_finished_generic_picks_inner())
+
+
+async def _grade_finished_generic_picks_inner() -> dict:
+    from datetime import timedelta
+
+    from predict import generic_team_elo as gte
+    from predict.game_pick_lock import FinishedGameInput, grade_finished_game_picks
+    from predict.generic_pick_capture import _APP_SPORT_BY_KEY
+
+    today = datetime.now(timezone.utc).date()
+    # 2-day lookback, not just today: catches a late-finishing game (e.g.
+    # a soccer match that goes past midnight UTC) or a missed tick without
+    # re-grading anything already graded — grade_finished_game_picks's own
+    # `graded_at` guard makes re-checking an already-graded game a no-op.
+    start = (today - timedelta(days=2)).strftime("%Y%m%d")
+    end = today.strftime("%Y%m%d")
+
+    per_sport: dict[str, dict] = {}
+    async with httpx.AsyncClient() as client:
+        for sport_key, app_sport in _APP_SPORT_BY_KEY.items():
+            config = gte.SPORT_CONFIGS[sport_key]
+            games = await gte.fetch_finished_games(client, config, start, end)
+            finished = [
+                FinishedGameInput(game_id=g.game_id, is_final=True, home_score=g.home_score, away_score=g.away_score)
+                for g in games
+            ]
+            await grade_finished_game_picks(app_sport, finished)
+            per_sport[sport_key] = {"finished": len(finished)}
+    return {"per_sport": per_sport}
+
+
+async def job_attach_generic_prices(yield_fn=None) -> dict:
+    """Phase 1 of docs/daily-picks-full-model-build-2026-08-27.md — fills
+    in real market prices on already-captured game_picks rows for the six
+    sports generic_pick_capture.py covers, generalizing odds_lines_cycle.
+    py's attach_prices_from_lines (confirmed MLB-only). Without this,
+    these sports' game_picks rows never get a price, and Phase 7's
+    simulated $10 bankroll has nothing to compute simulatedProfit from.
+    See predict/generic_price_attach.py's own docstring for why no team-
+    name matching is needed here the way MLB's version needs it."""
+    return await _run_timed("attachGenericPricesJob", _attach_generic_prices_inner())
+
+
+async def _attach_generic_prices_inner() -> dict:
+    from predict.generic_price_attach import attach_prices_all_sports
+
+    results = await attach_prices_all_sports()
+    return {"per_sport": results}
+
+
 async def job_maintain_mlb_elo(yield_fn=None) -> dict:
     """Phase I of the TS cutover gameplan
     (docs/mlb-prediction-engine-ts-cutover-gameplan-2026-08-22.md) — Python
@@ -746,6 +818,92 @@ async def _golf_predictions_inner() -> dict:
     }
 
 
+async def job_grade_generic_props(yield_fn=None) -> dict:
+    """Phase 7 of docs/daily-picks-full-model-build-2026-08-27.md — real
+    grading for the six sports Phase 4/5 produce pick_history candidates
+    for. See predict/generic_prop_grading.py's own docstring for the real
+    gap this closes: no generic prop-grading path existed anywhere in
+    this codebase before this job (MLB's own grading.ts is the only
+    prior writer, and it's MLB-specific end to end)."""
+    return await _run_timed("gradeGenericPropsJob", _grade_generic_props_inner())
+
+
+async def _grade_generic_props_inner() -> dict:
+    from predict.generic_prop_grading import grade_all_sports
+
+    results = await grade_all_sports()
+    return {"per_sport": results}
+
+
+def _make_generic_prop_production_job(sport_key: str, job_name: str):
+    """One job function per sport, not one shared job looping all six —
+    same reasoning refreshNflJob/refreshCfbJob/etc are already separate
+    registry entries: a single slow sport (CFB's ~130-team, ~60-game
+    Saturday slate is the real worst case) shouldn't risk the queue's
+    600s per-job timeout for every other sport too. Real, disclosed risk
+    not fully solved here: a genuinely maximal CFB Saturday could still
+    exceed 600s and get cancelled mid-run — predict.generic_prop_
+    production.run_sport writes db.log_surfaced incrementally (per team,
+    not once at the end), so a cancellation loses only the remainder of
+    that run, not partial/corrupt rows; the next tick picks up cleanly.
+    Chunking a single sport's run across multiple ticks would fix this
+    for real but is real, separate follow-on work, not attempted here."""
+
+    async def _inner() -> dict:
+        from predict.generic_prop_production import run_sport
+
+        async with httpx.AsyncClient() as client:
+            return await run_sport(sport_key, client)
+
+    async def job(yield_fn=None) -> dict:
+        return await _run_timed(job_name, _inner())
+
+    job.__name__ = job_name
+    return job
+
+
+job_generic_prop_production_nfl = _make_generic_prop_production_job("nfl", "genericPropProductionNflJob")
+job_generic_prop_production_cfb = _make_generic_prop_production_job("cfb", "genericPropProductionCfbJob")
+job_generic_prop_production_nba = _make_generic_prop_production_job("nba", "genericPropProductionNbaJob")
+job_generic_prop_production_nhl = _make_generic_prop_production_job("nhl", "genericPropProductionNhlJob")
+job_generic_prop_production_soccer_epl = _make_generic_prop_production_job("soccer_epl", "genericPropProductionSoccerEplJob")
+job_generic_prop_production_soccer_mls = _make_generic_prop_production_job("soccer_mls", "genericPropProductionSoccerMlsJob")
+
+
+async def job_player_history_freshness(yield_fn=None) -> dict:
+    """Phase 0 of docs/daily-picks-full-model-build-2026-08-27.md — keeps
+    player_game_history current going forward, forever, once the one-time
+    backfill_player_game_history.py historical pull finishes. Same game-
+    based boxscore approach, same live-verified parsers, reused wholesale
+    (see predict/generic_freshness_job.py's own docstring) — just scoped
+    to a short trailing window instead of a multi-year sweep, so a normal
+    pass is a handful of games per sport, comfortably inside this queue's
+    per-job timeout."""
+    return await _run_timed("genericPlayerHistoryFreshnessJob", _player_history_freshness_inner())
+
+
+async def _player_history_freshness_inner() -> dict:
+    from predict.generic_freshness_job import run_freshness_pass
+
+    async with httpx.AsyncClient(follow_redirects=True) as client:
+        per_sport = await run_freshness_pass(client)
+    return {"per_sport": per_sport}
+
+
+async def job_retention(yield_fn=None) -> dict:
+    """Phase 0.2 — the database had reached 1,563 MB against the Free tier's
+    500 MB ceiling, and Supabase enforces read-only above quota. Nothing was
+    pruning anything: snapshot_cache had no retention at all (P2 H5), prop_odds
+    never expired (P3 M10), system_events never rotated (P2 L4).
+
+    The policy itself lives in db.RETENTION_RULES so it reads as one list
+    rather than being spread through a job body — read that list before
+    changing anything here, particularly its note on which tables must never
+    be added to it.
+    """
+    return await _run_timed("retentionJob", db.run_retention())
+
+
 # Job registry the queue iterates — (name, coroutine factory, interval_seconds).
 # Tier1/SportsGameOdds-MLB intervals match lib/scheduler.ts's original
 # constants — refreshCalibration intentionally excluded, see module docstring.
@@ -760,6 +918,14 @@ async def _golf_predictions_inner() -> dict:
 # does that job now. See measure_gameday_budget.py for the real worst-case
 # monthly cost this produces, checked before landing on 20min specifically.
 JOB_REGISTRY = [
+    # Phase 0.2 — the one job whose absence let the database reach 3x the
+    # Free tier ceiling. Daily is the right cadence: every rule's window is
+    # measured in days, so running it more often deletes the same zero rows,
+    # while running it less often lets one stuck day's mlb:full-raw blobs
+    # (~70 MB each) accumulate. health_check.py picks this up with no edit of
+    # its own, per CLAUDE.md's job architecture — a claim the Phase 0 gate
+    # tests rather than assumes.
+    ("retentionJob", job_retention, 24 * 60 * 60),
     ("refreshTier1", job_tier1, 2.5 * 60),
     ("refreshSportsGameOddsJob", job_sportsgameodds, 90 * 60),
     ("refreshNflJob", job_nfl, 20 * 60),
@@ -805,4 +971,71 @@ JOB_REGISTRY = [
     # Matches mlbOddsLinesCycleJob's own 5min cadence and reasoning — see
     # job_generic_capture's own docstring.
     ("genericCaptureJob", job_generic_capture, 5 * 60),
+    # Not time-critical, matches gradeFinishedMlbPicksJob's own 15min
+    # reasoning — a final score doesn't need grading within seconds.
+    ("gradeFinishedGenericPicksJob", job_grade_finished_generic_picks, 15 * 60),
+    # A captured pick's price isn't needed until it's graded, so this can
+    # run on the same cadence as gradeFinishedGenericPicksJob rather than
+    # genericCaptureJob's tighter 5min — cheap either way (DB reads plus a
+    # handful of already-cached-by-other-jobs book-line rows).
+    ("attachGenericPricesJob", job_attach_generic_prices, 15 * 60),
+    # Not time-critical (a finished game's boxscore doesn't need to land in
+    # player_game_history within minutes — nothing reads today's own rows
+    # until the next day's picks are built) and LOOKBACK_DAYS=3 already
+    # covers a missed tick, so 30min just keeps the table reasonably
+    # current without adding real ESPN load beyond what a normal day's
+    # game volume already costs.
+    ("genericPlayerHistoryFreshnessJob", job_player_history_freshness, 30 * 60),
+    # NOTE: the six genericPropProduction*Job entries that used to sit here
+    # are in DISABLED_JOBS below — see that list for why.
+    # Not time-critical (a graded prop doesn't need to land within
+    # seconds), matches gradeFinishedGenericPicksJob's own 15min
+    # reasoning — real per-tick cost is cheap (a handful of ESPN
+    # scoreboard calls plus DB reads for whatever's still ungraded).
+    ("gradeGenericPropsJob", job_grade_generic_props, 15 * 60),
+]
+
+
+# ---------------------------------------------------------------------------
+# Disabled jobs — deliberately NOT in JOB_REGISTRY
+# ---------------------------------------------------------------------------
+# Same (name, fn, interval) shape as JOB_REGISTRY so re-enabling is a move
+# between two lists, not a rewrite. Kept as real references rather than
+# deleted code so that nothing here silently rots: this file still has to
+# import and construct each job, so a change that breaks one of them still
+# breaks the build.
+#
+# Nothing reads this list. SequentialQueue does not run these, and
+# health_check.py does not check them — which is correct: a job that is
+# deliberately off should not be reported as stale. Rule G6 of
+# docs/audit-remediation-plan.md applies — every entry needs a date, a
+# reason, and the phase that re-enables it.
+#
+# ---------------------------------------------------------------------------
+# 2026-08-28 — Phase 0.8, finding P3 H4 (docs/audit-phase-3.md:1183).
+# Re-enabled by: Phase 2.2, after the leakage fix is verified.
+#
+# These six build a player's Beta-Binomial posterior from an ESPN season
+# gamelog with no check that the game being predicted has not already
+# started. Once a game is final, ESPN's gamelog contains its outcome, so an
+# hourly tick landing after the final whistle produces a "prediction" whose
+# own history includes the answer — and db.log_surfaced's
+# ON CONFLICT DO NOTHING makes whichever tick landed first permanent.
+#
+# The specific reason they are off *right now*: the worker has been dead
+# since 2026-08-27 02:44 UTC. Its first tick after a restart processes every
+# game from the intervening period, finished ones included — so restarting
+# as-is writes a fresh batch of contaminated rows in one pass. Per standing
+# decision Q6 (models keep training, predictions stay hidden until they beat
+# the market), contaminated training rows are strictly worse than no rows:
+# leakage makes a model look better, and pick_history carries no column
+# recording when the game actually started, so the damage is not separable
+# afterwards.
+DISABLED_JOBS = [
+    ("genericPropProductionNflJob", job_generic_prop_production_nfl, 60 * 60),
+    ("genericPropProductionCfbJob", job_generic_prop_production_cfb, 60 * 60),
+    ("genericPropProductionNbaJob", job_generic_prop_production_nba, 60 * 60),
+    ("genericPropProductionNhlJob", job_generic_prop_production_nhl, 60 * 60),
+    ("genericPropProductionSoccerEplJob", job_generic_prop_production_soccer_epl, 60 * 60),
+    ("genericPropProductionSoccerMlsJob", job_generic_prop_production_soccer_mls, 60 * 60),
 ]

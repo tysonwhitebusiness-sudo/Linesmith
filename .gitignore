@@ -40,3 +40,10 @@ oddsharvester/tests/integration/fixtures/**/*.har
 # allow_writing_files=False, but this stays as a fallback for any other
 # CatBoostClassifier() call that doesn't).
 python-odds-service/catboost_info/
+
+# Phase 0.4 (docs/audit-remediation-plan.md) — machine-local artifacts found
+# loose in the tree while committing 216 uncommitted files. Each is either
+# generated, machine-specific, or a one-off capture; none belongs in history.
+python-odds-service/run-harvester.bat
+*.log.*
+before_delete_snapshot.json

@@ -45,10 +45,21 @@ _POOL_CREATE_RETRY_DELAY_S = 3.0
 def _transaction_mode_dsn(dsn: str) -> str:
     """Session-mode DSNs (config.py's DATABASE_URL) point at Supavisor's
     port 5432. Transaction mode is the same host/user/db, just port 6543 —
-    swap it rather than requiring a second, easy-to-drift env var."""
+    swap it rather than requiring a second, easy-to-drift env var.
+
+    Idempotent since Phase 0.5 (docs/audit-remediation-plan.md): a DSN that
+    already names :6543 comes back unchanged rather than raising. Before this,
+    pointing DATABASE_URL straight at :6543 — which is exactly what 0.5 does to
+    the TypeScript app's own copy, since lib/db/pgClient.ts has no swap logic
+    of its own — would crash any Python process that ALSO had
+    DB_POOLER_MODE=transaction set, at startup, with a ValueError. Two
+    individually-correct settings combining into a boot failure is not a
+    configuration anyone should have to hold in their head."""
+    if re.search(r":6543(/|$)", dsn):
+        return dsn
     swapped, n = re.subn(r":5432(/|$)", r":6543\1", dsn, count=1)
     if n == 0:
-        raise ValueError(f"DB_POOLER_MODE=transaction but DATABASE_URL has no :5432 to swap to :6543: {dsn!r}")
+        raise ValueError(f"DB_POOLER_MODE=transaction but DATABASE_URL names neither :5432 nor :6543: {dsn!r}")
     return swapped
 
 
@@ -3172,3 +3183,86 @@ async def write_graded_tournament_predictions(rows: list[GradedTournamentPredict
                     r.event_id,
                     r.espn_id,
                 )
+
+
+# ---------------------------------------------------------------------------
+# Retention (Phase 0.2 of docs/audit-remediation-plan.md — findings P2 H5,
+# P2 L4, P3 M10, P4 M10)
+# ---------------------------------------------------------------------------
+
+# (table, predicate, human reason). Ordered biggest-win-first so a partial run
+# (statement timeout, a dropped connection) still frees the space that matters.
+#
+# What is deliberately NOT here: prop_odds_history and game_odds_history. Those
+# are the line-movement dataset — append-only, log-on-change, slow-growing, and
+# the thing Phase 5/6 identify as the actual product asset. They are not
+# regenerable from any public source. Never add them to this list.
+#
+# player_game_history is also absent, for a different reason: it is 830 MB of
+# training data that Phase 4.7 wants MORE of, not less. It is the single reason
+# this database cannot reach the Free tier's 500 MB ceiling by pruning alone,
+# which is why Phase 8.1 (Supabase Pro) was pulled forward on 2026-08-28 rather
+# than deleting from it. See the Phase 0 entry in the plan's phase log.
+RETENTION_RULES: list[tuple[str, str, str]] = [
+    (
+        "snapshot_cache",
+        "cache_key LIKE 'mlb:full-raw:%' AND fetched_at < now() - interval '3 days'",
+        "the largest single payloads in the database (~70 MB each); a raw MLB day older than 3 days is never read again",
+    ),
+    (
+        "snapshot_cache",
+        "cache_key LIKE 'mlb:injuries:%' AND fetched_at < now() - interval '2 days'",
+        "an injury list older than 2 days is not an injury list",
+    ),
+    (
+        "prop_odds",
+        "fetched_at < now() - interval '7 days'",
+        "current prop lines for games that finished a week ago; the history of how they moved lives in prop_odds_history, which this never touches",
+    ),
+    (
+        "game_odds_book_lines",
+        "fetched_at < now() - interval '2 days'",
+        "current per-book game lines; same reasoning as prop_odds, with game_odds_history holding the movement record",
+    ),
+    (
+        "system_events",
+        "occurred_at < now() - interval '30 days'",
+        "operational log, not a record anything reads back beyond a month (P2 L4)",
+    ),
+]
+
+
+async def run_retention() -> dict:
+    """Delete rows past their retention window and report what went.
+
+    Idempotent by construction — every rule is a time-window predicate, so a
+    second run in the same minute deletes zero rows. The Phase 0 gate asserts
+    exactly that, because a retention job that is not idempotent is a job that
+    quietly deletes a little more every time somebody runs it by hand.
+
+    Deliberately does NOT VACUUM. `DELETE` marks rows dead; only VACUUM FULL
+    returns the space to the filesystem, and VACUUM FULL takes an ACCESS
+    EXCLUSIVE lock that would block every reader for its duration. Autovacuum
+    reclaims the space for reuse within Postgres, which is what keeps steady
+    state steady; the one-time reclaim after the first big prune is an operator
+    action, run deliberately, not something a scheduled job should be doing
+    behind your back.
+    """
+    pool = await get_pool()
+    deleted: dict[str, int] = {}
+    total = 0
+    for table, predicate, _reason in RETENTION_RULES:
+        status = await pool.execute(f"DELETE FROM {table} WHERE {predicate}")  # noqa: S608 - predicates are literals in this module, never user input
+        n = _rowcount_from_status(status)
+        deleted[f"{table}: {predicate.split(' AND ')[0][:48]}"] = n
+        total += n
+
+    size_row = await pool.fetchrow(
+        "SELECT pg_database_size(current_database()) AS bytes, pg_size_pretty(pg_database_size(current_database())) AS pretty"
+    )
+    return {
+        "deleted_by_rule": deleted,
+        "rows_deleted": total,
+        "db_size": size_row["pretty"],
+        "db_size_mb": round(size_row["bytes"] / 1048576),
+    }
