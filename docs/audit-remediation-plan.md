@@ -1801,10 +1801,49 @@ returns 200 regardless and proves nothing.
 **0.7 · Service-role key.** Removed from `.env.local` and deleted from the
 Render worker (`HTTP 204`; re-listed to confirm absence). Referenced by zero
 lines of TypeScript and zero lines of Python — verified by grep, hits in `docs/`
-only. **Rotation in the Supabase dashboard is still outstanding** — deleting
-two copies does not invalidate a key that already sat in two config stores.
+only.
 
-**0.8 · Worker restarted, leakage jobs off.**
+**Rotation as 0.7 specifies it is not possible.** Supabase no longer supports
+rotating the legacy `anon`/`service_role`/JWT-secret keys; those keys are
+deprecated at the end of 2026. The real path is to migrate to the new
+publishable (`sb_publishable_…`) / secret (`sb_secret_…`) API keys, which
+*can* be created and deleted individually, then disable the legacy keys —
+which is what actually revokes the old `service_role` key. That is a
+migration, not a Phase 0 task; it belongs with Phase 7's auth work, and the
+task text here should be amended rather than left as an unachievable checkbox.
+
+Mitigating: the key was never in the browser bundle (P4 L2), and 0.3 has since
+closed the anonymous path it would have been a fallback for.
+
+**0.8 · Worker restarted, leakage jobs off. NOT fully met — see G8.**
+
+*Notification wiring: the plan's claim that this "was never done" does not
+reproduce.* It is already configured:
+```
+owner  : emailEnabled=true  notificationsToSend="failure"  slackEnabled=false
+cron   : notificationsToSend="all"  (override on crn-da7lquqfngtc73ft1n2g)
+```
+The reason nobody was paged is different, and worse. The health-check cron run
+that started 2026-08-28T04:30:08Z hit the database outage caused by 0.2's
+VACUUM FULL, retried pool creation
+(`AdminShutdownError: terminating connection due to administrator command`),
+and then **hung — it never emitted a `cron_job_run_ended` event at all.** It sat
+in that state for ~9.5 hours, and because Render only notifies on a non-zero
+*exit*, a run that never exits never alerts. It also blocked every subsequent
+scheduled run, so the monitor was silently dead for the whole window.
+
+**The monitoring layer has the same failure mode as the thing it monitors: it
+stalls rather than failing, and stalling is the one state nothing reports.**
+That is the finding, and it belongs to task 3.3.
+
+Cancelled the hung run and triggered a fresh one:
+```
+crn-…-29798190      status=canceled     (the hung 04:30 run)
+crn-…-1787925470    started 13:57:51Z   ended 13:58:18Z   nonZeroExit=1  status=unsuccessful
+```
+That non-zero exit is a real failure notification firing on a correctly
+configured channel — the closest thing to a test alert this phase has, pending
+the operator confirming the email actually arrived.
 The six `genericPropProduction*Job` entries moved to `DISABLED_JOBS`. Checked
 against `HEAD` before restarting: the deployed registry had **17 jobs, zero of
 them prop-production** — they were never deployed, so this keeps them off
@@ -1825,11 +1864,40 @@ write path. Steady state since:
 Write paths landing (G5): `prop_odds` 140,775 → 146,527 · `prop_odds_history`
 425,672 → 429,028 · `game_odds_book_lines` newest row 1 minute old.
 
-**P3 L4 (tennis crash) no longer reproduces.** Both jobs re-run 2026-08-28:
-172 and 194 rows written, `ok=True`. Nothing was changed to chase it. Instead
-`_run_timed` now keeps the tail of the traceback on failure, because the
-recorded message — `TypeError: normalize() argument 2 must be str, not None` —
-named neither the call site nor the row that carried the `None`.
+**P3 L4 (tennis crash) STILL REPRODUCES — in production only.** An earlier
+entry in this log claimed it did not; that claim was based on local runs alone
+and was wrong. The corrected finding:
+
+```
+refreshTennisAtpJob  age=10min  started=2026-08-28T13:50:24Z  ok=False
+    err=TypeError: normalize() argument 2 must be str, not None
+refreshTennisWtaJob  age=10min  started=2026-08-28T13:50:35Z  ok=False
+    err=TypeError: normalize() argument 2 must be str, not None
+```
+
+Every 20-minute tick on Render fails this way. Two local runs of the *same*
+job function, ~9 hours apart (04:10Z and 14:01Z), both succeeded — 172/194 and
+78/96 rows written, `ok=True`. The second was 11 minutes after a production
+failure, against the same upstream data window, which rules out the
+data-dependence hypothesis and leaves an environment difference between this
+laptop and the Render worker.
+
+It cannot be diagnosed further from here: the message names neither the call
+site nor the row carrying the `None`, and `load_tennis_games`,
+`build_roster_index` and `resolve_player` all guard their name inputs, so the
+reachable call sites are already accounted for. `_run_timed` now keeps the tail
+of the traceback on failure — **committed but NOT deployed**, since the worker
+runs from git and these commits have not been pushed. Deploying it answers this
+on the next tick.
+
+**genericCaptureJob has stopped being scheduled.** Last run
+2026-08-27T04:23:28Z, 2,017 minutes ago, against a 5-minute interval — and it
+produces **zero log lines**, so it is not running and failing, it is not being
+picked at all. Note `SequentialQueue._run_one` adds a job to `self._running`
+*before* its `try`, and `_most_overdue` skips anything in `self._running`: a
+raise between those two points removes a job from scheduling permanently, for
+the life of the process, with no error surfaced. Unconfirmed as the mechanism
+here, but it is the shape that matches. Evidence for task 3.3.
 
 --- gate status: NOT PASSED ---
 
@@ -1843,9 +1911,14 @@ G4 findings closed   : P4 C1, P4 M5, P4 L2, P2 H7, P2 H5, P2 L4, P3 M10, P4 M10,
 G5 write paths       : PASS (counts above, taken after the RLS change)
 G6 orphans           : 6 genericPropProduction*Job in DISABLED_JOBS — dated, reason recorded, re-enabled by Phase 2.2.
 G7 read-back         : done for the Phase 0 commit; not yet for the nine bulk commits
-G8 known NOT done    : (1) Render failure notification never wired and NO TEST ALERT RECEIVED — 0.8's
-                           explicit exit criterion, and the reason a 24h outage went unseen. Dashboard-only.
-                       (2) SUPABASE_SERVICE_ROLE_KEY not yet rotated in Supabase.
+G8 known NOT done    : (1) refreshTennisAtpJob/WtaJob failing every tick in production (P3 L4 — see the
+                           correction above). genericCaptureJob not being scheduled at all, 33h.
+                           0.8's exit criterion is "every enabled job healthy within one interval";
+                           two are not, so 0.8 is NOT met.
+                       (2) SUPABASE_SERVICE_ROLE_KEY cannot be rotated — see below.
+                       (2b) Phase 0's commits are not deployed. The worker still runs the pre-Phase-0
+                           build, so DISABLED_JOBS, retentionJob, the traceback capture and the
+                           pooler-mode fix are all committed but not live.
                        (3) Database 1,280 MB — over the old 500 MB ceiling by design; Pro makes it moot.
                        (4) ODDS_API_KEY still missing on the worker (Phase 1.6, not Phase 0).
                        (5) Full G2/G3 sweep outstanding.
