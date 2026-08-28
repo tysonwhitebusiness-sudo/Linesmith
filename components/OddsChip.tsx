@@ -342,17 +342,32 @@ export function StoredOddsChip({ odds, size = 'sm' }: { odds: OddsInfo | undefin
 }
 
 /** G6 — same de-vigged-edge visual language as Scan's Edge column, reused for the game-level model on Game Detail and Player Detail's Game Odds card. */
+/**
+ * Renders nothing since Phase 1.3 (standing decisions Q1 and Q6, audit
+ * findings P3 C2/C5 and P5 T2).
+ *
+ * This showed `+4.2%` — an edge, Tier E — on PlayerDetail, GameDetail,
+ * GameHeroCard and GameLinesView, with a tooltip disclosing the model and
+ * market probabilities behind it. The app's own graded history does not
+ * support any of those numbers: the model loses to the market, and P3 C5
+ * measured the negative-edge bucket *outperforming* the positive one.
+ *
+ * Neutralised here rather than at the four call sites on purpose. One place
+ * decides, one reason is written down once, and when task 4.2's activation
+ * gate finally shows the model beating `market_prob`'s Brier score on
+ * held-out live rows, restoring it is deleting this early return — not
+ * hunting down four components and hoping they were all found.
+ *
+ * The props are still accepted so callers need no change and TypeScript still
+ * checks that they have a real edge to pass. The `void` is what keeps the
+ * unused-parameter lint quiet without dropping the signature.
+ */
 export function EdgeBadge({ edge, modelProb, marketProb, label }: { edge: number; modelProb: number; marketProb: number; label: string }) {
-  return (
-    <span
-      className="flex-1 rounded px-1 py-0.5 text-center text-[10px] font-semibold"
-      style={{ backgroundColor: compareInk(Math.min(1, Math.max(0, 0.5 + edge * 2))) }}
-      title={`${label}: model ${(modelProb * 100).toFixed(1)}% vs. market ${(marketProb * 100).toFixed(1)}% (de-vigged). Early — check /diagnostics for how well-calibrated this model actually is before trusting this.`}
-    >
-      {edge > 0 ? '+' : ''}
-      {(edge * 100).toFixed(1)}%
-    </span>
-  );
+  void edge;
+  void modelProb;
+  void marketProb;
+  void label;
+  return null;
 }
 
 export default OddsChip;

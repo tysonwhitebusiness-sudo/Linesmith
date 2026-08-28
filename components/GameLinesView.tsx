@@ -6,14 +6,12 @@ import type { SlateEntry } from '@/lib/odds/matching';
 import { projectLine } from '@/lib/odds/display';
 import { computeMoneylineEdge, computeTotalEdge } from '@/lib/odds/gameEdge';
 import { computeRecommendedMoneylinePick, computeTotalLean, type RecommendedMoneylinePick, type TotalLean } from '@/lib/odds/recommendedPick';
-import { gradeConfidence } from '@/lib/core/confidence';
 import { TeamLogo } from './SubjectAvatar';
 import { OddsChip, EdgeBadge } from './OddsChip';
 import { BookLogo } from './BookLogo';
 import { BookmakerBreakdown } from './GameLine';
 import { useGamePickHistory, type GamePickView } from './useGamePickRecord';
 import { useMarketCalibration } from './useMarketCalibration';
-import { ConfidenceChip } from './ConfidenceChip';
 import { StarIcon } from './icons';
 
 function teamLogoUrl(teamId: number | undefined): string | undefined {
@@ -55,12 +53,15 @@ function PickStrip({
     : recommendedPick
       ? ((recommendedPick.side === 'home' ? homeTeamName : awayTeamName) ?? (recommendedPick.side === 'home' ? homeAbbrev : awayAbbrev))
       : null;
-  const mlConfidence = mlLocked ? pick?.moneyline.confidence : recommendedPick ? gradeConfidence(recommendedPick.modelProb) : null;
+  // Phase 1.3 (Q1/Q6) — the moneyline/total CONFIDENCE figures are gone; the
+  // picks themselves still render. ConfidenceChip shows a letter grade and a
+  // percentage, both derived from modelProb (stored on a locked pick, graded
+  // live from it otherwise), and the model's own graded history does not
+  // support that precision. Restored by task 4.2's activation gate.
 
   const totalLocked = pick?.total.locked ?? false;
   const totalSide = totalLocked ? pick?.total.pickSide : (totalLean?.side ?? null);
   const totalLine = totalLocked ? pick?.total.line : (totalLean?.line ?? null);
-  const totalConfidence = totalLocked ? pick?.total.confidence : null;
 
   if (!mlTeam && !totalSide) return null;
   const locked = mlLocked || totalLocked;
@@ -73,13 +74,11 @@ function PickStrip({
       {mlTeam ? (
         <span className="inline-flex items-center gap-1 lb-chip bg-card text-ink-muted">
           {mlTeam} ML
-          {mlConfidence ? <ConfidenceChip letter={mlConfidence.letter} pct={mlConfidence.pct} size="sm" /> : null}
         </span>
       ) : null}
       {totalSide ? (
         <span className="inline-flex items-center gap-1 lb-chip bg-card text-ink-muted">
           {totalSide === 'over' ? 'Over' : 'Under'} {totalLine ?? ''}
-          {totalConfidence ? <ConfidenceChip letter={totalConfidence.letter} pct={totalConfidence.pct} size="sm" /> : null}
         </span>
       ) : null}
       {!locked ? <span className="text-ink-faint">not locked yet</span> : null}

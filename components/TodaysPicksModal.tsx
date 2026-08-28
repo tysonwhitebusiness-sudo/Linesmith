@@ -113,7 +113,10 @@ function MoneylineCell({ pick, commenceTime }: { pick: GamePickView['moneyline']
     <PickRow
       label={pick.pickTeamName}
       price={pick.price}
-      pct={pick.confidence?.pct ?? null}
+      // Phase 1.3 (Q1/Q6): the pick, its price and its graded outcome are all
+      // facts. The confidence percentage is the model's own belief, which its
+      // graded history does not support — restored by task 4.2's gate.
+      pct={null}
       outcome={pick.outcome}
       title={lockTitle(pick.locked, commenceTime)}
     />
@@ -126,7 +129,10 @@ function TotalCell({ pick, commenceTime }: { pick: GamePickView['total']; commen
     <PickRow
       label={`${pick.pickSide === 'over' ? 'Over' : 'Under'} ${pick.line ?? ''}`}
       price={pick.price}
-      pct={pick.confidence?.pct ?? null}
+      // Phase 1.3 (Q1/Q6): the pick, its price and its graded outcome are all
+      // facts. The confidence percentage is the model's own belief, which its
+      // graded history does not support — restored by task 4.2's gate.
+      pct={null}
       outcome={pick.outcome}
       title={lockTitle(pick.locked, commenceTime)}
     />

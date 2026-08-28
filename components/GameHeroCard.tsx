@@ -458,12 +458,17 @@ function HeroBody({
     : recommendedPick
       ? (recommendedPick.side === 'home' ? gamePick?.homeTeamName : gamePick?.awayTeamName) ?? (recommendedPick.side === 'home' ? home.abbr : away.abbr)
       : null;
-  const mlPercent = mlLocked ? gamePick?.moneyline.confidence?.pct ?? null : recommendedPick ? Math.round(recommendedPick.modelProb * 100) : null;
+  // Phase 1.3 (Q1/Q6): the pick itself still renders, but its probability does
+  // not. Both branches were Tier D — a locked pick's stored confidence pct, and
+  // a live lean's modelProb as a percentage. The model loses to the market on
+  // its own graded history, so a number like "63%" asserts a precision that
+  // history contradicts. Restored by task 4.2's activation gate, not by taste.
+  const mlPercent: number | null = null;
 
   const totalLocked = gamePick?.total.locked ?? false;
   const totalSide = totalLocked ? gamePick?.total.pickSide : totalLean?.side ?? null;
   const totalLine = totalLocked ? gamePick?.total.line : totalLean?.line ?? null;
-  const totalPercent = totalLocked ? gamePick?.total.confidence?.pct ?? null : totalLean ? Math.round(totalLean.probability * 100) : null;
+  const totalPercent: number | null = null; // same as mlPercent above — Phase 1.3
   const totalHeadline = totalSide ? `${totalSide === 'over' ? 'Over' : 'Under'} ${totalLine ?? ''}` : null;
 
   const showPicks = model != null && (pickLoading || mlTeam || totalHeadline);
