@@ -12,139 +12,149 @@ Read docs/CURRENT.md and continue from there.
 
 **THE RULE THAT KEEPS THIS FILE USEFUL: at ~92% context usage, stop.** Take on
 no new work, finish or checkpoint what is open, and rewrite this file, then
-commit and push. Don't start a task you can't checkpoint before that line. The
-operator cycles between accounts on hourly/daily limits, so sessions end
-abruptly — a session that runs to exhaustion without rewriting this file has
-lost everything that was only in its transcript. Mirrored in `CLAUDE.md`, which
-loads automatically, and backstopped by a Stop hook
-(`scripts/session-handoff-check.sh`) that warns when this file has gone stale.
+commit and push. Don't start a task you can't checkpoint before that line.
+Mirrored in `CLAUDE.md` (auto-loaded) and backstopped by a Stop hook
+(`scripts/session-handoff-check.sh`) that warns when this file goes stale.
 
 ## The documents, in reading order
 
-1. **`docs/audit-remediation-plan.md`** — the real plan. 104 audit findings
-   sequenced into nine phases, ~2,100 lines. **Read §0 (working rules, standing
-   decisions, and the G1–G8 phase gate) and the phase you are working. Don't
-   read it end to end** — §10's matrix maps every task to its finding ID.
-2. **§11 of that plan** — the phase log. What is actually done, with real
-   verification output pasted in. This is the record; when in doubt it wins
-   over this file.
-3. **`docs/audit-phase-2.md` … `-5.md`** — the audits the plan is built from.
-   Go here for a finding's *reasoning*. §10 tells you which one.
-4. **`CLAUDE.md`** — repo conventions. Loads automatically. Note it still
-   overstates the Python cutover; task 2.8 fixes that.
-5. **`git log`** — commit messages here carry the reasoning, not just the
-   change. Worth reading for recent work.
+1. **`docs/audit-remediation-plan.md`** — the plan. 104 findings, nine phases,
+   ~2,500 lines. **Read §0 (working rules, standing decisions, the G1–G8 gate)
+   and the phase you are working. Don't read it end to end** — §10's matrix maps
+   every task to its finding ID.
+2. **§11 of that plan** — the phase log. Real verification output. This is the
+   record; when in doubt it beats this file.
+3. **`docs/audit-phase-2.md` … `-5.md`** — the audits, for a finding's
+   *reasoning*. §10 says which one.
+4. **`CLAUDE.md`** — repo conventions, auto-loaded. Still overstates the Python
+   cutover; **task 2.8 fixes that, so it is your phase's job.**
+5. **`git log`** — commit messages carry reasoning, not just changes.
 
-**Last updated:** 2026-08-28 (Phase 1 in progress).
-**Repo state:** working tree clean, pushed, nothing pending deploy.
+**Last updated:** 2026-08-28.
+**Repo state:** clean, pushed (`origin/main` == `HEAD`), nothing pending deploy.
 
 ---
 
 ## 1. Where we are
 
-**Phase 0 COMPLETE, gate PASSED 2026-08-28.**
+**Phase 0 COMPLETE — gate PASSED.**
+**Phase 1 COMPLETE — gate PASSED, with two caveats recorded in §11.**
+**Phase 2 is next and has NOT started.**
 
-**Phase 1 COMPLETE. GATE PASSED 2026-08-28.** Phase 2 may start. Every task is committed
-and pushed with its verification in the commit message, and logged in §11.
+Phase 1's ten tasks are all done and logged. Two exit items are deliberately
+*not* ticked outright, and §11 says why:
 
-| Task | Result |
-|---|---|
-| 1.1 under-side probability | Fixed in BOTH languages; 1,208 rows affected |
-| 1.2 stale odds (a/b/c) | Gate could never fire (max delay 60 vs 600); now measures real age |
-| 1.3 hide Tier D/E | Edge + Score columns gone; EdgeBadge neutralised |
-| 1.4 strengthen Tier A/B | **No code changed — verified already satisfied** |
-| 1.5 gate operator surface | fit-weights 401; operator confirmed signed-in legs |
-| 1.6 ODDS_API_KEY | Set on worker; TS route read-only |
-| 1.7 calibration timer | 2min -> 30min |
-| 1.8 event_context filter | 354,862 -> 38,535 rows |
-| 1.9 "Source not recorded" | 89% -> **0.0%** |
-| 1.10 error-detail leak | Correlation id; detail server-side only |
+- **502 body (1.10):** verified by construction (`exposeDetail` is gated on
+  `NODE_ENV !== 'production'`) and by five forced errors leaking nothing — but
+  **not** by observing a real 502, which needs an upstream failure that cannot
+  be arranged from outside the process.
+- **Price age with the worker stopped (1.2):** not run as written. The same
+  property was observed directly on a genuinely 6-hour-old price (`6h ago` on
+  the chip face, full date in tooltip). The operator was offered the controlled
+  30-minute outage and did not ask for it.
 
-### The gate found three real problems — worth reading §11 for these
+## 2. Start here: Phase 2 — the ownership boundary
 
-1. **G5: the live worker was missing 1.2a's Python fix.** Committed, pushed,
-   not deployed. The Phase 0 failure repeating. Caught only because G5 checks
-   the DEPLOYED commit, not the local one. **Always check the deployed SHA.**
-2. **G3: `/api/props/diagnostics` was public** and leaking provider budget
-   usage. 1.5's gate exposed it; the app was fetching it twice per page to read
-   one benign string. Fixed with a dedicated public route.
-3. **G7: a comment I wrote was false** — claimed the negative-edge bucket
-   outperformed the positive one; it underperformed the market by 4.52 points.
-   Second false comment this project has caught by read-back rather than review.
+Use §0's kickoff prompt. **This is the phase that closes the audit's root
+cause**: P3 §4 found **22 of 35 tables with writers in both languages**, no
+locking, and "direct ports" that had already drifted.
 
-### Next: Phase 2 — the ownership boundary
+**2.1 first, before any code change** — commit `docs/table-ownership.md`, one
+row per table, all 35. The plan is explicit about why: P3 H2, H3 and C1 each get
+harder the longer two languages own the same tables, so doing them before the
+boundary is decided means doing them twice. The four user tables
+(`bets`/`picks`/`watchlist`/`tracked_lines`) stay in TypeScript — request-scoped,
+session-authenticated, correctly implemented. Do not move them.
 
-Per §0's dependency graph, Phase 2 is next and is the phase that closes the
-audit's ROOT CAUSE (22 of 35 tables written by both languages). Start with
-2.1, the table-ownership map, before any code change — P3 H2/H3/C1 all get
-harder the longer two languages own the same tables.
+Then 2.2 → 2.8 in order. Note **2.2 re-enables the six
+`genericPropProduction*Job` entries** currently sitting in `DISABLED_JOBS` in
+`python-odds-service/src/jobs.py` — that list names 2.2 as its owner.
 
-### Deferred deliberately
+**Rule 2 governs this phase**: "ported to Python" means the TypeScript is
+*deleted*, not disabled, and 48 hours of writes observed from Python alone.
 
-- **The 1.1 backfill** of 1,208 under-side rows (operator decision). Beyond
-  size: `edge = -edge` is only right for rows written under the old
-  model-vs-market formula. Python-era rows use `market_prob - implied_raw` and
-  `implied_raw` is not stored, so some may be **uncorrectable**. Phase 4 must
-  know this before leaning on that history.
-- **Remaining `detail:` returns** on `/api/diagnostics/*` and `/api/props/*`
-  backfill routes — no longer public after 1.5, so lower priority.
+## 3. The one lesson that has now bitten three times
 
-### Two lessons from this phase
+**Committed is not shipped. Check the DEPLOYED commit.**
 
-1. **The audit's file map is dated 2026-08-27.** Twice now a bug it located in
-   TypeScript had since been ported to Python and was live there — and in 1.1
-   the Python version had been *redesigned*, so the bug outlived the calculation
-   it was found in. Check Python first.
-2. **Verify before "fixing".** 1.4 was already satisfied; `windowedStat.ts`
-   returns `insufficient` rather than partial credit, so an L10 denominator is
-   always exactly 10 and the fraction I was about to add would have been noise.
+- Phase 0: `87fa65e` "fix tennis crash" sat unpushed for days while production
+  ran the broken code.
+- Phase 1 gate (G5): the live worker was missing 1.2a's Python fix — committed,
+  pushed, not deployed.
+- The worker has **`autoDeploy: no`**. The health-check cron auto-deploys; the
+  worker does not.
 
-## 3. Operational knowledge — this session paid for it, don't re-derive it
+```
+# after any push touching python-odds-service/ non-cosmetically
+POST https://api.render.com/v1/services/srv-da36bm2bkg8c73fqrdeg/deploys
+# then CONFIRM the live deploy's commit contains your work:
+#   git merge-base --is-ancestor <your-sha> <deployed-sha>
+```
 
-- **Long tests can't survive the laptop sleeping.** A run that reaches for the
-  database after a lid-close dies with
-  `asyncpg.ConnectionDoesNotExistError: connection was closed in the middle of
-  operation`, which reads exactly like a pooler bug and isn't one. Cost a full
-  wrong hypothesis this session. Keep the machine awake or expect to re-run.
+## 4. Operational knowledge — do not re-derive it
+
+- **Long tests can't survive the laptop sleeping.** The failure looks exactly
+  like a pooler bug (`asyncpg.ConnectionDoesNotExistError`) and isn't one. Cost
+  a full wrong hypothesis.
 - **Database access:** write a temp `.mjs` in the repo root and `node` it — `pg`
   resolves only inside the repo. `DATABASE_URL` is `:6543` (transaction pooler);
-  use `:5432` for `pg_dump` and `VACUUM`, which need session state. **Delete the
-  temp file afterwards.**
-- **`psql`/`pg_dump` installed** at `C:\Program Files\PostgreSQL\17\bin`
-  (17.11) — not on PATH.
-- **Render**: worker `srv-da36bm2bkg8c73fqrdeg`, health cron
-  `crn-da7lquqfngtc73ft1n2g`, owner `tea-da2ut3ibkg8c73d5gcdg`.
-  `RENDER_API_KEY` is in `.env.local`; you are authorised to use it for env
-  vars, restarts and deploys. **The cron auto-deploys; the worker does not** —
-  any push touching `python-odds-service/` non-cosmetically needs
-  `POST /v1/services/srv-da36bm2bkg8c73fqrdeg/deploys`.
-- **Python tests are standalone scripts, not pytest** (`python -u src/test_x.py`
-  from `python-odds-service/`). There is no pytest here; §11 records that G2's
-  text is wrong about it.
-- **`next dev` overwrites `.next`,** so a production build must be redone before
-  `npm run start`. Bit me once.
-- **Don't run recursive `grep` over the repo** — it times out on `node_modules`.
+  use `:5432` for `pg_dump`/`VACUUM`, which need session state. **Delete the temp
+  file afterwards.**
+- **`psql`/`pg_dump`** at `C:\Program Files\PostgreSQL\17\bin` (17.11), not on PATH.
+- **Render:** worker `srv-da36bm2bkg8c73fqrdeg`, health cron
+  `crn-da7lquqfngtc73ft1n2g`, owner `tea-da2ut3ibkg8c73d5gcdg`. `RENDER_API_KEY`
+  is in `.env.local`; you are authorised to use it for env vars, restarts and
+  deploys.
+- **Python tests are standalone scripts, not pytest** — `python -u src/test_x.py`
+  from `python-odds-service/`. 16 fast tests, all passing. Three cannot run in
+  CI (two need ~25–50 min and live data; one imports a package that only exists
+  on the scraper laptop) — input for task 3.11.
+- **`next dev` overwrites `.next`**, so rebuild before `npm run start`.
+- **Don't run recursive `grep`** over the repo — it times out on `node_modules`.
   Use the Grep tool.
-- **You can `git push`.** A push blocked by the auto-mode classifier is a
-  per-call decision, not a standing rule. Try before assuming.
+- **You can `git push`.** A classifier block is per-call, not a standing rule.
+- **`/api/odds/lines` takes ~115s** on a full MLB slate. Task 3.10. It will slow
+  every manual test you do.
 
-## 4. Standing decisions made verbally (applied; not yet in §0's table)
+## 5. Carried forward (not forgotten)
 
-- Supabase on **Pro + Micro compute** — Phase 8.1 pulled forward, because
-  `player_game_history` is 830 MB of training data Phase 4.7 needs more of.
+- **The 1.1 backfill** of 1,209 under-side rows — deferred by operator decision.
+  There is also a correctness problem: `edge = -edge` is right only for rows
+  written under the old model-vs-market formula; Python-era rows use
+  `market_prob - implied_raw` and `implied_raw` is not stored, so an unknown
+  subset may be **uncorrectable**. **Phase 4 must know this** before treating
+  that history as trustworthy.
+- **1.1 is not yet observed in production data.** Verified by unit test and by
+  the deployed commit, but the dimensions still writing under-side rows
+  (`first-inning`, `vs-RHP`, `vs-LHP`) carry no `model_prob` at all, and the
+  stat markets that do had not run since the deploy. Re-check after an MLB slate.
+- **Remaining `detail:` returns** on `/api/diagnostics/*` and `/api/props/*`
+  backfill routes — no longer public after 1.5, so exposure is closed, cleanup
+  is not.
+- **`SUPABASE_SERVICE_ROLE_KEY` cannot be rotated** — Supabase removed the
+  ability for legacy keys. Needs the publishable/secret migration; Phase 7.
+- **`docs/discord-community-prompt.md`** is untracked and belongs to the
+  operator, not to any task. Left alone deliberately; the Stop hook will keep
+  flagging it.
+
+## 6. Standing decisions made verbally (applied; not in §0's table)
+
+- Supabase on **Pro + Micro compute** — 8.1 pulled forward, because
+  `player_game_history` is 830 MB of training data 4.7 needs more of.
 - Weekly backup via **Windows Task Scheduler** (`scripts/weekly-backup.sh`,
-  Sundays 03:00), a laptop stopgap; **task 8.9** added to move it.
-- **Phase gates G1–G8** added to §0 and binding: a phase ends when its gate
-  passes, and one failed check fails the gate.
+  Sundays 03:00); **task 8.9** added to move it off the laptop.
+- **Phase gates G1–G8** are binding: a phase ends when its gate passes, and one
+  failed check fails the gate.
+- Scan's **Score column removed** until 6.7; **Home Runs tab keeps ordering** by
+  modelProb (Tier C — a ranking with no number shown).
 
-## 5. Product direction, as discussed
+## 7. Product direction, as discussed
 
-The pivot is from *asserting* predictions to *supplying* evidence. §0's Tier
-A–E table is the rule: descriptive facts and best-price ship; calibrated
-probabilities and edge do not. The model is **not abandoned — it is escrowed**:
-Q6 keeps it computing, writing and grading in shadow, and 4.2 makes it earn its
-way out by beating `market_prob`'s Brier score on held-out live rows.
+The pivot is from *asserting* predictions to *supplying* evidence. §0's Tier A–E
+table is the rule. The model is **not abandoned — it is escrowed**: Q6 keeps it
+computing, writing and grading in shadow; 4.2 makes it earn its way out by
+beating `market_prob`'s Brier score on held-out live rows.
 
-Worth remembering when prioritising: 6.1's line-movement charts need **no new
-data** (425,307 prop points, 19,667 game-line points, currently displayed
-nowhere), and the operator has raised the idea of pulling that forward.
+Worth remembering when prioritising: **6.1's line-movement charts need no new
+data** — 425,307 prop points and 19,667 game-line points, displayed nowhere. The
+operator has raised pulling that forward.
