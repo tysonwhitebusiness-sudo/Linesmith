@@ -882,6 +882,24 @@ async def _golf_predictions_inner() -> dict:
     }
 
 
+async def job_grade_mlb_props(yield_fn=None) -> dict:
+    """Task 2.7b — MLB prop/moneyline/total grading, ported from
+    lib/odds/props/grading.ts where it ran inside TypeScript's snapshot
+    rebuild on that file's own 4-minute per-process timer.
+
+    15 minutes, matching every other grading job here: a graded row does not
+    need to land within seconds, and the cost is one live-feed call per game
+    that still has ungraded rows — zero once a slate is fully graded."""
+    return await _run_timed("gradeMlbPropsJob", _grade_mlb_props_inner())
+
+
+async def _grade_mlb_props_inner() -> dict:
+    from predict.mlb_prop_grading import grade_finished_games
+
+    async with httpx.AsyncClient() as client:
+        return await grade_finished_games(client)
+
+
 async def job_grade_generic_props(yield_fn=None) -> dict:
     """Phase 7 of docs/daily-picks-full-model-build-2026-08-27.md — real
     grading for the six sports Phase 4/5 produce pick_history candidates
@@ -1057,6 +1075,7 @@ JOB_REGISTRY = [
     # reasoning — real per-tick cost is cheap (a handful of ESPN
     # scoreboard calls plus DB reads for whatever's still ungraded).
     ("gradeGenericPropsJob", job_grade_generic_props, 15 * 60),
+    ("gradeMlbPropsJob", job_grade_mlb_props, 15 * 60),
     # Re-enabled by Phase 2.2 (2026-08-28) after finding P3 H4's leakage was
     # fixed — see the note above DISABLED_JOBS. Back on their original
     # 60-minute cadence: the interval was never the bug, the missing

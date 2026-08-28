@@ -846,6 +846,17 @@ class PickHistoryGrade:
     id: int
     outcome: str  # 'win' | 'loss'
     actual_value: float | None
+    # The market's side of the edge, joined in at grading time (task 2.7b).
+    # Grading is the first moment a row's surfaced_at can be matched against
+    # the price history that was accumulating in prop_odds_history at the
+    # same instant, so these are written here rather than at surface time.
+    # All optional: a row with no two-sided price to join against is graded
+    # on outcome alone, which is honest rather than a gap to fill in.
+    market_prob: float | None = None
+    edge: float | None = None
+    price_source: str | None = None
+    bookmaker: str | None = None
+    price_captured_at: str | None = None
 
 
 async def write_pick_history_grades(grades: list[PickHistoryGrade]) -> int:
@@ -860,15 +871,119 @@ async def write_pick_history_grades(grades: list[PickHistoryGrade]) -> int:
     async with pool.acquire() as conn:
         async with conn.transaction():
             for g in grades:
+                # COALESCE on the market-side columns, matching TS writeGrades:
+                # a re-grade that finds no price must not blank a value an
+                # earlier pass did manage to join.
                 result = await conn.execute(
-                    "UPDATE pick_history SET outcome = $1, actual_value = $2, graded_at = now() WHERE id = $3 AND outcome IS NULL",
+                    """
+                    UPDATE pick_history SET
+                      outcome = $1, actual_value = $2, graded_at = now(),
+                      market_prob = COALESCE($4, market_prob),
+                      edge = COALESCE($5, edge),
+                      price_source = COALESCE($6, price_source),
+                      bookmaker = COALESCE($7, bookmaker),
+                      price_captured_at = COALESCE($8, price_captured_at)
+                    WHERE id = $3 AND outcome IS NULL
+                    """,
                     g.outcome,
                     g.actual_value,
                     g.id,
+                    g.market_prob,
+                    g.edge,
+                    g.price_source,
+                    g.bookmaker,
+                    _parse_ts(g.price_captured_at),
                 )
                 if result == "UPDATE 1":
                     graded += 1
     return graded
+
+
+@dataclass
+class UngradedRow:
+    id: int
+    subject_id: str
+    dimension: str
+    category: str
+    line: float | None
+    market_key: str | None
+    model_prob: float | None
+    surfaced_at: str
+
+
+async def list_ungraded_game_ids(sport: str = "mlb") -> list[str]:
+    """Port of lib/db/client.ts's listUngradedGameIds, with one deliberate
+    difference: it takes a `sport`. The TS original had none and scanned
+    every ungraded row in the table regardless of sport, which was harmless
+    while MLB was the only grader and is not now that generic_prop_grading
+    also writes here."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        "SELECT DISTINCT game_id FROM pick_history WHERE outcome IS NULL AND game_id IS NOT NULL AND sport = $1",
+        sport,
+    )
+    return [r["game_id"] for r in rows]
+
+
+async def list_ungraded_for_game(game_id: str, sport: str = "mlb") -> list[UngradedRow]:
+    """Port of lib/db/client.ts's listUngradedForGame. Same `sport` scoping
+    note as list_ungraded_game_ids above."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT id, subject_id, dimension, category, line, market_key, model_prob, surfaced_at
+        FROM pick_history WHERE outcome IS NULL AND game_id = $1 AND sport = $2
+        """,
+        game_id,
+        sport,
+    )
+    return [
+        UngradedRow(
+            id=r["id"], subject_id=r["subject_id"], dimension=r["dimension"], category=r["category"],
+            line=r["line"], market_key=r["market_key"], model_prob=r["model_prob"],
+            surfaced_at=r["surfaced_at"].isoformat() if r["surfaced_at"] else "",
+        )
+        for r in rows
+    ]
+
+
+@dataclass
+class PropOddsHistoryPoint:
+    provider_id: str
+    bookmaker: str
+    side: str
+    american_odds: int
+    observed_at: str
+
+
+async def read_prop_odds_history_for_key(game_id: str, subject_id: str, market_key: str, line: float | None) -> list[PropOddsHistoryPoint]:
+    """Every historical price point for one exact market+line — grading
+    joins this against surfaced_at to recover the market's side of the edge
+    after the fact. Port of readPropOddsHistoryForKey.
+
+    `IS NOT DISTINCT FROM` on `line`, not `=`: a NULL line (moneyline, and
+    any market whose line the provider didn't carry) must match NULL, which
+    `=` never does. Carried over from the TS original deliberately."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT provider_id, bookmaker, side, american_odds, observed_at
+        FROM prop_odds_history
+        WHERE game_id = $1 AND subject_id = $2 AND market_key = $3 AND line IS NOT DISTINCT FROM $4
+        """,
+        game_id,
+        subject_id,
+        market_key,
+        line,
+    )
+    return [
+        PropOddsHistoryPoint(
+            provider_id=r["provider_id"], bookmaker=r["bookmaker"], side=r["side"],
+            american_odds=r["american_odds"],
+            observed_at=r["observed_at"].isoformat() if r["observed_at"] else "",
+        )
+        for r in rows
+    ]
 
 
 async def fetch_player_games_from_db(sport: str, athlete_id: str, season: int | None = None) -> list["PlayerGameStat"]:

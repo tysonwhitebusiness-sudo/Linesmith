@@ -7,12 +7,9 @@
  */
 
 import { getMlbSnapshot } from './adapter';
-import { easternDate } from './statsapi';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import { dedupeHistoryForList } from './historyTrim';
 import { fullRawCacheKey } from './playerGamelogCache';
-import { gradeFinishedGames } from '@/lib/odds/props/grading';
-import { gradeFinishedGamePicks } from '@/lib/core/gamePickLock';
 import type { SportSnapshot } from '@/lib/core/types';
 
 export const TODAY_CACHE_KEY = 'mlb:snapshot';
@@ -21,15 +18,15 @@ export const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 export const FUTURE_DATE_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 /**
- * Everything a real rebuild does: fetch from the MLB API, trim/cache the
- * result, and — for today only — run the grading/logging side effects that
- * are supposed to happen exactly once per rebuild (not once per request).
+ * Everything a real rebuild does: fetch from the MLB API, then trim and
+ * cache the result. It used to also run five write side effects for today's
+ * slate; all five moved to the Python worker (see the note at the bottom of
+ * the function). This is now a fetch-and-cache path and nothing else.
  * Callers decide whether to `await` this inline (nothing cached yet) or fire
  * it in the background (something stale to serve in the meantime) — the
  * function itself doesn't know or care which.
  */
 export async function rebuildMlbSnapshot(date: string, cacheKey: string, isToday: boolean): Promise<SportSnapshot> {
-  const today = easternDate();
   const snapshot = await getMlbSnapshot(new Date(`${date}T12:00:00Z`));
 
   // Stash the untrimmed candidates server-side before trimming, so a
@@ -58,72 +55,25 @@ export async function rebuildMlbSnapshot(date: string, cacheKey: string, isToday
     // Non-critical — next request will just rebuild again
   }
 
-  if (isToday) {
-    // logSnapshotCandidates + logGameModelPredictions ran here, writing
-    // pick_history on this file's own 4-minute per-process timer. Both are
-    // owned by the Python worker now — computeMlbPropPredictionsJob (5 min)
-    // and computeMlbGameModelJob (15 min) respectively. The second was
-    // ported in task 2.7b; the first had already been ported and was
-    // running in parallel with this call, which is the duplication finding
-    // P3 §4 is about.
-    //
-    // Both wrote through log_surfaced/logSurfaced's first-surfaced-wins
-    // ON CONFLICT DO NOTHING, so the two writers could never corrupt each
-    // other — but which one won was decided by whichever tick landed
-    // first, which is not a property anyone chose.
-
-    // Grade whatever's gone final since the last rebuild. Piggybacked on
-    // this same rebuild cadence rather than a separate cron — cheap when
-    // there's nothing ungraded, which is the common case.
-    try {
-      const summary = await gradeFinishedGames();
-      if (summary.rowsGraded > 0) console.log('[snapshotRebuild] graded', summary);
-    } catch (error) {
-      console.error('[snapshotRebuild] gradeFinishedGames failed', error);
-    }
-
-    // Linesmith Pick lock system — grading only. Capturing the picks
-    // themselves (both moneyline and total) now happens in /api/odds/lines,
-    // since that's the only route with market odds available to blend
-    // against — grading just needs the final score, which this route
-    // already has natively from the schedule fetch.
-    try {
-      const games = ((snapshot.context?.other as Record<string, unknown> | undefined)?.games ?? []) as Array<{
-        gamePk: number | string;
-        status: 'pre' | 'live' | 'done';
-        homeTeamId: number;
-        awayTeamId: number;
-        firstPitch?: string | null;
-        liveScore?: { home: string; away: string };
-      }>;
-
-      await gradeFinishedGamePicks(
-        'mlb',
-        games.map((g) => {
-          const home = g.liveScore ? Number(g.liveScore.home) : null;
-          const away = g.liveScore ? Number(g.liveScore.away) : null;
-          return {
-            gameId: String(g.gamePk),
-            isFinal: g.status === 'done',
-            homeScore: home != null && Number.isFinite(home) ? home : null,
-            awayScore: away != null && Number.isFinite(away) ? away : null,
-          };
-        }),
-      );
-    } catch (error) {
-      console.error('[snapshotRebuild] gamePickLock (moneyline) failed', error);
-    }
-
-    // Elo rating updates and starting-pitcher Game Score logging used to
-    // happen here — moved to the Python worker's maintainMlbEloJob (Phase
-    // J of docs/mlb-prediction-engine-ts-cutover-gameplan-2026-08-22.md,
-    // 2026-08-22). That job reads the same team_elo_history/
-    // pitcher_game_score_history tables via the same idempotent UNIQUE-
-    // constraint writes this code used, so removing this duplicate path
-    // doesn't change what either table contains — it just stops writing it
-    // twice. See health_check.py's staleness check on that job for the
-    // ongoing verification this removal is safe.
-  }
+  // NOTHING ELSE HAPPENS HERE ANY MORE, and that is the point of task 2.7.
+  //
+  // This function used to run five write side effects for today's slate:
+  // logSnapshotCandidates and logGameModelPredictions into pick_history,
+  // gradeFinishedGames over pick_history, gradeFinishedGamePicks over
+  // game_picks, and Elo/pitcher-game-score maintenance. Every one of them
+  // is now owned by a Python job on its own schedule —
+  // computeMlbPropPredictionsJob, computeMlbGameModelJob, gradeMlbPropsJob,
+  // gradeFinishedMlbPicksJob and maintainMlbEloJob respectively.
+  //
+  // Each of those wrote through an idempotent guard (first-surfaced-wins,
+  // or `outcome IS NULL`), so the duplication never corrupted a row. What
+  // it did do was tie the model's own bookkeeping to whether somebody had
+  // loaded the MLB page recently, and run it once per app instance. That is
+  // finding P3 §4 — one system implemented twice — and this is where it
+  // stopped being true for MLB.
+  //
+  // `isToday` is kept in the signature: callers pass it meaningfully and
+  // the caching TTLs above still differ for today vs a future date.
 
   return snapshot;
 }
