@@ -1966,29 +1966,137 @@ throughout the 24-hour outage. What was missing was a run that actually *exited*
 non-zero, because the run that mattered hung instead, and a hung run notifies
 nobody.
 
+
+--- G2 / G3 sweep, 2026-08-28 ---
+
+**G2 · typecheck — PASS.** Green at all ten Phase-0.4 commits and on the final
+tree.
+
+**G2 · build — FAILED, then fixed (`d14b7e3`).** This is the single best
+argument for the gate existing. `tsc --noEmit` passed 0.6's change cleanly;
+`next build` did not:
+
+```
+.next/types/app/login/page.ts:12:13
+Type error: Property 'safeNext' is incompatible with index signature.
+  Type '(raw: string | null | undefined) => string' is not assignable to 'never'
+```
+
+A Next.js App Router `page.tsx` may only export a default plus a fixed
+allowlist of route options, and 0.6 had added a named `safeNext` export so the
+redirect matrix could test the real function. Moved to `lib/core/safeNext.ts` —
+same testability, no build break. **Phase 0 would have shipped a repo that does
+not build**, and rule 1 says exactly why: "`npm run typecheck` passing is
+evidence of nothing."
+
+**G2 · Python tests — 14 pass, 1 environment failure, 4 outstanding.**
+
+> Correction to this document: G2 specifies `python -m pytest -q`. **There is no
+> pytest in this repo.** `requirements.txt` does not list it and the 19 test
+> files are standalone scripts run as `python test_x.py`, each with its own
+> `_failures` counter and exit code. The G2 text should say so; as written it
+> describes a runner that has never existed here.
+
+```
+PASS  test_entity_resolution.py          PASS  test_calibration.py
+PASS  test_game_context_roster.py        PASS  test_elo_and_pitcher_game_score.py
+PASS  test_mlb_bradley_terry.py          PASS  test_game_pick_lock.py
+PASS  test_mlb_source_flip.py            PASS  test_game_sim_cache.py
+PASS  test_odds_lines_cycle_book_lines.py PASS  test_odds_lines_cycle.py
+PASS  test_providers.py                  PASS  test_staking.py
+PASS  test_walkforward.py                PASS  test_write_prop_odds.py
+FAIL  test_harvester_scrape.py — ModuleNotFoundError: No module named 'oddsharvester'
+```
+
+The one failure is an environment gap, not a code defect: `harvester_scrape.py`
+imports the OddsHarvester package, which lives on the scraper laptop and is not
+in `requirements.txt`. It is therefore untestable on any other machine and in
+any CI — worth fixing when 3.11 builds CI, either by vendoring the import
+behind a guard or by declaring the dependency.
+
+Still running at write time: `test_mlb_mlp`, `test_mlb_stacking`,
+`test_mlb_tree_models`, `test_model_benchmark` (real model training, >40min).
+**The gate does not pass until these report.**
+
+**G3 · smoke walk — PASS, with one serious finding.**
+
+21 pages, every status correct:
+```
+/golf /nfl /nba /nhl /cfb /soccer/epl /tennis/atp /mlb            200
+/mlb/game/824231  /mlb/player/669373  /mlb/team/147               200
+/mlb/teams /nfl/teams /nba/teams /nhl/teams /soccer/epl/teams     200
+/tennis/atp/schedule  /login                                     200
+/                                                    307 -> /golf
+/bets                                                307 -> /login   (protected, correct)
+/diagnostics                                         307 -> /login   (admin, correct)
+/scan                                                404 (no such route — not a regression)
+```
+
+Console errors on a game detail page: **two, both correct** — `/api/picks` and
+`/api/watchlist` returning 401 to an unauthenticated browser. No other errors,
+no failed chunks.
+
+**The finding: `/api/odds/lines?sport=mlb` takes ~115 seconds.** The page sits
+on "Loading…" until it returns. Timed repeatedly:
+
+```
+cold : 185.6s
+warm : 114.9s / 124.5s / 105.1s
+```
+
+P4 H1 measured **13.5s** on a 7-game slate. Today's slate is 15 games, and
+`propline` alone has 3,414 rows in the last 7 days where the audit's snapshot
+had far fewer — so this is the same N+1 write loop scaling, not a new defect.
+Task 3.10's target is "under 1 second"; the real starting point is ~115s, not
+13.5s. **3.10 is materially more urgent than the plan assumes, and it is the
+single worst thing a real user would experience today.**
+
+*I suspected my own 0.5 change had caused it and tested that rather than
+assuming.* A/B with the app pointed at each pooler, four calls each:
+
+```
+session mode (:5432)      168.6s  114.8s  113.8s  146.5s
+transaction mode (:6543)  185.6s  114.9s  124.5s  105.1s
+```
+
+Indistinguishable. **The pooler switch did not cause this**; the route was
+always this slow at this slate size. 0.5 stands.
+
+The other three endpoints the page waits on are fine: `/api/mlb/injuries`
+0.65s, `/api/mlb/recent` 0.70s, `/api/mlb/bullpen` 0.67s.
+
+**Not yet done in G3:** signed-in walk. Verifying `/bets` and the four user
+tables end-to-end needs credentials, which I will not handle. It needs the
+operator, and it is the one remaining check on 0.3's "and `/bets` + `/api/picks`
+still work signed in."
+
 --- gate status: NOT PASSED ---
 
 G1 task VERIFYs      : all pass, above — but run as work proceeded, not as one sitting
-G2 typecheck         : PASS (green at all ten commits and on the final tree)
-G2 build/test/pytest : NOT RUN
-G3 smoke walk        : PARTIAL — 9 slate pages 200 (/ -> 307 -> /golf, /diagnostics -> 307 login, both correct).
-                       No detail pages, no sign-in, no /bets, no console-error check.
+G2 typecheck         : PASS
+G2 build             : PASS after d14b7e3 — FAILED first, on 0.6's own change, which typecheck had passed
+G2 python tests      : 14 pass, 1 environment failure (oddsharvester not installable off the scraper
+                       laptop), 4 model-training tests still running. NOT COMPLETE.
+G3 smoke walk        : PASS unauthenticated — 21 pages, correct statuses, only expected 401s in console.
+                       Signed-in walk NOT done: needs credentials, which is the operator's to run.
 G4 findings closed   : P4 C1, P4 M5, P4 L2, P2 H7, P2 H5, P2 L4, P3 M10, P4 M10, P4 H4, P3 H4 — each re-verified above.
-                       P3 L4 closed as NOT REPRODUCING rather than fixed.
+                       P3 L4 genuinely fixed: root cause was a missing `or ""` in load_tennis_games, fixed in
+                       87fa65e days ago and never pushed. Green in production since the deploy.
 G5 write paths       : PASS (counts above, taken after the RLS change)
 G6 orphans           : 6 genericPropProduction*Job in DISABLED_JOBS — dated, reason recorded, re-enabled by Phase 2.2.
+                       snapshotCacheSize in ACKNOWLEDGED_CHECKS — dated, reason recorded, cleared by task 3.3.
+                       Both lists enforce a named task; ACKNOWLEDGED_CHECKS does so at import time.
 G7 read-back         : done for the Phase 0 commit; not yet for the nine bulk commits
-G8 known NOT done    : (1) refreshTennisAtpJob/WtaJob failing every tick in production (P3 L4 — see the
-                           correction above). genericCaptureJob not being scheduled at all, 33h.
-                           0.8's exit criterion is "every enabled job healthy within one interval";
-                           two are not, so 0.8 is NOT met.
-                       (2) SUPABASE_SERVICE_ROLE_KEY cannot be rotated — see below.
-                       (2b) Phase 0's commits are not deployed. The worker still runs the pre-Phase-0
-                           build, so DISABLED_JOBS, retentionJob, the traceback capture and the
-                           pooler-mode fix are all committed but not live.
+G8 known NOT done    : (1) SUPABASE_SERVICE_ROLE_KEY cannot be rotated — Supabase removed the ability.
+                           Needs the publishable/secret key migration; belongs with Phase 7.
                        (3) Database 1,280 MB — over the old 500 MB ceiling by design; Pro makes it moot.
                        (4) ODDS_API_KEY still missing on the worker (Phase 1.6, not Phase 0).
-                       (5) Full G2/G3 sweep outstanding.
+                       (5) Four model-training tests still running; G2 is not complete until they report.
+                       (6) Signed-in smoke walk (/bets + /api/picks as a real user) — operator's to run,
+                           and the last open check on 0.3.
+                       (7) /api/odds/lines takes ~115s. Not a Phase 0 task (that is 3.10), but recorded
+                           here because the real number is 8x the audit's and it is the worst thing a
+                           real user meets today.
 
 Observations recorded for later phases, not acted on here:
 - `oddsapiio daily cap reached (505/500)` — the cap was exceeded by 5. Live
