@@ -1951,12 +1951,20 @@ from "something just broke" — which is precisely the "permanently-red check
 trains you to ignore the dashboard" failure 0.8 names. Separating informational
 from alerting checks belongs to task 3.3.
 
-**And the alert did not arrive.** The 13:58:18Z run exited 1 on a channel
-configured `emailEnabled=true` / `notificationsToSend="failure"`, and no email
-was received. So the channel is not merely unwired — it is configured and not
-delivering. Unresolved; the single most important thing for Phase 3.2 to fix,
-since every other observability improvement is worthless if the notification
-never lands.
+**TEST ALERT RECEIVED.** The operator confirmed a Render cron-job failure
+email for the deliberately-failing run. An earlier note in this log recorded it
+as not delivering; that was premature — the mail was delayed, not lost. The
+channel works end to end:
+
+```
+cron exits 1  ->  Render notification (emailEnabled=true, notificationsToSend="failure")  ->  operator inbox
+```
+
+**0.8's exit criterion — "a test alert was received" — is met.** Note what it
+took: the criterion is not "notifications are configured." They were configured
+throughout the 24-hour outage. What was missing was a run that actually *exited*
+non-zero, because the run that mattered hung instead, and a hung run notifies
+nobody.
 
 --- gate status: NOT PASSED ---
 
