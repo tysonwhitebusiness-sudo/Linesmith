@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { fetchAllTeams, fetchGameSummary, type SoccerTeam } from '@/lib/sports/soccer/espn';
 import { fetchScoreboard, fetchTeamRoster } from '@/lib/sports/multiSport/teamSportEspn';
+import { currentUnderstatSeason, buildUnderstatTeamDefenseIndex, matchUnderstatTeamName, buildUnderstatNameIndex, matchUnderstatIndex } from '@/lib/sports/soccer/understat';
+import { currentAsaSeason, loadAsaSeasonContext, matchAsaIndex } from '@/lib/sports/soccer/americanSocceranalysis';
 import type { SoccerLeague } from '@/lib/core/types';
 import { SOCCER_LEAGUES } from '@/lib/core/types';
 import { cachedRoute } from '@/lib/cachedRoute';
@@ -15,17 +17,21 @@ function isSoccerLeague(v: string): v is SoccerLeague {
 }
 
 /**
- * Deliberately thinner than MLB/NFL's team routes — real roster + next/
- * recent games from ESPN, no candidates/grades/matchup (soccer has no
- * model, no per-match history source yet — see adapter.ts's header and
- * docs/soccer-gameplan-2026-08-22.md's real accepted gaps).
+ * Real roster + next/recent games from ESPN (real final scores — see
+ * `EspnTeamSportGame`), a real single-book pregame line, and (EPL only)
+ * real season goals-for/goals-against rate + league rank from Understat's
+ * team-level data (`understat.ts`'s `buildUnderstatTeamDefenseIndex`) for
+ * the Team Detail stat-groups card. MLS's equivalent needs ASA's own
+ * `/mls/teams/xgoals` season rollup wired in — not yet built, so MLS's
+ * `teamSeasonStats` stays `null`, an honest gap rather than the EPL rank
+ * borrowed onto a different league's teams.
  */
 async function buildTeamPayload(league: SoccerLeague, teamId: string) {
   const slug = ESPN_LEAGUE_SLUG[league];
   const [teams, roster, games] = await Promise.all([
     fetchAllTeams(league),
     fetchTeamRoster('soccer', slug, teamId),
-    fetchScoreboard('soccer', slug, 21, 30),
+    fetchScoreboard('soccer', slug, 21, 45),
   ]);
   const team = teams.find((t: SoccerTeam) => t.teamId === teamId);
   if (!team) return null;
@@ -36,6 +42,44 @@ async function buildTeamPayload(league: SoccerLeague, teamId: string) {
   const recentGames = teamGames.filter((g) => Date.parse(g.date) < now).sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
 
   const nextGameLine = nextGame ? (await fetchGameSummary(league, nextGame.gameId)).pregameLine : null;
+  const opponentTeamId = nextGame ? (nextGame.homeTeamId === teamId ? nextGame.awayTeamId : nextGame.homeTeamId) : null;
+  const opponentTeam = opponentTeamId ? teams.find((t) => t.teamId === opponentTeamId) : null;
+
+  let teamSeasonStats = null;
+  let opponentSeasonStats = null;
+  if (league === 'epl') {
+    const defenseIndex = await buildUnderstatTeamDefenseIndex(currentUnderstatSeason());
+    teamSeasonStats = matchUnderstatTeamName(defenseIndex, team.name);
+    if (opponentTeam) opponentSeasonStats = matchUnderstatTeamName(defenseIndex, opponentTeam.name);
+  }
+
+  // Real per-player season stats (2026-08-24) — reuses the same real
+  // Understat(EPL)/ASA(MLS) name-indexed season totals `adapter.ts`'s
+  // `attachRealHistory` already resolves per-candidate, run for every
+  // roster player instead of only ones with an active prop.
+  const rosterSeasonStats = new Map<string, { games: number | null; goals: number; assists: number }>();
+  try {
+    if (league === 'epl') {
+      const nameIndex = await buildUnderstatNameIndex(currentUnderstatSeason());
+      for (const p of roster) {
+        const resolved = matchUnderstatIndex(nameIndex, p.fullName);
+        if (resolved && resolved.games > 0) rosterSeasonStats.set(p.subjectId, { games: resolved.games, goals: resolved.goals, assists: resolved.assists });
+      }
+    } else {
+      // ASA's season aggregate has no real "games played" field (only
+      // minutesPlayed) — `games: null` here, not a fabricated count;
+      // `hasStats`/`seasonLineText` key off `minutesPlayed` instead.
+      const asaContext = await loadAsaSeasonContext(currentAsaSeason());
+      for (const p of roster) {
+        const resolved = matchAsaIndex(asaContext.nameIndex, p.fullName);
+        if (resolved && resolved.minutesPlayed > 0) rosterSeasonStats.set(p.subjectId, { games: null, goals: resolved.goals, assists: resolved.assists });
+      }
+    }
+  } catch {
+    // Real Understat/ASA hiccup — roster keeps no season stats rather than taking the whole team page down.
+  }
+
+  const logoByAbbr = Object.fromEntries(teams.filter((t) => t.logoUrl).map((t) => [t.abbreviation, t.logoUrl as string]));
 
   return {
     team,
@@ -44,14 +88,17 @@ async function buildTeamPayload(league: SoccerLeague, teamId: string) {
       fullName: p.fullName,
       position: p.positionAbbr ?? null,
       headshotUrl: p.headshotUrl ?? null,
+      seasonStats: rosterSeasonStats.get(p.subjectId) ?? null,
     })),
     nextGame,
     nextGameLine,
-    // No final-score field exists on EspnTeamSportGame yet (schedule-shape
-    // only) — recent results list real fixtures, without a win/loss/score
-    // outcome until that's wired. Honest "played, outcome unknown" rather
-    // than a fabricated result.
-    recentGames: recentGames.slice(0, 10),
+    recentGames: recentGames.slice(0, 20),
+    teamSeasonStats,
+    opponentSeasonStats,
+    opponentAbbr: opponentTeam?.abbreviation ?? null,
+    opponentName: opponentTeam?.name ?? null,
+    opponentLogoUrl: opponentTeam?.logoUrl ?? null,
+    logoByAbbr,
   };
 }
 
