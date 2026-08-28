@@ -1,9 +1,16 @@
 /**
  * Persists this poll's completed hole/round/tournament-result data into the
- * golf_* history tables (see lib/db/schema.ts for the full rationale — golf
- * had zero accumulated history before this; every golf page re-fetched
- * ESPN's current-week feed live and kept nothing). Called once per
- * `getGolfSnapshot()` build in adapter.ts.
+ * golf_* history tables (schema in supabase/migrations/ — golf had zero
+ * accumulated history before this; every golf page re-fetched ESPN's
+ * current-week feed live and kept nothing).
+ *
+ * NOTE: nothing in this application calls this function any more. The golf
+ * write path moved wholesale to the Python worker's golfPredictionsJob in
+ * task 2.4; adapter.ts's `void ingestGolfHistory(...)` was one of the four
+ * calls deleted there. Kept rather than deleted because
+ * predict/golf_history.py is a port of this file and this is the readable
+ * original — but it is reference material now, not a live path. If you are
+ * changing golf history ingestion, change the Python.
  *
  * Forward accumulation only, starting from whenever this first ships — the
  * same position MLB's own prop-price history was in before it had a season

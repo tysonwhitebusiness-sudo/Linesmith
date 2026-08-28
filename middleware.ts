@@ -54,7 +54,9 @@ const ADMIN_USER_IDS = ['038048de-c950-4798-9bfb-9da68c89f936'];
 const ADMIN_API_PREFIXES = ['/api/diagnostics', '/api/props', '/api/odds/import'];
 /**
  * Genuinely public reads that happen to live under /api/props:
- *  - `lines` and `line-history` are price data the app renders for everyone.
+ *  - `lines` is price data the app renders for everyone. (`line-history`
+ *    was here too; the route had no caller anywhere and was deleted in
+ *    task 2.6.)
  *  - `calibration` is the model-health payload the public scoreboard reads.
  *
  * `scan-player`, `more-books` and `sharp-price` were also listed here, as
@@ -67,7 +69,6 @@ const ADMIN_API_PREFIXES = ['/api/diagnostics', '/api/props', '/api/odds/import'
  */
 const ADMIN_API_EXCLUDE = [
   '/api/props/lines',
-  '/api/props/line-history',
   '/api/props/calibration',
   '/api/props/user-sportsbook',
 ];

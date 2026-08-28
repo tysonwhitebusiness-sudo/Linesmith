@@ -202,36 +202,6 @@ export async function pitcherAdjustment(pitcherId: number | null, teamId: number
   return (pitcherAvg - baseline) * PITCHER_ADJ_MULTIPLIER;
 }
 
-/** Computes and logs one start's Game Score from the game's live feed box score — called once a start is complete, same trigger point as everything else that logs off "game just went Final." */
-export async function logPitcherGameScore(
-  gamePk: number,
-  season: number,
-  pitcherId: number,
-  teamId: number,
-  gameDate: string,
-): Promise<void> {
-  const feed = await getLiveFeed(gamePk);
-  const boxscore: any = feed?.boxscore;
-  const homePlayer = boxscore?.teams?.home?.players?.[`ID${pitcherId}`];
-  const awayPlayer = boxscore?.teams?.away?.players?.[`ID${pitcherId}`];
-  const stats = (homePlayer ?? awayPlayer)?.stats?.pitching;
-  if (!stats) return;
-
-  const outs = inningsPitchedToOuts(stats.inningsPitched ?? '0.0');
-  const earnedRuns = Number(stats.earnedRuns ?? 0);
-  const totalRuns = Number(stats.runs ?? earnedRuns);
-  const line: PitcherLineForGameScore = {
-    outs,
-    hits: Number(stats.hits ?? 0),
-    earnedRuns,
-    unearnedRuns: Math.max(0, totalRuns - earnedRuns),
-    walks: Number(stats.baseOnBalls ?? 0),
-    strikeouts: Number(stats.strikeOuts ?? 0),
-  };
-  const gameScore = computeGameScore(line);
-  await writePitcherGameScore([{ pitcherId, teamId, season, gamePk, gameDate, gameScore }]);
-}
-
 // ---------------------------------------------------------------------------
 // Rating update (stored Elo — unaffected by rest/travel/pitcher, by design)
 // ---------------------------------------------------------------------------
@@ -420,25 +390,6 @@ export async function getCurrentElo(teamId: number, season: number): Promise<Cur
     };
   }
   return { elo: STARTING_ELO, gamesPlayed: 0, lastGameDate: null, lastLocationTeamId: null };
-}
-
-/** Updates both teams' STORED (unadjusted) Elo after one specific game goes Final — idempotent via writeEloHistory's UNIQUE constraint. */
-export async function updateEloForFinishedGame(
-  season: number,
-  gamePk: number,
-  gameDate: string,
-  homeTeamId: number,
-  awayTeamId: number,
-  homeRuns: number,
-  awayRuns: number,
-): Promise<void> {
-  const home = await getCurrentElo(homeTeamId, season);
-  const away = await getCurrentElo(awayTeamId, season);
-  const result = updateElo(home.elo, away.elo, homeRuns, awayRuns);
-  await writeEloHistory([
-    { teamId: homeTeamId, season, gamePk, gameDate, elo: result.newHomeElo, gamesPlayed: home.gamesPlayed + 1, opponentTeamId: awayTeamId, wasHome: true },
-    { teamId: awayTeamId, season, gamePk, gameDate, elo: result.newAwayElo, gamesPlayed: away.gamesPlayed + 1, opponentTeamId: homeTeamId, wasHome: false },
-  ]);
 }
 
 /**

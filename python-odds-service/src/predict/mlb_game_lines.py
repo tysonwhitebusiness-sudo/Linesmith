@@ -24,12 +24,16 @@ just isn't a ProviderSpec.
 
 Only the-odds-api is ported here. lib/odds/merge.ts's other input
 (OddsHarvester) is confirmed dead by the user this session ("oddsharverster
-doesnt work and thatsknown") — not worth porting dead weight. NFL's game
-lines (SharpAPI's separate game-lines board + TheRundown,
-lib/odds/nflGameLines.ts) and SportsGameOdds's getSportsGameOddsGameLine are
-both NFL-only in the real app (confirmed: neither is wired into any MLB code
-path) with no Python NFL prediction pipeline to feed yet — out of scope
-until one exists.
+doesnt work and thatsknown") — not worth porting dead weight. SportsGameOdds's getSportsGameOddsGameLine
+is NFL-only in the real app (confirmed: not wired into any MLB code path)
+with no Python NFL prediction pipeline to feed yet — out of scope until one
+exists.
+
+This paragraph also used to name lib/odds/nflGameLines.ts (SharpAPI's
+separate game-lines board + TheRundown) as the other NFL-only path. That
+file, and lib/odds/rundown.ts under it, were deleted in task 2.6 —
+/api/odds/lines had already re-sourced NFL through the shared
+game_odds_book_lines table, leaving both with zero importers.
 
 CRITICAL for this specific port: odds_cache is a table BOTH apps read and
 write. TS's readOddsCache does `JSON.parse(payload) as GameLine[]`,
