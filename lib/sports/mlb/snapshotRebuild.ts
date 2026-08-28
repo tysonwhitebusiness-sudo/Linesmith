@@ -11,7 +11,6 @@ import { easternDate } from './statsapi';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import { dedupeHistoryForList } from './historyTrim';
 import { fullRawCacheKey } from './playerGamelogCache';
-import { logSnapshotCandidates, logGameModelPredictions } from '@/lib/odds/props/pickHistoryLog';
 import { gradeFinishedGames } from '@/lib/odds/props/grading';
 import { gradeFinishedGamePicks } from '@/lib/core/gamePickLock';
 import type { SportSnapshot } from '@/lib/core/types';
@@ -60,15 +59,18 @@ export async function rebuildMlbSnapshot(date: string, cacheKey: string, isToday
   }
 
   if (isToday) {
-    // Log what was surfaced, for Phase C's grading + calibration. Only on a
-    // genuine rebuild (not every cache hit) — the candidate set hasn't
-    // changed between hits, and INSERT OR IGNORE would just no-op anyway.
-    try {
-      await logSnapshotCandidates('mlb', snapshot);
-      await logGameModelPredictions('mlb', snapshot);
-    } catch (error) {
-      console.error('[snapshotRebuild] logSnapshotCandidates failed', error);
-    }
+    // logSnapshotCandidates + logGameModelPredictions ran here, writing
+    // pick_history on this file's own 4-minute per-process timer. Both are
+    // owned by the Python worker now — computeMlbPropPredictionsJob (5 min)
+    // and computeMlbGameModelJob (15 min) respectively. The second was
+    // ported in task 2.7b; the first had already been ported and was
+    // running in parallel with this call, which is the duplication finding
+    // P3 §4 is about.
+    //
+    // Both wrote through log_surfaced/logSurfaced's first-surfaced-wins
+    // ON CONFLICT DO NOTHING, so the two writers could never corrupt each
+    // other — but which one won was decided by whichever tick landed
+    // first, which is not a property anyone chose.
 
     // Grade whatever's gone final since the last rebuild. Piggybacked on
     // this same rebuild cadence rather than a separate cron — cheap when

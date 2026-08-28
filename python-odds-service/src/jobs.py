@@ -692,6 +692,7 @@ async def _compute_mlb_game_model_inner() -> dict:
 
         written = 0
         skipped_no_model = 0
+        model_entries: list[db.SurfacedEntry] = []
         for g in pre_game:
             model = await compute_game_model_for_game(client, context, batters, g)
             if model is None:
@@ -734,7 +735,45 @@ async def _compute_mlb_game_model_inner() -> dict:
             )
             written += 1
 
-    return {"games": len(inputs), "pre_game": len(pre_game), "written": written, "skipped_no_model": skipped_no_model}
+            # Task 2.7b — port of lib/odds/props/pickHistoryLog.ts's
+            # logGameModelPredictions, which ran inside TS's snapshot rebuild
+            # (snapshotRebuild.ts) on a 4-minute per-process timer. Two
+            # moneyline rows per game, one per side, keyed subject-side so
+            # each team's own win probability is separately gradeable.
+            #
+            # Deliberately here rather than in its own job: these rows are
+            # exactly this model's output, and writing them anywhere else
+            # would reintroduce the split between "who computes it" and "who
+            # records it" that finding P3 H2 is about. log_surfaced is
+            # first-surfaced-wins (ON CONFLICT DO NOTHING), so re-running
+            # this job on its 15-minute cadence does not overwrite the day's
+            # locked prediction — same semantics the TS original had.
+            model_entries.extend(
+                [
+                    db.SurfacedEntry(
+                        sport="mlb", subject_id=f"team-{g.home_team_id}", subject_name=g.home_team_name or "",
+                        dimension="moneyline", category="win", market_key=None, line=None,
+                        game_id=str(g.game_pk), sample_size=0, distance=None, event_context=None,
+                        model_prob=model.home_win_prob, commence_time=g.game_date_iso,
+                    ),
+                    db.SurfacedEntry(
+                        sport="mlb", subject_id=f"team-{g.away_team_id}", subject_name=g.away_team_name or "",
+                        dimension="moneyline", category="win", market_key=None, line=None,
+                        game_id=str(g.game_pk), sample_size=0, distance=None, event_context=None,
+                        model_prob=model.away_win_prob, commence_time=g.game_date_iso,
+                    ),
+                ]
+            )
+
+        await db.log_surfaced(model_entries)
+
+    return {
+        "games": len(inputs),
+        "pre_game": len(pre_game),
+        "written": written,
+        "skipped_no_model": skipped_no_model,
+        "moneyline_rows_logged": len(model_entries),
+    }
 
 
 async def job_compute_mlb_prop_predictions(yield_fn=None) -> dict:

@@ -287,6 +287,12 @@ class GameModelGameInput:
     game_pk: int
     home_team_id: int
     away_team_id: int
+    # Display names, carried alongside the ids so a caller writing
+    # pick_history rows has the subject_name column's value without a second
+    # slate fetch — logGameModelPredictions' TS original read them straight
+    # off the snapshot's own game objects. None when the MLB API omits one.
+    home_team_name: str | None
+    away_team_name: str | None
     venue_id: int | None
     venue_name: str | None
     venue_latitude: float | None
@@ -459,6 +465,8 @@ async def build_slate_game_inputs(client: httpx.AsyncClient, today: str) -> list
                 game_pk=game.game_pk,
                 home_team_id=home.team_id,
                 away_team_id=away.team_id,
+                home_team_name=home.team_name,
+                away_team_name=away.team_name,
                 venue_id=venue.get("id"),
                 venue_name=venue.get("name"),
                 venue_latitude=coords.get("latitude"),
