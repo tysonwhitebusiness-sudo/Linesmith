@@ -27,8 +27,9 @@ commit and push. Don't start a task you can't checkpoint before that line.
    task 2.8 fixes it and 2.8 is not done.**
 
 **Last updated:** 2026-08-28.
-**Repo state:** clean, pushed. Worker deploy `dep-da91ces9v7es73ctvafg` on
-`805c023` was triggered — **confirm it went live before trusting the worker.**
+**Repo state:** clean, pushed, `HEAD == origin/main == d5cab7f`. Worker deploy
+`dep-da91h1on74is73egadn0` on `d5cab7f` is **live and verified** — 12 jobs ran
+in the following 20 minutes, all `ok: true`, zero failures.
 
 ---
 
@@ -46,12 +47,16 @@ commit and push. Don't start a task you can't checkpoint before that line.
 | 2.5 delete the three buttons | **DONE** |
 | 2.6 dead code | **DONE** |
 | 2.7a adapter cache-first | **NOT STARTED** ← the big one |
-| 2.7b ports (1 of 3) | `logGameModelPredictions` **DONE**; two remain |
+| 2.7b ports (2 of 3) | `logGameModelPredictions` and `gradeFinishedGames` **DONE**; `computeCalibrationPayload` remains |
 | 2.7c job locking | **DONE** — and it found a real bug, see §3 |
 | 2.8 comments + `CLAUDE.md` | **NOT STARTED** |
 
 Commits: `464fda6` (rescope) → `d51f655` `a65d64c` `1411aff` `0cc0e74` `c5efdbe`
-`7cff201` `6545379` `805c023`.
+`7cff201` `6545379` `805c023` `7572259` `d5cab7f`.
+
+**`rebuildMlbSnapshot` is now fetch-trim-cache and nothing else.** All five of
+its former write side effects are Python jobs. That was 2.7's structural point
+for the *snapshot* path; 2.7a below is the same job for the *model* path.
 
 ## 2. Do this first
 
@@ -96,14 +101,21 @@ anything relying on session state through `:6543` is suspect.
 
 ## 4. Next actions, in order
 
-**2.7b — two ports left.**
-- `gradeFinishedGames` (`lib/odds/props/grading.ts`, 208 lines) → Python. MLB
-  prop grading. `statsapi.py` already has the live feed;
-  `generic_prop_grading.py` is the shape to copy. Called from
-  `snapshotRebuild.ts`, still live.
-- `computeCalibrationPayload` (`lib/odds/props/calibrationSnapshot.ts`, 86
-  lines + its queries) → a Python job writing `snapshot_cache`. Called from
-  `lib/scheduler.ts`'s `refreshCalibration`, now behind a lease.
+**2.7b — one port left, and it is bigger than its line count.**
+`computeCalibrationPayload` (`lib/odds/props/calibrationSnapshot.ts`) → a Python
+job writing `snapshot_cache`. Called from `lib/scheduler.ts`'s
+`refreshCalibration`, now behind a lease.
+
+The file is 86 lines but it composes **nine** aggregate query functions from
+`lib/db/client.ts` — `calibrationCounts`, `calibrationBuckets`,
+`calibrationByMarket`, `overallBrierScore`, `goodBetsRecord`,
+`calibrationCountsForDimension`, `calibrationBucketsForDimension`,
+`liveMarketSkill`, `scoreRecord` — plus `goodBets.ts`'s `isMarketTrusted` /
+`GAME_LEVEL_DIMENSIONS` and `marketTrust.ts`'s `trustTierFromLiveBSS`. Python
+already has `predict/market_trust.py` and `predict/good_bets.py`, so check what
+those already cover before porting anything. **Estimate: most of a day**, not
+the hour the file size suggests. This was measured and deliberately not started
+with low context rather than half-done.
 
 **2.7a — the cache-first cutover. This is the substance of 2.7 and it is
 untouched.** `adapter.ts` still runs live model math on a 4-minute timer:
