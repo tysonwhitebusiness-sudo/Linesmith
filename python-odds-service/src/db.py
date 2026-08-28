@@ -69,8 +69,19 @@ async def get_pool() -> asyncpg.Pool:
         ctx = ssl.create_default_context()
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        transaction_mode = DB_POOLER_MODE == "transaction"
-        dsn = _transaction_mode_dsn(DATABASE_URL) if transaction_mode else DATABASE_URL
+        # The DSN's own port is authoritative, not just the flag. Phase 0.5
+        # points DATABASE_URL straight at :6543 (the TypeScript app has no
+        # swap logic of its own), which left a machine with DB_POOLER_MODE
+        # unset — the default, "session" — talking to the TRANSACTION pooler
+        # while believing it was in session mode. That combination is not a
+        # crash, which is what makes it nasty: it turns asyncpg's statement
+        # cache back on against a pooler that hands out a different physical
+        # backend per transaction, and the first repeated query dies with
+        # DuplicatePreparedStatementError. Reproduced locally on 2026-08-28,
+        # immediately after this file's own 0.5 change. Deriving the mode from
+        # the resolved DSN means the port and the behaviour cannot disagree.
+        dsn = _transaction_mode_dsn(DATABASE_URL) if DB_POOLER_MODE == "transaction" else DATABASE_URL
+        transaction_mode = bool(re.search(r":6543(/|$)", dsn))
         # server_settings applies statement_timeout as a session default on
         # every connection this pool ever opens — a single query (or a lock
         # wait inside one) that runs past 15s gets killed by Postgres itself
