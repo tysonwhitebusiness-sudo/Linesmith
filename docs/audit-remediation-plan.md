@@ -1899,6 +1899,65 @@ raise between those two points removes a job from scheduling permanently, for
 the life of the process, with no error surfaced. Unconfirmed as the mechanism
 here, but it is the shape that matches. Evidence for task 3.3.
 
+**UPDATE after deploying (2026-08-28T14:14:56Z, commit 4fbf5f6).**
+
+The root cause of P3 L4 was not an environment difference. It was this, in
+`game_context.py`'s `load_tennis_games`:
+
+```
+-  RosterEntry(subject_id=..., subject_name=home_athlete.get("fullName")),
++  RosterEntry(subject_id=..., subject_name=home_athlete.get("fullName") or ""),
+```
+
+A tennis competitor with no `fullName` gave `subject_name=None`, which
+`build_roster_index` handed to `normalize_name`, which handed to
+`unicodedata.normalize("NFD", None)` — the exact TypeError.
+
+**The fix was committed days ago and never pushed.** Commit `87fa65e`,
+literally titled "fix tennis crash," sat on this laptop while the worker —
+which deploys from GitHub, with `autoDeploy: no` — stayed pinned at `89f6754`.
+The deployed commit was behind even this session's *starting* HEAD. So the
+repository said "fixed," the operator believed it was fixed, and production ran
+the broken code for days.
+
+That is the audit's root finding reproducing inside the phase written to close
+it: **the repository described a system that did not exist.** The lesson 0.4
+should carry, and doesn't yet: committing is not shipping. A phase that touches
+worker behaviour has to verify the deployed commit, not the local one.
+
+After the deploy, every job is healthy:
+```
+refreshTennisAtpJob   healthy — last run 2min ago, 168 rows written
+refreshTennisWtaJob   healthy — last run 1min ago, 186 rows written
+genericCaptureJob     healthy — last run 3min ago      (was 2,017min stale)
+retentionJob          ran 14:14:59Z, ok=True
+… 21 of 22 jobs OK
+```
+`genericCaptureJob` recovered on the process restart, consistent with the
+`self._running` leak theorised above but not proving it — the theory stands
+unconfirmed and still belongs to task 3.3.
+
+One check remains red, deliberately: `snapshotCacheSize`. Its threshold was set
+below real state on purpose by an earlier session, to stay unhealthy until the
+MLB snapshot is split into scoped caches. Its *measurement* was wrong, though,
+and is now fixed (`b023fe7`): it queried `LENGTH(payload)` — uncompressed
+characters — against thresholds calibrated with `pg_column_size`, reporting
+72.4MB for a row costing 11.2MB on disk, and a 1,340MB table total against a
+real 131MB.
+
+**This is the open problem for 0.8.** One deliberately-red check makes the cron
+exit 1 forever, so the alert channel can never distinguish "known deferred work"
+from "something just broke" — which is precisely the "permanently-red check
+trains you to ignore the dashboard" failure 0.8 names. Separating informational
+from alerting checks belongs to task 3.3.
+
+**And the alert did not arrive.** The 13:58:18Z run exited 1 on a channel
+configured `emailEnabled=true` / `notificationsToSend="failure"`, and no email
+was received. So the channel is not merely unwired — it is configured and not
+delivering. Unresolved; the single most important thing for Phase 3.2 to fix,
+since every other observability improvement is worthless if the notification
+never lands.
+
 --- gate status: NOT PASSED ---
 
 G1 task VERIFYs      : all pass, above — but run as work proceeded, not as one sitting
