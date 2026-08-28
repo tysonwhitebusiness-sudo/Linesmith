@@ -2123,6 +2123,14 @@ G7 read-back         : PASS, with one correction made. Swept all 216 files in th
                        - 21 of 27 new routes use cachedRoute. No hand-rolled third pattern found.
 G8 known NOT done    : (1) SUPABASE_SERVICE_ROLE_KEY cannot be rotated — Supabase removed the ability.
                            Needs the publishable/secret key migration; belongs with Phase 7.
+                       (1b) THE WEEKLY BACKUP IS NOT SCHEDULED. 0.1 ends "Schedule it weekly once
+                           proven," and it is proven — but only one dump exists, taken by hand on
+                           2026-08-27. No Windows scheduled task, no cron, nothing. This is a real
+                           miss in 0.1 rather than a deferral: the phase's own goal is "nothing can
+                           lose data," and a single manual dump that nobody repeats decays into no
+                           backup within a week. Supabase Pro's daily backups now exist and reduce
+                           the exposure, but 8.1 is explicit that they protect against Supabase's
+                           failures, not against yours.
                        (3) Database 1,280 MB — over the old 500 MB ceiling by design; Pro makes it moot.
                        (4) ODDS_API_KEY still missing on the worker (Phase 1.6, not Phase 0).
                        (5) Four model-training tests still running; G2 is not complete until they report.
