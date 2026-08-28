@@ -76,6 +76,34 @@ def rows_for(rows: list[PropOddsRow], subject_id: str, market_key: str, line: fl
     return [r for r in rows if r.subject_id == subject_id and r.market_key == market_key and r.line == line]
 
 
+def real_line_for(rows: list[PropOddsRow], subject_id: str, market_key: str) -> float | None:
+    """The real line the market is actually offering for this subject+market
+    right now — needed because, unlike MLB's own props (genuinely
+    standardized fixed thresholds across nearly every batter: total bases
+    O/U 1.5, home runs O/U 0.5, ported as-is in prop_candidates.py's
+    StatMarketDef), the counting-stat props generic_prop_score.py serves
+    for NBA/NFL/NHL/Soccer (points, yards, etc.) are priced per player —
+    there is no single universal number a fixed DimensionConfig.line could
+    correctly stand in for. rows_for()'s exact-match line lookup would
+    silently match nothing for almost every real player if called with an
+    arbitrary fixed guess instead of the real posted line — E would read
+    as "no live price" for nearly the whole slate, not a loud error.
+
+    Mode (most-common line across books): most books cluster within a
+    point of each other for the same real player, and a handful of
+    outlier books shouldn't decide which number "is" the market's. Ties
+    break toward the lower value — a bettor-conservative default, not
+    load-bearing since ties are rare with real multi-book coverage."""
+    candidates = [r.line for r in rows if r.subject_id == subject_id and r.market_key == market_key and r.line is not None]
+    if not candidates:
+        return None
+    counts: dict[float, int] = {}
+    for c in candidates:
+        counts[c] = counts.get(c, 0) + 1
+    best_count = max(counts.values())
+    return min(line for line, count in counts.items() if count == best_count)
+
+
 def best_price(rows: list[PropOddsRow], side: str) -> PropOddsRow | None:
     """Best (highest payout) American price for a side — among plausible
     rows only. Real bug found live 2026-08-27 while validating the edge

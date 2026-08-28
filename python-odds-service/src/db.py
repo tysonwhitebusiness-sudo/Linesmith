@@ -666,6 +666,237 @@ async def get_latest_elo_before_season(team_id: int, season: int, sport: str = "
 
 
 # ---------------------------------------------------------------------------
+# Player game history (persisted historical gamelogs, generic across sports)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class PlayerGameHistoryInput:
+    sport: str
+    athlete_id: str
+    team_id: str | None
+    season: int
+    event_id: str
+    game_date: str
+    opponent_id: str | None
+    is_home: bool
+    stats: dict[str, float]
+
+
+async def write_player_game_history(rows: list[PlayerGameHistoryInput]) -> int:
+    """Append-only, idempotent via UNIQUE(sport, athlete_id, event_id) —
+    safe to re-run the background historical pull for a player already
+    partially recorded (no-op on rows already written).
+
+    One multi-row INSERT per call (chunked), not a per-row loop: the
+    ~5hr backfill (backfill_player_game_history.py) writes ~1.57M rows in
+    batches of one game (~10-60 players) at a time, and a per-row round
+    trip to the shared Supabase pooler made the write path — not the ESPN
+    fetch — the run's real bottleneck (measured live: ~0.5 games/s, a
+    projected >24h run). `RETURNING 1` gives the true inserted count
+    (ON CONFLICT rows don't come back), so progress numbers stay honest."""
+    if not rows:
+        return 0
+    pool = await get_pool()
+    cols = 9
+    max_rows_per_stmt = 60000 // cols  # stay well under Postgres's 65535 bind-param ceiling
+    written = 0
+    async with pool.acquire(timeout=30.0) as conn:
+        async with conn.transaction():
+            for start in range(0, len(rows), max_rows_per_stmt):
+                chunk = rows[start:start + max_rows_per_stmt]
+                params: list = []
+                tuples: list[str] = []
+                for i, r in enumerate(chunk):
+                    b = i * cols
+                    tuples.append(
+                        f"(${b+1}, ${b+2}, ${b+3}, ${b+4}, ${b+5}, ${b+6}, ${b+7}, ${b+8}, ${b+9}::jsonb)"
+                    )
+                    params.extend(
+                        [
+                            r.sport,
+                            r.athlete_id,
+                            r.team_id,
+                            r.season,
+                            r.event_id,
+                            _to_date(r.game_date),
+                            r.opponent_id,
+                            r.is_home,
+                            json.dumps(r.stats),
+                        ]
+                    )
+                returned = await conn.fetch(
+                    "INSERT INTO player_game_history "
+                    "(sport, athlete_id, team_id, season, event_id, game_date, opponent_id, is_home, stats) "
+                    "VALUES " + ", ".join(tuples) +
+                    " ON CONFLICT (sport, athlete_id, event_id) DO NOTHING RETURNING 1",
+                    *params,
+                )
+                written += len(returned)
+    return written
+
+
+async def player_game_history_done_events(sport: str, season: int) -> set[str]:
+    """Every event_id already fully recorded for one (sport, season) — the
+    resume primitive for the ~5hr historical backfill
+    (backfill_player_game_history.py). Because that job writes all of a
+    game's players in one atomic batch, "has any row" is equivalent to
+    "was fully processed", so the caller can skip the boxscore fetch
+    entirely for anything in this set (docs/all-sports-prop-score-gameplan
+    -2026-08-27.md's skip-before-fetch requirement — the row-level UNIQUE
+    constraint alone would still re-pay for the network call)."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        "SELECT DISTINCT event_id FROM player_game_history WHERE sport = $1 AND season = $2",
+        sport,
+        season,
+    )
+    return {r["event_id"] for r in rows}
+
+
+async def player_game_history_progress() -> list[dict]:
+    """The authoritative "where is the backfill" query — distinct games
+    and total rows recorded per (sport, season), safe to run any time
+    including after an unplanned restart."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT sport, season,
+               COUNT(DISTINCT event_id) AS games_done,
+               COUNT(*) AS rows_written,
+               MAX(fetched_at) AS last_write
+        FROM player_game_history
+        GROUP BY sport, season
+        ORDER BY sport, season
+        """
+    )
+    return [dict(r) for r in rows]
+
+
+async def fetch_player_game_stat(sport: str, athlete_id: str, event_id: str) -> dict | None:
+    """One real (sport, athlete_id, event_id)'s stats dict — the read
+    generic_prop_grading.py (Phase 7) needs to grade a real pick_history
+    row: given the subject and the game that already finished, what did
+    they actually record. `sport` here is player_game_history's own
+    internal routing key (e.g. "soccer_epl", not the generic "soccer"
+    pick_history stores) — see generic_prop_grading.py's own docstring
+    for how a caller resolves that from pick_history's app-facing sport."""
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "SELECT stats FROM player_game_history WHERE sport = $1 AND athlete_id = $2 AND event_id = $3",
+        sport,
+        athlete_id,
+        event_id,
+    )
+    if not row:
+        return None
+    stats = row["stats"]
+    return json.loads(stats) if isinstance(stats, str) else stats
+
+
+@dataclass
+class UngradedPickRow:
+    id: int
+    subject_id: str
+    dimension: str
+    line: float | None
+    game_id: str
+
+
+async def ungraded_pick_history_for_sport(sport: str) -> list[UngradedPickRow]:
+    """Every real pick_history row for one (app-facing) sport that hasn't
+    been graded yet and has a real game_id to grade against — the read
+    side of Phase 7's generic prop-grading job. Deliberately not scoped
+    to "today" — an ungraded row from any past day should still get
+    graded once its game turns out to be final, same reasoning
+    game_pick_lock.py's own grading has no date filter either."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        "SELECT id, subject_id, dimension, line, game_id FROM pick_history "
+        "WHERE sport = $1 AND outcome IS NULL AND game_id IS NOT NULL",
+        sport,
+    )
+    return [UngradedPickRow(id=r["id"], subject_id=r["subject_id"], dimension=r["dimension"], line=r["line"], game_id=r["game_id"]) for r in rows]
+
+
+@dataclass
+class PickHistoryGrade:
+    id: int
+    outcome: str  # 'win' | 'loss'
+    actual_value: float | None
+
+
+async def write_pick_history_grades(grades: list[PickHistoryGrade]) -> int:
+    """`WHERE id = $1 AND outcome IS NULL` guard, same idempotent shape
+    every other grading write in this codebase uses (db.grade_game_pick,
+    lib/db/client.ts's writeGrades) — a race with a second grading pass
+    is a harmless no-op, not a double-grade."""
+    if not grades:
+        return 0
+    pool = await get_pool()
+    graded = 0
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for g in grades:
+                result = await conn.execute(
+                    "UPDATE pick_history SET outcome = $1, actual_value = $2, graded_at = now() WHERE id = $3 AND outcome IS NULL",
+                    g.outcome,
+                    g.actual_value,
+                    g.id,
+                )
+                if result == "UPDATE 1":
+                    graded += 1
+    return graded
+
+
+async def fetch_player_games_from_db(sport: str, athlete_id: str, season: int | None = None) -> list["PlayerGameStat"]:
+    """Reads persisted player_game_history back into the exact same
+    PlayerGameStat shape predict/generic_player_gamelog.py's live-ESPN
+    fetch_player_gamelog() returns, so generic_prop_score.py's callers can
+    swap data sources (live fetch -> DB read) with zero changes to the
+    scoring code itself once the historical backfill has landed. `season`
+    omitted returns every season persisted so far, most-recent-first
+    within each; pass it to scope to one season the way a live fetch call
+    already must."""
+    from predict.generic_player_gamelog import PlayerGameStat  # local import: avoids a db.py -> predict/ import cycle
+
+    pool = await get_pool()
+    if season is not None:
+        rows = await pool.fetch(
+            """
+            SELECT event_id, game_date, opponent_id, is_home, stats
+            FROM player_game_history
+            WHERE sport = $1 AND athlete_id = $2 AND season = $3
+            ORDER BY game_date ASC
+            """,
+            sport,
+            athlete_id,
+            season,
+        )
+    else:
+        rows = await pool.fetch(
+            """
+            SELECT event_id, game_date, opponent_id, is_home, stats
+            FROM player_game_history
+            WHERE sport = $1 AND athlete_id = $2
+            ORDER BY game_date ASC
+            """,
+            sport,
+            athlete_id,
+        )
+    return [
+        PlayerGameStat(
+            event_id=r["event_id"],
+            game_date=r["game_date"].isoformat(),
+            opponent_id=int(r["opponent_id"]) if r["opponent_id"] is not None else None,
+            is_home=r["is_home"],
+            stats=json.loads(r["stats"]) if isinstance(r["stats"], str) else dict(r["stats"]),
+        )
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Pitcher Game Score history (Elo item 4 — pitcher adjustment)
 # ---------------------------------------------------------------------------
 
@@ -1072,6 +1303,13 @@ class SurfacedEntry:
     # neither existed for this candidate (edge/market_prob are also None
     # in that case).
     edge_source: str | None = None
+    # Real bettable american-odds price at candidate-generation time
+    # (live_edge.CandidateEdgeInfo.price) — added 2026-08-27 for Phase 7's
+    # simulated $10 bankroll, which needs a real price to compute
+    # profit/loss from (market_prob/edge are devigged, not a raw price).
+    # None when no live price existed for this candidate, same as every
+    # other price_* field here.
+    price: int | None = None
 
 
 async def log_surfaced(entries: list[SurfacedEntry]) -> None:
@@ -1092,8 +1330,8 @@ async def log_surfaced(entries: list[SurfacedEntry]) -> None:
                     INSERT INTO pick_history
                       (sport, subject_id, subject_name, dimension, category, market_key, line, game_id,
                        sample_size, distance, event_context, model_prob, market_prob, edge, price_source, bookmaker, price_captured_at,
-                       prop_score, score_grade, trust_tier, model_version, edge_source)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+                       prop_score, score_grade, trust_tier, model_version, edge_source, price)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
                     ON CONFLICT (sport, subject_id, dimension, category, game_id) DO NOTHING
                     """,
                     r.sport,
@@ -1130,6 +1368,7 @@ async def log_surfaced(entries: list[SurfacedEntry]) -> None:
                     r.trust_tier,
                     r.model_version,
                     r.edge_source,
+                    r.price,
                 )
 
 

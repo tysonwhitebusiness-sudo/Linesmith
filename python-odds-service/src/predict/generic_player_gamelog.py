@@ -82,15 +82,43 @@ async def fetch_player_gamelog(client: httpx.AsyncClient, espn_sport: str, espn_
     return out
 
 
-async def fetch_roster_athlete_ids(client: httpx.AsyncClient, espn_sport: str, espn_league: str, team_id: str) -> list[tuple[str, str]]:
-    """Real (athlete_id, full_name) pairs for one real team's current
-    roster — ESPN's site-API roster endpoint (a different, simpler
-    endpoint than the gamelog's common-API one; both confirmed live
-    separately). Used to build a real, if limited-sample, league base
-    rate from real players' real games rather than a guessed prior."""
+async def fetch_roster_athlete_ids(client: httpx.AsyncClient, espn_sport: str, espn_league: str, team_id: str) -> list[tuple[str, str, str | None]]:
+    """Real (athlete_id, full_name, position_abbr) triples for one real
+    team's current roster — ESPN's site-API roster endpoint (a different,
+    simpler endpoint than the gamelog's common-API one; both confirmed
+    live separately). Used to build a real, if limited-sample, league
+    base rate from real players' real games rather than a guessed prior.
+    position_abbr (e.g. "F", "C", real ESPN field confirmed live 2026-08-27)
+    is what Phase 4's production job maps into generic_matchup_defense.py's
+    own _nba_position_group/_nhl_position_group buckets for the X signal —
+    None when ESPN's own roster entry has no position (real for some
+    inactive/two-way entries, not an error).
+
+    Real, confirmed-live shape split: NBA and soccer return a flat
+    `athletes` list of real athlete objects directly; NFL, CFB, and NHL
+    group it one level deeper (`athletes: [{"position": "offense",
+    "items": [athlete, ...]}, ...]` — "position" here is the coarse group
+    label like "Centers", not a per-player abbreviation, that's still on
+    each individual item). Assuming the flat shape for every sport was a
+    real bug found live 2026-08-27: it silently returned an empty roster
+    for NFL/CFB/NHL specifically, which would have made Phase 4's whole
+    production job log zero real candidates for three of six sports with
+    no error at all. Detected per-entry (`"items" in entry`), not per-
+    sport, so this stays correct even if ESPN's shape choice isn't
+    perfectly consistent within a sport."""
     url = f"{_ESPN_SITE_BASE}/{espn_sport}/{espn_league}/teams/{team_id}/roster"
     res = await client.get(url, timeout=httpx.Timeout(15.0))
     if res.status_code != 200:
         return []
     data = res.json()
-    return [(str(a["id"]), a.get("fullName") or "") for a in data.get("athletes") or [] if a.get("id")]
+    flat_athletes: list[dict] = []
+    for entry in data.get("athletes") or []:
+        if "items" in entry:
+            flat_athletes.extend(entry.get("items") or [])
+        else:
+            flat_athletes.append(entry)
+    return [
+        (str(a["id"]), a.get("fullName") or "", (a.get("position") or {}).get("abbreviation"))
+        for a in flat_athletes
+        if a.get("id")
+    ]

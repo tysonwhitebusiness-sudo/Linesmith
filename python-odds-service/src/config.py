@@ -64,6 +64,12 @@ DB_POOLER_MODE = (env("DB_POOLER_MODE", "session") or "session").strip().lower()
 SHARPAPI_KEY = env("SHARPAPI_KEY")
 SHARPAPI_ENABLED = env_bool("SHARPAPI_ENABLED") and bool(SHARPAPI_KEY)
 
+# CFB's X-signal (Phase 3 of docs/daily-picks-full-model-build-2026-08-27.
+# md) — the same account/key lib/sports/cfb/cfbd.ts already uses on the TS
+# side (user-confirmed 2026-08-27: reuse, not a separate key), already
+# present in .env.local for local dev via the fallback above.
+CFBD_API_KEY = env("CFBD_API_KEY")
+
 ODDSAPIIO_KEY = env("ODDSAPIIO_KEY")
 ODDSAPIIO_BOOKS = env("ODDSAPIIO_BOOKS", "Fanatics,BetMGM")
 ODDSAPIIO_ENABLED = env_bool("ODDSAPIIO_ENABLED") and bool(ODDSAPIIO_KEY)
