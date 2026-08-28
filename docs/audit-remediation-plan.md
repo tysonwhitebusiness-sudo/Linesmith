@@ -2094,8 +2094,10 @@ G2 typecheck         : PASS
 G2 build             : PASS after d14b7e3 — FAILED first, on 0.6's own change, which typecheck had passed
 G2 python tests      : 14 pass, 1 environment failure (oddsharvester not installable off the scraper
                        laptop), 4 model-training tests still running. NOT COMPLETE.
-G3 smoke walk        : PASS unauthenticated — 21 pages, correct statuses, only expected 401s in console.
-                       Signed-in walk NOT done: needs credentials, which is the operator's to run.
+G3 smoke walk        : PASS. 21 pages unauthenticated, correct statuses, only expected 401s in console
+                       (/api/picks, /api/watchlist to an anonymous browser). Signed-in walk confirmed by
+                       the operator 2026-08-28: /bets and saving a pick both work after 0.3's RLS change,
+                       which closes 0.3's "and /bets + /api/picks still work signed in".
 G4 findings closed   : P4 C1, P4 M5, P4 L2, P2 H7, P2 H5, P2 L4, P3 M10, P4 M10, P4 H4, P3 H4 — each re-verified above.
                        P3 L4 genuinely fixed: root cause was a missing `or ""` in load_tennis_games, fixed in
                        87fa65e days ago and never pushed. Green in production since the deploy.
@@ -2103,14 +2105,27 @@ G5 write paths       : PASS (counts above, taken after the RLS change)
 G6 orphans           : 6 genericPropProduction*Job in DISABLED_JOBS — dated, reason recorded, re-enabled by Phase 2.2.
                        snapshotCacheSize in ACKNOWLEDGED_CHECKS — dated, reason recorded, cleared by task 3.3.
                        Both lists enforce a named task; ACKNOWLEDGED_CHECKS does so at import time.
-G7 read-back         : done for the Phase 0 commit; not yet for the nine bulk commits
+G7 read-back         : PASS, with one correction made. Swept all 216 files in the nine bulk commits for
+                       comments asserting runtime behaviour, and checked the new routes against
+                       CLAUDE.md's own caching convention.
+                       - CORRECTED: jobs.py's own P3 L4 comment claimed the tennis failure "no longer
+                         reproduced". It did reproduce, in production, for the whole period. Rewritten to
+                         record the real cause (an unpushed fix) and what the missing traceback cost.
+                         Rule 3 catching a rule-3 violation I had written myself.
+                       - Checked and correct: nba/boxscore.ts's "ESPN is reachable" claim carries its date
+                         and verification; odds/lines/route.ts's "nflGameLines is dead code" is true
+                         (0 importers, still present — deletion is task 2.6).
+                       - All six new */game/[gameId]/live routes are uncached, which CLAUDE.md permits
+                         only with a written reason. All six carry one, citing the MLB precedent the
+                         convention itself names.
+                       - The three new picks/* routes have no cachedRoute and no external fetch: direct
+                         Postgres reads, which is the convention's pattern 2. Correct.
+                       - 21 of 27 new routes use cachedRoute. No hand-rolled third pattern found.
 G8 known NOT done    : (1) SUPABASE_SERVICE_ROLE_KEY cannot be rotated — Supabase removed the ability.
                            Needs the publishable/secret key migration; belongs with Phase 7.
                        (3) Database 1,280 MB — over the old 500 MB ceiling by design; Pro makes it moot.
                        (4) ODDS_API_KEY still missing on the worker (Phase 1.6, not Phase 0).
                        (5) Four model-training tests still running; G2 is not complete until they report.
-                       (6) Signed-in smoke walk (/bets + /api/picks as a real user) — operator's to run,
-                           and the last open check on 0.3.
                        (7) /api/odds/lines takes ~115s. Not a Phase 0 task (that is 3.10), but recorded
                            here because the real number is 8x the audit's and it is the worst thing a
                            real user meets today.

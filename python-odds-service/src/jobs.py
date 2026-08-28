@@ -64,14 +64,19 @@ async def _run_timed(job_name: str, coro) -> dict:
         summary["error"] = f"{type(e).__name__}: {e}"
         # The one-line message alone is not enough to act on. P3 L4 recorded
         # both tennis jobs failing with "TypeError: normalize() argument 2 must
-        # be str, not None" and that string identified neither the call site
-        # nor the row that carried the None — by the time anyone looked, the
-        # upstream payload had moved on and the failure no longer reproduced
-        # (re-run green on 2026-08-28, 172 + 194 rows). Keeping the tail of the
-        # traceback means the next occurrence is diagnosable from the
-        # breadcrumb alone instead of needing to be caught live. Tail, not
-        # head: the innermost frames are the ones that name the real call
-        # site, and the whole summary is a JSON blob in snapshot_cache.
+        # be str, not None", and that string identified neither the call site
+        # nor the row that carried the None.
+        #
+        # How much that cost, concretely: the same jobs ran green on a laptop
+        # and red on Render, and the obvious reading — a data-dependent upstream
+        # payload — was wrong. The real cause was a missing `or ""` in
+        # load_tennis_games, fixed in commit 87fa65e days earlier and never
+        # pushed, so production had simply never received it. A traceback would
+        # have named game_context.py in one line instead of costing a day and a
+        # false hypothesis.
+        #
+        # Tail, not head: the innermost frames name the real call site, and the
+        # whole summary is a JSON blob in snapshot_cache.
         summary["traceback"] = "".join(traceback.format_exc().splitlines(keepends=True)[-12:])
     summary["elapsed_seconds"] = round(time.monotonic() - t0, 2)
     await db.write_job_run_log(job_name, summary)
