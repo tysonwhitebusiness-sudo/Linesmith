@@ -28,7 +28,6 @@ import {
 } from '@/lib/odds/goodBets';
 import { computePropScore, type PropScore } from '@/lib/odds/props/propScore';
 import type { MarketTrust } from '@/lib/odds/props/marketTrust';
-import { PropScoreBadge } from './PropScoreBadge';
 
 /**
  * Scan's props table.
@@ -84,12 +83,6 @@ interface Column {
 const COLUMNS: Column[] = [
   { key: 'odds', label: 'Odds', title: 'Price', numeric: true },
   { key: 'ip', label: 'IP', title: 'Implied probability', numeric: true },
-  {
-    key: 'edge',
-    label: 'Edge',
-    title: 'Model probability minus the de-vigged market price — Phase C.1, still early: see /diagnostics for calibration',
-    numeric: true,
-  },
   { key: 'dvp', label: 'DVP', title: "Opponent's rank in this row's matchup stat", numeric: true },
   { key: 'avg', label: 'Avg L10', title: 'Average over the last 10 games', numeric: true },
   { key: 'diff', label: 'Diff', title: 'Average versus the line', numeric: true },
@@ -579,15 +572,6 @@ export function ScanTable({
                   {column.label} <SortMark active={sortCol === column.key} dir={sortDir} />
                 </th>
               ))}
-              <th
-                scope="col"
-                onClick={() => handleSort('score')}
-                aria-sort={sortCol === 'score' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
-                title="Prop Score v1 — model conviction, live book edge, performance corroboration, and matchup, combined into one 0-100 rating. Market Trust badge underneath shows how much live-graded evidence backs this market's own model."
-                className="sticky top-0 z-20 cursor-pointer whitespace-nowrap border-b border-line bg-paper px-2 py-1.5 text-center font-semibold text-ink-muted"
-              >
-                Score <SortMark active={sortCol === 'score'} dir={sortDir} />
-              </th>
               {showReasons ? (
                 <th
                   scope="col"
@@ -751,22 +735,6 @@ export function ScanTable({
                         ) : null}
                       </td>
 
-                      {/* Edge — Phase C.1: model probability vs. de-vigged market price */}
-                      <td className="px-2 py-1 text-center tabular-nums">
-                        {row.edge != null ? (
-                          <span
-                            className="rounded px-1 py-0.5 font-semibold"
-                            style={{ backgroundColor: compareInk(Math.min(1, Math.max(0, 0.5 + row.edge * 2))) }}
-                            title={`Model ${((row.modelProb ?? 0) * 100).toFixed(1)}% vs. market ${((row.marketProb ?? 0) * 100).toFixed(1)}% (de-vigged, ${row.bookmaker ?? 'book unknown'}). Still early — check /diagnostics for how well-calibrated the model actually is before trusting this.`}
-                          >
-                            {row.edge > 0 ? '+' : ''}
-                            {(row.edge * 100).toFixed(1)}%
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-ink-faint">—</span>
-                        )}
-                      </td>
-
                       {/* 4 — DVP */}
                       <td className="px-2 py-1 text-center tabular-nums">
                         {row.dvp != null ? (
@@ -809,11 +777,6 @@ export function ScanTable({
                     </>
                   )}
 
-                  {/* Score — Prop Score v1 */}
-                  <td className="px-2 py-1 text-center">
-                    <PropScoreBadge score={row.propScore} trust={row.trustTier} />
-                  </td>
-
                   {showReasons ? (
                     <td className="px-2 py-1 text-center">
                       <div className="flex flex-wrap justify-center gap-1">
@@ -821,11 +784,7 @@ export function ScanTable({
                           <span
                             key={reason}
                             title={
-                              reason === 'performance'
-                                ? (row.performanceDetail ?? undefined)
-                                : reason === 'edge' && row.edge != null
-                                  ? `+${(row.edge * 100).toFixed(1)}% edge`
-                                  : undefined
+                              reason === 'performance' ? (row.performanceDetail ?? undefined) : undefined
                             }
                             className={`rounded px-1 py-0.5 text-[10px] font-semibold ${REASON_STYLE[reason].className}`}
                           >

@@ -355,8 +355,11 @@ function PropPickListCard({ row }: { row: PropPickView }) {
         </div>
       </div>
       <div className="shrink-0 text-right">
-        {row.scoreGrade ? <div className="text-[13px] font-bold">{row.scoreGrade}</div> : null}
-        {row.modelProb != null ? <div className="text-[11px] text-ink-faint">{Math.round(row.modelProb * 100)}%</div> : null}
+        {/* Phase 1.3: the score grade and model probability are Tier C/D — a
+            0-100 rating derived from model_prob, and the probability itself.
+            Both keep being computed and logged (Q6); neither is rendered until
+            task 4.2's gate shows the model beats the market and 6.7 brings a
+            ranking back deliberately. */}
       </div>
     </div>
   );

@@ -15,7 +15,6 @@ import { InsightList } from './InsightRow';
 import { resolveCandidateEdge, type PropOddsRow } from './usePropOdds';
 import { computePropScore } from '@/lib/odds/props/propScore';
 import type { MarketTrust } from '@/lib/odds/props/marketTrust';
-import { PropScoreBadge } from './PropScoreBadge';
 
 /** The distance chip. Exact counts are loud; estimates are quiet and marked. */
 function TimingChip({ candidate }: { candidate: PickCandidate }) {
@@ -332,7 +331,6 @@ export function ScanCard({ candidate, form, added, watched, onAdd, onToggleWatch
             className="!text-[12px] font-semibold !text-masters"
           />
 
-          <PropScoreBadge score={propScore} trust={trustTier} />
 
           <HeadlineGradientBox stat={selected.stat} />
 
