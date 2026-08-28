@@ -84,19 +84,43 @@ calculation it was found in and corrupted a quantity the audit never analysed.
   backfill routes. 1.5 just put those behind admin auth, so re-check after
   rather than editing twice.
 
-## 2. The open question blocking 1.3 / 1.4
+## 2. Operator decisions for 1.3 / 1.4 (made 2026-08-28)
 
-1.3 removes the Edge % column and Good Bets' edge track, and hides model
-probabilities on Scan, Player Detail and Game Detail. 1.4 replaces them with
-Tier A/B substance (sample sizes, window definitions, best price with the book
-named).
+- **Scan's Score column is REMOVED for now.** Prop Score is derived from
+  `model_prob` and `edge` — the two things Q1 forbids showing — and P3 M2 found
+  its scale biased upward and adding little over `model_prob` alone. Task 6.7
+  brings ranking back deliberately, after 6.5 publishes the real record.
+- **Tier A rates render as fraction + window, everywhere.** "7/10, last 10 vs
+  LHP" — numerator, denominator and window all visible, not on hover. Hidden
+  context is the same failure 1.2c fixed on the price chip.
+- **A second, non-admin account is being created** so 1.5's middle leg can be
+  walked properly rather than assumed.
 
-**What has not been decided is what the Scan table's Score column becomes.**
-Prop Score is Tier C-ish (a ranking), but it is computed *from* `model_prob` and
-`edge`, which Q1 says may never be shown as probability or edge. Options put to
-the operator: keep it as an unnumbered rank, keep a number with no units, or
-remove it until 6.7 brings ranking back deliberately. Do not guess — the whole
-phase is about not asserting things.
+### Groundwork for 1.3 (explored, nothing edited yet)
+
+Render sites for Tier D/E, from a grep of components/ and app/:
+
+```
+ScanTable.tsx        COLUMNS[] has an 'edge' column (label 'Edge', line ~88);
+                     sortValue has `case 'edge'` and `case 'modelProb'`;
+                     <PropScoreBadge> renders the Score cell (~line 814);
+                     a Good-Bets reason chip shows `+X.X% edge` (~line 826)
+ScanCard.tsx         computePropScore + <PropScoreBadge> (~line 335)
+TodaysPicksModal.tsx renders scoreGrade and `modelProb * 100`% (~lines 358-359)
+GameDetail.tsx / GameHeroCard.tsx / GameLinesView.tsx / PlayerDetail.tsx
+                     all reference modelProb/propScore — not yet traced to
+                     specific render sites
+PropScoreBadge.tsx   the badge component itself
+```
+
+Order that keeps the UI coherent at every commit: do all of Scan
+(ScanTable + ScanCard + TodaysPicksModal + PropScoreBadge) as ONE commit, then
+the detail pages as a second. Removing Edge from Scan while PlayerDetail still
+shows a model probability is an inconsistent half-state.
+
+Note `computePropScore` and `resolveCandidateEdge` should keep being CALLED —
+Q6 says keep computing and logging, only stop rendering. Remove the display,
+not the computation.
 
 ## 3. Operational knowledge — this session paid for it, don't re-derive it
 
