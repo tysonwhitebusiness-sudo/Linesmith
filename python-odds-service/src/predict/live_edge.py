@@ -43,6 +43,7 @@ coverage exists or silently reverting to the retired model-vs-one-book
 design.
 """
 import statistics
+from datetime import datetime, timezone
 from dataclasses import dataclass
 
 from db import PropOddsRow
@@ -52,6 +53,11 @@ from predict.odds_math import american_to_decimal, devig_two_way, is_plausible_d
 # A quote older than this is treated as having no genuine live price rather
 # than an unreliable one.
 _TOO_STALE_SECONDS = 600
+# Real row age (now - fetched_at), the quantity _too_stale was always supposed
+# to measure. 30 minutes: long enough that the gameday-gated 20-minute generic
+# sport jobs aren't marked stale by construction, short enough to catch the
+# 17.5-hour-old prices the audit found being shown as live. See _too_stale.
+_MAX_ROW_AGE_SECONDS = 30 * 60
 
 # Priority order for Tier 1 — first one with a genuine two-sided price for
 # the exact candidate wins. Pinnacle first: the most established,
@@ -138,8 +144,49 @@ def user_book_price(rows: list[PropOddsRow], side: str, user_sportsbook: str) ->
     return None
 
 
-def _too_stale(r: PropOddsRow) -> bool:
-    return r.delay_seconds is not None and r.delay_seconds > _TOO_STALE_SECONDS
+def _row_age_seconds(r: PropOddsRow, now: datetime | None = None) -> float | None:
+    """Seconds since this row was fetched, or None if unparseable."""
+    if not r.fetched_at:
+        return None
+    raw = r.fetched_at
+    try:
+        parsed = raw if isinstance(raw, datetime) else datetime.fromisoformat(
+            str(raw).replace("Z", "+00:00")
+        )
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return ((now or datetime.now(timezone.utc)) - parsed).total_seconds()
+
+
+def _too_stale(r: PropOddsRow, now: datetime | None = None) -> bool:
+    """Two independent ways a quote can be unusable, and before Phase 1.2 this
+    only checked the one that never fires.
+
+    `delay_seconds` is the provider's *advertised feed delay*, written at fetch
+    time from static config — 60 for SharpAPI, ~300 for SportsGameOdds, null for
+    everyone else. Measured across the whole prop_odds table on 2026-08-28: the
+    maximum value is 60, against a 600 threshold, so **no row has ever tripped
+    this gate and none can**. The docstring above resolve_candidate_edge claimed
+    a ">10-minute-old quote yields no edge"; it never did (audit P3 C4).
+
+    The quantity that actually answers "is this price current" is `fetched_at`,
+    which was sitting on the row being ignored. Both are checked now: a
+    provider that admits to a long delay is untrustworthy, and so is a row we
+    simply have not refreshed.
+
+    _MAX_ROW_AGE_SECONDS is 30 minutes rather than the 10 the old comment
+    claimed, because 10 would mark every non-MLB sport stale by construction —
+    MLB Tier 1 refreshes every 2.5 minutes, but the generic-sport jobs are
+    gameday-gated at 20-minute intervals and legitimately hold rows older than
+    that. 30 minutes still catches the failure this was written for: during the
+    outage the audit observed, prices were 17.5 hours old and nothing said so.
+    """
+    if r.delay_seconds is not None and r.delay_seconds > _TOO_STALE_SECONDS:
+        return True
+    age = _row_age_seconds(r, now)
+    return age is not None and age > _MAX_ROW_AGE_SECONDS
 
 
 def _two_sided_devigged_for_row(matched: list[PropOddsRow], side: str, row: PropOddsRow) -> float | None:

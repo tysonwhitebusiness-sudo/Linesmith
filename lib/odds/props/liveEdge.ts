@@ -115,7 +115,27 @@ export function resolveCandidateEdge(candidate: PickCandidate, propRows: PropOdd
   const otherSide = side === 'over' ? 'under' : 'over';
   const counterpart = chosen ? matched.find((r) => r.side === otherSide && r.bookmaker === chosen.bookmaker && r.providerId === chosen.providerId) : undefined;
   const rawModelProb = typeof m.modelProb === 'number' ? m.modelProb : null;
-  const tooStale = (r: PropOddsRow) => r.delaySeconds != null && r.delaySeconds > 600;
+  // Two independent ways a quote can be unusable; before Phase 1.2 this checked
+  // only the one that never fires.
+  //
+  // `delaySeconds` is the provider's *advertised feed delay*, written at fetch
+  // time from static config — 60 for SharpAPI, ~300 for SportsGameOdds, null
+  // for everyone else. Measured across the whole prop_odds table on 2026-08-28:
+  // the maximum value present is 60, against a 600 threshold. No row has ever
+  // tripped this gate and none can (audit P3 C4). Meanwhile `fetchedAt` — the
+  // quantity that actually answers "is this price current" — sat on the row
+  // being ignored, while prices 17.5 hours old rendered as live.
+  //
+  // 30 minutes rather than the 10 the old comment claimed: 10 would mark every
+  // non-MLB sport stale by construction, since the generic-sport jobs are
+  // gameday-gated at 20-minute intervals. Mirrors _MAX_ROW_AGE_SECONDS in
+  // python-odds-service/src/predict/live_edge.py.
+  const MAX_ROW_AGE_MS = 30 * 60_000;
+  const tooStale = (r: PropOddsRow) => {
+    if (r.delaySeconds != null && r.delaySeconds > 600) return true;
+    const fetchedMs = r.fetchedAt ? Date.parse(r.fetchedAt) : NaN;
+    return Number.isFinite(fetchedMs) && Date.now() - fetchedMs > MAX_ROW_AGE_MS;
+  };
   let edge: number | null = null;
   let modelProb: number | null = null;
   let marketProb: number | null = null;
