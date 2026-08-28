@@ -80,7 +80,7 @@ from predict.generic_matchup_defense import (
     build_nfl_team_defense_index,
     build_nhl_team_defense_index,
 )
-from predict.generic_pick_capture import _APP_SPORT_BY_KEY, fetch_scheduled_games
+from predict.generic_pick_capture import _APP_SPORT_BY_KEY, _has_not_started, fetch_scheduled_games
 from predict.generic_player_gamelog import PlayerGameStat, fetch_roster_athlete_ids
 from predict.generic_prop_score import DimensionConfig, GenericPropCandidate, build_candidate, compute_league_rate
 from predict.generic_rare_markets import (
@@ -158,7 +158,7 @@ async def _fetch_espn_team_abbr_map(client: httpx.AsyncClient, espn_sport: str, 
     return out
 
 
-def _candidate_to_entry(app_sport: str, subject_id: str, subject_name: str, game_id: str, candidate: GenericPropCandidate, trust_tiers: dict[str, str]) -> "db.SurfacedEntry | None":
+def _candidate_to_entry(app_sport: str, subject_id: str, subject_name: str, game_id: str, candidate: GenericPropCandidate, trust_tiers: dict[str, str], commence_time: str | None = None) -> "db.SurfacedEntry | None":
     if candidate.model_prob is None:
         return None  # sample_size==0 (dimension doesn't apply to this player) — nothing real to log
     return db.SurfacedEntry(
@@ -184,7 +184,36 @@ def _candidate_to_entry(app_sport: str, subject_id: str, subject_name: str, game
         trust_tier=trust_tiers.get(candidate.dimension, "building"),
         edge_source=candidate.edge_info.edge_source if candidate.edge_info else None,
         price=candidate.edge_info.price if candidate.edge_info else None,
+        # Task 2.2 — what makes this row auditable for leakage at all.
+        # Every row this job writes from now on carries the real start
+        # time of the game it predicted, so `surfaced_at >= commence_time`
+        # is answerable per row instead of never.
+        commence_time=commence_time,
     )
+
+
+def _without_game(roster: list["_RosterPlayer"], game_id: str) -> list["_RosterPlayer"]:
+    """Leakage guard #2 — belt and braces for finding P3 H4, task 2.2.
+    Drops the game being predicted out of every player's own history, so
+    a prediction cannot be built from its own outcome even if the start
+    filter in run_sport is bypassed, wrong, or removed later.
+
+    P3 H4's fix text puts this in generic_player_gamelog.fetch_player_gamelog.
+    That function is not on this path: _load_roster_with_history reads
+    persisted rows via db.fetch_player_games_from_db (player_game_history),
+    not live ESPN. Putting the guard there would have looked right, passed
+    review, and protected nothing. It goes where the data actually enters.
+
+    This matters independently of the start filter because
+    player_game_history is written by its own backfill job on its own
+    schedule: a game can finish and be persisted between two ticks of this
+    job, which is exactly the window the start filter alone would still
+    leave open if a game's commence_time were ever wrong."""
+    out: list[_RosterPlayer] = []
+    for p in roster:
+        kept = [ev for ev in p.games if str(ev.event_id) != str(game_id)]
+        out.append(p if len(kept) == len(p.games) else _RosterPlayer(athlete_id=p.athlete_id, name=p.name, position_abbr=p.position_abbr, games=kept))
+    return out
 
 
 @dataclass
@@ -338,6 +367,30 @@ async def run_sport(sport_key: str, client: httpx.AsyncClient, date: str | None 
     if not games:
         return {"sport": sport_key, "games": 0, "candidates_logged": 0}
 
+    # Leakage guard #1 — finding P3 H4, task 2.2. fetch_scheduled_games
+    # deliberately returns games at any status (its docstring says so),
+    # which is right for a capture cycle and wrong here: a prediction for
+    # a game that has already started is not a prediction. Once a game is
+    # final, ESPN's gamelog contains its outcome, so a tick landing after
+    # the whistle builds a posterior whose own history holds the answer —
+    # and log_surfaced's ON CONFLICT DO NOTHING makes whichever tick
+    # landed first permanent. At a 60-minute cadence over games that run
+    # all day, that is not a rare race; any restart or outage guarantees
+    # it, because the first tick back processes the whole day at once.
+    #
+    # Reuses _is_final_capture_due's parser inverted rather than writing a
+    # second one, per the finding's own fix text. FINAL_LOCK_HOURS_BEFORE
+    # is deliberately NOT applied — that window is about when a *capture*
+    # is due, a different question from whether the game has begun.
+    now = datetime.now(timezone.utc)
+    upcoming = [g for g in games if _has_not_started(g.commence_time, now)]
+    skipped_started = len(games) - len(upcoming)
+    if skipped_started:
+        print(f"[generic_prop_production] {sport_key}: skipping {skipped_started} of {len(games)} games already started", flush=True)
+    games = upcoming
+    if not games:
+        return {"sport": sport_key, "games": 0, "candidates_logged": 0, "skipped_started": skipped_started}
+
     defense_index, abbr_map = await _x_signal_for_sport(sport_key, season, client)
     trust_tiers = await trust_tier_map(app_sport)
 
@@ -373,7 +426,7 @@ async def run_sport(sport_key: str, client: httpx.AsyncClient, date: str | None 
             (g.home_team_id, g.away_team_id, g.away_team_name),
             (g.away_team_id, g.home_team_id, g.home_team_name),
         ):
-            roster = await roster_for(subject_team_id)
+            roster = _without_game(await roster_for(subject_team_id), g.game_id)
             opponent_abbr = _opponent_abbr_for(sport_key, str(opponent_team_id), opponent_team_name, abbr_map, defense_index)
 
             entries: list[db.SurfacedEntry] = []
@@ -392,7 +445,7 @@ async def run_sport(sport_key: str, client: httpx.AsyncClient, date: str | None 
                         opponent_abbr=opponent_abbr,
                         position_group=position_group,
                     )
-                    entry = _candidate_to_entry(app_sport, player.athlete_id, player.name, g.game_id, candidate, trust_tiers)
+                    entry = _candidate_to_entry(app_sport, player.athlete_id, player.name, g.game_id, candidate, trust_tiers, g.commence_time)
                     if entry is not None:
                         entries.append(entry)
 
@@ -403,7 +456,7 @@ async def run_sport(sport_key: str, client: httpx.AsyncClient, date: str | None 
                     sport_key, str(subject_team_id), player, roster, league_rate_cache, minutes_stat_name, prop_rows, defense_index, opponent_abbr,
                 )
                 if rare_candidate is not None:
-                    rare_entry = _candidate_to_entry(app_sport, player.athlete_id, player.name, g.game_id, rare_candidate, trust_tiers)
+                    rare_entry = _candidate_to_entry(app_sport, player.athlete_id, player.name, g.game_id, rare_candidate, trust_tiers, g.commence_time)
                     if rare_entry is not None:
                         entries.append(rare_entry)
             if entries:

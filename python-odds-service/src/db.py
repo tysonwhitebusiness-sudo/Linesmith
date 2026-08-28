@@ -1295,6 +1295,25 @@ async def get_closing_price(
     return ClosingPriceRow(american_odds=row["american_odds"], observed_at=row["observed_at"], bookmaker=row["bookmaker"]) if row else None
 
 
+def _parse_ts(value: str | None) -> "datetime | None":
+    """ISO-8601 string -> datetime, for TIMESTAMPTZ parameters asyncpg
+    will not coerce from a string. Tolerates the trailing 'Z' ESPN's own
+    `date` field uses, which datetime.fromisoformat rejects before Python
+    3.11 — this service pins 3.12, but the shape is cheap to keep and the
+    same strings flow through code paths that have been wrong about it
+    before (see price_captured_at's comment in log_surfaced).
+
+    Returns None rather than raising on an unparseable value: a bad
+    timestamp should cost one row its leakage-auditability, not fail the
+    whole batch insert it happens to be in."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
 @dataclass
 class SurfacedEntry:
     sport: str
@@ -1332,6 +1351,14 @@ class SurfacedEntry:
     # None when no live price existed for this candidate, same as every
     # other price_* field here.
     price: int | None = None
+    # When the predicted game actually starts (task 2.2, finding P3 H4).
+    # A row is auditable for leakage only if this is set: `surfaced_at >=
+    # commence_time` means the prediction was built after the game began,
+    # and the ESPN gamelog it was built from may already contain the
+    # outcome. NULL means "not auditable", never "safe" — the TypeScript
+    # writer does not populate it, and every row written before 2026-08-28
+    # predates the column. See the migration for why it stays nullable.
+    commence_time: str | None = None
 
 
 async def log_surfaced(entries: list[SurfacedEntry]) -> None:
@@ -1352,8 +1379,8 @@ async def log_surfaced(entries: list[SurfacedEntry]) -> None:
                     INSERT INTO pick_history
                       (sport, subject_id, subject_name, dimension, category, market_key, line, game_id,
                        sample_size, distance, event_context, model_prob, market_prob, edge, price_source, bookmaker, price_captured_at,
-                       prop_score, score_grade, trust_tier, model_version, edge_source, price)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+                       prop_score, score_grade, trust_tier, model_version, edge_source, price, commence_time)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
                     ON CONFLICT (sport, subject_id, dimension, category, game_id) DO NOTHING
                     """,
                     r.sport,
@@ -1391,6 +1418,12 @@ async def log_surfaced(entries: list[SurfacedEntry]) -> None:
                     r.model_version,
                     r.edge_source,
                     r.price,
+                    # Same str -> datetime conversion price_captured_at
+                    # needs above, and for the same reason: the column is
+                    # TIMESTAMPTZ and asyncpg will not coerce an ISO
+                    # string. ESPN's own `date` field carries a trailing
+                    # 'Z' that fromisoformat rejects before 3.11.
+                    _parse_ts(r.commence_time),
                 )
 
 

@@ -82,12 +82,39 @@ async def fetch_scheduled_games(client: httpx.AsyncClient, config: "gte.SportElo
     return games
 
 
-def _is_final_capture_due(commence_time: str, now: datetime) -> bool:
+def _parse_commence(commence_time: str) -> "datetime | None":
+    """ESPN's own `date` field -> datetime, or None if it is missing or
+    unparseable. Pulled out of _is_final_capture_due so the leakage guard
+    in generic_prop_production.run_sport parses commence times exactly the
+    same way this module's capture windows do — finding P3 H4's fix text
+    asks for the existing parser reused, not a second one written."""
     if not commence_time:
-        return False
+        return None
     try:
-        commence = datetime.fromisoformat(commence_time[:-1] + "+00:00" if commence_time.endswith("Z") else commence_time)
+        return datetime.fromisoformat(commence_time[:-1] + "+00:00" if commence_time.endswith("Z") else commence_time)
     except ValueError:
+        return None
+
+
+def _has_not_started(commence_time: str, now: datetime) -> bool:
+    """True only when this game is known to be still upcoming.
+
+    Fails CLOSED: a missing or unparseable commence_time returns False, so
+    the game is skipped rather than predicted. That is the opposite of
+    _is_final_capture_due's convention below, and deliberately so — there
+    the cost of a wrong answer is a capture that does not happen, here it
+    is a permanently contaminated training row that nothing can identify
+    afterwards. Losing a prediction is recoverable on the next tick;
+    poisoning pick_history is not."""
+    commence = _parse_commence(commence_time)
+    if commence is None:
+        return False
+    return now < commence
+
+
+def _is_final_capture_due(commence_time: str, now: datetime) -> bool:
+    commence = _parse_commence(commence_time)
+    if commence is None:
         return False
     return now >= commence - timedelta(hours=FINAL_LOCK_HOURS_BEFORE)
 

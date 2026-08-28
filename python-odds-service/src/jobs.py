@@ -998,6 +998,17 @@ JOB_REGISTRY = [
     # reasoning — real per-tick cost is cheap (a handful of ESPN
     # scoreboard calls plus DB reads for whatever's still ungraded).
     ("gradeGenericPropsJob", job_grade_generic_props, 15 * 60),
+    # Re-enabled by Phase 2.2 (2026-08-28) after finding P3 H4's leakage was
+    # fixed — see the note above DISABLED_JOBS. Back on their original
+    # 60-minute cadence: the interval was never the bug, the missing
+    # start-time check was, and a shorter interval would only have made a
+    # leaked first-tick land sooner.
+    ("genericPropProductionNflJob", job_generic_prop_production_nfl, 60 * 60),
+    ("genericPropProductionCfbJob", job_generic_prop_production_cfb, 60 * 60),
+    ("genericPropProductionNbaJob", job_generic_prop_production_nba, 60 * 60),
+    ("genericPropProductionNhlJob", job_generic_prop_production_nhl, 60 * 60),
+    ("genericPropProductionSoccerEplJob", job_generic_prop_production_soccer_epl, 60 * 60),
+    ("genericPropProductionSoccerMlsJob", job_generic_prop_production_soccer_mls, 60 * 60),
 ]
 
 
@@ -1017,30 +1028,20 @@ JOB_REGISTRY = [
 # reason, and the phase that re-enables it.
 #
 # ---------------------------------------------------------------------------
-# 2026-08-28 — Phase 0.8, finding P3 H4 (docs/audit-phase-3.md:1183).
-# Re-enabled by: Phase 2.2, after the leakage fix is verified.
+# 2026-08-28 — Phase 2.2 re-enabled the six genericPropProduction*Job entries
+# that lived here. Finding P3 H4 (docs/audit-phase-3.md:1183) is fixed, not
+# merely worked around, by two guards in predict/generic_prop_production.py:
 #
-# These six build a player's Beta-Binomial posterior from an ESPN season
-# gamelog with no check that the game being predicted has not already
-# started. Once a game is final, ESPN's gamelog contains its outcome, so an
-# hourly tick landing after the final whistle produces a "prediction" whose
-# own history includes the answer — and db.log_surfaced's
-# ON CONFLICT DO NOTHING makes whichever tick landed first permanent.
+#   1. run_sport now drops any game whose commence_time has passed
+#      (_has_not_started, which fails CLOSED on a missing or unparseable
+#      time — an unknown start skips the game rather than predicting it).
+#   2. _without_game strips the game being predicted out of every player's
+#      own history before a candidate is built, so a prediction cannot
+#      contain its own outcome even if guard 1 is bypassed or removed.
 #
-# The specific reason they are off *right now*: the worker has been dead
-# since 2026-08-27 02:44 UTC. Its first tick after a restart processes every
-# game from the intervening period, finished ones included — so restarting
-# as-is writes a fresh batch of contaminated rows in one pass. Per standing
-# decision Q6 (models keep training, predictions stay hidden until they beat
-# the market), contaminated training rows are strictly worse than no rows:
-# leakage makes a model look better, and pick_history carries no column
-# recording when the game actually started, so the damage is not separable
-# afterwards.
-DISABLED_JOBS = [
-    ("genericPropProductionNflJob", job_generic_prop_production_nfl, 60 * 60),
-    ("genericPropProductionCfbJob", job_generic_prop_production_cfb, 60 * 60),
-    ("genericPropProductionNbaJob", job_generic_prop_production_nba, 60 * 60),
-    ("genericPropProductionNhlJob", job_generic_prop_production_nhl, 60 * 60),
-    ("genericPropProductionSoccerEplJob", job_generic_prop_production_soccer_epl, 60 * 60),
-    ("genericPropProductionSoccerMlsJob", job_generic_prop_production_soccer_mls, 60 * 60),
-]
+# pick_history.commence_time (migration 20260828120000) makes every row this
+# job writes from now on auditable for leakage, which no row was before.
+#
+# Empty on purpose. If something is added here it needs a date, a reason,
+# and the phase that re-enables it — rule G6 of docs/audit-remediation-plan.md.
+DISABLED_JOBS: list = []
