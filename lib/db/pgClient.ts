@@ -213,80 +213,77 @@ export async function pgTransaction<T>(fn: (tx: PgTx) => Promise<T>): Promise<T>
 // Job locks (Postgres advisory locks)
 // ---------------------------------------------------------------------------
 
-/**
- * Fixed classid every job lock in this app is taken under, so these locks
- * never collide with some unrelated future use of Postgres advisory locks
- * under a low, easily-reused integer like 1 or 2. Arbitrary constant, chosen
- * once; exported only so the test script can target the same key directly.
- */
-export const JOB_LOCK_NAMESPACE = 847_240_119;
-
-/**
- * Deterministic job-name -> int4 key (djb2 hash, masked into the positive
- * int4 range). Advisory locks take either one bigint or a (int, int) pair;
- * the two-int form is used here specifically to avoid any BigInt<->string
- * round-tripping through the pg driver — the same class of footgun
- * `types.setTypeParser` above exists to paper over for COUNT(*)/NUMERIC.
- * `pg_try_advisory_lock`/`pg_advisory_unlock` only ever return a boolean, so
- * there's nothing to parse either way, but building a correct 64-bit key in
- * JS has its own sharp edges (Number vs BigInt, sign bit) this sidesteps
- * entirely by staying in plain 32-bit int arithmetic.
- *
- * Collisions are only a real risk with a large or unbounded set of job
- * names; this app's handful of fixed scheduler job names (refreshTier1,
- * refreshSportsGameOddsJob, refreshNflJob, refreshCfbJob,
- * refreshSoccerEplJob, ...) is small and known ahead of time, so a hash
- * collision is not a practical concern here — this wouldn't be an
- * appropriate scheme for locking on arbitrary/user-supplied keys.
- */
-export function jobLockKey(jobName: string): number {
-  let hash = 5381;
-  for (let i = 0; i < jobName.length; i++) {
-    hash = (hash * 33 + jobName.charCodeAt(i)) | 0;
-  }
-  return hash & 0x7fffffff;
-}
-
 export type JobLockOutcome<T> = { acquired: true; result: T } | { acquired: false };
 
+/** Identifies which process holds a lease. Diagnostic only — never used to decide whether a lock is held. */
+const LOCK_HOLDER = `${process.pid}@${(() => { try { return require('os').hostname(); } catch { return 'unknown'; } })()}`;
+
 /**
- * Runs `fn` under a Postgres session-level advisory lock keyed by `jobName`,
- * so at most one process — a Node scheduler today, potentially a Python
- * worker later — can be inside `fn` for a given job name at a time.
+ * Runs `fn` under a Postgres LEASE, so at most one process across the whole
+ * deployment is inside `fn` for a given `jobName` at a time.
  *
- * Non-blocking: uses `pg_try_advisory_lock`, not `pg_advisory_lock`, so a
- * second caller finding the lock already held gets back `{ acquired: false }`
- * immediately instead of queueing — a skipped run is the correct, expected
- * outcome here, not an error to throw or catch.
+ * REPLACED pg_try_advisory_lock, 2026-08-28, task 2.7. That implementation
+ * was measured against the real database and did not work, because
+ * DATABASE_URL points at Supabase's TRANSACTION-mode pooler (:6543) since
+ * Phase 0.5 and advisory locks are SESSION-scoped. Three concurrent
+ * processes ALL acquired the same lock; worse, the unlock landed on a
+ * different backend than the lock, leaking it onto an idle pooled
+ * connection where pg_locks showed it held indefinitely, refusing every
+ * later attempt. A lock that silently stops a job forever is a worse
+ * failure than the duplicate runs it was meant to prevent.
  *
- * Deliberately no expiry/cleanup table or TTL logic: advisory locks are tied
- * to the session that took them and release automatically the moment that
- * session's connection closes, whether from a clean shutdown, a crash, or a
- * dropped network link — that automatic release is the entire reason to use
- * them over a manually-managed `job_locks` row. This is also why the lock is
- * held on one dedicated `PoolClient` for the full duration of `fn`, instead
- * of the ambient pool's per-call connection pattern `pgGet`/`pgAll`/`pgRun`
- * use: an advisory lock only means something scoped to the exact session
- * that acquired it, so releasing the client back to the pool between the
- * lock call and the unlock call would let an unrelated query grab that same
- * physical connection and make the later unlock call a no-op on the wrong
- * session, leaking the lock until that connection happens to close.
+ * The previous version's own comment argued that holding one dedicated
+ * `PoolClient` across the lock/unlock pair made this safe. It does not: the
+ * pooler reassigns backends per transaction regardless of what the client
+ * does with its handle. That reasoning was sound for a direct connection
+ * and became wrong when the pooler changed underneath it.
+ *
+ * A lease is ordinary row data, so it behaves the same through any pooling
+ * mode. `leaseMs` must be LONGER than the job's real worst-case runtime
+ * (or a second process starts while the first is still working) and SHORTER
+ * than the job's interval (or the next tick is refused). Only the caller
+ * knows both, so there is no default.
+ *
+ * Non-blocking, like the version it replaces: a caller finding the lease
+ * held gets `{ acquired: false }` immediately. A skipped run is the correct
+ * outcome, not an error — the next tick is one interval away.
+ *
+ * Crash safety, which the advisory lock got for free from its connection
+ * closing, comes from expiry: a process that dies mid-`fn` blocks the job
+ * for at most one lease. That is why `fn` throwing still releases in the
+ * `finally` below, but a hard kill does not need to.
  */
-export async function withJobLock<T>(jobName: string, fn: () => Promise<T>): Promise<JobLockOutcome<T>> {
-  const key = jobLockKey(jobName);
-  const client = await getPool().connect();
+export async function withJobLock<T>(jobName: string, fn: () => Promise<T>, leaseMs: number): Promise<JobLockOutcome<T>> {
+  const leaseSeconds = Math.ceil(leaseMs / 1000);
+  // Take the lease only if no live one exists. The WHERE on the DO UPDATE
+  // branch is what makes this exclusive: a conflicting row whose lease has
+  // not expired fails the predicate, updates nothing, and returns no row.
+  const claimed = await pgAll<{ job_name: string }>(
+    `INSERT INTO job_locks (job_name, locked_until, locked_at, holder)
+     VALUES ($1, now() + ($2 || ' seconds')::interval, now(), $3)
+     ON CONFLICT (job_name) DO UPDATE
+       SET locked_until = now() + ($2 || ' seconds')::interval,
+           locked_at = now(),
+           holder = $3
+       WHERE job_locks.locked_until < now()
+     RETURNING job_name`,
+    [jobName, String(leaseSeconds), LOCK_HOLDER],
+  );
+  if (claimed.length === 0) return { acquired: false };
+
   try {
-    const { rows } = await client.query('SELECT pg_try_advisory_lock($1, $2) AS locked', [JOB_LOCK_NAMESPACE, key]);
-    if (!rows[0]?.locked) {
-      return { acquired: false };
-    }
-    try {
-      const result = await fn();
-      return { acquired: true, result };
-    } finally {
-      await client.query('SELECT pg_advisory_unlock($1, $2)', [JOB_LOCK_NAMESPACE, key]);
-    }
+    return { acquired: true, result: await fn() };
   } finally {
-    client.release();
+    // Release early so the next tick isn't made to wait out the full lease.
+    // Scoped to `holder` so a process whose lease already expired — and was
+    // therefore legitimately taken over by someone else — cannot release
+    // the new holder's lease on its way out.
+    await pgRun(`UPDATE job_locks SET locked_until = now() WHERE job_name = $1 AND holder = $2`, [jobName, LOCK_HOLDER]);
   }
 }
+
+
+// ---------------------------------------------------------------------------
+// Job locks (Postgres advisory locks)
+// ---------------------------------------------------------------------------
+

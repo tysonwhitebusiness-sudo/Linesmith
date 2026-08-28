@@ -42,6 +42,7 @@ import { rebuildMlbSnapshot, TODAY_CACHE_KEY } from '@/lib/sports/mlb/snapshotRe
 import { easternDate } from '@/lib/sports/mlb/statsapi';
 import { computeCalibrationPayload, calibrationCacheKey } from '@/lib/odds/props/calibrationSnapshot';
 import { writeSnapshotCache } from '@/lib/db/client';
+import { withJobLock } from '@/lib/db/pgClient';
 import { awaitRebuild } from '@/lib/staleCache';
 
 const MLB_INTERVAL_MS = 4 * 60_000;
@@ -62,9 +63,28 @@ let started = false;
 // Both routed through the same dedup pool their route handlers use — a
 // request landing at the exact moment one of these ticks is rebuilding the
 // same key joins that rebuild instead of racing it with a second one.
+//
+// `awaitRebuild` dedupes within ONE process. `withJobLock` dedupes ACROSS
+// processes, and that is the gap task 2.7 closes: these are `setInterval`
+// timers living inside the Next.js server process, so N instances of the app
+// meant N timers, N rebuilds, and N sets of writes on every tick. Nothing
+// about that is visible on a single-instance laptop, which is exactly why it
+// had to be fixed before Phase 8 puts this behind a real deployment rather
+// than discovered afterwards.
+//
+// `pg_try_advisory_lock`, not the blocking form: a second instance finding
+// the lock held skips its tick outright. A skipped run is correct here, not
+// an error — the next tick is four minutes away and the cache is still warm.
 async function refreshMlb() {
   try {
-    await awaitRebuild(TODAY_CACHE_KEY, () => rebuildMlbSnapshot(easternDate(), TODAY_CACHE_KEY, true));
+    // Lease shorter than MLB_INTERVAL_MS (4 min) so a tick is never refused
+    // by its own predecessor's lease, and longer than a real rebuild takes.
+    const outcome = await withJobLock(
+      'scheduler:refreshMlb',
+      () => awaitRebuild(TODAY_CACHE_KEY, () => rebuildMlbSnapshot(easternDate(), TODAY_CACHE_KEY, true)),
+      3 * 60_000,
+    );
+    if (!outcome.acquired) console.log('[scheduler] refreshMlb skipped — another instance holds the lease');
   } catch (error) {
     console.error('[scheduler] proactive MLB refresh failed', error);
   }
@@ -72,6 +92,8 @@ async function refreshMlb() {
 
 async function refreshCalibration() {
   try {
+    // Same rule against CALIBRATION_INTERVAL_MS (30 min).
+    const outcome = await withJobLock('scheduler:refreshCalibration', async () => {
     for (const scope of CALIBRATION_SCOPES) {
       // MLB only — this proactive scheduler job predates Phase 2 of docs/
       // scan-playerdetail-parity-gameplan-2026-08-27.md's sport param and
@@ -85,6 +107,8 @@ async function refreshCalibration() {
         return payload;
       });
     }
+    }, 25 * 60_000);
+    if (!outcome.acquired) console.log('[scheduler] refreshCalibration skipped — another instance holds the lease');
   } catch (error) {
     console.error('[scheduler] proactive calibration refresh failed', error);
   }
