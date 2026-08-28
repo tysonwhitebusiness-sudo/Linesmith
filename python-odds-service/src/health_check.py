@@ -31,6 +31,7 @@ detection logic that would sit behind it.
 """
 import asyncio
 import json
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -586,6 +587,58 @@ async def check_golf_predictions_freshness() -> dict:
     }
 
 
+
+# ---------------------------------------------------------------------------
+# Acknowledged checks — reported, but not alerted on
+# ---------------------------------------------------------------------------
+# A check listed here still runs, still prints, and still writes its real
+# healthy=False to job_health_checks. It just doesn't drive this script's exit
+# code, which is what Render turns into an email.
+#
+# Why this exists. snapshotCacheSize has a threshold deliberately set below
+# real state (see SNAPSHOT_CACHE_SINGLE_KEY_WARN_MB) so it stays red until the
+# MLB snapshot is split into scoped caches — a decision worth keeping. But a
+# check that is red on purpose, forever, makes the cron exit 1 on every one of
+# its 96 daily runs, so the alert channel can no longer distinguish "the thing
+# we already know about" from "something just broke." The operator filters the
+# mail to trash within days, and every later observability improvement lands on
+# a channel nobody reads. Phase 0.8 of docs/audit-remediation-plan.md names
+# exactly this failure: "a permanently-red check trains you to ignore the
+# dashboard."
+#
+# The obvious risk is that this becomes a place to hide failures. Rules, same
+# as DISABLED_JOBS in jobs.py (rule G6):
+#
+#   1. Every entry needs a date, a reason, and the TASK NUMBER that removes it.
+#      _validate_acknowledged() enforces the task number at import time — an
+#      entry without one is a crash, not a silent pass.
+#   2. Acknowledging is for a condition you have decided to live with on a
+#      schedule. It is never for a check you have not understood yet.
+#   3. An acknowledged check that turns healthy should be deleted from here,
+#      not left "in case." The run output flags that for you.
+ACKNOWLEDGED_CHECKS: dict[str, str] = {
+    "snapshotCacheSize": (
+        "2026-08-28, task 3.3 — threshold is deliberately below real state "
+        "(largest payload 11.3MB vs a 10MB guard) and stays red until the MLB "
+        "snapshot is split into scoped caches. Cleared by task 3.3."
+    ),
+}
+
+
+def _validate_acknowledged() -> None:
+    """Fails loudly at import if an entry skips the discipline above. A rule
+    nothing enforces is a comment."""
+    for name, reason in ACKNOWLEDGED_CHECKS.items():
+        if not re.search(r"task \d+(\.\d+)?", reason):
+            raise ValueError(
+                f"ACKNOWLEDGED_CHECKS[{name!r}] must name the task that clears it "
+                f"(e.g. 'task 3.3'); got: {reason!r}"
+            )
+
+
+_validate_acknowledged()
+
+
 async def main() -> int:
     job_results = await asyncio.gather(*(check_job(name, interval) for name, _, interval in JOB_REGISTRY))
     results = [
@@ -602,16 +655,56 @@ async def main() -> int:
     ]
 
     print(f"[health_check] {datetime.now(timezone.utc).isoformat()}", flush=True)
-    all_healthy = True
-    for r in results:
-        marker = "OK  " if r["healthy"] else "FAIL"
-        print(f"  [{marker}] {r['name']}: {r['status']}", flush=True)
-        all_healthy = all_healthy and r["healthy"]
+    alerting_failures: list[str] = []
+    acknowledged_failures: list[str] = []
+    resolved_acknowledgements: list[str] = []
 
+    for r in results:
+        acknowledged = r["name"] in ACKNOWLEDGED_CHECKS
+        if r["healthy"]:
+            marker = "OK  "
+            if acknowledged:
+                # It recovered. Say so every run until someone deletes the
+                # entry — an acknowledgement nobody removes is how this list
+                # turns into a permanently-green board that means nothing.
+                resolved_acknowledgements.append(r["name"])
+        elif acknowledged:
+            marker = "ACK "
+            acknowledged_failures.append(r["name"])
+        else:
+            marker = "FAIL"
+            alerting_failures.append(r["name"])
+        print(f"  [{marker}] {r['name']}: {r['status']}", flush=True)
+
+    for name in acknowledged_failures:
+        print(f"  [ACK ] ^ acknowledged: {ACKNOWLEDGED_CHECKS[name]}", flush=True)
+    for name in resolved_acknowledgements:
+        print(
+            f"  [NOTE] {name} is healthy but still in ACKNOWLEDGED_CHECKS — "
+            f"remove it from health_check.py so it can alert again",
+            flush=True,
+        )
+
+    # Writes every check's REAL healthy value, acknowledged or not. The
+    # acknowledgement changes what wakes somebody up; it must never change what
+    # /diagnostics and job_health_checks report, or this becomes a way to lie
+    # to the dashboard as well as to the pager.
     await db.write_health_check_results(results)
 
-    print(f"\n[health_check] overall: {'HEALTHY' if all_healthy else 'UNHEALTHY'}", flush=True)
-    return 0 if all_healthy else 1
+    if alerting_failures:
+        overall = f"UNHEALTHY — {len(alerting_failures)} check(s) failing: {', '.join(alerting_failures)}"
+    elif acknowledged_failures:
+        overall = (
+            f"HEALTHY (nothing new) — {len(acknowledged_failures)} acknowledged: "
+            f"{', '.join(acknowledged_failures)}"
+        )
+    else:
+        overall = "HEALTHY"
+    print(f"\n[health_check] overall: {overall}", flush=True)
+
+    # Exit code drives Render's failure notification, so only genuinely new
+    # failures may set it.
+    return 1 if alerting_failures else 0
 
 
 if __name__ == "__main__":
