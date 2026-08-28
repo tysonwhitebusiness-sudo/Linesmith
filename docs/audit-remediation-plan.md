@@ -1642,6 +1642,231 @@ GATE RESULT: PASS / FAIL
 
 ---
 
+### Phase 0 — 2026-08-28
+
+**GATE RESULT: NOT YET PASSED.** Every task below is done and verified, but
+G2/G3 have not been run as one sitting and 0.8's alert delivery is outstanding.
+See "gate status" at the end. Phase 1 does not start until that closes.
+
+--- task verifications ---
+
+**0.1 · Backup, and the restore that proves it.**
+`pg_dump -Fc` of all nine tables → `linesmith-20260827.dump`, 44,030,041 bytes.
+Restored into a throwaway local PostgreSQL 17.11 cluster (`initdb` on port
+5433) and counted every table, not just `pick_history`:
+
+```
+table                  source     restored   result
+bets                        2            2   EXACT
+game_odds_history       19849        19849   EXACT
+game_picks                160          160   EXACT
+historical_odds         37922        37922   EXACT
+model_weights              21           21   EXACT
+pick_history           362616       362616   EXACT
+picks                       0            0   EXACT
+player_game_history   1476634      1476634   EXACT
+prop_odds_history      425672       425307   grew since dump (+365)
+```
+
+`prop_odds_history`'s 365-row gap is the live table advancing during the dump —
+those rows came from a tennis job run in this same session. Restored ≤ source
+is the only correct assertion for a table being written to.
+
+Four `pg_restore` errors, all `schema "auth" does not exist` — the FKs to
+`auth.users` and the two owner policies on `bets`/`picks`. Expected against a
+vanilla cluster; they would apply on a real Supabase target. No data affected.
+
+*Tooling note:* neither `pg_dump` nor Docker was available. Installed
+PostgreSQL 17.11 via winget.
+
+**0.2 · Under the ceiling.** Partially achieved, deliberately.
+
+`db.RETENTION_RULES` + `job_retention`, daily in `JOB_REGISTRY`.
+First run:
+```
+snapshot_cache mlb:full-raw   :     12
+snapshot_cache mlb:injuries   :      9
+prop_odds     >7d             : 150254
+game_odds_book_lines >2d      :     92
+system_events >30d            :      0
+rows_deleted                  : 150367
+```
+Immediate second run: `rows_deleted = 0` — idempotent, as the gate requires.
+
+`VACUUM FULL`: **1,589 MB → 1,280 MB**, 309 MB reclaimed.
+`snapshot_cache` 366 MB → 123 MB · `prop_odds` 105 MB → 40 MB ·
+`game_odds_book_lines` 1,944 kB → 752 kB.
+
+**Still 780 MB over the 500 MB Free ceiling, and that is the recorded
+decision, not a miss.** `player_game_history` alone is 830 MB of training data
+Phase 4.7 wants more of. Per 0.2's own instruction ("log the reason rather
+than deleting training data"), **Phase 8.1 was pulled forward and executed:
+Supabase Pro + Micro compute.**
+
+> **Incident, caused by this task.** The first `VACUUM FULL` attempt ran while
+> the instance was still on the Free tier's 1 GB disk. `VACUUM FULL` rewrites a
+> table into new files and needs roughly the table's own size free; there was
+> none. It failed with `53100: could not extend file … No space left on device`
+> and **Postgres could not complete startup afterwards** — the project was down
+> for ~25 minutes until the Pro upgrade resized the disk. The ordering error
+> was mine: on a full disk, plain `VACUUM` first, `VACUUM FULL` only with
+> headroom. Recorded because the next person to prune a full database will be
+> one command away from repeating it.
+
+**0.3 · Anonymous write hole closed.**
+Before: `rls_on=4 rls_off=31`, 35 tables granting DML to anon/authenticated.
+After: `rls_on=35 rls_off=0`, 4 tables (the user tables, correctly).
+31 RLS-on tables now have zero policies = deny-all.
+
+Twelve write attempts with the anon key alone, over PostgREST:
+```
+pick_history   INSERT/UPDATE/DELETE -> 401 42501  (x3)
+model_weights  INSERT/UPDATE/DELETE -> 401 42501  (x3)
+provider_usage INSERT/UPDATE/DELETE -> 401 42501  (x3)
+system_events  INSERT/UPDATE/DELETE -> 401 42501  (x3)
+WRITES: PASS — 12/12 rejected.
+```
+Reads, which is where RLS rather than the grant does the work:
+```
+pick_history    HTTP 200  rows_returned=0   (table holds 365,009)
+model_weights   HTTP 200  rows_returned=0   (table holds      21)
+system_events   HTTP 200  rows_returned=0   (table holds     101)
+```
+
+*A first pass at this matrix reported 5 failures. All five were artifacts of
+the test, not holes: an empty `{}` PATCH body is a PostgREST no-op that returns
+204 without issuing an UPDATE, and `?id=gt.0` is invalid on `provider_usage`,
+which PostgREST rejects at parse time before any permission check. Real bodies
+and per-table filters gave the result above.*
+
+Safety was verified independently before applying, and is stronger than the
+audit assumed: `postgres` has `rolbypassrls = true`, and the Supabase JS client
+is used for **auth only** — zero `.from()` table calls anywhere in the app.
+Nothing reads these tables through PostgREST at all.
+
+**0.4 · Working tree committed.**
+```
+git status --short | wc -l  ->  0
+git stash list   | wc -l    ->  0
+```
+216 files in ten themed commits, `npm run typecheck` green at each:
+`84a7bb0` migrations (alone, first) · `2913d81` tennis · `bfa936d` live tabs ·
+`297db32` matchup cards · `49be45d` Python backfill + generic props ·
+`ae15c09` the five deletions · `e4443b3` Phase 0 · `01a4c70` docs ·
+`cb7624f` picks/tracked-lines · `4dcff55` player pages + middleware.
+
+Deletions verified by import-path grep **after** deleting: 0 importers for each
+of the five. `.gitignore` gained three machine-local artifacts found loose in
+the tree; `scripts/_audit_dbcheck.js` was deleted rather than committed.
+
+**0.5 · Transaction-mode pooler.**
+`.env.local` → `:6543`; `DB_POOLER_MODE=transaction` set on the Render worker
+via the API (the existing mechanism, already proven by the health-check cron).
+```
+EMAXCONN in system_events, last hour: 0
+pg_stat_activity: idle 11, active 2, idle-in-transaction 1  -> 21 backends
+current_setting('max_connections') = 60
+```
+Caveat, stated rather than hidden: `system_events` took **0 rows of any kind**
+in that hour, so "0 EMAXCONN" is weak evidence on its own. The load-bearing
+number is 21 backends against 60, versus the ~9 usable session-mode slots P4 H4
+measured. Phase 3.1/3.2 are what make `system_events` a trustworthy signal.
+
+> **Bug introduced and fixed inside this task** (`d0ad772`). `DB_POOLER_MODE`
+> defaults to `"session"`, so pointing `DATABASE_URL` at `:6543` left every
+> machine that never set the flag talking to the transaction pooler while
+> believing it was in session mode — leaving asyncpg's statement cache on
+> against a pooler that hands out a different backend per transaction. Not a
+> connect-time crash: the pool comes up, the first query works, the second dies
+> with `DuplicatePreparedStatementError: prepared statement "__asyncpg_stmt_1__"
+> already exists`. Reproduced locally, fixed by deriving the mode from the
+> resolved DSN's port so port and behaviour cannot disagree.
+
+**0.6 · Open redirect closed.** `safeNext()`, exported for this test.
+```
+protocol-relative              "//evil.com"          -> "/"
+absolute https                 "https://evil.com"    -> "/"
+absolute http                  "http://evil.com/x"   -> "/"
+backslash variant              "/\evil.com"          -> "/"
+scheme payload                 "javascript:alert(1)" -> "/"
+protocol-relative with path    "//evil.com/path?a=b" -> "/"
+empty / null / undefined                             -> "/"
+legitimate                     "/nfl" "/bets" "/soccer/epl?x=1" -> preserved
+OPEN REDIRECT: PASS — 12/12
+```
+Tested against the real function rather than over HTTP: the redirect is
+client-side (`router.push` after sign-in), so every `/login?next=…` request
+returns 200 regardless and proves nothing.
+
+**0.7 · Service-role key.** Removed from `.env.local` and deleted from the
+Render worker (`HTTP 204`; re-listed to confirm absence). Referenced by zero
+lines of TypeScript and zero lines of Python — verified by grep, hits in `docs/`
+only. **Rotation in the Supabase dashboard is still outstanding** — deleting
+two copies does not invalidate a key that already sat in two config stores.
+
+**0.8 · Worker restarted, leakage jobs off.**
+The six `genericPropProduction*Job` entries moved to `DISABLED_JOBS`. Checked
+against `HEAD` before restarting: the deployed registry had **17 jobs, zero of
+them prop-production** — they were never deployed, so this keeps them off
+rather than turning them off, and the restart could not produce contaminated
+rows. (The n=207 NFL rows P3 H4 cites were written by local runs.)
+
+Restart via the Render API (`HTTP 200`). The startup burst hit
+`ReadOnlySQLTransactionError` on every job — Supabase's over-quota read-only
+enforcement had not yet lifted. It lifted ~90 seconds later; confirmed by
+writing and deleting a row through `db.write_job_run_log`, the worker's own
+write path. Steady state since:
+```
+[queue] finished refreshTier1: 4.49s, games=5, ok=True
+[queue] finished computeMlbPropPredictionsJob: 7.36s, ok=True
+[queue] finished golfPredictionsJob: 3.57s, ok=True
+[queue] finished mlbOddsLinesCycleJob: 0.32s, games=15, ok=True
+```
+Write paths landing (G5): `prop_odds` 140,775 → 146,527 · `prop_odds_history`
+425,672 → 429,028 · `game_odds_book_lines` newest row 1 minute old.
+
+**P3 L4 (tennis crash) no longer reproduces.** Both jobs re-run 2026-08-28:
+172 and 194 rows written, `ok=True`. Nothing was changed to chase it. Instead
+`_run_timed` now keeps the tail of the traceback on failure, because the
+recorded message — `TypeError: normalize() argument 2 must be str, not None` —
+named neither the call site nor the row that carried the `None`.
+
+--- gate status: NOT PASSED ---
+
+G1 task VERIFYs      : all pass, above — but run as work proceeded, not as one sitting
+G2 typecheck         : PASS (green at all ten commits and on the final tree)
+G2 build/test/pytest : NOT RUN
+G3 smoke walk        : PARTIAL — 9 slate pages 200 (/ -> 307 -> /golf, /diagnostics -> 307 login, both correct).
+                       No detail pages, no sign-in, no /bets, no console-error check.
+G4 findings closed   : P4 C1, P4 M5, P4 L2, P2 H7, P2 H5, P2 L4, P3 M10, P4 M10, P4 H4, P3 H4 — each re-verified above.
+                       P3 L4 closed as NOT REPRODUCING rather than fixed.
+G5 write paths       : PASS (counts above, taken after the RLS change)
+G6 orphans           : 6 genericPropProduction*Job in DISABLED_JOBS — dated, reason recorded, re-enabled by Phase 2.2.
+G7 read-back         : done for the Phase 0 commit; not yet for the nine bulk commits
+G8 known NOT done    : (1) Render failure notification never wired and NO TEST ALERT RECEIVED — 0.8's
+                           explicit exit criterion, and the reason a 24h outage went unseen. Dashboard-only.
+                       (2) SUPABASE_SERVICE_ROLE_KEY not yet rotated in Supabase.
+                       (3) Database 1,280 MB — over the old 500 MB ceiling by design; Pro makes it moot.
+                       (4) ODDS_API_KEY still missing on the worker (Phase 1.6, not Phase 0).
+                       (5) Full G2/G3 sweep outstanding.
+
+Observations recorded for later phases, not acted on here:
+- `oddsapiio daily cap reached (505/500)` — the cap was exceeded by 5. Live
+  evidence for the check-then-act race, P4 M8 / task 5.12.
+- `refreshTier1 … rows_matched=0, unresolved=5209` on every cycle — live
+  evidence for the Propline alias gap, P2 C1 / task 5.1.
+- The worker stalls silently rather than crashing, and has before:
+  `render.yaml` records 2026-08-22 → 2026-08-26, "a hang inside a job that
+  never crashed." `job_queue.py`'s 10-minute per-job timeout runs on the same
+  event loop as the job it watches, so a synchronous blocking call stops the
+  watchdog too. Evidence for task 3.3.
+- The second Render service (`Linesmith`) no longer exists; only the worker and
+  its health-check cron remain. Closes the topology question left open in
+  P2 §1.6.
+
+
+---
+
 *Written 2026-08-28 from the Phase 1–5 audit findings and the operator's answers
 of the same date. Every measurement cited was taken from the live system;
 re-verify anything load-bearing before acting on it.*
