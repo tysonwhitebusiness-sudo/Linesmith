@@ -25,6 +25,7 @@ import {
 } from '../../db/client';
 import { americanToDecimal } from '../display';
 import { devigTwoWay } from '../devig';
+import { candidateCategoryToSide } from './entityResolution';
 
 /**
  * The market's side of the edge, joined in after the fact — grading is the
@@ -77,9 +78,16 @@ async function joinMarketSide(row: UngradedRow, gameId: string): Promise<Partial
   const devigged = devigTwoWay(americanToDecimal(pair.over.americanOdds), americanToDecimal(pair.under.americanOdds));
   if (!devigged) return {};
 
+  // devigTwoWay returns {a, b} as (over, under) — pair.over is passed first.
+  // Using `.a` unconditionally, as this did before Phase 1.1, graded an under
+  // candidate against the OVER's market probability and wrote the exact
+  // negation of the real edge into pick_history (audit P3 C3). `row.modelProb`
+  // is side-correct at the source; this picks the market side to match.
+  const marketProb = candidateCategoryToSide(row.category) === 'under' ? devigged.b : devigged.a;
+
   return {
-    marketProb: devigged.a,
-    edge: row.modelProb - devigged.a,
+    marketProb,
+    edge: row.modelProb - marketProb,
     priceSource: pair.over.providerId,
     bookmaker: pair.over.bookmaker,
     priceCapturedAt: pair.over.observedAt,

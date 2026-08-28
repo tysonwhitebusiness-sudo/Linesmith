@@ -125,9 +125,15 @@ export function resolveCandidateEdge(candidate: PickCandidate, propRows: PropOdd
     if (!tooStale(overRow) && !tooStale(underRow)) {
       const devigged = devigTwoWay(americanToDecimal(overRow.americanOdds), americanToDecimal(underRow.americanOdds));
       if (devigged) {
+        // devigTwoWay returns {a, b} as (over, under) because overRow is passed
+        // first. Using `.a` unconditionally — which this did before Phase 1.1 —
+        // compared an under candidate against the OVER's market probability,
+        // producing the exact negation of the edge on the bet being shown
+        // (audit P3 C3). `rawModelProb` is already side-correct: buildCandidate
+        // flips it when the category is an under.
         modelProb = rawModelProb;
-        marketProb = devigged.a;
-        edge = rawModelProb - devigged.a;
+        marketProb = side === 'over' ? devigged.a : devigged.b;
+        edge = modelProb - marketProb;
       }
     }
   }

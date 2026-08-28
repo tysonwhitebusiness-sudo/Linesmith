@@ -28,6 +28,7 @@ from typing import Callable
 import httpx
 
 import db
+from entity_resolution import candidate_category_to_side
 from predict import game_model_cache, savant, statsapi
 from predict.edge_model import ModelProbabilityInput, compute_model_probability
 from predict.home_run_live_matchup import TeamHrRateAllowedCache, load_team_hr_rate_allowed_cache
@@ -321,6 +322,34 @@ def over_rate_of(history: list[HistoryEntry]) -> float:
     return sum(1 for h in history if h.category == "over") / len(history)
 
 
+def _prob_for_category(over_prob: float | None, category: str) -> float | None:
+    """Convert a P(over) into the probability of the proposition the candidate
+    actually represents.
+
+    Every model in this file computes P(over) — `compute_model_probability` is
+    fed `over_count`, and the hit model is fed the count of "hit" outcomes. But
+    a candidate becomes an "under"/"no-hit"/"no-run" whenever a player's entire
+    game log sits on that side of the line, and before Phase 1.1 nothing
+    flipped the probability to match. The stored number was then the
+    probability of the proposition the user was NOT being shown — its exact
+    complement.
+
+    This was not a theory. Scoring the 36 graded under-side rows in
+    pick_history against their own outcomes gave a Brier of 0.3756 as stored
+    and 0.1956 flipped (audit finding P3 C3, re-verified 2026-08-28). A
+    probability that scores far worse as-is than inverted is the probability of
+    the other outcome.
+
+    Reuses entity_resolution.candidate_category_to_side so the category->side
+    rule lives in exactly one place — it already knows all six categories
+    ("hit"/"run"/"over" vs "no-hit"/"no-run"/"under"), and a second copy here
+    would be the thing that drifts.
+    """
+    if over_prob is None:
+        return None
+    return 1.0 - over_prob if candidate_category_to_side(category) == "under" else over_prob
+
+
 # ---------------------------------------------------------------------------
 # Candidates
 # ---------------------------------------------------------------------------
@@ -459,7 +488,7 @@ def stat_market_candidates(
         sample_size=len(full),
         history=full,
         opponent_team_id=opponent_team_id,
-        model_prob=final_model_prob,
+        model_prob=_prob_for_category(final_model_prob, category),
         model_std_dev=model.std_dev if model else None,
         model_sample_size=model.sample_size if model else None,
         league_rate=league_rate,
@@ -514,7 +543,7 @@ def hit_in_game_candidate(
         sample_size=len(full),
         history=full,
         opponent_team_id=opponent_team_id,
-        model_prob=model.prob if model else None,
+        model_prob=_prob_for_category(model.prob if model else None, category),
         model_std_dev=model.std_dev if model else None,
         model_sample_size=model.sample_size if model else None,
         league_rate=league_rate,

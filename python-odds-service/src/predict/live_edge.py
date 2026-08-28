@@ -156,7 +156,16 @@ def _two_sided_devigged_for_row(matched: list[PropOddsRow], side: str, row: Prop
     over_row = row if side == "over" else counterpart
     under_row = counterpart if side == "over" else row
     devigged = devig_two_way(american_to_decimal(over_row.american_odds), american_to_decimal(under_row.american_odds))
-    return devigged[0] if devigged else None
+    if not devigged:
+        return None
+    # devig_two_way returns (over, under) because over_row is passed first.
+    # Returning [0] unconditionally — which this did before Phase 1.1 — handed
+    # back the OVER's probability for an under candidate, i.e. the probability
+    # of the proposition the caller is not asking about. That fed market_prob
+    # and, since the 2026-08-27 edge redesign, `edge = market_prob -
+    # implied_raw` as well, so the sign error outlived the calculation it was
+    # originally found in (audit P3 C3).
+    return devigged[0] if side == "over" else devigged[1]
 
 
 def _sharp_reference_prob(matched: list[PropOddsRow], side: str) -> tuple[float, str] | None:

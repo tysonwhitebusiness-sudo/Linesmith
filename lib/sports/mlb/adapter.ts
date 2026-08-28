@@ -62,6 +62,7 @@ import { battersUntil, measuredGamePace, mlbEta } from './timing';
 import { getWeather } from '../../weather/openMeteo';
 import { leagueBaseRates, getActiveModelWeights, readGameModelCache, type ModelWeightsRow } from '../../db/client';
 import { computeModelProbability } from '../../odds/props/edgeModel';
+import { candidateCategoryToSide } from '../../odds/props/entityResolution';
 import { applyFittedHomeRunWeights, applyLineupConfidence, parkHrFactorCentered, expectedPaCentered, pitcherMatchupSignal } from './homeRunModel';
 import { loadTeamHrRateAllowedCache, type TeamHrRateAllowedCache } from './homeRunLiveMatchup';
 import { ensureGameSims } from './gameSimCache';
@@ -624,9 +625,35 @@ function buildCandidate(
   const consistent = history.every((h) => h.category === history[0].category);
   const category = consistent ? history[0].category : preferredCategory;
 
+  // Every model feeding `context.modelProb` computes P(over) — it is derived
+  // from an over/hit count. But this is the line where a candidate becomes an
+  // "under"/"no-hit"/"no-run", and before Phase 1.1 nothing flipped the
+  // probability to match. The number stored and displayed was then the
+  // probability of the proposition the user was NOT being shown: a card
+  // reading "Under 4.5 K — model 58%" was really claiming the OVER was 58%.
+  //
+  // Confirmed in the data, not just by reading the code (audit P3 C3,
+  // re-verified 2026-08-28): the 36 graded under-side rows in pick_history
+  // score a Brier of 0.3756 against their own outcomes as stored, and 0.1956
+  // flipped. A probability that scores far worse as-is than inverted is the
+  // probability of the other outcome.
+  //
+  // Mirrors _prob_for_category in
+  // python-odds-service/src/predict/prop_candidates.py. The Python worker owns
+  // the live write path and this owns rendering; both had the same bug, so
+  // both needed the same fix.
+  // subjectMeta is a Record<string, unknown> bag, so this needs a runtime check
+  // rather than a typed field access — the looseness of that bag is part of why
+  // the bug survived review in the first place.
+  const rawModelProb = subjectMeta.modelProb;
+  const sidedSubjectMeta =
+    typeof rawModelProb === 'number' && candidateCategoryToSide(category) === 'under'
+      ? { ...subjectMeta, modelProb: 1 - rawModelProb }
+      : subjectMeta;
+
   return {
     ...base,
-    subjectMeta,
+    subjectMeta: sidedSubjectMeta,
     category,
     categoryLabel: categoryLabels[category] ?? category,
     line,
