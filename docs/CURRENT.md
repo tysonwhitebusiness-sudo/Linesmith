@@ -18,6 +18,25 @@ abruptly — a session that runs to exhaustion without rewriting this file has
 lost everything that was only in its transcript. Also mirrored in `CLAUDE.md`,
 which loads automatically.
 
+## The documents, in reading order
+
+1. **`docs/audit-remediation-plan.md`** — the real plan. 104 audit findings
+   sequenced into nine phases, ~2,000 lines. **Read §0 (working rules, standing
+   decisions, and the G1–G8 phase gate) and the phase you are working. Don't
+   read it end to end** — §10's matrix maps every task to its finding ID, so
+   look things up as needed.
+2. **§11 of that plan** — the phase log. What is actually done, with real
+   verification output pasted in. This is the record; when in doubt it wins
+   over this file.
+3. **`docs/audit-phase-2.md` … `-5.md`** — the audits the plan is built from.
+   Go here for a finding's *reasoning*, not just the instruction. §10 tells you
+   which one.
+4. **`CLAUDE.md`** — repo conventions (API route caching, the sport-adapter
+   architecture, the Python provider-job architecture). Loads automatically.
+   Note it still overstates the Python cutover; task 2.8 fixes that.
+5. **`git log`** — this project's commit messages carry the reasoning, not just
+   the change. Genuinely worth reading for recent work.
+
 **Last updated:** 2026-08-28, end of the Phase 0 session.
 **Repo state:** `origin/main` == local `HEAD`, working tree clean, nothing pending deploy.
 
