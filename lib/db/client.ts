@@ -1288,6 +1288,22 @@ export async function calibrationByMarket(sport: string): Promise<MarketCalibrat
                 (model_prob - (CASE WHEN outcome = 'win' THEN 1.0 ELSE 0.0 END))) AS "brierScore"
      FROM pick_history
      WHERE sport = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL
+           -- Phase 1.8 (audit finding P3 H5). Without this, the calibration
+           -- that decides which markets are allowed to power Good Bets was
+           -- measuring a DIFFERENT MODEL: 87% of pick_history is
+           -- event_context='backfill', produced by a deliberately simpler
+           -- model than the one running today. The trust gate was being set by
+           -- ~316k rows of a model that no longer exists, swamping the ~40k
+           -- live ones it was supposed to judge.
+           --
+           -- Same predicate as liveCalibrationBrier and the diagnostics row
+           -- counts below use — NULL counts as live, because event_context
+           -- predates those rows and only the backfill ever set it.
+           --
+           -- This also unblocks Phase 4: every measurement there compares the
+           -- model against the market on live rows, and could not mean
+           -- anything while this aggregate was mostly backfill.
+           AND (event_context IS NULL OR event_context != 'backfill')
      GROUP BY dimension ORDER BY n DESC`,
     [sport],
   );
