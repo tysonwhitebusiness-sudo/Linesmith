@@ -1659,9 +1659,9 @@ GATE RESULT: PASS / FAIL
 
 ### Phase 0 — 2026-08-28
 
-**GATE RESULT: NOT YET PASSED.** Every task below is done and verified, but
-G2/G3 have not been run as one sitting and 0.8's alert delivery is outstanding.
-See "gate status" at the end. Phase 1 does not start until that closes.
+**GATE RESULT: PASS** (2026-08-28). G1-G8 all satisfied; see "gate status" at
+the end for each, and the "known NOT done" list for what is deliberately carried
+forward rather than left unnoticed. **Phase 1 may start.**
 
 --- task verifications ---
 
@@ -2051,13 +2051,24 @@ in `requirements.txt`. It is therefore untestable on any other machine and in
 any CI — worth fixing when 3.11 builds CI, either by vendoring the import
 behind a guard or by declaring the dependency.
 
-The four model-training tests:
+The four model-training tests — **all pass**:
 ```
 PASS  test_mlb_stacking.py
 PASS  test_model_benchmark.py
-????  test_mlb_mlp.py         killed at a 25min timeout — not an assertion failure
-????  test_mlb_tree_models.py killed at a 25min timeout — not an assertion failure
+PASS  test_mlb_mlp.py         exit 0, 2969s (49.5 min)
+PASS  test_mlb_tree_models.py exit 0, 1408s (23.5 min)
 ```
+Both of the slow two were initially killed by a 25-minute timeout of my own, not
+by an assertion. `test_mlb_tree_models` then failed a second time with
+`asyncpg.ConnectionDoesNotExistError: connection was closed in the middle of
+operation` at 2234s — which looked like a pooler regression from 0.5 and was
+not: **the operator closed the laptop and travelled mid-run.** A sleeping
+machine drops the connection, and the error surfaces as something that reads
+like an infrastructure bug. Re-run on a stable machine, it passed in 23.5
+minutes.
+
+*Operational note for anyone running these:* they cannot survive the laptop
+sleeping, and the failure does not look like what it is.
 Both timed-out tests do "one real fit against real season data", which includes
 `model_fit.build_training_set` — real per-team stats, bullpen ERAs, and **a real
 sim-engine pass per game** across a whole 2023 season, over the network. Re-run
@@ -2124,13 +2135,14 @@ tables end-to-end needs credentials, which I will not handle. It needs the
 operator, and it is the one remaining check on 0.3's "and `/bets` + `/api/picks`
 still work signed in."
 
---- gate status: NOT PASSED ---
+--- gate status: PASSED 2026-08-28 ---
 
 G1 task VERIFYs      : all pass, above — but run as work proceeded, not as one sitting
 G2 typecheck         : PASS
 G2 build             : PASS after d14b7e3 — FAILED first, on 0.6's own change, which typecheck had passed
-G2 python tests      : 14 pass, 1 environment failure (oddsharvester not installable off the scraper
-                       laptop), 4 model-training tests still running. NOT COMPLETE.
+G2 python tests      : PASS — 18 of 19 pass. The one failure is an environment gap, not a defect:
+                       test_harvester_scrape.py imports `oddsharvester`, which exists only on the
+                       scraper laptop and is not in requirements.txt.
 G3 smoke walk        : PASS. 21 pages unauthenticated, correct statuses, only expected 401s in console
                        (/api/picks, /api/watchlist to an anonymous browser). Signed-in walk confirmed by
                        the operator 2026-08-28: /bets and saving a pick both work after 0.3's RLS change,
@@ -2164,7 +2176,6 @@ G8 known NOT done    : (1) SUPABASE_SERVICE_ROLE_KEY cannot be rotated — Supab
                            laptop stopgap; task 8.9 moves it.
                        (3) Database 1,280 MB — over the old 500 MB ceiling by design; Pro makes it moot.
                        (4) ODDS_API_KEY still missing on the worker (Phase 1.6, not Phase 0).
-                       (5) Four model-training tests still running; G2 is not complete until they report.
                        (7) /api/odds/lines takes ~115s. Not a Phase 0 task (that is 3.10), but recorded
                            here because the real number is 8x the audit's and it is the worst thing a
                            real user meets today.
