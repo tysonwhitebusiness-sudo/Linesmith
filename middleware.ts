@@ -25,7 +25,7 @@ import { NextResponse, type NextRequest } from 'next/server';
  * same posture again — readTodaysPropCandidates with no dimension filter,
  * no userId.
  */
-const PROTECTED_API_PREFIXES = ['/api/picks', '/api/bets', '/api/watchlist', '/api/tracked-lines', '/api/props/scan-player', '/api/props/more-books', '/api/props/sharp-price'];
+const PROTECTED_API_PREFIXES = ['/api/picks', '/api/bets', '/api/watchlist', '/api/tracked-lines'];
 const PROTECTED_API_EXCLUDE = ['/api/picks/game-history', '/api/picks/props', '/api/picks/rare-markets', '/api/picks/bankroll', '/api/picks/model-data'];
 const PROTECTED_PAGE_PREFIXES = ['/bets', '/bet/'];
 
@@ -56,18 +56,20 @@ const ADMIN_API_PREFIXES = ['/api/diagnostics', '/api/props', '/api/odds/import'
  * Genuinely public reads that happen to live under /api/props:
  *  - `lines` and `line-history` are price data the app renders for everyone.
  *  - `calibration` is the model-health payload the public scoreboard reads.
- * `scan-player`, `more-books` and `sharp-price` are user-triggered provider
- * calls — they spend real budget, so they need a signed-in user, but not the
- * operator specifically. They move to PROTECTED_API_PREFIXES below.
+ *
+ * `scan-player`, `more-books` and `sharp-price` were also listed here, as
+ * user-triggered provider calls needing a signed-in user but not the
+ * operator. All three routes were deleted in task 2.5 (Q12), so both their
+ * entries here and their PROTECTED_API_PREFIXES entries are gone. Nothing
+ * in this file now grants access to anything that no longer exists — a
+ * stale allow-entry for a deleted route is harmless today and a live hole
+ * the moment somebody reuses that path.
  */
 const ADMIN_API_EXCLUDE = [
   '/api/props/lines',
   '/api/props/line-history',
   '/api/props/calibration',
   '/api/props/user-sportsbook',
-  '/api/props/scan-player',
-  '/api/props/more-books',
-  '/api/props/sharp-price',
 ];
 const ADMIN_PAGE_PREFIXES = ['/diagnostics'];
 

@@ -10,11 +10,16 @@
  * `JOB_REGISTRY` in `jobs.py`) — `lib/scheduler.ts`'s own `setInterval`
  * jobs were correctly removed, but this separate, per-request trigger kept
  * running, undetected, because it kept prop odds looking fresh even while
- * the Python worker was fully down. The Python worker is the sole owner of
- * this refresh now; this route only ever reads whatever it (or a fresh
- * `POST /api/props/scan-player` — a real, sanctioned user-triggered
- * exception, see CLAUDE.md's caching section — or `POST /api/props/more-
- * books`) has already written.
+ * the Python worker was fully down.
+ *
+ * The Python worker is now the sole owner of this refresh, without
+ * qualification. This route reads whatever refreshTier1 has already
+ * written and nothing else. Until task 2.5 (2026-08-28) there were two
+ * user-triggered exceptions — `POST /api/props/scan-player` and
+ * `POST /api/props/more-books` — and this comment named them; both routes
+ * were deleted along with the Scan / More Books / Check Sharp Price
+ * buttons per standing decision Q12, so there is no longer any path by
+ * which a request causes a provider fetch.
  */
 
 import { NextResponse } from 'next/server';

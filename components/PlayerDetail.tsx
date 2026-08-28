@@ -1661,28 +1661,18 @@ export function PlayerDetail({
               shown first per update-09 § 5. */}
           {data.propOddsBoard ? (
             <section className="lb-card overflow-hidden">
+              {/* The "Scan" button lived here — a user-triggered Tier 1
+                  refresh of this player's game. Deleted with the other two
+                  provider buttons in task 2.5 (standing decision Q12): the
+                  Python worker is a background worker with no HTTP surface,
+                  so there was nothing to port these to, and the feature was
+                  removed rather than rebuilt behind a job queue. Prices here
+                  now come solely from the worker's own ~2.5-minute
+                  refreshTier1 cycle. */}
               <div className="flex items-center justify-between gap-2 bg-accent-soft px-3 py-1.5">
                 <h2 className="text-[12px] font-semibold text-masters">All books</h2>
-                <div className="flex items-center gap-1.5">
-                  {propOdds.scan.lastScannedAt ? (
-                    <span className="text-[10px] text-ink-faint">
-                      scanned{' '}
-                      {new Date(propOdds.scan.lastScannedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                    </span>
-                  ) : null}
-                  <button
-                    type="button"
-                    disabled={!gamePkStr || propOdds.scan.loading}
-                    onClick={() => void propOdds.runScan()}
-                    title="Refresh SharpAPI + Odds-API.io for this player's game right now — free, doesn't wait for the ~3-minute automatic cycle."
-                    className="rounded-md border border-line px-2 py-0.5 text-[11px] font-medium text-ink-muted hover:border-masters/40 hover:text-masters disabled:opacity-40"
-                  >
-                    {propOdds.scan.loading ? 'Scanning…' : 'Scan'}
-                  </button>
-                </div>
               </div>
               <div className="p-2.5">
-                {propOdds.scan.error ? <p className="mb-1.5 text-[10px] text-warn">{propOdds.scan.error}</p> : null}
                 <PropOddsBoard
                   allRows={data.propOddsBoard.allRows}
                   subjectId={data.propOddsBoard.subjectId}

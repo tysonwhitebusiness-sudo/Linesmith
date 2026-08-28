@@ -18,12 +18,6 @@ import {
  */
 export { rowsFor, bestPrice, userBookPrice, resolveCandidateEdge, type PropOddsRow, type CandidateEdgeInfo };
 
-export interface Tier2ActionState {
-  loading: boolean;
-  error: string | null;
-  budgetRemaining: number | null;
-}
-
 /**
  * Tier 1 prop odds for one game, read from the cache-backed
  * `/api/props/lines` route — never fetches on its own schedule, just once on
@@ -35,9 +29,12 @@ export interface Tier2ActionState {
  * this exact game's prop odds and is passing the result down instead (see
  * `GameDetail`'s nested `PlayerDetail`, which shares its own `usePropOdds`
  * call rather than each having its own independent copy of the same fetch).
- * The `runMoreBooks`/`runSharpPrice`/`runScan` actions stay available
- * either way — they're user-triggered, not part of the passive fetch this
- * flag gates.
+ *
+ * This hook used to also expose three user-triggered provider actions —
+ * `runMoreBooks`, `runSharpPrice` and `runScan`. All three were deleted in
+ * task 2.5 (standing decision Q12) along with the routes behind them; only
+ * `runScan` ever had UI. Prop prices are now refreshed solely by the Python
+ * worker's own schedule, so this hook is a pure read.
  */
 export function usePropOdds(gameId: string | undefined, refreshKey?: string | null, enabled = true) {
   const [rows, setRows] = useState<PropOddsRow[]>([]);
@@ -78,87 +75,7 @@ export function usePropOdds(gameId: string | undefined, refreshKey?: string | nu
     })();
   }, [enabled]);
 
-  const [moreBooks, setMoreBooks] = useState<Tier2ActionState>({ loading: false, error: null, budgetRemaining: null });
-  const [sharpPrice, setSharpPrice] = useState<Tier2ActionState>({ loading: false, error: null, budgetRemaining: null });
-
-  const runMoreBooks = useCallback(async () => {
-    if (!gameId) return;
-    setMoreBooks({ loading: true, error: null, budgetRemaining: null });
-    try {
-      const res = await fetch('/api/props/more-books', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ gameId }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setMoreBooks({ loading: false, error: json.error ?? 'Request failed.', budgetRemaining: json.budget?.remaining ?? null });
-        return;
-      }
-      setRows(json.rows ?? []);
-      setMoreBooks({ loading: false, error: null, budgetRemaining: json.budget?.remaining ?? null });
-    } catch {
-      setMoreBooks({ loading: false, error: 'More Books request failed.', budgetRemaining: null });
-    }
-  }, [gameId]);
-
-  const runSharpPrice = useCallback(async (): Promise<any> => {
-    if (!gameId) return null;
-    setSharpPrice({ loading: true, error: null, budgetRemaining: null });
-    try {
-      const res = await fetch('/api/props/sharp-price', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ gameId }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setSharpPrice({ loading: false, error: json.error ?? 'Request failed.', budgetRemaining: json.budget?.remaining ?? null });
-        return null;
-      }
-      setSharpPrice({ loading: false, error: null, budgetRemaining: json.monthlyRemaining ?? null });
-      return json;
-    } catch {
-      setSharpPrice({ loading: false, error: 'Check Sharp Price request failed.', budgetRemaining: null });
-      return null;
-    }
-  }, [gameId]);
-
-  const [scan, setScan] = useState<{ loading: boolean; error: string | null; lastScannedAt: string | null }>({
-    loading: false,
-    error: null,
-    lastScannedAt: null,
-  });
-
-  /**
-   * The player-page "Scan" action — Tier 1 only (free), scoped to this
-   * player's game. No per-player fetch exists on any of the four real
-   * providers (all return the whole game's board), so this refreshes the
-   * game and relies on the same subject-scoped filtering the rest of this
-   * hook already does to show just this player's slice.
-   */
-  const runScan = useCallback(async () => {
-    if (!gameId) return;
-    setScan({ loading: true, error: null, lastScannedAt: null });
-    try {
-      const res = await fetch('/api/props/scan-player', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ gameId }),
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setScan({ loading: false, error: json.error ?? 'Scan failed.', lastScannedAt: null });
-        return;
-      }
-      setRows(json.rows ?? []);
-      setScan({ loading: false, error: null, lastScannedAt: new Date().toISOString() });
-    } catch {
-      setScan({ loading: false, error: 'Scan failed.', lastScannedAt: null });
-    }
-  }, [gameId]);
-
-  return { rows, loading, userSportsbook, moreBooks, sharpPrice, scan, runMoreBooks, runSharpPrice, runScan, reload };
+  return { rows, loading, userSportsbook, reload };
 }
 
 /**
