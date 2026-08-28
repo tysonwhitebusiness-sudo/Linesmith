@@ -25,6 +25,7 @@
  * and future, rather than each route needing its own compression logic.
  */
 
+import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import { cacheControlFor, jsonPassthrough, jsonResponse } from '@/lib/db/jsonPassthrough';
@@ -137,8 +138,27 @@ export async function cachedRoute<T, R = T>(opts: CachedRouteOptions<T, R>): Pro
     if (stale) {
       return respondCached(stale.payload, 'stale');
     }
+    // Phase 1.10 (audit finding P4 M4). This used to return `detail` to every
+    // caller, including anonymous ones. `pg` errors carry table, column and
+    // constraint names; `fetch` errors carry upstream hostnames and sometimes
+    // an API key sitting in a query string. That is a free map of the schema
+    // and the vendor stack to anyone who can make a route fail — and making a
+    // route fail is easy, since most take an id straight from the URL.
+    //
+    // The detail is not lost: it is already on the console.error above, with
+    // the route name. What changes is who gets to read it. A correlation id
+    // ties the generic response the caller sees to that log line, so a real
+    // user reporting "it broke" is still traceable without publishing
+    // internals to everyone else.
+    const correlationId = randomUUID();
+    console.error(`[${routeName ?? cacheKey}] correlationId=${correlationId}`);
+    const exposeDetail = process.env.NODE_ENV !== 'production';
     return NextResponse.json(
-      { error: errorMessage ?? 'Request failed', detail: error instanceof Error ? error.message : String(error) },
+      {
+        error: errorMessage ?? 'Request failed',
+        correlationId,
+        ...(exposeDetail ? { detail: error instanceof Error ? error.message : String(error) } : {}),
+      },
       { status: 502 },
     );
   }

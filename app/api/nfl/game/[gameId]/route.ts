@@ -59,7 +59,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gam
     });
   } catch (error) {
     return NextResponse.json(
-      { error: 'NFL game detail failed', detail: error instanceof Error ? error.message : String(error) },
+      // Phase 1.10 (P4 M4): detail stays on the server log, not in a public
+      // 502 body — pg errors name tables and columns, fetch errors name
+      // upstream hosts. This route is public and takes its id from the URL.
+      { error: 'NFL game detail failed' },
       { status: 502 },
     );
   }

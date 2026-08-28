@@ -25,7 +25,8 @@ export async function GET() {
     return NextResponse.json({ teams });
   } catch (error) {
     return NextResponse.json(
-      { error: 'NFL teams failed', detail: error instanceof Error ? error.message : String(error) },
+      // Phase 1.10 (P4 M4) — see app/api/nfl/game/[gameId]/route.ts.
+      { error: 'NFL teams failed' },
       { status: 502 },
     );
   }
