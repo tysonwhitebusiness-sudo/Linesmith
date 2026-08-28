@@ -42,85 +42,50 @@ loads automatically, and backstopped by a Stop hook
 
 ## 1. Where we are
 
-**Phase 0 COMPLETE, gate PASSED 2026-08-28.** Logged in §11 with raw output.
+**Phase 0 COMPLETE, gate PASSED 2026-08-28.**
 
-**Phase 1 IN PROGRESS — 7 of 10 tasks done, each committed and pushed
-separately with its verification in the commit message.**
+**Phase 1 — ALL TEN TASKS COMPLETE. Gate IN PROGRESS.** Every task is committed
+and pushed with its verification in the commit message, and logged in §11.
 
-| Task | State |
+| Task | Result |
 |---|---|
-| 1.1 inverted under-side probability | DONE — fixed in **both** languages |
-| 1.2 `fetchedAt: now()` lie | DONE — all three parts (a/b/c) |
-| 1.5 gate the operator surface | DONE — verified against a real prod build |
-| 1.6 `ODDS_API_KEY` to the worker | DONE — set on Render, TS route made read-only |
-| 1.7 calibration timer 2min→30min | DONE |
-| 1.8 `event_context` filter | DONE — 354,862 → 38,535 rows |
-| 1.10 error-detail leak | DONE |
-| **1.3 hide Tier D/E** | **NOT STARTED — needs an operator decision, see below** |
-| **1.4 strengthen Tier A+B** | **NOT STARTED — pairs with 1.3** |
-| **1.9 "Source not recorded"** | **NOT STARTED — tracing work, no decision needed** |
+| 1.1 under-side probability | Fixed in BOTH languages; 1,208 rows affected |
+| 1.2 stale odds (a/b/c) | Gate could never fire (max delay 60 vs 600); now measures real age |
+| 1.3 hide Tier D/E | Edge + Score columns gone; EdgeBadge neutralised |
+| 1.4 strengthen Tier A/B | **No code changed — verified already satisfied** |
+| 1.5 gate operator surface | fit-weights 401; operator confirmed signed-in legs |
+| 1.6 ODDS_API_KEY | Set on worker; TS route read-only |
+| 1.7 calibration timer | 2min -> 30min |
+| 1.8 event_context filter | 354,862 -> 38,535 rows |
+| 1.9 "Source not recorded" | 89% -> **0.0%** |
+| 1.10 error-detail leak | Correlation id; detail server-side only |
 
-### The pattern worth carrying into 1.9
+### What is left: the Phase 1 gate (§0, G1-G8)
 
-Both Phase 0's tennis crash and 1.1 were bugs the audit located in TypeScript
-that had *since been ported into Python and were live there*. 1.1 was worse: the
-Python edge had been **redesigned** on 2026-08-27, so the sign error outlived the
-calculation it was found in and corrupted a quantity the audit never analysed.
-**Check the Python side first on 1.9.** The audit's file map is accurate for
-2026-08-27 and the tree has moved.
+Nothing else. If the gate passes, log `GATE RESULT: PASS` in §11 and Phase 2 may
+start. **G5 is the one not to skip** — Python changes to `prop_candidates.py`
+and `live_edge.py` were deployed to the live write path and rows have not been
+confirmed landing since.
 
 ### Deferred deliberately
 
-- **The 1.1 backfill of 1,208 under-side rows.** Operator decision, 2026-08-28.
-  Beyond size, there is a real correctness problem: the audit prescribes
-  `edge = -edge`, which is only right for rows written under the old
-  model-vs-market formula. Python-era rows use `market_prob - implied_raw`, and
-  `implied_raw` is not stored, so some may be **uncorrectable**. Phase 4 should
+- **The 1.1 backfill** of 1,208 under-side rows (operator decision). Beyond
+  size: `edge = -edge` is only right for rows written under the old
+  model-vs-market formula. Python-era rows use `market_prob - implied_raw` and
+  `implied_raw` is not stored, so some may be **uncorrectable**. Phase 4 must
   know this before leaning on that history.
-- **The non-admin leg of 1.5's matrix.** Anonymous (401) and public (200) legs
-  are verified. A signed-in NON-admin should get 403 on admin routes and 200 on
-  scan-player — that needs a second account.
-- **Remaining `detail:` leaks** on `/api/diagnostics/*` and `/api/props/*`
-  backfill routes. 1.5 just put those behind admin auth, so re-check after
-  rather than editing twice.
+- **Remaining `detail:` returns** on `/api/diagnostics/*` and `/api/props/*`
+  backfill routes — no longer public after 1.5, so lower priority.
 
-## 2. Operator decisions for 1.3 / 1.4 (made 2026-08-28)
+### Two lessons from this phase
 
-- **Scan's Score column is REMOVED for now.** Prop Score is derived from
-  `model_prob` and `edge` — the two things Q1 forbids showing — and P3 M2 found
-  its scale biased upward and adding little over `model_prob` alone. Task 6.7
-  brings ranking back deliberately, after 6.5 publishes the real record.
-- **Tier A rates render as fraction + window, everywhere.** "7/10, last 10 vs
-  LHP" — numerator, denominator and window all visible, not on hover. Hidden
-  context is the same failure 1.2c fixed on the price chip.
-- **A second, non-admin account is being created** so 1.5's middle leg can be
-  walked properly rather than assumed.
-
-### Groundwork for 1.3 (explored, nothing edited yet)
-
-Render sites for Tier D/E, from a grep of components/ and app/:
-
-```
-ScanTable.tsx        COLUMNS[] has an 'edge' column (label 'Edge', line ~88);
-                     sortValue has `case 'edge'` and `case 'modelProb'`;
-                     <PropScoreBadge> renders the Score cell (~line 814);
-                     a Good-Bets reason chip shows `+X.X% edge` (~line 826)
-ScanCard.tsx         computePropScore + <PropScoreBadge> (~line 335)
-TodaysPicksModal.tsx renders scoreGrade and `modelProb * 100`% (~lines 358-359)
-GameDetail.tsx / GameHeroCard.tsx / GameLinesView.tsx / PlayerDetail.tsx
-                     all reference modelProb/propScore — not yet traced to
-                     specific render sites
-PropScoreBadge.tsx   the badge component itself
-```
-
-Order that keeps the UI coherent at every commit: do all of Scan
-(ScanTable + ScanCard + TodaysPicksModal + PropScoreBadge) as ONE commit, then
-the detail pages as a second. Removing Edge from Scan while PlayerDetail still
-shows a model probability is an inconsistent half-state.
-
-Note `computePropScore` and `resolveCandidateEdge` should keep being CALLED —
-Q6 says keep computing and logging, only stop rendering. Remove the display,
-not the computation.
+1. **The audit's file map is dated 2026-08-27.** Twice now a bug it located in
+   TypeScript had since been ported to Python and was live there — and in 1.1
+   the Python version had been *redesigned*, so the bug outlived the calculation
+   it was found in. Check Python first.
+2. **Verify before "fixing".** 1.4 was already satisfied; `windowedStat.ts`
+   returns `insufficient` rather than partial credit, so an L10 denominator is
+   always exactly 10 and the fraction I was about to add would have been noise.
 
 ## 3. Operational knowledge — this session paid for it, don't re-derive it
 
