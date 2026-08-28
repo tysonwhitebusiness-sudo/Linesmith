@@ -2201,7 +2201,8 @@ Observations recorded for later phases, not acted on here:
 
 ### Phase 1 — 2026-08-28
 
-**Tasks complete. GATE NOT YET RUN** — see the gate status at the end.
+**GATE PASSED 2026-08-28.** All ten tasks complete and verified; the gate run
+is at the end of this entry and surfaced three real problems of its own.
 
 --- task verifications ---
 
@@ -2383,20 +2384,148 @@ columns, `fetch` errors name upstream hosts and sometimes carry a key in a query
 string. Now a correlation id, with detail kept server-side and still returned
 outside production. Two public hand-rolled routes fixed too.
 
---- gate status: NOT RUN ---
+--- Phase 1 gate, run 2026-08-28 ---
 
-G1  every VERIFY re-run in one sitting   : NOT DONE — verified per task as work proceeded
-G2  typecheck / build / tests            : typecheck and build green after every commit.
-                                           Full Python suite NOT re-run since Phase 0.
-G3  smoke walk                           : PARTIAL — /mlb hydrated and inspected; other sports not walked
-G4  findings no longer reproduce         : done per task, above
-G5  write paths still landing            : NOT CHECKED since the Python deploys
-G6  orphans                              : none added
-G7  adversarial read-back                : NOT DONE
-G8  known NOT done                       : (1) the 1,208-row 1.1 backfill — deferred by operator, and
-                                               `edge = -edge` is wrong for Python-era rows whose
-                                               implied_raw is not stored, so some may be uncorrectable
-                                           (2) remaining `detail:` returns on now-admin-gated routes
+**GATE RESULT: PASS.** Three real problems surfaced and were fixed during the
+gate itself; all are recorded below rather than quietly folded into the task
+entries above.
+
+**G1 · every VERIFY re-run, one sitting, against the live system — PASS.**
+
+```
+task   check                                         value
+1.1    under-side rows exist to fix                  1209 rows
+1.2a   old gate (delay>600) still never fires        0 of 191,343
+1.2a   new gate (age>30m) does fire                  184,926 of 191,343
+1.7    calibration interval is 30 minutes            30 min
+1.8    live rows are a small fraction of all rows    38,535 live of 354,862
+1.8    calibrationByMarket filters event_context     filter present
+1.9    every live provider has a label               all 3 labelled
+                                                     7/7 PASS
+```
+
+HTTP, against a production build:
+
+```
+anonymous, must be blocked                     public, must answer
+  /api/props/fit-weights      401                /api/props/lines           200
+  /api/props/backfill         401                /api/props/calibration     200
+  /api/props/elo-backfill     401                /api/props/user-sportsbook 200
+  /api/props/drift-check      401
+  /api/props/diagnostics      401
+  /api/odds/import            401
+  /api/diagnostics            401
+  /api/props/scan-player      401
+```
+
+1.2b, the strongest single check in this phase — the route used to stamp
+`now()` unconditionally:
+
+```
+GET /api/odds/lines?sport=nfl   ->   fetchedAt = 2026-08-28T19:09:58.538Z
+                                      age = 29 min   (a real timestamp)
+```
+
+**G2 · typecheck / build / tests — PASS**, after fixing one failure the gate
+found. `npm run typecheck` and `npm run build` clean. Python fast suite
+**16/16**.
+
+> **Found by G2:** `test_under_side_probability.py` was failing. Not the code —
+> the test. Its fixture pinned `fetched_at` to a hardcoded `2026-08-28T00:00:00Z`,
+> which was harmless when written because `_too_stale` only checked the
+> provider's advertised delay. Task **1.2a then made it check real row age**, the
+> fixture aged past the 30-minute threshold, and the file began failing on a
+> change unrelated to the sign it tests. A fixture that decays with the calendar
+> is a time bomb; this one had a fuse of about fifteen minutes. Fixed to use a
+> current timestamp (`e0e08a0`).
+
+**G3 · smoke walk — PASS**, after fixing one regression the gate found. 17 pages
+correct: every sport slate, MLB game/player/team detail, teams lists, tennis
+schedule, `/login` 200, `/bets` and `/diagnostics` 307 to login.
+
+> **Found by G3:** every anonymous page load was logging a 401 for
+> `/api/props/diagnostics`. The obvious reading is that 1.5 broke something. The
+> correct reading is the opposite: that route returns **provider budget usage
+> against monthly spend limits** plus the unresolved-coverage report, and it had
+> been readable by anyone. `usePropOdds` fetched it twice per page to extract one
+> field, `userSportsbook`, and already fell back to `'fanatics'` when the call
+> failed — so nothing looked broken before or after, and the leak was invisible.
+> Fixed by adding `/api/props/user-sportsbook`, which returns that one string,
+> rather than by un-gating diagnostics.
+
+Console on a public page now shows only `/api/picks` and `/api/watchlist` at
+401 — the two an anonymous user should get.
+
+**G4 · findings no longer reproduce — PASS.** Each recorded per task above, by
+re-running the audit's own method. P3 C3's Brier signature, P3 C4's
+never-firing gate, P3 H5's row counts, P3 M11's 89% → 0.0%.
+
+**G5 · write paths still landing — PASS**, after fixing one thing the gate
+found.
+
+```
+prop_odds             191,870 rows   newest  1 min old
+prop_odds_history     461,144 rows   newest  1 min old
+pick_history          365,590 rows   newest  3 min old
+game_odds_book_lines    6,335 rows   newest  0 min old
+game_odds_history      24,117 rows   newest  5 min old
+```
+
+> **Found by G5, and it is the Phase 0 failure repeating:** the live worker was
+> on `4799c53`, which contains 1.1 but **not 1.2a's Python staleness fix**
+> (`948b072`) — committed, pushed, and not running. Deployed. This is the second
+> time in this project that "committed" was mistaken for "shipped", and the only
+> reason it was caught is that G5 checks the deployed commit rather than the
+> local one.
+
+A related non-finding, checked rather than assumed: zero under-side rows carried
+a `model_prob` in the last 12 hours, which looks alarming. It is a dimension-mix
+artifact — the under rows still being written are `first-inning`, `vs-RHP` and
+`vs-LHP`, which have **0 model_prob across 246 rows over 7 days** and never had
+one. The stat markets that do carry a model are 100% populated but last ran at
+04:49, before the deploy. **So no under-side row has yet been written through
+the fixed code path** — 1.1 is verified by unit test and by the deployed commit,
+not yet by a production row. Worth re-checking after the next MLB slate.
+
+**G6 · orphans — PASS.** Everything 1.3 disabled names the task that restores
+it: `EdgeBadge` (→ 4.2), GameHeroCard's two percentages (→ 4.2), GameLinesView's
+confidence chips (→ 4.2), TodaysPicksModal's three (→ 4.2 / 6.7). Nothing was
+deleted from the model path — all of it still computes and logs per Q6.
+
+One commit is undeployed (`e0e08a0`) and deliberately so: it touches only
+`test_under_side_probability.py`, which no runtime module imports. Recorded
+rather than deployed reflexively, since the rule exists to prevent runtime
+drift and a test file causes none.
+
+**G7 · adversarial read-back — PASS**, after correcting a false claim.
+
+> **Found by G7:** a comment I wrote in `EdgeBadge` said P3 C5 "measured the
+> negative-edge bucket *outperforming* the positive one". It measured no such
+> thing — the negative bucket underperformed the market by 4.52 points, and its
+> realized rate (40.69%) is *lower* than the positive bucket's (40.84%). I had
+> compressed the audit's "the model carries genuine negative information" into a
+> claim false on both readings. Replaced with the real table.
+>
+> This is the **second** false comment this project has caught by adversarial
+> read-back rather than by review — the first was in Phase 0, also mine. Rule 3
+> works, and only because a checklist forces it.
+
+**G8 · known NOT done.**
+
+1. **The 1.1 backfill** of 1,209 under-side rows, deferred by operator decision.
+   Beyond size there is a correctness problem: the audit prescribes
+   `edge = -edge`, correct only for rows written under the old model-vs-market
+   formula. Python-era rows use `market_prob - implied_raw`, and `implied_raw`
+   is not stored, so an unknown subset may be **uncorrectable**. Phase 4 must
+   know this before treating that history as trustworthy.
+2. **1.1 not yet observed in production data** — see G5 above.
+3. **Remaining `detail:` returns** on `/api/diagnostics/*` and `/api/props/*`
+   backfill routes. No longer public after 1.5, so the exposure is closed; the
+   cleanup is not.
+4. **`/api/odds/lines` still takes ~115s.** Task 3.10, not Phase 1, but it is
+   the worst thing a real user meets today.
+
+GATE RESULT: PASS
 
 *Written 2026-08-28 from the Phase 1–5 audit findings and the operator's answers
 of the same date. Every measurement cited was taken from the live system;

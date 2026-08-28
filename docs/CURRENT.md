@@ -44,7 +44,7 @@ loads automatically, and backstopped by a Stop hook
 
 **Phase 0 COMPLETE, gate PASSED 2026-08-28.**
 
-**Phase 1 — ALL TEN TASKS COMPLETE. Gate IN PROGRESS.** Every task is committed
+**Phase 1 COMPLETE. GATE PASSED 2026-08-28.** Phase 2 may start. Every task is committed
 and pushed with its verification in the commit message, and logged in §11.
 
 | Task | Result |
@@ -60,12 +60,24 @@ and pushed with its verification in the commit message, and logged in §11.
 | 1.9 "Source not recorded" | 89% -> **0.0%** |
 | 1.10 error-detail leak | Correlation id; detail server-side only |
 
-### What is left: the Phase 1 gate (§0, G1-G8)
+### The gate found three real problems — worth reading §11 for these
 
-Nothing else. If the gate passes, log `GATE RESULT: PASS` in §11 and Phase 2 may
-start. **G5 is the one not to skip** — Python changes to `prop_candidates.py`
-and `live_edge.py` were deployed to the live write path and rows have not been
-confirmed landing since.
+1. **G5: the live worker was missing 1.2a's Python fix.** Committed, pushed,
+   not deployed. The Phase 0 failure repeating. Caught only because G5 checks
+   the DEPLOYED commit, not the local one. **Always check the deployed SHA.**
+2. **G3: `/api/props/diagnostics` was public** and leaking provider budget
+   usage. 1.5's gate exposed it; the app was fetching it twice per page to read
+   one benign string. Fixed with a dedicated public route.
+3. **G7: a comment I wrote was false** — claimed the negative-edge bucket
+   outperformed the positive one; it underperformed the market by 4.52 points.
+   Second false comment this project has caught by read-back rather than review.
+
+### Next: Phase 2 — the ownership boundary
+
+Per §0's dependency graph, Phase 2 is next and is the phase that closes the
+audit's ROOT CAUSE (22 of 35 tables written by both languages). Start with
+2.1, the table-ownership map, before any code change — P3 H2/H3/C1 all get
+harder the longer two languages own the same tables.
 
 ### Deferred deliberately
 
