@@ -70,7 +70,10 @@ export function usePropOdds(gameId: string | undefined, refreshKey?: string | nu
   useEffect(() => {
     if (!enabled) return;
     void (async () => {
-      const res = await fetch('/api/props/diagnostics', { cache: 'no-store' });
+      // /api/props/user-sportsbook, not /api/props/diagnostics — the latter
+      // also returns provider budget usage and the unresolved-coverage report,
+      // and is admin-gated since Phase 1.5. This needs one string.
+      const res = await fetch('/api/props/user-sportsbook', { cache: 'no-store' });
       if (res.ok) setUserSportsbook((await res.json()).userSportsbook ?? 'fanatics');
     })();
   }, [enabled]);
@@ -200,7 +203,10 @@ export function useSlatePropOdds(refreshKey?: string | null, enabled = true, spo
   useEffect(() => {
     if (!enabled) return;
     void (async () => {
-      const res = await fetch('/api/props/diagnostics', { cache: 'no-store' });
+      // /api/props/user-sportsbook, not /api/props/diagnostics — the latter
+      // also returns provider budget usage and the unresolved-coverage report,
+      // and is admin-gated since Phase 1.5. This needs one string.
+      const res = await fetch('/api/props/user-sportsbook', { cache: 'no-store' });
       if (res.ok) setUserSportsbook((await res.json()).userSportsbook ?? 'fanatics');
     })();
   }, [enabled]);

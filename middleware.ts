@@ -64,6 +64,7 @@ const ADMIN_API_EXCLUDE = [
   '/api/props/lines',
   '/api/props/line-history',
   '/api/props/calibration',
+  '/api/props/user-sportsbook',
   '/api/props/scan-player',
   '/api/props/more-books',
   '/api/props/sharp-price',
