@@ -15,33 +15,18 @@ interface OddsApiLine {
   bookCount: number;
 }
 
-interface HarvesterBookmaker {
-  name: string;
-  homeOdds: number | null;
-  awayOdds: number | null;
-  totalPoint: number | null;
-  overPrice: number | null;
-  underPrice: number | null;
-}
-
-interface HarvesterLine {
-  matchUrl: string;
-  matchup: string;
-  matchDate: string;
-  bookmakers: HarvesterBookmaker[];
-  livePeriod: string | null;
-  liveScore: { home: string; away: string } | null;
-}
-
-interface MergedLine {
-  eventId: string;
-  matchup: string;
+interface GameOddsBookLinesSourceHealth {
   source: string;
-  moneyline: { home?: number; away?: number; book?: string } | null;
-  total: number | null;
-  bookCount: number;
-  bookmakers: Array<{ name: string; homeOdds: number | null; awayOdds: number | null }>;
-  hasLiveData: boolean;
+  count: number;
+  latestFetchedAt: string;
+  ageHours: number;
+}
+
+interface GameOddsBookLinesSportHealth {
+  sport: string;
+  healthy: boolean;
+  status: string;
+  sources: GameOddsBookLinesSourceHealth[];
 }
 
 /** Phase 04 admin-center IA groups (docs/four-feature-gameplan-2026-08-22.md) — replaces the old flat 15-section scroll. */
@@ -54,6 +39,33 @@ const ADMIN_GROUPS: { id: AdminGroup; label: string }[] = [
   { id: 'picks', label: 'Pick History' },
   { id: 'debug', label: 'Debug' },
 ];
+
+/**
+ * Copy-pasteable resume instructions for the one piece of the odds-
+ * architecture rebuild (docs/odds-architecture-rebuild-2026-08-25.md,
+ * Phases 5 and 8.4) that couldn't be closed on 2026-08-26 for a reason
+ * that isn't fixable by more work: NHL and NBA were both off-season, so
+ * there was no live game to visually verify against. Everything else about
+ * those two sports (adapter code, the shared read path, the sport-key
+ * convention) was checked and is believed correct — this is specifically
+ * the "confirm a real game actually renders" step, deferred, not skipped.
+ */
+const NHL_NBA_RESUME_PROMPT = `NHL and NBA Game Detail/Scan-page verification was deferred on 2026-08-26 because both sports were off-season (no live games to check against) — everything else about the odds-architecture rebuild was verified. Resume this now that games exist:
+
+1. Confirm real rows are landing: check /diagnostics's "Game Odds Book Lines" card (System Health tab) shows nhl/nba as healthy with a recent fetched_at, or query game_odds_book_lines directly for sport IN ('nhl','nba') with fetched_at in the last 24h.
+2. Open a real NHL game's Game Detail page (/nhl/game/{gameId}) and a real NBA game's (/nba/game/{gameId}). Confirm the "Line shopping" card's Game tab renders a real bookmaker grid — multiple real books, moneyline at minimum, spread/total if the sport's sources provide them, correct best-price highlighting (only the actual best price per row marked, not a gradient).
+3. Open each sport's Scan page, switch to the "Games" scope, and confirm the same real per-game data renders there too (GameLinesView).
+4. If either sport shows no data despite games being scheduled: both nhl and nba already have a real ScrapeTarget in harvester_scrape.py's SCRAPE_CONFIG as of 2026-08-26 (confirmed by reading the file, not assumed), so a gap here points at the OddsHarvester Scheduled Task not actually running for that sport, or the Render worker (line-buddy-odds-worker) being down/not landing real rows from refreshNbaJob/refreshSportsGameOddsJob — check job_health_checks and the worker's own logs before assuming the code itself is missing something.
+5. Once both sports show real, correct data on both pages, close out Phase 5 (NHL) and the NHL/NBA portion of Phase 8.4 in the odds-architecture rebuild plan.`;
+
+/** Small, dependency-free "copied" flash — matches every other transient-state pattern already in this file (aiSummaryLoading, backfillResult, etc.), no new UI primitive needed for one button. */
+function copyResumePromptToClipboard(text: string, onDone: () => void) {
+  navigator.clipboard.writeText(text).then(onDone).catch(() => {
+    /* Clipboard API can be denied by browser permissions — the modal's own
+       text is still fully selectable/copyable by hand, so this failing
+       silently doesn't lose the user anything. */
+  });
+}
 
 interface HealthCheckRow {
   name: string;
@@ -97,30 +109,9 @@ interface DiagnosticsData {
     } | null;
     lines: OddsApiLine[];
   };
-  oddsHarvester: {
-    live: {
-      filename: string;
-      exists: boolean;
-      sizeBytes: number | null;
-      modifiedAt: string | null;
-      matchCount: number | null;
-      error: string | null;
-    };
-    upcoming: {
-      filename: string;
-      exists: boolean;
-      sizeBytes: number | null;
-      modifiedAt: string | null;
-      matchCount: number | null;
-      error: string | null;
-    };
-    lines: HarvesterLine[];
-  };
-  merged: {
-    totalLines: number;
-    bySource: Record<string, number>;
-    withLiveData: number;
-    lines: MergedLine[];
+  gameOddsBookLines: {
+    allHealthy: boolean;
+    bySport: GameOddsBookLinesSportHealth[];
   };
   env: {
     oddsApiKeyConfigured: boolean;
@@ -1122,6 +1113,8 @@ export default function DiagnosticsPage() {
   const [aiSummary, setAiSummary] = useState<AiSummary | null>(null);
   const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [showNhlNbaResumeModal, setShowNhlNbaResumeModal] = useState(false);
+  const [nhlNbaPromptCopied, setNhlNbaPromptCopied] = useState(false);
 
   const fetchHealthChecks = useCallback(async () => {
     setHealthChecksError(null);
@@ -1512,6 +1505,30 @@ export default function DiagnosticsPage() {
           <>
             {activeGroup === 'health' && (
               <>
+                {/* Deferred-verification reminder — NHL/NBA's Game Detail/
+                    Scan visual check couldn't be closed on 2026-08-26
+                    (off-season, no live game to check against). Surfaced
+                    here so it isn't forgotten between now and whenever
+                    seasons start, rather than living only in a chat
+                    transcript or a memory file nobody re-reads. */}
+                <section className="lb-card border-warn/30 bg-warn/5 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h2 className="text-sm font-semibold text-warn">Deferred: NHL/NBA odds verification</h2>
+                      <p className="mt-0.5 text-[12px] text-ink-muted">
+                        Both sports were off-season on 2026-08-26 — no live game existed to verify the odds grid against. Everything else checks out; this is the one open item once their seasons start.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowNhlNbaResumeModal(true)}
+                      className="shrink-0 rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-[12px] font-semibold text-warn transition-colors hover:bg-warn/20"
+                    >
+                      View resume instructions
+                    </button>
+                  </div>
+                </section>
+
                 {/* Phase 05 — DeepSeek plain-English summary over job_health_checks + provider_usage + recent system_events. Summarizer only, never autonomous triage — see docs/four-feature-gameplan-2026-08-22.md's Phase 05 scope note. */}
                 <section className="lb-card p-4">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -1601,23 +1618,19 @@ export default function DiagnosticsPage() {
                   </div>
                 </div>
                 <div>
-                  <div className="text-ink-faint">Harvester (live)</div>
+                  <div className="text-ink-faint">Game odds book lines</div>
                   <div className="mt-1 flex items-center gap-1.5">
-                    <HealthDot ok={data.oddsHarvester.live.exists} />
+                    <HealthDot ok={data.gameOddsBookLines.allHealthy} />
                     <span className="font-semibold">
-                      {data.oddsHarvester.live.exists
-                        ? `${data.oddsHarvester.live.matchCount} matches`
-                        : 'No file'}
+                      {data.gameOddsBookLines.allHealthy ? 'All sports healthy' : 'Stale sport(s) — see Pipelines'}
                     </span>
                   </div>
                 </div>
                 <div>
-                  <div className="text-ink-faint">Merged lines</div>
-                  <div className="mt-1 font-semibold">{data.merged.totalLines}</div>
-                </div>
-                <div>
-                  <div className="text-ink-faint">Live data</div>
-                  <div className="mt-1 font-semibold">{data.merged.withLiveData} games</div>
+                  <div className="text-ink-faint">Sports with recent rows</div>
+                  <div className="mt-1 font-semibold">
+                    {data.gameOddsBookLines.bySport.filter((s) => s.sources.length > 0).length} / {data.gameOddsBookLines.bySport.length}
+                  </div>
                 </div>
                 <div>
                   <div className="text-ink-faint">MLB Stats API</div>
@@ -2708,110 +2721,43 @@ export default function DiagnosticsPage() {
               ) : null}
             </section>
 
-            {/* OddsHarvester detail */}
+            {/* Game odds book lines — the real "is data actually reaching the
+                shared table" check (odds-architecture rebuild Phase 7).
+                Replaces the old OddsHarvester-flat-file/Merged-Lines section,
+                which read a file (data/*.json) nothing in production ever
+                wrote — dead since before this rebuild, confirmed and
+                retired 2026-08-26. Per-sport, not per-source: see
+                readGameOddsBookLinesHealth's own comment in lib/db/client.ts
+                for why a hardcoded expected-source list per sport isn't the
+                right call here. */}
             <section className="lb-card p-4">
-              <h2 className="mb-3 text-sm font-semibold">OddsHarvester (Scraper)</h2>
-              {(['live', 'upcoming'] as const).map((mode) => {
-                const file = data.oddsHarvester[mode];
-                return (
-                  <div
-                    key={mode}
-                    className={`mb-2 rounded-lg border p-3 ${file.exists ? 'border-line' : 'border-bad/20 bg-bad/5'}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <HealthDot ok={file.exists} />
-                        <span className="text-[13px] font-semibold">{file.filename}</span>
-                        <span className="lb-chip bg-ink/5 text-ink-muted">{mode}</span>
-                      </div>
-                      {file.exists ? (
-                        <span className="text-[11px] text-ink-faint">
-                          {file.matchCount} matches · {(file.sizeBytes! / 1024).toFixed(1)} KB
-                        </span>
-                      ) : null}
-                    </div>
-                    {file.exists ? (
-                      <div className="mt-1 text-[11px] text-ink-faint">
-                        Modified: {formatDate(file.modifiedAt)}
-                      </div>
-                    ) : (
-                      <div className="mt-1 text-[12px] text-bad">{file.error}</div>
-                    )}
-                  </div>
-                );
-              })}
-            </section>
-
-            {/* Merged lines */}
-            <section className="lb-card p-4">
-              <h2 className="mb-3 text-sm font-semibold">
-                Merged Lines ({data.merged.totalLines})
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                Game Odds Book Lines
+                <HealthDot ok={data.gameOddsBookLines.allHealthy} />
               </h2>
-              <div className="mb-3 flex gap-3 text-[12px]">
-                <span className="lb-chip bg-accent-soft text-masters">
-                  Both: {data.merged.bySource.both ?? 0}
-                </span>
-                <span className="lb-chip bg-ink/5 text-ink-muted">
-                  API only: {data.merged.bySource['odds-api'] ?? 0}
-                </span>
-                <span className="lb-chip bg-ink/5 text-ink-muted">
-                  Scraper only: {data.merged.bySource.oddsharvester ?? 0}
-                </span>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {data.gameOddsBookLines.bySport.map((s) => (
+                  <div
+                    key={s.sport}
+                    className={`rounded-lg border p-3 ${s.healthy ? 'border-line' : 'border-bad/20 bg-bad/5'}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <HealthDot ok={s.healthy} />
+                      <span className="text-[13px] font-semibold uppercase">{s.sport}</span>
+                    </div>
+                    <p className={`mt-1 text-[11px] ${s.healthy ? 'text-ink-faint' : 'text-bad'}`}>{s.status}</p>
+                    {s.sources.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {s.sources.map((src) => (
+                          <span key={src.source} className="lb-chip bg-ink/5 text-[10px] text-ink-muted" title={`freshest ${src.ageHours.toFixed(1)}h ago`}>
+                            {src.source}: {src.count}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
               </div>
-              {data.merged.lines.length === 0 ? (
-                <p className="text-sm text-ink-muted">No lines available.</p>
-              ) : (
-                <div className="max-h-[400px] overflow-y-auto">
-                  <table className="w-full border-collapse text-[12px]">
-                    <thead>
-                      <tr className="border-b border-line text-left text-ink-faint">
-                        <th className="py-1.5 pr-2">Matchup</th>
-                        <th className="py-1.5 pr-2">Source</th>
-                        <th className="py-1.5 pr-2 text-right">ML Home</th>
-                        <th className="py-1.5 pr-2 text-right">ML Away</th>
-                        <th className="py-1.5 pr-2 text-right">Total</th>
-                        <th className="py-1.5 text-right">Books</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.merged.lines.map((line, i) => (
-                        <tr key={i} className="border-b border-line/50">
-                          <td className="py-1.5 pr-2 font-medium">{line.matchup}</td>
-                          <td className="py-1.5 pr-2">
-                            <span
-                              className={`lb-chip text-[10px] ${
-                                line.source === 'both'
-                                  ? 'bg-accent-soft text-masters'
-                                  : 'bg-ink/5 text-ink-muted'
-                              }`}
-                            >
-                              {line.source}
-                            </span>
-                          </td>
-                          <td className="py-1.5 pr-2 text-right tabular-nums">
-                            {line.moneyline?.home != null ? (
-                              <span className={line.moneyline.home > 0 ? 'text-good' : ''}>
-                                {line.moneyline.home > 0 ? '+' : ''}{line.moneyline.home}
-                              </span>
-                            ) : '—'}
-                          </td>
-                          <td className="py-1.5 pr-2 text-right tabular-nums">
-                            {line.moneyline?.away != null ? (
-                              <span className={line.moneyline.away > 0 ? 'text-good' : ''}>
-                                {line.moneyline.away > 0 ? '+' : ''}{line.moneyline.away}
-                              </span>
-                            ) : '—'}
-                          </td>
-                          <td className="py-1.5 pr-2 text-right tabular-nums">
-                            {line.total != null ? line.total : '—'}
-                          </td>
-                          <td className="py-1.5 text-right tabular-nums">{line.bookCount}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </section>
               </>
             )}
@@ -2865,49 +2811,6 @@ export default function DiagnosticsPage() {
               )}
             </details>
 
-            <details className="lb-card cursor-pointer p-4">
-              <summary className="text-sm font-semibold">
-                Raw Harvester Lines ({data.oddsHarvester.lines.length})
-              </summary>
-              {data.oddsHarvester.lines.length === 0 ? (
-                <p className="mt-2 text-sm text-ink-muted">No lines from OddsHarvester.</p>
-              ) : (
-                <div className="mt-3 max-h-[400px] overflow-y-auto">
-                  <table className="w-full border-collapse text-[12px]">
-                    <thead>
-                      <tr className="border-b border-line text-left text-ink-faint">
-                        <th className="py-1.5 pr-2">Matchup</th>
-                        <th className="py-1.5 pr-2">Books</th>
-                        <th className="py-1.5 pr-2 text-right">Best ML</th>
-                        <th className="py-1.5 text-right">Live</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.oddsHarvester.lines.map((line, i) => (
-                        <tr key={i} className="border-b border-line/50">
-                          <td className="py-1.5 pr-2 font-medium">{line.matchup}</td>
-                          <td className="py-1.5 pr-2 text-ink-muted">
-                            {line.bookmakers.map((b) => b.name).join(', ')}
-                          </td>
-                          <td className="py-1.5 pr-2 text-right tabular-nums">
-                            {line.bookmakers[0]?.homeOdds != null
-                              ? `${line.bookmakers[0].homeOdds > 0 ? '+' : ''}${line.bookmakers[0].homeOdds}`
-                              : '—'}
-                          </td>
-                          <td className="py-1.5 text-right">
-                            {line.liveScore
-                              ? `${line.liveScore.away}–${line.liveScore.home}`
-                              : '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </details>
-
-
             {/* Environment */}
             <details className="lb-card cursor-pointer p-4">
               <summary className="text-sm font-semibold">Environment</summary>
@@ -2936,6 +2839,50 @@ export default function DiagnosticsPage() {
           </>
         ) : null}
       </main>
+
+      {showNhlNbaResumeModal ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setShowNhlNbaResumeModal(false)}
+          role="presentation"
+        >
+          <div
+            className="lb-card flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden shadow-pop"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="nhl-nba-resume-title"
+          >
+            <div className="flex items-center justify-between border-b border-line p-4">
+              <h2 id="nhl-nba-resume-title" className="text-sm font-semibold">NHL/NBA verification — resume instructions</h2>
+              <button
+                type="button"
+                onClick={() => setShowNhlNbaResumeModal(false)}
+                className="text-ink-faint hover:text-ink"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4">
+              <pre className="whitespace-pre-wrap text-[12px] leading-relaxed text-ink-muted">{NHL_NBA_RESUME_PROMPT}</pre>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-line p-3">
+              {nhlNbaPromptCopied ? <span className="text-[12px] text-good">Copied</span> : null}
+              <button
+                type="button"
+                onClick={() => copyResumePromptToClipboard(NHL_NBA_RESUME_PROMPT, () => {
+                  setNhlNbaPromptCopied(true);
+                  setTimeout(() => setNhlNbaPromptCopied(false), 2000);
+                })}
+                className="lb-btn-primary rounded-md bg-masters px-3 py-1.5 text-[12px] font-semibold text-white"
+              >
+                Copy prompt
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

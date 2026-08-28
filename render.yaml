@@ -34,6 +34,12 @@ services:
         sync: false
       - key: PROPLINE_2_KEY
         sync: false
+      # CFB's X-signal (Phase 3, 2026-08-27) — same CFBD account the TS
+      # side (lib/sports/cfb/cfbd.ts) already uses, user-confirmed reuse
+      # rather than a second key. Set the same value here in Render's
+      # dashboard.
+      - key: CFBD_API_KEY
+        sync: false
 
   # Real gap this closes: the worker above going fully silent for 4 real
   # days (2026-08-22 -> 2026-08-26, a hang inside a job that never crashed,

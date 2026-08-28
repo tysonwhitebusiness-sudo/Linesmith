@@ -14,9 +14,19 @@ import { NextResponse, type NextRequest } from 'next/server';
  * win/loss record (public scoreboard data, same posture as `pick_history`),
  * not this user's slip. Confirmed by reading the route: it calls
  * `gamePickRecord`/`listGamePickHistory`, neither of which takes a userId.
+ *
+ * `/api/picks/props` and `/api/picks/rare-markets` (Phase 6 of docs/daily-
+ * picks-full-model-build-2026-08-27.md) are the same real posture — both
+ * call `readTodaysPropCandidates`, a plain `pick_history` read with no
+ * userId, same public-scoreboard-data shape as game-history above.
+ * `/api/picks/bankroll` (Phase 7) is the same again — gamesPnlForSport/
+ * propsPnlForSport aggregate game_picks/pick_history, no userId.
+ * `/api/picks/model-data` (2026-08-27, Scan-table Score-column fix) is the
+ * same posture again — readTodaysPropCandidates with no dimension filter,
+ * no userId.
  */
-const PROTECTED_API_PREFIXES = ['/api/picks', '/api/bets', '/api/watchlist'];
-const PROTECTED_API_EXCLUDE = ['/api/picks/game-history'];
+const PROTECTED_API_PREFIXES = ['/api/picks', '/api/bets', '/api/watchlist', '/api/tracked-lines'];
+const PROTECTED_API_EXCLUDE = ['/api/picks/game-history', '/api/picks/props', '/api/picks/rare-markets', '/api/picks/bankroll', '/api/picks/model-data'];
 const PROTECTED_PAGE_PREFIXES = ['/bets', '/bet/'];
 
 /**
@@ -104,6 +114,7 @@ export const config = {
     '/api/picks/:path*',
     '/api/bets/:path*',
     '/api/watchlist/:path*',
+    '/api/tracked-lines/:path*',
     '/bets/:path*',
     '/bet/:path*',
     '/api/diagnostics/:path*',

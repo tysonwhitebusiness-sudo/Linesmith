@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useSnapshot } from '@/components/useSnapshot';
 import { useSlip } from '@/components/useSlip';
 import { useGameLines } from '@/components/useGameLines';
+import { usePickHistoryModelData, needsModelDataMerge, mergeModelData } from '@/components/usePickHistoryModelData';
 import { TopBar } from '@/components/TopBar';
 import { GamesStrip } from '@/components/GamesStrip';
 import { PlayerDetail } from '@/components/PlayerDetail';
@@ -32,6 +33,13 @@ export default function NflPlayerDetailPage() {
   const odds = useGameLines(sport, snapshot?.fetchedAt ?? null);
   const [slipOpen, setSlipOpen] = useState(false);
 
+  // PlayerDetail Score/Edge fix (Phase 1 of docs/scan-playerdetail-parity-
+  // gameplan-2026-08-27.md) — same real merge Scan's AppShell.tsx uses,
+  // applied here since this page fetches its own candidate list
+  // independently rather than sharing AppShell's.
+  const shouldMergeModelData = needsModelDataMerge(sport);
+  const modelData = usePickHistoryModelData(sport, snapshot?.fetchedAt ?? null, shouldMergeModelData);
+
   // See the MLB player page's identical block for why this exists.
   const [detailReady, setDetailReady] = useState(false);
   useEffect(() => {
@@ -51,8 +59,9 @@ export default function NflPlayerDetailPage() {
   // two games' dimensions under the same market tabs (which produced
   // duplicate-key market tabs before this scoping existed).
   const mine = useMemo(() => {
-    const all = (snapshot?.candidates ?? []).filter((c) => c.subjectId === playerId);
+    let all = (snapshot?.candidates ?? []).filter((c) => c.subjectId === playerId);
     if (all.length === 0) return all;
+    if (shouldMergeModelData) all = mergeModelData(all, modelData.rowsByKey);
     const kickoffByGamePk = new Map(games.map((g) => [String(g.gamePk), g.firstPitch]));
     const soonestGamePk = [...new Set(all.map((c) => String((c.subjectMeta as Record<string, unknown> | undefined)?.gamePk)))]
       .sort((a, b) => {
@@ -62,7 +71,7 @@ export default function NflPlayerDetailPage() {
         return Date.parse(da) - Date.parse(db);
       })[0];
     return all.filter((c) => String((c.subjectMeta as Record<string, unknown> | undefined)?.gamePk) === soonestGamePk);
-  }, [snapshot, playerId, games]);
+  }, [snapshot, playerId, games, shouldMergeModelData, modelData.rowsByKey]);
 
   const gamePk = useMemo(() => {
     const meta = mine[0]?.subjectMeta as Record<string, unknown> | undefined;
