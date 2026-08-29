@@ -128,6 +128,25 @@ def _from_log_odds(z: float) -> float:
     return 1 / (1 + math.exp(-z))
 
 
+# Task 4.12 (P3 M4). The starter blend used a hand-set 50/50 between two
+# quantities on different denominators, and these two constants are what
+# replace it — each is a physical fact about baseball, not a tuning knob.
+#
+# A modern MLB starter averages a little over five innings. That fraction is
+# exactly the weight the blend should carry, because it is the share of the
+# game the starter is actually responsible for; the rest belongs to the
+# bullpen, whose contribution is already inside the team's own per-game rate.
+_STARTER_INNINGS_PER_START = 5.2
+_STARTER_INNINGS_SHARE = _STARTER_INNINGS_PER_START / 9.0
+
+# ERA counts EARNED runs only; a team's runs-per-game counts all of them.
+# League-wide, unearned runs are roughly 7-8% of total runs scored, so an ERA
+# has to be grossed up before it can be compared with, or blended into, a
+# total-runs rate. Without this the blend systematically under-predicts scoring
+# in proportion to how much weight the starter carries.
+_EARNED_TO_TOTAL_RUNS = 1.075
+
+
 def _blend_with_starter_era(team_rate_per_game: float, starter: OpposingStarter | None) -> float:
     """Blends a team's own season rate toward a starting pitcher's ERA once
     they've thrown enough starts to mean something. Used two ways: a team's
@@ -139,7 +158,25 @@ def _blend_with_starter_era(team_rate_per_game: float, starter: OpposingStarter 
     runs rate a full box score would give."""
     if starter is None or starter.era is None or starter.starts < MIN_STARTS_FOR_GAME_MODEL:
         return team_rate_per_game
-    return team_rate_per_game * 0.5 + starter.era * 0.5
+    # Task 4.12 (P3 M4) — the weight is now the starter's real share of the
+    # game, and the units are reconciled before blending.
+    #
+    # The old form was `team_rate * 0.5 + era * 0.5`. Those are different
+    # quantities on different denominators: runs per GAME (all pitchers, earned
+    # and unearned) against earned runs per NINE INNINGS for one pitcher who
+    # throws about five and a half of them. Adding them 50/50 treats an ERA as
+    # though it described a whole game. The error was invisible rather than
+    # absent only because both numbers happen to sit near 4.3.
+    #
+    # Now: gross the ERA up to total runs, express it over the innings the
+    # starter actually pitches, and let the team's own rate cover the rest of
+    # the game — which is what the bullpen's contribution already is. The
+    # weights sum to 1 and each one means something.
+    starter_total_runs_per_nine = starter.era * _EARNED_TO_TOTAL_RUNS
+    return (
+        starter_total_runs_per_nine * _STARTER_INNINGS_SHARE
+        + team_rate_per_game * (1.0 - _STARTER_INNINGS_SHARE)
+    )
 
 
 @dataclass

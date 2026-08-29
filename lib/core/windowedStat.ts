@@ -278,6 +278,17 @@ export interface Delta {
 /**
  * How far an average sits from the line it is being measured against.
  *
+ * `absolute` is `average - line`. `percent` is `absolute / |line|` — the
+ * DENOMINATOR IS ABSOLUTE (task 4.12, P3 L2). An earlier version of this
+ * comment documented it as `(average - line) / line`, which the code has never
+ * done, and the code is the correct one: dividing by a signed line would flip
+ * the sign of the percentage for a negative line (a spread of -1.5), so
+ * "10% better" would read as "10% worse" for exactly the markets where a
+ * negative line is normal. Fixed the comment, not the code.
+ *
+ * `percent` is null when `line` is 0, since a percentage of nothing has no
+ * meaning.
+ *
  * Returns null when the window is insufficient — a delta computed from a
  * number we refused to show would smuggle that number back onto the screen.
  */

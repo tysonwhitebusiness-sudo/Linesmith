@@ -119,11 +119,40 @@ function fromLogOdds(z: number): number {
   return 1 / (1 + Math.exp(-z));
 }
 
+/**
+ * Task 4.12 (P3 M4). These replace a hand-set 50/50 between two quantities on
+ * different denominators. Each is a physical fact about baseball, not a knob.
+ *
+ * A modern MLB starter averages a little over five innings — exactly the weight
+ * the blend should carry, since it is the share of the game the starter is
+ * responsible for. The rest belongs to the bullpen, already inside the team's
+ * own per-game rate.
+ */
+const STARTER_INNINGS_PER_START = 5.2;
+const STARTER_INNINGS_SHARE = STARTER_INNINGS_PER_START / 9;
+/**
+ * ERA counts EARNED runs only; runs-per-game counts all of them. League-wide,
+ * unearned runs are roughly 7-8% of total, so an ERA must be grossed up before
+ * being blended into a total-runs rate — otherwise the blend under-predicts
+ * scoring in proportion to how much weight the starter carries.
+ */
+const EARNED_TO_TOTAL_RUNS = 1.075;
+
 function blendWithStarterEra(teamRatePerGame: number, starter: OpposingStarter | null): number {
   if (!starter || starter.era == null || starter.starts < MIN_STARTS_FOR_GAME_MODEL) {
     return teamRatePerGame;
   }
-  return teamRatePerGame * 0.5 + starter.era * 0.5;
+  // Task 4.12 (P3 M4) — the weight is the starter's real share of the game, and
+  // the units are reconciled before blending. The old form added runs per GAME
+  // to earned runs per NINE INNINGS 50/50, treating an ERA as though it
+  // described a whole game; the error was invisible rather than absent only
+  // because both numbers sit near 4.3. Kept identical to
+  // python-odds-service/src/predict/game_model.py.
+  const starterTotalRunsPerNine = starter.era * EARNED_TO_TOTAL_RUNS;
+  return (
+    starterTotalRunsPerNine * STARTER_INNINGS_SHARE +
+    teamRatePerGame * (1 - STARTER_INNINGS_SHARE)
+  );
 }
 
 export interface MoneylineInput {

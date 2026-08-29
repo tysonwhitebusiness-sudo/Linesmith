@@ -7,6 +7,7 @@ not an entry." So each item gets its own test group here.
 Covered so far:
   P3 L1  poisson_over_probability treated an integer line as a LOSS
   P3 L5  the Elo sort comparator was not a total order
+  P3 M4  the starter blend mixed two units at a hand-set 50/50
   P3 M5  home-field/form were ADDED to a probability instead of log-odds
   P3 M6  compute_league_rate returned a fabricated 0.5 on no sample
 
@@ -22,6 +23,10 @@ from dataclasses import dataclass
 sys.path.insert(0, "src")
 
 from predict.game_model import (  # noqa: E402
+    _EARNED_TO_TOTAL_RUNS,
+    _STARTER_INNINGS_SHARE,
+    OpposingStarter,
+    _blend_with_starter_era,
     _from_log_odds,
     _poisson_pmf,
     _to_log_odds,
@@ -209,6 +214,60 @@ def test_a_real_sample_still_computes():
           compute_league_rate(sample, "points", 10.5) is not None, True)
 
 
+
+# ---------------------------------------------------------------------------
+# P3 M4
+# ---------------------------------------------------------------------------
+
+def test_starter_blend_weights_sum_to_one_and_mean_something():
+    """The old blend was `team_rate * 0.5 + era * 0.5` — runs per GAME added to
+    earned runs per NINE INNINGS, as if an ERA described a whole game. The new
+    weight is the share of the game the starter actually pitches, so it means
+    something rather than being tuned."""
+    print("\nP3 M4: the starter weight is a real innings share, not 0.5")
+    close("starter innings share is 5.2/9", _STARTER_INNINGS_SHARE, 5.2 / 9.0, eps=1e-9)
+    check("weights sum to exactly 1",
+          round(_STARTER_INNINGS_SHARE + (1 - _STARTER_INNINGS_SHARE), 12), 1.0)
+    check("and it is NOT the old 0.5", abs(_STARTER_INNINGS_SHARE - 0.5) > 0.05, True)
+
+
+def test_era_is_grossed_up_to_total_runs():
+    """ERA is EARNED runs; a team's runs-per-game includes unearned. Blending
+    one into the other without converting under-predicts scoring in proportion
+    to the starter's weight."""
+    print("\nP3 M4: ERA is converted to total runs before blending")
+    check("gross-up factor is above 1", _EARNED_TO_TOTAL_RUNS > 1.0, True)
+    # A league-average team facing a league-average ERA should expect slightly
+    # MORE than that ERA's worth of runs, precisely because ERA omits unearned.
+    # The old form returned exactly 4.30 here, which quietly asserted that
+    # earned runs are all the runs.
+    blended = _blend_with_starter_era(4.30, OpposingStarter(era=4.30, starts=20))
+    check("a 4.30 team facing a 4.30 ERA expects MORE than 4.30", blended > 4.30, True)
+    check("the OLD form returned exactly 4.30", round(4.30 * 0.5 + 4.30 * 0.5, 6), 4.30)
+
+
+def test_starter_quality_is_not_compressed():
+    """The 50/50 halved the spread between a good and a bad starter. Weighting
+    by real innings share keeps more of that signal."""
+    print("\nP3 M4: good and bad starters stay further apart")
+    good = _blend_with_starter_era(4.30, OpposingStarter(era=2.50, starts=20))
+    bad = _blend_with_starter_era(4.30, OpposingStarter(era=7.00, starts=20))
+    old_good, old_bad = 4.30 * 0.5 + 2.50 * 0.5, 4.30 * 0.5 + 7.00 * 0.5
+    check("new spread exceeds the old", (bad - good) > (old_bad - old_good), True)
+    check("a better starter still means fewer runs", good < bad, True)
+    print(f"       new {good:.3f}..{bad:.3f} (spread {bad - good:.3f}) | "
+          f"old {old_good:.3f}..{old_bad:.3f} (spread {old_bad - old_good:.3f})")
+
+
+def test_blend_declines_without_a_usable_starter():
+    """Unchanged behaviour: no starter, no ERA, or too few starts falls through
+    to the team's own rate rather than inventing one."""
+    print("\nP3 M4: no usable starter falls through untouched")
+    check("no starter", _blend_with_starter_era(4.30, None), 4.30)
+    check("no ERA", _blend_with_starter_era(4.30, OpposingStarter(era=None, starts=30)), 4.30)
+    check("too few starts", _blend_with_starter_era(4.30, OpposingStarter(era=3.0, starts=1)), 4.30)
+
+
 def main() -> bool:
     test_integer_line_is_a_push_not_a_loss()
     test_half_integer_lines_are_untouched()
@@ -219,6 +278,10 @@ def main() -> bool:
     test_log_odds_round_trip()
     test_no_sample_returns_none_not_a_coin_flip()
     test_a_real_sample_still_computes()
+    test_starter_blend_weights_sum_to_one_and_mean_something()
+    test_era_is_grossed_up_to_total_runs()
+    test_starter_quality_is_not_compressed()
+    test_blend_declines_without_a_usable_starter()
     print(f"\n{'ALL PASS' if _failures == 0 else f'{_failures} FAILURE(S)'}")
     return _failures == 0
 
