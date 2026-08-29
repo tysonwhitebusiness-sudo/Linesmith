@@ -6,12 +6,18 @@
 # rows. So CI runs only what is genuinely hermetic, and the split is explicit
 # below rather than implied by whatever happened to pass.
 #
-# The ten Python scripts listed were not classified by reading them — greping
-# for `httpx`/`get_pool` misclassified several. They were each run with
-# DATABASE_URL unset and kept only if they passed. Anything needing a database,
-# the network, ~25-50 minutes, or a package that exists only on the scraper
-# laptop stays local and is listed in the `local-only` step so the boundary is
-# visible in the same file as the tests that do run.
+# HOW THE NINE WERE CHOSEN, including the one that got it wrong. Greping for
+# httpx/get_pool misclassified several, so each candidate was run with
+# DATABASE_URL unset and kept if it passed. That check was NOT SUFFICIENT:
+# test_game_context_roster passed it and then failed in CI, because it reads
+# real Postgres snapshots and only degrades to warnings locally. Its own
+# docstring says so in the first paragraph — "against the REAL,
+# already-populated Postgres snapshots" and "Not a permanent CI-style suite" —
+# which is a reminder that reading the file beats inferring from behaviour.
+#
+# Anything needing a database, the network, ~25-50 minutes, or a package that
+# exists only on the scraper laptop stays local, and is listed in the last step
+# so the boundary is visible beside the tests that do run.
 name: CI
 
 on:
@@ -66,8 +72,6 @@ jobs:
       # run having tested nothing.
       - name: test_entity_resolution
         run: python -u src/test_entity_resolution.py
-      - name: test_game_context_roster
-        run: python -u src/test_game_context_roster.py
       - name: test_leakage_guard
         run: python -u src/test_leakage_guard.py
       - name: test_mlb_prop_grading
@@ -87,7 +91,7 @@ jobs:
       - name: Not run here, and why
         run: |
           echo "Deliberately excluded from CI (Q20 — no database credentials in Actions):"
-          echo "  needs a live database:  test_calibration, test_elo_and_pitcher_game_score,"
+          echo "  needs a live database:  test_game_context_roster, test_calibration, test_elo_and_pitcher_game_score,"
           echo "                          test_game_pick_lock, test_game_sim_cache,"
           echo "                          test_odds_lines_cycle, test_staking, test_write_prop_odds,"
           echo "                          test_mlb_bradley_terry"
