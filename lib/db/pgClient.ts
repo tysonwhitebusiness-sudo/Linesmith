@@ -218,6 +218,24 @@ function compile(sql: string, params: SqlParams): { text: string; values: any[] 
   if (params === undefined) return { text: sql, values: [] };
   if (Array.isArray(params)) {
     const { text, count } = scanPlaceholders(sql);
+    // Native `$n` SQL, passed straight through. Most callers here use `?`, but
+    // a few write Postgres's own positional form — and under the previous
+    // compiler that worked BY ACCIDENT: the blind `?` replace found nothing to
+    // do and handed pg a string it already understood. The count assertion
+    // below would otherwise reject those as 0-placeholders-with-N-parameters.
+    //
+    // Found exactly that way: this assertion failed on withJobLock's own
+    // job_locks INSERT immediately after 3.8 shipped, which is the assertion
+    // doing its job — a silent behaviour that nobody had chosen became loud.
+    if (count === 0 && /\$\d/.test(sql)) {
+      const highest = Math.max(0, ...[...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
+      if (highest !== params.length) {
+        throw new Error(
+          `compile(): SQL uses native $n placeholders up to $${highest} but ${params.length} parameter(s) were supplied. SQL: ${sql.slice(0, 200)}`,
+        );
+      }
+      return { text: sql, values: params };
+    }
     if (count !== params.length) {
       // Loud beats wrong. A mismatch means the query and its parameters have
       // drifted apart, and binding whatever happens to line up is how this
