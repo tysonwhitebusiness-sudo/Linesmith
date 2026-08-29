@@ -1,192 +1,221 @@
 # CURRENT — pick up here
 
-> Handoff file for switching accounts mid-work. **Rewritten, not appended.**
-> If it disagrees with anything else, trust `docs/audit-remediation-plan.md` §11
-> and `git log` — those are the record; this is just the baton.
+**Phase 5: COMPLETE, gate PASSED** (commit `f8e60b5`).
+**Phase 4: all 13 tasks done. Gate IN PROGRESS — G7 FAILED and is being fixed.**
 
-**Prompt to paste into a new account:**
-
-```
-Read docs/CURRENT.md and continue from there.
-```
-
-**THE RULE THAT KEEPS THIS FILE USEFUL: at ~92% context usage, stop.** Take on
-no new work, finish or checkpoint what is open, and rewrite this file, then
-commit and push.
+The Phase 4 gate is not passed. It found three real defects that the phase's
+own VERIFYs missed, two of which needed operator decisions (both answered
+2026-08-29, recorded as Q37/Q38 below). Do not write a Phase 4 sign-off until
+§3's remaining steps are done and the gate has been re-run **from G1**, which
+is what the plan's Rule 5 requires after any failed item.
 
 ## The documents, in reading order
 
-1. **`docs/audit-remediation-plan.md`** — §0 (working rules, standing decisions
-   **Q1–Q36**, the G1–G8 gate) and the phase you are working.
-2. **§11** — the phase log. Phases 0, 1, 2, 3, **5** all have PASSED gate
-   entries. Phase 4 is logged task-by-task and its gate has not run.
-3. **`docs/table-ownership.md`** · 4. **`CLAUDE.md`** · 5. `docs/audit-phase-*.md`
+1. `CLAUDE.md` — conventions. Read the caching and table-ownership sections.
+2. `docs/audit-remediation-plan.md` — the plan. §0 holds standing decisions
+   Q1–Q38; §11 is the phase log and the only place a task counts as done.
+3. This file — where the work actually is.
 
-**Last updated:** 2026-08-29 ~14:05Z, mid-Phase-4.
-**Repo state:** clean, pushed. Worker live on `3702166`.
-
----
+Trust `§11` and `git log` over this file if they disagree.
 
 ## 1. Where we are
 
-**Phases 0, 1, 2, 3, 5 COMPLETE — all gates PASSED.**
-**Phase 4 IN PROGRESS.** Every code task is done. **Two decisions are waiting
-on the operator** (4.8 and 4.12's P3 M2), and then the gate. Nothing running.
+Phase 5 is signed off. Phase 4's thirteen tasks are all implemented, committed,
+pushed, and deployed (worker live on `8582a77`). What is **not** done is the
+gate, and it has already failed once on G7.
 
-Phase 5 finished this session: all 13 tasks, gate G1–G8 passed on the re-run
-after G1 failed once (see §11 — the failure and its diagnosis are the most
-useful thing in that entry).
+### The three things the gate found
 
-### Phase 4 status
-
-| Task | State |
-|---|---|
-| **Q28** market reference for `game_picks` | **DONE** — unblocked 4.2/4.3/4.5 |
-| **4.1** `market_prob` coverage | **DONE** — real causes measured, staleness split |
-| **4.2** market activation gate | **DONE** — built + tested; live sample n=12, see §4 |
-| **4.4** shadow flag | **DONE** — migration + renderer + round-trip proof |
-| **4.7 NBA** | **DONE** — 279,661 rows |
-| **4.7 MLB** | **DONE** — 727,613 rows; survivorship fix quantified |
-| **4.7 tennis** | **DONE** — 271,964 rows (atp + wta) |
-| **4.7 golf** | **DONE — decided NOT to build.** Reasoning in §11 |
-| **4.5** CLV on /diagnostics | **DONE** — job + route + card; found a 5.3 regression |
-| **4.9** split `edge` definitions | **DONE** — 3,852 rows attributed |
-| **4.10** both sides for generic sports | **DONE** — test-verified; live only on soccer (Q34) |
-| **4.11** totals distribution | **DONE** — negative binomial, validated on 24,790 games |
-| **4.6** fade signal | **DONE — measured, not built on**, per 4.6's own instruction |
-| **4.3** Platt calibration | **DONE** — `model_calibration` 0 -> 7 rows, 5 active |
-| **4.8** collapse two MLB game models | **INVESTIGATED — needs your decision**, see §4 |
-| **4.12** model hygiene | **7 of 8** — 8th (M2) measured, left for operator |
-
-## 2. NOTHING IS RUNNING
-
-All three backfills finished cleanly this session. `player_game_history` now:
+**(a) The activation gate did not work.** *(fixed, re-verification running)*
+`scripts/gate/phase-4-weak-model-refused.py` ran the real
+`fit_moneyline_weights` with every feature zeroed — a model that carries no
+information by construction — and it **ACTIVATED**:
 
 ```
-mlb 727,613 · nhl 674,003 · nba 279,661 · cfb 273,649 · nfl 226,629
-soccer_epl 168,493 · tennis_wta 142,152 · soccer_mls 133,892 · tennis_atp 129,812
-golf 0 (deliberate)
+[fit moneyline] beats own baseline: True | market gate: INSUFFICIENT SAMPLE (n=12, need 100)
+  holdout Brier      0.248824
+  baseline holdout   0.260666
+  ACTIVATED          True
+FAIL — a weak model was ACTIVATED
 ```
+
+0.2488 is exactly what a constant predictor at the base rate scores (p≈0.54 →
+0.2484). The zeroed fit learns only an intercept. It "beat its own baseline"
+because **this app's unfitted formula scores worse than knowing nothing does.**
+
+Fixed by adding a third guardrail — beat a constant base-rate predictor, base
+rate taken from the training rows so the holdout is not leaked — to **both**
+markets, and by giving `total` the market gate that 4.2 wired into moneyline
+only. `_base_rate_holdout_brier` in `predict/model_fit.py`.
+
+**(b) MLB totals: the weights and their input disagree.** *(Q37, decided)*
+4.11 switched serving to negative binomial. Every `model_weights` row was
+fitted **2026-08-14 by TypeScript** using Poisson — Python's fit has never
+written a row, because `fit_total_weights` **has no caller anywhere**: no job
+in `JOB_REGISTRY`, no route, no CLI. So `odds_lines_cycle.py:498` feeds a
+negative-binomial P(over) into weights trained on Poisson. Measured gap, up to
+**11 points** at ordinary totals — far above the 3% edge threshold that decides
+which picks surface:
+
+```
+mu    line   Poisson   NegBin    delta
+ 9.0   8.5   0.5443   0.4920   -0.0524
+ 9.5   8.5   0.6082   0.5341   -0.0740
+10.5   8.5   0.7206   0.6106   -0.1100
+```
+
+**Q37 — operator decision 2026-08-29: re-fit in Python, activate only if it
+passes.** Moneyline is unaffected (its feature vector has no Poisson term).
+
+**(c) `shadow` does not gate what 4.4 said it gates.** *(Q38, decided, DONE)*
+The migration claimed "compute, log and grade but never render". True of the
+MLB **home-run** model only — `getRenderableModelWeights` is the single
+enforcement point and exactly one caller uses it. The MLB **game** model
+renders from `mlb_game_model_cache`, which no shadow check touches, and the
+Python worker never branches on the column at all. All three models are flagged
+`shadow=true` while two are on screen.
+
+**Q38 — operator decision 2026-08-29: correct the claim, leave rendering
+alone.** Honouring the flag would pull MLB moneyline and total out of the UI
+entirely; that is a product decision, not a gate's. Done: migration
+`20260829160000_shadow_scope_correction.sql` (applied, comment verified live)
+and two corrected docstrings in `lib/db/client.ts`.
+
+### Gate items already passed (before G7 failed)
+
+G1 (every VERIFY re-run), G2 (tsc clean, build compiled, `npm test` 36/36, 17
+CI Python tests 0 skipped), G3 (live walk — found the `goodBetsRecord` defect,
+fixed in `8582a77`), G4 (findings stop reproducing), G5 (write paths landing,
+44/46 health checks green, 2 pre-existing failures documented), G6 (orphans,
+gathered — see §4). **All of these must be re-run from G1** once (a) and (b)
+are closed, per Rule 5.
+
+## 2. What is running right now
+
+- `scripts/gate/phase-4-weak-model-refused.py`, re-run after the guardrail fix,
+  writing `python-odds-service/weakgate2.log`. **Expected: `PASS — the gate
+  refused it`.** Takes ~35–40 min; it builds the 2023/2024 training set for
+  real. If it still says ACTIVATED, the guardrail did not bind and (a) is not
+  fixed.
+- Two `harvester_scrape.py` Windows scheduled tasks, ~20-min cycle. Normal.
+
+Nothing else. No fit, no backfill.
 
 ## 3. Next actions, in order
 
-**Task 4.7 is fully done — that was the operator's headline ask.** Remaining
-Phase 4 work:
+1. **Wait for `weakgate2.log`.** Confirm it now REFUSES. A pass here is the
+   whole point of (a) — do not accept the code change as its own evidence.
+2. **Run the total re-fit** (Q37). Script is written and ready:
+   ```bash
+   cd python-odds-service && ./.venv/Scripts/python.exe -u ../scripts/gate/phase-4-refit-total.py
+   ```
+   Train 2010–2023, holdout 2024–2025 (`historical_odds` has `total_line` on
+   >99.5% of rows every season from 2010). **Do not run it concurrently with
+   the weak gate** — shared 15-connection pooler. Activation is not assumed: if
+   it fails any of the three guardrails it is written unactivated and v8 stays
+   live, which is a legitimate outcome, not a failure of the task.
+3. **Commit and push** the guardrail fix, the shadow correction, the re-fit
+   script, and the stale-docstring fixes. Touches `python-odds-service/` →
+   **deploy and confirm the live commit**.
+4. **Re-run the whole gate from G1** (Rule 5). Not just the failed item.
+5. **§11 sign-off** with G1–G7 raw outputs and an honest "known not done".
 
-**TWO OPERATOR DECISIONS ARE BLOCKING, and neither is a code problem:**
+## 4. G6 — orphans, gathered
 
-1. **4.8** — delete the TS unfitted game-model fallback? Measured: 17 of 19 of
-   today's MLB games render Python's fitted model from cache; the other ~2 fall
-   back to the unfitted `computeMoneylineModel`, indistinguishably. Deleting the
-   fallback is the Q13-consistent answer, but `GameDetail.tsx:1603` derives the
-   edge badges from it, so those badges vanish for ~11% of games — a visible
-   product change. Full reasoning and the alternatives are in §11.
-   **Q25 governs the second half** (snapshot, then re-grade), deliberately not
-   started until the first half is decided.
-2. **4.12's P3 M2** — Prop Score "re-scale, justify, or drop". All three change
-   what a user sees. Measured on 33,829 rows; numbers in §11 and §4 below.
+Nothing here is undocumented, but each needs its owner recorded in the sign-off:
 
-3. Then the **Phase 4 gate**6. Then the **Phase 4 gate**7. Then the **Phase 4 gate** (G1-G8 plus its own section). Note its extra
-   requirements: the activation gate must refuse a real bad model (done —
-   `test_market_gate.py`), the shadow round-trip must be shown in both
-   directions (done — `scripts/gate/phase-4-shadow-roundtrip.mjs`), and every
-   4.12 item needs its own line.
-
-## 4. What Phase 4 has learned — read before 4.3 or 4.6
-
-**The plan's Phase 4 text is stale in two places, both measured:**
-
-- **4.1's "resolve_candidate_edge has never run" is wrong.** It runs, from
-  `prop_pick_history.py:43`, `generic_prop_score.py:188` and
-  `generic_rare_markets.py:137`. It returns None almost always instead.
-- **The two causes 4.1 names are not the dominant ones.** Measured: staleness
-  is (5,877 same-book two-sided pairs exist; **2** are inside the 30-minute
-  bound at any instant, because `refreshTier1` rewrites ~238 rows per cycle
-  against a 49,000-row table). Fixed by splitting the display bound from the
-  reference bound. Second cause is **under-side scarcity** — 43,620 overs
-  against 5,113 unders, `propline_2` supplying **zero** unders — which no code
-  fixes and which is exactly why **Q26** exists.
-
-**4.2 will run on a small sample and that must be stated, not hidden.**
-Q28 built the market reference and it works (MLB 91 values, real books,
-pinnacle 22). But `game_odds_book_lines` is a current-state table, so only
-recent games still have lines to reference: **graded MLB picks with both a
-model and a market probability = 12, of 125 graded.** `game_odds_history`
-covers only 41 of 176 MLB picks. Q24 says a model that loses to the market is
-deactivated — at n=12 the gate cannot discriminate, so **run it, report the
-number and its uncertainty, and do not deactivate on an underpowered sample.**
-Record exactly that.
-
-**A correction carried into this file** (it was wrong here before): bookmaker
-canonicalisation being "part of why 4.1's resolution rate is 18%" is true for
-game lines and **false for props** — `prop_odds` has 17 bookmakers and 17
-lowercased bookmakers, so its casing was never split. 5.3 is load-bearing for
-`game_odds_book_lines` and Q28's reference; it is not a 4.1 fix.
+- **Golf `player_game_history` importer — DECIDED, NOT BUILT** (§11 4.7).
+  Evidence-backed: golf is not in the generic prop pipeline, every reader of
+  that table serves the generic pipeline, the schema has no opponent/team/home
+  concept, and golf's own four tables already hold the data. Re-opening it is a
+  schema question ("what is a golf event"), not an ingestion one.
+- **All 21 `model_weights` rows are `shadow=true`**, including the three
+  `active=true` ones. Deliberate (Q33, default true). Graduation is a
+  one-column operator act gated on Q6/Q24 — not owned by a later phase.
+  **Scope caveat (c) above applies: the flag only binds the home-run model.**
+- **`model_calibration`: 5 of 7 active.** `runs` and `total-bases` were refused
+  because they lost to baseline holdout log loss (0.6705 vs 0.6702; 0.6085 vs
+  0.6040). Correct refusals — and an independent instance of an activation gate
+  rejecting a real model, unlike (a).
+- **`fit_total_weights` / `fit_moneyline_weights` have no caller in Python.**
+  Found by (b). Step 3.2 above adds one for totals; moneyline still has none,
+  so `/api/props/fit-weights` (TypeScript) remains the only way to fit it.
+  `model_weights` is a documented dual-writer (`docs/table-ownership.md` row
+  26, hand-invoked admin category) — this is not a new violation of Q13, but it
+  does mean "model math lives in Python" is still aspirational for *fitting*.
 
 ## 5. Things that will bite again
 
-**A NEW LESSON THIS PHASE PAID FOR, and the most transferable one:**
-**a dead consumer cannot report that its input vanished.** Task 5.3 renamed
-every bookmaker in `game_odds_history`; `clv_backtest.py`'s reference book was
-hardcoded as `"LowVig.ag"` and silently matched zero rows afterwards. Nothing
-failed, no test went red, no health check complained — because the module had
-no caller. It surfaced only when 4.5 wired it to the dashboard, at which point
-it went from 0 of 337 picks matched to 60. **After any migration that renames
-values, grep the tree for hardcoded instances of the OLD value, including in
-code nothing currently calls.**
+**THE LESSON THIS GATE PAID FOR, and the most transferable one yet:**
+**a guardrail that has never rejected anything is not known to work — and
+"beats its own baseline" is not a guardrail if the baseline is worse than a
+constant.** The activation gate had been shipped, reviewed, and described in
+three comments as a working protection. It took running it against a
+deliberately worthless model to find that it approved one. The plan's own
+instruction — "a gate that has never rejected anything is not known to work" —
+was right, and it was right about a gate I had already written.
 
-- **Fault injection is easy to fake — four occurrences now.** The newest:
+**The one before it: a dead consumer cannot report that its input vanished.**
+5.3 renamed every bookmaker in `game_odds_history`; `clv_backtest.py`'s
+reference book was hardcoded `"LowVig.ag"` and silently matched zero rows.
+Nothing failed — the module had no caller. Surfaced only when 4.5 wired it to
+the dashboard: 0 of 337 picks → 60. **After any migration that renames values,
+grep the tree for the OLD value, including in code nothing currently calls.**
+Note (b) above is the same shape a third time: `fit_total_weights` had no
+caller, so nothing could report that its output had stopped matching serving.
+
+- **Fault injection is easy to fake — four occurrences.**
   `scripts/gate/phase-5-constraints.mjs` first reported all 17 violations
-  "rejected", and every one was rejected by a `NOT NULL` on
-  `fetched_at`/`category`, not by any CHECK constraint. Nothing was being
-  tested. Caught only because the script inserts a known-good CONTROL row per
-  table and asserts `e.constraint` equals the specific constraint under test.
+  "rejected", every one by a `NOT NULL`, not by any CHECK. Caught only by
+  inserting a known-good CONTROL row per table and asserting `e.constraint`.
   **Never accept "the operation failed" as evidence — assert WHY.**
+- **`ps aux | grep` in Git Bash does not show command lines.** Cost a wrong
+  "the process died" call this session; a first weak-gate run was alive the
+  whole time and ended up racing its own replacement. Use
+  `Get-CimInstance Win32_Process` and read `CommandLine`.
+- **Backgrounding `cd X && cmd &` backgrounds the `cd` too** — following
+  commands run in the old directory.
 - **Reverting a fix and re-running its test can prove nothing.** Reverting
-  `mlb_game_lines.py` produced an ImportError, not a failure. The real
-  counterfactual came from extracting the pre-fix function out of git history
-  and running the same fixture through it.
-- **A deploy does NOT mean every writer runs the new code.** This cost the
-  Phase 5 gate a full G1 failure. Render restarts the worker, but OddsHarvester
-  runs as Windows scheduled tasks (`LinesmithOddsHarvester*`, ~20-min cycle) and
-  Python binds imports at process start, so a run begun before your change keeps
-  writing old behaviour for up to 20 minutes. **Any migration that normalises a
-  column needs re-applying after those processes cycle**
+  `mlb_game_lines.py` produced an ImportError, not a failure.
+- **A deploy does NOT mean every writer runs the new code.** Cost the Phase 5
+  gate a full G1 failure. OddsHarvester runs as Windows scheduled tasks
+  (~20-min cycle) and Python binds imports at process start. **Any migration
+  normalising a column needs re-applying after those processes cycle**
   (`20260829110000_canonical_bookmaker_residue.sql` exists only for this).
-- **The plan's own task text goes stale, repeatedly.** This session: 5.6 was
-  already fixed; 5.1's alias table was real but incomplete and missed the actual
-  cause; 5.4's `side IN ('over','under')` would have rejected 449 legitimate
-  `'other'` rows; 4.1's premise is wrong. **Measure before implementing.**
+- **The plan's own task text goes stale, repeatedly.** 5.6 was already fixed;
+  5.1's alias table missed the actual cause; 5.4's `side IN ('over','under')`
+  would have rejected 449 legitimate `'other'` rows; 4.1's premise is wrong.
+  **Measure before implementing.**
 - **`withJobLock` is a LEASE TABLE, not an advisory lock.**
 - **Postgres UNIQUE treats NULLs as distinct.**
-- **A long heredoc breaks this shell** (>~120 lines → "unexpected EOF"). Use the
-  Write tool for long files.
+- **A long heredoc breaks this shell** (>~120 lines → "unexpected EOF").
 - **`cd` persists between Bash calls.** Use absolute paths.
-- **Git Bash `/tmp` is not Python's `/tmp`.** Bit me again this session.
+- **Git Bash `/tmp` is not Python's `/tmp`.**
 - **Stale `.next/types` break `tsc` after deleting a route** — `rm -rf .next/types`.
 
 ## 6. Operational knowledge
 
-- **DB access:** temp `.mjs` in the repo root, `node` it, delete after. `:6543`
-  is the transaction pooler; use `:5432` for DDL.
-- **Tests:** `npm test` (**36**) and `python -u src/test_x.py` from
-  `python-odds-service/`. **13** hermetic Python tests, all now in
-  `.github/workflows/ci.yml`, one step each.
-- **Gate scripts:** `node scripts/gate/phase-5-constraints.mjs` (every CHECK
-  tripped deliberately) and `node scripts/gate/phase-5-budget-race.mjs` (the
-  5.12 race, both directions, with the counterfactual).
-- **Render:** worker `srv-da36bm2bkg8c73fqrdeg`, `autoDeploy: no` — after any
-  push touching `python-odds-service/`, POST a deploy and confirm the live
-  commit. ~90s.
+- **DB access:** temp `.mjs` in the repo root, `node` it. `q*.mjs`, `g*.mjs`,
+  `gate*.mjs`, `runmig.mjs` are gitignored for this. `:6543` is the transaction
+  pooler; `.env.local` has no `DIRECT_URL`, so DDL also goes through `:6543`
+  (it has worked for every migration so far, `COMMENT ON` included).
+- **Tests:** `npm test` (**36**) and `./.venv/Scripts/python.exe -u src/test_x.py`
+  from `python-odds-service/`. **17** hermetic Python tests, one CI step each.
+  There is **no pytest** in the venv — they are standalone scripts.
+- **Gate scripts:** `scripts/gate/phase-5-constraints.mjs`,
+  `phase-5-budget-race.mjs`, `phase-4-shadow-roundtrip.mjs`,
+  `phase-4-weak-model-refused.py`, `phase-4-refit-total.py`.
+- **Render:** worker `srv-da36bm2bkg8c73fqrdeg`, `autoDeploy: no`. After any
+  push touching `python-odds-service/`:
+  `POST /v1/services/$SRV/deploys` with `RENDER_API_KEY` from `.env.local`,
+  then confirm `"status":"live"` on your commit sha. ~90s.
 - **Propline budget:** `propline` 1000/day (MLB), `propline_2` 1000/day
-  (soccer), now genuinely separate. **18 of ~20 authorised propline_2 probe
-  calls spent** capturing `docs/propline-live-capture-20260829.json` — reuse
-  that file rather than re-probing.
+  (soccer), genuinely separate. **18 of ~20 authorised propline_2 probe calls
+  spent** capturing `docs/propline-live-capture-20260829.json` — reuse it.
 - **No `gh` CLI and no GitHub token.** CI via the public Actions API.
 - **Don't `git add -A` blindly** — `docs/discord-community-prompt.md` is the
-  operator's. Use `git add -A -- . ':!docs/discord-community-prompt.md'`.
-  Note: adding a gitignored path to that pathspec makes `git add` exit non-zero
-  and silently skip the commit behind `&&`.
+  operator's. Adding a gitignored path to a pathspec makes `git add` exit
+  non-zero and silently skip the commit behind `&&`.
 
 ## 7. Backup tables outstanding
 
@@ -196,13 +225,22 @@ code nothing currently calls.**
 | `game_odds_book_lines_bookmaker_backup_20260829` | 6,199 | 5.3 |
 | `game_odds_book_lines_quarantine_20260829` | 114 | 5.4 (Q23) |
 | `game_odds_history_bookmaker_backup_20260829` | 47,622 | 5.13 |
+| `pick_history_game_model_backup_20260829` | 3,580 | 4.8 (Q25) |
 
 ## 8. Carried forward / known not done
 
-- **5.1's second VERIFY half is still unconfirmed.** `prop_odds` has not yet
-  gained Propline **batter** rows because `propline` is correctly gated at
-  1000/1000 for 2026-08-29. All 24 live market keys resolve in
-  `test_propline_alt_lines.py`. **After 00:00 UTC run:**
+- **The Phase 4 gate itself.** See §3. It has failed once and must be re-run
+  from G1.
+- **Soccer slate duplicate React key** — `soccer:espn:soccer:222396:anytime-goalscorer:yes`.
+  834 soccer players legitimately have prices for two upcoming fixtures, and
+  the key in `GolfScheduleView.tsx:1244` / `TennisScheduleView.tsx:529` omits
+  `gamePk`, so they collide. **Confirmed pre-existing, not a Phase 4/5
+  regression**: the key last changed 2026-08-27 (`2913d81`), `propline_2`
+  predates the session by 12 days, no soccer file was touched today, and 5.1's
+  aliases are all MLB `batter_`/`pitcher_` markets. One-line fix (add the game
+  id to the key); unowned.
+- **5.1's second VERIFY half is still unconfirmed.** `propline` was correctly
+  gated at 1000/1000 for 2026-08-29. **After 00:00 UTC run:**
   ```sql
   SELECT market_key, count(*) FROM prop_odds
    WHERE provider_id='propline' AND fetched_at > '2026-08-30'
@@ -212,15 +250,12 @@ code nothing currently calls.**
 - **`/diagnostics`, `/bets` and the signed-in walk were never verified** — no
   credentials; creating an account or entering a password is out of bounds.
 - **`refreshSportsGameOddsJob` has not run since 04:38Z**, having hit vendor
-  HTTP 429s. Pre-existing (proven: the 07:00Z sweep recorded the same last-run),
-  unowned.
+  HTTP 429s. Pre-existing, unowned.
 - **`snapshotCacheSize` unhealthy** — 12.6 MB payload against a 10 MB bound.
-- **Sharp coverage 9.08%**, under 5.2's own 10% threshold, so a Pinnacle-class
-  feed is justified by the plan's rule. Recommendation only — **nothing
-  purchased**. Pinnacle currently covers one market of thirteen.
-- **5.9 lowered the ParlayAPI gate by 20%** — soft caps of 800 against a hard
-  1000 were configured and ignored; now they bind. Unset the env vars rather
-  than reverting code if unwanted.
+- **Sharp coverage 9.08%**, under 5.2's own 10% threshold. Recommendation only
+  — **nothing purchased**. Pinnacle covers one market of thirteen.
+- **5.9 lowered the ParlayAPI gate by 20%.** Unset the env vars rather than
+  reverting code if unwanted.
 - **2,380 duplicate observation groups in `game_odds_history`**, revealed not
   created by 5.13. Owner: 6.1.
 - **3.15's two GET-path writers** remain, carried from Phase 3.

@@ -473,6 +473,32 @@ async def market_gate(sport: str, market: str) -> MarketGateResult:
     return MarketGateResult(n=n, model_brier=model_brier, market_brier=market_brier, verdict=verdict)
 
 
+def _base_rate_holdout_brier(train_rows: list, holdout_rows: list) -> float:
+    """Brier of the only model that is never wrong about anything because it
+    never says anything: predict the training base rate, constantly.
+
+    WHY THIS EXISTS (Phase 4 gate, 2026-08-29). The gate ran
+    `fit_moneyline_weights` with every feature zeroed -- a model that carries no
+    information by construction -- and it ACTIVATED. Holdout Brier 0.248824
+    against a baseline of 0.260666. The zeroed fit learns only an intercept,
+    i.e. the base rate, and a constant at p=0.54 scores 0.2484; the app's own
+    unfitted formula scored WORSE than that. So `beats_own_baseline` was true
+    for a model that knew nothing, because the thing it was compared against was
+    worse than knowing nothing.
+
+    The base rate is taken from the TRAINING rows, never the holdout: using the
+    holdout's own base rate would leak the answer into the comparison and make
+    this guardrail weaker than it looks.
+    """
+    from predict.logistic_regression import PredictionRecord
+
+    if not train_rows or not holdout_rows:
+        return 1.0
+    base_rate = sum(r.actual for r in train_rows) / len(train_rows)
+    return brier_score([PredictionRecord(base_rate, r.actual) for r in holdout_rows])
+
+
+
 async def fit_moneyline_weights(client: httpx.AsyncClient, train_seasons: list[int], holdout_seasons: list[int]) -> MoneylineFitSummary:
     """`holdout_seasons` are held out entirely — never touch the fit, only
     score it — and the guardrail below (activate only if the fit beats the
@@ -514,11 +540,17 @@ async def fit_moneyline_weights(client: httpx.AsyncClient, train_seasons: list[i
     # and blocking on it would mean nothing could ever activate before the
     # sample accumulates. It is reported rather than silently dropped.
     beats_own_baseline = holdout_brier < baseline_holdout_brier
+    # 3. NEW (Phase 4 gate): beat a constant. See _base_rate_holdout_brier --
+    #    guardrail 1 alone activated a model with every feature zeroed, because
+    #    this app's unfitted formula scores worse than the base rate does.
+    base_rate_brier = _base_rate_holdout_brier(train_rows, holdout_rows)
+    beats_base_rate = holdout_brier < base_rate_brier
     gate = await market_gate("mlb", "moneyline")
-    activated = beats_own_baseline and not gate.blocks_activation
+    activated = beats_own_baseline and beats_base_rate and not gate.blocks_activation
     print(
-        f"[fit moneyline] beats own baseline: {beats_own_baseline} | {gate.describe()} "
-        f"-> {'ACTIVATED' if activated else 'NOT activated'}",
+        f"[fit moneyline] beats own baseline: {beats_own_baseline} | "
+        f"beats base rate: {beats_base_rate} ({holdout_brier:.6f} vs {base_rate_brier:.6f}) | "
+        f"{gate.describe()} -> {'ACTIVATED' if activated else 'NOT activated'}",
         flush=True,
     )
 
@@ -581,7 +613,9 @@ class TotalFitSummary:
 async def fit_total_weights(client: httpx.AsyncClient, train_seasons: list[int], holdout_seasons: list[int]) -> TotalFitSummary:
     """Total-market counterpart to fit_moneyline_weights — same walk-
     forward, same holdout-only guardrail, but the baseline it has to beat
-    is the raw Poisson formula's own output. Requires historical_odds to
+    is the raw distribution formula's own output -- NEGATIVE BINOMIAL since
+    task 4.11, not Poisson; this line said Poisson until the Phase 4 gate read
+    it back. Requires historical_odds to
     actually have total-line coverage for the requested seasons — raises a
     clear error rather than fitting garbage from zero rows if it doesn't."""
     all_seasons = sorted({*train_seasons, *holdout_seasons})
@@ -612,7 +646,23 @@ async def fit_total_weights(client: httpx.AsyncClient, train_seasons: list[int],
     holdout_brier = brier_score(holdout_preds)
     baseline_holdout_brier = brier_score(holdout_baseline)
 
-    activated = holdout_brier < baseline_holdout_brier
+    # Same three guardrails as the moneyline fit. Until the Phase 4 gate, this
+    # market had only the first one and NO market gate at all -- 4.2 wired the
+    # gate into fit_moneyline_weights and stopped there, so `total` could
+    # activate on a comparison the moneyline fit was not allowed to trust.
+    # Q24 ("a model that loses to the market is deactivated") does not say
+    # "except totals".
+    beats_own_baseline = holdout_brier < baseline_holdout_brier
+    base_rate_brier = _base_rate_holdout_brier(train_rows, holdout_rows)
+    beats_base_rate = holdout_brier < base_rate_brier
+    gate = await market_gate("mlb", "total")
+    activated = beats_own_baseline and beats_base_rate and not gate.blocks_activation
+    print(
+        f"[fit total] beats own baseline: {beats_own_baseline} | "
+        f"beats base rate: {beats_base_rate} ({holdout_brier:.6f} vs {base_rate_brier:.6f}) | "
+        f"{gate.describe()} -> {'ACTIVATED' if activated else 'NOT activated'}",
+        flush=True,
+    )
 
     saved_row = await db.write_model_weights(
         db.ModelWeightsInput(

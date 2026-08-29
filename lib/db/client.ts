@@ -1197,6 +1197,32 @@ export interface CalibrationCounts {
  */
 export type CalibrationScope = 'all' | 'player' | 'game';
 
+/**
+ * Task 4.8 (P3 H2), completed by the Phase 4 gate 2026-08-29.
+ *
+ * `pick_history` holds rows from TWO MLB game models: 3,580 moneyline rows
+ * written by `computeMoneylineModel` (the hand-tuned formula deleted on
+ * 2026-08-29) and the fitted Python model's rows since. Migration
+ * 20260829150000 attributed the old ones with
+ * `model_source = 'ts_unfitted_moneyline'`; a row from the model that still
+ * exists has `model_source IS NULL`.
+ *
+ * Any reader that scores or presents a MODEL has to exclude the deleted one,
+ * or it reports a blend of a model that exists and one that does not -- which
+ * is precisely what P3 H2 said /diagnostics was doing. 4.8 filtered three
+ * readers and the gate found four more: `goodBetsRecord` (the home page's own
+ * record) and the /diagnostics calibration set below.
+ *
+ * NOT every reader: the grading path (`listUngraded*`) and `listKnownSubjects`
+ * must still see every row, and `leagueBaseRates` is unaffected because it
+ * keys off `actual_value > line` and moneyline rows carry no line.
+ *
+ * The counts are filtered alongside the scores deliberately. An unfiltered `n`
+ * beside a filtered Brier would misstate the sample the number was computed
+ * over -- the opposite error, but still a wrong page.
+ */
+const CURRENT_MODEL_ONLY = `AND model_source IS NULL`;
+
 const GAME_DIMENSIONS = `('moneyline', 'total')`;
 
 function scopeClause(scope: CalibrationScope): string {
@@ -1208,7 +1234,7 @@ function scopeClause(scope: CalibrationScope): string {
 export async function calibrationCounts(sport: string, scope: CalibrationScope = 'all'): Promise<CalibrationCounts> {
   const clause = scopeClause(scope);
   const row = async (key: string) =>
-    (await pgGet<{ n: number }>(`SELECT COUNT(*) AS n FROM pick_history WHERE sport = ? AND ${key} ${clause}`, [sport]))!.n;
+    (await pgGet<{ n: number }>(`SELECT COUNT(*) AS n FROM pick_history WHERE sport = ? AND ${key} ${clause} ${CURRENT_MODEL_ONLY}`, [sport]))!.n;
   return {
     totalRows: await row('1=1'),
     gradedRows: await row('outcome IS NOT NULL'),
@@ -1232,7 +1258,7 @@ export async function calibrationBuckets(sport: string, scope: CalibrationScope 
             COUNT(*) AS n,
             SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) AS wins
      FROM pick_history
-     WHERE sport = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL ${scopeClause(scope)}
+     WHERE sport = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL ${scopeClause(scope)} ${CURRENT_MODEL_ONLY}
      GROUP BY bucket ORDER BY bucket`,
     [sport],
   );
@@ -1245,7 +1271,7 @@ export async function calibrationBucketsForDimension(sport: string, dimension: s
             COUNT(*) AS n,
             SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) AS wins
      FROM pick_history
-     WHERE sport = ? AND dimension = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL
+     WHERE sport = ? AND dimension = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL ${CURRENT_MODEL_ONLY}
      GROUP BY bucket ORDER BY bucket`,
     [sport, dimension],
   );
@@ -1253,7 +1279,7 @@ export async function calibrationBucketsForDimension(sport: string, dimension: s
 
 export async function calibrationCountsForDimension(sport: string, dimension: string): Promise<CalibrationCounts> {
   const row = async (key: string) =>
-    (await pgGet<{ n: number }>(`SELECT COUNT(*) AS n FROM pick_history WHERE sport = ? AND dimension = ? AND ${key}`, [
+    (await pgGet<{ n: number }>(`SELECT COUNT(*) AS n FROM pick_history WHERE sport = ? AND dimension = ? AND ${key} ${CURRENT_MODEL_ONLY}`, [
       sport,
       dimension,
     ]))!.n;
@@ -1430,7 +1456,7 @@ export async function overallBrierScore(sport: string, scope: CalibrationScope =
   const row = await pgGet<{ brier: number | null }>(
     `SELECT AVG((model_prob - (CASE WHEN outcome = 'win' THEN 1.0 ELSE 0.0 END)) *
                 (model_prob - (CASE WHEN outcome = 'win' THEN 1.0 ELSE 0.0 END))) AS brier
-     FROM pick_history WHERE sport = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL ${scopeClause(scope)}`,
+     FROM pick_history WHERE sport = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL ${scopeClause(scope)} ${CURRENT_MODEL_ONLY}`,
     [sport],
   );
   return row!.brier;
@@ -2364,7 +2390,18 @@ export interface ModelWeightsRow {
    * its output. Independent of `active`, which is about which version is
    * current. Defaults true (Q33), so a model is invisible until deliberately
    * graduated — see getRenderableModelWeights, which is what callers on a
-   * render path should use instead of getActiveModelWeights. */
+   * render path should use instead of getActiveModelWeights.
+   *
+   * SCOPE, corrected by the Phase 4 gate (2026-08-29) after 4.4 overclaimed it.
+   * This flag only reaches a render path that reads `model_weights`, and today
+   * exactly one does: the MLB home-run model (adapter.ts). The MLB GAME model
+   * (moneyline and total) is rendered from `mlb_game_model_cache`, which Python
+   * writes and no shadow check touches — and the Python worker never branches
+   * on this column at all. So all three MLB models are flagged shadow=true
+   * while two of them are on screen. Operator decision, same date: correct the
+   * claim, leave rendering alone. Honouring the flag on the game model would
+   * remove MLB moneyline and total from the UI entirely, which is a product
+   * decision and not a gate's to make. */
   shadow: boolean;
   fittedAt: string;
   covariance: number[][] | null;
@@ -2480,6 +2517,13 @@ function camelizeModelWeightsRow(row: any): any {
  * Use this on any path whose output reaches a user. Use getActiveModelWeights
  * for fitting, grading, diagnostics and anything else that must see the model
  * regardless of whether it is being shown.
+ *
+ * WHAT THIS DOES NOT COVER (Phase 4 gate, 2026-08-29). A render path only gets
+ * this protection if it reads `model_weights` through here. The MLB game model
+ * does not: it renders from `mlb_game_model_cache` rows written by Python, and
+ * never consults this function or the column. Adding a new render path that
+ * bypasses `model_weights` bypasses shadow mode silently — that is how the
+ * game model came to be described as shadowed while being rendered.
  */
 export async function getRenderableModelWeights(
   sport: string,

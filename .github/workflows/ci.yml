@@ -91,6 +91,8 @@ jobs:
       # Added in Phase 5. One step per test, same as above, so a failure names
       # itself in the Actions UI rather than collapsing into "Hermetic tests
       # failed" — logs are private on this repo, job and step names are not.
+      - name: test_activation_guardrails
+        run: python -u src/test_activation_guardrails.py
       - name: test_canonical_bookmaker
         run: python -u src/test_canonical_bookmaker.py
       - name: test_modal_point

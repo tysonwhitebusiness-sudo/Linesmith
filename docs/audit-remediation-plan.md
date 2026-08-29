@@ -182,6 +182,11 @@ against the live tree and database rather than against the plan's prose. Q28-Q31
 were put to the operator before they left; Q32-Q36 I took myself and am
 recording rather than burying. Every one of them changed a task.
 
+**Q37-Q38 were added later the same day, during the Phase 4 gate**, and both
+went to the operator: each of the two candidate fixes would have changed what a
+user sees, which is reserved. They exist because the gate found defects the
+phase's own VERIFYs had passed over — see §11's Phase 4 gate entry.
+
 | # | Decision | Lands in |
 |---|---|---|
 | Q28 | **Build a real market reference for the MLB game model.** `market_prob` is non-null on **zero** `moneyline` and **zero** `total` rows of `pick_history`, and `game_picks` has no equivalent column — so 4.2's activation gate is not merely failing for the two live game models, it is *uncomputable*. Add `market_prob` to `game_picks`, populate it by de-vigging `game_odds_book_lines` at the modal point (which 5.5 builds anyway), then run the gate properly. Models stay active while this is built. | 4.2, 5.5 |
@@ -193,6 +198,8 @@ recording rather than burying. Every one of them changed a task.
 | Q34 | **4.10 is verified live on soccer only, and that is stated rather than glossed.** Last 7 days of `pick_history`: mlb 20,062, soccer 133, and **zero** for NBA/NHL/CFB/tennis — they are out of season, and their jobs correctly report "healthy - 0 rows written". Both-sides generation is fixed for all five and unit-tested for all five; live confirmation for the out-of-season four defers, with that named in the gate's "known not done". | 4.10 |
 | Q35 | **CHECK ranges are derived empirically per sport, not set from intuition.** Soccer legitimately carries `.25`/`.75` Asian quarter-lines (2.75, 3.25 observed live), so a naive "half-points only" check would reject real data. Violators quarantine per Q23. | 5.4 |
 | Q36 | **`propline_2`'s provider_id attribution is fixed forward-only.** Existing rows are not relabelled, because they are genuinely indistinguishable from `propline`'s once written. | 5.2, 5.11 |
+| Q37 | **The MLB total model is re-fitted in Python, and activated only if it passes the guardrails.** Task 4.11 moved serving to negative binomial while the live weights were fitted on Poisson by TypeScript on 2026-08-14 — a gap of up to 11 points on feature[0], against a 3% edge threshold. Re-fitting makes the weights and the feature agree. If the fit fails a guardrail it is written unactivated and v8 stays live. | Phase 4 gate |
+| Q38 | **`model_weights.shadow`'s claimed scope is corrected; rendering is left alone.** The flag only binds a render path that reads `model_weights` via `getRenderableModelWeights` — the MLB home-run model alone. The game model renders from `mlb_game_model_cache`, ungated. Honouring the flag there would remove MLB moneyline and total from the UI, which is a product decision and not a gate's to make. | Phase 4 gate |
 
 **Measured at kickoff, and it contradicts the plan in four places.** Recording
 these because Rule 1 and the "verify it still reproduces" step exist precisely
