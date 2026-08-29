@@ -61,21 +61,43 @@ async def run_provider_specs(
     async def run_one(spec: ProviderSpec) -> FetchOutcome | None:
         if not spec.enabled:
             return None
-        if spec.cap_kind != "none":
-            status_fn = db.daily_status if spec.cap_kind == "daily" else db.monthly_status
-            kwargs = {"unit": spec.spend_unit} if spec.cap_kind == "monthly" else {}
-            spent = await status_fn(spec.provider_id, spec.cap_limit, **kwargs)
-            if spent >= spec.cap_limit:
+        cap = spec.effective_cap
+        if spec.cap_kind != "none" and cap is not None:
+            # Task 5.12 (P4 M8): CHECK AND RESERVE ARE ONE STATEMENT.
+            # This used to read `spent` and compare it, then spend later — so
+            # two processes could both read "under cap" and both go on to
+            # spend. try_reserve_* increments conditionally and tells us
+            # whether we got it, so only one of them can claim the last unit.
+            #
+            # One unit is reserved as an ENTRY TICKET, not the full cost: a
+            # provider's real request count is not knowable until after the
+            # fetch (Propline alone makes 1 + 2N requests for N games). The
+            # remainder is recorded below. This closes the race the finding
+            # describes — two callers passing the same gate — rather than
+            # claiming a precision the call shape cannot support.
+            if spec.cap_kind == "daily":
+                got = await db.try_reserve_daily(spec.provider_id, 1, cap)
+            else:
+                got = await db.try_reserve_monthly(spec.provider_id, 1, cap, unit=spec.spend_unit)
+            if not got:
+                which = "soft cap" if spec.soft_cap and cap == spec.soft_cap else "cap"
                 return FetchOutcome(
                     provider_id=spec.provider_id,
-                    warnings=[f"{spec.provider_id} {spec.cap_kind} cap reached ({spent}/{spec.cap_limit})"],
+                    warnings=[f"{spec.provider_id} {spec.cap_kind} {which} reached ({cap}) — easing off"],
                 )
         outcome = await spec.fetch(client, games, yield_fn)
         spend = outcome.objects if spec.spend_unit == "objects" else outcome.requests
         if spend and spec.cap_kind != "none":
-            record_fn = db.record_daily_spend if spec.cap_kind == "daily" else db.record_monthly_spend
-            record_kwargs = {"objects": spend} if spec.spend_unit == "objects" else {"requests": spend}
-            await record_fn(spec.provider_id, **record_kwargs)
+            # Minus the unit already reserved above, so the ticket is not
+            # double-counted. A provider that made no request at all still
+            # leaves its reservation spent, which is the conservative
+            # direction: it over-counts by at most one per cycle rather than
+            # letting a failed fetch look free.
+            remainder = max(0, spend - 1)
+            if remainder:
+                record_fn = db.record_daily_spend if spec.cap_kind == "daily" else db.record_monthly_spend
+                record_kwargs = {"objects": remainder} if spec.spend_unit == "objects" else {"requests": remainder}
+                await record_fn(spec.provider_id, **record_kwargs)
         return outcome
 
     # Task 5.10 (P2 H4). `asyncio.gather` without return_exceptions=True

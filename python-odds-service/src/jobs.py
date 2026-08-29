@@ -216,6 +216,16 @@ _PARLAYAPI_SPORT_CONFIG: dict[str, tuple[str, str | None, bool, int]] = {
 }
 
 
+_PARLAYAPI_SPORT_SOFT_CAP = {
+    "mlb": config.PARLAYAPI_MLB_SOFT_CAP,
+    "nfl": config.PARLAYAPI_NFL_SOFT_CAP,
+    "cfb": config.PARLAYAPI_CFB_SOFT_CAP,
+    "soccer_epl": config.PARLAYAPI_SOCCER_SOFT_CAP,
+    "soccer_mls": config.PARLAYAPI_SOCCER_SOFT_CAP,
+    "nba": config.PARLAYAPI_NBA_SOFT_CAP,
+}
+
+
 def _parlayapi_sport_spec(sport: str) -> ProviderSpec:
     provider_id, key, enabled, cap_limit = _PARLAYAPI_SPORT_CONFIG[sport]
     return ProviderSpec(
@@ -223,7 +233,11 @@ def _parlayapi_sport_spec(sport: str) -> ProviderSpec:
         enabled=enabled,
         fetch=lambda client, games, yield_fn: fetch_parlayapi(client, key, games, sport),
         cap_kind="monthly",
-        cap_limit=cap_limit,  # hard limit, not a soft cap — matches multiSportRefresh.ts's `budget.exhausted` gate
+        cap_limit=cap_limit,  # hard limit — matches multiSportRefresh.ts's `budget.exhausted` gate
+        # Task 5.9 (P2 H3): the PARLAYAPI_*_SOFT_CAP env vars were configured,
+        # documented, and never read by config.py. Now they gate, below the
+        # hard limit, and job_runner names which of the two stopped the job.
+        soft_cap=_PARLAYAPI_SPORT_SOFT_CAP.get(sport) or None,
     )
 
 
@@ -277,16 +291,19 @@ async def job_nba(yield_fn=None) -> dict:
 def _soccer_epl_specs() -> list[ProviderSpec]:
     return [
         ProviderSpec(
-            # No pre-fetch cap check here, matching TS: multiSportRefresh.ts's
-            # refreshSoccerEpl -> refreshOneProvider has no budget gate for
-            # propline_2 at all (unlike propline's MLB identity). A real gap
-            # in both languages, not something this restructuring silently
-            # invented a fix for — flagging, not fixing, matching the existing
-            # "found in the process, not yet acted on" convention.
+            # Task 5.2 (P3 H7). The gap flagged here in Phase 2 is now closed.
+            # cap_kind="none" meant no rate-limit gate AND — the part only
+            # measurement revealed — no spend recording either, since
+            # job_runner only recorded spend when cap_kind != "none". So
+            # propline_2's usage simply vanished, which is why the audit read
+            # its silence as vendor-side rejection.
             provider_id="propline_2",
             enabled=config.PROPLINE_2_ENABLED,
-            fetch=lambda client, games, yield_fn: fetch_propline(client, config.PROPLINE_2_KEY, games, "soccer_epl"),
-            cap_kind="none",
+            fetch=lambda client, games, yield_fn: fetch_propline(
+                client, config.PROPLINE_2_KEY, games, "soccer_epl", provider_id="propline_2"
+            ),
+            cap_kind="daily",
+            cap_limit=config.PROPLINE_2_DAILY_LIMIT,
         ),
         # New (2026-08-20): ParlayAPI-soccer is a genuinely separate real
         # provider from Propline, not a redundant second call for the same
@@ -324,10 +341,16 @@ def _soccer_mls_specs(yield_fn) -> list[ProviderSpec]:
     """
     return [
         ProviderSpec(
+            # Same real daily cap as EPL's spec above (task 5.2) — one vendor
+            # account, so EPL and MLS share the one 1,000/day budget, which is
+            # exactly what the shared provider_id already implied.
             provider_id="propline_2",
             enabled=config.PROPLINE_2_ENABLED,
-            fetch=lambda client, games, yield_fn: fetch_propline(client, config.PROPLINE_2_KEY, games, "soccer_mls"),
-            cap_kind="none",
+            fetch=lambda client, games, yield_fn: fetch_propline(
+                client, config.PROPLINE_2_KEY, games, "soccer_mls", provider_id="propline_2"
+            ),
+            cap_kind="daily",
+            cap_limit=config.PROPLINE_2_DAILY_LIMIT,
         ),
         _parlayapi_sport_spec("soccer_mls"),
         _sportsgameodds_multisport_spec(yield_fn),

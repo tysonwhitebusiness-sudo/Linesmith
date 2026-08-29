@@ -275,6 +275,50 @@ async def monthly_status(provider_id: str, limit: int, unit: str = "requests") -
     return (row["object_count"] if unit == "objects" else row["request_count"]) or 0
 
 
+async def try_reserve(
+    provider_id: str, period_kind: str, period_key: str, amount: int, limit: int, unit: str = "requests"
+) -> bool:
+    """Atomically claim `amount` of a provider's budget, or refuse.
+
+    Task 5.12 (P4 M8). The increments were already safe
+    (ON CONFLICT DO UPDATE SET count = count + excluded), and TS/Python agree
+    on period keys. The race was CHECK-THEN-ACT: two processes both read
+    "under cap" and both then spent. Reading and reserving are one statement
+    here, so only one of them can win the last unit.
+
+    The WHERE clause on DO UPDATE is what makes it conditional — when the
+    increment would breach the limit the update matches no row, RETURNING
+    yields nothing, and this returns False WITHOUT having incremented.
+    """
+    col = "object_count" if unit == "objects" else "request_count"
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        f"""
+        INSERT INTO provider_usage (provider_id, period_kind, period_key, {col}, updated_at)
+        VALUES ($1, $2, $3, $4, now())
+        ON CONFLICT (provider_id, period_kind, period_key) DO UPDATE
+           SET {col} = provider_usage.{col} + excluded.{col},
+               updated_at = now()
+         WHERE provider_usage.{col} + excluded.{col} <= $5
+        RETURNING {col}
+        """,
+        provider_id,
+        period_kind,
+        period_key,
+        amount,
+        limit,
+    )
+    return row is not None
+
+
+async def try_reserve_daily(provider_id: str, amount: int, limit: int) -> bool:
+    return await try_reserve(provider_id, "daily", utc_date_key(), amount, limit)
+
+
+async def try_reserve_monthly(provider_id: str, amount: int, limit: int, unit: str = "requests") -> bool:
+    return await try_reserve(provider_id, "monthly", eastern_month_key(), amount, limit, unit)
+
+
 async def record_daily_spend(provider_id: str, requests: int = 0, objects: int = 0) -> None:
     if requests == 0 and objects == 0:
         return
@@ -298,7 +342,25 @@ async def _increment_usage(provider_id: str, period_kind: str, period_key: str, 
     try:
         await _increment_usage_inner(provider_id, period_kind, period_key, requests, objects)
     except Exception as e:
+        # Still non-fatal, for the reason above — but no longer INVISIBLE
+        # (task 5.12, P4 M8). A swallowed spend-record failure makes recorded
+        # spend a silent FLOOR rather than the real number, which means every
+        # cap check downstream is reading an under-count and believing it.
+        # Printing to stdout alone means it is only ever seen by someone
+        # already tailing Render's log at the right moment.
         print(f"[db] record spend failed for {provider_id} (non-fatal): {type(e).__name__}: {e}", flush=True)
+        try:
+            await log_system_event(
+                "error",
+                "db.record_spend",
+                f"spend record failed for {provider_id} — recorded spend is now an under-count",
+                f"{period_kind} {period_key}: requests={requests} objects={objects}; {type(e).__name__}: {e}",
+            )
+        except Exception:
+            # The event log lives in the same database. If that is what is
+            # broken, the stdout line above is all there is; do not mask the
+            # original failure behind a second one.
+            pass
 
 
 async def _increment_usage_inner(provider_id: str, period_kind: str, period_key: str, requests: int, objects: int) -> None:

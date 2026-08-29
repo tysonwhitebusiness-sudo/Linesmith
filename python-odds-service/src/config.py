@@ -112,6 +112,23 @@ PARLAYAPI_MONTHLY_LIMIT = int(env("PARLAYAPI_MONTHLY_LIMIT", "1000"))
 PARLAYAPI_MLB_KEY = env("PARLAYAPI_MLB_KEY")
 PARLAYAPI_MLB_ENABLED = env_bool("PARLAYAPI_MLB_ENABLED") and bool(PARLAYAPI_MLB_KEY)
 
+# Task 5.9 (P2 H3) — "configured, documented, and ignored". Every one of these
+# five PARLAYAPI_*_SOFT_CAP vars is set in .env.local and .env.example, and
+# config.py never read a single one, so the soft caps did nothing at all.
+#
+# A soft cap is an EARLY stop below the hard monthly limit — it is what lets a
+# month end with headroom instead of a hard wall. Where one is set, the
+# effective gate becomes min(soft, hard), and job_runner names which of the two
+# actually fired so "eased off" is distinguishable from "ran out". Default 0
+# means unset, i.e. gate on the hard limit alone — preserving today's behaviour
+# for any sport whose soft cap is not configured.
+PARLAYAPI_SOFT_CAP = int(env("PARLAYAPI_SOFT_CAP", "0"))
+PARLAYAPI_MLB_SOFT_CAP = int(env("PARLAYAPI_MLB_SOFT_CAP", "0"))
+PARLAYAPI_NFL_SOFT_CAP = int(env("PARLAYAPI_NFL_SOFT_CAP", "0"))
+PARLAYAPI_CFB_SOFT_CAP = int(env("PARLAYAPI_CFB_SOFT_CAP", "0"))
+PARLAYAPI_SOCCER_SOFT_CAP = int(env("PARLAYAPI_SOCCER_SOFT_CAP", "0"))
+PARLAYAPI_NBA_SOFT_CAP = int(env("PARLAYAPI_NBA_SOFT_CAP", "0"))
+
 # Per-sport keys (2026-08-20, see docs/api-capability-audit-2026-08-20.md) —
 # real, separate free accounts replacing the shared PARLAYAPI_KEY's role for
 # these 3 sports (that key stays defined above only as a fallback/legacy
@@ -160,6 +177,14 @@ PROPLINE_ENABLED = env_bool("PROPLINE_ENABLED") and bool(PROPLINE_KEY)
 PROPLINE_DAILY_LIMIT = int(env("PROPLINE_DAILY_LIMIT", "1000"))
 PROPLINE_2_KEY = env("PROPLINE_2_KEY")
 PROPLINE_2_ENABLED = env_bool("PROPLINE_2_ENABLED") and bool(PROPLINE_2_KEY)
+# Task 5.2 (P3 H7) + 5.11 (P2 M3). PROPLINE_2_DAILY_LIMIT has been set in
+# .env.local and .env.example the whole time and config.py never read it, so
+# propline_2 ran with cap_kind="none" — no rate-limit gate at all. Worse, and
+# only visible once measured: job_runner records spend ONLY when
+# cap_kind != "none", so propline_2's spend was never written to
+# provider_usage either. Its last row there is 2026-08-20, which is what made
+# the audit read it as "vendor-side rejection with no visibility".
+PROPLINE_2_DAILY_LIMIT = int(env("PROPLINE_2_DAILY_LIMIT", "1000"))
 
 # Which book's own price live_edge.py's resolve_candidate_edge prefers
 # before falling back to the best available price across books — same

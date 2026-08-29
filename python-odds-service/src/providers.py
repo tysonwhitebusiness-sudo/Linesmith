@@ -113,7 +113,20 @@ class ProviderSpec:
     # in jobs.py to match — this field doesn't encode which one, so get the
     # right config constant at the call site.
     cap_limit: int | None = None
+    # An EARLY stop below cap_limit (task 5.9, P2 H3). Where set, the effective
+    # gate is min(soft_cap, cap_limit) and the warning names which one fired,
+    # so "eased off deliberately" stays distinguishable from "ran out". 0 or
+    # None means unset — gate on cap_limit alone, i.e. today's behaviour.
+    soft_cap: int | None = None
     spend_unit: Literal["requests", "objects"] = "requests"
+
+    @property
+    def effective_cap(self) -> int | None:
+        if self.cap_limit is None:
+            return None
+        if self.soft_cap:
+            return min(self.soft_cap, self.cap_limit)
+        return self.cap_limit
 
 
 # Games a provider supplied no matching event for at all. A single
@@ -843,8 +856,19 @@ def _propline_game_line_rows(bookmakers: list[dict], game: Game, sport: str) -> 
     return rows
 
 
-async def fetch_propline(client: httpx.AsyncClient, api_key: str, games: list[Game], sport: str) -> FetchOutcome:
-    out = FetchOutcome(provider_id="propline")
+async def fetch_propline(
+    client: httpx.AsyncClient, api_key: str, games: list[Game], sport: str, provider_id: str = "propline"
+) -> FetchOutcome:
+    """`provider_id` exists because this function serves TWO REAL VENDOR
+    ACCOUNTS — `propline` (MLB) and `propline_2` (soccer) — and used to
+    hardcode the first (task 5.2, Q36). Every propline_2 row, every unresolved
+    entry, and every spend record was therefore filed under `propline`, so the
+    two accounts silently shared one 1,000/day counter. That is why `propline`
+    pins at exactly 1000/1001 every single day, and why propline_2 looked dead.
+
+    Forward-only, per Q36: existing rows are NOT relabelled, because once
+    written they are genuinely indistinguishable from propline's own."""
+    out = FetchOutcome(provider_id=provider_id)
     sport_key = _PROPLINE_SPORT_KEYS.get(sport)
     if not sport_key or not games:
         return out
