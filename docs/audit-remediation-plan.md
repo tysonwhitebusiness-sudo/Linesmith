@@ -144,6 +144,29 @@ for and 2.1's map had turned up a table nobody knew about:
 | Q17 | **Drop `watch_links`** — no writer, no reader, no migration, 0 rows. | 2.1 |
 | Q18 | **`computeCalibrationPayload` is NOT ported in Phase 2.** It moves in Phase 4, as part of 4.2/4.3, which rewrite the calibration logic anyway. Porting it now would mean porting it and then reworking the port weeks later. | 4.2, 4.3 |
 
+**Added 2026-08-29, at Phase 3 kickoff:**
+
+| # | Decision | Lands in |
+|---|---|---|
+| Q19 | **No external error tracking.** No Sentry, now or later. `system_events` + `health_check.py` + `/diagnostics` are the whole story. | 3.2 |
+| Q20 | **CI runs hermetic tests only** — no database credentials in GitHub Actions. DB-touching tests stay local and are documented as such. | 3.11 |
+| Q21 | **Investigate whether the xlsx import is still needed**; drop the dependency outright if not, CSV if it is. | 3.13 |
+| Q22 | **Next 16 upgrade happens inside Phase 3.** | 3.13 |
+
+Q19 has a consequence that must not be lost: with no external error tracking,
+**the only alerting is the health-check cron's `notifyOnFail` and whoever
+happens to look at `/diagnostics`.** Acceptable while nothing is user-facing; it
+is recorded in Phase 3's "known not done" with **Phase 8** as owner, because a
+deployed app with no alerting is a different proposition from a local one.
+
+Q20 is a security decision as much as a testing one: a CI run holding
+production write credentials is a new attack surface, not a safety net.
+
+Q22 was flagged as likely to dominate the phase and chosen anyway. It is
+sequenced **before** tasks 3.4/3.5/3.7 rather than after: all three edit
+`middleware.ts`, and a major Next upgrade can change middleware APIs, so doing
+the upgrade second means writing that work once instead of twice.
+
 Q18 is the one exception to Q13's "Python computes every model number" inside
 Phase 2, and it is a real one, not a reclassification of convenience:
 `refreshCalibration` computes Brier scores, calibration buckets and market
@@ -998,13 +1021,21 @@ window went unnoticed — every route silently degraded to zero caching while
 returning 200s. Log it and emit a `system_events` row; keep the request
 succeeding.
 
-### 3.2 · Error tracking *(P5 E3)*
+### 3.2 · Error surfacing *(P5 E3)* — **rescoped by Q19**
 
-Sentry free tier, `@sentry/nextjs`. Add a `/diagnostics` panel for a spike in
-`system_events` where `source='cachedRoute'`.
+**No Sentry, and no external error tracking at all.** Retitled from "Error
+tracking" because that name promised something this task no longer does.
 
-**VERIFY:** revoke a grant for 60 s; confirm a Sentry event **and** a
-`system_events` row.
+What lands: the `/diagnostics` panel for a spike in `system_events` where
+`source='cachedRoute'`, fed by 3.1's logging.
+
+**The consequence, stated rather than buried:** alerting is now the
+health-check cron's own `notifyOnFail` plus whoever opens `/diagnostics`. There
+is no push notification when something breaks unobserved. Fine while nothing is
+user-facing; **Phase 8 owns revisiting it** before that stops being true.
+
+**VERIFY:** revoke a grant for 60 s; confirm a `system_events` row **and** the
+`/diagnostics` panel showing the spike.
 
 ### 3.3 · Fix the health checks that report green through an outage *(P3 M9)*
 
@@ -1014,11 +1045,26 @@ gameOddsBookLinesFreshness    healthy   (counts rows over a 7-DAY window)
 oddsHistoryAndPricesFreshness healthy   (satisfied by OddsHarvester alone)
 propPredictionsFreshness      healthy   (counts rows generated from 17h-old prices)
 ```
-Narrow each window to the job's own interval, and make freshness checks assert
-on the *source* they claim to measure, not on any row arriving.
+**The premise has moved since the audit — check before changing anything.**
+`health_check.py` was substantially rewritten on 2026-08-26, and at least two of
+these three now carry documented reasoning against the very change this task
+asks for:
+
+- `check_odds_history_and_prices_freshness`'s 24-hour window is **deliberate**.
+  `write_game_odds_history` is log-on-change, so a quiet market legitimately
+  writes nothing for many consecutive cycles; the narrow per-interval window
+  was tried, false-positived live, and was widened on purpose.
+- `check_prop_predictions_freshness` no longer "counts rows" — it cross-checks
+  the job's own last-run candidate count against real `pick_history` rows for
+  today's real games.
+
+So **narrowing the windows as written would reintroduce a bug someone already
+fixed.** Do the fault injection FIRST — it is the gate's requirement anyway —
+and fix only what actually fails to go red. `check_game_odds_book_lines_freshness`
+does still use a 7-day window and is the most likely genuine offender.
 
 **VERIFY:** stop the worker for one interval; each of the three flips to
-unhealthy.
+unhealthy. Any that already does needs no change, and that gets recorded.
 
 ### 3.4 · Rate limiting *(P4 M1)*
 
@@ -1081,17 +1127,24 @@ already — use `ON CONFLICT`).
 
 ### 3.10 · Batch the per-row write loops *(P4 H1, P2 M7)*
 
-Two instances of the same anti-pattern:
-- `writeGameOddsHistory` — one sequential `SELECT` per row inside one
-  transaction. Measured **13.5 s** per `/api/odds/lines` request on a 7-game
-  match; ~2,268 tuples on a full slate.
-- `writePropOdds` *(P2 M7)* — 3 round-trips per row inside one transaction.
+**Half of this is already done, and this task's VERIFY is stale.**
 
-Both fix the same way: one `DISTINCT ON (…) ORDER BY observed_at DESC` to fetch
-priors, diff in memory, one multi-row `INSERT`.
+- ~~`writeGameOddsHistory`~~ — **batched in task 2.3**, which could not ship
+  without it: on the real workload the per-row shape ran 290+ seconds without
+  finishing. Now one `DISTINCT ON` plus one `executemany`, measured at 1.6 s.
+- `writePropOdds` *(P2 M7)* — **still per-row**, 3 round-trips each inside one
+  transaction. This is the remaining work.
 
-**VERIFY:** `curl -w "%{time_total}"` on `/api/odds/lines` → **under 1 second**.
-Time a full `writePropOdds` cycle before and after; log both.
+**The `/api/odds/lines` VERIFY no longer measures what it was written to
+measure.** The 13.5 s figure was that route's three write passes; task 2.3
+deleted all three and the route is now a pure read. Re-time it honestly against
+what it does today rather than reporting a number that looks like a 13x win but
+is really a different route.
+
+**VERIFY:** time a full `writePropOdds` cycle before and after, log both; and
+report `/api/odds/lines` timed ten times on a full slate — median and worst —
+as the current baseline, not as a comparison against a route that no longer
+exists.
 
 ### 3.11 · Tests and CI *(P3 M8, P5 E1, P5 E2)*
 
@@ -1105,10 +1158,22 @@ keeps the **display layer**:
 - `middleware.ts` — encode P4 §2.1's status-code table
 - `lib/odds/goodBets.ts` — best-price selection, once 5.6/5.7 land
 
-CI: GitHub Actions running `typecheck`, `test`, `build`, plus `pytest` for
-`python-odds-service`.
+**CI, scoped by Q20 — hermetic tests only, no database credentials in GitHub
+Actions.** A CI run holding production write credentials is a new attack
+surface, not a safety net.
 
-**VERIFY:** push a deliberate type error; CI goes red.
+**`pytest` is the wrong command and would quietly pass on nothing.** The Python
+tests here are standalone scripts (`python -u src/test_x.py`), not pytest
+modules — `python -m pytest` collects almost nothing from them. CI must invoke
+them individually, and only those that touch neither the database nor the
+network. The DB-touching ones stay local, listed explicitly so the split is
+deliberate rather than accidental.
+
+Actions is already in use in this repo (`.github/workflows/oddsharvester-scrape.yml`),
+so there is nothing to set up beyond the workflow itself.
+
+**VERIFY:** push a deliberate type error; CI goes red. Then revert; CI goes
+green. A CI that has only ever been green is untested.
 
 ### 3.12 · Security headers *(P4 M2)*
 
