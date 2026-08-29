@@ -33,31 +33,76 @@ green on GitHub Actions.
 ## 1. Where we are
 
 **Phases 0, 1, 2, 3 COMPLETE — all four gates PASSED.**
-**Phase 4 (the scoreboard) is next and has NOT started.**
+**Phase 5 is next. Phase 4 comes AFTER 5 — the plan's order is deliberately
+reversed, see below. Neither has started.**
 
-Phase 3 closed 14 findings and found one that was in none of them: `prop_odds`
-had 178,238 redundant rows (80% of the table) because `ON CONFLICT` never fired
-for categorical markets — Postgres treats NULLs as distinct. 5,792 keys held
-**disagreeing prices**, up to 77 for one key, so displayed prices for those
-markets were arbitrary. Fixed and verified.
+Phase 3 closed 14 findings and found one in none of them: `prop_odds` had
+178,238 redundant rows (80% of the table) because `ON CONFLICT` never fired for
+categorical markets — Postgres treats NULLs as distinct. 5,792 keys held
+**disagreeing prices**, up to 77 for one key.
 
-## 2. Start here: Phase 4 — build the scoreboard
+## 2. Start here: Phase 5, NOT Phase 4
 
-Use §0's kickoff prompt. **Run the "verify it still reproduces" step properly.**
-It has now materially rescoped three phases running — in Phase 3 alone, four of
-fourteen tasks did not describe the code.
+**The plan lists 4 and 5 as parallel. They are not, and the dependency runs
+one way.** Measured 2026-08-29:
 
-**Phase 4 inherits three things it must know:**
+- Phase 4's headline blocker is 4.1 — `market_prob` is on **2.85% of the last
+  7 days** (1.04% lifetime). Two independent causes: **75% of candidates have
+  no matching price at all**, and of those that do, only **18% resolve**,
+  because the de-vig needs the same book's over AND under, non-stale.
+- Fixing both *is* Phase 5's work — 5.1 (Propline alias map), 5.3 (bookmaker
+  normalisation), 5.10 (stop discarding rows).
+- **More importantly, 5.5, 5.6 and 5.7 change how `market_prob` is COMPUTED**,
+  not just how much exists. Running Phase 4 first would fit Platt calibration
+  (4.3) and set an activation gate (4.2) against a market reference Phase 5
+  then changes — **both would need redoing.**
+- Checked the reverse: no Phase 5 task references `market_prob`, calibration,
+  CLV or any Phase 4 task. The dependency is genuinely one-way.
 
-- **`computeCalibrationPayload` is Phase 4's to port** (Q18) as part of
-  4.2/4.3, which rewrite that logic anyway. It is the last TypeScript model math.
-- **Pre-2.3 `game_odds_history` rows are mislabelled.** The deleted TS pass
-  wrote propline and sharpapi prices under `source='the-odds-api'`. Not
-  retroactively fixable. **Any analysis grouping by source must know this.**
-- **`prop_odds_history` contains phantom "movements"** written before the
-  duplicate fix, from the same NULL-key ambiguity. Same caveat applies.
+**5.3 first**, because book identity is what 5.5, 5.7 and 4.1's de-vig all
+depend on. `game_odds_book_lines` has 33 spellings for 26 real books —
+`fanduel | Fanduel | FanDuel` is three rows for one book, and
+`_two_sided_devigged_for_row` matches on `bookmaker` equality, so `Fanduel`
+over never pairs with `fanduel` under. **That is part of why 4.1's resolution
+rate is 18%.**
 
-## 3. Things that will bite again
+Then: 5.4 (constraints) → 5.5/5.6/5.7 (the three that change the market
+reference) → 5.1/5.10/5.9/5.12 (coverage) → 5.8/5.11 (guardrails) → 5.13.
+
+**Track 4.1's coverage as a running metric while doing 5** — it is one query,
+and it tells you whether Phase 4's target is reachable before Phase 4 commits
+to it.
+
+## 2a. Answered in advance — do not re-ask
+
+Q23–Q27 are in §0's standing-decisions table with full reasoning. Summary:
+
+| # | Decision |
+|---|---|
+| Q23 | CHECK-constraint violators are **quarantined, not deleted** |
+| Q24 | A model losing to the market baseline is **deactivated** |
+| Q25 | Keep the **validated** MLB game model, re-grade **after** a backup |
+| Q26 | If coverage can't reach 50%, **proceed at the real number and state it** |
+| Q27 | **Every elapsed-time requirement removed** from Phases 4 and 5 |
+
+Also decided and flagged: **skip 5.13's `pick_history` rename** (368k rows plus
+every reader, for naming clarity) and **skip 5.13's JSONB migration** (the plan
+contradicts its own finding — P2 L2 says leave it).
+
+## 2b. Known blocker inside 4.7
+
+`backfill_player_game_history.py` has four parsers — nba, football, soccer,
+nhl — configured for nfl, cfb, soccer_mls, soccer_epl, nba, nhl. 4.7 asks for
+MLB, NBA, golf and tennis:
+
+- **NBA is reachable today** — parser and config exist, it has simply never
+  been run. "Run it", not "build it".
+- **MLB, golf and tennis have no parser and no config.** MLB cannot use the
+  shared ESPN path at all (it has its own StatsAPI/Statcast pipeline), so that
+  is a new ingestion path. **MLB is the one that matters** — it is where all
+  the graded history lives.
+
+## 3. Things that will bite again## 3. Things that will bite again
 
 - **`ADMIN_API_PREFIXES` does nothing without a `config.matcher` entry.** This
   shipped as a false claim in task 2.9 and left an operator route open until
