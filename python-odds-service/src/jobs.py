@@ -802,11 +802,33 @@ async def _compute_mlb_prop_predictions_inner() -> dict:
         candidates = await pc.build_todays_candidates(client, today, season, ctx)
         await prop_pick_history.log_snapshot_candidates("mlb", candidates)
 
+        # Task 2.7a — the same candidates, written a second way, for a
+        # different job. log_snapshot_candidates above is the immutable
+        # record (first-surfaced-wins, never revised); this is the mutable
+        # current state lib/sports/mlb/adapter.ts reads instead of
+        # recomputing the model itself. Both come from THIS list, in one
+        # pass, so they cannot disagree about what the model computed —
+        # they differ only in which moment each preserves. See migration
+        # 20260829010000.
+        cached = await db.write_prop_model_cache(
+            [
+                db.PropModelCacheRow(
+                    sport="mlb", game_id=c.game_id, subject_id=c.subject_id,
+                    dimension=c.dimension, category=c.category, line=c.line,
+                    model_prob=c.model_prob, model_std_dev=c.model_std_dev,
+                    model_sample_size=c.model_sample_size, league_rate=c.league_rate,
+                    matchup_favorable=c.matchup_favorable, model_version=c.model_version,
+                )
+                for c in candidates
+            ]
+        )
+        pruned = await db.prune_prop_model_cache()
+
     by_dimension: dict[str, int] = {}
     for c in candidates:
         by_dimension[c.dimension] = by_dimension.get(c.dimension, 0) + 1
 
-    return {"candidates": len(candidates), "by_dimension": by_dimension}
+    return {"candidates": len(candidates), "by_dimension": by_dimension, "model_cache_rows": cached, "model_cache_pruned": pruned}
 
 
 async def job_golf_predictions(yield_fn=None) -> dict:

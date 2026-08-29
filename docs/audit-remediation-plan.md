@@ -871,12 +871,24 @@ both timers so N instances produce one rebuild per interval.
 **Estimate: 2–4 days**, the long end if the prop shapes don't line up.
 **Doing this now, not at deploy time, is what makes Phase 8 safe.**
 
-**VERIFY:** (a) `adapter.ts` no longer calls `computeModelProbability`,
-`applyFittedHomeRunWeights` or `ensureGameSims` outside a cache-miss fallback —
-shown by grep; (b) a rendered MLB prop probability equals the Python-computed
-value for the same subject/dimension/game, compared row to row, not eyeballed;
+**VERIFY:** (a) every model number `adapter.ts` renders comes from
+`mlb_prop_model_cache`, not from its own computation; (b) a rendered MLB prop
+probability equals the Python-computed value for the same
+subject/dimension/**category**/game, compared row to row, not eyeballed;
 (c) with two app processes running locally, `snapshot_cache['mlb:snapshot']` is
 written once per interval, not twice.
+
+> **(a) was originally written as "no longer calls `computeModelProbability` …
+> outside a cache-miss fallback — shown by grep", and that phrasing was wrong
+> about its own design.** The implemented shape computes locally *eagerly* and
+> then substitutes the cached value, rather than computing lazily only on a
+> miss. The rendered number is Python's either way — (b) proves that
+> exactly — but a grep for the call sites will still find them, so a grep is
+> not the right check. Two reasons the eager shape was kept: the local
+> computation is the fallback and has to exist regardless, and running both
+> makes a future TS/Python divergence *detectable* by comparison instead of
+> invisible. The honest cost is that TypeScript still performs model
+> arithmetic it discards. Recorded rather than glossed.
 
 ### 2.8 · Correct every misleading comment *(P2 M6, P2 H7)*
 

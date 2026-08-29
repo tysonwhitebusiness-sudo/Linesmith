@@ -842,6 +842,78 @@ async def ungraded_pick_history_for_sport(sport: str) -> list[UngradedPickRow]:
 
 
 @dataclass
+class PropModelCacheRow:
+    sport: str
+    game_id: str
+    subject_id: str
+    dimension: str
+    category: str
+    line: float | None
+    model_prob: float | None
+    model_std_dev: float | None
+    model_sample_size: int | None
+    league_rate: float | None
+    matchup_favorable: bool | None
+    model_version: int | None
+
+
+async def write_prop_model_cache(rows: list[PropModelCacheRow]) -> int:
+    """Current MLB prop model output, for lib/sports/mlb/adapter.ts to read
+    instead of recomputing (task 2.7a). Upsert, not first-write-wins: this
+    is mutable current state, deliberately unlike log_surfaced's immutable
+    record of the same numbers — see migration 20260829010000 for why both
+    exist and why they cannot disagree.
+
+    One executemany, not a row loop. The write is per-candidate and a full
+    slate is thousands of them; the per-row shape is what made
+    write_game_odds_history take 290 seconds in task 2.3."""
+    if not rows:
+        return 0
+    pool = await get_pool()
+    async with pool.acquire(timeout=30.0) as conn:
+        async with conn.transaction():
+            await conn.executemany(
+                """
+                INSERT INTO mlb_prop_model_cache (
+                  sport, game_id, subject_id, dimension, category, line,
+                  model_prob, model_std_dev, model_sample_size, league_rate,
+                  matchup_favorable, model_version, computed_at
+                )
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now())
+                ON CONFLICT (sport, game_id, subject_id, dimension, category) DO UPDATE SET
+                  line = excluded.line,
+                  model_prob = excluded.model_prob,
+                  model_std_dev = excluded.model_std_dev,
+                  model_sample_size = excluded.model_sample_size,
+                  league_rate = excluded.league_rate,
+                  matchup_favorable = excluded.matchup_favorable,
+                  model_version = excluded.model_version,
+                  computed_at = excluded.computed_at
+                """,
+                [
+                    (r.sport, r.game_id, r.subject_id, r.dimension, r.category, r.line,
+                     r.model_prob, r.model_std_dev, r.model_sample_size, r.league_rate,
+                     r.matchup_favorable, r.model_version)
+                    for r in rows
+                ],
+            )
+    return len(rows)
+
+
+async def prune_prop_model_cache(before_days: int = 3) -> int:
+    """Drops rows for slates that are well past. The cache only ever serves
+    today's snapshot, so anything older is dead weight — and snapshot_cache
+    growing unbounded at 8-15 MB/day is already a known problem
+    (docs/audit-phase-2.md's growth projection). Not repeating it here."""
+    pool = await get_pool()
+    result = await pool.execute(
+        "DELETE FROM mlb_prop_model_cache WHERE computed_at < now() - ($1 || ' days')::interval",
+        str(before_days),
+    )
+    return int(result.split()[-1]) if result.startswith("DELETE") else 0
+
+
+@dataclass
 class PickHistoryGrade:
     id: int
     outcome: str  # 'win' | 'loss'

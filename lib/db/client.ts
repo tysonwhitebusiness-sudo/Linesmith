@@ -2099,6 +2099,58 @@ export interface GameModelCacheRow {
 }
 
 /** Null when Python hasn't computed this game yet (or the row has fallen out of the table) — callers fall back to live computation, same neutral-on-miss convention as every other cache in this file. */
+export interface PropModelCacheRow {
+  gameId: string;
+  subjectId: string;
+  dimension: string;
+  category: string;
+  line: number | null;
+  modelProb: number | null;
+  modelStdDev: number | null;
+  modelSampleSize: number | null;
+  leagueRate: number | null;
+  matchupFavorable: boolean | null;
+  modelVersion: number | null;
+  computedAt: string;
+}
+
+/** Key for `readPropModelCacheForGames`' map — the candidate's full identity, category included. */
+export function propModelCacheKey(gameId: string, subjectId: string, dimension: string, category: string): string {
+  return `${gameId}|${subjectId}|${dimension}|${category}`;
+}
+
+/**
+ * Every cached prop model row for a slate, in ONE query — task 2.7a.
+ *
+ * Deliberately slate-wide rather than a per-candidate lookup like
+ * `readGameModelCache`'s. A full slate is ~2,400 candidates; one round trip
+ * each through the transaction pooler is the exact shape that made
+ * `write_game_odds_history` take 290 seconds before task 2.3 batched it.
+ * The caller loads this once per snapshot rebuild, next to `leagueRates`.
+ *
+ * `modelProb` here is SIDE-CORRECT — it is the probability of the
+ * proposition named by `category`, not P(over). Python's
+ * `_prob_for_category` has already applied the flip. A reader must NOT flip
+ * it again; see `buildCandidate` in adapter.ts, which is where the
+ * TypeScript path applies the same flip to its own locally-computed value
+ * and therefore where the two conventions have to be reconciled exactly
+ * once. Getting this wrong reintroduces audit finding P3 C3.
+ */
+export async function readPropModelCacheForGames(sport: string, gameIds: string[]): Promise<Map<string, PropModelCacheRow>> {
+  if (gameIds.length === 0) return new Map();
+  const rows = await pgAll<PropModelCacheRow>(
+    `SELECT game_id AS "gameId", subject_id AS "subjectId", dimension, category, line,
+            model_prob AS "modelProb", model_std_dev AS "modelStdDev", model_sample_size AS "modelSampleSize",
+            league_rate AS "leagueRate", matchup_favorable AS "matchupFavorable",
+            model_version AS "modelVersion", computed_at AS "computedAt"
+     FROM mlb_prop_model_cache WHERE sport = ? AND game_id = ANY(?)`,
+    [sport, gameIds],
+  );
+  const out = new Map<string, PropModelCacheRow>();
+  for (const r of rows) out.set(propModelCacheKey(r.gameId, r.subjectId, r.dimension, r.category), r);
+  return out;
+}
+
 export async function readGameModelCache(sport: string, gameId: string): Promise<GameModelCacheRow | null> {
   const row = await pgGet<any>(
     `SELECT sport, game_id AS "gameId",

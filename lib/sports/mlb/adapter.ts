@@ -60,7 +60,7 @@ import type {
 } from './statsapi';
 import { battersUntil, measuredGamePace, mlbEta } from './timing';
 import { getWeather } from '../../weather/openMeteo';
-import { leagueBaseRates, getActiveModelWeights, readGameModelCache, type ModelWeightsRow } from '../../db/client';
+import { leagueBaseRates, getActiveModelWeights, readGameModelCache, readPropModelCacheForGames, propModelCacheKey, type ModelWeightsRow, type PropModelCacheRow } from '../../db/client';
 import { computeModelProbability } from '../../odds/props/edgeModel';
 import { candidateCategoryToSide } from '../../odds/props/entityResolution';
 import { applyFittedHomeRunWeights, applyLineupConfidence, parkHrFactorCentered, expectedPaCentered, pitcherMatchupSignal } from './homeRunModel';
@@ -263,6 +263,17 @@ const RANGE_DAYS = 45;
  * only a genuinely stopped job should.
  */
 const GAME_MODEL_CACHE_MAX_AGE_MS = 30 * 60_000;
+
+/**
+ * Task 2.7a — how stale a `mlb_prop_model_cache` row may be before this file
+ * recomputes the prop model locally instead. 10 minutes: 2x
+ * computeMlbPropPredictionsJob's own 5-minute interval, the same
+ * "2x the writer's interval" rule GAME_MODEL_CACHE_MAX_AGE_MS above follows
+ * and for the same reason — the Python queue is priority-ordered rather than
+ * a strict timer, so one legitimately-late cycle must not trigger fallback,
+ * only a genuinely stopped job.
+ */
+const PROP_MODEL_CACHE_MAX_AGE_MS = 10 * 60_000;
 
 interface GameEloContext {
   home: { elo: number; gamesPlayed: number };
@@ -619,6 +630,17 @@ function buildCandidate(
   supportingSplits?: SplitEvidence[],
   /** Threshold the pattern sits on. Every MLB dimension here is a 0.5 line. */
   line = 0.5,
+  /**
+   * Task 2.7a — resolves this candidate's Python-computed model row, if one
+   * exists and is fresh. Takes the resolved `category` because the cache is
+   * keyed by it: the same subject and dimension surface as 'over' or 'under'
+   * depending on where their history sits, and the two carry complementary
+   * probabilities.
+   *
+   * A LOOKUP rather than a value, because the caller knows the game id but
+   * cannot know the category — that is decided here, three lines below.
+   */
+  cachedModelFor?: (category: string) => PropModelCacheRow | null,
 ): PickCandidate | null {
   if (history.length === 0) return null;
 
@@ -646,10 +668,39 @@ function buildCandidate(
   // rather than a typed field access — the looseness of that bag is part of why
   // the bug survived review in the first place.
   const rawModelProb = subjectMeta.modelProb;
-  const sidedSubjectMeta =
+  const locallyComputedMeta =
     typeof rawModelProb === 'number' && candidateCategoryToSide(category) === 'under'
       ? { ...subjectMeta, modelProb: 1 - rawModelProb }
       : subjectMeta;
+
+  // Task 2.7a — prefer the model Python already computed.
+  //
+  // THE FLIP ABOVE IS WHY THIS SUBSTITUTION HAPPENS HERE AND NOWHERE ELSE.
+  // The callers hand this function P(over); the block above turns it into
+  // P(this candidate's proposition). Python's `_prob_for_category` applies
+  // that same flip inside `CandidateResult`, so `cached.modelProb` arrives
+  // ALREADY side-correct. Substituting at a caller — before the flip — would
+  // send an under-side probability through it a second time and store its
+  // complement: audit finding P3 C3, reintroduced by a change meant to be
+  // structural. Substituting after it, here, the two conventions meet once.
+  //
+  // Cache-first with a local fallback, the same shape gameModelAndEloFor
+  // already uses for mlb_game_model_cache: a missing or stale row degrades
+  // to computing in TypeScript, so a stopped worker costs freshness rather
+  // than emptying the page.
+  const cached = cachedModelFor?.(category) ?? null;
+  const sidedSubjectMeta =
+    cached && Date.now() - Date.parse(cached.computedAt) <= PROP_MODEL_CACHE_MAX_AGE_MS
+      ? {
+          ...subjectMeta,
+          modelProb: cached.modelProb,
+          modelStdDev: cached.modelStdDev,
+          modelSampleSize: cached.modelSampleSize,
+          leagueRate: cached.leagueRate,
+          matchupFavorable: cached.matchupFavorable,
+          ...(cached.modelVersion != null ? { modelVersion: cached.modelVersion } : {}),
+        }
+      : locallyComputedMeta;
 
   return {
     ...base,
@@ -781,6 +832,9 @@ function hitInGameCandidates(
     },
     { weather: game.weather },
     splits,
+    0.5,
+    (category) =>
+      matchupCtx.propModelCache?.get(propModelCacheKey(String(game.gamePk), String(person.id), 'hit-in-game', category)) ?? null,
   );
 }
 
@@ -971,6 +1025,13 @@ interface MatchupContext {
   pitcherStatsById?: Map<number, PitcherStatLine>;
   /** Phase C.1's Beta prior center, per market dimension — real league-wide P(actual > line) from every graded outcome this app has seen. */
   leagueRates?: Map<string, number>;
+  /**
+   * Task 2.7a — Python's already-computed prop model output for this slate,
+   * loaded once per snapshot (like `leagueRates`), never per candidate. Keyed
+   * by `propModelCacheKey`. Empty map when the worker has written nothing yet,
+   * which every candidate handles by computing locally instead.
+   */
+  propModelCache?: Map<string, PropModelCacheRow>;
   /** Overall composite rank among all 250+ starters — see pitcherRankings.ts. Undefined for a season nobody's loaded /diagnostics's Pitcher Rankings card for yet. */
   starterOverallRankById?: Map<number, { rank: number | null; poolSize: number }>;
   /** This batter's own Statcast production (not what they faced) — overall AND position-scoped ranks, plus composites — cache-only, same hot-path-safety reasoning as `starterOverallRankById` above. Undefined for a season nobody's computed batter rankings for yet. */
@@ -1735,6 +1796,8 @@ function statMarketCandidates(
     { weather: game.weather },
     splits,
     def.line,
+    (category) =>
+      matchupCtx.propModelCache?.get(propModelCacheKey(String(game.gamePk), String(person.id), def.dimension, category)) ?? null,
   );
 }
 
@@ -2041,6 +2104,16 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
   }
 
   // Build candidates.
+  // Task 2.7a — Python's prop model output for this whole slate, in one
+  // query, read once here rather than per candidate (a full slate is ~2,400
+  // of them, and a round trip each through the pooler is the shape that made
+  // write_game_odds_history take 290s before task 2.3 batched it). Every
+  // candidate below prefers a fresh row from this over recomputing the model
+  // in TypeScript; an empty map, a missing row or a stale one all fall back
+  // to the local computation, so this can only make the page fresher, never
+  // emptier. Placed after `games` is built, since it keys on the slate.
+  const propModelCache = await readPropModelCacheForGames('mlb', games.map((g) => String(g.gamePk)));
+
   const candidates: PickCandidate[] = [];
   const subjects: SubjectSummary[] = [];
 
@@ -2086,6 +2159,7 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
           homeRunModel,
           parkFactorCache: hrParkFactorCache,
           hrTeamMatchupCache,
+          propModelCache,
         };
 
         const hit = hitInGameCandidates(person, game, side, liveState, batterMatchupCtx);
@@ -2158,6 +2232,7 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
             // already reads for the batter side's opponent.
             pitcherStatsById,
             starterOverallRankById,
+            propModelCache,
           };
           for (const def of PITCHER_STAT_MARKETS) {
             const c = statMarketCandidates(
