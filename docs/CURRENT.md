@@ -22,16 +22,16 @@ commit and push.
    entries. Phase 4 is logged task-by-task and its gate has not run.
 3. **`docs/table-ownership.md`** · 4. **`CLAUDE.md`** · 5. `docs/audit-phase-*.md`
 
-**Last updated:** 2026-08-29 ~13:45Z, mid-Phase-4.
-**Repo state:** clean, pushed. Worker live on `8f815db`.
+**Last updated:** 2026-08-29 ~14:05Z, mid-Phase-4.
+**Repo state:** clean, pushed. Worker live on `3702166`.
 
 ---
 
 ## 1. Where we are
 
 **Phases 0, 1, 2, 3, 5 COMPLETE — all gates PASSED.**
-**Phase 4 IN PROGRESS.** Only **4.3** and **4.8** remain, plus 4.12's eighth
-item which needs the operator. Nothing running.
+**Phase 4 IN PROGRESS.** Every code task is done. **Two decisions are waiting
+on the operator** (4.8 and 4.12's P3 M2), and then the gate. Nothing running.
 
 Phase 5 finished this session: all 13 tasks, gate G1–G8 passed on the re-run
 after G1 failed once (see §11 — the failure and its diagnosis are the most
@@ -54,9 +54,9 @@ useful thing in that entry).
 | **4.10** both sides for generic sports | **DONE** — test-verified; live only on soccer (Q34) |
 | **4.11** totals distribution | **DONE** — negative binomial, validated on 24,790 games |
 | **4.6** fade signal | **DONE — measured, not built on**, per 4.6's own instruction |
+| **4.3** Platt calibration | **DONE** — `model_calibration` 0 -> 7 rows, 5 active |
+| **4.8** collapse two MLB game models | **INVESTIGATED — needs your decision**, see §4 |
 | **4.12** model hygiene | **7 of 8** — 8th (M2) measured, left for operator |
-| 4.3 Platt calibration | not started |
-| 4.8 collapse two MLB game models | not started |
 
 ## 2. NOTHING IS RUNNING
 
@@ -73,16 +73,20 @@ golf 0 (deliberate)
 **Task 4.7 is fully done — that was the operator's headline ask.** Remaining
 Phase 4 work:
 
-1. **4.8** collapse the two MLB game models — the last code task. **Q25
-   governs**: keep the validated one, delete the other, re-grade — but
-   SNAPSHOT the affected rows first, because re-grading rewrites the recorded
-   track record and Q25 makes that explicitly reversible.
-2. **4.3** Platt calibration — expect the same outcome shape as 4.2: the
-   machinery is buildable but the sample is thin. **Q32**: min n=200 per
-   sport+market, below which write no calibration row at all. `model_calibration`
-   and `model_artifacts` are both still empty.
-3. **4.12's last item (P3 M2)** needs the operator, not code — see §4.
-4. Then the **Phase 4 gate**6. Then the **Phase 4 gate**7. Then the **Phase 4 gate** (G1-G8 plus its own section). Note its extra
+**TWO OPERATOR DECISIONS ARE BLOCKING, and neither is a code problem:**
+
+1. **4.8** — delete the TS unfitted game-model fallback? Measured: 17 of 19 of
+   today's MLB games render Python's fitted model from cache; the other ~2 fall
+   back to the unfitted `computeMoneylineModel`, indistinguishably. Deleting the
+   fallback is the Q13-consistent answer, but `GameDetail.tsx:1603` derives the
+   edge badges from it, so those badges vanish for ~11% of games — a visible
+   product change. Full reasoning and the alternatives are in §11.
+   **Q25 governs the second half** (snapshot, then re-grade), deliberately not
+   started until the first half is decided.
+2. **4.12's P3 M2** — Prop Score "re-scale, justify, or drop". All three change
+   what a user sees. Measured on 33,829 rows; numbers in §11 and §4 below.
+
+3. Then the **Phase 4 gate**6. Then the **Phase 4 gate**7. Then the **Phase 4 gate** (G1-G8 plus its own section). Note its extra
    requirements: the activation gate must refuse a real bad model (done —
    `test_market_gate.py`), the shadow round-trip must be shown in both
    directions (done — `scripts/gate/phase-4-shadow-roundtrip.mjs`), and every

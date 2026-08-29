@@ -4078,6 +4078,111 @@ model-versus-book DISAGREEMENT measure, not about the sharp-vs-soft
 expected-value one, which has zero populated rows. Whoever picks this up should
 not assume the two behave alike.
 
+**4.3 · Fit Platt calibration.** *(P3 H1)*
+
+Exit criterion met: `model_calibration` went from **0 rows to 7**.
+
+Platt fits `sigmoid(A*logit(p) + B)`. A < 1 means the model was over-confident
+and is being shrunk toward the base rate; a calibrated model fits A = 1.0. The
+fitted values confirm P3 H1's diagnosis directly:
+
+```
+market                n     A        B       holdout LL  vs uncal.  activated
+hits-runs-rbis      950   0.3707  -0.2919     0.69801    0.70112    YES
+hit-in-game         854   0.4775   0.0247     0.68720    0.69347    YES
+rbis                538   0.3797  -0.6448     0.54916    0.55582    YES
+pitcher-strikeouts  232   0.4029   0.0850     0.68205    0.68762    YES
+walks               216   0.8890  -0.0457     0.59604    0.59843    YES
+runs                307   0.9597  -0.0377     0.67050    0.67019    no
+total-bases         234   1.3028   0.1612     0.60855    0.60401    no
+```
+
+A between 0.37 and 0.48 on the four largest markets is severe over-confidence.
+`runs` fits A ≈ 0.96 — already near-calibrated, and correctly not activated.
+
+**Activation is earned.** A fit is stored either way but only activated when it
+beats the UNCALIBRATED probabilities on a held-out slice it never saw — the same
+discipline as `model_fit.py`'s gate. Two of seven were fitted and refused.
+
+**The holdout is chronological, not random**: a random split lets the fit be
+tuned on rows that came after the ones it is scored on, the same lookahead the
+leakage findings were about. **Live rows only** (`price_source IS NOT NULL`),
+because calibrating on backfilled history calibrates against a distribution the
+model never faced. **Q32's 200-row minimum** is enforced and eligibility is
+COMPUTED, so a market becomes eligible on its own as history accumulates.
+
+**Monotonicity is load-bearing, not incidental** — Q1 says prop grades may
+return only as RANKING, so a calibration that reordered anything would break the
+one property the audit found works. Asserted across three real fitted parameter
+pairs rather than trusted.
+
+**A numerical bug the test caught:** `apply_platt` clamped its input but not its
+output, so a steep calibration on an extreme input saturated to exactly 1.0 in
+float. A probability of exactly 1.0 is infinite confidence to every downstream
+log-loss — one such row would dominate any score containing it.
+
+**4.8 · Collapse the two MLB game models — INVESTIGATED, DECISION HANDED BACK.**
+*(P3 H2, Q25)*
+
+**The finding has materially changed since the audit, and the change matters
+more than the remaining problem.** P3 H2 described three paths:
+
+```
+audit's picture (2026-08-27)                    today
+odds_lines_cycle.py  -> fitted v8  -> game_picks     unchanged
+pickHistoryLog.ts    -> unfitted   -> pick_history   DELETED in Phase 2
+computeMoneylineEdge -> unfitted   -> the screen     now CACHE-FIRST
+```
+
+`pickHistoryLog.ts` no longer exists, so the unfitted formula no longer writes
+`pick_history` at all — which was the half that corrupted the calibration
+numbers the finding complained about. And Phase 2's task 2.7 made `adapter.ts`
+read `mlb_game_model_cache` cache-first, so the screen normally shows Python's
+fitted model.
+
+**What still reproduces, measured:** `adapter.ts:2412` falls back to the
+unfitted `computeMoneylineModel` when the cache row is missing or older than
+`GAME_MODEL_CACHE_MAX_AGE_MS` (30 minutes).
+
+```
+MLB games today in game_picks                19
+mlb_game_model_cache rows fresher than 30m   17
+```
+
+So **roughly 2 of 19 games are currently rendered from the unfitted formula**
+while 17 come from the fitted one, and nothing distinguishes them on screen —
+exactly the finding's core complaint, at about 11% of its original blast radius.
+
+`applyFittedMoneylineWeights` still has **zero TypeScript callers**, confirmed
+by grep. Python remains the only live caller of the fitted path.
+
+**WHY THIS WAS NOT ACTED ON, and what the options cost.** 4.8 says "pick one,
+delete the other". Deleting the TS fallback is the Q13-consistent choice —
+TypeScript renders, Python computes, and if Python has not computed there is
+nothing to render; `gameModelFor` already returns `null` for missing stats, so
+null is a supported state. **But `GameDetail.tsx:1603-1604` derives the
+moneyline and total edge badges from `game.gameModel`, so deleting the fallback
+removes those badges for the ~11% of games without a fresh cache.** That is a
+change to what a user sees, which is explicitly the operator's call, not mine.
+
+The alternatives are worse: porting the fitted model into TypeScript so the
+fallback agrees would put model math back in the renderer, directly against
+Q13; and leaving it while merely labelling it does not satisfy "delete the
+other".
+
+**Q25 already governs the second half** — keep the validated model, delete the
+other, re-grade affected history, after snapshotting the pre-regrade rows. That
+snapshot-and-regrade has NOT been performed, deliberately: it rewrites the
+recorded track record, and doing it while the first half's decision is still
+open would mean re-grading against a model choice that might change.
+
+**Recommendation, for the record:** delete the fallback and let the game model
+be absent for games Python has not yet computed. An absent number is honest; a
+number from a different, unvalidated model presented identically to the
+validated one is the exact failure this whole remediation exists to end. But it
+is a visible product change and it needs a yes.
+
+
 
 
 progress state, so killing and restarting never re-pays for completed work.
