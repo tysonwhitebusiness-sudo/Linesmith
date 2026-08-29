@@ -8,6 +8,7 @@ Covered so far:
   P3 L1  poisson_over_probability treated an integer line as a LOSS
   P3 L5  the Elo sort comparator was not a total order
   P3 M4  the starter blend mixed two units at a hand-set 50/50
+  P3 M7  the golf model double-counted the subject golfer's own scores
   P3 M5  home-field/form were ADDED to a probability instead of log-odds
   P3 M6  compute_league_rate returned a fabricated 0.5 on no sample
 
@@ -34,6 +35,15 @@ from predict.game_model import (  # noqa: E402
     poisson_push_probability,
 )
 from predict.generic_prop_score import compute_league_rate  # noqa: E402
+from predict.golf_models import (  # noqa: E402
+    _OWN_EXTRA_WEIGHT,
+    _PRIOR_WEIGHT,
+    _category_for,
+    _prior_for,
+    HoleFieldObservation,
+    HoleModelInput,
+    predict_hole_score,
+)
 
 _failures = 0
 
@@ -268,6 +278,68 @@ def test_blend_declines_without_a_usable_starter():
     check("too few starts", _blend_with_starter_era(4.30, OpposingStarter(era=3.0, starts=1)), 4.30)
 
 
+
+# ---------------------------------------------------------------------------
+# P3 M7
+# ---------------------------------------------------------------------------
+
+def _golf_counts(field, own, par, own_top_up):
+    """The hole model's Dirichlet blend, parameterised by the subject's top-up
+    weight so the pre-fix behaviour can be measured rather than described."""
+    prior = _prior_for(par)
+    counts = {k: prior[k] * _PRIOR_WEIGHT for k in ("birdie", "par", "bogey")}
+    for o in field:
+        counts[_category_for(o.relative_to_par)] += 1
+    for o in own:
+        counts[_category_for(o.relative_to_par)] += own_top_up
+    total = sum(counts.values())
+    return {k: v / total for k, v in counts.items()}
+
+
+def test_subject_is_not_double_counted():
+    """`golfer_own_observations` is documented as a SUBSET of
+    `field_observations`, so the subject already scores +1 in the field loop.
+    Adding the full own-weight on top counted their scores twice."""
+    print("\nP3 M7: the subject golfer is deduped from the field")
+    own = [HoleFieldObservation(-1.0), HoleFieldObservation(-1.0)]
+    field = [HoleFieldObservation(0.0)] * 10 + own
+
+    old = _golf_counts(field, own, 4, _OWN_EXTRA_WEIGHT)          # pre-fix
+    new = _golf_counts(field, own, 4, _OWN_EXTRA_WEIGHT - 1)      # deduped
+
+    check("the old form gave the subject a higher birdie prob",
+          old["birdie"] > new["birdie"], True)
+    close("old birdie", old["birdie"], 0.3082, eps=1e-3)
+    close("new birdie", new["birdie"], 0.2390, eps=1e-3)
+    check("the inflation was material (>5 points)",
+          (old["birdie"] - new["birdie"]) > 0.05, True)
+    print(f"       own form inflated birdie by {100 * (old['birdie'] - new['birdie']):.2f} points")
+
+
+def test_live_model_matches_the_deduped_math():
+    """The real predict_hole_score must agree with the deduped blend, or the
+    fix is in the test and not in the model."""
+    print("\nP3 M7: the shipped function uses the deduped weighting")
+    own = [HoleFieldObservation(-1.0), HoleFieldObservation(-1.0)]
+    field = [HoleFieldObservation(0.0)] * 10 + own
+    got = predict_hole_score(HoleModelInput(
+        par=4, field_observations=field, golfer_own_observations=own,
+        golfer_sg_total=None, field_avg_sg_total=None,
+    ))
+    want = _golf_counts(field, own, 4, _OWN_EXTRA_WEIGHT - 1)
+    close("birdie", got.prob_birdie, want["birdie"], eps=1e-9)
+    close("par", got.prob_par, want["par"], eps=1e-9)
+    close("bogey", got.prob_bogey, want["bogey"], eps=1e-9)
+
+
+def test_a_golfer_with_no_own_history_is_unaffected():
+    print("\nP3 M7: a golfer with no own rounds is untouched by the fix")
+    field = [HoleFieldObservation(0.0)] * 10
+    a = _golf_counts(field, [], 4, _OWN_EXTRA_WEIGHT)
+    b = _golf_counts(field, [], 4, _OWN_EXTRA_WEIGHT - 1)
+    check("identical with an empty own list", a == b, True)
+
+
 def main() -> bool:
     test_integer_line_is_a_push_not_a_loss()
     test_half_integer_lines_are_untouched()
@@ -282,6 +354,9 @@ def main() -> bool:
     test_era_is_grossed_up_to_total_runs()
     test_starter_quality_is_not_compressed()
     test_blend_declines_without_a_usable_starter()
+    test_subject_is_not_double_counted()
+    test_live_model_matches_the_deduped_math()
+    test_a_golfer_with_no_own_history_is_unaffected()
     print(f"\n{'ALL PASS' if _failures == 0 else f'{_failures} FAILURE(S)'}")
     return _failures == 0
 

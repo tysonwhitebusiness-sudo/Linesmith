@@ -81,6 +81,12 @@ _SKILL_WEIGHT_BY_PAR: dict[int, float] = {3: 0.7, 4: 1.0, 5: 1.4}
 # real field data starts outweighing it.
 _PRIOR_WEIGHT = 6
 # Extra weight given to the golfer's own scores on this exact hole.
+# Total weight the subject golfer's own rounds carry, INCLUDING the one they
+# already contribute as members of the field. Task 4.12 (P3 M7): they used to
+# receive 1 (in the field loop) PLUS this value (in the own loop), so a weight
+# named "own extra = 2" actually applied 3 — and the subject's own scores were
+# counted twice on top of that, since golfer_own_observations is a SUBSET of
+# field_observations, not a separate sample.
 _OWN_EXTRA_WEIGHT = 2
 # 1 stroke of hole-level skill edge (already down-weighted by
 # SKILL_WEIGHT_BY_PAR/18) shifts birdie/bogey log-odds by this much.
@@ -125,8 +131,21 @@ def predict_hole_score(input: HoleModelInput) -> HolePrediction:
     basis.append(f"Field: {len(input.field_observations)} observations this week (par {par if par is not None else 'unknown'} prior blended in at weight {_PRIOR_WEIGHT})")
 
     if input.golfer_own_observations:
+        # Task 4.12 (P3 M7) — the subject is DEDUPED from the field, not added
+        # on top of it. `golfer_own_observations` is documented as "the subject
+        # golfer's own subset of the above", so every one of these rows has
+        # already scored +1 in the field loop. Adding the full weight here
+        # counted the subject's own scores twice and gave them a total weight of
+        # 1 + _OWN_EXTRA_WEIGHT.
+        #
+        # Adding (_OWN_EXTRA_WEIGHT - 1) makes the subject's total exactly
+        # _OWN_EXTRA_WEIGHT, which is arithmetically identical to removing them
+        # from field_observations and re-adding at full weight — and it needs no
+        # golfer id to do it, which matters because HoleFieldObservation carries
+        # only `relative_to_par` and has no identity to dedupe on.
+        own_top_up = _OWN_EXTRA_WEIGHT - 1
         for obs in input.golfer_own_observations:
-            counts[_category_for(obs.relative_to_par)] += _OWN_EXTRA_WEIGHT
+            counts[_category_for(obs.relative_to_par)] += own_top_up
         basis.append(f"This golfer's own hole history this week: {len(input.golfer_own_observations)} round(s), weighted {_OWN_EXTRA_WEIGHT}x")
 
     total = counts["birdie"] + counts["par"] + counts["bogey"]
