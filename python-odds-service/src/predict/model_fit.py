@@ -221,6 +221,10 @@ async def _build_training_set_uncached(client: httpx.AsyncClient, seasons: list[
         )
 
         park_factor_by_venue = {r.venue_id: r.factor for r in await db.read_park_factors(season)}
+        # One query for the season's odds instead of one per game (2026-08-29).
+        # Measured: the per-game lookup was 355ms and 55% of the whole per-game
+        # cost -- pooler round-trip latency, not query work. Same rows.
+        odds_by_game = await db.get_historical_odds_for_season(season)
         team_state: dict[int, TeamState] = {}  # reset per season — standings reset
 
         for g in finals:
@@ -272,7 +276,7 @@ async def _build_training_set_uncached(client: httpx.AsyncClient, seasons: list[
                 elo_prob = elo_model.elo_expected_home_win_prob(home_elo, away_elo) if home_elo_games >= elo_model.MIN_GAMES_FOR_ELO_TRUST and away_elo_games >= elo_model.MIN_GAMES_FOR_ELO_TRUST else 0.5
 
                 game_date_eastern = statsapi.eastern_date(_parse_game_date(g.game_date))
-                odds = await db.get_historical_odds(season, game_date_eastern, home_id, away_id)
+                odds = odds_by_game.get((game_date_eastern, home_id, away_id))
                 market_prob_centered = 0.0
                 if odds is not None and odds.ml_home_consensus_prob is not None:
                     market_prob_centered = odds.ml_home_consensus_prob - 0.5

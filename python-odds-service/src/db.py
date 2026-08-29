@@ -2926,6 +2926,51 @@ async def get_historical_odds(season: int, game_date: str, home_team_id: int, aw
     )
 
 
+async def get_historical_odds_for_season(season: int) -> dict[tuple[str, int, int], HistoricalOddsRow]:
+    """Every historical_odds row for a season, in ONE query, keyed by
+    (game_date ISO string, home_team_id, away_team_id).
+
+    WHY THIS EXISTS. `get_historical_odds` above is a per-game lookup, and
+    model_fit.py called it once per game inside the training-set loop -- about
+    2,430 round trips per season through the transaction pooler. Measured
+    2026-08-29 with scripts/gate/probe-training-set-cost.py: 355ms per call and
+    55% of the entire per-game cost, which is round-trip latency, not query
+    work. One season of training data took ~26 minutes and over half of that
+    was waiting on the network.
+
+    Same rows, same shape, fetched once. A season is ~2,430 rows of eleven
+    small numeric columns, so holding it in memory is nothing next to the
+    training set being built alongside it.
+    """
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT game_date, home_team_id, away_team_id,
+               ml_home_consensus_prob, ml_away_consensus_prob, total_line, total_over_consensus_prob,
+               total_under_consensus_prob, ml_home_open_prob, ml_away_open_prob,
+               total_open_line, total_open_over_prob, total_open_under_prob, book_count
+        FROM historical_odds WHERE season = $1
+        """,
+        season,
+    )
+    return {
+        (row["game_date"].isoformat(), row["home_team_id"], row["away_team_id"]): HistoricalOddsRow(
+            ml_home_consensus_prob=row["ml_home_consensus_prob"],
+            ml_away_consensus_prob=row["ml_away_consensus_prob"],
+            total_line=row["total_line"],
+            total_over_consensus_prob=row["total_over_consensus_prob"],
+            total_under_consensus_prob=row["total_under_consensus_prob"],
+            ml_home_open_prob=row["ml_home_open_prob"],
+            ml_away_open_prob=row["ml_away_open_prob"],
+            total_open_line=row["total_open_line"],
+            total_open_over_prob=row["total_open_over_prob"],
+            total_open_under_prob=row["total_open_under_prob"],
+            book_count=row["book_count"],
+        )
+        for row in rows
+    }
+
+
 async def get_earliest_observed_total_point(event_id: str) -> float | None:
     """Scoped to source = 'the-odds-api' (2026-08-25): this feeds the total
     model's opening-line feature, which was fit against the-odds-api's
