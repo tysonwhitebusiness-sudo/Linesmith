@@ -195,11 +195,20 @@ scope fits.
 
 ### The mockup
 
-- **Artifact:** https://claude.ai/code/artifact/845e36d0-037c-4859-af5b-185a6aba795c
-- **Source, committed:** `docs/design/chart-grammar.html` — self-contained, no
-  build step. Open it directly, or serve it (`.claude/launch.json`'s
-  `design-preview` config serves `C:/Users/occy3/Downloads`, so copy it there).
-  **Republish with `Artifact` passing that URL as `url`**, or it forks to a new one.
+**Open `docs/design/chart-grammar.html`** — committed, self-contained, no build
+step and no dependencies except a Google Fonts link that degrades to system
+fonts offline. Double-click it, or serve it (`.claude/launch.json`'s
+`design-preview` config serves `C:/Users/occy3/Downloads`, so copy it there).
+**This file is the reference, not the artifact link below.**
+
+There is also a published artifact at
+https://claude.ai/code/artifact/845e36d0-037c-4859-af5b-185a6aba795c — but
+**artifacts are private to the account that published them.** This project runs
+across three rotating accounts; only the account that published it (the one used
+on 2026-08-29) can open or update that URL. From any other account the link is
+dead, and re-publishing the file creates a *separate* artifact owned by that
+account, which is fine — just don't expect the old URL to update. The committed
+HTML is the single source of truth; the artifact is a convenience.
 
 All eleven primitives rendered in the app's real tokens, plus a **full-depth
 Player Detail** — ~190 numbers on one page: nine ranked season stats, eleven

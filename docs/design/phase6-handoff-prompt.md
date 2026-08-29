@@ -84,18 +84,25 @@ before anyone designs anything.
 
 ## What already exists to build on
 
-- **Artifact:** https://claude.ai/code/artifact/845e36d0-037c-4859-af5b-185a6aba795c
-- **Source, committed:** `docs/design/chart-grammar.html` — self-contained, no
-  build step, no dependencies beyond a Google Fonts link. All eleven primitives
-  are implemented in plain SVG in that file's `<script>` blocks and are close to
-  directly portable into React.
-  - To view: open the file, or copy it to `C:/Users/occy3/Downloads` and run the
-    `design-preview` config from `.claude/launch.json` (port 8123).
-  - To update the published page: call `Artifact` **passing that URL as `url`**,
-    or it forks into a separate artifact.
+- **`docs/design/chart-grammar.html` — committed, and the actual reference.**
+  Self-contained: no build step, no dependencies beyond a Google Fonts link that
+  degrades to system fonts offline. All eleven primitives are implemented in
+  plain SVG in that file's `<script>` blocks and are close to directly portable
+  into React.
+  - To view: double-click the file, or copy it to `C:/Users/occy3/Downloads` and
+    run the `design-preview` config from `.claude/launch.json` (port 8123).
   - It is deliberately ASCII-only (entities in markup, `\uXXXX` in script) —
-    the artifact wrapper owns `<head>`, so there is no `<meta charset>` to rely
-    on. Keep it that way or the page renders mojibake.
+    when published as an artifact the wrapper owns `<head>`, so there is no
+    `<meta charset>` to rely on. Keep it that way or the page renders mojibake.
+- **A published artifact exists but is account-scoped.**
+  https://claude.ai/code/artifact/845e36d0-037c-4859-af5b-185a6aba795c was
+  published from the account used on 2026-08-29. **Artifacts are private to the
+  publishing account** — from a different account that URL will not open, and it
+  cannot be updated from elsewhere (the update path requires the calling account
+  to own it). If you want a viewable page on this account, publish
+  `chart-grammar.html` fresh; you will get a new URL, which is fine. (If the
+  accounts happen to share a workspace, the original can instead be shared from
+  its own share menu — but don't count on it.)
 - The primitives already respect: ≤24px bars with a 4px rounded cap square at
   the baseline, 2px surface gaps, 2px lines, ≥8px markers with a 2px surface
   ring, solid hairline grids (never dashed — dashes are reserved for real
@@ -114,9 +121,10 @@ before anyone designs anything.
 >
 > Context: we agreed to build a shared chart primitives library
 > (`components/charts/`) before any Phase 6 feature chart, and I approved a
-> mockup of a full-depth MLB Player Detail page — source at
-> `docs/design/chart-grammar.html`, published at
-> https://claude.ai/code/artifact/845e36d0-037c-4859-af5b-185a6aba795c
+> mockup of a full-depth MLB Player Detail page. **The mockup is committed at
+> `docs/design/chart-grammar.html`** — open that file to see it; it is
+> self-contained and needs no build step. (An artifact of it exists but was
+> published from a different account, so its URL will not open for you.)
 >
 > **My open concern, and what I want to resolve first: how do we get an
 > equivalent for every other sport?** The mockup is MLB-only and MLB has the
