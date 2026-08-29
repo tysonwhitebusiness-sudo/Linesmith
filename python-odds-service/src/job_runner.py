@@ -113,6 +113,14 @@ async def run_provider_specs(
     # populating FetchOutcome.game_line_rows, no new job-level plumbing.
     await db.write_game_odds_book_lines(all_game_line_rows)
 
+    # Task 5.1 / P2 H2 — persist what each provider could NOT resolve. Until
+    # now this list was collected and only counted, so odds_unresolved was
+    # written solely by the TypeScript pipeline that 2.5 deleted; the table
+    # looked healthy while going stale. Written per provider (delete + insert)
+    # because it is a snapshot of what is unresolved now, not a log.
+    for outcome in outcomes:
+        await db.replace_unresolved_for_provider(outcome.provider_id, outcome.unresolved)
+
     # Task 5.8 (P3 M13). Games no provider supplied a matching event for.
     # Drained and written once per job as a single aggregate row rather than a
     # database write per comparison — every call site loops over a provider's

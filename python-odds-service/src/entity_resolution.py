@@ -115,6 +115,32 @@ MARKET_KEY_ALIASES: dict[str, str] = {
     "walks": "walks",
     "strikeouts": "batter-strikeouts",
     "pitcher_strikeouts": "pitcher-strikeouts",
+    # Propline's own MLB vocabulary, captured LIVE 2026-08-29 (task 5.1,
+    # P2 C1). THIS is why "Propline's entire MLB batter-prop feed is
+    # discarded" — not the alt-lines the plan focuses on, but the fact that
+    # this map had no `batter_*` prefixed entries AT ALL. It carried bare
+    # names ("hits"), a `batting_*` prefix, and `pitcher_strikeouts` — but
+    # Propline sends `batter_hits`, `batter_rbis`, `batter_home_runs`, and so
+    # on, so every single one resolved to None and every row was dropped.
+    # Confirmed against the live feed: propline's only surviving MLB market in
+    # prop_odds was `pitcher-strikeouts`, the one pitcher key that happened to
+    # already be here.
+    "batter_hits": "hits",
+    "batter_rbis": "rbis",
+    "batter_runs": "runs",
+    "batter_singles": "singles",
+    "batter_doubles": "doubles",
+    "batter_triples": "triples",
+    "batter_walks": "walks",
+    "batter_home_runs": "home-runs",
+    "batter_total_bases": "total-bases",
+    "batter_strikeouts": "batter-strikeouts",
+    "batter_stolen_bases": "stolen-bases",
+    "batter_hits_runs_rbis": "hits-runs-rbis",
+    "pitcher_outs": "pitcher-outs",
+    "pitcher_earned_runs": "earned-runs",
+    "pitcher_hits_allowed": "pitcher-hits-allowed",
+    "pitcher_walks_allowed": "pitcher-walks-allowed",
     "outs": "pitcher-outs",
     # Odds-API.io Player Props labels (parsed out of "Player (Stat Type)")
     "total bases": "total-bases",
@@ -284,6 +310,74 @@ def resolve_market_key(raw_label: str) -> str | None:
         or MARKET_KEY_ALIASES.get(_MARKET_KEY_WS_RE.sub("_", normalized))
         or MARKET_KEY_ALIASES.get(_MARKET_KEY_WS_RE.sub("", normalized))
     )
+
+
+# ---------------------------------------------------------------------------
+# Propline alt-line folding (task 5.1, P2 C1 / P2 H2, Q4).
+#
+# BUILT FROM A LIVE PROPLINE RESPONSE on 2026-08-29, per 5.1's own warning
+# ("build the map from Propline's live response, not from memory"), using the
+# propline_2 key under operator decision Q31. 45 MLB events, 27 market keys.
+#
+# The plan's four-row table (batter_2plus_hits / _3plus_hits / _2plus_rbis /
+# _3plus_rbis) turned out to be REAL but INCOMPLETE. Propline actually offers
+# eight key-encoded alt-lines, and — the part no table anticipated — it encodes
+# the same information in THREE different places depending on the book:
+#
+#   1. in the market key      "batter_2plus_hits", point: null
+#   2. in the outcome name    key "batter_strikeouts", name "2+ Strikeouts"
+#   3. as a real point        key "batter_hits", name "Over", point 0.5
+#
+# Only (3) was ever handled. (1) and (2) both arrived with point=null and an
+# outcome name that is not "Over"/"Under", so _normalize_row's
+# `side = "under" if "under" in name else "over"` labelled every one of them an
+# over at line=None — which is also why prop_odds holds 37,939 'over' against
+# 5,111 'under'.
+#
+# WHAT THIS DELIBERATELY DOES NOT DO. There is a fourth shape: Bovada sends the
+# PLAYER NAME as the outcome name with no point at all (key "batter_home_runs",
+# name "Ali Sanchez (NYY)", price +1100). That is almost certainly an anytime
+# market, i.e. over 0.5 — but "almost certainly" is exactly what 5.1 warns
+# against, because a wrong line creates a duplicate proposition at the wrong
+# number, which is worse than discarding the feed. Those rows are left to the
+# existing path and now land in odds_unresolved where they are visible. Both
+# rules below are LITERAL: the threshold is stated in the string being parsed,
+# never inferred from a price.
+#
+# "2+" is over 1.5, not over 2 — a 2+ bet wins on exactly 2.
+# ---------------------------------------------------------------------------
+
+# "batter_2plus_hits" -> ("hits", 2).  Key-encoded (shape 1).
+_ALT_LINE_KEY_RE = re.compile(r"^(?:batter|pitcher)_(\d+)plus_(.+)$")
+# "2+ Total Bases", "1+ Home Runs" -> 2 / 1.  Name-encoded (shape 2).
+_ALT_LINE_NAME_RE = re.compile(r"^(\d+)\+\s")
+
+
+def resolve_alt_line(raw_market_label: str, outcome_name: str | None) -> tuple[str, float] | None:
+    """Fold a Propline alt-line onto its base market and a real line.
+
+    Returns (canonical_market_key, line) for an over, or None when this is not
+    an alt-line and the caller should carry on as before.
+
+    An "N+" proposition is "over N-0.5": 2+ hits wins on exactly 2 hits, so the
+    line is 1.5. Getting this off by one would create a duplicate proposition at
+    the wrong number, which 5.1 correctly calls worse than discarding the feed.
+    """
+    key_match = _ALT_LINE_KEY_RE.match(raw_market_label.strip().lower())
+    if key_match:
+        threshold, base_label = key_match.group(1), key_match.group(2)
+        base = resolve_market_key(base_label)
+        if base:
+            return base, int(threshold) - 0.5
+        return None
+
+    if outcome_name:
+        name_match = _ALT_LINE_NAME_RE.match(outcome_name.strip())
+        if name_match:
+            base = resolve_market_key(raw_market_label)
+            if base:
+                return base, int(name_match.group(1)) - 0.5
+    return None
 
 
 # ---------------------------------------------------------------------------

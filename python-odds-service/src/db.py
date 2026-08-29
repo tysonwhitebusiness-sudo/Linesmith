@@ -3069,6 +3069,39 @@ async def read_game_model_cache(sport: str, game_id: str) -> GameModelCacheRow |
 
 
 # ---------------------------------------------------------------------------
+# Unresolved provider rows (task 5.1 / P2 H2) — direct port of
+# lib/db/client.ts's replaceUnresolvedForProvider.
+#
+# Python NEVER HAD THIS. run_provider_specs collected every FetchOutcome's
+# `unresolved` list and only COUNTED it into the job summary; nothing wrote it
+# anywhere. The sole writer of odds_unresolved was the TypeScript pipeline,
+# which task 2.5 deleted — so the table's newest row is 2026-08-26 while
+# Propline has kept fetching every day since. That is exactly P2 H2's
+# "monitoring must be written by the LIVE pipeline, not the dead one": the
+# table looked populated, so the gap was invisible.
+#
+# Delete-then-insert per provider, matching the TS semantics: this table is a
+# snapshot of what is UNRESOLVED RIGHT NOW, not an append-only log. A market
+# key that starts resolving should disappear from it.
+# ---------------------------------------------------------------------------
+
+
+async def replace_unresolved_for_provider(provider_id: str, rows: list) -> None:
+    pool = await get_pool()
+    async with pool.acquire(timeout=15.0) as conn:
+        async with conn.transaction():
+            await conn.execute("DELETE FROM odds_unresolved WHERE provider_id = $1", provider_id)
+            for r in rows:
+                await conn.execute(
+                    "INSERT INTO odds_unresolved (provider_id, kind, raw_value, context) VALUES ($1, $2, $3, $4)",
+                    provider_id,
+                    r.kind,
+                    r.raw_value,
+                    r.context,
+                )
+
+
+# ---------------------------------------------------------------------------
 # System events — lightweight error log (direct port of lib/db/client.ts's
 # logSystemEvent)
 # ---------------------------------------------------------------------------

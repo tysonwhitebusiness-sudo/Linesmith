@@ -108,6 +108,31 @@ const MARKET_KEY_ALIASES: Record<string, MarketKey> = {
   walks: 'walks',
   strikeouts: 'batter-strikeouts',
   pitcher_strikeouts: 'pitcher-strikeouts',
+  // Propline's own MLB vocabulary, captured LIVE 2026-08-29 (task 5.1,
+  // P2 C1). THIS is why "Propline's entire MLB batter-prop feed is
+  // discarded" — not the alt-lines the plan focuses on, but the fact that
+  // this map had no `batter_*` prefixed entries AT ALL. It carried bare
+  // names ("hits"), a `batting_*` prefix, and `pitcher_strikeouts` — but
+  // Propline sends `batter_hits`, `batter_rbis`, `batter_home_runs`, and so
+  // on, so every single one resolved to null and every row was dropped.
+  // Kept byte-identical to python-odds-service/src/entity_resolution.py's
+  // MARKET_KEY_ALIASES — task 5.11's drift test asserts the two agree.
+  batter_hits: 'hits',
+  batter_rbis: 'rbis',
+  batter_runs: 'runs',
+  batter_singles: 'singles',
+  batter_doubles: 'doubles',
+  batter_triples: 'triples',
+  batter_walks: 'walks',
+  batter_home_runs: 'home-runs',
+  batter_total_bases: 'total-bases',
+  batter_strikeouts: 'batter-strikeouts',
+  batter_stolen_bases: 'stolen-bases',
+  batter_hits_runs_rbis: 'hits-runs-rbis',
+  pitcher_outs: 'pitcher-outs',
+  pitcher_earned_runs: 'earned-runs',
+  pitcher_hits_allowed: 'pitcher-hits-allowed',
+  pitcher_walks_allowed: 'pitcher-walks-allowed',
   outs: 'pitcher-outs',
   // Odds-API.io Player Props labels (parsed out of "Player (Stat Type)")
   'total bases': 'total-bases',

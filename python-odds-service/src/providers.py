@@ -34,6 +34,7 @@ from entity_resolution import (
     build_roster_index,
     normalize_bookmaker,
     normalize_team_name,
+    resolve_alt_line,
     resolve_market_key,
     resolve_player,
     team_name_words,
@@ -181,6 +182,7 @@ def _normalize_row(
     decimal_odds: float | None,
     is_delayed: bool = False,
     delay_seconds: int | None = None,
+    market_key_override: str | None = None,
 ) -> None:
     """Shared resolve-bookmaker -> resolve-market -> resolve-player pipeline
     every TS adapter follows, in the same order (so a row with multiple
@@ -193,7 +195,9 @@ def _normalize_row(
     if not bookmaker:
         out.unresolved.append(unresolved_bookmaker(raw_bookmaker, context))
         return
-    market_key = resolve_market_key(raw_market_label)
+    # An alt-line has ALREADY been resolved by the caller (task 5.1) — it
+    # carries a line and a base market the raw label alone can't express.
+    market_key = market_key_override or resolve_market_key(raw_market_label)
     if not market_key:
         out.unresolved.append(unresolved_market(raw_market_label, f"player {raw_player_name}"))
         return
@@ -906,7 +910,21 @@ async def fetch_propline(client: httpx.AsyncClient, api_key: str, games: list[Ga
                     continue  # handled by _propline_game_line_rows above — no player to resolve here
                 for outcome in market.get("outcomes") or []:
                     raw_name = outcome.get("description") or outcome.get("name")
-                    side = "under" if "under" in (outcome.get("name") or "").lower() else "over"
+                    outcome_name = outcome.get("name") or ""
+                    side = "under" if "under" in outcome_name.lower() else "over"
+                    line = outcome.get("point")
+                    market_key_override = None
+                    # Task 5.1 (P2 C1, Q4). Propline encodes an alt-line in the
+                    # market key ("batter_2plus_hits") or in the outcome name
+                    # ("2+ Total Bases"), both with point=null. Both are folded
+                    # onto the base market at the real line — "2+" is over 1.5,
+                    # because a 2+ bet wins on exactly 2. Without this they
+                    # arrived as an over at line=None, which is a proposition
+                    # nothing can grade or price against.
+                    alt = resolve_alt_line(market_label, outcome_name)
+                    if alt is not None:
+                        market_key_override, line = alt
+                        side = "over"
                     _normalize_row(
                         out,
                         game,
@@ -916,9 +934,10 @@ async def fetch_propline(client: httpx.AsyncClient, api_key: str, games: list[Ga
                         raw_bookmaker=bookmaker_raw,
                         context=f"Propline {bookmaker_raw}",
                         side=side,
-                        line=outcome.get("point"),
+                        line=line,
                         american_odds=outcome.get("price"),
                         decimal_odds=None,
+                        market_key_override=market_key_override,
                     )
     return out
 
