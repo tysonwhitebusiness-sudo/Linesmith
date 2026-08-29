@@ -2371,6 +2371,13 @@ class ModelWeightsRow:
     covariance: list[list[float]] | None
     train_seasons: list[int] | None
     holdout_seasons: list[int] | None
+    # Task 4.4 / Q6: True = compute, log and grade but never render. Defaults
+    # True so a construction site that predates the column keeps the SAFE
+    # meaning (hidden), never accidentally publishing a model. Independent of
+    # `active`, which is about which version is current: Q24's "deactivate a
+    # model that loses to the market" acts on `active`, Q6's "hidden until it
+    # beats the market" acts on this.
+    shadow: bool = True
 
 
 def _json_or_none(s: str | None):
@@ -2405,6 +2412,7 @@ async def get_active_model_weights(sport: str, market: str) -> ModelWeightsRow |
         covariance=_json_or_none(row["covariance_json"]),
         train_seasons=_json_or_none(row["train_seasons_json"]),
         holdout_seasons=_json_or_none(row["holdout_seasons_json"]),
+        shadow=row["shadow"] if "shadow" in row else True,
     )
 
 
@@ -2499,6 +2507,7 @@ async def write_model_weights(input: ModelWeightsInput, activate: bool) -> Model
         covariance=_json_or_none(row["covariance_json"]),
         train_seasons=_json_or_none(row["train_seasons_json"]),
         holdout_seasons=_json_or_none(row["holdout_seasons_json"]),
+        shadow=row["shadow"] if "shadow" in row else True,
     )
 
 

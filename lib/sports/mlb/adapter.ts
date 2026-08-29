@@ -60,7 +60,7 @@ import type {
 } from './statsapi';
 import { battersUntil, measuredGamePace, mlbEta } from './timing';
 import { getWeather } from '../../weather/openMeteo';
-import { leagueBaseRates, getActiveModelWeights, readGameModelCache, readPropModelCacheForGames, propModelCacheKey, type ModelWeightsRow, type PropModelCacheRow } from '../../db/client';
+import { leagueBaseRates, getRenderableModelWeights, readGameModelCache, readPropModelCacheForGames, propModelCacheKey, type ModelWeightsRow, type PropModelCacheRow } from '../../db/client';
 import { computeModelProbability } from '../../odds/props/edgeModel';
 import { candidateCategoryToSide } from '../../odds/props/entityResolution';
 import { applyFittedHomeRunWeights, applyLineupConfidence, parkHrFactorCentered, expectedPaCentered, pitcherMatchupSignal } from './homeRunModel';
@@ -1948,7 +1948,14 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
   // falls back to the plain Beta-Binomial modelProb, unchanged, when this is
   // null — same "only override when fitted is present" shape as
   // app/api/odds/lines/route.ts's `if (fitted)` for moneyline/total.
-  const homeRunModel = await getActiveModelWeights('mlb', 'home-run');
+  // getRenderableModelWeights, not getActiveModelWeights: a shadowed model
+  // (task 4.4 / Q6) returns null here and statMarketCandidates falls back to
+  // the plain Beta-Binomial modelProb, exactly as it already does when no fit
+  // exists. Shadow is therefore a property of the MODEL rather than an edit to
+  // this file — which is the whole point of 4.4, since Phase 1.3 hid output by
+  // editing components and left no way to answer "is this being shown?"
+  // without reading the renderer.
+  const homeRunModel = await getRenderableModelWeights('mlb', 'home-run');
   // Named distinctly from the game-level `parkFactorCache` declared later in
   // this function (moneyline/total's own park-factor pass) — same
   // loadParkFactorCache(season) call, just a separate local binding so the

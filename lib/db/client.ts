@@ -2329,6 +2329,12 @@ export interface ModelWeightsRow {
   holdoutBrier: number;
   baselineHoldoutBrier: number | null;
   active: boolean;
+  /** Task 4.4 / Q6: true = compute, log and grade this model but never render
+   * its output. Independent of `active`, which is about which version is
+   * current. Defaults true (Q33), so a model is invisible until deliberately
+   * graduated — see getRenderableModelWeights, which is what callers on a
+   * render path should use instead of getActiveModelWeights. */
+  shadow: boolean;
   fittedAt: string;
   covariance: number[][] | null;
   trainSeasons: number[] | null;
@@ -2341,6 +2347,9 @@ function mapModelWeightsRow(row: any): ModelWeightsRow {
     featureNames: JSON.parse(row.featureNames),
     weights: JSON.parse(row.weights),
     active: !!row.active,
+    // Defaults true when a row predates the column, matching the migration's
+    // default — an unknown-visibility model is treated as hidden, never shown.
+    shadow: row.shadow == null ? true : !!row.shadow,
     covariance: row.covariance != null ? JSON.parse(row.covariance) : null,
     trainSeasons: row.trainSeasons != null ? JSON.parse(row.trainSeasons) : null,
     holdoutSeasons: row.holdoutSeasons != null ? JSON.parse(row.holdoutSeasons) : null,
@@ -2415,11 +2424,38 @@ function camelizeModelWeightsRow(row: any): any {
     holdoutBrier: row.holdout_brier,
     baselineHoldoutBrier: row.baseline_holdout_brier,
     active: row.active,
+    // Task 4.4. This mapper is an explicit WHITELIST, so a new column is
+    // invisible until named here — `shadow` was silently dropped, which made
+    // mapModelWeightsRow's undefined-means-hidden default fire every time and
+    // pinned the model to hidden in both directions. Caught by
+    // scripts/gate/phase-4-shadow-roundtrip.mjs asserting that clearing the
+    // flag makes the model VISIBLE; a test that only checked "shadow=true
+    // hides it" would have passed against a permanently-invisible model.
+    shadow: row.shadow,
     fittedAt: row.fitted_at,
     covariance: row.covariance_json,
     trainSeasons: row.train_seasons_json,
     holdoutSeasons: row.holdout_seasons_json,
   };
+}
+
+/**
+ * The active model for this sport+market **only if it is allowed to be
+ * rendered** (task 4.4, Q6). Returns null for a shadowed model, so every
+ * caller on a render path falls back to whatever it already does when no
+ * fitted model exists — which is precisely "compute, log, grade, never
+ * render", expressed once here instead of re-decided at each call site.
+ *
+ * Use this on any path whose output reaches a user. Use getActiveModelWeights
+ * for fitting, grading, diagnostics and anything else that must see the model
+ * regardless of whether it is being shown.
+ */
+export async function getRenderableModelWeights(
+  sport: string,
+  market: 'moneyline' | 'total' | 'home-run',
+): Promise<ModelWeightsRow | null> {
+  const row = await getActiveModelWeights(sport, market);
+  return row && !row.shadow ? row : null;
 }
 
 export async function getActiveModelWeights(sport: string, market: 'moneyline' | 'total' | 'home-run'): Promise<ModelWeightsRow | null> {
