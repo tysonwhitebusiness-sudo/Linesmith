@@ -55,26 +55,35 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
-      - name: Hermetic tests
-        # NOT pytest. These are standalone scripts, not pytest modules —
-        # `python -m pytest` collects almost nothing from them and would pass
-        # on an empty run, which is worse than not running them at all.
-        run: |
-          set -e
-          for t in \
-            test_entity_resolution \
-            test_game_context_roster \
-            test_leakage_guard \
-            test_mlb_prop_grading \
-            test_mlb_source_flip \
-            test_odds_lines_cycle_book_lines \
-            test_price_staleness \
-            test_providers \
-            test_under_side_probability \
-            test_walkforward ; do
-            echo "--- $t ---"
-            python -u "src/$t.py"
-          done
+      # One step per test, not a loop. A loop puts the failure inside a log
+      # that needs authentication to read; a named step surfaces WHICH test
+      # failed through the public API and in the run summary. That mattered
+      # immediately — the first version was a loop, it went red, and the only
+      # thing observable from outside was "Hermetic tests failed".
+      #
+      # NOT pytest: these are standalone scripts, not pytest modules, so
+      # `python -m pytest` collects almost nothing and would report a green
+      # run having tested nothing.
+      - name: test_entity_resolution
+        run: python -u src/test_entity_resolution.py
+      - name: test_game_context_roster
+        run: python -u src/test_game_context_roster.py
+      - name: test_leakage_guard
+        run: python -u src/test_leakage_guard.py
+      - name: test_mlb_prop_grading
+        run: python -u src/test_mlb_prop_grading.py
+      - name: test_mlb_source_flip
+        run: python -u src/test_mlb_source_flip.py
+      - name: test_odds_lines_cycle_book_lines
+        run: python -u src/test_odds_lines_cycle_book_lines.py
+      - name: test_price_staleness
+        run: python -u src/test_price_staleness.py
+      - name: test_providers
+        run: python -u src/test_providers.py
+      - name: test_under_side_probability
+        run: python -u src/test_under_side_probability.py
+      - name: test_walkforward
+        run: python -u src/test_walkforward.py
       - name: Not run here, and why
         run: |
           echo "Deliberately excluded from CI (Q20 — no database credentials in Actions):"
