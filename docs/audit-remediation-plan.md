@@ -153,6 +153,29 @@ for and 2.1's map had turned up a table nobody knew about:
 | Q21 | **Investigate whether the xlsx import is still needed**; drop the dependency outright if not, CSV if it is. | 3.13 |
 | Q22 | **Next 16 upgrade happens inside Phase 3.** | 3.13 |
 
+**Added 2026-08-29, before running Phases 5 and 4 unattended.** The operator is
+away; these were answered in advance precisely so the run does not stall on
+them, and so nothing destructive happens on my judgement alone.
+
+| # | Decision | Lands in |
+|---|---|---|
+| Q23 | CHECK-constraint violators are **quarantined to a backup table, not deleted**. They are the only sample of what Propline puts in the `totals` slot, which Q11 asks about. | 5.4 |
+| Q24 | A model that loses to the market baseline is **deactivated**. That is the point of the gate, and Phase 1.3 already hid model output from the UI, so this changes what computes in the background, not what a user sees. Record which models failed and by how much. | 4.2 |
+| Q25 | Keep the **validated** MLB game model, delete the other, **re-grade** affected history — **after** snapshotting the pre-regrade rows. Re-grading rewrites the recorded track record, so it stays reversible. | 4.8 |
+| Q26 | If `market_prob` coverage cannot reach 50%, **proceed at the real number and state it prominently** rather than stalling. The 50% target was set before anyone had measured the two causes. | 4.1 |
+
+**Two decisions I took myself and am flagging rather than burying**, both in
+5.13:
+
+- **Skipping the `pick_history` → `model_predictions` rename.** P2 L5 is right
+  that the name misleads, but the rename touches 368,657 rows plus every reader
+  in both languages, for naming clarity. Bad risk/reward to run unattended.
+- **Skipping the `TEXT` → `JSONB` migration.** The plan's 5.13 contradicts its
+  own finding: P2 L2 concludes *"Recommendation: leave it"*, because
+  `lib/db/jsonPassthrough.ts` exists specifically to serve the stored string
+  without a parse round-trip, and JSONB would force a reparse on every read.
+  The finding is right and the task item is wrong.
+
 Q19 has a consequence that must not be lost: with no external error tracking,
 **the only alerting is the health-check cron's `notifyOnFail` and whoever
 happens to look at `/diagnostics`.** Acceptable while nothing is user-facing; it
