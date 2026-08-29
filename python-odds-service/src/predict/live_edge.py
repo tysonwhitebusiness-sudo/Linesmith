@@ -59,6 +59,38 @@ _TOO_STALE_SECONDS = 600
 # 17.5-hour-old prices the audit found being shown as live. See _too_stale.
 _MAX_ROW_AGE_SECONDS = 30 * 60
 
+# Task 4.1. The MARKET REFERENCE tolerates more age than a DISPLAYED price,
+# and conflating the two is the dominant cause of market_prob's ~2.85%
+# coverage — not either of the two causes the plan names.
+#
+# MEASURED 2026-08-29, and this is the whole argument:
+#   5,877 same-book same-provider two-sided pairs exist in prop_odds.
+#   Exactly 2 of them fall inside the 30-minute bound at any given instant.
+# Not because the prices are bad, but because refreshTier1 rewrites ~238 rows
+# per cycle against a 49,000-row table, so almost everything is always "old"
+# relative to now(). The reference was being thrown away for a refresh-cadence
+# reason that has nothing to do with whether the price is informative.
+#
+# The two bounds answer different questions:
+#   _MAX_ROW_AGE_SECONDS  — "could a user bet this right now?"  Stays 30 min.
+#                            A stale price shown as live is what P3 C4 was
+#                            about, and that bound is not relaxed here.
+#   _MAX_REFERENCE_AGE_SECONDS — "did the market believe this today?"  A
+#                            four-hour-old de-vigged consensus is a perfectly
+#                            good estimate of a market's opinion on a game that
+#                            has not started; it is simply not a price you can
+#                            still take.
+#
+# 6 hours, not unbounded, and still well inside a single slate — the 17.5-hour
+# prices the audit found remain rejected, which was the failure the original
+# bound existed to catch.
+_MAX_REFERENCE_AGE_SECONDS = 6 * 60 * 60
+
+# The two sides of a de-vig must be contemporaneous WITH EACH OTHER, or the
+# overround is an artefact of the gap rather than the book's real margin. This
+# is the bound that actually protects the arithmetic; age-since-now does not.
+_MAX_PAIR_SKEW_SECONDS = 30 * 60
+
 # Priority order for Tier 1 — first one with a genuine two-sided price for
 # the exact candidate wins. Pinnacle first: the most established,
 # most-cited-in-sharp-betting-research reference. Circa second: the other
@@ -160,6 +192,20 @@ def _row_age_seconds(r: PropOddsRow, now: datetime | None = None) -> float | Non
     return ((now or datetime.now(timezone.utc)) - parsed).total_seconds()
 
 
+def _too_stale_for_reference(r: PropOddsRow, now: datetime | None = None) -> bool:
+    """Staleness bound for a MARKET REFERENCE, not for a bettable price.
+
+    Task 4.1. See _MAX_REFERENCE_AGE_SECONDS above for the measurement that
+    forced the split. The provider's own advertised feed delay is still
+    disqualifying at the same threshold — a provider that admits to a long lag
+    is untrustworthy for either purpose.
+    """
+    if r.delay_seconds is not None and r.delay_seconds > _TOO_STALE_SECONDS:
+        return True
+    age = _row_age_seconds(r, now)
+    return age is not None and age > _MAX_REFERENCE_AGE_SECONDS
+
+
 def _too_stale(r: PropOddsRow, now: datetime | None = None) -> bool:
     """Two independent ways a quote can be unusable, and before Phase 1.2 this
     only checked the one that never fires.
@@ -198,7 +244,13 @@ def _two_sided_devigged_for_row(matched: list[PropOddsRow], side: str, row: Prop
     non-stale two-sided pair exists from that exact source."""
     other_side = "under" if side == "over" else "over"
     counterpart = next((r for r in matched if r.side == other_side and r.bookmaker == row.bookmaker and r.provider_id == row.provider_id), None)
-    if counterpart is None or _too_stale(row) or _too_stale(counterpart):
+    if counterpart is None or _too_stale_for_reference(row) or _too_stale_for_reference(counterpart):
+        return None
+    # Both sides must describe the same moment, within _MAX_PAIR_SKEW_SECONDS —
+    # otherwise the overround measures the gap between two fetches rather than
+    # the book's margin (task 4.1).
+    row_age, cp_age = _row_age_seconds(row), _row_age_seconds(counterpart)
+    if row_age is not None and cp_age is not None and abs(row_age - cp_age) > _MAX_PAIR_SKEW_SECONDS:
         return None
     over_row = row if side == "over" else counterpart
     under_row = counterpart if side == "over" else row
