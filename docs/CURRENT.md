@@ -17,190 +17,176 @@ commit and push.
 ## The documents, in reading order
 
 1. **`docs/audit-remediation-plan.md`** — §0 (working rules, standing decisions
-   **Q1–Q36**, the G1–G8 gate) and the phase you are working. Don't read it end
-   to end.
-2. **§11** — the phase log. Phases 0, 1, 2, 3 have PASSED gate entries; Phase 5
-   is logged task-by-task and its gate has **not** run yet.
-3. **`docs/table-ownership.md`** — one row per table.
-4. **`CLAUDE.md`** — "Who writes what" at the top.
-5. **`docs/audit-phase-2.md` … `-5.md`** — findings, for reasoning.
+   **Q1–Q36**, the G1–G8 gate) and the phase you are working.
+2. **§11** — the phase log. Phases 0, 1, 2, 3, **5** all have PASSED gate
+   entries. Phase 4 is logged task-by-task and its gate has not run.
+3. **`docs/table-ownership.md`** · 4. **`CLAUDE.md`** · 5. `docs/audit-phase-*.md`
 
-**Last updated:** 2026-08-29, mid-Phase-5.
-**Repo state:** clean, pushed. Worker live on `f958444`.
+**Last updated:** 2026-08-29 ~08:45Z, mid-Phase-4.
+**Repo state:** clean, pushed. Worker live on `fccd9f0`.
 
 ---
 
 ## 1. Where we are
 
-**Phases 0, 1, 2, 3 COMPLETE — gates PASSED.**
+**Phases 0, 1, 2, 3, 5 COMPLETE — all gates PASSED.**
+**Phase 4 IN PROGRESS.** 3 of 13 tasks done, one long job running.
 
-**Phase 5: ALL 13 TASKS DONE AND COMMITTED. The GATE HAS NOT RUN.**
-That is the immediate next action. Phase 4 comes after it.
+Phase 5 finished this session: all 13 tasks, gate G1–G8 passed on the re-run
+after G1 failed once (see §11 — the failure and its diagnosis are the most
+useful thing in that entry).
 
-Task-by-task status (all committed, all with VERIFY output in §11):
+### Phase 4 status
 
 | Task | State |
 |---|---|
-| 5.1 Propline alias map + P2 H2 monitoring | done — one live half still pending, see §2 |
-| 5.2 sharp-coverage experiment | done — number measured, decision recorded |
-| 5.3 bookmaker normalisation | done — 33→22 books |
-| 5.4 CHECK constraints | done — 12 constraints, 114 rows quarantined |
-| 5.5 modal-point selection | done — both languages |
-| 5.6 implausible-odds guard | **did not reproduce** — already fixed 2026-08-27; test added |
-| 5.7 consensus excludes compared book | done |
-| 5.8 `_team_match` normalisation | done — confirmed firing in production |
-| 5.9 ParlayAPI soft caps | done — **behaviour change, see §3** |
-| 5.10 partial results on provider failure | done |
-| 5.11 config-drift test | done — proven by breaking it |
-| 5.12 atomic check-and-spend | done — proven with real concurrency |
-| 5.13 schema hygiene | done — plus a bug found in the pass |
+| **Q28** market reference for `game_picks` | **DONE** — prerequisite for 4.2/4.3/4.5 |
+| **4.1** `market_prob` coverage | **DONE** — real causes measured, staleness split fixed |
+| **4.7 golf** | **DONE — decided NOT to build.** Reasoning in §11 |
+| **4.7 NBA** | **RUNNING NOW** — see §2 |
+| 4.7 MLB | not started — the highest-value half |
+| 4.7 tennis | not started — the genuine new source |
+| 4.2 activation gate | not started (Q28 unblocked it) |
+| 4.3 Platt calibration | not started |
+| 4.4 shadow flag | not started — `model_weights` has no `shadow` column |
+| 4.5 CLV | not started |
+| 4.6 fade signal | not started |
+| 4.8 collapse two MLB game models | not started |
+| 4.9 split `edge` definitions | not started |
+| 4.10 both sides for generic sports | not started |
+| 4.11 totals distribution | not started |
+| 4.12 model hygiene (8 items) | not started |
 
-## 2. THE ONE THING STILL OUTSTANDING FROM PHASE 5
+## 2. RUNNING RIGHT NOW — do not kill blindly
 
-**5.1's live VERIFY half cannot be confirmed until the Propline daily cap
-resets (UTC midnight).**
+**NBA `player_game_history` backfill.**
 
-`prop_odds` should gain Propline **batter** rows once MLB Propline runs with
-the new alias map. It has not run since the fix deployed, because `propline`
-sits at exactly 1000/1000 for 2026-08-29 and is correctly gated.
-
-What IS already confirmed live:
-- `odds_unresolved` is now written by the **Python** pipeline — its stale 1,317
-  propline rows from 2026-08-26 were replaced after the 07:51:59 deploy. Before
-  this, Python only *counted* unresolved rows and the sole writer was the
-  TypeScript pipeline task 2.5 deleted.
-- 5.8's aggregate log fires: `system_events` has
-  `job_runner.team_match | 5 game(s) matched no provider event` at 07:54:08,
-  after the deploy.
-
-**To close it:** after 00:00 UTC, run
-
-```sql
-SELECT market_key, count(*) FROM prop_odds
- WHERE provider_id = 'propline' AND fetched_at > '2026-08-30'
- GROUP BY market_key ORDER BY 2 DESC;
+```
+cd python-odds-service
+python -u src/backfill_player_game_history.py nba    # already running
+tail -f python-odds-service/nba_backfill.log
 ```
 
-Before the fix this returned exactly one MLB market (`pitcher-strikeouts`).
-It should now return the batter markets too. If it does not, the alias map is
-right (24/24 keys resolve in `test_propline_alt_lines.py`) but something
-downstream of `_normalize_row` is dropping the rows — check player resolution
-first, since that is the next filter in the chain.
+Progress at last check: season 2017, 900/1231 games, **45,603 NBA rows written
+(was 0)**, 0 failed, ~160 games/min, ~7 min per season, 11 seasons total
+(2016–2026). Expect ~60 more minutes.
 
-## 3. Decisions taken this session — all recorded in §0 as Q28–Q36
+**It is safe to kill and restart.** Resumability is by design: before fetching a
+game it checks `player_game_history` for that `(sport, event_id)` and skips the
+network call entirely. The database is the only progress state, so restarting
+never re-pays for completed work.
 
-Four were answered by the operator before they left; five I took myself.
-Full reasoning is in §0's table. The ones with teeth:
+**Verify when it finishes:**
 
-- **Q28** — the MLB game model has NO market reference anywhere (`market_prob`
-  is null on 100% of `moneyline`/`total` rows, and `game_picks` has no such
-  column). Phase 4 must BUILD one before 4.2's gate can run at all.
-- **Q29** — Propline budget is *added*, not reallocated. Nothing displayed is
-  dropped.
-- **Q33** — `model_weights.shadow` defaults **TRUE**, so 4.4 makes nothing
-  newly visible.
-- **5.9 IS A REAL BEHAVIOUR CHANGE.** The `PARLAYAPI_*_SOFT_CAP` vars were
-  already set to **800** against a hard limit of 1000, and were being ignored.
-  Wiring them lowers the ParlayAPI gate by 20%, so those jobs now stop earlier
-  in the month than they did yesterday. That is what a soft cap is for and what
-  the operator configured — but it is not a no-op, and if it turns out to be
-  unwanted, unset the vars rather than reverting the code.
+```sql
+SELECT sport, count(*), min(season), max(season)
+  FROM player_game_history GROUP BY sport ORDER BY 2 DESC;
+```
 
-## 4. Next actions, in order
+NBA should reach roughly 500k–600k rows across 11 seasons.
 
-1. **Run the Phase 5 gate** — G1–G8 in §0 plus Phase 5's own gate section, in
-   one sitting. Two of its phase-specific items already have runnable scripts:
-   `node scripts/gate/phase-5-constraints.mjs` (every CHECK tripped
-   deliberately) and `node scripts/gate/phase-5-budget-race.mjs` (the 5.12
-   race, both directions). G3's live smoke walk needs `npm run dev`.
-2. **Write the §11 sign-off**, including 5.1's outstanding live half in the
-   "known NOT done" list — it is not a gate failure, it is a timing dependency,
-   and it must be named rather than glossed.
-3. **Phase 4.** Start with Q28's market reference for `game_picks`, because
-   4.2, 4.3 and 4.5 are all downstream of it.
-4. **4.7 is four jobs** — spec unchanged, see §5.
+## 3. Next actions, in order
 
-## 5. Task 4.7 — still four jobs, spec unchanged
+1. **Confirm the NBA backfill finished clean** (§2), then log it in §11.
+2. **4.7 MLB** — the highest-value half, and 4.7's own note says MLB is where
+   all the graded history lives. `predict/statsapi.py:383`'s
+   `get_people_with_game_logs(ids, group, season)` already returns per-game
+   logs, and its `GameLogSplit` maps almost 1:1 onto `PlayerGameHistoryInput`.
+   Walk **historical** rosters per season (P3 L3) or it inherits the exact
+   survivorship bias 4.7 exists to fix. Wants its own `discover`/`parser`
+   branch, not another `SPORT_CONFIGS` row.
+3. **4.7 tennis** — no per-match player-history module exists in Python at all.
+   Largest of the four.
+4. **4.2**, now unblocked by Q28 — but read §4 first, the sample is small.
+5. The rest of Phase 4, then its gate.
 
-`player_game_history` holds nhl 674k, cfb 274k, nfl 227k, soccer_epl 168k,
-soccer_mls 134k — and **zero** for MLB, NBA, golf, tennis. Re-measured
-2026-08-29, still true.
+## 4. What Phase 4 has actually learned so far — read before 4.2
 
-- **NBA — just run it.** Parser and config exist, nothing has ever invoked
-  them: `python src/backfill_player_game_history.py nba`. 11 seasons
-  (2016–2027). Watch the connection ceiling (§7).
-- **MLB — moderate.** `predict/statsapi.py:383`'s
-  `get_people_with_game_logs(ids, group, season)` already returns per-game
-  logs and its `GameLogSplit` maps almost 1:1 onto `PlayerGameHistoryInput`.
-  Walk **historical** rosters per season (P3 L3) or it inherits the
-  survivorship bias 4.7 exists to fix. Wants its own `discover`/`parser`
-  branch, not another `SPORT_CONFIGS` row.
-- **Golf — decide before building.** Golf already keeps per-round and per-hole
-  history in `golf_hole_scores`/`golf_round_scores`/`golf_model_predictions`,
-  and its models read those. **Check whether anything would consume a
-  `player_game_history` copy before writing an importer**, and if nothing
-  would, record that as the outcome.
-- **Tennis — the genuine gap.** No per-match player-history module exists in
-  Python at all. Largest of the four.
+**The plan's Phase 4 text is stale in two places, both measured:**
 
-Order: NBA (run) → MLB (build) → golf (decide) → tennis (build).
+- **4.1's "resolve_candidate_edge has never run" is wrong.** It runs, from
+  `prop_pick_history.py:43`, `generic_prop_score.py:188` and
+  `generic_rare_markets.py:137`. It returns None almost always instead.
+- **The two causes 4.1 names are not the dominant ones.** Measured: staleness
+  is (5,877 same-book two-sided pairs exist; **2** are inside the 30-minute
+  bound at any instant, because `refreshTier1` rewrites ~238 rows per cycle
+  against a 49,000-row table). Fixed by splitting the display bound from the
+  reference bound. Second cause is **under-side scarcity** — 43,620 overs
+  against 5,113 unders, `propline_2` supplying **zero** unders — which no code
+  fixes and which is exactly why **Q26** exists.
 
-## 6. Things that will bite again
+**4.2 will run on a small sample and that must be stated, not hidden.**
+Q28 built the market reference and it works (MLB 91 values, real books,
+pinnacle 22). But `game_odds_book_lines` is a current-state table, so only
+recent games still have lines to reference: **graded MLB picks with both a
+model and a market probability = 12, of 125 graded.** `game_odds_history`
+covers only 41 of 176 MLB picks. Q24 says a model that loses to the market is
+deactivated — at n=12 the gate cannot discriminate, so **run it, report the
+number and its uncertainty, and do not deactivate on an underpowered sample.**
+Record exactly that.
 
-- **Fault injection is easy to fake — it happened AGAIN this session and the
-  guard caught it.** `scripts/gate/phase-5-constraints.mjs` first reported all
-  17 violations "rejected"; every one was rejected by a `NOT NULL` on
+**A correction carried into this file** (it was wrong here before): bookmaker
+canonicalisation being "part of why 4.1's resolution rate is 18%" is true for
+game lines and **false for props** — `prop_odds` has 17 bookmakers and 17
+lowercased bookmakers, so its casing was never split. 5.3 is load-bearing for
+`game_odds_book_lines` and Q28's reference; it is not a 4.1 fix.
+
+## 5. Things that will bite again
+
+- **Fault injection is easy to fake — four occurrences now.** The newest:
+  `scripts/gate/phase-5-constraints.mjs` first reported all 17 violations
+  "rejected", and every one was rejected by a `NOT NULL` on
   `fetched_at`/`category`, not by any CHECK constraint. Nothing was being
-  tested. Visible only because the script inserts a known-good CONTROL row per
-  table first and asserts `e.constraint` equals the specific constraint under
-  test. **Never accept "the operation failed" as evidence — assert WHY it
-  failed.** That is now four occurrences.
+  tested. Caught only because the script inserts a known-good CONTROL row per
+  table and asserts `e.constraint` equals the specific constraint under test.
+  **Never accept "the operation failed" as evidence — assert WHY.**
 - **Reverting a fix and re-running its test can prove nothing.** Reverting
   `mlb_game_lines.py` produced an ImportError, not a failure. The real
   counterfactual came from extracting the pre-fix function out of git history
-  and running the same fixture through it. Do that instead.
-- **The plan's own task text goes stale, and it did so three more times.**
-  5.6 was already fixed. 5.1's alias table was real but incomplete, and missed
-  the actual cause entirely (no `batter_*` keys in the alias map at all).
-  5.4's `side IN ('over','under')` would have rejected 449 legitimate `'other'`
-  rows. Measure before implementing.
-- **`ADMIN_API_PREFIXES` does nothing without a `config.matcher` entry.**
-  `tests/proxy-matcher.test.ts` guards it.
-- **`withJobLock` is a LEASE TABLE, not an advisory lock.** Anything relying on
-  session state through `:6543` is suspect.
-- **Postgres UNIQUE treats NULLs as distinct.** That produced the 178k
-  `prop_odds` duplicates. Worth checking other tables for the same shape.
-- **A long heredoc breaks this shell.** Anything over ~120 lines fails with
-  "unexpected EOF". Use the Write tool for long files.
-- **`cd` persists between Bash calls.** Use absolute paths or expect confusion.
-- **Git Bash `/tmp` is not Python's `/tmp`.**
+  and running the same fixture through it.
+- **A deploy does NOT mean every writer runs the new code.** This cost the
+  Phase 5 gate a full G1 failure. Render restarts the worker, but OddsHarvester
+  runs as Windows scheduled tasks (`LinesmithOddsHarvester*`, ~20-min cycle) and
+  Python binds imports at process start, so a run begun before your change keeps
+  writing old behaviour for up to 20 minutes. **Any migration that normalises a
+  column needs re-applying after those processes cycle**
+  (`20260829110000_canonical_bookmaker_residue.sql` exists only for this).
+- **The plan's own task text goes stale, repeatedly.** This session: 5.6 was
+  already fixed; 5.1's alias table was real but incomplete and missed the actual
+  cause; 5.4's `side IN ('over','under')` would have rejected 449 legitimate
+  `'other'` rows; 4.1's premise is wrong. **Measure before implementing.**
+- **`withJobLock` is a LEASE TABLE, not an advisory lock.**
+- **Postgres UNIQUE treats NULLs as distinct.**
+- **A long heredoc breaks this shell** (>~120 lines → "unexpected EOF"). Use the
+  Write tool for long files.
+- **`cd` persists between Bash calls.** Use absolute paths.
+- **Git Bash `/tmp` is not Python's `/tmp`.** Bit me again this session.
 - **Stale `.next/types` break `tsc` after deleting a route** — `rm -rf .next/types`.
 
-## 7. Operational knowledge
+## 6. Operational knowledge
 
 - **DB access:** temp `.mjs` in the repo root, `node` it, delete after. `:6543`
-  is the transaction pooler; use `:5432` for DDL, `pg_dump`, `VACUUM`.
-- **Tests:** `npm test` (**36** now) and `python -u src/test_x.py` from
-  `python-odds-service/`. **13** hermetic Python tests; the 4 added this phase
-  are `test_canonical_bookmaker`, `test_modal_point`,
-  `test_consensus_and_matching`, `test_propline_alt_lines`. **They are not yet
-  in `.github/workflows/ci.yml`** — adding them is a Phase 5 gate item.
-- **No `gh` CLI and no GitHub token here.** CI via
-  `https://api.github.com/repos/tysonwhitebusiness-sudo/Linesmith/actions/runs`.
+  is the transaction pooler; use `:5432` for DDL.
+- **Tests:** `npm test` (**36**) and `python -u src/test_x.py` from
+  `python-odds-service/`. **13** hermetic Python tests, all now in
+  `.github/workflows/ci.yml`, one step each.
+- **Gate scripts:** `node scripts/gate/phase-5-constraints.mjs` (every CHECK
+  tripped deliberately) and `node scripts/gate/phase-5-budget-race.mjs` (the
+  5.12 race, both directions, with the counterfactual).
 - **Render:** worker `srv-da36bm2bkg8c73fqrdeg`, `autoDeploy: no` — after any
   push touching `python-odds-service/`, POST a deploy and confirm the live
-  commit. Deploys take ~90s.
+  commit. ~90s.
 - **Propline budget:** `propline` 1000/day (MLB), `propline_2` 1000/day
-  (soccer) — now genuinely separate, see 5.2. **18 of ~20 authorised
-  propline_2 probe calls were spent** capturing
-  `docs/propline-live-capture-20260829.json`; reuse that file rather than
-  re-probing.
+  (soccer), now genuinely separate. **18 of ~20 authorised propline_2 probe
+  calls spent** capturing `docs/propline-live-capture-20260829.json` — reuse
+  that file rather than re-probing.
+- **No `gh` CLI and no GitHub token.** CI via the public Actions API.
 - **Don't `git add -A` blindly** — `docs/discord-community-prompt.md` is the
   operator's. Use `git add -A -- . ':!docs/discord-community-prompt.md'`.
+  Note: adding a gitignored path to that pathspec makes `git add` exit non-zero
+  and silently skip the commit behind `&&`.
 
-## 8. Backup tables now outstanding
-
-All reversible, all deliberate. Drop only once soaked:
+## 7. Backup tables outstanding
 
 | Table | Rows | From |
 |---|---|---|
@@ -209,19 +195,32 @@ All reversible, all deliberate. Drop only once soaked:
 | `game_odds_book_lines_quarantine_20260829` | 114 | 5.4 (Q23) |
 | `game_odds_history_bookmaker_backup_20260829` | 47,622 | 5.13 |
 
-## 9. Carried forward
+## 8. Carried forward / known not done
 
-- **3.15 — two GET-path writers, recorded not done.** `recordEspnPregameLine`
-  (CFB/NBA/Soccer game routes) and `odds_cache` (golf/odds/tennis). Python has
-  no ESPN pregame-line capture, so deleting loses data for three sports.
-  **Owner: still open.** Not closed by Phase 5.
-- **2,380 duplicate observation groups in `game_odds_history`**, revealed (not
-  created) by 5.13's canonicalisation. Deliberately not deleted. **Owner: 6.1.**
-- **Sharp coverage is 9.08%**, under the plan's own 10% threshold, so a
-  Pinnacle-class feed is justified by 5.2's rule. Recommendation only — nothing
-  purchased. Pinnacle currently covers exactly one market of thirteen.
-- **No push alerting** (Q19) — Phase 8.
-- **Rate limiting is per-process and `x-forwarded-for` is spoofable** — Phase 8.
-- **`/api/odds/lines` is ~1.8s median.**
-- **The 1.1 backfill** of 1,209 under-side rows is still deferred.
+- **5.1's second VERIFY half is still unconfirmed.** `prop_odds` has not yet
+  gained Propline **batter** rows because `propline` is correctly gated at
+  1000/1000 for 2026-08-29. All 24 live market keys resolve in
+  `test_propline_alt_lines.py`. **After 00:00 UTC run:**
+  ```sql
+  SELECT market_key, count(*) FROM prop_odds
+   WHERE provider_id='propline' AND fetched_at > '2026-08-30'
+   GROUP BY market_key ORDER BY 2 DESC;
+  ```
+  Before the fix this returned exactly one MLB market (`pitcher-strikeouts`).
+- **`/diagnostics`, `/bets` and the signed-in walk were never verified** — no
+  credentials; creating an account or entering a password is out of bounds.
+- **`refreshSportsGameOddsJob` has not run since 04:38Z**, having hit vendor
+  HTTP 429s. Pre-existing (proven: the 07:00Z sweep recorded the same last-run),
+  unowned.
+- **`snapshotCacheSize` unhealthy** — 12.6 MB payload against a 10 MB bound.
+- **Sharp coverage 9.08%**, under 5.2's own 10% threshold, so a Pinnacle-class
+  feed is justified by the plan's rule. Recommendation only — **nothing
+  purchased**. Pinnacle currently covers one market of thirteen.
+- **5.9 lowered the ParlayAPI gate by 20%** — soft caps of 800 against a hard
+  1000 were configured and ignored; now they bind. Unset the env vars rather
+  than reverting code if unwanted.
+- **2,380 duplicate observation groups in `game_odds_history`**, revealed not
+  created by 5.13. Owner: 6.1.
+- **3.15's two GET-path writers** remain, carried from Phase 3.
+- **No push alerting** (Q19) — Phase 8. **Rate limiting per-process** — Phase 8.
 - **`SUPABASE_SERVICE_ROLE_KEY` cannot be rotated** — Phase 7.

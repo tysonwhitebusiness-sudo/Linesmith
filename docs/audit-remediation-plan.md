@@ -3482,6 +3482,123 @@ previously wrote +3,000 and +752.
 failed. G1-G8 below; see "known NOT done" for what is carried forward.
 **Phase 4 may start.**
 
+---
+
+### Phase 4 — 2026-08-29 (IN PROGRESS)
+
+**Gate NOT run.** Running task log.
+
+--- task verifications ---
+
+**Q28 · a market reference for the game model.** *(prerequisite for 4.2/4.3/4.5)*
+
+4.2's gate was not failing, it was **uncomputable**: `pick_history.market_prob`
+is non-null on zero `moneyline` and zero `total` rows, and `game_picks` had no
+market-probability column. Eight columns added; one shared `_market_prob_for`
+now serves every sport (MLB via `odds_lines_cycle.py`, the rest via
+`generic_price_attach.py`). Three enforced rules — both sides from the SAME
+book, for totals at the SAME point, sharp books first — verified before any
+live write:
+
+```
+same-book pair          -> (0.5798, 'fanduel')
+cross-book only         -> None            (rule 1 holds)
+sharp available         -> ('pinnacle')    (rule 3 holds)
+total, mismatched point -> None            (rule 2 holds)
+total, same point       -> (0.5000, 'fanduel')
+```
+
+Populated live: MLB 91, NFL 26, CFB 7, soccer_epl 33, soccer_mls 33.
+Reference books: bet365 45, pinnacle 22, betmgm 3, kalshi 1, fanduel 1.
+Model and market genuinely disagree (game 824960: model 0.5227 home, pinnacle
+0.2658) — that gap was previously unmeasurable.
+
+**Constraint that no further code removes:** `game_odds_book_lines` is a
+current-state table, so only recent games still have lines to reference.
+**Graded MLB picks with both a model and a market probability: 12, of 125
+graded.** `game_odds_history` covers only 41 of 176 MLB picks (the log starts
+2026-08-12). 4.2's gate will run on a small sample whatever else is done, and
+that number is stated rather than buried.
+
+**4.1 · market_prob coverage.** *(P3 C5 fix #2, P3 H8)*
+
+**The plan's premise is stale**: `resolve_candidate_edge` does NOT "never run"
+— it runs from `prop_pick_history.py:43`, `generic_prop_score.py:188` and
+`generic_rare_markets.py:137`. It returns None almost always, for reasons the
+plan does not name.
+
+Measured against today's real 2,795 MLB candidates and 24,672 live prop_odds
+rows, by running the real function over them (`pick_history` is
+first-write-wins, so today's rows were already written at 04:02Z):
+
+```
+candidates with NO price at all   1,677  (60.0%)   audit said 75%
+candidates WITH a price           1,118  (40.0%)
+market_prob resolved, before          0  ( 0.0%)
+market_prob resolved, after          14  ( 1.3% of priced)
+```
+
+Three causes, in order of damage:
+
+1. **Staleness — the dominant one, and unmentioned by the plan.** 5,877
+   same-book same-provider two-sided pairs exist in `prop_odds`; exactly **2**
+   fall inside the 30-minute bound at any instant. `refreshTier1` rewrites ~238
+   rows per cycle against a 49,000-row table, so almost everything is
+   permanently "old" relative to `now()`. Fixed by splitting two bounds that
+   answer different questions: `_MAX_ROW_AGE_SECONDS` (30 min, **unchanged** —
+   "could a user bet this now?") and `_MAX_REFERENCE_AGE_SECONDS` (6 h, new —
+   "did the market believe this today?"), plus `_MAX_PAIR_SKEW_SECONDS` so the
+   two sides of a de-vig are contemporaneous with each other.
+2. **Under-side scarcity, which no code fixes.** 43,620 overs against 5,113
+   unders: `oddsapiio` 13,269/42, `propline_2` 4,004/**0**, `propline`
+   18,883/3,620, `sharpapi` 7,464/1,451. This is why 4.1 cannot reach 50% on
+   the current feeds — the situation **Q26** anticipated.
+3. **60% of candidates have no price at all** (improved from 75%).
+
+**A CORRECTION to a claim I made earlier and repeated from `CURRENT.md`:**
+bookmaker canonicalisation is "part of why 4.1's resolution rate is 18%" is
+TRUE for game lines and **FALSE for props** — `prop_odds` has 17 distinct
+bookmakers and 17 distinct lowercased bookmakers, so its casing was never
+split and 5.3 changed nothing on the prop path. 5.3 remains correct and
+load-bearing for `game_odds_book_lines` and for Q28's reference; it is simply
+not a 4.1 fix. The claim was inherited without being checked against
+`prop_odds`.
+
+**4.7 · golf — DECIDED, NOT BUILT.** *(P3 L3)*
+
+The task says to check whether anything would consume a golf copy before
+writing an importer. Checked, and the answer is no. Recording the outcome, as
+instructed, rather than building it anyway:
+
+- **Golf is not in the generic prop pipeline at all.** `_APP_SPORT_BY_KEY`
+  (`generic_pick_capture.py`) covers nfl/cfb/nba/nhl/soccer_epl/soccer_mls.
+  Golf has its own eight-module stack — `golf_candidates`, `golf_models`,
+  `golf_history`, `golf_grading`, `golf_espn`, `golf_pgatour_stats`,
+  `golf_player_matching`, `golf_venues`.
+- **Every reader of `player_game_history` serves that generic pipeline** —
+  `fetch_player_games_from_db` and `compute_league_rate`. Nothing golf touches
+  reads the table, so rows written there would be read by nobody.
+- **The schema does not fit.** `PlayerGameHistoryInput` is
+  `(athlete_id, team_id, season, event_id, game_date, opponent_id, is_home,
+  stats)`. Golf has no opponent, no team and no home/away; its unit is a round
+  and a hole, not a game against someone.
+- **The data already exists in the right shape**: `golf_hole_scores` 9,560
+  rows, `golf_round_scores` 528, `golf_tournament_results` 119,
+  `golf_model_predictions` 6,231 — and golf's models already read them.
+
+**Outcome: no golf importer.** Building one would duplicate 10,000+ rows into a
+schema shaped for team sports, for zero consumers. 4.7's real target for golf
+is already met by golf's own tables. If a future task genuinely needs golf in
+the unified table, the blocker is a schema question (what is a golf "event"),
+not an ingestion one.
+
+**4.7 · NBA — RUNNING.** `python src/backfill_player_game_history.py nba`,
+11 seasons (2016–2026). Progressing cleanly: 0 failed through season 2017,
+~160 games/min, ~7 min per season. Resumable — the database is the only
+progress state, so killing and restarting never re-pays for completed work.
+
+
+
 > Order followed `docs/CURRENT.md` §2:
 > 5.3 first, because book identity is what 5.5, 5.7 and 4.1's de-vig all
 > depend on. **Gate not yet run — this section is the running task log.**
