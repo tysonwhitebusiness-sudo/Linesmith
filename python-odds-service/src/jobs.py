@@ -678,6 +678,7 @@ async def job_compute_mlb_game_model(yield_fn=None) -> dict:
 async def _compute_mlb_game_model_inner() -> dict:
     from predict import statsapi as sa
     from predict.game_model_cache import build_slate_context, build_slate_game_inputs, compute_elo_for_game, compute_game_model_for_game
+    from predict.game_sim_cache import GameSimInput, ensure_game_sims
 
     today = sa.eastern_date()
     season = int(today[:4])
@@ -693,6 +694,7 @@ async def _compute_mlb_game_model_inner() -> dict:
         written = 0
         skipped_no_model = 0
         model_entries: list[db.SurfacedEntry] = []
+        sim_inputs: list[GameSimInput] = []
         for g in pre_game:
             model = await compute_game_model_for_game(client, context, batters, g)
             if model is None:
@@ -735,6 +737,28 @@ async def _compute_mlb_game_model_inner() -> dict:
             )
             written += 1
 
+            # Task 2.9 — today's per-game simulation cache. ensure_game_sims
+            # decides for itself whether a game needs simulating: it skips one
+            # already done at the same lineup confidence, and re-runs only to
+            # upgrade a projected-lineup result to a posted-lineup one. So the
+            # steady-state cost on this 15-minute job is near zero, and the
+            # full ~3s/game only happens when a real lineup card drops.
+            #
+            # Wired here rather than into its own job because this is the one
+            # place that already holds the real slate WITH lineups; a separate
+            # job would have to rebuild all of it to get the same inputs.
+            sim_inputs.append(
+                GameSimInput(
+                    game_pk=g.game_pk, season=season, status=g.status,
+                    home_lineup=g.home_lineup_ids, away_lineup=g.away_lineup_ids,
+                    home_lineup_projected=g.home_lineup_projected,
+                    away_lineup_projected=g.away_lineup_projected,
+                    home_team_id=g.home_team_id, away_team_id=g.away_team_id,
+                    home_starter_id=g.home_starter_id, away_starter_id=g.away_starter_id,
+                    venue_id=g.venue_id,
+                )
+            )
+
             # Task 2.7b — port of lib/odds/props/pickHistoryLog.ts's
             # logGameModelPredictions, which ran inside TS's snapshot rebuild
             # (snapshotRebuild.ts) on a 4-minute per-process timer. Two
@@ -766,14 +790,73 @@ async def _compute_mlb_game_model_inner() -> dict:
             )
 
         await db.log_surfaced(model_entries)
+        await ensure_game_sims(client, sim_inputs)
 
     return {
         "games": len(inputs),
         "pre_game": len(pre_game),
+        "sim_inputs": len(sim_inputs),
         "written": written,
         "skipped_no_model": skipped_no_model,
         "moneyline_rows_logged": len(model_entries),
     }
+
+
+async def job_maintain_mlb_park_factors(yield_fn=None) -> dict:
+    """Park factors — how much each venue inflates or deflates run scoring
+    this season. Task 2.9 (the Phase 2 gate's own finding).
+
+    Until now NOTHING scheduled this. predict/park_factors.py existed and had
+    no caller at all; the only thing actually keeping `park_factors` populated
+    was lib/sports/mlb/parkFactors.ts, read-through on every MLB snapshot
+    rebuild. The ownership map claimed Python owned this table — it did not.
+
+    6 hours. A park's character does not change mid-season (the table's own
+    upsert key is (venue_id, season) for that reason), and the input is every
+    completed game of the season, so this is deliberately slow-moving. It is
+    scheduled at all so that the TypeScript read-through path can be removed
+    without the table going stale."""
+    return await _run_timed("maintainMlbParkFactorsJob", _maintain_mlb_park_factors_inner())
+
+
+async def _maintain_mlb_park_factors_inner() -> dict:
+    from predict import statsapi as sa
+    from predict.park_factors import compute_park_factors
+
+    season = int(sa.eastern_date()[:4])
+    async with httpx.AsyncClient() as client:
+        results = await compute_park_factors(client, season)
+        await db.write_park_factors(season, results)
+    return {"season": season, "venues": len(results)}
+
+
+async def job_maintain_mlb_hr_matchup(yield_fn=None) -> dict:
+    """Team-level home-run-rate-allowed, the live signal the fitted home-run
+    model was trained against. Task 2.9.
+
+    Same story as park factors: predict/home_run_live_matchup.py has always
+    had refresh_team_hr_rate_allowed and nothing ever called it on a schedule
+    — prop_candidates.py only ever READ the cache
+    (load_team_hr_rate_allowed_cache). The writer was
+    lib/sports/mlb/homeRunLiveMatchup.ts, read-through on snapshot rebuild.
+
+    6 hours. This pulls every qualified batter's current-season game log —
+    the same expensive pull home_run_model_fit.py's training builder does —
+    so it is not something to run per-request, which is precisely why the
+    TypeScript version cached it. A season-to-date rate moves slowly enough
+    that 6 hours is generous."""
+    return await _run_timed("maintainMlbHrMatchupJob", _maintain_mlb_hr_matchup_inner())
+
+
+async def _maintain_mlb_hr_matchup_inner() -> dict:
+    from predict import statsapi as sa
+    from predict.home_run_live_matchup import load_team_hr_rate_allowed_cache, refresh_team_hr_rate_allowed
+
+    season = int(sa.eastern_date()[:4])
+    async with httpx.AsyncClient() as client:
+        await refresh_team_hr_rate_allowed(client, season)
+    cache = await load_team_hr_rate_allowed_cache(season)
+    return {"season": season, "league_hr_rate": cache.league_hr_rate, "teams": len(cache._by_team)}
 
 
 async def job_compute_mlb_prop_predictions(yield_fn=None) -> dict:
@@ -1067,6 +1150,12 @@ JOB_REGISTRY = [
     # model_prob locks in early, not whatever a much-later refresh would
     # have computed.
     ("computeMlbPropPredictionsJob", job_compute_mlb_prop_predictions, 5 * 60),
+    # Task 2.9 — the two seasonal aggregates the Phase 2 gate found had no
+    # scheduled writer in either language's registry, only a TypeScript
+    # read-through on snapshot rebuild. 6h: both are season-to-date figures
+    # over every completed game, and neither moves meaningfully faster.
+    ("maintainMlbParkFactorsJob", job_maintain_mlb_park_factors, 6 * 60 * 60),
+    ("maintainMlbHrMatchupJob", job_maintain_mlb_hr_matchup, 6 * 60 * 60),
     # Moved from "inside every live golf page request" (adapter.ts) to a
     # schedule — 5min matches the MLB props job's own "first-surfaced-
     # wins" cadence; golf's capture pattern is the same idea (poll-and-

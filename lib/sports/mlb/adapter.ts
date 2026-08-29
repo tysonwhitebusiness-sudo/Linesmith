@@ -65,7 +65,6 @@ import { computeModelProbability } from '../../odds/props/edgeModel';
 import { candidateCategoryToSide } from '../../odds/props/entityResolution';
 import { applyFittedHomeRunWeights, applyLineupConfidence, parkHrFactorCentered, expectedPaCentered, pitcherMatchupSignal } from './homeRunModel';
 import { loadTeamHrRateAllowedCache, type TeamHrRateAllowedCache } from './homeRunLiveMatchup';
-import { ensureGameSims } from './gameSimCache';
 import { computeMoneylineModel, type OpposingStarter } from './gameModel';
 import { loadParkFactorCache } from './parkFactors';
 import { getCurrentElo, restAndTravelFromState, pitcherAdjustment, type CurrentElo } from './eloModel';
@@ -2044,34 +2043,21 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
     }),
   );
 
-  // Sim engine plan, Phase 7's live-wiring follow-up — ensure a live
-  // simulation is cached for every pre-game matchup with a resolvable
-  // lineup and starter on both sides, upgrading projected→posted as real
-  // lineups post. Piggybacks on this function's own ~5-minute rebuild cache
-  // (app/api/mlb/route.ts) rather than a new schedule — see
-  // gameSimCache.ts's own header. Failures are per-game and non-fatal
-  // (already caught inside ensureGameSims), so one bad matchup never blocks
-  // the rest of the snapshot.
-  try {
-    await ensureGameSims(
-      games.map((g) => ({
-        gamePk: g.gamePk,
-        season,
-        status: g.status,
-        homeLineup: g.home.lineup,
-        awayLineup: g.away.lineup,
-        homeLineupProjected: g.home.lineupProjected,
-        awayLineupProjected: g.away.lineupProjected,
-        homeStarterId: g.home.starterId,
-        awayStarterId: g.away.starterId,
-        homeTeamId: g.home.teamId,
-        awayTeamId: g.away.teamId,
-        venueId: g.venueId,
-      })),
-    );
-  } catch (error) {
-    console.error('[adapter] ensureGameSims failed', error);
-  }
+  // Game simulations used to be produced HERE, by calling ensureGameSims on
+  // every rebuild — the last write this file made to a shared table, and the
+  // one the Phase 2 gate caught still contested (task 2.9). They are now
+  // produced by the Python worker's computeMlbGameModelJob, which already
+  // holds the same slate with the same posted-or-projected lineups and so
+  // needs no second fetch to build the identical inputs.
+  //
+  // This file only READS `game_sim_cache` now (via the sim fields the
+  // snapshot carries). If Python stops, sims go stale rather than wrong, and
+  // nothing here silently writes a competing value.
+  //
+  // Deliberately NOT a cache-first fallback like the prop model above: a
+  // simulation is ~3 seconds of CPU per game, so a fallback would put a
+  // 45-second slate simulation on a page request, which is exactly the cost
+  // this cache exists to avoid. Stale sims are the better failure.
 
   // Fetch stats for everyone we intend to score.
   const batterIds = games.flatMap((g) => [...g.away.lineup, ...g.home.lineup]);

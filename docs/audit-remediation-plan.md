@@ -896,6 +896,39 @@ All six in P2 M6, plus the `CLAUDE.md` corrections in P2 M1. Do this last in
 the phase, once behaviour is settled — writing them earlier means writing them
 twice. Per rule 3, each correction ships with the observation proving it.
 
+### 2.9 · Close the three tables the gate found *(P3 §4 remainder)*
+
+**Added 2026-08-29, after the Phase 2 gate's own ownership check failed.** Not
+in the original plan; it exists because the gate caught `table-ownership.md`
+claiming task 2.7 had closed three tables it never touched.
+
+The investigation corrected itself twice, and both are recorded in
+`docs/table-ownership.md` because the second contradicts the first. Short
+version: **one** of the three was a genuine page-path dual writer
+(`game_sim_cache`, via `adapter.ts`'s `ensureGameSims`). The other two were
+never written on the page path at all — but **nothing in either language
+refreshed them on a schedule**, so two seasonal aggregates the home-run model
+depends on stayed current only if somebody manually POSTed an operator route.
+
+1. `ensure_game_sims` moves into `computeMlbGameModelJob`, which already holds
+   the same slate and the same posted-or-projected lineups. `adapter.ts` goes
+   read-only. **No cache-first fallback here, deliberately** — a simulation is
+   ~3 s of CPU per game, so a fallback would put a ~45 s slate simulation on a
+   page request, which is the cost this cache exists to avoid. Stale sims are
+   the better failure.
+2. `maintainMlbParkFactorsJob` and `maintainMlbHrMatchupJob`, both 6-hourly.
+3. `GameModelGameInput` carries `home_lineup_projected`/`away_lineup_projected`
+   through from `TeamSide`, which `ensure_game_sims` needs to decide whether to
+   upgrade a projected-lineup simulation to a posted-lineup one.
+
+**Also found here:** `/api/mlb/refresh-hr-matchup` was **unauthenticated** — a
+POST that pulls every qualified batter's full season game log. Task 1.5 gated
+the operator surface but scoped itself to `/api/props`. Added to
+`ADMIN_API_PREFIXES`.
+
+**VERIFY:** the two new jobs write real rows; `adapter.ts` references none of
+`ensureGameSims`/`writeGameSimCache`/`writeParkFactors`/`writeTeamHrRateAllowed`.
+
 ### Phase 2 exit
 
 **All ticked 2026-08-29; gate PASSED — see §11.**
@@ -2881,15 +2914,24 @@ itself.** Eight tasks, all verified against the live system.
 >
 > Running it properly found **three tables the map claimed Python owned and task
 > 2.7 had closed, which 2.7 never touched**: `game_sim_cache`, `park_factors`
-> and `team_hr_rate_allowed`. `adapter.ts` still writes all three on every
-> snapshot rebuild, and no `JOB_REGISTRY` job populates any of them, so Python
-> writes them read-through too. Two real writers, no owner.
+> and `team_hr_rate_allowed`.
 >
-> **Phase 2 therefore did NOT achieve one-writer-per-table for 3 of 35 tables.**
-> The map is corrected, the three are carried to Phase 3 with the ordering the
-> fix requires (scheduled Python writer first, then TypeScript read-only — the
-> reverse empties the cache with nothing to refill it). Every other gate item's
-> evidence is unaffected and stands.
+> **The first diagnosis of those three was also wrong, and the correction is in
+> `docs/table-ownership.md`.** I recorded all three as written by `adapter.ts`
+> on every snapshot rebuild. Only `game_sim_cache` was;
+> `loadParkFactorCache`/`loadTeamHrRateAllowedCache` are and always were
+> read-only, with the writes in separate `refresh*` functions called only by
+> operator routes. A one-hop grep from the table to the file looked like a
+> page-path write, because the file holds both paths.
+>
+> The real problem for those two was different and still real: **nothing in
+> either language refreshed them on a schedule**, so two seasonal aggregates
+> the home-run model depends on stayed current only if somebody POSTed an
+> operator route — one of which turned out to be unauthenticated.
+>
+> **Fixed under task 2.9, not deferred** (operator decision, 2026-08-29). All
+> three tables now have a scheduled Python writer and `adapter.ts` writes none
+> of them. Every other gate item's evidence is unaffected and stands.
 >
 > The failure mode is worth naming because it is the audit's own: a checklist
 > item that was *run*, produced a real finding, and was therefore assumed to
@@ -3046,20 +3088,16 @@ phase's own diff asking whether the repository now describes what runs:
 **Findings closed:** P2 H1, P2 M1, P2 M2, P2 M6, P2 M9, P3 H4, P4 H1.
 **P2 M6.2 closed as no-longer-reproducing**, not as fixed.
 
-**P3 §4 is closed only in part.** MLB's model/prediction/grading path and golf's
-double pipeline are done; `prop_odds`, `pick_history`, `game_odds_history`,
-`game_picks` and the six golf tables each have one writer now. But three tables
-(`game_sim_cache`, `park_factors`, `team_hr_rate_allowed`) still have two, and
-`game_odds_book_lines` and `odds_cache` still take writes from GET handlers. The
-root cause is substantially reduced, not eliminated.
+**P3 §4 is closed for every table on a page-load write path except two.**
+`game_odds_book_lines` (via `recordEspnPregameLine`) and `odds_cache` still take
+writes from GET handlers; both are recorded below with owners. Everything else —
+`prop_odds`, `pick_history`, `game_odds_history`, `game_picks`, the six golf
+tables, and `game_sim_cache`/`park_factors`/`team_hr_rate_allowed` after task
+2.9 — has exactly one scheduled writer, with the surviving TypeScript paths
+being hand-invoked operator routes.
 
 **Known NOT done — this list is not empty:**
 
-- **THREE TABLES STILL HAVE TWO WRITERS**: `game_sim_cache`, `park_factors`,
-  `team_hr_rate_allowed`. Both languages write them read-through and no
-  scheduled job owns any of them. This is the phase's own goal, unmet for 3 of
-  35 tables. **Owner: Phase 3**, and the fix is ordered — Python job first,
-  TypeScript read-only second.
 - **`computeCalibrationPayload` remains TypeScript model math.** Q18, deferred
   to Phase 4 deliberately; the one live exception to Q13 inside this phase.
 - **`recordEspnPregameLine` writes to `game_odds_book_lines` on a GET** in the

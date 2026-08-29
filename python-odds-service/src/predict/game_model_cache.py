@@ -307,6 +307,14 @@ class GameModelGameInput:
     status: str = "unknown"
     home_lineup_ids: list[int] = field(default_factory=list)
     away_lineup_ids: list[int] = field(default_factory=list)
+    # Whether each lineup is PROJECTED rather than officially posted.
+    # Carried through from TeamSide (which has always had it) because
+    # game_sim_cache.ensure_game_sims keys its "should I re-simulate?"
+    # decision on exactly this: a projected-lineup sim is upgraded to a
+    # posted-lineup one once the real card is out, and without this flag
+    # every caller would either re-simulate constantly or never upgrade.
+    home_lineup_projected: bool = True
+    away_lineup_projected: bool = True
 
 
 def status_for(abstract_state: str | None) -> str:
@@ -477,6 +485,8 @@ async def build_slate_game_inputs(client: httpx.AsyncClient, today: str) -> list
                 status=status_for(game.abstract_state),
                 home_lineup_ids=home.lineup,
                 away_lineup_ids=away.lineup,
+                home_lineup_projected=home.lineup_projected,
+                away_lineup_projected=away.lineup_projected,
             )
         )
     return inputs

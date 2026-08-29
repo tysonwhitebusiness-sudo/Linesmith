@@ -64,9 +64,9 @@ comments explaining the removal name the functions they replaced.
 | 18 | `golf_round_scores` | **Python** | ⚠ `writeGolfRoundScores` ← `historyIngest.ts` | `write_golf_round_scores` | **2.4** |
 | 19 | `golf_tournaments` | **Python** | ⚠ `writeGolfTournament` ← `historyIngest.ts` | `write_golf_tournament` | **2.4** |
 | 20 | `golf_tournament_results` | **Python** | ⚠ `writeGolfTournamentResults` ← `historyIngest.ts` | `write_golf_tournament_results` | **2.4** |
-| 21 | `game_sim_cache` | ⚠ **still contested** | `writeGameSimCache` ← `gameSimCache.ts` ← `adapter.ts:2056` `ensureGameSims`, **on every snapshot rebuild** | `game_sim_cache.py` — **no scheduled job** | **NOT CLOSED — see note** |
-| 22 | `park_factors` | ⚠ **still contested** | `writeParkFactors` ← `parkFactors.ts` ← `adapter.ts:1957, 2328` | `park_factors.py` — **no scheduled job** | **NOT CLOSED — see note** |
-| 23 | `team_hr_rate_allowed` | ⚠ **still contested** | `writeTeamHrRateAllowed` ← `homeRunLiveMatchup.ts` ← `adapter.ts:1962` | `home_run_live_matchup.py` — **no scheduled job** | **NOT CLOSED — see note** |
+| 21 | `game_sim_cache` | **Python** | — (read-only since 2.9) | `ensure_game_sims` ← `computeMlbGameModelJob` | **2.9** |
+| 22 | `park_factors` | **Python** (+ TS admin) | `refreshParkFactors` ← `/api/props/park-factors` **only** | `compute_park_factors` ← `maintainMlbParkFactorsJob` | **2.9** |
+| 23 | `team_hr_rate_allowed` | **Python** (+ TS admin) | `refreshTeamHrRateAllowed` ← `/api/mlb/refresh-hr-matchup` **only** (admin-gated as of 2.9) | `refresh_team_hr_rate_allowed` ← `maintainMlbHrMatchupJob` | **2.9** |
 | 24 | `team_elo_history` | **Python** | `writeEloHistory` ← `eloModel.ts` ← **`/api/props/elo-backfill` only** | `write_elo_history` ← `maintainMlbEloJob` | see note |
 | 25 | `pitcher_game_score_history` | **Python** | `writePitcherGameScore` ← `eloModel.ts` ← **dead path** | `write_pitcher_game_score` | see note |
 | 26 | `model_weights` | **TS · admin** | `writeModelWeights` ← `modelFit.ts`, `homeRunModelFit.ts` ← `/api/props/fit-*` | `write_model_weights` | see note |
@@ -93,38 +93,41 @@ absent from P3 §4's map, which accounts for 34 tables (22 shared + 6 + 6), not
 which is how it went unnoticed. Dropping it and adding `job_locks` (2.7c) left the count
 at 35; `mlb_prop_model_cache` (2.7a) then took it to **36**.
 
-**THREE TABLES ARE STILL CONTESTED, and this file claimed otherwise until
-2026-08-29.** `game_sim_cache`, `park_factors` and `team_hr_rate_allowed` were
-listed as Python-owned with task 2.7 closing them. **Task 2.7 did not close
-them.** It moved the prop model *probability* to `mlb_prop_model_cache`; it did
-not touch these three, and `adapter.ts` still writes all three on every snapshot
-rebuild via `ensureGameSims`, `loadParkFactorCache` and
-`loadTeamHrRateAllowedCache`.
+**THESE THREE TOOK TWO CORRECTIONS TO GET RIGHT, and both are recorded because
+the second one contradicts the first.**
 
-Caught by running this file's own re-derivation properly at the Phase 2 gate.
-The first pass checked which TypeScript writers were *reachable* and found six
-orphans to delete; it did not diff the **Owner** column against reality, which
-is the check that matters.
+*First error.* This file originally listed `game_sim_cache`, `park_factors` and
+`team_hr_rate_allowed` as Python-owned with task 2.7 closing them. **2.7 never
+touched them.** Caught by running this file's own re-derivation properly at the
+Phase 2 gate — the first pass only checked which TypeScript writers were
+*reachable*, and never diffed the Owner column against reality.
 
-What is actually true of these three:
+*Second error, mine, while fixing the first.* I then recorded all three as
+"written by `adapter.ts` on every snapshot rebuild". **Only `game_sim_cache`
+was.** `loadParkFactorCache` and `loadTeamHrRateAllowedCache` are and always
+were **read-only** — they only call `readParkFactors`/`readTeamHrRateAllowed`.
+The writes live in separate `refreshParkFactors`/`refreshTeamHrRateAllowed`
+functions whose only callers are operator routes. A one-hop grep from the table
+to `parkFactors.ts` looked like a page-path write; the file contains both a
+read path and a write path, and I attributed the wrong one.
 
-- Both languages write them **read-through** — read the cache, compute and
-  store on a miss. They are derived aggregates (park factors, seasonal HR rate
-  allowed) and a Monte Carlo cache, not model output or history.
-- Python has the code (`predict/park_factors.py`,
-  `predict/home_run_live_matchup.py`, `predict/game_sim_cache.py`) but **no
-  `JOB_REGISTRY` job populates any of them on a schedule.** They are called
-  read-through from Python's own paths, exactly as TypeScript calls them.
-- So the fix is ordered: a scheduled Python writer **first**, then TypeScript
-  goes read-only. Doing it the other way round empties the cache with nothing
-  to refill it and breaks the page.
+**What was actually true, and what 2.9 changed:**
 
-Lower risk than the dual writers Phase 2 did close — both sides compute the
-same seasonal aggregate from the same source, and the write is an idempotent
-upsert. But "low risk" is the reasoning that produced this audit, so it is
-recorded as open rather than argued away. **Owner: Phase 3.**
+| Table | Real problem | Fix |
+|---|---|---|
+| `game_sim_cache` | A genuine page-path dual writer — `adapter.ts:2056` called `ensureGameSims` on every rebuild | `ensure_game_sims` now runs inside `computeMlbGameModelJob`, which already holds the same slate and lineups; `adapter.ts` is read-only |
+| `park_factors` | Not a page-path write — but **nothing in either language refreshed it on a schedule**. It stayed current only if someone POSTed an admin route | `maintainMlbParkFactorsJob`, every 6h |
+| `team_hr_rate_allowed` | Same, and its refresh route was **unauthenticated** | `maintainMlbHrMatchupJob`, every 6h; route added to `ADMIN_API_PREFIXES` |
 
-**`pick_history` has one *scheduled* writer, plus three admin backfills.**
+So the headline finding was smaller than the correction claimed (one contested
+table, not three) and the *other* problem was real and different: two seasonal
+aggregates the model depends on had no automatic writer at all. Both are fixed.
+
+The TypeScript admin refresh routes survive deliberately, same accepted category
+as `model_weights` and `team_elo_history`'s `elo-backfill` — hand-invoked, never
+on a page-load path, and useful for forcing a recompute without waiting 6 hours.
+
+**`pick_history` has one *scheduled* writer**`pick_history` has one *scheduled* writer, plus three admin backfills.**
 Python owns every live write (`computeMlbPropPredictionsJob`,
 `computeMlbGameModelJob`, `gradeMlbPropsJob`, and the generic-sport jobs).
 `writeBackfill` also reaches it from `/api/props/backfill`,

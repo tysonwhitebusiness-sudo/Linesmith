@@ -51,7 +51,14 @@ const ADMIN_USER_IDS = ['038048de-c950-4798-9bfb-9da68c89f936'];
  * something MORE restricted, never less. That is the safe direction for the
  * mistake to point.
  */
-const ADMIN_API_PREFIXES = ['/api/diagnostics', '/api/props', '/api/odds/import'];
+// `/api/mlb/refresh-hr-matchup` is an operator route living under a public
+// prefix: a POST that pulls every qualified batter's full season game log and
+// rewrites team_hr_rate_allowed. Task 1.5 gated the operator surface but
+// scoped itself to `/api/props`, so this one stayed open to anyone —
+// unauthenticated, and expensive on purpose. Found in task 2.9 while tracing
+// that table's writers. Listed individually rather than gating all of
+// `/api/mlb`, which is genuinely public read surface.
+const ADMIN_API_PREFIXES = ['/api/diagnostics', '/api/props', '/api/odds/import', '/api/mlb/refresh-hr-matchup'];
 /**
  * Genuinely public reads that happen to live under /api/props:
  *  - `lines` is price data the app renders for everyone. (`line-history`
