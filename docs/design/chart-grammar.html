@@ -1,0 +1,2445 @@
+<title>Linesmith Chart Grammar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style>
+/* ==========================================================================
+   Linesmith &mdash; chart grammar board
+
+   SINGLE-THEME BY DECISION, NOT OMISSION. Linesmith has no dark theme
+   (tailwind.config.ts ships one palette; docs/prompt-2 states "No dark
+   theme" as a hard constraint). Rendering these frames in an invented dark
+   palette would misrepresent the product. So: the studio ground is dark,
+   the product frames are the app's real light graphite, and every colour is
+   painted explicitly so the page holds on any host ground.
+   ========================================================================== */
+
+:root {
+  /* --- studio shell: strictly achromatic. The only colour on this page is
+         data colour. --- */
+  --sh-bg:      oklch(19% 0.005 260);
+  --sh-panel:   oklch(23.5% 0.005 260);
+  --sh-panel-2: oklch(27% 0.005 260);
+  --sh-line:    oklch(32% 0.005 260);
+  --sh-line-2:  oklch(38% 0.005 260);
+  --sh-ink:     oklch(95% 0.003 260);
+  --sh-ink-2:   oklch(72% 0.004 260);
+  --sh-ink-3:   oklch(56% 0.004 260);
+
+  /* --- product frame: Linesmith's real tokens, verbatim from
+         tailwind.config.ts. Note card (93%) is DARKER than paper (96%) &mdash;
+         that is what the graphite reskin actually shipped. --- */
+  --paper:      oklch(96% 0.002 260);
+  --card:       oklch(93% 0.003 260);
+  --surface:    oklch(96% 0.002 260);
+  --ink:        oklch(16% 0.004 260);
+  --ink-2:      oklch(32% 0.004 260);
+  --ink-3:      oklch(50% 0.005 260);
+  --ink-4:      oklch(68% 0.004 260);
+  --ink-5:      oklch(78% 0.004 260);
+  --line:       oklch(87% 0.004 260);
+  --line-soft:  oklch(90% 0.004 260);
+  --line-hair:  oklch(93% 0.003 260);
+  --masters:    oklch(20% 0.006 260);
+  --accent-soft:oklch(89% 0.004 260);
+  --avatar:     oklch(82% 0.005 260);
+
+  /* --- data ramp: lib/ui/heat.ts, verbatim --- */
+  --good: #0f7a4f;
+  --warn: #c98a1f;
+  --bad:  #c23b2c;
+  --good-ink: #0b5c3c;
+  --bad-ink:  #8f2b20;
+  --neutral:  #a8a29a;
+
+  --app-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --shell-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --maxw: 1180px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--sh-bg);
+  color: var(--sh-ink);
+  font-family: var(--shell-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+/* ---------- masthead ---------- */
+
+.masthead { padding: 72px 0 40px; border-bottom: 1px solid var(--sh-line); }
+.eyebrow {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--sh-ink-3);
+  margin: 0 0 20px;
+}
+h1 {
+  font-size: clamp(34px, 5.4vw, 56px); font-weight: 600; line-height: 1.04;
+  letter-spacing: -.022em; margin: 0 0 20px; text-wrap: balance; max-width: 16ch;
+}
+.standfirst {
+  font-size: 17px; line-height: 1.62; color: var(--sh-ink-2);
+  max-width: 62ch; margin: 0;
+}
+.standfirst strong { color: var(--sh-ink); font-weight: 600; }
+
+.thesis {
+  display: flex; flex-wrap: wrap; gap: 40px 56px;
+  margin-top: 44px; padding-top: 32px; border-top: 1px solid var(--sh-line);
+}
+.hero-fig { display: flex; flex-direction: column; gap: 6px; }
+.hero-fig .n {
+  font-size: 52px; font-weight: 600; line-height: 1; letter-spacing: -.03em;
+  /* proportional figures &mdash; a standalone display number, never tabular */
+  font-variant-numeric: proportional-nums;
+}
+.hero-fig .cap {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .05em;
+  color: var(--sh-ink-3); max-width: 24ch; line-height: 1.5;
+}
+
+/* ---------- layout ---------- */
+
+.board { display: grid; grid-template-columns: 1fr; gap: 0; }
+@media (min-width: 1040px) {
+  .board { grid-template-columns: 178px 1fr; gap: 56px; align-items: start; }
+  .index { position: sticky; top: 32px; }
+}
+
+.index { padding: 44px 0 0; }
+.index h4 {
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--sh-ink-3);
+  margin: 0 0 14px;
+}
+.index ol { list-style: none; margin: 0 0 26px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.index a {
+  display: block; padding: 4px 0; font-size: 13px; color: var(--sh-ink-2);
+  text-decoration: none; border-bottom: 1px solid transparent;
+}
+.index a:hover, .index a:focus-visible { color: var(--sh-ink); border-bottom-color: var(--sh-line-2); }
+.index .num { font-family: var(--mono); font-size: 10px; color: var(--sh-ink-3); margin-right: 8px; }
+
+section { padding: 44px 0; border-bottom: 1px solid var(--sh-line); }
+section:last-of-type { border-bottom: 0; }
+
+h2 {
+  font-size: 27px; font-weight: 600; letter-spacing: -.016em; line-height: 1.2;
+  margin: 0 0 12px; text-wrap: balance;
+}
+h3 { font-size: 19px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 8px; }
+p { margin: 0 0 15px; max-width: 68ch; color: var(--sh-ink-2); }
+p strong { color: var(--sh-ink); font-weight: 600; }
+p.lede { font-size: 16px; color: var(--sh-ink-2); }
+a.inline { color: var(--sh-ink); text-decoration-color: var(--sh-line-2); text-underline-offset: 3px; }
+
+code {
+  font-family: var(--mono); font-size: .875em;
+  background: var(--sh-panel-2); padding: 1px 5px; border-radius: 3px;
+  color: var(--sh-ink);
+}
+
+/* ---------- a primitive board ---------- */
+
+.prim { margin: 0 0 56px; }
+.prim:last-child { margin-bottom: 0; }
+
+.prim-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.prim-num {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  color: var(--sh-ink-3); letter-spacing: .06em;
+}
+.prim-name { font-family: var(--mono); font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.prim-job { font-size: 14px; color: var(--sh-ink-3); }
+
+/* the product frame &mdash; this is the app's own surface, not the shell's */
+.frame {
+  background: var(--paper);
+  border-radius: 12px;
+  padding: 18px;
+  margin: 16px 0 0;
+  font-family: var(--app-sans);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 18px 44px -22px rgba(0,0,0,.7);
+  overflow-x: auto;
+  /* Charts are authored at a 640 viewBox. Capping the frame keeps the rendered
+     scale at ~1:1 so every mark spec &mdash; the 24px bar cap, the 2px surface gap,
+     the 2px stroke &mdash; is true at the size you are looking at, rather than
+     silently multiplied by a stretch factor. It is also closer to the real
+     width of a Linesmith card in the main column. */
+  max-width: 692px;
+}
+.frame.wide { max-width: none; }
+.frame.tight { padding: 14px; }
+
+/* Linesmith's .lb-card, reproduced exactly */
+.lb-card {
+  border-radius: 10px; border: 1px solid var(--line); background: var(--card);
+}
+.lb-card-hero {
+  border-radius: 14px; border: 1px solid var(--line); background: var(--card);
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.card-pad { padding: 14px; }
+
+.card-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px;
+}
+.card-title { font-size: 12px; font-weight: 600; color: var(--ink-2); letter-spacing: -.005em; }
+.card-meta { font-size: 10px; color: var(--ink-4); font-variant-numeric: tabular-nums; }
+
+/* spec strip beneath each board */
+.spec {
+  display: grid; gap: 0; margin-top: 14px;
+  border: 1px solid var(--sh-line); border-radius: 8px; overflow: hidden;
+}
+.spec-row {
+  display: grid; grid-template-columns: 108px 1fr; gap: 0;
+  border-bottom: 1px solid var(--sh-line);
+}
+.spec-row:last-child { border-bottom: 0; }
+.spec-k {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--sh-ink-3); padding: 9px 12px; background: var(--sh-panel);
+  border-right: 1px solid var(--sh-line);
+}
+.spec-v {
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
+  color: var(--sh-ink-2); padding: 9px 12px;
+}
+.spec-v em { color: var(--sh-ink); font-style: normal; }
+
+/* ---------- shared chart chrome (inside frames) ---------- */
+
+.legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; color: var(--ink-3); }
+.legend-key { display: inline-block; border-radius: 1px; }
+.legend-key.line { width: 14px; height: 2px; }
+.legend-key.rect { width: 9px; height: 9px; border-radius: 2px; }
+
+.scale-legend { display: flex; align-items: center; gap: 8px; font-size: 9px; color: var(--ink-4); margin-top: 10px; }
+.scale-ramp { height: 6px; width: 96px; border-radius: 3px; }
+
+.tt {
+  position: absolute; pointer-events: none; opacity: 0;
+  background: var(--masters); color: #fff;
+  border-radius: 6px; padding: 7px 9px; font-size: 11px; line-height: 1.45;
+  box-shadow: 0 4px 10px rgba(0,0,0,.16), 0 16px 32px -12px rgba(0,0,0,.28);
+  transition: opacity .12s ease; z-index: 20; white-space: nowrap;
+  font-family: var(--app-sans);
+}
+.tt .tt-v { font-weight: 600; font-size: 12px; font-variant-numeric: tabular-nums; }
+.tt .tt-l { color: rgba(255,255,255,.68); font-size: 10px; }
+.tt-row { display: flex; align-items: center; gap: 6px; }
+.tt-key { width: 10px; height: 2px; border-radius: 1px; flex: none; }
+.chart-host { position: relative; }
+
+/* table-view twin */
+.tv-toggle {
+  font-family: var(--app-sans); font-size: 10px; font-weight: 500;
+  color: var(--ink-3); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 999px; padding: 3px 9px; cursor: pointer;
+}
+.tv-toggle:hover { color: var(--ink); }
+.tv-toggle:focus-visible { outline: 2px solid var(--masters); outline-offset: 2px; }
+table.tv {
+  width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px;
+  font-variant-numeric: tabular-nums;
+}
+table.tv th {
+  text-align: left; font-weight: 600; color: var(--ink-3); font-size: 10px;
+  padding: 5px 8px; border-bottom: 1px solid var(--line);
+}
+table.tv td { padding: 5px 8px; border-bottom: 1px solid var(--line-hair); color: var(--ink-2); }
+table.tv td.num, table.tv th.num { text-align: right; }
+[hidden] { display: none !important; }
+
+
+/* ---------- deep player page ---------- */
+.screenframe { padding: 0; }
+.mockbar {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .02em;
+  color: var(--ink-3); background: var(--surface);
+  border-bottom: 1px solid var(--line); border-radius: 12px 12px 0 0;
+  padding: 8px 14px;
+}
+.mockdot { width: 6px; height: 6px; border-radius: 999px; background: var(--warn); flex: none; }
+.screenframe .screen { padding: 14px; }
+
+.kpi {
+  display: grid; grid-template-columns: repeat(8, 1fr); gap: 1px;
+  margin-top: 14px; background: var(--line-hair); border: 1px solid var(--line-hair);
+  border-radius: 6px; overflow: hidden;
+}
+.kpi-c { background: var(--card); padding: 7px 4px; text-align: center; display: grid; gap: 2px; }
+.kpi-v { font-size: 14px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.kpi-k { font-size: 9px; color: var(--ink-4); text-transform: uppercase; letter-spacing: .06em; }
+
+.mkt-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 12px; }
+.mkt {
+  font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--ink-3); background: var(--card);
+}
+.mkt.on { background: var(--masters); border-color: var(--masters); color: #fff; }
+
+.console { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.stepper { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 999px; padding: 2px; background: var(--surface); }
+.stepbtn {
+  width: 22px; height: 22px; border-radius: 999px; border: 0; background: transparent;
+  color: var(--ink-2); font-size: 13px; cursor: pointer; line-height: 1;
+}
+.stepbtn:hover { background: var(--line-hair); }
+.stepbtn:focus-visible { outline: 2px solid var(--masters); outline-offset: 1px; }
+.stepval { font-size: 14px; font-weight: 600; padding: 0 8px; font-variant-numeric: tabular-nums; }
+.console-stat { display: grid; gap: 2px; }
+.cs-v { font-size: 14px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.cs-v.edge { color: var(--good-ink); }
+.cs-k { font-size: 9px; color: var(--ink-4); text-transform: uppercase; letter-spacing: .06em; }
+.addbtn {
+  margin-left: auto; background: var(--masters); color: #fff; border: 0;
+  border-radius: 999px; padding: 7px 16px; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: box-shadow .3s ease, transform .1s ease; font-family: var(--app-sans);
+}
+.addbtn:hover { box-shadow: 7px 5px 32px -10px oklch(20% 0.006 260 / .55); }
+.addbtn:active { transform: scale(.97); }
+.addbtn:focus-visible { outline: 2px solid var(--masters); outline-offset: 2px; }
+
+.wtiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-bottom: 12px; }
+.wtile { border-radius: 6px; padding: 7px 4px; text-align: center; display: grid; gap: 1px; }
+.wtile-k { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.wtile-v { font-size: 16px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.wtile-n { font-size: 9px; font-variant-numeric: tabular-nums; }
+
+.streak { display: flex; gap: 2px; }
+.streak-cell { flex: 1; height: 12px; border-radius: 2px; }
+.streak-cap {
+  font-size: 9px; color: var(--ink-4); margin-top: 5px;
+  display: flex; justify-content: space-between; font-variant-numeric: tabular-nums;
+}
+
+table.st, table.dt { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.st th, table.dt th {
+  text-align: left; font-size: 9px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--ink-4); padding: 0 6px 5px 0;
+  border-bottom: 1px solid var(--line);
+}
+table.st th.num, table.dt th.num { text-align: right; }
+table.st td, table.dt td { padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line-hair); font-size: 11px; color: var(--ink-2); }
+table.st td.num, table.dt td.num { text-align: right; }
+table.st tr:last-child td, table.dt tr:last-child td { border-bottom: 0; }
+.st-k { color: var(--ink-3); }
+.st-v { font-weight: 600; font-size: 12px; }
+.st-r { color: var(--ink-4); font-size: 10px; }
+.st-bar-cell { width: 84px; padding-left: 8px !important; }
+.st-track { display: inline-block; width: 56px; height: 5px; border-radius: 3px; background: var(--line-hair); vertical-align: middle; overflow: hidden; }
+.st-fill { height: 100%; border-radius: 3px; }
+.st-pct { font-size: 9px; color: var(--ink-4); margin-left: 6px; vertical-align: middle; }
+table.dt td:first-child { color: var(--ink-2); }
+
+.twoup { display: grid; gap: 12px; }
+@media (min-width: 620px) { .twoup { grid-template-columns: 1fr 1fr; align-items: start; } }
+.zonewrap { display: flex; justify-content: center; padding: 6px 0; }
+
+
+/* A grid item defaults to min-width:auto, so one wide table inside `main`
+   widened the whole column - which is why the index nav, an innocent sibling
+   in the same column, was the element reported as overflowing. The fix is
+   min-width:0 on every grid item, plus a real overflow container on the wide
+   content itself, so a table scrolls inside its card and the page never does. */
+.board > *, .screen > *, .twoup > *, .main-col > *, .rail > * { min-width: 0; }
+.tablewrap, #dp-gamelog, #dp-pitchmix, #dp-season, #dp-statcast, #dp-sp, #dp-bvp {
+  overflow-x: auto;
+}
+#dp-gamelog table.dt { min-width: 400px; }
+.kpi, .wtiles { min-width: 0; }
+.kpi-v { font-size: clamp(11px, 2.4vw, 14px); }
+
+/* ---------- callout ---------- */
+
+.callout {
+  border: 1px solid var(--sh-line); border-left: 3px solid var(--sh-line-2);
+  border-radius: 0 8px 8px 0; background: var(--sh-panel);
+  padding: 18px 20px; margin: 22px 0;
+}
+.callout p:last-child { margin-bottom: 0; }
+.callout .tag {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--sh-ink-3); display: block; margin-bottom: 8px;
+}
+
+pre.term {
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.65;
+  background: var(--sh-panel); border: 1px solid var(--sh-line); border-radius: 8px;
+  padding: 14px 16px; overflow-x: auto; color: var(--sh-ink-2); margin: 0 0 16px;
+}
+pre.term .ok { color: #6fc79a; }
+pre.term .no { color: #e0857a; }
+pre.term .dim { color: var(--sh-ink-3); }
+
+/* ---------- ramp comparison ---------- */
+
+.ramp-compare { display: grid; gap: 18px; margin: 18px 0 0; }
+@media (min-width: 720px) { .ramp-compare { grid-template-columns: 1fr 1fr; } }
+.ramp-card { border: 1px solid var(--sh-line); border-radius: 8px; padding: 16px; background: var(--sh-panel); }
+.ramp-card h4 { margin: 0 0 4px; font-size: 13px; font-weight: 600; }
+.ramp-card .sub { font-family: var(--mono); font-size: 10.5px; color: var(--sh-ink-3); margin: 0 0 12px; }
+.ramp-strip { height: 26px; border-radius: 5px; margin-bottom: 8px; }
+.ramp-gray { height: 12px; border-radius: 3px; margin-bottom: 10px; filter: grayscale(1); }
+.ramp-note { font-size: 12px; color: var(--sh-ink-2); margin: 0; line-height: 1.55; }
+
+/* ---------- composed screen ---------- */
+
+.screen { display: grid; gap: 12px; }
+@media (min-width: 900px) { .screen { grid-template-columns: 1fr 288px; align-items: start; } }
+.rail { display: grid; gap: 12px; }
+.main-col { display: grid; gap: 12px; }
+
+.hero-row { display: flex; align-items: center; gap: 12px; }
+.avatar-c {
+  width: 46px; height: 46px; border-radius: 999px; background: var(--avatar);
+  display: grid; place-items: center; font-size: 15px; font-weight: 600; color: var(--ink-2);
+  flex: none;
+}
+.hero-name { font-size: 16px; font-weight: 600; line-height: 1.2; letter-spacing: -.01em; }
+.hero-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+.hero-anchor { margin-left: auto; text-align: right; }
+.hero-anchor .v {
+  font-size: 28px; font-weight: 600; line-height: 1; letter-spacing: -.02em;
+  font-variant-numeric: proportional-nums;
+}
+.hero-anchor .l {
+  font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink-4); margin-top: 4px;
+}
+
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  font-size: 11px; font-weight: 500; border-radius: 999px; padding: 3px 10px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink-3);
+}
+.chip.on { border-color: var(--masters); background: var(--accent-soft); color: var(--masters); }
+
+.rail-stat { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 6px 0; }
+.rail-stat + .rail-stat { border-top: 1px solid var(--line-hair); }
+.rail-stat .k { font-size: 11px; color: var(--ink-3); }
+.rail-stat .v { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.row-list { display: grid; }
+.prop-row {
+  display: grid; grid-template-columns: 1fr 56px 62px; gap: 10px; align-items: center;
+  padding: 9px 0; border-top: 1px solid var(--line-hair);
+}
+.prop-row:first-child { border-top: 0; }
+.prop-row .nm { font-size: 12px; font-weight: 500; }
+.prop-row .sub { font-size: 10px; color: var(--ink-4); }
+.prop-row .pc { font-size: 12px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+
+footer { padding: 56px 0 80px; color: var(--sh-ink-3); font-size: 13px; }
+footer p { color: var(--sh-ink-3); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Linesmith &middot; Phase 6 &middot; design study</p>
+    <h1>A chart grammar, not more charts</h1>
+    <p class="standfirst">
+      Eleven primitives that compose into every visualization Phase 6 needs &mdash; rendered here in
+      Linesmith's own graphite tokens and its own heat ramp, on its own card surface. The point
+      isn't any single chart. It's that <strong>the twelfth one looks like the first for free.</strong>
+    </p>
+
+    <div class="thesis">
+      <div class="hero-fig">
+        <span class="n">425,307</span>
+        <span class="cap">prop movement points in the database, rendered nowhere</span>
+      </div>
+      <div class="hero-fig">
+        <span class="n" style="color: var(--sh-ink-2)">0</span>
+        <span class="cap">frontend consumers of /api/props/line-history</span>
+      </div>
+      <div class="hero-fig">
+        <span class="n" style="color: var(--sh-ink-2)">1</span>
+        <span class="cap">files importing motion, the animation library already in package.json</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="board">
+
+    <nav class="index" aria-label="Contents">
+      <h4>Primitives</h4>
+      <ol>
+        <li><a href="#p1"><span class="num">01</span>Sparkline</a></li>
+        <li><a href="#p2"><span class="num">02</span>SeriesChart</a></li>
+        <li><a href="#p3"><span class="num">03</span>DistributionBars</a></li>
+        <li><a href="#p4"><span class="num">04</span>DensityCurve</a></li>
+        <li><a href="#p5"><span class="num">05</span>PercentileRail</a></li>
+        <li><a href="#p6"><span class="num">06</span>HeatGrid</a></li>
+        <li><a href="#p7"><span class="num">07</span>RangeBar</a></li>
+        <li><a href="#p8"><span class="num">08</span>ContributionBars</a></li>
+        <li><a href="#p9"><span class="num">09</span>StatTable</a></li>
+        <li><a href="#p10"><span class="num">10</span>StreakStrip</a></li>
+        <li><a href="#p11"><span class="num">11</span>SplitDumbbell</a></li>
+      </ol>
+      <h4>Findings</h4>
+      <ol>
+        <li><a href="#ramp"><span class="num">&rarr;</span>The heat ramp</a></li>
+        <li><a href="#depth"><span class="num">&rarr;</span>Card depth</a></li>
+      </ol>
+      <h4>Composed</h4>
+      <ol>
+        <li><a href="#screen"><span class="num">&rarr;</span>Player Detail</a></li>
+        <li><a href="#build"><span class="num">&rarr;</span>What to build</a></li>
+      </ol>
+    </nav>
+
+    <main>
+
+      <!-- ============================ PRIMITIVES ============================ -->
+      <section id="primitives">
+        <h2>The eleven primitives</h2>
+        <p class="lede">
+          Every one is hand-rolled SVG against your tokens &mdash; no chart library, because a chart
+          library is what would make this look like everyone else's tool. Each board shows the
+          primitive at real size on Linesmith's own <code>.lb-card</code>, then the spec beneath it.
+        </p>
+        <p>
+          The data below is <strong>representative, not live</strong> &mdash; shapes and magnitudes chosen
+          to be plausible for each table named in the spec strip. Nothing here was read from the
+          database.
+        </p>
+
+        <!-- 01 -->
+        <article class="prim" id="p1">
+          <div class="prim-head">
+            <span class="prim-num">01</span>
+            <span class="prim-name">Sparkline</span>
+            <span class="prim-job">trend at row scale &middot; emphasis, no axes</span>
+          </div>
+          <p>
+            44&times;14. No axes, no labels, one endpoint dot. This is what makes a dense table feel
+            like an instrument: every row carries its own history without costing a column.
+          </p>
+          <div class="frame tight">
+            <div class="lb-card card-pad">
+              <div class="card-head">
+                <span class="card-title">Tonight &middot; MLB batter props</span>
+                <span class="card-meta">line movement, last 6h</span>
+              </div>
+              <div class="row-list" id="spark-rows"></div>
+            </div>
+          </div>
+          <div class="spec">
+            <div class="spec-row"><div class="spec-k">Job</div><div class="spec-v">Change over time, at a size too small for a chart. <em>Emphasis</em> form &mdash; one series, no legend.</div></div>
+            <div class="spec-row"><div class="spec-k">Reads</div><div class="spec-v">prop_odds_history &middot; game_odds_history</div></div>
+            <div class="spec-row"><div class="spec-k">Marks</div><div class="spec-v">2px line &middot; 8px endpoint dot with 2px surface ring &middot; no grid</div></div>
+            <div class="spec-row"><div class="spec-k">Colour</div><div class="spec-v">ink-3 for the path; endpoint takes <em>compareInk(t)</em> so direction reads without a label</div></div>
+          </div>
+        </article>
+
+        <!-- 02 -->
+        <article class="prim" id="p2">
+          <div class="prim-head">
+            <span class="prim-num">02</span>
+            <span class="prim-name">SeriesChart</span>
+            <span class="prim-job">the one real line chart &middot; emphasis + context</span>
+          </div>
+          <p>
+            The price tape. Consensus is the subject; the individual books are context, so they're
+            grey &mdash; <strong>emphasis, not categorical.</strong> Twenty-two books as twenty-two hues
+            would be unreadable and would bury the line that matters.
+          </p>
+          <p>
+            Both charts share <strong>one crosshair</strong>. Hover either and both respond. This
+            single behaviour is most of what separates "a page with charts on it" from an instrument
+            &mdash; and it's the reason the primitives need to live in one library rather than one per card.
+          </p>
+          <div class="frame">
+            <div class="lb-card card-pad">
+              <div class="card-head">
+                <div>
+                  <div class="card-title">Aaron Judge &middot; Home runs &middot; Over 0.5</div>
+                  <div class="card-meta" style="margin-top:2px">14 observations &middot; 6 books &middot; opened &minus;145</div>
+                </div>
+                <button class="tv-toggle" type="button" data-tv="tv-tape" aria-expanded="false">Table view</button>
+              </div>
+              <div class="chart-host" id="tape-host">
+                <div id="tape-price"></div>
+                <div id="tape-prob" style="margin-top:2px"></div>
+              </div>
+              <div class="legend">
+                <span class="legend-item"><span class="legend-key line" style="background: var(--ink)"></span>Consensus</span>
+                <span class="legend-item"><span class="legend-key line" style="background: var(--ink-5)"></span>Individual books (6)</span>
+                <span class="legend-item"><span class="legend-key line" style="background: var(--ink-4); height:0; border-top:2px dashed var(--ink-4)"></span>Open</span>
+              </div>
+              <table class="tv" id="tv-tape" hidden></table>
+            </div>
+          </div>
+          <div class="spec">
+            <div class="spec-row"><div class="spec-k">Job</div><div class="spec-v">Trend over time where <em>one series is the point</em> and the rest are context.</div></div>
+            <div class="spec-row"><div class="spec-k">Reads</div><div class="spec-v">prop_odds_history (425,307 rows) &middot; game_odds_history (19,667)</div></div>
+            <div class="spec-row"><div class="spec-k">Marks</div><div class="spec-v">2px consensus &middot; 1px book threads at 45% &middot; solid hairline grid, never dashed</div></div>
+            <div class="spec-row"><div class="spec-k">Rule</div><div class="spec-v">Two measures, two stacked plots on a shared X &mdash; <em>never</em> a second Y axis</div></div>
+            <div class="spec-row"><div class="spec-k">Hover</div><div class="spec-v">Crosshair snaps to nearest X; one tooltip lists every series; synced across stack</div></div>
+          </div>
+        </article>
+
+        <!-- 03 -->
+        <article class="prim" id="p3">
+          <div class="prim-head">
+            <span class="prim-num">03</span>
+            <span class="prim-name">DistributionBars</span>
+            <span class="prim-job">per-game results vs a line &middot; you already have this</span>
+          </div>
+          <p>
+            This one exists &mdash; <code>DistributionChart</code> in <code>PlayerDetail.tsx:129</code>,
+            and it's the best-executed thing on the page. Generalising it into the library changes
+            nothing visually; it just stops the next chart from having to reinvent the bar spec,
+            the growth animation and the hover behaviour.
+          </p>
+          <div class="frame">
+            <div class="lb-card card-pad">
+              <div class="card-head">
+                <span class="card-title">Last 15 &middot; Hits &middot; line 1.5</span>
+                <span class="card-meta">9 of 15 cleared &middot; 60%</span>
+              </div>
+              <div class="chart-host" id="dist-host"></div>
+              <div class="scale-legend">
+                <span>missed</span>
+                <span class="scale-ramp" id="dist-ramp"></span>
+                <span>cleared</span>
+                <span style="margin-left:8px; color: var(--ink-5)">&mdash; &mdash; line 1.5</span>
+              </div>
+            </div>
+          </div>
+          <div class="spec">
+            <div class="spec-row"><div class="spec-k">Job</div><div class="spec-v">Magnitude against a threshold. Polarity is the story, so the ramp is <em>diverging</em>.</div></div>
+            <div class="spec-row"><div class="spec-k">Reads</div><div class="spec-v">player_game_history.stats (JSONB, every sport)</div></div>
+            <div class="spec-row"><div class="spec-k">Marks</div><div class="spec-v">&le;24px bars &middot; 4px rounded cap, square at baseline &middot; 2px surface gap between neighbours</div></div>
+            <div class="spec-row"><div class="spec-k">Note</div><div class="spec-v">The threshold rule is the one legitimate dash on the page &mdash; it <em>is</em> a threshold</div></div>
+            <div class="spec-row"><div class="spec-k">Shown with</div><div class="spec-v">the <em>proposed</em> neutral-midpoint ramp. Today's FILL_STOPS renders these cleared bars olive &mdash; see the ramp finding.</div></div>
+          </div>
+        </article>
+
+        <!-- 04 -->
+        <article class="prim" id="p4">
+          <div class="prim-head">
+            <span class="prim-num">04</span>
+            <span class="prim-name">DensityCurve</span>
+            <span class="prim-job">"where does this sit" &middot; the context chart</span>
+          </div>
+          <p>
+            <strong>0.312 means nothing to most users.</strong> The 87th percentile of a visible
+            distribution means something instantly. This is the chart that turns a stat line into
+            a judgement, and it works for every stat in every sport off one table.
+          </p>
+          <div class="frame">
+            <div class="lb-card card-pad">
+              <div class="card-head">
+                <span class="card-title">L15 hit rate &middot; all qualified MLB batters</span>
+                <span class="card-meta">n = 268</span>
+              </div>
+              <div class="chart-host" id="density-host"></div>
+            </div>
+          </div>
+          <div class="spec">
+            <div class="spec-row"><div class="spec-k">Job</div><div class="spec-v">Locate one value inside a population. Single series &mdash; no legend, the title names it.</div></div>
+            <div class="spec-row"><div class="spec-k">Reads</div><div class="spec-v">player_game_history, aggregated per market</div></div>
+            <div class="spec-row"><div class="spec-k">Marks</div><div class="spec-v">10% area wash &middot; 2px curve &middot; 9px marker with 2px surface ring</div></div>
+            <div class="spec-row"><div class="spec-k">Label</div><div class="spec-v">One direct label on the marker. Nothing else labelled &mdash; that is why it reads.</div></div>
+          </div>
+        </article>
+
+        <!-- 05 -->
+        <article class="prim" id="p5">
+          <div class="prim-head">
+            <span class="prim-num">05</span>
+            <span class="prim-name">PercentileRail</span>
+            <span class="prim-job">ranked stats &middot; the radar chart replacement</span>
+          </div>
+          <p>
+            Deliberately <strong>not a radar chart.</strong> Radar area scales with the square of
+            the values and the shape changes if you reorder the axes &mdash; it looks like data and
+            communicates almost nothing. A stack of rails says the same thing honestly and reads
+            faster. <code>PercentileRing.tsx</code> already has the maths (<code>percentileOf</code>).
+          </p>
+          <div class="frame">
+            <div class="lb-card card-pad">
+              <div class="card-head">
+                <span class="card-title">Quality of contact &middot; percentile among qualified</span>
+                <span class="card-meta">2026 season</span>
+              </div>
+              <div id="rail-host"></div>
+            </div>
+          </div>
+          <div class="spec">
+            <div class="spec-row"><div class="spec-k">Job</div><div class="spec-v">Several ranked measures on one 0&ndash;100 scale. One axis, shared.</div></div>
+            <div class="spec-row"><div class="spec-k">Reads</div><div class="spec-v">Statcast ranks &middot; nflSeasonStats.rows[].rank &middot; any {rank, poolSize}</div></div>
+            <div class="spec-row"><div class="spec-k">Marks</div><div class="spec-v">6px track (line-hair) &middot; 6px fill from heatFill(pct) &middot; value direct-labelled at the tip</div></div>
+            <div class="spec-row"><div class="spec-k">Replaces</div><div class="spec-v">StatRankRow's ordinal text &mdash; keeps the number, adds the position</div></div>
+          </div>
+        </article>
+
+        <!-- 06 -->
+        <article class="prim" id="p6">
+          <div class="prim-head">
+            <span class="prim-num">06</span>
+            <span class="prim-name">HeatGrid</span>
+            <span class="prim-job">splits matrix &middot; one glance replaces a page</span>
+          </div>
+          <p>
+            Venue &times; handedness &times; window as a grid. The value isn't the individual cells &mdash; it's that
+            <strong>the pattern becomes visible</strong>. "Crushes lefties at home, nothing on the
+            road" is one look here and five cards of scrolling today.
+          </p>
+          <div class="frame">
+            <div class="lb-card card-pad">
+              <div class="card-head">
+                <span class="card-title">Hit rate by split &middot; Hits o1.5</span>
+                <button class="tv-toggle" type="button" data-tv="tv-grid" aria-expanded="false">Table view</button>
+              </div>
+              <div class="chart-host" id="grid-host"></div>
+              <div class="scale-legend">
+                <span>0%</span><span class="scale-ramp" id="grid-ramp"></span><span>100%</span>
+              </div>
+              <table class="tv" id="tv-grid" hidden></table>
+            </div>
+          </div>
+          <div class="spec">
+            <div class="spec-row"><div class="spec-k">Job</div><div class="spec-v">Magnitude across a grid. Sequential &mdash; see the ramp finding below.</div></div>
+            <div class="spec-row"><div class="spec-k">Reads</div><div class="spec-v">player_game_history filtered by is_home / opponent_id / date window</div></div>
+            <div class="spec-row"><div class="spec-k">Marks</div><div class="spec-v">2px surface gap between cells &mdash; never a border &middot; sample size in the cell, not a tooltip</div></div>
+            <div class="spec-row"><div class="spec-k">Guard</div><div class="spec-v">A cell under n=5 renders hatched, not coloured. A 100% rate on 2 games is noise.</div></div>
+          </div>
+        </article>
+
+        <!-- 07 -->
+        <article class="prim" id="p7">
+          <div class="prim-head">
+            <span class="prim-num">07</span>
+            <span class="prim-name">RangeBar</span>
+            <span class="prim-job">book dispersion &middot; the line-shopping picture</span>
+          </div>
+          <p>
+            You show best price. You're sitting on <strong>dispersion</strong>, and dispersion is
+            signal: a market where every book agrees within four cents is a different proposition
+            from one spread thirty. This turns a list of prices into a shape.
+          </p>
+          <div class="frame">
+            <div class="lb-card card-pad">
+              <div class="card-head">
+                <span class="card-title">Total bases o1.5 &middot; price across books</span>
+                <span class="card-meta">spread 24&cent; &middot; consensus &minus;118</span>
+              </div>
+              <div class="chart-host" id="range-host"></div>
+            </div>
+          </div>
+          <div class="spec">
+            <div class="spec-row"><div class="spec-k">Job</div><div class="spec-v">One value's position within an observed range. <em>rankToHeat(v, min, max)</em> already exists.</div></div>
+            <div class="spec-row"><div class="spec-k">Reads</div><div class="spec-v">prop_odds, grouped by bookmaker (canonicalised &mdash; task 5.3)</div></div>
+            <div class="spec-row"><div class="spec-k">Marks</div><div class="spec-v">4px track &middot; 10px marker per book &middot; the user's own book gets the ring, not a colour</div></div>
+            <div class="spec-row"><div class="spec-k">Rule</div><div class="spec-v">All books identical &rArr; neutral, not "everything is best". heat.ts handles this.</div></div>
+          </div>
+        </article>
+
+        <!-- 08 -->
+        <article class="prim" id="p8">
+          <div class="prim-head">
+            <span class="prim-num">08</span>
+            <span class="prim-name">ContributionBars</span>
+            <span class="prim-job">why the model likes this &middot; diverging</span>
+          </div>
+          <p>
+            "Why does the model like this?" is the question every user has and nothing in this
+            category answers. You have fitted weights in <code>model_weights</code> &mdash; the answer is
+            a query away, and it's the single strongest trust feature on the list.
+          </p>
+          <div class="frame">
+            <div class="lb-card card-pad">
+              <div class="card-head">
+                <span class="card-title">Contribution to model probability</span>
+                <span class="card-meta">v8 &middot; shadow</span>
+              </div>
+              <div class="chart-host" id="contrib-host"></div>
+            </div>
+          </div>
+          <div class="spec">
+            <div class="spec-row"><div class="spec-k">Job</div><div class="spec-v">Signed deltas around a baseline. Genuinely diverging &mdash; the sign is the content.</div></div>
+            <div class="spec-row"><div class="spec-k">Reads</div><div class="spec-v">model_weights &times; the pick's own feature vector</div></div>
+            <div class="spec-row"><div class="spec-k">Marks</div><div class="spec-v">Bars grow from a centre spine &middot; sorted by magnitude &middot; sign read by <em>position</em> first</div></div>
+            <div class="spec-row"><div class="spec-k">Honesty</div><div class="spec-v">Renders the shadow flag. A model the UI won't stand behind says so here.</div></div>
+          </div>
+        </article>
+
+        <!-- 09 -->
+        <article class="prim" id="p9">
+          <div class="prim-head">
+            <span class="prim-num">09</span>
+            <span class="prim-name">StatTable</span>
+            <span class="prim-job">the dense stat block &middot; bar-in-cell</span>
+          </div>
+          <p>
+            The workhorse. A stat page is mostly <em>tables</em>, and a table where one column
+            carries a heat-tinted bar behind the number reads as fast as a chart while staying a
+            table &mdash; sortable, copyable, screen-readable. This is how you show forty numbers
+            without forty charts.
+          </p>
+          <div class="frame tight">
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title">Season</span><span class="card-meta">rank of 158 qualified</span></div>
+              <div id="demo-stattable"></div>
+            </div>
+          </div>
+          <div class="spec">
+            <div class="spec-row"><div class="spec-k">Job</div><div class="spec-v">Many measures, exact values required. A chart would lose the precision.</div></div>
+            <div class="spec-row"><div class="spec-k">Marks</div><div class="spec-v">5px track &middot; heatFill by percentile &middot; value in heatInk &middot; tabular figures throughout</div></div>
+            <div class="spec-row"><div class="spec-k">Rule</div><div class="spec-v">The bar encodes <em>percentile</em>, never the raw value &mdash; .294 and 44 do not share a scale</div></div>
+          </div>
+        </article>
+
+        <!-- 10 -->
+        <article class="prim" id="p10">
+          <div class="prim-head">
+            <span class="prim-num">10</span>
+            <span class="prim-name">StreakStrip</span>
+            <span class="prim-job">run of outcomes &middot; recency by opacity</span>
+          </div>
+          <p>
+            Twenty games of hit-or-miss in one 12px band. Opacity ramps toward the present, so
+            &ldquo;hot lately&rdquo; is visible without reading a single cell.
+          </p>
+          <div class="frame tight">
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title">Hits o1.5 &middot; last 20</span><span class="card-meta">13 of 20</span></div>
+              <div id="demo-streak"></div>
+            </div>
+          </div>
+          <div class="spec">
+            <div class="spec-row"><div class="spec-k">Job</div><div class="spec-v">Binary sequence, ordered. Not a chart &mdash; a legible encoding of a list.</div></div>
+            <div class="spec-row"><div class="spec-k">Marks</div><div class="spec-v">Equal cells, 2px gap, oldest left &mdash; the direction is labelled, never assumed</div></div>
+          </div>
+        </article>
+
+        <!-- 11 -->
+        <article class="prim" id="p11">
+          <div class="prim-head">
+            <span class="prim-num">11</span>
+            <span class="prim-name">SplitDumbbell</span>
+            <span class="prim-job">A vs B on one scale &middot; one hue, two shades</span>
+          </div>
+          <p>
+            Platoon splits, home/away, before/after. Two dots joined by a line: the
+            <em>gap</em> is the message, and a shared row scale makes it unmissable. One hue in two
+            shades &mdash; two categorical colours here would imply the conditions are unrelated
+            categories rather than two readings of one thing.
+          </p>
+          <div class="frame tight">
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title">Platoon</span><span class="card-meta">vs LHP / vs RHP</span></div>
+              <div class="chart-host" id="demo-dumbbell"></div>
+              <div class="legend">
+                <span class="legend-item"><span class="legend-key rect" style="background: oklch(72% 0.045 155)"></span>vs LHP</span>
+                <span class="legend-item"><span class="legend-key rect" style="background: oklch(42% 0.085 155)"></span>vs RHP</span>
+              </div>
+            </div>
+          </div>
+          <div class="spec">
+            <div class="spec-row"><div class="spec-k">Job</div><div class="spec-v">Paired comparison. One <em>shared</em> scale &mdash; each value as % deviation from its own row midpoint &mdash; so a big split looks bigger than a small one, and rows compare to each other.</div></div>
+            <div class="spec-row"><div class="spec-k">Marks</div><div class="spec-v">3px connector &middot; 9px dots with 2px surface ring &middot; legend mandatory (two series)</div></div>
+          </div>
+        </article>
+      </section>
+
+      <!-- ============================ RAMP FINDING ============================ -->
+      <section id="ramp">
+        <h2>Your heat ramp: one finding, measured</h2>
+        <p class="lede">
+          I ran your ramp through a CVD validator rather than eyeballing it. The headline is
+          <strong>better than I expected</strong>, and the one real problem is narrow and fixable.
+        </p>
+
+        <p>
+          Red-and-green is the canonical colourblind hazard, so I assumed <code>lib/ui/heat.ts</code>
+          would fail. It doesn't. Your two poles clear the deuteranopia threshold:
+        </p>
+
+        <pre class="term">$ validate_palette.js "#c23b2c,#c98a1f,#0f7a4f" --mode light --pairs all
+
+  <span class="ok">[PASS]</span> Lightness band      all 3 inside L 0.43&ndash;0.77
+  <span class="ok">[PASS]</span> Chroma floor        all 3 &gt;= 0.1
+  <span class="ok">[PASS]</span> CVD separation      worst all-pairs #0f7a4f&harr;#c23b2c &Delta;E <span class="ok">8.4</span> (deutan)
+  <span class="ok">[PASS]</span> Normal-vision floor worst all-pairs #c98a1f&harr;#c23b2c &Delta;E 17.9
+  <span class="no">[WARN]</span> Contrast vs surface below 3:1 &mdash; relief required: <span class="no">#c98a1f at 2.87:1</span></pre>
+
+        <p>
+          &Delta;E 8.4 against a floor of 8.0. It passes &mdash; by four tenths. That's a well-chosen pair
+          (the green is dark and desaturated enough to separate from the red by lightness as well
+          as hue), and it survives because of that, not by luck. But a margin that thin means
+          <strong>secondary encoding isn't optional</strong>: sign, position, or a visible number
+          has to carry the meaning too, wherever the ramp does real work.
+        </p>
+
+        <h3>The actual problem is the midpoint</h3>
+        <p>
+          <code>heat.ts</code> defines two ramps. <code>COMPARE_STOPS</code> goes
+          red &rarr; <em>neutral grey</em> &rarr; green, and its comment reasons it out exactly right: a price
+          in the middle of six books "is just ordinary," so the middle should be quiet.
+          <code>FILL_STOPS</code> goes red &rarr; <strong>amber</strong> &rarr; green &mdash; and amber isn't quiet.
+          Amber means caution.
+        </p>
+        <p>
+          So the fill ramp asserts "warning" everywhere the data only says "average." A 50% hit rate
+          is a coin flip, not a caution. And amber is the one stop that fails contrast, at 2.87:1.
+        </p>
+
+        <div class="ramp-compare">
+          <div class="ramp-card">
+            <h4>Today &mdash; FILL_STOPS</h4>
+            <p class="sub">L 54.9 &rarr; 68.0 &rarr; 51.3 &middot; arched</p>
+            <div class="ramp-strip" id="ramp-now"></div>
+            <div class="ramp-gray" id="ramp-now-g"></div>
+            <p class="ramp-note">
+              In greyscale the two <em>poles</em> collapse &mdash; 54.9 vs 51.3 is a 3.6-point difference &mdash;
+              while the midpoint is the brightest thing on the scale. A reader scanning by value
+              sees "average" as the extreme.
+            </p>
+          </div>
+          <div class="ramp-card">
+            <h4>Proposed &mdash; sequential, for HeatGrid</h4>
+            <p class="sub">L 92 &rarr; 45 &middot; monotonic, one hue</p>
+            <div class="ramp-strip" id="ramp-new"></div>
+            <div class="ramp-gray" id="ramp-new-g"></div>
+            <p class="ramp-note">
+              Where the job is magnitude (the splits grid), one hue light&rarr;dark. Monotonic lightness
+              means it survives greyscale, print and peripheral vision without depending on hue
+              at all.
+            </p>
+          </div>
+        </div>
+
+        <div class="callout">
+          <span class="tag">The distinction worth keeping</span>
+          <p>
+            Your ramp isn't broken &mdash; it's <strong>a diverging ramp doing two jobs</strong>, and it's
+            right for one of them. Keep red&harr;green (with the grey midpoint <code>COMPARE_STOPS</code>
+            already uses) wherever polarity is the content: results against a line, contribution
+            bars, price vs consensus. Use the monotonic single-hue ramp where the content is
+            magnitude: the splits grid, density fills, anything scanned as a field.
+          </p>
+          <p>
+            One validator caveat, stated so nobody re-litigates it later: running the neutral-midpoint
+            version through the script returns <code>[FAIL] Chroma floor</code> on the grey. That
+            check is scoped to <em>categorical</em> palettes, where a grey slot would read as
+            "no data." A diverging midpoint is <em>supposed</em> to be achromatic. The FAIL is the
+            tool applying the wrong rule, not a real defect &mdash; worth writing down, because it will
+            look like one the next time someone runs it.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================ DEPTH FINDING ============================ -->
+      <section id="depth">
+        <h2>A second thing I found while matching your tokens</h2>
+        <p>
+          To render these frames truthfully I used <code>tailwind.config.ts</code> verbatim. Doing
+          that surfaced something: <strong><code>card</code> is darker than <code>paper</code>.</strong>
+        </p>
+        <div class="frame" style="padding: 0">
+          <div style="display:flex; align-items:stretch; font-family: var(--mono); font-size: 11px;">
+            <div style="flex:1; padding:22px 18px; background: var(--paper); color: var(--ink-3)">
+              <div style="font-weight:600; color:var(--ink); margin-bottom:4px">paper</div>
+              oklch(96%) &mdash; the page
+            </div>
+            <div style="flex:1; padding:22px 18px; background: var(--card); color: var(--ink-3); border-left:1px solid var(--line)">
+              <div style="font-weight:600; color:var(--ink); margin-bottom:4px">card</div>
+              oklch(93%) &mdash; three steps <em>down</em>
+            </div>
+            <div style="flex:1; padding:22px 18px; background: var(--surface); color: var(--ink-3); border-left:1px solid var(--line)">
+              <div style="font-weight:600; color:var(--ink); margin-bottom:4px">surface-subtle</div>
+              oklch(96%) &mdash; back up again
+            </div>
+          </div>
+        </div>
+        <p>
+          Before the graphite reskin, page was <code>#f7f5f0</code> and card was <code>#FFFFFF</code>
+          &mdash; cards sat <em>above</em> the page, which is what a card is. The reskin held paper at 96%
+          and dropped card to 93%, inverting it. Then <code>surface-subtle</code>, documented as an
+          inset "inside cards," is 96% &mdash; lighter than the card it insets into.
+        </p>
+        <p>
+          Every frame on this page renders that faithfully, and honestly it doesn't look bad &mdash; it
+          reads as recessed panels rather than raised cards, which is a legitimate look. But it's
+          worth confirming it was <strong>chosen</strong> rather than inherited from a find-and-replace,
+          because it's load-bearing for every surface in the app and it silently inverts the elevation
+          model that <code>shadow-card</code> and <code>.lb-card-hero</code> assume.
+        </p>
+      </section>
+
+      <!-- ============================ COMPOSED ============================ -->
+      <section id="screen">
+        <h2>Composed: Player Detail, at real depth</h2>
+        <p class="lede">
+          Every primitive on one page, carrying an actual stat load &mdash; season line and ranks,
+          the full Statcast block, ten splits &times; five windows, platoon splits, pitch mix, zone
+          profile, twelve-game log, matchup, park and weather, market and model. This is what
+          &ldquo;see all the data in one place&rdquo; has to mean before it means anything.
+        </p>
+        <p>
+          The reason it stays readable at this density is the grammar: one hover behaviour, one
+          bar spec, one ramp, one type scale, one sample-size rule. Nothing here is a bespoke
+          chart, so nothing here fights anything else. <strong>Depth is a layout problem once the
+          marks agree.</strong>
+        </p>
+
+        <div class="frame wide screenframe">
+          <div class="mockbar">
+            <span class="mockdot"></span>
+            Representative data &mdash; not live. Player and opponent are real; every number below is invented for this mockup.
+          </div>
+
+          <div class="screen">
+            <div class="main-col">
+
+              <!-- hero -->
+              <div class="lb-card-hero card-pad">
+                <div class="hero-row">
+                  <div class="avatar-c">AJ</div>
+                  <div>
+                    <div class="hero-name">Aaron Judge</div>
+                    <div class="hero-meta">RF &middot; NYY &middot; R/R &middot; batting 2nd &middot; vs BOS 7:05 PM</div>
+                  </div>
+                  <div class="hero-anchor">
+                    <div class="v" id="hero-v">64%</div>
+                    <div class="l">L15 hit rate</div>
+                  </div>
+                </div>
+
+                <div class="kpi">
+                  <div class="kpi-c"><span class="kpi-v">.294</span><span class="kpi-k">AVG</span></div>
+                  <div class="kpi-c"><span class="kpi-v">.428</span><span class="kpi-k">OBP</span></div>
+                  <div class="kpi-c"><span class="kpi-v">.625</span><span class="kpi-k">SLG</span></div>
+                  <div class="kpi-c"><span class="kpi-v">1.053</span><span class="kpi-k">OPS</span></div>
+                  <div class="kpi-c"><span class="kpi-v">44</span><span class="kpi-k">HR</span></div>
+                  <div class="kpi-c"><span class="kpi-v">108</span><span class="kpi-k">RBI</span></div>
+                  <div class="kpi-c"><span class="kpi-v">191</span><span class="kpi-k">wRC+</span></div>
+                  <div class="kpi-c"><span class="kpi-v">128</span><span class="kpi-k">G</span></div>
+                </div>
+
+                <div class="mkt-tabs">
+                  <span class="mkt on">Hits</span><span class="mkt">Total bases</span><span class="mkt">Home runs</span>
+                  <span class="mkt">RBI</span><span class="mkt">Runs</span><span class="mkt">Walks</span><span class="mkt">Strikeouts</span>
+                </div>
+              </div>
+
+              <!-- prop console -->
+              <div class="lb-card card-pad">
+                <div class="card-head">
+                  <span class="card-title">Hits &middot; over 1.5</span>
+                  <span class="card-meta">6 books &middot; updated 3 min ago</span>
+                </div>
+                <div class="console">
+                  <div class="stepper"><button type="button" class="stepbtn">&minus;</button><span class="stepval">1.5</span><button type="button" class="stepbtn">+</button></div>
+                  <div class="console-stat"><span class="cs-v">&minus;118</span><span class="cs-k">Best price &middot; FanDuel</span></div>
+                  <div class="console-stat"><span class="cs-v">57.5%</span><span class="cs-k">Model</span></div>
+                  <div class="console-stat"><span class="cs-v">54.1%</span><span class="cs-k">Market, de-vigged</span></div>
+                  <div class="console-stat"><span class="cs-v edge">+3.4%</span><span class="cs-k">Edge</span></div>
+                  <button type="button" class="addbtn">Add to slip</button>
+                </div>
+                <div class="wtiles" id="dp-windows"></div>
+                <div id="dp-streak"></div>
+              </div>
+
+              <!-- distribution + rolling -->
+              <div class="lb-card card-pad">
+                <div class="card-head">
+                  <span class="card-title">Last 15 &middot; hits vs the line</span>
+                  <span class="card-meta">9 of 15 cleared &middot; 60%</span>
+                </div>
+                <div class="chart-host" id="screen-dist"></div>
+              </div>
+
+              <div class="lb-card card-pad">
+                <div class="card-head">
+                  <span class="card-title">Rolling form</span>
+                  <span class="card-meta">5-game mean, with spread</span>
+                </div>
+                <div class="chart-host" id="dp-rolling"></div>
+              </div>
+
+              <div class="lb-card card-pad">
+                <div class="card-head">
+                  <span class="card-title">Line movement</span>
+                  <span class="card-meta">6 books &middot; opened &minus;145</span>
+                </div>
+                <div class="chart-host" id="screen-tape"></div>
+              </div>
+
+              <!-- splits -->
+              <div class="lb-card card-pad">
+                <div class="card-head">
+                  <span class="card-title">Splits &middot; hits o1.5 hit rate</span>
+                  <span class="card-meta">n &lt; 5 withheld</span>
+                </div>
+                <div class="chart-host" id="screen-grid"></div>
+              </div>
+
+              <!-- two-up: season table + statcast -->
+              <div class="twoup">
+                <div class="lb-card card-pad">
+                  <div class="card-head"><span class="card-title">Season</span><span class="card-meta">rank of 158 qualified</span></div>
+                  <div id="dp-season"></div>
+                </div>
+                <div class="lb-card card-pad">
+                  <div class="card-head"><span class="card-title">Statcast</span><span class="card-meta">percentile</span></div>
+                  <div id="dp-statcast"></div>
+                </div>
+              </div>
+
+              <!-- two-up: platoon + zone -->
+              <div class="twoup">
+                <div class="lb-card card-pad">
+                  <div class="card-head"><span class="card-title">Platoon</span><span class="card-meta">vs LHP / vs RHP</span></div>
+                  <div class="chart-host" id="dp-dumbbell"></div>
+                  <div class="legend">
+                    <span class="legend-item"><span class="legend-key rect" style="background: oklch(72% 0.045 155)"></span>vs LHP</span>
+                    <span class="legend-item"><span class="legend-key rect" style="background: oklch(42% 0.085 155)"></span>vs RHP</span>
+                  </div>
+                </div>
+                <div class="lb-card card-pad">
+                  <div class="card-head"><span class="card-title">Zone profile</span><span class="card-meta">xwOBA</span></div>
+                  <div class="zonewrap"><div class="chart-host" id="dp-zone"></div></div>
+                </div>
+              </div>
+
+              <div class="lb-card card-pad">
+                <div class="card-head"><span class="card-title">Pitch mix</span><span class="card-meta">what he sees, and what he does with it</span></div>
+                <div id="dp-pitchmix"></div>
+              </div>
+
+              <div class="lb-card card-pad">
+                <div class="card-head"><span class="card-title">Game log</span><span class="card-meta">last 12</span></div>
+                <div id="dp-gamelog"></div>
+              </div>
+
+            </div>
+
+            <!-- ============ rail ============ -->
+            <aside class="rail">
+              <div class="lb-card card-pad">
+                <div class="card-head"><span class="card-title">Where this sits</span><span class="card-meta">n = 268</span></div>
+                <div class="chart-host" id="screen-density"></div>
+              </div>
+
+              <div class="lb-card card-pad">
+                <div class="card-head"><span class="card-title">Opposing starter</span></div>
+                <div id="dp-sp"></div>
+              </div>
+
+              <div class="lb-card card-pad">
+                <div class="card-head"><span class="card-title">Career matchup</span></div>
+                <div id="dp-bvp"></div>
+              </div>
+
+              <div class="lb-card card-pad">
+                <div class="card-head"><span class="card-title">Quality of contact</span></div>
+                <div id="screen-rail"></div>
+              </div>
+
+              <div class="lb-card card-pad">
+                <div class="card-head"><span class="card-title">Conditions</span></div>
+                <div class="rail-stat"><span class="k">Park</span><span class="v">Yankee Stadium</span></div>
+                <div class="rail-stat"><span class="k">HR factor</span><span class="v" style="color:#0b5c3c">112</span></div>
+                <div class="rail-stat"><span class="k">Hits factor</span><span class="v">101</span></div>
+                <div class="rail-stat"><span class="k">Weather</span><span class="v">78&deg;F, clear</span></div>
+                <div class="rail-stat"><span class="k">Wind</span><span class="v">9 mph out to RF</span></div>
+              </div>
+
+              <div class="lb-card card-pad">
+                <div class="card-head"><span class="card-title">Best price</span><span class="card-meta">6 books</span></div>
+                <div class="chart-host" id="screen-range"></div>
+              </div>
+
+              <div class="lb-card card-pad">
+                <div class="card-head"><span class="card-title">Why the model likes it</span><span class="card-meta">v8 &middot; shadow</span></div>
+                <div class="chart-host" id="screen-contrib"></div>
+              </div>
+
+              <div class="lb-card card-pad">
+                <div class="card-head"><span class="card-title">Game context</span></div>
+                <div class="rail-stat"><span class="k">Moneyline</span><span class="v">&minus;134</span></div>
+                <div class="rail-stat"><span class="k">Total</span><span class="v">8.5 &middot; &minus;108</span></div>
+                <div class="rail-stat"><span class="k">NYY implied</span><span class="v">5.2</span></div>
+                <div class="rail-stat"><span class="k">Lineup spot</span><span class="v">2nd</span></div>
+                <div class="rail-stat"><span class="k">Projected PA</span><span class="v">4.6</span></div>
+              </div>
+            </aside>
+          </div>
+        </div>
+
+        <p style="margin-top:22px">
+          Count what is on that page: <strong>nine ranked season stats, eleven Statcast metrics with
+          percentiles, fifty split cells, five platoon comparisons, nine zone cells, five pitch
+          types, twelve games, seven pitcher rates, five matchup lines, five conditions, six book
+          prices and seven model contributions</strong> &mdash; roughly 190 numbers, and it still
+          scans. That is the grammar earning its keep, not restraint about how much to show.
+        </p>
+      </section>
+
+      <!-- ============================ BUILD ORDER ============================ -->
+      <section id="build">
+        <h2>What to build, in order</h2>
+
+        <p>
+          Phase 6 is unblocked as of today &mdash; the Phase 4 gate passed and <code>CURRENT.md</code>
+          says so. This is the order I'd take it in, and the reasoning is the same one
+          <code>CLAUDE.md</code> already records twice.
+        </p>
+
+        <div class="callout">
+          <span class="tag">The argument, in one line</span>
+          <p>
+            <code>run_provider_specs</code> exists because two of four hand-written job bodies forgot
+            to check their rate limit. The sport adapters exist because three duplicated page
+            components drifted until someone read them side by side. <strong>Ten bespoke charts will
+            drift exactly the same way</strong> &mdash; a different hover here, a dashed grid there, a
+            different empty state in each &mdash; and no single one of them will look wrong enough for
+            anyone to file it.
+          </p>
+        </div>
+
+        <ol style="max-width:68ch; color: var(--sh-ink-2); padding-left: 20px;">
+          <li style="margin-bottom:12px">
+            <strong style="color:var(--sh-ink)">ChartFrame + useChartCrosshair first.</strong>
+            Axes, grid, empty state, tooltip, hover sync &mdash; the parts every chart would otherwise
+            re-invent. A day, maybe two, and it is what makes the rest cheap.
+          </li>
+          <li style="margin-bottom:12px">
+            <strong style="color:var(--sh-ink)">Sparkline + SeriesChart.</strong> That is 6.1 &mdash;
+            the highest-value item on the phase list, against 425,307 rows already sitting in
+            Postgres with no consumer.
+          </li>
+          <li style="margin-bottom:12px">
+            <strong style="color:var(--sh-ink)">Move DistributionChart into the library.</strong>
+            No visual change. It stops being the one good chart and starts being the reference
+            implementation.
+          </li>
+          <li style="margin-bottom:12px">
+            <strong style="color:var(--sh-ink)">HeatGrid + PercentileRail + DensityCurve.</strong>
+            The depth layer. All three read <code>player_game_history</code>, so they ship together
+            and cost one data path between them.
+          </li>
+          <li style="margin-bottom:12px">
+            <strong style="color:var(--sh-ink)">RangeBar, then ContributionBars.</strong> Dispersion
+            first because it needs no model. Contribution last because it is the one that has to be
+            right &mdash; it makes a claim about <em>why</em>.
+          </li>
+        </ol>
+
+        <h3>One constraint worth naming now</h3>
+        <p>
+          <code>PlayerDetail.tsx</code> is 106KB and <code>GameDetail.tsx</code> is 105KB. A dozen
+          inline charts makes both genuinely unworkable &mdash; the library isn't only about consistency,
+          it's the only way the scope fits in files that are already at their limit.
+        </p>
+      </section>
+
+      <footer>
+        <p>
+          Rendered with Linesmith's own tokens (<code>tailwind.config.ts</code>), heat ramp
+          (<code>lib/ui/heat.ts</code>) and card classes (<code>app/globals.css</code>). No chart
+          library &mdash; every mark here is hand-rolled SVG, which is the proposal.
+        </p>
+        <p style="margin-top:10px">
+          Chart data is representative, chosen to be plausible for the tables named in each spec
+          strip. The validator output and the token values are real.
+        </p>
+      </footer>
+
+    </main>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // =====================================================================
+  // heat.ts, ported verbatim so the mockup cannot drift from the app
+  // =====================================================================
+  var FILL = [[0xc2,0x3b,0x2c],[0xc9,0x8a,0x1f],[0x0f,0x7a,0x4f]];
+  var INK  = [[0x8f,0x2b,0x20],[0x8f,0x62,0x15],[0x0b,0x5c,0x3c]];
+  var CMP  = [[0x8f,0x2b,0x20],[0x6d,0x67,0x5e],[0x0b,0x5c,0x3c]];
+
+  function clamp01(t) { return isFinite(t) ? Math.min(1, Math.max(0, t)) : 0.5; }
+  function sample(stops, t) {
+    var x = clamp01(t), a, b, u;
+    if (x <= 0.5) { a = stops[0]; b = stops[1]; u = x / 0.5; }
+    else { a = stops[1]; b = stops[2]; u = (x - 0.5) / 0.5; }
+    return [0,1,2].map(function (i) { return Math.round(a[i] + (b[i] - a[i]) * u); });
+  }
+  function rgb(c, alpha) {
+    return (alpha == null || alpha >= 1)
+      ? 'rgb(' + c[0] + ' ' + c[1] + ' ' + c[2] + ')'
+      : 'rgb(' + c[0] + ' ' + c[1] + ' ' + c[2] + ' / ' + alpha + ')';
+  }
+  function heatFill(t, a) { return rgb(sample(FILL, t), a); }
+  function heatInk(t)     { return rgb(sample(INK, t)); }
+  function compareInk(t)  { return rgb(sample(CMP, t)); }
+  function deltaToHeat(d, span) { span = span || 0.35; return clamp01(0.5 + d / (span * 2)); }
+  function rankToHeat(v, min, max) { return max === min ? 0.5 : clamp01((v - min) / (max - min)); }
+  // proposed monotonic sequential ramp \u2014 one hue, light -> dark
+  function seqFill(t) { var x = clamp01(t); return 'oklch(' + (92 - 47 * x).toFixed(1) + '% ' + (0.03 + 0.085 * x).toFixed(3) + ' 155)'; }
+  // Proposed DIVERGING fill: the same two poles, but with heat.ts's own NEUTRAL
+  // at the midpoint instead of amber - so "ordinary" reads as ordinary, and a
+  // game that cleared reads green rather than olive. See the ramp finding.
+  var NEUTRAL_RGB = [0xa8, 0xa2, 0x9a];
+  function divFill(t) { return rgb(sample([FILL[0], NEUTRAL_RGB, FILL[2]], t)); }
+
+  var SURFACE = 'oklch(93% 0.003 260)';   // --card: the ground every mark sits on
+  var GRID    = 'oklch(90% 0.004 260)';   // --line-soft
+  var INK1    = 'oklch(16% 0.004 260)';
+  var INK3    = 'oklch(50% 0.005 260)';
+  var INK4    = 'oklch(68% 0.004 260)';
+  var INK5    = 'oklch(78% 0.004 260)';
+
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function svg(tag, attrs) {
+    var n = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+  function root(w, h) {
+    var s = svg('svg', { viewBox: '0 0 ' + w + ' ' + h, width: '100%', role: 'img' });
+    s.style.display = 'block';
+    s.style.overflow = 'visible';
+    // Never render above 1:1 - see note above.
+    s.style.maxWidth = w + 'px';
+    return s;
+  }
+  function txt(x, y, s, o) {
+    o = o || {};
+    var t = svg('text', {
+      x: x, y: y,
+      fill: o.fill || INK3,
+      'font-size': o.size || 9,
+      'font-weight': o.weight || 400,
+      'text-anchor': o.anchor || 'start',
+      'font-family': 'ui-sans-serif, system-ui, sans-serif'
+    });
+    if (o.tabular) t.setAttribute('style', 'font-variant-numeric: tabular-nums');
+    t.textContent = s;
+    return t;
+  }
+
+  // =====================================================================
+  // shared tooltip
+  // =====================================================================
+  function makeTip(host) {
+    var tip = document.createElement('div');
+    tip.className = 'tt';
+    host.appendChild(tip);
+    return {
+      el: tip,
+      show: function (x, y, rows) {
+        tip.textContent = '';
+        rows.forEach(function (r) {
+          var row = document.createElement('div');
+          row.className = 'tt-row';
+          if (r.color) {
+            var k = document.createElement('span');
+            k.className = 'tt-key';
+            k.style.background = r.color;
+            row.appendChild(k);
+          }
+          var v = document.createElement('span');
+          v.className = 'tt-v';
+          v.textContent = r.value;                    // untrusted-data discipline
+          row.appendChild(v);
+          if (r.label) {
+            var l = document.createElement('span');
+            l.className = 'tt-l';
+            l.textContent = r.label;
+            row.appendChild(l);
+          }
+          tip.appendChild(row);
+        });
+        tip.style.opacity = '1';
+        var w = tip.offsetWidth, hw = host.clientWidth;
+        tip.style.left = Math.max(0, Math.min(hw - w, x - w / 2)) + 'px';
+        tip.style.top = (y - tip.offsetHeight - 10) + 'px';
+      },
+      hide: function () { tip.style.opacity = '0'; }
+    };
+  }
+
+  // =====================================================================
+  // 01 \u00B7 Sparkline
+  // =====================================================================
+  function sparkline(series, opts) {
+    opts = opts || {};
+    var w = opts.w || 46, h = opts.h || 15, pad = 3;
+    var s = root(w, h);
+    var min = Math.min.apply(null, series), max = Math.max.apply(null, series);
+    var span = (max - min) || 1;
+    var X = function (i) { return pad + (i / (series.length - 1)) * (w - pad * 2); };
+    var Y = function (v) { return h - pad - ((v - min) / span) * (h - pad * 2); };
+    var d = series.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+    s.appendChild(svg('path', { d: d, fill: 'none', stroke: INK4, 'stroke-width': 1.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+    var last = series.length - 1;
+    var dir = deltaToHeat((series[last] - series[0]) / (Math.abs(series[0]) || 1), 0.25);
+    // 2px surface ring so the dot survives crossing its own line
+    s.appendChild(svg('circle', { cx: X(last), cy: Y(series[last]), r: 3.6, fill: SURFACE }));
+    s.appendChild(svg('circle', { cx: X(last), cy: Y(series[last]), r: 2.4, fill: compareInk(dir) }));
+    return s;
+  }
+
+  var SPARK_ROWS = [
+    { name: 'Aaron Judge',      sub: 'Home runs o0.5',   price: '+118', s: [145,142,138,132,128,124,120,118], pct: 0.62 },
+    { name: 'Bobby Witt Jr.',   sub: 'Total bases o1.5', price: '\u2212118', s: [104,106,108,112,110,114,116,118], pct: 0.41 },
+    { name: 'Corbin Carroll',   sub: 'Stolen base o0.5', price: '+205', s: [188,190,196,199,203,204,205,205], pct: 0.33 }
+  ];
+  (function () {
+    var host = document.getElementById('spark-rows');
+    if (!host) return;
+    SPARK_ROWS.forEach(function (r) {
+      var row = document.createElement('div');
+      row.className = 'prop-row';
+      var left = document.createElement('div');
+      var nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = r.name;
+      var sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = r.sub;
+      left.appendChild(nm); left.appendChild(sub);
+      var sp = document.createElement('div');
+      sp.appendChild(sparkline(r.s));
+      var pc = document.createElement('div'); pc.className = 'pc'; pc.textContent = r.price;
+      pc.style.color = heatInk(r.pct);
+      row.appendChild(left); row.appendChild(sp); row.appendChild(pc);
+      host.appendChild(row);
+    });
+  })();
+
+  // =====================================================================
+  // 02 \u00B7 SeriesChart \u2014 the price tape, with a shared crosshair
+  // =====================================================================
+  var TAPE_T = ['13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00','18:30','19:00','19:30'];
+  var TAPE_CONSENSUS = [145,144,142,141,138,136,131,128,127,126,124,122,120,118];
+  var TAPE_BOOKS = [
+    [148,146,145,142,140,138,133,130,128,127,125,124,122,120],
+    [143,142,140,140,137,134,130,127,126,125,123,121,119,117],
+    [146,145,143,142,139,137,132,129,128,126,125,123,121,119],
+    [144,143,141,139,136,135,129,126,126,124,123,120,118,116],
+    [147,146,144,143,141,138,134,131,129,128,126,125,123,121],
+    [142,141,139,139,135,133,128,125,125,123,122,120,118,116]
+  ];
+  // American odds -> implied probability (no de-vig; this is the raw book number)
+  function implied(a) { return a > 0 ? 100 / (a + 100) : -a / (-a + 100); }
+  var TAPE_PROB = TAPE_CONSENSUS.map(function (a) { return implied(-a) * 100; });
+
+  function seriesChart(cfg) {
+    var w = 640, h = cfg.h || 132, padL = 34, padR = 12, padT = 12, padB = cfg.axis ? 24 : 8;
+    var s = root(w, h);
+    var pw = w - padL - padR, ph = h - padT - padB;
+    var vals = cfg.context ? cfg.context.reduce(function (a, b) { return a.concat(b); }, cfg.series.slice()) : cfg.series.slice();
+    var lo = cfg.min != null ? cfg.min : Math.min.apply(null, vals);
+    var hi = cfg.max != null ? cfg.max : Math.max.apply(null, vals);
+    var padv = (hi - lo) * 0.12 || 1; lo -= padv; hi += padv;
+    var X = function (i) { return padL + (i / (cfg.series.length - 1)) * pw; };
+    var Y = function (v) { return padT + ph - ((v - lo) / (hi - lo)) * ph; };
+
+    // grid \u2014 solid hairlines, one step off surface, never dashed
+    var ticks = cfg.ticks || 3;
+    for (var g = 0; g <= ticks; g++) {
+      var v = lo + (hi - lo) * (g / ticks);
+      var y = Y(v);
+      s.appendChild(svg('line', { x1: padL, x2: w - padR, y1: y, y2: y, stroke: GRID, 'stroke-width': 1 }));
+      s.appendChild(txt(padL - 7, y + 3, cfg.fmt(v), { anchor: 'end', fill: INK4, size: 9, tabular: true }));
+    }
+
+    // context threads
+    (cfg.context || []).forEach(function (line) {
+      var d = line.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+      s.appendChild(svg('path', { d: d, fill: 'none', stroke: INK5, 'stroke-width': 1, opacity: 0.5, 'stroke-linejoin': 'round' }));
+    });
+
+    // opening reference \u2014 a dashed rule is legitimate here: it IS a threshold
+    if (cfg.openAt != null) {
+      var oy = Y(cfg.openAt);
+      s.appendChild(svg('line', { x1: padL, x2: w - padR, y1: oy, y2: oy, stroke: INK4, 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
+      s.appendChild(txt(w - padR, oy - 5, 'open', { anchor: 'end', fill: INK4, size: 9 }));
+    }
+
+    // the subject
+    var d = cfg.series.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+    if (cfg.area) {
+      s.appendChild(svg('path', {
+        d: d + ' L' + X(cfg.series.length - 1).toFixed(1) + ' ' + (padT + ph) + ' L' + padL + ' ' + (padT + ph) + ' Z',
+        fill: INK1, opacity: 0.07
+      }));
+    }
+    s.appendChild(svg('path', { d: d, fill: 'none', stroke: INK1, 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+
+    // one direct label, at the end \u2014 never a number on every point
+    var lastI = cfg.series.length - 1;
+    s.appendChild(svg('circle', { cx: X(lastI), cy: Y(cfg.series[lastI]), r: 5, fill: SURFACE }));
+    s.appendChild(svg('circle', { cx: X(lastI), cy: Y(cfg.series[lastI]), r: 3.2, fill: INK1 }));
+
+    if (cfg.axis) {
+      [0, 4, 8, 13].forEach(function (i) {
+        s.appendChild(txt(X(i), h - 6, TAPE_T[i], { anchor: i === 0 ? 'start' : (i === 13 ? 'end' : 'middle'), fill: INK4, size: 9, tabular: true }));
+      });
+    }
+
+    // annotation band \u2014 the steam move
+    if (cfg.band) {
+      s.appendChild(svg('rect', {
+        x: X(cfg.band[0]), y: padT, width: X(cfg.band[1]) - X(cfg.band[0]), height: ph,
+        fill: INK1, opacity: 0.05
+      }));
+      s.appendChild(txt((X(cfg.band[0]) + X(cfg.band[1])) / 2, padT + 10, cfg.bandLabel, { anchor: 'middle', fill: INK3, size: 9, weight: 500 }));
+    }
+
+    var cross = svg('line', { x1: 0, x2: 0, y1: padT, y2: padT + ph, stroke: INK3, 'stroke-width': 1, opacity: 0 });
+    s.appendChild(cross);
+    var dot = svg('circle', { r: 3.5, fill: INK1, stroke: SURFACE, 'stroke-width': 2, opacity: 0 });
+    s.appendChild(dot);
+
+    return { svg: s, X: X, Y: Y, cross: cross, dot: dot, w: w, h: h, padT: padT, ph: ph };
+  }
+
+  (function () {
+    var hostEl = document.getElementById('tape-host');
+    if (!hostEl) return;
+    var tip = makeTip(hostEl);
+
+    var price = seriesChart({
+      series: TAPE_CONSENSUS, context: TAPE_BOOKS, openAt: 145, h: 132,
+      band: [5, 7], bandLabel: '6 books moved in 4 min',
+      fmt: function (v) { return '\u2212' + Math.round(v); }
+    });
+    var prob = seriesChart({
+      series: TAPE_PROB, h: 84, axis: true, area: true, ticks: 2,
+      fmt: function (v) { return Math.round(v) + '%'; }
+    });
+    document.getElementById('tape-price').appendChild(price.svg);
+    document.getElementById('tape-prob').appendChild(prob.svg);
+
+    // ---- ONE crosshair, both charts. This is the whole pitch. ----
+    function sync(i, clientY) {
+      [price, prob].forEach(function (c) {
+        var x = c.X(i);
+        c.cross.setAttribute('x1', x); c.cross.setAttribute('x2', x);
+        c.cross.setAttribute('opacity', '0.35');
+        var arr = c === price ? TAPE_CONSENSUS : TAPE_PROB;
+        c.dot.setAttribute('cx', x); c.dot.setAttribute('cy', c.Y(arr[i]));
+        c.dot.setAttribute('opacity', '1');
+      });
+      var r = hostEl.getBoundingClientRect();
+      var px = (price.X(i) / price.w) * hostEl.clientWidth;
+      tip.show(px, clientY - r.top, [
+        { value: '\u2212' + TAPE_CONSENSUS[i], label: 'consensus', color: INK1 },
+        { value: TAPE_PROB[i].toFixed(1) + '%', label: 'implied', color: INK4 },
+        { value: TAPE_T[i], label: '' }
+      ]);
+    }
+    function clear() {
+      [price, prob].forEach(function (c) {
+        c.cross.setAttribute('opacity', '0');
+        c.dot.setAttribute('opacity', '0');
+      });
+      tip.hide();
+    }
+    function nearest(ev) {
+      var r = hostEl.getBoundingClientRect();
+      var frac = (ev.clientX - r.left) / r.width;
+      var i = Math.round(frac * (TAPE_CONSENSUS.length - 1) * 1.02 - 0.5);
+      return Math.max(0, Math.min(TAPE_CONSENSUS.length - 1, i));
+    }
+    hostEl.addEventListener('pointermove', function (ev) { sync(nearest(ev), ev.clientY); });
+    hostEl.addEventListener('pointerleave', clear);
+    hostEl.setAttribute('tabindex', '0');
+    var kb = 13;
+    hostEl.addEventListener('keydown', function (ev) {
+      if (ev.key === 'ArrowLeft') { kb = Math.max(0, kb - 1); }
+      else if (ev.key === 'ArrowRight') { kb = Math.min(TAPE_CONSENSUS.length - 1, kb + 1); }
+      else return;
+      ev.preventDefault();
+      var r = hostEl.getBoundingClientRect();
+      sync(kb, r.top + 40);
+    });
+
+    // table-view twin
+    var tv = document.getElementById('tv-tape');
+    var head = document.createElement('tr');
+    ['Time', 'Consensus', 'Implied'].forEach(function (t, i) {
+      var th = document.createElement('th');
+      if (i) th.className = 'num';
+      th.textContent = t; head.appendChild(th);
+    });
+    tv.appendChild(head);
+    TAPE_T.forEach(function (t, i) {
+      var tr = document.createElement('tr');
+      [t, '\u2212' + TAPE_CONSENSUS[i], TAPE_PROB[i].toFixed(1) + '%'].forEach(function (v, j) {
+        var td = document.createElement('td');
+        if (j) td.className = 'num';
+        td.textContent = v; tr.appendChild(td);
+      });
+      tv.appendChild(tr);
+    });
+  })();
+
+  // =====================================================================
+  // 03 \u00B7 DistributionBars
+  // =====================================================================
+  var DIST = [
+    { v: 2, o: 'BOS' }, { v: 1, o: 'BOS' }, { v: 3, o: 'TOR' }, { v: 0, o: 'TOR' },
+    { v: 2, o: 'TB'  }, { v: 2, o: 'TB'  }, { v: 1, o: 'BAL' }, { v: 4, o: 'BAL' },
+    { v: 2, o: 'CLE' }, { v: 0, o: 'CLE' }, { v: 3, o: 'DET' }, { v: 1, o: 'MIN' },
+    { v: 2, o: 'MIN' }, { v: 2, o: 'CWS' }, { v: 3, o: 'CWS' }
+  ];
+
+  function distributionBars(hostId, data, line, opts) {
+    opts = opts || {};
+    var hostEl = document.getElementById(hostId);
+    if (!hostEl) return;
+    var tip = makeTip(hostEl);
+    var w = 640, h = opts.h || 148, padT = 10, padB = 22;
+    var s = root(w, h);
+    var ph = h - padT - padB;
+    var max = Math.max(line + 1, Math.max.apply(null, data.map(function (d) { return d.v; })));
+    var Y = function (v) { return padT + ph - (v / max) * ph; };
+    var slot = w / data.length;
+    var GAP = 2;                       // the surface gap \u2014 white does the separating
+    var bw = Math.min(24, slot - GAP);
+
+    for (var t = 0; t <= max; t++) {
+      var y = Y(t);
+      s.appendChild(svg('line', { x1: 0, x2: w, y1: y, y2: y, stroke: GRID, 'stroke-width': 1 }));
+    }
+
+    data.forEach(function (d, i) {
+      var cleared = d.v > line;
+      // Sign dominates; magnitude only modulates within each half. A game that
+      // cleared must never render amber - polarity is the claim this chart
+      // makes, and letting the ramp's amber midpoint swallow it is exactly the
+      // failure described in the ramp finding below.
+      var mag = Math.min(1, Math.abs(d.v - line) / 2);
+      var t = cleared ? 0.72 + 0.28 * mag : 0.28 - 0.28 * mag;
+      var x = i * slot + (slot - bw) / 2;
+      var y = Y(d.v), bh = Math.max(2, padT + ph - y);
+      // 4px rounded data-end, square at the baseline
+      var r = 4;
+      var path = 'M' + x + ' ' + (padT + ph) +
+                 ' L' + x + ' ' + (y + r) +
+                 ' Q' + x + ' ' + y + ' ' + (x + r) + ' ' + y +
+                 ' L' + (x + bw - r) + ' ' + y +
+                 ' Q' + (x + bw) + ' ' + y + ' ' + (x + bw) + ' ' + (y + r) +
+                 ' L' + (x + bw) + ' ' + (padT + ph) + ' Z';
+      var bar = svg('path', { d: bh > r ? path : 'M' + x + ' ' + (padT + ph - 2) + ' h' + bw + ' v2 h-' + bw + ' Z', fill: divFill(t) });
+      bar.style.transition = 'opacity .15s ease';
+      s.appendChild(bar);
+
+      var hit = svg('rect', { x: i * slot, y: padT, width: slot, height: ph, fill: 'transparent' });
+      hit.style.cursor = 'crosshair';
+      hit.addEventListener('pointerenter', function () {
+        bar.style.opacity = '0.72';
+        tip.show(((i + 0.5) * slot / w) * hostEl.clientWidth, Y(d.v) * (hostEl.clientHeight / h),
+          [{ value: String(d.v) + (d.v === 1 ? ' hit' : ' hits'), label: (cleared ? 'cleared' : 'missed') + ' \u00B7 vs ' + d.o, color: divFill(t) }]);
+      });
+      hit.addEventListener('pointerleave', function () { bar.style.opacity = '1'; tip.hide(); });
+      s.appendChild(hit);
+
+      s.appendChild(txt(i * slot + slot / 2, h - 8, d.o, { anchor: 'middle', fill: INK4, size: 8 }));
+    });
+
+    // the line \u2014 a dash that genuinely means "threshold"
+    var ly = Y(line);
+    s.appendChild(svg('line', { x1: 0, x2: w, y1: ly, y2: ly, stroke: INK1, 'stroke-width': 1.5, 'stroke-dasharray': '5 4', opacity: 0.75 }));
+    hostEl.appendChild(s);
+  }
+  distributionBars('dist-host', DIST, 1.5);
+  distributionBars('screen-dist', DIST, 1.5, { h: 128 });
+
+  (function () {
+    var r = document.getElementById('dist-ramp');
+    if (r) r.style.background = 'linear-gradient(90deg,' + divFill(0) + ',' + divFill(0.5) + ',' + divFill(1) + ')';
+  })();
+
+  // =====================================================================
+  // 04 \u00B7 DensityCurve
+  // =====================================================================
+  function densityCurve(hostId, opts) {
+    opts = opts || {};
+    var hostEl = document.getElementById(hostId);
+    if (!hostEl) return;
+    var w = opts.w || 640, h = opts.h || 128, padT = 16, padB = 22, padX = 8;
+    var s = root(w, h);
+    var ph = h - padT - padB;
+    // a plausible unimodal population of L15 hit rates
+    var N = 90, pts = [];
+    for (var i = 0; i < N; i++) {
+      var x = i / (N - 1);
+      var y = Math.exp(-Math.pow((x - 0.52) / 0.155, 2) / 2) + 0.14 * Math.exp(-Math.pow((x - 0.76) / 0.09, 2) / 2);
+      pts.push(y);
+    }
+    var maxY = Math.max.apply(null, pts);
+    var X = function (i) { return padX + (i / (N - 1)) * (w - padX * 2); };
+    var Y = function (v) { return padT + ph - (v / maxY) * ph; };
+    var d = pts.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+
+    s.appendChild(svg('path', { d: d + ' L' + X(N - 1) + ' ' + (padT + ph) + ' L' + X(0) + ' ' + (padT + ph) + ' Z', fill: INK1, opacity: 0.08 }));
+    s.appendChild(svg('path', { d: d, fill: 'none', stroke: INK4, 'stroke-width': 2, 'stroke-linejoin': 'round' }));
+    s.appendChild(svg('line', { x1: 0, x2: w, y1: padT + ph, y2: padT + ph, stroke: GRID, 'stroke-width': 1 }));
+
+    var pct = opts.pct != null ? opts.pct : 0.64;
+    var mi = Math.round(pct * (N - 1));
+    var mx = X(mi), my = Y(pts[mi]);
+    s.appendChild(svg('line', { x1: mx, x2: mx, y1: my, y2: padT + ph, stroke: INK1, 'stroke-width': 1, opacity: 0.4 }));
+    s.appendChild(svg('circle', { cx: mx, cy: my, r: 6.5, fill: SURFACE }));
+    s.appendChild(svg('circle', { cx: mx, cy: my, r: 4.5, fill: heatFill(0.82) }));
+
+    // exactly one direct label
+    s.appendChild(txt(mx, my - 12, opts.label || '72% = 87th pct', { anchor: mi > N * 0.72 ? 'end' : 'middle', fill: INK1, size: 10, weight: 600 }));
+    ['20%', '50%', '80%'].forEach(function (l, k) {
+      var xi = [0.2, 0.5, 0.8][k];
+      s.appendChild(txt(padX + xi * (w - padX * 2), h - 6, l, { anchor: 'middle', fill: INK4, size: 9, tabular: true }));
+    });
+    s.appendChild(txt(w - padX, h - 6, 'hit rate', { anchor: 'end', fill: INK5, size: 9 }));
+    hostEl.appendChild(s);
+  }
+  densityCurve('density-host', { pct: 0.72 });
+  densityCurve('screen-density', { w: 260, h: 110, pct: 0.72, label: '87th pct' });
+
+  // =====================================================================
+  // 05 \u00B7 PercentileRail
+  // =====================================================================
+  var RAILS = [
+    { k: 'Barrel %',      v: '18.4%', p: 94 },
+    { k: 'Hard-hit %',    v: '55.1%', p: 88 },
+    { k: 'Exit velocity', v: '94.2',  p: 91 },
+    { k: 'Chase %',       v: '31.6%', p: 34 },
+    { k: 'Whiff %',       v: '29.8%', p: 22 }
+  ];
+  function percentileRails(hostId, rows, opts) {
+    opts = opts || {};
+    var hostEl = document.getElementById(hostId);
+    if (!hostEl) return;
+    rows.forEach(function (r, i) {
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;padding:7px 0;' +
+        (i ? 'border-top:1px solid var(--line-hair);' : '');
+      var k = document.createElement('div');
+      k.style.cssText = 'font-size:11px;color:var(--ink-3)';
+      k.textContent = r.k;
+      var v = document.createElement('div');
+      v.style.cssText = 'font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;color:' + heatInk(r.p / 100);
+      v.textContent = r.v;
+      var railWrap = document.createElement('div');
+      railWrap.style.cssText = 'grid-column:1 / -1;position:relative;height:6px;border-radius:3px;background:var(--line-hair);overflow:hidden';
+      var fill = document.createElement('div');
+      fill.style.cssText = 'position:absolute;inset:0 auto 0 0;border-radius:3px;width:' + r.p + '%;background:' + heatFill(r.p / 100);
+      railWrap.appendChild(fill);
+      var pl = document.createElement('div');
+      pl.style.cssText = 'grid-column:1 / -1;font-size:9px;color:var(--ink-4);font-variant-numeric:tabular-nums;margin-top:1px';
+      pl.textContent = r.p + 'th percentile';
+      wrap.appendChild(k); wrap.appendChild(v); wrap.appendChild(railWrap); wrap.appendChild(pl);
+      hostEl.appendChild(wrap);
+    });
+  }
+  percentileRails('rail-host', RAILS);
+  percentileRails('screen-rail', RAILS.slice(0, 3));
+
+  // =====================================================================
+  // 06 \u00B7 HeatGrid
+  // =====================================================================
+  var GRID_COLS = ['L5', 'L10', 'L15', 'SZN'];
+  var GRID_ROWS = [
+    { k: 'All',       v: [0.80, 0.70, 0.60, 0.58], n: [5, 10, 15, 128] },
+    { k: 'Home',      v: [1.00, 0.83, 0.75, 0.64], n: [4,  6,  8,  64] },
+    { k: 'Away',      v: [0.50, 0.50, 0.43, 0.52], n: [2,  4,  7,  64] },
+    { k: 'vs LHP',    v: [1.00, 0.75, 0.71, 0.69], n: [2,  4,  7,  38] },
+    { k: 'vs BOS',    v: [null, null, 0.50, 0.55], n: [0,  0,  2,  11] }
+  ];
+  function heatGrid(hostId, opts) {
+    opts = opts || {};
+    var hostEl = document.getElementById(hostId);
+    if (!hostEl) return;
+    var tip = makeTip(hostEl);
+    var COLS = opts.cols || GRID_COLS, ROWS = opts.rows || GRID_ROWS;
+    var labelW = opts.labelW || 66, cellH = opts.cellH || 34, gap = 2;
+    var w = opts.w || 640;
+    var cw = (w - labelW - gap * (COLS.length - 1)) / COLS.length;
+    var h = 18 + ROWS.length * (cellH + gap);
+    var s = root(w, h);
+
+    COLS.forEach(function (c, j) {
+      s.appendChild(txt(labelW + j * (cw + gap) + cw / 2, 11, c, { anchor: 'middle', fill: INK4, size: 9, weight: 500 }));
+    });
+
+    ROWS.forEach(function (r, i) {
+      var y = 18 + i * (cellH + gap);
+      s.appendChild(txt(0, y + cellH / 2 + 3, r.k, { fill: INK3, size: 10 }));
+      r.v.forEach(function (val, j) {
+        var x = labelW + j * (cw + gap);
+        var thin = r.n[j] < 5;
+        if (val == null || thin) {
+          // n < 5 renders hatched, never coloured \u2014 a 100% rate on 2 games is noise
+          s.appendChild(svg('rect', { x: x, y: y, width: cw, height: cellH, rx: 3, fill: 'oklch(96% 0.002 260)' }));
+          s.appendChild(txt(x + cw / 2, y + cellH / 2 + 3, val == null ? '\u2014' : 'n<5', { anchor: 'middle', fill: INK5, size: 9 }));
+          return;
+        }
+        var cell = svg('rect', { x: x, y: y, width: cw, height: cellH, rx: 3, fill: opts.seq ? seqFill(val) : heatFill(val) });
+        cell.style.transition = 'opacity .12s ease';
+        cell.style.cursor = 'crosshair';
+        s.appendChild(cell);
+        var dark = opts.seq ? val > 0.5 : true;
+        s.appendChild(txt(x + cw / 2, y + cellH / 2 + 4, Math.round(val * 100) + '%', {
+          anchor: 'middle', fill: dark ? '#fff' : INK1, size: 11, weight: 600, tabular: true
+        }));
+        cell.addEventListener('pointerenter', function () {
+          cell.style.opacity = '0.8';
+          tip.show(((x + cw / 2) / w) * hostEl.clientWidth, (y / h) * hostEl.clientHeight,
+            [{ value: Math.round(val * 100) + '%', label: r.k + ' \u00B7 ' + COLS[j] + ' \u00B7 n=' + r.n[j] }]);
+        });
+        cell.addEventListener('pointerleave', function () { cell.style.opacity = '1'; tip.hide(); });
+      });
+    });
+    hostEl.appendChild(s);
+  }
+  heatGrid('grid-host', { seq: true });
+  // The composed page shows the real split set, not the four-row teaser.
+  var DEEP_ROWS = [
+    { k: 'All',        v: [0.80, 0.70, 0.60, 0.62, 0.58], n: [5, 10, 15, 30, 128] },
+    { k: 'Home',       v: [1.00, 0.83, 0.75, 0.68, 0.64], n: [4,  6,  8, 16,  64] },
+    { k: 'Away',       v: [0.50, 0.50, 0.43, 0.57, 0.52], n: [2,  4,  7, 14,  64] },
+    { k: 'vs LHP',     v: [1.00, 0.75, 0.71, 0.73, 0.71], n: [2,  4,  7, 15,  41] },
+    { k: 'vs RHP',     v: [0.67, 0.67, 0.50, 0.53, 0.55], n: [3,  6,  8, 15,  87] },
+    { k: 'Last 7d',    v: [0.80, 0.71, null, null, null], n: [5,  7,  0,  0,   0] },
+    { k: 'Day',        v: [null, 0.60, 0.57, 0.55, 0.61], n: [1,  5,  7, 11,  38] },
+    { k: 'Night',      v: [0.75, 0.80, 0.63, 0.68, 0.57], n: [4,  5,  8, 19,  90] },
+    { k: 'Runners on', v: [1.00, 0.83, 0.70, 0.71, 0.63], n: [3,  6, 10, 21,  79] },
+    { k: 'vs BOS',     v: [null, null, 0.50, 0.55, 0.55], n: [0,  0,  2,  9,  11] }
+  ];
+  var DEEP_COLS = ['L5', 'L10', 'L15', 'L30', 'SZN'];
+  heatGrid('screen-grid', { seq: true, cellH: 26, labelW: 68, rows: DEEP_ROWS, cols: DEEP_COLS });
+
+  (function () {
+    var r = document.getElementById('grid-ramp');
+    if (r) r.style.background = 'linear-gradient(90deg,' + seqFill(0) + ',' + seqFill(0.5) + ',' + seqFill(1) + ')';
+    var tv = document.getElementById('tv-grid');
+    if (!tv) return;
+    var head = document.createElement('tr');
+    var th0 = document.createElement('th'); th0.textContent = 'Split'; head.appendChild(th0);
+    GRID_COLS.forEach(function (c) { var th = document.createElement('th'); th.className = 'num'; th.textContent = c; head.appendChild(th); });
+    tv.appendChild(head);
+    GRID_ROWS.forEach(function (r2) {
+      var tr = document.createElement('tr');
+      var td0 = document.createElement('td'); td0.textContent = r2.k; tr.appendChild(td0);
+      r2.v.forEach(function (v, j) {
+        var td = document.createElement('td'); td.className = 'num';
+        td.textContent = v == null ? '\u2014' : Math.round(v * 100) + '% (n=' + r2.n[j] + ')';
+        tr.appendChild(td);
+      });
+      tv.appendChild(tr);
+    });
+  })();
+
+  // =====================================================================
+  // 07 \u00B7 RangeBar
+  // =====================================================================
+  var BOOKS = [
+    { b: 'Pinnacle',   p: -112, mine: false },
+    { b: 'FanDuel',    p: -118, mine: true  },
+    { b: 'DraftKings', p: -120, mine: false },
+    { b: 'BetMGM',     p: -124, mine: false },
+    { b: 'Caesars',    p: -128, mine: false },
+    { b: 'ESPN Bet',   p: -136, mine: false }
+  ];
+  function rangeBar(hostId, opts) {
+    opts = opts || {};
+    var hostEl = document.getElementById(hostId);
+    if (!hostEl) return;
+    var tip = makeTip(hostEl);
+    var w = opts.w || 640, rowH = opts.rowH || 26, labelW = opts.labelW || 78, valW = 40;
+    var h = BOOKS.length * rowH + 18;
+    var s = root(w, h);
+    var ps = BOOKS.map(function (x) { return x.p; });
+    var lo = Math.min.apply(null, ps), hi = Math.max.apply(null, ps);
+    var trackL = labelW, trackR = w - valW - 6;
+    var X = function (p) { return trackL + ((p - lo) / (hi - lo)) * (trackR - trackL); };
+    var consensus = ps.reduce(function (a, b) { return a + b; }, 0) / ps.length;
+
+    // consensus reference, drawn under everything
+    s.appendChild(svg('line', { x1: X(consensus), x2: X(consensus), y1: 4, y2: h - 16, stroke: INK3, 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
+    s.appendChild(txt(X(consensus), h - 4, 'consensus', { anchor: 'middle', fill: INK4, size: 9 }));
+
+    BOOKS.forEach(function (bk, i) {
+      var y = 10 + i * rowH;
+      s.appendChild(txt(0, y + 4, bk.b, { fill: bk.mine ? INK1 : INK3, size: 10, weight: bk.mine ? 600 : 400 }));
+      s.appendChild(svg('line', { x1: trackL, x2: trackR, y1: y, y2: y, stroke: 'oklch(88% 0.004 260)', 'stroke-width': 4, 'stroke-linecap': 'round' }));
+      var t = rankToHeat(bk.p, lo, hi);
+      var cx = X(bk.p);
+      if (bk.mine) s.appendChild(svg('circle', { cx: cx, cy: y, r: 8, fill: 'none', stroke: INK1, 'stroke-width': 1.5 }));
+      s.appendChild(svg('circle', { cx: cx, cy: y, r: 6.5, fill: SURFACE }));
+      var dot = svg('circle', { cx: cx, cy: y, r: 4.5, fill: heatFill(t) });
+      dot.style.cursor = 'crosshair';
+      s.appendChild(dot);
+      s.appendChild(txt(w, y + 4, String(bk.p), { anchor: 'end', fill: heatInk(t), size: 11, weight: 600, tabular: true }));
+      var hit = svg('rect', { x: trackL - 12, y: y - 12, width: trackR - trackL + 24, height: 24, fill: 'transparent' });
+      hit.addEventListener('pointerenter', function () {
+        tip.show((cx / w) * hostEl.clientWidth, (y / h) * hostEl.clientHeight,
+          [{ value: String(bk.p), label: bk.b + (bk.mine ? ' \u00B7 your book' : ''), color: heatFill(t) }]);
+      });
+      hit.addEventListener('pointerleave', function () { tip.hide(); });
+      s.appendChild(hit);
+    });
+    hostEl.appendChild(s);
+  }
+  rangeBar('range-host');
+  rangeBar('screen-range', { w: 260, rowH: 23, labelW: 62 });
+
+  // =====================================================================
+  // 08 \u00B7 ContributionBars
+  // =====================================================================
+  var CONTRIB_SHORT = {
+    'Recent form (L10)': 'Recent form', 'Opposing SP quality': 'Opposing SP',
+    'Park factor': 'Park', 'Platoon split': 'Platoon', 'Rest days': 'Rest',
+    'Bullpen strength': 'Bullpen', 'Weather (wind in)': 'Weather'
+  };
+  var CONTRIB = [
+    { k: 'Recent form (L10)',   v:  0.061 },
+    { k: 'Opposing SP quality', v:  0.043 },
+    { k: 'Park factor',         v:  0.022 },
+    { k: 'Platoon split',       v:  0.014 },
+    { k: 'Rest days',           v: -0.009 },
+    { k: 'Bullpen strength',    v: -0.028 },
+    { k: 'Weather (wind in)',   v: -0.037 }
+  ];
+  function contributionBars(hostId, opts) {
+    opts = opts || {};
+    var hostEl = document.getElementById(hostId);
+    if (!hostEl) return;
+    var tip = makeTip(hostEl);
+    var w = opts.w || 640, rowH = opts.rowH || 26, labelW = opts.labelW || 148;
+    var h = CONTRIB.length * rowH + 22;
+    var s = root(w, h);
+    var maxAbs = Math.max.apply(null, CONTRIB.map(function (c) { return Math.abs(c.v); }));
+    var spineX = labelW + (w - labelW - 52) / 2;
+    var half = (w - labelW - 52) / 2;
+
+    s.appendChild(svg('line', { x1: spineX, x2: spineX, y1: 2, y2: h - 20, stroke: INK4, 'stroke-width': 1 }));
+    s.appendChild(txt(spineX, h - 6, 'baseline', { anchor: 'middle', fill: INK4, size: 9 }));
+
+    CONTRIB.forEach(function (c, i) {
+      var y = 8 + i * rowH;
+      var pos = c.v >= 0;
+      var len = (Math.abs(c.v) / maxAbs) * half;
+      var bh = 12;
+      var x = pos ? spineX : spineX - len;
+      var lblText = opts.shortLabels ? (CONTRIB_SHORT[c.k] || c.k) : c.k;
+      s.appendChild(txt(labelW - 10, y + bh / 2 + 3, lblText, { anchor: 'end', fill: INK3, size: 10 }));
+      var r = 4, x2 = x + len;
+      var d = pos
+        ? 'M' + x + ' ' + y + ' L' + (x2 - r) + ' ' + y + ' Q' + x2 + ' ' + y + ' ' + x2 + ' ' + (y + r) +
+          ' L' + x2 + ' ' + (y + bh - r) + ' Q' + x2 + ' ' + (y + bh) + ' ' + (x2 - r) + ' ' + (y + bh) + ' L' + x + ' ' + (y + bh) + ' Z'
+        : 'M' + x2 + ' ' + y + ' L' + (x + r) + ' ' + y + ' Q' + x + ' ' + y + ' ' + x + ' ' + (y + r) +
+          ' L' + x + ' ' + (y + bh - r) + ' Q' + x + ' ' + (y + bh) + ' ' + (x + r) + ' ' + (y + bh) + ' L' + x2 + ' ' + (y + bh) + ' Z';
+      var bar = svg('path', { d: d, fill: compareInk(pos ? 0.5 + (Math.abs(c.v) / maxAbs) * 0.5 : 0.5 - (Math.abs(c.v) / maxAbs) * 0.5) });
+      bar.style.transition = 'opacity .12s ease';
+      s.appendChild(bar);
+      var lbl = (pos ? '+' : '\u2212') + (Math.abs(c.v) * 100).toFixed(1) + '%';
+      s.appendChild(txt(w, y + bh / 2 + 4, lbl, { anchor: 'end', fill: pos ? '#0b5c3c' : '#8f2b20', size: 10, weight: 600, tabular: true }));
+      var hit = svg('rect', { x: labelW, y: y - 6, width: w - labelW, height: rowH, fill: 'transparent' });
+      hit.addEventListener('pointerenter', function () {
+        bar.style.opacity = '0.75';
+        tip.show(((pos ? x + len / 2 : x + len / 2) / w) * hostEl.clientWidth, (y / h) * hostEl.clientHeight,
+          [{ value: lbl, label: c.k }]);
+      });
+      hit.addEventListener('pointerleave', function () { bar.style.opacity = '1'; tip.hide(); });
+      s.appendChild(hit);
+    });
+    hostEl.appendChild(s);
+  }
+  contributionBars('contrib-host');
+  contributionBars('screen-contrib', { w: 258, rowH: 22, labelW: 104, shortLabels: true });
+
+  // =====================================================================
+  // screen: the price tape, small
+  // =====================================================================
+  (function () {
+    var hostEl = document.getElementById('screen-tape');
+    if (!hostEl) return;
+    var c = seriesChart({
+      series: TAPE_CONSENSUS, context: TAPE_BOOKS, openAt: 145, h: 104, axis: true, ticks: 2,
+      fmt: function (v) { return '\u2212' + Math.round(v); }
+    });
+    hostEl.appendChild(c.svg);
+  })();
+
+  // =====================================================================
+  // ramp strips
+  // =====================================================================
+  (function () {
+    function grad(fn) {
+      var stops = [];
+      for (var i = 0; i <= 10; i++) stops.push(fn(i / 10) + ' ' + (i * 10) + '%');
+      return 'linear-gradient(90deg,' + stops.join(',') + ')';
+    }
+    var now = grad(heatFill), nu = grad(seqFill);
+    ['ramp-now', 'ramp-now-g'].forEach(function (id) { var e = document.getElementById(id); if (e) e.style.background = now; });
+    ['ramp-new', 'ramp-new-g'].forEach(function (id) { var e = document.getElementById(id); if (e) e.style.background = nu; });
+  })();
+
+  // =====================================================================
+  // table-view toggles
+  // =====================================================================
+  Array.prototype.forEach.call(document.querySelectorAll('[data-tv]'), function (btn) {
+    btn.addEventListener('click', function () {
+      var t = document.getElementById(btn.getAttribute('data-tv'));
+      var open = !t.hidden;
+      t.hidden = open;
+      btn.setAttribute('aria-expanded', String(!open));
+      btn.textContent = open ? 'Table view' : 'Hide table';
+    });
+  });
+
+  // Exported so the deep-page primitives compose against the SAME toolkit
+  // rather than redefining a second, drifting copy of it.
+  window.LB = {
+    svg: svg, root: root, txt: txt, makeTip: makeTip,
+    heatFill: heatFill, heatInk: heatInk, compareInk: compareInk,
+    divFill: divFill, seqFill: seqFill, rankToHeat: rankToHeat,
+    SURFACE: SURFACE, GRID: GRID, INK1: INK1, INK3: INK3, INK4: INK4, INK5: INK5
+  };
+
+  // hero anchor colour off the same ramp
+  (function () {
+    var e = document.getElementById('hero-v');
+    if (e) e.style.color = heatInk(0.64);
+  })();
+})();
+</script>
+
+<script>
+/* ============================================================================
+   Deep Player Detail - the three additional primitives plus the page's data.
+   Runs after the main IIFE and borrows its exports from window.LB.
+   ASCII only: this file is spliced into a <script> block on a page that has no
+   charset of its own, so every symbol is an entity or a \u escape.
+   ========================================================================== */
+(function () {
+  'use strict';
+  var LB = window.LB;
+  if (!LB) return;
+  var svg = LB.svg, root = LB.root, txt = LB.txt, makeTip = LB.makeTip;
+  var heatFill = LB.heatFill, heatInk = LB.heatInk, divFill = LB.divFill, seqFill = LB.seqFill;
+  var SURFACE = LB.SURFACE, GRID = LB.GRID, INK1 = LB.INK1, INK3 = LB.INK3, INK4 = LB.INK4, INK5 = LB.INK5;
+  var MINUS = '\u2212', MIDDOT = '\u00B7', DEG = '\u00B0';
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  // ==========================================================================
+  // 09 - StatTable: a dense table where one column carries a heat-tinted bar
+  //      BEHIND the number, so magnitude reads without a separate chart.
+  // ==========================================================================
+  function statTable(hostId, rows, opts) {
+    opts = opts || {};
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var t = el('table', 'st');
+    var head = el('tr');
+    ['', opts.valueLabel || 'Value', 'Rank', 'Percentile'].forEach(function (h, i) {
+      var th = el('th', i ? 'num' : null, h);
+      head.appendChild(th);
+    });
+    t.appendChild(head);
+    rows.forEach(function (r) {
+      var tr = el('tr');
+      tr.appendChild(el('td', 'st-k', r.k));
+      var v = el('td', 'num st-v', r.v);
+      v.style.color = heatInk(r.pct / 100);
+      tr.appendChild(v);
+      tr.appendChild(el('td', 'num st-r', r.rank));
+      var barCell = el('td', 'st-bar-cell');
+      var track = el('div', 'st-track');
+      var fill = el('div', 'st-fill');
+      fill.style.width = r.pct + '%';
+      fill.style.background = heatFill(r.pct / 100);
+      track.appendChild(fill);
+      var num = el('span', 'st-pct', r.pct);
+      barCell.appendChild(track);
+      barCell.appendChild(num);
+      tr.appendChild(barCell);
+      t.appendChild(tr);
+    });
+    host.appendChild(t);
+  }
+
+  // ==========================================================================
+  // 10 - StreakStrip: a run of outcomes, most recent on the right.
+  // ==========================================================================
+  function streakStrip(hostId, results, opts) {
+    opts = opts || {};
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var wrap = el('div', 'streak');
+    results.forEach(function (hit, i) {
+      var d = el('div', 'streak-cell');
+      d.style.background = hit ? divFill(0.88) : divFill(0.12);
+      d.style.opacity = String(0.45 + 0.55 * (i / (results.length - 1)));
+      d.title = (hit ? 'cleared' : 'missed') + ' ' + (results.length - i) + ' games ago';
+      wrap.appendChild(d);
+    });
+    host.appendChild(wrap);
+    var run = 0;
+    for (var i = results.length - 1; i >= 0 && results[i] === results[results.length - 1]; i--) run++;
+    var cap = el('div', 'streak-cap');
+    cap.textContent = 'oldest' + '  \u2192  ' + 'current  ' + MIDDOT + '  ' +
+      run + ' straight ' + (results[results.length - 1] ? 'cleared' : 'missed');
+    host.appendChild(cap);
+  }
+
+  // ==========================================================================
+  // 11 - SplitDumbbell: two conditions on one shared scale per row. Before /
+  //      after per item is the canonical use; here it is vs LHP / vs RHP.
+  //      One hue, two shades - never two categorical colours for A/B.
+  // ==========================================================================
+  function splitDumbbell(hostId, rows, opts) {
+    opts = opts || {};
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var tip = makeTip(host);
+    var w = opts.w || 300, rowH = 30, labelW = opts.labelW || 46, valW = 78;
+    var h = rows.length * rowH + 30;
+    var s = root(w, h);
+    var trackL = labelW, trackR = w - valW;
+
+    // ONE shared scale for every row: each value as its deviation from that
+    // row's own midpoint. The first attempt padded each row to its OWN gap,
+    // which normalised every dumbbell to an identical length - the mark then
+    // encoded nothing at all. The whole point is that a big platoon split has
+    // to LOOK bigger than a small one.
+    var devOf = function (r) { var m = (r.a + r.b) / 2; return m === 0 ? 0 : Math.abs(r.a - m) / m; };
+    var maxDev = Math.max.apply(null, rows.map(devOf)) * 1.25 || 0.1;
+    var X = function (d) { return trackL + ((d + maxDev) / (2 * maxDev)) * (trackR - trackL); };
+    var mid = X(0);
+    s.appendChild(svg('line', { x1: mid, x2: mid, y1: 4, y2: h - 24, stroke: INK4, 'stroke-width': 1 }));
+
+    rows.forEach(function (r, i) {
+      var y = 12 + i * rowH;
+      var m = (r.a + r.b) / 2;
+      var da = m === 0 ? 0 : (r.a - m) / m;
+      var db = m === 0 ? 0 : (r.b - m) / m;
+      s.appendChild(txt(0, y + 4, r.k, { fill: INK3, size: 10 }));
+      s.appendChild(svg('line', {
+        x1: X(da), x2: X(db), y1: y, y2: y,
+        stroke: 'oklch(84% 0.004 260)', 'stroke-width': 3, 'stroke-linecap': 'round'
+      }));
+      // one hue, two shades: light = vs LHP, dark = vs RHP
+      [[da, r.a, 'oklch(72% 0.045 155)', 'vs LHP'], [db, r.b, 'oklch(42% 0.085 155)', 'vs RHP']].forEach(function (p) {
+        s.appendChild(svg('circle', { cx: X(p[0]), cy: y, r: 6, fill: SURFACE }));
+        s.appendChild(svg('circle', { cx: X(p[0]), cy: y, r: 4.5, fill: p[2] }));
+        var hit = svg('circle', { cx: X(p[0]), cy: y, r: 12, fill: 'transparent' });
+        hit.addEventListener('pointerenter', function () {
+          tip.show((X(p[0]) / w) * host.clientWidth, (y / h) * host.clientHeight,
+            [{ value: r.fmt(p[1]), label: p[3] + ' \u00B7 ' + r.k, color: p[2] }]);
+        });
+        hit.addEventListener('pointerleave', function () { tip.hide(); });
+        s.appendChild(hit);
+      });
+      s.appendChild(txt(w, y + 4, r.fmt(r.a) + ' / ' + r.fmt(r.b), {
+        anchor: 'end', fill: INK3, size: 10, tabular: true
+      }));
+    });
+
+    s.appendChild(txt(mid, h - 8, 'even', { anchor: 'middle', fill: INK4, size: 9 }));
+    s.appendChild(txt(trackL, h - 8, '\u2212' + Math.round(maxDev * 100) + '%', { fill: INK5, size: 9, tabular: true }));
+    s.appendChild(txt(trackR, h - 8, '+' + Math.round(maxDev * 100) + '%', { anchor: 'end', fill: INK5, size: 9, tabular: true }));
+    host.appendChild(s);
+  }
+
+  // ==========================================================================
+  // Rolling form: a rolling mean with a variability band, the line drawn
+  // through it. Separate from SeriesChart so the verified crosshair path is
+  // untouched - a band is a different mark, not a config flag on a line.
+  // ==========================================================================
+  function rollingChart(hostId, cfg) {
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var tip = makeTip(host);
+    var w = cfg.w || 620, h = cfg.h || 132, padL = 26, padR = 10, padT = 12, padB = 20;
+    var s = root(w, h);
+    var pw = w - padL - padR, ph = h - padT - padB;
+    var all = cfg.mean.concat(cfg.upper, cfg.lower, [cfg.line]);
+    var lo = 0, hi = Math.max.apply(null, all) * 1.12;
+    var X = function (i) { return padL + (i / (cfg.mean.length - 1)) * pw; };
+    var Y = function (v) { return padT + ph - ((v - lo) / (hi - lo)) * ph; };
+
+    for (var g = 0; g <= 3; g++) {
+      var v = lo + (hi - lo) * (g / 3), y = Y(v);
+      s.appendChild(svg('line', { x1: padL, x2: w - padR, y1: y, y2: y, stroke: GRID, 'stroke-width': 1 }));
+      s.appendChild(txt(padL - 6, y + 3, v.toFixed(1), { anchor: 'end', fill: INK4, size: 9, tabular: true }));
+    }
+
+    var band = cfg.upper.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+    for (var i = cfg.lower.length - 1; i >= 0; i--) band += ' L' + X(i).toFixed(1) + ' ' + Y(cfg.lower[i]).toFixed(1);
+    s.appendChild(svg('path', { d: band + ' Z', fill: INK1, opacity: 0.09 }));
+
+    var ly = Y(cfg.line);
+    s.appendChild(svg('line', { x1: padL, x2: w - padR, y1: ly, y2: ly, stroke: INK1, 'stroke-width': 1.5, 'stroke-dasharray': '5 4', opacity: 0.7 }));
+    s.appendChild(txt(w - padR, ly - 5, 'line ' + cfg.line, { anchor: 'end', fill: INK3, size: 9, weight: 500 }));
+
+    var d = cfg.mean.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+    s.appendChild(svg('path', { d: d, fill: 'none', stroke: INK1, 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+
+    var li = cfg.mean.length - 1;
+    s.appendChild(svg('circle', { cx: X(li), cy: Y(cfg.mean[li]), r: 5, fill: SURFACE }));
+    s.appendChild(svg('circle', { cx: X(li), cy: Y(cfg.mean[li]), r: 3.2, fill: divFill(cfg.mean[li] > cfg.line ? 0.85 : 0.15) }));
+    s.appendChild(txt(X(li) - 8, Y(cfg.mean[li]) - 9, cfg.mean[li].toFixed(2), { anchor: 'end', fill: INK1, size: 10, weight: 600, tabular: true }));
+
+    var cross = svg('line', { x1: 0, x2: 0, y1: padT, y2: padT + ph, stroke: INK3, 'stroke-width': 1, opacity: 0 });
+    s.appendChild(cross);
+    var hit = svg('rect', { x: padL, y: padT, width: pw, height: ph, fill: 'transparent' });
+    hit.addEventListener('pointermove', function (ev) {
+      var r = host.getBoundingClientRect();
+      var idx = Math.max(0, Math.min(cfg.mean.length - 1, Math.round(((ev.clientX - r.left) / r.width) * (cfg.mean.length - 1))));
+      cross.setAttribute('x1', X(idx)); cross.setAttribute('x2', X(idx)); cross.setAttribute('opacity', '0.35');
+      tip.show((X(idx) / w) * host.clientWidth, (Y(cfg.mean[idx]) / h) * host.clientHeight,
+        [{ value: cfg.mean[idx].toFixed(2), label: 'rolling 5-game mean', color: INK1 },
+         { value: cfg.labels[idx], label: '' }]);
+    });
+    hit.addEventListener('pointerleave', function () { cross.setAttribute('opacity', '0'); tip.hide(); });
+    s.appendChild(hit);
+    host.appendChild(s);
+    s.appendChild(txt(padL, h - 5, cfg.labels[0], { fill: INK4, size: 9 }));
+    s.appendChild(txt(w - padR, h - 5, cfg.labels[cfg.labels.length - 1], { anchor: 'end', fill: INK4, size: 9 }));
+  }
+
+  // ==========================================================================
+  // Strike-zone grid - HeatGrid at zone aspect. Same marks, same 2px surface
+  // gap, same n-guard; only the geometry differs, so it is a variant and not
+  // a twelfth primitive.
+  // ==========================================================================
+  function zoneGrid(hostId, cells, opts) {
+    opts = opts || {};
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var tip = makeTip(host);
+    var cw = opts.cw || 46, ch = opts.ch || 38, gap = 2;
+    var w = cw * 3 + gap * 2 + 4, h = ch * 3 + gap * 2 + 18;
+    var s = root(w, h);
+    var lo = 0.20, hi = 0.65;
+    cells.forEach(function (c, i) {
+      var col = i % 3, rw = Math.floor(i / 3);
+      var x = 2 + col * (cw + gap), y = rw * (ch + gap);
+      var t = Math.max(0, Math.min(1, (c.v - lo) / (hi - lo)));
+      var rect = svg('rect', { x: x, y: y, width: cw, height: ch, rx: 2, fill: seqFill(t) });
+      rect.style.cursor = 'crosshair';
+      s.appendChild(rect);
+      s.appendChild(txt(x + cw / 2, y + ch / 2 + 4, c.v.toFixed(3).slice(1), {
+        anchor: 'middle', fill: t > 0.5 ? '#fff' : INK1, size: 10, weight: 600, tabular: true
+      }));
+      rect.addEventListener('pointerenter', function () {
+        rect.style.opacity = '0.8';
+        tip.show(((x + cw / 2) / w) * host.clientWidth, (y / h) * host.clientHeight,
+          [{ value: c.v.toFixed(3), label: c.k + ' ' + MIDDOT + ' xwOBA ' + MIDDOT + ' n=' + c.n }]);
+      });
+      rect.addEventListener('pointerleave', function () { rect.style.opacity = '1'; tip.hide(); });
+    });
+    s.appendChild(txt(w / 2, h - 4, 'catcher view ' + MIDDOT + ' xwOBA by zone', { anchor: 'middle', fill: INK4, size: 9 }));
+    host.appendChild(s);
+  }
+
+  // ==========================================================================
+  // Plain dense table (gamelog, pitch mix) - no marks, just disciplined type.
+  // ==========================================================================
+  function denseTable(hostId, cols, rows, opts) {
+    opts = opts || {};
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var t = el('table', 'dt');
+    var head = el('tr');
+    cols.forEach(function (c, i) { head.appendChild(el('th', i ? 'num' : null, c)); });
+    t.appendChild(head);
+    rows.forEach(function (r) {
+      var tr = el('tr');
+      r.forEach(function (v, i) {
+        var td = el('td', i ? 'num' : null, String(v));
+        if (opts.heatCol != null && i === opts.heatCol) td.style.color = heatInk(opts.heatOf(r));
+        if (i === 0 && opts.leadStrong) td.style.fontWeight = '600';
+        tr.appendChild(td);
+      });
+      t.appendChild(tr);
+    });
+    host.appendChild(t);
+  }
+
+  // ==========================================================================
+  // Window tiles - the L5/L10/L15 set, with the sample size ALWAYS shown.
+  // A rate without its n is the single most misleading thing on a props page.
+  // ==========================================================================
+  function windowTiles(hostId, wins) {
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    wins.forEach(function (wd) {
+      var tile = el('div', 'wtile');
+      var t = wd.n >= 5 ? wd.hit / wd.n : null;
+      tile.style.background = t == null ? 'oklch(96% 0.002 260)' : divFill(t);
+      var v = el('div', 'wtile-v', t == null ? '\u2013' : Math.round(t * 100) + '%');
+      v.style.color = t == null ? INK5 : '#fff';
+      var k = el('div', 'wtile-k', wd.k);
+      k.style.color = t == null ? INK5 : 'rgba(255,255,255,.82)';
+      var n = el('div', 'wtile-n', wd.hit + '/' + wd.n);
+      n.style.color = t == null ? INK5 : 'rgba(255,255,255,.72)';
+      tile.appendChild(k); tile.appendChild(v); tile.appendChild(n);
+      host.appendChild(tile);
+    });
+  }
+
+  // ==========================================================================
+  // DATA - representative, not live. See the banner on the frame.
+  // ==========================================================================
+  windowTiles('dp-windows', [
+    { k: 'L5',  hit: 4,  n: 5 },
+    { k: 'L10', hit: 7,  n: 10 },
+    { k: 'L15', hit: 9,  n: 15 },
+    { k: 'L20', hit: 13, n: 20 },
+    { k: 'SZN', hit: 74, n: 128 },
+    { k: 'H2H', hit: 6,  n: 11 }
+  ]);
+
+  streakStrip('dp-streak', [1,0,1,1,1,0,0,1,1,0,1,1,0,1,1,1,0,1,1,1].map(Boolean));
+
+  rollingChart('dp-rolling', {
+    line: 1.5,
+    mean:  [1.20,1.28,1.34,1.22,1.10,1.18,1.32,1.46,1.54,1.62,1.58,1.44,1.36,1.48,1.60,1.72,1.66,1.58,1.64,1.74],
+    upper: [1.95,2.02,2.10,1.98,1.88,1.94,2.08,2.24,2.30,2.42,2.36,2.20,2.12,2.26,2.38,2.52,2.44,2.36,2.42,2.54],
+    lower: [0.45,0.54,0.58,0.46,0.32,0.42,0.56,0.68,0.78,0.82,0.80,0.68,0.60,0.70,0.82,0.92,0.88,0.80,0.86,0.94],
+    labels: ['Jul 12','Jul 14','Jul 16','Jul 18','Jul 20','Jul 22','Jul 25','Jul 27','Jul 29','Aug 1','Aug 3','Aug 5','Aug 7','Aug 9','Aug 12','Aug 14','Aug 17','Aug 20','Aug 24','Aug 28']
+  });
+
+  statTable('demo-stattable', [
+    { k: 'AVG',   v: '.294',  rank: '12th',  pct: 93 },
+    { k: 'OBP',   v: '.428',  rank: '1st',   pct: 100 },
+    { k: 'SLG',   v: '.625',  rank: '2nd',   pct: 99 },
+    { k: 'wRC+',  v: '191',   rank: '1st',   pct: 100 },
+    { k: 'K%',    v: '25.5%', rank: '122nd', pct: 23 }
+  ], { valueLabel: '2026' });
+  streakStrip('demo-streak', [1,0,1,1,1,0,0,1,1,0,1,1,0,1,1,1,0,1,1,1].map(Boolean));
+  splitDumbbell('demo-dumbbell', [
+    { k: 'AVG',    a: 0.311, b: 0.287, fmt: function (v) { return v.toFixed(3).slice(1); } },
+    { k: 'SLG',    a: 0.688, b: 0.601, fmt: function (v) { return v.toFixed(3).slice(1); } },
+    { k: 'K%',     a: 0.212, b: 0.271, fmt: function (v) { return (v * 100).toFixed(1) + '%'; } },
+    { k: 'o1.5 H', a: 0.710, b: 0.552, fmt: function (v) { return (v * 100).toFixed(0) + '%'; } }
+  ], { w: 560, labelW: 52 });
+
+  statTable('dp-season', [
+    { k: 'AVG',   v: '.294',  rank: '12th',  pct: 93 },
+    { k: 'OBP',   v: '.428',  rank: '1st',   pct: 100 },
+    { k: 'SLG',   v: '.625',  rank: '2nd',   pct: 99 },
+    { k: 'OPS',   v: '1.053', rank: '1st',   pct: 100 },
+    { k: 'wRC+',  v: '191',   rank: '1st',   pct: 100 },
+    { k: 'ISO',   v: '.331',  rank: '1st',   pct: 100 },
+    { k: 'BB%',   v: '17.5%', rank: '3rd',   pct: 98 },
+    { k: 'K%',    v: '25.5%', rank: '122nd', pct: 23 },
+    { k: 'BABIP', v: '.318',  rank: '44th',  pct: 72 }
+  ], { valueLabel: '2026' });
+
+  statTable('dp-statcast', [
+    { k: 'Barrel %',     v: '25.1%', rank: '1st',  pct: 100 },
+    { k: 'Hard-hit %',   v: '61.2%', rank: '2nd',  pct: 99 },
+    { k: 'Avg exit velo',v: '95.8',  rank: '2nd',  pct: 99 },
+    { k: 'Max exit velo',v: '117.4', rank: '5th',  pct: 97 },
+    { k: 'Sweet-spot %', v: '38.4%', rank: '34th', pct: 78 },
+    { k: 'xwOBA',        v: '.441',  rank: '1st',  pct: 100 },
+    { k: 'xSLG',         v: '.638',  rank: '1st',  pct: 100 },
+    { k: 'xBA',          v: '.291',  rank: '13th', pct: 92 },
+    { k: 'Chase %',      v: '24.1%', rank: '41st', pct: 74 },
+    { k: 'Whiff %',      v: '28.9%', rank: '120th',pct: 24 },
+    { k: 'Sprint speed', v: '27.1',  rank: '66th', pct: 58 }
+  ], { valueLabel: 'Value' });
+
+  splitDumbbell('dp-dumbbell', [
+    { k: 'AVG',    a: 0.311, b: 0.287, fmt: function (v) { return v.toFixed(3).slice(1); } },
+    { k: 'SLG',    a: 0.688, b: 0.601, fmt: function (v) { return v.toFixed(3).slice(1); } },
+    { k: 'HR/PA',  a: 0.098, b: 0.074, fmt: function (v) { return (v * 100).toFixed(1) + '%'; } },
+    { k: 'K%',     a: 0.212, b: 0.271, fmt: function (v) { return (v * 100).toFixed(1) + '%'; } },
+    { k: 'o1.5 H', a: 0.710, b: 0.552, fmt: function (v) { return (v * 100).toFixed(0) + '%'; } }
+  ], { w: 300 });
+
+  zoneGrid('dp-zone', [
+    { k: 'Up / in',    v: 0.389, n: 84 },  { k: 'Up / mid',   v: 0.512, n: 121 }, { k: 'Up / away',  v: 0.341, n: 96 },
+    { k: 'Mid / in',   v: 0.478, n: 102 }, { k: 'Middle',     v: 0.621, n: 88 },  { k: 'Mid / away', v: 0.402, n: 134 },
+    { k: 'Low / in',   v: 0.312, n: 77 },  { k: 'Low / mid',  v: 0.398, n: 109 }, { k: 'Low / away', v: 0.244, n: 142 }
+  ]);
+
+  denseTable('dp-pitchmix',
+    ['Pitch', 'Seen', 'AVG', 'SLG', 'Whiff'],
+    [
+      ['4-Seam',    '38.2%', '.312', '.688', '24.1%'],
+      ['Slider',    '22.4%', '.241', '.512', '38.2%'],
+      ['Sinker',    '14.1%', '.301', '.601', '18.4%'],
+      ['Changeup',  '12.8%', '.289', '.579', '31.0%'],
+      ['Curveball', '12.5%', '.198', '.402', '34.6%']
+    ], { leadStrong: true });
+
+  denseTable('dp-gamelog',
+    ['Date', 'Opp', 'AB', 'R', 'H', '2B', 'HR', 'RBI', 'BB', 'K', 'TB'],
+    [
+      ['Aug 28', 'vs CWS', 4, 2, 3, 1, 1, 4, 1, 0, 8],
+      ['Aug 27', 'vs CWS', 4, 1, 2, 0, 1, 2, 1, 1, 6],
+      ['Aug 24', '@ MIN',  5, 1, 1, 0, 0, 1, 0, 2, 1],
+      ['Aug 23', '@ MIN',  3, 0, 1, 1, 0, 0, 2, 1, 2],
+      ['Aug 20', '@ DET',  4, 2, 3, 0, 2, 5, 1, 1, 9],
+      ['Aug 17', 'vs CLE', 4, 0, 0, 0, 0, 0, 1, 2, 0],
+      ['Aug 16', 'vs CLE', 4, 1, 2, 1, 0, 1, 0, 1, 3],
+      ['Aug 14', 'vs BAL', 5, 3, 4, 1, 2, 6, 0, 0, 11],
+      ['Aug 12', 'vs BAL', 4, 0, 1, 0, 0, 0, 1, 2, 1],
+      ['Aug 09', '@ TB',   4, 1, 2, 1, 0, 1, 1, 1, 3],
+      ['Aug 07', '@ TB',   3, 1, 2, 0, 1, 3, 2, 0, 5],
+      ['Aug 05', '@ TOR',  4, 0, 0, 0, 0, 0, 0, 3, 0]
+    ], { leadStrong: true });
+
+  // rail: opposing starter + BvP
+  denseTable('dp-sp',
+    ['Brayan Bello', 'RHP', 'Rk'],
+    [
+      ['ERA',   '3.84', '38th'],
+      ['WHIP',  '1.21', '31st'],
+      ['K/9',   '8.42', '44th'],
+      ['BB/9',  '2.71', '29th'],
+      ['HR/9',  '1.14', '52nd'],
+      ['xFIP',  '3.96', '35th'],
+      ['vs RHB','.271', '61st']
+    ]);
+
+  denseTable('dp-bvp',
+    ['Judge vs Bello', '', ''],
+    [
+      ['PA',  '14',    ''],
+      ['H',   '4-12',  '.333'],
+      ['HR',  '2',     ''],
+      ['OPS', '1.214', ''],
+      ['K',   '4',     '28.6%']
+    ]);
+})();
+</script>

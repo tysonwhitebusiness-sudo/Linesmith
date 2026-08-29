@@ -4,7 +4,7 @@
 **Phase 4: COMPLETE, gate PASSED** (2026-08-29, after failing G7 and re-running
 in full from G1 per Rule 5).
 
-**Phase 6 may start.**
+**Phase 6 has started — design direction agreed, nothing built yet.** See §6.
 
 ## The documents, in reading order
 
@@ -56,7 +56,8 @@ production from the worker's own logs.
 
 ## 3. Next actions
 
-1. **Phase 6.** Nothing blocks it.
+1. **Phase 6, starting with the chart primitives library** — §6 has the whole
+   direction, the open question, and the artifact to look at first.
 2. **5.1's second VERIFY half**, after 00:00 UTC — the one carried item from
    Phase 5. `propline` was correctly gated at 1000/1000 for 2026-08-29:
    ```sql
@@ -151,7 +152,112 @@ putting it in front of someone.**
 - **Don't `git add -A` blindly** — `docs/discord-community-prompt.md` is the
   operator's.
 
-## 6. Known not done — carried into Phase 6
+## 6. Phase 6 design direction (2026-08-29)
+
+**Agreed with the operator this session. No code written yet.** The operator's
+framing: Phase 6's goal is *"extensive amounts of player and team data so users
+can make educated guesses and see all the data in one place"*, with **premium
+graphs and visualisation rather than raw numbers**, and a UI that "looks and
+feels smooth and premium".
+
+### The decision: a chart grammar, not more charts
+
+Build `components/charts/` — a shared primitives library — **before** any Phase 6
+feature chart. Two pieces first: a `ChartFrame` (axes, grid, empty state,
+loading, tooltip) and `useChartCrosshair` (hover synced across every chart in a
+panel). Then eleven primitives:
+
+| # | Primitive | Job |
+|---|---|---|
+| 01 | `Sparkline` | trend at table-row scale, no axes |
+| 02 | `SeriesChart` | the one real line chart (line movement); emphasis + grey context |
+| 03 | `DistributionBars` | per-game results vs a line — **already exists** as `DistributionChart`, `PlayerDetail.tsx:129` |
+| 04 | `DensityCurve` | where one value sits in a population |
+| 05 | `PercentileRail` | ranked stats — the radar-chart replacement |
+| 06 | `HeatGrid` | splits matrix; strike-zone grid is the same primitive at a different aspect |
+| 07 | `RangeBar` | book dispersion |
+| 08 | `ContributionBars` | signed model contributions — "why the model likes this" |
+| 09 | `StatTable` | dense stat block, heat bar *behind* the number (bar-in-cell) |
+| 10 | `StreakStrip` | run of binary outcomes, opacity ramping to the present |
+| 11 | `SplitDumbbell` | A vs B on one shared scale (platoon, home/away) |
+
+**Why, in this repo's own terms:** `package.json` has **no chart library** — only
+`motion`, imported by exactly one file (`MatchupExplorerCard.tsx`). Hand-rolled
+SVG is the right call for a premium look; a library would make it look like every
+other tool in the category. But ten bespoke charts will drift exactly the way the
+four hand-written provider-job bodies drifted before `run_provider_specs`, and
+the way three duplicated page components drifted before the sport adapters. Both
+precedents are already in `CLAUDE.md`. This is the same argument a third time.
+
+**Second constraint:** `PlayerDetail.tsx` is 106KB and `GameDetail.tsx` is 105KB.
+A dozen inline charts makes both unworkable. The library is the only way the
+scope fits.
+
+### The mockup
+
+- **Artifact:** https://claude.ai/code/artifact/845e36d0-037c-4859-af5b-185a6aba795c
+- **Source, committed:** `docs/design/chart-grammar.html` — self-contained, no
+  build step. Open it directly, or serve it (`.claude/launch.json`'s
+  `design-preview` config serves `C:/Users/occy3/Downloads`, so copy it there).
+  **Republish with `Artifact` passing that URL as `url`**, or it forks to a new one.
+
+All eleven primitives rendered in the app's real tokens, plus a **full-depth
+Player Detail** — ~190 numbers on one page: nine ranked season stats, eleven
+Statcast metrics with percentiles, a 10×5 splits grid, five platoon comparisons,
+nine zone cells, five pitch types, a twelve-game log, seven opposing-pitcher
+rates, career matchup, park and weather, six book prices, seven model
+contributions. Data is representative, not live — the frame carries a visible
+banner saying so.
+
+The first composed screen was rejected by the operator as *"doesn't have any
+stats / not nearly as in depth from a stats and visual standpoint"*. That
+rejection is the useful part: **depth is the product**, and a page that only
+demonstrates the primitives misses the point.
+
+### THE OPEN QUESTION — resume here
+
+The operator's words: *"concerned with how we will get an every other sport
+equivalent."* The deep page above is **MLB only**, and MLB is the sport with the
+richest public data. The unanswered question is what the equivalent depth is for
+NFL, NBA, NHL, CFB, soccer, tennis and golf — and how it lands inside the
+existing sport-adapter convention, where `PlayerDetailData` is **one shared
+interface owned by the MLB adapter** (`lib/sports/mlb/adapters/playerDetailAdapter.ts`).
+
+The tension is real and is not resolved: a genuinely deep MLB page implies a lot
+of MLB-shaped slots (pitch mix, strike zone, platoon, park factors), and
+`CLAUDE.md`'s rule §4 says a sport that has no equivalent sets the field `null`
+and the component renders nothing. Do that naively across seven sports and the
+other pages are *empty*, which is exactly the "every other sport equivalent"
+worry. **Do not start building until this is answered** — see the handoff prompt
+in `docs/design/phase6-handoff-prompt.md`.
+
+### Two design-system findings, measured this session
+
+1. **`lib/ui/heat.ts` — `FILL_STOPS` is a diverging ramp with a *hue* at its
+   midpoint.** Ran the poles through a CVD validator: they **PASS** at deutan
+   ΔE 8.4 against a floor of 8.0 — a genuinely well-chosen red/green pair, but
+   clearing by only 0.4, so secondary encoding (sign, position, a visible
+   number) is required wherever the ramp does real work. The actual defect is
+   that **amber asserts "caution" where the data only says "average"**, and amber
+   is the one stop failing contrast at 2.87:1. `COMPARE_STOPS` already gets this
+   right (red → neutral grey → green) and its own comment reasons it out
+   correctly — the reasoning was never carried back to the fill ramp. Lightness
+   runs 54.9 → 68.0 → 51.3: correct arch for *diverging* use, wrong for the
+   *sequential* `heatTile` splits-grid case, where a monotonic single-hue ramp is
+   needed. **Caveat, so nobody re-litigates it:** running the neutral-midpoint
+   version through the validator returns `[FAIL] Chroma floor` on the grey. That
+   check is scoped to *categorical* palettes; a diverging midpoint is supposed to
+   be achromatic. The FAIL is the tool applying the wrong rule.
+
+2. **`card` (oklch 93%) is DARKER than `paper` (oklch 96%)** in
+   `tailwind.config.ts`. Pre-reskin it was page `#f7f5f0` / card `#FFFFFF` —
+   cards sat *above* the page, which is what a card is. The graphite reskin held
+   paper and dropped card, inverting the elevation model that `shadow-card` and
+   `.lb-card-hero` assume; `surface-subtle` (96%) is then *lighter* than the card
+   it insets into. It reads fine as recessed panels — but confirm it was chosen
+   rather than inherited from a find-and-replace.
+
+## 7. Known not done — carried into Phase 6
 
 1. **Duplicate React keys can silently omit prop rows.** Console shows many
    `Encountered two children with the same key` errors (`mlb:672515:total-bases:over`,
@@ -178,7 +284,7 @@ putting it in front of someone.**
 11. **No push alerting** (Q19) — Phase 8. **Rate limiting per-process** — Phase 8.
 12. **`SUPABASE_SERVICE_ROLE_KEY` cannot be rotated** — Phase 7.
 
-## 7. Backup tables outstanding
+## 8. Backup tables outstanding
 
 | Table | Rows | From |
 |---|---|---|
