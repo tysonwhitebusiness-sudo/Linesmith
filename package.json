@@ -14,7 +14,7 @@
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.112.3",
     "motion": "^13.1.1",
-    "next": "^15.5.4",
+    "next": "^16.3.3",
     "pg": "^8.23.0",
     "pg-copy-streams": "^7.0.0",
     "react": "^19.1.1",
