@@ -88,6 +88,17 @@ jobs:
         run: python -u src/test_under_side_probability.py
       - name: test_walkforward
         run: python -u src/test_walkforward.py
+      # Added in Phase 5. One step per test, same as above, so a failure names
+      # itself in the Actions UI rather than collapsing into "Hermetic tests
+      # failed" — logs are private on this repo, job and step names are not.
+      - name: test_canonical_bookmaker
+        run: python -u src/test_canonical_bookmaker.py
+      - name: test_modal_point
+        run: python -u src/test_modal_point.py
+      - name: test_consensus_and_matching
+        run: python -u src/test_consensus_and_matching.py
+      - name: test_propline_alt_lines
+        run: python -u src/test_propline_alt_lines.py
       - name: Not run here, and why
         run: |
           echo "Deliberately excluded from CI (Q20 — no database credentials in Actions):"

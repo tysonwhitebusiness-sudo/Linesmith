@@ -3543,6 +3543,360 @@ Decisions: **Q30** (canonical form, operator) and the two I took myself —
 itself a known book. Both reasoned in the commit message and in the
 function's own docstring.
 
+**5.4 · Impossible totals, and CHECK constraints.** *(P3 H10, P2 M8, Q11)*
+
+Reproduced. **Q11 answered empirically, and the answer is not what the plan
+assumed:** it is not a Propline problem. All four sources emit out-of-band MLB
+totals (propline 1.5-13, sharpapi 1.5-15.5, the-odds-api 3.5-14.5), and the
+rows are not garbage — they are internally COHERENT prices for a DIFFERENT
+proposition. Game 823985 carries `total 2.5 over +110 / under -145` from bovada
+beside a coherent 6.5-9.5 cluster from twenty other books. Real MLB games go
+over 2.5 runs ~93% of the time, so +110 is impossible for a game total and
+entirely normal for a TEAM total or FIRST-5-INNINGS total.
+
+Band from the distribution, not intuition: `p0.5=1.5 p1=2.5 p5=5 p95=9.5
+p99=13 p99.5=14.5`, mass at 7.5 (319) / 9.5 (317) / 8 (198) / 8.5 (171) /
+9 (116). MLB total constrained to [6, 14]. Soccer left generous ([0.5, 9.5])
+because its `.25`/`.75` Asian quarter-lines are REAL — 2.75 and 3.25 both
+observed live, and a "half-points only" rule would have destroyed them (Q35).
+
+`VERIFY: inserting an out-of-band total is rejected by the database` — plus the
+gate's "one deliberate bad insert per constraint":
+
+```
+CONTROLS — a valid row must be accepted by each table:
+  PASS  game_odds_book_lines: valid row accepted
+  PASS  prop_odds: valid row accepted
+  PASS  pick_history: valid row accepted
+
+VIOLATIONS — each must be rejected BY ITS OWN NAMED CONSTRAINT:
+  PASS  game_odds_book_lines: market 'parlay' -> rejected by gobl_market_valid
+  PASS  game_odds_book_lines: side 'sideways' -> rejected by gobl_side_valid
+  PASS  game_odds_book_lines: sport 'quidditch' -> rejected by gobl_sport_valid
+  PASS  game_odds_book_lines: a moneyline carrying a point -> gobl_point_shape
+  PASS  game_odds_book_lines: a total with no point at all -> gobl_point_shape
+  PASS  game_odds_book_lines: MLB total of 2.5 (the P3 H10 row) -> gobl_point_plausible
+  PASS  game_odds_book_lines: MLB total of 15.5 -> gobl_point_plausible
+  PASS  game_odds_book_lines: MLB spread of -40 -> gobl_point_plausible
+  PASS  game_odds_book_lines: american odds of 0 -> gobl_american_odds_sane
+  PASS  game_odds_book_lines: american odds of -5 -> gobl_american_odds_sane
+  PASS  prop_odds: side 'maybe' -> rejected by prop_odds_side_valid
+  PASS  prop_odds: american odds of 42 -> prop_odds_american_odds_sane
+  PASS  pick_history: outcome 'kinda won' -> pick_history_outcome_valid
+  PASS  pick_history: trust_tier 'vibes' -> pick_history_trust_tier_valid
+  PASS  pick_history: score_grade 'S++' -> pick_history_score_grade_valid
+  PASS  pick_history: model_prob of 1.4 -> pick_history_model_prob_range
+  PASS  pick_history: market_prob of -0.2 -> pick_history_market_prob_range
+
+rolled back; test rows remaining: {"a":"0","b":"0","d":"0"}
+ALL PASS (17 constraints tripped deliberately)
+```
+
+**A FALSE PASS WAS CAUGHT HERE, and it is the fourth of its kind.** The first
+run reported all 17 "rejected" — and every one was rejected by a `NOT NULL` on
+`fetched_at`/`category`, not by any CHECK constraint. **Nothing was being
+tested.** It was visible only because the script inserts a known-good CONTROL
+row per table first, and asserts `e.constraint` equals the specific constraint
+under test rather than accepting any error. Recorded in `CURRENT.md` §6.
+
+Observed: `game_odds_book_lines` 6,937 -> 6,823; 114 rows quarantined, exactly
+the 104-below-6 + 10-above-14 predicted before running. Backup:
+`game_odds_book_lines_quarantine_20260829` with a `quarantine_reason` column.
+
+**5.5 · Modal-point selection for totals and spreads.** *(P3 C1)*
+
+Reproduced in BOTH languages; the Python version's own comment admitted the
+shape "can't represent both simultaneously", which is the finding.
+
+`VERIFY: on a game with multiple total lines, the displayed best price and its
+de-vigged probability come from the same point.` Counterfactual run against the
+real pre-fix function extracted from git history, same fixture through both:
+
+```
+OLD (HEAD, pre-5.5)   point=9.5  over=+400  under=+100  implied_total=0.7000
+NEW (with 5.5)        point=7.5  over=-105  under=+100  implied_total=1.0122
+```
+
+The old row pairs an over quoted at 9.5 with an under quoted at 7.5 and labels
+it 9.5. Its implied total of 0.70 is a 30% NEGATIVE hold — no book offers that,
+and that number was feeding `market_prob`.
+
+**Note on method:** reverting `mlb_game_lines.py` and re-running the test gave
+an ImportError, not a failure — which proves nothing. The counterfactual above
+was produced by extracting the pre-fix function from git history instead.
+"The test failed after I reverted the fix" would have been the comfortable,
+wrong evidence.
+
+Also fixed, stated because it is a real behaviour change: Python's
+`summarise_odds_event` had NO implausible-price bound at all, so one garbage
+row could win "best price" by being the largest number. It now applies the same
+`MAX_PLAUSIBLE_DECIMAL_ODDS` guard the TS twin already had.
+
+**5.6 · Implausible-odds guard in TypeScript `bestPrice`.** *(P3 H6)*
+
+**DOES NOT REPRODUCE — already fixed 2026-08-27**, after the audit was
+written. `lib/odds/display.ts:20` defines `MAX_PLAUSIBLE_DECIMAL_ODDS = 30` and
+all three best-price functions call the guard. Task shrinks to its other half,
+"and a test covers it", now present in both languages. Found by the "verify it
+still reproduces" step; without it this would have been a re-fix of working
+code.
+
+**5.7 · Exclude the compared book from Tier-2 consensus.** *(P3 M14)*
+
+Reproduced. The subject book was one of the terms in the median it was then
+measured against, so it partly set its own benchmark. Fixture measurement:
+reference moves `0.4892 -> 0.4946` when the compared book is excluded.
+Degenerate case handled explicitly — excluding the ONLY book returns None
+rather than a "consensus" of one, since a median of one book is that book's own
+price. Tier 1 deliberately keeps no exclusion: it is a named sharp book, and if
+the candidate's price IS that book, an edge of 0 is the honest answer.
+
+**5.8 · Replace `_team_match` exact string equality.** *(P3 M13)*
+
+Reproduced. `VERIFY: feed a known format variant; it matches, and a miss emits
+a system_events row.` Both halves confirmed, the second **in production**:
+
+```
+system_events | warn | job_runner.team_match
+  "5 game(s) matched no provider event"   2026-08-29T07:54:08.548Z
+  (deploy of this code finished 07:51:59Z)
+```
+
+The normalisation `harvester_scrape.py` had already proven against real live
+mismatches was MOVED to `entity_resolution.py` and shared, rather than a second
+weaker copy being written; harvester imports it back under its original private
+names, so its behaviour is provably unchanged.
+
+Deliberately NOT adopted: harvester's loose substring-containment fallback.
+Here both sides must match to attach a price to a game, so a false positive
+attaches odds to the WRONG game — worse than a miss. Tested: "Michigan State"
+still does not match "Michigan".
+
+Found while testing and NOT papered over: `"NY Red Bulls"` does not match
+`"New York Red Bulls"`, because `"NY"` is not in the alias table. My test
+expectation was wrong, not the code. Every alias there was verified against a
+real observed mismatch; inventing one to make a test green would break exactly
+the discipline that table's comments describe. It lands in the miss log
+instead, which is where a real alias candidate should surface.
+
+**5.9 · Wire the ParlayAPI soft caps.** *(P2 H3)*
+
+Reproduced — six `PARLAYAPI_*_SOFT_CAP` vars, configured and documented, and
+`config.py` read none of them. Now gate via `ProviderSpec.soft_cap`, effective
+gate `min(soft, hard)`, warning naming which fired.
+
+**BEHAVIOUR CHANGE, FLAGGED NOT BURIED:** those caps are already set to **800**
+against a hard limit of 1000. Wiring them genuinely lowers the ParlayAPI gate
+by 20%, so those jobs now stop earlier in the month than they did yesterday.
+That is what a soft cap is for and what the operator configured, but it is not
+a no-op. If unwanted, unset the env vars rather than reverting the code.
+
+**5.10 · Stop discarding rows you paid for.** *(P2 H4)*
+
+Reproduced. `asyncio.gather` without `return_exceptions=True` propagates the
+first exception and discards every sibling's already-fetched — and already
+PAID FOR — rows. The sequential branch had the same defect for a different
+reason: an exception escaping mid-list abandoned the outcomes collected before
+it. Both fixed. The failure is surfaced to `system_events` as an error;
+without that, this fix would convert a hard failure into an invisible one.
+
+`VERIFY: force one provider to raise; the others' rows still land.` — asserted
+in both directions, so the test fails if the flag is removed:
+
+```
+5.10: one provider raising must not discard its siblings
+  PASS  without the flag, gather raises and siblings are lost
+  PASS  with the flag, both successful providers survive
+  PASS  and the failure is still visible, not swallowed
+```
+
+**5.11 · Close the config drift.** *(P2 M3)*
+
+`tests/config-drift.test.ts`, four checks. `VERIFY: change one side only; the
+test fails.` — the gate's "proven by breaking it", both directions:
+
+```
+1. Python batter_hits -> "total-bases", TS still "hits"
+   FAIL market key aliases: ...  + 'batter_hits: TS=hits Python=total-bases'
+2. reverted
+   PASS market key aliases: every key TS knows, Python maps the same way
+3. appended TOTALLY_UNREAD_VAR=1 to .env.example
+   FAIL no orphan provider env vars ...  + 'TOTALLY_UNREAD_VAR'
+4. reverted -> 36/36 pass, git diff empty
+```
+
+The first draft kept a hand-written "TS only" allowlist and immediately
+reported four FALSE orphans that `lib/odds/props/config.ts` reads perfectly
+well. An allowlist needing manual updates is the same drift the test exists to
+catch, so it now scans both config trees.
+
+**5.12 · Make the budget check-and-spend atomic.** *(P4 M8)*
+
+Reproduced. Proven with REAL concurrency against real Postgres, both
+directions — a single-threaded test would pass against the old code too, since
+the old code is only wrong when callers interleave:
+
+```
+sequential behaviour at the cap boundary:
+  PASS  10 reservations all succeed
+  PASS  the one past the cap returns no row
+  PASS  and critically, it did NOT increment
+
+the race: 12 concurrent connections, 1 unit left, limit 10:
+  PASS  exactly one of 12 wins the last unit
+  PASS  final count lands exactly on the limit, never over
+
+counterfactual: the same race against the OLD check-then-act shape:
+  OLD shape: 12 of 12 passed the gate; final count 21 against a limit of 10
+  PASS  the old shape really does overshoot (fault confirmed present)
+ALL PASS
+```
+
+Scope stated honestly: ONE unit is reserved as an entry ticket, not the full
+cost, because a provider's real request count is unknowable until after the
+fetch (Propline makes 1 + 2N requests for N games); the remainder is recorded
+after. That closes the race the finding describes without claiming a precision
+the call shape cannot support. Second half: swallowed spend-record failures now
+also reach `system_events`, with that write itself guarded so a database outage
+cannot mask the original error.
+
+**5.2 · The sharp-coverage experiment.** *(P5 G7, P3 H7, Q3, Q27, Q29)*
+
+The audit's premise was measurably wrong, from two stacked bugs.
+`fetch_propline` HARDCODED `provider_id="propline"` while serving two real
+vendor accounts, so every propline_2 row, unresolved entry and spend record was
+filed under `propline` — the two accounts silently shared one 1,000/day
+counter, which is why `propline` pins at exactly 1000/1001 daily. And
+`job_runner` records spend only when `cap_kind != "none"`, which propline_2
+was, so its spend was never recorded at all. It was not vendor-rejected; it was
+invisible. `PROPLINE_2_DAILY_LIMIT` was also an orphan env var (5.11).
+
+**The number, its query and its date — with the decision beside it**, as the
+gate requires:
+
+```
+Date: 2026-08-29
+Query: distinct (subject_id, market_key, line) in prop_odds having any row
+       from SHARP_REFERENCE_PRIORITY ('pinnacle','circa','novig','kalshi')
+
+  total propositions .... 13,938
+  with a sharp price ....  1,265  =  9.08%
+  with Pinnacle .........    111  =   0.80%   (pitcher-strikeouts ONLY)
+  kalshi 1,752 rows / 1 market · novig 1,329 / 2 · pinnacle 226 / 1
+```
+
+Audit measured 3.23% sharp / 0.53% Pinnacle, so coverage has roughly tripled
+and is still under the plan's own 10% threshold.
+
+**DECISION, per 5.2's own rule (">= 30% no purchase; < 10% justified"): at
+9.08% a Pinnacle-class feed IS justified, and this is the number that justifies
+it. RECOMMENDATION ONLY — nothing has been purchased.** Pinnacle covering
+exactly one market of thirteen is the sharpest form of the argument: the
+reference the whole edge model rests on exists for pitcher strikeouts and
+nothing else. Per Q27 the "run one week" step is removed; per Q29 budget was
+ADDED (propline_2 given its real cap and identity) rather than reallocated, so
+nothing currently displayed was dropped.
+
+**5.13 · Schema hygiene.**
+
+`game_odds_history.source` (P2 L3) reads differently once measured.
+`writeGameOddsHistory` in `lib/db/client.ts` inserted WITHOUT a `source`
+column, so its rows would take `DEFAULT 'the-odds-api'` regardless of origin —
+but it had **zero callers** anywhere in `lib/`, `app/` or `components/`, so
+nothing was ever mislabelled. The table holds four correctly-attributed sources,
+all written by Python, which passes `source` explicitly and includes it in its
+dedup key. Dead writer deleted (Q2/Q13). Default retained: unreachable by any
+live writer, and dropping a NOT NULL column's default would gain nothing while
+risking a future INSERT that forgets the column.
+
+**Found during the pass, in no finding:** `game_odds_history` had the SAME
+bookmaker defect as `game_odds_book_lines` — 36 spellings for 22 real books.
+P3 H9 named only `game_odds_book_lines`. It matters MORE here, because the
+dedup key IS the log-on-change comparison, so a split spelling means one book
+keeps two independent price histories and a real move is compared against the
+wrong one. It is also the table task 6.1's line-movement charts will read.
+
+```
+BEFORE: { n: '47622', books: '36' }
+AFTER:  { n: '47622', books: '22' }
+BACKUP: 47622 rows
+books (22): bet365, betmgm, betonline, betrivers, betus, bovada, draftkings,
+fanatics, fanduel, kalshi, lowvig, matchbook, mybookie, novig, onexbet,
+pinnacle, polymarket, prophetx, rebet, smarkets, tabau, unibet
+```
+
+Zero rows lost, landing on exactly the same 22 as `game_odds_book_lines`.
+NOT deleted, deliberately: merging spellings reveals 2,380 groups holding more
+than one row for the same (event, market, side, source, book, observed_at).
+Those were always duplicates and merely LOOKED distinct — revealed, not
+created. This is an append-only observation log, deleting from it is
+destructive, and no Phase 5 task requires it. Carried to 6.1.
+
+Skipped, both recorded in §0 before starting: the `pick_history` rename and the
+`TEXT` -> `JSONB` migration (P2 L2 itself concludes "leave it"). Unused indexes
+left per Q27.
+
+**5.1 · Propline alias map -> base market.** *(P2 C1, P2 H2, Q4, Q31)*
+
+Built from a LIVE Propline response as 5.1 demands (propline_2 key, Q31): 45
+MLB events, 27 market keys, 18 of ~20 authorised requests. Raw capture
+committed as `docs/propline-live-capture-20260829.json` so nobody spends budget
+re-deriving it.
+
+**The plan's diagnosis was incomplete, and the missing part is the bigger
+half.** The plan frames P2 C1 as an alt-line mapping problem with a four-row
+table. Those four keys are real. But the dominant cause is that
+`MARKET_KEY_ALIASES` **had no `batter_*` entries at all** — it carried bare
+names, a `batting_*` prefix, and `pitcher_strikeouts`, while Propline sends
+`batter_hits`, `batter_rbis`, `batter_home_runs`, `pitcher_outs`,
+`pitcher_earned_runs`, `pitcher_hits_allowed`. Twelve base batter markets and
+three of four pitcher markets resolved to None, so every row was dropped before
+any alt-line logic could matter. The live data agrees exactly: Propline's ONLY
+surviving MLB market in `prop_odds` was `pitcher-strikeouts`, the one key that
+happened to be mapped.
+
+Propline encodes a threshold in THREE places depending on the book — the market
+key (`batter_2plus_hits`), the outcome name (`"2+ Total Bases"`), or a real
+point field. Only the third was handled; the first two arrived with point=null
+and a name that is not Over/Under, so every one became an OVER AT line=None.
+That is also why `prop_odds` holds 37,939 'over' against 5,111 'under'.
+
+```
+all 24 live Propline player-market keys — still unresolved: NONE
+
+  batter_1plus_hits       alt-> ('hits', 0.5)        batter_doubles         base-> doubles
+  batter_2plus_hits       alt-> ('hits', 1.5)        batter_hits            base-> hits
+  batter_3plus_hits       alt-> ('hits', 2.5)        batter_hits_runs_rbis  base-> hits-runs-rbis
+  batter_4plus_hits       alt-> ('hits', 3.5)        batter_home_runs       base-> home-runs
+  batter_1plus_rbis       alt-> ('rbis', 0.5)        batter_rbis            base-> rbis
+  batter_2plus_rbis       alt-> ('rbis', 1.5)        batter_runs            base-> runs
+  batter_3plus_rbis       alt-> ('rbis', 2.5)        batter_singles         base-> singles
+  batter_2plus_home_runs  alt-> ('home-runs', 1.5)   batter_stolen_bases    base-> stolen-bases
+                                                     batter_strikeouts      base-> batter-strikeouts
+  name-encoded alt lines:                            batter_total_bases     base-> total-bases
+    batter_strikeouts  "2+ Strikeouts"  -> ('batter-strikeouts', 1.5)
+    batter_total_bases "2+ Total Bases" -> ('total-bases', 1.5)
+    batter_home_runs   "1+ Home Runs"   -> ('home-runs', 0.5)
+```
+
+DELIBERATELY NOT GUESSED: Bovada sends the PLAYER NAME as the outcome with no
+point (`batter_home_runs`, `"Ali Sanchez (NYY)"`, +1100). Almost certainly an
+anytime market — and "almost certainly" is what 5.1 warns against. Both
+implemented rules are LITERAL; nothing is inferred from a price.
+
+**P2 H2 shipped in the same sitting, and it was worse than described.** Python
+NEVER HAD an `odds_unresolved` writer — `run_provider_specs` collected every
+`FetchOutcome.unresolved` and only COUNTED it. The sole writer was the
+TypeScript pipeline task 2.5 deleted, which is why the table's newest row was
+2026-08-26 while Propline fetched every day since. The table looked populated,
+so the gap was invisible. Confirmed fixed in production: after the 07:51:59Z
+deploy, propline's stale 1,317 rows were replaced by the live Python pipeline.
+
+`VERIFY`'s other half — *"prop_odds gains Propline batter rows"* — is **NOT yet
+confirmed**, and is listed in this phase's known-not-done. `propline` sits at
+exactly 1000/1000 for 2026-08-29 and is correctly gated, so MLB Propline has
+not run since the fix deployed. The query to close it is in `CURRENT.md` §2.
+
 ---
 
 *Written 2026-08-28 from the Phase 1–5 audit findings and the operator's answers
