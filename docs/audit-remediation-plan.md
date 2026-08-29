@@ -3476,9 +3476,13 @@ previously wrote +3,000 and +752.
 
 ---
 
-### Phase 5 — 2026-08-29 (IN PROGRESS)
+### Phase 5 — 2026-08-29
 
-> Started after Phase 3's gate passed. Order follows `docs/CURRENT.md` §2:
+**GATE RESULT: PASS** (2026-08-29), on the re-run after G1's first pass
+failed. G1-G8 below; see "known NOT done" for what is carried forward.
+**Phase 4 may start.**
+
+> Order followed `docs/CURRENT.md` §2:
 > 5.3 first, because book identity is what 5.5, 5.7 and 4.1's de-vig all
 > depend on. **Gate not yet run — this section is the running task log.**
 
@@ -3896,6 +3900,238 @@ deploy, propline's stale 1,317 rows were replaced by the live Python pipeline.
 confirmed**, and is listed in this phase's known-not-done. `propline` sits at
 exactly 1000/1000 for 2026-08-29 and is correctly gated, so MLB Propline has
 not run since the fix deployed. The query to close it is in `CURRENT.md` §2.
+
+--- gate (run in one sitting, 2026-08-29 08:08Z – 08:25Z) ---
+
+**G1 · every VERIFY re-run, fresh, in order.**
+
+**G1 FAILED ON ITS FIRST PASS.** 5.3's VERIFY returned `game_odds_book_lines`
+**37** distinct bookmakers (from 22) and `game_odds_history` **31** (from 22).
+New un-canonical rows really were arriving. Per Rule 5 the gate stopped here.
+
+Diagnosis, and it was NOT a code defect. Both writers canonicalise correctly —
+verified end-to-end against the live database by submitting
+`['FanDuel','MyBookie.ag','DraftKings']` through the real
+`db.write_game_odds_history` and getting back `['fanduel','mybookie','draftkings']`.
+The cause was **long-running processes holding the pre-fix module in memory**.
+`db.py` was saved 08:01:15Z; Python binds imports at process start; OddsHarvester
+runs as Windows scheduled tasks (`LinesmithOddsHarvester*`) on a ~20-minute
+cycle. A harvester run begun ~07:53Z was still executing at 08:11:57Z and wrote
+through its in-memory old copy. The worker showed the same shape smaller: its
+last un-canonical write was 08:05:09Z, seconds after the 08:04:17Z restart, from
+a cycle already in flight.
+
+Confirmed self-resolving by measurement, not argument — rows written after
+08:15:00Z:
+
+```
+game_odds_book_lines   193 rows, 4 books, 0 un-canonical
+game_odds_history        7 rows, 3 books, 0 un-canonical
+```
+
+Residue swept by `20260829110000_canonical_bookmaker_residue.sql`. G1 re-run
+from the top afterwards; results below are that re-run.
+
+```
+5.3  DISTINCT bookmaker      book_lines 22 · history 22      PASS
+5.4  MLB totals out of band  0                                PASS
+5.4  CHECK constraints       13 live                          PASS
+5.4  17 deliberate violations, each rejected BY ITS OWN named constraint,
+     3/3 controls accepted, transaction rolled back, 0 rows left   PASS
+5.5  modal point             old 9.5/+400/+100 implied 0.7000
+                             new 7.5/-105/+100 implied 1.0122     PASS
+5.6  DOES NOT REPRODUCE — fixed 2026-08-27; test added instead
+5.7  consensus excl. subject 0.4892 -> 0.4946                     PASS
+5.8  format variant matches; miss logged in PRODUCTION
+     system_events job_runner.team_match 07:54:08Z / 08:02:36Z / 08:06:22Z  PASS
+5.9  soft caps gate          effective min(800,1000)=800          PASS
+5.10 sibling rows survive; failure still surfaced                 PASS
+5.11 drift test broken deliberately in both directions, then reverted  PASS
+5.12 12 concurrent connections, 1 unit left, limit 10 -> exactly 1 won
+     counterfactual: OLD check-then-act -> 12 of 12 through, final 21  PASS
+5.13 game_odds_history 36 -> 22 books, 0 rows lost                PASS
+5.2  sharp coverage 9.08% (1,265/13,938); Pinnacle 0.80%, 1 market
+     decision recorded beside the number                          PASS
+5.1  odds_unresolved written by the LIVE pipeline — sharpapi 08:20:02Z,
+     propline_2 08:05:54Z (table had been frozen at 2026-08-26)    PASS
+5.1  "prop_odds gains Propline BATTER rows"                    NOT YET — see G8
+```
+
+**G2 · regression sweep, whole tree.**
+
+```
+npm run typecheck   clean
+npm run build       succeeded, all routes emitted
+npm test            tests 36 · pass 36 · fail 0 · skipped 0 · todo 0
+python (13 hermetic, one per CI step)  all exit 0:
+  entity_resolution · leakage_guard · mlb_prop_grading · mlb_source_flip
+  odds_lines_cycle_book_lines · price_staleness · providers
+  under_side_probability · walkforward · canonical_bookmaker · modal_point
+  consensus_and_matching · propline_alt_lines
+```
+
+No skips, no xfails. `python -m pytest` is deliberately NOT the runner: these
+are standalone scripts and pytest collects almost nothing, reporting green
+having tested nothing — noted in `ci.yml` itself.
+
+**G3 · live smoke walk** (real dev server, real database).
+
+Opened: `/` · `/mlb` · `/nfl` · `/nba` · `/nhl` · `/cfb` · `/golf` · `/soccer` ·
+`/tennis` · one game detail (`/mlb/game/823539`) · one player detail
+(`/mlb/player/686765`) · one team detail (`/mlb/team/111`) · `/login`.
+
+Game detail rendered fully — both clubs with records, first pitch, venue,
+weather with impact rating, pitching matchup with ERA/K/WHIP and a stat edge.
+Player detail rendered markets, the price with real provenance
+(`SharpAPI · captured 8/29/2026, 3:17:19 AM (1m ago)`), split windows
+(L5/L10/L15/H2H/SZN) and the distribution chart. Team detail rendered all 30
+clubs with records. **Zero blank sections.**
+
+Network: every data endpoint 200 — `/api/soccer/epl`, `/api/tennis/atp`,
+`/api/odds/lines`, `/api/props/calibration`, `/api/picks/game-history`,
+`/api/picks/model-data`. **Zero 5xx.** The only console errors were `401` on
+`/api/picks` and `/api/watchlist`, the two user-scoped endpoints, correct while
+signed out; and `429`s that were **this session's own rate limiter** (task 3.4)
+reacting to rapid automated navigation — the guard working, not a fault.
+`ERR_ABORTED` entries are React StrictMode double-fetches, each followed by a
+200 for the same URL.
+
+**NOT DONE, and it is a real gap in G3, not a pass:** `/diagnostics` and
+`/bets` both require sign-in (task 1.5 gated them) and I have no credentials.
+I will not create an account or enter a password. The sign-in page itself
+renders correctly. **Those two pages and the signed-in walk were not verified.**
+
+**G4 · findings no longer reproduce**, by each finding's original method.
+
+```
+P3 H9  (5.3)  DISTINCT bookmaker        book_lines 22 · history 22
+P3 H10 (5.4)  MLB totals out of band    0
+P2 M8  (5.4)  CHECK constraints         13
+P2 H2  (5.1)  odds_unresolved live      sharpapi 08:20:02Z (was frozen 08-26)
+P3 H7  (5.2)  propline_2 own identity   provider_usage row, 50 requests,
+                                        08:05:38Z — it had NOTHING since 08-20
+P3 M13 (5.8)  team-match misses logged  3 warnings in the last 30 min
+P3 C1  (5.5)  best price shares a point old 0.7000 -> new 1.0122 overround
+P4 M8  (5.12) check-and-spend atomic    1 of 12 wins, vs 12 of 12 before
+P2 H3  (5.9)  soft caps read            effective cap 800
+P2 H4  (5.10) siblings survive          asserted both directions
+P2 M3  (5.11) drift caught              proven by breaking it
+P2 C1  (5.1)  Propline keys resolve     24/24, none unresolved
+P2 L3  (5.13) misleading source default dead writer deleted; 4 real sources
+P3 M14 (5.7)  consensus excludes subject reference moves 0.4892 -> 0.4946
+P3 H6  (5.6)  did not reproduce — already fixed 2026-08-27
+```
+
+**G5 · write-path observation.** Every table the phase touched, still written:
+
+```
+table                  rows      newest write
+game_odds_book_lines   6,339     08:20:02Z
+game_odds_history      48,089    08:17:32Z
+prop_odds              49,182    08:20:02Z  (sharpapi)
+  └ propline_2         4,004     08:05:38Z  NEW — its own provider_id for the
+                                            first time; was filed under
+                                            `propline` before 5.2
+odds_unresolved        5,339     08:20:02Z  was FROZEN at 2026-08-26
+pick_history           368,657   05:38:54Z  see below
+provider_usage         propline 1000 · propline_2 50 (new) · oddsapiio 500
+system_events          3 warns, 0 errors since 07:45Z
+```
+
+Worker alive and productive throughout: `refreshTier1` wrote 238 rows at
+08:22:36Z; `computeMlbPropPredictionsJob` produced 2,694 candidates at
+08:20:47Z; `computeMlbGameModelJob` wrote 17 games at 08:20:04Z.
+
+`pick_history`'s 05:38Z newest is NOT a stopped writer — its production is
+bursty (2,730 rows in the 04:00Z hour, 15 in the 05:00Z hour) and today's MLB
+slate first-pitches at 12:05 ET. `computeMlbPropPredictionsJob` reports healthy,
+last run 1 min before the sweep.
+
+**Two of 40 health checks are unhealthy, and NEITHER was caused by this phase:**
+
+- `refreshSportsGameOddsJob` — "stale, last run 217min ago". Its last real run
+  was 04:38:34Z and got **vendor HTTP 429 on all five games**. Proof it predates
+  Phase 5: the 07:00:14Z sweep already recorded "last run 142min ago", which is
+  the same 04:38Z run — it simply crossed the 180-minute threshold later. Phase
+  5's first commit was 07:45Z.
+- `snapshotCacheSize` — largest payload 12.6 MB against a 10 MB bound
+  (`mlb:full-raw`). The Free-tier ceiling concern from §0.2. Untouched here.
+
+**One real side effect of 5.12, stated because it is a behaviour change:** a
+reserve records 1 unit *before* the fetch, so a job that reserves and then fails
+now leaves a 1-unit spend where it previously left none. Conservative direction
+(it over-counts by at most one per cycle rather than letting a failed fetch look
+free) and documented in `CLAUDE.md`, but real. Observed once —
+`sportsgameodds` object_count moved to 1,645 at 08:04:23Z and has not moved
+since, so it is not a runaway.
+
+**G6 · no orphans.** Nothing was disabled or stubbed. What is deliberately not
+built, with owners:
+
+| Item | Why | Owner |
+|---|---|---|
+| `pick_history` -> `model_predictions` rename | 368k rows + every reader in both languages, for naming clarity | **Never** — recorded in §0 |
+| `TEXT` -> `JSONB` migration | 5.13 contradicts its own finding; P2 L2 concludes "leave it" | **Never** — §0 |
+| Unused-index drop | Q27 removed the elapsed-time requirement | post-Phase-9 |
+| Bovada player-named prop outcomes | genuinely ambiguous; 5.1 forbids guessing a line | future, needs vendor clarification |
+| 2,380 duplicate observation groups in `game_odds_history` | revealed not created; deleting from a log is destructive | **6.1** |
+| 4 backup/quarantine tables | reversibility for 5.3/5.4/5.13 + Phase 3 | drop after soak |
+| 3.15's two GET-path writers | carried from Phase 3, not a Phase 5 task | **still open** |
+| `refreshSportsGameOddsJob` stale since 04:38Z | vendor 429s, pre-existing | **unowned — see G8** |
+
+**G7 · adversarial read-back.** Re-read the phase's whole diff asking only
+"does the repository now describe what actually runs?" It found two live false
+claims, both fixed rather than noted:
+
+1. **`CLAUDE.md` said cap-checking "reads through `db.daily_status`/
+   `db.monthly_status`".** False as of 5.12 — it reserves through
+   `db.try_reserve_daily`/`try_reserve_monthly`. Rewritten, including the
+   entry-ticket limitation and the measured 12-of-12 counterfactual.
+   `ProviderSpec`'s documented field list was also missing `soft_cap`.
+2. **`20260829110000`'s own header claimed "anything dropped is already in the
+   5.3 backup table".** False: that backup's newest row is 07:21:30Z and the
+   sweep deleted 1,213 rows, some written after it. Corrected in place to state
+   exactly what is and is not recoverable, and why the loss is immaterial
+   (`game_odds_book_lines` is a current-state table; per-key history lives in
+   `game_odds_history`, which lost nothing).
+
+`CLAUDE.md` also gained the write-path normalisation convention and the
+"a deploy does not mean every writer is running the new code" lesson G1 paid
+for.
+
+**GATE RESULT: PASS** — on the re-run, after G1's first pass failed and the
+cause was fixed. Rule 5 was followed: the phase stopped, the residue was swept,
+and the gate re-ran from G1.
+
+**G8 · known NOT done.** This list is not empty and should not be.
+
+1. **5.1's second VERIFY half is unconfirmed.** `prop_odds` has not yet gained
+   Propline **batter** rows, because `propline` sits at exactly 1000/1000 for
+   2026-08-29 and is correctly gated. All 24 live market keys resolve in
+   `test_propline_alt_lines.py`, and `odds_unresolved` is now written by the
+   live pipeline — but the end-to-end claim is not yet observed. Closing query
+   is in `CURRENT.md` §2; it needs the UTC-midnight cap reset. **This is a
+   timing dependency, not a failure, and it is the single most important thing
+   for the next session to check.**
+2. **`/diagnostics`, `/bets` and the signed-in walk were not verified** (G3) —
+   no credentials, and creating an account or entering a password is out of
+   bounds for me.
+3. **`refreshSportsGameOddsJob` has not run since 04:38Z**, having hit vendor
+   429s. Pre-existing, unowned, and currently invisible except to the health
+   check. Worth a decision in Phase 6 or 8.
+4. **`snapshotCacheSize` unhealthy** — 12.6 MB payload against a 10 MB bound.
+   Free-tier ceiling, §0.2's territory.
+5. **Sharp coverage is 9.08%**, under 5.2's own 10% threshold, so a
+   Pinnacle-class feed is justified by the plan's decision rule. Recommendation
+   recorded; **nothing purchased**.
+6. **5.9 lowered the ParlayAPI gate by 20%** (soft caps of 800 against a hard
+   1000 were configured and ignored; now they bind). Real change in how much
+   data is collected. Unset the env vars rather than reverting code if unwanted.
+7. **3.15's two GET-path writers** remain, carried from Phase 3.
+8. **Four backup/quarantine tables** are still on a Free-tier database.
+
+**Phase 4 may start.**
+
 
 ---
 
