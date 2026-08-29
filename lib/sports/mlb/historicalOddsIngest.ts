@@ -14,7 +14,6 @@
  * or rate limits, and re-running it is instant.
  */
 
-import * as XLSX from 'xlsx';
 import * as fs from 'node:fs';
 import { resolveTeamAbbr } from './teamAliases';
 import { devigTwoWay } from '../../odds/devig';
@@ -42,167 +41,8 @@ function parseSbrDate(raw: number, season: number): string {
   return `${season}-${month}-${day}`;
 }
 
-function findColIndex(header: Array<string | null>, candidates: string[]): number {
-  const norm = (s: string) => s.replace(/\s+/g, '').toLowerCase();
-  for (const c of candidates) {
-    const idx = header.findIndex((h) => h != null && norm(h) === norm(c));
-    if (idx !== -1) return idx;
-  }
-  return -1;
-}
 
-export async function ingestSbrXlsx(filePath: string, season: number): Promise<IngestSummary> {
-  const summary: IngestSummary = { source: `sbr-xlsx-${season}`, rowsRead: 0, gamesWritten: 0, unresolvedTeams: [], skippedNoMatchup: 0 };
-  const wb = XLSX.readFile(filePath);
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null }) as any[][];
-  if (rows.length < 2) return summary;
-
-  const header = rows[0] as Array<string | null>;
-  const colDate = findColIndex(header, ['Date']);
-  const colRot = findColIndex(header, ['Rot']);
-  const colVh = findColIndex(header, ['VH']);
-  const colTeam = findColIndex(header, ['Team']);
-  const colClose = findColIndex(header, ['Close']);
-  const colOpen = findColIndex(header, ['Open']);
-  const colCloseOU = findColIndex(header, ['Close OU', 'CloseOU']);
-  // The price for the Close OU side sits in the column immediately after it (unlabeled in the source file).
-  const colCloseOUPrice = colCloseOU !== -1 ? colCloseOU + 1 : -1;
-  const colOpenOU = findColIndex(header, ['Open OU', 'OpenOU']);
-  const colOpenOUPrice = colOpenOU !== -1 ? colOpenOU + 1 : -1;
-
-  const unresolved = new Set<string>();
-  // Rotation numbers reset/repeat every day, so the pair key must be scoped
-  // to the date — keying by rotation number alone across the whole season
-  // collides on every date that reused the same number and silently drops
-  // nearly all games.
-  const byRot = new Map<string, any[]>();
-
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i];
-    if (!r || r[colRot] == null) continue;
-    summary.rowsRead += 1;
-    const rot = Number(r[colRot]);
-    // SBR pairs consecutive rotation numbers (e.g. 931/932) into one game — the pair key is the lower of the two.
-    const pairKey = `${String(r[colDate])}|${rot % 2 === 0 ? rot - 1 : rot}`;
-    const list = byRot.get(pairKey) ?? [];
-    list.push(r);
-    byRot.set(pairKey, list);
-  }
-
-  const entries: HistoricalOddsInput[] = [];
-  for (const [, pair] of byRot) {
-    if (pair.length !== 2) {
-      summary.skippedNoMatchup += 1;
-      continue;
-    }
-    const vRow = pair.find((r) => r[colVh] === 'V');
-    const hRow = pair.find((r) => r[colVh] === 'H');
-    if (!vRow || !hRow) {
-      summary.skippedNoMatchup += 1;
-      continue;
-    }
-
-    const awayAbbr = String(vRow[colTeam] ?? '');
-    const homeAbbr = String(hRow[colTeam] ?? '');
-    const awayId = resolveTeamAbbr(awayAbbr);
-    const homeId = resolveTeamAbbr(homeAbbr);
-    if (!awayId) unresolved.add(awayAbbr);
-    if (!homeId) unresolved.add(homeAbbr);
-    if (!awayId || !homeId) continue;
-
-    const gameDate = parseSbrDate(Number(vRow[colDate]), season);
-
-    const awayClose = colClose !== -1 ? Number(vRow[colClose]) : NaN;
-    const homeClose = colClose !== -1 ? Number(hRow[colClose]) : NaN;
-    let mlHomeProb: number | null = null;
-    let mlAwayProb: number | null = null;
-    if (Number.isFinite(awayClose) && Number.isFinite(homeClose)) {
-      const devigged = devigTwoWay(americanToDecimal(awayClose), americanToDecimal(homeClose));
-      if (devigged) {
-        mlAwayProb = devigged.a;
-        mlHomeProb = devigged.b;
-      }
-    }
-
-    const awayOpen = colOpen !== -1 ? Number(vRow[colOpen]) : NaN;
-    const homeOpen = colOpen !== -1 ? Number(hRow[colOpen]) : NaN;
-    let mlHomeOpenProb: number | null = null;
-    let mlAwayOpenProb: number | null = null;
-    if (Number.isFinite(awayOpen) && Number.isFinite(homeOpen)) {
-      const devigged = devigTwoWay(americanToDecimal(awayOpen), americanToDecimal(homeOpen));
-      if (devigged) {
-        mlAwayOpenProb = devigged.a;
-        mlHomeOpenProb = devigged.b;
-      }
-    }
-
-    let totalLine: number | null = null;
-    let overProb: number | null = null;
-    let underProb: number | null = null;
-    if (colCloseOU !== -1 && colCloseOUPrice !== -1) {
-      const lineVal = Number(vRow[colCloseOU]);
-      const overPrice = Number(vRow[colCloseOUPrice]); // V row carries the Over side, SBR convention
-      const underPrice = Number(hRow[colCloseOUPrice]); // H row carries the Under side
-      if (Number.isFinite(lineVal)) totalLine = lineVal;
-      if (Number.isFinite(overPrice) && Number.isFinite(underPrice)) {
-        const devigged = devigTwoWay(americanToDecimal(overPrice), americanToDecimal(underPrice));
-        if (devigged) {
-          overProb = devigged.a;
-          underProb = devigged.b;
-        }
-      }
-    }
-
-    let totalOpenLine: number | null = null;
-    let openOverProb: number | null = null;
-    let openUnderProb: number | null = null;
-    if (colOpenOU !== -1 && colOpenOUPrice !== -1) {
-      const openLineVal = Number(vRow[colOpenOU]);
-      const openOverPrice = Number(vRow[colOpenOUPrice]);
-      const openUnderPrice = Number(hRow[colOpenOUPrice]);
-      if (Number.isFinite(openLineVal)) totalOpenLine = openLineVal;
-      if (Number.isFinite(openOverPrice) && Number.isFinite(openUnderPrice)) {
-        const devigged = devigTwoWay(americanToDecimal(openOverPrice), americanToDecimal(openUnderPrice));
-        if (devigged) {
-          openOverProb = devigged.a;
-          openUnderProb = devigged.b;
-        }
-      }
-    }
-
-    entries.push({
-      season,
-      gameDate,
-      homeTeamId: homeId,
-      awayTeamId: awayId,
-      homeScore: Number.isFinite(Number(hRow[header.indexOf('Final')])) ? Number(hRow[header.indexOf('Final')]) : null,
-      awayScore: Number.isFinite(Number(vRow[header.indexOf('Final')])) ? Number(vRow[header.indexOf('Final')]) : null,
-      mlHomeConsensusProb: mlHomeProb,
-      mlAwayConsensusProb: mlAwayProb,
-      totalLine,
-      totalOverConsensusProb: overProb,
-      totalUnderConsensusProb: underProb,
-      mlHomeOpenProb,
-      mlAwayOpenProb,
-      totalOpenLine,
-      totalOpenOverProb: openOverProb,
-      totalOpenUnderProb: openUnderProb,
-      source: 'sbr-xlsx',
-      bookCount: 1,
-    });
-  }
-
-  summary.gamesWritten = await writeHistoricalOdds(entries);
-  summary.unresolvedTeams = [...unresolved];
-  return summary;
-}
-
-// ---------------------------------------------------------------------------
-// 2021-2025 long-format multi-book CSV
-// ---------------------------------------------------------------------------
-
-/** Minimal CSV line parser — good enough for this file (no embedded commas inside quoted fields observed in the sampled data; falls back safely if a field is simply empty). */
+/** Minimal CSV line parser â€” good enough for this file (no embedded commas inside quoted fields observed in the sampled data; falls back safely if a field is simply empty). */
 function parseCsvLine(line: string): string[] {
   return line.split(',');
 }
@@ -601,13 +441,28 @@ export async function ingestScraperJson(filePath: string): Promise<IngestSummary
   return summary;
 }
 
-export async function ingestAllHistoricalOdds(downloadsDir: string, xlsxSeasons: number[]): Promise<IngestSummary[]> {
+/**
+ * The 2010-2020 SBR spreadsheets were ingested through `ingestSbrXlsx`, which
+ * was removed in task 3.13 along with the `xlsx` dependency it needed.
+ *
+ * That dependency carried two high-severity advisories (prototype pollution
+ * and ReDoS) with **no fix published on npm**, and it existed solely for a
+ * one-time import that has been complete for some time: `historical_odds`
+ * holds 2010-2025, ~2,430-2,450 rows per season across the whole xlsx range.
+ * The source spreadsheets are gitignored local files, not repository content.
+ *
+ * If that range ever genuinely needs re-importing, convert the spreadsheets to
+ * CSV once — offline, outside this application — and they flow through
+ * `ingestLongCsv` below. Carrying a permanently-unpatched parser inside the
+ * app to avoid a manual conversion that may never be needed is the wrong
+ * trade.
+ *
+ * `xlsxSeasons` is kept in the signature and ignored, so the one caller
+ * (`/api/props/ingest-historical-odds`) needs no change and its own docs stay
+ * honest about what the range once meant.
+ */
+export async function ingestAllHistoricalOdds(downloadsDir: string, _xlsxSeasons: number[]): Promise<IngestSummary[]> {
   const summaries: IngestSummary[] = [];
-  for (const season of xlsxSeasons) {
-    const path = `${downloadsDir}/mlb-odds-${season}.xlsx`;
-    if (!fs.existsSync(path)) continue;
-    summaries.push(await ingestSbrXlsx(path, season));
-  }
   if (fs.existsSync(downloadsDir)) {
     const longCsvFiles = fs.readdirSync(downloadsDir).filter((f) => LONG_CSV_PATTERN.test(f));
     for (const file of longCsvFiles) {

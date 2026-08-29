@@ -12,14 +12,6 @@ const nextConfig = {
   // shared `.next` directory both would otherwise write to concurrently.
   // Unset for every normal invocation, so this changes nothing by default.
   ...(process.env.LB_DIST_DIR ? { distDir: process.env.LB_DIST_DIR } : {}),
-  // xlsx (SheetJS) does its own fs access inside readFile() that breaks when
-  // webpack bundles it — throws "Cannot access file" even though the file is
-  // right there on disk, since it's really the bundler's fs shim tripping up
-  // SheetJS's internal file-reading path, not an actual filesystem problem.
-  // better-sqlite3/node:sqlite dropped from this list as part of the Phase 1
-  // Postgres cutover — lib/db/client.ts no longer imports either; the `pg`
-  // driver it uses now is pure JS and bundles fine.
-  serverExternalPackages: ['xlsx'],
 
   // Avatars render through a plain <img> so the headshot → flag/logo → initials
   // fallback chain can hang off onError. These hosts are declared anyway so a
