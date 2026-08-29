@@ -82,7 +82,7 @@ def compute_league_rate(
     line: float,
     min_minutes: float = MIN_MINUTES_FOR_LEAGUE_RATE,
     minutes_stat_name: str | None = "minutes",
-) -> float:
+) -> float | None:
     """Real, computed base rate from a real (if limited-sample) group of
     players' real games — not a guessed constant. Restricted to games
     where the player logged at least `min_minutes` of `minutes_stat_name`
@@ -112,7 +112,22 @@ def compute_league_rate(
             total += 1
             if g.stats[stat_name] > line:
                 hits += 1
-    return hits / total if total else 0.5
+    # Task 4.12 (P3 M6) — None, not 0.5.
+    #
+    # This returned 0.5 when NO qualifying game was found, which is a coin flip
+    # asserted as a measurement. It is indistinguishable downstream from a real,
+    # computed 50% base rate, so a market with no history at all scored exactly
+    # like one the league genuinely splits evenly — and for the RARE markets
+    # this function serves (triple-doubles, anytime goalscorer, hat-tricks) a
+    # true base rate near 0.5 is impossible, so the fabricated value was always
+    # wrong by a wide margin in the direction that makes a prop look attractive.
+    #
+    # None means "no baseline exists", and the caller decides. Every current
+    # caller declines to build the candidate, which is the honest response: a
+    # prop cannot be scored against a baseline nobody has.
+    if not total:
+        return None
+    return hits / total
 
 
 @dataclass

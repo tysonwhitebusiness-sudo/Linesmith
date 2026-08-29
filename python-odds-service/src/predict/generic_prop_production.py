@@ -292,7 +292,10 @@ def _rare_candidate_for_player(
     team_id: str,
     player: "_RosterPlayer",
     roster: list["_RosterPlayer"],
-    league_rate_cache: dict[tuple[str, str], float],
+    # float | None since task 4.12 (P3 M6): a sport/market with no qualifying
+    # games has NO league base rate, and None says so instead of 0.5 pretending
+    # to be one.
+    league_rate_cache: dict[tuple[str, str], float | None],
     minutes_stat_name: str | None,
     prop_rows: list,
     defense_index: dict[str, TeamDefenseAllowed] | None,
@@ -316,6 +319,11 @@ def _rare_candidate_for_player(
         if cache_key not in league_rate_cache:
             sample = {p.athlete_id: p.games for p in roster}
             league_rate_cache[cache_key] = compute_derived_league_rate(sample, anytime_td_condition, minutes_stat_name=minutes_stat_name)
+        if league_rate_cache[cache_key] is None:
+            # No league baseline (task 4.12, P3 M6) — a prop cannot be scored
+            # against a rate nobody has, so decline rather than surface one
+            # built on a fabricated 0.5.
+            return None
         return build_derived_rare_candidate(
             player.games, dimension, line, anytime_td_condition, player.athlete_id,
             league_rate_cache[cache_key], prop_rows, config.USER_SPORTSBOOK,
@@ -325,6 +333,11 @@ def _rare_candidate_for_player(
         if cache_key not in league_rate_cache:
             sample = {p.athlete_id: p.games for p in roster}
             league_rate_cache[cache_key] = compute_derived_league_rate(sample, triple_double_condition, minutes_stat_name=minutes_stat_name)
+        if league_rate_cache[cache_key] is None:
+            # No league baseline (task 4.12, P3 M6) — a prop cannot be scored
+            # against a rate nobody has, so decline rather than surface one
+            # built on a fabricated 0.5.
+            return None
         return build_derived_rare_candidate(
             player.games, NBA_RARE_DIMENSION, NBA_RARE_LINE, triple_double_condition, player.athlete_id,
             league_rate_cache[cache_key], prop_rows, config.USER_SPORTSBOOK,
@@ -334,6 +347,11 @@ def _rare_candidate_for_player(
         if cache_key not in league_rate_cache:
             sample = {p.athlete_id: p.games for p in roster}
             league_rate_cache[cache_key] = compute_league_rate(sample, NHL_RARE.espn_stat_name, NHL_RARE.line, minutes_stat_name=minutes_stat_name)
+        if league_rate_cache[cache_key] is None:
+            # No league baseline (task 4.12, P3 M6) — a prop cannot be scored
+            # against a rate nobody has, so decline rather than surface one
+            # built on a fabricated 0.5.
+            return None
         position_group = _nhl_position_group(player.position_abbr or "")
         return build_rare_candidate(
             player.games, NHL_RARE, player.athlete_id, league_rate_cache[cache_key], prop_rows, config.USER_SPORTSBOOK,
@@ -344,6 +362,11 @@ def _rare_candidate_for_player(
         if cache_key not in league_rate_cache:
             sample = {p.athlete_id: p.games for p in roster}
             league_rate_cache[cache_key] = compute_league_rate(sample, SOCCER_RARE.espn_stat_name, SOCCER_RARE.line, minutes_stat_name=minutes_stat_name)
+        if league_rate_cache[cache_key] is None:
+            # No league baseline (task 4.12, P3 M6) — a prop cannot be scored
+            # against a rate nobody has, so decline rather than surface one
+            # built on a fabricated 0.5.
+            return None
         return build_rare_candidate(
             player.games, SOCCER_RARE, player.athlete_id, league_rate_cache[cache_key], prop_rows, config.USER_SPORTSBOOK,
             defense_index=defense_index, opponent_abbr=opponent_abbr, position_group="attacking",
@@ -409,6 +432,11 @@ async def run_sport(sport_key: str, client: httpx.AsyncClient, date: str | None 
         if cache_key not in league_rate_cache:
             sample = {p.athlete_id: p.games for p in roster}
             league_rate_cache[cache_key] = compute_league_rate(sample, cfg.espn_stat_name, cfg.line, minutes_stat_name=minutes_stat_name)
+        if league_rate_cache[cache_key] is None:
+            # No league baseline (task 4.12, P3 M6) — a prop cannot be scored
+            # against a rate nobody has, so decline rather than surface one
+            # built on a fabricated 0.5.
+            return None
         return league_rate_cache[cache_key]
 
     logged = 0

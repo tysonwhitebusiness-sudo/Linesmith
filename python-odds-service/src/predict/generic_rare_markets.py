@@ -57,7 +57,7 @@ def compute_derived_league_rate(
     condition: Callable[[dict], bool],
     min_minutes: float = 15.0,
     minutes_stat_name: str | None = "minutes",
-) -> float:
+) -> float | None:
     """Mirrors generic_prop_score.compute_league_rate exactly, for a
     derived condition instead of a single-field threshold — no `stat_name
     in g.stats` gate needed here since a derived condition always has a
@@ -71,7 +71,11 @@ def compute_derived_league_rate(
             total += 1
             if condition(g.stats):
                 hits += 1
-    return hits / total if total else 0.5
+    # Task 4.12 (P3 M6) — same fix as compute_league_rate: None, not a
+    # fabricated coin flip. See that function for the reasoning.
+    if not total:
+        return None
+    return hits / total
 
 
 def derived_history_entries(games: list[PlayerGameStat], condition: Callable[[dict], bool]) -> list[HistoryEntry]:

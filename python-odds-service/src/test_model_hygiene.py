@@ -7,6 +7,8 @@ not an entry." So each item gets its own test group here.
 Covered so far:
   P3 L1  poisson_over_probability treated an integer line as a LOSS
   P3 L5  the Elo sort comparator was not a total order
+  P3 M5  home-field/form were ADDED to a probability instead of log-odds
+  P3 M6  compute_league_rate returned a fabricated 0.5 on no sample
 
 Pure functions, no network, no database, so this runs in CI (Q20).
 
@@ -20,10 +22,13 @@ from dataclasses import dataclass
 sys.path.insert(0, "src")
 
 from predict.game_model import (  # noqa: E402
+    _from_log_odds,
     _poisson_pmf,
+    _to_log_odds,
     poisson_over_probability,
     poisson_push_probability,
 )
+from predict.generic_prop_score import compute_league_rate  # noqa: E402
 
 _failures = 0
 
@@ -137,12 +142,83 @@ def test_elo_sort_still_orders_by_date_first():
     check("earlier date wins regardless of a larger game_pk", _new_sort(xs), [999, 1])
 
 
+# ---------------------------------------------------------------------------
+# P3 M5
+# ---------------------------------------------------------------------------
+
+HOME_FIELD_EDGE = 0.04
+
+
+def test_home_field_is_applied_in_log_odds():
+    """A fixed edge must mean the same thing at every base rate. Added directly
+    to a probability it does not: +0.04 on a coin flip is a nudge, +0.04 on a
+    0.94 favourite HALVES the underdog."""
+    print("\nP3 M5: a fixed edge behaves consistently across base rates")
+    for raw, dog_old, dog_new in ((0.50, 0.460, 0.490), (0.94, 0.030, 0.058)):
+        old = min(0.97, max(0.03, raw + HOME_FIELD_EDGE))
+        new = min(0.97, max(0.03, _from_log_odds(_to_log_odds(raw) + HOME_FIELD_EDGE)))
+        close(f"raw {raw}: old underdog", 1 - old, dog_old, eps=1e-3)
+        close(f"raw {raw}: new underdog", 1 - new, dog_new, eps=1e-3)
+
+    # The load-bearing property: the OLD form cut a big favourite's underdog
+    # roughly in half, the new one does not.
+    raw = 0.94
+    old_dog = 1 - min(0.97, max(0.03, raw + HOME_FIELD_EDGE))
+    new_dog = 1 - min(0.97, max(0.03, _from_log_odds(_to_log_odds(raw) + HOME_FIELD_EDGE)))
+    check("old form roughly halved the underdog", old_dog < (1 - raw) * 0.6, True)
+    check("new form leaves it roughly intact", new_dog > (1 - raw) * 0.9, True)
+
+
+def test_log_odds_round_trip():
+    print("\nP3 M5: logit/inverse-logit round-trip")
+    for p in (0.01, 0.25, 0.5, 0.75, 0.99):
+        close(f"round-trip {p}", _from_log_odds(_to_log_odds(p)), p, eps=1e-9)
+    check("a zero adjustment changes nothing", round(_from_log_odds(_to_log_odds(0.62) + 0.0), 9), 0.62)
+
+
+# ---------------------------------------------------------------------------
+# P3 M6
+# ---------------------------------------------------------------------------
+
+class _Game:
+    def __init__(self, stats):
+        self.stats = stats
+
+
+def test_no_sample_returns_none_not_a_coin_flip():
+    """0.5 asserted as a measurement is indistinguishable downstream from a real
+    50% base rate — and for the RARE markets this serves (triple-doubles,
+    hat-tricks) a true rate near 0.5 is impossible, so the fabricated value was
+    always wrong in the direction that makes a prop look attractive."""
+    print("\nP3 M6: no qualifying games -> None, not 0.5")
+    check("empty input", compute_league_rate({}, "points", 10.5), None)
+    check("players present but no matching stat",
+          compute_league_rate({"a": [_Game({"rebounds": 5, "minutes": 30})]}, "points", 10.5), None)
+    check("stat present but every game below the minutes floor",
+          compute_league_rate({"a": [_Game({"points": 20, "minutes": 1})]}, "points", 10.5), None)
+
+
+def test_a_real_sample_still_computes():
+    print("\nP3 M6: a real sample still returns a real rate")
+    sample = {
+        "a": [_Game({"points": 20, "minutes": 30}), _Game({"points": 5, "minutes": 30})],
+        "b": [_Game({"points": 15, "minutes": 30}), _Game({"points": 2, "minutes": 30})],
+    }
+    check("2 of 4 games over 10.5", compute_league_rate(sample, "points", 10.5), 0.5)
+    check("and that 0.5 is COMPUTED, not the old fallback",
+          compute_league_rate(sample, "points", 10.5) is not None, True)
+
+
 def main() -> bool:
     test_integer_line_is_a_push_not_a_loss()
     test_half_integer_lines_are_untouched()
     test_push_probability_shape()
     test_elo_sort_is_a_total_order()
     test_elo_sort_still_orders_by_date_first()
+    test_home_field_is_applied_in_log_odds()
+    test_log_odds_round_trip()
+    test_no_sample_returns_none_not_a_coin_flip()
+    test_a_real_sample_still_computes()
     print(f"\n{'ALL PASS' if _failures == 0 else f'{_failures} FAILURE(S)'}")
     return _failures == 0
 

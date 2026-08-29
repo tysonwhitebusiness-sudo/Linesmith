@@ -117,6 +117,17 @@ class OpposingStarter:
     starts: int
 
 
+def _to_log_odds(p: float) -> float:
+    """logit. Clamped off 0 and 1 so an extreme input cannot produce infinity."""
+    q = min(1 - 1e-9, max(1e-9, p))
+    return math.log(q / (1 - q))
+
+
+def _from_log_odds(z: float) -> float:
+    """Inverse logit."""
+    return 1 / (1 + math.exp(-z))
+
+
 def _blend_with_starter_era(team_rate_per_game: float, starter: OpposingStarter | None) -> float:
     """Blends a team's own season rate toward a starting pitcher's ERA once
     they've thrown enough starts to mean something. Used two ways: a team's
@@ -214,7 +225,22 @@ def compute_moneyline_model(input: MoneylineInput) -> MoneylineResult:
     away_recent_edge = raw_away_recent_edge * RECENT_FORM_WEIGHT
 
     adjustment = HOME_FIELD_EDGE + (home_venue_edge - away_venue_edge) + (home_recent_edge - away_recent_edge)
-    home_win_prob = min(0.97, max(0.03, raw_home_win_prob + adjustment))
+    # Task 4.12 (P3 M5) — applied in LOG-ODDS, not by adding to a probability.
+    #
+    # This used to be `raw_home_win_prob + adjustment`. Probabilities are not
+    # additive, and the error is not academic: +0.04 of home-field on a coin-flip
+    # game (0.50 -> 0.54) is a modest nudge, while the same +0.04 on a heavy
+    # favourite (0.94 -> 0.98) roughly HALVES the underdog's chance. The old form
+    # therefore applied a much larger effective adjustment to lopsided games than
+    # to close ones, which is the opposite of how a fixed edge behaves — and it
+    # needed the 0.03/0.97 clamp mainly to stop itself producing values outside
+    # [0, 1] at all.
+    #
+    # In log-odds the same additive constant is a constant multiplier on the odds
+    # ratio, which is what "home field is worth about this much" actually means.
+    # The clamp is kept as a floor/ceiling on the RESULT, but it is now a
+    # backstop rather than load-bearing arithmetic.
+    home_win_prob = min(0.97, max(0.03, _from_log_odds(_to_log_odds(raw_home_win_prob) + adjustment)))
 
     return MoneylineResult(
         home_win_prob=home_win_prob,

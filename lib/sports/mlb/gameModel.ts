@@ -108,6 +108,17 @@ export interface OpposingStarter {
  * real but disclosed approximation, not the true runs rate a full box score
  * would give.
  */
+/** logit. Clamped off 0 and 1 so an extreme input cannot produce Infinity. */
+function toLogOdds(p: number): number {
+  const q = Math.min(1 - 1e-9, Math.max(1e-9, p));
+  return Math.log(q / (1 - q));
+}
+
+/** Inverse logit. */
+function fromLogOdds(z: number): number {
+  return 1 / (1 + Math.exp(-z));
+}
+
 function blendWithStarterEra(teamRatePerGame: number, starter: OpposingStarter | null): number {
   if (!starter || starter.era == null || starter.starts < MIN_STARTS_FOR_GAME_MODEL) {
     return teamRatePerGame;
@@ -211,7 +222,17 @@ export function computeMoneylineModel(input: MoneylineInput): MoneylineResult {
   const awayRecentEdge = rawAwayRecentEdge * RECENT_FORM_WEIGHT;
 
   const adjustment = HOME_FIELD_EDGE + (homeVenueEdge - awayVenueEdge) + (homeRecentEdge - awayRecentEdge);
-  const homeWinProb = Math.min(0.97, Math.max(0.03, rawHomeWinProb + adjustment));
+  // Task 4.12 (P3 M5) — applied in LOG-ODDS, not by adding to a probability.
+  //
+  // This used to be `rawHomeWinProb + adjustment`. Probabilities are not
+  // additive, and the error is not academic: +0.04 of home field on a
+  // coin-flip game (0.50 -> 0.54) is a modest nudge, while the same +0.04 on
+  // a heavy favourite (0.94 -> 0.98) roughly HALVES the underdog's chance. The
+  // old form applied a much larger effective adjustment to lopsided games than
+  // to close ones, the opposite of how a fixed edge behaves.
+  //
+  // Kept identical to python-odds-service/src/predict/game_model.py.
+  const homeWinProb = Math.min(0.97, Math.max(0.03, fromLogOdds(toLogOdds(rawHomeWinProb) + adjustment)));
 
   return {
     homeWinProb,
