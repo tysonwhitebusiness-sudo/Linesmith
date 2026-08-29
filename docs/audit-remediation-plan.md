@@ -3476,6 +3476,75 @@ previously wrote +3,000 and +752.
 
 ---
 
+### Phase 5 — 2026-08-29 (IN PROGRESS)
+
+> Started after Phase 3's gate passed. Order follows `docs/CURRENT.md` §2:
+> 5.3 first, because book identity is what 5.5, 5.7 and 4.1's de-vig all
+> depend on. **Gate not yet run — this section is the running task log.**
+
+--- task verifications ---
+
+**5.3 · Normalise bookmaker names.** *(P3 H9)*
+
+Still reproduced at kickoff: 33 distinct spellings for 22 real books.
+
+`VERIFY: SELECT DISTINCT bookmaker -> one row per real book`
+
+```
+BEFORE: { rows: '6199', books: '33' }
+AFTER:  { rows: '6199', books: '22' }
+BACKUP: 6199 rows / 33 spellings  (game_odds_book_lines_bookmaker_backup_20260829)
+
+DISTINCT bookmaker (22):
+  bet365 (308)      betmgm (546)     betonline (330)   betrivers (384)
+  betus (322)       bovada (380)     draftkings (691)  fanatics (176)
+  fanduel (750)     kalshi (180)     lowvig (330)      matchbook (166)
+  mybookie (358)    novig (123)      onexbet (75)      pinnacle (186)
+  polymarket (124)  prophetx (136)   rebet (168)       smarkets (110)
+  tabau (152)       unibet (204)
+```
+
+**Zero rows lost.** The migration's dedup step correctly deleted nothing: no
+canonical key collided, because `source` is part of the unique key and each
+source used one internally-consistent spelling. Worth recording because the
+dedup was written expecting collisions — the plan's framing implied merges
+would be lossy, and against real data they were not.
+
+End-to-end through the **real writer**, not the pure function (fault
+confirmed to land before believing the result):
+
+```
+writing 6 rows with raw spellings: ['FanDuel','Fanduel','fanduel','BetOnline.ag','BetUS','bet365.us']
+what actually landed:
+   bet365     x1
+   betonline  x1
+   betus      x1
+   fanduel    x1
+EXPECTED: ['bet365','betonline','betus','fanduel']
+RESULT: PASS
+cleanup: rows remaining for test game_id = 0
+```
+
+Three `FanDuel` spellings collapsing to **one** row is the load-bearing
+observation: it proves the `ON CONFLICT (sport, game_id, market, side,
+bookmaker, source)` key now actually collides, which is the behaviour P3 H9
+broke.
+
+`src/test_canonical_bookmaker.py` — ALL PASS (5 cases). Asserts against the
+exact 33 live spellings rather than against the alias map, and covers the
+BetUS trap (a real book whose name ends in "us", which a blind suffix strip
+turns into the nonexistent "bet"), the deliberate kept-vs-dropped difference
+from `normalize_bookmaker`, and idempotence. Hermetic, runs in CI per Q20.
+`npm test` 26/26, `tsc --noEmit` clean.
+
+Decisions: **Q30** (canonical form, operator) and the two I took myself —
+`canonical_bookmaker` is a second function rather than a change to
+`normalize_bookmaker`, and suffix-stripping fires only when the remainder is
+itself a known book. Both reasoned in the commit message and in the
+function's own docstring.
+
+---
+
 *Written 2026-08-28 from the Phase 1–5 audit findings and the operator's answers
 of the same date. Every measurement cited was taken from the live system;
 re-verify anything load-bearing before acting on it.*
