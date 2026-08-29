@@ -1,18 +1,27 @@
 /**
  * `/api/props/calibration`'s payload, pulled out of the route handler so it
  * can be cached. Unlike `/api/mlb` or `/api/props/lines`, this route has no
- * external fetch to defer — it's six separate SQLite aggregate scans over
- * `pick_history`, run fresh on every request with no caching at all (2-5s
- * observed). The fix here isn't "stop blocking on a rebuild", it's "stop
- * recomputing on every request" — same stale-serve pattern as the other two
- * routes, just applied to local computation instead of a remote fetch.
+ * external fetch to defer — it is a set of aggregate scans over
+ * `pick_history` (now ~366k rows), and before caching it ran fresh on every
+ * request. The fix here isn't "stop blocking on a rebuild", it's "stop
+ * recomputing on every request" — the same stale-serve pattern as the other
+ * two routes, applied to database aggregation rather than a remote fetch.
  *
- * Still run through the same in-process background trigger as the others
- * for consistency, though worth being honest that Node is single-threaded:
- * "background" here means "after this response is already on the wire", not
- * "on another core" — the SQLite work is still synchronous and blocks the
- * event loop for its duration either way. What matters is that duration no
- * longer sits between the request and the response.
+ * CORRECTED 2026-08-29 (task 2.8, finding P2 M6.4). This used to say "six
+ * separate SQLite aggregate scans" and then reason at length about the work
+ * being synchronous, blocking Node's single event loop for its duration. All
+ * of that described a database this app stopped using on 2026-08-22: it is
+ * Postgres now, the queries are async and run on the server rather than in
+ * this process, and there are nine of them, not six. Nothing about the
+ * caching decision changes — the payload is still worth caching — but the
+ * stated reason was wrong for a week and would have sent the next person
+ * looking for a blocked event loop that cannot happen.
+ *
+ * The remaining honest caveat is different from the old one: these aggregate
+ * over a table that only grows, so the cost is a function of `pick_history`'s
+ * size rather than of request volume. Phase 4's calibration work (4.2/4.3)
+ * owns this code next, and per standing decision Q18 also owns moving it to
+ * Python — it is deliberately NOT ported in Phase 2.
  */
 
 import {

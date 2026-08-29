@@ -43,6 +43,40 @@ Every new `app/api/**/route.ts` GET handler that does a live external fetch or n
 
 **Why this matters**: a route built without either pattern makes every visitor pay the full external-call or computation cost on every single page load — this was found and fixed on the same handful of routes repeatedly across one session before this convention existed. The fix is always the same shape; there's no reason to rediscover it per route.
 
+## Who writes what — read `docs/table-ownership.md` first
+
+**Python writes, TypeScript renders.** One table, one writer; the map is
+`docs/table-ownership.md`, one row for each of the 35 tables, with the
+deliberate exceptions named and reasoned. Regenerate it by grepping both trees
+rather than trusting it — it says how.
+
+This is the single most load-bearing convention in the repo, and it is recent
+(Phase 2 of `docs/audit-remediation-plan.md`, 2026-08-28/29). The audit that
+produced it found **22 of 35 tables with writers in both languages**, no
+locking, and "direct ports" that had already drifted apart. Concretely, what
+that cost: golf ran two prediction pipelines writing the same six tables from
+separately-maintained model code; `/api/odds/lines` wrote to your model's own
+track record on an unauthenticated GET; and the generic-sports job built
+"predictions" from game logs that already contained the outcome.
+
+Practical rules that follow:
+
+- **A GET handler must not write.** The exceptions that remain are documented
+  in the route itself, with the reason.
+- **Model math lives in Python.** `lib/sports/mlb/adapter.ts` still *computes*
+  a prop model as a fallback, but the number it renders comes from
+  `mlb_prop_model_cache`, read cache-first the same way it already reads
+  `mlb_game_model_cache` (`adapter.ts:2323`). Copy that pattern; don't add a
+  third one.
+- **The four user tables (`bets`/`picks`/`watchlist`/`tracked_lines`) stay in
+  TypeScript** — request-scoped and session-authenticated. Do not move them.
+- **Cross-process locking uses `withJobLock`** (`lib/db/pgClient.ts`), which is
+  a **lease table**, not a Postgres advisory lock. Advisory locks are
+  session-scoped and this app connects through a transaction-mode pooler, where
+  they neither exclude nor release reliably — measured, see migration
+  `20260828140000`. Anything relying on session state through `:6543` is
+  suspect for the same reason.
+
 ## Sport-adapter architecture
 
 `PlayerDetail.tsx`, `TeamDetail.tsx`, and `GameDetail.tsx` are each **one component shared by every sport** — MLB, golf, NFL all render the same file. Adding a new sport to one of these means writing one new adapter file, never adding a `sport === 'x'` branch inside the component's own render logic. `GameHeroCard.tsx`, `BatterPitcherMatchupCard.tsx`, `StatRankRow.tsx`'s `TwoSidedStatRankRow`, and `WindowBox`/`DistributionChart`/`FilterChip` (declared in `PlayerDetail.tsx`, reused by the other two) are shared the same way, one level down.
@@ -71,7 +105,7 @@ The Python odds-refresh worker (Render background worker, replacing the TS proac
 
 3. **Cap-checking reads through `db.daily_status`/`db.monthly_status`**, direct ports of TS's `dailyStatus()`/`monthlyStatus()` (`lib/odds/props/budget.ts`) reading the same `provider_usage` table both apps share — a provider's real spend is one shared number regardless of which app made the call. Recording goes back through the existing `db.record_daily_spend`/`db.record_monthly_spend`. Adding cap-checking for a provider that doesn't have it yet is exactly a `cap_kind`/`cap_limit` pair, not new plumbing.
 
-4. **`concurrent` on `run_provider_specs` must match what's already been proven safe for that job, not default to `True`.** Tier 1 and Soccer/EPL run their specs sequentially (`concurrent=False` in `jobs.py`; MLB Tier 1 still has a live TS counterpart in `lib/odds/props/tier1Refresh.ts`'s own per-provider loop, never tested concurrently). NFL/CFB run ParlayAPI and SportsGameOdds concurrently via `asyncio.gather` (`concurrent=True`) — bounded, intra-job concurrency, not the job-to-job concurrency Constraint 2 of `docs/phase2-python-service-architecture-2026-08-19.md` forbids. This was ported from the TS scheduler's own `multiSportRefresh.ts`, since deleted along with the rest of the TS provider-job code once the Python worker fully replaced it — that history lives in `docs/phase2-python-service-architecture-2026-08-19.md`, not in a TS file you can still open. Changing a job from sequential to concurrent is a real behavior change, not a structural no-op — don't do it as a side effect of adding a provider.
+4. **`concurrent` on `run_provider_specs` must match what's already been proven safe for that job, not default to `True`.** Tier 1 and Soccer/EPL run their specs sequentially (`concurrent=False` in `jobs.py`). MLB Tier 1 used to have a live TypeScript counterpart in `lib/odds/props/tier1Refresh.ts`, never tested concurrently; that file was **deleted** in task 2.5 (2026-08-29) along with the Scan / More Books / Check Sharp Price buttons that were its only entry point, so the Python job is now the only Tier 1 refresh path that exists. NFL/CFB run ParlayAPI and SportsGameOdds concurrently via `asyncio.gather` (`concurrent=True`) — bounded, intra-job concurrency, not the job-to-job concurrency Constraint 2 of `docs/phase2-python-service-architecture-2026-08-19.md` forbids. This was ported from the TS scheduler's own `multiSportRefresh.ts`, since deleted along with the rest of the TS provider-job code once the Python worker fully replaced it — that history lives in `docs/phase2-python-service-architecture-2026-08-19.md`, not in a TS file you can still open. Changing a job from sequential to concurrent is a real behavior change, not a structural no-op — don't do it as a side effect of adding a provider.
 
 5. **`health_check.py` and `JOB_REGISTRY` already work for any job added this way with zero changes** — `health_check.py` reads `JOB_REGISTRY` generically and checks each job's real last-run breadcrumb (`db.write_job_run_log`, called by `_run_timed` regardless of which providers ran), flagging anything that hasn't run within 2x its own interval or whose last run failed. This is the monitoring layer Render's own `notifyOnFail` doesn't cover (that's crash-only; this catches a job that's silently stuck or stopped being scheduled while the process stays up).
 

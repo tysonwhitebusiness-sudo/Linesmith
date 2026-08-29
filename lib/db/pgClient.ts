@@ -66,7 +66,17 @@ function getPool(): Pool {
       // here + 3 on the worker (db.py) = 9, matching the real measured
       // budget exactly — deliberately zero slack for ad-hoc local scripts,
       // but no structural overcommit between the two real, permanent
-      // consumers. idleTimeoutMillis lower than Supavisor's own recycle
+      // consumers.
+      //
+      // Re-verified 2026-08-29 (task 2.8). Finding P2 M6.2 called this
+      // arithmetic wrong, on the grounds that the worker's real max_size was
+      // 2 rather than 3 — true of the commit deployed when the audit ran
+      // (89f6754, "reduce worker pool max_size 3 -> 2"), but that trim was
+      // reverted by 713a1df and settled by ddcaff6 at worker max_size=3.
+      // python-odds-service/src/db.py:140 reads `max_size=3` today, so
+      // 6 + 3 = 9 is correct and this comment needed no change. The finding
+      // itself had gone stale, which is what the plan's "verify it still
+      // reproduces" step is for. idleTimeoutMillis lower than Supavisor's own recycle
       // window so this pool proactively closes and reopens connections
       // instead of getting caught using one Supavisor already dropped.
       // connectionTimeoutMillis so a saturated pool fails fast with a

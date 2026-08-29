@@ -350,10 +350,23 @@ async def write_prop_odds(rows: list[PropOddsInput]) -> None:
       3. Unconditionally upsert prop_odds itself (the current-state table)
          via INSERT ... ON CONFLICT DO UPDATE on the same natural key.
 
-    Real writes to the exact tables the live TS app reads from — this is
-    the one function in this file that isn't a diagnostic/breadcrumb write,
-    which is exactly why it stays disconnected from any live fetch path
-    until that's a deliberate, separate decision.
+    Real writes to the exact tables the live TS app reads from.
+
+    This docstring used to end: "this is the one function in this file that
+    isn't a diagnostic/breadcrumb write, which is exactly why it stays
+    disconnected from any live fetch path until that's a deliberate,
+    separate decision." **That was false, and had been for a long time**
+    (finding P2 M6.1). It is called by job_runner.run_provider_specs on
+    every provider job, and had written 290,663 prop_odds rows by the time
+    the audit measured it. It is the primary write path in the system, not
+    a disconnected one.
+
+    The sentence was true when written and nobody revisited it once the job
+    runner started calling it — which is the whole reason rule 3 of
+    docs/audit-remediation-plan.md exists: no comment describing runtime
+    behaviour ships without the observation that proves it. Corrected in
+    task 2.8. As of 2026-08-29 the callers are every ProviderSpec-driven
+    job in jobs.py, via job_runner.
     """
     if not rows:
         return

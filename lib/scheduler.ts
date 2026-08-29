@@ -1,41 +1,51 @@
 /**
  * Proactive background refresh for `/api/mlb` and `/api/props/calibration` —
- * keeps each cache warm on a timer instead of relying on a real request to
- * be the one that triggers a rebuild. Combined with each route's own
- * stale-serve logic (serve cached, refresh in the background), a real
- * request almost never has to wait on anything.
+ * keeps each cache warm on a timer instead of relying on a real request to be
+ * the one that triggers a rebuild. Combined with each route's own stale-serve
+ * logic, a real request almost never has to wait on anything.
  *
- * Cutover (2026-08-20): the five odds-provider refresh jobs this file used
- * to own directly — Tier 1, SportsGameOdds, NFL, CFB, Soccer/EPL — are now
- * owned solely by the Python worker (`python-odds-service`, `JOB_REGISTRY`
- * in `jobs.py`), not run from here anymore. See
- * docs/phase2-hardening-gameplan-2026-08-20.md for the full hardening pass
- * that preceded this cutover. `refreshMlb` and `refreshCalibration` stay
- * here deliberately — MLB's snapshot rebuild isn't an odds-provider job, and
- * calibration is pure Postgres aggregation with no provider calls, out of
- * scope for the Python port from the start.
+ * WHAT THIS FILE STILL DOES, as of task 2.8 (2026-08-29), because the header
+ * that used to be here described a version of it that had not existed for
+ * some time (finding P2 M6.5):
  *
- * IMPORTANT: this edit must not reach production while the Python worker is
- * suspended — with both this file's old jobs gone and the worker down,
- * nothing refreshes prop odds at all. Confirm the worker is resumed and
- * healthy before deploying.
+ *   * `refreshMlb` rebuilds `snapshot_cache['mlb:snapshot']` every 4 minutes.
+ *     Since task 2.7 that rebuild is fetch-trim-cache only — every model and
+ *     grading write it used to perform belongs to a Python job now, and the
+ *     prop probabilities it renders are read from `mlb_prop_model_cache`
+ *     rather than computed here.
+ *   * `refreshCalibration` recomputes the calibration payload every 30
+ *     minutes. This is the one piece of model math still running in
+ *     TypeScript, and it is deliberate: standing decision Q18 defers the port
+ *     to Phase 4, which rewrites this logic anyway (tasks 4.2/4.3).
  *
- * This is *not* `instrumentation.ts` — that's Next's official run-once
+ * Both run under `withJobLock`, so N app instances produce one rebuild per
+ * interval rather than N. That matters before Phase 8 and not before: these
+ * are `setInterval` timers inside the Next.js server process, so the
+ * duplication is invisible on a single-instance laptop and automatic the
+ * moment there are two.
+ *
+ * The old header enumerated five odds-provider jobs this file no longer runs
+ * (they moved to the Python worker on 2026-08-20) and explained the file's
+ * existence in terms of `better-sqlite3` bundling — a dependency it had
+ * already stopped using, and which task 2.6 moved to devDependencies. The
+ * `instrumentation.ts` reasoning below survives that correction because it is
+ * still true and still the reason this file exists rather than that one.
+ *
+ * This is *not* `instrumentation.ts` — that is Next's official run-once
  * startup hook, and it looked like the natural home for this, but its
- * dev-mode bundling doesn't code-split a dynamic `import()` the way a
- * normal route does: `better-sqlite3` (a native module, needs `fs`) got
- * pulled into the same edge-compatible bundle instrumentation.ts is built
- * against and failed to resolve, taking every request down with a 500.
- * Confirmed by trying it — this file exists because that one didn't work.
+ * dev-mode bundling doesn't code-split a dynamic `import()` the way a normal
+ * route does: a native module needing `fs` got pulled into the same
+ * edge-compatible bundle instrumentation.ts is built against and failed to
+ * resolve, taking every request down with a 500. Confirmed by trying it —
+ * this file exists because that one didn't work.
  *
- * Instead, `ensureSchedulerStarted()` is called once from a module-level
- * side effect in a route file that's guaranteed to load early. In `next
- * start` (this app's real deployment — one persistent process, not
- * serverless), Next loads every route module before serving the first
- * request, so this genuinely starts at boot. In `next dev`, route modules
- * compile lazily on first hit, so it starts on whichever request happens to
- * load first instead — the ongoing warm-cache benefit is identical either
- * way; only the very-first-request timing differs between dev and prod.
+ * Instead, `ensureSchedulerStarted()` is called once from a module-level side
+ * effect in a route file guaranteed to load early. In `next start` (this
+ * app's real deployment — one persistent process, not serverless), Next loads
+ * every route module before serving the first request, so this genuinely
+ * starts at boot. In `next dev`, route modules compile lazily on first hit, so
+ * it starts on whichever request happens to load first instead; the ongoing
+ * warm-cache benefit is identical either way.
  */
 
 import { rebuildMlbSnapshot, TODAY_CACHE_KEY } from '@/lib/sports/mlb/snapshotRebuild';
