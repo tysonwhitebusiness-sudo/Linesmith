@@ -47,3 +47,12 @@ python-odds-service/catboost_info/
 python-odds-service/run-harvester.bat
 *.log.*
 before_delete_snapshot.json
+
+# Ad-hoc DB-query scratch scripts. This session committed q.mjs, qmlb.json,
+# qm2/qm7*.json and q2-q4.mjs by accident three separate times, because the
+# cleanup `rm` names specific files while each new query gets a new name.
+# Ignoring the pattern is the fix; a real script belongs in scripts/ with a name
+# that says what it does.
+q*.mjs
+q*.json
+runmig.mjs
