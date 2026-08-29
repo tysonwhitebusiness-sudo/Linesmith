@@ -1,4 +1,0 @@
-[
-["MLB 2024 landed","SELECT count(*) rows, count(DISTINCT athlete_id) players, count(DISTINCT event_id) games FROM player_game_history WHERE sport='mlb' AND season=2024"],
-["a two-way player row (both groups merged)","SELECT athlete_id, event_id, stats FROM player_game_history WHERE sport='mlb' AND season=2024 AND stats ? 'pit_inningsPitched' AND stats ? 'bat_atBats' LIMIT 1"]
-]
