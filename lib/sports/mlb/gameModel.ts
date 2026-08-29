@@ -402,7 +402,7 @@ function fittedTotalFeatureVector(
 
 /**
  * Applies the fitted total-market stacking regression in place of the flat
- * 0.5-weight market blend `runTotalLockCycle` otherwise falls back to — same
+ * 0.5-weight market blend the total lock cycle (now predict/odds_lines_cycle.py's run_total_lock_from_lines) otherwise falls back to — same
  * raw ingredients as the live Poisson formula (rawOverProb) plus form/park/
  * Elo/market/line-movement/bullpen signals, learned coefficients instead of
  * a guessed blend weight. `eloProb` and `marketProb` should be 0.5 (neutral)

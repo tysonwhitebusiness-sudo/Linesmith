@@ -1,6 +1,6 @@
 /**
  * Grades submitted `bets` rows against live/final box scores — the same
- * read-time-reconciliation idea as `grading.ts`'s `gradeFinishedGames`
+ * read-time-reconciliation idea as MLB prop grading (now predict/mlb_prop_grading.py's grade_finished_games)
  * (called there on a schedule; called here from the Live Bets route on
  * every load, since a single-user app has no background job runner). Kept
  * as its own module rather than folded into `grading.ts`: `pick_history`

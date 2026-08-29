@@ -122,7 +122,7 @@ export async function backfillGameModel(season: number): Promise<GameBackfillSum
  * rows for seasons that were actually ingested. A game with no matching
  * historical_odds row, or an exact push (total === line), is skipped — there
  * is no real over/under decision to grade. One row per game (not one per
- * side, unlike moneyline) — matches logGameTotalPredictions's live-path
+ * side, unlike moneyline) — matches db.log_game_total_predictions's live-path (Python; the TS logGameTotalPredictions was deleted in 2.7b)
  * convention exactly (category always 'over', subject `game-<gamePk>`) so
  * backfilled and live-graded rows read identically in calibration.
  */

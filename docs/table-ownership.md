@@ -14,8 +14,19 @@
 > both trees for that function's call sites. The gate re-derives this the same
 > way and diffs against it; if they disagree, this file is wrong.
 >
-> **Last derived:** 2026-08-28 at Phase 2 kickoff (`464fda6`); amended 2026-08-29
-for `watch_links` (dropped, Q17) and `job_locks` (added, 2.7c).
+> **Last derived:** 2026-08-29, **after** tasks 2.2–2.7b landed, by re-running the
+derivation described above. The `Writers today — TypeScript` column below is
+therefore the state *at Phase 2 kickoff*, kept deliberately so the column
+opposite it shows what each task actually removed; the **Owner** column is the
+decided, current answer. The gate re-derives from scratch and diffs.
+
+**Re-derivation on 2026-08-29 found six TypeScript modules that had become
+unreachable** once their last callers were deleted — `pickHistoryLog.ts`,
+`props/grading.ts`, `gameOddsLog.ts`, `core/gamePickLock.ts`,
+`golf/historyIngest.ts` and `golf/models/grading.ts`. All six are deleted. Rule
+2 is "the TypeScript is deleted, not disabled", and a one-hop importer check
+would have missed every one of them: each still *appeared* used, because the
+comments explaining the removal name the functions they replaced.
 
 ## How to read the Owner column
 
