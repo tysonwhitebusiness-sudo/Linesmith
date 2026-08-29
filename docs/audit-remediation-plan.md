@@ -3595,6 +3595,210 @@ not an ingestion one.
 **4.7 · NBA — RUNNING.** `python src/backfill_player_game_history.py nba`,
 11 seasons (2016–2026). Progressing cleanly: 0 failed through season 2017,
 ~160 games/min, ~7 min per season. Resumable — the database is the only
+
+**4.7 · Backfill `player_game_history` — COMPLETE, all four sports.** *(P3 L3)*
+
+`VERIFY` / exit criterion: *"`player_game_history` non-zero for MLB, NBA, golf,
+tennis."* Three met; golf deliberately not, see below.
+
+```
+sport         rows      athletes   events    seasons
+mlb        727,613        4,003     24,790   2016-2026   <- now the LARGEST
+nhl        674,003        2,972     17,672   2010-2024       sport in the table
+nba        279,661        1,567     13,128   2016-2026
+cfb        273,649       33,868      6,112   2018-2025
+nfl        226,629        6,740      3,663   2012-2025
+soccer_epl 168,493        2,781      5,989   2010-2026
+tennis_wta 142,152        9,683     71,076   2016-2026
+soccer_mls 133,892        2,543      4,577   2015-2026
+tennis_atp 129,812        8,163     64,906   2016-2026
+golf             0  — deliberately, see the decision entry above
+```
+
+All four target sports held **zero** rows at the start of the phase.
+
+**NBA** — ran the existing parser, which had never been invoked. 77.9 min,
+13,128 games, 0 empty, 0 failed. Season counts sanity-check against reality:
+1,231-1,235 for full seasons and **973 (2020) / 1,066 (2021)**, the two
+COVID-shortened seasons.
+
+**MLB** — 11 requests, 4.7 minutes, 24,790 games. Its own branch, not another
+`SPORT_CONFIGS` row: the ESPN sports fetch one boxscore per game (~1,230
+requests a season), while StatsAPI returns a whole player-season of game logs
+per batched call (~1 request a season). Reuses
+`predict/statsapi.get_people_with_game_logs` unchanged, as `CURRENT.md` §2b
+specified. Game counts land at 2,428-2,431 against MLB's real 2,430, and 2020
+returns 898 — the 60-game season.
+
+**P3 L3's survivorship bias — fixed and QUANTIFIED.** `get_active_roster`
+requests `rosterType=active`, i.e. who is on a roster *now*, which is exactly
+the bias. Used `/v1/sports/1/players?season=YYYY` instead, which is
+season-scoped. The proof it matters:
+
+```
+MLB players present in 2016 but NOT in 2026:  1,221 of 1,353
+```
+
+A current-roster walk would have silently dropped 90% of the 2016 population.
+
+**Stat-name collision, handled rather than discovered later.** MLB reports
+`strikeOuts` for a batter (times struck out) and for a pitcher (strikeouts
+recorded); `runs`, `homeRuns`, `hits` and `baseOnBalls` are similarly
+overloaded. The table is `UNIQUE(sport, athlete_id, event_id)`, so a two-way
+player has ONE row per game and both groups must coexist in it. Keys are
+prefixed `bat_` / `pit_`. Verified on a real row: `bat_strikeOuts: 0` beside
+`pit_strikeOuts: 2`.
+
+**TENNIS — the genuine new source.** 134,292 matches, 264 requests, 3.2 min.
+Swept a MONTH at a time because ESPN's tennis scoreboard returns whole
+tournament draws (one January request: 6 tournaments, 1,101 matches), so a
+daily sweep would re-download each tournament for every day it ran.
+
+*What ESPN does not give, checked before building:* there are **no per-match
+tennis statistics**. Every competitor's `statistics` array is empty and the
+`summary?event=` endpoint that carries a boxscore for team sports returns HTTP
+400 for tennis. What IS there is the score — per-set linescores with tiebreaks,
+winner flag, athlete ids, round — yielding games won/lost, sets won/lost,
+tiebreaks, result, and major/qualifying flags.
+
+**Consequence, recorded so nobody later wonders why ace models have no training
+data:** `games-won` and `to-win-a-set`, two of the three tennis markets this app
+prices, are derivable from this. **`aces`, the third, is not, and no further
+work on this source will produce it.** It needs a different feed.
+
+Integrity is exact — 64,906 ATP matches x 2 = 129,812 rows; 71,076 WTA x 2 =
+142,152. A check for any match without exactly 2 players and exactly 1 winner
+returned empty.
+
+**A LATENT BUG THIS EXPOSED** in `db.write_player_game_history`: its chunking
+used `60000 // 9` = 6,666 rows = ~60,000 bind parameters, commented as "well
+under Postgres's 65535 ceiling". The real ceiling is **32,767** — the wire
+protocol encodes parameter count as a *signed* 16-bit integer. It never fired
+because every caller until now wrote ONE GAME at a time (~10-60 rows); the
+first genuinely large batch hit it immediately. Corrected to 3,000 rows.
+
+**4.4 · Shadow mode as a property of the model.** *(Q6, Q33)*
+
+The plan assumed `model_weights.shadow` existed. It did not — so 4.4 is a
+migration, not a flag flip. Defaults **TRUE** (Q33) across all 21 rows, so it
+made nothing newly visible; it encodes the state Phase 1.3 already put the UI
+in. `active` and `shadow` are independent: Q24's deactivation acts on `active`,
+Q6's hiding acts on `shadow`.
+
+New `getRenderableModelWeights()` states the rule once; `adapter.ts`'s home-run
+override uses it, so a shadowed model falls back to the Beta-Binomial baseline
+exactly as when no fit exists. `getActiveModelWeights` is unchanged, because
+fitting/grading/diagnostics must still see shadowed models.
+
+**A REAL BUG THE ROUND-TRIP CAUGHT, and why both directions are mandatory.**
+`camelizeModelWeightsRow` is an explicit whitelist, so a new column is invisible
+until named in it. `shadow` was silently dropped, making the
+undefined-means-hidden default fire on every read and pinning the model to
+hidden in BOTH directions. **A test asserting only "shadow=true hides it" would
+have passed perfectly against a permanently invisible model.** Only direction 2
+exposed it.
+
+```
+shadow=true  -> getRenderableModelWeights null; getActiveModelWeights still
+                returns it (compute/log/grade continue)      PASS
+shadow=false -> renderer sees it, same version v5             PASS
+shadow=true  -> hidden again                                  PASS
+restored: shadow=true (was true)
+```
+`scripts/gate/phase-4-shadow-roundtrip.mjs`. Restores in a `finally`, so a
+failed assertion cannot strand a production model visible.
+
+**4.2 · Market baseline as the activation gate.** *(P3 H3, Q6, Q24)*
+
+Replaced `activated = holdout_brier < baseline_holdout_brier` — "is this fit
+better than our own previous guess?" — with two guardrails: beat the unfitted
+baseline AND do not lose to the market, using Q28's captured two-sided price.
+
+Counterfactual, measured on a model at Brier 0.280 against a market at 0.240:
+
+```
+old gate: beats its own unfitted baseline (0.3625)  -> ACTIVATES
+new gate: loses to the market                        -> REFUSED
+```
+
+**Minimum sample, and why it is not optional.** The live gate sample is n=12
+(MLB moneyline), n=12 (MLB total), n=13 (NFL moneyline). Q24 *deactivates* a
+model that loses to the market, so a false loss verdict on a thin sample would
+take down a live model on noise. Below `MARKET_GATE_MIN_N = 100` the gate
+returns `insufficient_sample`, which blocks nothing and passes nothing, and
+reports **no Brier at all** rather than a meaningless one. Against live data:
+
+```
+mlb/moneyline: INSUFFICIENT SAMPLE (n=12, need 100) - not evidence either way
+```
+
+So the machinery is real and tested and will start discriminating as Q28's
+reference accumulates. **The n is stated prominently rather than buried** —
+Q26's discipline applied to 4.2.
+
+**4.9 · Split the two definitions of `edge`.** *(P3 H8)*
+
+Located precisely in the code as it stands: `db.write_pick_history_grades`
+(grading time) writes `model_prob - devig(one book)` — a DISAGREEMENT;
+`resolve_candidate_edge` (surface time) writes `sharp_devigged - raw_implied` —
+EXPECTED VALUE. One threshold was applied to both.
+
+```
+pick_history rows      368,657
+edge populated           3,852
+edge_source populated        0   <- the entire redesign, unrecorded
+price populated              2
+```
+
+That zero is also the evidence for the backfill: `edge_source` is set only by
+the surface-time writer, so every populated `edge` must be from the grading-time
+join. 3,852 rows attributed to `model_vs_market` on that basis.
+
+Each definition now has its own column and its own bar —
+`GOOD_BET_MIN_EDGE_MODEL_VS_MARKET = 0.03` (unchanged, so existing readers do
+not shift) and `GOOD_BET_MIN_EDGE_SHARP_VS_SOFT = 0.02`, explicitly a
+**placeholder** since there is no sharp-vs-soft history to fit it against yet.
+`edge` is kept and documented as legacy: repointing it would change what live
+readers mean without them knowing.
+
+**Honest state:** `edge_sharp_vs_soft` is populated on **0** rows, because
+`resolve_candidate_edge` almost never resolves for 4.1's measured reasons. So
+4.9's exit criterion is met for the grading path and will only be met for the
+surface path once 4.1's supply problem eases.
+
+**4.12 · Model-math hygiene — 2 of 8 items.** *(P3 L1, P3 L5)*
+
+**P3 L1 — an integer total line was scored as a LOSS.** On a total of exactly
+9, X = 9 is a PUSH. Conditioning on not-a-push is the standard treatment and is
+what a price on an integer line represents.
+
+```
+lambda 9, line 9:   OLD over 0.4126
+                    NEW over 0.4752, push 0.1318
+```
+The over was understated by 6.3 points, with 13.2% of the distribution scored as
+a loss when it is a refund. Half-integer lines — the overwhelming majority of
+MLB totals — are **provably unchanged**, asserted against the pre-fix
+implementation at four (lambda, line) pairs. Fixed in both languages and
+verified to agree to four decimals.
+
+**P3 L5 — the Elo sort was not a total order.** It replicated TS's
+`(a,b) => a.gameDate < b.gameDate ? -1 : 1` deliberately. That argument had it
+backwards: a comparator that never returns 0 for equal keys makes the result
+depend on the ARRIVAL ORDER of same-day games, so two runs over identical data
+can produce different ratings. Measured over five shuffles of the same four
+games:
+
+```
+NEW sort:       [9,1,2,3] every time          (deterministic)
+OLD comparator: [9,3,2,1] / [9,1,2,3] / ...   (three distinct orderings)
+```
+
+`src/test_model_hygiene.py` keeps the pre-fix implementation inline so both
+counterfactuals are measured, and asserts the old comparator really was
+non-deterministic — so if that ever stops being true the test stops claiming to
+be evidence.
+
 progress state, so killing and restarting never re-pays for completed work.
 
 

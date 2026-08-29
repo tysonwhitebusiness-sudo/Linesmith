@@ -22,15 +22,16 @@ commit and push.
    entries. Phase 4 is logged task-by-task and its gate has not run.
 3. **`docs/table-ownership.md`** · 4. **`CLAUDE.md`** · 5. `docs/audit-phase-*.md`
 
-**Last updated:** 2026-08-29 ~08:45Z, mid-Phase-4.
-**Repo state:** clean, pushed. Worker live on `fccd9f0`.
+**Last updated:** 2026-08-29 ~12:40Z, mid-Phase-4.
+**Repo state:** clean, pushed. Worker live on `614b394`.
 
 ---
 
 ## 1. Where we are
 
 **Phases 0, 1, 2, 3, 5 COMPLETE — all gates PASSED.**
-**Phase 4 IN PROGRESS.** 3 of 13 tasks done, one long job running.
+**Phase 4 IN PROGRESS.** 9 of 13 tasks done (4.7 complete across all four
+sports), nothing running.
 
 Phase 5 finished this session: all 13 tasks, gate G1–G8 passed on the re-run
 after G1 failed once (see §11 — the failure and its diagnosis are the most
@@ -40,67 +41,59 @@ useful thing in that entry).
 
 | Task | State |
 |---|---|
-| **Q28** market reference for `game_picks` | **DONE** — prerequisite for 4.2/4.3/4.5 |
-| **4.1** `market_prob` coverage | **DONE** — real causes measured, staleness split fixed |
+| **Q28** market reference for `game_picks` | **DONE** — unblocked 4.2/4.3/4.5 |
+| **4.1** `market_prob` coverage | **DONE** — real causes measured, staleness split |
+| **4.2** market activation gate | **DONE** — built + tested; live sample n=12, see §4 |
+| **4.4** shadow flag | **DONE** — migration + renderer + round-trip proof |
+| **4.7 NBA** | **DONE** — 279,661 rows |
+| **4.7 MLB** | **DONE** — 727,613 rows; survivorship fix quantified |
+| **4.7 tennis** | **DONE** — 271,964 rows (atp + wta) |
 | **4.7 golf** | **DONE — decided NOT to build.** Reasoning in §11 |
-| **4.7 NBA** | **RUNNING NOW** — see §2 |
-| 4.7 MLB | not started — the highest-value half |
-| 4.7 tennis | not started — the genuine new source |
-| 4.2 activation gate | not started (Q28 unblocked it) |
+| **4.9** split `edge` definitions | **DONE** — 3,852 rows attributed |
+| **4.12** model hygiene | **2 of 8** — P3 L1 (Poisson push), P3 L5 (total order) |
 | 4.3 Platt calibration | not started |
-| 4.4 shadow flag | not started — `model_weights` has no `shadow` column |
-| 4.5 CLV | not started |
+| 4.5 CLV on /diagnostics | not started |
 | 4.6 fade signal | not started |
 | 4.8 collapse two MLB game models | not started |
-| 4.9 split `edge` definitions | not started |
 | 4.10 both sides for generic sports | not started |
 | 4.11 totals distribution | not started |
-| 4.12 model hygiene (8 items) | not started |
+| 4.12 remaining 6 items | not started |
 
-## 2. RUNNING RIGHT NOW — do not kill blindly
+## 2. NOTHING IS RUNNING
 
-**NBA `player_game_history` backfill.**
+All three backfills finished cleanly this session. `player_game_history` now:
 
 ```
-cd python-odds-service
-python -u src/backfill_player_game_history.py nba    # already running
-tail -f python-odds-service/nba_backfill.log
+mlb 727,613 · nhl 674,003 · nba 279,661 · cfb 273,649 · nfl 226,629
+soccer_epl 168,493 · tennis_wta 142,152 · soccer_mls 133,892 · tennis_atp 129,812
+golf 0 (deliberate)
 ```
-
-Progress at last check: season 2017, 900/1231 games, **45,603 NBA rows written
-(was 0)**, 0 failed, ~160 games/min, ~7 min per season, 11 seasons total
-(2016–2026). Expect ~60 more minutes.
-
-**It is safe to kill and restart.** Resumability is by design: before fetching a
-game it checks `player_game_history` for that `(sport, event_id)` and skips the
-network call entirely. The database is the only progress state, so restarting
-never re-pays for completed work.
-
-**Verify when it finishes:**
-
-```sql
-SELECT sport, count(*), min(season), max(season)
-  FROM player_game_history GROUP BY sport ORDER BY 2 DESC;
-```
-
-NBA should reach roughly 500k–600k rows across 11 seasons.
 
 ## 3. Next actions, in order
 
-1. **Confirm the NBA backfill finished clean** (§2), then log it in §11.
-2. **4.7 MLB** — the highest-value half, and 4.7's own note says MLB is where
-   all the graded history lives. `predict/statsapi.py:383`'s
-   `get_people_with_game_logs(ids, group, season)` already returns per-game
-   logs, and its `GameLogSplit` maps almost 1:1 onto `PlayerGameHistoryInput`.
-   Walk **historical** rosters per season (P3 L3) or it inherits the exact
-   survivorship bias 4.7 exists to fix. Wants its own `discover`/`parser`
-   branch, not another `SPORT_CONFIGS` row.
-3. **4.7 tennis** — no per-match player-history module exists in Python at all.
-   Largest of the four.
-4. **4.2**, now unblocked by Q28 — but read §4 first, the sample is small.
-5. The rest of Phase 4, then its gate.
+**Task 4.7 is fully done — that was the operator's headline ask.** Remaining
+Phase 4 work, in rough value order:
 
-## 4. What Phase 4 has actually learned so far — read before 4.2
+1. **4.12's other six items** — bounded, each needs its own one-line evidence
+   per the gate ("eight items, eight lines"). Two done. Remaining: P3 M4
+   (`blendWithStarterEra` 50/50), P3 M5 (home-field added to a probability not
+   log-odds), P3 M6 (`compute_league_rate` returns 0.5 on no match), P3 M7
+   (golf model vs its own prior), P3 M2 (Prop Score scale), P3 L2
+   (`deltaFromLine` doc/code disagree).
+2. **4.10** both sides for generic sports — but see §4, it is only verifiable
+   live on soccer right now.
+3. **4.5** CLV — Q28 stored both `initial` and `final` market references
+   precisely so this is a difference of two captures.
+4. **4.8** collapse the two MLB game models (Q25: snapshot before re-grading).
+5. **4.11** negative binomial for totals.
+6. **4.3** Platt calibration — gated by the same thin sample as 4.2 (Q32:
+   min n=200 per sport+market).
+7. **4.6** fade signal — 4.6 itself says not to build on it until 4.1 gives a
+   sample, and 4.1 says that sample is supply-limited. Likely a "record, do not
+   build" outcome like golf.
+8. Then the **Phase 4 gate** (G1-G8 plus its own section).
+
+## 4. What Phase 4 has learned — read before 4.3 or 4.6
 
 **The plan's Phase 4 text is stale in two places, both measured:**
 
