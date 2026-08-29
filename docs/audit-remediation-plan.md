@@ -164,6 +164,35 @@ them, and so nothing destructive happens on my judgement alone.
 | Q25 | Keep the **validated** MLB game model, delete the other, **re-grade** affected history — **after** snapshotting the pre-regrade rows. Re-grading rewrites the recorded track record, so it stays reversible. | 4.8 |
 | Q26 | If `market_prob` coverage cannot reach 50%, **proceed at the real number and state it prominently** rather than stalling. The 50% target was set before anyone had measured the two causes. | 4.1 |
 
+**Q27 — every elapsed-time requirement is removed from Phases 4 and 5**
+(operator decision, 2026-08-29). The plan asked for waits it had no mechanism
+to enforce, and they would stall an unattended run. In each case the ACTION
+happens now and only the MEASUREMENT defers to a single verification pass
+after Phase 9:
+
+| Where | Was | Now |
+|---|---|---|
+| 5.2 | "Run one week", then re-measure sharp coverage | Cap `propline_2` and reconfigure market selection now; measure post-Phase-9 |
+| 5.13 | Drop unused indexes "after 30 days of the new workload" | Leave the indexes; revisit post-Phase-9 with a date |
+| 4.8 | VERIFY wants "24 h of writes" | Verify by grep plus one observed write cycle |
+| 4.1 | VERIFY on a rolling 7-day window | Measure rows written **since the fix** — a 7-day window dilutes a same-day change with six days of pre-fix rows, so this is more honest, not merely faster |
+
+**A BLOCKER FOUND WHILE PRE-SCOPING 4.7, which the task text does not
+mention.** `backfill_player_game_history.py` has exactly four parsers —
+`parse_nba`, `parse_football`, `parse_soccer`, `parse_nhl` — and configured
+sports for nfl, cfb, soccer_mls, soccer_epl, nba, nhl.
+
+4.7 asks for MLB, NBA, golf and tennis. Of those:
+- **NBA is reachable now.** The parser and config exist; it just has not been
+  run. This is "run it", not "build it".
+- **MLB, golf and tennis have no parser and no config.** MLB in particular
+  cannot use the ESPN path the others use — it has its own StatsAPI/Statcast
+  pipeline — so this is a new ingestion path, not a parameter.
+
+So 4.7 is really two tasks of very different size, and the MLB half is the one
+that matters most (MLB is where all the graded history lives). Sized honestly
+before starting rather than discovered mid-phase.
+
 **Two decisions I took myself and am flagging rather than burying**, both in
 5.13:
 
