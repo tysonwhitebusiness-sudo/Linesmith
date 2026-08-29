@@ -33,7 +33,7 @@ import httpx
 
 import db
 from predict import elo_model, statsapi
-from predict.game_model import TeamRecordSplit, log5, poisson_over_probability, pythagorean_win_pct, split_edge
+from predict.game_model import TeamRecordSplit, log5, neg_binom_over_probability, pythagorean_win_pct, split_edge
 from predict.logistic_regression import brier_score, fit_logistic_regression, predict_prob
 from predict.sim_game import simulate_team_matchup
 from predict.sim_rates import compute_league_outcome_rates, compute_team_batting_vector, compute_team_pitching_vector
@@ -302,7 +302,9 @@ async def _build_training_set_uncached(client: httpx.AsyncClient, seasons: list[
                 if odds is not None and odds.total_line is not None and actual_total != odds.total_line:
                     total_line_coverage.found += 1
                     expected_total_raw = (h_rs + a_rs) * pf
-                    raw_poisson_over_prob = poisson_over_probability(expected_total_raw, odds.total_line)
+                    # Task 4.11 — same distribution the production model uses, or the fit
+                    # would be trained on a feature that no longer exists at serve time.
+                    raw_poisson_over_prob = neg_binom_over_probability(expected_total_raw, odds.total_line)
                     total_market_prob_centered = 0.0
                     if odds.total_over_consensus_prob is not None:
                         total_market_prob_centered = odds.total_over_consensus_prob - 0.5

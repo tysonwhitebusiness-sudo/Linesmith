@@ -12,6 +12,9 @@ Covered so far:
   P3 M5  home-field/form were ADDED to a probability instead of log-odds
   P3 M6  compute_league_rate returned a fabricated 0.5 on no sample
 
+Also covers task 4.11 (P3 C2), which is not a 4.12 item but shares this file's
+"measured against reality, not asserted" shape.
+
 Pure functions, no network, no database, so this runs in CI (Q20).
 
 Run with:  python -u src/test_model_hygiene.py
@@ -31,6 +34,9 @@ from predict.game_model import (  # noqa: E402
     _from_log_odds,
     _poisson_pmf,
     _to_log_odds,
+    _neg_binom_pmf,
+    _TOTALS_DISPERSION_R,
+    neg_binom_over_probability,
     poisson_over_probability,
     poisson_push_probability,
 )
@@ -340,6 +346,78 @@ def test_a_golfer_with_no_own_history_is_unaffected():
     check("identical with an empty own list", a == b, True)
 
 
+
+# ---------------------------------------------------------------------------
+# 4.11 (P3 C2) — MLB totals are over-dispersed; Poisson is the wrong shape.
+# ---------------------------------------------------------------------------
+
+# Measured over 24,790 real MLB games — every game in player_game_history,
+# summing bat_runs per event. These are facts about baseball, not fixtures.
+MLB_MEAN_TOTAL = 9.0391
+MLB_VAR_TOTAL = 20.5732
+# Empirical P(total > line), same 24,790 games.
+MLB_EMPIRICAL_OVER = {7.5: 0.5828, 8.5: 0.5038, 9.5: 0.4006, 11.5: 0.2600, 13.5: 0.1565}
+
+
+def test_the_distribution_reproduces_the_measured_moments():
+    """r is derived from the data (var = mu + mu^2/r), not tuned, so the
+    distribution must reproduce the mean AND variance it was derived from."""
+    print("\n4.11: the negative binomial matches MLB's real moments")
+    ks = range(0, 150)
+    total = sum(_neg_binom_pmf(MLB_MEAN_TOTAL, k) for k in ks)
+    mean = sum(k * _neg_binom_pmf(MLB_MEAN_TOTAL, k) for k in ks)
+    var = sum((k - mean) ** 2 * _neg_binom_pmf(MLB_MEAN_TOTAL, k) for k in ks)
+    close("pmf is a distribution (sums to 1)", total, 1.0, eps=1e-6)
+    close("mean is preserved", mean, MLB_MEAN_TOTAL, eps=1e-4)
+    close("variance matches the measured 20.5732", var, MLB_VAR_TOTAL, eps=0.05)
+    close("var/mean is the measured 2.276, not Poisson's 1.0",
+          var / mean, MLB_VAR_TOTAL / MLB_MEAN_TOTAL, eps=0.01)
+
+
+def test_it_beats_poisson_against_reality_at_every_line():
+    """The re-validation 4.11 asks for. Both distributions are scored against
+    the EMPIRICAL over-rate from the same 24,790 games."""
+    print("\n4.11: scored against 24,790 real games, at five real lines")
+    nb_worst = po_worst = 0.0
+    for line, empirical in MLB_EMPIRICAL_OVER.items():
+        nb = neg_binom_over_probability(MLB_MEAN_TOTAL, line)
+        po = poisson_over_probability(MLB_MEAN_TOTAL, line)
+        nb_err, po_err = abs(nb - empirical), abs(po - empirical)
+        nb_worst, po_worst = max(nb_worst, nb_err), max(po_worst, po_err)
+        check(f"line {line}: negbinom closer to reality than poisson", nb_err < po_err, True)
+        print(f"       line {line:>5}  empirical {empirical:.4f} | negbinom {nb:.4f} (err {nb_err:.4f})"
+              f" | poisson {po:.4f} (err {po_err:.4f})")
+    check("negbinom's worst error is under 1 point", nb_worst < 0.01, True)
+    check("poisson's worst error is over 5 points", po_worst > 0.05, True)
+
+
+def test_poisson_underestimates_the_tail_specifically():
+    """The failure has a direction: Poisson puts far too little mass on the
+    blowouts and duels a totals bet is actually decided by."""
+    print("\n4.11: the Poisson error is concentrated in the tail")
+    nb = neg_binom_over_probability(MLB_MEAN_TOTAL, 13.5)
+    po = poisson_over_probability(MLB_MEAN_TOTAL, 13.5)
+    check("poisson understates a high total", po < nb, True)
+    check("and by more than a factor of two", nb / po > 2.0, True)
+    print(f"       over 13.5: poisson {po:.4f} vs negbinom {nb:.4f} vs empirical 0.1565")
+
+
+def test_push_handling_survived_the_swap():
+    """4.12's P3 L1 fix must not be lost in 4.11's replacement — an integer
+    line still pushes."""
+    print("\n4.11: integer lines still push (P3 L1 preserved)")
+    over_int = neg_binom_over_probability(9.0, 9.0)
+    over_half = neg_binom_over_probability(9.0, 8.5)
+    check("an integer line returns a valid probability", 0 < over_int < 1, True)
+    # Conditioning on not-a-push must RAISE the over versus treating it as a
+    # loss, exactly as it does for Poisson.
+    k = 9
+    cdf = sum(_neg_binom_pmf(9.0, i) for i in range(k + 1))
+    unconditioned = min(0.99, max(0.01, 1 - cdf))
+    check("the push is conditioned out, not scored as a loss", over_int > unconditioned, True)
+    check("a half-integer line is unaffected by push logic", 0 < over_half < 1, True)
+
+
 def main() -> bool:
     test_integer_line_is_a_push_not_a_loss()
     test_half_integer_lines_are_untouched()
@@ -357,6 +435,10 @@ def main() -> bool:
     test_subject_is_not_double_counted()
     test_live_model_matches_the_deduped_math()
     test_a_golfer_with_no_own_history_is_unaffected()
+    test_the_distribution_reproduces_the_measured_moments()
+    test_it_beats_poisson_against_reality_at_every_line()
+    test_poisson_underestimates_the_tail_specifically()
+    test_push_handling_survived_the_swap()
     print(f"\n{'ALL PASS' if _failures == 0 else f'{_failures} FAILURE(S)'}")
     return _failures == 0
 

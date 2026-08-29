@@ -389,6 +389,68 @@ def _poisson_pmf(lam: float, k: int) -> float:
     return pmf
 
 
+# Task 4.11 (P3 C2) — MLB run totals are OVER-DISPERSED; Poisson is wrong.
+#
+# A Poisson distribution forces variance == mean. Measured over 24,790 real MLB
+# games (every game in player_game_history, summing bat_runs per event):
+#
+#     mean total runs      9.0391
+#     variance            20.5732
+#     variance / mean      2.2760      <- Poisson requires exactly 1.0
+#
+# So the real spread of game totals is 2.3x what Poisson assumes. That makes a
+# Poisson model systematically overconfident on totals: it puts far too little
+# probability on blowouts and on 2-1 pitchers' duels, which are exactly the
+# games a totals bet is decided by.
+#
+# The negative binomial is the standard fix — a Poisson whose rate is itself
+# Gamma-distributed, which is a fair description of "run scoring varies by
+# matchup, park and weather". It has variance mu + mu^2/r, so r follows
+# directly from the measurement above rather than being tuned:
+#
+#     20.5732 = 9.0391 + 9.0391^2 / r   ->   r = 81.705 / 11.5341 = 7.08
+#
+# r is a property of the sport, not of a game, so it is a constant here. If the
+# run environment shifts materially (a ball change, a rule change), re-measure
+# it with the query in this comment rather than adjusting it by feel.
+_TOTALS_DISPERSION_R = 7.08
+
+
+def _neg_binom_pmf(mu: float, k: int, r: float = _TOTALS_DISPERSION_R) -> float:
+    """P(X = k) for X ~ NegBinom with mean `mu` and dispersion `r`.
+
+    Computed in log space via lgamma: the direct form overflows on the
+    binomial coefficient for the k values a 20-run game reaches.
+    """
+    if mu <= 0:
+        return 1.0 if k == 0 else 0.0
+    p = r / (r + mu)
+    log_pmf = (
+        math.lgamma(k + r) - math.lgamma(r) - math.lgamma(k + 1)
+        + r * math.log(p) + k * math.log(1 - p)
+    )
+    return math.exp(log_pmf)
+
+
+def neg_binom_over_probability(mu: float, threshold: float, r: float = _TOTALS_DISPERSION_R) -> float:
+    """P(over) for an over-dispersed total (task 4.11, P3 C2).
+
+    Push handling is identical to poisson_over_probability's — see task 4.12
+    (P3 L1). An integer line can push, and conditioning on not-a-push is what
+    a price on that line represents.
+    """
+    k = math.floor(threshold)
+    cdf = 0.0
+    for i in range(0, k + 1):
+        cdf += _neg_binom_pmf(mu, i, r)
+    over = 1 - cdf
+    if float(threshold).is_integer():
+        push = _neg_binom_pmf(mu, k, r)
+        if push < 1.0:
+            over = over / (1 - push)
+    return min(0.99, max(0.01, over))
+
+
 def poisson_over_probability(lam: float, threshold: float) -> float:
     """P(over) for X ~ Poisson(lambda), with a PUSH handled as a push.
 
@@ -449,7 +511,11 @@ def compute_total_model(input: TotalModelInput) -> TotalModelResult:
     expected_total = input.home_expected_runs + input.away_expected_runs
     return TotalModelResult(
         expected_total=expected_total,
-        over_prob=poisson_over_probability(expected_total, input.line),
+        # Task 4.11 (P3 C2) — negative binomial, not Poisson. MLB run totals
+        # have variance/mean = 2.28 measured over 24,790 games; Poisson forces
+        # that ratio to 1 and is therefore systematically overconfident on
+        # exactly the blowouts and duels a totals bet turns on.
+        over_prob=neg_binom_over_probability(expected_total, input.line),
     )
 
 
