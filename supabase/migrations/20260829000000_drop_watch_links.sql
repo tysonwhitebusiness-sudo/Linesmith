@@ -1,0 +1,23 @@
+-- Task 2.1 follow-up, operator decision Q17 (2026-08-29).
+--
+-- `watch_links` (id, label, url, created_at) existed in the live database
+-- with:
+--   * no writer in either tree — verified by parsing every INSERT/UPDATE/
+--     DELETE in lib/db/client.ts and python-odds-service/src/db.py, the only
+--     two files in this project that issue raw writes;
+--   * no reader anywhere;
+--   * no CREATE TABLE in supabase/migrations — it was made by hand;
+--   * 0 rows.
+--
+-- It is also absent from the audit's own shared-table map (docs/audit-phase-3.md
+-- §4 accounts for 34 tables: 22 shared + 6 Python-only + 6 TS-only), which is
+-- how it went unnoticed — the audit was working from that map rather than from
+-- information_schema. Found while deriving docs/table-ownership.md, which
+-- enumerates all 35.
+--
+-- Dropped so the schema describes what the code actually uses. That is the
+-- whole point of Phase 2: the repository should not describe a system that
+-- does not exist, and the database should not contain one either.
+--
+-- Trivially reversible if a use turns up — it is four columns and no data.
+DROP TABLE IF EXISTS watch_links;

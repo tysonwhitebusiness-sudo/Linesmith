@@ -14,7 +14,8 @@
 > both trees for that function's call sites. The gate re-derives this the same
 > way and diffs against it; if they disagree, this file is wrong.
 >
-> **Last derived:** 2026-08-28, at Phase 2 kickoff, against `464fda6`.
+> **Last derived:** 2026-08-28 at Phase 2 kickoff (`464fda6`); amended 2026-08-29
+for `watch_links` (dropped, Q17) and `job_locks` (added, 2.7c).
 
 ## How to read the Owner column
 
@@ -66,18 +67,26 @@
 | 32 | `model_artifacts` | **Python** | — | `write_model_artifact` | — |
 | 33 | `walkforward_results` | **Python** | — | `write_walkforward_result` | — |
 | 34 | `job_health_checks` | **Python** | — | `_write_health_check_results_inner` | — |
-| 35 | `watch_links` | **nobody** | — | — | see note |
+| 35 | `job_locks` | **TS** | `withJobLock` ← `lib/scheduler.ts`'s two timers | — | 2.7c |
 
 ---
 
 ## Notes
 
-**`watch_links` has no writer in either tree.** It exists in the live database
-and nothing in this repository writes it. It is also absent from P3 §4's map,
-which accounts for 34 tables (22 shared + 6 + 6), not 35 — so it was missed by
-the audit too. Either it is a leftover from a deleted feature or it is written
-by something outside this repo. **Do not drop it** on the strength of this
-observation alone; confirm what it is first. Flagged, not resolved.
+**`watch_links` was dropped** (migration `20260829000000`, operator decision
+Q17). It had no writer or reader in either tree, no `CREATE TABLE` in
+`supabase/migrations` — it had been made by hand — and 0 rows. It was also
+absent from P3 §4's map, which accounts for 34 tables (22 shared + 6 + 6), not
+35; the audit was working from that map rather than from `information_schema`,
+which is how it went unnoticed. The table count stays at 35 because `job_locks`
+(2.7c) took its place.
+
+**`job_locks` is TypeScript-owned and that is correct.** It is written only by
+`withJobLock`, and the only callers are `lib/scheduler.ts`'s two timers, which
+are TypeScript. It holds no model data — it is coordination state for the
+process doing the work. If a Python job ever needs the same mutual exclusion,
+it should write this same table rather than inventing a second mechanism; the
+lease semantics are in the migration.
 
 **`team_elo_history` / `pitcher_game_score_history` are already effectively
 Python-owned.** The TypeScript writers survive but are barely reachable:

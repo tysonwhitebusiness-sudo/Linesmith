@@ -135,6 +135,22 @@ one changed a task, so each is recorded here rather than left in a chat log.
 | Q14 | The leakage fix takes the audit's **steps 1–3** plus an audit query over existing rows. Contaminated rows are **reported, not deleted** — the delete/keep call stays with the operator. | 2.2 |
 | Q15 | **The 48-hour observation window is removed from the Phase 2 gate** — see the note under "Phase 2 gate". Verification of sustained Python-only writes moves to after Phase 9. | 2 |
 
+**Added 2026-08-29**, once 2.2's audit query had produced the report Q14 asked
+for and 2.1's map had turned up a table nobody knew about:
+
+| # | Decision | Lands in |
+|---|---|---|
+| Q16 | **Delete the 207 leaked NFL `pick_history` rows.** Q14 deliberately left this open until the audit was done; the audit found all 207 predict a single game that had finished ~21 months earlier, so every one was built from a gamelog containing its own answer. | 2.2 |
+| Q17 | **Drop `watch_links`** — no writer, no reader, no migration, 0 rows. | 2.1 |
+| Q18 | **`computeCalibrationPayload` is NOT ported in Phase 2.** It moves in Phase 4, as part of 4.2/4.3, which rewrite the calibration logic anyway. Porting it now would mean porting it and then reworking the port weeks later. | 4.2, 4.3 |
+
+Q18 is the one exception to Q13's "Python computes every model number" inside
+Phase 2, and it is a real one, not a reclassification of convenience:
+`refreshCalibration` computes Brier scores, calibration buckets and market
+skill — model math by any honest reading — and it stays in TypeScript, behind
+2.7c's lease, until Phase 4. **It must appear in the Phase 2 gate's G6 orphan
+list with Phase 4 named as its owner.**
+
 Q12 is a **product** decision as much as a structural one: it removes the only
 user-initiated odds refresh in the app.
 
@@ -838,8 +854,9 @@ behaviour, not a broken page.
 > wants a new `mlb_prop_model_cache` mirroring `mlb_game_model_cache`. Whatever
 > is chosen, write down why in the commit.
 
-**b · Port the three genuinely-unported writes.** Four of the six writes in
-`rebuildMlbSnapshot` are already in Python. These three are not:
+**b · Port the genuinely-unported writes.** Four of the six writes in
+`rebuildMlbSnapshot` were already in Python. Of the three that were not, two
+are done and the third is **deferred to Phase 4 by Q18**:
 
 | Write | Size |
 |---|---|
