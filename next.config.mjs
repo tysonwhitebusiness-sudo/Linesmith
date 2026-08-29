@@ -24,6 +24,44 @@ const nextConfig = {
   // Avatars render through a plain <img> so the headshot → flag/logo → initials
   // fallback chain can hang off onError. These hosts are declared anyway so a
   // later switch to next/image needs no config change.
+  /**
+   * Security headers (task 3.12, finding P4 M2). None of these existed.
+   *
+   * CSP is deliberately NOT here — it is task 8.2's. Next inlines scripts for
+   * hydration, so a CSP strict enough to be worth having needs nonce plumbing
+   * and real tuning against a deployed build; a permissive one written now
+   * would mostly serve to make `curl -I` look reassuring.
+   *
+   * HSTS is included but only ever acts over HTTPS, so it is inert in local
+   * development and takes effect once Phase 8 deploys. `preload` is
+   * deliberately omitted: submitting to the preload list is effectively
+   * irreversible for the domain, and that is not a decision to make as a side
+   * effect of a hardening task.
+   */
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          // Stops a browser second-guessing Content-Type — the vector that
+          // turns an uploaded "image" served back as text/html into stored XSS.
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          // No framing at all. Nothing in this app is designed to be embedded,
+          // and DENY is the honest expression of that.
+          { key: 'X-Frame-Options', value: 'DENY' },
+          // Send the full URL only to ourselves; bare origin cross-site. Prop
+          // and player URLs carry ids that should not leak into a third party's
+          // referer logs.
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          // This app asks for none of these. Denying them explicitly means a
+          // future dependency cannot quietly start asking.
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' },
+          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' },
+        ],
+      },
+    ];
+  },
+
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'a.espncdn.com' },
