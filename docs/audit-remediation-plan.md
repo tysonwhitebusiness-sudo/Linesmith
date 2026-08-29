@@ -949,6 +949,13 @@ POST that pulls every qualified batter's full season game log. Task 1.5 gated
 the operator surface but scoped itself to `/api/props`. Added to
 `ADMIN_API_PREFIXES`.
 
+> **That fix did not work, and this task's claim that it did was false for a
+> day.** `ADMIN_API_PREFIXES` has no effect unless `proxy.ts`'s
+> `config.matcher` also routes the path; the matcher entry was missed. The
+> route stayed open until **task 3.13** caught it by issuing a request rather
+> than re-reading the constant. Closed there, with
+> `tests/proxy-matcher.test.ts` guarding the class of mistake.
+
 **VERIFY:** the two new jobs write real rows; `adapter.ts` references none of
 `ensureGameSims`/`writeGameSimCache`/`writeParkFactors`/`writeTeamHrRateAllowed`.
 

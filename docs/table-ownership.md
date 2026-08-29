@@ -66,7 +66,7 @@ comments explaining the removal name the functions they replaced.
 | 20 | `golf_tournament_results` | **Python** | ⚠ `writeGolfTournamentResults` ← `historyIngest.ts` | `write_golf_tournament_results` | **2.4** |
 | 21 | `game_sim_cache` | **Python** | — (read-only since 2.9) | `ensure_game_sims` ← `computeMlbGameModelJob` | **2.9** |
 | 22 | `park_factors` | **Python** (+ TS admin) | `refreshParkFactors` ← `/api/props/park-factors` **only** | `compute_park_factors` ← `maintainMlbParkFactorsJob` | **2.9** |
-| 23 | `team_hr_rate_allowed` | **Python** (+ TS admin) | `refreshTeamHrRateAllowed` ← `/api/mlb/refresh-hr-matchup` **only** (admin-gated as of 2.9) | `refresh_team_hr_rate_allowed` ← `maintainMlbHrMatchupJob` | **2.9** |
+| 23 | `team_hr_rate_allowed` | **Python** (+ TS admin) | `refreshTeamHrRateAllowed` ← `/api/mlb/refresh-hr-matchup` **only** (admin-gated as of **3.13**, not 2.9 — see note) | `refresh_team_hr_rate_allowed` ← `maintainMlbHrMatchupJob` | **2.9** |
 | 24 | `team_elo_history` | **Python** | `writeEloHistory` ← `eloModel.ts` ← **`/api/props/elo-backfill` only** | `write_elo_history` ← `maintainMlbEloJob` | see note |
 | 25 | `pitcher_game_score_history` | **Python** | `writePitcherGameScore` ← `eloModel.ts` ← **dead path** | `write_pitcher_game_score` | see note |
 | 26 | `model_weights` | **TS · admin** | `writeModelWeights` ← `modelFit.ts`, `homeRunModelFit.ts` ← `/api/props/fit-*` | `write_model_weights` | see note |
@@ -127,7 +127,25 @@ The TypeScript admin refresh routes survive deliberately, same accepted category
 as `model_weights` and `team_elo_history`'s `elo-backfill` — hand-invoked, never
 on a page-load path, and useful for forcing a recompute without waiting 6 hours.
 
-**`pick_history` has one *scheduled* writer**`pick_history` has one *scheduled* writer, plus three admin backfills.**
+**The `/api/mlb/refresh-hr-matchup` gate did not work when 2.9 claimed it.**
+Task 2.9 added the route to `ADMIN_API_PREFIXES` and this file recorded it as
+admin-gated. It was not: a prefix in that list does nothing unless
+`proxy.ts`'s `config.matcher` also routes the proxy over the path, and the
+matcher entry was missed — three lines below a comment warning about exactly
+that. The route answered unauthenticated POSTs with 200 from 2.9 until 3.13
+caught it by testing with a request instead of reading the constant.
+`tests/proxy-matcher.test.ts` now fails whenever a guarded prefix is unrouted.
+
+**`pick_history` has one *scheduled* writer**The `/api/mlb/refresh-hr-matchup` gate did not work when 2.9 claimed it.**
+Task 2.9 added the route to `ADMIN_API_PREFIXES` and this file recorded it as
+admin-gated. It was not: a prefix in that list does nothing unless
+`proxy.ts`'s `config.matcher` also routes the proxy over the path, and the
+matcher entry was missed — three lines below a comment warning about exactly
+that. The route answered unauthenticated POSTs with 200 from 2.9 until 3.13
+caught it by testing with a request instead of reading the constant.
+`tests/proxy-matcher.test.ts` now fails whenever a guarded prefix is unrouted.
+
+**`pick_history` has one *scheduled* writer, plus three admin backfills.**
 Python owns every live write (`computeMlbPropPredictionsJob`,
 `computeMlbGameModelJob`, `gradeMlbPropsJob`, and the generic-sport jobs).
 `writeBackfill` also reaches it from `/api/props/backfill`,
