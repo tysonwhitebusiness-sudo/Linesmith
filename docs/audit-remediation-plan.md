@@ -900,7 +900,7 @@ twice. Per rule 3, each correction ships with the observation proving it.
 
 **All ticked 2026-08-29; gate PASSED — see §11.**
 
-- [x] `docs/table-ownership.md` committed, all 35 tables
+- [x] `docs/table-ownership.md` committed, all **36** tables (35 at kickoff, minus `watch_links`, plus `job_locks` and `mlb_prop_model_cache`)
 - [ ] ~~48 h of writes to every shared table with the dev server stopped~~ —
       **removed 2026-08-28 by operator decision (Q15).** Replaced by the
       write-advance check below.

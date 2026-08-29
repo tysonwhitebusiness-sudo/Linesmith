@@ -20,8 +20,8 @@ commit and push.
    standing decisions **Q1–Q18**, the G1–G8 gate) and the phase you are
    working.** Don't read it end to end.
 2. **§11** — the phase log. Phases 0, 1 and 2 all have PASSED gate entries.
-3. **`docs/table-ownership.md`** — one row per table, all 35. Read before
-   touching any write path.
+3. **`docs/table-ownership.md`** — one row per table, all **36**, with three
+   still marked contested. Read before touching any write path.
 4. **`CLAUDE.md`** — now has a "Who writes what" section at the top. Corrected
    in task 2.8; it no longer overstates the Python cutover.
 5. **`docs/audit-phase-2.md` … `-5.md`** — findings, for reasoning.
