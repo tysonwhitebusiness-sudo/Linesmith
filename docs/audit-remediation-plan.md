@@ -3489,7 +3489,7 @@ previously wrote +3,000 and +752.
 
 **GATE RESULT: PASS** (2026-08-29), on the re-run after G1's first pass
 failed. G1-G8 below; see "known NOT done" for what is carried forward.
-**Phase 4 may start.**
+**Phase 4 may start.**  *(It did, and its gate is at the end of this section.)*
 
 ---
 
@@ -4896,6 +4896,319 @@ and the gate re-ran from G1.
 8. **Four backup/quarantine tables** are still on a Free-tier database.
 
 **Phase 4 may start.**
+
+
+---
+
+## Phase 4 GATE — 2026-08-29
+
+**FAILED on its first pass (G7), fixed, and re-run in full from G1 per Rule 5.**
+
+The gate found **five** real defects that the phase's own thirteen VERIFYs had
+passed over, four of them in code marked done. Three needed operator decisions
+(Q38, Q39, Q40); one of those, Q40, reversed a decision the operator had already
+given me — because the number I gave them to decide on was wrong.
+
+### The one thing worth carrying out of this phase
+
+**Every one of the five passed a VERIFY that measured the WRITE and never the
+READ.** That is not a coincidence, it is a defect in how the VERIFYs were
+written:
+
+| Task | Its VERIFY | What was actually true |
+|---|---|---|
+| 4.3 | "model_calibration is no longer empty" | Nothing applied any of the seven rows |
+| 4.8 | three readers filtered | Six more still blended the deleted model in |
+| 4.11 | "the module imports, the call site is converted" | A second call site raised NameError |
+| 4.2 | the gate is implemented | It approved a model with every feature zeroed |
+
+A VERIFY that ends at "the row exists" cannot see whether anything consumes it.
+The two tests added by this gate check the **wiring**, not the function:
+`test_prop_calibration_applied.py` reads the job's own source and asserts the
+call happens ahead of both writers; `tests/model-source-filter.test.ts` fails if
+an eleventh scoring reader is added without the filter. Both were
+fault-injected — removing the wiring fails them by name.
+
+### G1 · every VERIFY re-run — PASS (8/8)
+
+`node scripts/gate/phase-4-g1-verifies.mjs`
+
+```
+PASS  4.1    94 game_picks rows in 7d — ml_initial_market_prob on 72 (76.60%), total_initial_market_prob on 46
+PASS  4.2    none  [below MARKET_GATE_MIN_N=100, so the gate reports INSUFFICIENT SAMPLE and does not block]
+PASS  4.3    7 rows, 5 active — hit-in-game, hits-runs-rbis, pitcher-strikeouts, rbis, runs(refused), total-bases(refused), walks
+PASS  4.4    21 of 21 rows shadow=true (3 active)
+PASS  4.7    mlb=727613 nba=279661 tennis=271964 (atp 129812 + wta 142152); golf=0 deliberately
+PASS  4.8    3580 attributed to the deleted model, 34 from the model that exists
+PASS  4.9    model_vs_market=3924
+PASS  4.10   over=136, under=114
+G1: 8 pass, 0 fail
+```
+
+G1 caught a bug **in itself** on its first run, which is the argument for
+writing it down rather than retyping queries: it asserted
+`pick_history.sport IN ('soccer_epl','soccer_mls')` and got zero rows. Those are
+`player_game_history`'s values; `pick_history` uses `'soccer'`. Same table-shape
+inference mistake this codebase has paid for before. It also had to be corrected
+on `game_picks`, which has `ml_initial_market_prob`/`total_initial_market_prob`
+and no `market_prob` column at all.
+
+### G2 · regression sweep — PASS
+
+- `npx tsc --noEmit` — exit 0.
+- `npm run build` — `✓ Compiled successfully in 6.8s`.
+- `npm test` — **48 pass, 0 fail, 0 skipped** (36 before this gate; +12 from
+  `tests/model-source-filter.test.ts`).
+- Python — **20 of 20** CI tests pass, run exactly as `ci.yml` runs them
+  (`python -u src/test_*.py`; there is no pytest in the venv). 17 before this
+  gate; +3 files: `test_activation_guardrails.py`,
+  `test_prop_calibration_applied.py`, `test_name_resolution.py`.
+
+### G3 · live smoke walk — PASS, after finding the phase's most user-facing defect
+
+Against the real dev server and the real database. The finding:
+**`goodBetsRecord` had no `model_source` filter**, and it is the query behind the
+home page's own win-loss record. It was counting **3,580 moneyline picks made by
+the model 4.8 had just deleted** and presenting them as this app's track record.
+
+Confirmed fixed on the data the page actually consumes
+(`/api/props/calibration?sport=mlb`):
+
+```
+goodBets:  {"wins": 0, "losses": 0, "total": 0, "winRate": null}
+byMarket:  moneyline n=18   (unfiltered: 3,590)
+```
+
+"No graded picks yet" is the honest answer. The record it displayed was earned
+by a model that no longer exists; the 34 rows from the model that does exist
+will re-accumulate on their own. Nothing was deleted — every row is still there,
+still queryable, attributed via `model_source`, and backed up in full to
+`pick_history_game_model_backup_20260829` (Q25).
+
+Console errors found and **not** fixed — see "known not done".
+
+### G4 · the findings must stop reproducing — PASS (5/5)
+
+`node scripts/gate/phase-4-g4-g5.mjs`
+
+```
+PASS  P3 H1    5 active calibrations
+PASS  P3 H2    18 moneyline rows from the model that exists  (unfiltered: 3,590)
+PASS  P3 H3    refused: runs, total-bases
+PASS  P3 L3    2756058 rows across 9 sports
+PASS  P3 H8    0 rows still unattributed
+```
+
+**P3 H1 is closed only because the calibrations are now applied**, and that is
+confirmed running in production from the worker's own logs, not inferred from a
+deploy status:
+
+```
+[computeMlbPropPredictionsJob] calibrated 1257 of 2716 candidates
+across 5 markets: hit-in-game, hits-runs-rbis, pitcher-strikeouts, rbis, walks
+```
+
+Exactly the five **active** calibrations. `runs` and `total-bases` are excluded
+because their fits lost to baseline and were refused. The whole 4.3 chain —
+fitted, refused where it should be, applied where it should be — is observable
+in one line.
+
+### G5 · write-path observation — PASS (8/8)
+
+```
+pick_history             369400 rows  last 2026-08-29T22:46:05Z (0.1h)
+prop_odds                 56523 rows  last 2026-08-29T22:48:32Z (0.0h)
+mlb_prop_model_cache       5715 rows  last 2026-08-29T22:46:18Z (0.1h)
+mlb_game_model_cache         56 rows  last 2026-08-29T22:46:38Z (0.1h)
+game_odds_book_lines       7358 rows  last 2026-08-29T22:47:28Z (0.1h)
+player_game_history     2756058 rows  [written on demand]
+model_weights                21 rows  last 2026-08-14T17:20:56Z  [written on demand]
+model_calibration             7 rows  last 2026-08-29T13:13:23Z  [written on demand]
+```
+
+The three on-demand tables are marked as such rather than counted stale.
+`model_weights`' 15-day age is itself a finding, recorded under Q40.
+
+### G6 · no orphans — PASS
+
+Every function Phase 4/5 added, **in both languages**, was checked for a real
+caller — the systematic version of the check that had failed four times.
+
+- **Python: clean.** Every non-test function has a caller; the apparent
+  zero-caller names are local helpers inside test files or nested closures.
+- **TypeScript: one orphan, deleted.** `poissonPushProbability`, added by 4.12
+  (P3 L1), exported and documented and referenced by nothing.
+  `poissonOverProbability` already handles the integer-line push itself by
+  renormalising over `1 - push`, which is what P3 L1 asked for. Deleted rather
+  than documented as a known orphan.
+
+Named, dated, owned:
+
+- **Golf `player_game_history` importer — DECIDED, NOT BUILT** (2026-08-29,
+  §11 4.7). Evidence-backed: golf is not in the generic prop pipeline, every
+  reader of that table serves that pipeline, the schema has no
+  opponent/team/home concept, and golf's own four tables already hold the data.
+  Re-opening it is a schema question, not an ingestion one.
+- **All 21 `model_weights` rows are `shadow=true`**, including the three active.
+  Deliberate (Q33). Graduation is an operator act gated on Q6/Q24, not owned by
+  a later phase. **Scope caveat: the flag only binds the home-run model** —
+  Q38.
+- **`fit_moneyline_weights` has no caller in Python.** `/api/props/fit-weights`
+  (TypeScript) remains the only way to fit it. `model_weights` is a documented
+  dual-writer (`docs/table-ownership.md` row 26, hand-invoked admin category),
+  so this is not a new Q13 violation — but "model math lives in Python" is still
+  aspirational for *fitting*. Owner: unassigned.
+- **`market_gate` runs only inside the Python fits**, which have no scheduled
+  caller. The gate is real code on no automatic path. Owner: unassigned.
+
+### G7 · adversarial read-back — FAILED, then PASS after five fixes
+
+This is the item that failed. All five below were found by re-reading the
+phase's own diff and comments and asking whether the repository describes what
+actually runs.
+
+**(a) The activation gate approved a worthless model.** *(P3 H3)*
+`scripts/gate/phase-4-weak-model-refused.py` ran the real
+`fit_moneyline_weights` with every feature zeroed — a model uninformative by
+construction — and it **ACTIVATED**:
+
+```
+[fit moneyline] beats own baseline: True | market gate: INSUFFICIENT SAMPLE (n=12, need 100)
+  holdout Brier      0.248824
+  baseline holdout   0.260666
+  ACTIVATED          True
+FAIL — a weak model was ACTIVATED
+```
+
+0.248824 is exactly what a constant at the base rate scores (p≈0.54 → 0.2484).
+A zeroed feature vector lets the fit learn only an intercept. It "beat its own
+baseline" because **this app's unfitted formula scores worse than knowing
+nothing does.** "Beats its own baseline" is not a guardrail when the baseline is
+worse than a constant.
+
+Fixed with a third guardrail — beat a constant base-rate predictor, base rate
+taken from the **training** rows so the holdout is not leaked — on **both**
+markets, plus the market gate `total` never received (4.2 wired it into
+moneyline and stopped). Neither addition can block for the wrong reason:
+`blocks_activation` fires only on a MEASURED loss, and both markets currently
+read INSUFFICIENT SAMPLE.
+
+**Re-run on the fixed code, same seasons, same data — PASS:**
+
+```
+[fit moneyline] beats own baseline: True | beats base rate: False (0.248824 vs 0.248824)
+                | market gate: INSUFFICIENT SAMPLE (n=21, need 100) -> NOT activated
+
+  train games          4410
+  holdout games        2205
+  holdout Brier        0.248824
+  baseline holdout     0.260666
+  ACTIVATED            False
+
+PASS - the gate refused it
+(write_model_weights was called with activate=False; nothing persisted)
+```
+
+Identical inputs, opposite verdict. `beats own baseline: True` in that line is
+the important part: **the original guardrail still passes this model.** Only the
+new one blocks it, and it blocks on an exact tie (0.248824 vs 0.248824) because
+a zeroed feature vector reduces the fit to the base rate and the comparison is a
+strict `<`. That is the hermetic test's prediction, confirmed end to end.
+
+`test_activation_guardrails.py` pins the same property in under a second — the
+end-to-end script takes ~35 minutes — including the exact observed numbers, and
+asserts an informative model still passes so the guardrail is not simply
+blocking everything. Fault-injected in both directions.
+
+**(b) MLB totals: the weights and their input disagreed.** *(Q37 → reversed by
+Q40)* 4.11 moved serving to negative binomial; every `model_weights` row was
+fitted **2026-08-14 by TypeScript** on Poisson, because `fit_total_weights` has
+never had a caller.
+
+I told the operator the gap was "up to 11 points, well above the 3% threshold
+that decides which picks surface", and they authorised a re-fit on that basis.
+**That was an input shift quoted as an output shift.** Propagated through v8's
+real weights — `rawPoissonOverProb` −0.373 and `simOverProb` +1.040 against
+`marketProbCentered` **+3.737**, so the model is driven by the market price and
+these are small corrections — the worst case on the final probability is **1.03
+percentage points**, typically 0.3–0.7.
+
+Re-fitting would also have made it **worse**: 4.11 changed the sim feature in
+training but not at `odds_lines_cycle.py:491`, so new weights would have
+mismatched the +1.040 feature — roughly triple the existing error on the −0.373
+one. Found only because the operator asked "why do we even need to re-fit at
+all".
+
+**Q40: no re-fit.** `model_fit.py`'s sim feature reverted to Poisson to match
+serving, so whenever someone does re-fit, the weights match what is served.
+Residual accepted deliberately and recorded: ~1 point.
+
+**(c) `shadow` did not gate what 4.4 claimed.** *(Q38)* The migration said
+"compute, log and grade but never render". True of the MLB **home-run** model
+alone. The game model renders from `mlb_game_model_cache`, which no shadow check
+touches, and the Python worker never branches on the column at all — all three
+models flagged `shadow=true` while two are on screen. **Q38: correct the claim,
+leave rendering alone** — honouring it would pull MLB moneyline and total out of
+the UI, a product decision and not a gate's. Migration
+`20260829160000_shadow_scope_correction.sql` (applied, comment verified live)
+plus two corrected docstrings.
+
+**(d) 4.3's calibrations were applied to nothing.** *(Q39)* Covered under G4.
+**Q39: wire prop serving to apply them.** Applied ahead of BOTH writers, which
+share one candidate list precisely so they cannot disagree. **Changes what a
+user sees, deliberately**: Platt with a<1 compresses confidence (0.700 → 0.606,
+0.300 → 0.406), so fewer picks clear the 3% bar. That is the calibration
+working — the model was overconfident.
+
+**(e) One dead export.** Covered under G6.
+
+Two comment corrections also came out of the read-back: `fit_total_weights`'
+docstring still said its baseline was "the raw Poisson formula's output" after
+4.11 made it negative binomial, and the 4.8 note's claim that there is "now
+exactly one MLB game model" holds for the serve path but not the fit path,
+where an accepted admin-only TypeScript twin remains.
+
+### G8 · sign-off
+
+**Findings closed by Phase 4:** P3 H1, P3 H2, P3 H3, P3 H8, P3 L3, P3 L1, P3 C5
+(characterised, deliberately not built on), P3 M2, P3 M4, P3 M5, P3 M6, P3 M7,
+P3 L2.
+
+**KNOWN NOT DONE** — this list is a claim, and it is true:
+
+1. **Duplicate React keys can silently omit prop rows.** Console shows many
+   `Encountered two children with the same key` errors — `mlb:672515:total-bases:over`,
+   `soccer:espn:soccer:222396:anytime-goalscorer:yes`. React's own message says
+   children "may be duplicated and/or omitted", so this is correctness, not
+   noise. The key at `GolfScheduleView.tsx:1244` and
+   `TennisScheduleView.tsx:529` omits the game id, and a player legitimately has
+   candidates for two games (834 soccer players measured; MLB doubleheaders do
+   the same). **Confirmed pre-existing, NOT a Phase 4/5 regression**: the key
+   last changed 2026-08-27 (`2913d81`), no soccer file was touched during either
+   phase, and 5.1's aliases are all MLB `batter_`/`pitcher_` markets. Broader
+   than first recorded — it is MLB as well as soccer. One-line fix; unowned.
+2. **The MLB total residual, ~1 point.** Q40, accepted deliberately.
+3. **`fit_moneyline_weights` and `market_gate` are on no automatic path.** G6.
+4. **5.1's second VERIFY half** — carried from Phase 5; `propline` was correctly
+   gated at 1000/1000. Re-run after 00:00 UTC.
+5. **`/diagnostics`, `/bets` and the signed-in walk were never verified** — no
+   credentials, and creating an account or entering a password is out of bounds.
+6. **`refreshSportsGameOddsJob` has not run since 04:38Z**, on vendor HTTP 429s.
+   Pre-existing, unowned.
+7. **`snapshotCacheSize` unhealthy** — 12.6 MB against a 10 MB bound.
+8. **2,380 duplicate observation groups in `game_odds_history`** — revealed, not
+   created, by 5.13. Owner: 6.1.
+9. **3.15's two GET-path writers** — carried from Phase 3.
+10. **Backup/quarantine tables still on a Free-tier database** — five now, with
+    `pick_history_game_model_backup_20260829` added by 4.8.
+
+**Not a finding, but recorded because it changed the plan:** training-set builds
+were costing ~26 min/season, and I had sized the Q37 re-fit by extrapolating
+from a single uncertain wall-clock reading. Measured properly
+(`scripts/gate/probe-training-set-cost.py`), 55% of per-game time was one
+Postgres round trip per game — `get_historical_odds` at 355ms, ~2,430 times a
+season. Replaced with one query per season. The HTTP calls plateau at 140 and
+were never the problem. ~2.2x, and it is the reason this gate closed today.
 
 
 ---
