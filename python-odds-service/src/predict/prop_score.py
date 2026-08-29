@@ -76,6 +76,37 @@ class PropScoreComponents:
     x: float  # Matchup corroboration — flat bonus when favorable, 0 otherwise.
 
 
+# Task 4.12 / P3 M2 — WHAT THIS SCORE IS AND IS NOT. Operator decision,
+# 2026-08-29: keep it, as a RANKING only, and write the limit down here rather
+# than leave it to be rediscovered.
+#
+# It ranks. Re-measured across 33,829 live graded rows, the grade tiers track
+# realized outcomes monotonically, and the spread is wide:
+#
+#     D  29.7% (n=13,946)   C  34.9%   C+ 38.9%   B  46.4%
+#     B+ 53.1%              A  60.2%   A+ 67.1% (n=514)
+#
+# But it is largely `model_prob` wearing a letter. Hold model_prob fixed in the
+# 0.40-0.60 band and the ordering collapses:
+#
+#     C+ 40.5%   D 42.4%   C 43.4%   B 45.0%   A 45.2%   B+ 48.3%   A+ 60.9%
+#
+# D outranks C+, and A is indistinguishable from B. Only A+ retains independent
+# signal, and on n=64. So the honest claim is "this sorts propositions", NOT
+# "this adds information beyond the model's own probability".
+#
+# Which is exactly the claim Q1 already permits and no more: prop grades may
+# return as RANKING, never as probability or edge. Do not reintroduce a grade
+# into anything that reads as a probability, an expected value, or a bet
+# recommendation, because the measurement above does not support it.
+#
+# Deliberately NOT re-scaled and NOT dropped. Re-scaling would change which
+# props carry which letter, for a scale whose problem is redundancy rather than
+# ordering; dropping it would remove the one signal the audit found genuinely
+# works. Both were live options and both were declined with the numbers above
+# in hand.
+
+
 @dataclass
 class PropScore:
     score: int

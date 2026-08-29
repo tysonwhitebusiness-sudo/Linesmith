@@ -4176,6 +4176,55 @@ snapshot-and-regrade has NOT been performed, deliberately: it rewrites the
 recorded track record, and doing it while the first half's decision is still
 open would mean re-grading against a model choice that might change.
 
+**4.8 · RESOLVED — operator chose to delete the fallback (2026-08-29).**
+
+Done in three parts, and the third is the one that closes P3 H2's actual
+complaint.
+
+1. **The second model is gone.** `computeMoneylineModel` plus its private
+   helpers removed from `lib/sports/mlb/gameModel.ts` (6,543 chars) along with
+   four now-orphaned constants. `adapter.ts`'s cache-miss path returns
+   `gameModel: null`, an already-supported state. The **Elo fallback is kept** —
+   Elo, rest, travel and pitcher adjustment are per-team state, not a second
+   model.
+
+2. **History attributed (Q25), from a data-intrinsic boundary rather than a
+   guessed timestamp.** Python's writer sets `commence_time`; the deleted TS one
+   never did:
+
+   ```
+   commence_time IS NULL     3,580 rows, last 2026-08-28 14:53  deleted model
+   commence_time IS NOT NULL    34 rows, first 2026-08-29 04:05 fitted model
+   ```
+
+   `total` rows are NOT affected — `db.log_game_total_predictions` is called
+   from `predict/odds_lines_cycle.py:525`, so Python's fitted path already wrote
+   them. Checked before acting; assuming otherwise would have mislabelled 31,884
+   rows. New `model_source` column; 3,580 rows stamped and snapshotted first to
+   `pick_history_game_model_backup_20260829`.
+
+   This is attribution, **not a re-grade of outcomes** — a win is a win, and no
+   model choice changes what a game did. What was wrong is that two models sat
+   in one undifferentiated series with `model_version` NULL on every row.
+
+3. **The reader P3 H2 named is fixed.** Its complaint was that /diagnostics
+   calibration for the moneyline dimension was scoring the unfitted formula.
+   Four calibration queries now exclude `model_source` rows, beside the Phase
+   1.8 backfill filter that exists for the same reason.
+
+   **Visible consequence, stated:** moneyline calibration goes from **n=462 to
+   n=0**. Every "live" row it counted came from the deleted model; the fitted
+   model's 34 rows were surfaced today and are not graded yet. Empty rather than
+   wrong, and it fills as the surviving model earns a record.
+
+**4.12 · P3 M2 RESOLVED — operator chose ranking-only, limit documented
+(2026-08-29).** Not re-scaled, not dropped; both were live options and both were
+declined with the numbers in hand. The measurement and the constraint it implies
+now sit on `PropScore`'s own definition in `predict/prop_score.py`, so the next
+reader meets it at the code rather than in a doc: it sorts propositions, it does
+NOT add information beyond `model_prob`, and per Q1 it may never be reintroduced
+as a probability, an expected value, or a bet recommendation.
+
 **Recommendation, for the record:** delete the fallback and let the game model
 be absent for games Python has not yet computed. An absent number is honest; a
 number from a different, unvalidated model presented identically to the
