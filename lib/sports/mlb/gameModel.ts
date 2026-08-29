@@ -254,12 +254,16 @@ export function poissonOverProbability(lambda: number, threshold: number): numbe
   return Math.min(0.99, Math.max(0.01, over));
 }
 
-/** P(push) for X ~ Poisson(lambda) — non-zero only on an integer line
- * (task 4.12, P3 L1). Half-integer lines cannot push. */
-export function poissonPushProbability(lambda: number, threshold: number): number {
-  if (!Number.isInteger(threshold)) return 0;
-  return poissonPmf(lambda, threshold);
-}
+/* `poissonPushProbability` was added here by 4.12 (P3 L1) and DELETED by the
+ * Phase 4 gate on 2026-08-29: it was exported, documented, and called by
+ * nothing -- not by production code, not by a test. `poissonOverProbability`
+ * above already handles the integer-line push itself, by renormalising over
+ * `1 - push`, which is the fix P3 L1 actually asked for. The standalone
+ * accessor was redundant the moment that landed.
+ *
+ * The capability is not lost: Python's `poisson_push_probability`
+ * (predict/game_model.py) does have a real caller, which is where model math
+ * belongs under Q13. */
 
 export interface TotalModelInput {
   homeExpectedRuns: number;
