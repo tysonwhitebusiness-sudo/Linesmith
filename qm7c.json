@@ -1,0 +1,4 @@
+[
+["M7 aggregate across all graded golf rows","SELECT count(*) n, round(avg((predicted_prob - hit::int::float)^2)::numeric,5) model_brier, round(avg((league_rate - hit::int::float)^2)::numeric,5) league_brier, round((avg((league_rate - hit::int::float)^2) - avg((predicted_prob - hit::int::float)^2))::numeric,5) model_advantage FROM golf_model_predictions WHERE hit IS NOT NULL AND predicted_prob IS NOT NULL AND league_rate IS NOT NULL"],
+["M7 by category","SELECT category, count(*) n, round(avg((predicted_prob - hit::int::float)^2)::numeric,5) model_brier, round(avg((league_rate - hit::int::float)^2)::numeric,5) league_brier FROM golf_model_predictions WHERE hit IS NOT NULL AND predicted_prob IS NOT NULL AND league_rate IS NOT NULL GROUP BY category ORDER BY n DESC LIMIT 6"]
+]

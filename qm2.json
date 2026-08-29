@@ -1,0 +1,5 @@
+[
+["M2 re-measured: grade tiers vs realized outcome","SELECT score_grade, count(*) n, round(100.0*avg((outcome='win')::int)::numeric,1) win_pct FROM pick_history WHERE outcome IN ('win','loss') AND score_grade IS NOT NULL GROUP BY score_grade ORDER BY win_pct"],
+["M2 re-measured: holding model_prob fixed 0.40-0.60","SELECT score_grade, count(*) n, round(100.0*avg((outcome='win')::int)::numeric,1) win_pct FROM pick_history WHERE outcome IN ('win','loss') AND score_grade IS NOT NULL AND model_prob BETWEEN 0.40 AND 0.60 GROUP BY score_grade ORDER BY win_pct"],
+["M7 re-measured: golf graded predictions","SELECT count(*) rows, count(*) FILTER (WHERE outcome IS NOT NULL) graded FROM golf_model_predictions"]
+]

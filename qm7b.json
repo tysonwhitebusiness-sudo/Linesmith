@@ -1,0 +1,4 @@
+[
+["M7 re-measured: model Brier vs league-rate Brier, per dimension","SELECT dimension, count(*) n, round(avg((predicted_prob - hit::int::float)^2)::numeric,5) model_brier, round(avg((league_rate - hit::int::float)^2)::numeric,5) league_brier, CASE WHEN avg((predicted_prob - hit::int::float)^2) < avg((league_rate - hit::int::float)^2) THEN 'model' ELSE 'league rate' END winner FROM golf_model_predictions WHERE hit IS NOT NULL AND predicted_prob IS NOT NULL AND league_rate IS NOT NULL GROUP BY dimension ORDER BY n DESC"],
+["M7 overall tally","SELECT count(*) dimensions, count(*) FILTER (WHERE m < l) model_wins, count(*) FILTER (WHERE m >= l) league_wins FROM (SELECT dimension, avg((predicted_prob - hit::int::float)^2) m, avg((league_rate - hit::int::float)^2) l FROM golf_model_predictions WHERE hit IS NOT NULL AND predicted_prob IS NOT NULL AND league_rate IS NOT NULL GROUP BY dimension) x"]
+]

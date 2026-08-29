@@ -1114,6 +1114,65 @@ async def job_retention(yield_fn=None) -> dict:
     return await _run_timed("retentionJob", db.run_retention())
 
 
+# Task 4.5 (P3 M1) — CLV, computed here and STORED, never computed by the
+# renderer (Q13).
+#
+# P3 M1: "P3 computed CLV once (n=78, -4.6% ROI, 27% beat the close) and
+# nothing reports it." predict/clv_backtest.py was already written, careful and
+# fully documented — and wired to nothing. It had no entry in JOB_REGISTRY and
+# no reader anywhere in app/ or lib/. This is the missing half.
+#
+# THE CLOSING REFERENCE, stated explicitly as 4.5 requires: the last real
+# observed price for one (event, market, side) at the reference book, strictly
+# before that game's own commence_time, read from game_odds_history's
+# observation log (db.get_closing_price). Not game_picks' capture-window
+# snapshots, which are taken on a timer and are therefore "near the close"
+# rather than "the close".
+#
+# Hourly, not per-cycle: CLV only changes when games finish and their closing
+# prices are logged, and the backtest walks every captured pick each run.
+CLV_SUMMARY_CACHE_KEY = "python-harness:clv-summary"
+
+
+async def job_clv_summary(yield_fn=None) -> dict:
+    from predict import clv_backtest
+
+    async def run() -> dict:
+        results = [
+            await clv_backtest.backtest_moneyline_clv("mlb"),
+            await clv_backtest.backtest_total_clv("mlb"),
+        ]
+        payload = {
+            "computed_at": datetime.now(timezone.utc).isoformat(),
+            "reference_definition": (
+                "last observed price at the reference book strictly before the game's "
+                "commence_time, from game_odds_history"
+            ),
+            "markets": [
+                {
+                    "market": r.market,
+                    "reference_bookmaker": r.reference_bookmaker,
+                    "picks_considered": r.picks_considered,
+                    "picks_with_reference_close": r.picks_with_reference_close,
+                    "mean_clv_prob_points": r.mean_clv_prob_points,
+                    "median_clv_prob_points": r.median_clv_prob_points,
+                    "positive_clv_rate": r.positive_clv_rate,
+                    "summary": r.summary_line(),
+                }
+                for r in results
+            ],
+        }
+        await db.write_snapshot(CLV_SUMMARY_CACHE_KEY, json.dumps(payload))
+        return {
+            "markets": len(payload["markets"]),
+            "matched": sum(m["picks_with_reference_close"] for m in payload["markets"]),
+            "considered": sum(m["picks_considered"] for m in payload["markets"]),
+            "ok": True,
+        }
+
+    return await _run_timed("clvSummaryJob", run())
+
+
 # Job registry the queue iterates — (name, coroutine factory, interval_seconds).
 # Tier1/SportsGameOdds-MLB intervals match lib/scheduler.ts's original
 # constants — refreshCalibration intentionally excluded, see module docstring.
@@ -1136,6 +1195,10 @@ JOB_REGISTRY = [
     # its own, per CLAUDE.md's job architecture — a claim the Phase 0 gate
     # tests rather than assumes.
     ("retentionJob", job_retention, 24 * 60 * 60),
+    # Task 4.5 — CLV only moves when games finish and their closing prices are
+    # logged, and the backtest walks every captured pick per run, so hourly is
+    # the right cadence. health_check.py picks this up with no edit of its own.
+    ("clvSummaryJob", job_clv_summary, 60 * 60),
     ("refreshTier1", job_tier1, 2.5 * 60),
     ("refreshSportsGameOddsJob", job_sportsgameodds, 90 * 60),
     ("refreshNflJob", job_nfl, 20 * 60),

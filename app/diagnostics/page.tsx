@@ -67,6 +67,25 @@ function copyResumePromptToClipboard(text: string, onDone: () => void) {
   });
 }
 
+interface ClvMarketRow {
+  market: string;
+  referenceBookmaker: string;
+  picksConsidered: number;
+  picksWithClose: number;
+  meanClvProbPoints: number | null;
+  medianClvProbPoints: number | null;
+  positiveClvRate: number | null;
+  summary: string;
+}
+
+interface ClvSummary {
+  available: boolean;
+  reason?: string;
+  computedAt?: string;
+  referenceDefinition?: string;
+  markets?: ClvMarketRow[];
+}
+
 interface HealthCheckRow {
   name: string;
   healthy: boolean;
@@ -1118,6 +1137,10 @@ export default function DiagnosticsPage() {
   const [activeGroup, setActiveGroup] = useState<AdminGroup>('health');
   const [healthChecks, setHealthChecks] = useState<HealthCheckRow[] | null>(null);
   const [healthChecksError, setHealthChecksError] = useState<string | null>(null);
+  // Task 4.5 (P3 M1) — Closing Line Value. Computed hourly by the Python
+  // worker's clvSummaryJob and READ here (Q13: Python computes, TS renders).
+  const [clv, setClv] = useState<ClvSummary | null>(null);
+  const [clvError, setClvError] = useState<string | null>(null);
   const [aiSummary, setAiSummary] = useState<AiSummary | null>(null);
   const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
@@ -1133,6 +1156,14 @@ export default function DiagnosticsPage() {
       setHealthChecks(json.checks);
     } catch (err) {
       setHealthChecksError(err instanceof Error ? err.message : 'Fetch failed');
+    }
+
+    try {
+      const res = await fetch('/api/diagnostics/clv', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setClv((await res.json()) as ClvSummary);
+    } catch (err) {
+      setClvError(err instanceof Error ? err.message : 'Fetch failed');
     }
   }, []);
 
@@ -1610,6 +1641,66 @@ export default function DiagnosticsPage() {
                           </div>
                         ))}
                       </div>
+                    </>
+                  )}
+                </section>
+
+                {/* Task 4.5 (P3 M1) — CLV. Measurable in weeks, where win
+                    rate takes years, which is why it earns dashboard space. */}
+                <section className="lb-card p-4">
+                  <h2 className="mb-1 text-sm font-semibold">Closing Line Value</h2>
+                  <p className="mb-3 text-[11px] text-ink-faint">
+                    Did the market move toward our side after we picked? Reference close ={' '}
+                    {clv?.referenceDefinition ?? 'the last observed price before the game starts'}.
+                  </p>
+                  {clvError ? (
+                    <p className="text-sm text-bad">Failed to load: {clvError}</p>
+                  ) : clv === null ? (
+                    <p className="text-sm text-ink-muted">Loading…</p>
+                  ) : !clv.available ? (
+                    <p className="text-sm text-ink-muted">
+                      Not computed yet — {clv.reason ?? 'clvSummaryJob has not run'}. Deliberately blank rather
+                      than showing zeros, which would read as &ldquo;CLV is zero&rdquo;.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        {(clv.markets ?? []).map((m) => {
+                          const mean = m.meanClvProbPoints;
+                          const rate = m.positiveClvRate;
+                          return (
+                            <div key={m.market} className="text-[12px]">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium capitalize">{m.market}</span>
+                                {m.picksWithClose === 0 ? (
+                                  <span className="lb-chip bg-ink-faint/10 text-ink-muted">no close matched</span>
+                                ) : (
+                                  <>
+                                    <span className={`lb-chip ${mean != null && mean > 0 ? 'bg-good/15 text-good' : 'bg-bad/10 text-bad'}`}>
+                                      {mean != null ? `${mean > 0 ? '+' : ''}${mean.toFixed(4)} prob-pts mean` : '—'}
+                                    </span>
+                                    <span className="lb-chip bg-ink-faint/10 text-ink-muted">
+                                      {rate != null ? `${(rate * 100).toFixed(1)}% beat the close` : '—'}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                              <div className="text-ink-muted">
+                                {m.picksWithClose}/{m.picksConsidered} picks matched a {m.referenceBookmaker} close
+                                {m.medianClvProbPoints != null && (
+                                  <> · median {m.medianClvProbPoints > 0 ? '+' : ''}{m.medianClvProbPoints.toFixed(4)}</>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {clv.computedAt && (
+                        <p className="mt-3 text-[11px] text-ink-faint">
+                          Computed {new Date(clv.computedAt).toLocaleString()} by the worker&rsquo;s clvSummaryJob.
+                          The mean is skewed by a few large moves; the median is the more robust read.
+                        </p>
+                      )}
                     </>
                   )}
                 </section>

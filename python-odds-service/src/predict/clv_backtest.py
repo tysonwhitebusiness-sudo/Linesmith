@@ -9,7 +9,7 @@ market-centric measure of edge (the gameplan doc's own citation: this is
 what "quant-predictor"'s strongest validation piece checked, not raw
 outcome accuracy).
 
-Reference book default: LowVig.ag, not Pinnacle, for a real, disclosed
+Reference book default: lowvig (LowVig.ag, canonicalised by task 5.3), not Pinnacle, for a real, disclosed
 reason, not an oversight — Pinnacle rows in game_odds_history only started
 2026-08-27 (156 rows, confirmed live), too young to backtest against this
 module's 2-week pick history. LowVig.ag has full 2-week coverage (1,902
@@ -53,7 +53,13 @@ from datetime import datetime
 import db
 from predict.odds_math import american_to_decimal
 
-DEFAULT_REFERENCE_BOOKMAKER = "LowVig.ag"
+# Canonical (lowercase, regional suffix stripped) since task 5.3 — this was
+# "LowVig.ag" and silently matched NOTHING after that migration renamed every
+# bookmaker in game_odds_history. The breakage was invisible because this module
+# had no caller; wiring it into the dashboard for task 4.5 is what surfaced it.
+# Measured after the fix: 2,668 `lowvig` rows in game_odds_history, 0 rows under
+# any other spelling.
+DEFAULT_REFERENCE_BOOKMAKER = "lowvig"
 
 
 def _parse_iso(s: str) -> datetime:
