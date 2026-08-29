@@ -3799,6 +3799,163 @@ counterfactuals are measured, and asserts the old comparator really was
 non-deterministic — so if that ever stops being true the test stops claiming to
 be evidence.
 
+**4.12 · Model-math hygiene — 7 of 8 items closed.** *(continued)*
+
+Per the gate's "eight items, eight lines. 'Model hygiene done' is not an
+entry", each has its own evidence and its own test group in
+`src/test_model_hygiene.py`.
+
+**P3 M4 — the starter blend mixed two units at a hand-set 50/50.**
+`team_rate_per_game * 0.5 + starter.era * 0.5` adds runs per GAME to earned
+runs per NINE INNINGS for a pitcher who throws about five and a half of them.
+4.12 offered "fit the weight, or document why 50/50"; neither was needed,
+because the weight is not a free parameter — it is the share of the game the
+starter is responsible for, which was simply not being used.
+
+```
+_STARTER_INNINGS_SHARE = 5.2 / 9 = 0.5778
+_EARNED_TO_TOTAL_RUNS  = 1.075     (ERA omits unearned, ~7-8% of all runs)
+
+team at 4.30 runs/game:
+    ERA      OLD 50/50      NEW
+    2.50        3.400      3.368
+    4.30        4.300      4.486
+    7.00        5.650      6.163
+```
+
+Two distinct errors surface here. The old form returned EXACTLY 4.30 for a 4.30
+team facing a 4.30 ERA — quietly asserting that earned runs are all the runs.
+And it compressed starter quality: the good-to-bad spread widens from 2.250 to
+2.795.
+
+**P3 M5 — home-field and form were ADDED TO A PROBABILITY.**
+
+```
+raw    OLD (add)   NEW (logit)   the underdog
+0.50     0.5400       0.5100      0.500 -> old 0.460 / new 0.490
+0.94     0.9700       0.9422      0.060 -> old 0.030 / new 0.058
+```
+
+On a coin-flip game the old form was a modest nudge; on a 0.94 favourite it
+**halved** the underdog. A "fixed" edge was worth several times more in
+lopsided games than in close ones. In log-odds the same constant is a constant
+multiplier on the odds ratio, which is what the edge actually means.
+
+**P3 M6 — `compute_league_rate` returned a fabricated 0.5 on no sample.**
+Downstream that is indistinguishable from a real, computed 50% base rate. Worse
+for the markets it backs — triple-doubles, anytime goalscorer, hat-tricks —
+where a true rate near 0.5 is impossible, so the value was always wrong by a
+wide margin and always in the direction that makes a prop look attractive. Now
+returns None; all five call sites decline to build the candidate.
+
+**P3 M7 — TWO things, with opposite answers.**
+
+*The headline no longer reproduces.* The audit had the model beating its
+par-based prior on 9 of 19 dimensions and losing on 10 — a coin flip.
+Re-measured over 3,397 graded rows:
+
+```
+dimensions won by the model   12 / 19   (was 9)
+dimensions won by the prior    7 / 19   (was 10)
+aggregate model Brier      0.20665
+aggregate league Brier     0.21127
+model advantage           +0.00462
+by category: birdie 0.19337 vs 0.21113 · par ~neutral · bogey favours the prior
+```
+
+4.12 offered "either beat the prior or ship the prior". It now beats the prior,
+so the model stays — a decision NOT to act, recorded with the number behind it.
+Had it still been a coin flip, shipping the prior would have meant deactivating
+a live model, which is on the operator's list and would have been raised.
+
+*The double-count still reproduces, and is fixed.* `golfer_own_observations` is
+documented as a SUBSET of `field_observations`, so those rows already scored +1
+in the field loop and then received the full own-weight on top.
+
+```
+subject birdied twice, field otherwise 10 pars:
+   OLD (double-counted)  birdie 0.3082
+   NEW (deduped)         birdie 0.2390
+```
+
+The subject's own recent form was inflating their own birdie probability by
+**6.92 points**. Fixed by adding `_OWN_EXTRA_WEIGHT - 1`, arithmetically
+identical to removing them from the field and re-adding at full weight — and
+needing no golfer id, which matters because `HoleFieldObservation` carries only
+`relative_to_par`.
+
+**P3 L2 — `deltaFromLine`'s doc disagreed with its code.** The doc claimed
+`(average - line) / line`; the code divides by `|line|`. The CODE is right: a
+signed denominator flips the sign of the percentage for a negative line (a
+spread of -1.5), so "10% better" would read as "10% worse" for exactly the
+markets where negative lines are normal. Fixed the comment.
+
+**P3 M2 — MEASURED, NOT ACTED ON.** The eighth item, deliberately left for the
+operator because all three of 4.12's options ("re-scale; justify its existence
+or drop it") change what a user sees. Re-measured on a larger sample than the
+audit had — 33,829 graded rows against 29,631 — and it reproduces exactly:
+
+```
+overall, grades track outcomes monotonically — a real ranking signal:
+  D 29.7% (n=13,946) · C 34.9% · C+ 38.9% · B 46.4% · B+ 53.1%
+  · A 60.2% · A+ 67.1% (n=514)
+
+holding model_prob fixed in 0.40-0.60, the ordering COLLAPSES:
+  C+ 40.5% · D 42.4% · C 43.4% · B 45.0% · A 45.2% · B+ 48.3% · A+ 60.9%
+```
+
+D outranks C+, and A is indistinguishable from B. Only A+ retains independent
+signal, on n=64. So Prop Score is largely `model_prob` wearing a letter, as the
+audit said. **Q1 already constrains the answer** — prop grades may return only
+as RANKING, never as probability or edge.
+
+**4.5 · CLV on `/diagnostics`.** *(P3 M1)*
+
+The complaint was never that CLV is hard to compute. `predict/clv_backtest.py`
+was already written and carefully documented, and was wired to **nothing** — no
+`JOB_REGISTRY` entry, no reader anywhere in `app/` or `lib/`. Three pieces
+added, following Q13 (Python computes, TypeScript renders): `clvSummaryJob`
+(hourly) computes and stores; `/api/diagnostics/clv` reads that row and
+recomputes nothing; a card renders it.
+
+**The closing reference, defined rather than implied**, as 4.5 requires: the
+last real observed price for one (event, market, side) at the reference book,
+STRICTLY BEFORE that game's own `commence_time`, from `game_odds_history`.
+Deliberately not `game_picks`' `final` capture, which is taken on a timer and
+is therefore "near the close" rather than "the close".
+
+**A REGRESSION TASK 5.3 CAUSED, found only by wiring this up.**
+`clv_backtest`'s `DEFAULT_REFERENCE_BOOKMAKER` was `"LowVig.ag"`. Task 5.3's
+canonicalisation renamed every bookmaker in `game_odds_history`, so that string
+matched nothing:
+
+```
+before the fix:   0 of 337 picks matched a closing price
+after the fix:   60 of 337
+```
+
+The breakage was completely invisible because the module had no caller —
+nothing failed, no test went red, no health check complained. **A dead consumer
+cannot report that its input vanished.** Swept the tree for other hardcoded
+pre-canonicalisation book names: only comments, no other live reference.
+
+`VERIFY` — the numbers now on the dashboard:
+
+```
+moneyline  30/173 matched  mean -0.0615 prob-pts  median -0.0006  46.7% beat the close
+total      30/164 matched  mean +0.0093 prob-pts  median +0.0031  56.7% beat the close
+```
+
+Moneyline picks lose to the close on the mean while sitting near zero on the
+median — a few large adverse moves rather than a broad bias. The card says so
+and states that the median is the more robust read.
+
+When the job has not run, the route returns `available: false` with a reason
+and the card says "not computed yet" — deliberately blank rather than rendering
+`0.0000`, which would assert that CLV *is* zero. That is a much stronger claim
+than "we have not measured this".
+
+
 progress state, so killing and restarting never re-pays for completed work.
 
 

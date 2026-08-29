@@ -22,16 +22,16 @@ commit and push.
    entries. Phase 4 is logged task-by-task and its gate has not run.
 3. **`docs/table-ownership.md`** · 4. **`CLAUDE.md`** · 5. `docs/audit-phase-*.md`
 
-**Last updated:** 2026-08-29 ~12:40Z, mid-Phase-4.
-**Repo state:** clean, pushed. Worker live on `614b394`.
+**Last updated:** 2026-08-29 ~13:05Z, mid-Phase-4.
+**Repo state:** clean, pushed. Worker live on `377f05d`.
 
 ---
 
 ## 1. Where we are
 
 **Phases 0, 1, 2, 3, 5 COMPLETE — all gates PASSED.**
-**Phase 4 IN PROGRESS.** 9 of 13 tasks done (4.7 complete across all four
-sports), nothing running.
+**Phase 4 IN PROGRESS.** 11 of 13 tasks done (4.7 complete across all four
+sports; 4.12 at 7 of 8), nothing running.
 
 Phase 5 finished this session: all 13 tasks, gate G1–G8 passed on the re-run
 after G1 failed once (see §11 — the failure and its diagnosis are the most
@@ -49,15 +49,14 @@ useful thing in that entry).
 | **4.7 MLB** | **DONE** — 727,613 rows; survivorship fix quantified |
 | **4.7 tennis** | **DONE** — 271,964 rows (atp + wta) |
 | **4.7 golf** | **DONE — decided NOT to build.** Reasoning in §11 |
+| **4.5** CLV on /diagnostics | **DONE** — job + route + card; found a 5.3 regression |
 | **4.9** split `edge` definitions | **DONE** — 3,852 rows attributed |
-| **4.12** model hygiene | **2 of 8** — P3 L1 (Poisson push), P3 L5 (total order) |
+| **4.12** model hygiene | **7 of 8** — 8th (M2) measured, left for operator |
 | 4.3 Platt calibration | not started |
-| 4.5 CLV on /diagnostics | not started |
 | 4.6 fade signal | not started |
 | 4.8 collapse two MLB game models | not started |
 | 4.10 both sides for generic sports | not started |
 | 4.11 totals distribution | not started |
-| 4.12 remaining 6 items | not started |
 
 ## 2. NOTHING IS RUNNING
 
@@ -72,26 +71,30 @@ golf 0 (deliberate)
 ## 3. Next actions, in order
 
 **Task 4.7 is fully done — that was the operator's headline ask.** Remaining
-Phase 4 work, in rough value order:
+Phase 4 work:
 
-1. **4.12's other six items** — bounded, each needs its own one-line evidence
-   per the gate ("eight items, eight lines"). Two done. Remaining: P3 M4
-   (`blendWithStarterEra` 50/50), P3 M5 (home-field added to a probability not
-   log-odds), P3 M6 (`compute_league_rate` returns 0.5 on no match), P3 M7
-   (golf model vs its own prior), P3 M2 (Prop Score scale), P3 L2
-   (`deltaFromLine` doc/code disagree).
-2. **4.10** both sides for generic sports — but see §4, it is only verifiable
-   live on soccer right now.
-3. **4.5** CLV — Q28 stored both `initial` and `final` market references
-   precisely so this is a difference of two captures.
-4. **4.8** collapse the two MLB game models (Q25: snapshot before re-grading).
-5. **4.11** negative binomial for totals.
-6. **4.3** Platt calibration — gated by the same thin sample as 4.2 (Q32:
-   min n=200 per sport+market).
-7. **4.6** fade signal — 4.6 itself says not to build on it until 4.1 gives a
-   sample, and 4.1 says that sample is supply-limited. Likely a "record, do not
-   build" outcome like golf.
-8. Then the **Phase 4 gate** (G1-G8 plus its own section).
+1. **4.10** both sides for generic sports — only verifiable live on soccer
+   right now (NBA/NHL/CFB/tennis are out of season and writing zero
+   `pick_history` rows), so expect to fix + unit-test all five and record that
+   live confirmation for four of them defers. Q34 already says this.
+2. **4.8** collapse the two MLB game models. **Q25 governs**: keep the
+   validated one, delete the other, re-grade — but SNAPSHOT the affected rows
+   first, because re-grading rewrites the recorded track record.
+3. **4.11** negative binomial for totals — P3 measured real over-dispersion
+   across 31,846 rows, so the Poisson assumption is empirically false. Note
+   4.12's P3 L1 push fix already touched `poisson_over_probability`; the
+   negative-binomial replacement should keep the same push handling.
+4. **4.3** Platt calibration — gated by the same thin sample as 4.2. **Q32**:
+   min n=200 per sport+market, below which write no calibration row at all.
+5. **4.6** fade signal — 4.6 itself says not to build on it until 4.1 supplies
+   the sample, and 4.1 measured that sample as supply-limited (under-side
+   scarcity). Likely a "record, do not build" outcome like golf's 4.7.
+6. **4.12's last item (P3 M2)** needs the operator, not code — see §4.
+7. Then the **Phase 4 gate** (G1-G8 plus its own section). Note its extra
+   requirements: the activation gate must refuse a real bad model (done —
+   `test_market_gate.py`), the shadow round-trip must be shown in both
+   directions (done — `scripts/gate/phase-4-shadow-roundtrip.mjs`), and every
+   4.12 item needs its own line.
 
 ## 4. What Phase 4 has learned — read before 4.3 or 4.6
 
@@ -125,6 +128,16 @@ lowercased bookmakers, so its casing was never split. 5.3 is load-bearing for
 `game_odds_book_lines` and Q28's reference; it is not a 4.1 fix.
 
 ## 5. Things that will bite again
+
+**A NEW LESSON THIS PHASE PAID FOR, and the most transferable one:**
+**a dead consumer cannot report that its input vanished.** Task 5.3 renamed
+every bookmaker in `game_odds_history`; `clv_backtest.py`'s reference book was
+hardcoded as `"LowVig.ag"` and silently matched zero rows afterwards. Nothing
+failed, no test went red, no health check complained — because the module had
+no caller. It surfaced only when 4.5 wired it to the dashboard, at which point
+it went from 0 of 337 picks matched to 60. **After any migration that renames
+values, grep the tree for hardcoded instances of the OLD value, including in
+code nothing currently calls.**
 
 - **Fault injection is easy to fake — four occurrences now.** The newest:
   `scripts/gate/phase-5-constraints.mjs` first reported all 17 violations
