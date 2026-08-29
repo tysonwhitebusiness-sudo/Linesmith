@@ -65,7 +65,7 @@ import { computeModelProbability } from '../../odds/props/edgeModel';
 import { candidateCategoryToSide } from '../../odds/props/entityResolution';
 import { applyFittedHomeRunWeights, applyLineupConfidence, parkHrFactorCentered, expectedPaCentered, pitcherMatchupSignal } from './homeRunModel';
 import { loadTeamHrRateAllowedCache, type TeamHrRateAllowedCache } from './homeRunLiveMatchup';
-import { computeMoneylineModel, type OpposingStarter } from './gameModel';
+import { type MoneylineResult, type OpposingStarter } from './gameModel';
 import { loadParkFactorCache } from './parkFactors';
 import { getCurrentElo, restAndTravelFromState, pitcherAdjustment, type CurrentElo } from './eloModel';
 import {
@@ -2320,41 +2320,33 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
   // than per game — a park's factor doesn't change within a single request.
   const parkFactorCache = await loadParkFactorCache(season);
 
-  const gameModelFor = (g: SlateGame) => {
-    const home = teamContext(g.home.teamId);
-    const away = teamContext(g.away.teamId);
-    if (home.forStats.runs == null || home.againstStats.runs == null || away.forStats.runs == null || away.againstStats.runs == null) {
-      return null;
-    }
-    const parkFactor = g.venueId != null ? (parkFactorCache.get(g.venueId) ?? 1) : 1;
-    const weatherFactor = weatherRunsFactor(g.venueName, g.weather?.tempF);
-    const homePlatoonFactor = lineupPlatoonFactor(g.home.lineup, g.home.opposingHand, batters, startersByGame, handById);
-    const awayPlatoonFactor = lineupPlatoonFactor(g.away.lineup, g.away.opposingHand, batters, startersByGame, handById);
-    const result = computeMoneylineModel({
-      home: {
-        runsScoredPerGame: home.forStats.runs * homePlatoonFactor,
-        runsAllowedPerGame: home.againstStats.runs,
-        seasonRecord: home.record,
-        venueRecord: home.homeRecord,
-        recentRecord: home.lastTen,
-      },
-      away: {
-        runsScoredPerGame: away.forStats.runs * awayPlatoonFactor,
-        runsAllowedPerGame: away.againstStats.runs,
-        seasonRecord: away.record,
-        venueRecord: away.awayRecord,
-        recentRecord: away.lastTen,
-      },
-      homeStarter: starterInfo(g.home.starterId),
-      awayStarter: starterInfo(g.away.starterId),
-      // Combined venue run-environment: park's own character × today's
-      // temperature effect — both are "how many runs does this SPECIFIC
-      // game's conditions add or remove," so they compose as one
-      // multiplier rather than two separate model inputs.
-      parkFactor: parkFactor * weatherFactor,
-    });
-    return result;
-  };
+  // `gameModelFor` — the second MLB game model — was DELETED here on
+  // 2026-08-29 (task 4.8, P3 H2, operator decision).
+  //
+  // P3 H2: "There are two different MLB game models in production, and the one
+  // being graded and displayed is not the one that was validated."
+  // `applyFittedMoneylineWeights` (fitted, validated) ran only in Python;
+  // `computeMoneylineModel` (the hand-tuned formula) ran here, and which one a
+  // user saw depended on which code path they were in, with nothing surfacing
+  // the difference.
+  //
+  // Phase 2 removed the damaging half — `pickHistoryLog.ts` is gone, so the
+  // unfitted formula no longer writes `pick_history` and no longer corrupts the
+  // calibration numbers. What remained was this render-path fallback. Measured
+  // 2026-08-29: 17 of 19 MLB games had a `mlb_game_model_cache` row fresher
+  // than the 30-minute bound, so roughly 2 in 19 were being rendered from the
+  // unfitted formula, presented identically to the fitted one.
+  //
+  // Now: when Python has not computed a game model, `gameModel` is null and the
+  // sections that read it simply do not render. That is the Q13 boundary
+  // applied honestly — Python computes, TypeScript renders, and if there is
+  // nothing computed there is nothing to render. An absent number is honest; a
+  // number from a different, unvalidated model shown as though it were the
+  // validated one is the failure this whole remediation exists to end.
+  //
+  // The consequence is real and was accepted deliberately: the moneyline and
+  // total edge badges in GameDetail.tsx are absent for a game whose cache row
+  // is missing or stale, rather than silently showing the other model's number.
 
   const anyLive = games.some((g) => g.status === 'live');
   const allDone = games.every((g) => g.status === 'done');
@@ -2387,7 +2379,7 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
    */
   const gameModelAndEloFor = async (
     g: SlateGame,
-  ): Promise<{ gameModel: ReturnType<typeof computeMoneylineModel> | null; elo: GameEloContext }> => {
+  ): Promise<{ gameModel: MoneylineResult | null; elo: GameEloContext }> => {
     const cached = await readGameModelCache('mlb', String(g.gamePk));
     if (cached && Date.now() - Date.parse(cached.computedAt) <= GAME_MODEL_CACHE_MAX_AGE_MS) {
       return {
@@ -2411,7 +2403,10 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
       };
     }
 
-    // Fallback — identical to the live computation this replaced.
+    // Fallback for ELO CONTEXT ONLY (task 4.8). Elo, rest, travel and pitcher
+    // adjustment are real per-team state, not a second model, so they are still
+    // computed here when the cache is cold. The game MODEL is not — see the
+    // note above `gameModelAndEloFor`'s cache read.
     const home = eloByTeam.get(g.home.teamId)!;
     const away = eloByTeam.get(g.away.teamId)!;
     const homeRT = restAndTravelFromState(home, g.gameDate, g.home.teamId);
@@ -2421,7 +2416,11 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
       pitcherAdjustment(g.away.starterId ?? null, g.away.teamId, season, g.gameDate),
     ]);
     return {
-      gameModel: gameModelFor(g),
+      // null, never the unfitted formula (task 4.8). Every reader already
+      // handles a null game model — `gameModelFor` itself returned null for a
+      // team with missing run stats long before this change, so this is an
+      // existing, supported state rather than a new one.
+      gameModel: null,
       elo: {
         home: { elo: home.elo, gamesPlayed: home.gamesPlayed },
         away: { elo: away.elo, gamesPlayed: away.gamesPlayed },

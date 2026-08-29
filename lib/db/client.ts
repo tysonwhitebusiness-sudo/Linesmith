@@ -1299,6 +1299,13 @@ export async function calibrationByMarket(sport: string): Promise<MarketCalibrat
            -- model against the market on live rows, and could not mean
            -- anything while this aggregate was mostly backfill.
            AND (event_context IS NULL OR event_context != 'backfill')
+           -- Task 4.8 (P3 H2), same class of problem as the Phase 1.8
+           -- filter directly above, and the same fix. 3,580 mlb moneyline
+           -- rows were produced by computeMoneylineModel, the second,
+           -- unvalidated game model deleted on 2026-08-29. P3 H2's specific
+           -- complaint was that /diagnostics calibration for the moneyline
+           -- dimension is scoring the unfitted formula -- this line stops it.
+           AND model_source IS NULL
      GROUP BY dimension ORDER BY n DESC`,
     [sport],
   );
@@ -1321,6 +1328,8 @@ export async function liveCalibrationBrier(sport: string, dimension: string, lim
        SELECT model_prob, CASE WHEN outcome = 'win' THEN 1.0 ELSE 0.0 END AS actual
        FROM pick_history
        WHERE sport = ? AND dimension = ? AND (event_context IS NULL OR event_context != 'backfill')
+         -- Task 4.8 (P3 H2) -- exclude the deleted second game model.
+         AND model_source IS NULL
              AND outcome IS NOT NULL AND model_prob IS NOT NULL
        ORDER BY graded_at DESC LIMIT ?
      ) sub`,
@@ -1350,6 +1359,13 @@ export async function liveMarketSkill(sport: string): Promise<LiveMarketSkill[]>
      FROM pick_history
      WHERE sport = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL
            AND (event_context IS NULL OR event_context != 'backfill')
+           -- Task 4.8 (P3 H2), same class of problem as the Phase 1.8
+           -- filter directly above, and the same fix. 3,580 mlb moneyline
+           -- rows were produced by computeMoneylineModel, the second,
+           -- unvalidated game model deleted on 2026-08-29. P3 H2's specific
+           -- complaint was that /diagnostics calibration for the moneyline
+           -- dimension is scoring the unfitted formula -- this line stops it.
+           AND model_source IS NULL
      GROUP BY dimension`,
     [sport],
   );
@@ -1378,6 +1394,13 @@ export async function scoreRecord(sport: string): Promise<ScoreTierRecord[]> {
      FROM pick_history
      WHERE sport = ? AND score_grade IS NOT NULL AND outcome IS NOT NULL
            AND (event_context IS NULL OR event_context != 'backfill')
+           -- Task 4.8 (P3 H2), same class of problem as the Phase 1.8
+           -- filter directly above, and the same fix. 3,580 mlb moneyline
+           -- rows were produced by computeMoneylineModel, the second,
+           -- unvalidated game model deleted on 2026-08-29. P3 H2's specific
+           -- complaint was that /diagnostics calibration for the moneyline
+           -- dimension is scoring the unfitted formula -- this line stops it.
+           AND model_source IS NULL
      GROUP BY score_grade ORDER BY score_grade`,
     [sport],
   );

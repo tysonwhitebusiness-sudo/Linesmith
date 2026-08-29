@@ -37,9 +37,6 @@ const MAX_RECENT_EDGE = 0.1;
 /** Recent form is real signal but noisier than a full season — down-weighted before being added in. */
 const RECENT_FORM_WEIGHT = 0.4;
 
-/** Same start-count floor used elsewhere (adapter.ts) before trusting an individual starter's own numbers. */
-const MIN_STARTS_FOR_GAME_MODEL = 3;
-
 export function pythagoreanWinPct(runsScored: number, runsAllowed: number): number {
   const rs = Math.pow(Math.max(runsScored, 0.1), PYTHAGOREAN_EXPONENT);
   const ra = Math.pow(Math.max(runsAllowed, 0.1), PYTHAGOREAN_EXPONENT);
@@ -97,64 +94,6 @@ export interface OpposingStarter {
   starts: number;
 }
 
-/**
- * Blends a team's own season rate toward a starting pitcher's ERA once
- * they've thrown enough starts to mean something — the same instinct as the
- * player model's matchup shift. Used two ways below: a team's runs-SCORED
- * rate blends toward the *opposing* starter's ERA (who their batters face
- * today), and a team's runs-ALLOWED rate blends toward *their own*
- * starter's ERA (who's actually on the mound for them today). ERA is earned
- * runs only, and a starter typically pitches 5-6 of 9 innings, so this is a
- * real but disclosed approximation, not the true runs rate a full box score
- * would give.
- */
-/** logit. Clamped off 0 and 1 so an extreme input cannot produce Infinity. */
-function toLogOdds(p: number): number {
-  const q = Math.min(1 - 1e-9, Math.max(1e-9, p));
-  return Math.log(q / (1 - q));
-}
-
-/** Inverse logit. */
-function fromLogOdds(z: number): number {
-  return 1 / (1 + Math.exp(-z));
-}
-
-/**
- * Task 4.12 (P3 M4). These replace a hand-set 50/50 between two quantities on
- * different denominators. Each is a physical fact about baseball, not a knob.
- *
- * A modern MLB starter averages a little over five innings — exactly the weight
- * the blend should carry, since it is the share of the game the starter is
- * responsible for. The rest belongs to the bullpen, already inside the team's
- * own per-game rate.
- */
-const STARTER_INNINGS_PER_START = 5.2;
-const STARTER_INNINGS_SHARE = STARTER_INNINGS_PER_START / 9;
-/**
- * ERA counts EARNED runs only; runs-per-game counts all of them. League-wide,
- * unearned runs are roughly 7-8% of total, so an ERA must be grossed up before
- * being blended into a total-runs rate — otherwise the blend under-predicts
- * scoring in proportion to how much weight the starter carries.
- */
-const EARNED_TO_TOTAL_RUNS = 1.075;
-
-function blendWithStarterEra(teamRatePerGame: number, starter: OpposingStarter | null): number {
-  if (!starter || starter.era == null || starter.starts < MIN_STARTS_FOR_GAME_MODEL) {
-    return teamRatePerGame;
-  }
-  // Task 4.12 (P3 M4) — the weight is the starter's real share of the game, and
-  // the units are reconciled before blending. The old form added runs per GAME
-  // to earned runs per NINE INNINGS 50/50, treating an ERA as though it
-  // described a whole game; the error was invisible rather than absent only
-  // because both numbers sit near 4.3. Kept identical to
-  // python-odds-service/src/predict/game_model.py.
-  const starterTotalRunsPerNine = starter.era * EARNED_TO_TOTAL_RUNS;
-  return (
-    starterTotalRunsPerNine * STARTER_INNINGS_SHARE +
-    teamRatePerGame * (1 - STARTER_INNINGS_SHARE)
-  );
-}
-
 export interface MoneylineInput {
   home: TeamOffenseDefense;
   away: TeamOffenseDefense;
@@ -192,92 +131,6 @@ export interface MoneylineResult {
     rawHomeRecentEdge: number;
     rawAwayRecentEdge: number;
     parkFactor: number;
-  };
-}
-
-export function computeMoneylineModel(input: MoneylineInput): MoneylineResult {
-  const parkFactor = input.parkFactor ?? 1;
-
-  // Each team's runs scored is shaped by the pitcher they're actually facing
-  // (the opponent's starter); each team's runs allowed is shaped by their
-  // own starter, who's the one actually on the mound for them today.
-  let homeExpectedRuns = blendWithStarterEra(input.home.runsScoredPerGame, input.awayStarter);
-  let awayExpectedRuns = blendWithStarterEra(input.away.runsScoredPerGame, input.homeStarter);
-  let homeExpectedRunsAllowed = blendWithStarterEra(input.home.runsAllowedPerGame, input.homeStarter);
-  let awayExpectedRunsAllowed = blendWithStarterEra(input.away.runsAllowedPerGame, input.awayStarter);
-
-  // Venue run-environment: today's specific park, applied symmetrically to
-  // both teams' scored AND allowed figures — a hitter's park inflates
-  // offense against both sides equally while they're playing in it.
-  //
-  // Mathematical fact worth being explicit about: scaling both terms of a
-  // Pythagorean ratio by the same constant leaves the ratio — and therefore
-  // homeWinProb — completely unchanged (pyth(rs·k, ra·k) === pyth(rs, ra)
-  // for any k). So a single symmetric park factor genuinely has ZERO effect
-  // on the moneyline here, and that's correct, not a bug: a park that
-  // inflates both offenses equally doesn't tell you who's more likely to
-  // WIN, only how many total runs to expect. Its real, measurable effect is
-  // on `homeExpectedRuns + awayExpectedRuns` below, which feeds the totals
-  // (Poisson) model directly. A future, more granular park factor (e.g. one
-  // that differentially favors left-handed power, benefiting whichever
-  // team's roster is built that way) could move the moneyline — this
-  // single-scalar version, by construction, cannot.
-  homeExpectedRuns *= parkFactor;
-  awayExpectedRuns *= parkFactor;
-  homeExpectedRunsAllowed *= parkFactor;
-  awayExpectedRunsAllowed *= parkFactor;
-
-  const homeWinPct = pythagoreanWinPct(homeExpectedRuns, homeExpectedRunsAllowed);
-  const awayWinPct = pythagoreanWinPct(awayExpectedRuns, awayExpectedRunsAllowed);
-
-  const rawHomeWinProb = log5(homeWinPct, awayWinPct);
-
-  // Team-specific split/form nudges on top of the flat home-field constant —
-  // real signal already sitting in the standings feed (home/away splits,
-  // last-10 record) that the season-wide Pythagorean rate above can't see:
-  // a team can have an ordinary season line but a real home edge, or be
-  // hotter/colder than their full-season run rate suggests right now.
-  const homeVenueEdge = splitEdge(input.home.seasonRecord, input.home.venueRecord, MIN_SPLIT_SAMPLE, MAX_SPLIT_EDGE);
-  const awayVenueEdge = splitEdge(input.away.seasonRecord, input.away.venueRecord, MIN_SPLIT_SAMPLE, MAX_SPLIT_EDGE);
-  // Raw (unscaled) split, kept alongside the ×RECENT_FORM_WEIGHT version below
-  // because modelFit.ts's training features use the unscaled diff — the
-  // regression decides its own weight instead of trusting this hand-picked
-  // 0.4 discount. Feeding the live path the pre-scaled number into a fitted
-  // formula trained on the unscaled one would silently under-weight form by
-  // 2.5x versus what was actually validated.
-  const rawHomeRecentEdge = splitEdge(input.home.seasonRecord, input.home.recentRecord, MIN_RECENT_SAMPLE, MAX_RECENT_EDGE);
-  const rawAwayRecentEdge = splitEdge(input.away.seasonRecord, input.away.recentRecord, MIN_RECENT_SAMPLE, MAX_RECENT_EDGE);
-  const homeRecentEdge = rawHomeRecentEdge * RECENT_FORM_WEIGHT;
-  const awayRecentEdge = rawAwayRecentEdge * RECENT_FORM_WEIGHT;
-
-  const adjustment = HOME_FIELD_EDGE + (homeVenueEdge - awayVenueEdge) + (homeRecentEdge - awayRecentEdge);
-  // Task 4.12 (P3 M5) — applied in LOG-ODDS, not by adding to a probability.
-  //
-  // This used to be `rawHomeWinProb + adjustment`. Probabilities are not
-  // additive, and the error is not academic: +0.04 of home field on a
-  // coin-flip game (0.50 -> 0.54) is a modest nudge, while the same +0.04 on
-  // a heavy favourite (0.94 -> 0.98) roughly HALVES the underdog's chance. The
-  // old form applied a much larger effective adjustment to lopsided games than
-  // to close ones, the opposite of how a fixed edge behaves.
-  //
-  // Kept identical to python-odds-service/src/predict/game_model.py.
-  const homeWinProb = Math.min(0.97, Math.max(0.03, fromLogOdds(toLogOdds(rawHomeWinProb) + adjustment)));
-
-  return {
-    homeWinProb,
-    awayWinProb: 1 - homeWinProb,
-    homeExpectedRuns,
-    awayExpectedRuns,
-    diagnostics: {
-      rawLog5HomeWinProb: rawHomeWinProb,
-      homeVenueEdge,
-      awayVenueEdge,
-      homeRecentEdge,
-      awayRecentEdge,
-      rawHomeRecentEdge,
-      rawAwayRecentEdge,
-      parkFactor,
-    },
   };
 }
 
@@ -418,6 +271,35 @@ export interface TotalModelResult {
   expectedTotal: number;
   overProb: number;
 }
+/**
+ * `computeMoneylineModel` and its private helpers (`blendWithStarterEra`,
+ * `toLogOdds`, `fromLogOdds`) were DELETED here on 2026-08-29 — task 4.8
+ * (P3 H2), operator decision.
+ *
+ * P3 H2: "There are two different MLB game models in production, and the one
+ * being graded and displayed is not the one that was validated." This file held
+ * the unvalidated one. Its last caller was `adapter.ts`'s cache-miss fallback,
+ * which rendered it for roughly 2 of 19 MLB games — measured 2026-08-29, 17 of
+ * 19 games had a `mlb_game_model_cache` row inside the 30-minute bound — with
+ * nothing on screen distinguishing it from Python's fitted model.
+ *
+ * Per Q13 the model lives in Python: `python-odds-service/src/predict/
+ * game_model.py`'s `compute_moneyline_model`, written to `mlb_game_model_cache`
+ * by `computeMlbGameModelJob`. There is now exactly one MLB game model.
+ *
+ * NOTE FOR ANYONE READING 4.12's COMMITS: tasks 4.12 (P3 M4, the starter-ERA
+ * innings-share blend) and (P3 M5, applying home-field in log-odds) were
+ * implemented in BOTH languages and described as "kept identical". The
+ * TypeScript halves lived in the functions deleted here, so those fixes now
+ * exist only in Python — which is where they run. Nothing was lost; the parity
+ * claim simply no longer has two sides to be parity between.
+ *
+ * `computeTotalModel`, `log5`, `pythagoreanWinPct`, `splitEdge` and
+ * `poissonOverProbability` all REMAIN — they have real live callers in
+ * `gameEdge.ts`, `recommendedPick.ts`, `modelFit.ts` and
+ * `gameModelBackfill.ts`, and are not part of the duplicated model.
+ */
+
 
 /** Sum of two independent Poisson variables is itself Poisson with the combined rate — the standard simplifying assumption here. */
 export function computeTotalModel(input: TotalModelInput): TotalModelResult {
