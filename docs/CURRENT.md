@@ -12,203 +12,123 @@ Read docs/CURRENT.md and continue from there.
 
 **THE RULE THAT KEEPS THIS FILE USEFUL: at ~92% context usage, stop.** Take on
 no new work, finish or checkpoint what is open, and rewrite this file, then
-commit and push. Don't start a task you can't checkpoint before that line.
+commit and push.
 
 ## The documents, in reading order
 
 1. **`docs/audit-remediation-plan.md`** — the plan. **Read §0 (working rules,
-   standing decisions **including the new Q12–Q15**, the G1–G8 gate) and the
-   phase you are working.** Don't read it end to end.
-2. **§11 of that plan** — the phase log. **Phase 2's entry is not written yet.**
-   See "What §11 still needs" below — that is a real outstanding task.
-3. **`docs/table-ownership.md`** — NEW, from 2.1. One row per table, all 35.
-4. **`docs/audit-phase-2.md` … `-5.md`** — the audits, for a finding's reasoning.
-5. **`CLAUDE.md`** — repo conventions. **Still overstates the Python cutover;
-   task 2.8 fixes it and 2.8 is not done.**
+   standing decisions **Q1–Q18**, the G1–G8 gate) and the phase you are
+   working.** Don't read it end to end.
+2. **§11** — the phase log. Phases 0, 1 and 2 all have PASSED gate entries.
+3. **`docs/table-ownership.md`** — one row per table, all 35. Read before
+   touching any write path.
+4. **`CLAUDE.md`** — now has a "Who writes what" section at the top. Corrected
+   in task 2.8; it no longer overstates the Python cutover.
+5. **`docs/audit-phase-2.md` … `-5.md`** — findings, for reasoning.
 
-**Last updated:** 2026-08-28.
-**Repo state:** clean, pushed, `HEAD == origin/main == d5cab7f`. Worker deploy
-`dep-da91h1on74is73egadn0` on `d5cab7f` is **live and verified** — 12 jobs ran
-in the following 20 minutes, all `ok: true`, zero failures.
+**Last updated:** 2026-08-29.
+**Repo state:** clean, pushed. Worker deployed and live at `262dc73`.
 
 ---
 
 ## 1. Where we are
 
-**Phases 0 and 1 COMPLETE, gates passed.**
-**Phase 2 IN PROGRESS — 2.1–2.6 done, 2.7 partly done, 2.8 not started.**
+**Phases 0, 1 and 2 are COMPLETE. All three gates PASSED.**
+**Phase 3 is next and has NOT started.**
 
-| Task | State |
-|---|---|
-| 2.1 ownership map | **DONE** — `docs/table-ownership.md` |
-| 2.2 leakage fix + 6 jobs re-enabled | **DONE**, deployed and live |
-| 2.3 `/api/odds/lines` pure read | **DONE** |
-| 2.4 golf double pipeline | **DONE** |
-| 2.5 delete the three buttons | **DONE** |
-| 2.6 dead code | **DONE** |
-| 2.7a adapter cache-first | **NOT STARTED** ← the big one |
-| 2.7b ports (2 of 3) | `logGameModelPredictions` and `gradeFinishedGames` **DONE**; `computeCalibrationPayload` remains |
-| 2.7c job locking | **DONE** — and it found a real bug, see §3 |
-| 2.8 comments + `CLAUDE.md` | **NOT STARTED** |
+Phase 2 closed the audit's root cause: exactly one language writes each table,
+and Python computes every model number the app renders except one documented
+exception. 15 commits, `464fda6` → `5761c47`.
 
-Commits: `464fda6` (rescope) → `d51f655` `a65d64c` `1411aff` `0cc0e74` `c5efdbe`
-`7cff201` `6545379` `805c023` `7572259` `d5cab7f`.
+## 2. Start here: Phase 3 — observability and defence
 
-**`rebuildMlbSnapshot` is now fetch-trim-cache and nothing else.** All five of
-its former write side effects are Python jobs. That was 2.7's structural point
-for the *snapshot* path; 2.7a below is the same job for the *model* path.
+Use §0's kickoff prompt. **Run the "verify it still reproduces" step properly** —
+in Phase 2 it caught that three of eight tasks were mis-scoped in the plan and
+one finding (P2 M6.2) had gone stale and needed no fix at all. The audit was
+measured 2026-08-27 and the tree has moved a long way since.
 
-## 2. Do this first
+**Two Phase 3 tasks already have work waiting for them, from Phase 2's own
+findings:**
 
-**Confirm the worker deploy landed.** Everything in 2.2–2.7 that runs in Python
-is only real if it deployed. `autoDeploy: no`.
+- **3.x (unassigned): `recordEspnPregameLine` writes on a GET.**
+  `lib/odds/espnBookLines.ts:71`, called from the CFB, NBA and Soccer
+  `game/[gameId]` route handlers. Same class as P4 H1, which Phase 2 fixed for
+  `/api/odds/lines` — but this one is in **no finding at all**, so no task owns
+  it. Found while deriving `table-ownership.md`. Give it a task number.
+- **3.10 has less to do than it thinks.** Phase 2 already batched
+  `write_game_odds_history` (290 s → 1.6 s) because 2.3 could not ship without
+  it. The other per-row write loops are still 3.10's.
+- **3.1/3.4/3.5** are untouched and unaffected by Phase 2.
 
-```
-GET https://api.render.com/v1/services/srv-da36bm2bkg8c73fqrdeg/deploys?limit=1
-# then: git merge-base --is-ancestor 805c023 <deployed-sha>
-```
+## 3. Things Phase 2 learned that will bite again
 
-**Then check the six re-enabled jobs actually ran and wrote nothing leaked:**
+- **`withJobLock` is a LEASE TABLE, not an advisory lock** — and that matters
+  beyond locking. Advisory locks are session-scoped; `DATABASE_URL` is the
+  **transaction-mode** pooler (`:6543`), where they neither exclude nor release
+  reliably. Measured: three processes all acquired, and the unlock leaked onto
+  an idle pooled backend that then refused everyone. **Anything relying on
+  session state through `:6543` is suspect** — that is a live class of bug, not
+  a one-off.
+- **The old lock test passed the whole time it was broken**, because it tested
+  two calls *in one process*. Any test of cross-process behaviour must spawn
+  real processes.
+- **A one-hop importer check is not a deletion check.** Six modules looked used
+  at the gate purely because the comments explaining their removal named the
+  functions they replaced.
+- **Don't pipe a long background command through `tail`** — the pipe buffers
+  everything, the output file stays empty, and it looks hung when it is fine.
+- **Stale `.next/types` break `tsc` after deleting a route** — `rm -rf .next/types`.
+- **Git Bash `/tmp` is not Python's `/tmp`.** Use `os.tmpdir()` / real paths
+  when handing files between `curl` and `python`.
 
-```sql
-SELECT sport, count(*), count(commence_time) AS auditable,
-       count(*) FILTER (WHERE commence_time IS NOT NULL AND surfaced_at >= commence_time) AS leaked
-FROM pick_history WHERE sport NOT IN ('mlb','golf') GROUP BY sport;
-```
-`leaked` must be 0. Anything else means 2.2's guard is not working and the phase
-stops (rule 5).
+## 4. Operational knowledge — do not re-derive it
 
-## 3. What 2.7 turned into — read before continuing it
-
-2.7 was rescoped twice before any code (see Q13's note in §0), and then the
-implementation found a third thing:
-
-**`withJobLock` was broken.** It used `pg_try_advisory_lock`; advisory locks are
-session-scoped and `DATABASE_URL` is the **transaction-mode** pooler (`:6543`)
-since Phase 0.5. Measured: three concurrent processes **all acquired**, and the
-unlock landed on a different backend, **leaking** the lock onto an idle pooled
-connection where it then refused everyone. Replaced with a `job_locks` lease
-table (migration `20260828140000`). `withJobLock` now takes a required
-`leaseMs`.
-
-**The lesson worth carrying:** `scripts/test-job-lock.ts` had passed the whole
-time, because it tested two concurrent calls **in one process**. The
-cross-process case — the only one a cross-process lock exists for — was never
-tested. It is now (test `(d)` spawns real child processes).
-
-**Anywhere else the pooler-vs-session assumption might hide** is worth a look:
-anything relying on session state through `:6543` is suspect.
-
-## 4. Next actions, in order
-
-**2.7b — one port left, and it is bigger than its line count.**
-`computeCalibrationPayload` (`lib/odds/props/calibrationSnapshot.ts`) → a Python
-job writing `snapshot_cache`. Called from `lib/scheduler.ts`'s
-`refreshCalibration`, now behind a lease.
-
-The file is 86 lines but it composes **nine** aggregate query functions from
-`lib/db/client.ts` — `calibrationCounts`, `calibrationBuckets`,
-`calibrationByMarket`, `overallBrierScore`, `goodBetsRecord`,
-`calibrationCountsForDimension`, `calibrationBucketsForDimension`,
-`liveMarketSkill`, `scoreRecord` — plus `goodBets.ts`'s `isMarketTrusted` /
-`GAME_LEVEL_DIMENSIONS` and `marketTrust.ts`'s `trustTierFromLiveBSS`. Python
-already has `predict/market_trust.py` and `predict/good_bets.py`, so check what
-those already cover before porting anything. **Estimate: most of a day**, not
-the hour the file size suggests. This was measured and deliberately not started
-with low context rather than half-done.
-
-**2.7a — the cache-first cutover. This is the substance of 2.7 and it is
-untouched.** `adapter.ts` still runs live model math on a 4-minute timer:
-`computeModelProbability` (730, 1640), `applyFittedHomeRunWeights` (1674),
-`ensureGameSims` (1993). Make it read Python's already-computed results
-instead, **copying the pattern already at `adapter.ts:2323`**, which does
-exactly this for the game model against `mlb_game_model_cache` with a TS
-fallback on a missing or stale row. Cache-first is what makes it safe: worst
-case if Python is down is today's behaviour.
-
-> **The open design question, and it is yours to decide, not to escalate:**
-> Python writes prop results to `pick_history`, a first-write-wins **log** —
-> today's number is frozen at whatever the first tick saw. A page needs the
-> *current* number. This most likely wants a new `mlb_prop_model_cache`
-> mirroring `mlb_game_model_cache`. Write down why in the commit.
-
-Estimate for 2.7a: **2–4 days**, long end if the shapes don't line up.
-
-**2.8 — last.** All six comments in P2 M6, plus `CLAUDE.md`'s cutover paragraph.
-Several were already fixed opportunistically where a change invalidated them
-(`jobs.py`'s golf docstring, `mlb_game_lines.py`, `golf/historyIngest.ts`,
-`/api/props/lines`, `/api/odds/lines`, `middleware.ts`). **Still open:**
-`db.py:331` `write_prop_odds`'s false "disconnected from any live fetch path",
-`pgClient.ts`'s wrong connection arithmetic, `calibrationSnapshot.ts`'s SQLite
-reasoning, `lib/scheduler.ts`'s header, and `CLAUDE.md` itself.
-
-## 5. What §11 still needs — do not skip this
-
-**No Phase 2 §11 entry exists yet.** Every task above was verified live and the
-raw output is in the **commit messages**, which is not where rule 1 says it
-goes. Before the gate, transcribe into §11: the leakage audit, 2.3's
-before/after source table, 2.4's golf breadcrumb, 2.5's deletion list, 2.6's
-grep, 2.7c's three-process result.
-
-**Then the gate** — G1–G8 plus Phase 2's own section. Note Q15 removed the
-48-hour window; the substitute is `max(timestamp)` advancing from Python within
-one job interval per table, and the gate entry must say plainly that this
-proves the writer works *now*, not that it keeps working unattended.
-
-## 6. Operational knowledge — do not re-derive it
-
-- **Don't pipe a long background command through `tail`.** The pipe buffers
-  everything and the output file stays empty; it looks hung when it is fine.
-  Cost two confused cycles this session.
-- **Stale `.next/types` break `tsc` after deleting a route.** `rm -rf .next/types`.
-- **`DATABASE_URL` is `:6543` (transaction pooler).** Use `:5432` for anything
-  needing session state — `pg_dump`, `VACUUM`, **and advisory locks** (§3).
 - **DB access:** temp `.mjs` in the repo root, `node` it, delete after — `pg`
-  resolves only inside the repo.
-- **Long tests can't survive the laptop sleeping.** Looks exactly like a pooler
-  bug (`asyncpg.ConnectionDoesNotExistError`) and isn't one.
+  resolves only inside the repo. `:6543` is the transaction pooler; use `:5432`
+  for `pg_dump`, `VACUUM`, and anything needing session state.
 - **Shared pooler caps around 15 connections.** Check for running scripts before
   starting DB-touching Python.
 - **Python tests are standalone scripts, not pytest** — `python -u src/test_x.py`
-  from `python-odds-service/`. Now 18 fast tests (added `test_leakage_guard.py`).
-- **`psql`/`pg_dump`** at `C:\Program Files\PostgreSQL\17\bin`, not on PATH.
+  from `python-odds-service/`. **18 fast tests, all passing.** Five are skipped
+  by design (four need 25–50 min and live data; `test_harvester_scrape` imports
+  a package only on the scraper laptop) — task 3.11's input.
+- **There is still no TypeScript test harness.** Task 3.11.
 - **Render:** worker `srv-da36bm2bkg8c73fqrdeg`, health cron
-  `crn-da7lquqfngtc73ft1n2g`. `RENDER_API_KEY` in `.env.local`; you are
-  authorised to use it for env vars, restarts and deploys.
+  `crn-da7lquqfngtc73ft1n2g`. `autoDeploy: no` — **after any push touching
+  `python-odds-service/`, POST a deploy and confirm the live commit contains
+  your work.** `RENDER_API_KEY` is in `.env.local`.
+- **`next dev` overwrites `.next`** — rebuild before `npm run start`.
 - **Don't `git add -A` blindly** — `docs/discord-community-prompt.md` is the
-  operator's untracked file. Use `git add -A -- . ':!docs/discord-community-prompt.md'`.
+  operator's untracked file. Use
+  `git add -A -- . ':!docs/discord-community-prompt.md'`.
 - **Don't run recursive `grep`** over the repo; use the Grep tool.
 
-## 7. Carried forward (not forgotten)
+## 5. Carried forward — Phase 4 must read this
 
-- **The 207 NFL `pick_history` rows are confirmed leaked, not merely suspect.**
-  All predict game `401671813` — Eagles/Commanders, real kickoff
-  **2024-11-15**, surfaced **2026-08-27**, ~21 months after it ended. Left in
-  place per Q14; the delete/keep call is the operator's. **Phase 4 must not
-  treat them as training data.**
-- **`watch_links` has no writer in either tree** and is absent from P3 §4's map.
-  Don't drop it on that alone — find out what it is.
-- **`game_odds_book_lines` has request-path writers in no finding.**
-  `recordEspnPregameLine` runs inside the CFB/NBA/Soccer `game/[gameId]` GET
-  handlers. Same class as P4 H1. Recorded in `table-ownership.md`; **not fixed.**
-- **`odds_cache` GET-path writes** (`golfLines`/`oddsApi`/`tennisLines`) — not
-  closed by any Phase 2 task, carried to Phase 3.
-- **Pre-2.3 `game_odds_history` rows are mislabelled.** The TS pass wrote
-  propline and sharpapi prices under the default `source='the-odds-api'`. Not
-  retroactively fixable — the true source was never recorded. Matters to any
-  Phase 4/5 analysis that groups by source.
-- **The 1.1 backfill** of 1,209 under-side rows — deferred by operator decision,
-  and an unknown subset may be **uncorrectable**. Phase 4 must know this.
+- **Pre-2.3 `game_odds_history` rows are mislabelled.** The deleted TypeScript
+  pass wrote propline and sharpapi prices under the default
+  `source='the-odds-api'`. Not retroactively fixable — the true source was
+  never recorded. **Any analysis grouping by source must know this.**
+- **The 207 leaked NFL rows are deleted** (Q16). They predicted a game that had
+  finished 21 months earlier. `pick_history` is now mlb + soccer only.
+- **The 1.1 backfill** of 1,209 under-side rows is still deferred, and an
+  unknown subset may be **uncorrectable** — `implied_raw` was never stored.
+- **`computeCalibrationPayload` is Phase 4's to port** (Q18), as part of
+  4.2/4.3 which rewrite that logic anyway. It is the last TypeScript model math.
+- **MLB `pick_history` rows have no `commence_time`** (only new generic-sport
+  and MLB moneyline rows do), so most history remains unauditable for leakage.
 - **`SUPABASE_SERVICE_ROLE_KEY` cannot be rotated** — Phase 7.
-- **`better-sqlite3`** is now a devDependency; `scripts/migrate-to-postgres.js`
-  is its only consumer.
 
-## 8. Standing decisions (all in §0's table now)
+## 6. Standing decisions
 
-Q12 delete the three buttons · Q13 Python computes every model number,
-TypeScript renders · Q14 leakage steps 1–3, report don't delete · Q15 the
-48-hour gate window is removed, verified after Phase 9 instead.
+Q1–Q11 as before. Added during Phase 2:
 
-Earlier verbal ones still standing: Supabase Pro + Micro; weekly backup via
-Task Scheduler (task 8.9 moves it off the laptop); gates G1–G8 binding; Scan's
-Score column removed until 6.7.
+| # | Decision |
+|---|---|
+| Q12 | Scan / More Books / Check Sharp Price **deleted outright** |
+| Q13 | **Python computes every model number; TypeScript renders** |
+| Q14 | Leakage: audit steps 1–3, report rather than delete |
+| Q15 | 48-hour gate window **removed**; verified after Phase 9 |
+| Q16 | Delete the 207 leaked NFL rows |
+| Q17 | Drop `watch_links` |
+| Q18 | `computeCalibrationPayload` ports in **Phase 4**, not Phase 2 |
