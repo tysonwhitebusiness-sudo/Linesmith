@@ -1,3 +1,5 @@
+import { NextResponse } from 'next/server';
+import { BadRequest, entityId } from '@/lib/apiValidation';
 import { getStandings, type NflStandingsTeam } from '@/lib/sports/nfl/espn';
 import { fetchTeamRoster } from '@/lib/sports/multiSport/teamSportEspn';
 import {
@@ -132,6 +134,16 @@ async function buildTeamPayload(teamId: string): Promise<Record<string, unknown>
 
 export async function GET(request: Request, { params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = await params;
+
+  // Task 3.5 — the id lands in a snapshot_cache key, so it is bounded before
+  // it gets there. Unvalidated, every distinct string minted a permanent row.
+  try {
+    entityId(String(teamId), 'teamId');
+  } catch (error) {
+    if (error instanceof BadRequest) return NextResponse.json({ error: error.message }, { status: 400 });
+    throw error;
+  }
+
 
   return cachedRoute({
     cacheKey: `nfl:team:${teamId}`,

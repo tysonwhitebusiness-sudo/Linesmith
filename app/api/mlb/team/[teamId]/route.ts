@@ -11,6 +11,8 @@
  */
 
 import { NextResponse } from 'next/server';
+import { BadRequest, knownId } from '@/lib/apiValidation';
+import { MLB_TEAM_IDS } from '@/lib/sports/mlb/teamAliases';
 import {
   easternDate,
   getTeamInfo,
@@ -88,9 +90,17 @@ async function buildTeamPayload(teamId: number): Promise<Record<string, unknown>
 
 export async function GET(request: Request, { params }: { params: Promise<{ teamId: string }> }) {
   const { teamId: teamIdParam } = await params;
-  const teamId = Number(teamIdParam);
-  if (!Number.isFinite(teamId) || teamId <= 0) {
-    return NextResponse.json({ error: 'Invalid teamId' }, { status: 400 });
+
+  // Task 3.5 — the id lands in a snapshot_cache key, so it is bounded before
+  // it gets there. The previous `Number.isFinite(x) && x > 0` check rejected
+  // nothing that mattered: 888801, 1e9 and 2.5 all passed it, and each minted
+  // its own permanent snapshot_cache row plus its own upstream fetch.
+  let teamId: number;
+  try {
+    teamId = knownId(teamIdParam, MLB_TEAM_IDS, 'teamId');
+  } catch (error) {
+    if (error instanceof BadRequest) return NextResponse.json({ error: error.message }, { status: 400 });
+    throw error;
   }
 
   return cachedRoute({

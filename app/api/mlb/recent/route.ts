@@ -12,6 +12,8 @@
  */
 
 import { NextResponse } from 'next/server';
+import { BadRequest, boundedInt, knownId } from '@/lib/apiValidation';
+import { MLB_TEAM_IDS } from '@/lib/sports/mlb/teamAliases';
 import { easternDate, getScheduleRange, shiftDate, extractTeamResults } from '@/lib/sports/mlb/statsapi';
 import { cachedRoute } from '@/lib/cachedRoute';
 
@@ -25,12 +27,17 @@ const CACHE_TTL_MS = 30 * 60 * 1000;
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const teamA = Number(url.searchParams.get('teamA'));
-  const teamB = Number(url.searchParams.get('teamB'));
-  const days = Math.min(Math.max(Number(url.searchParams.get('days')) || 25, 5), 60);
-
-  if (!Number.isFinite(teamA) || !Number.isFinite(teamB) || teamA <= 0 || teamB <= 0) {
-    return NextResponse.json({ error: 'teamA and teamB are required' }, { status: 400 });
+  // Task 3.5 — all three reach the cache key, so all three are bounded.
+  // `days` was already clamped, which is why it is not the problem here; the
+  // two team ids were not.
+  let teamA: number, teamB: number, days: number;
+  try {
+    teamA = knownId(url.searchParams.get('teamA'), MLB_TEAM_IDS, 'teamA');
+    teamB = knownId(url.searchParams.get('teamB'), MLB_TEAM_IDS, 'teamB');
+    days = boundedInt(url.searchParams.get('days'), 5, 60, 25, 'days');
+  } catch (error) {
+    if (error instanceof BadRequest) return NextResponse.json({ error: error.message }, { status: 400 });
+    throw error;
   }
 
   const today = easternDate();

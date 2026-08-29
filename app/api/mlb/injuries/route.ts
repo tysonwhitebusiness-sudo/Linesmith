@@ -10,6 +10,8 @@
  */
 
 import { NextResponse } from 'next/server';
+import { BadRequest, entityIdList, knownId } from '@/lib/apiValidation';
+import { MLB_TEAM_IDS } from '@/lib/sports/mlb/teamAliases';
 import { easternDate, getInjuries } from '@/lib/sports/mlb/statsapi';
 import { cachedRoute } from '@/lib/cachedRoute';
 
@@ -24,18 +26,24 @@ const CACHE_TTL_MS = 30 * 60 * 1000;
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const teamIds = (url.searchParams.get('teamIds') ?? '')
-    .split(',')
-    .map((id) => Number(id.trim()))
-    .filter((id) => Number.isFinite(id) && id > 0);
-
-  if (teamIds.length === 0) {
-    return NextResponse.json({ error: 'teamIds is required' }, { status: 400 });
+  // Task 3.5, finding P4 H3. This previously accepted any list of any length
+  // of any positive number, and built a cache key from it — so the key space
+  // was every SUBSET of every integer, and `?teamIds=888801,888802` minted a
+  // permanent row and fired real MLB API calls, unauthenticated.
+  //
+  // Capped at 2: this route exists to show both teams in one matchup, which is
+  // its only caller's actual need. entityIdList also dedupes and sorts, which
+  // the hand-rolled sort below used to do for the cache key alone.
+  let sortedIds: number[];
+  try {
+    sortedIds = entityIdList(url.searchParams.get('teamIds'), 2, 'teamIds').map((id) => knownId(id, MLB_TEAM_IDS, 'teamId'));
+  } catch (error) {
+    if (error instanceof BadRequest) return NextResponse.json({ error: error.message }, { status: 400 });
+    throw error;
   }
+  const teamIds = sortedIds;
 
   const season = Number(easternDate().slice(0, 4));
-  // Sorted so ?teamIds=110,142 and ?teamIds=142,110 share one cache row.
-  const sortedIds = [...teamIds].sort((a, b) => a - b);
 
   return cachedRoute({
     cacheKey: `mlb:injuries:${season}:${sortedIds.join(',')}`,

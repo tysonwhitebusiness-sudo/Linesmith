@@ -13,6 +13,8 @@
  */
 
 import { NextResponse } from 'next/server';
+import { BadRequest, knownId } from '@/lib/apiValidation';
+import { MLB_TEAM_IDS } from '@/lib/sports/mlb/teamAliases';
 import { easternDate, getScheduleRange, extractTeamResults } from '@/lib/sports/mlb/statsapi';
 import { cachedRoute } from '@/lib/cachedRoute';
 
@@ -28,9 +30,15 @@ const CACHE_TTL_MS = 30 * 60 * 1000;
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const teamId = Number(url.searchParams.get('teamId'));
-  if (!Number.isFinite(teamId) || teamId <= 0) {
-    return NextResponse.json({ error: 'teamId is required' }, { status: 400 });
+  // Task 3.5 — bounded before it reaches a cache key. `Number.isFinite(x) &&
+  // x > 0` accepted 888801, 1e9 and 2.5 alike, each minting its own permanent
+  // snapshot_cache row and its own upstream fetch.
+  let teamId: number;
+  try {
+    teamId = knownId(url.searchParams.get('teamId'), MLB_TEAM_IDS, 'teamId');
+  } catch (error) {
+    if (error instanceof BadRequest) return NextResponse.json({ error: error.message }, { status: 400 });
+    throw error;
   }
 
   return cachedRoute({

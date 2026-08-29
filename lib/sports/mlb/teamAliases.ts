@@ -53,7 +53,7 @@ export function resolveTeamAbbr(raw: string | null | undefined): number | null {
 }
 
 /** This app's own current abbreviation for each team ID — the first (canonical) key listed above per team, not a historical alias. */
-const TEAM_ABBR_BY_ID: Record<number, string> = {
+export const TEAM_ABBR_BY_ID: Record<number, string> = {
   108: 'LAA', 109: 'ARI', 110: 'BAL', 111: 'BOS', 112: 'CHC', 113: 'CIN', 114: 'CLE', 115: 'COL',
   116: 'DET', 117: 'HOU', 118: 'KC', 119: 'LAD', 120: 'WSH', 121: 'NYM', 133: 'OAK', 134: 'PIT',
   135: 'SD', 136: 'SEA', 137: 'SF', 138: 'STL', 139: 'TB', 140: 'TEX', 141: 'TOR', 142: 'MIN',
@@ -82,3 +82,17 @@ export function teamNameFor(teamId: number | null | undefined): string | undefin
   if (teamId == null) return undefined;
   return TEAM_NAME_BY_ID[teamId] ?? TEAM_ABBR_BY_ID[teamId];
 }
+
+/**
+ * The 30 real MLB team ids, derived from the map above rather than typed out a
+ * second time — task 3.5.
+ *
+ * Used to reject ids that are *shaped* like a team id but are not one.
+ * `?teamId=888801` passes any digit/range check and, before this, minted a
+ * permanent `snapshot_cache` row and fired a real MLB API call. A finite
+ * allowlist is the only thing that stops that, and MLB team ids are a fixed
+ * set of 30 that changes when a franchise is added — roughly once a decade —
+ * so a static set costs nothing and needs no upstream call to validate one
+ * parameter.
+ */
+export const MLB_TEAM_IDS: ReadonlySet<number> = new Set(Object.keys(TEAM_ABBR_BY_ID).map(Number));
