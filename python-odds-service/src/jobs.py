@@ -896,6 +896,34 @@ async def job_compute_mlb_prop_predictions(yield_fn=None) -> dict:
     return await _run_timed("computeMlbPropPredictionsJob", _compute_mlb_prop_predictions_inner())
 
 
+def apply_prop_calibrations(candidates: list, calibrations: dict) -> tuple[list, int]:
+    """Return (candidates with calibrated model_prob, how many were changed).
+
+    Task 4.3 / Q39. Pulled out of _compute_mlb_prop_predictions_inner so it can
+    be tested without a database -- see test_prop_calibration_applied.py. The
+    job itself is a network+DB call end to end, which is exactly the shape that
+    let 4.3 ship a calibration nothing applied.
+
+    A candidate whose market has no ACTIVE calibration, or whose model_prob is
+    None, passes through untouched. `dataclasses.replace` rather than mutation
+    because CandidateResult is shared with the pick_history writer and an
+    in-place edit would be invisible at the call site.
+    """
+    import dataclasses
+
+    from predict.calibration import apply_calibration
+
+    changed = 0
+    out = []
+    for c in candidates:
+        row = calibrations.get(c.dimension)
+        if row is not None and c.model_prob is not None:
+            c = dataclasses.replace(c, model_prob=apply_calibration(c.model_prob, row))
+            changed += 1
+        out.append(c)
+    return out, changed
+
+
 async def _compute_mlb_prop_predictions_inner() -> dict:
     from predict import prop_candidates as pc
     from predict import prop_pick_history
@@ -906,6 +934,38 @@ async def _compute_mlb_prop_predictions_inner() -> dict:
     async with httpx.AsyncClient() as client:
         ctx = await pc.build_snapshot_context(client, season)
         candidates = await pc.build_todays_candidates(client, today, season, ctx)
+
+        # Task 4.3 / Q39 — APPLY the fitted calibrations. Until the Phase 4
+        # gate this did not happen anywhere: 4.3 fitted seven Platt
+        # calibrations into model_calibration and its VERIFY ("the table is no
+        # longer empty") passed, but the only serve-time consumer
+        # (odds_lines_cycle.py:557) asks for ('mlb','moneyline') and every
+        # fitted row is a PROP market. So P3 H1 -- "probabilities are
+        # uncalibrated" -- was still true of every number this job produced.
+        #
+        # This is the right insertion point rather than either writer, because
+        # log_snapshot_candidates and write_prop_model_cache below deliberately
+        # consume THIS ONE list so they cannot disagree about what the model
+        # computed. Calibrating here keeps that invariant; calibrating in one
+        # writer would break it.
+        #
+        # get_active_calibration returns only active=true rows, so a market
+        # whose calibration lost to its baseline (runs, total-bases) is left
+        # uncalibrated -- apply_calibration(p, None) is a no-op by design.
+        calibrations: dict[str, "db.CalibrationRow"] = {}
+        for dim in sorted({c.dimension for c in candidates}):
+            row = await db.get_active_calibration("mlb", dim)
+            if row is not None:
+                calibrations[dim] = row
+        if calibrations:
+            candidates, calibrated_n = apply_prop_calibrations(candidates, calibrations)
+            print(
+                f"[computeMlbPropPredictionsJob] calibrated {calibrated_n} of "
+                f"{len(candidates)} candidates across {len(calibrations)} markets: "
+                f"{', '.join(sorted(calibrations))}",
+                flush=True,
+            )
+
         await prop_pick_history.log_snapshot_candidates("mlb", candidates)
 
         # Task 2.7a — the same candidates, written a second way, for a
