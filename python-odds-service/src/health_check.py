@@ -41,6 +41,50 @@ from jobs import JOB_REGISTRY
 STALE_MULTIPLIER = 2.0
 
 
+async def feeding_job_stale(name: str, interval_seconds: float) -> str | None:
+    """Task 3.3, finding P3 M9. Returns a reason string when the job that
+    FEEDS a data-freshness check has not run recently, else None.
+
+    The three data-freshness checks below each measure "is there recent data?"
+    over a window much wider than any job interval — 24 hours for
+    game_odds_history, 7 days for game_odds_book_lines. Those windows are
+    deliberate and were widened for good reason: writes here are
+    log-on-change, so a genuinely quiet market legitimately produces nothing
+    for many consecutive cycles, and a narrow window false-positived live on
+    2026-08-26.
+
+    But a wide window cannot tell "quiet market" from "worker dead" — it
+    answers yes to both, because yesterday's rows are still inside it. Proved
+    by fault injection on 2026-08-29: with the worker suspended, five job
+    checks correctly went FAIL while all three of these reported healthy on
+    pre-outage data. That is exactly what P3 M9 describes.
+
+    The information that separates the two cases is whether the writing job
+    ran, so these checks now consult it. A quiet market with a healthy job
+    stays green — the false positive that forced the widening does not come
+    back — while an outage turns them red for the honest reason, instead of
+    certifying stale data as fresh.
+
+    Deliberately NOT a duplicate of check_job's own FAIL: that one says "the
+    job stopped", this one says "so do not believe this window". Both are
+    worth saying, because it is the second that a reader of
+    'healthy — 27,051 rows in the last 24h' would otherwise get wrong.
+    """
+    payload = await db.read_snapshot(f"python-harness:job-run:{name}")
+    if payload is None:
+        return f"{name} has never run"
+    started_at = json.loads(payload).get("started_at")
+    if started_at is None:
+        return f"{name} has a malformed run log"
+    age = (datetime.now(timezone.utc) - datetime.fromisoformat(started_at)).total_seconds()
+    if age > interval_seconds * STALE_MULTIPLIER:
+        return (
+            f"{name} last ran {age / 60:.0f}min ago (expected within "
+            f"{interval_seconds * STALE_MULTIPLIER / 60:.0f}min), so the rows counted here predate the gap"
+        )
+    return None
+
+
 async def check_job(name: str, interval_seconds: float) -> dict:
     key = f"python-harness:job-run:{name}"
     payload = await db.read_snapshot(key)
@@ -324,6 +368,17 @@ async def check_odds_history_and_prices_freshness() -> dict:
     every unattached row is a bug (a game with no market line yet is a
     legitimate gap, not a failure).
     """
+    # Task 3.3 — a wide window cannot tell a quiet market from a dead worker.
+    # See feeding_job_stale() for why this consults the job rather than
+    # narrowing the window.
+    stale_reason = await feeding_job_stale("mlbOddsLinesCycleJob", 5 * 60)
+    if stale_reason:
+        return {
+            "name": "oddsHistoryAndPricesFreshness",
+            "status": f"cannot vouch for freshness — {stale_reason}",
+            "healthy": False,
+        }
+
     HISTORY_FRESHNESS_WINDOW_S = 24 * 3600
 
     payload = await db.read_snapshot("python-harness:job-run:mlbOddsLinesCycleJob")
@@ -365,6 +420,17 @@ async def check_prop_predictions_freshness() -> dict:
     generous enough (50% floor) to absorb normal day-to-day variance
     (lineup changes, off days) without false-positiving, while still
     catching a genuine write-path break."""
+    # Task 3.3 — a wide window cannot tell a quiet market from a dead worker.
+    # See feeding_job_stale() for why this consults the job rather than
+    # narrowing the window.
+    stale_reason = await feeding_job_stale("computeMlbPropPredictionsJob", 5 * 60)
+    if stale_reason:
+        return {
+            "name": "propPredictionsFreshness",
+            "status": f"cannot vouch for freshness — {stale_reason}",
+            "healthy": False,
+        }
+
     import httpx
 
     from predict import statsapi as sa
@@ -435,6 +501,17 @@ async def check_game_odds_book_lines_freshness() -> dict:
     failed, since that's honestly indistinguishable from a real off-season
     without a schedule to check against.
     """
+    # Task 3.3 — a wide window cannot tell a quiet market from a dead worker.
+    # See feeding_job_stale() for why this consults the job rather than
+    # narrowing the window.
+    stale_reason = await feeding_job_stale("refreshTier1", 2.5 * 60)
+    if stale_reason:
+        return {
+            "name": "gameOddsBookLinesFreshness",
+            "status": f"cannot vouch for freshness — {stale_reason}",
+            "healthy": False,
+        }
+
     pool = await db.get_pool()
     now = datetime.now(timezone.utc)
     problems: list[str] = []

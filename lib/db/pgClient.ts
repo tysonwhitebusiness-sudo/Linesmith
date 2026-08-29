@@ -109,6 +109,21 @@ function isTransientConnectionError(err: unknown): boolean {
   );
 }
 
+/**
+ * Retries once on a transient connection error. **Reads only** — task 3.9,
+ * finding P2 M5.
+ *
+ * This used to wrap `pgRun` as well, which executes INSERT/UPDATE/DELETE. A
+ * connection can drop *after* the server has committed but before the client
+ * sees the acknowledgement; the error is indistinguishable from one where the
+ * statement never ran, so retrying a non-idempotent INSERT applies it twice.
+ * Most writes here have natural keys and `ON CONFLICT`, but `pgRun` is generic
+ * and cannot know that about its caller's SQL.
+ *
+ * A surfaced error on a write is the correct outcome: the caller can decide,
+ * with knowledge of its own statement, whether retrying is safe. Silent
+ * double-application is not recoverable after the fact.
+ */
 async function withConnectionRetry<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
@@ -121,12 +136,97 @@ async function withConnectionRetry<T>(fn: () => Promise<T>): Promise<T> {
 
 export type SqlParams = any[] | Record<string, any> | undefined;
 
+/**
+ * Replaces `?` placeholders with `$n`, skipping any `?` that is not a
+ * placeholder — task 3.8, findings P2 M4 / P4 M11.
+ *
+ * The previous implementation was `sql.replace(/\?/g, ...)` across the whole
+ * string. That is safe only while no query contains a literal `?`, which was
+ * true and is not a property anyone was maintaining. The moment someone writes
+ * `WHERE name LIKE '%?%'` or a jsonb existence test, every placeholder after
+ * that point shifts by one and parameters silently bind to the wrong columns.
+ * Wrong data, not an error, and `tsc` cannot see it.
+ *
+ * Skipped here: single-quoted literals (including `''` escapes),
+ * double-quoted identifiers, dollar-quoted bodies, and `--` / block comments.
+ *
+ * Postgres's jsonb operators `?`, `?|` and `?&` are a genuine ambiguity — they
+ * are real `?` characters outside any string, indistinguishable from a
+ * placeholder by scanning alone. Write them doubled (`??`, `??|`, `??&`), the
+ * same convention node-postgres and JDBC use; a doubled `?` emits one literal
+ * `?` and consumes no parameter.
+ */
+function scanPlaceholders(sql: string): { text: string; count: number } {
+  let out = '';
+  let count = 0;
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i];
+    const two = sql.slice(i, i + 2);
+
+    if (two === '--') {
+      const end = sql.indexOf('\n', i);
+      const stop = end === -1 ? sql.length : end;
+      out += sql.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    if (two === '/*') {
+      const end = sql.indexOf('*/', i + 2);
+      const stop = end === -1 ? sql.length : end + 2;
+      out += sql.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      // Copy the whole literal/identifier verbatim. A doubled quote inside is
+      // an escaped quote, not a terminator.
+      out += ch;
+      i += 1;
+      while (i < sql.length) {
+        if (sql[i] === ch && sql[i + 1] === ch) { out += ch + ch; i += 2; continue; }
+        if (sql[i] === ch) { out += ch; i += 1; break; }
+        out += sql[i]; i += 1;
+      }
+      continue;
+    }
+    if (ch === '$') {
+      const tag = /^\$[A-Za-z_]*\$/.exec(sql.slice(i));
+      if (tag) {
+        const end = sql.indexOf(tag[0], i + tag[0].length);
+        const stop = end === -1 ? sql.length : end + tag[0].length;
+        out += sql.slice(i, stop);
+        i = stop;
+        continue;
+      }
+    }
+    if (ch === '?') {
+      if (sql[i + 1] === '?') { out += '?'; i += 2; continue; }  // escaped operator
+      count += 1;
+      out += `$${count}`;
+      i += 1;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return { text: out, count };
+}
+
 /** Turns `?`/`@name` placeholders + params into pg's positional `$1,$2,...` + values array. */
 function compile(sql: string, params: SqlParams): { text: string; values: any[] } {
   if (params === undefined) return { text: sql, values: [] };
   if (Array.isArray(params)) {
-    let i = 0;
-    const text = sql.replace(/\?/g, () => `$${++i}`);
+    const { text, count } = scanPlaceholders(sql);
+    if (count !== params.length) {
+      // Loud beats wrong. A mismatch means the query and its parameters have
+      // drifted apart, and binding whatever happens to line up is how this
+      // produces plausible, incorrect data instead of a failure.
+      throw new Error(
+        `compile(): SQL has ${count} placeholder(s) but ${params.length} parameter(s) were supplied. ` +
+          `If this query contains a literal '?' (a jsonb ?/?|/?& operator), double it. SQL: ${sql.slice(0, 200)}`,
+      );
+    }
     return { text, values: params };
   }
   const values: any[] = [];
@@ -164,7 +264,38 @@ export async function pgAll<T = any>(sql: string, params?: SqlParams): Promise<T
   });
 }
 
+/**
+ * Executes a write. **Deliberately NOT wrapped in `withConnectionRetry`** —
+ * task 3.9, finding P2 M5.
+ *
+ * A dropped connection after the server committed but before the client saw
+ * the ack is indistinguishable from one where the statement never ran. Retrying
+ * a non-idempotent INSERT there applies it twice, and no error is raised. This
+ * function takes arbitrary SQL and cannot know whether its caller's statement
+ * has a natural key behind it.
+ *
+ * A caller whose statement genuinely is idempotent (`ON CONFLICT DO NOTHING` /
+ * `DO UPDATE`, or a `WHERE ... IS NULL` guard) and that wants the old
+ * behaviour should retry explicitly at its own call site, where that property
+ * is actually known. See `pgRunIdempotent` below.
+ */
 export async function pgRun(sql: string, params?: SqlParams): Promise<PgRunResult> {
+  const { text, values } = compile(sql, params);
+  const res = await getPool().query(text, values);
+  return { changes: res.rowCount ?? 0, rows: res.rows };
+}
+
+/**
+ * `pgRun` with the single transient-error retry, for statements the CALLER
+ * asserts are safe to apply twice.
+ *
+ * Exists so that "this write is idempotent" is a claim made at a call site
+ * that can actually justify it, rather than an assumption baked into every
+ * write in the application. If you reach for this, the statement should carry
+ * `ON CONFLICT` or an equivalent guard — and if it does not, the right fix is
+ * to give it one, not to use this.
+ */
+export async function pgRunIdempotent(sql: string, params?: SqlParams): Promise<PgRunResult> {
   const { text, values } = compile(sql, params);
   return withConnectionRetry(async () => {
     const res = await getPool().query(text, values);
