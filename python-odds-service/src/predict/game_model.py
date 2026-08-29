@@ -327,13 +327,44 @@ def _poisson_pmf(lam: float, k: int) -> float:
 
 
 def poisson_over_probability(lam: float, threshold: float) -> float:
-    """P(X > threshold) for X ~ Poisson(lambda), threshold typically a
-    half-integer (8.5)."""
+    """P(over) for X ~ Poisson(lambda), with a PUSH handled as a push.
+
+    Task 4.12 (P3 L1). `k = floor(threshold)` alone returns P(X > k), which is
+    right for a half-integer line — the overwhelming majority of MLB totals —
+    and WRONG for an integer one. On a line of exactly 9, X = 9 is a PUSH: the
+    stake comes back. The old code scored it as a loss, understating the over.
+
+    Conditioning on "not a push" is the standard treatment and is what a price
+    on an integer line actually represents — a book quoting over 9 at -110 is
+    pricing the two outcomes that can happen, not three. So:
+
+        integer line   P(over) = P(X > k) / (1 - P(X = k))
+        half-integer   P(over) = P(X > k)          (no push is possible)
+
+    Returns the over probability only; `poisson_push_probability` below exposes
+    the push mass for callers that need to price or grade it, rather than
+    burying a second number in a tuple that every existing call site would have
+    to unpack.
+    """
     k = math.floor(threshold)
     cdf = 0.0
     for i in range(0, k + 1):
         cdf += _poisson_pmf(lam, i)
-    return min(0.99, max(0.01, 1 - cdf))
+    over = 1 - cdf
+    # A threshold that is exactly an integer admits a push at X == k.
+    if float(threshold).is_integer():
+        push = _poisson_pmf(lam, k)
+        if push < 1.0:
+            over = over / (1 - push)
+    return min(0.99, max(0.01, over))
+
+
+def poisson_push_probability(lam: float, threshold: float) -> float:
+    """P(push) for X ~ Poisson(lambda) — non-zero only on an integer line
+    (task 4.12, P3 L1). Half-integer lines cannot push, and return 0.0."""
+    if not float(threshold).is_integer():
+        return 0.0
+    return _poisson_pmf(lam, int(threshold))
 
 
 @dataclass

@@ -321,12 +321,41 @@ function poissonPmf(lambda: number, k: number): number {
   return pmf;
 }
 
-/** P(X > threshold) for X ~ Poisson(lambda), threshold typically a half-integer (8.5). */
+/**
+ * P(over) for X ~ Poisson(lambda), with a PUSH handled as a push.
+ *
+ * Task 4.12 (P3 L1). `Math.floor(threshold)` alone returns P(X > k), which is
+ * right for a half-integer line — the overwhelming majority of MLB totals —
+ * and WRONG for an integer one. On a line of exactly 9, X = 9 is a PUSH: the
+ * stake comes back. The old code scored it as a loss, understating the over.
+ *
+ * Conditioning on "not a push" is the standard treatment and is what a price on
+ * an integer line actually represents — a book quoting over 9 at -110 is
+ * pricing the two outcomes that can happen, not three.
+ *
+ *   integer line   P(over) = P(X > k) / (1 - P(X = k))
+ *   half-integer   P(over) = P(X > k)          (no push is possible)
+ *
+ * Kept identical to python-odds-service/src/predict/game_model.py's
+ * poisson_over_probability.
+ */
 export function poissonOverProbability(lambda: number, threshold: number): number {
   const k = Math.floor(threshold);
   let cdf = 0;
   for (let i = 0; i <= k; i++) cdf += poissonPmf(lambda, i);
-  return Math.min(0.99, Math.max(0.01, 1 - cdf));
+  let over = 1 - cdf;
+  if (Number.isInteger(threshold)) {
+    const push = poissonPmf(lambda, k);
+    if (push < 1) over = over / (1 - push);
+  }
+  return Math.min(0.99, Math.max(0.01, over));
+}
+
+/** P(push) for X ~ Poisson(lambda) — non-zero only on an integer line
+ * (task 4.12, P3 L1). Half-integer lines cannot push. */
+export function poissonPushProbability(lambda: number, threshold: number): number {
+  if (!Number.isInteger(threshold)) return 0;
+  return poissonPmf(lambda, threshold);
 }
 
 export interface TotalModelInput {

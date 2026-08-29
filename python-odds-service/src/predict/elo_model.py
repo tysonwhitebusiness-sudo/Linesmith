@@ -306,8 +306,6 @@ async def backfill_elo(client: httpx.AsyncClient, season: int) -> list[db.EloHis
     trajectory. A team's first game of the walked season starts from their
     regressed prior season rating if one exists in the DB, otherwise the
     flat starting value."""
-    import functools
-
     # Bounding the range end at *today* only makes sense for the season
     # currently in progress — passing a past season through unbounded would
     # silently pull in every later season's games too.
@@ -319,11 +317,21 @@ async def backfill_elo(client: httpx.AsyncClient, season: int) -> list[db.EloHis
         for g in games
         if g.abstract_state == "Final" and (g.teams.get("home") or {}).get("score") is not None and (g.teams.get("away") or {}).get("score") is not None
     ]
-    # Matches TS's `.sort((a, b) => (a.gameDate < b.gameDate ? -1 : 1))`
-    # exactly, including its non-standard tie behavior (equal dates compare
-    # as "a after b", not "equal") — Elo is order-sensitive so this is worth
-    # replicating bit-for-bit rather than "fixing" to a normal stable sort.
-    finals.sort(key=functools.cmp_to_key(lambda a, b: -1 if a.game_date < b.game_date else 1))
+    # Task 4.12 (P3 L5) — a TOTAL order, which the old comparator was not.
+    #
+    # This used to replicate TS's `(a, b) => a.gameDate < b.gameDate ? -1 : 1`
+    # bit-for-bit, on the reasoning that Elo is order-sensitive so the quirk was
+    # worth preserving. The quirk is worse than that argument allowed: a
+    # comparator that never returns 0 for equal keys makes the result depend on
+    # the INPUT order of same-day games, so two runs over the same season could
+    # produce different ratings with nothing in the data having changed. That is
+    # not a behaviour worth reproducing; it is the bug.
+    #
+    # Sorting on (game_date, game_pk) is a genuine total order — same-day games
+    # now resolve by a stable, meaningful key instead of by arrival order — so
+    # Elo is reproducible. Ratings for days with multiple games can shift very
+    # slightly versus the old output; that is the fix landing, not a regression.
+    finals.sort(key=lambda g: (g.game_date, g.game_pk))
 
     ratings: dict[int, float] = {}
     games_played: dict[int, int] = {}
