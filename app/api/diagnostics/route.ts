@@ -7,7 +7,7 @@
 
 import { NextResponse } from 'next/server';
 import { getMlbGameLines } from '@/lib/odds/oddsApi';
-import { readOddsCache, logSystemEvent, readGameOddsBookLinesHealth, type GameOddsBookLinesHealthRow } from '@/lib/db/client';
+import { readOddsCache, logSystemEvent, readGameOddsBookLinesHealth, readCacheFailureSummary, type GameOddsBookLinesHealthRow } from '@/lib/db/client';
 import { recentFetchErrors } from '@/lib/sports/mlb/statsapi';
 
 /**
@@ -81,10 +81,13 @@ export async function GET(request: Request) {
 
   try {
     // Run all health checks in parallel
-    const [oddsApiResult, cacheRow, gameOddsBookLinesRows] = await Promise.all([
+    const [oddsApiResult, cacheRow, gameOddsBookLinesRows, cacheFailures] = await Promise.all([
       getMlbGameLines(force),
       readOddsCache('baseball_mlb:h2h,spreads,totals:us'),
       readGameOddsBookLinesHealth(),
+      // Task 3.2 — the spike panel. Cheap: one indexed scan over 24h of
+      // system_events, a table that holds ~100 rows.
+      readCacheFailureSummary(),
     ]);
 
     // Per-source line details
@@ -102,6 +105,13 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         timestamp: new Date().toISOString(),
+
+        // Task 3.2 (finding P5 E3), scoped by Q19 to no external error
+        // tracking. A non-zero `last24h` here means cachedRoute writes are
+        // failing and the app is serving correct data while caching none of
+        // it — the exact condition that went unnoticed during the free-tier
+        // read-only window, and which task 3.1 made visible.
+        cacheFailures,
 
         // Why recent MLB Stats API calls failed. `getJson` returns null on any
         // failure, so without this a whole slate can go missing behind a 200.

@@ -392,6 +392,14 @@ interface SystemHealthResponse {
   parkFactors: ParkFactorCoverageRow[];
   historicalOdds: HistoricalOddsCoverageRow[];
   statsApiErrors: StatsApiError[];
+  /** Task 3.2 — cachedRoute write failures over the last 24h. A spike here means the app is serving correct data and caching none of it. */
+  cacheFailures?: {
+    last24h: number;
+    lastHour: number;
+    distinctKeys: number;
+    mostRecentAt: string | null;
+    topKeys: { key: string; failures: number }[];
+  };
   recentEvents: SystemEventRow[];
   golfCalibration: GolfCalibrationSummary;
 }
@@ -2436,7 +2444,42 @@ export default function DiagnosticsPage() {
                 <p className="text-[12px] text-ink-muted">Loading…</p>
               ) : (
                 <>
+                  {/* Task 3.2 (P5 E3), scoped by Q19 to no external error
+                      tracking. cachedRoute used to swallow write failures
+                      silently — the app returned healthy 200s while caching
+                      nothing, which is how the free-tier read-only window ran
+                      unnoticed. Task 3.1 made those failures visible; this is
+                      where they surface. */}
                   <div className="mb-2 flex items-center gap-2">
+                    <HealthDot ok={(systemHealth.cacheFailures?.last24h ?? 0) === 0} />
+                    <h3 className="text-[12px] font-semibold text-ink-muted">Cache writes</h3>
+                  </div>
+                  {!systemHealth.cacheFailures || systemHealth.cacheFailures.last24h === 0 ? (
+                    <p className="mb-3 text-[12px] text-ink-faint">No cache-write failures in the last 24 hours.</p>
+                  ) : (
+                    <div className="mb-3 rounded-md border border-bad/20 bg-bad/5 p-2 text-[12px]">
+                      <p className="mb-1 font-semibold text-bad">
+                        {systemHealth.cacheFailures.last24h} cache-write failure
+                        {systemHealth.cacheFailures.last24h === 1 ? '' : 's'} in 24h
+                        {systemHealth.cacheFailures.lastHour > 0 ? ` (${systemHealth.cacheFailures.lastHour} in the last hour)` : ''}
+                        {' · '}
+                        {systemHealth.cacheFailures.distinctKeys} distinct key
+                        {systemHealth.cacheFailures.distinctKeys === 1 ? '' : 's'}
+                      </p>
+                      <p className="mb-2 text-[11px] text-ink-faint">
+                        Requests still succeed — but nothing is being cached, so every request pays a full rebuild.
+                        Many keys failing at once usually means the database is refusing writes (quota or read-only).
+                      </p>
+                      {systemHealth.cacheFailures.topKeys.map((k) => (
+                        <div key={k.key} className="border-b border-bad/10 py-1 text-[11px] last:border-0">
+                          <span className="tabular-nums text-bad">{k.failures}x</span>{' '}
+                          <span className="text-ink-faint">{k.key}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mb-2 flex items-center gap-2 border-t border-line pt-3">
                     <HealthDot ok={systemHealth.statsApiErrors.length === 0} />
                     <h3 className="text-[12px] font-semibold text-ink-muted">MLB Stats API</h3>
                   </div>

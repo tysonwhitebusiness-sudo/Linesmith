@@ -2585,6 +2585,58 @@ export async function listRecentSystemEvents(limit = 50): Promise<SystemEventRow
   );
 }
 
+export interface CacheFailureSummary {
+  /** Rows in the last 24h, the window a spike is judged against. */
+  last24h: number;
+  lastHour: number;
+  /** Distinct cache keys affected — one key failing repeatedly is a different problem from every key failing. */
+  distinctKeys: number;
+  mostRecentAt: string | null;
+  /** Worst offenders, so a single broken route is identifiable without reading raw events. */
+  topKeys: { key: string; failures: number }[];
+}
+
+/**
+ * Cache-write failures, for the /diagnostics panel task 3.2 asks for.
+ *
+ * These rows exist because of task 3.1: `cachedRoute` used to swallow write
+ * failures entirely, which is how the free-tier read-only window ran unnoticed
+ * while every route returned a healthy 200 and cached nothing. The number that
+ * matters is a SPIKE — a handful of rows is a blip, hundreds across many keys
+ * means the database is refusing writes and the app has silently degraded to
+ * no caching at all.
+ *
+ * `detail` is `"<cacheKey>: <error>"` (see cachedRoute), so the key is
+ * recovered by splitting on the first COLON-SPACE rather than by storing it
+ * twice. Colon-space, not colon: cache keys are themselves colon-delimited
+ * (`mlb:team-form:147`), so splitting on ':' alone reports every failure as
+ * having happened to a key called "mlb" — which is exactly what the first
+ * version of this did, and it makes the panel's most useful column useless.
+ */
+export async function readCacheFailureSummary(): Promise<CacheFailureSummary> {
+  const rows = await pgAll<{ detail: string | null; occurredAt: string }>(
+    `SELECT detail, occurred_at AS "occurredAt" FROM system_events
+     WHERE source = 'cachedRoute' AND occurred_at > now() - interval '24 hours'
+     ORDER BY occurred_at DESC`,
+  );
+  const hourAgo = Date.now() - 60 * 60_000;
+  const byKey = new Map<string, number>();
+  for (const r of rows) {
+    const key = (r.detail ?? '').split(': ')[0] || 'unknown';
+    byKey.set(key, (byKey.get(key) ?? 0) + 1);
+  }
+  return {
+    last24h: rows.length,
+    lastHour: rows.filter((r) => Date.parse(r.occurredAt) >= hourAgo).length,
+    distinctKeys: byKey.size,
+    mostRecentAt: rows[0]?.occurredAt ?? null,
+    topKeys: [...byKey.entries()]
+      .map(([key, failures]) => ({ key, failures }))
+      .sort((a, b) => b.failures - a.failures)
+      .slice(0, 5),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // DB-wide sanity checks — instant "did ingestion silently stop" read
 // ---------------------------------------------------------------------------
