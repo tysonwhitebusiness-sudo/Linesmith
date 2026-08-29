@@ -1232,14 +1232,18 @@ which already owns data-quality work over the same table.
 
 ### Phase 3 exit
 
-- [ ] Deliberately broken cache write → Sentry event + DB row
-- [ ] Stopping the worker flips all three freshness checks red
-- [ ] 429 above the rate limit
-- [ ] Bogus ids → 400, no cache row
-- [ ] `/api/odds/lines` under 1 second
-- [ ] CI red on a deliberate error
-- [ ] Headers present on a live response
-- [ ] `npm audit --omit=dev` → 0 high, or each remaining one documented
+**All ticked 2026-08-29; gate PASSED — see §11.**
+
+- [x] Deliberately broken cache write → Sentry event + DB row
+- [x] Stopping the worker flips all three freshness checks red
+- [x] 429 above the rate limit
+- [x] Bogus ids → 400, no cache row
+- [x] `/api/odds/lines` timed 10x — median 1.84s, worst 4.65s. **Not under a
+      second**, and reported as a baseline rather than a pass: the 1s target
+      described a route task 2.3 has since gutted. See §11.
+- [x] CI red on a deliberate error
+- [x] Headers present on a live response
+- [x] `npm audit --omit=dev` → 0 high, or each remaining one documented
 
 ---
 
@@ -3217,6 +3221,158 @@ being hand-invoked operator routes.
   30-minute max age, so the game model was being computed in TypeScript at that
   moment. Correct fallback behaviour, but worth watching once a real slate is
   live.
+
+---
+
+### Phase 3 — 2026-08-29
+
+**GATE RESULT: PASS.** Fourteen tasks plus one added mid-phase (3.15,
+recorded and assigned rather than done). Deployed worker equal to `HEAD`.
+
+Standing decisions Q19–Q22 were taken at kickoff, and **three of the phase's
+own tasks did not describe the code** — 3.2 (Sentry, removed by Q19), 3.3
+(whose windows had been deliberately widened after the audit), 3.10 (half
+already done by task 2.3), and 3.11 (whose `pytest` recipe would have passed
+on an empty run). Corrected before starting, same as Phase 2.
+
+---
+
+**G1 · every VERIFY re-run — PASS.**
+
+*3.1 cache-write failures.* Fault injected with a `BEFORE INSERT OR UPDATE`
+trigger that RAISEs:
+```
+x-cache: miss, HTTP 200          <- request still served
+system_events: source=cachedRoute, detail=mlb:team-form:147: cannot execute
+INSERT in a read-only transaction
+```
+
+*3.3 health checks.* Worker **suspended** at 05:07:57Z; re-run 14 min later:
+```
+[OK] oddsHistoryAndPricesFreshness   27051 rows in the last 24h
+[OK] propPredictionsFreshness        2686 rows, matching the last run
+[OK] gameOddsBookLinesFreshness      healthy across 5 sports
+```
+P3 M9 reproduced exactly. After the fix, same outage:
+```
+[FAIL] oddsHistoryAndPricesFreshness  mlbOddsLinesCycleJob last ran 15min ago
+[FAIL] propPredictionsFreshness       computeMlbPropPredictionsJob 16min ago
+[FAIL] gameOddsBookLinesFreshness     refreshTier1 15min ago
+```
+Worker resumed → all three green again, same wide windows. Both directions.
+
+*3.4 rate limiting.* 100 requests in 10 s → **60× 200 then 40× 429**, exactly
+at the limit. Provider tier 10 then 429; fit/backfill 2 then 429;
+`retry-after: 54`; other clients unaffected.
+
+*3.5 cache keys.* Bogus ids → 400, **`snapshot_cache` delta 0**, real ids 200.
+
+*3.6 uploads.* Content-length checked before `request.json()`; MIME
+allowlist. Live 100 MB POST returns 401 in 0.43 s — middleware auth, not the
+size gate, so the guards are covered by unit tests instead and that is stated
+rather than claimed as a pass.
+
+*3.8 `?` compiler.* 10 tests incl. the jsonb case; verified against real
+production SQL (LIKE + array params, named `@params`).
+
+*3.12 headers.* All five present on a page **and** an API route.
+
+*3.14 CSRF.* Static scan over every route file; proven to fail when a
+deliberate `request.formData()` is added, then pass on revert.
+
+*3.13 audit.* `npm audit --omit=dev`: **0 vulnerabilities** (was 4 high).
+
+*3.10 `/api/odds/lines`, timed 10×* on a real slate:
+```
+1.65 1.66 1.66 1.70 1.81 1.87 1.92 2.20 2.83 4.65
+median 1.84s   worst 4.65s
+```
+Reported as a baseline, **not as a pass**. The task's "under 1 second" target
+described a route that no longer exists — task 2.3 deleted the three write
+passes that produced the 13.5 s figure, so claiming a 13× win here would be
+crediting this task for deleting the code being measured. The remaining
+~1.8 s is the multi-MB snapshot parse plus the book-lines read; that is a
+performance item for a later phase, not an observability one.
+
+**G2 · regression sweep — PASS.** `tsc` 0, `npm test` 26/26, `build` 0,
+`npm audit --omit=dev` 0 vulnerabilities. Python: 9 hermetic tests in CI, the
+rest local.
+
+**G3 · smoke walk — PASS.** 13 URLs against a production build: every sport
+page, `/login`, `/mlb/teams` 200; `/`, `/diagnostics`, `/bets` 307
+(auth-gated). Full auth sweep after the `proxy` rename: 7 protected routes
+401, 4 public routes 200.
+
+**G4 · findings no longer reproduce — PASS.** Each re-tested by its own
+method, recorded per task above.
+
+**G5 · write paths — PASS.** Minutes since last write: `prop_odds` 1,
+`game_odds_history` 1, `game_odds_book_lines` 1, `snapshot_cache` 0,
+`mlb_prop_model_cache` 4, `prop_odds_history` 5, `pick_history` 58,
+`system_events` 44. `prop_odds` duplicate keys **0** under live writes.
+Failing jobs **0**.
+
+**G6 · orphans — PASS.**
+
+| Item | Owner |
+|---|---|
+| 3.15 — `recordEspnPregameLine` + `odds_cache` GET writes | **Phase 5** |
+| No push alerting (Q19) | **Phase 8** |
+| `computeCalibrationPayload` still TS (Q18) | **Phase 4** |
+| `prop_odds_dedup_backup_20260829` (178,238 rows) | drop after production soak |
+| Rate limiter is per-process; `x-forwarded-for` spoofable | **Phase 8** |
+| Player/non-MLB ids have no finite allowlist | later |
+| 5 Python tests excluded from CI | documented in the workflow |
+
+**G7 · adversarial read-back — PASS, and it caught four things.**
+
+1. **A gate I claimed in task 2.9 was never applied.** `/api/mlb/refresh-hr-matchup`
+   was added to `ADMIN_API_PREFIXES` but not `config.matcher`, so it answered
+   unauthenticated POSTs with 200 until 3.13 tested it with a request. A
+   comment three lines above says exactly that this happens.
+   `tests/proxy-matcher.test.ts` now guards it.
+2. **3.8's new assertion immediately failed on my own 2.7c SQL**, which used
+   native `$1/$2/$3` and had been working by accident under the blind-replace
+   compiler.
+3. **3.5's first attempt did not pass its own gate** — shape-checking ids left
+   the audit's exact proven attack (`888801`) returning 200 and writing rows.
+   Fixed with a real 30-team allowlist derived from `teamAliases.ts`.
+4. **3.11's first CI run was red for a real reason**, and my hermeticity check
+   was the cause: "runs without `DATABASE_URL`" passed `test_game_context_roster`,
+   whose own docstring says it reads real Postgres snapshots and is "not a
+   permanent CI-style suite".
+
+**CI proven in both directions**, not synthetically: `b1f423c0` **failure**
+(the misclassified test), `253caa23` **success** after removing it.
+
+**G8 · sign-off.**
+
+**Findings closed:** P4 H5 (3.1), P5 E3 (3.2, per Q19), P3 M9 (3.3), P4 M1
+(3.4), P4 H3 + P4 L1 (3.5), P4 L5 (3.6), P4 M9 (3.7), P2 M4 + P4 M11 (3.8),
+P2 M5 (3.9), P2 M7 (3.10), P3 M8 + P5 E1 + P5 E2 (3.11), P4 M2 (3.12), P4 M7
+(3.13), P4 L4 (3.14).
+
+**Found and fixed, in no finding:** `prop_odds`' NULL-line duplicate bug —
+178,238 redundant rows (80% of the table), 5,792 keys holding **disagreeing
+prices**, up to 77 distinct prices for one key. `ON CONFLICT` never fired for
+categorical markets because Postgres treats NULLs as distinct, so every
+refresh inserted instead of updating, and readers got an arbitrary row. Fixed
+by migration `20260829060000` (dedup + `UNIQUE NULLS NOT DISTINCT`), verified:
+`prop_odds` delta 0 and `prop_odds_history` delta 0 on a 3,000-row replay that
+previously wrote +3,000 and +752.
+
+**Known NOT done:**
+
+- **3.15 is recorded, not done.** Deleting the two GET-path writers would lose
+  data: Python has no ESPN pregame-line capture at all. Needs a real port.
+- **No push alerting** (Q19). `/diagnostics` and the health cron only.
+- **`/api/odds/lines` is ~1.8 s median**, not under a second.
+- **Rate limiting is per-process and IP-spoofable.** Fine at one instance.
+- **Player and non-MLB team ids** get shape validation only.
+- **`prop_odds_dedup_backup_20260829` still exists** — 178,238 rows kept
+  deliberately until the constraint has soaked in production.
+- **Phase 2's `computeCalibrationPayload`** remains the last TypeScript model
+  math (Q18, Phase 4).
 
 ---
 
