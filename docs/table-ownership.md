@@ -123,6 +123,16 @@ same seasonal aggregate from the same source, and the write is an idempotent
 upsert. But "low risk" is the reasoning that produced this audit, so it is
 recorded as open rather than argued away. **Owner: Phase 3.**
 
+**`pick_history` has one *scheduled* writer, plus three admin backfills.**
+Python owns every live write (`computeMlbPropPredictionsJob`,
+`computeMlbGameModelJob`, `gradeMlbPropsJob`, and the generic-sport jobs).
+`writeBackfill` also reaches it from `/api/props/backfill`,
+`/api/props/game-backfill` and `/api/props/game-total-backfill` — all
+hand-invoked and all under `ADMIN_API_PREFIXES`, so none is on a user's
+page-load path. Same accepted category as `model_weights` and
+`team_elo_history`'s `elo-backfill`. Recorded so the Owner column is not read
+as "nothing in TypeScript can write this".
+
 **`job_locks` is TypeScript-owned and that is correct.** It is written only by
 `withJobLock`, and the only callers are `lib/scheduler.ts`'s two timers, which
 are TypeScript. It holds no model data — it is coordination state for the
