@@ -3,9 +3,9 @@
 **Phase 5: COMPLETE, gate PASSED** (commit `f8e60b5`).
 **Phase 4: all 13 tasks done. Gate IN PROGRESS — G7 FAILED and is being fixed.**
 
-The Phase 4 gate is not passed. It found three real defects that the phase's
-own VERIFYs missed, two of which needed operator decisions (both answered
-2026-08-29, recorded as Q37/Q38 below). Do not write a Phase 4 sign-off until
+The Phase 4 gate is not passed. It found FIVE real defects that the phase's
+own VERIFYs missed, three of which needed operator decisions (all answered
+2026-08-29, recorded as Q37/Q38/Q39 below). Do not write a Phase 4 sign-off until
 §3's remaining steps are done and the gate has been re-run **from G1**, which
 is what the plan's Rule 5 requires after any failed item.
 
@@ -13,7 +13,7 @@ is what the plan's Rule 5 requires after any failed item.
 
 1. `CLAUDE.md` — conventions. Read the caching and table-ownership sections.
 2. `docs/audit-remediation-plan.md` — the plan. §0 holds standing decisions
-   Q1–Q38; §11 is the phase log and the only place a task counts as done.
+   Q1–Q39; §11 is the phase log and the only place a task counts as done.
 3. This file — where the work actually is.
 
 Trust `§11` and `git log` over this file if they disagree.
@@ -24,7 +24,7 @@ Phase 5 is signed off. Phase 4's thirteen tasks are all implemented, committed,
 pushed, and deployed (worker live on `8582a77`). What is **not** done is the
 gate, and it has already failed once on G7.
 
-### The three things the gate found
+### The five things the gate found
 
 **(a) The activation gate did not work.** *(fixed, re-verification running)*
 `scripts/gate/phase-4-weak-model-refused.py` ran the real
@@ -81,6 +81,25 @@ entirely; that is a product decision, not a gate's. Done: migration
 `20260829160000_shadow_scope_correction.sql` (applied, comment verified live)
 and two corrected docstrings in `lib/db/client.ts`.
 
+**(d) 4.3's calibrations were fitted and applied to nothing.** *(Q39, DONE)*
+Its VERIFY was "model_calibration is no longer empty", which passed. But the
+single serve-time consumer (`odds_lines_cycle.py:557`) asks for
+`('mlb','moneyline')` and all seven fitted rows are PROP markets. No TypeScript
+path reads the table at all. P3 H1 -- "probabilities are uncalibrated" -- was
+still true of every number the MLB prop job produced.
+
+**Q39 — operator decision: wire prop serving to apply them.** Done in
+`_compute_mlb_prop_predictions_inner`, before BOTH writers (they share one
+candidate list precisely so they cannot disagree). **This changes what a user
+sees, deliberately**: Platt with a<1 compresses confidence — hit-in-game takes
+a raw 0.700 to 0.606 and 0.300 to 0.406 — so fewer picks clear the 3% edge
+threshold. Live on the worker (`b5110f3`).
+
+**(e) One dead export.** *(DONE)* `poissonPushProbability` (TS) was added by
+4.12 and called by nothing; `poissonOverProbability` already renormalises over
+`1 - push` itself. Deleted. Found by sweeping **every** function Phase 4/5
+added in both languages for a real caller — Python came back clean.
+
 ### Gate items already passed (before G7 failed)
 
 G1 (every VERIFY re-run), G2 (tsc clean, build compiled, `npm test` 36/36, 17
@@ -94,9 +113,12 @@ are closed, per Rule 5.
 
 - `scripts/gate/phase-4-weak-model-refused.py`, re-run after the guardrail fix,
   writing `python-odds-service/weakgate2.log`. **Expected: `PASS — the gate
-  refused it`.** Takes ~35–40 min; it builds the 2023/2024 training set for
-  real. If it still says ACTIVATED, the guardrail did not bind and (a) is not
-  fixed.
+  refused it`.** Started 16:53 local. Budget HOURS, not minutes — the first run
+  of this script took ~4.5h, because it builds the 2023/2024/2025 training set
+  for real. If it still says ACTIVATED, the guardrail did not bind and (a) is
+  not fixed. Fast hermetic proof already exists either way
+  (`test_activation_guardrails.py`, fault-injected); this is the end-to-end
+  confirmation, not the only evidence.
 - Two `harvester_scrape.py` Windows scheduled tasks, ~20-min cycle. Normal.
 
 Nothing else. No fit, no backfill.
@@ -109,16 +131,27 @@ Nothing else. No fit, no backfill.
    ```bash
    cd python-odds-service && ./.venv/Scripts/python.exe -u ../scripts/gate/phase-4-refit-total.py
    ```
-   Train 2010–2023, holdout 2024–2025 (`historical_odds` has `total_line` on
-   >99.5% of rows every season from 2010). **Do not run it concurrently with
-   the weak gate** — shared 15-connection pooler. Activation is not assumed: if
+   **RESIZE THE SEASON RANGE FIRST.** It is currently set to train 2010–2023 /
+   holdout 2024–2025, which is right statistically and wrong operationally: a
+   training-set build costs roughly 1.5 hours PER SEASON (the weak gate's three
+   seasons took ~4.5h), because `build_training_set` makes per-(team, season)
+   statsapi calls and `compute_league_outcome_rates` walks a whole season. 16
+   seasons is not a run you can finish. Measure one season first, then pick the
+   widest range that fits — train 2021–2023 / holdout 2024–2025 is the
+   fallback, and is still larger than the model TS v7 was fitted on.
+   The in-process memo cache does NOT help across processes.
+   **Do not run it concurrently with the weak gate** — shared 15-connection
+   pooler, measured at 13 of 15 in use. Activation is not assumed: if
    it fails any of the three guardrails it is written unactivated and v8 stays
    live, which is a legitimate outcome, not a failure of the task.
-3. **Commit and push** the guardrail fix, the shadow correction, the re-fit
-   script, and the stale-docstring fixes. Touches `python-odds-service/` →
-   **deploy and confirm the live commit**.
-4. **Re-run the whole gate from G1** (Rule 5). Not just the failed item.
-5. **§11 sign-off** with G1–G7 raw outputs and an honest "known not done".
+3. **Re-run the whole gate from G1** (Rule 5). Not just the failed item.
+4. **§11 sign-off** with G1–G7 raw outputs and an honest "known not done".
+
+Steps 1 and 2 are the only ones left that need a long-running process. All the
+code from (a) and (c)–(e) is committed, pushed and deployed:
+`8582a77` (goodBetsRecord + 4.11's second call site), `c7885d4` (the guardrail,
+the shadow correction, the /diagnostics filters), `b5110f3` (4.3 wired, live on
+the worker), `7b1cd8e` (the dead export).
 
 ## 4. G6 — orphans, gathered
 
