@@ -23,6 +23,11 @@ from zoneinfo import ZoneInfo
 import asyncpg
 
 from config import DATABASE_URL, DB_POOLER_MODE
+# Safe one-way import: entity_resolution.py depends only on `re`/`unicodedata`
+# and never imports db, so this cannot cycle. Used by
+# write_game_odds_book_lines to canonicalise bookmaker spellings at the one
+# choke point every Python game-line writer already passes through (task 5.3).
+from entity_resolution import canonical_bookmaker
 
 _pool: asyncpg.Pool | None = None
 
@@ -2912,7 +2917,18 @@ async def write_game_odds_book_lines(rows: list[GameOddsBookLineInput]) -> None:
     bookmaker that drops out of this cycle's results simply stops being
     refreshed (its last-known row stays, timestamped), it is never deleted;
     only a matching (sport, game_id, market, side, bookmaker, source) key
-    is ever touched, so this can never affect a different source's rows."""
+    is ever touched, so this can never affect a different source's rows.
+
+    Bookmaker names are canonicalised HERE rather than in each producer
+    (task 5.3, P3 H9). All four Python callers — _propline_game_line_rows, the
+    SharpAPI and SportsGameOdds builders in providers.py, and
+    odds_lines_cycle.py's the-odds-api path — used to pass the provider's raw
+    string through untouched, and every one of them would have had to remember
+    the same rule. Doing it at the single choke point every writer already goes
+    through means a fifth producer gets it for free, which is the same reasoning
+    job_runner.run_provider_specs applies to cap-checking. Note this also makes
+    the ON CONFLICT key above do real work: `Fanduel` and `fanduel` used to be
+    two distinct keys for one book, so they never collided and never merged."""
     if not rows:
         return
     fetched_at = datetime.now(timezone.utc)
@@ -2935,7 +2951,7 @@ async def write_game_odds_book_lines(rows: list[GameOddsBookLineInput]) -> None:
                     r.game_id,
                     r.market,
                     r.side,
-                    r.bookmaker,
+                    canonical_bookmaker(r.bookmaker),
                     r.source,
                     r.point,
                     r.american_odds,

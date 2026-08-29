@@ -23,6 +23,9 @@
  */
 
 import { pgGet, pgAll, pgRun, pgTransaction } from './pgClient';
+// Bookmaker canonicalisation for writeGameOddsBookLines (task 5.3). Pure
+// string function, no DB dependency, so this import cannot cycle back here.
+import { canonicalBookmaker } from '../odds/props/entityResolution';
 import type { BookmakerOdds, UnifiedGameLine } from '../odds/types';
 import { americanToDecimal, bestMoneylineFromBooks, bestSpreadFromBooks, bestTotalFromBooks } from '../odds/display';
 import { simulatedProfit } from '../picks/bankroll';
@@ -677,7 +680,13 @@ export async function writeGameOddsBookLines(rows: GameOddsBookLineInput[]): Pro
           gameId: r.gameId,
           market: r.market,
           side: r.side,
-          bookmaker: r.bookmaker,
+          // Canonicalised here, at the one choke point every TS game-line
+          // writer passes through, mirroring db.py's write_game_odds_book_lines
+          // (task 5.3, P3 H9). The live TS caller is recordEspnPregameLine via
+          // the CFB/NBA/Soccer game routes; leaving it raw is how
+          // `Fanduel`/`fanduel` became two ON CONFLICT keys for one book and
+          // never merged.
+          bookmaker: canonicalBookmaker(r.bookmaker) ?? r.bookmaker,
           source: r.source,
           point: r.point ?? null,
           americanOdds: r.americanOdds,

@@ -328,6 +328,23 @@ BOOKMAKER_ALIASES: dict[str, str] = {
     "bodog": "bodog",
     "circa": "circa",
     "thescore": "thescore",
+    # Added 2026-08-29 (task 5.3). Every one of these was already arriving in
+    # game_odds_book_lines under two or three spellings; they are listed here
+    # so the registry is a real inventory of books this app has actually seen,
+    # rather than only the ones the prop path happened to resolve. "lowvig"
+    # and "mybookie" in particular MUST be here for the suffix rule below to
+    # collapse "LowVig.ag"/"MyBookie.ag" onto them.
+    "lowvig": "lowvig",
+    "mybookie": "mybookie",
+    "matchbook": "matchbook",
+    "smarkets": "smarkets",
+    "rebet": "rebet",
+    "onexbet": "onexbet",
+    "tabau": "tabau",
+    # BetUS is a real book whose name genuinely ends in "us". Listing it
+    # explicitly means the exact-match lookup wins before the suffix rule can
+    # strip it down to the nonexistent "bet".
+    "betus": "betus",
 }
 
 _BOOKMAKER_STRIP_RE = re.compile(r"[\s._-]+")
@@ -336,6 +353,54 @@ _BOOKMAKER_STRIP_RE = re.compile(r"[\s._-]+")
 def normalize_bookmaker(raw: str) -> str | None:
     key = _BOOKMAKER_STRIP_RE.sub("", raw.strip().lower())
     return BOOKMAKER_ALIASES.get(key)
+
+
+# Regional/licence suffixes the-odds-api appends to a book's key —
+# `bet365.us`, `BetOnline.ag`, `LowVig.ag`, `MyBookie.ag`. Stripped ONLY when
+# what remains is itself a known book, which is why the exact-match lookup in
+# canonical_bookmaker runs first: "betus" is a real sportsbook whose name ends
+# in "us", and a blind strip would turn it into the nonexistent "bet".
+_BOOKMAKER_REGION_SUFFIXES = ("us", "ag", "au", "uk", "eu", "ca")
+
+
+def canonical_bookmaker(raw: str | None) -> str | None:
+    """Collapse a bookmaker string to one canonical spelling, for the GAME-LINE
+    path. Deliberately NOT the same function as normalize_bookmaker above.
+
+    The two differ in exactly one way, and the difference is the point:
+    normalize_bookmaker returns None for a book it doesn't recognise, and the
+    prop path relies on that — a None there is what pushes the row into
+    `odds_unresolved` so an unknown book gets noticed instead of silently
+    stored. Game lines have no such reporting path, and dropping a real price
+    from 22 books because its spelling is new would be strictly worse than
+    storing it under its own cleaned name. So this one always returns
+    something for a non-empty input: an alias when it knows the book, and the
+    punctuation-stripped lowercase form when it doesn't.
+
+    Task 5.3 (P3 H9). Before this existed, all four Python producers
+    (`_propline_game_line_rows`, the SharpAPI and SportsGameOdds builders in
+    providers.py, and odds_lines_cycle.py's the-odds-api path) passed the
+    provider's raw string straight through, so `game_odds_book_lines` held 33
+    spellings for 22 real books — `fanduel`/`FanDuel`/`Fanduel` was 750 rows
+    split three ways. That corrupts best-price selection, which is the core
+    Tier B feature, and it is part of why 4.1's de-vig resolution rate sits at
+    18%: `_two_sided_devigged_for_row` matches on bookmaker equality, so a
+    `Fanduel` over never pairs with a `fanduel` under.
+    """
+    if not raw:
+        return None
+    key = _BOOKMAKER_STRIP_RE.sub("", raw.strip().lower())
+    if not key:
+        return None
+    mapped = BOOKMAKER_ALIASES.get(key)
+    if mapped:
+        return mapped
+    for suffix in _BOOKMAKER_REGION_SUFFIXES:
+        if key.endswith(suffix):
+            base = key[: -len(suffix)]
+            if base in BOOKMAKER_ALIASES:
+                return BOOKMAKER_ALIASES[base]
+    return key
 
 
 # ---------------------------------------------------------------------------

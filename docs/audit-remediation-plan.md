@@ -177,6 +177,47 @@ after Phase 9:
 | 4.8 | VERIFY wants "24 h of writes" | Verify by grep plus one observed write cycle |
 | 4.1 | VERIFY on a rolling 7-day window | Measure rows written **since the fix** — a 7-day window dilutes a same-day change with six days of pre-fix rows, so this is more honest, not merely faster |
 
+**Added 2026-08-29, at the Phases 5+4 kickoff**, after scanning both phases
+against the live tree and database rather than against the plan's prose. Q28-Q31
+were put to the operator before they left; Q32-Q36 I took myself and am
+recording rather than burying. Every one of them changed a task.
+
+| # | Decision | Lands in |
+|---|---|---|
+| Q28 | **Build a real market reference for the MLB game model.** `market_prob` is non-null on **zero** `moneyline` and **zero** `total` rows of `pick_history`, and `game_picks` has no equivalent column — so 4.2's activation gate is not merely failing for the two live game models, it is *uncomputable*. Add `market_prob` to `game_picks`, populate it by de-vigging `game_odds_book_lines` at the modal point (which 5.5 builds anyway), then run the gate properly. Models stay active while this is built. | 4.2, 5.5 |
+| Q29 | **Do not retrade Propline's budget — fix the budget first.** 5.2 assumes spare capacity; there is none (`propline` sits at exactly 1000/1000 daily). But `propline_2` is a whole second paid account whose spend is never recorded at all, so the fix is to *add* budget, not reallocate it. Nothing currently displayed gets dropped. | 5.2, 5.11 |
+| Q30 | **Canonical bookmaker = lowercase, regional suffix stripped.** `bet365.us`+`bet365` -> `bet365`; `BetMGM.us`+`BetMGM`+`betmgm` -> `betmgm`; `LowVig.ag` -> `lowvig`. Matches `prop_odds`' existing all-lowercase 14 books. History is rewritten under a backup table, reversible. | 5.3 |
+| Q31 | **Spend ~20 `propline_2` calls to build the alias map from a live response**, rather than waiting ~17h for the primary key's cap to reset. 5.1 requires a live response and the plan's own alias table is demonstrably from memory (see below). Exact call count is recorded in the phase log. | 5.1 |
+| Q32 | **Platt calibration fits only where n >= 200** for a sport+market. The eligible sample is 3,852 graded rows carrying `market_prob`, but per-market that runs from n=950 down to n=14. Below the threshold no calibration row is written at all — uncalibrated beats mis-calibrated. | 4.3 |
+| Q33 | **`model_weights.shadow` defaults TRUE on every existing row.** 4.4 adds the column; defaulting it true means nothing becomes newly visible, matching the state Phase 1.3 already put the UI in. Flipping a model to visible stays a deliberate, separate act. | 4.4 |
+| Q34 | **4.10 is verified live on soccer only, and that is stated rather than glossed.** Last 7 days of `pick_history`: mlb 20,062, soccer 133, and **zero** for NBA/NHL/CFB/tennis — they are out of season, and their jobs correctly report "healthy - 0 rows written". Both-sides generation is fixed for all five and unit-tested for all five; live confirmation for the out-of-season four defers, with that named in the gate's "known not done". | 4.10 |
+| Q35 | **CHECK ranges are derived empirically per sport, not set from intuition.** Soccer legitimately carries `.25`/`.75` Asian quarter-lines (2.75, 3.25 observed live), so a naive "half-points only" check would reject real data. Violators quarantine per Q23. | 5.4 |
+| Q36 | **`propline_2`'s provider_id attribution is fixed forward-only.** Existing rows are not relabelled, because they are genuinely indistinguishable from `propline`'s once written. | 5.2, 5.11 |
+
+**Measured at kickoff, and it contradicts the plan in four places.** Recording
+these because Rule 1 and the "verify it still reproduces" step exist precisely
+for this, and three of the four would have caused wasted work:
+
+1. **5.6 does not reproduce — it is already fixed.** `lib/odds/display.ts:20`
+   defines `MAX_PLAUSIBLE_DECIMAL_ODDS = 30` and all three best-price functions
+   (moneyline, total, spread) call the guard. The comment dates the fix to
+   2026-08-27, after the audit. **5.6 shrinks to "write the missing test."**
+2. **5.1's alias table is wrong, from memory, exactly as 5.1's own warning
+   predicts.** The plan lists `batter_2plus_hits`, `batter_3plus_hits`,
+   `batter_2plus_rbis`, `batter_3plus_rbis`. What Propline actually sends, per
+   1,317 live `odds_unresolved` rows, includes `batter_2plus_home_runs`,
+   `pitcher_outs` and `pitcher_earned_runs`. The map gets rebuilt from a live
+   response (Q31), not adapted from the table above.
+3. **5.2's `propline_2` numbers are an artefact of two real bugs, not a vendor
+   rejection.** `fetch_propline` hardcodes `provider_id="propline"`
+   (`providers.py:792`), so propline_2's rows *and* its unresolved rows land
+   under `propline`; and `job_runner.py:74` only records spend when
+   `cap_kind != "none"`, which propline_2 is. So propline_2's spend was never
+   recorded, and both accounts silently share one 1,000/day counter — which is
+   why `propline` pins at exactly 1000/1001 every single day.
+4. **`model_weights` has no `shadow` column**, which 4.4 assumes exists. It is a
+   migration, not a flag flip.
+
 **4.7 IS FOUR JOBS, NOT ONE — operator has asked for all four built. Full
 spec, including a correction to my own first sizing, is in
 `docs/CURRENT.md` §2b. Summary: NBA just needs running; MLB is moderate and
