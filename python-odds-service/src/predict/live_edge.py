@@ -228,16 +228,32 @@ def _sharp_reference_prob(matched: list[PropOddsRow], side: str) -> tuple[float,
     return None
 
 
-def _consensus_reference_prob(matched: list[PropOddsRow], side: str) -> tuple[float, str] | None:
+def _consensus_reference_prob(
+    matched: list[PropOddsRow], side: str, exclude_bookmaker: str | None = None
+) -> tuple[float, str] | None:
     """Tier 2 — median devigged probability across every distinct
     (bookmaker, provider) pair with a genuine two-sided, non-stale price.
     Median, not mean, so one outlier book can't skew it — the same class
     of problem odds_math.is_plausible_decimal_odds guards against
-    elsewhere in this codebase."""
+    elsewhere in this codebase.
+
+    `exclude_bookmaker` is the book the caller is about to COMPARE against
+    this reference (task 5.7, P3 M14). Leaving it in biases every comparison
+    toward "fair": the subject book is one of the terms in the median it is
+    then measured against, so it partly sets its own benchmark, and the
+    measured edge shrinks toward zero. With few books quoting a prop — the
+    common case here — a book can be most of its own reference.
+
+    Excluding it can leave nothing behind, and that returns None rather than
+    a one-book "consensus". A median of one book is that book's price, which
+    is precisely the number this is supposed to be independent of.
+    """
     seen: set[tuple[str, str]] = set()
     probs: list[float] = []
     for row in matched:
         if row.side != side:
+            continue
+        if exclude_bookmaker is not None and row.bookmaker == exclude_bookmaker:
             continue
         key = (row.bookmaker, row.provider_id)
         if key in seen:
@@ -311,7 +327,13 @@ def resolve_candidate_edge(
     market_prob: float | None = None
     edge_source: str | None = None
     if implied_raw is not None:
-        reference = _sharp_reference_prob(matched, side) or _consensus_reference_prob(matched, side)
+        # The compared book is excluded from its own Tier-2 reference (5.7).
+        # Tier 1 needs no such exclusion: it is a named sharp book, and if the
+        # candidate's own price IS that sharp book, _sharp_reference_prob
+        # comparing it to itself yields edge 0, which is the honest answer.
+        reference = _sharp_reference_prob(matched, side) or _consensus_reference_prob(
+            matched, side, exclude_bookmaker=bookmaker
+        )
         if reference is not None:
             market_prob, edge_source = reference
             edge = market_prob - implied_raw

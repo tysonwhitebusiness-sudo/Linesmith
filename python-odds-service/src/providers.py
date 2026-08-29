@@ -33,8 +33,10 @@ from entity_resolution import (
     UnresolvedRow,
     build_roster_index,
     normalize_bookmaker,
+    normalize_team_name,
     resolve_market_key,
     resolve_player,
+    team_name_words,
     unresolved_bookmaker,
     unresolved_market,
     unresolved_player,
@@ -113,10 +115,56 @@ class ProviderSpec:
     spend_unit: Literal["requests", "objects"] = "requests"
 
 
+# Games a provider supplied no matching event for at all. A single
+# _team_match returning False is NORMAL — every call site loops over a
+# provider's whole event list looking for one game, so most comparisons are
+# expected misses. The real failure, and the one P3 M13 is about, is a game
+# that matched NOTHING, because that is the silent zero-row outcome. These are
+# drained once per job run by job_runner.run_provider_specs and written to
+# system_events as one aggregate row, rather than a database write per
+# comparison inside a hot loop.
+_TEAM_MATCH_MISSES: list[str] = []
+
+
+def record_team_match_miss(provider_id: str, game: Game) -> None:
+    _TEAM_MATCH_MISSES.append(f"{provider_id}: {game.away_team_name} @ {game.home_team_name} ({game.game_id})")
+
+
+def drain_team_match_misses() -> list[str]:
+    misses = list(_TEAM_MATCH_MISSES)
+    _TEAM_MATCH_MISSES.clear()
+    return misses
+
+
 def _team_match(row_home: str, row_away: str, game: Game) -> bool:
-    return (row_home == game.home_team_name and row_away == game.away_team_name) or (
-        row_home == game.away_team_name and row_away == game.home_team_name
-    )
+    """Does this provider row describe this game?
+
+    Task 5.8 (P3 M13). This was raw string equality, so a provider changing
+    "LA Galaxy" to "Los Angeles Galaxy", or adding an accent to "Montreal",
+    silently returned zero rows — the same class of failure as the 30-of-37
+    game drop, and invisible because zero rows looks identical to "no odds
+    offered". It now uses entity_resolution.normalize_team_name, the same
+    normalisation harvester_scrape.py already proved against real live
+    mismatches.
+
+    Deliberately does NOT adopt harvester's loose substring-containment
+    fallback. Harvester matches raw scraped names where a near-miss is the
+    normal case; here both sides must match to attach a price to a game, so a
+    false positive attaches odds to the WRONG game — strictly worse than a
+    miss, which is at least visible in the drain above. Normalised equality
+    and order-independent word-set equality are both exact, so both are safe.
+    """
+    home_n, away_n = normalize_team_name(row_home), normalize_team_name(row_away)
+    g_home_n, g_away_n = normalize_team_name(game.home_team_name), normalize_team_name(game.away_team_name)
+    if (home_n == g_home_n and away_n == g_away_n) or (home_n == g_away_n and away_n == g_home_n):
+        return True
+    # Order-independent word-set equality — "Red Bull New York" vs "New York
+    # Red Bulls", verified live in MLS.
+    home_w, away_w = team_name_words(row_home), team_name_words(row_away)
+    g_home_w, g_away_w = team_name_words(game.home_team_name), team_name_words(game.away_team_name)
+    if not (home_w and away_w and g_home_w and g_away_w):
+        return False
+    return (home_w == g_home_w and away_w == g_away_w) or (home_w == g_away_w and away_w == g_home_w)
 
 
 def _normalize_row(
@@ -453,6 +501,9 @@ async def fetch_oddsapiio(
             None,
         )
         if not match:
+            # No event matched this game AT ALL — the silent zero-row outcome
+            # P3 M13 is about. One _team_match miss is normal; this is not.
+            record_team_match_miss(out.provider_id, game)
             continue
 
         if not rate_limit.within_rate(_ODDSAPIIO_ODDS_RATE_KEY, rate_per_hour, 3600.0):
@@ -811,6 +862,7 @@ async def fetch_propline(client: httpx.AsyncClient, api_key: str, games: list[Ga
             (e for e in events if _team_match(e.get("home_team", ""), e.get("away_team", ""), game)), None
         )
         if not match:
+            record_team_match_miss(out.provider_id, game)
             continue
         eid = match["id"]
         try:

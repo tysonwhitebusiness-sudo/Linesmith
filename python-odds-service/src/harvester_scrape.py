@@ -251,85 +251,15 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
 # ---------------------------------------------------------------------------
 
 
-# Word-boundary-guarded aliases (never a blind substring replace — "la"
-# would otherwise corrupt "Dallas"/"Atlanta"/etc.), verified against real
-# mismatches this session, not guessed: "utd" (EPL: "Manchester Utd" vs our
-# own "Manchester United"), "lafc" and standalone "la" (MLS: ESPN's own
-# acronyms "LAFC"/"LA Galaxy" vs OddsPortal's spelled-out "Los Angeles
-# FC"/"Los Angeles Galaxy" — LAFC has no separate nickname, "Los Angeles FC"
-# IS its full name, not a different club).
-_NAME_ALIASES: list[tuple[str, str]] = [
-    (r"\butd\b", "united"),
-    (r"\blafc\b", "los angeles fc"),
-    (r"\bla\b", "los angeles"),
-]
-
-# Whole-name aliases, anchored (^...$) rather than substring - deliberately
-# NOT added to _NAME_ALIASES above, because college football is full of
-# real, distinct "X" vs "X State" school pairs (Michigan/Michigan State,
-# Ohio/Ohio State, Washington/Washington State, ...) where a substring or
-# missing-word rule would risk silently cross-matching two different real
-# teams. These are narrow, exact full-name equivalents verified live this
-# session, not a general pattern: OddsPortal spells NC State out in full
-# ("North Carolina State") where ESPN's own name already uses the
-# abbreviated "NC State Wolfpack"; OddsPortal renders Sacramento State's
-# "California State" system prefix as "CS Sacramento" where ESPN uses
-# "Sacramento State Hornets". Anchored so they can only ever replace the
-# ENTIRE name, never a substring within some other school's longer name.
-_FULL_NAME_ALIASES: dict[str, str] = {
-    "north carolina state": "nc state",
-    "cs sacramento": "sacramento state",
-}
-
-# Below this many characters, substring containment risks a coincidental
-# false match rather than a real shortened-name relationship — real bug
-# caught before shipping: naive containment on "la" (2 chars) happened to
-# match "LA Galaxy" against "Los Angeles Galaxy" here, but only because "la"
-# coincidentally appears inside "gaLAxy" itself; the same check would just
-# as readily mismatch "la" against "Atlanta" or "Dallas" in a league that
-# had one. The alias table above is the real fix for known short forms;
-# this guard is what makes the FALLBACK safe for names it doesn't cover.
-_MIN_CONTAINMENT_LEN = 4
-
-
-def _strip_accents(name: str) -> str:
-    """NFKD-decompose then drop combining marks (unicode category 'Mn') -
-    "Montréal" -> "Montreal", "José" -> "Jose". Without this, the plain-a-z
-    regex both _norm and _norm_words apply next silently DROPS accented
-    letters instead of transliterating them ("Montréal" -> "montral", losing
-    the e entirely) rather than matching what OddsPortal's plain-ASCII
-    spelling normalizes to ("Montreal" -> "montreal") - real bug, not a data
-    problem: confirmed live this session that ESPN's/NHL's own payloads
-    already carry the correct real "é" character (json.dumps(...,
-    ensure_ascii=True) on the raw NHL API response showed a clean \\u00e9);
-    a Windows terminal's inability to DISPLAY that character as anything but
-    a garbled replacement glyph earlier this session was mistaken for actual
-    data corruption and wrongly written off as an out-of-scope upstream
-    encoding bug. It wasn't - it was this normalization gap, and it would
-    have silently broken every single Montreal Canadiens (NHL) game."""
-    decomposed = unicodedata.normalize("NFKD", name)
-    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
-
-
-def _norm(name: str) -> str:
-    name = _strip_accents(name.lower())
-    name = _FULL_NAME_ALIASES.get(name, name)
-    for pattern, replacement in _NAME_ALIASES:
-        name = re.sub(pattern, replacement, name)
-    return re.sub(r"[^a-z]", "", name)
-
-
-def _norm_words(name: str) -> frozenset[str]:
-    """Word-set form for the reordering fallback below — "Red Bull New
-    York" vs "New York Red Bulls" (MLS, verified live) share every
-    significant word, just not the same order, which no amount of prefix/
-    substring matching on the joined string can bridge."""
-    name = _strip_accents(name.lower())
-    name = _FULL_NAME_ALIASES.get(name, name)
-    for pattern, replacement in _NAME_ALIASES:
-        name = re.sub(pattern, replacement, name)
-    words = re.findall(r"[a-z]+", name)
-    return frozenset(w.rstrip("s") for w in words if len(w) >= 3)  # rstrip("s"): Bull vs Bulls
+# Team-name normalisation moved to entity_resolution.py in task 5.8 so
+# providers.py's _team_match could share this exact implementation rather
+# than keep a weaker second one. Imported under the original private names
+# so every call site below is untouched.
+from entity_resolution import (  # noqa: E402
+    MIN_CONTAINMENT_LEN as _MIN_CONTAINMENT_LEN,
+    normalize_team_name as _norm,
+    team_name_words as _norm_words,
+)
 
 
 def _match_game(games: list[Game], home_team: str, away_team: str) -> Game | None:

@@ -32,6 +32,7 @@ over whatever's registered.
 import asyncio
 
 import db
+import providers
 from providers import FetchOutcome, ProviderSpec
 
 
@@ -77,12 +78,32 @@ async def run_provider_specs(
             await record_fn(spec.provider_id, **record_kwargs)
         return outcome
 
+    # Task 5.10 (P2 H4). `asyncio.gather` without return_exceptions=True
+    # propagates the FIRST exception and DISCARDS every sibling's result — so
+    # one provider raising threw away rows the other providers had already
+    # fetched AND ALREADY PAID FOR. The sequential branch had the same defect
+    # for a different reason: an exception escaping mid-list abandoned the
+    # outcomes collected before it. Both now collect exceptions as values and
+    # persist whatever did come back.
     if concurrent:
-        results = await asyncio.gather(*(run_one(spec) for spec in specs))
+        results = await asyncio.gather(*(run_one(spec) for spec in specs), return_exceptions=True)
     else:
-        results = [await run_one(spec) for spec in specs]
+        results = []
+        for spec in specs:
+            try:
+                results.append(await run_one(spec))
+            except Exception as exc:  # noqa: BLE001 — recorded below, not swallowed
+                results.append(exc)
 
-    outcomes = [o for o in results if o is not None]
+    # A provider that raised becomes a warning, not a lost job. The rows its
+    # siblings fetched are written below exactly as if it had returned empty.
+    provider_failures: list[str] = []
+    outcomes: list[FetchOutcome] = []
+    for spec, result in zip(specs, results):
+        if isinstance(result, BaseException):
+            provider_failures.append(f"{spec.provider_id} raised {type(result).__name__}: {result}")
+        elif result is not None:
+            outcomes.append(result)
     all_rows = [r for o in outcomes for r in o.rows]
     all_game_line_rows = [r for o in outcomes for r in o.game_line_rows]
     await db.write_prop_odds(all_rows)
@@ -91,6 +112,32 @@ async def run_provider_specs(
     # lines.sql) — a provider gets its game-lines written for free just by
     # populating FetchOutcome.game_line_rows, no new job-level plumbing.
     await db.write_game_odds_book_lines(all_game_line_rows)
+
+    # Task 5.8 (P3 M13). Games no provider supplied a matching event for.
+    # Drained and written once per job as a single aggregate row rather than a
+    # database write per comparison — every call site loops over a provider's
+    # whole event list, so an individual _team_match miss is normal and only a
+    # game that matched NOTHING is a real signal.
+    team_match_misses = providers.drain_team_match_misses()
+    if team_match_misses:
+        await db.log_system_event(
+            "warn",
+            "job_runner.team_match",
+            f"{len(team_match_misses)} game(s) matched no provider event",
+            "\n".join(team_match_misses[:50]),
+        )
+
+    # Task 5.10: a provider that raised is surfaced, never silent. Without
+    # this the partial-result fix above would turn a hard failure into an
+    # invisible one, which is the exact trade the audit exists to prevent.
+    if provider_failures:
+        await db.log_system_event(
+            "error",
+            "job_runner.provider_failure",
+            f"{len(provider_failures)} provider(s) raised; siblings' rows still written",
+            "\n".join(provider_failures),
+        )
+
     return {
         "games": len(games),
         "rows_matched": sum(o.rows_matched for o in outcomes),
@@ -99,5 +146,7 @@ async def run_provider_specs(
         "unresolved": sum(len(o.unresolved) for o in outcomes),
         "requests": sum(o.requests for o in outcomes),
         "objects": sum(o.objects for o in outcomes),
-        "warnings": [w for o in outcomes for w in o.warnings],
+        "warnings": [w for o in outcomes for w in o.warnings] + provider_failures,
+        "provider_failures": len(provider_failures),
+        "team_match_misses": len(team_match_misses),
     }
