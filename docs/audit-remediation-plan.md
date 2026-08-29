@@ -3955,6 +3955,130 @@ and the card says "not computed yet" — deliberately blank rather than renderin
 `0.0000`, which would assert that CLV *is* zero. That is a much stronger claim
 than "we have not measured this".
 
+**4.10 · Let the generic sports surface "under".** *(P3 M12)*
+
+It was a hardcoded string in two places: `build_candidate` passed `"over"` to
+both `resolve_candidate_edge` and `candidate_good_bet_signals`, and
+`_candidate_to_entry` wrote `category="over"` regardless. The second is the
+sharper half — `pick_history`'s uniqueness key is
+`(sport, subject_id, dimension, category, game_id)`, so an under could not be
+STORED even if one had been generated.
+
+Both sides are now generated and the **better-scoring one kept**, not both.
+Surfacing an over and an under on the same player, market and line would
+recommend a proposition and its exact opposite: two rows that cannot both be
+good bets, in a pick list that contradicts itself.
+
+`P(under) = 1 - P(over)`, the rule Phase 1.1 established for MLB in
+`prop_candidates._prob_for_category` — whose bug was a candidate whose
+proposition was the under carrying the OVER's probability, at two independent
+sites. Both are passed the side here for that reason, and the complement is
+asserted directly.
+
+Rare markets stay over-only **deliberately** — "under a triple-double" is not a
+proposition any book offers as a pairable side — pinned with the reason written
+down rather than by omission.
+
+**A real bug the test caught before it shipped:** the first selection used
+`max(scored, key=lambda c: (c.score, ...))`. `score` is a `PropScore` OBJECT,
+not a number, so that raises `TypeError` at runtime — in production, on the
+first scored candidate, for all five sports.
+
+**Verification limit, per Q34:** verified by test; live-verifiable only on
+soccer, since NBA/NHL/CFB/tennis are out of season and writing zero
+`pick_history` rows.
+
+**4.11 · Fix the totals model's distributional assumption.** *(P3 C2)*
+
+Re-measured on every MLB game now in `player_game_history` — 24,790 games,
+summing `bat_runs` per event, a sample this repo did not have before 4.7:
+
+```
+mean total runs      9.0391
+variance            20.5732
+variance / mean      2.2760      <- Poisson REQUIRES exactly 1.0
+```
+
+**`r` is derived, not tuned.** A negative binomial has variance `mu + mu^2/r`,
+so the measurement determines it: `r = 81.705 / 11.5341 = 7.08`. Checked by
+reconstruction — pmf sums to 1.000000, mean 9.0391 exactly, variance 20.5794
+against the measured 20.5732.
+
+**The re-validation 4.11 asks for**, both distributions scored against the
+EMPIRICAL over-rate from the same 24,790 games:
+
+```
+line   empirical   negbinom (err)     poisson (err)
+ 7.5     0.5828    0.5878 (0.0050)    0.6807 (0.0979)
+ 8.5     0.5038    0.4953 (0.0085)    0.5495 (0.0457)
+ 9.5     0.4006    0.4085 (0.0079)    0.4177 (0.0171)
+11.5     0.2600    0.2620 (0.0020)    0.2008 (0.0592)
+13.5     0.1565    0.1570 (0.0005)    0.0758 (0.0807)
+```
+
+Worst error: negative binomial 0.85 points, Poisson 9.8.
+
+**The error had a direction, and it was the worst possible one for this
+product.** Poisson put far too little mass in the tails — at 13.5 it said 7.6%
+where reality is 15.7%, understating by more than a factor of two. Blowouts and
+2-1 duels are exactly the games a totals bet is decided by, so the old model
+was most wrong precisely where it mattered, and confidently so.
+
+4.12's P3 L1 push fix is carried into the replacement rather than lost, and
+asserted — a rewrite quietly dropping a recent fix is an easy, invisible
+regression. `model_fit.py`'s training feature switched to the same distribution,
+because a model fitted on a feature production no longer computes is trained on
+something that does not exist at serve time.
+
+**4.6 · Investigate the fade signal — MEASURED AND RECORDED, NOT BUILT ON.**
+*(P3 C5)*
+
+4.6's own instruction: *"Don't build on it until 4.1 gives you the sample."*
+4.1 measured that sample as supply-limited (under-side scarcity, 43,620 overs
+against 5,113 unders), and acting on this would change what a user sees. So
+this is characterised and left.
+
+**It reproduces**, on a slightly larger sample than the audit's n=1,981:
+
+```
+bucket           n      actual   market expected   vs market
+negative edge  2,095    40.91%       45.31%         -4.41 pts
+positive edge  1,757    42.06%       41.97%         +0.09 pts
+```
+
+The model's POSITIVE-edge picks add nothing at all — 0.09 points, indistinguish-
+able from zero. Its NEGATIVE-edge picks lose to the market by 4.41 points.
+
+**It is not a longshot artifact**, which was the obvious alternative
+explanation. The underperformance is present in every `market_prob` band and is
+LARGEST in the high-probability ones — the opposite of what a favourite-longshot
+bias produces:
+
+```
+market_prob band   negative-edge n   vs market
+0.20 - 0.35             407           -5.57
+0.35 - 0.50             889           -4.33
+0.50 - 0.65             596           -3.46
+0.65 - 0.80             115           -7.51
+0.80 - 0.99              22           -6.63
+```
+
+**Nor is it one market.** It holds across every dimension with n > 100:
+total-bases -10.18 (n=171), runs -6.36 (n=190), hit-in-game -5.74 (n=431),
+walks -5.14 (n=121), rbis -4.92 (n=299), hits-runs-rbis -3.74 (n=495).
+
+So when this model says "this side is worse than the market thinks", the
+outcome really is worse than the market thinks — by consistently more than the
+model's own claim. That is genuine negative information, broad and persistent.
+
+**One scoping note that matters for anyone acting on this later:** `edge` here
+is the legacy ambiguous column, and per 4.9 every populated row in it is the
+`model_vs_market` definition. So this is a statement about the
+model-versus-book DISAGREEMENT measure, not about the sharp-vs-soft
+expected-value one, which has zero populated rows. Whoever picks this up should
+not assume the two behave alike.
+
+
 
 progress state, so killing and restarting never re-pays for completed work.
 
