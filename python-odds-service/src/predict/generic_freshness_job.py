@@ -115,7 +115,21 @@ async def run_freshness_pass(client: httpx.AsyncClient, rps: float = 3.0) -> dic
     start = today - timedelta(days=LOOKBACK_DAYS)
     per_sport: dict[str, dict] = {}
 
-    for cfg in bph.SCOPE:
+    # Only the sports whose shape this job actually handles — a per-game ESPN
+    # or NHL boxscore fetch parsed by one of bph.PARSERS.
+    #
+    # This used to iterate bph.SCOPE directly, on the assumption that SCOPE
+    # only ever contained those. Task 4.7 added MLB (parser="mlb", a batched
+    # StatsAPI player-season fetch) and tennis (parser="tennis", a monthly
+    # tournament sweep) to SCOPE, and this job crashed with KeyError: 'mlb' on
+    # its very next run — caught by health_check.py, which is exactly what that
+    # exists for. The module docstring already said MLB/Golf/Tennis are out of
+    # scope here; it just had no way to enforce it. Filtering on PARSERS
+    # membership means a future sport added with its own bespoke branch is
+    # skipped automatically rather than crashing this.
+    handled = [cfg for cfg in bph.SCOPE if cfg.parser in bph.PARSERS]
+
+    for cfg in handled:
         parser = bph.PARSERS[cfg.parser]
         discovered = await _discover_recent(client, limiter, cfg, start, today)
         seasons_needed = {season for _eid, _date, season in discovered}
