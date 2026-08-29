@@ -11,9 +11,11 @@ Mirrors `predict.prop_pick_history.candidate_to_surfaced_entry`'s job
 already resolves the live edge and prop score internally (unlike MLB's
 `CandidateResult`, which needs `prop_pick_history.py` to do that
 afterward), so `_candidate_to_entry` below is a straight field copy, no
-recomputation. `category` is always "over" — same real, disclosed
-convention `build_candidate` itself already uses internally for every
-counting-stat dimension.
+recomputation. `category` follows the candidate's own side since task 4.10 (P3 M12) — it
+used to be hardcoded "over", which is why the five generic sports could
+only ever surface overs. Both sides are now generated for every
+counting-stat dimension and the better-scoring one is kept; see the loop
+below for why keeping both would be wrong.
 
 Sport-key vs app-sport: `player_game_history`/ESPN discovery use each
 sport's own internal routing key (`soccer_epl`/`soccer_mls` kept
@@ -166,7 +168,13 @@ def _candidate_to_entry(app_sport: str, subject_id: str, subject_name: str, game
         subject_id=subject_id,
         subject_name=subject_name,
         dimension=candidate.dimension,
-        category="over",
+        # Task 4.10 (P3 M12) — the candidate's OWN side, not a hardcoded
+        # "over". pick_history's uniqueness key is
+        # (sport, subject_id, dimension, category, game_id), so this field is
+        # what lets an under ever be stored at all; while it was pinned to
+        # "over" the five generic sports could not surface an under even if one
+        # were generated.
+        category=candidate.category,
         market_key=candidate_dimension_to_market_key(candidate.dimension),
         line=candidate.line,
         game_id=game_id,
@@ -462,16 +470,51 @@ async def run_sport(sport_key: str, client: httpx.AsyncClient, date: str | None 
                 for cfg in dimensions:
                     league_rate = league_rate_for(subject_team_id, cfg, roster)
                     position_group = _position_group_for(sport_key, cfg, player.position_abbr)
-                    candidate = build_candidate(
-                        player.games,
-                        cfg,
-                        league_rate,
-                        player.athlete_id,
-                        prop_rows=prop_rows,
-                        user_sportsbook=config.USER_SPORTSBOOK,
-                        defense_index=defense_index if position_group is not None else None,
-                        opponent_abbr=opponent_abbr,
-                        position_group=position_group,
+                    # Task 4.10 (P3 M12) — BOTH SIDES are now considered.
+                    #
+                    # The finding: "the five generic sports can only ever
+                    # surface 'over' picks — a structural bias in candidate
+                    # generation, not a modelling choice." It was literally a
+                    # hardcoded string in two places.
+                    #
+                    # The better-scoring side is KEPT, not both. Surfacing an
+                    # over and an under on the same player, market and line
+                    # would be recommending a proposition and its exact
+                    # opposite — two rows that cannot both be good bets, and a
+                    # pick list that contradicts itself. Considering both and
+                    # choosing is what "consider both sides" means for a
+                    # recommendation; emitting both is a different thing and a
+                    # worse one.
+                    sided = [
+                        build_candidate(
+                            player.games,
+                            cfg,
+                            league_rate,
+                            player.athlete_id,
+                            prop_rows=prop_rows,
+                            user_sportsbook=config.USER_SPORTSBOOK,
+                            defense_index=defense_index if position_group is not None else None,
+                            opponent_abbr=opponent_abbr,
+                            position_group=position_group,
+                            category=side,
+                        )
+                        for side in ("over", "under")
+                    ]
+                    scored = [c for c in sided if c.score is not None]
+                    # `.score.score` — the OUTER is a PropScore object, the
+                    # inner is its integer. Comparing the objects raises
+                    # TypeError at runtime; caught by test_both_sides.py before
+                    # this shipped, which is why the selection is tested rather
+                    # than assumed.
+                    #
+                    # `max` needs a total order or it is arbitrary on a tie —
+                    # the same lesson as 4.12's P3 L5. Ties break toward the
+                    # over, preserving the prior behaviour exactly for any
+                    # candidate where the two sides score identically.
+                    candidate = (
+                        max(scored, key=lambda c: (c.score.score, c.category == "over"))
+                        if scored
+                        else sided[0]
                     )
                     entry = _candidate_to_entry(app_sport, player.athlete_id, player.name, g.game_id, candidate, trust_tiers, g.commence_time)
                     if entry is not None:

@@ -110,7 +110,7 @@ def _build_rare_candidate(
 ) -> GenericPropCandidate:
     total_count = len(history)
     if total_count == 0:
-        return GenericPropCandidate(dimension=dimension, line=effective_line, model_prob=None, sample_size=0, league_rate=league_rate, score=None, edge_info=None)
+        return GenericPropCandidate(category="over", dimension=dimension, line=effective_line, model_prob=None, sample_size=0, league_rate=league_rate, score=None, edge_info=None)
 
     favorable = matchup_favorable(defense_index, opponent_abbr, position_group) if defense_index is not None else None
     recent = history[-_ADMISSION_WINDOW:]
@@ -120,7 +120,7 @@ def _build_rare_candidate(
         floor = RARE_EVENT_FLOOR["favorable_matchup"] if favorable else RARE_EVENT_FLOOR["tough_matchup"]
     recent_over_rate = sum(1 for h in recent if h.category == "over") / len(recent) if recent else 0.0
     if recent_over_rate < floor:
-        return GenericPropCandidate(dimension=dimension, line=effective_line, model_prob=None, sample_size=total_count, league_rate=league_rate, score=None, edge_info=None)
+        return GenericPropCandidate(category="over", dimension=dimension, line=effective_line, model_prob=None, sample_size=total_count, league_rate=league_rate, score=None, edge_info=None)
 
     over_count = sum(1 for h in history if h.category == "over")
     l10 = fixed_window(history, "over", 10)
@@ -141,9 +141,14 @@ def _build_rare_candidate(
     edge_info = resolve_candidate_edge(subject_id, dimension, "over", effective_line, result.prob, prop_rows or [], user_sportsbook)
     good_bet_signals = candidate_good_bet_signals(history, "over", None, None)
     score = compute_prop_score(dimension, result.prob, league_rate, total_count, favorable, good_bet_signals, edge_info)
-    return GenericPropCandidate(dimension=dimension, line=effective_line, model_prob=result.prob, sample_size=total_count, league_rate=league_rate, score=score, edge_info=edge_info)
+    return GenericPropCandidate(category="over", dimension=dimension, line=effective_line, model_prob=result.prob, sample_size=total_count, league_rate=league_rate, score=score, edge_info=edge_info)
 
 
+# Task 4.10 (P3 M12) note: these markets are LEGITIMATELY over-only, unlike the
+# counting-stat dimensions. "Under a triple-double", "under a hat-trick" and
+# "did not score anytime" are not propositions any book offers as a pairable
+# side, so category is pinned to "over" here deliberately rather than by
+# omission — which is exactly the distinction 4.10 exists to make.
 def build_rare_candidate(
     games: list[PlayerGameStat],
     cfg: DimensionConfig,

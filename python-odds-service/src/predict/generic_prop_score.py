@@ -132,6 +132,11 @@ def compute_league_rate(
 
 @dataclass
 class GenericPropCandidate:
+    # Which side of the line this candidate is for — "over" or "under"
+    # (task 4.10, P3 M12). Was implicitly always "over"; a field now, because
+    # the pick_history uniqueness key includes `category` and a reader needs to
+    # know which proposition a model_prob refers to.
+    category: str
     dimension: str
     line: float
     model_prob: float | None
@@ -151,6 +156,7 @@ def build_candidate(
     defense_index: dict[str, TeamDefenseAllowed] | None = None,
     opponent_abbr: str | None = None,
     position_group: str | None = None,
+    category: str = "over",
 ) -> GenericPropCandidate:
     """Pure — no I/O. `prop_rows` is the real live prop_odds rows for
     this candidate's game (already fetched by the caller), or None/empty
@@ -179,7 +185,7 @@ def build_candidate(
     history = history_entries(games, config.espn_stat_name, effective_line)
     total_count = len(history)
     if total_count == 0:
-        return GenericPropCandidate(dimension=config.dimension, line=effective_line, model_prob=None, sample_size=0, league_rate=league_rate, score=None, edge_info=None)
+        return GenericPropCandidate(category=category, dimension=config.dimension, line=effective_line, model_prob=None, sample_size=0, league_rate=league_rate, score=None, edge_info=None)
 
     over_count = sum(1 for h in history if h.category == "over")
     l10 = fixed_window(history, "over", 10)
@@ -200,8 +206,21 @@ def build_candidate(
         )
     )
 
-    edge_info = resolve_candidate_edge(subject_id, config.dimension, "over", effective_line, result.prob, prop_rows or [], user_sportsbook)
-    good_bet_signals = candidate_good_bet_signals(history, "over", None, None)
-    score = compute_prop_score(config.dimension, result.prob, league_rate, total_count, favorable, good_bet_signals, edge_info)
+    # Task 4.10 (P3 M12) — the model's belief follows the SIDE being proposed.
+    #
+    # `compute_model_probability` returns P(over). The under is its complement,
+    # which is the same rule Phase 1.1 established for MLB in
+    # prop_candidates._prob_for_category — the bug it fixed was a candidate
+    # whose proposition was the under carrying the OVER's probability, and this
+    # must not reintroduce it for the generic sports.
+    #
+    # Every downstream consumer is told the side too: resolve_candidate_edge
+    # needs it to pick the right half of the market (Phase 1.1's second site),
+    # and candidate_good_bet_signals needs it to count the right outcomes as
+    # hits.
+    model_prob = result.prob if category == "over" else 1 - result.prob
+    edge_info = resolve_candidate_edge(subject_id, config.dimension, category, effective_line, model_prob, prop_rows or [], user_sportsbook)
+    good_bet_signals = candidate_good_bet_signals(history, category, None, None)
+    score = compute_prop_score(config.dimension, model_prob, league_rate, total_count, favorable, good_bet_signals, edge_info)
 
-    return GenericPropCandidate(dimension=config.dimension, line=effective_line, model_prob=result.prob, sample_size=total_count, league_rate=league_rate, score=score, edge_info=edge_info)
+    return GenericPropCandidate(category=category, dimension=config.dimension, line=effective_line, model_prob=model_prob, sample_size=total_count, league_rate=league_rate, score=score, edge_info=edge_info)
