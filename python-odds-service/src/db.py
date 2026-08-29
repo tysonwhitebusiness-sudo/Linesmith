@@ -2066,6 +2066,45 @@ async def attach_total_price(sport: str, game_id: str, slot: str, side: str, ame
     )
 
 
+async def attach_market_prob(
+    sport: str, game_id: str, market: str, slot: str, prob: float, bookmaker: str
+) -> None:
+    """Store the de-vigged MARKET probability for the side this pick took.
+
+    Q28 / task 4.2. Until this existed, 4.2's activation gate ("activate only
+    if Brier beats market_prob's Brier") was not merely failing for the two
+    live game models — it was UNCOMPUTABLE, because `game_picks` had no
+    market-probability column and pick_history.market_prob is non-null on zero
+    'moneyline' and zero 'total' rows.
+
+    `market` is 'ml' or 'total'; `slot` is 'initial' or 'final'. Both halves
+    are stored because CLV (task 4.5) is the difference between them.
+
+    The caller is responsible for the part that matters: `prob` must come from
+    ONE bookmaker's two-sided price, and for totals from ONE point. Mixing two
+    books, or two points, produces a number that is not a probability of
+    anything — that is precisely the P3 C1 defect task 5.5 fixed on the
+    display side, and it must not be reintroduced here.
+    """
+    if market not in ("ml", "total") or slot not in ("initial", "final"):
+        raise ValueError(f"bad market/slot: {market}/{slot}")
+    column = f"{market}_{slot}_market_prob"
+    pool = await get_pool()
+    # `IS NULL` guard, matching attach_moneyline_price/attach_total_price
+    # exactly. Write-once per slot means the stored market reference describes
+    # the SAME moment as the stored price beside it, which is what makes CLV
+    # (task 4.5) a comparison of two captures rather than of two moving
+    # numbers.
+    await pool.execute(
+        f"UPDATE game_picks SET {column} = $1, {column}_book = $2 "
+        f"WHERE sport = $3 AND game_id = $4 AND {column} IS NULL",
+        prob,
+        bookmaker,
+        sport,
+        game_id,
+    )
+
+
 async def attach_moneyline_kelly_stake(sport: str, game_id: str, slot: str, side: str, stake_fraction: float, edge_significant: bool | None) -> None:
     """predict/staking.py's counterpart to attach_moneyline_price — same
     idempotent shape (only fills once), called right after the price

@@ -42,6 +42,9 @@ from dataclasses import dataclass
 import httpx
 
 import db
+# One market-reference implementation for every sport (Q28) — see that
+# function's docstring for the one-book / one-point rules it enforces.
+from predict.generic_price_attach import _market_prob_for
 
 from .elo_model import MIN_GAMES_FOR_ELO_TRUST, PredictionAdjustments, predict_home_win_prob
 from .game_model import (
@@ -667,6 +670,22 @@ async def attach_prices_from_lines(lines: list[GameLine], games: list[SnapshotGa
     if not lines:
         return
     edge_significant = await _current_moneyline_edge_significant("mlb")
+
+    # Q28 / task 4.2 — the market reference the MLB game model is measured
+    # against. Read from game_odds_book_lines rather than from the collapsed
+    # GameLine above, deliberately: a GameLine maximises each side
+    # independently, so its two sides can come from different books, and a
+    # cross-book de-vig is not any book's opinion. _market_prob_for enforces
+    # one book, one point — the same helper and the same rules every other
+    # sport uses (predict/generic_price_attach.py), so "the market" means one
+    # thing across the app rather than one thing per sport.
+    #
+    # MLB's game_picks.game_id is the MLB gamePk, which is exactly what
+    # game_odds_book_lines carries for sport='mlb', so these join directly with
+    # no name matching — unlike the price path below, which has to match on
+    # team names because the-odds-api supplies a foreign UUID.
+    book_rows = await db.read_game_odds_book_lines_for_sport("mlb")
+
     for line in lines:
         game = next((g for g in games if g.away_team_name and g.home_team_name and _team_key(g.away_team_name) == _team_key(line.away_team) and _team_key(g.home_team_name) == _team_key(line.home_team)), None)
         if game is None:
@@ -697,6 +716,20 @@ async def attach_prices_from_lines(lines: list[GameLine], games: list[SnapshotGa
             await db.attach_total_price("mlb", game_id, "final", "over", int(line.total.over_price))
         if line.total and line.total.under_price is not None and pick.total_final_side == "under":
             await db.attach_total_price("mlb", game_id, "final", "under", int(line.total.under_price))
+
+        # Market reference per slot, for whichever side the model actually took
+        # (Q28). Absent when no single book quotes both sides — NULL is the
+        # honest answer there, and it keeps 4.2's coverage a real measurement.
+        for market_col, market_name, sides in (
+            ("ml", "moneyline", (("initial", pick.ml_initial_side), ("final", pick.ml_final_side))),
+            ("total", "total", (("initial", pick.total_initial_side), ("final", pick.total_final_side))),
+        ):
+            for slot, side in sides:
+                if not side:
+                    continue
+                mp = _market_prob_for(book_rows, game_id, market_name, side)
+                if mp is not None:
+                    await db.attach_market_prob("mlb", game_id, market_col, slot, mp[0], mp[1])
 
 
 # ---------------------------------------------------------------------------
