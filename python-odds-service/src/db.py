@@ -1055,6 +1055,17 @@ async def write_pick_history_grades(grades: list[PickHistoryGrade]) -> int:
                       outcome = $1, actual_value = $2, graded_at = now(),
                       market_prob = COALESCE($4, market_prob),
                       edge = COALESCE($5, edge),
+                      -- Task 4.9 (P3 H8). This writer's `edge` is
+                      -- model_prob - devig(one book's two-sided price): "how
+                      -- far our model is from a book". live_edge's
+                      -- resolve_candidate_edge writes a DIFFERENT quantity
+                      -- (sharp fair price minus what you would actually pay)
+                      -- into the same column, and one threshold was being
+                      -- applied to both. Each definition now also lands in its
+                      -- own column, and this one names itself so a reader can
+                      -- tell which it is holding.
+                      edge_model_vs_market = COALESCE($5, edge_model_vs_market),
+                      edge_source = COALESCE(edge_source, CASE WHEN $5::double precision IS NULL THEN NULL ELSE 'model_vs_market' END),
                       price_source = COALESCE($6, price_source),
                       bookmaker = COALESCE($7, bookmaker),
                       price_captured_at = COALESCE($8, price_captured_at)
@@ -1713,8 +1724,19 @@ async def log_surfaced(entries: list[SurfacedEntry]) -> None:
                     INSERT INTO pick_history
                       (sport, subject_id, subject_name, dimension, category, market_key, line, game_id,
                        sample_size, distance, event_context, model_prob, market_prob, edge, price_source, bookmaker, price_captured_at,
-                       prop_score, score_grade, trust_tier, model_version, edge_source, price, commence_time)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+                       prop_score, score_grade, trust_tier, model_version, edge_source, price, commence_time,
+                       -- Task 4.9 (P3 H8): this writer's `edge` is the
+                       -- SHARP-VS-SOFT quantity (a sharp book's fair price
+                       -- minus what you would actually pay) — expected value in
+                       -- probability units. The grading-time writer puts a
+                       -- different quantity in `edge`, so each now also lands
+                       -- in its own column. `edge_source` here carries the real
+                       -- reference tier ('pinnacle'/'consensus'/...), which is
+                       -- strictly more informative than a definition label;
+                       -- WHICH COLUMN is populated is what identifies the
+                       -- definition.
+                       edge_sharp_vs_soft)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $14)
                     ON CONFLICT (sport, subject_id, dimension, category, game_id) DO NOTHING
                     """,
                     r.sport,

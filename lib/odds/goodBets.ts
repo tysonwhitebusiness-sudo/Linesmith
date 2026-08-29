@@ -87,7 +87,37 @@ import type { PickCandidate } from '../core/types';
  */
 export const GAME_LEVEL_DIMENSIONS = ['moneyline', 'total'];
 
+/**
+ * Task 4.9 (P3 H8) — ONE threshold used to be applied to TWO incompatible
+ * quantities that shared the `edge` column:
+ *
+ *   model_vs_market  model_prob - devig(one book's two-sided price)
+ *                    "how far our model is from a book" — a DISAGREEMENT
+ *   sharp_vs_soft    sharp_devigged(side) - raw_implied(bettable book)
+ *                    "how much better a sharp fair price is than what you'd
+ *                    pay" — EXPECTED VALUE, in probability units
+ *
+ * 0.03 does not mean the same thing in both. A 3-point model disagreement is
+ * commonplace and mostly says the model is opinionated; a 3-point sharp-vs-soft
+ * edge is a real, rare, bettable +EV gap. Holding them to the same bar either
+ * floods the list with the first or suppresses the second.
+ *
+ * Each therefore gets its own bar, and `GOOD_BET_MIN_EDGE` is retained as the
+ * model-vs-market value so existing readers keep their current behaviour
+ * unchanged rather than silently shifting under them.
+ */
 export const GOOD_BET_MIN_EDGE = 0.03;
+/** Bar for the DISAGREEMENT quantity. Same 0.03 as before — unchanged behaviour. */
+export const GOOD_BET_MIN_EDGE_MODEL_VS_MARKET = 0.03;
+/**
+ * Bar for the EXPECTED-VALUE quantity. Deliberately higher: this one is real
+ * +EV against a sharp reference, and 2 points of it is worth more than 3 points
+ * of model disagreement. Set at 0.02 rather than tuned — there is not yet
+ * enough sharp-vs-soft history to fit it (task 4.1: sharp coverage is 9.08%,
+ * and edge_sharp_vs_soft is populated on 0 rows today), so this is an explicit
+ * placeholder to be fitted once that sample exists, not a derived number.
+ */
+export const GOOD_BET_MIN_EDGE_SHARP_VS_SOFT = 0.02;
 export const GOOD_BET_MIN_SAMPLE_SIZE = 6;
 /** American odds — a favorite priced worse (more negative) than this fails the price ceiling. Underdogs (positive odds) always pass. */
 export const GOOD_BET_MAX_FAVORITE_PRICE = -300;
@@ -156,6 +186,15 @@ export type GoodBetReason = (typeof GOOD_BET_REASONS)[number];
 
 export interface GoodBetInput {
   edge: number | null;
+  /**
+   * Which quantity `edge` is carrying (task 4.9, P3 H8). 'model_vs_market' is
+   * the model-disagreement measure; a sharp reference tier
+   * ('pinnacle'/'circa'/'novig'/'kalshi'/'consensus') means the
+   * expected-value one. Optional and defaulting to the model-vs-market bar,
+   * because 368k historical rows predate the split and cannot be attributed —
+   * treating them as the stricter EV quantity would silently reclassify them.
+   */
+  edgeSource?: string | null;
   marketProb: number | null;
   sampleSize: number;
   dimension: string;
@@ -233,9 +272,20 @@ function passesEdge(input: GoodBetInput): boolean {
   return input.edge >= 0;
 }
 
-/** `edge` track — a genuine two-sided de-vig clearing the minimum edge. `input.edge` is only ever set from real market math (see the file comment), so no extra check is needed here. */
+/** `edge` track — a genuine two-sided de-vig clearing the minimum edge. `input.edge` is only ever set from real market math (see the file comment), so no extra check is needed here.
+ *
+ * Task 4.9: the bar depends on WHICH quantity `edge` is carrying, which
+ * `edgeSource` identifies. 'model_vs_market' is a disagreement measure;
+ * anything else (a sharp reference tier — pinnacle/circa/novig/kalshi, or
+ * 'consensus') is the expected-value quantity. Absent an edgeSource the row
+ * predates the split, and the old bar is the honest default for it. */
 function qualifiesByEdge(input: GoodBetInput): boolean {
-  return input.edge != null && input.edge >= GOOD_BET_MIN_EDGE;
+  if (input.edge == null) return false;
+  const threshold =
+    input.edgeSource == null || input.edgeSource === 'model_vs_market'
+      ? GOOD_BET_MIN_EDGE_MODEL_VS_MARKET
+      : GOOD_BET_MIN_EDGE_SHARP_VS_SOFT;
+  return input.edge >= threshold;
 }
 
 /** Which of ScanTable's own columns this criterion reads from — lets the table highlight the exact cell doing the work instead of leaving it to be inferred from the pill text. */
