@@ -16,7 +16,7 @@ import asyncio
 import json
 import re
 import ssl
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -1526,6 +1526,15 @@ async def write_game_odds_history(rows: list[GameOddsHistoryInput]) -> None:
     # write simply overwrote an earlier one's effect). Two rows for one key
     # in a single call are real and expected; see _game_odds_history_rows
     # in predict/odds_lines_cycle.py for why.
+    # Bookmaker is canonicalised BEFORE the dedup key is built (task 5.3,
+    # extended to this table). The key below IS the log-on-change comparison,
+    # so a split spelling means one book keeps two independent price histories
+    # — a real move gets compared against the wrong history and missed, or a
+    # first sighting under the other spelling looks like a change and is
+    # inserted spuriously. This table had 36 spellings for 22 real books, and
+    # it is also what task 6.1's line-movement charts will read.
+    rows = [replace(r, bookmaker=canonical_bookmaker(r.bookmaker) or r.bookmaker) for r in rows]
+
     latest_in_batch: dict[tuple[str, str, str, str, str], GameOddsHistoryInput] = {}
     for r in rows:
         latest_in_batch[(r.event_id, r.market, r.side, r.bookmaker, r.source)] = r

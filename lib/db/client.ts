@@ -599,38 +599,24 @@ export async function writePropOdds(rows: PropOddsInput[]): Promise<void> {
   });
 }
 
-export interface GameOddsHistoryInput {
-  eventId: string;
-  market: 'moneyline' | 'total';
-  side: string;
-  bookmaker: string;
-  americanOdds: number;
-  point: number | null;
-}
-
-/** Same log-on-change discipline as writePropOdds' history half — one new row only when this exact (event, market, side, book) price actually differs from the last one seen. */
-export async function writeGameOddsHistory(rows: GameOddsHistoryInput[]): Promise<void> {
-  if (rows.length === 0) return;
-  const observedAt = new Date().toISOString();
-  await pgTransaction(async (tx) => {
-    for (const r of rows) {
-      const params = { ...r, observedAt };
-      const prior = await tx.get<{ americanOdds: number }>(
-        `SELECT american_odds AS "americanOdds" FROM game_odds_history
-         WHERE event_id = @eventId AND market = @market AND side = @side AND bookmaker = @bookmaker
-         ORDER BY observed_at DESC LIMIT 1`,
-        params,
-      );
-      if (!prior || prior.americanOdds !== r.americanOdds) {
-        await tx.run(
-          `INSERT INTO game_odds_history (event_id, market, side, bookmaker, american_odds, point, observed_at)
-           VALUES (@eventId, @market, @side, @bookmaker, @americanOdds, @point, @observedAt)`,
-          params,
-        );
-      }
-    }
-  });
-}
+// `writeGameOddsHistory` and `GameOddsHistoryInput` were DELETED here on
+// 2026-08-29 (task 5.13, and the reason P2 L3's "misleading default" reads
+// differently than the audit assumed). Both were exported and had ZERO callers
+// anywhere in lib/, app/ or components/ — confirmed by grep before removal.
+//
+// This matters beyond dead-code hygiene. That writer inserted WITHOUT a
+// `source` column, so every row it wrote silently took the table's
+// `DEFAULT 'the-odds-api'` regardless of where the price actually came from —
+// which is exactly what P2 L3 flagged. Because it never ran, nothing was in
+// fact mislabelled: `game_odds_history` holds four correctly-attributed
+// sources (the-odds-api, propline, oddsharvester, sharpapi), all written by
+// Python's write_game_odds_history, which passes `source` explicitly and
+// includes it in its dedup key.
+//
+// So the default is retained rather than dropped: it is now unreachable by any
+// live writer, and dropping a NOT NULL column's default would break nothing
+// while risking a future INSERT that forgets the column. Per Q2/Q13, Python
+// owns this table's writes; this file no longer offers a second way in.
 
 export interface GameOddsBookLineInput {
   sport: string;
