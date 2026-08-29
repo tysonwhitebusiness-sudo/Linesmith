@@ -27,7 +27,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
+import { readSnapshotCache, writeSnapshotCache, logSystemEvent } from '@/lib/db/client';
 import { cacheControlFor, jsonPassthrough, jsonResponse } from '@/lib/db/jsonPassthrough';
 import { triggerBackgroundRebuild, awaitRebuild } from '@/lib/staleCache';
 
@@ -101,7 +101,37 @@ export async function cachedRoute<T, R = T>(opts: CachedRouteOptions<T, R>): Pro
   async function rebuild(): Promise<T | null | undefined> {
     const payload = await build();
     if (payload != null && !skipWrite) {
-      try { await writeSnapshotCache(cacheKey, JSON.stringify(payload)); } catch { /* ok */ }
+      try {
+        await writeSnapshotCache(cacheKey, JSON.stringify(payload));
+      } catch (error) {
+        // Task 3.1, finding P4 H5. This was `catch { /* ok */ }`, and it was
+        // not ok: when Supabase's free-tier quota flipped the database to
+        // read-only, EVERY cachedRoute write failed silently. Each route kept
+        // returning 200 with freshly-built data, so nothing looked wrong from
+        // outside — while the app had degraded to zero caching and was paying
+        // full rebuild cost on every single request, against a database that
+        // was already over quota. That is how the window went unnoticed.
+        //
+        // The request still succeeds. A failed cache write genuinely should
+        // not fail a response that has valid data in hand — the bug was never
+        // the recovery, it was that the failure left no trace anywhere.
+        //
+        // `source` is fixed rather than per-key so /diagnostics can count a
+        // spike across all routes; the key goes in `detail`, which is where
+        // the cardinality belongs.
+        console.error(`[${routeName ?? cacheKey}] cache write failed`, error);
+        await logSystemEvent({
+          level: 'error',
+          source: 'cachedRoute',
+          message: 'Cache write failed — the route still served data, but nothing was cached.',
+          detail: `${cacheKey}: ${error instanceof Error ? error.message : String(error)}`,
+        }).catch(() => {
+          // If system_events is unwritable too, the database is the problem
+          // and there is nowhere left to record that. The console line above
+          // has already fired; swallowing here stops a logging failure from
+          // taking down a request that was otherwise fine.
+        });
+      }
     }
     return payload;
   }
