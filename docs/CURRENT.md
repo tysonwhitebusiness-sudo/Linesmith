@@ -33,35 +33,52 @@ commit and push.
 
 ## 1. Where we are
 
-**Phases 0, 1 and 2 are COMPLETE. All three gates PASSED.**
-**Phase 3 is next and has NOT started.**
+**Phases 0, 1, 2 COMPLETE — all gates PASSED. Phase 3 IN PROGRESS.**
 
-Phase 2 closed the audit's root cause for every table on a page-load write path
-except two, both recorded with owners in §2. Python computes every model number
-the app renders except one documented exception (Q18). Task **2.9** was added
-after the gate caught three tables the map wrongly claimed 2.7 had closed.
-19 commits, `464fda6` → HEAD.
+| Task | State |
+|---|---|
+| 3.1 cache-write failures | **DONE**, fault-injected |
+| 3.6 upload limits | **DONE** |
+| 3.12 security headers | **DONE**, verified live |
+| 3.13 xlsx removed + **Next 16** | **DONE** — `npm audit` 0 vulns |
+| 3.14 CSRF test | **DONE**, proven in both directions |
+| `middleware.ts` → `proxy.ts` | **DONE** (Next 16 rename) |
+| 3.2 /diagnostics panel | not started |
+| 3.3 health-check fault injection | not started ← **do the injection before editing anything** |
+| 3.4 rate limiting | not started |
+| 3.5 cache-key validation | not started |
+| 3.7 admin auth out of source | not started |
+| 3.8 `?` placeholder compiler | not started |
+| 3.9 `withConnectionRetry` scope | not started |
+| 3.10 `writePropOdds` batching | not started |
+| 3.11 CI | not started |
 
-## 2. Start here: Phase 3 — observability and defence
+Phase 2's inherited items (`recordEspnPregameLine` on GET, `odds_cache` GET
+writes) are still unassigned Phase 3 work.
 
-Use §0's kickoff prompt. **Run the "verify it still reproduces" step properly** —
-in Phase 2 it caught that three of eight tasks were mis-scoped in the plan and
-one finding (P2 M6.2) had gone stale and needed no fix at all. The audit was
-measured 2026-08-27 and the tree has moved a long way since.
+## 2. Read this before continuing Phase 3
 
-**Phase 3 inherits two items from Phase 2's gate. The third was fixed (2.9):**
+**A gate I claimed in task 2.9 was never applied, and 3.13 caught it.**
+`/api/mlb/refresh-hr-matchup` was added to `ADMIN_API_PREFIXES` but not to
+`proxy.ts`'s `config.matcher`, so it stayed open to unauthenticated POSTs.
+A comment three lines above says exactly that this happens. Now fixed and
+guarded by `tests/proxy-matcher.test.ts`.
 
-- **3.x (unassigned): `recordEspnPregameLine` writes on a GET.**
-  `lib/odds/espnBookLines.ts:71`, called from the CFB, NBA and Soccer
-  `game/[gameId]` route handlers. Same class as P4 H1, which Phase 2 fixed for
-  `/api/odds/lines` — but this one is in **no finding at all**, so no task owns
-  it. Found while deriving `table-ownership.md`. Give it a task number.
-- **3.10 has less to do than it thinks.** Phase 2 already batched
-  `write_game_odds_history` (290 s → 1.6 s) because 2.3 could not ship without
-  it. The other per-row write loops are still 3.10's.
-- **3.1/3.4/3.5** are untouched and unaffected by Phase 2.
+**Fault injection is easy to fake, and I faked it twice before noticing.**
+Verifying 3.1 I "revoked" write on `snapshot_cache` and got a clean 200 with
+no error — twice — because (a) the routes were serving `x-cache: hit` and
+never rebuilt, and (b) `postgres` **owns** the table, and an owner bypasses
+its own grants. A REVOKE against the owner does nothing. What works is a
+`BEFORE INSERT OR UPDATE` trigger that RAISEs. **Always confirm the fault
+actually landed** — check the row was not written — before believing a green
+result. This matters most for 3.3, whose entire point is checks that report
+green through an outage.
 
-## 3. Things Phase 2 learned that will bite again
+**`npm test` exists now** — `node:test` via tsx, 7 tests in `tests/`. No new
+runtime dependency; `tsx` moved to devDependencies (it was already required by
+`scripts/test-job-lock.ts` through npx).
+
+## 3. Things Phase 2 learned## 3. Things Phase 2 learned that will bite again
 
 - **`withJobLock` is a LEASE TABLE, not an advisory lock** — and that matters
   beyond locking. Advisory locks are session-scoped; `DATABASE_URL` is the
