@@ -81,7 +81,7 @@ const ADMIN_API_EXCLUDE = [
 ];
 const ADMIN_PAGE_PREFIXES = ['/diagnostics'];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isProtectedApi =
     PROTECTED_API_PREFIXES.some((p) => pathname.startsWith(p)) && !PROTECTED_API_EXCLUDE.some((p) => pathname.startsWith(p));
@@ -165,5 +165,12 @@ export const config = {
     // reachable in the first place.
     '/api/props/:path*',
     '/api/odds/import/:path*',
+    // Task 2.9 added this route to ADMIN_API_PREFIXES and NOTHING HAPPENED,
+    // because the matcher entry was missed — the exact failure the comment
+    // above warns about, made three lines below the warning. Verified by
+    // request this time, not by reading the constant: it returned 200 to an
+    // unauthenticated POST until this line existed. Scoped to the one route
+    // rather than all of `/api/mlb`, which is genuinely public read surface.
+    '/api/mlb/refresh-hr-matchup',
   ],
 };
