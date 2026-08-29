@@ -33,7 +33,7 @@ import httpx
 
 import db
 from predict import elo_model, statsapi
-from predict.game_model import TeamRecordSplit, log5, neg_binom_over_probability, pythagorean_win_pct, split_edge
+from predict.game_model import TeamRecordSplit, log5, neg_binom_over_probability, poisson_over_probability, pythagorean_win_pct, split_edge
 from predict.logistic_regression import brier_score, fit_logistic_regression, predict_prob
 from predict.sim_game import simulate_team_matchup
 from predict.sim_rates import compute_league_outcome_rates, compute_team_batting_vector, compute_team_pitching_vector
@@ -330,18 +330,42 @@ async def _build_training_set_uncached(client: httpx.AsyncClient, seasons: list[
                     else:
                         bullpen_coverage.missing += 1
 
-                    # Task 4.11 — same distribution as every other total
-                    # probability in this file. This was missed when the
-                    # import was switched and left model_fit.py raising
-                    # NameError on any real training-set build; caught by the
-                    # Phase 4 gate actually running fit-weights rather than
-                    # trusting that the module imported.
+                    # POISSON HERE, DELIBERATELY, and not an oversight -- read
+                    # this before "fixing" it to match the line above.
                     #
-                    # A simulated expected total is converted to P(over) by the
-                    # same rule as a modelled one: MLB run totals have
-                    # variance/mean 2.28, so Poisson understates the tails
-                    # regardless of which stage produced the mean.
-                    sim_over_prob = neg_binom_over_probability(sim_result.expected_total, odds.total_line)
+                    # 4.11 switched this to negative binomial on the reasoning
+                    # that MLB totals are over-dispersed (variance/mean 2.28),
+                    # which is true. But the SERVING side of this same feature,
+                    # odds_lines_cycle.py:491, still computes
+                    # poisson_over_probability, and 4.11 did not change it. A
+                    # feature must be built the same way in training and at
+                    # serve time or the fitted weight is meaningless.
+                    #
+                    # Which side to align was decided by the numbers, during the
+                    # Phase 4 gate (operator decision, 2026-08-29). The live
+                    # weights (mlb/total v8, fitted 2026-08-14) put -0.373 on
+                    # rawOverProb and +1.040 on simOverProb, against +3.737 on
+                    # marketProbCentered -- the model is driven by the market
+                    # price, and these distribution features are small
+                    # corrections. Changing SERVING to negative binomial would
+                    # mismatch the 1.040 feature against weights trained on
+                    # Poisson, roughly tripling the error that already exists on
+                    # the 0.373 one. Changing TRAINING back, as here, costs
+                    # nothing today -- no Python fit has ever written a
+                    # model_weights row -- and means that whenever someone does
+                    # re-fit, the weights they produce match what is served.
+                    #
+                    # The residual is the rawOverProb feature, which IS negative
+                    # binomial at serve time (game_model.py:518) against v8's
+                    # Poisson-trained weight. Measured worst case: 1.03
+                    # percentage points on the final probability, typically
+                    # 0.3-0.7. Accepted deliberately rather than spending a
+                    # multi-hour re-fit to recover a point.
+                    #
+                    # TO GO FULLY NEGATIVE BINOMIAL LATER: change this line AND
+                    # odds_lines_cycle.py:491 together, then re-fit. All three
+                    # in one change, or not at all.
+                    sim_over_prob = poisson_over_probability(sim_result.expected_total, odds.total_line)
 
                     total_rows.append(
                         TrainingRow(
