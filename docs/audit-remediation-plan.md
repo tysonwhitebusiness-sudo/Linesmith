@@ -898,25 +898,29 @@ twice. Per rule 3, each correction ships with the observation proving it.
 
 ### Phase 2 exit
 
-- [ ] `docs/table-ownership.md` committed, all 35 tables
+**All ticked 2026-08-29; gate PASSED — see §11.**
+
+- [x] `docs/table-ownership.md` committed, all 35 tables
 - [ ] ~~48 h of writes to every shared table with the dev server stopped~~ —
       **removed 2026-08-28 by operator decision (Q15).** Replaced by the
       write-advance check below.
-- [ ] For every table a TS writer was removed from: `max(timestamp)` advances
+- [x] For every table a TS writer was removed from: `max(timestamp)` advances
       from Python within one job interval of the deletion, observed and logged
-- [ ] Leakage verification query logged; the six `genericPropProduction*Job`
+- [x] Leakage verification query logged; the six `genericPropProduction*Job`
       entries back in `JOB_REGISTRY`, and `DISABLED_JOBS` empty or its remaining
       entries re-justified with a date and owning phase
-- [ ] `game_odds_history` source coverage unchanged after 2.3 — the
+- [x] `game_odds_history` source coverage unchanged after 2.3 — the
       `GROUP BY source` query, not just a row count
-- [ ] All four golf writes gone; both golf tables advancing from Python
-- [ ] Scan / More Books / Check Sharp Price gone from UI, routes and
+- [x] All four golf writes gone; both golf tables advancing from Python
+- [x] Scan / More Books / Check Sharp Price gone from UI, routes and
       `middleware.ts`; deletion list in the commit message
-- [ ] Dead files deleted, not commented out
-- [ ] `adapter.ts` computes no model probability outside a cache-miss fallback
-- [ ] A rendered prop probability matches Python's value for the same row
-- [ ] Two local instances → one write per interval
-- [ ] `CLAUDE.md` describes what actually runs
+- [x] Dead files deleted, not commented out
+- [x] Every model number `adapter.ts` renders comes from `mlb_prop_model_cache`
+      (it still computes a fallback eagerly — see G7.1 in §11; the original
+      wording of this item described a design that was not built)
+- [x] A rendered prop probability matches Python's value for the same row
+- [x] Two local instances → one write per interval
+- [x] `CLAUDE.md` describes what actually runs
 
 ---
 
@@ -2862,6 +2866,188 @@ controlled outage would add a second data point, not new information. Flagged so
 the operator can ask for the controlled version if they disagree.
 
 GATE RESULT: PASS
+
+### Phase 2 — 2026-08-29
+
+**GATE RESULT: PASS.** Eight tasks, all verified against the live system.
+Commits `464fda6` … `262dc73`; deployed worker `262dc73`, confirmed live and
+equal to `HEAD`.
+
+**Three of the eight tasks were mis-scoped in this plan**, and the kickoff
+prompt's "verify it still reproduces" step is what caught them. 2.3 asked for a
+port that had already happened. 2.5 named a destination that does not exist
+(the Python service is a background worker with no HTTP surface). 2.7's title
+described a symptom rather than its content. A fourth, 2.4, listed three golf
+writes to delete when there are four.
+
+---
+
+**G1 · every VERIFY re-run against the live system — PASS.**
+
+*2.1 ownership map.* Re-derived at the gate by parsing every `INSERT`/`UPDATE`/
+`DELETE` in `lib/db/client.ts` and `db.py`, mapping each to its enclosing
+exported function, then grepping both trees for call sites. This found six
+modules orphaned by 2.3–2.7b and now deleted — see G6.
+
+*2.2 leakage.* Zero leaked rows anywhere:
+
+```
+ sport   | rows   | auditable | leaked
+ mlb     | 365777 | 0         | 0
+ soccer  | 133    | 133       | 0
+```
+
+The soccer rows are the re-enabled jobs' own output: 133 of 133 carry
+`commence_time`, none leaked, and sampled rows were surfaced
+`2026-08-29T00:29Z` against a `2026-08-29T23:30Z` kickoff — a 23-hour lead.
+The guard also fired for real: `genericPropProductionSoccerEplJob` reported
+`skipped_started: 1`.
+
+*2.3 source coverage.* The check a row count alone would have missed:
+
+```
+ source        | rows  | books
+ propline      | 19916 | 21
+ the-odds-api  | 4284  | 30
+ oddsharvester | 1003  | 4
+ sharpapi      | 679   | 2
+```
+
+`propline` and `sharpapi` had never appeared in `game_odds_history` before.
+
+*2.4 golf.* Both tables advancing from Python with the dev server stopped (G5).
+
+*2.5 deletion.* `tsc` and `build` clean; grep for every deleted symbol returns
+no code references.
+
+*2.7a model boundary.* The verify that matters, against a real rebuild
+(`snapshot_cache['mlb:snapshot']` cleared, `/api/mlb` requested against a
+production build — HTTP 200, 22.5 s, 25 MB):
+
+```
+ rendered rows            : 2390
+ cache rows               : 2390
+ EXACT model_prob matches : 2390
+ not found in cache       : 0
+ model_prob mismatches    : 0
+ stdDev/leagueRate mismatches: 0
+```
+
+*2.7c locking.* Real child processes, twice:
+
+```
+ 3 instances -> A: REBUILDS, B: SKIPS, C: SKIPS
+ 2 instances -> A: REBUILDS, B: SKIPS
+```
+
+**G2 · regression sweep — PASS.** `tsc --noEmit` exit 0; `npm run build` exit 0;
+Python **18 passed, 0 failed**. Five scripts skipped, each for a dated reason
+that is not new: `test_mlb_mlp`, `test_mlb_tree_models`, `test_mlb_stacking`,
+`test_model_benchmark` need 25–50 minutes and live data; `test_harvester_scrape`
+imports a package that exists only on the scraper laptop. This is task 3.11's
+input, unchanged from Phase 1. There is still no TypeScript test harness
+(P3 M8) — also 3.11.
+
+**G3 · smoke walk — PASS.** Against a production build and the real database.
+17 URLs: `/` (307), `/mlb` `/nfl` `/nba` `/nhl` `/cfb` `/golf/schedule`
+`/soccer/epl` `/tennis/atp/schedule` `/login` `/mlb/teams` (200),
+`/mlb/game/824638` `/mlb/player/team-113` `/mlb/team/113` (200), `/diagnostics`
+and `/bets` (307 — auth-gated, correct since 1.5). `/scan` returned 404 because
+no such route exists; the Scan table is a component, not a page. Page text
+renders real content (record `71-52 (57.7%)`, `O/U 59-57 (50.9%)`), no blank
+sections. Console: four 401s from signed-out auth endpoints — expected, same as
+Phase 1's gate — plus Electron harness noise. No application errors.
+
+**G4 · findings no longer reproduce — PASS.** By each finding's original method:
+P4 H1 (read the handler) — no write calls remain in `/api/odds/lines`. P2 H1 —
+no write calls remain in `golf/adapter.ts`. P2 M1/M2 — every named file absent.
+P3 H4 — `_has_not_started` gates the game loop, and the data shows 0 leaked.
+P3 C3 — under-side probabilities average **0.670** against the over side's
+**0.392**; a broken flip would have them mirror each other.
+
+**G5 · write paths — PASS**, with the Q15 substitute. Dev server **stopped**,
+minutes since last write: `prop_odds` 1, `prop_odds_history` 1,
+`game_odds_book_lines` 1, `provider_usage` 1, `odds_cache` 1, `snapshot_cache`
+1, `game_odds_history` 4, `pick_history` 4, `golf_model_predictions` 4,
+`golf_tournament_predictions` 4, `mlb_prop_model_cache` 4.
+
+Four are legitimately older and none is a failure: `game_picks` 149 min (writes
+only in its 6am-CT / 3h-before capture windows), `mlb_game_model_cache` 51 min
+(only writes `status='pre'` games; at night most are final — and being past its
+30-minute max age, `adapter.ts` correctly falls back to local compute),
+`player_game_history` 334 min (backfill-driven), `system_events` 2,870 min
+(append-only error log — nothing has errored in two days).
+
+**This is weaker than the 48-hour window it replaces.** It proves each Python
+writer works *now*, not that it keeps working unattended. That is the known
+cost of Q15 and it is in the list below.
+
+**G6 · orphans — PASS.** `DISABLED_JOBS` is now empty. Everything disabled,
+deferred or knowingly left is named with an owner:
+
+| Item | Owner |
+|---|---|
+| `computeCalibrationPayload` still in TypeScript (Q18) | **Phase 4** (4.2/4.3) |
+| `odds_cache` written on odds-route GETs | **Phase 3** |
+| `recordEspnPregameLine` writes on GET in 4 sport routes | **unassigned — see below** |
+| No TypeScript test harness (P3 M8) | **3.11** |
+| Sustained Python-only write verification (Q15) | **after Phase 9** |
+
+Six modules were found orphaned at the gate and deleted rather than left:
+`pickHistoryLog.ts`, `props/grading.ts`, `gameOddsLog.ts`, `core/gamePickLock.ts`,
+`golf/historyIngest.ts`, `golf/models/grading.ts`. **A one-hop importer check
+would have missed all six**, because the comments explaining each removal name
+the functions they replaced — grep for `gradeFinishedGames` and you find
+`snapshotRebuild.ts`, in a comment saying it no longer runs there.
+
+**G7 · adversarial read-back — PASS, with three corrections made.** Re-read the
+phase's own diff asking whether the repository now describes what runs:
+
+1. **2.7a's VERIFY (a) in this plan was wrong about the design it specified** —
+   it said "no longer calls `computeModelProbability` … shown by grep", but the
+   implemented shape computes eagerly and substitutes the cached value. The
+   rendered number is Python's (G1 proves it), but a grep is not the right
+   check. Corrected in the task text, with the reason the eager shape was kept.
+2. **P2 M6.2 had gone stale and the comment it flagged was correct.** The
+   finding called `6 + 3 = 9` wrong on the grounds the worker's `max_size` was
+   2 — true of the commit deployed when the audit ran (`89f6754`), but reverted
+   by `713a1df` and settled at 3 by `ddcaff6`. Annotated rather than "fixed"
+   into a wrong comment.
+3. **2.6 kept `historyIngest.ts` as "reference material".** Reversed at the
+   gate: rule 2 says deleted, not disabled, and a dead file kept for reference
+   is precisely what rots and misleads.
+
+**G8 · sign-off.**
+
+**Findings closed:** P2 H1, P2 M1, P2 M2, P2 M6, P2 M9, P3 §4 (MLB and golf),
+P3 H4, P4 H1. **P2 M6.2 closed as no-longer-reproducing**, not as fixed.
+
+**Known NOT done — this list is not empty:**
+
+- **`computeCalibrationPayload` remains TypeScript model math.** Q18, deferred
+  to Phase 4 deliberately; the one live exception to Q13 inside this phase.
+- **`recordEspnPregameLine` writes to `game_odds_book_lines` on a GET** in the
+  CFB, NBA and Soccer `game/[gameId]` routes. Same class as P4 H1, in no
+  finding, found while deriving 2.1. **Nothing fixes this yet.**
+- **Pre-2.3 `game_odds_history` rows are mislabelled.** The TypeScript pass
+  wrote propline and sharpapi prices under the default `source='the-odds-api'`
+  — 30 distinct bookmakers in a bucket whose real source covers 9. Not
+  retroactively fixable; the true source was never recorded. Any Phase 4/5
+  analysis grouping by source must know this.
+- **`adapter.ts` still performs prop model arithmetic it discards**, as the
+  fallback. Deliberate, and it makes divergence detectable, but it is not
+  "TypeScript renders" in the strictest reading.
+- **Sustained Python-only writes are unproven.** Q15 removed the 48-hour
+  window; the substitute proves "works now".
+- **Phase 2 added no automated check to any CI harness**, because none exists.
+  Its new scripts (`test_leakage_guard.py`, `test_mlb_prop_grading.py`, the
+  rewritten `test-job-lock.ts`) are runnable but unwired. Task 3.11.
+- **`mlb_game_model_cache` was 51 minutes stale at gate time**, past its
+  30-minute max age, so the game model was being computed in TypeScript at that
+  moment. Correct fallback behaviour, but worth watching once a real slate is
+  live.
+
+---
 
 *Written 2026-08-28 from the Phase 1–5 audit findings and the operator's answers
 of the same date. Every measurement cited was taken from the live system;
