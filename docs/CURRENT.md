@@ -17,7 +17,7 @@ commit and push.
 ## The documents, in reading order
 
 1. **`docs/audit-remediation-plan.md`** — §0 (working rules, standing decisions
-   **Q1–Q22**, the G1–G8 gate) and the phase you are working. Don't read it end
+   **Q1–Q27**, the G1–G8 gate) and the phase you are working. Don't read it end
    to end.
 2. **§11** — the phase log. Phases 0, 1, 2 and 3 all have PASSED gate entries.
 3. **`docs/table-ownership.md`** — one row per table, all 36.
@@ -102,7 +102,7 @@ MLB, NBA, golf and tennis:
   is a new ingestion path. **MLB is the one that matters** — it is where all
   the graded history lives.
 
-## 3. Things that will bite again## 3. Things that will bite again
+## 3. Things that will bite again
 
 - **`ADMIN_API_PREFIXES` does nothing without a `config.matcher` entry.** This
   shipped as a false claim in task 2.9 and left an operator route open until
