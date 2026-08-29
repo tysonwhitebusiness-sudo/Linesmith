@@ -1,0 +1,88 @@
+# Task 3.11 — CI, scoped by standing decision Q20.
+#
+# NO DATABASE CREDENTIALS. That is the point, not a limitation to work around:
+# a CI run holding production write credentials is a new attack surface, not a
+# safety net, and most of this project's Python tests write and delete real
+# rows. So CI runs only what is genuinely hermetic, and the split is explicit
+# below rather than implied by whatever happened to pass.
+#
+# The ten Python scripts listed were not classified by reading them — greping
+# for `httpx`/`get_pool` misclassified several. They were each run with
+# DATABASE_URL unset and kept only if they passed. Anything needing a database,
+# the network, ~25-50 minutes, or a package that exists only on the scraper
+# laptop stays local and is listed in the `local-only` step so the boundary is
+# visible in the same file as the tests that do run.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Build
+        run: npm run build
+        env:
+          # The build imports modules that read these at module scope. They are
+          # never connected to during a build, and are deliberately not real —
+          # if a build step ever genuinely needs a live database, that is a bug
+          # in the build, not a reason to add a secret here.
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+          NEXT_PUBLIC_SUPABASE_URL: https://ci.invalid
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
+
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python-odds-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Hermetic tests
+        # NOT pytest. These are standalone scripts, not pytest modules —
+        # `python -m pytest` collects almost nothing from them and would pass
+        # on an empty run, which is worse than not running them at all.
+        run: |
+          set -e
+          for t in \
+            test_entity_resolution \
+            test_game_context_roster \
+            test_leakage_guard \
+            test_mlb_prop_grading \
+            test_mlb_source_flip \
+            test_odds_lines_cycle_book_lines \
+            test_price_staleness \
+            test_providers \
+            test_under_side_probability \
+            test_walkforward ; do
+            echo "--- $t ---"
+            python -u "src/$t.py"
+          done
+      - name: Not run here, and why
+        run: |
+          echo "Deliberately excluded from CI (Q20 — no database credentials in Actions):"
+          echo "  needs a live database:  test_calibration, test_elo_and_pitcher_game_score,"
+          echo "                          test_game_pick_lock, test_game_sim_cache,"
+          echo "                          test_odds_lines_cycle, test_staking, test_write_prop_odds,"
+          echo "                          test_mlb_bradley_terry"
+          echo "  25-50 min + live data:  test_mlb_mlp, test_mlb_tree_models, test_mlb_stacking,"
+          echo "                          test_model_benchmark"
+          echo "  scraper laptop only:    test_harvester_scrape (imports oddsharvester)"
+          echo "These run locally. See docs/CURRENT.md."
