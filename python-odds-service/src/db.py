@@ -371,74 +371,87 @@ async def write_prop_odds(rows: list[PropOddsInput]) -> None:
     if not rows:
         return
     fetched_at = datetime.now(timezone.utc)
+
+    # Deduplicate within the batch on the natural key, keeping the last row —
+    # the per-row loop this replaced had that behaviour implicitly, since a
+    # later write simply overwrote an earlier one's effect.
+    latest: dict[tuple, PropOddsInput] = {}
+    for r in rows:
+        latest[(r.provider_id, r.game_id, r.subject_id, r.market_key, r.line, r.side, r.bookmaker)] = r
+    batch = list(latest.values())
+
     pool = await get_pool()
-    async with pool.acquire(timeout=15.0) as conn:
+    async with pool.acquire(timeout=30.0) as conn:
         async with conn.transaction():
-            for r in rows:
-                prior = await conn.fetchrow(
+            # ONE query for every prior price, not one per row — task 3.10,
+            # finding P2 M7. This was 3 round-trips per row inside a single
+            # transaction holding one pooled connection, which is the same
+            # shape task 2.3 had to undo in write_game_odds_history where it
+            # measured 290+ seconds on a real batch.
+            #
+            # `IS NOT DISTINCT FROM` on `line` is load-bearing and survives the
+            # rewrite: line is nullable for categorical markets, and plain `=`
+            # never matches NULL, so every categorical row would look new on
+            # every cycle and append a history row forever.
+            keys = list(latest.keys())
+            prior_rows = await conn.fetch(
+                """
+                SELECT p.provider_id, p.game_id, p.subject_id, p.market_key, p.line, p.side, p.bookmaker, p.american_odds
+                FROM prop_odds p
+                JOIN unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::double precision[], $6::text[], $7::text[])
+                     AS k(provider_id, game_id, subject_id, market_key, line, side, bookmaker)
+                  ON p.provider_id = k.provider_id AND p.game_id = k.game_id AND p.subject_id = k.subject_id
+                 AND p.market_key = k.market_key AND p.line IS NOT DISTINCT FROM k.line
+                 AND p.side = k.side AND p.bookmaker = k.bookmaker
+                """,
+                [k[0] for k in keys], [k[1] for k in keys], [k[2] for k in keys], [k[3] for k in keys],
+                [k[4] for k in keys], [k[5] for k in keys], [k[6] for k in keys],
+            )
+            prior = {
+                (p["provider_id"], p["game_id"], p["subject_id"], p["market_key"], p["line"], p["side"], p["bookmaker"]): p["american_odds"]
+                for p in prior_rows
+            }
+
+            # History is log-on-CHANGE only: a repeat of the same price on the
+            # next cycle is not a history point.
+            changed = [r for k, r in latest.items() if prior.get(k) != r.american_odds]
+            if changed:
+                await conn.executemany(
                     """
-                    SELECT american_odds FROM prop_odds
-                    WHERE provider_id = $1 AND game_id = $2 AND subject_id = $3
-                      AND market_key = $4 AND line IS NOT DISTINCT FROM $5
-                      AND side = $6 AND bookmaker = $7
+                    INSERT INTO prop_odds_history
+                      (provider_id, game_id, subject_id, market_key, line, side, bookmaker,
+                       american_odds, decimal_odds, observed_at, is_delayed, delay_seconds)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                     """,
-                    r.provider_id,
-                    r.game_id,
-                    r.subject_id,
-                    r.market_key,
-                    r.line,
-                    r.side,
-                    r.bookmaker,
+                    [
+                        (r.provider_id, r.game_id, r.subject_id, r.market_key, r.line, r.side, r.bookmaker,
+                         r.american_odds, r.decimal_odds, fetched_at, r.is_delayed, r.delay_seconds)
+                        for r in changed
+                    ],
                 )
-                if prior is None or prior["american_odds"] != r.american_odds:
-                    await conn.execute(
-                        """
-                        INSERT INTO prop_odds_history
-                          (provider_id, game_id, subject_id, market_key, line, side, bookmaker,
-                           american_odds, decimal_odds, observed_at, is_delayed, delay_seconds)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                        """,
-                        r.provider_id,
-                        r.game_id,
-                        r.subject_id,
-                        r.market_key,
-                        r.line,
-                        r.side,
-                        r.bookmaker,
-                        r.american_odds,
-                        r.decimal_odds,
-                        fetched_at,
-                        r.is_delayed,
-                        r.delay_seconds,
-                    )
-                await conn.execute(
-                    """
-                    INSERT INTO prop_odds
-                      (provider_id, game_id, subject_id, subject_name, market_key, line, side, bookmaker,
-                       american_odds, decimal_odds, fetched_at, is_delayed, delay_seconds)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-                    ON CONFLICT (provider_id, game_id, subject_id, market_key, line, side, bookmaker) DO UPDATE SET
-                      subject_name  = excluded.subject_name,
-                      american_odds = excluded.american_odds,
-                      decimal_odds  = excluded.decimal_odds,
-                      fetched_at    = excluded.fetched_at,
-                      is_delayed    = excluded.is_delayed,
-                      delay_seconds = excluded.delay_seconds
-                    """,
-                    r.provider_id,
-                    r.game_id,
-                    r.subject_id,
-                    r.subject_name,
-                    r.market_key,
-                    r.line,
-                    r.side,
-                    r.bookmaker,
-                    r.american_odds,
-                    r.decimal_odds,
-                    fetched_at,
-                    r.is_delayed,
-                    r.delay_seconds,
-                )
+
+            # Current state is upserted unconditionally, changed or not — the
+            # fetched_at bump is what freshness checks read.
+            await conn.executemany(
+                """
+                INSERT INTO prop_odds
+                  (provider_id, game_id, subject_id, subject_name, market_key, line, side, bookmaker,
+                   american_odds, decimal_odds, fetched_at, is_delayed, delay_seconds)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                ON CONFLICT (provider_id, game_id, subject_id, market_key, line, side, bookmaker) DO UPDATE SET
+                  subject_name  = excluded.subject_name,
+                  american_odds = excluded.american_odds,
+                  decimal_odds  = excluded.decimal_odds,
+                  fetched_at    = excluded.fetched_at,
+                  is_delayed    = excluded.is_delayed,
+                  delay_seconds = excluded.delay_seconds
+                """,
+                [
+                    (r.provider_id, r.game_id, r.subject_id, r.subject_name, r.market_key, r.line, r.side, r.bookmaker,
+                     r.american_odds, r.decimal_odds, fetched_at, r.is_delayed, r.delay_seconds)
+                    for r in batch
+                ],
+            )
 
 
 @dataclass
