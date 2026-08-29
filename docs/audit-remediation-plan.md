@@ -177,8 +177,15 @@ after Phase 9:
 | 4.8 | VERIFY wants "24 h of writes" | Verify by grep plus one observed write cycle |
 | 4.1 | VERIFY on a rolling 7-day window | Measure rows written **since the fix** — a 7-day window dilutes a same-day change with six days of pre-fix rows, so this is more honest, not merely faster |
 
-**A BLOCKER FOUND WHILE PRE-SCOPING 4.7, which the task text does not
-mention.** `backfill_player_game_history.py` has exactly four parsers —
+**4.7 IS FOUR JOBS, NOT ONE — operator has asked for all four built. Full
+spec, including a correction to my own first sizing, is in
+`docs/CURRENT.md` §2b. Summary: NBA just needs running; MLB is moderate and
+reuses `get_people_with_game_logs` rather than needing a new ingestion path;
+golf probably should not be built at all (it has its own history tables);
+tennis is the genuine new source.**
+
+**Originally recorded as a blocker while pre-scoping 4.7, which the task text
+does not mention.** `backfill_player_game_history.py` has exactly four parsers —
 `parse_nba`, `parse_football`, `parse_soccer`, `parse_nhl` — and configured
 sports for nfl, cfb, soccer_mls, soccer_epl, nba, nhl.
 

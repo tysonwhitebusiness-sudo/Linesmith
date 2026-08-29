@@ -89,18 +89,50 @@ Also decided and flagged: **skip 5.13's `pick_history` rename** (368k rows plus
 every reader, for naming clarity) and **skip 5.13's JSONB migration** (the plan
 contradicts its own finding — P2 L2 says leave it).
 
-## 2b. Known blocker inside 4.7
+## 2b. Task 4.7 — BUILD THESE. Operator instruction, 2026-08-29.
 
-`backfill_player_game_history.py` has four parsers — nba, football, soccer,
-nhl — configured for nfl, cfb, soccer_mls, soccer_epl, nba, nhl. 4.7 asks for
-MLB, NBA, golf and tennis:
+`player_game_history` holds nhl 674k, cfb 274k, nfl 227k, soccer_epl 168k,
+soccer_mls 134k — and **zero** for MLB, NBA, golf and tennis. 4.7 says to fix
+that. `backfill_player_game_history.py` has four parsers (`parse_nba`,
+`parse_football`, `parse_soccer`, `parse_nhl`) configured for six sports.
 
-- **NBA is reachable today** — parser and config exist, it has simply never
-  been run. "Run it", not "build it".
-- **MLB, golf and tennis have no parser and no config.** MLB cannot use the
-  shared ESPN path at all (it has its own StatsAPI/Statcast pipeline), so that
-  is a new ingestion path. **MLB is the one that matters** — it is where all
-  the graded history lives.
+**The operator has asked for all four to be built and run.** Sized against the
+code, they are four very different jobs — do not treat them as one task:
+
+**NBA — just run it.** Parser and config already exist; nothing has ever
+invoked them. `python src/backfill_player_game_history.py nba`. Watch the
+connection ceiling (§4) and the resume doc.
+
+**MLB — moderate, and SMALLER than an earlier note in this file claimed.**
+That note said MLB "needs a new ingestion path entirely." It does not, and the
+correction matters because it changes the estimate:
+`predict/statsapi.py:383`'s `get_people_with_game_logs(ids, group, season)`
+already returns per-game logs, and its `GameLogSplit` (date, is_home, game_pk,
+opponent_id, team_id, stat) maps almost 1:1 onto `PlayerGameHistoryInput`
+(event_id ← game_pk, game_date ← date, stats ← stat). So the work is:
+  1. enumerate MLB athletes per season — and per **P3 L3**, walk HISTORICAL
+     rosters, not just current ones, or the table inherits the same
+     survivorship bias 4.7 exists to fix;
+  2. call `get_people_with_game_logs` for `hitting` and `pitching`;
+  3. map `GameLogSplit` → `PlayerGameHistoryInput`;
+  4. write via `db.write_player_game_history`.
+It does not fit the shared ESPN discovery path the other parsers use, so it
+wants its own `discover`/`parser` branch rather than another `SPORT_CONFIGS`
+row.
+
+**Golf — decide before building.** Golf already accumulates per-round and
+per-hole history in `golf_hole_scores` / `golf_round_scores` / `golf_model_predictions`,
+and its models read those, not `player_game_history`. Duplicating that into a
+schema shaped for team sports may buy nothing. **Check whether anything would
+actually consume it before writing an importer**, and if the answer is no,
+record that as the outcome rather than building it anyway.
+
+**Tennis — the genuine gap.** No per-match player-history module exists in
+Python at all. This is a real new source, and it is the largest of the four.
+
+**Suggested order: NBA (run) → MLB (build, highest value — it is where all the
+graded history lives) → golf (decide) → tennis (build).** If time runs short,
+stopping after MLB is the right place to stop, and say so.
 
 ## 3. Things that will bite again
 
