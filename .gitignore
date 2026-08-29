@@ -56,3 +56,6 @@ before_delete_snapshot.json
 q*.mjs
 q*.json
 runmig.mjs
+g*.mjs
+gate*.mjs
+python-odds-service/weakgate.log

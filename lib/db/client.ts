@@ -1474,6 +1474,14 @@ export async function goodBetsRecord(
      WHERE sport = ? AND outcome IS NOT NULL
        AND (edge IS NULL OR edge >= 0) AND sample_size >= ? AND (market_prob IS NULL OR market_prob <= ?)
        AND dimension IN (${placeholders})
+       -- Task 4.8 (P3 H2). This is the record shown on the home page, so it is
+       -- the most user-facing instance of the finding: without this line it
+       -- counted 3,580 moneyline picks made by computeMoneylineModel, the
+       -- second game model deleted on 2026-08-29, and presented them as this
+       -- app's own track record. Found by walking the app during the Phase 4
+       -- gate, not by reading the diff -- the calibration queries had already
+       -- been filtered and this reader was missed.
+       AND model_source IS NULL
        ${sinceClause}`,
     params,
   );

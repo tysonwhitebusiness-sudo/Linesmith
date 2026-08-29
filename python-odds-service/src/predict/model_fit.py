@@ -304,7 +304,7 @@ async def _build_training_set_uncached(client: httpx.AsyncClient, seasons: list[
                     expected_total_raw = (h_rs + a_rs) * pf
                     # Task 4.11 — same distribution the production model uses, or the fit
                     # would be trained on a feature that no longer exists at serve time.
-                    raw_poisson_over_prob = neg_binom_over_probability(expected_total_raw, odds.total_line)
+                    raw_neg_binom_over_prob = neg_binom_over_probability(expected_total_raw, odds.total_line)
                     total_market_prob_centered = 0.0
                     if odds.total_over_consensus_prob is not None:
                         total_market_prob_centered = odds.total_over_consensus_prob - 0.5
@@ -326,15 +326,26 @@ async def _build_training_set_uncached(client: httpx.AsyncClient, seasons: list[
                     else:
                         bullpen_coverage.missing += 1
 
-                    sim_over_prob = poisson_over_probability(sim_result.expected_total, odds.total_line)
+                    # Task 4.11 — same distribution as every other total
+                    # probability in this file. This was missed when the
+                    # import was switched and left model_fit.py raising
+                    # NameError on any real training-set build; caught by the
+                    # Phase 4 gate actually running fit-weights rather than
+                    # trusting that the module imported.
+                    #
+                    # A simulated expected total is converted to P(over) by the
+                    # same rule as a modelled one: MLB run totals have
+                    # variance/mean 2.28, so Poisson understates the tails
+                    # regardless of which stage produced the mean.
+                    sim_over_prob = neg_binom_over_probability(sim_result.expected_total, odds.total_line)
 
                     total_rows.append(
                         TrainingRow(
-                            features=[raw_poisson_over_prob, formDiff, pf - 1, elo_prob, total_market_prob_centered, line_movement, bullpen_era_centered, sim_over_prob],
+                            features=[raw_neg_binom_over_prob, formDiff, pf - 1, elo_prob, total_market_prob_centered, line_movement, bullpen_era_centered, sim_over_prob],
                             actual=1 if actual_total > odds.total_line else 0,
                             date=game_date_eastern,
                             season=season,
-                            baseline_prob=raw_poisson_over_prob,
+                            baseline_prob=raw_neg_binom_over_prob,
                         )
                     )
                 else:
