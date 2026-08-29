@@ -1205,6 +1205,31 @@ routes take JSON bodies, forcing a preflight a cross-site form can't satisfy.
 a test asserting no route accepts form-encoded bodies — so the assumption breaks
 loudly if someone adds one.
 
+### 3.15 · The two GET-path writers Phase 2 could not close *(no finding)*
+
+**Carried from Phase 2's gate, and NOT done in Phase 3.** Both are the same
+class as P4 H1, which Phase 2 fixed for `/api/odds/lines`, and neither appears
+in any audit finding — both were found by deriving `docs/table-ownership.md`.
+
+1. **`recordEspnPregameLine`** (`lib/odds/espnBookLines.ts:71`) writes
+   `game_odds_book_lines` from inside the CFB, NBA and Soccer
+   `game/[gameId]` GET handlers, fire-and-forget.
+2. **`odds_cache`** is written on odds-route GETs by `golfLines.ts`,
+   `oddsApi.ts` and `tennisLines.ts`.
+
+**Why this was not simply deleted, which is what Phase 2 did for its
+equivalents:** checked at Phase 3, and **Python has no ESPN pregame-line
+capture at all.** `game_odds_book_lines` is written on the Python side by
+`job_runner.run_provider_specs` (SportsGameOdds, ParlayAPI, …) and
+`harvester_scrape.py` (OddsPortal) — neither of which produces ESPN's pregame
+line. Deleting the TypeScript calls would therefore **lose that data outright**
+for three sports, not move it.
+
+So this needs a real port — an ESPN pregame-line job in `JOB_REGISTRY`, roughly
+the size of task 2.9's jobs — and porting it hastily at the end of a long phase
+is how the errors this plan exists to prevent get made. **Owner: Phase 5**,
+which already owns data-quality work over the same table.
+
 ### Phase 3 exit
 
 - [ ] Deliberately broken cache write → Sentry event + DB row
