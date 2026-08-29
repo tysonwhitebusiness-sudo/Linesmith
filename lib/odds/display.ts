@@ -196,44 +196,93 @@ export function bestMoneylineFromBooks(books: BookmakerOdds[]): UnifiedGameLine[
   };
 }
 
-/** Best available total across a per-book breakdown — over and under sides
- * maximized independently (same disclosed convention as moneyline/spread
- * above: the two sides can come from different books). Point comes from
- * whichever side's best book set it; when both sides disagree on the
- * point (a real possibility with multiple sources), the over side's point
- * wins, matching this codebase's existing tie-break convention
- * (predict/mlb_game_lines.py's summarise_odds_event does the same). */
-export function bestTotalFromBooks(books: BookmakerOdds[]): UnifiedGameLine['total'] | undefined {
-  let overBest: { decimal: number; book: string; point?: number } | undefined;
-  let underBest: { decimal: number; book: string; point?: number } | undefined;
+/**
+ * The point the most books are quoting for one market on one game.
+ *
+ * Task 5.5 (P3 C1). Before this existed, `bestTotalFromBooks` and
+ * `bestSpreadFromBooks` maximised each side across EVERY book regardless of
+ * what line that book was quoting, then reported whichever side's point
+ * happened to win. So the "best over" could be a book's 7.5 and the "best
+ * under" another book's 9.5, presented as one line with point 7.5 — and
+ * de-vigging those two prices together is meaningless, because they are
+ * prices for two different propositions. Live MLB data has 21 distinct total
+ * points across four sources, so this is not hypothetical.
+ *
+ * Tie-break is most-books, then lowest point. That is arbitrary but it is a
+ * TOTAL order, which is the property that matters: the same input must always
+ * produce the same line, or the displayed price flickers between page loads.
+ */
+function modalPoint(points: (number | null | undefined)[]): number | undefined {
+  const counts = new Map<number, number>();
+  for (const p of points) {
+    if (p != null && Number.isFinite(p)) counts.set(p, (counts.get(p) ?? 0) + 1);
+  }
+  if (counts.size === 0) return undefined;
+  let best: number | undefined;
+  let bestCount = -1;
+  // Ascending point order + strict `>` makes the lowest point win a tie.
+  for (const [point, count] of [...counts.entries()].sort((a, b) => a[0] - b[0])) {
+    if (count > bestCount) {
+      bestCount = count;
+      best = point;
+    }
+  }
+  return best;
+}
 
-  for (const b of books) {
+/** Best available total across a per-book breakdown.
+ *
+ * The modal point is selected FIRST and only books quoting that exact point
+ * are then compared (task 5.5, P3 C1) — so the returned over price, under
+ * price and point are always the same proposition, and the de-vigged
+ * probability derived from them is meaningful. Within that point, the two
+ * sides are still maximised independently and can come from different books,
+ * which is the disclosed convention moneyline uses too. */
+export function bestTotalFromBooks(books: BookmakerOdds[]): UnifiedGameLine['total'] | undefined {
+  const point = modalPoint(books.map((b) => b.point));
+  if (point == null) return undefined;
+  const atPoint = books.filter((b) => b.point === point);
+
+  let overBest: { decimal: number; book: string } | undefined;
+  let underBest: { decimal: number; book: string } | undefined;
+
+  for (const b of atPoint) {
     if (isPlausibleDecimalOdds(b.overPrice) && (overBest == null || b.overPrice > overBest.decimal)) {
-      overBest = { decimal: b.overPrice, book: b.bookmaker, point: b.point };
+      overBest = { decimal: b.overPrice, book: b.bookmaker };
     }
     if (isPlausibleDecimalOdds(b.underPrice) && (underBest == null || b.underPrice > underBest.decimal)) {
-      underBest = { decimal: b.underPrice, book: b.bookmaker, point: b.point };
+      underBest = { decimal: b.underPrice, book: b.bookmaker };
     }
   }
 
   if (!overBest && !underBest) return undefined;
   return {
-    point: overBest?.point ?? underBest?.point,
+    point,
     overPrice: decimalToAmerican(overBest?.decimal),
     underPrice: decimalToAmerican(underBest?.decimal),
     book: overBest && underBest && overBest.book === underBest.book ? overBest.book : undefined,
   };
 }
 
-/** Best available spread across a per-book breakdown — home and away sides
- * maximized independently, same convention as bestTotalFromBooks. */
+/** Best available spread across a per-book breakdown.
+ *
+ * Same modal-point discipline as bestTotalFromBooks (task 5.5, P3 C1). The
+ * modal is taken on the HOME point, and a book qualifies when its home point
+ * matches — a book quoting only the away side qualifies when its away point
+ * is the exact mirror, which is what a coherent spread means. */
 export function bestSpreadFromBooks(books: BookmakerOdds[]): UnifiedGameLine['spread'] | undefined {
-  let homeBest: { decimal: number; book: string; point?: number } | undefined;
+  const homePoint = modalPoint(books.map((b) => b.spreadHome));
+  if (homePoint == null) return undefined;
+  const atPoint = books.filter(
+    (b) => b.spreadHome === homePoint || (b.spreadHome == null && b.spreadAway === -homePoint),
+  );
+
+  let homeBest: { decimal: number; book: string } | undefined;
   let awayBest: { decimal: number; book: string; point?: number } | undefined;
 
-  for (const b of books) {
+  for (const b of atPoint) {
     if (isPlausibleDecimalOdds(b.spreadHomePrice) && (homeBest == null || b.spreadHomePrice > homeBest.decimal)) {
-      homeBest = { decimal: b.spreadHomePrice, book: b.bookmaker, point: b.spreadHome };
+      homeBest = { decimal: b.spreadHomePrice, book: b.bookmaker };
     }
     if (isPlausibleDecimalOdds(b.spreadAwayPrice) && (awayBest == null || b.spreadAwayPrice > awayBest.decimal)) {
       awayBest = { decimal: b.spreadAwayPrice, book: b.bookmaker, point: b.spreadAway };
@@ -242,9 +291,11 @@ export function bestSpreadFromBooks(books: BookmakerOdds[]): UnifiedGameLine['sp
 
   if (!homeBest && !awayBest) return undefined;
   return {
-    homePoint: homeBest?.point,
+    homePoint,
     homePrice: decimalToAmerican(homeBest?.decimal),
-    awayPoint: awayBest?.point,
+    // The away point is the mirror of the home point by definition; fall back
+    // to the winning book's own value only if it somehow disagrees.
+    awayPoint: awayBest?.point ?? -homePoint,
     awayPrice: decimalToAmerican(awayBest?.decimal),
     book: homeBest && awayBest && homeBest.book === awayBest.book ? homeBest.book : undefined,
   };

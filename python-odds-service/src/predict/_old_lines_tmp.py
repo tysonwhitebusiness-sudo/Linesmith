@@ -115,66 +115,6 @@ class GameLine:
     book_count: int = 0
 
 
-@dataclass
-class _Quote:
-    """One book's quote for one two-sided market, kept in the provider's own
-    American units so the collapse below never round-trips through decimal."""
-
-    book: str | None
-    point: float | None
-    mirror_point: float | None
-    a_price: int | None  # over (totals) / home (spreads)
-    b_price: int | None  # under (totals) / away (spreads)
-
-
-def _modal_point(points) -> float | None:
-    """The point the most books are quoting.
-
-    Task 5.5 (P3 C1). "Best total" and "best spread" used to maximise each side
-    across EVERY book regardless of the line that book was quoting, then report
-    whichever side's point happened to win — so the best over could be one
-    book's 7.5 and the best under another book's 9.5, presented as a single
-    proposition. De-vigging those two together is meaningless. Live MLB data
-    carries 21 distinct total points across four sources, so this is a real
-    condition, not a theoretical one.
-
-    Tie-break is most-books, then lowest point: arbitrary, but a TOTAL order,
-    which is the property that matters — the same input must always collapse to
-    the same line, or the displayed price flickers between refreshes.
-    """
-    counts: dict[float, int] = {}
-    for p in points:
-        if p is not None:
-            counts[p] = counts.get(p, 0) + 1
-    if not counts:
-        return None
-    # Ascending point, then strict `>`, so the lowest point wins a tie.
-    best_point, best_count = None, -1
-    for point in sorted(counts):
-        if counts[point] > best_count:
-            best_point, best_count = point, counts[point]
-    return best_point
-
-
-def _best_american(quotes: list["_Quote"], field: str) -> tuple[str | None, int | None]:
-    """Longest American price among quotes at one point. "Best" for American
-    odds is simply the largest number — the same rule the moneyline path uses."""
-    best_book, best_price = None, None
-    for q in quotes:
-        price = getattr(q, field)
-        if price is None:
-            continue
-        # Same implausible-price bound the TS twin applies in
-        # lib/odds/display.ts (task 5.6's guard, MAX_PLAUSIBLE_DECIMAL_ODDS).
-        # This path had no bound at all, so one garbage row from any of 22
-        # books could win "best price" purely by being the largest number.
-        if not is_plausible_decimal_odds(american_to_decimal(price)):
-            continue
-        if best_price is None or price > best_price:
-            best_book, best_price = q.book, price
-    return best_book, best_price
-
-
 def summarise_odds_event(event: dict) -> GameLine:
     """Collapse every bookmaker's quote into one line per game, taking the
     best available price for each side so the number shown is one a user
@@ -193,8 +133,6 @@ def summarise_odds_event(event: dict) -> GameLine:
     )
 
     bookmakers: list[BookmakerOdds] = []
-    total_quotes: list[_Quote] = []
-    spread_quotes: list[_Quote] = []
 
     for book in event.get("bookmakers") or []:
         entry = BookmakerOdds(bookmaker=book.get("title"))
@@ -240,17 +178,16 @@ def summarise_odds_event(event: dict) -> GameLine:
                     entry.spread_away_price = american_to_decimal(away["price"])
                     has_data = True
 
-                # Collected, not collapsed here — the modal point has to be
-                # known before any side can be maximised (task 5.5).
-                spread_quotes.append(
-                    _Quote(
-                        book=book.get("title"),
-                        point=home.get("point") if home else None,
-                        mirror_point=away.get("point") if away else None,
-                        a_price=home.get("price") if home else None,
-                        b_price=away.get("price") if away else None,
-                    )
-                )
+                if line.spread is None:
+                    line.spread = SpreadSummary()
+                if home and home.get("price") is not None and (line.spread.home_price is None or home["price"] > line.spread.home_price):
+                    line.spread.home_point = home.get("point")
+                    line.spread.home_price = home["price"]
+                    line.spread.book = book.get("title")
+                if away and away.get("price") is not None and (line.spread.away_price is None or away["price"] > line.spread.away_price):
+                    line.spread.away_point = away.get("point")
+                    line.spread.away_price = away["price"]
+                    line.spread.book = book.get("title")
 
             if key == "totals":
                 over = next((o for o in outcomes if o.get("name") == "Over"), None)
@@ -267,58 +204,24 @@ def summarise_odds_event(event: dict) -> GameLine:
                     entry.under_price = american_to_decimal(under["price"])
                     has_data = True
 
-                # Collected, not collapsed here. The old code tracked `point`
-                # alongside whichever side most recently won, and its own
-                # comment admitted the shape "can't represent both
-                # simultaneously" — which is precisely P3 C1: it produced an
-                # over price at one book's line beside an under price at
-                # another's, presented as one proposition. Task 5.5 fixes that
-                # by choosing the modal point first, below.
-                total_quotes.append(
-                    _Quote(
-                        book=book.get("title"),
-                        point=over_point,
-                        mirror_point=under_point,
-                        a_price=over.get("price") if over else None,
-                        b_price=under.get("price") if under else None,
-                    )
-                )
+                # `point` is tracked alongside whichever side most recently
+                # won — over and under can theoretically differ in point
+                # across books, and this single-field shape can't represent
+                # both simultaneously, same limitation moneyline already has
+                # for `book` above.
+                if line.total is None:
+                    line.total = TotalSummary()
+                if over and over.get("price") is not None and (line.total.over_price is None or over["price"] > line.total.over_price):
+                    line.total.point = over.get("point") if over.get("point") is not None else line.total.point
+                    line.total.over_price = over["price"]
+                    line.total.book = book.get("title")
+                if under and under.get("price") is not None and (line.total.under_price is None or under["price"] > line.total.under_price):
+                    line.total.point = line.total.point if line.total.point is not None else under.get("point")
+                    line.total.under_price = under["price"]
+                    line.total.book = book.get("title")
 
         if has_data:
             bookmakers.append(entry)
-
-    # Modal-point collapse, after every book has been read (task 5.5, P3 C1).
-    total_point = _modal_point(q.point for q in total_quotes)
-    if total_point is not None:
-        at_point = [q for q in total_quotes if q.point == total_point]
-        over_book, over_price = _best_american(at_point, "a_price")
-        under_book, under_price = _best_american(at_point, "b_price")
-        if over_price is not None or under_price is not None:
-            line.total = TotalSummary(
-                point=total_point,
-                over_price=over_price,
-                under_price=under_price,
-                book=over_book if over_book is not None and over_book == under_book else None,
-            )
-
-    spread_point = _modal_point(q.point for q in spread_quotes)
-    if spread_point is not None:
-        at_point = [
-            q
-            for q in spread_quotes
-            if q.point == spread_point or (q.point is None and q.mirror_point == -spread_point)
-        ]
-        home_book, home_price = _best_american(at_point, "a_price")
-        away_book, away_price = _best_american(at_point, "b_price")
-        if home_price is not None or away_price is not None:
-            line.spread = SpreadSummary(
-                home_point=spread_point,
-                home_price=home_price,
-                # The away point is the mirror of the home point by definition.
-                away_point=-spread_point,
-                away_price=away_price,
-                book=home_book if home_book is not None and home_book == away_book else None,
-            )
 
     line.bookmakers = bookmakers
     return line
