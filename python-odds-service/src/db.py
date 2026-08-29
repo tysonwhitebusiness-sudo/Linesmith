@@ -814,7 +814,17 @@ async def write_player_game_history(rows: list[PlayerGameHistoryInput]) -> int:
         return 0
     pool = await get_pool()
     cols = 9
-    max_rows_per_stmt = 60000 // cols  # stay well under Postgres's 65535 bind-param ceiling
+    # The real ceiling is 32,767, not 65,535: the Postgres wire protocol encodes
+    # a statement's parameter count as a SIGNED 16-bit integer, and asyncpg
+    # enforces that ("the number of query arguments cannot exceed 32767").
+    # This said 60000 // 9 = 6,666 rows = ~60,000 parameters, i.e. nearly double
+    # the limit, and the comment asserted it was "well under" it.
+    #
+    # It never fired because every caller until now wrote ONE GAME at a time
+    # (~10-60 rows). Task 4.7's MLB branch writes a whole player-season in one
+    # call (~130,000 rows) and hit it immediately. Latent since the function was
+    # written; found by giving it a genuinely large batch for the first time.
+    max_rows_per_stmt = 3000  # 27,000 parameters, a real margin under 32,767
     written = 0
     async with pool.acquire(timeout=30.0) as conn:
         async with conn.transaction():

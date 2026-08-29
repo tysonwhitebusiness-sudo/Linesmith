@@ -129,6 +129,23 @@ SCOPE: list[SportConfig] = [
         discover="nhl", parser="nhl",
         sweep_start=(9, 1), sweep_end=(1, 6, 15),
     ),
+    # MLB (task 4.7). Deliberately NOT an ESPN row like the five above: MLB has
+    # its own StatsAPI pipeline this repo already depends on, and its game logs
+    # arrive per PLAYER-SEASON rather than per game boxscore, so it gets its own
+    # discover mode and its own run_season branch (see run_season_mlb). The
+    # sweep_* fields are unused for it — StatsAPI is queried by season, not by
+    # date window.
+    SportConfig(
+        sport="mlb",
+        seasons=list(range(2016, 2027)),
+        discover="mlb", parser="mlb",
+    ),
+    # Tennis (task 4.7) — the genuine new source; no per-match player-history
+    # module existed in Python at all. Seasons are plain calendar years, unlike
+    # every other sport here. Stored per tour, matching how soccer is stored per
+    # league (soccer_epl / soccer_mls) rather than collapsed.
+    SportConfig(sport="tennis_atp", seasons=list(range(2016, 2027)), discover="tennis", parser="tennis"),
+    SportConfig(sport="tennis_wta", seasons=list(range(2016, 2027)), discover="tennis", parser="tennis"),
 ]
 
 # NBA's sweep_start month is in the calendar year BEFORE the season label
@@ -615,7 +632,294 @@ class RunStats:
     failures: list[tuple[str, str, str]] = field(default_factory=list)  # sport, event, reason
 
 
+_MLB_STATSAPI = "https://statsapi.mlb.com/api"
+
+# Hitting and pitching game logs collide: MLB reports `strikeOuts` for a batter
+# (times struck out) and for a pitcher (strikeouts recorded), and `runs`,
+# `homeRuns`, `baseOnBalls` and `hits` are all similarly overloaded. Since
+# player_game_history is UNIQUE(sport, athlete_id, event_id), a two-way player
+# like Ohtani produces ONE row per game and the two stat sets must coexist
+# inside it — so every key is prefixed by group. Without this, whichever group
+# was written second would either be silently dropped by ON CONFLICT or would
+# overwrite the other's meaning under the same name.
+_MLB_STAT_PREFIX = {"hitting": "bat_", "pitching": "pit_"}
+
+
+async def discover_mlb_players(client, limiter: RateLimiter, season: int) -> list[int]:
+    """Every player who appeared in MLB in `season` — the fix for P3 L3.
+
+    P3 L3: "the backfill only walks CURRENTLY ROSTERED players, so
+    retired/released players are missing and any model trained on it is biased
+    toward players who stayed in the league."
+
+    statsapi.get_active_roster would reproduce exactly that bias — it requests
+    `rosterType=active`, i.e. who is on a roster NOW. This endpoint is
+    season-scoped instead: /v1/sports/1/players?season=YYYY returns everyone who
+    appeared that year, including players long since retired. Verified against
+    the live API: 1,410 players for 2019 (the list opens with Fernando Abad, who
+    has not pitched in the majors for years) and 1,454 for 2024.
+    """
+    await limiter.acquire()
+    url = f"{_MLB_STATSAPI}/v1/sports/1/players?season={season}&fields=people,id"
+    r = await client.get(url, timeout=45)
+    r.raise_for_status()
+    return [p["id"] for p in (r.json() or {}).get("people") or [] if p.get("id") is not None]
+
+
+def _mlb_rows_from_person(person, season: int, group: str) -> dict:
+    """(athlete_id, event_id) -> partial PlayerGameHistoryInput fields."""
+    out = {}
+    prefix = _MLB_STAT_PREFIX[group]
+    for split in person.game_log or []:
+        if split.game_pk is None:
+            continue
+        stats = {}
+        for k, v in (split.stat or {}).items():
+            num = _num(v)
+            if num is not None:
+                stats[prefix + k] = num
+        if not stats:
+            continue
+        out[(str(person.id), str(split.game_pk))] = {
+            "team_id": str(split.team_id) if split.team_id is not None else None,
+            "opponent_id": str(split.opponent_id) if split.opponent_id is not None else None,
+            "game_date": split.date,
+            "is_home": bool(split.is_home),
+            "stats": stats,
+        }
+    return out
+
+
+async def run_season_mlb(client, limiter: RateLimiter, season: int, stats: RunStats, started: float) -> None:
+    """MLB's own branch (task 4.7).
+
+    Shape differs from the five ESPN sports on purpose. Those sweep a season's
+    scoreboard for game ids and fetch one boxscore per game — ~1,230 requests a
+    season. MLB's StatsAPI returns a whole player-season of game logs in one
+    batched call (40 players per request), so a season is ~75 requests instead
+    of ~1,230. Forcing it through the per-game producer/consumer loop would have
+    meant ~16x the requests for the same rows.
+
+    Reuses predict/statsapi.get_people_with_game_logs unchanged — same endpoint,
+    same hydrate, same parse the live prop pipeline uses. Its GAME_LOG_FIELDS
+    allow-list happens to cover precisely the markets this app models (hits,
+    home runs, RBI, runs, total bases, stolen bases, walks, strikeouts, earned
+    runs, innings pitched); if a future model needs more, widen that one
+    constant rather than adding a second fetch path here.
+    """
+    from predict import statsapi
+
+    done = await db.player_game_history_done_events("mlb", season)
+    player_ids = await discover_mlb_players(client, limiter, season)
+    print(
+        f"[mlb {season}] {len(player_ids)} players who appeared this season, "
+        f"{len(done)} game(s) already recorded",
+        flush=True,
+    )
+    if not player_ids:
+        return
+
+    merged: dict = {}
+    for group in ("hitting", "pitching"):
+        people = await statsapi.get_people_with_game_logs(client, player_ids, group, season)
+        got = 0
+        for person in people.values():
+            for key, fields in _mlb_rows_from_person(person, season, group).items():
+                got += 1
+                if key in merged:
+                    # Two-way player: same (athlete, game), both stat groups.
+                    merged[key]["stats"].update(fields["stats"])
+                else:
+                    merged[key] = fields
+        print(f"  [mlb {season}] {group}: {got} player-game splits", flush=True)
+
+    rows = [
+        db.PlayerGameHistoryInput(
+            sport="mlb",
+            athlete_id=athlete_id,
+            team_id=f["team_id"],
+            season=season,
+            event_id=event_id,
+            game_date=f["game_date"],
+            opponent_id=f["opponent_id"],
+            is_home=f["is_home"],
+            stats=f["stats"],
+        )
+        for (athlete_id, event_id), f in merged.items()
+    ]
+    stats.games_seen += len({e for _, e in merged})
+    if not rows:
+        print(f"[mlb {season}] no rows", flush=True)
+        return
+
+    # One write for the whole season. Idempotent via
+    # UNIQUE(sport, athlete_id, event_id), so re-running a partially-completed
+    # season is a no-op on what is already there — the same resume guarantee the
+    # ESPN path gets from its skip-before-fetch check, reached differently
+    # because the fetch here is per player-season, not per game.
+    written = await db.write_player_game_history(rows)
+    stats.rows_written += written
+    stats.games_fetched += len({e for _, e in merged})
+    elapsed = (time.monotonic() - started) / 60
+    print(
+        f"[mlb {season}] {len(rows)} player-games -> {written} new rows "
+        f"({len(rows) - written} already present) | {limiter.request_count} reqs | {elapsed:.1f} min",
+        flush=True,
+    )
+
+
+_TENNIS_TOUR = {"tennis_atp": "atp", "tennis_wta": "wta"}
+
+
+def parse_tennis_match(comp: dict, sport: str, season: int, tournament_name: str) -> list[db.PlayerGameHistoryInput]:
+    """One completed match -> one row per player.
+
+    WHAT ESPN ACTUALLY GIVES, and what it does not. The public tennis endpoints
+    expose NO per-match statistics: every competitor's `statistics` array is
+    empty, and the `summary?event=` endpoint that carries a boxscore for team
+    sports returns HTTP 400 for tennis. Checked on both the scoreboard and the
+    summary path before writing this.
+
+    What IS there is the score itself — per-set `linescores` with tiebreak
+    detail, a `winner` flag, athlete ids, and the round. That is enough to
+    derive real, modellable history: games won and lost, sets won and lost,
+    tiebreaks, and the match result.
+
+    CONSEQUENCE WORTH KNOWING: `games-won` and `to-win-a-set` — two of the three
+    tennis markets this app actually prices — are derivable from this. `aces`,
+    the third, IS NOT, and no amount of work on this source will produce it. It
+    needs a different feed. Recorded here rather than discovered later by
+    someone wondering why ace models have no training data.
+    """
+    competitors = comp.get("competitors") or []
+    if len(competitors) != 2:
+        return []
+
+    parsed = []
+    for c in competitors:
+        athlete = c.get("athlete") or {}
+        athlete_id = c.get("id") or athlete.get("id")
+        if athlete_id is None:
+            return []
+        lines = [_num(ls.get("value")) for ls in (c.get("linescores") or [])]
+        games = [g for g in lines if g is not None]
+        tiebreaks = sum(1 for ls in (c.get("linescores") or []) if ls.get("tiebreak") is not None)
+        parsed.append({
+            "athlete_id": str(athlete_id),
+            "winner": bool(c.get("winner")),
+            "games": games,
+            "tiebreaks": tiebreaks,
+            "home_away": c.get("homeAway"),
+        })
+
+    # A walkover or retirement can leave one side with no games recorded; a match
+    # nobody won is not a result. Either way there is nothing to learn from it.
+    if not any(p["games"] for p in parsed) or not any(p["winner"] for p in parsed):
+        return []
+
+    date = (comp.get("date") or "")[:10]
+    if not date:
+        return []
+    event_id = str(comp.get("id"))
+    round_name = ((comp.get("round") or {}).get("displayName") or "").strip()
+
+    rows = []
+    for i, p in enumerate(parsed):
+        opp = parsed[1 - i]
+        sets_won = sum(1 for a, b in zip(p["games"], opp["games"]) if a > b)
+        sets_lost = sum(1 for a, b in zip(p["games"], opp["games"]) if a < b)
+        rows.append(
+            db.PlayerGameHistoryInput(
+                sport=sport,
+                athlete_id=p["athlete_id"],
+                # Tennis has no teams. Null rather than a fabricated value —
+                # the same rule the sport adapters follow for a field a sport
+                # genuinely does not have.
+                team_id=None,
+                season=season,
+                event_id=event_id,
+                game_date=date,
+                opponent_id=opp["athlete_id"],
+                # ESPN sets homeAway on tennis competitors, but it encodes draw
+                # position, not a venue advantage. Carried through as given
+                # rather than invented, and not to be read as home-court.
+                is_home=p["home_away"] == "home",
+                stats={
+                    "match_won": 1.0 if p["winner"] else 0.0,
+                    "sets_won": float(sets_won),
+                    "sets_lost": float(sets_lost),
+                    "games_won": float(sum(p["games"])),
+                    "games_lost": float(sum(opp["games"])),
+                    "tiebreaks_played": float(p["tiebreaks"]),
+                    "is_major": 1.0 if "grand slam" in tournament_name.lower() else 0.0,
+                    "is_qualifying": 1.0 if "qualif" in round_name.lower() else 0.0,
+                },
+            )
+        )
+    return rows
+
+
+async def run_season_tennis(client, limiter: RateLimiter, cfg: SportConfig, season: int, stats: RunStats, started: float) -> None:
+    """Tennis's own branch (task 4.7).
+
+    Swept a MONTH at a time, not a day at a time. ESPN's tennis scoreboard
+    returns whole tournaments — one January 2025 request came back with 6
+    tournaments and 1,101 matches, the complete draws — so a daily sweep would
+    re-download each tournament for every day it ran. A season is 12 requests.
+    """
+    tour = _TENNIS_TOUR[cfg.sport]
+    done = await db.player_game_history_done_events(cfg.sport, season)
+
+    all_rows: list[db.PlayerGameHistoryInput] = []
+    seen_matches: set[str] = set()
+    tournaments = 0
+    for month in range(1, 13):
+        start = date(season, month, 1)
+        end = date(season + 1, 1, 1) - timedelta(days=1) if month == 12 else date(season, month + 1, 1) - timedelta(days=1)
+        url = (
+            f"{_ESPN_SITE}/tennis/{tour}/scoreboard"
+            f"?dates={start.strftime('%Y%m%d')}-{end.strftime('%Y%m%d')}&limit=1000"
+        )
+        try:
+            payload = await fetch_json(client, limiter, url)
+        except FetchError as e:
+            stats.failures.append((cfg.sport, f"{season}-{month:02d}", f"scoreboard: {e}"))
+            continue
+        for event in (payload or {}).get("events") or []:
+            tournaments += 1
+            name = event.get("name") or ""
+            for grouping in event.get("groupings") or []:
+                for comp in grouping.get("competitions") or []:
+                    mid = str(comp.get("id"))
+                    if mid in seen_matches or mid in done:
+                        continue
+                    seen_matches.add(mid)
+                    all_rows.extend(parse_tennis_match(comp, cfg.sport, season, name))
+
+    stats.games_seen += len(seen_matches)
+    if not all_rows:
+        print(f"[{cfg.sport} {season}] {tournaments} tournament-months, no new completed matches", flush=True)
+        return
+
+    written = await db.write_player_game_history(all_rows)
+    stats.rows_written += written
+    stats.games_fetched += len(seen_matches)
+    elapsed = (time.monotonic() - started) / 60
+    print(
+        f"[{cfg.sport} {season}] {len(seen_matches)} matches -> {len(all_rows)} player-matches "
+        f"-> {written} new rows | {limiter.request_count} reqs | {elapsed:.1f} min",
+        flush=True,
+    )
+
+
 async def run_season(client, limiter, cfg: SportConfig, season: int, stats: RunStats, started: float) -> None:
+    if cfg.discover == "mlb":
+        await run_season_mlb(client, limiter, season, stats, started)
+        return
+    if cfg.discover == "tennis":
+        await run_season_tennis(client, limiter, cfg, season, stats, started)
+        return
+
     parser = PARSERS[cfg.parser]
     done = await db.player_game_history_done_events(cfg.sport, season)
     if cfg.discover == "nhl":
@@ -693,7 +997,7 @@ async def run_season(client, limiter, cfg: SportConfig, season: int, stats: RunS
 
 async def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("sports", nargs="*", help="restrict to these sport labels (nba nhl nfl cfb soccer_epl soccer_mls)")
+    ap.add_argument("sports", nargs="*", help="restrict to these sport labels (mlb nba nhl nfl cfb soccer_epl soccer_mls tennis_atp tennis_wta)")
     ap.add_argument("--from-season", type=int, default=None, help="skip seasons before this (by stored label)")
     ap.add_argument("--to-season", type=int, default=None)
     ap.add_argument("--rps", type=float, default=3.0)
