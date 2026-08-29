@@ -101,6 +101,8 @@ jobs:
         run: python -u src/test_propline_alt_lines.py
       - name: test_model_hygiene
         run: python -u src/test_model_hygiene.py
+      - name: test_market_gate
+        run: python -u src/test_market_gate.py
       - name: Not run here, and why
         run: |
           echo "Deliberately excluded from CI (Q20 — no database credentials in Actions):"

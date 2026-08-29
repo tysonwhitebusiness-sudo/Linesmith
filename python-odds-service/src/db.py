@@ -2394,6 +2394,44 @@ def _json_or_none(s: str | None):
     return json.loads(s) if s is not None else None
 
 
+async def market_gate_sample(sport: str, market: str) -> list[tuple[float, float, float]]:
+    """Graded picks carrying BOTH the model's probability and the market's, for
+    task 4.2's activation gate. Returns (model_prob, market_prob, actual).
+
+    `market` is 'moneyline' or 'total'.
+
+    These are LIVE captures, not backfilled history: a row only qualifies once
+    the pick was locked with a model probability, a market reference was
+    attached from a real two-sided book price (Q28), and the game finished.
+    That is the only population on which "did the model beat the market" means
+    anything — comparing a fitted model to a market number reconstructed after
+    the fact would be measuring hindsight.
+
+    The `initial` slot is used rather than `final` because that is the moment
+    the model committed. Beating a closing line you were shown is a much weaker
+    claim than beating the line you actually bet into.
+    """
+    prefix = "ml" if market == "moneyline" else "total"
+    pool = await get_pool()
+    rows = await pool.fetch(
+        f"""
+        SELECT {prefix}_initial_prob AS model_prob,
+               {prefix}_initial_market_prob AS market_prob,
+               {prefix}_outcome AS outcome
+          FROM game_picks
+         WHERE sport = $1
+           AND {prefix}_outcome IN ('win', 'loss')
+           AND {prefix}_initial_prob IS NOT NULL
+           AND {prefix}_initial_market_prob IS NOT NULL
+        """,
+        sport,
+    )
+    return [
+        (float(r["model_prob"]), float(r["market_prob"]), 1.0 if r["outcome"] == "win" else 0.0)
+        for r in rows
+    ]
+
+
 async def get_active_model_weights(sport: str, market: str) -> ModelWeightsRow | None:
     """market: 'moneyline' | 'total' | 'home-run'."""
     pool = await get_pool()

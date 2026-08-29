@@ -399,6 +399,67 @@ class MoneylineFitSummary:
     saved_row: db.ModelWeightsRow
 
 
+# Task 4.2 (P3 H3, Q6, Q24). Below this many graded live picks the market
+# comparison is noise, not evidence: Brier differences between a model and a
+# market are small, and at n = 12 the standard error swamps any real gap. 100 is
+# a floor, not a sufficiency claim — it is the point below which a verdict would
+# be actively misleading.
+MARKET_GATE_MIN_N = 100
+
+
+@dataclass
+class MarketGateResult:
+    """Did this model beat the MARKET, on live graded picks?"""
+
+    n: int
+    model_brier: float | None
+    market_brier: float | None
+    # 'beats_market' | 'loses_to_market' | 'insufficient_sample'
+    verdict: str
+
+    @property
+    def blocks_activation(self) -> bool:
+        # Only a MEASURED loss blocks. An indeterminate gate must not block, or
+        # no model could ever activate before the sample exists; and it must not
+        # pass either, which is why it is named rather than silently ignored.
+        return self.verdict == "loses_to_market"
+
+    def describe(self) -> str:
+        if self.verdict == "insufficient_sample":
+            return f"market gate: INSUFFICIENT SAMPLE (n={self.n}, need {MARKET_GATE_MIN_N}) — not evidence either way"
+        return (
+            f"market gate: {self.verdict.upper()} "
+            f"(n={self.n}, model Brier {self.model_brier:.5f} vs market {self.market_brier:.5f})"
+        )
+
+
+async def market_gate(sport: str, market: str) -> MarketGateResult:
+    """Task 4.2's replacement for the old activation test.
+
+    The old gate compared a fitted model against this app's OWN unfitted
+    formula (`baseline_holdout_brier`). P3 H3's point: a model can clear that
+    bar comfortably while still being worse than the price you could have bet
+    into. Beating your own previous guess is not a reason to show anyone a
+    number.
+
+    This compares the model against the MARKET on the same rows — the de-vigged
+    two-sided book price captured when the pick was locked (Q28). Lower Brier
+    wins.
+
+    Q24 makes the consequence explicit: a model that loses to the market is
+    deactivated. So the failure mode to avoid is a FALSE loss verdict on a thin
+    sample, which is what MARKET_GATE_MIN_N guards.
+    """
+    sample = await db.market_gate_sample(sport, market)
+    n = len(sample)
+    if n < MARKET_GATE_MIN_N:
+        return MarketGateResult(n=n, model_brier=None, market_brier=None, verdict="insufficient_sample")
+    model_brier = sum((mp - actual) ** 2 for mp, _, actual in sample) / n
+    market_brier = sum((kp - actual) ** 2 for _, kp, actual in sample) / n
+    verdict = "beats_market" if model_brier < market_brier else "loses_to_market"
+    return MarketGateResult(n=n, model_brier=model_brier, market_brier=market_brier, verdict=verdict)
+
+
 async def fit_moneyline_weights(client: httpx.AsyncClient, train_seasons: list[int], holdout_seasons: list[int]) -> MoneylineFitSummary:
     """`holdout_seasons` are held out entirely — never touch the fit, only
     score it — and the guardrail below (activate only if the fit beats the
@@ -426,9 +487,27 @@ async def fit_moneyline_weights(client: httpx.AsyncClient, train_seasons: list[i
     holdout_brier = brier_score(holdout_preds)
     baseline_holdout_brier = brier_score(holdout_baseline)
 
-    # The guardrail: a new fit only ever goes live if it actually beats the
-    # currently-active formula on data it never trained on.
-    activated = holdout_brier < baseline_holdout_brier
+    # TWO guardrails now (task 4.2, P3 H3).
+    #
+    # 1. The original: beat this app's own unfitted formula on data the fit
+    #    never saw. Necessary, but P3 H3 showed it is not sufficient — a model
+    #    can clear its own previous guess while still being worse than the price
+    #    you could have bet into.
+    # 2. NEW: do not lose to the MARKET on live graded picks. Q24 makes this
+    #    binding — a model that loses to the market is deactivated.
+    #
+    # An indeterminate market gate (too few graded picks carrying both a model
+    # and a market probability) does NOT block: it is not evidence either way,
+    # and blocking on it would mean nothing could ever activate before the
+    # sample accumulates. It is reported rather than silently dropped.
+    beats_own_baseline = holdout_brier < baseline_holdout_brier
+    gate = await market_gate("mlb", "moneyline")
+    activated = beats_own_baseline and not gate.blocks_activation
+    print(
+        f"[fit moneyline] beats own baseline: {beats_own_baseline} | {gate.describe()} "
+        f"-> {'ACTIVATED' if activated else 'NOT activated'}",
+        flush=True,
+    )
 
     saved_row = await db.write_model_weights(
         db.ModelWeightsInput(
