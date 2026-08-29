@@ -64,9 +64,9 @@ comments explaining the removal name the functions they replaced.
 | 18 | `golf_round_scores` | **Python** | ⚠ `writeGolfRoundScores` ← `historyIngest.ts` | `write_golf_round_scores` | **2.4** |
 | 19 | `golf_tournaments` | **Python** | ⚠ `writeGolfTournament` ← `historyIngest.ts` | `write_golf_tournament` | **2.4** |
 | 20 | `golf_tournament_results` | **Python** | ⚠ `writeGolfTournamentResults` ← `historyIngest.ts` | `write_golf_tournament_results` | **2.4** |
-| 21 | `game_sim_cache` | **Python** | ⚠ `writeGameSimCache` ← `gameSimCache.ts` ← `adapter.ts:1993` `ensureGameSims`, **on snapshot rebuild** | `write_game_sim_cache` | **2.7** |
-| 22 | `park_factors` | **Python** | ⚠ `writeParkFactors` ← `parkFactors.ts` ← `adapter.ts:1894` | `write_park_factors` | **2.7** |
-| 23 | `team_hr_rate_allowed` | **Python** | ⚠ `writeTeamHrRateAllowed` ← `homeRunLiveMatchup.ts` ← `adapter.ts:1899` | `write_team_hr_rate_allowed` | **2.7** |
+| 21 | `game_sim_cache` | ⚠ **still contested** | `writeGameSimCache` ← `gameSimCache.ts` ← `adapter.ts:2056` `ensureGameSims`, **on every snapshot rebuild** | `game_sim_cache.py` — **no scheduled job** | **NOT CLOSED — see note** |
+| 22 | `park_factors` | ⚠ **still contested** | `writeParkFactors` ← `parkFactors.ts` ← `adapter.ts:1957, 2328` | `park_factors.py` — **no scheduled job** | **NOT CLOSED — see note** |
+| 23 | `team_hr_rate_allowed` | ⚠ **still contested** | `writeTeamHrRateAllowed` ← `homeRunLiveMatchup.ts` ← `adapter.ts:1962` | `home_run_live_matchup.py` — **no scheduled job** | **NOT CLOSED — see note** |
 | 24 | `team_elo_history` | **Python** | `writeEloHistory` ← `eloModel.ts` ← **`/api/props/elo-backfill` only** | `write_elo_history` ← `maintainMlbEloJob` | see note |
 | 25 | `pitcher_game_score_history` | **Python** | `writePitcherGameScore` ← `eloModel.ts` ← **dead path** | `write_pitcher_game_score` | see note |
 | 26 | `model_weights` | **TS · admin** | `writeModelWeights` ← `modelFit.ts`, `homeRunModelFit.ts` ← `/api/props/fit-*` | `write_model_weights` | see note |
@@ -91,6 +91,37 @@ absent from P3 §4's map, which accounts for 34 tables (22 shared + 6 + 6), not
 35; the audit was working from that map rather than from `information_schema`,
 which is how it went unnoticed. The table count stays at 35 because `job_locks`
 (2.7c) took its place.
+
+**THREE TABLES ARE STILL CONTESTED, and this file claimed otherwise until
+2026-08-29.** `game_sim_cache`, `park_factors` and `team_hr_rate_allowed` were
+listed as Python-owned with task 2.7 closing them. **Task 2.7 did not close
+them.** It moved the prop model *probability* to `mlb_prop_model_cache`; it did
+not touch these three, and `adapter.ts` still writes all three on every snapshot
+rebuild via `ensureGameSims`, `loadParkFactorCache` and
+`loadTeamHrRateAllowedCache`.
+
+Caught by running this file's own re-derivation properly at the Phase 2 gate.
+The first pass checked which TypeScript writers were *reachable* and found six
+orphans to delete; it did not diff the **Owner** column against reality, which
+is the check that matters.
+
+What is actually true of these three:
+
+- Both languages write them **read-through** — read the cache, compute and
+  store on a miss. They are derived aggregates (park factors, seasonal HR rate
+  allowed) and a Monte Carlo cache, not model output or history.
+- Python has the code (`predict/park_factors.py`,
+  `predict/home_run_live_matchup.py`, `predict/game_sim_cache.py`) but **no
+  `JOB_REGISTRY` job populates any of them on a schedule.** They are called
+  read-through from Python's own paths, exactly as TypeScript calls them.
+- So the fix is ordered: a scheduled Python writer **first**, then TypeScript
+  goes read-only. Doing it the other way round empties the cache with nothing
+  to refill it and breaks the page.
+
+Lower risk than the dual writers Phase 2 did close — both sides compute the
+same seasonal aggregate from the same source, and the write is an idempotent
+upsert. But "low risk" is the reasoning that produced this audit, so it is
+recorded as open rather than argued away. **Owner: Phase 3.**
 
 **`job_locks` is TypeScript-owned and that is correct.** It is written only by
 `withJobLock`, and the only callers are `lib/scheduler.ts`'s two timers, which

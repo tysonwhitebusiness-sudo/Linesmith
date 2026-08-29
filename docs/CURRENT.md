@@ -36,9 +36,10 @@ commit and push.
 **Phases 0, 1 and 2 are COMPLETE. All three gates PASSED.**
 **Phase 3 is next and has NOT started.**
 
-Phase 2 closed the audit's root cause: exactly one language writes each table,
-and Python computes every model number the app renders except one documented
-exception. 15 commits, `464fda6` → `5761c47`.
+Phase 2 substantially closed the audit's root cause, **but not completely, and
+the gap is known**: Python computes every model number the app renders except
+one documented exception (Q18), and one writer owns every table **except three**
+— see §2. 16 commits, `464fda6` → HEAD.
 
 ## 2. Start here: Phase 3 — observability and defence
 
@@ -47,8 +48,21 @@ in Phase 2 it caught that three of eight tasks were mis-scoped in the plan and
 one finding (P2 M6.2) had gone stale and needed no fix at all. The audit was
 measured 2026-08-27 and the tree has moved a long way since.
 
-**Two Phase 3 tasks already have work waiting for them, from Phase 2's own
-findings:**
+**Phase 3 inherits real work from Phase 2's own gate. Do this first:**
+
+- **THREE TABLES STILL HAVE TWO WRITERS** — `game_sim_cache`, `park_factors`,
+  `team_hr_rate_allowed`. `adapter.ts` writes all three on every snapshot
+  rebuild (`ensureGameSims`, `loadParkFactorCache`,
+  `loadTeamHrRateAllowedCache`), and Python writes them read-through from its
+  own paths with **no `JOB_REGISTRY` job owning any of them**. The map claimed
+  task 2.7 closed these; it never touched them, and the gate caught the claim.
+  **The fix is ordered: add a scheduled Python writer FIRST, then make the
+  TypeScript path read-only.** Reversing that empties a read-through cache with
+  nothing to refill it and breaks the MLB page. Lower risk than the dual
+  writers Phase 2 did close — both sides compute the same seasonal aggregate
+  and upsert idempotently — but it is the phase's own goal, unmet.
+
+**Two more, also from Phase 2's findings:**
 
 - **3.x (unassigned): `recordEspnPregameLine` writes on a GET.**
   `lib/odds/espnBookLines.ts:71`, called from the CFB, NBA and Soccer

@@ -2869,7 +2869,31 @@ GATE RESULT: PASS
 
 ### Phase 2 — 2026-08-29
 
-**GATE RESULT: PASS.** Eight tasks, all verified against the live system.
+**GATE RESULT: PASS, after a correction that was found by re-checking the gate
+itself.** Eight tasks, all verified against the live system.
+
+> **The first sign-off was wrong on one point and this corrects it.** The gate's
+> own item — "`docs/table-ownership.md` re-derived, not reviewed … diff it
+> against the committed doc, they must match exactly" — was executed
+> incompletely. The first pass checked which TypeScript writers were still
+> *reachable*, which found six orphaned modules to delete. It did not diff the
+> **Owner** column against reality.
+>
+> Running it properly found **three tables the map claimed Python owned and task
+> 2.7 had closed, which 2.7 never touched**: `game_sim_cache`, `park_factors`
+> and `team_hr_rate_allowed`. `adapter.ts` still writes all three on every
+> snapshot rebuild, and no `JOB_REGISTRY` job populates any of them, so Python
+> writes them read-through too. Two real writers, no owner.
+>
+> **Phase 2 therefore did NOT achieve one-writer-per-table for 3 of 35 tables.**
+> The map is corrected, the three are carried to Phase 3 with the ordering the
+> fix requires (scheduled Python writer first, then TypeScript read-only — the
+> reverse empties the cache with nothing to refill it). Every other gate item's
+> evidence is unaffected and stands.
+>
+> The failure mode is worth naming because it is the audit's own: a checklist
+> item that was *run*, produced a real finding, and was therefore assumed to
+> have been run completely.
 Commits `464fda6` … `262dc73`; deployed worker `262dc73`, confirmed live and
 equal to `HEAD`.
 
@@ -3019,11 +3043,23 @@ phase's own diff asking whether the repository now describes what runs:
 
 **G8 · sign-off.**
 
-**Findings closed:** P2 H1, P2 M1, P2 M2, P2 M6, P2 M9, P3 §4 (MLB and golf),
-P3 H4, P4 H1. **P2 M6.2 closed as no-longer-reproducing**, not as fixed.
+**Findings closed:** P2 H1, P2 M1, P2 M2, P2 M6, P2 M9, P3 H4, P4 H1.
+**P2 M6.2 closed as no-longer-reproducing**, not as fixed.
+
+**P3 §4 is closed only in part.** MLB's model/prediction/grading path and golf's
+double pipeline are done; `prop_odds`, `pick_history`, `game_odds_history`,
+`game_picks` and the six golf tables each have one writer now. But three tables
+(`game_sim_cache`, `park_factors`, `team_hr_rate_allowed`) still have two, and
+`game_odds_book_lines` and `odds_cache` still take writes from GET handlers. The
+root cause is substantially reduced, not eliminated.
 
 **Known NOT done — this list is not empty:**
 
+- **THREE TABLES STILL HAVE TWO WRITERS**: `game_sim_cache`, `park_factors`,
+  `team_hr_rate_allowed`. Both languages write them read-through and no
+  scheduled job owns any of them. This is the phase's own goal, unmet for 3 of
+  35 tables. **Owner: Phase 3**, and the fix is ordered — Python job first,
+  TypeScript read-only second.
 - **`computeCalibrationPayload` remains TypeScript model math.** Q18, deferred
   to Phase 4 deliberately; the one live exception to Q13 inside this phase.
 - **`recordEspnPregameLine` writes to `game_odds_book_lines` on a GET** in the
