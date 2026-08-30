@@ -19,6 +19,7 @@ import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow } from '@
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import type { PropOddsRow } from '@/lib/db/client';
 import type { ChipDef, GamelogRow, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
   return (entry.raw ?? {}) as Record<string, unknown>;
@@ -89,6 +90,23 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
         : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => (rawOf(e).opponentName as string | undefined) === opponentAbbr, { minimum: 1 }),
   };
 
+  // ---- Role 6 | careerH2H (6.13). NOT a second copy of the h2h window box:
+  // that reports one rate, this reports the per-MEETING history behind it.
+  // "3 of 5" and "3 of 5, all three in one season" are different facts and a
+  // single rate cannot tell them apart. Same opponent predicate `windows.h2h`
+  // uses above -- deliberately the same expression, so the two can never
+  // disagree about who the opponent is.
+  const careerH2H = opponentAbbr
+    ? toCareerH2H({
+        measured: categoriseByLine(active.history, line),
+        wanted,
+        isVsOpponent: (e) => (rawOf(e).opponentName as string | undefined) === opponentAbbr,
+        opponentLabel: `vs ${opponentAbbr}`,
+        // Tennis does not import MarketLabel; the candidate already carries its own label.
+        statLabel: active.dimensionLabel ?? active.dimension,
+      })
+    : null;
+
   const chips: ChipDef[] = [
     ...(opponentAbbr ? [{ key: 'opponent', label: `vs ${opponentAbbr}` }] : []),
     { key: 'lastN:5', label: 'Last 5' },
@@ -134,6 +152,7 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
       : null;
 
   return {
+    careerH2H,
     subject: {
       subjectId: active.subjectId,
       name: active.subjectName,

@@ -37,6 +37,7 @@ import { MIDDOT, fmt } from '@/components/charts/tokens';
 import type { SpatialGridRole } from '@/lib/sports/shared/playerRoles';
 import type { ShotGrid } from '@/lib/sports/soccer/understatShots';
 import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 
 interface SoccerSeasonStats {
   games: number;
@@ -187,6 +188,22 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
         : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => (rawOf(e).opponentAbbr as string | undefined) === opponentName, { minimum: 1 }),
   };
 
+  // ---- Role 6 | careerH2H (6.13). NOT a second copy of the h2h window box:
+  // that reports one rate, this reports the per-MEETING history behind it.
+  // "3 of 5" and "3 of 5, all three in one season" are different facts and a
+  // single rate cannot tell them apart. Same opponent predicate `windows.h2h`
+  // uses above -- deliberately the same expression, so the two can never
+  // disagree about who the opponent is.
+  const careerH2H = opponentName
+    ? toCareerH2H({
+        measured: categoriseByLine(active.history, line),
+        wanted,
+        isVsOpponent: (e) => (rawOf(e).opponentAbbr as string | undefined) === opponentName,
+        opponentLabel: `vs ${opponentName}`,
+        statLabel: marketText('soccer', active.dimension, 'compact'),
+      })
+    : null;
+
   const chips: ChipDef[] = [
     ...(opponentAbbr ? [{ key: 'opponent', label: `vs ${opponentAbbr}` }] : []),
     { key: 'lastN:5', label: 'Last 5' },
@@ -316,6 +333,7 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
       : null;
 
   return {
+    careerH2H,
 
     spatialGrid,
     binarySplit,
