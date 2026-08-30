@@ -493,6 +493,21 @@ footer p { color: var(--sh-ink-3); }
 .gchip-r { font-size: 9px; }
 .notab { align-self: center; margin-left: 4px; font-size: 11px; color: var(--ink-4); font-style: italic; }
 
+/* ---- game board: the two-sided matchup hero ---- */
+.matchup-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: center; }
+.mt-side { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.mt-right { justify-content: flex-end; text-align: right; }
+.mt-name { font-size: 15px; font-weight: 600; line-height: 1.2; }
+.mt-rec { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+.mt-mid { text-align: center; padding: 0 6px; }
+.mt-status { font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-4); }
+.mt-score { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; margin: 2px 0; }
+.mt-when { font-size: 10px; color: var(--ink-4); white-space: nowrap; }
+@media (max-width: 560px) {
+  .matchup-row { grid-template-columns: 1fr; gap: 10px; }
+  .mt-right { justify-content: flex-start; text-align: left; flex-direction: row-reverse; }
+}
+
 </style>
 
 <div class="wrap">
@@ -1818,6 +1833,7 @@ footer p { color: var(--sh-ink-3); }
   var LB = window.LB, LB2 = window.LB2;
   if (!LB || !LB2) return;
   var heatInk = LB.heatInk, seqFill = LB.seqFill, divFill = LB.divFill;
+  var compareInk = LB.compareInk;
   var el = LB2.el, statTable = LB2.statTable, streakStrip = LB2.streakStrip;
   var splitDumbbell = LB2.splitDumbbell, rollingChart = LB2.rollingChart;
   var zoneGrid = LB2.zoneGrid, denseTable = LB2.denseTable, windowTiles = LB2.windowTiles;

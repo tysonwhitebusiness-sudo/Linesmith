@@ -146,6 +146,7 @@ export function boardScript(files) {
     '  var LB = window.LB, LB2 = window.LB2;',
     '  if (!LB || !LB2) return;',
     '  var heatInk = LB.heatInk, seqFill = LB.seqFill, divFill = LB.divFill;',
+    '  var compareInk = LB.compareInk;',
     '  var el = LB2.el, statTable = LB2.statTable, streakStrip = LB2.streakStrip;',
     '  var splitDumbbell = LB2.splitDumbbell, rollingChart = LB2.rollingChart;',
     '  var zoneGrid = LB2.zoneGrid, denseTable = LB2.denseTable, windowTiles = LB2.windowTiles;',

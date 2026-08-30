@@ -4,9 +4,9 @@
 **Phase 4: COMPLETE, gate PASSED** (2026-08-29, after failing G7 and re-running
 in full from G1 per Rule 5).
 
-**Phase 6 has started — direction agreed, the per-sport question measured and
-answered for BOTH Player and Team Detail, three mockups built. No production
-code yet.** See §6.
+**Phase 6 has started — the per-sport question is measured and ANSWERED for all
+three shared pages (Player, Team, Game). Four mockups built, four operator
+decisions outstanding. No production code yet.** See §6.
 
 ## The documents, in reading order
 
@@ -62,7 +62,9 @@ production from the worker's own logs.
    `components/charts/`. §6 has the measurement, the answer, and two mockups:
    `docs/design/chart-grammar.html` (the primitives + deep MLB page) and
    `docs/design/player-detail-per-sport.html` (all eight sports, one template)
-   and `docs/design/team-detail-per-sport.html` (six teams + golf's tournament).
+   `docs/design/team-detail-per-sport.html` (six teams + golf's tournament) and
+   `docs/design/game-detail-per-sport.html` (all eight). Rebuild any of them
+   with `node docs/design/build-{per-sport,team-detail,game-detail}.mjs`.
 2. **5.1's second VERIFY half**, after 00:00 UTC — the one carried item from
    Phase 5. `propline` was correctly gated at 1000/1000 for 2026-08-29:
    ```sql
@@ -412,6 +414,111 @@ factored immediately. Same argument as `run_provider_specs`, third occurrence.
 3. **The Elo depth gap is real and should stay visible** — one season for five
    of six sports. Honest fix is a shorter axis with the real span labelled, not
    a fabricated backfill.
+
+### GAME DETAIL — measured and built (2026-08-29, same session). Trilogy complete.
+
+Third and last shared page. Same method.
+
+#### The three pages have different sport counts, and that is the answer
+
+| Sport | Player | Team | Game |
+|---|---|---|---|
+| MLB, NFL, CFB, NBA, NHL, Soccer | yes | yes | yes |
+| Tennis | yes | **no team** | **yes** — a match IS a game |
+| Golf | yes | **no team** | no adapter, but `liveMatchup` already models a tee-time pairing |
+
+Not "eight everywhere". A tennis player has no team but plays a match; a golfer
+has neither, yet `PlayerDetailData.liveMatchup` already carries a hole-by-hole
+scorecard against a groupmate — the same entity a game page renders. Both the
+team and game boards ship the honest count rather than a tab that apologises.
+
+#### This is the leakiest of the three interfaces
+
+`GameDetailData` carries **eight sport-named fields**: `unitGrades`
+("NFL-only"), `hero.awayGrades`/`homeGrades` (the same nine-field NFL
+`TeamGrades`), `propsForGame` ("NFL-only"), `leftRail.nflTeamScope`,
+`hero.mlbLiveGame`, `hero.mlbGamePk`, `hero.liveExtraText` (NFL down &
+distance), and `pregameLines.moneyline.draw` — soccer's real third outcome and
+the **one genuinely-earned exception** on the list.
+
+#### `CLAUDE.md` §4's own example is wrong, and this is measurable
+
+§4 cites `statComparison.bars` (MLB) vs `.ranked` (NFL) as the model case for
+"genuinely different UI gets named mutually-exclusive fields". Measured:
+
+- **MLB is the only sport that fills `bars`.**
+- NFL, CFB and soccer all fill `ranked`.
+- **NBA, NHL and tennis fill neither — the block is blank on three of seven pages.**
+- Every one of the seven populates `rankings`, so ranks exist everywhere.
+
+That is not a genuine difference; it is the "leftover placement accident from
+the port" §4 itself warns about two paragraphs later. MLB was ported first and
+got bars; NFL came second and added a second shape rather than adopting the
+first. **Collapse to `ranked`, have MLB's adapter emit ranked rows from the
+`rankings` data it already produces, and three blank blocks fill in.** Then
+replace §4's example with `pregameLines.draw`, which is genuinely earned.
+
+#### The book grid is the thinnest thing in the app
+
+`game_odds_book_lines`, the centrepiece of a game page:
+
+| Sport | Books | Markets | Games |
+|---|---|---|---|
+| Soccer | 19-23 | 3 | 41-47 |
+| MLB | 21-22 | 3 | 32-33 |
+| CFB | 4 | 1 (ML) | 54 |
+| Tennis | 3 | 1 (ML) | 88 |
+| NFL | 3 | 1 (ML) | 12 |
+| **NBA** | **0** | **0** | **0** |
+| **NHL** | **0** | **0** | **0** |
+
+**NBA and NHL have no rows at all.** A bookmaker grid with three columns is not
+a grid, and on two tabs it is empty. Fix sourcing before building the block.
+`game_odds_history` (50,396 rows, 478 events, 21-22 books) is keyed on
+`event_id` with no sport column, so line-movement history is sport-agnostic and
+in better shape than the current-price grid.
+
+#### Built
+
+**`docs/design/game-detail-per-sport.html`** — eight tabs, one `renderGame()`,
+no `sport ===` check. Verified: zero console errors, 22 cards and 9 SVGs per
+tab, ~390 numbers each, no horizontal overflow. Four blocks exist on neither of
+the other two pages: `bookGrid`, `injuries`, `matchupKey`, `officials`.
+**`officials` is missing from the app entirely today** and is real for every
+sport — a plate umpire's strike zone, a crew's penalty rate, a referee's
+cards-per-game all move totals.
+
+#### Cross-cutting, now that all three are done
+
+- **One shared `build-lib.mjs`** owns extraction plus all eight asserted patches;
+  the three build scripts are ~15 lines each. All three boards splice
+  `chart-grammar.html`'s primitives **verbatim**, so a visual difference between
+  boards is a real primitive bug, not a drifted copy.
+- **Two primitives had their first sport baked in, both found by LOOKING at a
+  built page rather than querying the DOM** — `zoneGrid` (MLB's number format,
+  domain and caption; NFL's 14.8 rendered as "4.800") and `rollingChart` (a
+  zero-based axis that flattened a 1460-1590 Elo series). The `rollingChart` fix
+  then paid for itself immediately: the game board's win-probability charts
+  needed exactly the same `zeroBased: false` + `fmt` options.
+  **Standing rule for `components/charts/`: the first sport to use a primitive
+  defines its defaults, so audit every literal in one before a second sport
+  touches it.** Both fixes still need carrying into the real React primitives.
+- **The recurring shape across all three boards is `unitGrades`.** It fixes
+  `TeamDetailData.grades`, `GameDetailData.unitGrades`, and
+  `GameDetailData.hero.awayGrades`/`homeGrades` — three fields on two pages,
+  one type change. Do it first.
+- **Every board ended at the same kind of blocker: sourcing, not layout.**
+  Tennis player-level stats (8 keys), NFL/CFB spreads on the team board, and
+  NBA/NHL book lines on the game board. The layout question is answered three
+  times over; the data question is now the whole remaining risk.
+
+#### What still needs the operator
+
+1. **Sign off collapsing `statComparison` to `ranked`** and correcting
+   `CLAUDE.md` §4's example.
+2. **Sign off `unitGrades`** (carried from the team board — same decision).
+3. **Decide the sourcing order** for the three gaps above. Nothing else on
+   Phase 6's UI work is blocked by design any more.
 
 ### Two design-system findings, measured this session
 

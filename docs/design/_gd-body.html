@@ -1,0 +1,294 @@
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Linesmith &middot; Phase 6 &middot; design study</div>
+    <h1>One Game Detail, all eight</h1>
+    <p class="lede">
+      Third and last of the three shared pages. Same method: measure, then build it.
+      <strong>Every tab renders the same twenty blocks from the same template</strong>, no
+      <code>sport === 'x'</code> in the renderer. Game Detail has four blocks neither of the other
+      two pages has &mdash; a bookmaker grid, injuries, the deciding matchup, and the officials.
+    </p>
+  </header>
+
+  <section id="finding">
+    <h2>The three pages have different sport counts, and that is the real shape</h2>
+    <p>
+      Taken together the three studies produce a clean structural answer, and it is not
+      &ldquo;eight everywhere.&rdquo; A tennis player has no team but plays a match. A golfer has
+      neither, yet a tee-time pairing is already modelled in the codebase as
+      <code>liveMatchup</code>.
+    </p>
+
+    <div class="frame">
+      <table class="tv wide-tv" id="gcov-table"></table>
+      <p class="caption">
+        Adapter presence read from <code>lib/sports/*/adapters/</code>; row counts measured
+        2026-08-29. Golf's game row is the one judgement call on the page &mdash; it has no
+        <code>gameDetailAdapter.ts</code>, but <code>PlayerDetailData.liveMatchup</code> already
+        carries a hole-by-hole scorecard against a tee-time groupmate, which is the same entity.
+      </p>
+    </div>
+
+    <div class="callout">
+      <span class="tag">The finding that matters most: this is the leakiest of the three</span>
+      <p>
+        <code>GameDetailData</code> carries <strong>eight sport-named fields</strong> &mdash;
+        <code>unitGrades</code> (&ldquo;NFL-only&rdquo;), <code>hero.awayGrades</code>/
+        <code>homeGrades</code> (the same nine-field NFL <code>TeamGrades</code>),
+        <code>propsForGame</code> (&ldquo;NFL-only&rdquo;), <code>leftRail.nflTeamScope</code>,
+        <code>hero.mlbLiveGame</code>, <code>hero.mlbGamePk</code>,
+        <code>hero.liveExtraText</code> (NFL's down &amp; distance), and
+        <code>pregameLines.moneyline.draw</code> (soccer's real third outcome &mdash; the one
+        genuinely-earned exception on the list).
+      </p>
+    </div>
+
+    <div class="callout">
+      <span class="tag">And one split that is an accident, not a design</span>
+      <p>
+        <code>CLAUDE.md</code> &sect;4 cites <code>statComparison.bars</code> (MLB) vs
+        <code>.ranked</code> (NFL) as the model example of &ldquo;genuinely different UI gets named
+        mutually-exclusive fields.&rdquo; <strong>Measured, it is not.</strong> MLB is the only
+        sport that fills <code>bars</code>; NFL, CFB and soccer all fill <code>ranked</code>; and
+        <strong>NBA, NHL and tennis fill neither, so the whole block is blank on three of seven
+        pages.</strong> Meanwhile every one of the seven populates <code>rankings</code>, so ranks
+        exist everywhere. That is the &ldquo;leftover placement accident from the port&rdquo;
+        <code>CLAUDE.md</code> warns about in the same section &mdash; MLB was ported first and got
+        bars; NFL came second and added a second shape rather than adopting the first.
+        <strong>One <code>ranked</code> shape serves all seven and un-blanks three pages.</strong>
+      </p>
+    </div>
+
+    <div class="frame">
+      <table class="tv wide-tv" id="gbook-table"></table>
+      <p class="caption">
+        The bookmaker grid is the centrepiece of a Game Detail page, and it is the thinnest thing
+        in the app. <strong>NBA and NHL have no rows at all</strong>; NFL, CFB and tennis have
+        moneyline only from three or four books. This is the same class of gap as tennis on the
+        player board and NFL spreads on the team board &mdash; a sourcing task, not a layout one.
+      </p>
+    </div>
+
+    <div class="frame">
+      <table class="tv wide-tv" id="grole-table"></table>
+      <p class="caption">
+        The roles. <code>matchupKey</code> and <code>officials</code> are the two that carry the
+        most sport-specific content, and neither exists on the player or team page.
+      </p>
+    </div>
+  </section>
+
+  <section id="pages">
+    <h2>The pages</h2>
+    <p class="lede">Eight tabs, one template, equal depth.</p>
+
+    <div class="sporttabs" id="gsporttabs"></div>
+
+    <div class="frame wide screenframe">
+      <div class="mockbar">
+        <span class="mockdot"></span>
+        Representative data &mdash; not live. Teams, markets and stat vocabularies are real; every number below is invented for this mockup.
+      </div>
+
+      <div class="screen">
+        <div class="main-col">
+
+          <div class="lb-card-hero card-pad">
+            <div class="matchup-row">
+              <div class="mt-side">
+                <div class="avatar-c" id="gd-away-badge">&nbsp;</div>
+                <div>
+                  <div class="mt-name" id="gd-away-name">&nbsp;</div>
+                  <div class="mt-rec" id="gd-away-rec">&nbsp;</div>
+                </div>
+              </div>
+              <div class="mt-mid">
+                <div class="mt-status" id="gd-status">&nbsp;</div>
+                <div class="mt-score" id="gd-score">&nbsp;</div>
+                <div class="mt-when" id="gd-when">&nbsp;</div>
+              </div>
+              <div class="mt-side mt-right">
+                <div>
+                  <div class="mt-name" id="gd-home-name">&nbsp;</div>
+                  <div class="mt-rec" id="gd-home-rec">&nbsp;</div>
+                </div>
+                <div class="avatar-c" id="gd-home-badge">&nbsp;</div>
+              </div>
+            </div>
+            <div class="hero-strip" id="gd-herostrip"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title" id="gd-form-t">&nbsp;</span>
+              <span class="card-meta">cover rate by window</span>
+            </div>
+            <div class="wtiles" id="gd-windows"></div>
+            <div id="gd-streak"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title" id="gd-dist-t">&nbsp;</span>
+              <span class="card-meta">result vs the line</span>
+            </div>
+            <div class="chart-host" id="gd-dist"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title" id="gd-wp-t">&nbsp;</span>
+              <span class="card-meta" id="gd-wp-m">&nbsp;</span>
+            </div>
+            <div class="chart-host" id="gd-wp"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title">Line movement</span>
+              <span class="card-meta" id="gd-tape-m">&nbsp;</span>
+            </div>
+            <div class="chart-host" id="gd-tape"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title" id="gd-splits-t">&nbsp;</span>
+              <span class="card-meta">cover rate by split</span>
+            </div>
+            <div class="chart-host" id="gd-grid"></div>
+          </div>
+
+          <div class="two-up">
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title" id="gd-unitA-t">&nbsp;</span><span class="card-meta" id="gd-unitA-m">&nbsp;</span></div>
+              <div id="gd-unitA"></div>
+            </div>
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title" id="gd-unitB-t">&nbsp;</span><span class="card-meta" id="gd-unitB-m">&nbsp;</span></div>
+              <div id="gd-unitB"></div>
+            </div>
+          </div>
+
+          <div class="two-up">
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title" id="gd-cmp-t">&nbsp;</span><span class="card-meta" id="gd-cmp-m">&nbsp;</span></div>
+              <div class="chart-host" id="gd-dumbbell"></div>
+            </div>
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title" id="gd-zone-t">&nbsp;</span><span class="card-meta" id="gd-zone-m">&nbsp;</span></div>
+              <div class="zonewrap"><div class="chart-host" id="gd-zone"></div></div>
+            </div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="gd-key-t">&nbsp;</span><span class="card-meta" id="gd-key-m">&nbsp;</span></div>
+            <div id="gd-key"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Bookmaker grid</span><span class="card-meta" id="gd-book-m">&nbsp;</span></div>
+            <div id="gd-books"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Last five, both sides</span><span class="card-meta" id="gd-last-m">&nbsp;</span></div>
+            <div id="gd-lastfive"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="gd-inj-t">&nbsp;</span><span class="card-meta" id="gd-inj-m">&nbsp;</span></div>
+            <div id="gd-injuries"></div>
+          </div>
+
+        </div>
+
+        <aside class="rail">
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="gd-sim-t">&nbsp;</span><span class="card-meta" id="gd-sim-m">&nbsp;</span></div>
+            <div class="chart-host" id="gd-density"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="gd-off-t">&nbsp;</span></div>
+            <div id="gd-officials"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="gd-h2h-t">&nbsp;</span></div>
+            <div id="gd-h2h"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="gd-rank-t">&nbsp;</span></div>
+            <div id="gd-rank"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="gd-cond-t">&nbsp;</span></div>
+            <div id="gd-cond"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="gd-price-t">&nbsp;</span><span class="card-meta">6 books</span></div>
+            <div class="chart-host" id="gd-range"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Why the model likes it</span><span class="card-meta" id="gd-contrib-m">&nbsp;</span></div>
+            <div class="chart-host" id="gd-contrib"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Key numbers</span></div>
+            <div id="gd-ctx"></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <p class="countline" id="gd-count">&nbsp;</p>
+  </section>
+
+  <section id="verdict">
+    <h2>What this means for the interface</h2>
+    <ul class="verdict-list">
+      <li>
+        <strong>Collapse <code>statComparison</code> to one shape.</strong> Drop
+        <code>bars</code>, keep <code>ranked</code>, and have MLB's adapter emit ranked rows from
+        the <code>rankings</code> data it already produces. One sport loses a bespoke rendering
+        nobody asked for; three sports gain a block that is blank today. This is the single
+        highest-value change on the page, and it makes <code>CLAUDE.md</code> &sect;4's example
+        wrong &mdash; so &sect;4's example should be replaced with
+        <code>pregameLines.draw</code>, which is genuinely earned.
+      </li>
+      <li>
+        <strong>Four blocks are game-only</strong> &mdash; <code>bookGrid</code>,
+        <code>injuries</code>, <code>matchupKey</code>, <code>officials</code>. Officials is the
+        one that is missing entirely today and is real for every sport: a plate umpire's strike
+        zone, a crew's penalty rate, a referee's cards-per-game all move totals, and none of it is
+        anywhere in the app.
+      </li>
+      <li>
+        <strong><code>hero.awayGrades</code>/<code>homeGrades</code> and
+        <code>unitGrades</code> take the same <code>unitGrades</code> fix</strong> proposed on the
+        team board. That is three fields on two pages fixed by one type change, which is the
+        argument for doing it before any of the chart work.
+      </li>
+      <li>
+        <strong>The <code>mlbLiveGame</code> escape hatch is the one to keep.</strong> A live
+        MLB game genuinely needs bases, box score and bullpen state that no other sport has an
+        analogue for. Keep it named and documented exactly as it is &mdash; but note that NFL,
+        NBA and NHL all have real live states with nothing behind them today.
+      </li>
+      <li>
+        <strong>Book depth is the blocking gap for this page specifically.</strong> NBA and NHL
+        have zero rows in <code>game_odds_book_lines</code>; NFL, CFB and tennis have moneyline
+        only from three or four books. A bookmaker grid with three columns is not a grid. Fix
+        sourcing before building the block, or it ships empty on five of eight tabs.
+      </li>
+    </ul>
+  </section>
+
+</div>
