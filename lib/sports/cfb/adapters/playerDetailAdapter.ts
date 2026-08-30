@@ -28,6 +28,7 @@ import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, Playe
 // same reasoning as this file's own `normalizeTeamName` above.
 import type { CfbTeamDefenseAllowed } from '@/lib/sports/cfb/teamDefenseAllowed';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
+import { toRoleStat, type OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
 
 function fuzzyMatchCfbTeamName(teams: CfbTeamDefenseAllowed[], espnName: string): CfbTeamDefenseAllowed | null {
   const normalizedEspn = normalizeTeamName(espnName);
@@ -191,6 +192,38 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
         : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => isOpponentMatch(rawOf(e).opponentAbbr as string | undefined, opponentName), { minimum: 1 }),
   };
 
+  // ---- Role 1 | opponentUnit: the defence this player faces.
+  // CFB CAN BE PRECISE where NBA and NHL cannot: its groups are
+  // passing/rushing/receiving, and the candidate's own market names which one
+  // applies -- a receiving-yards prop is read against the receiving defence,
+  // not against all three. Falls back to every group only when the market is
+  // one this mapping does not cover, which is honest rather than silent.
+  const cfbDefenseGroupKey = active.dimension.startsWith('passing-')
+    ? 'passing'
+    : active.dimension.startsWith('rushing-')
+      ? 'rushing'
+      : active.dimension.startsWith('receiving-')
+        ? 'receiving'
+        : null;
+  const cfbDefenseTeam = opponentName ? teamDefenseAllowed.find((t) => isOpponentMatch(t.teamName, opponentName)) : undefined;
+  const cfbDefenseGroups = cfbDefenseGroupKey
+    ? CFB_MATCHUP_GROUPS.filter((g) => g.key === cfbDefenseGroupKey)
+    : [...CFB_MATCHUP_GROUPS];
+  const opponentUnit: OpponentUnitRole | null = cfbDefenseTeam
+    ? {
+        title: 'Opposing defence',
+        name: `${opponentName} defence`,
+        subtitle: 'Allows',
+        logoUrl: opponentLogoUrl,
+        stats: cfbDefenseGroups.flatMap((g) =>
+          cfbDefenseRow(cfbDefenseTeam, g.key).map((r) =>
+            toRoleStat(cfbDefenseGroupKey ? r : { ...r, label: `${r.label} vs ${g.label}` }),
+          ),
+        ),
+        emptyMessage: 'No defensive splits for this opponent yet.',
+      }
+    : null;
+
   // ---- Role 6 | careerH2H (6.13). NOT a second copy of the h2h window box:
   // that reports one rate, this reports the per-MEETING history behind it.
   // "3 of 5" and "3 of 5, all three in one season" are different facts and a
@@ -333,6 +366,7 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
       : null;
 
   return {
+    opponentUnit,
     careerH2H,
     conditions,
     binarySplit,

@@ -17,7 +17,7 @@ import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
 import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import type { NhlTeamDefenseAllowed } from '@/lib/sports/nhl/teamDefenseAllowed';
 import { MIDDOT, fmt } from '@/components/charts/tokens';
-import type { SpatialGridRole } from '@/lib/sports/shared/playerRoles';
+import { toRoleStat, type OpponentUnitRole, type SpatialGridRole } from '@/lib/sports/shared/playerRoles';
 import type { NhlShotProfile } from '@/lib/sports/nhl/shotProfileShapes';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 
@@ -152,6 +152,28 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
         ? { status: 'insufficient', available: 0, required: 1 }
         : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => (rawOf(e).opponentAbbr as string | undefined) === opponentAbbr, { minimum: 1 }),
   };
+
+  // ---- Role 1 | opponentUnit: the defensive unit this subject faces.
+  // Same league-wide defence-allowed leaderboard the matchup card already
+  // reads, reduced to the one opponent and rendered as a named unit.
+  //
+  // ONE ROW PER GROUP, each labelled by the group. The candidate carries no
+  // position for this sport, so picking a single group would mean guessing
+  // which one applies -- and there are only two of them. Showing all of
+  // them labelled is the honest read of what this defence allows.
+  const opponentDefenseTeam = opponentAbbr ? teamDefenseAllowed.find((t) => t.abbr === opponentAbbr) : undefined;
+  const opponentUnit: OpponentUnitRole | null = opponentDefenseTeam
+    ? {
+        title: 'Opposing defence',
+        name: `${opponentAbbr} defence`,
+        subtitle: 'Allows',
+        logoUrl: opponentLogoUrl,
+        stats: NHL_MATCHUP_GROUPS.flatMap((g) =>
+          nhlDefenseRow(opponentDefenseTeam, g.key).map((r) => toRoleStat({ ...r, label: `${r.label} vs ${g.label}` })),
+        ),
+        emptyMessage: 'No defensive splits for this opponent yet.',
+      }
+    : null;
 
   // ---- Role 6 | careerH2H (6.13). NOT a second copy of the h2h window box:
   // that reports one rate, this reports the per-MEETING history behind it.
@@ -302,6 +324,7 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
       : null;
 
   return {
+    opponentUnit,
     careerH2H,
 
     spatialGrid,

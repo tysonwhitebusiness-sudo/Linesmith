@@ -34,7 +34,7 @@ import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import { teamPrimaryColor } from '@/lib/sports/nfl/teamColors';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import type { PropOddsRow } from '@/lib/db/client';
-import type { SpatialGridRole } from '@/lib/sports/shared/playerRoles';
+import { toRoleStat, type OpponentUnitRole, type SpatialGridRole } from '@/lib/sports/shared/playerRoles';
 import type { NflTargetMap } from '@/lib/sports/nfl/targetMapShapes';
 import { MIDDOT, fmt } from '@/components/charts/tokens';
 import type { PlayerSeasonRank, PlayerSeasonStats } from '@/lib/sports/nfl/nflverse';
@@ -414,6 +414,23 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   const matchupOwnRows = playerMatchupRows(seasonStats, position);
   const matchupOpponentStats = opponentDefenseAllowed.map(toStatRow);
   const matchupGroup = position ? MATCHUP_GROUP_BY_POSITION[position] : undefined;
+
+  // ---- Role 1 | opponentUnit: the defence this player faces.
+  // `opponentDefenseAllowed` is already filtered to THIS player's position
+  // groups upstream (see the adapter's richMeta note), so these are the
+  // defensive numbers that actually bear on his market -- not the unit's
+  // whole profile. Same rows the matchup card draws, one level simpler.
+  const opponentUnit: OpponentUnitRole | null =
+    opponentAbbr && matchupOpponentStats.length > 0
+      ? {
+          title: 'Opposing defence',
+          name: `${opponentAbbr} defence`,
+          subtitle: 'Allows',
+          logoUrl: opponentLogoUrl,
+          stats: matchupOpponentStats.map((st) => toRoleStat(st)),
+          emptyMessage: 'No defensive splits for this opponent yet.',
+        }
+      : null;
   const nflOpponentId = 'today';
   const matchupExplorer: MatchupExplorerData | null =
     opponentAbbr && matchupGroup
@@ -452,6 +469,7 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
       : null;
 
   return {
+    opponentUnit,
     conditions,
     spatialGrid,
     // ---- Role 6 | careerH2H (6.13). It was BUILT in ef93a7a and returned from
