@@ -1264,7 +1264,9 @@ async def job_statcast_pitches(yield_fn=None) -> dict:
     and zero inserts.
     """
     async with httpx.AsyncClient() as client:
-        return await statcast_pitches.ingest_recent(client, days=3, yield_fn=yield_fn)
+        return await _run_timed(
+            "ingestStatcastPitchesJob", statcast_pitches.ingest_recent(client, days=3, yield_fn=yield_fn)
+        )
 
 
 async def job_nhl_shots(yield_fn=None) -> dict:
@@ -1286,7 +1288,7 @@ async def job_nhl_shots(yield_fn=None) -> dict:
     already records for every other out-of-season sport.
     """
     async with httpx.AsyncClient() as client:
-        return await nhl_shots.ingest_recent(client, days=3, yield_fn=yield_fn)
+        return await _run_timed("ingestNhlShotsJob", nhl_shots.ingest_recent(client, days=3, yield_fn=yield_fn))
 
 
 async def job_nba_shots(yield_fn=None) -> dict:
@@ -1301,7 +1303,7 @@ async def job_nba_shots(yield_fn=None) -> dict:
     and that is correct, not stuck.
     """
     async with httpx.AsyncClient() as client:
-        return await nba_shots.ingest_recent(client, days=3, yield_fn=yield_fn)
+        return await _run_timed("ingestNbaShotsJob", nba_shots.ingest_recent(client, days=3, yield_fn=yield_fn))
 
 
 async def job_nfl_pbp(yield_fn=None) -> dict:
@@ -1315,7 +1317,7 @@ async def job_nfl_pbp(yield_fn=None) -> dict:
     free release we do not own, for a write that is idempotent anyway.
     """
     async with httpx.AsyncClient() as client:
-        return await nfl_pbp.ingest_recent(client, yield_fn=yield_fn)
+        return await _run_timed("ingestNflPbpJob", nfl_pbp.ingest_recent(client, yield_fn=yield_fn))
 
 
 JOB_REGISTRY = [
