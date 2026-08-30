@@ -48,6 +48,9 @@ import type { PitchingMatchupGame } from '@/components/PitchingMatchupCard';
 import type { TeamBullpen } from '@/components/useBullpen';
 import type { NflPlayerVsDefenseCardProps } from '@/components/NflPlayerVsDefenseCard';
 import { unitGradeFromRanked, type UnitGrade } from '@/lib/sports/shared/unitGrades';
+import type { TeamRatingHistoryData } from '@/lib/sports/shared/teamRatingShapes';
+import { toRatingHistoryRole } from '@/lib/sports/shared/ratingHistoryRole';
+import type { TeamRatingHistory } from '@/lib/sports/shared/teamRatingShapes';
 
 // ---------------------------------------------------------------------------
 // Shared sub-shapes (would be hoisted to a sport-agnostic location once an
@@ -197,9 +200,28 @@ export interface TeamDetailData {
   advancedStats?: { label: string; stats: OpposingStarterStat[] }[] | null;
   form?: TeamWindowedForm | null;
   recentResults?: RecentResultRow[] | null;
+  /**
+   * This team's rating trajectory — Phase 6.14.
+   *
+   * ONE FIELD, ALL SIX SPORTS, no per-sport variant: `team_elo_history` is a
+   * single table and every team sport fills the identical shape from it. Under
+   * CLAUDE.md's sport-adapter rule §4 this is the case where a named
+   * per-sport field would be the mistake, not the accommodation — the sports
+   * differ only in how much history exists, and `spanLabel` carries that.
+   *
+   * `null` for tennis and golf, which have no team concept at all, and for any
+   * team with fewer than two rated games. The component renders nothing.
+   */
+  ratingHistory?: TeamRatingHistoryData | null;
 }
 
 export interface ToTeamDetailDataInput {
+  /**
+   * `useTeamRatingHistory(...)`'s result — the rating block (6.14). Structural,
+   * not an import of the hook's type. Every team sport takes the identical
+   * field; the shared builder does the rest.
+   */
+  ratingHistory?: { history: TeamRatingHistory | null; loading: boolean };
   teamId: number;
   snapshot: SportSnapshot | null;
   odds: UnifiedLinesResult | null;
@@ -574,6 +596,7 @@ export function toTeamDetailData(input: ToTeamDetailDataInput): TeamDetailData {
   ].filter((u): u is UnitGrade => u != null);
 
   return {
+    ratingHistory: toRatingHistoryRole({ state: input.ratingHistory }),
     team: { teamId, name: roster.teamName, abbr: roster.abbreviation, logoUrl: roster.logoUrl },
     record: roster.record,
     unitGrades: mlbUnitGrades.length > 0 ? mlbUnitGrades : null,

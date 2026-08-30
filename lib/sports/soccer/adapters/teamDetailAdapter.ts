@@ -26,6 +26,8 @@ import type { UnderstatTeamDefense } from '@/lib/sports/soccer/understat';
 import type { EspnTeamSportGame } from '@/lib/sports/multiSport/teamSportEspn';
 import type { SoccerLeague } from '@/lib/core/types';
 import { buildSoccerMoneylineCandidate, buildSoccerGameTotalCandidate, buildSoccerGoalsForCandidate } from '@/lib/sports/soccer/teamFormCandidates';
+import { toRatingHistoryRole } from '@/lib/sports/shared/ratingHistoryRole';
+import type { TeamRatingHistory } from '@/lib/sports/shared/teamRatingShapes';
 
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
   return (entry.raw ?? {}) as Record<string, unknown>;
@@ -101,6 +103,12 @@ export interface SoccerTeamDetailScope {
 }
 
 export interface SoccerTeamDetailInput {
+  /**
+   * `useTeamRatingHistory(...)`'s result — the rating block (6.14). Structural,
+   * not an import of the hook's type. Every team sport takes the identical
+   * field; the shared builder does the rest.
+   */
+  ratingHistory?: { history: TeamRatingHistory | null; loading: boolean };
   league: SoccerLeague;
   data: SoccerTeamDetailApiResponse;
   scope: SoccerTeamDetailScope;
@@ -265,6 +273,7 @@ export function toTeamDetailData(input: SoccerTeamDetailInput): TeamDetailData {
   const matchup: TeamMatchupData | null = teamMatchup ? { tabs: [{ key: 'team', label: 'Team matchup' }], team: teamMatchup } : null;
 
   return {
+    ratingHistory: toRatingHistoryRole({ state: input.ratingHistory }),
     team: { teamId: Number(team.teamId), name: team.name, abbr: team.abbreviation, logoUrl: team.logoUrl ?? '' },
     record: ownStanding
       ? {

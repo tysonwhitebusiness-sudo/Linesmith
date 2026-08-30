@@ -5,9 +5,13 @@ import Link from 'next/link';
 import type { PickCandidate, Sport, SoccerLeague, SportSnapshot } from '@/lib/core/types';
 import { isOk } from '@/lib/core/windowedStat';
 import { DistributionChart, WindowBox, FilterChip } from './PlayerDetail';
+import { SeriesChart } from './charts/SeriesChart';
+import { fmt } from './charts/tokens';
 import { StatRankRow } from './StatRankRow';
 import { useTeamStatcast } from './useTeamStatcast';
 import { useTeamBatterRanks } from './useTeamBatterRanks';
+import { useTeamRatingHistory } from './useTeamRatingHistory';
+import { eloSportKey } from '@/lib/sports/shared/teamRatingShapes';
 import { useBullpen } from './useBullpen';
 import { SegmentedToggle } from './SegmentedToggle';
 import { marketText, directionMark } from './MarketLabel';
@@ -129,6 +133,13 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
   const mlbTodaysGame = mlbGames.find((g) => g.awayTeamId === teamId || g.homeTeamId === teamId);
   const bullpen = useBullpen(mlbTodaysGame?.awayTeamId, mlbTodaysGame?.homeTeamId);
 
+  // Rating trajectory (6.14). ONE hook for every team sport — `team_elo_history`
+  // is a single table, so unlike the shot/target maps there is no per-sport
+  // fetch to fork on. `eloSportKey` returns null for tennis and golf (no team
+  // concept, so no block) and maps soccer onto the TABLE's own vocabulary,
+  // which is `soccer_epl`/`soccer_mls` rather than the app's `soccer`.
+  const ratingHistory = useTeamRatingHistory(eloSportKey(sport, league ?? null), teamId);
+
   const data: TeamDetailData | null =
     sport === 'nfl'
       ? nflTeam.data
@@ -136,23 +147,24 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
             data: nflTeam.data,
             scope: { market, lineOffset, opponentOnly, venue, lastN, matchupPlayerId },
             standingsTeams,
+            ratingHistory,
           })
         : null
       : sport === 'soccer'
         ? soccerTeam.data && league
-          ? toSoccerTeamDetailData({ league, data: soccerTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams })
+          ? toSoccerTeamDetailData({ league, data: soccerTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, ratingHistory })
           : null
         : sport === 'cfb'
           ? cfbTeam.data
-            ? toCfbTeamDetailData({ data: cfbTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams })
+            ? toCfbTeamDetailData({ data: cfbTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, ratingHistory })
             : null
           : sport === 'nba'
             ? nbaTeam.data
-              ? toNbaTeamDetailData({ data: nbaTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data })
+              ? toNbaTeamDetailData({ data: nbaTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data, ratingHistory })
               : null
             : sport === 'nhl'
               ? nhlTeam.data
-                ? toNhlTeamDetailData({ data: nhlTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data })
+                ? toNhlTeamDetailData({ data: nhlTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data, ratingHistory })
                 : null
               : roster.data
               ? toMlbTeamDetailData({
@@ -170,6 +182,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
                 opponentOnly,
                 venue,
                 lastN,
+                ratingHistory,
               })
             : null;
 
@@ -449,6 +462,37 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
                   refreshKey={data.distribution.refreshKey}
                   logoFor={data.distribution.logoFor}
                 />
+              </div>
+            </section>
+          ) : null}
+
+          {/* Rating history (6.14) */}
+          {data.ratingHistory ? (
+            <section className="lb-card overflow-hidden">
+              <div className="flex items-baseline justify-between gap-2 bg-accent-soft px-3 py-1.5">
+                <h2 className="text-[12px] font-semibold text-masters">{data.ratingHistory.title}</h2>
+                {/* The real span, not the axis's implication — five of six sports
+                    have exactly one season here and the label is what says so. */}
+                <span className="text-[10px] text-masters/70">{data.ratingHistory.spanLabel}</span>
+              </div>
+              <div className="p-2.5">
+                <SeriesChart
+                  values={data.ratingHistory.values}
+                  context={data.ratingHistory.context}
+                  xLabels={data.ratingHistory.xLabels}
+                  // NEVER zero-based. An Elo series spans ~130 points around
+                  // 1500; anchoring the axis at zero collapses it into a flat
+                  // strip and destroys the entire signal while still rendering
+                  // cleanly. This is the exact bug SeriesChart's own header
+                  // documents, and the reason the prop has no default.
+                  zeroBased={false}
+                  format={fmt.int}
+                  unit="Elo"
+                  label={`${data.team.name} rating history`}
+                  isLoading={data.ratingHistory.loading}
+                  height={148}
+                />
+                <p className="mt-1.5 text-[10px] text-ink-muted">{data.ratingHistory.caption}</p>
               </div>
             </section>
           ) : null}

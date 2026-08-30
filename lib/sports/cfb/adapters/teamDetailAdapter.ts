@@ -28,6 +28,8 @@ import type { EspnTeamSportGame } from '@/lib/sports/multiSport/teamSportEspn';
 import type { CfbTeamDefenseAllowed } from '@/lib/sports/cfb/teamDefenseAllowed';
 import type { EspnInjuryRow } from '@/lib/sports/multiSport/teamSportEspn';
 import { buildCfbMoneylineCandidate, buildCfbGameTotalCandidate, buildCfbPointsForCandidate } from '@/lib/sports/cfb/teamFormCandidates';
+import { toRatingHistoryRole } from '@/lib/sports/shared/ratingHistoryRole';
+import type { TeamRatingHistory } from '@/lib/sports/shared/teamRatingShapes';
 
 interface CfbRosterSeasonStats {
   games: number;
@@ -136,6 +138,12 @@ export interface CfbTeamDetailScope {
 }
 
 export interface CfbTeamDetailInput {
+  /**
+   * `useTeamRatingHistory(...)`'s result — the rating block (6.14). Structural,
+   * not an import of the hook's type. Every team sport takes the identical
+   * field; the shared builder does the rest.
+   */
+  ratingHistory?: { history: TeamRatingHistory | null; loading: boolean };
   data: CfbTeamDetailApiResponse;
   scope: CfbTeamDetailScope;
   standingsTeams: TeamStandingRow[];
@@ -294,6 +302,7 @@ export function toTeamDetailData(input: CfbTeamDetailInput): TeamDetailData {
     : null;
 
   return {
+    ratingHistory: toRatingHistoryRole({ state: input.ratingHistory }),
     team: { teamId: Number(team.teamId), name: team.name, abbr: team.abbreviation, logoUrl: team.logoUrl ?? '' },
     record: ownStanding
       ? {

@@ -37,6 +37,8 @@ import type {
   TeamNextGame,
   TeamWindowedForm,
 } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
+import { toRatingHistoryRole } from '@/lib/sports/shared/ratingHistoryRole';
+import type { TeamRatingHistory } from '@/lib/sports/shared/teamRatingShapes';
 
 const NFL_TEAM_COUNT = 32;
 
@@ -92,6 +94,12 @@ export interface NflTeamDetailScope {
 }
 
 export interface NflTeamDetailInput {
+  /**
+   * `useTeamRatingHistory(...)`'s result — the rating block (6.14). Structural,
+   * not an import of the hook's type. Every team sport takes the identical
+   * field; the shared builder does the rest.
+   */
+  ratingHistory?: { history: TeamRatingHistory | null; loading: boolean };
   data: NflTeamDetailApiResponse;
   scope: NflTeamDetailScope;
   standingsTeams: import('@/components/useAllTeams').TeamStandingRow[];
@@ -314,6 +322,7 @@ export function toTeamDetailData(input: NflTeamDetailInput): TeamDetailData {
       : null;
 
   return {
+    ratingHistory: toRatingHistoryRole({ state: input.ratingHistory }),
     team: { teamId: Number(team.teamId), name: team.displayName, abbr: team.abbreviation, logoUrl },
     record: { wins: team.wins, losses: team.losses, divisionRank: team.divisionRank ?? '' },
     unitGrades: ownUnitGrades,

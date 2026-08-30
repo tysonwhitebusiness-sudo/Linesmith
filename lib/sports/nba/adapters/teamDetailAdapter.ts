@@ -18,6 +18,8 @@ import type { NbaTeam, NbaPregameLine } from '@/lib/sports/nba/espn';
 import type { EspnTeamSportGame } from '@/lib/sports/multiSport/teamSportEspn';
 import { buildNbaMoneylineCandidate, buildNbaGameTotalCandidate, buildNbaPointsForCandidate } from '@/lib/sports/nba/teamFormCandidates';
 import type { EspnInjuryRow } from '@/lib/sports/multiSport/teamSportEspn';
+import { toRatingHistoryRole } from '@/lib/sports/shared/ratingHistoryRole';
+import type { TeamRatingHistory } from '@/lib/sports/shared/teamRatingShapes';
 
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
   return (entry.raw ?? {}) as Record<string, unknown>;
@@ -80,6 +82,12 @@ export interface NbaTeamDetailScope {
 }
 
 export interface NbaTeamDetailInput {
+  /**
+   * `useTeamRatingHistory(...)`'s result — the rating block (6.14). Structural,
+   * not an import of the hook's type. Every team sport takes the identical
+   * field; the shared builder does the rest.
+   */
+  ratingHistory?: { history: TeamRatingHistory | null; loading: boolean };
   data: NbaTeamDetailApiResponse;
   scope: NbaTeamDetailScope;
   standingsTeams: TeamStandingRow[];
@@ -199,6 +207,7 @@ export function toTeamDetailData(input: NbaTeamDetailInput): TeamDetailData {
   const ownUnitGrades = ownAggregate && ownAggregate.units.length > 0 ? ownAggregate.units : null;
 
   return {
+    ratingHistory: toRatingHistoryRole({ state: input.ratingHistory }),
     team: { teamId: Number(team.teamId), name: team.name, abbr: team.abbreviation, logoUrl: team.logoUrl ?? '' },
     record: ownStanding
       ? {

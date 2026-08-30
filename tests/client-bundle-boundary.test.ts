@@ -47,6 +47,9 @@ const DB_MODULES = [
   // is an `import type` and erased — a VALUE import would bundle `pg`.
   '@/lib/odds/props/lineHistory',
   '@/lib/sports/nfl/nflTeamGrades',
+  // 6.14: `components/useTeamRatingHistory.ts` and the six team adapters take
+  // their types from `teamRatingShapes.ts`; this one value-imports `pgAll`.
+  '@/lib/sports/shared/teamRatingHistory',
 ];
 
 /**
@@ -75,8 +78,17 @@ function isClientReachable(file: string): boolean {
   );
 }
 
-/** The db modules themselves are allowed to import db modules. */
-const SELF = ['lib/sports/shared/seasonAggregates.ts'];
+/**
+ * The db modules themselves are allowed to import db modules.
+ *
+ * Both entries are cross-sport SERVER halves that live under `lib/sports/shared/`
+ * because their subject genuinely spans sports — one `team_elo_history` table,
+ * one aggregation — so there is no `lib/sports/{sport}/` to put them in. Being
+ * listed here exempts the file from the scan; being listed in `DB_MODULES`
+ * above is what stops anything client-reachable importing IT. A new entry needs
+ * both, or it is exempted without being guarded.
+ */
+const SELF = ['lib/sports/shared/seasonAggregates.ts', 'lib/sports/shared/teamRatingHistory.ts'];
 
 function walk(dir: string): string[] {
   const out: string[] = [];
