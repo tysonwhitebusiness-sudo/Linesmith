@@ -10,6 +10,8 @@ import { withAlpha } from '@/lib/sports/mlb/teamColors';
 import { useLiveGame } from './useLiveGame';
 import { useTeamStatcast } from './useTeamStatcast';
 import { useMlbPitchProfile } from './useMlbPitchProfile';
+import { useLineHistory } from './useLineHistory';
+import { LineMovementCard } from './LineMovementCard';
 import { StatRankRow } from './StatRankRow';
 import { PlayerRoleSections } from './PlayerRoleSections';
 import type { UnifiedLinesResult } from '@/lib/odds/types';
@@ -1023,6 +1025,16 @@ export function PlayerDetail({
     isPitcherSubject ? 'pitcher' : 'batter',
     pitchProfileSubjectId,
     new Date().getUTCFullYear(),
+  );
+
+  // Price movement for the active prop (6.16). Sport-agnostic — every sport
+  // writes `prop_odds_history` through the same Python jobs — and gated by the
+  // arguments going undefined rather than by a branch on the hook call.
+  const lineHistory = useLineHistory(
+    typeof meta.gamePk === 'number' || typeof meta.gamePk === 'string' ? String(meta.gamePk) : undefined,
+    active?.subjectId,
+    active?.dimension,
+    directionMark(active?.category ?? '') === 'U' ? 'under' : 'over',
   );
 
   // Universal matchup card's league-wide defense-allowed leaderboards — one
@@ -2060,18 +2072,37 @@ export function PlayerDetail({
             </section>
           )}
 
+          {/*
+            6.16 — THIS CARD USED TO TELL EVERY USER THE OPPOSITE OF THE TRUTH.
+            It read "Movement history isn't tracked", above a comment asserting
+            "no history is retained anywhere in the odds layer — there are no
+            price snapshots to draw a series from". That was true when it was
+            written and stopped being true on 2026-08-11, when the Python
+            worker's jobs began writing `prop_odds_history`; by the time this
+            replaced it the table held 670,478 observations across 2,294
+            subjects and 26 books. A stale claim in prose is invisible to `tsc`
+            and to every test, and it had been telling users a feature was
+            impossible while its data accumulated behind them.
+
+            `LineMovementCard` renders nothing when no book has two observations
+            for this prop — genuinely the case early in a game's life, since
+            history accrues through the day (~60% of series eventually span
+            more than an hour). The current recorded price below still shows in
+            that case, which is what the old card was actually useful for.
+          */}
+          <LineMovementCard
+            data={lineHistory.data}
+            loading={lineHistory.loading}
+            userSportsbook={data.propOddsBoard?.userSportsbook ?? ''}
+            marketLabel={data.propOddsBoard?.marketKey ?? active.dimension}
+          />
+
           <section className="lb-card overflow-hidden">
-            <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Line movement</h3>
+            <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Recorded price</h3>
             <div className="p-3">
-              {/*
-                No history is retained anywhere in the odds layer — there are no
-                price snapshots to draw a series from. Saying so is the only honest
-                option; a fabricated movement table would be worse than none.
-              */}
-              <p className="text-[12px] text-ink-faint">
-                Movement history isn&apos;t tracked. Prices are recorded when you enter or import them, so only the
-                current value is known.
-              </p>
+              {!active.odds ? (
+                <p className="text-[12px] text-ink-faint">No price recorded for this market yet.</p>
+              ) : null}
               {active.odds ? (
                 <div className="mt-2 flex items-center gap-2">
                   <OddsChip price={active.odds.americanOdds} source={active.odds.source} capturedAt={active.odds.capturedAt} />

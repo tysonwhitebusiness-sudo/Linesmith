@@ -157,9 +157,13 @@ function rateLimit(request: NextRequest, pathname: string): NextResponse | null 
 const ADMIN_API_PREFIXES = ['/api/diagnostics', '/api/props', '/api/odds/import', '/api/mlb/refresh-hr-matchup'];
 /**
  * Genuinely public reads that happen to live under /api/props:
- *  - `lines` is price data the app renders for everyone. (`line-history`
- *    was here too; the route had no caller anywhere and was deleted in
- *    task 2.6.)
+ *  - `lines` is price data the app renders for everyone.
+ *  - `line-history` is the same price data over time. It was here before,
+ *    was deleted along with its route in task 2.6 for having no caller
+ *    anywhere, and came back in 6.16 WITH one — the movement charts
+ *    `components/charts/SeriesChart` and `Sparkline` were built for. Same
+ *    class as `lines`: it reads `prop_odds_history`, writes nothing, and
+ *    exposes no more than the price board already does.
  *  - `calibration` is the model-health payload the public scoreboard reads.
  *
  * `scan-player`, `more-books` and `sharp-price` were also listed here, as
@@ -172,6 +176,7 @@ const ADMIN_API_PREFIXES = ['/api/diagnostics', '/api/props', '/api/odds/import'
  */
 const ADMIN_API_EXCLUDE = [
   '/api/props/lines',
+  '/api/props/line-history',
   '/api/props/calibration',
   '/api/props/user-sportsbook',
 ];
