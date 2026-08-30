@@ -34,7 +34,7 @@ import type { PropOddsRow } from '@/lib/db/client';
 import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
 import { MIDDOT, fmt } from '@/components/charts/tokens';
-import type { SpatialGridRole, UsageMixRole } from '@/lib/sports/shared/playerRoles';
+import { toRoleStat, type OpponentUnitRole, type SpatialGridRole, type UsageMixRole } from '@/lib/sports/shared/playerRoles';
 import type { ShotGrid } from '@/lib/sports/soccer/understatShots';
 import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
@@ -312,6 +312,39 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
   const seasonRank = meta.seasonRank as SoccerSeasonRank | undefined;
   const opponentDefense = meta.opponentDefense as SoccerOpponentDefense | undefined;
 
+  // ---- Role 1 | opponentUnit: the back line and keeper this player faces.
+  // `meta.opponentDefense` is already attached by `adapter.ts`'s
+  // attachRealHistory from real Understat team-season aggregates -- the same
+  // two numbers the matchup card below already draws, reduced to the one
+  // opponent and named as a unit.
+  //
+  // EPL ONLY, and that is a sourcing fact rather than a bug: MLS's equivalent
+  // needs ASA's team-season endpoint, which is not wired. An MLS subject gets
+  // no `opponentDefense` and this renders nothing.
+  //
+  // LOWER IS BETTER on both rows -- these are goals and xG ALLOWED, so the
+  // heat would read backwards without saying so.
+  const opponentUnit: OpponentUnitRole | null =
+    opponentDefense && opponentName
+      ? {
+          title: 'Opposing defence',
+          name: `${opponentName} defence`,
+          subtitle: 'Allows',
+          logoUrl: opponentLogoUrl,
+          stats: [
+            toRoleStat(
+              { key: 'goalsAllowed', label: 'Goals allowed/gm', value: opponentDefense.goalsAgainstPerGame, decimals: 2, rank: opponentDefense.rank, poolSize: opponentDefense.poolSize },
+              { lowerIsBetter: true },
+            ),
+            toRoleStat(
+              { key: 'xgAllowed', label: 'xG allowed/gm', value: opponentDefense.xGAPerGame, decimals: 2, rank: opponentDefense.rank, poolSize: opponentDefense.poolSize },
+              { lowerIsBetter: true },
+            ),
+          ],
+          emptyMessage: 'No defensive record for this opponent yet.',
+        }
+      : null;
+
   const nflSeasonStats: PlayerDetailData['nflSeasonStats'] = seasonStats
     ? {
         rows: [
@@ -363,6 +396,7 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
       : null;
 
   return {
+    opponentUnit,
     usageMix,
     careerH2H,
 
