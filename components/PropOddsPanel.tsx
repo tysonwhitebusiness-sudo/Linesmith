@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { coverageLine, priceCoverage } from '@/lib/odds/priceFreshness';
 import { OddsChip } from './OddsChip';
 import { BookLogo, bookLabel } from './BookLogo';
 import { bestPrice, rowsFor, userBookPrice, type PropOddsRow } from './usePropOdds';
@@ -40,7 +41,7 @@ export function PropSideOdds({
       {mine ? (
         <span className="inline-flex items-center gap-1">
           <BookLogo bookId={mine.bookmaker} size={12} />
-          <OddsChip price={mine.americanOdds} source={mine.providerId} best={sameBook} className="border-masters/50" />
+          <OddsChip price={mine.americanOdds} source={mine.providerId} best={sameBook} capturedAt={mine.fetchedAt} className="border-masters/50" />
         </span>
       ) : (
         <span className="text-[10px] text-warn" title="Your book has no price for this market">
@@ -50,7 +51,7 @@ export function PropSideOdds({
       {!sameBook ? (
         <span className="inline-flex items-center gap-1">
           <BookLogo bookId={best.bookmaker} size={12} />
-          <OddsChip price={best.americanOdds} source={best.providerId} best />
+          <OddsChip price={best.americanOdds} source={best.providerId} best capturedAt={best.fetchedAt} />
         </span>
       ) : null}
     </span>
@@ -85,6 +86,7 @@ export function PropOddsSummary({
         <OddsChip
           price={shown?.americanOdds}
           source={shown?.providerId}
+          capturedAt={shown?.fetchedAt}
           isDelayed={shown?.isDelayed}
           delaySeconds={shown?.delaySeconds}
           className={mine ? 'border-masters/50' : undefined}
@@ -211,7 +213,14 @@ export function PropOddsBoard({
     return a.localeCompare(b);
   });
 
+  // 6.17 — the sentence a per-chip age cannot say. Staleness is per BOOK on its
+  // newest price, so a two-sided book is not counted as twice as stale as a
+  // one-sided one.
+  const coverage = priceCoverage(rows);
+  const summary = coverageLine(coverage);
+
   return (
+    <>
     <ul className="space-y-1">
       {sorted.map(([book, { over, under }]) => (
         <li
@@ -225,12 +234,12 @@ export function PropOddsBoard({
           </span>
           <span className="flex gap-1.5">
             {over ? (
-              <OddsChip price={over.americanOdds} source={over.providerId} side="O" isDelayed={over.isDelayed} delaySeconds={over.delaySeconds} />
+              <OddsChip price={over.americanOdds} source={over.providerId} side="O" capturedAt={over.fetchedAt} isDelayed={over.isDelayed} delaySeconds={over.delaySeconds} />
             ) : (
               <span className="text-ink-faint text-[11px]">—</span>
             )}
             {under ? (
-              <OddsChip price={under.americanOdds} source={under.providerId} side="U" isDelayed={under.isDelayed} delaySeconds={under.delaySeconds} />
+              <OddsChip price={under.americanOdds} source={under.providerId} side="U" capturedAt={under.fetchedAt} isDelayed={under.isDelayed} delaySeconds={under.delaySeconds} />
             ) : (
               <span className="text-ink-faint text-[11px]">—</span>
             )}
@@ -238,5 +247,9 @@ export function PropOddsBoard({
         </li>
       ))}
     </ul>
+    {summary ? (
+      <p className={`mt-1.5 text-[9.5px] ${coverage.stale > 0 ? 'text-warn' : 'text-ink-faint'}`}>{summary}</p>
+    ) : null}
+    </>
   );
 }

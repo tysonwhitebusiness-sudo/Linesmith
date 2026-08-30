@@ -1,6 +1,7 @@
 'use client';
 
 import type { OddsInfo } from '@/lib/core/types';
+import { STALE_AFTER_MS, relativeAge } from '@/lib/odds/priceFreshness';
 import { formatAmerican, americanToDecimal } from '@/lib/odds/display';
 import { devigTwoWay } from '@/lib/odds/devig';
 import { compareInk } from '@/lib/ui/heat';
@@ -144,20 +145,17 @@ export interface OddsChipProps {
  * python-odds-service/src/predict/live_edge.py, so what the UI calls stale and
  * what the edge computation refuses to use are the same thing.
  */
-const STALE_AFTER_MS = 30 * 60_000;
-
+/**
+ * Threshold and wording both come from `lib/odds/priceFreshness.ts` (6.17), not
+ * from a second copy here. A chip showing a stale marker while the coverage
+ * line above it reports everything fresh would be two numbers on one screen
+ * disagreeing about the same fact.
+ */
 function priceAge(capturedAt: string | undefined): { label: string; stale: boolean } | null {
   if (!capturedAt) return null;
-  const ms = Date.parse(capturedAt);
-  if (!Number.isFinite(ms)) return null;
-  const minutes = Math.floor((Date.now() - ms) / 60_000);
-  if (minutes < 0) return null;
-  const stale = Date.now() - ms > STALE_AFTER_MS;
-  if (minutes < 1) return { label: 'just now', stale };
-  if (minutes < 60) return { label: `${minutes}m ago`, stale };
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return { label: `${hours}h ago`, stale };
-  return { label: `${Math.floor(hours / 24)}d ago`, stale };
+  const label = relativeAge(capturedAt);
+  if (label == null) return null;
+  return { label, stale: Date.now() - Date.parse(capturedAt) > STALE_AFTER_MS };
 }
 
 export function OddsChip({

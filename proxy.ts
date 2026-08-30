@@ -92,6 +92,14 @@ const LIMITS: { test: (p: string) => boolean; limit: number; windowMs: number; l
   // Model fitting and backfills: expensive, operator-only, and never needed
   // in bursts. 2/hour.
   { test: (p) => /\/api\/props\/(fit-|.*backfill|elo-backfill|ingest-|park-factors)/.test(p), limit: 2, windowMs: 60 * 60_000, label: 'fit/backfill' },
+  // PAGE-LOAD READS THAT HAPPEN TO LIVE UNDER /api/props. These reach no
+  // vendor and run no model — they are indexed Postgres reads on tables the
+  // Python worker keeps fresh — so the 10/minute provider budget is the wrong
+  // one for them. `line-history` (6.16) is fetched on every player page view,
+  // alongside `lines`, `calibration` and `user-sportsbook`; four of a
+  // ten-per-minute budget meant two page views a minute started returning 429,
+  // which is exactly what it did the first time the chart was opened.
+  { test: (p) => p.startsWith('/api/props/line-history') || p.startsWith('/api/props/lines'), limit: 60, windowMs: 60_000, label: 'page-read' },
   // Routes that can reach an external provider or run real computation.
   { test: (p) => p.startsWith('/api/odds/') || p.startsWith('/api/props/') || p.startsWith('/api/diagnostics/'), limit: 10, windowMs: 60_000, label: 'provider' },
   // Everything else under /api.
