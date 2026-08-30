@@ -96,7 +96,25 @@ export function LineMovementCard({
   // not a series. That is the common state early in a game's life, before any
   // price has changed at all, and it renders nothing.
   const usable = series;
-  if (!loading && (buckets.length < 2 || usable.length === 0)) return null;
+
+  // THE CARD ALWAYS RENDERS. It used to `return null` here whenever there were
+  // fewer than two buckets or no series, which is the ordinary state of every
+  // prop early in a game's life and of every sport out of season — so the most
+  // common outcome was a block that silently did not exist. The empty message
+  // below was written for exactly this case and was unreachable.
+  //
+  // That is also a Phase 6 gate requirement in its own right: "every sport's
+  // page renders every block or an honest empty state. A blank card with no
+  // empty state is a failure." Rendering nothing is not an empty state.
+  const drawable = buckets.length >= 2 && usable.length > 0;
+
+  // Say WHICH kind of nothing this is. "No data" covers two genuinely different
+  // situations and a reader can act on the difference: nothing has ever been
+  // recorded for this prop, versus a price on record that has not yet moved.
+  const emptyMessage =
+    usable.length === 0
+      ? 'No price history recorded for this prop yet.'
+      : 'Only one price on record so far. Prices are logged when they change, so a line appears once a book moves.';
   const align = (bookmaker: string): number[] =>
     alignToBuckets(series.find((s) => s.bookmaker === bookmaker)?.points ?? [], buckets);
 
@@ -125,8 +143,8 @@ export function LineMovementCard({
       </div>
       <div className="p-2.5">
         <SeriesChart
-          values={subject ? align(subject.bookmaker) : []}
-          context={others.map((s) => align(s.bookmaker))}
+          values={drawable && subject ? align(subject.bookmaker) : []}
+          context={drawable ? others.map((s) => align(s.bookmaker)) : []}
           // American odds cross zero and have no meaningful origin — a
           // zero-based axis would squash every real move into nothing. This is
           // the parameter `SeriesChart` deliberately gives no default for.
@@ -135,18 +153,18 @@ export function LineMovementCard({
           unit="odds"
           isLoading={loading}
           label={`Price movement for ${lineLabel}`}
-          emptyMessage="No recorded movement for this prop yet."
+          emptyMessage={emptyMessage}
           height={120}
         />
         {/* The alternates are real and the pinned line is only one of them.
             Saying so beats letting the chart imply it is the whole market. */}
-        {data && data.availableLines.length > 1 ? (
+        {drawable && data && data.availableLines.length > 1 ? (
           <p className="mt-1.5 text-[9.5px] text-ink-faint">
             {data.availableLines.length} lines quoted ({data.availableLines[0]}–
             {data.availableLines[data.availableLines.length - 1]}); showing the most-quoted.
           </p>
         ) : null}
-        {others.length > 0 ? (
+        {drawable && others.length > 0 ? (
           <p className="mt-1 text-[9.5px] text-ink-faint">
             {subject?.bookmaker} in front, {others.length} other {others.length === 1 ? 'book' : 'books'} behind.
             {' '}A flat line is a book that has not moved, not a book with no data.
