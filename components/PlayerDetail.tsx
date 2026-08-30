@@ -13,6 +13,7 @@ import { useMlbPitchProfile } from './useMlbPitchProfile';
 import { useNhlShotProfile } from './useNhlShotProfile';
 import { useNbaShotProfile } from './useNbaShotProfile';
 import { useNflTargetMap } from './useNflTargetMap';
+import { useGolfShotProfile } from './useGolfShotProfile';
 import { TARGET_MAP_POSITIONS } from '@/lib/sports/nfl/targetMapShapes';
 import { useLineHistory } from './useLineHistory';
 import { candidateCategoryToSide, candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
@@ -1087,6 +1088,13 @@ export function PlayerDetail({
     Number.isInteger(nflHistorySeason) && nflHistorySeason > 1998 ? nflHistorySeason : undefined,
   );
 
+  // Golf's shot-by-shot profile (6.13). `subjectId` is the bare ESPN athlete
+  // id for golf, so no prefix strip is needed -- unlike NBA/NHL. Left
+  // undefined for the other seven sports, so the hook never fires for them.
+  const golfShotProfile = useGolfShotProfile(
+    active?.sport === 'golf' && /^[0-9]{1,12}$/.test(String(active.subjectId)) ? String(active.subjectId) : undefined,
+  );
+
   const lineHistoryMarketKey = active ? (candidateDimensionToMarketKey(active.dimension) ?? undefined) : undefined;
   const lineHistorySide = active ? (candidateCategoryToSide(active.category ?? '') ?? 'over') : 'over';
   const lineHistory = useLineHistory(
@@ -1136,6 +1144,7 @@ export function PlayerDetail({
           scope: { selectedRound, selectedCategory: selectedGolfCategory },
           propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
           golfStats,
+          shotProfile: golfShotProfile,
         })
       : active.sport === 'nfl'
         ? toNflPlayerDetailData({

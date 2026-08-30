@@ -1054,6 +1054,56 @@ async def write_nfl_target_events(rows: list) -> int:
     return written
 
 
+async def write_golf_shot_events(rows: list[dict]) -> int:
+    """Phase 6.13 — one row per PGA Tour shot, from golfR's bundled files.
+
+    Idempotent on UNIQUE (tournament_id, season, round_number, hole_number,
+    player_id, shot_number). 13 columns, 2,000 rows per statement = 26,000
+    parameters, under the wire protocol's signed-16-bit ceiling of 32,767 --
+    the same arithmetic every other bulk writer here does.
+
+    Takes plain dicts rather than a dataclass because its only caller parses
+    heterogeneous CSV whose columns are prose ("311 yds", "5 ft 3 in"); a
+    dataclass would add a shape to keep in step for no reader's benefit.
+    """
+    if not rows:
+        return 0
+    pool = await get_pool()
+    cols = 13
+    max_rows_per_stmt = 2000
+    written = 0
+    async with pool.acquire(timeout=60.0) as conn:
+        async with conn.transaction():
+            for start in range(0, len(rows), max_rows_per_stmt):
+                chunk = rows[start:start + max_rows_per_stmt]
+                params: list = []
+                tuples: list[str] = []
+                for i, r in enumerate(chunk):
+                    b = i * cols
+                    tuples.append("(" + ", ".join(f"${b+n}" for n in range(1, cols + 1)) + ")")
+                    params.extend([
+                        r["tournament_id"], r["season"], r["course_id"],
+                        r["round_number"], r["hole_number"],
+                        r["player_id"], r["player_name"], r["shot_number"],
+                        r["distance_yds"], r["left_yds"],
+                        r["from_lie"], r["to_lie"], r["is_putt"],
+                    ])
+                returned = await conn.fetch(
+                    "INSERT INTO golf_shot_events "
+                    "(tournament_id, season, course_id, "
+                    " round_number, hole_number, "
+                    " player_id, player_name, shot_number, "
+                    " distance_yds, left_yds, "
+                    " from_lie, to_lie, is_putt) "
+                    "VALUES " + ", ".join(tuples) +
+                    " ON CONFLICT (tournament_id, season, round_number, hole_number, player_id, shot_number)"
+                    " DO NOTHING RETURNING 1",
+                    *params,
+                )
+                written += len(returned)
+    return written
+
+
 async def nba_shot_events_done_games(season: int) -> set[int]:
     """Every game_id already ingested for one season — the resume primitive.
 

@@ -23,6 +23,7 @@ import type { PlayerSeasonLog } from '@/lib/sports/golf/playerSeason';
 import type { GolfCategory, LiveRoundMatchup } from '@/lib/sports/golf/adapter';
 import type { ChipDef, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, RoundScoreEntry } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import type { BinarySplitRole } from '@/lib/sports/shared/playerRoles';
+import { toGolfProximityGrid, toGolfUsageMix, type GolfShotRow } from '@/lib/sports/golf/shotProfileShapes';
 
 // ---------------------------------------------------------------------------
 // Golf-specific helpers
@@ -61,6 +62,8 @@ export interface GolfPlayerDetailInput {
   /** `usePropOdds()`'s resolved rows/sportsbook. */
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
   /** Golf's season/advanced-stats card data — passed straight through from `PlayerDetailProps.golfStats` (`components/PlayerDetail.tsx:922-930`); this adapter does no fetching of its own, same as the MLB half. */
+  /** `useGolfShotProfile(...)`'s result -- the two shot-based roles (6.13). Structural, not an import of the hook's type. */
+  shotProfile?: { shots: GolfShotRow[]; loading: boolean };
   golfStats?: {
     strokesGained: GolferStrokesGained | null;
     seasonLog: PlayerSeasonLog | null;
@@ -80,7 +83,7 @@ export interface GolfPlayerDetailInput {
  * as the MLB adapter.
  */
 export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, scope, propOdds, golfStats } = input;
+  const { candidates, market, scope, propOdds, golfStats, shotProfile } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -199,6 +202,19 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
         }
       : null;
 
+  // ---- Roles 2 and 3 | usageMix + spatialGrid, from PGA shot-by-shot data.
+  // Both read the same rows and split differently: the mix counts every shot
+  // by lie (putts included -- roughly 40% of a round), the grid asks where
+  // approach shots finish (putts excluded, since a putt's proximity is feet
+  // against an approach's tens of yards). Each card says which it counts.
+  //
+  // A STATIC 2020-2023 SEED, so most golfers on a live leaderboard are simply
+  // absent and both roles render nothing. That is the honest state, not a
+  // failure -- golfR's scraper reads a host that no longer resolves.
+  const golfShots = shotProfile?.shots ?? [];
+  const usageMix = toGolfUsageMix(golfShots);
+  const spatialGrid = toGolfProximityGrid(golfShots);
+
   const chart: PlayerDetailChart = {
     kind: 'scorecard',
     title: `Round ${effectiveRound} scorecard`,
@@ -222,6 +238,8 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
     .sort((a, b) => b.sampleSize - a.sampleSize || a.dimension.localeCompare(b.dimension, undefined, { numeric: true }));
 
   return {
+    usageMix,
+    spatialGrid,
     binarySplit,
     subject: {
       subjectId: active.subjectId,
