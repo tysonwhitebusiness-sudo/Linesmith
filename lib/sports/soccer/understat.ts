@@ -19,6 +19,7 @@
  */
 
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
+import type { UnderstatShot } from './understatShots';
 import { normalizeName, scoreNameMatch } from '@/lib/odds/screenshotImport';
 
 const BASE = 'https://understat.com';
@@ -280,6 +281,36 @@ interface RawPlayerMatch {
   time: string;
 }
 
+/** One payload, two accessors — see `fetchUnderstatPlayerShots`. */
+interface CachedPlayerPayload {
+  matches: UnderstatMatch[];
+  shots: UnderstatShot[];
+}
+
+/** `:v3:` — the cached shape gained `shots`; a v2 entry holds a bare array. */
+function playerCacheKey(understatId: string): string {
+  return `soccer:understat:player:v3:${understatId}`;
+}
+
+async function readPlayerPayload(
+  understatId: string,
+  { ignoreAge = false }: { ignoreAge?: boolean } = {},
+): Promise<CachedPlayerPayload | null> {
+  const cached = await readSnapshotCache(playerCacheKey(understatId));
+  if (!cached) return null;
+  // 6h, fresher than season data — a match that just finished should show up
+  // reasonably soon. `ignoreAge` is the stale-is-better-than-nothing path used
+  // when the fetch itself failed.
+  if (!ignoreAge && Date.now() - Date.parse(cached.fetchedAt) >= 6 * 60 * 60_000) return null;
+  try {
+    const parsed = JSON.parse(cached.payload) as Partial<CachedPlayerPayload>;
+    if (!Array.isArray(parsed?.matches)) return null;
+    return { matches: parsed.matches, shots: Array.isArray(parsed.shots) ? parsed.shots : [] };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Which side of a fixture this player was on, and therefore who the opponent
  * was — the whole of the defect described below, in one pure function.
@@ -350,17 +381,18 @@ export function resolveMatchVenue(
  * every stored entry holds the old, wrong values.
  */
 export async function fetchUnderstatPlayerMatches(understatId: string, understatTeamTitle: string): Promise<UnderstatMatch[]> {
-  const cacheKey = `soccer:understat:player:v2:${understatId}`;
-  const cached = await readSnapshotCache(cacheKey);
-  if (cached && Date.now() - Date.parse(cached.fetchedAt) < 6 * 60 * 60_000) {
-    return JSON.parse(cached.payload) as UnderstatMatch[];
-  }
+  const cached = await readPlayerPayload(understatId);
+  if (cached) return cached.matches;
 
   const json = await fetchJson<{
     matches: RawPlayerMatch[];
+    shots?: UnderstatShot[];
     groups?: { season?: Array<{ season: string; team: string }> };
   }>(`/getPlayerData/${understatId}`);
-  if (!json) return cached ? (JSON.parse(cached.payload) as UnderstatMatch[]) : [];
+  if (!json) {
+    const stale = await readPlayerPayload(understatId, { ignoreAge: true });
+    return stale?.matches ?? [];
+  }
 
   // Which club(s) this player turned out for, per season. A set, not a string:
   // a mid-season transfer lists two.
@@ -388,6 +420,29 @@ export async function fetchUnderstatPlayerMatches(understatId: string, understat
     };
   });
 
-  await writeSnapshotCache(cacheKey, JSON.stringify(matches));
+  // BOTH HALVES OF ONE RESPONSE ARE CACHED TOGETHER. `shots` arrives in the
+  // same payload as `matches` (6.9), and fetching `/getPlayerData/{id}` twice —
+  // once per accessor — would double the request rate against a site we do not
+  // own for data we already had in hand.
+  await writeSnapshotCache(playerCacheKey(understatId), JSON.stringify({ matches, shots: json.shots ?? [] }));
   return matches;
+}
+
+/**
+ * Every shot this player has taken, as Understat records it — the source for
+ * soccer's `spatialGrid` (6.9).
+ *
+ * Reads the SAME cached payload `fetchUnderstatPlayerMatches` writes, and
+ * populates it by calling that function when the cache is cold. No second
+ * network call exists for this: the shots were always in the response.
+ *
+ * Empty for a player Understat does not cover — which is every MLS player, and
+ * is why soccer's shot map is EPL-only.
+ */
+export async function fetchUnderstatPlayerShots(understatId: string, understatTeamTitle: string): Promise<UnderstatShot[]> {
+  const cached = await readPlayerPayload(understatId);
+  if (cached) return cached.shots;
+  // Populates the cache as a side effect; the shots land with the matches.
+  await fetchUnderstatPlayerMatches(understatId, understatTeamTitle);
+  return (await readPlayerPayload(understatId, { ignoreAge: true }))?.shots ?? [];
 }

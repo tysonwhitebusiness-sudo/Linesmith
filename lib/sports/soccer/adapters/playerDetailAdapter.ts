@@ -33,6 +33,9 @@ import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution
 import type { PropOddsRow } from '@/lib/db/client';
 import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
+import { MIDDOT, fmt } from '@/components/charts/tokens';
+import type { SpatialGridRole } from '@/lib/sports/shared/playerRoles';
+import type { ShotGrid } from '@/lib/sports/soccer/understatShots';
 import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 
 interface SoccerSeasonStats {
@@ -123,6 +126,43 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
 
   const measured = categoriseByLine(scoped, line);
   const wanted = wantOver ? OVER : UNDER;
+
+  // ---- Role 3 | spatialGrid: the shot map (6.9).
+  // EPL only. Understat covers the big five leagues; MLS is sourced from
+  // American Soccer Analysis, which carries no shot coordinates, so
+  // `meta.shotGrid` is simply absent there and no card renders — the same
+  // rule working, not a gap being hidden.
+  //
+  // The cells show SHOT SHARE, not xG: mean xG per cell is very nearly a
+  // function of the cell itself, so it reads the same for every player.
+  // Where someone actually shoots from is specific to them. The xG and the
+  // conversion travel in the caption.
+  const shotGrid = (meta.shotGrid ?? null) as ShotGrid | null;
+  const spatialGrid: SpatialGridRole | null = shotGrid
+    ? {
+        title: 'Shot location',
+        cells: shotGrid.cells.map((row) =>
+          row.map((c) => ({ key: c.key, value: c.shots > 0 ? c.share : null, sampleSize: c.shots })),
+        ),
+        rowLabels: shotGrid.rowLabels,
+        columnLabels: shotGrid.columnLabels,
+        format: fmt.pct0,
+        unit: 'of shots',
+        caption: [
+          `${shotGrid.totalShots.toLocaleString()} shots`,
+          `${shotGrid.totalGoals} scored`,
+          shotGrid.meanXg != null ? `${shotGrid.meanXg.toFixed(2)} xG per shot` : null,
+          shotGrid.seasons.length > 0
+            ? shotGrid.seasons.length === 1
+              ? shotGrid.seasons[0]
+              : `${shotGrid.seasons[0]}-${shotGrid.seasons[shotGrid.seasons.length - 1]}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(` ${MIDDOT} `),
+        emptyMessage: 'No shot locations on record.',
+      }
+    : null;
 
   // ---- Role 4 | binarySplit: home/away, off the `raw.isHome` this sport's
   // history already carries but exposes through no filter chip.
@@ -276,6 +316,8 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
       : null;
 
   return {
+
+    spatialGrid,
     binarySplit,
     subject: {
       subjectId: active.subjectId,

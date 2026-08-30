@@ -123,7 +123,12 @@ test('the source does not compare a match against the current club, and bumped i
     'the exact comparison that caused the defect is back in the source',
   );
   assert.match(CODE, /groups\?\.season/, 'the fix reads the per-season club groups');
-  // The stored payload shape changed AND every cached entry holds wrong values,
-  // so serving the old key would keep the defect live for 6 hours after deploy.
-  assert.match(CODE, /soccer:understat:player:v2:/, 'the cache key must be bumped past the old, wrong payloads');
+  // The stored payload shape changed AND every cached entry held wrong values,
+  // so serving the ORIGINAL key would keep the defect live for 6 hours after
+  // deploy. Asserted as "versioned, at v2 or later" rather than pinned to v2:
+  // 6.9 bumped it to v3 when the payload gained `shots`, and a legitimate bump
+  // must not read as this defect returning.
+  const key = CODE.match(/soccer:understat:player:v(\d+):/);
+  assert.ok(key, 'the player cache key must carry a version marker');
+  assert.ok(Number(key[1]) >= 2, `cache key is at v${key[1]} — it must stay past the unversioned, wrong payloads`);
 });
