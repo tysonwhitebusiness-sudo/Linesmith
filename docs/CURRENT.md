@@ -11,7 +11,8 @@ file if they disagree.**
 
 ## 1. What just happened (2026-08-30, session four)
 
-Three commits, `e4c2745`..`f54ad33`. **TS tests 197 → 226.** `tsc` clean,
+Six commits, `e4c2745`..`794240d`. **TS tests 197 → 226, plus two new static
+Python guards.** Three Render deploys, worker live on `e1fd935`. `tsc` clean,
 `npm run build` clean, and everything below was checked against live rows or a
 rendered page.
 
@@ -19,9 +20,11 @@ rendered page.
 |---|---|
 | 6.8 nflverse PBP | **COMPLETE** — target map renders; 2025 backfilled (17,582 events). |
 | 6.14 rating block | **BUILT** — `team_elo_history`'s 88,774 rows reach a page for the first time. Six sports. |
-| Render worker | **DEPLOYED and live on `e4c2745`.** Needs ONE MORE deploy — §3.1. |
-| `refreshTier1` | **FIXED in the tree, NOT deployed.** It is failing in production right now. |
+| Render worker | **live on `e1fd935`.** One more deploy pending for `794240d` — §3.1. |
+| `refreshTier1` | **FIXED and DEPLOYED** — was writing zero rows; now 195 of 195. |
 | 6.23 book lag | **STILL BLOCKED** — unchanged, see §4. |
+| 4 ingest jobs | **FIXED** — they had NEVER run. `yield_fn()` was a TypeError. See §2. |
+| `_run_timed` gap | **FIXED, not deployed** — the same four bypassed the wrapper `health_check.py` reads. |
 
 ## 2. THE SINGLE MOST IMPORTANT THING TO CARRY FORWARD
 
@@ -51,6 +54,31 @@ three. **When an injection PASSES, the test does not discriminate** — that is
 now six occurrences across two sessions, and every single fix was a better
 fixture.
 
+**FOUR INGEST JOBS HAD NEVER RUN, AND THEIR TABLES LOOKED FINE.**
+`ingestStatcastPitchesJob` (6.6), `ingestNhlShotsJob`/`ingestNbaShotsJob` (6.7)
+and `ingestNflPbpJob` (6.8) all called `yield_fn()` with no argument. The queue
+hands out `functools.partial(maybe_yield, name)`, so that is a `TypeError` at
+the first yield point, every run, since each shipped.
+
+**Nothing looked wrong**: `mlb_pitch_events` has 2.1M rows and
+`nfl_target_events` 35,430. Every one of them arrived through the `backfill`
+entrypoints, which the operator runs by hand and which pass no `yield_fn` at
+all. *The scheduled path and the manual path diverged at the one argument
+nobody passes, and only the manual path was ever watched.*
+
+And the second half: **all four also bypassed `_run_timed`** — the wrapper that
+writes the breadcrumb `health_check.py` reads AND catches the exception with a
+traceback. So the wrapper whose entire purpose is making failure visible was
+missing from exactly the jobs that were failing. Both now guarded by
+`test_yield_contract.py` and `test_job_registry_contract.py`.
+
+**A guard that fires on working code is broken, not strict.** My first version
+of the registry test reported ELEVEN false positives against jobs that
+demonstrably write breadcrumbs, because it understood only a direct
+`_run_timed(...)` call and not the delegated or factory-assigned shapes. I would
+have "fixed" eleven healthy jobs on its say-so had the breadcrumbs I had
+already read not contradicted it.
+
 **A sibling sport's solution is only copyable when the two sports share an id
 space.** 6.8 was handed over as "six lines, copy NHL/NBA". NHL and NBA parse the
 shooter id out of `subjectId` in the browser; NFL cannot, because `subjectId` is
@@ -59,16 +87,15 @@ the crosswalk reads the database.
 
 ## 3. NEXT ACTIONS, in order
 
-1. **REDEPLOY THE RENDER WORKER — the odds cycle is broken until you do.**
-   `refreshTier1` is failing in production on every run and writing none of its
-   ~1,500 rows. The fix is committed (`f54ad33`) and not deployed. Call is in §7.
-   The previous deploy (`e4c2745`) is live and did register the three ingest
-   jobs; this is a second, separate deploy for the Python fix.
-2. **Confirm the three ingest jobs have actually run.** They are registered —
-   `ingestNhlShotsJob` and `ingestNbaShotsJob` hourly, `ingestNflPbpJob` daily —
-   but none had come due when checked at 17:25. Breadcrumbs live in
-   `snapshot_cache` under `python-harness:job-run:%`, **not** a `job_run_log`
-   table; that table does not exist.
+1. **REDEPLOY THE RENDER WORKER** for `794240d`. The worker is live on
+   `e1fd935`, so the odds cycle and the four ingest jobs are already FIXED and
+   verified running. What is still undeployed is only the `_run_timed` wrap —
+   until it ships, those four write no breadcrumb and `health_check.py` is blind
+   to them. Not urgent; do not skip. Call is in §7.
+2. **Then confirm breadcrumbs appear** for `ingestNhlShotsJob`,
+   `ingestNbaShotsJob`, `ingestNflPbpJob` and `ingestStatcastPitchesJob`.
+   Breadcrumbs live in `snapshot_cache` under `python-harness:job-run:%`,
+   **not** a `job_run_log` table; that table does not exist.
 3. **6.15 Game Detail, eight sports.** Untouched, and now the largest single
    item. **Measure the board against what `GameDetail.tsx` already renders before
    building** — this plan's premises have now been wrong **eight** times, twice
@@ -117,7 +144,16 @@ Retired warning; do not spend time on it.
 field you suspect** — §2.
 
 **A deploy reporting `"status":"live"` is not a job having run.** That is how
-`refreshTier1`'s failure was found at all.
+BOTH of this session's production bugs were found — `refreshTier1` failing, and
+four ingest jobs that had never run at all. **Read the Render queue log after a
+deploy**, not just the deploy status:
+`GET /v1/logs?ownerId=tea-da2ut3ibkg8c73d5gcdg&resource=$SRV&text=queue`.
+
+**A populated table does not mean its job works.** Four ingest tables were
+filled entirely by hand-run `backfill` entrypoints while the scheduled job
+crashed every time.
+
+**A guard that fires on working code is broken, not strict** — §2.
 
 **A guardrail that has never rejected anything is not known to work.** The new
 `test_book_line_rejection.py` runs against REAL Postgres deliberately: the batch
@@ -173,7 +209,8 @@ opening weeks with 1–2 games on the board and a full season behind it.
   time twice this session.
 - **Tests:** `npm test` (**226**), and each
   `./.venv/Scripts/python.exe -u src/test_*.py` from `python-odds-service/`. No
-  pytest. **Do not run the whole Python sweep at once** — several hit the
+  pytest. Two are static and instant — `test_yield_contract.py` and
+  `test_job_registry_contract.py`. **Do not run the whole Python sweep at once** — several hit the
   network/DB and exceed a two-minute timeout.
 - **Render:** worker `srv-da36bm2bkg8c73fqrdeg`, `autoDeploy: no`. After any push
   touching `python-odds-service/`:
@@ -197,7 +234,8 @@ for `e4c2745`.
 
 ## 9. Known not done
 
-1. **`refreshTier1`'s fix is undeployed** — §3.1. Production is still broken.
+1. **The `_run_timed` wrap (`794240d`) is undeployed** — §3.1. Monitoring gap
+   only; the functional fixes are live on `e1fd935`.
 2. **6.15 untouched**, and 6.14 has only its rating block.
 3. **TS's three Elo readers ignore `sport`** — `getCurrentElo`,
    `getLatestEloBeforeSeason`, `getMostRecentEloGame` in `lib/db/client.ts`.

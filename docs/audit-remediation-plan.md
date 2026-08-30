@@ -4045,8 +4045,37 @@ three, four more times over:
   season was also the width-setter and came out right by accident. It needs
   three, with the middle shorter than the longest and longer than the subject.
 
+**FOUR INGEST JOBS HAD NEVER RUN.** Found in the live Render queue log while
+confirming the deploy had achieved something. `ingestStatcastPitchesJob` (6.6),
+`ingestNhlShotsJob`/`ingestNbaShotsJob` (6.7) and `ingestNflPbpJob` (6.8) all
+called `yield_fn()` with no argument; the queue passes
+`functools.partial(maybe_yield, name)`, so every one raised `TypeError` at its
+first yield point, every run, since it shipped. Only `providers.py` had it
+right. **Their tables looked healthy because every row came from the hand-run
+`backfill` entrypoints, which pass no `yield_fn` at all** — the scheduled and
+manual paths diverged at the one argument nobody passes.
+
+All four ALSO bypassed `_run_timed`, which writes the breadcrumb
+`health_check.py` reads and catches the exception with a traceback. **The
+wrapper whose purpose is making failure visible was missing from exactly the
+jobs that were failing.** Both halves fixed and guarded by
+`test_yield_contract.py` (AST, reads the expected arity off `maybe_yield` rather
+than hardcoding it) and `test_job_registry_contract.py` (every registry name
+must reach `_run_timed` under its own name). Both fault-injected.
+
+**A guard that fires on working code is broken, not strict.** The registry
+test's first version understood only a direct `_run_timed(...)` call and
+reported eleven false positives against jobs that demonstrably write
+breadcrumbs; three shapes reach the wrapper legitimately here (direct,
+delegated, factory-assigned). It would have led to "fixing" eleven healthy jobs.
+
+Verified live after the fix: all four completed under `e1fd935`, and
+`ingestNflPbpJob yields -> running refreshTier1` is the exact line that had been
+the TypeError.
+
 **NOT DONE:** 6.15 (untouched, now the largest remaining item), 6.14's other
 blocks beyond the rating one, 6.10's park factors and game sims, 6.21, 6.24.
+`794240d`'s `_run_timed` wrap is committed but not yet deployed.
 
 ### Phase 5 — 2026-08-29
 
