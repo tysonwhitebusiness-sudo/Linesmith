@@ -520,6 +520,38 @@ cards-per-game all move totals.
 3. **Decide the sourcing order** for the three gaps above. Nothing else on
    Phase 6's UI work is blocked by design any more.
 
+### DATA-GAP AUDIT — what the three boards need that we lack (2026-08-29)
+
+**`docs/design/phase6-data-gap-audit.md`** — measured, not recalled. Read it
+before scheduling any Phase 6 sourcing work.
+
+Headline: **the layout is not the risk.** The tape, splits grids, game logs,
+rolling form and Elo history on all three boards are fully sourced today. Five
+blocks have no source, and the biggest constraint is not a vendor:
+
+- **`pick_history` is MLB 369,185 / soccer 381 / everything else ZERO**
+  (`game_picks`: mlb 176, soccer 24, nfl 16, cfb 8). Every "Model %", "Edge",
+  grade and "why the model likes it" block on all three boards, on every tab, is
+  MLB-only today. **Biggest single gap, and it needs no new vendor** - the game
+  logs and closing lines to grade against are already stored.
+- **Officials/umpires: zero hits across the whole tree.** The one entirely
+  invented block on the game board. New integration per sport, nothing reusable.
+- **Statcast is 4 metrics, season-aggregate.** `savant.ts` already calls the
+  pitch-level endpoint (`type=details`) but passes `group_by=name`. Ungrouping
+  that one parameter yields zone, pitch_type and xwOBA per pitch - the strike
+  zone, the pitch mix, and 7 more Statcast metrics. **Cheapest high-value item
+  on the list.**
+- **Same pattern twice more:** Understat is wired but only its league-level
+  goals-against endpoint (shot x/y/xG unused; EPL only, MLS has none); nflverse
+  is wired but only weekly box scores (play-by-play with air yards unused).
+- **MLB-only and needs generalising:** `game_sim_cache` (sport column exists,
+  only mlb populated), `park_factors`, and the open-meteo weather wiring.
+- **Tennis point-level data has no source at all** - a paid-vendor decision.
+
+**Nothing on that list blocks starting `components/charts/`.** A block with no
+source renders its empty state, which the grammar already defines. Sourcing and
+chart work are independent and can run in parallel.
+
 ### Two design-system findings, measured this session
 
 1. **`lib/ui/heat.ts` — `FILL_STOPS` is a diverging ramp with a *hue* at its
