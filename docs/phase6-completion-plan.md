@@ -23,7 +23,14 @@ They render an honest empty state and nothing waits on them.
 
 ## PROGRESS — 2026-08-30, autonomous build session
 
-**Player Detail roles: 14/48 -> 34/48.** Four sports now fill all six.
+**Player Detail roles: 14/48 -> 36/48.** Four sports now fill all six.
+
+**The golfR import is DONE** — 1,033,752 shots, 486 players, 40 files, zero
+failed. Keyed on player NAME, not id: `golf_shot_events.player_id` is PGA
+Tour's and the app's `subjectId` is ESPN's, and **both are five-digit numbers**,
+so the id-keyed version compiled, ran and returned zero rows for all 30 slate
+golfers. 21 of 30 match by name; the nine that do not reached the Tour after
+2023 and are genuinely absent from a 2020-2023 seed.
 
 | Sport | Roles | Remaining, and why |
 |---|---|---|
@@ -34,7 +41,7 @@ They render an honest empty state and nothing waits on them.
 | NFL | 4/6 | `usageMix`, `binarySplit` — accepted gaps (tracking feed) |
 | CFB | 4/6 | `usageMix`, `spatialGrid` — accepted gaps |
 | Tennis | 2/6 | `opponentUnit` needs the opponent resolved through the season index; `conditions` needs the event on `subjectMeta`; two waived |
-| Golf | 1/6 | `opponentUnit`/`conditions` need field + course + weather plumbed to a hook; `usageMix`/`spatialGrid` need the golfR import; `careerH2H` NOT BUILDABLE — `golf_tournaments` holds three events, so there is no multi-year course history |
+| Golf | **3/6** | `usageMix`/`spatialGrid` **DONE** — golfR import loaded, 1,033,752 shots. `opponentUnit`/`conditions` need field + course + weather plumbed to a hook; `careerH2H` NOT BUILDABLE — `golf_tournaments` holds three events, so there is no multi-year course history |
 
 **Backfills: DONE.** `nba_shot_events` 195 -> 219,873 rows / 1,234 games.
 `nhl_shot_events` 102 -> 73,291 / 633. Both carry `shot_type`, which closed
