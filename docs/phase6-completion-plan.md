@@ -61,6 +61,48 @@ six sports; `bookGrid` and `matchupKey`, which exist nowhere.
 
 ---
 
+## GATE WALK — 2026-08-30, partial
+
+Walked the real pages for the five sports with live data. **CFB, NBA and NHL
+have zero candidates today (out of season), so their pages cannot be walked
+until October** — that is the single biggest limit on closing this gate now.
+
+**Four defects found by opening pages, none of which any test or `tsc` caught:**
+
+1. **Soccer's opponent matching was dead.** Understat's history says "Leeds";
+   ESPN's `subjectMeta.opponentName` says "Leeds United". Three sites compared
+   them with `===`, so 0 of 273 entries matched and the h2h window, the
+   `careerH2H` card and the "vs opponent" filter chip were ALL empty — since
+   soccer shipped. **Third sport with this bug class**; CFB's own fix comment
+   said it had been found twice before. Now one shared `teamNameMatch.ts`.
+2. **NFL's `careerH2H` was returned from the wrong object** — assigned into the
+   per-row gamelog literal, so `data.careerH2H` was undefined.
+3. **The line-movement card had an unreachable empty state** — an early
+   `return null` sat in front of the message written for exactly that case.
+4. **Two cards on one page both headed "Season stats"** — the gamelog summary
+   strip and the rail card. The strip is now "Totals", which is also what its
+   own Season/L15 toggle makes true.
+
+**Verified rendering with real data**, per sport:
+
+| Page | MLB | NFL | Soccer | Tennis | Golf |
+|---|---|---|---|---|---|
+| Player | 6/6 roles | 4/6 (2 accepted) | 5/6 | 2/6 | 1/6 |
+| Team | walked | walked | — | n/a | n/a |
+| Game | — | — | — | — | n/a |
+
+Spot values confirmed on the page, not just in the payload: MLB's platoon split
+reads vs LHP .340 (n=92) / vs RHP .417 (n=233), with the xwOBA n correctly the
+xwOBA count rather than the 609/1512 pitch counts. Golf's par split reads
+−0.63 (n=8) vs −0.08 (n=48) — **a 14% share, which `toVenueBinarySplit`'s floor
+would have rejected**, which is why `predicateSplit` exists. Soccer's shot mix
+sums to 100 across four types with per-slice xG samples.
+
+**Still to walk:** every team page except MLB/NFL, every game page, and all
+three pages for CFB/NBA/NHL once their seasons start.
+
+---
+
 ## A · Player Detail (6.13) — REOPENED
 
 Measured: **48 cells (8 sports × 6 roles).** 14 render today.
