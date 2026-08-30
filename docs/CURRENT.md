@@ -12,8 +12,11 @@ file if they disagree.**
 
 ## 1. What just happened (2026-08-30, first build session of Phase 6)
 
-Ten commits, `9bf9580`..`d8705c6`. **TS tests 48 → 103, plus 8 new Python
-tests. All passing, `tsc` clean.**
+Fourteen commits, `9bf9580`..`522eaea`. **TS tests 48 → 106, plus 8 new
+Python tests. All passing, `tsc` clean, `npm run build` passes.**
+
+**§11 of the plan now has the Phase 6 log entry** — that is the authoritative
+record of what counts as done.
 
 | Task | State | Commit |
 |---|---|---|
@@ -26,6 +29,21 @@ tests. All passing, `tsc` clean.**
 | 6.11 re-scoped, 6.12 verified and dropped | **done** | `2e4f2b2` |
 | 6.3 the six roles | **done** (types + MLB's two fillable) | `3e07317` |
 | 6.6 Statcast ingester + read path | **built; backfill paused** | `b2ebf8f`, `d8705c6` |
+| **Client-bundle fix** — every page was 500ing | **fixed + guarded** | `b5900af`, `2a74fb2` |
+| 6.13 render the six roles | **started** | `522eaea` |
+
+### THE DEFECT THIS PHASE PAID FOR
+
+**A value import from a database module into anything a client component
+reaches bundles `pg` for the browser and breaks EVERY page — and `tsc` plus
+all 103 unit tests pass it.** Introduced twice (6.1 and 6.2b), survived six
+commits, because another session's `next dev` held `.next/` so no build could
+run. Split the pure parts out (`seasonAggregateShapes.ts`, `nflUnitGrades.ts`)
+and guarded by `tests/client-bundle-boundary.test.ts`, which checks the import
+FORM — `import type` is erased, a value import is not.
+
+**`npm run build` is now required before claiming any UI work is done.** tsc
+plus unit tests demonstrably is not enough.
 
 **FOUR OF THE PLAN'S OWN TASK PREMISES WERE WRONG**, and each cost real work
 to discover: 6.2's ("all seven sports populate `rankings`" — only MLB and NFL
@@ -96,10 +114,12 @@ finished.
 
 ## 3. What is running
 
-A `next dev` server from another session holds `.next/` — **a second `next dev`
-cannot start** (they fight over that directory), so in-app browser verification
-was not available this session. Work was verified by rendering components to
-markup in tests and by running real queries instead.
+**A dev server is up on port 3000, started by this session** (the operator
+authorised killing the other session's, which had held `.next/` and blocked
+every build). Pages verified live: `/`, `/mlb`, `/nhl`, `/nba` all 200,
+`/api/season-ranks?sport=nhl` returns 32 real teams,
+`/api/mlb/pitch-profile` 200, and `/mlb/player/701538` renders the new role
+cards with real data.
 
 **Seven** `harvester_scrape.py` scheduled tasks on a ~20-minute cycle. **Two
 `harvester_scrape.py mlb` processes were running simultaneously** — one from
@@ -108,7 +128,7 @@ operator.
 
 ## 4. Next actions
 
-1. **Resume 6.6's backfill and deploy the worker** (§2).
+1. **Resume 6.6's backfill and deploy the worker** (§2). Neither is done.
 2. **Wire MLB's `usageMix` and `spatialGrid`.** 6.3 left both `null` for want
    of a source; 6.6 now provides one. `lib/sports/mlb/pitchProfile.ts` and
    `/api/mlb/pitch-profile` are built and verified against real rows — what is

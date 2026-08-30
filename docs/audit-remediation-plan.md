@@ -3803,6 +3803,57 @@ previously wrote +3,000 and +752.
 
 ---
 
+### Phase 6 — 2026-08-30 (IN PROGRESS)
+
+**Track A COMPLETE. Track B partly. Track C started. Not finished.**
+Commits `9bf9580`..`522eaea`. TS tests 48 -> 106, plus 8 new Python tests.
+`tsc` clean, `npm run build` passes.
+
+| Task | State | Evidence |
+|---|---|---|
+| 6.1 `unitGrades` | **DONE** | 17 tests, 4 fault-injected. MLB grades Hitting/Pitching off ranked Statcast — the type, not the sport, was why it said "MLB has no grading model". |
+| 6.1b NBA/NHL `statGroups`+`unitGrades` | **DONE** | Season rollup; NHL 32/32 and NBA 30/30 team ids join, verified live. |
+| 6.2 collapse `statComparison` | **DONE** | `bars` and `StatComparisonRow` deleted; MLB emits ranked rows via the existing `teamSeasonStatRows`. |
+| 6.2b NBA/NHL/tennis `statComparison` | **DONE** | Tennis groups by `athlete_id` (all its rows have a null `team_id`); 60/60 sampled subject ids join after stripping `espn:tennis:`. |
+| 6.2 `CLAUDE.md` §4 corrected | **DONE** | Two of three examples were stale; a test now fails if §4 cites a field that no longer exists. |
+| 6.3 the six roles | **DONE** (types + MLB's two fillable) | Six NEW fields, not the rename the task described. |
+| 6.4 `components/charts/` | **DONE** | 11 primitives + `ChartFrame` + `useChartCrosshair`; both shipped bugs fixed and proven by RENDERING, both fault-injected. |
+| 6.5 `pick_history` | **DONE — no work needed** | Diagnosed, premise overturned, operator chose "let it accrue". |
+| 6.6 Statcast ungroup | **BUILT; backfill paused** | Table, Python ingester, job, read path, 8 tests. Paused at 156,796 rows through 2024-04-18. |
+| 6.11 NBA/NHL book lines | **RE-SCOPED — not a purchase** | NBA is covered and out of season; NHL has no odds job at all. Untestable until October. |
+| 6.12 tennis match stats | **DONE — dropped** | ESPN's tennis `summary?event=` returns HTTP 400, confirmed against a real match id. All six stats cut. |
+| 6.13 Player Detail | **STARTED** | The six roles render (`PlayerRoleSections`, no sport check). Verified in a browser. |
+
+**THE PLAN'S OWN TASK TEXT WAS WRONG FOUR TIMES**, each found only by
+measuring: 6.2 ("all seven sports populate `rankings`" — only MLB and NFL do,
+so the collapse filled nothing and the real work was building the ranks);
+6.3 ("rename four fields" — they do not exist); 6.5 (see its entry); and 6.16
+("`/api/props/line-history` has no frontend consumer" — that route does not
+exist). **Re-measure a task's stated premise before building on it.**
+
+**THE DEFECT THIS PHASE PAID FOR:** *a value import from a database module
+into anything a client component reaches bundles `pg` for the browser and
+breaks every page — and `tsc` plus 103 unit tests all pass it.* Introduced
+twice, in 6.1 and 6.2b, and survived six commits because another session's
+`next dev` held `.next/` so no build could run. Fixed by splitting the pure
+parts out (`seasonAggregateShapes.ts`, `nflUnitGrades.ts`) and guarded by
+`tests/client-bundle-boundary.test.ts`, which checks the import FORM because
+`import type` is erased and a value import is not. **`npm run build` is now
+required before claiming any UI work is done.**
+
+Two more wrong-number-renders-cleanly defects, both caught by looking at data
+rather than field names: `estimated_woba` is not null on pitches not put in
+play (218 zeroes among 332), so a naive zone average reads .281 against a
+true .367; and only 22% of balls in play carry one at all, so the count shown
+beside an xwOBA must be `xwobaSample`, not `ballsInPlay`.
+
+**NOT DONE:** 6.7-6.10 (sourcing; all four endpoints confirmed reachable),
+the rest of 6.13/6.14/6.15, and Track D. **6.20 and 6.22 cannot complete in
+Phase 6** — they need a graded record that does not exist until the seasons
+start; operator agreed to move them to Phase 7. 6.18 skipped by the operator
+(remains a launch blocker). 6.24's book limits stay out: operator declined
+the 5.2 spend.
+
 ### Phase 5 — 2026-08-29
 
 **GATE RESULT: PASS** (2026-08-29), on the re-run after G1's first pass
