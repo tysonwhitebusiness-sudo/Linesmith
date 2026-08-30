@@ -96,22 +96,26 @@ the crosswalk reads the database.
    `ingestNbaShotsJob`, `ingestNflPbpJob` and `ingestStatcastPitchesJob`.
    Breadcrumbs live in `snapshot_cache` under `python-harness:job-run:%`,
    **not** a `job_run_log` table; that table does not exist.
-3. **6.13 IS NOT DONE — see `docs/player-detail-sourcing-gaps.md`.** All 48
+3. **READ `docs/phase6-completion-plan.md` — it is the authoritative list of
+   what is left in Phase 6**, all three pages measured against their boards.
+   Operator accepted the four remaining sourcing gaps on 2026-08-30 (NFL/CFB
+   route mix and coverage); nothing waits on them.
+4. **6.13 IS NOT DONE — see `docs/player-detail-sourcing-gaps.md`.** All 48
    cells (8 sports x 6 roles) measured 2026-08-30: **14 render, 21 are buildable
    with no new data, 4 need a free backfill, 9 need a source the operator is
    looking for.** The task was marked complete on its own say-so; its gate
    ("every sport's page renders every block or an honest empty state, walked per
    sport per page") was never run.
-4. **6.15 Game Detail, eight sports.** Untouched, and now the largest single
+5. **6.15 Game Detail, eight sports.** Untouched, and now the largest single
    item. **Measure the board against what `GameDetail.tsx` already renders before
    building** — this plan's premises have now been wrong **eight** times, twice
    in this session alone on 6.14's board.
-5. **6.14's remaining blocks.** Only the rating block is built. The board's other
+6. **6.14's remaining blocks.** Only the rating block is built. The board's other
    verdicts were already done (`unitGrades`) or stale; re-measure before trusting
    the rest of its twenty.
-6. **6.10's last two thirds** — `park_factors` beyond MLB, and `game_sim_cache`.
-7. **6.21 user-facing CLV**, then **6.24**.
-8. **Backfill the ingest tables** when the seasons start. Operator commands, all
+7. **6.10's last two thirds** — `park_factors` beyond MLB, and `game_sim_cache`.
+8. **6.21 user-facing CLV**, then **6.24**.
+9. **Backfill the ingest tables** when the seasons start. Operator commands, all
    resumable, none scheduled:
    - `./.venv/Scripts/python.exe -u src/nhl_shots.py backfill 20242025`
    - `./.venv/Scripts/python.exe -u src/nba_shots.py backfill 2024-10-22 2025-04-13`

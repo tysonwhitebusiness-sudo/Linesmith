@@ -12,6 +12,39 @@ data that exists **today, in this database**.
 Every number here came from a live query on 2026-08-30. Re-measure before acting
 — that is this repo's standing rule and it has caught eight wrong premises so far.
 
+## RESOLVED 2026-08-30 — operator decisions and the attached repos
+
+**Five of the nine SOURCE cells are closed or waived. Four remain and are ACCEPTED
+as permanent gaps — they render an honest empty state and Phase 6 does not wait
+on them.**
+
+| Cell | Outcome |
+|---|---|
+| Tennis `usageMix`, `spatialGrid` | **Waived** by operator. Point-level data stays cut. |
+| Soccer `conditions` | **Waived** by operator. No roof list. |
+| Golf `usageMix`, `spatialGrid` | **CLOSED** — `golfR`'s bundled `data/pbp/` carries `lie`, `distance`, `left` (proximity), `from_x/y/z`. 40 tournaments, 333 MB, 2020-2023. Becomes an ingest task, not a sourcing one. |
+| **NFL `usageMix`, NFL `binarySplit`, CFB `usageMix`, CFB `spatialGrid`** | **ACCEPTED GAPS.** Route running and coverage need a tracking feed. |
+
+**What the attached repos actually contained**, measured rather than assumed:
+
+- **`ngs-data`** — an 11 KB scaffold; data lives at `nflverse/nflverse-data`
+  releases (MIT). `R/ngs_functions.R` lists every column: three WEEKLY
+  per-player aggregates (passing/rushing/receiving). **No route running, no
+  coverage shell.** Does not close the NFL cells. Worth knowing it does carry
+  `percent_attempts_gte_eight_defenders` (a real stacked-box split) and
+  `avg_separation`/`avg_cushion`.
+- **`cfbfastR-cfb-data`** — 1.5 GB of real data. Play-by-play has `target` and
+  `receiver_player_id` but **no pass location, no pass direction, no air
+  yards** — only field position. Does not close the CFB target map.
+- **`golfR`** — its scraper is DEAD: `tourcastdata.pgatour.com` no longer
+  resolves (verified against a control — `www.pgatour.com` returns 200 from the
+  same machine). `orchestrator.pgatour.com` returns 503, so PGA's current
+  GraphQL API exists and a modern path would need endpoint rediscovery. **But
+  the repo ships the data**, which is what closes the golf cells. No LICENSE
+  file — all-rights-reserved by default; the underlying data is PGA Tour's.
+- **`golfastr`** — ESPN leaderboards, hole scores and AGGREGATE strokes-gained.
+  Not shot-level. Largely duplicates what this repo already pulls.
+
 ## Legend
 
 | | Meaning |
