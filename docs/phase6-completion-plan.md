@@ -21,6 +21,46 @@ They render an honest empty state and nothing waits on them.
 
 ---
 
+## PROGRESS — 2026-08-30, autonomous build session
+
+**Player Detail roles: 14/48 -> 34/48.** Four sports now fill all six.
+
+| Sport | Roles | Remaining, and why |
+|---|---|---|
+| MLB | **6/6** | — |
+| NBA | **6/6** | — |
+| NHL | **6/6** | — |
+| Soccer | 5/6 | `conditions` — waived by operator |
+| NFL | 4/6 | `usageMix`, `binarySplit` — accepted gaps (tracking feed) |
+| CFB | 4/6 | `usageMix`, `spatialGrid` — accepted gaps |
+| Tennis | 2/6 | `opponentUnit` needs the opponent resolved through the season index; `conditions` needs the event on `subjectMeta`; two waived |
+| Golf | 1/6 | `opponentUnit`/`conditions` need field + course + weather plumbed to a hook; `usageMix`/`spatialGrid` need the golfR import; `careerH2H` NOT BUILDABLE — `golf_tournaments` holds three events, so there is no multi-year course history |
+
+**Backfills: DONE.** `nba_shot_events` 195 -> 219,873 rows / 1,234 games.
+`nhl_shot_events` 102 -> 73,291 / 633. Both carry `shot_type`, which closed
+each sport's `usageMix` as well as its `spatialGrid`.
+
+**Game Detail: `rankings` and `unitGrades` now fill for NBA and NHL** from the
+same `seasonRanks` rollup already feeding `statComparison` in those files.
+
+**Two things measurement stopped me building:**
+- `propsForGame` is NOT a gap. It is a flat every-candidate list that MLB skips
+  because `LeftRail` covers it — and `LeftRail` renders for every sport.
+  Filling it on five sports would have added five redundant copies of a list
+  already on screen.
+- CFB and soccer `unitGrades` are correctly null: they are null on those
+  sports' TEAM pages too, because neither has a league-wide ranked aggregate.
+  Needs a 6.1b-style rollup, not wiring.
+
+**Still open on Game Detail:** `matchup` for NBA/NHL/tennis (`GameMatchupData`
+is MLB/NFL-shaped — `pitching`, `BatterPitcherMatchupProps`, NFL player cards —
+so this is a design question, not wiring); `model`/`pickLockAt`/`venue` across
+six sports; `bookGrid` and `matchupKey`, which exist nowhere.
+
+**Still open on Team Detail:** the per-sport block walk. Not started.
+
+---
+
 ## A · Player Detail (6.13) — REOPENED
 
 Measured: **48 cells (8 sports × 6 roles).** 14 render today.
