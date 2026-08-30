@@ -3822,7 +3822,55 @@ Commits `9bf9580`..`522eaea`. TS tests 48 -> 106, plus 8 new Python tests.
 | 6.6 Statcast ungroup | **BUILT; backfill paused** | Table, Python ingester, job, read path, 8 tests. Paused at 156,796 rows through 2024-04-18. |
 | 6.11 NBA/NHL book lines | **RE-SCOPED — not a purchase** | NBA is covered and out of season; NHL has no odds job at all. Untestable until October. |
 | 6.12 tennis match stats | **DONE — dropped** | ESPN's tennis `summary?event=` returns HTTP 400, confirmed against a real match id. All six stats cut. |
-| 6.13 Player Detail | **STARTED** | The six roles render (`PlayerRoleSections`, no sport check). Verified in a browser. |
+| 6.13 Player Detail | **STARTED** | The six roles render (`PlayerRoleSections`, no sport check). MLB fills 4 of 6; CFB/NBA/NHL/soccer fill `binarySplit`. Verified in a browser. |
+
+**SECOND SESSION, 2026-08-30.** Commits `9b0e1a1`..`c77ffb9`. Tests 106 -> 126.
+`tsc` clean, `npm run build` passes, every claim below checked in a browser
+against live rows.
+
+| Task | State | Evidence |
+|---|---|---|
+| 6.6 backfill | **RESUMED, running** | 156,796 -> 1.24M rows. 2024 complete (746,576 through 10-30); 2025 through 07-18. |
+| 6.6 read path WIRED | **DONE** | MLB's `usageMix` and `spatialGrid` render from `mlb_pitch_events`; `pitchProfileShapes.ts` split out first so the adapter never value-imports `pgAll`. |
+| 6.13 `binarySplit` | **DONE for 4 sports** | CFB/NBA/NHL/soccer, one shared `toVenueBinarySplit`. NBA/NHL untestable until October (zero candidates, out of season). |
+| `StatTable.lowerIsBetter` | **REMOVED** | Shipped in 6.4 as `r.lowerIsBetter ? raw : raw` — both branches identical, and `RoleStat` documents it as "flips the heat". |
+
+**THE "DUPLICATE PYTHON PROCESS" IN THE HANDOFF IS NOT REAL.** `.venv/Scripts/`
+`python.exe` is a 274 KB redirector stub that execs the base interpreter as a
+CHILD: PID 5080 held 4.6 MB / 1 thread / 0s CPU, its child 12028 held 91.8 MB /
+10 threads / 3.1s CPU, same creation second. One logical process, no doubled
+request rate — which is also why killing one killed both. Same for the
+`harvester_scrape.py` pair. Stop worrying about it.
+
+**THREE MORE WRONG-NUMBER-RENDERS-CLEANLY DEFECTS, and neither `tsc` nor any
+test I could have written first would have caught two of them — it took opening
+the page.**
+
+1. **The strike zone counted zones it did not draw.** Jackson Merrill's real
+   2026 profile has all its expected-wOBA rows in Savant's OUTSIDE quadrants
+   (11-14). The 3x3 correctly excluded them, so the card drew nine cells reading
+   "no data" under a caption saying "n=3". A test that summed the same set the
+   builder summed would have agreed with the bug.
+2. **Two cards, one statistic, two conventions.** The grid printed `.717` and
+   the mix printed `0.796`, because the component fell back to a plain
+   `toFixed`. `UsageMixRole.valueFormat` now exists for the reason
+   `SpatialGridRole.format` is required. It cannot be hardcoded to rate3 —
+   NFL's yards per target is 14.8, which is the "4.800" bug itself.
+3. **A non-empty side is not a balanced one.** Callum Wilson's EPL card
+   rendered "Home 0 (n=5) vs Away 28 (n=267)" straight through a both-sides-
+   non-empty check.
+
+**UPSTREAM DEFECT FOUND, NOT FIXED — needs its own task.**
+`lib/sports/soccer/understat.ts:306` sets `isHome` by comparing each historical
+fixture's home team against the player's **current** team title, so every match
+at a previous club records as away. On the live EPL slate the 25% ratio guard
+suppresses **289 of 593** otherwise-eligible candidates. The earlier "13 of 303
+subjects have zero home entries" reading badly understated it. The guard stops
+it reaching a page; it does not fix the data, and the same `isHome` already
+drives every gamelog's "vs/@" label.
+
+**STILL NOT DONE:** the Render worker deploy (operator call — see `CURRENT.md`
+§2), 6.7-6.10, the rest of 6.13/6.14/6.15, and Track D.
 
 **THE PLAN'S OWN TASK TEXT WAS WRONG FOUR TIMES**, each found only by
 measuring: 6.2 ("all seven sports populate `rankings`" — only MLB and NFL do,
