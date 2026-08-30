@@ -24,12 +24,35 @@ import type { LineHistoryResult } from '@/lib/odds/props/lineHistory';
 /**
  * One book's prices on the shared bucket domain, as `SeriesChart` wants them.
  *
- * A BUCKET THIS BOOK DID NOT QUOTE BECOMES `NaN`, NOT A CARRIED-FORWARD PRICE.
- * `SeriesChart` breaks its line on a non-finite entry instead of interpolating
- * across it, so a gap in the data reads as a gap. Carrying the last price
- * forward would draw a flat segment asserting the price held steady, when what
- * actually happened is that nobody recorded one — a claim the data does not
- * support, made in the most confident visual form available.
+ * ============ THIS IS A STEP SERIES, AND THAT IS NOT A STYLE CHOICE =========
+ *
+ * `prop_odds_history` is **log-on-CHANGE**, not a sampled series.
+ * `db.py:write_prop_odds` looks up the prior price for the exact key and
+ * inserts only when it differs — in its own words, "a repeat of the same price
+ * on the next cycle is not a history point". The current-state table
+ * `prop_odds` is what gets written every cycle regardless.
+ *
+ * So a bucket with no row for a book means **the price did not change**. It
+ * does NOT mean nobody looked.
+ *
+ * The first version of this function returned `NaN` for those buckets so the
+ * line would break, on the reasoning that "a gap in the data should read as a
+ * gap" — a decent general principle, applied without checking how the writer
+ * behaves. Against a change-log it is simply wrong: it drew a shattered line
+ * for a price that was quietly stable, which is the opposite of what happened.
+ * Measured while catching it: `prop_odds` had 117 writes in fifteen minutes
+ * while `prop_odds_history` had none, because nothing moved.
+ *
+ * `NaN` is still correct BEFORE a book's first observation in the window —
+ * there genuinely was no price on record then, and carrying one backwards
+ * would invent one.
+ *
+ * KNOWN LIMIT: a change-log cannot distinguish "unchanged" from "this book
+ * withdrew the market". Both look like silence. Holding the last price is the
+ * right reading for the overwhelmingly common case and is what the log's own
+ * semantics assert; a withdrawn market would need `prop_odds` (current state)
+ * to detect, which this chart does not read.
+ * ===========================================================================
  *
  * Exported so the test CALLS this rather than re-implementing it beside the
  * component; a mirror of a rule agrees with that rule's bugs.
@@ -39,9 +62,14 @@ export function alignToBuckets(
   buckets: readonly string[],
 ): number[] {
   const byT = new Map(points.map((p) => [p.t, p.americanOdds]));
+  let held: number | null = null;
   return buckets.map((t) => {
     const v = byT.get(t);
-    return v == null ? Number.NaN : v;
+    // `undefined` means no row in this bucket -> unchanged, so hold.
+    // An explicit `null` price is a real row with no usable number; it does not
+    // update what is held, and before any observation there is nothing to hold.
+    if (v != null) held = v;
+    return held == null ? Number.NaN : held;
   });
 }
 
@@ -57,13 +85,18 @@ export function LineMovementCard({
   marketLabel: string;
 }) {
   const series = data?.series ?? [];
-  // Books with a single point cannot show movement. Dropping them keeps the
-  // background from filling with flat dots that read as agreement.
-  const usable = series.filter((s) => s.points.length >= 2);
-
-  if (!loading && usable.length === 0) return null;
-
   const buckets = data?.buckets ?? [];
+
+  // A BOOK WITH ONE OBSERVATION IS NOT AN EMPTY BOOK. Under a change-log it
+  // set a price once and never moved it, which is a real and useful thing to
+  // see beside a book that did move — an earlier `points.length >= 2` filter
+  // here silently hid every stable book, which is most of them.
+  //
+  // What genuinely cannot be drawn is a single bucket: one x value is a dot,
+  // not a series. That is the common state early in a game's life, before any
+  // price has changed at all, and it renders nothing.
+  const usable = series;
+  if (!loading && (buckets.length < 2 || usable.length === 0)) return null;
   const align = (bookmaker: string): number[] =>
     alignToBuckets(series.find((s) => s.bookmaker === bookmaker)?.points ?? [], buckets);
 
@@ -116,6 +149,7 @@ export function LineMovementCard({
         {others.length > 0 ? (
           <p className="mt-1 text-[9.5px] text-ink-faint">
             {subject?.bookmaker} in front, {others.length} other {others.length === 1 ? 'book' : 'books'} behind.
+            {' '}A flat line is a book that has not moved, not a book with no data.
           </p>
         ) : null}
       </div>

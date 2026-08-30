@@ -11,6 +11,7 @@ import { useLiveGame } from './useLiveGame';
 import { useTeamStatcast } from './useTeamStatcast';
 import { useMlbPitchProfile } from './useMlbPitchProfile';
 import { useLineHistory } from './useLineHistory';
+import { candidateCategoryToSide, candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import { LineMovementCard } from './LineMovementCard';
 import { StatRankRow } from './StatRankRow';
 import { PlayerRoleSections } from './PlayerRoleSections';
@@ -1030,11 +1031,21 @@ export function PlayerDetail({
   // Price movement for the active prop (6.16). Sport-agnostic — every sport
   // writes `prop_odds_history` through the same Python jobs — and gated by the
   // arguments going undefined rather than by a branch on the hook call.
+  //
+  // `active.dimension` IS NOT THE MARKET KEY. The candidate dimension is this
+  // app's own vocabulary and `prop_odds_history.market_key` is the canonical
+  // provider one; most coincide, but MLB's `hit-in-game` is stored as `hits`,
+  // and passing the dimension straight through returned an empty series for
+  // every hits prop while looking entirely healthy. `candidateDimensionToMarketKey`
+  // and `candidateCategoryToSide` are the existing translators — the same pair
+  // the MLB adapter already uses to find a candidate's real prices.
+  const lineHistoryMarketKey = active ? (candidateDimensionToMarketKey(active.dimension) ?? undefined) : undefined;
+  const lineHistorySide = active ? (candidateCategoryToSide(active.category ?? '') ?? 'over') : 'over';
   const lineHistory = useLineHistory(
     typeof meta.gamePk === 'number' || typeof meta.gamePk === 'string' ? String(meta.gamePk) : undefined,
     active?.subjectId,
-    active?.dimension,
-    directionMark(active?.category ?? '') === 'U' ? 'under' : 'over',
+    lineHistoryMarketKey,
+    lineHistorySide,
   );
 
   // Universal matchup card's league-wide defense-allowed leaderboards — one

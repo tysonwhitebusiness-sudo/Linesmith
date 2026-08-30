@@ -87,30 +87,57 @@ test('a short window still gets fine buckets', () => {
 
 // --- the component's only real logic --------------------------------------
 
-test('a bucket a book did not quote becomes NaN, never a carried-forward price', async () => {
-  const { alignToBuckets } = await import('../components/LineMovementCard');
-  const buckets = ['t1', 't2', 't3', 't4'];
-  const points = [
-    { t: 't1', americanOdds: -120 },
-    // t2 and t3: this book quoted nothing.
-    { t: 't4', americanOdds: -150 },
-  ];
-  const aligned = alignToBuckets(points, buckets);
+/**
+ * `prop_odds_history` is LOG-ON-CHANGE (`db.py:write_prop_odds`: "a repeat of
+ * the same price on the next cycle is not a history point"), so the series is a
+ * STEP function. A bucket with no row means the price held.
+ *
+ * The first version of these tests asserted the opposite — that a missing
+ * bucket must be `NaN` so the line breaks. That is a reasonable-sounding
+ * principle and it is wrong against a change-log: it shatters the line for a
+ * price that was quietly stable. Measured while catching it: `prop_odds` took
+ * 117 writes in fifteen minutes while `prop_odds_history` took none, because
+ * nothing moved.
+ */
 
-  assert.equal(aligned[0], -120);
-  assert.equal(aligned[3], -150);
-  // THE POINT: carrying -120 across t2/t3 would draw a flat segment asserting
-  // the price held steady, when what happened is nobody recorded one.
-  // `SeriesChart` breaks its line on a non-finite entry, so the gap shows.
-  assert.ok(Number.isNaN(aligned[1]), 'a missing bucket must not inherit the previous price');
-  assert.ok(Number.isNaN(aligned[2]));
-  assert.equal(aligned.length, buckets.length, 'every book must span the shared domain');
+test('an unchanged bucket holds the last price — the log records only changes', async () => {
+  const { alignToBuckets } = await import('../components/LineMovementCard');
+  const aligned = alignToBuckets(
+    [
+      { t: 't1', americanOdds: -120 },
+      // t2, t3: no row. Against a change-log that means -120 still stood.
+      { t: 't4', americanOdds: -150 },
+    ],
+    ['t1', 't2', 't3', 't4'],
+  );
+  assert.deepEqual(aligned, [-120, -120, -120, -150], 'silence in a change-log means unchanged, not unknown');
 });
 
-test('a null price is a gap too, not a zero', async () => {
+test('nothing is carried BACKWARDS before a book had a price', async () => {
   const { alignToBuckets } = await import('../components/LineMovementCard');
-  const aligned = alignToBuckets([{ t: 't1', americanOdds: null }], ['t1']);
+  const aligned = alignToBuckets([{ t: 't3', americanOdds: -120 }], ['t1', 't2', 't3', 't4']);
+  // There genuinely was no price on record at t1/t2. Holding one backwards
+  // would invent a quote, which is the mistake the step rule must not become.
+  assert.ok(Number.isNaN(aligned[0]), 'no price existed before the first observation');
+  assert.ok(Number.isNaN(aligned[1]));
+  assert.equal(aligned[2], -120);
+  assert.equal(aligned[3], -120, 'and it holds forward from there');
+});
+
+test('a null price does not become 0, and does not overwrite what is held', async () => {
+  const { alignToBuckets } = await import('../components/LineMovementCard');
   // American odds of 0 is not a price; plotting one would put a point on the
   // axis where no quote existed.
-  assert.ok(Number.isNaN(aligned[0]), 'a null price must not become 0');
+  assert.ok(Number.isNaN(alignToBuckets([{ t: 't1', americanOdds: null }], ['t1'])[0]));
+  const held = alignToBuckets(
+    [{ t: 't1', americanOdds: -120 }, { t: 't2', americanOdds: null }],
+    ['t1', 't2'],
+  );
+  assert.deepEqual(held, [-120, -120], 'a row with no usable number must not blank a known price');
+});
+
+test('every book spans the shared domain', async () => {
+  const { alignToBuckets } = await import('../components/LineMovementCard');
+  const buckets = ['t1', 't2', 't3'];
+  assert.equal(alignToBuckets([{ t: 't2', americanOdds: 100 }], buckets).length, buckets.length);
 });
