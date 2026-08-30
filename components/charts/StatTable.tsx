@@ -27,11 +27,24 @@ export interface StatTableRow {
   label: string;
   value: number | null;
   format?: Formatter;
-  /** Drives the bar. Omit for a row that should render without one. */
+  /**
+   * Drives the bar, and is the ONLY thing that does — the bar length is
+   * `1 - (rank-1)/(poolSize-1)`, so a row without a rank renders no bar at all.
+   *
+   * THERE IS DELIBERATELY NO `lowerIsBetter` HERE, unlike `HeatGrid` and
+   * `SplitDumbbell`, whose heat comes from the VALUE and genuinely needs to
+   * know which end is good. A rank already carries its direction: every rank
+   * source in this codebase counts 1 as best, including the four
+   * `teamDefenseAllowed` modules, which rank fewest-allowed first precisely so
+   * this stays true. The prop used to exist and did nothing — the line read
+   * `r.lowerIsBetter ? raw : raw`, both branches identical, which is worse than
+   * absent because callers passed it believing it worked.
+   *
+   * A source that ranks the other way round must invert its own rank before it
+   * gets here, where the inversion is visible next to the data it applies to.
+   */
   rank?: number | null;
   poolSize?: number | null;
-  /** Lower is better — inverts the bar, never the number. */
-  lowerIsBetter?: boolean;
   /** Small secondary text under the label (sample size, window). */
   sub?: string;
 }
@@ -66,8 +79,9 @@ export function StatTable({ rows, caption, showRank = true, emptyMessage, classN
           {usable.map((r) => {
             const f = r.format ?? fmts.two;
             const ranked = r.rank != null && r.poolSize != null && r.poolSize > 1;
-            const raw = ranked ? 1 - (r.rank! - 1) / (r.poolSize! - 1) : null;
-            const t = raw == null ? null : r.lowerIsBetter ? raw : raw;
+            // Rank-driven, and rank 1 is best everywhere in this codebase — see
+            // `StatTableRow.rank` for why there is no direction flag here.
+            const t = ranked ? 1 - (r.rank! - 1) / (r.poolSize! - 1) : null;
             const pct = t == null ? 0 : Math.round(t * 100);
             return (
               <tr key={r.key} className="border-b border-line-hair last:border-b-0">

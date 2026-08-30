@@ -78,7 +78,10 @@ function OpponentUnitSection({ role }: { role: OpponentUnitRole }) {
           format: (v: number) => v.toFixed(s.decimals),
           rank: s.rank ?? null,
           poolSize: s.poolSize ?? null,
-          lowerIsBetter: s.lowerIsBetter,
+          // `RoleStat.lowerIsBetter` is NOT forwarded: StatTable's bar is
+          // rank-driven and a rank already carries its direction. See
+          // `StatTableRow.rank`. HeatGrid and SplitDumbbell below do take it,
+          // because their heat comes from the value.
           sub: s.sub,
         }))}
         emptyMessage={role.emptyMessage}

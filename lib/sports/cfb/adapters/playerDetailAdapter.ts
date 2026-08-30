@@ -18,6 +18,8 @@ import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import type { PropOddsRow } from '@/lib/db/client';
+import { marketText } from '@/components/MarketLabel';
+import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
 import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 // Type-only import — `teamDefenseAllowed.ts` itself pulls in `lib/db/client`
 // (Postgres, server-only), so only its TYPE is safe to bring into this
@@ -157,6 +159,18 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
   const measured = categoriseByLine(scoped, line);
   const wanted = wantOver ? OVER : UNDER;
 
+  // ---- Role 4 | binarySplit: home/away, off the `raw.isHome` this sport's
+  // history already carries but exposes through no filter chip.
+  // Over the FULL history, not `scoped` - this is a season-level fact, the
+  // same reason `windows.h2h` reads `active.history` rather than `measured`.
+  // Null unless BOTH venues have a real sample; see `venueSplit.ts` for the
+  // resolution defect that guard contains.
+  const binarySplit = toVenueBinarySplit({
+    measured: categoriseByLine(active.history, line),
+    wanted,
+    statLabel: marketText('cfb', active.dimension, 'compact'),
+  });
+
   const windows: WindowedStat5 = {
     l5: fixedWindow(measured, wanted, 5),
     l10: fixedWindow(measured, wanted, 10),
@@ -294,6 +308,7 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
       : null;
 
   return {
+    binarySplit,
     subject: {
       subjectId: active.subjectId,
       name: active.subjectName,
