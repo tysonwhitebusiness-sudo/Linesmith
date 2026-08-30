@@ -861,6 +861,60 @@ async def write_player_game_history(rows: list[PlayerGameHistoryInput]) -> int:
     return written
 
 
+async def write_mlb_pitch_events(rows: list) -> int:
+    """Phase 6.6 — one row per pitch, from Savant's ungrouped CSV.
+
+    Append-only and idempotent on UNIQUE (game_pk, at_bat_number,
+    pitch_number), so a date window can be re-fetched after an interruption
+    without duplicating anything. `RETURNING 1` gives the true inserted count
+    (ON CONFLICT rows do not come back), which is what keeps a backfill's
+    progress numbers honest rather than reporting re-covered days as new work.
+
+    Chunked for the same reason `write_player_game_history` is: the Postgres
+    wire protocol encodes a statement's parameter count as a SIGNED 16-bit
+    integer, so the real ceiling is 32,767 parameters, not 65,535. At 21
+    columns that is 1,560 rows; 1,400 leaves a genuine margin. This matters
+    here more than anywhere else in the file — a single week of pitches is
+    20,000-30,000 rows, so this path is ALWAYS chunked, never incidentally
+    under the limit the way the per-game writers were.
+    """
+    if not rows:
+        return 0
+    pool = await get_pool()
+    cols = 21
+    max_rows_per_stmt = 1400  # 29,400 parameters, under 32,767 with margin
+    written = 0
+    async with pool.acquire(timeout=60.0) as conn:
+        async with conn.transaction():
+            for start in range(0, len(rows), max_rows_per_stmt):
+                chunk = rows[start:start + max_rows_per_stmt]
+                params: list = []
+                tuples: list[str] = []
+                for i, r in enumerate(chunk):
+                    b = i * cols
+                    tuples.append("(" + ", ".join(f"${b+n}" for n in range(1, cols + 1)) + ")")
+                    params.extend([
+                        r.game_pk, r.at_bat_number, r.pitch_number, _to_date(r.game_date), r.season,
+                        r.pitcher_id, r.batter_id, r.p_throws, r.stand,
+                        r.pitch_type, r.zone, r.plate_x, r.plate_z,
+                        r.release_speed, r.launch_speed, r.launch_angle, r.estimated_woba,
+                        r.description, r.events, r.balls, r.strikes,
+                    ])
+                returned = await conn.fetch(
+                    "INSERT INTO mlb_pitch_events "
+                    "(game_pk, at_bat_number, pitch_number, game_date, season, "
+                    " pitcher_id, batter_id, p_throws, stand, "
+                    " pitch_type, zone, plate_x, plate_z, "
+                    " release_speed, launch_speed, launch_angle, estimated_woba, "
+                    " description, events, balls, strikes) "
+                    "VALUES " + ", ".join(tuples) +
+                    " ON CONFLICT (game_pk, at_bat_number, pitch_number) DO NOTHING RETURNING 1",
+                    *params,
+                )
+                written += len(returned)
+    return written
+
+
 async def player_game_history_done_events(sport: str, season: int) -> set[str]:
     """Every event_id already fully recorded for one (sport, season) — the
     resume primitive for the ~5hr historical backfill

@@ -37,6 +37,7 @@ import httpx
 
 import config
 import db
+import statcast_pitches
 import gameday
 from game_context import load_mlb_games, load_sport_games, load_tennis_games
 from job_runner import run_provider_specs
@@ -1246,6 +1247,23 @@ async def job_clv_summary(yield_fn=None) -> dict:
 # budget the way the old flat 3h/45min intervals did, gameday.py's tiering
 # does that job now. See measure_gameday_budget.py for the real worst-case
 # monthly cost this produces, checked before landing on 20min specifically.
+
+async def job_statcast_pitches(yield_fn=None) -> dict:
+    """Phase 6.6 — keep `mlb_pitch_events` current with the last few days.
+
+    NOT the backfill. The historical 2024-onwards sweep is an operator-run
+    command (`statcast_pitches.py backfill`) deliberately kept off the schedule:
+    it is a long multi-season pull, and the job loop is for recurring work.
+
+    3 days mirrors genericPlayerHistoryFreshnessJob's own LOOKBACK_DAYS, and
+    costs almost nothing when it re-covers ground: the write is idempotent on
+    (game_pk, at_bat_number, pitch_number), so a re-fetched day is one request
+    and zero inserts.
+    """
+    async with httpx.AsyncClient() as client:
+        return await statcast_pitches.ingest_recent(client, days=3, yield_fn=yield_fn)
+
+
 JOB_REGISTRY = [
     # Phase 0.2 — the one job whose absence let the database reach 3x the
     # Free tier ceiling. Daily is the right cadence: every rule's window is
@@ -1300,6 +1318,11 @@ JOB_REGISTRY = [
     # scheduled writer in either language's registry, only a TypeScript
     # read-through on snapshot rebuild. 6h: both are season-to-date figures
     # over every completed game, and neither moves meaningfully faster.
+    # Task 6.6 — pitch-level Statcast. Hourly: Savant publishes a game's
+    # pitches shortly after it ends, and a 3-day lookback means an hourly
+    # tick that finds nothing costs one request. Not more often than that,
+    # because this is a free public endpoint we do not own.
+    ("ingestStatcastPitchesJob", job_statcast_pitches, 60 * 60),
     ("maintainMlbParkFactorsJob", job_maintain_mlb_park_factors, 6 * 60 * 60),
     ("maintainMlbHrMatchupJob", job_maintain_mlb_hr_matchup, 6 * 60 * 60),
     # Moved from "inside every live golf page request" (adapter.ts) to a
