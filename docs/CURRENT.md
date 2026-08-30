@@ -1,6 +1,6 @@
 # CURRENT — pick up here
 
-**Phase 6 is IN PROGRESS.** Player Detail is furthest along: **36 of 48 role
+**Phase 6 is IN PROGRESS.** Player Detail is furthest along: **39 of 48 role
 cells fill, up from 14**, and four sports fill all six. Team Detail is nearly
 complete. **Game Detail is the largest thing left.** The gate has been walked
 for the five sports with live data and found four real defects.
@@ -19,7 +19,7 @@ Nineteen commits, `e4c2745`..`6553e4f`. **TS tests 197 → 251.** `tsc` and
 | Task | State |
 |---|---|
 | 6.8 nflverse PBP | **COMPLETE** — target map renders, 2025 backfilled. |
-| 6.13 Player Detail | **14/48 → 36/48 roles.** MLB, NBA, NHL at 6/6. |
+| 6.13 Player Detail | **14/48 → 39/48 roles.** MLB, NBA, NHL at 6/6; golf 5/6. |
 | golfR import | **DONE** — 1,033,752 shots; golf 1/6 → 3/6. |
 | 6.14 rating block | **BUILT** — `team_elo_history`'s 88,774 rows reach a page. |
 | NBA/NHL shot backfills | **DONE** — 195 → 219,873 and 102 → 73,291 rows. |
@@ -85,9 +85,10 @@ the loop skipped every case and compared an empty array to an empty array.
    `matchupKey` exist nowhere in the codebase.
 4. **MLB's game page has no `unitGrades`** though its team page does. Needs both
    teams' Statcast plumbed into `MlbGameDetailInput` — a hook change.
-5. **Golf's remaining roles** — `opponentUnit` (the field) and `conditions`
-   (course + weather) need `golf_tournaments`/`golf_round_scores` plumbed to a
-   hook. The shot-by-shot import is DONE.
+5. **Tennis `conditions`** is the last reachable player-detail cell — today's
+   surface needs the event on `subjectMeta`, which
+   `buildSyntheticPlayerCandidates` never sees. Everything else remaining is an
+   accepted gap, waived, or not buildable.
 6. **6.10's park factors and `game_sim_cache`**, then **6.21**, then **6.24**
    (scope the de-vig backtest with the operator first — it is open-ended).
 
