@@ -24,6 +24,21 @@ Trust §11 and `git log` over this file if they disagree.
 
 ## 1. What just happened
 
+**Most recent session (2026-08-29, design):** three per-sport design studies
+built and committed — Player, Team and Game Detail — plus a measured data-gap
+audit, plus **Phase 6 rewritten as the plan of record** in
+`docs/audit-remediation-plan.md` (24 tasks, four tracks). Two blocks were cut on
+operator instruction (officials, tennis point-level) and NBA/NHL shot
+coordinates approved. **No production code was written.** See §6.
+
+Two bugs were found in the shared chart primitives by *looking at rendered
+pages* — `zoneGrid` (MLB's number format hardcoded; NFL's 14.8 rendered as
+"4.800") and `rollingChart` (zero-based axis flattened a 1460-1590 Elo series).
+Both fixes live in `docs/design/build-lib.mjs` and **still need carrying into
+the real React primitives** — `chart-grammar.html` holds the unfixed originals.
+
+### Before that: the Phase 4 gate
+
 Phase 4's thirteen tasks were all implemented and marked done. The gate then
 found **five real defects in that "done" work**, four of them in code that had
 already passed its own VERIFY. Three needed operator decisions (Q38, Q39, Q40),
@@ -53,8 +68,15 @@ three are fault-injected — each fails by name when its target is removed.
 
 ## 2. What is running
 
-Nothing. No fit, no backfill, no gate script. Two `harvester_scrape.py` Windows
-scheduled tasks on their usual ~20-minute cycle.
+No fit, no backfill, no gate script, nothing this session started.
+
+**Seven** `harvester_scrape.py` Windows scheduled tasks are registered —
+`LinesmithOddsHarvester` plus `-cfb`, `-mlb`, `-nba`, `-nfl`, `-nhl`,
+`-soccer_epl` — on their usual ~20-minute cycle (`-mlb` was mid-run at handoff).
+*(This file previously said "two"; corrected 2026-08-29 by reading
+`Get-ScheduledTask`.)* A `next dev` server is also up, which holds Postgres
+pooler connections — see §4's note about the 15-connection cap before running
+anything DB-heavy.
 
 Worker live on the latest commit; the Q39 calibration is confirmed running in
 production from the worker's own logs.
