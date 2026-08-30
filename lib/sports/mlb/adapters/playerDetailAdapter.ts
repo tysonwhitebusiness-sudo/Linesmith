@@ -41,6 +41,7 @@ import {
   type WindowedStat,
 } from '@/lib/core/windowedStat';
 import { directionMark } from '@/components/MarketLabel';
+import { toRoleStat, type ConditionFact, type ConditionsRole, type OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import type { GameDetailGame, StatKeyDef } from '@/components/GameDetail';
 import type { TeamStatcastState } from '@/components/useTeamStatcast';
@@ -369,6 +370,30 @@ export interface PlayerDetailData {
     /** e.g. "WR" — appended as "ranked among {label}s" in the card header when any row carries a rank. */
     rankedAmongLabel?: string;
   } | null;
+
+  /**
+   * PHASE 6.3 — the six universal roles.
+   *
+   * `opponentUnit`, `usageMix`, `spatialGrid`, `binarySplit`, `conditions` and
+   * `careerH2H`. See `lib/sports/shared/playerRoles.ts` for the full argument;
+   * the short version is that pitch mix, strike zone and platoon splits are not
+   * MLB *concepts*, they are MLB's instance of roles every sport fills with its
+   * own content — so one spine, filled eight ways, rather than seven sports
+   * looking at fields named after the eighth.
+   *
+   * Every role is independently nullable and every one carries its own title,
+   * labels, units and formatting from the sport's adapter. The component
+   * renders a heading and a shape; it never learns what a strike zone is.
+   *
+   * Spread rather than nested so a role reads as `data.binarySplit`, matching
+   * every other slot on this interface.
+   */
+  opponentUnit?: import('@/lib/sports/shared/playerRoles').OpponentUnitRole | null;
+  usageMix?: import('@/lib/sports/shared/playerRoles').UsageMixRole | null;
+  spatialGrid?: import('@/lib/sports/shared/playerRoles').SpatialGridRole | null;
+  binarySplit?: import('@/lib/sports/shared/playerRoles').BinarySplitRole | null;
+  conditions?: import('@/lib/sports/shared/playerRoles').ConditionsRole | null;
+  careerH2H?: import('@/lib/sports/shared/playerRoles').CareerH2HRole | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -753,6 +778,53 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   // ---- Hero rank prefix (PlayerDetail.tsx:143-145, 1259-1264) ----
   const ownStatcastSummary = ownStatcastSummaryFull;
 
+  // ---- Phase 6.3: the six universal roles, MLB's instances ----
+  // Two are filled from data this adapter already has; the other four need
+  // sourcing that does not exist yet and are left null, which renders nothing.
+  // That is the rule working, not a gap being hidden:
+  //   - `usageMix` (pitch mix) and `spatialGrid` (strike zone) both need
+  //     PITCH-LEVEL Statcast. `savant.ts` calls the pitch-level endpoint but
+  //     passes `group_by: 'name'`, collapsing it to one season row per player.
+  //     Task 6.6 ungroups it into its own table; these fill from that.
+  //   - `binarySplit` (vs LHP/RHP) needs a platoon split we do not store.
+  //   - `careerH2H` (vs this pitcher) needs batter-vs-pitcher history, same.
+  const opposingStarterStats = (meta.opposingStarterStats as OpposingStarterStat[] | undefined) ?? [];
+  const opponentUnit: OpponentUnitRole | null =
+    typeof meta.opposingStarter === 'string' && meta.opposingStarter.length > 0
+      ? {
+          title: 'Opposing starter',
+          name: meta.opposingStarter,
+          subtitle: typeof meta.opposingHand === 'string' ? `${meta.opposingHand}HP · allows` : 'Allows',
+          logoUrl: opponentId != null ? mlbLogoUrl(opponentId) : undefined,
+          stats: opposingStarterStats.map((st) => toRoleStat(st)),
+          emptyMessage: 'No Statcast profile for this starter yet.',
+        }
+      : null;
+
+  // Weather and first pitch are real and already resolved. `impact` stays
+  // absent: MLB's `park_factors` are computed per venue, not per game, and
+  // attaching an unverified multiplier to a specific matchup would be exactly
+  // the fabrication the role's own doc comment forbids.
+  const roleWeather = active.context?.weather ?? null;
+  const conditionFacts: ConditionFact[] = [];
+  if (todaysGame?.game?.firstPitch) {
+    conditionFacts.push({ key: 'firstPitch', label: 'First pitch', value: String(todaysGame.game.firstPitch) });
+  }
+  if (roleWeather?.tempF != null) {
+    conditionFacts.push({ key: 'temp', label: 'Temperature', value: `${roleWeather.tempF}°F` });
+  }
+  if (roleWeather?.windMph != null) {
+    conditionFacts.push({
+      key: 'wind',
+      label: 'Wind',
+      value: `${roleWeather.windMph} mph${roleWeather.windDir ? ` ${roleWeather.windDir}` : ''}`,
+    });
+  }
+  const conditions: ConditionsRole | null =
+    conditionFacts.length > 0
+      ? { title: 'Conditions', facts: conditionFacts, emptyMessage: 'No venue conditions available.' }
+      : null;
+
   return {
     subject: {
       subjectId: active.subjectId,
@@ -786,6 +858,13 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     seasonStatsCard: null,
     golfFormHoles: null,
     nflSeasonStats: null,
+    opponentUnit,
+    conditions,
+    // See the roles block above for why these four are null today.
+    usageMix: null,
+    spatialGrid: null,
+    binarySplit: null,
+    careerH2H: null,
     liveLineTracker: {
       subjectId: active.subjectId,
       sport: 'mlb',
