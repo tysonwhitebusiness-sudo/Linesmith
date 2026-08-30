@@ -77,8 +77,10 @@ const HISTORY_FIELD: Record<string, (m: { goals: number; shots: number; assists:
 interface NormalizedMatch {
   matchId: string;
   date: string;
-  opponent: string;
-  isHome: boolean;
+  /** `null` when the player's club that season could not be resolved — see `understat.ts`. */
+  opponent: string | null;
+  /** `null` means NOT DETERMINABLE. It is not `false`, and must never be coerced to it. */
+  isHome: boolean | null;
   goals: number;
   shots: number;
   assists: number;
@@ -96,7 +98,13 @@ function toHistoryEntries(matches: NormalizedMatch[], marketKey: string, startin
       period: i + 1,
       result: String(value),
       category: value > startingLine ? 'over' : 'under',
-      periodLabel: `${shortDate(m.date)} ${m.isHome ? 'vs' : '@'} ${m.opponent}`,
+      // `isHome` is now three-valued. An unknown venue prints neither "vs" nor
+      // "@" rather than defaulting to "@", which is what the old two-valued
+      // read did for every match a player played before their latest transfer.
+      periodLabel:
+        m.opponent == null
+          ? shortDate(m.date)
+          : `${shortDate(m.date)} ${m.isHome == null ? 'v' : m.isHome ? 'vs' : '@'} ${m.opponent}`,
       // Real regression found while building the matchup/FORM cards
       // (2026-08-23): this is Understat/ASA's own opponent TEAM NAME
       // ("Newcastle United"), never an ESPN abbreviation despite the field's
@@ -110,8 +118,13 @@ function toHistoryEntries(matches: NormalizedMatch[], marketKey: string, startin
       // `opponentLogoUrl` (2026-08-24) — fuzzy-matched the same way, real
       // gap the chart/gamelog never had a logo for before.
       raw: {
-        opponentAbbr: m.opponent,
-        opponentLogoUrl: logoByName ? matchSoccerTeamLogo(logoByName, m.opponent) : undefined,
+        // `undefined`, not `null`: every consumer of `raw.opponentAbbr` already
+        // treats a missing opponent as "unknown" (the H2H window's predicate,
+        // the opponent-only filter chip, the gamelog's own fallback label), and
+        // an unresolved match must miss those filters rather than join a bucket
+        // it does not belong to.
+        opponentAbbr: m.opponent ?? undefined,
+        opponentLogoUrl: logoByName && m.opponent ? matchSoccerTeamLogo(logoByName, m.opponent) : undefined,
         date: m.date,
         isHome: m.isHome,
         goals: m.goals,

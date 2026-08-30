@@ -250,8 +250,10 @@ export interface UnderstatMatch {
   matchId: string;
   date: string;
   season: string;
-  opponent: string;
-  isHome: boolean;
+  /** `null` when the player's club that season could not be resolved — see `fetchUnderstatPlayerMatches`. */
+  opponent: string | null;
+  /** `null` means NOT DETERMINABLE, and is not the same as away. */
+  isHome: boolean | null;
   goals: number;
   shots: number;
   xG: number;
@@ -279,36 +281,102 @@ interface RawPlayerMatch {
 }
 
 /**
- * Real per-match history for one Understat player — the actual answer to
- * soccer's "no history source" problem for EPL. `understatTeamTitle` (from
- * the same season-index entry `resolveUnderstatPlayer` already returned,
- * e.g. "Arsenal") is required to correctly split each match row into
- * "this player's team" vs "opponent" — Understat's raw rows only carry
- * `h_team`/`a_team`, not a pre-resolved home/away flag from the player's
- * own perspective, and matching against ESPN's own team name instead would
- * risk a real mismatch (Understat says "Manchester City", ESPN sometimes
- * says "Man City").
+ * Which side of a fixture this player was on, and therefore who the opponent
+ * was — the whole of the defect described below, in one pure function.
  *
- * Cached 6h (fresher than season data — a match that just finished should
- * show up reasonably soon).
+ * EXPORTED AND PURE ON PURPOSE. It was inline, and the test that "covered" it
+ * re-implemented the same rule alongside it. Reverting the real code did not
+ * fail that test, because the test was never calling it — the mirror agreed
+ * with the bug. `tests/understat-venue.test.ts` now calls this.
+ *
+ * `teamsBySeason` is a SET per season: a mid-season transfer lists two clubs
+ * (Salah's 2014 is Fiorentina and Chelsea), and taking a single value left 16
+ * of his 399 matches unresolved.
+ *
+ * `fallbackTitle` applies ONLY when the response carried no season groups at
+ * all — never as a per-season default, which is precisely the old bug.
+ */
+export function resolveMatchVenue(
+  match: { season: string; h_team: string; a_team: string },
+  teamsBySeason: Map<string, Set<string>>,
+  fallbackTitle: string,
+): { isHome: boolean | null; opponent: string | null } {
+  const teams =
+    teamsBySeason.get(match.season) ?? (teamsBySeason.size === 0 ? new Set([fallbackTitle]) : undefined);
+  const isHome = teams?.has(match.h_team) ? true : teams?.has(match.a_team) ? false : null;
+  return { isHome, opponent: isHome == null ? null : isHome ? match.a_team : match.h_team };
+}
+
+/**
+ * Real per-match history for one Understat player — the actual answer to
+ * soccer's "no history source" problem for EPL.
+ *
+ * ================== THE BUG THIS FUNCTION USED TO HAVE ======================
+ *
+ * `/getPlayerData/{id}` returns a player's WHOLE CAREER, across every club they
+ * have played for. The old code resolved home/away as
+ * `m.h_team === understatTeamTitle`, comparing every historical fixture against
+ * the player's CURRENT club — so every match before their latest transfer was
+ * recorded as **away**, and `opponent` resolved to the player's own former
+ * club. Both wrong, both well-formed, neither detectable downstream.
+ *
+ * Measured against Understat directly:
+ *
+ * | player          | matches | marked home, old | marked home, now |
+ * |-----------------|---------|------------------|------------------|
+ * | Harry Wilson    | 157     | **2**            | 77 (49%)         |
+ * | Raheem Sterling | 336     | **18**           | 166 (49%)        |
+ * | Mohamed Salah   | 399     | 161              | 203 (51%)        |
+ * | Erling Haaland  | 201     | —                | 101 (50%)        |
+ *
+ * Teams play a balanced schedule, so ~50% is the answer that had to come out.
+ *
+ * THE FIX COSTS NO EXTRA REQUEST: the same response carries `groups.season`,
+ * one entry per season with that season's `team`. A season can list TWO teams
+ * (Salah 2014: Fiorentina and Chelsea), which is a mid-season transfer, so the
+ * lookup is a SET per season rather than one string — using a single value
+ * left 16 of Salah's matches unresolved.
+ *
+ * A match whose season resolves to neither side gets `isHome: null` and
+ * `opponent: null`. **`null` is not `false`** — `venueSplit.ts` and the gamelog
+ * both treat it as "unknown", because filing an unknown under "away" is the
+ * same mistake this function just stopped making.
+ * ===========================================================================
+ *
+ * `understatTeamTitle` remains the fallback for the case where `groups.season`
+ * is absent entirely, which did not occur in any player sampled.
+ *
+ * Cached 6h. **The cache key carries `:v2:`** — the payload shape changed and
+ * every stored entry holds the old, wrong values.
  */
 export async function fetchUnderstatPlayerMatches(understatId: string, understatTeamTitle: string): Promise<UnderstatMatch[]> {
-  const cacheKey = `soccer:understat:player:${understatId}`;
+  const cacheKey = `soccer:understat:player:v2:${understatId}`;
   const cached = await readSnapshotCache(cacheKey);
   if (cached && Date.now() - Date.parse(cached.fetchedAt) < 6 * 60 * 60_000) {
     return JSON.parse(cached.payload) as UnderstatMatch[];
   }
 
-  const json = await fetchJson<{ matches: RawPlayerMatch[] }>(`/getPlayerData/${understatId}`);
+  const json = await fetchJson<{
+    matches: RawPlayerMatch[];
+    groups?: { season?: Array<{ season: string; team: string }> };
+  }>(`/getPlayerData/${understatId}`);
   if (!json) return cached ? (JSON.parse(cached.payload) as UnderstatMatch[]) : [];
 
+  // Which club(s) this player turned out for, per season. A set, not a string:
+  // a mid-season transfer lists two.
+  const teamsBySeason = new Map<string, Set<string>>();
+  for (const g of json.groups?.season ?? []) {
+    if (!teamsBySeason.has(g.season)) teamsBySeason.set(g.season, new Set());
+    teamsBySeason.get(g.season)!.add(g.team);
+  }
+
   const matches: UnderstatMatch[] = json.matches.map((m) => {
-    const isHome = m.h_team === understatTeamTitle;
+    const { isHome, opponent } = resolveMatchVenue(m, teamsBySeason, understatTeamTitle);
     return {
       matchId: m.id,
       date: m.date,
       season: m.season,
-      opponent: isHome ? m.a_team : m.h_team,
+      opponent,
       isHome,
       goals: Number(m.goals),
       shots: Number(m.shots),
