@@ -59,3 +59,4 @@ runmig.mjs
 g*.mjs
 gate*.mjs
 python-odds-service/weakgate.log
+docs/discord-community-prompt.md
