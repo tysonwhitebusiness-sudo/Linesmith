@@ -195,8 +195,8 @@
     var head = ['Role', 'MLB', 'NFL / CFB', 'NBA', 'NHL', 'Soccer', 'Tennis', 'Golf'];
     var body = [
       ['Opponent unit', 'Opposing starter', 'Defence vs position', 'Defence vs guards', 'Opposing goalie', 'Keeper & back line', 'Opponent profile', 'The field'],
-      ['Usage mix', 'Pitch mix', 'Route mix', 'Shot-zone mix', 'Shot-type mix', 'Shot-type mix', 'Serve mix', 'Approach distance'],
-      ['Spatial grid', 'Strike zone', 'Target map', 'Shot chart', 'Shot location', 'Shot location', 'Serve placement', 'Proximity by lie'],
+      ['Usage mix', 'Pitch mix', 'Route mix', 'Shot-zone mix', 'Shot-type mix', 'Shot-type mix', 'Match shape', 'Approach distance'],
+      ['Spatial grid', 'Strike zone', 'Target map', 'Shot chart', 'Shot location', 'Shot location', 'Games won by set', 'Proximity by lie'],
       ['Binary split', 'vs LHP / RHP', 'man / zone', 'top / bottom D', 'PP / EV', 'home / away', 'hard / clay', 'par 5 / par 4'],
       ['Conditions', 'Park, wind', 'Roof, wind, surface', 'Rest, travel', 'Rest, opp starts', 'Pitch, weather', 'Surface, speed', 'Wind, greens'],
       ['Career H2H', 'vs this pitcher', 'vs this defence', 'vs this team', 'vs this goalie', 'vs this club', 'vs this opponent', 'at this course']

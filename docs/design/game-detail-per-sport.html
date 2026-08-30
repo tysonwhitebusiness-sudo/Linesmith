@@ -517,9 +517,9 @@ footer p { color: var(--sh-ink-3); }
     <h1>One Game Detail, all eight</h1>
     <p class="lede">
       Third and last of the three shared pages. Same method: measure, then build it.
-      <strong>Every tab renders the same twenty blocks from the same template</strong>, no
-      <code>sport === 'x'</code> in the renderer. Game Detail has four blocks neither of the other
-      two pages has &mdash; a bookmaker grid, injuries, the deciding matchup, and the officials.
+      <strong>Every tab renders the same nineteen blocks from the same template</strong>, no
+      <code>sport === 'x'</code> in the renderer. Game Detail has three blocks neither of the other
+      two pages has &mdash; a bookmaker grid, injuries, and the deciding matchup.
     </p>
   </header>
 
@@ -585,8 +585,8 @@ footer p { color: var(--sh-ink-3); }
     <div class="frame">
       <table class="tv wide-tv" id="grole-table"></table>
       <p class="caption">
-        The roles. <code>matchupKey</code> and <code>officials</code> are the two that carry the
-        most sport-specific content, and neither exists on the player or team page.
+        The roles. <code>matchupKey</code> is the one carrying the most sport-specific content, and
+        it exists on neither the player nor the team page.
       </p>
     </div>
   </section>
@@ -723,11 +723,6 @@ footer p { color: var(--sh-ink-3); }
           </div>
 
           <div class="lb-card card-pad">
-            <div class="card-head"><span class="card-title" id="gd-off-t">&nbsp;</span></div>
-            <div id="gd-officials"></div>
-          </div>
-
-          <div class="lb-card card-pad">
             <div class="card-head"><span class="card-title" id="gd-h2h-t">&nbsp;</span></div>
             <div id="gd-h2h"></div>
           </div>
@@ -776,11 +771,13 @@ footer p { color: var(--sh-ink-3); }
         <code>pregameLines.draw</code>, which is genuinely earned.
       </li>
       <li>
-        <strong>Four blocks are game-only</strong> &mdash; <code>bookGrid</code>,
-        <code>injuries</code>, <code>matchupKey</code>, <code>officials</code>. Officials is the
-        one that is missing entirely today and is real for every sport: a plate umpire's strike
-        zone, a crew's penalty rate, a referee's cards-per-game all move totals, and none of it is
-        anywhere in the app.
+        <strong>Three blocks are game-only</strong> &mdash; <code>bookGrid</code>,
+        <code>injuries</code> and <code>matchupKey</code>.
+        <strong>An officials block was designed and then cut.</strong> A plate umpire's
+        zone and a referee's card rate genuinely move markets, but a tree-wide grep returns
+        zero hits for umpire, crew or officiating: it would have needed a separate new
+        integration per sport with nothing reusable between them. Cut on 2026-08-29 rather
+        than shipped as the one block with no path to real data.
       </li>
       <li>
         <strong><code>hero.awayGrades</code>/<code>homeGrades</code> and
@@ -2005,11 +2002,6 @@ footer p { color: var(--sh-ink-3); }
       ['BOS','L. Giolito','SP','60-day IL','Elbow'],
       ['BOS','M. Chapman','RP','15-day IL','Shoulder']],
     simT: 'Simulated run margin', simM: '20,000 sims', simPct: 0.59, simLabel: 'NYY 59.4%',
-    offT: 'Officials',
-    offCols: ['Home plate: L. Diaz','Rate','Rk'],
-    offRows: [['Strike-zone accuracy','94.1%','28th'],['K% above avg','+1.4','12th'],
-      ['Runs/gm','9.14','6th'],['Over rate','56.4%','8th'],['Favourite ATS','52.1%','19th'],
-      ['Games worked','118','-'],['Expanded zone','Yes','-']],
     h2hT: 'Season series',
     h2hCols: ['NYY vs BOS','',''],
     h2hRows: [['Games','12',''],['Record','7-5',''],['Runs/gm','5.4','vs 4.6'],
@@ -2139,11 +2131,6 @@ footer p { color: var(--sh-ink-3); }
       ['CLE','N. Chubb','RB','Out','Knee'],
       ['CLE','M. Garrett','EDGE','Questionable','Foot']],
     simT: 'Simulated point margin', simM: '20,000 sims', simPct: 0.67, simLabel: 'CIN 66.8%',
-    offT: 'Officiating crew',
-    offCols: ['Referee: C. Blakeman','Rate','Rk'],
-    offRows: [['Penalties/gm','13.4','9th'],['Flags on offense','7.1','12th'],
-      ['Points/gm','46.1','6th'],['Over rate','58.8%','5th'],['Favourite ATS','54.1%','11th'],
-      ['Games worked','16','-'],['Holding calls/gm','2.4','8th']],
     h2hT: 'Season series',
     h2hCols: ['CIN vs CLE','',''],
     h2hRows: [['Games','6',''],['Record','4-2',''],['Points/gm','26.8','vs 19.4'],
@@ -2273,11 +2260,6 @@ footer p { color: var(--sh-ink-3); }
       ['UGA','M. Starks','S','Questionable','Knee'],
       ['UGA','A. Smith','WR','Out','Foot']],
     simT: 'Simulated point margin', simM: '20,000 sims', simPct: 0.58, simLabel: 'UGA 58.1%',
-    offT: 'Officiating crew',
-    offCols: ['Referee: M. Defee','Rate','Rk'],
-    offRows: [['Penalties/gm','14.8','21st'],['Flags on home','6.4','18th'],
-      ['Points/gm','54.1','14th'],['Over rate','52.4%','24th'],['Favourite ATS','48.8%','61st'],
-      ['Games worked','12','-'],['Targeting calls','3','-']],
     h2hT: 'Recent meetings',
     h2hCols: ['UGA vs ALA','',''],
     h2hRows: [['Games','6',''],['Record','3-3',''],['Points/gm','25.8','vs 24.1'],
@@ -2407,11 +2389,6 @@ footer p { color: var(--sh-ink-3); }
       ['DEN','J. Murray','PG','Probable','Hamstring'],
       ['DEN','D. Jordan','C','Out','Back']],
     simT: 'Simulated point margin', simM: '20,000 sims', simPct: 0.58, simLabel: 'MIN 57.8%',
-    offT: 'Officiating crew',
-    offCols: ['Crew chief: S. Foster','Rate','Rk'],
-    offRows: [['Fouls/gm','41.4','12th'],['FT attempts/gm','46.8','9th'],
-      ['Points/gm','231.4','8th'],['Over rate','54.8%','11th'],['Home ATS','51.2%','22nd'],
-      ['Games worked','58','-'],['Pace impact','+1.4','-']],
     h2hT: 'Season series',
     h2hCols: ['MIN vs DEN','',''],
     h2hRows: [['Games','4',''],['Record','2-2',''],['Points/gm','114.2','vs 112.8'],
@@ -2541,11 +2518,6 @@ footer p { color: var(--sh-ink-3); }
       ['BOS','B. Marchand','LW','Day-to-day','Upper body'],
       ['BOS','E. Lindholm','C','Questionable','Groin']],
     simT: 'Simulated goal margin', simM: '20,000 sims', simPct: 0.58, simLabel: 'TOR 58.4%',
-    offT: 'Officiating crew',
-    offCols: ['Referees: Rooney / Sutherland','Rate','Rk'],
-    offRows: [['Penalties/gm','7.4','11th'],['PP chances/gm','3.6','9th'],
-      ['Goals/gm','6.41','8th'],['Over rate','54.1%','12th'],['Home ATS','50.4%','19th'],
-      ['Games worked','62','-'],['Late-game calls','1.2','-']],
     h2hT: 'Season series',
     h2hCols: ['TOR vs BOS','',''],
     h2hRows: [['Games','4',''],['Record','2-2',''],['Goals/gm','3.2','vs 2.8'],
@@ -2675,11 +2647,6 @@ footer p { color: var(--sh-ink-3); }
       ['ARS','G. Jesus','ST','Out','Knee'],
       ['ARS','M. Odegaard','AM','Available','Ankle']],
     simT: 'Simulated goal margin', simM: '20,000 sims', simPct: 0.54, simLabel: 'MCI 54.1%',
-    offT: 'Match officials',
-    offCols: ['Referee: M. Oliver','Rate','Rk'],
-    offRows: [['Cards/gm','4.1','12th'],['Penalties/gm','0.34','8th'],
-      ['Goals/gm','3.14','6th'],['Over rate','56.8%','7th'],['Home win %','48.1%','14th'],
-      ['Games worked','24','-'],['VAR overturns','5','-']],
     h2hT: 'Recent meetings',
     h2hCols: ['MCI vs ARS','',''],
     h2hRows: [['Matches','8',''],['Record','3-3-2',''],['Goals/gm','1.6','vs 1.4'],
@@ -2764,13 +2731,13 @@ footer p { color: var(--sh-ink-3); }
       {k:'1st-serve won',a:0.768,b:0.784,fmt:p1},{k:'Return pts won',a:0.421,b:0.414,fmt:p1},
       {k:'Tiebreak %',a:0.641,b:0.681,fmt:p1}
     ],
-    zoneLo: 0.52, zoneHi: 0.82, zoneFmt: r3, zoneUnit: 'pts won',
-    zoneCap: 'service boxes ' + MID + ' ALC points won vs Sinner return',
-    zoneT: 'Serve placement matchup', zoneM: 'ALC points won by placement',
+    zoneLo: 0.42, zoneHi: 0.66, zoneFmt: p0, zoneUnit: 'games won',
+    zoneCap: 'set x context ' + MID + ' ALC share of games won',
+    zoneT: 'Games won by set', zoneM: 'ALC, derived from sets/games won-lost',
     zone: [
-      {k:'Deuce wide',v:0.718,n:184},{k:'Deuce body',v:0.664,n:96},{k:'Deuce T',v:0.788,n:161},
-      {k:'Ad wide',v:0.671,n:142},{k:'Ad body',v:0.628,n:88},{k:'Ad T',v:0.761,n:178},
-      {k:'2nd wide',v:0.524,n:74},{k:'2nd body',v:0.558,n:112},{k:'2nd T',v:0.578,n:68}
+      {k:'Set 1 ' + MID + ' vs SIN',v:0.512,n:31},{k:'Set 1 ' + MID + ' hard',v:0.604,n:112},{k:'Set 1 ' + MID + ' career',v:0.612,n:248},
+      {k:'Set 2 ' + MID + ' vs SIN',v:0.488,n:31},{k:'Set 2 ' + MID + ' hard',v:0.588,n:112},{k:'Set 2 ' + MID + ' career',v:0.594,n:248},
+      {k:'Set 3+ ' + MID + ' vs SIN',v:0.524,n:22},{k:'Set 3+ ' + MID + ' hard',v:0.561,n:64},{k:'Set 3+ ' + MID + ' career',v:0.558,n:141}
     ],
     keyT: 'The matchup that decides it', keyM: 'Alcaraz return vs the Sinner serve',
     keyCols: ['Factor','Sinner','Alcaraz','Edge'],
@@ -2810,11 +2777,6 @@ footer p { color: var(--sh-ink-3); }
       ['SIN','Match load','\u2014','Playing','2 matches in 4 days'],
       ['SIN','Illness','\u2014','Cleared','Withdrew Jul 12']],
     simT: 'Simulated games margin', simM: '20,000 sims', simPct: 0.56, simLabel: 'ALC 56.2%',
-    offT: 'Match conditions & official',
-    offCols: ['Chair: C. Ramos','Value','Rk'],
-    offRows: [['Court speed index','44.1','Medium-fast'],['Avg games/match','22.8','8th'],
-      ['Time violations','0.8','12th'],['Over rate','54.1%','14th'],['Favourite %','61.4%','21st'],
-      ['Matches worked','188','-'],['Challenge success','31.4%','-']],
     h2hT: 'Head to head',
     h2hCols: ['Alcaraz vs Sinner','',''],
     h2hRows: [['Matches','9',''],['Record','4-5',''],['Hard','2-3',''],
@@ -2947,11 +2909,6 @@ footer p { color: var(--sh-ink-3); }
       ['RM','Rib','Right','Cleared','Missed 2 events in Jan'],
       ['RM','Schedule','\u2014','Playing','2nd event in 3 weeks']],
     simT: 'Simulated score margin', simM: '20,000 sims', simPct: 0.60, simLabel: 'SS 60.4%',
-    offT: 'Course setup',
-    offCols: ['Rules official: S. Rintoul','Value','Rk'],
-    offRows: [['Pin difficulty','7.8/10','4th'],['Tee positions','Back on 6 of 7','-'],
-      ['Green firmness','11.4','3rd'],['Rough penalty','0.42 shots','5th'],
-      ['Wind at tee','18 gusting 26','-'],['Pace of play','4h 41m','-'],['Rulings today','2','-']],
     h2hT: 'Career pairings',
     h2hCols: ['Scheffler vs McIlroy','',''],
     h2hRows: [['Paired rounds','14',''],['Record','8-6',''],['Avg score','69.4','vs 70.1'],
@@ -2998,7 +2955,7 @@ footer p { color: var(--sh-ink-3); }
   function renderGame(s) {
     clear('gd-herostrip', 'gd-windows', 'gd-streak', 'gd-dist', 'gd-wp', 'gd-tape',
           'gd-grid', 'gd-unitA', 'gd-unitB', 'gd-dumbbell', 'gd-zone', 'gd-key',
-          'gd-books', 'gd-lastfive', 'gd-injuries', 'gd-density', 'gd-officials',
+          'gd-books', 'gd-lastfive', 'gd-injuries', 'gd-density',
           'gd-h2h', 'gd-rank', 'gd-cond', 'gd-range', 'gd-contrib', 'gd-ctx');
 
     setText('gd-away-badge', s.awayBadge);
@@ -3068,9 +3025,6 @@ footer p { color: var(--sh-ink-3); }
     setText('gd-sim-t', s.simT); setText('gd-sim-m', s.simM);
     LB.densityCurve('gd-density', { w: 260, h: 110, pct: s.simPct, label: s.simLabel });
 
-    setText('gd-off-t', s.offT);
-    denseTable('gd-officials', s.offCols, s.offRows);
-
     setText('gd-h2h-t', s.h2hT);
     denseTable('gd-h2h', s.h2hCols, s.h2hRows);
 
@@ -3095,10 +3049,10 @@ footer p { color: var(--sh-ink-3); }
       s.bookRows.length * (s.bookCols.length - 1) +
       s.lastRows.length * (s.lastCols.length - 2) +
       s.injRows.length * (s.injCols.length - 2) +
-      s.offRows.length * 2 + s.h2hRows.length * 2 + s.rank.length * 2 +
+      s.h2hRows.length * 2 + s.rank.length * 2 +
       s.cond.length + s.books.length + s.contrib.length + s.ctx.length;
     setText('gd-count',
-      s.tab + ': ' + n + ' individual numbers, across the same twenty blocks every other tab ' +
+      s.tab + ': ' + n + ' individual numbers, across the same nineteen blocks every other tab ' +
       'renders. Four of them - book grid, injuries, the deciding matchup and the officials - ' +
       'exist on neither the player nor the team page.');
   }
@@ -3177,9 +3131,8 @@ footer p { color: var(--sh-ink-3); }
     ['Role', 'MLB', 'NFL / CFB', 'NBA', 'NHL', 'Soccer', 'Tennis', 'Golf'],
     [
       ['matchupKey', 'Starter vs lineup', 'Pass game vs secondary', 'Rim, and who protects it', 'Power play vs kill', 'Build-up vs the block', 'Serve vs return', 'Approach play'],
-      ['spatialGrid', 'Lineup vs starter zone', 'Down x distance', 'Shot chart', 'Shot location', 'Shot map', 'Serve placement', 'Holes remaining'],
+      ['spatialGrid', 'Lineup vs starter zone', 'Down x distance', 'Shot chart', 'Shot location', 'Shot map', 'Games won by set', 'Holes remaining'],
       ['units', 'Team hit / pitch', 'Offense / defense', 'Off / def rating', 'Off / def & goalie', 'Attack / defence', 'Serve / return', 'SG by category'],
-      ['officials', 'Plate umpire zone', 'Referee crew flags', 'Crew fouls & FT', 'Referee penalties', 'Referee cards & VAR', 'Chair & court speed', 'Rules official & setup'],
       ['bookGrid', '22 books, 3 markets', '3-4 books, ML only', 'none', 'none', '23 books, 3 markets', '3 books, ML only', 'outrights elsewhere'],
       ['injuries', 'IL and day-to-day', 'Game status report', 'Injury report', 'Injury report', 'Team news', 'Fitness notes', 'Form & fitness']
     ]);

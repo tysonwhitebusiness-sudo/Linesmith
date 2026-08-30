@@ -1711,101 +1711,304 @@ G1-G8 apply. Additionally:
 
 # Phase 6 — The product
 
-**Goal:** ship what the audit identified as the actual asset — rich per-player
-and per-team data, alongside prices from many books.
-**Duration:** 3–4 weeks. **Depends on:** 5.
+**Goal:** ship what the audit identified as the actual asset — rich per-player,
+per-team and per-game data, alongside prices from many books.
+**Duration:** 6–8 weeks. **Depends on:** 5.
 
-### 6.1 · Line-movement charts *(P5 G1)*
+> **Rewritten 2026-08-29**, after three design studies and a measured data-gap
+> audit. The original twelve tasks are all still here, renumbered into
+> **6.13–6.24**; the new design and sourcing work is **6.1–6.12**. Nothing was
+> dropped except the two items in §6.0 below, which the operator cut
+> deliberately.
+>
+> The three boards are the specification for the page work and are committed:
+> `docs/design/player-detail-per-sport.html`, `team-detail-per-sport.html`,
+> `game-detail-per-sport.html` (rebuild any with
+> `node docs/design/build-{per-sport,team-detail,game-detail}.mjs`). The
+> primitives board is `docs/design/chart-grammar.html`. The sourcing evidence is
+> `docs/design/phase6-data-gap-audit.md`.
 
-**The highest-value feature available.** 425,307 prop movement points and
-19,667 game-line points, displayed nowhere; `/api/props/line-history` has no
-frontend consumer at all. No new data required. One sparkline for table rows,
-one detail chart for the panel.
+### 6.0 · Decided and CUT — do not reopen without a new decision
 
-### 6.2 · Price freshness, visible *(P5 G2, P5 T4)*
+- **Officials / umpires / referees — CUT (operator, 2026-08-29).** Designed into
+  the game board, then removed from it. A plate umpire's zone and a referee's
+  card rate genuinely move markets, but a tree-wide grep returns **zero** hits
+  for umpire, crew or officiating: it needed a separate new integration per
+  sport with nothing reusable between them. The block is gone from the mockup.
+- **Tennis point-level data — CUT (operator, 2026-08-29).** Serve placement and
+  serve-by-placement mix required a paid vendor. Both blocks were replaced with
+  ones derivable from the eight `player_game_history` tennis keys we already
+  store: **"Games won by set"** (set × tier) and **"Match shape"** (straight
+  sets / four / five / tiebreak-decided). Tennis keeps full-depth pages with no
+  new purchase.
 
-1.2 made it correct; this makes it prominent. Relative timestamps, a visual
-state past a staleness threshold, and a coverage line ("22 books, updated 3 min
-ago, 4 stale").
+---
 
-### 6.3 · Compliance basics *(P5 C1, P5 C5)*
+## Track A — Foundations. Blocks all page work.
 
-**Required before any public signup. None exist today** — I grepped for all of
-them. Responsible-gambling footer with 1-800-GAMBLER, age notice, terms of
-service, privacy policy, "not financial advice" disclaimer.
+### 6.1 · One type change that fixes three fields on two pages
 
-### 6.4 · Label or exclude backfilled results *(P5 T5)*
+`TeamGrades` hardcodes **nine NFL unit names** (`specialTeams`, `secondary`,
+`linebackers`, `dLine`, `passingOffense`…), so no other sport can fill it.
+Replace with `unitGrades: Array<{ key; label; grade; rank }>`.
 
-87% of `pick_history` is `event_context='backfill'`, and those rows have
-`surfaced_at = graded_at` — no evidence the prediction preceded the outcome.
-Any user-facing record excludes them or labels them unmistakably.
+Fixes `TeamDetailData.grades`, `GameDetailData.unitGrades`, and
+`GameDetailData.hero.awayGrades`/`homeGrades`. NFL keeps nine; MLB declares
+hitting/pitching/fielding/bullpen; NHL declares offence/defence/power
+play/penalty kill — a case the current type cannot express at all.
+**Also un-blanks the NBA and NHL team pages**, which emit no `statGroups` today.
 
-### 6.5 · Publish the model's real record *(P5 T1)*
+### 6.2 · Collapse `statComparison`, and correct `CLAUDE.md` §4
 
-Including that it currently loses to the market. Nobody else in this category
-publishes a market-relative Brier score. Being the tool that shows the
-comparison honestly is a stronger trust position than another unfalsifiable
-accuracy claim — and it's the only honest option given your own data.
+Measured: **MLB is the only sport filling `bars`**; NFL, CFB and soccer fill
+`ranked`; **NBA, NHL and tennis fill neither**, so the block is blank on three
+of seven game pages — while all seven populate `rankings`, so ranks exist
+everywhere. That is the "leftover placement accident from the port" §4 itself
+warns about.
 
-### 6.6 · User-facing CLV *(P5 G3)*
+Drop `bars`, keep `ranked`, have MLB's adapter emit ranked rows from the
+`rankings` data it already produces. Then **replace §4's example** with
+`pregameLines.moneyline.draw`, which is genuinely earned.
 
-4.5 put CLV on `/diagnostics`. This puts *the user's own* CLV in the product:
-did their bets beat the close? It's the honest version of the thing the model
-can't do — a claim you can stand behind.
+### 6.3 · Rename the six MLB-named slots to roles
 
-### 6.7 · Tier C ranking returns *(Q1)*
+`pitchMix`→`usageMix`, `zoneProfile`→`spatialGrid`, `platoon`→`binarySplit`,
+`opposingStarter`→`opponentUnit`, plus `conditions` and `careerH2H`. Each
+carries its own title, axis labels and cells from the sport's adapter. The
+component renders a title and a grid; it never learns what a strike zone is.
 
-Only after 1.1 (sign fix) and 6.5 (record published). Present as a **ranking**,
-never a probability or EV, with its realised record attached.
+### 6.4 · `components/charts/` — the primitives library
 
-### 6.8 · Book-lag analysis
+`ChartFrame` + `useChartCrosshair` first, then the eleven primitives
+(`Sparkline`, `SeriesChart`, `DistributionBars`, `DensityCurve`,
+`PercentileRail`, `HeatGrid`, `RangeBar`, `ContributionBars`, `StatTable`,
+`StreakStrip`, `SplitDumbbell`). Port from `chart-grammar.html`, which
+implements all eleven in plain SVG.
 
-"Which book moves last" — derivable today from `prop_odds_history`. One of the
-most valuable things a line-shopping tool can show, and the data exists.
+**Carry both primitive fixes across** — they are in `docs/design/build-lib.mjs`,
+not in `chart-grammar.html`, which still holds the unfixed originals:
 
-### 6.9 · Selectable de-vig *(P5 G4, P3 M3)*
+- `zoneGrid`: domain, number format and caption were hardcoded to MLB. NFL's
+  14.8 yards-per-target rendered as **"4.800"**.
+- `rollingChart`: forced a zero-based y-axis. An Elo series spanning 1460–1590
+  collapsed to a flat strip with ticks at 0.0 / 590.2 / 1180.5.
 
-Multiplicative is the least accurate of the standard methods — it ignores the
-favourite–longshot bias, which affects most props. Add power, Shin and
-worst-case behind a user setting, and **backtest which calibrates best on your
-own 3,615 paired rows.** "We tested four de-vig methods against 3,615 graded
-outcomes and chose power" is a genuinely differentiating, honest claim.
+**Standing rule, earned twice:** *the first sport to use a primitive defines its
+defaults, so audit every literal in one before a second sport touches it.* Both
+bugs were found by **looking at a rendered page**, not by querying the DOM.
 
-### 6.10 · Correlated-prop warnings *(P5 G5)*
+---
 
-Nothing tells a user that a batter's hits, total bases, runs and RBIs are the
-same event four ways. Start with a hand-authored correlation map for the ~10 MLB
-markets, shown as a banner on the slip; extend per sport. Empirical correlations
-later, from `player_game_history`. A feature that *protects* the user is rare in
-this category.
+## Track B — Sourcing. Runs in parallel with A; each item unblocks named blocks.
 
-### 6.11 · DFS pick'em lines *(P5 G9)*
+**Nothing here blocks starting 6.4.** A block with no source renders the empty
+state the grammar already defines.
 
-PrizePicks and Underdog. Standard in the prop segment (Props.cash covers them at
-$19.99/mo) and conspicuous by absence. You already carry `prizepicks` (7,272
-rows), `underdog` (1,724) and `sleeper` (2,156) in `prop_odds` — this is
-surfacing work plus provider expansion, not a new pipeline.
+### 6.5 · Backfill `pick_history` for the six sports that have none — **do first**
 
-### 6.12 · Book limits *(P5 G8)*
+`pick_history`: **MLB 369,185 / soccer 381 / everything else ZERO.**
+`game_picks`: mlb 176, soccer 24, nfl 16, cfb 8.
 
-A +EV bet you can only get $12 down on is not the same product as one you can
-get $2,000 down on. **Conditional on 5.2's decision** — it needs a feed that
-carries limits. If 5.2 says buy, scope this into the same purchase.
+Every "Model %", "Edge", grade, confidence and "why the model likes it" block —
+**on all three boards, on every tab** — is MLB-only today. This is the single
+highest-leverage item in Phase 6 and **needs no new vendor**: the game logs
+(2,599,165 rows) and closing lines to grade against are already stored.
+
+Interacts with 6.16 — grade into rows that are unmistakably marked as
+reconstructed, not surfaced predictions.
+
+### 6.6 · Ungroup the Statcast call — cheapest high-value item
+
+`lib/sports/mlb/savant.ts` already calls the **pitch-level** endpoint
+(`statcast_search/csv`, `type=details`) but passes `group_by: 'name'`, which
+collapses it to one season row per player. Ungrouped, the same keyless call
+returns per-pitch `zone`, `pitch_type`, `plate_x/plate_z` and
+`estimated_woba_using_speedangle`.
+
+Unlocks the **strike-zone grid, pitch mix and opposing-starter zone matchup** on
+all three boards, plus **seven Statcast metrics the mockups show and we do not
+have** — only `barrelPct`, `exitVelo`, `hardHitPct`, `whiffPct` exist today.
+Params + a table + a backfill. No new vendor, no key.
+
+### 6.7 · NBA and NHL shot coordinates — **APPROVED (operator, 2026-08-29)**
+
+`lib/sports/nba/sportsdataverse.ts` and `lib/sports/nhl/nhle.ts` are integrated
+for box scores; neither pulls shot coordinates, though both upstream APIs expose
+them. New fetch + table per sport.
+
+Unlocks NBA's shot chart and NHL's shot-location grid on the player, team and
+game boards — six blocks — and feeds 6.5's models for those two sports.
+
+### 6.8 · nflverse play-by-play
+
+nflverse is integrated, but only its **weekly box scores**. Its play-by-play
+release carries air yards, pass location and depth. Unlocks NFL/CFB target maps
+and route mix. Same vendor, no key. The adapter's own comments already flag the
+shallowness ("nflverse's Receiving group is thin").
+
+### 6.9 · Understat shot endpoint
+
+Understat is integrated, but only its **league-level goals-against** endpoint,
+for one number. Its match/shot endpoints carry per-shot `x`, `y`, `xG`.
+**Caveat, from that file's own header: big-five-leagues only, so MLS gets
+nothing** — soccer's shot map ships EPL-only, and the MLS tab must say so.
+
+### 6.10 · Generalise three MLB-only things that need no integration
+
+- **Weather** — open-meteo is keyless and already working, wired only into
+  `mlb/adapters/*`. Extend to NFL, CFB and soccer. Indoor sports do not need it.
+- **`park_factors`** — computed in-house from the schedule, MLB only. The same
+  technique works for any fixed venue set.
+- **`game_sim_cache`** — 192 rows, `sport` column already exists, only `mlb`
+  populated. The rail's simulated-margin block is MLB-only until this is fed.
+
+### 6.11 · NBA and NHL game book lines
+
+`game_odds_book_lines`: soccer 23 books and MLB 22 across three markets; CFB 4,
+NFL 3, tennis 3, all moneyline-only; **NBA and NHL zero rows**. The bookmaker
+grid is the centrepiece of the game page and ships empty on two tabs until this
+lands. Scope alongside 5.2's provider decision.
+
+### 6.12 · Confirm the tennis match-summary stats
+
+The tennis pages show hold %, break %, BP saved, 1st/2nd-serve won and return
+points won. These are **match-level** aggregates (not the point-level data cut
+in 6.0), plausibly available from the ESPN tennis summary payload — but only the
+eight game-log keys and `aces` are confirmed today. **Verify before building;
+drop any that are not really there rather than fabricating them.**
+
+---
+
+## Track C — The three pages. Depends on A; degrades gracefully on B.
+
+### 6.13 · Player Detail, all eight sports
+
+Board: `player-detail-per-sport.html`. Eighteen blocks, ~375 numbers per sport,
+one `renderSport(data)` with no `sport ===` check.
+
+Measured ceiling per sport (distinct non-zero `player_game_history` stat keys):
+**NFL 57 · CFB 53 · MLB 27 · NHL 21 · NBA 17 · soccer 16 · tennis 8 · golf
+separate schema.** MLB is mid-table, not the deepest — its page only looks
+deeper because Statcast is a separate source (6.6).
+
+### 6.14 · Team Detail, six sports
+
+Board: `team-detail-per-sport.html`. Twenty blocks. **Six sports, not eight** —
+tennis has a null `team_id` on all 271,964 rows and golf has no team concept;
+`TeamDetailPanel` and `team_elo_history` independently agree on the same six.
+Golf's structural sibling is a **tournament**; it gets that tab.
+
+Two blocks are genuinely team-only — `roster` and `standings` — and both already
+exist in `TeamDetailData` with their sport differences correctly data-driven
+(`rosterSortByStats`, `rosterPageSize`). Extend that pattern.
+
+Elo depth is one season for five of six sports (MLB has 2010–2026, 78,550 rows).
+**Honest fix is a shorter axis with the real span labelled, not a backfill.**
+
+### 6.15 · Game Detail, eight sports
+
+Board: `game-detail-per-sport.html`. Nineteen blocks after the officials cut.
+**Tennis gets a game page even though it has no team page — a match IS a game.**
+Golf has no `gameDetailAdapter.ts`, but `PlayerDetailData.liveMatchup` already
+models a tee-time pairing, which is the same entity.
+
+Three blocks are game-only: `bookGrid`, `injuries`, `matchupKey`.
+
+`GameDetailData` is the leakiest of the three interfaces — eight sport-named
+fields, of which only `pregameLines.moneyline.draw` is genuinely earned. Keep
+`hero.mlbLiveGame`: a live MLB game needs bases, box score and bullpen state
+with no cross-sport analogue. Note that NFL, NBA and NHL have real live states
+with nothing behind them today.
+
+---
+
+## Track D — The original twelve, renumbered. Unchanged in substance.
+
+### 6.16 · Line-movement charts *(was 6.1, P5 G1)*
+**Still the highest-value feature available**, and now largely delivered by 6.4
+plus the tape block on all three boards. 425,307 prop movement points and 19,667
+game-line points displayed nowhere; `/api/props/line-history` still has no
+frontend consumer. Sparkline for table rows, `SeriesChart` for the panel.
+
+### 6.17 · Price freshness, visible *(was 6.2, P5 G2/T4)*
+Relative timestamps, a visual state past a staleness threshold, and a coverage
+line ("22 books, updated 3 min ago, 4 stale"). The board's own book grid makes
+the coverage number unavoidable — see 6.11.
+
+### 6.18 · Compliance basics *(was 6.3, P5 C1/C5)*
+**Required before any public signup. None exist today.** Responsible-gambling
+footer with 1-800-GAMBLER, age notice, terms, privacy policy, "not financial
+advice".
+
+### 6.19 · Label or exclude backfilled results *(was 6.4, P5 T5)*
+87% of `pick_history` is `event_context='backfill'` with
+`surfaced_at = graded_at`. **6.5 will add a great deal more of exactly this
+kind of row**, so the labelling has to land with it, not after.
+
+### 6.20 · Publish the model's real record *(was 6.5, P5 T1)*
+Including that it currently loses to the market. Nobody in this category
+publishes a market-relative Brier score; being the tool that shows it honestly
+is a stronger position than another unfalsifiable claim.
+
+### 6.21 · User-facing CLV *(was 6.6, P5 G3)*
+The user's own CLV: did their bets beat the close?
+
+### 6.22 · Tier C ranking returns *(was 6.7, Q1)*
+Only after 1.1 and 6.20. A **ranking**, never a probability or EV, with its
+realised record attached.
+
+### 6.23 · Book-lag analysis *(was 6.8)*
+"Which book moves last" — derivable today from `prop_odds_history` (596,410
+rows). No new data.
+
+### 6.24 · Selectable de-vig, correlated-prop warnings, DFS pick'em, book limits
+*(was 6.9–6.12; P5 G4/G5/G9/G8, P3 M3)*
+Unchanged. De-vig: add power, Shin and worst-case, and **backtest which
+calibrates best on the paired rows**. Correlated props: hand-authored MLB map
+first, empirical later from `player_game_history`. DFS: `prizepicks` (7,272),
+`underdog` (1,724), `sleeper` (2,156) rows already in `prop_odds`. Book limits
+remain **conditional on 5.2's decision**.
+
+---
+
+## Suggested order
+
+1. **6.5** (pick_history backfill) and **6.1–6.3** (type changes) start
+   together — different people, no overlap, and 6.5 is the long pole.
+2. **6.4** (primitives) as soon as 6.1–6.3 land.
+3. **6.6** (Statcast ungroup) — cheapest high-value sourcing item.
+4. **6.13 → 6.14 → 6.15** as the primitives come online.
+5. **6.7** (NBA/NHL shots, approved), then **6.8**, **6.9**, **6.10**.
+6. **6.18** (compliance) must precede any public signup regardless of position.
+7. **6.11**, then Track D's remainder.
 
 ---
 
 ### Phase 6 gate
 
-G1-G8 apply. Additionally:
+G1–G8 apply. Additionally:
 
+- **No `sport === 'x'` in any of the three shared components' render paths.**
+  Grep and assert; the whole design rests on it.
+- **Every sport's page renders every block or an honest empty state** — walked
+  per sport per page, not spot-checked. A blank card with no empty state is a
+  failure.
+- **`unitGrades` proven by NHL**, which the old `TeamGrades` could not express.
+- **`statComparison.bars` is gone** and NBA/NHL/tennis game pages render the
+  block that is blank today.
+- **Both primitive fixes carried across**, proven by rendering a non-MLB unit
+  through each: `zoneGrid` with a >1.0 value (NFL yards/target) and
+  `rollingChart` with a non-zero-based series (Elo).
 - **Compliance strings present on every route**, checked against rendered HTML
-  across the whole page list - not just the homepage footer.
-- **Backfilled rows are unmistakable** anywhere a record is shown, confirmed by
-  querying the underlying rows and matching them to what the page displays.
-- **The published record matches the database.** Re-run the query behind 6.5's
-  numbers at gate time and diff it against what the page shows.
-- **Line-movement charts checked against raw rows** for three propositions - a
-  chart is a claim about history, and it has to agree with the history.
+  across the whole page list.
+- **Backfilled rows unmistakable** anywhere a record is shown — including
+  everything 6.5 adds.
+- **The published record matches the database.** Re-run 6.20's query at gate
+  time and diff it against the page.
+- **Line-movement charts checked against raw rows** for three propositions.
+- **Every "no data" claim on a page is true.** The mockups state real
+  limitations (MLS has no Understat; NBA/NHL have no book lines). If sourcing
+  landed, the text must change; if it did not, the text must still be accurate.
 
 ---
 

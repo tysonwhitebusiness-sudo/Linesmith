@@ -34,9 +34,15 @@ most of the chart surface.
 
 ---
 
+> **OPERATOR DECISIONS, 2026-08-29.** Officials: **CUT**. Tennis point-level:
+> **CUT** (both blocks replaced with ones derivable from the eight tennis keys we
+> already store). NBA/NHL shot coordinates: **APPROVED, build it**. Everything
+> else proceeds without further guidance. The plan of record is now
+> `docs/audit-remediation-plan.md` Phase 6, rewritten to match.
+
 ## Tier 1 — no source at all. Real new work.
 
-### 1. Officials / umpires / referees — **nothing exists**
+### 1. Officials / umpires / referees — **nothing exists** &mdash; **CUT**
 
 Greps across `lib/`, `app/api/` and `python-odds-service/src/` return **zero**
 hits for umpire, crew, or officiating. There is no table, no fetch, no field.
@@ -49,11 +55,19 @@ zone data; NFL/NBA/NHL: crew assignment feeds; soccer: referee stats).
 
 **Cost: one new integration per sport. Nothing reusable across them.**
 
-### 2. Tennis spatial + serve mix — **no source**
+**Cut 2026-08-29** and removed from the game board, on exactly that cost.
+
+### 2. Tennis spatial + serve mix — **no source** &mdash; **CUT**
 
 Tennis is already the thinnest sport on the player board (8 stat keys). The
 serve-placement grid and serve mix need point-level data that no integrated
 provider supplies. This would be a paid vendor.
+
+**Cut 2026-08-29.** Both blocks were replaced with ones derived from the eight
+tennis keys already in `player_game_history`: **"Games won by set"** (set x tier)
+and **"Match shape"** (straight sets / four / five / tiebreak-decided). Tennis
+keeps a full-depth page with no purchase. Its *match-level* serve aggregates
+(hold %, break %, aces) survive but still need confirming — Phase 6.12.
 
 ---
 
@@ -106,11 +120,11 @@ covers 5 real defense-allowed"*.
 
 ## Tier 3 — public data exists, nothing wired
 
-### 6. NBA shot chart / NHL shot location
+### 6. NBA shot chart / NHL shot location &mdash; **APPROVED, build it**
 
 `lib/sports/nba/sportsdataverse.ts` and `lib/sports/nhl/nhle.ts` are integrated
 for box scores. Neither pulls shot coordinates, though both upstream APIs
-expose them. New fetch + table per sport.
+expose them. New fetch + table per sport. **Approved 2026-08-29 — Phase 6.7.**
 
 ---
 

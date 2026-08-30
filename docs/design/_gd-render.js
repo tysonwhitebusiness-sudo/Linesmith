@@ -24,7 +24,7 @@
   function renderGame(s) {
     clear('gd-herostrip', 'gd-windows', 'gd-streak', 'gd-dist', 'gd-wp', 'gd-tape',
           'gd-grid', 'gd-unitA', 'gd-unitB', 'gd-dumbbell', 'gd-zone', 'gd-key',
-          'gd-books', 'gd-lastfive', 'gd-injuries', 'gd-density', 'gd-officials',
+          'gd-books', 'gd-lastfive', 'gd-injuries', 'gd-density',
           'gd-h2h', 'gd-rank', 'gd-cond', 'gd-range', 'gd-contrib', 'gd-ctx');
 
     setText('gd-away-badge', s.awayBadge);
@@ -94,9 +94,6 @@
     setText('gd-sim-t', s.simT); setText('gd-sim-m', s.simM);
     LB.densityCurve('gd-density', { w: 260, h: 110, pct: s.simPct, label: s.simLabel });
 
-    setText('gd-off-t', s.offT);
-    denseTable('gd-officials', s.offCols, s.offRows);
-
     setText('gd-h2h-t', s.h2hT);
     denseTable('gd-h2h', s.h2hCols, s.h2hRows);
 
@@ -121,10 +118,10 @@
       s.bookRows.length * (s.bookCols.length - 1) +
       s.lastRows.length * (s.lastCols.length - 2) +
       s.injRows.length * (s.injCols.length - 2) +
-      s.offRows.length * 2 + s.h2hRows.length * 2 + s.rank.length * 2 +
+      s.h2hRows.length * 2 + s.rank.length * 2 +
       s.cond.length + s.books.length + s.contrib.length + s.ctx.length;
     setText('gd-count',
-      s.tab + ': ' + n + ' individual numbers, across the same twenty blocks every other tab ' +
+      s.tab + ': ' + n + ' individual numbers, across the same nineteen blocks every other tab ' +
       'renders. Four of them - book grid, injuries, the deciding matchup and the officials - ' +
       'exist on neither the player nor the team page.');
   }
@@ -203,9 +200,8 @@
     ['Role', 'MLB', 'NFL / CFB', 'NBA', 'NHL', 'Soccer', 'Tennis', 'Golf'],
     [
       ['matchupKey', 'Starter vs lineup', 'Pass game vs secondary', 'Rim, and who protects it', 'Power play vs kill', 'Build-up vs the block', 'Serve vs return', 'Approach play'],
-      ['spatialGrid', 'Lineup vs starter zone', 'Down x distance', 'Shot chart', 'Shot location', 'Shot map', 'Serve placement', 'Holes remaining'],
+      ['spatialGrid', 'Lineup vs starter zone', 'Down x distance', 'Shot chart', 'Shot location', 'Shot map', 'Games won by set', 'Holes remaining'],
       ['units', 'Team hit / pitch', 'Offense / defense', 'Off / def rating', 'Off / def & goalie', 'Attack / defence', 'Serve / return', 'SG by category'],
-      ['officials', 'Plate umpire zone', 'Referee crew flags', 'Crew fouls & FT', 'Referee penalties', 'Referee cards & VAR', 'Chair & court speed', 'Rules official & setup'],
       ['bookGrid', '22 books, 3 markets', '3-4 books, ML only', 'none', 'none', '23 books, 3 markets', '3 books, ML only', 'outrights elsewhere'],
       ['injuries', 'IL and day-to-day', 'Game status report', 'Injury report', 'Injury report', 'Team news', 'Fitness notes', 'Form & fitness']
     ]);

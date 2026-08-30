@@ -4,9 +4,12 @@
 **Phase 4: COMPLETE, gate PASSED** (2026-08-29, after failing G7 and re-running
 in full from G1 per Rule 5).
 
-**Phase 6 has started — the per-sport question is measured and ANSWERED for all
-three shared pages (Player, Team, Game). Four mockups built, four operator
-decisions outstanding. No production code yet.** See §6.
+**Phase 6 is fully planned and unblocked.** The per-sport question is measured
+and answered for all three shared pages; four mockups are committed; the
+operator's decisions are taken; and **`docs/audit-remediation-plan.md` Phase 6
+has been rewritten as the plan of record** — 24 tasks in four tracks, original
+twelve preserved as 6.16-6.24. No production code yet. See §6 here for the
+reasoning, the plan doc for the work.
 
 ## The documents, in reading order
 
@@ -58,8 +61,10 @@ production from the worker's own logs.
 
 ## 3. Next actions
 
-1. **Phase 6 — operator sign-off on the six role names**, then build
-   `components/charts/`. §6 has the measurement, the answer, and two mockups:
+1. **Phase 6 — start building.** No design decisions outstanding. Plan of record
+   is `docs/audit-remediation-plan.md` Phase 6. Start 6.5 (pick_history
+   backfill, the long pole) and 6.1-6.3 (type changes) together, then 6.4
+   (primitives). §6 here has the measurement and the four mockups:
    `docs/design/chart-grammar.html` (the primitives + deep MLB page) and
    `docs/design/player-detail-per-sport.html` (all eight sports, one template)
    `docs/design/team-detail-per-sport.html` (six teams + golf's tournament) and
@@ -519,6 +524,23 @@ cards-per-game all move totals.
 2. **Sign off `unitGrades`** (carried from the team board — same decision).
 3. **Decide the sourcing order** for the three gaps above. Nothing else on
    Phase 6's UI work is blocked by design any more.
+
+### OPERATOR DECISIONS, 2026-08-29 — taken, do not reopen
+
+- **Officials/umpires: CUT.** Zero hits tree-wide; one new integration per sport
+  with nothing reusable. Removed from the game board.
+- **Tennis point-level data: CUT.** Serve placement and serve mix replaced with
+  **"Games won by set"** and **"Match shape"**, both derivable from the eight
+  tennis keys already in `player_game_history`. Tennis keeps a full-depth page
+  with no purchase.
+- **NBA/NHL shot coordinates: APPROVED, build it.** Phase 6.7.
+- **Everything else proceeds without further guidance** (operator's words).
+  That includes `unitGrades`, the `statComparison` collapse, the role renames,
+  the `pick_history` backfill, the Statcast ungroup, nflverse PBP, Understat
+  shots, and generalising weather/park factors/sims.
+
+Both cuts are implemented in the committed boards and both boards re-verified
+(21 cards on the game board, tennis showing "set x tier / share of games won").
 
 ### DATA-GAP AUDIT — what the three boards need that we lack (2026-08-29)
 

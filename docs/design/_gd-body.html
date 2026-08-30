@@ -5,9 +5,9 @@
     <h1>One Game Detail, all eight</h1>
     <p class="lede">
       Third and last of the three shared pages. Same method: measure, then build it.
-      <strong>Every tab renders the same twenty blocks from the same template</strong>, no
-      <code>sport === 'x'</code> in the renderer. Game Detail has four blocks neither of the other
-      two pages has &mdash; a bookmaker grid, injuries, the deciding matchup, and the officials.
+      <strong>Every tab renders the same nineteen blocks from the same template</strong>, no
+      <code>sport === 'x'</code> in the renderer. Game Detail has three blocks neither of the other
+      two pages has &mdash; a bookmaker grid, injuries, and the deciding matchup.
     </p>
   </header>
 
@@ -73,8 +73,8 @@
     <div class="frame">
       <table class="tv wide-tv" id="grole-table"></table>
       <p class="caption">
-        The roles. <code>matchupKey</code> and <code>officials</code> are the two that carry the
-        most sport-specific content, and neither exists on the player or team page.
+        The roles. <code>matchupKey</code> is the one carrying the most sport-specific content, and
+        it exists on neither the player nor the team page.
       </p>
     </div>
   </section>
@@ -211,11 +211,6 @@
           </div>
 
           <div class="lb-card card-pad">
-            <div class="card-head"><span class="card-title" id="gd-off-t">&nbsp;</span></div>
-            <div id="gd-officials"></div>
-          </div>
-
-          <div class="lb-card card-pad">
             <div class="card-head"><span class="card-title" id="gd-h2h-t">&nbsp;</span></div>
             <div id="gd-h2h"></div>
           </div>
@@ -264,11 +259,13 @@
         <code>pregameLines.draw</code>, which is genuinely earned.
       </li>
       <li>
-        <strong>Four blocks are game-only</strong> &mdash; <code>bookGrid</code>,
-        <code>injuries</code>, <code>matchupKey</code>, <code>officials</code>. Officials is the
-        one that is missing entirely today and is real for every sport: a plate umpire's strike
-        zone, a crew's penalty rate, a referee's cards-per-game all move totals, and none of it is
-        anywhere in the app.
+        <strong>Three blocks are game-only</strong> &mdash; <code>bookGrid</code>,
+        <code>injuries</code> and <code>matchupKey</code>.
+        <strong>An officials block was designed and then cut.</strong> A plate umpire's
+        zone and a referee's card rate genuinely move markets, but a tree-wide grep returns
+        zero hits for umpire, crew or officiating: it would have needed a separate new
+        integration per sport with nothing reusable between them. Cut on 2026-08-29 rather
+        than shipped as the one block with no path to real data.
       </li>
       <li>
         <strong><code>hero.awayGrades</code>/<code>homeGrades</code> and
