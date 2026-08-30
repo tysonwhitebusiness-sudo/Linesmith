@@ -1804,7 +1804,70 @@ bugs were found by **looking at a rendered page**, not by querying the DOM.
 **Nothing here blocks starting 6.4.** A block with no source renders the empty
 state the grammar already defines.
 
-### 6.5 · Backfill `pick_history` for the six sports that have none — **do first**
+### 6.5 · `pick_history` for the sports that have none — **DIAGNOSED 2026-08-30, premise overturned. Needs an operator decision.**
+
+> **The original task text is preserved below the line. It was wrong in a way
+> that changes the work, and the diagnosis is the deliverable.**
+
+**The pipeline is not broken. It works, and it was verified by running it** —
+`generic_prop_production.run_sport('soccer_epl')` logged **131 candidates** on
+2026-08-30. Grading works too: soccer's `pick_history` rows went from 0 graded
+to **215 of 381 graded** within hours, as the previous day's fixtures finished.
+
+**The four empty sports are simply between seasons.** Measured with
+`scripts/diagnose/sport-slate-today.py`, which calls the same ESPN scoreboard
+endpoint the production job uses:
+
+| Sport | Games today | Games tomorrow | Last game played |
+|---|---|---|---|
+| NFL | **0** | **0** | 2026-01-05 |
+| CFB | **0** | **0** | 2026-08-29 (week 1; next slate Sep 5) |
+| NBA | **0** | **0** | 2026-04-13 |
+| NHL | **0** | **0** | 2025-04-17 |
+| Soccer EPL | 4 | 1 | in season |
+| Soccer MLS | 2 | 0 | in season |
+
+An empty `pick_history` for a sport with no fixtures is correct behaviour.
+Likewise **"healthy — 0 rows written" is the correct steady state**, not a
+failure signal: `db.log_surfaced` is `ON CONFLICT DO NOTHING`, so a rerun over
+the same slate writes nothing new. (`health_check.py` cannot distinguish that
+from a genuinely stuck job — worth fixing, but it was not lying here.)
+
+**Why a backfill cannot simply be run — the blocking measurement.**
+`prop_odds_history` begins **2026-08-11**, nineteen days ago, and holds
+subjects for **soccer, tennis and MLB only**. There is no historical prop-odds
+record for NFL, CFB, NBA or NHL at any date. A reconstructed pick without a
+market price has no `market_prob`, no `edge` and no `price` — which are exactly
+the fields the boards' Edge and Model % blocks read. A backfill would fill the
+table and leave those blocks as empty as they are now.
+
+**And it collides with the leakage guard.** `generic_prop_production` refuses
+to run on a game that has already started (finding P3 H4, task 2.2) precisely
+because `player_game_history` then contains the outcome the prediction is
+supposed to be about. Any backfill over past games is that same operation by
+construction, and needs a point-in-time candidate builder that filters history
+to `game_date < target_game_date` — a real second implementation, not a flag.
+
+**The three options, for the operator:**
+
+1. **Let it accrue.** Zero work. CFB and NFL resume in September, NBA and NHL
+   in October; every row is real, leakage-free and priced. By the time the
+   three boards ship, four sports have weeks of genuine graded history.
+2. **Model-only backfill.** A point-in-time builder producing `model_prob` with
+   no `market_prob`/`edge`/`price`. Fills Model %, leaves Edge empty, and every
+   row must be unmistakably marked reconstructed (6.19). Substantial.
+3. **Buy historical prop odds** for the four sports — a vendor purchase, and
+   the only option that makes a backfilled Edge real.
+
+**One thing to fix regardless**, and it is not a backfill: the current model
+writes `model_source = NULL`, and ten scoring readers filter on exactly
+`model_source IS NULL` (`tests/model-source-filter.test.ts`). Any backfill
+writing NULL walks straight into the published record. It needs its own
+sentinel decided **before** a single row is written.
+
+---
+
+*Original task text, superseded by the diagnosis above:*
 
 `pick_history`: **MLB 369,185 / soccer 381 / everything else ZERO.**
 `game_picks`: mlb 176, soccer 24, nfl 16, cfb 8.
