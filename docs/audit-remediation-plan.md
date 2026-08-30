@@ -3907,7 +3907,47 @@ per-season fallback passed it. Only fault injection found either.
 **Render worker DEPLOYED** — `dep-da9rh44s728c73ek4tig`, `live` on `ec2f465`.
 `ingestStatcastPitchesJob` runs hourly.
 
-**STILL NOT DONE:** 6.7-6.10, the rest of 6.13/6.14/6.15, and Track D.
+**SESSION THREE, 2026-08-30.** Commits `804b5e5`..`ae9081e`. Tests 162 -> 197,
+plus 22 Python assertions. `tsc` clean, `npm run build` passes.
+
+| Task | State | Evidence |
+|---|---|---|
+| 6.17 price freshness | **DONE** | The machinery existed and nothing reached it — `OddsChip` had `priceAge` and a 30-min threshold, and the board never passed a `capturedAt` at any of five call sites. Wired, plus a coverage line. Verified live: "5 books · updated 1m ago · 4 stale". |
+| 6.19 backfill labelling | **DONE** | Four readers counted 316,327 rows that were never surfaced. Home page record 118,691/356,570 (33.3%) -> 15,689/43,361 (36.2%); overall Brier 0.1986 -> 0.2191. |
+| 6.23 book lag | **BLOCKED — not derivable** | See the task. |
+| 6.9 soccer shot map | **DONE** | No new endpoint needed; the shots were already in the cached `/getPlayerData` payload. 708 of 1,072 EPL candidates carry a grid. |
+| 6.7 NBA + NHL shots | **DONE** | Two tables, two Python ingesters, two jobs, two routes, two roles. Verified end-to-end against Postgres. |
+| 6.13 careerH2H | **DONE** | MLB now fills five of six roles. |
+| 6.10 weather | **NFL + CFB** | Soccer impossible — ESPN omits `indoor` entirely for MLS and EPL. |
+| 6.8 nflverse PBP | **INGEST DONE, NOT ON THE PAGE** | 49,492 plays streamed -> 17,848 target events. Adapter wiring is all that remains. |
+
+**A SIXTH WRONG PREMISE, and the first one that cannot be worked around.** 6.23
+says book lag is "derivable today from `prop_odds_history`. No new data." It is
+not: `observed_at` is the provider's POLL time, not a quote time. 126,977 rows
+over 24 hours share 426 distinct timestamps, one batch stamping 477 rows across
+7 books at a single instant. Full reasoning is in the task.
+
+**THREE MORE WRONG-NUMBER-RENDERS-CLEANLY DEFECTS**, all in shipped code:
+`PlayerDetail` told users for nineteen days that "Movement history isn't
+tracked" while 670,478 rows accumulated; `StatTable` accepted a `lowerIsBetter`
+flag whose body was `r.lowerIsBetter ? raw : raw`; and four `pick_history`
+readers counted picks whose `surfaced_at` equals their `graded_at`.
+
+**AND ONE I INTRODUCED AND CORRECTED.** I built 6.16's chart to break its line
+on empty buckets, arguing it in code, commit message and tests. Then I read the
+writer: `prop_odds_history` is log-on-change, so an empty bucket means the price
+HELD. Now a step series. A plausible general principle applied without checking
+the writer is how a confident wrong answer ships.
+
+**A MIRROR IS NOT A TEST**, twice. A test that re-implements the rule it checks
+agrees with that rule's bugs — reverting the real function failed nothing both
+times. Fault injection is what found it, and four injections PASSED before the
+fixtures were made discriminating.
+
+**STILL NOT DONE:** 6.8's adapter wiring (six lines), 6.10's park factors and
+game sims, 6.14, 6.15, 6.21, 6.24. The three new ingest tables hold one game or
+one season each — enough to prove the pipeline, not enough to render broadly —
+and the Render worker needs a redeploy to start their three jobs.
 
 **THE PLAN'S OWN TASK TEXT WAS WRONG FOUR TIMES**, each found only by
 measuring: 6.2 ("all seven sports populate `rankings`" — only MLB and NFL do,

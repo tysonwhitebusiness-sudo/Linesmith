@@ -1,315 +1,218 @@
 # CURRENT — pick up here
 
-**Phase 6 is IN PROGRESS. Track A is COMPLETE** (6.1, 6.1b, 6.2, 6.2b, 6.3,
-6.4). 6.5, 6.11 and 6.12 are resolved. **6.6 is DONE and wired** — its backfill
-is running, not paused. Track B's remaining sourcing (6.7-6.10), most of Track
-C (6.13 is part-done, 6.14/6.15 untouched) and all of Track D remain. Phases 4
-and 5: complete, gates passed.
+**Phase 6 is IN PROGRESS and close.** Track A complete. Track B complete except
+6.10's last two thirds. Track C: 6.13 done, **6.14 and 6.15 untouched — they are
+the bulk of what is left**. Track D: 6.16/6.17/6.19 done, 6.23 blocked,
+6.21/6.24 open. Phases 4 and 5 complete, gates passed.
 
 **Read `docs/audit-remediation-plan.md` Phase 6 for the plan; §11 is the phase
 log and the only place a task counts as done. Trust §11 and `git log` over this
 file if they disagree.**
 
-## 1. What just happened (2026-08-30, second build session of Phase 6)
+## 1. What just happened (2026-08-30, sessions two and three)
 
-Two commits, `9b0e1a1`..`c77ffb9`. **TS tests 106 -> 126. All passing, `tsc`
-clean, `npm run build` passes.** Every claim below was checked in a browser
-against live rows, not just compiled.
+Sixteen commits, `2469b2c`..`ae9081e`. **TS tests 106 → 197, plus 22 new Python
+assertions.** `tsc` clean, `npm run build` passes, and everything claimed below
+was checked against live data or a rendered page — not just compiled.
 
-| Task | State | Commit |
-|---|---|---|
-| 6.6 backfill resumed | **running**, 1.24M rows | — |
-| 6.6 read path wired — MLB `usageMix` + `spatialGrid` | **done** | `9b0e1a1` |
-| 6.13 `binarySplit` for CFB/NBA/NHL/soccer | **done** | `c77ffb9` |
-| `StatTable.lowerIsBetter` removed | **done** | `c77ffb9` |
+| Task | State |
+|---|---|
+| 6.6 Statcast | **COMPLETE** — 2,135,564 rows, 2024-26, zero failed windows. Wired and rendering. |
+| 6.7 NBA/NHL shots | **COMPLETE** — both tables, ingesters, jobs, routes, roles. |
+| 6.8 nflverse PBP | **ingest + route done, NOT on the page** — see §3. |
+| 6.9 soccer shot map | **COMPLETE** — renders, EPL-only by design. |
+| 6.10 weather | **NFL + CFB done.** Soccer impossible; park factors and sims untouched. |
+| 6.13 Player Detail | **DONE** — MLB fills 5 of 6 roles; four sports fill `binarySplit`; NBA/NHL/soccer fill `spatialGrid`. |
+| 6.16 line movement | **COMPLETE** — route + chart, verified drawing. |
+| 6.17 price freshness | **COMPLETE** — verified live. |
+| 6.19 backfill labelling | **COMPLETE** — four readers fixed. |
+| 6.23 book lag | **BLOCKED, not buildable** — see §4. |
+| Render worker | **DEPLOYED**, live on `ec2f465`. Needs another deploy — §3.6. |
 
-### THE "DUPLICATE PYTHON PROCESS" WORRY IS RETIRED
+## 2. THE SINGLE MOST IMPORTANT THING TO CARRY FORWARD
 
-`.venv/Scripts/python.exe` is a **274 KB redirector stub** that execs the base
-interpreter as a CHILD process. Measured: PID 5080 held 4.6 MB, 1 thread, 0s
-CPU; its child 12028 held 91.8 MB, 10 threads, 3.1s CPU, same creation second.
-**One logical process. No doubled request rate** — and that is why killing one
-killed both. Same for the `harvester_scrape.py` pair. Do not spend time on it.
+**Five defects this phase rendered cleanly and were only found by opening the
+page or measuring the data. `tsc` and the whole test suite passed every one.**
 
-### THREE MORE WRONG-NUMBER-RENDERS-CLEANLY DEFECTS
+1. A strike-zone caption counted zones the grid excluded — `n=3` above nine
+   cells reading "no data".
+2. Two cards on one page printed the same statistic two ways (`.717` / `0.796`).
+3. A home/away card read "Home 0 (n=5) vs Away 28 (n=267)" through a
+   both-sides-non-empty check.
+4. `PlayerDetail` told users for nineteen days that **"Movement history isn't
+   tracked"** while 670,478 rows accumulated behind it.
+5. `StatTable` accepted a `lowerIsBetter` flag whose body was
+   `r.lowerIsBetter ? raw : raw`.
 
-Two of these could not have been caught by a test written beforehand. It took
-opening the page.
+**And one I got wrong myself.** I built the movement chart to break its line on
+empty buckets, arguing it in code, commit and tests. Then I read the writer:
+`prop_odds_history` is **log-on-change**, so an empty bucket means the price
+HELD. The chart is now a step series. *A plausible general principle applied
+without checking the writer is how you ship a confident wrong answer.*
 
-1. **The strike zone counted zones it did not draw.** Jackson Merrill's real
-   2026 profile has all its expected-wOBA rows in Savant's OUTSIDE quadrants
-   (11-14). The 3x3 correctly excluded them, so the card drew nine cells reading
-   "no data" under a caption saying "n=3". A test summing the same set the
-   builder summed would have agreed with the bug.
-2. **Two cards on one page, one statistic, two conventions** — the grid printed
-   `.717`, the mix printed `0.796`. `UsageMixRole.valueFormat` now exists for
-   the same reason `SpatialGridRole.format` is required.
-3. **A non-empty side is not a balanced one.** See §2b.
+**A test that mirrors the code agrees with the code's bugs.** Twice a test
+re-implemented the rule it was checking; reverting the real function failed
+nothing. Fault-inject every guard — and when an injection PASSES, the test does
+not discriminate. That happened four times this session, and each time the fix
+was a better fixture, not a better assertion.
 
-### 2b. THE SOCCER HOME/AWAY DEFECT — FOUND AND **FIXED** (`33e7389`)
+## 3. NEXT ACTIONS, in order
 
-`/getPlayerData/{id}` returns a player's WHOLE CAREER across every club.
-`understat.ts` resolved venue as `m.h_team === understatTeamTitle`, comparing
-every historical fixture against the player's **current** club — so every match
-before their latest transfer recorded as away, and `opponent` resolved to the
-player's own former club.
+1. **Finish 6.8 — six lines.** Ingest, table, job, read path, route and hook are
+   built and verified through HTTP; only the adapter wiring is missing. Copy
+   what NHL/NBA already do: build `spatialGrid` in
+   `lib/sports/nfl/adapters/playerDetailAdapter.ts` from `useNflTargetMap`, and
+   call the hook in `PlayerDetail.tsx` beside `useNbaShotProfile`. Payload to
+   build against, already verified: receiver `00-0036900`, season 2024 → 175
+   targets, 127 completions, 8.7 mean air yards, 0 unplaced.
+2. **6.14 Team Detail and 6.15 Game Detail — the bulk of what remains.**
+   Untouched. Measure the boards against what `TeamDetail.tsx`/`GameDetail.tsx`
+   already render before building; this plan's premises have now been wrong
+   **six** times.
+3. **6.10's last two thirds** — `park_factors` generalised beyond MLB, and
+   `game_sim_cache` (192 rows, `sport` column already exists, only `mlb`
+   populated).
+4. **6.21 user-facing CLV**, then **6.24** (de-vig, correlated props, DFS).
+5. **Backfill the three new tables** when the seasons start. All operator
+   commands, all resumable, none on a schedule:
+   - `./.venv/Scripts/python.exe -u src/nhl_shots.py backfill 20242025`
+   - `./.venv/Scripts/python.exe -u src/nba_shots.py backfill 2024-10-22 2025-04-13`
+   - `./.venv/Scripts/python.exe -u src/nfl_pbp.py backfill 2023 2025`
+6. **REDEPLOY THE RENDER WORKER.** Three new jobs (`ingestNhlShotsJob`,
+   `ingestNbaShotsJob`, `ingestNflPbpJob`) are in `JOB_REGISTRY` and are **not
+   running** until you do. `autoDeploy: no`; the call is in §7.
 
-Fixed by reading `groups.season` out of the same response (no extra request):
-one entry per season carrying that season's club, as a **SET** because a
-mid-season transfer lists two (Salah's 2014 is Fiorentina and Chelsea; a single
-value left 16 of his 399 matches unresolved).
+## 4. Blocked, and why — do not re-attempt without new data
 
-Measured live, through the app, before and after:
+**6.23 book-lag analysis is NOT DERIVABLE.** The plan says "derivable today from
+`prop_odds_history`. No new data." It is not. `observed_at` is the PROVIDER'S
+POLL TIME, not the moment a book moved: **126,977 rows over 24 hours share 426
+distinct timestamps**, and one real batch stamps 477 rows across 7 books at a
+single instant. Propline alone writes 17 of the books that way. A lead-lag
+leaderboard on this ranks books by which provider polls them and how often —
+running it gave every book a score between 0.000 and 0.212. `delay_seconds` does
+not rescue it (Propline reports none across 84,964 rows; SharpAPI reports a
+constant 60, which is a declared feed delay). **Needs a provider returning a
+per-book `last_update`. Operator decision, not more work.**
 
-| | before | after |
-|---|---|---|
-| home share across the EPL slate | 3,228 / 13,013 = **19.9%** | 46,047 / 45,992 = **50.0%** |
-| unresolved | — | **0** |
-| split cards rendering | 304 of 593 eligible | **671 of 671** |
+**Soccer weather is impossible from ESPN.** `indoor` is present on 16/16 NFL and
+25/25 CFB events and **entirely absent** for MLS and EPL. MLS has real domes, so
+`!indoor` would print wind and rain for a game played under a roof. Needs a
+checked per-venue roof list.
 
-Callum Wilson's page, which is what exposed it: was "Home 0 (n=5) vs Away 28
-(n=267)", now "Home 29% (n=139) vs Away 27% (n=133)".
+**Not fixed, needs its own task: 53% of `pitcher-strikeouts` rows in
+`prop_odds_history` carry no line** — 52,024 of 98,434, mostly fanduel (37,714),
+fanatics (13,882), draftkings (3,027). "Over" nothing is not a bet. That is in
+the Python ingest path.
 
-`isHome` and `opponent` are now **three-valued** — a match whose season resolves
-to neither side is `null`, and `null` is not `false`. The cache key is bumped to
-`:v2:` because every stored entry held the old wrong values; 374 stale v1 rows
-remain in `snapshot_cache` and are harmless but could be swept.
+## 5. What is running
 
-**The `toVenueBinarySplit` 25% ratio guard stays.** It is not redundant now that
-the data is right — it is the thing that would catch the NEXT resolution
-failure, in this provider or another. It suppresses nothing on live EPL today.
+**A dev server on port 3000 belongs to ANOTHER session.** `npm run build` ran
+alongside it many times without the `.next/` lock that blocked session one.
+**The in-app Browser pane cannot reach it** — every navigation collapses to `/`.
+**Playwright MCP reaches it fine; use that.**
 
-### `opponentUnit` for NFL/NBA/NHL/CFB would be a DUPLICATE, not a fill
+Seven `harvester_scrape.py` scheduled tasks on a ~20-minute cycle. Each shows as
+two PIDs and **that is one process** — `.venv/Scripts/python.exe` is a 274 KB
+redirector stub whose child is the real interpreter (measured: 4.6 MB / 1 thread
+/ 0s CPU against 91.8 MB / 10 threads / 3.1s CPU). The old "duplicate process"
+warning is retired; do not spend time on it.
 
-The plan implies building it from their defense-allowed rows. Those rows are
-**already rendered** by `matchupExplorer` on the same page. MLB is the genuine
-case — its `opponentUnit` is the opposing STARTER and its explorer is the
-lineup, two entities. Checked before building; do not re-derive this.
+## 6. Things that will bite again
 
-## 2. The backfill is RUNNING — do not restart it blindly
-
-`mlb_pitch_events` at **1.24M rows**: 2024 complete (746,576, through
-2024-10-30), 2025 in progress (484,141, through 2025-07-18), 2026 at 4,420.
-Target 2024-2026, roughly 2.1M. Check before doing anything:
-
-```
-Get-CimInstance Win32_Process -Filter "Name like '%python%'" | Select ProcessId,ParentProcessId,CommandLine
-```
-
-If it has stopped, resume with the same one command — it is **resumable by
-construction**, idempotent on `(game_pk, at_bat_number, pitch_number)`:
-
-```
-cd python-odds-service
-./.venv/Scripts/python.exe -u src/statcast_pitches.py backfill
-```
-
-It re-fetches windows already stored (writes are no-ops), so restarting costs
-time, not data. Progress:
-`SELECT season, count(*), max(game_date) FROM mlb_pitch_events GROUP BY 1;`
-
-**THE WORKER IS DEPLOYED** — `dep-da9rh44s728c73ek4tig`, status `live` on
-commit `ec2f465`, confirmed. `ingestStatcastPitchesJob` runs hourly and keeps
-the last 3 days current, so 2026 fills on its own from here regardless of the
-historical sweep.
-
-## 3. What is running
-
-**A dev server on port 3000 belongs to ANOTHER session.** This session did not
-start it and did not kill it. `npm run build` ran fine alongside it three times,
-so the `.next/` lock that blocked the whole first session did not recur — but
-the in-app Browser pane could not reach it (every navigation collapsed to `/`).
-**Playwright MCP reaches it fine**; use that for verification.
-
-The Statcast backfill (§2). **Seven** `harvester_scrape.py` scheduled tasks on
-a ~20-minute cycle — each shows as two PIDs and that is one process, see §1.
-
-## 4. Next actions
-
-1. ~~Deploy the Render worker~~ — **DONE**, `dep-da9rh44s728c73ek4tig` is live
-   on `ec2f465`. `ingestStatcastPitchesJob` runs hourly now, so 2026 fills on
-   its own and MLB's pitch cards stop showing n=1 samples.
-2. **Finish 6.13.** MLB fills 4 of 6 roles; CFB/NBA/NHL/soccer fill 1. Still
-   open, with what was measured about each:
-   - `conditions` for the outdoor sports — NOT yet checked whether NFL/CFB/
-     soccer snapshots carry weather the way MLB's `active.context.weather` does.
-     Measure before building.
-   - `careerH2H` — every adapter already computes `windows.h2h`, but that is
-     **already rendered** in the window-box row. Decide whether a per-meeting
-     card adds anything before building a second view of one number.
-   - `usageMix`/`spatialGrid` for other sports need 6.7/6.9 sourcing first.
-   - **Do NOT build `opponentUnit` for NFL/NBA/NHL/CFB** — §1 explains why.
-3. **6.14 Team Detail and 6.15 Game Detail** — untouched.
-5. **6.7 NBA/NHL shots, 6.8 nflverse PBP, 6.9 Understat shots, 6.10 generalise
-   weather/park/sims.** All four endpoints confirmed reachable.
-6. **6.16 needs a route built first** — `/api/props/line-history` does not
-   exist. The data does: `prop_odds_history`, 613,814 rows.
-7. **Track D's remainder** (6.17, 6.19, 6.21, 6.23, 6.24).
-
-## 5. Things that will bite again
-
-**Measure the READ, never just the WRITE.** Every defect the Phase 4 gate found
-had passed a VERIFY that checked the write and never the read. This session's
-new tests all assert the *wiring* or the *rendered output*, and every one was
-fault-injected — each fails by name when its target is reverted.
+**Measure the READ, never just the WRITE.** Every Phase 4 gate defect had passed
+a VERIFY that checked the write and never the read.
 
 **A guardrail that has never rejected anything is not known to work.**
 
-**A TEST WRITTEN FROM THE SAME MISTAKEN MODEL AS THE CODE AGREES WITH THE BUG.**
-Two of this session's three defects were invisible to `tsc` AND to any test I
-would have written first, because the test would have summed the same wrong set
-the builder summed. Both surfaced within seconds of opening the page. Render it
-before believing it.
+**A test written from the same mistaken model as the code agrees with the bug.**
+See §2.
 
-**A non-empty side is not a balanced one.** A presence check (`n > 0`, or even
-`n >= 3`) passes data that is structurally broken. Where the real world
-constrains the shape — league teams play a balanced schedule — check the SHAPE,
-not just presence.
+**A non-empty side is not a balanced one.** Presence checks (`n > 0`, `n >= 3`)
+pass structurally broken data. Where the real world constrains the shape — league
+teams play a balanced schedule — check the SHAPE, not just presence.
 
+**Sentinels are not nulls.** ESPN encodes a missing NBA coordinate as
+`-214748340`, which is finite and passes every null check; 55 of 250 shooting
+plays carried it and it made the mean two-point distance 72,623,934 feet. And
+`Number('')` is **0**, which is finite — that put soccer shots on the player's
+own goal line.
 
-**A dead consumer cannot report that its input vanished.** After any change
-that renames or re-derives a value, grep the tree for consumers, including code
-nothing currently calls.
+**Establish geometry from ground truth.** NBA's basket sits at (25,0) in feet
+because threes measured 26.6 ft and twos 12.9 against a real 22–23.75 ft line.
+NHL's `x` sign alternates by attacking end, so the fold is a 180° rotation, not
+`abs(x)`.
 
-**Quote the number the decision actually rests on** — propagate it through to
-what a user sees before putting it in front of someone.
-
-- **"healthy — 0 rows written" is ambiguous** and `health_check.py` cannot tell
-  a stuck job from an empty slate. `scripts/diagnose/sport-slate-today.py`
-  answers it in one run.
-- **Out of season is the default state of most sports.** On 2026-08-30 only
-  MLB, CFB (week 1), soccer and tennis had fixtures. Four of eight sports being
-  empty is usually a calendar fact, not a bug — check before diagnosing.
+- **Out of season is the default state of most sports.** NBA and NHL return zero
+  candidates until October; CFB's slate emptied mid-session. Check the calendar
+  before diagnosing.
+- **`prop_odds_history` is LOG-ON-CHANGE.** Silence means unchanged, not unseen.
+- **The dimension is not the market key.** `hit-in-game` is stored as `hits`;
+  use `candidateDimensionToMarketKey`.
+- **`/api/props/*` is rate-limited at 10/min as "provider".** Page-load reads
+  need the `page-read` class, declared BEFORE the provider rule.
 - **Different tables, different vocabulary.** `player_game_history` uses
-  `soccer_epl`/`soccer_mls` and `tennis_atp`/`tennis_wta`; `pick_history` and
-  `game_odds_book_lines` use `soccer`/`tennis`. Mixing them silently returns
-  zero rows.
-- **`player_game_history` numbers are float TEXT.** `stats->>'match_won'` is
-  `"0.0"`, so `::int` throws. Cast `::numeric`.
-- **Tennis ids can be compound.** A doubles pairing is one `athlete_id` like
-  `2725-2434` — 19% of ATP rows. They must not enter a singles ranking pool.
-- **`is_major` is 0.0 on every tennis row**, both tours, every season. Tennis
-  has **seven** usable keys, not eight.
-- **Tennis `subjectId` is `espn:tennis:{id}`**; the table stores the bare id.
-- **`player_game_history` has no index for a team-season rollup** — it is
-  `(sport, athlete_id, season, game_date)`. A rollup is a scan: NHL 11.7s, NBA
-  3.0s, tennis 37s. Fine behind `cachedRoute`, never on a render path.
-- **`estimated_woba` is not null on pitches that were not put in play.** 332 of
-  3,619 non-in-play pitches carried a value, 218 of them 0.0. Filter on
-  `description = 'hit_into_play'`, NOT on `estimated_woba IS NOT NULL` — the
-  naive average reads zone 1 as .281 against a true .367.
-- **Only 22% of balls in play carry an `estimated_woba`** (5,031 of 22,574).
-  The number to show beside an xwOBA is `xwobaSample`, not `ballsInPlay`.
-- **Savant's zone codes 11-14 are the OUTSIDE quadrants**, not part of the 3x3.
-- **Two `next dev` servers cannot share `.next/`.** (Did not recur this
-  session — three builds ran alongside another session's dev server.)
-- **The in-app Browser pane could not reach another session's dev server** —
-  every navigation collapsed to `/`. Playwright MCP reached it fine.
-- **The "two Python processes" thing is NOT real** — `.venv/Scripts/python.exe`
-  is a redirector stub and the second PID is its own child. Measured; see §1.
-- **A long heredoc breaks this shell** (>~120 lines, or an apostrophe in a
-  `<<'EOF'` block used with `&&` chaining). Write long commit messages to a
-  file and use `git commit -F`.
-- **`ps aux | grep` in Git Bash does not show command lines.** Use
-  `Get-CimInstance Win32_Process` and read `CommandLine`.
-- **`withJobLock` is a LEASE TABLE, not an advisory lock.**
-- **Postgres UNIQUE treats NULLs as distinct.**
+  `soccer_epl`/`tennis_atp`; `pick_history` uses `soccer`/`tennis`.
+- **`player_game_history` numbers are float TEXT.** Cast `::numeric`.
+- **Tennis ids can be compound** (`2725-2434`, 19% of ATP rows).
+- **Savant zones 11-14 are OUTSIDE the 3x3.**
+- **A long heredoc breaks this shell.** Use `git commit -F`.
+- **`ps aux | grep` shows no command lines in Git Bash.** Use
+  `Get-CimInstance Win32_Process`.
+- **The DB pool caps at 15 connections** — a `.mjs` query hung this session from
+  too many open clients. Close them.
 - **Stale `.next/types` break `tsc` after deleting a route** — `rm -rf .next/types`.
 
-## 6. Operational knowledge
+## 7. Operational knowledge
 
 - **DB access:** temp `.mjs` in the repo root, `node` it. `q*.mjs`, `g*.mjs`,
-  `gate*.mjs`, `runmig.mjs` are gitignored. `.env.local` has no `DIRECT_URL`,
-  so DDL also goes through `:6543`.
-- **The database is on the Supabase PRO plan**, not Free — `CURRENT.md` and the
-  stored memory both said Free and were wrong. **Size is 2,234 MB**
-  (`player_game_history` 1,589 MB, `snapshot_cache` 183 MB, `prop_odds_history`
-  157 MB, `pick_history` 107 MB). 6.6's Statcast backfill adds to this; budget
-  it against Pro's 8 GB included.
-- **RLS is off on 7 of 41 tables**, not 31/35 — the four `*_backup_*`/quarantine
-  tables plus `job_locks` and `mlb_prop_model_cache`.
-- **Tests:** `npm test` (**96**) and `./.venv/Scripts/python.exe -u src/test_x.py`
-  from `python-odds-service/`. **20** hermetic Python tests. No pytest.
-  The test glob now matches `*.test.tsx` as well as `*.test.ts` — it did not
-  before, and a `.tsx` suite would have been silently skipped in CI.
-- **Render:** worker `srv-da36bm2bkg8c73fqrdeg`, `autoDeploy: no`. After any
-  push touching `python-odds-service/`: `POST /v1/services/$SRV/deploys` with
+  `gate*.mjs`, `runmig.mjs` are gitignored. **`node runmig.mjs <path>` applies a
+  migration.** `.env.local` has no `DIRECT_URL`, so DDL also goes through `:6543`.
+- **Supabase PRO plan**, 8 GB included. Was 2,234 MB; 6.6 added ~2.1M pitch rows
+  and 6.7/6.8 added three more tables. **Re-measure before assuming headroom.**
+- **RLS off on 7 of 41 tables** — the `*_backup_*`/quarantine four plus
+  `job_locks` and `mlb_prop_model_cache`.
+- **Tests:** `npm test` (**197**), and each
+  `./.venv/Scripts/python.exe -u src/test_*.py` from `python-odds-service/`. No
+  pytest. **Do not run the whole Python sweep at once — several tests hit the
+  network/DB and it exceeds a two-minute timeout.**
+- **Render:** worker `srv-da36bm2bkg8c73fqrdeg`, `autoDeploy: no`. After any push
+  touching `python-odds-service/`: `POST /v1/services/$SRV/deploys` with
   `RENDER_API_KEY` from `.env.local`, then confirm `"status":"live"` on your
   commit sha. ~90s.
 - **No `gh` CLI and no GitHub token.** CI via the public Actions API.
 - **Don't `git add -A` blindly** — `docs/discord-community-prompt.md` is the
   operator's and must never be staged.
 
-## 7. Operator decisions taken — do not reopen
+## 8. Operator decisions taken — do not reopen
 
-**2026-08-29:** Officials/umpires **CUT**. Tennis point-level data **CUT**.
-NBA/NHL shot coordinates **APPROVED** (6.7).
+**2026-08-29:** Officials/umpires CUT. Tennis point-level data CUT. NBA/NHL shot
+coordinates APPROVED (6.7 — now built).
 
-**2026-08-30:**
-
-0. **6.5 — let it accrue.** No pick_history backfill; the seasons starting is
-   what that task needed.
-1. Tennis "Games won by set" — **replaced** (it is not derivable; `games_won`
-   is a match total with no per-set breakdown). Now sets-won rate by tier plus
-   match shape.
-2. 6.12's tennis match stats — **verify against the ESPN summary**, drop what
-   is not really there.
-3. Statcast depth — **2024 onwards**, three seasons.
-4. New sourcing tables — **Python writes them**; the TS fetchers are untouched.
-5. 6.5 — **diagnose before backfilling**. Done; see §1.
-6. Primitive port list — **all 14**, no consolidation.
-7. `sport === 'x'` gate — **narrow the wording AND fix the real render-path
-   branches** (`PlayerDetail.tsx` 965, 1001, 1164, 1923, 1985).
-8. 6.2 — **Option B**: collapse and fill the blanks. Done.
-9. 6.3 — **accept six new fields**, it is not a rename.
-10. 6.11 — operator said spend; **superseded by measurement**, no purchase
-    needed (see §3.4).
-11. 6.18 compliance — **skipped for Phase 6**, remains a launch blocker.
-12. 6.20 — **hold** until there is a real record.
-13. Golf — **no game page**; `app/golf/schedule` is its equivalent, so 6.15
-    ships **seven** sports.
-
-## 8. Phase 6 design reference
-
-The four committed, self-contained boards are the specification. Open them
-directly; rebuild with `node docs/design/build-{per-sport,team-detail,game-detail}.mjs`.
-
-- `docs/design/chart-grammar.html` — the primitives (holds the two **unfixed**
-  originals; the fixes are in `build-lib.mjs` and now in `components/charts/`).
-- `player-detail-per-sport.html`, `team-detail-per-sport.html`,
-  `game-detail-per-sport.html`.
-- `docs/design/phase6-data-gap-audit.md` — the sourcing evidence.
-
-**The six universal ROLES** (6.3, still to build — six NEW fields, not renames):
-`opponentUnit`, `usageMix`, `spatialGrid`, `binarySplit`, `conditions`,
-`careerH2H`. Each carries its own title, labels and cells from the sport's
-adapter; the component renders a title and a grid and never learns what a
-strike zone is.
-
-**Page counts differ by sport and that is the answer, not a gap:** Player 8,
-Team 6 (tennis and golf have no team), Game 7 (golf's equivalent is the
-schedule).
+**2026-08-30:** 6.5 let it accrue, no `pick_history` backfill. Statcast depth
+2024 onwards. New sourcing tables are **Python-written**. Primitive port list:
+all 14. 6.3 accepted as six new fields. 6.11 needs no purchase. 6.18 skipped
+(remains a launch blocker). 6.20 and 6.22 moved to Phase 7 — they need a graded
+record that does not exist yet. Golf gets no game page, so 6.15 ships **seven**
+sports.
 
 ## 9. Known not done
 
-1. **Duplicate React keys can silently omit prop rows** —
-   `GolfScheduleView.tsx:1244` and `TennisScheduleView.tsx:529` omit the game
-   id from the key, and a player can have candidates for two games. One-line
-   fix, still unowned.
-2. **374 stale `soccer:understat:player:` v1 rows in `snapshot_cache`** —
-   harmless (the live key is `:v2:`) but never swept. See §2b.
-3. **`opponentUnit` is filled for MLB only**, and correctly so — for
-   NFL/NBA/NHL/CFB it would duplicate `matchupExplorer` (§1). Soccer, tennis
-   and golf have no source for it at all yet.
-4. **NHL grades three units, not four.** Power play and penalty kill need
-   situational time-on-ice, which the stored keys do not carry.
-5. **MLB grades two units** (Hitting, Pitching) — no league-wide ranked
-   fielding or bullpen aggregate exists to grade from.
-6. **MLB total residual, ~1 point** — Q40, accepted deliberately.
+1. **6.8's adapter wiring** — §3, item 1.
+2. **6.14 and 6.15** — untouched, and the largest remaining work.
+3. **Duplicate React keys can silently omit prop rows** —
+   `GolfScheduleView.tsx:1244` and `TennisScheduleView.tsx:529` omit the game id
+   from the key. One-line fix, still unowned.
+4. **The three new ingest tables hold one game / one season each** — enough to
+   verify the pipeline, not enough to render for most players. See §3 item 5.
+5. **NHL grades three units, not four** — no situational time-on-ice.
+6. **MLB's `binarySplit` stays null** — vs LHP/RHP needs a platoon split this app
+   does not store. Home/away is already a venue filter chip there.
 7. **`fit_moneyline_weights` and `market_gate` are on no automatic path.**
 8. **`/diagnostics`, `/bets` and the signed-in walk were never verified** — no
    credentials; creating an account is out of bounds.
-9. **`snapshot_cache` is 183 MB across 3,167 rows.**
+9. **374 stale `soccer:understat:player:` v1/v2 rows** in `snapshot_cache` (the
+   live key is `:v3:`). Harmless, never swept.
 10. **2,380 duplicate observation groups in `game_odds_history`.**
 11. **No push alerting; rate limiting is per-process** — Phase 8.
 12. **`SUPABASE_SERVICE_ROLE_KEY` cannot be rotated** — Phase 7.
