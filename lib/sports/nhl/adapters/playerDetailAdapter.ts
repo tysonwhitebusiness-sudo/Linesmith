@@ -17,7 +17,7 @@ import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
 import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import type { NhlTeamDefenseAllowed } from '@/lib/sports/nhl/teamDefenseAllowed';
 import { MIDDOT, fmt } from '@/components/charts/tokens';
-import { toRoleStat, type OpponentUnitRole, type SpatialGridRole } from '@/lib/sports/shared/playerRoles';
+import { toRoleStat, type OpponentUnitRole, type SpatialGridRole, type UsageMixRole } from '@/lib/sports/shared/playerRoles';
 import type { NhlShotProfile } from '@/lib/sports/nhl/shotProfileShapes';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toRestConditions } from '@/lib/sports/shared/restConditions';
@@ -116,6 +116,35 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
   // attacking end by `toNhlShotProfile` — see `shotProfileShapes.ts` for why
   // that fold is a 180-degree rotation and not `abs(x)`.
   const shotProfile = shotProfileState?.profile ?? null;
+
+  // ---- Role 2 | usageMix: the shot-type mix.
+  // The NHL API's own vocabulary (wrist, snap, slap, tip-in, backhand,
+  // deflected) -- six or seven values, so unlike NBA there is no long tail to
+  // bucket and every type is shown.
+  //
+  // The denominator is every shot including unplaced ones, a different total
+  // from the grid below; `sampleSize` states it so the two cards are not read
+  // as disagreeing about a number they are not both measuring.
+  const nhlTypeTotal = shotProfile ? shotProfile.shotTypes.reduce((s, t) => s + t.shots, 0) : 0;
+  const usageMix: UsageMixRole | null =
+    shotProfile && nhlTypeTotal > 0
+      ? {
+          title: 'Shot types',
+          slices: shotProfile.shotTypes.map((t) => ({
+            key: t.type,
+            label: t.type.charAt(0).toUpperCase() + t.type.slice(1),
+            share: (t.shots / nhlTypeTotal) * 100,
+            value: t.shots > 0 ? (t.goals / t.shots) * 100 : undefined,
+            valueLabel: 'Goal%',
+            decimals: 1,
+            valueSample: t.shots,
+          })),
+          valueFormat: fmt.pct1,
+          sampleSize: nhlTypeTotal,
+          emptyMessage: 'No shot types on record.',
+        }
+      : null;
+
   const spatialGrid: SpatialGridRole | null = shotProfile
     ? {
         title: 'Shot location',
@@ -334,6 +363,7 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
       : null;
 
   return {
+    usageMix,
     conditions,
     opponentUnit,
     careerH2H,

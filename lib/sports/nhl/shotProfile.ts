@@ -21,8 +21,8 @@ export type { NhlShotProfile } from './shotProfileShapes';
  * BLOCKING team; see `shotProfileShapes.ts`).
  */
 export async function getNhlShotProfile(shooterId: number, season: string): Promise<NhlShotProfile | null> {
-  const rows = await pgAll<{ event_type: string; x_coord: number | null; y_coord: number | null }>(
-    `SELECT event_type, x_coord, y_coord
+  const rows = await pgAll<{ event_type: string; x_coord: number | null; y_coord: number | null; shot_type: string | null }>(
+    `SELECT event_type, x_coord, y_coord, shot_type
        FROM nhl_shot_events
       WHERE shooter_id = ? AND season = ?`,
     [shooterId, season],
@@ -32,6 +32,7 @@ export async function getNhlShotProfile(shooterId: number, season: string): Prom
       eventType: r.event_type,
       xCoord: r.x_coord == null ? null : Number(r.x_coord),
       yCoord: r.y_coord == null ? null : Number(r.y_coord),
+      shotType: r.shot_type,
     })),
   );
 }

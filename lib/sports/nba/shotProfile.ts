@@ -12,8 +12,8 @@ import { toNbaShotProfile, type NbaShotProfile } from './shotProfileShapes';
 export type { NbaShotProfile } from './shotProfileShapes';
 
 export async function getNbaShotProfile(shooterId: number, season: number): Promise<NbaShotProfile | null> {
-  const rows = await pgAll<{ x_coord: number | null; y_coord: number | null; point_value: number | null; made: boolean }>(
-    `SELECT x_coord, y_coord, point_value, made
+  const rows = await pgAll<{ x_coord: number | null; y_coord: number | null; point_value: number | null; made: boolean; shot_type: string | null }>(
+    `SELECT x_coord, y_coord, point_value, made, shot_type
        FROM nba_shot_events
       WHERE shooter_id = ? AND season = ?`,
     [shooterId, season],
@@ -24,6 +24,7 @@ export async function getNbaShotProfile(shooterId: number, season: number): Prom
       yCoord: r.y_coord == null ? null : Number(r.y_coord),
       pointValue: r.point_value == null ? null : Number(r.point_value),
       made: Boolean(r.made),
+      shotType: r.shot_type,
     })),
   );
 }

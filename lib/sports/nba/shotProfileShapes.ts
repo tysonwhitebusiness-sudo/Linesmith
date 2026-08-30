@@ -29,6 +29,8 @@ export interface NbaShotRow {
   yCoord: number | null;
   pointValue: number | null;
   made: boolean;
+  /** ESPN's own description: "Jump Shot", "Driving Layup Shot", "Step Back Jump Shot". */
+  shotType?: string | null;
 }
 
 export interface NbaShotCell {
@@ -50,6 +52,17 @@ export interface NbaShotProfile {
   totalMade: number;
   /** Attempts with no recorded location, excluded from the grid but counted here. */
   unlocated: number;
+  /**
+   * Shot-type mix — NBA's `usageMix`.
+   *
+   * COUNTED OVER EVERY ATTEMPT, INCLUDING UNLOCATED ONES, and that is a
+   * deliberate difference from the grid beside it. A shot ESPN did not place
+   * still has a type, and dropping it from the mix would report a different
+   * total than the player actually took. The adapter says which denominator it
+   * is using; the two cards do not have to agree on a number they are not
+   * both measuring.
+   */
+  shotTypes: Array<{ type: string; attempts: number; made: number }>;
 }
 
 /** Basket position, in the feed's own units. */
@@ -83,8 +96,17 @@ export function toNbaShotProfile(rows: readonly NbaShotRow[]): NbaShotProfile | 
   let placed = 0;
   let made = 0;
   let unlocated = 0;
+  const byType = new Map<string, { attempts: number; made: number }>();
 
   for (const r of rows) {
+    // Counted BEFORE the placement guard -- see `shotTypes` on the interface
+    // for why the mix and the grid deliberately use different denominators.
+    const st = typeof r.shotType === 'string' && r.shotType ? r.shotType : 'Unknown';
+    const acc = byType.get(st) ?? { attempts: 0, made: 0 };
+    acc.attempts += 1;
+    if (r.made) acc.made += 1;
+    byType.set(st, acc);
+
     if (r.xCoord == null || r.yCoord == null || !Number.isFinite(r.xCoord) || !Number.isFinite(r.yCoord)) {
       unlocated += 1;
       continue;
@@ -115,5 +137,6 @@ export function toNbaShotProfile(rows: readonly NbaShotRow[]): NbaShotProfile | 
     totalAttempts: placed,
     totalMade: made,
     unlocated,
+    shotTypes: [...byType.entries()].map(([type, v]) => ({ type, ...v })).sort((a, b) => b.attempts - a.attempts),
   };
 }

@@ -39,6 +39,8 @@ export interface NhlShotRow {
   eventType: string;
   xCoord: number | null;
   yCoord: number | null;
+  /** The NHL API's own vocabulary: wrist, snap, slap, tip-in, backhand, deflected. */
+  shotType?: string | null;
 }
 
 export interface ShotZoneCell {
@@ -58,6 +60,14 @@ export interface NhlShotProfile {
   totalShots: number;
   totalGoals: number;
   onGoal: number;
+  /**
+   * Shot-type mix — NHL's `usageMix`.
+   *
+   * COUNTED OVER EVERY SHOT, INCLUDING UNPLACED ONES, deliberately unlike the
+   * grid beside it: a shot the feed did not locate still has a type, and
+   * dropping it would report a total the player did not take.
+   */
+  shotTypes: Array<{ type: string; shots: number; goals: number }>;
 }
 
 /** The goal line, in the API's own units. */
@@ -111,7 +121,15 @@ export function toNhlShotProfile(rows: readonly NhlShotRow[]): NhlShotProfile | 
   let goals = 0;
   let onGoal = 0;
 
+  const byType = new Map<string, { shots: number; goals: number }>();
   for (const row of rows) {
+    // Counted BEFORE the placement guard -- see `shotTypes` on the interface.
+    const st = typeof row.shotType === 'string' && row.shotType ? row.shotType : 'unknown';
+    const acc = byType.get(st) ?? { shots: 0, goals: 0 };
+    acc.shots += 1;
+    if (row.eventType === 'goal') acc.goals += 1;
+    byType.set(st, acc);
+
     const p = normaliseShot(row.xCoord, row.yCoord);
     if (!p) continue;
     const cell = cells[rowFor(p.x)][columnFor(p.y)];
@@ -133,5 +151,13 @@ export function toNhlShotProfile(rows: readonly NhlShotRow[]): NhlShotProfile | 
   if (total === 0) return null;
   for (const row of cells) for (const cell of row) cell.share = (cell.shots / total) * 100;
 
-  return { cells, rowLabels: ROW_LABELS, columnLabels: COLUMN_LABELS, totalShots: total, totalGoals: goals, onGoal };
+  return {
+    cells,
+    rowLabels: ROW_LABELS,
+    columnLabels: COLUMN_LABELS,
+    totalShots: total,
+    totalGoals: goals,
+    onGoal,
+    shotTypes: [...byType.entries()].map(([type, v]) => ({ type, ...v })).sort((a, b) => b.shots - a.shots),
+  };
 }

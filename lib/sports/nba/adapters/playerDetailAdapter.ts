@@ -17,7 +17,7 @@ import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
 import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import type { NbaTeamDefenseAllowed } from '@/lib/sports/nba/teamDefenseAllowed';
 import { MIDDOT, fmt } from '@/components/charts/tokens';
-import { toRoleStat, type OpponentUnitRole, type SpatialGridRole } from '@/lib/sports/shared/playerRoles';
+import { toRoleStat, type OpponentUnitRole, type SpatialGridRole, type UsageMixRole } from '@/lib/sports/shared/playerRoles';
 import type { NbaShotProfile } from '@/lib/sports/nba/shotProfileShapes';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toRestConditions } from '@/lib/sports/shared/restConditions';
@@ -122,6 +122,56 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
   // (25, 0) in feet -- an origin confirmed against the three-point line, not
   // assumed. See `shotProfileShapes.ts`.
   const nbaShots = shotProfileState?.profile ?? null;
+
+  // ---- Role 2 | usageMix: the shot-type mix.
+  // ESPN's own descriptions ("Jump Shot", "Pullup Jump Shot", "Driving Layup
+  // Shot"). There are dozens of them across a season, so the long tail is
+  // bucketed into "Other" rather than rendered as thirty one-percent slices --
+  // a mix nobody can read is not a mix. The cut is by SHARE, so a player with
+  // an unusual signature keeps it instead of being flattened to a league norm.
+  //
+  // The denominator is every attempt including unlocated ones, which is a
+  // different total from the grid above; `sampleSize` states it so the two
+  // cards are not read as disagreeing.
+  const nbaTypeTotal = nbaShots ? nbaShots.shotTypes.reduce((s, t) => s + t.attempts, 0) : 0;
+  const usageMix: UsageMixRole | null =
+    nbaShots && nbaTypeTotal > 0
+      ? (() => {
+          const withShare = nbaShots.shotTypes.map((t) => ({ ...t, share: (t.attempts / nbaTypeTotal) * 100 }));
+          const major = withShare.filter((t) => t.share >= 4);
+          const rest = withShare.filter((t) => t.share < 4);
+          const restAttempts = rest.reduce((s, t) => s + t.attempts, 0);
+          const restMade = rest.reduce((s, t) => s + t.made, 0);
+          const slices = major.map((t) => ({
+            key: t.type,
+            label: t.type.replace(/ Shot$/, ''),
+            share: t.share,
+            value: t.attempts > 0 ? (t.made / t.attempts) * 100 : undefined,
+            valueLabel: 'FG%',
+            decimals: 0,
+            valueSample: t.attempts,
+          }));
+          if (restAttempts > 0) {
+            slices.push({
+              key: 'Other',
+              label: `Other (${rest.length})`,
+              share: (restAttempts / nbaTypeTotal) * 100,
+              value: (restMade / restAttempts) * 100,
+              valueLabel: 'FG%',
+              decimals: 0,
+              valueSample: restAttempts,
+            });
+          }
+          return {
+            title: 'Shot types',
+            slices,
+            valueFormat: fmt.pct0,
+            sampleSize: nbaTypeTotal,
+            emptyMessage: 'No shot types on record.',
+          };
+        })()
+      : null;
+
   const spatialGrid: SpatialGridRole | null = nbaShots
     ? {
         title: 'Shot profile',
@@ -338,6 +388,7 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
       : null;
 
   return {
+    usageMix,
     conditions,
     opponentUnit,
     careerH2H,
