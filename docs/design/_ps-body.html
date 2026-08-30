@@ -1,0 +1,251 @@
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Linesmith &middot; Phase 6 &middot; design study</div>
+    <h1>One Player Detail, eight sports</h1>
+    <p class="lede">
+      The deep MLB page was approved, and the question it raised was
+      <em>&ldquo;how do we get an every-other-sport equivalent?&rdquo;</em> This is that question
+      answered by building it. <strong>Every sport below renders the exact same eighteen blocks
+      from the exact same template</strong> &mdash; switch the tabs and watch the layout hold
+      still while only the content changes. Nothing is hidden for any sport, and there is no
+      <code>sport === 'x'</code> anywhere in the renderer.
+    </p>
+  </header>
+
+  <section id="finding">
+    <h2>What the measurement said</h2>
+    <p>
+      Before designing anything I counted what is actually in <code>player_game_history</code>
+      today &mdash; it is JSONB and sport-generic, so one query per sport gives the real ceiling.
+      <strong>The premise was wrong.</strong> MLB is not the deepest sport in this database; it is
+      mid-table. NFL and CFB carry roughly twice its distinct stat vocabulary.
+    </p>
+
+    <div class="frame">
+      <table class="tv wide-tv" id="cov-table"></table>
+      <p class="caption">
+        2,756,058 rows measured 2026-08-29. &ldquo;Keys&rdquo; counts distinct
+        <code>stats</code> keys with a non-zero value across a 60k-row sample per sport
+        (40-row sample for the four smaller ones). Golf is absent from this table entirely &mdash;
+        it has its own schema, which is a real finding and not a gap.
+      </p>
+    </div>
+
+    <div class="callout">
+      <span class="tag">The reframe that unblocks it</span>
+      <p>
+        The six blocks that looked MLB-only &mdash; pitch mix, strike zone, platoon, park factors,
+        opposing starter, batter-vs-pitcher &mdash; are not MLB <em>concepts</em>. They are MLB's
+        instance of six <strong>universal roles</strong> that every sport fills with its own
+        content: an opponent unit, a usage mix, a spatial grid, a binary split, conditions, and a
+        career head-to-head. Once named as roles, no sport renders a null and no sport needs a
+        branch. Tennis has a serve-placement grid the way MLB has a strike zone.
+      </p>
+    </div>
+
+    <div class="frame">
+      <table class="tv wide-tv" id="role-table"></table>
+      <p class="caption">
+        The same six slots, filled eight ways. This table is the architectural proposal:
+        <code>PlayerDetailData</code> keeps one field per <em>role</em>, and each sport's adapter
+        decides what goes in it.
+      </p>
+    </div>
+  </section>
+
+  <section id="pages">
+    <h2>The pages</h2>
+    <p class="lede">
+      Eight sports, one template, equal depth. The block count and the layout are identical on
+      every tab; only the labels and numbers move.
+    </p>
+
+    <div class="sporttabs" id="sporttabs"></div>
+
+    <div class="frame wide screenframe">
+      <div class="mockbar">
+        <span class="mockdot"></span>
+        Representative data &mdash; not live. Players, teams and stat vocabularies are real; every number below is invented for this mockup.
+      </div>
+
+      <div class="screen">
+        <div class="main-col">
+
+          <div class="lb-card-hero card-pad">
+            <div class="hero-row">
+              <div class="avatar-c" id="ps-initials">AJ</div>
+              <div>
+                <div class="hero-name" id="ps-name">&nbsp;</div>
+                <div class="hero-meta" id="ps-meta">&nbsp;</div>
+              </div>
+              <div class="hero-anchor">
+                <div class="v" id="ps-anchor-v">&nbsp;</div>
+                <div class="l" id="ps-anchor-l">&nbsp;</div>
+              </div>
+            </div>
+            <div class="hero-strip" id="ps-herostrip"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title" id="ps-form-t">&nbsp;</span>
+              <span class="card-meta">hit rate by window</span>
+            </div>
+            <div class="wtiles" id="ps-windows"></div>
+            <div id="ps-streak"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title" id="ps-dist-t">&nbsp;</span>
+              <span class="card-meta">result vs the line</span>
+            </div>
+            <div class="chart-host" id="ps-dist"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title">Rolling form</span>
+              <span class="card-meta" id="ps-roll-m">&nbsp;</span>
+            </div>
+            <div class="chart-host" id="ps-rolling"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title">Line movement</span>
+              <span class="card-meta">open to now</span>
+            </div>
+            <div class="chart-host" id="ps-tape"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title" id="ps-splits-t">&nbsp;</span>
+              <span class="card-meta">hit rate by split</span>
+            </div>
+            <div class="chart-host" id="ps-grid"></div>
+          </div>
+
+          <div class="two-up">
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title">Season</span><span class="card-meta" id="ps-season-m">&nbsp;</span></div>
+              <div id="ps-season"></div>
+            </div>
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title" id="ps-adv-t">&nbsp;</span><span class="card-meta">percentile</span></div>
+              <div id="ps-adv"></div>
+            </div>
+          </div>
+
+          <div class="two-up">
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title" id="ps-split-t">&nbsp;</span><span class="card-meta" id="ps-split-m">&nbsp;</span></div>
+              <div class="chart-host" id="ps-dumbbell"></div>
+            </div>
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title" id="ps-zone-t">&nbsp;</span><span class="card-meta" id="ps-zone-m">&nbsp;</span></div>
+              <div class="zonewrap"><div class="chart-host" id="ps-zone"></div></div>
+            </div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="ps-usage-t">&nbsp;</span><span class="card-meta" id="ps-usage-m">&nbsp;</span></div>
+            <div id="ps-usage"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Game log</span><span class="card-meta" id="ps-log-m">&nbsp;</span></div>
+            <div id="ps-gamelog"></div>
+          </div>
+
+        </div>
+
+        <aside class="rail">
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Where this sits</span><span class="card-meta" id="ps-dens-m">&nbsp;</span></div>
+            <div class="chart-host" id="ps-density"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="ps-oppunit-t">&nbsp;</span></div>
+            <div id="ps-oppunit"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="ps-h2h-t">&nbsp;</span></div>
+            <div id="ps-h2h"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="ps-qual-t">&nbsp;</span></div>
+            <div id="ps-qual"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Conditions</span></div>
+            <div id="ps-cond"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Best price</span><span class="card-meta">6 books</span></div>
+            <div class="chart-host" id="ps-range"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Why the model likes it</span><span class="card-meta" id="ps-contrib-m">&nbsp;</span></div>
+            <div class="chart-host" id="ps-contrib"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Game context</span></div>
+            <div id="ps-ctx"></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <p class="countline" id="ps-count">&nbsp;</p>
+  </section>
+
+  <section id="verdict">
+    <h2>What this means for the interface</h2>
+    <p>
+      Every page above is the same eighteen blocks in the same order, driven by one
+      <code>renderSport(data)</code> function with no sport check in it. That is not a mockup
+      trick &mdash; it is the shape the real component should take, and it lands inside the
+      existing convention rather than fighting it:
+    </p>
+    <ul class="verdict-list">
+      <li>
+        <strong>Six named role fields replace six MLB-named fields.</strong>
+        <code>pitchMix</code> becomes <code>usageMix</code>, <code>zoneProfile</code> becomes
+        <code>spatialGrid</code>, <code>platoon</code> becomes <code>binarySplit</code>,
+        <code>opposingStarter</code> becomes <code>opponentUnit</code>. Each carries its own
+        title, axis labels and cells, supplied by the sport's adapter. The component renders a
+        title and a grid; it never knows what a strike zone is.
+      </li>
+      <li>
+        <strong>Nothing is nulled for a real sport.</strong> The <code>null</code>-renders-nothing
+        rule in <code>CLAUDE.md</code> &sect;4 stays exactly as written &mdash; it is just no
+        longer load-bearing for the common case, because a role is fillable by every sport.
+        Golf still nulls the two blocks it genuinely lacks.
+      </li>
+      <li>
+        <strong>Tennis is the real constraint, not the tail.</strong> Eight stat keys against
+        NFL's fifty-seven. Its page holds up here because the roles pull from
+        <em>match</em> structure &mdash; serve placement, surface, opponent profile &mdash; not
+        from the game-log JSONB. That is a data-sourcing task, and it is the one place equal
+        depth costs real work rather than real layout.
+      </li>
+      <li>
+        <strong>Golf does not use this table at all.</strong> It has its own schema and its own
+        genuinely different blocks (<code>liveMatchup</code>, <code>golfFormHoles</code>) that
+        already exist. Its tab shows the roles mapped onto course data; treat it as the one
+        sport where the extension escape hatch is correct rather than lazy.
+      </li>
+    </ul>
+  </section>
+
+</div>

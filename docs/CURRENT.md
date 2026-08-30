@@ -4,7 +4,8 @@
 **Phase 4: COMPLETE, gate PASSED** (2026-08-29, after failing G7 and re-running
 in full from G1 per Rule 5).
 
-**Phase 6 has started — design direction agreed, nothing built yet.** See §6.
+**Phase 6 has started — direction agreed, the per-sport question measured and
+answered, two mockups built. No production code yet.** See §6.
 
 ## The documents, in reading order
 
@@ -56,8 +57,10 @@ production from the worker's own logs.
 
 ## 3. Next actions
 
-1. **Phase 6, starting with the chart primitives library** — §6 has the whole
-   direction, the open question, and the artifact to look at first.
+1. **Phase 6 — operator sign-off on the six role names**, then build
+   `components/charts/`. §6 has the measurement, the answer, and two mockups:
+   `docs/design/chart-grammar.html` (the primitives + deep MLB page) and
+   `docs/design/player-detail-per-sport.html` (all eight sports, one template).
 2. **5.1's second VERIFY half**, after 00:00 UTC — the one carried item from
    Phase 5. `propline` was correctly gated at 1000/1000 for 2026-08-29:
    ```sql
@@ -223,22 +226,101 @@ stats / not nearly as in depth from a stats and visual standpoint"*. That
 rejection is the useful part: **depth is the product**, and a page that only
 demonstrates the primitives misses the point.
 
-### THE OPEN QUESTION — resume here
+### THE PER-SPORT QUESTION — measured and answered (2026-08-29, later session)
 
-The operator's words: *"concerned with how we will get an every other sport
-equivalent."* The deep page above is **MLB only**, and MLB is the sport with the
-richest public data. The unanswered question is what the equivalent depth is for
-NFL, NBA, NHL, CFB, soccer, tennis and golf — and how it lands inside the
-existing sport-adapter convention, where `PlayerDetailData` is **one shared
-interface owned by the MLB adapter** (`lib/sports/mlb/adapters/playerDetailAdapter.ts`).
+The operator's words were *"concerned with how we will get an every other sport
+equivalent."* **Measured first, then built. Both are done; the direction needs
+sign-off, not more analysis.**
 
-The tension is real and is not resolved: a genuinely deep MLB page implies a lot
-of MLB-shaped slots (pitch mix, strike zone, platoon, park factors), and
-`CLAUDE.md`'s rule §4 says a sport that has no equivalent sets the field `null`
-and the component renders nothing. Do that naively across seven sports and the
-other pages are *empty*, which is exactly the "every other sport equivalent"
-worry. **Do not start building until this is answered** — see the handoff prompt
-in `docs/design/phase6-handoff-prompt.md`.
+#### The measurement overturned the premise
+
+`player_game_history` is JSONB and sport-generic, so one query per sport gives
+the real ceiling. 2,756,058 rows:
+
+| Sport | Rows | Athletes | Distinct stat keys |
+|---|---|---|---|
+| NFL | 226,629 | 6,740 | **57** |
+| CFB | 273,649 | 33,868 | **53** |
+| MLB | 727,613 | 4,003 | 27 |
+| NHL | 674,003 | 2,972 | 21 |
+| NBA | 279,661 | 1,567 | 17 |
+| Soccer (EPL+MLS) | 302,539 | 5,361 | 16 |
+| Tennis (ATP+WTA) | 271,964 | 17,846 | **8** |
+| Golf | — | — | not in this table at all |
+
+**MLB is not the deepest sport in this database — it is mid-table.** NFL and CFB
+carry roughly twice its vocabulary. MLB's *page* is deeper only because Statcast
+is a separate source, which is a statement about sourcing, not about the sport.
+Two consequences: **tennis (8 keys) is the real constraint**, not "the tail";
+and **golf is absent entirely** — own schema, own blocks, already partly built.
+
+Reproduce with `SELECT stats FROM player_game_history WHERE sport=$1 LIMIT 60000`
+plus `jsonb_each_text`. **Do not add `ORDER BY id DESC`** — the index is
+`(sport, athlete_id, season, game_date)`, so ordering by `id` under a `sport`
+filter is a full scan on 2.75M rows and times out. That cost three attempts and
+looked exactly like pooler congestion.
+
+#### The answer: six universal ROLES, not six MLB fields
+
+The blocks that looked MLB-only — pitch mix, strike zone, platoon, park factors,
+opposing starter, batter-vs-pitcher — are not MLB *concepts*. They are MLB's
+instance of six roles every sport fills with its own content:
+
+| Role | MLB | NFL / CFB | NBA | NHL | Soccer | Tennis | Golf |
+|---|---|---|---|---|---|---|---|
+| `opponentUnit` | Opposing starter | Defence vs position | Defence vs guards | Opposing goalie | Keeper & back line | Opponent profile | The field |
+| `usageMix` | Pitch mix | Route mix | Shot-zone mix | Shot-type mix | Shot-type mix | Serve mix | Approach distance |
+| `spatialGrid` | Strike zone | Target map | Shot chart | Shot location | Shot location | Serve placement | Proximity by lie |
+| `binarySplit` | vs LHP/RHP | man / zone | top / bottom D | PP / EV | home / away | hard / clay | par 5 / par 4 |
+| `conditions` | Park, wind | Roof, wind, surface | Rest, travel | Rest, opp starts | Pitch, weather | Surface, speed | Wind, greens |
+| `careerH2H` | vs this pitcher | vs this defence | vs this team | vs this goalie | vs this club | vs this opponent | at this course |
+
+Rename those six fields on `PlayerDetailData` and the "seven empty pages"
+problem disappears without touching `CLAUDE.md`'s conventions. The `null`-renders
+-nothing rule of §4 stays exactly as written — it just stops being load-bearing
+for the common case, because a *role* is fillable by every sport. This is
+candidate shape 2 from the handoff prompt, sharpened: not "spine + extensions"
+but **one spine, filled eight ways**.
+
+#### It is built, not argued
+
+**`docs/design/player-detail-per-sport.html`** — committed, self-contained, no
+build step. Eight tabs, one template, one `renderSport(data)` with **no
+`sport ===` check anywhere in it**. Verified in-browser: all eight tabs render
+with zero console errors, 20 cards and 9 SVGs each, and no page-level horizontal
+overflow. ~370 individual numbers per sport.
+
+Regenerate with `node docs/design/build-per-sport.mjs`. It splices
+`chart-grammar.html`'s `<style>` and both primitive `<script>` blocks in
+**verbatim** and applies four asserted patches — deliberately, so that if the two
+pages ever diverge visually it is a real bug in a primitive rather than a copy
+that drifted. Each patch throws by name if its anchor moves. Sources are the
+`_ps-*` files beside it.
+
+#### Finding: a primitive already had MLB baked into it
+
+`zoneGrid` hardcoded three MLB things — the domain (0.20–0.65), the caption
+("catcher view / xwOBA"), and the number format (baseball's strip-the-leading
+-zero). NFL's 14.8 yards-per-target rendered as **"4.800"** — a wrong number
+displayed, found only by looking at the built page rather than the DOM. Fixed by
+taking `lo`/`hi`/`fmt`/`unit`/`caption` from options with MLB's values as
+defaults. **`chart-grammar.html` still has the unfixed version** (harmless there,
+it is MLB-only) — carry the fix into the real `components/charts/` primitive.
+
+The general lesson, and it is the same one §4 keeps paying for: the leak was in
+the shared primitive, not in a page. When porting these to React, **the first
+sport to use a primitive gets to define its defaults, so audit every literal in
+one before a second sport touches it.**
+
+#### What still needs the operator
+
+1. **Sign off the six role names**, or rename them. Everything else follows.
+2. **Tennis is a data-sourcing task, not a layout one.** Its page holds up in the
+   mockup because the roles pull from match structure (serve placement, surface,
+   opponent profile) rather than the 8-key game-log JSONB. Nothing sources that
+   today. Decide whether tennis ships at this depth or at a stated lower one.
+3. **Golf's escape hatch is legitimate**, not laziness — separate schema, and
+   `liveMatchup`/`golfFormHoles` already exist for it.
 
 ### Two design-system findings, measured this session
 

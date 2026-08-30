@@ -1,0 +1,2876 @@
+<title>Eight Sports, One Page</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style>
+/* ==========================================================================
+   Linesmith &mdash; chart grammar board
+
+   SINGLE-THEME BY DECISION, NOT OMISSION. Linesmith has no dark theme
+   (tailwind.config.ts ships one palette; docs/prompt-2 states "No dark
+   theme" as a hard constraint). Rendering these frames in an invented dark
+   palette would misrepresent the product. So: the studio ground is dark,
+   the product frames are the app's real light graphite, and every colour is
+   painted explicitly so the page holds on any host ground.
+   ========================================================================== */
+
+:root {
+  /* --- studio shell: strictly achromatic. The only colour on this page is
+         data colour. --- */
+  --sh-bg:      oklch(19% 0.005 260);
+  --sh-panel:   oklch(23.5% 0.005 260);
+  --sh-panel-2: oklch(27% 0.005 260);
+  --sh-line:    oklch(32% 0.005 260);
+  --sh-line-2:  oklch(38% 0.005 260);
+  --sh-ink:     oklch(95% 0.003 260);
+  --sh-ink-2:   oklch(72% 0.004 260);
+  --sh-ink-3:   oklch(56% 0.004 260);
+
+  /* --- product frame: Linesmith's real tokens, verbatim from
+         tailwind.config.ts. Note card (93%) is DARKER than paper (96%) &mdash;
+         that is what the graphite reskin actually shipped. --- */
+  --paper:      oklch(96% 0.002 260);
+  --card:       oklch(93% 0.003 260);
+  --surface:    oklch(96% 0.002 260);
+  --ink:        oklch(16% 0.004 260);
+  --ink-2:      oklch(32% 0.004 260);
+  --ink-3:      oklch(50% 0.005 260);
+  --ink-4:      oklch(68% 0.004 260);
+  --ink-5:      oklch(78% 0.004 260);
+  --line:       oklch(87% 0.004 260);
+  --line-soft:  oklch(90% 0.004 260);
+  --line-hair:  oklch(93% 0.003 260);
+  --masters:    oklch(20% 0.006 260);
+  --accent-soft:oklch(89% 0.004 260);
+  --avatar:     oklch(82% 0.005 260);
+
+  /* --- data ramp: lib/ui/heat.ts, verbatim --- */
+  --good: #0f7a4f;
+  --warn: #c98a1f;
+  --bad:  #c23b2c;
+  --good-ink: #0b5c3c;
+  --bad-ink:  #8f2b20;
+  --neutral:  #a8a29a;
+
+  --app-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --shell-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --maxw: 1180px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--sh-bg);
+  color: var(--sh-ink);
+  font-family: var(--shell-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+/* ---------- masthead ---------- */
+
+.masthead { padding: 72px 0 40px; border-bottom: 1px solid var(--sh-line); }
+.eyebrow {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--sh-ink-3);
+  margin: 0 0 20px;
+}
+h1 {
+  font-size: clamp(34px, 5.4vw, 56px); font-weight: 600; line-height: 1.04;
+  letter-spacing: -.022em; margin: 0 0 20px; text-wrap: balance; max-width: 16ch;
+}
+.standfirst {
+  font-size: 17px; line-height: 1.62; color: var(--sh-ink-2);
+  max-width: 62ch; margin: 0;
+}
+.standfirst strong { color: var(--sh-ink); font-weight: 600; }
+
+.thesis {
+  display: flex; flex-wrap: wrap; gap: 40px 56px;
+  margin-top: 44px; padding-top: 32px; border-top: 1px solid var(--sh-line);
+}
+.hero-fig { display: flex; flex-direction: column; gap: 6px; }
+.hero-fig .n {
+  font-size: 52px; font-weight: 600; line-height: 1; letter-spacing: -.03em;
+  /* proportional figures &mdash; a standalone display number, never tabular */
+  font-variant-numeric: proportional-nums;
+}
+.hero-fig .cap {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .05em;
+  color: var(--sh-ink-3); max-width: 24ch; line-height: 1.5;
+}
+
+/* ---------- layout ---------- */
+
+.board { display: grid; grid-template-columns: 1fr; gap: 0; }
+@media (min-width: 1040px) {
+  .board { grid-template-columns: 178px 1fr; gap: 56px; align-items: start; }
+  .index { position: sticky; top: 32px; }
+}
+
+.index { padding: 44px 0 0; }
+.index h4 {
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  letter-spacing: .14em; text-transform: uppercase; color: var(--sh-ink-3);
+  margin: 0 0 14px;
+}
+.index ol { list-style: none; margin: 0 0 26px; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.index a {
+  display: block; padding: 4px 0; font-size: 13px; color: var(--sh-ink-2);
+  text-decoration: none; border-bottom: 1px solid transparent;
+}
+.index a:hover, .index a:focus-visible { color: var(--sh-ink); border-bottom-color: var(--sh-line-2); }
+.index .num { font-family: var(--mono); font-size: 10px; color: var(--sh-ink-3); margin-right: 8px; }
+
+section { padding: 44px 0; border-bottom: 1px solid var(--sh-line); }
+section:last-of-type { border-bottom: 0; }
+
+h2 {
+  font-size: 27px; font-weight: 600; letter-spacing: -.016em; line-height: 1.2;
+  margin: 0 0 12px; text-wrap: balance;
+}
+h3 { font-size: 19px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 8px; }
+p { margin: 0 0 15px; max-width: 68ch; color: var(--sh-ink-2); }
+p strong { color: var(--sh-ink); font-weight: 600; }
+p.lede { font-size: 16px; color: var(--sh-ink-2); }
+a.inline { color: var(--sh-ink); text-decoration-color: var(--sh-line-2); text-underline-offset: 3px; }
+
+code {
+  font-family: var(--mono); font-size: .875em;
+  background: var(--sh-panel-2); padding: 1px 5px; border-radius: 3px;
+  color: var(--sh-ink);
+}
+
+/* ---------- a primitive board ---------- */
+
+.prim { margin: 0 0 56px; }
+.prim:last-child { margin-bottom: 0; }
+
+.prim-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.prim-num {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  color: var(--sh-ink-3); letter-spacing: .06em;
+}
+.prim-name { font-family: var(--mono); font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+.prim-job { font-size: 14px; color: var(--sh-ink-3); }
+
+/* the product frame &mdash; this is the app's own surface, not the shell's */
+.frame {
+  background: var(--paper);
+  border-radius: 12px;
+  padding: 18px;
+  margin: 16px 0 0;
+  font-family: var(--app-sans);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0,0,0,.3), 0 18px 44px -22px rgba(0,0,0,.7);
+  overflow-x: auto;
+  /* Charts are authored at a 640 viewBox. Capping the frame keeps the rendered
+     scale at ~1:1 so every mark spec &mdash; the 24px bar cap, the 2px surface gap,
+     the 2px stroke &mdash; is true at the size you are looking at, rather than
+     silently multiplied by a stretch factor. It is also closer to the real
+     width of a Linesmith card in the main column. */
+  max-width: 692px;
+}
+.frame.wide { max-width: none; }
+.frame.tight { padding: 14px; }
+
+/* Linesmith's .lb-card, reproduced exactly */
+.lb-card {
+  border-radius: 10px; border: 1px solid var(--line); background: var(--card);
+}
+.lb-card-hero {
+  border-radius: 14px; border: 1px solid var(--line); background: var(--card);
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.card-pad { padding: 14px; }
+
+.card-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px;
+}
+.card-title { font-size: 12px; font-weight: 600; color: var(--ink-2); letter-spacing: -.005em; }
+.card-meta { font-size: 10px; color: var(--ink-4); font-variant-numeric: tabular-nums; }
+
+/* spec strip beneath each board */
+.spec {
+  display: grid; gap: 0; margin-top: 14px;
+  border: 1px solid var(--sh-line); border-radius: 8px; overflow: hidden;
+}
+.spec-row {
+  display: grid; grid-template-columns: 108px 1fr; gap: 0;
+  border-bottom: 1px solid var(--sh-line);
+}
+.spec-row:last-child { border-bottom: 0; }
+.spec-k {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--sh-ink-3); padding: 9px 12px; background: var(--sh-panel);
+  border-right: 1px solid var(--sh-line);
+}
+.spec-v {
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
+  color: var(--sh-ink-2); padding: 9px 12px;
+}
+.spec-v em { color: var(--sh-ink); font-style: normal; }
+
+/* ---------- shared chart chrome (inside frames) ---------- */
+
+.legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+.legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; color: var(--ink-3); }
+.legend-key { display: inline-block; border-radius: 1px; }
+.legend-key.line { width: 14px; height: 2px; }
+.legend-key.rect { width: 9px; height: 9px; border-radius: 2px; }
+
+.scale-legend { display: flex; align-items: center; gap: 8px; font-size: 9px; color: var(--ink-4); margin-top: 10px; }
+.scale-ramp { height: 6px; width: 96px; border-radius: 3px; }
+
+.tt {
+  position: absolute; pointer-events: none; opacity: 0;
+  background: var(--masters); color: #fff;
+  border-radius: 6px; padding: 7px 9px; font-size: 11px; line-height: 1.45;
+  box-shadow: 0 4px 10px rgba(0,0,0,.16), 0 16px 32px -12px rgba(0,0,0,.28);
+  transition: opacity .12s ease; z-index: 20; white-space: nowrap;
+  font-family: var(--app-sans);
+}
+.tt .tt-v { font-weight: 600; font-size: 12px; font-variant-numeric: tabular-nums; }
+.tt .tt-l { color: rgba(255,255,255,.68); font-size: 10px; }
+.tt-row { display: flex; align-items: center; gap: 6px; }
+.tt-key { width: 10px; height: 2px; border-radius: 1px; flex: none; }
+.chart-host { position: relative; }
+
+/* table-view twin */
+.tv-toggle {
+  font-family: var(--app-sans); font-size: 10px; font-weight: 500;
+  color: var(--ink-3); background: var(--surface); border: 1px solid var(--line);
+  border-radius: 999px; padding: 3px 9px; cursor: pointer;
+}
+.tv-toggle:hover { color: var(--ink); }
+.tv-toggle:focus-visible { outline: 2px solid var(--masters); outline-offset: 2px; }
+table.tv {
+  width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px;
+  font-variant-numeric: tabular-nums;
+}
+table.tv th {
+  text-align: left; font-weight: 600; color: var(--ink-3); font-size: 10px;
+  padding: 5px 8px; border-bottom: 1px solid var(--line);
+}
+table.tv td { padding: 5px 8px; border-bottom: 1px solid var(--line-hair); color: var(--ink-2); }
+table.tv td.num, table.tv th.num { text-align: right; }
+[hidden] { display: none !important; }
+
+
+/* ---------- deep player page ---------- */
+.screenframe { padding: 0; }
+.mockbar {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .02em;
+  color: var(--ink-3); background: var(--surface);
+  border-bottom: 1px solid var(--line); border-radius: 12px 12px 0 0;
+  padding: 8px 14px;
+}
+.mockdot { width: 6px; height: 6px; border-radius: 999px; background: var(--warn); flex: none; }
+.screenframe .screen { padding: 14px; }
+
+.kpi {
+  display: grid; grid-template-columns: repeat(8, 1fr); gap: 1px;
+  margin-top: 14px; background: var(--line-hair); border: 1px solid var(--line-hair);
+  border-radius: 6px; overflow: hidden;
+}
+.kpi-c { background: var(--card); padding: 7px 4px; text-align: center; display: grid; gap: 2px; }
+.kpi-v { font-size: 14px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.kpi-k { font-size: 9px; color: var(--ink-4); text-transform: uppercase; letter-spacing: .06em; }
+
+.mkt-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 12px; }
+.mkt {
+  font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--ink-3); background: var(--card);
+}
+.mkt.on { background: var(--masters); border-color: var(--masters); color: #fff; }
+
+.console { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.stepper { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 999px; padding: 2px; background: var(--surface); }
+.stepbtn {
+  width: 22px; height: 22px; border-radius: 999px; border: 0; background: transparent;
+  color: var(--ink-2); font-size: 13px; cursor: pointer; line-height: 1;
+}
+.stepbtn:hover { background: var(--line-hair); }
+.stepbtn:focus-visible { outline: 2px solid var(--masters); outline-offset: 1px; }
+.stepval { font-size: 14px; font-weight: 600; padding: 0 8px; font-variant-numeric: tabular-nums; }
+.console-stat { display: grid; gap: 2px; }
+.cs-v { font-size: 14px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.cs-v.edge { color: var(--good-ink); }
+.cs-k { font-size: 9px; color: var(--ink-4); text-transform: uppercase; letter-spacing: .06em; }
+.addbtn {
+  margin-left: auto; background: var(--masters); color: #fff; border: 0;
+  border-radius: 999px; padding: 7px 16px; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: box-shadow .3s ease, transform .1s ease; font-family: var(--app-sans);
+}
+.addbtn:hover { box-shadow: 7px 5px 32px -10px oklch(20% 0.006 260 / .55); }
+.addbtn:active { transform: scale(.97); }
+.addbtn:focus-visible { outline: 2px solid var(--masters); outline-offset: 2px; }
+
+.wtiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-bottom: 12px; }
+.wtile { border-radius: 6px; padding: 7px 4px; text-align: center; display: grid; gap: 1px; }
+.wtile-k { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.wtile-v { font-size: 16px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.wtile-n { font-size: 9px; font-variant-numeric: tabular-nums; }
+
+.streak { display: flex; gap: 2px; }
+.streak-cell { flex: 1; height: 12px; border-radius: 2px; }
+.streak-cap {
+  font-size: 9px; color: var(--ink-4); margin-top: 5px;
+  display: flex; justify-content: space-between; font-variant-numeric: tabular-nums;
+}
+
+table.st, table.dt { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.st th, table.dt th {
+  text-align: left; font-size: 9px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--ink-4); padding: 0 6px 5px 0;
+  border-bottom: 1px solid var(--line);
+}
+table.st th.num, table.dt th.num { text-align: right; }
+table.st td, table.dt td { padding: 4px 6px 4px 0; border-bottom: 1px solid var(--line-hair); font-size: 11px; color: var(--ink-2); }
+table.st td.num, table.dt td.num { text-align: right; }
+table.st tr:last-child td, table.dt tr:last-child td { border-bottom: 0; }
+.st-k { color: var(--ink-3); }
+.st-v { font-weight: 600; font-size: 12px; }
+.st-r { color: var(--ink-4); font-size: 10px; }
+.st-bar-cell { width: 84px; padding-left: 8px !important; }
+.st-track { display: inline-block; width: 56px; height: 5px; border-radius: 3px; background: var(--line-hair); vertical-align: middle; overflow: hidden; }
+.st-fill { height: 100%; border-radius: 3px; }
+.st-pct { font-size: 9px; color: var(--ink-4); margin-left: 6px; vertical-align: middle; }
+table.dt td:first-child { color: var(--ink-2); }
+
+.twoup { display: grid; gap: 12px; }
+@media (min-width: 620px) { .twoup { grid-template-columns: 1fr 1fr; align-items: start; } }
+.zonewrap { display: flex; justify-content: center; padding: 6px 0; }
+
+
+/* A grid item defaults to min-width:auto, so one wide table inside `main`
+   widened the whole column - which is why the index nav, an innocent sibling
+   in the same column, was the element reported as overflowing. The fix is
+   min-width:0 on every grid item, plus a real overflow container on the wide
+   content itself, so a table scrolls inside its card and the page never does. */
+.board > *, .screen > *, .twoup > *, .main-col > *, .rail > * { min-width: 0; }
+.tablewrap, #dp-gamelog, #dp-pitchmix, #dp-season, #dp-statcast, #dp-sp, #dp-bvp {
+  overflow-x: auto;
+}
+#dp-gamelog table.dt { min-width: 400px; }
+.kpi, .wtiles { min-width: 0; }
+.kpi-v { font-size: clamp(11px, 2.4vw, 14px); }
+
+/* ---------- callout ---------- */
+
+.callout {
+  border: 1px solid var(--sh-line); border-left: 3px solid var(--sh-line-2);
+  border-radius: 0 8px 8px 0; background: var(--sh-panel);
+  padding: 18px 20px; margin: 22px 0;
+}
+.callout p:last-child { margin-bottom: 0; }
+.callout .tag {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--sh-ink-3); display: block; margin-bottom: 8px;
+}
+
+pre.term {
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.65;
+  background: var(--sh-panel); border: 1px solid var(--sh-line); border-radius: 8px;
+  padding: 14px 16px; overflow-x: auto; color: var(--sh-ink-2); margin: 0 0 16px;
+}
+pre.term .ok { color: #6fc79a; }
+pre.term .no { color: #e0857a; }
+pre.term .dim { color: var(--sh-ink-3); }
+
+/* ---------- ramp comparison ---------- */
+
+.ramp-compare { display: grid; gap: 18px; margin: 18px 0 0; }
+@media (min-width: 720px) { .ramp-compare { grid-template-columns: 1fr 1fr; } }
+.ramp-card { border: 1px solid var(--sh-line); border-radius: 8px; padding: 16px; background: var(--sh-panel); }
+.ramp-card h4 { margin: 0 0 4px; font-size: 13px; font-weight: 600; }
+.ramp-card .sub { font-family: var(--mono); font-size: 10.5px; color: var(--sh-ink-3); margin: 0 0 12px; }
+.ramp-strip { height: 26px; border-radius: 5px; margin-bottom: 8px; }
+.ramp-gray { height: 12px; border-radius: 3px; margin-bottom: 10px; filter: grayscale(1); }
+.ramp-note { font-size: 12px; color: var(--sh-ink-2); margin: 0; line-height: 1.55; }
+
+/* ---------- composed screen ---------- */
+
+.screen { display: grid; gap: 12px; }
+@media (min-width: 900px) { .screen { grid-template-columns: 1fr 288px; align-items: start; } }
+.rail { display: grid; gap: 12px; }
+.main-col { display: grid; gap: 12px; }
+
+.hero-row { display: flex; align-items: center; gap: 12px; }
+.avatar-c {
+  width: 46px; height: 46px; border-radius: 999px; background: var(--avatar);
+  display: grid; place-items: center; font-size: 15px; font-weight: 600; color: var(--ink-2);
+  flex: none;
+}
+.hero-name { font-size: 16px; font-weight: 600; line-height: 1.2; letter-spacing: -.01em; }
+.hero-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+.hero-anchor { margin-left: auto; text-align: right; }
+.hero-anchor .v {
+  font-size: 28px; font-weight: 600; line-height: 1; letter-spacing: -.02em;
+  font-variant-numeric: proportional-nums;
+}
+.hero-anchor .l {
+  font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink-4); margin-top: 4px;
+}
+
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  font-size: 11px; font-weight: 500; border-radius: 999px; padding: 3px 10px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink-3);
+}
+.chip.on { border-color: var(--masters); background: var(--accent-soft); color: var(--masters); }
+
+.rail-stat { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 6px 0; }
+.rail-stat + .rail-stat { border-top: 1px solid var(--line-hair); }
+.rail-stat .k { font-size: 11px; color: var(--ink-3); }
+.rail-stat .v { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.row-list { display: grid; }
+.prop-row {
+  display: grid; grid-template-columns: 1fr 56px 62px; gap: 10px; align-items: center;
+  padding: 9px 0; border-top: 1px solid var(--line-hair);
+}
+.prop-row:first-child { border-top: 0; }
+.prop-row .nm { font-size: 12px; font-weight: 500; }
+.prop-row .sub { font-size: 10px; color: var(--ink-4); }
+.prop-row .pc { font-size: 12px; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+
+footer { padding: 56px 0 80px; color: var(--sh-ink-3); font-size: 13px; }
+footer p { color: var(--sh-ink-3); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+}
+</style>
+<style>
+/* ---- additions for the per-sport board (everything else is inherited) ---- */
+.sporttabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0 14px; }
+.sporttab {
+  font: inherit; font-size: 12px; font-weight: 600; letter-spacing: .01em;
+  padding: 7px 14px; border-radius: 999px; cursor: pointer;
+  background: var(--surface); color: var(--ink-3);
+  border: 1px solid var(--line-hair);
+}
+.sporttab:hover { color: var(--ink-1); border-color: var(--ink-4); }
+.sporttab.on { background: var(--ink-1); color: var(--surface); border-color: var(--ink-1); }
+
+.two-up { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-width: 0; }
+.two-up > * { min-width: 0; }
+
+.hero-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; margin-top: 12px;
+  background: var(--line-hair); border: 1px solid var(--line-hair); border-radius: 6px; overflow: hidden; }
+.hs-cell { background: var(--surface); padding: 7px 9px; }
+.hs-k { font-size: 9px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-4); }
+.hs-v { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+
+.countline { margin-top: 18px; font-size: 13px; color: var(--ink-3); }
+.verdict-list { max-width: 74ch; color: var(--ink-3); padding-left: 20px; }
+.verdict-list li { margin-bottom: 12px; }
+.verdict-list strong { color: var(--ink-1); }
+
+.wide-tv { width: 100%; }
+.wide-tv td, .wide-tv th { vertical-align: top; }
+
+/* Grid items default to min-width:auto, which lets a wide table stretch the
+   whole column and scroll the page sideways. This is the fix found the hard
+   way on the first mockup - keep both halves. */
+.screen, .main-col, .rail { min-width: 0; }
+.screen > *, .main-col > *, .rail > * { min-width: 0; }
+
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Linesmith &middot; Phase 6 &middot; design study</div>
+    <h1>One Player Detail, eight sports</h1>
+    <p class="lede">
+      The deep MLB page was approved, and the question it raised was
+      <em>&ldquo;how do we get an every-other-sport equivalent?&rdquo;</em> This is that question
+      answered by building it. <strong>Every sport below renders the exact same eighteen blocks
+      from the exact same template</strong> &mdash; switch the tabs and watch the layout hold
+      still while only the content changes. Nothing is hidden for any sport, and there is no
+      <code>sport === 'x'</code> anywhere in the renderer.
+    </p>
+  </header>
+
+  <section id="finding">
+    <h2>What the measurement said</h2>
+    <p>
+      Before designing anything I counted what is actually in <code>player_game_history</code>
+      today &mdash; it is JSONB and sport-generic, so one query per sport gives the real ceiling.
+      <strong>The premise was wrong.</strong> MLB is not the deepest sport in this database; it is
+      mid-table. NFL and CFB carry roughly twice its distinct stat vocabulary.
+    </p>
+
+    <div class="frame">
+      <table class="tv wide-tv" id="cov-table"></table>
+      <p class="caption">
+        2,756,058 rows measured 2026-08-29. &ldquo;Keys&rdquo; counts distinct
+        <code>stats</code> keys with a non-zero value across a 60k-row sample per sport
+        (40-row sample for the four smaller ones). Golf is absent from this table entirely &mdash;
+        it has its own schema, which is a real finding and not a gap.
+      </p>
+    </div>
+
+    <div class="callout">
+      <span class="tag">The reframe that unblocks it</span>
+      <p>
+        The six blocks that looked MLB-only &mdash; pitch mix, strike zone, platoon, park factors,
+        opposing starter, batter-vs-pitcher &mdash; are not MLB <em>concepts</em>. They are MLB's
+        instance of six <strong>universal roles</strong> that every sport fills with its own
+        content: an opponent unit, a usage mix, a spatial grid, a binary split, conditions, and a
+        career head-to-head. Once named as roles, no sport renders a null and no sport needs a
+        branch. Tennis has a serve-placement grid the way MLB has a strike zone.
+      </p>
+    </div>
+
+    <div class="frame">
+      <table class="tv wide-tv" id="role-table"></table>
+      <p class="caption">
+        The same six slots, filled eight ways. This table is the architectural proposal:
+        <code>PlayerDetailData</code> keeps one field per <em>role</em>, and each sport's adapter
+        decides what goes in it.
+      </p>
+    </div>
+  </section>
+
+  <section id="pages">
+    <h2>The pages</h2>
+    <p class="lede">
+      Eight sports, one template, equal depth. The block count and the layout are identical on
+      every tab; only the labels and numbers move.
+    </p>
+
+    <div class="sporttabs" id="sporttabs"></div>
+
+    <div class="frame wide screenframe">
+      <div class="mockbar">
+        <span class="mockdot"></span>
+        Representative data &mdash; not live. Players, teams and stat vocabularies are real; every number below is invented for this mockup.
+      </div>
+
+      <div class="screen">
+        <div class="main-col">
+
+          <div class="lb-card-hero card-pad">
+            <div class="hero-row">
+              <div class="avatar-c" id="ps-initials">AJ</div>
+              <div>
+                <div class="hero-name" id="ps-name">&nbsp;</div>
+                <div class="hero-meta" id="ps-meta">&nbsp;</div>
+              </div>
+              <div class="hero-anchor">
+                <div class="v" id="ps-anchor-v">&nbsp;</div>
+                <div class="l" id="ps-anchor-l">&nbsp;</div>
+              </div>
+            </div>
+            <div class="hero-strip" id="ps-herostrip"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title" id="ps-form-t">&nbsp;</span>
+              <span class="card-meta">hit rate by window</span>
+            </div>
+            <div class="wtiles" id="ps-windows"></div>
+            <div id="ps-streak"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title" id="ps-dist-t">&nbsp;</span>
+              <span class="card-meta">result vs the line</span>
+            </div>
+            <div class="chart-host" id="ps-dist"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title">Rolling form</span>
+              <span class="card-meta" id="ps-roll-m">&nbsp;</span>
+            </div>
+            <div class="chart-host" id="ps-rolling"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title">Line movement</span>
+              <span class="card-meta">open to now</span>
+            </div>
+            <div class="chart-host" id="ps-tape"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title" id="ps-splits-t">&nbsp;</span>
+              <span class="card-meta">hit rate by split</span>
+            </div>
+            <div class="chart-host" id="ps-grid"></div>
+          </div>
+
+          <div class="two-up">
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title">Season</span><span class="card-meta" id="ps-season-m">&nbsp;</span></div>
+              <div id="ps-season"></div>
+            </div>
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title" id="ps-adv-t">&nbsp;</span><span class="card-meta">percentile</span></div>
+              <div id="ps-adv"></div>
+            </div>
+          </div>
+
+          <div class="two-up">
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title" id="ps-split-t">&nbsp;</span><span class="card-meta" id="ps-split-m">&nbsp;</span></div>
+              <div class="chart-host" id="ps-dumbbell"></div>
+            </div>
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title" id="ps-zone-t">&nbsp;</span><span class="card-meta" id="ps-zone-m">&nbsp;</span></div>
+              <div class="zonewrap"><div class="chart-host" id="ps-zone"></div></div>
+            </div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="ps-usage-t">&nbsp;</span><span class="card-meta" id="ps-usage-m">&nbsp;</span></div>
+            <div id="ps-usage"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Game log</span><span class="card-meta" id="ps-log-m">&nbsp;</span></div>
+            <div id="ps-gamelog"></div>
+          </div>
+
+        </div>
+
+        <aside class="rail">
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Where this sits</span><span class="card-meta" id="ps-dens-m">&nbsp;</span></div>
+            <div class="chart-host" id="ps-density"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="ps-oppunit-t">&nbsp;</span></div>
+            <div id="ps-oppunit"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="ps-h2h-t">&nbsp;</span></div>
+            <div id="ps-h2h"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="ps-qual-t">&nbsp;</span></div>
+            <div id="ps-qual"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Conditions</span></div>
+            <div id="ps-cond"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Best price</span><span class="card-meta">6 books</span></div>
+            <div class="chart-host" id="ps-range"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Why the model likes it</span><span class="card-meta" id="ps-contrib-m">&nbsp;</span></div>
+            <div class="chart-host" id="ps-contrib"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Game context</span></div>
+            <div id="ps-ctx"></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <p class="countline" id="ps-count">&nbsp;</p>
+  </section>
+
+  <section id="verdict">
+    <h2>What this means for the interface</h2>
+    <p>
+      Every page above is the same eighteen blocks in the same order, driven by one
+      <code>renderSport(data)</code> function with no sport check in it. That is not a mockup
+      trick &mdash; it is the shape the real component should take, and it lands inside the
+      existing convention rather than fighting it:
+    </p>
+    <ul class="verdict-list">
+      <li>
+        <strong>Six named role fields replace six MLB-named fields.</strong>
+        <code>pitchMix</code> becomes <code>usageMix</code>, <code>zoneProfile</code> becomes
+        <code>spatialGrid</code>, <code>platoon</code> becomes <code>binarySplit</code>,
+        <code>opposingStarter</code> becomes <code>opponentUnit</code>. Each carries its own
+        title, axis labels and cells, supplied by the sport's adapter. The component renders a
+        title and a grid; it never knows what a strike zone is.
+      </li>
+      <li>
+        <strong>Nothing is nulled for a real sport.</strong> The <code>null</code>-renders-nothing
+        rule in <code>CLAUDE.md</code> &sect;4 stays exactly as written &mdash; it is just no
+        longer load-bearing for the common case, because a role is fillable by every sport.
+        Golf still nulls the two blocks it genuinely lacks.
+      </li>
+      <li>
+        <strong>Tennis is the real constraint, not the tail.</strong> Eight stat keys against
+        NFL's fifty-seven. Its page holds up here because the roles pull from
+        <em>match</em> structure &mdash; serve placement, surface, opponent profile &mdash; not
+        from the game-log JSONB. That is a data-sourcing task, and it is the one place equal
+        depth costs real work rather than real layout.
+      </li>
+      <li>
+        <strong>Golf does not use this table at all.</strong> It has its own schema and its own
+        genuinely different blocks (<code>liveMatchup</code>, <code>golfFormHoles</code>) that
+        already exist. Its tab shows the roles mapped onto course data; treat it as the one
+        sport where the extension escape hatch is correct rather than lazy.
+      </li>
+    </ul>
+  </section>
+
+</div>
+
+
+<script>
+(function () {
+  'use strict';
+
+  // =====================================================================
+  // heat.ts, ported verbatim so the mockup cannot drift from the app
+  // =====================================================================
+  var FILL = [[0xc2,0x3b,0x2c],[0xc9,0x8a,0x1f],[0x0f,0x7a,0x4f]];
+  var INK  = [[0x8f,0x2b,0x20],[0x8f,0x62,0x15],[0x0b,0x5c,0x3c]];
+  var CMP  = [[0x8f,0x2b,0x20],[0x6d,0x67,0x5e],[0x0b,0x5c,0x3c]];
+
+  function clamp01(t) { return isFinite(t) ? Math.min(1, Math.max(0, t)) : 0.5; }
+  function sample(stops, t) {
+    var x = clamp01(t), a, b, u;
+    if (x <= 0.5) { a = stops[0]; b = stops[1]; u = x / 0.5; }
+    else { a = stops[1]; b = stops[2]; u = (x - 0.5) / 0.5; }
+    return [0,1,2].map(function (i) { return Math.round(a[i] + (b[i] - a[i]) * u); });
+  }
+  function rgb(c, alpha) {
+    return (alpha == null || alpha >= 1)
+      ? 'rgb(' + c[0] + ' ' + c[1] + ' ' + c[2] + ')'
+      : 'rgb(' + c[0] + ' ' + c[1] + ' ' + c[2] + ' / ' + alpha + ')';
+  }
+  function heatFill(t, a) { return rgb(sample(FILL, t), a); }
+  function heatInk(t)     { return rgb(sample(INK, t)); }
+  function compareInk(t)  { return rgb(sample(CMP, t)); }
+  function deltaToHeat(d, span) { span = span || 0.35; return clamp01(0.5 + d / (span * 2)); }
+  function rankToHeat(v, min, max) { return max === min ? 0.5 : clamp01((v - min) / (max - min)); }
+  // proposed monotonic sequential ramp \u2014 one hue, light -> dark
+  function seqFill(t) { var x = clamp01(t); return 'oklch(' + (92 - 47 * x).toFixed(1) + '% ' + (0.03 + 0.085 * x).toFixed(3) + ' 155)'; }
+  // Proposed DIVERGING fill: the same two poles, but with heat.ts's own NEUTRAL
+  // at the midpoint instead of amber - so "ordinary" reads as ordinary, and a
+  // game that cleared reads green rather than olive. See the ramp finding.
+  var NEUTRAL_RGB = [0xa8, 0xa2, 0x9a];
+  function divFill(t) { return rgb(sample([FILL[0], NEUTRAL_RGB, FILL[2]], t)); }
+
+  var SURFACE = 'oklch(93% 0.003 260)';   // --card: the ground every mark sits on
+  var GRID    = 'oklch(90% 0.004 260)';   // --line-soft
+  var INK1    = 'oklch(16% 0.004 260)';
+  var INK3    = 'oklch(50% 0.005 260)';
+  var INK4    = 'oklch(68% 0.004 260)';
+  var INK5    = 'oklch(78% 0.004 260)';
+
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function svg(tag, attrs) {
+    var n = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+  function root(w, h) {
+    var s = svg('svg', { viewBox: '0 0 ' + w + ' ' + h, width: '100%', role: 'img' });
+    s.style.display = 'block';
+    s.style.overflow = 'visible';
+    // Never render above 1:1 - see note above.
+    s.style.maxWidth = w + 'px';
+    return s;
+  }
+  function txt(x, y, s, o) {
+    o = o || {};
+    var t = svg('text', {
+      x: x, y: y,
+      fill: o.fill || INK3,
+      'font-size': o.size || 9,
+      'font-weight': o.weight || 400,
+      'text-anchor': o.anchor || 'start',
+      'font-family': 'ui-sans-serif, system-ui, sans-serif'
+    });
+    if (o.tabular) t.setAttribute('style', 'font-variant-numeric: tabular-nums');
+    t.textContent = s;
+    return t;
+  }
+
+  // =====================================================================
+  // shared tooltip
+  // =====================================================================
+  function makeTip(host) {
+    var tip = document.createElement('div');
+    tip.className = 'tt';
+    host.appendChild(tip);
+    return {
+      el: tip,
+      show: function (x, y, rows) {
+        tip.textContent = '';
+        rows.forEach(function (r) {
+          var row = document.createElement('div');
+          row.className = 'tt-row';
+          if (r.color) {
+            var k = document.createElement('span');
+            k.className = 'tt-key';
+            k.style.background = r.color;
+            row.appendChild(k);
+          }
+          var v = document.createElement('span');
+          v.className = 'tt-v';
+          v.textContent = r.value;                    // untrusted-data discipline
+          row.appendChild(v);
+          if (r.label) {
+            var l = document.createElement('span');
+            l.className = 'tt-l';
+            l.textContent = r.label;
+            row.appendChild(l);
+          }
+          tip.appendChild(row);
+        });
+        tip.style.opacity = '1';
+        var w = tip.offsetWidth, hw = host.clientWidth;
+        tip.style.left = Math.max(0, Math.min(hw - w, x - w / 2)) + 'px';
+        tip.style.top = (y - tip.offsetHeight - 10) + 'px';
+      },
+      hide: function () { tip.style.opacity = '0'; }
+    };
+  }
+
+  // =====================================================================
+  // 01 \u00B7 Sparkline
+  // =====================================================================
+  function sparkline(series, opts) {
+    opts = opts || {};
+    var w = opts.w || 46, h = opts.h || 15, pad = 3;
+    var s = root(w, h);
+    var min = Math.min.apply(null, series), max = Math.max.apply(null, series);
+    var span = (max - min) || 1;
+    var X = function (i) { return pad + (i / (series.length - 1)) * (w - pad * 2); };
+    var Y = function (v) { return h - pad - ((v - min) / span) * (h - pad * 2); };
+    var d = series.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+    s.appendChild(svg('path', { d: d, fill: 'none', stroke: INK4, 'stroke-width': 1.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+    var last = series.length - 1;
+    var dir = deltaToHeat((series[last] - series[0]) / (Math.abs(series[0]) || 1), 0.25);
+    // 2px surface ring so the dot survives crossing its own line
+    s.appendChild(svg('circle', { cx: X(last), cy: Y(series[last]), r: 3.6, fill: SURFACE }));
+    s.appendChild(svg('circle', { cx: X(last), cy: Y(series[last]), r: 2.4, fill: compareInk(dir) }));
+    return s;
+  }
+
+  var SPARK_ROWS = [
+    { name: 'Aaron Judge',      sub: 'Home runs o0.5',   price: '+118', s: [145,142,138,132,128,124,120,118], pct: 0.62 },
+    { name: 'Bobby Witt Jr.',   sub: 'Total bases o1.5', price: '\u2212118', s: [104,106,108,112,110,114,116,118], pct: 0.41 },
+    { name: 'Corbin Carroll',   sub: 'Stolen base o0.5', price: '+205', s: [188,190,196,199,203,204,205,205], pct: 0.33 }
+  ];
+  (function () {
+    var host = document.getElementById('spark-rows');
+    if (!host) return;
+    SPARK_ROWS.forEach(function (r) {
+      var row = document.createElement('div');
+      row.className = 'prop-row';
+      var left = document.createElement('div');
+      var nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = r.name;
+      var sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = r.sub;
+      left.appendChild(nm); left.appendChild(sub);
+      var sp = document.createElement('div');
+      sp.appendChild(sparkline(r.s));
+      var pc = document.createElement('div'); pc.className = 'pc'; pc.textContent = r.price;
+      pc.style.color = heatInk(r.pct);
+      row.appendChild(left); row.appendChild(sp); row.appendChild(pc);
+      host.appendChild(row);
+    });
+  })();
+
+  // =====================================================================
+  // 02 \u00B7 SeriesChart \u2014 the price tape, with a shared crosshair
+  // =====================================================================
+  var TAPE_T = ['13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00','18:30','19:00','19:30'];
+  var TAPE_CONSENSUS = [145,144,142,141,138,136,131,128,127,126,124,122,120,118];
+  var TAPE_BOOKS = [
+    [148,146,145,142,140,138,133,130,128,127,125,124,122,120],
+    [143,142,140,140,137,134,130,127,126,125,123,121,119,117],
+    [146,145,143,142,139,137,132,129,128,126,125,123,121,119],
+    [144,143,141,139,136,135,129,126,126,124,123,120,118,116],
+    [147,146,144,143,141,138,134,131,129,128,126,125,123,121],
+    [142,141,139,139,135,133,128,125,125,123,122,120,118,116]
+  ];
+  // American odds -> implied probability (no de-vig; this is the raw book number)
+  function implied(a) { return a > 0 ? 100 / (a + 100) : -a / (-a + 100); }
+  var TAPE_PROB = TAPE_CONSENSUS.map(function (a) { return implied(-a) * 100; });
+
+  function seriesChart(cfg) {
+    var w = 640, h = cfg.h || 132, padL = 34, padR = 12, padT = 12, padB = cfg.axis ? 24 : 8;
+    var s = root(w, h);
+    var pw = w - padL - padR, ph = h - padT - padB;
+    var vals = cfg.context ? cfg.context.reduce(function (a, b) { return a.concat(b); }, cfg.series.slice()) : cfg.series.slice();
+    var lo = cfg.min != null ? cfg.min : Math.min.apply(null, vals);
+    var hi = cfg.max != null ? cfg.max : Math.max.apply(null, vals);
+    var padv = (hi - lo) * 0.12 || 1; lo -= padv; hi += padv;
+    var X = function (i) { return padL + (i / (cfg.series.length - 1)) * pw; };
+    var Y = function (v) { return padT + ph - ((v - lo) / (hi - lo)) * ph; };
+
+    // grid \u2014 solid hairlines, one step off surface, never dashed
+    var ticks = cfg.ticks || 3;
+    for (var g = 0; g <= ticks; g++) {
+      var v = lo + (hi - lo) * (g / ticks);
+      var y = Y(v);
+      s.appendChild(svg('line', { x1: padL, x2: w - padR, y1: y, y2: y, stroke: GRID, 'stroke-width': 1 }));
+      s.appendChild(txt(padL - 7, y + 3, cfg.fmt(v), { anchor: 'end', fill: INK4, size: 9, tabular: true }));
+    }
+
+    // context threads
+    (cfg.context || []).forEach(function (line) {
+      var d = line.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+      s.appendChild(svg('path', { d: d, fill: 'none', stroke: INK5, 'stroke-width': 1, opacity: 0.5, 'stroke-linejoin': 'round' }));
+    });
+
+    // opening reference \u2014 a dashed rule is legitimate here: it IS a threshold
+    if (cfg.openAt != null) {
+      var oy = Y(cfg.openAt);
+      s.appendChild(svg('line', { x1: padL, x2: w - padR, y1: oy, y2: oy, stroke: INK4, 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
+      s.appendChild(txt(w - padR, oy - 5, 'open', { anchor: 'end', fill: INK4, size: 9 }));
+    }
+
+    // the subject
+    var d = cfg.series.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+    if (cfg.area) {
+      s.appendChild(svg('path', {
+        d: d + ' L' + X(cfg.series.length - 1).toFixed(1) + ' ' + (padT + ph) + ' L' + padL + ' ' + (padT + ph) + ' Z',
+        fill: INK1, opacity: 0.07
+      }));
+    }
+    s.appendChild(svg('path', { d: d, fill: 'none', stroke: INK1, 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+
+    // one direct label, at the end \u2014 never a number on every point
+    var lastI = cfg.series.length - 1;
+    s.appendChild(svg('circle', { cx: X(lastI), cy: Y(cfg.series[lastI]), r: 5, fill: SURFACE }));
+    s.appendChild(svg('circle', { cx: X(lastI), cy: Y(cfg.series[lastI]), r: 3.2, fill: INK1 }));
+
+    if (cfg.axis) {
+      [0, 4, 8, 13].forEach(function (i) {
+        s.appendChild(txt(X(i), h - 6, TAPE_T[i], { anchor: i === 0 ? 'start' : (i === 13 ? 'end' : 'middle'), fill: INK4, size: 9, tabular: true }));
+      });
+    }
+
+    // annotation band \u2014 the steam move
+    if (cfg.band) {
+      s.appendChild(svg('rect', {
+        x: X(cfg.band[0]), y: padT, width: X(cfg.band[1]) - X(cfg.band[0]), height: ph,
+        fill: INK1, opacity: 0.05
+      }));
+      s.appendChild(txt((X(cfg.band[0]) + X(cfg.band[1])) / 2, padT + 10, cfg.bandLabel, { anchor: 'middle', fill: INK3, size: 9, weight: 500 }));
+    }
+
+    var cross = svg('line', { x1: 0, x2: 0, y1: padT, y2: padT + ph, stroke: INK3, 'stroke-width': 1, opacity: 0 });
+    s.appendChild(cross);
+    var dot = svg('circle', { r: 3.5, fill: INK1, stroke: SURFACE, 'stroke-width': 2, opacity: 0 });
+    s.appendChild(dot);
+
+    return { svg: s, X: X, Y: Y, cross: cross, dot: dot, w: w, h: h, padT: padT, ph: ph };
+  }
+
+  (function () {
+    var hostEl = document.getElementById('tape-host');
+    if (!hostEl) return;
+    var tip = makeTip(hostEl);
+
+    var price = seriesChart({
+      series: TAPE_CONSENSUS, context: TAPE_BOOKS, openAt: 145, h: 132,
+      band: [5, 7], bandLabel: '6 books moved in 4 min',
+      fmt: function (v) { return '\u2212' + Math.round(v); }
+    });
+    var prob = seriesChart({
+      series: TAPE_PROB, h: 84, axis: true, area: true, ticks: 2,
+      fmt: function (v) { return Math.round(v) + '%'; }
+    });
+    document.getElementById('tape-price').appendChild(price.svg);
+    document.getElementById('tape-prob').appendChild(prob.svg);
+
+    // ---- ONE crosshair, both charts. This is the whole pitch. ----
+    function sync(i, clientY) {
+      [price, prob].forEach(function (c) {
+        var x = c.X(i);
+        c.cross.setAttribute('x1', x); c.cross.setAttribute('x2', x);
+        c.cross.setAttribute('opacity', '0.35');
+        var arr = c === price ? TAPE_CONSENSUS : TAPE_PROB;
+        c.dot.setAttribute('cx', x); c.dot.setAttribute('cy', c.Y(arr[i]));
+        c.dot.setAttribute('opacity', '1');
+      });
+      var r = hostEl.getBoundingClientRect();
+      var px = (price.X(i) / price.w) * hostEl.clientWidth;
+      tip.show(px, clientY - r.top, [
+        { value: '\u2212' + TAPE_CONSENSUS[i], label: 'consensus', color: INK1 },
+        { value: TAPE_PROB[i].toFixed(1) + '%', label: 'implied', color: INK4 },
+        { value: TAPE_T[i], label: '' }
+      ]);
+    }
+    function clear() {
+      [price, prob].forEach(function (c) {
+        c.cross.setAttribute('opacity', '0');
+        c.dot.setAttribute('opacity', '0');
+      });
+      tip.hide();
+    }
+    function nearest(ev) {
+      var r = hostEl.getBoundingClientRect();
+      var frac = (ev.clientX - r.left) / r.width;
+      var i = Math.round(frac * (TAPE_CONSENSUS.length - 1) * 1.02 - 0.5);
+      return Math.max(0, Math.min(TAPE_CONSENSUS.length - 1, i));
+    }
+    hostEl.addEventListener('pointermove', function (ev) { sync(nearest(ev), ev.clientY); });
+    hostEl.addEventListener('pointerleave', clear);
+    hostEl.setAttribute('tabindex', '0');
+    var kb = 13;
+    hostEl.addEventListener('keydown', function (ev) {
+      if (ev.key === 'ArrowLeft') { kb = Math.max(0, kb - 1); }
+      else if (ev.key === 'ArrowRight') { kb = Math.min(TAPE_CONSENSUS.length - 1, kb + 1); }
+      else return;
+      ev.preventDefault();
+      var r = hostEl.getBoundingClientRect();
+      sync(kb, r.top + 40);
+    });
+
+    // table-view twin
+    var tv = document.getElementById('tv-tape');
+    var head = document.createElement('tr');
+    ['Time', 'Consensus', 'Implied'].forEach(function (t, i) {
+      var th = document.createElement('th');
+      if (i) th.className = 'num';
+      th.textContent = t; head.appendChild(th);
+    });
+    tv.appendChild(head);
+    TAPE_T.forEach(function (t, i) {
+      var tr = document.createElement('tr');
+      [t, '\u2212' + TAPE_CONSENSUS[i], TAPE_PROB[i].toFixed(1) + '%'].forEach(function (v, j) {
+        var td = document.createElement('td');
+        if (j) td.className = 'num';
+        td.textContent = v; tr.appendChild(td);
+      });
+      tv.appendChild(tr);
+    });
+  })();
+
+  // =====================================================================
+  // 03 \u00B7 DistributionBars
+  // =====================================================================
+  var DIST = [
+    { v: 2, o: 'BOS' }, { v: 1, o: 'BOS' }, { v: 3, o: 'TOR' }, { v: 0, o: 'TOR' },
+    { v: 2, o: 'TB'  }, { v: 2, o: 'TB'  }, { v: 1, o: 'BAL' }, { v: 4, o: 'BAL' },
+    { v: 2, o: 'CLE' }, { v: 0, o: 'CLE' }, { v: 3, o: 'DET' }, { v: 1, o: 'MIN' },
+    { v: 2, o: 'MIN' }, { v: 2, o: 'CWS' }, { v: 3, o: 'CWS' }
+  ];
+
+  function distributionBars(hostId, data, line, opts) {
+    opts = opts || {};
+    var hostEl = document.getElementById(hostId);
+    if (!hostEl) return;
+    var tip = makeTip(hostEl);
+    var w = 640, h = opts.h || 148, padT = 10, padB = 22;
+    var s = root(w, h);
+    var ph = h - padT - padB;
+    var max = Math.max(line + 1, Math.max.apply(null, data.map(function (d) { return d.v; })));
+    var Y = function (v) { return padT + ph - (v / max) * ph; };
+    var slot = w / data.length;
+    var GAP = 2;                       // the surface gap \u2014 white does the separating
+    var bw = Math.min(24, slot - GAP);
+
+    for (var t = 0; t <= max; t++) {
+      var y = Y(t);
+      s.appendChild(svg('line', { x1: 0, x2: w, y1: y, y2: y, stroke: GRID, 'stroke-width': 1 }));
+    }
+
+    data.forEach(function (d, i) {
+      var cleared = d.v > line;
+      // Sign dominates; magnitude only modulates within each half. A game that
+      // cleared must never render amber - polarity is the claim this chart
+      // makes, and letting the ramp's amber midpoint swallow it is exactly the
+      // failure described in the ramp finding below.
+      var mag = Math.min(1, Math.abs(d.v - line) / 2);
+      var t = cleared ? 0.72 + 0.28 * mag : 0.28 - 0.28 * mag;
+      var x = i * slot + (slot - bw) / 2;
+      var y = Y(d.v), bh = Math.max(2, padT + ph - y);
+      // 4px rounded data-end, square at the baseline
+      var r = 4;
+      var path = 'M' + x + ' ' + (padT + ph) +
+                 ' L' + x + ' ' + (y + r) +
+                 ' Q' + x + ' ' + y + ' ' + (x + r) + ' ' + y +
+                 ' L' + (x + bw - r) + ' ' + y +
+                 ' Q' + (x + bw) + ' ' + y + ' ' + (x + bw) + ' ' + (y + r) +
+                 ' L' + (x + bw) + ' ' + (padT + ph) + ' Z';
+      var bar = svg('path', { d: bh > r ? path : 'M' + x + ' ' + (padT + ph - 2) + ' h' + bw + ' v2 h-' + bw + ' Z', fill: divFill(t) });
+      bar.style.transition = 'opacity .15s ease';
+      s.appendChild(bar);
+
+      var hit = svg('rect', { x: i * slot, y: padT, width: slot, height: ph, fill: 'transparent' });
+      hit.style.cursor = 'crosshair';
+      hit.addEventListener('pointerenter', function () {
+        bar.style.opacity = '0.72';
+        tip.show(((i + 0.5) * slot / w) * hostEl.clientWidth, Y(d.v) * (hostEl.clientHeight / h),
+          [{ value: String(d.v) + (d.v === 1 ? ' hit' : ' hits'), label: (cleared ? 'cleared' : 'missed') + ' \u00B7 vs ' + d.o, color: divFill(t) }]);
+      });
+      hit.addEventListener('pointerleave', function () { bar.style.opacity = '1'; tip.hide(); });
+      s.appendChild(hit);
+
+      s.appendChild(txt(i * slot + slot / 2, h - 8, d.o, { anchor: 'middle', fill: INK4, size: 8 }));
+    });
+
+    // the line \u2014 a dash that genuinely means "threshold"
+    var ly = Y(line);
+    s.appendChild(svg('line', { x1: 0, x2: w, y1: ly, y2: ly, stroke: INK1, 'stroke-width': 1.5, 'stroke-dasharray': '5 4', opacity: 0.75 }));
+    hostEl.appendChild(s);
+  }
+  distributionBars('dist-host', DIST, 1.5);
+  distributionBars('screen-dist', DIST, 1.5, { h: 128 });
+
+  (function () {
+    var r = document.getElementById('dist-ramp');
+    if (r) r.style.background = 'linear-gradient(90deg,' + divFill(0) + ',' + divFill(0.5) + ',' + divFill(1) + ')';
+  })();
+
+  // =====================================================================
+  // 04 \u00B7 DensityCurve
+  // =====================================================================
+  function densityCurve(hostId, opts) {
+    opts = opts || {};
+    var hostEl = document.getElementById(hostId);
+    if (!hostEl) return;
+    var w = opts.w || 640, h = opts.h || 128, padT = 16, padB = 22, padX = 8;
+    var s = root(w, h);
+    var ph = h - padT - padB;
+    // a plausible unimodal population of L15 hit rates
+    var N = 90, pts = [];
+    for (var i = 0; i < N; i++) {
+      var x = i / (N - 1);
+      var y = Math.exp(-Math.pow((x - 0.52) / 0.155, 2) / 2) + 0.14 * Math.exp(-Math.pow((x - 0.76) / 0.09, 2) / 2);
+      pts.push(y);
+    }
+    var maxY = Math.max.apply(null, pts);
+    var X = function (i) { return padX + (i / (N - 1)) * (w - padX * 2); };
+    var Y = function (v) { return padT + ph - (v / maxY) * ph; };
+    var d = pts.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+
+    s.appendChild(svg('path', { d: d + ' L' + X(N - 1) + ' ' + (padT + ph) + ' L' + X(0) + ' ' + (padT + ph) + ' Z', fill: INK1, opacity: 0.08 }));
+    s.appendChild(svg('path', { d: d, fill: 'none', stroke: INK4, 'stroke-width': 2, 'stroke-linejoin': 'round' }));
+    s.appendChild(svg('line', { x1: 0, x2: w, y1: padT + ph, y2: padT + ph, stroke: GRID, 'stroke-width': 1 }));
+
+    var pct = opts.pct != null ? opts.pct : 0.64;
+    var mi = Math.round(pct * (N - 1));
+    var mx = X(mi), my = Y(pts[mi]);
+    s.appendChild(svg('line', { x1: mx, x2: mx, y1: my, y2: padT + ph, stroke: INK1, 'stroke-width': 1, opacity: 0.4 }));
+    s.appendChild(svg('circle', { cx: mx, cy: my, r: 6.5, fill: SURFACE }));
+    s.appendChild(svg('circle', { cx: mx, cy: my, r: 4.5, fill: heatFill(0.82) }));
+
+    // exactly one direct label
+    s.appendChild(txt(mx, my - 12, opts.label || '72% = 87th pct', { anchor: mi > N * 0.72 ? 'end' : 'middle', fill: INK1, size: 10, weight: 600 }));
+    ['20%', '50%', '80%'].forEach(function (l, k) {
+      var xi = [0.2, 0.5, 0.8][k];
+      s.appendChild(txt(padX + xi * (w - padX * 2), h - 6, l, { anchor: 'middle', fill: INK4, size: 9, tabular: true }));
+    });
+    s.appendChild(txt(w - padX, h - 6, 'hit rate', { anchor: 'end', fill: INK5, size: 9 }));
+    hostEl.appendChild(s);
+  }
+  densityCurve('density-host', { pct: 0.72 });
+  densityCurve('screen-density', { w: 260, h: 110, pct: 0.72, label: '87th pct' });
+
+  // =====================================================================
+  // 05 \u00B7 PercentileRail
+  // =====================================================================
+  var RAILS = [
+    { k: 'Barrel %',      v: '18.4%', p: 94 },
+    { k: 'Hard-hit %',    v: '55.1%', p: 88 },
+    { k: 'Exit velocity', v: '94.2',  p: 91 },
+    { k: 'Chase %',       v: '31.6%', p: 34 },
+    { k: 'Whiff %',       v: '29.8%', p: 22 }
+  ];
+  function percentileRails(hostId, rows, opts) {
+    opts = opts || {};
+    var hostEl = document.getElementById(hostId);
+    if (!hostEl) return;
+    rows.forEach(function (r, i) {
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;padding:7px 0;' +
+        (i ? 'border-top:1px solid var(--line-hair);' : '');
+      var k = document.createElement('div');
+      k.style.cssText = 'font-size:11px;color:var(--ink-3)';
+      k.textContent = r.k;
+      var v = document.createElement('div');
+      v.style.cssText = 'font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;color:' + heatInk(r.p / 100);
+      v.textContent = r.v;
+      var railWrap = document.createElement('div');
+      railWrap.style.cssText = 'grid-column:1 / -1;position:relative;height:6px;border-radius:3px;background:var(--line-hair);overflow:hidden';
+      var fill = document.createElement('div');
+      fill.style.cssText = 'position:absolute;inset:0 auto 0 0;border-radius:3px;width:' + r.p + '%;background:' + heatFill(r.p / 100);
+      railWrap.appendChild(fill);
+      var pl = document.createElement('div');
+      pl.style.cssText = 'grid-column:1 / -1;font-size:9px;color:var(--ink-4);font-variant-numeric:tabular-nums;margin-top:1px';
+      pl.textContent = r.p + 'th percentile';
+      wrap.appendChild(k); wrap.appendChild(v); wrap.appendChild(railWrap); wrap.appendChild(pl);
+      hostEl.appendChild(wrap);
+    });
+  }
+  percentileRails('rail-host', RAILS);
+  percentileRails('screen-rail', RAILS.slice(0, 3));
+
+  // =====================================================================
+  // 06 \u00B7 HeatGrid
+  // =====================================================================
+  var GRID_COLS = ['L5', 'L10', 'L15', 'SZN'];
+  var GRID_ROWS = [
+    { k: 'All',       v: [0.80, 0.70, 0.60, 0.58], n: [5, 10, 15, 128] },
+    { k: 'Home',      v: [1.00, 0.83, 0.75, 0.64], n: [4,  6,  8,  64] },
+    { k: 'Away',      v: [0.50, 0.50, 0.43, 0.52], n: [2,  4,  7,  64] },
+    { k: 'vs LHP',    v: [1.00, 0.75, 0.71, 0.69], n: [2,  4,  7,  38] },
+    { k: 'vs BOS',    v: [null, null, 0.50, 0.55], n: [0,  0,  2,  11] }
+  ];
+  function heatGrid(hostId, opts) {
+    opts = opts || {};
+    var hostEl = document.getElementById(hostId);
+    if (!hostEl) return;
+    var tip = makeTip(hostEl);
+    var COLS = opts.cols || GRID_COLS, ROWS = opts.rows || GRID_ROWS;
+    var labelW = opts.labelW || 66, cellH = opts.cellH || 34, gap = 2;
+    var w = opts.w || 640;
+    var cw = (w - labelW - gap * (COLS.length - 1)) / COLS.length;
+    var h = 18 + ROWS.length * (cellH + gap);
+    var s = root(w, h);
+
+    COLS.forEach(function (c, j) {
+      s.appendChild(txt(labelW + j * (cw + gap) + cw / 2, 11, c, { anchor: 'middle', fill: INK4, size: 9, weight: 500 }));
+    });
+
+    ROWS.forEach(function (r, i) {
+      var y = 18 + i * (cellH + gap);
+      s.appendChild(txt(0, y + cellH / 2 + 3, r.k, { fill: INK3, size: 10 }));
+      r.v.forEach(function (val, j) {
+        var x = labelW + j * (cw + gap);
+        var thin = r.n[j] < 5;
+        if (val == null || thin) {
+          // n < 5 renders hatched, never coloured \u2014 a 100% rate on 2 games is noise
+          s.appendChild(svg('rect', { x: x, y: y, width: cw, height: cellH, rx: 3, fill: 'oklch(96% 0.002 260)' }));
+          s.appendChild(txt(x + cw / 2, y + cellH / 2 + 3, val == null ? '\u2014' : 'n<5', { anchor: 'middle', fill: INK5, size: 9 }));
+          return;
+        }
+        var cell = svg('rect', { x: x, y: y, width: cw, height: cellH, rx: 3, fill: opts.seq ? seqFill(val) : heatFill(val) });
+        cell.style.transition = 'opacity .12s ease';
+        cell.style.cursor = 'crosshair';
+        s.appendChild(cell);
+        var dark = opts.seq ? val > 0.5 : true;
+        s.appendChild(txt(x + cw / 2, y + cellH / 2 + 4, Math.round(val * 100) + '%', {
+          anchor: 'middle', fill: dark ? '#fff' : INK1, size: 11, weight: 600, tabular: true
+        }));
+        cell.addEventListener('pointerenter', function () {
+          cell.style.opacity = '0.8';
+          tip.show(((x + cw / 2) / w) * hostEl.clientWidth, (y / h) * hostEl.clientHeight,
+            [{ value: Math.round(val * 100) + '%', label: r.k + ' \u00B7 ' + COLS[j] + ' \u00B7 n=' + r.n[j] }]);
+        });
+        cell.addEventListener('pointerleave', function () { cell.style.opacity = '1'; tip.hide(); });
+      });
+    });
+    hostEl.appendChild(s);
+  }
+  heatGrid('grid-host', { seq: true });
+  // The composed page shows the real split set, not the four-row teaser.
+  var DEEP_ROWS = [
+    { k: 'All',        v: [0.80, 0.70, 0.60, 0.62, 0.58], n: [5, 10, 15, 30, 128] },
+    { k: 'Home',       v: [1.00, 0.83, 0.75, 0.68, 0.64], n: [4,  6,  8, 16,  64] },
+    { k: 'Away',       v: [0.50, 0.50, 0.43, 0.57, 0.52], n: [2,  4,  7, 14,  64] },
+    { k: 'vs LHP',     v: [1.00, 0.75, 0.71, 0.73, 0.71], n: [2,  4,  7, 15,  41] },
+    { k: 'vs RHP',     v: [0.67, 0.67, 0.50, 0.53, 0.55], n: [3,  6,  8, 15,  87] },
+    { k: 'Last 7d',    v: [0.80, 0.71, null, null, null], n: [5,  7,  0,  0,   0] },
+    { k: 'Day',        v: [null, 0.60, 0.57, 0.55, 0.61], n: [1,  5,  7, 11,  38] },
+    { k: 'Night',      v: [0.75, 0.80, 0.63, 0.68, 0.57], n: [4,  5,  8, 19,  90] },
+    { k: 'Runners on', v: [1.00, 0.83, 0.70, 0.71, 0.63], n: [3,  6, 10, 21,  79] },
+    { k: 'vs BOS',     v: [null, null, 0.50, 0.55, 0.55], n: [0,  0,  2,  9,  11] }
+  ];
+  var DEEP_COLS = ['L5', 'L10', 'L15', 'L30', 'SZN'];
+  heatGrid('screen-grid', { seq: true, cellH: 26, labelW: 68, rows: DEEP_ROWS, cols: DEEP_COLS });
+
+  (function () {
+    var r = document.getElementById('grid-ramp');
+    if (r) r.style.background = 'linear-gradient(90deg,' + seqFill(0) + ',' + seqFill(0.5) + ',' + seqFill(1) + ')';
+    var tv = document.getElementById('tv-grid');
+    if (!tv) return;
+    var head = document.createElement('tr');
+    var th0 = document.createElement('th'); th0.textContent = 'Split'; head.appendChild(th0);
+    GRID_COLS.forEach(function (c) { var th = document.createElement('th'); th.className = 'num'; th.textContent = c; head.appendChild(th); });
+    tv.appendChild(head);
+    GRID_ROWS.forEach(function (r2) {
+      var tr = document.createElement('tr');
+      var td0 = document.createElement('td'); td0.textContent = r2.k; tr.appendChild(td0);
+      r2.v.forEach(function (v, j) {
+        var td = document.createElement('td'); td.className = 'num';
+        td.textContent = v == null ? '\u2014' : Math.round(v * 100) + '% (n=' + r2.n[j] + ')';
+        tr.appendChild(td);
+      });
+      tv.appendChild(tr);
+    });
+  })();
+
+  // =====================================================================
+  // 07 \u00B7 RangeBar
+  // =====================================================================
+  var BOOKS_D = [
+    { b: 'Pinnacle',   p: -112, mine: false },
+    { b: 'FanDuel',    p: -118, mine: true  },
+    { b: 'DraftKings', p: -120, mine: false },
+    { b: 'BetMGM',     p: -124, mine: false },
+    { b: 'Caesars',    p: -128, mine: false },
+    { b: 'ESPN Bet',   p: -136, mine: false }
+  ];
+  function rangeBar(hostId, opts) {
+    opts = opts || {};
+    var BOOKS = opts.books || BOOKS_D;
+    var hostEl = document.getElementById(hostId);
+    if (!hostEl) return;
+    var tip = makeTip(hostEl);
+    var w = opts.w || 640, rowH = opts.rowH || 26, labelW = opts.labelW || 78, valW = 40;
+    var h = BOOKS.length * rowH + 18;
+    var s = root(w, h);
+    var ps = BOOKS.map(function (x) { return x.p; });
+    var lo = Math.min.apply(null, ps), hi = Math.max.apply(null, ps);
+    var trackL = labelW, trackR = w - valW - 6;
+    var X = function (p) { return trackL + ((p - lo) / (hi - lo)) * (trackR - trackL); };
+    var consensus = ps.reduce(function (a, b) { return a + b; }, 0) / ps.length;
+
+    // consensus reference, drawn under everything
+    s.appendChild(svg('line', { x1: X(consensus), x2: X(consensus), y1: 4, y2: h - 16, stroke: INK3, 'stroke-width': 1, 'stroke-dasharray': '3 3' }));
+    s.appendChild(txt(X(consensus), h - 4, 'consensus', { anchor: 'middle', fill: INK4, size: 9 }));
+
+    BOOKS.forEach(function (bk, i) {
+      var y = 10 + i * rowH;
+      s.appendChild(txt(0, y + 4, bk.b, { fill: bk.mine ? INK1 : INK3, size: 10, weight: bk.mine ? 600 : 400 }));
+      s.appendChild(svg('line', { x1: trackL, x2: trackR, y1: y, y2: y, stroke: 'oklch(88% 0.004 260)', 'stroke-width': 4, 'stroke-linecap': 'round' }));
+      var t = rankToHeat(bk.p, lo, hi);
+      var cx = X(bk.p);
+      if (bk.mine) s.appendChild(svg('circle', { cx: cx, cy: y, r: 8, fill: 'none', stroke: INK1, 'stroke-width': 1.5 }));
+      s.appendChild(svg('circle', { cx: cx, cy: y, r: 6.5, fill: SURFACE }));
+      var dot = svg('circle', { cx: cx, cy: y, r: 4.5, fill: heatFill(t) });
+      dot.style.cursor = 'crosshair';
+      s.appendChild(dot);
+      s.appendChild(txt(w, y + 4, String(bk.p), { anchor: 'end', fill: heatInk(t), size: 11, weight: 600, tabular: true }));
+      var hit = svg('rect', { x: trackL - 12, y: y - 12, width: trackR - trackL + 24, height: 24, fill: 'transparent' });
+      hit.addEventListener('pointerenter', function () {
+        tip.show((cx / w) * hostEl.clientWidth, (y / h) * hostEl.clientHeight,
+          [{ value: String(bk.p), label: bk.b + (bk.mine ? ' \u00B7 your book' : ''), color: heatFill(t) }]);
+      });
+      hit.addEventListener('pointerleave', function () { tip.hide(); });
+      s.appendChild(hit);
+    });
+    hostEl.appendChild(s);
+  }
+  rangeBar('range-host');
+  rangeBar('screen-range', { w: 260, rowH: 23, labelW: 62 });
+
+  // =====================================================================
+  // 08 \u00B7 ContributionBars
+  // =====================================================================
+  var CONTRIB_SHORT = {
+    'Recent form (L10)': 'Recent form', 'Opposing SP quality': 'Opposing SP',
+    'Park factor': 'Park', 'Platoon split': 'Platoon', 'Rest days': 'Rest',
+    'Bullpen strength': 'Bullpen', 'Weather (wind in)': 'Weather'
+  };
+  var CONTRIB_D = [
+    { k: 'Recent form (L10)',   v:  0.061 },
+    { k: 'Opposing SP quality', v:  0.043 },
+    { k: 'Park factor',         v:  0.022 },
+    { k: 'Platoon split',       v:  0.014 },
+    { k: 'Rest days',           v: -0.009 },
+    { k: 'Bullpen strength',    v: -0.028 },
+    { k: 'Weather (wind in)',   v: -0.037 }
+  ];
+  function contributionBars(hostId, opts) {
+    opts = opts || {};
+    var CONTRIB = opts.rows || CONTRIB_D;
+    var hostEl = document.getElementById(hostId);
+    if (!hostEl) return;
+    var tip = makeTip(hostEl);
+    var w = opts.w || 640, rowH = opts.rowH || 26, labelW = opts.labelW || 148;
+    var h = CONTRIB.length * rowH + 22;
+    var s = root(w, h);
+    var maxAbs = Math.max.apply(null, CONTRIB.map(function (c) { return Math.abs(c.v); }));
+    var spineX = labelW + (w - labelW - 52) / 2;
+    var half = (w - labelW - 52) / 2;
+
+    s.appendChild(svg('line', { x1: spineX, x2: spineX, y1: 2, y2: h - 20, stroke: INK4, 'stroke-width': 1 }));
+    s.appendChild(txt(spineX, h - 6, 'baseline', { anchor: 'middle', fill: INK4, size: 9 }));
+
+    CONTRIB.forEach(function (c, i) {
+      var y = 8 + i * rowH;
+      var pos = c.v >= 0;
+      var len = (Math.abs(c.v) / maxAbs) * half;
+      var bh = 12;
+      var x = pos ? spineX : spineX - len;
+      var lblText = opts.shortLabels ? (CONTRIB_SHORT[c.k] || c.k) : c.k;
+      s.appendChild(txt(labelW - 10, y + bh / 2 + 3, lblText, { anchor: 'end', fill: INK3, size: 10 }));
+      var r = 4, x2 = x + len;
+      var d = pos
+        ? 'M' + x + ' ' + y + ' L' + (x2 - r) + ' ' + y + ' Q' + x2 + ' ' + y + ' ' + x2 + ' ' + (y + r) +
+          ' L' + x2 + ' ' + (y + bh - r) + ' Q' + x2 + ' ' + (y + bh) + ' ' + (x2 - r) + ' ' + (y + bh) + ' L' + x + ' ' + (y + bh) + ' Z'
+        : 'M' + x2 + ' ' + y + ' L' + (x + r) + ' ' + y + ' Q' + x + ' ' + y + ' ' + x + ' ' + (y + r) +
+          ' L' + x + ' ' + (y + bh - r) + ' Q' + x + ' ' + (y + bh) + ' ' + (x + r) + ' ' + (y + bh) + ' L' + x2 + ' ' + (y + bh) + ' Z';
+      var bar = svg('path', { d: d, fill: compareInk(pos ? 0.5 + (Math.abs(c.v) / maxAbs) * 0.5 : 0.5 - (Math.abs(c.v) / maxAbs) * 0.5) });
+      bar.style.transition = 'opacity .12s ease';
+      s.appendChild(bar);
+      var lbl = (pos ? '+' : '\u2212') + (Math.abs(c.v) * 100).toFixed(1) + '%';
+      s.appendChild(txt(w, y + bh / 2 + 4, lbl, { anchor: 'end', fill: pos ? '#0b5c3c' : '#8f2b20', size: 10, weight: 600, tabular: true }));
+      var hit = svg('rect', { x: labelW, y: y - 6, width: w - labelW, height: rowH, fill: 'transparent' });
+      hit.addEventListener('pointerenter', function () {
+        bar.style.opacity = '0.75';
+        tip.show(((pos ? x + len / 2 : x + len / 2) / w) * hostEl.clientWidth, (y / h) * hostEl.clientHeight,
+          [{ value: lbl, label: c.k }]);
+      });
+      hit.addEventListener('pointerleave', function () { bar.style.opacity = '1'; tip.hide(); });
+      s.appendChild(hit);
+    });
+    hostEl.appendChild(s);
+  }
+  contributionBars('contrib-host');
+  contributionBars('screen-contrib', { w: 258, rowH: 22, labelW: 104, shortLabels: true });
+
+  // =====================================================================
+  // screen: the price tape, small
+  // =====================================================================
+  (function () {
+    var hostEl = document.getElementById('screen-tape');
+    if (!hostEl) return;
+    var c = seriesChart({
+      series: TAPE_CONSENSUS, context: TAPE_BOOKS, openAt: 145, h: 104, axis: true, ticks: 2,
+      fmt: function (v) { return '\u2212' + Math.round(v); }
+    });
+    hostEl.appendChild(c.svg);
+  })();
+
+  // =====================================================================
+  // ramp strips
+  // =====================================================================
+  (function () {
+    function grad(fn) {
+      var stops = [];
+      for (var i = 0; i <= 10; i++) stops.push(fn(i / 10) + ' ' + (i * 10) + '%');
+      return 'linear-gradient(90deg,' + stops.join(',') + ')';
+    }
+    var now = grad(heatFill), nu = grad(seqFill);
+    ['ramp-now', 'ramp-now-g'].forEach(function (id) { var e = document.getElementById(id); if (e) e.style.background = now; });
+    ['ramp-new', 'ramp-new-g'].forEach(function (id) { var e = document.getElementById(id); if (e) e.style.background = nu; });
+  })();
+
+  // =====================================================================
+  // table-view toggles
+  // =====================================================================
+  Array.prototype.forEach.call(document.querySelectorAll('[data-tv]'), function (btn) {
+    btn.addEventListener('click', function () {
+      var t = document.getElementById(btn.getAttribute('data-tv'));
+      var open = !t.hidden;
+      t.hidden = open;
+      btn.setAttribute('aria-expanded', String(!open));
+      btn.textContent = open ? 'Table view' : 'Hide table';
+    });
+  });
+
+  // Exported so the deep-page primitives compose against the SAME toolkit
+  // rather than redefining a second, drifting copy of it.
+  window.LB = {
+    seriesChart: seriesChart, distributionBars: distributionBars,
+    densityCurve: densityCurve, percentileRails: percentileRails, heatGrid: heatGrid,
+    rangeBar: rangeBar, contributionBars: contributionBars,
+    svg: svg, root: root, txt: txt, makeTip: makeTip,
+    heatFill: heatFill, heatInk: heatInk, compareInk: compareInk,
+    divFill: divFill, seqFill: seqFill, rankToHeat: rankToHeat,
+    SURFACE: SURFACE, GRID: GRID, INK1: INK1, INK3: INK3, INK4: INK4, INK5: INK5
+  };
+
+  // hero anchor colour off the same ramp
+  (function () {
+    var e = document.getElementById('hero-v');
+    if (e) e.style.color = heatInk(0.64);
+  })();
+})();
+</script>
+
+<script>
+/* ============================================================================
+   Deep Player Detail - the three additional primitives plus the page's data.
+   Runs after the main IIFE and borrows its exports from window.LB.
+   ASCII only: this file is spliced into a <script> block on a page that has no
+   charset of its own, so every symbol is an entity or a \u escape.
+   ========================================================================== */
+(function () {
+  'use strict';
+  var LB = window.LB;
+  if (!LB) return;
+  var svg = LB.svg, root = LB.root, txt = LB.txt, makeTip = LB.makeTip;
+  var heatFill = LB.heatFill, heatInk = LB.heatInk, divFill = LB.divFill, seqFill = LB.seqFill;
+  var SURFACE = LB.SURFACE, GRID = LB.GRID, INK1 = LB.INK1, INK3 = LB.INK3, INK4 = LB.INK4, INK5 = LB.INK5;
+  var MINUS = '\u2212', MIDDOT = '\u00B7', DEG = '\u00B0';
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  // ==========================================================================
+  // 09 - StatTable: a dense table where one column carries a heat-tinted bar
+  //      BEHIND the number, so magnitude reads without a separate chart.
+  // ==========================================================================
+  function statTable(hostId, rows, opts) {
+    opts = opts || {};
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var t = el('table', 'st');
+    var head = el('tr');
+    ['', opts.valueLabel || 'Value', 'Rank', 'Percentile'].forEach(function (h, i) {
+      var th = el('th', i ? 'num' : null, h);
+      head.appendChild(th);
+    });
+    t.appendChild(head);
+    rows.forEach(function (r) {
+      var tr = el('tr');
+      tr.appendChild(el('td', 'st-k', r.k));
+      var v = el('td', 'num st-v', r.v);
+      v.style.color = heatInk(r.pct / 100);
+      tr.appendChild(v);
+      tr.appendChild(el('td', 'num st-r', r.rank));
+      var barCell = el('td', 'st-bar-cell');
+      var track = el('div', 'st-track');
+      var fill = el('div', 'st-fill');
+      fill.style.width = r.pct + '%';
+      fill.style.background = heatFill(r.pct / 100);
+      track.appendChild(fill);
+      var num = el('span', 'st-pct', r.pct);
+      barCell.appendChild(track);
+      barCell.appendChild(num);
+      tr.appendChild(barCell);
+      t.appendChild(tr);
+    });
+    host.appendChild(t);
+  }
+
+  // ==========================================================================
+  // 10 - StreakStrip: a run of outcomes, most recent on the right.
+  // ==========================================================================
+  function streakStrip(hostId, results, opts) {
+    opts = opts || {};
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var wrap = el('div', 'streak');
+    results.forEach(function (hit, i) {
+      var d = el('div', 'streak-cell');
+      d.style.background = hit ? divFill(0.88) : divFill(0.12);
+      d.style.opacity = String(0.45 + 0.55 * (i / (results.length - 1)));
+      d.title = (hit ? 'cleared' : 'missed') + ' ' + (results.length - i) + ' games ago';
+      wrap.appendChild(d);
+    });
+    host.appendChild(wrap);
+    var run = 0;
+    for (var i = results.length - 1; i >= 0 && results[i] === results[results.length - 1]; i--) run++;
+    var cap = el('div', 'streak-cap');
+    cap.textContent = 'oldest' + '  \u2192  ' + 'current  ' + MIDDOT + '  ' +
+      run + ' straight ' + (results[results.length - 1] ? 'cleared' : 'missed');
+    host.appendChild(cap);
+  }
+
+  // ==========================================================================
+  // 11 - SplitDumbbell: two conditions on one shared scale per row. Before /
+  //      after per item is the canonical use; here it is vs LHP / vs RHP.
+  //      One hue, two shades - never two categorical colours for A/B.
+  // ==========================================================================
+  function splitDumbbell(hostId, rows, opts) {
+    opts = opts || {};
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var tip = makeTip(host);
+    var w = opts.w || 300, rowH = 30, labelW = opts.labelW || 46, valW = 78;
+    var h = rows.length * rowH + 30;
+    var s = root(w, h);
+    var trackL = labelW, trackR = w - valW;
+
+    // ONE shared scale for every row: each value as its deviation from that
+    // row's own midpoint. The first attempt padded each row to its OWN gap,
+    // which normalised every dumbbell to an identical length - the mark then
+    // encoded nothing at all. The whole point is that a big platoon split has
+    // to LOOK bigger than a small one.
+    var devOf = function (r) { var m = (r.a + r.b) / 2; return m === 0 ? 0 : Math.abs(r.a - m) / m; };
+    var maxDev = Math.max.apply(null, rows.map(devOf)) * 1.25 || 0.1;
+    var X = function (d) { return trackL + ((d + maxDev) / (2 * maxDev)) * (trackR - trackL); };
+    var mid = X(0);
+    s.appendChild(svg('line', { x1: mid, x2: mid, y1: 4, y2: h - 24, stroke: INK4, 'stroke-width': 1 }));
+
+    rows.forEach(function (r, i) {
+      var y = 12 + i * rowH;
+      var m = (r.a + r.b) / 2;
+      var da = m === 0 ? 0 : (r.a - m) / m;
+      var db = m === 0 ? 0 : (r.b - m) / m;
+      s.appendChild(txt(0, y + 4, r.k, { fill: INK3, size: 10 }));
+      s.appendChild(svg('line', {
+        x1: X(da), x2: X(db), y1: y, y2: y,
+        stroke: 'oklch(84% 0.004 260)', 'stroke-width': 3, 'stroke-linecap': 'round'
+      }));
+      // one hue, two shades: light = vs LHP, dark = vs RHP
+      [[da, r.a, 'oklch(72% 0.045 155)', 'vs LHP'], [db, r.b, 'oklch(42% 0.085 155)', 'vs RHP']].forEach(function (p) {
+        s.appendChild(svg('circle', { cx: X(p[0]), cy: y, r: 6, fill: SURFACE }));
+        s.appendChild(svg('circle', { cx: X(p[0]), cy: y, r: 4.5, fill: p[2] }));
+        var hit = svg('circle', { cx: X(p[0]), cy: y, r: 12, fill: 'transparent' });
+        hit.addEventListener('pointerenter', function () {
+          tip.show((X(p[0]) / w) * host.clientWidth, (y / h) * host.clientHeight,
+            [{ value: r.fmt(p[1]), label: p[3] + ' \u00B7 ' + r.k, color: p[2] }]);
+        });
+        hit.addEventListener('pointerleave', function () { tip.hide(); });
+        s.appendChild(hit);
+      });
+      s.appendChild(txt(w, y + 4, r.fmt(r.a) + ' / ' + r.fmt(r.b), {
+        anchor: 'end', fill: INK3, size: 10, tabular: true
+      }));
+    });
+
+    s.appendChild(txt(mid, h - 8, 'even', { anchor: 'middle', fill: INK4, size: 9 }));
+    s.appendChild(txt(trackL, h - 8, '\u2212' + Math.round(maxDev * 100) + '%', { fill: INK5, size: 9, tabular: true }));
+    s.appendChild(txt(trackR, h - 8, '+' + Math.round(maxDev * 100) + '%', { anchor: 'end', fill: INK5, size: 9, tabular: true }));
+    host.appendChild(s);
+  }
+
+  // ==========================================================================
+  // Rolling form: a rolling mean with a variability band, the line drawn
+  // through it. Separate from SeriesChart so the verified crosshair path is
+  // untouched - a band is a different mark, not a config flag on a line.
+  // ==========================================================================
+  function rollingChart(hostId, cfg) {
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var tip = makeTip(host);
+    var w = cfg.w || 620, h = cfg.h || 132, padL = 26, padR = 10, padT = 12, padB = 20;
+    var s = root(w, h);
+    var pw = w - padL - padR, ph = h - padT - padB;
+    var all = cfg.mean.concat(cfg.upper, cfg.lower, [cfg.line]);
+    var lo = 0, hi = Math.max.apply(null, all) * 1.12;
+    var X = function (i) { return padL + (i / (cfg.mean.length - 1)) * pw; };
+    var Y = function (v) { return padT + ph - ((v - lo) / (hi - lo)) * ph; };
+
+    for (var g = 0; g <= 3; g++) {
+      var v = lo + (hi - lo) * (g / 3), y = Y(v);
+      s.appendChild(svg('line', { x1: padL, x2: w - padR, y1: y, y2: y, stroke: GRID, 'stroke-width': 1 }));
+      s.appendChild(txt(padL - 6, y + 3, v.toFixed(1), { anchor: 'end', fill: INK4, size: 9, tabular: true }));
+    }
+
+    var band = cfg.upper.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+    for (var i = cfg.lower.length - 1; i >= 0; i--) band += ' L' + X(i).toFixed(1) + ' ' + Y(cfg.lower[i]).toFixed(1);
+    s.appendChild(svg('path', { d: band + ' Z', fill: INK1, opacity: 0.09 }));
+
+    var ly = Y(cfg.line);
+    s.appendChild(svg('line', { x1: padL, x2: w - padR, y1: ly, y2: ly, stroke: INK1, 'stroke-width': 1.5, 'stroke-dasharray': '5 4', opacity: 0.7 }));
+    s.appendChild(txt(w - padR, ly - 5, 'line ' + cfg.line, { anchor: 'end', fill: INK3, size: 9, weight: 500 }));
+
+    var d = cfg.mean.map(function (v, i) { return (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1); }).join(' ');
+    s.appendChild(svg('path', { d: d, fill: 'none', stroke: INK1, 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+
+    var li = cfg.mean.length - 1;
+    s.appendChild(svg('circle', { cx: X(li), cy: Y(cfg.mean[li]), r: 5, fill: SURFACE }));
+    s.appendChild(svg('circle', { cx: X(li), cy: Y(cfg.mean[li]), r: 3.2, fill: divFill(cfg.mean[li] > cfg.line ? 0.85 : 0.15) }));
+    s.appendChild(txt(X(li) - 8, Y(cfg.mean[li]) - 9, cfg.mean[li].toFixed(2), { anchor: 'end', fill: INK1, size: 10, weight: 600, tabular: true }));
+
+    var cross = svg('line', { x1: 0, x2: 0, y1: padT, y2: padT + ph, stroke: INK3, 'stroke-width': 1, opacity: 0 });
+    s.appendChild(cross);
+    var hit = svg('rect', { x: padL, y: padT, width: pw, height: ph, fill: 'transparent' });
+    hit.addEventListener('pointermove', function (ev) {
+      var r = host.getBoundingClientRect();
+      var idx = Math.max(0, Math.min(cfg.mean.length - 1, Math.round(((ev.clientX - r.left) / r.width) * (cfg.mean.length - 1))));
+      cross.setAttribute('x1', X(idx)); cross.setAttribute('x2', X(idx)); cross.setAttribute('opacity', '0.35');
+      tip.show((X(idx) / w) * host.clientWidth, (Y(cfg.mean[idx]) / h) * host.clientHeight,
+        [{ value: cfg.mean[idx].toFixed(2), label: 'rolling 5-game mean', color: INK1 },
+         { value: cfg.labels[idx], label: '' }]);
+    });
+    hit.addEventListener('pointerleave', function () { cross.setAttribute('opacity', '0'); tip.hide(); });
+    s.appendChild(hit);
+    host.appendChild(s);
+    s.appendChild(txt(padL, h - 5, cfg.labels[0], { fill: INK4, size: 9 }));
+    s.appendChild(txt(w - padR, h - 5, cfg.labels[cfg.labels.length - 1], { anchor: 'end', fill: INK4, size: 9 }));
+  }
+
+  // ==========================================================================
+  // Strike-zone grid - HeatGrid at zone aspect. Same marks, same 2px surface
+  // gap, same n-guard; only the geometry differs, so it is a variant and not
+  // a twelfth primitive.
+  // ==========================================================================
+  function zoneGrid(hostId, cells, opts) {
+    opts = opts || {};
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var tip = makeTip(host);
+    var cw = opts.cw || 46, ch = opts.ch || 38, gap = 2;
+    var w = cw * 3 + gap * 2 + 4, h = ch * 3 + gap * 2 + 18;
+    var s = root(w, h);
+    var lo = opts.lo != null ? opts.lo : 0.20, hi = opts.hi != null ? opts.hi : 0.65;
+    var fmt = opts.fmt || function (v) { return v.toFixed(3).slice(1); };
+    var unit = opts.unit || 'xwOBA';
+    var caption = opts.caption || ('catcher view ' + MIDDOT + ' xwOBA by zone');
+    cells.forEach(function (c, i) {
+      var col = i % 3, rw = Math.floor(i / 3);
+      var x = 2 + col * (cw + gap), y = rw * (ch + gap);
+      var t = Math.max(0, Math.min(1, (c.v - lo) / (hi - lo)));
+      var rect = svg('rect', { x: x, y: y, width: cw, height: ch, rx: 2, fill: seqFill(t) });
+      rect.style.cursor = 'crosshair';
+      s.appendChild(rect);
+      s.appendChild(txt(x + cw / 2, y + ch / 2 + 4, fmt(c.v), {
+        anchor: 'middle', fill: t > 0.5 ? '#fff' : INK1, size: 10, weight: 600, tabular: true
+      }));
+      rect.addEventListener('pointerenter', function () {
+        rect.style.opacity = '0.8';
+        tip.show(((x + cw / 2) / w) * host.clientWidth, (y / h) * host.clientHeight,
+          [{ value: fmt(c.v), label: c.k + ' ' + MIDDOT + ' ' + unit + ' ' + MIDDOT + ' n=' + c.n }]);
+      });
+      rect.addEventListener('pointerleave', function () { rect.style.opacity = '1'; tip.hide(); });
+    });
+    s.appendChild(txt(w / 2, h - 4, caption, { anchor: 'middle', fill: INK4, size: 9 }));
+    host.appendChild(s);
+  }
+
+  // ==========================================================================
+  // Plain dense table (gamelog, pitch mix) - no marks, just disciplined type.
+  // ==========================================================================
+  function denseTable(hostId, cols, rows, opts) {
+    opts = opts || {};
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    var t = el('table', 'dt');
+    var head = el('tr');
+    cols.forEach(function (c, i) { head.appendChild(el('th', i ? 'num' : null, c)); });
+    t.appendChild(head);
+    rows.forEach(function (r) {
+      var tr = el('tr');
+      r.forEach(function (v, i) {
+        var td = el('td', i ? 'num' : null, String(v));
+        if (opts.heatCol != null && i === opts.heatCol) td.style.color = heatInk(opts.heatOf(r));
+        if (i === 0 && opts.leadStrong) td.style.fontWeight = '600';
+        tr.appendChild(td);
+      });
+      t.appendChild(tr);
+    });
+    host.appendChild(t);
+  }
+
+  // ==========================================================================
+  // Window tiles - the L5/L10/L15 set, with the sample size ALWAYS shown.
+  // A rate without its n is the single most misleading thing on a props page.
+  // ==========================================================================
+  function windowTiles(hostId, wins) {
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    wins.forEach(function (wd) {
+      var tile = el('div', 'wtile');
+      var t = wd.n >= 5 ? wd.hit / wd.n : null;
+      tile.style.background = t == null ? 'oklch(96% 0.002 260)' : divFill(t);
+      var v = el('div', 'wtile-v', t == null ? '\u2013' : Math.round(t * 100) + '%');
+      v.style.color = t == null ? INK5 : '#fff';
+      var k = el('div', 'wtile-k', wd.k);
+      k.style.color = t == null ? INK5 : 'rgba(255,255,255,.82)';
+      var n = el('div', 'wtile-n', wd.hit + '/' + wd.n);
+      n.style.color = t == null ? INK5 : 'rgba(255,255,255,.72)';
+      tile.appendChild(k); tile.appendChild(v); tile.appendChild(n);
+      host.appendChild(tile);
+    });
+  }
+
+  window.LB2 = {
+    el: el, statTable: statTable, streakStrip: streakStrip, splitDumbbell: splitDumbbell,
+    rollingChart: rollingChart, zoneGrid: zoneGrid, denseTable: denseTable, windowTiles: windowTiles
+  };
+})();
+</script>
+
+<script>
+/* Per-sport board. ASCII only - the artifact wrapper owns <head>, so there
+   is no <meta charset> to rely on. Same rule as chart-grammar.html. */
+(function () {
+  'use strict';
+  var LB = window.LB, LB2 = window.LB2;
+  if (!LB || !LB2) return;
+  var heatInk = LB.heatInk, seqFill = LB.seqFill;
+  var el = LB2.el, statTable = LB2.statTable, streakStrip = LB2.streakStrip;
+  var splitDumbbell = LB2.splitDumbbell, rollingChart = LB2.rollingChart;
+  var zoneGrid = LB2.zoneGrid, denseTable = LB2.denseTable, windowTiles = LB2.windowTiles;
+
+  // ==========================================================================
+  // PER-SPORT DATA - representative, not live.
+  // Every sport fills the SAME eighteen slots. The point of this file is that
+  // it is boring: no sport has a key the others lack, only different content.
+  // ASCII only (see the header note in the primitives block).
+  // ==========================================================================
+  var MID = '\u00B7', MIN = '\u2212', DEG = '\u00B0';
+  var p3 = function (v) { return v.toFixed(3).slice(1); };
+  var p1 = function (v) { return (v * 100).toFixed(1) + '%'; };
+  var p0 = function (v) { return (v * 100).toFixed(0) + '%'; };
+  var n1 = function (v) { return v.toFixed(1); };
+  var r3 = function (v) { return v.toFixed(3).slice(1); };   // rate: .389
+  var d3 = function (v) { return v.toFixed(3); };            // small absolute: 0.142
+
+  var SPORTS = {};
+
+  // ---------------------------------------------------------------- MLB ----
+  SPORTS.mlb = {
+    tab: 'MLB', initials: 'AJ', name: 'Aaron Judge',
+    meta: 'RF ' + MID + ' NYY ' + MID + ' R/R ' + MID + ' batting 2nd ' + MID + ' vs BOS 7:05 PM',
+    anchorV: '64%', anchorL: 'L15 hit rate', anchorHeat: 0.64,
+    strip: [['Line', 'Hits o1.5'], ['Model', '64.1%'], ['Market', '57.0%'], ['Edge', '+7.1'], ['Grade', 'A']],
+    formT: 'Hits o1.5 ' + MID + ' form',
+    windows: [{ k: 'L5', hit: 4, n: 5 }, { k: 'L10', hit: 7, n: 10 }, { k: 'L15', hit: 9, n: 15 },
+              { k: 'L20', hit: 13, n: 20 }, { k: 'SZN', hit: 74, n: 128 }, { k: 'H2H', hit: 6, n: 11 }],
+    streak: [1,0,1,1,1,0,0,1,1,0,1,1,0,1,1,1,0,1,1,1],
+    distT: 'Last 15 ' + MID + ' hits vs line 1.5',
+    dist: [{v:2,o:'BOS'},{v:1,o:'BOS'},{v:3,o:'TOR'},{v:0,o:'TOR'},{v:2,o:'TB'},{v:2,o:'TB'},
+           {v:1,o:'BAL'},{v:4,o:'BAL'},{v:2,o:'CLE'},{v:0,o:'CLE'},{v:3,o:'DET'},{v:1,o:'MIN'},
+           {v:2,o:'MIN'},{v:2,o:'CWS'},{v:3,o:'CWS'}],
+    distLine: 1.5,
+    rollM: '20-game mean, 80% band',
+    roll: { line: 1.5,
+      mean:  [1.20,1.28,1.34,1.22,1.10,1.18,1.32,1.46,1.54,1.62,1.58,1.44,1.36,1.48,1.60,1.72,1.66,1.58,1.64,1.74],
+      upper: [1.95,2.02,2.10,1.98,1.88,1.94,2.08,2.24,2.30,2.42,2.36,2.20,2.12,2.26,2.38,2.52,2.44,2.36,2.42,2.54],
+      lower: [0.45,0.54,0.58,0.46,0.32,0.42,0.56,0.68,0.78,0.82,0.80,0.68,0.60,0.70,0.82,0.92,0.88,0.80,0.86,0.94],
+      labels: ['Jul 12','Jul 14','Jul 16','Jul 18','Jul 20','Jul 22','Jul 25','Jul 27','Jul 29','Aug 1','Aug 3','Aug 5','Aug 7','Aug 9','Aug 12','Aug 14','Aug 17','Aug 20','Aug 24','Aug 28'] },
+    tape: [112,113,114,114,116,118,120,122,122,121,120,120,118,118],
+    tapeFmt: function (v) { return MIN + Math.round(v); },
+    splitsT: 'Splits ' + MID + ' hits o1.5',
+    gridCols: ['L5','L10','L15','SZN'],
+    gridRows: [
+      { k: 'All',        v: [0.80,0.70,0.60,0.58], n: [5,10,15,128] },
+      { k: 'Home',       v: [1.00,0.83,0.75,0.64], n: [4,6,8,64] },
+      { k: 'Away',       v: [0.50,0.50,0.43,0.52], n: [2,4,7,64] },
+      { k: 'vs LHP',     v: [1.00,0.75,0.71,0.69], n: [2,4,7,38] },
+      { k: 'vs RHP',     v: [0.67,0.67,0.55,0.54], n: [3,6,8,90] },
+      { k: 'Day',        v: [null,1.00,0.67,0.61], n: [1,3,6,41] },
+      { k: 'Night',      v: [0.75,0.57,0.56,0.57], n: [4,7,9,87] },
+      { k: 'After a 0-fer', v: [null,0.75,0.71,0.63], n: [1,4,7,29] },
+      { k: 'On 3+ rest', v: [null,null,0.50,0.60], n: [0,2,4,15] },
+      { k: 'vs BOS',     v: [null,null,0.50,0.55], n: [0,0,2,11] }
+    ],
+    seasonM: 'rank of 158 qualified',
+    season: [
+      { k:'AVG', v:'.294', rank:'12th', pct:93 }, { k:'OBP', v:'.428', rank:'1st', pct:100 },
+      { k:'SLG', v:'.625', rank:'2nd', pct:99 },  { k:'OPS', v:'1.053', rank:'1st', pct:100 },
+      { k:'wRC+', v:'191', rank:'1st', pct:100 }, { k:'ISO', v:'.331', rank:'1st', pct:100 },
+      { k:'BB%', v:'17.5%', rank:'3rd', pct:98 }, { k:'K%', v:'25.5%', rank:'122nd', pct:23 },
+      { k:'BABIP', v:'.318', rank:'44th', pct:72 }
+    ],
+    advT: 'Statcast',
+    adv: [
+      { k:'Barrel %', v:'25.1%', rank:'1st', pct:100 }, { k:'Hard-hit %', v:'61.2%', rank:'2nd', pct:99 },
+      { k:'Avg exit velo', v:'95.8', rank:'2nd', pct:99 }, { k:'Max exit velo', v:'117.4', rank:'5th', pct:97 },
+      { k:'Sweet-spot %', v:'38.4%', rank:'34th', pct:78 }, { k:'xwOBA', v:'.441', rank:'1st', pct:100 },
+      { k:'xSLG', v:'.638', rank:'1st', pct:100 }, { k:'xBA', v:'.291', rank:'13th', pct:92 },
+      { k:'Chase %', v:'24.1%', rank:'41st', pct:74 }, { k:'Whiff %', v:'28.9%', rank:'120th', pct:24 },
+      { k:'Sprint speed', v:'27.1', rank:'66th', pct:58 }
+    ],
+    splitT: 'Platoon', splitM: 'vs LHP / vs RHP',
+    dumbbell: [
+      { k:'AVG', a:0.311, b:0.287, fmt:p3 }, { k:'SLG', a:0.688, b:0.601, fmt:p3 },
+      { k:'HR/PA', a:0.098, b:0.074, fmt:p1 }, { k:'K%', a:0.212, b:0.271, fmt:p1 },
+      { k:'o1.5 H', a:0.710, b:0.552, fmt:p0 }
+    ],
+    zoneLo: 0.20, zoneHi: 0.65, zoneFmt: r3, zoneUnit: 'xwOBA',
+    zoneCap: 'catcher view ' + MID + ' xwOBA by zone',
+    zoneT: 'Zone profile', zoneM: 'xwOBA',
+    zone: [
+      {k:'Up / in',v:0.389,n:84},{k:'Up / mid',v:0.512,n:121},{k:'Up / away',v:0.341,n:96},
+      {k:'Mid / in',v:0.478,n:102},{k:'Middle',v:0.621,n:88},{k:'Mid / away',v:0.402,n:134},
+      {k:'Low / in',v:0.312,n:77},{k:'Low / mid',v:0.398,n:109},{k:'Low / away',v:0.244,n:142}
+    ],
+    usageT: 'Pitch mix', usageM: 'what he sees, and what he does with it',
+    usageCols: ['Pitch','Seen','AVG','SLG','Whiff'],
+    usageRows: [['4-Seam','38.2%','.312','.688','24.1%'],['Slider','22.4%','.241','.512','38.2%'],
+                ['Sinker','14.1%','.301','.601','18.4%'],['Changeup','12.8%','.289','.579','31.0%'],
+                ['Curveball','12.5%','.198','.402','34.6%']],
+    logM: 'last 12',
+    logCols: ['Date','Opp','AB','R','H','2B','HR','RBI','BB','K','TB'],
+    logRows: [['Aug 28','vs CWS',4,2,3,1,1,4,1,0,8],['Aug 27','vs CWS',4,1,2,0,1,2,1,1,6],
+      ['Aug 24','@ MIN',5,1,1,0,0,1,0,2,1],['Aug 23','@ MIN',3,0,1,1,0,0,2,1,2],
+      ['Aug 20','@ DET',4,2,3,0,2,5,1,1,9],['Aug 17','vs CLE',4,0,0,0,0,0,1,2,0],
+      ['Aug 16','vs CLE',4,1,2,1,0,1,0,1,3],['Aug 14','vs BAL',5,3,4,1,2,6,0,0,11],
+      ['Aug 12','vs BAL',4,0,1,0,0,0,1,2,1],['Aug 09','@ TB',4,1,2,1,0,1,1,1,3],
+      ['Aug 07','@ TB',3,1,2,0,1,3,2,0,5],['Aug 05','@ TOR',4,0,0,0,0,0,0,3,0]],
+    densM: 'n = 268', densPct: 0.72, densLabel: '87th pct',
+    oppUnitT: 'Opposing starter',
+    oppUnitCols: ['Brayan Bello','RHP','Rk'],
+    oppUnitRows: [['ERA','3.84','38th'],['WHIP','1.21','31st'],['K/9','8.42','44th'],
+      ['BB/9','2.71','29th'],['HR/9','1.14','52nd'],['xFIP','3.96','35th'],['vs RHB','.271','61st']],
+    h2hT: 'Career matchup',
+    h2hCols: ['Judge vs Bello','',''],
+    h2hRows: [['PA','14',''],['H','4-12','.333'],['HR','2',''],['OPS','1.214',''],['K','4','28.6%']],
+    qualT: 'Quality of contact',
+    qual: [{k:'Barrel %',v:'25.1%',p:100},{k:'Hard-hit %',v:'61.2%',p:99},{k:'Exit velocity',v:'95.8',p:99}],
+    cond: [['Park','Yankee Stadium'],['HR factor','112'],['Hits factor','101'],
+           ['Weather','78' + DEG + 'F, clear'],['Wind','9 mph out to RF']],
+    books: [{b:'Pinnacle',p:-112},{b:'FanDuel',p:-118,mine:true},{b:'DraftKings',p:-120},
+            {b:'BetMGM',p:-124},{b:'Caesars',p:-128},{b:'ESPN Bet',p:-136}],
+    contribM: 'v8 ' + MID + ' shadow',
+    contrib: [{k:'Recent form',v:0.061},{k:'Opposing SP',v:0.043},{k:'Park',v:0.022},
+      {k:'Platoon',v:0.014},{k:'Rest',v:-0.009},{k:'Bullpen',v:-0.028},{k:'Weather',v:-0.037}],
+    ctx: [['Moneyline', MIN + '134'],['Total','8.5 ' + MID + ' ' + MIN + '108'],['NYY implied','5.2'],
+          ['Lineup spot','2nd'],['Projected PA','4.6']],
+    keys: 27, rows: '727,613', athletes: '4,003'
+  };
+
+  // ---------------------------------------------------------------- NFL ----
+  SPORTS.nfl = {
+    tab: 'NFL', initials: 'JC', name: "Ja'Marr Chase",
+    meta: 'WR ' + MID + ' CIN ' + MID + ' X ' + MID + ' 92% route rate ' + MID + ' vs CLE 1:00 PM',
+    anchorV: '73%', anchorL: 'L15 hit rate', anchorHeat: 0.73,
+    strip: [['Line','Rec yds o74.5'],['Model','66.8%'],['Market','56.5%'],['Edge','+10.3'],['Grade','A']],
+    formT: 'Rec yds o74.5 ' + MID + ' form',
+    windows: [{k:'L5',hit:4,n:5},{k:'L10',hit:7,n:10},{k:'L15',hit:11,n:15},
+              {k:'L20',hit:14,n:20},{k:'SZN',hit:12,n:17},{k:'H2H',hit:5,n:7}],
+    streak: [1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1,1,1,1],
+    distT: 'Last 15 ' + MID + ' receiving yards vs line 74.5',
+    dist: [{v:88,o:'CLE'},{v:64,o:'BAL'},{v:112,o:'PIT'},{v:41,o:'PIT'},{v:96,o:'HOU'},
+           {v:130,o:'TEN'},{v:57,o:'IND'},{v:104,o:'JAX'},{v:78,o:'DEN'},{v:33,o:'KC'},
+           {v:121,o:'LV'},{v:82,o:'LAC'},{v:69,o:'NYJ'},{v:145,o:'MIA'},{v:91,o:'BUF'}],
+    distLine: 74.5,
+    rollM: '20-game mean, 80% band',
+    roll: { line: 74.5,
+      mean:  [68,71,74,72,69,73,78,84,88,92,90,85,81,86,91,97,94,90,93,98],
+      upper: [112,116,120,118,114,119,126,134,140,146,143,136,130,138,145,154,150,144,148,156],
+      lower: [24,26,28,26,24,27,30,34,36,38,37,34,32,34,37,40,38,36,38,40],
+      labels: ['Wk 1','Wk 2','Wk 3','Wk 4','Wk 5','Wk 6','Wk 7','Wk 8','Wk 9','Wk 10','Wk 11','Wk 12','Wk 13','Wk 14','Wk 15','Wk 16','Wk 17','Wk 18','WC','DIV'] },
+    tape: [108,110,112,112,114,118,120,124,124,122,120,120,118,116],
+    tapeFmt: function (v) { return MIN + Math.round(v); },
+    splitsT: 'Splits ' + MID + ' rec yds o74.5',
+    gridCols: ['L5','L10','L15','SZN'],
+    gridRows: [
+      { k:'All', v:[0.80,0.70,0.73,0.71], n:[5,10,15,17] },
+      { k:'Home', v:[1.00,0.80,0.75,0.75], n:[3,5,8,8] },
+      { k:'Away', v:[0.50,0.60,0.71,0.67], n:[2,5,7,9] },
+      { k:'vs man', v:[1.00,0.83,0.80,0.78], n:[3,6,10,9] },
+      { k:'vs zone', v:[0.50,0.50,0.60,0.62], n:[2,4,5,8] },
+      { k:'Dome', v:[null,1.00,0.83,0.80], n:[1,3,6,5] },
+      { k:'Outdoor', v:[0.75,0.57,0.67,0.67], n:[4,7,9,12] },
+      { k:'Favoured', v:[1.00,0.80,0.78,0.80], n:[3,5,9,10] },
+      { k:'Underdog', v:[null,0.60,0.67,0.57], n:[2,5,6,7] },
+      { k:'vs CLE', v:[null,null,1.00,0.71], n:[0,1,2,7] }
+    ],
+    seasonM: 'rank of 96 qualified WR',
+    season: [
+      {k:'Rec',v:'104',rank:'2nd',pct:98},{k:'Yards',v:'1,483',rank:'1st',pct:100},
+      {k:'Y/Rec',v:'14.3',rank:'11th',pct:89},{k:'TD',v:'14',rank:'1st',pct:100},
+      {k:'Targets',v:'148',rank:'3rd',pct:97},{k:'Catch %',v:'70.3%',rank:'18th',pct:82},
+      {k:'YAC',v:'512',rank:'4th',pct:96},{k:'aDOT',v:'11.8',rank:'29th',pct:70},
+      {k:'1st downs',v:'71',rank:'2nd',pct:98}
+    ],
+    advT: 'Advanced',
+    adv: [
+      {k:'Target share',v:'29.4%',rank:'2nd',pct:98},{k:'Air-yards share',v:'38.1%',rank:'1st',pct:100},
+      {k:'Yds/route run',v:'2.94',rank:'1st',pct:100},{k:'Separation',v:'3.1 yd',rank:'22nd',pct:77},
+      {k:'Contested catch',v:'54.5%',rank:'9th',pct:91},{k:'Slot rate',v:'31.2%',rank:'48th',pct:50},
+      {k:'Route particip.',v:'92.1%',rank:'6th',pct:94},{k:'RZ tgt share',v:'26.8%',rank:'4th',pct:96},
+      {k:'EPA/target',v:'0.41',rank:'3rd',pct:97},{k:'Success rate',v:'58.2%',rank:'7th',pct:93},
+      {k:'Drop %',v:'4.8%',rank:'54th',pct:44}
+    ],
+    splitT: 'Coverage split', splitM: 'vs man / vs zone',
+    dumbbell: [
+      {k:'Y/target',a:11.4,b:8.1,fmt:n1},{k:'Catch %',a:0.688,b:0.724,fmt:p1},
+      {k:'aDOT',a:13.9,b:10.2,fmt:n1},{k:'Sep (yd)',a:2.6,b:3.5,fmt:n1},
+      {k:'o74.5',a:0.780,b:0.620,fmt:p0}
+    ],
+    zoneLo: 5, zoneHi: 20, zoneFmt: n1, zoneUnit: 'yd/target',
+    zoneCap: 'depth x direction ' + MID + ' yards per target',
+    zoneT: 'Target map', zoneM: 'yards per target',
+    zone: [
+      {k:'Deep / L',v:14.8,n:31},{k:'Deep / M',v:18.2,n:19},{k:'Deep / R',v:12.4,n:27},
+      {k:'Mid / L',v:9.6,n:44},{k:'Mid / M',v:11.8,n:22},{k:'Mid / R',v:8.9,n:38},
+      {k:'Short / L',v:6.4,n:52},{k:'Short / M',v:7.8,n:41},{k:'Short / R',v:5.9,n:48}
+    ],
+    usageT: 'Route mix', usageM: 'where the targets come from',
+    usageCols: ['Route','Tgt %','Rec','Y/Tgt','Success'],
+    usageRows: [['Go / post','24.1%','18','13.2','54.1%'],['Slant','21.8%','29','9.4','62.4%'],
+                ['Dig / in','18.4%','22','10.8','58.9%'],['Out','16.2%','21','7.6','51.2%'],
+                ['Screen','12.1%','14','6.1','48.8%']],
+    logM: 'last 12',
+    logCols: ['Date','Opp','Tgt','Rec','Yds','Y/R','Air','YAC','TD','1D','Lng'],
+    logRows: [['Jan 05','vs CLE',11,8,88,11.0,64,24,1,5,28],['Dec 29','@ BAL',9,5,64,12.8,51,13,0,3,22],
+      ['Dec 22','vs PIT',13,9,112,12.4,78,34,2,6,41],['Dec 15','@ PIT',7,3,41,13.7,36,5,0,2,19],
+      ['Dec 08','vs HOU',10,7,96,13.7,71,25,1,4,33],['Dec 01','@ TEN',12,9,130,14.4,92,38,2,7,52],
+      ['Nov 24','vs IND',8,4,57,14.3,44,13,0,3,24],['Nov 17','@ JAX',11,8,104,13.0,74,30,1,5,36],
+      ['Nov 10','vs DEN',9,6,78,13.0,58,20,1,4,27],['Nov 03','@ KC',6,3,33,11.0,28,5,0,1,16],
+      ['Oct 27','vs LV',12,8,121,15.1,88,33,2,6,47],['Oct 20','@ LAC',10,6,82,13.7,61,21,1,4,29]],
+    densM: 'n = 96 WR', densPct: 0.78, densLabel: '91st pct',
+    oppUnitT: 'Opposing defense',
+    oppUnitCols: ['CLE vs WR','Rate','Rk'],
+    oppUnitRows: [['Yds/gm to WR','168.4','24th'],['EPA/pass','0.081','21st'],['Pressure rate','32.1%','12th'],
+      ['Man rate','41.2%','6th'],['Zone rate','58.8%','27th'],['Cov grade','62.4','23rd'],['Slot CB grade','58.1','28th']],
+    h2hT: 'Career vs CLE',
+    h2hCols: ['Chase vs CLE','',''],
+    h2hRows: [['Games','7',''],['Rec','44','6.3/gm'],['Yards','611','87.3/gm'],['TD','6',''],['o74.5','5-7','71%']],
+    qualT: 'Separation & hands',
+    qual: [{k:'Yds/route run',v:'2.94',p:100},{k:'Contested catch',v:'54.5%',p:91},{k:'Separation',v:'3.1 yd',p:77}],
+    cond: [['Stadium','Huntington Bank'],['Roof','Open'],['Wind','14 mph cross'],
+           ['Temp','38' + DEG + 'F'],['Surface','Grass']],
+    books: [{b:'Pinnacle',p:-108},{b:'FanDuel',p:-114,mine:true},{b:'DraftKings',p:-115},
+            {b:'BetMGM',p:-118},{b:'Caesars',p:-122},{b:'ESPN Bet',p:-130}],
+    contribM: 'v6 ' + MID + ' shadow',
+    contrib: [{k:'Target share',v:0.074},{k:'Opp coverage',v:0.052},{k:'Man rate',v:0.031},
+      {k:'Pace / plays',v:0.018},{k:'Wind',v:-0.021},{k:'Game script',v:-0.034},{k:'Rest',v:-0.011}],
+    ctx: [['Moneyline', MIN + '162'],['Total','44.5 ' + MID + ' ' + MIN + '110'],['CIN implied','24.8'],
+          ['Proj. plays','64'],['Proj. targets','10.4']],
+    keys: 57, rows: '226,629', athletes: '6,740'
+  };
+
+  // ---------------------------------------------------------------- NBA ----
+  SPORTS.nba = {
+    tab: 'NBA', initials: 'AE', name: 'Anthony Edwards',
+    meta: 'SG ' + MID + ' MIN ' + MID + ' starter ' + MID + ' 35.8 mpg ' + MID + ' vs DEN 8:00 PM',
+    anchorV: '61%', anchorL: 'L15 hit rate', anchorHeat: 0.61,
+    strip: [['Line','Points o27.5'],['Model','61.4%'],['Market','54.5%'],['Edge','+6.9'],['Grade','B+']],
+    formT: 'Points o27.5 ' + MID + ' form',
+    windows: [{k:'L5',hit:3,n:5},{k:'L10',hit:6,n:10},{k:'L15',hit:9,n:15},
+              {k:'L20',hit:12,n:20},{k:'SZN',hit:38,n:64},{k:'H2H',hit:3,n:4}],
+    streak: [1,1,0,1,0,1,1,0,1,1,0,1,1,1,0,0,1,1,0,1],
+    distT: 'Last 15 ' + MID + ' points vs line 27.5',
+    dist: [{v:31,o:'DEN'},{v:24,o:'OKC'},{v:38,o:'LAL'},{v:19,o:'GSW'},{v:29,o:'PHX'},
+           {v:33,o:'SAC'},{v:22,o:'DAL'},{v:41,o:'HOU'},{v:28,o:'MEM'},{v:26,o:'NOP'},
+           {v:35,o:'POR'},{v:30,o:'UTA'},{v:21,o:'SAS'},{v:36,o:'LAC'},{v:32,o:'DEN'}],
+    distLine: 27.5,
+    rollM: '20-game mean, 80% band',
+    roll: { line: 27.5,
+      mean:  [26.1,26.8,27.4,26.9,25.8,26.6,27.9,29.1,30.2,31.0,30.4,28.9,28.1,29.4,30.8,32.1,31.4,30.2,30.9,31.8],
+      upper: [38.4,39.2,40.1,39.4,38.1,39.0,40.6,42.2,43.6,44.5,43.8,41.9,40.8,42.4,44.1,45.8,44.9,43.4,44.2,45.4],
+      lower: [14.2,14.8,15.1,14.6,13.9,14.4,15.4,16.2,17.0,17.6,17.2,16.1,15.6,16.5,17.4,18.3,17.8,17.0,17.5,18.2],
+      labels: ['Feb 04','Feb 07','Feb 09','Feb 12','Feb 15','Feb 22','Feb 25','Feb 28','Mar 03','Mar 06','Mar 09','Mar 12','Mar 15','Mar 19','Mar 21','Mar 24','Mar 26','Mar 28','Mar 30','Apr 02'] },
+    tape: [104,106,108,108,110,114,116,118,118,116,115,115,112,110],
+    tapeFmt: function (v) { return MIN + Math.round(v); },
+    splitsT: 'Splits ' + MID + ' points o27.5',
+    gridCols: ['L5','L10','L15','SZN'],
+    gridRows: [
+      { k:'All', v:[0.60,0.60,0.60,0.59], n:[5,10,15,64] },
+      { k:'Home', v:[0.67,0.67,0.63,0.66], n:[3,6,8,32] },
+      { k:'Away', v:[0.50,0.50,0.57,0.53], n:[2,4,7,32] },
+      { k:'vs top-10 D', v:[0.50,0.50,0.50,0.48], n:[2,4,6,25] },
+      { k:'vs bottom-10 D', v:[1.00,0.75,0.71,0.70], n:[2,4,7,23] },
+      { k:'On rest', v:[0.67,0.71,0.69,0.65], n:[3,7,11,48] },
+      { k:'Back-to-back', v:[null,0.33,0.38,0.44], n:[2,3,4,16] },
+      { k:'Pace 100+', v:[1.00,0.80,0.75,0.72], n:[2,5,8,29] },
+      { k:'Blowout risk', v:[null,0.40,0.43,0.46], n:[1,5,7,24] },
+      { k:'vs DEN', v:[null,null,1.00,0.75], n:[0,1,2,4] }
+    ],
+    seasonM: 'rank of 122 qualified',
+    season: [
+      {k:'PPG',v:'28.4',rank:'6th',pct:96},{k:'RPG',v:'5.9',rank:'44th',pct:64},
+      {k:'APG',v:'4.8',rank:'38th',pct:69},{k:'FG%',v:'46.8%',rank:'51st',pct:58},
+      {k:'3P%',v:'38.1%',rank:'24th',pct:81},{k:'FT%',v:'83.6%',rank:'29th',pct:76},
+      {k:'TS%',v:'58.4%',rank:'41st',pct:67},{k:'USG%',v:'31.2%',rank:'5th',pct:96},
+      {k:'MPG',v:'35.8',rank:'8th',pct:94}
+    ],
+    advT: 'Advanced',
+    adv: [
+      {k:'True shooting',v:'58.4%',rank:'41st',pct:67},{k:'Usage rate',v:'31.2%',rank:'5th',pct:96},
+      {k:'Rim rate',v:'28.4%',rank:'34th',pct:72},{k:'3PA rate',v:'41.2%',rank:'22nd',pct:82},
+      {k:'FT rate',v:'0.284',rank:'31st',pct:75},{k:'AST %',v:'24.1%',rank:'36th',pct:71},
+      {k:'TOV %',v:'12.8%',rank:'68th',pct:44},{k:'Off rating',v:'118.4',rank:'19th',pct:85},
+      {k:'Def rating',v:'112.1',rank:'52nd',pct:57},{k:'Pace',v:'99.8',rank:'14th',pct:89},
+      {k:'On/off net',v:'+7.4',rank:'11th',pct:91}
+    ],
+    splitT: 'Defence faced', splitM: 'vs bottom-10 / vs top-10',
+    dumbbell: [
+      {k:'Points',a:31.2,b:25.4,fmt:n1},{k:'FG%',a:0.498,b:0.441,fmt:p1},
+      {k:'3P%',a:0.412,b:0.351,fmt:p1},{k:'FTA',a:7.4,b:5.1,fmt:n1},
+      {k:'o27.5',a:0.700,b:0.480,fmt:p0}
+    ],
+    zoneLo: 0.40, zoneHi: 0.70, zoneFmt: r3, zoneUnit: 'eFG%',
+    zoneCap: 'offensive half ' + MID + ' eFG% by zone',
+    zoneT: 'Shot chart', zoneM: 'effective FG%',
+    zone: [
+      {k:'Corner 3 L',v:0.612,n:48},{k:'Above break',v:0.541,n:214},{k:'Corner 3 R',v:0.588,n:41},
+      {k:'Mid L',v:0.424,n:64},{k:'Mid centre',v:0.461,n:52},{k:'Mid R',v:0.408,n:71},
+      {k:'Paint L',v:0.598,n:88},{k:'Rim',v:0.681,n:196},{k:'Paint R',v:0.571,n:79}
+    ],
+    usageT: 'Shot zone mix', usageM: 'where the shots come from',
+    usageCols: ['Zone','FGA %','FG%','eFG%','Pts/shot'],
+    usageRows: [['Rim','26.4%','68.1%','68.1%','1.36'],['Above-break 3','28.8%','36.4%','54.6%','1.09'],
+                ['Mid-range','25.1%','43.1%','43.1%','0.86'],['Corner 3','12.0%','40.1%','60.2%','1.20'],
+                ['Paint (non-rim)','7.7%','58.4%','58.4%','1.17']],
+    logM: 'last 12',
+    logCols: ['Date','Opp','Min','Pts','FGM-A','3PM-A','FTM-A','Reb','Ast','Stl','TO'],
+    logRows: [['Apr 13','vs DEN',38,31,'11-23','4-10','5-6',6,5,1,3],['Apr 11','@ OKC',35,24,'9-21','2-8','4-4',5,4,2,2],
+      ['Apr 09','vs LAL',40,38,'14-25','6-11','4-5',7,6,1,4],['Apr 06','@ GSW',33,19,'7-19','1-7','4-4',4,3,0,3],
+      ['Apr 04','vs PHX',36,29,'10-20','4-9','5-6',6,5,2,1],['Apr 02','@ SAC',37,33,'12-24','5-11','4-5',5,7,1,3],
+      ['Mar 30','vs DAL',34,22,'8-20','2-8','4-4',5,4,1,2],['Mar 28','@ HOU',39,41,'15-26','7-12','4-4',8,5,2,2],
+      ['Mar 26','vs MEM',35,28,'10-21','3-8','5-6',6,4,1,3],['Mar 24','@ NOP',36,26,'9-22','3-9','5-5',5,6,0,2],
+      ['Mar 21','vs POR',34,35,'13-24','5-10','4-5',7,5,2,1],['Mar 19','@ UTA',36,30,'11-22','4-9','4-4',6,4,1,3]],
+    densM: 'n = 122', densPct: 0.68, densLabel: '84th pct',
+    oppUnitT: 'Opposing defence',
+    oppUnitCols: ['DEN defence','Rate','Rk'],
+    oppUnitRows: [['Pts to guards','48.1','22nd'],['Def rating','114.2','18th'],['Pace','98.4','12th'],
+      ['Rim FG% allowed','64.8%','21st'],['3P% allowed','36.9%','19th'],['Opp TOV forced','12.1','24th'],['Def reb %','71.4%','9th']],
+    h2hT: 'Career vs DEN',
+    h2hCols: ['Edwards vs DEN','',''],
+    h2hRows: [['Games','18',''],['PPG','29.4',''],['FG%','47.8%',''],['3P%','39.1%',''],['o27.5','11-18','61%']],
+    qualT: 'Shot quality',
+    qual: [{k:'Rim rate',v:'26.4%',p:72},{k:'3PA rate',v:'41.2%',p:82},{k:'FT rate',v:'0.284',p:75}],
+    cond: [['Rest days','1'],['Back-to-back','No'],['Travel','0 mi (home)'],
+           ['Altitude','850 ft'],['Venue','Target Center']],
+    books: [{b:'Pinnacle',p:-110},{b:'FanDuel',p:-115,mine:true},{b:'DraftKings',p:-118},
+            {b:'BetMGM',p:-120},{b:'Caesars',p:-125},{b:'ESPN Bet',p:-132}],
+    contribM: 'v4 ' + MID + ' shadow',
+    contrib: [{k:'Usage rate',v:0.058},{k:'Opp def rating',v:0.041},{k:'Pace',v:0.029},
+      {k:'Minutes proj',v:0.016},{k:'Rest',v:-0.008},{k:'Blowout risk',v:-0.031},{k:'Opp rim D',v:-0.024}],
+    ctx: [['Moneyline', MIN + '120'],['Total','228.5 ' + MID + ' ' + MIN + '110'],['MIN implied','117.2'],
+          ['Proj. pace','99.6'],['Proj. minutes','36.4']],
+    keys: 17, rows: '279,661', athletes: '1,567'
+  };
+
+  // ---------------------------------------------------------------- NHL ----
+  SPORTS.nhl = {
+    tab: 'NHL', initials: 'AM', name: 'Auston Matthews',
+    meta: 'C ' + MID + ' TOR ' + MID + ' 1st line ' + MID + ' 21:14 TOI ' + MID + ' vs BOS 7:00 PM',
+    anchorV: '67%', anchorL: 'L15 hit rate', anchorHeat: 0.67,
+    strip: [['Line','SOG o3.5'],['Model','63.2%'],['Market','55.6%'],['Edge','+7.6'],['Grade','A' + MIN]],
+    formT: 'SOG o3.5 ' + MID + ' form',
+    windows: [{k:'L5',hit:4,n:5},{k:'L10',hit:7,n:10},{k:'L15',hit:10,n:15},
+              {k:'L20',hit:13,n:20},{k:'SZN',hit:44,n:71},{k:'H2H',hit:4,n:6}],
+    streak: [1,0,1,1,1,1,0,1,0,1,1,0,1,1,1,0,1,1,0,1],
+    distT: 'Last 15 ' + MID + ' shots on goal vs line 3.5',
+    dist: [{v:5,o:'BOS'},{v:3,o:'MTL'},{v:7,o:'OTT'},{v:2,o:'BUF'},{v:4,o:'DET'},
+           {v:6,o:'TB'},{v:3,o:'FLA'},{v:8,o:'CAR'},{v:4,o:'NYR'},{v:2,o:'NYI'},
+           {v:6,o:'NJD'},{v:5,o:'PIT'},{v:3,o:'PHI'},{v:7,o:'WSH'},{v:5,o:'CBJ'}],
+    distLine: 3.5,
+    rollM: '20-game mean, 80% band',
+    roll: { line: 3.5,
+      mean:  [3.8,3.9,4.1,3.9,3.6,3.8,4.2,4.5,4.7,4.9,4.8,4.4,4.2,4.5,4.8,5.1,4.9,4.6,4.8,5.0],
+      upper: [6.2,6.4,6.7,6.4,6.0,6.3,6.8,7.3,7.6,7.9,7.7,7.1,6.8,7.3,7.7,8.2,7.9,7.4,7.7,8.1],
+      lower: [1.4,1.5,1.6,1.5,1.2,1.4,1.7,1.9,2.0,2.1,2.0,1.8,1.7,1.9,2.1,2.3,2.2,2.0,2.1,2.2],
+      labels: ['Feb 06','Feb 09','Feb 11','Feb 14','Feb 17','Feb 20','Feb 23','Feb 26','Mar 01','Mar 04','Mar 07','Mar 10','Mar 13','Mar 16','Mar 19','Mar 22','Mar 24','Mar 26','Mar 28','Mar 30'] },
+    tape: [118,120,122,122,124,128,130,134,134,132,130,130,128,126],
+    tapeFmt: function (v) { return MIN + Math.round(v); },
+    splitsT: 'Splits ' + MID + ' SOG o3.5',
+    gridCols: ['L5','L10','L15','SZN'],
+    gridRows: [
+      { k:'All', v:[0.80,0.70,0.67,0.62], n:[5,10,15,71] },
+      { k:'Home', v:[1.00,0.83,0.75,0.69], n:[3,6,8,36] },
+      { k:'Away', v:[0.50,0.50,0.57,0.54], n:[2,4,7,35] },
+      { k:'Power play', v:[1.00,0.80,0.78,0.71], n:[4,8,12,58] },
+      { k:'Even strength', v:[0.60,0.60,0.60,0.58], n:[5,10,15,71] },
+      { k:'On rest', v:[0.75,0.71,0.70,0.66], n:[4,7,10,52] },
+      { k:'Back-to-back', v:[null,0.33,0.40,0.42], n:[1,3,5,19] },
+      { k:'vs backup G', v:[null,1.00,0.83,0.74], n:[1,3,6,23] },
+      { k:'Trailing', v:[null,0.75,0.71,0.68], n:[2,4,7,28] },
+      { k:'vs BOS', v:[null,null,1.00,0.67], n:[0,1,2,6] }
+    ],
+    seasonM: 'rank of 168 forwards',
+    season: [
+      {k:'Goals',v:'44',rank:'2nd',pct:99},{k:'Assists',v:'38',rank:'31st',pct:82},
+      {k:'Points',v:'82',rank:'9th',pct:95},{k:'SOG',v:'298',rank:'1st',pct:100},
+      {k:'Shooting %',v:'14.8%',rank:'22nd',pct:87},{k:'TOI/gm',v:'21:14',rank:'12th',pct:93},
+      {k:'PP goals',v:'14',rank:'4th',pct:98},{k:'Hits',v:'61',rank:'88th',pct:48},
+      {k:'Blocks',v:'34',rank:'104th',pct:38}
+    ],
+    advT: 'Advanced',
+    adv: [
+      {k:'ixG/60',v:'1.42',rank:'1st',pct:100},{k:'Shot att/60',v:'18.4',rank:'2nd',pct:99},
+      {k:'HDCF %',v:'56.8%',rank:'11th',pct:93},{k:'CF %',v:'54.1%',rank:'24th',pct:86},
+      {k:'xGF %',v:'57.2%',rank:'8th',pct:95},{k:'oZS %',v:'62.4%',rank:'18th',pct:89},
+      {k:'PP TOI share',v:'71.8%',rank:'6th',pct:96},{k:'Faceoff %',v:'52.1%',rank:'34th',pct:80},
+      {k:'Rush attempts',v:'48',rank:'9th',pct:94},{k:'Slot shot %',v:'41.2%',rank:'5th',pct:97},
+      {k:'Rebound shots',v:'31',rank:'14th',pct:91}
+    ],
+    splitT: 'Strength state', splitM: 'power play / even strength',
+    dumbbell: [
+      {k:'SOG/60',a:14.2,b:9.8,fmt:n1},{k:'ixG/60',a:2.41,b:1.12,fmt:n1},
+      {k:'Shooting %',a:0.184,b:0.131,fmt:p1},{k:'Slot share',a:0.512,b:0.368,fmt:p1},
+      {k:'o3.5 SOG',a:0.710,b:0.580,fmt:p0}
+    ],
+    zoneLo: 0.015, zoneHi: 0.22, zoneFmt: d3, zoneUnit: 'xG/shot',
+    zoneCap: 'offensive zone ' + MID + ' xG per shot',
+    zoneT: 'Shot location', zoneM: 'xG per shot',
+    zone: [
+      {k:'Point L',v:0.021,n:34},{k:'Point C',v:0.028,n:22},{k:'Point R',v:0.019,n:29},
+      {k:'Circle L',v:0.068,n:61},{k:'Slot',v:0.142,n:98},{k:'Circle R',v:0.081,n:74},
+      {k:'Below L',v:0.038,n:24},{k:'Crease',v:0.214,n:41},{k:'Below R',v:0.031,n:19}
+    ],
+    usageT: 'Shot type mix', usageM: 'how the shots get there',
+    usageCols: ['Type','Share','Goals','Sh%','xG'],
+    usageRows: [['Wrist','48.2%','24','16.7%','21.4'],['Snap','21.4%','9','14.1%','9.8'],
+                ['Slap','12.8%','4','10.5%','4.1'],['Backhand','9.4%','3','10.7%','2.8'],
+                ['Tip / deflect','8.2%','4','16.3%','3.9']],
+    logM: 'last 12',
+    logCols: ['Date','Opp','TOI','G','A','P','SOG','Att','Hits','Blk','+/-'],
+    logRows: [['Apr 17','vs BOS','21:44',1,1,2,5,9,2,1,'+2'],['Apr 15','@ MTL','20:12',0,1,1,3,6,1,0,'0'],
+      ['Apr 13','vs OTT','22:38',2,0,2,7,12,3,1,'+3'],['Apr 11','@ BUF','19:24',0,0,0,2,4,1,2,'-1'],
+      ['Apr 09','vs DET','21:02',1,1,2,4,8,2,0,'+1'],['Apr 06','@ TB','22:14',1,2,3,6,11,1,1,'+2'],
+      ['Apr 04','vs FLA','20:48',0,1,1,3,7,3,2,'0'],['Apr 02','@ CAR','23:11',2,1,3,8,14,2,0,'+3'],
+      ['Mar 30','vs NYR','21:18',1,0,1,4,8,1,1,'+1'],['Mar 28','@ NYI','19:52',0,0,0,2,5,2,1,'-1'],
+      ['Mar 26','vs NJD','22:04',1,1,2,6,10,1,0,'+2'],['Mar 24','@ PIT','21:31',1,0,1,5,9,2,1,'+1']],
+    densM: 'n = 168', densPct: 0.81, densLabel: '96th pct',
+    oppUnitT: 'Opposing goalie',
+    oppUnitCols: ['J. Swayman','G','Rk'],
+    oppUnitRows: [['SV %','.918','11th'],['GSAx','+8.4','9th'],['HD SV %','.842','14th'],
+      ['GAA','2.41','8th'],['Rebound rate','6.2%','21st'],['Starts','54','6th'],['vs TOR SV%','.904','\u2013']],
+    h2hT: 'Career vs BOS',
+    h2hCols: ['Matthews vs BOS','',''],
+    h2hRows: [['Games','41',''],['Goals','22',''],['SOG','188','4.6/gm'],['Sh%','11.7%',''],['o3.5 SOG','27-41','66%']],
+    qualT: 'Shot quality',
+    qual: [{k:'ixG/60',v:'1.42',p:100},{k:'Slot shot %',v:'41.2%',p:97},{k:'HDCF %',v:'56.8%',p:93}],
+    cond: [['Rest days','2'],['Back-to-back','No'],['Travel','0 mi (home)'],
+           ['Opp G starts','54'],['Venue','Scotiabank Arena']],
+    books: [{b:'Pinnacle',p:-118},{b:'FanDuel',p:-124,mine:true},{b:'DraftKings',p:-126},
+            {b:'BetMGM',p:-130},{b:'Caesars',p:-134},{b:'ESPN Bet',p:-142}],
+    contribM: 'v3 ' + MID + ' shadow',
+    contrib: [{k:'Shot volume',v:0.068},{k:'PP TOI',v:0.044},{k:'Opp goalie',v:0.026},
+      {k:'Line matchup',v:0.015},{k:'Rest',v:-0.007},{k:'Opp shot supp.',v:-0.029},{k:'Score effects',v:-0.019}],
+    ctx: [['Moneyline', MIN + '128'],['Total','6.5 ' + MID + ' ' + MIN + '104'],['TOR implied','3.5'],
+          ['Proj. TOI','21:20'],['Proj. PP TOI','3:48']],
+    keys: 21, rows: '674,003', athletes: '2,972'
+  };
+
+  // ---------------------------------------------------------------- CFB ----
+  SPORTS.cfb = {
+    tab: 'CFB', initials: 'RW', name: 'Ryan Williams',
+    meta: 'WR ' + MID + ' Alabama ' + MID + ' So. ' + MID + ' 88% snap rate ' + MID + ' vs Georgia 3:30 PM',
+    anchorV: '69%', anchorL: 'L13 hit rate', anchorHeat: 0.69,
+    strip: [['Line','Rec yds o68.5'],['Model','64.2%'],['Market','55.0%'],['Edge','+9.2'],['Grade','A' + MIN]],
+    formT: 'Rec yds o68.5 ' + MID + ' form',
+    windows: [{k:'L5',hit:4,n:5},{k:'L10',hit:7,n:10},{k:'L13',hit:9,n:13},
+              {k:'SZN',hit:9,n:13},{k:'Conf',hit:6,n:9},{k:'H2H',hit:1,n:2}],
+    streak: [1,1,0,1,1,0,1,1,0,1,1,1,0],
+    distT: 'Season ' + MID + ' receiving yards vs line 68.5',
+    dist: [{v:82,o:'WKU'},{v:114,o:'USF'},{v:57,o:'WIS'},{v:96,o:'UGA'},{v:41,o:'VAN'},
+           {v:128,o:'USC'},{v:73,o:'MIZ'},{v:88,o:'TEN'},{v:34,o:'LSU'},{v:104,o:'MRC'},
+           {v:91,o:'OKL'},{v:79,o:'AUB'},{v:62,o:'UGA'}],
+    distLine: 68.5,
+    rollM: '13-game mean, 80% band',
+    roll: { line: 68.5,
+      mean:  [64,68,72,70,66,71,76,82,86,89,87,82,79,84,88,93,90,86,89,94],
+      upper: [108,114,120,117,110,118,126,136,142,148,144,136,131,139,146,154,149,142,147,156],
+      lower: [22,24,26,25,23,26,28,31,33,35,34,31,29,32,34,37,35,33,35,37],
+      labels: ['Aug 31','Sep 07','Sep 14','Sep 21','Sep 28','Oct 05','Oct 12','Oct 19','Oct 26','Nov 02','Nov 09','Nov 16','Nov 23','Nov 30','Dec 07','Dec 13','Bowl','CFP1','CFP2','CFP3'] },
+    tape: [102,104,106,106,110,114,116,120,120,118,116,116,114,112],
+    tapeFmt: function (v) { return MIN + Math.round(v); },
+    splitsT: 'Splits ' + MID + ' rec yds o68.5',
+    gridCols: ['L5','L10','L13','SZN'],
+    gridRows: [
+      { k:'All', v:[0.80,0.70,0.69,0.69], n:[5,10,13,13] },
+      { k:'Home', v:[1.00,0.80,0.75,0.75], n:[3,5,8,8] },
+      { k:'Away', v:[0.50,0.60,0.60,0.60], n:[2,5,5,5] },
+      { k:'vs SEC', v:[0.67,0.63,0.56,0.56], n:[3,8,9,9] },
+      { k:'Non-conf', v:[null,1.00,1.00,1.00], n:[2,4,4,4] },
+      { k:'vs top-25 D', v:[0.50,0.50,0.50,0.50], n:[2,4,6,6] },
+      { k:'Ranked opp', v:[0.50,0.57,0.57,0.57], n:[2,5,7,7] },
+      { k:'Favoured', v:[1.00,0.80,0.78,0.78], n:[3,5,9,9] },
+      { k:'Night game', v:[null,0.75,0.71,0.71], n:[2,4,7,7] },
+      { k:'vs UGA', v:[null,null,0.50,0.50], n:[0,1,2,2] }
+    ],
+    seasonM: 'rank of 128 qualified WR',
+    season: [
+      {k:'Rec',v:'61',rank:'14th',pct:89},{k:'Yards',v:'1,049',rank:'8th',pct:94},
+      {k:'Y/Rec',v:'17.2',rank:'6th',pct:96},{k:'TD',v:'11',rank:'4th',pct:97},
+      {k:'Targets',v:'94',rank:'19th',pct:85},{k:'Catch %',v:'64.9%',rank:'48th',pct:63},
+      {k:'YAC',v:'384',rank:'11th',pct:91},{k:'Long',v:'75',rank:'9th',pct:93},
+      {k:'1st downs',v:'44',rank:'12th',pct:90}
+    ],
+    advT: 'Advanced',
+    adv: [
+      {k:'Target share',v:'27.1%',rank:'9th',pct:93},{k:'Air-yards share',v:'41.4%',rank:'3rd',pct:98},
+      {k:'Yds/route run',v:'3.12',rank:'2nd',pct:99},{k:'aDOT',v:'14.8',rank:'8th',pct:94},
+      {k:'Contested catch',v:'48.1%',rank:'18th',pct:86},{k:'Snap rate',v:'88.4%',rank:'21st',pct:84},
+      {k:'Explosive rate',v:'24.6%',rank:'4th',pct:97},{k:'RZ tgt share',v:'22.4%',rank:'16th',pct:88},
+      {k:'EPA/target',v:'0.48',rank:'6th',pct:96},{k:'Success rate',v:'54.1%',rank:'24th',pct:81},
+      {k:'Drop %',v:'6.4%',rank:'71st',pct:44}
+    ],
+    splitT: 'Opponent tier', splitM: 'vs unranked / vs top-25',
+    dumbbell: [
+      {k:'Y/target',a:13.1,b:8.8,fmt:n1},{k:'Catch %',a:0.694,b:0.588,fmt:p1},
+      {k:'aDOT',a:15.4,b:14.1,fmt:n1},{k:'YAC/rec',a:7.2,b:4.4,fmt:n1},
+      {k:'o68.5',a:0.857,b:0.500,fmt:p0}
+    ],
+    zoneLo: 6, zoneHi: 22, zoneFmt: n1, zoneUnit: 'yd/target',
+    zoneCap: 'depth x direction ' + MID + ' yards per target',
+    zoneT: 'Target map', zoneM: 'yards per target',
+    zone: [
+      {k:'Deep / L',v:17.4,n:22},{k:'Deep / M',v:21.8,n:14},{k:'Deep / R',v:15.1,n:19},
+      {k:'Mid / L',v:11.2,n:26},{k:'Mid / M',v:13.4,n:11},{k:'Mid / R',v:10.1,n:24},
+      {k:'Short / L',v:7.1,n:31},{k:'Short / M',v:8.4,n:18},{k:'Short / R',v:6.6,n:29}
+    ],
+    usageT: 'Route mix', usageM: 'where the targets come from',
+    usageCols: ['Route','Tgt %','Rec','Y/Tgt','Success'],
+    usageRows: [['Go / post','29.8%','14','16.4','51.2%'],['Slant','19.1%','15','10.1','61.8%'],
+                ['Dig / in','17.0%','12','11.8','57.4%'],['Out','18.1%','13','8.4','52.9%'],
+                ['Screen','16.0%','7','5.8','46.1%']],
+    logM: 'last 12',
+    logCols: ['Date','Opp','Tgt','Rec','Yds','Y/R','Air','YAC','TD','1D','Lng'],
+    logRows: [['Dec 13','vs UGA',9,4,62,15.5,48,14,0,3,31],['Nov 30','vs AUB',8,5,79,15.8,58,21,1,4,34],
+      ['Nov 23','@ OKL',10,6,91,15.2,66,25,1,4,42],['Nov 16','vs MRC',7,6,104,17.3,74,30,2,5,58],
+      ['Nov 09','@ LSU',6,2,34,17.0,28,6,0,1,22],['Nov 02','vs TEN',9,5,88,17.6,64,24,1,4,41],
+      ['Oct 26','@ MIZ',8,4,73,18.3,55,18,1,3,38],['Oct 19','vs USC',11,7,128,18.3,92,36,2,6,75],
+      ['Oct 12','@ VAN',5,3,41,13.7,32,9,0,2,19],['Sep 28','vs UGA',10,6,96,16.0,71,25,1,5,44],
+      ['Sep 21','@ WIS',7,4,57,14.3,44,13,0,3,26],['Sep 14','vs USF',9,7,114,16.3,81,33,2,6,61]],
+    densM: 'n = 128 WR', densPct: 0.74, densLabel: '88th pct',
+    oppUnitT: 'Opposing defence',
+    oppUnitCols: ['Georgia D','Rate','Rk'],
+    oppUnitRows: [['Yds/gm to WR','141.2','9th'],['SP+ defence','14.1','4th'],['Pressure rate','38.4%','6th'],
+      ['Man rate','44.1%','11th'],['Zone rate','55.9%','98th'],['Havoc rate','21.8%','8th'],['Explosive allowed','8.1%','5th']],
+    h2hT: 'Career vs UGA',
+    h2hCols: ['Williams vs UGA','',''],
+    h2hRows: [['Games','2',''],['Rec','10','5.0/gm'],['Yards','158','79.0/gm'],['TD','1',''],['o68.5','1-2','50%']],
+    qualT: 'Explosiveness',
+    qual: [{k:'Yds/route run',v:'3.12',p:99},{k:'Explosive rate',v:'24.6%',p:97},{k:'aDOT',v:'14.8',p:94}],
+    cond: [['Stadium','Bryant-Denny'],['Roof','Open'],['Wind','7 mph'],
+           ['Temp','64' + DEG + 'F'],['Surface','Grass']],
+    books: [{b:'Pinnacle',p:-106},{b:'FanDuel',p:-112,mine:true},{b:'DraftKings',p:-114},
+            {b:'BetMGM',p:-118},{b:'Caesars',p:-124},{b:'ESPN Bet',p:-134}],
+    contribM: 'v2 ' + MID + ' shadow',
+    contrib: [{k:'Target share',v:0.066},{k:'Air-yards share',v:0.048},{k:'Pace / plays',v:0.024},
+      {k:'Snap rate',v:0.014},{k:'Opp SP+ D',v:-0.052},{k:'Havoc rate',v:-0.031},{k:'Game script',v:-0.018}],
+    ctx: [['Moneyline','+124'],['Total','52.5 ' + MID + ' ' + MIN + '108'],['ALA implied','24.1'],
+          ['Proj. plays','71'],['Proj. targets','8.8']],
+    keys: 53, rows: '273,649', athletes: '33,868'
+  };
+
+  // ------------------------------------------------------------- SOCCER ----
+  SPORTS.soccer = {
+    tab: 'Soccer', initials: 'EH', name: 'Erling Haaland',
+    meta: 'ST ' + MID + ' Man City ' + MID + ' EPL ' + MID + ' 89% start rate ' + MID + ' vs Arsenal 12:30 PM',
+    anchorV: '66%', anchorL: 'L15 hit rate', anchorHeat: 0.66,
+    strip: [['Line','SoT o1.5'],['Model','62.4%'],['Market','54.5%'],['Edge','+7.9'],['Grade','B+']],
+    formT: 'Shots on target o1.5 ' + MID + ' form',
+    windows: [{k:'L5',hit:3,n:5},{k:'L10',hit:7,n:10},{k:'L15',hit:10,n:15},
+              {k:'L20',hit:13,n:20},{k:'SZN',hit:23,n:34},{k:'H2H',hit:4,n:8}],
+    streak: [1,1,0,1,0,1,1,1,0,1,1,0,1,1,1,0,1,0,1,1],
+    distT: 'Last 15 ' + MID + ' shots on target vs line 1.5',
+    dist: [{v:3,o:'ARS'},{v:2,o:'LIV'},{v:4,o:'CHE'},{v:1,o:'TOT'},{v:2,o:'MUN'},
+           {v:5,o:'NEW'},{v:0,o:'AVL'},{v:3,o:'BHA'},{v:2,o:'WHU'},{v:1,o:'FUL'},
+           {v:4,o:'CRY'},{v:2,o:'BRE'},{v:1,o:'WOL'},{v:6,o:'EVE'},{v:3,o:'NFO'}],
+    distLine: 1.5,
+    rollM: '20-match mean, 80% band',
+    roll: { line: 1.5,
+      mean:  [1.8,1.9,2.1,1.9,1.7,1.9,2.2,2.4,2.6,2.7,2.6,2.3,2.1,2.4,2.6,2.9,2.7,2.4,2.6,2.8],
+      upper: [3.4,3.6,3.9,3.6,3.2,3.6,4.1,4.5,4.8,5.0,4.8,4.3,3.9,4.4,4.8,5.3,5.0,4.5,4.8,5.2],
+      lower: [0.4,0.5,0.6,0.5,0.3,0.4,0.6,0.7,0.8,0.9,0.8,0.7,0.6,0.7,0.8,1.0,0.9,0.7,0.8,0.9],
+      labels: ['Apr 06','Apr 13','Apr 20','Apr 27','May 04','May 11','May 18','May 25','Aug 10','Aug 17','Aug 24','Aug 29','Sep 14','Sep 21','Sep 28','Oct 05','Oct 19','Oct 26','Nov 02','Nov 09'] },
+    tape: [110,112,114,114,116,120,122,126,126,124,122,122,120,118],
+    tapeFmt: function (v) { return MIN + Math.round(v); },
+    splitsT: 'Splits ' + MID + ' SoT o1.5',
+    gridCols: ['L5','L10','L15','SZN'],
+    gridRows: [
+      { k:'All', v:[0.60,0.70,0.67,0.68], n:[5,10,15,34] },
+      { k:'Home', v:[0.67,0.83,0.75,0.76], n:[3,6,8,17] },
+      { k:'Away', v:[0.50,0.50,0.57,0.59], n:[2,4,7,17] },
+      { k:'Started', v:[0.60,0.70,0.69,0.71], n:[5,10,13,30] },
+      { k:'Sub appearance', v:[null,null,0.50,0.50], n:[0,0,2,4] },
+      { k:'vs top-6', v:[0.50,0.50,0.50,0.55], n:[2,4,6,11] },
+      { k:'vs bottom-half', v:[1.00,0.83,0.78,0.78], n:[2,6,9,23] },
+      { k:'Favoured', v:[0.67,0.75,0.73,0.75], n:[3,8,11,28] },
+      { k:'Midweek', v:[null,0.67,0.60,0.62], n:[1,3,5,13] },
+      { k:'vs ARS', v:[null,null,1.00,0.50], n:[0,1,2,8] }
+    ],
+    seasonM: 'rank of 84 forwards',
+    season: [
+      {k:'Goals',v:'27',rank:'1st',pct:100},{k:'Assists',v:'6',rank:'28th',pct:67},
+      {k:'Shots',v:'112',rank:'2nd',pct:99},{k:'SoT',v:'54',rank:'1st',pct:100},
+      {k:'xG',v:'24.8',rank:'1st',pct:100},{k:'xA',v:'4.1',rank:'34th',pct:60},
+      {k:'Key passes',v:'31',rank:'41st',pct:52},{k:'Minutes',v:'2,684',rank:'14th',pct:84},
+      {k:'Big chances',v:'41',rank:'1st',pct:100}
+    ],
+    advT: 'Advanced',
+    adv: [
+      {k:'npxG/90',v:'0.78',rank:'1st',pct:100},{k:'Shots/90',v:'3.76',rank:'2nd',pct:99},
+      {k:'SoT/90',v:'1.81',rank:'1st',pct:100},{k:'Box touches/90',v:'8.4',rank:'1st',pct:100},
+      {k:'Conversion %',v:'24.1%',rank:'6th',pct:94},{k:'Aerial win %',v:'54.2%',rank:'11th',pct:88},
+      {k:'Prog. carries',v:'48',rank:'52nd',pct:38},{k:'Pressures/90',v:'11.4',rank:'64th',pct:24},
+      {k:'xG overperf.',v:'+2.2',rank:'9th',pct:90},{k:'Shot dist (yd)',v:'11.8',rank:'4th',pct:96},
+      {k:'Touches/90',v:'32.1',rank:'71st',pct:16}
+    ],
+    splitT: 'Venue split', splitM: 'home / away',
+    dumbbell: [
+      {k:'Shots/90',a:4.21,b:3.28,fmt:n1},{k:'SoT/90',a:2.14,b:1.46,fmt:n1},
+      {k:'npxG/90',a:0.91,b:0.64,fmt:n1},{k:'Box touches',a:9.6,b:7.1,fmt:n1},
+      {k:'o1.5 SoT',a:0.760,b:0.590,fmt:p0}
+    ],
+    zoneLo: 0.02, zoneHi: 0.42, zoneFmt: d3, zoneUnit: 'xG/shot',
+    zoneCap: 'penalty area ' + MID + ' xG per shot',
+    zoneT: 'Shot location', zoneM: 'xG per shot',
+    zone: [
+      {k:'6-yd L',v:0.284,n:14},{k:'6-yd C',v:0.412,n:22},{k:'6-yd R',v:0.261,n:11},
+      {k:'Box L',v:0.118,n:24},{k:'Box C',v:0.198,n:38},{k:'Box R',v:0.104,n:21},
+      {k:'Outside L',v:0.031,n:12},{k:'Outside C',v:0.044,n:9},{k:'Outside R',v:0.028,n:8}
+    ],
+    usageT: 'Shot type mix', usageM: 'how the chances arrive',
+    usageCols: ['Type','Share','Goals','SoT %','xG/shot'],
+    usageRows: [['Right foot','48.2%','14','52.1%','0.24'],['Left foot','26.8%','7','46.7%','0.19'],
+                ['Header','17.9%','5','40.0%','0.17'],['Inside box','78.6%','24','54.5%','0.26'],
+                ['Outside box','21.4%','3','25.0%','0.04']],
+    logM: 'last 12',
+    logCols: ['Date','Opp','Min','G','A','Sh','SoT','xG','Touch','Box','Aer'],
+    logRows: [['Aug 29','vs ARS',90,1,0,5,3,'0.92',31,9,6],['Aug 24','@ LIV',90,0,1,3,2,'0.48',28,6,4],
+      ['Aug 17','vs CHE',90,2,0,6,4,'1.24',34,11,5],['Aug 10','@ TOT',84,0,0,2,1,'0.31',24,5,3],
+      ['May 25','vs MUN',90,1,0,4,2,'0.71',29,8,4],['May 18','@ NEW',90,2,1,7,5,'1.48',36,12,7],
+      ['May 11','vs AVL',72,0,0,3,0,'0.42',21,4,5],['May 04','@ BHA',90,1,0,5,3,'0.88',30,9,4],
+      ['Apr 27','vs WHU',90,1,1,4,2,'0.64',27,7,6],['Apr 20','@ FUL',90,0,0,2,1,'0.28',22,4,3],
+      ['Apr 13','vs CRY',90,2,0,6,4,'1.32',33,10,5],['Apr 06','@ BRE',90,1,0,4,2,'0.68',26,7,4]],
+    densM: 'n = 84 FW', densPct: 0.83, densLabel: '97th pct',
+    oppUnitT: 'Opposing keeper & line',
+    oppUnitCols: ['Arsenal','Rate','Rk'],
+    oppUnitRows: [['Raya SV %','74.1%','6th'],['PSxG' + MIN + 'GA','+4.8','4th'],['Clean sheets','14','2nd'],
+      ['Shots allowed/90','9.1','3rd'],['Box entries allowed','7.4','2nd'],['Aerial win %','58.1%','5th'],['Def line height','48.2 m','7th']],
+    h2hT: 'Career vs Arsenal',
+    h2hCols: ['Haaland vs ARS','',''],
+    h2hRows: [['Matches','8',''],['Goals','3',''],['Shots','29','3.6/match'],['SoT','13','1.6/match'],['o1.5 SoT','4-8','50%']],
+    qualT: 'Chance quality',
+    qual: [{k:'npxG/90',v:'0.78',p:100},{k:'Box touches/90',v:'8.4',p:100},{k:'Shot distance',v:'11.8 yd',p:96}],
+    cond: [['Venue','Etihad Stadium'],['Pitch','Hybrid grass'],['Weather','14' + DEG + 'C, light rain'],
+           ['Wind','11 mph'],['Competition','Premier League']],
+    books: [{b:'Pinnacle',p:-114},{b:'FanDuel',p:-120,mine:true},{b:'DraftKings',p:-122},
+            {b:'BetMGM',p:-126},{b:'Caesars',p:-132},{b:'ESPN Bet',p:-140}],
+    contribM: 'v2 ' + MID + ' shadow',
+    contrib: [{k:'Shot volume',v:0.062},{k:'Box touches',v:0.047},{k:'Home venue',v:0.021},
+      {k:'Team xG share',v:0.016},{k:'Opp keeper',v:-0.034},{k:'Opp box D',v:-0.041},{k:'Rotation risk',v:-0.022}],
+    ctx: [['Moneyline', MIN + '145'],['Total','3.5 ' + MID + ' ' + MIN + '112'],['MCI implied','2.1'],
+          ['Proj. minutes','88'],['Proj. shots','4.2']],
+    keys: 16, rows: '302,539', athletes: '5,361'
+  };
+
+  // ------------------------------------------------------------- TENNIS ----
+  SPORTS.tennis = {
+    tab: 'Tennis', initials: 'CA', name: 'Carlos Alcaraz',
+    meta: 'ATP ' + MID + ' No. 2 ' + MID + ' Hard ' + MID + ' R16 ' + MID + ' vs Sinner 7:00 PM',
+    anchorV: '58%', anchorL: 'L15 hit rate', anchorHeat: 0.58,
+    strip: [['Line','Aces o7.5'],['Model','59.8%'],['Market','52.4%'],['Edge','+7.4'],['Grade','B']],
+    formT: 'Aces o7.5 ' + MID + ' form',
+    windows: [{k:'L5',hit:3,n:5},{k:'L10',hit:6,n:10},{k:'L15',hit:9,n:15},
+              {k:'L20',hit:11,n:20},{k:'SZN',hit:28,n:48},{k:'H2H',hit:5,n:9}],
+    streak: [1,0,1,1,0,1,0,1,1,0,1,1,0,1,0,1,1,0,1,1],
+    distT: 'Last 15 ' + MID + ' aces vs line 7.5',
+    dist: [{v:9,o:'SIN'},{v:6,o:'ZVE'},{v:12,o:'MED'},{v:4,o:'RUB'},{v:8,o:'FRI'},
+           {v:14,o:'TSI'},{v:5,o:'DIM'},{v:11,o:'RUN'},{v:7,o:'HUR'},{v:3,o:'PAU'},
+           {v:13,o:'SHE'},{v:9,o:'FIL'},{v:6,o:'KHA'},{v:15,o:'MUS'},{v:10,o:'DJO'}],
+    distLine: 7.5,
+    rollM: '20-match mean, 80% band',
+    roll: { line: 7.5,
+      mean:  [7.1,7.4,7.8,7.5,6.9,7.3,8.1,8.8,9.2,9.6,9.3,8.6,8.1,8.7,9.4,10.1,9.7,9.1,9.5,10.0],
+      upper: [12.4,12.9,13.6,13.1,12.1,12.8,14.1,15.4,16.1,16.8,16.3,15.0,14.2,15.2,16.4,17.6,17.0,15.9,16.6,17.5],
+      lower: [2.4,2.6,2.8,2.6,2.2,2.5,2.9,3.2,3.4,3.6,3.5,3.1,2.9,3.2,3.5,3.8,3.6,3.3,3.5,3.7],
+      labels: ['Jun 15','Jun 22','Jun 29','Jul 06','Jul 13','Jul 20','Jul 27','Aug 03','Aug 10','Aug 17','Aug 24','Aug 29','Sep 02','Sep 06','Sep 10','Sep 14','Oct 02','Oct 09','Oct 16','Nov 12'] },
+    tape: [96,98,100,100,104,108,110,114,114,112,110,110,108,106],
+    tapeFmt: function (v) { return MIN + Math.round(v); },
+    splitsT: 'Splits ' + MID + ' aces o7.5',
+    gridCols: ['L5','L10','L15','SZN'],
+    gridRows: [
+      { k:'All', v:[0.60,0.60,0.60,0.58], n:[5,10,15,48] },
+      { k:'Hard', v:[0.67,0.71,0.70,0.68], n:[3,7,10,25] },
+      { k:'Clay', v:[0.50,0.50,0.40,0.43], n:[2,2,5,14] },
+      { k:'Grass', v:[null,null,null,0.78], n:[0,1,0,9] },
+      { k:'Best of 5', v:[0.50,0.57,0.58,0.61], n:[2,7,12,18] },
+      { k:'Best of 3', v:[0.67,0.67,0.67,0.57], n:[3,3,3,30] },
+      { k:'Indoor', v:[null,0.75,0.71,0.72], n:[1,4,7,18] },
+      { k:'Outdoor', v:[0.50,0.50,0.50,0.50], n:[4,6,8,30] },
+      { k:'vs top-10', v:[0.50,0.50,0.50,0.52], n:[2,4,6,21] },
+      { k:'vs Sinner', v:[null,null,1.00,0.56], n:[0,1,1,9] }
+    ],
+    seasonM: 'rank of 100 ATP',
+    season: [
+      {k:'Matches',v:'48',rank:'11th',pct:89},{k:'Win-loss',v:'41-7',rank:'3rd',pct:97},
+      {k:'Aces/match',v:'8.4',rank:'21st',pct:79},{k:'DF/match',v:'2.6',rank:'44th',pct:56},
+      {k:'1st serve %',v:'64.1%',rank:'38th',pct:62},{k:'1st won %',v:'76.8%',rank:'8th',pct:92},
+      {k:'2nd won %',v:'56.4%',rank:'4th',pct:96},{k:'BP saved %',v:'67.1%',rank:'6th',pct:94},
+      {k:'Return games won',v:'31.4%',rank:'2nd',pct:99}
+    ],
+    advT: 'Advanced',
+    adv: [
+      {k:'Serve rating',v:'271',rank:'14th',pct:86},{k:'Ace rate',v:'9.1%',rank:'22nd',pct:78},
+      {k:'Double-fault rate',v:'3.4%',rank:'51st',pct:49},{k:'1st-serve won',v:'76.8%',rank:'8th',pct:92},
+      {k:'2nd-serve won',v:'56.4%',rank:'4th',pct:96},{k:'Return pts won',v:'42.1%',rank:'2nd',pct:99},
+      {k:'BP conversion',v:'44.8%',rank:'5th',pct:95},{k:'Tiebreak win %',v:'64.1%',rank:'9th',pct:91},
+      {k:'Hold %',v:'88.4%',rank:'12th',pct:88},{k:'Deciding-set %',v:'71.4%',rank:'6th',pct:94},
+      {k:'Avg rally length',v:'4.8',rank:'62nd',pct:38}
+    ],
+    splitT: 'Surface split', splitM: 'hard / clay',
+    dumbbell: [
+      {k:'Aces/match',a:9.8,b:6.1,fmt:n1},{k:'1st won %',a:0.784,b:0.742,fmt:p1},
+      {k:'Hold %',a:0.901,b:0.862,fmt:p1},{k:'Rally length',a:4.2,b:6.1,fmt:n1},
+      {k:'o7.5 aces',a:0.680,b:0.430,fmt:p0}
+    ],
+    zoneLo: 0.52, zoneHi: 0.82, zoneFmt: r3, zoneUnit: 'pts won',
+    zoneCap: 'service boxes ' + MID + ' points won',
+    zoneT: 'Serve placement', zoneM: 'points won',
+    zone: [
+      {k:'Deuce wide',v:0.741,n:184},{k:'Deuce body',v:0.688,n:96},{k:'Deuce T',v:0.812,n:161},
+      {k:'Ad wide',v:0.694,n:142},{k:'Ad body',v:0.651,n:88},{k:'Ad T',v:0.784,n:178},
+      {k:'2nd wide',v:0.548,n:74},{k:'2nd body',v:0.581,n:112},{k:'2nd T',v:0.601,n:68}
+    ],
+    usageT: 'Serve mix', usageM: 'placement and what it returns',
+    usageCols: ['Serve','Share','Won %','Ace %','Avg mph'],
+    usageRows: [['1st ' + MID + ' T','26.4%','81.2%','18.4%','128'],['1st ' + MID + ' wide','24.1%','74.1%','14.1%','124'],
+                ['1st ' + MID + ' body','13.6%','68.8%','6.2%','126'],['2nd ' + MID + ' kick','24.8%','57.4%','1.1%','101'],
+                ['2nd ' + MID + ' slice','11.1%','54.8%','0.8%','98']],
+    logM: 'last 12',
+    logCols: ['Date','Opp','Rd','Result','Aces','DF','1st %','1st W','BP sv','Games','Sets'],
+    logRows: [['Aug 29','Sinner','R16','W',9,3,'66%','78%','7/9','24','3-1'],['Aug 24','Zverev','QF','W',6,2,'62%','74%','5/7','22','3-0'],
+      ['Aug 17','Medvedev','F','W',12,1,'68%','81%','8/9','29','3-2'],['Aug 10','Rublev','SF','L',4,4,'58%','69%','3/8','19','1-3'],
+      ['Aug 03','Fritz','QF','W',8,2,'64%','77%','6/7','21','3-0'],['Jul 27','Tsitsipas','R16','W',14,3,'70%','83%','9/10','26','3-1'],
+      ['Jul 20','Dimitrov','R32','W',5,3,'61%','72%','4/6','18','3-0'],['Jul 13','Rune','F','W',11,2,'67%','79%','7/8','27','3-2'],
+      ['Jul 06','Hurkacz','SF','W',7,4,'63%','75%','5/7','23','3-1'],['Jun 29','Paul','QF','L',3,5,'56%','66%','2/7','17','1-3'],
+      ['Jun 22','Shelton','R16','W',13,1,'69%','82%','8/9','25','3-0'],['Jun 15','Fils','R32','W',9,3,'65%','76%','6/7','20','3-1']],
+    densM: 'n = 100 ATP', densPct: 0.64, densLabel: '79th pct',
+    oppUnitT: 'Opponent profile',
+    oppUnitCols: ['J. Sinner','ATP 1','Rk'],
+    oppUnitRows: [['Hold %','91.2%','3rd'],['Break %','28.4%','6th'],['Ace rate','8.1%','31st'],
+      ['Return pts won','41.4%','4th'],['1st-serve won','78.4%','5th'],['Tiebreak %','68.1%','4th'],['vs Alcaraz','5-4','\u2013']],
+    h2hT: 'Head to head',
+    h2hCols: ['Alcaraz vs Sinner','',''],
+    h2hRows: [['Matches','9',''],['Record','4-5',''],['Hard','2-3',''],['Aces/match','8.9',''],['o7.5 aces','5-9','56%']],
+    qualT: 'Serve quality',
+    qual: [{k:'2nd-serve won',v:'56.4%',p:96},{k:'BP saved',v:'67.1%',p:94},{k:'Ace rate',v:'9.1%',p:78}],
+    cond: [['Surface','Hard (Laykold)'],['Court speed','Medium-fast'],['Roof','Open'],
+           ['Altitude','33 ft'],['Balls','Wilson US Open']],
+    books: [{b:'Pinnacle',p:-104},{b:'FanDuel',p:-110,mine:true},{b:'DraftKings',p:-112},
+            {b:'BetMGM',p:-116},{b:'Caesars',p:-120},{b:'ESPN Bet',p:-128}],
+    contribM: 'v1 ' + MID + ' shadow',
+    contrib: [{k:'Surface speed',v:0.058},{k:'Ace rate',v:0.044},{k:'Best of 5',v:0.028},
+      {k:'1st-serve %',v:0.012},{k:'Opp return',v:-0.046},{k:'Rally length',v:-0.027},{k:'Fatigue',v:-0.015}],
+    ctx: [['Moneyline', MIN + '118'],['Total games','22.5 ' + MID + ' ' + MIN + '106'],['Set spread', MIN + '1.5'],
+          ['Proj. games','23.4'],['Proj. service games','12']],
+    keys: 8, rows: '271,964', athletes: '17,846'
+  };
+
+  // --------------------------------------------------------------- GOLF ----
+  SPORTS.golf = {
+    tab: 'Golf', initials: 'SS', name: 'Scottie Scheffler',
+    meta: 'PGA ' + MID + ' No. 1 ' + MID + ' R2 ' + MID + ' 7:40 AM tee ' + MID + ' Bay Hill',
+    anchorV: '71%', anchorL: 'L15 hit rate', anchorHeat: 0.71,
+    strip: [['Line','Top 10'],['Model','58.1%'],['Market','50.0%'],['Edge','+8.1'],['Grade','A' + MIN]],
+    formT: 'Top-10 finish ' + MID + ' form',
+    windows: [{k:'L5',hit:4,n:5},{k:'L10',hit:7,n:10},{k:'L15',hit:11,n:15},
+              {k:'L20',hit:14,n:20},{k:'SZN',hit:16,n:22},{k:'Course',hit:4,n:6}],
+    streak: [1,1,1,0,1,1,0,1,1,1,0,1,1,0,1,1,1,0,1,1],
+    distT: 'Last 15 ' + MID + ' finishing position vs top 10',
+    dist: [{v:2,o:'BAY'},{v:14,o:'PLA'},{v:1,o:'ARN'},{v:22,o:'VAL'},{v:6,o:'MAS'},
+           {v:4,o:'RBC'},{v:31,o:'WEL'},{v:3,o:'PGA'},{v:9,o:'MEM'},{v:18,o:'USO'},
+           {v:5,o:'TRA'},{v:2,o:'JDC'},{v:27,o:'OPE'},{v:7,o:'FED'},{v:1,o:'TOU'}],
+    distLine: 10.5, distInvert: true,
+    rollM: '20-event rolling SG total, 80% band',
+    roll: { line: 1.5,
+      mean:  [1.84,1.92,2.04,1.96,1.78,1.88,2.11,2.28,2.41,2.52,2.44,2.21,2.08,2.26,2.44,2.61,2.51,2.34,2.46,2.58],
+      upper: [3.41,3.52,3.68,3.58,3.32,3.46,3.79,4.04,4.22,4.38,4.26,3.94,3.74,4.01,4.26,4.51,4.36,4.12,4.28,4.46],
+      lower: [0.42,0.48,0.54,0.49,0.36,0.44,0.58,0.68,0.76,0.82,0.78,0.62,0.54,0.66,0.78,0.91,0.84,0.72,0.80,0.88],
+      labels: ['Bay','Play','Arn','Vals','Mast','RBC','Well','PGA','Mem','USO','Trav','JDC','Open','FedEx','Tour','WGC','ZOZO','CJ','HSBC','DPWT'] },
+    tape: [180,182,186,186,190,196,200,206,206,202,198,198,194,190],
+    tapeFmt: function (v) { return '+' + Math.round(v); },
+    splitsT: 'Splits ' + MID + ' top-10 rate',
+    gridCols: ['L5','L10','L15','SZN'],
+    gridRows: [
+      { k:'All', v:[0.80,0.70,0.73,0.73], n:[5,10,15,22] },
+      { k:'Majors', v:[null,0.50,0.60,0.60], n:[1,4,5,5] },
+      { k:'Signature', v:[1.00,0.83,0.78,0.78], n:[3,6,9,9] },
+      { k:'Full field', v:[0.50,0.60,0.63,0.63], n:[2,5,8,8] },
+      { k:'Bermuda greens', v:[1.00,0.80,0.78,0.78], n:[3,5,9,9] },
+      { k:'Bentgrass', v:[0.50,0.60,0.67,0.67], n:[2,5,6,6] },
+      { k:'Wind 15+ mph', v:[null,0.75,0.71,0.71], n:[1,4,7,7] },
+      { k:'Par 70 or under', v:[null,0.67,0.71,0.71], n:[2,3,7,7] },
+      { k:'Course history', v:[1.00,0.80,0.75,0.75], n:[2,5,8,8] },
+      { k:'At Bay Hill', v:[null,null,0.67,0.67], n:[0,2,3,6] }
+    ],
+    seasonM: 'rank of 190 PGA Tour',
+    season: [
+      {k:'SG: Total',v:'2.41',rank:'1st',pct:100},{k:'SG: OTT',v:'0.94',rank:'3rd',pct:99},
+      {k:'SG: APP',v:'1.18',rank:'1st',pct:100},{k:'SG: ARG',v:'0.31',rank:'18th',pct:91},
+      {k:'SG: PUTT',v:'\u2212' + '0.02',rank:'98th',pct:48},{k:'GIR %',v:'71.4%',rank:'2nd',pct:99},
+      {k:'Driving dist',v:'311.8',rank:'21st',pct:89},{k:'Scrambling',v:'64.1%',rank:'14th',pct:93},
+      {k:'Birdie avg',v:'4.61',rank:'4th',pct:98}
+    ],
+    advT: 'Advanced',
+    adv: [
+      {k:'SG: Total',v:'2.41',rank:'1st',pct:100},{k:'Proximity 150-175',v:'28.4 ft',rank:'2nd',pct:99},
+      {k:'Proximity 175-200',v:'32.1 ft',rank:'4th',pct:98},{k:'Approach from rough',v:'0.41',rank:'3rd',pct:98},
+      {k:'Par-5 scoring',v:'4.44',rank:'8th',pct:96},{k:'Par-4 scoring',v:'3.91',rank:'1st',pct:100},
+      {k:'Bogey avoidance',v:'12.1%',rank:'2nd',pct:99},{k:'3-putt avoidance',v:'2.1%',rank:'34th',pct:82},
+      {k:'Fairway %',v:'61.8%',rank:'44th',pct:77},{k:'Putts 5-10 ft',v:'58.4%',rank:'88th',pct:54},
+      {k:'Final-round SG',v:'1.94',rank:'6th',pct:97}
+    ],
+    splitT: 'Hole type', splitM: 'par 5 / par 4',
+    dumbbell: [
+      {k:'Scoring avg',a:4.44,b:3.91,fmt:n1},{k:'Birdie %',a:0.441,b:0.184,fmt:p1},
+      {k:'GIR %',a:0.784,b:0.701,fmt:p1},{k:'SG/hole',a:0.121,b:0.088,fmt:n1},
+      {k:'Bogey %',a:0.041,b:0.114,fmt:p1}
+    ],
+    zoneLo: 0.01, zoneHi: 0.19, zoneFmt: d3, zoneUnit: 'SG/shot',
+    zoneCap: 'distance x lie ' + MID + ' strokes gained',
+    zoneT: 'Approach proximity', zoneM: 'strokes gained per shot',
+    zone: [
+      {k:'<100 fwy',v:0.184,n:64},{k:'100-150 fwy',v:0.148,n:112},{k:'150-200 fwy',v:0.121,n:98},
+      {k:'<100 rough',v:0.088,n:28},{k:'100-150 rgh',v:0.064,n:44},{k:'150-200 rgh',v:0.041,n:38},
+      {k:'200+ fwy',v:0.074,n:41},{k:'200+ rough',v:0.018,n:19},{k:'Sand',v:0.052,n:24}
+    ],
+    usageT: 'Approach distance mix', usageM: 'where the approaches come from',
+    usageCols: ['Distance','Share','Prox','GIR %','SG'],
+    usageRows: [['Under 100 yd','18.4%','16.1 ft','88.4%','0.18'],['100-150 yd','31.2%','22.4 ft','81.1%','0.15'],
+                ['150-200 yd','28.8%','30.8 ft','71.4%','0.12'],['200-225 yd','12.1%','41.2 ft','54.8%','0.07'],
+                ['225+ yd','9.5%','52.6 ft','41.1%','0.04']],
+    logM: 'last 12 events',
+    logCols: ['Event','Finish','R1','R2','R3','R4','Total','SG:T','SG:APP','SG:P','Field'],
+    logRows: [['Bay Hill','T2',68,70,69,67,'\u2212' + '10','2.84','1.41','0.12',144],
+      ['Players','T14',71,69,72,70,'\u2212' + '6','1.61','0.98','\u2212' + '0.41',144],
+      ['Arnold P.','1',66,68,70,67,'\u2212' + '17','3.41','1.62','0.44',120],
+      ['Valspar','T22',72,70,71,73,'\u2212' + '2','1.02','0.71','\u2212' + '0.68',144],
+      ['Masters','T6',70,68,71,69,'\u2212' + '10','2.44','1.28','0.08',89],
+      ['RBC Her.','T4',67,69,68,70,'\u2212' + '14','2.61','1.34','0.21',132],
+      ['Wells F.','T31',73,69,74,71,'+1','0.68','0.44','\u2212' + '0.81',156],
+      ['PGA Ch.','T3',69,67,70,68,'\u2212' + '12','2.94','1.51','0.31',156],
+      ['Memorial','T9',71,70,69,72,'\u2212' + '4','1.88','1.04','\u2212' + '0.14',120],
+      ['US Open','T18',72,71,73,70,'+2','1.24','0.88','\u2212' + '0.54',156],
+      ['Travelers','T5',66,68,69,67,'\u2212' + '16','2.71','1.44','0.18',72],
+      ['John Deere','T2',65,67,68,66,'\u2212' + '22','3.11','1.58','0.38',156]],
+    densM: 'n = 190', densPct: 0.88, densLabel: '99th pct',
+    oppUnitT: 'The field',
+    oppUnitCols: ['Bay Hill field','Value','Rk'],
+    oppUnitRows: [['Field strength','8.4/10','2nd'],['Players in top 50','38','3rd'],['Avg SG of field','0.41','4th'],
+      ['Projected cut','+1','\u2013'],['Scoring avg','71.8','\u2013'],['Top-10 odds','+180','1st'],['Win odds','+750','1st']],
+    h2hT: 'Course history',
+    h2hCols: ['Scheffler at Bay Hill','',''],
+    h2hRows: [['Starts','6',''],['Wins','1',''],['Top 10s','4','67%'],['Avg finish','9.8',''],['SG/round','2.14','']],
+    qualT: 'Ball-striking',
+    qual: [{k:'SG: Approach',v:'1.18',p:100},{k:'GIR %',v:'71.4%',p:99},{k:'SG: Off tee',v:'0.94',p:99}],
+    cond: [['Course','Bay Hill Club'],['Wind','18 mph gusting'],['Green speed','12.5 ft'],
+           ['Rough','3.5 in Bermuda'],['Weather','81' + DEG + 'F, humid']],
+    books: [{b:'Pinnacle',p:170},{b:'FanDuel',p:180,mine:true},{b:'DraftKings',p:175},
+            {b:'BetMGM',p:165},{b:'Caesars',p:160},{b:'ESPN Bet',p:150}],
+    contribM: 'v3 ' + MID + ' shadow',
+    contrib: [{k:'SG: Approach',v:0.071},{k:'Course history',v:0.048},{k:'SG: Off tee',v:0.031},
+      {k:'Field strength',v:0.014},{k:'Putting',v:-0.038},{k:'Wind exposure',v:-0.024},{k:'Tee time draw',v:-0.019}],
+    ctx: [['Outright','+750'],['Top 5','+240'],['Top 10','+120'],
+          ['Round 2 tee','7:40 AM'],['Proj. score', '\u2212' + '11']],
+    keys: 0, rows: 'separate schema', athletes: '\u2013'
+  };
+
+  // ==========================================================================
+  // THE RENDERER
+  //
+  // This is the whole argument in one function. There is no `sport` check
+  // anywhere below: every block reads a named field off the data object, and
+  // each sport's adapter decides what goes in that field. Swap the object,
+  // get a different sport's page at identical depth.
+  // ==========================================================================
+  var ORDER = ['mlb', 'nfl', 'cfb', 'nba', 'nhl', 'soccer', 'tennis', 'golf'];
+
+  function clear() {
+    for (var i = 0; i < arguments.length; i++) {
+      var n = document.getElementById(arguments[i]);
+      if (n) n.innerHTML = '';
+    }
+  }
+  function setText(id, s) { var n = document.getElementById(id); if (n) n.textContent = s; }
+  function railRows(hostId, pairs) {
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    pairs.forEach(function (p) {
+      var row = el('div', 'rail-stat');
+      row.appendChild(el('span', 'k', p[0]));
+      row.appendChild(el('span', 'v', p[1]));
+      host.appendChild(row);
+    });
+  }
+
+  function renderSport(s) {
+    clear('ps-herostrip', 'ps-windows', 'ps-streak', 'ps-dist', 'ps-rolling', 'ps-tape',
+          'ps-grid', 'ps-season', 'ps-adv', 'ps-dumbbell', 'ps-zone', 'ps-usage',
+          'ps-gamelog', 'ps-density', 'ps-oppunit', 'ps-h2h', 'ps-qual', 'ps-cond',
+          'ps-range', 'ps-contrib', 'ps-ctx');
+
+    // ---- identity -------------------------------------------------------
+    setText('ps-initials', s.initials);
+    setText('ps-name', s.name);
+    setText('ps-meta', s.meta);
+    setText('ps-anchor-v', s.anchorV);
+    setText('ps-anchor-l', s.anchorL);
+    var av = document.getElementById('ps-anchor-v');
+    if (av) av.style.color = heatInk(s.anchorHeat);
+
+    var strip = document.getElementById('ps-herostrip');
+    if (strip) s.strip.forEach(function (p) {
+      var c = el('div', 'hs-cell');
+      c.appendChild(el('div', 'hs-k', p[0]));
+      c.appendChild(el('div', 'hs-v', p[1]));
+      strip.appendChild(c);
+    });
+
+    // ---- form -----------------------------------------------------------
+    setText('ps-form-t', s.formT);
+    windowTiles('ps-windows', s.windows);
+    streakStrip('ps-streak', s.streak.map(Boolean));
+
+    // ---- distribution / rolling / tape ----------------------------------
+    setText('ps-dist-t', s.distT);
+    LB.distributionBars('ps-dist', s.dist, s.distLine, { h: 128, unit: s.distUnit });
+
+    setText('ps-roll-m', s.rollM);
+    rollingChart('ps-rolling', {
+      line: s.roll.line, mean: s.roll.mean, upper: s.roll.upper, lower: s.roll.lower,
+      labels: s.roll.labels, h: 128
+    });
+
+    var tape = LB.seriesChart({
+      series: s.tape, h: 116, ticks: 3, openAt: s.tape[0], fmt: s.tapeFmt
+    });
+    document.getElementById('ps-tape').appendChild(tape.svg);
+
+    // ---- splits ---------------------------------------------------------
+    setText('ps-splits-t', s.splitsT);
+    LB.heatGrid('ps-grid', { seq: true, cellH: 26, labelW: 100, rows: s.gridRows, cols: s.gridCols });
+
+    // ---- stat tables ----------------------------------------------------
+    setText('ps-season-m', s.seasonM);
+    statTable('ps-season', s.season, { valueLabel: '2026' });
+    setText('ps-adv-t', s.advT);
+    statTable('ps-adv', s.adv, { valueLabel: 'Value' });
+
+    // ---- binary split + spatial grid ------------------------------------
+    setText('ps-split-t', s.splitT);
+    setText('ps-split-m', s.splitM);
+    splitDumbbell('ps-dumbbell', s.dumbbell, { w: 300 });
+
+    setText('ps-zone-t', s.zoneT);
+    setText('ps-zone-m', s.zoneM);
+    zoneGrid('ps-zone', s.zone, {
+      lo: s.zoneLo, hi: s.zoneHi, fmt: s.zoneFmt, unit: s.zoneUnit, caption: s.zoneCap
+    });
+
+    // ---- usage mix + game log -------------------------------------------
+    setText('ps-usage-t', s.usageT);
+    setText('ps-usage-m', s.usageM);
+    denseTable('ps-usage', s.usageCols, s.usageRows, { leadStrong: true });
+
+    setText('ps-log-m', s.logM);
+    denseTable('ps-gamelog', s.logCols, s.logRows, { leadStrong: true });
+
+    // ---- rail -----------------------------------------------------------
+    setText('ps-dens-m', s.densM);
+    LB.densityCurve('ps-density', { w: 260, h: 110, pct: s.densPct, label: s.densLabel });
+
+    setText('ps-oppunit-t', s.oppUnitT);
+    denseTable('ps-oppunit', s.oppUnitCols, s.oppUnitRows);
+
+    setText('ps-h2h-t', s.h2hT);
+    denseTable('ps-h2h', s.h2hCols, s.h2hRows);
+
+    setText('ps-qual-t', s.qualT);
+    LB.percentileRails('ps-qual', s.qual);
+
+    railRows('ps-cond', s.cond);
+    LB.rangeBar('ps-range', { w: 260, rowH: 23, labelW: 62, books: s.books });
+
+    setText('ps-contrib-m', s.contribM);
+    LB.contributionBars('ps-contrib', { w: 258, rowH: 22, labelW: 104, rows: s.contrib });
+
+    railRows('ps-ctx', s.ctx);
+
+    // ---- the honest count -----------------------------------------------
+    var n = s.strip.length + s.windows.length * 2 + s.streak.length +
+      s.dist.length + s.roll.mean.length + s.tape.length +
+      s.gridRows.length * s.gridCols.length +
+      s.season.length * 2 + s.adv.length * 2 + s.dumbbell.length * 2 +
+      s.zone.length * 2 + s.usageRows.length * (s.usageCols.length - 1) +
+      s.logRows.length * (s.logCols.length - 2) +
+      s.oppUnitRows.length * 2 + s.h2hRows.length * 2 + s.qual.length * 2 +
+      s.cond.length + s.books.length + s.contrib.length + s.ctx.length;
+    setText('ps-count',
+      s.tab + ': ' + n + ' individual numbers on the page, across the same eighteen blocks ' +
+      'every other tab renders. Nothing is hidden, nothing is padded.');
+  }
+
+  // ---- tabs -------------------------------------------------------------
+  (function () {
+    var host = document.getElementById('sporttabs');
+    if (!host) return;
+    var btns = {};
+    ORDER.forEach(function (key) {
+      var b = el('button', 'sporttab', SPORTS[key].tab);
+      b.setAttribute('type', 'button');
+      b.addEventListener('click', function () {
+        ORDER.forEach(function (k) { btns[k].className = 'sporttab'; });
+        b.className = 'sporttab on';
+        renderSport(SPORTS[key]);
+      });
+      btns[key] = b;
+      host.appendChild(b);
+    });
+    btns.mlb.className = 'sporttab on';
+    renderSport(SPORTS.mlb);
+  })();
+
+  // ---- the two explanatory tables ---------------------------------------
+  (function () {
+    var t = document.getElementById('cov-table');
+    if (!t) return;
+    var head = ['Sport', 'Rows', 'Athletes', 'Stat keys', 'Depth this page reaches'];
+    var body = [
+      ['NFL', '226,629', '6,740', '57', 'Richest vocabulary measured. Route mix and target map are real data, not analogy.'],
+      ['CFB', '273,649', '33,868', '53', 'Same ESPN shape as NFL, plus SP+ for the opponent block.'],
+      ['MLB', '727,613', '4,003', '27', 'Most rows, mid-table vocabulary. Its extra depth comes from Statcast, a separate source.'],
+      ['NHL', '674,003', '2,972', '21', 'Goalie, strength-state and shot-location blocks all fill cleanly.'],
+      ['NBA', '279,661', '1,567', '17', 'ptsAllowedGuards/Forwards/Centers already exists - the opponent block is already built.'],
+      ['Soccer', '302,539', '5,361', '16', 'EPL + MLS combined. Shot-location and keeper blocks fill; usage mix is thinner.'],
+      ['Tennis', '271,964', '17,846', '8', 'The real constraint. Its page here is fed by match structure, not the game-log JSONB.'],
+      ['Golf', 'separate schema', '-', '-', 'Not in this table at all. Own tables, own blocks, already partly built.']
+    ];
+    var tr = document.createElement('tr');
+    head.forEach(function (h) { var th = document.createElement('th'); th.textContent = h; tr.appendChild(th); });
+    t.appendChild(tr);
+    body.forEach(function (r) {
+      var row = document.createElement('tr');
+      r.forEach(function (c, i) {
+        var td = document.createElement('td');
+        td.textContent = c;
+        if (i === 0) td.style.fontWeight = '600';
+        if (i === 3 && c !== '-') {
+          td.style.background = seqFill(Number(c) / 57);
+          td.style.color = Number(c) / 57 > 0.55 ? '#fff' : 'inherit';
+          td.style.fontVariantNumeric = 'tabular-nums';
+        }
+        if (i === 4) td.style.color = 'var(--ink-3)';
+        row.appendChild(td);
+      });
+      t.appendChild(row);
+    });
+  })();
+
+  (function () {
+    var t = document.getElementById('role-table');
+    if (!t) return;
+    var head = ['Role', 'MLB', 'NFL / CFB', 'NBA', 'NHL', 'Soccer', 'Tennis', 'Golf'];
+    var body = [
+      ['Opponent unit', 'Opposing starter', 'Defence vs position', 'Defence vs guards', 'Opposing goalie', 'Keeper & back line', 'Opponent profile', 'The field'],
+      ['Usage mix', 'Pitch mix', 'Route mix', 'Shot-zone mix', 'Shot-type mix', 'Shot-type mix', 'Serve mix', 'Approach distance'],
+      ['Spatial grid', 'Strike zone', 'Target map', 'Shot chart', 'Shot location', 'Shot location', 'Serve placement', 'Proximity by lie'],
+      ['Binary split', 'vs LHP / RHP', 'man / zone', 'top / bottom D', 'PP / EV', 'home / away', 'hard / clay', 'par 5 / par 4'],
+      ['Conditions', 'Park, wind', 'Roof, wind, surface', 'Rest, travel', 'Rest, opp starts', 'Pitch, weather', 'Surface, speed', 'Wind, greens'],
+      ['Career H2H', 'vs this pitcher', 'vs this defence', 'vs this team', 'vs this goalie', 'vs this club', 'vs this opponent', 'at this course']
+    ];
+    var tr = document.createElement('tr');
+    head.forEach(function (h) { var th = document.createElement('th'); th.textContent = h; tr.appendChild(th); });
+    t.appendChild(tr);
+    body.forEach(function (r) {
+      var row = document.createElement('tr');
+      r.forEach(function (c, i) {
+        var td = document.createElement('td');
+        td.textContent = c;
+        if (i === 0) { td.style.fontWeight = '600'; td.style.whiteSpace = 'nowrap'; }
+        else td.style.color = 'var(--ink-3)';
+        row.appendChild(td);
+      });
+      t.appendChild(row);
+    });
+  })();
+
+})();
+</script>
