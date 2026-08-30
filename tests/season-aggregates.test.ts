@@ -191,3 +191,64 @@ test('the season-ranks route caches, and validates its sport before keying', () 
   assert.match(src, /SEASON_AGGREGATE_SPECS\[sport\]/, 'sport must be validated against the spec registry before it reaches a cache key');
   assert.match(src, /cacheKey: `season-ranks:/, 'cache key must stay namespaced — snapshot_cache is one flat table');
 });
+
+// ---------------------------------------------------------------------------
+// Adapter wiring — the half that protects against a silent regression
+// ---------------------------------------------------------------------------
+
+/**
+ * Verified live on 2026-08-30 by resolving each app-side team list against a
+ * real rollup: **NHL 32/32 and NBA 30/30 team ids joined**, and tennis 60/60
+ * sampled `prop_odds` subject ids resolved once the `espn:tennis:` prefix was
+ * stripped. That join is the whole feature — if the id spaces ever diverge,
+ * every lookup returns `undefined`, all three blocks go back to their empty
+ * states, and nothing throws.
+ */
+test('the sports that had no ranks now consume the season rollup', () => {
+  const GAME_ADAPTERS = ['nba', 'nhl', 'tennis'] as const;
+  for (const sport of GAME_ADAPTERS) {
+    const src = readFileSync(`lib/sports/${sport}/adapters/gameDetailAdapter.ts`, 'utf8');
+    assert.match(src, /seasonRanks/, `${sport}'s game adapter no longer reads seasonRanks`);
+    assert.match(
+      src,
+      /toStatComparisonGroups\(/,
+      `${sport}'s game adapter no longer builds statComparison from the rollup — the block goes blank again.`,
+    );
+    assert.doesNotMatch(
+      src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''),
+      /statComparison: null/,
+      `${sport}'s game adapter hardcodes statComparison back to null.`,
+    );
+  }
+  for (const sport of ['nba', 'nhl'] as const) {
+    const src = readFileSync(`lib/sports/${sport}/adapters/teamDetailAdapter.ts`, 'utf8');
+    assert.match(src, /groupStats\(/, `${sport}'s team adapter no longer builds statGroups from the rollup`);
+    assert.doesNotMatch(
+      src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''),
+      /statGroups: \[\]/,
+      `${sport}'s team adapter emits an empty statGroups again — this is what made its team page the thinnest in the app.`,
+    );
+  }
+});
+
+test('tennis strips the espn prefix before looking an athlete up', () => {
+  // `meta.playerN.subjectId` is `espn:tennis:{competitorId}`; the table stores
+  // the bare id. Without the strip every lookup misses and the block is blank —
+  // silently, since a miss is just `undefined`.
+  const src = readFileSync('lib/sports/tennis/adapters/gameDetailAdapter.ts', 'utf8');
+  assert.match(src, /replace\(\/\^espn:tennis:\/, ''\)/, 'tennis no longer strips the espn:tennis: prefix before the aggregate lookup');
+});
+
+test('both shared components fetch season ranks unconditionally', () => {
+  // Rules of hooks, and CLAUDE.md's sport-adapter section 3: every sport's
+  // hooks run on every render; the adapter receives their results as data.
+  for (const file of ['components/GameDetail.tsx', 'components/TeamDetail.tsx']) {
+    const src = readFileSync(file, 'utf8');
+    assert.match(src, /useSeasonRanks\(seasonRankSport\(/, `${file} does not call useSeasonRanks`);
+    assert.doesNotMatch(
+      src,
+      /sport === '\w+' \? useSeasonRanks/,
+      `${file} calls useSeasonRanks conditionally, which breaks the rules of hooks.`,
+    );
+  }
+});

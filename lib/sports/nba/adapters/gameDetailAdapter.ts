@@ -13,10 +13,13 @@ import type { PickCandidate } from '@/lib/core/types';
 import type { NbaGameSummary } from '@/lib/sports/nba/espn';
 import type { NbaTeamDetailApiResponse } from './teamDetailAdapter';
 import { toNbaRecentResultRows } from './teamDetailAdapter';
-import type { GameDetailData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
+import type { GameDetailData, StatComparisonData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
 import type { TeamStandingRow } from '@/components/useAllTeams';
 import type { UnifiedGameLine } from '@/lib/odds/types';
+import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregates';
+import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregates';
+import { NBA_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 
 function toOptionalRecord(games: ReturnType<typeof toNbaRecentResultRows>): { wins: number; losses: number } | null {
   if (games.length === 0) return null;
@@ -45,10 +48,16 @@ export interface NbaGameDetailInput {
   /** The real per-game bookmaker grid (odds-architecture rebuild Phase 6)
    * — see CfbGameDetailInput's identical field for the full reasoning. */
   gameLine: UnifiedGameLine | null;
+  /**
+   * League-wide season aggregates and ranks (`useSeasonRanks`), Phase 6.2b.
+   * `null` while loading or if the rollup fails — `statComparison` then stays
+   * null and the block renders its honest empty state, exactly as before.
+   */
+  seasonRanks: SeasonAggregateResult | null;
 }
 
 export function toGameDetailData(input: NbaGameDetailInput): GameDetailData {
-  const { meta, home, away, candidates, standingsTeams, gameLine } = input;
+  const { meta, home, away, candidates, standingsTeams, gameLine, seasonRanks } = input;
   const game = meta.game;
   if (!game) throw new Error('toGameDetailData called without a resolved game — caller must gate on meta.game first');
 
@@ -135,13 +144,29 @@ export function toGameDetailData(input: NbaGameDetailInput): GameDetailData {
     loading: false,
   };
 
+  // Stat comparison — Phase 6.2b. Was hardcoded `null` ("no league-wide
+  // season-stats index for NBA"), which was true until the season
+  // rollup existed. Both sides come from one league-wide fetch keyed by team
+  // id, so a game costs one request, not two.
+  //
+  // The ids line up because `player_game_history.team_id` for NBA is the
+  // same id space this adapter already uses for logos and hrefs — verified
+  // against the table's real distinct values, not assumed.
+  const awayAgg = away ? seasonRanks?.byEntity[String(away.team.teamId)] : null;
+  const homeAgg = home ? seasonRanks?.byEntity[String(home.team.teamId)] : null;
+  const statComparisonGroups = toStatComparisonGroups(NBA_SEASON_SPEC, awayAgg, homeAgg);
+  const statComparison: StatComparisonData | null =
+    statComparisonGroups.length > 0
+      ? { awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, ranked: statComparisonGroups }
+      : null;
+
   return {
     gameId: game.gameId,
     gameLine,
     hero,
     matchup: null,
     records,
-    statComparison: null,
+    statComparison,
     lastFive,
     rankings: null,
     unitGrades: null,

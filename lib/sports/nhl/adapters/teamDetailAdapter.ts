@@ -18,6 +18,9 @@ import { categoriseByLine, entryValue, fixedWindow, openWindow, subsetWindow, OV
 import { directionMark } from '@/components/MarketLabel';
 import type { PickCandidate } from '@/lib/core/types';
 import type { TeamStandingRow } from '@/components/useAllTeams';
+import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregates';
+import { groupStats } from '@/lib/sports/shared/seasonAggregates';
+import { NHL_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 import type { GameRow, RecentResultRow, RosterPlayer, TeamDetailData, TeamDistributionChartData, TeamNextGame, TeamWindowedForm } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import type { NhlTeam, NhlGame } from '@/lib/sports/nhl/nhle';
 import { buildNhlMoneylineCandidate, buildNhlGameTotalCandidate, buildNhlGoalsForCandidate } from '@/lib/sports/nhl/teamFormCandidates';
@@ -81,10 +84,17 @@ export interface NhlTeamDetailInput {
   data: NhlTeamDetailApiResponse;
   scope: NhlTeamDetailScope;
   standingsTeams: TeamStandingRow[];
+  /**
+   * League-wide season aggregates and ranks (`useSeasonRanks`), Phase 6.1b.
+   * Fills `statGroups` (this adapter emitted `[]`, making NHL's team page
+   * the thinnest in the app) and `unitGrades`. `null` while loading — both
+   * fall back to their empty states.
+   */
+  seasonRanks: SeasonAggregateResult | null;
 }
 
 export function toTeamDetailData(input: NhlTeamDetailInput): TeamDetailData {
-  const { data, scope, standingsTeams } = input;
+  const { data, scope, standingsTeams, seasonRanks } = input;
   const { team, roster, nextGame, recentGames, logoByAbbr } = data;
 
   const rosterPlayers: RosterPlayer[] = roster.map((p) => {
@@ -180,6 +190,15 @@ export function toTeamDetailData(input: NhlTeamDetailInput): TeamDetailData {
     ? { history: scoped, line, wantOver, refreshKey: `${active.dimension}|${line}|${scope.opponentOnly}|${scope.venue}|${scope.lastN}|${team.teamId}`, logoFor: distributionLogoFor }
     : null;
 
+  // Season stat groups and unit grades — Phase 6.1b. Both were empty here:
+  // `statGroups: []` and `unitGrades: null`, because NHL had no league-wide
+  // ranked season aggregate to build them from. One rollup now serves both, so
+  // the ranks behind a stat row and the ranks behind a unit's grade cannot
+  // disagree.
+  const ownAggregate = seasonRanks?.byEntity[String(team.teamId)] ?? null;
+  const seasonStatGroups = ownAggregate ? groupStats(NHL_SEASON_SPEC, ownAggregate.stats) : [];
+  const ownUnitGrades = ownAggregate && ownAggregate.units.length > 0 ? ownAggregate.units : null;
+
   return {
     team: { teamId: Number(team.teamId), name: team.name, abbr: team.abbreviation, logoUrl: team.logoUrl ?? '' },
     record: ownStanding
@@ -192,13 +211,13 @@ export function toTeamDetailData(input: NhlTeamDetailInput): TeamDetailData {
     // Phase 6.1 — `grades` (nine hardcoded NFL unit names) became `unitGrades`.
     // Still null here: this sport has no league-wide ranked team aggregate to
     // grade from yet. 6.1b adds one for NBA and NHL; see this file's header.
-    unitGrades: null,
+    unitGrades: ownUnitGrades,
     candidates,
     games: gameRows,
     windows,
     distribution,
     matchup: null,
-    statGroups: [],
+    statGroups: seasonStatGroups,
     roster: rosterPlayers,
     rosterSortByStats: false,
     rosterPageSize: 24,

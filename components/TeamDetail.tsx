@@ -28,6 +28,7 @@ import { PitchingMatchupCard } from './PitchingMatchupCard';
 import { BatterPitcherMatchupCard } from './BatterPitcherMatchupCard';
 import { NflPlayerVsDefenseCard } from './NflPlayerVsDefenseCard';
 import { GradeChip } from './GradeChip';
+import { useSeasonRanks, seasonRankSport } from './useSeasonRanks';
 import type { UnifiedLinesResult } from '@/lib/odds/types';
 import {
   toTeamDetailData as toMlbTeamDetailData,
@@ -79,6 +80,11 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
   const cfbTeam = useCfbTeamDetail(sport === 'cfb' ? teamId : undefined);
   const nbaTeam = useNbaTeamDetail(sport === 'nba' ? teamId : undefined);
   const nhlTeam = useNhlTeamDetail(sport === 'nhl' ? teamId : undefined);
+  // Phase 6.1b — league-wide season ranks, the source for both `statGroups`
+  // and `unitGrades` on the sports that had neither. Called unconditionally
+  // like every hook above it (rules of hooks); `seasonRankSport` returns
+  // undefined for a sport with no spec and the hook idles without fetching.
+  const seasonRanks = useSeasonRanks(seasonRankSport(sport, league));
 
   const [market, setMarket] = useState<string | undefined>(undefined);
   const [lineOffset, setLineOffset] = useState(0);
@@ -142,11 +148,11 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
             : null
           : sport === 'nba'
             ? nbaTeam.data
-              ? toNbaTeamDetailData({ data: nbaTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams })
+              ? toNbaTeamDetailData({ data: nbaTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data })
               : null
             : sport === 'nhl'
               ? nhlTeam.data
-                ? toNhlTeamDetailData({ data: nhlTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams })
+                ? toNhlTeamDetailData({ data: nhlTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data })
                 : null
               : roster.data
               ? toMlbTeamDetailData({

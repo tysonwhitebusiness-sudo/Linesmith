@@ -13,6 +13,7 @@ import { BookmakerBreakdown } from './GameLine';
 import { GamePropLineShoppingRail } from './PropOddsPanel';
 import type { MoneylineResult } from '@/lib/sports/mlb/gameModel';
 import { mergeUnitRows, findUnit, type UnitGrade } from '@/lib/sports/shared/unitGrades';
+import { useSeasonRanks, seasonRankSport } from './useSeasonRanks';
 import { toPicksPanelGame, toRecentResultRow, toInjuryRow, type RecentResultRow, type InjuryRow } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
 import { useGameContext, type GameContextState } from './useGameContext';
 import { useBullpen, type BullpenState } from './useBullpen';
@@ -1981,6 +1982,12 @@ export function GameDetail({
   // Real division rank for the Records section (2026-08-24) — always
   // called (rules of hooks), mostly idle for other sports, same convention
   // every other per-sport hook on this page already follows.
+  // Phase 6.2b — league-wide season ranks for the sports whose stat
+  // comparison had no rank source. Called unconditionally like every other
+  // per-sport hook here (rules of hooks, CLAUDE.md sport-adapter section 3);
+  // `seasonRankSport` returns undefined for a sport with no spec and the hook
+  // idles without fetching.
+  const seasonRanks = useSeasonRanks(seasonRankSport(sport, league));
   const nbaStandings = useAllNbaTeams(sport === 'nba');
   const nhlStandings = useAllNhlTeams(sport === 'nhl');
   const tennisGame = useTennisGameDetail(sport === 'tennis' ? (league as TennisTour | undefined) : undefined, sport === 'tennis' ? gameId : undefined);
@@ -2039,6 +2046,7 @@ export function GameDetail({
                   candidates,
                   standingsTeams: nbaStandings.teams,
                   gameLine: gameOddsBookLine,
+                  seasonRanks: seasonRanks.data,
                 })
               : null
             : sport === 'nhl'
@@ -2050,6 +2058,7 @@ export function GameDetail({
                     candidates,
                     standingsTeams: nhlStandings.teams,
                     gameLine: gameOddsBookLine,
+                    seasonRanks: seasonRanks.data,
                   })
                 : null
               : sport === 'tennis'
@@ -2063,6 +2072,7 @@ export function GameDetail({
                       player2H2h: tennisGame.player2H2h,
                       candidates,
                       gameLine: gameOddsBookLine,
+                                          seasonRanks: seasonRanks.data,
                     })
                   : null
               : mlbGame

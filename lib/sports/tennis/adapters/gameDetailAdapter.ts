@@ -23,9 +23,12 @@
 
 import type { PickCandidate, TennisTour } from '@/lib/core/types';
 import type { EspnTennisMatchDetail } from '@/lib/sports/multiSport/espnTennis';
-import type { GameDetailData, RecentResultRow } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
+import type { GameDetailData, RecentResultRow, StatComparisonData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
 import type { UnifiedGameLine } from '@/lib/odds/types';
+import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregates';
+import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregates';
+import { TENNIS_ATP_SEASON_SPEC, TENNIS_WTA_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 
 interface RecentResultRowWire {
   gameId: string;
@@ -63,10 +66,15 @@ export interface TennisGameDetailInput {
    * long as the writer (harvester_scrape.py's tennis matching) resolves
    * against the same ESPN-sourced game identity this page does. */
   gameLine: UnifiedGameLine | null;
+  /**
+   * League-wide season aggregates and ranks for this tour (`useSeasonRanks`),
+   * Phase 6.2b. `null` while loading or if the rollup fails.
+   */
+  seasonRanks: SeasonAggregateResult | null;
 }
 
 export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
-  const { tour, meta, player1Recent, player2Recent, player1H2h, player2H2h, candidates, gameLine } = input;
+  const { tour, meta, player1Recent, player2Recent, player1H2h, player2H2h, candidates, gameLine, seasonRanks } = input;
 
   const p1Recent = toRows(player1Recent);
   const p2Recent = toRows(player2Recent);
@@ -126,13 +134,37 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
     loading: false,
   };
 
+  // Stat comparison — Phase 6.2b. Was hardcoded `null` ("no grading model or
+  // opponent-conditional stat source for tennis"). Tennis compares two
+  // PLAYERS rather than two teams, which is why the season rollup groups this
+  // sport by `athlete_id`: all 271,964 tennis rows carry a null `team_id`, so
+  // a team rollup would return nothing at all.
+  //
+  // `meta.playerN.subjectId` is `espn:tennis:{competitorId}` while the table
+  // stores the bare competitor id, so the prefix comes off before the lookup.
+  // Both sides are the same ESPN field — verified against real data, 60 of 60
+  // sampled `prop_odds` tennis subject ids resolve to a real `athlete_id`.
+  //
+  // The pool is singles only; doubles pairings are excluded upstream (see
+  // `excludeCompoundIds`), so a doubles match simply finds no aggregate and
+  // renders the empty state rather than ranking a pair against singles players.
+  const tennisSpec = tour === 'wta' ? TENNIS_WTA_SEASON_SPEC : TENNIS_ATP_SEASON_SPEC;
+  const bareId = (subjectId: string) => subjectId.replace(/^espn:tennis:/, '');
+  const p2Agg = seasonRanks?.byEntity[bareId(meta.player2.subjectId)] ?? null;
+  const p1Agg = seasonRanks?.byEntity[bareId(meta.player1.subjectId)] ?? null;
+  const tennisStatGroups = toStatComparisonGroups(tennisSpec, p2Agg, p1Agg);
+  const statComparison: StatComparisonData | null =
+    tennisStatGroups.length > 0
+      ? { awayAbbr: meta.player2.name, homeAbbr: meta.player1.name, ranked: tennisStatGroups }
+      : null;
+
   return {
     gameId: meta.matchId,
     gameLine,
     hero,
     matchup: null,
     records,
-    statComparison: null,
+    statComparison,
     lastFive,
     rankings: null,
     unitGrades: null,
