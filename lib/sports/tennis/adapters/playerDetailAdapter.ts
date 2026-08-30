@@ -21,6 +21,7 @@ import type { PropOddsRow } from '@/lib/db/client';
 import type { ChipDef, GamelogRow, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toPredicateBinarySplit } from '@/lib/sports/shared/predicateSplit';
+import type { OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
 
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
   return (entry.raw ?? {}) as Record<string, unknown>;
@@ -90,6 +91,54 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
         ? { status: 'insufficient', available: 0, required: 1 }
         : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => (rawOf(e).opponentName as string | undefined) === opponentAbbr, { minimum: 1 }),
   };
+
+  // ---- Role 1 | opponentUnit: the player across the net.
+  // Tennis has no defensive UNIT, so the role's own table calls this "opponent
+  // profile" -- and the opponent is themselves a subject on the same slate,
+  // with their own candidates and their own real history. So this reads THEIR
+  // history through the same windowed-stat machinery, rather than parsing the
+  // formatted `statusLine` the snapshot also carries ("42-41 · 4.8
+  // aces/match"). A display string reparsed into numbers is a silent break
+  // waiting for someone to change the format.
+  //
+  // READ FROM `snapshot.candidates`, NOT the `candidates` input. That input is
+  // scoped to THIS player -- `app/tennis/[tour]/player/[playerId]/page.tsx`
+  // passes `effectiveCandidates`, which is `mine` or a synthetic fallback --
+  // so filtering it for the opponent can never match anything. Written that
+  // way first, and it rendered nothing on a real page for a match whose
+  // opponent demonstrably had two candidates with history. The snapshot
+  // carries the whole slate (395 candidates on the tour today).
+  const slate = (snapshot?.candidates ?? []) as PickCandidate[];
+  const opponentCandidates = opponentAbbr
+    ? slate.filter((c) => c.subjectName === opponentAbbr && c.subjectId !== active.subjectId)
+    : [];
+  const opponentStats = opponentCandidates
+    .filter((c) => c.history.length > 0)
+    .map((c) => {
+      const values = c.history.map((e) => Number(e.result)).filter((v) => Number.isFinite(v));
+      return values.length > 0
+        ? {
+            key: c.dimension,
+            label: c.dimensionLabel ?? c.dimension,
+            value: values.reduce((a, b) => a + b, 0) / values.length,
+            decimals: 1,
+            // Per-match average, so the sample is the matches behind it.
+            sub: `n=${values.length}`,
+          }
+        : null;
+    })
+    .filter((x): x is NonNullable<typeof x> => x != null);
+
+  const opponentUnit: OpponentUnitRole | null =
+    opponentAbbr && opponentStats.length > 0
+      ? {
+          title: 'Opponent',
+          name: opponentAbbr,
+          subtitle: 'Averages',
+          stats: opponentStats,
+          emptyMessage: 'No match history on record for this opponent.',
+        }
+      : null;
 
   // ---- Role 4 | binarySplit: hard vs clay.
   // `raw.surface` comes from `lib/sports/tennis/surfaces.ts`, a hand-curated
@@ -184,6 +233,7 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
       : null;
 
   return {
+    opponentUnit,
     binarySplit,
     careerH2H,
     subject: {

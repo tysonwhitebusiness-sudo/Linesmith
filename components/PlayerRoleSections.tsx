@@ -84,6 +84,12 @@ function OpponentUnitSection({ role }: { role: OpponentUnitRole }) {
           // because their heat comes from the value.
           sub: s.sub,
         }))}
+        // Only when SOMETHING here is ranked. StatTable prints an em-dash for
+        // an unranked row, which is right when its neighbours do have ranks --
+        // and wrong when nothing in the table does, where it becomes a column
+        // of dashes beside every number. Golf's field size and tennis's
+        // opponent averages are not ranked against anything.
+        showRank={role.stats.some((s) => s.rank != null && s.poolSize != null)}
         emptyMessage={role.emptyMessage}
       />
     </RoleCard>
