@@ -42,6 +42,7 @@ const DB_MODULES = [
   // this one value-imports `pgAll`.
   '@/lib/sports/nhl/shotProfile',
   '@/lib/sports/nba/shotProfile',
+  '@/lib/sports/nfl/targetMap',
   // 6.16: `components/useLineHistory.ts` takes its result type from here. That
   // is an `import type` and erased — a VALUE import would bundle `pg`.
   '@/lib/odds/props/lineHistory',

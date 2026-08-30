@@ -1012,6 +1012,48 @@ async def write_nba_shot_events(rows: list) -> int:
     return written
 
 
+async def write_nfl_target_events(rows: list) -> int:
+    """Phase 6.8 — one row per NFL pass attempt with a receiver.
+
+    Idempotent on UNIQUE (game_id, play_id). 13 columns, 2,000 rows per
+    statement = 26,000 parameters, under the wire protocol's signed-16-bit
+    ceiling of 32,767.
+    """
+    if not rows:
+        return 0
+    pool = await get_pool()
+    cols = 13
+    max_rows_per_stmt = 2000
+    written = 0
+    async with pool.acquire(timeout=60.0) as conn:
+        async with conn.transaction():
+            for start in range(0, len(rows), max_rows_per_stmt):
+                chunk = rows[start:start + max_rows_per_stmt]
+                params: list = []
+                tuples: list[str] = []
+                for i, r in enumerate(chunk):
+                    b = i * cols
+                    tuples.append("(" + ", ".join(f"${b+n}" for n in range(1, cols + 1)) + ")")
+                    params.extend([
+                        r.game_id, r.play_id, r.season, r.week,
+                        r.receiver_id, r.passer_id, r.team,
+                        r.air_yards, r.pass_location, r.pass_length, r.yards_after_catch,
+                        r.complete_pass, r.touchdown,
+                    ])
+                returned = await conn.fetch(
+                    "INSERT INTO nfl_target_events "
+                    "(game_id, play_id, season, week, "
+                    " receiver_id, passer_id, team, "
+                    " air_yards, pass_location, pass_length, yards_after_catch, "
+                    " complete_pass, touchdown) "
+                    "VALUES " + ", ".join(tuples) +
+                    " ON CONFLICT (game_id, play_id) DO NOTHING RETURNING 1",
+                    *params,
+                )
+                written += len(returned)
+    return written
+
+
 async def nba_shot_events_done_games(season: int) -> set[int]:
     """Every game_id already ingested for one season — the resume primitive.
 

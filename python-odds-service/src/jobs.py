@@ -40,6 +40,7 @@ import db
 import statcast_pitches
 import nhl_shots
 import nba_shots
+import nfl_pbp
 import gameday
 from game_context import load_mlb_games, load_sport_games, load_tennis_games
 from job_runner import run_provider_specs
@@ -1303,6 +1304,20 @@ async def job_nba_shots(yield_fn=None) -> dict:
         return await nba_shots.ingest_recent(client, days=3, yield_fn=yield_fn)
 
 
+async def job_nfl_pbp(yield_fn=None) -> dict:
+    """Phase 6.8 — keep `nfl_target_events` current for the running season.
+
+    DAILY, not hourly, and that is deliberate. nflverse has no incremental
+    endpoint: it republishes the whole ~99 MB season file. So unlike every
+    other ingester here, this job's cost does NOT fall as it catches up — a
+    quiet day costs exactly as much as a busy one. Twelve pulls a day for a
+    handful of new plays would be ninety-nine megabytes each time, against a
+    free release we do not own, for a write that is idempotent anyway.
+    """
+    async with httpx.AsyncClient() as client:
+        return await nfl_pbp.ingest_recent(client, yield_fn=yield_fn)
+
+
 JOB_REGISTRY = [
     # Phase 0.2 — the one job whose absence let the database reach 3x the
     # Free tier ceiling. Daily is the right cadence: every rule's window is
@@ -1370,6 +1385,9 @@ JOB_REGISTRY = [
     ("ingestNhlShotsJob", job_nhl_shots, 60 * 60),
     # Task 6.7 — NBA shot coordinates. Hourly, same reasoning as the NHL job.
     ("ingestNbaShotsJob", job_nba_shots, 60 * 60),
+    # Task 6.8 — nflverse play-by-play. DAILY: see the job's own docstring on
+    # why this one cannot be hourly like the other ingesters.
+    ("ingestNflPbpJob", job_nfl_pbp, 24 * 60 * 60),
     ("maintainMlbParkFactorsJob", job_maintain_mlb_park_factors, 6 * 60 * 60),
     ("maintainMlbHrMatchupJob", job_maintain_mlb_hr_matchup, 6 * 60 * 60),
     # Moved from "inside every live golf page request" (adapter.ts) to a
