@@ -15,12 +15,12 @@ export interface GolfShotProfileState {
  * `AbortController`, and an `enabled` gate expressed as an undefined argument
  * rather than a branch on the hook call itself (rules of hooks).
  */
-export function useGolfShotProfile(playerId?: string): GolfShotProfileState {
+export function useGolfShotProfile(playerName?: string): GolfShotProfileState {
   const [shots, setShots] = useState<GolfShotRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!playerId) {
+    if (!playerName) {
       setShots([]);
       setLoading(false);
       return;
@@ -31,7 +31,7 @@ export function useGolfShotProfile(playerId?: string): GolfShotProfileState {
 
     void (async () => {
       try {
-        const res = await fetch(`/api/golf/shot-profile?playerId=${playerId}`, { signal: controller.signal });
+        const res = await fetch(`/api/golf/shot-profile?name=${encodeURIComponent(playerName)}`, { signal: controller.signal });
         if (res.ok) {
           const body = (await res.json()) as { shots?: GolfShotRow[] };
           setShots(Array.isArray(body?.shots) ? body.shots : []);
@@ -44,7 +44,7 @@ export function useGolfShotProfile(playerId?: string): GolfShotProfileState {
     })();
 
     return () => controller.abort();
-  }, [playerId]);
+  }, [playerName]);
 
   return { shots, loading };
 }

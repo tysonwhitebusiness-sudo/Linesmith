@@ -1088,11 +1088,13 @@ export function PlayerDetail({
     Number.isInteger(nflHistorySeason) && nflHistorySeason > 1998 ? nflHistorySeason : undefined,
   );
 
-  // Golf's shot-by-shot profile (6.13). `subjectId` is the bare ESPN athlete
-  // id for golf, so no prefix strip is needed -- unlike NBA/NHL. Left
-  // undefined for the other seven sports, so the hook never fires for them.
+  // Golf's shot-by-shot profile (6.13). BY NAME, not by id: the seed stores
+  // PGA Tour's player id and `subjectId` is ESPN's, and both are five-digit
+  // numbers -- so an id lookup returns nothing and looks like a golfer with no
+  // data. Measured on the live slate: 0 of 30 matched by id, 21 of 30 by name.
+  // Left undefined for the other seven sports, so the hook never fires there.
   const golfShotProfile = useGolfShotProfile(
-    active?.sport === 'golf' && /^[0-9]{1,12}$/.test(String(active.subjectId)) ? String(active.subjectId) : undefined,
+    active?.sport === 'golf' ? active.subjectName : undefined,
   );
 
   const lineHistoryMarketKey = active ? (candidateDimensionToMarketKey(active.dimension) ?? undefined) : undefined;
