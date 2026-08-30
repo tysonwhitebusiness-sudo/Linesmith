@@ -3388,32 +3388,68 @@ async def write_game_odds_book_lines(rows: list[GameOddsBookLineInput]) -> None:
     if not rows:
         return
     fetched_at = datetime.now(timezone.utc)
+    rejected: list[str] = []
     pool = await get_pool()
     async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
             for r in rows:
-                await conn.execute(
-                    """
-                    INSERT INTO game_odds_book_lines
-                        (sport, game_id, market, side, bookmaker, source, point, american_odds, decimal_odds, fetched_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                    ON CONFLICT (sport, game_id, market, side, bookmaker, source) DO UPDATE SET
-                        point = excluded.point,
-                        american_odds = excluded.american_odds,
-                        decimal_odds = excluded.decimal_odds,
-                        fetched_at = excluded.fetched_at
-                    """,
-                    _GENERIC_SPORT_KEY.get(r.sport, r.sport),
-                    r.game_id,
-                    r.market,
-                    r.side,
-                    canonical_bookmaker(r.bookmaker),
-                    r.source,
-                    r.point,
-                    r.american_odds,
-                    r.decimal_odds,
-                    fetched_at,
-                )
+                # ONE BAD ROW MUST NOT COST THE WHOLE CYCLE.
+                #
+                # Task 5.4 added CHECK constraints to this table to "make
+                # impossible data loud" — correctly: a `total 5.5 / under -225`
+                # is an alternate-scope market (a team total or a first-five
+                # innings line) landing in the game-total slot, since a real
+                # 9-inning under 5.5 prices nowhere near -225. But nothing was
+                # ever taught to HANDLE that loudness. Every row here shares one
+                # transaction, so a single mislabeled price from one book
+                # aborted the entire insert and raised out to the job: measured
+                # live on 2026-08-30, `refreshTier1` failed outright on one
+                # draftkings row and wrote none of the rest.
+                #
+                # A SAVEPOINT per row confines the failure to the row. The
+                # constraint stays the single source of truth for what is
+                # plausible — deliberately NOT re-implemented in Python, which
+                # would be one more pair of bands to drift apart.
+                try:
+                    async with conn.transaction():
+                        await conn.execute(
+                            """
+                            INSERT INTO game_odds_book_lines
+                                (sport, game_id, market, side, bookmaker, source, point, american_odds, decimal_odds, fetched_at)
+                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                            ON CONFLICT (sport, game_id, market, side, bookmaker, source) DO UPDATE SET
+                                point = excluded.point,
+                                american_odds = excluded.american_odds,
+                                decimal_odds = excluded.decimal_odds,
+                                fetched_at = excluded.fetched_at
+                            """,
+                            _GENERIC_SPORT_KEY.get(r.sport, r.sport),
+                            r.game_id,
+                            r.market,
+                            r.side,
+                            canonical_bookmaker(r.bookmaker),
+                            r.source,
+                            r.point,
+                            r.american_odds,
+                            r.decimal_odds,
+                            fetched_at,
+                        )
+                except asyncpg.CheckViolationError as e:
+                    # Rejected, not silently dropped: the count and a sample go
+                    # to the log so a provider that starts emitting a different
+                    # proposition entirely is visible rather than merely quiet.
+                    rejected.append(
+                        f"{r.sport}/{r.game_id}/{r.market}/{r.side}/{r.bookmaker}"
+                        f" point={r.point} odds={r.american_odds} ({type(e).__name__})"
+                    )
+
+    if rejected:
+        print(
+            f"[db] write_game_odds_book_lines rejected {len(rejected)} of {len(rows)} rows"
+            f" as implausible: {'; '.join(rejected[:5])}"
+            + (f" (+{len(rejected) - 5} more)" if len(rejected) > 5 else ""),
+            flush=True,
+        )
 
 
 # ---------------------------------------------------------------------------
