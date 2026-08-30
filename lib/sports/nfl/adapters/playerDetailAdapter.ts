@@ -363,7 +363,6 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
       values[col.key] = v == null || v === '' ? null : (v as number | string);
     }
     return {
-      careerH2H,
       key: `${entry.period}-${index}`,
       periodLabel: season && week ? `${season} Week ${week}` : entry.periodLabel ?? `Game #${entry.period}`,
       opponentLogoUrl: nflTeamLogoUrl(oppAbbr),
@@ -455,6 +454,14 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   return {
     conditions,
     spatialGrid,
+    // ---- Role 6 | careerH2H (6.13). It was BUILT in ef93a7a and returned from
+    // the wrong object: the variable landed inside the per-row gamelog literal
+    // a few dozen lines above, where nothing reads it, so `data.careerH2H` was
+    // undefined and the block never rendered for NFL. `tsc` passed it — a
+    // gamelog row is a structural type and an extra property on an object
+    // literal assigned through a mapped callback is not excess-property
+    // checked. Caught by counting which sports actually fill each role.
+    careerH2H,
     subject: {
       subjectId: active.subjectId,
       name: active.subjectName,

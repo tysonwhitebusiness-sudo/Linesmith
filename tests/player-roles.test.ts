@@ -126,3 +126,46 @@ test('toRoleStat carries rank through and leaves flags off when unset', () => {
   assert.equal(flagged.lowerIsBetter, true);
   assert.equal(flagged.sub, 'n=12');
 });
+
+// ---------------------------------------------------------------------------
+// Which sports actually FILL each role — 6.13's real completion state.
+// ---------------------------------------------------------------------------
+
+test('a role that is built is returned from the adapter, not from a nested literal', () => {
+  // NFL's `careerH2H` was built in ef93a7a and returned from the wrong object:
+  // the variable landed inside the per-row gamelog literal, where nothing reads
+  // it, so `data.careerH2H` was undefined and the block never rendered.
+  //
+  // `tsc` passes that. A gamelog row is a structural type, and an extra
+  // property on an object literal returned through a mapped callback is not
+  // excess-property checked. Nothing else would have caught it either — the
+  // page simply showed one card fewer than the task claimed.
+  const ROLES = ['opponentUnit', 'usageMix', 'spatialGrid', 'binarySplit', 'conditions', 'careerH2H'];
+  const offences: string[] = [];
+  let checked = 0;
+
+  for (const sport of ['mlb', 'nfl', 'cfb', 'nba', 'nhl', 'soccer', 'tennis', 'golf']) {
+    const path = `lib/sports/${sport}/adapters/playerDetailAdapter.ts`;
+    let src: string;
+    try {
+      // CRLF on this machine: an unnormalised `$` lands before the \r.
+      src = readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
+    } catch {
+      continue; // not every sport has every adapter
+    }
+    for (const role of ROLES) {
+      // Built = the adapter computes a value under that name at function scope.
+      const built = new RegExp(`^  const ${role}[ =:]`, 'm').test(src);
+      if (!built) continue;
+      // Returned = it appears at the adapter's own return indentation.
+      const returned = new RegExp(`^    ${role},$`, 'm').test(src);
+      checked += 1;
+      if (!returned) {
+        offences.push(`${sport}: builds \`${role}\` but never returns it at top level`);
+      }
+    }
+  }
+
+  assert.ok(checked > 0, 'no built roles found in any adapter -- this test is checking nothing');
+  assert.deepEqual(offences, [], `\n\n${offences.join('\n')}\n`);
+});
