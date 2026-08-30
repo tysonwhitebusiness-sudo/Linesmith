@@ -29,6 +29,8 @@
  */
 
 import type { HistoryEntry, LiveState, PickCandidate, SplitEvidence, SportSnapshot, SubjectSummary } from '@/lib/core/types';
+import { resolveVenueWeather } from '@/lib/sports/shared/venueWeather';
+import type { WeatherContext } from '@/lib/core/types';
 import { candidateKey } from '@/lib/core/types';
 import { subsetWindow } from '@/lib/core/windowedStat';
 import { loadGameContextsForSport } from '@/lib/odds/props/multiSportGameContext';
@@ -221,6 +223,21 @@ export async function buildNflSnapshot(): Promise<SportSnapshot> {
   // route, or a future scheduled job) has computed it at least once.
   const playerRankings = await getCachedNflPlayerRankings();
 
+  // Venue weather, resolved once per game rather than per candidate (6.10).
+  // In parallel like MLB's own weather pass — these are independent network
+  // calls and doing them in series would add a round trip per game.
+  //
+  // `resolveVenueWeather` returns null for an indoor venue AND for a venue
+  // whose roof state ESPN did not report; see its header for why those are
+  // deliberately the same answer.
+  const weatherByGame = new Map<string, WeatherContext>();
+  await Promise.all(
+    games.map(async (g) => {
+      const w = await resolveVenueWeather(g.venue, g.gameDate);
+      if (w) weatherByGame.set(g.gameId, w);
+    }),
+  );
+
   for (const game of games) {
     // Real book prices, keyed by subjectId|marketKey — an overlay, not a gate.
     const rowsByKey = new Map<string, PropOddsRow[]>();
@@ -357,6 +374,10 @@ export async function buildNflSnapshot(): Promise<SportSnapshot> {
           sampleSize: history.length,
           liveState: liveStateFor(game.gameDate),
           odds: realPrice ? { americanOdds: String(realPrice.americanOdds), source: 'odds-api', capturedAt: realPrice.fetchedAt } : undefined,
+          // Populates the `conditions` role (6.10). Absent for an indoor venue
+          // — five of sixteen NFL stadiums on a live scoreboard are domed —
+          // and the adapter renders no card rather than an empty one.
+          context: weatherByGame.has(game.gameId) ? { weather: weatherByGame.get(game.gameId) } : undefined,
         });
 
         if (!subjectsMap.has(rosterEntry.subjectId)) {

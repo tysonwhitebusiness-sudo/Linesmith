@@ -190,6 +190,7 @@ export async function loadGameContextsForSport(sport: Exclude<SportKey, 'mlb'>):
         ...homeRoster.map((a) => ({ subjectId: a.subjectId, subjectName: a.fullName, teamAbbr: g.homeAbbr, position: a.positionAbbr, headshotUrl: a.headshotUrl })),
         ...awayRoster.map((a) => ({ subjectId: a.subjectId, subjectName: a.fullName, teamAbbr: g.awayAbbr, position: a.positionAbbr, headshotUrl: a.headshotUrl })),
       ],
+      venue: g.venue,
     });
   }
 

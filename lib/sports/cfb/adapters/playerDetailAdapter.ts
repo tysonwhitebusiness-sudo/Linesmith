@@ -15,6 +15,7 @@
  */
 
 import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
+import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import type { PropOddsRow } from '@/lib/db/client';
@@ -158,6 +159,13 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
 
   const measured = categoriseByLine(scoped, line);
   const wanted = wantOver ? OVER : UNDER;
+
+  // ---- Role 5 | conditions: venue weather (6.10).
+  // Present only for a venue ESPN reported as explicitly outdoor - an
+  // indoor stadium or an unreported roof yields no reading at all, so the
+  // card simply does not render. Shared builder, not an inline copy of
+  // MLB's: a temperature is a temperature.
+  const conditions = toConditionsRole({ weather: active.context?.weather ?? null });
 
   // ---- Role 4 | binarySplit: home/away, off the `raw.isHome` this sport's
   // history already carries but exposes through no filter chip.
@@ -308,6 +316,7 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
       : null;
 
   return {
+    conditions,
     binarySplit,
     subject: {
       subjectId: active.subjectId,

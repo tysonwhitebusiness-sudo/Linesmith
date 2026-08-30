@@ -18,6 +18,7 @@
  */
 
 import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
+import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
 import {
   categoriseByLine,
   fixedWindow,
@@ -240,6 +241,13 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   const measured = categoriseByLine(scoped, line);
   const wanted = wantOver ? OVER : UNDER;
 
+  // ---- Role 5 | conditions: venue weather (6.10).
+  // Present only for a venue ESPN reported as explicitly outdoor - an
+  // indoor stadium or an unreported roof yields no reading at all, so the
+  // card simply does not render. Shared builder, not an inline copy of
+  // MLB's: a temperature is a temperature.
+  const conditions = toConditionsRole({ weather: active.context?.weather ?? null });
+
   const windows: WindowedStat5 = {
     l5: fixedWindow(measured, wanted, 5),
     l10: fixedWindow(measured, wanted, 10),
@@ -382,6 +390,7 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
       : null;
 
   return {
+    conditions,
     subject: {
       subjectId: active.subjectId,
       name: active.subjectName,

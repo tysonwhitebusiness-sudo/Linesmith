@@ -16,6 +16,8 @@
  */
 
 import type { HistoryEntry, PickCandidate, SportSnapshot, SubjectSummary } from '@/lib/core/types';
+import { resolveVenueWeather } from '@/lib/sports/shared/venueWeather';
+import type { WeatherContext } from '@/lib/core/types';
 import { subsetWindow, shortDate } from '@/lib/core/windowedStat';
 import { normalizeName } from '@/lib/odds/screenshotImport';
 import { loadGameContextsForSport } from '@/lib/odds/props/multiSportGameContext';
@@ -273,6 +275,21 @@ export async function buildCfbSnapshot(): Promise<SportSnapshot> {
   const subjectsMap = new Map<string, SubjectSummary>();
   const warnings: string[] = [];
 
+  // Venue weather, resolved once per game rather than per candidate (6.10).
+  // In parallel like MLB's own weather pass — these are independent network
+  // calls and doing them in series would add a round trip per game.
+  //
+  // `resolveVenueWeather` returns null for an indoor venue AND for a venue
+  // whose roof state ESPN did not report; see its header for why those are
+  // deliberately the same answer.
+  const weatherByGame = new Map<string, WeatherContext>();
+  await Promise.all(
+    games.map(async (g) => {
+      const w = await resolveVenueWeather(g.venue, g.gameDate);
+      if (w) weatherByGame.set(g.gameId, w);
+    }),
+  );
+
   for (const game of games) {
     // Real players, browsable regardless of whether a sportsbook has
     // posted a real prop for this game yet — see tennis/adapter.ts's
@@ -345,6 +362,10 @@ export async function buildCfbSnapshot(): Promise<SportSnapshot> {
         sampleSize: 0,
         liveState: liveStateFor(game.gameDate),
         odds: { americanOdds: String(best.americanOdds), source: 'odds-api', capturedAt: best.fetchedAt },
+        // Populates the `conditions` role (6.10). Absent for an indoor venue or
+        // one whose roof ESPN did not report — the adapter renders no card
+        // rather than an empty one.
+        context: weatherByGame.has(game.gameId) ? { weather: weatherByGame.get(game.gameId) } : undefined,
       });
 
       if (!subjectsMap.has(subjectId)) {

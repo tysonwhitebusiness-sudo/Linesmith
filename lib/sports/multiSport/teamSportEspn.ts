@@ -31,6 +31,30 @@ export interface EspnTeamSportGame {
   status?: { completed: boolean; state: 'pre' | 'in' | 'post'; shortDetail: string };
   homeScore?: number;
   awayScore?: number;
+  /**
+   * Where the game is played, when ESPN reports it.
+   *
+   * `indoor` IS NOT UNIVERSALLY PRESENT, and its absence is not `false`.
+   * Measured across live scoreboards: NFL carries it on 16 of 16 events (5 of
+   * them genuinely domed — Ford Field, Lucas Oil, Reliant, Allegiant, U.S.
+   * Bank) and CFB on 25 of 25, but **both MLS and EPL omit the field
+   * entirely**. MLS really does have enclosed venues, so treating a missing
+   * flag as outdoors would report wind and rain for a game played under a
+   * roof. Consumers must require `indoor === false`, never `!indoor`.
+   *
+   * ESPN gives no coordinates for any sport here — only a city — so weather
+   * has to be geocoded and comes back flagged `approximate`.
+   */
+  venue?: EspnVenue;
+}
+
+export interface EspnVenue {
+  fullName?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  /** `undefined` means UNKNOWN. See `EspnTeamSportGame.venue`. */
+  indoor?: boolean;
 }
 
 interface RawCompetitor {
@@ -76,6 +100,11 @@ export async function fetchScoreboard(espnSport: string, espnLeague: string, day
       competitions?: Array<{
         competitors?: RawCompetitor[];
         status?: { type?: { completed?: boolean; state?: string; shortDetail?: string } };
+        venue?: {
+          fullName?: string;
+          address?: { city?: string; state?: string; country?: string };
+          indoor?: boolean;
+        };
       }>;
     }>;
   };
@@ -102,6 +131,18 @@ export async function fetchScoreboard(espnSport: string, espnLeague: string, day
           : undefined,
       homeScore: home.score != null ? Number(home.score) : undefined,
       awayScore: away.score != null ? Number(away.score) : undefined,
+      // `indoor` is copied through as-is, including `undefined`. Coercing it to
+      // false here would erase the difference between "open air" and "ESPN did
+      // not say", which is the whole reason the field is optional.
+      venue: comp?.venue
+        ? {
+            fullName: comp.venue.fullName,
+            city: comp.venue.address?.city,
+            state: comp.venue.address?.state,
+            country: comp.venue.address?.country,
+            indoor: comp.venue.indoor,
+          }
+        : undefined,
     });
   }
   return games;

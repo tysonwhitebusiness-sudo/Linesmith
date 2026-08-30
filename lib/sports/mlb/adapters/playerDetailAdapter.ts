@@ -43,11 +43,11 @@ import {
 import { directionMark } from '@/components/MarketLabel';
 import {
   toRoleStat,
-  type ConditionFact,
   type ConditionsRole,
   type OpponentUnitRole,
 } from '@/lib/sports/shared/playerRoles';
 import { toSpatialGridRole, toUsageMixRole } from './pitchRoles';
+import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
 import type { PitchProfile } from '@/lib/sports/mlb/pitchProfileShapes';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import type { GameDetailGame, StatKeyDef } from '@/components/GameDetail';
@@ -824,25 +824,17 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   // absent: MLB's `park_factors` are computed per venue, not per game, and
   // attaching an unverified multiplier to a specific matchup would be exactly
   // the fabrication the role's own doc comment forbids.
-  const roleWeather = active.context?.weather ?? null;
-  const conditionFacts: ConditionFact[] = [];
-  if (todaysGame?.game?.firstPitch) {
-    conditionFacts.push({ key: 'firstPitch', label: 'First pitch', value: String(todaysGame.game.firstPitch) });
-  }
-  if (roleWeather?.tempF != null) {
-    conditionFacts.push({ key: 'temp', label: 'Temperature', value: `${roleWeather.tempF}°F` });
-  }
-  if (roleWeather?.windMph != null) {
-    conditionFacts.push({
-      key: 'wind',
-      label: 'Wind',
-      value: `${roleWeather.windMph} mph${roleWeather.windDir ? ` ${roleWeather.windDir}` : ''}`,
-    });
-  }
-  const conditions: ConditionsRole | null =
-    conditionFacts.length > 0
-      ? { title: 'Conditions', facts: conditionFacts, emptyMessage: 'No venue conditions available.' }
-      : null;
+  //
+  // The facts themselves are built by the SHARED `toConditionsRole` (6.10) —
+  // this block used to compose them inline, and NFL and CFB were about to grow
+  // a copy each. First pitch is the one genuinely MLB-specific part, so it goes
+  // in as an extra fact rather than as a branch inside the builder.
+  const conditions: ConditionsRole | null = toConditionsRole({
+    weather: active.context?.weather ?? null,
+    extraFacts: todaysGame?.game?.firstPitch
+      ? [{ key: 'firstPitch', label: 'First pitch', value: String(todaysGame.game.firstPitch) }]
+      : [],
+  });
 
   // ---- 6.6's two roles, now that `mlb_pitch_events` supplies them ----
   // Both builders are pure and live in `pitchRoles.ts` so the two measured

@@ -125,6 +125,15 @@ export interface GameLookupContext {
   gameDate: string;
   /** Canonical roster to resolve provider player names against — see entityResolution.ts. */
   roster: RosterEntry[];
+  /**
+   * Where the game is played, when the source reports it — carried so a
+   * snapshot builder can resolve weather without re-fetching the scoreboard.
+   *
+   * ESPN team sports only. **`indoor === undefined` means UNKNOWN, not open
+   * air**: NFL and CFB carry the flag on every event, soccer omits it entirely,
+   * and MLS really does have enclosed venues. See `venueWeather.ts`.
+   */
+  venue?: import('@/lib/sports/multiSport/teamSportEspn').EspnVenue;
 }
 
 export interface RosterEntry {
