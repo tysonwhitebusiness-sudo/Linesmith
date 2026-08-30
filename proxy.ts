@@ -88,7 +88,8 @@ const buckets = new Map<string, Bucket>();
 const MAX_BUCKETS = 20_000;
 
 /** Requests allowed per window, by route class. */
-const LIMITS: { test: (p: string) => boolean; limit: number; windowMs: number; label: string }[] = [
+/** Exported so `tests/price-freshness` can classify real page-load paths through the REAL rules rather than re-reading this file as text. */
+export const LIMITS: { test: (p: string) => boolean; limit: number; windowMs: number; label: string }[] = [
   // Model fitting and backfills: expensive, operator-only, and never needed
   // in bursts. 2/hour.
   { test: (p) => /\/api\/props\/(fit-|.*backfill|elo-backfill|ingest-|park-factors)/.test(p), limit: 2, windowMs: 60 * 60_000, label: 'fit/backfill' },
@@ -99,7 +100,32 @@ const LIMITS: { test: (p: string) => boolean; limit: number; windowMs: number; l
   // alongside `lines`, `calibration` and `user-sportsbook`; four of a
   // ten-per-minute budget meant two page views a minute started returning 429,
   // which is exactly what it did the first time the chart was opened.
-  { test: (p) => p.startsWith('/api/props/line-history') || p.startsWith('/api/props/lines'), limit: 60, windowMs: 60_000, label: 'page-read' },
+  //
+  // THE LIST BELOW WAS INCOMPLETE AND THE COMMENT ABOVE PROVED IT. It already
+  // named `calibration` and `user-sportsbook` as page-load reads, and the
+  // predicate matched neither -- so both fell through to the 10/minute
+  // provider budget they are described here as not belonging in. Measured
+  // 2026-08-30 by opening one MLB game page: four routes returned 429 on a
+  // single load (`odds/lines`, `odds/game-line`, `props/user-sportsbook`,
+  // `props/calibration`), and blocks that depend on them rendered without
+  // their data.
+  //
+  // Every path here was checked before being added: all are cached reads of
+  // Postgres tables the Python worker keeps fresh, none calls a vendor, and
+  // none writes -- `/api/odds/lines`'s unauthenticated-GET write was the Phase
+  // 2 finding, and it is gone.
+  {
+    test: (p) =>
+      p.startsWith('/api/props/line-history') ||
+      p.startsWith('/api/props/lines') ||
+      p.startsWith('/api/props/user-sportsbook') ||
+      p.startsWith('/api/props/calibration') ||
+      p.startsWith('/api/odds/lines') ||
+      p.startsWith('/api/odds/game-line'),
+    limit: 60,
+    windowMs: 60_000,
+    label: 'page-read',
+  },
   // Routes that can reach an external provider or run real computation.
   { test: (p) => p.startsWith('/api/odds/') || p.startsWith('/api/props/') || p.startsWith('/api/diagnostics/'), limit: 10, windowMs: 60_000, label: 'provider' },
   // Everything else under /api.

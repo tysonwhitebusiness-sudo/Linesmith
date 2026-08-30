@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { LIMITS } from '../proxy';
 import { STALE_AFTER_MS, coverageLine, priceCoverage, relativeAge } from '../lib/odds/priceFreshness';
 
 /**
@@ -147,4 +148,38 @@ test('page-load reads are not rate-limited as if they hit a vendor', () => {
     proxy.indexOf("label: 'page-read'") < proxy.indexOf("label: 'provider'"),
     'the page-read class must be tested BEFORE the provider class or it is dead',
   );
+});
+
+test('every route a page load fires is classed page-read, not provider', () => {
+  // THE PREVIOUS VERSION OF THIS TEST ONLY CHECKED `line-history` WAS PRESENT,
+  // and the rule shipped with four more routes missing. Measured 2026-08-30 by
+  // opening one MLB game page: `odds/lines`, `odds/game-line`,
+  // `props/user-sportsbook` and `props/calibration` all returned 429 on a
+  // single load, and the blocks depending on them rendered without their data.
+  //
+  // The comment above that rule already NAMED calibration and user-sportsbook
+  // as page-load reads. The predicate matched neither. A guard whose prose is
+  // right and whose code is incomplete passes every test that reads the prose.
+  //
+  // This classifies through the REAL exported rules rather than regexing the
+  // file, so a path added to the comment but not the predicate still fails.
+  const classify = (path: string) => LIMITS.find((r) => r.test(path))?.label;
+
+  const pageLoadReads = [
+    '/api/props/line-history?gameId=1&subjectId=2',
+    '/api/props/lines?sport=mlb',
+    '/api/props/user-sportsbook',
+    '/api/props/calibration?sport=mlb',
+    '/api/odds/lines?sport=mlb',
+    '/api/odds/game-line?sport=mlb&gameId=1',
+  ];
+  for (const path of pageLoadReads) {
+    assert.equal(classify(path), 'page-read', `${path} is fetched on page load and must not sit in the provider budget`);
+  }
+
+  // The provider class must still exist and still catch things that DO reach a
+  // vendor — widening page-read must not have swallowed everything.
+  assert.equal(classify('/api/props/scan-player'), 'provider');
+  assert.equal(classify('/api/diagnostics/anything'), 'provider');
+  assert.equal(classify('/api/props/fit-weights'), 'fit/backfill');
 });
