@@ -39,6 +39,7 @@ import config
 import db
 import statcast_pitches
 import nhl_shots
+import nba_shots
 import gameday
 from game_context import load_mlb_games, load_sport_games, load_tennis_games
 from job_runner import run_provider_specs
@@ -1287,6 +1288,21 @@ async def job_nhl_shots(yield_fn=None) -> dict:
         return await nhl_shots.ingest_recent(client, days=3, yield_fn=yield_fn)
 
 
+async def job_nba_shots(yield_fn=None) -> dict:
+    """Phase 6.7 — keep `nba_shot_events` current with the last few days.
+
+    NOT the backfill; that is an operator-run date range
+    (`nba_shots.py backfill 2024-10-22 2025-04-13`), ~1,300 games of per-game
+    requests.
+
+    Same 3-day lookback and same out-of-season behaviour as `ingestNhlShotsJob`:
+    the NBA runs Oct-Jun, so from July to September this reports zero written
+    and that is correct, not stuck.
+    """
+    async with httpx.AsyncClient() as client:
+        return await nba_shots.ingest_recent(client, days=3, yield_fn=yield_fn)
+
+
 JOB_REGISTRY = [
     # Phase 0.2 — the one job whose absence let the database reach 3x the
     # Free tier ceiling. Daily is the right cadence: every rule's window is
@@ -1352,6 +1368,8 @@ JOB_REGISTRY = [
     # means a tick that finds nothing costs 32 schedule lookups. Not more often
     # than that, because this is a free public API we do not own.
     ("ingestNhlShotsJob", job_nhl_shots, 60 * 60),
+    # Task 6.7 — NBA shot coordinates. Hourly, same reasoning as the NHL job.
+    ("ingestNbaShotsJob", job_nba_shots, 60 * 60),
     ("maintainMlbParkFactorsJob", job_maintain_mlb_park_factors, 6 * 60 * 60),
     ("maintainMlbHrMatchupJob", job_maintain_mlb_hr_matchup, 6 * 60 * 60),
     # Moved from "inside every live golf page request" (adapter.ts) to a

@@ -968,6 +968,63 @@ async def write_nhl_shot_events(rows: list) -> int:
     return written
 
 
+async def write_nba_shot_events(rows: list) -> int:
+    """Phase 6.7 — one row per NBA field-goal attempt, from ESPN's summary.
+
+    Idempotent on UNIQUE (game_id, event_idx). `RETURNING 1` gives the true
+    inserted count so a backfill's progress numbers stay honest.
+
+    Chunked for the wire protocol's signed-16-bit parameter count: 12 columns,
+    2,000 rows = 24,000 parameters, under 32,767 with margin.
+    """
+    if not rows:
+        return 0
+    pool = await get_pool()
+    cols = 12
+    max_rows_per_stmt = 2000
+    written = 0
+    async with pool.acquire(timeout=60.0) as conn:
+        async with conn.transaction():
+            for start in range(0, len(rows), max_rows_per_stmt):
+                chunk = rows[start:start + max_rows_per_stmt]
+                params: list = []
+                tuples: list[str] = []
+                for i, r in enumerate(chunk):
+                    b = i * cols
+                    tuples.append("(" + ", ".join(f"${b+n}" for n in range(1, cols + 1)) + ")")
+                    params.extend([
+                        r.game_id, r.event_idx, _to_date(r.game_date), r.season,
+                        r.shooter_id, r.team_id,
+                        r.shot_type, r.point_value, r.made,
+                        r.period, r.x_coord, r.y_coord,
+                    ])
+                returned = await conn.fetch(
+                    "INSERT INTO nba_shot_events "
+                    "(game_id, event_idx, game_date, season, "
+                    " shooter_id, team_id, "
+                    " shot_type, point_value, made, "
+                    " period, x_coord, y_coord) "
+                    "VALUES " + ", ".join(tuples) +
+                    " ON CONFLICT (game_id, event_idx) DO NOTHING RETURNING 1",
+                    *params,
+                )
+                written += len(returned)
+    return written
+
+
+async def nba_shot_events_done_games(season: int) -> set[int]:
+    """Every game_id already ingested for one season — the resume primitive.
+
+    Skips the FETCH, not just the write: the whole cost of this backfill is one
+    network call per game.
+    """
+    pool = await get_pool()
+    rows = await pool.fetch(
+        "SELECT DISTINCT game_id FROM nba_shot_events WHERE season = $1", season
+    )
+    return {int(r["game_id"]) for r in rows}
+
+
 async def nhl_shot_events_done_games(season: str) -> set[int]:
     """Every game_id already ingested for one season — the resume primitive.
 

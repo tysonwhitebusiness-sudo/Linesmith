@@ -11,6 +11,7 @@ import { useLiveGame } from './useLiveGame';
 import { useTeamStatcast } from './useTeamStatcast';
 import { useMlbPitchProfile } from './useMlbPitchProfile';
 import { useNhlShotProfile } from './useNhlShotProfile';
+import { useNbaShotProfile } from './useNbaShotProfile';
 import { useLineHistory } from './useLineHistory';
 import { candidateCategoryToSide, candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import { LineMovementCard } from './LineMovementCard';
@@ -1051,6 +1052,17 @@ export function PlayerDetail({
       const now = new Date();
       const start = now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
       return `${start}${start + 1}`;
+    })(),
+  );
+
+  // NBA's shot chart (6.7). ESPN athlete ids, same `sport:kind:` prefix strip
+  // as NHL. ESPN calls the 2024-25 season 2025, and it starts in October.
+  const nbaShooterNumeric = active?.sport === 'nba' ? Number(String(active.subjectId).replace(/^.*:/, '')) : NaN;
+  const nbaShotProfile = useNbaShotProfile(
+    Number.isInteger(nbaShooterNumeric) && nbaShooterNumeric > 0 ? nbaShooterNumeric : undefined,
+    (() => {
+      const now = new Date();
+      return now.getUTCMonth() >= 9 ? now.getUTCFullYear() + 1 : now.getUTCFullYear();
     })(),
   );
 

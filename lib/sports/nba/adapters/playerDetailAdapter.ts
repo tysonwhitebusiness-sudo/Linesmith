@@ -16,6 +16,9 @@ import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
 import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import type { NbaTeamDefenseAllowed } from '@/lib/sports/nba/teamDefenseAllowed';
+import { MIDDOT, fmt } from '@/components/charts/tokens';
+import type { SpatialGridRole } from '@/lib/sports/shared/playerRoles';
+import type { NbaShotProfile } from '@/lib/sports/nba/shotProfileShapes';
 
 // Local copy rather than importing lib/sports/nba/adapter.ts's version —
 // that module pulls in server-only DB/pg code (lib/db/client.ts), which
@@ -73,10 +76,12 @@ export interface NbaPlayerDetailInput {
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
   /** League-wide defense-allowed leaderboard, see the identical field on `CfbPlayerDetailInput` for the full reasoning. */
   teamDefenseAllowed?: NbaTeamDefenseAllowed[];
+  /** `useNbaShotProfile(...)`'s result — the shot chart (6.7). Structural, not an import of the hook's type. */
+  shotProfile?: { profile: NbaShotProfile | null; loading: boolean };
 }
 
 export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, snapshot, scope, propOdds, teamDefenseAllowed = [] } = input;
+  const { candidates, market, snapshot, scope, propOdds, teamDefenseAllowed = [] , shotProfile: shotProfileState } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -106,6 +111,37 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
 
   const measured = categoriseByLine(scoped, line);
   const wanted = wantOver ? OVER : UNDER;
+
+  // ---- Role 3 | spatialGrid: the shot chart (6.7).
+  // Fed by `useNbaShotProfile` -> `/api/nba/shot-profile` -> `nba_shot_events`,
+  // which Python's `ingestNbaShotsJob` writes. Distance BANDS rather than a
+  // court grid: basketball is described by distance (at the rim, the paint,
+  // mid-range, beyond the arc), and the bands are anchored on the basket at
+  // (25, 0) in feet -- an origin confirmed against the three-point line, not
+  // assumed. See `shotProfileShapes.ts`.
+  const nbaShots = shotProfileState?.profile ?? null;
+  const spatialGrid: SpatialGridRole | null = nbaShots
+    ? {
+        title: 'Shot profile',
+        cells: nbaShots.cells.map((row) =>
+          row.map((c) => ({ key: c.key, value: c.attempts > 0 ? c.share : null, sampleSize: c.attempts })),
+        ),
+        rowLabels: nbaShots.rowLabels,
+        columnLabels: nbaShots.columnLabels,
+        format: fmt.pct0,
+        unit: 'of attempts',
+        caption: [
+          `${nbaShots.totalAttempts.toLocaleString()} located attempts`,
+          `${Math.round((nbaShots.totalMade / Math.max(1, nbaShots.totalAttempts)) * 100)}% made`,
+          // An unlocated attempt is a real shot whose position ESPN did not
+          // record. Saying so beats letting the shares imply full coverage.
+          nbaShots.unlocated > 0 ? `${nbaShots.unlocated} unlocated` : null,
+        ]
+          .filter(Boolean)
+          .join(` ${MIDDOT} `),
+        emptyMessage: 'No shot locations on record.',
+      }
+    : null;
 
   // ---- Role 4 | binarySplit: home/away, off the `raw.isHome` this sport's
   // history already carries but exposes through no filter chip.
@@ -253,6 +289,8 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
       : null;
 
   return {
+
+    spatialGrid,
     binarySplit,
     subject: {
       subjectId: active.subjectId,
