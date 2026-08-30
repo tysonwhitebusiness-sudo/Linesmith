@@ -46,21 +46,38 @@ opening the page.
    the same reason `SpatialGridRole.format` is required.
 3. **A non-empty side is not a balanced one.** See §2b.
 
-### 2b. AN UPSTREAM DEFECT FOUND AND *NOT* FIXED — needs its own task
+### 2b. THE SOCCER HOME/AWAY DEFECT — FOUND AND **FIXED** (`33e7389`)
 
-`lib/sports/soccer/understat.ts:306` sets `isHome` by comparing each historical
-fixture's home team against the player's **CURRENT** team title. Every match at
-a previous club therefore records as **away**, and the longer the career the
-worse it gets. Callum Wilson's page rendered "Home 0 (n=5) vs Away 28 (n=267)".
+`/getPlayerData/{id}` returns a player's WHOLE CAREER across every club.
+`understat.ts` resolved venue as `m.h_team === understatTeamTitle`, comparing
+every historical fixture against the player's **current** club — so every match
+before their latest transfer recorded as away, and `opponent` resolved to the
+player's own former club.
 
-`toVenueBinarySplit` requires the smaller side to hold **25% of the total** —
-teams play a balanced schedule, so this is a statement about fixtures, not a
-fudge factor. On the live EPL slate **that guard suppresses 289 of 593**
-otherwise-eligible candidates. Nearly half.
+Fixed by reading `groups.season` out of the same response (no extra request):
+one entry per season carrying that season's club, as a **SET** because a
+mid-season transfer lists two (Salah's 2014 is Fiorentina and Chelsea; a single
+value left 16 of his 399 matches unresolved).
 
-**The guard stops it reaching one card. It does not fix the data**, and the
-same `isHome` already drives every soccer gamelog's "vs/@" label, which is
-still wrong for those players. Worth a real task.
+Measured live, through the app, before and after:
+
+| | before | after |
+|---|---|---|
+| home share across the EPL slate | 3,228 / 13,013 = **19.9%** | 46,047 / 45,992 = **50.0%** |
+| unresolved | — | **0** |
+| split cards rendering | 304 of 593 eligible | **671 of 671** |
+
+Callum Wilson's page, which is what exposed it: was "Home 0 (n=5) vs Away 28
+(n=267)", now "Home 29% (n=139) vs Away 27% (n=133)".
+
+`isHome` and `opponent` are now **three-valued** — a match whose season resolves
+to neither side is `null`, and `null` is not `false`. The cache key is bumped to
+`:v2:` because every stored entry held the old wrong values; 374 stale v1 rows
+remain in `snapshot_cache` and are harmless but could be swept.
+
+**The `toVenueBinarySplit` 25% ratio guard stays.** It is not redundant now that
+the data is right — it is the thing that would catch the NEXT resolution
+failure, in this provider or another. It suppresses nothing on live EPL today.
 
 ### `opponentUnit` for NFL/NBA/NHL/CFB would be a DUPLICATE, not a fill
 
@@ -91,10 +108,10 @@ It re-fetches windows already stored (writes are no-ops), so restarting costs
 time, not data. Progress:
 `SELECT season, count(*), max(game_date) FROM mlb_pitch_events GROUP BY 1;`
 
-**THE WORKER STILL HAS NOT BEEN REDEPLOYED — this needs the operator.** Render
-is `autoDeploy: no`, so `ingestStatcastPitchesJob` is not running and 2026 is
-frozen at 4,420 rows. That thinness is exactly why MLB's new pitch cards show
-n=1 and n=2 samples today. Deploy call is in §6.
+**THE WORKER IS DEPLOYED** — `dep-da9rh44s728c73ek4tig`, status `live` on
+commit `ec2f465`, confirmed. `ingestStatcastPitchesJob` runs hourly and keeps
+the last 3 days current, so 2026 fills on its own from here regardless of the
+historical sweep.
 
 ## 3. What is running
 
@@ -109,9 +126,9 @@ a ~20-minute cycle — each shows as two PIDs and that is one process, see §1.
 
 ## 4. Next actions
 
-1. **Deploy the Render worker — operator call, and it is now the binding
-   constraint on 6.6.** 2026 is frozen at 4,420 pitch rows, which is why the new
-   MLB cards show n=1 and n=2. §6 has the call.
+1. ~~Deploy the Render worker~~ — **DONE**, `dep-da9rh44s728c73ek4tig` is live
+   on `ec2f465`. `ingestStatcastPitchesJob` runs hourly now, so 2026 fills on
+   its own and MLB's pitch cards stop showing n=1 samples.
 2. **Finish 6.13.** MLB fills 4 of 6 roles; CFB/NBA/NHL/soccer fill 1. Still
    open, with what was measured about each:
    - `conditions` for the outdoor sports — NOT yet checked whether NFL/CFB/
@@ -122,9 +139,7 @@ a ~20-minute cycle — each shows as two PIDs and that is one process, see §1.
      card adds anything before building a second view of one number.
    - `usageMix`/`spatialGrid` for other sports need 6.7/6.9 sourcing first.
    - **Do NOT build `opponentUnit` for NFL/NBA/NHL/CFB** — §1 explains why.
-3. **The Understat `isHome` defect** (§2b). Real, upstream, affects gamelog
-   labels too, and suppressing half the EPL split cards is a symptom not a fix.
-4. **6.14 Team Detail and 6.15 Game Detail** — untouched.
+3. **6.14 Team Detail and 6.15 Game Detail** — untouched.
 5. **6.7 NBA/NHL shots, 6.8 nflverse PBP, 6.9 Understat shots, 6.10 generalise
    weather/park/sims.** All four endpoints confirmed reachable.
 6. **6.16 needs a route built first** — `/api/props/line-history` does not
@@ -281,10 +296,8 @@ schedule).
    `GolfScheduleView.tsx:1244` and `TennisScheduleView.tsx:529` omit the game
    id from the key, and a player can have candidates for two games. One-line
    fix, still unowned.
-2. **The Understat `isHome` defect** — `understat.ts:306` compares each
-   historical fixture's home team against the player's CURRENT team title, so
-   matches at a previous club record as away. Suppressed on the split card;
-   still wrong on every soccer gamelog's "vs/@" label. See §2b.
+2. **374 stale `soccer:understat:player:` v1 rows in `snapshot_cache`** —
+   harmless (the live key is `:v2:`) but never swept. See §2b.
 3. **`opponentUnit` is filled for MLB only**, and correctly so — for
    NFL/NBA/NHL/CFB it would duplicate `matchupExplorer` (§1). Soccer, tennis
    and golf have no source for it at all yet.

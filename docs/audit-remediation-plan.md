@@ -3860,17 +3860,29 @@ the page.**
    rendered "Home 0 (n=5) vs Away 28 (n=267)" straight through a both-sides-
    non-empty check.
 
-**UPSTREAM DEFECT FOUND, NOT FIXED — needs its own task.**
-`lib/sports/soccer/understat.ts:306` sets `isHome` by comparing each historical
-fixture's home team against the player's **current** team title, so every match
-at a previous club records as away. On the live EPL slate the 25% ratio guard
-suppresses **289 of 593** otherwise-eligible candidates. The earlier "13 of 303
-subjects have zero home entries" reading badly understated it. The guard stops
-it reaching a page; it does not fix the data, and the same `isHome` already
-drives every gamelog's "vs/@" label.
+**UPSTREAM DEFECT FOUND AND FIXED (`33e7389`).**
+`lib/sports/soccer/understat.ts` set `isHome` by comparing each historical
+fixture's home team against the player's **current** team title —
+`/getPlayerData/{id}` returns a whole career across every club, so every match
+before the latest transfer recorded as away and `opponent` resolved to the
+player's own former club. Fixed by reading `groups.season` from the same
+response (no extra request), as a SET per season because a mid-season transfer
+lists two clubs. Measured live through the app: home share **19.9% -> 50.0%**,
+zero unresolved, and split cards **304 of 593 -> 671 of 671**. Wilson's page
+went from "Home 0 (n=5) vs Away 28 (n=267)" to "Home 29% (n=139) vs Away 27%
+(n=133)". `isHome`/`opponent` are now three-valued; cache key bumped to `:v2:`.
 
-**STILL NOT DONE:** the Render worker deploy (operator call — see `CURRENT.md`
-§2), 6.7-6.10, the rest of 6.13/6.14/6.15, and Track D.
+**A MIRROR IS NOT A TEST.** The first version of `understat-venue.test.ts`
+re-implemented the resolution rule beside the code instead of importing it —
+reverting the real function failed nothing. `resolveMatchVenue` is exported and
+called directly now. A second gap surfaced the same way: the "unresolvable
+season" case used a fixture whose teams did not include the fallback club, so a
+per-season fallback passed it. Only fault injection found either.
+
+**Render worker DEPLOYED** — `dep-da9rh44s728c73ek4tig`, `live` on `ec2f465`.
+`ingestStatcastPitchesJob` runs hourly.
+
+**STILL NOT DONE:** 6.7-6.10, the rest of 6.13/6.14/6.15, and Track D.
 
 **THE PLAN'S OWN TASK TEXT WAS WRONG FOUR TIMES**, each found only by
 measuring: 6.2 ("all seven sports populate `rankings`" — only MLB and NFL do,
