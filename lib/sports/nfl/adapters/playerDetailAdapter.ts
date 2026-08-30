@@ -18,6 +18,7 @@
  */
 
 import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
+import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
 import {
   categoriseByLine,
@@ -28,7 +29,7 @@ import {
   UNDER,
   type WindowedStat,
 } from '@/lib/core/windowedStat';
-import { directionMark } from '@/components/MarketLabel';
+import { directionMark, marketText } from '@/components/MarketLabel';
 import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import { teamPrimaryColor } from '@/lib/sports/nfl/teamColors';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
@@ -260,6 +261,20 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   };
 
   // ---- Chips (NflPlayerDetail.tsx:372-380 — opponent + lastN only, no venue) ----
+  // ---- Role 6 | careerH2H (6.13). NOT a second copy of the h2h window
+  // box: what this adds is the per-MEETING history. "3 of 5" and "3 of 5,
+  // all three in 2019" are different facts and the window box cannot tell
+  // them apart. Same opponent predicate `windows.h2h` already uses.
+  const careerH2H = !!opponentAbbr
+    ? toCareerH2H({
+        measured: categoriseByLine(active.history, line),
+        wanted,
+        isVsOpponent: (e) => (rawOf(e).opponentAbbr as string | undefined) === opponentAbbr,
+        opponentLabel: `vs ${opponentAbbr}`,
+        statLabel: marketText('nfl', active.dimension, 'compact'),
+      })
+    : null;
+
   const chips: ChipDef[] = [
     ...(opponentAbbr ? [{ key: 'opponent', label: `vs ${opponentAbbr}` }] : []),
     { key: 'lastN:5', label: 'Last 5' },
@@ -301,6 +316,7 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
       values[col.key] = v == null || v === '' ? null : (v as number | string);
     }
     return {
+      careerH2H,
       key: `${entry.period}-${index}`,
       periodLabel: season && week ? `${season} Week ${week}` : entry.periodLabel ?? `Game #${entry.period}`,
       opponentLogoUrl: nflTeamLogoUrl(oppAbbr),

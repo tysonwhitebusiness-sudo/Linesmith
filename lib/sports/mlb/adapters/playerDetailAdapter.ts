@@ -29,6 +29,7 @@
  */
 
 import type { HistoryEntry, PickCandidate, SplitEvidence, Sport, SportSnapshot, WeatherContext } from '@/lib/core/types';
+import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import {
   categoriseByLine,
   entryValue,
@@ -40,7 +41,7 @@ import {
   UNDER,
   type WindowedStat,
 } from '@/lib/core/windowedStat';
-import { directionMark } from '@/components/MarketLabel';
+import { directionMark, marketText } from '@/components/MarketLabel';
 import {
   toRoleStat,
   type ConditionsRole,
@@ -588,6 +589,20 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   };
 
   // ---- Chips (PlayerDetail.tsx:1425-1446) ----
+  // ---- Role 6 | careerH2H (6.13). NOT a second copy of the h2h window
+  // box: what this adds is the per-MEETING history. "3 of 5" and "3 of 5,
+  // all three in 2019" are different facts and the window box cannot tell
+  // them apart. Same opponent predicate `windows.h2h` already uses.
+  const careerH2H = opponentId != null
+    ? toCareerH2H({
+        measured: categoriseByLine(activeHistory, line),
+        wanted,
+        isVsOpponent: (e) => (rawOf(e).opponentId as number | undefined) === opponentId,
+        opponentLabel: `vs ${opponentAbbr ?? 'opponent'}`,
+        statLabel: marketText('mlb', active.dimension, 'compact'),
+      })
+    : null;
+
   const chips: ChipDef[] = [
     { key: 'venue:all', label: 'All venues' },
     { key: 'venue:home', label: 'Home' },
@@ -883,7 +898,7 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     spatialGrid,
     // See the roles block above for why these two are still null today.
     binarySplit: null,
-    careerH2H: null,
+    careerH2H,
     liveLineTracker: {
       subjectId: active.subjectId,
       sport: 'mlb',

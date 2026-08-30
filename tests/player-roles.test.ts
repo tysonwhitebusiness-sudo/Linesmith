@@ -17,12 +17,11 @@ import { PLAYER_ROLE_KEYS, toRoleStat } from '../lib/sports/shared/playerRoles';
  *    concept the shared component should know. A `sport === 'mlb'` in the
  *    render path collapses that back into the state Phase 6 exists to fix, and
  *    the Phase 6 gate greps for exactly this.
- * 2. **A role being filled with a placeholder to look complete.** Two of
- *    MLB's six are `null` today because the sourcing has not landed — 6.6 gave
- *    `usageMix` and `spatialGrid` a real source, while a platoon split and
- *    batter-vs-pitcher history are still stored nowhere. That is correct. A
- *    fabricated mix or an invented park multiplier would render as real numbers
- *    and nothing downstream could tell.
+ * 2. **A role being filled with a placeholder to look complete.** ONE of
+ *    MLB's six is `null` today: `binarySplit`, which for MLB means vs LHP/RHP,
+ *    and this app stores no platoon split. That is correct. A fabricated mix or
+ *    an invented park multiplier would render as real numbers and nothing
+ *    downstream could tell.
  */
 
 const ROLES_SRC = readFileSync('lib/sports/shared/playerRoles.ts', 'utf8');
@@ -68,10 +67,16 @@ test('MLB returns every role key, filling only the ones it has data for', () => 
   assert.match(MLB_ADAPTER, /const conditions: ConditionsRole \| null =/, 'MLB stopped building conditions');
   assert.match(MLB_ADAPTER, /const usageMix = toUsageMixRole\(/, 'MLB stopped building usageMix');
   assert.match(MLB_ADAPTER, /const spatialGrid = toSpatialGridRole\(/, 'MLB stopped building spatialGrid');
-  // The two that still have no source must stay null rather than gain a
-  // placeholder: `binarySplit` needs a platoon split this app does not store,
-  // and `careerH2H` needs batter-vs-pitcher history it does not have either.
-  for (const key of ['binarySplit', 'careerH2H']) {
+  // `careerH2H` joined them in 6.13 — built from the SAME opponent predicate
+  // `windows.h2h` already uses, and earning its place by adding the
+  // per-meeting history a single rate cannot express. Behaviour is tested in
+  // `tests/career-h2h.test.ts`, not asserted by shape here.
+  assert.match(MLB_ADAPTER, /toCareerH2H\(\{/, 'MLB stopped building careerH2H');
+  // The one that still has no source must stay null rather than gain a
+  // placeholder: `binarySplit` for MLB is vs LHP/RHP, and this app stores no
+  // platoon split. (Home/away, which four other sports use for that role,
+  // MLB already exposes as a venue filter chip.)
+  for (const key of ['binarySplit']) {
     assert.match(
       MLB_ADAPTER,
       new RegExp(`${key}: null`),
