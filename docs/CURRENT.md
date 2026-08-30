@@ -1,8 +1,10 @@
 # CURRENT — pick up here
 
-**Phase 6 is IN PROGRESS.** Track A is done (6.1, 6.1b, 6.2, 6.2b, 6.4), 6.5 is
-diagnosed and **blocked on an operator decision**. Phases 4 and 5: complete,
-gates passed.
+**Phase 6 is IN PROGRESS. Track A is COMPLETE** (6.1, 6.1b, 6.2, 6.2b, 6.3,
+6.4). 6.5, 6.11 and 6.12 are resolved. 6.6 is built and its backfill is
+**paused partway — one command resumes it, see the section below**. Track B's
+remaining sourcing (6.7-6.10), all of Track C (the three pages) and all of
+Track D are still to do. Phases 4 and 5: complete, gates passed.
 
 **Read `docs/audit-remediation-plan.md` Phase 6 for the plan; §11 is the phase
 log and the only place a task counts as done. Trust §11 and `git log` over this
@@ -10,7 +12,8 @@ file if they disagree.**
 
 ## 1. What just happened (2026-08-30, first build session of Phase 6)
 
-Six commits, `9bf9580`..`1a1ee36`. **Tests 48 → 96, all passing. `tsc` clean.**
+Ten commits, `9bf9580`..`d8705c6`. **TS tests 48 → 103, plus 8 new Python
+tests. All passing, `tsc` clean.**
 
 | Task | State | Commit |
 |---|---|---|
@@ -18,10 +21,26 @@ Six commits, `9bf9580`..`1a1ee36`. **Tests 48 → 96, all passing. `tsc` clean.*
 | 6.2 collapse `statComparison` + season rollup | **done** | `3e4eac2` |
 | 6.1b/6.2b fill NBA/NHL/tennis blocks | **done** | `7a89e21` |
 | 6.2 correct `CLAUDE.md` §4 | **done** | `c6ff8ec` |
-| 6.5 diagnosis | **BLOCKED — needs a decision** | `0168ad2` |
+| 6.5 diagnosis | **decided: let it accrue** | `0168ad2`, `2e4f2b2` |
 | 6.4 `components/charts/` | **done** | `1a1ee36` |
+| 6.11 re-scoped, 6.12 verified and dropped | **done** | `2e4f2b2` |
+| 6.3 the six roles | **done** (types + MLB's two fillable) | `3e07317` |
+| 6.6 Statcast ingester + read path | **built; backfill paused** | `b2ebf8f`, `d8705c6` |
 
-### THE ONE THING THE OPERATOR MUST ANSWER
+**FOUR OF THE PLAN'S OWN TASK PREMISES WERE WRONG**, and each cost real work
+to discover: 6.2's ("all seven sports populate `rankings`" — only MLB and NFL
+do), 6.3's ("rename four fields" — they do not exist; it is six new ones),
+6.5's (below), and 6.16's (`/api/props/line-history` "has no frontend
+consumer" — **that route does not exist at all**). Re-measure a task's stated
+premise before building on it.
+
+### 6.5 — DECIDED. Let it accrue.
+
+Operator, 2026-08-30: **option 1**. No backfill is built and none should be.
+CFB and NFL resume in September, NBA and NHL in October, and from then the six
+sports fill on their own with real, priced, leakage-free rows. **Re-check
+`pick_history` per sport in mid-September** before assuming anything about the
+boards' Edge and Model % blocks. The reasoning, preserved:
 
 **6.5's premise was wrong and the task cannot proceed as written.** Full
 reasoning is in the plan under 6.5; the short version:
@@ -38,16 +57,44 @@ reasoning is in the plan under 6.5; the short version:
 - **It also collides with the leakage guard** (P3 H4, task 2.2), which exists
   because `player_game_history` contains the outcome once a game has started.
 
-**Three options: (1) let it accrue — zero work, real priced rows, CFB/NFL
-resume in September and NBA/NHL in October; (2) a model-only backfill needing a
-new point-in-time candidate builder; (3) buy historical prop odds.**
+**Still true for any future writer: the current model writes
+`model_source = NULL` and ten scoring readers filter on exactly
+`model_source IS NULL`.** Anything backfilling into `pick_history` needs its
+own sentinel decided before a single row is written.
 
-Whatever is chosen: **the current model writes `model_source = NULL` and ten
-scoring readers filter on exactly `model_source IS NULL`.** A backfill writing
-NULL walks straight into the published record. It needs its own sentinel
-decided before a single row is written.
+## 2. THE ONE THING TO RESUME — 6.6's Statcast backfill
 
-## 2. What is running
+`mlb_pitch_events` is live and the ingester works, but the historical sweep is
+**paused at 156,796 rows, 2024 through 2024-04-18**. Target is 2024-2026,
+roughly 2.1M rows. Resume with one command — it is **resumable by
+construction**, since the write is idempotent on
+`(game_pk, at_bat_number, pitch_number)`:
+
+```
+cd python-odds-service
+./.venv/Scripts/python.exe -u src/statcast_pitches.py backfill
+```
+
+Expect 2-3 hours. It re-fetches windows already stored (the writes are
+no-ops), so nothing is lost by restarting. Progress:
+`SELECT season, count(*), max(game_date) FROM mlb_pitch_events GROUP BY 1;`
+
+**WATCH FOR A DUPLICATE PROCESS.** Starting it produced **two** running
+processes — one from `.venv`, one from system Python 3.12 — the same
+duplication already seen with `harvester_scrape.py mlb`. Correctness is safe
+but it doubles the request rate against a free public endpoint we do not own.
+Check with `Get-CimInstance Win32_Process` and read `CommandLine`. Killing one
+killed both, so verify after.
+
+The hourly `ingestStatcastPitchesJob` keeps the last 3 days current
+regardless, so the current season stays fresh even if the sweep is never
+finished.
+
+**THE WORKER HAS NOT BEEN REDEPLOYED.** This session pushed changes to
+`python-odds-service/` and Render is `autoDeploy: no`, so
+`ingestStatcastPitchesJob` is not running yet. See §6 for the deploy call.
+
+## 3. What is running
 
 A `next dev` server from another session holds `.next/` — **a second `next dev`
 cannot start** (they fight over that directory), so in-app browser verification
@@ -59,25 +106,27 @@ markup in tests and by running real queries instead.
 `.venv`, one from system Python 3.12. Racing. Not touched; flagged for the
 operator.
 
-## 3. Next actions
+## 4. Next actions
 
-1. **Answer 6.5** (§1 above). Everything else in Phase 6 is unblocked.
-2. **6.6 — ungroup the Statcast call.** Operator approved **2024 onwards**
-   (3 seasons, ~2.1M pitch rows). **Do NOT edit `savant.ts` to do it**: that
-   call populates a render-path season-aggregate cache, and ungrouping it would
-   put 700k rows per season on a page load. Per the operator's answer to Q4,
-   **add a new Python ingester** hitting the same keyless endpoint with
-   pitch-level params, writing a new table, registered in `JOB_REGISTRY`; TS
-   reads that table. The four TS fetchers stay untouched — they own no table
-   (they all write to `snapshot_cache`), so the ownership convention does not
-   bind them today but does bind anything that creates a table.
-3. **6.13/6.14/6.15** — the three pages, now that the primitives exist.
-4. **6.11 is NOT a purchase.** NBA/NHL have zero book lines because they are
-   out of season; `refreshNbaJob` already runs and SportsGameOdds already maps
-   NBA on the provisioned account. The one real gap is **NHL missing from
-   `_SGO_LEAGUE_IDS`** — a one-line map entry to test in October.
+1. **Resume 6.6's backfill and deploy the worker** (§2).
+2. **Wire MLB's `usageMix` and `spatialGrid`.** 6.3 left both `null` for want
+   of a source; 6.6 now provides one. `lib/sports/mlb/pitchProfile.ts` and
+   `/api/mlb/pitch-profile` are built and verified against real rows — what is
+   missing is a hook plus the two role objects in
+   `mlb/adapters/playerDetailAdapter.ts`. **Show `xwobaSample`, never
+   `ballsInPlay`, beside an xwOBA**: only 22% of balls in play carry one.
+3. **Track C — the three pages** (6.13/6.14/6.15). The bulk of what remains,
+   and now unblocked: the primitives and the roles both exist.
+4. **6.7 NBA/NHL shots, 6.8 nflverse PBP, 6.9 Understat shots, 6.10 generalise
+   weather/park/sims.** All four upstream endpoints were confirmed reachable
+   this session. 6.7 and 6.9 fill `spatialGrid` for four more sports.
+5. **6.16 needs a route built first** — `/api/props/line-history` does not
+   exist. The data does: `prop_odds_history`, 613,814 rows. `SeriesChart` and
+   `Sparkline` are ready to consume it.
+6. **Track D's remainder** (6.17, 6.19, 6.21, 6.23, 6.24). 6.18 is skipped per
+   the operator; 6.20 and 6.22 wait on a real record.
 
-## 4. Things that will bite again
+## 5. Things that will bite again
 
 **Measure the READ, never just the WRITE.** Every defect the Phase 4 gate found
 had passed a VERIFY that checked the write and never the read. This session's
@@ -113,7 +162,17 @@ what a user sees before putting it in front of someone.
 - **`player_game_history` has no index for a team-season rollup** — it is
   `(sport, athlete_id, season, game_date)`. A rollup is a scan: NHL 11.7s, NBA
   3.0s, tennis 37s. Fine behind `cachedRoute`, never on a render path.
+- **`estimated_woba` is not null on pitches that were not put in play.** 332 of
+  3,619 non-in-play pitches carried a value, 218 of them 0.0. Filter on
+  `description = 'hit_into_play'`, NOT on `estimated_woba IS NOT NULL` — the
+  naive average reads zone 1 as .281 against a true .367.
+- **Only 22% of balls in play carry an `estimated_woba`** (5,031 of 22,574).
+  The number to show beside an xwOBA is `xwobaSample`, not `ballsInPlay`.
+- **Savant's zone codes 11-14 are the OUTSIDE quadrants**, not part of the 3x3.
 - **Two `next dev` servers cannot share `.next/`.**
+- **Long-running Python here can start TWICE** — once from `.venv`, once from
+  system Python 3.12. Seen with both `harvester_scrape.py` and the Statcast
+  backfill. Check `Get-CimInstance Win32_Process` before and after starting one.
 - **A long heredoc breaks this shell** (>~120 lines, or an apostrophe in a
   `<<'EOF'` block used with `&&` chaining). Write long commit messages to a
   file and use `git commit -F`.
@@ -123,7 +182,7 @@ what a user sees before putting it in front of someone.
 - **Postgres UNIQUE treats NULLs as distinct.**
 - **Stale `.next/types` break `tsc` after deleting a route** — `rm -rf .next/types`.
 
-## 5. Operational knowledge
+## 6. Operational knowledge
 
 - **DB access:** temp `.mjs` in the repo root, `node` it. `q*.mjs`, `g*.mjs`,
   `gate*.mjs`, `runmig.mjs` are gitignored. `.env.local` has no `DIRECT_URL`,
@@ -147,13 +206,15 @@ what a user sees before putting it in front of someone.
 - **Don't `git add -A` blindly** — `docs/discord-community-prompt.md` is the
   operator's and must never be staged.
 
-## 6. Operator decisions taken — do not reopen
+## 7. Operator decisions taken — do not reopen
 
 **2026-08-29:** Officials/umpires **CUT**. Tennis point-level data **CUT**.
 NBA/NHL shot coordinates **APPROVED** (6.7).
 
 **2026-08-30:**
 
+0. **6.5 — let it accrue.** No pick_history backfill; the seasons starting is
+   what that task needed.
 1. Tennis "Games won by set" — **replaced** (it is not derivable; `games_won`
    is a match total with no per-set breakdown). Now sets-won rate by tier plus
    match shape.
@@ -174,7 +235,7 @@ NBA/NHL shot coordinates **APPROVED** (6.7).
 13. Golf — **no game page**; `app/golf/schedule` is its equivalent, so 6.15
     ships **seven** sports.
 
-## 7. Phase 6 design reference
+## 8. Phase 6 design reference
 
 The four committed, self-contained boards are the specification. Open them
 directly; rebuild with `node docs/design/build-{per-sport,team-detail,game-detail}.mjs`.
@@ -195,7 +256,7 @@ strike zone is.
 Team 6 (tennis and golf have no team), Game 7 (golf's equivalent is the
 schedule).
 
-## 8. Known not done
+## 9. Known not done
 
 1. **Duplicate React keys can silently omit prop rows** —
    `GolfScheduleView.tsx:1244` and `TennisScheduleView.tsx:529` omit the game
@@ -215,7 +276,7 @@ schedule).
 10. **No push alerting; rate limiting is per-process** — Phase 8.
 11. **`SUPABASE_SERVICE_ROLE_KEY` cannot be rotated** — Phase 7.
 
-## 9. Backup tables outstanding
+## 10. Backup tables outstanding
 
 | Table | Rows | From |
 |---|---|---|
