@@ -101,11 +101,37 @@ export interface UsageMixSlice {
   value?: number;
   valueLabel?: string;
   decimals?: number;
+  /**
+   * Rows behind `value` — **required in practice whenever `value` is set from a
+   * sparser column than `share` is counted from.**
+   *
+   * `share` is a share of every observation; `value` frequently is not. MLB
+   * measured it: only **22% of balls in play carry an `estimated_woba`** (5,031
+   * of 22,574), because it needs exit velocity and launch angle and those are
+   * not tracked on every batted ball. A slider slice reading ".361 xwOBA" off a
+   * 900-pitch share looks like a 900-pitch number and is an eleven-row one.
+   *
+   * Same reasoning as `BinarySplitRole`'s `aSample`/`bSample`: the sample is
+   * part of the shape, not an afterthought, because the page has to be able to
+   * say the number is thin.
+   */
+  valueSample?: number | null;
 }
 
 export interface UsageMixRole {
   title: string;
   slices: UsageMixSlice[];
+  /**
+   * How to print each slice's `value`. Falls back to `decimals` when unset.
+   *
+   * Exists for the same reason `SpatialGridRole.format` is REQUIRED: the two
+   * cards can show the same statistic, and a component-side default makes them
+   * disagree. MLB's grid printed `.717` (baseball rate convention) while its
+   * mix printed `0.796` from a plain `toFixed` — one page, one stat, two
+   * conventions. It cannot be hardcoded to `rate3` either: NFL's yards per
+   * target is 14.8, and that is the exact shape of the "4.800" bug.
+   */
+  valueFormat?: Formatter;
   /** Total observations behind the mix. A mix off twelve pitches is not a mix. */
   sampleSize?: number | null;
   emptyMessage?: string;

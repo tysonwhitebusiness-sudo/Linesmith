@@ -41,7 +41,14 @@ import {
   type WindowedStat,
 } from '@/lib/core/windowedStat';
 import { directionMark } from '@/components/MarketLabel';
-import { toRoleStat, type ConditionFact, type ConditionsRole, type OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
+import {
+  toRoleStat,
+  type ConditionFact,
+  type ConditionsRole,
+  type OpponentUnitRole,
+} from '@/lib/sports/shared/playerRoles';
+import { toSpatialGridRole, toUsageMixRole } from './pitchRoles';
+import type { PitchProfile } from '@/lib/sports/mlb/pitchProfileShapes';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import type { GameDetailGame, StatKeyDef } from '@/components/GameDetail';
 import type { TeamStatcastState } from '@/components/useTeamStatcast';
@@ -501,6 +508,18 @@ export interface MlbPlayerDetailInput {
   opponentTeamStatcast?: TeamStatcastState;
   /** `useLiveGame(...)`'s result — only meaningful while the subject's game is in progress. */
   live?: LiveGameState;
+  /**
+   * `useMlbPitchProfile(...)`'s result — the pitch-level Statcast rollup that
+   * fills `usageMix` and `spatialGrid`. Structural, not an import of the hook's
+   * own type, so this file stays a pure transform with no dependency on a
+   * component.
+   *
+   * Absent or `{ profile: null }` leaves both roles `null` and renders nothing,
+   * which is the correct state for a subject with no pitches on record — the
+   * table starts at 2024 by operator decision, so anything earlier genuinely
+   * has none.
+   */
+  pitchProfile?: { profile: PitchProfile | null; loading: boolean };
 }
 
 // ---------------------------------------------------------------------------
@@ -516,7 +535,7 @@ export interface MlbPlayerDetailInput {
  * fabricated to satisfy the type.
  */
 export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, snapshot, odds, scope, fullHistoryOverride, propOdds, opponentTeamStatcast, live } = input;
+  const { candidates, market, snapshot, odds, scope, fullHistoryOverride, propOdds, opponentTeamStatcast, live, pitchProfile } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -825,6 +844,14 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
       ? { title: 'Conditions', facts: conditionFacts, emptyMessage: 'No venue conditions available.' }
       : null;
 
+  // ---- 6.6's two roles, now that `mlb_pitch_events` supplies them ----
+  // Both builders are pure and live in `pitchRoles.ts` so the two measured
+  // data traps they encode (see that file's header) can be tested directly
+  // rather than only grepped for.
+  const profile = pitchProfile?.profile ?? null;
+  const usageMix = toUsageMixRole(profile);
+  const spatialGrid = toSpatialGridRole(profile);
+
   return {
     subject: {
       subjectId: active.subjectId,
@@ -860,9 +887,9 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     nflSeasonStats: null,
     opponentUnit,
     conditions,
-    // See the roles block above for why these four are null today.
-    usageMix: null,
-    spatialGrid: null,
+    usageMix,
+    spatialGrid,
+    // See the roles block above for why these two are still null today.
     binarySplit: null,
     careerH2H: null,
     liveLineTracker: {

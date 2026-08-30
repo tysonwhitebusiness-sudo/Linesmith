@@ -23,73 +23,17 @@
  * downstream can detect.
  * ===========================================================================
  *
- * SAVANT'S ZONE CODES ARE NOT A ROW/COLUMN PAIR. 1-9 are the strike zone as a
- * 3x3 grid read from the CATCHER's view; 11-14 are the four outside quadrants.
- * `ZONE_GRID` below does that mapping in one place so no caller re-derives it,
- * and the outside quadrants are deliberately excluded from the 3x3 rather than
- * folded into the edges, which would misplace real pitches.
+ * THE PURE HALF LIVES IN `pitchProfileShapes.ts` — the types, `ZONE_GRID` and
+ * the pitch-type labels — because this file value-imports `pgAll` and the
+ * player-detail adapter needs those three as runtime values. Re-exported below
+ * so a server-side caller still has one import to reach for.
  */
 
 import { pgAll } from '@/lib/db/pgClient';
+import type { PitchProfile } from './pitchProfileShapes';
 
-/**
- * Savant zones 1-9 as a 3x3 grid, row-major, top row first.
- *
- * Catcher's view: zone 1 is up-and-away from the catcher's perspective, which
- * is up-and-IN to a right-handed batter. The caption a page renders must say
- * "catcher view" or the grid is mirrored from what the reader assumes — that
- * caption being hardcoded into the primitive was half of the "4.800" bug, so
- * it now travels as data on the role.
- */
-export const ZONE_GRID: ReadonlyArray<ReadonlyArray<number>> = [
-  [1, 2, 3],
-  [4, 5, 6],
-  [7, 8, 9],
-];
-
-export interface ZoneCell {
-  zone: number;
-  /** Mean xwOBA. `null` when nothing in this zone carried one. */
-  xwoba: number | null;
-  /**
-   * Rows that actually contributed to `xwoba` — **this is the number to show
-   * beside it**, not `ballsInPlay`.
-   *
-   * Measured on the 2024 data: only **5,031 of 22,574 balls in play carry an
-   * `estimated_woba`** (22%), because it needs exit velocity and launch angle
-   * and those are not tracked on every batted ball. Labelling a zone
-   * ".367 (n=51)" off `ballsInPlay` when eleven rows produced it overstates the
-   * sample fourfold — the sort of thing that reads as solid and is not.
-   */
-  xwobaSample: number;
-  /** Balls in play, whether or not they carried an expected wOBA. */
-  ballsInPlay: number;
-  /** Every pitch thrown to the zone, in play or not. */
-  pitches: number;
-}
-
-export interface PitchTypeShare {
-  pitchType: string;
-  pitches: number;
-  /** 0-100, of this subject's total pitches. */
-  share: number;
-  /** Mean xwOBA against this pitch type. */
-  xwoba: number | null;
-  /** Rows behind `xwoba` — show this, not `ballsInPlay`. See `ZoneCell.xwobaSample`. */
-  xwobaSample: number;
-  ballsInPlay: number;
-  avgVelocity: number | null;
-}
-
-export interface PitchProfile {
-  season: number;
-  /** Which side of the matchup this profile is for. */
-  role: 'pitcher' | 'batter';
-  subjectId: number;
-  totalPitches: number;
-  zones: ZoneCell[];
-  pitchTypes: PitchTypeShare[];
-}
+export type { ZoneCell, PitchTypeShare, PitchProfile } from './pitchProfileShapes';
+export { ZONE_GRID, PITCH_TYPE_LABELS, pitchTypeLabel } from './pitchProfileShapes';
 
 /** Guards the interpolated column name — `role` picks a real column, never user text. */
 const ROLE_COLUMN = { pitcher: 'pitcher_id', batter: 'batter_id' } as const;
@@ -171,25 +115,3 @@ export async function getPitchProfile(
   };
 }
 
-/** Full pitch-type names, for a mix a reader can parse without knowing Savant's codes. */
-export const PITCH_TYPE_LABELS: Record<string, string> = {
-  FF: 'Four-seam',
-  SI: 'Sinker',
-  FC: 'Cutter',
-  SL: 'Slider',
-  ST: 'Sweeper',
-  SV: 'Slurve',
-  CU: 'Curveball',
-  KC: 'Knuckle curve',
-  CH: 'Changeup',
-  FS: 'Splitter',
-  FO: 'Forkball',
-  KN: 'Knuckleball',
-  EP: 'Eephus',
-  SC: 'Screwball',
-  PO: 'Pitchout',
-};
-
-export function pitchTypeLabel(code: string): string {
-  return PITCH_TYPE_LABELS[code] ?? code;
-}

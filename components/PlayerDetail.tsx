@@ -9,6 +9,7 @@ import { markFor, TONE_CLASS } from '@/lib/ui/marks';
 import { withAlpha } from '@/lib/sports/mlb/teamColors';
 import { useLiveGame } from './useLiveGame';
 import { useTeamStatcast } from './useTeamStatcast';
+import { useMlbPitchProfile } from './useMlbPitchProfile';
 import { StatRankRow } from './StatRankRow';
 import { PlayerRoleSections } from './PlayerRoleSections';
 import type { UnifiedLinesResult } from '@/lib/odds/types';
@@ -1003,6 +1004,27 @@ export function PlayerDetail({
   const playerLive = useLiveGame(gamePk, gameIsInProgressHint, 15_000, active?.subjectId);
   const opponentTeamStatcast = useTeamStatcast(isPitcherSubject ? opponentId : undefined);
 
+  // Pitch-level Statcast (6.6) — fills MLB's `usageMix` and `spatialGrid`
+  // roles. The subject is a pitcher or a batter, and that decides which side of
+  // `mlb_pitch_events` to aggregate; nothing else about the query differs.
+  //
+  // SEASON: the current UTC year. `mlb_pitch_events` starts at 2024 by operator
+  // decision and the route rejects anything earlier, so an out-of-season
+  // request returns an empty profile and both roles render nothing — which is
+  // the honest answer, not a hidden failure.
+  // `subjectId` is a string on every sport (`lib/core/types.ts:192`); MLB's
+  // happens to be the numeric MLBAM id. Parsed and integer-checked here rather
+  // than handed to the route as text, which would 400 — and left `undefined`
+  // for the other seven sports, so the hook never fires for them.
+  const mlbSubjectNumeric = active?.sport === 'mlb' ? Number(active.subjectId) : NaN;
+  const pitchProfileSubjectId =
+    Number.isInteger(mlbSubjectNumeric) && mlbSubjectNumeric > 0 ? mlbSubjectNumeric : undefined;
+  const pitchProfile = useMlbPitchProfile(
+    isPitcherSubject ? 'pitcher' : 'batter',
+    pitchProfileSubjectId,
+    new Date().getUTCFullYear(),
+  );
+
   // Universal matchup card's league-wide defense-allowed leaderboards — one
   // fetch per sport, shared across every subject on the page (see
   // docs/matchup-card-rebuild-gameplan-2026-08-23.md §4.2/§8). `enabled`
@@ -1105,6 +1127,7 @@ export function PlayerDetail({
             propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
             opponentTeamStatcast,
             live: playerLive,
+            pitchProfile,
           });
 
   if (!active || !data) {

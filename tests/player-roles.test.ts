@@ -17,10 +17,12 @@ import { PLAYER_ROLE_KEYS, toRoleStat } from '../lib/sports/shared/playerRoles';
  *    concept the shared component should know. A `sport === 'mlb'` in the
  *    render path collapses that back into the state Phase 6 exists to fix, and
  *    the Phase 6 gate greps for exactly this.
- * 2. **A role being filled with a placeholder to look complete.** Four of
- *    MLB's six are `null` today because the sourcing (6.6–6.9) has not landed.
- *    That is correct. A fabricated mix or an invented park multiplier would
- *    render as real numbers and nothing downstream could tell.
+ * 2. **A role being filled with a placeholder to look complete.** Two of
+ *    MLB's six are `null` today because the sourcing has not landed — 6.6 gave
+ *    `usageMix` and `spatialGrid` a real source, while a platoon split and
+ *    batter-vs-pitcher history are still stored nowhere. That is correct. A
+ *    fabricated mix or an invented park multiplier would render as real numbers
+ *    and nothing downstream could tell.
  */
 
 const ROLES_SRC = readFileSync('lib/sports/shared/playerRoles.ts', 'utf8');
@@ -58,11 +60,18 @@ test('MLB returns every role key, filling only the ones it has data for', () => 
       `MLB's adapter never returns \`${key}\`.`,
     );
   }
-  // The two it genuinely has today.
+  // The four it genuinely has today. `usageMix` and `spatialGrid` joined them
+  // when 6.6's `mlb_pitch_events` landed a real source; they are built by the
+  // pure functions in `adapters/pitchRoles.ts` and tested for real behaviour in
+  // `tests/pitch-roles.test.ts`, not asserted by shape here.
   assert.match(MLB_ADAPTER, /const opponentUnit: OpponentUnitRole \| null =/, 'MLB stopped building opponentUnit');
   assert.match(MLB_ADAPTER, /const conditions: ConditionsRole \| null =/, 'MLB stopped building conditions');
-  // The four that need 6.6-6.9 must stay null rather than gain a placeholder.
-  for (const key of ['usageMix', 'spatialGrid', 'binarySplit', 'careerH2H']) {
+  assert.match(MLB_ADAPTER, /const usageMix = toUsageMixRole\(/, 'MLB stopped building usageMix');
+  assert.match(MLB_ADAPTER, /const spatialGrid = toSpatialGridRole\(/, 'MLB stopped building spatialGrid');
+  // The two that still have no source must stay null rather than gain a
+  // placeholder: `binarySplit` needs a platoon split this app does not store,
+  // and `careerH2H` needs batter-vs-pitcher history it does not have either.
+  for (const key of ['binarySplit', 'careerH2H']) {
     assert.match(
       MLB_ADAPTER,
       new RegExp(`${key}: null`),

@@ -97,6 +97,7 @@ function OpponentUnitSection({ role }: { role: OpponentUnitRole }) {
  */
 function UsageMixSection({ role }: { role: UsageMixRole }) {
   const slices = role.slices.filter((s) => Number.isFinite(s.share) && s.share > 0);
+  const anySample = slices.some((s) => s.valueSample != null && s.valueSample > 0);
   if (slices.length === 0) {
     return (
       <RoleCard title={role.title}>
@@ -138,9 +139,24 @@ function UsageMixSection({ role }: { role: UsageMixRole }) {
               </td>
               <td className="w-[64px] py-[3px] pl-2 text-right text-[10.5px] tabular-nums text-ink-faint">
                 {s.value != null && Number.isFinite(s.value)
-                  ? `${s.value.toFixed(s.decimals ?? 2)}${s.valueLabel ? ` ${s.valueLabel}` : ''}`
+                  ? `${(role.valueFormat ?? ((v: number) => v.toFixed(s.decimals ?? 2)))(s.value)}${
+                      s.valueLabel ? ` ${s.valueLabel}` : ''
+                    }`
                   : '—'}
               </td>
+              {/*
+                The sample sits BESIDE the value, never in a tooltip. `share` is
+                counted off every observation and `value` often is not — for MLB
+                only 22% of balls in play carry an expected wOBA — so a slice's
+                outcome read against its share overstates the sample severalfold.
+                Column collapses entirely when no slice carries one, so a sport
+                whose outcome is as dense as its share pays nothing for this.
+              */}
+              {anySample ? (
+                <td className="w-[46px] py-[3px] pl-1 text-right text-[9.5px] tabular-nums text-ink-faint">
+                  {s.valueSample != null && s.valueSample > 0 ? `n=${s.valueSample}` : ''}
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>
