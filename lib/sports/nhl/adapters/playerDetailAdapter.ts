@@ -16,6 +16,9 @@ import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
 import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import type { NhlTeamDefenseAllowed } from '@/lib/sports/nhl/teamDefenseAllowed';
+import { MIDDOT, fmt } from '@/components/charts/tokens';
+import type { SpatialGridRole } from '@/lib/sports/shared/playerRoles';
+import type { NhlShotProfile } from '@/lib/sports/nhl/shotProfileShapes';
 
 const NHL_MATCHUP_GROUPS = [
   { key: 'Forwards', label: 'Forwards' },
@@ -62,10 +65,16 @@ export interface NhlPlayerDetailInput {
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
   /** League-wide defense-allowed leaderboard, see the identical field on `CfbPlayerDetailInput` for the full reasoning. */
   teamDefenseAllowed?: NhlTeamDefenseAllowed[];
+  /**
+   * `useNhlShotProfile(...)`'s result — the shot map (6.7). Structural rather
+   * than an import of the hook's own type, so this file stays a pure transform
+   * with no dependency on a component.
+   */
+  shotProfile?: { profile: NhlShotProfile | null; loading: boolean };
 }
 
 export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, snapshot, scope, propOdds, teamDefenseAllowed = [] } = input;
+  const { candidates, market, snapshot, scope, propOdds, teamDefenseAllowed = [] , shotProfile: shotProfileState } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -95,6 +104,30 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
 
   const measured = categoriseByLine(scoped, line);
   const wanted = wantOver ? OVER : UNDER;
+
+  // ---- Role 3 | spatialGrid: the shot map (6.7).
+  // Fed by `useNhlShotProfile` -> `/api/nhl/shot-profile` -> `nhl_shot_events`,
+  // which Python's `ingestNhlShotsJob` writes. Absent out of season and for a
+  // player with no shots on record, and no card renders then.
+  //
+  // Cells show SHOT SHARE. The coordinates arrive already folded onto one
+  // attacking end by `toNhlShotProfile` — see `shotProfileShapes.ts` for why
+  // that fold is a 180-degree rotation and not `abs(x)`.
+  const shotProfile = shotProfileState?.profile ?? null;
+  const spatialGrid: SpatialGridRole | null = shotProfile
+    ? {
+        title: 'Shot location',
+        cells: shotProfile.cells.map((row) =>
+          row.map((c) => ({ key: c.key, value: c.shots > 0 ? c.share : null, sampleSize: c.shots })),
+        ),
+        rowLabels: shotProfile.rowLabels,
+        columnLabels: shotProfile.columnLabels,
+        format: fmt.pct0,
+        unit: 'of attempts',
+        caption: `${shotProfile.totalShots.toLocaleString()} attempts ${MIDDOT} ${shotProfile.onGoal} on goal ${MIDDOT} ${shotProfile.totalGoals} scored`,
+        emptyMessage: 'No shot locations on record.',
+      }
+    : null;
 
   // ---- Role 4 | binarySplit: home/away, off the `raw.isHome` this sport's
   // history already carries but exposes through no filter chip.
@@ -252,6 +285,8 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
       : null;
 
   return {
+
+    spatialGrid,
     binarySplit,
     subject: {
       subjectId: active.subjectId,

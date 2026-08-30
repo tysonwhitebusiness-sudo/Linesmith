@@ -38,6 +38,9 @@ const DB_MODULES = [
   '@/lib/db/client',
   '@/lib/sports/shared/seasonAggregates',
   '@/lib/sports/mlb/pitchProfile',
+  // 6.7: `components/useNhlShotProfile.ts` takes its type from the SHAPES file;
+  // this one value-imports `pgAll`.
+  '@/lib/sports/nhl/shotProfile',
   // 6.16: `components/useLineHistory.ts` takes its result type from here. That
   // is an `import type` and erased — a VALUE import would bundle `pg`.
   '@/lib/odds/props/lineHistory',

@@ -915,6 +915,75 @@ async def write_mlb_pitch_events(rows: list) -> int:
     return written
 
 
+async def write_nhl_shot_events(rows: list) -> int:
+    """Phase 6.7 — one row per NHL shot attempt, from the official play-by-play.
+
+    Append-only and idempotent on UNIQUE (game_id, event_idx), so a game can be
+    re-fetched after an interruption without duplicating anything. `RETURNING 1`
+    gives the true inserted count (ON CONFLICT rows do not come back), which is
+    what keeps a backfill's progress numbers honest rather than reporting
+    re-covered games as new work.
+
+    Chunked for the same reason `write_mlb_pitch_events` is: the Postgres wire
+    protocol encodes a statement's parameter count as a SIGNED 16-bit integer,
+    so the real ceiling is 32,767 parameters. At 14 columns that is 2,340 rows;
+    2,000 leaves a genuine margin. One NHL game is ~100 shots, so this is
+    normally well under — but a season backfill batches many games at once and
+    would not be.
+    """
+    if not rows:
+        return 0
+    pool = await get_pool()
+    cols = 14
+    max_rows_per_stmt = 2000  # 28,000 parameters, under 32,767 with margin
+    written = 0
+    async with pool.acquire(timeout=60.0) as conn:
+        async with conn.transaction():
+            for start in range(0, len(rows), max_rows_per_stmt):
+                chunk = rows[start:start + max_rows_per_stmt]
+                params: list = []
+                tuples: list[str] = []
+                for i, r in enumerate(chunk):
+                    b = i * cols
+                    tuples.append("(" + ", ".join(f"${b+n}" for n in range(1, cols + 1)) + ")")
+                    params.extend([
+                        r.game_id, r.event_idx, _to_date(r.game_date), r.season,
+                        r.shooter_id, r.goalie_id, r.team_id,
+                        r.event_type, r.shot_type,
+                        r.period, r.period_seconds,
+                        r.x_coord, r.y_coord, r.zone_code,
+                    ])
+                returned = await conn.fetch(
+                    "INSERT INTO nhl_shot_events "
+                    "(game_id, event_idx, game_date, season, "
+                    " shooter_id, goalie_id, team_id, "
+                    " event_type, shot_type, "
+                    " period, period_seconds, "
+                    " x_coord, y_coord, zone_code) "
+                    "VALUES " + ", ".join(tuples) +
+                    " ON CONFLICT (game_id, event_idx) DO NOTHING RETURNING 1",
+                    *params,
+                )
+                written += len(returned)
+    return written
+
+
+async def nhl_shot_events_done_games(season: str) -> set[int]:
+    """Every game_id already ingested for one season — the resume primitive.
+
+    A game's shots are written in one batch, so "has any row" is equivalent to
+    "was fully processed" and the caller can skip the play-by-play FETCH
+    entirely. The UNIQUE constraint alone would still make the write a no-op,
+    but it would not save the network call, and the whole cost of this backfill
+    is network.
+    """
+    pool = await get_pool()
+    rows = await pool.fetch(
+        "SELECT DISTINCT game_id FROM nhl_shot_events WHERE season = $1", season
+    )
+    return {int(r["game_id"]) for r in rows}
+
+
 async def player_game_history_done_events(sport: str, season: int) -> set[str]:
     """Every event_id already fully recorded for one (sport, season) — the
     resume primitive for the ~5hr historical backfill

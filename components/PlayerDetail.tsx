@@ -10,6 +10,7 @@ import { withAlpha } from '@/lib/sports/mlb/teamColors';
 import { useLiveGame } from './useLiveGame';
 import { useTeamStatcast } from './useTeamStatcast';
 import { useMlbPitchProfile } from './useMlbPitchProfile';
+import { useNhlShotProfile } from './useNhlShotProfile';
 import { useLineHistory } from './useLineHistory';
 import { candidateCategoryToSide, candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import { LineMovementCard } from './LineMovementCard';
@@ -1039,6 +1040,20 @@ export function PlayerDetail({
   // every hits prop while looking entirely healthy. `candidateDimensionToMarketKey`
   // and `candidateCategoryToSide` are the existing translators — the same pair
   // the MLB adapter already uses to find a candidate's real prices.
+  // NHL's shot map (6.7). `nhl_shot_events.shooter_id` stores the bare NHL
+  // player id, so any `sport:kind:` prefix is stripped before parsing. Left
+  // undefined for the other seven sports, so the hook never fires for them.
+  const nhlShooterNumeric = active?.sport === 'nhl' ? Number(String(active.subjectId).replace(/^.*:/, '')) : NaN;
+  const nhlShotProfile = useNhlShotProfile(
+    Number.isInteger(nhlShooterNumeric) && nhlShooterNumeric > 0 ? nhlShooterNumeric : undefined,
+    // NHL seasons run Oct-Jun and are written '20242025'.
+    (() => {
+      const now = new Date();
+      const start = now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+      return `${start}${start + 1}`;
+    })(),
+  );
+
   const lineHistoryMarketKey = active ? (candidateDimensionToMarketKey(active.dimension) ?? undefined) : undefined;
   const lineHistorySide = active ? (candidateCategoryToSide(active.category ?? '') ?? 'over') : 'over';
   const lineHistory = useLineHistory(
@@ -1131,6 +1146,7 @@ export function PlayerDetail({
                     scope: { lineOffset, opponentOnly, lastN, showAllGames, kpiScope },
                     propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
                     teamDefenseAllowed: nhlTeamDefense.teams,
+                    shotProfile: nhlShotProfile,
                   })
                 : active.sport === 'tennis'
                   ? toTennisPlayerDetailData({
