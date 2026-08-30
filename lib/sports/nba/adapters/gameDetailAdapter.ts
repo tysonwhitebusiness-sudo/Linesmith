@@ -56,6 +56,16 @@ export interface NbaGameDetailInput {
   seasonRanks: SeasonAggregateResult | null;
 }
 
+/**
+ * `EntitySeasonAggregate.stats` -> the `Record<key, rank>` the Rankings block
+ * reads. Ranks are stringified because that is the shape `RankableTeamStats`
+ * declares; a missing rank stays `null` rather than becoming "0", which would
+ * render as the best rank in the league.
+ */
+function toRankMap(agg: { stats: Array<{ key: string; rank: number }> }): Record<string, string | null> {
+  return Object.fromEntries(agg.stats.map((st) => [st.key, st.rank == null ? null : String(st.rank)]));
+}
+
 export function toGameDetailData(input: NbaGameDetailInput): GameDetailData {
   const { meta, home, away, candidates, standingsTeams, gameLine, seasonRanks } = input;
   const game = meta.game;
@@ -168,8 +178,40 @@ export function toGameDetailData(input: NbaGameDetailInput): GameDetailData {
     records,
     statComparison,
     lastFive,
-    rankings: null,
-    unitGrades: null,
+    // Phase 6.15 — built from the same `seasonRanks` rollup, so a team's rank
+    // in the comparison table and its rank here are the same number by
+    // construction rather than by coincidence.
+    //
+    // `againstRanks` IS THE OPPONENT'S OWN FOR-RANKS, not an opponent-allowed
+    // series -- that is NFL's existing convention on this block ("the ranks you
+    // are up against"), and `EntitySeasonAggregate` carries no allowed split to
+    // build anything else from. Copying the convention keeps one block meaning
+    // one thing across sports; inventing a second meaning here would not.
+    rankings:
+      awayAgg && homeAgg
+        ? {
+            away: { forRanks: toRankMap(awayAgg), againstRanks: toRankMap(homeAgg) },
+            home: { forRanks: toRankMap(homeAgg), againstRanks: toRankMap(awayAgg) },
+            statKeys: awayAgg.stats.map((st) => ({ key: st.key, label: st.label, decimals: st.decimals })),
+            awayAbbr: game.awayAbbr,
+            homeAbbr: game.homeAbbr,
+            awayLogoUrl: game.awayLogoUrl,
+            homeLogoUrl: game.homeLogoUrl,
+            poolSize: seasonRanks?.poolSize ?? 0,
+          }
+        : null,
+    // Phase 6.15 — the SAME `seasonRanks` rollup this file already uses for
+    // `statComparison` a few lines above carries each team's graded units, and
+    // the team page has rendered them since 6.1b. Only the game page was still
+    // nulling them, so one page graded a team and the other said it could not.
+    // Reusing `awayAgg`/`homeAgg` rather than re-deriving means the ranks
+    // behind a stat row and the ranks behind a unit's grade cannot disagree.
+    unitGrades: {
+      away: awayAgg && awayAgg.units.length > 0 ? awayAgg.units : null,
+      home: homeAgg && homeAgg.units.length > 0 ? homeAgg.units : null,
+      awayAbbr: game.awayAbbr,
+      homeAbbr: game.homeAbbr,
+    },
     injuries: {
       away: { abbr: game.awayAbbr, logoUrl: game.awayLogoUrl, rows: away?.injuries.map((i) => ({ playerName: i.playerName, status: i.status, position: i.position, note: i.note })) ?? [] },
       home: { abbr: game.homeAbbr, logoUrl: game.homeLogoUrl, rows: home?.injuries.map((i) => ({ playerName: i.playerName, status: i.status, position: i.position, note: i.note })) ?? [] },
