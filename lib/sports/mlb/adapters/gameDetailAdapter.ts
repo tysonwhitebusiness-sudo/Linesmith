@@ -6,7 +6,7 @@ import type { TeamBullpen } from '@/components/useBullpen';
 import type { BatterPitcherMatchupProps } from '@/components/BatterPitcherMatchupCard';
 import type { NflPlayerVsDefenseCardProps } from '@/components/NflPlayerVsDefenseCard';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
-import type { TeamGrades } from '@/lib/sports/nfl/nflTeamGrades';
+import type { UnitGrade } from '@/lib/sports/shared/unitGrades';
 import type { PickCandidate } from '@/lib/core/types';
 import type { UnifiedGameLine } from '@/lib/odds/types';
 import type { GameContextState } from '@/components/useGameContext';
@@ -286,17 +286,36 @@ export interface GameDetailData {
     /** MLB-only escape hatch for `LiveTab`, which needs the full raw `GameDetailGame` (bases/box score/bullpen) — genuinely not reducible to plain cross-sport data. `null`/omitted disables the expanded live tab (NFL has none today). */
     mlbLiveGame?: GameDetailGame | null;
     mlbGamePk?: string | number | null;
-    /** NFL's OFF/DEF/ST grade chips (`GameHeroTeamPanelData.renderBadges`) — kept as plain data here rather than a `() => ReactNode` closure inside the adapter, so the component (not the adapter) builds the actual JSX, per this file family's "no render props from an adapter" rule. `null`/omitted (MLB) renders no badges. */
-    awayGrades?: TeamGrades | null;
-    homeGrades?: TeamGrades | null;
+    /**
+     * The hero card's grade chips (`GameHeroTeamPanelData.renderBadges`) —
+     * kept as plain data here rather than a `() => ReactNode` closure inside
+     * the adapter, so the component (not the adapter) builds the actual JSX,
+     * per this file family's "no render props from an adapter" rule.
+     *
+     * Phase 6.1 retyped these from `TeamGrades` to `UnitGrade[]`. The chip row
+     * renders the units carrying a `short`, so it is NFL's OFF/DEF/ST or MLB's
+     * HIT/PIT with no sport check and no fixed count. `null`/omitted renders
+     * no badges.
+     */
+    awayGrades?: UnitGrade[] | null;
+    homeGrades?: UnitGrade[] | null;
   };
   matchup: GameMatchupData | null;
   records: { away: RecordsSectionTeam; home: RecordsSectionTeam; loading: boolean };
   statComparison: StatComparisonData | null;
   lastFive: { away: LastFiveGamesTeam; home: LastFiveGamesTeam; loading: boolean };
   rankings: RankingsData | null;
-  /** NFL-only unit grade table (`GradesTable`, `NflGameDetail.tsx:189-216`) — MLB has no grading model. */
-  unitGrades: { away: TeamGrades | null; home: TeamGrades | null; awayAbbr: string; homeAbbr: string } | null;
+  /**
+   * The unit grade table (`GradesTable`, `NflGameDetail.tsx:189-216`).
+   *
+   * Phase 6.1: was `TeamGrades`, whose nine hardcoded NFL unit names made this
+   * field structurally unfillable by any other sport — its own comment said
+   * "MLB has no grading model", which described the type. Now an ordered
+   * `UnitGrade[]` per side; the table derives its rows from whatever units the
+   * two sides actually declare (`mergeUnitRows`), so it renders four MLB rows
+   * or nine NFL ones without knowing which sport it is looking at.
+   */
+  unitGrades: { away: UnitGrade[] | null; home: UnitGrade[] | null; awayAbbr: string; homeAbbr: string } | null;
   injuries: { away: InjuriesTeam; home: InjuriesTeam; loading: boolean };
   /** NFL-only flat "every candidate for this game" list (`NflGameDetail.tsx:700-728`) — MLB's `LeftRail` already covers this ground for MLB, so this stays `null` there rather than showing the same list twice. */
   propsForGame: { candidates: PickCandidate[] } | null;

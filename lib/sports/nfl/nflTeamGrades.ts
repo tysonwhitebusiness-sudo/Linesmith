@@ -25,6 +25,11 @@ import {
   type NflverseTeamStatLine,
 } from './nflverse';
 import { POOL_BY_POSITION, type PoolKey } from './nflPlayerRankings';
+import {
+  percentileOfRank,
+  letterFromPercentile as letterGrade,
+  type UnitGrade,
+} from '@/lib/sports/shared/unitGrades';
 
 export interface TeamGrade {
   grade: string;
@@ -33,6 +38,20 @@ export interface TeamGrade {
   poolSize: number;
 }
 
+/**
+ * NFL's own computation and wire shape — deliberately UNCHANGED by Phase 6.1.
+ *
+ * This struct is what `computeAllTeamGrades` builds, what
+ * `getAllTeamGrades` caches as JSON in `snapshot_cache`, and what
+ * `/api/nfl/team/[teamId]` serves. Rewriting it would invalidate that cache
+ * and change a live API response for no gain, so the generic `UnitGrade[]`
+ * conversion happens one layer later, at NFL's adapter boundary
+ * (`toNflUnitGrades` below) — which is exactly what CLAUDE.md's sport-adapter
+ * §2 says an adapter is for: converting a sport's real shape into the shared
+ * one. What Phase 6.1 removed is this type's reach into `TeamDetailData`,
+ * `GameDetailData` and `GradeChip`, where its nine NFL names locked six other
+ * sports out.
+ */
 export interface TeamGrades {
   offense: TeamGrade | null;
   defense: TeamGrade | null;
@@ -45,33 +64,66 @@ export interface TeamGrades {
   receivingOffense: TeamGrade | null;
 }
 
+/**
+ * The nine NFL units, in the order they render — previously
+ * `GameDetail.tsx`'s `GRADE_ROWS` constant, which typed its keys as
+ * `keyof TeamGrades` and so could only ever list NFL's.
+ *
+ * `short` decides which units appear in the compact header chip row; the three
+ * that carry one are exactly the three `TeamDetail.tsx` used to hardcode as
+ * `<GradeChip label="OFF">`/`"DEF"`/`"ST"`.
+ */
+export const NFL_UNITS: ReadonlyArray<{ key: keyof TeamGrades; label: string; short?: string }> = [
+  { key: 'offense', label: 'Offense', short: 'OFF' },
+  { key: 'defense', label: 'Defense', short: 'DEF' },
+  { key: 'specialTeams', label: 'Special teams', short: 'ST' },
+  { key: 'passingOffense', label: 'Passing offense' },
+  { key: 'rushingOffense', label: 'Rushing offense' },
+  { key: 'receivingOffense', label: 'Receiving offense' },
+  { key: 'secondary', label: 'Secondary' },
+  { key: 'linebackers', label: 'Linebackers' },
+  { key: 'dLine', label: 'D-line' },
+];
+
+/**
+ * NFL's struct -> the shared ordered array. A unit NFL computed as `null`
+ * (not enough ranked players in that pool) is dropped rather than emitted with
+ * a placeholder grade, matching the "never fabricate a field to satisfy the
+ * type" rule — the grades table renders an em-dash for a unit one side lacks,
+ * same as it did before.
+ *
+ * Returns `null` for no grades at all, so `data.unitGrades ? <Section/> : null`
+ * still reads as "this sport has no grading model".
+ */
+export function toNflUnitGrades(grades: TeamGrades | null | undefined): UnitGrade[] | null {
+  if (!grades) return null;
+  const out: UnitGrade[] = [];
+  for (const unit of NFL_UNITS) {
+    const g = grades[unit.key];
+    if (!g) continue;
+    out.push({
+      key: unit.key,
+      label: unit.label,
+      ...(unit.short ? { short: unit.short } : {}),
+      grade: g.grade,
+      composite: g.composite,
+      rank: g.rank,
+      poolSize: g.poolSize,
+    });
+  }
+  return out.length > 0 ? out : null;
+}
+
 // ---------------------------------------------------------------------------
 // Shared composite + letter-grade machinery
 // ---------------------------------------------------------------------------
 
-function percentileOfRank(rank: number, poolSize: number): number {
-  if (poolSize <= 1) return 100;
-  return 100 * (1 - (rank - 1) / (poolSize - 1));
-}
-
-/**
- * Percentile-of-32-teams -> letter grade. Disclosed, not hidden: 11 buckets
- * across 32 teams means several teams legitimately share a grade, same as
- * any percentile-bucketed scale (e.g. a school curve).
- */
-function letterGrade(percentile: number): string {
-  if (percentile >= 95) return 'A+';
-  if (percentile >= 85) return 'A';
-  if (percentile >= 75) return 'A-';
-  if (percentile >= 65) return 'B+';
-  if (percentile >= 55) return 'B';
-  if (percentile >= 45) return 'B-';
-  if (percentile >= 35) return 'C+';
-  if (percentile >= 25) return 'C';
-  if (percentile >= 15) return 'C-';
-  if (percentile >= 5) return 'D';
-  return 'F';
-}
+// `percentileOfRank` and `letterGrade` moved to
+// `lib/sports/shared/unitGrades.ts` in Phase 6.1 (imported at the top of this
+// file). They are shared rather than copied because MLB now grades units off
+// the same scale: an MLB "B+" and an NFL "B+" have to mean the same thing when
+// both render on one game page, and two private copies of an 11-bucket ladder
+// is exactly the kind of pair that drifts silently.
 
 interface WeightedStatDef {
   key: string;

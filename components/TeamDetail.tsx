@@ -226,6 +226,9 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
   if (!data) return <div className="lb-card p-8 text-center text-sm text-ink-muted">Team not found.</div>;
 
   const team = data.team;
+  // The units this sport wants in the compact header row — see the chip row
+  // below, and `UnitGrade.short`'s own comment for why presence is the switch.
+  const headlineUnits = (data.unitGrades ?? []).filter((u) => u.short);
   const active = data.candidates.find((c) => c.dimension === market) ?? data.candidates[0];
   const wantOver = active ? directionMark(active.category) !== 'U' : true;
   const isMoneylineMarket = active?.dimension === 'moneyline';
@@ -280,11 +283,17 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
                   ? `${data.record.wins}-${data.record.losses}${data.record.divisionRank ? ` · ${data.record.divisionRank} in division` : ''}`
                   : 'Record unavailable'}
               </p>
-              {data.grades ? (
+              {/* Header grade chips — Phase 6.1. Was three hardcoded
+                  `<GradeChip label="OFF">`/`"DEF"`/`"ST"` calls reading
+                  `data.grades.offense` etc., which is what made this row NFL-
+                  only. A unit opts into this compact row by carrying a `short`,
+                  so NFL still shows OFF/DEF/ST and MLB shows HIT/PIT with no
+                  sport check and no fixed count. */}
+              {headlineUnits.length > 0 ? (
                 <div className="mt-1 flex flex-wrap gap-1">
-                  <GradeChip label="OFF" grade={data.grades.offense} />
-                  <GradeChip label="DEF" grade={data.grades.defense} />
-                  <GradeChip label="ST" grade={data.grades.specialTeams} />
+                  {headlineUnits.map((u) => (
+                    <GradeChip key={u.key} grade={u} />
+                  ))}
                 </div>
               ) : null}
             </div>

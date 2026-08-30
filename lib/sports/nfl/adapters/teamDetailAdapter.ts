@@ -25,7 +25,8 @@ import { directionMark } from '@/components/MarketLabel';
 import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import { MATCHUP_GROUP_BY_POSITION, playerMatchupRows } from '@/components/NflPlayerVsDefenseCard';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
-import type { TeamGrade } from '@/lib/sports/nfl/nflTeamGrades';
+import { toNflUnitGrades } from '@/lib/sports/nfl/nflTeamGrades';
+import { findUnit, type UnitGrade } from '@/lib/sports/shared/unitGrades';
 import type { NflTeamDetailApiResponse, NflTeamStatLine } from '@/components/useNflTeamDetail';
 import type {
   GameRow,
@@ -99,6 +100,12 @@ export interface NflTeamDetailInput {
 export function toTeamDetailData(input: NflTeamDetailInput): TeamDetailData {
   const { data, scope, standingsTeams } = input;
   const { team, teamStats, nextGame, opponentDefenseAllowed, recentResults, grades, opponentGrades } = data;
+  // Phase 6.1 — NFL's own `TeamGrades` struct (unchanged upstream: it is still
+  // what the API serves and what `snapshot_cache` holds) converts to the shared
+  // ordered `UnitGrade[]` here, at the adapter boundary. That is the layer
+  // CLAUDE.md's sport-adapter §2 puts sport-shape -> shared-shape work in.
+  const ownUnitGrades = toNflUnitGrades(grades);
+  const opponentUnitGrades = toNflUnitGrades(opponentGrades);
   const logoUrl = team.logoUrl ?? nflTeamLogoUrl(team.abbreviation) ?? '';
   const opponentAbbr = data.opponentAbbr;
 
@@ -166,7 +173,7 @@ export function toTeamDetailData(input: NflTeamDetailInput): TeamDetailData {
     : null;
 
   // Team stats — 5 groups, each with its own optional offense/defense grade (NflTeamDetail.tsx:612-638).
-  const statGroups: { label: string; stats: OpposingStarterStat[]; grade?: TeamGrade | null }[] = [
+  const statGroups: { label: string; stats: OpposingStarterStat[]; grade?: UnitGrade | null }[] = [
     { label: 'Scoring', rows: teamStats.filter((s) => s.group === 'Scoring') },
     { label: 'Passing', rows: teamStats.filter((s) => s.group === 'Passing') },
     { label: 'Rushing', rows: teamStats.filter((s) => s.group === 'Rushing') },
@@ -176,7 +183,11 @@ export function toTeamDetailData(input: NflTeamDetailInput): TeamDetailData {
     .filter((g) => g.rows.length > 0)
     .map((g) => {
       const gradeKey = STAT_GROUP_TO_GRADE_KEY[g.label];
-      return { label: g.label, stats: g.rows.map(toStatRow), grade: gradeKey ? grades?.[gradeKey] ?? null : undefined };
+      // Phase 6.1: `grades?.[gradeKey]` (struct field access on `TeamGrades`)
+      // -> a keyed lookup on the shared ordered array. Same nine keys, same
+      // values; the difference is that the array's keys are strings a sport
+      // chooses rather than a union no other sport can name.
+      return { label: g.label, stats: g.rows.map(toStatRow), grade: gradeKey ? findUnit(ownUnitGrades, gradeKey) : undefined };
     });
 
   // Matchup — team offense vs. opponent defense, or one skill-position
@@ -238,7 +249,7 @@ export function toTeamDetailData(input: NflTeamDetailInput): TeamDetailData {
       : null;
   const selectedPlayerGradeBadges = [
     ...new Map(matchupPlayerGroups.map((g) => GROUP_TO_GRADE_KEY[g]).filter(Boolean).map((g) => [g.key, g])).values(),
-  ].map((g) => ({ label: `${opponentAbbr ?? ''} ${g.label}`.trim(), grade: opponentGrades?.[g.key] ?? null }));
+  ].map((g) => ({ label: `${opponentAbbr ?? ''} ${g.label}`.trim(), grade: findUnit(opponentUnitGrades, g.key) }));
 
   const matchup: TeamMatchupData | null = opponentAbbr
     ? {
@@ -247,7 +258,7 @@ export function toTeamDetailData(input: NflTeamDetailInput): TeamDetailData {
           { key: 'player', label: 'Player matchup' },
         ],
         team: teamMatchup,
-        teamGradeBadges: opponentGrades ? [{ label: `${opponentAbbr} DEF`, grade: opponentGrades.defense }] : [],
+        teamGradeBadges: opponentUnitGrades ? [{ label: `${opponentAbbr} DEF`, grade: findUnit(opponentUnitGrades, 'defense') }] : [],
         playerOptions: matchupEligibleRoster.map((p) => ({ id: p.subjectId, label: `${p.fullName} (${p.position})` })),
         selectedPlayerId: matchupPlayer?.subjectId ?? null,
         selectedPlayerCard,
@@ -305,7 +316,7 @@ export function toTeamDetailData(input: NflTeamDetailInput): TeamDetailData {
   return {
     team: { teamId: Number(team.teamId), name: team.displayName, abbr: team.abbreviation, logoUrl },
     record: { wins: team.wins, losses: team.losses, divisionRank: team.divisionRank ?? '' },
-    grades,
+    unitGrades: ownUnitGrades,
     candidates,
     games: gameRows,
     windows,

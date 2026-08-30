@@ -12,7 +12,7 @@ import type { UnifiedLinesResult, UnifiedGameLine } from '@/lib/odds/types';
 import { BookmakerBreakdown } from './GameLine';
 import { GamePropLineShoppingRail } from './PropOddsPanel';
 import type { MoneylineResult } from '@/lib/sports/mlb/gameModel';
-import type { TeamGrades } from '@/lib/sports/nfl/nflTeamGrades';
+import { mergeUnitRows, findUnit, type UnitGrade } from '@/lib/sports/shared/unitGrades';
 import { toPicksPanelGame, toRecentResultRow, toInjuryRow, type RecentResultRow, type InjuryRow } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
 import { useGameContext, type GameContextState } from './useGameContext';
 import { useBullpen, type BullpenState } from './useBullpen';
@@ -1877,20 +1877,40 @@ function MatchupSection({
   );
 }
 
-const GRADE_ROWS: Array<{ key: keyof TeamGrades; label: string }> = [
-  { key: 'offense', label: 'Offense' },
-  { key: 'defense', label: 'Defense' },
-  { key: 'specialTeams', label: 'Special teams' },
-  { key: 'passingOffense', label: 'Passing offense' },
-  { key: 'rushingOffense', label: 'Rushing offense' },
-  { key: 'receivingOffense', label: 'Receiving offense' },
-  { key: 'secondary', label: 'Secondary' },
-  { key: 'linebackers', label: 'Linebackers' },
-  { key: 'dLine', label: 'D-line' },
-];
+/**
+ * The hero card's grade-chip row, as a closure the card calls to render.
+ *
+ * Built here rather than in an adapter, per this file family's rule that an
+ * adapter never returns a `() => ReactNode` — the adapter exposes plain
+ * `UnitGrade[]` and the component turns it into JSX (see `GameHeroCard`'s
+ * `renderBadges` slot). Returns `undefined` when there is nothing to show, so
+ * the card renders no badge row at all rather than an empty one.
+ */
+function renderHeroBadges(units: UnitGrade[] | null | undefined): (() => React.ReactNode) | undefined {
+  const headline = (units ?? []).filter((u) => u.short);
+  if (headline.length === 0) return undefined;
+  return () => (
+    <>
+      {headline.map((u) => (
+        <GradeChip key={u.key} grade={u} />
+      ))}
+    </>
+  );
+}
 
-/** NFL-only unit-grade table — MLB has no grading model, so `data.unitGrades` is always null there and this section never renders. */
+/**
+ * The unit-grade table.
+ *
+ * Phase 6.1 deleted this section's `GRADE_ROWS` constant — a hardcoded list of
+ * NFL's nine units, typed `keyof TeamGrades`, which is why no other sport
+ * could render here. Rows now come from `mergeUnitRows`, the union of whatever
+ * units the two sides declare, in the away side's own order. NFL still shows
+ * nine; MLB shows Hitting and Pitching; a sport with no ranked team data
+ * leaves `data.unitGrades` null and this never renders at all.
+ */
 function UnitGradesSection({ data }: { data: NonNullable<GameDetailData['unitGrades']> }) {
+  const rows = mergeUnitRows(data.away, data.home);
+  if (rows.length === 0) return null;
   return (
     <section className="lb-card overflow-hidden">
       <h2 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Unit grades</h2>
@@ -1904,9 +1924,9 @@ function UnitGradesSection({ data }: { data: NonNullable<GameDetailData['unitGra
             </tr>
           </thead>
           <tbody>
-            {GRADE_ROWS.map((row) => {
-              const a = data.away?.[row.key] ?? null;
-              const h = data.home?.[row.key] ?? null;
+            {rows.map((row) => {
+              const a = findUnit(data.away, row.key);
+              const h = findUnit(data.home, row.key);
               return (
                 <tr key={row.key} className="border-b border-line/50">
                   <td className="px-2 py-1 text-left text-ink-muted">{row.label}</td>
@@ -2207,20 +2227,15 @@ export function GameDetail({
         ) : (
           <>
             <GameHeroCard
-              away={{ ...data.hero.away, renderBadges: data.hero.awayGrades ? () => (
-                <>
-                  <GradeChip label="OFF" grade={data.hero.awayGrades?.offense ?? null} />
-                  <GradeChip label="DEF" grade={data.hero.awayGrades?.defense ?? null} />
-                  <GradeChip label="ST" grade={data.hero.awayGrades?.specialTeams ?? null} />
-                </>
-              ) : undefined }}
-              home={{ ...data.hero.home, renderBadges: data.hero.homeGrades ? () => (
-                <>
-                  <GradeChip label="OFF" grade={data.hero.homeGrades?.offense ?? null} />
-                  <GradeChip label="DEF" grade={data.hero.homeGrades?.defense ?? null} />
-                  <GradeChip label="ST" grade={data.hero.homeGrades?.specialTeams ?? null} />
-                </>
-              ) : undefined }}
+              /* Phase 6.1 — was three hardcoded OFF/DEF/ST chips per side reading
+                 `TeamGrades` struct fields, the reason this row was NFL-only.
+                 The adapter now hands over an ordered `UnitGrade[]` and the
+                 units carrying a `short` render here, so NFL still shows
+                 OFF/DEF/ST and any other sport shows its own. The closure is
+                 still built HERE rather than in the adapter, per this file
+                 family's "an adapter never returns a () => ReactNode" rule. */
+              away={{ ...data.hero.away, renderBadges: renderHeroBadges(data.hero.awayGrades) }}
+              home={{ ...data.hero.home, renderBadges: renderHeroBadges(data.hero.homeGrades) }}
               isLive={data.hero.isLive}
               isFinal={data.hero.isFinal}
               liveScore={data.hero.liveScore}

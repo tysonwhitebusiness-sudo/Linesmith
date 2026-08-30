@@ -9,6 +9,7 @@
  * `GameDetail.tsx` are verified) — no new behavior invented here.
  */
 
+import { toNflUnitGrades } from '@/lib/sports/nfl/nflTeamGrades';
 import type { PickCandidate } from '@/lib/core/types';
 import type { UnifiedGameLine } from '@/lib/odds/types';
 import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
@@ -153,8 +154,8 @@ export function toGameDetailData(input: NflGameDetailInput): GameDetailData {
     pickLoading: false,
     venue: null,
     liveExtraText,
-    awayGrades: away?.grades ?? null,
-    homeGrades: home?.grades ?? null,
+    awayGrades: toNflUnitGrades(away?.grades),
+    homeGrades: toNflUnitGrades(home?.grades),
     pregameLines: gameLine
       ? {
           moneyline: gameLine.moneyline ? { away: gameLine.moneyline.away ?? null, home: gameLine.moneyline.home ?? null } : null,
@@ -342,7 +343,7 @@ export function toGameDetailData(input: NflGameDetailInput): GameDetailData {
     statComparison,
     lastFive,
     rankings,
-    unitGrades: { away: away?.grades ?? null, home: home?.grades ?? null, awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr },
+    unitGrades: { away: toNflUnitGrades(away?.grades), home: toNflUnitGrades(home?.grades), awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr },
     injuries,
     propsForGame: { candidates },
     picksPanelGame: { id: game.gameId, sport: 'nfl', awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, homeTeamId: null, awayTeamId: null, gameModel: null },

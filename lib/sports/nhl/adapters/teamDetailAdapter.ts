@@ -189,7 +189,10 @@ export function toTeamDetailData(input: NhlTeamDetailInput): TeamDetailData {
           divisionRank: team.conference ? `${team.conference}` : '',
         }
       : null,
-    grades: null,
+    // Phase 6.1 — `grades` (nine hardcoded NFL unit names) became `unitGrades`.
+    // Still null here: this sport has no league-wide ranked team aggregate to
+    // grade from yet. 6.1b adds one for NBA and NHL; see this file's header.
+    unitGrades: null,
     candidates,
     games: gameRows,
     windows,

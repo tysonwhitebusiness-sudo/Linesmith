@@ -47,7 +47,7 @@ import type { BatterPitcherMatchupProps } from '@/components/BatterPitcherMatchu
 import type { PitchingMatchupGame } from '@/components/PitchingMatchupCard';
 import type { TeamBullpen } from '@/components/useBullpen';
 import type { NflPlayerVsDefenseCardProps } from '@/components/NflPlayerVsDefenseCard';
-import type { TeamGrade, TeamGrades } from '@/lib/sports/nfl/nflTeamGrades';
+import { unitGradeFromRanked, type UnitGrade } from '@/lib/sports/shared/unitGrades';
 
 // ---------------------------------------------------------------------------
 // Shared sub-shapes (would be hoisted to a sport-agnostic location once an
@@ -151,25 +151,36 @@ export interface TeamMatchupData {
   contact?: BatterPitcherMatchupProps | null;
   /** NFL "Team matchup" tab. */
   team?: BatterPitcherMatchupProps | null;
-  teamGradeBadges?: Array<{ label: string; grade: TeamGrade | null }>;
+  teamGradeBadges?: Array<{ label: string; grade: UnitGrade | null }>;
   /** NFL "Player matchup" tab — every skill-position roster player eligible for a matchup card, for the picker; `selectedPlayerId` (adapter input scope) decides which one's `selectedPlayerCard` gets built, same "effective X" pattern golf's round/category selection already uses. */
   playerOptions?: Array<{ id: string; label: string }>;
   selectedPlayerId?: string | null;
   selectedPlayerCard?: NflPlayerVsDefenseCardProps | null;
-  selectedPlayerGradeBadges?: Array<{ label: string; grade: TeamGrade | null }>;
+  selectedPlayerGradeBadges?: Array<{ label: string; grade: UnitGrade | null }>;
 }
 
 export interface TeamDetailData {
   team: { teamId: number; name: string; abbr: string; logoUrl: string };
   record: { wins: number; losses: number; divisionRank: string } | null;
-  /** NFL-only (`GradeChip`s) — MLB has no grading model, always null. */
-  grades: TeamGrades | null;
+  /**
+   * This team's graded units, in render order — Phase 6.1.
+   *
+   * REPLACES `grades: TeamGrades | null`, whose nine hardcoded NFL unit names
+   * meant its own doc comment here read "NFL-only — MLB has no grading model,
+   * always null." That was a statement about the *type*, not about MLB: MLB
+   * has league-ranked team Statcast metrics and now grades Hitting and
+   * Pitching off them (see this file's `unitGrades` construction).
+   *
+   * A sport with no ranked team data emits `null` and the chips don't render.
+   * Units carrying a `short` also appear in the header chip row.
+   */
+  unitGrades: UnitGrade[] | null;
   candidates: PickCandidate[];
   games: GameRow[];
   windows: TeamWindowedForm | null;
   distribution: TeamDistributionChartData | null;
   matchup?: TeamMatchupData | null;
-  statGroups: { label: string; stats: OpposingStarterStat[]; grade?: TeamGrade | null }[];
+  statGroups: { label: string; stats: OpposingStarterStat[]; grade?: UnitGrade | null }[];
   roster: RosterPlayer[];
   /** PHASE 2 ADDITION — NFL sorts has-stats roster players first and paginates at 24 (`NflTeamDetail.tsx:239-248`); MLB shows every player in API order, unpaginated. Data-driven so the shared roster list needs no sport check. */
   rosterSortByStats: boolean;
@@ -542,12 +553,30 @@ export function toTeamDetailData(input: ToTeamDetailDataInput): TeamDetailData {
         }))
       : null;
 
+  // Unit grades — Phase 6.1. This was `grades: null` with the comment "MLB has
+  // no grading model", which was a fact about the old NFL-shaped type rather
+  // than about MLB. `teamStatcast.hitting`/`.pitching` are already ranked
+  // league-wide (every `TeamStatcastTile` carries a real `rank`/`poolSize`,
+  // and `StatRankRow` renders those same ranks on this page today), so
+  // compositing each group's percentiles gives two genuinely earned units on
+  // exactly the input NFL's own grades use.
+  //
+  // Two units, not a padded four: there is no league-wide ranked fielding or
+  // bullpen aggregate to grade from, and inventing one to fill a slot is what
+  // CLAUDE.md's sport-adapter §2 forbids. Those arrive with 6.1b's team-season
+  // aggregate, alongside NBA's and NHL's.
+  //
+  // Unlike `statGroups`, this is NOT gated on a game today — `teamStatcast` is
+  // season-wide, so a team on an off day still shows its grades.
+  const mlbUnitGrades: UnitGrade[] = [
+    unitGradeFromRanked({ key: 'hitting', label: 'Hitting', short: 'HIT' }, teamStatcast.hitting),
+    unitGradeFromRanked({ key: 'pitching', label: 'Pitching', short: 'PIT' }, teamStatcast.pitching),
+  ].filter((u): u is UnitGrade => u != null);
+
   return {
     team: { teamId, name: roster.teamName, abbr: roster.abbreviation, logoUrl: roster.logoUrl },
     record: roster.record,
-    // MLB has no grading model — always null, same as NFL's `model` fields
-    // stay null until NFL has a probability model (design doc §2).
-    grades: null,
+    unitGrades: mlbUnitGrades.length > 0 ? mlbUnitGrades : null,
     candidates,
     games: gameRows,
     windows,
