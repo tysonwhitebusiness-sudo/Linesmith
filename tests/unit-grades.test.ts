@@ -288,3 +288,41 @@ test('MLB grades its units from ranked Statcast rather than declaring it has no 
       'reverting to a hardcoded null restores the "MLB has no grading model" claim 6.1 disproved.',
   );
 });
+
+// ---------------------------------------------------------------------------
+// CLAUDE.md section 4's examples — kept honest by the compiler's absence
+// ---------------------------------------------------------------------------
+
+/**
+ * CLAUDE.md section 4 names concrete fields as its worked examples, and **two
+ * of its original three had gone stale**: `statComparison.bars` was collapsed
+ * in Phase 6.2, and `PlayerDetailData.mlbContextMatchup`/`.nflMatchup` had been
+ * replaced outright by `matchupExplorer` long before that, with the doc still
+ * citing them.
+ *
+ * Nothing checks a markdown file, so a convention document drifts from the code
+ * it describes silently — and this repo's own handoff notes flag "the plan's
+ * own task text goes stale, repeatedly" as a recurring cost. This test is the
+ * cheapest available fix: assert that every field section 4 still points at
+ * actually exists, and that the two removed ones have not crept back.
+ */
+test('CLAUDE.md section 4 only cites fields that still exist', () => {
+  const doc = readFileSync('CLAUDE.md', 'utf8');
+  const section = doc.slice(doc.indexOf('4. **Genuinely different UI'), doc.indexOf('**Before adding a new field'));
+  assert.ok(section.length > 0, 'section 4 not found — was CLAUDE.md restructured?');
+
+  const gameAdapter = readFileSync('lib/sports/mlb/adapters/gameDetailAdapter.ts', 'utf8');
+  const teamAdapter = readFileSync('lib/sports/mlb/adapters/teamDetailAdapter.ts', 'utf8');
+  const playerAdapter = readFileSync('lib/sports/mlb/adapters/playerDetailAdapter.ts', 'utf8');
+
+  // The two surviving examples must be real fields on the interfaces they name.
+  assert.match(gameAdapter, /draw\?: number \| null/, 'section 4 cites pregameLines.moneyline.draw, which no longer exists');
+  assert.match(teamAdapter, /pitching\?: \{/, 'section 4 cites TeamDetailData.matchup.pitching, which no longer exists');
+
+  // The two corrected ones must stay gone from the rule's own example list.
+  const ruleParagraph = section.slice(0, section.indexOf('**Two of this rule'));
+  assert.doesNotMatch(ruleParagraph, /statComparison\.bars/, 'section 4 cites statComparison.bars again — it was collapsed in Phase 6.2');
+  assert.doesNotMatch(ruleParagraph, /mlbContextMatchup/, 'section 4 cites mlbContextMatchup again — matchupExplorer replaced it');
+  assert.doesNotMatch(gameAdapter, /bars\?: Array</, 'StatComparisonData carries `bars` again');
+  assert.doesNotMatch(playerAdapter, /\n\s+mlbContextMatchup\??:/, 'PlayerDetailData declares mlbContextMatchup again');
+});
