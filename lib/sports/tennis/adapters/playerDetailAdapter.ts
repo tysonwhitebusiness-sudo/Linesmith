@@ -20,6 +20,7 @@ import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution
 import type { PropOddsRow } from '@/lib/db/client';
 import type { ChipDef, GamelogRow, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
+import { toPredicateBinarySplit } from '@/lib/sports/shared/predicateSplit';
 
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
   return (entry.raw ?? {}) as Record<string, unknown>;
@@ -90,6 +91,37 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
         : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => (rawOf(e).opponentName as string | undefined) === opponentAbbr, { minimum: 1 }),
   };
 
+  // ---- Role 4 | binarySplit: hard vs clay.
+  // `raw.surface` comes from `lib/sports/tennis/surfaces.ts`, a hand-curated
+  // table -- ESPN's tennis feeds carry no surface field anywhere. That table
+  // covers all 60 real 2026 ATP events; its WTA half is unfinished, so WTA
+  // subjects fall through to null here rather than to a guess.
+  //
+  // NOT `toVenueBinarySplit`: a tennis season is mostly hard court, so the
+  // 25% share floor that guards a balanced league schedule would reject a
+  // clay specialist's perfectly real split. See `predicateSplit.ts`.
+  const surfaceOf = (e: Parameters<typeof rawOf>[0]) => String(rawOf(e).surface ?? '').toLowerCase();
+  const binarySplit = toPredicateBinarySplit({
+    measured: categoriseByLine(active.history, line),
+    wanted,
+    title: 'Surface',
+    aLabel: 'Hard',
+    bLabel: 'Clay',
+    isA: (e) => surfaceOf(e).includes('hard'),
+    isB: (e) => surfaceOf(e).includes('clay'),
+    statLabel: active.dimensionLabel ?? active.dimension,
+  });
+
+  // ---- Role 5 | conditions: NOT BUILT, and deliberately not stubbed.
+  // Today's surface is the fact worth showing, and it is not reachable here:
+  // `buildSyntheticPlayerCandidates(subjectId, subjectName, tour)` never sees
+  // the event, so `subjectMeta` is `{ tour, league }` and nothing carries the
+  // tournament. A `meta.surface` read would compile, render nothing forever,
+  // and look finished -- which is the exact failure this phase keeps finding.
+  // The PAST surfaces are on `raw.surface` and drive `binarySplit` above;
+  // reusing the last match's surface as "today's" would be a different match's
+  // fact under today's heading. Needs the event plumbed onto subjectMeta.
+
   // ---- Role 6 | careerH2H (6.13). NOT a second copy of the h2h window box:
   // that reports one rate, this reports the per-MEETING history behind it.
   // "3 of 5" and "3 of 5, all three in one season" are different facts and a
@@ -152,6 +184,7 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
       : null;
 
   return {
+    binarySplit,
     careerH2H,
     subject: {
       subjectId: active.subjectId,

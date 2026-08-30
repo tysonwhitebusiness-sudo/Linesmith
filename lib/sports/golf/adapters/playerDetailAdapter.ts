@@ -22,6 +22,7 @@ import type { AdvancedStat, GolferStrokesGained } from '@/lib/sports/golf/pgatou
 import type { PlayerSeasonLog } from '@/lib/sports/golf/playerSeason';
 import type { GolfCategory, LiveRoundMatchup } from '@/lib/sports/golf/adapter';
 import type { ChipDef, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, RoundScoreEntry } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { BinarySplitRole } from '@/lib/sports/shared/playerRoles';
 
 // ---------------------------------------------------------------------------
 // Golf-specific helpers
@@ -135,6 +136,69 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
       return { hole: Number(c.dimension.slice('hole-'.length)), par, value, strokes };
     })
     .sort((a, b) => a.hole - b.hole);
+  // ---- Role 4 | binarySplit: par 5s vs par 4s.
+  // Built directly rather than through `toPredicateBinarySplit`, because golf's
+  // history is not one candidate's series -- it is one candidate PER HOLE, each
+  // with a value per round. So this walks every hole candidate's full history
+  // rather than the active market's.
+  //
+  // ACROSS ALL ROUNDS, not `effectiveRound`. The scorecard above is one round
+  // by design; a scoring split off four holes would be noise wearing a
+  // percentage.
+  //
+  // NO SHARE GUARD, deliberately: a round has roughly ten par 4s and four par
+  // 5s, so 10:4 is the CORRECT ratio. `toVenueBinarySplit`'s 25% floor exists
+  // for balanced league schedules and would reject a real course here.
+  const parBuckets = new Map<number, number[]>();
+  for (const c of candidates) {
+    if (!/^hole-\d+$/.test(c.dimension)) continue;
+    const parMatch = /Par (\d+)/.exec(c.dimensionLabel);
+    const holePar = parMatch ? Number(parMatch[1]) : null;
+    if (holePar == null) continue;
+    for (const entry of c.history) {
+      const rel = entryValue(entry);
+      if (rel == null || !Number.isFinite(rel)) continue;
+      const bucket = parBuckets.get(holePar);
+      if (bucket) bucket.push(rel);
+      else parBuckets.set(holePar, [rel]);
+    }
+  }
+  const par4 = parBuckets.get(4) ?? [];
+  const par5 = parBuckets.get(5) ?? [];
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  // Both sides or nothing -- one bar under a two-sided heading has nothing to
+  // compare against, the same rule every other split builder here enforces.
+  const binarySplit: BinarySplitRole | null =
+    par4.length >= 3 && par5.length >= 3
+      ? {
+          title: 'Par 5s vs par 4s',
+          aLabel: 'Par 5',
+          bLabel: 'Par 4',
+          rows: [
+            {
+              key: 'toPar',
+              label: 'Strokes to par',
+              a: mean(par5),
+              b: mean(par4),
+              decimals: 2,
+              aSample: par5.length,
+              bSample: par4.length,
+              // Under par is the good side. Without this the heat reads backwards.
+              lowerIsBetter: true,
+            },
+            {
+              key: 'birdieRate',
+              label: 'Under par',
+              a: (par5.filter((v) => v < 0).length / par5.length) * 100,
+              b: (par4.filter((v) => v < 0).length / par4.length) * 100,
+              decimals: 0,
+              aSample: par5.length,
+              bSample: par4.length,
+            },
+          ],
+        }
+      : null;
+
   const chart: PlayerDetailChart = {
     kind: 'scorecard',
     title: `Round ${effectiveRound} scorecard`,
@@ -158,6 +222,7 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
     .sort((a, b) => b.sampleSize - a.sampleSize || a.dimension.localeCompare(b.dimension, undefined, { numeric: true }));
 
   return {
+    binarySplit,
     subject: {
       subjectId: active.subjectId,
       name: active.subjectName,

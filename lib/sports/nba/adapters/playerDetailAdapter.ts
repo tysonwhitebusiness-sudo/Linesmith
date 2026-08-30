@@ -20,6 +20,7 @@ import { MIDDOT, fmt } from '@/components/charts/tokens';
 import { toRoleStat, type OpponentUnitRole, type SpatialGridRole } from '@/lib/sports/shared/playerRoles';
 import type { NbaShotProfile } from '@/lib/sports/nba/shotProfileShapes';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
+import { toRestConditions } from '@/lib/sports/shared/restConditions';
 
 // Local copy rather than importing lib/sports/nba/adapter.ts's version —
 // that module pulls in server-only DB/pg code (lib/db/client.ts), which
@@ -166,6 +167,15 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
         ? { status: 'insufficient', available: 0, required: 1 }
         : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => (rawOf(e).opponentAbbr as string | undefined) === opponentAbbr, { minimum: 1 }),
   };
+
+  // ---- Role 5 | conditions: rest and schedule load.
+  // Indoor sport -- temperature and wind are not conditions anyone bets on.
+  // What moves this market is rest, which `playerRoles.ts`'s own role table
+  // names for this sport. Dates come from the subject's FULL history, not the
+  // scoped view, since a filter chip should not change how rested he is.
+  const conditions = toRestConditions({
+    gameDates: active.history.map((e) => rawOf(e).date as string | undefined),
+  });
 
   // ---- Role 1 | opponentUnit: the defensive unit this subject faces.
   // Same league-wide defence-allowed leaderboard the matchup card already
@@ -328,6 +338,7 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
       : null;
 
   return {
+    conditions,
     opponentUnit,
     careerH2H,
 

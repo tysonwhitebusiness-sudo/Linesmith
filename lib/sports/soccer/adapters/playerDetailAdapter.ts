@@ -34,7 +34,7 @@ import type { PropOddsRow } from '@/lib/db/client';
 import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
 import { MIDDOT, fmt } from '@/components/charts/tokens';
-import type { SpatialGridRole } from '@/lib/sports/shared/playerRoles';
+import type { SpatialGridRole, UsageMixRole } from '@/lib/sports/shared/playerRoles';
 import type { ShotGrid } from '@/lib/sports/soccer/understatShots';
 import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
@@ -139,6 +139,36 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
   // Where someone actually shoots from is specific to them. The xG and the
   // conversion travel in the caption.
   const shotGrid = (meta.shotGrid ?? null) as ShotGrid | null;
+  // ---- Role 2 | usageMix: the shot-type mix.
+  // Same shots the grid places, counted by Understat's own vocabulary
+  // (Head / LeftFoot / RightFoot / OtherBodyPart) INSIDE the placed-shot
+  // branch, so the mix and the grid can never describe different sets.
+  //
+  // xG is the per-slice outcome and carries `valueSample` -- not every shot
+  // has a finite xG, so the n beside it is its own count, never the shot
+  // count. Same trap MLB's mix documents at length; different sport, identical
+  // shape.
+  const shotTypeLabel = (t: string) =>
+    ({ Head: 'Header', LeftFoot: 'Left foot', RightFoot: 'Right foot', OtherBodyPart: 'Other' } as Record<string, string>)[t] ?? t;
+  const usageMix: UsageMixRole | null =
+    shotGrid && shotGrid.shotTypes && shotGrid.shotTypes.length > 0
+      ? {
+          title: 'Shot types',
+          slices: shotGrid.shotTypes.map((t) => ({
+            key: t.type,
+            label: shotTypeLabel(t.type),
+            share: (t.shots / Math.max(1, shotGrid.totalShots)) * 100,
+            value: t.xgCount > 0 ? t.xgSum / t.xgCount : undefined,
+            valueLabel: 'xG per shot',
+            decimals: 2,
+            valueSample: t.xgCount,
+          })),
+          valueFormat: fmt.two,
+          sampleSize: shotGrid.totalShots,
+          emptyMessage: 'No shots on record for this player yet.',
+        }
+      : null;
+
   const spatialGrid: SpatialGridRole | null = shotGrid
     ? {
         title: 'Shot location',
@@ -333,6 +363,7 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
       : null;
 
   return {
+    usageMix,
     careerH2H,
 
     spatialGrid,

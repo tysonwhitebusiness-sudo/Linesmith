@@ -48,6 +48,8 @@ export interface UnderstatShot {
   xG: string | number;
   result: string;
   season?: string;
+  /** Understat's own vocabulary: Head, LeftFoot, RightFoot, OtherBodyPart. */
+  shotType?: string;
 }
 
 export interface ShotGridCell {
@@ -71,6 +73,16 @@ export interface ShotGrid {
   meanXg: number | null;
   /** Seasons the shots span, ascending. */
   seasons: string[];
+  /**
+   * Shot type mix — soccer's `usageMix`. Understat's own vocabulary
+   * ('Head', 'LeftFoot', 'RightFoot', 'OtherBodyPart'), counted from the same
+   * shots the grid places.
+   *
+   * COUNTED OVER PLACED SHOTS ONLY, so the shares sum to 100 against
+   * `totalShots` and agree with the grid beside them. A shot with unusable
+   * coordinates is dropped from both, not from one.
+   */
+  shotTypes: Array<{ type: string; shots: number; goals: number; xgSum: number; xgCount: number }>;
 }
 
 /**
@@ -137,6 +149,7 @@ export function toShotGrid(shots: readonly UnderstatShot[]): ShotGrid | null {
   let xgCount = 0;
   const xgByCell = new Map<string, { sum: number; n: number }>();
   const seasons = new Set<string>();
+  const byType = new Map<string, { shots: number; goals: number; xgSum: number; xgCount: number }>();
 
   for (const s of shots) {
     const x = pitchCoord(s.X);
@@ -156,6 +169,19 @@ export function toShotGrid(shots: readonly UnderstatShot[]): ShotGrid | null {
       goals += 1;
     }
     if (s.season) seasons.add(String(s.season));
+
+    // Counted INSIDE the placed-shot branch so the mix and the grid always
+    // describe the same set of shots.
+    const shotType = typeof s.shotType === 'string' && s.shotType ? s.shotType : 'Unknown';
+    const tacc = byType.get(shotType) ?? { shots: 0, goals: 0, xgSum: 0, xgCount: 0 };
+    tacc.shots += 1;
+    if (s.result === 'Goal') tacc.goals += 1;
+    const typeXg = Number(s.xG);
+    if (Number.isFinite(typeXg)) {
+      tacc.xgSum += typeXg;
+      tacc.xgCount += 1;
+    }
+    byType.set(shotType, tacc);
 
     const xg = Number(s.xG);
     if (Number.isFinite(xg)) {
@@ -186,5 +212,8 @@ export function toShotGrid(shots: readonly UnderstatShot[]): ShotGrid | null {
     totalGoals: goals,
     meanXg: xgCount > 0 ? xgSum / xgCount : null,
     seasons: [...seasons].sort(),
+    shotTypes: [...byType.entries()]
+      .map(([type, v]) => ({ type, ...v }))
+      .sort((a, b) => b.shots - a.shots),
   };
 }
