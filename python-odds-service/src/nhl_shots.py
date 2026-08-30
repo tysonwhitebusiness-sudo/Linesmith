@@ -217,7 +217,7 @@ async def ingest_season(client: httpx.AsyncClient, season: str, yield_fn=None) -
         if rows:
             written += await db.write_nhl_shot_events(rows)
         if yield_fn:
-            await yield_fn()
+            await yield_fn(0.0)
     print(
         f"[nhl_shots] season={season} games={len(games)} already={len(done)} "
         f"fetched={len(todo)} written={written} failed={len(failures)}",
@@ -259,7 +259,7 @@ async def ingest_recent(client: httpx.AsyncClient, days: int = 3, yield_fn=None)
         if rows:
             written += await db.write_nhl_shot_events(rows)
         if yield_fn:
-            await yield_fn()
+            await yield_fn(0.0)
     return {"season": season, "considered": len(recent), "written": written, "failed_games": failures}
 
 

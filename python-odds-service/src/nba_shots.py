@@ -217,7 +217,7 @@ async def ingest_days(client: httpx.AsyncClient, days: list[date], yield_fn=None
                 written += await db.write_nba_shot_events(rows)
             done_by_season[season].add(gid)
             if yield_fn:
-                await yield_fn()
+                await yield_fn(0.0)
 
     return {"considered": considered, "written": written, "failed_games": failures}
 

@@ -232,7 +232,7 @@ async def ingest_season(client: httpx.AsyncClient, season: int, through: date | 
             written += await db.write_mlb_pitch_events(events)
         print(f"[statcast_pitches] {start}..{end} fetched={len(events)} written={written}", flush=True)
         if yield_fn:
-            await yield_fn()
+            await yield_fn(0.0)
     return {"season": season, "fetched": fetched, "written": written, "failed_windows": failures}
 
 

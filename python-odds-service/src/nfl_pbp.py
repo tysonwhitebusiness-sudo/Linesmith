@@ -182,7 +182,7 @@ async def ingest_season(client: httpx.AsyncClient, season: int, yield_fn=None) -
                     written += await db.write_nfl_target_events(batch)
                     batch = []
                     if yield_fn:
-                        await yield_fn()
+                        await yield_fn(0.0)
 
     # The final partial line, and whatever is left in the batch.
     if header is not None and pending.strip():
