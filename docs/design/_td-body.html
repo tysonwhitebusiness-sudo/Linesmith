@@ -1,0 +1,279 @@
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Linesmith &middot; Phase 6 &middot; design study</div>
+    <h1>One Team Detail, every sport that has teams</h1>
+    <p class="lede">
+      Same exercise as the Player Detail study, same method: measure first, then build it rather
+      than argue it. <strong>Every tab below renders the same twenty blocks from the same
+      template</strong>, with no <code>sport === 'x'</code> in the renderer. The team side has two
+      blocks the player page does not &mdash; a roster and a standings table &mdash; and it loses
+      none.
+    </p>
+  </header>
+
+  <section id="finding">
+    <h2>What the measurement said &mdash; and it inverts the player-side answer</h2>
+    <p>
+      On the player side MLB turned out to be mid-table, with NFL and CFB carrying twice its stat
+      vocabulary. <strong>On the team side the ordering flips.</strong> MLB has sixteen years of
+      team rating history; every other sport has one season. And two sports have no team page at
+      all &mdash; which is a fact about those sports, not a hole in the data.
+    </p>
+
+    <div class="frame">
+      <table class="tv wide-tv" id="tcov-table"></table>
+      <p class="caption">
+        Measured 2026-08-29 against <code>team_elo_history</code>, <code>player_game_history</code>
+        and <code>game_odds_book_lines</code>. The Elo table covers <em>exactly</em> the six sports
+        that have a team adapter &mdash; independent confirmation that the six/two split is real.
+      </p>
+    </div>
+
+    <div class="callout">
+      <span class="tag">Tennis and golf are not thin. They have no teams.</span>
+      <p>
+        All 271,964 tennis rows in <code>player_game_history</code> carry a <strong>null
+        <code>team_id</code></strong> &mdash; zero distinct teams, by construction.
+        <code>TeamDetailPanel</code> already dispatches on exactly six sports, and neither tennis
+        nor golf has a <code>teamDetailAdapter.ts</code>. This is the one case where
+        <code>CLAUDE.md</code> &sect;4's &ldquo;render nothing&rdquo; rule is exactly right: there
+        is no page to render, so there should be no tab. For tennis the <em>player</em> page is the
+        entity page. Golf's structural sibling is a <strong>tournament</strong>, not a team &mdash;
+        the last tab shows the same twenty roles mapped onto a field and a course, to demonstrate
+        the grammar carries.
+      </p>
+    </div>
+
+    <div class="callout">
+      <span class="tag">The leak, and it is worse than the player side's</span>
+      <p>
+        <code>TeamDetailData.grades</code> is typed <code>TeamGrades | null</code> and commented
+        <em>&ldquo;NFL-only &mdash; MLB has no grading model, always null.&rdquo;</em>
+        <code>TeamGrades</code> itself hardcodes <strong>nine NFL unit names</strong> &mdash;
+        <code>specialTeams</code>, <code>secondary</code>, <code>linebackers</code>,
+        <code>dLine</code>, <code>passingOffense</code>&hellip; No other sport can fill that shape,
+        so no other sport gets grades. Meanwhile <strong>the NBA and NHL adapters emit no
+        <code>statGroups</code> at all</strong>, so their team pages are the thinnest in the app
+        today. One generic <code>unitGrades</code> list fixes both at once.
+      </p>
+    </div>
+
+    <div class="frame">
+      <table class="tv wide-tv" id="trole-table"></table>
+      <p class="caption">
+        The six roles that carry the sport-specific content. <code>units</code> is the one doing
+        the most work here &mdash; it is what replaces the nine hardcoded NFL grade fields.
+      </p>
+    </div>
+  </section>
+
+  <section id="pages">
+    <h2>The pages</h2>
+    <p class="lede">
+      Six teams and one tournament, one template, equal depth. Switch tabs and only the content
+      moves.
+    </p>
+
+    <div class="sporttabs" id="tsporttabs"></div>
+
+    <div class="frame wide screenframe">
+      <div class="mockbar">
+        <span class="mockdot"></span>
+        Representative data &mdash; not live. Teams, units and stat vocabularies are real; every number below is invented for this mockup.
+      </div>
+
+      <div class="screen">
+        <div class="main-col">
+
+          <div class="lb-card-hero card-pad">
+            <div class="hero-row">
+              <div class="avatar-c" id="td-initials">&nbsp;</div>
+              <div>
+                <div class="hero-name" id="td-name">&nbsp;</div>
+                <div class="hero-meta" id="td-meta">&nbsp;</div>
+              </div>
+              <div class="hero-anchor">
+                <div class="v" id="td-anchor-v">&nbsp;</div>
+                <div class="l" id="td-anchor-l">&nbsp;</div>
+              </div>
+            </div>
+            <div class="gradestrip" id="td-grades"></div>
+            <div class="hero-strip" id="td-herostrip"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title" id="td-form-t">&nbsp;</span>
+              <span class="card-meta">cover rate by window</span>
+            </div>
+            <div class="wtiles" id="td-windows"></div>
+            <div id="td-streak"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title" id="td-dist-t">&nbsp;</span>
+              <span class="card-meta">result vs the line</span>
+            </div>
+            <div class="chart-host" id="td-dist"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title" id="td-rating-t">&nbsp;</span>
+              <span class="card-meta" id="td-rating-m">&nbsp;</span>
+            </div>
+            <div class="chart-host" id="td-rating"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title">Line movement</span>
+              <span class="card-meta" id="td-tape-m">&nbsp;</span>
+            </div>
+            <div class="chart-host" id="td-tape"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head">
+              <span class="card-title" id="td-splits-t">&nbsp;</span>
+              <span class="card-meta">cover rate by split</span>
+            </div>
+            <div class="chart-host" id="td-grid"></div>
+          </div>
+
+          <div class="two-up">
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title" id="td-unitA-t">&nbsp;</span><span class="card-meta" id="td-unitA-m">&nbsp;</span></div>
+              <div id="td-unitA"></div>
+            </div>
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title" id="td-unitB-t">&nbsp;</span><span class="card-meta" id="td-unitB-m">&nbsp;</span></div>
+              <div id="td-unitB"></div>
+            </div>
+          </div>
+
+          <div class="two-up">
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title" id="td-split-t">&nbsp;</span><span class="card-meta" id="td-split-m">&nbsp;</span></div>
+              <div class="chart-host" id="td-dumbbell"></div>
+            </div>
+            <div class="lb-card card-pad">
+              <div class="card-head"><span class="card-title" id="td-zone-t">&nbsp;</span><span class="card-meta" id="td-zone-m">&nbsp;</span></div>
+              <div class="zonewrap"><div class="chart-host" id="td-zone"></div></div>
+            </div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="td-tend-t">&nbsp;</span><span class="card-meta" id="td-tend-m">&nbsp;</span></div>
+            <div id="td-tendency"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Recent results</span><span class="card-meta" id="td-log-m">&nbsp;</span></div>
+            <div id="td-results"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="td-roster-t">&nbsp;</span><span class="card-meta" id="td-roster-m">&nbsp;</span></div>
+            <div id="td-roster"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="td-stand-t">&nbsp;</span><span class="card-meta" id="td-stand-m">&nbsp;</span></div>
+            <div id="td-standings"></div>
+          </div>
+
+        </div>
+
+        <aside class="rail">
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Where this sits</span><span class="card-meta" id="td-dens-m">&nbsp;</span></div>
+            <div class="chart-host" id="td-density"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="td-oppunit-t">&nbsp;</span></div>
+            <div id="td-oppunit"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="td-h2h-t">&nbsp;</span></div>
+            <div id="td-h2h"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="td-qual-t">&nbsp;</span></div>
+            <div id="td-qual"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="td-cond-t">&nbsp;</span></div>
+            <div id="td-cond"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="td-price-t">&nbsp;</span><span class="card-meta">6 books</span></div>
+            <div class="chart-host" id="td-range"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title">Why the model likes it</span><span class="card-meta" id="td-contrib-m">&nbsp;</span></div>
+            <div class="chart-host" id="td-contrib"></div>
+          </div>
+
+          <div class="lb-card card-pad">
+            <div class="card-head"><span class="card-title" id="td-ctx-t">&nbsp;</span></div>
+            <div id="td-ctx"></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <p class="countline" id="td-count">&nbsp;</p>
+  </section>
+
+  <section id="verdict">
+    <h2>What this means for the interface</h2>
+    <ul class="verdict-list">
+      <li>
+        <strong><code>grades: TeamGrades | null</code> becomes <code>unitGrades: UnitGrade[]</code>.</strong>
+        The nine hardcoded NFL fields become a list of <code>{ key, label, grade, rank }</code>.
+        NFL keeps all nine; MLB declares three (hitting, pitching, fielding); NHL declares four
+        (offence, defence, power play, penalty kill). The chip row renders a list, so it never
+        knows what a linebacker is. <strong>This also un-blanks the NBA and NHL team pages</strong>,
+        which today emit no <code>statGroups</code> at all.
+      </li>
+      <li>
+        <strong>Two blocks are genuinely team-only: <code>roster</code> and
+        <code>standings</code>.</strong> Neither has a player-page equivalent, and both are
+        already in <code>TeamDetailData</code> today with their sport differences correctly
+        data-driven (<code>rosterSortByStats</code>, <code>rosterPageSize</code>). That pattern is
+        right &mdash; extend it rather than replace it.
+      </li>
+      <li>
+        <strong>Six sports, not eight, and that is the correct answer.</strong> Tennis has null
+        <code>team_id</code> on every row; golf has no team concept. Do not build a tab that
+        renders an apology. Golf's real sibling page is a <em>tournament</em>, shown here as the
+        last tab because the grammar transfers cleanly &mdash; the field is the opponent unit, the
+        course is the conditions block, the leaderboard is the standings.
+      </li>
+      <li>
+        <strong>The depth asymmetry is the opposite of the player page's, and it is about
+        history.</strong> MLB has 78,550 Elo rows back to 2010; every other sport has a single
+        season. The rating-history block is therefore the one place a sport genuinely renders less
+        &mdash; and the honest fix is a shorter x-axis with the real span labelled, not a fabricated
+        backfill.
+      </li>
+      <li>
+        <strong>Market coverage is the real gap to close before any of this ships.</strong>
+        <code>game_odds_book_lines</code> has MLB on moneyline, total and spread, but
+        <strong>NFL on moneyline only (72 rows)</strong> and CFB moneyline only. The splits grid
+        and the price block both assume a spread. That is a data-sourcing task, exactly like
+        tennis was on the player side.
+      </li>
+    </ul>
+  </section>
+
+</div>

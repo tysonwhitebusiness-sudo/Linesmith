@@ -5,7 +5,8 @@
 in full from G1 per Rule 5).
 
 **Phase 6 has started — direction agreed, the per-sport question measured and
-answered, two mockups built. No production code yet.** See §6.
+answered for BOTH Player and Team Detail, three mockups built. No production
+code yet.** See §6.
 
 ## The documents, in reading order
 
@@ -60,7 +61,8 @@ production from the worker's own logs.
 1. **Phase 6 — operator sign-off on the six role names**, then build
    `components/charts/`. §6 has the measurement, the answer, and two mockups:
    `docs/design/chart-grammar.html` (the primitives + deep MLB page) and
-   `docs/design/player-detail-per-sport.html` (all eight sports, one template).
+   `docs/design/player-detail-per-sport.html` (all eight sports, one template)
+   and `docs/design/team-detail-per-sport.html` (six teams + golf's tournament).
 2. **5.1's second VERIFY half**, after 00:00 UTC — the one carried item from
    Phase 5. `propline` was correctly gated at 1000/1000 for 2026-08-29:
    ```sql
@@ -321,6 +323,95 @@ one before a second sport touches it.**
    today. Decide whether tennis ships at this depth or at a stated lower one.
 3. **Golf's escape hatch is legitimate**, not laziness — separate schema, and
    `liveMatchup`/`golfFormHoles` already exist for it.
+
+### TEAM DETAIL — measured and built (2026-08-29, same session)
+
+Operator approved the player-side answer, then asked for the same treatment on
+Team Detail. Same method: measure, then build it.
+
+#### The measurement inverts the player-side result
+
+| Sport | Team adapter | Elo rows | Span | Teams | Game markets priced |
+|---|---|---|---|---|---|
+| MLB | yes | **78,550** | **2010-2026** | 30 | ML, total, spread |
+| NHL | yes | 2,996 | 2025-26 | 32 | none yet |
+| NBA | yes | 2,794 | 2025-26 | 37 | none yet |
+| CFB | yes | 1,916 | 2025-26 | 236 | ML only (344) |
+| Soccer | yes | 1,778 | 2025-26 | 55 | ML, total, spread |
+| NFL | yes | 736 | 2025-26 | 34 | **ML only (72)** |
+| Tennis | **NO** | 0 | — | **0** | player-level only |
+| Golf | **NO** | 0 | — | 0 | player-level only |
+
+On the player side MLB was mid-table. **On the team side MLB is the deep one by
+an order of magnitude** — sixteen years of Elo against one season for everyone
+else.
+
+**Tennis and golf have no team page, and that is correct.** All 271,964 tennis
+rows carry a null `team_id` — zero distinct teams, by construction.
+`TeamDetailPanel` already dispatches on exactly six sports and neither has a
+`teamDetailAdapter.ts`. `team_elo_history` independently covers exactly those
+same six. Three separate signals agree. **Do not build a seventh and eighth tab
+that render an apology** — for tennis the player page *is* the entity page.
+
+#### The leak here is worse than the player side's
+
+`TeamDetailData.grades` is `TeamGrades | null`, commented *"NFL-only — MLB has
+no grading model, always null."* `TeamGrades` hardcodes **nine NFL unit names**
+(`specialTeams`, `secondary`, `linebackers`, `dLine`, `passingOffense`…). No
+other sport can fill that shape, so no other sport gets grades. Meanwhile **the
+NBA and NHL adapters emit no `statGroups` at all** — their team pages are the
+thinnest in the app today.
+
+One generic `unitGrades: Array<{ key, label, grade, rank }>` fixes both. NFL
+keeps nine; MLB declares hitting/pitching/fielding/bullpen; NHL declares
+offence/defence/power play/penalty kill — the case the hardcoded shape cannot
+express at all.
+
+#### Built
+
+**`docs/design/team-detail-per-sport.html`** — seven tabs (six teams + golf's
+*tournament*, its structural sibling), one `renderTeam()` with no `sport ===`
+check. Verified in-browser: zero console errors, 22 cards and 9 SVGs per tab,
+~460 numbers each, no horizontal overflow. Two blocks are genuinely team-only —
+**roster and standings** — and both already exist in `TeamDetailData` with their
+sport differences correctly data-driven (`rosterSortByStats`, `rosterPageSize`);
+extend that pattern rather than replace it.
+
+#### Second primitive with a first-sport assumption baked in
+
+`rollingChart` forced `lo = 0` — right for a count stat (hits, receiving yards),
+which is what it was first written against; **wrong for a rating**. The Elo
+series spanning 1460–1590 collapsed into a flat strip with ticks at 0.0 / 590.2
+/ 1180.5. Fixed with an opt-in `zeroBased: false` (plus `cfg.fmt`), so every
+existing caller is untouched — confirmed by re-running the player board and
+getting byte-identical counts with its axes still starting at 0.0.
+
+**That is the second primitive in two boards with its first sport baked in, and
+both were found by LOOKING at the built page, not by querying the DOM.** The
+standing rule for `components/charts/`: *the first sport to use a primitive
+gets to define its defaults, so audit every literal in one before a second sport
+touches it.* Both fixes live in `docs/design/build-lib.mjs` and still need
+carrying into the real React primitives; `chart-grammar.html` holds the unfixed
+originals (harmless there — it is MLB-only).
+
+#### Build layout
+
+`build-lib.mjs` now owns extraction and all eight patches; `build-per-sport.mjs`
+and `build-team-detail.mjs` are ~15 lines each. The team script began as a
+`sed` copy of the player one, and the very first patch after that copy
+(`divFill` in the IIFE preamble) existed in only one of them — so it was
+factored immediately. Same argument as `run_provider_specs`, third occurrence.
+
+#### What still needs the operator
+
+1. **Sign off `unitGrades` replacing `TeamGrades`.** Everything else follows.
+2. **Market coverage is the blocking data gap.** `game_odds_book_lines` has NFL
+   on **moneyline only, 72 rows**, and CFB moneyline only. The splits grid and
+   the price block both assume a spread. This is the team-side equivalent of
+   tennis on the player side, and it is bigger.
+3. **The Elo depth gap is real and should stay visible** — one season for five
+   of six sports. Honest fix is a shorter axis with the real span labelled, not
+   a fabricated backfill.
 
 ### Two design-system findings, measured this session
 

@@ -31,3 +31,11 @@
    way on the first mockup - keep both halves. */
 .screen, .main-col, .rail { min-width: 0; }
 .screen > *, .main-col > *, .rail > * { min-width: 0; }
+
+/* ---- team board additions ---- */
+.gradestrip { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.gchip { border-radius: 6px; padding: 6px 10px; min-width: 76px; }
+.gchip-k { font-size: 9px; letter-spacing: .03em; text-transform: uppercase; }
+.gchip-v { font-size: 16px; font-weight: 700; line-height: 1.1; margin: 1px 0; font-variant-numeric: tabular-nums; }
+.gchip-r { font-size: 9px; }
+.notab { align-self: center; margin-left: 4px; font-size: 11px; color: var(--ink-4); font-style: italic; }
