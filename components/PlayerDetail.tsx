@@ -12,6 +12,8 @@ import { useTeamStatcast } from './useTeamStatcast';
 import { useMlbPitchProfile } from './useMlbPitchProfile';
 import { useNhlShotProfile } from './useNhlShotProfile';
 import { useNbaShotProfile } from './useNbaShotProfile';
+import { useNflTargetMap } from './useNflTargetMap';
+import { TARGET_MAP_POSITIONS } from '@/lib/sports/nfl/targetMapShapes';
 import { useLineHistory } from './useLineHistory';
 import { candidateCategoryToSide, candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import { LineMovementCard } from './LineMovementCard';
@@ -1066,6 +1068,25 @@ export function PlayerDetail({
     })(),
   );
 
+  // NFL's target map (6.8). Unlike NBA/NHL, the id CANNOT be parsed out of
+  // `subjectId` — that is `espn:nfl:{athleteId}` while `nfl_target_events`
+  // is keyed by GSIS id, and the crosswalk between them reads the DB. The
+  // server adapter resolves it once and carries it on `subjectMeta.gsisId`.
+  //
+  // POSITION-GATED, and not merely to save a fetch — see
+  // `TARGET_MAP_POSITIONS` for the quarterback case that makes it necessary.
+  const nflGsisId = typeof meta.gsisId === 'string' ? meta.gsisId : undefined;
+  const nflIsPassCatcher =
+    typeof meta.position === 'string' && (TARGET_MAP_POSITIONS as readonly string[]).includes(meta.position);
+  // The season comes from this player's OWN history rather than the clock:
+  // `raw.season` is the season those weekly box scores were pulled for, so the
+  // map always describes the same season the windows and gamelog above it do.
+  const nflHistorySeason = Number((active?.history?.at(-1)?.raw as Record<string, unknown> | undefined)?.season);
+  const nflTargetMap = useNflTargetMap(
+    active?.sport === 'nfl' && nflIsPassCatcher ? nflGsisId : undefined,
+    Number.isInteger(nflHistorySeason) && nflHistorySeason > 1998 ? nflHistorySeason : undefined,
+  );
+
   const lineHistoryMarketKey = active ? (candidateDimensionToMarketKey(active.dimension) ?? undefined) : undefined;
   const lineHistorySide = active ? (candidateCategoryToSide(active.category ?? '') ?? 'over') : 'over';
   const lineHistory = useLineHistory(
@@ -1123,6 +1144,7 @@ export function PlayerDetail({
             snapshot,
             scope: { lineOffset, opponentOnly, lastN, showAllGames, kpiScope },
             propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
+            targetMap: nflTargetMap,
           })
         : active.sport === 'soccer'
           ? toSoccerPlayerDetailData({

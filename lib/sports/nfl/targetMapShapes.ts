@@ -57,6 +57,22 @@ export interface NflTargetMap {
   unplaced: number;
 }
 
+/**
+ * The positions a target map describes.
+ *
+ * `nfl_target_events.receiver_id` is who CAUGHT the pass, so this is not a
+ * cost optimisation: seven quarterbacks on one real slate had 2025 target rows
+ * (Caleb Williams had two, both caught), and without this gate each would get
+ * a card headed "Target map" showing the trick plays thrown TO him — which
+ * reads as his passing chart and means the opposite. A card that is real but
+ * inverts its own title is worse than no card.
+ *
+ * Kept beside the grid rather than in the component so `tests/nfl-target-map`
+ * can check it against `MARKETS_BY_POSITION`, the independent list that
+ * decides who gets receiving markets at all.
+ */
+export const TARGET_MAP_POSITIONS = ['WR', 'TE', 'RB', 'FB'] as const;
+
 const ROWS = ['deep', 'short'];
 const COLUMNS = ['left', 'middle', 'right'];
 const ROW_LABELS = ['Deep', 'Short'];

@@ -169,7 +169,8 @@ const DEFAULT_LINES: Record<string, number> = {
 };
 
 /** Which markets are even sensible for a position — a lineman never gets a passing-yards candidate. */
-const MARKETS_BY_POSITION: Record<string, string[]> = {
+/** Exported so `tests/nfl-target-map` can check the 6.8 position gate against it. */
+export const MARKETS_BY_POSITION: Record<string, string[]> = {
   QB: ['passing-yards', 'passing-tds', 'interceptions-thrown', 'rushing-yards', 'rushing-tds'],
   RB: ['rushing-yards', 'rushing-tds', 'receiving-yards', 'receptions', 'receiving-tds'],
   FB: ['rushing-yards', 'rushing-tds', 'receiving-yards', 'receptions', 'receiving-tds'],
@@ -342,6 +343,17 @@ export async function buildNflSnapshot(): Promise<SportSnapshot> {
             position: rosterEntry.position,
             opponent: opponentAbbr,
             isHome,
+            // The nflverse id, so the CLIENT can ask for this receiver's target
+            // map (6.8). `subjectId` is `espn:nfl:{athleteId}` and
+            // `nfl_target_events.receiver_id` is a GSIS id — the two are
+            // different id spaces, and the crosswalk that joins them
+            // (`getEspnToGsisMap`) reads the DB, so it cannot run in the
+            // browser the way NBA's and NHL's `subjectId`-parsing does. Carried
+            // here instead, resolved once above.
+            //
+            // This is a ~10-byte string, deliberately unlike the ~2KB objects
+            // the comment below moved off candidates for real payload reasons.
+            gsisId,
             headshotUrl: rosterEntry.headshotUrl,
             teamLogoUrl: nflTeamLogoUrl(rosterEntry.teamAbbr),
             opponentLogoUrl: nflTeamLogoUrl(opponentAbbr),

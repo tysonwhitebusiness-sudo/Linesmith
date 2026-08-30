@@ -34,6 +34,9 @@ import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import { teamPrimaryColor } from '@/lib/sports/nfl/teamColors';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import type { PropOddsRow } from '@/lib/db/client';
+import type { SpatialGridRole } from '@/lib/sports/shared/playerRoles';
+import type { NflTargetMap } from '@/lib/sports/nfl/targetMapShapes';
+import { MIDDOT, fmt } from '@/components/charts/tokens';
 import type { PlayerSeasonRank, PlayerSeasonStats } from '@/lib/sports/nfl/nflverse';
 import { MATCHUP_GROUP_BY_POSITION, playerMatchupRows } from '@/components/NflPlayerVsDefenseCard';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
@@ -180,6 +183,8 @@ export interface NflPlayerDetailInput {
   snapshot: SportSnapshot | null;
   scope: NflPlayerDetailScope;
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
+  /** `useNflTargetMap(...)`'s result — the target map (6.8). Structural, not an import of the hook's type. */
+  targetMap?: { map: NflTargetMap | null; loading: boolean };
 }
 
 // ---------------------------------------------------------------------------
@@ -193,7 +198,7 @@ export interface NflPlayerDetailInput {
  * MLB/golf adapters.
  */
 export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, snapshot, scope, propOdds } = input;
+  const { candidates, market, snapshot, scope, propOdds, targetMap: targetMapState } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -248,6 +253,48 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   // card simply does not render. Shared builder, not an inline copy of
   // MLB's: a temperature is a temperature.
   const conditions = toConditionsRole({ weather: active.context?.weather ?? null });
+
+  // ---- Role 3 | spatialGrid: the target map (6.8).
+  // Fed by `useNflTargetMap` -> `/api/nfl/target-map` -> `nfl_target_events`,
+  // which Python's `ingestNflPbpJob` writes from nflverse play-by-play. The
+  // grid is depth x field side because nflverse gives `pass_length` and
+  // `pass_location` directly -- it is the source's own split, not a threshold
+  // chosen here. See `targetMapShapes.ts` for why the rows read deep-first.
+  //
+  // The HEAT is share of targets (where the ball goes), and `catchPct` rides
+  // along in the caption rather than as a second grid: two grids of the same
+  // six cells invite reading one as the other, and share is the thing a
+  // receiving prop actually turns on.
+  const nflTargets = targetMapState?.map ?? null;
+  const spatialGrid: SpatialGridRole | null = nflTargets
+    ? {
+        title: 'Target map',
+        cells: nflTargets.cells.map((row) =>
+          row.map((c) => ({ key: c.key, value: c.targets > 0 ? c.share : null, sampleSize: c.targets })),
+        ),
+        rowLabels: nflTargets.rowLabels,
+        columnLabels: nflTargets.columnLabels,
+        format: fmt.pct0,
+        unit: 'of targets',
+        caption: [
+          `${nflTargets.totalTargets.toLocaleString()} located targets`,
+          `${Math.round((nflTargets.totalCompletions / Math.max(1, nflTargets.totalTargets)) * 100)}% caught`,
+          // Mean air yards is over every target that CARRIED an air-yard
+          // reading, which is a different denominator from the located count
+          // beside it -- an unlocated target still has a depth. Hence
+          // "located targets" rather than "targets": the grid's own total
+          // must never read as the player's full workload.
+          // A screen's air yards are negative and real, and nothing clamps them.
+          nflTargets.meanAirYards != null ? `${fmt.one(nflTargets.meanAirYards)} avg air yds` : null,
+          // A target nflverse did not locate is a real target with no position.
+          // Saying so beats letting the shares imply full coverage.
+          nflTargets.unplaced > 0 ? `${nflTargets.unplaced} unplaced` : null,
+        ]
+          .filter(Boolean)
+          .join(` ${MIDDOT} `),
+        emptyMessage: 'No located targets on record.',
+      }
+    : null;
 
   const windows: WindowedStat5 = {
     l5: fixedWindow(measured, wanted, 5),
@@ -407,6 +454,7 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
 
   return {
     conditions,
+    spatialGrid,
     subject: {
       subjectId: active.subjectId,
       name: active.subjectName,
