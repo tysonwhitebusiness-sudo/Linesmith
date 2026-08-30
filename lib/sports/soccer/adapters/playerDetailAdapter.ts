@@ -38,6 +38,7 @@ import { toRoleStat, type OpponentUnitRole, type SpatialGridRole, type UsageMixR
 import type { ShotGrid } from '@/lib/sports/soccer/understatShots';
 import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
+import { isTeamNameMatch } from '@/lib/sports/shared/teamNameMatch';
 
 interface SoccerSeasonStats {
   games: number;
@@ -121,7 +122,11 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
   // ---- Scope filters (mirrors NflPlayerDetail's opponent + lastN; no venue filter) ----
   let scoped = active.history;
   if (scope.opponentOnly && opponentName) {
-    scoped = scoped.filter((e) => (rawOf(e).opponentAbbr as string | undefined) === opponentName);
+    // NOT `===`. Understat's history says "Leeds"; ESPN's `opponentName` says
+    // "Leeds United". Measured on a real page: 0 of 273 entries matched, so
+    // this chip, the h2h window and the careerH2H card were all dead. See
+    // `teamNameMatch.ts`.
+    scoped = scoped.filter((e) => isTeamNameMatch(rawOf(e).opponentAbbr as string | undefined, opponentName));
   }
   if (scope.lastN !== 'all') scoped = scoped.slice(-scope.lastN);
 
@@ -215,7 +220,7 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     h2h:
       !opponentName
         ? { status: 'insufficient', available: 0, required: 1 }
-        : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => (rawOf(e).opponentAbbr as string | undefined) === opponentName, { minimum: 1 }),
+        : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => isTeamNameMatch(rawOf(e).opponentAbbr as string | undefined, opponentName), { minimum: 1 }),
   };
 
   // ---- Role 6 | careerH2H (6.13). NOT a second copy of the h2h window box:
@@ -228,7 +233,7 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     ? toCareerH2H({
         measured: categoriseByLine(active.history, line),
         wanted,
-        isVsOpponent: (e) => (rawOf(e).opponentAbbr as string | undefined) === opponentName,
+        isVsOpponent: (e) => isTeamNameMatch(rawOf(e).opponentAbbr as string | undefined, opponentName),
         opponentLabel: `vs ${opponentName}`,
         statLabel: marketText('soccer', active.dimension, 'compact'),
       })

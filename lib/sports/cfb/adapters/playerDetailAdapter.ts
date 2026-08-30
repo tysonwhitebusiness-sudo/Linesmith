@@ -29,6 +29,7 @@ import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, Playe
 import type { CfbTeamDefenseAllowed } from '@/lib/sports/cfb/teamDefenseAllowed';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toRoleStat, type OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
+import { isTeamNameMatch, normalizeTeamName } from '@/lib/sports/shared/teamNameMatch';
 
 function fuzzyMatchCfbTeamName(teams: CfbTeamDefenseAllowed[], espnName: string): CfbTeamDefenseAllowed | null {
   const normalizedEspn = normalizeTeamName(espnName);
@@ -77,16 +78,6 @@ interface CfbSeasonStats {
  * the client bundle when imported from a `playerDetailAdapter.ts` (rendered
  * client-side via `PlayerDetail.tsx`). Same normalization, no SDK import.
  */
-function normalizeTeamName(name: string): string {
-  return name
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[.'`'-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 /**
  * CFBD's own opponent name ("Alabama") and ESPN's full display name
  * ("Alabama Crimson Tide") are real but differently-conventioned —
@@ -94,12 +85,7 @@ function normalizeTeamName(name: string): string {
  * `adapter.ts`'s own H2H split needed (found together, same class of bug
  * as soccer's identical opponent-name/abbreviation mismatch).
  */
-function isOpponentMatch(rawOpponent: string | undefined, opponentName: string | undefined): boolean {
-  if (!rawOpponent || !opponentName) return false;
-  const a = normalizeTeamName(rawOpponent);
-  const b = normalizeTeamName(opponentName);
-  return a !== '' && b !== '' && (a.includes(b) || b.includes(a));
-}
+const isOpponentMatch = isTeamNameMatch;
 
 const GAMELOG_COLUMNS = [
   { key: 'passingYards', label: 'Pass Yds' },

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { toRestConditions } from '../lib/sports/shared/restConditions';
 import { toPredicateBinarySplit } from '../lib/sports/shared/predicateSplit';
+import { isTeamNameMatch } from '../lib/sports/shared/teamNameMatch';
 import { categoriseByLine, OVER } from '../lib/core/windowedStat';
 import type { HistoryEntry } from '../lib/core/types';
 
@@ -150,4 +151,41 @@ test('the average row carries the sport’s own stat label and its lowerIsBetter
   assert.equal(avg.label, 'Strokes to par');
   assert.equal(avg.lowerIsBetter, true, 'without this the heat reads backwards for a scoring stat');
   assert.equal(role.rows.find((r) => r.key === 'hitRate')!.lowerIsBetter, undefined);
+});
+
+// ---------------------------------------------------------------------------
+// teamNameMatch — the exact-equality bug, found on a real page three times.
+// ---------------------------------------------------------------------------
+
+test('two feeds naming the same club differently still match', () => {
+  // The real 2026-08-30 failure: a player's Understat history says "Leeds",
+  // ESPN's subjectMeta says "Leeds United". 0 of 273 entries matched under
+  // `===`, so the h2h window, the careerH2H card and the opponent filter chip
+  // were all silently dead.
+  assert.equal(isTeamNameMatch('Leeds', 'Leeds United'), true);
+  assert.equal(isTeamNameMatch('Leeds United', 'Leeds'), true, 'neither feed is reliably the longer one');
+  assert.equal(isTeamNameMatch('Tottenham', 'Tottenham Hotspur'), true);
+  assert.equal(isTeamNameMatch('Alabama', 'Alabama Crimson Tide'), true, "CFB's original case");
+  assert.equal(isTeamNameMatch('Wolverhampton Wanderers', 'Wolverhampton Wanderers'), true);
+});
+
+test('different clubs do not match', () => {
+  // The substring test is loose on purpose; it must still separate real teams.
+  assert.equal(isTeamNameMatch('Manchester City', 'Manchester United'), false);
+  assert.equal(isTeamNameMatch('Sheffield United', 'Leeds United'), false);
+  assert.equal(isTeamNameMatch('Everton', 'Liverpool'), false);
+});
+
+test('an absent opponent matches nothing', () => {
+  // An empty string is a substring of everything. If that counted as a match,
+  // a subject with no opponent would report its FULL season as head-to-head.
+  assert.equal(isTeamNameMatch('', 'Leeds United'), false);
+  assert.equal(isTeamNameMatch('Leeds', ''), false);
+  assert.equal(isTeamNameMatch(undefined, 'Leeds'), false);
+  assert.equal(isTeamNameMatch('Leeds', null), false);
+});
+
+test('punctuation and accents do not defeat a match', () => {
+  assert.equal(isTeamNameMatch("Nott'm Forest", 'Nottm Forest'), true);
+  assert.equal(isTeamNameMatch('Atlético Madrid', 'Atletico Madrid'), true);
 });

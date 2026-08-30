@@ -1857,7 +1857,13 @@ export function PlayerDetail({
                   {data.gamelog.summaryStrip ? (
                     <div className="border-b border-line-soft px-3 py-2.5">
                       <div className="mb-2 flex items-center justify-between gap-2">
-                        <h3 className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Season stats</h3>
+                        {/* "Totals", not "Season stats". Two problems with the
+                            old label: the rail card below is ALSO headed
+                            "Season stats" (`data.nflSeasonStats`), so one page
+                            showed two differently-scoped cards under one name;
+                            and the toggle beside this one switches to L15, at
+                            which point "Season" was simply untrue. */}
+                        <h3 className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Totals</h3>
                         <SegmentedToggle
                           value={kpiScope}
                           onChange={setKpiScope}
