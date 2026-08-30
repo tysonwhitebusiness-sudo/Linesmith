@@ -3979,6 +3979,75 @@ start; operator agreed to move them to Phase 7. 6.18 skipped by the operator
 (remains a launch blocker). 6.24's book limits stay out: operator declined
 the 5.2 spend.
 
+**FOURTH SESSION, 2026-08-30.** Commits `e4c2745`..`f54ad33`. Tests 197 -> 226.
+`tsc` clean, `npm run build` clean, every claim below checked against live rows
+or a rendered page.
+
+| Task | State | Evidence |
+|---|---|---|
+| 6.8 adapter wiring | **COMPLETE** | Target map renders. Was NOT the "six lines" the handoff described — see below. 13 tests, 7 guards fault-injected. |
+| 6.14 rating block | **BUILT** | `team_elo_history`'s 88,774 rows reached a page for the first time. Six sports, one shared builder. 16 tests, 9 injected. |
+| Render worker | **DEPLOYED** `e4c2745` | `"status":"live"`. The three ingest jobs are registered (NHL/NBA hourly, NFL PBP daily) and had not yet come due when checked. |
+| `refreshTier1` | **FIXED, not deployed** | One bad row was aborting the whole batch. Real-Postgres test added. |
+
+**6.8 was not six lines, and the reason generalises.** NHL and NBA parse the
+shooter id out of `subjectId` in the browser; NFL cannot, because `subjectId`
+is `espn:football:{athleteId}` and `nfl_target_events.receiver_id` is a GSIS
+id, and the crosswalk between the two id spaces reads the database. The server
+adapter already resolved it and simply was not carrying it. **A sibling sport's
+solution is only copyable when the two sports share an id space.**
+
+The season is taken from the player's own `raw.season`, not the clock — which
+is 2025, and only 2024 was ingested, so the card would have been blank for
+every player on the slate. Backfilled: 48,771 plays -> 17,582 target events.
+Position-gated because `receiver_id` is who CAUGHT the pass: seven QBs on the
+live slate have real 2025 target rows, so an ungated card would head a
+quarterback's trick-play receptions "Target map".
+
+**6.14's board was stale in both directions.** Its central verdict — replace
+`grades: TeamGrades | null` with a generic `unitGrades`, which "also un-blanks
+the NBA and NHL team pages" — was already done in 6.1/6.2. Its other verdict
+assumed a rating-history block existed to shorten; there was none, and
+`team_elo_history` had 88,774 rows that no page read. **That is the plan's
+premise wrong for the seventh and eighth time.**
+
+**`team_elo_history.team_id` IS NOT UNIQUE ACROSS SPORTS** — 43 ids shared by
+up to four leagues, 27,591 rows; id 25 is a CFB, NBA, NFL and NHL team at once.
+TS's `getCurrentElo`/`getLatestEloBeforeSeason`/`getMostRecentEloGame` filter on
+`team_id` ALONE and are correct today only by luck: every caller is MLB's, and
+MLBAM ids (108-158) happen not to collide. Python already filters on sport.
+**Left as a latent finding, not changed under this task.**
+
+**The subject season is the latest DRAWABLE one, not the latest.** Taking "most
+recent season" literally rendered nothing for every EPL team, because 2026 was
+one game old and 2025's full 38 sat behind it — the ordinary state of every
+league for the opening weeks of every year. Found by opening the page.
+
+**`refreshTier1` was failing in production and writing nothing**, found by
+checking that the deploy was doing something rather than trusting
+`"status":"live"`. **My first diagnosis was wrong and is worth recording:** the
+failing row is `mlb total under point=5.5`, 5.5 is an ordinary MLB total, and
+37,881 settled games in `historical_odds` do run 4.7-19.63 — so 5.4's [6, 14]
+band looks too tight. The tell is the PRICE. Under 5.5 at -225 implies 69%
+against a real ~20-25%; it is the alternate-scope market 5.4's own migration
+describes. **Widening the band would have readmitted exactly what 5.4 excluded.**
+The real defect is that 5.4 made bad data loud and nothing was taught to handle
+it: one transaction for the whole batch, so one row cost ~1,500. Fixed with a
+per-row SAVEPOINT, the constraint left as the single source of truth.
+
+**TWO TESTS THAT DID NOT DISCRIMINATE, both caught by fault injection**, and
+both a bad FIXTURE rather than a bad assertion — the same lesson as session
+three, four more times over:
+- "a newer thin season does not stretch the axis" asserted something
+  unreachable: an undrawn season has exactly one game and a drawn one at least
+  two, so `max` can never pick it.
+- "every series is the same length" used two seasons, so the only context
+  season was also the width-setter and came out right by accident. It needs
+  three, with the middle shorter than the longest and longer than the subject.
+
+**NOT DONE:** 6.15 (untouched, now the largest remaining item), 6.14's other
+blocks beyond the rating one, 6.10's park factors and game sims, 6.21, 6.24.
+
 ### Phase 5 — 2026-08-29
 
 **GATE RESULT: PASS** (2026-08-29), on the re-run after G1's first pass
