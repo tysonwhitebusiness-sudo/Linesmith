@@ -2072,9 +2072,34 @@ The user's own CLV: did their bets beat the close?
 Only after 1.1 and 6.20. A **ranking**, never a probability or EV, with its
 realised record attached.
 
-### 6.23 · Book-lag analysis *(was 6.8)*
-"Which book moves last" — derivable today from `prop_odds_history` (596,410
-rows). No new data.
+### 6.23 · Book-lag analysis *(was 6.8)* — **NOT DERIVABLE. Measured 2026-08-30.**
+
+~~"Which book moves last" — derivable today from `prop_odds_history` (596,410
+rows). No new data.~~ **The premise is wrong.**
+
+`observed_at` is the PROVIDER'S POLL TIME, not the moment a book moved.
+`write_prop_odds` stamps a whole batch with one `fetched_at`, so every book in
+a batch is temporally identical. Measured over 24 hours: **126,977 rows share
+426 distinct timestamps** — ~298 rows per timestamp — and one real batch stamps
+477 rows across 7 books at `14:46:30.818293`. Propline alone writes 17 of the
+books, all indistinguishable from each other.
+
+A lead-lag leaderboard built on this ranks books by **which provider polls them
+and how often**, presented as market leadership. Running it produced exactly
+that: every score between 0.000 and 0.212, with kalshi the lone outlier purely
+because a different job writes it on a different cadence.
+
+`delay_seconds` does not rescue it. Propline (17 books, 84,964 rows) reports
+none at all; SharpAPI reports a constant **60 for every row**, which is a
+declared feed delay rather than a per-book quote time; oddsapiio and propline_2
+report none.
+
+**What would unblock it:** a provider that returns a per-book `last_update`,
+carried through the ingest. None of the four currently in use supply one on
+this path. Until then this task cannot be built honestly, and a "which book
+moves most" frequency metric — which IS computable within a single provider,
+where cadence is constant — is a different question that nobody asked for.
+**Needs an operator decision, not more work.**
 
 ### 6.24 · Selectable de-vig, correlated-prop warnings, DFS pick'em, book limits
 *(was 6.9–6.12; P5 G4/G5/G9/G8, P3 M3)*
