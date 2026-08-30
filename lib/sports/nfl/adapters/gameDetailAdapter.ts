@@ -169,7 +169,11 @@ export function toGameDetailData(input: NflGameDetailInput): GameDetailData {
   const teamAway =
     away && meta.homeDefenseAllowed.length > 0
       ? {
-          title: 'Team matchup — offense vs. defense',
+          // NAMED BY DIRECTION. Both cards used the identical title, so a game
+          // page showed two headings reading "Team matchup — offense vs.
+          // defense" and nothing above the fold said which way round either
+          // was. The abbreviations are already in scope.
+          title: `${game.awayAbbr} offense vs ${game.homeAbbr} defense`,
           subjectName: away.team.displayName,
           subjectHeadshotUrl: away.team.logoUrl ?? nflTeamLogoUrl(game.awayAbbr),
           subjectTeamAbbr: game.awayAbbr,
@@ -187,7 +191,7 @@ export function toGameDetailData(input: NflGameDetailInput): GameDetailData {
   const teamHome =
     home && meta.awayDefenseAllowed.length > 0
       ? {
-          title: 'Team matchup — offense vs. defense',
+          title: `${game.homeAbbr} offense vs ${game.awayAbbr} defense`,
           subjectName: home.team.displayName,
           subjectHeadshotUrl: home.team.logoUrl ?? nflTeamLogoUrl(game.homeAbbr),
           subjectTeamAbbr: game.homeAbbr,

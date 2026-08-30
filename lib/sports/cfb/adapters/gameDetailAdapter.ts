@@ -174,7 +174,11 @@ export function toGameDetailData(input: CfbGameDetailInput): GameDetailData {
   const teamAway =
     away && homeProduced.length > 0 && awayProduced.length > 0
       ? {
-          title: 'Team matchup — offense vs. defense',
+          // NAMED BY DIRECTION. Both cards used the identical title, so a game
+          // page showed two headings reading "Team matchup — offense vs.
+          // defense" and nothing above the fold said which way round either
+          // was. The abbreviations are already in scope.
+          title: `${game.awayAbbr} offense vs ${game.homeAbbr} defense`,
           subjectName: away.team.name,
           subjectHeadshotUrl: away.team.logoUrl ?? undefined,
           subjectTeamAbbr: game.awayAbbr,
@@ -192,7 +196,7 @@ export function toGameDetailData(input: CfbGameDetailInput): GameDetailData {
   const teamHome =
     home && awayProduced.length > 0 && homeProduced.length > 0
       ? {
-          title: 'Team matchup — offense vs. defense',
+          title: `${game.homeAbbr} offense vs ${game.awayAbbr} defense`,
           subjectName: home.team.name,
           subjectHeadshotUrl: home.team.logoUrl ?? undefined,
           subjectTeamAbbr: game.homeAbbr,
