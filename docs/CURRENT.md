@@ -1,273 +1,211 @@
 # CURRENT — pick up here
 
-**Phase 6 is IN PROGRESS.** Track A complete. Track B complete except 6.10's
-last two thirds. Track C: 6.13 done, **6.14 partly (the rating block), 6.15
-untouched and now the largest single item left**. Track D: 6.16/6.17/6.19 done,
-6.23 blocked, 6.21/6.24 open. Phases 4 and 5 complete, gates passed.
+**Phase 6 is IN PROGRESS.** Player Detail is furthest along: **34 of 48 role
+cells fill, up from 14**, and four sports fill all six. Team Detail is nearly
+complete. **Game Detail is the largest thing left.** The gate has been walked
+for the five sports with live data and found four real defects.
 
-**Read `docs/audit-remediation-plan.md` Phase 6 for the plan; §11 is the phase
-log and the only place a task counts as done. Trust §11 and `git log` over this
-file if they disagree.**
+**Read `docs/phase6-completion-plan.md` first — it is the authoritative list of
+what is left.** `docs/audit-remediation-plan.md` §11 is the phase log;
+`docs/player-detail-sourcing-gaps.md` has the 48-cell inventory. Trust §11 and
+`git log` over this file if they disagree.
 
-## 1. What just happened (2026-08-30, session four)
+## 1. What just happened (2026-08-30, sessions four and five)
 
-Six commits, `e4c2745`..`794240d`. **TS tests 197 → 226, plus two new static
-Python guards.** Three Render deploys, worker live on `e1fd935`. `tsc` clean,
-`npm run build` clean, and everything below was checked against live rows or a
-rendered page.
+Nineteen commits, `e4c2745`..`6553e4f`. **TS tests 197 → 251.** `tsc` and
+`npm run build` clean throughout. Three Render deploys; worker live on
+`e1fd935`.
 
 | Task | State |
 |---|---|
-| 6.8 nflverse PBP | **COMPLETE** — target map renders; 2025 backfilled (17,582 events). |
-| 6.14 rating block | **BUILT** — `team_elo_history`'s 88,774 rows reach a page for the first time. Six sports. |
-| Render worker | **live on `e1fd935`.** One more deploy pending for `794240d` — §3.1. |
-| `refreshTier1` | **FIXED and DEPLOYED** — was writing zero rows; now 195 of 195. |
-| 6.23 book lag | **STILL BLOCKED** — unchanged, see §4. |
-| 4 ingest jobs | **FIXED** — they had NEVER run. `yield_fn()` was a TypeError. See §2. |
-| `_run_timed` gap | **FIXED, not deployed** — the same four bypassed the wrapper `health_check.py` reads. |
+| 6.8 nflverse PBP | **COMPLETE** — target map renders, 2025 backfilled. |
+| 6.13 Player Detail | **14/48 → 34/48 roles.** MLB, NBA, NHL at 6/6. |
+| 6.14 rating block | **BUILT** — `team_elo_history`'s 88,774 rows reach a page. |
+| NBA/NHL shot backfills | **DONE** — 195 → 219,873 and 102 → 73,291 rows. |
+| 6.15 Game Detail | **STARTED** — NBA/NHL got `rankings` + `unitGrades`. |
+| Gate walk | **PARTIAL** — five sports walked, four defects found and fixed. |
+| Python worker | **3 bugs fixed**: a batch-aborting write, a TypeError meaning four ingest jobs had NEVER run, and their missing `_run_timed`. |
 
 ## 2. THE SINGLE MOST IMPORTANT THING TO CARRY FORWARD
 
-**I got a diagnosis wrong, went a long way on it, and the tell was a column I
-was not looking at.**
+**Everything of consequence this session was found by opening a page or reading
+a log — never by a test, never by `tsc`.** Seven defects, all shipped and live:
 
-`refreshTier1` was failing on `mlb / total / under / point=5.5`. A 5.5 total is
-completely ordinary baseball, so task 5.4's `gobl_point_plausible` band of
-[6, 14] looks too tight — and I measured it: 37,881 settled games in
-`historical_odds` carry totals from **4.7 to 19.63**, 105 of them below 6, with
-a clean gap to a corrupt 100–104 cluster. That is a real measurement, it is
-correct, and the conclusion drawn from it was wrong.
+1. **Soccer's opponent matching was dead.** Understat says "Leeds", ESPN says
+   "Leeds United", three sites compared with `===`. 0 of 273 entries matched, so
+   the h2h window, the `careerH2H` card and the opponent filter chip were all
+   empty *since soccer shipped*. **Third sport with this bug class** — CFB's own
+   fix comment says it had been found twice before.
+2. **Four ingest jobs had never run.** `yield_fn()` with no argument is a
+   `TypeError` against the queue's `functools.partial`. Their tables looked
+   healthy because every row came from hand-run backfills, which pass no
+   `yield_fn` at all.
+3. **Those same four bypassed `_run_timed`** — the wrapper whose whole purpose
+   is making failure visible was missing from exactly the jobs that were
+   failing, so `health_check.py` could not see them.
+4. **`refreshTier1` wrote nothing**, every run: one mislabeled row aborted the
+   whole batch inside a single transaction.
+5. **The line-movement card had an unreachable empty state** behind an early
+   `return null`.
+6. **NFL's `careerH2H` was returned from the wrong object**, so it never
+   reached the page.
+7. **Six page-load routes shared a 10/min provider budget** — one game-page view
+   spent 60% of it and a second view 429'd.
 
-**The tell is the PRICE, not the point.** Under 5.5 at **-225** implies 69%; a
-real nine-inning under 5.5 sits near 20–25%. It is an alternate-scope market — a
-team total or a first-five-innings line — landing in the game-total slot, which
-is precisely what 5.4's own migration comment describes. Widening the band would
-have quietly readmitted the entire class of data 5.4 exists to exclude.
+*A populated table does not mean its job works. A filled field does not mean a
+block renders. A guard's prose being right does not mean its predicate is.*
 
-*Measuring the field you suspect is not the same as measuring the row. The
-adjacent column is where the answer was.*
+**And a diagnosis I got wrong.** `refreshTier1` failed on `mlb total under
+point=5.5`. 5.5 is an ordinary MLB total and 37,881 settled games back that up,
+so the constraint looks too tight. **The tell is the PRICE, not the point:**
+under 5.5 at −225 implies 69% against a real 20–25%, so it is an
+alternate-scope market. Widening the band would have readmitted exactly what
+task 5.4 excluded. *Measuring the field you suspect is not the same as
+measuring the row.*
 
-**Two more tests that did not discriminate, both bad FIXTURES, not bad
-assertions.** Fault injection caught both (details in §11). One asserted
-something structurally unreachable; one used two seasons where the shape needs
-three. **When an injection PASSES, the test does not discriminate** — that is
-now six occurrences across two sessions, and every single fix was a better
-fixture.
-
-**FOUR INGEST JOBS HAD NEVER RUN, AND THEIR TABLES LOOKED FINE.**
-`ingestStatcastPitchesJob` (6.6), `ingestNhlShotsJob`/`ingestNbaShotsJob` (6.7)
-and `ingestNflPbpJob` (6.8) all called `yield_fn()` with no argument. The queue
-hands out `functools.partial(maybe_yield, name)`, so that is a `TypeError` at
-the first yield point, every run, since each shipped.
-
-**Nothing looked wrong**: `mlb_pitch_events` has 2.1M rows and
-`nfl_target_events` 35,430. Every one of them arrived through the `backfill`
-entrypoints, which the operator runs by hand and which pass no `yield_fn` at
-all. *The scheduled path and the manual path diverged at the one argument
-nobody passes, and only the manual path was ever watched.*
-
-And the second half: **all four also bypassed `_run_timed`** — the wrapper that
-writes the breadcrumb `health_check.py` reads AND catches the exception with a
-traceback. So the wrapper whose entire purpose is making failure visible was
-missing from exactly the jobs that were failing. Both now guarded by
-`test_yield_contract.py` and `test_job_registry_contract.py`.
-
-**A guard that fires on working code is broken, not strict.** My first version
-of the registry test reported ELEVEN false positives against jobs that
-demonstrably write breadcrumbs, because it understood only a direct
-`_run_timed(...)` call and not the delegated or factory-assigned shapes. I would
-have "fixed" eleven healthy jobs on its say-so had the breadcrumbs I had
-already read not contradicted it.
-
-**A sibling sport's solution is only copyable when the two sports share an id
-space.** 6.8 was handed over as "six lines, copy NHL/NBA". NHL and NBA parse the
-shooter id out of `subjectId` in the browser; NFL cannot, because `subjectId` is
-`espn:football:{athleteId}`, `nfl_target_events.receiver_id` is a GSIS id, and
-the crosswalk reads the database.
+**Three tests I wrote did not discriminate**, all caught by fault injection, all
+bad FIXTURES rather than bad assertions — including one whose regex used
+`` `\b` `` inside a template literal, where it is the backspace character, so
+the loop skipped every case and compared an empty array to an empty array.
+**When an injection PASSES, the test does not discriminate.**
 
 ## 3. NEXT ACTIONS, in order
 
-1. **REDEPLOY THE RENDER WORKER** for `794240d`. The worker is live on
-   `e1fd935`, so the odds cycle and the four ingest jobs are already FIXED and
-   verified running. What is still undeployed is only the `_run_timed` wrap —
-   until it ships, those four write no breadcrumb and `health_check.py` is blind
-   to them. Not urgent; do not skip. Call is in §7.
-2. **Then confirm breadcrumbs appear** for `ingestNhlShotsJob`,
-   `ingestNbaShotsJob`, `ingestNflPbpJob` and `ingestStatcastPitchesJob`.
-   Breadcrumbs live in `snapshot_cache` under `python-harness:job-run:%`,
-   **not** a `job_run_log` table; that table does not exist.
-3. **READ `docs/phase6-completion-plan.md` — it is the authoritative list of
-   what is left in Phase 6**, all three pages measured against their boards.
-   Operator accepted the four remaining sourcing gaps on 2026-08-30 (NFL/CFB
-   route mix and coverage); nothing waits on them.
-4. **6.13 IS NOT DONE — see `docs/player-detail-sourcing-gaps.md`.** All 48
-   cells (8 sports x 6 roles) measured 2026-08-30: **14 render, 21 are buildable
-   with no new data, 4 need a free backfill, 9 need a source the operator is
-   looking for.** The task was marked complete on its own say-so; its gate
-   ("every sport's page renders every block or an honest empty state, walked per
-   sport per page") was never run.
-5. **6.15 Game Detail, eight sports.** Untouched, and now the largest single
-   item. **Measure the board against what `GameDetail.tsx` already renders before
-   building** — this plan's premises have now been wrong **eight** times, twice
-   in this session alone on 6.14's board.
-6. **6.14's remaining blocks.** Only the rating block is built. The board's other
-   verdicts were already done (`unitGrades`) or stale; re-measure before trusting
-   the rest of its twenty.
-7. **6.10's last two thirds** — `park_factors` beyond MLB, and `game_sim_cache`.
-8. **6.21 user-facing CLV**, then **6.24**.
-9. **Backfill the ingest tables** when the seasons start. Operator commands, all
-   resumable, none scheduled:
-   - `./.venv/Scripts/python.exe -u src/nhl_shots.py backfill 20242025`
-   - `./.venv/Scripts/python.exe -u src/nba_shots.py backfill 2024-10-22 2025-04-13`
-   - `./.venv/Scripts/python.exe -u src/nfl_pbp.py backfill 2023 2024`
-     (**2025 is already done** — 17,582 events.)
+1. **Deploy `794240d`+ to Render.** The worker is live on `e1fd935`, so the odds
+   cycle and the four ingest jobs are already fixed and verified running. What is
+   undeployed is the `_run_timed` wrap — until it ships those four write no
+   breadcrumb and `health_check.py` is blind to them. Call in §7.
+2. **Finish the gate walk when CFB/NBA/NHL are back in season.** They have
+   **zero candidates today**, so their pages cannot be walked at all. This is now
+   the biggest blocker to closing the Phase 6 gate.
+3. **6.15 Game Detail** — the largest remaining item. `matchup` for
+   NBA/NHL/tennis is a design question, not wiring: `GameMatchupData` is
+   MLB/NFL-shaped (`pitching`, `BatterPitcherMatchupProps`). `bookGrid` and
+   `matchupKey` exist nowhere in the codebase.
+4. **MLB's game page has no `unitGrades`** though its team page does. Needs both
+   teams' Statcast plumbed into `MlbGameDetailInput` — a hook change.
+5. **The golfR import** — 40 tournaments, 333 MB, 2020-2023, shot-by-shot with
+   `lie`/`distance`/`left`. Closes golf's `usageMix` and `spatialGrid`. Needs a
+   table, a migration and a Python loader; **no deploy**, it is operator-run.
+6. **6.10's park factors and `game_sim_cache`**, then **6.21**, then **6.24**
+   (scope the de-vig backtest with the operator first — it is open-ended).
 
 ## 4. Blocked, and why — do not re-attempt without new data
 
-**6.23 book-lag analysis is NOT DERIVABLE.** Unchanged from session three.
-`observed_at` is the PROVIDER'S POLL TIME, not the moment a book moved:
-**126,977 rows over 24 hours share 426 distinct timestamps**, one batch stamping
-477 rows across 7 books at a single instant. `delay_seconds` does not rescue it.
-**Needs a provider returning a per-book `last_update`. Operator decision.**
+**The four accepted sourcing gaps** (operator, 2026-08-30): NFL route mix, NFL
+man/zone, CFB route mix, CFB target map. All need a tracking feed. **NGS does
+not close them** — its public release is weekly per-player aggregates with no
+route running and no coverage shell, verified by reading its scraper's own
+column list. **cfbd play-by-play has no pass location or air yards.**
 
-**Soccer weather is impossible from ESPN.** `indoor` is on 16/16 NFL and 25/25
-CFB events and entirely absent for MLS and EPL. MLS has real domes, so `!indoor`
-would print wind and rain for a game under a roof.
+**Waived by the operator:** tennis point-level (serve mix, serve placement), MLS
+shot locations, the MLS/EPL venue roof list.
 
-**53% of `pitcher-strikeouts` rows in `prop_odds_history` carry no line** —
-52,024 of 98,434, mostly fanduel (37,714). "Over" nothing is not a bet. Needs its
-own task, in the Python ingest path.
+**6.23 book-lag is NOT DERIVABLE.** `observed_at` is a provider poll time:
+126,977 rows over 24 hours share 426 distinct timestamps.
+
+**Golf `careerH2H` is not buildable** — it means "at this course", and
+`golf_tournaments` holds three events. No multi-year course history exists.
+
+**53% of `pitcher-strikeouts` rows in `prop_odds_history` carry no line.** Needs
+its own task, in the Python ingest path.
 
 ## 5. What is running
 
-**A dev server on port 3000 belongs to ANOTHER session.** `npm run build` runs
-alongside it fine. **The in-app Browser pane cannot reach it** — every navigation
-collapses to `/`. **Playwright MCP reaches it fine; use that.**
+**A dev server on port 3000 belongs to ANOTHER session.** The in-app Browser
+pane cannot reach it — **use Playwright MCP.**
 
-Seven `harvester_scrape.py` scheduled tasks on a ~20-minute cycle. Each shows as
-two PIDs and **that is one process** — the `.venv` launcher is a redirector stub.
-Retired warning; do not spend time on it.
+Seven `harvester_scrape.py` scheduled tasks on a ~20-minute cycle; two PIDs each
+is ONE process.
 
 ## 6. Things that will bite again
 
-**Measure the READ, never just the WRITE.** And **measure the ROW, not just the
-field you suspect** — §2.
-
-**A deploy reporting `"status":"live"` is not a job having run.** That is how
-BOTH of this session's production bugs were found — `refreshTier1` failing, and
-four ingest jobs that had never run at all. **Read the Render queue log after a
-deploy**, not just the deploy status:
-`GET /v1/logs?ownerId=tea-da2ut3ibkg8c73d5gcdg&resource=$SRV&text=queue`.
+**Open the page. Read the log.** See §2 — that is where all seven came from.
 
 **A populated table does not mean its job works.** Four ingest tables were
-filled entirely by hand-run `backfill` entrypoints while the scheduled job
-crashed every time.
+filled entirely by hand-run backfills while the scheduled job crashed every run.
 
-**A guard that fires on working code is broken, not strict** — §2.
+**Cache-busting is often the missing step.** A new adapter field will not appear
+until `snapshot_cache` is cleared for that sport
+(`DELETE FROM snapshot_cache WHERE cache_key = 'nfl:snapshot'`). Cost real time
+three times today.
 
-**A guardrail that has never rejected anything is not known to work.** The new
-`test_book_line_rejection.py` runs against REAL Postgres deliberately: the batch
-abort comes from Postgres' transaction semantics, so a mock reproduces nothing.
+**Different feeds spell the same team differently.** Use
+`lib/sports/shared/teamNameMatch.ts`, never `===`.
 
-**A test written from the same mistaken model as the code agrees with the bug**,
-and a fixture that cannot fail is not a test. Six occurrences now.
+**A guard that fires on working code is broken, not strict.** My first
+job-registry test reported eleven false positives against healthy jobs.
 
-**`SeriesChart` builds its x scale from `values.length` and reuses it for every
-`context` line.** A context series even one element longer runs off the frame.
-Nothing type-checks it. Pad every series to one width with `NaN`.
-
-**`zeroBased` on `SeriesChart` has no default, deliberately.** An Elo series
-spanning 130 points collapses to a flat strip against a zero axis and still
-renders cleanly.
+**`SeriesChart` reuses the subject's x scale for every context line** — pad every
+series to one width with `NaN`. And `zeroBased` has no default: an Elo series
+collapses to a flat strip against a zero axis and still renders cleanly.
 
 **`team_elo_history.team_id` is NOT unique across sports** — 43 ids, four
-leagues, 27,591 rows. Always filter on `sport`. TS's three Elo readers do not,
-and are safe only because every caller is MLB's (see §9.3).
+leagues, 27,591 rows. Always filter on `sport`. TS's three Elo readers do not
+(§9.3).
 
-**The latest season is not always a drawable one.** Every league spends its
-opening weeks with 1–2 games on the board and a full season behind it.
+**The venue split's 25% share floor must NOT be copied to other splits.** It
+encodes "league teams play a balanced schedule". Golf's real par 5 / par 4 ratio
+is 8:48 — a 14% share it would reject. Use `predicateSplit.ts`.
 
-**Different tables, different vocabulary.** `team_elo_history` says
-`soccer_epl`/`soccer_mls`; `player_game_history` says `soccer_epl`/`tennis_atp`;
-`pick_history` says `soccer`/`tennis`.
-
-- **Out of season is the default state of most sports.** NBA/NHL return zero
-  candidates until October.
-- **`prop_odds_history` is LOG-ON-CHANGE.** Silence means unchanged, not unseen.
-- **The dimension is not the market key.** Use `candidateDimensionToMarketKey`.
-- **`/api/props/*` is rate-limited at 10/min as "provider".** Page-load reads
-  need the `page-read` class, declared BEFORE the provider rule.
+- **Out of season is the default state of most sports** — CFB, NBA and NHL all
+  return zero candidates today.
+- **`prop_odds_history` is LOG-ON-CHANGE.** Silence means unchanged.
+- **Job breadcrumbs live in `snapshot_cache`** under `python-harness:job-run:%`.
+  There is no `job_run_log` table.
+- **The dimension is not the market key** — use `candidateDimensionToMarketKey`.
 - **`player_game_history` numbers are float TEXT.** Cast `::numeric`.
-- **Savant zones 11-14 are OUTSIDE the 3x3.**
-- **Sentinels are not nulls**, and `Number('')` is `0`, which is finite.
-- **A long heredoc breaks this shell** — it truncates silently mid-file. Use the
-  Write tool for anything long, and `git commit -F`.
-- **`ps aux | grep` shows no command lines in Git Bash.** Use
-  `Get-CimInstance Win32_Process`.
+- **Backticks in `git commit -m` get shell-substituted.** Always use `-F`.
+- **A long heredoc truncates silently.** Use the Write tool for anything long.
+- **Never `git add docs/` or `-A`** — `docs/discord-community-prompt.md` is the
+  operator's. Now gitignored, after being committed by accident once.
 - **The DB pool caps at 15 connections.** Close your `.mjs` clients.
-- **Stale `.next/types` break `tsc` after deleting a route** — `rm -rf .next/types`.
 
 ## 7. Operational knowledge
 
 - **DB access:** temp `.mjs` in the repo root, `node` it. `q*.mjs`, `g*.mjs`,
-  `gate*.mjs`, `runmig.mjs` are gitignored. **`node runmig.mjs <path>` applies a
-  migration.** `.env.local` has no `DIRECT_URL`, so DDL also goes through `:6543`.
-- **Supabase PRO plan**, 8 GB included. **Re-measure before assuming headroom.**
-- **Cache-busting is often the missing step.** A new adapter field will not
-  appear until the snapshot cache is cleared —
-  `DELETE FROM snapshot_cache WHERE cache_key = 'nfl:snapshot'`. This cost real
-  time twice this session.
-- **Tests:** `npm test` (**226**), and each
-  `./.venv/Scripts/python.exe -u src/test_*.py` from `python-odds-service/`. No
-  pytest. Two are static and instant — `test_yield_contract.py` and
-  `test_job_registry_contract.py`. **Do not run the whole Python sweep at once** — several hit the
-  network/DB and exceed a two-minute timeout.
-- **Render:** worker `srv-da36bm2bkg8c73fqrdeg`, `autoDeploy: no`. After any push
-  touching `python-odds-service/`:
+  `runmig.mjs` are gitignored. **`node runmig.mjs <path>` applies a migration.**
+- **Tests:** `npm test` (**251**), plus each
+  `./.venv/Scripts/python.exe -u src/test_*.py` from `python-odds-service/`. Two
+  are static and instant: `test_yield_contract.py`,
+  `test_job_registry_contract.py`. **Do not run the whole Python sweep at once.**
+- **Render:** worker `srv-da36bm2bkg8c73fqrdeg`, `autoDeploy: no`.
   `POST /v1/services/$SRV/deploys` with `RENDER_API_KEY` from `.env.local`, then
-  confirm `"status":"live"` on your commit sha. ~90s, six polls at 15s.
-- **No `gh` CLI and no GitHub token.** CI via the public Actions API.
-- **Don't `git add -A` blindly** — `docs/discord-community-prompt.md` is the
-  operator's and must never be staged.
+  confirm `"status":"live"` on your sha. ~90s, six polls at 15s. **Then read the
+  queue log** —
+  `GET /v1/logs?ownerId=tea-da2ut3ibkg8c73d5gcdg&resource=$SRV&text=queue`.
+- **Supabase PRO**, 8 GB. Re-measure before assuming headroom.
 
 ## 8. Operator decisions taken — do not reopen
 
-**2026-08-29:** Officials/umpires CUT. Tennis point-level data CUT. NBA/NHL shot
-coordinates APPROVED.
+**2026-08-29:** Officials CUT. Tennis point-level CUT. NBA/NHL shots APPROVED.
 
-**2026-08-30:** 6.5 let it accrue, no `pick_history` backfill. Statcast depth
-2024 onwards. New sourcing tables are **Python-written**. Primitive port list:
-all 14. 6.3 accepted as six new fields. 6.11 needs no purchase. 6.18 skipped
-(remains a launch blocker). 6.20 and 6.22 moved to Phase 7. Golf gets no game
-page, so 6.15 ships **seven** sports. Render worker redeploy approved and done
-for `e4c2745`.
+**2026-08-30:** 6.5 let it accrue. Statcast depth 2024+. New sourcing tables are
+Python-written. 6.18 skipped (remains a launch blocker). 6.20/6.22 → Phase 7.
+Golf gets no game page, so 6.15 ships **seven** sports. Three Render deploys
+approved. **The four remaining sourcing gaps are ACCEPTED** — they render honest
+empty states and nothing waits on them. Tennis/MLS/roof-list gaps waived.
 
 ## 9. Known not done
 
-1. **The `_run_timed` wrap (`794240d`) is undeployed** — §3.1. Monitoring gap
-   only; the functional fixes are live on `e1fd935`.
-2. **6.15 untouched**, and 6.14 has only its rating block.
-3. **TS's three Elo readers ignore `sport`** — `getCurrentElo`,
-   `getLatestEloBeforeSeason`, `getMostRecentEloGame` in `lib/db/client.ts`.
-   Latent, not live: every caller is MLB's and MLBAM ids do not collide. Python
-   already filters correctly. **Fix before anything non-MLB reads Elo.**
-4. **Duplicate React keys can silently omit prop rows** —
-   `GolfScheduleView.tsx:1244` and `TennisScheduleView.tsx:529` omit the game id
-   from the key. One-line fix, still unowned.
-5. **The three ingest tables hold one or two seasons each** — see §3.7.
-6. **NHL grades three units, not four** — no situational time-on-ice.
-7. **MLB's `binarySplit` stays null** — vs LHP/RHP needs a platoon split this app
-   does not store.
+1. **`794240d`'s `_run_timed` wrap is undeployed** — §3.1. Monitoring only.
+2. **CFB/NBA/NHL pages have never been walked** — out of season, zero candidates.
+3. **TS's three Elo readers ignore `sport`** (`lib/db/client.ts`). Latent: every
+   caller is MLB's and MLBAM ids do not collide. Python filters correctly.
+4. **Tennis `conditions`/`opponentUnit` and golf `opponentUnit`/`conditions`**
+   need new fetch plumbing, not data. Tennis's event never reaches `subjectMeta`;
+   golf's field/course/weather reach no hook.
+5. **WTA surfaces are unfinished** in `lib/sports/tennis/surfaces.ts` — ATP's 60
+   events are complete, WTA degrades to null.
+6. **Duplicate React keys can omit prop rows** — `GolfScheduleView.tsx:1244`,
+   `TennisScheduleView.tsx:529`. One-line fix, still unowned.
+7. **`/diagnostics`, `/bets` and the signed-in walk were never verified** — no
+   credentials; creating an account is out of bounds. **6.21 user-facing CLV
+   cannot be verified on a page for the same reason.**
 8. **`fit_moneyline_weights` and `market_gate` are on no automatic path.**
-9. **`/diagnostics`, `/bets` and the signed-in walk were never verified** — no
-   credentials; creating an account is out of bounds.
-10. **374 stale `soccer:understat:player:` v1/v2 rows** in `snapshot_cache`.
-11. **2,380 duplicate observation groups in `game_odds_history`.**
-12. **No push alerting; rate limiting is per-process** — Phase 8.
-13. **`SUPABASE_SERVICE_ROLE_KEY` cannot be rotated** — Phase 7.
-14. **NBA has 37 and NFL 34 distinct team ids in `team_elo_history`** against 30
-    and 32 real franchises — a handful of 1–3 row exhibition/all-star entries.
-    Harmless for a per-team read; never swept.
+9. **374 stale `soccer:understat:player:` rows** in `snapshot_cache`.
+10. **2,380 duplicate observation groups in `game_odds_history`.**
+11. **`SUPABASE_SERVICE_ROLE_KEY` cannot be rotated** — Phase 7.
 
 ## 10. Backup tables outstanding
 
@@ -275,6 +213,6 @@ for `e4c2745`.
 |---|---|---|
 | `prop_odds_dedup_backup_20260829` | 178,238 | Phase 3 |
 | `game_odds_book_lines_bookmaker_backup_20260829` | 6,199 | 5.3 |
-| `game_odds_book_lines_quarantine_20260829` | 114 | 5.4 (Q23) |
+| `game_odds_book_lines_quarantine_20260829` | 114 | 5.4 |
 | `game_odds_history_bookmaker_backup_20260829` | 47,622 | 5.13 |
-| `pick_history_game_model_backup_20260829` | 3,580 | 4.8 (Q25) |
+| `pick_history_game_model_backup_20260829` | 3,580 | 4.8 |
