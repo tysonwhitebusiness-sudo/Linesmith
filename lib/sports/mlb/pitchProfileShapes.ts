@@ -75,6 +75,28 @@ export interface PitchTypeShare {
   avgVelocity: number | null;
 }
 
+/**
+ * One side of the platoon split — MLB's `binarySplit`.
+ *
+ * THE OPPOSITE HAND IS THE ONE THAT MATTERS. For a BATTER the split is by
+ * `p_throws` (vs LHP / vs RHP); for a PITCHER it is by `stand` (vs LHB / vs
+ * RHB). Splitting a batter by his own stance would produce one bar and an
+ * empty one, which is why the column is chosen from the role rather than
+ * hardcoded.
+ *
+ * `xwobaSample` is carried for the same reason it is on `ZoneCell`: only ~22%
+ * of balls in play have an `estimated_woba`, so the n beside an xwOBA is never
+ * the pitch count.
+ */
+export interface PlatoonSide {
+  /** 'L' or 'R' — the OPPOSING hand. */
+  hand: string;
+  pitches: number;
+  ballsInPlay: number;
+  xwoba: number | null;
+  xwobaSample: number;
+}
+
 export interface PitchProfile {
   season: number;
   /** Which side of the matchup this profile is for. */
@@ -83,6 +105,8 @@ export interface PitchProfile {
   totalPitches: number;
   zones: ZoneCell[];
   pitchTypes: PitchTypeShare[];
+  /** vs LHP/RHP for a batter, vs LHB/RHB for a pitcher. Empty when nothing is on record. */
+  platoon: PlatoonSide[];
 }
 
 

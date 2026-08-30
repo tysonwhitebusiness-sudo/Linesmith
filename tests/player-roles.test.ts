@@ -72,18 +72,21 @@ test('MLB returns every role key, filling only the ones it has data for', () => 
   // per-meeting history a single rate cannot express. Behaviour is tested in
   // `tests/career-h2h.test.ts`, not asserted by shape here.
   assert.match(MLB_ADAPTER, /toCareerH2H\(\{/, 'MLB stopped building careerH2H');
-  // The one that still has no source must stay null rather than gain a
-  // placeholder: `binarySplit` for MLB is vs LHP/RHP, and this app stores no
-  // platoon split. (Home/away, which four other sports use for that role,
-  // MLB already exposes as a venue filter chip.)
-  for (const key of ['binarySplit']) {
-    assert.match(
-      MLB_ADAPTER,
-      new RegExp(`${key}: null`),
-      `MLB's \`${key}\` is no longer null. If 6.6-6.9 landed, good — update this test. ` +
-        `If it was filled with a placeholder, that renders as real numbers and nothing downstream can tell.`,
-    );
-  }
+  // `binarySplit` USED to be the null one, with the comment "this app stores no
+  // platoon split". This test said: "If 6.6-6.9 landed, good — update this
+  // test." 6.6 landed, and `mlb_pitch_events` carries `p_throws` and `stand` on
+  // all 2,140,525 rows. Updated 2026-08-30 — MLB now fills all six.
+  //
+  // Kept as an assertion rather than deleted: the point was never that MLB has
+  // exactly one null, it was that a role must be REAL or absent, never a
+  // placeholder. `toPlatoonBinarySplit` returns null unless both hands have a
+  // real sample, which is what makes filling it honest.
+  assert.match(MLB_ADAPTER, /binarySplit: toPlatoonBinarySplit\(/, 'MLB stopped building its platoon split');
+  assert.doesNotMatch(
+    MLB_ADAPTER,
+    /binarySplit: null/,
+    'MLB is back to a null binarySplit — if the platoon source went away, say so in the comment rather than reverting silently.',
+  );
 });
 
 test('no role type names a sport', () => {

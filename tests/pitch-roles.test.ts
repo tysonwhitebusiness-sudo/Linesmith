@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toSpatialGridRole, toUsageMixRole } from '../lib/sports/mlb/adapters/pitchRoles';
+import { toSpatialGridRole, toUsageMixRole, toPlatoonBinarySplit } from '../lib/sports/mlb/adapters/pitchRoles';
 import { ZONE_GRID, pitchTypeLabel } from '../lib/sports/mlb/pitchProfileShapes';
 import type { PitchProfile } from '../lib/sports/mlb/pitchProfileShapes';
 
@@ -42,7 +42,8 @@ function pitcherProfile(): PitchProfile {
       // Savant's OUTSIDE quadrant — must never appear in the 3x3.
       { zone: 13, xwoba: 0.201, xwobaSample: 30, ballsInPlay: 120, pitches: 260 },
     ],
-    pitchTypes: [
+    platoon: [],
+  pitchTypes: [
       { pitchType: 'FF', pitches: 880, share: 44, xwoba: 0.352, xwobaSample: 41, ballsInPlay: 186, avgVelocity: 95.4 },
       { pitchType: 'SL', pitches: 620, share: 31, xwoba: 0.289, xwobaSample: 27, ballsInPlay: 121, avgVelocity: 86.1 },
       { pitchType: 'CH', pitches: 500, share: 25, xwoba: null, xwobaSample: 0, ballsInPlay: 4, avgVelocity: 88.7 },
@@ -191,4 +192,65 @@ test('the mix and the grid print the same statistic the same way', () => {
   assert.ok(mix.valueFormat, 'usageMix must carry a formatter, not lean on a toFixed default');
   assert.equal(mix.valueFormat!(0.796), '.796', 'baseball rate convention: .796, not 0.796');
   assert.equal(mix.valueFormat!(0.796), grid.format(0.796), 'the two cards must agree');
+});
+
+// ---------------------------------------------------------------------------
+// The platoon split — MLB's binarySplit, and the null that outlived its reason.
+// ---------------------------------------------------------------------------
+
+const platoonProfile = (platoon: Array<{ hand: string; pitches: number; ballsInPlay: number; xwoba: number | null; xwobaSample: number }>, role: 'batter' | 'pitcher' = 'batter') => ({
+  season: 2026,
+  role,
+  subjectId: 1,
+  totalPitches: platoon.reduce((s, p) => s + p.pitches, 0),
+  zones: [],
+  pitchTypes: [],
+  platoon,
+});
+
+const side = (hand: string, pitches: number, xwoba: number | null = 0.32, xwobaSample = 40) => ({
+  hand,
+  pitches,
+  ballsInPlay: Math.round(pitches / 5),
+  xwoba,
+  xwobaSample,
+});
+
+test('the split is labelled by the OPPOSING hand, and the role decides which', () => {
+  // A batter split by his own stance gives one populated side and one empty.
+  // The column is `p_throws` for a batter and `stand` for a pitcher.
+  const batter = toPlatoonBinarySplit(platoonProfile([side('L', 600), side('R', 1800)], 'batter'))!;
+  assert.equal(batter.aLabel, 'vs LHP');
+  assert.equal(batter.bLabel, 'vs RHP');
+  const pitcher = toPlatoonBinarySplit(platoonProfile([side('L', 600), side('R', 1800)], 'pitcher'))!;
+  assert.equal(pitcher.aLabel, 'vs LHB');
+  assert.equal(pitcher.bLabel, 'vs RHB');
+});
+
+test('one-sided data is no split at all', () => {
+  // Every batter faces both hands, so a missing side is missing DATA, never a
+  // real zero. Rendering it would print "vs LHP 0" as though he never got out.
+  assert.equal(toPlatoonBinarySplit(platoonProfile([side('R', 1800)])), null);
+  assert.equal(toPlatoonBinarySplit(platoonProfile([side('L', 600)])), null);
+  assert.equal(toPlatoonBinarySplit(platoonProfile([])), null);
+  assert.equal(toPlatoonBinarySplit(null), null);
+});
+
+test('xwOBA carries its OWN sample, not the pitch count', () => {
+  // ~22% of balls in play have an estimated_woba. Quoting pitches beside it
+  // overstates the sample by an order of magnitude — the same trap the mix and
+  // the zone grid both carry.
+  const role = toPlatoonBinarySplit(platoonProfile([side('L', 600, 0.301, 37), side('R', 1800, 0.34, 122)]))!;
+  const xwoba = role.rows.find((r) => r.key === 'xwoba')!;
+  assert.equal(xwoba.aSample, 37);
+  assert.equal(xwoba.bSample, 122);
+  assert.notEqual(xwoba.aSample, 600);
+  assert.equal(xwoba.decimals, 3, 'a rate shown to 0 decimals is not a rate');
+});
+
+test('xwOBA appears only when BOTH sides have one', () => {
+  // One number and one blank invites reading the gap as a split.
+  const half = toPlatoonBinarySplit(platoonProfile([side('L', 600, null, 0), side('R', 1800, 0.34, 122)]))!;
+  assert.equal(half.rows.find((r) => r.key === 'xwoba'), undefined);
+  assert.ok(half.rows.some((r) => r.key === 'pitches'), 'the pitch counts are still a real split');
 });

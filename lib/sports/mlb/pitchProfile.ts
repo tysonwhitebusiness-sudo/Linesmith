@@ -87,6 +87,24 @@ export async function getPitchProfile(
     [subjectId, season],
   );
 
+  // The platoon split (MLB's `binarySplit`). Grouped by the OPPOSING hand:
+  // `p_throws` when the subject is a batter, `stand` when it is a pitcher.
+  // Splitting a batter by his own stance would give one populated side and one
+  // empty, which is why this column is derived from the role.
+  const platoonColumn = role === 'batter' ? 'p_throws' : 'stand';
+  const platoonRows = await pgAll<{ hand: string; pitches: string; bip: string; xwoba: string | null; xwoba_n: string }>(
+    `SELECT ${platoonColumn} AS hand,
+            COUNT(*)                                                          AS pitches,
+            COUNT(*) FILTER (WHERE description = 'hit_into_play')             AS bip,
+            AVG(estimated_woba) FILTER (WHERE description = 'hit_into_play')  AS xwoba,
+            COUNT(estimated_woba) FILTER (WHERE description = 'hit_into_play') AS xwoba_n
+       FROM mlb_pitch_events
+      WHERE ${column} = ? AND season = ? AND ${platoonColumn} IS NOT NULL
+      GROUP BY 1
+      ORDER BY 1`,
+    [subjectId, season],
+  );
+
   const totalPitches = typeRows.reduce((s, r) => s + Number(r.pitches), 0);
 
   return {
@@ -100,6 +118,13 @@ export async function getPitchProfile(
       xwobaSample: Number(r.xwoba_n),
       ballsInPlay: Number(r.bip),
       pitches: Number(r.pitches),
+    })),
+    platoon: platoonRows.map((r) => ({
+      hand: r.hand,
+      pitches: Number(r.pitches),
+      ballsInPlay: Number(r.bip),
+      xwoba: r.xwoba == null ? null : Number(r.xwoba),
+      xwobaSample: Number(r.xwoba_n),
     })),
     pitchTypes: typeRows.map((r) => ({
       pitchType: r.pitch_type,

@@ -47,7 +47,7 @@ import {
   type ConditionsRole,
   type OpponentUnitRole,
 } from '@/lib/sports/shared/playerRoles';
-import { toSpatialGridRole, toUsageMixRole } from './pitchRoles';
+import { toPlatoonBinarySplit, toSpatialGridRole, toUsageMixRole } from './pitchRoles';
 import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
 import type { PitchProfile } from '@/lib/sports/mlb/pitchProfileShapes';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
@@ -896,8 +896,14 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     conditions,
     usageMix,
     spatialGrid,
-    // See the roles block above for why these two are still null today.
-    binarySplit: null,
+    // Role 4 | binarySplit -- the PLATOON split, vs LHP/RHP.
+    //
+    // This was `null` with the comment "MLB's binarySplit is vs LHP/RHP and
+    // this app stores no platoon split". True when written; 6.6 made it stale.
+    // `mlb_pitch_events` carries `p_throws` and `stand` on every one of its
+    // 2,140,525 rows. Left as a worked example of why a null justified in prose
+    // needs re-reading whenever its sourcing task lands.
+    binarySplit: toPlatoonBinarySplit(profile),
     careerH2H,
     liveLineTracker: {
       subjectId: active.subjectId,

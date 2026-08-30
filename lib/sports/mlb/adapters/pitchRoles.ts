@@ -29,7 +29,7 @@
  */
 
 import { MIDDOT, fmt } from '@/components/charts/tokens';
-import type { SpatialGridRole, UsageMixRole } from '@/lib/sports/shared/playerRoles';
+import type { BinarySplitRole, SpatialGridRole, UsageMixRole } from '@/lib/sports/shared/playerRoles';
 import { ZONE_GRID, pitchTypeLabel } from '@/lib/sports/mlb/pitchProfileShapes';
 import type { PitchProfile } from '@/lib/sports/mlb/pitchProfileShapes';
 
@@ -124,5 +124,68 @@ export function toSpatialGridRole(profile: PitchProfile | null): SpatialGridRole
     caption: `catcher view ${MIDDOT} xwOBA on balls in play ${MIDDOT} n=${xwobaSample.toLocaleString()}`,
     lowerIsBetter: profile.role === 'pitcher',
     emptyMessage: 'No batted-ball locations on record.',
+  };
+}
+
+/**
+ * MLB's `binarySplit` — the platoon split, vs LHP/RHP for a batter and vs
+ * LHB/RHB for a pitcher.
+ *
+ * THIS FIELD WAS NULL WITH THE COMMENT "this app stores no platoon split".
+ * That was true when it was written and 6.6 made it stale: `mlb_pitch_events`
+ * carries `p_throws` and `stand` on all 2,140,525 rows. The stale claim is the
+ * point — a `null` justified in prose outlives the reason for it, and nothing
+ * type-checks a comment.
+ *
+ * `null` unless BOTH sides have a real sample, the same rule
+ * `toVenueBinarySplit` enforces and for the same measured reason: a card
+ * reading "vs LHP 0 (n=0) vs RHP .340 (n=812)" is a broken split rendered as a
+ * real one. Every batter faces both hands, so a missing side means missing
+ * DATA, never a real zero.
+ *
+ * XWOBA CARRIES ITS OWN n, NOT THE PITCH COUNT. Only ~22% of balls in play have
+ * an `estimated_woba`; quoting pitches beside it overstates the sample by an
+ * order of magnitude. Same trap as `toUsageMixRole`, third time in this file.
+ */
+export function toPlatoonBinarySplit(profile: PitchProfile | null): BinarySplitRole | null {
+  if (!profile || profile.platoon.length === 0) return null;
+  const versus = profile.role === 'batter' ? 'HP' : 'HB';
+  const left = profile.platoon.find((p) => p.hand === 'L');
+  const right = profile.platoon.find((p) => p.hand === 'R');
+  if (!left || !right) return null;
+  if (left.pitches === 0 || right.pitches === 0) return null;
+
+  const rows: BinarySplitRole['rows'] = [
+    {
+      key: 'pitches',
+      label: 'Pitches seen',
+      a: left.pitches,
+      b: right.pitches,
+      decimals: 0,
+      aSample: left.pitches,
+      bSample: right.pitches,
+    },
+  ];
+
+  // Only offered when BOTH sides have a real xwOBA behind them. One side with a
+  // number and the other blank invites reading the gap as a split.
+  if (left.xwoba != null && right.xwoba != null) {
+    rows.push({
+      key: 'xwoba',
+      label: 'xwOBA',
+      a: left.xwoba,
+      b: right.xwoba,
+      decimals: 3,
+      aSample: left.xwobaSample,
+      bSample: right.xwobaSample,
+    });
+  }
+
+  return {
+    title: 'Platoon split',
+    aLabel: `vs L${versus}`,
+    bLabel: `vs R${versus}`,
+    rows,
+    emptyMessage: 'No platoon split on record for this season.',
   };
 }
