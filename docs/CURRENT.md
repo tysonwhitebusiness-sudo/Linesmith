@@ -134,6 +134,13 @@ three times today.
 **Different feeds spell the same team differently.** Use
 `lib/sports/shared/teamNameMatch.ts`, never `===`.
 
+**A numeric id matching the expected SHAPE is not evidence it is the right
+id.** Golf'''s `golf_shot_events.player_id` is PGA Tour'''s and `subjectId` is
+ESPN'''s -- both five-digit numbers, so the wrong one compiles, runs and
+returns zero rows for every player. Same class as 6.8'''s GSIS problem, walked
+into anyway because there the two spaces LOOK different. Golf is keyed on
+name; NFL carries a crosswalked `gsisId` on `subjectMeta`.
+
 **A guard that fires on working code is broken, not strict.** My first
 job-registry test reported eleven false positives against healthy jobs.
 

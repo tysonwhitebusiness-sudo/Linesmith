@@ -24,6 +24,7 @@ import type { GolfCategory, LiveRoundMatchup } from '@/lib/sports/golf/adapter';
 import type { ChipDef, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, RoundScoreEntry } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import type { BinarySplitRole } from '@/lib/sports/shared/playerRoles';
 import { toGolfProximityGrid, toGolfUsageMix, type GolfShotRow } from '@/lib/sports/golf/shotProfileShapes';
+import type { ConditionsRole, OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
 
 // ---------------------------------------------------------------------------
 // Golf-specific helpers
@@ -83,7 +84,7 @@ export interface GolfPlayerDetailInput {
  * as the MLB adapter.
  */
 export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, scope, propOdds, golfStats, shotProfile } = input;
+  const { candidates, market, scope, propOdds, golfStats, shotProfile, snapshot } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -215,6 +216,68 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
   const usageMix = toGolfUsageMix(golfShots);
   const spatialGrid = toGolfProximityGrid(golfShots);
 
+  // ---- Roles 1 and 5 | opponentUnit + conditions, from the snapshot.
+  // NO NEW FETCH. `snapshot.context.other` already carries the course, its par
+  // and yardage, the city, and the tournament simulation -- the adapter simply
+  // never read them. The input's own doc comment says `snapshot` is "present
+  // for interface symmetry, currently unused"; it stopped being true here.
+  const golfContext = ((snapshot?.context?.other ?? {}) as Record<string, unknown>);
+  const courseName = typeof golfContext.courseName === 'string' ? golfContext.courseName : null;
+  const coursePar = typeof golfContext.par === 'number' ? golfContext.par : null;
+  const courseYards = typeof golfContext.yards === 'number' ? golfContext.yards : null;
+  const courseCity = typeof golfContext.city === 'string' ? golfContext.city : null;
+
+  const conditions: ConditionsRole | null = courseName
+    ? {
+        title: 'Course',
+        facts: [
+          { key: 'course', label: 'Course', value: courseName },
+          ...(coursePar != null ? [{ key: 'par', label: 'Par', value: String(coursePar) }] : []),
+          ...(courseYards != null ? [{ key: 'yards', label: 'Yardage', value: courseYards.toLocaleString() }] : []),
+          ...(courseCity ? [{ key: 'city', label: 'Location', value: courseCity }] : []),
+        ],
+      }
+    : null;
+
+  // `opponentUnit` for golf is THE FIELD -- there is no single opponent, which
+  // is exactly the case `playerRoles.ts`'s role table names for this sport.
+  //
+  // The numbers come from the tournament simulation already in the snapshot,
+  // and every one is about the FIELD rather than this player: how many are in
+  // it, and how concentrated the win probability is at the top. A player's own
+  // odds live on the prop board; repeating them here would make this a second
+  // copy of that card instead of a description of who he is beating.
+  const outcomes = Array.isArray(golfContext.tournamentPrediction)
+    ? []
+    : (((golfContext.tournamentPrediction ?? {}) as Record<string, unknown>).outcomes as
+        | Array<{ espnId?: string; probWin?: number; probTop10?: number }>
+        | undefined) ?? [];
+  const fieldSize = outcomes.length;
+  const favourite = outcomes.reduce<{ espnId?: string; probWin?: number } | null>(
+    (best, o) => ((o.probWin ?? 0) > (best?.probWin ?? -1) ? o : best),
+    null,
+  );
+  const opponentUnit: OpponentUnitRole | null =
+    fieldSize > 0
+      ? {
+          title: 'The field',
+          name: `${fieldSize} in the field`,
+          subtitle: 'To beat',
+          // Built directly rather than through `toRoleStat`, which takes an
+          // `OpposingStarterStat` and so REQUIRES a rank and a pool size.
+          // These two have neither -- a field size is not ranked against
+          // anything -- and passing 0 rendered a stray rank dash beside every
+          // row. `RoleStat.rank` is optional precisely for this case.
+          stats: [
+            { key: 'fieldSize', label: 'Players', value: fieldSize, decimals: 0 },
+            ...(favourite?.probWin != null
+              ? [{ key: 'favWin', label: 'Favourite win %', value: favourite.probWin * 100, decimals: 1 }]
+              : []),
+          ],
+          emptyMessage: 'No field simulation for this tournament yet.',
+        }
+      : null;
+
   const chart: PlayerDetailChart = {
     kind: 'scorecard',
     title: `Round ${effectiveRound} scorecard`,
@@ -238,6 +301,8 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
     .sort((a, b) => b.sampleSize - a.sampleSize || a.dimension.localeCompare(b.dimension, undefined, { numeric: true }));
 
   return {
+    opponentUnit,
+    conditions,
     usageMix,
     spatialGrid,
     binarySplit,
