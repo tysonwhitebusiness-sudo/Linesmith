@@ -1223,6 +1223,34 @@ export type CalibrationScope = 'all' | 'player' | 'game';
  */
 const CURRENT_MODEL_ONLY = `AND model_source IS NULL`;
 
+/**
+ * Task 6.19 — exclude rows that were never surfaced before their outcome was
+ * known.
+ *
+ * **85% of `pick_history` is `event_context='backfill'`** — 316,327 of 372,231
+ * measured 2026-08-30 — and every single one has `surfaced_at = graded_at`.
+ * They were reconstructed after the fact by a deliberately simpler model that
+ * no longer exists. Counting them in a track record claims performance that was
+ * never live.
+ *
+ * Measured on the home page's own record before this was applied:
+ *   as shipped 118,691/356,570 = 33.3%   live only 15,689/43,361 = 36.2%
+ *   overall Brier 0.1986                 live only 0.2191
+ * The contamination cuts BOTH ways — the win rate read worse than reality and
+ * the Brier read better — so "it is conservative" was never a defence.
+ *
+ * NULL counts as live: `event_context` postdates those rows and only the
+ * backfill ever set it. Same predicate Phase 1.8 gave `calibrationByMarket`;
+ * this constant exists so the next reader cannot be written without it.
+ *
+ * DELIBERATELY NOT APPLIED to `calibrationCounts`/`calibrationCountsForDimension`
+ * (they report `backfillRows` and `liveRows` side by side — filtering would
+ * erase the very split they exist to show) or to `leagueBaseRates` (a league
+ * base rate off `actual_value > line`, not a model record; more history makes it
+ * better, and its own comment already says so).
+ */
+const LIVE_ROWS_ONLY = `AND (event_context IS NULL OR event_context != 'backfill')`;
+
 const GAME_DIMENSIONS = `('moneyline', 'total')`;
 
 function scopeClause(scope: CalibrationScope): string {
@@ -1258,7 +1286,7 @@ export async function calibrationBuckets(sport: string, scope: CalibrationScope 
             COUNT(*) AS n,
             SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) AS wins
      FROM pick_history
-     WHERE sport = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL ${scopeClause(scope)} ${CURRENT_MODEL_ONLY}
+     WHERE sport = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL ${scopeClause(scope)} ${CURRENT_MODEL_ONLY} ${LIVE_ROWS_ONLY}
      GROUP BY bucket ORDER BY bucket`,
     [sport],
   );
@@ -1271,7 +1299,7 @@ export async function calibrationBucketsForDimension(sport: string, dimension: s
             COUNT(*) AS n,
             SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) AS wins
      FROM pick_history
-     WHERE sport = ? AND dimension = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL ${CURRENT_MODEL_ONLY}
+     WHERE sport = ? AND dimension = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL ${CURRENT_MODEL_ONLY} ${LIVE_ROWS_ONLY}
      GROUP BY bucket ORDER BY bucket`,
     [sport, dimension],
   );
@@ -1324,7 +1352,7 @@ export async function calibrationByMarket(sport: string): Promise<MarketCalibrat
            -- This also unblocks Phase 4: every measurement there compares the
            -- model against the market on live rows, and could not mean
            -- anything while this aggregate was mostly backfill.
-           AND (event_context IS NULL OR event_context != 'backfill')
+           ${LIVE_ROWS_ONLY}
            -- Task 4.8 (P3 H2), same class of problem as the Phase 1.8
            -- filter directly above, and the same fix. 3,580 mlb moneyline
            -- rows were produced by computeMoneylineModel, the second,
@@ -1353,7 +1381,7 @@ export async function liveCalibrationBrier(sport: string, dimension: string, lim
      FROM (
        SELECT model_prob, CASE WHEN outcome = 'win' THEN 1.0 ELSE 0.0 END AS actual
        FROM pick_history
-       WHERE sport = ? AND dimension = ? AND (event_context IS NULL OR event_context != 'backfill')
+       WHERE sport = ? AND dimension = ? ${LIVE_ROWS_ONLY}
          -- Task 4.8 (P3 H2) -- exclude the deleted second game model.
          AND model_source IS NULL
              AND outcome IS NOT NULL AND model_prob IS NOT NULL
@@ -1384,7 +1412,7 @@ export async function liveMarketSkill(sport: string): Promise<LiveMarketSkill[]>
                 (model_prob - (CASE WHEN outcome = 'win' THEN 1.0 ELSE 0.0 END))) AS brier
      FROM pick_history
      WHERE sport = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL
-           AND (event_context IS NULL OR event_context != 'backfill')
+           ${LIVE_ROWS_ONLY}
            -- Task 4.8 (P3 H2), same class of problem as the Phase 1.8
            -- filter directly above, and the same fix. 3,580 mlb moneyline
            -- rows were produced by computeMoneylineModel, the second,
@@ -1419,7 +1447,7 @@ export async function scoreRecord(sport: string): Promise<ScoreTierRecord[]> {
             SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) AS wins
      FROM pick_history
      WHERE sport = ? AND score_grade IS NOT NULL AND outcome IS NOT NULL
-           AND (event_context IS NULL OR event_context != 'backfill')
+           ${LIVE_ROWS_ONLY}
            -- Task 4.8 (P3 H2), same class of problem as the Phase 1.8
            -- filter directly above, and the same fix. 3,580 mlb moneyline
            -- rows were produced by computeMoneylineModel, the second,
@@ -1456,7 +1484,7 @@ export async function overallBrierScore(sport: string, scope: CalibrationScope =
   const row = await pgGet<{ brier: number | null }>(
     `SELECT AVG((model_prob - (CASE WHEN outcome = 'win' THEN 1.0 ELSE 0.0 END)) *
                 (model_prob - (CASE WHEN outcome = 'win' THEN 1.0 ELSE 0.0 END))) AS brier
-     FROM pick_history WHERE sport = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL ${scopeClause(scope)} ${CURRENT_MODEL_ONLY}`,
+     FROM pick_history WHERE sport = ? AND model_prob IS NOT NULL AND outcome IS NOT NULL ${scopeClause(scope)} ${CURRENT_MODEL_ONLY} ${LIVE_ROWS_ONLY}`,
     [sport],
   );
   return row!.brier;
@@ -1508,6 +1536,12 @@ export async function goodBetsRecord(
        -- gate, not by reading the diff -- the calibration queries had already
        -- been filtered and this reader was missed.
        AND model_source IS NULL
+       -- Task 6.19, and the SAME miss as the comment directly above describes,
+       -- one layer down: that fix filtered the deleted model and left the
+       -- backfill in. 313,209 of the 356,570 rows this counted (88%) were
+       -- reconstructed after the fact, with surfaced_at = graded_at. The record
+       -- went from 118,691/356,570 (33.3%) to 15,689/43,361 (36.2%).
+       ${LIVE_ROWS_ONLY}
        ${sinceClause}`,
     params,
   );
