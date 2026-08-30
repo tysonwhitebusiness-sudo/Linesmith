@@ -10,6 +10,7 @@ import { withAlpha } from '@/lib/sports/mlb/teamColors';
 import { useLiveGame } from './useLiveGame';
 import { useTeamStatcast } from './useTeamStatcast';
 import { StatRankRow } from './StatRankRow';
+import { PlayerRoleSections } from './PlayerRoleSections';
 import type { UnifiedLinesResult } from '@/lib/odds/types';
 import { SubjectAvatar, TeamLogo, mlbHeadshotUrl } from './SubjectAvatar';
 import { marketText, directionMark } from './MarketLabel';
@@ -1649,6 +1650,22 @@ export function PlayerDetail({
               docs/matchup-card-rebuild-gameplan-2026-08-23.md). Replaces the
               old MLB `matchups`/NFL `nflMatchup` cards outright. */}
           {data.matchupExplorer ? <MatchupExplorerCard data={data.matchupExplorer} /> : null}
+
+          {/* The six universal roles — Phase 6.3/6.13. Each renders only when
+              its sport filled it; see components/PlayerRoleSections.tsx, which
+              contains no sport check of any kind. MLB fills opponentUnit and
+              conditions today; usageMix and spatialGrid arrive with 6.6's
+              backfill, binarySplit and careerH2H with their own sourcing. */}
+          <PlayerRoleSections
+            roles={{
+              opponentUnit: data.opponentUnit,
+              usageMix: data.usageMix,
+              spatialGrid: data.spatialGrid,
+              binarySplit: data.binarySplit,
+              conditions: data.conditions,
+              careerH2H: data.careerH2H,
+            }}
+          />
 
           {/* Live line tracker — docs/live-matchup-and-line-tracker-gameplan-
               2026-08-23.md, Part 2. null for golf/soccer/tennis (no
