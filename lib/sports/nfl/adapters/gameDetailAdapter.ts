@@ -9,7 +9,7 @@
  * `GameDetail.tsx` are verified) — no new behavior invented here.
  */
 
-import { toNflUnitGrades } from '@/lib/sports/nfl/nflTeamGrades';
+import { toNflUnitGrades } from '@/lib/sports/nfl/nflUnitGrades';
 import type { PickCandidate } from '@/lib/core/types';
 import type { UnifiedGameLine } from '@/lib/odds/types';
 import { nflTeamLogoUrl } from '@/components/SubjectAvatar';

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { groupStats, toStatComparisonGroups, type SeasonAggregateSpec, type EntitySeasonAggregate } from '../lib/sports/shared/seasonAggregates';
+import { groupStats, toStatComparisonGroups, type SeasonAggregateSpec, type EntitySeasonAggregate } from '../lib/sports/shared/seasonAggregateShapes';
 import {
   SEASON_AGGREGATE_SPECS,
   NHL_SEASON_SPEC,

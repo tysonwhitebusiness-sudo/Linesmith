@@ -17,8 +17,8 @@ import type { GameDetailData, StatComparisonData } from '@/lib/sports/mlb/adapte
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
 import type { TeamStandingRow } from '@/components/useAllTeams';
 import type { UnifiedGameLine } from '@/lib/odds/types';
-import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregates';
-import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregates';
+import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
+import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
 import { NBA_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 
 function toOptionalRecord(games: ReturnType<typeof toNbaRecentResultRows>): { wins: number; losses: number } | null {

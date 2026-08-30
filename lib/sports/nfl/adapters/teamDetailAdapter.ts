@@ -25,7 +25,7 @@ import { directionMark } from '@/components/MarketLabel';
 import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import { MATCHUP_GROUP_BY_POSITION, playerMatchupRows } from '@/components/NflPlayerVsDefenseCard';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
-import { toNflUnitGrades } from '@/lib/sports/nfl/nflTeamGrades';
+import { toNflUnitGrades } from '@/lib/sports/nfl/nflUnitGrades';
 import { findUnit, type UnitGrade } from '@/lib/sports/shared/unitGrades';
 import type { NflTeamDetailApiResponse, NflTeamStatLine } from '@/components/useNflTeamDetail';
 import type {

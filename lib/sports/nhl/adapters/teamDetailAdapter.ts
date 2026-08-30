@@ -18,8 +18,8 @@ import { categoriseByLine, entryValue, fixedWindow, openWindow, subsetWindow, OV
 import { directionMark } from '@/components/MarketLabel';
 import type { PickCandidate } from '@/lib/core/types';
 import type { TeamStandingRow } from '@/components/useAllTeams';
-import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregates';
-import { groupStats } from '@/lib/sports/shared/seasonAggregates';
+import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
+import { groupStats } from '@/lib/sports/shared/seasonAggregateShapes';
 import { NHL_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 import type { GameRow, RecentResultRow, RosterPlayer, TeamDetailData, TeamDistributionChartData, TeamNextGame, TeamWindowedForm } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import type { NhlTeam, NhlGame } from '@/lib/sports/nhl/nhle';

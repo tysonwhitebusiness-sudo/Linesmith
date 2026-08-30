@@ -35,7 +35,7 @@
  * — the type can express a fourth unit, we simply do not have one.
  */
 
-import type { SeasonAggregateSpec } from './seasonAggregates';
+import type { SeasonAggregateSpec } from './seasonAggregateShapes';
 
 /**
  * NHL. 32 teams; `minGames: 20` keeps a team that has played a handful of

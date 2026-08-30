@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregates';
+import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
 
 export interface SeasonRanksState {
   data: SeasonAggregateResult | null;

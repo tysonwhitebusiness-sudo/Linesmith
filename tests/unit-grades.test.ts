@@ -10,7 +10,8 @@ import {
   findUnit,
   type UnitGrade,
 } from '../lib/sports/shared/unitGrades';
-import { toNflUnitGrades, NFL_UNITS, type TeamGrades } from '../lib/sports/nfl/nflTeamGrades';
+import { toNflUnitGrades, NFL_UNITS } from '../lib/sports/nfl/nflUnitGrades';
+import type { TeamGrades } from '../lib/sports/nfl/nflTeamGrades';
 
 /**
  * Phase 6.1 — `TeamGrades` (nine hardcoded NFL unit names) -> `UnitGrade[]`.

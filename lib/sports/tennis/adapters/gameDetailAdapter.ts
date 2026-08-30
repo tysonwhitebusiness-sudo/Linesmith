@@ -26,8 +26,8 @@ import type { EspnTennisMatchDetail } from '@/lib/sports/multiSport/espnTennis';
 import type { GameDetailData, RecentResultRow, StatComparisonData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
 import type { UnifiedGameLine } from '@/lib/odds/types';
-import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregates';
-import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregates';
+import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
+import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
 import { TENNIS_ATP_SEASON_SPEC, TENNIS_WTA_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 
 interface RecentResultRowWire {
