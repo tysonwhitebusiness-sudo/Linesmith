@@ -1848,7 +1848,16 @@ supposed to be about. Any backfill over past games is that same operation by
 construction, and needs a point-in-time candidate builder that filters history
 to `game_date < target_game_date` — a real second implementation, not a flag.
 
-**The three options, for the operator:**
+**DECIDED 2026-08-30 (operator): option 1, let it accrue.** No backfill is
+built and none should be. CFB and NFL resume in September, NBA and NHL in
+October; from then the six sports fill on their own with real, priced,
+leakage-free rows. **6.5 needs no further work** — what it needs is for the
+seasons to start. Re-check `pick_history` per sport in mid-September before
+assuming anything about the boards' Edge and Model % blocks.
+
+The `model_source = NULL` note below still stands for any future writer.
+
+*The options as presented:*
 
 1. **Let it accrue.** Zero work. CFB and NFL resume in September, NBA and NHL
    in October; every row is real, leakage-free and priced. By the time the
@@ -1925,20 +1934,63 @@ nothing** — soccer's shot map ships EPL-only, and the MLS tab must say so.
 - **`game_sim_cache`** — 192 rows, `sport` column already exists, only `mlb`
   populated. The rail's simulated-margin block is MLB-only until this is fed.
 
-### 6.11 · NBA and NHL game book lines
+### 6.11 · NBA and NHL game book lines — **RE-SCOPED 2026-08-30. Not a purchase.**
 
-`game_odds_book_lines`: soccer 23 books and MLB 22 across three markets; CFB 4,
-NFL 3, tennis 3, all moneyline-only; **NBA and NHL zero rows**. The bookmaker
-grid is the centrepiece of the game page and ships empty on two tabs until this
-lands. Scope alongside 5.2's provider decision.
+The original text implied a vendor gap. Measured, it is two different things,
+and neither needs money:
 
-### 6.12 · Confirm the tennis match-summary stats
+- **NBA already has coverage.** `refreshNbaJob` runs every 20 minutes and
+  `_SGO_LEAGUE_IDS` already maps `"nba": "NBA"` on the shared multisport
+  SportsGameOdds account that is already provisioned. NBA has **zero rows
+  because it is out of season** — last game 2026-04-13. Nothing to build.
+- **NHL has no odds job at all.** Not a missing league id: there is no
+  `job_nhl`, no `refreshNhlJob` in `JOB_REGISTRY`, and no `nhl` key in
+  `_SGO_LEAGUE_IDS`. NHL's only entry anywhere is
+  `genericPropProductionNhlJob`, which builds props from player history and
+  touches no odds provider.
 
-The tennis pages show hold %, break %, BP saved, 1st/2nd-serve won and return
-points won. These are **match-level** aggregates (not the point-level data cut
-in 6.0), plausibly available from the ESPN tennis summary payload — but only the
-eight game-log keys and `aces` are confirmed today. **Verify before building;
-drop any that are not really there rather than fabricating them.**
+So NHL needs the standard add-a-sport recipe from `CLAUDE.md`'s job-architecture
+section — a games loader if `game_context.py` lacks one, a `list[ProviderSpec]`
+in `jobs.py`, and one `JOB_REGISTRY` line. `fetch_sportsgameodds` already spans
+sports with no sport parameter, so no new provider function is needed.
+
+**It cannot be verified until October.** NHL's last game was 2025-04-17, so
+there are no fixtures to fetch against and no way to confirm SportsGameOdds
+carries NHL on this plan. Build it if you want it ready, but treat it as
+untested, and check the provider actually returns NHL events on the first real
+slate before trusting the empty result.
+
+Original text: `game_odds_book_lines` has soccer 23 books and MLB 22 across
+three markets; CFB 4, NFL 3, tennis 3, all moneyline-only; NBA and NHL zero
+rows.
+
+### 6.12 · Confirm the tennis match-summary stats — **VERIFIED 2026-08-30. They do not exist. DROPPED.**
+
+The task said: verify before building, and drop any that are not really there
+rather than fabricating them. Verified, and the answer is that **none of them
+are there**.
+
+- ESPN's `summary?event=` endpoint **returns HTTP 400 for tennis**. Confirmed
+  live against a real match id (182071, 2026-08-29), not a placeholder.
+- Every competitor's `statistics` array on the tennis scoreboard is **empty**.
+
+Both facts were already recorded in `parse_tennis_match`'s own docstring in
+`python-odds-service/src/backfill_player_game_history.py` — checked on both the
+scoreboard and the summary path when that parser was written. This task
+re-confirmed them independently rather than trusting the comment.
+
+**So hold %, break %, break points saved, first- and second-serve points won and
+return points won are all cut**, alongside the point-level data already cut in
+6.0. They need a different feed entirely.
+
+**Also note, from the same docstring:** `aces` is one of the three tennis
+markets this app prices and it is **not derivable from this source either** — no
+amount of work on ESPN will produce it. `games-won` and `to-win-a-set`, the
+other two, are derivable and are what the tennis pages actually use.
+
+What tennis genuinely has is the seven usable keys in `player_game_history`
+(`is_major` is `0.0` on every row, so the eighth is dead) — and those now drive
+real ranked stats and unit grades through the season rollup shipped in 6.2b.
 
 ---
 
