@@ -1056,50 +1056,17 @@ export function RecordsSection({
 // Team stat comparison
 // ---------------------------------------------------------------------------
 
-/** Rate stats (batting average and friends) print as ".232", not "0.232". */
-function fmtStatCell(v: number | null, decimals: number): string {
-  if (v == null) return '—';
-  if (decimals === 3) return v.toFixed(3).replace(/^(-?)0/, '$1');
-  return v.toFixed(decimals);
-}
-
 /** Leader gets the ink (masters green); trailer stays a neutral grey — regardless of home/away. */
-function StatComparisonRow({ label, away, home, decimals }: { label: string; away: number | null; home: number | null; decimals: number }) {
-  const a = away ?? 0;
-  const h = home ?? 0;
-  const max = Math.max(Math.abs(a), Math.abs(h), 0.0001);
-  const awayBetter = away != null && home != null && away > home;
-  const homeBetter = away != null && home != null && home > away;
-
-  return (
-    <div className="grid grid-cols-[52px_1fr_64px_1fr_52px] items-center gap-2 py-1">
-      <span className={`text-right text-body tabular-nums ${awayBetter ? 'font-semibold text-ink' : 'text-ink-soft'}`}>{fmtStatCell(away, decimals)}</span>
-      <div className="h-3 rounded-[2px] bg-line-soft">
-        <div
-          className="ml-auto h-full rounded-[2px] transition-all duration-200 ease-out"
-          style={{ width: `${Math.max((Math.abs(a) / max) * 100, 4)}%`, backgroundColor: awayBetter ? '#323335' : '#b6b7ba' }}
-        />
-      </div>
-      <span className="text-center text-meta font-semibold uppercase tracking-wide text-ink-soft">{label}</span>
-      <div className="h-3 rounded-[2px] bg-line-soft">
-        <div
-          className="h-full rounded-[2px] transition-all duration-200 ease-out"
-          style={{ width: `${Math.max((Math.abs(h) / max) * 100, 4)}%`, backgroundColor: homeBetter ? '#0f7a4f' : '#b6b7ba' }}
-        />
-      </div>
-      <span className={`text-body tabular-nums ${homeBetter ? 'font-semibold text-good' : 'text-ink-soft'}`}>{fmtStatCell(home, decimals)}</span>
-    </div>
-  );
-}
-
 /**
- * The Stat comparison section — MLB's away/home magnitude bars
- * (`StatComparisonRow`, grouped Batting/Rate) or NFL's ranked rows
- * (`TwoSidedStatRankRow`, grouped by box-score category). Genuinely
- * different visual language, not just different data — `data.bars`/
- * `data.ranked` are mutually exclusive per sport (see `StatComparisonData`'s
- * own doc comment), so which one renders is a presence check, not a sport
- * check.
+ * The Stat comparison section — ranked rows (`TwoSidedStatRankRow`), grouped
+ * by whatever categories the sport's adapter names.
+ *
+ * PHASE 6.2 removed the second shape. This used to branch `data.bars ? ... :
+ * data.ranked ? ...`, described as "genuinely different visual language". Only
+ * MLB ever filled `bars`, and it had the ranks for the other shape all along —
+ * so the branch was a port artifact, not a real difference. Deleting it also
+ * deleted `StatComparisonRow`, the ~30-line magnitude-bar renderer nothing
+ * else used.
  */
 function StatComparison({ data }: { data: StatComparisonData }) {
   return (
@@ -1111,18 +1078,7 @@ function StatComparison({ data }: { data: StatComparisonData }) {
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-masters" />{data.homeAbbr}</span>
         </div>
       </div>
-      {data.bars ? (
-        <div className="space-y-3">
-          {data.bars.map((g) => (
-            <div key={g.label}>
-              <div className="mb-1 text-label font-semibold uppercase tracking-[.18em] text-ink-faint">{g.label}</div>
-              {g.rows.map((r) => (
-                <StatComparisonRow key={r.key} label={r.label} away={r.away} home={r.home} decimals={r.decimals} />
-              ))}
-            </div>
-          ))}
-        </div>
-      ) : data.ranked ? (
+      {data.ranked.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {data.ranked.map((g) => (
             <div key={g.label}>
@@ -1133,7 +1089,9 @@ function StatComparison({ data }: { data: StatComparisonData }) {
             </div>
           ))}
         </div>
-      ) : null}
+      ) : (
+        <p className="py-6 text-center text-[12px] text-ink-muted">No ranked team stats for this matchup yet.</p>
+      )}
     </section>
   );
 }

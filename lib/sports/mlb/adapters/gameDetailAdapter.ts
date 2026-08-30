@@ -6,6 +6,7 @@ import type { TeamBullpen } from '@/components/useBullpen';
 import type { BatterPitcherMatchupProps } from '@/components/BatterPitcherMatchupCard';
 import type { NflPlayerVsDefenseCardProps } from '@/components/NflPlayerVsDefenseCard';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
+import { teamSeasonStatRows } from './statRowAdapter';
 import type { UnitGrade } from '@/lib/sports/shared/unitGrades';
 import type { PickCandidate } from '@/lib/core/types';
 import type { UnifiedGameLine } from '@/lib/odds/types';
@@ -212,18 +213,36 @@ export interface GameMatchupData {
 }
 
 /**
- * The Stat comparison section. MLB: away/home magnitude bars, grouped
- * Batting/Rate (`StatComparisonRow`). NFL: ranked rows with a real
- * league-wide rank per side (`TwoSidedStatRankRow`), grouped by box-score
- * category. Different visual language, not just different data — kept as
- * two distinct optional shapes (`bars`/`ranked`) rather than one forced
- * shape, same reasoning as `GameMatchupData`.
+ * The team stat comparison — one shape, ranked rows.
+ *
+ * PHASE 6.2 COLLAPSED THIS. It used to carry two mutually exclusive arrays,
+ * `bars` (MLB's away/home magnitude bars) and `ranked` (NFL's rows with each
+ * side's league rank attached), and `CLAUDE.md` §4 cited the pair as its model
+ * case for "genuinely different UI gets named mutually-exclusive fields".
+ *
+ * Measured, it was not a genuine difference — it was the "leftover placement
+ * accident from the port" that same §4 warns about two paragraphs later. MLB
+ * was ported first and got bars; NFL came second and added a second shape
+ * rather than adopting the first. **MLB was the only sport that ever filled
+ * `bars`**, and MLB's own `forRanks` already carried the ranks the other shape
+ * needs — the data to render ranked rows was sitting right beside the bars the
+ * whole time.
+ *
+ * A magnitude bar also says less: it shows the two teams' gap against each
+ * other but not whether either is any good. "4.6 runs/game, 3rd of 30" is a
+ * strictly stronger read than a bar that is 8% longer than the other bar.
+ *
+ * §4's replacement example is `pregameLines.moneyline.draw` — soccer's real
+ * third outcome, which is genuinely earned.
  */
+/** The 30 MLB clubs — the pool both the stat comparison and the rankings section rank against. One constant so the two cannot disagree about the size of the league. */
+const MLB_TEAM_COUNT = 30;
+
 export interface StatComparisonData {
   awayAbbr: string;
   homeAbbr: string;
-  bars?: Array<{ label: string; rows: Array<{ key: string; label: string; away: number | null; home: number | null; decimals: number }> }>;
-  ranked?: Array<{ label: string; rows: Array<{ key: string; label: string; away?: OpposingStarterStat; home: OpposingStarterStat }> }>;
+  /** Grouped by the sport's own categories: MLB's Batting/Rate, NFL's Scoring/Passing/Rushing/Receiving/Defense. `away` is optional — a stat one side has no ranked value for renders one-sided rather than dropping the row. */
+  ranked: Array<{ label: string; rows: Array<{ key: string; label: string; away?: OpposingStarterStat; home: OpposingStarterStat }> }>;
 }
 
 export interface RankingsData {
@@ -415,25 +434,39 @@ export function toGameDetailData(input: MlbGameDetailInput): GameDetailData {
     loading: gameContext.loading,
   };
 
+  // Stat comparison — Phase 6.2. Was `bars` (magnitude bars, MLB the only
+  // sport that ever filled them); now ranked rows, the one shape. The ranks
+  // are not new data: `game.away.forRanks` is the same map the `rankings`
+  // section below already renders from, and it sat beside `forStats` here the
+  // whole time. MLB's pool is the 30 teams.
+  //
+  // A key with a value but no rank is dropped rather than shown with a made-up
+  // rank — `OpposingStarterStat` has no "unranked" state, and a fabricated one
+  // would read as a real placing.
+  // `teamSeasonStatRows` is the existing canonical `forStats`/`forRanks` ->
+  // `OpposingStarterStat[]` converter (it already parses `forRanks`' ordinal
+  // strings -- "28th" -> 28 -- and drops any key without both a value and a
+  // rank). Reused here rather than rewritten: it was written to kill exactly
+  // this duplication once already, when TeamDetail and PlayerDetail each had
+  // their own byte-identical copy.
   const battingKeys = statKeys.filter((k) => k.decimals !== 3);
   const rateKeys = statKeys.filter((k) => k.decimals === 3);
-  const toBarsGroup = (keys: StatKeyDef[], label: string) =>
-    keys.length === 0
-      ? null
-      : {
-          label,
-          rows: keys.map((k) => ({
-            key: k.key,
-            label: k.label,
-            away: game.away?.forStats[k.key] ?? null,
-            home: game.home?.forStats[k.key] ?? null,
-            decimals: k.decimals,
-          })),
-        };
+  const awayRowsByKey = new Map(teamSeasonStatRows(game.away, statKeys, MLB_TEAM_COUNT).map((r) => [r.key, r]));
+  const homeRowsByKey = new Map(teamSeasonStatRows(game.home, statKeys, MLB_TEAM_COUNT).map((r) => [r.key, r]));
+  const toRankedGroup = (keys: StatKeyDef[], label: string) => {
+    const rows = keys
+      .map((k) => {
+        const home = homeRowsByKey.get(k.key);
+        if (!home) return null;
+        return { key: k.key, label: k.label, away: awayRowsByKey.get(k.key), home };
+      })
+      .filter((r): r is NonNullable<typeof r> => r != null);
+    return rows.length > 0 ? { label, rows } : null;
+  };
   const statComparison: StatComparisonData = {
     awayAbbr,
     homeAbbr,
-    bars: [toBarsGroup(battingKeys, 'Batting'), toBarsGroup(rateKeys, 'Rate')].filter(
+    ranked: [toRankedGroup(battingKeys, 'Batting'), toRankedGroup(rateKeys, 'Rate')].filter(
       (g): g is NonNullable<typeof g> => g != null,
     ),
   };
@@ -452,7 +485,7 @@ export function toGameDetailData(input: MlbGameDetailInput): GameDetailData {
     homeAbbr,
     awayLogoUrl: teamLogoUrl(game.awayTeamId),
     homeLogoUrl: teamLogoUrl(game.homeTeamId),
-    poolSize: 30,
+    poolSize: MLB_TEAM_COUNT,
   };
 
   const injuries: GameDetailData['injuries'] = {
