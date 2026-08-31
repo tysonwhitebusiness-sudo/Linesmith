@@ -1198,6 +1198,24 @@ async def job_retention(yield_fn=None) -> dict:
 CLV_SUMMARY_CACHE_KEY = "python-harness:clv-summary"
 
 
+async def job_venue_factors(yield_fn=None) -> dict:
+    """Phase 6.10 -- home/road scoring factors for the sports that are not
+    baseball. `park_factors` stays MLB's, keyed by a real venue id; nothing
+    else stores a venue per game, so this is keyed by the home team. See
+    `venue_factors.py` for why that is the honest key rather than a fudge.
+
+    DAILY. Every input is a completed game, so the number only moves when games
+    finish, and a season-level ratio does not meaningfully change between two
+    runs on the same day.
+    """
+    import venue_factors
+
+    async def run() -> dict:
+        return await venue_factors.refresh_all()
+
+    return await _run_timed("venueFactorsJob", run())
+
+
 async def job_clv_summary(yield_fn=None) -> dict:
     from predict import clv_backtest
 
@@ -1333,6 +1351,9 @@ JOB_REGISTRY = [
     # logged, and the backtest walks every captured pick per run, so hourly is
     # the right cadence. health_check.py picks this up with no edit of its own.
     ("clvSummaryJob", job_clv_summary, 60 * 60),
+    # Phase 6.10 -- venue factors for the non-MLB sports. Daily: every input is
+    # a completed game. health_check.py picks this up with no edit of its own.
+    ("venueFactorsJob", job_venue_factors, 24 * 60 * 60),
     ("refreshTier1", job_tier1, 2.5 * 60),
     ("refreshSportsGameOddsJob", job_sportsgameodds, 90 * 60),
     ("refreshNflJob", job_nfl, 20 * 60),

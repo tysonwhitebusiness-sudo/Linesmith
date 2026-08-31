@@ -35,6 +35,9 @@ import { join } from 'node:path';
 /** Modules that pull in `pg` (or anything else Node-only) transitively. */
 const DB_MODULES = [
   '@/lib/db/pgClient',
+  // 6.10: the venue-factor READ half. Its type and its formatter live in
+  // `venueFactorShapes.ts`, which is what a client component may import.
+  '@/lib/sports/shared/venueFactor',
   '@/lib/db/client',
   '@/lib/sports/shared/seasonAggregates',
   '@/lib/sports/mlb/pitchProfile',
@@ -91,7 +94,13 @@ function isClientReachable(file: string): boolean {
  * above is what stops anything client-reachable importing IT. A new entry needs
  * both, or it is exempted without being guarded.
  */
-const SELF = ['lib/sports/shared/seasonAggregates.ts', 'lib/sports/shared/teamRatingHistory.ts'];
+const SELF = [
+  'lib/sports/shared/seasonAggregates.ts',
+  'lib/sports/shared/teamRatingHistory.ts',
+  // 6.10: one `venue_factors` table across six sports, so there is no
+  // `lib/sports/{sport}/` to put it in — the same reason the two above live here.
+  'lib/sports/shared/venueFactor.ts',
+];
 
 function walk(dir: string): string[] {
   const out: string[] = [];
