@@ -28,10 +28,11 @@
  */
 
 import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
+import { buildAnalyticsRoles } from '@/lib/sports/shared/analyticsRoles';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import type { PropOddsRow } from '@/lib/db/client';
-import { marketText } from '@/components/MarketLabel';
+import { marketText, directionMark } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
 import { MIDDOT, fmt } from '@/components/charts/tokens';
 import { toRoleStat, type OpponentUnitRole, type SpatialGridRole, type UsageMixRole } from '@/lib/sports/shared/playerRoles';
@@ -400,7 +401,30 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
         }
       : null;
 
+
+  // ---- Phase 6.16: the four analytics cards ----
+  //
+  // ONE CALL FOR ALL FOUR, identical in every sport's adapter, because every
+  // one is a function of this candidate's own history and line. See
+  // `analyticsRoles.ts` for why they are shared rather than per-sport.
+  //
+  // `peers` COMES FROM `snapshot.candidates`, NOT the `candidates` argument.
+  // The argument is already scoped to this subject, so using it would compare
+  // the player against himself and the pool would be one. That exact mistake
+  // was made once on tennis's `opponentUnit` and caught only by opening the
+  // page -- same shape, same fix.
+  const analyticsRoles = buildAnalyticsRoles({
+    history: active.history,
+    line: active.line,
+    wantOver: directionMark(active.category) !== 'U',
+    statLabel: active.dimensionLabel ?? active.dimension,
+    peers: (snapshot?.candidates ?? [])
+      .filter((c) => c.dimension === active.dimension && c.subjectId !== active.subjectId)
+      .map((c) => ({ history: c.history })),
+  });
+
   return {
+    ...analyticsRoles,
     opponentUnit,
     usageMix,
     careerH2H,

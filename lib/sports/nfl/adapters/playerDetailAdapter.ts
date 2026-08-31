@@ -18,6 +18,7 @@
  */
 
 import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
+import { buildAnalyticsRoles } from '@/lib/sports/shared/analyticsRoles';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
 import {
@@ -468,7 +469,30 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
         }
       : null;
 
+
+  // ---- Phase 6.16: the four analytics cards ----
+  //
+  // ONE CALL FOR ALL FOUR, identical in every sport's adapter, because every
+  // one is a function of this candidate's own history and line. See
+  // `analyticsRoles.ts` for why they are shared rather than per-sport.
+  //
+  // `peers` COMES FROM `snapshot.candidates`, NOT the `candidates` argument.
+  // The argument is already scoped to this subject, so using it would compare
+  // the player against himself and the pool would be one. That exact mistake
+  // was made once on tennis's `opponentUnit` and caught only by opening the
+  // page -- same shape, same fix.
+  const analyticsRoles = buildAnalyticsRoles({
+    history: active.history,
+    line: active.line,
+    wantOver: directionMark(active.category) !== 'U',
+    statLabel: active.dimensionLabel ?? active.dimension,
+    peers: (snapshot?.candidates ?? [])
+      .filter((c) => c.dimension === active.dimension && c.subjectId !== active.subjectId)
+      .map((c) => ({ history: c.history })),
+  });
+
   return {
+    ...analyticsRoles,
     opponentUnit,
     conditions,
     spatialGrid,

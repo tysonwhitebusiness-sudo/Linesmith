@@ -20,6 +20,7 @@ import { candidateCategoryToSide, candidateDimensionToMarketKey } from '@/lib/od
 import { LineMovementCard } from './LineMovementCard';
 import { StatRankRow } from './StatRankRow';
 import { PlayerRoleSections } from './PlayerRoleSections';
+import { PlayerAnalyticsSections } from './PlayerAnalyticsSections';
 import type { UnifiedLinesResult } from '@/lib/odds/types';
 import { SubjectAvatar, TeamLogo, mlbHeadshotUrl } from './SubjectAvatar';
 import { marketText, directionMark } from './MarketLabel';
@@ -52,6 +53,28 @@ import { toPlayerDetailData as toCfbPlayerDetailData } from '@/lib/sports/cfb/ad
 import { toPlayerDetailData as toNbaPlayerDetailData } from '@/lib/sports/nba/adapters/playerDetailAdapter';
 import { toPlayerDetailData as toNhlPlayerDetailData } from '@/lib/sports/nhl/adapters/playerDetailAdapter';
 import { toPlayerDetailData as toTennisPlayerDetailData } from '@/lib/sports/tennis/adapters/playerDetailAdapter';
+
+/**
+ * A React key that is unique per candidate ROW, not per market.
+ *
+ * `${dimension}-${category}` WAS NOT UNIQUE AND IT DROPPED A REAL FIXTURE.
+ * Measured on the live EPL snapshot: 53 groups of candidates share a
+ * (subject, dimension, category) triple, because a player with two upcoming
+ * matches gets one anytime-goalscorer candidate per FIXTURE. Ross Barkley's
+ * two read identically on those three fields and differ on everything that
+ * matters -- home vs Arsenal at +790, away at Hull at +360.
+ *
+ * React's own warning is explicit that non-unique keys mean children "may be
+ * duplicated and/or omitted", so the market selector was rendering one button
+ * where there should have been two and the second fixture was unreachable.
+ * Zero collisions on MLB, NFL, tennis and golf; adding the game discriminator
+ * changes nothing on those four and fixes all 53 on soccer.
+ */
+function candidateRowKey(c: PickCandidate): string {
+  const meta = (c.subjectMeta ?? {}) as Record<string, unknown>;
+  const game = meta.gamePk ?? meta.opponent ?? '';
+  return `${c.dimension}-${c.category}-${String(game)}-${c.line ?? ''}`;
+}
 
 /**
  * Everything known about one player's one market — sport-agnostic. Reads a
@@ -1374,7 +1397,7 @@ export function PlayerDetail({
             const selected = candidate.dimension === active.dimension;
             return (
               <button
-                key={`${candidate.dimension}-${candidate.category}`}
+                key={candidateRowKey(candidate)}
                 type="button"
                 onClick={() => {
                   setLineOffset(0);
@@ -1700,7 +1723,7 @@ export function PlayerDetail({
                         <p className="text-[11px] text-ink-faint">No live-trackable lines for this player&apos;s markets.</p>
                       ) : (
                         trackableCandidates.map((c) => (
-                          <LineTrackerRow key={`${c.dimension}-${c.category}`} candidate={c} liveValue={live.liveValues?.[c.dimension]} />
+                          <LineTrackerRow key={candidateRowKey(c)} candidate={c} liveValue={live.liveValues?.[c.dimension]} />
                         ))
                       )}
                     </div>
@@ -1771,6 +1794,19 @@ export function PlayerDetail({
               binarySplit: data.binarySplit,
               conditions: data.conditions,
               careerH2H: data.careerH2H,
+            }}
+          />
+
+          {/* The four analytics cards -- Phase 6.16. Same presence-gating and
+              the same no-sport-check rule as the roles above; see
+              components/PlayerAnalyticsSections.tsx. All four are built from
+              this candidate's own history, so every sport fills every one. */}
+          <PlayerAnalyticsSections
+            roles={{
+              rollingForm: data.rollingForm,
+              situationalSplits: data.situationalSplits,
+              whereThisSits: data.whereThisSits,
+              gameContext: data.gameContext,
             }}
           />
 
