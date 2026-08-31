@@ -273,17 +273,33 @@ the arithmetic reversed.
 
 ---
 
-## D · The rest of Phase 6, unrelated to the three pages
+## D · The rest of Phase 6, unrelated to the three pages — BUILT 2026-08-31
 
 | Task | State |
 |---|---|
-| **6.10** | Weather done (NFL/CFB). **`park_factors` beyond MLB** and **`game_sim_cache`** (217 rows, `mlb` only) untouched. |
-| **6.11** | NBA/NHL game book lines — re-scoped, not a purchase. **Untestable until October.** |
-| **6.21** | User-facing CLV — did the user's own bets beat the close? Untouched. |
-| **6.24** | De-vig (power/Shin/worst-case, **backtested**), correlated-prop warnings, DFS pick'em. Book limits out — operator declined the 5.2 spend. **Scope the de-vig backtest before starting; it is open-ended.** |
+| **6.22 line movement** | **DONE.** Game Detail and Team Detail both render a movement chart off `game_odds_history` (moneyline/total/spread), through one new reader, one route and one hook. NBA/NHL show the empty state because that table has zero rows for them — correctly. |
+| **6.21 user CLV** | **BUILT, UNVERIFIABLE ON A PAGE.** `lib/odds/userClv.ts` + `/api/bets/clv`, using the same DISTINCT-ON close definition as `get_closing_price`. Only two bets exist, both golf, both with a null bookmaker and a null `game_id`, so neither is measurable — and there are no credentials to sign in with. Verified against real closing prices with synthetic bets instead; record it as unwalked. |
+| **6.24 de-vig** | **DONE, WITH NO WINNER.** Power, Shin and worst-case added beside the multiplicative method (`devigMethods.ts`); nothing is made the default. The backtest scores on Brier + bucketed calibration, never on edge, and **declines a verdict at n=82** against a `MIN_SAMPLE_FOR_VERDICT` of 1000. **`historical_odds` cannot be used at all** — its 37,922 rows are pre-de-vigged, summing to exactly 1.0000. Correlated-prop warnings and DFS pick'em moved out of Phase 6 by operator decision. |
+| **6.10 venue factors** | **DONE.** New `venue_factors` table, `venue_factors.py`, daily `venueFactorsJob`. A real run wrote **282 rows** across six sport-stat pairs (NBA 30, NHL 32, NFL 32, CFB 138, EPL 20, MLS 30), every sport's mean factor between 1.000 and 1.030. **The data layer only — nothing renders it yet.** |
+| **6.10 `game_sim_cache`** | **MOVED OUT** by operator decision — it needs a non-MLB game model, which is the model project, not Phase 6. |
+| **6.11** | NBA/NHL game book lines — still **untestable until October**. |
+
+**Why `park_factors` did not get a `sport` column.** A tree-wide scan found
+exactly two venue columns in the whole database and both are on `park_factors`
+itself: **no sport but MLB stores a venue per historical game.** In every other
+league a team plays its home games in one building, so the home *team* is the
+venue — a different key, and one that deserves its own table rather than a
+`venue_id` column that silently means "team id" on six sports out of seven.
+
+**The factor is deliberately modest about itself.** It is the home/road scoring
+ratio counting *both* teams' scoring, so the home side's own quality largely
+cancels; but it cannot separate a genuine building effect from ordinary home
+advantage, and it sits on a few dozen games per side. `home_games`/`away_games`
+travel with it so a caller can decline to show a thin one, and the card that
+renders it must say "how much more scoring happens when this team is at home"
+rather than imply a stadium-physics claim.
 
 ---
-
 ## E · The Phase 6 gate — never run, and it is what catches this
 
 §11 has **no gate sign-off** for Phase 6. The task list marked itself done. Its
@@ -325,3 +341,26 @@ failed.
 **Known not closeable in Phase 6:** the four accepted gaps, 6.11 (season), 6.18
 (operator-skipped, remains a launch blocker), 6.20/6.22 (Phase 7), 6.23 (not
 derivable — `observed_at` is a poll time).
+
+---
+
+## F · Where this stands, end of 2026-08-31
+
+**Sections A through D are built.** The three detail pages had a full pass each
+(6.16 Player, 6.19 Team, 6.15/6.20/6.21 Game, plus 6.17's layout pass), and all
+four of D's remaining workstreams shipped. TS tests **262 -> 339**; `tsc` and
+`npm run build` clean.
+
+**The gate in section E has NOT been run, and two of its items are already
+known to fail:**
+
+1. **`sport === 'x'` survives in two render paths** — `TeamDetail`'s `teamHref`
+   (six branches) and `GameDetail`'s `renderLiveDetail` (six branches). MLB
+   already does the latter correctly through `hero.mlbLiveGame` presence, which
+   is CLAUDE.md §5's own rule; the fix is applying it to the other five.
+2. **The per-sport page walk cannot complete** while CFB, NBA, NHL and tennis
+   have no slate. Everything built for those four across this whole session is
+   verified by construction and by route responses, never on a page.
+
+**Also outstanding:** the venue factor renders on no card yet, and `794240d`
+plus the new `venueFactorsJob` are undeployed on Render.
