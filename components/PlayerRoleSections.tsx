@@ -292,7 +292,7 @@ function BinarySplitSection({ role }: { role: BinarySplitRole }) {
           label: r.label,
           a: r.a,
           b: r.b,
-          format: (v: number) => v.toFixed(r.decimals),
+          format: (v: number) => `${v.toFixed(r.decimals)}${r.suffix ?? ''}`,
           aSample: r.aSample,
           bSample: r.bSample,
           lowerIsBetter: r.lowerIsBetter,

@@ -79,6 +79,7 @@ export function toPredicateBinarySplit(input: PredicateSplitInput): BinarySplitR
         decimals: 0,
         aSample: a.total,
         bSample: b.total,
+        suffix: '%',
       },
       {
         key: 'average',

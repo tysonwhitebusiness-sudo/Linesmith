@@ -39,6 +39,7 @@ import type {
 } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import { toRatingHistoryRole } from '@/lib/sports/shared/ratingHistoryRole';
 import type { TeamRatingHistory } from '@/lib/sports/shared/teamRatingShapes';
+import { buildTeamRoles } from '@/lib/sports/shared/teamRoles';
 
 const NFL_TEAM_COUNT = 32;
 
@@ -321,7 +322,21 @@ export function toTeamDetailData(input: NflTeamDetailInput): TeamDetailData {
         })
       : null;
 
+
+  // ---- Phase 6.19: the shared Team Detail roles ----
+  // One call for all five, identical in every sport's adapter. Which ones fill
+  // depends on what this sport's team history carries -- `teamRoles.ts` has
+  // the measurement.
+  const teamRoles = buildTeamRoles({
+    active,
+    line,
+    wantOver,
+    statLabel: active?.dimensionLabel ?? active?.dimension ?? 'Market',
+    opponentAbbr: nextGameData?.opponentAbbr ?? null,
+  });
+
   return {
+    teamRoles,
     ratingHistory: toRatingHistoryRole({ state: input.ratingHistory }),
     team: { teamId: Number(team.teamId), name: team.displayName, abbr: team.abbreviation, logoUrl },
     record: { wins: team.wins, losses: team.losses, divisionRank: team.divisionRank ?? '' },

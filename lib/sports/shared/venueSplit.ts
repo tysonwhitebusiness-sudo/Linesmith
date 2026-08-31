@@ -106,6 +106,7 @@ export function toVenueBinarySplit(input: VenueSplitInput): BinarySplitRole | nu
         decimals: 0,
         aSample: home.total,
         bSample: away.total,
+        suffix: '%',
       },
       {
         key: 'average',

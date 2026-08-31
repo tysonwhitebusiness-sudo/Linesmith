@@ -230,6 +230,18 @@ export interface BinarySplitRole {
     aSample?: number | null;
     bSample?: number | null;
     lowerIsBetter?: boolean;
+    /**
+     * Printed straight after the number -- "%", " yd".
+     *
+     * SAME DEFECT AS `RoleStat.suffix`, in a wider place. Both split builders
+     * emit the cover rate as `rate * 100` with zero decimals, so EVERY binary
+     * split on every sport rendered a bare "67" against "92" -- MLB's platoon
+     * split, golf's par split, tennis's surface split, NBA/NHL rest, and the
+     * team page's home/away. Directly beneath them sits the market average
+     * ("0.7" against "0.9"), so a reader saw two rows of numbers in the same
+     * column with no way to tell that one pair was percentages.
+     */
+    suffix?: string;
   }>;
   emptyMessage?: string;
 }

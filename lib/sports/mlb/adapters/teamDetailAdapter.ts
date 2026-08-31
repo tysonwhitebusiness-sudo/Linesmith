@@ -51,6 +51,7 @@ import { unitGradeFromRanked, type UnitGrade } from '@/lib/sports/shared/unitGra
 import type { TeamRatingHistoryData } from '@/lib/sports/shared/teamRatingShapes';
 import { toRatingHistoryRole } from '@/lib/sports/shared/ratingHistoryRole';
 import type { TeamRatingHistory } from '@/lib/sports/shared/teamRatingShapes';
+import { buildTeamRoles } from '@/lib/sports/shared/teamRoles';
 
 // ---------------------------------------------------------------------------
 // Shared sub-shapes (would be hoisted to a sport-agnostic location once an
@@ -179,6 +180,17 @@ export interface TeamDetailData {
    */
   unitGrades: UnitGrade[] | null;
   candidates: PickCandidate[];
+  /**
+   * PHASE 6.19 -- the five Team Detail cards the design board draws and this
+   * page did not have: a situational grid, a density curve, a context rail, a
+   * head-to-head record and a home/away split.
+   *
+   * All five come from ONE `buildTeamRoles` call every sport's adapter makes,
+   * for the reason `analyticsRoles.ts` gives: five of six sports otherwise end
+   * up with four of five cards and nobody notices. Which of them actually fill
+   * depends on what that sport's team candidates carry -- see `teamRoles.ts`.
+   */
+  teamRoles?: import('@/lib/sports/shared/teamRoles').TeamRoles;
   games: GameRow[];
   windows: TeamWindowedForm | null;
   distribution: TeamDistributionChartData | null;
@@ -595,7 +607,36 @@ export function toTeamDetailData(input: ToTeamDetailDataInput): TeamDetailData {
     unitGradeFromRanked({ key: 'pitching', label: 'Pitching', short: 'PIT' }, teamStatcast.pitching),
   ].filter((u): u is UnitGrade => u != null);
 
+
+  // ---- Phase 6.19: the shared Team Detail roles ----
+  // One call for all five, identical in every sport's adapter. Which ones fill
+  // depends on what this sport's team history carries -- `teamRoles.ts` has
+  // the measurement.
+  const teamRoles = buildTeamRoles({
+    active,
+    line,
+    wantOver,
+    statLabel: active?.dimensionLabel ?? active?.dimension ?? 'Market',
+    opponentAbbr: nextGame?.opponentAbbr ?? null,
+    // MLB IS THE ONLY SPORT WITH A TEAM PEER POOL. Its team candidates live on
+    // the league snapshot -- 24 of them on `team-total-runs` -- so a density
+    // curve has something to be a curve against. The ESPN-shaped team routes
+    // return one team and nothing else, so they pass nothing and the card
+    // stays null rather than being drawn against a pool of one.
+    peers: active
+      ? (snapshot?.candidates ?? [])
+          .filter(
+            (c) =>
+              c.dimension === active.dimension &&
+              c.subjectId !== active.subjectId &&
+              (c.subjectMeta as Record<string, unknown> | undefined)?.isTeamCandidate === true,
+          )
+          .map((c) => ({ history: c.history }))
+      : undefined,
+  });
+
   return {
+    teamRoles,
     ratingHistory: toRatingHistoryRole({ state: input.ratingHistory }),
     team: { teamId, name: roster.teamName, abbr: roster.abbreviation, logoUrl: roster.logoUrl },
     record: roster.record,

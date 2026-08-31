@@ -31,6 +31,7 @@ import type { SoccerLeague } from '@/lib/core/types';
 import { buildSoccerMoneylineCandidate, buildSoccerGameTotalCandidate, buildSoccerGoalsForCandidate } from '@/lib/sports/soccer/teamFormCandidates';
 import { toRatingHistoryRole } from '@/lib/sports/shared/ratingHistoryRole';
 import type { TeamRatingHistory } from '@/lib/sports/shared/teamRatingShapes';
+import { buildTeamRoles } from '@/lib/sports/shared/teamRoles';
 
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
   return (entry.raw ?? {}) as Record<string, unknown>;
@@ -296,7 +297,21 @@ export function toTeamDetailData(input: SoccerTeamDetailInput): TeamDetailData {
       : null;
   const matchup: TeamMatchupData | null = teamMatchup ? { tabs: [{ key: 'team', label: 'Team matchup' }], team: teamMatchup } : null;
 
+
+  // ---- Phase 6.19: the shared Team Detail roles ----
+  // One call for all five, identical in every sport's adapter. Which ones fill
+  // depends on what this sport's team history carries -- `teamRoles.ts` has
+  // the measurement.
+  const teamRoles = buildTeamRoles({
+    active,
+    line,
+    wantOver,
+    statLabel: active?.dimensionLabel ?? active?.dimension ?? 'Market',
+    opponentAbbr: nextGameData?.opponentAbbr ?? null,
+  });
+
   return {
+    teamRoles,
     ratingHistory: toRatingHistoryRole({ state: input.ratingHistory }),
     team: { teamId: Number(team.teamId), name: team.name, abbr: team.abbreviation, logoUrl: team.logoUrl ?? '' },
     record: ownStanding

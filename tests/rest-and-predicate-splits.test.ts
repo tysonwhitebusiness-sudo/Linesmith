@@ -189,3 +189,44 @@ test('punctuation and accents do not defeat a match', () => {
   assert.equal(isTeamNameMatch("Nott'm Forest", 'Nottm Forest'), true);
   assert.equal(isTeamNameMatch('Atlético Madrid', 'Atletico Madrid'), true);
 });
+
+/**
+ * The cover-rate row carries its unit — 2026-08-31.
+ *
+ * Both split builders emit `rate * 100` with `decimals: 0`. Without a suffix
+ * that renders as a bare "67" against "92", directly above the market average
+ * ("0.7" against "0.9") in the same column, with nothing marking one pair as
+ * percentages. Found by walking the NFL team page; it affected every binary
+ * split on every sport, not just that one.
+ */
+test('the cover-rate row is marked as a percentage, on both split builders', async () => {
+  const { toVenueBinarySplit } = await import('../lib/sports/shared/venueSplit');
+  const { toPredicateBinarySplit } = await import('../lib/sports/shared/predicateSplit');
+  const { categoriseByLine, OVER } = await import('../lib/core/windowedStat');
+
+  const entries = Array.from({ length: 12 }, (_, i) => ({
+    period: i + 1,
+    result: String(i % 3),
+    category: '',
+    raw: { isHome: i % 2 === 0 },
+  }));
+  const measured = categoriseByLine(entries, 0.5);
+
+  const venue = toVenueBinarySplit({ measured, wanted: OVER, statLabel: 'Runs' });
+  assert.ok(venue, 'six home and six away should split');
+  const vRate = venue!.rows.find((r) => r.key === 'hitRate')!;
+  assert.equal(vRate.suffix, '%', 'a bare 67 beside an average of 0.7 says nothing about its unit');
+
+  const pred = toPredicateBinarySplit({
+    measured,
+    wanted: OVER,
+    title: 'Split',
+    statLabel: 'Runs',
+    aLabel: 'A',
+    bLabel: 'B',
+    isA: (e) => (e.raw as { isHome?: boolean })?.isHome === true,
+    isB: (e) => (e.raw as { isHome?: boolean })?.isHome === false,
+  });
+  assert.ok(pred, 'the predicate split should also produce rows here');
+  assert.equal(pred!.rows.find((r) => r.key === 'hitRate')!.suffix, '%');
+});

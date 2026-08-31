@@ -43,6 +43,8 @@ import { toTeamDetailData as toSoccerTeamDetailData } from '@/lib/sports/soccer/
 import { toTeamDetailData as toCfbTeamDetailData } from '@/lib/sports/cfb/adapters/teamDetailAdapter';
 import { toTeamDetailData as toNbaTeamDetailData } from '@/lib/sports/nba/adapters/teamDetailAdapter';
 import { toTeamDetailData as toNhlTeamDetailData } from '@/lib/sports/nhl/adapters/teamDetailAdapter';
+import { PlayerRoleMainSections, PlayerRoleRailSections } from './PlayerRoleSections';
+import { PlayerAnalyticsMainSections, PlayerAnalyticsRailSections } from './PlayerAnalyticsSections';
 
 const POSITION_ORDER = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'QB', 'RB', 'FB', 'WR', 'TE', 'K', 'OL', 'DL', 'LB', 'DB', 'S', 'CB'];
 
@@ -617,6 +619,33 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
         </>
       ) : null}
 
+      {/* Phase 6.19 — the board's main-column team cards. Same components the
+          player page renders, because a situational grid and a home/away split
+          are the same shapes whichever entity fills them; `teamRoles` carries
+          its own titles and units. A sport whose team history lacks `isHome`
+          or an opponent fills neither and nothing renders. */}
+      <PlayerAnalyticsMainSections
+        roles={{
+          // Rolling form is deliberately NOT passed: the board's team column
+          // has cover-form windows and a rating history in that slot, and a
+          // third trend line would be a card the board does not draw.
+          rollingForm: null,
+          situationalSplits: data.teamRoles?.situationalSplits ?? null,
+          whereThisSits: null,
+          gameContext: null,
+        }}
+      />
+      <PlayerRoleMainSections
+        roles={{
+          binarySplit: data.teamRoles?.binarySplit ?? null,
+          usageMix: null,
+          spatialGrid: null,
+          opponentUnit: null,
+          conditions: null,
+          careerH2H: null,
+        }}
+      />
+
       {/* Team stats — grouped, ranked. MLB: Per game / Season (2 groups, same
           keys). NFL: Scoring / Passing / Rushing / Receiving / Defense (5
           groups, each with its own grade chip). */}
@@ -745,8 +774,30 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
       </section>
       </div>
 
-      {/* Context rail — sticky at lg+, stacks below the main column on mobile. */}
-      <div className="space-y-3 lg:sticky lg:top-4">
+      {/* Context rail.
+          NOT STICKY, for the reason the player page's rail is not: sticky pins
+          the TOP of a rail taller than the viewport and strands its bottom
+          cards. The design board's rail is not sticky either. */}
+      <div className="space-y-3">
+        {/* Phase 6.19 — the board's rail team cards. */}
+        <PlayerRoleRailSections
+          roles={{
+            careerH2H: data.teamRoles?.careerH2H ?? null,
+            opponentUnit: null,
+            conditions: null,
+            usageMix: null,
+            spatialGrid: null,
+            binarySplit: null,
+          }}
+        />
+        <PlayerAnalyticsRailSections
+          roles={{
+            whereThisSits: data.teamRoles?.whereThisSits ?? null,
+            gameContext: data.teamRoles?.gameContext ?? null,
+            rollingForm: null,
+            situationalSplits: null,
+          }}
+        />
         {sport !== 'nfl' && data.nextGame ? (
           <section className="lb-card overflow-hidden">
             <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Next game</h3>
