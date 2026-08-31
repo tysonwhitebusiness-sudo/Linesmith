@@ -43,6 +43,7 @@ import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateS
 import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
 import { TENNIS_ATP_SEASON_SPEC, TENNIS_WTA_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 import { toPriceRange } from '@/lib/sports/shared/priceRange';
+import { toGameTeamForm } from '@/lib/sports/shared/gameTeamForm';
 
 interface RecentResultRowWire {
   gameId: string;
@@ -218,6 +219,16 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
       homeAbbr: meta.player1.name,
     },
     injuries: { away: { abbr: meta.player2.name, logoUrl: meta.player2.flagUrl ?? undefined, rows: [] }, home: { abbr: meta.player1.name, logoUrl: meta.player1.flagUrl ?? undefined, rows: [] }, loading: false },
+    // Phase 6.21 -- the home side's form against tonight's number. The
+    // spread is signed as a book writes it; `gameTeamForm.ts` turns that
+    // into the cover threshold, and falls back to win/loss when no
+    // spread is priced.
+    homeTeamForm: toGameTeamForm({
+      rows: p1Recent,
+      teamAbbr: meta.player1.name,
+      opponentAbbr: meta.player2.name,
+      spreadPoint: gameLine?.spread?.homePoint ?? null,
+    }),
     priceRange: toPriceRange(gameLine, meta.player1.name),
     picksPanelGame: { id: meta.matchId, sport: 'tennis', awayAbbr: meta.player2.name, homeAbbr: meta.player1.name, homeTeamId: null, awayTeamId: null, gameModel: null },
     leftRail: { candidates, goodBetsGated: false },

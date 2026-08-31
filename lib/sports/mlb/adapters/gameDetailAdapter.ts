@@ -17,6 +17,7 @@ import { toGameHeroModel, toGameHeroTeamPanelData, toVenueForecast } from './gam
 import { unitGradeFromRanked } from '@/lib/sports/shared/unitGrades';
 import type { TeamStatcastState } from '@/components/useTeamStatcast';
 import { toPriceRange } from '@/lib/sports/shared/priceRange';
+import { toGameTeamForm } from '@/lib/sports/shared/gameTeamForm';
 
 /**
  * MLB → generic transforms for the `GameDetail.tsx` component family
@@ -359,6 +360,17 @@ export interface GameDetailData {
    * is NBA and NHL always (zero rows in `game_odds_book_lines`) and NFL, CFB
    * and tennis on most games.
    */
+  /**
+   * PHASE 6.21 -- the HOME team's form against tonight's number, for the
+   * board's situational grid and key-numbers rail.
+   *
+   * Home rather than both, because the board draws one ("NYY run line - cover
+   * form", and NYY is the home side of its mockup). Built from
+   * `RecentResultRow`, which every game adapter already produces for the
+   * last-five block, so all seven sports use ONE builder instead of five
+   * differently-named team-candidate functions -- see `gameTeamForm.ts`.
+   */
+  homeTeamForm?: import('@/lib/sports/shared/teamRoles').TeamRoles;
   priceRange?: import('@/lib/sports/shared/priceRange').PriceRangeData | null;
   picksPanelGame: PicksPanelGame;
   leftRail: {
@@ -562,6 +574,16 @@ export function toGameDetailData(input: MlbGameDetailInput): GameDetailData {
       homeAbbr,
     },
     injuries,
+    // Phase 6.21 -- the home side's form against tonight's number. The
+    // spread is signed as a book writes it; `gameTeamForm.ts` turns that
+    // into the cover threshold, and falls back to win/loss when no
+    // spread is priced.
+    homeTeamForm: toGameTeamForm({
+      rows: (homeRecent?.recent ?? []).map(toRecentResultRow),
+      teamAbbr: homeAbbr,
+      opponentAbbr: awayAbbr,
+      spreadPoint: gameLine?.spread?.homePoint ?? null,
+    }),
     priceRange: toPriceRange(gameLine, homeAbbr),
     picksPanelGame: toPicksPanelGame(game),
     leftRail: { candidates, goodBetsGated: true, nflTeamScope: null },

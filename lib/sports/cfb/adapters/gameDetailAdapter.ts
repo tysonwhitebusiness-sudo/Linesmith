@@ -28,6 +28,7 @@ import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateS
 import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
 import { CFB_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 import { toPriceRange } from '@/lib/sports/shared/priceRange';
+import { toGameTeamForm } from '@/lib/sports/shared/gameTeamForm';
 
 
 /**
@@ -316,6 +317,16 @@ export function toGameDetailData(input: CfbGameDetailInput): GameDetailData {
       home: { abbr: game.homeAbbr, logoUrl: game.homeLogoUrl, rows: home?.injuries.map((i) => ({ playerName: i.playerName, status: i.status, position: i.position, note: i.note })) ?? [] },
       loading: false,
     },
+    // Phase 6.21 -- the home side's form against tonight's number. The
+    // spread is signed as a book writes it; `gameTeamForm.ts` turns that
+    // into the cover threshold, and falls back to win/loss when no
+    // spread is priced.
+    homeTeamForm: toGameTeamForm({
+      rows: homeRecent,
+      teamAbbr: game.homeAbbr,
+      opponentAbbr: game.awayAbbr,
+      spreadPoint: gameLine?.spread?.homePoint ?? null,
+    }),
     priceRange: toPriceRange(gameLine, game.homeAbbr),
     picksPanelGame: { id: game.gameId, sport: 'cfb', awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, homeTeamId: null, awayTeamId: null, gameModel: null },
     leftRail: { candidates, goodBetsGated: false },

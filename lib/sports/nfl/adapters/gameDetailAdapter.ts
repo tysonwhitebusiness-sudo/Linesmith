@@ -23,6 +23,7 @@ import type { NflTeamDetailApiResponse, NflTeamRosterPlayer, NflTeamStatLine } f
 import type { GameDetailData, GameMatchupData, RankingsData, StatComparisonData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
 import { toPriceRange } from '@/lib/sports/shared/priceRange';
+import { toGameTeamForm } from '@/lib/sports/shared/gameTeamForm';
 
 const NFL_TEAM_COUNT = 32;
 
@@ -355,6 +356,16 @@ export function toGameDetailData(input: NflGameDetailInput): GameDetailData {
     rankings,
     unitGrades: { away: toNflUnitGrades(away?.grades), home: toNflUnitGrades(home?.grades), awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr },
     injuries,
+    // Phase 6.21 -- the home side's form against tonight's number. The
+    // spread is signed as a book writes it; `gameTeamForm.ts` turns that
+    // into the cover threshold, and falls back to win/loss when no
+    // spread is priced.
+    homeTeamForm: toGameTeamForm({
+      rows: (home?.recentResults ?? []).map((g) => toNflRecentResultRow(g, game.homeAbbr)),
+      teamAbbr: game.homeAbbr,
+      opponentAbbr: game.awayAbbr,
+      spreadPoint: gameLine?.spread?.homePoint ?? null,
+    }),
     priceRange: toPriceRange(gameLine, game.homeAbbr),
     picksPanelGame: { id: game.gameId, sport: 'nfl', awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, homeTeamId: null, awayTeamId: null, gameModel: null },
     leftRail: {

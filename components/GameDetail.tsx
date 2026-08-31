@@ -11,6 +11,7 @@ import { computeMoneylineEdge, computeTotalEdge } from '@/lib/odds/gameEdge';
 import type { UnifiedLinesResult, UnifiedGameLine } from '@/lib/odds/types';
 import { BookmakerBreakdown } from './GameLine';
 import { RangeBar } from './charts/RangeBar';
+import { PlayerAnalyticsMainSections, PlayerAnalyticsRailSections } from './PlayerAnalyticsSections';
 import { fmt as chartFmt } from './charts/tokens';
 import { GamePropLineShoppingRail } from './PropOddsPanel';
 import type { MoneylineResult } from '@/lib/sports/mlb/gameModel';
@@ -2305,6 +2306,19 @@ export function GameDetail({
               onMatchupPlayerChange={setMatchupPlayerId}
             />
             <RecordsSection away={data.records.away} home={data.records.home} loading={data.records.loading} />
+            {/* Phase 6.21 — the board's situational grid, the home side's cover
+                rate by venue and recency. Only the two slots the GAME board
+                actually draws are rendered: the builder also returns a rolling
+                line and a home/away dumbbell, and neither is a card this board
+                has, so neither is shown. */}
+            <PlayerAnalyticsMainSections
+              roles={{
+                situationalSplits: data.homeTeamForm?.situationalSplits ?? null,
+                rollingForm: null,
+                whereThisSits: null,
+                gameContext: null,
+              }}
+            />
             {data.statComparison ? <StatComparison data={data.statComparison} /> : null}
             <LastFiveGames away={data.lastFive.away} home={data.lastFive.home} loading={data.lastFive.loading} />
             {data.rankings ? <Rankings data={data.rankings} /> : null}
@@ -2317,6 +2331,14 @@ export function GameDetail({
       {/* Right column. The board rails its price card; ours shares this column
           with the picks panel, which is the only thing that was here. */}
       <div className="space-y-3">
+        <PlayerAnalyticsRailSections
+          roles={{
+            gameContext: data.homeTeamForm?.gameContext ?? null,
+            whereThisSits: null,
+            rollingForm: null,
+            situationalSplits: null,
+          }}
+        />
         {data.priceRange ? <PriceRangeSection data={data.priceRange} /> : null}
       <PicksPanel
         game={data.picksPanelGame}
