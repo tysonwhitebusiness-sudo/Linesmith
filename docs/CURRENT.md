@@ -16,7 +16,7 @@ throughout. No Render deploys.
 
 | Task | State |
 |---|---|
-| Board audit | **DONE** — 63 cards, 439 cells, measured. Artifact published. |
+| Board audit | **DONE** — 63 cards, 439 cells. Board parity **51% -> 65%** across the session (Player 85%, Team 32->59%, Game 38->52%); 41 of 56 *reachable* cards, 73%. |
 | 6.15 Game Detail | rankings/unitGrades on 7 sports, matchup on 6, venue on 4. |
 | 6.16 Player pass | 4 analytics cards × 8 sports. 13 → 17 of 20 board cards. |
 | 6.17 Layout pass | rail assignment + `.two-up` pairing on all three pages. |
@@ -26,6 +26,14 @@ throughout. No Render deploys.
 | 6.21 User CLV | **BUILT, UNVERIFIABLE** — see §4. |
 | 6.24 De-vig | 3 methods + backtest. **Backtest declines a verdict at n=82.** |
 | 6.10 Venue factors | **DONE** — new table, daily Python job, 282 rows. |
+
+**What is still short of the board: 8 missing cards and 7 partial, and none of
+the 15 is blocked on sourcing.** Four of the partials are one card standing in
+for the board's two (unit grades as a chip row, on Team and Game) — a layout
+disagreement worth keeping, not a gap. Seven more cards can never match on most
+sports: four because no game or player model exists outside MLB, one because
+"Advanced" is a Statcast rollup, and the NBA/NHL odds cards, which now render an
+empty state rather than being absent.
 
 ## 2. THE SINGLE MOST IMPORTANT THING TO CARRY FORWARD
 
