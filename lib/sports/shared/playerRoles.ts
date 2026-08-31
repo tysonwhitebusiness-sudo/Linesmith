@@ -71,6 +71,16 @@ export interface RoleStat {
    * as a count of something.
    */
   suffix?: string;
+  /**
+   * How the number prints. Falls back to `toFixed(decimals)`.
+   *
+   * NEEDED FOR THE SAME REASON `UsageMixRole.valueFormat` IS. Baseball drops
+   * the leading zero on a rate, so the pitch-mix card prints `.349` -- and the
+   * opposing-starter card beside it, formatting the SAME statistic with a
+   * plain `toFixed`, printed `0.358`. One page, one stat, two conventions,
+   * which is the defect `valueFormat`'s own comment was written about.
+   */
+  format?: Formatter;
 }
 
 /**

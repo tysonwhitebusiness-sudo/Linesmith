@@ -47,8 +47,9 @@ import {
   toRoleStat,
   type ConditionsRole,
   type OpponentUnitRole,
+  type RoleStat,
 } from '@/lib/sports/shared/playerRoles';
-import { toPlatoonBinarySplit, toSpatialGridRole, toUsageMixRole } from './pitchRoles';
+import { toOpposingStarterFromProfile, toPlatoonBinarySplit, toSpatialGridRole, toUsageMixRole } from './pitchRoles';
 import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
 import type { PitchProfile } from '@/lib/sports/mlb/pitchProfileShapes';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
@@ -853,6 +854,29 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   //   - `binarySplit` (vs LHP/RHP) needs a platoon split we do not store.
   //   - `careerH2H` (vs this pitcher) needs batter-vs-pitcher history, same.
   const opposingStarterStats = (meta.opposingStarterStats as OpposingStarterStat[] | undefined) ?? [];
+
+  // FALL BACK TO PITCH EVENTS WHEN THE RANKED ROLLUP HAS NOTHING.
+  //
+  // `starterStatCard` returns undefined below three starts or without a
+  // computed rank -- a sound floor for a PERCENTILE. But the page then said
+  // "No Statcast profile for this starter yet" two cards above the pitch-mix
+  // card, which was showing 498 real pitches from that same starter broken
+  // down by type. Both sentences were true of their own source; the pair was
+  // nonsense to read.
+  //
+  // No extra fetch: this is the profile already loaded for the mix. It carries
+  // no rank because there genuinely is not one, and `OpponentUnitSection`
+  // hides the rank column when nothing in the table is ranked.
+  const derivedStarterStats =
+    opposingStarterStats.length === 0
+      ? toOpposingStarterFromProfile(
+          opposingPitchProfile?.profile ?? null,
+          typeof meta.batSide === 'string' ? meta.batSide : null,
+        )
+      : [];
+  const starterStats: RoleStat[] =
+    opposingStarterStats.length > 0 ? opposingStarterStats.map((st) => toRoleStat(st)) : derivedStarterStats;
+
   const opponentUnit: OpponentUnitRole | null =
     typeof meta.opposingStarter === 'string' && meta.opposingStarter.length > 0
       ? {
@@ -860,8 +884,11 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
           name: meta.opposingStarter,
           subtitle: typeof meta.opposingHand === 'string' ? `${meta.opposingHand}HP · allows` : 'Allows',
           logoUrl: opponentId != null ? mlbLogoUrl(opponentId) : undefined,
-          stats: opposingStarterStats.map((st) => toRoleStat(st)),
-          emptyMessage: 'No Statcast profile for this starter yet.',
+          stats: starterStats,
+          // Says WHY it is empty, and the two reasons are different: no
+          // profile at all, versus a starter with too few pitches to say
+          // anything. Only reachable now when the pitch table is empty too.
+          emptyMessage: 'No pitch-level Statcast for this starter yet.',
         }
       : null;
 

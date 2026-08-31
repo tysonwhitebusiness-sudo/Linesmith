@@ -115,7 +115,7 @@ function OpponentUnitSection({ role }: { role: OpponentUnitRole }) {
           key: s.key,
           label: s.label,
           value: s.value,
-          format: (v: number) => v.toFixed(s.decimals),
+          format: (v: number) => `${(s.format ?? ((n: number) => n.toFixed(s.decimals)))(v)}${s.suffix ?? ''}`,
           rank: s.rank ?? null,
           poolSize: s.poolSize ?? null,
           // `RoleStat.lowerIsBetter` is NOT forwarded: StatTable's bar is

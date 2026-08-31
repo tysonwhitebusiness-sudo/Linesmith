@@ -29,7 +29,7 @@
  */
 
 import { MIDDOT, fmt } from '@/components/charts/tokens';
-import type { BinarySplitRole, SpatialGridRole, UsageMixRole } from '@/lib/sports/shared/playerRoles';
+import type { BinarySplitRole, RoleStat, SpatialGridRole, UsageMixRole } from '@/lib/sports/shared/playerRoles';
 import { ZONE_GRID, pitchTypeLabel } from '@/lib/sports/mlb/pitchProfileShapes';
 import type { PitchProfile } from '@/lib/sports/mlb/pitchProfileShapes';
 
@@ -44,6 +44,83 @@ import type { PitchProfile } from '@/lib/sports/mlb/pitchProfileShapes';
  * facts: a pitcher's mix is what they CHOSE to throw, a batter's is what they
  * were SHOWN. Same shape, same component, and the component never learns which.
  */
+/**
+ * The opposing starter's card, DERIVED FROM PITCH EVENTS, for a starter the
+ * ranked season rollup has nothing on.
+ *
+ * ============ TWO CARDS, TWO SOURCES, ONE CONTRADICTION ============
+ *
+ * `opponentUnit` reads `subjectMeta.opposingStarterStats`, which comes from
+ * `starterStatCard` and returns UNDEFINED below `MIN_STARTS_FOR_PITCHER_RANK`
+ * (three starts) or without a computed rank. That is a reasonable floor for a
+ * RANKED stat -- a percentile off two starts is noise wearing a rank.
+ *
+ * But the pitch-mix card beside it reads `mlb_pitch_events` directly, and for
+ * the same pitcher on the same page it was happily showing 498 real pitches
+ * broken down by type. So the page said "No Statcast profile for this starter
+ * yet" two cards above a full Statcast breakdown of that starter. Both
+ * statements were true of their own source and the pair was nonsense to read.
+ *
+ * This fills the card from the profile the page has ALREADY FETCHED for the
+ * mix -- no new query -- and carries NO RANK, because there genuinely is not
+ * one. `OpponentUnitSection` already hides the rank column when nothing in the
+ * table is ranked, so the absence renders as absence rather than as dashes.
+ *
+ * WEIGHTED BY `xwobaSample`, NOT BY PITCH COUNT. Only ~22% of balls in play
+ * carry an expected wOBA, and the share of them differs by pitch type, so
+ * weighting a mean xwOBA by pitches thrown would let a heavily-thrown pitch
+ * with few measured outcomes dominate a number it barely contributed to.
+ */
+export function toOpposingStarterFromProfile(
+  profile: PitchProfile | null,
+  /** The BATTER's side ('L'/'R'), so the platoon row shown is the one this matchup is actually about. */
+  batterHand?: string | null,
+): RoleStat[] {
+  if (!profile || profile.role !== 'pitcher') return [];
+
+  const measured = profile.pitchTypes.filter((p) => p.xwoba != null && p.xwobaSample > 0);
+  const sample = measured.reduce((n, p) => n + p.xwobaSample, 0);
+  const stats: RoleStat[] = [];
+
+  if (sample > 0) {
+    const weighted = measured.reduce((acc, p) => acc + p.xwoba! * p.xwobaSample, 0) / sample;
+    stats.push({
+      key: 'xwobaAllowed',
+      label: 'xwOBA allowed',
+      value: weighted,
+      decimals: 3,
+      // The SAME formatter the mix and the zone grid use. All three show xwOBA
+      // on one page and a plain toFixed had this one printing `0.358` beside
+      // their `.349`.
+      format: fmt.rate3,
+      lowerIsBetter: true,
+      sub: `n=${sample}`,
+    });
+  }
+
+  // The platoon side that matches this batter. A pitcher's `platoon` is grouped
+  // by `stand`, so 'L' here means "versus left-handed batters" -- the row a
+  // left-handed hitter's page should be showing.
+  const hand = batterHand === 'L' || batterHand === 'R' ? batterHand : null;
+  const side = hand ? profile.platoon.find((pl) => pl.hand === hand) : null;
+  if (side && side.xwoba != null && side.xwobaSample > 0) {
+    stats.push({
+      key: 'xwobaVsHand',
+      label: `xwOBA vs ${hand}HB`,
+      value: side.xwoba,
+      decimals: 3,
+      format: fmt.rate3,
+      lowerIsBetter: true,
+      sub: `n=${side.xwobaSample}`,
+    });
+  }
+
+  if (profile.totalPitches > 0) {
+    stats.push({ key: 'pitches', label: 'Pitches thrown', value: profile.totalPitches, decimals: 0 });
+  }
+  return stats;
+}
+
 export function toUsageMixRole(
   profile: PitchProfile | null,
   /**
