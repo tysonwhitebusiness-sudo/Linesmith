@@ -266,6 +266,14 @@ export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
       awayAbbr: game.awayAbbr,
       homeAbbr: game.homeAbbr,
     },
+    // EMPTY BECAUSE ESPN DOES NOT PUBLISH SOCCER INJURIES, not because nobody
+    // wired it. `fetchEspnInjuries` is generic over sport/league and CFB, NBA
+    // and NHL all use it; `soccer/eng.1/injuries` and `soccer/usa.1/injuries`
+    // both answer `"status":"success"` with an EMPTY `injuries` array.
+    // Measured against the live endpoints at the same minute as
+    // `football/college-football/injuries`, which returned three teams -- so
+    // this is the feed, not the season and not the call. Wiring the fetch here
+    // would add a page-load request that is always empty.
     injuries: { away: { abbr: game.awayAbbr, logoUrl: game.awayLogoUrl, rows: [] }, home: { abbr: game.homeAbbr, logoUrl: game.homeLogoUrl, rows: [] }, loading: false },
     propsForGame: null,
     picksPanelGame: { id: game.gameId, sport: 'soccer', awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, homeTeamId: null, awayTeamId: null, gameModel: null },

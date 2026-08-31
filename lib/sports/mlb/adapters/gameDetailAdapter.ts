@@ -14,6 +14,8 @@ import type { GameContextState } from '@/components/useGameContext';
 import type { GamePickView } from '@/components/useGamePickRecord';
 import { projectLine } from '@/lib/odds/display';
 import { toGameHeroModel, toGameHeroTeamPanelData, toVenueForecast } from './gameHeroCardAdapter';
+import { unitGradeFromRanked } from '@/lib/sports/shared/unitGrades';
+import type { TeamStatcastState } from '@/components/useTeamStatcast';
 
 /**
  * MLB → generic transforms for the `GameDetail.tsx` component family
@@ -390,10 +392,28 @@ export interface MlbGameDetailInput {
   pickLoading: boolean;
   /** Page-filtered player-level candidates for this game — the page still owns snapshot filtering (and, for MLB, the global filter sidebar), same as today. */
   candidates: PickCandidate[];
+  /**
+   * Both teams' season-wide Statcast rollups (`useTeamStatcast`), Phase 6.15 —
+   * the same per-team payload MLB's TEAM page has graded HIT/PIT from since
+   * 6.1. The game page nulled `unitGrades` purely because nothing fetched the
+   * second team's copy, so one page graded a team and the other said it could
+   * not.
+   */
+  awayStatcast: TeamStatcastState;
+  homeStatcast: TeamStatcastState;
+}
+
+/** One side's HIT/PIT grades — the same two units MLB's team page composites, from the same rollup. */
+function mlbSideGrades(statcast: TeamStatcastState): UnitGrade[] | null {
+  const units = [
+    unitGradeFromRanked({ key: 'hitting', label: 'Hitting', short: 'HIT' }, statcast.hitting),
+    unitGradeFromRanked({ key: 'pitching', label: 'Pitching', short: 'PIT' }, statcast.pitching),
+  ].filter((u): u is UnitGrade => u != null);
+  return units.length > 0 ? units : null;
 }
 
 export function toGameDetailData(input: MlbGameDetailInput): GameDetailData {
-  const { game, statKeys, gameContext, bullpen, gameLine, trustedMarkets, gamePick, pickLoading, candidates } = input;
+  const { game, statKeys, gameContext, bullpen, gameLine, trustedMarkets, gamePick, pickLoading, candidates, awayStatcast, homeStatcast } = input;
   const [awayAbbr, homeAbbr] = (game.matchup ?? '').split('@').map((s) => s.trim());
   const isLive = /live|in progress/i.test(game.state ?? '');
   const isFinal = /final/i.test(game.state ?? '');
@@ -524,7 +544,16 @@ export function toGameDetailData(input: MlbGameDetailInput): GameDetailData {
     statComparison,
     lastFive,
     rankings,
-    unitGrades: null,
+    // Phase 6.15 — HIT/PIT per side, from the identical `unitGradeFromRanked`
+    // call MLB's team page makes. `null` per side while that side's rollup is
+    // still loading or has no ranked tiles, so the table renders one side or
+    // an empty state rather than a half-graded row.
+    unitGrades: {
+      away: mlbSideGrades(awayStatcast),
+      home: mlbSideGrades(homeStatcast),
+      awayAbbr,
+      homeAbbr,
+    },
     injuries,
     propsForGame: null,
     picksPanelGame: toPicksPanelGame(game),

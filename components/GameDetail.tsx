@@ -14,6 +14,7 @@ import { GamePropLineShoppingRail } from './PropOddsPanel';
 import type { MoneylineResult } from '@/lib/sports/mlb/gameModel';
 import { mergeUnitRows, findUnit, type UnitGrade } from '@/lib/sports/shared/unitGrades';
 import { useSeasonRanks, seasonRankSport } from './useSeasonRanks';
+import { useTeamStatcast } from './useTeamStatcast';
 import { toPicksPanelGame, toRecentResultRow, toInjuryRow, type RecentResultRow, type InjuryRow } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
 import { useGameContext, type GameContextState } from './useGameContext';
 import { useBullpen, type BullpenState } from './useBullpen';
@@ -1997,6 +1998,15 @@ export function GameDetail({
   // payload: only the sports building a produced-vs-allowed matchup card read
   // it, and it carries its own cache entry.
   const seasonRanksAllowed = useSeasonRanks(seasonRankSport(sport, league), 'allowed');
+
+  // Both teams' Statcast rollups -- MLB's game-page unit grades (6.15).
+  // Called UNCONDITIONALLY per the rules of hooks and this component's own
+  // convention: `undefined` for every other sport, where the hook idles
+  // without fetching. Two calls rather than one league-wide fetch because
+  // `/api/mlb/team-statcast` is keyed per team, and it is the same route MLB's
+  // team page already warms.
+  const awayStatcast = useTeamStatcast(sport === 'mlb' && mlbGame?.awayTeamId != null ? Number(mlbGame.awayTeamId) : undefined);
+  const homeStatcast = useTeamStatcast(sport === 'mlb' && mlbGame?.homeTeamId != null ? Number(mlbGame.homeTeamId) : undefined);
   const nbaStandings = useAllNbaTeams(sport === 'nba');
   const nhlStandings = useAllNhlTeams(sport === 'nhl');
   const tennisGame = useTennisGameDetail(sport === 'tennis' ? (league as TennisTour | undefined) : undefined, sport === 'tennis' ? gameId : undefined);
@@ -2099,6 +2109,8 @@ export function GameDetail({
                     gamePick,
                     pickLoading: calibration.loading,
                     candidates,
+                    awayStatcast,
+                    homeStatcast,
                   })
                 : null;
 
