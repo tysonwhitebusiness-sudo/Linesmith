@@ -203,36 +203,73 @@ smaller than its "twenty blocks" headline:
 
 ---
 
-## C · Game Detail (6.15) — UNTOUCHED, and the largest item
+## C · Game Detail (6.15) — LARGELY DONE, 2026-08-31
 
-**Seven sports, not eight** — golf gets no game page (operator, 2026-08-30).
+**Reopened and rewritten after measuring.** The section below used to say this
+was "UNTOUCHED, and the largest item", with three headline blockers. **Two of
+the three were wrong**, and the third was smaller than it looked.
 
-`GameDetailData` has 13 top-level fields against the board's 19 blocks.
+### The two wrong premises
 
-### What is missing, measured
+- **`bookGrid` was never missing.** The board says it "does not exist anywhere
+  in the codebase." It is `BookmakerBreakdown`, inside `LineShoppingSection`
+  (`GameDetail.tsx`), fed from `data.gameLine` for every sport, and it already
+  carries the honest empty state — "No game line for this matchup yet." The
+  board named it `bookGrid`; the app calls it Line shopping. Same block.
+- **`matchupKey` is `matchup`, and it was not a design question.** CFB and
+  soccer already filled it through a sport-agnostic `teamAway`/`teamHome` pair.
+  What NBA and NHL lacked was an ALLOWED side — and
+  `player_game_history.opponent_id` is non-null on 100% of rows in every sport,
+  so grouping the same rows by who was played against is exactly that.
+  `toAllowedSpec` + `producedAllowedMatchup.ts`.
 
-| Sport | Nulled fields |
-|---|---|
-| MLB | `unitGrades`, `propsForGame` |
-| NFL | `model`, `pickLockAt`, `venue` |
-| CFB | + `rankings`, `unitGrades`, `propsForGame` |
-| Soccer | same as CFB |
-| NBA / NHL / Tennis | same **plus `matchup`** — the biggest single hole |
-| Golf | no adapter at all (by decision) |
+### Where the fields stand now
 
-**`bookGrid` and `matchupKey` do not exist anywhere in the codebase** — two of
-the board's three game-only blocks were never built.
+| Sport | matchup | rankings | unitGrades | venue | model | propsForGame |
+|---|---|---|---|---|---|---|
+| MLB | yes | yes | **yes** | yes | yes | n/a |
+| NFL | yes | yes | yes | **yes** | n/a | yes |
+| CFB | yes | **yes** | **yes** | **yes** | n/a | n/a |
+| Soccer | yes | **yes** | **yes** | **yes** | n/a | n/a |
+| NBA | **yes** | yes | yes | indoor | n/a | n/a |
+| NHL | **yes** | yes | yes | indoor | n/a | n/a |
+| Tennis | see below | **yes** | **yes** | n/a | n/a | n/a |
 
-### The blocker, in the board's own words
-*"Book depth is the blocking gap for this page specifically… A bookmaker grid
-with three columns is not a grid. Fix sourcing before building the block, or it
-ships empty on five of eight tabs."* Confirmed by measurement above.
+`rankings` and `unitGrades` now fill on **all seven sports**. Bold = built
+2026-08-31.
 
-### Already done from this board
-- `statComparison` collapsed to `ranked` — 6.2.
-- `hero.awayGrades`/`homeGrades` + `unitGrades` — 6.1.
-- Officials — cut 2026-08-29.
-- `hero.mlbLiveGame` — keep as-is, it is the one earned escape hatch.
+### The three that are correctly empty, with the measurement
+
+- **`model` on six sports.** `game_sim_cache`, `model_weights` and
+  `model_calibration` are `mlb`-only — 217/21/7 rows, nothing else. There is no
+  non-MLB game model to wire. This is model work, not Phase 6.
+- **`pickLockAt` is DEAD UI without a model.** `GameHeroCard` gates the whole
+  pick panel on `model != null`, so filling the field on six sports renders
+  nothing at all. The prop's own doc comment already said "meaningless (and
+  unused) when `model` is null"; the task list did not.
+- **`propsForGame`** is a flat every-candidate list MLB skips because `LeftRail`
+  covers it — and `LeftRail` renders for every sport.
+
+### Tennis `matchup`: measured, then declined
+
+The allowed rollup builds fine for tennis (`opponent_id` is populated on every
+row). It is TAUTOLOGICAL. A team's "allowed" aggregates over eighty different
+opponents and says something its own production does not; a tennis match is
+zero-sum between exactly the two entities on the card, so "what he allows" is
+the complement of his own results. The card would restate `statComparison` with
+the arithmetic reversed.
+
+### Still open on this page
+
+- **Book depth is real and unchanged.** MLB 39 books / 3 markets, soccer 33/3,
+  CFB 4 books ML-only, tennis 3, NFL 3 (9 games), **NBA and NHL zero rows**. The
+  block renders its empty state; this is a sourcing task, and 6.11 is the one
+  that owns it.
+- **NBA/NHL/tennis `venue`.** Indoor sports; the strip would be an arena name
+  with no forecast. Buildable the same way soccer's was, not yet done.
+- **NBA, NHL, CFB and tennis game pages have never been WALKED.** Out of season
+  or no slate. Everything above is verified by construction and by the routes'
+  own responses; MLB, NFL and soccer were walked on the real page.
 
 ---
 
