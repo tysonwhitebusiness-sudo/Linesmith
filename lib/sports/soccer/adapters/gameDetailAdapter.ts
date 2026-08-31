@@ -282,7 +282,6 @@ export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
     // this is the feed, not the season and not the call. Wiring the fetch here
     // would add a page-load request that is always empty.
     injuries: { away: { abbr: game.awayAbbr, logoUrl: game.awayLogoUrl, rows: [] }, home: { abbr: game.homeAbbr, logoUrl: game.homeLogoUrl, rows: [] }, loading: false },
-    propsForGame: null,
     picksPanelGame: { id: game.gameId, sport: 'soccer', awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, homeTeamId: null, awayTeamId: null, gameModel: null },
     leftRail: { candidates, goodBetsGated: false },
   };

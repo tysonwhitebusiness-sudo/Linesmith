@@ -351,8 +351,6 @@ export interface GameDetailData {
    */
   unitGrades: { away: UnitGrade[] | null; home: UnitGrade[] | null; awayAbbr: string; homeAbbr: string } | null;
   injuries: { away: InjuriesTeam; home: InjuriesTeam; loading: boolean };
-  /** NFL-only flat "every candidate for this game" list (`NflGameDetail.tsx:700-728`) — MLB's `LeftRail` already covers this ground for MLB, so this stays `null` there rather than showing the same list twice. */
-  propsForGame: { candidates: PickCandidate[] } | null;
   picksPanelGame: PicksPanelGame;
   leftRail: {
     candidates: PickCandidate[];
@@ -555,7 +553,6 @@ export function toGameDetailData(input: MlbGameDetailInput): GameDetailData {
       homeAbbr,
     },
     injuries,
-    propsForGame: null,
     picksPanelGame: toPicksPanelGame(game),
     leftRail: { candidates, goodBetsGated: true, nflTeamScope: null },
   };

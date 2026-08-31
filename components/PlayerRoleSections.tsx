@@ -34,13 +34,53 @@ import type {
  * nothing renders — which is `CLAUDE.md`'s sport-adapter §4 rule working
  * exactly as written, not a gap being hidden.
  */
-export function PlayerRoleSections({ roles }: { roles: PlayerRoles }) {
+/**
+ * WHICH COLUMN EACH ROLE BELONGS IN, taken from the design board rather than
+ * from the order they happened to be written in.
+ *
+ * `docs/design/_ps-body.html` lays the page out as `1fr 288px` and puts eight
+ * of its twenty cards in the RAIL. Five of ours were in the main column: the
+ * opposing unit, head-to-head and conditions from this file, plus
+ * `whereThisSits` and `gameContext` from the analytics file.
+ *
+ * That is not a cosmetic difference. A 288px card stretched to ~800px is the
+ * "90% whitespace" the operator reported -- the opposing-defence card's three
+ * rows had five hundred pixels of nothing between label and value, because the
+ * card was in a column twice the width it was designed for.
+ *
+ * `usageMix`, `spatialGrid` and `binarySplit` stay in the main column, which
+ * is where the board has them, and the latter two are PAIRED there -- see
+ * `PlayerRoleMainSections`.
+ */
+export function PlayerRoleMainSections({ roles }: { roles: PlayerRoles }) {
+  // The board pairs the binary split and the spatial grid side by side
+  // (`.two-up`, `1fr 1fr`). Rendered as a pair only when BOTH are present:
+  // one half of a two-column grid with an empty cell beside it is a
+  // half-width card floating in space, which is worse than a full-width one.
+  const paired = roles.binarySplit && roles.spatialGrid;
+  return (
+    <>
+      {roles.usageMix ? <UsageMixSection role={roles.usageMix} /> : null}
+      {paired ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <BinarySplitSection role={roles.binarySplit!} />
+          <SpatialGridSection role={roles.spatialGrid!} />
+        </div>
+      ) : (
+        <>
+          {roles.binarySplit ? <BinarySplitSection role={roles.binarySplit} /> : null}
+          {roles.spatialGrid ? <SpatialGridSection role={roles.spatialGrid} /> : null}
+        </>
+      )}
+    </>
+  );
+}
+
+/** The three roles the board rails. Same components, narrower column. */
+export function PlayerRoleRailSections({ roles }: { roles: PlayerRoles }) {
   return (
     <>
       {roles.opponentUnit ? <OpponentUnitSection role={roles.opponentUnit} /> : null}
-      {roles.usageMix ? <UsageMixSection role={roles.usageMix} /> : null}
-      {roles.spatialGrid ? <SpatialGridSection role={roles.spatialGrid} /> : null}
-      {roles.binarySplit ? <BinarySplitSection role={roles.binarySplit} /> : null}
       {roles.careerH2H ? <CareerH2HSection role={roles.careerH2H} /> : null}
       {roles.conditions ? <ConditionsSection role={roles.conditions} /> : null}
     </>

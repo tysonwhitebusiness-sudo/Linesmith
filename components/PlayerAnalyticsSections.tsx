@@ -30,11 +30,28 @@ import type {
  * the mechanical reason Player Detail sat at 13 of the board's 20 cards, and
  * it is worth knowing before adding a seventh primitive rather than using one.
  */
-export function PlayerAnalyticsSections({ roles }: { roles: AnalyticsRoles }) {
+/**
+ * The two the board puts in the MAIN column: rolling form sits under the
+ * distribution chart, and the situational grid under the line movement card.
+ * Both are wide by nature -- a trend line and a matrix -- which is why the
+ * board has them there and not in the 288px rail.
+ */
+export function PlayerAnalyticsMainSections({ roles }: { roles: AnalyticsRoles }) {
   return (
     <>
       {roles.rollingForm ? <RollingFormSection role={roles.rollingForm} /> : null}
       {roles.situationalSplits ? <SituationalSplitsSection role={roles.situationalSplits} /> : null}
+    </>
+  );
+}
+
+/**
+ * The two the board rails. Both are narrow by nature -- a small density curve
+ * and a list of labelled values -- and both looked absurd at full width.
+ */
+export function PlayerAnalyticsRailSections({ roles }: { roles: AnalyticsRoles }) {
+  return (
+    <>
       {roles.whereThisSits ? <WhereThisSitsSection role={roles.whereThisSits} /> : null}
       {roles.gameContext ? <GameContextSection role={roles.gameContext} /> : null}
     </>
@@ -130,6 +147,7 @@ function WhereThisSitsSection({ role }: { role: WhereThisSitsRole }) {
         value={role.value}
         rank={role.rank}
         format={role.decimals === 1 ? fmt.one : fmt.two}
+        width={236}
         height={112}
         emptyMessage={role.emptyMessage}
         label={role.label}

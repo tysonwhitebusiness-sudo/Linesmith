@@ -315,7 +315,6 @@ export function toGameDetailData(input: CfbGameDetailInput): GameDetailData {
       home: { abbr: game.homeAbbr, logoUrl: game.homeLogoUrl, rows: home?.injuries.map((i) => ({ playerName: i.playerName, status: i.status, position: i.position, note: i.note })) ?? [] },
       loading: false,
     },
-    propsForGame: null,
     picksPanelGame: { id: game.gameId, sport: 'cfb', awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, homeTeamId: null, awayTeamId: null, gameModel: null },
     leftRail: { candidates, goodBetsGated: false },
   };

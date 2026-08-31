@@ -19,8 +19,8 @@ import { useLineHistory } from './useLineHistory';
 import { candidateCategoryToSide, candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import { LineMovementCard } from './LineMovementCard';
 import { StatRankRow } from './StatRankRow';
-import { PlayerRoleSections } from './PlayerRoleSections';
-import { PlayerAnalyticsSections } from './PlayerAnalyticsSections';
+import { PlayerRoleMainSections, PlayerRoleRailSections } from './PlayerRoleSections';
+import { PlayerAnalyticsMainSections, PlayerAnalyticsRailSections } from './PlayerAnalyticsSections';
 import type { UnifiedLinesResult } from '@/lib/odds/types';
 import { SubjectAvatar, TeamLogo, mlbHeadshotUrl } from './SubjectAvatar';
 import { marketText, directionMark } from './MarketLabel';
@@ -1781,12 +1781,15 @@ export function PlayerDetail({
               old MLB `matchups`/NFL `nflMatchup` cards outright. */}
           {data.matchupExplorer ? <MatchupExplorerCard data={data.matchupExplorer} /> : null}
 
-          {/* The six universal roles — Phase 6.3/6.13. Each renders only when
-              its sport filled it; see components/PlayerRoleSections.tsx, which
-              contains no sport check of any kind. MLB fills opponentUnit and
-              conditions today; usageMix and spatialGrid arrive with 6.6's
-              backfill, binarySplit and careerH2H with their own sourcing. */}
-          <PlayerRoleSections
+          {/* THE BOARD DECIDES WHICH COLUMN, NOT THE ORDER THESE WERE WRITTEN IN.
+              `docs/design/_ps-body.html` lays the page out as `1fr 288px` and
+              rails eight of its twenty cards. Five of ours were here in the
+              main column, stretched to roughly three times their designed
+              width — which is what made the opposing-defence card read as
+              mostly whitespace. Those five now render in the rail below;
+              usage, the binary split and the spatial grid stay here, and the
+              latter two are paired `.two-up` exactly as the board pairs them. */}
+          <PlayerRoleMainSections
             roles={{
               opponentUnit: data.opponentUnit,
               usageMix: data.usageMix,
@@ -1797,11 +1800,7 @@ export function PlayerDetail({
             }}
           />
 
-          {/* The four analytics cards -- Phase 6.16. Same presence-gating and
-              the same no-sport-check rule as the roles above; see
-              components/PlayerAnalyticsSections.tsx. All four are built from
-              this candidate's own history, so every sport fills every one. */}
-          <PlayerAnalyticsSections
+          <PlayerAnalyticsMainSections
             roles={{
               rollingForm: data.rollingForm,
               situationalSplits: data.situationalSplits,
@@ -2022,8 +2021,34 @@ export function PlayerDetail({
           ) : null}
         </div>
 
-        {/* Context rail — sticky at lg+, stacks below the main column on mobile. */}
-        <div className="space-y-3 lg:sticky lg:top-4">
+        {/* Context rail.
+            NO LONGER STICKY. It was `lg:sticky lg:top-4`, which works for a
+            rail of three cards and fails for one of eight: once the rail is
+            taller than the viewport, sticky pins its TOP and the bottom cards
+            become unreachable while the main column scrolls past them. The
+            design board's own rail is not sticky either. */}
+        <div className="space-y-3">
+          {/* The five cards the board rails — three roles and two analytics
+              cards. Same components, rendered in the 260px column they were
+              designed for rather than stretched across the main one. */}
+          <PlayerRoleRailSections
+            roles={{
+              opponentUnit: data.opponentUnit,
+              usageMix: data.usageMix,
+              spatialGrid: data.spatialGrid,
+              binarySplit: data.binarySplit,
+              conditions: data.conditions,
+              careerH2H: data.careerH2H,
+            }}
+          />
+          <PlayerAnalyticsRailSections
+            roles={{
+              rollingForm: data.rollingForm,
+              situationalSplits: data.situationalSplits,
+              whereThisSits: data.whereThisSits,
+              gameContext: data.gameContext,
+            }}
+          />
           <section className="lb-card overflow-hidden">
             <h3 className="flex items-center gap-1.5 bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
               <TicketIcon />

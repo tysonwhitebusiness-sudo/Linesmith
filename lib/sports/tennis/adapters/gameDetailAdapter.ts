@@ -217,7 +217,6 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
       homeAbbr: meta.player1.name,
     },
     injuries: { away: { abbr: meta.player2.name, logoUrl: meta.player2.flagUrl ?? undefined, rows: [] }, home: { abbr: meta.player1.name, logoUrl: meta.player1.flagUrl ?? undefined, rows: [] }, loading: false },
-    propsForGame: null,
     picksPanelGame: { id: meta.matchId, sport: 'tennis', awayAbbr: meta.player2.name, homeAbbr: meta.player1.name, homeTeamId: null, awayTeamId: null, gameModel: null },
     leftRail: { candidates, goodBetsGated: false },
   };

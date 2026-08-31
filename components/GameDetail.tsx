@@ -1815,10 +1815,29 @@ function MatchupSection({
       </div>
       <div className="space-y-3 p-3">
         {activeTab === 'team' ? (
-          <>
-            {data.teamAway ? <BatterPitcherMatchupCard {...data.teamAway} /> : <p className="p-3 text-center text-[12px] text-ink-muted">No opponent stats available yet.</p>}
-            {data.teamHome ? <BatterPitcherMatchupCard {...data.teamHome} /> : null}
-          </>
+          // THE BOARD PAIRS THESE TWO, and they are the natural pair: the same
+          // comparison read in both directions, away offense vs home defense
+          // beside home offense vs away defense. Stacked, each was an ~810px
+          // card of two short stat columns with the middle empty; side by side
+          // they are ~400px and the reader can actually compare them, which is
+          // the entire point of showing both. `.two-up` on the design board.
+          //
+          // Only paired when BOTH directions exist -- one card in a two-column
+          // grid is a half-width card with a hole beside it.
+          data.teamAway && data.teamHome ? (
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <BatterPitcherMatchupCard {...data.teamAway} />
+              <BatterPitcherMatchupCard {...data.teamHome} />
+            </div>
+          ) : (
+            <>
+              {data.teamAway ? <BatterPitcherMatchupCard {...data.teamAway} /> : null}
+              {data.teamHome ? <BatterPitcherMatchupCard {...data.teamHome} /> : null}
+              {!data.teamAway && !data.teamHome ? (
+                <p className="p-3 text-center text-[12px] text-ink-muted">No opponent stats available yet.</p>
+              ) : null}
+            </>
+          )
         ) : activeTab === 'player' && data.selectedPlayerCard ? (
           <>
             <select
@@ -1906,36 +1925,6 @@ function UnitGradesSection({ data }: { data: NonNullable<GameDetailData['unitGra
   );
 }
 
-/** NFL-only flat "every candidate for this game" list — MLB's `LeftRail` already covers this ground, so `data.propsForGame` stays null there. */
-function PropsForGameSection({ data, playerHref }: { data: NonNullable<GameDetailData['propsForGame']>; playerHref: (subjectId: string) => string }) {
-  return (
-    <section className="lb-card overflow-hidden">
-      <h2 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
-        Props for this game ({data.candidates.length})
-      </h2>
-      {data.candidates.length === 0 ? (
-        <p className="p-6 text-center text-[12px] text-ink-muted">No props tracked for this game yet.</p>
-      ) : (
-        <ul className="divide-y divide-line/60">
-          {data.candidates.map((c) => (
-            <li key={candidateKey(c)}>
-              <Link href={playerHref(c.subjectId)} className="flex items-center justify-between gap-2 px-3 py-2 text-[12px] hover:bg-surface-subtle">
-                <span className="flex min-w-0 items-center gap-2">
-                  <SubjectAvatar name={c.subjectName} size={24} />
-                  <span className="min-w-0">
-                    <span className="block truncate font-medium">{c.subjectName}</span>
-                    <span className="block truncate text-[10.5px] text-ink-faint">{c.dimensionLabel}</span>
-                  </span>
-                </span>
-                {c.odds ? <OddsChip price={c.odds.americanOdds} source={c.odds.source} capturedAt={c.odds.capturedAt} size="sm" /> : null}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
 
 export function GameDetail({
   sport,
@@ -2290,7 +2279,6 @@ export function GameDetail({
             {data.rankings ? <Rankings data={data.rankings} /> : null}
             {data.unitGrades ? <UnitGradesSection data={data.unitGrades} /> : null}
             <Injuries away={data.injuries.away} home={data.injuries.home} loading={data.injuries.loading} />
-            {data.propsForGame ? <PropsForGameSection data={data.propsForGame} playerHref={playerHref} /> : null}
           </>
         )}
       </div>

@@ -354,7 +354,6 @@ export function toGameDetailData(input: NflGameDetailInput): GameDetailData {
     rankings,
     unitGrades: { away: toNflUnitGrades(away?.grades), home: toNflUnitGrades(home?.grades), awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr },
     injuries,
-    propsForGame: { candidates },
     picksPanelGame: { id: game.gameId, sport: 'nfl', awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, homeTeamId: null, awayTeamId: null, gameModel: null },
     leftRail: {
       candidates: [...candidates, ...teamLevelCandidates],

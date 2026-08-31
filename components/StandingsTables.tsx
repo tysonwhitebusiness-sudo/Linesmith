@@ -86,6 +86,15 @@ export function StandingsTables({
         return (
           <section key={league} className="space-y-3">
             <h2 className="text-sm font-semibold text-ink-muted">{league}</h2>
+            {/* DIVISIONS SIT TWO-UP, not stacked.
+                A division table is five short rows of six narrow columns. On a
+                team page's main column that is roughly 860px wide, each one was
+                a full-width card mostly made of empty space, and six of them
+                ran the page on for six screens -- the design board draws ONE
+                standings card, not six stacked ones.
+                Collapses to a single column below `sm`, where 860px is not
+                available and two tables side by side would each be unreadable. */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {sortedDivisionNames(byDivision).map((division) => {
               const rows = byDivision.get(division)!;
               // A points-based table (soccer) if every row in this group
@@ -160,6 +169,7 @@ export function StandingsTables({
                 </div>
               );
             })}
+            </div>
           </section>
         );
       })}
