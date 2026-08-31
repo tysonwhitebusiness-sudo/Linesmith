@@ -16,6 +16,7 @@ import { projectLine } from '@/lib/odds/display';
 import { toGameHeroModel, toGameHeroTeamPanelData, toVenueForecast } from './gameHeroCardAdapter';
 import { unitGradeFromRanked } from '@/lib/sports/shared/unitGrades';
 import type { TeamStatcastState } from '@/components/useTeamStatcast';
+import { toPriceRange } from '@/lib/sports/shared/priceRange';
 
 /**
  * MLB → generic transforms for the `GameDetail.tsx` component family
@@ -351,6 +352,14 @@ export interface GameDetailData {
    */
   unitGrades: { away: UnitGrade[] | null; home: UnitGrade[] | null; awayAbbr: string; homeAbbr: string } | null;
   injuries: { away: InjuriesTeam; home: InjuriesTeam; loading: boolean };
+  /**
+   * PHASE 6.20 -- book price dispersion for this game, the board's price card.
+   * Built by every sport from the SAME `gameLine` each adapter already
+   * receives, so it costs no new fetch. `null` under three priced books, which
+   * is NBA and NHL always (zero rows in `game_odds_book_lines`) and NFL, CFB
+   * and tennis on most games.
+   */
+  priceRange?: import('@/lib/sports/shared/priceRange').PriceRangeData | null;
   picksPanelGame: PicksPanelGame;
   leftRail: {
     candidates: PickCandidate[];
@@ -553,6 +562,7 @@ export function toGameDetailData(input: MlbGameDetailInput): GameDetailData {
       homeAbbr,
     },
     injuries,
+    priceRange: toPriceRange(gameLine, homeAbbr),
     picksPanelGame: toPicksPanelGame(game),
     leftRail: { candidates, goodBetsGated: true, nflTeamScope: null },
   };

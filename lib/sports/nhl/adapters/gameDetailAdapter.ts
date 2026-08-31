@@ -27,6 +27,7 @@ import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateS
 import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
 import { NHL_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 import { toProducedAllowedMatchup } from '@/lib/sports/shared/producedAllowedMatchup';
+import { toPriceRange } from '@/lib/sports/shared/priceRange';
 
 function toOptionalRecord(games: ReturnType<typeof toNhlRecentResultRows>): { wins: number; losses: number } | null {
   if (games.length === 0) return null;
@@ -244,6 +245,7 @@ export function toGameDetailData(input: NhlGameDetailInput): GameDetailData {
       home: { abbr: game.homeAbbr, logoUrl: home?.team.logoUrl ?? undefined, rows: home?.injuries.map((i) => ({ playerName: i.playerName, status: i.status, position: i.position, note: i.note })) ?? [] },
       loading: false,
     },
+    priceRange: toPriceRange(gameLine, game.homeAbbr),
     picksPanelGame: { id: game.gameId, sport: 'nhl', awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, homeTeamId: null, awayTeamId: null, gameModel: null },
     leftRail: { candidates, goodBetsGated: false },
   };

@@ -27,6 +27,7 @@ import { toVenueForecastFromCandidates } from '@/lib/sports/shared/venueForecast
 import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
 import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
 import { CFB_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
+import { toPriceRange } from '@/lib/sports/shared/priceRange';
 
 
 /**
@@ -315,6 +316,7 @@ export function toGameDetailData(input: CfbGameDetailInput): GameDetailData {
       home: { abbr: game.homeAbbr, logoUrl: game.homeLogoUrl, rows: home?.injuries.map((i) => ({ playerName: i.playerName, status: i.status, position: i.position, note: i.note })) ?? [] },
       loading: false,
     },
+    priceRange: toPriceRange(gameLine, game.homeAbbr),
     picksPanelGame: { id: game.gameId, sport: 'cfb', awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, homeTeamId: null, awayTeamId: null, gameModel: null },
     leftRail: { candidates, goodBetsGated: false },
   };

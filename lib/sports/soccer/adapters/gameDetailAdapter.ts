@@ -33,6 +33,7 @@ import { toVenueForecastFromCandidates } from '@/lib/sports/shared/venueForecast
 import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
 import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
 import { SOCCER_EPL_SEASON_SPEC, SOCCER_MLS_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
+import { toPriceRange } from '@/lib/sports/shared/priceRange';
 
 function offenseRows(t: SoccerTeamDetailApiResponse | null): OpposingStarterStat[] {
   if (!t?.teamSeasonStats) return [];
@@ -282,6 +283,7 @@ export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
     // this is the feed, not the season and not the call. Wiring the fetch here
     // would add a page-load request that is always empty.
     injuries: { away: { abbr: game.awayAbbr, logoUrl: game.awayLogoUrl, rows: [] }, home: { abbr: game.homeAbbr, logoUrl: game.homeLogoUrl, rows: [] }, loading: false },
+    priceRange: toPriceRange(gameLine, game.homeAbbr),
     picksPanelGame: { id: game.gameId, sport: 'soccer', awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, homeTeamId: null, awayTeamId: null, gameModel: null },
     leftRail: { candidates, goodBetsGated: false },
   };

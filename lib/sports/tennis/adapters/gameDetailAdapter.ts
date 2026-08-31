@@ -42,6 +42,7 @@ import type { UnifiedGameLine } from '@/lib/odds/types';
 import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
 import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
 import { TENNIS_ATP_SEASON_SPEC, TENNIS_WTA_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
+import { toPriceRange } from '@/lib/sports/shared/priceRange';
 
 interface RecentResultRowWire {
   gameId: string;
@@ -217,6 +218,7 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
       homeAbbr: meta.player1.name,
     },
     injuries: { away: { abbr: meta.player2.name, logoUrl: meta.player2.flagUrl ?? undefined, rows: [] }, home: { abbr: meta.player1.name, logoUrl: meta.player1.flagUrl ?? undefined, rows: [] }, loading: false },
+    priceRange: toPriceRange(gameLine, meta.player1.name),
     picksPanelGame: { id: meta.matchId, sport: 'tennis', awayAbbr: meta.player2.name, homeAbbr: meta.player1.name, homeTeamId: null, awayTeamId: null, gameModel: null },
     leftRail: { candidates, goodBetsGated: false },
   };

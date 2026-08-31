@@ -10,6 +10,8 @@ import { projectLine, formatAmerican } from '@/lib/odds/display';
 import { computeMoneylineEdge, computeTotalEdge } from '@/lib/odds/gameEdge';
 import type { UnifiedLinesResult, UnifiedGameLine } from '@/lib/odds/types';
 import { BookmakerBreakdown } from './GameLine';
+import { RangeBar } from './charts/RangeBar';
+import { fmt as chartFmt } from './charts/tokens';
 import { GamePropLineShoppingRail } from './PropOddsPanel';
 import type { MoneylineResult } from '@/lib/sports/mlb/gameModel';
 import { mergeUnitRows, findUnit, type UnitGrade } from '@/lib/sports/shared/unitGrades';
@@ -1756,6 +1758,35 @@ function LineShoppingSection({
 // The whole page
 // ---------------------------------------------------------------------------
 
+/**
+ * The board's price card — book dispersion on one axis.
+ *
+ * SITS BESIDE THE BOOKMAKER GRID AND ANSWERS A DIFFERENT QUESTION. The grid
+ * lists every book's number; this shows how far apart they are and where the
+ * best one falls inside that spread. `RangeBar` was built for exactly this in
+ * the chart-grammar pass and had never been rendered on any page.
+ */
+function PriceRangeSection({ data }: { data: NonNullable<GameDetailData['priceRange']> }) {
+  return (
+    <section className="lb-card overflow-hidden">
+      <div className="flex items-baseline justify-between gap-2 bg-accent-soft px-3 py-1.5">
+        <h2 className="text-[10.5px] font-bold uppercase tracking-wide text-masters">{data.title}</h2>
+        <span className="text-[9.5px] text-ink-faint">{data.points.length} books</span>
+      </div>
+      <div className="p-3">
+        <RangeBar
+          points={data.points}
+          highlightBook={data.highlightBook}
+          consensus={data.consensus}
+          format={chartFmt.american}
+          label={data.title}
+        />
+      </div>
+    </section>
+  );
+}
+
+
 export interface GameDetailProps {
   sport: Sport;
   /** MLB: `gamePk` as a string. NFL: the game id already used by its own routes/API. Soccer: same as NFL, ESPN's own event id. */
@@ -2283,6 +2314,10 @@ export function GameDetail({
         )}
       </div>
 
+      {/* Right column. The board rails its price card; ours shares this column
+          with the picks panel, which is the only thing that was here. */}
+      <div className="space-y-3">
+        {data.priceRange ? <PriceRangeSection data={data.priceRange} /> : null}
       <PicksPanel
         game={data.picksPanelGame}
         gameCandidateSubjectIds={gameCandidateSubjectIds}
@@ -2295,6 +2330,7 @@ export function GameDetail({
         propRows={props.rows}
         userSportsbook={props.userSportsbook}
       />
+      </div>
     </div>
   );
 }

@@ -22,6 +22,7 @@ import type { NflGameMetaResponse } from '@/components/useNflGameDetail';
 import type { NflTeamDetailApiResponse, NflTeamRosterPlayer, NflTeamStatLine } from '@/components/useNflTeamDetail';
 import type { GameDetailData, GameMatchupData, RankingsData, StatComparisonData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
+import { toPriceRange } from '@/lib/sports/shared/priceRange';
 
 const NFL_TEAM_COUNT = 32;
 
@@ -354,6 +355,7 @@ export function toGameDetailData(input: NflGameDetailInput): GameDetailData {
     rankings,
     unitGrades: { away: toNflUnitGrades(away?.grades), home: toNflUnitGrades(home?.grades), awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr },
     injuries,
+    priceRange: toPriceRange(gameLine, game.homeAbbr),
     picksPanelGame: { id: game.gameId, sport: 'nfl', awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, homeTeamId: null, awayTeamId: null, gameModel: null },
     leftRail: {
       candidates: [...candidates, ...teamLevelCandidates],
