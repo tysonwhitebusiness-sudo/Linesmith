@@ -212,6 +212,20 @@ export interface SoccerGameMeta {
   awayLogoUrl?: string;
   awayScore: number | null;
   status: { completed: boolean; state: 'pre' | 'in' | 'post'; shortDetail: string } | null;
+  /**
+   * The ground, from `gameInfo.venue` -- NOT `header.competitions[0].venue`,
+   * which ESPN leaves undefined on the soccer summary. Checked against a real
+   * response before wiring: event 401879315 answers "Elland Road" under
+   * `gameInfo` and nothing under `header`.
+   *
+   * NAME ONLY, no `indoor` flag, and that is deliberate rather than an
+   * omission. ESPN omits the roof state entirely for soccer, and MLS genuinely
+   * has enclosed grounds, so `venueWeather.ts` cannot tell an open ground from
+   * a covered one -- the per-venue roof list that would settle it was waived by
+   * the operator. The name is real and useful on its own; a forecast here
+   * would be a guess about whether it applies.
+   */
+  venue?: { fullName?: string; city?: string; country?: string };
 }
 
 export interface SoccerGameSummary {
@@ -223,6 +237,7 @@ export interface SoccerGameSummary {
 }
 
 interface RawSummaryResponse {
+  gameInfo?: { venue?: { fullName?: string; address?: { city?: string; country?: string } } };
   header?: {
     competitions?: Array<{
       date?: string;
@@ -292,6 +307,13 @@ export async function fetchGameSummary(league: SoccerLeague, eventId: string): P
             statusType?.state != null
               ? { completed: statusType.completed === true, state: statusType.state as 'pre' | 'in' | 'post', shortDetail: statusType.shortDetail ?? '' }
               : null,
+          venue: json.gameInfo?.venue?.fullName
+            ? {
+                fullName: json.gameInfo.venue.fullName,
+                city: json.gameInfo.venue.address?.city,
+                country: json.gameInfo.venue.address?.country,
+              }
+            : undefined,
         }
       : null;
 

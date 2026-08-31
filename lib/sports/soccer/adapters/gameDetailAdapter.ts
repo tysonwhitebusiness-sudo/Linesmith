@@ -29,6 +29,7 @@ import type { GameDetailData, GameMatchupData, StatComparisonData } from '@/lib/
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
 import type { UnifiedGameLine } from '@/lib/odds/types';
+import { toVenueForecastFromCandidates } from '@/lib/sports/shared/venueForecast';
 import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
 import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
 import { SOCCER_EPL_SEASON_SPEC, SOCCER_MLS_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
@@ -122,7 +123,13 @@ export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
     model: null,
     pickLockAt: null,
     pickLoading: false,
-    venue: null,
+    // Phase 6.15 -- the ground, from ESPN's own `gameInfo.venue`. NAME ONLY:
+    // soccer resolves no forecast anywhere in this codebase, because ESPN
+    // omits the roof state for the sport and the per-venue roof list that
+    // would settle it was waived. `toVenueForecastFromCandidates` returns a
+    // name-only strip in exactly that case, the same way a domed NFL stadium
+    // does.
+    venue: toVenueForecastFromCandidates(candidates, game.venue?.fullName),
     // Prefers the merged, multi-source gameLine over ESPN's own single-book
     // pregameLine — same precedence CFB's adapter uses, see its comment.
     // gameLine.moneyline.draw now carries the real third outcome ESPN's own
