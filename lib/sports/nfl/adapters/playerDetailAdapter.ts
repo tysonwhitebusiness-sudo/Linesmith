@@ -319,7 +319,7 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
         wanted,
         isVsOpponent: (e) => (rawOf(e).opponentAbbr as string | undefined) === opponentAbbr,
         opponentLabel: `vs ${opponentAbbr}`,
-        statLabel: marketText('nfl', active.dimension, 'compact'),
+        statLabel: marketText('nfl', active.dimension),
       })
     : null;
 

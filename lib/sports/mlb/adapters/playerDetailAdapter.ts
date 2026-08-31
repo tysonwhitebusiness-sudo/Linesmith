@@ -540,6 +540,17 @@ export interface MlbPlayerDetailInput {
    * has none.
    */
   pitchProfile?: { profile: PitchProfile | null; loading: boolean };
+  /**
+   * Tonight's opposing STARTER's own pitch profile — `useMlbPitchProfile('pitcher', ...)`
+   * a second time, for a different subject.
+   *
+   * Fills `usageMix.compare`, so the batter's pitch-mix card can answer the
+   * question it could not before: this pitcher throws the slider 31% of the
+   * time and allows .284 on it, and you see sliders 24% of the time and hit
+   * .198 against them. `null` for a pitcher subject, for a game with no
+   * probable starter announced, and for every other sport.
+   */
+  opposingPitchProfile?: { profile: PitchProfile | null; loading: boolean };
 }
 
 // ---------------------------------------------------------------------------
@@ -555,7 +566,7 @@ export interface MlbPlayerDetailInput {
  * fabricated to satisfy the type.
  */
 export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, snapshot, odds, scope, fullHistoryOverride, propOdds, opponentTeamStatcast, live, pitchProfile } = input;
+  const { candidates, market, snapshot, odds, scope, fullHistoryOverride, propOdds, opponentTeamStatcast, live, pitchProfile, opposingPitchProfile } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -618,7 +629,7 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
         wanted,
         isVsOpponent: (e) => (rawOf(e).opponentId as number | undefined) === opponentId,
         opponentLabel: `vs ${opponentAbbr ?? 'opponent'}`,
-        statLabel: marketText('mlb', active.dimension, 'compact'),
+        statLabel: marketText('mlb', active.dimension),
       })
     : null;
 
@@ -875,7 +886,17 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   // data traps they encode (see that file's header) can be tested directly
   // rather than only grepped for.
   const profile = pitchProfile?.profile ?? null;
-  const usageMix = toUsageMixRole(profile);
+  // The opposing starter's own mix, for the comparison columns. Only for a
+  // BATTER subject: a pitcher's card comparing his mix to the opposing
+  // pitcher's would be comparing two people who never face each other.
+  const opposingStarterName = typeof meta.opposingStarter === 'string' ? meta.opposingStarter : null;
+  const usageMix = toUsageMixRole(
+    profile,
+    !isPitcherSubject && opposingStarterName && opposingPitchProfile?.profile
+      ? { profile: opposingPitchProfile.profile, name: opposingStarterName }
+      : null,
+    active.subjectName,
+  );
   const spatialGrid = toSpatialGridRole(profile);
 
 

@@ -44,9 +44,38 @@ import type { PitchProfile } from '@/lib/sports/mlb/pitchProfileShapes';
  * facts: a pitcher's mix is what they CHOSE to throw, a batter's is what they
  * were SHOWN. Same shape, same component, and the component never learns which.
  */
-export function toUsageMixRole(profile: PitchProfile | null): UsageMixRole | null {
+export function toUsageMixRole(
+  profile: PitchProfile | null,
+  /**
+   * Tonight's opposing pitcher, when the subject is a batter and the starter
+   * is known. Same `PitchProfile` shape from the same `getPitchProfile` call --
+   * a pitcher's `pitchTypes[].xwoba` is what he ALLOWS on that pitch, exactly
+   * as a batter's is what he HITS on it, so the two sides are directly
+   * comparable without any per-role special casing.
+   */
+  opposing?: { profile: PitchProfile | null; name: string } | null,
+  subjectName?: string,
+): UsageMixRole | null {
   if (!profile || profile.pitchTypes.length === 0) return null;
+
+  const opposingProfile = opposing?.profile ?? null;
+  const compare =
+    opposingProfile && opposingProfile.pitchTypes.length > 0
+      ? {
+          label: `${opposing!.name} throws`,
+          subjectLabel: `${subjectName ?? 'Subject'} sees`,
+          slices: opposingProfile.pitchTypes.map((p) => ({
+            key: p.pitchType,
+            share: p.share,
+            value: p.xwoba ?? undefined,
+            valueSample: p.xwobaSample,
+          })),
+          sampleSize: opposingProfile.totalPitches,
+        }
+      : null;
+
   return {
+    compare,
     title: profile.role === 'pitcher' ? 'Pitch mix' : 'Pitch mix seen',
     slices: profile.pitchTypes.map((p) => ({
       key: p.pitchType,

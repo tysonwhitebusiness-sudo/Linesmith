@@ -147,6 +147,9 @@ function OpponentUnitSection({ role }: { role: OpponentUnitRole }) {
 function UsageMixSection({ role }: { role: UsageMixRole }) {
   const slices = role.slices.filter((s) => Number.isFinite(s.share) && s.share > 0);
   const anySample = slices.some((s) => s.valueSample != null && s.valueSample > 0);
+  // The other side of the matchup, keyed for lookup. See `UsageMixRole.compare`.
+  const cmp = role.compare ?? null;
+  const cmpByKey = new Map((cmp?.slices ?? []).map((c) => [c.key, c]));
   if (slices.length === 0) {
     return (
       <RoleCard title={role.title}>
@@ -159,7 +162,13 @@ function UsageMixSection({ role }: { role: UsageMixRole }) {
   return (
     <RoleCard
       title={role.title}
-      subtitle={role.sampleSize != null ? `n=${role.sampleSize.toLocaleString()}` : undefined}
+      subtitle={
+        cmp && cmp.sampleSize != null && role.sampleSize != null
+          ? `${cmp.sampleSize.toLocaleString()} thrown ${MIDDOT} ${role.sampleSize.toLocaleString()} seen`
+          : role.sampleSize != null
+            ? `n=${role.sampleSize.toLocaleString()}`
+            : undefined
+      }
     >
       <div className="mb-2 flex h-3 w-full overflow-hidden rounded-[3px]">
         {slices.map((s, i) => (
@@ -171,6 +180,19 @@ function UsageMixSection({ role }: { role: UsageMixRole }) {
         ))}
       </div>
       <table className="w-full border-collapse">
+        {/* THE COMPARISON HEADER ONLY EXISTS WHEN THERE IS SOMETHING TO
+            COMPARE. Without `compare` this is the same two-column mix it
+            always was, and adding a header row to that would be chrome over
+            nothing. */}
+        {cmp ? (
+          <thead>
+            <tr className="border-b border-line text-[9px] uppercase tracking-wide text-ink-faint">
+              <th className="py-1 pr-2 text-left font-semibold">Pitch</th>
+              <th className="py-1 text-right font-semibold" colSpan={2}>{cmp.label}</th>
+              <th className="py-1 pl-3 text-right font-semibold" colSpan={2}>{cmp.subjectLabel}</th>
+            </tr>
+          </thead>
+        ) : null}
         <tbody>
           {slices.map((s, i) => (
             <tr key={s.key} className="border-b border-line-hair last:border-b-0">
@@ -183,7 +205,27 @@ function UsageMixSection({ role }: { role: UsageMixRole }) {
                   {s.label}
                 </span>
               </td>
-              <td className="w-[52px] py-[3px] text-right text-[11.5px] font-semibold tabular-nums">
+              {/* The other side first, because it is the thing being faced:
+                  how often he throws it, and what he gives up on it. A pitch
+                  he does not throw prints an em-dash rather than 0.0% -- "not
+                  in his arsenal" and "throws it and gets hit" are different
+                  facts and a zero reads as the second. */}
+              {cmp ? (
+                <>
+                  <td className="w-[52px] py-[3px] text-right text-[11.5px] font-semibold tabular-nums text-ink">
+                    {cmpByKey.get(s.key) ? `${cmpByKey.get(s.key)!.share.toFixed(1)}%` : '—'}
+                  </td>
+                  <td className="w-[56px] py-[3px] pl-1 text-right text-[10.5px] tabular-nums text-ink-faint">
+                    {(() => {
+                      const o = cmpByKey.get(s.key);
+                      return o && o.value != null && Number.isFinite(o.value)
+                        ? (role.valueFormat ?? ((v: number) => v.toFixed(2)))(o.value)
+                        : '—';
+                    })()}
+                  </td>
+                </>
+              ) : null}
+              <td className={`w-[52px] py-[3px] text-right text-[11.5px] font-semibold tabular-nums${cmp ? ' pl-3' : ''}`}>
                 {s.share.toFixed(1)}%
               </td>
               <td className="w-[64px] py-[3px] pl-2 text-right text-[10.5px] tabular-nums text-ink-faint">
@@ -271,32 +313,77 @@ function BinarySplitSection({ role }: { role: BinarySplitRole }) {
  * 110", and the average alone cannot tell them apart. `sampleSize` is required
  * on the role for exactly this reason.
  */
+/** "05-08 vs Washington Nationals" -> "05-08". Splits on the vs/@ separator every sport's period label already uses. */
+function shortMeetingDate(label?: string): string {
+  if (!label) return '';
+  return label.split(/\s+(?:vs|@)\s+/i)[0].trim();
+}
+
 function CareerH2HSection({ role }: { role: CareerH2HRole }) {
+  const pct = role.headline && role.headline.total > 0
+    ? Math.round((role.headline.cleared / role.headline.total) * 100)
+    : null;
   return (
     <RoleCard title={role.title} subtitle={`${role.sampleSize} ${role.sampleLabel}`}>
-      <div className="mb-2 text-[12px] font-semibold text-ink">{role.opponentLabel}</div>
+      {/* THE VERDICT IS ONE SENTENCE, so it renders as one.
+          This card used to be a bare opponent label, an unlabelled strip, and
+          a two-row table whose first row read "Cleared the line / 2 of 3" on
+          the left with a naked "67" pushed to the right margin -- a percentage
+          with no percent sign, sitting directly above an average of "2.0", so
+          the two numbers looked like the same kind of quantity and neither
+          said what it was. */}
+      <div className="text-[12px] font-semibold text-ink">{role.opponentLabel}</div>
+      {role.headline ? (
+        <div className="mt-1.5 flex items-baseline gap-2">
+          <span className="text-[22px] font-bold leading-none tabular-nums text-ink">
+            {pct}
+            <span className="text-[13px] font-semibold">%</span>
+          </span>
+          <span className="text-[11px] text-ink-muted">{role.headline.text}</span>
+        </div>
+      ) : null}
+
       {role.meetings && role.meetings.length > 0 ? (
-        <div className="mb-2">
+        <div className="mt-2.5">
+          <div className="mb-1 text-[9.5px] uppercase tracking-wide text-ink-faint">
+            Oldest {MIDDOT} newest
+          </div>
           <StreakStrip
             outcomes={role.meetings.map((m) => (m.value == null ? null : m.value > 0))}
             titles={role.meetings.map((m) => `${m.date}${m.title ? ` ${MIDDOT} ${m.title}` : ''}`)}
             label={`${role.title} meetings`}
           />
+          {/* The strip is a row of squares and nothing on screen said WHEN.
+              Naming the first and last meeting costs one line and makes the
+              squares a timeline instead of a decoration. */}
+          {/* JUST THE DATE on the endpoints. The full label is
+              "05-08 vs Washington Nationals", and two of those under a strip of
+              eleven squares wrapped onto three lines and buried the squares.
+              The whole label is still on each square's own tooltip. */}
+          <div className="mt-1 flex justify-between gap-2 text-[9.5px] text-ink-faint">
+            <span className="truncate">{shortMeetingDate(role.meetings[0]?.date)}</span>
+            {role.meetings.length > 1 ? (
+              <span className="truncate">{shortMeetingDate(role.meetings[role.meetings.length - 1]?.date)}</span>
+            ) : null}
+          </div>
         </div>
       ) : null}
-      <StatTable
-        rows={role.stats.map((s) => ({
-          key: s.key,
-          label: s.label,
-          value: s.value,
-          format: (v: number) => v.toFixed(s.decimals),
-          rank: s.rank ?? null,
-          poolSize: s.poolSize ?? null,
-          sub: s.sub,
-        }))}
-        showRank={false}
-        emptyMessage={role.emptyMessage ?? 'No prior meetings on record.'}
-      />
+
+      <div className="mt-2.5 border-t border-line/60 pt-2">
+        <StatTable
+          rows={role.stats.map((s) => ({
+            key: s.key,
+            label: s.label,
+            value: s.value,
+            format: (v: number) => `${v.toFixed(s.decimals)}${s.suffix ?? ''}`,
+            rank: s.rank ?? null,
+            poolSize: s.poolSize ?? null,
+            sub: s.sub,
+          }))}
+          showRank={false}
+          emptyMessage={role.emptyMessage ?? 'No prior meetings on record.'}
+        />
+      </div>
     </RoleCard>
   );
 }

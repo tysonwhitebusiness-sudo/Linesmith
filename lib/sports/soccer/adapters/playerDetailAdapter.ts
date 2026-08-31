@@ -210,7 +210,7 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
   const binarySplit = toVenueBinarySplit({
     measured: categoriseByLine(active.history, line),
     wanted,
-    statLabel: marketText('soccer', active.dimension, 'compact'),
+    statLabel: marketText('soccer', active.dimension),
   });
 
   const windows: WindowedStat5 = {
@@ -236,7 +236,7 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
         wanted,
         isVsOpponent: (e) => isTeamNameMatch(rawOf(e).opponentAbbr as string | undefined, opponentName),
         opponentLabel: `vs ${opponentName}`,
-        statLabel: marketText('soccer', active.dimension, 'compact'),
+        statLabel: marketText('soccer', active.dimension),
       })
     : null;
 

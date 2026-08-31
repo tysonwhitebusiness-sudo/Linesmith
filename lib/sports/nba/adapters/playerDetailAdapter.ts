@@ -205,7 +205,7 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
   const binarySplit = toVenueBinarySplit({
     measured: categoriseByLine(active.history, line),
     wanted,
-    statLabel: marketText('nba', active.dimension, 'compact'),
+    statLabel: marketText('nba', active.dimension),
   });
 
   const windows: WindowedStat5 = {
@@ -262,7 +262,7 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
         wanted,
         isVsOpponent: (e) => (rawOf(e).opponentAbbr as string | undefined) === opponentAbbr,
         opponentLabel: `vs ${opponentAbbr}`,
-        statLabel: marketText('nba', active.dimension, 'compact'),
+        statLabel: marketText('nba', active.dimension),
       })
     : null;
 

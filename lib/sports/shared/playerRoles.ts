@@ -61,6 +61,16 @@ export interface RoleStat {
   lowerIsBetter?: boolean;
   /** Secondary line: sample size, window, caveat. */
   sub?: string;
+  /**
+   * Printed straight after the number -- "%", " mph", " yd".
+   *
+   * IT EXISTS BECAUSE A PERCENTAGE WAS RENDERING AS A BARE INTEGER. The
+   * head-to-head card's "Cleared the line" row carries `rate * 100` with zero
+   * decimals, so a two-of-three record printed as **67** with nothing marking
+   * it as a percentage -- next to an average of 2.0 on the row below, it read
+   * as a count of something.
+   */
+  suffix?: string;
 }
 
 /**
@@ -134,6 +144,33 @@ export interface UsageMixRole {
   valueFormat?: Formatter;
   /** Total observations behind the mix. A mix off twelve pitches is not a mix. */
   sampleSize?: number | null;
+  /**
+   * THE OTHER SIDE OF THE MATCHUP, over the same categories.
+   *
+   * A mix on its own says what the subject does. It cannot say whether the
+   * thing he is about to face does much of it, or is any good at it -- which
+   * is the actual question in front of a reader looking at a prop. MLB is the
+   * first filler: the batter's card gains what tonight's starter THROWS and
+   * what that starter ALLOWS on each pitch, beside what the batter SEES and
+   * what he HITS on the same pitch.
+   *
+   * GENERIC ON PURPOSE, not an MLB field on a shared type. The same shape is a
+   * defence's route-coverage rates beside a receiver's route mix, or an
+   * opposing keeper's save rate by shot type beside a striker's shot mix. The
+   * component renders two labelled columns and never learns which.
+   *
+   * Keys join to `slices[].key`. A key the other side never uses is absent
+   * rather than zero -- "does not throw it" and "throws it and gets crushed"
+   * are different facts and 0.0 would read as the second.
+   */
+  compare?: {
+    /** The other side's column header -- "Senga throws". */
+    label: string;
+    /** The subject's column header -- "Hernandez sees". */
+    subjectLabel: string;
+    slices: Array<{ key: string; share: number; value?: number; valueSample?: number | null }>;
+    sampleSize?: number | null;
+  } | null;
   emptyMessage?: string;
 }
 
@@ -227,6 +264,15 @@ export interface CareerH2HRole {
   title: string;
   /** "vs Gerrit Cole", "at Augusta National". */
   opponentLabel: string;
+  /**
+   * The one-line verdict, pre-composed: "Cleared 2 of 3 - 67%".
+   *
+   * The card used to render this as two disconnected table rows -- a label
+   * with "2 of 3" beneath it and a bare "67" pushed to the right margin -- so
+   * the reader had to reassemble the sentence themselves. It is one fact and
+   * now reads as one.
+   */
+  headline?: { text: string; cleared: number; total: number } | null;
   /** Required — a head-to-head line without its n is unreadable. */
   sampleSize: number;
   sampleLabel: string;

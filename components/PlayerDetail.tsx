@@ -1056,6 +1056,21 @@ export function PlayerDetail({
     new Date().getUTCFullYear(),
   );
 
+  // TONIGHT'S OPPOSING STARTER, as a second profile. Same hook, same route,
+  // different subject — a pitcher's `pitchTypes[].xwoba` is what he ALLOWS on
+  // that pitch, exactly as a batter's is what he HITS on it, so one function
+  // serves both sides of the comparison.
+  //
+  // Called unconditionally with an `undefined` subject for a pitcher's page and
+  // for every other sport, so the hook idles rather than the call being
+  // branched (rules of hooks).
+  const opposingStarterId = (() => {
+    if (isPitcherSubject || active?.sport !== 'mlb') return undefined;
+    const raw = (active.subjectMeta as Record<string, unknown> | undefined)?.opposingStarterId;
+    return typeof raw === 'number' && Number.isInteger(raw) && raw > 0 ? raw : undefined;
+  })();
+  const opposingPitchProfile = useMlbPitchProfile('pitcher', opposingStarterId, new Date().getUTCFullYear());
+
   // Price movement for the active prop (6.16). Sport-agnostic — every sport
   // writes `prop_odds_history` through the same Python jobs — and gated by the
   // arguments going undefined rather than by a branch on the hook call.
@@ -1235,6 +1250,7 @@ export function PlayerDetail({
             opponentTeamStatcast,
             live: playerLive,
             pitchProfile,
+            opposingPitchProfile,
           });
 
   if (!active || !data) {

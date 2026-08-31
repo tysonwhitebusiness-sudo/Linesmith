@@ -63,9 +63,17 @@ test('only meetings against THIS opponent are counted', () => {
     statLabel: 'Hits',
   })!;
   assert.equal(role.meetings!.length, 3, 'BOS and TOR must not leak in');
-  // All three NYY games cleared 0.5.
-  assert.equal(role.stats.find((s) => s.key === 'hitRate')!.value, 100);
-  assert.equal(role.stats.find((s) => s.key === 'hitRate')!.sub, '3 of 3');
+  // All three NYY games cleared 0.5. The rate lives on `headline` rather than
+  // in `stats`: as a table row it rendered as a naked "67" with no percent
+  // sign, directly above an average, so the two read as the same kind of
+  // number. It is the card's verdict and now renders as one line.
+  assert.equal(role.headline!.cleared, 3);
+  assert.equal(role.headline!.total, 3);
+  assert.equal(role.headline!.text, 'Cleared 3 of 3');
+  assert.ok(
+    !role.stats.some((s) => s.key === 'hitRate'),
+    'the rate must not also be a table row -- it was rendering twice-removed from its own label',
+  );
 });
 
 test('one meeting is not a record', () => {

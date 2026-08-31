@@ -62,20 +62,21 @@ export function toCareerH2H(input: CareerH2HInput): CareerH2HRole | null {
   const window = subsetWindow(measured, wanted, isVsOpponent, { minimum });
   if (!isOk(window)) return null;
 
+  // The rate is the headline, not a table row -- see `CareerH2HRole.headline`.
+  // What stays in the table is the average, which is the number a reader
+  // compares against the line.
   const stats: RoleStat[] = [
-    {
-      key: 'hitRate',
-      label: 'Cleared the line',
-      value: window.rate * 100,
-      decimals: 0,
-      sub: `${window.hits} of ${window.total}`,
-    },
-    { key: 'average', label: statLabel, value: window.average, decimals },
+    { key: 'average', label: `${statLabel} per meeting`, value: window.average, decimals },
   ];
 
   return {
     title: 'Head to head',
     opponentLabel,
+    headline: {
+      text: `Cleared ${window.hits} of ${window.total}`,
+      cleared: window.hits,
+      total: window.total,
+    },
     sampleSize: window.total,
     sampleLabel: window.total === 1 ? 'meeting' : 'meetings',
     stats,
