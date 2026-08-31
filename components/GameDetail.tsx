@@ -1076,7 +1076,7 @@ function StatComparison({ data }: { data: StatComparisonData }) {
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-meta font-semibold uppercase tracking-[.18em] text-ink-secondary">
           Team stat comparison
-          {data.seasonLabel ? <span className="ml-2 font-normal normal-case tracking-normal text-ink-faint">{data.seasonLabel}</span> : null}
+          {data.seasonLabel ? <span className="ml-2 font-normal normal-case tracking-normal text-ink-faint">· {data.seasonLabel}</span> : null}
         </h2>
         <div className="flex items-center gap-3 text-micro uppercase tracking-wide text-ink-faint">
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm" style={{ backgroundColor: '#b6b7ba' }} />{data.awayAbbr}</span>
@@ -1434,7 +1434,7 @@ function Rankings({ data }: { data: RankingsData }) {
         }
       >
         Rankings · of {data.poolSize}
-        {data.seasonLabel ? <span className="ml-2 font-normal normal-case tracking-normal text-ink-faint">{data.seasonLabel}</span> : null}
+        {data.seasonLabel ? <span className="ml-2 font-normal normal-case tracking-normal text-ink-faint">· {data.seasonLabel}</span> : null}
       </CardHeader>
       {view === 'heat' ? <RankingsHeatGrid game={game} statKeys={data.statKeys} awayAbbr={data.awayAbbr} homeAbbr={data.homeAbbr} awayLogoUrl={data.awayLogoUrl} homeLogoUrl={data.homeLogoUrl} /> : null}
       {view === 'scale' ? <RankingsScale game={game} statKeys={data.statKeys} awayAbbr={data.awayAbbr} homeAbbr={data.homeAbbr} poolSize={data.poolSize} /> : null}

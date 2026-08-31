@@ -59,10 +59,23 @@ function seasonLineText(p: { position: string | null; seasonStats: CfbRosterSeas
   }
 }
 
-const CFB_TEAM_COUNT = 134;
 
-function toStatRow(key: string, label: string, value: number, rank: number): OpposingStarterStat {
-  return { key, label, value, decimals: 0, rank, poolSize: CFB_TEAM_COUNT };
+/**
+ * The pool a CFB rank is against, taken from the index that produced the rank.
+ *
+ * IT WAS A HARDCODED 134, AND THAT PUT A WRONG NUMBER ON THE PAGE.
+ * `teamDefenseAllowed.ts` ranks whatever teams its index actually holds and
+ * reports the real size as `poolSize` -- measured 2026-08-30 against the live
+ * route, that is **138**. So the card printed "100th of 134" for a rank
+ * computed against 138.
+ *
+ * Found by noticing the same stat read "of 134" in the matchup card and "of
+ * 138" in the season-rollup block beside it. The two blocks never disagreed
+ * about the pool: one was asserting the nominal FBS team count instead of the
+ * pool it had ranked against.
+ */
+function toStatRow(key: string, label: string, value: number, rank: number, poolSize: number): OpposingStarterStat {
+  return { key, label, value, decimals: 0, rank, poolSize };
 }
 
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
@@ -290,9 +303,9 @@ export function toTeamDetailData(input: CfbTeamDetailInput): TeamDetailData {
           subjectTeamAbbr: team.abbreviation,
           subjectTeamLogoUrl: team.logoUrl ?? undefined,
           subjectStats: [
-            toStatRow('passingYdsProduced', 'Pass Yds/Gm', teamOffense.passingYdsProducedPerGame, teamOffense.passingProducedRank),
-            toStatRow('rushingYdsProduced', 'Rush Yds/Gm', teamOffense.rushingYdsProducedPerGame, teamOffense.rushingProducedRank),
-            toStatRow('receivingYdsProduced', 'Rec Yds/Gm', teamOffense.receivingYdsProducedPerGame, teamOffense.receivingProducedRank),
+            toStatRow('passingYdsProduced', 'Pass Yds/Gm', teamOffense.passingYdsProducedPerGame, teamOffense.passingProducedRank, teamOffense.poolSize),
+            toStatRow('rushingYdsProduced', 'Rush Yds/Gm', teamOffense.rushingYdsProducedPerGame, teamOffense.rushingProducedRank, teamOffense.poolSize),
+            toStatRow('receivingYdsProduced', 'Rec Yds/Gm', teamOffense.receivingYdsProducedPerGame, teamOffense.receivingProducedRank, teamOffense.poolSize),
           ],
           subjectRoleLabel: 'Produces',
           opponentName: `${opponentName ?? nextOpponentAbbr} defense`,
@@ -300,9 +313,9 @@ export function toTeamDetailData(input: CfbTeamDetailInput): TeamDetailData {
           opponentTeamAbbr: nextOpponentAbbr,
           opponentTeamLogoUrl: opponentLogoUrl ?? undefined,
           opponentStats: [
-            toStatRow('passingYdsAllowed', 'Pass Yds/Gm', opponentDefenseAllowed.passingYdsAllowedPerGame, opponentDefenseAllowed.passingRank),
-            toStatRow('rushingYdsAllowed', 'Rush Yds/Gm', opponentDefenseAllowed.rushingYdsAllowedPerGame, opponentDefenseAllowed.rushingRank),
-            toStatRow('receivingYdsAllowed', 'Rec Yds/Gm', opponentDefenseAllowed.receivingYdsAllowedPerGame, opponentDefenseAllowed.receivingRank),
+            toStatRow('passingYdsAllowed', 'Pass Yds/Gm', opponentDefenseAllowed.passingYdsAllowedPerGame, opponentDefenseAllowed.passingRank, opponentDefenseAllowed.poolSize),
+            toStatRow('rushingYdsAllowed', 'Rush Yds/Gm', opponentDefenseAllowed.rushingYdsAllowedPerGame, opponentDefenseAllowed.rushingRank, opponentDefenseAllowed.poolSize),
+            toStatRow('receivingYdsAllowed', 'Rec Yds/Gm', opponentDefenseAllowed.receivingYdsAllowedPerGame, opponentDefenseAllowed.receivingRank, opponentDefenseAllowed.poolSize),
           ],
           opponentRoleLabel: 'Allows',
         }

@@ -28,10 +28,23 @@ import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateS
 import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
 import { CFB_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 
-const CFB_TEAM_COUNT = 134;
 
-function toStatRow(key: string, label: string, value: number, rank: number): OpposingStarterStat {
-  return { key, label, value, decimals: 0, rank, poolSize: CFB_TEAM_COUNT };
+/**
+ * The pool a CFB rank is against, taken from the index that produced the rank.
+ *
+ * IT WAS A HARDCODED 134, AND THAT PUT A WRONG NUMBER ON THE PAGE.
+ * `teamDefenseAllowed.ts` ranks whatever teams its index actually holds and
+ * reports the real size as `poolSize` -- measured 2026-08-30 against the live
+ * route, that is **138**. So the card printed "100th of 134" for a rank
+ * computed against 138.
+ *
+ * Found by noticing the same stat read "of 134" in the matchup card and "of
+ * 138" in the season-rollup block beside it. The two blocks never disagreed
+ * about the pool: one was asserting the nominal FBS team count instead of the
+ * pool it had ranked against.
+ */
+function toStatRow(key: string, label: string, value: number, rank: number, poolSize: number): OpposingStarterStat {
+  return { key, label, value, decimals: 0, rank, poolSize };
 }
 
 /**
@@ -45,9 +58,9 @@ function producedRows(t: CfbTeamDetailApiResponse | null): OpposingStarterStat[]
   if (!t?.teamOffense) return [];
   const o = t.teamOffense;
   return [
-    toStatRow('passingYdsProduced', 'Pass Yds/Gm', o.passingYdsProducedPerGame, o.passingProducedRank),
-    toStatRow('rushingYdsProduced', 'Rush Yds/Gm', o.rushingYdsProducedPerGame, o.rushingProducedRank),
-    toStatRow('receivingYdsProduced', 'Rec Yds/Gm', o.receivingYdsProducedPerGame, o.receivingProducedRank),
+    toStatRow('passingYdsProduced', 'Pass Yds/Gm', o.passingYdsProducedPerGame, o.passingProducedRank, o.poolSize),
+    toStatRow('rushingYdsProduced', 'Rush Yds/Gm', o.rushingYdsProducedPerGame, o.rushingProducedRank, o.poolSize),
+    toStatRow('receivingYdsProduced', 'Rec Yds/Gm', o.receivingYdsProducedPerGame, o.receivingProducedRank, o.poolSize),
   ];
 }
 
@@ -55,9 +68,9 @@ function allowedRows(t: CfbTeamDetailApiResponse | null): OpposingStarterStat[] 
   if (!t?.teamOffense) return [];
   const o = t.teamOffense;
   return [
-    toStatRow('passingYdsAllowed', 'Pass Yds/Gm', o.passingYdsAllowedPerGame, o.passingRank),
-    toStatRow('rushingYdsAllowed', 'Rush Yds/Gm', o.rushingYdsAllowedPerGame, o.rushingRank),
-    toStatRow('receivingYdsAllowed', 'Rec Yds/Gm', o.receivingYdsAllowedPerGame, o.receivingRank),
+    toStatRow('passingYdsAllowed', 'Pass Yds/Gm', o.passingYdsAllowedPerGame, o.passingRank, o.poolSize),
+    toStatRow('rushingYdsAllowed', 'Rush Yds/Gm', o.rushingYdsAllowedPerGame, o.rushingRank, o.poolSize),
+    toStatRow('receivingYdsAllowed', 'Rec Yds/Gm', o.receivingYdsAllowedPerGame, o.receivingRank, o.poolSize),
   ];
 }
 
