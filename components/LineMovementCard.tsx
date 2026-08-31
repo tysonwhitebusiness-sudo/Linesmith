@@ -79,7 +79,27 @@ export function LineMovementCard({
   userSportsbook,
   marketLabel,
 }: {
-  data: LineHistoryResult | null;
+  /**
+   * STRUCTURAL, NOT `LineHistoryResult`, since Phase 6.22.
+   *
+   * A prop's history and a game market's history are different tables with
+   * different keys -- `(game, subject, market, line, side)` against
+   * `(event, market, side)` -- and this card reads neither of those keys. It
+   * reads the series, the buckets, and one optional headline number. Typing
+   * the prop shape here forced the game caller to fabricate a `subjectId` and
+   * a `marketKey` it does not have, purely to satisfy fields nothing renders.
+   *
+   * `resolvedLine` is the handicap the series is for, and `availableLines` the
+   * alternates a prop can offer; a game market passes the former and omits the
+   * latter, because a total genuinely MOVING from 8.5 to 9 is the story rather
+   * than an alternate to switch between.
+   */
+  data: {
+    series: LineHistoryResult['series'];
+    buckets: LineHistoryResult['buckets'];
+    resolvedLine?: number | null;
+    availableLines?: number[];
+  } | null;
   loading: boolean;
   userSportsbook: string;
   marketLabel: string;
@@ -158,10 +178,10 @@ export function LineMovementCard({
         />
         {/* The alternates are real and the pinned line is only one of them.
             Saying so beats letting the chart imply it is the whole market. */}
-        {drawable && data && data.availableLines.length > 1 ? (
+        {drawable && data && (data.availableLines?.length ?? 0) > 1 ? (
           <p className="mt-1.5 text-[9.5px] text-ink-faint">
-            {data.availableLines.length} lines quoted ({data.availableLines[0]}–
-            {data.availableLines[data.availableLines.length - 1]}); showing the most-quoted.
+            {data.availableLines!.length} lines quoted ({data.availableLines![0]}–
+            {data.availableLines![data.availableLines!.length - 1]}); showing the most-quoted.
           </p>
         ) : null}
         {drawable && others.length > 0 ? (

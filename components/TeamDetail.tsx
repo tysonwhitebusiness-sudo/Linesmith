@@ -45,6 +45,9 @@ import { toTeamDetailData as toNbaTeamDetailData } from '@/lib/sports/nba/adapte
 import { toTeamDetailData as toNhlTeamDetailData } from '@/lib/sports/nhl/adapters/teamDetailAdapter';
 import { PlayerRoleMainSections, PlayerRoleRailSections } from './PlayerRoleSections';
 import { PlayerAnalyticsMainSections, PlayerAnalyticsRailSections } from './PlayerAnalyticsSections';
+import { LineMovementCard } from './LineMovementCard';
+import { useGameLineHistory } from './useGameLineHistory';
+import { useUserSportsbook } from './useUserSportsbook';
 
 const POSITION_ORDER = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'QB', 'RB', 'FB', 'WR', 'TE', 'K', 'OL', 'DL', 'LB', 'DB', 'S', 'CB'];
 
@@ -91,6 +94,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
   // like every hook above it (rules of hooks); `seasonRankSport` returns
   // undefined for a sport with no spec and the hook idles without fetching.
   const seasonRanks = useSeasonRanks(seasonRankSport(sport, league));
+  const userSportsbook = useUserSportsbook();
 
   const [market, setMarket] = useState<string | undefined>(undefined);
   const [lineOffset, setLineOffset] = useState(0);
@@ -187,6 +191,12 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
                 ratingHistory,
               })
             : null;
+
+  // Price movement for this team's NEXT game -- Phase 6.22. Same hook, same
+  // route; the only difference from the game page is which event id it asks
+  // about. Idles when the team has no next game scheduled.
+  const nextGameId = data?.nextGame?.gameHref?.split('/').pop();
+  const teamLineHistory = useGameLineHistory(nextGameId, 'moneyline', 'home');
 
   const detailLoading =
     sport === 'nfl'
@@ -789,6 +799,16 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
             spatialGrid: null,
             binarySplit: null,
           }}
+        />
+        {/* Line movement on the team's next game -- Phase 6.22. Renders its
+            own honest empty state when fewer than two observations exist,
+            which is every NBA and NHL game today (zero rows) and any team
+            without a scheduled next game. */}
+        <LineMovementCard
+          data={teamLineHistory.data}
+          loading={teamLineHistory.loading}
+          userSportsbook={userSportsbook}
+          marketLabel={data.nextGame ? `${data.team.abbr} moneyline` : 'Next game moneyline'}
         />
         <PlayerAnalyticsRailSections
           roles={{

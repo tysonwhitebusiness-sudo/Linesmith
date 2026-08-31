@@ -11,6 +11,8 @@ import { computeMoneylineEdge, computeTotalEdge } from '@/lib/odds/gameEdge';
 import type { UnifiedLinesResult, UnifiedGameLine } from '@/lib/odds/types';
 import { BookmakerBreakdown } from './GameLine';
 import { RangeBar } from './charts/RangeBar';
+import { LineMovementCard } from './LineMovementCard';
+import { useGameLineHistory } from './useGameLineHistory';
 import { PlayerAnalyticsMainSections, PlayerAnalyticsRailSections } from './PlayerAnalyticsSections';
 import { fmt as chartFmt } from './charts/tokens';
 import { GamePropLineShoppingRail } from './PropOddsPanel';
@@ -2020,6 +2022,15 @@ export function GameDetail({
   // it, and it carries its own cache entry.
   const seasonRanksAllowed = useSeasonRanks(seasonRankSport(sport, league), 'allowed');
 
+  // Price movement for this game's headline market -- Phase 6.22.
+  //
+  // MONEYLINE BY DEFAULT, and that is a measurement not a preference: of 559
+  // events in `game_odds_history`, 558 have a moneyline and only 68 have a
+  // spread. Defaulting to spread would leave the card blank on almost every
+  // game. `home` is the side because the hero and the price card already name
+  // the home team.
+  const gameLineHistory = useGameLineHistory(gameId, 'moneyline', 'home');
+
   // Both teams' Statcast rollups -- MLB's game-page unit grades (6.15).
   // Called UNCONDITIONALLY per the rules of hooks and this component's own
   // convention: `undefined` for every other sport, where the hook idles
@@ -2338,6 +2349,16 @@ export function GameDetail({
             rollingForm: null,
             situationalSplits: null,
           }}
+        />
+        {/* Line movement -- the board draws it in the main column, but it is a
+            narrow multi-series chart and sits better beside the price card it
+            is about. Renders its own honest empty state when a game has fewer
+            than two observations, which is every NBA and NHL game today. */}
+        <LineMovementCard
+          data={gameLineHistory.data}
+          loading={gameLineHistory.loading}
+          userSportsbook={props.userSportsbook}
+          marketLabel={`${data.hero.home.abbr} moneyline`}
         />
         {data.priceRange ? <PriceRangeSection data={data.priceRange} /> : null}
       <PicksPanel
