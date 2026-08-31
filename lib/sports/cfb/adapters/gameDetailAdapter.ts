@@ -23,6 +23,7 @@ import type { GameDetailData, GameMatchupData, StatComparisonData } from '@/lib/
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
 import type { UnifiedGameLine } from '@/lib/odds/types';
+import { toVenueForecastFromCandidates } from '@/lib/sports/shared/venueForecast';
 import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
 import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
 import { CFB_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
@@ -135,7 +136,11 @@ export function toGameDetailData(input: CfbGameDetailInput): GameDetailData {
     model: null,
     pickLockAt: null,
     pickLoading: false,
-    venue: null,
+    // Phase 6.15. Not a new source: 6.10 already resolves this game's forecast
+    // in the snapshot adapter and stamps it on every candidate for the game.
+    // `null` for a game with no tracked candidates, and for an indoor venue
+    // ESPN did not name.
+    venue: toVenueForecastFromCandidates(candidates),
     // Prefers the merged, multi-source gameLine (real per-book comparison,
     // may include books ESPN's own single-source line never covers) over
     // ESPN's own pregameLine — falls back to ESPN only when nothing's been

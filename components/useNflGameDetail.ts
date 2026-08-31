@@ -17,7 +17,25 @@ import type { NflTeamDetailApiResponse, NflTeamStatLine } from './useNflTeamDeta
  */
 
 export interface NflGameMetaResponse {
-  game: { gameId: string; date: string; homeTeamId: string; homeTeamName: string; homeAbbr: string; awayTeamId: string; awayTeamName: string; awayAbbr: string };
+  game: {
+    gameId: string;
+    date: string;
+    homeTeamId: string;
+    homeTeamName: string;
+    homeAbbr: string;
+    awayTeamId: string;
+    awayTeamName: string;
+    awayAbbr: string;
+    /**
+     * The stadium. The route has always returned this (ESPN reports it on
+     * every event) and the type simply never declared it, so nothing could
+     * read it -- Phase 6.15's venue strip is the first caller.
+     *
+     * `indoor === undefined` means UNKNOWN, not open air. See
+     * `teamSportEspn.ts`'s `EspnVenue`.
+     */
+    venue?: { fullName?: string; city?: string; state?: string; country?: string; indoor?: boolean };
+  };
   homeInjuries: Array<{ playerName: string; teamName: string; status: string }>;
   awayInjuries: Array<{ playerName: string; teamName: string; status: string }>;
   liveState: GameSituationStrip | null;

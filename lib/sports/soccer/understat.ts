@@ -157,6 +157,8 @@ export interface UnderstatTeamDefense {
   rank: number;
   /** 1 = most goals scored per game (best real attack) among the real teams in this index. */
   offenseRank: number;
+  /** Rank on expected goals allowed, sorted on `xGAPerGame` -- NOT the same ordering as `rank`. */
+  xgaRank: number;
   poolSize: number;
 }
 
@@ -193,9 +195,25 @@ export async function buildUnderstatTeamDefenseIndex(season: string, minGames = 
     .sort((a, b) => b.goalsForPerGame - a.goalsForPerGame)
     .forEach((r, i) => offenseRankByTeam.set(r.teamTitle, i + 1));
 
+  // xGA GETS ITS OWN RANK (Phase 6.15). Before this it had none, and the team
+  // page rendered "xG Allowed/Gm" carrying `rank` -- the GOALS-allowed rank,
+  // sorted on `goalsAgainstPerGame` a few lines up. A team that concedes more
+  // than its chances deserve is exactly the team those two numbers disagree
+  // about, so the row was wrong precisely where it was most worth reading.
+  const xgaRankByTeam = new Map<string, number>();
+  [...rates.values()]
+    .sort((a, b) => a.xGAPerGame - b.xGAPerGame)
+    .forEach((r, i) => xgaRankByTeam.set(r.teamTitle, i + 1));
+
   const index = new Map<string, UnderstatTeamDefense>();
   rankedByDefense.forEach((r, i) => {
-    index.set(normalizeName(r.teamTitle), { ...r, rank: i + 1, offenseRank: offenseRankByTeam.get(r.teamTitle) ?? i + 1, poolSize: rankedByDefense.length });
+    index.set(normalizeName(r.teamTitle), {
+      ...r,
+      rank: i + 1,
+      offenseRank: offenseRankByTeam.get(r.teamTitle) ?? i + 1,
+      xgaRank: xgaRankByTeam.get(r.teamTitle) ?? i + 1,
+      poolSize: rankedByDefense.length,
+    });
   });
   return index;
 }

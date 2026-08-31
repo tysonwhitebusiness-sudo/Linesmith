@@ -12,6 +12,7 @@
 import { toNflUnitGrades } from '@/lib/sports/nfl/nflUnitGrades';
 import type { PickCandidate } from '@/lib/core/types';
 import type { UnifiedGameLine } from '@/lib/odds/types';
+import { toVenueForecastFromCandidates } from '@/lib/sports/shared/venueForecast';
 import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import { teamPrimaryColor, withAlpha } from '@/lib/sports/nfl/teamColors';
 import { MATCHUP_GROUP_BY_POSITION, playerMatchupRows } from '@/components/NflPlayerVsDefenseCard';
@@ -152,7 +153,11 @@ export function toGameDetailData(input: NflGameDetailInput): GameDetailData {
     model: null,
     pickLockAt: null,
     pickLoading: false,
-    venue: null,
+    // Phase 6.15. Not a new source: 6.10 already resolves this game's forecast
+    // in the snapshot adapter and stamps it on every candidate for the game.
+    // `null` for a game with no tracked candidates, and for an indoor venue
+    // ESPN did not name.
+    venue: toVenueForecastFromCandidates(candidates, meta.game.venue?.fullName),
     liveExtraText,
     awayGrades: toNflUnitGrades(away?.grades),
     homeGrades: toNflUnitGrades(home?.grades),

@@ -23,6 +23,9 @@ import type { PickCandidate } from '@/lib/core/types';
 import type { TeamStandingRow } from '@/components/useAllTeams';
 import type { GameRow, RecentResultRow, RosterPlayer, TeamDetailData, TeamDistributionChartData, TeamMatchupData, TeamNextGame, TeamWindowedForm } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
+import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
+import { groupStats } from '@/lib/sports/shared/seasonAggregateShapes';
+import { CFB_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 import type { CfbTeam, CfbPregameLine } from '@/lib/sports/cfb/espn';
 import type { EspnTeamSportGame } from '@/lib/sports/multiSport/teamSportEspn';
 import type { CfbTeamDefenseAllowed } from '@/lib/sports/cfb/teamDefenseAllowed';
@@ -147,10 +150,16 @@ export interface CfbTeamDetailInput {
   data: CfbTeamDetailApiResponse;
   scope: CfbTeamDetailScope;
   standingsTeams: TeamStandingRow[];
+  /**
+   * League-wide season aggregates and ranks (`useSeasonRanks`), Phase 6.15.
+   * Fills `statGroups` and `unitGrades`, neither of which this sport had a
+   * league-wide ranked aggregate to build from before. `null` while loading.
+   */
+  seasonRanks: SeasonAggregateResult | null;
 }
 
 export function toTeamDetailData(input: CfbTeamDetailInput): TeamDetailData {
-  const { data, scope, standingsTeams } = input;
+  const { data, scope, standingsTeams, seasonRanks } = input;
   const { team, roster, nextGame, nextGameLine, recentGames, teamOffense, opponentDefenseAllowed, opponentAbbr: nextOpponentAbbr, opponentName, opponentLogoUrl, logoByAbbr } = data;
 
   const rosterPlayers: RosterPlayer[] = roster.map((p) => {
@@ -257,19 +266,21 @@ export function toTeamDetailData(input: CfbTeamDetailInput): TeamDetailData {
       }
     : null;
 
+  // ---- Season stat groups and unit grades -- Phase 6.15 ----
+  //
+  // REPLACES the three produced-yardage rows this block used to carry. Those
+  // came from `teamDefenseAllowed.ts`'s index, which is still what the matchup
+  // card below reads (it needs an ALLOWED side that no rollup over
+  // `player_game_history` can express). For a plain season-stats table the
+  // rollup is simply more: ten ranked stats across Offence, Defence and Ball
+  // security, against three. Keeping both would have shown pass yards twice,
+  // ranked against two different pools, with nothing on screen saying why.
+  const ownAggregate = seasonRanks?.byEntity[String(team.teamId)] ?? null;
+  const statGroups: { label: string; stats: OpposingStarterStat[] }[] =
+    ownAggregate ? groupStats(CFB_SEASON_SPEC, ownAggregate.stats) : [];
+  const ownUnitGrades = ownAggregate && ownAggregate.units.length > 0 ? ownAggregate.units : null;
+
   // ---- Real team-vs-opponent matchup, from CFBD's own box scores (teamDefenseAllowed.ts) ----
-  const statGroups: { label: string; stats: OpposingStarterStat[] }[] = teamOffense
-    ? [
-        {
-          label: 'Offense',
-          stats: [
-            toStatRow('passingYdsProduced', 'Pass Yds/Gm', teamOffense.passingYdsProducedPerGame, teamOffense.passingProducedRank),
-            toStatRow('rushingYdsProduced', 'Rush Yds/Gm', teamOffense.rushingYdsProducedPerGame, teamOffense.rushingProducedRank),
-            toStatRow('receivingYdsProduced', 'Rec Yds/Gm', teamOffense.receivingYdsProducedPerGame, teamOffense.receivingProducedRank),
-          ],
-        },
-      ]
-    : [];
 
   const teamMatchup =
     nextOpponentAbbr && teamOffense && opponentDefenseAllowed
@@ -312,9 +323,10 @@ export function toTeamDetailData(input: CfbTeamDetailInput): TeamDetailData {
         }
       : null,
     // Phase 6.1 — `grades` (nine hardcoded NFL unit names) became `unitGrades`.
-    // Still null here: this sport has no league-wide ranked team aggregate to
-    // grade from yet. 6.1b adds one for NBA and NHL; see this file's header.
-    unitGrades: null,
+    // Phase 6.15 fills it: the same rollup behind `statGroups` above, so a
+    // team's rank in a stat row and the ranks behind its unit grade cannot
+    // disagree.
+    unitGrades: ownUnitGrades,
     candidates,
     games: gameRows,
     windows,

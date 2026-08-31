@@ -152,11 +152,11 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
         : null
       : sport === 'soccer'
         ? soccerTeam.data && league
-          ? toSoccerTeamDetailData({ league, data: soccerTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, ratingHistory })
+          ? toSoccerTeamDetailData({ league, data: soccerTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data, ratingHistory })
           : null
         : sport === 'cfb'
           ? cfbTeam.data
-            ? toCfbTeamDetailData({ data: cfbTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, ratingHistory })
+            ? toCfbTeamDetailData({ data: cfbTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data, ratingHistory })
             : null
           : sport === 'nba'
             ? nbaTeam.data

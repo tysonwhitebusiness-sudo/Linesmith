@@ -239,6 +239,13 @@ export async function buildNflSnapshot(): Promise<SportSnapshot> {
     }),
   );
 
+  /** `undefined` when neither a forecast nor a venue name resolved, so a candidate carries no empty context object. */
+  const contextForGame = (g: { gameId: string; venue?: { fullName?: string } }) => {
+    const weather = weatherByGame.get(g.gameId);
+    const venueName = g.venue?.fullName;
+    return weather || venueName ? { ...(weather ? { weather } : {}), ...(venueName ? { venueName } : {}) } : undefined;
+  };
+
   for (const game of games) {
     // Real book prices, keyed by subjectId|marketKey — an overlay, not a gate.
     const rowsByKey = new Map<string, PropOddsRow[]>();
@@ -389,7 +396,10 @@ export async function buildNflSnapshot(): Promise<SportSnapshot> {
           // Populates the `conditions` role (6.10). Absent for an indoor venue
           // — five of sixteen NFL stadiums on a live scoreboard are domed —
           // and the adapter renders no card rather than an empty one.
-          context: weatherByGame.has(game.gameId) ? { weather: weatherByGame.get(game.gameId) } : undefined,
+          // Populates `conditions` (6.10) and the game page's venue strip (6.15).
+          // The venue NAME is carried even where the weather is not: a domed
+          // stadium resolves no forecast and still has a name.
+          context: contextForGame(game),
         });
 
         if (!subjectsMap.has(rosterEntry.subjectId)) {

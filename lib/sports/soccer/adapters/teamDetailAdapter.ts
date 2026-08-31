@@ -21,6 +21,9 @@ import type { PickCandidate } from '@/lib/core/types';
 import type { TeamStandingRow } from '@/components/useAllTeams';
 import type { GameRow, RecentResultRow, RosterPlayer, TeamDetailData, TeamDistributionChartData, TeamMatchupData, TeamNextGame, TeamWindowedForm } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
+import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
+import { groupStats } from '@/lib/sports/shared/seasonAggregateShapes';
+import { SOCCER_EPL_SEASON_SPEC, SOCCER_MLS_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 import type { SoccerTeam, SoccerPregameLine } from '@/lib/sports/soccer/espn';
 import type { UnderstatTeamDefense } from '@/lib/sports/soccer/understat';
 import type { EspnTeamSportGame } from '@/lib/sports/multiSport/teamSportEspn';
@@ -113,10 +116,16 @@ export interface SoccerTeamDetailInput {
   data: SoccerTeamDetailApiResponse;
   scope: SoccerTeamDetailScope;
   standingsTeams: TeamStandingRow[];
+  /**
+   * League-wide season aggregates and ranks (`useSeasonRanks`), Phase 6.15.
+   * Fills `statGroups` and `unitGrades`, neither of which this sport had a
+   * league-wide ranked aggregate to build from before. `null` while loading.
+   */
+  seasonRanks: SeasonAggregateResult | null;
 }
 
 export function toTeamDetailData(input: SoccerTeamDetailInput): TeamDetailData {
-  const { league, data, scope, standingsTeams } = input;
+  const { league, data, scope, standingsTeams, seasonRanks } = input;
   const { team, roster, nextGame, nextGameLine, recentGames, teamSeasonStats, opponentSeasonStats, opponentAbbr: nextOpponentAbbr, opponentName, opponentLogoUrl, logoByAbbr } = data;
 
   const rosterPlayers: RosterPlayer[] = roster.map((p) => {
@@ -234,18 +243,33 @@ export function toTeamDetailData(input: SoccerTeamDetailInput): TeamDetailData {
     ? { history: scoped, line, wantOver, refreshKey: `${active.dimension}|${line}|${scope.opponentOnly}|${scope.venue}|${scope.lastN}|${team.teamId}`, logoFor: distributionLogoFor }
     : null;
 
-  const statGroups: { label: string; stats: OpposingStarterStat[] }[] = teamSeasonStats
-    ? [
-        {
-          label: 'Scoring',
-          stats: [
-            { key: 'goalsFor', label: 'Goals Scored/Gm', value: teamSeasonStats.goalsForPerGame, decimals: 2, rank: teamSeasonStats.offenseRank, poolSize: teamSeasonStats.poolSize },
-            { key: 'goalsAgainst', label: 'Goals Allowed/Gm', value: teamSeasonStats.goalsAgainstPerGame, decimals: 2, rank: teamSeasonStats.rank, poolSize: teamSeasonStats.poolSize },
-            { key: 'xGA', label: 'xG Allowed/Gm', value: teamSeasonStats.xGAPerGame, decimals: 2, rank: teamSeasonStats.rank, poolSize: teamSeasonStats.poolSize },
-          ],
-        },
-      ]
-    : [];
+  // ---- Season stat groups and unit grades -- Phase 6.15 ----
+  //
+  // The rollup replaces the three-row "Scoring" group: nine ranked stats
+  // across Attack, Defence and Discipline, from `player_game_history` rather
+  // than Understat, which means MLS gets them too (Understat is EPL-only, so
+  // MLS's team page carried no stat group at all).
+  //
+  // xGA IS KEPT, because the rollup has no expected-goals equivalent and
+  // nothing else in the app does either. It now carries `xgaRank`, its own
+  // ordering -- it used to render the GOALS-allowed rank under an xG label,
+  // which is wrong exactly where the two disagree.
+  const spec = league === 'mls' ? SOCCER_MLS_SEASON_SPEC : SOCCER_EPL_SEASON_SPEC;
+  const ownAggregate = seasonRanks?.byEntity[String(team.teamId)] ?? null;
+  const statGroups: { label: string; stats: OpposingStarterStat[] }[] = [
+    ...(ownAggregate ? groupStats(spec, ownAggregate.stats) : []),
+    ...(teamSeasonStats
+      ? [
+          {
+            label: 'Expected goals',
+            stats: [
+              { key: 'xGA', label: 'xG Allowed/Gm', value: teamSeasonStats.xGAPerGame, decimals: 2, rank: teamSeasonStats.xgaRank, poolSize: teamSeasonStats.poolSize },
+            ],
+          },
+        ]
+      : []),
+  ];
+  const ownUnitGrades = ownAggregate && ownAggregate.units.length > 0 ? ownAggregate.units : null;
 
   // ---- Real team-vs-opponent matchup (EPL only — MLS has no Understat source, stays null) ----
   const teamMatchup =
@@ -283,9 +307,8 @@ export function toTeamDetailData(input: SoccerTeamDetailInput): TeamDetailData {
         }
       : null,
     // Phase 6.1 — `grades` (nine hardcoded NFL unit names) became `unitGrades`.
-    // Still null here: this sport has no league-wide ranked team aggregate to
-    // grade from yet. 6.1b adds one for NBA and NHL; see this file's header.
-    unitGrades: null,
+    // Phase 6.15 fills it from the same rollup behind `statGroups` above.
+    unitGrades: ownUnitGrades,
     candidates,
     games: gameRows,
     windows,

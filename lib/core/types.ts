@@ -126,6 +126,16 @@ export interface WeatherContext {
 
 export interface PickContext {
   weather?: WeatherContext;
+  /**
+   * The stadium, when the sport's game source reports one -- carried beside
+   * `weather` so a game page can name the place as well as the forecast.
+   *
+   * SET EVEN WHEN `weather` IS ABSENT. `resolveVenueWeather` returns null for
+   * an indoor venue and for one whose roof state ESPN did not report, and five
+   * of sixteen NFL stadiums on a live scoreboard are domed -- a dome still has
+   * a name worth printing, and tying the two together would have hidden it.
+   */
+  venueName?: string;
   other?: Record<string, unknown>;
 }
 
