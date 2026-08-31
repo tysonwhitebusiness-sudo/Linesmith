@@ -23,6 +23,9 @@ import type { GameDetailData, GameMatchupData, StatComparisonData } from '@/lib/
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
 import type { UnifiedGameLine } from '@/lib/odds/types';
+import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
+import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
+import { CFB_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 
 const CFB_TEAM_COUNT = 134;
 
@@ -74,10 +77,26 @@ export interface CfbGameDetailInput {
    * threads it into every sport's adapter call, same as MLB/NFL. `null`
    * when nothing's been recovered for this game yet. */
   gameLine: UnifiedGameLine | null;
+  /**
+   * League-wide season aggregates and ranks (`useSeasonRanks`), Phase 6.15.
+   * `null` while loading, or if the rollup found no pool -- the blocks it
+   * feeds then stay null and render their honest empty state.
+   */
+  seasonRanks: SeasonAggregateResult | null;
+}
+
+/**
+ * `EntitySeasonAggregate.stats` -> the `Record<key, rank>` the Rankings block
+ * reads. Ranks are stringified because that is the shape `RankableTeamStats`
+ * declares; a missing rank stays `null` rather than becoming "0", which would
+ * render as the best rank in the league.
+ */
+function toRankMap(agg: { stats: Array<{ key: string; rank: number }> }): Record<string, string | null> {
+  return Object.fromEntries(agg.stats.map((st) => [st.key, st.rank == null ? null : String(st.rank)]));
 }
 
 export function toGameDetailData(input: CfbGameDetailInput): GameDetailData {
-  const { meta, home, away, candidates, gameLine } = input;
+  const { meta, home, away, candidates, gameLine, seasonRanks } = input;
   const game = meta.game;
   if (!game) throw new Error('toGameDetailData called without a resolved game — caller must gate on meta.game first');
 
@@ -214,18 +233,28 @@ export function toGameDetailData(input: CfbGameDetailInput): GameDetailData {
   const matchup: GameMatchupData | null =
     teamAway || teamHome ? { tabs: [{ key: 'team', label: 'Team' }], teamAway, teamHome } : null;
 
+  // ---- Season rollup (Phase 6.15) ----
+  //
+  // THE MATCHUP CARD ABOVE IS NOT REPLACED BY THIS, and that is deliberate.
+  // `teamDefenseAllowed`'s index carries an ALLOWED side per team, which is
+  // what "away offense vs home defense" needs and what this rollup has no
+  // equivalent for -- `player_game_history` records what a player did, never
+  // what his opponent gave up. The two sit side by side because they answer
+  // different questions, not because nobody collapsed them.
+  //
+  // `statComparison` IS replaced. It was three produced-yardage rows in one
+  // group; the rollup gives ten ranked stats across Offence, Defence and
+  // Turnovers, which is the block's whole point.
+  const awayAgg = away ? seasonRanks?.byEntity[String(away.team.teamId)] : null;
+  const homeAgg = home ? seasonRanks?.byEntity[String(home.team.teamId)] : null;
+  // Said out loud on the card. CFB's newest season is a stub in August, so the
+  // rollup legitimately falls back a year -- unlabelled, last season's ranks
+  // beside this season's odds read as a claim about today.
+  const seasonLabel = seasonRanks?.season ? `${seasonRanks.season} season` : undefined;
+  const statComparisonGroups = toStatComparisonGroups(CFB_SEASON_SPEC, awayAgg, homeAgg);
   const statComparison: StatComparisonData | null =
-    awayProduced.length > 0 && homeProduced.length > 0
-      ? {
-          awayAbbr: game.awayAbbr,
-          homeAbbr: game.homeAbbr,
-          ranked: [
-            {
-              label: 'Offense (per game)',
-              rows: awayProduced.map((awayStat, i) => ({ key: awayStat.key, label: awayStat.label, away: awayStat, home: homeProduced[i] })),
-            },
-          ],
-        }
+    statComparisonGroups.length > 0
+      ? { awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, ranked: statComparisonGroups, seasonLabel }
       : null;
 
   return {
@@ -236,8 +265,33 @@ export function toGameDetailData(input: CfbGameDetailInput): GameDetailData {
     records,
     statComparison,
     lastFive,
-    rankings: null,
-    unitGrades: null,
+    rankings:
+      awayAgg && homeAgg
+        ? {
+            // `againstRanks` IS THE OPPONENT'S OWN FOR-RANKS -- "the ranks you
+            // are up against" -- which is NFL's existing convention on this
+            // block. `EntitySeasonAggregate` carries no allowed split, so
+            // inventing a second meaning here would make one block mean two
+            // things across sports.
+            away: { forRanks: toRankMap(awayAgg), againstRanks: toRankMap(homeAgg) },
+            home: { forRanks: toRankMap(homeAgg), againstRanks: toRankMap(awayAgg) },
+            statKeys: awayAgg.stats.map((st) => ({ key: st.key, label: st.label, decimals: st.decimals })),
+            awayAbbr: game.awayAbbr,
+            homeAbbr: game.homeAbbr,
+            awayLogoUrl: game.awayLogoUrl,
+            homeLogoUrl: game.homeLogoUrl,
+            poolSize: seasonRanks?.poolSize ?? 0,
+            seasonLabel,
+          }
+        : null,
+    // Same `seasonRanks` rollup as the comparison above, so a team's rank in a
+    // stat row and the ranks behind its unit grade cannot disagree.
+    unitGrades: {
+      away: awayAgg && awayAgg.units.length > 0 ? awayAgg.units : null,
+      home: homeAgg && homeAgg.units.length > 0 ? homeAgg.units : null,
+      awayAbbr: game.awayAbbr,
+      homeAbbr: game.homeAbbr,
+    },
     injuries: {
       away: { abbr: game.awayAbbr, logoUrl: game.awayLogoUrl, rows: away?.injuries.map((i) => ({ playerName: i.playerName, status: i.status, position: i.position, note: i.note })) ?? [] },
       home: { abbr: game.homeAbbr, logoUrl: game.homeLogoUrl, rows: home?.injuries.map((i) => ({ playerName: i.playerName, status: i.status, position: i.position, note: i.note })) ?? [] },

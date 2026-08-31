@@ -241,6 +241,17 @@ const MLB_TEAM_COUNT = 30;
 export interface StatComparisonData {
   awayAbbr: string;
   homeAbbr: string;
+  /**
+   * Which season these ranks are FROM, e.g. `2025`. Rendered beside the
+   * heading when present.
+   *
+   * NOT COSMETIC. `computeSeasonAggregates` falls back a season when the
+   * newest one has no pool yet, which is the normal state of CFB and soccer in
+   * August -- so a page can legitimately show last season's ranks beside this
+   * season's odds. Unlabelled, that reads as a claim about today. Omitted by a
+   * sport whose ranks come from a live in-season index instead.
+   */
+  seasonLabel?: string;
   /** Grouped by the sport's own categories: MLB's Batting/Rate, NFL's Scoring/Passing/Rushing/Receiving/Defense. `away` is optional — a stat one side has no ranked value for renders one-sided rather than dropping the row. */
   ranked: Array<{ label: string; rows: Array<{ key: string; label: string; away?: OpposingStarterStat; home: OpposingStarterStat }> }>;
 }
@@ -248,6 +259,8 @@ export interface StatComparisonData {
 export interface RankingsData {
   away: RankableTeamStats;
   home: RankableTeamStats;
+  /** Which season these ranks are from -- see `StatComparisonData.seasonLabel`. */
+  seasonLabel?: string;
   statKeys: StatKeyDef[];
   awayAbbr: string;
   homeAbbr: string;

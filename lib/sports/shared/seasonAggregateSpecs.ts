@@ -156,6 +156,107 @@ export const TENNIS_ATP_SEASON_SPEC: SeasonAggregateSpec = {
 export const TENNIS_WTA_SEASON_SPEC: SeasonAggregateSpec = { ...TENNIS_ATP_SEASON_SPEC, sport: 'tennis_wta' };
 
 /**
+ * College football. `groupBy: 'team_id'`, 260 team ids on record but a pool of
+ * **138** at `minGames: 8` -- the rest are FCS opponents with a game or two in
+ * the table, which is exactly what the floor is for.
+ *
+ * ITS KEYS CONTAIN DOTS. `passing.passingYards`, not `passingYards` -- ESPN's
+ * category-qualified names, stored verbatim. That is why `SAFE_KEY` in
+ * `seasonAggregates.ts` permits a dot; see its comment.
+ *
+ * TACKLES ARE NOT RANKED HERE, DELIBERATELY. `defensive.totalTackles` is the
+ * highest-volume defensive key we store and it has no polarity: a defence on
+ * the field for eighty plays makes more tackles than one that gets off it.
+ * Same reasoning tennis's spec gives for leaving out `tiebreaks_played` --
+ * ranking under an ordering a stat does not have puts a wrong number on the
+ * page. Sacks, tackles for loss, passes defended and interceptions all have a
+ * direction, so those carry the defensive unit instead.
+ *
+ * `passing.interceptions` IS THE QUARTERBACK'S, `interceptions.interceptions`
+ * IS THE DEFENCE'S. Two different keys, opposite polarity, distinguished only
+ * by which category they sit under. Checked against real rows, not inferred.
+ */
+export const CFB_SEASON_SPEC: SeasonAggregateSpec = {
+  sport: 'cfb',
+  groupBy: 'team_id',
+  minGames: 8,
+  stats: [
+    { key: 'passYards', label: 'Pass yards/game', statKey: 'passing.passingYards', decimals: 1, perGame: true, group: 'Offence' },
+    { key: 'rushYards', label: 'Rush yards/game', statKey: 'rushing.rushingYards', decimals: 1, perGame: true, group: 'Offence' },
+    { key: 'passTd', label: 'Pass TD/game', statKey: 'passing.passingTouchdowns', decimals: 2, perGame: true, group: 'Offence' },
+    { key: 'rushTd', label: 'Rush TD/game', statKey: 'rushing.rushingTouchdowns', decimals: 2, perGame: true, group: 'Offence' },
+    { key: 'sacks', label: 'Sacks/game', statKey: 'defensive.sacks', decimals: 2, perGame: true, group: 'Defence' },
+    { key: 'tacklesForLoss', label: 'TFL/game', statKey: 'defensive.tacklesForLoss', decimals: 2, perGame: true, group: 'Defence' },
+    { key: 'passesDefended', label: 'Passes defended/game', statKey: 'defensive.passesDefended', decimals: 2, perGame: true, group: 'Defence' },
+    { key: 'defInterceptions', label: 'Interceptions/game', statKey: 'interceptions.interceptions', decimals: 2, perGame: true, group: 'Defence' },
+    { key: 'intsThrown', label: 'INT thrown/game', statKey: 'passing.interceptions', decimals: 2, perGame: true, lowerIsBetter: true, group: 'Turnovers' },
+    { key: 'fumblesLost', label: 'Fumbles lost/game', statKey: 'fumbles.fumblesLost', decimals: 2, perGame: true, lowerIsBetter: true, group: 'Turnovers' },
+  ],
+  units: [
+    { key: 'offence', label: 'Offence', short: 'OFF', statKeys: ['passYards', 'rushYards', 'passTd', 'rushTd'] },
+    { key: 'defence', label: 'Defence', short: 'DEF', statKeys: ['sacks', 'tacklesForLoss', 'passesDefended', 'defInterceptions'] },
+    { key: 'turnovers', label: 'Ball security', short: 'TO', statKeys: ['intsThrown', 'fumblesLost'] },
+  ],
+};
+
+/**
+ * Soccer, per league. EPL and MLS rank in SEPARATE POOLS for the same reason
+ * ATP and WTA do: a mid-table MLS side is not 14th in the Premier League.
+ * `player_game_history` already stores them as `soccer_epl` and `soccer_mls`,
+ * so the split costs nothing.
+ *
+ * `minGames: 10` against a 38-game EPL season and a 34-game MLS one.
+ *
+ * `goalsConceded` IS A TEAM FACT ON EVERY PLAYER ROW and carries `perGameMax`.
+ * Summing it multiplied a team's season conceded by roughly the size of its
+ * lineup -- 385 instead of 35 -- and the flag's own doc comment carries both
+ * the measurement and the check against the opposing side that proves the max
+ * is the right answer.
+ *
+ * `shotsFaced` WAS DECLARED HERE AND REMOVED. It is present on all 11,492 EPL
+ * rows and is **0.0 on every one of them**; MLS carries it on 413 of 15,699
+ * (keepers only) and still totals 6.0 per game against a real figure near 13.
+ * Declared with `lowerIsBetter`, a dead key does not read as missing -- it
+ * ranked all 20 EPL teams joint-first at 0.0, which is a wrong number on the
+ * page rather than a blank one. Measured on the rendered output, not the
+ * schema. `computeSeasonAggregates` now drops a stat with no variance across
+ * the pool, so the next dead feed degrades to a missing row instead; this one
+ * is deleted anyway rather than left to that safety net.
+ *
+ * SAVES ARE NOT RANKED HERE EITHER, for a different reason. A keeper making
+ * eight saves is either excellent or standing behind a bad defence, and
+ * nothing in these keys separates the two -- save PERCENTAGE would, but that
+ * is a ratio of two sums and this rollup ranks sums. `goalsConceded` carries
+ * the defensive unit on its own with a direction that is not in doubt. NHL's
+ * spec does rank `saves`; copying that here would spread the ambiguity rather
+ * than settle it.
+ */
+export const SOCCER_EPL_SEASON_SPEC: SeasonAggregateSpec = {
+  sport: 'soccer_epl',
+  groupBy: 'team_id',
+  minGames: 10,
+  stats: [
+    { key: 'goals', label: 'Goals/game', statKey: 'totalGoals', decimals: 2, perGame: true, group: 'Attack' },
+    { key: 'assists', label: 'Assists/game', statKey: 'goalAssists', decimals: 2, perGame: true, group: 'Attack' },
+    { key: 'shots', label: 'Shots/game', statKey: 'totalShots', decimals: 1, perGame: true, group: 'Attack' },
+    { key: 'shotsOnTarget', label: 'On target/game', statKey: 'shotsOnTarget', decimals: 1, perGame: true, group: 'Attack' },
+    { key: 'goalsConceded', label: 'Conceded/game', statKey: 'goalsConceded', decimals: 2, perGame: true, perGameMax: true, lowerIsBetter: true, group: 'Defence' },
+    { key: 'foulsCommitted', label: 'Fouls/game', statKey: 'foulsCommitted', decimals: 1, perGame: true, lowerIsBetter: true, group: 'Discipline' },
+    { key: 'yellowCards', label: 'Yellows/game', statKey: 'yellowCards', decimals: 2, perGame: true, lowerIsBetter: true, group: 'Discipline' },
+    { key: 'redCards', label: 'Reds/game', statKey: 'redCards', decimals: 3, perGame: true, lowerIsBetter: true, group: 'Discipline' },
+    { key: 'offsides', label: 'Offsides/game', statKey: 'offsides', decimals: 2, perGame: true, lowerIsBetter: true, group: 'Discipline' },
+  ],
+  units: [
+    { key: 'attack', label: 'Attack', short: 'ATK', statKeys: ['goals', 'assists', 'shots', 'shotsOnTarget'] },
+    { key: 'defence', label: 'Defence', short: 'DEF', statKeys: ['goalsConceded'] },
+    { key: 'discipline', label: 'Discipline', short: 'DIS', statKeys: ['foulsCommitted', 'yellowCards', 'redCards'] },
+  ],
+};
+
+/** MLS is structurally identical to the EPL -- same keys, its own pool. */
+export const SOCCER_MLS_SEASON_SPEC: SeasonAggregateSpec = { ...SOCCER_EPL_SEASON_SPEC, sport: 'soccer_mls' };
+
+/**
  * Keyed by the value a route or adapter passes as `sport`. Tennis is split by
  * tour because a WTA player should not be ranked inside the ATP pool; the
  * caller supplies `tennis_atp`/`tennis_wta`, matching what
@@ -168,6 +269,9 @@ export const SEASON_AGGREGATE_SPECS: Record<string, SeasonAggregateSpec> = {
   nba: NBA_SEASON_SPEC,
   tennis_atp: TENNIS_ATP_SEASON_SPEC,
   tennis_wta: TENNIS_WTA_SEASON_SPEC,
+  cfb: CFB_SEASON_SPEC,
+  soccer_epl: SOCCER_EPL_SEASON_SPEC,
+  soccer_mls: SOCCER_MLS_SEASON_SPEC,
 };
 
 export const SEASON_AGGREGATE_SPORTS = Object.keys(SEASON_AGGREGATE_SPECS);

@@ -7,6 +7,12 @@
  * SCRAPE_CONFIG comment for "nhl"), so `gameLine` here either carries
  * OddsHarvester's real data or is `null` — no merge-with-ESPN concern the
  * way CFB/NBA/soccer have, since there's nothing else to merge with.
+ *
+ * `statComparison` became real in 6.2b, and `rankings`/`unitGrades`/`matchup`
+ * in 6.15 — all four from ONE league-wide season rollup over
+ * `player_game_history`, read for-and-allowed. NHL is the sport the generic
+ * `unitGrades` type was proven against, since the old NFL-shaped `TeamGrades`
+ * could not express its units at all.
  */
 
 import type { PickCandidate } from '@/lib/core/types';
@@ -20,6 +26,7 @@ import type { UnifiedGameLine } from '@/lib/odds/types';
 import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
 import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
 import { NHL_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
+import { toProducedAllowedMatchup } from '@/lib/sports/shared/producedAllowedMatchup';
 
 function toOptionalRecord(games: ReturnType<typeof toNhlRecentResultRows>): { wins: number; losses: number } | null {
   if (games.length === 0) return null;
@@ -54,6 +61,12 @@ export interface NhlGameDetailInput {
    * null and the block renders its honest empty state, exactly as before.
    */
   seasonRanks: SeasonAggregateResult | null;
+  /**
+   * The same rollup grouped by `opponent_id` -- what each team ALLOWS.
+   * Phase 6.15, and the missing half of this sport's matchup card: the shape
+   * was always fillable, nothing had ever computed an allowed side.
+   */
+  seasonRanksAllowed: SeasonAggregateResult | null;
 }
 
 /**
@@ -67,7 +80,7 @@ function toRankMap(agg: { stats: Array<{ key: string; rank: number }> }): Record
 }
 
 export function toGameDetailData(input: NhlGameDetailInput): GameDetailData {
-  const { meta, home, away, candidates, standingsTeams, gameLine, seasonRanks } = input;
+  const { meta, home, away, candidates, standingsTeams, gameLine, seasonRanks, seasonRanksAllowed } = input;
   const game = meta.game;
   if (!game) throw new Error('toGameDetailData called without a resolved game — caller must gate on meta.game first');
 
@@ -160,17 +173,34 @@ export function toGameDetailData(input: NhlGameDetailInput): GameDetailData {
   // against the table's real distinct values, not assumed.
   const awayAgg = away ? seasonRanks?.byEntity[String(away.team.teamId)] : null;
   const homeAgg = home ? seasonRanks?.byEntity[String(home.team.teamId)] : null;
+  // Which season these ranks are FROM, said on the card. The rollup falls
+  // back a season when the newest one is still a stub, so an unlabelled block
+  // can silently show last year's ranks beside this year's odds.
+  const seasonLabel = seasonRanks?.season ? `${seasonRanks.season} season` : undefined;
   const statComparisonGroups = toStatComparisonGroups(NHL_SEASON_SPEC, awayAgg, homeAgg);
   const statComparison: StatComparisonData | null =
     statComparisonGroups.length > 0
-      ? { awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, ranked: statComparisonGroups }
+      ? { awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, ranked: statComparisonGroups, seasonLabel }
       : null;
+
+  // Team matchup -- Phase 6.15. Was `null` with the comment "no grading model
+  // or league-wide team-season-stats index"; the index has existed since 6.2b
+  // and the allowed side arrived with `toAllowedSpec`, so the reason expired
+  // before the field did.
+  const awayAllowed = away ? seasonRanksAllowed?.byEntity[String(away.team.teamId)] : null;
+  const homeAllowed = home ? seasonRanksAllowed?.byEntity[String(home.team.teamId)] : null;
+  const matchup = toProducedAllowedMatchup(
+    NHL_SEASON_SPEC,
+    'offence',
+    { abbr: game.awayAbbr, name: away?.team.name ?? game.awayAbbr, logoUrl: away?.team.logoUrl ?? undefined, produced: awayAgg, allowed: awayAllowed },
+    { abbr: game.homeAbbr, name: home?.team.name ?? game.homeAbbr, logoUrl: home?.team.logoUrl ?? undefined, produced: homeAgg, allowed: homeAllowed },
+  );
 
   return {
     gameId: game.gameId,
     gameLine,
     hero,
-    matchup: null,
+    matchup,
     records,
     statComparison,
     lastFive,
@@ -194,6 +224,7 @@ export function toGameDetailData(input: NhlGameDetailInput): GameDetailData {
             awayLogoUrl: away?.team.logoUrl ?? undefined,
             homeLogoUrl: home?.team.logoUrl ?? undefined,
             poolSize: seasonRanks?.poolSize ?? 0,
+            seasonLabel,
           }
         : null,
     // Phase 6.15 — the SAME `seasonRanks` rollup this file already uses for

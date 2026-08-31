@@ -47,9 +47,8 @@
  */
 
 import { pgAll } from '@/lib/db/pgClient';
-import type { OpposingStarterStat } from '@/components/PlayerDetail';
-import { unitGradeFromRanked, type UnitGrade } from './unitGrades';
-import type { SeasonAggregateSpec, EntitySeasonAggregate, SeasonAggregateResult } from './seasonAggregateShapes';
+import { rankPool } from './seasonAggregateShapes';
+import type { SeasonAggregateSpec, SeasonAggregateResult } from './seasonAggregateShapes';
 
 export * from './seasonAggregateShapes';
 
@@ -57,8 +56,19 @@ export * from './seasonAggregateShapes';
  * A stat key is interpolated into SQL, so it is constrained to what a JSON key
  * can safely be. Every value comes from a constant in this file today; this
  * guards the case where a future spec is built from anything less fixed.
+ *
+ * A DOT IS ALLOWED BECAUSE FOOTBALL'S KEYS CONTAIN ONE. `player_game_history`
+ * stores NFL and CFB stats under keys like `passing.passingYards` and
+ * `defensive.sacks` -- ESPN's own category-qualified names, stored verbatim.
+ * The dot is part of the key, not a path: `stats->>'passing.passingYards'`
+ * looks up that exact string, which is why it works and why nothing here needs
+ * a `#>>` path operator. Verified against real rows before widening this.
+ *
+ * Widening to `.` does not widen the injection surface -- a quote, a backslash
+ * and whitespace are all still rejected, which is what the interpolation
+ * actually needs to be safe from.
  */
-const SAFE_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const SAFE_KEY = /^[A-Za-z_][A-Za-z0-9_.]*$/;
 
 function assertSafeKeys(spec: SeasonAggregateSpec): void {
   for (const s of spec.stats) {
@@ -75,29 +85,13 @@ interface RawRow {
   [statSum: string]: unknown;
 }
 
-/**
- * Ranks 1..n, 1 = best. Entities without a value for a stat are left unranked
- * rather than sorted to the bottom — an unranked stat is dropped from the
- * output, because `OpposingStarterStat` has no "unranked" state and a
- * fabricated rank reads as a real placing.
- */
-function rankValues(
-  values: Array<{ entityId: string; value: number }>,
-  lowerIsBetter: boolean,
-): Map<string, number> {
-  const sorted = [...values].sort((a, b) => (lowerIsBetter ? a.value - b.value : b.value - a.value));
-  const out = new Map<string, number>();
-  sorted.forEach((v, i) => out.set(v.entityId, i + 1));
-  return out;
-}
-
 export async function computeSeasonAggregates(
   spec: SeasonAggregateSpec,
   season?: number,
 ): Promise<SeasonAggregateResult> {
   assertSafeKeys(spec);
 
-  const resolvedSeason =
+  const latestSeason =
     season ??
     (
       await pgAll<{ season: number }>(
@@ -106,25 +100,72 @@ export async function computeSeasonAggregates(
       )
     )[0]?.season;
 
-  if (resolvedSeason == null) {
+  if (latestSeason == null) {
     return { sport: spec.sport, season: 0, poolSize: 0, byEntity: {}, throughDate: null, computedAt: new Date().toISOString() };
   }
 
-  // One query, one scan. Every cast is ::numeric — see this file's header.
-  const sums = spec.stats
-    .map((s, i) => `COALESCE(SUM((stats->>'${s.statKey}')::numeric), 0) AS s${i}`)
-    .join(',\n         ');
+  // WALK BACK ONLY ON AN EMPTY POOL, never speculatively. A sport in mid-season
+  // (NBA, tennis) resolves on the first attempt and pays nothing extra; only a
+  // sport whose newest season is a stub pays a second scan, and those are
+  // exactly the ones that would otherwise render nothing. An explicitly
+  // requested `season` is honoured as asked -- a caller naming a year wants
+  // that year, empty or not.
+  let result = await aggregateOneSeason(spec, latestSeason);
+  if (season == null) {
+    for (let back = 1; result.poolSize === 0 && back <= SEASON_FALLBACK_ATTEMPTS; back++) {
+      result = await aggregateOneSeason(spec, latestSeason - back);
+    }
+  }
+  return result;
+}
+
+/**
+ * How many seasons back to look when the newest one has no pool yet.
+ *
+ * A SEASON THAT HAS JUST STARTED PRODUCES AN EMPTY RANKING, SILENTLY. Measured
+ * 2026-08-30: `max(season)` is 2026 for cfb, soccer_epl and soccer_mls, and
+ * that season holds 8, 10 and 15 events respectively -- so no entity clears
+ * `minGames`, the pool is zero, and the block renders empty rather than
+ * erroring. Each of those sports has a complete 2025 season right behind it.
+ *
+ * Two extra attempts covers a sport whose newest season is a stub AND whose
+ * previous one was short (a lockout, or a partial backfill). Three attempts
+ * total, then give up honestly.
+ */
+const SEASON_FALLBACK_ATTEMPTS = 2;
+
+async function aggregateOneSeason(spec: SeasonAggregateSpec, resolvedSeason: number): Promise<SeasonAggregateResult> {
+  // TWO GROUPING LEVELS, ONE SCAN. The inner level collapses a team's player
+  // rows to one row per game, so a stat carrying a TEAM fact on every player
+  // row (`perGameMax` -- see its doc comment) is taken once instead of once per
+  // man in the lineup. An ordinary summed stat is unaffected: the sum of
+  // per-game sums is the season sum, so NBA/NHL/tennis produce exactly what
+  // they produced before this shape existed.
+  //
+  // Every cast is ::numeric -- see this file's header.
+  const perGameExpr = spec.stats
+    .map((s, i) => `${s.perGameMax ? 'MAX' : 'SUM'}((stats->>'${s.statKey}')::numeric) AS g${i}`)
+    .join(',\n              ');
+  const sums = spec.stats.map((_, i) => `COALESCE(SUM(g${i}), 0) AS s${i}`).join(',\n            ');
 
   const rows = await pgAll<RawRow>(
-    `SELECT ${spec.groupBy} AS entity_id,
-            COUNT(DISTINCT event_id) AS games,
+    `WITH per_game AS (
+       SELECT ${spec.groupBy} AS entity_id,
+              event_id,
+              MAX(game_date) AS game_date,
+              ${perGameExpr}
+         FROM player_game_history
+        WHERE sport = ? AND season = ? AND ${spec.groupBy} IS NOT NULL
+              ${spec.excludeCompoundIds ? `AND ${spec.groupBy} NOT LIKE '%-%'` : ''}
+        GROUP BY ${spec.groupBy}, event_id
+     )
+     SELECT entity_id,
+            COUNT(*) AS games,
             MAX(game_date) AS through_date,
             ${sums}
-       FROM player_game_history
-      WHERE sport = ? AND season = ? AND ${spec.groupBy} IS NOT NULL
-            ${spec.excludeCompoundIds ? `AND ${spec.groupBy} NOT LIKE '%-%'` : ''}
-      GROUP BY ${spec.groupBy}
-     HAVING COUNT(DISTINCT event_id) >= ?`,
+       FROM per_game
+      GROUP BY entity_id
+     HAVING COUNT(*) >= ?`,
     [spec.sport, resolvedSeason, spec.minGames],
   );
 
@@ -133,46 +174,13 @@ export async function computeSeasonAggregates(
     games: Number(r.games),
     sums: spec.stats.map((_, i) => Number(r[`s${i}`] ?? 0)),
   }));
-  const poolSize = entities.length;
-
-  // Rank each stat across the whole pool before building any one entity's
-  // rows — a rank is a statement about the league, not about the entity.
-  const ranksByStat = spec.stats.map((s, i) => {
-    const values = entities
-      .filter((e) => (s.perGame ? e.games > 0 : true))
-      .map((e) => ({ entityId: e.entityId, value: s.perGame ? e.sums[i] / e.games : e.sums[i] }));
-    return { values: new Map(values.map((v) => [v.entityId, v.value])), ranks: rankValues(values, s.lowerIsBetter === true) };
-  });
-
-  const byEntity: Record<string, EntitySeasonAggregate> = {};
-  for (const e of entities) {
-    const stats: OpposingStarterStat[] = [];
-    for (let i = 0; i < spec.stats.length; i++) {
-      const def = spec.stats[i];
-      const value = ranksByStat[i].values.get(e.entityId);
-      const rank = ranksByStat[i].ranks.get(e.entityId);
-      if (value == null || rank == null || !Number.isFinite(value)) continue;
-      stats.push({ key: def.key, label: def.label, value, decimals: def.decimals, rank, poolSize });
-    }
-
-    const statByKey = new Map(stats.map((s) => [s.key, s]));
-    const units = spec.units
-      .map((u) =>
-        unitGradeFromRanked(
-          { key: u.key, label: u.label, ...(u.short ? { short: u.short } : {}) },
-          u.statKeys.map((k) => statByKey.get(k)).filter((s): s is OpposingStarterStat => s != null),
-        ),
-      )
-      .filter((u): u is UnitGrade => u != null);
-
-    byEntity[e.entityId] = { entityId: e.entityId, games: e.games, stats, units };
-  }
+  const byEntity = rankPool(spec, entities);
 
   const throughDate = rows.reduce<string | null>((mx, r) => {
     const d = r.through_date instanceof Date ? r.through_date.toISOString().slice(0, 10) : (r.through_date ?? null);
     return d && (mx == null || d > mx) ? d : mx;
   }, null);
 
-  return { sport: spec.sport, season: resolvedSeason, poolSize, byEntity, throughDate, computedAt: new Date().toISOString() };
+  return { sport: spec.sport, season: resolvedSeason, poolSize: entities.length, byEntity, throughDate, computedAt: new Date().toISOString() };
 }
 

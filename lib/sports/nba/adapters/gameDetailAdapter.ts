@@ -3,10 +3,16 @@
  * adapter: real hero (score, real pregame moneyline/spread/total), real
  * records + last-five, real left-rail props. Real `divisionRank` (2026-08-24,
  * from `standingsTeams`) and real `injuries` (confirmed live against ESPN's
- * NBA injuries feed). `matchup`/`statComparison`/`rankings`/`unitGrades`
- * stay `null` — no grading model or league-wide team-season-stats index for
- * NBA yet (position-group defense-allowed exists — `nba/teamDefenseAllowed.ts`
- * — but not a full team-vs-team stat comparison).
+ * NBA injuries feed).
+ *
+ * `statComparison` became real in 6.2b, and `rankings`/`unitGrades`/`matchup`
+ * in 6.15 — all four from ONE league-wide season rollup over
+ * `player_game_history`, read for-and-allowed. The old comment here said there
+ * was "no league-wide team-season-stats index for NBA"; that stopped being
+ * true when 6.2b built one, and the matchup card's missing half turned out to
+ * be the same rows grouped by `opponent_id`. `nba/teamDefenseAllowed.ts` is
+ * NOT what fills the card — see `producedAllowedMatchup.ts` for why a live,
+ * out-of-season, self-declared-unverified ESPN scrape lost to a table we own.
  */
 
 import type { PickCandidate } from '@/lib/core/types';
@@ -20,6 +26,7 @@ import type { UnifiedGameLine } from '@/lib/odds/types';
 import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
 import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
 import { NBA_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
+import { toProducedAllowedMatchup } from '@/lib/sports/shared/producedAllowedMatchup';
 
 function toOptionalRecord(games: ReturnType<typeof toNbaRecentResultRows>): { wins: number; losses: number } | null {
   if (games.length === 0) return null;
@@ -54,6 +61,12 @@ export interface NbaGameDetailInput {
    * null and the block renders its honest empty state, exactly as before.
    */
   seasonRanks: SeasonAggregateResult | null;
+  /**
+   * The same rollup grouped by `opponent_id` -- what each team ALLOWS.
+   * Phase 6.15, and the missing half of this sport's matchup card: the shape
+   * was always fillable, nothing had ever computed an allowed side.
+   */
+  seasonRanksAllowed: SeasonAggregateResult | null;
 }
 
 /**
@@ -67,7 +80,7 @@ function toRankMap(agg: { stats: Array<{ key: string; rank: number }> }): Record
 }
 
 export function toGameDetailData(input: NbaGameDetailInput): GameDetailData {
-  const { meta, home, away, candidates, standingsTeams, gameLine, seasonRanks } = input;
+  const { meta, home, away, candidates, standingsTeams, gameLine, seasonRanks, seasonRanksAllowed } = input;
   const game = meta.game;
   if (!game) throw new Error('toGameDetailData called without a resolved game — caller must gate on meta.game first');
 
@@ -164,17 +177,34 @@ export function toGameDetailData(input: NbaGameDetailInput): GameDetailData {
   // against the table's real distinct values, not assumed.
   const awayAgg = away ? seasonRanks?.byEntity[String(away.team.teamId)] : null;
   const homeAgg = home ? seasonRanks?.byEntity[String(home.team.teamId)] : null;
+  // Which season these ranks are FROM, said on the card. The rollup falls
+  // back a season when the newest one is still a stub, so an unlabelled block
+  // can silently show last year's ranks beside this year's odds.
+  const seasonLabel = seasonRanks?.season ? `${seasonRanks.season} season` : undefined;
   const statComparisonGroups = toStatComparisonGroups(NBA_SEASON_SPEC, awayAgg, homeAgg);
   const statComparison: StatComparisonData | null =
     statComparisonGroups.length > 0
-      ? { awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, ranked: statComparisonGroups }
+      ? { awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, ranked: statComparisonGroups, seasonLabel }
       : null;
+
+  // Team matchup -- Phase 6.15. Was `null` with the comment "no grading model
+  // or league-wide team-season-stats index"; the index has existed since 6.2b
+  // and the allowed side arrived with `toAllowedSpec`, so the reason expired
+  // before the field did.
+  const awayAllowed = away ? seasonRanksAllowed?.byEntity[String(away.team.teamId)] : null;
+  const homeAllowed = home ? seasonRanksAllowed?.byEntity[String(home.team.teamId)] : null;
+  const matchup = toProducedAllowedMatchup(
+    NBA_SEASON_SPEC,
+    'offence',
+    { abbr: game.awayAbbr, name: game.awayTeamName, logoUrl: game.awayLogoUrl, produced: awayAgg, allowed: awayAllowed },
+    { abbr: game.homeAbbr, name: game.homeTeamName, logoUrl: game.homeLogoUrl, produced: homeAgg, allowed: homeAllowed },
+  );
 
   return {
     gameId: game.gameId,
     gameLine,
     hero,
-    matchup: null,
+    matchup,
     records,
     statComparison,
     lastFive,
@@ -198,6 +228,7 @@ export function toGameDetailData(input: NbaGameDetailInput): GameDetailData {
             awayLogoUrl: game.awayLogoUrl,
             homeLogoUrl: game.homeLogoUrl,
             poolSize: seasonRanks?.poolSize ?? 0,
+            seasonLabel,
           }
         : null,
     // Phase 6.15 — the SAME `seasonRanks` rollup this file already uses for

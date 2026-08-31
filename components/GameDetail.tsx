@@ -1073,7 +1073,10 @@ function StatComparison({ data }: { data: StatComparisonData }) {
   return (
     <section className="lb-card p-5">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-meta font-semibold uppercase tracking-[.18em] text-ink-secondary">Team stat comparison</h2>
+        <h2 className="text-meta font-semibold uppercase tracking-[.18em] text-ink-secondary">
+          Team stat comparison
+          {data.seasonLabel ? <span className="ml-2 font-normal normal-case tracking-normal text-ink-faint">{data.seasonLabel}</span> : null}
+        </h2>
         <div className="flex items-center gap-3 text-micro uppercase tracking-wide text-ink-faint">
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm" style={{ backgroundColor: '#b6b7ba' }} />{data.awayAbbr}</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-masters" />{data.homeAbbr}</span>
@@ -1430,6 +1433,7 @@ function Rankings({ data }: { data: RankingsData }) {
         }
       >
         Rankings · of {data.poolSize}
+        {data.seasonLabel ? <span className="ml-2 font-normal normal-case tracking-normal text-ink-faint">{data.seasonLabel}</span> : null}
       </CardHeader>
       {view === 'heat' ? <RankingsHeatGrid game={game} statKeys={data.statKeys} awayAbbr={data.awayAbbr} homeAbbr={data.homeAbbr} awayLogoUrl={data.awayLogoUrl} homeLogoUrl={data.homeLogoUrl} /> : null}
       {view === 'scale' ? <RankingsScale game={game} statKeys={data.statKeys} awayAbbr={data.awayAbbr} homeAbbr={data.homeAbbr} poolSize={data.poolSize} /> : null}
@@ -1988,6 +1992,11 @@ export function GameDetail({
   // `seasonRankSport` returns undefined for a sport with no spec and the hook
   // idles without fetching.
   const seasonRanks = useSeasonRanks(seasonRankSport(sport, league));
+  // The same rollup read from the other end -- what each team ALLOWS, from the
+  // identical rows grouped by `opponent_id`. A second call rather than a wider
+  // payload: only the sports building a produced-vs-allowed matchup card read
+  // it, and it carries its own cache entry.
+  const seasonRanksAllowed = useSeasonRanks(seasonRankSport(sport, league), 'allowed');
   const nbaStandings = useAllNbaTeams(sport === 'nba');
   const nhlStandings = useAllNhlTeams(sport === 'nhl');
   const tennisGame = useTennisGameDetail(sport === 'tennis' ? (league as TennisTour | undefined) : undefined, sport === 'tennis' ? gameId : undefined);
@@ -2025,6 +2034,7 @@ export function GameDetail({
               away: soccerGame.away,
               candidates,
               gameLine: gameOddsBookLine,
+              seasonRanks: seasonRanks.data,
             })
           : null
         : sport === 'cfb'
@@ -2035,6 +2045,7 @@ export function GameDetail({
                 away: cfbGame.away,
                 candidates,
                 gameLine: gameOddsBookLine,
+                seasonRanks: seasonRanks.data,
               })
             : null
           : sport === 'nba'
@@ -2047,6 +2058,7 @@ export function GameDetail({
                   standingsTeams: nbaStandings.teams,
                   gameLine: gameOddsBookLine,
                   seasonRanks: seasonRanks.data,
+                  seasonRanksAllowed: seasonRanksAllowed.data,
                 })
               : null
             : sport === 'nhl'
@@ -2059,6 +2071,7 @@ export function GameDetail({
                     standingsTeams: nhlStandings.teams,
                     gameLine: gameOddsBookLine,
                     seasonRanks: seasonRanks.data,
+                    seasonRanksAllowed: seasonRanksAllowed.data,
                   })
                 : null
               : sport === 'tennis'

@@ -6,10 +6,23 @@
  * hero (real set scores, status, country flags used as the "team" logo
  * slot — honest for an individual sport with no crest), season record +
  * last-five + head-to-head (from stats.tennismylife.org, same real source
- * `adapter.ts`'s player-level history uses), left-rail props. `matchup`/
- * `statComparison`/`rankings`/`unitGrades`/`propsForGame` stay `null` — no
- * grading model or opponent-conditional stat source for tennis, same
- * honest gap soccer's/CFB's adapters already document. `pregameLines`
+ * `adapter.ts`'s player-level history uses), left-rail props.
+ * `statComparison` became real in 6.2b and `rankings`/`unitGrades` in 6.15,
+ * all three from the same per-player season rollup.
+ *
+ * `matchup` STAYS NULL, AND NOT FOR WANT OF DATA. Every other sport's card is
+ * this side's production against what the other side ALLOWS, and
+ * `player_game_history.opponent_id` is populated on 100% of tennis rows, so
+ * the allowed rollup builds fine here. It is TAUTOLOGICAL. A team's "allowed"
+ * aggregates over eighty different opponents and says something its own
+ * production does not; a tennis match is zero-sum between exactly the two
+ * entities on the card, so "what he allows" is the complement of his own
+ * results — his opponents' match win rate against him IS one minus his. The
+ * card would restate `statComparison` with the arithmetic reversed. Measured
+ * the data before deciding, then declined to build it.
+ *
+ * `propsForGame` stays `null` for the reason MLB's does: `LeftRail` already
+ * renders that list for every sport. `pregameLines`
  * (2026-08-26, odds-architecture rebuild) now real when recovered: tennis
  * DOES have a real game-level moneyline (who wins the match — SharpAPI's
  * tennis coverage, OddsHarvester's `match_winner` token), which is a
@@ -71,6 +84,11 @@ export interface TennisGameDetailInput {
    * Phase 6.2b. `null` while loading or if the rollup fails.
    */
   seasonRanks: SeasonAggregateResult | null;
+}
+
+/** `EntitySeasonAggregate.stats` -> the `Record<key, rank>` the Rankings block reads. A missing rank stays `null` rather than becoming "0", which would render as the best rank in the pool. */
+function toRankMap(agg: { stats: Array<{ key: string; rank: number }> }): Record<string, string | null> {
+  return Object.fromEntries(agg.stats.map((st) => [st.key, st.rank == null ? null : String(st.rank)]));
 }
 
 export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
@@ -152,10 +170,13 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
   const bareId = (subjectId: string) => subjectId.replace(/^espn:tennis:/, '');
   const p2Agg = seasonRanks?.byEntity[bareId(meta.player2.subjectId)] ?? null;
   const p1Agg = seasonRanks?.byEntity[bareId(meta.player1.subjectId)] ?? null;
+  // Which season these ranks are FROM, said on the card -- the rollup falls
+  // back a season when the newest one is still a stub.
+  const seasonLabel = seasonRanks?.season ? `${seasonRanks.season} season` : undefined;
   const tennisStatGroups = toStatComparisonGroups(tennisSpec, p2Agg, p1Agg);
   const statComparison: StatComparisonData | null =
     tennisStatGroups.length > 0
-      ? { awayAbbr: meta.player2.name, homeAbbr: meta.player1.name, ranked: tennisStatGroups }
+      ? { awayAbbr: meta.player2.name, homeAbbr: meta.player1.name, ranked: tennisStatGroups, seasonLabel }
       : null;
 
   return {
@@ -166,8 +187,35 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
     records,
     statComparison,
     lastFive,
-    rankings: null,
-    unitGrades: null,
+    // Phase 6.15 -- from the SAME aggregates the comparison above already
+    // reads, so a player's rank in a stat row and the ranks behind his unit
+    // grade cannot disagree. The pool is singles only; a doubles pairing finds
+    // no aggregate and both blocks stay null rather than ranking a pair
+    // against individuals.
+    //
+    // `againstRanks` is the OPPONENT'S OWN for-ranks -- "the ranks you are up
+    // against" -- which is the convention every other sport's game page uses
+    // on this block.
+    rankings:
+      p1Agg && p2Agg
+        ? {
+            away: { forRanks: toRankMap(p2Agg), againstRanks: toRankMap(p1Agg) },
+            home: { forRanks: toRankMap(p1Agg), againstRanks: toRankMap(p2Agg) },
+            statKeys: p1Agg.stats.map((st) => ({ key: st.key, label: st.label, decimals: st.decimals })),
+            awayAbbr: meta.player2.name,
+            homeAbbr: meta.player1.name,
+            awayLogoUrl: meta.player2.flagUrl ?? undefined,
+            homeLogoUrl: meta.player1.flagUrl ?? undefined,
+            poolSize: seasonRanks?.poolSize ?? 0,
+            seasonLabel,
+          }
+        : null,
+    unitGrades: {
+      away: p2Agg && p2Agg.units.length > 0 ? p2Agg.units : null,
+      home: p1Agg && p1Agg.units.length > 0 ? p1Agg.units : null,
+      awayAbbr: meta.player2.name,
+      homeAbbr: meta.player1.name,
+    },
     injuries: { away: { abbr: meta.player2.name, logoUrl: meta.player2.flagUrl ?? undefined, rows: [] }, home: { abbr: meta.player1.name, logoUrl: meta.player1.flagUrl ?? undefined, rows: [] }, loading: false },
     propsForGame: null,
     picksPanelGame: { id: meta.matchId, sport: 'tennis', awayAbbr: meta.player2.name, homeAbbr: meta.player1.name, homeTeamId: null, awayTeamId: null, gameModel: null },

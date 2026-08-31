@@ -29,6 +29,9 @@ import type { GameDetailData, GameMatchupData, StatComparisonData } from '@/lib/
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
 import type { UnifiedGameLine } from '@/lib/odds/types';
+import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
+import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
+import { SOCCER_EPL_SEASON_SPEC, SOCCER_MLS_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 
 function offenseRows(t: SoccerTeamDetailApiResponse | null): OpposingStarterStat[] {
   if (!t?.teamSeasonStats) return [];
@@ -62,10 +65,25 @@ export interface SoccerGameDetailInput {
   /** The real per-game bookmaker grid (odds-architecture rebuild Phase 6)
    * — see CfbGameDetailInput's identical field for the full reasoning. */
   gameLine: UnifiedGameLine | null;
+  /**
+   * League-wide season aggregates and ranks (`useSeasonRanks`), Phase 6.15.
+   * `null` while loading, or if the rollup found no pool -- the blocks it
+   * feeds then stay null and render their honest empty state.
+   *
+   * KEYED BY LEAGUE, not by "soccer". `useSeasonRanks` is called with
+   * `soccer_epl` or `soccer_mls`, so this is already the right league's pool
+   * by the time it arrives.
+   */
+  seasonRanks: SeasonAggregateResult | null;
+}
+
+/** `EntitySeasonAggregate.stats` -> the `Record<key, rank>` the Rankings block reads. A missing rank stays `null` rather than becoming "0", which would render as the best rank in the league. */
+function toRankMap(agg: { stats: Array<{ key: string; rank: number }> }): Record<string, string | null> {
+  return Object.fromEntries(agg.stats.map((st) => [st.key, st.rank == null ? null : String(st.rank)]));
 }
 
 export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
-  const { league, meta, home, away, candidates, gameLine } = input;
+  const { league, meta, home, away, candidates, gameLine, seasonRanks } = input;
   const game = meta.game;
   if (!game) throw new Error('toGameDetailData called without a resolved game — caller must gate on meta.game first');
 
@@ -198,13 +216,24 @@ export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
   const matchup: GameMatchupData | null =
     teamAway || teamHome ? { tabs: [{ key: 'team', label: 'Team' }], teamAway, teamHome } : null;
 
+  // ---- Season rollup (Phase 6.15) ----
+  //
+  // The matchup card above keeps its own source for the reason CFB's does: it
+  // needs an ALLOWED side per team, and `player_game_history` records what a
+  // player did, never what his opponent gave up.
+  //
+  // `statComparison` IS replaced. It was ONE row -- goals scored per game --
+  // against nine ranked stats across Attack, Defence and Discipline here.
+  const spec = league === 'mls' ? SOCCER_MLS_SEASON_SPEC : SOCCER_EPL_SEASON_SPEC;
+  const awayAgg = away ? seasonRanks?.byEntity[String(away.team.teamId)] : null;
+  const homeAgg = home ? seasonRanks?.byEntity[String(home.team.teamId)] : null;
+  // Said out loud on the card: the rollup falls back a season when the newest
+  // one is still a stub, which is the normal August state of both leagues.
+  const seasonLabel = seasonRanks?.season ? `${seasonRanks.season} season` : undefined;
+  const statComparisonGroups = toStatComparisonGroups(spec, awayAgg, homeAgg);
   const statComparison: StatComparisonData | null =
-    awayOffense.length > 0 && homeOffense.length > 0
-      ? {
-          awayAbbr: game.awayAbbr,
-          homeAbbr: game.homeAbbr,
-          ranked: [{ label: 'Attack (per game)', rows: [{ key: 'goalsFor', label: 'Goals Scored/Gm', away: awayOffense[0], home: homeOffense[0] }] }],
-        }
+    statComparisonGroups.length > 0
+      ? { awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, ranked: statComparisonGroups, seasonLabel }
       : null;
 
   return {
@@ -215,8 +244,28 @@ export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
     records,
     statComparison,
     lastFive,
-    rankings: null,
-    unitGrades: null,
+    rankings:
+      awayAgg && homeAgg
+        ? {
+            // `againstRanks` is the opponent's own for-ranks -- "the ranks you
+            // are up against" -- NFL's existing convention on this block.
+            away: { forRanks: toRankMap(awayAgg), againstRanks: toRankMap(homeAgg) },
+            home: { forRanks: toRankMap(homeAgg), againstRanks: toRankMap(awayAgg) },
+            statKeys: awayAgg.stats.map((st) => ({ key: st.key, label: st.label, decimals: st.decimals })),
+            awayAbbr: game.awayAbbr,
+            homeAbbr: game.homeAbbr,
+            awayLogoUrl: game.awayLogoUrl,
+            homeLogoUrl: game.homeLogoUrl,
+            poolSize: seasonRanks?.poolSize ?? 0,
+            seasonLabel,
+          }
+        : null,
+    unitGrades: {
+      away: awayAgg && awayAgg.units.length > 0 ? awayAgg.units : null,
+      home: homeAgg && homeAgg.units.length > 0 ? homeAgg.units : null,
+      awayAbbr: game.awayAbbr,
+      homeAbbr: game.homeAbbr,
+    },
     injuries: { away: { abbr: game.awayAbbr, logoUrl: game.awayLogoUrl, rows: [] }, home: { abbr: game.homeAbbr, logoUrl: game.homeLogoUrl, rows: [] }, loading: false },
     propsForGame: null,
     picksPanelGame: { id: game.gameId, sport: 'soccer', awayAbbr: game.awayAbbr, homeAbbr: game.homeAbbr, homeTeamId: null, awayTeamId: null, gameModel: null },

@@ -36,6 +36,7 @@ import { NextResponse } from 'next/server';
 import { cachedRoute } from '@/lib/cachedRoute';
 import { computeSeasonAggregates } from '@/lib/sports/shared/seasonAggregates';
 import { SEASON_AGGREGATE_SPECS, SEASON_AGGREGATE_SPORTS } from '@/lib/sports/shared/seasonAggregateSpecs';
+import { toAllowedSpec } from '@/lib/sports/shared/seasonAggregateShapes';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,11 +67,17 @@ export async function GET(request: Request) {
   }
   const season = parseSeason(rawSeason);
 
+  // `side=allowed` rolls the SAME rows up by `opponent_id` -- what this team
+  // gave up rather than what it produced. Bounded to two literal values before
+  // it reaches a cache key, per task 3.5.
+  const side = url.searchParams.get('side') === 'allowed' ? 'allowed' : 'for';
+  const effectiveSpec = side === 'allowed' ? toAllowedSpec(spec) : spec;
+
   return cachedRoute({
-    cacheKey: `season-ranks:${sport}:${season ?? 'latest'}`,
+    cacheKey: `season-ranks:${sport}:${side}:${season ?? 'latest'}`,
     ttlMs: CACHE_TTL_MS,
     routeName: 'season-ranks',
-    build: () => computeSeasonAggregates(spec, season ?? undefined),
+    build: () => computeSeasonAggregates(effectiveSpec, season ?? undefined),
     errorMessage: 'Season rank computation failed',
     request,
   });

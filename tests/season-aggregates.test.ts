@@ -45,6 +45,59 @@ const MEASURED_KEYS: Record<string, string[]> = {
   ],
   tennis_atp: ['is_major', 'games_won', 'tiebreaks_played', 'games_lost', 'sets_lost', 'sets_won', 'match_won', 'is_qualifying'],
   tennis_wta: ['is_major', 'games_won', 'tiebreaks_played', 'games_lost', 'sets_lost', 'sets_won', 'match_won', 'is_qualifying'],
+  // CFB's keys are DOTTED — ESPN's category-qualified names, stored verbatim.
+  // `passing.interceptions` (thrown by the quarterback) and
+  // `interceptions.interceptions` (caught by the defence) are different keys
+  // with opposite polarity, which is the single easiest thing to get wrong here.
+  cfb: [
+    'defensive.totalTackles', 'defensive.soloTackles', 'defensive.hurries', 'defensive.passesDefended',
+    'defensive.defensiveTouchdowns', 'defensive.tacklesForLoss', 'defensive.sacks',
+    'receiving.longReception', 'receiving.receptions', 'receiving.yardsPerReception',
+    'receiving.receivingYards', 'receiving.receivingTouchdowns',
+    'rushing.longRushing', 'rushing.rushingYards', 'rushing.rushingTouchdowns',
+    'rushing.yardsPerRushAttempt', 'rushing.rushingAttempts',
+    'passing.passingYards', 'passing.passingAttempts', 'passing.yardsPerPassAttempt',
+    'passing.completions', 'passing.passingTouchdowns', 'passing.interceptions',
+    'fumbles.fumbles', 'fumbles.fumblesRecovered', 'fumbles.fumblesLost',
+    'punting.puntYards', 'punting.grossAvgPuntYards', 'punting.puntsInside20', 'punting.touchbacks',
+    'punting.punts', 'punting.longPunt',
+    'kickReturns.longKickReturn', 'kickReturns.yardsPerKickReturn', 'kickReturns.kickReturns',
+    'kickReturns.kickReturnYards', 'kickReturns.kickReturnTouchdowns',
+    'kicking.extraPointAttempts', 'kicking.totalKickingPoints', 'kicking.extraPointsMade',
+    'kicking.longFieldGoalMade', 'kicking.fieldGoalsMade', 'kicking.fieldGoalAttempts', 'kicking.fieldGoalPct',
+    'puntReturns.longPuntReturn', 'puntReturns.puntReturnTouchdowns', 'puntReturns.puntReturnYards',
+    'puntReturns.puntReturns', 'puntReturns.yardsPerPuntReturn',
+    'interceptions.interceptionYards', 'interceptions.interceptionTouchdowns', 'interceptions.interceptions',
+  ],
+  // Both soccer leagues carry the identical sixteen keys.
+  soccer_epl: [
+    'yellowCards', 'foulsCommitted', 'foulsSuffered', 'goalAssists', 'goalsConceded', 'isStarter',
+    'totalShots', 'appearances', 'ownGoals', 'redCards', 'shotsFaced', 'shotsOnTarget', 'subIns',
+    'totalGoals', 'offsides', 'saves',
+  ],
+  soccer_mls: [
+    'yellowCards', 'foulsCommitted', 'foulsSuffered', 'goalAssists', 'goalsConceded', 'isStarter',
+    'totalShots', 'appearances', 'ownGoals', 'redCards', 'shotsFaced', 'shotsOnTarget', 'subIns',
+    'totalGoals', 'offsides', 'saves',
+  ],
+};
+
+/**
+ * PRESENT IS NOT THE SAME AS POPULATED, and `MEASURED_KEYS` above only proves
+ * presence. `shotsFaced` sits on all 11,492 EPL rows and is 0.0 on every one
+ * of them — it passed the key check, shipped, and ranked all twenty teams
+ * joint-first at 0.0 under `lowerIsBetter`.
+ *
+ * Keys measured as dead or unusable, and the specs must not rank them.
+ */
+const DEAD_KEYS: Record<string, string[]> = {
+  // 0.0 on every row, both tours, every season.
+  tennis_atp: ['is_major'],
+  tennis_wta: ['is_major'],
+  // 0.0 on all 11,492 EPL rows; present on 413 of 15,699 MLS rows and still
+  // only 6.0 per game against a real figure near 13.
+  soccer_epl: ['shotsFaced'],
+  soccer_mls: ['shotsFaced'],
 };
 
 test('every spec only sums stat keys the table actually has', () => {
@@ -56,6 +109,20 @@ test('every spec only sums stat keys the table actually has', () => {
         known.includes(s.statKey),
         `${sport}'s spec sums \`${s.statKey}\`, which is not a key player_game_history holds for that sport. ` +
           `This does NOT throw at runtime: the sum is 0 and every entity ranks equal-last.`,
+      );
+    }
+  }
+});
+
+test('no spec ranks a key measured as dead', () => {
+  for (const [sport, dead] of Object.entries(DEAD_KEYS)) {
+    const spec = SEASON_AGGREGATE_SPECS[sport];
+    assert.ok(spec, `no spec registered for ${sport}`);
+    for (const k of dead) {
+      assert.ok(
+        !spec.stats.some((s) => s.statKey === k),
+        `${sport} ranks \`${k}\`, which the table holds but never populates. ` +
+          `A dead key does not read as missing — with lowerIsBetter it ranks every entity JOINT-FIRST.`,
       );
     }
   }
