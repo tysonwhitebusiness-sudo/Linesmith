@@ -26,7 +26,25 @@ export interface SyntheticCandidatesParams {
  */
 export function useSyntheticPlayerCandidates(p: SyntheticCandidatesParams): { candidates: PickCandidate[]; loading: boolean } {
   const [candidates, setCandidates] = useState<PickCandidate[]>([]);
-  const [loading, setLoading] = useState(false);
+  /**
+   * SEEDED FROM `enabled`, NOT `false`.
+   *
+   * A `useState(false)` here means the hook reports "not loading, no
+   * candidates" on the render BEFORE its own effect has run. The Players tab
+   * reads exactly that pair to decide between a skeleton and the real card, so
+   * the first paint after selecting a player rendered `PlayerDetail` with zero
+   * candidates -- and `PlayerDetail`'s empty state says "No tracked props for
+   * this player right now -- that's real, not missing data."
+   *
+   * It was missing data. The route behind this takes 1.8-4.7s for NHL, so an
+   * out-of-season roster page showed a confident "this is real" denial for
+   * every player, several seconds at a time, while the real markets were in
+   * flight. Reported from a screenshot of the NHL tab.
+   *
+   * `useSeasonRanks` already seeds its own loading flag this way for the same
+   * reason; this hook simply did not.
+   */
+  const [loading, setLoading] = useState(Boolean(p.enabled && p.subjectId));
 
   useEffect(() => {
     if (!p.enabled || !p.subjectId) {
