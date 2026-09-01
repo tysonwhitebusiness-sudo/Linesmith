@@ -73,6 +73,39 @@ chk(p.rows[0].bad===0,'5.6 impossible prices in (-100,100)',`${p.rows[0].bad}`);
 const z=await c.query(`SELECT count(*)::int bad FROM odds_archive WHERE (market='total' AND line=0) OR (market='moneyline' AND price=0)`);
 chk(z.rows[0].bad===0,'5.6 zero placeholders promoted',`${z.rows[0].bad}`);
 
+console.log('\n5.8  the archive is a faithful projection of staging, VALUE BY VALUE');
+// THE BUG THIS EXISTS FOR, found 2026-09-01. Counting rows is not enough:
+// after the NHL SBR parser was fixed, staging held 18,203 total rows with a
+// real closing price and the archive held 18,203 total rows with NONE, because
+// promotion used ON CONFLICT DO NOTHING and every corrected row collided with
+// the row the broken parse had already written. Row counts matched perfectly.
+// The moneylines landed only because they were new keys.
+//
+// So this compares populated-VALUE counts per (sport, source, market, side),
+// not row counts. A correction that fails to carry shows up here and nowhere
+// else in the suite.
+const proj = await c.query(`
+  WITH s AS (SELECT sport,source,market,side,count(*)::int n,count(price)::int p,count(line)::int l
+             FROM odds_import_staging WHERE resolution_status='resolved' GROUP BY 1,2,3,4),
+       a AS (SELECT sport,source,market,side,count(*)::int n,count(price)::int p,count(line)::int l
+             FROM odds_archive GROUP BY 1,2,3,4)
+  SELECT s.sport,s.source,s.market,s.side,s.p sp,a.p ap,s.l sl,a.l al
+  FROM s JOIN a USING (sport,source,market,side)
+  WHERE s.p<>a.p OR s.l<>a.l`);
+chk(proj.rows.length === 0, '5.8 staged values all reached the archive',
+  proj.rows.length ? proj.rows.map(r => `${r.sport}/${r.source}/${r.market}/${r.side} price ${r.sp}->${r.ap} line ${r.sl}->${r.al}`).join('; ') : 'every (sport,source,market,side) matches');
+
+// Same idea one level up: a market that exists in staging must exist in the
+// archive at all. NHL SBR moneylines were absent from BOTH for weeks, so this
+// would not have caught the original bug -- but it catches the reverse, a
+// promotion that drops a whole market.
+const missing = await c.query(`
+  SELECT sport,source,market,side FROM odds_import_staging WHERE resolution_status='resolved'
+  GROUP BY 1,2,3,4
+  EXCEPT SELECT sport,source,market,side FROM odds_archive GROUP BY 1,2,3,4`);
+chk(missing.rows.length === 0, '5.8 no staged market missing from the archive',
+  missing.rows.length ? missing.rows.map(r => `${r.sport}/${r.source}/${r.market}/${r.side}`).join(', ') : 'none');
+
 console.log('\n5.7  database size');
 const sz=await c.query(`SELECT pg_size_pretty(pg_database_size(current_database())) s, pg_database_size(current_database())/1048576 mb`);
 const mb=Number(sz.rows[0].mb);

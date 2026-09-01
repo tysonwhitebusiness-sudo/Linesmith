@@ -259,6 +259,69 @@ def espn_long_rows(r, resolver):
     return out
 
 
+# ---------------------------------------------------------------------------
+# SBR files do NOT share a schema, and assuming they did cost 18,204 games.
+#
+# This function was written against the NBA file and then pointed at the NHL
+# one. The NBA file has `home_ml`/`away_ml`/`close_home_spread`; the NHL file
+# has `home_close_ml`/`away_close_ml`/`home_puck_line`/`home_puck_line_price`/
+# `close_total_price`. Every `.get()` on an NHL row therefore returned None,
+# the rows were dropped by the `price is None and line is None` guard below,
+# and only totals survived -- because `close_total` happens to be spelled the
+# same in both files. No error, no warning: NHL's entire 2007-2022 closing
+# moneyline history simply was not there, and `odds_archive` looked fine.
+#
+# So the column names are declared per file, not assumed. A third SBR file with
+# a third spelling adds a dict entry and nothing else.
+#
+# EVERY SEMANTIC BELOW WAS CONFIRMED AGAINST OUTCOMES, NOT AGAINST THE HEADER,
+# because on SBR pages the headers have lied before (`CloseOU` was the OPENING
+# total, with the close in `Unnamed: 14`). Measured over 18,204 NHL games:
+#
+#   home_close_ml/away_close_ml   booksum 1.0346, home favourites win .592 and
+#                                 home dogs .425 -- a +16.7pp gap, so the
+#                                 orientation is right.
+#   *_open_ml                     wider spread than the closes (min -2156 vs
+#                                 -700), which is what an opener looks like.
+#   close_total_price             IS THE OVER PRICE. Ambiguous from the mean
+#                                 alone -- NHL totals are near coin flips, so
+#                                 both readings fit. Bucketing by price is
+#                                 decisive: the over rate rises monotonically
+#                                 with the implied probability across all five
+#                                 buckets, .451 -> .541, each sitting the width
+#                                 of the vig below its own implied number. The
+#                                 under is left with no price rather than
+#                                 handed a copy of the over's.
+#   home/away_puck_line           exactly +-1.5 on all but 5 rows of 18,204;
+#                                 those 5 carry a price in the line column and
+#                                 are rejected as an impossible handicap.
+SBR_SCHEMA = {
+    "nba": {
+        "ml": ("home_ml", "away_ml", None, None),
+        "spread": ("close_home_spread", None, None, None,
+                   "open_home_spread", None, None, None),
+        "total": ("close_total", None, "open_total", None),
+    },
+    "nhl": {
+        "ml": ("home_close_ml", "away_close_ml", "home_open_ml", "away_open_ml"),
+        "spread": ("home_puck_line", "home_puck_line_price",
+                   "away_puck_line", "away_puck_line_price",
+                   None, None, None, None),
+        "total": ("close_total", "close_total_price", "open_total", "open_total_price"),
+    },
+}
+
+# A puck line is +-1.5, a basketball spread is tens of points. Nothing in either
+# sport is a 238-point handicap -- that is a price that landed in the line
+# column. Kept as unresolved with a note rather than silently dropped.
+MAX_HANDICAP = {"nhl": 3.0, "nba": 60.0}
+
+
+def impossible_handicap(sport, line):
+    limit = MAX_HANDICAP.get(sport)
+    return limit is not None and line is not None and abs(line) > limit
+
+
 def sbr_long_rows(r, sport, resolver):
     d = (r.get("date") or "")[:10]
     if not d:
@@ -274,23 +337,40 @@ def sbr_long_rows(r, sport, resolver):
         resolution_status="resolved" if (hid and aid) else "unresolved",
         resolution_note=None if (hid and aid) else (hnote or anote or "unresolved_team"),
     )
-    tot = num(r.get("close_total"))
-    otot = num(r.get("open_total"))
+    schema = SBR_SCHEMA.get(sport)
+    if not schema:
+        return []
+    col = lambda c: r.get(c) if c else None  # noqa: E731
+
+    ml_h, ml_a, ml_oh, ml_oa = schema["ml"]
+    (sp_hl, sp_hp, sp_al, sp_ap, sp_ohl, sp_ohp, sp_oal, sp_oap) = schema["spread"]
+    tot_l, tot_p, tot_ol, tot_op = schema["total"]
+    tot, otot = num(col(tot_l)), num(col(tot_ol))
+
     out = []
-    for market, side, line, price, oline in (
-        ("moneyline", "home", None, integer(r.get("home_ml")), None),
-        ("moneyline", "away", None, integer(r.get("away_ml")), None),
-        ("total", "over", tot, None, otot),
-        ("total", "under", tot, None, otot),
-        ("spread", "home", num(r.get("close_home_spread")), None, num(r.get("open_home_spread"))),
+    for market, side, line, price, oline, oprice in (
+        ("moneyline", "home", None, integer(col(ml_h)), None, integer(col(ml_oh))),
+        ("moneyline", "away", None, integer(col(ml_a)), None, integer(col(ml_oa))),
+        # The under carries the line but no price: these files publish ONE total
+        # price and it is the over's. Copying it onto the under would invent a
+        # number and make every booksum computed from the pair meaningless.
+        ("total", "over", tot, integer(col(tot_p)), otot, integer(col(tot_op))),
+        ("total", "under", tot, None, otot, None),
+        ("spread", "home", num(col(sp_hl)), integer(col(sp_hp)),
+         num(col(sp_ohl)), integer(col(sp_ohp))),
+        ("spread", "away", num(col(sp_al)), integer(col(sp_ap)),
+         num(col(sp_oal)), integer(col(sp_oap))),
     ):
         if price is None and line is None:
             continue
         row = {**base, "market": market, "side": side, "line": line,
-               "price": price, "open_line": oline, "open_price": None}
+               "price": price, "open_line": oline, "open_price": oprice}
         if impossible_price(market, price):
             row["resolution_status"] = "unresolved"
             row["resolution_note"] = "impossible_american_price"
+        elif market == "spread" and impossible_handicap(sport, line):
+            row["resolution_status"] = "unresolved"
+            row["resolution_note"] = "impossible_handicap"
         out.append(row)
     return out
 
