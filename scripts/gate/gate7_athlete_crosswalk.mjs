@@ -62,15 +62,30 @@ for (const r of meth.rows) {
 }
 
 console.log('\n7.4  a verified date is a date the athlete could actually have played');
+// WHERE THE EVIDENCE LIVES DIFFERS BY SPORT, and the first version of this
+// check did not know that. It looked only in prop_odds_archive — right for MLB
+// and NHL, whose crosswalks were built from prop rows, and wrong for tennis,
+// which has no prop rows at all and was verified against MATCH odds in
+// odds_archive. It reported 1,186 orphans on 1,186 correct rows.
+//
+// Either source now satisfies it: a prop row for that ESPN athlete id, or an
+// odds_archive row naming the athlete as one of the two sides. Tennis is keyed
+// by NAME there because tennis-data publishes no player id, which is the whole
+// reason athlete_name carries the source's own spelling.
 const span = await c.query(`
   SELECT x.sport, count(*)::int n,
          count(*) FILTER (WHERE NOT EXISTS (
            SELECT 1 FROM prop_odds_archive p
            WHERE p.sport = x.sport AND p.athlete_id = x.espn_athlete_id
-             AND p.game_date BETWEEN x.verified_game_date - 1 AND x.verified_game_date + 1))::int orphan
+             AND p.game_date BETWEEN x.verified_game_date - 1 AND x.verified_game_date + 1)
+           AND NOT EXISTS (
+           SELECT 1 FROM odds_archive o
+           WHERE o.sport = x.sport AND x.athlete_name IS NOT NULL
+             AND (o.home_team_raw = x.athlete_name OR o.away_team_raw = x.athlete_name)
+             AND o.game_date BETWEEN x.verified_game_date - 1 AND x.verified_game_date + 1))::int orphan
   FROM athlete_crosswalk x WHERE x.verified_game_date IS NOT NULL GROUP BY 1 ORDER BY 1`);
 for (const r of span.rows)
-  chk(r.orphan === 0, `7.4 ${r.sport} verified date sits on a real prop game`, `${r.orphan} orphan(s) of ${r.n}`);
+  chk(r.orphan === 0, `7.4 ${r.sport} verified date sits on a real game`, `${r.orphan} orphan(s) of ${r.n}`);
 
 console.log('\n7.5  THE DISCRIMINATION TEST -- true mapping vs a shuffled one');
 // This is the gate. Scoring the real crosswalk alone proves nothing; the
@@ -109,6 +124,48 @@ console.log(`       true ${(t * 100).toFixed(1)}%   shuffled ${(s * 100).toFixed
 chk(t >= 0.60, '7.5 mlb true mapping agrees with real games', `${(t * 100).toFixed(1)}%`);
 chk(s <= 0.15, '7.5 mlb shuffled control is rejected', `${(s * 100).toFixed(1)}%`);
 chk(t / Math.max(s, 0.001) >= 5, '7.5 mlb discrimination ratio', `${(t / Math.max(s, 0.001)).toFixed(1)}x, need 5x`);
+
+console.log('\n7.6  tennis coverage, measured where tennis data actually is');
+// tennis-data publishes no player id, so the crosswalk is keyed by the source's
+// own spelling and the unit to measure is PLAYER SLOTS in odds_archive, not
+// names. 1,186 mapped names cover ~86% of slots because tour regulars appear
+// hundreds of times and one-off qualifiers appear once; counting names would
+// report ~66% and describe nothing anyone cares about.
+const tcov = await c.query(`
+  WITH sides AS (
+    SELECT sport, home_team_raw nm FROM odds_archive WHERE source='tennis_data'
+    UNION ALL SELECT sport, away_team_raw FROM odds_archive WHERE source='tennis_data')
+  SELECT s.sport, count(*)::int slots, count(x.athlete_id)::int mapped
+  FROM sides s LEFT JOIN athlete_crosswalk x ON x.sport = s.sport AND x.athlete_name = s.nm
+  GROUP BY 1 ORDER BY 1`);
+for (const r of tcov.rows)
+  chk(r.mapped / r.slots >= 0.75, `7.6 ${r.sport} player slots reaching an athlete`,
+    `${(r.mapped / r.slots * 100).toFixed(1)}% (${r.mapped.toLocaleString()}/${r.slots.toLocaleString()})`);
+
+console.log('\n7.7  NHL props join to player history at -1 DAY, not 0');
+// ESPN stamps a UTC date and the NHL API reports the LOCAL one, so an evening
+// puck drop is the next day in ESPN's column. This cost real accuracy twice:
+// once when the crosswalk was built, and again when its trainable set was
+// first measured at offset 0 and came out 6,692 instead of 10,020 — a 50%
+// understatement of NHL's grader data, from a join that looked perfectly
+// reasonable. Asserted so the offset is discovered by a failing gate rather
+// than by someone wondering why NHL has so little data.
+const off = await c.query(`
+  WITH ev AS (SELECT DISTINCT event_ref, game_date, home_team_id, away_team_id
+              FROM odds_archive WHERE sport='nhl' AND event_ref IS NOT NULL),
+  pr AS (SELECT DISTINCT p.athlete_id espn_id, e.game_date, e.home_team_id, e.away_team_id
+         FROM prop_odds_archive p JOIN ev e ON e.event_ref = p.event_ref
+         WHERE p.sport='nhl' AND p.athlete_id IS NOT NULL),
+  x AS (SELECT espn_athlete_id, athlete_id FROM athlete_crosswalk WHERE sport='nhl')
+  SELECT o.off, count(*) FILTER (WHERE EXISTS (
+      SELECT 1 FROM player_game_history h WHERE h.sport='nhl'
+        AND h.athlete_id = x.athlete_id AND h.game_date = pr.game_date + o.off
+        AND h.team_id IN (pr.home_team_id, pr.away_team_id)))::int hits
+  FROM pr JOIN x ON x.espn_athlete_id = pr.espn_id
+  CROSS JOIN (VALUES (-2),(-1),(0),(1),(2)) o(off) GROUP BY 1 ORDER BY 2 DESC LIMIT 1`);
+if (!off.rows.length) note.push('7.7 no NHL prop/history overlap yet');
+else chk(off.rows[0].off === -1, '7.7 NHL best prop->history day offset is -1',
+  `${off.rows[0].off} (${off.rows[0].hits.toLocaleString()} hits)`);
 
 if (note.length) { console.log('\nNOTES:'); note.forEach(n => console.log(`  - ${n}`)); }
 console.log(`\n${fail.length ? `GATE 7 FAILED — ${fail.length}` : 'GATE 7 PASSED'}`);
