@@ -47,17 +47,29 @@ import httpx
 SITE = "https://site.api.espn.com/apis/site/v2/sports"
 CORE = "https://sports.core.api.espn.com/v2/sports"
 
-# (label, site path, core sport, core league, first day, last day)
+# (label, SPORT, site path, core sport, core league, first day, last day).
+# `sport` is explicit rather than derived from the site path -- the old
+# `"nba" if "basketball" in path else "nhl"` was correct while only two sports
+# existed and silently mislabels all five added below.
 BLOCKS = [
-    ("nba_2022-23", "basketball/nba", "basketball", "nba", date(2022, 10, 15), date(2023, 6, 15)),
-    ("nba_2023-24", "basketball/nba", "basketball", "nba", date(2023, 10, 20), date(2024, 6, 25)),
-    ("nba_2024-25", "basketball/nba", "basketball", "nba", date(2024, 10, 20), date(2025, 6, 25)),
-    ("nba_2025-26", "basketball/nba", "basketball", "nba", date(2025, 10, 20), date(2026, 6, 25)),
-    ("nhl_2020-21", "hockey/nhl", "hockey", "nhl", date(2021, 1, 10), date(2021, 7, 10)),
-    ("nhl_2022-23", "hockey/nhl", "hockey", "nhl", date(2022, 10, 5), date(2023, 6, 15)),
-    ("nhl_2023-24", "hockey/nhl", "hockey", "nhl", date(2023, 10, 1), date(2024, 6, 30)),
-    ("nhl_2024-25", "hockey/nhl", "hockey", "nhl", date(2024, 10, 1), date(2025, 6, 30)),
-    ("nhl_2025-26", "hockey/nhl", "hockey", "nhl", date(2025, 10, 1), date(2026, 6, 30)),
+    ("mlb_2025", "mlb", "baseball/mlb", "baseball", "mlb", date(2025, 3, 20), date(2025, 11, 5)),
+    ("mlb_2026", "mlb", "baseball/mlb", "baseball", "mlb", date(2026, 3, 20), date(2026, 9, 1)),
+    ("nfl_2025", "nfl", "football/nfl", "football", "nfl", date(2025, 9, 1), date(2026, 2, 15)),
+    ("cfb_2025", "cfb", "football/college-football", "football", "college-football", date(2025, 8, 20), date(2026, 1, 25)),
+    ("cfb_2026", "cfb", "football/college-football", "football", "college-football", date(2026, 8, 20), date(2026, 9, 1)),
+    ("epl_2025-26", "soccer_epl", "soccer/eng.1", "soccer", "eng.1", date(2025, 8, 1), date(2026, 5, 31)),
+    ("epl_2026-27", "soccer_epl", "soccer/eng.1", "soccer", "eng.1", date(2026, 8, 1), date(2026, 9, 1)),
+    ("mls_2025", "soccer_mls", "soccer/usa.1", "soccer", "usa.1", date(2025, 2, 20), date(2025, 12, 15)),
+    ("mls_2026", "soccer_mls", "soccer/usa.1", "soccer", "usa.1", date(2026, 2, 20), date(2026, 9, 1)),
+    ("nba_2022-23", "nba", "basketball/nba", "basketball", "nba", date(2022, 10, 15), date(2023, 6, 15)),
+    ("nba_2023-24", "nba", "basketball/nba", "basketball", "nba", date(2023, 10, 20), date(2024, 6, 25)),
+    ("nba_2024-25", "nba", "basketball/nba", "basketball", "nba", date(2024, 10, 20), date(2025, 6, 25)),
+    ("nba_2025-26", "nba", "basketball/nba", "basketball", "nba", date(2025, 10, 20), date(2026, 6, 25)),
+    ("nhl_2020-21", "nhl", "hockey/nhl", "hockey", "nhl", date(2021, 1, 10), date(2021, 7, 10)),
+    ("nhl_2022-23", "nhl", "hockey/nhl", "hockey", "nhl", date(2022, 10, 5), date(2023, 6, 15)),
+    ("nhl_2023-24", "nhl", "hockey/nhl", "hockey", "nhl", date(2023, 10, 1), date(2024, 6, 30)),
+    ("nhl_2024-25", "nhl", "hockey/nhl", "hockey", "nhl", date(2024, 10, 1), date(2025, 6, 30)),
+    ("nhl_2025-26", "nhl", "hockey/nhl", "hockey", "nhl", date(2025, 10, 1), date(2026, 6, 30)),
 ]
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; Linesmith/1.0)"}
@@ -72,6 +84,7 @@ FIELDS = [
     "close_total", "close_over_odds", "close_under_odds",
     "open_home_ml", "open_away_ml", "close_home_ml", "close_away_ml",
     "open_home_spread", "close_home_spread",
+    "draw_ml", "open_draw_ml",
     "ml_booksum", "ml_flag", "raw_json",
 ]
 
@@ -87,6 +100,21 @@ def _num(v):
         return float(v)
     except (TypeError, ValueError):
         return None
+
+
+def _nz(v):
+    """Like _num, but treats 0 as MISSING for fields where 0 is impossible.
+
+    MEASURED 2026-08-31: ESPN returns `close.total.value == 0` on all 4,046 MLB
+    rows that carry a close block, and `close.moneyLine == 0` on 1,233. A total
+    of 0 and a moneyline of 0 are both impossible, so these are placeholders --
+    the same defect class as the site API's constant 5.5 NHL total. Coalescing
+    them as real values dragged the MLB total mean to 3.71 against a true 8.47.
+
+    NOT used for spreads: a spread of 0 is a legitimate pick'em.
+    """
+    n = _num(v)
+    return None if n == 0 else n
 
 
 def _dig(obj, *path):
@@ -105,7 +133,7 @@ def _implied(american):
     return 100.0 / (american + 100.0) if american > 0 else (-american) / ((-american) + 100.0)
 
 
-def _ml_flag(home_ml, away_ml):
+def _ml_flag(home_ml, away_ml, draw_ml=None):
     """Booksum sanity, computed per row rather than assumed per sport.
 
     This is why the site-API version had to be abandoned: its NHL moneyline
@@ -114,9 +142,17 @@ def _ml_flag(home_ml, away_ml):
     """
     if home_ml is None or away_ml is None:
         return None, "missing"
-    if home_ml == away_ml:
+    if home_ml == away_ml and draw_ml is None:
         return None, "identical_prices"
     bs = (_implied(home_ml) or 0) + (_implied(away_ml) or 0)
+    if draw_ml is not None:
+        # SOCCER IS THREE-WAY. Verified 2026-08-31 on a real EPL row:
+        # home -210 / away +550 / draw +370 sums to 1.0440. Without the draw
+        # leg it sums to 0.831 and would be flagged as a broken two-way market
+        # -- the exact false positive the NHL site-API finding taught us to
+        # look for, in reverse.
+        bs += _implied(draw_ml) or 0
+        return round(bs, 4), ("three_way" if 1.0 < bs <= 1.25 else "three_way_odd")
     if bs < 1.0:
         return round(bs, 4), "sub_one_not_two_way"
     if bs > 1.20:
@@ -165,9 +201,17 @@ def rows_from_odds(block, sport, meta, items):
     for p in items or []:
         hto = p.get("homeTeamOdds") or {}
         ato = p.get("awayTeamOdds") or {}
-        close_h = _num(_dig(hto, "close", "moneyLine", "american")) or _num(hto.get("moneyLine"))
-        close_a = _num(_dig(ato, "close", "moneyLine", "american")) or _num(ato.get("moneyLine"))
-        bs, flag = _ml_flag(close_h, close_a)
+        # SKIP NON-GAME-LINE ITEMS. Soccer returns a second item shape (seen
+        # from Bet 365) carrying decimal outright odds under
+        # `homeTeamOdds.odds.value` with no `moneyLine`, no `overUnder` and no
+        # `spread`. Parsing it would write a row of nulls with a real provider
+        # name attached, which reads as coverage that is not there.
+        if hto.get("moneyLine") is None and p.get("overUnder") is None and p.get("spread") is None:
+            continue
+        draw_ml = _nz(_dig(p, "drawOdds", "moneyLine"))
+        close_h = _nz(_dig(hto, "close", "moneyLine", "american")) or _nz(hto.get("moneyLine"))
+        close_a = _nz(_dig(ato, "close", "moneyLine", "american")) or _nz(ato.get("moneyLine"))
+        bs, flag = _ml_flag(close_h, close_a, draw_ml)
         row = dict(meta)
         row.update({
             "block": block,
@@ -175,21 +219,23 @@ def rows_from_odds(block, sport, meta, items):
             "provider": _dig(p, "provider", "name"),
             "details": p.get("details"),
             "cur_spread": _num(p.get("spread")),
-            "cur_total": _num(p.get("overUnder")),
-            "cur_home_ml": _num(hto.get("moneyLine")),
-            "cur_away_ml": _num(ato.get("moneyLine")),
-            "open_total": _num(_dig(p, "open", "total", "value")),
+            "cur_total": _nz(p.get("overUnder")),
+            "cur_home_ml": _nz(hto.get("moneyLine")),
+            "cur_away_ml": _nz(ato.get("moneyLine")),
+            "open_total": _nz(_dig(p, "open", "total", "value")),
             "open_over_odds": _num(_dig(p, "open", "over", "american")),
             "open_under_odds": _num(_dig(p, "open", "under", "american")),
-            "close_total": _num(_dig(p, "close", "total", "value")),
+            "close_total": _nz(_dig(p, "close", "total", "value")),
             "close_over_odds": _num(_dig(p, "close", "over", "american")),
             "close_under_odds": _num(_dig(p, "close", "under", "american")),
-            "open_home_ml": _num(_dig(hto, "open", "moneyLine", "american")),
-            "open_away_ml": _num(_dig(ato, "open", "moneyLine", "american")),
+            "open_home_ml": _nz(_dig(hto, "open", "moneyLine", "american")),
+            "open_away_ml": _nz(_dig(ato, "open", "moneyLine", "american")),
             "close_home_ml": close_h,
             "close_away_ml": close_a,
             "open_home_spread": _num(_dig(hto, "open", "pointSpread", "american")),
             "close_home_spread": _num(_dig(hto, "close", "pointSpread", "american")),
+            "draw_ml": draw_ml,
+            "open_draw_ml": _num(_dig(p, "drawOdds", "open", "moneyLine", "american")),
             "ml_booksum": bs,
             "ml_flag": flag,
             "raw_json": json.dumps(p, separators=(",", ":")),
@@ -198,8 +244,7 @@ def rows_from_odds(block, sport, meta, items):
     return out
 
 
-async def run_block(client, block, site_path, sp, lg, first, last, concurrency, writer, counters):
-    sport = "nba" if "basketball" in site_path else "nhl"
+async def run_block(client, block, sport, site_path, sp, lg, first, last, concurrency, writer, counters):
     days = [first + timedelta(days=i) for i in range((last - first).days + 1)]
     sem = asyncio.Semaphore(concurrency)
 
@@ -256,9 +301,9 @@ async def main():
         writer.writeheader()
         limits = httpx.Limits(max_connections=args.concurrency + 2, max_keepalive_connections=args.concurrency)
         async with httpx.AsyncClient(limits=limits, follow_redirects=True) as client:
-            for block, site_path, sp, lg, first, last in blocks:
+            for block, sport, site_path, sp, lg, first, last in blocks:
                 print(f"[{block}] {first} -> {last}", flush=True)
-                await run_block(client, block, site_path, sp, lg, first, last, args.concurrency, writer, counters)
+                await run_block(client, block, sport, site_path, sp, lg, first, last, args.concurrency, writer, counters)
 
     print(f"\nwrote {sum(c['rows'] for c in counters)} odds rows for "
           f"{sum(c['with_odds'] for c in counters)} games -> {out_path}", flush=True)
