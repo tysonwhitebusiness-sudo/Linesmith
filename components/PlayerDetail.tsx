@@ -53,6 +53,7 @@ import { toPlayerDetailData as toCfbPlayerDetailData } from '@/lib/sports/cfb/ad
 import { toPlayerDetailData as toNbaPlayerDetailData } from '@/lib/sports/nba/adapters/playerDetailAdapter';
 import { toPlayerDetailData as toNhlPlayerDetailData } from '@/lib/sports/nhl/adapters/playerDetailAdapter';
 import { toPlayerDetailData as toTennisPlayerDetailData } from '@/lib/sports/tennis/adapters/playerDetailAdapter';
+import { useReadyGate } from './useReadyGate';
 
 /**
  * A React key that is unique per candidate ROW, not per market.
@@ -1158,18 +1159,49 @@ export function PlayerDetail({
   const calibrationFetched = useMarketCalibration(!sharedCalibration, active?.sport ?? 'mlb');
   const calibration = sharedCalibration ?? calibrationFetched;
 
-  // Combined readiness for `onReadyChange` — deliberately only the hooks
-  // that actually gate a visible `lb-skel` shimmer today (playerLive feeds
-  // the live-stats card's skeleton at `data.liveGame.loading`;
-  // opponentTeamStatcast feeds the opposing-starter stat tiles the same
-  // way). usePropOdds/useMarketCalibration are excluded on purpose: neither
-  // has a skeleton anywhere — PropOddsBoard and the trust-tier badge both
-  // render straight through an empty/neutral default while loading, so
-  // there's no "pop-in" for this prop to fix — and `/api/props/calibration`
-  // was measured taking 60+ seconds on a cold cache in this codebase, so
-  // blocking the whole page on it would make load times far worse for a
-  // display element nobody was complaining about.
-  const internalReady = !playerLive.loading && !opponentTeamStatcast.loading;
+  // Combined readiness for `onReadyChange` — every hook on this page that
+  // OWNS A VISIBLE CARD, not just the two that happen to drive an `lb-skel`
+  // shimmer.
+  //
+  // MEASURED, 2026-08-31: the previous gate was `!playerLive.loading &&
+  // !opponentTeamStatcast.loading`. Both are MLB-only — `useTeamStatcast` is
+  // called with an id solely for an MLB pitcher subject — so on a warm
+  // waterfall the loader released at 4.65s against a page that finished at
+  // 6.47s, and PITCH MIX, STRIKE ZONE, PLATOON SPLIT, Line movement and the
+  // 11-row All-books card all painted in after it. For a subject with no
+  // live game and no opponent Statcast, BOTH gating hooks idle, the gate was
+  // `true` from the start, and the loader covered none of a 6.3s load at all.
+  //
+  // Every hook below idles safely: each sets `loading = false` and returns
+  // when its id argument is undefined, so a sport that never fires one is
+  // never blocked by it. That is what makes listing all of them correct
+  // rather than merely thorough — see each hook's own early return.
+  //
+  // `calibration` STAYS EXCLUDED, and this is the one real exception:
+  // `/api/props/calibration` was measured taking 60+ seconds on a cold cache
+  // in this codebase, and it drives a badge, not a card. Blocking the page on
+  // it would trade a small pop-in for a minute of spinner. It renders through
+  // a neutral default instead.
+  const detailPending =
+    playerLive.loading ||
+    opponentTeamStatcast.loading ||
+    pitchProfile.loading ||
+    opposingPitchProfile.loading ||
+    nhlShotProfile.loading ||
+    nbaShotProfile.loading ||
+    nflTargetMap.loading ||
+    golfShotProfile.loading ||
+    lineHistory.loading ||
+    cfbTeamDefense.loading ||
+    nbaTeamDefense.loading ||
+    nhlTeamDefense.loading ||
+    propOdds.loading;
+
+  // The latch, the first-frame guard, the timeout and the anti-strobe floor
+  // all live in the shared gate — see `useReadyGate` for why each is needed.
+  const internalReady = useReadyGate(detailPending, {
+    resetKey: `${active?.sport ?? 'none'}:${active?.subjectId ?? 'none'}:${active?.dimension ?? 'none'}`,
+  });
   useEffect(() => {
     onReadyChange?.(internalReady);
   }, [internalReady, onReadyChange]);
