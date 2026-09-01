@@ -112,13 +112,35 @@ for (const sport of ['nba', 'nhl']) {
   else note.push(`4.5 ${sport} favourite: only ${f.rows[0].n} overlaps`);
 }
 
-console.log('\n4.8  distinct resolved teams per sport equals league size');
+console.log('\n4.8  league size, measured PER YEAR not across all history');
+// This asserted distinct-teams-EVER against a league's per-season size. That
+// was fine while every sport had one season loaded and became wrong the moment
+// they had more: 11 seasons of EPL contain 35 clubs because England promotes
+// and relegates three a year, and MLS has 32 because it expanded. Neither is an
+// error — and failing on them would have taught the next person to widen the
+// tolerance until the check meant nothing.
+//
+// Per calendar year is both correct and TIGHTER. A bogus team — an All-Star
+// side, a friendly opponent, a "TBD" placeholder, a mis-resolved name — shows
+// up as one year exceeding the league's real size, which distinct-teams-ever
+// would bury under a decade of legitimate turnover.
+//
+// Measured 2026-09-01: MLB 30, NFL 31-32, NHL 29-32 (expansion), NBA 29-31,
+// EPL 20-23 (a calendar year straddles two seasons), MLS 19-31 (expansion).
+//
+// Asserted on the MAXIMUM only. The minimum is legitimately low for a league
+// that grew — MLS fielded 19 clubs in 2012 — so a floor would fail on real
+// history.
 const EXPECT = { nba: 30, nhl: 32, nfl: 32, soccer_epl: 20, soccer_mls: 30, mlb: 30 };
-for (const r of (await c.query(`SELECT sport, count(DISTINCT home_team_id)::int n FROM odds_import_staging
-  WHERE resolution_status='resolved' GROUP BY 1 ORDER BY 1`)).rows) {
+const SEASON_STRADDLE = 3;
+for (const r of (await c.query(`SELECT sport, max(t)::int mx, min(t)::int mn, count(*)::int yrs FROM (
+    SELECT sport, extract(year from game_date)::int y, count(DISTINCT home_team_id) t
+    FROM odds_import_staging WHERE resolution_status='resolved' AND home_team_id IS NOT NULL
+    GROUP BY 1,2 HAVING count(*) > 500) x GROUP BY 1 ORDER BY 1`)).rows) {
   const e = EXPECT[r.sport];
-  if (!e) { note.push(`4.8 ${r.sport}: ${r.n} teams (no fixed league size)`); continue; }
-  chk(Math.abs(r.n - e) <= 3, `4.8 ${r.sport} teams (expect ~${e})`, `${r.n}`);
+  if (!e) { note.push(`4.8 ${r.sport}: ${r.mn}-${r.mx} teams/year over ${r.yrs} years (no fixed league size)`); continue; }
+  chk(r.mx <= e + SEASON_STRADDLE, `4.8 ${r.sport} teams in any one year (<=${e + SEASON_STRADDLE})`,
+    `${r.mn}-${r.mx} across ${r.yrs} years`);
 }
 
 console.log('\n4.6  CROSS-SOURCE SCORES: do ESPN and SBR report the same result?');
