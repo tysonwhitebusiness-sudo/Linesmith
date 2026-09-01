@@ -1,8 +1,9 @@
 # CURRENT — pick up here
 
-**The overnight sourcing + import run is DONE except for props, which is still
-writing.** `odds_archive` now holds **635,191 rows across all seven leagues**,
-`injury_report` is accruing daily, and **Gates 1, 3, 4, 5 and 6 all pass**.
+**The overnight sourcing + import run is COMPLETE.** `odds_archive` holds
+**635,191 game-line rows** and `prop_odds_archive` **1,805,340 prop rows**,
+both across all seven leagues; `injury_report` is accruing daily. **Every gate
+passes: 1, 2, 2.7, 3, 4, 5 and 6.**
 
 Read `docs/overnight-sourcing-gameplan.md` for the plan this executed, and
 `docs/phase6-completion-plan.md` for the page work that preceded it. Trust
@@ -13,7 +14,7 @@ Read `docs/overnight-sourcing-gameplan.md` for the plan this executed, and
 | Phase | Result |
 |---|---|
 | 1 · Game lines | **11,577 rows / 7,183 games** added for MLB, NFL, CFB, EPL, MLS. Total 102,632 rows, 18 blocks, 7 sports. **GATE 1 PASSED** |
-| 2 · Props | **STILL RUNNING** — 2.37M rows so far, see §4 |
+| 2 · Props | **3,681,061 scraped, 1,805,340 loaded**, 550,669 two-sided. **GATES 2 + 2.7 PASSED** |
 | 3 · Schema | 5 new tables + the Elo id fix. **GATE 3 PASSED** |
 | 4 · Import | **635,191 rows promoted** into `odds_archive`. **GATES 4 + 5 PASSED** |
 | 5 · Injuries | `injurySnapshotJob` live, 1,265 rows first capture. **GATE 6 PASSED** |
@@ -76,9 +77,9 @@ conclusions were caught that way in two days:
 
 ## 3. NEXT ACTIONS, in order
 
-1. **Finish props** (§4), then run `python scripts/gate/gate2_props.py` and load
-   to `prop_odds_archive`. The loader for props is **not written yet** — only
-   the scrape and the gate are.
+1. **Build the MLB + NHL athlete crosswalk.** 1.3M loaded prop rows cannot
+   reach a player without it (§4). The team-id equivalent is already solved in
+   `import_odds_staging.py` — same shape, athlete instead of team.
 2. **Re-run Gate 1.9.** It matched 0 rows and is still inert: SBR writes
    `LALakers`, ESPN writes `Los Angeles Lakers`. Entity resolution now exists in
    `import_odds_staging.py`, so 1.9 can finally do the cross-source check
@@ -94,21 +95,38 @@ conclusions were caught that way in two days:
 6. **The two Phase 6 gate violations** — `TeamDetail`'s `teamHref` and
    `GameDetail`'s `renderLiveDetail`, both `sport === 'x'` in a render path.
 
-## 4. Props: in flight, and bigger than estimated
+## 4. Props: loaded, with one real gap
 
-Running via `python-odds-service/espn_props_backfill.py`, output to
-`C:\Users\occy3\Downloads\espn_props\espn_props_all.csv`.
+**3,681,061 rows scraped → 1,805,340 loaded** into `prop_odds_archive`.
+Database **3,533 → 4,045 MB**, comfortably inside the 8 GB ceiling.
 
-**At last check: 2.37M rows, 312+ MB, still inside the MLB blocks.** The
-estimate was 1.85M rows for the whole run; EPL alone produced 925 props per game
-across 20/20 games, so the real total is likely **5–8M rows** and several more
-hours.
+```
+mlb        1,244,476  athletes 1172  types 36  two-sided 443,990
+nba          210,489  athletes  355  types 41  two-sided  36,008
+nfl          156,884  athletes 1030  types 70  two-sided  21,913
+nhl           68,880  athletes  885  types 20  two-sided  48,758
+soccer_epl    63,839  athletes  528  types 66  two-sided       0
+cfb           45,000  athletes 1253  types 12  two-sided       0
+soccer_mls    15,772  athletes   60  types 61  two-sided       0
+```
 
-**Watch the database budget.** Props carry no `raw_json` by operator decision
-(that alone would have added 1.5–2.5 GB). Even so, 6M rows is roughly 1–1.5 GB
-against a 3,533 MB database and an 8 GB ceiling. **Check `pg_database_size`
-before promoting props**, and consider loading only the sports with a model in
-prospect if it is tight.
+**Both sides were there all along, and I read it wrong first.** The CSV shows
+697,032 over-only rows, 563,009 under-only and ZERO with both, which I reported
+as "ESPN publishes one side per prop". It publishes one side per **item** — the
+two items share `(event, athlete, type, line)`. Merging on that key gives
+**550,669 two-sided props** with booksums of 1.066–1.079. The unique index found
+this, not inspection.
+
+**819,262 rows (22.3%) were dropped** because they carry neither a line nor a
+price. Verified at source: every `current` shape across six pages of a real MLB
+game is either `{target}` or `{}`.
+
+**THE REAL GAP: MLB and NHL athlete ids resolve at 0.0%.** Same id-system split
+already found for teams — `player_game_history` carries StatsAPI and NHL-API
+athlete ids while ESPN carries its own. NBA 100%, CFB 99.6%, NFL 99.0%,
+EPL 88.4%, MLS 86.7%. **That leaves 1.3M MLB and NHL prop rows unable to join to
+a player until an athlete crosswalk exists** — and MLB is the largest block, so
+this is the highest-value next fix.
 
 ## 5. Blocked, and why — do not re-attempt without new data
 
@@ -196,7 +214,7 @@ probability, simulation density and "why the model likes it" beyond MLB.
 
 ## 9. Known not done
 
-1. **Props not loaded** — scrape running, loader not written.
+1. **MLB + NHL props cannot join to players** — 1.3M rows, athlete crosswalk missing.
 2. **Tennis not loaded** — de-randomisation required first.
 3. **`game_result` empty** — Gate 4.6 cannot run until it is populated.
 4. **Gate 1.9 inert** — re-run now that entities resolve.
