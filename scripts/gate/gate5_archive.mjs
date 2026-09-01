@@ -14,8 +14,14 @@ console.log('\nGATE 5 -- live odds_archive\n');
 // reproducible: the next `--truncate` re-import put both rows straight back and
 // this check failed on a pipeline that had behaved correctly.
 const DELETED_CORRUPT = 0;
+// SCOPED TO THE SOURCES THAT ACTUALLY COME THROUGH STAGING. Tennis is loaded
+// straight into odds_archive by import_tennis.py, because a tennis match is a
+// contest between two PEOPLE and odds_import_staging is shaped around a pair
+// of teams. Counting its rows against the staging total would fail this check
+// for a load that is entirely correct. gate8_tennis.mjs covers that source.
+const STAGED_SOURCES = `('espn_core','sbr')`;
 const staged=await c.query(`SELECT count(*)::int n FROM odds_import_staging WHERE resolution_status='resolved'`);
-const live=await c.query(`SELECT count(*)::int n FROM odds_archive`);
+const live=await c.query(`SELECT count(*)::int n FROM odds_archive WHERE source IN ${STAGED_SOURCES}`);
 chk(live.rows[0].n===staged.rows[0].n-DELETED_CORRUPT,'5.1 promoted count equals staged-resolved',
   `${live.rows[0].n.toLocaleString()} vs ${(staged.rows[0].n-DELETED_CORRUPT).toLocaleString()}`);
 
@@ -24,7 +30,8 @@ for(const r of (await c.query(`SELECT sport,count(*)::int n,min(game_date)::text
   count(DISTINCT source)::int src FROM odds_archive GROUP BY 1 ORDER BY 1`)).rows)
   chk(r.n>1000 && r.lo>='2007-01-01' && r.hi<='2026-12-31', `5.2 ${r.sport}`, `${r.n.toLocaleString()} rows, ${r.lo} -> ${r.hi}, ${r.src} source(s)`);
 const sports=(await c.query(`SELECT DISTINCT sport FROM odds_archive`)).rows.map(r=>r.sport);
-chk(sports.length===7,'5.2 all 7 leagues present',sports.sort().join(' '));
+// Nine: the seven team leagues plus tennis_atp and tennis_wta, added 2026-09-01.
+chk(sports.length===9,'5.2 all 9 league keys present',sports.sort().join(' '));
 
 // 5.3 ASSERTS FLAG HONESTY, NOT ABSENCE. The first version demanded that no
 // `sub_one_not_two_way` row exist, which would have meant DELETING 95,390 NHL
@@ -34,9 +41,16 @@ chk(sports.length===7,'5.2 all 7 leagues present',sports.sort().join(' '));
 // booksum falls below 1.0 carries a flag saying so, and that every two-way
 // sport still has a large body of genuinely two-way rows to read.
 console.log('\n5.3  flag honesty, and enough clean two-way rows');
+// `best_of_market` joined the honest-flag list with the tennis load. It is
+// not a bookmaker: it is the BEST price across books on each side, so its two
+// implied probabilities sum below 1 on about 36% of tennis matches (41,494
+// rows, mean booksum 1.0029). That is a cross-book arbitrage, not a broken
+// two-way close, and calling it `sub_one_not_two_way` would have been a lie
+// told to make a gate pass. A real book below 1.0 still gets the old flag --
+// 68 rows, all misplaced decimal points in the source.
 const mis=await c.query(`SELECT count(*)::int n FROM odds_archive
   WHERE booksum IS NOT NULL AND booksum<1.0
-    AND ml_flag NOT IN ('sub_one_not_two_way','three_way_odd')`);
+    AND ml_flag NOT IN ('sub_one_not_two_way','three_way_odd','best_of_market')`);
 chk(mis.rows[0].n===0,'5.3 sub-one rows all carry an honest flag',`${mis.rows[0].n} mislabelled`);
 for(const r of (await c.query(`SELECT sport,count(*) FILTER (WHERE ml_flag='two_way')::int two,count(*)::int n
   FROM odds_archive WHERE market='moneyline' AND sport NOT LIKE 'soccer%' GROUP BY 1 ORDER BY 1`)).rows)

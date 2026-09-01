@@ -183,7 +183,7 @@ for (const r of (await c.query(`SELECT sport,avg(home_score+away_score)::float t
   chk(r.t >= b[0] && r.t <= b[1], `4.6b ${r.sport} mean combined score`,
     `${Number(r.t).toFixed(2)} (expect ${b[0]}-${b[1]}, n=${r.n.toLocaleString()})`);
 }
-note.push('4.7 tennis orientation: tennis is a PLAYER entity, not a team pair, so it is not loaded by this team-shaped importer. Deferred — the Winner/Loser de-randomisation remains REQUIRED before any tennis load.');
+note.push('4.7 tennis orientation: MOVED to scripts/gate/gate8_tennis.mjs. Tennis is a PLAYER contest, not a team pair, so it never enters odds_import_staging and this gate cannot see it — import_tennis.py writes odds_archive and game_result directly. The Winner/Loser de-randomisation landed 2026-09-01 and is asserted there: p1 wins 0.501/0.506 while the cheaper side still wins 68%.');
 
 if (note.length) { console.log('\nNOTES:'); note.forEach(n => console.log(`  - ${n}`)); }
 console.log(`\n${fail.length ? `GATE 4 FAILED — ${fail.length}` : 'GATE 4 PASSED'}`);
