@@ -1721,6 +1721,20 @@ per-team and per-game data, alongside prices from many books.
 > dropped except the two items in §6.0 below, which the operator cut
 > deliberately.
 >
+> **EXPANDED 2026-08-31/09-01.** Closing out Track C raised the question the
+> phase had never asked: *are the models any good?* Measuring them said no, in a
+> way that is structural rather than incremental (`marketProbCentered` carries a
+> weight of 3.517 — the market's own price is the model's largest feature). That
+> produced **Track E — 6.25–6.29**: the audit, a historical odds archive, the
+> injury logger, the entity crosswalks, and the model rebuild itself.
+>
+> Track E is genuinely part of this phase, not a new one: Phase 6's stated goal
+> is "ship what the audit identified as the actual asset — rich per-player,
+> per-team and per-game data, **alongside prices from many books**." Until
+> 2026-08-31 the app had 19 days of prices. It now has 635,191 game-line rows
+> back to 2007 and 1,805,340 prop rows. The full audit is
+> `docs/model-rebuild-plan.md`.
+>
 > The three boards are the specification for the page work and are committed:
 > `docs/design/player-detail-per-sport.html`, `team-detail-per-sport.html`,
 > `game-detail-per-sport.html` (rebuild any with
@@ -2111,6 +2125,108 @@ remain **conditional on 5.2's decision**.
 
 ---
 
+## Track E — The model layer and the odds archive. Added 2026-08-31.
+
+The three pages were finished before anyone asked whether the numbers on them
+were right. They were not. Full detail in `docs/model-rebuild-plan.md`; this
+track is the work that follows from it.
+
+### 6.25 · The model audit — **DONE 2026-08-31**
+
+Measured every model, rating and grade against what it predicted and what
+happened. The findings that matter:
+
+- The **MLB game model loses to the market** on real games: Brier **0.2315**
+  against the market's **0.2090** on 153 graded picks. Positive-CLV rate
+  **50.0%** — a coin flip.
+- **The claimed edge has no predictive value.** Bucketing 5,850 graded picks by
+  claimed edge, the **+7% bucket (n=645) finished 2.3pp *below*** the market's
+  implied probability. That number is the product's headline.
+- **The cause is structural.** `marketProbCentered` weight **3.517**, with
+  `eloProb` at −0.827 and `rawLog5` at −0.595. A model anchored on the closing
+  price cannot systematically beat it, and the feature cannot be removed without
+  invalidating every other coefficient, the Platt layer above it and the edge
+  computation below.
+- `model_weights` (21), `model_calibration` (7), `walkforward_results` (21) are
+  **100% MLB**; `model_artifacts` has **zero rows**. Seven sports of eight have
+  never had a coefficient fitted.
+- Seven ML families walk-forward tested; the **hand-built `formula` won** at
+  0.6744 log loss against a 0.6931 coin flip.
+- Soccer props predict **0.583 for assists where 0.064 happens**. Golf's stored
+  Brier is **0 on 147 of 149 rows**.
+- **Most model output was already switched off in the UI** by Phase 1.3 —
+  `EdgeBadge` returns `null`, confidence is hardcoded `null`. A previous phase
+  reached the same diagnosis and fixed the display instead of the model. This is
+  also why a rebuild breaks almost nothing visible.
+
+### 6.26 · Historical odds archive — **DONE 2026-09-01**
+
+Phase 6's goal names "prices from many books"; the app had **19 days** of them.
+
+- **635,191 game-line rows** in `odds_archive` — seven leagues, two sources,
+  2007-09-29 → 2026-09-02, up to 19 books per game.
+- **1,805,340 prop rows** in `prop_odds_archive`, 550,669 two-sided. This is the
+  **first prop-line data NFL, CFB, NBA and NHL have ever had**.
+- Sport-keyed, not per-sport tables — the operator asked; per-sport would invert
+  the convention `player_game_history` already proves at 2.76M rows and nine
+  sport keys.
+- Gates 1, 2, 2.7, 3, 4, 5, 6 all pass. See
+  `docs/overnight-sourcing-gameplan.md`.
+
+**This closes 6.11** (NBA/NHL game book lines) and supplies the MLS totals that
+6.11's own note said were missing.
+
+### 6.27 · The injury logger — **DONE 2026-09-01**
+
+`injury_report` + `injurySnapshotJob`, daily. ESPN injuries were already fetched
+every day and thrown away; a retention rule deleted the MLB ones after two days.
+**Unlike odds this cannot be bought retroactively**, so it shipped before any
+model that will consume it. First capture 1,265 rows across five sports.
+
+### 6.28 · Entity crosswalks — **IN PROGRESS**
+
+The single most dangerous class of bug found in this phase.
+
+- **DONE — team ids.** 30 of 39 ESPN NHL team ids "matched"
+  `player_game_history` and **every match was wrong**: the NHL API calls Toronto
+  10, ESPN calls Montreal 10. Tested against real dates, 0 of 25 pairs existed.
+  Resolved by triCode. MLB resolves through `lib/sports/mlb/teamAliases.ts`;
+  NBA/NFL/CFB/EPL/MLS use ESPN ids directly because `game_context.py` loads them
+  through ESPN.
+- **OPEN — athlete ids.** The same split reappears: **MLB and NHL prop athlete
+  ids resolve at 0.0%**, leaving **1.3M prop rows unable to reach a player**.
+  NBA 100%, CFB 99.6%, NFL 99.0%, EPL 88.4%, MLS 86.7%.
+- **OPEN — tennis.** 57,386 matches sourced and not loaded. It is a player
+  entity, not a team pair, and the **Winner/Loser de-randomisation is mandatory
+  before load** or the target leaks into the column name.
+- **OPEN — `game_result`.** Table created, empty. It is the only place NHL
+  2020-21 scores can live, since `player_game_history` has no rows for that
+  season.
+
+### 6.29 · The model rebuild — **NOT STARTED. The largest remaining item.**
+
+Operator decision 2026-08-31: **two systems**, not one.
+
+- **A game model** (moneyline + total, every sport) that must clear bar 3 —
+  beat the closing price, out-of-time. **Market probability is not a feature.**
+- **A prop GRADER** that ranks situations rather than predicting hits. Because it
+  makes no probability claim it never has to clear bars 3 or 4, which is what
+  lets it ship on data already in hand while the game model waits on validation.
+  Held to a **rank-correlation** test from the first commit — "not a probability"
+  is not "not falsifiable".
+
+**Delete:** every fitted coefficient, the edge/scoring layer (`edge_model`,
+`prop_score`, `good_bets`, `live_edge`), the generic six-sport prop pipeline,
+golf's model layer.
+**Keep:** the data layer, the measurement harness (`clv_backtest`,
+`walkforward`, the graders), the `shadow` flag, the job runner.
+
+Order: turn off soccer props and the edge column → finish 6.28 → build the
+grader → rebuild MLB moneyline alone → tennis → buy NFL snaps and soccer minutes
+only once the grader has proved itself.
+
+---
+
 ## Suggested order
 
 1. **6.5** (pick_history backfill) and **6.1–6.3** (type changes) start
@@ -2121,6 +2237,9 @@ remain **conditional on 5.2's decision**.
 5. **6.7** (NBA/NHL shots, approved), then **6.8**, **6.9**, **6.10**.
 6. **6.18** (compliance) must precede any public signup regardless of position.
 7. **6.11**, then Track D's remainder.
+8. **Track E**, added 2026-08-31. 6.25–6.27 are **done**; 6.28 is the current
+   work and blocks 6.29. Note that **6.26 closes 6.11** — the NBA/NHL book-line
+   gap it describes no longer exists.
 
 ---
 
@@ -2141,6 +2260,16 @@ G1–G8 apply. Additionally:
   `rollingChart` with a non-zero-based series (Elo).
 - **Compliance strings present on every route**, checked against rendered HTML
   across the whole page list.
+
+Added with Track E:
+
+- **No model output is rendered that has not cleared bar 3** (beats the closing
+  price, out-of-time). Today that means nothing is rendered, which is why
+  `EdgeBadge` returns `null` — and the gate is satisfied by that, not violated.
+- **Every entity crosswalk verified by joining on a real date**, never by
+  counting id overlaps. 30 of 39 NHL ids "matched" and every match was wrong.
+- **The prop grader passes a rank-correlation test** on games it never saw,
+  before it renders anywhere.
 - **Backfilled rows unmistakable** anywhere a record is shown — including
   everything 6.5 adds.
 - **The published record matches the database.** Re-run 6.20's query at gate
