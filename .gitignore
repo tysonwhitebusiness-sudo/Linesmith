@@ -66,3 +66,7 @@ docs/discord-community-prompt.md
 # the comment above asks for -- "a real script belongs in scripts/ with a name
 # that says what it does" -- so scripts/ is explicitly un-ignored.
 !scripts/**
+
+# Fetched reference data for build_athlete_crosswalk.py. Re-derivable from
+# ESPN / MLB StatsAPI / the NHL API; kept out of the repo, not out of the run.
+python-odds-service/.crosswalk_cache/
