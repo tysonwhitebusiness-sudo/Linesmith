@@ -2183,7 +2183,7 @@ every day and thrown away; a retention rule deleted the MLB ones after two days.
 **Unlike odds this cannot be bought retroactively**, so it shipped before any
 model that will consume it. First capture 1,265 rows across five sports.
 
-### 6.28 · Entity crosswalks — **IN PROGRESS**
+### 6.28 · Entity crosswalks — **DONE 2026-09-01**
 
 The single most dangerous class of bug found in this phase.
 
@@ -2193,15 +2193,61 @@ The single most dangerous class of bug found in this phase.
   Resolved by triCode. MLB resolves through `lib/sports/mlb/teamAliases.ts`;
   NBA/NFL/CFB/EPL/MLS use ESPN ids directly because `game_context.py` loads them
   through ESPN.
-- **OPEN — athlete ids.** The same split reappears: **MLB and NHL prop athlete
-  ids resolve at 0.0%**, leaving **1.3M prop rows unable to reach a player**.
-  NBA 100%, CFB 99.6%, NFL 99.0%, EPL 88.4%, MLS 86.7%.
-- **OPEN — tennis.** 57,386 matches sourced and not loaded. It is a player
-  entity, not a team pair, and the **Winner/Loser de-randomisation is mandatory
-  before load** or the target leaks into the column name.
-- **OPEN — `game_result`.** Table created, empty. It is the only place NHL
-  2020-21 scores can live, since `player_game_history` has no rows for that
-  season.
+- **DONE — athlete ids.** `athlete_crosswalk`, 5,166 rows, all seven sports
+  including the five where the mapping is the identity, so a consumer joins one
+  table with no per-sport branch. MLB prop rows reaching a player **0.0% →
+  96.2%**, NHL **0.0% → 91.9%**. Built by
+  `python-odds-service/build_athlete_crosswalk.py`, gated by
+  `scripts/gate/gate7_athlete_crosswalk.mjs`.
+
+  **The control is the finding, not the coverage.** Every candidate was scored
+  twice through the same join — once as matched, once deliberately mis-mapped
+  onto another real athlete. Agreement: MLB **82.4% vs 2.0%**, NHL **64.6% vs
+  2.4%**. And a date join ALONE would not have caught a wrong answer: on NBA,
+  where the mapping is the identity and therefore known correct, a shuffled
+  mapping still hit **35.1% by date**, and **728 of 806** shuffled NHL pairs
+  found at least one date. Requiring the right TEAM on that date takes both to
+  ~2%. Gate 7.5 re-runs that comparison in SQL every time rather than counting
+  rows, because a crosswalk that rots shows up as the two scores converging and
+  no coverage number would ever reveal it.
+
+  Two things had to be derived: NHL's day offset is **−1** (ESPN stamps UTC,
+  the NHL API reports local), and the NHL roster endpoint is a **snapshot, not
+  a season** — CBJ 2025-26 returns 20 players where club-stats returns 30, and
+  rosters alone left 69 ESPN athletes with no reference row at all. NHL has no
+  local verification available: `player_game_history` stops 2025-04-17 and no
+  NHL prop is earlier than 2025-10-01, so there is zero date overlap; verified
+  against the NHL API's own game log instead.
+- **DONE — tennis.** 57,386 ATP + WTA matches loaded, 2015-2026: **449,796
+  price rows** in `odds_archive` across four series and **56,386 outcomes** in
+  `game_result`. Sport-keyed `tennis_atp` / `tennis_wta`, so the archive now
+  spans nine league keys. `python-odds-service/import_tennis.py`, gated by
+  `scripts/gate/gate8_tennis.mjs`.
+
+  The de-randomisation is done by hashing an **outcome-independent** match key
+  (the two names go in sorted), deterministic so the load is idempotent, with
+  every paired column swapped together. Gate 8 asserts BOTH halves because
+  either alone can be produced by a broken loader: p1 wins **0.5006 / 0.5058**
+  (the leak is gone) while the cheaper side still wins **68.5% / 67.6%** and
+  all four price series agree to within 0.3pp (the data is still real). Also
+  checked per tour-season, since a leak confined to one of the 24 workbooks
+  would be diluted to invisibility in the pooled figure.
+
+  **583 matches were dropped, not kept**: retirements before either player was
+  a set ahead, whose two score columns cannot express who won. Writing them
+  makes `home_score > away_score` false for matches p1 may have won — 583
+  mislabelled targets rather than 583 missing ones.
+- **DONE — `game_result`.** 113,323 rows, seven leagues plus both tennis tours,
+  2007-09-29 → 2026-09-01. **NHL 2020-21 is closed**: 951 games against a real
+  season of 953. This makes **gate 4.6** runnable, and it is the strongest
+  cross-source check in the pipeline — a closing total moves, so 4.5 can only
+  assert on the mean, but a final score is a fact. ESPN vs SBR agree
+  **100.0%** on 526 NBA and 217 NHL games.
+- **DONE — gate 1.9 deleted, not fixed.** It compared ESPN's closing total to
+  SBR's by RAW TEAM NAME and had never once asserted anything (0 overlaps, both
+  sports, passing vacuously). Gate 4.5 is the same check on resolved ids and is
+  stronger on every axis. Fixing 1.9 would have meant reimplementing entity
+  resolution upstream of the importer that already does it.
 
 ### 6.29 · The model rebuild — **NOT STARTED. The largest remaining item.**
 
@@ -2221,9 +2267,17 @@ golf's model layer.
 **Keep:** the data layer, the measurement harness (`clv_backtest`,
 `walkforward`, the graders), the `shadow` flag, the job runner.
 
-Order: turn off soccer props and the edge column → finish 6.28 → build the
-grader → rebuild MLB moneyline alone → tennis → buy NFL snaps and soccer minutes
-only once the grader has proved itself.
+Order: turn off soccer props and the edge column → ~~finish 6.28~~ (done
+2026-09-01) → build the grader → rebuild MLB moneyline alone → tennis → buy NFL
+snaps and soccer minutes only once the grader has proved itself.
+
+**6.28 removed the grader's blocker and part of the tennis one.** The prop
+grader needs MLB, NBA and NHL, and MLB and NHL prop rows could not reach a
+player until the athlete crosswalk existed. Tennis now has 56,386 graded
+outcomes and 449,796 prices, correctly oriented — what it still lacks is a
+player-id crosswalk (the files publish "Vukic A." and no id) and the surface,
+round and rank columns, which are still in the files and re-derivable against
+the same deterministic orientation.
 
 ---
 
@@ -2237,9 +2291,10 @@ only once the grader has proved itself.
 5. **6.7** (NBA/NHL shots, approved), then **6.8**, **6.9**, **6.10**.
 6. **6.18** (compliance) must precede any public signup regardless of position.
 7. **6.11**, then Track D's remainder.
-8. **Track E**, added 2026-08-31. 6.25–6.27 are **done**; 6.28 is the current
-   work and blocks 6.29. Note that **6.26 closes 6.11** — the NBA/NHL book-line
-   gap it describes no longer exists.
+8. **Track E**, added 2026-08-31. **6.25–6.28 are done**; **6.29 is the only
+   remaining item in the track** and is the largest piece of work left in the
+   phase. Note that **6.26 closes 6.11** — the NBA/NHL book-line gap it
+   describes no longer exists.
 
 ---
 

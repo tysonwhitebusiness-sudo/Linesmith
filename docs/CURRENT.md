@@ -1,249 +1,258 @@
 # CURRENT — pick up here
 
-**The overnight sourcing + import run is COMPLETE.** `odds_archive` holds
-**635,191 game-line rows** and `prop_odds_archive` **1,805,340 prop rows**,
-both across all seven leagues; `injury_report` is accruing daily. **Every gate
-passes: 1, 2, 2.7, 3, 4, 5 and 6.**
+**Task 6.28 (entity crosswalks) is COMPLETE.** All four parts landed
+2026-09-01: the MLB + NHL athlete crosswalk, the tennis load, `game_result`,
+and gate 1.9's deletion. **Track E is now 6.25–6.28 done, 6.29 the only item
+left** — and 6.29 is the model rebuild, the largest remaining piece of work in
+the phase.
 
-**Why any of this happened: `docs/model-rebuild-plan.md`.** It holds the model
-audit, the four-bar standard, the two-system decision (game model + prop grader)
-and the rebuild sequencing. Those findings are the reason the sourcing work
-exists and they were nowhere in the repo until 2026-09-01 — read that file
-before touching the model layer.
+**Gates 1, 2, 2.7, 3, 4, 5, 6, 7 and 8 all pass.** `tsc` clean, **339 tests,
+0 fail**. DB **4,401 MB** of an 8 GB ceiling.
 
-Also: `docs/overnight-sourcing-gameplan.md` for the plan this run executed, and
-`docs/phase6-completion-plan.md` for the page work that preceded it. Trust
+**Why any of this exists: `docs/model-rebuild-plan.md`.** It holds the model
+audit, the four-bar standard, the two-system decision (game model + prop
+grader) and the rebuild sequencing. Read it before touching the model layer.
+`docs/audit-remediation-plan.md` §Track E is the master plan; trust it and
 `git log` over this file if they disagree.
 
 ### The headline from the model audit, so it is impossible to miss
 
 - **The MLB game model loses to the market on real games** — Brier 0.2315 vs
   0.2090 on 153 graded picks. Positive-CLV rate **50.0%**, a coin flip.
-- **The claimed edge has no predictive value.** Across ~2,300 picks with a
-  positive claimed edge the realised rate matches or trails the market's implied
-  probability; the +7% bucket (n=645) finished **2.3pp below** it.
+- **The claimed edge has no predictive value.** The +7% bucket (n=645) finished
+  **2.3pp below** the market's implied probability.
 - **Cause: `marketProbCentered` carries a weight of 3.517** — the market's own
   price is the model's largest feature. It cannot beat a line it is built from.
 - **Seven sports of eight have never had a coefficient fitted.**
-- **Most model output is already switched off in the UI** — `EdgeBadge` returns
-  null, confidence is hardcoded null. Rebuilding breaks almost nothing visible.
+- **Most model output is already switched off in the UI.** Rebuilding breaks
+  almost nothing visible.
 - **Decision: rebuild the model layer; keep the data layer and the measurement
-  harness.** Two systems — a game model that must beat the close, and a prop
-  GRADER that ranks situations and makes no probability claim.
+  harness.**
 
-## 1. What landed (2026-08-31 → 09-01)
+## 1. What 6.28 landed
 
-| Phase | Result |
+| Part | Result |
 |---|---|
-| 1 · Game lines | **11,577 rows / 7,183 games** added for MLB, NFL, CFB, EPL, MLS. Total 102,632 rows, 18 blocks, 7 sports. **GATE 1 PASSED** |
-| 2 · Props | **3,681,061 scraped, 1,805,340 loaded**, 550,669 two-sided. **GATES 2 + 2.7 PASSED** |
-| 3 · Schema | 5 new tables + the Elo id fix. **GATE 3 PASSED** |
-| 4 · Import | **635,191 rows promoted** into `odds_archive`. **GATES 4 + 5 PASSED** |
-| 5 · Injuries | `injurySnapshotJob` live, 1,265 rows first capture. **GATE 6 PASSED** |
+| Athlete crosswalk | `athlete_crosswalk`, **5,166 rows**, all seven sports. MLB prop rows reaching a player **0.0% → 96.2%**, NHL **0.0% → 91.9%**. **GATE 7 PASSED** |
+| Tennis | **57,386 matches** → 449,796 price rows + 56,386 outcomes, de-randomised. **GATE 8 PASSED** |
+| `game_result` | **113,323 rows**, 2007-09-29 → 2026-09-01. NHL 2020-21 closed. **GATE 4.6 now runs and passes** |
+| Gate 1.9 | **Deleted**, superseded by 4.5 |
 
-`tsc` clean, **339 tests, 0 fail**, throughout. DB **3,141 → 3,533 MB**.
-
-### `odds_archive` contents
+### Where the data now stands
 
 ```
-cfb        espn_core     8,128   2025-08-23 -> 2026-08-30
-mlb        espn_core    33,454   2025-03-20 -> 2026-09-02
-nba        espn_core   205,905   2022-10-18 -> 2026-06-14
-nba        sbr          97,778   2007-10-30 -> 2023-01-16
-nfl        espn_core     2,199   2025-09-05 -> 2026-02-08
-nhl        espn_core   240,458   2021-01-13 -> 2026-06-15
-nhl        sbr          35,750   2007-09-29 -> 2022-11-27
-soccer_epl espn_core     3,253   2025-08-15 -> 2026-08-31
-soccer_mls espn_core     8,268   2025-02-22 -> 2026-08-30
+odds_archive        1,084,987   9 league keys, 3 sources, 2007-09-29 -> 2026-09-02
+prop_odds_archive   1,805,340   7 sports, 550,669 two-sided
+game_result           113,323   9 league keys, 2 sources + tennis_data
+athlete_crosswalk       5,166   7 sports
+injury_report           1,265   accruing daily
 ```
 
 ## 2. THE SINGLE MOST IMPORTANT THING TO CARRY FORWARD
 
-**A numeric id matching the expected SHAPE is not evidence it is the right id.**
-This file has warned about that for weeks. It nearly cost the whole NHL import.
+**A numeric id matching the expected SHAPE is not evidence it is the right id,
+and neither is a high overlap.** 30 of 39 ESPN NHL team ids "matched"
+`player_game_history` and every match was wrong — the NHL API calls Toronto 10,
+ESPN calls Montreal 10.
 
-**30 of 39 ESPN NHL team ids "matched" `player_game_history` — and that was a
-lie.** In the NHL API Toronto is 10; in ESPN, **Montreal is 10**. Tested against
-real dates, **0 of 25 (date, espn_id) pairs actually existed**. A numeric join
-would have filed Montreal's odds under Toronto silently, forever. Resolved by
-triCode instead.
+**6.28 turned that warning into a measurement, and the measurement is worse
+than the warning.** Every athlete mapping was scored twice through the same
+join — once as matched, once deliberately mis-mapped onto another real athlete:
 
-The general rule that came out of it: **verify an id system per sport, by
-joining on a real date, not by counting overlaps.** The answer differs by
-loader — NBA/NFL/CFB/EPL/MLS carry ESPN ids because `game_context.py` loads them
-through ESPN; MLB carries StatsAPI ids (0 of 31 ESPN ids join); NHL carries
-NHL-API ids.
+```
+                                 true    shuffled control
+  MLB   vs player_game_history   82.4%        2.0%
+  NHL   vs the NHL API game log  64.6%        2.4%
+```
 
-**And validate against outcomes, never against row counts.** Six separate wrong
-conclusions were caught that way in two days:
+And **a date join alone would not have caught the wrong answer.** On NBA, where
+the mapping is the identity and therefore known correct:
 
-1. **OddsHarvester historic "returns 0 rows, broken."** It does not.
-   `ScrapeResult` exposes `.success`/`.failed`/`.partial`/`.stats` and has no
-   `.data`; the reader was checking a field that never existed. It works at
-   100% success, 2.66s/game.
-2. **ESPN NHL totals "validated"** off a one-season smoke test with a 0.504 over
-   rate. Across three seasons it was a **constant 5.5, sd exactly 0.00**. The
-   smoke season's real scoring happened to sit next to the constant.
-3. **Props "absent for NBA/NHL/CFB."** They exist on 25–50% of games; the check
-   tested whether the field existed instead of resolving the `$ref`.
-4. **"Same favourite" at 81.7%** — caused by averaging **American odds**. One
-   +5000 longshot drags the mean past every real price (mean gap came out at
-   2,528). Average **implied probabilities**: 96.8%.
-5. **4,022 "duplicate" keys** were **doubleheaders** — two real ESPN event ids,
-   same teams, same day. `event_ref` belongs in the natural key.
-6. **`injury_report` captured 1,265 rows with `athlete_id` 0.0%.** The athlete
-   object on that endpoint has **no `id` field**; the id exists only inside a
-   link href. Without parsing it the table cannot join to players at all.
+```
+                     exact date   date AND team
+  true mapping          75.9%         75.9%
+  shuffled mapping      35.1%          4.0%
+```
 
-**Scale changes answers. A one-season smoke test is not validation.**
+**728 of 806 deliberately wrong NHL pairs found at least one matching date.**
+Requiring the right TEAM on that date takes it to 2%.
+
+**So: always run the control.** A number with nothing to compare it to is not
+evidence. Gate 7.5 re-runs that comparison in SQL every time rather than
+counting rows, because a crosswalk that rots shows up as the two scores
+converging and no coverage number would reveal it.
 
 ## 3. NEXT ACTIONS, in order
 
-1. **Build the MLB + NHL athlete crosswalk.** 1.3M loaded prop rows cannot
-   reach a player without it (§4). The team-id equivalent is already solved in
-   `import_odds_staging.py` — same shape, athlete instead of team.
-2. **Re-run Gate 1.9.** It matched 0 rows and is still inert: SBR writes
-   `LALakers`, ESPN writes `Los Angeles Lakers`. Entity resolution now exists in
-   `import_odds_staging.py`, so 1.9 can finally do the cross-source check
-   against resolved ids rather than raw names.
-3. **Load tennis** — 57,386 matches sitting in `Downloads` and untouched. It is
-   a PLAYER entity, not a team pair, so the team-shaped importer skips it.
-   **The Winner/Loser de-randomisation is mandatory before it loads** (Gate 4.7).
-4. **Populate `game_result`** — the table exists and is empty. It is what makes
-   Gate 4.6 (score agreement) runnable, and it is the only place NHL 2020-21
-   scores can live, since `player_game_history` has no NHL rows for that season.
-5. **Deploy Render.** `794240d`, `venueFactorsJob` and now `injurySnapshotJob`
-   are all undeployed. Four ingest jobs still report **NEVER RUN**.
-6. **The two Phase 6 gate violations** — `TeamDetail`'s `teamHref` and
+1. **6.29 — the model rebuild.** The only Track E item left, and the largest
+   remaining work in the phase. `docs/model-rebuild-plan.md` §7 has the order:
+   turn off soccer props and the edge column → **build the prop grader first**
+   (MLB, NBA and NHL need no new data, and 6.28 removed the blocker that stopped
+   MLB and NHL prop rows reaching a player) → then rebuild MLB moneyline alone
+   with **no market feature**, judged on bar 3 → then tennis. **Do not start
+   without asking the operator.**
+2. **Deploy Render.** `794240d`, `venueFactorsJob` and `injurySnapshotJob` are
+   all undeployed. Four ingest jobs still report **NEVER RUN**. Nothing in this
+   session touched the worker, but nothing deployed either. Ask first.
+3. **The two Phase 6 gate violations** — `TeamDetail`'s `teamHref` and
    `GameDetail`'s `renderLiveDetail`, both `sport === 'x'` in a render path.
+4. **`docs/table-ownership.md` is stale.** It lists 35 tables and none of Track
+   E's — `odds_archive`, `prop_odds_archive`, `game_result`, `injury_report`,
+   `odds_import_staging`, `prop_import_staging`, `odds_unresolved` and now
+   `athlete_crosswalk`. Pre-existing drift, not caused here. Note that its own
+   derivation rule only parses `lib/db/client.ts` and `src/db.py`, and the
+   Track E loaders are standalone scripts issuing their own SQL — so the rule
+   needs widening before the table can be regenerated honestly.
 
-## 4. Props: loaded, with one real gap
+## 4. Blocked, and why — do not re-attempt without new data
 
-**3,681,061 rows scraped → 1,805,340 loaded** into `prop_odds_archive`.
-Database **3,533 → 4,045 MB**, comfortably inside the 8 GB ceiling.
+**Tennis player ids.** The tennis-data files publish `"Vukic A."` and no id of
+any kind. `player_game_history`'s tennis rows carry **4-digit ids from a
+different provider** and there is **no name column anywhere** to bridge them.
+`odds_archive`'s tennis rows therefore carry NULL entity ids, deliberately, and
+gate 8.5 asserts that so nobody later "fixes" it by inventing something. The
+`YYYY-atp-season.csv` / `YYYY-wta-season.csv` files in Downloads are a
+**different source** (36,907 rows, already home/away oriented, carrying 6-digit
+player ids) and are the most likely bridge if this is ever picked up — but those
+ids are not the 4-digit ones either, so it is a two-hop problem.
 
-```
-mlb        1,244,476  athletes 1172  types 36  two-sided 443,990
-nba          210,489  athletes  355  types 41  two-sided  36,008
-nfl          156,884  athletes 1030  types 70  two-sided  21,913
-nhl           68,880  athletes  885  types 20  two-sided  48,758
-soccer_epl    63,839  athletes  528  types 66  two-sided       0
-cfb           45,000  athletes 1253  types 12  two-sided       0
-soccer_mls    15,772  athletes   60  types 61  two-sided       0
-```
+**Tennis surface, round and seed ranks are not loaded.** There is no column for
+them in `odds_archive` or `game_result`, and a per-sport tennis table would
+invert the convention `odds_archive`'s own migration argues for at length. They
+are still in the files. Because the orientation is a **pure function of the
+match key**, a later loader re-derives exactly the same p1/p2 and can add them.
 
-**Both sides were there all along, and I read it wrong first.** The CSV shows
-697,032 over-only rows, 563,009 under-only and ZERO with both, which I reported
-as "ESPN publishes one side per prop". It publishes one side per **item** — the
-two items share `(event, athlete, type, line)`. Merging on that key gives
-**550,669 two-sided props** with booksums of 1.066–1.079. The unique index found
-this, not inspection.
+**NHL `player_game_history` stops at 2025-04-17** — 16 months stale. This is
+why NHL had no local date overlap to verify the crosswalk against, and why 95.1%
+of NHL prop rows crosswalk but only 91.9% reach a player: players who debuted
+after that date have a correct mapping and no history behind it.
 
-**819,262 rows (22.3%) were dropped** because they carry neither a line nor a
-price. Verified at source: every `current` shape across six pages of a real MLB
-game is either `{target}` or `{}`.
+**Tennis and golf have no ESPN core odds.** Tennis 400s; golf returns 0 items.
+Tennis is now fully sourced from the tennis-data files instead.
 
-**THE REAL GAP: MLB and NHL athlete ids resolve at 0.0%.** Same id-system split
-already found for teams — `player_game_history` carries StatsAPI and NHL-API
-athlete ids while ESPN carries its own. NBA 100%, CFB 99.6%, NFL 99.0%,
-EPL 88.4%, MLS 86.7%. **That leaves 1.3M MLB and NHL prop rows unable to join to
-a player until an athlete crosswalk exists** — and MLB is the largest block, so
-this is the highest-value next fix.
+**SBR is frozen after 2022-23.** NHL 2020-21 is missing from it entirely —
+ESPN covers it, and `game_result` now holds it.
 
-## 5. Blocked, and why — do not re-attempt without new data
+**No non-MLB game model exists.** Unchanged. Still blocks win probability,
+simulation density and "why the model likes it" beyond MLB.
 
-**Tennis and golf have no ESPN core odds.** Tennis 400s (its events are
-tournaments, not matches); golf returns 0 items. Tennis is fully sourced from
-tennis-data files instead; golf has no game model planned.
+## 5. Things that will bite again
 
-**SBR is frozen after 2022-23**, and NHL 2020-21 is missing from it entirely —
-which ESPN covers, so that hole is closed.
-
-**MLS has no totals** in the football-data file (1X2 only) — but ESPN core
-supplies them, so this is also closed.
-
-**No non-MLB game model exists.** Unchanged, and it still blocks win
-probability, simulation density and "why the model likes it" beyond MLB.
-
-## 6. Things that will bite again
-
-- **Verify an id system per sport by joining on a real date.** See §2.
-- **Never average American odds.** They are not linear. Average implied
-  probabilities.
-- **Zero is a placeholder, not a value.** ESPN writes `close_total == 0` on all
-  4,046 MLB rows carrying a close block and `close_home_ml == 0` on 1,233.
-  Coalescing them as real put the MLB total mean at 3.71 against a true 8.47. A
-  spread of 0 is still legitimate (pick'em).
-- **A 50% over rate only holds when both sides are priced symmetrically.** NBA
-  is −105/−102 but NHL is −69/−26 and MLS −52/−19. Compare the realised over
-  rate to the **price-implied** probability, not to 0.50.
-- **SBR names the CITY; ESPN names "City Nickname".** Matching only the nickname
-  tail left NBA at 67.8% resolved; prefix matching with a unique-hit rule took
-  it to 99.84%.
-- **SBR dates are LOCAL with no timezone; ESPN's are UTC.** Matches cluster at
-  **+1 day**, not 0. Always allow ±1 and derive the real offset.
-- **Doubleheaders are real.** `event_ref` belongs in any game natural key.
-- **`pd.read_html` needs `header=0`** on SBR pages — no `<thead>`, so columns
-  come back as `0..12` and every `.get("VH")` returns None, parsing zero games
-  silently.
-- **Column headers lie.** On SBR's NHL pages `CloseOU` is the *opening* total
-  and the closing total sits in `Unnamed: 14`. Identify columns by value
-  distribution.
-- **A missing SBR season 301s to the homepage**, which still returns 200, so
-  `raise_for_status()` does not catch it. Check the final URL.
-- **Do not hand-roll a CSV parser in JS.** Gate 1 OOM'd at 4 GB then 6 GB on
-  102k rows before being rewritten in pandas, which reads it in seconds.
-- **Long heredocs break in this shell** — and `\n` inside one arrives as a real
-  newline, which silently broke two patch scripts today. Use the Write/Edit
-  tools.
-- **Backticks in `git commit -m` get shell-substituted** — use `-F`, and put the
-  message file in the scratchpad, not `/tmp`.
-- **`.gitignore`'s scratch patterns match at ANY depth.** `gate*.mjs` was hiding
-  real scripts under `scripts/`; `!scripts/**` now un-ignores them.
+- **Always run the control.** See §2. This is the single biggest lesson of 6.28.
+- **Verify an id system per sport by joining on a real date AND the right
+  entity.** Date alone accepted 35% of deliberately wrong mappings.
+- **Derive the day offset, never assume it.** ESPN stamps UTC; the NHL API and
+  SBR both report LOCAL. NHL's offset is **−1** (measured −1:11,898 against
+  0:7,882); SBR-vs-ESPN is **+1**. Asserting 0 would have thrown away a correct
+  crosswalk as unverified.
+- **A roster endpoint is a snapshot, not a season.** CBJ 2025-26 returns 20
+  players; club-stats returns 30. Rosters alone left 69 real NHL players
+  unmatched, Jonathan Toews among them.
+- **A cache keyed all-or-nothing will "prove" new candidates unverifiable.**
+  Widening the NHL reference added 64 players whose game logs were not in the
+  cache, and all 64 were dropped as unconfirmed. The cache is incremental now.
+- **Zero is a placeholder, not a value — and whether it is depends on the
+  sport.** ESPN writes 0-0 for a postponed game. Soccer genuinely finishes 0-0
+  (measured 6.75% EPL, 5.74% MLS — real draw rates) but MLB 1.08%, NHL 0.42%
+  and NBA 0.19% are impossible finals. Also `close_total == 0` on all 4,046 MLB
+  rows with a close block. A spread of 0 is still legitimate (pick'em).
+- **A tie is not always "missing" — sometimes it is MISLABELLED.** 583 tennis
+  matches are retirements before either player led by a set, so both score
+  columns are equal and cannot say who won. Keeping them encodes `p1 lost` for
+  matches p1 may have won. Dropped, and it moved the measured p1 rate from
+  0.4959 to 0.5006 — which is how it was noticed.
+- **A manual post-processing step is not idempotent.** Two corrupt SBR
+  moneylines were deleted by hand after promotion with a `DELETED_CORRUPT = 2`
+  constant in gate 5; the next `--truncate` re-import put both straight back and
+  the gate failed on a pipeline that had done nothing wrong. Rejected at
+  staging now.
+- **A partial unique index protects nothing outside its predicate.**
+  `odds_archive_natural_key` is `WHERE home_team_id IS NOT NULL AND
+  away_team_id IS NOT NULL` — every tennis row falls outside it. Without
+  migration `20260901180000` a second tennis run would have doubled the table
+  in silence.
+- **`event_ref` belongs in any game natural key.** `game_result` was created
+  without it: 520 keys cover 1,044 real events, 511 MLB. 524 games would have
+  been dropped silently.
+- **A flag must be honest or it is worse than no flag.** `market_max` is the
+  best price across books, so it sums below 1.0 on ~36% of tennis matches — a
+  real arbitrage, not a broken market. Calling it `sub_one_not_two_way` to make
+  gate 5.3 pass would have been a lie; it gets `best_of_market`.
+- **Never average American odds.** Average implied probabilities.
+- **A 50% over rate only holds when both sides are priced symmetrically.**
+  Compare to the price-implied probability, not to 0.50.
+- **SBR names the CITY; ESPN names "City Nickname".** Prefix matching with a
+  unique-hit rule took NBA from 67.8% to 99.84%.
+- **Doubleheaders are real.**
+- **`pd.read_html` needs `header=0`** on SBR pages.
+- **Column headers lie.** On SBR NHL pages `CloseOU` is the *opening* total.
+  And in `odds_archive`, a `market='spread'` row's `price` column holds
+  `close_home_spread` — a handicap, not a price. Anything scanning `price`
+  across markets must exclude spreads.
+- **A missing SBR season 301s to the homepage**, which still returns 200.
+- **Do not hand-roll a CSV parser in JS.** Use pandas.
+- **Long heredocs break in this shell** — `\n` inside one arrives as a REAL
+  newline. It broke a gate script again this session. Use the Write/Edit tools
+  for anything containing an escape sequence.
+- **Backticks in `git commit -m` get shell-substituted** — use `-F`, message
+  file in the scratchpad.
 - **The DB pool caps at 15 connections.** Close every `.mjs` client.
 - **Never `git add -A` or `git add docs/`** — `docs/discord-community-prompt.md`
   is the operator's.
 
-## 7. Operational knowledge
+## 6. Operational knowledge
 
-- **Gates:** `python scripts/gate/gate1_game_lines.py`,
-  `gate2_props.py`, `node scripts/gate/gate4_staging.mjs`,
-  `gate5_archive.mjs`, `gate6_injury_job.mjs`. Promotion is
-  `node scripts/gate/promote_odds.mjs` (dedupes, then `ON CONFLICT DO NOTHING`).
-- **Re-import:** `python-odds-service/import_odds_staging.py --truncate`.
-  Idempotent; re-running is safe.
+- **Gates:** `python scripts/gate/gate1_game_lines.py`, `gate2_props.py`,
+  `node scripts/gate/gate4_staging.mjs`, `gate5_archive.mjs`,
+  `gate6_injury_job.mjs`, `gate7_athlete_crosswalk.mjs`, `gate8_tennis.mjs`.
+  Promotion is `node scripts/gate/promote_odds.mjs`.
+- **Re-import odds + game_result:** `python-odds-service/import_odds_staging.py
+  --truncate`, then `promote_odds.mjs`. Idempotent.
+- **Re-import tennis:** `python-odds-service/import_tennis.py [--truncate]`.
+  Idempotent; verified by running it twice for the same 449,796 rows.
+- **Rebuild the crosswalk:** `python-odds-service/build_athlete_crosswalk.py`
+  (`--report` builds and prints without writing). Its fetched reference data
+  caches in `python-odds-service/.crosswalk_cache/` (gitignored, ~2.5 MB,
+  re-derivable); the NHL game-log cache is incremental.
 - **Migrations:** `node runmig.mjs <path>`.
 - **Python:** from `python-odds-service/`, `./.venv/Scripts/python.exe -u <script>`.
+  `openpyxl` was added this session for the tennis `.xlsx` files.
 - **Tests:** `npm test` (339).
 - **Source files** live in `C:\Users\occy3\Downloads\` — `nba_odds/`,
   `nhl_odds/`, `nhl_odds_legacy/`, `espn_core_odds/`, `espn_core_odds_v2/`,
-  `espn_props/`, `USA.csv` (MLS), 24 tennis `.xlsx`, `archive.zip` (NHL Kaggle).
-- **Render:** worker `srv-da36bm2bkg8c73fqrdeg`, `autoDeploy: no`. Still undeployed.
-- **Supabase PRO**, 8 GB ceiling, currently 3,533 MB.
+  `espn_props/`, `USA.csv` (MLS), the 24 tennis `.xlsx` (ATP is `YYYY.xlsx`,
+  WTA is `YYYY (1).xlsx`), `archive.zip` (NHL Kaggle).
+- **Render:** worker `srv-da36bm2bkg8c73fqrdeg`, `autoDeploy: no`. **Still
+  undeployed.**
+- **Supabase PRO**, 8 GB ceiling, currently 4,401 MB.
 
-## 8. Source priority — higher wins on conflict
+## 7. Source priority — higher wins on conflict
 
 ```
 100  SBR              real closing lines, both sides, 2007-2023
  90  ESPN core API    many books, open+close, verified two-way
  80  nflverse / CFBD  free, authoritative for their sport
  70  football-data    closing 1X2, multi-book
- 60  tennis-data      closing match odds
+ 60  tennis-data      closing match odds — LOADED 2026-09-01
  50  ESPN site API    LOW — NHL moneyline is 3-way regulation (booksum 0.83)
-                      and its NHL total is a constant 5.5 placeholder
  40  Kaggle NHL       favourite-only price, no team orientation at all
 ```
 
-## 9. Known not done
+## 8. Known not done
 
-1. **MLB + NHL props cannot join to players** — 1.3M rows, athlete crosswalk missing.
-2. **Tennis not loaded** — de-randomisation required first.
-3. **`game_result` empty** — Gate 4.6 cannot run until it is populated.
-4. **Gate 1.9 inert** — re-run now that entities resolve.
-5. **2,206 unresolved staging rows** kept with a `resolution_note`:
-   `unresolved_team` 1,570, `defunct_or_relocated_franchise` 410,
-   `phantom_abbr` 226. Never promoted, never dropped.
-6. **Render undeployed**; four ingest jobs report NEVER RUN.
-7. **Two Phase 6 gate violations** remain.
+1. **6.29, the model rebuild** — not started, needs the operator's go-ahead.
+2. **Tennis player ids, surface, round and ranks** — §4.
+3. **Render undeployed**; four ingest jobs report NEVER RUN.
+4. **Two Phase 6 gate violations** remain.
+5. **`docs/table-ownership.md` is stale** — §3 item 4.
+6. **2,207 unresolved staging rows** kept with a `resolution_note` and never
+   promoted: `unresolved_team`, `defunct_or_relocated_franchise`,
+   `phantom_abbr`, and now 2 × `impossible_american_price`.
+7. **12 MLB and 21 NHL prop athletes never reached a crosswalk row** — 810 and
+   381 rows, **0.07%** and **0.55%**. Ten of the twelve MLB ones have no name
+   from ESPN at all (prospects it publishes no metadata for); the NHL residue
+   is 15 with no reference row plus 6 dropped as unverified provisional
+   name-only matches.
 8. **CFB/NBA/NHL/tennis pages never walked** — out of season.
-9. `/diagnostics`, `/bets` and every signed-in surface unverified — no credentials.
+9. `/diagnostics`, `/bets` and every signed-in surface unverified — no
+   credentials.
