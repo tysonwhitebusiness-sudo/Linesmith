@@ -1216,6 +1216,22 @@ async def job_venue_factors(yield_fn=None) -> dict:
     return await _run_timed("venueFactorsJob", run())
 
 
+async def job_injury_snapshot(yield_fn=None) -> dict:
+    """Daily availability snapshot -- see injury_snapshot.py for why this is not
+    new ingestion but the retention of something already fetched and discarded.
+
+    DAILY, and the cadence is the point: unlike odds, an injury report cannot be
+    bought retroactively. Every day this does not run is a day of training data
+    that will never exist. health_check.py picks this up with no edit of its own.
+    """
+    import injury_snapshot
+
+    async def run() -> dict:
+        return await injury_snapshot.run_snapshot()
+
+    return await _run_timed("injurySnapshotJob", run())
+
+
 async def job_clv_summary(yield_fn=None) -> dict:
     from predict import clv_backtest
 
@@ -1354,6 +1370,11 @@ JOB_REGISTRY = [
     # Phase 6.10 -- venue factors for the non-MLB sports. Daily: every input is
     # a completed game. health_check.py picks this up with no edit of its own.
     ("venueFactorsJob", job_venue_factors, 24 * 60 * 60),
+    # Daily availability snapshot. ESPN injuries are already fetched every day
+    # and thrown away; this retains them. Unlike odds it cannot be bought
+    # retroactively, which is why it is daily and why it shipped before any
+    # model that will consume it.
+    ("injurySnapshotJob", job_injury_snapshot, 24 * 60 * 60),
     ("refreshTier1", job_tier1, 2.5 * 60),
     ("refreshSportsGameOddsJob", job_sportsgameodds, 90 * 60),
     ("refreshNflJob", job_nfl, 20 * 60),
