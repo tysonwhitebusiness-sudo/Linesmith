@@ -110,6 +110,33 @@ def integer(v):
     return None if n is None else int(round(n))
 
 
+def implied_prob(american):
+    if american is None:
+        return None
+    a = float(american)
+    return 100.0 / (a + 100.0) if a > 0 else -a / (-a + 100.0)
+
+
+def booksum_and_flag(home_ml, away_ml, draw_ml=None):
+    """The overround and its honesty flag, computed once for every loader.
+
+    Gate 5.3 asserts each sport has a large body of moneyline rows flagged
+    `two_way`, and a source that ships a real two-way market with NO flag drags
+    its whole sport under the threshold just by being big. It happened twice:
+    NFL fell to 6% when 40,366 unflagged nflverse rows landed on 724 flagged
+    ones, and MLB to 17% when 68,044 unflagged SBR rows landed on 11,396. In
+    both cases the source published both prices and the overround was simply
+    never computed. The flag is data, not decoration.
+    """
+    parts = [implied_prob(x) for x in (home_ml, away_ml, draw_ml) if x is not None]
+    if len([p for p in parts if p is not None]) < 2:
+        return None, "missing"
+    bs = sum(parts)
+    if bs < 1.0:
+        return bs, "sub_one_not_two_way"
+    return bs, ("three_way" if draw_ml is not None else "two_way")
+
+
 class Resolver:
     """abbr/name -> our team id, per sport. ESPN is the Rosetta stone: it is the
     only source publishing (abbreviation, id, display name) together."""
@@ -347,6 +374,8 @@ def sbr_long_rows(r, sport, resolver):
     col = lambda c: r.get(c) if c else None  # noqa: E731
 
     ml_h, ml_a, ml_oh, ml_oa = schema["ml"]
+    base["booksum"], base["ml_flag"] = booksum_and_flag(
+        integer(col(ml_h)), integer(col(ml_a)))
     (sp_hl, sp_hp, sp_al, sp_ap, sp_ohl, sp_ohp, sp_oal, sp_oap) = schema["spread"]
     tot_l, tot_p, tot_ol, tot_op = schema["total"]
     tot, otot = num(col(tot_l)), num(col(tot_ol))
@@ -440,12 +469,50 @@ async def insert_results(pool, rows, batch=1000):
            f"ON CONFLICT DO NOTHING")
     n = 0
     async with pool.acquire() as conn:
-        for i in range(0, len(rows), batch):
-            chunk = rows[i:i + batch]
-            await conn.executemany(sql, [tuple(r[c] for c in GR_COLS) for r in chunk])
-            n += len(chunk)
+        async with conn.transaction():          # see insert() for why
+            await conn.execute("SET LOCAL statement_timeout = '900s'")
+            for i in range(0, len(rows), batch):
+                chunk = rows[i:i + batch]
+                await conn.executemany(sql, [tuple(r[c] for c in GR_COLS) for r in chunk])
+                n += len(chunk)
     return n
 
+
+# ---------------------------------------------------------------------------
+# One place every loader clears its own rows. See CLAUDE.md's job_runner
+# reasoning: the moment this sequence is written per-loader, one of them
+# forgets a step.
+# ---------------------------------------------------------------------------
+
+async def clear_source(pool, source, tables=("odds_import_staging", "game_result")):
+    """Delete this source's rows from the tables it owns, so a re-run replaces
+    rather than accumulates.
+
+    BOTH TABLES, not just staging. import_mlb_sbr.py changed its event_ref from
+    NULL to the rotation number between two runs; because event_ref is part of
+    game_result's natural key the old rows were a DIFFERENT key, survived the
+    ON CONFLICT, and 28,057 offered rows became 55,756 landed. A loader that
+    cannot clear its own prior output is not idempotent whatever its INSERT says.
+
+    RAISES statement_timeout, and does it with `SET LOCAL` INSIDE AN EXPLICIT
+    TRANSACTION. db.get_pool() sets a 15-second session default -- right for the
+    app, far too short for a bulk delete, and the MLB clear had 55,756 rows to
+    remove and was cancelled mid-run.
+
+    A plain `SET` does not work here, and the reason is already in CLAUDE.md:
+    this app connects through a TRANSACTION-MODE POOLER, where session state is
+    not guaranteed to survive to the next statement. That is the same property
+    that made Postgres advisory locks unusable and forced `withJobLock` to be a
+    lease table instead. `SET LOCAL` inside a transaction is honoured because
+    the transaction pins one backend for its duration.
+    """
+    out = {}
+    async with pool.acquire() as c:
+        async with c.transaction():
+            await c.execute("SET LOCAL statement_timeout = '600s'")
+            for t in tables:
+                out[t] = await c.execute(f"DELETE FROM {t} WHERE source = $1", source)  # noqa: S608
+    return out
 
 COLS = ["sport", "event_ref", "game_date", "home_team_raw", "away_team_raw", "home_team_id",
         "away_team_id", "market", "side", "line", "price", "open_line", "open_price",
@@ -460,17 +527,29 @@ async def insert(pool, rows, batch=1000):
     sql = f"INSERT INTO odds_import_staging ({','.join(COLS)}) VALUES ({ph})"
     n = 0
     async with pool.acquire() as conn:
-        for i in range(0, len(rows), batch):
-            chunk = rows[i:i + batch]
-            await conn.executemany(sql, [
-                tuple(
-                    datetime.strptime(r[c], "%Y-%m-%d").date() if c == "game_date" and isinstance(r[c], str)
-                    else r.get(c) for c in COLS
-                ) for r in chunk
-            ])
-            n += len(chunk)
-            if n % 20000 == 0:
-                print(f"    inserted {n:,}", flush=True)
+        # ONE TRANSACTION, WITH THE TIMEOUT RAISED INSIDE IT. db.get_pool()'s
+        # 15-second session default is right for the app and wrong for a
+        # 148,630-row load; a plain `SET` cannot fix it because this app
+        # connects through a transaction-mode pooler where session state does
+        # not survive to the next statement (the same property that forced
+        # withJobLock to be a lease table instead of an advisory lock).
+        #
+        # Atomicity is the bonus, and it matters: the MLB loader was cancelled
+        # mid-insert once already, which left staging holding a partial source
+        # that nothing would have flagged. All of it lands or none of it does.
+        async with conn.transaction():
+            await conn.execute("SET LOCAL statement_timeout = '900s'")
+            for i in range(0, len(rows), batch):
+                chunk = rows[i:i + batch]
+                await conn.executemany(sql, [
+                    tuple(
+                        datetime.strptime(r[c], "%Y-%m-%d").date() if c == "game_date" and isinstance(r[c], str)
+                        else r.get(c) for c in COLS
+                    ) for r in chunk
+                ])
+                n += len(chunk)
+                if n % 20000 == 0:
+                    print(f"    inserted {n:,}", flush=True)
     return n
 
 

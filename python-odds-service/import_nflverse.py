@@ -78,7 +78,8 @@ import pandas as pd
 sys.path.insert(0, "src")
 sys.path.insert(0, ".")
 import db  # noqa: E402
-from import_odds_staging import (COLS, GR_COLS, game_result_row,  # noqa: E402
+from import_odds_staging import (clear_source,  # noqa: E402
+                                 COLS, GR_COLS, game_result_row,  # noqa: E402
                                  impossible_price, insert, insert_results)
 
 URL = "https://github.com/nflverse/nfldata/raw/master/data/games.csv"
@@ -278,9 +279,8 @@ async def main():
 
     # Scoped to this source so the loader is independently re-runnable and
     # cannot duplicate itself. odds_import_staging has no unique index.
-    async with pool.acquire() as c:
-        n = await c.execute("DELETE FROM odds_import_staging WHERE source=$1", SOURCE)
-        print(f"cleared prior staging rows for {SOURCE}: {n}")
+    for t, n in (await clear_source(pool, SOURCE)).items():
+        print(f"cleared {t} for {SOURCE}: {n}")
     print(f"staged: {await insert(pool, rows):,}")
     print(f"game_result: {await insert_results(pool, results):,} offered")
 

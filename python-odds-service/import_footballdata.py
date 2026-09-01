@@ -82,7 +82,8 @@ sys.path.insert(0, "src")
 sys.path.insert(0, ".")
 import db  # noqa: E402
 from entity_resolution import strip_accents  # noqa: E402
-from import_odds_staging import (game_result_row, impossible_price,  # noqa: E402
+from import_odds_staging import (clear_source,  # noqa: E402
+                                 game_result_row, impossible_price,  # noqa: E402
                                  insert, insert_results)
 
 DL = "C:/Users/occy3/Downloads"
@@ -290,9 +291,8 @@ async def main():
         print(f"\n--report: {len(all_rows):,} rows built, nothing written")
         return
 
-    async with pool.acquire() as c:
-        n = await c.execute("DELETE FROM odds_import_staging WHERE source=$1", SOURCE)
-        print(f"cleared prior staging rows for {SOURCE}: {n}")
+    for t, n in (await clear_source(pool, SOURCE)).items():
+        print(f"cleared {t} for {SOURCE}: {n}")
     print(f"staged: {await insert(pool, all_rows):,}")
     print(f"game_result: {await insert_results(pool, all_results):,} offered")
 
