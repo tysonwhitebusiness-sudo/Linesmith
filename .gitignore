@@ -70,3 +70,6 @@ docs/discord-community-prompt.md
 # Fetched reference data for build_athlete_crosswalk.py. Re-derivable from
 # ESPN / MLB StatsAPI / the NHL API; kept out of the repo, not out of the run.
 python-odds-service/.crosswalk_cache/
+
+# Ad-hoc query/verification scripts, session-local.
+.scratch/
