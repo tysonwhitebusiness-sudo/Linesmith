@@ -23,11 +23,6 @@ warnings.filterwarnings("ignore")
 
 V1 = Path("C:/Users/occy3/Downloads/espn_core_odds/espn_core_odds_all.csv")
 V2 = Path("C:/Users/occy3/Downloads/espn_core_odds_v2/espn_core_odds_all.csv")
-SBR = {
-    "nba": Path("C:/Users/occy3/Downloads/nba_odds/nba_odds_all.csv"),
-    "nhl": Path("C:/Users/occy3/Downloads/nhl_odds/nhl_odds_all.csv"),
-}
-
 failures, notes = [], []
 
 
@@ -176,35 +171,26 @@ for s in sports:
     fw, dw = fav.home_won.mean(), dog.home_won.mean()
     check(fw - dw >= 0.15, f"1.8 {s}", f"fav {fw:.3f} vs dog {dw:.3f} = {fw-dw:+.3f}")
 
-# ---- 1.9 cross-source agreement ---------------------------------------------
-print("\n1.9  cross-source agreement with SBR")
-norm = lambda x: "".join(ch for ch in str(x).lower() if ch.isalpha())
-for sport, path in SBR.items():
-    if not path.exists():
-        notes.append(f"1.9 {sport}: SBR file missing")
-        continue
-    sbr = pd.read_csv(path, low_memory=False)
-    sbr["k"] = sbr.date.astype(str).str[:10] + "|" + sbr.home_team.map(norm) + "|" + sbr.away_team.map(norm)
-    lookup = dict(zip(sbr.k, sbr.close_total))
-    g = d[(d.sport == sport)].dropna(subset=["total", "event_date"]).copy()
-    g["dt"] = pd.to_datetime(g.event_date, errors="coerce", utc=True)
-    hit = agree = 0
-    for _, r in g.iterrows():
-        if pd.isna(r["dt"]):
-            continue
-        for off in (0, -1, 1):
-            k = (r["dt"] + pd.Timedelta(days=off)).strftime("%Y-%m-%d") + "|" + norm(r.home_team) + "|" + norm(r.away_team)
-            if k in lookup and pd.notna(lookup[k]):
-                hit += 1
-                if abs(lookup[k] - r.total) <= 1.5:
-                    agree += 1
-                break
-    if hit < 50:
-        notes.append(f"1.9 {sport}: only {hit} name-matched overlaps -- SBR uses nicknames "
-                     f"(LALakers/GoldenState); a low match is an ENTITY problem for Phase 4, not an odds problem")
-        continue
-    check(agree / hit >= 0.90, f"1.9 {sport} vs SBR closing total",
-          f"{agree/hit*100:.1f}% within +-1.5 (n={hit})")
+# ---- 1.9 DELETED 2026-09-01 -- superseded by gate 4.5 ------------------------
+# 1.9 compared ESPN's closing total against SBR's on the same game, matching
+# the two by RAW TEAM NAME. It never once asserted anything: SBR writes
+# "LALakers" and ESPN writes "Los Angeles Lakers", so it found 0 overlaps on
+# both sports it covered, printed a note, and passed vacuously. Its own note
+# said the right thing -- "a low match is an ENTITY problem for Phase 4" -- and
+# Phase 4 solved it.
+#
+# gate4_staging.mjs 4.5 is that same check, done against RESOLVED team ids in
+# odds_import_staging, and it is strictly stronger on every axis:
+#   - it matches (n=524 NBA, 217 NHL) where 1.9 matched nothing;
+#   - it DERIVES the SBR-vs-ESPN day offset instead of assuming 0 (it is +1,
+#     because SBR dates are local and ESPN's are UTC);
+#   - it asserts BIAS as the primary check, not per-game distance, because one
+#     source is a consensus snapshot and the other a ~16-book average of a line
+#     that genuinely moves;
+#   - it adds a same-favourite check on averaged IMPLIED PROBABILITIES.
+#
+# Fixing 1.9 would have meant reimplementing entity resolution here, upstream of
+# the importer that already does it. Deleted rather than fixed.
 
 # ---- 1.10 no all-null column ------------------------------------------------
 print("\n1.10  every loaded column non-null on at least one row")

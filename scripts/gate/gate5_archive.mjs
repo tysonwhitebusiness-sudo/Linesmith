@@ -8,12 +8,15 @@ const fail=[],note=[];
 const chk=(cond,l,v)=>{console.log(`  ${cond?'PASS':'FAIL'}  ${l.padEnd(46)} ${v}`); if(!cond)fail.push(`${l} -> ${v}`);};
 console.log('\nGATE 5 -- live odds_archive\n');
 
-// Two rows were deliberately deleted after promotion: SBR NBA moneylines of
-// -8 and +8, which are not possible American odds. So live == staged - 2.
-const DELETED_CORRUPT = 2;
+// The two corrupt SBR NBA moneylines (-8 and +8, impossible American prices)
+// are now rejected by promote_odds.mjs's WHERE clause instead of being deleted
+// by hand afterwards, so live == staged exactly. The old hand-deletion was not
+// reproducible: the next `--truncate` re-import put both rows straight back and
+// this check failed on a pipeline that had behaved correctly.
+const DELETED_CORRUPT = 0;
 const staged=await c.query(`SELECT count(*)::int n FROM odds_import_staging WHERE resolution_status='resolved'`);
 const live=await c.query(`SELECT count(*)::int n FROM odds_archive`);
-chk(live.rows[0].n===staged.rows[0].n-DELETED_CORRUPT,'5.1 promoted count equals staged-resolved minus 2 corrupt',
+chk(live.rows[0].n===staged.rows[0].n-DELETED_CORRUPT,'5.1 promoted count equals staged-resolved',
   `${live.rows[0].n.toLocaleString()} vs ${(staged.rows[0].n-DELETED_CORRUPT).toLocaleString()}`);
 
 console.log('\n5.2  every sport present with a plausible span');

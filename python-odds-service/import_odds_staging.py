@@ -39,7 +39,7 @@ import csv
 import json
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -195,6 +195,24 @@ class Resolver:
         return None, "unresolved_team"
 
 
+def impossible_price(market, price):
+    """No American price can sit strictly between -100 and +100. Two SBR NBA
+    moneylines carry -8 and +8.
+
+    They used to be DELETED BY HAND from odds_archive after promotion, with
+    gate 5 carrying a `DELETED_CORRUPT = 2` constant to account for them. That
+    is not a fix: the next `--truncate` re-import promoted both straight back
+    and the gate failed on a pipeline that had behaved correctly. Caught here
+    instead, where the file's own rule already applies -- nothing unresolved is
+    ever promoted, and it stays in staging with a note saying why.
+
+    market='spread' is exempt: for a spread row this column holds
+    close_home_spread, which is a handicap, not a price.
+    """
+    return (market == "moneyline" and price is not None
+            and -100 < price < 100)
+
+
 def espn_long_rows(r, resolver):
     """Explode one wide ESPN row into long (market, side) rows."""
     sport = r.get("sport")
@@ -232,8 +250,12 @@ def espn_long_rows(r, resolver):
     ):
         if price is None and line is None:
             continue
-        out.append({**base, "market": market, "side": side, "line": line,
-                    "price": price, "open_line": oline, "open_price": oprice})
+        row = {**base, "market": market, "side": side, "line": line,
+               "price": price, "open_line": oline, "open_price": oprice}
+        if impossible_price(market, price):
+            row["resolution_status"] = "unresolved"
+            row["resolution_note"] = "impossible_american_price"
+        out.append(row)
     return out
 
 
@@ -264,9 +286,81 @@ def sbr_long_rows(r, sport, resolver):
     ):
         if price is None and line is None:
             continue
-        out.append({**base, "market": market, "side": side, "line": line,
-                    "price": price, "open_line": oline, "open_price": None})
+        row = {**base, "market": market, "side": side, "line": line,
+               "price": price, "open_line": oline, "open_price": None}
+        if impossible_price(market, price):
+            row["resolution_status"] = "unresolved"
+            row["resolution_note"] = "impossible_american_price"
+        out.append(row)
     return out
+
+
+# ---------------------------------------------------------------------------
+# game_result -- final scores, from the same files, resolved the same way.
+#
+# Every source above already carries home_score/away_score; they were parsed for
+# gate 1's sanity checks and then thrown away. game_result keeps them, and it is
+# the ONLY place NHL 2020-21 scores can live: SBR skips that season entirely and
+# player_game_history has no NHL row for it either. ESPN core starts 2021-01-13,
+# which is that season's opening night.
+#
+# Scores are per GAME, not per book line, so ESPN rows are collapsed by
+# event_id -- 12,016 and 7,178 real events behind 102,632 odds rows.
+# ---------------------------------------------------------------------------
+
+# ZERO IS A PLACEHOLDER AGAIN, AND THIS TIME IT DEPENDS ON THE SPORT.
+# ESPN writes 0-0 for a game that was postponed, cancelled or has not happened.
+# In soccer 0-0 is also a perfectly ordinary final score, so it cannot simply be
+# dropped everywhere. Measured over every past-dated event in both files:
+#
+#   soccer_epl 6.75%   soccer_mls 5.74%    <- real draw rates, keep
+#   mlb 1.08%   nhl 0.42%   nba 0.19%      <- impossible finals, drop
+#   nfl 0.00%   cfb 0.00%
+#
+# A baseball game cannot end 0-0 and neither can a hockey or basketball one, so
+# every 0-0 in those columns is a game that was not played. This is the same
+# lesson as ESPN's close_total == 0, one table over: a zero that the sport
+# cannot produce is missing data wearing a number.
+CAN_END_NIL_NIL = {"soccer_epl", "soccer_mls"}
+
+
+def game_result_row(sport, event_ref, game_date, home_raw, away_raw, hid, aid,
+                    hs, as_, venue, source, today):
+    if hs is None or as_ is None or not game_date:
+        return None
+    # A future-dated row has no result to record no matter what it says.
+    if game_date > today:
+        return None
+    if hs == 0 and as_ == 0 and sport not in CAN_END_NIL_NIL:
+        return None
+    return dict(sport=sport, event_ref=event_ref, game_date=game_date,
+                home_team_raw=home_raw, away_team_raw=away_raw,
+                home_team_id=str(hid) if hid else None,
+                away_team_id=str(aid) if aid else None,
+                home_score=hs, away_score=as_, venue=venue, source=source)
+
+
+GR_COLS = ["sport", "event_ref", "game_date", "home_team_raw", "away_team_raw",
+           "home_team_id", "away_team_id", "home_score", "away_score", "venue", "source"]
+
+
+async def insert_results(pool, rows, batch=1000):
+    """ON CONFLICT DO NOTHING against a natural key that now includes
+    event_ref. Without it, 520 keys covering 1,044 events -- 511 of them MLB
+    doubleheaders -- would collapse and lose 524 real games silently. See
+    migration 20260901170000."""
+    if not rows:
+        return 0
+    ph = ",".join(f"${i+1}" for i in range(len(GR_COLS)))
+    sql = (f"INSERT INTO game_result ({','.join(GR_COLS)}) VALUES ({ph}) "
+           f"ON CONFLICT DO NOTHING")
+    n = 0
+    async with pool.acquire() as conn:
+        for i in range(0, len(rows), batch):
+            chunk = rows[i:i + batch]
+            await conn.executemany(sql, [tuple(r[c] for c in GR_COLS) for r in chunk])
+            n += len(chunk)
+    return n
 
 
 COLS = ["sport", "event_ref", "game_date", "home_team_raw", "away_team_raw", "home_team_id",
@@ -304,7 +398,8 @@ async def main():
     if args.truncate:
         async with pool.acquire() as c:
             await c.execute("TRUNCATE odds_import_staging")
-        print("staging truncated")
+            await c.execute("TRUNCATE game_result")
+        print("staging and game_result truncated")
 
     resolver = Resolver()
     espn = rows_of(DL / "espn_core_odds" / "espn_core_odds_all.csv") + \
@@ -315,15 +410,35 @@ async def main():
         resolver.learn_espn(r.get("sport"), r.get("away_abbr"), r.get("away_id"), r.get("away_team"))
     print(f"resolver learned {len(resolver.by_abbr)} abbrs, {len(resolver.by_name)} names")
 
+    today = datetime.now(timezone.utc).date()
+
     total = 0
-    out = []
+    out, results, seen_events = [], [], set()
     for r in espn:
         out.extend(espn_long_rows(r, resolver))
+        # One score row per EVENT, not per book line: the same game appears once
+        # per provider in these files.
+        eid = r.get("event_id")
+        if eid and eid not in seen_events:
+            seen_events.add(eid)
+            sport = r.get("sport")
+            d = (r.get("event_date") or "")[:10]
+            hid, _ = resolver.resolve(sport, r.get("home_abbr"), r.get("home_team"))
+            aid, _ = resolver.resolve(sport, r.get("away_abbr"), r.get("away_team"))
+            gr = game_result_row(
+                sport, eid, datetime.strptime(d, "%Y-%m-%d").date() if d else None,
+                r.get("home_team"), r.get("away_team"), hid, aid,
+                integer(r.get("home_score")), integer(r.get("away_score")),
+                r.get("venue"), "espn_core", today)
+            if gr:
+                results.append(gr)
         if len(out) >= 40000:
             total += await insert(pool, out)
             out = []
     total += await insert(pool, out)
     print(f"espn staged: {total:,}")
+    print(f"espn results: {await insert_results(pool, results):,} "
+          f"of {len(seen_events):,} events")
 
     for sport, path in (("nba", DL / "nba_odds" / "nba_odds_all.csv"),
                         ("nhl", DL / "nhl_odds" / "nhl_odds_all.csv"),
@@ -332,14 +447,25 @@ async def main():
         if not src:
             print(f"  {path.name}: missing")
             continue
-        rows, n = [], 0
+        rows, n, res = [], 0, []
         for r in src:
             rows.extend(sbr_long_rows(r, sport, resolver))
+            d = (r.get("date") or "")[:10]
+            hid, _ = resolver.resolve(sport, None, r.get("home_team"))
+            aid, _ = resolver.resolve(sport, None, r.get("away_team"))
+            gr = game_result_row(
+                sport, None, datetime.strptime(d, "%Y-%m-%d").date() if d else None,
+                r.get("home_team"), r.get("away_team"), hid, aid,
+                integer(r.get("home_score")), integer(r.get("away_score")),
+                None, "sbr", today)
+            if gr:
+                res.append(gr)
             if len(rows) >= 40000:
                 n += await insert(pool, rows)
                 rows = []
         n += await insert(pool, rows)
-        print(f"sbr {sport} {path.parent.name} staged: {n:,}")
+        print(f"sbr {sport} {path.parent.name} staged: {n:,}, "
+              f"results {await insert_results(pool, res):,}")
         total += n
 
     print(f"\nTOTAL STAGED: {total:,}")

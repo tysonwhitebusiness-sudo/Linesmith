@@ -118,7 +118,71 @@ for (const r of (await c.query(`SELECT sport, count(DISTINCT home_team_id)::int 
   chk(Math.abs(r.n - e) <= 3, `4.8 ${r.sport} teams (expect ~${e})`, `${r.n}`);
 }
 
-note.push('4.6 score agreement: game_result not yet populated — deferred to Phase 4b');
+console.log('\n4.6  CROSS-SOURCE SCORES: do ESPN and SBR report the same result?');
+// game_result is populated as of 2026-09-01, so this runs for real now.
+//
+// This is the strongest cross-source check available anywhere in the pipeline,
+// and it is qualitatively different from 4.5. A closing total is a line that
+// genuinely moves, so two sources disagreeing by half a point is normal and
+// 4.5 can only assert on the mean. A FINAL SCORE is a fact. Two sources that
+// watched the same game either agree exactly or one of them is wrong -- so
+// this asserts exact agreement, and any shortfall is a mis-joined game rather
+// than a difference of opinion.
+//
+// Same day offset as 4.5 and derived the same way: SBR dates are local, ESPN's
+// are UTC.
+for (const sport of ['nba', 'nhl']) {
+  const off = await c.query(`
+    WITH s AS (SELECT DISTINCT game_date,home_team_id,away_team_id FROM game_result
+               WHERE source='sbr' AND sport=$1 AND home_team_id IS NOT NULL),
+         e AS (SELECT DISTINCT game_date,home_team_id,away_team_id FROM game_result
+               WHERE source='espn_core' AND sport=$1 AND home_team_id IS NOT NULL)
+    SELECT (e.game_date-s.game_date) o, count(*)::int n FROM s JOIN e
+      ON e.home_team_id=s.home_team_id AND e.away_team_id=s.away_team_id
+      AND e.game_date BETWEEN s.game_date-1 AND s.game_date+1 GROUP BY 1 ORDER BY 2 DESC LIMIT 1`, [sport]);
+  if (!off.rows.length) { note.push(`4.6 ${sport}: no ESPN/SBR game overlap`); continue; }
+  const O = off.rows[0].o;
+  const q = await c.query(`
+    SELECT count(*)::int n,
+      count(*) FILTER (WHERE e.home_score=s.home_score AND e.away_score=s.away_score)::int exact,
+      count(*) FILTER (WHERE e.home_score=s.away_score AND e.away_score=s.home_score
+                         AND e.home_score<>e.away_score)::int flipped
+    FROM game_result s JOIN game_result e
+      ON e.sport=s.sport AND e.source='espn_core'
+     AND e.home_team_id=s.home_team_id AND e.away_team_id=s.away_team_id
+     AND e.game_date = s.game_date + ($2)::int
+    WHERE s.source='sbr' AND s.sport=$1 AND s.home_team_id IS NOT NULL`, [sport, O]);
+  const { n, exact, flipped } = q.rows[0];
+  if (n < 50) { note.push(`4.6 ${sport}: only ${n} overlapping games`); continue; }
+  chk(exact / n >= 0.97, `4.6 ${sport} exact score agreement`,
+    `${(exact / n * 100).toFixed(1)}% (${exact}/${n}, offset ${O}d)`);
+  // A HOME/AWAY SWAP IS THE FAILURE THIS CHECK EXISTS TO CATCH. It is the
+  // score-column version of filing Montreal's odds under Toronto: every row
+  // present, every number real, the orientation inverted. It would leave the
+  // exact-agreement rate low while every other gate in the suite still passed.
+  chk(flipped / n <= 0.02, `4.6 ${sport} NOT systematically home/away swapped`,
+    `${(flipped / n * 100).toFixed(1)}% flipped`);
+}
+
+console.log('\n4.6b  scores are possible for the sport');
+// Zero is a placeholder again, and this time it depends on the sport: a 0-0 is
+// an ordinary soccer result and an impossible baseball, basketball or hockey
+// one. The importer drops the impossible ones; this asserts it did.
+const NIL = { soccer_epl: true, soccer_mls: true };
+for (const r of (await c.query(`SELECT sport,count(*)::int n,
+    count(*) FILTER (WHERE home_score=0 AND away_score=0)::int nil,
+    avg(home_score+away_score)::float tot
+  FROM game_result GROUP BY 1 ORDER BY 1`)).rows) {
+  if (NIL[r.sport]) { note.push(`4.6b ${r.sport}: ${r.nil} nil-nil of ${r.n} (a real result here)`); continue; }
+  chk(r.nil === 0, `4.6b ${r.sport} no impossible 0-0 final`, `${r.nil} of ${r.n.toLocaleString()}`);
+}
+const SANE = { mlb: [7, 11], nba: [190, 245], nfl: [38, 52], cfb: [45, 62], nhl: [5, 7], soccer_epl: [2, 3.6], soccer_mls: [2, 3.6] };
+for (const r of (await c.query(`SELECT sport,avg(home_score+away_score)::float t,count(*)::int n
+  FROM game_result GROUP BY 1 ORDER BY 1`)).rows) {
+  const b = SANE[r.sport]; if (!b) continue;
+  chk(r.t >= b[0] && r.t <= b[1], `4.6b ${r.sport} mean combined score`,
+    `${Number(r.t).toFixed(2)} (expect ${b[0]}-${b[1]}, n=${r.n.toLocaleString()})`);
+}
 note.push('4.7 tennis orientation: tennis is a PLAYER entity, not a team pair, so it is not loaded by this team-shaped importer. Deferred — the Winner/Loser de-randomisation remains REQUIRED before any tennis load.');
 
 if (note.length) { console.log('\nNOTES:'); note.forEach(n => console.log(`  - ${n}`)); }
