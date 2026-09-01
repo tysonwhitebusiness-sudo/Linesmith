@@ -60,3 +60,9 @@ g*.mjs
 gate*.mjs
 python-odds-service/weakgate.log
 docs/discord-community-prompt.md
+
+# The scratch patterns above (q*/g*/gate*) match at ANY depth, which also
+# catches real, reusable scripts under scripts/. That is the opposite of what
+# the comment above asks for -- "a real script belongs in scripts/ with a name
+# that says what it does" -- so scripts/ is explicitly un-ignored.
+!scripts/**
