@@ -49,6 +49,10 @@ import db  # noqa: E402
 
 DL = Path("C:/Users/occy3/Downloads")
 
+# The sources THIS loader writes. --truncate clears these and nothing else;
+# other loaders (import_nflverse.py, import_tennis.py, ...) own their own.
+OWNED_SOURCES = ("espn_core", "sbr")
+
 # Sports whose team ids in player_game_history ARE ESPN's (see header).
 ESPN_ID_SPORTS = {"nba", "nfl", "cfb", "soccer_epl", "soccer_mls"}
 
@@ -476,10 +480,16 @@ async def main():
     args = ap.parse_args()
     pool = await db.get_pool()
     if args.truncate:
+        # SCOPED TO THE SOURCES THIS LOADER OWNS. A bare TRUNCATE would silently
+        # wipe every other loader's staged rows -- import_nflverse.py and the
+        # rest write to the same table -- and the next promotion would then
+        # delete their archive rows too, because promotion deletes exactly the
+        # sources staging covers. Each loader clears only its own.
         async with pool.acquire() as c:
-            await c.execute("TRUNCATE odds_import_staging")
-            await c.execute("TRUNCATE game_result")
-        print("staging and game_result truncated")
+            for t in ("odds_import_staging", "game_result"):
+                n = await c.execute(f"DELETE FROM {t} WHERE source = ANY($1::text[])",
+                                    list(OWNED_SOURCES))
+                print(f"cleared {t} for {', '.join(OWNED_SOURCES)}: {n}")
 
     resolver = Resolver()
     espn = rows_of(DL / "espn_core_odds" / "espn_core_odds_all.csv") + \

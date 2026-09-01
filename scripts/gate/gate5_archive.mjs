@@ -4,6 +4,11 @@ const env=fs.readFileSync('.env.local','utf8');
 const url=env.split('\n').find(l=>l.startsWith('DATABASE_URL='))?.slice(13).trim().replace(/^["']|["']$/g,'');
 const c=new pg.Client({connectionString:url}); await c.connect();
 await c.query(`SET statement_timeout='600s'`);
+// The oldest date any source legitimately carries. This was '2007-01-01' when
+// SBR's NBA file (2007-10-30) was the deepest thing in the archive -- a
+// high-water mark mistaken for a rule. nflverse goes back to 1999 and is not
+// wrong for doing so.
+const ARCHIVE_FLOOR = '1999-01-01';
 const fail=[],note=[];
 const chk=(cond,l,v)=>{console.log(`  ${cond?'PASS':'FAIL'}  ${l.padEnd(46)} ${v}`); if(!cond)fail.push(`${l} -> ${v}`);};
 console.log('\nGATE 5 -- live odds_archive\n');
@@ -19,16 +24,20 @@ const DELETED_CORRUPT = 0;
 // contest between two PEOPLE and odds_import_staging is shaped around a pair
 // of teams. Counting its rows against the staging total would fail this check
 // for a load that is entirely correct. gate8_tennis.mjs covers that source.
-const STAGED_SOURCES = `('espn_core','sbr')`;
+// DERIVED, not a hardcoded list: whichever sources staging currently holds are
+// the ones promotion is responsible for. Sources written straight to the
+// archive (tennis) are excluded automatically, and a newly added loader is
+// included automatically.
+const stagedSrcs=(await c.query(`SELECT DISTINCT source FROM odds_import_staging WHERE resolution_status='resolved'`)).rows.map(r=>r.source);
 const staged=await c.query(`SELECT count(*)::int n FROM odds_import_staging WHERE resolution_status='resolved'`);
-const live=await c.query(`SELECT count(*)::int n FROM odds_archive WHERE source IN ${STAGED_SOURCES}`);
-chk(live.rows[0].n===staged.rows[0].n-DELETED_CORRUPT,'5.1 promoted count equals staged-resolved',
+const live=await c.query(`SELECT count(*)::int n FROM odds_archive WHERE source = ANY($1::text[])`,[stagedSrcs]);
+chk(live.rows[0].n===staged.rows[0].n-DELETED_CORRUPT,`5.1 promoted count equals staged-resolved (${stagedSrcs.join(', ')})`,
   `${live.rows[0].n.toLocaleString()} vs ${(staged.rows[0].n-DELETED_CORRUPT).toLocaleString()}`);
 
 console.log('\n5.2  every sport present with a plausible span');
 for(const r of (await c.query(`SELECT sport,count(*)::int n,min(game_date)::text lo,max(game_date)::text hi,
   count(DISTINCT source)::int src FROM odds_archive GROUP BY 1 ORDER BY 1`)).rows)
-  chk(r.n>1000 && r.lo>='2007-01-01' && r.hi<='2026-12-31', `5.2 ${r.sport}`, `${r.n.toLocaleString()} rows, ${r.lo} -> ${r.hi}, ${r.src} source(s)`);
+  chk(r.n>1000 && r.lo>=ARCHIVE_FLOOR && r.hi<='2026-12-31', `5.2 ${r.sport}`, `${r.n.toLocaleString()} rows, ${r.lo} -> ${r.hi}, ${r.src} source(s)`);
 const sports=(await c.query(`SELECT DISTINCT sport FROM odds_archive`)).rows.map(r=>r.sport);
 // Nine: the seven team leagues plus tennis_atp and tennis_wta, added 2026-09-01.
 chk(sports.length===9,'5.2 all 9 league keys present',sports.sort().join(' '));

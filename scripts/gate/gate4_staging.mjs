@@ -15,6 +15,9 @@ const c = new pg.Client({ connectionString: url });
 await c.connect();
 await c.query(`SET statement_timeout='300s'`);
 
+// The oldest date any source legitimately carries -- see gate 5. nflverse
+// starts in 1999; the old '2007-01-01' bound was a high-water mark, not a rule.
+const ARCHIVE_FLOOR = '1999-01-01';
 const fail = [], note = [];
 const chk = (cond, label, val) => {
   console.log(`  ${cond ? 'PASS' : 'FAIL'}  ${label.padEnd(46)} ${val}`);
@@ -47,7 +50,7 @@ chk(r3.rows[0].n === 0, '4.3 duplicate natural keys', `${r3.rows[0].n} key(s)`);
 console.log('\n4.4  dates inside plausible ranges');
 for (const r of (await c.query(`SELECT sport, min(game_date)::text lo, max(game_date)::text hi, count(*)::int n
   FROM odds_import_staging WHERE resolution_status='resolved' GROUP BY 1 ORDER BY 1`)).rows)
-  chk(!(r.lo < '2007-01-01' || r.hi > '2026-12-31'), `4.4 ${r.sport} span`, `${r.lo} -> ${r.hi} (${r.n.toLocaleString()})`);
+  chk(!(r.lo < ARCHIVE_FLOOR || r.hi > '2026-12-31'), `4.4 ${r.sport} span`, `${r.lo} -> ${r.hi} (${r.n.toLocaleString()})`);
 
 console.log('\n4.5  CROSS-SOURCE: SBR vs ESPN on the same resolved game');
 // DERIVE the date offset rather than assuming 0. SBR dates are LOCAL with no
@@ -163,6 +166,29 @@ for (const sport of ['nba', 'nhl']) {
   chk(flipped / n <= 0.02, `4.6 ${sport} NOT systematically home/away swapped`,
     `${(flipped / n * 100).toFixed(1)}% flipped`);
 }
+
+console.log('\n4.6c  CROSS-SOURCE SCORES on a shared EVENT ID');
+// Stronger than 4.6, and it generalises. 4.6 matches two sources by (team,
+// date+offset), which needs a derived offset and can only ever be approximate.
+// Where two sources publish the SAME event id there is nothing to derive: it is
+// literally the same game, so the scores must be identical and any mismatch is
+// a parse error rather than a difference of opinion.
+//
+// nflverse ships ESPN's event id on all 7,548 of its rows, which is also what
+// proved its 35-code team map correct (285/285 team ids agreed, 0 swapped).
+// This runs for every source pair that shares event ids, so a future loader
+// carrying them is covered without touching this gate.
+const shared = await c.query(`
+  SELECT a.sport, a.source sa, b.source sb, count(*)::int n,
+    count(*) FILTER (WHERE a.home_score=b.home_score AND a.away_score=b.away_score)::int exact
+  FROM game_result a JOIN game_result b
+    ON a.sport=b.sport AND a.event_ref=b.event_ref AND a.source < b.source
+  WHERE a.event_ref IS NOT NULL AND b.event_ref IS NOT NULL
+  GROUP BY 1,2,3 HAVING count(*) >= 50 ORDER BY 1,2,3`);
+if (!shared.rows.length) note.push('4.6c no two sources share an event id yet');
+for (const r of shared.rows)
+  chk(r.exact === r.n, `4.6c ${r.sport} ${r.sa} vs ${r.sb} identical scores`,
+    `${r.exact}/${r.n} on the same event id`);
 
 console.log('\n4.6b  scores are possible for the sport');
 // Zero is a placeholder again, and this time it depends on the sport: a 0-0 is
