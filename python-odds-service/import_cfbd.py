@@ -189,7 +189,13 @@ def build(games, today):
             # margins. The away side is its mirror.
             sp = l.get("spread")
             spo = l.get("spreadOpen")
-            tot, toto = l.get("overUnder"), l.get("overUnderOpen")
+            # A TOTAL IS A POSITIVE NUMBER OF POINTS. CFBD publishes an
+            # overUnder of -1 for Georgia/Florida on 2018-10-27 from Caesars --
+            # a placeholder wearing a number, the same class as ESPN's
+            # close_total == 0. Two rows, but a negative total would poison any
+            # over/under rate computed without noticing it.
+            pos = lambda v: v if (v is not None and v > 0) else None  # noqa: E731
+            tot, toto = pos(l.get("overUnder")), pos(l.get("overUnderOpen"))
             for market, side, line, price, oline in (
                 ("moneyline", "home", None, integer(l.get("homeMoneyline")), None),
                 ("moneyline", "away", None, integer(l.get("awayMoneyline")), None),

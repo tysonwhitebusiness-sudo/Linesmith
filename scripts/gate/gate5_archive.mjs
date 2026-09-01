@@ -115,6 +115,26 @@ const missing = await c.query(`
 chk(missing.rows.length === 0, '5.8 no staged market missing from the archive',
   missing.rows.length ? missing.rows.map(r => `${r.sport}/${r.source}/${r.market}/${r.side}`).join(', ') : 'none');
 
+console.log('\n5.9  no dead or impossible rows');
+// Both of these were found by auditing the LOADED archive, not by any gate,
+// which is exactly why they are gates now.
+//   - 882 tennis rows carried neither a price nor a line, because the loader
+//     emitted both sides whenever either side was priced.
+//   - CFBD publishes an overUnder of -1 for Georgia/Florida on 2018-10-27. A
+//     negative total is a placeholder wearing a number, the same class as
+//     ESPN's close_total == 0, and it poisons any over/under rate computed
+//     without noticing it.
+const dead = await c.query(`SELECT count(*)::int n FROM odds_archive WHERE price IS NULL AND line IS NULL`);
+chk(dead.rows[0].n === 0, '5.9 rows carrying neither a price nor a line', `${dead.rows[0].n}`);
+const badtot = await c.query(`SELECT count(*)::int n FROM odds_archive WHERE market='total' AND line <= 0`);
+chk(badtot.rows[0].n === 0, '5.9 total lines are positive', `${badtot.rows[0].n}`);
+// NOT a failure. A scheduled game with a posted line is legitimate archive
+// content; it is reported because any TRAINING query must reach game_result,
+// which holds no future rows at all. Training on odds alone would silently
+// include games that have not been played.
+const fut = await c.query(`SELECT count(*)::int n FROM odds_archive WHERE game_date > CURRENT_DATE`);
+note.push(`5.9 ${fut.rows[0].n.toLocaleString()} future-dated odds rows (scheduled games) — always join to game_result for training`);
+
 console.log('\n5.7  database size');
 const sz=await c.query(`SELECT pg_size_pretty(pg_database_size(current_database())) s, pg_database_size(current_database())/1048576 mb`);
 const mb=Number(sz.rows[0].mb);

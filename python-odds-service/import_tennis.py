@@ -214,8 +214,15 @@ def build(df):
                         open_price=None, bookmaker=book, provider="tennis_data",
                         source=SOURCE, source_priority=SOURCE_PRIORITY,
                         booksum=booksum, ml_flag=flag)
-            odds.append({**base, "side": "home", "price": a1})
-            odds.append({**base, "side": "away", "price": a2})
+            # ONE SIDE CAN BE PRICED WHILE THE OTHER IS NOT, and a row with
+            # neither a price nor a line carries nothing. The first version
+            # emitted both sides whenever either had a price and left 882 dead
+            # rows in the archive -- harmless to read, but they inflate every
+            # per-side count and there is no reason for them to exist.
+            for side, price in (("home", a1), ("away", a2)):
+                if price is None:
+                    continue
+                odds.append({**base, "side": side, "price": price})
 
         if not played:
             skipped["not_played"] += 1
