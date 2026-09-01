@@ -2281,6 +2281,92 @@ the same deterministic orientation.
 
 ---
 
+## Track F — Finish the sourcing, then surface it. Added 2026-09-01.
+
+Full detail in `docs/sourcing-completion-gameplan-2026-09-01.md`. Summary here.
+
+**Why this track exists.** Track E closed with `CURRENT.md` claiming "the
+overnight sourcing run is COMPLETE." It was not. Asked the only question that
+matters — *how many games have both a price and a result?* — six of eight sports
+came back thin, and three separate causes were behind it: a source ceiling
+(ESPN core publishes ~one season, so NFL's 285 is exactly one NFL season), a
+silent loader bug (`sbr_long_rows` reads the NBA file's column names, so NHL's
+entire 2007–2022 moneyline history was skipped without an error), and sources
+listed in the priority table at 80 that had never been fetched at all.
+
+**"Sourcing complete" meant "the sources we ingested were fully ingested."** It
+was never tested against the question the model layer actually asks — the same
+failure as bar 1 in `docs/model-rebuild-plan.md`.
+
+**Worth ~94,000 → ~174,000 trainable games.** NHL unusable → level with NBA,
+NFL one season → twenty, MLS one → fourteen, CFB one → thirteen.
+
+### 6.30 · Complete the game-odds sourcing — **NOT STARTED**
+
+Six sources, all in hand: NHL SBR column fix (18,204 ML + 9,485 puck lines +
+18,203 total prices), nflverse (7,276 spread+total from 1999, 5,295 ML from
+2006), CFBD (13,728 spread from 2013, 4,137 ML from 2021), EPL `E0*.csv`
+(4,200), MLS `USA.csv` (6,130), MLB raw xlsx (28,060, 2010–2021).
+
+Every hazard in the six is a **silent** failure — none throw, each just produces
+a smaller, wronger dataset. Folded into scope: results alongside odds (odds
+without results are not trainable, which is the whole metric), four team
+crosswalks held to the **shuffled-control** standard rather than a coverage
+percentage, gate coverage per source, and the NHL 340-of-1,740 overlap anomaly.
+
+Operator decisions: MLB raw loads into `odds_archive` with `historical_odds`
+left untouched (different semantics — raw prices vs de-vigged probabilities);
+use full market depth per sport, never truncating one market to another's
+availability.
+
+Cost ~287 MB, DB 4,401 → ~4,690 of 8,192.
+
+### 6.31 · NHL `player_game_history` backfill — **NOT STARTED**
+
+**The item that actually blocks 6.29.** NHL prop player-games with a stat line
+to grade against = **0**. Not a crosswalk failure — 17,965 resolve perfectly —
+but `player_game_history` stops 2025-04-17 and every NHL prop is 2025-10-01 or
+later. **`model-rebuild-plan.md` §7's premise "NBA, NHL and MLB need no new
+data" is false for NHL**, and stays false after all six of 6.30's loads, which
+are game-level.
+
+### 6.32 · Tennis player-id crosswalk — **NOT STARTED**
+
+**One hop, not two.** Verified 2026-09-01: `player_game_history`'s tennis
+athlete ids **are ESPN athlete ids** (2375 = Alexander Zverev), confirmed by
+construction at `game_context.py:422`. An earlier note called them "4-digit ids
+from a different provider" and scoped this as a two-hop problem; that was wrong.
+Same shape as 6.28's crosswalk, with last-name-plus-initial matching because
+tennis-data abbreviates. Verification is strong — ten of eleven years overlap.
+
+### ─── TRACK F GATE ─── operator review, hard stop
+
+**Nothing in 6.33 starts until the operator approves.** All gates pass, all four
+new crosswalks pass a shuffled control, trainable games measured **per sport by
+the priced-and-resulted query**, idempotency proven by running each loader
+twice, `tsc` clean, tests green, DB measured. **Do not claim "sourcing
+complete" again** — state what was measured and what remains thin.
+
+### 6.33 · Market-history cards — **BLOCKED on the gate above**
+
+Four cards: `GameDetailData.marketHistory`, `TeamDetailData.marketRecord`,
+`PlayerDetailData.propLineHistory` (possible only because of 6.28), and
+open→close movement.
+
+**Safe to render while 6.29 is unbuilt** because every one is a *market fact,
+not a model claim* — a closing line that existed and a result that happened.
+Same category as the unit grades, which is why this does not violate the Phase 6
+gate's "no model output that has not cleared bar 3."
+
+Constraints: these are the **first TypeScript readers of `odds_archive`**, so
+`cachedRoute()` applies from the first route and the cache key must be grepped;
+precompute rollups rather than querying 1.5M rows live; one nullable field per
+shared interface behind a presence check, never `sport === 'x'`; and every card
+needs a minimum-sample threshold, because a percentile off 285 games is a lie
+with a number on it.
+
+---
+
 ## Suggested order
 
 1. **6.5** (pick_history backfill) and **6.1–6.3** (type changes) start
@@ -2291,10 +2377,14 @@ the same deterministic orientation.
 5. **6.7** (NBA/NHL shots, approved), then **6.8**, **6.9**, **6.10**.
 6. **6.18** (compliance) must precede any public signup regardless of position.
 7. **6.11**, then Track D's remainder.
-8. **Track E**, added 2026-08-31. **6.25–6.28 are done**; **6.29 is the only
-   remaining item in the track** and is the largest piece of work left in the
-   phase. Note that **6.26 closes 6.11** — the NBA/NHL book-line gap it
-   describes no longer exists.
+8. **Track E**, added 2026-08-31. **6.25–6.28 are done**; **6.29 is the largest
+   piece of work left in the phase**. Note that **6.26 closes 6.11** — the
+   NBA/NHL book-line gap it describes no longer exists.
+9. **Track F**, added 2026-09-01, runs **before 6.29**, not after. 6.31 is a
+   hard prerequisite: the prop grader is what 6.29 builds first, and NHL cannot
+   train one until `player_game_history` is backfilled. 6.30 and 6.32 raise the
+   trainable set from ~94,000 games to ~174,000, which changes what the per-sport
+   gameplans can honestly say.
 
 ---
 

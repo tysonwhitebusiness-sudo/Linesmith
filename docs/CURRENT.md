@@ -2,9 +2,13 @@
 
 **Task 6.28 (entity crosswalks) is COMPLETE.** All four parts landed
 2026-09-01: the MLB + NHL athlete crosswalk, the tennis load, `game_result`,
-and gate 1.9's deletion. **Track E is now 6.25–6.28 done, 6.29 the only item
-left** — and 6.29 is the model rebuild, the largest remaining piece of work in
-the phase.
+and gate 1.9's deletion.
+
+**TRACK F was then added, and it runs BEFORE 6.29.** Testing 6.28's own claim
+found that "sourcing complete" was not true — six of eight sports had one season
+of odds or less. Plan:
+`docs/sourcing-completion-gameplan-2026-09-01.md`. Track F is 6.30–6.33 with a
+**hard operator gate** between the sourcing and the UI work.
 
 **Gates 1, 2, 2.7, 3, 4, 5, 6, 7 and 8 all pass.** `tsc` clean, **339 tests,
 0 fail**. DB **4,401 MB** of an 8 GB ceiling.
@@ -84,37 +88,72 @@ converging and no coverage number would reveal it.
 
 ## 3. NEXT ACTIONS, in order
 
-1. **6.29 — the model rebuild.** The only Track E item left, and the largest
-   remaining work in the phase. `docs/model-rebuild-plan.md` §7 has the order:
-   turn off soccer props and the edge column → **build the prop grader first**
-   (MLB, NBA and NHL need no new data, and 6.28 removed the blocker that stopped
-   MLB and NHL prop rows reaching a player) → then rebuild MLB moneyline alone
-   with **no market feature**, judged on bar 3 → then tennis. **Do not start
-   without asking the operator.**
-2. **Deploy Render.** `794240d`, `venueFactorsJob` and `injurySnapshotJob` are
-   all undeployed. Four ingest jobs still report **NEVER RUN**. Nothing in this
-   session touched the worker, but nothing deployed either. Ask first.
-3. **The two Phase 6 gate violations** — `TeamDetail`'s `teamHref` and
-   `GameDetail`'s `renderLiveDetail`, both `sport === 'x'` in a render path.
-4. **`docs/table-ownership.md` is stale.** It lists 35 tables and none of Track
-   E's — `odds_archive`, `prop_odds_archive`, `game_result`, `injury_report`,
-   `odds_import_staging`, `prop_import_staging`, `odds_unresolved` and now
-   `athlete_crosswalk`. Pre-existing drift, not caused here. Note that its own
-   derivation rule only parses `lib/db/client.ts` and `src/db.py`, and the
-   Track E loaders are standalone scripts issuing their own SQL — so the rule
-   needs widening before the table can be regenerated honestly.
+**Track F is the plan: `docs/sourcing-completion-gameplan-2026-09-01.md`.**
+It was written 2026-09-01 and it runs **before 6.29**, not after.
+
+1. **6.30 — complete the game-odds sourcing.** Six sources, all in hand: NHL
+   SBR column fix, nflverse, CFBD (key added and verified), EPL `E0*.csv`, MLS
+   `USA.csv`, MLB raw xlsx. Every hazard in the six is a **silent** failure.
+2. **6.31 — NHL `player_game_history` backfill.** The item that actually blocks
+   6.29: NHL has **0** prop player-games with a stat line, and none of 6.30's
+   loads change that because they are game-level.
+3. **6.32 — tennis player-id crosswalk.** One hop, not two — pgh's tennis ids
+   are ESPN athlete ids.
+4. **TRACK F GATE — hard stop, operator review.** Nothing proceeds until
+   approved.
+5. **6.33 — the four market-history cards.** Blocked on the gate.
+6. **6.29 — the model rebuild.** After Track F, with a per-sport gameplan
+   written against the real trainable numbers.
+
+### Why Track F exists, in one line
+
+**This file claimed "the overnight sourcing run is COMPLETE" on 2026-09-01 and
+it was not true.** Six of eight sports had one season of odds or less. Asked the
+only question that matters — *how many games have both a price and a result?* —
+the answer was ~94,000 across eight sports, against ~174,000 available. Do not
+make that claim again without running that query per sport.
+
+### Still open, unscheduled
+
+- **Deploy Render.** `venueFactorsJob` and `injurySnapshotJob` report NEVER RUN.
+- **`refreshTennisAtpJob` is failing every run** on `prop_odds_side_valid` —
+  it writes `side='home'` for an `aces` market, which is over/under. WTA is
+  fine, so it is ATP-path-specific.
+- **`refreshSportsGameOddsJob` stale 12.6h**, 8 objects spent all month.
+- **The odds-API pacing problem.** `propline` and `oddsapiio` burn their whole
+  daily cap within 20–70 minutes of the 04:00 UTC reset, so both contribute
+  **zero** prices during US game hours and everything they capture is 12–20
+  hours pre-game. The archive is unaffected; anything running live is not.
+  Note the health check reports a fully cap-blocked job as *healthy* —
+  `health_check.py:105` is `ok and not stale`, which cannot see "did nothing".
+- **Retention and the DB ceiling.** `prop_odds_history` wrote **265,771 rows on
+  2026-09-01 alone** and has **no retention rule**; `injury_report` is ~11
+  MB/day, also unbounded. Deferred by operator decision — the design depends on
+  whether the archive becomes a sellable dataset.
+- **The two Phase 6 gate violations** — `TeamDetail.tsx:770` `teamHref` and
+  `GameDetail.tsx:2297` `renderLiveDetail`, both `sport === 'x'` in a render
+  path. Verified still present 2026-09-01.
+- **`docs/table-ownership.md` is stale** — lists 35 tables, none of Track E's.
 
 ## 4. Blocked, and why — do not re-attempt without new data
 
-**Tennis player ids.** The tennis-data files publish `"Vukic A."` and no id of
-any kind. `player_game_history`'s tennis rows carry **4-digit ids from a
-different provider** and there is **no name column anywhere** to bridge them.
-`odds_archive`'s tennis rows therefore carry NULL entity ids, deliberately, and
-gate 8.5 asserts that so nobody later "fixes" it by inventing something. The
-`YYYY-atp-season.csv` / `YYYY-wta-season.csv` files in Downloads are a
-**different source** (36,907 rows, already home/away oriented, carrying 6-digit
-player ids) and are the most likely bridge if this is ever picked up — but those
-ids are not the 4-digit ones either, so it is a two-hop problem.
+**Tennis player ids — NOT blocked. That earlier claim was wrong.** This file
+previously said `player_game_history`'s tennis rows carry "4-digit ids from a
+different provider" with "no name column anywhere to bridge them", and scoped it
+as a two-hop problem. **Verified 2026-09-01: they are ESPN athlete ids.** Id
+2375 resolves to Alexander Zverev on
+`sports.core.api.espn.com/v2/sports/tennis/leagues/atp/athletes/2375`, and
+`game_context.py:422` confirms it by construction — tennis subjects are minted
+as `espn:tennis:{athleteId}`.
+
+So it is **one hop, the same shape as 6.28's crosswalk**, and it is scheduled as
+**6.32**. The one real difference: tennis-data abbreviates (`"Zverev A."`), so
+the matcher needs last-name-plus-initial logic, which raises collision risk and
+makes the verification step matter more. Verification is available and strong —
+pgh tennis spans 2016-01-03 → 2026-08-29 against tennis-data's 2015–2026, so ten
+of eleven years overlap. Until 6.32 lands, `odds_archive`'s tennis rows carry
+NULL entity ids and gate 8.5 asserts that, so nobody "fixes" it by inventing
+something.
 
 **Tennis surface, round and seed ranks are not loaded.** There is no column for
 them in `odds_archive` or `game_result`, and a per-sport tennis table would
