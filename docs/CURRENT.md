@@ -5,9 +5,31 @@
 both across all seven leagues; `injury_report` is accruing daily. **Every gate
 passes: 1, 2, 2.7, 3, 4, 5 and 6.**
 
-Read `docs/overnight-sourcing-gameplan.md` for the plan this executed, and
+**Why any of this happened: `docs/model-rebuild-plan.md`.** It holds the model
+audit, the four-bar standard, the two-system decision (game model + prop grader)
+and the rebuild sequencing. Those findings are the reason the sourcing work
+exists and they were nowhere in the repo until 2026-09-01 — read that file
+before touching the model layer.
+
+Also: `docs/overnight-sourcing-gameplan.md` for the plan this run executed, and
 `docs/phase6-completion-plan.md` for the page work that preceded it. Trust
 `git log` over this file if they disagree.
+
+### The headline from the model audit, so it is impossible to miss
+
+- **The MLB game model loses to the market on real games** — Brier 0.2315 vs
+  0.2090 on 153 graded picks. Positive-CLV rate **50.0%**, a coin flip.
+- **The claimed edge has no predictive value.** Across ~2,300 picks with a
+  positive claimed edge the realised rate matches or trails the market's implied
+  probability; the +7% bucket (n=645) finished **2.3pp below** it.
+- **Cause: `marketProbCentered` carries a weight of 3.517** — the market's own
+  price is the model's largest feature. It cannot beat a line it is built from.
+- **Seven sports of eight have never had a coefficient fitted.**
+- **Most model output is already switched off in the UI** — `EdgeBadge` returns
+  null, confidence is hardcoded null. Rebuilding breaks almost nothing visible.
+- **Decision: rebuild the model layer; keep the data layer and the measurement
+  harness.** Two systems — a game model that must beat the close, and a prop
+  GRADER that ranks situations and makes no probability claim.
 
 ## 1. What landed (2026-08-31 → 09-01)
 

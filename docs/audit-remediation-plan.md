@@ -5808,3 +5808,61 @@ were never the problem. ~2.2x, and it is the reason this gate closed today.
 *Written 2026-08-28 from the Phase 1–5 audit findings and the operator's answers
 of the same date. Every measurement cited was taken from the live system;
 re-verify anything load-bearing before acting on it.*
+
+---
+
+### Sourcing + Model audit — 2026-08-31 / 09-01
+
+**Not a numbered phase.** It began as a Phase 6 close-out question ("is now a
+good time to review our models?") and became two things the numbered phases had
+no slot for: a full model audit, and a historical-odds sourcing and import run.
+Recorded here so the phase log is not silent about ten commits of work.
+
+**The model audit — `docs/model-rebuild-plan.md` holds it in full.**
+Measured, not inferred:
+
+- The MLB game model **loses to the market** on real games: Brier 0.2315 against
+  the market's 0.2090 on 153 graded picks. Positive-CLV rate **50.0%**.
+- **The claimed edge has no predictive value.** The +7% edge bucket (n=645)
+  finished 2.3pp *below* the market's implied probability.
+- The cause is structural: **`marketProbCentered` carries a weight of 3.517** —
+  the market's own price is the model's largest feature, so it cannot
+  systematically beat the line it is built from. Not patchable; removing the
+  feature invalidates every other coefficient.
+- `model_weights` (21), `model_calibration` (7) and `walkforward_results` (21)
+  are **100% MLB**. `model_artifacts` has **zero rows**. Seven sports of eight
+  have never had a coefficient fitted.
+- Seven ML families were walk-forward tested; the **hand-built `formula` won**
+  at 0.6744 log loss against a 0.6931 coin flip.
+- Soccer props predict **0.583 for assists where 0.064 happens**. Golf's stored
+  Brier is **0 on 147 of 149 rows**.
+- Most model output was **already suppressed in the UI** by Phase 1.3 —
+  `EdgeBadge` returns null, confidence is hardcoded null. A previous phase
+  reached the same diagnosis and fixed the display rather than the model.
+
+**Operator decisions taken, 2026-08-31:**
+1. **Rebuild the model layer; keep the data layer and the measurement harness.**
+2. **Two systems**: a game model (moneyline + total, every sport) that must beat
+   the close, and a prop **GRADER** that ranks situations and makes no
+   probability claim — so it never has to clear bars 3 and 4.
+3. Market probability is **not a feature** of the rebuilt model.
+4. Correlated-prop warnings and DFS pick'em stay out of scope.
+
+**The sourcing run that followed** — see `docs/overnight-sourcing-gameplan.md`
+and `docs/CURRENT.md`. Commits `a6ea8cd`..`d264f9b`:
+
+- **635,191 game-line rows** in `odds_archive`, seven leagues, two sources,
+  2007-09-29 → 2026-09-02.
+- **1,805,340 prop rows** in `prop_odds_archive`, 550,669 two-sided.
+- **`injury_report` + `injurySnapshotJob`** — the one feed that cannot be bought
+  retroactively, now retained instead of discarded.
+- **`team_elo_history.team_id` integer → text**, the last non-text id column.
+- Gates 1, 2, 2.7, 3, 4, 5, 6 all pass. `tsc` clean, 339 tests, 0 fail.
+  Database 3,141 → 4,045 MB.
+
+**The finding most worth carrying forward:** *a numeric id matching the expected
+shape is not evidence it is the right id.* 30 of 39 ESPN NHL team ids "matched"
+`player_game_history` and every match was wrong — the NHL API calls Toronto 10,
+ESPN calls Montreal 10. Tested against real dates, 0 of 25 pairs existed. The
+same split then reappeared for MLB and NHL **athlete** ids, which is the largest
+open item in `CURRENT.md` §3.
