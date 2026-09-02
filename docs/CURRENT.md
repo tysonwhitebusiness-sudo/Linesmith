@@ -58,14 +58,18 @@ reports local. Joining at 0 understates NHL's grader set by 35%. Gate 7.7.
 
 ## 3. NEXT ACTIONS
 
-**Two documents, both written 2026-09-02:**
+**`docs/model-build-plan-2026-09-02.md` is THE plan** — one ordered sequence
+covering every model, the infrastructure each one needs, and the UI that surfaces
+them. Phases 0-9. The separate infrastructure doc was merged into it on operator
+instruction: interleaving two plans is how steps get skipped.
+Artifact: `https://claude.ai/code/artifact/ab49524a-4b4d-4946-b481-47681d81fe88`
 
-- `docs/model-build-plan-2026-09-02.md` — game + prop models phased by sport,
-  seven phases, three engines.
-  Artifact: `https://claude.ai/code/artifact/ab49524a-4b4d-4946-b481-47681d81fe88`
-- `docs/model-infrastructure-2026-09-02.md` — **how this becomes a system that
-  keeps working.** The measured state of all 53 monitored jobs, the archival
-  bridge design, monitoring gaps, capacity, replay, and a 10-step rollout order.
+Sequence: **0** stop the bleeding (injury snapshots, postseason filters) ->
+**1** the archival bridge + monitoring + capacity -> **2** tennis -> **3** soccer
+-> **4** NHL (+ its feeder, + market canonicalisation) -> **5** MLB (+ Statcast)
+-> **6** NBA (+ shots) -> **7** CFB -> **8** NFL (+ nflverse) -> **9** surfacing:
+the two boards, per-market filters, un-suppressing the render paths, and the
+eight-phase prompt system, which was built assuming no models.
 
 **Needs operator sign-off before building:** the build order deviates from both
 approved artifacts. Games said tennis -> soccer -> NBA; props said MLB -> NHL ->
