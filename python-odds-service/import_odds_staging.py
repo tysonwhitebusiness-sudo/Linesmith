@@ -46,6 +46,7 @@ import httpx
 
 sys.path.insert(0, "src")
 import db  # noqa: E402
+from entity_resolution import canonical_bookmaker  # noqa: E402
 
 DL = Path("C:/Users/occy3/Downloads")
 
@@ -514,10 +515,50 @@ async def clear_source(pool, source, tables=("odds_import_staging", "game_result
                 out[t] = await c.execute(f"DELETE FROM {t} WHERE source = $1", source)  # noqa: S608
     return out
 
+# ---------------------------------------------------------------------------
+# Bookmaker identity and market timing — applied ONCE, at the shared writer.
+#
+# CLAUDE.md's rule for the live tables ("normalisation belongs at the shared
+# writer, not at each producer") applies here for the same reason: six loaders
+# write this table and the sixth would have to remember.
+# ---------------------------------------------------------------------------
+
+# Measured across odds_archive on 2026-09-01, before this existed:
+#   bet365 / Bet365                          140,704 rows split by CASE alone
+#   ESPN Bet / ESPN BET                       83,559
+#   Caesars Sportsbook + 3 regional spellings 81,604
+#   DraftKings / Draft Kings                  69,887
+# The spellings OVERLAP IN TIME (ESPN Bet 2023-2025 against ESPN BET 2022-2025),
+# so this is one book written two ways, not a rename. Canonicalising collides
+# only 388 of 1,587,670 natural keys, so nothing real is lost by merging them.
+#
+# Regional skins (New Jersey / Colorado / Pennsylvania) are DELIBERATELY kept
+# apart: they are separate books that can and do post different lines.
+# canonical_bookmaker preserves the parenthesised region, which is why it is the
+# right function rather than a bespoke one.
+
+_LIVE_MARKERS = ("live odds", "in-play", "inplay")
+
+
+def is_live_book(bookmaker):
+    """ESPN's core feed carries five "- Live Odds" books alongside its pre-game
+    ones, and nothing else in the row distinguishes them. Measured Brier:
+    0.032-0.059 for those, 0.208-0.232 for every genuine pre-game book. A price
+    that scores 0.03 already knows the score.
+
+    48,489 rows. They are kept and flagged rather than deleted -- they are real
+    observations a live model would want -- but they must never be read as a
+    pre-game close, so every consumer filters `NOT is_live` by default.
+    """
+    b = (bookmaker or "").lower()
+    return any(m in b for m in _LIVE_MARKERS)
+
+
+
 COLS = ["sport", "event_ref", "game_date", "home_team_raw", "away_team_raw", "home_team_id",
         "away_team_id", "market", "side", "line", "price", "open_line", "open_price",
         "bookmaker", "provider", "source", "source_priority", "booksum", "ml_flag",
-        "resolution_status", "resolution_note"]
+        "resolution_status", "resolution_note", "is_live"]
 
 
 async def insert(pool, rows, batch=1000):
@@ -544,6 +585,9 @@ async def insert(pool, rows, batch=1000):
                 await conn.executemany(sql, [
                     tuple(
                         datetime.strptime(r[c], "%Y-%m-%d").date() if c == "game_date" and isinstance(r[c], str)
+                        # BOTH DERIVED HERE, so no loader can forget either.
+                        else is_live_book(r.get("bookmaker")) if c == "is_live"
+                        else canonical_bookmaker(r.get("bookmaker")) if c == "bookmaker"
                         else r.get(c) for c in COLS
                     ) for r in chunk
                 ])

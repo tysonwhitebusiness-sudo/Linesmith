@@ -42,9 +42,9 @@ console.log(`cleared ${del2.rowCount.toLocaleString()} existing rows for source(
 
 const ins=await c.query(`
   INSERT INTO odds_archive (sport,event_ref,game_date,home_team_raw,away_team_raw,home_team_id,away_team_id,
-    market,side,line,price,open_line,open_price,bookmaker,provider,source,source_priority,booksum,ml_flag)
+    market,side,line,price,open_line,open_price,bookmaker,provider,source,source_priority,booksum,ml_flag,is_live)
   SELECT sport,event_ref,game_date,home_team_raw,away_team_raw,home_team_id,away_team_id,
-    market,side,line,price,open_line,open_price,bookmaker,provider,source,source_priority,booksum,ml_flag
+    market,side,line,price,open_line,open_price,bookmaker,provider,source,source_priority,booksum,ml_flag,is_live
   FROM odds_import_staging WHERE resolution_status='resolved'
   ON CONFLICT DO NOTHING`);
 console.log('promoted into odds_archive:', ins.rowCount);

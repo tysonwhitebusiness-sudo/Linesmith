@@ -113,6 +113,28 @@ export async function backfillGameModel(season: number): Promise<GameBackfillSum
 }
 
 /**
+ * `historical_odds` IS SUPERSEDED FOR MLB. Measured 2026-09-01, and recorded
+ * here because this is the only place that still reads it.
+ *
+ *   - It has NO `event_ref`, so its natural key is (date, home, away) and it
+ *     structurally cannot hold both games of a doubleheader. In 2010-2020 it
+ *     holds 25,243 rows against 25,595 real games: **300 games it cannot
+ *     represent at all**, plus ~52 other gaps.
+ *   - It stores DE-VIGGED CONSENSUS PROBABILITIES — every row sums to exactly
+ *     1.0000 — so it cannot express real ROI, CLV in price terms, or the vig.
+ *     `lib/odds/devigBacktest.ts` already says it "cannot be used at all" for
+ *     that reason.
+ *
+ * `odds_archive` now dominates it for MLB on every axis: 32,650 trainable games
+ * against 25,243, RAW American prices instead of de-vigged probabilities,
+ * doubleheaders kept via a real event_ref, and both sources cross-validated at
+ * 99.88% against MLB StatsAPI on a 1,737-game sample.
+ *
+ * Task 6.29 should read `odds_archive`. This file is left pointed at
+ * `historical_odds` deliberately — the model layer is being rebuilt and
+ * rewriting its data source now would mean doing it twice — but anything
+ * trained off this path is carrying the 300-game hole.
+ *
  * Total (O/U) counterpart to backfillGameModel — same walk-forward, no-
  * lookahead discipline, but graded against a REAL historical total line
  * (historical_odds) rather than the current season's own posted lines: the

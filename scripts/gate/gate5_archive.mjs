@@ -61,8 +61,10 @@ const mis=await c.query(`SELECT count(*)::int n FROM odds_archive
   WHERE booksum IS NOT NULL AND booksum<1.0
     AND ml_flag NOT IN ('sub_one_not_two_way','three_way_odd','best_of_market')`);
 chk(mis.rows[0].n===0,'5.3 sub-one rows all carry an honest flag',`${mis.rows[0].n} mislabelled`);
+// NOT is_live: an in-play price is not a two-way pre-game close and must not
+// be counted as one. See migration 20260901200000.
 for(const r of (await c.query(`SELECT sport,count(*) FILTER (WHERE ml_flag='two_way')::int two,count(*)::int n
-  FROM odds_archive WHERE market='moneyline' AND sport NOT LIKE 'soccer%' GROUP BY 1 ORDER BY 1`)).rows)
+  FROM odds_archive WHERE market='moneyline' AND NOT is_live AND sport NOT LIKE 'soccer%' GROUP BY 1 ORDER BY 1`)).rows)
   chk(r.two>=500 && r.two/r.n>=0.30, `5.3 ${r.sport} clean two-way moneylines`,
       `${r.two.toLocaleString()} of ${r.n.toLocaleString()} (${(r.two/r.n*100).toFixed(0)}%)`);
 
@@ -134,6 +136,50 @@ chk(badtot.rows[0].n === 0, '5.9 total lines are positive', `${badtot.rows[0].n}
 // include games that have not been played.
 const fut = await c.query(`SELECT count(*)::int n FROM odds_archive WHERE game_date > CURRENT_DATE`);
 note.push(`5.9 ${fut.rows[0].n.toLocaleString()} future-dated odds rows (scheduled games) — always join to game_result for training`);
+
+console.log('\n5.10  in-play prices are flagged and quarantined');
+// THE FINDING THIS EXISTS FOR, and the audit that found it nearly missed it.
+// ESPN's core feed ships five "- Live Odds" books beside its pre-game ones with
+// nothing in the row to tell them apart. Measured Brier per bookmaker:
+//
+//   ESPN BET - Live Odds                          0.0320
+//   Caesars Sportsbook (New Jersey) - Live Odds   0.0511
+//   ESPN Bet - Live Odds                          0.0594
+//   ---- every genuine pre-game book ----         0.208 - 0.232
+//
+// A price that scores 0.03 already knows the score. 48,489 rows. Averaged in
+// with the other 19 books they were invisible — the aggregate espn_core price
+// still looked calibrated — which is why this is measured PER BOOKMAKER.
+const liveflag = await c.query(`SELECT count(*)::int n FROM odds_archive
+  WHERE (bookmaker ILIKE '%live odds%' OR bookmaker ILIKE '%in-play%' OR bookmaker ILIKE '%inplay%') AND NOT is_live`);
+chk(liveflag.rows[0].n === 0, '5.10 every live-odds book is flagged is_live', `${liveflag.rows[0].n} unflagged`);
+// And prove the flag still separates something real rather than becoming a
+// column nobody maintains: live rows must stay far sharper than pre-game ones.
+const sep = await c.query(`
+  WITH p AS (SELECT is_live, sport, event_ref,
+     avg(CASE WHEN price>0 THEN 100.0/(price+100) ELSE (-price)/((-price)+100.0) END) FILTER (WHERE side='home') hp,
+     avg(CASE WHEN price>0 THEN 100.0/(price+100) ELSE (-price)/((-price)+100.0) END) FILTER (WHERE side='away') ap
+   FROM odds_archive WHERE source='espn_core' AND market='moneyline' AND price IS NOT NULL AND event_ref IS NOT NULL
+   GROUP BY 1,2,3)
+  SELECT p.is_live, count(*)::int n,
+    avg((p.hp/(p.hp+p.ap)-(g.home_score>g.away_score)::int)^2)::float brier
+  FROM p JOIN game_result g ON g.sport=p.sport AND g.source='espn_core' AND g.event_ref=p.event_ref
+  WHERE p.hp IS NOT NULL AND p.ap IS NOT NULL AND g.home_score<>g.away_score GROUP BY 1`);
+const L = sep.rows.find(r => r.is_live), P = sep.rows.find(r => !r.is_live);
+if (L && P) chk(Number(L.brier) < Number(P.brier) - 0.10, '5.10 live rows measurably know the outcome',
+  `live ${Number(L.brier).toFixed(4)} (n=${L.n.toLocaleString()}) vs pre-game ${Number(P.brier).toFixed(4)}`);
+else note.push('5.10 no live/pre-game pair to compare');
+
+console.log('\n5.11  bookmaker names are canonical');
+// 140,704 rows were split across `bet365`/`Bet365` and 83,559 across
+// `ESPN Bet`/`ESPN BET` — one book written two ways, in OVERLAPPING years, so a
+// per-book analysis saw two books. canonical_bookmaker (the same function the
+// live tables already use) is applied at the shared writer now. Regional skins
+// stay separate on purpose: they post genuinely different lines.
+const nc = await c.query(`SELECT count(*)::int n FROM (
+  SELECT lower(bookmaker) lb FROM odds_archive WHERE bookmaker IS NOT NULL
+  GROUP BY 1 HAVING count(DISTINCT bookmaker) > 1) t`);
+chk(nc.rows[0].n === 0, '5.11 no bookmaker differs only by case', `${nc.rows[0].n} name(s)`);
 
 console.log('\n5.7  database size');
 const sz=await c.query(`SELECT pg_size_pretty(pg_database_size(current_database())) s, pg_database_size(current_database())/1048576 mb`);
