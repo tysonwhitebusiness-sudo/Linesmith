@@ -1,139 +1,85 @@
 # CURRENT — pick up here
 
-**Task 6.28 (entity crosswalks) is COMPLETE.** All four parts landed
-2026-09-01: the MLB + NHL athlete crosswalk, the tennis load, `game_result`,
-and gate 1.9's deletion.
+**Track F's sourcing block (6.30–6.32) is COMPLETE and audited.** Every gate
+passes: 1, 2, 4, 5, 6, 7, 8 and the new **9 (model readiness)**. `tsc` clean,
+**339 tests, 0 fail**. DB **5,291 MB** of 8,192.
 
-**TRACK F was then added, and it runs BEFORE 6.29.** Testing 6.28's own claim
-found that "sourcing complete" was not true — six of eight sports had one season
-of odds or less. Plan:
-`docs/sourcing-completion-gameplan-2026-09-01.md`. Track F is 6.30–6.33 with a
-**hard operator gate** between the sourcing and the UI work.
+**The plan is `docs/sourcing-completion-gameplan-2026-09-01.md`** (Track F) and
+`docs/audit-remediation-plan.md` §Track F. **Read
+`docs/betting-models-primer-2026-09-01.md` before any model work** — the
+operator asked for grounding in what advantage betting actually requires before
+building, and that document is the answer.
 
-**Gates 1, 2, 2.7, 3, 4, 5, 6, 7 and 8 all pass.** `tsc` clean, **339 tests,
-0 fail**. DB **4,401 MB** of an 8 GB ceiling.
+## 1. Where the data stands
 
-**Why any of this exists: `docs/model-rebuild-plan.md`.** It holds the model
-audit, the four-bar standard, the two-system decision (game model + prop
-grader) and the rebuild sequencing. Read it before touching the model layer.
-`docs/audit-remediation-plan.md` §Track E is the master plan; trust it and
-`git log` over this file if they disagree.
-
-### The headline from the model audit, so it is impossible to miss
-
-- **The MLB game model loses to the market on real games** — Brier 0.2315 vs
-  0.2090 on 153 graded picks. Positive-CLV rate **50.0%**, a coin flip.
-- **The claimed edge has no predictive value.** The +7% bucket (n=645) finished
-  **2.3pp below** the market's implied probability.
-- **Cause: `marketProbCentered` carries a weight of 3.517** — the market's own
-  price is the model's largest feature. It cannot beat a line it is built from.
-- **Seven sports of eight have never had a coefficient fitted.**
-- **Most model output is already switched off in the UI.** Rebuilding breaks
-  almost nothing visible.
-- **Decision: rebuild the model layer; keep the data layer and the measurement
-  harness.**
-
-## 1. What 6.28 landed
-
-| Part | Result |
+| Table | Rows |
 |---|---|
-| Athlete crosswalk | `athlete_crosswalk`, **5,166 rows**, all seven sports. MLB prop rows reaching a player **0.0% → 96.2%**, NHL **0.0% → 91.9%**. **GATE 7 PASSED** |
-| Tennis | **57,386 matches** → 449,796 price rows + 56,386 outcomes, de-randomised. **GATE 8 PASSED** |
-| `game_result` | **113,323 rows**, 2007-09-29 → 2026-09-01. NHL 2020-21 closed. **GATE 4.6 now runs and passes** |
-| Gate 1.9 | **Deleted**, superseded by 4.5 |
+| `odds_archive` | **1,587,670** — 9 league keys, 8 sources, 1999→2026 |
+| `prop_odds_archive` | 1,805,340 |
+| `player_game_history` | 2,799,682 |
+| `game_result` | 172,647 |
+| `athlete_crosswalk` | 6,352 |
 
-### Where the data now stands
-
-```
-odds_archive        1,084,987   9 league keys, 3 sources, 2007-09-29 -> 2026-09-02
-prop_odds_archive   1,805,340   7 sports, 550,669 two-sided
-game_result           113,323   9 league keys, 2 sources + tennis_data
-athlete_crosswalk       5,166   7 sports
-injury_report           1,265   accruing daily
-```
-
-## 2. THE SINGLE MOST IMPORTANT THING TO CARRY FORWARD
-
-**A numeric id matching the expected SHAPE is not evidence it is the right id,
-and neither is a high overlap.** 30 of 39 ESPN NHL team ids "matched"
-`player_game_history` and every match was wrong — the NHL API calls Toronto 10,
-ESPN calls Montreal 10.
-
-**6.28 turned that warning into a measurement, and the measurement is worse
-than the warning.** Every athlete mapping was scored twice through the same
-join — once as matched, once deliberately mis-mapped onto another real athlete:
+### Trainable games — one row per game, via the `model_game_odds` view
 
 ```
-                                 true    shuffled control
-  MLB   vs player_game_history   82.4%        2.0%
-  NHL   vs the NHL API game log  64.6%        2.4%
+tennis 56,340   mlb 31,781   nba 24,705   nhl 24,336
+mls     6,397   nfl  5,355   epl  4,200   cfb  4,017 (ML) / 14,514 (spread)
 ```
 
-And **a date join alone would not have caught the wrong answer.** On NBA, where
-the mapping is the identity and therefore known correct:
+Before Track F: MLB 4,593, NHL 6,591, NFL 285, CFB 849, EPL 400, MLS 871.
 
-```
-                     exact date   date AND team
-  true mapping          75.9%         75.9%
-  shuffled mapping      35.1%          4.0%
-```
+**NHL prop grader: 0 → 10,020** trainable player-games (6.31's backfill).
 
-**728 of 806 deliberately wrong NHL pairs found at least one matching date.**
-Requiring the right TEAM on that date takes it to 2%.
+## 2. READ THIS BEFORE WRITING A MODEL QUERY
 
-**So: always run the control.** A number with nothing to compare it to is not
-evidence. Gate 7.5 re-runs that comparison in SQL every time rather than
-counting rows, because a crosswalk that rots shows up as the two scores
-converging and no coverage number would reveal it.
+**Use the `model_game_odds` view, not `odds_archive` directly.** It exists
+because three separate hazards were found in the audit and all three are
+invisible to a naive query:
 
-## 3. NEXT ACTIONS, in order
+- **48,489 IN-PLAY rows** sat in the archive as ordinary bookmakers. Brier
+  **0.032** against 0.208–0.232 for real pre-game books. They were invisible in
+  the aggregate because they were averaged with 19 other books — the finding
+  only appears **per bookmaker**. The view filters `NOT is_live`.
+- **Cross-source duplication**: CFB 20.2% of games priced by two sources, EPL
+  9.5%, MLS 9.4%, NFL 4.1%. Both rows are real; pooling them over-weights
+  exactly the recent seasons a model gets judged on. The view applies
+  `source_priority`.
+- **Future-dated odds** (1,846 rows). The view joins `game_result`, which holds
+  no future rows.
 
-**Track F is the plan: `docs/sourcing-completion-gameplan-2026-09-01.md`.**
-It was written 2026-09-01 and it runs **before 6.29**, not after.
+**`(sport, athlete_id, game_date)` is NOT a key in `player_game_history`** —
+MLB doubleheaders, NBA's UTC date collapsing back-to-backs, tennis players
+playing twice. **`(sport, athlete_id, event_id)` is**, and now has a unique
+index.
 
-1. **6.30 — complete the game-odds sourcing.** Six sources, all in hand: NHL
-   SBR column fix, nflverse, CFBD (key added and verified), EPL `E0*.csv`, MLS
-   `USA.csv`, MLB raw xlsx. Every hazard in the six is a **silent** failure.
-2. **6.31 — NHL `player_game_history` backfill.** The item that actually blocks
-   6.29: NHL has **0** prop player-games with a stat line, and none of 6.30's
-   loads change that because they are game-level.
-3. **6.32 — tennis player-id crosswalk.** One hop, not two — pgh's tennis ids
-   are ESPN athlete ids.
-4. **TRACK F GATE — hard stop, operator review.** Nothing proceeds until
-   approved.
-5. **6.33 — the four market-history cards.** Blocked on the gate.
-6. **6.29 — the model rebuild.** After Track F, with a per-sport gameplan
-   written against the real trainable numbers.
+**NHL props join to player history at −1 day.** ESPN stamps UTC, the NHL API
+reports local. Joining at 0 understates NHL's grader set by 35%. Gate 7.7.
 
-### Why Track F exists, in one line
+## 3. NEXT ACTIONS
 
-**This file claimed "the overnight sourcing run is COMPLETE" on 2026-09-01 and
-it was not true.** Six of eight sports had one season of odds or less. Asked the
-only question that matters — *how many games have both a price and a result?* —
-the answer was ~94,000 across eight sports, against ~174,000 available. Do not
-make that claim again without running that query per sport.
+1. **Model planning.** The operator wants to understand advantage betting
+   before building — start from `docs/betting-models-primer-2026-09-01.md`,
+   then per-sport gameplans.
+2. **6.33 — the four market-history cards.** Blocked on the Track F gate
+   (operator review), which the sourcing block has now reached.
+3. **6.29 — the model rebuild.** After planning.
 
 ### Still open, unscheduled
 
-- **Deploy Render.** `venueFactorsJob` and `injurySnapshotJob` report NEVER RUN.
-- **`refreshTennisAtpJob` is failing every run** on `prop_odds_side_valid` —
-  it writes `side='home'` for an `aces` market, which is over/under. WTA is
-  fine, so it is ATP-path-specific.
-- **`refreshSportsGameOddsJob` stale 12.6h**, 8 objects spent all month.
-- **The odds-API pacing problem.** `propline` and `oddsapiio` burn their whole
-  daily cap within 20–70 minutes of the 04:00 UTC reset, so both contribute
-  **zero** prices during US game hours and everything they capture is 12–20
-  hours pre-game. The archive is unaffected; anything running live is not.
-  Note the health check reports a fully cap-blocked job as *healthy* —
-  `health_check.py:105` is `ok and not stale`, which cannot see "did nothing".
-- **Retention and the DB ceiling.** `prop_odds_history` wrote **265,771 rows on
-  2026-09-01 alone** and has **no retention rule**; `injury_report` is ~11
-  MB/day, also unbounded. Deferred by operator decision — the design depends on
-  whether the archive becomes a sellable dataset.
-- **The two Phase 6 gate violations** — `TeamDetail.tsx:770` `teamHref` and
-  `GameDetail.tsx:2297` `renderLiveDetail`, both `sport === 'x'` in a render
-  path. Verified still present 2026-09-01.
-- **`docs/table-ownership.md` is stale** — lists 35 tables, none of Track E's.
+- **Deploy Render.** `venueFactorsJob` and `injurySnapshotJob` NEVER RUN.
+- **`refreshTennisAtpJob` fails every run** on `prop_odds_side_valid` — it
+  writes `side='home'` for an `aces` market, which is over/under. WTA is fine.
+- **`refreshSportsGameOddsJob` stale**, 8 objects all month.
+- **Odds-API pacing**: `propline` and `oddsapiio` burn their whole daily cap
+  within 20–70 minutes of the 04:00 UTC reset, so both contribute **zero**
+  prices during US game hours. The health check reports a fully cap-blocked job
+  as *healthy* — `health_check.py:105` is `ok and not stale`.
+- **Retention**: `prop_odds_history` wrote 265,771 rows in one day with **no
+  retention rule**; `injury_report` ~11 MB/day. Deferred pending the
+  data-sales decision.
+- **Two Phase 6 gate violations** — `TeamDetail.tsx:770`, `GameDetail.tsx:2297`.
+- **`docs/table-ownership.md` stale** — none of Track E/F's tables listed.
 
 ## 4. Blocked, and why — do not re-attempt without new data
 
