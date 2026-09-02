@@ -532,3 +532,113 @@ how NFL and CFB were lost for twelve days.
 Step 5 is placed before step 6 deliberately. Widening the data without the dedupe
 rule produces a consensus that is *more* wrong than today's, because every extra
 provider adds another duplicate of the same handful of books.
+
+---
+
+## 12. Why Propline burns 1,000 requests before lunch
+
+The free tier is generous. The caller is not. **`refreshTier1` demands roughly
+18x Propline's entire daily budget every single day**, and the cap is a symptom
+of cadence, not of tier size.
+
+### The arithmetic
+
+`fetch_propline` issues **1 + 2N** requests per cycle — one `/events` call to
+list the slate, then a `/markets` call and an `/odds` call for **every matched
+game**:
+
+```
+https://api.prop-line.com/v1/sports/{sport}/events            <- 1
+https://api.prop-line.com/v1/sports/{sport}/events/{eid}/markets   <- per game
+https://api.prop-line.com/v1/sports/{sport}/events/{eid}/odds      <- per game
+```
+
+`refreshTier1` runs every **2.5 minutes** = **576 cycles/day**. A normal MLB
+slate is **15 games**.
+
+```
+per cycle    1 + 2(15)          =     31 requests
+per day      576 x 31           = 17,856 requests
+budget                          =  1,000 requests
+                                  ------
+                                  17.9x over
+
+cap exhausted after  1,000 / 31 =  ~32 cycles  =  ~80 minutes
+```
+
+Which is exactly the observed behaviour — the cap goes in the first hour or so,
+and Propline then contributes **zero** prices for the remaining 23 hours,
+including every US game window.
+
+Measured spend confirms the ceiling is hit and not merely approached:
+
+```
+2026-09-02  1006   2026-08-30  1000   2026-08-28  1001
+2026-09-01  1004   2026-08-29  1000   2026-08-22  1007
+```
+
+(The low readings on 2026-08-23/24/25 are not a lighter slate — that is the
+four-day worker outage `render.yaml` documents.)
+
+### Four causes, in order of impact
+
+**1. `job_tier1` has no game-proximity gate at all.** Every other paid job routes
+through `gameday.should_fetch_paid_providers()`, which drops to a once-daily
+backstop when no game is near. Tier 1 does not:
+
+```python
+async def job_tier1(yield_fn=None) -> dict:
+    games = [g for g in await load_mlb_games() if not g.is_final]
+    # <- no should_fetch_paid_providers() call
+    return await _run_timed("refreshTier1", run_provider_specs(...))
+```
+
+`gameday.py`'s own docstring names this exact failure — *"flat cadence spent the
+same 1 credit whether the nearest game was 6 minutes or 6 days out"* — and the
+fix was applied to NFL/CFB/NBA and never to Tier 1, **which is where Propline
+actually runs.** Games 12 hours out are polled as hard as games starting in five
+minutes.
+
+**2. One cadence is shared by providers with incompatible economics.** SharpAPI
+(uncapped, 12 req/min) and Propline (1,000/**day**, 1+2N per cycle) sit in the
+same `_tier1_specs()` list and therefore share the 2.5-minute interval. That
+cadence is correct for SharpAPI and ruinous for Propline. **A provider with a
+hard daily budget and a per-game request pattern cannot share a cadence with an
+unmetered one.**
+
+**3. The `/markets` call is re-fetched every cycle and never cached.** An event's
+market *list* barely changes during a game day, but it costs one request per game
+per cycle — **half of Propline's entire spend**. Caching it turns 1+2N into
+1+N plus an occasional refresh: 17,856 → 9,216/day before any other change.
+
+**4. No per-game proximity filter inside the loop.** `for game in games` iterates
+every non-final game, so a 10pm start is fetched at 8am.
+
+### What fixing it is worth
+
+With the `/markets` list cached (16 requests/cycle for 15 games):
+
+| Keys pooled | Daily budget | Cycles/day | Cadence, hot window only (~8h) |
+|---|---|---|---|
+| 1 (today) | 1,000 | 62 | every ~7.7 min |
+| 2 | 2,000 | 125 | every ~3.8 min |
+| 5 | 5,000 | 312 | every ~1.5 min |
+
+So a **single** key, spent only during the hot window and with markets cached,
+already sustains a tighter effective cadence than today's — which currently
+buys 80 minutes of coverage and then nothing. Pooled keys make it comfortable
+rather than merely sufficient.
+
+### Order of fixes
+
+1. **Cache the `/markets` list** — halves the cost, no behaviour change, no gate
+   needed.
+2. **Route `job_tier1` through `should_fetch_paid_providers()`** — the machinery
+   exists and is already proven on three other jobs.
+3. **Give Propline its own cadence**, or a per-game proximity filter, so it stops
+   inheriting SharpAPI's.
+4. **Then pool keys** (§10) — multiplying a budget that is being spent 18x too
+   fast just moves the exhaustion time from 80 minutes to 400.
+
+Step 4 is deliberately last. **Pooling keys without fixing the cadence buys
+hours, not coverage.**
