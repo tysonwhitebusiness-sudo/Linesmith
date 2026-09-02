@@ -166,34 +166,74 @@ ship until it can be tested against historical prices.**
 
 ---
 
-## 5. Simple versus complex — this repo already ran the experiment
+## 5. Simple versus complex — and why this repo's own experiment does NOT settle it
 
-Seven model families were walk-forward tested on MLB moneyline. The result:
+An earlier draft of this document cited the walk-forward bake-off in
+`walkforward_results` as evidence that simple beats complex here:
 
 ```
-formula (hand-built)  0.6744   <- winner
-CatBoost              0.6754
-stacking              0.6772
-XGBoost               0.6827
-LightGBM              0.6852
-Bradley-Terry         0.6887
-MLP                   0.6938
-coin flip             0.6931
+formula (hand-built)  0.6744        CatBoost   0.6754
+stacking              0.6772        XGBoost    0.6827
+LightGBM              0.6852        Bradley-Terry 0.6887
+MLP                   0.6938        coin flip  0.6931
 ```
 
-**The hand-built formula beat every machine-learning method**, and the neural
-network was worse than a coin flip. This is not an argument that ML never works;
-it is evidence that on *this* data, at *this* sample size, complexity bought
-nothing and cost interpretability.
+**That was wrong, and the operator was right to reject it. The experiment
+cannot answer this question.** Two reasons, both disqualifying on their own.
 
-The general shape holds: with a few thousand games and a market that is already
-~98% efficient, the residual signal is small and smooth. Complex models find
-noise in it.
+### Every one of the seven families was handed the market price
 
-**Start simple. Add complexity only when a simple model is measurably
-insufficient, not because complex feels more serious.**
+All seven were fitted on one shared feature set —
+`MONEYLINE_FEATURE_NAMES` in `python-odds-service/src/predict/model_fit.py:49`:
 
----
+```
+rawLog5, venueDiff, formDiff, parkFactorCentered,
+eloProb, marketProbCentered, simWinProb
+```
+
+`marketProbCentered` is the closing price, and §3 shows it ended up carrying a
+weight of **3.517** — larger than every other feature combined. When one feature
+is very nearly the answer, **every family converges on "reproduce the market",
+and the ranking between them stops measuring which one finds signal and starts
+measuring which one adds least noise on top of a number it was given.**
+
+The observed ordering is exactly what that condition predicts: the hand-built
+formula, which leans on the market most directly, wins; the most flexible
+learner, the MLP, does worst because it has the most freedom to fit residual
+noise — and lands *behind a coin flip*. That is not a finding about model
+families. It is a description of what happens when you give seven models the
+answer key and grade them on their handwriting.
+
+### And the data underneath it was the pre-Track-F data
+
+It ran on 2026-08-26: MLB seasons 2020–2023 train, 2024–2025 test, 7,264 and
+4,407 games. At that point MLB's prices came from `historical_odds` — de-vigged
+consensus probabilities with a 300-game doubleheader hole — and the archive
+still contained the 48,489 in-play rows. The raw-price MLB history that now
+exists (31,781 games, 2010–2026) had not been loaded.
+
+### So what does argue for starting simple?
+
+Reasons that stand on their own, none of which depend on that experiment:
+
+- **Sample size.** Between 4,000 and 32,000 games per sport. A gradient-boosted
+  model with hundreds of splits has far more capacity than that supports, and
+  the residual signal after the market is small.
+- **The signal is small and smooth by construction.** You are modelling the
+  *error* of a price that is already accurate to ±0.022. There is not much
+  structure left to find, and what is left is unlikely to be sharply non-linear.
+- **You have to be able to see why it disagrees.** Bar 3 means shipping only
+  when a model beats the close. When it does, you need to know whether that is a
+  real effect or a quirk of one season — which is far easier with seven
+  interpretable coefficients than with an ensemble.
+- **Complex models fail quietly.** The leakage incidents in §8 were caught
+  because someone could reason about what the numbers should look like.
+
+**The honest position: whether complexity helps here is currently UNKNOWN.** The
+bake-off should be re-run on `model_game_odds`, with `marketProbCentered`
+removed, before anyone claims either way. That is a real experiment worth doing
+early — it is cheap, the harness already exists, and its answer changes the
+shape of everything after it.
 
 ## 6. Feasibility per sport, with this repo's real numbers
 
@@ -289,7 +329,9 @@ makes the later ones meaningless:
 - You are competing against the most informed price that exists, and it is
   right to within ±2.2pp in every sport you hold.
 - Most people lose. The vig alone requires a 1.5–4.0pp edge just to break even.
-- **Your own data says simple beats complex** on this problem.
+- **Whether complexity helps here is UNKNOWN.** The one experiment that looked
+  like an answer gave all seven models the market price as a feature, so it
+  measured handwriting, not signal. Re-run it on clean data early (§5).
 - CLV, not profit, is how you will know within a reasonable time.
 - The edge is more likely in props and small markets than in NFL sides.
 - The single most valuable thing this repo owns is not the model code — it is
