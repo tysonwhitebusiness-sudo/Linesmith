@@ -108,16 +108,46 @@ console.log('\n9.5  player_game_history: (athlete, date) is NOT a key — event_
 //   tennis  a player really can play twice in a day
 // What IS a bug is the tennis subset where BOTH rows carry identical stats:
 // the same match indexed under two ESPN event ids from different id ranges.
+// THE DEDUPE KEY INCLUDES opponent_id, and getting that wrong was nearly a
+// data-loss bug. An earlier version of this note advised deduping on identical
+// stats alone. Measured before acting on it:
+//
+//     same stats + SAME opponent       ATP 3,832  WTA 3,364   <- duplicates
+//     same stats + DIFFERENT opponent  ATP    50  WTA    65   <- REAL matches
+//
+// 115 genuine second-matches-of-the-day carry identical stat lines, because
+// tennis stats are low-cardinality (sets won, games won, tiebreaks played).
+// Deduping on stats alone would have deleted every one of them.
 const dup = await c.query(`
-  WITH d AS (SELECT sport, athlete_id, game_date, count(*)::int n,
+  WITH d AS (SELECT sport, athlete_id, game_date, opponent_id, count(*)::int n,
        count(DISTINCT event_id)::int evs, count(DISTINCT stats::text)::int ds
-     FROM player_game_history GROUP BY 1,2,3 HAVING count(*)>1)
-  SELECT sport, count(*)::int keys, sum(n-1) FILTER (WHERE ds=1)::int redundant,
-    count(*) FILTER (WHERE evs<n)::int repeated_event
+     FROM player_game_history GROUP BY 1,2,3,4 HAVING count(*)>1)
+  SELECT sport, sum(n-1) FILTER (WHERE ds=1)::int redundant,
+    count(*) FILTER (WHERE evs<n)::int repeated_event,
+    count(*) FILTER (WHERE ds>1)::int real_same_day_rematch
   FROM d GROUP BY 1 ORDER BY 1`);
+// ASSERTED FOR TENNIS ONLY, because tennis is the only sport where this
+// pattern was traced to an actual duplication: one backfill run on 2026-08-29,
+// concentrated in season 2022, ESPN listing one match under two event ids.
+//
+// The same pattern in MLB and NBA is REAL DATA and was checked rather than
+// assumed:
+//   MLB 87 rows — MLB's own API returns doubleHeader=Y, gameNumber=1 and 2 for
+//                 game_pks 634330/634357. A player can post the same line twice.
+//   NBA 19 rows — 400828947 is Knicks at Bulls (00:00Z) and 400828957 is Bulls
+//                 at Knicks (23:30Z): a home-and-home back-to-back that the UTC
+//                 date collapses onto one day, against the same opponent.
+// Failing on those would be demanding that correct data look wrong.
+const DEDUPED = new Set(['tennis_atp', 'tennis_wta']);
 for (const r of dup.rows) {
   chk(r.repeated_event === 0, `9.5 ${r.sport} no row repeated under one event_id`, `${r.repeated_event}`);
-  if (r.redundant > 0) note.push(`9.5 ${r.sport}: ${r.redundant.toLocaleString()} redundant rows (same match, two event ids) — dedupe on identical stats before fitting`);
+  if (DEDUPED.has(r.sport))
+    chk((r.redundant ?? 0) === 0, `9.5 ${r.sport} no same-match duplicates`,
+      `${(r.redundant ?? 0).toLocaleString()} redundant (same athlete, date, opponent AND stats)`);
+  else if ((r.redundant ?? 0) > 0)
+    note.push(`9.5 ${r.sport}: ${r.redundant.toLocaleString()} same-day/same-opponent/same-stats rows — verified REAL (doubleheaders, UTC-boundary back-to-backs), not deduped`);
+  if (r.real_same_day_rematch > 0)
+    note.push(`9.5 ${r.sport}: ${r.real_same_day_rematch} genuine same-day same-opponent rematches — kept`);
 }
 
 console.log('\n9.6  cross-source duplication, which a naive join double-counts');
@@ -132,7 +162,21 @@ const xs = await c.query(`
   FROM g GROUP BY 1 ORDER BY 2 DESC`);
 for (const r of xs.rows)
   note.push(`9.6 ${r.sport}: ${(r.dual / r.games * 100).toFixed(1)}% of ${r.games.toLocaleString()} games priced by 2 sources`);
-console.log('       (reported, not failed — collapse to one row per game before fitting)');
+console.log('       (reported, not failed — the `model_game_odds` view collapses them)');
+
+// The view is the fix, so assert it actually collapses: exactly one row per
+// (game, market, side), 2 sides for a two-way sport and 3 where a draw exists.
+const vw = await c.query(`
+  SELECT sport, count(*)::int rows,
+         count(DISTINCT (game_date, home_team_id, away_team_id))::int games,
+         count(DISTINCT source)::int srcs
+  FROM model_game_odds WHERE market='moneyline' GROUP BY 1 ORDER BY 1`);
+for (const r of vw.rows) {
+  const perGame = r.rows / r.games;
+  const want = r.sport.startsWith('soccer') ? 3 : 2;
+  chk(Math.abs(perGame - want) < 0.01, `9.6 model_game_odds ${r.sport} one row per side`,
+    `${perGame.toFixed(2)} rows/game (expect ${want}), ${r.games.toLocaleString()} games`);
+}
 
 console.log('\n9.7  trainable set per sport');
 const tr = await c.query(`
