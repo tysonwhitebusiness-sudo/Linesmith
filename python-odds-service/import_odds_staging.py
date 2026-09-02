@@ -227,6 +227,26 @@ class Resolver:
         return None, "unresolved_team"
 
 
+def parse_event_start(raw):
+    """ESPN's `event_date` is a full UTC timestamp (`2025-03-27T19:00Z`). Both
+    loaders truncated it to ten characters, which is why closing-line value
+    could not be measured on props: the archive holds ~15 observations per MLB
+    event across a 16-hour window, and without a start time nothing identifies
+    which of them was the last one before the game.
+
+    Returns None rather than guessing when the source has no time component --
+    SBR's files are date-only, and an invented start time is indistinguishable
+    from a real one to everything downstream.
+    """
+    if not raw or len(raw) <= 10:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+
 def impossible_price(market, price):
     """No American price can sit strictly between -100 and +100. Two SBR NBA
     moneylines carry -8 and +8.
@@ -253,11 +273,17 @@ def espn_long_rows(r, resolver):
     hid, hnote = resolver.resolve(sport, r.get("home_abbr"), r.get("home_team"))
     aid, anote = resolver.resolve(sport, r.get("away_abbr"), r.get("away_team"))
     note = hnote or anote
-    d = (r.get("event_date") or "")[:10]
+    raw_dt = r.get("event_date") or ""
+    d = raw_dt[:10]
     if not d:
         return []
+    # THE TIMESTAMP IS THE POINT. ESPN publishes `2025-03-27T19:00Z`; truncating
+    # it to a date made closing-line value unmeasurable on props, because the
+    # archive holds many observations per event and nothing said which one was
+    # last before first pitch. game_date is kept exactly as it was.
+    event_start = parse_event_start(raw_dt)
     base = dict(
-        sport=sport, event_ref=r.get("event_id"), game_date=d,
+        sport=sport, event_ref=r.get("event_id"), game_date=d, event_start=event_start,
         home_team_raw=r.get("home_team"), away_team_raw=r.get("away_team"),
         home_team_id=str(hid) if hid else None, away_team_id=str(aid) if aid else None,
         bookmaker=r.get("provider"), provider=r.get("provider"),
@@ -361,7 +387,10 @@ def sbr_long_rows(r, sport, resolver):
     hid, hnote = resolver.resolve(sport, None, r.get("home_team"))
     aid, anote = resolver.resolve(sport, None, r.get("away_team"))
     base = dict(
-        sport=sport, event_ref=None, game_date=d,
+        # SBR files carry a date and no time of day, so event_start stays NULL
+        # rather than being invented. A guessed start time would look exactly
+        # like a real one to every consumer downstream.
+        sport=sport, event_ref=None, game_date=d, event_start=None,
         home_team_raw=r.get("home_team"), away_team_raw=r.get("away_team"),
         home_team_id=str(hid) if hid else None, away_team_id=str(aid) if aid else None,
         bookmaker="sbr_consensus", provider="sbr", source="sbr", source_priority=100,
@@ -439,7 +468,7 @@ CAN_END_NIL_NIL = {"soccer_epl", "soccer_mls"}
 
 
 def game_result_row(sport, event_ref, game_date, home_raw, away_raw, hid, aid,
-                    hs, as_, venue, source, today):
+                    hs, as_, venue, source, today, event_start=None):
     if hs is None or as_ is None or not game_date:
         return None
     # A future-dated row has no result to record no matter what it says.
@@ -451,11 +480,13 @@ def game_result_row(sport, event_ref, game_date, home_raw, away_raw, hid, aid,
                 home_team_raw=home_raw, away_team_raw=away_raw,
                 home_team_id=str(hid) if hid else None,
                 away_team_id=str(aid) if aid else None,
-                home_score=hs, away_score=as_, venue=venue, source=source)
+                home_score=hs, away_score=as_, venue=venue, source=source,
+                event_start=event_start)
 
 
 GR_COLS = ["sport", "event_ref", "game_date", "home_team_raw", "away_team_raw",
-           "home_team_id", "away_team_id", "home_score", "away_score", "venue", "source"]
+           "home_team_id", "away_team_id", "home_score", "away_score", "venue", "source",
+           "event_start"]
 
 
 async def insert_results(pool, rows, batch=1000):
@@ -558,7 +589,7 @@ def is_live_book(bookmaker):
 COLS = ["sport", "event_ref", "game_date", "home_team_raw", "away_team_raw", "home_team_id",
         "away_team_id", "market", "side", "line", "price", "open_line", "open_price",
         "bookmaker", "provider", "source", "source_priority", "booksum", "ml_flag",
-        "resolution_status", "resolution_note", "is_live"]
+        "resolution_status", "resolution_note", "is_live", "event_start"]
 
 
 async def insert(pool, rows, batch=1000):
@@ -642,7 +673,7 @@ async def main():
                 sport, eid, datetime.strptime(d, "%Y-%m-%d").date() if d else None,
                 r.get("home_team"), r.get("away_team"), hid, aid,
                 integer(r.get("home_score")), integer(r.get("away_score")),
-                r.get("venue"), "espn_core", today)
+                r.get("venue"), "espn_core", today, parse_event_start(r.get("event_date")))
             if gr:
                 results.append(gr)
         if len(out) >= 40000:

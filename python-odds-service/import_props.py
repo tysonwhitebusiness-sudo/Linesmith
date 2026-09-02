@@ -40,7 +40,8 @@ SRC = Path("C:/Users/occy3/Downloads/espn_props/espn_props_all.csv")
 
 COLS = ["sport", "event_ref", "game_date", "athlete_id", "type_id", "type_name",
         "line", "over_price", "under_price", "open_line", "open_over_price",
-        "open_under_price", "provider", "source", "source_priority", "last_updated"]
+        "open_under_price", "provider", "source", "source_priority", "last_updated",
+        "event_start"]
 
 
 warnings.filterwarnings("ignore")
@@ -54,8 +55,16 @@ async def main():
 
     pool = await db.get_pool()
     if args.truncate:
+        # SET LOCAL INSIDE A TRANSACTION, not a bare SET. db.get_pool() applies a
+        # 15-second statement_timeout, which a TRUNCATE of 1.8M rows blows
+        # through -- and a plain `SET` cannot lift it, because this app connects
+        # through a transaction-mode pooler where session state does not survive
+        # to the next statement. Same property that forced withJobLock to be a
+        # lease table rather than an advisory lock.
         async with pool.acquire() as c:
-            await c.execute("TRUNCATE prop_odds_archive")
+            async with c.transaction():
+                await c.execute("SET LOCAL statement_timeout = '900s'")
+                await c.execute("TRUNCATE prop_odds_archive")
         print("prop_odds_archive truncated", flush=True)
 
     d = pd.read_csv(SRC, low_memory=False)
@@ -67,7 +76,12 @@ async def main():
     dropped = int((~actionable).sum())
     d = d[actionable].copy()
 
-    d["event_date"] = pd.to_datetime(d.event_date, errors="coerce", utc=True).dt.date
+    # KEEP THE TIME, NOT JUST THE DAY. `.dt.date` here is what made closing-line
+    # value unmeasurable on props: this archive holds many observations per prop
+    # as the line moves, and without a start time nothing says which of them was
+    # the last one before the game began -- or which were taken AFTER it did.
+    d["event_start"] = pd.to_datetime(d.event_date, errors="coerce", utc=True)
+    d["event_date"] = d["event_start"].dt.date
     d["last_updated"] = pd.to_datetime(d.last_updated, errors="coerce", utc=True)
     # These are TEXT columns in Postgres, but pandas reads numeric-looking ids
     # as int64 and COPY then rejects the batch with "expected str, got int".
@@ -92,6 +106,7 @@ async def main():
         open_under_price=("open_under_price", "max"),
         provider=("provider", "first"),
         last_updated=("last_updated", "max"),
+        event_start=("event_start", "first"),
     ).reset_index()
     print(f"read {read:,} | actionable {len(d):,} | merged to {len(g):,} two-sided props", flush=True)
 
@@ -108,6 +123,7 @@ async def main():
             *[None if pd.isna(getattr(t, c)) else int(getattr(t, c)) for c in ints[2:]],
             t.provider if pd.notna(t.provider) else None, "espn_core", 90,
             None if pd.isna(t.last_updated) else t.last_updated.to_pydatetime(),
+            None if pd.isna(t.event_start) else t.event_start.to_pydatetime(),
         ))
 
     for i in range(0, len(recs), args.batch):
