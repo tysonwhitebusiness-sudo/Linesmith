@@ -738,3 +738,124 @@ day.**
    pressure, since its cost grows with the slate.
 4. **Declare the soft caps in `render.yaml`** alongside the five missing keys.
    Cheap, and it is the guardrail against losing a month.
+
+---
+
+## 14. Measured rate limits and quotas — how hard we can hit each key
+
+Probed 2026-09-02 via `python-odds-service/probe_rate_limits.py`. Every number
+below is a **vendor response header or a real 429**, not a config default. The
+values in `config.py` are `env(..., "<default>")` fallbacks somebody chose; four
+of them turn out to be wrong.
+
+| Provider | Rate limit | Quota | Reset | Concurrency | Evidence |
+|---|---|---|---|---|---|
+| **SharpAPI** | **12 / min** | **none** | 60s rolling | **5 concurrent** | 429 at exactly 12 in 1.9s |
+| **ParlayAPI** | **60 / sec** | **1,000 / month** | monthly | — | `ratelimit-policy: "free"; q=60; w=1` |
+| **Propline** | — | **1,000 / day** | **00:00 UTC** | — | `x-daily-limit: 1000`, live 429 |
+| **The Odds API** | — | **500 / month** | monthly | — | `x-requests-remaining: 476`, used 24 |
+| **SportsGameOdds** | unknown — 429 observed | object-based | — | — | **no headers at all** |
+| **Odds-API.io** | unknown | unknown | — | — | **no headers at all** |
+
+### What the headers actually said
+
+**SharpAPI** — the only provider with *no* daily or monthly cap:
+```
+x-ratelimit-limit: 12      x-concurrency-limit: 5
+x-ratelimit-remaining: 8   x-concurrency-used: 1
+```
+A 20-request burst returned **429 after exactly 12 successes in 1.9 seconds**,
+`retry-after: 18`. So 12/min is real and hard, and there is a separate
+**5-concurrent-request ceiling** that nothing in this codebase currently
+respects.
+
+**ParlayAPI** — rate is a non-issue; quota is everything:
+```
+ratelimit-policy: "free"; q=60; w=1     <- 60 requests per ONE SECOND
+x-requests-remaining: 997               <- monthly
+x-result-limit: 5000                    <- up to 5,000 results per response
+```
+A 20-request burst completed in 1.0s with **no 429**. The binding constraint is
+purely the 1,000/month.
+
+**Propline** — confirms §12 exactly, and gives the reset time:
+```
+x-daily-limit: 1000   x-daily-used: 1000   x-daily-remaining: 0
+retry-after: 12152    ratelimit-policy: 1000;w=86400
+```
+`PROPLINE_KEY` was fully spent with **3h22m still to wait**; `PROPLINE_2_KEY`
+had 924 remaining. Reset is **UTC midnight**, not a rolling 24h window — which
+matters for scheduling.
+
+### Four config assumptions that are wrong
+
+| Config | Assumes | Measured |
+|---|---|---|
+| `ODDSAPIIO_DAILY_LIMIT = 500` | 500/day | **510 already spent today** — the cap is being exceeded, and the vendor returns no headers to check against |
+| `SPORTSGAMEODDS_RATE_PER_MIN = 10` | 10/min | Unverifiable — no headers. The **primary key returned 429** during this probe |
+| `PARLAYAPI_MONTHLY_LIMIT = 1000` | 1,000/month | ✅ correct (`x-requests-remaining` confirms) |
+| The Odds API | untracked | **500/month, 476 left** — far scarcer than assumed anywhere |
+
+### Sustainable cadence per provider
+
+What each key can actually support, for an 8-sport build:
+
+**SharpAPI — the backbone, and it is not close.**
+12/min with no daily cap = **17,280 requests/day**. A full sweep of 8 sports ×
+2 calls (props + game lines) is **16 requests ≈ 80 seconds**. So SharpAPI alone
+can refresh *every sport, both markets*, on a **~2-minute cycle, indefinitely,
+for free**. Respecting the 5-concurrency ceiling, that drops to ~20s of
+wall-clock per sweep.
+
+**ParlayAPI — a precision instrument, not a poller.**
+1,000/month per key at 1 request per sport per cycle:
+
+| Keys | Monthly | 8-sport cycles/month | Per day |
+|---|---|---|---|
+| 1 | 1,000 | 125 | **~4** |
+| 5 (today) | 5,000 | 625 | **~20** |
+
+Twenty 8-sport sweeps a day is not a polling budget. ParlayAPI should fire at
+**high-value moments** — near lock, when the closing line matters — not on a
+flat cadence. Its 60/sec rate means a burst of all 8 sports costs one second.
+
+**Propline — the depth workhorse, daily-capped.**
+1,000/day resetting at UTC midnight. With `/markets` cached (§12) a 15-game MLB
+sweep is 16 requests, so ~62 sweeps/day on one key, ~310 across five. Enough for
+a tight hot-window cadence on the sport that carries 19 of 19 books — but only
+after the cadence fix, since today it spends all 1,000 in 80 minutes.
+
+**The Odds API — treat as scarce.**
+**500/month ≈ 16/day.** This is the tightest budget in the stack by an order of
+magnitude and it is currently spent on MLB game lines alone. It should be
+reserved for a specific high-value job, not spread across 8 sports.
+
+**SportsGameOdds and Odds-API.io — flying blind.**
+Neither returns any quota header. Our own `provider_usage` counters are the only
+tracking, and Odds-API.io is already **510 against an assumed 500/day**. Both
+need their real limits established from vendor documentation or an account
+dashboard before the worker leans on them.
+
+### What this implies for the worker's shape
+
+1. **SharpAPI is the floor under every sport.** Free, uncapped, both markets, all
+   8 sports, ~2-minute full sweep. Nothing else should be doing baseline
+   polling.
+2. **Respect the 5-concurrency limit.** It is a real ceiling nothing in the
+   codebase currently checks, and `concurrent=True` jobs could trip it.
+3. **Tier providers by scarcity, not by "tier 1 / tier 2".** SharpAPI polls;
+   Propline sweeps the hot window; ParlayAPI and The Odds API fire near lock.
+   The current `_tier1_specs()` grouping puts an uncapped provider and a
+   daily-capped one on the same 2.5-minute cadence, which is exactly the bug in
+   §12.
+4. **Quota tracking must come from headers where they exist.** Propline,
+   ParlayAPI and The Odds API all return authoritative remaining-quota on every
+   response. Reading those is strictly better than incrementing our own counter
+   and hoping it matches — and it is what would have caught Odds-API.io running
+   10 over its configured cap.
+
+### What this probe cost
+
+~54 requests total: ~14 catalogue calls plus two 20-request bursts, and the
+bursts hit only SharpAPI (uncapped) and one ParlayAPI key (997 of 1,000 still
+remaining afterwards). No capped provider was burst-tested.
