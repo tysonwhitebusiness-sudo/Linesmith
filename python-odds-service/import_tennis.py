@@ -55,13 +55,25 @@ Loaded, per match: the closing moneyline from four price series (Bet365,
 Pinnacle, the best price across books, and the market average) into
 `odds_archive`, and sets won into `game_result`.
 
-NOT loaded: surface, round, seed ranks and ranking points. There is no column
-for them in either shared table, and inventing a per-sport tennis table would
-invert the convention `odds_archive`'s own migration argues for at length. They
-stay in the files, and because the orientation above is a pure function of the
-match key, a later loader re-derives exactly the same p1/p2 assignment and can
-add them alongside. Deferring them costs nothing; getting the orientation wrong
-once would cost everything downstream of it.
+SURFACE AND COURT ARE NOW LOADED, into `game_result`. They were deferred here
+originally, correctly, because there was no column for them in either shared
+table -- and that docstring named the fix it was waiting on. Migration
+20260902120000 adds `surface` and `court` to `game_result`, which is where event
+context already lives (beside `venue`, one row per match rather than repeated
+across all 448,914 price rows).
+
+This mattered more than a nice-to-have: the approved tennis model is
+SURFACE-WEIGHTED Elo, and the 2026-09-02 audit had tennis down as blocked
+because surface was nowhere in the database. It was in these files the whole
+time, on 100% of 57,386 matches -- Hard 33,850, Clay 16,729, Grass 6,807;
+Outdoor 50,295, Indoor 7,091.
+
+The deferral cost nothing exactly as predicted: the orientation is a pure
+function of the match key, so this re-run re-derives the identical p1/p2
+assignment and the two columns land beside the rows they belong to.
+
+STILL not loaded: round, seed ranks and ranking points. Same reasoning as
+before -- no column, and no model asking for them yet.
 
 Player ids are NULL, deliberately. These files publish "Vukic A." and no id.
 `player_game_history`'s tennis rows carry 4-digit ids from a different provider
@@ -249,6 +261,8 @@ def build(df):
                             home_team_id=None, away_team_id=None,
                             home_score=h, away_score=a,
                             venue=str(getattr(r, "Location", "") or "") or None,
+                            surface=str(getattr(r, "Surface", "") or "") or None,
+                            court=str(getattr(r, "Court", "") or "") or None,
                             source=SOURCE))
     return odds, results, skipped
 
@@ -257,7 +271,8 @@ OC = ["sport", "event_ref", "game_date", "home_team_raw", "away_team_raw", "home
       "away_team_id", "market", "side", "line", "price", "open_line", "open_price",
       "bookmaker", "provider", "source", "source_priority", "booksum", "ml_flag"]
 RC = ["sport", "event_ref", "game_date", "home_team_raw", "away_team_raw",
-      "home_team_id", "away_team_id", "home_score", "away_score", "venue", "source"]
+      "home_team_id", "away_team_id", "home_score", "away_score", "venue",
+      "surface", "court", "source"]
 
 
 async def insert(pool, table, cols, rows, batch=1000):
