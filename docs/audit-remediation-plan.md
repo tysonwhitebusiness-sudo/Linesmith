@@ -2411,6 +2411,36 @@ Added with Track E:
 - **No model output is rendered that has not cleared bar 3** (beats the closing
   price, out-of-time). Today that means nothing is rendered, which is why
   `EdgeBadge` returns `null` — and the gate is satisfied by that, not violated.
+
+  > **NEEDS REWRITING BEFORE 6.29 SHIPS ANYTHING. Recorded 2026-09-01.**
+  >
+  > This clause describes a SUPPRESSION STATE, not a test. It passes because
+  > nothing tries to render — Track E was added 2026-08-31, so every phase
+  > before it was written when the answer to "what model output do we show?"
+  > was *none*. That assumption no longer holds.
+  >
+  > It gives no operational definition of "cleared": over how many selections,
+  > per sport or pooled, at what confidence, measured on CLV or on profit. A
+  > gate that cannot answer those is a judgement call, and judgement calls are
+  > how the previous model layer shipped.
+  >
+  > **Replace with a CLV test, not a profit test.** Profit needs ~10,000 bets
+  > to separate a 2% edge from zero; CLV converges in hundreds. Proposed: a
+  > model may render once its OUT-OF-TIME selections show a positive-CLV rate
+  > whose confidence interval excludes 50%, measured PER SPORT. Detecting a 55%
+  > rate against a coin-flip null at conventional power needs roughly **800
+  > graded selections**; nearer 57%, about 400. Both are reachable — MLB alone
+  > has 73,711 graded prop player-games.
+  >
+  > **The mechanism already exists.** `docs/model-rebuild-plan.md` §6 keeps the
+  > `shadow` flag precisely for this: it caught the home-run model adding 0.4%
+  > and kept it off the page with no human in the loop. A rebuilt model runs in
+  > shadow, accumulates graded predictions against real closing prices, and is
+  > promoted only when it clears.
+  >
+  > **A RANK IS MODEL OUTPUT.** Masking a percentage behind a position number
+  > changes what is on screen, not whether the model earned the right to be
+  > there. The same gate applies to a ranked board as to a printed probability.
 - **Every entity crosswalk verified by joining on a real date**, never by
   counting id overlaps. 30 of 39 NHL ids "matched" and every match was wrong.
 - **The prop grader passes a rank-correlation test** on games it never saw,
