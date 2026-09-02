@@ -14,8 +14,10 @@ The locked model choices come from two artifacts the operator approved on
 
 ## 0. Pre-flight audit — read this before anything else
 
-Six findings. Five are blockers. The sixth is a counting trap that caught this
-audit — the numbers already in `CURRENT.md` were right, and are confirmed here.
+Six findings. Five were blockers; **two of those are now fixed** (0.4 and 0.6,
+both on 2026-09-02 — in both cases the data existed and a loader had dropped it).
+The sixth is a counting trap that caught this audit — the numbers already in
+`CURRENT.md` were right, and are confirmed here.
 
 ### 0.1 A COUNTING TRAP — verified, and the recorded counts were already right
 
@@ -114,20 +116,36 @@ trained on it begins decaying the day it ships, no backtest can ever include a
 game played after the import, and the CLV evidence base never grows. This is the
 single highest-value piece of infrastructure in this plan and it is §2.6.
 
-### 0.4 BLOCKER — MLB 2022, 2023 and 2024 are missing from the archive
+### 0.4 ~~BLOCKER~~ RESOLVED 2026-09-02 — MLB 2022–2024 now has raw prices
 
 `odds_archive` MLB moneyline runs 2010–2021 (SBR xlsx) and 2025–2026 (ESPN).
 The three seasons between are **absent** — the xlsx files only go to 2021 and no
 2022–2024 source was ever imported.
 
-`historical_odds` does hold them — 2022: 2,641, 2023: 2,764, 2024: 2,748, or
-**8,153 games** — but only as consensus probabilities, and those sum to exactly
-`1.0000` in every season. They are **already de-vigged**. There is no vig, so
-they cannot support an EV or CLV calculation; they can only serve as a
-market-opinion benchmark and a training signal.
+`historical_odds` does hold them — 8,153 games — but only as consensus
+probabilities summing to exactly `1.0000`: **already de-vigged**. This section
+originally concluded they could therefore never support EV or CLV.
 
-Consequence: MLB's usable history is 2010–2021 plus 2025–26, with a three-season
-hole in the most recent and most relevant pre-ESPN period.
+**That was wrong.** The de-vigging happens in
+`lib/sports/mlb/historicalOddsIngest.ts` on the way *in*. The source CSV was
+still on disk at `data/historical-odds-import/mlb_games_odds_2021_2025_all_books_long.csv`
+— 205,475 rows carrying raw American prices per book for six books, zero nulls
+on any close price, 100% with a final score, and `start_date_utc` for a real
+`event_start`.
+
+`python-odds-service/import_mlb_long_csv.py` loads it: **2022 gains 2,384 games,
+2023 2,430, 2024 2,428**, at source priority 85 — below `espn_core` (90) and
+`sbr` (100), so it is purely additive where a price already existed. It also
+brings a **two-sided priced run line**, which the ESPN rows are not (see 0.5).
+
+Verified against the 2021/2025 overlap and against outcomes: `espn_core`
+corr **0.9288** / mean-abs-diff **0.0191**, `sbr_mlb` corr 0.8113 / 0.0319, and
+on the newly-filled seasons the de-vigged price tracks the realised home win rate
+inside 1.5pp in every populated bucket (0.490 → 0.475, 0.632 → 0.631,
+0.703 → 0.717).
+
+Two limits of the source, both measured: it carries **no doubleheaders** (one
+game per date/matchup, ~2% of a season missing), and it stops at 2025.
 
 ### 0.5 BLOCKER — ESPN spread rows carry only the home side
 
@@ -145,14 +163,30 @@ spread. Where only one side exists **the spread cannot be de-vigged**, so for
 NBA, EPL, MLS and CFB a spread model must be judged against the posted line and
 a single price, not against a fair two-way probability.
 
-### 0.6 BLOCKER — tennis has no surface, and surface is the approved model
+### 0.6 ~~BLOCKER~~ RESOLVED 2026-09-02 — tennis surface is loaded
 
-The approved tennis model is **surface-weighted Elo**. Surface is not in
-`player_game_history.stats` (8 keys: `games_won`, `games_lost`, `sets_won`,
-`sets_lost`, `match_won`, `tiebreaks_played`, `is_major`, `is_qualifying`) and
-not a column on `odds_archive`. The artifact assumed it "sits in your .xlsx
-files but isn't loaded yet". That must be confirmed and loaded, or tennis drops
-to plain Elo — which the same artifact explicitly rejected as too blunt.
+The approved model is **surface-weighted Elo**, and surface was in no table.
+It was in the tennis-data.co.uk workbooks the whole time, on **100% of 57,386
+matches** — Hard 33,850, Clay 16,729, Grass 6,807, plus `Court` Outdoor 50,295 /
+Indoor 7,091. `import_tennis.py` dropped both deliberately and said why in its
+own docstring: *"there is no column for them in either shared table"* — which
+named the fix it was waiting for.
+
+Migration `20260902120000` adds `surface` and `court` to **`game_result`**,
+beside `venue`: surface is a property of the event, not of a price, so on
+`odds_archive` it would repeat across 448,914 rows instead of 56,386.
+`model_game_odds` already joins `game_result`, so the model reads it through a
+join it already does.
+
+Verified three ways, because a populated column is not a correct one. The
+extremes are real specialists (Medvedev hard .732 / clay .558; Delbonis clay .531
+/ hard .286). A permutation control preserving the true 59/29/12 marginal gives a
+mean clay-hard gap of 0.0516 against the real 0.0767. And decisively: a player's
+clay-vs-hard gap **before** 2021 correlates **0.5262** with the same player's gap
+**after** 2021, across 38 players. A mislabelled join cannot persist across
+years.
+
+Phase 1 is unblocked.
 
 ### 0.7 Market names need canonicalising
 
@@ -291,6 +325,14 @@ Failing to ship is a real outcome and gets written down. "That is a real answer
 worth having before seven more sports of work."
 
 ### 2.6 Forward ingestion — the archival bridge (§0.3)
+
+> **Designed in full in `docs/model-infrastructure-2026-09-02.md`.** That
+> document is the detailed answer to "how does this become a working system going
+> forward": the measured state of all 53 monitored jobs (18 unhealthy, including
+> **six model-input feeders that have never run once**), the bridge's job specs
+> and SQL, the monitoring gaps, capacity accounting against 2,551 MB of headroom,
+> the replay/rebuild procedure, and a 10-step rollout order with a verification
+> for each step. What follows here is the summary.
 
 **This is the piece that does not exist and must be built before any model
 ships**, because without it every model decays from its first day.
@@ -675,10 +717,20 @@ priced *and* cost more to play; both halves are true.
    backfill for affected seasons. Unblocks 43,678 props and stops the defect
    recurring.
 2. **§2.6 the archival bridge** — without it every model decays from day one.
+   Full design and rollout order in `docs/model-infrastructure-2026-09-02.md`.
 3. **§0.7 market canonicalisation** — a prerequisite for prop training.
-4. **§0.6 tennis surface** — decides whether Phase 1 can run at all.
-5. **§0.4 MLB 2022–24** — decide whether to re-source raw prices or accept the
-   hole. Not blocking; Phase 4 can proceed either way.
+4. ~~**§0.6 tennis surface**~~ — **done 2026-09-02.** Phase 1 unblocked.
+5. ~~**§0.4 MLB 2022–24**~~ — **done 2026-09-02.** Raw prices recovered from the
+   source CSV; Phase 4 trains on a continuous 2010–2026 history.
+
+The infrastructure document adds a sixth, which the model plan had not
+surfaced at all: **six model-input feeders have never run** —
+`ingestStatcastPitchesJob`, `ingestNhlShotsJob`, `ingestNbaShotsJob`,
+`ingestNflPbpJob`, `venueFactorsJob` and `injurySnapshotJob`. Phase 3 needs NHL
+shots to identify empty-net and overtime goals, and Phase 4's skill-vs-luck prior
+is Statcast. `injurySnapshotJob` is the urgent one: unlike odds, availability
+**cannot be bought retroactively**, so every day it does not run is permanently
+lost.
 
 **Phase 0.5 — the harness.** §2.1 through §2.5. Mostly wiring what exists, plus
 the leakage guard and the as-of contract.

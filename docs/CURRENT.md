@@ -58,58 +58,90 @@ reports local. Joining at 0 understates NHL's grader set by 35%. Gate 7.7.
 
 ## 3. NEXT ACTIONS
 
-**The model build plan is written: `docs/model-build-plan-2026-09-02.md`**
-(artifact: `https://claude.ai/code/artifact/ab49524a-4b4d-4946-b481-47681d81fe88`).
-It phases game + prop models by sport, seven phases, three engines. Approved
-model choices are reproduced in it from the two 2026-09-01 artifacts.
+**Two documents, both written 2026-09-02:**
 
-**Two things in it need operator sign-off before building starts:**
+- `docs/model-build-plan-2026-09-02.md` — game + prop models phased by sport,
+  seven phases, three engines.
+  Artifact: `https://claude.ai/code/artifact/ab49524a-4b4d-4946-b481-47681d81fe88`
+- `docs/model-infrastructure-2026-09-02.md` — **how this becomes a system that
+  keeps working.** The measured state of all 53 monitored jobs, the archival
+  bridge design, monitoring gaps, capacity, replay, and a 10-step rollout order.
 
-1. **The build order deviates from both approved orders.** The game artifact
-   said tennis -> soccer -> NBA; the prop artifact said MLB -> NHL -> NFL ->
-   NBA. The plan merges them by *engine* (tennis, soccer, NHL, MLB, NBA, CFB,
-   NFL) so each engine is built once and MLB's game model precedes the props
-   that fall out of it. Flagged, not assumed.
-2. **MLB 2022-24** — re-source raw prices, or accept the hole. See below.
+**Needs operator sign-off before building:** the build order deviates from both
+approved artifacts. Games said tennis -> soccer -> NBA; props said MLB -> NHL ->
+NFL -> NBA. The plan merges them BY ENGINE (tennis, soccer, NHL, MLB, NBA, CFB,
+NFL) so each engine is built once and MLB's game model precedes the props that
+fall out of it. Flagged, not assumed.
 
-**Phase 0 blockers, found by the 2026-09-02 pre-flight audit. Fix before any
-model:**
+### Blockers — 2 of 5 now FIXED
+
+**FIXED 2026-09-02 — MLB 2022-2024 has raw prices.** The audit said those 8,153
+games could only ever be a training signal because `historical_odds` holds them
+de-vigged. Wrong: the de-vigging happens in `historicalOddsIngest.ts` on the way
+IN, and the source CSV was on disk the whole time
+(`data/historical-odds-import/mlb_games_odds_2021_2025_all_books_long.csv`,
+205,475 rows, six books, zero nulls on any close price).
+`python-odds-service/import_mlb_long_csv.py` loads it at source priority 85 —
+2022 +2,384 games, 2023 +2,430, 2024 +2,428, plus a two-sided priced run line.
+Verified: espn_core corr 0.9288 / MAD 0.0191, sbr_mlb 0.8113 / 0.0319, and the
+new seasons calibrate against outcomes inside 1.5pp per bucket.
+
+**FIXED 2026-09-02 — tennis has surface.** Migration `20260902120000` adds
+`surface` and `court` to `game_result`; `import_tennis.py` populates them from
+the workbooks already on disk, 100% of 57,386 matches. Verified by permutation
+control (real gap 0.0767 vs shuffled 0.0516) and a 0.5262 split-half correlation
+of each player's clay-vs-hard gap across 2015-2020 vs 2021-2026. Phase 1
+unblocked.
+
+**STILL OPEN:**
 
 1. **No postseason game has EVER entered `player_game_history`.**
    `backfill_player_game_history.py:592` (`gameType != 2`) and `:559`
    (`espn_regular_only`, defaulting True at `:79`), mirrored by
-   `predict/generic_freshness_job.py`. So it is the ONGOING path, not a stale
-   backfill, and it will drop every postseason again next season.
-   **43,678 props can never be graded** (NHL 17,092, NBA 25,662, NFL 924), and
-   it is most of why NHL props join at 49.6% where MLB reaches 85.9%.
+   `predict/generic_freshness_job.py` — so it is the ONGOING path and drops
+   every postseason again next season. 43,678 props can never be graded
+   (NHL 17,092, NBA 25,662, NFL 924).
 2. **The training archive is frozen.** 100% of `odds_archive`,
-   `prop_odds_archive` and `game_result` rows were written by the one import.
-   Nothing writes them on a schedule; the live jobs write `prop_odds` and
-   `game_odds_book_lines`, which **no model reads**. Needs an archival bridge
-   job (plan §2.6) or every model decays from its first day and no backtest can
-   ever include a game played after 2026-09-01.
+   `prop_odds_archive` and `game_result` rows came from one import; the live
+   jobs write `prop_odds` / `game_odds_book_lines`, which no model reads.
+   Design: infrastructure doc §4. Key decision there — the bridge **upserts
+   continuously** rather than capturing at `event_start`, so a missed tick makes
+   a close staler rather than permanently lost, and Postgres enforces the freeze
+   via `WHERE odds_archive.event_start > now()`.
 3. **Market canonicalisation** — 36/41/70/20 distinct `type_name` for
-   MLB/NBA/NFL/NHL. Head is short: 11 markets cover 90% of NBA and NHL.
-4. **Tennis has no surface** — not in `player_game_history.stats` (8 keys) nor
-   `odds_archive`. The approved model is surface-weighted Elo, so Phase 1 is
-   blocked until it is loaded. Plain Elo does NOT ship in its place.
-5. **MLB 2022-24 missing** — 8,153 games. `historical_odds` holds them but its
-   probabilities sum to exactly 1.0000, i.e. **already de-vigged**: usable as a
-   training signal and market benchmark, never for EV or CLV.
+   MLB/NBA/NFL/NHL. The head is short: 11 markets cover 90% of NBA and NHL.
+4. **SIX MODEL-INPUT FEEDERS HAVE NEVER RUN** — `ingestStatcastPitchesJob`,
+   `ingestNhlShotsJob`, `ingestNbaShotsJob`, `ingestNflPbpJob`,
+   `venueFactorsJob`, `injurySnapshotJob`. Phase 3 needs NHL shots for
+   empty-net/OT detection; Phase 4's skill-vs-luck prior is Statcast.
+   **`injurySnapshotJob` is urgent** — availability cannot be bought
+   retroactively, so every day it does not run is permanently lost.
 
-**Also found:** ESPN spread rows carry **only the home side** (NBA/EPL/MLS
-rows-per-game = 1.00) and CFBD spread has lines but **zero prices** — so spread
-cannot be de-vigged for NBA, EPL, MLS or CFB. Moneyline and total are unaffected
-(exactly 2.00 rows/game, 3.00 soccer).
+### Job health, measured 2026-09-02: 53 monitored, 35 healthy, 18 not
 
-**Corrected this session:** commit a4d1161 claimed prop CLV cannot be measured.
-It can. Every two-sided prop carries open AND close in its own columns (MLB
-443,990, 69% moved). `last_updated` is a record-modified timestamp ESPN touches
-at settlement, not a quote time — proven because an in-play price would be far
-sharper and these are not (open Brier 0.2013 vs close 0.2020 on 235,210 props).
-That same test means the close carries **no more information than the open**, so
-beating it is a softer bar than an NFL sides close, and line movement is a weak
-prop feature.
+Beyond the six never-run: all six **OddsHarvester** scrapes return 0 records
+(anti-bot; CFB's freshest book line is 34h old), `refreshTennisAtpJob` fails
+every run on `prop_odds_side_valid`, `computeMlbGameModelJob` fails every run
+(`DataError: expected str, got int` on $2), `refreshSportsGameOddsJob` last ran
+849min ago against a 180min threshold, and `snapshotCacheSize` has an 11.4MB
+payload over its 10MB limit.
+
+**DB 5,641 MB of 8,192 (69%).** Largest: `player_game_history` 1,730MB,
+`odds_archive` 1,116MB, `prop_odds_archive` 621MB, `mlb_pitch_events` 448MB,
+`snapshot_cache` 334MB, `prop_odds_history` 323MB, `odds_import_staging` 270MB.
+
+### Two traps this session hit — both cost a cycle
+
+**A verifier can be the bug.** The MLB cross-source check first reported
+mean-abs-diff 865.7 / corr 0.108, reading as a total parse failure. It was the
+metric: American odds are discontinuous across +/-100, so -105 and +101 average
+to -2. Converting to implied probability gives 0.8113; adding `NOT is_live`
+takes espn_core to 0.9288.
+
+**`ON CONFLICT DO NOTHING` hides a no-op.** The first tennis re-run with surface
+wrote nothing and logged "56,386 offered" — the clear is behind `--truncate`,
+old rows won every conflict, and the column stayed 100% NULL. Always verify the
+VALUE landed, not the offered count.
 
 ### Still open, unscheduled
 
