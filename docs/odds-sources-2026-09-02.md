@@ -394,3 +394,141 @@ these providers across eight sports instead of two or three.
 **The operator's read stands: the per-sport job structure is sound.** It is the
 right shape for *jobs*. It was simply also applied to *keys*, where it does not
 belong, because a key turns out to be quota rather than coverage.
+
+---
+
+## 11. Building all-providers-on-all-sports: the design
+
+### 11.1 First, what six providers actually buys — measured, not assumed
+
+Distinct bookmakers per provider, from the live tables:
+
+| Provider | Prop books | Game-line books |
+|---|:-:|:-:|
+| **propline** | **19** | **22** |
+| propline_2 | 10 — every one inside propline's 19 | — |
+| the-odds-api | — | 9 — every one inside propline's 22 |
+| oddsharvester | — | 4 — **sole source of `bet365`** |
+| sharpapi | 2 (`draftkings`, `fanduel`) | 2 |
+| oddsapiio | 1 (`fanatics`) | — |
+
+```
+prop_odds             union = 19 books   sum across providers = 32   overlap = 13
+game_odds_book_lines  union = 23 books   sum across sources   = 37   overlap = 14
+```
+
+**Propline alone supplies all 19 prop books and 22 of the 23 game-line books.**
+Every book SharpAPI, Odds-API.io, propline_2 and The Odds API return is already
+inside Propline's set. The one genuinely unique book in the entire stack is
+`bet365`, and it comes from OddsHarvester — the scraper that is currently dead.
+
+So adding providers is **not** multiplying book depth. What it actually buys, in
+descending order of real value:
+
+1. **Redundancy against a capped or broken provider.** Propline hits its
+   1,000/day ceiling *every day* and returns `429`. When it is capped, everything
+   else keeps the sport alive. This is the strongest argument and it is why the
+   answer is still "wire them all."
+2. **Quota.** More providers and more pooled keys mean more total requests
+   against the same slate.
+3. **Cross-source verification.** Two independent sources on one game is how the
+   MLB 2022-24 recovery was validated (`espn_core` corr 0.9288). Worth real
+   money for correctness even when it adds no new book.
+4. **Market breadth, currently UNMEASURED.** SportsGameOdds advertises 19 stat
+   categories; SharpAPI returned 9 prop markets for MLB and 4 for CFB. Whether
+   providers differ in *which markets* they carry — as opposed to which books —
+   has not been measured and should be, per sport, as this rolls out.
+
+**A caveat on the table above:** Propline's 19 books were measured on **MLB**,
+the only sport it is wired to. Its book depth on NFL, NHL or tennis is unknown.
+Measure per sport rather than assuming the MLB figure generalises.
+
+### 11.2 The consequence nobody can skip: deduplicate before consensus
+
+Six providers returning DraftKings means **six DraftKings rows for one game**.
+Averaged naively, DraftKings is weighted six times and the de-vigged consensus is
+wrong — quietly, with no error, in exactly the way this codebase has been bitten
+before (the 48,489 in-play rows were invisible in an aggregate too).
+
+`canonical_bookmaker` already normalises spellings at the shared writer, which
+makes the duplicates *visible*; it does not resolve them. The rule has to be
+explicit:
+
+> **One row per `(sport, event, market, side, bookmaker)` for consensus.**
+> Keep every provider's row for provenance and cross-checking, but collapse to
+> the highest-`source_priority` row per book before computing any average,
+> overround, or de-vigged probability.
+
+This is the same shape as `model_game_odds`, which already collapses by
+`source_priority` — extend that pattern rather than inventing a second one.
+
+### 11.3 The build
+
+Three components. The goal is that adding a provider or a sport is **data, not
+code** — the lesson `run_provider_specs` already encodes for cap-checking.
+
+**A. One capability matrix, replacing the per-sport spec builders.**
+
+Today `_tier1_specs()`, `_soccer_epl_specs()`, `_soccer_mls_specs()`,
+`_tennis_specs()` and `_job_multisport` each hand-build a spec list. Six
+providers across eight sports would make that 48 hand-written constructions —
+precisely the duplication that let two of four jobs ship with no rate-limit check
+at all.
+
+Replace with one declared table of `(provider, our_sport) -> vendor tokens`,
+absorbing the maps that already exist in `providers.py` (`_SGO_LEAGUE_IDS`,
+`_PROPLINE_SPORT_KEYS`, `_PARLAYAPI_SPORT_KEYS`) plus new ones for SharpAPI
+(`sport`/`league`) and The Odds API. Then `specs_for(sport)` **generates** the
+list. Adding a sport is a column; adding a provider is a row.
+
+**B. Key pools, per provider.**
+
+An ordered list of free keys per provider; `run_provider_specs` selects the first
+with remaining quota. Each key keeps its own `provider_id` (`propline_1`,
+`propline_2`, …) so `db.try_reserve_daily` / `try_reserve_monthly` work unchanged
+— no schema change, and the atomic reservation from task 5.12 stays intact.
+
+Proven safe by existing data: on **2026-08-30 `propline` spent 1,000 requests and
+`propline_2` spent 1,000 on the same day from the same worker**, so per-key quota
+accumulates independently and is not IP-capped.
+
+Drain sequentially rather than round-robin: both use the same total, but
+sequential means you always know how many keys remain and failure is gradual
+instead of every key expiring at once. (If a provider ever caps on
+requests-per-minute rather than budget, invert this — spread across keys for
+concurrency.)
+
+The known cost: `provider_id` stops encoding the sport, so **per-sport spend
+attribution is lost** unless `provider_usage` gains a `sport` column — which
+changes the reservation key, so it is a deliberate decision, not free.
+
+**C. The probe becomes a gate.**
+
+This is what stops the matrix rotting into the thing it replaces.
+`docs/api-capability-audit-2026-08-20.md` was hand-maintained and wrong in four
+places; this document was wrong once too, in its first pass, because a matcher
+compared vendor strings by equality and Propline spells NFL `football_nfl`.
+
+`probe_all_providers.py` already resolves every declared pair against each
+vendor's own catalogue. Run it as a scheduled check: **fail if a declared
+`(provider, sport)` pair no longer resolves.** A vendor renaming a league then
+becomes a failing check rather than a sport quietly going dark — which is exactly
+how NFL and CFB were lost for twelve days.
+
+### 11.4 Order of work
+
+| # | Step | Why here |
+|---|---|---|
+| 1 | Set the 5 missing Render keys | Restores 4 sports; nothing below matters while the worker cannot authenticate |
+| 2 | Wire SharpAPI to all 8 sports | Uncapped, free, props + games — the redundancy floor under every sport |
+| 3 | Build the capability matrix (A) | Before adding providers, so the additions are data |
+| 4 | Expand Propline 3 → 8 sports | It carries the books; this is the real depth win |
+| 5 | Dedupe rule (11.2) | **Must land before any consensus is computed on the wider data** |
+| 6 | Key pools (B) | Propline is capped daily; pooling is what makes step 4 sustainable |
+| 7 | The Odds API + SGO + Odds-API.io on their sports | Redundancy and cross-checking |
+| 8 | Probe-as-gate (C) | Keeps 3 honest as vendors change |
+| 9 | `refreshNhlJob` | NHL has no job; slot it once the matrix exists |
+
+Step 5 is placed before step 6 deliberately. Widening the data without the dedupe
+rule produces a consensus that is *more* wrong than today's, because every extra
+provider adds another duplicate of the same handful of books.
