@@ -246,3 +246,113 @@ comm -23 /tmp/required.txt /tmp/declared.txt
 # SharpAPI coverage (read-only, rate-limit aware)
 python python-odds-service/probe_sharpapi.py
 ```
+
+---
+
+## 8. Provider capability audit — every key, every sport, props or games
+
+Probed live 2026-09-02 via each vendor's **catalogue endpoint** (`/leagues`,
+`/sports`), which is free and unmetered, rather than by burning odds quota.
+`python-odds-service/probe_all_providers.py` is the tool.
+
+**Y = the vendor's own catalogue lists that sport.** This is capability, not
+current activity — NHL and NBA are between seasons, so a supported sport can
+legitimately return zero rows today.
+
+| Provider | MLB | NFL | CFB | NBA | NHL | EPL | MLS | Tennis | Props | Game lines |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| **SharpAPI** | Y | Y | Y | Y | Y | Y | Y | Y | ✅ | ✅ |
+| **The Odds API** | Y | Y | Y | Y | Y | Y | Y | Y\* | ✅ | ✅ |
+| **Propline** | Y | Y | Y | Y | Y | Y | Y | Y | ✅ | ✅ |
+| **ParlayAPI** | Y | Y | Y | Y | Y | Y | Y | Y | ✅ | ❌ **props only** |
+| **SportsGameOdds** | Y | Y | Y | Y | Y | ❌ | Y | ❌ | ✅ | ✅ |
+| **Odds-API.io** | Y | Y | Y | Y | Y | Y | Y | Y | ✅ | ? not wired |
+
+\* The Odds API's tennis is **tournament-scoped** — `tennis_atp_us_open`,
+`tennis_wta_us_open` — not a season-long feed.
+
+SharpAPI's catalogue is 1,199 leagues; The Odds API 87 sports; ParlayAPI 405;
+Propline 54; Odds-API.io 34 sport-level slugs (leagues resolve per-sport via
+`/v3/events?sport=`). **SportsGameOdds is the only genuinely narrow one — its
+catalogue is exactly eight leagues**: `NBA, UEFA_CHAMPIONS_LEAGUE, MLB, MLS,
+NCAAB, NCAAF, NFL, NHL`. No EPL, no tennis.
+
+**NHL is supported by five of six providers**, and SharpAPI returned 50 live
+rows for `hockey/nhl` on 2026-09-02.
+
+### A measurement caveat worth keeping
+
+The first pass of this probe reported Propline as *not* covering NFL or CFB. That
+was wrong: it matched vendor strings by exact equality, and Propline names them
+`football_nfl` and `football_ncaaf`, not `americanfootball_nfl`. Substring
+matching fixed it. **A naming convention mismatch reads exactly like missing
+coverage** — which is most likely how the original capability matrix acquired its
+four wrong cells.
+
+---
+
+## 9. What we use versus what we already pay for
+
+| Provider | Sports available | Sports wired | Using |
+|---|---|---|---|
+| SharpAPI | 8 | 2 (MLB, tennis) | **25%** |
+| The Odds API | 8 | 1 (MLB game lines) | **13%** |
+| Propline | 8 | 3 (`_PROPLINE_SPORT_KEYS`: mlb, epl, mls) | **38%** |
+| SportsGameOdds | 6 of ours | 5 (`_SGO_LEAGUE_IDS` — **NHL omitted**) | 83% |
+| ParlayAPI | 8 | 5 wired, 4 disabled on Render | — |
+| Odds-API.io | 8 | 1 (MLB) | **13%** |
+
+Two wiring bugs visible here, independent of the Render keys:
+
+- **`_SGO_LEAGUE_IDS` has no NHL entry** — `{mlb, nfl, cfb, soccer_mls, nba}` —
+  although SGO's catalogue lists NHL. Even with the key set, NHL would not be
+  fetched.
+- **`_PROPLINE_SPORT_KEYS` maps three sports** out of a 54-sport catalogue that
+  includes every one of ours.
+
+---
+
+## 10. Should we buy more per-sport keys?
+
+**Not yet — almost all the missing depth is already paid for and simply
+unwired.** In value order:
+
+| # | Action | Cost | Effect |
+|---|---|---|---|
+| 1 | Wire **SharpAPI** to all 8 sports | **$0** | Only uncapped provider; props + games everywhere |
+| 2 | Set the 5 missing **Render keys** | **$0** | Restores NFL, CFB, NBA, soccer |
+| 3 | Wire **The Odds API** beyond MLB | **$0** (paid) | Game lines on 7 more sports |
+| 4 | Expand `_PROPLINE_SPORT_KEYS` 3 → 8 | **$0** (paid) | Props + games on 5 more sports |
+| 5 | Add NHL to `_SGO_LEAGUE_IDS` | **$0** (paid) | Fixes a one-line omission |
+| 6 | Build `refreshNhlJob` | **$0** | NHL has no odds job at all |
+| 7 | *Then* consider buying quota | — | See below |
+
+### When buying does make sense
+
+**ParlayAPI — buy per-sport keys for quota, not for coverage.** All five existing
+keys return the **identical 405-sport catalogue**, so a key is not
+sport-restricted; the per-sport split exists purely to isolate monthly budgets.
+More keys therefore buy more monthly requests, and ParlayAPI is the **book-depth
+leader** (8–18 books against SharpAPI's free-tier 2). It is props-only, so this
+buys depth, never breadth.
+
+**Propline — upgrade the plan instead of adding keys.** `PROPLINE_KEY` hit its
+ceiling during this audit:
+
+```
+HTTP 429  daily_limit_exceeded — "Daily limit of 1,000 requests exceeded.
+          One-click upgrade to Hobby ($9/mo, 5,000/day)"
+```
+
+It has spent ~1,000/day for eleven consecutive days, so it is capped every single
+day. **$9/mo for 5× the quota on one key beats managing five free keys** — five
+keys means five `provider_id`s, five cap buckets in `provider_usage`, five
+entries in `render.yaml`, and five things to notice when one silently stops.
+Propline also covers all eight sports and produces **both** props and game lines,
+which makes its quota the most broadly useful of any provider here.
+
+**The honest summary:** the per-sport job structure is sound — it is the right
+shape and the gaps are configuration and wiring, not architecture. Six providers
+each cover essentially every sport, and the system currently uses between 13% and
+38% of four of them. Spending money before steps 1–6 would buy quota for
+providers that are not being called.
