@@ -642,3 +642,99 @@ rather than merely sufficient.
 
 Step 4 is deliberately last. **Pooling keys without fixing the cadence buys
 hours, not coverage.**
+
+---
+
+## 13. ParlayAPI: a monthly cap, but far more per request
+
+ParlayAPI's economics are the opposite of Propline's, and the two roughly cancel
+out. `fetch_parlayapi` sets **`out.requests = 1`** — one call per sport per
+cycle, returning the entire slate:
+
+```
+https://parlay-api.com/v1/sports/{sport_key}/props     <- 1 request, all games
+```
+
+The `for game in games` loop that follows is pure local matching against the
+already-fetched body. No further HTTP. Contrast Propline's **1 + 2N**.
+
+### Normalised, the two are almost identical
+
+Measuring both in *slate refreshes per month* — one full pass over a 15-game
+slate:
+
+| | Requests per refresh | Monthly budget | **Refreshes/month** |
+|---|---|---|---|
+| **ParlayAPI** | 1 | 1,000/month | **1,000** |
+| **Propline** | 31 (1 + 2×15) | 1,000/day = 30,000 | **968** |
+
+A 30× smaller quota, almost exactly offset by ~31× better per-request
+efficiency. The operator's instinct was right.
+
+### But the shapes differ, and that decides where each belongs
+
+**Propline's cost scales with slate size; ParlayAPI's is flat.**
+
+| Slate | Propline refreshes/day | ParlayAPI refreshes/day |
+|---|---|---|
+| 4 games | 111 | 33 |
+| 15 games | **32** | **33** |
+| 8 sports at once | multiplies per sport *and* per game | 1 request per sport |
+
+So Propline is far better on thin slates, and **ParlayAPI holds steady exactly
+when slates are biggest — which is when the data matters most.** For the
+all-sports build in §11, ParlayAPI's flat per-sport cost is the more scalable
+shape by a wide margin: eight sports costs eight requests, regardless of how many
+games are on.
+
+### Is ParlayAPI currently at risk? No — because its gate works
+
+At the 20-minute job interval, ungated, ParlayAPI would want 72 requests/day =
+**2,160/month against a 1,000 cap** — 2.2× over. It is not over, because
+`_job_multisport` **does** route through `gameday.should_fetch_paid_providers()`.
+Gated to the hot window (~8h/day), 20 minutes gives 24 cycles/day ≈ 720/month,
+comfortably under.
+
+That is exactly what the spend record shows: `parlayapi_nfl` used **23** requests
+in August and `parlayapi_cfb` **10** — the gate holding during the offseason.
+
+**This is the same gate `job_tier1` does not have** (§12). The two findings are
+one finding seen twice: where the gate exists, a monthly cap survives a
+20-minute cadence; where it is missing, a *daily* cap dies in 80 minutes.
+
+### One real exposure: the soft caps are not active on the worker
+
+Task 5.9 added `PARLAYAPI_*_SOFT_CAP` to stop a run-away before the hard limit,
+and CLAUDE.md records them as *"set to 800 against a hard limit of 1000, so
+wiring them genuinely lowered that gate by 20%."*
+
+Measured 2026-09-02 — that is true locally and **false on Render**:
+
+| Variable | `.env.local` | `render.yaml` | Code default |
+|---|---|---|---|
+| `PARLAYAPI_SOFT_CAP` | 800 | **absent** | `0` = unset |
+| `PARLAYAPI_MLB_SOFT_CAP` | 800 | **absent** | `0` = unset |
+| `PARLAYAPI_NFL_SOFT_CAP` | 800 | **absent** | `0` = unset |
+| `PARLAYAPI_CFB_SOFT_CAP` | 800 | **absent** | `0` = unset |
+| `PARLAYAPI_SOCCER_SOFT_CAP` | 800 | **absent** | `0` = unset |
+| `PARLAYAPI_NBA_SOFT_CAP` | absent | absent | `0` = unset |
+
+`ProviderSpec.effective_cap` is `min(soft_cap, cap_limit)` with `0`/`None`
+meaning unset, so on the worker the effective gate is the **hard 1,000**, not
+800. The 20% margin task 5.9 built does not exist where it runs — the same class
+of bug as the five missing keys in §4, and it matters more here than it would for
+Propline: **a blown monthly cap costs the rest of the month, not the rest of the
+day.**
+
+### What this means for the build
+
+1. **ParlayAPI is the right shape for breadth.** Flat per-sport cost makes
+   "every provider on every sport" affordable in a way Propline's per-game cost
+   is not.
+2. **Propline is the right shape for depth.** It carries 19 of 19 prop books
+   (§11.1) and produces game lines, which ParlayAPI cannot.
+3. **They are complements, not substitutes**, and the pooling design (§10) should
+   reflect that: pool both, but expect Propline's pool to be the one under
+   pressure, since its cost grows with the slate.
+4. **Declare the soft caps in `render.yaml`** alongside the five missing keys.
+   Cheap, and it is the guardrail against losing a month.
