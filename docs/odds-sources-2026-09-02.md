@@ -312,47 +312,85 @@ Two wiring bugs visible here, independent of the Render keys:
 
 ---
 
-## 10. Should we buy more per-sport keys?
+## 10. More keys: free, and the current design wastes them
 
-**Not yet — almost all the missing depth is already paid for and simply
-unwired.** In value order:
+**Additional ParlayAPI and Propline keys are free to register.** An earlier
+version of this section weighed a $9/mo Propline upgrade against "managing five
+free keys" — that trade-off does not exist, and the paid comparison was wrong.
+More quota costs nothing but registration.
 
-| # | Action | Cost | Effect |
-|---|---|---|---|
-| 1 | Wire **SharpAPI** to all 8 sports | **$0** | Only uncapped provider; props + games everywhere |
-| 2 | Set the 5 missing **Render keys** | **$0** | Restores NFL, CFB, NBA, soccer |
-| 3 | Wire **The Odds API** beyond MLB | **$0** (paid) | Game lines on 7 more sports |
-| 4 | Expand `_PROPLINE_SPORT_KEYS` 3 → 8 | **$0** (paid) | Props + games on 5 more sports |
-| 5 | Add NHL to `_SGO_LEAGUE_IDS` | **$0** (paid) | Fixes a one-line omission |
-| 6 | Build `refreshNhlJob` | **$0** | NHL has no odds job at all |
-| 7 | *Then* consider buying quota | — | See below |
+The real constraint is not money, it is that **the current per-sport key design
+strands the quota it already has.**
 
-### When buying does make sense
+### What the probe proved
 
-**ParlayAPI — buy per-sport keys for quota, not for coverage.** All five existing
-keys return the **identical 405-sport catalogue**, so a key is not
-sport-restricted; the per-sport split exists purely to isolate monthly budgets.
-More keys therefore buy more monthly requests, and ParlayAPI is the **book-depth
-leader** (8–18 books against SharpAPI's free-tier 2). It is props-only, so this
-buys depth, never breadth.
+All five existing ParlayAPI keys return the **identical 405-sport catalogue**.
+A key is not scoped to a sport. `PARLAYAPI_NFL_KEY` is not an NFL key — it is a
+monthly quota bucket that someone labelled NFL. The same holds for Propline:
+`PROPLINE_2_KEY` is wired to soccer and returns the full 54-sport catalogue.
 
-**Propline — upgrade the plan instead of adding keys.** `PROPLINE_KEY` hit its
-ceiling during this audit:
+### Why that matters
 
-```
-HTTP 429  daily_limit_exceeded — "Daily limit of 1,000 requests exceeded.
-          One-click upgrade to Hobby ($9/mo, 5,000/day)"
-```
+Quota is per key, and demand is not evenly spread across sports. Under the
+current one-key-per-sport wiring:
 
-It has spent ~1,000/day for eleven consecutive days, so it is capped every single
-day. **$9/mo for 5× the quota on one key beats managing five free keys** — five
-keys means five `provider_id`s, five cap buckets in `provider_usage`, five
-entries in `render.yaml`, and five things to notice when one silently stops.
-Propline also covers all eight sports and produces **both** props and game lines,
-which makes its quota the most broadly useful of any provider here.
+- NFL's key exhausts on a heavy Sunday while CFB's key sits at 10% — **and NFL
+  goes dark anyway**, because nothing can borrow the unused budget.
+- A sport with no key (`PARLAYAPI_NBA_KEY`) gets nothing, even though four other
+  keys covering NBA are idle.
+- Adding a sport means provisioning a key *for that sport*, rather than adding
+  capacity to a shared pool.
 
-**The honest summary:** the per-sport job structure is sound — it is the right
-shape and the gaps are configuration and wiring, not architecture. Six providers
-each cover essentially every sport, and the system currently uses between 13% and
-38% of four of them. Spending money before steps 1–6 would buy quota for
-providers that are not being called.
+Every one of those is a wiring artifact, not a vendor constraint.
+
+### The design that actually captures free keys
+
+**A key pool per provider, not a key per sport.** Register N free keys; hold them
+as an ordered list; `run_provider_specs` picks the first key with remaining
+quota. `provider_usage` already keys spend by arbitrary `provider_id` strings, so
+per-key accounting needs no schema change — `parlayapi_1`, `parlayapi_2` and so
+on, with the *sport* recorded on the row rather than baked into the key's
+identity.
+
+What that buys, in order of value:
+
+1. **Quota is fungible.** Total capacity = sum of all keys, usable by whichever
+   sport needs it that day. This is the whole point and it is unavailable under
+   per-sport keys at any number of keys.
+2. **Adding capacity is registration, not rewiring.** A new key is one list
+   entry — no new `provider_id` constant, no new `render.yaml` block per sport,
+   no new spec.
+3. **Exhaustion degrades instead of failing.** Today a spent key means that sport
+   is silently off (§4). A pool falls through to the next key and only goes dark
+   when every key is spent — which is a real signal worth alarming on.
+
+Concretely for Propline: it has spent ~1,000/day for eleven consecutive days and
+returns `429 daily_limit_exceeded`. Five free keys is 5,000/day **pooled across
+all eight sports**, and Propline is the most broadly useful quota to hold — it is
+the only provider besides SharpAPI that covers all eight sports with **both**
+props and game lines.
+
+### Ordering
+
+The pool is a change to how keys are held, so it composes with — and does not
+block — the six $0 wiring actions below. Those still come first, because they
+raise utilisation of quota already being paid for and not spent:
+
+| # | Action | Effect |
+|---|---|---|
+| 1 | Wire **SharpAPI** to all 8 sports | Only uncapped provider; props + games everywhere |
+| 2 | Set the 5 missing **Render keys** | Restores NFL, CFB, NBA, soccer |
+| 3 | Wire **The Odds API** beyond MLB | Game lines on 7 more sports |
+| 4 | Expand `_PROPLINE_SPORT_KEYS` 3 → 8 | Props + games on 5 more sports |
+| 5 | Add NHL to `_SGO_LEAGUE_IDS` | One-line omission |
+| 6 | Build `refreshNhlJob` | NHL has no odds job at all |
+| 7 | **Key pool + register free keys** | Makes the added quota fungible |
+
+Step 7 after 1–6 for one reason only: until the sports are wired, extra quota has
+nothing to spend itself on. Register the keys whenever — they cost nothing to
+hold — but the pooling work earns its value once steps 1–6 are actually calling
+these providers across eight sports instead of two or three.
+
+**The operator's read stands: the per-sport job structure is sound.** It is the
+right shape for *jobs*. It was simply also applied to *keys*, where it does not
+belong, because a key turns out to be quota rather than coverage.
