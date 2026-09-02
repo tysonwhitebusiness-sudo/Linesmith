@@ -6,6 +6,59 @@ what its own measurement harness has already proved about its own models.
 
 ---
 
+## 0. What in here comes from the old model layer — and how far to trust it
+
+The operator's challenge, and it applies to more than the one section that
+first prompted it: **every measurement the previous model layer produced was
+computed against the pre-Track-F data.** That data was missing NHL's entire
+moneyline history, contained 48,489 in-play prices, priced MLB from de-vigged
+consensus probabilities with a 300-game doubleheader hole, and had no raw MLB
+prices before 2025 at all.
+
+So the numbers below split into two kinds, and only one kind is safe to plan on.
+
+**Code facts — verifiable today, independent of any dataset:**
+
+- `marketProbCentered` is in `MONEYLINE_FEATURE_NAMES`
+  (`predict/model_fit.py:49`). The model was built from the price it was meant
+  to beat. This is a property of the source, not of a fit.
+- `EdgeBadge` returns `null`; confidence is hardcoded `null`. Model output is
+  already switched off in the UI.
+- `model_weights` is 100% MLB; `model_artifacts` has zero rows. Seven sports of
+  eight never had a coefficient fitted.
+
+**Measurements — computed on contaminated data, NOT re-verified:**
+
+- Brier 0.2315 against the market's 0.2090 on 153 graded picks.
+- Positive-CLV rate 50.0%.
+- The claimed-edge bucket analysis (+7% bucket finishing 2.3pp low).
+- The seven-family walk-forward ranking (§5 — retracted outright).
+
+Every figure in that second list is quoted in `docs/model-rebuild-plan.md` as
+settled. **None of it should be treated as settled now.** Some may well
+reproduce — a spot-check of the CLV path found `get_closing_price` reads
+`game_odds_history`, and 76.2% of those observations fall inside US game hours,
+so that measurement is at least plausibly sound — but plausible is not
+verified.
+
+### Does the rebuild decision survive?
+
+Yes, and it should rest on the **first** list rather than the second. A model
+whose dominant feature is the closing price cannot systematically beat that
+price; that is an argument from construction and needs no data to make. The
+measured Brier gap was corroboration, not the case.
+
+### The thing this actually implies
+
+`docs/model-rebuild-plan.md` calls the measurement harness "the most important
+thing to keep". **That harness has only ever been run against contaminated
+data.** Before it is used to judge anything new, it should be re-run on
+`model_game_odds` — not to rescue the old model, but to establish that the
+instrument works. An unvalidated ruler is a poor thing to measure a rebuild
+with.
+
+---
+
 ## 1. The one thing that makes this different from forecasting
 
 A weather model competes against ignorance. A betting model competes against
@@ -66,8 +119,10 @@ converges in hundreds of bets rather than tens of thousands. Profit follows CLV;
 CLV does not follow profit.
 
 `docs/model-rebuild-plan.md` records that this app's MLB model had a positive-CLV
-rate of **50.0%** across its graded history. That is a coin flip, and it is the
-finding that triggered the rebuild.
+rate of **50.0%** across its graded history — a coin flip, and the finding that
+triggered the rebuild. **Measured on pre-Track-F data and not re-verified; see
+§0.** The structural reason it could not have been much better is §3, and that
+part does not depend on the measurement.
 
 ---
 
