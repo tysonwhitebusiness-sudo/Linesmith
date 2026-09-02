@@ -150,6 +150,33 @@ freshest book line is **34 hours old**.
 | `refreshSportsGameOddsJob` | Stale — last run **849 minutes** ago against a 180-minute threshold | Phase 1e |
 | `snapshotCacheSize` | Largest payload **11.4 MB**, over the 10 MB limit | Phase 1e |
 
+### 0.4b The odds pipeline is running at a fraction of what it pays for
+
+Audited 2026-09-02 from code and live tables — **`docs/odds-sources-2026-09-02.md`
+holds the full sport-by-sport table and the verification commands.** What it
+changes for this plan:
+
+- **NFL, CFB and NBA have no live odds at all**, and CFB has 96 games in the
+  current window. Their providers are wired correctly in `jobs.py` but disabled
+  at runtime: **five provider KEYS are required by `config.py` and undeclared in
+  `render.yaml`**, four of which exist in `.env.local`. `env_bool` defaults to
+  True, so the `*_ENABLED` flags are harmless — it is `and bool(KEY)` that gates.
+  Those providers work on the operator's machine and are silently off on the
+  worker. Live spend confirms it: all four last recorded spend **2026-08-21**.
+- **NHL has no odds job at all** — not broken, never built.
+- **SharpAPI is wired to 2 of 8 sports** despite covering all eight and being the
+  only provider with no budget ceiling. Probed live: `football/ncaaf` and
+  `tennis/atp|wta` both return real props and game lines, contradicting the old
+  capability matrix in four places.
+- **ParlayAPI cannot produce game lines** — props only. So for NFL/CFB/NBA the
+  single game-line producer is `sportsgameodds_multisport`, and its missing key
+  removes game lines with no second path.
+
+This matters to Phase 1 directly: **the archival bridge reads
+`game_odds_book_lines`, and for four sports there is nothing in it to archive.**
+A bridge built before the pipeline is restored would capture MLB, soccer and
+tennis and silently skip the rest.
+
 ### 0.5 Capacity
 
 **5,641 MB of 8,192 MB — 69% full, 2,551 MB of headroom.**
@@ -377,7 +404,50 @@ the backfill for affected seasons.
 
 ---
 
+### Phase 0c — Restore and widen the odds pipeline
+
+Before the bridge, because the bridge archives what these jobs produce. Detail
+and the verification commands are in `docs/odds-sources-2026-09-02.md`; what
+belongs here is the sequence and its gate.
+
+1. **Declare the five missing provider keys on the Render worker** —
+   `SPORTSGAMEODDS_MULTISPORT_KEY`, `PARLAYAPI_NFL_KEY`, `PARLAYAPI_CFB_KEY`,
+   `PARLAYAPI_SOCCER_KEY` (all four already in `.env.local`) and
+   `PARLAYAPI_NBA_KEY` (never provisioned). Add them to `render.yaml` with
+   `sync: false` so the next person sees they are required, and set the values
+   in the dashboard. Operator action — the worker's environment is not in the
+   repo.
+2. **Wire SharpAPI into every sport it covers.** It is the only uncapped
+   provider (`cap_kind="none"`, 12 req/min) and is already sport-parameterised —
+   `fetch_sharpapi(..., sport=, league=)`, with MLB values as defaults, not
+   constraints. Tennis proves the parameterisation works. Confirmed tokens:
+   `nfl`, `ncaaf`, `nba`, `nhl`, `england_-_premier_league`,
+   `usa_-_major_league_soccer`. Three caveats apply and are not optional
+   reading: free tier is **2 books and a 60s delay**, responses cap at **200
+   rows** so a full slate needs the `pagination` object, and **team names vary
+   within one response** (`UMass` / `Massachusetts` in the same payload), which
+   entity resolution has to absorb.
+3. **Build `refreshNhlJob`.** NHL is the one sport with no odds job at all.
+   `_job_multisport` already generalises; SharpAPI serves `hockey/nhl`.
+4. **Add `produced_rows` to the health contract** — pulled forward from Phase 1d
+   because it is what makes steps 1–3 verifiable. Today a key-disabled job
+   reports healthy, which is why this went unnoticed for 12 days.
+
+> **The gate, and it is a measurement not an inspection:** `game_odds_book_lines`
+> must show fresh rows for **nfl, cfb, nba and nhl** from a non-OddsHarvester
+> source. Until it does, none of this worked, regardless of what the job log
+> says.
+
+**OddsHarvester is deliberately not part of this.** It is CFB's only historical
+game-line source, but if step 1 or 2 succeeds, CFB has a live provider and the
+scraper stops being load-bearing. Reassess only if both fail.
+
+---
+
 ### Phase 1 — The archival bridge
+
+**Depends on Phase 0c.** The bridge archives what the live tables hold, and for
+NFL, CFB, NBA and NHL they hold nothing until the pipeline is restored.
 
 The piece that does not exist, and the reason it comes before any model: **its
 value compounds with elapsed time.** Nothing is blocked on it today, but the
@@ -778,9 +848,13 @@ exactly what it renders today.
 
 ### Not scheduled — and why
 
-**OddsHarvester** is fully blocked by anti-bot measures across all six sports, the
-fix is not a code change, and every sport it covers has at least one working
-provider. A degradation, not a blocker. Revisit when there is a real fix.
+**OddsHarvester.** An earlier draft of this plan said it was "anti-bot, not a
+code fix, and every sport it covers has a working provider." **Both halves were
+wrong** — CFB had no other game-line source at all, and the anti-bot attribution
+was the health check's own hedge (*"possible"*) repeated as a diagnosis; the
+actual evidence (dropdown timeout, page height 0) fits an OddsPortal markup
+change equally well. It is now handled by Phase 0c, which removes the dependency
+by giving CFB a live provider rather than by fixing the scraper.
 
 **Buying data** — NFL snaps and soccer minutes — only after the system has proved
 itself. Three of the four rejected advanced options (xG, optical tracking,
