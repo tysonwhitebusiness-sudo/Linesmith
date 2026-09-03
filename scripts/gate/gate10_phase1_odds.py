@@ -235,21 +235,56 @@ async def gate_4_archive_is_being_fed() -> None:
 
 
 async def gate_5_no_provider_over_cap() -> None:
+    """No provider is over its cap — checked on the ids that ACTUALLY accumulate.
+
+    This check was hardcoded to {propline, propline_2, oddsapiio}, and pooling
+    silently retired two of them. Measured right after the 2026-09-03 deploy:
+    spend had moved to `propline_k1` / `parlayapi_k1` / `sgo_k1` (all written
+    18:25 UTC) while `propline` sat frozen at its pre-deploy 1006 and
+    `oddsapiio` had not been written since 04:58. So the old list would have
+    failed on stale history today and then passed VACUOUSLY forever after,
+    checking rows nothing writes while the real pooled spend went unwatched.
+
+    A check that quietly stops checking is worse than the season-blind one in
+    10.3: that one was loudly wrong, this one would have been silently right.
+
+    Caps are per KEY, because that is how they are reserved (job_runner walks
+    the pool reserving against each id against the same `cap`). Deliberately
+    MEASURED from the vendors' own headers on 2026-09-02, not read from config —
+    a config default is what we believe, and the point of a gate is to check.
+    """
     print("\n10.5  no provider is over its measured cap")
+    # Per-KEY caps, by pool family. oddsapiio is not pooled and keeps its own.
+    measured_per_key = {"propline": 1000, "parlayapi": 1000}
+    caps: dict[str, int] = {"oddsapiio": 500, "propline": 1000, "propline_2": 1000}
+    for family, keys in getattr(pm, "KEY_POOLS", {}).items():
+        cap = measured_per_key.get(family)
+        if cap:
+            for pid, _key in keys:
+                caps[pid] = cap
+
     pool = await db.get_pool()
     async with pool.acquire(timeout=20.0) as conn:
         rows = await conn.fetch(
-            """SELECT provider_id, period_kind, period_key, request_count, object_count
+            """SELECT provider_id, period_kind, period_key, request_count, object_count,
+                      updated_at
                  FROM provider_usage
                 WHERE period_key IN (to_char(now(),'YYYY-MM-DD'), to_char(now(),'YYYY-MM'))"""
         )
-    # Measured 2026-09-02, from the vendors' own headers — not config defaults.
-    caps = {"propline": 1000, "propline_2": 1000, "oddsapiio": 500}
+    checked = 0
     for r in rows:
         cap = caps.get(r["provider_id"])
-        if cap and r["period_kind"] == "daily":
-            used = r["request_count"]
-            check(used <= cap, f"{r['provider_id']} within its daily cap", f"{used}/{cap}")
+        if not cap or r["period_kind"] != "daily":
+            continue
+        checked += 1
+        used = r["request_count"]
+        check(used <= cap, f"{r['provider_id']} within its daily cap", f"{used}/{cap}")
+    # If pooling is live and NOTHING matched, the ids moved again and this gate
+    # went blind. Fail loudly rather than reporting a clean sweep of nothing.
+    check(checked > 0, "at least one capped provider was actually checked",
+          f"{checked} provider-days checked",
+          fail_detail="no provider_usage row matched any known cap id — "
+                      "the ids have moved and 10.5 is checking nothing")
 
 
 async def main() -> None:
