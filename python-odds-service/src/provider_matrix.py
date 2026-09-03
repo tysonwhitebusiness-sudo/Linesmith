@@ -71,7 +71,27 @@ PARLAYAPI_SPORT_KEYS = providers._PARLAYAPI_SPORT_KEYS
 # sport -> providers, IN RUN ORDER. Order matters: jobs run these sequentially,
 # so it is behaviour, not presentation.
 MATRIX: dict[str, tuple[str, ...]] = {
-    "mlb": ("sharpapi", "sharpapi_lines", "oddsapiio", "propline", "parlayapi_mlb"),
+    "mlb": ("sharpapi", "sharpapi_lines", "oddsapiio", "propline"),
+    # MLB HAS NO ParlayAPI ROW ON PURPOSE, and it is a real gap, not an
+    # oversight: ParlayAPI serves MLB and PARLAYAPI_MLB_KEY has been set all
+    # along, so MLB is missing a provider it could have. Gate 10.1 fails on it
+    # deliberately.
+    #
+    # It was briefly wired here as `parlayapi_mlb` and reverted, because that
+    # fixed one gate check by making another worse — adding a FIFTH
+    # sport-labelled key to the exact set Phase 1f exists to delete, so 1f would
+    # have had to rewrite it. A key is a budget bucket, not a coverage grant.
+    # 1f closes this once, correctly, as part of pooling.
+    #
+    # The budget arithmetic 1f will need, worked out here so it is not
+    # re-derived: ParlayAPI is 1,000/MONTH, about 33 requests a day, at one
+    # request per sport per cycle. Tier 1 ticks every 2.5 minutes, so an ungated
+    # spec there wants 576/day — 17x over, and a blown MONTHLY cap costs the rest
+    # of the month rather than the rest of the day. Tier 1's ParlayAPI needs a
+    # floor of roughly 45 minutes, or the proximity allocation. The other sports
+    # do not: their jobs tick at 20 minutes AND route through
+    # gameday.should_fetch_paid_providers, which measurably holds them inside
+    # budget — parlayapi_nfl spent 23 requests in all of August.
     "soccer_epl": ("sharpapi", "sharpapi_lines", "propline_2", "parlayapi_soccer"),
     "soccer_mls": ("sharpapi", "sharpapi_lines", "propline_2", "parlayapi_soccer",
                    "sportsgameodds_multisport"),
@@ -182,18 +202,6 @@ _PARLAYAPI: dict[str, tuple[str, str | None, bool, int, int]] = {
 }
 
 
-# ParlayAPI is 1,000/MONTH — about 33 requests a day — at one request per sport
-# per cycle. In MLB's Tier 1, which ticks every 2.5 minutes, an ungated spec
-# would want 576/day: 17x over budget, and a blown MONTHLY cap costs the rest of
-# the month rather than the rest of the day. 45 minutes gives ~32/day.
-#
-# The other sports' jobs tick at 20 minutes AND route through
-# gameday.should_fetch_paid_providers, which already holds them inside budget --
-# measured, parlayapi_nfl spent 23 requests in all of August. Only Tier 1 lacks
-# that gate, so only Tier 1's ParlayAPI needs a floor.
-_PARLAYAPI_TIER1_FLOOR_SECONDS = 45 * 60
-
-
 def _parlayapi(sport: str, yield_fn) -> ProviderSpec:
     pid, key, enabled, limit, soft = _PARLAYAPI[sport]
     return ProviderSpec(
@@ -203,7 +211,6 @@ def _parlayapi(sport: str, yield_fn) -> ProviderSpec:
         cap_kind="monthly",
         cap_limit=limit,  # hard limit; soft_cap stops earlier where set
         soft_cap=soft or None,
-        min_interval_seconds=(_PARLAYAPI_TIER1_FLOOR_SECONDS if sport == "mlb" else None),
     )
 
 
