@@ -64,6 +64,29 @@ them. Phases 0-9. The separate infrastructure doc was merged into it on operator
 instruction: interleaving two plans is how steps get skipped.
 Artifact: `https://claude.ai/code/artifact/ab49524a-4b4d-4946-b481-47681d81fe88`
 
+### Phase 1 progress
+
+**1a DONE (commit 9cb6b25)** — Propline no longer burns its daily cap before
+lunch. Two changes: the `/markets` list is cached (1+2N -> 1+N, daily demand
+17,856 -> 9,216), and `ProviderSpec.min_interval_seconds` gives a provider its
+own cadence floor independent of its job's tick. Propline is set to 25 min,
+derived from 16 req/cycle against 1,000/day. SharpAPI is untouched and still
+runs every cycle — the whole reason the floor is on the SPEC, not the JOB.
+Two new suites, 31 checks. 38 python suites pass; 4 pre-existing failures
+(elo_and_pitcher_game_score, mlb_mlp, mlb_tree_models, statcast_pitches),
+verified pre-existing by stashing and re-running, none import providers.
+
+**1b HALF DONE — the rest is yours.** `render.yaml` now declares the five
+missing provider keys (`sync: false`) and, because soft caps are values rather
+than secrets, sets all six `PARLAYAPI_*_SOFT_CAP` to 800 plus
+`SPORTSGAMEODDS_SOFT_CAP` to 2000 outright. **Every required KEY and SOFT_CAP is
+now declared.** What remains is operator-only: set the four key VALUES in the
+Render dashboard (they are already in `.env.local`) and provision
+`PARLAYAPI_NBA_KEY`, which has never existed anywhere. Until that happens NFL,
+CFB and NBA still have no live odds.
+
+**1c-1h NOT STARTED.**
+
 **OPERATOR DECISION 2026-09-02: the whole odds system is fixed before any model
 work starts.** Phase 1 absorbed the old Phase 0c and the archival bridge into one
 odds block, because the bridge reads `game_odds_book_lines` and that table is

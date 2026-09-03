@@ -48,6 +48,66 @@ services:
       # it.
       - key: ODDS_API_KEY
         sync: false
+      # ---------------------------------------------------------------------
+      # Added 2026-09-02. THESE FIVE KEYS WERE REQUIRED BY config.py AND
+      # DECLARED NOWHERE, and four of them exist in the operator's .env.local.
+      # config.py falls back to a local dotenv, so every one of these providers
+      # worked on the operator's machine and was silently OFF on this worker:
+      # a provider is live only if `env_bool(FLAG, default=True) and bool(KEY)`,
+      # env_bool defaults to True, so it is the MISSING KEY that disables --
+      # with no error, and with the job still reporting healthy.
+      #
+      # Cost of the omission, measured: NFL, CFB and NBA had no live odds at
+      # all. ParlayAPI cannot produce game lines (its endpoint is /props), so
+      # sportsgameodds_multisport is their ONLY game-line producer and its
+      # absence removed game lines with no second path. All four last recorded
+      # spend on 2026-08-21 and nothing since. See
+      # docs/odds-sources-2026-09-02.md §4.
+      - key: SPORTSGAMEODDS_MULTISPORT_KEY
+        sync: false
+      - key: PARLAYAPI_NFL_KEY
+        sync: false
+      - key: PARLAYAPI_CFB_KEY
+        sync: false
+      - key: PARLAYAPI_SOCCER_KEY
+        sync: false
+      # Never provisioned anywhere, including locally. NBA props stay off until
+      # a real key exists — see _PARLAYAPI_SPORT_CONFIG's own comment.
+      - key: PARLAYAPI_NBA_KEY
+        sync: false
+      # ---------------------------------------------------------------------
+      # Soft caps: values, NOT secrets, so they are set here rather than in the
+      # dashboard and take effect on deploy with no operator action.
+      #
+      # Task 5.9 added these to stop a run-away short of the hard limit, and
+      # CLAUDE.md records them as "set to 800 against a hard limit of 1000, so
+      # wiring them genuinely lowered that gate by 20%." Measured 2026-09-02:
+      # true in .env.local, FALSE here — they were undeclared, config.py's
+      # default is 0 (= unset), and ProviderSpec.effective_cap is
+      # min(soft_cap, cap_limit) with 0 meaning unset, so the worker's real gate
+      # was the hard 1,000. The 20% margin did not exist where it runs.
+      #
+      # This matters more for ParlayAPI than for a daily-capped provider: its
+      # cap is MONTHLY, so blowing it costs the rest of the month.
+      - key: PARLAYAPI_SOFT_CAP
+        value: "800"
+      - key: PARLAYAPI_MLB_SOFT_CAP
+        value: "800"
+      - key: PARLAYAPI_NFL_SOFT_CAP
+        value: "800"
+      - key: PARLAYAPI_CFB_SOFT_CAP
+        value: "800"
+      - key: PARLAYAPI_SOCCER_SOFT_CAP
+        value: "800"
+      - key: PARLAYAPI_NBA_SOFT_CAP
+        value: "800"
+      # SportsGameOdds gates on a soft cap rather than a vendor hard limit (see
+      # CLAUDE.md's provider-job section). Its code default is already 2000, so
+      # this changes nothing today — declared so the number is visible here
+      # rather than only in config.py, and so raising it is an edit to this file
+      # rather than a surprise.
+      - key: SPORTSGAMEODDS_SOFT_CAP
+        value: "2000"
 
   # Real gap this closes: the worker above going fully silent for 4 real
   # days (2026-08-22 -> 2026-08-26, a hang inside a job that never crashed,
