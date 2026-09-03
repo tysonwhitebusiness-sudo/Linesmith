@@ -859,3 +859,64 @@ dashboard before the worker leans on them.
 ~54 requests total: ~14 catalogue calls plus two 20-request bursts, and the
 bursts hit only SharpAPI (uncapped) and one ParlayAPI key (997 of 1,000 still
 remaining afterwards). No capped provider was burst-tested.
+
+---
+
+## 15. Scheduling model — DECIDED 2026-09-02
+
+**Cadence is driven by game proximity, not by a clock.** A fixed
+"every N minutes during active hours" schedule was considered and rejected.
+
+### Why, so this is not re-litigated
+
+1. **A clock contradicts the goal.** NFL plays ~1 game Thursday, ~14 Sunday, 0
+   Tuesday. A fixed cadence spends identically on all three. Proximity gating is
+   the *only* thing that makes a gameday cost more than an off day.
+2. **ParlayAPI cannot run on a clock at any interval.** 1,000/month across 8
+   sports is 125 cycles/month ≈ **4 per day**. Hourly across 16 active hours is
+   16/day — 4× over. Arithmetic, not preference.
+3. **A time window cannot currently be validated.** `event_start` is populated
+   for **MLB only** (0.0% of its games start before 8am ET, so a window would be
+   safe there) and is **NULL for the other seven sports**. EPL's early Saturday
+   kickoff is 12:30 UK = **7:30am ET**; tennis during European events runs from
+   ~5–6am ET. Choosing a clock window before `event_start` exists means guessing
+   with no way to check.
+
+### The mechanism
+
+Each provider declares a budget. The scheduler spreads that budget across the day
+**proportionally to where games actually are**, per sport:
+
+| Provider | Budget | Behaviour |
+|---|---|---|
+| **SharpAPI** | none (12/min, 5 concurrent) | Polls continuously — the floor under every sport |
+| **Propline** | 1,000/day, resets 00:00 UTC | Concentrated in each sport's hot window |
+| **ParlayAPI** | 1,000/month/key ≈ 33/day | **Event-triggered near lock**, never a poller |
+| **The Odds API** | 500/month ≈ 16/day | Scarcest — reserved, not spread |
+| **SportsGameOdds** | object-based, no headers | Limits unknown; establish before leaning on it |
+| **Odds-API.io** | unknown, no headers | Currently 510 against an assumed 500/day |
+
+**Active hours remain, as a floor rather than the mechanism** — a cheap guard so
+nothing polls at 4am when the proportional allocation is already zero. One
+comparison, belt and braces.
+
+### What to simplify in the existing `gameday.py`
+
+The three-tier machine (hot/warm/cold, a throttle with a DB round-trip per warm
+cycle, a backstop hour) is more moving parts than the job needs, and one of them
+actively hides failure:
+
+> **`skip_summary()` returns a *successful* run shape.** A job that never fetches
+> — because its tier gate always declines, or its provider key is missing —
+> reports **healthy**. That is the mechanism that hid NFL and CFB for twelve
+> days (§4).
+
+Whatever replaces or keeps the tiering, a cycle that fetched nothing must be
+distinguishable from a cycle that fetched successfully. This is the same fix as
+adding `produced_rows` to the health contract.
+
+### Dependency
+
+Proportional allocation needs `event_start` on all eight sports. That is already
+Phase 1 of `docs/model-build-plan-2026-09-02.md` — the archival bridge needs it
+to identify a closing line — so it is shared work, not new work.
