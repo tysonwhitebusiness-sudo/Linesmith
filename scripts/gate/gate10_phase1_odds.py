@@ -33,10 +33,18 @@ FAILURES: list[str] = []
 NOTES: list[str] = []
 
 
-def check(ok: bool, label: str, detail: str = "") -> None:
-    print(f"  {'PASS' if ok else 'FAIL'}  {label}" + (f"  — {detail}" if detail else ""))
+def check(ok: bool, label: str, detail: str = "", fail_detail: str | None = None) -> None:
+    """`detail` annotates a PASS; `fail_detail` explains a FAIL.
+
+    Keeping them separate is not fussiness. With one shared field a caller that
+    passes failure-phrased text prints it on success too, and the gate reports
+    "PASS  a KEY_POOLS declaration exists — KEY_POOLS is missing" — a green
+    check carrying its own contradiction, which is worse than no check at all.
+    """
+    shown = detail if ok else (fail_detail if fail_detail is not None else detail)
+    print(f"  {'PASS' if ok else 'FAIL'}  {label}" + (f"  — {shown}" if shown else ""))
     if not ok:
-        FAILURES.append(f"{label}: {detail}")
+        FAILURES.append(f"{label}: {shown}")
 
 
 # Cells a vendor genuinely cannot serve, or that we deliberately decline. Each
@@ -110,7 +118,8 @@ def gate_2_keys_are_pooled_not_labelled() -> None:
 
     pools = getattr(pm, "KEY_POOLS", None)
     check(pools is not None, "a KEY_POOLS declaration exists",
-          "provider_matrix.KEY_POOLS is missing — pooling not implemented")
+          f"{len(pools)} families" if pools else "",
+          fail_detail="provider_matrix.KEY_POOLS is missing — pooling not implemented")
     if pools:
         for family, keys in sorted(pools.items()):
             live = [k for k in keys if k]
