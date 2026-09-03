@@ -660,6 +660,38 @@ SNAPSHOT_CACHE_TOTAL_WARN_MB = 800
 SNAPSHOT_CACHE_SINGLE_KEY_WARN_MB = 10
 
 
+async def check_declared_pairs_produce() -> dict:
+    """Every (sport, provider) MATRIX declares must actually produce.
+
+    See declared_pairs.py for why this exists and why it does not duplicate
+    check_game_odds_book_lines_freshness. The DB half lives here; the decision
+    half is a pure function there, so it is testable without a database.
+    """
+    import declared_pairs
+    import provider_matrix as pm
+
+    window = "24 hours"
+    pool = await db.get_pool()
+    async with pool.acquire(timeout=20.0) as conn:
+        lines = await conn.fetch(
+            "SELECT DISTINCT sport, source FROM game_odds_book_lines "
+            "WHERE fetched_at > now() - interval '24 hours'"
+        )
+        props = await conn.fetch(
+            "SELECT DISTINCT provider_id FROM prop_odds "
+            "WHERE fetched_at > now() - interval '24 hours'"
+        )
+    line_pairs = {(r["sport"], r["source"]) for r in lines}
+    prop_providers = {r["provider_id"] for r in props}
+    # A sport counts as LIVE if anything at all produced for it. Deriving this
+    # from real production rather than a schedule is what lets the check run
+    # with no season logic and no per-sport schedule fetch.
+    active = {sport for sport, _ in line_pairs}
+    result = declared_pairs.evaluate(pm.MATRIX, line_pairs, prop_providers, active)
+    result["window"] = window
+    return result
+
+
 async def check_snapshot_cache_size() -> dict:
     """Catches runaway snapshot_cache growth (the exact class of problem
     that produced a real 103GB egress overage before anyone noticed) in
@@ -825,6 +857,7 @@ async def main() -> int:
         await check_golf_predictions_freshness(),
         await check_game_odds_book_lines_freshness(),
         await check_snapshot_cache_size(),
+        await check_declared_pairs_produce(),
     ]
 
     print(f"[health_check] {datetime.now(timezone.utc).isoformat()}", flush=True)
