@@ -693,6 +693,49 @@ def _sgo_game_line_rows(event: dict, sport: str, game_id: str) -> list[GameOddsB
     return rows
 
 
+def _sgo_event_matches(event: dict, game: Game) -> bool:
+    """Does this SportsGameOdds event describe this game?
+
+    Replaces building a teamID string and filtering the API by it. That
+    construction is `_sgo_team_id`, which uppercases the FULL ESPN team name --
+    and it silently returned zero events for every CFB game ever fetched:
+
+        SGO says      RUTGERS_NCAAF          UMASS_NCAAF
+        we asked for  RUTGERS_SCARLET_KNIGHTS_NCAAF  MASSACHUSETTS_MINUTEMEN_NCAAF
+
+    SGO uses the school name for NCAAF; ESPN includes the mascot. MLB and NFL
+    were unaffected -- both sides spell those with the mascot
+    (PITTSBURGH_PIRATES_MLB, SEATTLE_SEAHAWKS_NFL), which is exactly why this
+    went unnoticed: the bug only bites the one league whose naming convention
+    differs, and a wrong teamID returns HTTP 200 with an empty list rather than
+    an error.
+
+    Matching is strict-first, then a SUBSET fallback: SGO's words must all
+    appear in ours, on BOTH sides. "Rutgers" is a subset of "Rutgers Scarlet
+    Knights"; "Bethune-Cookman" of "Bethune-Cookman Wildcats". It does NOT
+    accept a one-sided match, because attaching odds to the wrong game is worse
+    than attaching none -- the same reasoning `_team_match` gives for refusing
+    harvester's containment fallback.
+
+    Known residual: an abbreviation that shares no word with the full name still
+    misses -- "UMass" vs "Massachusetts Minutemen". Measured 9 of 10 real NCAAF
+    fixtures resolve; the rest need an alias in entity_resolution, and are
+    counted rather than guessed at.
+    """
+    teams = event.get("teams") or {}
+    ev_home = ((teams.get("home") or {}).get("names") or {}).get("long") or ""
+    ev_away = ((teams.get("away") or {}).get("names") or {}).get("long") or ""
+    if not ev_home or not ev_away:
+        return False
+    if _team_match(ev_home, ev_away, game):
+        return True
+    eh, ea = team_name_words(ev_home), team_name_words(ev_away)
+    gh, ga = team_name_words(game.home_team_name), team_name_words(game.away_team_name)
+    if not (eh and ea and gh and ga):
+        return False
+    return (eh <= gh and ea <= ga) or (eh <= ga and ea <= gh)
+
+
 async def fetch_sportsgameodds(
     client: httpx.AsyncClient,
     api_key: str,
@@ -700,59 +743,71 @@ async def fetch_sportsgameodds(
     rate_per_min: int = 10,
     yield_fn=None,
 ) -> FetchOutcome:
-    """Rate limiting is against the shared, process-wide counter in
-    rate_limit.py (config.ts's SPORTSGAMEODDS_RATE_PER_MIN, default 10) —
-    not a counter local to this one call. That was a real bug: three
-    separate call sites (refreshSportsGameOddsJob, refreshNflJob,
-    refreshCfbJob) each ran this function with its own local window, so back
-    to back they'd each think they had a fresh 10/min allowance against the
-    same real vendor-side limit. Confirmed live: the exact same 5 event IDs
-    429'd across two runs 48 minutes apart — not random pressure, this
-    specific gap.
+    """ONE REQUEST PER LEAGUE, not one per game.
 
-    Resolved OPEN RISK (docs/phase2-python-service-architecture-2026-08-19.md):
-    this is also the pacing-wait point NFL/CFB/the MLB SportsGameOdds job
-    were blocking Tier 1 behind. `yield_fn`, when provided, is called
-    instead of a blind sleep whenever capacity isn't immediately available —
-    see job_queue.py's `maybe_yield`.
+    This used to issue a request for every game, filtered by a constructed
+    teamID. That was both wrong for NCAAF (see _sgo_event_matches) and
+    enormously wasteful: a 178-game CFB slate meant 178 requests per cycle,
+    each capped at 5 events. A single league-wide call covers the whole slate.
+
+    Rate limiting is against the shared, process-wide counter in rate_limit.py
+    -- not a counter local to this call. That was a real bug: three separate
+    call sites each ran this function with its own window against the same real
+    vendor-side limit. Confirmed live at the time: the same 5 event IDs 429'd
+    across two runs 48 minutes apart.
+
+    `yield_fn`, when provided, is called instead of a blind sleep whenever
+    capacity isn't immediately available -- see job_queue.py's `maybe_yield`.
     """
     out = FetchOutcome(provider_id="sportsgameodds")
 
+    by_league: dict[str, list[Game]] = {}
     for game in games:
         league_id = _SGO_LEAGUE_IDS.get(game.sport)
-        if not league_id:
-            continue
+        if league_id:
+            by_league.setdefault(league_id, []).append(game)
 
+    for league_id, league_games in by_league.items():
         while not rate_limit.within_rate("sportsgameodds", rate_per_min, 60.0):
             wait_hint = rate_limit.seconds_until_capacity("sportsgameodds", 60.0)
             yielded = await yield_fn(wait_hint) if yield_fn else False
             if not yielded:
                 await asyncio.sleep(min(wait_hint, 1.0) + 0.05)
+        # within_rate is check-and-consume: returning True already spent the
+        # slot, so there is no separate record() call to make.
 
-        home_id = _sgo_team_id(game.home_team_name, league_id)
-        away_id = _sgo_team_id(game.away_team_name, league_id)
+        # limit=100 covers a full CFB Saturday in one call; MLB/NFL slates are
+        # far smaller. Deliberately not paginated: a slate larger than this
+        # would be a real change worth noticing rather than silently absorbing,
+        # and `unmatched` below makes it visible.
         url = (
             f"https://api.sportsgameodds.com/v2/events?leagueID={league_id}"
-            f"&teamID={home_id},{away_id}&oddsAvailable=true&limit=5"
+            f"&oddsAvailable=true&limit=100"
         )
         try:
             res = await client.get(url, headers={"X-Api-Key": api_key}, timeout=TIMEOUT)
         except httpx.HTTPError as e:
-            out.warnings.append(f"sportsgameodds request failed for {game.game_id}: {e}")
+            out.warnings.append(f"sportsgameodds request failed for {league_id}: {e}")
             continue
         if res.status_code == 429:
             rate_limit.force_exhausted("sportsgameodds", rate_per_min, 60.0)
-            out.warnings.append(f"sportsgameodds HTTP 429 for {game.game_id} — backing off")
+            out.warnings.append(f"sportsgameodds HTTP 429 for {league_id} — backing off")
             continue
         if res.status_code != 200:
-            out.warnings.append(f"sportsgameodds HTTP {res.status_code} for {game.game_id}")
+            out.warnings.append(f"sportsgameodds HTTP {res.status_code} for {league_id}")
             continue
 
         body = res.json()
         events = body.get("data") or []
         out.objects += len(events)
-        roster_index = build_roster_index(game.roster)
+
+        matched = 0
         for event in events:
+            game = next((g for g in league_games if _sgo_event_matches(event, g)), None)
+            if game is None:
+                continue
+            matched += 1
+            roster_index = build_roster_index(game.roster)
             out.game_line_rows.extend(_sgo_game_line_rows(event, game.sport, game.game_id))
             players = event.get("players") or {}
             odds = event.get("odds") or {}
@@ -802,6 +857,18 @@ async def fetch_sportsgameodds(
                         is_delayed=True,
                         delay_seconds=delay_seconds,
                     )
+
+        # A silent zero is what hid the NCAAF bug for as long as it existed.
+        # Say so when a league returns events that reach no game we know about.
+        if events and not matched:
+            out.warnings.append(
+                f"sportsgameodds {league_id}: {len(events)} events, NONE matched a "
+                f"loaded game — check team-name resolution"
+            )
+        elif len(events) - matched > 0:
+            out.warnings.append(
+                f"sportsgameodds {league_id}: {matched}/{len(events)} events matched"
+            )
     return out
 
 
