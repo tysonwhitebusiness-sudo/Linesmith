@@ -64,23 +64,48 @@ them. Phases 0-9. The separate infrastructure doc was merged into it on operator
 instruction: interleaving two plans is how steps get skipped.
 Artifact: `https://claude.ai/code/artifact/ab49524a-4b4d-4946-b481-47681d81fe88`
 
-### Phase 1 progress — 1a, 1c, 1d, 1e, 1g DONE. 1f, 1h REMAIN.
+### Phase 1 progress — 6.5 of 7 steps done
 
-**BLOCKER: none of it is deployed.** The worker runs commit `81948e0`, which
-predates 1c/1d/1e/1g. `autoDeploy: no`, and the standing instruction is not to
-deploy without asking. Everything below is committed, tested locally, and inert
-in production until someone triggers a deploy.
+**BLOCKER: still not deployed.** The worker runs `81948e0`, predating everything
+below. `autoDeploy: no`, and the standing instruction is not to deploy without
+asking. All of it is committed and tested locally, and inert in production.
 
 | | Status |
 |---|---|
-| **1a** cadence | DONE `9cb6b25` — `/markets` cached (1+2N -> 1+N), `ProviderSpec.min_interval_seconds`, Propline throttled to 25min. **Verified in production**: propline went 672 -> 677 in 20 minutes where the old code spent ~250 |
-| **1b** keys | DONE — operator set 4 keys, deploy `dep-daceq8eq1p3s73ftnp60` live. `PARLAYAPI_NBA_KEY` still unprovisioned anywhere |
-| **1c** matrix | DONE `0e281f9` — five hand-written spec builders -> one declared matrix; jobs.py -246/+9 lines. Proven behaviour-preserving on all 9 sport groups AND on fetch-closure URLs before deleting anything |
-| **1d** widen | DONE `e6b4b38` — SharpAPI 2 -> 8 sports, NHL gains `refreshNhlJob` (its first ever), `_SGO_LEAGUE_IDS` gains NHL, Propline 3 -> 9 token keys |
-| **1e** dedupe | DONE `ce5531a` — consensus was counting DraftKings three times; 21.5% of live props affected |
-| **1g** monitoring | DONE `fb1a743` — a job that runs and never fetches is no longer "healthy". `archiveFreshness`/`captureLatency` still blocked on 1h |
-| **1f** pools + scheduler | NOT STARTED |
-| **1h** archival bridge | NOT STARTED |
+| **1a** cadence | DONE — `/markets` cached, `min_interval_seconds`, Propline at 25min. **Verified live**: 672 -> 677 in 20min where the old code spent ~250 |
+| **1b** keys | DONE — 4 keys set, deploy live. `PARLAYAPI_NBA_KEY` unprovisioned |
+| **1c** matrix | DONE — 5 spec builders -> 1 declared matrix, proven behaviour-preserving on specs AND fetch URLs |
+| **1d** widen | DONE — SharpAPI 2 -> 8 sports, `refreshNhlJob` created, SGO gains NHL |
+| **1e** dedupe | DONE — consensus counted DraftKings 3x; 21.5% of live props affected |
+| **1f** pools + scheduler | **NOT STARTED** |
+| **1g** monitoring | DONE — never-fetching jobs now unhealthy; `archiveFreshness` + `captureLatency` live |
+| **1h** bridge | **HALF DONE** — `archiveClosingLinesJob` live (1,475 rows, freeze proven). `archiveResultsJob` and prop archiving remain |
+
+### What 1h proved
+
+The freeze was tested, not asserted: inside a rolled-back transaction, a row
+whose `event_start` was moved into the past **refused** an overwrite (price stayed
+1650 against an attempted 99999); the same row with a future start **accepted**
+one. Postgres enforces it.
+
+Team ids resolve from the archive's own verified name->id history rather than by
+threading ids through `game_context` — MLB/NFL/EPL 100%, CFB 94%, and the misses
+are counted and reported rather than guessed.
+
+`captureLatency` correctly reports **EARLY** right now (MLB median 405min before
+start) because the bridge has only been run once by hand. On its 5-minute cadence
+`captured_at` is overwritten up to kickoff and the median collapses. That number
+is the thing to watch after deploying.
+
+### Left in Phase 1
+
+1. **`archiveResultsJob`** — settled scores into `game_result`, 4h after start.
+   Needs a per-sport score fetch; the grading jobs already make similar calls, so
+   the integration point is choosing whether to reuse them.
+2. **Prop archiving** — `prop_odds` -> `prop_odds_archive`. The migration already
+   added the `bookmaker` column and extended the natural key for it.
+3. **Phase 1f** — key pools and the proximity scheduler. Also carries Propline's
+   3 -> 8 widening, held back from 1d because its 1+N cost needs pooling first.
 
 ### The biggest find: CFB game lines were never a missing-key problem
 
