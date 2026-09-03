@@ -183,12 +183,19 @@ async def next_interval(
         return _MIN_INTERVAL
 
     ids = list(pool_ids) if pool_ids else [provider_id]
-    total_cap = cap * len(ids)
-    used = 0
+    # PER-KEY remaining, summed — NOT total_cap minus total_used. Budget is not
+    # fungible across keys: each has its own cap, so a key that is OVER its cap
+    # must contribute zero, never a negative that eats another key's headroom.
+    # Measured 2026-09-03: sgo_k1 sat at 2500 against a 2000 soft cap (the
+    # vendor's real limit is 2500) while sgo_k2 had 636 left under the same soft
+    # cap. The naive form computed 4000-3864 = 136 and declared a 177-object CFB
+    # cycle unaffordable, suppressing SportsGameOdds on CFB for the rest of the
+    # month over an overage on a DIFFERENT key. The correct 636 affords it.
+    remaining_budget = 0
     for pid in ids:
-        used += int((await db.daily_status(pid, cap) if cap_kind == "daily"
-                     else await db.monthly_status(pid, cap, unit=unit)) or 0)
-    remaining_budget = max(0, total_cap - used)
+        used = int((await db.daily_status(pid, cap) if cap_kind == "daily"
+                    else await db.monthly_status(pid, cap, unit=unit)) or 0)
+        remaining_budget += max(0, cap - used)
     if remaining_budget <= 0:
         # Exhausted: wait for the RESET. Deliberately NOT clamped by
         # _MAX_INTERVAL, and deliberately the whole period rather than the part

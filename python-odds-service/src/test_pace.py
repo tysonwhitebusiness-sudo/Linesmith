@@ -376,6 +376,26 @@ async def test_pooled_budget() -> None:
                                      pool_ids=keys)
         check("one dead key does not stall the pool", s < 86_400.0, True)
 
+    # A key OVER its cap must contribute zero, never a negative. Budget is not
+    # fungible across keys — each has its own cap — so an overage on one must
+    # not eat another's headroom. Real case: sgo_k1 at 2500 against a 2000 soft
+    # cap (the vendor's true limit is 2500) while sgo_k2 had 636 left. Summing
+    # total_cap - total_used gives 136 and declares a 177-object CFB cycle
+    # unaffordable, silencing that provider for the rest of the month over an
+    # overage somewhere else entirely.
+    with _Budget(used=0, per_id={"sgo_k1": 2500, "sgo_k2": 1364}):
+        over = await pace.next_interval("sportsgameodds", "monthly", 2000, 177, [], NOON,
+                                        unit="objects", pool_ids=["sgo_k1", "sgo_k2"])
+        # 0 + (2000-1364) = 636, which affords a 177-object cycle. The naive
+        # form yields 136 and returns a whole-period wait instead.
+        check("an over-cap key does not drain a live one",
+              over < pace._period_length_seconds("monthly", NOON), True)
+    with _Budget(used=0, per_id={"sgo_k1": 2000, "sgo_k2": 2000}):
+        both = await pace.next_interval("sportsgameodds", "monthly", 2000, 177, [], NOON,
+                                        unit="objects", pool_ids=["sgo_k1", "sgo_k2"])
+        check("but a genuinely spent POOL still waits for the reset",
+              both, pace._period_length_seconds("monthly", NOON))
+
 
 async def main() -> int:
     await test_proximity_bands()
