@@ -27,10 +27,27 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "python-odds-service", "src"))
 
 import db  # noqa: E402
+import game_context  # noqa: E402
+import gameday  # noqa: E402
 import provider_matrix as pm  # noqa: E402
 
 FAILURES: list[str] = []
 NOTES: list[str] = []
+SKIPS: list[str] = []
+
+
+def skip(label: str, reason: str) -> None:
+    """An outcome that is neither pass nor fail: the condition cannot be met and
+    SHOULD not be, so asserting it would be asserting a bug.
+
+    NBA and NHL are the reason this exists. Both are out of season in early
+    September — ESPN returns 0 games — so no provider on earth returns a book
+    line for them, and 10.3 failed on both every run. A check that cannot pass
+    is not a check; it is noise that teaches you to skim the gate's output,
+    which is exactly how the twelve-day NFL outage in the module docstring
+    survived. Same defect class as a PASS printing its own failure reason."""
+    print(f"  SKIP  {label}  — {reason}")
+    SKIPS.append(f"{label}: {reason}")
 
 
 def check(ok: bool, label: str, detail: str = "", fail_detail: str | None = None) -> None:
@@ -126,9 +143,37 @@ def gate_2_keys_are_pooled_not_labelled() -> None:
             check(len(live) >= 1, f"{family} pool has at least one key", f"{len(live)} keys")
 
 
+async def _upcoming_games(sport: str) -> list:
+    """Ask the SAME loaders the jobs ask. A gate that consults a different source
+    than the code it certifies is measuring something else."""
+    try:
+        if sport == "mlb":
+            return await game_context.load_mlb_games()
+        if sport == "nhl":
+            return await game_context.load_nhl_games()
+        if sport == "tennis":
+            return (await game_context.load_tennis_games("tennis_atp")
+                    + await game_context.load_tennis_games("tennis_wta"))
+        if sport == "soccer":
+            return (await game_context.load_sport_games("soccer_epl")
+                    + await game_context.load_sport_games("soccer_mls"))
+        return await game_context.load_sport_games(sport)
+    except Exception as e:
+        print(f"        (loader for {sport} failed: {type(e).__name__}: {e})")
+        return []
+
+
 async def gate_3_live_coverage() -> None:
     """Does every sport actually receive data, from something other than the
-    dead scraper?"""
+    dead scraper?
+
+    SEASON-AWARE, and it has to be. The jobs skip paid providers when
+    gameday.compute_tier() says "cold" — no game inside WARM_BEFORE_HOURS — so
+    for an out-of-season or far-from-kickoff sport, zero rows is the system
+    working correctly. Measured 2026-09-03: NBA 0 games, NHL 0 games (both start
+    in October), NFL 17 games with the opener 6.8 days out. Demanding fresh
+    lines from all three asserted something no code could satisfy.
+    """
     print("\n10.3  every sport has fresh book lines from a non-OddsHarvester source")
     pool = await db.get_pool()
     async with pool.acquire(timeout=20.0) as conn:
@@ -143,8 +188,25 @@ async def gate_3_live_coverage() -> None:
     # one 'tennis'), so compare on that grain rather than inventing a mismatch.
     want = {"mlb", "nfl", "cfb", "nba", "nhl", "soccer", "tennis"}
     for sport in sorted(want):
-        check(seen.get(sport, 0) > 0, f"{sport} has rows in the last 24h",
-              f"{seen.get(sport, 0)} rows")
+        n = seen.get(sport, 0)
+        if n > 0:
+            check(True, f"{sport} has rows in the last 24h", f"{n} rows")
+            continue
+        # Zero rows. Before calling it a failure, establish whether anything was
+        # supposed to be fetched at all.
+        games = await _upcoming_games(sport)
+        if not games:
+            skip(f"{sport} has rows in the last 24h", "out of season — 0 games scheduled")
+            continue
+        tier = gameday.compute_tier(games)
+        if tier == "cold":
+            nxt = min((g.game_date for g in games if getattr(g, "game_date", None)), default=None)
+            skip(f"{sport} has rows in the last 24h",
+                 f"cold tier — {len(games)} games, next {nxt}, "
+                 f"outside the {gameday.WARM_BEFORE_HOURS:.0f}h fetch window")
+            continue
+        check(False, f"{sport} has rows in the last 24h",
+              fail_detail=f"0 rows despite tier={tier} over {len(games)} games")
 
 
 async def gate_4_archive_is_being_fed() -> None:
@@ -197,6 +259,11 @@ async def main() -> None:
     await gate_3_live_coverage()
     await gate_4_archive_is_being_fed()
     await gate_5_no_provider_over_cap()
+
+    if SKIPS:
+        print("\nskipped — nothing was supposed to be fetched (not failures):")
+        for k in SKIPS:
+            print(f"  - {k}")
 
     if NOTES:
         print("\nexcused cells (each needs a real reason, and they are reviewed, not permanent):")
