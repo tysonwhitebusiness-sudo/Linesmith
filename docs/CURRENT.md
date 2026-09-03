@@ -64,28 +64,52 @@ them. Phases 0-9. The separate infrastructure doc was merged into it on operator
 instruction: interleaving two plans is how steps get skipped.
 Artifact: `https://claude.ai/code/artifact/ab49524a-4b4d-4946-b481-47681d81fe88`
 
-### Phase 1 progress
+### Phase 1 progress — 1a, 1c, 1d, 1e, 1g DONE. 1f, 1h REMAIN.
 
-**1a DONE (commit 9cb6b25)** — Propline no longer burns its daily cap before
-lunch. Two changes: the `/markets` list is cached (1+2N -> 1+N, daily demand
-17,856 -> 9,216), and `ProviderSpec.min_interval_seconds` gives a provider its
-own cadence floor independent of its job's tick. Propline is set to 25 min,
-derived from 16 req/cycle against 1,000/day. SharpAPI is untouched and still
-runs every cycle — the whole reason the floor is on the SPEC, not the JOB.
-Two new suites, 31 checks. 38 python suites pass; 4 pre-existing failures
-(elo_and_pitcher_game_score, mlb_mlp, mlb_tree_models, statcast_pitches),
-verified pre-existing by stashing and re-running, none import providers.
+**BLOCKER: none of it is deployed.** The worker runs commit `81948e0`, which
+predates 1c/1d/1e/1g. `autoDeploy: no`, and the standing instruction is not to
+deploy without asking. Everything below is committed, tested locally, and inert
+in production until someone triggers a deploy.
 
-**1b HALF DONE — the rest is yours.** `render.yaml` now declares the five
-missing provider keys (`sync: false`) and, because soft caps are values rather
-than secrets, sets all six `PARLAYAPI_*_SOFT_CAP` to 800 plus
-`SPORTSGAMEODDS_SOFT_CAP` to 2000 outright. **Every required KEY and SOFT_CAP is
-now declared.** What remains is operator-only: set the four key VALUES in the
-Render dashboard (they are already in `.env.local`) and provision
-`PARLAYAPI_NBA_KEY`, which has never existed anywhere. Until that happens NFL,
-CFB and NBA still have no live odds.
+| | Status |
+|---|---|
+| **1a** cadence | DONE `9cb6b25` — `/markets` cached (1+2N -> 1+N), `ProviderSpec.min_interval_seconds`, Propline throttled to 25min. **Verified in production**: propline went 672 -> 677 in 20 minutes where the old code spent ~250 |
+| **1b** keys | DONE — operator set 4 keys, deploy `dep-daceq8eq1p3s73ftnp60` live. `PARLAYAPI_NBA_KEY` still unprovisioned anywhere |
+| **1c** matrix | DONE `0e281f9` — five hand-written spec builders -> one declared matrix; jobs.py -246/+9 lines. Proven behaviour-preserving on all 9 sport groups AND on fetch-closure URLs before deleting anything |
+| **1d** widen | DONE `e6b4b38` — SharpAPI 2 -> 8 sports, NHL gains `refreshNhlJob` (its first ever), `_SGO_LEAGUE_IDS` gains NHL, Propline 3 -> 9 token keys |
+| **1e** dedupe | DONE `ce5531a` — consensus was counting DraftKings three times; 21.5% of live props affected |
+| **1g** monitoring | DONE `fb1a743` — a job that runs and never fetches is no longer "healthy". `archiveFreshness`/`captureLatency` still blocked on 1h |
+| **1f** pools + scheduler | NOT STARTED |
+| **1h** archival bridge | NOT STARTED |
 
-**1c-1h NOT STARTED.**
+### The biggest find: CFB game lines were never a missing-key problem
+
+`301b272`. `fetch_sportsgameodds` built a teamID from the full ESPN name and
+filtered on it. SGO says `RUTGERS_NCAAF`; we asked for
+`RUTGERS_SCARLET_KNIGHTS_NCAAF`. **Every CFB request ever made returned HTTP 200
+with an empty list** — no error, no warning. MLB and NFL were never affected
+because both sides spell those with the mascot, which is why it survived.
+
+Fixed by fetching one request per league and matching on names with a strict
+subset rule. Measured on the same slate: **178 requests / 0 game lines -> 1
+request / 2,747 game lines across 8 books.** SharpAPI hit the identical problem
+for CFB (0 props -> 50), so the subset rule now lives in `_team_match` where
+every provider gets it.
+
+### Two pre-existing bugs found running health_check live
+
+`genericCaptureJob` and `computeMlbGameModelJob` each fail EVERY run with
+`DataError: invalid input for query argument $2: <int> (expected str, got int)`.
+Same error class, two jobs, both on the deployed worker. Not fixed.
+
+### Verify after the next deploy
+
+1. `provider_usage` shows fresh spend for `sportsgameodds_multisport`,
+   `parlayapi_nfl`, `parlayapi_cfb` — all three last spent 2026-08-21.
+2. `game_odds_book_lines` gains **cfb and nhl** rows from a non-oddsharvester
+   source. That is the gate out of Phase 1.
+3. `propline` daily spend stays under ~920 rather than pinning at 1,000.
+4. `refreshNhlJob` stops reporting NEVER RUN.
 
 **OPERATOR DECISION 2026-09-02: the whole odds system is fixed before any model
 work starts.** Phase 1 absorbed the old Phase 0c and the archival bridge into one
