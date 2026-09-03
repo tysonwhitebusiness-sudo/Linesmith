@@ -147,6 +147,26 @@ Defects 2 and 3 were invisible until `_simulate_day` was rewritten to mirror
 simulation that models the caller wrongly agrees with a bug in the callee** —
 the same lesson as [[feedback_render_before_believing]], one layer down.
 
+### Two things left running on the operator's machine (2026-09-03 18:10 UTC)
+
+**A hung `import_props.py --truncate`, PID 14804, started 2026-09-01 23:20.**
+Its CPU counter was identical (3394.86s) across two readings 35 minutes apart —
+it is blocked, not working, after 38 hours. **The data is safe**: it truncates
+`prop_odds_archive` then COPYs back, and the table reads 1,817,418 rows, so it
+hung AFTER the load completed. The only cost is a held pooler connection against
+the 15-connection cap. Safe to kill; not killed here because that is the
+operator's call, not least because the flag is `--truncate`.
+
+**A full Python suite run**, started 13:00 UTC, checking for regressions from the
+allocator. `test_mlb_mlp.py` alone has taken over an hour (genuinely computing —
+464s CPU and climbing, it trains). Everything that actually covers the changed
+code was run directly and passes: `test_pace`, `test_provider_matrix`,
+`test_provider_throttle`. The suite is breadth, not the basis for the commit.
+
+Its one known failure is pre-existing and unrelated:
+`test_elo_and_pitcher_game_score.py`, same `DataError: expected str, got int` as
+the two broken jobs below. The file is untouched since `03d5b25`.
+
 ### What is NOT done, stated plainly
 
 `genericCaptureJob` and `computeMlbGameModelJob` each fail every run with
