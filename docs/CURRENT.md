@@ -64,18 +64,34 @@ them. Phases 0-9. The separate infrastructure doc was merged into it on operator
 instruction: interleaving two plans is how steps get skipped.
 Artifact: `https://claude.ai/code/artifact/ab49524a-4b4d-4946-b481-47681d81fe88`
 
-Sequence: **0** stop the bleeding (injury snapshots, postseason filters) ->
-**1** the archival bridge + monitoring + capacity -> **2** tennis -> **3** soccer
--> **4** NHL (+ its feeder, + market canonicalisation) -> **5** MLB (+ Statcast)
--> **6** NBA (+ shots) -> **7** CFB -> **8** NFL (+ nflverse) -> **9** surfacing:
-the two boards, per-market filters, un-suppressing the render paths, and the
-eight-phase prompt system, which was built assuming no models.
+**OPERATOR DECISION 2026-09-02: the whole odds system is fixed before any model
+work starts.** Phase 1 absorbed the old Phase 0c and the archival bridge into one
+odds block, because the bridge reads `game_odds_book_lines` and that table is
+EMPTY for NFL, CFB, NBA and NHL — built first it would archive MLB, soccer and
+tennis and silently skip half the project.
 
-**Needs operator sign-off before building:** the build order deviates from both
-approved artifacts. Games said tennis -> soccer -> NBA; props said MLB -> NHL ->
-NFL -> NBA. The plan merges them BY ENGINE (tennis, soccer, NHL, MLB, NBA, CFB,
-NFL) so each engine is built once and MLB's game model precedes the props that
-fall out of it. Flagged, not assumed.
+Sequence: **0** stop the bleeding (injury snapshots, postseason filters) ->
+**1** THE ODDS SYSTEM, 1a-1h, with a hard gate out of it -> **2** tennis ->
+**3** soccer -> **4** NHL -> **5** MLB -> **6** NBA -> **7** CFB -> **8** NFL ->
+**9** surfacing.
+
+Phase 1 in order: **1a** fix `job_tier1` cadence (it demands ~18x Propline's
+daily budget), **1b** the 5 Render keys + soft caps (operator), **1c** the
+capability matrix, **1d** widen onto paid-for coverage (SharpAPI 2->8 sports,
+Propline 3->8, NHL into SGO, `refreshNhlJob`), **1e** the dedupe rule BEFORE
+widening lands, **1f** key pools + proximity scheduler, **1g** monitoring
+(`produced_rows`, `skip_summary`, `archiveFreshness`, probe-as-gate), **1h** the
+archival bridge.
+
+**The gate out of Phase 1** — all measurements, not inspections: fresh
+`game_odds_book_lines` rows for all 8 sports from a non-OddsHarvester source;
+`live_capture` rows landing with the freeze predicate provably blocking a
+post-start overwrite; median capture latency under 15 min per sport; no provider
+over its measured cap; gate 9 passing on the widened data.
+
+**`docs/odds-sources-2026-09-02.md` is the odds system's own reference** — the
+sport x provider table, measured rate limits and quotas for every key, the
+capability audit, and the scheduling decision with its reasoning.
 
 ### Blockers — 2 of 5 now FIXED
 

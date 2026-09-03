@@ -374,8 +374,12 @@ returns null, confidence is hardcoded null, the score grade renders an empty div
 
 ## 3. The sequence
 
-One ordered list. Each phase states the infrastructure it needs *first*, then the
-model.
+One ordered list, in two blocks. **Phase 1 fixes the entire odds system and is
+finished before any model work begins** — an operator decision on 2026-09-02, and
+the right one: every model downstream trains on what that phase produces, and the
+archival bridge has nothing to archive for four sports until it lands. Phases 2–8
+are the models, each carrying the model-input feeder it needs. Phase 9 surfaces
+them.
 
 Build order merges the two approved orders, which differ — the game artifact said
 tennis → soccer → NBA, the prop artifact MLB → NHL → NFL → NBA. The merge groups
@@ -404,163 +408,155 @@ the backfill for affected seasons.
 
 ---
 
-### Phase 0c — Restore and widen the odds pipeline
+### Phase 1 — The odds system
 
-Before the bridge, because the bridge archives what these jobs produce. Detail
-and the verification commands are in `docs/odds-sources-2026-09-02.md`; what
-belongs here is the sequence and its gate.
+**Operator decision 2026-09-02: the entire odds system is fixed before any model
+work begins.** The reasoning is the plan's own: Phase 1's archival bridge reads
+`game_odds_book_lines`, and that table is **empty for NFL, CFB, NBA and NHL**.
+A bridge built first would faithfully archive MLB, soccer and tennis and silently
+skip half the project. Every model downstream inherits whatever this phase
+produces, so it is finished — and verified — before Phase 2 starts.
 
-1. **Declare the five missing provider keys on the Render worker** —
-   `SPORTSGAMEODDS_MULTISPORT_KEY`, `PARLAYAPI_NFL_KEY`, `PARLAYAPI_CFB_KEY`,
-   `PARLAYAPI_SOCCER_KEY` (all four already in `.env.local`) and
-   `PARLAYAPI_NBA_KEY` (never provisioned). Add them to `render.yaml` with
-   `sync: false` so the next person sees they are required, and set the values
-   in the dashboard. Operator action — the worker's environment is not in the
-   repo.
-2. **Wire SharpAPI into every sport it covers.** It is the only uncapped
-   provider (`cap_kind="none"`, 12 req/min) and is already sport-parameterised —
-   `fetch_sharpapi(..., sport=, league=)`, with MLB values as defaults, not
-   constraints. Tennis proves the parameterisation works. Confirmed tokens:
-   `nfl`, `ncaaf`, `nba`, `nhl`, `england_-_premier_league`,
-   `usa_-_major_league_soccer`. Three caveats apply and are not optional
-   reading: free tier is **2 books and a 60s delay**, responses cap at **200
-   rows** so a full slate needs the `pagination` object, and **team names vary
-   within one response** (`UMass` / `Massachusetts` in the same payload), which
-   entity resolution has to absorb.
-3. **Build `refreshNhlJob`.** NHL is the one sport with no odds job at all.
-   `_job_multisport` already generalises; SharpAPI serves `hockey/nhl`.
-4. **Add `produced_rows` to the health contract** — pulled forward from Phase 1d
-   because it is what makes steps 1–3 verifiable. Today a key-disabled job
-   reports healthy, which is why this went unnoticed for 12 days.
+Full detail, measurements and verification commands live in
+`docs/odds-sources-2026-09-02.md`. What follows is the sequence and its gates.
 
-> **The gate, and it is a measurement not an inspection:** `game_odds_book_lines`
-> must show fresh rows for **nfl, cfb, nba and nhl** from a non-OddsHarvester
-> source. Until it does, none of this worked, regardless of what the job log
-> says.
+#### 1a. Stop the daily burn — `job_tier1` cadence
 
-**OddsHarvester is deliberately not part of this.** It is CFB's only historical
-game-line source, but if step 1 or 2 succeeds, CFB has a live provider and the
-scraper stops being load-bearing. Reassess only if both fail.
+`refreshTier1` demands **~18× Propline's entire daily budget every day**:
+`fetch_propline` issues 1 + 2N requests, the job runs every 2.5 minutes (576
+cycles/day), and a 15-game slate makes that 17,856 requests against a 1,000 cap.
+The cap is gone in ~80 minutes and Propline contributes nothing for the other 23
+hours.
 
----
+- **Cache the `/markets` list** — half of Propline's spend, no behaviour change.
+- **Route `job_tier1` through `gameday.should_fetch_paid_providers()`** — every
+  other paid job already does; this is the only one that does not, and it is the
+  one where Propline runs.
+- **Give Propline its own cadence** so it stops inheriting SharpAPI's. An
+  uncapped provider and a daily-capped one cannot share an interval.
 
-### Phase 1 — The archival bridge
+Cheapest, highest-value step in the phase, and it needs no operator action.
 
-**Depends on Phase 0c.** The bridge archives what the live tables hold, and for
-NFL, CFB, NBA and NHL they hold nothing until the pipeline is restored.
+#### 1b. Render keys — operator action
 
-The piece that does not exist, and the reason it comes before any model: **its
-value compounds with elapsed time.** Nothing is blocked on it today, but the
-forward CLV evidence base only exists from the moment it starts running. A month
-earlier is a month more evidence at the point you need it to judge a model.
+Five provider KEYS are required by `config.py` and undeclared in `render.yaml`;
+four exist in `.env.local`. Plus the five `PARLAYAPI_*_SOFT_CAP` values, also
+undeclared, so the 20% margin task 5.9 built **does not exist on the worker**.
+Until this lands, NFL/CFB/NBA have no live odds at all.
 
-#### 1a. `archiveClosingLinesJob` — every 5 minutes
+#### 1c. The capability matrix
 
-**The design decision that matters: upsert continuously, do not capture at a
-moment.**
+Replace the five hand-written per-sport spec builders with one declared table of
+`(provider, sport) → vendor tokens`. Six providers across eight sports would
+otherwise be 48 hand-written spec constructions — the exact duplication that let
+two of four jobs ship with no rate-limit check. **Adding a sport becomes a
+column; adding a provider becomes a row.**
 
-The obvious design fires at each game's `event_start` and snapshots the price. It
-is wrong. Games start at arbitrary times, the queue is sequential, and a worker
-restart or slow tick means that game's closing line is **lost permanently and
-unrecoverably** — you cannot go back and ask what the price was ten minutes
-before first pitch.
+#### 1d. Widen coverage onto what is already paid for
 
-Instead: for every game that has not started, keep upserting the current price.
-When the game starts, updates stop, and whatever is in the row **is** the close.
-Nothing has to happen at the right instant.
+Measured utilisation: SharpAPI 2 of 8 sports, The Odds API 1 of 8, Propline 3 of
+a 54-sport catalogue, and `_SGO_LEAGUE_IDS` omits NHL although SGO serves it.
+
+- **SharpAPI to all 8 sports** — the only uncapped provider (12/min, no daily
+  cap), covering every sport with both props and game lines. It becomes the
+  polling floor under everything.
+- **Propline 3 → 8**, **NHL into `_SGO_LEAGUE_IDS`**, **The Odds API beyond MLB**.
+- **Build `refreshNhlJob`** — NHL is the one sport with no odds job at all.
+
+#### 1e. Deduplicate before consensus — do this before widening lands
+
+Six providers returning DraftKings means six DraftKings rows for one game.
+Averaged naively, DraftKings is weighted six times and **every de-vigged
+consensus is wrong**, silently. Measured: the union is 19 prop books and 23
+game-line books, against 32 and 37 summed — so 13 and 14 are duplicates.
+
+> **One row per `(sport, event, market, side, bookmaker)` for consensus**,
+> collapsing by `source_priority`. Keep every provider's row for provenance.
+> `model_game_odds` already does exactly this — extend it, do not invent a
+> second pattern.
+
+Ordered before 1f deliberately: widening without it produces a consensus *more*
+wrong than today's.
+
+#### 1f. Key pools and the proximity scheduler
+
+**Key pools, not per-sport keys.** All five ParlayAPI keys return the identical
+405-sport catalogue — a key is quota, not coverage. Per-sport labelling strands
+it: NFL's key exhausts while CFB's sits idle and NFL goes dark anyway. Pool them,
+first-with-remaining-quota wins, each keeping its own `provider_id` so
+`try_reserve_daily`/`monthly` work unchanged. Proven safe: on 2026-08-30
+`propline` and `propline_2` each spent 1,000 the same day from the same worker.
+
+**Cadence follows game proximity, not a clock** (decided; see
+`odds-sources-2026-09-02.md` §15 for why a clock was rejected). Each provider
+declares a budget; the scheduler spreads it proportionally to where games
+actually are. Measured limits:
+
+| Provider | Budget | Role |
+|---|---|---|
+| SharpAPI | none — 12/min, **5 concurrent** | Continuous polling floor, all 8 sports |
+| Propline | 1,000/day, resets 00:00 UTC | Hot-window sweeps — it carries the books |
+| ParlayAPI | 1,000/month ≈ 33/day | **Last 3 ticks before each start cluster** — depth at the close |
+| The Odds API | **500/month ≈ 16/day** | Scarcest in the stack — reserved, not spread |
+
+#### 1g. Monitoring that would have caught this
+
+- **`produced_rows` in the health contract.** `healthy = ok and not stale` let
+  `refreshNflJob` and `refreshCfbJob` report healthy for **twelve days** while
+  producing nothing.
+- **`gameday.skip_summary()` must stop returning a successful run shape.** A job
+  that never fetches must be distinguishable from one that fetched.
+- **`archiveFreshness` and `captureLatency`** — the checks that would have caught
+  the frozen archive on day one.
+- **`probe_all_providers.py` as a scheduled gate** — fail when a declared
+  `(provider, sport)` pair stops resolving. A vendor renaming a league becomes a
+  failing check rather than a sport going dark.
+
+#### 1h. The archival bridge
+
+Only now, because it archives what 1a–1g produce.
+
+**Upsert continuously; do not capture at a moment.** A job firing at each game's
+`event_start` loses that game's closing line permanently on one missed tick.
+Instead keep upserting while the game has not started; when it starts, updates
+stop and whatever is in the row **is** the close.
 
 ```sql
-INSERT INTO odds_archive
-  (sport, event_ref, game_date, event_start, home_team_id, away_team_id,
-   market, side, line, price, bookmaker, source, source_priority,
-   is_live, booksum, ml_flag, captured_at)
-VALUES (...)
 ON CONFLICT (sport, event_ref, game_date, market, side, bookmaker, source)
 DO UPDATE SET price = EXCLUDED.price, line = EXCLUDED.line,
-              booksum = EXCLUDED.booksum, ml_flag = EXCLUDED.ml_flag,
               captured_at = now()
--- THE FREEZE. Postgres enforces it, not application logic: once the game has
--- started this predicate is false and the row can never be overwritten again.
+-- THE FREEZE. Postgres enforces it, not application logic.
 WHERE odds_archive.event_start > now();
 ```
 
-Properties this buys:
+Degrades gracefully, idempotent by construction, and blocks in-play
+contamination by two independent mechanisms (the freeze predicate and
+`is_live_book()`). Cheaper too — upserting pays the per-game cost once, not once
+per tick, which keeps it under ~200 MB/year against 2,551 MB of headroom.
 
-- **Degrades gracefully.** A missed tick makes the close staler, not absent, and
-  `event_start - captured_at` measures exactly how stale. A missed *window* would
-  make it absent and unmeasurable.
-- **Idempotent by construction.**
-- **In-play prices cannot contaminate the training set**, by two independent
-  mechanisms: the freeze predicate and `is_live_book()` on the bookmaker name.
-  Both, because the 48,489-row in-play finding was invisible in the aggregate.
-- **Cheaper.** Upserting pays the per-game cost once, not once per tick.
+Plus `archiveResultsJob` (settled scores, 4h after start), a `captured_at`
+column on both archive tables, and `event_start` populated for **all eight
+sports** — currently MLB only, and also what the proximity scheduler in 1f needs.
 
-Source `live_capture`, priority 95 — above `espn_core` (90) because it is a real
-captured close, below `sbr` (100). Props follow the same shape, `prop_odds` →
-`prop_odds_archive`.
+While here: truncate `odds_import_staging` (270 MB, already promoted), give
+`prop_odds_history` a retention rule **longer than the replay window**, cover the
+oversized `mlb:full-raw` snapshot keys, and start `venueFactorsJob`.
 
-Two things it must get right, both learned the hard way here:
-`COALESCE(event_ref,'')` in the natural key or doubleheaders silently collapse
-(524 games did), and every write through `db.write_*` so `canonical_bookmaker`
-runs at the shared writer (33 spellings for 22 books;
-`fanduel`/`FanDuel`/`Fanduel` split 750 rows three ways).
+---
 
-#### 1b. `archiveResultsJob` — every 15 minutes
+### The gate out of Phase 1
 
-Any game whose `event_start` passed more than 4 hours ago with no `game_result`
-row: fetch the final score, write it. Reuses the scoreboard fetches the grading
-jobs already make. Writes `event_start`, `venue`, and for tennis `surface` and
-`court`. The 4-hour delay is longer than any sport here runs, so a score is final
-rather than in progress.
+Model work does not start until all of these hold. Each is a measurement, not an
+inspection:
 
-#### 1c. `captured_at` column
-
-`odds_archive` and `prop_odds_archive` need `captured_at timestamptz`. It is what
-makes capture quality measurable — the distribution of
-`event_start - captured_at` is the health metric for the whole bridge. Without
-it, a systematically-30-minutes-early "close" looks identical to a good one,
-which is precisely why the imported prop archive's close is no sharper than its
-open.
-
-#### 1d. Monitoring — three changes
-
-`health_check.py` works, and this audit is the evidence: it correctly flagged all
-six never-run jobs, both failures, and the stale one. Three gaps:
-
-- **A cap-blocked job reports healthy.** `health_check.py:105` is
-  `healthy = ok and not stale`. A job that runs on time and does nothing because
-  its provider budget is exhausted is healthy by that definition. `propline` and
-  `oddsapiio` burn their entire daily cap within 20–70 minutes of the 04:00 UTC
-  reset and contribute **zero** prices during US game hours, silently. **Fix:**
-  add `produced_rows` to the health contract — zero rows across N runs while
-  games were scheduled is unhealthy whatever the exit status. This is the shape
-  the OddsHarvester check already uses, which is why that failure is visible.
-- **Nothing watches the bridge.** Add `archiveFreshness` (newest `captured_at`
-  within one interval — the check that would have caught the frozen archive on
-  day one) and `captureLatency` (median `event_start - captured_at` per sport
-  over 7 days; alarm above 15 minutes).
-- **Nothing watches the training set's shape.** `gate9_model_readiness.mjs`
-  asserts exactly what breaks silently as new data arrives from a new source.
-  Make it a scheduled check.
-
-#### 1e. Capacity, and the cheap wins to fold in here
-
-The bridge is roughly 7,200 archive rows/day for games plus ~10× that for props —
-under **200 MB/year**, which fits in 2,551 MB. While here:
-
-1. **`odds_import_staging` — 270 MB.** Contents all promoted. Truncate.
-2. **`prop_odds_history` — 323 MB, no retention rule at all** (265,771 rows in
-   one day). It needs one. **But its window must be LONGER than the bridge's
-   replay window** (§5), not shorter — it is the only place a missed closing line
-   could be reconstructed from. Set deliberately, not by size.
-3. **`snapshot_cache` — 334 MB** with an 11.4 MB payload over the 10 MB limit.
-   `retentionJob` is healthy; its rules need to cover the oversized
-   `mlb:full-raw` keys.
-4. **`venueFactorsJob`** — never run, cheap, no dependency. Start it here.
-5. **`refreshSportsGameOddsJob`** — 849 minutes stale. Diagnose here.
-
-*The data-sales decision blocks none of this: retention bounds the live tables;
-the archive is append-only and is the asset with resale value.*
+1. `game_odds_book_lines` shows **fresh rows for all eight sports** from a
+   non-OddsHarvester source.
+2. `odds_archive` gains rows with `source='live_capture'` for today's games, and
+   the freeze predicate provably blocks a post-start overwrite.
+3. Median `captured_at → event_start` latency is **under 15 minutes** per sport.
+4. No provider is over its measured cap, and `produced_rows` flags one that runs
+   but writes nothing.
+5. `gate9_model_readiness.mjs` passes on the widened data.
 
 ---
 
