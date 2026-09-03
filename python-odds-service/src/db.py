@@ -4257,3 +4257,72 @@ async def upsert_live_results(rows: list[dict], batch: int = 500) -> int:
         async with pool.acquire(timeout=30.0) as conn:
             await conn.executemany(sql, payload[i:i + batch])
     return len(payload)
+
+
+async def live_props_for_games(game_ids: list[str]) -> list:
+    """Latest live prop price per (game, subject, market, line, bookmaker, side).
+
+    prop_odds accumulates a row per fetch, so DISTINCT ON collapses each to its
+    most recent quote — the same shape live_book_lines_for_games uses.
+    """
+    if not game_ids:
+        return []
+    pool = await get_pool()
+    async with pool.acquire(timeout=20.0) as conn:
+        return await conn.fetch(
+            """SELECT DISTINCT ON (game_id, subject_id, market_key, line, bookmaker, side)
+                      game_id, subject_id, subject_name, market_key, line, side,
+                      bookmaker, american_odds, provider_id, fetched_at
+                 FROM prop_odds
+                WHERE game_id = ANY($1)
+                ORDER BY game_id, subject_id, market_key, line, bookmaker, side,
+                         fetched_at DESC""",
+            game_ids,
+        )
+
+
+async def upsert_live_prop_capture(rows: list[dict], batch: int = 500) -> int:
+    """Captured pre-game PROP prices into prop_odds_archive, frozen at start.
+
+    Same freeze as upsert_live_capture, for the same reason. Note the archive is
+    two-sided per row (over_price/under_price) while prop_odds is one row per
+    side — the caller pivots, because a prop that is only quoted on one side
+    cannot be de-vigged and the model plan needs both ends.
+
+    `bookmaker` only became part of this table's natural key on 2026-09-03; the
+    imported history predates it and carries NULL, which is honest — those rows
+    genuinely are not attributable to one book.
+    """
+    if not rows:
+        return 0
+    from entity_resolution import canonical_bookmaker
+
+    sql = """
+        INSERT INTO prop_odds_archive
+          (sport, event_ref, game_date, event_start, athlete_id, athlete_name,
+           type_name, line, over_price, under_price, bookmaker, provider,
+           source, source_priority, captured_at, last_updated)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'live_capture',95,now(),now())
+        ON CONFLICT (sport, event_ref, COALESCE(athlete_id, ''), type_name,
+                     COALESCE(line, -9999::double precision), source,
+                     COALESCE(bookmaker, ''))
+        DO UPDATE SET over_price = EXCLUDED.over_price,
+                      under_price = EXCLUDED.under_price,
+                      event_start = EXCLUDED.event_start,
+                      captured_at = now(),
+                      last_updated = now()
+          WHERE prop_odds_archive.event_start > now()
+    """
+    payload = [
+        (r["sport"], r["event_ref"], r["game_date"], r["event_start"],
+         r["athlete_id"], r["athlete_name"], r["type_name"], r["line"],
+         r["over_price"], r["under_price"],
+         canonical_bookmaker(r["bookmaker"]) if r["bookmaker"] else None,
+         r["provider"])
+        for r in rows
+    ]
+    pool = await get_pool()
+    for i in range(0, len(payload), batch):
+        async with pool.acquire(timeout=30.0) as conn:
+            await conn.executemany(sql, payload[i:i + batch])
+    return len(payload)

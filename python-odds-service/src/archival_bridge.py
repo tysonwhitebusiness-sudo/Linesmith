@@ -284,3 +284,74 @@ async def archive_results(days_back: int = 3) -> dict:
         "unresolved": len(set(unresolved)), "requests": 0, "objects": 0,
         "warnings": warnings,
     }
+
+
+async def archive_props(sports: list[str] | None = None) -> dict:
+    """Captured pre-game prop prices into prop_odds_archive.
+
+    Mirrors archive_closing_lines — same not-yet-started filter, same freeze —
+    with one real difference: prop_odds holds ONE ROW PER SIDE and the archive
+    holds one row per prop with over_price and under_price together. So this
+    pivots, and DROPS anything quoted on only one side.
+
+    That drop is deliberate. A one-sided prop cannot be de-vigged, and the whole
+    reason the model plan can measure prop CLV at all is that both ends exist —
+    measured on the imported archive, 443,990 MLB props carry both. Storing a
+    half-priced row would look like data and be unusable.
+    """
+    now = datetime.now(timezone.utc)
+    written = 0
+    considered = 0
+    one_sided = 0
+    warnings: list[str] = []
+
+    for sport in (sports if sports is not None else sorted(MATRIX)):
+        try:
+            games = await _games_for(sport)
+        except Exception as e:
+            warnings.append(f"{sport}: game load failed — {type(e).__name__}: {e}")
+            continue
+        upcoming = {}
+        for g in games:
+            start = _parse_start(g.game_date)
+            if start is not None and start > now:
+                upcoming[str(g.game_id)] = (g, start)
+        if not upcoming:
+            continue
+
+        rows = await db.live_props_for_games(list(upcoming))
+        considered += len(rows)
+
+        # Pivot: one archive row per (game, athlete, market, line, book).
+        merged: dict[tuple, dict] = {}
+        for r in rows:
+            g, start = upcoming[str(r["game_id"])]
+            key = (str(r["game_id"]), r["subject_id"], r["market_key"], r["line"], r["bookmaker"])
+            slot = merged.setdefault(key, {
+                "sport": sport, "event_ref": str(g.game_id),
+                "game_date": start.date(), "event_start": start,
+                "athlete_id": r["subject_id"], "athlete_name": r["subject_name"],
+                "type_name": r["market_key"], "line": r["line"],
+                "over_price": None, "under_price": None,
+                "bookmaker": r["bookmaker"], "provider": r["provider_id"],
+            })
+            if r["side"] == "over":
+                slot["over_price"] = r["american_odds"]
+            elif r["side"] == "under":
+                slot["under_price"] = r["american_odds"]
+
+        two_sided = [v for v in merged.values()
+                     if v["over_price"] is not None and v["under_price"] is not None]
+        one_sided += len(merged) - len(two_sided)
+        if two_sided:
+            written += await db.upsert_live_prop_capture(two_sided)
+
+    if one_sided:
+        warnings.append(
+            f"{one_sided} prop(s) quoted on only one side were not archived — "
+            "a one-sided price cannot be de-vigged"
+        )
+    return {
+        "games": 0, "rows_matched": considered, "rows_written": written,
+        "unresolved": one_sided, "requests": 0, "objects": 0, "warnings": warnings,
+    }

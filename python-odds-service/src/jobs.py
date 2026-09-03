@@ -44,7 +44,7 @@ import nfl_pbp
 import gameday
 from game_context import load_mlb_games, load_nhl_games, load_sport_games, load_tennis_games
 from job_runner import run_provider_specs
-from archival_bridge import archive_closing_lines, archive_results
+from archival_bridge import archive_closing_lines, archive_props, archive_results
 from provider_matrix import MLB_SGO_ONLY, specs_for
 from providers import (
     fetch_oddsapiio,
@@ -179,6 +179,18 @@ async def job_archive_closing_lines(yield_fn=None) -> dict:
     Spends no provider budget — it reads live tables this worker already filled.
     """
     return await _run_timed("archiveClosingLinesJob", archive_closing_lines())
+
+
+async def job_archive_props(yield_fn=None) -> dict:
+    """Captured pre-game PROP prices into prop_odds_archive.
+
+    Same 5-minute cadence and the same freeze as the game-line half: whatever is
+    in the row when the game starts IS the close. Separate job rather than folded
+    in, because the prop volume is an order of magnitude larger (12,078 two-sided
+    MLB props against 1,611 book lines on the same slate) and a slow prop pass
+    must not delay the game-line capture.
+    """
+    return await _run_timed("archivePropsJob", archive_props())
 
 
 async def job_archive_results(yield_fn=None) -> dict:
@@ -1236,6 +1248,7 @@ JOB_REGISTRY = [
     # Every 5 minutes. See job_archive_closing_lines' docstring for why the
     # cadence is load-bearing rather than a preference.
     ("archiveClosingLinesJob", job_archive_closing_lines, 5 * 60),
+    ("archivePropsJob", job_archive_props, 5 * 60),
     ("archiveResultsJob", job_archive_results, 15 * 60),
     ("refreshSoccerEplJob", job_soccer_epl, 20 * 60),
     ("refreshSoccerMlsJob", job_soccer_mls, 20 * 60),
