@@ -71,7 +71,7 @@ PARLAYAPI_SPORT_KEYS = providers._PARLAYAPI_SPORT_KEYS
 # sport -> providers, IN RUN ORDER. Order matters: jobs run these sequentially,
 # so it is behaviour, not presentation.
 MATRIX: dict[str, tuple[str, ...]] = {
-    "mlb": ("sharpapi", "sharpapi_lines", "oddsapiio", "propline"),
+    "mlb": ("sharpapi", "sharpapi_lines", "oddsapiio", "propline", "parlayapi_mlb"),
     "soccer_epl": ("sharpapi", "sharpapi_lines", "propline_2", "parlayapi_soccer"),
     "soccer_mls": ("sharpapi", "sharpapi_lines", "propline_2", "parlayapi_soccer",
                    "sportsgameodds_multisport"),
@@ -182,6 +182,18 @@ _PARLAYAPI: dict[str, tuple[str, str | None, bool, int, int]] = {
 }
 
 
+# ParlayAPI is 1,000/MONTH — about 33 requests a day — at one request per sport
+# per cycle. In MLB's Tier 1, which ticks every 2.5 minutes, an ungated spec
+# would want 576/day: 17x over budget, and a blown MONTHLY cap costs the rest of
+# the month rather than the rest of the day. 45 minutes gives ~32/day.
+#
+# The other sports' jobs tick at 20 minutes AND route through
+# gameday.should_fetch_paid_providers, which already holds them inside budget --
+# measured, parlayapi_nfl spent 23 requests in all of August. Only Tier 1 lacks
+# that gate, so only Tier 1's ParlayAPI needs a floor.
+_PARLAYAPI_TIER1_FLOOR_SECONDS = 45 * 60
+
+
 def _parlayapi(sport: str, yield_fn) -> ProviderSpec:
     pid, key, enabled, limit, soft = _PARLAYAPI[sport]
     return ProviderSpec(
@@ -191,6 +203,7 @@ def _parlayapi(sport: str, yield_fn) -> ProviderSpec:
         cap_kind="monthly",
         cap_limit=limit,  # hard limit; soft_cap stops earlier where set
         soft_cap=soft or None,
+        min_interval_seconds=(_PARLAYAPI_TIER1_FLOOR_SECONDS if sport == "mlb" else None),
     )
 
 

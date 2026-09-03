@@ -45,7 +45,10 @@ def check(label, actual, expected):
 # Render worker, and freezing them would make this assert about a machine.
 EXPECTED = {
     "mlb": [SHARP, SHARP_L, ("oddsapiio", "daily", 500, "requests", None),
-            ("propline", "daily", 1000, "requests", 1500)],
+            ("propline", "daily", 1000, "requests", 1500),
+            # 45-min floor: Tier 1 ticks every 2.5min and ParlayAPI is
+            # 1,000/MONTH, so an ungated spec is 17x over budget.
+            ("parlayapi_mlb", "monthly", 1000, "requests", 2700)],
     "soccer_epl": [SHARP, SHARP_L, ("propline_2", "daily", 1000, "requests", None),
                    ("parlayapi_soccer", "monthly", 1000, "requests", None)],
     "soccer_mls": [SHARP, SHARP_L, ("propline_2", "daily", 1000, "requests", None),

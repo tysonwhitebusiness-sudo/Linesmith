@@ -546,17 +546,33 @@ oversized `mlb:full-raw` snapshot keys, and start `venueFactorsJob`.
 
 ### The gate out of Phase 1
 
-Model work does not start until all of these hold. Each is a measurement, not an
-inspection:
+**Run `python scripts/gate/gate10_phase1_odds.py`.** It is executable, not a
+checklist, so "Phase 1 is done" is a measurement rather than a claim — and it is
+expected to FAIL until 1f lands, which is how it defines done.
 
-1. `game_odds_book_lines` shows **fresh rows for all eight sports** from a
+1. **Every (provider, sport) the vendor supports is activated.** Compares what we
+   CALL against what the vendors' own catalogues SUPPORT. A cell may be excused
+   only with a stated reason — SGO genuinely serves no EPL and no tennis; there
+   is no `PARLAYAPI_NHL_KEY` — so "not wired" stays distinguishable from "cannot
+   be wired". Nothing compared these two before, which is how NFL and CFB ran
+   with no provider for twelve days behind green health checks. *On its first
+   run this caught a real gap nobody had noticed: ParlayAPI serves MLB and
+   `PARLAYAPI_MLB_KEY` was set, but MLB's row never called it.*
+2. **Keys are pooled, not labelled by sport.** No `provider_id` may encode a
+   sport, and a `KEY_POOLS` declaration must exist. All five ParlayAPI keys
+   return the identical 405-sport catalogue, so a key is a budget bucket, not a
+   coverage grant — labelling one `PARLAYAPI_NFL_KEY` strands its quota when NFL
+   is quiet and starves NFL when it is not.
+3. **Every sport has fresh book lines** in the last 24h from a
    non-OddsHarvester source.
-2. `odds_archive` gains rows with `source='live_capture'` for today's games, and
-   the freeze predicate provably blocks a post-start overwrite.
-3. Median `captured_at → event_start` latency is **under 15 minutes** per sport.
-4. No provider is over its measured cap, and `produced_rows` flags one that runs
-   but writes nothing.
-5. `gate9_model_readiness.mjs` passes on the widened data.
+4. **The bridge is running and capturing near the close** — `live_capture` rows
+   exist and median `captured_at → event_start` is **under 15 minutes** per
+   sport. Presence is not quality: a price captured six hours early is archived,
+   fresh, and not a closing line.
+5. **No provider is over its measured cap** — measured from vendor headers, not
+   config defaults.
+
+Plus `gate9_model_readiness.mjs` on the widened data.
 
 ---
 
