@@ -26,6 +26,7 @@ keys first report Propline as not covering NFL at all.
 from typing import Callable
 
 import config
+import providers
 from providers import (
     ProviderSpec,
     fetch_oddsapiio,
@@ -55,32 +56,13 @@ SHARPAPI_TOKENS: dict[str, tuple[str, str]] = {
     "tennis_wta": ("tennis", "wta"),
 }
 
-# SportsGameOdds is the ONLY genuinely narrow provider: its catalogue is exactly
-# eight leagues and has no EPL and no tennis. That is why soccer_mls carries it
-# and soccer_epl does not — a real coverage difference, not an oversight.
-SGO_LEAGUE_IDS: dict[str, str] = {
-    "mlb": "MLB", "nfl": "NFL", "cfb": "NCAAF", "nba": "NBA",
-    "nhl": "NHL", "soccer_mls": "MLS",
-}
+# The other three maps live in providers.py, beside the fetch functions that use
+# them, and are imported rather than restated -- one source of truth. An earlier
+# draft of this file duplicated them, which is how a token map drifts.
+SGO_LEAGUE_IDS = providers._SGO_LEAGUE_IDS
+PROPLINE_SPORT_KEYS = providers._PROPLINE_SPORT_KEYS
+PARLAYAPI_SPORT_KEYS = providers._PARLAYAPI_SPORT_KEYS
 
-# Propline's catalogue is 54 sports and includes every one of ours. Note
-# `football_nfl` / `football_ncaaf` — NOT the `americanfootball_*` convention
-# ParlayAPI uses. See the module docstring.
-PROPLINE_SPORT_KEYS: dict[str, str] = {
-    "mlb": "baseball_mlb", "nfl": "football_nfl", "cfb": "football_ncaaf",
-    "nba": "basketball_nba", "nhl": "hockey_nhl",
-    "soccer_epl": "soccer_epl", "soccer_mls": "soccer_mls", "tennis": "tennis",
-}
-
-# ParlayAPI's catalogue is 405 sports and covers all eight. Props ONLY — its
-# endpoint is literally /props, so it can never supply a game line. That is why
-# a missing SPORTSGAMEODDS_MULTISPORT_KEY removed NFL/CFB/NBA game lines with no
-# fallback.
-PARLAYAPI_SPORT_KEYS: dict[str, str] = {
-    "mlb": "baseball_mlb", "nfl": "americanfootball_nfl", "cfb": "americanfootball_ncaaf",
-    "nba": "basketball_nba", "nhl": "icehockey_nhl",
-    "soccer_epl": "soccer_epl", "soccer_mls": "soccer_usa_mls",
-}
 
 # ---------------------------------------------------------------------------
 # ACTIVATION. What we actually call today.
@@ -90,14 +72,34 @@ PARLAYAPI_SPORT_KEYS: dict[str, str] = {
 # so it is behaviour, not presentation.
 MATRIX: dict[str, tuple[str, ...]] = {
     "mlb": ("sharpapi", "sharpapi_lines", "oddsapiio", "propline"),
-    "soccer_epl": ("propline_2", "parlayapi_soccer"),
-    "soccer_mls": ("propline_2", "parlayapi_soccer", "sportsgameodds_multisport"),
+    "soccer_epl": ("sharpapi", "sharpapi_lines", "propline_2", "parlayapi_soccer"),
+    "soccer_mls": ("sharpapi", "sharpapi_lines", "propline_2", "parlayapi_soccer",
+                   "sportsgameodds_multisport"),
     "tennis_atp": ("sharpapi", "sharpapi_lines"),
     "tennis_wta": ("sharpapi", "sharpapi_lines"),
-    "nfl": ("parlayapi_nfl", "sportsgameodds_multisport"),
-    "cfb": ("parlayapi_cfb", "sportsgameodds_multisport"),
-    "nba": ("parlayapi_nba", "sportsgameodds_multisport"),
+    "nfl": ("sharpapi", "sharpapi_lines", "parlayapi_nfl", "sportsgameodds_multisport"),
+    "cfb": ("sharpapi", "sharpapi_lines", "parlayapi_cfb", "sportsgameodds_multisport"),
+    "nba": ("sharpapi", "sharpapi_lines", "parlayapi_nba", "sportsgameodds_multisport"),
+    "nhl": ("sharpapi", "sharpapi_lines", "sportsgameodds_multisport"),
 }
+
+# PHASE 1d WIDENING, 2026-09-03. SharpAPI added to all eight sports and NHL given
+# its first row. Two things decided the shape:
+#
+#   SharpAPI is free and UNCAPPED (12 req/min, no daily or monthly limit) and
+#   costs ONE request per sport per market. It is the obvious floor under
+#   everything, and it was wired to two sports of eight.
+#
+#   PROPLINE WAS DELIBERATELY *NOT* WIDENED, despite carrying 19 of 19 prop
+#   books, because its cost is 1 + N requests per cycle -- one per game. A
+#   178-game CFB slate would be ~179 requests against a 1,000/DAY cap, so it
+#   would exhaust in five cycles. Its shape suits small slates (MLB 15, EPL 10),
+#   not large ones. Widening it needs the key pooling of Phase 1f, not a matrix
+#   edit, and pretending otherwise would just move the outage rather than fix it.
+#
+# ParlayAPI is absent from the NHL row for a plain reason: there is no
+# PARLAYAPI_NHL_KEY. Its catalogue covers NHL, so this is a provisioning gap,
+# not a capability one.
 
 # MLB's own SportsGameOdds account is NOT in MATRIX["mlb"] because it runs on a
 # separate 90-minute job rather than inside Tier 1's 2.5-minute cycle. Folding

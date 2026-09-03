@@ -42,7 +42,7 @@ import nhl_shots
 import nba_shots
 import nfl_pbp
 import gameday
-from game_context import load_mlb_games, load_sport_games, load_tennis_games
+from game_context import load_mlb_games, load_nhl_games, load_sport_games, load_tennis_games
 from job_runner import run_provider_specs
 from provider_matrix import MLB_SGO_ONLY, specs_for
 from providers import (
@@ -145,6 +145,32 @@ async def job_cfb(yield_fn=None) -> dict:
     # does, and this is what makes that generic rather than an NFL special
     # case, per the instruction not to special-case this to NFL alone.
     return await _job_multisport("refreshCfbJob", "cfb", yield_fn)
+
+
+async def job_nhl(yield_fn=None) -> dict:
+    """NHL's first odds job. Phase 1d, 2026-09-03.
+
+    NHL was not broken before this — it had no odds job at all, in a codebase
+    that already carried 24,336 priced NHL games of history and an NHL prop
+    model in the build plan. Five of six providers serve it; nobody was asking.
+
+    Uses load_nhl_games (the NHL's own api-web schedule) rather than
+    load_sport_games, matching backfill_player_game_history's own split: NHL is
+    the one sport here whose schedule does not come from ESPN.
+
+    Coverage is SharpAPI + SportsGameOdds. ParlayAPI is absent only because no
+    PARLAYAPI_NHL_KEY exists — a provisioning gap, not a capability one.
+    """
+    games = [g for g in await load_nhl_games() if not g.is_final]
+    tier, should_fetch = await gameday.should_fetch_paid_providers("nhl", games)
+    if not should_fetch:
+        return await _run_timed("refreshNhlJob", _return_dict(gameday.skip_summary(games, tier)))
+    async with httpx.AsyncClient() as client:
+        return await _run_timed(
+            "refreshNhlJob",
+            run_provider_specs(client, games, specs_for("nhl", yield_fn),
+                               yield_fn=yield_fn, concurrent=False),
+        )
 
 
 async def job_nba(yield_fn=None) -> dict:
@@ -1158,6 +1184,7 @@ JOB_REGISTRY = [
     ("refreshNflJob", job_nfl, 20 * 60),
     ("refreshCfbJob", job_cfb, 20 * 60),
     ("refreshNbaJob", job_nba, 20 * 60),
+    ("refreshNhlJob", job_nhl, 20 * 60),
     ("refreshSoccerEplJob", job_soccer_epl, 20 * 60),
     ("refreshSoccerMlsJob", job_soccer_mls, 20 * 60),
     ("refreshTennisAtpJob", job_tennis_atp, 20 * 60),

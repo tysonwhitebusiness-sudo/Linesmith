@@ -193,7 +193,31 @@ def _team_match(row_home: str, row_away: str, game: Game) -> bool:
     g_home_w, g_away_w = team_name_words(game.home_team_name), team_name_words(game.away_team_name)
     if not (home_w and away_w and g_home_w and g_away_w):
         return False
-    return (home_w == g_home_w and away_w == g_away_w) or (home_w == g_away_w and away_w == g_home_w)
+    if (home_w == g_home_w and away_w == g_away_w) or (home_w == g_away_w and away_w == g_home_w):
+        return True
+
+    # SUBSET FALLBACK, added 2026-09-03. The provider's words must ALL appear in
+    # ours, on BOTH sides.
+    #
+    # College football is why. ESPN names a team "Rutgers Scarlet Knights";
+    # SportsGameOdds says "Rutgers" and SharpAPI says "Colorado" where ESPN says
+    # "Colorado Buffaloes". Word-set EQUALITY therefore failed for every CFB row
+    # from both providers -- measured live: SGO returned 0 events and SharpAPI 0
+    # matched rows for a 178-game slate, in both cases with HTTP 200 and no
+    # warning. Pro leagues were unaffected because everyone spells those with the
+    # mascot, which is precisely why it survived so long.
+    #
+    # This is NOT harvester's one-sided containment, which `_team_match` still
+    # declines above: BOTH sides must match, and the direction is fixed -- theirs
+    # subset of ours, never the reverse. A generic provider name cannot widen to
+    # swallow several of our games.
+    #
+    # Known residual: an abbreviation sharing no word with the full name still
+    # misses -- "UMass" vs "Massachusetts Minutemen". Counted by callers rather
+    # than guessed at, because attaching odds to the WRONG game is worse than
+    # attaching none.
+    return ((home_w <= g_home_w and away_w <= g_away_w)
+            or (home_w <= g_away_w and away_w <= g_home_w))
 
 
 def _normalize_row(
@@ -606,7 +630,13 @@ async def fetch_oddsapiio(
     return out
 
 
-_SGO_LEAGUE_IDS = {"mlb": "MLB", "nfl": "NFL", "cfb": "NCAAF", "soccer_mls": "MLS", "nba": "NBA"}
+# Verified live 2026-09-02 against SportsGameOdds' own /v2/leagues: its
+# catalogue is exactly eight leagues -- NBA, UEFA_CHAMPIONS_LEAGUE, MLB, MLS,
+# NCAAB, NCAAF, NFL, NHL. No EPL and no tennis, which is a real coverage gap,
+# not an omission here. NHL was missing from this map though SGO serves it, so
+# even a correctly-keyed NHL job would have fetched nothing.
+_SGO_LEAGUE_IDS = {"mlb": "MLB", "nfl": "NFL", "cfb": "NCAAF", "soccer_mls": "MLS",
+                   "nba": "NBA", "nhl": "NHL"}
 
 
 def _sgo_team_id(full_name: str, league_id: str) -> str:
@@ -727,13 +757,10 @@ def _sgo_event_matches(event: dict, game: Game) -> bool:
     ev_away = ((teams.get("away") or {}).get("names") or {}).get("long") or ""
     if not ev_home or not ev_away:
         return False
-    if _team_match(ev_home, ev_away, game):
-        return True
-    eh, ea = team_name_words(ev_home), team_name_words(ev_away)
-    gh, ga = team_name_words(game.home_team_name), team_name_words(game.away_team_name)
-    if not (eh and ea and gh and ga):
-        return False
-    return (eh <= gh and ea <= ga) or (eh <= ga and ea <= gh)
+    # The subset rule now lives in _team_match itself, so every provider gets it
+    # -- SharpAPI hit the identical CFB problem and would otherwise need its own
+    # copy of the same logic.
+    return _team_match(ev_home, ev_away, game)
 
 
 async def fetch_sportsgameodds(
@@ -872,7 +899,18 @@ async def fetch_sportsgameodds(
     return out
 
 
-_PROPLINE_SPORT_KEYS = {"mlb": "baseball_mlb", "soccer_epl": "soccer_epl", "soccer_mls": "soccer_mls"}
+# Verified live 2026-09-02 against Propline's own /v1/sports (54 entries).
+# Only mlb/soccer_epl/soccer_mls were wired, so five sports it already serves
+# were never asked for. NOTE THE SPELLINGS: Propline uses `football_nfl` and
+# `football_ncaaf`, NOT the `americanfootball_*` convention ParlayAPI uses --
+# comparing the two by equality reads exactly like missing coverage, which is
+# how an earlier audit of this project concluded Propline had no NFL at all.
+_PROPLINE_SPORT_KEYS = {
+    "mlb": "baseball_mlb", "nfl": "football_nfl", "cfb": "football_ncaaf",
+    "nba": "basketball_nba", "nhl": "hockey_nhl",
+    "soccer_epl": "soccer_epl", "soccer_mls": "soccer_mls",
+    "tennis_atp": "tennis", "tennis_wta": "tennis",
+}
 
 # HALF OF PROPLINE'S ENTIRE SPEND WAS RE-ASKING WHICH MARKETS AN EVENT HAS.
 #
