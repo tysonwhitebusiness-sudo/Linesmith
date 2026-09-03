@@ -45,16 +45,20 @@ EXCUSED: dict[tuple[str, str], str] = {
     ("sportsgameodds", "soccer_epl"): "SGO's catalogue is 8 leagues and has no EPL (verified live 2026-09-02)",
     ("sportsgameodds", "tennis_atp"): "SGO serves no tennis at all",
     ("sportsgameodds", "tennis_wta"): "SGO serves no tennis at all",
-    ("parlayapi", "nhl"): "no PARLAYAPI_NHL_KEY provisioned — a provisioning gap, not a capability one",
     ("parlayapi", "tennis_atp"): "ParlayAPI has no tennis token in _PARLAYAPI_SPORT_KEYS",
     ("parlayapi", "tennis_wta"): "ParlayAPI has no tennis token in _PARLAYAPI_SPORT_KEYS",
-    ("propline", "cfb"): "1+N request shape: a 178-game slate is ~179 requests against 1,000/day",
-    ("propline", "nfl"): "pending key pooling — see 1f",
-    ("propline", "nba"): "pending key pooling — see 1f",
-    ("propline", "nhl"): "pending key pooling — see 1f",
-    ("propline", "tennis_atp"): "pending key pooling — see 1f",
-    ("propline", "tennis_wta"): "pending key pooling — see 1f",
+    # Arithmetic, not taste: Propline costs 1 + N requests per cycle, so a
+    # 178-game CFB slate is ~179 requests. Even pooled at 2,000/day that is
+    # eleven cycles, against SharpAPI's ONE request for the same slate.
+    ("propline", "cfb"): "1+N request shape — ~179 requests for a 178-game slate",
+    ("propline", "tennis_atp"): "Propline's tennis key is one bucket for both tours",
+    ("propline", "tennis_wta"): "Propline's tennis key is one bucket for both tours",
 }
+
+# The Phase 1f excuses that are GONE, kept as a record of what the gate drove:
+#   parlayapi x nhl        — was "no PARLAYAPI_NHL_KEY". Pooling made every key
+#                            usable for every sport, so NHL draws on all five.
+#   propline x nfl/nba/nhl — were "pending key pooling". Pooled and wired.
 
 SPORTS = sorted(pm.MATRIX)
 

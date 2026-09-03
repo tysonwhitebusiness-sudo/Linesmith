@@ -65,42 +65,76 @@ PARLAYAPI_SPORT_KEYS = providers._PARLAYAPI_SPORT_KEYS
 
 
 # ---------------------------------------------------------------------------
+# KEY POOLS. Phase 1f.
+# ---------------------------------------------------------------------------
+#
+# A key is a BUDGET BUCKET, not a coverage grant. Every ParlayAPI key returns the
+# identical 405-sport catalogue and every Propline key the same 54, so naming one
+# PARLAYAPI_NFL_KEY never made it an NFL key -- it stranded quota. NFL's key
+# could exhaust on a heavy Sunday while CFB's sat untouched, and NFL went dark
+# anyway because nothing could borrow the idle budget.
+#
+# Ordered: the runner reserves against each in turn and uses the first with
+# headroom, so total capacity is the SUM and it is fungible across sports.
+# Adding capacity is registering another free key, not rewiring a sport.
+#
+# Proven safe by this project's own data: on 2026-08-30 `propline` and
+# `propline_2` each spent 1,000 requests on the same day from the same worker,
+# so per-key quota accumulates independently and is not IP-capped.
+#
+# An unset key is SKIPPED, not an error -- PARLAYAPI_NBA_KEY has never been
+# provisioned, and a pool with a hole in it should still work.
+KEY_POOLS: dict[str, tuple[tuple[str, str | None], ...]] = {
+    "parlayapi": (
+        ("parlayapi_k1", config.PARLAYAPI_KEY),
+        ("parlayapi_k2", config.PARLAYAPI_MLB_KEY),
+        ("parlayapi_k3", config.PARLAYAPI_NFL_KEY),
+        ("parlayapi_k4", config.PARLAYAPI_CFB_KEY),
+        ("parlayapi_k5", config.PARLAYAPI_SOCCER_KEY),
+        ("parlayapi_k6", config.PARLAYAPI_NBA_KEY),
+    ),
+    "propline": (
+        ("propline_k1", config.PROPLINE_KEY),
+        ("propline_k2", config.PROPLINE_2_KEY),
+    ),
+    "sportsgameodds": (
+        ("sgo_k1", config.SPORTSGAMEODDS_KEY),
+        ("sgo_k2", config.SPORTSGAMEODDS_MULTISPORT_KEY),
+    ),
+}
+
+# The old sport-labelled provider_ids keep their spend history; the pooled ids
+# start clean. That is deliberate -- provider_usage rows are a real record of
+# what each vendor account spent, and rewriting them to a new naming scheme
+# would falsify it.
+
+
+# ---------------------------------------------------------------------------
 # ACTIVATION. What we actually call today.
 # ---------------------------------------------------------------------------
 
 # sport -> providers, IN RUN ORDER. Order matters: jobs run these sequentially,
 # so it is behaviour, not presentation.
 MATRIX: dict[str, tuple[str, ...]] = {
-    "mlb": ("sharpapi", "sharpapi_lines", "oddsapiio", "propline"),
-    # MLB HAS NO ParlayAPI ROW ON PURPOSE, and it is a real gap, not an
-    # oversight: ParlayAPI serves MLB and PARLAYAPI_MLB_KEY has been set all
-    # along, so MLB is missing a provider it could have. Gate 10.1 fails on it
-    # deliberately.
+    "mlb": ("sharpapi", "sharpapi_lines", "oddsapiio", "propline", "parlayapi"),
+    # MLB gained ParlayAPI here. Gate 10 found it missing — ParlayAPI serves MLB
+    # and a key was set all along — and it was briefly wired as `parlayapi_mlb`
+    # and reverted, because fixing one gate check by adding a FIFTH sport-labelled
+    # key made another worse. Pooling closes it properly: one `parlayapi` row,
+    # drawing on every key.
     #
-    # It was briefly wired here as `parlayapi_mlb` and reverted, because that
-    # fixed one gate check by making another worse — adding a FIFTH
-    # sport-labelled key to the exact set Phase 1f exists to delete, so 1f would
-    # have had to rewrite it. A key is a budget bucket, not a coverage grant.
-    # 1f closes this once, correctly, as part of pooling.
-    #
-    # The budget arithmetic 1f will need, worked out here so it is not
-    # re-derived: ParlayAPI is 1,000/MONTH, about 33 requests a day, at one
-    # request per sport per cycle. Tier 1 ticks every 2.5 minutes, so an ungated
-    # spec there wants 576/day — 17x over, and a blown MONTHLY cap costs the rest
-    # of the month rather than the rest of the day. Tier 1's ParlayAPI needs a
-    # floor of roughly 45 minutes, or the proximity allocation. The other sports
-    # do not: their jobs tick at 20 minutes AND route through
-    # gameday.should_fetch_paid_providers, which measurably holds them inside
-    # budget — parlayapi_nfl spent 23 requests in all of August.
-    "soccer_epl": ("sharpapi", "sharpapi_lines", "propline_2", "parlayapi_soccer"),
-    "soccer_mls": ("sharpapi", "sharpapi_lines", "propline_2", "parlayapi_soccer",
-                   "sportsgameodds_multisport"),
+    # CFB IS THE ONE SPORT WITHOUT PROPLINE, and it is arithmetic rather than
+    # taste: Propline costs 1 + N requests per cycle, so a 178-game CFB slate is
+    # ~179 requests. Even pooled at 2,000/day that is eleven cycles, against
+    # SharpAPI's one request for the same slate. Its shape suits small slates.
+    "soccer_epl": ("sharpapi", "sharpapi_lines", "propline", "parlayapi"),
+    "soccer_mls": ("sharpapi", "sharpapi_lines", "propline", "parlayapi", "sportsgameodds"),
     "tennis_atp": ("sharpapi", "sharpapi_lines"),
     "tennis_wta": ("sharpapi", "sharpapi_lines"),
-    "nfl": ("sharpapi", "sharpapi_lines", "parlayapi_nfl", "sportsgameodds_multisport"),
-    "cfb": ("sharpapi", "sharpapi_lines", "parlayapi_cfb", "sportsgameodds_multisport"),
-    "nba": ("sharpapi", "sharpapi_lines", "parlayapi_nba", "sportsgameodds_multisport"),
-    "nhl": ("sharpapi", "sharpapi_lines", "sportsgameodds_multisport"),
+    "nfl": ("sharpapi", "sharpapi_lines", "propline", "parlayapi", "sportsgameodds"),
+    "cfb": ("sharpapi", "sharpapi_lines", "parlayapi", "sportsgameodds"),
+    "nba": ("sharpapi", "sharpapi_lines", "propline", "parlayapi", "sportsgameodds"),
+    "nhl": ("sharpapi", "sharpapi_lines", "propline", "parlayapi", "sportsgameodds"),
 }
 
 # PHASE 1d WIDENING, 2026-09-03. SharpAPI added to all eight sports and NHL given
@@ -164,70 +198,71 @@ def _oddsapiio(sport: str, yield_fn) -> ProviderSpec:
     )
 
 
-def _propline(sport: str, yield_fn, second_account: bool) -> ProviderSpec:
-    """Two real vendor accounts, not one key used twice — `propline` (MLB) and
-    `propline_2` (soccer). They had a shared spend counter until task 5.2, which
-    is why `propline` appeared to pin at exactly 1000/1001 every day."""
-    pid = "propline_2" if second_account else "propline"
-    key = config.PROPLINE_2_KEY if second_account else config.PROPLINE_KEY
+def _propline(sport: str, yield_fn) -> ProviderSpec:
+    """Pooled across both real Propline accounts.
+
+    They were `propline` (MLB) and `propline_2` (soccer) — two vendor accounts
+    with separate 1,000/day budgets, each locked to one sport by naming. Pooled,
+    a quiet soccer day funds a heavy MLB one.
+
+    Keeps the 25-minute floor from Phase 1a: with the /markets cache Propline
+    costs 1 + N requests per cycle, and even two pooled keys do not make a
+    2.5-minute cadence affordable.
+    """
     return ProviderSpec(
-        provider_id=pid,
-        enabled=config.PROPLINE_2_ENABLED if second_account else config.PROPLINE_ENABLED,
-        fetch=lambda client, games, yf: fetch_propline(client, key, games, sport, provider_id=pid),
+        provider_id="propline",
+        enabled=config.PROPLINE_ENABLED or config.PROPLINE_2_ENABLED,
+        fetch=None,
+        pool=KEY_POOLS["propline"],
+        fetch_keyed=lambda client, games, yf, key: fetch_propline(
+            client, key, games, sport, provider_id="propline"),
         cap_kind="daily",
-        cap_limit=config.PROPLINE_2_DAILY_LIMIT if second_account else config.PROPLINE_DAILY_LIMIT,
-        # Only the MLB account carries a cadence floor today. propline_2 is at a
-        # fraction of its budget, and EPL and MLS SHARE its provider_id — one
-        # throttle key would make one soccer job block the other. That needs
-        # per-key pooling (Phase 1f), not a floor.
-        min_interval_seconds=(None if second_account else 25 * 60),
+        cap_limit=config.PROPLINE_DAILY_LIMIT,
+        min_interval_seconds=25 * 60,
     )
-
-
-_PARLAYAPI: dict[str, tuple[str, str | None, bool, int, int]] = {
-    "nfl": ("parlayapi_nfl", config.PARLAYAPI_NFL_KEY, config.PARLAYAPI_NFL_ENABLED,
-            config.PARLAYAPI_NFL_MONTHLY_LIMIT, config.PARLAYAPI_NFL_SOFT_CAP),
-    "cfb": ("parlayapi_cfb", config.PARLAYAPI_CFB_KEY, config.PARLAYAPI_CFB_ENABLED,
-            config.PARLAYAPI_CFB_MONTHLY_LIMIT, config.PARLAYAPI_CFB_SOFT_CAP),
-    "nba": ("parlayapi_nba", config.PARLAYAPI_NBA_KEY, config.PARLAYAPI_NBA_ENABLED,
-            config.PARLAYAPI_NBA_MONTHLY_LIMIT, config.PARLAYAPI_NBA_SOFT_CAP),
-    # MLS reuses EPL's identity — same real account, so same provider_id and one
-    # shared monthly budget.
-    "soccer_epl": ("parlayapi_soccer", config.PARLAYAPI_SOCCER_KEY, config.PARLAYAPI_SOCCER_ENABLED,
-                   config.PARLAYAPI_SOCCER_MONTHLY_LIMIT, config.PARLAYAPI_SOCCER_SOFT_CAP),
-    "soccer_mls": ("parlayapi_soccer", config.PARLAYAPI_SOCCER_KEY, config.PARLAYAPI_SOCCER_ENABLED,
-                   config.PARLAYAPI_SOCCER_MONTHLY_LIMIT, config.PARLAYAPI_SOCCER_SOFT_CAP),
-    "mlb": ("parlayapi_mlb", config.PARLAYAPI_MLB_KEY, config.PARLAYAPI_MLB_ENABLED,
-            config.PARLAYAPI_MONTHLY_LIMIT, config.PARLAYAPI_MLB_SOFT_CAP),
-}
 
 
 def _parlayapi(sport: str, yield_fn) -> ProviderSpec:
-    pid, key, enabled, limit, soft = _PARLAYAPI[sport]
+    """Pooled across every ParlayAPI key.
+
+    All of them return the identical 405-sport catalogue, so the per-sport names
+    were budget buckets wearing sport labels. 1,000/MONTH each; five provisioned
+    is 5,000 fungible across eight sports instead of 1,000 stranded per sport.
+
+    45-minute floor. ParlayAPI is ~33 requests/day per key at one request per
+    sport per cycle, and MLB's Tier 1 ticks every 2.5 minutes — 576/day ungated,
+    17x over. A blown MONTHLY cap costs the rest of the month, so the floor is
+    applied everywhere rather than only where a proximity gate is missing.
+    """
     return ProviderSpec(
-        provider_id=pid,
-        enabled=enabled,
-        fetch=lambda client, games, yf: fetch_parlayapi(client, key, games, sport),
+        provider_id="parlayapi",
+        enabled=any(k for _, k in KEY_POOLS["parlayapi"]),
+        fetch=None,
+        pool=KEY_POOLS["parlayapi"],
+        fetch_keyed=lambda client, games, yf, key: fetch_parlayapi(client, key, games, sport),
         cap_kind="monthly",
-        cap_limit=limit,  # hard limit; soft_cap stops earlier where set
-        soft_cap=soft or None,
+        cap_limit=config.PARLAYAPI_MONTHLY_LIMIT,
+        soft_cap=config.PARLAYAPI_SOFT_CAP or None,
+        min_interval_seconds=45 * 60,
     )
 
 
-def _sgo(sport: str, yield_fn, multisport: bool) -> ProviderSpec:
-    """Two separate real accounts. The multisport one is dedicated to NFL/CFB/NBA
-    so its quota never competes with MLB's — and its key being undeclared on
-    Render is what removed game lines from those three sports entirely."""
+def _sgo(sport: str, yield_fn) -> ProviderSpec:
+    """Pooled across both SportsGameOdds accounts.
+
+    They were split so NFL/CFB's usage could not compete with MLB's — a real
+    concern under per-sport keys, and one pooling solves directly: whichever
+    account has headroom serves whichever sport needs it.
+    """
     return ProviderSpec(
-        provider_id="sportsgameodds_multisport" if multisport else "sportsgameodds",
-        enabled=(config.SPORTSGAMEODDS_MULTISPORT_ENABLED if multisport
-                 else config.SPORTSGAMEODDS_ENABLED),
-        fetch=lambda client, games, yf: fetch_sportsgameodds(
-            client,
-            config.SPORTSGAMEODDS_MULTISPORT_KEY if multisport else config.SPORTSGAMEODDS_KEY,
-            games, config.SPORTSGAMEODDS_RATE_PER_MIN, yield_fn=yf),
+        provider_id="sportsgameodds",
+        enabled=any(k for _, k in KEY_POOLS["sportsgameodds"]),
+        fetch=None,
+        pool=KEY_POOLS["sportsgameodds"],
+        fetch_keyed=lambda client, games, yf, key: fetch_sportsgameodds(
+            client, key, games, config.SPORTSGAMEODDS_RATE_PER_MIN, yield_fn=yf),
         cap_kind="monthly",
-        cap_limit=config.SPORTSGAMEODDS_MONTHLY_SOFT_CAP,  # soft cap, not the vendor hard limit
+        cap_limit=config.SPORTSGAMEODDS_MONTHLY_SOFT_CAP,
         spend_unit="objects",
     )
 
@@ -236,15 +271,9 @@ _BUILDERS: dict[str, Callable[[str, object], ProviderSpec]] = {
     "sharpapi": lambda sport, yf: _sharpapi(sport, yf, lines=False),
     "sharpapi_lines": lambda sport, yf: _sharpapi(sport, yf, lines=True),
     "oddsapiio": _oddsapiio,
-    "propline": lambda sport, yf: _propline(sport, yf, second_account=False),
-    "propline_2": lambda sport, yf: _propline(sport, yf, second_account=True),
-    "parlayapi_nfl": _parlayapi,
-    "parlayapi_cfb": _parlayapi,
-    "parlayapi_nba": _parlayapi,
-    "parlayapi_mlb": _parlayapi,
-    "parlayapi_soccer": _parlayapi,
-    "sportsgameodds": lambda sport, yf: _sgo(sport, yf, multisport=False),
-    "sportsgameodds_multisport": lambda sport, yf: _sgo(sport, yf, multisport=True),
+    "propline": _propline,
+    "parlayapi": _parlayapi,
+    "sportsgameodds": _sgo,
 }
 
 

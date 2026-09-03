@@ -88,6 +88,51 @@ async def run_provider_specs(
                 )
 
         cap = spec.effective_cap
+
+        # POOLED KEYS. A key is a BUDGET BUCKET, not a coverage grant: all five
+        # ParlayAPI keys return the identical 405-sport catalogue, so naming one
+        # PARLAYAPI_NFL_KEY never made it an NFL key — it stranded quota. NFL's
+        # key could exhaust on a heavy Sunday while CFB's sat untouched, and NFL
+        # went dark anyway because nothing could borrow the unused budget.
+        #
+        # Reserve against each key IN ORDER and use the first with headroom, so
+        # quota is fungible across sports. Sequential rather than round-robin:
+        # both spend the same total, but sequential means you always know how
+        # many keys remain and failure is gradual, where round-robin exhausts
+        # every key at once.
+        if spec.pool:
+            chosen = None
+            for pid, key in spec.pool:
+                if not key:
+                    continue  # never provisioned — skip, do not fail the pool
+                if spec.cap_kind == "none" or cap is None:
+                    chosen = (pid, key)
+                    break
+                got = (await db.try_reserve_daily(pid, 1, cap) if spec.cap_kind == "daily"
+                       else await db.try_reserve_monthly(pid, 1, cap, unit=spec.spend_unit))
+                if got:
+                    chosen = (pid, key)
+                    break
+            if chosen is None:
+                return FetchOutcome(
+                    provider_id=spec.provider_id,
+                    warnings=[f"{spec.provider_id}: every key in the pool is at its "
+                              f"{spec.cap_kind} cap ({cap}) — easing off"],
+                )
+            spend_pid = chosen[0]
+            outcome = await spec.fetch_keyed(client, games, yield_fn, chosen[1])
+            if spec.min_interval_seconds:
+                await db.write_snapshot(f"provider-throttle:{spec.provider_id}", str(time.time()))
+            spend = outcome.objects if spec.spend_unit == "objects" else outcome.requests
+            if spend and spec.cap_kind != "none":
+                remainder = max(0, spend - 1)
+                if remainder:
+                    fn = db.record_daily_spend if spec.cap_kind == "daily" else db.record_monthly_spend
+                    kw = {"objects": remainder} if spec.spend_unit == "objects" else {"requests": remainder}
+                    # Charged to the KEY actually used, not to the spec.
+                    await fn(spend_pid, **kw)
+            return outcome
+
         if spec.cap_kind != "none" and cap is not None:
             # Task 5.12 (P4 M8): CHECK AND RESERVE ARE ONE STATEMENT.
             # This used to read `spent` and compare it, then spend later — so

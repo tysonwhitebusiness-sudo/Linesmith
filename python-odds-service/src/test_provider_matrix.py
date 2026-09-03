@@ -44,19 +44,17 @@ def check(label, actual, expected):
 # which keys the environment has, so they differ between a local run and the
 # Render worker, and freezing them would make this assert about a machine.
 EXPECTED = {
-    "mlb": [SHARP, SHARP_L, ("oddsapiio", "daily", 500, "requests", None),
-            ("propline", "daily", 1000, "requests", 1500)],
-    "soccer_epl": [SHARP, SHARP_L, ("propline_2", "daily", 1000, "requests", None),
-                   ("parlayapi_soccer", "monthly", 1000, "requests", None)],
-    "soccer_mls": [SHARP, SHARP_L, ("propline_2", "daily", 1000, "requests", None),
-                   ("parlayapi_soccer", "monthly", 1000, "requests", None), SGO_MULTI],
+    "mlb": [SHARP, SHARP_L, ("oddsapiio", "daily", 500, "requests", None), ("propline", "daily", 1000, "requests", 1500), ("parlayapi", "monthly", 1000, "requests", 2700)],
+    "soccer_epl": [SHARP, SHARP_L, ("propline", "daily", 1000, "requests", 1500), ("parlayapi", "monthly", 1000, "requests", 2700)],
+    "soccer_mls": [SHARP, SHARP_L, ("propline", "daily", 1000, "requests", 1500), ("parlayapi", "monthly", 1000, "requests", 2700), ("sportsgameodds", "monthly", 2000, "objects", None)],
     "tennis_atp": [SHARP, SHARP_L],
     "tennis_wta": [SHARP, SHARP_L],
-    "nfl": [SHARP, SHARP_L, ("parlayapi_nfl", "monthly", 1000, "requests", None), SGO_MULTI],
-    "cfb": [SHARP, SHARP_L, ("parlayapi_cfb", "monthly", 1000, "requests", None), SGO_MULTI],
-    "nba": [SHARP, SHARP_L, ("parlayapi_nba", "monthly", 1000, "requests", None), SGO_MULTI],
-    "nhl": [SHARP, SHARP_L, SGO_MULTI],
+    "nfl": [SHARP, SHARP_L, ("propline", "daily", 1000, "requests", 1500), ("parlayapi", "monthly", 1000, "requests", 2700), ("sportsgameodds", "monthly", 2000, "objects", None)],
+    "cfb": [SHARP, SHARP_L, ("parlayapi", "monthly", 1000, "requests", 2700), ("sportsgameodds", "monthly", 2000, "objects", None)],
+    "nba": [SHARP, SHARP_L, ("propline", "daily", 1000, "requests", 1500), ("parlayapi", "monthly", 1000, "requests", 2700), ("sportsgameodds", "monthly", 2000, "objects", None)],
+    "nhl": [SHARP, SHARP_L, ("propline", "daily", 1000, "requests", 1500), ("parlayapi", "monthly", 1000, "requests", 2700), ("sportsgameodds", "monthly", 2000, "objects", None)],
 }
+
 
 # The URL each provider's fetch actually hits, query string stripped.
 EXPECTED_URLS = {
@@ -65,9 +63,11 @@ EXPECTED_URLS = {
     ("tennis_atp", 0): "https://api.sharpapi.io/api/v1/odds",
     ("soccer_epl", 2): "https://api.prop-line.com/v1/sports/soccer_epl/events",
     ("soccer_mls", 2): "https://api.prop-line.com/v1/sports/soccer_mls/events",
-    ("nfl", 2): "https://parlay-api.com/v1/sports/americanfootball_nfl/props",
+    ("nfl", 2): "https://api.prop-line.com/v1/sports/football_nfl/events",
+    ("nfl", 3): "https://parlay-api.com/v1/sports/americanfootball_nfl/props",
     ("cfb", 2): "https://parlay-api.com/v1/sports/americanfootball_ncaaf/props",
-    ("nba", 2): "https://parlay-api.com/v1/sports/basketball_nba/props",
+    ("nba", 3): "https://parlay-api.com/v1/sports/basketball_nba/props",
+    ("nhl", 2): "https://api.prop-line.com/v1/sports/hockey_nhl/events",
 }
 
 
@@ -91,9 +91,14 @@ _GAMES = [Game("x", "g1", "Toronto Blue Jays", "New York Yankees", "TOR", "NYY",
 
 
 def _first_url(spec):
+    """A pooled spec has no `.fetch` — the runner picks a key and calls
+    `fetch_keyed`. Probe whichever the spec actually uses."""
     c = _C()
     try:
-        asyncio.run(spec.fetch(c, _GAMES, None))
+        if spec.pool:
+            asyncio.run(spec.fetch_keyed(c, _GAMES, None, "probe-key"))
+        else:
+            asyncio.run(spec.fetch(c, _GAMES, None))
     except Exception:
         pass
     return c.urls[0] if c.urls else None
@@ -133,8 +138,8 @@ def test_sgo_coverage_gap_is_real():
     and no tennis at all. Verified live 2026-09-02 — a real coverage difference,
     not an oversight to normalise away."""
     print("\nmatrix - SportsGameOdds' real coverage gap")
-    check("EPL has no SGO", "sportsgameodds_multisport" in pm.MATRIX["soccer_epl"], False)
-    check("MLS does have SGO", "sportsgameodds_multisport" in pm.MATRIX["soccer_mls"], True)
+    check("EPL has no SGO", "sportsgameodds" in pm.MATRIX["soccer_epl"], False)
+    check("MLS does have SGO", "sportsgameodds" in pm.MATRIX["soccer_mls"], True)
     check("tennis has no SGO", any("sportsgameodds" in p for p in pm.MATRIX["tennis_atp"]), False)
     check("SGO token map excludes EPL", "soccer_epl" in pm.SGO_LEAGUE_IDS, False)
 
@@ -175,22 +180,45 @@ def test_nhl_is_now_wired():
     import jobs
     check("refreshNhlJob registered",
           "refreshNhlJob" in [n for n, _, _ in jobs.JOB_REGISTRY], True)
-    # No PARLAYAPI_NHL_KEY exists — a provisioning gap, not a capability one.
-    check("ParlayAPI absent from NHL",
-          any(p.startswith("parlayapi") for p in pm.MATRIX["nhl"]), False)
+    # NHL now HAS ParlayAPI. Phase 1f both pooled the keys and added the missing
+    # icehockey_nhl token — without that token the pooled row would have fetched
+    # against a None sport key and returned zero rows, silently.
+    check("ParlayAPI now serves NHL",
+          any(p == "parlayapi" for p in pm.MATRIX["nhl"]), True)
 
 
-def test_propline_stays_off_large_slates():
-    """Propline carries 19 of 19 prop books but costs 1 + N requests per cycle.
-    A 178-game CFB slate is ~179 requests against a 1,000/DAY cap — it would
-    exhaust in five cycles. It stays on small slates until Phase 1f's key
-    pooling."""
-    print("\nmatrix - Propline stays off large slates")
-    for sport in ("cfb", "nfl", "nba", "nhl"):
-        check(f"{sport} has no propline",
-              any(p.startswith("propline") for p in pm.MATRIX[sport]), False)
-    check("mlb keeps propline", "propline" in pm.MATRIX["mlb"], True)
-    check("soccer keeps propline_2", "propline_2" in pm.MATRIX["soccer_epl"], True)
+def test_propline_widened_everywhere_except_cfb():
+    """Phase 1f pooled Propline's two accounts, so it widened from 2 sports to 6.
+
+    CFB is the one exclusion, and it is arithmetic rather than taste: Propline
+    costs 1 + N requests per cycle, so a 178-game CFB slate is ~179 requests.
+    Even pooled at 2,000/day that is eleven cycles, against SharpAPI's ONE
+    request for the same slate.
+    """
+    print("\nmatrix - Propline widened, CFB excepted")
+    for sport in ("mlb", "nfl", "nba", "nhl", "soccer_epl", "soccer_mls"):
+        check(f"{sport} has propline", "propline" in pm.MATRIX[sport], True)
+    check("cfb does NOT", "propline" in pm.MATRIX["cfb"], False)
+
+
+def test_keys_are_pooled_not_sport_labelled():
+    """The core of Phase 1f. A key is a BUDGET BUCKET, not a coverage grant —
+    every ParlayAPI key returns the same 405-sport catalogue, so the per-sport
+    names stranded quota rather than granting access."""
+    print("\nmatrix - keys are pooled")
+    labelled = [p for provs in pm.MATRIX.values() for p in provs
+                if p.startswith(("parlayapi_", "propline_", "sportsgameodds_"))]
+    check("no sport-labelled provider ids remain", sorted(set(labelled)), [])
+    for family in ("parlayapi", "propline", "sportsgameodds"):
+        check(f"{family} pool declared", family in pm.KEY_POOLS, True)
+    spec = next(s for s in pm.specs_for("nfl") if s.provider_id == "parlayapi")
+    check("a pooled spec carries its pool", len(spec.pool) >= 2, True)
+    check("and a keyed fetch", spec.fetch_keyed is not None, True)
+    # An unprovisioned key stays in the pool as an empty slot rather than being
+    # dropped, so the runner skips it instead of the pool silently shrinking.
+    check("unprovisioned keys are kept as empty slots",
+          any(not k for _, k in pm.KEY_POOLS["parlayapi"]), True)
+
 
 
 if __name__ == "__main__":
@@ -201,6 +229,7 @@ if __name__ == "__main__":
     test_token_maps_cover_every_activated_cell()
     test_sharpapi_is_the_floor_under_every_sport()
     test_nhl_is_now_wired()
-    test_propline_stays_off_large_slates()
+    test_propline_widened_everywhere_except_cfb()
+    test_keys_are_pooled_not_sport_labelled()
     print(f"\n{'FAILED: ' + str(_failures) if _failures else 'all passed'}")
     sys.exit(1 if _failures else 0)

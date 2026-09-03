@@ -135,6 +135,32 @@ class ProviderSpec:
     # depend on event_start being populated for all eight sports first.
     min_interval_seconds: float | None = None
 
+    # A KEY POOL: ordered ((provider_id, api_key), ...) for one vendor.
+    #
+    # A key is a BUDGET BUCKET, not a coverage grant. All five ParlayAPI keys
+    # return the identical 405-sport catalogue, so naming one PARLAYAPI_NFL_KEY
+    # did not make it an NFL key -- it stranded quota: NFL's key could exhaust on
+    # a heavy Sunday while CFB's sat untouched, and NFL went dark anyway because
+    # nothing could borrow the unused budget.
+    #
+    # Pooled, the runner reserves against each key IN ORDER and uses the first
+    # with headroom. Quota becomes fungible across sports; capacity is added by
+    # registering another free key rather than by rewiring a sport.
+    #
+    # Drained SEQUENTIALLY rather than round-robin. Both spend the same total,
+    # but sequential means you always know how many keys remain and failure is
+    # gradual, where round-robin exhausts every key at once. (Invert this only
+    # for a provider capped on requests-per-MINUTE rather than budget, where
+    # spreading buys real concurrency.)
+    #
+    # Per-key accounting needs no schema change: provider_usage already keys
+    # spend by arbitrary provider_id strings. Per-SPORT attribution is not lost
+    # either -- _run_timed's breadcrumb records requests per JOB, and jobs are
+    # per sport.
+    pool: tuple[tuple[str, str], ...] | None = None
+    # Called as fetch_keyed(client, games, yield_fn, api_key) when `pool` is set.
+    fetch_keyed: Callable[..., Awaitable["FetchOutcome"]] | None = None
+
     @property
     def effective_cap(self) -> int | None:
         if self.cap_limit is None:
@@ -1139,20 +1165,15 @@ _PARLAYAPI_SPORT_KEYS = {
     "mlb": "baseball_mlb",
     "nfl": "americanfootball_nfl",
     "cfb": "americanfootball_ncaaf",
-    "soccer_epl": "soccer_epl",
-    # ParlayAPI's own key differs from Propline's for MLS (soccer_usa_mls vs
-    # soccer_mls) — confirmed live per docs/soccer-gameplan-2026-08-22.md §3,
-    # a real per-vendor naming mismatch, not a typo.
-    "soccer_mls": "soccer_usa_mls",
-    # Best-guess standard the-odds-api-compatible key (both ParlayAPI and
-    # Propline advertise drop-in compatibility with that convention) — not
-    # yet live-verified against a real call the way NFL/CFB/soccer's keys
-    # were, since no PARLAYAPI_NBA_KEY exists yet (see config.py). Real
-    # risk: if this string is wrong once a key is added, the fetch just
-    # returns 0 rows (fetch_parlayapi's own real behavior on an unmatched
-    # sport key already handles that gracefully) — confirm/correct this
-    # against production logs the first time PARLAYAPI_NBA_KEY is set.
     "nba": "basketball_nba",
+    # NHL added 2026-09-03 with Phase 1f. ParlayAPI's catalogue covers it (405
+    # sports, verified live); it was simply never mapped, so NHL's pooled
+    # parlayapi row would have fetched against a None sport key and returned
+    # zero rows silently — the exact failure test_provider_matrix's
+    # "every activated cell has a vendor token" check exists to prevent.
+    "nhl": "icehockey_nhl",
+    "soccer_epl": "soccer_epl",
+    "soccer_mls": "soccer_usa_mls",
 }
 
 
