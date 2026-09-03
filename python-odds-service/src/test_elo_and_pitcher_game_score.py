@@ -39,7 +39,10 @@ def check_close(label: str, actual, expected, tol=1e-9) -> None:
 
 async def cleanup():
     pool = await db.get_pool()
-    a = await pool.execute("DELETE FROM team_elo_history WHERE team_id IN ($1, $2)", TEST_HOME_TEAM, TEST_AWAY_TEAM)
+    # str() — team_id is TEXT since 20260901091000_elo_team_id_text. This raw
+    # SQL bypasses db.py's helpers, so it has to normalise for itself.
+    a = await pool.execute("DELETE FROM team_elo_history WHERE team_id IN ($1, $2)",
+                           str(TEST_HOME_TEAM), str(TEST_AWAY_TEAM))
     b = await pool.execute("DELETE FROM pitcher_game_score_history WHERE pitcher_id = $1", TEST_PITCHER)
     print(f"\ncleanup: {a}, {b}")
 
@@ -59,7 +62,10 @@ async def main():
         check_close("get_current_elo elo matches", cur.elo if cur else None, 1520.0)
         check("get_current_elo game_date round-trips as ISO string", cur.game_date if cur else None, "1900-04-01")
         check("get_current_elo was_home True", cur.was_home if cur else None, True)
-        check("get_current_elo opponent_team_id", cur.opponent_team_id if cur else None, TEST_AWAY_TEAM)
+        # The CONTRACT after the text migration: callers may PASS an int (they still
+        # hold ESPN's numeric ids), and what comes back is TEXT. Asserting the int
+        # here would re-hide exactly the mismatch that killed elo writes for two days.
+        check("get_current_elo opponent_team_id is text", cur.opponent_team_id if cur else None, str(TEST_AWAY_TEAM))
 
         print("\n=== write_elo_history: idempotent re-write (ON CONFLICT DO NOTHING) ===")
         written2 = await db.write_elo_history(rows)

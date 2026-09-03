@@ -665,13 +665,18 @@ def _rowcount_from_status(status: str) -> int:
 
 @dataclass
 class EloHistoryInput:
-    team_id: int
+    # `int | str` because team_elo_history.team_id BECAME text on 2026-09-01
+    # (migration 20260901091000_elo_team_id_text) to match every other id column
+    # in the database, and callers still hold ESPN's numeric ids. Both are
+    # accepted here and normalised to str at the query, so no caller has to
+    # know which side of that migration it is on.
+    team_id: int | str
     season: int
     game_pk: int
     game_date: str
     elo: float
     games_played: int
-    opponent_team_id: int | None
+    opponent_team_id: int | str | None
     was_home: bool
     # Required, not defaulted — team_elo_history was MLB-only by schema
     # until 2026-08-27's migration added this column; every writer must
@@ -699,13 +704,18 @@ async def write_elo_history(rows: list[EloHistoryInput]) -> int:
                     ON CONFLICT (sport, team_id, season, game_pk) DO NOTHING
                     """,
                     r.sport,
-                    r.team_id,
+                    # str() — the column is text as of 2026-09-01. Passing the
+                    # int these callers still hold raises asyncpg DataError
+                    # "expected str, got int", which is what silently stopped
+                    # EVERY elo write for two days: newest mlb row 2026-09-01,
+                    # the day of the migration, while games kept being played.
+                    str(r.team_id),
                     r.season,
                     r.game_pk,
                     _to_date(r.game_date),
                     r.elo,
                     r.games_played,
-                    r.opponent_team_id,
+                    None if r.opponent_team_id is None else str(r.opponent_team_id),
                     r.was_home,
                 )
                 if _rowcount_from_status(status) > 0:
@@ -722,7 +732,7 @@ class CurrentEloRow:
     was_home: bool
 
 
-async def get_current_elo(team_id: int, season: int, sport: str = "mlb") -> CurrentEloRow | None:
+async def get_current_elo(team_id: int | str, season: int, sport: str = "mlb") -> CurrentEloRow | None:
     """A team's most recent rating THIS season — None if they haven't
     played a rated game yet this season. `sport` defaults to 'mlb' so
     every pre-existing call site (elo_model.py) keeps working unchanged;
@@ -735,7 +745,10 @@ async def get_current_elo(team_id: int, season: int, sport: str = "mlb") -> Curr
         ORDER BY game_date DESC, id DESC LIMIT 1
         """,
         sport,
-        team_id,
+        # Normalised here, at the one shared reader, rather than at each caller
+        # — the same reasoning CLAUDE.md gives for canonical_bookmaker living at
+        # write_game_odds_book_lines. A new caller gets it for free.
+        str(team_id),
         season,
     )
     if row is None:
@@ -749,7 +762,7 @@ async def get_current_elo(team_id: int, season: int, sport: str = "mlb") -> Curr
     )
 
 
-async def get_latest_elo_before_season(team_id: int, season: int, sport: str = "mlb") -> CurrentEloRow | None:
+async def get_latest_elo_before_season(team_id: int | str, season: int, sport: str = "mlb") -> CurrentEloRow | None:
     """A team's most recent rating from ANY season before the given one —
     the season-reversion path's source value."""
     pool = await get_pool()
@@ -760,7 +773,10 @@ async def get_latest_elo_before_season(team_id: int, season: int, sport: str = "
         ORDER BY season DESC, game_date DESC, id DESC LIMIT 1
         """,
         sport,
-        team_id,
+        # Normalised here, at the one shared reader, rather than at each caller
+        # — the same reasoning CLAUDE.md gives for canonical_bookmaker living at
+        # write_game_odds_book_lines. A new caller gets it for free.
+        str(team_id),
         season,
     )
     if row is None:
