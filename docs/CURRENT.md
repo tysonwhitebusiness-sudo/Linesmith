@@ -64,48 +64,52 @@ them. Phases 0-9. The separate infrastructure doc was merged into it on operator
 instruction: interleaving two plans is how steps get skipped.
 Artifact: `https://claude.ai/code/artifact/ab49524a-4b4d-4946-b481-47681d81fe88`
 
-### Phase 1 progress — 6.5 of 7 steps done
+### Phase 1 — ALL CODE WORK DONE. Gate 10: 11 failures -> 8, all deploy-bound.
 
-**BLOCKER: still not deployed.** The worker runs `81948e0`, predating everything
-below. `autoDeploy: no`, and the standing instruction is not to deploy without
-asking. All of it is committed and tested locally, and inert in production.
+**THE ONLY BLOCKER IS A DEPLOY.** The worker runs `81948e0`, which predates
+everything from 1c onward. `autoDeploy: no` and the standing instruction is not
+to deploy without asking, so all of this is committed, locally tested, and inert.
 
 | | Status |
 |---|---|
-| **1a** cadence | DONE — `/markets` cached, `min_interval_seconds`, Propline at 25min. **Verified live**: 672 -> 677 in 20min where the old code spent ~250 |
-| **1b** keys | DONE — 4 keys set, deploy live. `PARLAYAPI_NBA_KEY` unprovisioned |
-| **1c** matrix | DONE — 5 spec builders -> 1 declared matrix, proven behaviour-preserving on specs AND fetch URLs |
-| **1d** widen | DONE — SharpAPI 2 -> 8 sports, `refreshNhlJob` created, SGO gains NHL |
-| **1e** dedupe | DONE — consensus counted DraftKings 3x; 21.5% of live props affected |
-| **1f** pools + scheduler | **NOT STARTED** |
-| **1g** monitoring | DONE — never-fetching jobs now unhealthy; `archiveFreshness` + `captureLatency` live |
-| **1h** bridge | **HALF DONE** — `archiveClosingLinesJob` live (1,475 rows, freeze proven). `archiveResultsJob` and prop archiving remain |
+| **1a** cadence | `/markets` cached, `min_interval_seconds`, Propline 25min. **Verified live**: 672 -> 677 in 20min |
+| **1b** keys | 4 keys set + deployed. `PARLAYAPI_NBA_KEY` still unprovisioned |
+| **1c** matrix | 5 spec builders -> 1 matrix; proven behaviour-preserving on specs AND fetch URLs |
+| **1d** widen | SharpAPI 2 -> 8 sports; `refreshNhlJob`; SGO gains NHL |
+| **1e** dedupe | consensus counted DraftKings 3x — 21.5% of live props affected |
+| **1f** pools | keys pooled; Propline 2 -> 6 sports; MLB gains ParlayAPI |
+| **1g** monitoring | never-fetching jobs unhealthy; `archiveFreshness` + `captureLatency` |
+| **1h** bridge | `archiveClosingLinesJob` + `archivePropsJob` + `archiveResultsJob`, freeze proven |
 
-### What 1h proved
+### What the bridge captured on its first runs
 
-The freeze was tested, not asserted: inside a rolled-back transaction, a row
-whose `event_start` was moved into the past **refused** an overwrite (price stayed
-1650 against an attempted 99999); the same row with a future start **accepted**
-one. Postgres enforces it.
+1,475 book lines, **12,078 two-sided MLB props** across 16 books, and 43 settled
+games — into an archive where 100% of rows had come from a single import.
 
-Team ids resolve from the archive's own verified name->id history rather than by
-threading ids through `game_context` — MLB/NFL/EPL 100%, CFB 94%, and the misses
-are counted and reported rather than guessed.
+The freeze was **tested, not asserted**: in a rolled-back transaction a row whose
+`event_start` was moved into the past refused an overwrite (price stayed 1650
+against an attempted 99999); the same row with a future start accepted one.
 
-`captureLatency` correctly reports **EARLY** right now (MLB median 405min before
-start) because the bridge has only been run once by hand. On its 5-minute cadence
-`captured_at` is overwritten up to kickoff and the median collapses. That number
-is the thing to watch after deploying.
+### Gate 10's 8 remaining failures — every one downstream of the deploy
 
-### Left in Phase 1
+- 4 sports with no live book lines (cfb, nba, nfl, nhl)
+- 2 capture-latency medians — the bridge has only ever been run by hand, so
+  `captured_at` sits hours before kickoff. On its 5-minute cadence it is
+  overwritten up to kickoff and the median should collapse. **This is the number
+  to watch after deploying.**
+- 2 over-cap readings — `propline` 1006/1000 predates the throttle shipping,
+  `oddsapiio` 504/500
 
-1. **`archiveResultsJob`** — settled scores into `game_result`, 4h after start.
-   Needs a per-sport score fetch; the grading jobs already make similar calls, so
-   the integration point is choosing whether to reuse them.
-2. **Prop archiving** — `prop_odds` -> `prop_odds_archive`. The migration already
-   added the `bookmaker` column and extended the natural key for it.
-3. **Phase 1f** — key pools and the proximity scheduler. Also carries Propline's
-   3 -> 8 widening, held back from 1d because its 1+N cost needs pooling first.
+### What is NOT done, stated plainly
+
+The full **proximity-proportional allocator** from 1f. Pools + the per-provider
+floors (Propline 25min, ParlayAPI 45min) + the existing `gameday` tier gate cover
+the same ground for now — measured, `parlayapi_nfl` spent 23 requests in all of
+August under that gate. Whether a true allocator earns its complexity should be
+judged against real post-deploy spend rather than assumed.
+
+Also open, found but not fixed: `genericCaptureJob` and `computeMlbGameModelJob`
+each fail every run with `DataError: expected str, got int`.
 
 ### The biggest find: CFB game lines were never a missing-key problem
 
