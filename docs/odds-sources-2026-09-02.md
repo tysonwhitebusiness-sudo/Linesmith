@@ -702,7 +702,36 @@ in August and `parlayapi_cfb` **10** — the gate holding during the offseason.
 one finding seen twice: where the gate exists, a monthly cap survives a
 20-minute cadence; where it is missing, a *daily* cap dies in 80 minutes.
 
-### One real exposure: the soft caps are not active on the worker
+### CORRECTED 2026-09-02: the soft caps ARE active — I got this wrong
+
+**What this section originally claimed, and why it was wrong.** It asserted the
+`PARLAYAPI_*_SOFT_CAP` values were not in effect on the worker, inferring that
+from their absence in `render.yaml`. Queried against the live Render API, **all
+seven are set on `line-buddy-odds-worker`** — `PARLAYAPI_SOFT_CAP`,
+`_MLB_`, `_NFL_`, `_CFB_`, `_SOCCER_`, `_NBA_SOFT_CAP` and
+`SPORTSGAMEODDS_SOFT_CAP`. The 20% margin task 5.9 built **does exist where it
+runs.**
+
+The error: `render.yaml` records what is *declared*, not what is *set*. The
+dashboard holds strictly more — it also carries `DEEPSEEK_API_KEY` and
+`NEXT_PUBLIC_SUPABASE_*`, neither of which appears in the file. Declaring them
+is still worth doing so the next person can see what the worker needs, but
+absence from the file is **not** evidence of absence from the worker.
+
+**What survives, verified against the same API call:** the five provider KEYS
+really are missing —
+
+```
+SPORTSGAMEODDS_MULTISPORT_KEY   PARLAYAPI_NFL_KEY   PARLAYAPI_CFB_KEY
+PARLAYAPI_SOCCER_KEY            PARLAYAPI_NBA_KEY
+```
+
+That is the whole of the NFL/CFB/NBA outage, and it is confirmed on the live
+service rather than inferred. Also confirmed: both services are
+`not_suspended` (a `before_delete_snapshot.json` in the repo says otherwise and
+is stale, dated 2026-08-20), and the worker is `autoDeploy: no`.
+
+### The original claim, kept for the record
 
 Task 5.9 added `PARLAYAPI_*_SOFT_CAP` to stop a run-away before the hard limit,
 and CLAUDE.md records them as *"set to 800 against a hard limit of 1000, so
