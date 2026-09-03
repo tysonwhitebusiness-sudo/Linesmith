@@ -4149,3 +4149,78 @@ async def run_retention() -> dict:
         "db_size": size_row["pretty"],
         "db_size_mb": round(size_row["bytes"] / 1048576),
     }
+
+async def live_book_lines_for_games(sport: str, game_ids: list[str]) -> list:
+    """Current book lines for a set of games, newest row per
+    (game, market, side, bookmaker, source).
+
+    game_odds_book_lines is append-only per fetch, so a game accumulates many
+    rows as prices move. The bridge wants only the LATEST per book, which is
+    what DISTINCT ON gives.
+    """
+    if not game_ids:
+        return []
+    pool = await get_pool()
+    async with pool.acquire(timeout=20.0) as conn:
+        return await conn.fetch(
+            """SELECT DISTINCT ON (game_id, market, side, bookmaker, source)
+                      game_id, market, side, bookmaker, source, point, american_odds, fetched_at
+                 FROM game_odds_book_lines
+                WHERE sport = $1 AND game_id = ANY($2)
+                ORDER BY game_id, market, side, bookmaker, source, fetched_at DESC""",
+            sport, game_ids,
+        )
+
+
+async def upsert_live_capture(rows: list[dict], batch: int = 500) -> int:
+    """Write captured pre-game prices into odds_archive, FROZEN once the game
+    starts. Returns rows OFFERED, not landed — see below.
+
+    The WHERE on the DO UPDATE is the whole design (see archival_bridge.py): a
+    row whose game has begun can never be overwritten, so a late or in-play
+    price cannot rewrite a closing line. Postgres enforces it, not the caller.
+
+    BATCHED, and that is not an optimisation detail. The first version issued one
+    `execute` per row inside a single transaction so it could count landed rows
+    exactly; against a real CFB Saturday — 178 games x ~8 books x 3 markets x 2
+    sides — that is tens of thousands of round trips, and the run had not
+    finished after ten minutes. executemany cannot report per-row results, so
+    this returns the count OFFERED and callers verify what landed by querying
+    captured_at. Knowing precisely how many rows changed is not worth a job that
+    cannot finish inside its own interval.
+
+    Bookmaker names go through the same canonical_bookmaker every other writer
+    uses — game_odds_book_lines accumulated 33 spellings for 22 real books before
+    normalisation moved to the shared writers.
+    """
+    if not rows:
+        return 0
+    from entity_resolution import canonical_bookmaker
+
+    sql = """
+        INSERT INTO odds_archive
+          (sport, event_ref, game_date, event_start, home_team_id, away_team_id,
+           home_team_raw, away_team_raw, market, side, line, price, bookmaker,
+           provider, source, source_priority, is_live, captured_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'live_capture',95,false,now())
+        ON CONFLICT (sport, game_date, home_team_id, away_team_id, market, side,
+                     COALESCE(bookmaker, ''), source, COALESCE(event_ref, ''))
+          WHERE home_team_id IS NOT NULL AND away_team_id IS NOT NULL
+        DO UPDATE SET line = EXCLUDED.line,
+                      price = EXCLUDED.price,
+                      event_start = EXCLUDED.event_start,
+                      captured_at = now()
+          WHERE odds_archive.event_start > now()
+    """
+    payload = [
+        (r["sport"], r["event_ref"], r["game_date"], r["event_start"],
+         r["home_team_id"], r["away_team_id"], r["home_team_raw"], r["away_team_raw"],
+         r["market"], r["side"], r["line"], r["price"],
+         canonical_bookmaker(r["bookmaker"]) if r["bookmaker"] else None, r["provider"])
+        for r in rows
+    ]
+    pool = await get_pool()
+    for i in range(0, len(payload), batch):
+        async with pool.acquire(timeout=30.0) as conn:
+            await conn.executemany(sql, payload[i:i + batch])
+    return len(payload)

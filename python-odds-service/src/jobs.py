@@ -44,6 +44,7 @@ import nfl_pbp
 import gameday
 from game_context import load_mlb_games, load_nhl_games, load_sport_games, load_tennis_games
 from job_runner import run_provider_specs
+from archival_bridge import archive_closing_lines
 from provider_matrix import MLB_SGO_ONLY, specs_for
 from providers import (
     fetch_oddsapiio,
@@ -163,6 +164,21 @@ async def job_cfb(yield_fn=None) -> dict:
     # does, and this is what makes that generic rather than an NFL special
     # case, per the instruction not to special-case this to NFL alone.
     return await _job_multisport("refreshCfbJob", "cfb", yield_fn)
+
+
+async def job_archive_closing_lines(yield_fn=None) -> dict:
+    """THE ARCHIVAL BRIDGE. Promotes live book lines into odds_archive.
+
+    5 minutes, and the cadence is the design rather than a tuning choice: this
+    keeps upserting a not-yet-started game's price, so whatever is in the row
+    when the game begins IS the closing line. A job that instead fired AT
+    event_start would lose that game's close permanently on one missed tick,
+    with no way to recover it. Here a missed tick makes a close staler, and
+    captured_at measures exactly how stale.
+
+    Spends no provider budget — it reads live tables this worker already filled.
+    """
+    return await _run_timed("archiveClosingLinesJob", archive_closing_lines())
 
 
 async def job_nhl(yield_fn=None) -> dict:
@@ -1203,6 +1219,9 @@ JOB_REGISTRY = [
     ("refreshCfbJob", job_cfb, 20 * 60),
     ("refreshNbaJob", job_nba, 20 * 60),
     ("refreshNhlJob", job_nhl, 20 * 60),
+    # Every 5 minutes. See job_archive_closing_lines' docstring for why the
+    # cadence is load-bearing rather than a preference.
+    ("archiveClosingLinesJob", job_archive_closing_lines, 5 * 60),
     ("refreshSoccerEplJob", job_soccer_epl, 20 * 60),
     ("refreshSoccerMlsJob", job_soccer_mls, 20 * 60),
     ("refreshTennisAtpJob", job_tennis_atp, 20 * 60),

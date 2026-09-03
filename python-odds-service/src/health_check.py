@@ -147,6 +147,71 @@ async def check_job(name: str, interval_seconds: float) -> dict:
     return {"name": name, "status": "; ".join(status_bits), "healthy": healthy, "raw": summary}
 
 
+async def check_archive_freshness() -> dict:
+    """Is the TRAINING archive still being fed?
+
+    This is the check whose absence let the archive sit frozen for a month. Every
+    row of odds_archive, prop_odds_archive and game_result was written by a
+    single import on 2026-09-01; the live jobs wrote two other tables that no
+    model reads, and nothing anywhere noticed. A model trained on a frozen
+    archive decays from its first day and no backtest can include a later game.
+
+    Deliberately checks `captured_at` rather than `ingested_at`: a bulk re-import
+    would refresh ingested_at without the bridge running at all.
+    """
+    pool = await db.get_pool()
+    async with pool.acquire(timeout=15.0) as conn:
+        row = await conn.fetchrow(
+            """SELECT max(captured_at) AS newest, count(*) AS n
+                 FROM odds_archive WHERE source = 'live_capture'"""
+        )
+    if not row or row["newest"] is None:
+        return {"name": "archiveFreshness", "healthy": False,
+                "status": "NO live_capture ROWS — the archival bridge has never written"}
+    age_min = (datetime.now(timezone.utc) - row["newest"]).total_seconds() / 60
+    # archiveClosingLinesJob runs every 5 minutes; the same 2x convention
+    # check_job uses for staleness.
+    healthy = age_min <= 10
+    return {"name": "archiveFreshness", "healthy": healthy,
+            "status": (f"{'healthy' if healthy else 'STALE'} — newest capture {age_min:.0f}min ago, "
+                       f"{row['n']:,} live_capture rows total")}
+
+
+async def check_capture_latency() -> dict:
+    """HOW EARLY are we capturing a 'closing' line?
+
+    Presence is not quality. A price captured six hours before kickoff is
+    archived, fresh, and not a closing line — and it looks identical to a good
+    one unless someone measures the gap. This is exactly the confusion that made
+    the imported prop archive's 'close' no sharper than its open.
+    """
+    pool = await db.get_pool()
+    async with pool.acquire(timeout=15.0) as conn:
+        rows = await conn.fetch(
+            """SELECT sport,
+                      percentile_disc(0.5) WITHIN GROUP (
+                        ORDER BY EXTRACT(EPOCH FROM (event_start - captured_at))/60) AS median_min,
+                      count(*) AS n
+                 FROM odds_archive
+                WHERE source = 'live_capture' AND captured_at IS NOT NULL
+                  AND event_start IS NOT NULL
+                  AND captured_at > now() - interval '7 days'
+                GROUP BY 1 ORDER BY 1"""
+        )
+    if not rows:
+        return {"name": "captureLatency", "healthy": True,
+                "status": "no captures in the last 7 days to measure"}
+    # A capture is only a CLOSE if it is near the start. This is the number the
+    # model plan's bar-3 work depends on, so it is reported per sport rather
+    # than averaged into one meaningless figure.
+    worst = max(rows, key=lambda r: r["median_min"] or 0)
+    detail = ", ".join(f"{r['sport']} {r['median_min']:.0f}min (n={r['n']:,})" for r in rows)
+    healthy = (worst["median_min"] or 0) <= 60
+    return {"name": "captureLatency", "healthy": healthy,
+            "status": (f"{'healthy' if healthy else 'EARLY'} — median capture-to-start per sport: "
+                       f"{detail}")}
+
+
 async def check_elo_freshness() -> dict:
     """Verifies team_elo_history is actually being kept current against
     REAL finished games — a stronger, more specific signal than check_job's
@@ -749,6 +814,8 @@ async def main() -> int:
     job_results = await asyncio.gather(*(check_job(name, interval) for name, _, interval in JOB_REGISTRY))
     results = [
         *job_results,
+        await check_archive_freshness(),
+        await check_capture_latency(),
         await check_elo_freshness(),
         await check_mlb_model_freshness(),
         await check_game_model_freshness(),

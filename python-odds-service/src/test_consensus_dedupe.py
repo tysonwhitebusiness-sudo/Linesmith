@@ -14,6 +14,7 @@ data appears to get better, silently, with no failing check.
 Run with:  python test_consensus_dedupe.py
 """
 import sys
+from datetime import datetime, timezone
 
 from db import PropOddsRow
 from predict import live_edge
@@ -31,10 +32,15 @@ def check(label, actual, expected):
 
 
 def row(book, provider, side, odds, delay=None, is_delayed=False, line=0.5):
+    # fetched_at must be RELATIVE TO NOW, not a fixed string. live_edge filters
+    # stale prices, so a hardcoded timestamp makes this test pass on the day it
+    # is written and fail silently thereafter — which is exactly what happened
+    # to the first draft, six hours after it was written.
+    now = datetime.now(timezone.utc).isoformat()
     return PropOddsRow(
         id=0, provider_id=provider, game_id="g1", subject_id="s1", subject_name="P",
         market_key="m", line=line, side=side, bookmaker=book, american_odds=odds,
-        decimal_odds=None, fetched_at="2026-09-03T00:00:00Z",
+        decimal_odds=None, fetched_at=now,
         is_delayed=is_delayed, delay_seconds=delay,
     )
 
