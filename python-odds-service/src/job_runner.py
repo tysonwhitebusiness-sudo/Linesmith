@@ -30,6 +30,7 @@ monitoring needs to change for any of that — they already operate generically
 over whatever's registered.
 """
 import asyncio
+import time
 
 import db
 import providers
@@ -61,6 +62,31 @@ async def run_provider_specs(
     async def run_one(spec: ProviderSpec) -> FetchOutcome | None:
         if not spec.enabled:
             return None
+
+        # THE PER-PROVIDER FLOOR, checked before the cap reservation so a
+        # throttled cycle does not burn an entry ticket it will not use.
+        #
+        # Persisted through snapshot_cache rather than an in-process timer on
+        # purpose: an in-process timer resets on every restart, so a crash-loop
+        # would let a daily-capped provider fire on each boot and outspend the
+        # throttle meant to protect it. Same mechanism gameday.py already uses
+        # for its warm-tier throttle.
+        if spec.min_interval_seconds:
+            last = await db.read_snapshot_with_age(f"provider-throttle:{spec.provider_id}")
+            if last is not None and last[1] < spec.min_interval_seconds:
+                # A WARNING, NOT A SILENT SUCCESS. A cycle that deliberately did
+                # not fetch must stay distinguishable from one that fetched --
+                # gameday.skip_summary() returning a successful shape is exactly
+                # what let refreshNflJob report healthy for twelve days while
+                # producing nothing.
+                return FetchOutcome(
+                    provider_id=spec.provider_id,
+                    warnings=[
+                        f"{spec.provider_id} throttled -- last run {last[1]:.0f}s ago, "
+                        f"min interval {spec.min_interval_seconds:.0f}s"
+                    ],
+                )
+
         cap = spec.effective_cap
         if spec.cap_kind != "none" and cap is not None:
             # Task 5.12 (P4 M8): CHECK AND RESERVE ARE ONE STATEMENT.
@@ -86,6 +112,10 @@ async def run_provider_specs(
                     warnings=[f"{spec.provider_id} {spec.cap_kind} {which} reached ({cap}) — easing off"],
                 )
         outcome = await spec.fetch(client, games, yield_fn)
+        if spec.min_interval_seconds:
+            # Stamped AFTER the fetch, so a fetch that raised does not start the
+            # clock on a run that never happened.
+            await db.write_snapshot(f"provider-throttle:{spec.provider_id}", str(time.time()))
         spend = outcome.objects if spec.spend_unit == "objects" else outcome.requests
         if spend and spec.cap_kind != "none":
             # Minus the unit already reserved above, so the ticket is not

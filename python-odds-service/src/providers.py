@@ -119,6 +119,21 @@ class ProviderSpec:
     # None means unset — gate on cap_limit alone, i.e. today's behaviour.
     soft_cap: int | None = None
     spend_unit: Literal["requests", "objects"] = "requests"
+    # MINIMUM SECONDS BETWEEN RUNS OF THIS PROVIDER, independent of how often the
+    # job it lives in ticks. None means "every cycle".
+    #
+    # A job's interval is one number, and the providers inside it do not share
+    # economics. refreshTier1 ticks every 2.5 minutes, which is right for
+    # SharpAPI (uncapped, 12 req/min) and ruinous for Propline (1,000/DAY, and
+    # 1+2N requests per cycle): a 15-game MLB slate demanded 17,856 requests/day
+    # against that 1,000 cap, so it died in ~80 minutes and contributed nothing
+    # for the other 23 hours. Measured 2026-09-02 -- 1006, 1004, 1021, 1000,
+    # 1000, 1001 on consecutive days, the vendor's own x-daily-used agreeing.
+    #
+    # Deliberately a flat floor, not the proximity-proportional allocation Phase
+    # 1f adds. A floor stops the bleeding, is trivially verifiable, and does not
+    # depend on event_start being populated for all eight sports first.
+    min_interval_seconds: float | None = None
 
     @property
     def effective_cap(self) -> int | None:
@@ -792,6 +807,48 @@ async def fetch_sportsgameodds(
 
 _PROPLINE_SPORT_KEYS = {"mlb": "baseball_mlb", "soccer_epl": "soccer_epl", "soccer_mls": "soccer_mls"}
 
+# HALF OF PROPLINE'S ENTIRE SPEND WAS RE-ASKING WHICH MARKETS AN EVENT HAS.
+#
+# fetch_propline costs 1 + 2N requests for N games -- one /events call, then
+# /markets AND /odds per game. Against a 1,000/day cap and refreshTier1's
+# 2.5-minute cadence (576 cycles/day), a 15-game MLB slate demands 17,856
+# requests/day, so the cap died in ~80 minutes and Propline contributed nothing
+# for the other 23 hours (measured 2026-09-02: 1006, 1004, 1021, 1000, 1000,
+# 1001 on consecutive days, with the vendor's own x-daily-used header agreeing).
+#
+# An event's market LIST is near-static -- it changes when a book adds or drops a
+# market, not as prices move -- so caching it turns 1+2N into 1+N. That is a 50%
+# cut before any scheduling change.
+#
+# The trade-off, stated honestly: a market added mid-window is missed until the
+# entry expires. Worth it by a wide margin, because the status quo is not
+# "slightly stale markets" but ZERO Propline data for 23 hours a day.
+#
+# In-process rather than snapshot_cache on purpose: the worker is one
+# long-running process (render.yaml startCommand: python src/main.py), a DB
+# round-trip per event would cost roughly what it saves in wall-clock, and losing
+# the cache on restart is harmless -- it refills on the next cycle.
+# 3 hours. Long enough to cut the cost hard, short enough that a market added
+# in the morning is picked up well before an evening first pitch.
+_PROPLINE_MARKETS_TTL = 3 * 60 * 60.0
+_propline_markets_cache: dict[tuple[str, str], tuple[list[str], float]] = {}
+
+
+def _propline_markets_cached(sport_key: str, eid: str) -> list[str] | None:
+    hit = _propline_markets_cache.get((sport_key, str(eid)))
+    if hit is None:
+        return None
+    keys, expires = hit
+    if time.monotonic() >= expires:
+        _propline_markets_cache.pop((sport_key, str(eid)), None)
+        return None
+    return keys
+
+
+def _propline_markets_store(sport_key: str, eid: str, keys: list[str]) -> None:
+    _propline_markets_cache[(sport_key, str(eid))] = (
+        keys, time.monotonic() + _PROPLINE_MARKETS_TTL)
+
 # the-odds-api-compatible market keys Propline's own /markets endpoint
 # already returns alongside player-prop keys for an event — real, requested,
 # real dollars already paid for in the same odds call, previously routed
@@ -893,19 +950,26 @@ async def fetch_propline(
             record_team_match_miss(out.provider_id, game)
             continue
         eid = match["id"]
-        try:
-            markets_res = await client.get(
-                f"https://api.prop-line.com/v1/sports/{sport_key}/events/{eid}/markets?apiKey={api_key}",
-                timeout=TIMEOUT,
-            )
-        except httpx.HTTPError as e:
-            out.warnings.append(f"propline markets request failed for {game.game_id}: {e}")
-            continue
-        out.requests += 1
-        if markets_res.status_code != 200:
-            out.warnings.append(f"propline markets HTTP {markets_res.status_code} for {game.game_id}")
-            continue
-        market_keys = [m["key"] for m in (markets_res.json() or [])]
+        market_keys = _propline_markets_cached(sport_key, eid)
+        if market_keys is None:
+            try:
+                markets_res = await client.get(
+                    f"https://api.prop-line.com/v1/sports/{sport_key}/events/{eid}/markets?apiKey={api_key}",
+                    timeout=TIMEOUT,
+                )
+            except httpx.HTTPError as e:
+                out.warnings.append(f"propline markets request failed for {game.game_id}: {e}")
+                continue
+            out.requests += 1
+            if markets_res.status_code != 200:
+                out.warnings.append(f"propline markets HTTP {markets_res.status_code} for {game.game_id}")
+                continue
+            market_keys = [m["key"] for m in (markets_res.json() or [])]
+            # Only a non-empty list is cached. An empty one usually means the
+            # event is not priced YET, and caching that would suppress it for the
+            # whole TTL -- exactly the games that matter as they approach start.
+            if market_keys:
+                _propline_markets_store(sport_key, eid, market_keys)
         if not market_keys:
             continue
         try:

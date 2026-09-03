@@ -127,6 +127,22 @@ def _tier1_specs() -> list[ProviderSpec]:
             fetch=lambda client, games, yield_fn: fetch_propline(client, config.PROPLINE_KEY, games, "mlb"),
             cap_kind="daily",
             cap_limit=config.PROPLINE_DAILY_LIMIT,
+            # 25 MINUTES, DERIVED FROM THE BUDGET RATHER THAN CHOSEN.
+            #
+            # With the /markets cache (Phase 1a) Propline costs 1 + N requests
+            # per cycle, so a 15-game MLB slate is 16. Against its measured
+            # 1,000/day: 1000/16 = 62 cycles/day = one every ~23 minutes. 25
+            # gives ~57 cycles = ~920 requests, about 8% headroom for a fatter
+            # slate.
+            #
+            # Without this it inherits refreshTier1's 2.5-minute tick -- 576
+            # cycles/day, 9,216 requests even WITH the cache -- and the cap dies
+            # before lunch, which is what it did every day up to 2026-09-02.
+            #
+            # Flat across the day for now, so some of it is spent overnight when
+            # nothing is close to starting. Phase 1f redistributes it toward the
+            # hot window; this step only has to stop the bleeding.
+            min_interval_seconds=25 * 60,
         ),
     ]
 
