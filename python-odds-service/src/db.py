@@ -331,6 +331,42 @@ async def record_monthly_spend(provider_id: str, requests: int = 0, objects: int
     await _increment_usage(provider_id, "monthly", eastern_month_key(), requests, objects)
 
 
+async def mark_provider_exhausted(provider_id: str, period_kind: str, cap: int,
+                                  unit: str = "requests") -> None:
+    """Record that the VENDOR says this key is at its limit.
+
+    A 429 is authoritative in a way our own counter is not, and the gap between
+    the two can be enormous. Measured 2026-09-03: SportsGameOdds key sgo_k1
+    reported per-month entities 2500/2500 — fully spent on the 3rd — while
+    provider_usage had it at 2 objects for September. A ~50x undercount, so the
+    2,000 soft cap never fired and every request 429'd.
+
+    Worse, it defeated POOLING, which is the one mechanism that should have
+    covered this: job_runner reserves against provider_usage, saw sgo_k1 far
+    under cap, and picked the dead key every cycle — while sgo_k2 sat with 1,136
+    entities unused. Raising the counter to the cap is not falsifying the
+    record; it is correcting it toward what the vendor reports, so the pool
+    fails over to a key that actually works.
+
+    Idempotent: sets the counter to `cap` rather than incrementing, so repeated
+    429s in one period do not inflate it further.
+    """
+    period_key = eastern_date() if period_kind == "daily" else eastern_month_key()
+    column = "object_count" if unit == "objects" else "request_count"
+    pool = await get_pool()
+    async with pool.acquire(timeout=15.0) as conn:
+        await conn.execute(
+            f"""
+            INSERT INTO provider_usage (provider_id, period_kind, period_key, {column}, updated_at)
+            VALUES ($1, $2, $3, $4, now())
+            ON CONFLICT (provider_id, period_kind, period_key)
+            DO UPDATE SET {column} = GREATEST(provider_usage.{column}, EXCLUDED.{column}),
+                          updated_at = now()
+            """,
+            provider_id, period_kind, period_key, cap,
+        )
+
+
 async def _increment_usage(provider_id: str, period_kind: str, period_key: str, requests: int, objects: int) -> None:
     # Same atomic upsert pattern as lib/db/client.ts's incrementProviderUsage
     # — real spend from this harness must land in the same counters the TS

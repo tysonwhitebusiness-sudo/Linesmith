@@ -70,6 +70,11 @@ class FetchOutcome:
     unresolved: list[UnresolvedRow] = field(default_factory=list)
     requests: int = 0
     objects: int = 0
+    # The VENDOR said we are at a limit (HTTP 429), as opposed to us deciding we
+    # are. Structured rather than left in `warnings` because job_runner acts on
+    # it — a pooled key that 429s is marked exhausted so the pool fails over —
+    # and matching on warning strings is exactly how that kind of coupling rots.
+    rate_limited: bool = False
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -616,6 +621,7 @@ async def fetch_oddsapiio(
             # out of room — trust that over our own tracking and stop
             # issuing more calls in this cycle rather than hammering them.
             rate_limit.force_exhausted(_ODDSAPIIO_ODDS_RATE_KEY, rate_per_hour, 3600.0)
+            out.rate_limited = True
             out.warnings.append(f"oddsapiio odds HTTP 429 for {game.game_id} — backing off for the rest of this cycle")
             skipped_for_capacity += len(games) - games.index(game) - 1
             break
@@ -854,6 +860,7 @@ async def fetch_sportsgameodds(
             continue
         if res.status_code == 429:
             rate_limit.force_exhausted("sportsgameodds", rate_per_min, 60.0)
+            out.rate_limited = True
             out.warnings.append(f"sportsgameodds HTTP 429 for {league_id} — backing off")
             continue
         if res.status_code != 200:

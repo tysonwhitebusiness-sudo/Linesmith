@@ -147,6 +147,18 @@ async def run_provider_specs(
             outcome = await spec.fetch_keyed(client, games, yield_fn, chosen[1])
             if required_wait:
                 await db.write_snapshot(f"provider-throttle:{spec.provider_id}", str(time.time()))
+            # THE VENDOR OVERRULES OUR COUNTER. A 429 means this key is at a
+            # limit we were not tracking accurately, so mark it spent and let
+            # the next cycle fall through to the next key in the pool. Without
+            # this the pool is defeated by its own optimism: measured
+            # 2026-09-03, sgo_k1 was 2500/2500 at the vendor while
+            # provider_usage had it at 2, so every cycle reserved the dead key
+            # and 429'd while sgo_k2 sat on 1,136 unused entities.
+            if outcome.rate_limited and spec.cap_kind != "none" and cap is not None:
+                await db.mark_provider_exhausted(spend_pid, spec.cap_kind, cap,
+                                                 unit=spec.spend_unit)
+                return outcome
+
             spend = outcome.objects if spec.spend_unit == "objects" else outcome.requests
             if spend and spec.cap_kind != "none":
                 remainder = max(0, spend - 1)
