@@ -32,6 +32,8 @@ over whatever's registered.
 import asyncio
 import time
 
+import pace
+
 import db
 import providers
 from providers import FetchOutcome, ProviderSpec
@@ -71,9 +73,31 @@ async def run_provider_specs(
         # would let a daily-capped provider fire on each boot and outspend the
         # throttle meant to protect it. Same mechanism gameday.py already uses
         # for its warm-tier throttle.
-        if spec.min_interval_seconds:
+        # DYNAMIC PACE where the spec can estimate its own cost, static floor
+        # otherwise. The dynamic form divides REAL remaining budget across the
+        # remaining period, so it backs off as a budget drains and tightens near
+        # a game — a fixed floor does neither, and spends the same at 4am as at
+        # 6:55pm.
+        required_wait = spec.min_interval_seconds
+        if spec.cost_per_cycle is not None:
+            try:
+                required_wait = await pace.next_interval(
+                    spec.provider_id, spec.cap_kind, spec.effective_cap,
+                    float(spec.cost_per_cycle(games)), games, unit=spec.spend_unit,
+                    # Pooled spend is charged to the KEY below, not to the spec,
+                    # so the pacer has to read the same ids or it sees a budget
+                    # that never moves.
+                    pool_ids=[pid for pid, key in spec.pool if key] if spec.pool else None,
+                )
+            except Exception as e:
+                # Pacing is an optimisation; never let it stop a fetch. Fall back
+                # to the static floor rather than skipping or spending blind.
+                print(f"[job_runner] pace failed for {spec.provider_id} "
+                      f"({type(e).__name__}: {e}) — using static floor", flush=True)
+
+        if required_wait:
             last = await db.read_snapshot_with_age(f"provider-throttle:{spec.provider_id}")
-            if last is not None and last[1] < spec.min_interval_seconds:
+            if last is not None and last[1] < required_wait:
                 # A WARNING, NOT A SILENT SUCCESS. A cycle that deliberately did
                 # not fetch must stay distinguishable from one that fetched --
                 # gameday.skip_summary() returning a successful shape is exactly
@@ -83,7 +107,7 @@ async def run_provider_specs(
                     provider_id=spec.provider_id,
                     warnings=[
                         f"{spec.provider_id} throttled -- last run {last[1]:.0f}s ago, "
-                        f"min interval {spec.min_interval_seconds:.0f}s"
+                        f"required {required_wait:.0f}s"
                     ],
                 )
 
@@ -121,7 +145,7 @@ async def run_provider_specs(
                 )
             spend_pid = chosen[0]
             outcome = await spec.fetch_keyed(client, games, yield_fn, chosen[1])
-            if spec.min_interval_seconds:
+            if required_wait:
                 await db.write_snapshot(f"provider-throttle:{spec.provider_id}", str(time.time()))
             spend = outcome.objects if spec.spend_unit == "objects" else outcome.requests
             if spend and spec.cap_kind != "none":
@@ -157,7 +181,7 @@ async def run_provider_specs(
                     warnings=[f"{spec.provider_id} {spec.cap_kind} {which} reached ({cap}) — easing off"],
                 )
         outcome = await spec.fetch(client, games, yield_fn)
-        if spec.min_interval_seconds:
+        if required_wait:
             # Stamped AFTER the fetch, so a fetch that raised does not start the
             # clock on a run that never happened.
             await db.write_snapshot(f"provider-throttle:{spec.provider_id}", str(time.time()))

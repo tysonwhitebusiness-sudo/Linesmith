@@ -44,7 +44,7 @@ def check(label, actual, expected):
 # which keys the environment has, so they differ between a local run and the
 # Render worker, and freezing them would make this assert about a machine.
 EXPECTED = {
-    "mlb": [SHARP, SHARP_L, ("oddsapiio", "daily", 500, "requests", None), ("propline", "daily", 1000, "requests", 1500), ("parlayapi", "monthly", 1000, "requests", 2700)],
+    "mlb": [SHARP, SHARP_L, ("oddsapiio", "daily", 500, "requests", 2700), ("propline", "daily", 1000, "requests", 1500), ("parlayapi", "monthly", 1000, "requests", 2700)],
     "soccer_epl": [SHARP, SHARP_L, ("propline", "daily", 1000, "requests", 1500), ("parlayapi", "monthly", 1000, "requests", 2700)],
     "soccer_mls": [SHARP, SHARP_L, ("propline", "daily", 1000, "requests", 1500), ("parlayapi", "monthly", 1000, "requests", 2700), ("sportsgameodds", "monthly", 2000, "objects", None)],
     "tennis_atp": [SHARP, SHARP_L],

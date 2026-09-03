@@ -195,6 +195,16 @@ def _oddsapiio(sport: str, yield_fn) -> ProviderSpec:
             client, config.ODDSAPIIO_KEY, games, config.ODDSAPIIO_RATE_PER_HOUR),
         cap_kind="daily",
         cap_limit=config.ODDSAPIIO_DAILY_LIMIT,
+        # 1 events call + 1 odds call per game — the same 1+N shape as Propline
+        # (providers.py: out.requests += 1 once for /events, then once per game).
+        # Without this it was the last capped provider with NEITHER pacing nor a
+        # static floor: a 500/day budget spent at whatever cadence the job ticked
+        # at, gated only by the vendor's 100/HOUR limiter, which says nothing
+        # about the day. That is the same shape as the original Propline failure.
+        cost_per_cycle=lambda games: 1 + len(games),
+        # Fallback if pacing ever raises. 500/day at ~16 per cycle is ~31 cycles,
+        # or one per ~46 minutes; 45 keeps it just inside that.
+        min_interval_seconds=45 * 60,
     )
 
 
@@ -218,6 +228,10 @@ def _propline(sport: str, yield_fn) -> ProviderSpec:
             client, key, games, sport, provider_id="propline"),
         cap_kind="daily",
         cap_limit=config.PROPLINE_DAILY_LIMIT,
+        # 1 events call + 1 odds call per game. The /markets call is cached
+        # (Phase 1a), which is what turned 1+2N into 1+N.
+        cost_per_cycle=lambda games: 1 + len(games),
+        # Kept as the fallback if pacing ever fails — never unpaced.
         min_interval_seconds=25 * 60,
     )
 
@@ -243,6 +257,9 @@ def _parlayapi(sport: str, yield_fn) -> ProviderSpec:
         cap_kind="monthly",
         cap_limit=config.PARLAYAPI_MONTHLY_LIMIT,
         soft_cap=config.PARLAYAPI_SOFT_CAP or None,
+        # ONE request per sport per cycle regardless of slate size — the whole
+        # reason ParlayAPI scales to a full CFB Saturday where Propline cannot.
+        cost_per_cycle=lambda games: 1,
         min_interval_seconds=45 * 60,
     )
 
@@ -264,6 +281,9 @@ def _sgo(sport: str, yield_fn) -> ProviderSpec:
         cap_kind="monthly",
         cap_limit=config.SPORTSGAMEODDS_MONTHLY_SOFT_CAP,
         spend_unit="objects",
+        # Billed in OBJECTS, not requests: one event object per game returned,
+        # so the slate size is the cost.
+        cost_per_cycle=lambda games: max(1, len(games)),
     )
 
 

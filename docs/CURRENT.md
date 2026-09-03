@@ -100,16 +100,59 @@ against an attempted 99999); the same row with a future start accepted one.
 - 2 over-cap readings — `propline` 1006/1000 predates the throttle shipping,
   `oddsapiio` 504/500
 
+### The allocator IS done — `pace.py`, and it found four real defects
+
+The proximity-proportional allocator from 1f was deferred here on the argument
+that the static floors covered the same ground. That argument was weak: the
+design never depended on post-deploy data, and deferring it left `oddsapiio`
+(Odds-API.io) with a declared daily cap and NO throttle and NO pacing at all —
+the one capped provider with neither. That is the `504/500` reading two sections
+above. Note what it does and does not prove: Odds-API.io returns no quota
+headers, so 500/day is an ASSUMED figure (`odds-sources` §14 line 926, and not
+to be confused with **The Odds API**, a different vendor at a measured
+500/month). The reading is therefore evidence of a missing throttle, not of a
+breached vendor limit. It is built.
+
+`interval = (remaining_period / remaining_cycles) / proximity_weight`, where
+`remaining_cycles` reads REAL spend from `provider_usage`, so it is self-tuning
+with no calibration constant. Writing B for remaining budget, T for seconds left
+and w for the weight, `dB/dT = B*w/T` integrates to **B(T) = B0*(T/T0)^w** — the
+budget lands on zero exactly as the period ends for ANY weight, so the weight
+sets the SHAPE of the spend curve and never the total.
+
+Measured against the floors it replaces: Propline 3.8 min near a start (was a
+flat 25) and 46 min when nothing is close; ParlayAPI 13 min near a start (was
+45).
+
+**Writing the test is what made it correct**, and this is the part worth
+carrying forward — every one of these passed the ordering assertions:
+
+1. No affordability guard. The continuous curve lands on zero, but a discrete
+   cycle starting one second inside the period still costs a whole cycle: 63
+   cycles for 1,008 against a 1,000 cap.
+2. The guard, once added, was clamped by `_MAX_INTERVAL` — so a broke provider
+   waited 6h and spent anyway. That clamp stops a PACED interval starving a
+   sport; it has no business applying when there is no budget left.
+3. The guard returned seconds-until-reset measured from `now`, but `job_runner`
+   throttles on elapsed-since-LAST-FETCH, so it expired at `last + (reset - now)`
+   — before the reset. Fixed by returning the whole period LENGTH.
+4. **The pooled read was wired to the wrong ids.** Spend is charged to
+   `propline_k1`/`propline_k2`; the pacer asked `daily_status("propline")`, a row
+   nothing writes. It would have read zero usage forever and never backed off —
+   the entire self-tuning property, silently absent. With 1,800 of 2,000 spent:
+   46.1 min blind vs 230.4 min pool-aware.
+
+Defects 2 and 3 were invisible until `_simulate_day` was rewritten to mirror
+`job_runner`'s real recompute-every-tick loop instead of sleep-then-spend. **A
+simulation that models the caller wrongly agrees with a bug in the callee** —
+the same lesson as [[feedback_render_before_believing]], one layer down.
+
 ### What is NOT done, stated plainly
 
-The full **proximity-proportional allocator** from 1f. Pools + the per-provider
-floors (Propline 25min, ParlayAPI 45min) + the existing `gameday` tier gate cover
-the same ground for now — measured, `parlayapi_nfl` spent 23 requests in all of
-August under that gate. Whether a true allocator earns its complexity should be
-judged against real post-deploy spend rather than assumed.
-
-Also open, found but not fixed: `genericCaptureJob` and `computeMlbGameModelJob`
-each fail every run with `DataError: expected str, got int`.
+`genericCaptureJob` and `computeMlbGameModelJob` each fail every run with
+`DataError: expected str, got int`. Now known to reproduce locally as well —
+`test_elo_and_pitcher_game_score.py` fails with the identical signature, so it
+is debuggable without the worker.
 
 ### The biggest find: CFB game lines were never a missing-key problem
 

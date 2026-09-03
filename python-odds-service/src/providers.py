@@ -157,6 +157,16 @@ class ProviderSpec:
     # spend by arbitrary provider_id strings. Per-SPORT attribution is not lost
     # either -- _run_timed's breadcrumb records requests per JOB, and jobs are
     # per sport.
+    # How many budget units ONE cycle of this provider costs, given the slate.
+    # A callable because the answer is not a constant: Propline issues 1 + N
+    # requests for N games while ParlayAPI issues exactly 1 regardless, so a
+    # single number would be wrong for one of them on every slate.
+    #
+    # When set, pace.next_interval computes the wait DYNAMICALLY from real
+    # remaining budget instead of using the static min_interval_seconds floor —
+    # spending what is left over the time that is left, weighted toward when
+    # games actually start.
+    cost_per_cycle: object | None = None
     pool: tuple[tuple[str, str], ...] | None = None
     # Called as fetch_keyed(client, games, yield_fn, api_key) when `pool` is set.
     fetch_keyed: Callable[..., Awaitable["FetchOutcome"]] | None = None
