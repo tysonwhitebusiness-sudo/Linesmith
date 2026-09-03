@@ -166,8 +166,8 @@ def test_unthrottled_provider_is_untouched():
 def test_propline_is_actually_wired_with_a_floor():
     """The mechanism existing is not the same as it being used."""
     print("\nthrottle — jobs.py wiring")
-    import jobs
-    specs = {s.provider_id: s for s in jobs._tier1_specs()}
+    import provider_matrix
+    specs = {s.provider_id: s for s in provider_matrix.specs_for("mlb")}
     check("propline has a floor", specs["propline"].min_interval_seconds, 25 * 60)
     check("sharpapi does NOT", specs["sharpapi"].min_interval_seconds, None)
     check("sharpapi_lines does NOT", specs["sharpapi_lines"].min_interval_seconds, None)

@@ -44,8 +44,8 @@ import nfl_pbp
 import gameday
 from game_context import load_mlb_games, load_sport_games, load_tennis_games
 from job_runner import run_provider_specs
+from provider_matrix import MLB_SGO_ONLY, specs_for
 from providers import (
-    ProviderSpec,
     fetch_oddsapiio,
     fetch_parlayapi,
     fetch_propline,
@@ -87,66 +87,6 @@ async def _run_timed(job_name: str, coro) -> dict:
     return summary
 
 
-def _tier1_specs() -> list[ProviderSpec]:
-    return [
-        ProviderSpec(
-            provider_id="sharpapi",
-            enabled=config.SHARPAPI_ENABLED,
-            fetch=lambda client, games, yield_fn: fetch_sharpapi(client, config.SHARPAPI_KEY, games),
-            cap_kind="none",  # job-level (not per-game) call frequency already stays well under its per-minute vendor limit
-        ),
-        ProviderSpec(
-            # Recovered game-lines board (2026-08-26 odds-architecture
-            # rebuild) — a second, genuinely separate request against the
-            # same SharpAPI account (is_player_prop=false). Real added
-            # volume, not a free parse: still cap_kind="none" because
-            # SharpAPI's documented free-tier limit is 12 req/min and Tier
-            # 1's real cadence is ~1 cycle/2.5min, so even two calls per
-            # cycle stays far under that — see fetch_sharpapi_game_lines's
-            # own docstring for the arithmetic.
-            provider_id="sharpapi_lines",
-            enabled=config.SHARPAPI_ENABLED,
-            fetch=lambda client, games, yield_fn: fetch_sharpapi_game_lines(client, config.SHARPAPI_KEY, games),
-            cap_kind="none",
-        ),
-        ProviderSpec(
-            provider_id="oddsapiio",
-            enabled=config.ODDSAPIIO_ENABLED,
-            fetch=lambda client, games, yield_fn: fetch_oddsapiio(client, config.ODDSAPIIO_KEY, games, config.ODDSAPIIO_RATE_PER_HOUR),
-            cap_kind="daily",
-            cap_limit=config.ODDSAPIIO_DAILY_LIMIT,
-        ),
-        ProviderSpec(
-            # Propline's general/MLB identity genuinely belongs in Tier 1
-            # (per its own TS header comment) but ran there for a long time
-            # with no rate-limit or budget check at all — the exact bug
-            # fixed on the TS side in tier1Refresh.ts (see
-            # docs/phase2-hardening-gameplan-2026-08-20.md item 4).
-            provider_id="propline",
-            enabled=config.PROPLINE_ENABLED,
-            fetch=lambda client, games, yield_fn: fetch_propline(client, config.PROPLINE_KEY, games, "mlb"),
-            cap_kind="daily",
-            cap_limit=config.PROPLINE_DAILY_LIMIT,
-            # 25 MINUTES, DERIVED FROM THE BUDGET RATHER THAN CHOSEN.
-            #
-            # With the /markets cache (Phase 1a) Propline costs 1 + N requests
-            # per cycle, so a 15-game MLB slate is 16. Against its measured
-            # 1,000/day: 1000/16 = 62 cycles/day = one every ~23 minutes. 25
-            # gives ~57 cycles = ~920 requests, about 8% headroom for a fatter
-            # slate.
-            #
-            # Without this it inherits refreshTier1's 2.5-minute tick -- 576
-            # cycles/day, 9,216 requests even WITH the cache -- and the cap dies
-            # before lunch, which is what it did every day up to 2026-09-02.
-            #
-            # Flat across the day for now, so some of it is spent overnight when
-            # nothing is close to starting. Phase 1f redistributes it toward the
-            # hot window; this step only has to stop the bleeding.
-            min_interval_seconds=25 * 60,
-        ),
-    ]
-
-
 async def job_tier1(yield_fn=None) -> dict:
     # No yield_fn threaded to any spec here — SharpAPI/Odds-API.io/Propline
     # have never shown the multi-window pacing shape in measured runs. If
@@ -155,24 +95,8 @@ async def job_tier1(yield_fn=None) -> dict:
     games = [g for g in await load_mlb_games() if not g.is_final]
     async with httpx.AsyncClient() as client:
         return await _run_timed(
-            "refreshTier1", run_provider_specs(client, games, _tier1_specs(), concurrent=False)
+            "refreshTier1", run_provider_specs(client, games, specs_for("mlb"), concurrent=False)
         )
-
-
-def _sportsgameodds_spec(yield_fn) -> ProviderSpec:
-    """MLB's SportsGameOdds identity — the original account. Kept dedicated to
-    MLB only (2026-08-20) so its real quota no longer competes with NFL/CFB's
-    usage; see _sportsgameodds_multisport_spec for that separate account."""
-    return ProviderSpec(
-        provider_id="sportsgameodds",
-        enabled=config.SPORTSGAMEODDS_ENABLED,
-        fetch=lambda client, games, yf: fetch_sportsgameodds(
-            client, config.SPORTSGAMEODDS_KEY, games, config.SPORTSGAMEODDS_RATE_PER_MIN, yield_fn=yf
-        ),
-        cap_kind="monthly",
-        cap_limit=config.SPORTSGAMEODDS_MONTHLY_SOFT_CAP,  # soft cap, not the hard monthlyLimit — matches sportsGameOddsRefresh.ts's real gate
-        spend_unit="objects",
-    )
 
 
 async def job_sportsgameodds(yield_fn=None) -> dict:
@@ -180,85 +104,9 @@ async def job_sportsgameodds(yield_fn=None) -> dict:
     async with httpx.AsyncClient() as client:
         return await _run_timed(
             "refreshSportsGameOddsJob",
-            run_provider_specs(client, games, [_sportsgameodds_spec(yield_fn)], yield_fn=yield_fn, concurrent=False),
+            run_provider_specs(client, games, specs_for("mlb", yield_fn, providers=MLB_SGO_ONLY),
+                               yield_fn=yield_fn, concurrent=False),
         )
-
-
-def _sportsgameodds_multisport_spec(yield_fn) -> ProviderSpec:
-    """Second SportsGameOdds account (2026-08-20, see
-    docs/api-capability-audit-2026-08-20.md), dedicated to NFL/CFB. A real,
-    separate account — tracked under its own provider_id so its spend is
-    never conflated with MLB's, same reasoning as ParlayAPI's per-sport keys
-    below."""
-    return ProviderSpec(
-        provider_id="sportsgameodds_multisport",
-        enabled=config.SPORTSGAMEODDS_MULTISPORT_ENABLED,
-        fetch=lambda client, games, yf: fetch_sportsgameodds(
-            client, config.SPORTSGAMEODDS_MULTISPORT_KEY, games, config.SPORTSGAMEODDS_RATE_PER_MIN, yield_fn=yf
-        ),
-        cap_kind="monthly",
-        cap_limit=config.SPORTSGAMEODDS_MONTHLY_SOFT_CAP,  # same real plan tier as the primary account, same soft-cap discipline
-        spend_unit="objects",
-    )
-
-
-# Per-sport ParlayAPI identities (2026-08-20, see
-# docs/api-capability-audit-2026-08-20.md) — real, separate free accounts,
-# one per sport ParlayAPI actually has real player-prop coverage for
-# (confirmed live: NFL, CFB, Soccer/EPL — Tennis has none). Replaces the old
-# shared PARLAYAPI_KEY's role for these 3 sports; that key stays defined in
-# config.py only as a legacy fallback, no longer the live source here.
-_PARLAYAPI_SPORT_CONFIG: dict[str, tuple[str, str | None, bool, int]] = {
-    "nfl": ("parlayapi_nfl", config.PARLAYAPI_NFL_KEY, config.PARLAYAPI_NFL_ENABLED, config.PARLAYAPI_NFL_MONTHLY_LIMIT),
-    "cfb": ("parlayapi_cfb", config.PARLAYAPI_CFB_KEY, config.PARLAYAPI_CFB_ENABLED, config.PARLAYAPI_CFB_MONTHLY_LIMIT),
-    "soccer_epl": (
-        "parlayapi_soccer",
-        config.PARLAYAPI_SOCCER_KEY,
-        config.PARLAYAPI_SOCCER_ENABLED,
-        config.PARLAYAPI_SOCCER_MONTHLY_LIMIT,
-    ),
-    # MLS reuses EPL's identity (same provider_id "parlayapi_soccer") rather
-    # than a new key — no dedicated MLS ParlayAPI account exists yet (see
-    # docs/soccer-gameplan-2026-08-22.md §3.4/§9). Real consequence: EPL and
-    # MLS now share one soccer-wide monthly budget instead of each having
-    # their own — flagged, not silently absorbed.
-    "soccer_mls": (
-        "parlayapi_soccer",
-        config.PARLAYAPI_SOCCER_KEY,
-        config.PARLAYAPI_SOCCER_ENABLED,
-        config.PARLAYAPI_SOCCER_MONTHLY_LIMIT,
-    ),
-    # No real ParlayAPI NBA account yet — PARLAYAPI_NBA_ENABLED naturally
-    # stays False until config.py's PARLAYAPI_NBA_KEY is set on Render (see
-    # that file's comment). Declared anyway so job_nba can reuse
-    # _job_multisport generically instead of a bespoke job body.
-    "nba": ("parlayapi_nba", config.PARLAYAPI_NBA_KEY, config.PARLAYAPI_NBA_ENABLED, config.PARLAYAPI_NBA_MONTHLY_LIMIT),
-}
-
-
-_PARLAYAPI_SPORT_SOFT_CAP = {
-    "mlb": config.PARLAYAPI_MLB_SOFT_CAP,
-    "nfl": config.PARLAYAPI_NFL_SOFT_CAP,
-    "cfb": config.PARLAYAPI_CFB_SOFT_CAP,
-    "soccer_epl": config.PARLAYAPI_SOCCER_SOFT_CAP,
-    "soccer_mls": config.PARLAYAPI_SOCCER_SOFT_CAP,
-    "nba": config.PARLAYAPI_NBA_SOFT_CAP,
-}
-
-
-def _parlayapi_sport_spec(sport: str) -> ProviderSpec:
-    provider_id, key, enabled, cap_limit = _PARLAYAPI_SPORT_CONFIG[sport]
-    return ProviderSpec(
-        provider_id=provider_id,
-        enabled=enabled,
-        fetch=lambda client, games, yield_fn: fetch_parlayapi(client, key, games, sport),
-        cap_kind="monthly",
-        cap_limit=cap_limit,  # hard limit — matches multiSportRefresh.ts's `budget.exhausted` gate
-        # Task 5.9 (P2 H3): the PARLAYAPI_*_SOFT_CAP env vars were configured,
-        # documented, and never read by config.py. Now they gate, below the
-        # hard limit, and job_runner names which of the two stopped the job.
-        soft_cap=_PARLAYAPI_SPORT_SOFT_CAP.get(sport) or None,
-    )
 
 
 async def _job_multisport(job_name: str, sport: str, yield_fn) -> dict:
@@ -274,7 +122,7 @@ async def _job_multisport(job_name: str, sport: str, yield_fn) -> dict:
     if not should_fetch:
         return await _run_timed(job_name, _return_dict(gameday.skip_summary(games, tier)))
 
-    specs = [_parlayapi_sport_spec(sport), _sportsgameodds_multisport_spec(yield_fn)]
+    specs = specs_for(sport, yield_fn)
     async with httpx.AsyncClient() as client:
         return await _run_timed(
             job_name, run_provider_specs(client, games, specs, yield_fn=yield_fn, concurrent=True)
@@ -302,37 +150,10 @@ async def job_cfb(yield_fn=None) -> dict:
 async def job_nba(yield_fn=None) -> dict:
     # Real coverage today: SportsGameOdds only (shared multisport account,
     # already provisioned) — ParlayAPI NBA naturally no-ops until a real
-    # PARLAYAPI_NBA_KEY exists (see config.py/_PARLAYAPI_SPORT_CONFIG's
+    # PARLAYAPI_NBA_KEY exists (see config.py / provider_matrix._PARLAYAPI's
     # comments). Reuses _job_multisport generically, same as NFL/CFB —
     # nothing NBA-specific needed in the shared runner.
     return await _job_multisport("refreshNbaJob", "nba", yield_fn)
-
-
-def _soccer_epl_specs() -> list[ProviderSpec]:
-    return [
-        ProviderSpec(
-            # Task 5.2 (P3 H7). The gap flagged here in Phase 2 is now closed.
-            # cap_kind="none" meant no rate-limit gate AND — the part only
-            # measurement revealed — no spend recording either, since
-            # job_runner only recorded spend when cap_kind != "none". So
-            # propline_2's usage simply vanished, which is why the audit read
-            # its silence as vendor-side rejection.
-            provider_id="propline_2",
-            enabled=config.PROPLINE_2_ENABLED,
-            fetch=lambda client, games, yield_fn: fetch_propline(
-                client, config.PROPLINE_2_KEY, games, "soccer_epl", provider_id="propline_2"
-            ),
-            cap_kind="daily",
-            cap_limit=config.PROPLINE_2_DAILY_LIMIT,
-        ),
-        # New (2026-08-20): ParlayAPI-soccer is a genuinely separate real
-        # provider from Propline, not a redundant second call for the same
-        # data — confirmed live coverage (787 rows, team-total-heavy), so
-        # it adds real, additional matched props rather than just duplicate
-        # rows for the same games. SportsGameOdds is NOT added here — its
-        # soccer coverage is MLS/UCL, not EPL (see the capability audit).
-        _parlayapi_sport_spec("soccer_epl"),
-    ]
 
 
 async def job_soccer_epl(yield_fn=None) -> dict:
@@ -345,36 +166,8 @@ async def job_soccer_epl(yield_fn=None) -> dict:
 
     async with httpx.AsyncClient() as client:
         return await _run_timed(
-            "refreshSoccerEplJob", run_provider_specs(client, games, _soccer_epl_specs(), concurrent=False)
+            "refreshSoccerEplJob", run_provider_specs(client, games, specs_for("soccer_epl"), concurrent=False)
         )
-
-
-def _soccer_mls_specs(yield_fn) -> list[ProviderSpec]:
-    """MLS gets the same Propline/ParlayAPI shape as EPL (§9), plus a real
-    SportsGameOdds spec EPL doesn't get — SGO's soccer coverage is MLS/UCL
-    specifically, confirmed live (docs/soccer-gameplan-2026-08-22.md §2):
-    a real MLS event returned 160 game-level odds entries (3-way
-    moneyline/spread/total/odd-even) alongside 1,580 player-prop entries.
-    Reuses the NFL/CFB SportsGameOdds account (`_sportsgameodds_multisport_spec`)
-    rather than provisioning a 4th key — no new MLS-dedicated SGO account
-    exists, same reuse-and-flag posture as the ParlayAPI identity above.
-    """
-    return [
-        ProviderSpec(
-            # Same real daily cap as EPL's spec above (task 5.2) — one vendor
-            # account, so EPL and MLS share the one 1,000/day budget, which is
-            # exactly what the shared provider_id already implied.
-            provider_id="propline_2",
-            enabled=config.PROPLINE_2_ENABLED,
-            fetch=lambda client, games, yield_fn: fetch_propline(
-                client, config.PROPLINE_2_KEY, games, "soccer_mls", provider_id="propline_2"
-            ),
-            cap_kind="daily",
-            cap_limit=config.PROPLINE_2_DAILY_LIMIT,
-        ),
-        _parlayapi_sport_spec("soccer_mls"),
-        _sportsgameodds_multisport_spec(yield_fn),
-    ]
 
 
 async def job_soccer_mls(yield_fn=None) -> dict:
@@ -386,40 +179,9 @@ async def job_soccer_mls(yield_fn=None) -> dict:
     async with httpx.AsyncClient() as client:
         return await _run_timed(
             "refreshSoccerMlsJob",
-            run_provider_specs(client, games, _soccer_mls_specs(yield_fn), yield_fn=yield_fn, concurrent=False),
+            run_provider_specs(client, games, specs_for("soccer_mls", yield_fn),
+                               yield_fn=yield_fn, concurrent=False),
         )
-
-
-def _tennis_specs(tour: str) -> list[ProviderSpec]:
-    """SharpAPI is tennis's real, already-proven primary (per the multi-
-    sport audit — "SharpAPI's tennis coverage rides the on-demand path" in
-    the old TS scheduler). Reuses the shared MLB SHARPAPI_KEY rather than a
-    new dedicated key — no separate tennis SharpAPI account exists, same
-    reuse-and-flag posture as MLS's ParlayAPI/SportsGameOdds reuse above.
-    Real `sport`/`league` query values (`tennis`/`atp` or `tennis/wta`) are
-    a reasoned guess (matching the tennis_atp/tennis_wta SportKey
-    convention already used elsewhere) — not yet live-verified against a
-    real call, same caveat as NBA's/NHL's own market-key guesses.
-    """
-    return [
-        ProviderSpec(
-            provider_id="sharpapi",
-            enabled=config.SHARPAPI_ENABLED,
-            fetch=lambda client, games, yield_fn: fetch_sharpapi(client, config.SHARPAPI_KEY, games, sport="tennis", league=tour),
-            cap_kind="none",
-        ),
-        ProviderSpec(
-            # Tennis has no spread/total concept (moneyline — and games/sets
-            # handicap markets this doesn't yet cover — is the real market),
-            # so this mainly recovers moneyline here; same market_type
-            # matching as MLB, same unverified-live caveat as this file's
-            # own tennis sport/league query values above.
-            provider_id="sharpapi_lines",
-            enabled=config.SHARPAPI_ENABLED,
-            fetch=lambda client, games, yield_fn: fetch_sharpapi_game_lines(client, config.SHARPAPI_KEY, games, sport="tennis", league=tour),
-            cap_kind="none",
-        ),
-    ]
 
 
 async def _job_tennis(job_name: str, sport_key: str, tour: str, yield_fn) -> dict:
@@ -430,7 +192,7 @@ async def _job_tennis(job_name: str, sport_key: str, tour: str, yield_fn) -> dic
 
     async with httpx.AsyncClient() as client:
         return await _run_timed(
-            job_name, run_provider_specs(client, games, _tennis_specs(tour), yield_fn=yield_fn, concurrent=False)
+            job_name, run_provider_specs(client, games, specs_for(sport_key), yield_fn=yield_fn, concurrent=False)
         )
 
 
