@@ -38,6 +38,10 @@ from datetime import datetime, timezone
 import db
 from jobs import JOB_REGISTRY
 
+# How many consecutive gated, no-fetch cycles before a job counts as stuck.
+# 20-minute jobs skip legitimately overnight, so this has to clear a full
+# offseason night without crying wolf — 72 is about 24h at that cadence.
+SKIP_STREAK_LIMIT = 72
 STALE_MULTIPLIER = 2.0
 
 
@@ -102,7 +106,24 @@ async def check_job(name: str, interval_seconds: float) -> dict:
     age_seconds = (datetime.now(timezone.utc) - started_dt).total_seconds()
     stale = age_seconds > interval_seconds * STALE_MULTIPLIER
 
-    healthy = bool(ok) and not stale
+    # A JOB THAT RUNS ON TIME AND NEVER FETCHES IS NOT HEALTHY.
+    #
+    # `healthy = ok and not stale` was the whole test, and it is how
+    # refreshNflJob and refreshCfbJob reported healthy for twelve days while
+    # their provider keys were unset: the tier gate returned a successful
+    # summary, the job never called a provider, and nothing in the contract
+    # noticed. A cap-exhausted provider produces the same silence.
+    #
+    # `fetched` is set to False by gameday.skip_summary. Absent (older logs, and
+    # jobs that do not use the tier gate) is treated as "fetched" so this cannot
+    # retroactively fail jobs that never reported it.
+    fetched = summary.get("fetched", True)
+    consecutive_skips = summary.get("consecutive_skips", 0)
+    # One skip is the gate working. A long run of them means either nothing is
+    # ever in window — worth knowing — or the gate is stuck.
+    skip_stuck = not fetched and consecutive_skips >= SKIP_STREAK_LIMIT
+
+    healthy = bool(ok) and not stale and not skip_stuck
     status_bits = []
     if not ok:
         status_bits.append(f"last run failed: {summary.get('error', 'unknown error')}")
@@ -110,9 +131,17 @@ async def check_job(name: str, interval_seconds: float) -> dict:
         status_bits.append(
             f"stale — last run {age_seconds / 60:.0f}min ago, expected within {interval_seconds * STALE_MULTIPLIER / 60:.0f}min"
         )
-    if not status_bits:
+    if skip_stuck:
         status_bits.append(
-            f"healthy — last run {age_seconds / 60:.0f}min ago, {summary.get('rows_written', 0)} rows written"
+            f"RUNS BUT NEVER FETCHES — {consecutive_skips} consecutive skipped cycles "
+            f"({summary.get('skip_reason', 'no reason recorded')}). Ran on time, called no provider."
+        )
+    if not status_bits:
+        detail = f"{summary.get('rows_written', 0)} rows written"
+        if not fetched:
+            detail = f"skipped ({summary.get('skip_reason', 'gated')}), {consecutive_skips} in a row"
+        status_bits.append(
+            f"healthy — last run {age_seconds / 60:.0f}min ago, {detail}"
         )
 
     return {"name": name, "status": "; ".join(status_bits), "healthy": healthy, "raw": summary}

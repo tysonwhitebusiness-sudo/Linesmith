@@ -83,6 +83,24 @@ async def _run_timed(job_name: str, coro) -> dict:
         # whole summary is a JSON blob in snapshot_cache.
         summary["traceback"] = "".join(traceback.format_exc().splitlines(keepends=True)[-12:])
     summary["elapsed_seconds"] = round(time.monotonic() - t0, 2)
+
+    # CARRY A SKIP STREAK FORWARD. gameday.skip_summary sets fetched=False for a
+    # cycle that ran but deliberately called no provider. One of those is the
+    # tier gate working; a long unbroken run of them means either nothing is
+    # ever in window or the gate is stuck — and the second case is what let
+    # refreshNflJob and refreshCfbJob report healthy for twelve days with their
+    # keys unset. health_check.py reads this; without it there is nothing to
+    # read, because each breadcrumb overwrites the last.
+    if summary.get("fetched", True) is False:
+        try:
+            previous = await db.read_snapshot(f"python-harness:job-run:{job_name}")
+            prior = json.loads(previous).get("consecutive_skips", 0) if previous else 0
+        except Exception:
+            prior = 0  # a breadcrumb read is never load-bearing
+        summary["consecutive_skips"] = int(prior) + 1
+    else:
+        summary["consecutive_skips"] = 0
+
     await db.write_job_run_log(job_name, summary)
     return summary
 

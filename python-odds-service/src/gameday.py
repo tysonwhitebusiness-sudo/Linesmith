@@ -129,9 +129,20 @@ async def should_fetch_paid_providers(sport: str, games: list) -> tuple[str, boo
 
 
 def skip_summary(games: list, tier: str) -> dict:
-    """Same summary shape every job's _run_timed wrapper expects, for a
-    cycle that skipped the paid fetch entirely — zero real cost, not an
-    error."""
+    """Same summary shape every job's _run_timed wrapper expects, for a cycle
+    that skipped the paid fetch entirely — zero real cost, not an error.
+
+    `fetched: False` IS LOAD-BEARING. Without it this shape is indistinguishable
+    from a cycle that fetched and happened to write nothing, and
+    health_check.py's `healthy = ok and not stale` then reports a job that has
+    not called a provider in weeks as healthy. That is not hypothetical: it is
+    exactly how refreshNflJob and refreshCfbJob reported healthy for TWELVE DAYS
+    while their provider keys were unset and they produced nothing at all.
+
+    A skip is a legitimate outcome — most of them are the tier gate working
+    correctly — so this is not an error either. It is a third state, and the
+    monitor needs to see it as one.
+    """
     return {
         "games": len(games),
         "rows_matched": 0,
@@ -139,5 +150,7 @@ def skip_summary(games: list, tier: str) -> dict:
         "unresolved": 0,
         "requests": 0,
         "objects": 0,
+        "fetched": False,
+        "skip_reason": f"{tier} tier",
         "warnings": [f"skipped paid providers — {tier} tier, no game within the hot/warm window"],
     }
