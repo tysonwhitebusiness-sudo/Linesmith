@@ -138,9 +138,24 @@ _ESPN_SPORT_CONFIG: dict[str, tuple[str, str]] = {
 _ROSTER_TTL_SECONDS = 60 * 60  # 1h — matches teamSportEspn.ts's ROSTER_TTL_MS
 
 
+def _int_or_none(v) -> int | None:
+    try:
+        return int(str(v))
+    except (TypeError, ValueError):
+        return None
+
+
 def _date_range_param(days_ahead: int) -> str:
-    start = datetime.now(timezone.utc)
-    end = start + timedelta(days=days_ahead)
+    """ESPN wants YYYYMMDD-YYYYMMDD with the EARLIER date first.
+
+    A negative `days_ahead` therefore has to swap the ends, not just subtract:
+    passing -3 naively yields "20260903-20260831", which is a backwards range
+    and returns nothing. archiveResultsJob asks for a backwards window, so this
+    orders the pair rather than assuming the caller wants the future.
+    """
+    now = datetime.now(timezone.utc)
+    other = now + timedelta(days=days_ahead)
+    start, end = (now, other) if days_ahead >= 0 else (other, now)
     return f"{start.strftime('%Y%m%d')}-{end.strftime('%Y%m%d')}"
 
 
@@ -187,6 +202,14 @@ async def _fetch_espn_scoreboard(client: httpx.AsyncClient, espn_sport: str, esp
                 "awayTeamName": away["team"]["displayName"],
                 "awayAbbr": away["team"]["abbreviation"],
                 "isFinal": bool(status.get("completed")),
+                # SCORES, added 2026-09-03 for archiveResultsJob. They were
+                # always in this payload and always discarded: ESPN puts them on
+                # the competitor, beside the team block this already reads. A
+                # completed game with no score is left as None rather than 0 —
+                # 0-0 is a real scoreline in soccer, so coercing would
+                # manufacture results.
+                "homeScore": _int_or_none(home.get("score")),
+                "awayScore": _int_or_none(away.get("score")),
             }
         )
     return games
@@ -232,6 +255,23 @@ async def _fetch_espn_roster(client: httpx.AsyncClient, espn_sport: str, espn_le
             )
     await write_snapshot(cache_key, json.dumps(athletes))
     return athletes
+
+
+async def completed_espn_games(sport: str, days_back: int = 3) -> list[dict]:
+    """Recently-COMPLETED games with real scores, for archiveResultsJob.
+
+    Reuses _fetch_espn_scoreboard rather than adding a second scoreboard path,
+    so there is one place where ESPN's shape is parsed. Returns raw dicts, not
+    Game objects: Game deliberately carries no score, and widening it for one
+    consumer would touch every sport's loader.
+    """
+    espn_sport, espn_league = _ESPN_SPORT_CONFIG[sport]
+    async with httpx.AsyncClient() as client:
+        # Negative days_ahead walks backwards from today — the same range param,
+        # which already accepts a start earlier than the end.
+        raw = await _fetch_espn_scoreboard(client, espn_sport, espn_league, -days_back)
+    return [g for g in raw
+            if g.get("isFinal") and g.get("homeScore") is not None and g.get("awayScore") is not None]
 
 
 async def load_sport_games(sport: str) -> list[Game]:

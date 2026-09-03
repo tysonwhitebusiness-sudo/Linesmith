@@ -4224,3 +4224,36 @@ async def upsert_live_capture(rows: list[dict], batch: int = 500) -> int:
         async with pool.acquire(timeout=30.0) as conn:
             await conn.executemany(sql, payload[i:i + batch])
     return len(payload)
+
+
+async def upsert_live_results(rows: list[dict], batch: int = 500) -> int:
+    """Settled scores into game_result, from archiveResultsJob.
+
+    ON CONFLICT DO NOTHING, not DO UPDATE: a final score does not change, and an
+    imported row for the same game is at least as trustworthy as a freshly
+    fetched one. Re-running this is therefore free and cannot rewrite history.
+
+    The conflict target is game_result's real natural key, which includes
+    COALESCE(event_ref, '') — that COALESCE exists because a key without it
+    silently collapsed 524 doubleheaders into single rows.
+    """
+    if not rows:
+        return 0
+    sql = """
+        INSERT INTO game_result
+          (sport, event_ref, game_date, event_start, home_team_id, away_team_id,
+           home_team_raw, away_team_raw, home_score, away_score, venue, source)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'live_capture')
+        ON CONFLICT DO NOTHING
+    """
+    payload = [
+        (r["sport"], r["event_ref"], r["game_date"], r["event_start"],
+         r["home_team_id"], r["away_team_id"], r["home_team_raw"], r["away_team_raw"],
+         r["home_score"], r["away_score"], r.get("venue"))
+        for r in rows
+    ]
+    pool = await get_pool()
+    for i in range(0, len(payload), batch):
+        async with pool.acquire(timeout=30.0) as conn:
+            await conn.executemany(sql, payload[i:i + batch])
+    return len(payload)

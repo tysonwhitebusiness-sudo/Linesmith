@@ -44,7 +44,7 @@ import nfl_pbp
 import gameday
 from game_context import load_mlb_games, load_nhl_games, load_sport_games, load_tennis_games
 from job_runner import run_provider_specs
-from archival_bridge import archive_closing_lines
+from archival_bridge import archive_closing_lines, archive_results
 from provider_matrix import MLB_SGO_ONLY, specs_for
 from providers import (
     fetch_oddsapiio,
@@ -179,6 +179,20 @@ async def job_archive_closing_lines(yield_fn=None) -> dict:
     Spends no provider budget — it reads live tables this worker already filled.
     """
     return await _run_timed("archiveClosingLinesJob", archive_closing_lines())
+
+
+async def job_archive_results(yield_fn=None) -> dict:
+    """Settled scores into game_result — the second half of the archival bridge.
+
+    15 minutes, matching gradeFinishedMlbPicksJob's own reasoning: a final score
+    does not need recording within seconds, and the write is ON CONFLICT DO
+    NOTHING, so a missed tick costs nothing and a repeat tick changes nothing.
+
+    Without this, odds captured by archiveClosingLinesJob have nothing to be
+    graded against, and a closing line with no outcome cannot support a CLV
+    backtest — which is the entire reason the bridge exists.
+    """
+    return await _run_timed("archiveResultsJob", archive_results())
 
 
 async def job_nhl(yield_fn=None) -> dict:
@@ -1222,6 +1236,7 @@ JOB_REGISTRY = [
     # Every 5 minutes. See job_archive_closing_lines' docstring for why the
     # cadence is load-bearing rather than a preference.
     ("archiveClosingLinesJob", job_archive_closing_lines, 5 * 60),
+    ("archiveResultsJob", job_archive_results, 15 * 60),
     ("refreshSoccerEplJob", job_soccer_epl, 20 * 60),
     ("refreshSoccerMlsJob", job_soccer_mls, 20 * 60),
     ("refreshTennisAtpJob", job_tennis_atp, 20 * 60),

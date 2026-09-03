@@ -29,11 +29,17 @@ in-play rows once entered this archive scoring Brier 0.032 against 0.22, and wer
 invisible in the aggregate.
 """
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import db
 from entity_resolution import normalize_team_name
-from game_context import load_mlb_games, load_nhl_games, load_sport_games, load_tennis_games
+from game_context import (
+    completed_espn_games,
+    load_mlb_games,
+    load_nhl_games,
+    load_sport_games,
+    load_tennis_games,
+)
 from provider_matrix import MATRIX
 
 SOURCE = "live_capture"
@@ -165,5 +171,116 @@ async def archive_closing_lines(sports: list[str] | None = None) -> dict:
         "unresolved": len(set(unresolved)),
         "requests": 0,   # reads live tables only — spends no provider budget
         "objects": 0,
+        "warnings": warnings,
+    }
+
+
+# Sports whose completed games come from ESPN's scoreboard. MLB has its own
+# StatsAPI path below; NHL is not covered yet — see archive_results.
+_ESPN_RESULT_SPORTS = ("nfl", "cfb", "nba", "soccer_epl", "soccer_mls")
+
+
+async def _mlb_finals(days_back: int) -> list[dict]:
+    """Completed MLB games from StatsAPI, in the same dict shape ESPN returns.
+
+    MLB does not come from ESPN's scoreboard here — game_context.load_mlb_games
+    reads a snapshot that carries no scores — so this uses the StatsAPI schedule
+    the rest of the MLB pipeline already depends on.
+    """
+    import httpx
+
+    from predict import statsapi
+
+    today = datetime.now(timezone.utc).date()
+    start = (today - timedelta(days=days_back)).isoformat()
+    async with httpx.AsyncClient() as client:
+        games = await statsapi.get_schedule_range(client, start, today.isoformat())
+
+    out = []
+    for g in games:
+        if (g.abstract_state or "").lower() != "final":
+            continue
+        home = (g.teams or {}).get("home") or {}
+        away = (g.teams or {}).get("away") or {}
+        hs, as_ = home.get("score"), away.get("score")
+        if hs is None or as_ is None:
+            continue
+        out.append({
+            "gameId": str(g.game_pk),
+            "date": g.game_date,
+            "homeTeamName": ((home.get("team") or {}).get("name")),
+            "awayTeamName": ((away.get("team") or {}).get("name")),
+            "homeScore": int(hs),
+            "awayScore": int(as_),
+            "venue": (g.venue or {}).get("name"),
+        })
+    return out
+
+
+async def archive_results(days_back: int = 3) -> dict:
+    """Settled scores into game_result.
+
+    Team ids resolve through the SAME name index the closing-line path uses,
+    not through each provider's own id. ESPN and MLB StatsAPI number teams
+    differently, and the archive already contains whichever convention its own
+    rows use — resolving by name returns ids that match by construction, instead
+    of writing a second id namespace into one table.
+
+    NHL IS NOT COVERED YET and is not silently skipped: it is the one sport
+    whose schedule comes from neither ESPN nor StatsAPI, and it is out of season
+    as this is written, so it has no completed games to lose in the meantime.
+    """
+    written = 0
+    considered = 0
+    unresolved: list[str] = []
+    warnings: list[str] = []
+
+    sources: list[tuple[str, list[dict]]] = []
+    for sport in _ESPN_RESULT_SPORTS:
+        try:
+            sources.append((sport, await completed_espn_games(sport, days_back)))
+        except Exception as e:
+            warnings.append(f"{sport}: {type(e).__name__}: {e}")
+    try:
+        sources.append(("mlb", await _mlb_finals(days_back)))
+    except Exception as e:
+        warnings.append(f"mlb: {type(e).__name__}: {e}")
+
+    for sport, finals in sources:
+        if not finals:
+            continue
+        idx = await _team_ids(sport)
+        rows = []
+        for g in finals:
+            considered += 1
+            home_name, away_name = g.get("homeTeamName"), g.get("awayTeamName")
+            if not home_name or not away_name:
+                continue
+            hid = idx.get(normalize_team_name(home_name))
+            aid = idx.get(normalize_team_name(away_name))
+            if not hid or not aid:
+                unresolved.append(f"{sport}: {away_name} @ {home_name}")
+                continue
+            start = _parse_start(g.get("date"))
+            if start is None:
+                continue
+            rows.append({
+                "sport": sport, "event_ref": str(g["gameId"]),
+                "game_date": start.date(), "event_start": start,
+                "home_team_id": hid, "away_team_id": aid,
+                "home_team_raw": home_name, "away_team_raw": away_name,
+                "home_score": g["homeScore"], "away_score": g["awayScore"],
+                "venue": g.get("venue"),
+            })
+        if rows:
+            written += await db.upsert_live_results(rows)
+
+    if unresolved:
+        uniq = sorted(set(unresolved))
+        warnings.append(f"{len(uniq)} completed game(s) had no resolvable team id: "
+                        + "; ".join(uniq[:5]) + ("…" if len(uniq) > 5 else ""))
+    return {
+        "games": considered, "rows_matched": considered, "rows_written": written,
+        "unresolved": len(set(unresolved)), "requests": 0, "objects": 0,
         "warnings": warnings,
     }
