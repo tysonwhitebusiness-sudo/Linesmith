@@ -351,7 +351,13 @@ async def mark_provider_exhausted(provider_id: str, period_kind: str, cap: int,
     Idempotent: sets the counter to `cap` rather than incrementing, so repeated
     429s in one period do not inflate it further.
     """
-    period_key = eastern_date() if period_kind == "daily" else eastern_month_key()
+    # utc_date_key for daily, NOT eastern — matching record_daily_spend and
+    # try_reserve_daily exactly. Propline resets at 00:00 UTC, and the eastern
+    # key undercounted real spend for 4-5 hours a day (see the note on
+    # utc_date_key). A sync that keyed differently from the gate would write a
+    # row nothing reads: silently useless, in a function whose entire job is to
+    # stop a silently wrong number.
+    period_key = utc_date_key() if period_kind == "daily" else eastern_month_key()
     column = "object_count" if unit == "objects" else "request_count"
     pool = await get_pool()
     async with pool.acquire(timeout=15.0) as conn:

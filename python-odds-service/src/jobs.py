@@ -404,6 +404,29 @@ async def _mlb_odds_lines_cycle_inner() -> dict:
         return await run_mlb_odds_lines_cycle(client)
 
 
+async def job_sync_provider_quota(yield_fn=None) -> dict:
+    """Reconcile provider_usage against the vendors' own numbers.
+
+    See quota_sync.py for why this exists. Short version: provider_usage is a
+    DERIVED count, it was wrong by ~50x for sgo_k1 on 2026-09-03, and a wrong
+    count does not merely mis-report — it defeats pooling, because job_runner
+    reserves against it and will keep choosing a key the vendor has already cut
+    off. A 429 now retires that key, but that reacts after the budget is spent.
+    This corrects the number before anything is spent against it.
+
+    HOURLY, not per-cycle. The endpoint it calls is free, but the drift it
+    corrects accumulates over hours, not minutes, and a job that ran every 2.5
+    minutes to fix an hours-scale problem would just be noise in the run log.
+    """
+    return await _run_timed("syncProviderQuotaJob", _sync_provider_quota_inner())
+
+
+async def _sync_provider_quota_inner() -> dict:
+    import quota_sync
+
+    return await quota_sync.sync_all()
+
+
 async def job_generic_capture(yield_fn=None) -> dict:
     """Real pick-capture for every sport predict/generic_team_elo.py
     covers (NFL/CFB/NBA/NHL/Soccer EPL/Soccer MLS) — the missing half of
@@ -1312,6 +1335,11 @@ JOB_REGISTRY = [
     # Matches mlbOddsLinesCycleJob's own 5min cadence and reasoning — see
     # job_generic_capture's own docstring.
     ("genericCaptureJob", job_generic_capture, 5 * 60),
+    # Hourly: the endpoint is free, but the drift it corrects builds over hours.
+    # health_check picks this up automatically from JOB_REGISTRY, so a sync that
+    # silently stops running becomes a failing check rather than a slow return
+    # to the exact blindness it was added to remove.
+    ("syncProviderQuotaJob", job_sync_provider_quota, 60 * 60),
     # Not time-critical, matches gradeFinishedMlbPicksJob's own 15min
     # reasoning — a final score doesn't need grading within seconds.
     ("gradeFinishedGenericPicksJob", job_grade_finished_generic_picks, 15 * 60),
