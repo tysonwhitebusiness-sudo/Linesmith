@@ -64,22 +64,51 @@ them. Phases 0-9. The separate infrastructure doc was merged into it on operator
 instruction: interleaving two plans is how steps get skipped.
 Artifact: `https://claude.ai/code/artifact/ab49524a-4b4d-4946-b481-47681d81fe88`
 
-### Phase 1 — ALL CODE WORK DONE. Gate 10: 11 failures -> 8, all deploy-bound.
+### Phase 1 — DEPLOYED 2026-09-03 18:19 UTC. Gate 10: 11 -> 4 failures.
 
-**THE ONLY BLOCKER IS A DEPLOY.** The worker runs `81948e0`, which predates
-everything from 1c onward. `autoDeploy: no` and the standing instruction is not
-to deploy without asking, so all of this is committed, locally tested, and inert.
+`dep-dacrjom1egvs73f468ag`, commit `2716a8e`, status live. The worker had been
+running `81948e0` since 03:45 that morning, predating everything from 1c onward.
 
-| | Status |
-|---|---|
-| **1a** cadence | `/markets` cached, `min_interval_seconds`, Propline 25min. **Verified live**: 672 -> 677 in 20min |
-| **1b** keys | 4 keys set + deployed. `PARLAYAPI_NBA_KEY` still unprovisioned |
-| **1c** matrix | 5 spec builders -> 1 matrix; proven behaviour-preserving on specs AND fetch URLs |
-| **1d** widen | SharpAPI 2 -> 8 sports; `refreshNhlJob`; SGO gains NHL |
-| **1e** dedupe | consensus counted DraftKings 3x — 21.5% of live props affected |
-| **1f** pools | keys pooled; Propline 2 -> 6 sports; MLB gains ParlayAPI |
-| **1g** monitoring | never-fetching jobs unhealthy; `archiveFreshness` + `captureLatency` |
-| **1h** bridge | `archiveClosingLinesJob` + `archivePropsJob` + `archiveResultsJob`, freeze proven |
+**The pacer is confirmed working in production, by arithmetic and not by vibe.**
+`refreshCfbJob` logged `parlayapi throttled -- last run 27s ago, required 196s`.
+196s is not a static floor (that would be 2700s); it is exactly what the
+allocator predicts WITH pooling live: 5 provisioned keys x 800 soft cap =
+4,000/month, spread over the 27.2 days left in September = 588s base, divided by
+the HOT weight of 3 = 196s. A single-key read would have produced 784s. That one
+number is end-to-end evidence for both the allocator and the pool-aware fix.
+
+**The pooling cutover is real, measured at 18:28 UTC.** Spend has MOVED: the
+pooled ids `propline_k1`, `parlayapi_k1`, `sgo_k1` were all written at 18:25,
+while the sport-labelled ids sit frozen at their pre-deploy values (`oddsapiio`
+untouched since 04:58, `propline` since 16:43).
+
+`refreshTier1` also logged `oddsapiio daily cap reached (500) — easing off`:
+the provider that had no throttle at all is now being refused at its cap.
+
+### Gate 10's remaining 4 — all time-dependent, none code-dependent
+
+Nothing here is waiting on a change. Re-run the gate; do not "fix" these.
+
+- **2 capture-latency medians.** A 7-day median dominated by the hand-run era.
+  MLB is already collapsing on its own as the bridge runs on schedule: 405 ->
+  294 -> 289 min across three readings this afternoon. CFB is 3,070 min over 354
+  rows and has games at 22:00 UTC, so it should move tonight. These clear as old
+  rows age out of the 7-day window.
+- **2 over-cap readings**, `propline` 1006/1000 and `oddsapiio` 504/500. Both
+  are TODAY's cumulative counters, both frozen at pre-deploy values, and neither
+  can decrease. They reset at 00:00 UTC. The throttle now prevents further
+  spend, which is the point.
+
+**Three checks now SKIP rather than fail**, and that was a gate bug worth
+knowing about: NBA and NHL are out of season (ESPN returns 0 games, both start
+in October) and NFL's opener is 6.8 days out, so `gameday.compute_tier()` says
+cold and the jobs correctly decline to spend. Demanding fresh lines from all
+three asserted something no code could satisfy. Two gate defects of the same
+family were fixed the same afternoon — a PASS that printed its own failure
+reason, and 10.5 hardcoding the pre-pooling provider ids, which would have made
+it pass vacuously forever starting tomorrow. **A gate that cannot fail, or
+cannot pass, trains you to skim it — which is how the twelve-day NFL outage in
+gate10's own docstring survived.**
 
 ### What the bridge captured on its first runs
 
@@ -149,6 +178,10 @@ the same lesson as [[feedback_render_before_believing]], one layer down.
 
 ### Two things left running on the operator's machine (2026-09-03 18:10 UTC)
 
+**RESOLVED — killed 2026-09-03 18:12 UTC.** `prop_odds_archive` re-verified at
+1,817,418 rows afterwards; nothing was lost, and the pooler connection is back.
+Original note kept because the diagnosis is the reusable part:
+
 **A hung `import_props.py --truncate`, PID 14804, started 2026-09-01 23:20.**
 Its CPU counter was identical (3394.86s) across two readings 35 minutes apart —
 it is blocked, not working, after 38 hours. **The data is safe**: it truncates
@@ -156,6 +189,13 @@ it is blocked, not working, after 38 hours. **The data is safe**: it truncates
 hung AFTER the load completed. The only cost is a held pooler connection against
 the 15-connection cap. Safe to kill; not killed here because that is the
 operator's call, not least because the flag is `--truncate`.
+
+**The full Python suite came back clean — no regressions.** `test_pace`,
+`test_provider_matrix`, `test_provider_throttle` and `test_providers` all pass.
+Its two reported failures were both artifacts of how it was invoked, not real:
+`test_mlb_tree_models` hit a 600s timeout mid-training, and `test_statcast_pitches`
+opens `src/statcast_pitches.py` relative to the REPO ROOT, so it only fails when
+run from inside `src/` (it passes from `python-odds-service/`). Original note:
 
 **A full Python suite run**, started 13:00 UTC, checking for regressions from the
 allocator. `test_mlb_mlp.py` alone has taken over an hour (genuinely computing —
