@@ -207,6 +207,52 @@ Its one known failure is pre-existing and unrelated:
 `test_elo_and_pitcher_game_score.py`, same `DataError: expected str, got int` as
 the two broken jobs below. The file is untouched since `03d5b25`.
 
+### 1g is COMPLETE, and closing it uncovered three more real bugs
+
+Deployed `c5bb4d5` (20:39 UTC). Zero failing jobs on the worker.
+
+**The DataError was never about two jobs.** Migration `20260901091000` made
+`team_elo_history.team_id` text; no Python was updated; asyncpg raised
+"expected str, got int". Blast radius: **every elo write, every sport, two
+days** — newest mlb row frozen at 09-01 while games were played. Normalised at
+the three db.py boundaries, and `backfill_mlb_elo.py` recovered the gap (31
+games; 09-02 went 0 -> 36 rows). `maintainMlbEloJob` is today-only BY DESIGN, so
+nothing would ever have gone back for it.
+
+**1g bullet 4 shipped as `declaredPairsProduce`** and found a live failure on its
+first run: `sportsgameodds` producing nothing for cfb/nfl/soccer_mls. The chain
+underneath it is the part worth remembering:
+
+1. The vendor said sgo_k1 was at **2500/2500 entities on the 3rd**;
+   `provider_usage` said **2**. A ~50x undercount, so the soft cap never fired.
+2. That undercount **defeated pooling** — the one mechanism built for a dead
+   key. `job_runner` reserves against `provider_usage`, saw sgo_k1 far under
+   cap, and chose the dead key every cycle while sgo_k2 held 1,136 entities.
+3. Fixed three ways: a 429 now retires a key (`FetchOutcome.rate_limited` ->
+   `db.mark_provider_exhausted`); `syncProviderQuotaJob` asks the vendor hourly
+   so the count cannot drift back; and both counters were corrected by hand.
+
+**Then the pacer's own bug surfaced, and only because a key went over cap.** The
+pool-aware read computed `total_cap - sum(used)`, letting an OVER-cap key
+contribute a negative and eat a live key's headroom: 4000-3864 = 136, declaring
+a 177-object CFB cycle unaffordable and silencing SGO on CFB for the month.
+Correct is `sum(max(0, cap - used_i))` = 636, which affords it. **A correct gate
+running on a bad number looks exactly like a conservative gate** — that is why
+it survived a full test suite and a deploy.
+
+### SGO is rationed, not restored — do not read the fix as service returning
+
+636 objects remain across the pooled soft caps (4,000). CFB costs 177/cycle and
+MLB 9, so the pacer allows ~6h and ~3.1h intervals respectively and the real
+quota resets 2026-10-01. The fixes stop this recurring; they do not conjure back
+what was already spent.
+
+**Header-based quota is still unimplemented, deliberately.** ParlayAPI
+(`ratelimit-policy`), Propline (`x-daily-limit`) and The Odds API
+(`x-requests-remaining`) publish quota ONLY on real odds calls, so polling them
+would spend quota to measure quota. They belong in the fetch path, not in
+`syncProviderQuotaJob`. Odds-API.io and SharpAPI publish nothing at all.
+
 ### What is NOT done, stated plainly
 
 `genericCaptureJob` and `computeMlbGameModelJob` each fail every run with
