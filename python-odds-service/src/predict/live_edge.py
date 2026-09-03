@@ -280,6 +280,16 @@ def _sharp_reference_prob(matched: list[PropOddsRow], side: str) -> tuple[float,
     return None
 
 
+def _staleness(row) -> float:
+    """How old a quote is, for picking between two providers quoting the same
+    book. `delay_seconds` is the vendor's own declared delay (SharpAPI's free
+    tier reports 60s); an undeclared delay sorts as fresher than a declared one,
+    and a row flagged is_delayed with no number sorts worst."""
+    if row.delay_seconds is not None:
+        return float(row.delay_seconds)
+    return 1e9 if row.is_delayed else 0.0
+
+
 def _consensus_reference_prob(
     matched: list[PropOddsRow], side: str, exclude_bookmaker: str | None = None
 ) -> tuple[float, str] | None:
@@ -300,17 +310,34 @@ def _consensus_reference_prob(
     a one-book "consensus". A median of one book is that book's price, which
     is precisely the number this is supposed to be independent of.
     """
-    seen: set[tuple[str, str]] = set()
-    probs: list[float] = []
+    # ONE VOTE PER BOOKMAKER, not per (bookmaker, provider).
+    #
+    # This keyed on (bookmaker, provider_id) until 2026-09-03, so the SAME book
+    # arriving from two providers cast two votes in the median. That is not
+    # hypothetical: measured on live prop_odds, fanatics, draftkings and fanduel
+    # each arrive from THREE providers, ten books arrive from more than one, and
+    # 19,131 of 88,856 priced props (21.5%) had at least one book counted more
+    # than once. A median is supposed to be one price per market participant;
+    # counting DraftKings three times makes it partly a DraftKings average.
+    #
+    # It gets worse with breadth, which is the trap: every provider added to
+    # widen coverage adds another duplicate of the same handful of books, so the
+    # consensus degrades exactly as the data appears to improve.
+    #
+    # Where a book quotes through several providers, keep the FRESHEST quote —
+    # same book, so the only thing to choose between them is staleness.
+    best: dict[str, object] = {}
     for row in matched:
         if row.side != side:
             continue
         if exclude_bookmaker is not None and row.bookmaker == exclude_bookmaker:
             continue
-        key = (row.bookmaker, row.provider_id)
-        if key in seen:
-            continue
-        seen.add(key)
+        current = best.get(row.bookmaker)
+        if current is None or _staleness(row) < _staleness(current):
+            best[row.bookmaker] = row
+
+    probs: list[float] = []
+    for row in best.values():
         prob = _two_sided_devigged_for_row(matched, side, row)
         if prob is not None:
             probs.append(prob)
