@@ -161,6 +161,77 @@ def log_likelihood(params: DCParams, matches, xi: float = 0.0,
     return total
 
 
+# ---------------------------------------------------------------------------
+# The vectorised fit path.
+#
+# WHY THIS EXISTS. The scalar log_likelihood above is the readable definition
+# and stays the reference. It is not the thing to optimise WITH. L-BFGS-B has no
+# analytic gradient here, so it finite-differences: with 35 clubs that is 72
+# parameters, hence 73 likelihood evaluations per gradient step, each looping
+# every match in Python. Measured 2026-09-04, a real EPL walk-forward on that
+# path did not finish in ten minutes.
+#
+# The arrays below are constant for a given fit, so they are built once and the
+# optimiser only ever does vector arithmetic over them. test_dixon_coles asserts
+# this path agrees with the scalar definition — it is a speed change, and a
+# speed change that alters the answer is a bug.
+# ---------------------------------------------------------------------------
+
+
+class _FitArrays:
+    """Everything constant across one fit's likelihood evaluations."""
+
+    def __init__(self, matches, teams: list[str], xi: float, as_of):
+        import numpy as np
+        from scipy.special import gammaln
+
+        idx = {t: i for i, t in enumerate(teams)}
+        self.hi = np.fromiter((idx[m["home"]] for m in matches), int, len(matches))
+        self.ai = np.fromiter((idx[m["away"]] for m in matches), int, len(matches))
+        hg = np.fromiter((m["home_goals"] for m in matches), float, len(matches))
+        ag = np.fromiter((m["away_goals"] for m in matches), float, len(matches))
+        self.hg, self.ag = hg, ag
+        self.const = gammaln(hg + 1.0) + gammaln(ag + 1.0)
+        if xi > 0 and as_of is not None:
+            days = np.fromiter(((as_of - m["played"]).days for m in matches),
+                               float, len(matches))
+            self.w = np.exp(-xi * np.maximum(days, 0.0))
+        else:
+            self.w = np.ones(len(matches))
+        # The four tau cells, as masks, computed once.
+        self.m00 = (hg == 0) & (ag == 0)
+        self.m01 = (hg == 0) & (ag == 1)
+        self.m10 = (hg == 1) & (ag == 0)
+        self.m11 = (hg == 1) & (ag == 1)
+
+
+def _neg_ll_fast(v, arr: "_FitArrays", n: int) -> float:
+    import numpy as np
+
+    att = np.asarray(v[:n], dtype=float)
+    att = att - att.mean()                      # the identifiability pin
+    dfn = np.asarray(v[n:2 * n], dtype=float)
+    ha = float(v[2 * n])
+    rho = min(RHO_MAX, max(RHO_MIN, float(v[2 * n + 1])))
+
+    lam = np.exp(att[arr.hi] - dfn[arr.ai] + ha)
+    mu = np.exp(att[arr.ai] - dfn[arr.hi])
+    if not (np.all(np.isfinite(lam)) and np.all(np.isfinite(mu))):
+        return 1e18
+
+    t = np.ones_like(lam)
+    t[arr.m00] = 1.0 - lam[arr.m00] * mu[arr.m00] * rho
+    t[arr.m01] = 1.0 + lam[arr.m01] * rho
+    t[arr.m10] = 1.0 + mu[arr.m10] * rho
+    t[arr.m11] = 1.0 - rho
+    if np.any(t <= 0):
+        return 1e18                              # an invalid rho, not log(negative)
+
+    ll = (-lam + arr.hg * np.log(lam) - mu + arr.ag * np.log(mu)
+          - arr.const + np.log(t))
+    return -float(np.sum(arr.w * ll))
+
+
 def _pack(params: DCParams, teams: list[str]) -> list[float]:
     return ([params.attack[t] for t in teams]
             + [params.defence[t] for t in teams]
@@ -194,9 +265,8 @@ def fit(matches, xi: float = 0.0, as_of=None, maxiter: int = 400) -> DCParams:
                      defence={t: 0.0 for t in teams},
                      home_advantage=0.25, rho=-0.05)
 
-    def neg(v):
-        return -log_likelihood(_unpack(v, teams), matches, xi, as_of)
-
-    res = minimize(neg, _pack(start, teams), method="L-BFGS-B",
-                   options={"maxiter": maxiter})
+    arr = _FitArrays(matches, teams, xi, as_of)
+    n = len(teams)
+    res = minimize(lambda v: _neg_ll_fast(v, arr, n), _pack(start, teams),
+                   method="L-BFGS-B", options={"maxiter": maxiter})
     return _unpack(res.x, teams)

@@ -159,6 +159,33 @@ def test_identifiability() -> None:
           dc._unpack([0, 0, 0, 0, 0, 0, 0.25, 9.0], teams).rho, dc.RHO_MAX)
 
 
+def test_fast_path_agrees_with_the_definition() -> None:
+    print("\nthe VECTORISED fit path must agree with the scalar definition")
+    # The scalar log_likelihood is the readable reference; the numpy path is
+    # what the optimiser actually calls, because finite-differencing 72
+    # parameters over a Python loop did not finish a real EPL walk-forward in
+    # ten minutes. A speed change that alters the answer is a bug, so the two
+    # are compared directly rather than assumed equivalent.
+    random.seed(11)
+    teams = ["A", "B", "C", "D"]
+    d0 = date(2021, 1, 1)
+    matches = [{"home": random.choice(teams), "away": random.choice(teams),
+                "home_goals": random.randint(0, 4), "away_goals": random.randint(0, 4),
+                "played": d0 + timedelta(days=i)} for i in range(300)]
+    matches = [m for m in matches if m["home"] != m["away"]]
+    as_of = d0 + timedelta(days=400)
+
+    for xi in (0.0, 0.003):
+        for rho in (0.0, -0.08, 0.06):
+            v = [0.3, -0.1, 0.05, -0.25,
+                 0.2, -0.15, 0.0, 0.1, 0.27, rho]
+            p = dc._unpack(v, teams)
+            scalar = dc.log_likelihood(p, matches, xi, as_of)
+            arr = dc._FitArrays(matches, teams, xi, as_of)
+            fast = -dc._neg_ll_fast(v, arr, len(teams))
+            close(f"xi={xi} rho={rho:+.2f}: fast == scalar", fast, scalar, 1e-6)
+
+
 def test_recovery_from_synthetic_data() -> None:
     print("\nRECOVERY — fit known parameters back out of data they generated")
     random.seed(7)
@@ -209,6 +236,7 @@ def main() -> int:
     test_strength_ordering()
     test_decay()
     test_identifiability()
+    test_fast_path_agrees_with_the_definition()
     test_recovery_from_synthetic_data()
     print()
     if _failures:

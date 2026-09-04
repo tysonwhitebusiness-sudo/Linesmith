@@ -1184,6 +1184,58 @@ record, not to discover mid-run.
 **Done when:** the harness produces a prediction for every held-out match using
 only prior data, and refuses out-of-order input.
 
+**RESULT — built 2026-09-04.** `src/predict/dc_walkforward.py`, tests in
+`src/test_dc_walkforward.py`, all passing.
+
+**It did not finish in ten minutes on the first attempt, and the fix was
+structural.** L-BFGS-B has no analytic gradient here, so it finite-differences:
+35 clubs is 72 parameters, hence 73 likelihood evaluations per gradient step,
+each looping every match in Python. The likelihood is now vectorised with numpy
+(`_FitArrays` + `_neg_ll_fast`), with the scalar `log_likelihood` kept as the
+readable reference.
+
+**>10 min (never finished) → 55.8s.** A test asserts the two paths agree to 1e-6
+across every rho and xi combination, because a speed change that alters the
+answer is a bug, not an optimisation.
+
+**Real EPL walk-forward, held out 2024+:**
+
+```
+964 matches scored, 0 skipped thin
+87 refits in 55.8s (0.64s each), 0 hit the iteration cap
+training set grew 3,236 -> 4,199 matches
+log-loss 1.02749   top-pick accuracy 49.5%
+```
+
+Three-way log-loss, so the references are ln(3) = 1.0986 for uniform and ~1.066
+for always predicting the base rates. The model beats both — it has real signal
+before any hyperparameter is fitted, which is more than Phase 2's Elo could say
+at the same stage.
+
+**3.2's flagged question is answered.** `home_advantage` fitted to **0.198** over
+the full 2015-2026 history against **0.133** on 2023-25 alone. Premier League
+home advantage really has declined since 2020 — the low value was a real effect,
+not a broken term. **This is a direct argument for fitting `xi` in 3.4:** time
+decay would down-weight the older, higher-home-advantage seasons rather than
+averaging across a structural break.
+
+**The harness's tests are all about leakage**, since leakage is the failure that
+makes every downstream number better and meaningless: a match is predicted by a
+fit trained STRICTLY BEFORE its own date (not "on or before", which lets a
+same-day fixture inform itself; not "before the last refit", which would include
+matches played in between); out-of-order input raises; and thin history is
+skipped rather than scored on a meaningless fit.
+
+Warm starting is verified to be a speed measure only — cold and warm runs agree
+to 0.0000 — and the harness reports `refits_hitting_cap` so non-convergence
+cannot hide behind it.
+
+**Cost note for 3.4:** 0.64s per EPL refit at 3,200-4,200 training matches.
+MLS is larger on both axes (6,395 matches, 31 clubs) and 3.4 must also sweep
+`xi`, which multiplies the whole walk-forward by the number of candidate values.
+Budget for that rather than discovering it mid-run — this step already cost one
+timeout by not doing so.
+
 #### 3.4 — Fit and measure
 
 Fit **each league separately**. They share an engine, not a parameter set: MLS's
