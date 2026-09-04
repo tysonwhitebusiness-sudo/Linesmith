@@ -3497,59 +3497,80 @@ async def write_game_odds_book_lines(rows: list[GameOddsBookLineInput]) -> None:
         return
     fetched_at = datetime.now(timezone.utc)
     rejected: list[str] = []
+
+    # BATCH FIRST, ISOLATE ONLY ON FAILURE.
+    #
+    # This used to be one INSERT per row, each wrapped in its own SAVEPOINT, all
+    # inside a single outer transaction. The per-row savepoint was added for a
+    # real reason (below) but it costs three pooler round trips per row, and
+    # measured on 2026-09-04 that is 425 ms/row: soccer_epl's 2,574-row cycle
+    # needed EIGHTEEN MINUTES in one transaction. It never finished, and because
+    # every row shared that outer transaction, an unfinished write committed
+    # NOTHING. Soccer produced fetches every 4h and zero rows for 26 hours,
+    # which reads exactly like a dead provider and is not one.
+    #
+    # WHY THE SAVEPOINT EXISTS, still true: task 5.4 added CHECK constraints so
+    # implausible data is loud — a `total 5.5 / under -225` is an alternate-scope
+    # market (team total, or first-five-innings) landing in the game-total slot,
+    # since a real 9-inning under 5.5 prices nowhere near -225. Nothing was ever
+    # taught to HANDLE that loudness, so a single mislabeled draftkings price
+    # aborted an entire refreshTier1 insert on 2026-08-30 and wrote none of the
+    # rest.
+    #
+    # Both properties at once: executemany a chunk in one round trip, and only
+    # if that chunk violates a constraint replay THAT chunk row-by-row to find
+    # the offenders. Clean cycles — nearly all of them — pay one round trip per
+    # chunk; a cycle with one bad row pays the old cost for that chunk alone.
+    # The constraint stays the single source of truth for what is plausible,
+    # deliberately NOT re-implemented in Python as a second set of bands to
+    # drift apart.
+    sql = """
+        INSERT INTO game_odds_book_lines
+            (sport, game_id, market, side, bookmaker, source, point, american_odds, decimal_odds, fetched_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (sport, game_id, market, side, bookmaker, source) DO UPDATE SET
+            point = excluded.point,
+            american_odds = excluded.american_odds,
+            decimal_odds = excluded.decimal_odds,
+            fetched_at = excluded.fetched_at
+    """
+
+    def _params(r: GameOddsBookLineInput) -> tuple:
+        return (
+            _GENERIC_SPORT_KEY.get(r.sport, r.sport),
+            r.game_id,
+            r.market,
+            r.side,
+            canonical_bookmaker(r.bookmaker),
+            r.source,
+            r.point,
+            r.american_odds,
+            r.decimal_odds,
+            fetched_at,
+        )
+
+    # Chunked so one poisoned row costs a bounded replay, not the whole cycle.
+    chunk_size = 500
     pool = await get_pool()
-    async with pool.acquire(timeout=15.0) as conn:
-        async with conn.transaction():
-            for r in rows:
-                # ONE BAD ROW MUST NOT COST THE WHOLE CYCLE.
-                #
-                # Task 5.4 added CHECK constraints to this table to "make
-                # impossible data loud" — correctly: a `total 5.5 / under -225`
-                # is an alternate-scope market (a team total or a first-five
-                # innings line) landing in the game-total slot, since a real
-                # 9-inning under 5.5 prices nowhere near -225. But nothing was
-                # ever taught to HANDLE that loudness. Every row here shares one
-                # transaction, so a single mislabeled price from one book
-                # aborted the entire insert and raised out to the job: measured
-                # live on 2026-08-30, `refreshTier1` failed outright on one
-                # draftkings row and wrote none of the rest.
-                #
-                # A SAVEPOINT per row confines the failure to the row. The
-                # constraint stays the single source of truth for what is
-                # plausible — deliberately NOT re-implemented in Python, which
-                # would be one more pair of bands to drift apart.
-                try:
-                    async with conn.transaction():
-                        await conn.execute(
-                            """
-                            INSERT INTO game_odds_book_lines
-                                (sport, game_id, market, side, bookmaker, source, point, american_odds, decimal_odds, fetched_at)
-                            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                            ON CONFLICT (sport, game_id, market, side, bookmaker, source) DO UPDATE SET
-                                point = excluded.point,
-                                american_odds = excluded.american_odds,
-                                decimal_odds = excluded.decimal_odds,
-                                fetched_at = excluded.fetched_at
-                            """,
-                            _GENERIC_SPORT_KEY.get(r.sport, r.sport),
-                            r.game_id,
-                            r.market,
-                            r.side,
-                            canonical_bookmaker(r.bookmaker),
-                            r.source,
-                            r.point,
-                            r.american_odds,
-                            r.decimal_odds,
-                            fetched_at,
+    async with pool.acquire(timeout=30.0) as conn:
+        for i in range(0, len(rows), chunk_size):
+            chunk = rows[i:i + chunk_size]
+            try:
+                async with conn.transaction():
+                    await conn.executemany(sql, [_params(r) for r in chunk])
+            except asyncpg.CheckViolationError:
+                # executemany cannot say WHICH row failed, so this chunk goes
+                # back through the slow path to find out. Only the bad rows are
+                # dropped; the good ones in the same chunk still land.
+                for r in chunk:
+                    try:
+                        async with conn.transaction():
+                            await conn.execute(sql, *_params(r))
+                    except asyncpg.CheckViolationError as e:
+                        rejected.append(
+                            f"{r.sport}/{r.game_id}/{r.market}/{r.side}/{r.bookmaker}"
+                            f" point={r.point} odds={r.american_odds} ({type(e).__name__})"
                         )
-                except asyncpg.CheckViolationError as e:
-                    # Rejected, not silently dropped: the count and a sample go
-                    # to the log so a provider that starts emitting a different
-                    # proposition entirely is visible rather than merely quiet.
-                    rejected.append(
-                        f"{r.sport}/{r.game_id}/{r.market}/{r.side}/{r.bookmaker}"
-                        f" point={r.point} odds={r.american_odds} ({type(e).__name__})"
-                    )
 
     if rejected:
         print(
