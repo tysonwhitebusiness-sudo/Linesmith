@@ -253,6 +253,52 @@ what was already spent.
 would spend quota to measure quota. They belong in the fetch path, not in
 `syncProviderQuotaJob`. Odds-API.io and SharpAPI publish nothing at all.
 
+### GATE 10 IS AT 1, and the last one is CFB coverage, not a bug
+
+Deployed `403d83d`. MLB capture latency is **2 min over 898 rows** — the bridge
+works exactly as designed.
+
+**Soccer was never a dead provider.** It fetched every 4h and produced nothing
+for 26 hours because `write_game_odds_book_lines` did one INSERT per row, each
+in its own SAVEPOINT, all inside ONE outer transaction. Measured 425 ms/row
+(three pooler round trips per savepoint): soccer's 2,574-row cycle needed
+**eighteen minutes**, never finished, and an unfinished outer transaction
+commits NOTHING. MLB hid it by having smaller per-cycle counts; soccer only
+crossed the line once pooling gave it full propline coverage. Now batches with
+executemany and replays a chunk row-by-row only if it violates a CHECK
+constraint — 18.2 min -> 3.4s, fault isolation preserved
+(`test_book_line_rejection` still passes 1-of-5).
+
+**`declaredPairsProduce` had two holes, both found by it missing that outage.**
+Props were asserted PROVIDER-WIDE (prop_odds has no sport column), so propline's
+MLB props excused its soccer declaration — now keyed by sport through the
+game_id join, 99% resolvable. And it asserted providers the TIER GATE had
+silenced: SharpAPI is uncapped and fetches always, so it alone made NFL look
+active while every paid provider correctly skipped a cold sport. Now consults
+the same `gameday.compute_tier` the jobs do.
+
+### The last failure: CFB has 2 of 177 games covered
+
+| sport | sources (24h) | rows | games covered |
+|---|---|---|---|
+| mlb | propline, the-odds-api, sportsgameodds, sharpapi | 3,812 | most of the slate |
+| cfb | sharpapi only | **15** | **2 of 177** |
+
+`cfb median capture-to-start 400min` is the SYMPTOM. The bridge cannot capture
+near kickoff because there is nothing to capture. Causes, none fixable tonight:
+
+- `sportsgameodds` — monthly entity quota exhausted, resets 2026-10-01
+- `propline` — deliberately excused for CFB (1+N shape, ~179 requests/cycle).
+  That excuse predates pooling; at 2,000/day pooled it is now *arguable*, but
+  spending ~1,970/day on CFB would starve MLB. **A resource-allocation call for
+  the operator, not a bug to fix.**
+- `parlayapi` — props only for CFB
+- `sharpapi` — genuinely thin here, 2 games
+
+**10.3's own threshold is too weak and should be tightened.** It passes a sport
+on `>0 rows in 24h`; CFB passes on 15 rows covering 2 of 177 games. A check that
+green-lights 1% coverage is not a coverage check.
+
 ### What is NOT done, stated plainly
 
 `genericCaptureJob` and `computeMlbGameModelJob` each fail every run with
