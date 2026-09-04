@@ -682,6 +682,39 @@ is too aggressive on grass and too timid on hard.
 Fitted parameters: `K` (one, global) and `w_hard`, `w_clay`, `w_grass`. Four
 numbers. Fit by maximising log-likelihood on the scored years, never on burn-in.
 
+**RESULT — built 2026-09-04.** `src/predict/tennis_elo.py`, tests in
+`src/test_tennis_elo.py`, all passing.
+
+Ratings keyed on `(sport, name)` per 2.1. Per-surface blend weights. Reversion
+on read. **No home-advantage term** — measured, the "home" player wins 50.3% of
+56,386 matches, 1.4 standard errors off a coin flip, so home/away is column
+order only. That check doubled as the leakage test: a winner-first column would
+have shown up here as ~100%.
+
+**Smoke run over all 56,386 real matches, replayed in 0.5s**, 46,256 scored
+after burn-in. Unfitted defaults give **log-loss 0.6256, accuracy 63.9%** (a coin
+flip is 0.693). Top ratings are the right names, which is the strongest
+available sanity check on a cold-start rating system:
+
+- ATP — Sinner 2199, Alcaraz 2107, Djokovic 1930, Zverev 1920, Federer 1914
+- WTA — Barty 2024, Sabalenka 2002, Rybakina 1976, Swiatek 1953, Gauff 1948
+
+**A bug the tests caught, worth recording.** The first version updated `overall`
+before reading the surface base. Since `surface_rating()` falls back to
+`overall` for a surface never played, a player's FIRST match on a surface took
+the ALREADY-UPDATED overall as its base — the result landed in that rating
+twice, 1523.2 where 1512.0 is correct, a 47% overshoot. It never raised and the
+number looked plausible. Fixed by reading every pre-match rating before writing
+any.
+
+**Open question for 2.4: the overall rating does not decay when idle.** Barty
+tops the WTA list having retired in 2022. Harmless for training — a retired
+player is in no future match — but it means a COMEBACK resumes on a stale
+rating, and the surface reversion cannot help because it reverts toward that
+same stale overall. Tennis has many comebacks; 2.1 catalogued thirteen. An
+overall-decay term would be a sixth fitted parameter. **Not guessed at here —
+fit and measure it in 2.4.**
+
 #### 2.3 The 2020 grass gap — an explicit decay rule, chosen up front
 
 Wimbledon 2020 was cancelled. Measured:
