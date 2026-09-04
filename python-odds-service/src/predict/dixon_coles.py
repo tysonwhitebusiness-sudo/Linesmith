@@ -51,6 +51,22 @@ MAX_GOALS = 10
 # lambda/mu range football actually produces.
 RHO_MIN, RHO_MAX = -0.25, 0.25
 
+# L2 shrinkage on attack/defence, toward the league mean of 0.
+#
+# NOT a tuning knob — it makes the fit WELL-POSED under time decay. With xi at a
+# 347-day half-life, a club that stopped playing years ago carries ~zero weight
+# in the likelihood, so its two parameters are unconstrained and the optimiser
+# parks them anywhere. Measured 2026-09-04 before this existed: EPL's "strongest"
+# club was Hull at +3.64 (last top-flight match 2017) and its "weakest" was
+# Coventry at -4.99 (last 2001), against Arsenal at +1.21.
+#
+# Held-out metrics were not affected — those clubs play no held-out fixtures —
+# but the fit was ill-posed, and a promoted club returning would have carried a
+# garbage rating into real predictions. Shrinkage pulls an unconstrained club to
+# the league mean, which is the honest estimate for a club with no recent
+# evidence. It is deliberately weak: a club with real matches is barely moved.
+L2_PENALTY = 0.05
+
 
 @dataclass
 class DCParams:
@@ -205,7 +221,14 @@ class _FitArrays:
         self.m11 = (hg == 1) & (ag == 1)
 
 
-def _neg_ll_fast(v, arr: "_FitArrays", n: int) -> float:
+def _neg_ll_fast(v, arr: "_FitArrays", n: int, l2: float = L2_PENALTY) -> float:
+    """Negative penalised log-likelihood — the OBJECTIVE, not the likelihood.
+
+    `l2 = 0` gives the bare likelihood, which is what the agreement test
+    compares against the scalar definition. The penalty is a separate, explicit
+    term rather than folded into log_likelihood(), because a likelihood with a
+    prior baked in silently is a likelihood nobody can check.
+    """
     import numpy as np
 
     att = np.asarray(v[:n], dtype=float)
@@ -229,7 +252,10 @@ def _neg_ll_fast(v, arr: "_FitArrays", n: int) -> float:
 
     ll = (-lam + arr.hg * np.log(lam) - mu + arr.ag * np.log(mu)
           - arr.const + np.log(t))
-    return -float(np.sum(arr.w * ll))
+    obj = -float(np.sum(arr.w * ll))
+    if l2:
+        obj += l2 * (float(np.dot(att, att)) + float(np.dot(dfn, dfn)))
+    return obj
 
 
 def _pack(params: DCParams, teams: list[str]) -> list[float]:

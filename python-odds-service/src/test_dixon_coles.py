@@ -182,7 +182,8 @@ def test_fast_path_agrees_with_the_definition() -> None:
             p = dc._unpack(v, teams)
             scalar = dc.log_likelihood(p, matches, xi, as_of)
             arr = dc._FitArrays(matches, teams, xi, as_of)
-            fast = -dc._neg_ll_fast(v, arr, len(teams))
+            # l2=0: comparing the LIKELIHOOD, not the penalised objective.
+            fast = -dc._neg_ll_fast(v, arr, len(teams), l2=0.0)
             close(f"xi={xi} rho={rho:+.2f}: fast == scalar", fast, scalar, 1e-6)
 
 

@@ -1253,6 +1253,70 @@ changed the conclusion.
 **Done when:** parameters are fitted, off their bounds, and held-out metrics are
 reported per year.
 
+**RESULT — fitted 2026-09-04, `fit_soccer_dc.py`.** Three windows, because `xi`
+is a hyperparameter: history <2022, **SELECT 2022-2023** (where xi is chosen),
+**HELD OUT 2024+** (which chose nothing).
+
+**Time decay earns its place, independently, in both leagues:**
+
+| | no decay | fitted `xi=0.002` | delta |
+|---|---|---|---|
+| **EPL** | 1.02771 / 49.5% | **0.98837 / 52.0%** | −0.0393 |
+| **MLS** | 1.08094 / 44.4% | **1.05787 / 46.6%** | −0.0231 |
+
+Both leagues chose `xi = 0.002` (347-day half-life) **independently, and in the
+interior of the sweep** — worse on both sides, not at an edge. That is Phase
+2.4's bounds check passing rather than being skipped. No fitted parameter sits
+at a bound; 0 of 87 EPL and 0 of 94 MLS refits hit the iteration cap.
+
+`home_advantage`: **EPL 0.185, MLS 0.241.** MLS higher, as continental travel
+predicts — the reason the plan fits the leagues separately rather than sharing
+one parameter set. `rho`: EPL −0.0755, MLS −0.0431, both comfortably inside
+[−0.25, 0.25].
+
+Three-way references: ln(3) = 1.0986 uniform, ~1.066 base rates. EPL at 0.98837
+clears both. **MLS at 1.05787 clears uniform but only roughly matches base
+rates** — a much weaker result, and worth remembering when reading 3.5.
+
+**A defect found and fixed: the fit was ill-posed for stale clubs.** Under a
+347-day half-life a long-relegated club carries ~0 decay-weighted matches, so
+its two parameters are unconstrained. Before shrinkage EPL's "strongest" club
+was **Hull at +3.64** and its weakest **Coventry at −4.99**, against Arsenal at
++1.21. L2 shrinkage toward the league mean (`L2_PENALTY = 0.05`) is the
+principled fix — an unconstrained club goes to the mean, the honest estimate for
+a club with no recent evidence — and it halved the extremes.
+
+Adding it broke the fast-vs-scalar agreement test, correctly: the penalty
+belongs to the OBJECTIVE, not the likelihood. It is now an explicit term with
+`l2=0` used for the comparison, because a likelihood with a prior silently baked
+in is one nobody can check.
+
+**Shrinkage alone did not fix the ranking, and the measurement says it need
+not.** Hull still ranked above Arsenal on ~6 recent matches. Measured: 12 EPL
+clubs sit under 10 effective matches (Middlesbrough 0.0, Stoke 0.1, Swansea
+0.1). They appear in **39 of 964 held-out fixtures (4.0%)**, and held-out
+log-loss is BETTER including them (0.98837) than excluding them (0.99632) —
+those fixtures are lopsided and easy to call. MLS has exactly one such club
+(Chivas USA, defunct) and **zero** affected fixtures.
+
+So it was a REPORTING problem, not a prediction one, and the fix is to stop the
+table lying: strongest/weakest now rank only clubs with >= 10 effective matches
+and name the rest as too thin to rank. **The model was not bent to chase a
+cosmetic symptom.**
+
+**Per year (held out), EPL:** 2024 0.96086, 2025 0.97199, **2026 1.06512**. The
+2026 figure is 214 matches of a partial season and is meaningfully worse than
+either full year. Sample size or real drift — per-year reporting exists so it
+cannot hide in a pooled average, and 3.5 should check whether the same gap
+appears against the market.
+
+**Per outcome, mean P(assigned to the actual result):** EPL home 0.475, draw
+0.238, away 0.386; MLS home 0.473, draw 0.250, away 0.290. The draw sits near
+its base rate (24-25%) in both leagues rather than being systematically crushed,
+which is the failure Poisson models usually show — but 3.5 gates draw
+calibration separately regardless, because "near the base rate" is not
+"calibrated".
+
 #### 3.5 — Ship gate
 
 In order of authority:
