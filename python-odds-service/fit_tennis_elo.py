@@ -100,8 +100,12 @@ def params_from_vector(v, with_decay: bool) -> te.EloParams:
         w_hard=_clip(v[1], 0.0, 1.0),
         w_clay=_clip(v[2], 0.0, 1.0),
         w_grass=_clip(v[3], 0.0, 1.0),
-        reversion_months=_clip(v[4], 0.5, 120.0),
-        overall_reversion_months=(_clip(v[5], 0.0, 240.0) if with_decay else 0.0),
+        # 1200 months = a century: far past the 11.6-year data span, so the
+        # optimiser can express "effectively off" WITHOUT hitting a wall.
+        # At 120 it pinned to the bound in both fits, which is not a fitted
+        # value — it is the optimiser being stopped mid-descent.
+        reversion_months=_clip(v[4], 0.5, 1200.0),
+        overall_reversion_months=(_clip(v[5], 0.0, 2400.0) if with_decay else 0.0),
     )
 
 

@@ -769,6 +769,62 @@ Report per year, never pooled only: log-loss, Brier, accuracy, and calibration i
 deciles. A single pooled number hides a model that was good until 2021 and drifted
 after, which is exactly the failure that matters for something about to run live.
 
+**RESULT — 2.3 and 2.4 run together 2026-09-04, `fit_tennis_elo.py`.**
+Burn-in <2017 | train 2017-2022 | held out 2023+ (19,150 matches the optimiser
+never saw).
+
+| | log-loss | brier | acc |
+|---|---|---|---|
+| unfitted defaults | 0.62317 | 0.21753 | 64.2% |
+| fitted, 5 params | **0.62210** | 0.21707 | 64.6% |
+| fitted, 6 params (+overall decay) | 0.62170 | 0.21698 | 64.4% |
+
+Fitted: `k=35.06 w_hard=0.304 w_clay=0.429 w_grass=0.379`.
+
+**Significance, paired and out-of-sample** — the number that decides how much of
+this to believe:
+
+```
+fitted5 - baseline   -0.00107   SE 0.00053   t = -2.01
+fitted6 - baseline   -0.00147   SE 0.00058   t = -2.56
+fitted6 - fitted5    -0.00040   SE 0.00022   t = -1.81
+```
+
+**Fitting helps, significantly but barely.** ~0.001 log-loss. Anyone reading
+64.6% accuracy as a strong result should note the unfitted engine already gave
+64.2%.
+
+**The 6th parameter does not earn its place.** Overall idle decay fits to 144.6
+months and fails to beat the 5-parameter model (t = -1.81). Adopting it would
+also mean selecting on the held-out set. **5-parameter model adopted**, and
+those values are now the `EloParams` defaults.
+
+**2.3's answer: the reversion rule is NOT supported as designed.** Fitted
+freely the horizon runs to the 1200-month bound (5-param) or 216 months
+(6-param), against 11.6 years of data — the 18-month prior was ~10x too
+aggressive. Kept at that near-off setting on one piece of evidence: on grass
+alone, weak reversion beats none (0.62078 vs 0.62225). That is a subgroup
+chosen after the fact and not significance-tested. On the 2021 Wimbledon
+fortnight it was designed for, n=385 and the signal is mixed — log-loss
+marginally better, accuracy marginally worse. **Recorded as weak, not as a win.**
+
+**A rationale that was simply wrong.** 2.2 argued hard courts, at 60% of play,
+would support the HIGHEST surface weight. The fit says hard is the LOWEST
+(0.304 vs clay 0.429, grass 0.379). Hard is the default surface, so the overall
+rating already largely IS a hard-court rating and a separate one adds little;
+clay and grass differ from it and carry distinct signal. Per-surface weights
+survive, the reasoning behind them did not.
+
+**Stability is good.** Per-year held-out 0.6192-0.6241 across 2023-2026, no
+drift. Per-surface 0.6207-0.6236, uniform.
+
+**A methodological note for later phases.** The first fit returned the clip
+bound (120 months) in BOTH solutions. A parameter pinned to its boundary is not
+a fitted parameter — it is the optimiser stopped mid-descent — and reporting it
+as fitted would have been wrong. Widening to 1200 changed the answer and the
+conclusion. **Check every fitted parameter against its bounds before believing
+it.**
+
 #### 2.5 Ship gate — beat the close, NOT CLV
 
 **The original gate said "positive CLV against the closing moneyline." That is

@@ -20,14 +20,33 @@ FOUR DESIGN DECISIONS, each forced by something measured rather than assumed:
    winner-first column would have slipped through (it did not: 50.3% is exactly
    what an arbitrary ordering looks like).
 
-3. THE SURFACE BLEND WEIGHT IS PER SURFACE. Grass is ~600 matches a year, ~6,700
-   across the whole span, spread over 1,500+ names — most players have
-   single-digit career grass matches, so a standalone grass rating is mostly
-   noise and must lean on the overall. Hard is 60% of all play and supports far
-   more surface weight. One global weight would be too aggressive on grass and
-   too timid on hard.
+3. THE SURFACE BLEND WEIGHT IS PER SURFACE — and the fit reversed the reason.
+   The original argument was that hard, at 60% of all play, supports the HIGHEST
+   surface weight while thin grass data must lean on the overall. The 2.4 fit
+   says the opposite: w_hard 0.304, w_clay 0.429, w_grass 0.379. HARD GETS THE
+   LOWEST.
 
-4. SURFACE RATINGS REVERT TOWARD OVERALL ON READ, BY ELAPSED TIME. Wimbledon
+   In hindsight that is the obvious result. Hard is the default surface, so a
+   player's overall rating already IS largely a hard-court rating and a separate
+   one adds little beyond it. Clay and grass differ from the overall, so their
+   surface ratings carry information the overall does not. The conclusion — fit
+   the weight per surface — survives; the reasoning that motivated it did not.
+
+4. SURFACE RATINGS REVERT TOWARD OVERALL ON READ, BY ELAPSED TIME — AND THE FIT
+   DROVE THIS TO EFFECTIVELY OFF. Fitted freely, the horizon runs to 1200
+   months (the bound) in the 5-parameter solution and 216 months in the
+   6-parameter one, against a data span of 11.6 years. The 18-month prior below
+   was roughly an order of magnitude too aggressive.
+
+   The rule is KEPT, at that near-off setting, on one piece of evidence: on
+   grass alone — the surface the 2020 gap actually hit — a weak reversion beats
+   none, 0.62078 against 0.62225. That is a subgroup chosen after seeing the
+   result and is not significance-tested, so it is suggestive, not established.
+   On the 2021 Wimbledon fortnight it designed for, n=385 and the signal is
+   mixed (log-loss slightly better, accuracy slightly worse). Reported as weak
+   rather than quietly kept as a win.
+
+   Wimbledon
    2020 was cancelled: zero grass matches that year, so grass ratings would sit
    untouched for ~18 months while the players themselves kept changing. The
    reversion is applied when a rating is READ rather than on a schedule, so it
@@ -78,16 +97,23 @@ _DAYS_PER_MONTH = 30.44
 
 @dataclass(frozen=True)
 class EloParams:
-    """The five fitted numbers. Defaults are STARTING POINTS for 2.4's fit, not
-    results — no walk-forward has chosen them yet."""
+    """FITTED 2026-09-04 by fit_tennis_elo.py — train 2017-2022, held out 2023+.
 
-    k: float = 24.0
-    w_hard: float = 0.60
-    w_clay: float = 0.55
-    w_grass: float = 0.30
+    These are the 5-parameter solution. The 6-parameter variant (overall decay
+    on) scored marginally better held-out but did NOT clear significance against
+    it — paired t = -1.81 over 19,150 matches — so the simpler model is adopted.
+
+    Held out vs unfitted defaults: log-loss 0.62317 -> 0.62210, paired
+    t = -2.01. Real, and very small.
+    """
+
+    k: float = 35.06
+    w_hard: float = 0.304
+    w_clay: float = 0.429
+    w_grass: float = 0.379
     # Months of idleness on a surface after which that surface rating has fully
     # reverted to the player's overall. 18 is the 2019->2021 Wimbledon gap.
-    reversion_months: float = 18.0
+    reversion_months: float = 1200.0
     # Months of idleness ON ANY SURFACE after which the OVERALL rating has fully
     # reverted to STARTING_ELO — i.e. a long absence regresses a player toward
     # the field. 0 DISABLES it (note this is the opposite convention to
