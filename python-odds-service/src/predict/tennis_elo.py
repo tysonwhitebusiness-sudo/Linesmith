@@ -88,6 +88,13 @@ class EloParams:
     # Months of idleness on a surface after which that surface rating has fully
     # reverted to the player's overall. 18 is the 2019->2021 Wimbledon gap.
     reversion_months: float = 18.0
+    # Months of idleness ON ANY SURFACE after which the OVERALL rating has fully
+    # reverted to STARTING_ELO — i.e. a long absence regresses a player toward
+    # the field. 0 DISABLES it (note this is the opposite convention to
+    # reversion_months, where <=0 means always-fully-reverted; the two are
+    # different questions and sharing a sentinel would be worse than the
+    # asymmetry). Whether this earns its place is 2.4's to measure.
+    overall_reversion_months: float = 0.0
 
     def weight_for(self, surface: str) -> float:
         if surface == "Hard":
@@ -109,6 +116,8 @@ class PlayerState:
     last_played: dict[str, date] = field(default_factory=dict)
     matches: int = 0
     surface_matches: dict[str, int] = field(default_factory=dict)
+    # Last match on ANY surface, for the overall idle decay.
+    last_any: date | None = None
 
 
 def expected_win_prob(rating: float, opponent_rating: float) -> float:
@@ -137,6 +146,26 @@ def reverted_surface_rating(
     return surface_rating + (overall_now - surface_rating) * frac
 
 
+def reverted_overall_rating(overall: float, months_idle: float,
+                            horizon_months: float) -> float:
+    """Regress an idle player's OVERALL rating toward the field (STARTING_ELO).
+
+    `horizon_months <= 0` DISABLES this entirely and returns the rating
+    unchanged — deliberately the opposite sentinel to reverted_surface_rating,
+    because "no decay at all" is a real configuration here and "frozen surface
+    rating" is not.
+
+    Exists because the overall rating was otherwise frozen the moment a player
+    stopped playing: Barty topped the WTA smoke run at 2024 having retired in
+    2022. Harmless for a retiree, wrong for a COMEBACK — and surface reversion
+    cannot compensate, since it reverts toward this same rating.
+    """
+    if horizon_months <= 0 or months_idle <= 0:
+        return overall
+    frac = min(1.0, months_idle / horizon_months)
+    return overall + (STARTING_ELO - overall) * frac
+
+
 class TennisElo:
     """Chronological rating state. Feed matches in date order; never backwards."""
 
@@ -157,6 +186,14 @@ class TennisElo:
             self._players[k] = st
         return st
 
+    def overall_rating(self, st: PlayerState, as_of: date) -> float:
+        """The overall rating as it should be READ today, after idle decay."""
+        h = self.params.overall_reversion_months
+        if h <= 0 or st.last_any is None:
+            return st.overall
+        months = max(0.0, (as_of - st.last_any).days / _DAYS_PER_MONTH)
+        return reverted_overall_rating(st.overall, months, h)
+
     def _months_idle(self, st: PlayerState, surface: str, as_of: date) -> float:
         last = st.last_played.get(surface)
         if last is None:
@@ -164,19 +201,26 @@ class TennisElo:
         return max(0.0, (as_of - last).days / _DAYS_PER_MONTH)
 
     def surface_rating(self, st: PlayerState, surface: str, as_of: date) -> float:
-        """A player's surface rating as it should be READ today."""
+        """A player's surface rating as it should be READ today.
+
+        Reverts toward the DECAYED overall, not the raw one — otherwise a
+        comeback's surface rating would be pulled toward a rating that is itself
+        stale, which is the exact hole the overall decay exists to close.
+        """
+        overall_now = self.overall_rating(st, as_of)
         raw = st.surface.get(surface)
         if raw is None:
-            return st.overall
+            return overall_now
         return reverted_surface_rating(
-            raw, st.overall, self._months_idle(st, surface, as_of),
+            raw, overall_now, self._months_idle(st, surface, as_of),
             self.params.reversion_months)
 
     def blended_rating(self, sport: str, name: str, surface: str, as_of: date) -> float:
         """Decision 3. The number a prediction actually uses."""
         st = self.state(sport, name)
         w = self.params.weight_for(surface)
-        return w * self.surface_rating(st, surface, as_of) + (1.0 - w) * st.overall
+        return (w * self.surface_rating(st, surface, as_of)
+                + (1.0 - w) * self.overall_rating(st, as_of))
 
     def predict(self, sport: str, home: str, away: str, surface: str, as_of: date) -> float:
         """P(home wins). 'home' is column order only, not an advantage."""
@@ -202,7 +246,8 @@ class TennisElo:
         # Measured before the fix: a first-match winner went to 1523.2 where the
         # correct value is 1512.0, a 47% overshoot. A small self-leak, and
         # exactly the kind that never raises and never looks wrong.
-        h_overall_pre, a_overall_pre = h.overall, a.overall
+        h_overall_pre = self.overall_rating(h, played)
+        a_overall_pre = self.overall_rating(a, played)
         h_surf = self.surface_rating(h, surface, played)
         a_surf = self.surface_rating(a, surface, played)
 
@@ -220,6 +265,7 @@ class TennisElo:
 
         for st in (h, a):
             st.last_played[surface] = played
+            st.last_any = played
             st.matches += 1
             st.surface_matches[surface] = st.surface_matches.get(surface, 0) + 1
 

@@ -147,6 +147,50 @@ def test_wimbledon_2020_gap() -> None:
           1500.0 < mid < 1900.0, True)
 
 
+def test_overall_idle_decay() -> None:
+    print("\nOVERALL idle decay — the sixth parameter (2.2 flagged, 2.4 measures)")
+    f = te.reverted_overall_rating
+    # 0 DISABLES, deliberately the opposite sentinel to the surface rule: "no
+    # decay at all" is a real configuration, "frozen surface rating" is not.
+    close("horizon 0 disables it entirely", f(1900, months_idle=99, horizon_months=0), 1900.0)
+    close("idle half the horizon: half way to 1500",
+          f(1900, months_idle=18, horizon_months=36), 1700.0)
+    close("at the horizon: fully at the field average",
+          f(1900, months_idle=36, horizon_months=36), 1500.0)
+    close("past it: no overshoot below 1500",
+          f(1900, months_idle=200, horizon_months=36), 1500.0)
+    close("a BELOW-average idle player is pulled UP toward the field",
+          f(1300, months_idle=36, horizon_months=36), 1500.0)
+
+    # Default must be off, so 2.2's committed behaviour is unchanged.
+    check("disabled by default", te.EloParams().overall_reversion_months, 0.0)
+
+    e = te.TennisElo(te.EloParams(overall_reversion_months=36.0, w_hard=0.0))
+    st = e.state("tennis_atp", "Comeback")
+    st.overall = 1900.0
+    st.last_any = date(2020, 1, 1)
+    close("a 3-year absence fully regresses the overall",
+          e.blended_rating("tennis_atp", "Comeback", "Hard", date(2023, 1, 1)), 1500.0)
+
+
+def test_surface_reverts_toward_the_DECAYED_overall() -> None:
+    print("\nsurface reversion targets the DECAYED overall, not the stale one")
+    # If surface reverted toward the raw overall, a comeback's surface rating
+    # would be pulled toward a number that is itself stale — the exact hole the
+    # overall decay exists to close, reopened one level down.
+    e = te.TennisElo(te.EloParams(
+        w_grass=1.0, reversion_months=18.0, overall_reversion_months=36.0))
+    st = e.state("tennis_atp", "Returner")
+    st.overall = 1900.0
+    st.surface["Grass"] = 1900.0
+    st.last_played["Grass"] = date(2020, 1, 1)
+    st.last_any = date(2020, 1, 1)
+    got = e.blended_rating("tennis_atp", "Returner", "Grass", date(2023, 1, 1))
+    # 36 months idle: overall fully decayed to 1500, and the surface (also 36
+    # months idle against an 18-month horizon) fully reverted to THAT.
+    close("both fully reverted, to 1500 rather than to a stale 1900", got, 1500.0)
+
+
 def test_update_moves_both_ratings() -> None:
     print("\nupdates move the overall AND the surface, each on its own expectation")
     e = te.TennisElo(te.EloParams(k=24.0))
@@ -207,6 +251,8 @@ def main() -> int:
     test_blend_weight_is_per_surface()
     test_reversion()
     test_wimbledon_2020_gap()
+    test_overall_idle_decay()
+    test_surface_reverts_toward_the_DECAYED_overall()
     test_update_moves_both_ratings()
     test_replay_refuses_out_of_order()
     test_replay_burn_in()
