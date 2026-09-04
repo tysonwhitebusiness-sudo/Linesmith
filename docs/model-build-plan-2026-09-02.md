@@ -589,23 +589,184 @@ between two ratings converts to a win probability. It suits tennis better than
 any sport here because a match is *only two players* — no lineup, no teammates,
 no coach — so a single number really can describe a competitor.
 
-**In detail.** After each match, `R_new = R_old + K·(S − E)`. Run the fit
-separately per surface, then blend the surface rating with the overall one — clay
-and grass are close to different sports, and averaging them is wrong in both
-directions. `K` and the blend weight are the only fitted parameters.
+**In detail.** After each match, `R_new = R_old + K·(S − E)`, where
+`E = 1 / (1 + 10^((R_opp − R)/400))`. Ratings are kept per surface AND overall,
+and the number used for a prediction is a blend of the two — clay and grass are
+close to different sports, and one rating averaged across them is wrong in both
+directions.
 
-**Data.** 56,340 matches, 448,914 odds rows, 1,186 players resolved (87.0% ATP /
-84.6% WTA of player slots), and **surface on 100% of matches** as of 0.8.
+#### Verified data (re-measured 2026-09-04, not carried from the audit)
 
-**Train and test.** Chronological walk-forward by year from 2016. Elo is naturally
-online, so this is nearly free: replay in order, score each match on the rating
-that existed before it.
+| | |
+|---|---|
+| Matches | **56,386** — 29,119 ATP / 27,267 WTA, 2015-01-04 → 2026-08-30 |
+| Surface | **100%** — Hard 60%, Clay 29%, Grass 12% |
+| Both player names present | **56,386 of 56,386** (100%) |
+| Joinable to a closing moneyline | **56,340** |
+| Odds rows | 448,914 (231,383 ATP / 217,531 WTA), single source `tennis_data` |
+| Opening prices | **0** — see 2.5 |
+| Crosswalk entries | 588 ATP + 598 WTA = **1,186** (live serving only, not training) |
 
-**Ship gate.** Positive CLV against the closing moneyline on held-out years, plus
-bucketed calibration.
+Matches per year are a steady ~5,000, with one exception that drives 2.3.
 
-**Also fix here:** `refreshTennisAtpJob`, which fails every run writing
-`side='home'` for an over/under `aces` market. It is this sport's own live feed.
+---
+
+#### 2.1 Pre-fit audit — surname+initial collisions (do this FIRST)
+
+Player identity in this data is **surname + initial**: `Duckworth J.`,
+`Fery A.`. That is 100% populated, so training is fully viable on names alone
+with no crosswalk. But it is a LOSSY key: two distinct players sharing a surname
+and an initial silently merge into one Elo rating, and the merged rating is
+wrong for both of them for as long as both are active.
+
+1,507 distinct home-side names over eleven years suggests it is mostly clean,
+but "mostly" is not a finding. Before any fit:
+
+- Group the name universe by `(surname, initial)` and list every key whose
+  matches span an implausible career length, or whose ranking-and-results pattern
+  shows two separate active periods.
+- Cross-check the worst candidates against `athlete_crosswalk`, where two ESPN
+  athlete ids mapping to one tennis-data name is direct evidence of a collision.
+- Output a collision list with match counts. **Decide per case**: split into two
+  synthetic ids, or drop.
+
+**Why this is first and not a footnote.** A collision does not produce an error
+or an obviously bad number — it produces a plausible rating for a player who
+does not exist. It cannot be detected downstream by calibration, because a
+merged rating is still internally consistent. It is only findable here.
+
+#### 2.2 The rating engine — per-surface blend, fitted per surface
+
+Three surface ratings (Hard, Clay, Grass) plus one overall, per player. The
+prediction rating is:
+
+```
+R_used(surface) = w[surface] · R_surface + (1 − w[surface]) · R_overall
+```
+
+**`w` is fitted PER SURFACE, not as one global weight.** This is a change from
+the original plan and the data forces it: grass is ~600 matches a year, ~6,700
+across the whole span, spread over 1,500+ names. Most players have single-digit
+career grass matches, so a standalone grass rating is mostly noise and the blend
+has to lean hard on the overall rating. Hard courts are 60% of all play and can
+support a much higher surface weight. One global `w` would be a compromise that
+is too aggressive on grass and too timid on hard.
+
+Fitted parameters: `K` (one, global) and `w_hard`, `w_clay`, `w_grass`. Four
+numbers. Fit by maximising log-likelihood on the scored years, never on burn-in.
+
+#### 2.3 The 2020 grass gap — an explicit decay rule, chosen up front
+
+Wimbledon 2020 was cancelled. Measured:
+
+```
+2019   4,954 matches   clay 1,455  grass  622  hard 2,877
+2020   2,292 matches   clay   728  grass    0  hard 1,564
+2021   4,843 matches   clay 1,411  grass  578  hard 2,854
+```
+
+**Zero grass matches in 2020**, so every grass rating goes untouched for roughly
+eighteen months (2019 Wimbledon → 2021 Wimbledon) while the players themselves
+carry on changing. Left alone, the model walks into 2021 Wimbledon holding
+2019 ratings and treating them as current.
+
+**The rule: time-based reversion toward the overall rating, applied on read, not
+on a schedule.** When a surface rating is used, revert it toward that player's
+current overall rating in proportion to time elapsed since their last match on
+that surface:
+
+```
+R_surface_effective = R_surface + (R_overall_now − R_surface) · min(1, months_idle / H)
+```
+
+`H` (months to full reversion) is a fifth fitted parameter. This is preferable to
+a hardcoded 2020 patch for three reasons: it is not special-cased to one event,
+so it also covers a player who simply skips a clay season; it degrades smoothly
+rather than at a cliff; and it uses the overall rating, which DID keep updating
+through 2020, as the source of truth rather than freezing or resetting to 1500.
+
+Sanity check after fitting: grass predictions for 2021 Wimbledon should be
+measurably better with the rule on than off. If they are not, the rule is
+carrying no weight and `H` should be reported as such rather than quietly kept.
+
+#### 2.4 Train and test — burn-in 2015–2016, first scored year 2017
+
+Elo is naturally online, so walk-forward is nearly free: replay matches in
+chronological order and score each one on the rating that existed *before* it.
+No row is ever scored on information from its own future.
+
+**2015 AND 2016 are burn-in — scored on nothing, used only to move ratings off
+1500.** The original plan started scoring at 2016, leaving a single season of
+burn-in. One season is thin: a player who debuts late in 2015 enters 2016 with a
+handful of matches and a rating still near its initial value, and scoring those
+matches measures the burn-in, not the model. Two seasons gets the great majority
+of the active tour to a settled rating.
+
+Scored years: **2017 through 2026** (2026 partial, through 2026-08-30). That is
+roughly 45,000 scored matches — ample.
+
+Report per year, never pooled only: log-loss, Brier, accuracy, and calibration in
+deciles. A single pooled number hides a model that was good until 2021 and drifted
+after, which is exactly the failure that matters for something about to run live.
+
+#### 2.5 Ship gate — beat the close, NOT CLV
+
+**The original gate said "positive CLV against the closing moneyline." That is
+not measurable for tennis and never was.** All 448,914 tennis odds rows carry a
+closing price and **zero** carry an opening price. CLV compares an entry price to
+a later close; with no entry price there is nothing to compute. Reporting a
+"CLV" number here would be reporting something else under a borrowed name.
+
+What the data does support, because every match carries three closing series
+(`bet365`, `market_avg`, `market_max`):
+
+- **Accuracy gate — beat the consensus close.** De-vig `market_avg` into a fair
+  probability and compare the model's probability against it. The model must
+  have lower log-loss than the closing consensus on held-out years. This is a
+  hard bar: the closing line is the strongest public forecast available, and
+  most models do not clear it.
+- **Economic gate — ROI at best price.** Simulate flat-stake bets wherever the
+  model's edge over the de-vigged `market_avg` exceeds a threshold, priced at
+  `market_max`. Report ROI with a confidence interval, per year and pooled.
+- **Calibration gate.** Bucketed calibration on held-out years; predicted 60%
+  must win about 60%.
+
+Be explicit in every write-up that this is **cross-sectional price dispersion**
+(best available price vs consensus at the same moment), not time-based line
+movement. The two are routinely conflated and they measure different things.
+
+Ship only if the accuracy gate passes. ROI without it is a sample-size artifact.
+
+#### 2.6 Serving — the crosswalk is a live concern, not a training one
+
+Training needs no ESPN ids; names are 100% present. **Live prediction does** —
+`athlete_crosswalk` resolves 588 ATP and 598 WTA players, 87.0% / 84.6% of
+player slots. So roughly 13–15% of live matches will not map to a rated player.
+
+Decide the behaviour before shipping, not at the first failure: a match with an
+unresolvable player must produce **no prediction**, not a prediction against a
+default 1500 rating. A 1500 default is indistinguishable from a real rating
+downstream and would quietly publish a coin-flip as a model output.
+
+#### What is NOT in this phase
+
+- No live tennis odds work. Tennis currently runs on SharpAPI alone (both its
+  props and game-lines endpoints are the same vendor and key). That single-vendor
+  risk is **accepted, deliberately, by the operator on 2026-09-04**.
+- No `refreshTennisAtpJob` fix. The original plan listed it as failing every run
+  on a `side='home'` over/under aces market; re-measured 2026-09-04, both
+  `refreshTennisAtpJob` and `refreshTennisWtaJob` report `ok=True`. If it
+  recurs it is its own item, not Phase 2 scope.
+- No player-level props. Match-winner moneyline only.
+
+#### Exit gate for Phase 2
+
+1. Collision audit run, collision list resolved, decision recorded per case.
+2. Walk-forward 2017–2026 complete, metrics reported per year.
+3. Model beats de-vigged `market_avg` on log-loss across held-out years.
+4. Calibration within tolerance in deciles.
+5. ROI at `market_max` reported with an interval — informational, not a gate.
+6. Unresolvable-player behaviour implemented as "no prediction".
 
 ---
 
