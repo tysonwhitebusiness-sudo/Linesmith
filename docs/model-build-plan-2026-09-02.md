@@ -971,8 +971,8 @@ the calibration confound explicitly ruled out (Platt recovered 3% of the gap).
 **Why second.** It builds the scoring-rate engine Phases 4 and 5 reuse — three
 sports from one build. It is also a genuinely richer model than Phase 2's Elo:
 Elo compresses a team to one number, Dixon-Coles gives every team an attack rate
-and a defence rate and predicts the whole scoreline distribution. Phase 2 failed
-its gate by 0.033 log-loss against the close; that is the bar here, and a
+and a defence rate and predicts the whole scoreline distribution. Phase 2 lost
+its gate by 0.033 log-loss against the close; that is the bar, and a
 scoring-rate model has more to say than a rating did.
 
 **Simply.** Every team gets two numbers: **attack** and **defence**. Expected
@@ -982,13 +982,10 @@ probability of every scoreline — 0-0, 1-0, 2-1 — then add up the cells where
 home wins for a moneyline, the cells over 2.5 for a total. One fit, every market.
 
 **In detail.** Poisson with the two Dixon-Coles corrections, the soccer standard
-since 1997 because both are small formula changes for real gains:
-
-- a **low-score correction** (`tau`, on 0-0/1-0/0-1/1-1), because cautious teams
-  produce those four scorelines more often than independent Poisson allows;
-- **exponential time decay** (`xi`), so recent matches count more.
-
-Fitted by maximum likelihood over attack, defence, home advantage, `tau`, `xi`.
+since 1997 because both are small formula changes for real gains: a **low-score
+correction** (`tau`, on 0-0/1-0/0-1/1-1), because cautious teams produce those
+four scorelines more often than independent Poisson allows; and **exponential
+time decay** (`xi`), so recent matches count more.
 
 #### Verified data (measured 2026-09-04, not carried from the audit)
 
@@ -997,62 +994,59 @@ Fitted by maximum likelihood over attack, defence, home advantage, `tau`, `xi`.
 | Matches | **4,601** | **7,001** |
 | Span | 2015-08-08 → 2026-08-31 | 2012-03-10 → 2026-08-30 |
 | Final scores present | **100%** | **100%** |
-| Home win / draw / away | 44.2% / 24.0% / 31.8% | 49.0% / 25.1% / 25.9% |
-| Moneyline rows (per side) | ~13,340 | ~20,880 |
+| Home / draw / away | 44.2% / 24.0% / 31.8% | 49.0% / 25.1% / 25.9% |
+| Moneyline rows per side | ~13,340 | ~20,880 |
 | **Opening prices** | **~7,200 (54%)** | **~1,300 (6%), draw 0** |
-| Books | pinnacle 12,030, bet365 8,040, marketavg/marketmax 8,040, betfair 2,274 | marketmax 18,390 |
+| Books | pinnacle 12,030, bet365 8,040, marketavg/marketmax 8,040 | marketmax 18,390 |
 | Totals (over/under) | 551 | 1,411 |
 
-**Home advantage is real here, unlike tennis.** 44.2% / 49.0% home wins against
-tennis's 50.3% coin flip. The Dixon-Coles home term is justified by the data
-rather than inherited from the literature — and the same check doubles as the
-leakage test that Phase 2.2 used.
+**Home advantage is real here, unlike tennis** — 44.2% / 49.0% against tennis's
+50.3% coin flip. The Dixon-Coles home term is earned from this data rather than
+inherited from the literature, and the same check doubles as Phase 2.2's leakage
+test.
 
 ---
 
-#### 3.1 THE BLOCKER — two sources, two spellings, every 2025+ match stored twice
+#### 3.1 — Club identity: canonicalise and de-duplicate  **[BLOCKER]**
 
-**This must be fixed before anything is fitted. It is not a data-quality
-footnote; it corrupts both the sample and the team identities.**
-
-A second source, `espn_core`, began ingesting in 2025 alongside `footballdata`,
-and the two use different naming conventions:
+**Nothing may be fitted before this.** A second source, `espn_core`, began
+ingesting in 2025 alongside `footballdata`, with a different naming convention:
 
 ```
-footballdata:  'Wolves'    'Man United'          'Brighton'
+footballdata:  'Wolves'                   'Man United'         'Brighton'
 espn_core:     'Wolverhampton Wanderers'  'Manchester United'  'Brighton & Hove Albion'
 ```
 
-Measured: EPL 2025 holds 378 `footballdata` + 186 `espn_core` rows against a
-380-match season; MLS 2025 holds 540 + 541. Naive de-duplication on
-`(date, home, away)` catches only 94 EPL and 167 MLS groups, because the names
-do not match — **most duplicates are invisible to the obvious check.**
+EPL 2025 holds 378 `footballdata` + 186 `espn_core` rows against a 380-match
+season; MLS 2025 holds 540 + 541.
 
-Two distinct harms, and the second is worse:
+Two harms, the second worse:
 
-1. **Double-counted matches** from 2025 onward — the most recent and most
-   relevant period.
+1. **Double-counted matches** from 2025 — the most recent and most relevant data.
 2. **Every club split into two teams.** 'Wolves' and 'Wolverhampton Wanderers'
-   get separate attack and defence ratings, each fitted on half the data. This
-   is Phase 2.1's collision problem inverted — there, two players shared one
-   identity; here, one club holds two — and it is far more consequential: 2.1
-   affected 8 names and a few hundred slots, this affects every club in both
-   leagues across the whole of 2025-2026.
+   each get their own attack and defence rating fitted on half the data. This is
+   Phase 2.1's collision inverted — there two players shared one identity, here
+   one club holds two — and far larger: 2.1 touched 8 names, this touches every
+   club in both leagues across 2025-2026.
 
-**Deliverable:** a canonical club-name map plus a de-duplication rule, applied
-before the fit, with a re-runnable audit like `audit_tennis_name_collisions.py`.
-Decide explicitly which source wins on conflict (`footballdata` has the longer
-history and priced odds attached; `espn_core` has richer naming) and record the
-reason.
+**It hides from the obvious check.** De-duplicating on `(date, home, away)`
+catches only 94 EPL and 167 MLS groups against 186 and 541 `espn_core` rows,
+because the names do not match.
 
-**Do not skip to a fuzzy match.** 'Manchester United' vs 'Manchester City' share
-a prefix and are different clubs; so do the several 'Sporting'/'Real'/'Atletico'
-sides in MLS. The map is small enough — 35 EPL and 31 MLS names — to be built
-explicitly and verified by eye.
+**Deliverable:** an explicit canonical club-name map (35 EPL + 31 MLS names —
+small enough to verify by eye), a de-duplication rule, a recorded
+source-precedence decision, and a re-runnable audit in the shape of
+`audit_tennis_name_collisions.py`.
 
-#### 3.2 The engine
+**No fuzzy matching.** 'Manchester United' and 'Manchester City' share a prefix
+and are different clubs, as do several 'Sporting'/'Real'/'Atletico' sides in MLS.
 
-Per team: `attack`, `defence`. Global: `home_advantage`, `tau`, `xi`.
+**Done when:** duplicate count is zero, every club resolves to one identity, and
+the audit re-runs clean.
+
+#### 3.2 — The Dixon-Coles engine
+
+Per team `attack` and `defence`; global `home_advantage`, `tau`, `xi`.
 
 ```
 lambda_home = exp(attack_home - defence_away + home_advantage)
@@ -1060,90 +1054,114 @@ lambda_away = exp(attack_away - defence_home)
 P(i, j)     = tau(i, j) * Poisson(i; lambda_home) * Poisson(j; lambda_away)
 ```
 
-Scoreline probabilities summed over a 0..10 goal grid give the three-way
-moneyline and any total. Identifiability requires a constraint (mean attack = 0);
-without it the likelihood has a flat direction and the optimiser will wander
-along it — the Phase 2.4 boundary lesson in a different guise.
+A 0..10 goal grid gives the three-way moneyline and any total from one fit.
+**Identifiability needs a constraint (mean attack = 0)** — without it the
+likelihood has a flat direction and the optimiser wanders along it, which is the
+Phase 2.4 boundary lesson wearing different clothes.
 
-**Carried from Phase 2, non-negotiable:**
-- Every fitted parameter **checked against its bounds** before it is believed. In
-  2.4 the first fit returned the clip bound in both solutions, and widening it
-  changed the conclusion.
-- Predictions made **before** the match updates anything; chronology asserted in
-  code, not assumed.
+**Deliverable:** a pure, IO-free, tested module — `predict/dixon_coles.py` —
+mirroring `predict/tennis_elo.py`. Tests assert the properties that fail
+silently: the tau correction only touches the four low scorelines, probabilities
+over the grid sum to ~1, home advantage raises home win probability, time decay
+weights recent matches more, and the mean-attack constraint holds after fitting.
 
-#### 3.3 Train and test
+**Done when:** tests pass and a fit on one season produces sane ratings — the
+recognisable-names check that validated Phase 2.2.
 
-Time decay makes this different from Elo: there is no burn-in period, but there
-IS a fitting window, and the model must be **refitted as of each test date** using
-only prior matches — a rolling refit, not one fit over everything.
+#### 3.3 — Rolling-refit walk-forward harness
 
-- **EPL** — fit through 2023-12-31, held out 2024-01-01 onward (~1,365 matches).
-- **MLS** — fit through 2023-12-31, held out 2024-01-01 onward (~2,247 matches).
+**Structurally different from Phase 2 and the main reason this phase is more
+work.** Elo is online: one pass, each match updates ratings, and scoring is
+nearly free. Dixon-Coles is a batch maximum-likelihood fit, so a walk-forward
+means **refitting as of each test date on prior matches only**.
 
-Fit the two leagues **separately**. They share an engine, not a parameter set:
-MLS's home advantage is visibly larger (49.0% vs 44.2%), which is exactly what
-long-haul travel in a continental league should produce.
+Refit per matchweek (not per match) for tractability; state the cadence and its
+cost. There is no burn-in period — time decay handles recency — but there is a
+minimum history before a fit is meaningful, and that threshold is a decision to
+record, not to discover mid-run.
 
-Report per year and per outcome, never pooled only.
+**Chronology asserted in code, never assumed** — the same guard as
+`tennis_elo.replay()`.
 
-#### 3.4 Ship gate — and here CLV is genuinely measurable, for EPL
+**Done when:** the harness produces a prediction for every held-out match using
+only prior data, and refuses out-of-order input.
 
-**EPL has ~54% opening-price coverage.** Unlike tennis, where all 448,914 rows
-were closing-only and CLV was impossible, the EPL archive supports a real
-time-based CLV measurement. That is a stronger test than beat-the-close and it
-should be reported as CLV, accurately, for the first time in this project.
+#### 3.4 — Fit and measure
 
-**MLS has ~6%, and zero on the draw.** MLS is beat-the-close only. Do not
-average the two leagues into one "soccer CLV" number.
+Fit **each league separately**. They share an engine, not a parameter set: MLS's
+home advantage is visibly larger (49.0% vs 44.2%), which is what long-haul
+travel in a continental league should produce.
 
-Gates, in order of authority:
+- **EPL** — fit through 2023-12-31, held out 2024+ (~1,365 matches)
+- **MLS** — fit through 2023-12-31, held out 2024+ (~2,247 matches)
 
-1. **ACCURACY.** Beat de-vigged **pinnacle** (12,030 EPL rows — the sharp
-   reference) AND `marketavg`. Report both. Phase 2.5's discipline applies:
-   beating a soft benchmark while losing to the sharp one is a result
-   manufactured by choosing the benchmark.
+Report log-loss, Brier and accuracy **per year and per outcome**, never pooled
+only. **Check every fitted parameter against its bounds before believing it** —
+Phase 2.4's first fit returned the clip bound in both solutions and widening it
+changed the conclusion.
+
+**Done when:** parameters are fitted, off their bounds, and held-out metrics are
+reported per year.
+
+#### 3.5 — Ship gate
+
+In order of authority:
+
+1. **ACCURACY.** Beat de-vigged **pinnacle** (12,030 EPL rows, the sharp
+   reference) **and** `marketavg`. Both reported — beating a soft benchmark while
+   losing to the sharp one is a result manufactured by choosing the benchmark.
+   Paired significance test, out of sample.
 2. **CALIBRATION, SEPARATELY FOR HOME / DRAW / AWAY.** The draw is where Poisson
-   models fail and an aggregate hides it. A three-way model can be well
-   calibrated overall while being systematically wrong on draws at ~24-25% of
-   all matches.
-3. **CLV (EPL only)** on the three-way moneyline.
-4. **ROI at `marketmax`**, informational. Sweep the edge threshold and check
-   **monotonicity** — Phase 2.5's most diagnostic single number was ROI getting
-   *worse* as the edge filter tightened (-4.92% -> -9.04%), which is the
-   signature of edges being noise.
+   models fail, and at ~24-25% of all matches an aggregate hides it.
+3. **CLV — and here it is genuinely measurable, for EPL.** ~54% opening-price
+   coverage against tennis's zero, so this project can report real time-based
+   CLV for the first time. **MLS is beat-the-close only** (~6%, zero on the
+   draw). Do not average the two into one "soccer CLV".
+4. **ROI at `marketmax`**, informational, swept by edge threshold with the
+   **monotonicity check** — Phase 2.5's single most diagnostic number was ROI
+   getting *worse* as the filter tightened (-4.92% → -9.04%), the signature of
+   edges being noise.
 
-**Before declaring any failure, fix calibration and re-measure.** In 2.5, Platt
-scaling recovered only 3% of the gap, which is what made the negative conclusive
-rather than premature. Same step here.
+**Fix calibration and re-measure before declaring any failure.** In 2.5 Platt
+recovered only 3% of the gap, which is what made that negative conclusive rather
+than premature.
 
-**A naming trap worth writing down:** soccer uses `marketavg` / `marketmax`
-(no underscore); tennis uses `market_avg` / `market_max`. Code copied from
+**Naming trap:** soccer books are `marketavg` / `marketmax` — no underscore —
+where tennis uses `market_avg` / `market_max`. Code copied from
 `ship_gate_tennis.py` will silently match zero rows.
 
-#### 3.5 Totals — separate gate, and thin
+**Done when:** gate 1 passes or fails on a paired test, with calibration ruled
+out as the cause.
 
-551 EPL and 1,411 MLS priced over/unders, all with opening prices. Gate
-separately from the moneyline and expect the sample to be too small for a
-confident verdict. Report the interval; do not ship a total on 551 rows.
+#### 3.6 — Totals, gated separately
+
+551 EPL and 1,411 MLS priced over/unders, all carrying opening prices. Gate
+separately from the moneyline and expect too small a sample for a confident
+verdict. **Report the interval; do not ship a total on 551 rows.**
+
+#### 3.7 — Serving  **[not started until 3.5 passes]**
+
+Phase 2.6 established the rule: serving is the delivery mechanism for a model
+that has cleared its gate, and building it first is building a pipe for
+something that may not be delivered. Deferred by design, not forgotten.
 
 #### What is NOT in this phase
 
 - **No expected-goals model.** They predict better and need shot-location data
-  that is not held and not cheaply bought.
-- **No serving.** Same rule Phase 2.6 established: serving is built after a gate
-  passes, not before.
+  not held and not cheaply bought.
 - No cup competitions, no other leagues.
 
 #### Exit gate for Phase 3
 
-1. Club-name canonicalisation and de-duplication complete, audit re-runnable,
-   source-precedence decision recorded.
-2. Rolling refit walk-forward complete for both leagues, metrics per year.
-3. Model beats de-vigged pinnacle AND marketavg on log-loss, held out.
-4. Calibration within tolerance **separately** for home, draw and away.
-5. CLV reported for EPL; beat-the-close reported for MLS; not averaged.
-6. ROI swept by edge threshold with the monotonicity check reported.
+1. Club canonicalisation and de-duplication complete, audit re-runnable,
+   source-precedence recorded (3.1).
+2. Engine tested, sane ratings on a known season (3.2).
+3. Rolling-refit walk-forward complete for both leagues, metrics per year (3.3, 3.4).
+4. All fitted parameters verified off their bounds (3.4).
+5. Model beats de-vigged pinnacle AND marketavg on log-loss, held out (3.5).
+6. Calibration within tolerance **separately** for home, draw and away (3.5).
+7. CLV reported for EPL, beat-the-close for MLS, **not averaged** (3.5).
+8. ROI swept by edge threshold with monotonicity reported (3.5).
 
 ---
 
