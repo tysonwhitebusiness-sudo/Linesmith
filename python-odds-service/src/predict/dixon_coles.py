@@ -1,0 +1,202 @@
+"""Phase 3.2 — the Dixon-Coles scoring-rate engine.
+
+Pure and IO-free, like `tennis_elo.py`. Fitting hyperparameters and the
+walk-forward are 3.3/3.4; the ship gate is 3.5. Nothing here reads odds.
+
+THE MODEL. Every club carries an `attack` and a `defence` rate. For one fixture:
+
+    lambda = exp(attack_home - defence_away + home_advantage)     home goals
+    mu     = exp(attack_away - defence_home)                      away goals
+    P(i,j) = tau(i,j) * Poisson(i; lambda) * Poisson(j; mu)
+
+Summing that grid gives the three-way moneyline and any total from ONE fit,
+which is why this engine covers Phases 3, 4 and 5 rather than just this one.
+
+THE TWO DIXON-COLES CORRECTIONS, and why each exists:
+
+  tau, the low-score correction. Independent Poisson under-predicts 0-0, 1-0,
+  0-1 and 1-1, because cautious teams are not independent — the scoreline
+  affects how both sides play. tau adjusts exactly those four cells and leaves
+  every other one alone. rho = 0 collapses this to plain independent Poisson,
+  which is the null the engine must reduce to and a test asserts.
+
+  xi, exponential time decay. A match from four seasons ago says less about a
+  club than last month's. Weight w = exp(-xi * days_ago) in the likelihood.
+  xi = 0 weights all history equally.
+
+IDENTIFIABILITY IS NOT OPTIONAL. Adding a constant to every attack and the same
+constant to every defence leaves every lambda unchanged, so the likelihood has a
+flat direction and an optimiser will wander along it forever — returning
+parameters that differ wildly between runs while fitting identically. The mean
+attack is pinned to zero to remove it. This is Phase 2.4's boundary lesson in a
+different costume: a parameter the data cannot determine will still be reported
+as if it were fitted.
+
+HOME ADVANTAGE IS EARNED HERE, unlike in tennis. Measured 2026-09-04: home
+sides win 44.2% in EPL and 49.0% in MLS against 24-25% draws. Phase 2.2 dropped
+the equivalent term because tennis "home" was column order at 50.3%. The same
+check justifies keeping it here — and doubles as the leakage test.
+"""
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+
+# Goals per side to enumerate. Beyond 10 the Poisson mass is negligible for any
+# realistic rate (at lambda=3, P(>10) is ~0.0002) and the grid cost is squared.
+MAX_GOALS = 10
+
+# tau can drive a cell negative for extreme rho, which is not a probability.
+# The paper constrains rho; these bounds keep every cell positive for the
+# lambda/mu range football actually produces.
+RHO_MIN, RHO_MAX = -0.25, 0.25
+
+
+@dataclass
+class DCParams:
+    attack: dict[str, float] = field(default_factory=dict)
+    defence: dict[str, float] = field(default_factory=dict)
+    home_advantage: float = 0.25
+    rho: float = -0.05
+
+    def teams(self) -> list[str]:
+        return sorted(self.attack)
+
+
+def poisson_pmf(k: int, rate: float) -> float:
+    if rate <= 0:
+        return 1.0 if k == 0 else 0.0
+    return math.exp(-rate + k * math.log(rate) - math.lgamma(k + 1))
+
+
+def tau(i: int, j: int, lam: float, mu: float, rho: float) -> float:
+    """Dixon-Coles low-score correction. Touches ONLY the four cells below."""
+    if i == 0 and j == 0:
+        return 1.0 - lam * mu * rho
+    if i == 0 and j == 1:
+        return 1.0 + lam * rho
+    if i == 1 and j == 0:
+        return 1.0 + mu * rho
+    if i == 1 and j == 1:
+        return 1.0 - rho
+    return 1.0
+
+
+def rates(params: DCParams, home: str, away: str) -> tuple[float, float]:
+    """Expected goals for (home, away). Unknown clubs sit at the mean, 0."""
+    ah = params.attack.get(home, 0.0)
+    aa = params.attack.get(away, 0.0)
+    dh = params.defence.get(home, 0.0)
+    da = params.defence.get(away, 0.0)
+    return (math.exp(ah - da + params.home_advantage), math.exp(aa - dh))
+
+
+def score_matrix(params: DCParams, home: str, away: str) -> list[list[float]]:
+    lam, mu = rates(params, home, away)
+    ph = [poisson_pmf(i, lam) for i in range(MAX_GOALS + 1)]
+    pa = [poisson_pmf(j, mu) for j in range(MAX_GOALS + 1)]
+    grid = [[tau(i, j, lam, mu, params.rho) * ph[i] * pa[j]
+             for j in range(MAX_GOALS + 1)] for i in range(MAX_GOALS + 1)]
+    # The grid is truncated at MAX_GOALS and tau shifts a little mass, so it
+    # does not sum to exactly 1. Normalising makes every consumer a proper
+    # distribution rather than making each one remember to divide.
+    total = sum(sum(r) for r in grid)
+    if total > 0:
+        grid = [[c / total for c in r] for r in grid]
+    return grid
+
+
+def outcome_probs(params: DCParams, home: str, away: str) -> tuple[float, float, float]:
+    """(home win, draw, away win) — the three-way moneyline."""
+    g = score_matrix(params, home, away)
+    h = d = a = 0.0
+    for i, row in enumerate(g):
+        for j, p in enumerate(row):
+            if i > j:
+                h += p
+            elif i == j:
+                d += p
+            else:
+                a += p
+    return h, d, a
+
+
+def total_probs(params: DCParams, home: str, away: str,
+                line: float = 2.5) -> tuple[float, float]:
+    """(over, under) for a goals line. A whole-number line can push; this
+    returns P(over) and P(under) only, so the caller must handle a push if it
+    ever uses an integer line."""
+    g = score_matrix(params, home, away)
+    over = sum(p for i, row in enumerate(g) for j, p in enumerate(row) if i + j > line)
+    under = sum(p for i, row in enumerate(g) for j, p in enumerate(row) if i + j < line)
+    return over, under
+
+
+def decay_weight(days_ago: float, xi: float) -> float:
+    """Exponential time decay. xi = 0 weights all history equally."""
+    if xi <= 0:
+        return 1.0
+    return math.exp(-xi * max(0.0, days_ago))
+
+
+def log_likelihood(params: DCParams, matches, xi: float = 0.0,
+                   as_of=None) -> float:
+    """Weighted DC log-likelihood over `matches`.
+
+    Each match is a dict with home/away/home_goals/away_goals/played.
+    """
+    total = 0.0
+    for m in matches:
+        lam, mu = rates(params, m["home"], m["away"])
+        i, j = m["home_goals"], m["away_goals"]
+        t = tau(i, j, lam, mu, params.rho)
+        if t <= 0:
+            return -1e18   # an invalid rho, rejected rather than log(negative)
+        w = 1.0
+        if xi > 0 and as_of is not None:
+            w = decay_weight((as_of - m["played"]).days, xi)
+        total += w * (math.log(t)
+                      + (-lam + i * math.log(lam) - math.lgamma(i + 1))
+                      + (-mu + j * math.log(mu) - math.lgamma(j + 1)))
+    return total
+
+
+def _pack(params: DCParams, teams: list[str]) -> list[float]:
+    return ([params.attack[t] for t in teams]
+            + [params.defence[t] for t in teams]
+            + [params.home_advantage, params.rho])
+
+
+def _unpack(v, teams: list[str]) -> DCParams:
+    n = len(teams)
+    att = list(v[:n])
+    # MEAN ATTACK PINNED TO ZERO. Without this the likelihood is flat along
+    # "add c to every attack and every defence" and the optimiser drifts down
+    # it, returning wildly different parameters that fit identically.
+    mean = sum(att) / n if n else 0.0
+    att = [a - mean for a in att]
+    return DCParams(
+        attack=dict(zip(teams, att)),
+        defence=dict(zip(teams, v[n:2 * n])),
+        home_advantage=v[2 * n],
+        rho=min(RHO_MAX, max(RHO_MIN, v[2 * n + 1])),
+    )
+
+
+def fit(matches, xi: float = 0.0, as_of=None, maxiter: int = 400) -> DCParams:
+    """Maximum-likelihood fit. `matches` must all precede `as_of`."""
+    from scipy.optimize import minimize
+
+    teams = sorted({m["home"] for m in matches} | {m["away"] for m in matches})
+    if not teams:
+        return DCParams()
+    start = DCParams(attack={t: 0.0 for t in teams},
+                     defence={t: 0.0 for t in teams},
+                     home_advantage=0.25, rho=-0.05)
+
+    def neg(v):
+        return -log_likelihood(_unpack(v, teams), matches, xi, as_of)
+
+    res = minimize(neg, _pack(start, teams), method="L-BFGS-B",
+                   options={"maxiter": maxiter})
+    return _unpack(res.x, teams)
