@@ -853,6 +853,66 @@ movement. The two are routinely conflated and they measure different things.
 
 Ship only if the accuracy gate passes. ROI without it is a sample-size artifact.
 
+**RESULT — run 2026-09-04, `ship_gate_tennis.py`. GATE 1 FAILED. DO NOT SHIP.**
+
+19,025 held-out matches (2023+) with a consensus close.
+
+| | log-loss | accuracy |
+|---|---|---|
+| model | 0.62444 | 64.4% |
+| **market_avg** (de-vigged) | **0.59143** | **67.8%** |
+| **pinnacle** (de-vigged) | **0.59187** | **67.7%** |
+
+```
+model - market_avg   +0.03301   SE 0.00160   t = +20.68
+model - pinnacle     +0.03361   SE 0.00181   t = +18.55
+```
+
+**The market wins by twenty standard errors.** This is not a near miss or a
+tuning gap. A `pinnacle` series (53,007 rows) was found in the archive and is
+reported alongside `market_avg` deliberately — beating a soft benchmark while
+losing to the sharp one would be a result manufactured by choosing the
+benchmark. Both say the same thing.
+
+**Gate 2 — calibration, and the check that makes the failure conclusive.** The
+model shows a mild S-shape: it under-predicts underdogs (0.1-0.2 bucket
+predicted 0.156, actual 0.202) and over-predicts favourites (0.7-0.8 predicted
+0.747, actual 0.718) — classic overconfidence, i.e. ratings too dispersed.
+
+That is fixable, so it was fixed and re-measured before concluding anything.
+Platt scaling fitted on TRAIN only (a=0.914, shrinking toward 0.5 as expected)
+moved held-out log-loss 0.62444 -> 0.62347. **It recovered 0.00097 of a 0.03301
+gap — 3%.** The deficit is not miscalibration. It is information the model does
+not have: injury, fatigue, travel, motivation, H2H, in-tournament form, all of
+which the closing line contains.
+
+**Gate 3 — ROI at `market_max`, and the most damning number here:**
+
+```
+edge >  0%   19,024 bets   -4.92%
+edge >  2%   15,559 bets   -4.89%
+edge >  5%   10,900 bets   -5.24%
+edge > 10%    5,480 bets   -9.04%
+```
+
+ROI gets WORSE as the edge filter tightens. If the model held any real signal,
+filtering to its most confident disagreements with the market should improve
+returns. It does the reverse, which is the signature of those "edges" being
+noise — and precisely why gate 3 is informational and gate 1 decides.
+
+**What Phase 2 achieved anyway, which was its stated purpose.** Tennis went
+first to prove the chain — fit, walk-forward, calibrate, compare to the close —
+on the simplest possible engine before that chain is trusted anywhere harder.
+The chain works, and its first real verdict was a clean, well-measured NEGATIVE
+rather than a false positive. A pipeline that cannot return "no" is not a
+pipeline worth having.
+
+**Decision required before Phase 3.** Options: (a) accept that surface-weighted
+Elo alone does not beat a tennis closing line and move to soccer having proven
+the chain, or (b) extend the tennis model with the information the market has
+and Elo does not. This plan's own exit gate says ship only on gate 1, so
+shipping as-is is not among them.
+
 #### 2.6 Serving — the crosswalk is a live concern, not a training one
 
 Training needs no ESPN ids; names are 100% present. **Live prediction does** —
