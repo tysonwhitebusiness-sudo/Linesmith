@@ -217,18 +217,40 @@ async def gate_4_archive_is_being_fed() -> None:
             """SELECT max(captured_at) newest, count(*) n
                  FROM odds_archive WHERE source = 'live_capture'"""
         )
+        # event_start < now() — ONLY GAMES THAT HAVE ACTUALLY STARTED.
+        #
+        # This metric asks "did we capture close to the close". For a game that
+        # has not kicked off, the answer is not yet knowable: the bridge keeps
+        # upserting right up to the freeze, so its capture-to-start distance is
+        # still shrinking and measuring it now measures the distance to kickoff,
+        # not any failure of ours. NFL made this concrete — 6 rows for an opener
+        # six days out read as a median of 8,660 minutes and failed the gate,
+        # while the bridge was behaving perfectly.
+        #
+        # Same defect 10.3 had, one check over: asserting something no code
+        # could satisfy. A started game's capture history is final, so it is the
+        # only honest sample.
         lat = await conn.fetch(
             """SELECT sport, percentile_disc(0.5) WITHIN GROUP (
                         ORDER BY EXTRACT(EPOCH FROM (event_start - captured_at))/60) median_min,
                       count(*) n
                  FROM odds_archive
                 WHERE source = 'live_capture' AND captured_at > now() - interval '7 days'
-                  AND event_start IS NOT NULL
+                  AND event_start IS NOT NULL AND event_start < now()
                 GROUP BY 1"""
         )
     check(bool(fresh and fresh["newest"]), "live_capture rows exist",
           f"{(fresh['n'] if fresh else 0):,} rows")
+    # A handful of rows cannot establish a median worth gating on, and a sport
+    # mid-backfill or just switched on will always have a few. 20 is the point
+    # where one stale row stops dominating.
+    MIN_SAMPLE = 20
     for r in lat:
+        if (r["n"] or 0) < MIN_SAMPLE:
+            skip(f"{r['sport']} median capture-to-start <= 15min",
+                 f"only {r['n']} started-game captures — too few to gate on "
+                 f"(need {MIN_SAMPLE})")
+            continue
         check((r["median_min"] or 1e9) <= 15,
               f"{r['sport']} median capture-to-start <= 15min",
               f"{r['median_min']:.0f}min over {r['n']:,} rows")

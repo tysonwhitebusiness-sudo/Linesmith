@@ -677,17 +677,51 @@ async def check_declared_pairs_produce() -> dict:
             "SELECT DISTINCT sport, source FROM game_odds_book_lines "
             "WHERE fetched_at > now() - interval '24 hours'"
         )
+        # Keyed by SPORT via game_id, not provider-wide. prop_odds has no sport
+        # column; joining to game_odds_book_lines' (game_id, sport) resolves 99%
+        # of recent rows. Provider-wide was the hole that let this check pass
+        # soccer during a 26-hour soccer outage.
         props = await conn.fetch(
-            "SELECT DISTINCT provider_id FROM prop_odds "
-            "WHERE fetched_at > now() - interval '24 hours'"
+            """SELECT DISTINCT b.sport, p.provider_id
+                 FROM prop_odds p
+                 JOIN (SELECT DISTINCT game_id, sport FROM game_odds_book_lines) b
+                   ON b.game_id = p.game_id
+                WHERE p.fetched_at > now() - interval '24 hours'"""
         )
     line_pairs = {(r["sport"], r["source"]) for r in lines}
-    prop_providers = {r["provider_id"] for r in props}
+
+    # Which PAID providers the tier gate silenced this cycle. Consults the same
+    # gameday.compute_tier the jobs consult — a check that asks a different
+    # question than the code it audits is auditing something else.
+    import game_context
+    import gameday
+
+    gated: set[tuple[str, str]] = set()
+    for sport in pm.MATRIX:
+        try:
+            if sport == "mlb":
+                games = await game_context.load_mlb_games()
+            elif sport == "nhl":
+                games = await game_context.load_nhl_games()
+            elif sport.startswith("tennis"):
+                games = await game_context.load_tennis_games(sport)
+            else:
+                games = await game_context.load_sport_games(sport)
+        except Exception:
+            continue  # a loader failure must not invent gated pairs
+        if not games or gameday.compute_tier(games) != "cold":
+            continue
+        # Cold: every CAPPED provider is deliberately skipped. Uncapped ones
+        # (SharpAPI) still run, so they stay assertable.
+        for spec in pm.specs_for(sport, None):
+            if spec.cap_kind != "none":
+                gated.add((sport, spec.provider_id))
+    prop_pairs = {(r["sport"], r["provider_id"]) for r in props}
     # A sport counts as LIVE if anything at all produced for it. Deriving this
     # from real production rather than a schedule is what lets the check run
     # with no season logic and no per-sport schedule fetch.
     active = {sport for sport, _ in line_pairs}
-    result = declared_pairs.evaluate(pm.MATRIX, line_pairs, prop_providers, active)
+    result = declared_pairs.evaluate(pm.MATRIX, line_pairs, prop_pairs, active, gated)
     result["window"] = window
     return result
 

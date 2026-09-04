@@ -37,7 +37,7 @@ def test_all_producing() -> None:
         MATRIX,
         line_pairs={("mlb", "sharpapi"), ("cfb", "sharpapi"), ("cfb", "sportsgameodds"),
                     ("soccer", "sharpapi")},
-        prop_providers={"propline"},
+        prop_pairs={("mlb", "propline"), ("soccer", "propline")},
         active_sports={"mlb", "cfb", "soccer"},
     )
     check("healthy", r["healthy"], True)
@@ -53,7 +53,7 @@ def test_one_provider_goes_silent() -> None:
     r = declared_pairs.evaluate(
         MATRIX,
         line_pairs={("mlb", "sharpapi"), ("cfb", "sharpapi"), ("soccer", "sharpapi")},
-        prop_providers={"propline"},
+        prop_pairs={("mlb", "propline"), ("soccer", "propline")},
         active_sports={"mlb", "cfb", "soccer"},
     )
     check("unhealthy", r["healthy"], False)
@@ -68,7 +68,7 @@ def test_out_of_season_is_skipped_not_failed() -> None:
     r = declared_pairs.evaluate(
         MATRIX,
         line_pairs={("mlb", "sharpapi")},
-        prop_providers={"propline"},
+        prop_pairs={("mlb", "propline"), ("soccer", "propline")},
         active_sports={"mlb"},
     )
     check("healthy despite nba and cfb producing nothing", r["healthy"], True)
@@ -83,7 +83,7 @@ def test_aliases() -> None:
     r = declared_pairs.evaluate(
         {"mlb": ("oddsapiio",)},
         line_pairs={("mlb", "the-odds-api")},
-        prop_providers=set(),
+        prop_pairs=set(),
         active_sports={"mlb"},
     )
     check("oddsapiio satisfied by 'the-odds-api'", r["healthy"], True)
@@ -92,7 +92,7 @@ def test_aliases() -> None:
     r = declared_pairs.evaluate(
         {"mlb": ("propline",)},
         line_pairs=set(),
-        prop_providers={"propline_2"},
+        prop_pairs={("mlb", "propline_2")},
         active_sports={"mlb"},
     )
     check("propline satisfied by propline_2", r["healthy"], True)
@@ -103,13 +103,12 @@ def test_aliases() -> None:
 
 def test_props_only_provider_counts() -> None:
     print("\na props-only provider is satisfied by prop_odds alone")
-    # prop_odds has no sport column, so props can only ever be asserted
-    # provider-wide. A provider that writes props and no game lines must still
-    # pass, or every props provider reads as silent forever.
+    # A provider that writes props and no game lines must still pass, or every
+    # props-only provider reads as silent forever. ParlayAPI is exactly this.
     r = declared_pairs.evaluate(
         {"mlb": ("parlayapi",)},
         line_pairs={("mlb", "sharpapi")},
-        prop_providers={"parlayapi"},
+        prop_pairs={("mlb", "parlayapi")},
         active_sports={"mlb"},
     )
     check("parlayapi passes on props alone", r["healthy"], True)
@@ -120,10 +119,63 @@ def test_soccer_and_tennis_grain() -> None:
     r = declared_pairs.evaluate(
         {"soccer_epl": ("sharpapi",), "tennis_atp": ("sharpapi",)},
         line_pairs={("soccer", "sharpapi"), ("tennis", "sharpapi")},
-        prop_providers=set(),
+        prop_pairs=set(),
         active_sports={"soccer", "tennis"},
     )
     check("both resolve against the coarse key", r["healthy"], True)
+
+
+def test_props_are_sport_aware() -> None:
+    print("\nTHE SOCCER HOLE — props must be keyed by sport, not provider-wide")
+    # The original check asked only "has this provider written ANY props?", so
+    # propline writing MLB props satisfied its soccer declaration. That is
+    # exactly how this check passed soccer through a 26-hour soccer outage: the
+    # outage it exists to catch, missed on its first real test.
+    r = declared_pairs.evaluate(
+        {"mlb": ("propline",), "soccer_epl": ("propline",)},
+        line_pairs={("mlb", "sharpapi"), ("soccer", "sharpapi")},
+        prop_pairs={("mlb", "propline")},  # MLB props only — none for soccer
+        active_sports={"mlb", "soccer"},
+    )
+    check("soccer is NOT excused by propline's MLB props", r["healthy"], False)
+    check("and it names soccer specifically", r["silent"], ["soccer_epl/propline"])
+
+    # The same provider producing for BOTH sports must still pass.
+    r = declared_pairs.evaluate(
+        {"mlb": ("propline",), "soccer_epl": ("propline",)},
+        line_pairs={("mlb", "sharpapi"), ("soccer", "sharpapi")},
+        prop_pairs={("mlb", "propline"), ("soccer", "propline")},
+        active_sports={"mlb", "soccer"},
+    )
+    check("both sports covered -> healthy", r["healthy"], True)
+
+
+def test_tier_gated_pairs_are_not_asserted() -> None:
+    print("\nTHE NFL CASE - a live sport whose PAID providers are gated off")
+    # SharpAPI is uncapped and fetches every cycle, so it alone makes a sport
+    # look active. NFL six days from its opener is COLD, so every capped
+    # provider correctly skips - and reporting them silent is the same error as
+    # demanding rows from an out-of-season sport, one level finer.
+    matrix = {"nfl": ("sharpapi", "propline", "parlayapi")}
+    args = dict(line_pairs={("nfl", "sharpapi")}, prop_pairs=set(),
+                active_sports={"nfl"})
+    ungated = declared_pairs.evaluate(matrix, **args)
+    check("without the gate, both paid providers read as silent",
+          ungated["silent"], ["nfl/propline", "nfl/parlayapi"])
+
+    gated = declared_pairs.evaluate(
+        matrix, **args, gated_pairs={("nfl", "propline"), ("nfl", "parlayapi")})
+    check("with the gate, healthy", gated["healthy"], True)
+    check("and they are reported as gated, not invisible",
+          gated["gated_pairs"], ["nfl/propline", "nfl/parlayapi"])
+    # The uncapped provider is never gated, so a genuinely broken SharpAPI still
+    # fails even on a cold sport.
+    broken = declared_pairs.evaluate(
+        matrix, line_pairs={("nfl", "propline")}, prop_pairs=set(),
+        active_sports={"nfl"},
+        gated_pairs={("nfl", "propline"), ("nfl", "parlayapi")})
+    check("an uncapped provider is still asserted while gated ones are not",
+          broken["silent"], ["nfl/sharpapi"])
 
 
 def main() -> int:
@@ -132,6 +184,8 @@ def main() -> int:
     test_out_of_season_is_skipped_not_failed()
     test_aliases()
     test_props_only_provider_counts()
+    test_props_are_sport_aware()
+    test_tier_gated_pairs_are_not_asserted()
     test_soccer_and_tennis_grain()
     print()
     if _failures:
