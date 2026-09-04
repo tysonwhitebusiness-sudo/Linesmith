@@ -1044,6 +1044,52 @@ and are different clubs, as do several 'Sporting'/'Real'/'Atletico' sides in MLS
 **Done when:** duplicate count is zero, every club resolves to one identity, and
 the audit re-runs clean.
 
+**RESULT — done 2026-09-04.** `src/predict/soccer_teams.py` (map + loader),
+`src/test_soccer_teams.py`, `audit_soccer_duplicates.py` (re-runnable, exit 0).
+
+**Canonicalisation exposed 4x more duplication than the raw-name check.**
+
+| | raw names | canonical clubs | duplicate groups found |
+|---|---|---|---|
+| EPL | 48 | **35** (13 aliases) | **400** — vs 94 on raw names |
+| MLS | 48 | **31** (15 aliases) | **604** — vs 167 on raw names |
+
+**All 400 and all 604 duplicate groups AGREE on the final score**, so collapsing
+is lossless rather than a silent tiebreak. That was checked explicitly, not
+assumed — two sources that contradicted each other would need a different fix.
+
+**The odds table was affected too, and would have failed silently.**
+`odds_archive` carries both spellings ('Bournemouth' / 'AFC Bournemouth',
+'CF Montreal' / 'CF Montréal'), so a ship gate joining un-canonicalised names
+loses rows to a non-join rather than an error. The map closes there: **0 orphan
+odds clubs** in either league.
+
+**Two exhibition sides found and excluded**: `MLS All-Stars` and
+`Liga MX All-Stars`, 2 matches. An All-Star game says nothing about club
+strength and must never train a model that estimates it.
+
+**Loaded result:** EPL 4,200 matches / 35 clubs, MLS 6,395 / 31 clubs. Home and
+draw rates barely moved after de-duplication (EPL 44.2->44.4%, 24.0->23.7%),
+confirming the duplicates were representative rather than skewed. **These match
+the plan's original 4,200 / 6,397 figures** — that audit had counted correctly;
+the 4,601 / 7,001 raw counts include the duplicates.
+
+`load_soccer_matches()` is the ONE place canonicalisation, exhibition filtering
+and de-duplication are applied, so 3.2, 3.3 and 3.5 cannot drift apart on the
+rule. Precedence is `footballdata` over `espn_core` (longer history, majority of
+rows); MLS keeps 265 `espn_core` matches footballdata does not have, so the rule
+prefers rather than discards.
+
+**The fix's own risk is tested.** `test_soccer_teams.py` asserts INJECTIVITY —
+no two aliases may share a target — because a mapping typo sending both
+Manchester clubs to one string would merge United and City into a single team,
+raise nothing, and produce a plausible rating for a club that does not exist.
+That is 3.1's own failure mode reintroduced by its fix.
+
+**Still true after this step:** the duplicate rows remain in `game_result`.
+This removes them on the way out. Anything reading that table directly for these
+sports still reads double from 2025 onward.
+
 #### 3.2 — The Dixon-Coles engine
 
 Per team `attack` and `defence`; global `home_advantage`, `tau`, `xi`.
