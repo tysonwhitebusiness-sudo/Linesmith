@@ -635,6 +635,33 @@ or an obviously bad number — it produces a plausible rating for a player who
 does not exist. It cannot be detected downstream by calibration, because a
 merged rating is still internally consistent. It is only findable here.
 
+**RESULT — run 2026-09-04, `python-odds-service/audit_tennis_name_collisions.py`,
+exit 0.** Four independent checks; re-runnable.
+
+- **8 confirmed collisions, all cross-tour**: `Trevisan M.` (136 player-slots),
+  `Beck A.` (112), `Pereira T.` (48), `Wong C.` (34), `Gonzalez M.` (20),
+  `Harrison C.` (13), `Mayo A.` (2), `Sanchez M.` (2). A name in both ATP and
+  WTA is provably two people.
+  **Decision: key every rating on `(sport, name)`.** That resolves all eight at
+  once and is correct independently — ATP and WTA are separate competitive pools
+  and must never share a rating. **2.2 must do this; it is not optional.**
+- **Crosswalk contradictions: none.** No tennis name maps to more than one ESPN
+  athlete id. Covers 1,186 of 1,765 names, so this is evidence for those and
+  silent on the rest.
+- **Integrity: clean.** 0 matches with the same name on both sides.
+- **Volume: clean.** Busiest name is 77 matches/yr (`Bautista R.`), under the
+  ~90 bar. `Zverev A.` at 731 matches is Alexander, correctly separated from
+  `Zverev M.` (Mischa) by the initial — the classic case the key handles.
+
+**A heuristic tried and REJECTED: activity gaps.** At a >2y gap with >=15
+matches either side it returns 13 candidates, and every one is a real player
+with a documented break — Wozniacki (retired 2020, returned 2023); Pironkova,
+Sevastova and Rodina (maternity); Haddad Maia (suspension); Konjuh (injury). In
+tennis a multi-year absence is ordinary, so the signal is ~100% false positive.
+Kept out of the script deliberately, with those names listed in `CAREER_BREAKS`,
+so a future reader does not re-derive the same dead end. Note these same breaks
+are exactly what 2.3's time-based reversion rule handles — the two agree.
+
 #### 2.2 The rating engine — per-surface blend, fitted per surface
 
 Three surface ratings (Hard, Clay, Grass) plus one overall, per player. The
