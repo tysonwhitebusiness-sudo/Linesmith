@@ -1,11 +1,12 @@
 # CURRENT — pick up here
 
-**Phase 4 is COMPLETE and it ends on a screen.** `/nhl/projections` renders four
-ranked NHL markets in a real browser. That is the first user-visible model
-output this project has produced — Phases 2, 3 and the first nine steps of 4 all
-finished at a number in a document.
+**Phase 4 is COMPLETE and audited.** `/nhl/projections` renders **six** ranked
+NHL markets in a real browser. That is the first user-visible model output this
+project has produced — Phases 2, 3 and the first nine steps of 4 all finished at
+a number in a document.
 
-`tsc` clean, **344 tests, 0 fail**. Plan: `docs/model-build-plan-2026-09-02.md`.
+`tsc` clean, **345 tests, 0 fail**, production build exit 0. Plan:
+`docs/model-build-plan-2026-09-02.md`.
 
 ## 1. What shipped in 4.8 / 4.9 / 4.10
 
