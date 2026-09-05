@@ -1,0 +1,19 @@
+-- Phase 4.9 — `mlb_prop_model_cache` was never MLB-only in SHAPE: it has
+-- carried a `sport` column since it was created, and its primary key is
+-- (sport, game_id, subject_id, dimension, category). Only its NAME was
+-- MLB-only, and NHL is the first second sport to need it.
+--
+-- Renaming rather than adding `nhl_prop_model_cache` — a per-sport table for a
+-- table that is already sport-keyed would mean every reader picks a table name
+-- by sport before it can read a row, which is the duplication the shared
+-- sport-adapter convention exists to prevent (CLAUDE.md).
+--
+-- Three code touchpoints total, all updated in the same commit:
+--   lib/db/client.ts:2232   readPropModelCacheForGames (read)
+--   python-odds-service/src/db.py:1310  write_prop_model_cache (write)
+--   python-odds-service/src/db.py:1343  prune_prop_model_cache (prune)
+--
+-- ALTER TABLE ... RENAME carries indexes, constraints and the primary key with
+-- it, so existing MLB rows and MLB's cache-first read path (adapter.ts:2323)
+-- keep working untouched.
+ALTER TABLE IF EXISTS mlb_prop_model_cache RENAME TO prop_model_cache;

@@ -2265,9 +2265,85 @@ remains — P(points > 1.5) is not guaranteed coherent with the goal and assist
 distributions it is made of. Worth doing before the board shows all three side
 by side, where a user could see them disagree.
 
-#### 4.9 — Serving **[not started until 4.7 passes]**
+#### 4.9 — Serving, SPLIT BY CONSUMER **[the projection pipe is not gated on 4.7]**
 
-The rule 2.6 established and 3.7 kept: serving is built after a gate passes.
+**The old rule here was stale in exactly the way Phase 9's was, and for the same
+reason.** 2.6 established it and 3.7 kept it: serving is the delivery pipe for a
+model that cleared its gate, so do not build a pipe for something that may not be
+delivered. That was coherent while the ONLY consumer of a prediction was a
+betting board. It stopped being coherent the moment 4.10 shipped a stats board
+that explicitly does not wait on 4.7 — because a board cannot render without a
+delivery pipe. Left as written, 4.9 deferred, on a failed BETTING gate, the exact
+plumbing the NON-betting board needs.
+
+**So serving splits the same way the board split, and for the same reason:**
+
+| pipe | carries | gated on | state |
+|---|---|---|---|
+| **projection** | projection, uncertainty, calibrated probability, rank | **ordering** (4.8) | **BUILD NOW** |
+| **edge** | model vs market, edge %, prop score, grade | beating the close (4.7) | stays deferred |
+
+**Serving NHL is not greenfield, which changes what this step actually is.**
+`genericPropProductionNhlJob` is already registered in `JOB_REGISTRY` on an hourly
+interval (`jobs.py:1374`) and writes to `pick_history`. It carries two NHL
+dimensions — assists (0.5) and shots-on-goal (2.5) — and builds them from
+`generic_prop_score.build_candidate`, **which is a different model from the
+`nhl_props.py` engine 4.5-4.8 validated.** Nothing measured in those steps says
+anything about what that job would surface. So 4.9 is not "build a pipe"; it is
+"give the validated engine its own pipe, and do not quietly inherit the edge
+pipe's semantics along the way."
+
+**`pick_history` is the wrong table for this, on a concrete difference, not a
+stylistic one.** It stores SELECTED picks — `generic_prop_production` keeps only
+the better-scoring side per dimension. A ranking board needs the FULL ordered
+field, both sides, every qualifying player. Different shape, different query.
+Writing projections there would also mix edge-gated and ordering-gated rows in
+one table, so every reader would have to know which is which — the precise
+failure §9d names, a stats surface silently becoming a betting surface.
+
+**Use the tables that already exist.** Two do, and both fit:
+
+- **`mlb_prop_model_cache` is already sport-keyed** (`sport`, `game_id`,
+  `subject_id`, `dimension`, `line`, `model_prob`, `model_std_dev`,
+  `model_sample_size`, `league_rate`, `model_version`, `computed_at`) despite its
+  name, and MLB already reads it cache-first through `adapter.ts:2323`. It has
+  every field the board needs. **Renamed to `prop_model_cache`** — three code
+  touchpoints total (`lib/db/client.ts:2232` read, `db.py:1310` write,
+  `db.py:1343` prune), so the rename is cheap now and misleading forever if
+  skipped.
+- **`model_calibration` is where the fitted constants belong**, not a Python
+  literal. It already carries `method`/`params_json`/`holdout_log_loss`/
+  `baseline_holdout_log_loss`/`active`, and MLB already uses `active=false` to
+  record a market where calibration did NOT help (`runs`, `total-bases`, both
+  with holdout worse than baseline). That is the same decision 4.8 makes per
+  market, so it goes in the same place rather than a second one.
+
+**The constants are PERSISTED BY THE FIT, never transcribed.** `fit_nhl_props_all.py`
+gains `--persist`, writing each market's `toi_window`/`shrink_k`/`dispersion`/`T`
+plus its holdout metrics and its ordering verdict. Hand-copying six markets' worth
+of fitted parameters into a serving module is how a served model silently stops
+being the measured one.
+
+**NHL IS OFFSEASON — the season opens in October, and `pick_history` holds zero
+NHL rows today.** That is not a blocker but it does dictate the design: the
+serving job takes an **as-of date**, so it can be pointed at a real past game day
+and verified against known outcomes. That is a stronger test than a live slate,
+not a substitute for one — a live slate proves scheduling and roster resolution,
+which a historical run cannot.
+
+##### Exit gate for 4.9
+
+1. `prop_model_cache` rename applied, all three touchpoints updated, MLB's
+   existing read still works.
+2. Fitted constants persisted to `model_calibration` by the fit itself.
+3. Serving path builds histories from `player_game_history` with **no outcome
+   leakage** — strictly games before the as-of date, asserted by row count.
+4. Projections written for a real past NHL slate and checked against real
+   outcomes.
+5. **No edge, market_prob, prop_score or grade written by this pipe** — asserted,
+   not intended.
+6. Blocked shots excluded because its ordering inverts, recorded as that reason
+   rather than inheriting the generic config's unrelated one.
 
 #### What is NOT in this phase
 
@@ -2316,19 +2392,36 @@ evidence:
 Collapsing both into one gate meant a 0.007 calibration miss suppressed a
 ranking whose ordering was perfect. **So the gate now follows what is on screen:**
 
-| market | ordering | calib gap | ranking + projection | displayed probability |
-|---|---|---|---|---|
-| Total Points | monotone | 0.013 | **ships** | **ships** |
-| Total Assists | monotone | 0.026 | **ships** | **ships** |
-| Total Shots on Goal | monotone | 0.057 | **ships** | held |
-| Total Hits | monotone | 0.067 | **ships** | held |
-| Total Goals | monotone | 0.131 | **ships** | held |
-| Total Blocked Shots | **inverts** | 0.160 | **held** | held |
+**These verdicts are the ones from the QUINTILE ordering check (4.9), not the
+integer-bucket check 4.8 originally ran.** The original bucketed by `int(expected)`,
+which put every row of a low-mean market into ONE bucket — assists (mean 0.44)
+and goals (mean 0.17) each produced a single bucket, and `all()` over a
+one-element list is vacuously True. Both were recorded as "ordering monotone" by
+a check with nothing to compare: the same failure as a gate that passes because
+nothing tried. Equal-count quintiles test the claim at any mean and cannot
+degenerate to one bin.
 
-**Blocked Shots is the only market held off the board entirely, and for the
-right reason** — its ordering inverts (projected 1-2 → 1.83 actual, projected
-2-3 → 1.81), so its ranking is not merely imprecise, it is backwards. That is
-the one failure that makes a ranking board lie.
+| market | ordering (quintiles) | calib gap | ranking + projection | displayed probability |
+|---|---|---|---|---|
+| Total Points | 0.51 → 0.56 → 0.57 → 0.85 → 1.02 | 0.013 | **ships** | **ships** |
+| Total Assists | 0.30 → 0.35 → 0.40 → 0.48 → 0.67 | 0.026 | **ships** | **ships** |
+| Total Shots on Goal | 1.75 → 2.07 → 2.28 → 2.34 → 3.02 | 0.057 | **ships** | held |
+| Total Goals | 0.07 → 0.10 → 0.13 → 0.20 → 0.35 | 0.131 | **ships** | held |
+| Total Hits | 1.88 → 2.15 → 2.40 → **2.33** → 2.99 | 0.067 | **held** | held |
+| Total Blocked Shots | 1.71 → 1.72 → 2.03 → **1.81** → 1.85 | 0.160 | **held** | held |
+
+**The finer check changed a verdict, which is the point of running it.** Hits
+passed on three coarse buckets and fails on five honest ones — Q3 projects
+higher than Q4 but produces more (2.40 vs 2.33). It is now held off the board
+alongside Blocked Shots.
+
+**Two markets are excluded because their ranking would be backwards**, not
+merely imprecise. That is the one failure that makes a ranking board lie, and it
+is the only thing the ranking gate is there to catch.
+
+**Assists and Goals now rest on a real test.** Under the old bucketing their
+"pass" was vacuous; under quintiles both order cleanly across five bins with
+n≥514 each.
 
 This is not a lowered bar. Each claim is still gated on the evidence that
 particular claim needs; the earlier version gated one claim on another claim's

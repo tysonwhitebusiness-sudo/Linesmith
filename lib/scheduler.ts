@@ -11,7 +11,7 @@
  *   * `refreshMlb` rebuilds `snapshot_cache['mlb:snapshot']` every 4 minutes.
  *     Since task 2.7 that rebuild is fetch-trim-cache only — every model and
  *     grading write it used to perform belongs to a Python job now, and the
- *     prop probabilities it renders are read from `mlb_prop_model_cache`
+ *     prop probabilities it renders are read from `prop_model_cache`
  *     rather than computed here.
  *   * `refreshCalibration` recomputes the calibration payload every 30
  *     minutes. This is the one piece of model math still running in

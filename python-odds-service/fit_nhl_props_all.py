@@ -47,6 +47,19 @@ DISPERSIONS = [1.0, 2.0, 4.0, 8.0, 20.0, 1e6]
 MARKETS = ["Total Shots on Goal", "Total Points", "Total Assists",
            "Total Goals", "Total Blocked Shots", "Total Hits"]
 
+# The board and the serving path key on a dimension slug, not the vendor's
+# market label — `prop_model_cache.dimension` and generic_dimension_configs
+# both already use this style, so the same NHL market has ONE name across the
+# fit, the cache and the config rather than three spellings to reconcile.
+DIMENSION = {
+    "Total Shots on Goal": "shots-on-goal",
+    "Total Points": "points",
+    "Total Assists": "assists",
+    "Total Goals": "goals",
+    "Total Blocked Shots": "blocked-shots",
+    "Total Hits": "hits",
+}
+
 
 def am_prob(o) -> float:
     o = float(o)
@@ -96,7 +109,7 @@ def score(sc, lo=None, hi=None):
             "rows": v}
 
 
-async def run_market(market: str) -> None:
+async def run_market(market: str, persist: bool = False) -> None:
     d = await npx.load_shot_props(market=market)
     rows = d["rows"]
     sel_src = [r for r in rows if r.played < CUTOFF]
@@ -137,12 +150,30 @@ async def run_market(market: str) -> None:
           f"acc {held['acc']*100:.1f}%  projection bias {held['bias']*100:+.1f}%")
 
     # ---- STATS BAR: ordering + calibration, no market involved -------------
-    buckets: dict[int, list] = {}
-    for r, o, e in held["rows"]:
-        buckets.setdefault(min(4, int(e)), []).append(r.actual_sog)
-    order = [(b, len(v), sum(v) / len(v)) for b, v in sorted(buckets.items())
-             if len(v) >= 30]
-    monotone = all(order[i][2] <= order[i + 1][2] + 1e-9 for i in range(len(order) - 1))
+    # QUINTILES OF PROJECTION, not integer buckets of it. The integer version
+    # this replaces put every row of a low-mean market into a single bucket —
+    # assists (mean 0.44) and goals (mean 0.17) both produced ONE bucket, and
+    # `all()` over a one-element list is vacuously True. Both markets were
+    # therefore recorded as "ordering monotone" by a check that had nothing to
+    # compare, which is the same failure mode as a gate that passes because
+    # nothing tried to render.
+    #
+    # Equal-COUNT bins test the ordering claim the board actually makes — that
+    # players ranked higher produce more — at every mean, and they cannot
+    # degenerate to one bin.
+    ranked_rows = sorted(held["rows"], key=lambda t: t[2])
+    nbin = 5
+    order = []
+    if len(ranked_rows) >= nbin * 30:
+        step = len(ranked_rows) // nbin
+        for i in range(nbin):
+            chunk = ranked_rows[i * step:(i + 1) * step if i < nbin - 1 else len(ranked_rows)]
+            order.append((i + 1, len(chunk),
+                          sum(r.actual_sog for r, _, _ in chunk) / len(chunk)))
+    # A market with too few held-out rows to form five honest bins is UNTESTED,
+    # not passing. `order` stays empty and monotone is False.
+    monotone = bool(order) and all(
+        order[i][2] <= order[i + 1][2] + 1e-9 for i in range(len(order) - 1))
     cal = [ll(temper(o, bestT) if r.actual_sog > r.line else 1 - temper(o, bestT))
            for r, o, _ in held["rows"]]
     worst = 0.0
@@ -155,12 +186,16 @@ async def run_market(market: str) -> None:
         pred = (b + 0.5) / 10
         act = sum(1 for r in v if r.actual_sog > r.line) / len(v)
         worst = max(worst, abs(pred - act))
-    print("  STATS BAR — ordering: " +
-          ", ".join(f"proj {b}-{b+1}->{m:.2f} (n={n})" for b, n, m in order))
+    print("  STATS BAR — ordering by projection quintile: " +
+          (", ".join(f"Q{b}->{m:.2f} (n={n})" for b, n, m in order)
+           if order else "TOO FEW ROWS FOR 5 BINS — untested, not passing"))
     print(f"    monotone: {monotone}   worst calibration gap after T: {worst:.3f}"
           f"   {'PASS' if monotone and worst <= 0.05 else 'FAIL'}")
 
     # ---- BETTING BAR: informational ---------------------------------------
+    # None when this market has no two-sided prices at all — persisted as a
+    # null baseline rather than a fabricated one.
+    market_ll = None
     two = [(r, o) for r, o, _ in held["rows"]
            if r.over_price is not None and r.under_price is not None]
     if two:
@@ -170,18 +205,74 @@ async def run_market(market: str) -> None:
         m_ll = [ll(o if r.actual_sog > r.line else 1 - o) for r, o in two]
         k_ll = [ll(mk(r) if r.actual_sog > r.line else 1 - mk(r)) for r, o in two]
         mean, se, t = paired(m_ll, k_ll)
+        market_ll = sum(k_ll) / len(two)
         print(f"  BETTING BAR — model {sum(m_ll)/len(two):.5f} vs market "
-              f"{sum(k_ll)/len(two):.5f}   t={t:+.2f}  "
+              f"{market_ll:.5f}   t={t:+.2f}  "
               f"{'MODEL' if t < -1.96 else 'MARKET' if t > 1.96 else 'TIE'}")
+
+    if not persist:
+        return
+
+    # ---- PERSIST: the served model must BE the measured model ---------------
+    # Hand-copying six markets' worth of fitted parameters into a serving
+    # module is how a served model silently stops being the one that was
+    # measured. The fit writes them itself, versioned, via the same
+    # write_calibration MLB already uses.
+    #
+    # `active` means "this market may be RANKED" — i.e. its ordering is
+    # monotone. It deliberately does NOT mean "may show a probability": that
+    # is a stricter, separate claim (4.10), carried in params as
+    # `probability_ok`, because a ranking and a displayed probability rest on
+    # different evidence.
+    import db  # noqa: E402  (only needed on the persist path)
+    await db.write_calibration(
+        db.CalibrationInput(
+            sport="nhl",
+            market=DIMENSION[market],
+            # Temperature scaling is single-parameter Platt: a = 1/T, b = 0 in
+            # logit space. Named for what it is rather than folded into
+            # 'platt', so a reader knows one parameter was fitted, not two.
+            method="temperature",
+            params={
+                "toi_window": bw,
+                "shrink_k": bk,
+                "dispersion": bd,
+                "temperature": bestT,
+                "league_rate": lr,
+                "league_toi": lt,
+                "min_prior_games": MIN_PRIOR,
+                "select_cutoff": CUTOFF.isoformat(),
+                "ordering": [{"quintile": b, "n": n, "actual": m} for b, n, m in order],
+                "ordering_monotone": monotone,
+                "worst_calibration_gap": worst,
+                "ranking_ok": monotone,
+                "probability_ok": bool(monotone and worst <= 0.05),
+                "holdout_accuracy": held["acc"],
+                "projection_bias": held["bias"],
+            },
+            train_games=sel["n"],
+            train_log_loss=sel["ll"],
+            holdout_games=held["n"],
+            holdout_log_loss=held["ll"],
+            baseline_holdout_log_loss=market_ll,
+        ),
+        activate=monotone,
+    )
+    print(f"  persisted to model_calibration: nhl/{DIMENSION[market]}  "
+          f"active={monotone} (ranking), probability_ok="
+          f"{bool(monotone and worst <= 0.05)}")
 
 
 async def main() -> int:
-    print("Phase 4.8 — every two-sided NHL market, reported separately")
+    persist = "--persist" in sys.argv
+    print("Phase 4.8 — every two-sided NHL market, reported separately"
+          + ("   [--persist: writing fitted constants to model_calibration]"
+             if persist else ""))
     print("Total Power Play Points EXCLUDED: the database has powerPlayGoals but the")
     print("market settles power-play POINTS, so the computed outcome is not the one")
     print("the bet settles on. Both sides of the comparison would be wrong.")
     for m in MARKETS:
-        await run_market(m)
+        await run_market(m, persist=persist)
     return 0
 
 

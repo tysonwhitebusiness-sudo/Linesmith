@@ -1307,7 +1307,7 @@ async def write_prop_model_cache(rows: list[PropModelCacheRow]) -> int:
         async with conn.transaction():
             await conn.executemany(
                 """
-                INSERT INTO mlb_prop_model_cache (
+                INSERT INTO prop_model_cache (
                   sport, game_id, subject_id, dimension, category, line,
                   model_prob, model_std_dev, model_sample_size, league_rate,
                   matchup_favorable, model_version, computed_at
@@ -1340,7 +1340,7 @@ async def prune_prop_model_cache(before_days: int = 3) -> int:
     (docs/audit-phase-2.md's growth projection). Not repeating it here."""
     pool = await get_pool()
     result = await pool.execute(
-        "DELETE FROM mlb_prop_model_cache WHERE computed_at < now() - ($1 || ' days')::interval",
+        "DELETE FROM prop_model_cache WHERE computed_at < now() - ($1 || ' days')::interval",
         str(before_days),
     )
     return int(result.split()[-1]) if result.startswith("DELETE") else 0

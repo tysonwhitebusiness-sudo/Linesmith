@@ -264,7 +264,7 @@ const RANGE_DAYS = 45;
 const GAME_MODEL_CACHE_MAX_AGE_MS = 30 * 60_000;
 
 /**
- * Task 2.7a — how stale a `mlb_prop_model_cache` row may be before this file
+ * Task 2.7a — how stale a `prop_model_cache` row may be before this file
  * recomputes the prop model locally instead. 10 minutes: 2x
  * computeMlbPropPredictionsJob's own 5-minute interval, the same
  * "2x the writer's interval" rule GAME_MODEL_CACHE_MAX_AGE_MS above follows

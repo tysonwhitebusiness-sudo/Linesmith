@@ -2229,7 +2229,7 @@ export async function readPropModelCacheForGames(sport: string, gameIds: string[
             model_prob AS "modelProb", model_std_dev AS "modelStdDev", model_sample_size AS "modelSampleSize",
             league_rate AS "leagueRate", matchup_favorable AS "matchupFavorable",
             model_version AS "modelVersion", computed_at AS "computedAt"
-     FROM mlb_prop_model_cache WHERE sport = ? AND game_id = ANY(?)`,
+     FROM prop_model_cache WHERE sport = ? AND game_id = ANY(?)`,
     [sport, gameIds],
   );
   const out = new Map<string, PropModelCacheRow>();
