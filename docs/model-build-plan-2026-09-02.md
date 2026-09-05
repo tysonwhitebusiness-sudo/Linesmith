@@ -2372,153 +2372,88 @@ count distribution. Second-biggest NFL market by volume, worth doing properly.
 
 ---
 
-### Phase 9 — Surfacing: the two boards
+### Phase 9 — Surfacing: the two boards, on DIFFERENT bars
 
-**Neither the model plan nor the infrastructure plan covered this, and without it
-none of the work above reaches a user.** The model layer currently produces
-374,173 graded prop predictions, an ordering on two lists, and a pick side with no
-number — and every probability, edge and confidence figure is computed, written to
-Postgres, and **discarded at the render boundary**. That was the right call for a
-model measured as worthless. It stops being right the moment a model clears the
-ship gate.
+**THE TWO BOARDS ANSWER DIFFERENT QUESTIONS AND ARE GATED DIFFERENTLY. This is
+the correction to a rule that was never a design decision.**
 
-The work, in dependency order:
+The old rule — *no model output is rendered that has not cleared bar 3* — came
+from Track E of `audit-remediation-plan.md`, added 2026-08-31, and was flagged
+**the next day** as describing "a SUPPRESSION STATE, not a test": it passed only
+because nothing tried to render, and it was marked NEEDS REWRITING BEFORE
+ANYTHING SHIPS. It was written when the app showed no model output at all,
+because the *previous* models were genuinely broken — soccer predicting 0.583
+for assists where 0.064 happens, golf storing a Brier of 0 on 147 of 149 rows.
 
-1. **The betting board** — ranks by modelled edge. Rank shown, probability not
-   (§4).
-2. **The stats board** — ranks by projected production, same engine underneath.
-3. **Market filter on both**, per sport. This generalises the old five-player
-   home-run list rather than special-casing it: every sport's rankings filter by
-   market, and the home-run list becomes one instance of that.
-4. **Un-suppress the render paths that were switched off** — `EdgeBadge` in
-   `OddsChip.tsx` returns null across four call sites, `GameHeroCard` hardcodes
-   `mlPercent`/`totalPercent` to null, `TodaysPicksModal` renders the score grade
-   into an empty div. Each comes back **only** for a sport whose model has cleared
-   the gate, never globally.
-5. **The prompt system.** The eight-phase prompt work was built on the assumption
-   that models would not be used, and that assumption has changed. It needs
-   revisiting against what the boards actually surface — noted during planning,
-   deferred to here deliberately, and this is the phase where it lands.
-
-Built per sport as each model ships, not as one big-bang release. A sport whose
-model never clears bar 3 simply never gets a board, and the page keeps rendering
-exactly what it renders today.
+That rule was then carried into this plan unchanged and enforced across Phases
+2, 3 and 4, which is why four phases produced nothing a user can see. **Corrected
+here.**
 
 ---
 
-### Not scheduled — and why
+#### 9a. The stats board — SHIPS REGARDLESS OF ANY MARKET COMPARISON
 
-**OddsHarvester.** An earlier draft of this plan said it was "anti-bot, not a
-code fix, and every sport it covers has a working provider." **Both halves were
-wrong** — CFB had no other game-line source at all, and the anti-bot attribution
-was the health check's own hedge (*"possible"*) repeated as a diagnosis; the
-actual evidence (dropdown timeout, page height 0) fits an OddsPortal markup
-change equally well. It is now handled by Phase 0c, which removes the dependency
-by giving CFB a live provider rather than by fixing the scraper.
+**What it says:** "we think this player has the most value." A ranking and a
+projection. It is our opinion, stated as an opinion.
 
-**Buying data** — NFL snaps and soccer minutes — only after the system has proved
-itself. Three of the four rejected advanced options (xG, optical tracking,
-point-by-point tennis) are blocked by *availability*, not difficulty, and in two
-cases are not sold to individuals at any price.
+**What it does NOT say:** that the market is wrong, that a bet is profitable, or
+that anyone will make money. It makes no claim against a price, so a price is
+not the thing that validates it.
 
-**Golf.** Its model layer is being deleted (§2) and not replaced here. 1.03M shot
-events across three tournaments is deep, not wide.
+**Therefore it is NOT gated on beating the close, and never was going to be
+usefully gated that way.** Requiring a projection to beat a trillion-dollar
+market before it can be shown is a category error: it holds an opinion product
+to a betting product's standard.
 
-**CFB and soccer props.** Not viable — see §4.
+**Its bar is HONESTY, not edge:**
 
-**A Render deploy** requires operator approval and is not assumed by any phase.
+1. **Calibrated.** If it says a player projects to 3 shots, players it says that
+   about should average about 3. Measured against outcomes, not against a price.
+2. **Overconfidence corrected.** NHL's prop model needs `T = 1.58` to be
+   calibrated (4.7); apply the correction rather than shipping a number known to
+   be too sharp.
+3. **Uncertainty visible.** A projection built on 5 prior games must not look
+   like one built on 50. Show the evidence behind it.
+4. **No edge language anywhere.** No "+X% edge", no implied probability against a
+   price, no profit framing. The moment it compares itself to a market it stops
+   being a stats board.
 
----
+**NHL's shots-on-goal model clears this bar today** — 56% accurate, correctly
+ordered (projected 1-2 -> actual 1.80, 2-3 -> 2.28, 3-4 -> 3.28), with a known
+and correctable overconfidence factor. Ships.
 
-## 4. Props: build a probability, show a rank
+#### 9b. The betting board — STILL GATED on beating the close
 
-`model-rebuild-plan.md` §5B chose a pure grader, and its reasoning was explicit: a
-grader can ship on data in hand, while a probability claim has to wait until it
-can be tested against historical prices. **That constraint no longer exists** —
-the sourcing round delivered 1.8M historical prop prices, 443,990 two-sided in MLB
-alone, and the open/close test confirmed both ends are genuine pre-game prices.
+**What it says:** "this price is wrong and here is the edge." That IS a claim
+against the market, so the market is exactly what validates it.
 
-- **Internally**, a probability, held to bar 3 against the closing price. It is
-  measurable now, so it gets measured.
-- **On screen**, an ordering. A rank makes no claim that can be wrong in front of
-  a user. The previous model layer got into trouble showing confident percentages
-  it could not support; this avoids repeating that without giving up the ability
-  to measure.
+**Bar unchanged:** beats the de-vigged closing line, out of sample, paired, with
+calibration ruled out first. Nothing has cleared it yet — tennis (t=+20.68),
+soccer (t=+3.05), NHL games (t=+5.07), NHL props (t=+3.03) all failed.
 
-**Two boards, one engine.** The betting board ranks by modelled edge; the stats
-board by projected production. Same numbers underneath, two audiences — people
-here for advice, and people here to analyse. Built in Phase 9.
+`EdgeBadge`, edge percentages, and any profit framing stay suppressed until a
+sport clears. **A sport can therefore have a stats board and no betting board,
+and that is the expected state for all of them right now.**
 
-**The guardrail.** "Not a probability on screen" is not "not falsifiable." The
-honest test for a ranking is **rank correlation**: do higher-ranked situations
-produce better outcomes than lower-ranked ones, on games the model never saw?
-Cheap on the existing harness, and it is what stops a rank quietly becoming a
-vibe. Hold it from the first commit.
+#### 9c. What ships, per sport, in order
 
-**Viability, decided.** MLB, NHL, NFL and NBA are viable. **CFB and soccer are
-not** — CFB has zero two-sided prices; soccer has zero two-sided prices *and* no
-minutes played, so a 20-minute substitute and a 90-minute starter are identical
-rows, which is exactly the distinction a prop model exists to make.
+1. **Stats board** as soon as a sport's model is calibrated and ordered
+   correctly — that is now, for NHL shots on goal.
+2. **Market filter** on the board, per sport.
+3. **Betting board** only when 9b's gate is cleared.
+4. **Un-suppress render paths SELECTIVELY.** `EdgeBadge` in `OddsChip.tsx`,
+   `GameHeroCard`'s hardcoded `mlPercent`/`totalPercent`, and
+   `TodaysPicksModal`'s empty score-grade div are **betting-board** surfaces and
+   stay off. The stats board is its own surface and does not wait on them.
+5. **The prompt system**, revisited against what the boards actually surface.
 
-**Props are the expensive end.** Prop prices sum to 1.066–1.079 against
-1.029–1.056 on game lines — a **3.3–4.0 point** edge needed to break even, roughly
-double the game-line bar. Props are less carefully priced *and* cost more to play.
+#### 9d. The line that must not be crossed
 
----
+The distinction holding this apart is not cosmetic and is the reason two bars
+exist at all: **a ranking is an opinion, an edge is a claim about someone else's
+price.** A stats board that starts quoting implied probabilities against a
+market has silently become a betting board without passing its gate — which is
+the same failure as the old blanket rule, running the other way.
 
-## 5. Replay, rebuild, and how a refit actually improves anything
-
-**Every loader is idempotent by the same contract**: `clear_source(pool, SOURCE,
-tables=(...))` deletes that source's own rows before writing.
-`import_mlb_sbr.py` changed its `event_ref` between runs, the old rows were a
-different key, survived `ON CONFLICT DO NOTHING`, and 28,057 offered rows became
-55,756 landed. **A loader that cannot clear its own output is not idempotent
-whatever its INSERT says.**
-
-This session hit the same class of bug again, which is why it is stated plainly:
-`import_tennis.py`'s clear is behind `--truncate`, so the first re-run with
-surface wrote **nothing** — every row hit `ON CONFLICT DO NOTHING` against rows
-already there, the column stayed 100% NULL, and the log reported "56,386 offered".
-**Verify the value landed, not the offered count.**
-
-**Rebuild order**, all reproducible from files and tables on disk:
-
-| Step | Source | Command |
-|---|---|---|
-| 1 | SBR xlsx 2010-21 | `python import_mlb_sbr.py` |
-| 2 | Long CSV 2021-25 | `python import_mlb_long_csv.py` |
-| 3 | nflverse / CFBD / football-data | their loaders |
-| 4 | tennis xlsx | `python import_tennis.py --truncate` |
-| 5 | ESPN props | `python import_props.py --truncate` |
-| 6 | live captures | replay from `prop_odds_history` within its retention window |
-
-Step 6 has a horizon. Beyond `prop_odds_history`'s retention the archive is the
-only copy — the argument for treating it as append-only and backing it up
-separately from the live set.
-
-**How new data improves a model**, because "ingest more" is not by itself a loop:
-
-1. The bridge accumulates real closing lines, captured at a known time, with
-   `captured_at` proving when.
-2. The CLV backtest runs on games the model has never seen — genuinely new events,
-   not a re-split. `clvSummaryJob` already runs hourly and is healthy; it has
-   simply had nothing new to read.
-3. Refit on a schedule measured in **months**, not days. Fitting is a multi-hour
-   human-triggered CLI and deliberately not a queue job.
-4. A refit ships only if it beats the incumbent on out-of-time CLV, behind the
-   `shadow` flag.
-5. If it does not beat the incumbent, the incumbent stays. Recording that is the
-   point of the loop, not a failure of it.
-
-**The archive growing is what makes step 2 possible, and step 2 is the only thing
-that can tell you whether any of this works.** That is why the bridge is Phase 1
-and not an afterthought.
-
----
-
-## 6. The stopping rule
-
-Restated from `model-rebuild-plan.md` §7.6 and worth keeping: **the later phases
-proceed only once one model has actually beaten a closing line.** If none has,
-that is the answer worth having before four more builds. Tennis and soccer are
-cheap enough to be that test; MLB and NFL are not.
+Compliance strings, jurisdiction notice and a "not financial advice" disclaimer
+are required on both (`audit-phase-5.md` records that none currently exist).

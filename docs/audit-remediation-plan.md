@@ -2408,9 +2408,18 @@ G1–G8 apply. Additionally:
 
 Added with Track E:
 
-- **No model output is rendered that has not cleared bar 3** (beats the closing
-  price, out-of-time). Today that means nothing is rendered, which is why
-  `EdgeBadge` returns `null` — and the gate is satisfied by that, not violated.
+- **~~No model output is rendered that has not cleared bar 3~~ — REWRITTEN
+  2026-09-05, see model-build-plan Phase 9.** The blanket rule was the category
+  error the note below predicted. It held a RANKING (an opinion: "we think this
+  player has the most value") to a BETTING product's standard (a claim that a
+  specific price is wrong), and in doing so suppressed four phases of work that
+  a user could have seen.
+
+  Replaced by two bars. **Stats/ranking board: ships regardless of any market
+  comparison**, gated only on being calibrated, correctly ordered, and free of
+  edge language. **Betting board** — `EdgeBadge`, edge percentages, profit
+  framing — keeps the bar-3 gate, because that surface DOES claim the market is
+  wrong.
 
   > **NEEDS REWRITING BEFORE 6.29 SHIPS ANYTHING. Recorded 2026-09-01.**
   >
