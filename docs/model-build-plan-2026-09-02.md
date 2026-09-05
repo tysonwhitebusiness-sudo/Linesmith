@@ -1630,6 +1630,61 @@ season. Record it as a known bias in (a) rather than pretending it is handled.
 run*, yet 177,961 shot rows exist for 2024-25. Establish what populated them and
 whether it still runs, before depending on that table for anything.
 
+**DECISION — made 2026-09-04 on measurement, not principle: MODEL FINAL SCORES
+over all 24,758 games. Option (a).**
+
+**What was measured first:**
+
+| | |
+|---|---|
+| Games reaching OT/shootout | **308 of 1,503 — 20.5%** |
+| NHL moneyline shape | **2-way** (67,027 home / 67,030 away, no draw side) |
+| Regulation goals/game | 5.89 |
+| Goals with NULL `goalie_id` | 597 of 9,258 — **6.4%** |
+| ...in the last 2 min of period 3 | **437** — the empty-net signature |
+| Games with shot events | **1,503** (2024-09 → 2025-06) |
+
+**The argument that settles it: the market prices the FINAL result.** The NHL
+moneyline is two-way with no draw side, because after OT and a shootout every
+game has a winner. A regulation model answers a different question than the one
+the market is asking, so its probabilities could not be compared to the price
+without an OT model bolted on afterwards to convert them.
+
+**And the OT noise is SYMMETRIC.** A shootout is close to a coin flip, which
+means the market cannot predict it either. Those 20.5% of games compress the
+edge available to anyone, but they do not put this model at a relative
+disadvantage — which is the only thing that matters when the gate is "beat the
+close". Modelling regulation would remove noise from our side of a comparison
+whose other side still contains it.
+
+Sample weight decides the rest: **24,758 games against 1,503** is a 16x
+advantage, and option (b) could not support a walk-forward at all.
+
+**Two biases accepted, recorded, and quantified rather than waved at:**
+
+1. **20.5% of results carry coin-flip information.** Ratings will absorb some
+   OT/shootout outcomes as if they were skill. Irreducible under option (a).
+2. **~4.7% of goals are late empty-netters** (437 of 9,258). A team trailing by
+   one pulls its goalie, concedes, and the margin reads 2 instead of 1 — which
+   inflates the winner's attack and deflates the loser's defence for reasons of
+   game state, not strength. Identifiable ONLY on the 1,503-game shot-events
+   window, so it cannot be corrected across the full history.
+
+**A cheap validation is available and named here so it is not forgotten.** On
+the 1,503 games that DO have shot events, regulation scores can be reconstructed
+(`period <= 3`) and empty-netters removed (`goalie_id IS NULL` late in period
+3). Fitting a regulation-target model there and comparing it to the final-target
+model on the same games would show whether the two biases cost anything real. It
+is 1,503 games, so it can only detect a large effect — worth running if 4.4
+fails narrowly, not worth blocking on now.
+
+**`ingestNhlShotsJob` provenance: RESOLVED, and the plan's claim was stale.**
+It is listed as *never run*, but a run breadcrumb exists at
+`python-harness:job-run:ingestNhlShotsJob`, **2026-09-05 01:45:43** — it is
+scheduled and running. What it does not do is backfill: coverage is 2024-09 →
+2025-06 only, which is why every shot-event-dependent option above is limited to
+one season. That is a lookback limitation, not a missing job.
+
 #### 4.3 — Game model: reuse the Dixon-Coles engine
 
 `predict/dixon_coles.py` already does this — attack, defence, home advantage,
