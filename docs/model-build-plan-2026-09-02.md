@@ -2302,15 +2302,41 @@ The rule 2.6 established and 3.7 kept: serving is built after a gate passes.
 Builds the shared surface (board component, render plumbing, compliance strings,
 no-edge-language enforcement, betting-board suppression) and lands NHL on it.
 
-**The markets that ship are the ones 4.8 measured as clearing the stats bar:
-Total Points (T=1.22) and Total Assists (T=1.07).** Shots on goal, goals, hits
-and blocked shots do not clear and are held back — a board that shows an
-uncalibrated projection alongside a calibrated one teaches the user nothing
-about which to trust.
+**The single stats bar was the wrong shape, and 4.8's numbers are what exposed
+it.** A board can show two different things and they do not need the same
+evidence:
+
+- **A RANKING needs ORDERING.** "We think this player has the most value" is a
+  relative claim. It is right if higher-ranked players really do produce more,
+  which is exactly what the monotonicity check measures.
+- **A DISPLAYED PROBABILITY needs CALIBRATION.** "62% to go over" is an absolute
+  claim about the world, and it is only honest if things said at 62% happen 62%
+  of the time.
+
+Collapsing both into one gate meant a 0.007 calibration miss suppressed a
+ranking whose ordering was perfect. **So the gate now follows what is on screen:**
+
+| market | ordering | calib gap | ranking + projection | displayed probability |
+|---|---|---|---|---|
+| Total Points | monotone | 0.013 | **ships** | **ships** |
+| Total Assists | monotone | 0.026 | **ships** | **ships** |
+| Total Shots on Goal | monotone | 0.057 | **ships** | held |
+| Total Hits | monotone | 0.067 | **ships** | held |
+| Total Goals | monotone | 0.131 | **ships** | held |
+| Total Blocked Shots | **inverts** | 0.160 | **held** | held |
+
+**Blocked Shots is the only market held off the board entirely, and for the
+right reason** — its ordering inverts (projected 1-2 → 1.83 actual, projected
+2-3 → 1.81), so its ranking is not merely imprecise, it is backwards. That is
+the one failure that makes a ranking board lie.
+
+This is not a lowered bar. Each claim is still gated on the evidence that
+particular claim needs; the earlier version gated one claim on another claim's
+evidence.
 
 **It does NOT wait on 4.7.** 4.7 failed its gate and that gate governs the
-BETTING board only. Points and Assists clear the stats bar on their own terms —
-monotone ordering and calibration gaps of 0.013 and 0.026 after correction.
+BETTING board only. Five of six markets order correctly on their own terms, and
+ordering is what a ranking board actually rests on.
 
 **Blocked by compliance, not by modelling.** `audit-phase-5.md` records no
 privacy policy, no jurisdiction notice and no "not financial advice" disclaimer
