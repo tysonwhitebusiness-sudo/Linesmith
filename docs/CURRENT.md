@@ -1,612 +1,92 @@
 # CURRENT — pick up here
 
-**Track F's sourcing block (6.30–6.32) is COMPLETE and audited.** Every gate
-passes: 1, 2, 4, 5, 6, 7, 8 and the new **9 (model readiness)**. `tsc` clean,
-**339 tests, 0 fail**. DB **5,291 MB** of 8,192.
-
-**The plan is `docs/sourcing-completion-gameplan-2026-09-01.md`** (Track F) and
-`docs/audit-remediation-plan.md` §Track F. **Read
-`docs/betting-models-primer-2026-09-01.md` before any model work** — the
-operator asked for grounding in what advantage betting actually requires before
-building, and that document is the answer.
-
-## 1. Where the data stands
-
-| Table | Rows |
-|---|---|
-| `odds_archive` | **1,587,670** — 9 league keys, 8 sources, 1999→2026 |
-| `prop_odds_archive` | 1,805,340 |
-| `player_game_history` | 2,799,682 |
-| `game_result` | 172,647 |
-| `athlete_crosswalk` | 6,352 |
-
-### Trainable games — one row per game, via the `model_game_odds` view
-
-```
-tennis 56,340   mlb 31,781   nba 24,705   nhl 24,336
-mls     6,397   nfl  5,355   epl  4,200   cfb  4,017 (ML) / 14,514 (spread)
-```
-
-Before Track F: MLB 4,593, NHL 6,591, NFL 285, CFB 849, EPL 400, MLS 871.
-
-**NHL prop grader: 0 → 10,020** trainable player-games (6.31's backfill).
-
-## 2. READ THIS BEFORE WRITING A MODEL QUERY
-
-**Use the `model_game_odds` view, not `odds_archive` directly.** It exists
-because three separate hazards were found in the audit and all three are
-invisible to a naive query:
-
-- **48,489 IN-PLAY rows** sat in the archive as ordinary bookmakers. Brier
-  **0.032** against 0.208–0.232 for real pre-game books. They were invisible in
-  the aggregate because they were averaged with 19 other books — the finding
-  only appears **per bookmaker**. The view filters `NOT is_live`.
-- **Cross-source duplication**: CFB 20.2% of games priced by two sources, EPL
-  9.5%, MLS 9.4%, NFL 4.1%. Both rows are real; pooling them over-weights
-  exactly the recent seasons a model gets judged on. The view applies
-  `source_priority`.
-- **Future-dated odds** (1,846 rows). The view joins `game_result`, which holds
-  no future rows.
-
-**`(sport, athlete_id, game_date)` is NOT a key in `player_game_history`** —
-MLB doubleheaders, NBA's UTC date collapsing back-to-backs, tennis players
-playing twice. **`(sport, athlete_id, event_id)` is**, and now has a unique
-index.
-
-**NHL props join to player history at −1 day.** ESPN stamps UTC, the NHL API
-reports local. Joining at 0 understates NHL's grader set by 35%. Gate 7.7.
-
-## 3. NEXT ACTIONS
-
-**`docs/model-build-plan-2026-09-02.md` is THE plan** — one ordered sequence
-covering every model, the infrastructure each one needs, and the UI that surfaces
-them. Phases 0-9. The separate infrastructure doc was merged into it on operator
-instruction: interleaving two plans is how steps get skipped.
-Artifact: `https://claude.ai/code/artifact/ab49524a-4b4d-4946-b481-47681d81fe88`
-
-### Phase 1 — DEPLOYED 2026-09-03 18:19 UTC. Gate 10: 11 -> 4 failures.
-
-`dep-dacrjom1egvs73f468ag`, commit `2716a8e`, status live. The worker had been
-running `81948e0` since 03:45 that morning, predating everything from 1c onward.
-
-**The pacer is confirmed working in production, by arithmetic and not by vibe.**
-`refreshCfbJob` logged `parlayapi throttled -- last run 27s ago, required 196s`.
-196s is not a static floor (that would be 2700s); it is exactly what the
-allocator predicts WITH pooling live: 5 provisioned keys x 800 soft cap =
-4,000/month, spread over the 27.2 days left in September = 588s base, divided by
-the HOT weight of 3 = 196s. A single-key read would have produced 784s. That one
-number is end-to-end evidence for both the allocator and the pool-aware fix.
-
-**The pooling cutover is real, measured at 18:28 UTC.** Spend has MOVED: the
-pooled ids `propline_k1`, `parlayapi_k1`, `sgo_k1` were all written at 18:25,
-while the sport-labelled ids sit frozen at their pre-deploy values (`oddsapiio`
-untouched since 04:58, `propline` since 16:43).
-
-`refreshTier1` also logged `oddsapiio daily cap reached (500) — easing off`:
-the provider that had no throttle at all is now being refused at its cap.
-
-### Gate 10's remaining 4 — all time-dependent, none code-dependent
-
-Nothing here is waiting on a change. Re-run the gate; do not "fix" these.
-
-- **2 capture-latency medians.** A 7-day median dominated by the hand-run era.
-  MLB is already collapsing on its own as the bridge runs on schedule: 405 ->
-  294 -> 289 min across three readings this afternoon. CFB is 3,070 min over 354
-  rows and has games at 22:00 UTC, so it should move tonight. These clear as old
-  rows age out of the 7-day window.
-- **2 over-cap readings**, `propline` 1006/1000 and `oddsapiio` 504/500. Both
-  are TODAY's cumulative counters, both frozen at pre-deploy values, and neither
-  can decrease. They reset at 00:00 UTC. The throttle now prevents further
-  spend, which is the point.
-
-**Three checks now SKIP rather than fail**, and that was a gate bug worth
-knowing about: NBA and NHL are out of season (ESPN returns 0 games, both start
-in October) and NFL's opener is 6.8 days out, so `gameday.compute_tier()` says
-cold and the jobs correctly decline to spend. Demanding fresh lines from all
-three asserted something no code could satisfy. Two gate defects of the same
-family were fixed the same afternoon — a PASS that printed its own failure
-reason, and 10.5 hardcoding the pre-pooling provider ids, which would have made
-it pass vacuously forever starting tomorrow. **A gate that cannot fail, or
-cannot pass, trains you to skim it — which is how the twelve-day NFL outage in
-gate10's own docstring survived.**
-
-### What the bridge captured on its first runs
-
-1,475 book lines, **12,078 two-sided MLB props** across 16 books, and 43 settled
-games — into an archive where 100% of rows had come from a single import.
-
-The freeze was **tested, not asserted**: in a rolled-back transaction a row whose
-`event_start` was moved into the past refused an overwrite (price stayed 1650
-against an attempted 99999); the same row with a future start accepted one.
-
-### Gate 10's 8 remaining failures — every one downstream of the deploy
-
-- 4 sports with no live book lines (cfb, nba, nfl, nhl)
-- 2 capture-latency medians — the bridge has only ever been run by hand, so
-  `captured_at` sits hours before kickoff. On its 5-minute cadence it is
-  overwritten up to kickoff and the median should collapse. **This is the number
-  to watch after deploying.**
-- 2 over-cap readings — `propline` 1006/1000 predates the throttle shipping,
-  `oddsapiio` 504/500
-
-### The allocator IS done — `pace.py`, and it found four real defects
-
-The proximity-proportional allocator from 1f was deferred here on the argument
-that the static floors covered the same ground. That argument was weak: the
-design never depended on post-deploy data, and deferring it left `oddsapiio`
-(Odds-API.io) with a declared daily cap and NO throttle and NO pacing at all —
-the one capped provider with neither. That is the `504/500` reading two sections
-above. Note what it does and does not prove: Odds-API.io returns no quota
-headers, so 500/day is an ASSUMED figure (`odds-sources` §14 line 926, and not
-to be confused with **The Odds API**, a different vendor at a measured
-500/month). The reading is therefore evidence of a missing throttle, not of a
-breached vendor limit. It is built.
-
-`interval = (remaining_period / remaining_cycles) / proximity_weight`, where
-`remaining_cycles` reads REAL spend from `provider_usage`, so it is self-tuning
-with no calibration constant. Writing B for remaining budget, T for seconds left
-and w for the weight, `dB/dT = B*w/T` integrates to **B(T) = B0*(T/T0)^w** — the
-budget lands on zero exactly as the period ends for ANY weight, so the weight
-sets the SHAPE of the spend curve and never the total.
-
-Measured against the floors it replaces: Propline 3.8 min near a start (was a
-flat 25) and 46 min when nothing is close; ParlayAPI 13 min near a start (was
-45).
-
-**Writing the test is what made it correct**, and this is the part worth
-carrying forward — every one of these passed the ordering assertions:
-
-1. No affordability guard. The continuous curve lands on zero, but a discrete
-   cycle starting one second inside the period still costs a whole cycle: 63
-   cycles for 1,008 against a 1,000 cap.
-2. The guard, once added, was clamped by `_MAX_INTERVAL` — so a broke provider
-   waited 6h and spent anyway. That clamp stops a PACED interval starving a
-   sport; it has no business applying when there is no budget left.
-3. The guard returned seconds-until-reset measured from `now`, but `job_runner`
-   throttles on elapsed-since-LAST-FETCH, so it expired at `last + (reset - now)`
-   — before the reset. Fixed by returning the whole period LENGTH.
-4. **The pooled read was wired to the wrong ids.** Spend is charged to
-   `propline_k1`/`propline_k2`; the pacer asked `daily_status("propline")`, a row
-   nothing writes. It would have read zero usage forever and never backed off —
-   the entire self-tuning property, silently absent. With 1,800 of 2,000 spent:
-   46.1 min blind vs 230.4 min pool-aware.
-
-Defects 2 and 3 were invisible until `_simulate_day` was rewritten to mirror
-`job_runner`'s real recompute-every-tick loop instead of sleep-then-spend. **A
-simulation that models the caller wrongly agrees with a bug in the callee** —
-the same lesson as [[feedback_render_before_believing]], one layer down.
-
-### Two things left running on the operator's machine (2026-09-03 18:10 UTC)
-
-**RESOLVED — killed 2026-09-03 18:12 UTC.** `prop_odds_archive` re-verified at
-1,817,418 rows afterwards; nothing was lost, and the pooler connection is back.
-Original note kept because the diagnosis is the reusable part:
-
-**A hung `import_props.py --truncate`, PID 14804, started 2026-09-01 23:20.**
-Its CPU counter was identical (3394.86s) across two readings 35 minutes apart —
-it is blocked, not working, after 38 hours. **The data is safe**: it truncates
-`prop_odds_archive` then COPYs back, and the table reads 1,817,418 rows, so it
-hung AFTER the load completed. The only cost is a held pooler connection against
-the 15-connection cap. Safe to kill; not killed here because that is the
-operator's call, not least because the flag is `--truncate`.
-
-**The full Python suite came back clean — no regressions.** `test_pace`,
-`test_provider_matrix`, `test_provider_throttle` and `test_providers` all pass.
-Its two reported failures were both artifacts of how it was invoked, not real:
-`test_mlb_tree_models` hit a 600s timeout mid-training, and `test_statcast_pitches`
-opens `src/statcast_pitches.py` relative to the REPO ROOT, so it only fails when
-run from inside `src/` (it passes from `python-odds-service/`). Original note:
-
-**A full Python suite run**, started 13:00 UTC, checking for regressions from the
-allocator. `test_mlb_mlp.py` alone has taken over an hour (genuinely computing —
-464s CPU and climbing, it trains). Everything that actually covers the changed
-code was run directly and passes: `test_pace`, `test_provider_matrix`,
-`test_provider_throttle`. The suite is breadth, not the basis for the commit.
-
-Its one known failure is pre-existing and unrelated:
-`test_elo_and_pitcher_game_score.py`, same `DataError: expected str, got int` as
-the two broken jobs below. The file is untouched since `03d5b25`.
-
-### 1g is COMPLETE, and closing it uncovered three more real bugs
-
-Deployed `c5bb4d5` (20:39 UTC). Zero failing jobs on the worker.
-
-**The DataError was never about two jobs.** Migration `20260901091000` made
-`team_elo_history.team_id` text; no Python was updated; asyncpg raised
-"expected str, got int". Blast radius: **every elo write, every sport, two
-days** — newest mlb row frozen at 09-01 while games were played. Normalised at
-the three db.py boundaries, and `backfill_mlb_elo.py` recovered the gap (31
-games; 09-02 went 0 -> 36 rows). `maintainMlbEloJob` is today-only BY DESIGN, so
-nothing would ever have gone back for it.
-
-**1g bullet 4 shipped as `declaredPairsProduce`** and found a live failure on its
-first run: `sportsgameodds` producing nothing for cfb/nfl/soccer_mls. The chain
-underneath it is the part worth remembering:
-
-1. The vendor said sgo_k1 was at **2500/2500 entities on the 3rd**;
-   `provider_usage` said **2**. A ~50x undercount, so the soft cap never fired.
-2. That undercount **defeated pooling** — the one mechanism built for a dead
-   key. `job_runner` reserves against `provider_usage`, saw sgo_k1 far under
-   cap, and chose the dead key every cycle while sgo_k2 held 1,136 entities.
-3. Fixed three ways: a 429 now retires a key (`FetchOutcome.rate_limited` ->
-   `db.mark_provider_exhausted`); `syncProviderQuotaJob` asks the vendor hourly
-   so the count cannot drift back; and both counters were corrected by hand.
-
-**Then the pacer's own bug surfaced, and only because a key went over cap.** The
-pool-aware read computed `total_cap - sum(used)`, letting an OVER-cap key
-contribute a negative and eat a live key's headroom: 4000-3864 = 136, declaring
-a 177-object CFB cycle unaffordable and silencing SGO on CFB for the month.
-Correct is `sum(max(0, cap - used_i))` = 636, which affords it. **A correct gate
-running on a bad number looks exactly like a conservative gate** — that is why
-it survived a full test suite and a deploy.
-
-### SGO is rationed, not restored — do not read the fix as service returning
-
-636 objects remain across the pooled soft caps (4,000). CFB costs 177/cycle and
-MLB 9, so the pacer allows ~6h and ~3.1h intervals respectively and the real
-quota resets 2026-10-01. The fixes stop this recurring; they do not conjure back
-what was already spent.
-
-**Header-based quota is still unimplemented, deliberately.** ParlayAPI
-(`ratelimit-policy`), Propline (`x-daily-limit`) and The Odds API
-(`x-requests-remaining`) publish quota ONLY on real odds calls, so polling them
-would spend quota to measure quota. They belong in the fetch path, not in
-`syncProviderQuotaJob`. Odds-API.io and SharpAPI publish nothing at all.
-
-### GATE 10 IS AT 1, and the last one is CFB coverage, not a bug
-
-Deployed `403d83d`. MLB capture latency is **2 min over 898 rows** — the bridge
-works exactly as designed.
-
-**Soccer was never a dead provider.** It fetched every 4h and produced nothing
-for 26 hours because `write_game_odds_book_lines` did one INSERT per row, each
-in its own SAVEPOINT, all inside ONE outer transaction. Measured 425 ms/row
-(three pooler round trips per savepoint): soccer's 2,574-row cycle needed
-**eighteen minutes**, never finished, and an unfinished outer transaction
-commits NOTHING. MLB hid it by having smaller per-cycle counts; soccer only
-crossed the line once pooling gave it full propline coverage. Now batches with
-executemany and replays a chunk row-by-row only if it violates a CHECK
-constraint — 18.2 min -> 3.4s, fault isolation preserved
-(`test_book_line_rejection` still passes 1-of-5).
-
-**`declaredPairsProduce` had two holes, both found by it missing that outage.**
-Props were asserted PROVIDER-WIDE (prop_odds has no sport column), so propline's
-MLB props excused its soccer declaration — now keyed by sport through the
-game_id join, 99% resolvable. And it asserted providers the TIER GATE had
-silenced: SharpAPI is uncapped and fetches always, so it alone made NFL look
-active while every paid provider correctly skipped a cold sport. Now consults
-the same `gameday.compute_tier` the jobs do.
-
-### The last failure: CFB has 2 of 177 games covered
-
-| sport | sources (24h) | rows | games covered |
-|---|---|---|---|
-| mlb | propline, the-odds-api, sportsgameodds, sharpapi | 3,812 | most of the slate |
-| cfb | sharpapi only | **15** | **2 of 177** |
-
-`cfb median capture-to-start 400min` is the SYMPTOM. The bridge cannot capture
-near kickoff because there is nothing to capture. Causes, none fixable tonight:
-
-- `sportsgameodds` — monthly entity quota exhausted, resets 2026-10-01
-- `propline` — deliberately excused for CFB (1+N shape, ~179 requests/cycle).
-  That excuse predates pooling; at 2,000/day pooled it is now *arguable*, but
-  spending ~1,970/day on CFB would starve MLB. **A resource-allocation call for
-  the operator, not a bug to fix.**
-- `parlayapi` — props only for CFB
-- `sharpapi` — genuinely thin here, 2 games
-
-**10.3's own threshold is too weak and should be tightened.** It passes a sport
-on `>0 rows in 24h`; CFB passes on 15 rows covering 2 of 177 games. A check that
-green-lights 1% coverage is not a coverage check.
-
-### What is NOT done, stated plainly
-
-`genericCaptureJob` and `computeMlbGameModelJob` each fail every run with
-`DataError: expected str, got int`. Now known to reproduce locally as well —
-`test_elo_and_pitcher_game_score.py` fails with the identical signature, so it
-is debuggable without the worker.
-
-### The biggest find: CFB game lines were never a missing-key problem
-
-`301b272`. `fetch_sportsgameodds` built a teamID from the full ESPN name and
-filtered on it. SGO says `RUTGERS_NCAAF`; we asked for
-`RUTGERS_SCARLET_KNIGHTS_NCAAF`. **Every CFB request ever made returned HTTP 200
-with an empty list** — no error, no warning. MLB and NFL were never affected
-because both sides spell those with the mascot, which is why it survived.
-
-Fixed by fetching one request per league and matching on names with a strict
-subset rule. Measured on the same slate: **178 requests / 0 game lines -> 1
-request / 2,747 game lines across 8 books.** SharpAPI hit the identical problem
-for CFB (0 props -> 50), so the subset rule now lives in `_team_match` where
-every provider gets it.
-
-### Two pre-existing bugs found running health_check live
-
-`genericCaptureJob` and `computeMlbGameModelJob` each fail EVERY run with
-`DataError: invalid input for query argument $2: <int> (expected str, got int)`.
-Same error class, two jobs, both on the deployed worker. Not fixed.
-
-### Verify after the next deploy
-
-1. `provider_usage` shows fresh spend for `sportsgameodds_multisport`,
-   `parlayapi_nfl`, `parlayapi_cfb` — all three last spent 2026-08-21.
-2. `game_odds_book_lines` gains **cfb and nhl** rows from a non-oddsharvester
-   source. That is the gate out of Phase 1.
-3. `propline` daily spend stays under ~920 rather than pinning at 1,000.
-4. `refreshNhlJob` stops reporting NEVER RUN.
-
-**OPERATOR DECISION 2026-09-02: the whole odds system is fixed before any model
-work starts.** Phase 1 absorbed the old Phase 0c and the archival bridge into one
-odds block, because the bridge reads `game_odds_book_lines` and that table is
-EMPTY for NFL, CFB, NBA and NHL — built first it would archive MLB, soccer and
-tennis and silently skip half the project.
-
-Sequence: **0** stop the bleeding (injury snapshots, postseason filters) ->
-**1** THE ODDS SYSTEM, 1a-1h, with a hard gate out of it -> **2** tennis ->
-**3** soccer -> **4** NHL -> **5** MLB -> **6** NBA -> **7** CFB -> **8** NFL ->
-**9** surfacing.
-
-Phase 1 in order: **1a** fix `job_tier1` cadence (it demands ~18x Propline's
-daily budget), **1b** the 5 Render keys + soft caps (operator), **1c** the
-capability matrix, **1d** widen onto paid-for coverage (SharpAPI 2->8 sports,
-Propline 3->8, NHL into SGO, `refreshNhlJob`), **1e** the dedupe rule BEFORE
-widening lands, **1f** key pools + proximity scheduler, **1g** monitoring
-(`produced_rows`, `skip_summary`, `archiveFreshness`, probe-as-gate), **1h** the
-archival bridge.
-
-**The gate out of Phase 1** — all measurements, not inspections: fresh
-`game_odds_book_lines` rows for all 8 sports from a non-OddsHarvester source;
-`live_capture` rows landing with the freeze predicate provably blocking a
-post-start overwrite; median capture latency under 15 min per sport; no provider
-over its measured cap; gate 9 passing on the widened data.
-
-**`docs/odds-sources-2026-09-02.md` is the odds system's own reference** — the
-sport x provider table, measured rate limits and quotas for every key, the
-capability audit, and the scheduling decision with its reasoning.
-
-### Blockers — 2 of 5 now FIXED
-
-**FIXED 2026-09-02 — MLB 2022-2024 has raw prices.** The audit said those 8,153
-games could only ever be a training signal because `historical_odds` holds them
-de-vigged. Wrong: the de-vigging happens in `historicalOddsIngest.ts` on the way
-IN, and the source CSV was on disk the whole time
-(`data/historical-odds-import/mlb_games_odds_2021_2025_all_books_long.csv`,
-205,475 rows, six books, zero nulls on any close price).
-`python-odds-service/import_mlb_long_csv.py` loads it at source priority 85 —
-2022 +2,384 games, 2023 +2,430, 2024 +2,428, plus a two-sided priced run line.
-Verified: espn_core corr 0.9288 / MAD 0.0191, sbr_mlb 0.8113 / 0.0319, and the
-new seasons calibrate against outcomes inside 1.5pp per bucket.
-
-**FIXED 2026-09-02 — tennis has surface.** Migration `20260902120000` adds
-`surface` and `court` to `game_result`; `import_tennis.py` populates them from
-the workbooks already on disk, 100% of 57,386 matches. Verified by permutation
-control (real gap 0.0767 vs shuffled 0.0516) and a 0.5262 split-half correlation
-of each player's clay-vs-hard gap across 2015-2020 vs 2021-2026. Phase 1
-unblocked.
-
-**STILL OPEN:**
-
-1. **No postseason game has EVER entered `player_game_history`.**
-   `backfill_player_game_history.py:592` (`gameType != 2`) and `:559`
-   (`espn_regular_only`, defaulting True at `:79`), mirrored by
-   `predict/generic_freshness_job.py` — so it is the ONGOING path and drops
-   every postseason again next season. 43,678 props can never be graded
-   (NHL 17,092, NBA 25,662, NFL 924).
-2. **The training archive is frozen.** 100% of `odds_archive`,
-   `prop_odds_archive` and `game_result` rows came from one import; the live
-   jobs write `prop_odds` / `game_odds_book_lines`, which no model reads.
-   Design: infrastructure doc §4. Key decision there — the bridge **upserts
-   continuously** rather than capturing at `event_start`, so a missed tick makes
-   a close staler rather than permanently lost, and Postgres enforces the freeze
-   via `WHERE odds_archive.event_start > now()`.
-3. **Market canonicalisation** — 36/41/70/20 distinct `type_name` for
-   MLB/NBA/NFL/NHL. The head is short: 11 markets cover 90% of NBA and NHL.
-4. **SIX MODEL-INPUT FEEDERS HAVE NEVER RUN** — `ingestStatcastPitchesJob`,
-   `ingestNhlShotsJob`, `ingestNbaShotsJob`, `ingestNflPbpJob`,
-   `venueFactorsJob`, `injurySnapshotJob`. Phase 3 needs NHL shots for
-   empty-net/OT detection; Phase 4's skill-vs-luck prior is Statcast.
-   **`injurySnapshotJob` is urgent** — availability cannot be bought
-   retroactively, so every day it does not run is permanently lost.
-
-### Job health, measured 2026-09-02: 53 monitored, 35 healthy, 18 not
-
-Beyond the six never-run: all six **OddsHarvester** scrapes return 0 records
-(anti-bot; CFB's freshest book line is 34h old), `refreshTennisAtpJob` fails
-every run on `prop_odds_side_valid`, `computeMlbGameModelJob` fails every run
-(`DataError: expected str, got int` on $2), `refreshSportsGameOddsJob` last ran
-849min ago against a 180min threshold, and `snapshotCacheSize` has an 11.4MB
-payload over its 10MB limit.
-
-**DB 5,641 MB of 8,192 (69%).** Largest: `player_game_history` 1,730MB,
-`odds_archive` 1,116MB, `prop_odds_archive` 621MB, `mlb_pitch_events` 448MB,
-`snapshot_cache` 334MB, `prop_odds_history` 323MB, `odds_import_staging` 270MB.
-
-### Two traps this session hit — both cost a cycle
-
-**A verifier can be the bug.** The MLB cross-source check first reported
-mean-abs-diff 865.7 / corr 0.108, reading as a total parse failure. It was the
-metric: American odds are discontinuous across +/-100, so -105 and +101 average
-to -2. Converting to implied probability gives 0.8113; adding `NOT is_live`
-takes espn_core to 0.9288.
-
-**`ON CONFLICT DO NOTHING` hides a no-op.** The first tennis re-run with surface
-wrote nothing and logged "56,386 offered" — the clear is behind `--truncate`,
-old rows won every conflict, and the column stayed 100% NULL. Always verify the
-VALUE landed, not the offered count.
-
-### Still open, unscheduled
-
-- **Deploy Render.** `venueFactorsJob` and `injurySnapshotJob` NEVER RUN.
-- **`refreshTennisAtpJob` fails every run** on `prop_odds_side_valid` — it
-  writes `side='home'` for an `aces` market, which is over/under. WTA is fine.
-- **`refreshSportsGameOddsJob` stale**, 8 objects all month.
-- **Odds-API pacing**: `propline` and `oddsapiio` burn their whole daily cap
-  within 20–70 minutes of the 04:00 UTC reset, so both contribute **zero**
-  prices during US game hours. The health check reports a fully cap-blocked job
-  as *healthy* — `health_check.py:105` is `ok and not stale`.
-- **Retention**: `prop_odds_history` wrote 265,771 rows in one day with **no
-  retention rule**; `injury_report` ~11 MB/day. Deferred pending the
-  data-sales decision.
-- **Two Phase 6 gate violations** — `TeamDetail.tsx:770`, `GameDetail.tsx:2297`.
-- **`docs/table-ownership.md` stale** — none of Track E/F's tables listed.
-
-## 4. Blocked, and why — do not re-attempt without new data
-
-**Tennis player ids — NOT blocked. That earlier claim was wrong.** This file
-previously said `player_game_history`'s tennis rows carry "4-digit ids from a
-different provider" with "no name column anywhere to bridge them", and scoped it
-as a two-hop problem. **Verified 2026-09-01: they are ESPN athlete ids.** Id
-2375 resolves to Alexander Zverev on
-`sports.core.api.espn.com/v2/sports/tennis/leagues/atp/athletes/2375`, and
-`game_context.py:422` confirms it by construction — tennis subjects are minted
-as `espn:tennis:{athleteId}`.
-
-So it is **one hop, the same shape as 6.28's crosswalk**, and it is scheduled as
-**6.32**. The one real difference: tennis-data abbreviates (`"Zverev A."`), so
-the matcher needs last-name-plus-initial logic, which raises collision risk and
-makes the verification step matter more. Verification is available and strong —
-pgh tennis spans 2016-01-03 → 2026-08-29 against tennis-data's 2015–2026, so ten
-of eleven years overlap. Until 6.32 lands, `odds_archive`'s tennis rows carry
-NULL entity ids and gate 8.5 asserts that, so nobody "fixes" it by inventing
-something.
-
-**Tennis surface, round and seed ranks are not loaded.** There is no column for
-them in `odds_archive` or `game_result`, and a per-sport tennis table would
-invert the convention `odds_archive`'s own migration argues for at length. They
-are still in the files. Because the orientation is a **pure function of the
-match key**, a later loader re-derives exactly the same p1/p2 and can add them.
-
-**NHL `player_game_history` stops at 2025-04-17** — 16 months stale. This is
-why NHL had no local date overlap to verify the crosswalk against, and why 95.1%
-of NHL prop rows crosswalk but only 91.9% reach a player: players who debuted
-after that date have a correct mapping and no history behind it.
-
-**Tennis and golf have no ESPN core odds.** Tennis 400s; golf returns 0 items.
-Tennis is now fully sourced from the tennis-data files instead.
-
-**SBR is frozen after 2022-23.** NHL 2020-21 is missing from it entirely —
-ESPN covers it, and `game_result` now holds it.
-
-**No non-MLB game model exists.** Unchanged. Still blocks win probability,
-simulation density and "why the model likes it" beyond MLB.
-
-## 5. Things that will bite again
-
-- **Always run the control.** See §2. This is the single biggest lesson of 6.28.
-- **Verify an id system per sport by joining on a real date AND the right
-  entity.** Date alone accepted 35% of deliberately wrong mappings.
-- **Derive the day offset, never assume it.** ESPN stamps UTC; the NHL API and
-  SBR both report LOCAL. NHL's offset is **−1** (measured −1:11,898 against
-  0:7,882); SBR-vs-ESPN is **+1**. Asserting 0 would have thrown away a correct
-  crosswalk as unverified.
-- **A roster endpoint is a snapshot, not a season.** CBJ 2025-26 returns 20
-  players; club-stats returns 30. Rosters alone left 69 real NHL players
-  unmatched, Jonathan Toews among them.
-- **A cache keyed all-or-nothing will "prove" new candidates unverifiable.**
-  Widening the NHL reference added 64 players whose game logs were not in the
-  cache, and all 64 were dropped as unconfirmed. The cache is incremental now.
-- **Zero is a placeholder, not a value — and whether it is depends on the
-  sport.** ESPN writes 0-0 for a postponed game. Soccer genuinely finishes 0-0
-  (measured 6.75% EPL, 5.74% MLS — real draw rates) but MLB 1.08%, NHL 0.42%
-  and NBA 0.19% are impossible finals. Also `close_total == 0` on all 4,046 MLB
-  rows with a close block. A spread of 0 is still legitimate (pick'em).
-- **A tie is not always "missing" — sometimes it is MISLABELLED.** 583 tennis
-  matches are retirements before either player led by a set, so both score
-  columns are equal and cannot say who won. Keeping them encodes `p1 lost` for
-  matches p1 may have won. Dropped, and it moved the measured p1 rate from
-  0.4959 to 0.5006 — which is how it was noticed.
-- **A manual post-processing step is not idempotent.** Two corrupt SBR
-  moneylines were deleted by hand after promotion with a `DELETED_CORRUPT = 2`
-  constant in gate 5; the next `--truncate` re-import put both straight back and
-  the gate failed on a pipeline that had done nothing wrong. Rejected at
-  staging now.
-- **A partial unique index protects nothing outside its predicate.**
-  `odds_archive_natural_key` is `WHERE home_team_id IS NOT NULL AND
-  away_team_id IS NOT NULL` — every tennis row falls outside it. Without
-  migration `20260901180000` a second tennis run would have doubled the table
-  in silence.
-- **`event_ref` belongs in any game natural key.** `game_result` was created
-  without it: 520 keys cover 1,044 real events, 511 MLB. 524 games would have
-  been dropped silently.
-- **A flag must be honest or it is worse than no flag.** `market_max` is the
-  best price across books, so it sums below 1.0 on ~36% of tennis matches — a
-  real arbitrage, not a broken market. Calling it `sub_one_not_two_way` to make
-  gate 5.3 pass would have been a lie; it gets `best_of_market`.
-- **Never average American odds.** Average implied probabilities.
-- **A 50% over rate only holds when both sides are priced symmetrically.**
-  Compare to the price-implied probability, not to 0.50.
-- **SBR names the CITY; ESPN names "City Nickname".** Prefix matching with a
-  unique-hit rule took NBA from 67.8% to 99.84%.
-- **Doubleheaders are real.**
-- **`pd.read_html` needs `header=0`** on SBR pages.
-- **Column headers lie.** On SBR NHL pages `CloseOU` is the *opening* total.
-  And in `odds_archive`, a `market='spread'` row's `price` column holds
-  `close_home_spread` — a handicap, not a price. Anything scanning `price`
-  across markets must exclude spreads.
-- **A missing SBR season 301s to the homepage**, which still returns 200.
-- **Do not hand-roll a CSV parser in JS.** Use pandas.
-- **Long heredocs break in this shell** — `\n` inside one arrives as a REAL
-  newline. It broke a gate script again this session. Use the Write/Edit tools
-  for anything containing an escape sequence.
-- **Backticks in `git commit -m` get shell-substituted** — use `-F`, message
-  file in the scratchpad.
-- **The DB pool caps at 15 connections.** Close every `.mjs` client.
+**Phase 4 is COMPLETE and it ends on a screen.** `/nhl/projections` renders four
+ranked NHL markets in a real browser. That is the first user-visible model
+output this project has produced — Phases 2, 3 and the first nine steps of 4 all
+finished at a number in a document.
+
+`tsc` clean, **344 tests, 0 fail**. Plan: `docs/model-build-plan-2026-09-02.md`.
+
+## 1. What shipped in 4.8 / 4.9 / 4.10
+
+**4.8 — all six two-sided NHL markets, each gated separately.** Four rank
+correctly; two do not and are excluded:
+
+| market | ordering (quintiles) | calib gap | ranks | shows a % |
+|---|---|---|---|---|
+| Points | 0.51 → 0.56 → 0.57 → 0.85 → 1.02 | 0.013 | yes | **yes** |
+| Assists | 0.30 → 0.35 → 0.40 → 0.48 → 0.67 | 0.026 | yes | **yes** |
+| Shots on goal | 1.75 → 2.07 → 2.28 → 2.34 → 3.02 | 0.057 | yes | no |
+| Goals | 0.07 → 0.10 → 0.13 → 0.20 → 0.35 | 0.131 | yes | no |
+| Hits | 1.88 → 2.15 → 2.40 → **2.33** → 2.99 | 0.067 | **no** | no |
+| Blocked shots | 1.71 → 1.72 → 2.03 → **1.81** → 1.85 | 0.160 | **no** | no |
+
+**4.9 — serving, split by consumer.** The projection pipe ships on ordering; the
+edge pipe stays behind 4.7. Verified against the real 2024-01-13 slate: 2,276
+projections, every market correlating positively with the outcome (r=+0.21 to
++0.48), no leakage, no edge fields.
+
+**4.10 — the board.** Compliance strings (root layout), privacy policy, shared
+`StatsBoard`, NHL adapter, pattern-2 read route, and a 5-test no-edge guard.
+
+## 2. Three bugs found by building, not by reading
+
+Worth knowing because each was invisible to the check that was supposed to catch
+it:
+
+1. **The ordering check was vacuous for low-mean markets.** It bucketed by
+   `int(expected)`, so assists (mean 0.44) and goals (mean 0.17) produced ONE
+   bucket each — and `all()` over a one-element list is True. Both were recorded
+   as "monotone" by a check with nothing to compare. Quintiles fixed it, and
+   **changed a verdict**: hits passed on coarse buckets and fails on honest ones.
+2. **`db.write_calibration` could not RETIRE a market.** It deactivated prior
+   versions only when the new one activated, so a re-fit that got worse left the
+   old passing version live. Hits v1 (monotone) stayed active under hits v2
+   (non-monotone) and the market kept being served. Fixed at the source — a new
+   version now always supersedes.
+3. **Two display bugs only the browser showed.** The hidden-player count was
+   multiplied by the market count (114 read as 456); the confidence thresholds
+   were a within-season guess that labelled every player identically once
+   history ran across seasons.
+
+## 3. Where things stand overall
+
+- **No model has beaten a closing line.** Tennis t=+20.68, soccer t=+3.05, NHL
+  games t=+5.07, NHL props t=+3.03. The betting board stays suppressed and
+  `EdgeBadge` stays off. That is the expected state for every sport right now.
+- **The stats board does not wait on that** and never should have. A ranking is
+  an opinion; an edge is a claim about someone else's price. Different claims,
+  different evidence, different gates.
+- 4.7's one genuinely positive result stands unexploited: priced at the OPEN,
+  ROI rises monotonically with edge (+22.84% at the 10% threshold, t=+2.93). The
+  model beats the market's FIRST GUESS, not its close.
+
+## 4. Next actions
+
+1. **The operator must read `app/privacy/page.tsx` before it is public.** It is
+   accurate to the codebase, but the hosting/database retention terms and the
+   governing jurisdiction are outside the repo and only the operator can confirm
+   them. Marked inline in the file.
+2. **A live October slate is the first real test of `nhlProjectionsJob`.** The
+   historical run proved the projection and the leakage discipline; it did NOT
+   prove scheduling or roster resolution, because it learned who dressed from
+   the games themselves. The job is registered hourly and correctly returns zero
+   until the season opens.
+3. **Phase 5 (MLB) ends with an MLB board**, per the dissolved Phase 9. Every
+   sport phase now ends on a screen, not a gate result.
+4. **Points is fitted directly, not convolved from goals and assists.** It
+   passes that way, but P(points) is not guaranteed coherent with the goal and
+   assist distributions it is made of — and the board now shows all three side
+   by side, where a user could see them disagree.
+5. **The game-id crosswalk is still unbuilt** (85.2% resolvable, 1,281 unique /
+   68 ambiguous). It unblocks the empty-net correction, OT measurement, an exact
+   prop join and xG.
+
+## 5. Standing constraints
+
+- **Do not deploy to Render or start 6.29 (the model rebuild) without asking.**
 - **Never `git add -A` or `git add docs/`** — `docs/discord-community-prompt.md`
   is the operator's.
-
-## 6. Operational knowledge
-
-- **Gates:** `python scripts/gate/gate1_game_lines.py`, `gate2_props.py`,
-  `node scripts/gate/gate4_staging.mjs`, `gate5_archive.mjs`,
-  `gate6_injury_job.mjs`, `gate7_athlete_crosswalk.mjs`, `gate8_tennis.mjs`.
-  Promotion is `node scripts/gate/promote_odds.mjs`.
-- **Re-import odds + game_result:** `python-odds-service/import_odds_staging.py
-  --truncate`, then `promote_odds.mjs`. Idempotent.
-- **Re-import tennis:** `python-odds-service/import_tennis.py [--truncate]`.
-  Idempotent; verified by running it twice for the same 449,796 rows.
-- **Rebuild the crosswalk:** `python-odds-service/build_athlete_crosswalk.py`
-  (`--report` builds and prints without writing). Its fetched reference data
-  caches in `python-odds-service/.crosswalk_cache/` (gitignored, ~2.5 MB,
-  re-derivable); the NHL game-log cache is incremental.
-- **Migrations:** `node runmig.mjs <path>`.
-- **Python:** from `python-odds-service/`, `./.venv/Scripts/python.exe -u <script>`.
-  `openpyxl` was added this session for the tennis `.xlsx` files.
-- **Tests:** `npm test` (339).
-- **Source files** live in `C:\Users\occy3\Downloads\` — `nba_odds/`,
-  `nhl_odds/`, `nhl_odds_legacy/`, `espn_core_odds/`, `espn_core_odds_v2/`,
-  `espn_props/`, `USA.csv` (MLS), the 24 tennis `.xlsx` (ATP is `YYYY.xlsx`,
-  WTA is `YYYY (1).xlsx`), `archive.zip` (NHL Kaggle).
-- **Render:** worker `srv-da36bm2bkg8c73fqrdeg`, `autoDeploy: no`. **Still
-  undeployed.**
-- **Supabase PRO**, 8 GB ceiling, currently 4,401 MB.
-
-## 7. Source priority — higher wins on conflict
-
-```
-100  SBR              real closing lines, both sides, 2007-2023
- 90  ESPN core API    many books, open+close, verified two-way
- 80  nflverse / CFBD  free, authoritative for their sport
- 70  football-data    closing 1X2, multi-book
- 60  tennis-data      closing match odds — LOADED 2026-09-01
- 50  ESPN site API    LOW — NHL moneyline is 3-way regulation (booksum 0.83)
- 40  Kaggle NHL       favourite-only price, no team orientation at all
-```
-
-## 8. Known not done
-
-1. **6.29, the model rebuild** — not started, needs the operator's go-ahead.
-2. **Tennis player ids, surface, round and ranks** — §4.
-3. **Render undeployed**; four ingest jobs report NEVER RUN.
-4. **Two Phase 6 gate violations** remain.
-5. **`docs/table-ownership.md` is stale** — §3 item 4.
-6. **2,207 unresolved staging rows** kept with a `resolution_note` and never
-   promoted: `unresolved_team`, `defunct_or_relocated_franchise`,
-   `phantom_abbr`, and now 2 × `impossible_american_price`.
-7. **12 MLB and 21 NHL prop athletes never reached a crosswalk row** — 810 and
-   381 rows, **0.07%** and **0.55%**. Ten of the twelve MLB ones have no name
-   from ESPN at all (prospects it publishes no metadata for); the NHL residue
-   is 15 with no reference row plus 6 dropped as unverified provisional
-   name-only matches.
-8. **CFB/NBA/NHL/tennis pages never walked** — out of season.
-9. `/diagnostics`, `/bets` and every signed-in surface unverified — no
-   credentials.
+- **A numeric id matching the expected shape is not evidence it is the right
+  id.** Verify every crosswalk by joining on a real date, never by counting
+  overlaps.
