@@ -1347,6 +1347,81 @@ where tennis uses `market_avg` / `market_max`. Code copied from
 **Done when:** gate 1 passes or fails on a paired test, with calibration ruled
 out as the cause.
 
+**RESULT — run 2026-09-04, `ship_gate_soccer.py`. GATE 1 FAILED, both leagues.
+DO NOT SHIP — but this is a far closer result than Phase 2.**
+
+| | n | model | market | model − market | t |
+|---|---|---|---|---|---|
+| EPL vs **pinnacle** | 774 | 0.97210 | **0.94904** | +0.02305 | **+3.05** |
+| EPL vs marketavg | 964 | 0.98837 | **0.96654** | +0.02184 | **+3.32** |
+| MLS vs **pinnacle** | 1,047 | 1.05432 | **1.02813** | +0.02619 | **+4.37** |
+| MLS vs marketavg | 1,375 | 1.05493 | **1.02300** | +0.03193 | **+6.10** |
+
+**The market still wins, but by roughly a sixth of tennis's margin.** Phase 2.5
+lost at t=+20.68; Dixon-Coles loses at t=+3.05. That is a real improvement from
+a richer model, and it is the strongest argument so far that the engine — which
+Phases 4 and 5 reuse — is worth having even though this gate failed.
+
+Both benchmarks are reported for the same reason as 2.5: beating a soft one
+while losing to the sharp one would be a result manufactured by choosing the
+benchmark. Pinnacle and marketavg agree.
+
+**Calibration was fixed first, so the failure is conclusive rather than
+premature.** Temperature scaling fitted on the SELECT window only:
+
+- EPL `T = 1.04` — the model is already nearly calibrated in this sense.
+  Recovered **−0.00009** of a 0.02167 gap. Nothing.
+- MLS `T = 1.34`. Recovered **0.00204** of 0.03192 — 6%.
+
+Per-bucket calibration was out of tolerance on home and away (EPL worst gap
+0.054, MLS 0.088) while the **draw was the best-calibrated outcome in both
+leagues** (EPL 0.033, MLS 0.023). That is the opposite of the expected Poisson
+failure and is the reason 3.5 gates the three outcomes separately: an aggregate
+would have hidden which outcome was actually mis-priced.
+
+**CLV — the project's first real time-based measurement.** EPL pinnacle carries
+opening prices on 100% of 12,030 rows, so this is genuine open-to-close
+movement, not tennis's cross-sectional substitute:
+
+```
+n = 774   mean CLV −0.00092 (de-vigged probability)   SE 0.00104   t = −0.88
+```
+
+**The line does not move toward the model's picks.** If the model held
+information the market lacked, the close would drift its way. It does not — flat
+to slightly negative, indistinguishable from zero. This is independent
+confirmation of gate 1 from a completely different measurement, and it is the
+cleanest evidence in either phase.
+
+MLS has zero opening prices on every benchmark book, so it is beat-the-close
+only. **Not averaged with EPL.**
+
+**ROI at `marketmax` — the monotonicity signature again:**
+
+```
+EPL   0% edge  1,417 bets   −0.01%      MLS   0% edge  2,184 bets   −6.27%
+      2% edge    968 bets   −4.53%            2% edge  1,403 bets  −11.57%
+      5% edge    486 bets  −11.28%            5% edge    684 bets  −13.71%
+```
+
+EPL is essentially break-even betting everything and gets steadily worse as the
+edge filter tightens — the same signature Phase 2.5 found, and the same
+conclusion: the model's most confident disagreements with the market are its
+worst bets. The 10% rows (EPL −6.04% on 144 bets, MLS +0.88% on 218) are noise
+at that sample size and should not be read as a reversal.
+
+**What Phase 3 achieved.** A scoring-rate engine that Phases 4 and 5 reuse, a
+rolling-refit harness with the leakage rule enforced in code, the project's
+first genuine CLV measurement, and a club-identity fix that removed 400 EPL and
+604 MLS duplicate matches. The model closed most of the distance to the market
+that Elo could not — and still lost.
+
+**Decision required before Phase 4.** The plan's exit gate says gate 1 decides,
+so shipping as-is is not available. Either accept that a pure scoring-rate model
+does not beat a soccer closing line and carry the engine into NHL (Phase 4),
+where the market is thinner and the same engine may fare better, or extend the
+soccer model with what the market has and this does not.
+
 #### 3.6 — Totals, gated separately
 
 551 EPL and 1,411 MLS priced over/unders, all carrying opening prices. Gate
