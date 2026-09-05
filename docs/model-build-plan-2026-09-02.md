@@ -1454,53 +1454,212 @@ something that may not be delivered. Deferred by design, not forgotten.
 
 ---
 
-### Phase 4 — NHL · Dixon-Coles on regulation goals, then the first prop model
+### Phase 4 — NHL · the first prop model, and a game model with a real constraint
 
-**Infrastructure first:**
+**Why NHL, and why the ORDER IS REVERSED from the original plan.** Phases 2 and
+3 were the only two phases with no props, and both lost their gate against the
+two most efficient markets in the project — tennis at t=+20.68, EPL soccer at
+t=+3.05. The evidence says game lines in liquid markets are a hard target and
+props are where both the softer market and this project's data advantage
+actually sit. **So 4b (props) is promoted ahead of 4a (game model), and the two
+are explicitly decoupled: the prop model does not depend on the game model, and
+a game-line failure must not block it.**
 
-- **`ingestNhlShotsJob`** (never run). The game model needs a way to identify
-  empty-net and overtime goals; the 177,961 stored shot events are the likely
-  source and this must be verified before the model work starts.
-- **Market canonicalisation** (0.9) — a prerequisite for any prop model across
-  sources, and this is the first one. NHL's head is short: 11 of 20 markets carry
-  90%.
+#### Verified data (measured 2026-09-04, not carried from the audit)
 
-#### 4a. Game model, and two traps
+| | |
+|---|---|
+| Games | **24,889**, 2007-09-29 → 2026-06-15, 100% scored, **0 ties** |
+| Home win rate | **54.3%** — the highest in the project; the home term is earned |
+| Sources | `sbr` 18,204 (2007-2022), `espn_core` 6,685 (2021-2026) |
+| Player rows | **724,002**, 3,119 athletes, 2010-2026 |
+| `toiMinutes` coverage | **100.0%** (724,002 of 724,002) |
+| Other player stats | `sog`, `goals`, `assists`, `points`, `hits`, `blockedShots`, `shifts`, `pim`, `plusMinus`, `giveaways`, `takeaways` |
+| Shot events | 177,961 rows with `period`, `period_seconds`, `x_coord`, `y_coord` — **2024-09 → 2025-06 only** |
+| Prop lines | one season, 2025-10 → 2026-06 |
 
-**Empty-net goals.** A team losing by one pulls its goalie in the last two
-minutes. Those goals happen *because of the score*, not because one team is
-better; fed in raw, ratings absorb game-state noise as strength.
+**The defining asymmetry of this phase: training data is sixteen years deep,
+evaluation data is one season.** 724,002 player-games to learn rates from, but
+only ~7,918 shots-on-goal lines to test against. Every sample-size decision
+below follows from that, and it is the opposite shape to Phases 2 and 3.
 
-**Overtime and shootouts.** Tied after 60, the winner comes from 3-on-3 or a
-shootout — near a coin flip, unrelated to the strength being modelled. So model
-the 60 minutes, then add the tie case separately.
+---
 
-**Data.** 24,336 priced games, dense 2008–2019 and 2021–2025, 99.9% reaching a
-result.
+#### 4.1 — Team identity: canonicalise, de-duplicate, exclude non-clubs **[BLOCKER]**
 
-**Ship gate.** Positive CLV against the closing moneyline. Some books price NHL
-three-way on regulation, which is the market this model natively produces.
+**The same defect Phase 3.1 found, and worse.** 84 distinct team names for a
+32-team league, because two sources overlap with different conventions:
 
-#### 4b. Prop model — shots on goal first
+```
+sbr        city only:   'Boston'        'Anaheim'       'Arizona'   'Arizonas'
+espn_core  full name:   'Boston Bruins' 'Anaheim Ducks' 'Arizona Coyotes'
+```
 
-**Simply.** Three ingredients in order of importance: **volume** (how many
-chances), **rate** (how good per chance), **shape** (how much it bounces around,
-which turns an expectation into P(over the line)).
+`sbr` runs 2007-2022, `espn_core` 2021-2026, and **1,316 espn_core rows fall
+inside sbr's range** (2021-01 → 2022-11). A raw-name duplicate check finds only
+8 groups — the same trap as soccer, where canonicalisation revealed 4x more.
 
-**Why NHL is the best standalone prop case.** `toiMinutes` on **all 724,002
-rows** — perfect coverage of the field that matters most — and **71% of NHL props
-are two-sided** (48,758 of 68,880), the highest ratio in the project, so the vig
-can be stripped properly rather than guessed at.
+Three distinct problems, not one:
 
-**In detail.** Project time on ice from recent games and role. Project shots per
-minute from the player's rate, shrunk toward his position's mean by a sample-size
-weight. Multiply for expected shots; Poisson for goals, negative binomial for
-shots (overdispersed). Shots on goal is the right first market: high-volume,
-driven by ice time and shooting rate, far less random than goals.
+1. **Two conventions**, as above.
+2. **`'Arizonas'` — a typo variant** of `'Arizona'` inside a single source.
+   Fuzzy matching would catch this one and merge Manchester clubs elsewhere; the
+   explicit map catches it safely.
+3. **INTERNATIONAL TEAMS.** `espn_core` carries `'Canada'` and `'Finland'` —
+   the 4 Nations Face-Off, February 2025. These are not NHL clubs and must be
+   excluded exactly as soccer's `MLS All-Stars` were. A tournament of national
+   sides tells you nothing about club strength.
 
-**Do not forget the offset.** NHL props join `player_game_history` at **−1 day** —
-ESPN stamps UTC, the NHL API reports local time. Joining at zero silently loses
-35% of the data. Derived against real dates and asserted by gate 7.7.
+Relocations are a real modelling question, not a mapping one: `'Atlanta'`
+(Thrashers, moved to Winnipeg in 2011) and Arizona → Utah (2024) are the same
+franchise but arguably not the same team. **Decide and record whether a
+relocation keeps its rating**, rather than letting the name map decide silently.
+
+**Deliverable:** explicit map, exclusion set, source precedence, and a
+re-runnable audit in the shape of `audit_soccer_duplicates.py` — including the
+injectivity test, because a typo merging two real franchises is this step's own
+failure mode reintroduced by its fix.
+
+**Done when:** 84 names resolve to the right franchise count, zero duplicates
+survive canonicalisation, the odds side closes with no orphans, and the audit
+re-runs clean.
+
+#### 4.2 — The regulation-vs-final decision **[the plan's premise is not available]**
+
+The original plan says to *"model the 60 minutes, then add the tie case
+separately"*, and that is the right model — overtime and shootouts are near
+coin-flips unrelated to team strength, so folding them into ratings feeds
+noise in as skill.
+
+**But regulation scores are not in the data.** `game_result` holds FINAL scores
+only, which is why it shows **0 ties across 24,889 games**. Regulation score is
+derivable only from `nhl_shot_events` (it carries `period`), and **that table
+covers one season: 2024-09 → 2025-06.**
+
+So the choice is explicit and must be made before any fitting:
+
+- **(a) Model final results** over all 24,889 games, accepting that ~23% of NHL
+  games are decided in OT/shootout and that noise enters the ratings.
+- **(b) Model regulation** over one season only — correct target, ~1,300 games.
+- **(c) Model final results but DOWN-WEIGHT one-goal margins**, as a cheap proxy
+  for the empty-net and OT distortion, over the full history.
+
+**Recommendation: (a) with the empty-net caveat recorded, then test (c).** (b)
+trades a 19x sample reduction for a cleaner target and will not support a
+walk-forward.
+
+**The empty-net trap has the same shape.** A team trailing by one pulls its
+goalie; those goals happen because of the score, not because a team is better.
+Identifying them also needs shot events, so it too is only possible on one
+season. Record it as a known bias in (a) rather than pretending it is handled.
+
+**Also verify a stale claim:** the plan lists `ingestNhlShotsJob` as *never
+run*, yet 177,961 shot rows exist for 2024-25. Establish what populated them and
+whether it still runs, before depending on that table for anything.
+
+#### 4.3 — Game model: reuse the Dixon-Coles engine
+
+`predict/dixon_coles.py` already does this — attack, defence, home advantage,
+low-score correction, time decay — and needs no changes for hockey beyond
+recognising that goals-per-game is ~3 rather than ~1.4.
+
+Reuse `dc_walkforward.py` unchanged. Refit weekly. Fit `xi` on a SELECT window
+that excludes the held-out years, exactly as 3.4 did.
+
+**Home advantage should come out high** — NHL's 54.3% is the largest in the
+project — which doubles as this phase's leakage check.
+
+**Done when:** walk-forward completes, every parameter is verified off its
+bounds, and the strongest/weakest clubs are recognisable to someone who follows
+the sport.
+
+#### 4.4 — Game ship gate
+
+Identical discipline to 3.5: beat the de-vigged close on log-loss, paired and
+out of sample, against the sharpest available book AND a consensus; calibration
+fixed and re-measured before any failure is declared; ROI swept by edge with the
+monotonicity check.
+
+**Expect this to fail, and let that be cheap.** Two phases of evidence say
+ratings-only models lose to liquid closing lines. It is run because the engine
+is already built and the marginal cost is a few hours, not because it is likely
+to pass. **It must not gate 4.5.**
+
+#### 4.5 — Prop model: shots on goal **[the real objective of this phase]**
+
+**Why shots on goal first**, and it is not availability — Total Goals has more
+rows. It is that shots are **high-volume and ice-time-driven**, so the estimate
+rests on a rate that can actually be measured, where a 0.5-goal line is close to
+a coin flip on a bounce.
+
+**Three ingredients, in order of importance:**
+
+- **Volume** — projected time on ice. `toiMinutes` is present on 100% of
+  724,002 rows, which is why NHL is the right first prop sport.
+- **Rate** — shots per minute, from the player's own history, **shrunk toward
+  his position's mean by a sample-size weight**. A fourth-liner with three
+  games must not carry a superstar's rate because of one good night.
+- **Shape** — turning an expectation into P(over the line). Shots are
+  overdispersed relative to Poisson, so use a negative binomial and fit the
+  dispersion rather than assuming it.
+
+**THE JOIN OFFSET.** NHL props join `player_game_history` at **−1 day**: ESPN
+stamps UTC, the NHL API reports local time. Joining at zero silently loses ~35%
+of the data. **Assert this in code with a row-count check**, do not leave it as
+a comment — a 35% silent loss is exactly the kind of thing that looks like a
+weak model rather than a broken join.
+
+#### 4.6 — Prop walk-forward and fit
+
+Same no-leakage rule as 3.3: a player's projection uses only games played
+**strictly before** the match date. Chronology asserted in code.
+
+**The sample-size decision must be made here, up front.** Training is sixteen
+years deep; evaluation is ~7,918 shots-on-goal lines from one season across 423
+players. Decide before running what effect size would be believable at that n,
+because a promising ROI inside its own confidence interval is not a result.
+Phase 2.5's ROI table is the cautionary example — the 10% row looked positive
+and was noise at n=144.
+
+#### 4.7 — Prop ship gate
+
+Same authority order as every gate in this plan: accuracy first, calibration
+ruled out, then economics.
+
+**Two-sided props only.** Measured: `Total Shots on Goal` is 74.9% two-sided
+with 74.9% carrying opening prices, so most of the sample can be properly
+de-vigged. **The Milestone markets are 0% two-sided** — Goals, Points, Assists
+and Shots-on-Goal Milestones, ~2,000 rows each, over-only. With no under price
+the vig cannot be stripped and any "edge" is partly the margin. **Excluded from
+the gate**, exactly as tennis's one-sided props were.
+
+**CLV is available here** — 74.9% of shots-on-goal rows carry opening prices, so
+report real open-to-close movement as 3.5 did for EPL, not a substitute.
+
+#### 4.8 — Serving **[not started until 4.7 passes]**
+
+The rule 2.6 established and 3.7 kept: serving is built after a gate passes.
+
+#### What is NOT in this phase
+
+- **No xG model**, despite `nhl_shot_events` carrying real `x_coord`/`y_coord` —
+  the only sport in this project where true xG is possible. It covers one season,
+  which is too little to fit and test. **Recorded as the strongest future
+  candidate**, not as scope.
+- No goalie model. No team totals. No multi-market parlay correlation.
+
+#### Exit gate for Phase 4
+
+1. Team canonicalisation complete, internationals excluded, relocation policy
+   recorded, audit re-runnable (4.1).
+2. Regulation-vs-final decision made and recorded WITH its known bias (4.2).
+3. `ingestNhlShotsJob` provenance established (4.2).
+4. Game walk-forward complete, parameters off their bounds (4.3).
+5. Game gate run and reported — pass or fail, it does not block the props (4.4).
+6. Prop model built, the −1 day join asserted by row count, not comment (4.5).
+7. Prop walk-forward with no leakage, sample-size threshold agreed in advance (4.6).
+8. Prop gate: beats the de-vigged close on two-sided markets, calibration ruled
+   out, CLV reported, Milestone markets excluded (4.7).
 
 ---
 
