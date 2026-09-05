@@ -1585,7 +1585,11 @@ ratings-only models lose to liquid closing lines. It is run because the engine
 is already built and the marginal cost is a few hours, not because it is likely
 to pass. **It must not gate 4.5.**
 
-#### 4.5 — Prop model: shots on goal **[the real objective of this phase]**
+#### 4.5 — Prop engine, built and proven on shots on goal **[the real objective]**
+
+**This step builds the ENGINE, on one market. 4.8 extends it to the other
+five** — volume x rate x shape is market-agnostic, and the whole reason to build
+it properly is that swapping which stat it projects covers the rest.
 
 **Why shots on goal first**, and it is not availability — Total Goals has more
 rows. It is that shots are **high-volume and ice-time-driven**, so the estimate
@@ -1636,7 +1640,67 @@ the gate**, exactly as tennis's one-sided props were.
 **CLV is available here** — 74.9% of shots-on-goal rows carry opening prices, so
 report real open-to-close movement as 3.5 did for EPL, not a substitute.
 
-#### 4.8 — Serving **[not started until 4.7 passes]**
+#### 4.8 — Extend to the remaining two-sided markets
+
+**Shots on goal proves the machinery; it is not the product.** Volume x rate x
+shape is market-agnostic, so once 4.7 shows it clears a gate on one market, the
+same engine covers the rest by swapping which stat it projects. Extending BEFORE
+4.7 would mean building six markets on machinery not yet known to work.
+
+**Every market maps to a stat we already hold** (measured 2026-09-04, 200-row
+sample of `player_game_history`):
+
+| market | prop rows | two-sided | stat | window | verdict |
+|---|---|---|---|---|---|
+| Total Shots on Goal | 7,918 | 74.9% | `sog` | 10/25-06/26 | **first (4.5)** |
+| Total Points | 8,881 | 75.5% | `points` | 10/25-06/26 | **derive, do not fit** |
+| Total Assists | 8,768 | 75.2% | `assists` | 10/25-06/26 | good |
+| Total Goals | 14,366 | 100% | `goals` | **10/25-12/25** | short window |
+| Total Blocked Shots | 2,497 | 72.9% | `blockedShots` | 10/25-06/26 | thin |
+| Total Hits | 2,811 | 100% | `hits` | **10/25-12/25** | short window |
+| Total PP Points | 6,272 | 71.2% | `powerPlayGoals` only | 10/25-06/26 | **weakest** |
+| *Milestones (4 markets)* | ~8,600 | **0%** | — | — | **excluded** |
+
+**Four things this table decides, none of which are obvious from row counts:**
+
+**Points must be DERIVED, not fitted.** A point is a goal or an assist. Fitting
+goals, assists and points as three independent models produces three
+probabilities that contradict each other — P(points > 1.5) inconsistent with the
+goal and assist distributions it is made of. Model goals and assists, then
+convolve. This also gets points for free rather than as a third fit.
+
+**Power play points is the weakest case and should be last or dropped.**
+`powerPlayGoals` is present, but there is **no power-play ice time and no
+power-play assists** in the data. Volume is the first ingredient of the model and
+for this market it is missing — a PP points projection without PP minutes is
+mostly guessing at which unit a player is on. Do not spend the effort until the
+others are done, and record it as data-limited rather than model-limited.
+
+**Total Goals and Total Hits stop in December 2025.** Both show 100% two-sided
+and a healthy row count, which makes them look like the best candidates until
+you notice the window is three months against the others' nine. That is a
+provider dropping the market partway through the season. **A market that is no
+longer collected cannot be served**, so establish whether collection resumed
+before building either.
+
+**Goalies must be excluded from every skater market.** `player_game_history`
+carries goalie rows in the same table, flagged `isGoalie` (~5.5% of rows) and
+carrying `saves` / `shotsAgainst` / `powerPlayGoalsAgainst` instead of skater
+stats. A goalie's `sog` is not a shot he took. Filter on the flag, and assert the
+filtered count rather than trusting it.
+
+**Distributions differ by market and should not be assumed.** Shots, hits and
+blocks are overdispersed counts — negative binomial, with the dispersion fitted
+rather than assumed. Goals and assists are low-count with most lines at 0.5, so
+the distribution matters far less than the rate; getting the expectation right is
+nearly the whole job there.
+
+**Done when:** each extended market has its own walk-forward, its own gate result
+reported separately (never pooled across markets — a strong shots model would
+otherwise hide a broken hits model), and any market that fails is recorded as
+failed rather than quietly dropped.
+
+#### 4.9 — Serving **[not started until 4.7 passes]**
 
 The rule 2.6 established and 3.7 kept: serving is built after a gate passes.
 
@@ -1660,6 +1724,9 @@ The rule 2.6 established and 3.7 kept: serving is built after a gate passes.
 7. Prop walk-forward with no leakage, sample-size threshold agreed in advance (4.6).
 8. Prop gate: beats the de-vigged close on two-sided markets, calibration ruled
    out, CLV reported, Milestone markets excluded (4.7).
+9. Engine extended to the remaining two-sided markets, each gated and reported
+   SEPARATELY, points derived from goals+assists rather than fitted, goalies
+   filtered by assertion, and any failing market recorded as failed (4.8).
 
 ---
 
