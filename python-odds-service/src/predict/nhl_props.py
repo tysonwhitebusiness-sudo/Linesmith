@@ -137,22 +137,40 @@ def nb_prob_over(line: float, mean: float, dispersion: float) -> float:
 
 
 class PlayerHistory:
-    """Running, strictly-before-only history for one player."""
+    """Running, strictly-before-only history for one player.
 
-    __slots__ = ("sog", "minutes", "games")
+    RATE AND VOLUME ARE ESTIMATED OVER DIFFERENT WINDOWS, on purpose. Shots per
+    minute is a comparatively stable skill and wants ALL the history it can get.
+    Time on ice is a ROLE, and a role changes — a promotion to the top line or a
+    drop to the fourth moves it within days. Averaging a player's ice time over
+    a whole season smooths away exactly the change that matters most, which is
+    the leading suspect for the 4.5% over-projection measured in 4.5.
+    """
+
+    __slots__ = ("sog", "minutes", "games", "recent_min")
 
     def __init__(self):
         self.sog = 0.0
         self.minutes = 0.0
         self.games = 0
+        self.recent_min: list[float] = []
 
     def add(self, sog: float, minutes: float) -> None:
         self.sog += sog
         self.minutes += minutes
         self.games += 1
+        self.recent_min.append(minutes)
+        if len(self.recent_min) > 40:            # bounded; no window exceeds this
+            self.recent_min.pop(0)
 
-    def mean_toi(self, league_toi: float) -> float:
-        return self.minutes / self.games if self.games else league_toi
+    def mean_toi(self, league_toi: float, window: int = 0) -> float:
+        """Mean ice time. `window` 0 uses all history, N uses the last N games."""
+        if not self.games:
+            return league_toi
+        if window and self.recent_min:
+            w = self.recent_min[-window:]
+            return sum(w) / len(w)
+        return self.minutes / self.games
 
 
 @dataclass
@@ -164,9 +182,9 @@ class Projection:
 
 
 def project(hist: PlayerHistory, league_rate: float, league_toi: float,
-            k: float = SHRINK_K) -> Projection:
+            k: float = SHRINK_K, toi_window: int = 0) -> Projection:
     """Volume x rate. Shape is applied separately, at the line."""
-    toi = hist.mean_toi(league_toi)
+    toi = hist.mean_toi(league_toi, toi_window)
     rate = shrunk_rate(hist.sog, hist.minutes, league_rate, k)
     return Projection(expected_sog=toi * rate, projected_toi=toi,
                       rate_per_min=rate, games_of_history=hist.games)

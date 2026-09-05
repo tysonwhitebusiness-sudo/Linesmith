@@ -1988,6 +1988,71 @@ because a promising ROI inside its own confidence interval is not a result.
 Phase 2.5's ROI table is the cautionary example — the 10% row looked positive
 and was noise at n=144.
 
+**RESULT — fitted 2026-09-05, `fit_nhl_props.py`.**
+
+**The sample-size decision was made BEFORE running**, as the plan requires:
+cutoff 2025-11-08, **SELECT 1,558 / HELD OUT 2,312**, at which the paired SE of
+a log-loss difference is ~0.0007 and **a gap of ~0.0015 is detectable at t=2**.
+Anything inside that band is a tie, not a weak signal.
+
+**The split had to sit inside one season.** Prop collection is far narrower than
+the date range implies: **5,086 of 5,356 rows (95%) fall in October–November
+2025**, December onward nearly empty. There is no second season to hold out.
+
+**Fitted: `toi_window=5`, `shrink_k=10`, `dispersion=4.0`.** Every value sits in
+the INTERIOR of its grid — no edge warning fired.
+
+| held out (n=2,312) | log-loss | acc | projection bias |
+|---|---|---|---|
+| unfitted (all-history TOI, Poisson) | 0.68864 | 54.8% | +2.0% |
+| **fitted** | **0.68582** | **55.6%** | +2.1% |
+| market (de-vigged, n=2,139) | **0.67414** | | |
+
+Fitting gains 0.0028 held-out — above the 0.0015 detection threshold, so real.
+The market sits 0.0117 below the model, also well above threshold. **4.7 tests
+that properly; it is shown here only for orientation.**
+
+**THE NEGATIVE BINOMIAL EARNS ITS PLACE, measured rather than assumed.** Poisson
+was inside the search as `dispersion = 1e6`, and it is clearly worse:
+
+```
+dispersion   2.0:0.68936   4.0:0.68610   6.0:0.68635
+            10.0:0.68740  20.0:0.68888   Poisson:0.69121
+```
+
+A clean interior optimum at 4.0, with Poisson the worst value on the grid.
+Shots on goal really are overdispersed, and modelling them as Poisson costs
+0.005 log-loss — more than three times the detection threshold.
+
+**A HYPOTHESIS OF MINE THAT WAS WRONG, and the measurement says so.** 4.5
+recorded a 4.5% over-projection, and I attributed it to ice time being a ROLE
+that changes within days while an all-season average smooths the change away.
+The `toi_window` sweep says that is essentially irrelevant:
+
+```
+toi_window   all:0.68627   5:0.68610   10:0.68613   20:0.68627
+```
+
+A 0.00017 spread across the whole range — an order of magnitude below the
+detection threshold. Recent-form ice time is not what was wrong.
+
+**What was actually wrong was the league fallback constant.** 4.5 used
+`LEAGUE_SOG_PER_MIN = 0.13` where the measured rate is **0.12089**, and
+computing league constants from the SELECT window cut the bias from +4.5% to
++2.0%. The residual +2.1% survives every parameter setting, so it is not a
+tuning problem — most likely a selection effect, since props are quoted on
+players expected to play a normal shift and some fraction of them do not.
+
+`shrink_k = 10` has a clear interior optimum (5:0.68731, 10:0.68610, 20:0.68789,
+40:0.69119), which is worth noting because it is the one parameter guarding
+against a hot callup carrying a superstar's rate.
+
+**No leakage:** every projection uses only games played strictly before the
+prop's own game, accumulated in one chronological pass, with the ordering
+asserted rather than assumed. League constants are computed from SELECT rows
+only — using all rows would have leaked the held-out period's scoring
+environment into the model's fallback.
+
 #### 4.7 — Prop ship gate
 
 Same authority order as every gate in this plan: accuracy first, calibration
