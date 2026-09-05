@@ -2068,6 +2068,87 @@ the gate**, exactly as tennis's one-sided props were.
 **CLV is available here** — 74.9% of shots-on-goal rows carry opening prices, so
 report real open-to-close movement as 3.5 did for EPL, not a substitute.
 
+**RESULT — run 2026-09-05, `ship_gate_nhl_props.py`. GATE 1 FAILED. But gates 3
+and 4 are the first positive results in this project, and they point somewhere
+the gate was not designed to look.**
+
+**Gate 1 — accuracy vs the de-vigged close: FAILED.**
+
+```
+model 0.68337   market 0.67414
+model - market  +0.00922   SE 0.00304   t = +3.03   MARKET BEATS
+accuracy: model 56.2%   market 58.0%
+detectable at t=2: 0.00609   (the gap exceeds it, so the loss is real)
+```
+
+**Gate 2 — calibration was badly out and fixing it was not enough.** The
+0.3-0.4 bucket predicted 0.363 and delivered 0.469, a +0.106 gap. Temperature
+scaling fitted on SELECT only gave `T = 1.58` — a large correction, the model is
+materially overconfident — and recovered **+0.00137 of the 0.00922 gap (15%)**.
+More than tennis (3%) or soccer (0-6%), and still nowhere near enough:
+calibrated, the model still loses at t=+3.28.
+
+**Gate 3 — CLV +0.01696, SE 0.00150, t = +11.33.** An order of magnitude larger
+than the NHL game model's +0.00160, and large enough that it was not believed
+without a control:
+
+```
+unconditional drift toward OVER   -0.00129   t = -0.84   (no systematic drift)
+model picks OVER                   46.9%                 (not one-sided)
+CLV of an ALWAYS-OVER null        -0.00129
+CLV of the model                  +0.01696
+model edge over the null          +0.01825
+```
+
+So it is not an artefact of lines drifting one way while the model leans that
+way. **The model's side selection genuinely predicts which way the line moves.**
+
+**Gate 4 — and here the two results stop contradicting each other.** Priced at
+the CLOSE, ROI is negative and degrades as the filter tightens (-5.02% at any
+edge to -7.14% above 10%) — the same signature as every previous phase. Priced
+at the **OPEN**, it inverts:
+
+| edge | bets | ROI | SE | t |
+|---|---|---|---|---|
+| 0% | 2,139 | +1.12% | 2.48% | +0.45 |
+| 2% | 1,648 | +4.10% | 2.95% | +1.39 |
+| 5% | 1,043 | +7.42% | 4.04% | +1.84 |
+| **10%** | **445** | **+22.84%** | 7.80% | **+2.93** |
+
+**Monotonically INCREASING** — the first time in this project. Tennis, soccer
+and the NHL game model all went the other way, which is the signature of edges
+being noise. This is the signature of edges being real.
+
+The two gates are consistent once the timing is explicit: CLV is measured
+open-to-close, and gate 4's original form priced bets at the close — *after* the
+move it was measuring. Bet at the open, and the movement is captured.
+
+**WHAT THIS DOES AND DOES NOT SAY.** The model is NOT better than the market at
+predicting shots on goal — gate 1 says so at t=+3.03, with calibration ruled
+out. What it is better than is **the market's FIRST GUESS**, and the market
+corrects toward it. That is a real and monetisable distinction, and it is not
+the thing this gate was built to detect.
+
+**Caveats that must travel with this result:**
+
+- **One market, one sport, ~7 weeks.** 2,139 held-out rows from a single
+  season's Oct-Nov window.
+- **The significance rests on the smallest bucket.** n=445 at the 10% threshold,
+  ROI +22.84% with SE 7.80% — a 95% interval of roughly [7%, 38%]. Positive
+  throughout, but imprecise. Four thresholds were tested, so a Bonferroni-style
+  correction puts the bar near t=2.5; +2.93 clears it, but not comfortably.
+- **"Bet at the open" is untested as an execution assumption.** Opening prices
+  are recorded here, but whether they are obtainable at size, and for how long,
+  is not something this data can answer. Limits are typically lowest at open.
+- **Gate 1 still failed**, and the plan says gate 1 decides. On the stated
+  criterion this does not ship.
+
+**The honest conclusion is that the gate was measuring the wrong thing for this
+strategy.** "Beat the closing line on log-loss" tests whether the model knows
+more than the market. Capturing line movement from the open tests whether it
+knows more than the market's opening estimate — a much lower and, on this
+evidence, achievable bar.
+
 #### 4.8 — Extend to the remaining two-sided markets
 
 **Shots on goal proves the machinery; it is not the product.** Volume x rate x
