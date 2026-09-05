@@ -2209,6 +2209,62 @@ reported separately (never pooled across markets — a strong shots model would
 otherwise hide a broken hits model), and any market that fails is recorded as
 failed rather than quietly dropped.
 
+**RESULT — run 2026-09-05, `fit_nhl_props_all.py`. Two of six markets clear the
+stats bar, and SHOTS ON GOAL IS NOT ONE OF THEM.**
+
+| market | held out | log-loss | acc | ordering | calib gap | **STATS** | betting |
+|---|---|---|---|---|---|---|---|
+| **Total Points** | 2,615 | 0.66918 | 58.6% | monotone | **0.013** | **PASS** | market, t=+2.76 |
+| **Total Assists** | 2,574 | 0.63674 | 64.8% | monotone | **0.026** | **PASS** | market, t=+2.92 |
+| Total Shots on Goal | 2,312 | 0.68582 | 55.6% | monotone | 0.057 | **FAIL** | market, t=+3.03 |
+| Total Hits | 849 | 0.68447 | 57.2% | monotone | 0.067 | FAIL | tie, t=+0.77 |
+| Total Goals | 5,217 | 0.39835 | 84.9% | monotone | 0.131 | FAIL | market, t=+3.43 |
+| Total Blocked Shots | 668 | 0.70100 | 52.7% | **NOT monotone** | 0.160 | FAIL | tie, t=+1.38 |
+
+**A CORRECTION TO THE PHASE 9 REWRITE.** That section states "NHL's
+shots-on-goal model clears this bar today." **It does not.** After temperature
+correction its worst calibration bucket is off by **0.057** against a 0.05
+tolerance — a narrow miss, but a miss, and it was asserted without being
+measured against the bar it was being asserted for. **Points and Assists clear;
+shots on goal does not.**
+
+**Ordering holds nearly everywhere, calibration is what fails.** Five of six
+markets are monotone — higher projections really do produce higher outcomes.
+Only Blocked Shots inverts (projected 1-2 → 1.83, projected 2-3 → 1.81), on the
+smallest sample (n=668), and it fails the calibration gap badly too (0.160).
+
+**The distribution finding is the useful one for Phases 5-8.** Poisson wins
+outright for Points, Assists, Goals and Blocked Shots (`dispersion` fitted to
+the 1e6 Poisson limit); only Shots on Goal (4.0) and Hits (2.0) need real
+overdispersion. The pattern is volume: **high-count events are overdispersed,
+low-count events are not.** 4.6 concluded the negative binomial "earns its
+place" from shots alone — true there, and not general. Any market averaging
+under ~1 event per game should start at Poisson.
+
+**Total Hits needs `T = 2.57`** — by far the largest correction of any market,
+meaning the raw model is severely overconfident there. It still fails the gap
+afterwards.
+
+**Two "ties" on the betting bar are low power, not parity.** Blocked Shots
+(t=+1.38, n=668) and Hits (t=+0.77, n=849) are the two smallest samples. At
+those sizes the test cannot separate a real gap from none; they are unresolved,
+not equal.
+
+**Total Power Play Points EXCLUDED, and for a stronger reason than the plan
+gave.** The plan called it data-limited for lack of power-play ice time.
+Measured, it is worse: the market settles on power-play goals PLUS power-play
+assists, and the database carries only `powerPlayGoals`. Mean 0.08 against an
+apparent over rate of 7.9% — **the computed outcome is not the outcome the bet
+settles on**, so both sides of the comparison are wrong. It cannot be scored at
+all, let alone modelled.
+
+**Still unresolved: Points was fitted DIRECTLY, not derived.** 4.8's design says
+points must be convolved from goals and assists so the three cannot contradict
+each other. Fitted directly it passes the stats bar, but the consistency problem
+remains — P(points > 1.5) is not guaranteed coherent with the goal and assist
+distributions it is made of. Worth doing before the board shows all three side
+by side, where a user could see them disagree.
+
 #### 4.9 — Serving **[not started until 4.7 passes]**
 
 The rule 2.6 established and 3.7 kept: serving is built after a gate passes.
@@ -2244,14 +2300,17 @@ The rule 2.6 established and 3.7 kept: serving is built after a gate passes.
 **This is what makes Phase 4 finish on a screen rather than in a document.**
 
 Builds the shared surface (board component, render plumbing, compliance strings,
-no-edge-language enforcement, betting-board suppression) and lands NHL on it:
-the shots-on-goal projection and ranking, calibrated with `T = 1.58`, with
-uncertainty shown and no edge language anywhere.
+no-edge-language enforcement, betting-board suppression) and lands NHL on it.
+
+**The markets that ship are the ones 4.8 measured as clearing the stats bar:
+Total Points (T=1.22) and Total Assists (T=1.07).** Shots on goal, goals, hits
+and blocked shots do not clear and are held back — a board that shows an
+uncalibrated projection alongside a calibrated one teaches the user nothing
+about which to trust.
 
 **It does NOT wait on 4.7.** 4.7 failed its gate and that gate governs the
-BETTING board only. NHL's prop model clears the stats bar today — 56% accurate,
-correctly ordered (projected 1-2 -> actual 1.80, 2-3 -> 2.28, 3-4 -> 3.28),
-overconfidence measured and correctable.
+BETTING board only. Points and Assists clear the stats bar on their own terms —
+monotone ordering and calibration gaps of 0.013 and 0.026 after correction.
 
 **Blocked by compliance, not by modelling.** `audit-phase-5.md` records no
 privacy policy, no jurisdiction notice and no "not financial advice" disclaimer
@@ -2439,9 +2498,13 @@ to a betting product's standard.
    price, no profit framing. The moment it compares itself to a market it stops
    being a stats board.
 
-**NHL's shots-on-goal model clears this bar today** — 56% accurate, correctly
-ordered (projected 1-2 -> actual 1.80, 2-3 -> 2.28, 3-4 -> 3.28), with a known
-and correctable overconfidence factor. Ships.
+**Measured in 4.8: Total POINTS and Total ASSISTS clear this bar. Shots on goal
+does NOT** — its worst calibration bucket is off by 0.057 against a 0.05
+tolerance after correction. An earlier version of this section asserted shots on
+goal cleared, which was stated before it had been measured against the bar.
+
+  Points   n=2,615  58.6% accurate  monotone  calibration gap 0.013  PASS
+  Assists  n=2,574  64.8% accurate  monotone  calibration gap 0.026  PASS
 
 #### 9b. The betting board — STILL GATED on beating the close
 

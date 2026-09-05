@@ -196,7 +196,26 @@ def project(hist: PlayerHistory, league_rate: float, league_toi: float,
 # ---------------------------------------------------------------------------
 
 
-async def load_shot_props(conn=None, market: str = "Total Shots on Goal") -> dict:
+# market -> the player_game_history stat that settles it. Phase 4.8.
+#
+# Total Power Play Points is DELIBERATELY MAPPED TO AN INCOMPLETE STAT. The
+# market settles on power-play goals PLUS power-play assists; the data carries
+# only `powerPlayGoals`. Assists are roughly two thirds of all points, so this
+# projection is structurally low and cannot be fixed by tuning. It is included so
+# the size of that bias is measured rather than assumed, and it must not ship.
+MARKET_STAT = {
+    "Total Shots on Goal": "sog",
+    "Total Points": "points",
+    "Total Assists": "assists",
+    "Total Goals": "goals",
+    "Total Blocked Shots": "blockedShots",
+    "Total Hits": "hits",
+    "Total Power Play Points": "powerPlayGoals",     # incomplete, see above
+}
+
+
+async def load_shot_props(conn=None, market: str = "Total Shots on Goal",
+                          stat_key: str | None = None) -> dict:
     """Prop rows joined to the player's actual outcome.
 
     Returns {"rows": [PropRow], "stats": {...}} — the stats are counted, not
@@ -249,7 +268,8 @@ async def load_shot_props(conn=None, market: str = "Total Shots on Goal") -> dic
         if st.get("isGoalie"):
             goalies += 1                 # a goalie's sog is not a shot he took
             continue
-        if "sog" not in st or "toiMinutes" not in st:
+        key = stat_key or MARKET_STAT.get(market, "sog")
+        if key not in st or "toiMinutes" not in st:
             no_sog += 1
             continue
         rows.append(PropRow(
@@ -258,7 +278,7 @@ async def load_shot_props(conn=None, market: str = "Total Shots on Goal") -> dic
             over_price=r["over_price"], under_price=r["under_price"],
             open_over=r["open_over_price"], open_under=r["open_under_price"],
             bookmaker=r["bookmaker"] or "",
-            actual_sog=int(st["sog"]), toi=float(st["toiMinutes"])))
+            actual_sog=int(st[key]), toi=float(st["toiMinutes"])))
     rows.sort(key=lambda x: (x.played, x.athlete_id))
     return {"rows": rows,
             "stats": {"joined": len(raw), "goalies_dropped": goalies,
