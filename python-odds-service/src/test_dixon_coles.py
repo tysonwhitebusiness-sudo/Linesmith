@@ -187,6 +187,42 @@ def test_fast_path_agrees_with_the_definition() -> None:
             close(f"xi={xi} rho={rho:+.2f}: fast == scalar", fast, scalar, 1e-6)
 
 
+def test_rho_box_scales_with_the_sport() -> None:
+    print("\nthe rho BOX is derived from the sport's scoring rate")
+    # NHL exposed this. Final scores are never tied, so no 0-0 row exists, the
+    # m00 mask is empty, and rho was free to run to its +-0.25 default. At hockey
+    # rates that gives tau(0,0) = 1 - 9.5*0.25 = -1.37 and P(0-0) = -0.00289.
+    #
+    # The first attempt rejected such rho with a 1e18 return, which is a CLIFF —
+    # L-BFGS-B is gradient-based and went erratic, 13 of 169 refits hitting the
+    # iteration cap. The box below is what replaced it.
+    d0 = date(2024, 1, 1)
+    soccerish = [{"home": "A", "away": "B", "home_goals": 2, "away_goals": 1,
+                  "played": d0}] * 40
+    hockeyish = [{"home": "A", "away": "B", "home_goals": 4, "away_goals": 3,
+                  "played": d0}] * 40
+    s_arr = dc._FitArrays(soccerish, ["A", "B"], 0.0, None)
+    h_arr = dc._FitArrays(hockeyish, ["A", "B"], 0.0, None)
+    print(f"    low-scoring data  -> rho in [{s_arr.rho_lo:+.3f}, {s_arr.rho_hi:+.3f}]")
+    print(f"    high-scoring data -> rho in [{h_arr.rho_lo:+.3f}, {h_arr.rho_hi:+.3f}]")
+    check("a higher-scoring sport gets a TIGHTER rho box",
+          h_arr.rho_hi < s_arr.rho_hi, True)
+    check("the box never exceeds the global cap", s_arr.rho_hi <= dc.RHO_MAX, True)
+
+    # The objective stays FINITE at the edge — a box, not a cliff.
+    v = [0.0, 0.0, -1.1, -1.1, 0.05, 5.0]          # rho far above any bound
+    val = dc._neg_ll_fast(v, h_arr, 2, l2=0.0)
+    check("an out-of-box rho is clamped, not rejected with a cliff",
+          val < 1e17, True)
+
+    # And the clamped value must yield a VALID distribution.
+    p = dc.DCParams(attack={"A": 0.0, "B": 0.0}, defence={"A": -1.1, "B": -1.1},
+                    home_advantage=0.05, rho=h_arr.rho_hi)
+    g = dc.score_matrix(p, "A", "B")
+    check("no negative cell at the top of the box",
+          all(c >= 0 for row in g for c in row), True)
+
+
 def test_recovery_from_synthetic_data() -> None:
     print("\nRECOVERY — fit known parameters back out of data they generated")
     random.seed(7)
@@ -238,6 +274,7 @@ def main() -> int:
     test_decay()
     test_identifiability()
     test_fast_path_agrees_with_the_definition()
+    test_rho_box_scales_with_the_sport()
     test_recovery_from_synthetic_data()
     print()
     if _failures:

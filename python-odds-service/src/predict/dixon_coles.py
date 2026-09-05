@@ -214,6 +214,19 @@ class _FitArrays:
             self.w = np.exp(-xi * np.maximum(days, 0.0))
         else:
             self.w = np.ones(len(matches))
+        # A SAFE rho RANGE, derived from this sport's scoring rate.
+        #
+        # tau(0,0) = 1 - lam*mu*rho must stay positive, so the largest usable rho
+        # depends on how many goals the sport scores. Soccer (~1.4/team) tolerates
+        # the +-0.25 default; NHL (~3/team) does not — at lam*mu ~9.5 anything
+        # above ~0.105 makes P(0-0) negative. The factor of 2 leaves headroom for
+        # a strong-vs-weak fixture whose rates exceed the mean.
+        mean_h = float(hg.mean()) if len(hg) else 1.0
+        mean_a = float(ag.mean()) if len(ag) else 1.0
+        scale = max(1e-6, 2.0 * max(mean_h, 0.1) * max(mean_a, 0.1))
+        self.rho_hi = min(RHO_MAX, 0.9 / scale)
+        self.rho_lo = max(RHO_MIN, -0.9 / max(0.1, 2.0 * max(mean_h, mean_a)))
+
         # The four tau cells, as masks, computed once.
         self.m00 = (hg == 0) & (ag == 0)
         self.m01 = (hg == 0) & (ag == 1)
@@ -235,13 +248,27 @@ def _neg_ll_fast(v, arr: "_FitArrays", n: int, l2: float = L2_PENALTY) -> float:
     att = att - att.mean()                      # the identifiability pin
     dfn = np.asarray(v[n:2 * n], dtype=float)
     ha = float(v[2 * n])
-    rho = min(RHO_MAX, max(RHO_MIN, float(v[2 * n + 1])))
+    rho = min(arr.rho_hi, max(arr.rho_lo, float(v[2 * n + 1])))
 
     lam = np.exp(att[arr.hi] - dfn[arr.ai] + ha)
     mu = np.exp(att[arr.ai] - dfn[arr.hi])
     if not (np.all(np.isfinite(lam)) and np.all(np.isfinite(mu))):
         return 1e18
 
+    # VALIDITY IS A BOX CONSTRAINT, NOT A CLIFF.
+    #
+    # tau must stay positive for every cell the model will ever PRICE, not just
+    # for the scorelines present in training. NHL made that gap visible: final
+    # scores are never tied, so no 0-0 row exists, the m00 mask is empty, and
+    # rho ran to its +0.25 default bound. At hockey rates (lam ~3.16, mu ~3.00)
+    # that gives tau(0,0) = 1 - 9.5*0.25 = -1.37 and a score matrix with
+    # P(0-0) = -0.00289.
+    #
+    # The first fix rejected such rho with a 1e18 return. That is a DISCONTINUITY,
+    # and L-BFGS-B is gradient-based: the sweep went erratic and non-monotonic,
+    # 13 of 169 refits hit the iteration cap, and exp() overflowed. Replaced by
+    # `arr.rho_hi` / `arr.rho_lo` above — a smooth box derived from the sport's
+    # own scoring rate, which the optimiser can actually work inside.
     t = np.ones_like(lam)
     t[arr.m00] = 1.0 - lam[arr.m00] * mu[arr.m00] * rho
     t[arr.m01] = 1.0 + lam[arr.m01] * rho
@@ -293,6 +320,7 @@ def fit(matches, xi: float = 0.0, as_of=None, maxiter: int = 400) -> DCParams:
 
     arr = _FitArrays(matches, teams, xi, as_of)
     n = len(teams)
+    bounds = [(None, None)] * (2 * n + 1) + [(arr.rho_lo, arr.rho_hi)]
     res = minimize(lambda v: _neg_ll_fast(v, arr, n), _pack(start, teams),
-                   method="L-BFGS-B", options={"maxiter": maxiter})
+                   method="L-BFGS-B", bounds=bounds, options={"maxiter": maxiter})
     return _unpack(res.x, teams)

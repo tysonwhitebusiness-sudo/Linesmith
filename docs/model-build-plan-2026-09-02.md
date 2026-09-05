@@ -1701,6 +1701,90 @@ project — which doubles as this phase's leakage check.
 bounds, and the strongest/weakest clubs are recognisable to someone who follows
 the sport.
 
+**RESULT — fitted 2026-09-04, `fit_nhl_dc.py`.** The Dixon-Coles engine was
+reused unchanged for hockey; only the draw handling is NHL-specific and lives in
+the fit script, not the shared engine.
+
+| | log-loss | brier | acc |
+|---|---|---|---|
+| no decay | 0.69075 | 0.24878 | 53.6% |
+| **fitted `xi=0.004`** | **0.67390** | 0.24060 | **57.2%** |
+
+References for a two-way market: ln(2) = 0.6931 for a coin flip, and **0.6893
+for always predicting the 54.3% home base rate.** The undecayed model (0.69075)
+is WORSE than the base rate — it adds nothing. With decay it clears it by
+0.0154. **Time decay is not a refinement here; it is the entire contribution.**
+
+`xi = 0.004` (173-day half-life) sits in the INTERIOR of a monotonic, unimodal
+sweep — 0.68950, 0.66901, 0.66363, **0.66225**, 0.66577, 0.67835 — with 0 of 169
+refits hitting the iteration cap. Decay is roughly twice as fast as soccer's
+0.002, which is what a compressed season with more roster churn should produce.
+
+**THE DRAW DOES NOT TRANSFER, and handling it is the one NHL-specific piece.**
+An NHL final score never ties, so the model's `P(draw)` is not a draw
+prediction — it is a prediction that the game REACHES overtime, and it must be
+split to answer the two-way question the market asks. `P_OT_HOME = 0.5` is a
+**deliberate non-measurement**: `nhl_shot_events` keys games by NHL API id
+(`2024010001`) while `game_result` uses ESPN's (`401685327`), no crosswalk
+exists, and bridging on (date, team pair) resolves only 473 of 1,503 games — a
+subset visibly biased at 59.8% home wins against the true 54.3%. An OT split
+from it (62.1%, n=87) would describe the join, not hockey.
+
+**A REAL BUG IN THE SHARED ENGINE, found because NHL broke an accident.** The
+first fit returned `rho` pinned at +0.2500 — and at hockey rates that gives
+`tau(0,0) = 1 - 9.5(0.25) = -1.37` and a score matrix with **P(0-0) =
+-0.00289**. A negative probability.
+
+It hid because NHL final scores are never tied: no 0-0 row exists, the `m00`
+mask is empty, and the likelihood never evaluated `tau(0,0)` at all. Soccer never
+exposed it because 0-0 is common there, so the constraint was enforced
+incidentally. **The engine was correct by accident for two phases.**
+
+**The first fix made it worse, and that is worth recording.** Rejecting invalid
+`rho` with a `1e18` return is a DISCONTINUITY, and L-BFGS-B is gradient-based:
+`exp()` overflowed, 13 of 169 refits hit the cap, the sweep went non-monotonic,
+and decay appeared to make held-out WORSE. Every one of those symptoms was the
+fix, not the sport. Replaced with a **box constraint derived from the sport's own
+scoring rate** and passed to the optimiser via `bounds=`:
+
+```
+soccer_epl  1.55/1.27 goals per side  ->  rho box [-0.2500, +0.2279]
+soccer_mls  1.71/1.21                 ->  rho box [-0.2500, +0.2170]
+nhl         3.04/2.78                 ->  rho box [-0.1478, +0.0532]
+```
+
+Soccer is unaffected — its fitted values (-0.0755 EPL, -0.0431 MLS) sit far
+inside.
+
+**AND THE BOUNDS CHECK ITSELF WAS WRONG.** It reported "no parameter is at a
+bound" while `rho` sat at **+0.05316 against a box maximum of +0.0532** —
+because it compared against the GLOBAL cap (+-0.25) rather than the box that
+actually binds. Phase 2.4's lesson recurring inside the check written to catch
+it. Now fixed to test the binding box.
+
+**So `rho` IS pinned, and what it is doing is informative.** `tau(1,1) = 0.947`
+suppresses 1-1 — a scoreline NHL never records. The low-score correction is being
+pressed into service to fight a diagonal that tie-free data never shows, and it
+saturates because tau touches only four cells rather than the whole diagonal.
+Probabilities stay valid (`tau(0,0) = 0.551`), but **rho is not freely fitted and
+should not be reported as though it were.** This is the structural cost of 4.2's
+decision to model final scores, now measured rather than anticipated.
+
+**Team rankings are credible; the LEVELS are not meaningful.** With mean-attack
+pinned to zero and no intercept, the defence terms absorb the league scoring
+rate, so `attack + defence` sits near `-log(3) = -1.1` for every club. Read it as
+an ordering only:
+
+- strongest — Colorado, Carolina, Tampa Bay, Buffalo, Dallas
+- weakest — Seattle, Calgary, San Jose, Chicago, Vancouver
+
+San Jose and Chicago at the bottom is right for this window. **Buffalo at fourth
+is the outlier** and worth a second look in 4.4 — at a 173-day half-life the fit
+is dominated by a short recent window, which can flatter a hot streak.
+
+**Per year (held out):** 2024 0.66138, 2025 0.68206, 2026 0.68211. The 2026 row
+is 768 games of a partial season.
+
 #### 4.4 — Game ship gate
 
 Identical discipline to 3.5: beat the de-vigged close on log-loss, paired and

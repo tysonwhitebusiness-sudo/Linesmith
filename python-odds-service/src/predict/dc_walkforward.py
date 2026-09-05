@@ -159,6 +159,7 @@ def _fit(history, xi: float, as_of: date, maxiter: int,
 
     arr = dc._FitArrays(history, teams, xi, as_of)
     n = len(teams)
+    bounds = [(None, None)] * (2 * n + 1) + [(arr.rho_lo, arr.rho_hi)]
     res = minimize(lambda v: dc._neg_ll_fast(v, arr, n), dc._pack(seed, teams),
-                   method="L-BFGS-B", options={"maxiter": maxiter})
+                   method="L-BFGS-B", bounds=bounds, options={"maxiter": maxiter})
     return dc._unpack(res.x, teams), not bool(res.success)
