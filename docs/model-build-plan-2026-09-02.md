@@ -1895,6 +1895,87 @@ of the data. **Assert this in code with a row-count check**, do not leave it as
 a comment — a 35% silent loss is exactly the kind of thing that looks like a
 weak model rather than a broken join.
 
+**RESULT — built 2026-09-04.** `src/predict/nhl_props.py` (engine + loader),
+`src/test_nhl_props.py`, all passing.
+
+**THE JOIN WAS THE HARD PART, AND THE PLAN'S DESCRIPTION OF IT WAS INCOMPLETE
+IN A WAY THAT WOULD HAVE BLOCKED THE WHOLE STEP.**
+
+The plan says NHL props join `player_game_history` at −1 day, and that joining
+at zero silently loses 35%. Both halves are true. Neither is sufficient, because
+**there is no direct join at all**:
+
+```
+prop_odds_archive.athlete_id    ESPN id      '2273'
+player_game_history.athlete_id  NHL API id   '8470621'
+```
+
+Measured: a direct join returns **ZERO rows at every offset from −2 to +2**.
+`athlete_crosswalk` is the bridge, resolving 864 of 885 prop athletes (97.6%),
+and `prop_odds_archive.athlete_name` is NULL on every NHL row so there is no
+name fallback. Only once the crosswalk is in place does the date question exist
+at all — and then the plan's −1 is confirmed exactly: **4,169 rows (52.7%) at −1
+against 2,709 (34.2%) at 0**, the ~35% loss it warned about.
+
+**A fixed offset is still not the best rule.** Over the 7,863 resolvable rows:
+
+| | rows | |
+|---|---|---|
+| game on BOTH −1 and 0 (ambiguous) | 761 | 9.7% |
+| only −1 | 3,408 | 43.3% |
+| only 0 | 1,948 | 24.8% |
+| NEITHER — player did not play | 1,746 | 22.2% |
+
+An **unambiguous** rule — −1 where only −1 exists, 0 where only 0 exists, drop
+where both do — yields **5,356 usable rows (68.1%)** against a fixed offset's
+4,169. The 9.7% ambiguous are dropped rather than guessed: an NHL player plays
+every ~2 days, so choosing between two adjacent games would silently attach the
+wrong outcome, which is worse than a smaller sample. The 22.2% who did not play
+are not a defect — a prop is posted before the lineup is known, and a scratched
+player has no shot count to score either way.
+
+**WHY THERE IS NO EXACT JOIN, and it is the same gap as 4.3.**
+`prop_odds_archive.event_ref` matches `game_result.event_ref` on **100%** of
+rows, and `player_game_history` carries an `event_id` on 100% of its 724,002
+rows — but that column is the NHL API's game id (`2025021311`) while `event_ref`
+is ESPN's (`401801798`). **This database has an athlete crosswalk and no game
+crosswalk.** The same gap blocked 4.3's overtime measurement (only 473 of 1,503
+games bridged, and that subset biased). **Building one is the single
+highest-value piece of plumbing NHL is missing** — it would give an exact prop
+join, the empty-net correction 4.2 had to accept as a known bias, and the xG
+model flagged as this phase's strongest future candidate.
+
+**Loaded result:** 5,356 usable rows, 346 players, 2025-10-07 → 2026-04-16.
+**0 goalies dropped** — no goalie carries a shots-on-goal prop — and 0 rows
+missing stats. Mean actual SOG 2.27 on 18.9 minutes (league rate 0.1202/min),
+and an actual over rate of **51.5%**, which is what a balanced market should
+produce.
+
+Lines are concentrated: 1.5 (2,891), 2.5 (2,050), 3.5 (342), 0.5 (66), 4.5 (7).
+
+**End-to-end sanity, strictly-before-only, players with >= 5 prior games:**
+
+```
+projected 1-2  ->  n=  734   mean actual 1.80
+projected 2-3  ->  n=2,694   mean actual 2.28
+projected 3-4  ->  n=  441   mean actual 3.28
+correlation(projection, actual) = 0.2560
+```
+
+Cleanly monotonic. The correlation is modest because single-game shot counts are
+dominated by variance; the bucket ordering is the more informative check. **Mean
+projected 2.410 against mean actual 2.306 — a 4.5% over-projection** that 4.6
+should address rather than leave to calibration.
+
+**The tests target what would look plausible while being wrong.** The negative
+binomial is checked against `scipy.stats.nbinom` rather than against itself — a
+subtly wrong recurrence still returns values in [0,1] and nothing downstream
+would notice. Shrinkage is asserted to actually shrink (2 games at 0.25/min
+gives 0.1417, near the league's 0.12; 44 games gives 0.2261, near its own rate),
+because a weight that silently resolved to 1 would make the model most confident
+exactly where it has least evidence. And a large dispersion is asserted to
+reduce to Poisson — the null the shape parameter has to beat.
+
 #### 4.6 — Prop walk-forward and fit
 
 Same no-leakage rule as 3.3: a player's projection uses only games played
