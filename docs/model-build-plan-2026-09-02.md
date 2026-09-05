@@ -1524,6 +1524,79 @@ failure mode reintroduced by its fix.
 survive canonicalisation, the odds side closes with no orphans, and the audit
 re-runs clean.
 
+**RESULT — done 2026-09-04.** `src/predict/nhl_teams.py` (map + loader),
+`src/test_nhl_teams.py`, `audit_nhl_duplicates.py` (re-runnable, exit 0).
+
+**A FULL TABLE SCAN CAME FIRST**, after a Phase 3 correction where soccer was
+described as score-only while 168,803 player rows sat unused. All 55 tables were
+swept for NHL data:
+
+| table | NHL rows | |
+|---|---|---|
+| `player_game_history` | 724,002 | the prop foundation, `toiMinutes` 100% |
+| `odds_import_staging` | **333,189** | **not previously known** — pre-resolution staging, 3 markets, 24 books, 2007-2026 |
+| `odds_archive` | 330,930 | |
+| `nhl_shot_events` | 177,961 | `period`, `x_coord`, `y_coord` — one season |
+| `prop_odds_archive` | 68,880 | |
+| `game_result` | 24,889 | |
+| `team_elo_history` | 2,996 | |
+| `athlete_crosswalk` | 864 | |
+| `injury_report` | **226** | **live snapshot only** — 96 athletes, 2026-09-01..09-04 |
+| `venue_factors` | 64 | `goals` only, 33 teams, factors 0.842-1.169 |
+
+Two of those change later steps. **`injury_report` is a four-day live snapshot,
+not history** — usable for serving, useless in a backtest, so no NHL step may
+plan a walk-forward around it. And **`venue_factors` carries a `stat_key`
+column but only `goals` for NHL**; extending it to `sog` would capture the
+documented arena scorer-bias in shot counting, which bears directly on 4.5.
+
+**The identity problem was worse than soccer's.** 84 names for a 32-team league,
+from three distinct causes rather than one:
+
+- **Two conventions** — `sbr` city-only (2007-2022) vs `espn_core` full names
+  (2021-2026), overlapping on 1,316 rows.
+- **Whitespace and typo variants inside ONE source** — `LosAngeles`,
+  `NewJersey`, `NYRangers`, `NYIslanders`, `SanJose`, `St.Louis`, `TampaBay`,
+  `WinnipegJets`, three spellings of Seattle, and `Arizonas`.
+- **Eight entities that are not clubs** — `Canada`/`Finland`/`Sweden`/`USA`
+  (2025 4 Nations Face-Off) and `Team Hughes`/`MacKinnon`/`Matthews`/`McDavid`
+  (All-Star Game rosters). 9 games excluded.
+
+**Franchise continuity, decided and recorded:** Phoenix → Arizona → Utah Hockey
+Club → Utah Mammoth is ONE franchise, as is Atlanta → Winnipeg. A relocation
+carries the roster, and the roster is what the rating describes. Canonical form
+is the CURRENT identity so history flows into the team that exists today.
+
+**THE AUDIT CAUGHT A BUG IN ITS OWN DE-DUPLICATION RULE, and this is the
+finding worth carrying forward.** It flagged 6 duplicate groups that disagreed
+on the score. Soccer's equivalent had zero, so the instinct was that two sources
+contradicted each other. They did not — **all six were the SAME source, and all
+six were two DISTINCT games sharing a date**:
+
+```
+2021-01-31  Carolina v Dallas   espn_core 4-1  event_ref 401272220
+2021-01-31  Carolina v Dallas   espn_core 4-3  event_ref 401272230
+```
+
+All in the COVID-shortened 2020-21 season. **`(date, home, away)` is not a
+unique key for NHL**, and collapsing on it would have silently deleted eight
+real games and called it de-duplication. The loader now keeps one row per
+distinct `event_ref` within a date/team group, and the audit distinguishes "two
+real games" from "a genuine conflict" instead of flagging both.
+
+**Loaded result:** 24,758 games, **exactly 32 franchises**, 2007-09-29 →
+2026-06-15, home win 54.3%. **Zero orphans** on `odds_archive` (76 raw names)
+AND `odds_import_staging` (86) — the map closes on every table that carries a
+name.
+
+**The test invariant had to differ from soccer's.** `test_soccer_teams` asserts
+injectivity — no two aliases may share a target — but six NHL names map to
+`Utah` on purpose, and every franchise legitimately carries both an espn full
+name and an sbr whitespace variant. So counting collisions proves nothing. The
+invariant that holds: **every alias is either a spelling variant of its own
+canonical or a declared franchise merge.** That still catches a typo mapping
+`Boston Bruins` to `Buffalo`, which a collision count would not.
+
 #### 4.2 — The regulation-vs-final decision **[the plan's premise is not available]**
 
 The original plan says to *"model the 60 minutes, then add the tie case
