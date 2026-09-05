@@ -9,45 +9,55 @@ finished at a number in a document.
 
 ## 1. What shipped in 4.8 / 4.9 / 4.10
 
-**4.8 — all six two-sided NHL markets, each gated separately.** Four rank
-correctly; two do not and are excluded:
+**All six NHL markets rank; four carry a calibrated probability.** Board is live
+at `/nhl/projections`.
 
 | market | ordering (quintiles) | calib gap | ranks | shows a % |
 |---|---|---|---|---|
-| Points | 0.51 → 0.56 → 0.57 → 0.85 → 1.02 | 0.013 | yes | **yes** |
-| Assists | 0.30 → 0.35 → 0.40 → 0.48 → 0.67 | 0.026 | yes | **yes** |
-| Shots on goal | 1.75 → 2.07 → 2.28 → 2.34 → 3.02 | 0.057 | yes | no |
-| Goals | 0.07 → 0.10 → 0.13 → 0.20 → 0.35 | 0.131 | yes | no |
-| Hits | 1.88 → 2.15 → 2.40 → **2.33** → 2.99 | 0.067 | **no** | no |
-| Blocked shots | 1.71 → 1.72 → 2.03 → **1.81** → 1.85 | 0.160 | **no** | no |
+| Points | 0.43 - 0.57 - 0.61 - 0.74 - 1.07 | 0.015 | yes | **yes** |
+| Hits | 1.60 - 1.87 - 2.20 - 2.43 - 2.83 | 0.022 | yes | **yes** |
+| Shots on goal | 1.72 - 2.02 - 2.13 - 2.36 - 3.02 | 0.037 | yes | **yes** |
+| Goals | 0.06 - 0.10 - 0.11 - 0.20 - 0.37 | 0.045 | yes | **yes** |
+| Blocked shots | 1.56 - 1.68 - 1.72 - 1.86 - 2.02 | 0.058 | yes | no |
+| Assists | 0.29 - 0.32 - 0.39 - 0.46 - 0.67 | 0.090 | yes | no |
 
-**4.9 — serving, split by consumer.** The projection pipe ships on ordering; the
-edge pipe stays behind 4.7. Verified against the real 2024-01-13 slate: 2,276
-projections, every market correlating positively with the outcome (r=+0.21 to
-+0.48), no leakage, no edge fields.
+**4.9 - serving, split by consumer.** Projection pipe ships on ordering; edge
+pipe stays behind 4.7. `prop_model_cache` (renamed from `mlb_prop_model_cache`)
+is Python-written, TS read-only.
 
-**4.10 — the board.** Compliance strings (root layout), privacy policy, shared
-`StatsBoard`, NHL adapter, pattern-2 read route, and a 5-test no-edge guard.
+**4.10 - the board.** Compliance strings in the root layout, privacy policy,
+shared `StatsBoard`, NHL adapter, pattern-2 read route, 6-test no-edge guard
+that was checked to actually fail.
 
-## 2. Three bugs found by building, not by reading
+## 2. The audit found one serious defect, and it changed every verdict
 
-Worth knowing because each was invisible to the check that was supposed to catch
-it:
+**The served model was not the validated model.** The walk-forward built history
+from PROP ROWS (18.8 games/player); serving built it from every game (553.8).
+Same player, same date, same constants disagreed by a mean 0.38 shots, with only
+16% agreeing within 0.10. **No test caught it because both sides were
+individually correct** - only comparing them found it.
 
-1. **The ordering check was vacuous for low-mean markets.** It bucketed by
-   `int(expected)`, so assists (mean 0.44) and goals (mean 0.17) produced ONE
-   bucket each — and `all()` over a one-element list is True. Both were recorded
-   as "monotone" by a check with nothing to compare. Quintiles fixed it, and
-   **changed a verdict**: hits passed on coarse buckets and fails on honest ones.
-2. **`db.write_calibration` could not RETIRE a market.** It deactivated prior
-   versions only when the new one activated, so a re-fit that got worse left the
-   old passing version live. Hits v1 (monotone) stayed active under hits v2
-   (non-monotone) and the market kept being served. Fixed at the source — a new
-   version now always supersedes.
-3. **Two display bugs only the browser showed.** The hidden-player count was
-   multiplied by the market count (114 read as 456); the confidence thresholds
-   were a within-season guess that labelled every player identically once
-   history ran across seasons.
+Fixed by pointing the fit at the serving path's source. Re-fitting flipped four
+of six verdicts, all toward better: **hits and blocked shots, whose ordering had
+been measured BACKWARDS, both order cleanly with full history** - the inversion
+was a sample-size artifact. Shots on goal and goals earned probabilities;
+assists lost its one.
+
+Three smaller things from the same audit:
+
+1. **The league rate was derived from prop rows**, which skew to high-volume
+   players - biased upward relative to the population histories are drawn from.
+   Now taken from the SELECT-window games.
+2. **Two stale gates hard-coded a measurement instead of a rule** (the adapter
+   map and the verifier both named hits/blocked-shots). The gate now lives in one
+   place: `model_calibration.active`.
+3. **The 4.9 verification slate sat outside the prop window** (2024-01-13, before
+   the archive starts). Re-verified on 2026-03-28.
+
+Earlier in the phase, two more of the same species: an ordering check that was
+vacuous for low-mean markets (`all()` over one bucket), and a
+`write_calibration` that could not RETIRE a market because it deactivated prior
+versions only when the new one activated.
 
 ## 3. Where things stand overall
 
