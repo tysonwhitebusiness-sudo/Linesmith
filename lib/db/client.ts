@@ -2237,6 +2237,74 @@ export async function readPropModelCacheForGames(sport: string, gameIds: string[
   return out;
 }
 
+export interface NhlProjectionRow {
+  subjectId: string;
+  subjectName: string | null;
+  teamAbbr: string | null;
+  gameId: string;
+  dimension: string;
+  projection: number | null;
+  modelProb: number | null;
+  line: number | null;
+  projectedToi: number | null;
+  sampleSize: number | null;
+}
+
+/**
+ * Phase 4.10 — the stats board's read. Pattern 2 from CLAUDE.md: a direct
+ * Postgres read of a real table kept fresh out-of-band, here by
+ * `nhlProjectionsJob` in the Python worker's JOB_REGISTRY. No per-request
+ * trigger and no snapshot cache — the request never causes a computation, so
+ * there is nothing to dedup or stale-serve.
+ *
+ * `category = 'projection'` is not decoration: it is what separates the
+ * projection pipe's rows from the edge pipe's over/under rows in the same
+ * table. Dropping this predicate would put edge-pipe rows on a board that has
+ * not passed the edge gate.
+ *
+ * The name comes from `athlete_crosswalk`, and the join is INNER on purpose.
+ * Measured 2026-09-05: name coverage is 94-98% on recent seasons (97.9% on
+ * 2026-01-14). A row whose name will not resolve would render as a raw NHL
+ * athlete id, which is worse on a board than being absent — but the omission is
+ * COUNTED and reported by the route rather than swallowed, because silently
+ * dropping rows from a ranking distorts the ranking invisibly.
+ */
+export async function readNhlProjections(): Promise<NhlProjectionRow[]> {
+  return pgAll<NhlProjectionRow>(
+    `SELECT p.subject_id AS "subjectId", x.athlete_name AS "subjectName",
+            NULL AS "teamAbbr", p.game_id AS "gameId", p.dimension,
+            p.projection, p.model_prob AS "modelProb", p.line,
+            p.projected_toi AS "projectedToi", p.model_sample_size AS "sampleSize"
+       FROM prop_model_cache p
+       JOIN athlete_crosswalk x
+         ON x.sport = 'nhl' AND x.athlete_id = p.subject_id
+      WHERE p.sport = 'nhl' AND p.category = 'projection'
+        AND p.projection IS NOT NULL`,
+    [],
+  );
+}
+
+/**
+ * How many PLAYERS the name join drops. Reported, not hidden.
+ *
+ * DISTINCT subject, not rows. Counting rows multiplied the number by however
+ * many markets were served — 114 unresolvable skaters read as "456 projections
+ * hidden" against a board showing 455 players, which looks like half the field
+ * is missing. The board shows one market at a time, so the honest unit is the
+ * one the board counts in.
+ */
+export async function countNhlProjectionsWithoutName(): Promise<number> {
+  const row = await pgGet<{ n: number }>(
+    `SELECT count(DISTINCT p.subject_id)::int AS n FROM prop_model_cache p
+      WHERE p.sport = 'nhl' AND p.category = 'projection'
+        AND p.projection IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM athlete_crosswalk x
+                         WHERE x.sport = 'nhl' AND x.athlete_id = p.subject_id)`,
+    [],
+  );
+  return row?.n ?? 0;
+}
+
 export async function readGameModelCache(sport: string, gameId: string): Promise<GameModelCacheRow | null> {
   const row = await pgGet<any>(
     `SELECT sport, game_id AS "gameId",

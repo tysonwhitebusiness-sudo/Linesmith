@@ -2471,6 +2471,57 @@ This is not a lowered bar. Each claim is still gated on the evidence that
 particular claim needs; the earlier version gated one claim on another claim's
 evidence.
 
+**RESULT — 4.10 BUILT AND RENDERING, 2026-09-05. Phase 4 ends on a screen.**
+
+`/nhl/projections` serves four ranked markets from `prop_model_cache`. Verified
+in a real browser, not asserted: shots on goal ranks MacKinnon 4.77, Pastrnak
+4.62, Tkachuk 4.10, Matthews 3.94; points ranks McDavid 1.49 (73% over 0.5),
+Crosby 1.21, Draisaitl 1.16. Those orderings are face-valid against what anyone
+who watches the sport would say, which is the cheapest real check available and
+was worth doing before trusting any of the rest.
+
+What shipped:
+
+| piece | where |
+|---|---|
+| compliance strings | `components/ComplianceFooter.tsx`, mounted in the ROOT layout |
+| privacy policy | `app/privacy/page.tsx` |
+| shared board | `components/StatsBoard.tsx` — sport-agnostic, one adapter per sport |
+| canonical type + NHL adapter | `lib/sports/nhl/adapters/statsBoardAdapter.ts` |
+| read path | `readNhlProjections` (pattern 2) + `app/api/nhl/projections/route.ts` |
+| no-edge enforcement | `tests/stats-board-no-edge.test.ts` — 5 tests |
+
+**The enforcement test was checked to actually FAIL.** An edge cell was injected
+into `StatsBoard.tsx` and the suite went red; restored, it went green. That check
+matters more here than anywhere else in this plan, because the rule this
+replaces was flagged as "a SUPPRESSION STATE, not a test" — it passed only
+because nothing rendered. A test that cannot fail would have repeated exactly
+that mistake in a new file.
+
+**Compliance was genuinely absent.** A tree-wide grep for "not financial
+advice", "privacy policy", "gambling problem", "1-800-GAMBLER" and
+"jurisdiction" returned NOTHING before this. The footer is mounted in the root
+layout rather than per page, so a page cannot forget it.
+
+**Two bugs the browser caught that no test would have.**
+
+- **The hidden-player count was multiplied by the market count.** 114
+  unresolvable skaters rendered as "456 projections hidden" against a board
+  showing 455 players — it read as though half the field were missing. The
+  board shows one market at a time, so the honest unit is DISTINCT SUBJECT, not
+  rows.
+- **The confidence thresholds were guessed and said nothing.** 15/40 games was
+  a within-season intuition; history here is unbounded across seasons and Crosby
+  carries 859 games, so every visible player read "Deep history" identically.
+  Re-cut at 20/82 against what the data actually holds.
+
+**Known and not fixed here:** name resolution is an INNER join on
+`athlete_crosswalk`, so 114 of 569 skaters are dropped on this 2024 slate. That
+is a historical-testing artifact — measured coverage is 94-98% on recent seasons
+(97.9% on 2026-01-14) — but it is real and the board reports the count rather
+than hiding it. The board also currently shows a static verification slate; it
+goes live when `nhlProjectionsJob` has a real October slate to serve.
+
 **It does NOT wait on 4.7.** 4.7 failed its gate and that gate governs the
 BETTING board only. Five of six markets order correctly on their own terms, and
 ordering is what a ranking board actually rests on.

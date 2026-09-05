@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Mono } from 'next/font/google';
 import './globals.css';
+import ComplianceFooter from '@/components/ComplianceFooter';
 
 // Numerals and mono-label chrome across the redesigned cards lean on this —
 // declared once here so every page gets the same font file, not a per-card fetch.
@@ -26,7 +27,16 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={plexMono.variable}>
-      <body>{children}</body>
+      {/*
+        The compliance strings are mounted HERE, not per page, because
+        docs/audit-phase-5.md recorded them as missing entirely and they block
+        anything user-facing on either board. A page that forgets to include
+        them is the failure this placement removes.
+      */}
+      <body>
+        {children}
+        <ComplianceFooter />
+      </body>
     </html>
   );
 }
