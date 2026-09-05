@@ -1797,6 +1797,76 @@ ratings-only models lose to liquid closing lines. It is run because the engine
 is already built and the marginal cost is a few hours, not because it is likely
 to pass. **It must not gate 4.5.**
 
+**RESULT — run 2026-09-04, `ship_gate_nhl.py`. GATE 1 FAILED — by the smallest
+margin in the project — but GATE 3 RETURNED THE FIRST POSITIVE CLV.**
+
+| | n | model | market | model − market | t |
+|---|---|---|---|---|---|
+| vs consensus | 3,600 | 0.67365 | **0.66438** | +0.00927 | **+5.07** |
+| vs `espnbet` | 2,601 | 0.66889 | **0.65934** | +0.00956 | +4.43 |
+
+Accuracy: model 57.3% against consensus 58.9%.
+
+**The gap is the smallest yet — 0.0093, against soccer's 0.0218 and tennis's
+0.0330.** The t-statistic is higher than soccer's only because n is nearly four
+times larger; in effect size this is the closest a model has come.
+
+**GATE 3 — CLV IS POSITIVE AND SIGNIFICANT, the first time in this project:**
+
+```
+n = 2,601   mean CLV +0.00160   SE 0.00057   t = +2.81
+```
+
+**The line moves TOWARD the model's picks after they are made.** Tennis had no
+opening prices at all; EPL soccer measured −0.00092 (t=−0.88), indistinguishable
+from zero. This is different in kind: the model holds information the OPENING
+line does not.
+
+**But it must be squared with gates 1 and 4, and the reconciliation is the
+finding.** The model beats the OPENING line's direction while still losing to
+the CLOSING line's accuracy. Both are true, and together they say: the model is
+picking up the same signal sharp money does — it moves the same way — but less
+of it than the close eventually accumulates.
+
+**The magnitude settles what that is worth.** +0.0016 in probability is about
+0.16%, against a hold of roughly 4-5%. A real edge against the open, an order of
+magnitude too small to pay for the vig. Which is exactly what gate 4 shows:
+
+```
+edge  0%   3,600 bets    −0.51%
+edge  2%   2,503 bets    −2.03%
+edge  5%   1,130 bets    −4.64%
+edge 10%     222 bets   −15.09%
+```
+
+Monotonically worse as the filter tightens — the same signature as tennis and
+soccer. Positive CLV does not rescue a negative ROI when the CLV is a tenth the
+size of the margin.
+
+**Calibration was fixed first, so the failure is conclusive.** Temperature
+scaling fitted on the SELECT window only: `T = 1.06`, recovering **0.00024 of
+the 0.00923 gap — 2.6%**. Consistent with tennis (3%) and soccer (0-6%): the
+deficit is information, not calibration.
+
+**A leakage trap caught before it did damage.** `espnbetliveodds` carries 1,756
+held-out events — more than draftkings — and they are IN-GAME prices that
+already know the score. 3,694 such rows were dropped before anything was
+computed. Including them would not have produced a weak benchmark; it would have
+produced a superhuman market and a hopeless model, and the number would have
+looked plausible.
+
+**Two structural caveats on the benchmark itself.** NHL has **no `pinnacle` and
+no `marketavg`/`marketmax`** — soccer's benchmark books do not exist in this
+sport, so the consensus is built from whatever books cover each game, and the
+**median is 1 book per game**. A one-book "consensus" is just that book. The
+`espnbet` comparison (2,601 events, t=+4.43) is the cleaner of the two and
+agrees. Separately, `sbrconsensus` — 35,750 rows at 100% opening coverage — ends
+in 2022-11, before the held-out window, and would be the better benchmark if the
+window ever moves earlier.
+
+**Does not block 4.5.** The plan decoupled the prop model from the game model
+precisely so this result could not stop it, and nothing here changes that.
+
 #### 4.5 — Prop engine, built and proven on shots on goal **[the real objective]**
 
 **This step builds the ENGINE, on one market. 4.8 extends it to the other
