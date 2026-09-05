@@ -2239,6 +2239,27 @@ The rule 2.6 established and 3.7 kept: serving is built after a gate passes.
 
 ---
 
+#### 4.10 — The NHL stats board **[the shared surface, plus the first sport]**
+
+**This is what makes Phase 4 finish on a screen rather than in a document.**
+
+Builds the shared surface (board component, render plumbing, compliance strings,
+no-edge-language enforcement, betting-board suppression) and lands NHL on it:
+the shots-on-goal projection and ranking, calibrated with `T = 1.58`, with
+uncertainty shown and no edge language anywhere.
+
+**It does NOT wait on 4.7.** 4.7 failed its gate and that gate governs the
+BETTING board only. NHL's prop model clears the stats bar today — 56% accurate,
+correctly ordered (projected 1-2 -> actual 1.80, 2-3 -> 2.28, 3-4 -> 3.28),
+overconfidence measured and correctable.
+
+**Blocked by compliance, not by modelling.** `audit-phase-5.md` records no
+privacy policy, no jurisdiction notice and no "not financial advice" disclaimer
+anywhere in the app. Those ship first or nothing does.
+
+**Done when:** an NHL shots-on-goal ranking is visible, calibrated, carries no
+edge language, and the betting surfaces are still suppressed.
+
 ### Phase 5 — MLB · plate-appearance Monte Carlo, game and props from one engine
 
 **Infrastructure first: `ingestStatcastPitchesJob`** (never run). Statcast is the
@@ -2372,7 +2393,7 @@ count distribution. Second-biggest NFL market by volume, worth doing properly.
 
 ---
 
-### Phase 9 — Surfacing: the two boards, on DIFFERENT bars
+### Surfacing — the two boards, on DIFFERENT bars
 
 **THE TWO BOARDS ANSWER DIFFERENT QUESTIONS AND ARE GATED DIFFERENTLY. This is
 the correction to a rule that was never a design decision.**
@@ -2435,18 +2456,6 @@ soccer (t=+3.05), NHL games (t=+5.07), NHL props (t=+3.03) all failed.
 sport clears. **A sport can therefore have a stats board and no betting board,
 and that is the expected state for all of them right now.**
 
-#### 9c. What ships, per sport, in order
-
-1. **Stats board** as soon as a sport's model is calibrated and ordered
-   correctly — that is now, for NHL shots on goal.
-2. **Market filter** on the board, per sport.
-3. **Betting board** only when 9b's gate is cleared.
-4. **Un-suppress render paths SELECTIVELY.** `EdgeBadge` in `OddsChip.tsx`,
-   `GameHeroCard`'s hardcoded `mlPercent`/`totalPercent`, and
-   `TodaysPicksModal`'s empty score-grade div are **betting-board** surfaces and
-   stay off. The stats board is its own surface and does not wait on them.
-5. **The prompt system**, revisited against what the boards actually surface.
-
 #### 9d. The line that must not be crossed
 
 The distinction holding this apart is not cosmetic and is the reason two bars
@@ -2457,3 +2466,60 @@ the same failure as the old blanket rule, running the other way.
 
 Compliance strings, jurisdiction notice and a "not financial advice" disclaimer
 are required on both (`audit-phase-5.md` records that none currently exist).
+
+---
+
+### Why surfacing is no longer a phase (was Phase 9)
+
+**This is no longer a phase, and that change matters more than it looks.**
+
+As Phase 9 it sat after MLB, NBA, CFB and NFL while its own text said "built per
+sport as each model ships, not as one big-bang release" — a contradiction that
+resolved in favour of the position on the page. The consequence: **a sport phase
+ended at a gate result, which is a number in a document.** Phases 2, 3 and 4
+finished without a user seeing anything.
+
+There was a defensible reason under the old blanket gate: if nothing renders
+until a model beats the market, you do not know whether you are building a
+surface for anything at all — building it during tennis would have meant
+building it for a model that then failed. **That argument dies with the gate
+split.** The stats board ships regardless now, so there is always something to
+surface, and deferring is delay rather than caution.
+
+#### What is built ONCE (the shared surface)
+
+Built with the first sport that needs it, which is NHL:
+
+1. The board component and its render plumbing.
+2. **Compliance: privacy policy, jurisdiction notice, "not financial advice"
+   disclaimer.** `audit-phase-5.md` records that NONE of these exist. **This
+   blocks anything user-facing, on either board, regardless of sport.**
+3. Enforcement that no edge language reaches the stats board (§9d).
+4. The betting-board suppression logic — `EdgeBadge`, edge percentages and
+   profit framing stay off per sport until that sport clears bar 3.
+
+#### What each sport phase carries (per sport, every time)
+
+Every sport phase now ENDS with its board, not with a gate result:
+
+- the sport's data adapter onto the shared board,
+- its market filter,
+- its calibration constant (NHL's is `T = 1.58`, measured in 4.7),
+- its accuracy-and-ordering check against outcomes,
+- and only if bar 3 was cleared, its betting board.
+
+**A phase is not done when its gate reports. It is done when something is on a
+screen.**
+
+#### Where the work now lives
+
+| | |
+|---|---|
+| **4.10** | NHL stats board — the shared build plus the first sport |
+| **5.x** | MLB phase ends with an MLB board |
+| **6.x** | NBA phase ends with an NBA board |
+| **7.x** | CFB phase ends with a CFB board |
+| **8.x** | NFL phase ends with an NFL board |
+
+The prompt system revisit (old Phase 9 item 5) moves to 4.10, since it has to
+match what the first real board actually surfaces rather than a hypothetical one.
