@@ -132,17 +132,38 @@ test('a market without calibration is ranked but shows no probability', () => {
   assert.equal(points!.rows[0].probability, 0.62);
 });
 
-test('markets whose ordering runs backwards never reach the board', () => {
-  // hits (Q3 2.40 -> Q4 2.33) and blocked-shots (Q3 2.03 -> Q4 1.81) were both
-  // measured non-monotone in 4.9. Even if a row for one appeared in the cache,
-  // the adapter must not surface it: a backwards ranking is the one failure
-  // that makes a ranking board lie.
+test('an unrecognised market never reaches the board', () => {
+  // The ORDERING gate lives in `model_calibration.active`, enforced by the
+  // serving job — not here. What the adapter must still refuse is a dimension
+  // it has no display contract for, which would otherwise render with an empty
+  // label and no unit.
+  //
+  // This test previously asserted that `hits` and `blocked-shots` were excluded
+  // for a backwards ordering. That verdict was an artifact of the walk-forward
+  // building history from prop rows only; once the fit and the serving path
+  // built history the same way, both markets ordered cleanly. A test that
+  // hard-codes a measurement is a test that goes stale the moment the
+  // measurement is redone.
   const data = toNhlStatsBoardData(
-    [mk('1', 'A', 'hits', 2.2, null, null), mk('2', 'B', 'blocked-shots', 1.9, null, null)],
+    [mk('1', 'A', 'faceoff-wins', 8.2, null, null), mk('2', 'B', 'giveaways', 1.9, null, null)],
     '2026-01-14',
   );
   assert.equal(data.markets.length, 0);
   assert.ok(data.emptyReason, 'an empty board explains itself rather than rendering blank');
+});
+
+test('every market the serving job may write has a display contract', () => {
+  // The serving job writes any market with an ACTIVE calibration. If one of
+  // those has no entry in the adapter's label map it is silently dropped, and a
+  // board quietly missing a market looks identical to a board that has none.
+  const dims = ['shots-on-goal', 'points', 'assists', 'goals', 'hits', 'blocked-shots'];
+  const data = toNhlStatsBoardData(
+    dims.map((d, i) => mk(String(i), `P${i}`, d, 1 + i, null, null)),
+    '2026-01-14',
+  );
+  assert.equal(data.markets.length, dims.length,
+    `every dimension the serving job can write must render; got ` +
+      `${data.markets.map((m) => m.key).join(', ')}`);
 });
 
 function mk(

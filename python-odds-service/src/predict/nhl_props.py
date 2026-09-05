@@ -283,3 +283,44 @@ async def load_shot_props(conn=None, market: str = "Total Shots on Goal",
     return {"rows": rows,
             "stats": {"joined": len(raw), "goalies_dropped": goalies,
                       "missing_stats": no_sog, "usable": len(rows)}}
+
+
+async def load_game_history(stat_key: str = "sog", conn=None) -> list[tuple]:
+    """Every skater game, as (game_date, athlete_id, stat, toi), date-ordered.
+
+    THE WALK-FORWARD AND THE SERVING PATH MUST BUILD HISTORY THE SAME WAY, and
+    before this existed they did not. `fit_nhl_props_all.walk()` accumulated a
+    player's history from the PROP ROWS it was scoring — so a player carried
+    only the games that happened to have a prop line. `nhl_prop_serving.build`
+    accumulates from every row of `player_game_history`.
+
+    Measured on 2026-01-14 before this was fixed: serving saw 29.5x more history
+    (553.8 games per player against 18.8), and the two constructions disagreed by
+    a mean 0.38 shots on the same player, same date, same constants — with only
+    16% of players agreeing within 0.10. The gate was therefore passed by one
+    model and the board was showing another.
+
+    Extraction happens in SQL rather than by parsing 683k jsonb blobs in Python:
+    only four scalars per row are ever used, and pulling the whole document to
+    read two fields is what makes this loader slow enough to discourage using it.
+    """
+    import db as _db
+
+    sql = f"""
+        SELECT game_date, athlete_id,
+               (stats->>'{stat_key}')::float AS stat,
+               (stats->>'toiMinutes')::float AS toi
+          FROM player_game_history
+         WHERE sport = 'nhl'
+           AND NOT (stats ? 'isGoalie')
+           AND stats ? 'toiMinutes'
+           AND stats ? '{stat_key}'
+         ORDER BY game_date, athlete_id
+    """
+    if conn is not None:
+        raw = await conn.fetch(sql)
+    else:
+        pool = await _db.get_pool()
+        async with pool.acquire(timeout=180.0) as c:
+            raw = await c.fetch(sql)
+    return [(r["game_date"], str(r["athlete_id"]), r["stat"], r["toi"]) for r in raw]

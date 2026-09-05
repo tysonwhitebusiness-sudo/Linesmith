@@ -16,6 +16,10 @@
  * flag alongside it, because a flag can disagree with the data and a null
  * cannot.
  *
+ * As measured 2026-09-05, all six NHL markets rank and four carry a
+ * probability; assists and blocked shots rank without one (calibration gaps
+ * 0.090 and 0.058 against a 0.05 tolerance).
+ *
  * WHAT IS DELIBERATELY ABSENT AND MUST STAY ABSENT: edge, market probability,
  * implied probability, prop score, grade, expected value, price. Those are
  * claims about someone else's price and they are gated on a bar nothing in this
@@ -86,26 +90,40 @@ export interface NhlProjectionApiRow {
 }
 
 /**
- * Display metadata per NHL market.
+ * Display metadata per NHL market — LABELS ONLY. This is not a gate.
  *
- * ONLY MARKETS THE MODEL EARNED APPEAR HERE, and the omissions are the point:
- * `hits` and `blocked-shots` are absent because their ordering was measured
- * BACKWARDS across five equal-count quintiles (hits Q3 2.40 -> Q4 2.33,
- * blocked-shots Q3 2.03 -> Q4 1.81). A ranking board whose ranking runs the
- * wrong way is the one failure worth suppressing a whole market over.
+ * THE GATE LIVES IN EXACTLY ONE PLACE: `model_calibration.active`, enforced by
+ * the serving job. A market whose ordering stops being monotone stops being
+ * written, so it leaves the board without anyone editing this file. A second
+ * gate here would be a second thing to keep in sync, and two gates that can
+ * disagree are worse than one — the failure this whole phase kept hitting.
  *
- * This map is display-only. The real gate is `model_calibration.active`, which
- * the serving job already enforces — a market that stops qualifying stops being
- * written, so it disappears from the board without anyone editing this file.
+ * An earlier version of this map DID double as a gate, excluding `hits` and
+ * `blocked-shots` because their ordering had been measured backwards. That
+ * measurement was an artifact of the walk-forward building history from prop
+ * rows only (18.8 games per player) while serving used every game (553.8). Once
+ * both sides built history the same way, BOTH markets ordered cleanly — hits
+ * 1.60 -> 1.87 -> 2.20 -> 2.43 -> 2.83, blocked shots 1.56 -> 1.68 -> 1.72 ->
+ * 1.86 -> 2.02. Hard-coding that stale verdict here is exactly what this map no
+ * longer does.
  */
 const NHL_MARKETS: Record<string, { label: string; unit: string }> = {
   'shots-on-goal': { label: 'Shots on goal', unit: 'shots' },
   points: { label: 'Points', unit: 'points' },
   assists: { label: 'Assists', unit: 'assists' },
   goals: { label: 'Goals', unit: 'goals' },
+  hits: { label: 'Hits', unit: 'hits' },
+  'blocked-shots': { label: 'Blocked shots', unit: 'blocks' },
 };
 
-const MARKET_ORDER = ['shots-on-goal', 'points', 'assists', 'goals'];
+const MARKET_ORDER = [
+  'shots-on-goal',
+  'points',
+  'assists',
+  'goals',
+  'hits',
+  'blocked-shots',
+];
 
 export function toNhlStatsBoardData(
   rows: NhlProjectionApiRow[],

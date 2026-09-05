@@ -84,14 +84,33 @@ def temper(p, T):
     return 1.0 / (1.0 + math.exp(-lo))
 
 
-def walk(rows, w, k, disp, lr, lt):
-    hist, out = {}, []
+def walk(rows, w, k, disp, lr, lt, games):
+    """Walk-forward over prop rows, with history built from EVERY game.
+
+    `games` is the full skater-game history from `nhl_props.load_game_history`,
+    date-ordered. A two-pointer merge folds in every game strictly BEFORE the
+    prop row's own date, then projects — which is exactly what the serving path
+    does, and is the whole point of passing it in.
+
+    This used to accumulate history from the prop rows themselves, so a player
+    carried only the games that happened to have a prop line. Measured on
+    2026-01-14, that gave the fit 18.8 games per player where serving had 553.8,
+    and the two disagreed by a mean 0.38 shots on identical inputs. The gate was
+    being passed by a model the board did not serve.
+
+    The strict `<` is the leakage control: a game on the prop's own date must
+    not enter the history that predicts it.
+    """
+    hist, out, i = {}, [], 0
     for r in rows:
-        h = hist.setdefault(r.athlete_id, npx.PlayerHistory())
-        if h.games >= MIN_PRIOR:
+        while i < len(games) and games[i][0] < r.played:
+            _, aid, stat, toi = games[i]
+            hist.setdefault(aid, npx.PlayerHistory()).add(stat, toi)
+            i += 1
+        h = hist.get(r.athlete_id)
+        if h is not None and h.games >= MIN_PRIOR:
             p = npx.project(h, lr, lt, k=k, toi_window=w)
             out.append((r, npx.nb_prob_over(r.line, p.expected_sog, disp), p.expected_sog))
-        h.add(r.actual_sog, r.toi)
     return out
 
 
@@ -112,22 +131,32 @@ def score(sc, lo=None, hi=None):
 async def run_market(market: str, persist: bool = False) -> None:
     d = await npx.load_shot_props(market=market)
     rows = d["rows"]
+    # Same history source the serving path uses. Loaded per market because the
+    # stat column differs; the row set is otherwise identical.
+    games = await npx.load_game_history(npx.MARKET_STAT[market])
     sel_src = [r for r in rows if r.played < CUTOFF]
     if len(sel_src) < 200:
         print(f"\n{market}: only {len(sel_src)} SELECT rows — too few to fit")
         return
-    lr = sum(r.actual_sog for r in sel_src) / sum(r.toi for r in sel_src)
-    lt = sum(r.toi for r in sel_src) / len(sel_src)
+    # League rate/TOI from the SELECT-window GAMES, not from prop rows. Prop
+    # lines are offered disproportionately on high-volume players, so a rate
+    # derived from them is biased upward relative to the population the
+    # histories are actually drawn from — and serving applies these constants to
+    # every skater, lined or not.
+    sel_games = [g for g in games if g[0] < CUTOFF]
+    lr = (sum(g[2] for g in sel_games) / sum(g[3] for g in sel_games)
+          if sel_games else 0.0)
+    lt = sum(g[3] for g in sel_games) / len(sel_games) if sel_games else 0.0
 
     best = None
     for w in TOI_WINDOWS:
         for k in SHRINK_KS:
             for dsp in DISPERSIONS:
-                m = score(walk(rows, w, k, dsp, lr, lt), hi=CUTOFF)
+                m = score(walk(rows, w, k, dsp, lr, lt, games), hi=CUTOFF)
                 if m and (best is None or m["ll"] < best[0]):
                     best = (m["ll"], w, k, dsp)
     _, bw, bk, bd = best
-    sc = walk(rows, bw, bk, bd, lr, lt)
+    sc = walk(rows, bw, bk, bd, lr, lt, games)
     held = score(sc, lo=CUTOFF)
     sel = score(sc, hi=CUTOFF)
     if not held:

@@ -5,7 +5,7 @@ Checks, in the order the exit gate lists them:
   3. no leakage — history strictly before the as-of date, counted not assumed
   4. projections written, and compared to real outcomes on that slate
   5. NO edge/market/score fields written by this pipe — asserted
-  6. blocked-shots and hits absent, because their ordering inverts
+  6. every served market has an ACTIVE calibration (the ordering gate)
 
 Run from python-odds-service/:
     python verify_nhl_serving.py [YYYY-MM-DD]
@@ -23,18 +23,21 @@ from predict import nhl_prop_serving as srv  # noqa: E402
 
 # Lines only matter for the two markets that earned a displayed probability.
 # Real, standard NHL numbers.
-LINES = {"points": 0.5, "assists": 0.5}
+LINES = {"points": 0.5, "assists": 0.5, "goals": 0.5,
+         "shots-on-goal": 2.5, "hits": 1.5, "blocked-shots": 1.5}
 
 
 async def pick_slate(conn) -> date:
     if len(sys.argv) > 1:
         return date.fromisoformat(sys.argv[1])
-    # A mid-season date with a full slate, so history is deep and the slate is
-    # not a two-game night.
+    # A full slate INSIDE the window where prop lines actually exist (Oct 2025
+    # onward). The earlier default picked the busiest date in the whole table,
+    # which landed in Jan 2024 — BEFORE any NHL prop row exists, so the model was
+    # being verified on a slate it could never have been fitted against.
     return await conn.fetchval(
         "SELECT game_date FROM player_game_history WHERE sport='nhl' "
-        "AND game_date < '2026-04-01' GROUP BY game_date "
-        "ORDER BY count(*) DESC LIMIT 1")
+        "AND game_date >= '2025-11-01' AND game_date < '2026-04-01' "
+        "GROUP BY game_date ORDER BY count(*) DESC LIMIT 1")
 
 
 async def main() -> int:
@@ -50,11 +53,19 @@ async def main() -> int:
         print(f"  history rows   : {res.get('history_rows'):,}")
         print(f"  projections    : {res['projections']:,}   written {res['written']:,}")
 
-        # --- 6. the two backwards markets must be absent -------------------
+        # --- 6. only markets with an ACTIVE calibration are served ---------
+        # This used to assert that `hits` and `blocked-shots` specifically were
+        # absent. That hard-coded a measurement, and the measurement changed:
+        # both markets order cleanly once the fit and the serving path build
+        # history the same way. Asserting the RULE — served set is a subset of
+        # the active calibrations — survives a re-fit; asserting the verdict
+        # does not.
+        active = {r["market"] for r in await conn.fetch(
+            "SELECT market FROM model_calibration WHERE sport='nhl' AND active=true")}
         served = set(res["markets"])
-        bad = served & {"blocked-shots", "hits"}
-        print(f"\n  [gate 6] markets whose ordering inverts, excluded: "
-              f"{'PASS' if not bad else 'FAIL ' + str(bad)}")
+        print(f"\n  [gate 6] served markets all have an active calibration: "
+              f"{'PASS' if served <= active else 'FAIL extra=' + str(served - active)}"
+              f"   (active {len(active)}, served {len(served)})")
 
         # --- 3. leakage: every history row strictly before as_of -----------
         leaked = await conn.fetchval(

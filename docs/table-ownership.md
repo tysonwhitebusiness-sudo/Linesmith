@@ -79,7 +79,7 @@ comments explaining the removal name the functions they replaced.
 | 33 | `walkforward_results` | **Python** | — | `write_walkforward_result` | — |
 | 34 | `job_health_checks` | **Python** | — | `_write_health_check_results_inner` | — |
 | 35 | `job_locks` | **TS** | `withJobLock` ← `lib/scheduler.ts`'s two timers | — | 2.7c |
-| 36 | `mlb_prop_model_cache` | **Python** | — (read-only via `readPropModelCacheForGames`) | `write_prop_model_cache` ← `computeMlbPropPredictionsJob` | 2.7a |
+| 36 | `prop_model_cache` | **Python** | — (read-only via `readPropModelCacheForGames`, `readNhlProjections`) | `write_prop_model_cache` ← `computeMlbPropPredictionsJob`, `nhlProjectionsJob` | 2.7a, 4.9 |
 
 ---
 
@@ -91,7 +91,9 @@ Q17). It had no writer or reader in either tree, no `CREATE TABLE` in
 absent from P3 §4's map, which accounts for 34 tables (22 shared + 6 + 6), not
 35; the audit was working from that map rather than from `information_schema`,
 which is how it went unnoticed. Dropping it and adding `job_locks` (2.7c) left the count
-at 35; `mlb_prop_model_cache` (2.7a) then took it to **36**.
+at 35; `prop_model_cache` (2.7a, renamed from `mlb_prop_model_cache` in 4.9
+once NHL became its second sport — it has been sport-keyed since creation and
+only the NAME was MLB-only) then took it to **36**.
 
 **THESE THREE TOOK TWO CORRECTIONS TO GET RIGHT, and both are recorded because
 the second one contradicts the first.**
@@ -155,7 +157,7 @@ page-load path. Same accepted category as `model_weights` and
 `team_elo_history`'s `elo-backfill`. Recorded so the Owner column is not read
 as "nothing in TypeScript can write this".
 
-**`mlb_prop_model_cache` is the one table created by Phase 2's own work**
+**`prop_model_cache` is the one table created by Phase 2's own work**
 (migration `20260829010000`, task 2.7a). Python writes it, TypeScript only
 reads it, and it is the mechanism by which `adapter.ts` renders Python's model
 numbers instead of its own. It is deliberately *not* `pick_history`: that is a

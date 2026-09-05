@@ -2265,6 +2265,93 @@ remains — P(points > 1.5) is not guaranteed coherent with the goal and assist
 distributions it is made of. Worth doing before the board shows all three side
 by side, where a user could see them disagree.
 
+#### PHASE 4 AUDIT, 2026-09-05 — one serious defect found, fixed, and it changed every verdict
+
+**THE SERVED MODEL WAS NOT THE VALIDATED MODEL.** The walk-forward built each
+player's history by walking the PROP ROWS, so a player carried only the games
+that happened to have a prop line. The serving path built history from every row
+of `player_game_history`. Measured on 2026-01-14, same players, same date, same
+constants:
+
+```
+mean games of history, fit   (prop rows only)    18.8
+mean games of history, serve (all games)        553.8      29.5x more
+mean |projection difference|                     0.38 shots
+median 0.29   p90 0.76   max 1.70
+players agreeing within 0.10 shots               16.0%
+```
+
+The gate was passed by one model and the board was showing another. No test
+caught it, because both sides were individually correct; only comparing them
+found it.
+
+**Fixed by making the fit use the serving path's history source** —
+`nhl_props.load_game_history`, a two-pointer merge folding in every game strictly
+before each prop row's own date. The strict `<` is the leakage control, and it is
+the same rule serving asserts.
+
+**Re-fitting changed the verdict for FOUR of six markets, all in the same
+direction — better:**
+
+| market | ordering, thin history | ordering, full history | ranks | shows % |
+|---|---|---|---|---|
+| Shots on goal | monotone, gap 0.057 | monotone, **gap 0.037** | yes | **now yes** |
+| Points | monotone, gap 0.013 | monotone, gap 0.015 | yes | yes |
+| Goals | monotone, gap 0.131 | monotone, **gap 0.045** | yes | **now yes** |
+| Hits | **INVERTED** | **monotone**, gap 0.022 | **now yes** | **now yes** |
+| Blocked shots | **INVERTED** | **monotone**, gap 0.058 | **now yes** | no |
+| Assists | monotone, gap 0.026 | monotone, **gap 0.090** | yes | **now no** |
+
+**The two markets whose ordering ran BACKWARDS now order cleanly** — hits 1.60,
+1.87, 2.20, 2.43, 2.83; blocked shots 1.56, 1.68, 1.72, 1.86, 2.02. The inversion
+was a sample-size artifact of 18.8 games per player, not a property of those
+markets. **All six NHL markets now rank; four carry a probability.** Assists moved
+the other way and lost its percentage, which is the check working rather than a
+regression.
+
+**A second, quieter fix in the same change: the league rate was derived from
+prop rows.** Prop lines are offered disproportionately on high-volume players, so
+a rate taken from them is biased upward relative to the population the histories
+are drawn from — and serving applies those constants to every skater, lined or
+not. Now taken from the SELECT-window games.
+
+**Two stale gates removed, both of which hard-coded a measurement rather than a
+rule.** The adapter's market map excluded hits and blocked shots by name, and the
+serving verifier asserted those two were absent. Both encoded a verdict that had
+just been overturned. The gate now lives in exactly one place —
+`model_calibration.active` — because two gates that can disagree are worse than
+one.
+
+**Also found: the 4.9 verification slate was outside the prop window.** It was
+chosen as "the date with the most rows", which landed on 2024-01-13 — before any
+NHL prop row exists, since the archive starts October 2025. Harmless for what it
+tested, but it meant the board was rendering a slate the model could never have
+been fitted against. Re-verified on 2026-03-28, a real in-window slate.
+
+**Everything else checked out.**
+
+```
+full suite                345 tests, 0 fail      production build   exit 0
+tsc --noEmit              clean                  python syntax      6/6 modules
+TS writers of prop_model_cache                   NONE (read-only)
+GET /api/nhl/projections writes                  NONE
+serving writes                                   only write_prop_model_cache
+leakage (history max < as-of)                    PASS, 573 same-day rows excluded
+edge fields on 3,210 served rows                 NONE
+probability present iff calibration earned it    4 of 6 markets, all-or-nothing
+mobile 375px: body scrolls sideways              false (table scrolls in its own box)
+dark mode                                        app is single-theme light throughout
+name coverage, in-window slate                   510/535 = 95.3%
+```
+
+**The strongest check was the cheapest: does the ranking look right to someone
+who watches hockey?** Assists — McDavid, Quinn Hughes, MacKinnon. Blocked shots —
+Seider, Trouba, Guhle, and every one of the top 13 a defenceman. Hits — Kiefer
+Sherwood first, on 13.5 minutes a night. Sherwood holds the NHL single-season
+hits record, and the model found him from box scores alone with no position input.
+A model that ranked forwards above defencemen for blocked shots would be obviously
+broken in a way no aggregate statistic reports.
+
 #### 4.9 — Serving, SPLIT BY CONSUMER **[the projection pipe is not gated on 4.7]**
 
 **The old rule here was stale in exactly the way Phase 9's was, and for the same
