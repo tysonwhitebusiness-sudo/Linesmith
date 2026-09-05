@@ -1288,6 +1288,11 @@ class PropModelCacheRow:
     league_rate: float | None
     matchup_favorable: bool | None
     model_version: int | None
+    # Phase 4.9 — the stats board ranks on the expected COUNT, not on the
+    # probability of clearing a line. Default None so every existing edge-pipe
+    # caller keeps its current shape unchanged.
+    projection: float | None = None
+    projected_toi: float | None = None
 
 
 async def write_prop_model_cache(rows: list[PropModelCacheRow]) -> int:
@@ -1310,9 +1315,10 @@ async def write_prop_model_cache(rows: list[PropModelCacheRow]) -> int:
                 INSERT INTO prop_model_cache (
                   sport, game_id, subject_id, dimension, category, line,
                   model_prob, model_std_dev, model_sample_size, league_rate,
-                  matchup_favorable, model_version, computed_at
+                  matchup_favorable, model_version, projection, projected_toi,
+                  computed_at
                 )
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12, now())
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
                 ON CONFLICT (sport, game_id, subject_id, dimension, category) DO UPDATE SET
                   line = excluded.line,
                   model_prob = excluded.model_prob,
@@ -1321,12 +1327,14 @@ async def write_prop_model_cache(rows: list[PropModelCacheRow]) -> int:
                   league_rate = excluded.league_rate,
                   matchup_favorable = excluded.matchup_favorable,
                   model_version = excluded.model_version,
+                  projection = excluded.projection,
+                  projected_toi = excluded.projected_toi,
                   computed_at = excluded.computed_at
                 """,
                 [
                     (r.sport, r.game_id, r.subject_id, r.dimension, r.category, r.line,
                      r.model_prob, r.model_std_dev, r.model_sample_size, r.league_rate,
-                     r.matchup_favorable, r.model_version)
+                     r.matchup_favorable, r.model_version, r.projection, r.projected_toi)
                     for r in rows
                 ],
             )
@@ -2969,9 +2977,20 @@ class CalibrationInput:
 
 async def write_calibration(input: CalibrationInput, activate: bool) -> CalibrationRow:
     """Same versioned-transaction shape as write_model_weights: versions
-    are per (sport, market), monotonically increasing; activating a new
-    version deactivates every prior version for that same (sport, market)
-    in the same transaction."""
+    are per (sport, market), monotonically increasing.
+
+    A NEW VERSION ALWAYS SUPERSEDES PRIOR ONES, whether or not it activates.
+    This used to deactivate prior versions only when `activate` was true, which
+    left a failing re-fit unable to RETIRE a market: NHL's `hits` was measured
+    monotone under a coarse ordering check (v1, active), then measured
+    NON-monotone under the corrected quintile check (v2, inactive) — and v1
+    stayed active, so a market whose ranking had just been shown to be backwards
+    kept being served. The failure ran in the dangerous direction, which is why
+    it is fixed here rather than at the one call site that hit it: any caller
+    re-fitting a model that got worse had the same hole.
+
+    The newest fit is the truth about a market. A prior version staying active
+    behind it is never the intent."""
     pool = await get_pool()
     async with pool.acquire(timeout=15.0) as conn:
         async with conn.transaction():
@@ -2982,12 +3001,11 @@ async def write_calibration(input: CalibrationInput, activate: bool) -> Calibrat
             )
             next_version = (max_version_row["v"] or 0) + 1
 
-            if activate:
-                await conn.execute(
-                    "UPDATE model_calibration SET active = false WHERE sport = $1 AND market = $2",
-                    input.sport,
-                    input.market,
-                )
+            await conn.execute(
+                "UPDATE model_calibration SET active = false WHERE sport = $1 AND market = $2",
+                input.sport,
+                input.market,
+            )
 
             await conn.execute(
                 """

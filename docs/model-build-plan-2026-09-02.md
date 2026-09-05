@@ -2331,6 +2331,50 @@ and verified against known outcomes. That is a stronger test than a live slate,
 not a substitute for one — a live slate proves scheduling and roster resolution,
 which a historical run cannot.
 
+**RESULT — 4.9 BUILT AND VERIFIED, run 2026-09-05 against the real NHL slate of
+2024-01-13 (576 skaters, 233,977 history rows). All six gates pass.**
+
+```
+markets served : assists, goals, points, shots-on-goal
+projections    : 2,276 written
+[gate 3] history max date 2024-01-12 < as-of 2024-01-13   PASS  (611 same-day rows excluded)
+[gate 5] no edge-pipe fields set on 2,276 rows            PASS
+[gate 6] markets whose ordering inverts, excluded         PASS
+
+                  n     projected   actual    bias      r
+shots-on-goal    569      1.74       1.73     +0.6%   +0.475
+points           569      0.46       0.42     +9.5%   +0.354
+assists          569      0.29       0.26    +12.3%   +0.272
+goals            569      0.17       0.15     +8.3%   +0.213
+```
+
+Probability written for assists and points only (569 of 569 each); null for
+shots-on-goal and goals, which rank without one.
+
+**A REAL BUG, FOUND BY GATE 6 AND FIXED AT THE SOURCE.** The first verification
+run served `hits` — a market whose ordering had just been measured backwards.
+Cause: `db.write_calibration` deactivated prior versions ONLY when the new
+version activated. So a re-fit that got WORSE could not retire a market: hits v1
+(monotone under the coarse check) stayed active while hits v2 (non-monotone
+under the corrected quintile check) was written inactive beneath it. **The
+failure ran in the dangerous direction** — a market shown to be backwards kept
+being served. Fixed in `write_calibration` itself rather than at the call site,
+because every caller re-fitting a model that got worse had the same hole: a new
+version now always supersedes prior ones, whether or not it activates.
+
+**What this run does NOT prove.** The participant list came from the played
+games themselves — a historical run learns who dressed from the future. That is
+standard for measuring projection quality, but scheduling and roster resolution
+are untested and stay untested until a real October slate runs. `nhlProjectionsJob`
+is registered hourly and will return zero projections until then, which is the
+correct result rather than a failure.
+
+**The single-slate biases (+8% to +12% on the three low-count markets) are one
+night, n=569, and are not the walk-forward's numbers** (+2.7% points, +1.5%
+assists, +4.6% goals). One slate cannot separate a real bias from variance;
+these are reported because suppressing them would be worse, not because they
+are a measurement.
+
 ##### Exit gate for 4.9
 
 1. `prop_model_cache` rename applied, all three touchpoints updated, MLB's

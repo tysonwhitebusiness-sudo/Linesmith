@@ -1023,6 +1023,30 @@ def _make_generic_prop_production_job(sport_key: str, job_name: str):
     return job
 
 
+async def job_nhl_projections(yield_fn=None) -> dict:
+    """Phase 4.9 — the PROJECTION pipe: what the NHL stats board reads.
+
+    Deliberately separate from genericPropProductionNhlJob, which is the EDGE
+    pipe (writes `pick_history` from `generic_prop_score.build_candidate`, a
+    different model that the 4.5-4.8 walk-forward says nothing about). Two
+    pipes, two tables, two gates: this one ships on ordering, that one stays
+    behind 4.7.
+
+    Serves TODAY's slate. NHL is out of season until October, so this returns
+    zero projections until then and that is the correct result, not a failure —
+    `build` reports the reason rather than raising, so health_check sees a job
+    that ran fine with nothing to do.
+    """
+    from datetime import date as _date
+    from predict.nhl_prop_serving import run
+
+    # Standard NHL numbers, and they matter only for the two markets that
+    # earned a displayed probability; every other market gets a projection and
+    # a null probability regardless of what is passed here.
+    return await _run_timed("nhlProjectionsJob",
+                            run(_date.today(), {"points": 0.5, "assists": 0.5}))
+
+
 job_generic_prop_production_nfl = _make_generic_prop_production_job("nfl", "genericPropProductionNflJob")
 job_generic_prop_production_cfb = _make_generic_prop_production_job("cfb", "genericPropProductionCfbJob")
 job_generic_prop_production_nba = _make_generic_prop_production_job("nba", "genericPropProductionNbaJob")
@@ -1368,6 +1392,7 @@ JOB_REGISTRY = [
     # 60-minute cadence: the interval was never the bug, the missing
     # start-time check was, and a shorter interval would only have made a
     # leaked first-tick land sooner.
+    ("nhlProjectionsJob", job_nhl_projections, 60 * 60),
     ("genericPropProductionNflJob", job_generic_prop_production_nfl, 60 * 60),
     ("genericPropProductionCfbJob", job_generic_prop_production_cfb, 60 * 60),
     ("genericPropProductionNbaJob", job_generic_prop_production_nba, 60 * 60),
