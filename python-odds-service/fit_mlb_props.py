@@ -349,23 +349,40 @@ async def main() -> int:
 
     pool = await db.get_pool()
     results = []
-    async with pool.acquire(timeout=1800.0) as conn:
-        # THIS IS AN OFFLINE FIT, NOT A REQUEST PATH. The default 2-minute
-        # statement timeout is right for anything a user waits on and wrong
-        # here: one market's join spans 1.3M prop rows against 727k player-games
-        # and the run died on it twice. Raised deliberately and only for this
-        # connection, alongside the indexes in migration 20260906010000 that make
-        # it unnecessary in the normal case.
-        await conn.execute("SET statement_timeout = '15min'")
-        for slug in slugs:
-            r = await run_market(conn, slug, persist)
-            if r:
-                results.append(r)
+    # ONE CONNECTION PER MARKET, NOT ONE FOR THE WHOLE RUN. Holding a single
+    # connection across a multi-hour fit means the pool eventually reclaims it
+    # and the next query dies with "connection has been released back to the
+    # pool" — which is exactly how the third attempt at this fit ended, after
+    # completing one market and then sitting idle for hours. A market takes
+    # minutes; a connection held for minutes is uncontroversial.
+    for slug in slugs:
+        async with pool.acquire(timeout=300.0) as conn:
+            # THIS IS AN OFFLINE FIT, NOT A REQUEST PATH. The default 2-minute
+            # statement timeout is right for anything a user waits on and wrong
+            # here: one market's join spans 1.3M prop rows against 727k
+            # player-games. Raised deliberately, per connection, alongside the
+            # indexes in migration 20260906010000 that should make it moot.
+            await conn.execute("SET statement_timeout = '15min'")
+            try:
+                r = await run_market(conn, slug, persist)
+            except Exception as exc:                       # noqa: BLE001
+                # ONE MARKET'S FAILURE MUST NOT COST THE OTHER THIRTEEN. Three
+                # earlier runs lost every subsequent market to a single query
+                # error; the fit now records the failure and carries on.
+                print()
+                print(f"{slug}: FAILED — {type(exc).__name__}: {exc}")
+                results.append({"slug": slug, "monotone": False, "gap": 9.9,
+                                "ece": 9.9, "prob_ok": False, "n": 0,
+                                "ll": float("nan"), "error": str(exc)[:120]})
+                continue
+        if r:
+            results.append(r)
 
     print("\n" + "=" * 70)
     print(f"  {'market':<22} {'held out':>9} {'log-loss':>9} {'ECE':>7} {'worst':>7}  verdict")
     for r in sorted(results, key=lambda x: x["ece"]):
-        v = ("rank + probability" if r["prob_ok"]
+        v = ("FAILED: " + r["error"][:40] if r.get("error")
+             else "rank + probability" if r["prob_ok"]
              else "rank only" if r["monotone"] else "OFF THE BOARD")
         print(f"  {r['slug']:<22} {r['n']:>9,} {r['ll']:>9.5f} "
               f"{r['ece']:>7.4f} {r['gap']:>7.3f}  {v}")
