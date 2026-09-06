@@ -57,7 +57,7 @@ async def main() -> int:
                f"{'hist':>7} {'live':>7} {'mean out':>9} {'mean line':>9}")
         print(hdr)
         print("  " + "-" * (len(hdr) - 2))
-        problems = []
+        problems, settle = [], []
         for spec in mp.MARKETS:
             keys = " AND ".join(f"stats ? '{k}'" for k in spec.required_keys)
             pgh = await conn.fetchval(f"""
@@ -108,14 +108,69 @@ async def main() -> int:
                 problems.append(f"{spec.slug}: live only, no history to fit on")
             if pgh == 0:
                 problems.append(f"{spec.slug}: settling stat absent from player_game_history")
-            # C: does the outcome plausibly settle the market it claims to?
-            if mean_out and row["ml"] and row["n"]:
-                ratio = mean_out / float(row["ml"])
-                if not 0.4 <= ratio <= 2.5:
+            # C: THE REAL SETTLING CHECK — realised over rate vs the price's own
+            # de-vigged probability, on two-sided rows only.
+            #
+            # Two earlier versions of this check were wrong. Comparing mean
+            # outcome to mean LINE flags every rare-event market, because a book
+            # floors its line at 0.5 no matter how unlikely the event is: doubles
+            # average 0.17 against a 0.5 line and that is a longshot priced as
+            # one, not a mismatch. What actually discriminates is whether the
+            # market AGREES with the outcome being computed. A book that prices
+            # over-0.5-doubles at 17% while the computed stat clears 17% of the
+            # time is describing the same event; a large gap means the stat being
+            # computed is not the stat that settles.
+            #
+            # This is the check that would have caught NHL's Power Play Points,
+            # where the data held powerPlayGoals and the market settled
+            # goals + assists.
+            cmp_row = await conn.fetchrow(f"""
+                SELECT count(*) n,
+                       avg(CASE WHEN {spec.stat_sql} > p.line THEN 1.0 ELSE 0.0 END) over_rate,
+                       avg( (CASE WHEN p.over_price > 0
+                                  THEN 100.0/(p.over_price+100.0)
+                                  ELSE (-p.over_price)/((-p.over_price)+100.0) END)
+                          / ( (CASE WHEN p.over_price > 0
+                                    THEN 100.0/(p.over_price+100.0)
+                                    ELSE (-p.over_price)/((-p.over_price)+100.0) END)
+                            + (CASE WHEN p.under_price > 0
+                                    THEN 100.0/(p.under_price+100.0)
+                                    ELSE (-p.under_price)/((-p.under_price)+100.0) END))
+                          ) implied
+                  FROM prop_odds_archive p
+                  JOIN athlete_crosswalk x
+                    ON x.sport='mlb' AND x.espn_athlete_id = p.athlete_id
+                  JOIN player_game_history g
+                    ON g.sport='mlb' AND g.athlete_id = x.athlete_id
+                   AND g.game_date = p.game_date
+                 WHERE p.sport='mlb' AND p.type_name = ANY($1::text[])
+                   AND p.line IS NOT NULL
+                   AND p.over_price IS NOT NULL AND p.under_price IS NOT NULL
+                   AND {keys} AND stats ? '{spec.volume_key}'""",
+                list(spec.names))
+            if cmp_row and cmp_row["n"] and cmp_row["n"] >= 200:
+                gap = abs(float(cmp_row["over_rate"]) - float(cmp_row["implied"]))
+                settle.append((spec.slug, cmp_row["n"], float(cmp_row["over_rate"]),
+                               float(cmp_row["implied"]), gap))
+                if gap > 0.10:
                     problems.append(
-                        f"{spec.slug}: mean outcome {mean_out:.2f} vs mean line "
-                        f"{float(row['ml']):.2f} (ratio {ratio:.2f}) — the computed "
-                        f"outcome may not be what the market settles")
+                        f"{spec.slug}: realised over rate "
+                        f"{float(cmp_row['over_rate'])*100:.1f}% vs the market's own "
+                        f"de-vigged {float(cmp_row['implied'])*100:.1f}% — a "
+                        f"{gap*100:.1f}pt gap says the computed stat may not be "
+                        f"what settles")
+            elif cmp_row and cmp_row["n"]:
+                settle.append((spec.slug, cmp_row["n"], None, None, None))
+
+        print("
+  SETTLING CHECK — realised over rate vs the market's own de-vigged price")
+        print(f"    {'market':<22} {'joined n':>9} {'over rate':>10} {'implied':>9} {'gap':>7}")
+        for slug, n, orate, imp, gap in settle:
+            if orate is None:
+                print(f"    {slug:<22} {n:>9,}   too few two-sided rows to judge")
+            else:
+                print(f"    {slug:<22} {n:>9,} {orate*100:>9.1f}% {imp*100:>8.1f}% "
+                      f"{gap*100:>6.1f}pt")
 
         # D: every market name in the archive is either modelled or excluded.
         print("\nUNCLASSIFIED MARKET NAMES (must be empty)")

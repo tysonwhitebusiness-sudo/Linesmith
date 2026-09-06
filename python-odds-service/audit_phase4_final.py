@@ -45,7 +45,10 @@ from fit_nhl_props_all import TOI_WINDOWS, SHRINK_KS, DISPERSIONS  # noqa: E402
 # search, so it is not a warning.
 #   dispersion 1e6 : the Poisson limit; overdispersion converges here.
 #   toi_window 0   : "use all history"; a window cannot be negative.
-ENDPOINTS = {("dispersion", "HI"), ("toi_window", "LO")}
+#   shrink_k 0     : NO shrinkage. Shrinkage is n/(n+k), so k=0 is the floor —
+#                    added to the grid precisely so this end became an endpoint
+#                    instead of a truncation, and the checker has to be told.
+ENDPOINTS = {("dispersion", "HI"), ("toi_window", "LO"), ("shrink_k", "LO")}
 
 
 async def check_paths_agree(conn) -> bool:

@@ -2265,6 +2265,58 @@ remains — P(points > 1.5) is not guaranteed coherent with the goal and assist
 distributions it is made of. Worth doing before the board shows all three side
 by side, where a user could see them disagree.
 
+**FINAL NHL STATE, 2026-09-05, after three re-fits. 5 markets rank, 3 carry a
+probability. Bounds check PASSES — nothing on a real bound.**
+
+| market | ordering (quintiles) | calib gap | ranks | shows % | fitted |
+|---|---|---|---|---|---|
+| Points | monotone | **0.015** | yes | **yes** | win 5, k 5, Poisson, T 1.16 |
+| Shots on goal | monotone | **0.037** | yes | **yes** | win 5, k 5, disp 4, T 1.46 |
+| Goals | monotone | **0.045** | yes | **yes** | win 10, k 10, Poisson, T 0.98 |
+| Hits | monotone | 0.053 | yes | no | win all, k 0, disp 4, T 2.51 |
+| Assists | monotone | 0.090 | yes | no | win 10, k 20, Poisson, T 1.16 |
+| Blocked shots | **inverts** | 0.069 | **no** | no | win 40, k 10, Poisson, T 1.22 |
+
+**Closing the last bound changed a verdict, which is why it was worth closing.**
+`hits` sat at `shrink_k = 1`, the low edge of the grid. Adding `k = 0` — no
+shrinkage at all, the genuine floor — let the sweep pick it, and the calibration
+gap moved 0.047 → 0.053, across the 0.05 tolerance. **Hits lost its probability.**
+Had the grid stayed truncated, hits would be publishing a percentage that the
+fuller search says it has not earned.
+
+**THE VERDICTS ARE SENSITIVE TO THE GRID, AND THAT IS ITSELF A RESULT.** Three
+re-fits, three different answers on which markets show a percentage:
+
+```
+narrow grid  [0,5,10] x [5,10,20]      6 rank, 4 show a %   (hits and blocked shots both inverted before the history fix)
+wide grid    [0..40]  x [1..40]        5 rank, 4 show a %   (blocked shots inverted, hits kept its %)
+closed grid  [0..40]  x [0..40]        5 rank, 3 show a %   (hits lost its %)
+```
+
+The ORDERING verdicts barely moved; the PROBABILITY verdicts moved every time.
+That is the honest reading of where the confidence sits: the ranking claim is
+robust, the percentage claim is marginal, and several markets are within a
+percentage point of the tolerance either way. It is an argument for the two-bar
+split rather than against it — a board that had gated everything on the
+percentage would have shipped a different set of markets on each of these runs.
+
+**Blocked shots is the one market off the board, and its parameter sits on a
+real bound** (`toi_window = 40`, the grid maximum). Widening further is possible
+but `PlayerHistory.recent_min` retains 40 games, so 40 is a structural ceiling,
+not an arbitrary one — a longer window would need that buffer enlarged first.
+Since the market is inactive, this is recorded rather than chased.
+
+**A methodological gap worth carrying into Phase 5.** Hyperparameters are
+SELECTED on SELECT-window log-loss but GATED on held-out ordering and
+calibration. Those are different objectives, and a configuration can win the
+first while losing the second — which is exactly what happened to blocked shots
+when the wider grid let it reach `toi_window = 40`. Selecting on the quantity
+actually being gated on would be the more honest design.
+
+**Serving re-verified on 2026-03-28** (in-window slate): 5 markets, 2,675 rows,
+gate 3 (no leakage), gate 5 (no edge fields) and gate 6 (served ⊆ active) all
+pass, probability present on exactly goals, points and shots-on-goal.
+
 #### PHASE 4 AUDIT, 2026-09-05 — one serious defect found, fixed, and it changed every verdict
 
 **THE SERVED MODEL WAS NOT THE VALIDATED MODEL.** The walk-forward built each
