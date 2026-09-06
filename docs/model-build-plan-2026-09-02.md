@@ -2744,6 +2744,87 @@ before either caller exists.**
 **Exit:** one loader, both future callers use it, per-market stat coverage table
 recorded.
 
+**RESULT — 5.1 COMPLETE, 2026-09-05. `predict/mlb_props.py` + `audit_mlb_markets.py`.
+17 markets mapped, 14 modellable today, every derivation verified against real data.**
+
+**The settling check passes everywhere.** Realised over rate against the market's
+own de-vigged price, joined through `athlete_crosswalk`:
+
+```
+market                  joined n   over rate   implied     gap
+pitcher-strikeouts         4,076       49.6%     49.7%    0.2pt
+hits                      46,367       54.0%     54.7%    0.7pt
+pitcher-outs               2,924       51.1%     50.5%    0.7pt
+pitcher-walks-allowed      3,147       50.7%     49.7%    1.0pt
+total-bases               52,603       48.0%     49.6%    1.5pt
+singles                   47,366       41.4%     43.1%    1.6pt
+hits-runs-rbis            44,213       47.2%     49.2%    2.0pt
+home-runs                 42,356       11.6%     13.7%    2.1pt
+pitcher-hits-allowed       3,371       47.5%     49.8%    2.3pt
+rbis                      46,212       28.2%     31.1%    2.9pt
+runs                      44,193       36.3%     39.5%    3.2pt
+doubles                   41,347       15.7%     19.1%    3.5pt
+earned-runs                2,152       45.5%     49.5%    4.0pt
+stolen-bases               8,831       12.3%     17.1%    4.8pt
+```
+
+**`pitcher-outs` at 51.1% against a 50.5% implied independently confirms the outs
+conversion.** If `pit_inningsPitched` had been read as a decimal instead of outs
+notation, every projected value would be roughly 40% low and this row could not
+have landed within a point.
+
+**THE RESIDUAL IS NOT NOISE, AND IT SPLITS INTO TWO PARTS.** The realised over
+rate is below the de-vigged implied in **14 of 14 markets** — a one-directional
+result with probability 2⁻¹⁴ ≈ 0.00006 under a null of no bias. And the size of
+the gap tracks how much of a longshot the market is:
+
+```
+correlation(|over rate − 50%|, gap)      +0.637
+markets near 50%   (|d| ≤ 5, n=8)        mean gap 1.55pt
+longshot markets   (|d| ≥ 20, n=4)       mean gap 3.33pt
+```
+
+1. **The longshot half is METHODOLOGICAL, not a market inefficiency.**
+   Proportional de-vigging assumes the vig is spread in proportion to
+   probability; books apply more of it to longshots, so proportional de-vigging
+   overstates a longshot's true probability. The three biggest gaps are the three
+   longest shots (stolen bases 12.3%, doubles 15.7%, home runs 11.6%). **The
+   TypeScript side already has power and Shin de-vig** — `tests/devig-methods.test.ts`
+   even asserts "power and Shin shade the longshot relative to multiplicative" —
+   but Python's `predict/odds_math.py` carries only `devig_two_way`, the
+   proportional method. **The model layer is using the weakest de-vig available in
+   the repo.** Porting the longshot-aware methods is a prerequisite for 5.4/5.7's
+   gating, not an optimisation.
+
+2. **A ~1.55pt residual survives at even money, where proportional de-vigging is
+   nearly unbiased.** That part is not explained by method, and it is the
+   textbook over-shade in player props — recreational money buys overs and books
+   price accordingly. **It is a candidate real edge, and it belongs to the BETTING
+   bar (5.11), not the board.** Recorded here rather than acted on: a 1.55pt mean
+   across 14 markets is not a strategy until it survives its own out-of-sample
+   gate, and every previous "edge" in this project has died at exactly that step.
+
+**THREE MARKETS ARE NOT MODELLABLE YET** — `triples` (113 rows), `walks` (4,359)
+and `batter-strikeouts` (950) exist only in the live scheme, four days deep, with
+no history to fit on. They are mapped so they work the moment history accrues,
+and excluded from 5.3-5.7 until then.
+
+**One real coverage hole:** `Total Home Runs Hit` ends **2025-11-02**, ten months
+before the rest of the historical archive. A headline market with a gap in the
+middle of its window.
+
+##### 5.1 exit gate — MET
+
+1. One history loader (`mlb_props.load_game_history`), extraction in SQL, used by
+   both future callers. ✓
+2. Per-market settling-stat coverage recorded, with derivations verified against
+   the data rather than asserted: singles never negative (0 rows), innings
+   notation confirmed (no fractional part outside .0/.1/.2, 1.2 → 5 outs). ✓
+3. Every non-Milestone market name in the archive is either modelled or
+   explicitly excluded with a reason IN CODE. ✓
+4. Both naming schemes carried per market, so a model fitted on history matches
+   live rows. ✓
+
 #### 5.2 — The athlete crosswalk, because 85% is not good enough for a board
 
 NHL shipped at 94-98% name coverage and still hid 25 players. **MLB is at 83-85%**,

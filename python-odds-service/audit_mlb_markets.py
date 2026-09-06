@@ -162,8 +162,8 @@ async def main() -> int:
             elif cmp_row and cmp_row["n"]:
                 settle.append((spec.slug, cmp_row["n"], None, None, None))
 
-        print("
-  SETTLING CHECK — realised over rate vs the market's own de-vigged price")
+        print()
+        print("  SETTLING CHECK — realised over rate vs the market's own de-vigged price")
         print(f"    {'market':<22} {'joined n':>9} {'over rate':>10} {'implied':>9} {'gap':>7}")
         for slug, n, orate, imp, gap in settle:
             if orate is None:
