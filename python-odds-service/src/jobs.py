@@ -750,9 +750,11 @@ async def job_maintain_mlb_hr_matchup(yield_fn=None) -> dict:
 
     Same story as park factors: predict/home_run_live_matchup.py has always
     had refresh_team_hr_rate_allowed and nothing ever called it on a schedule
-    — prop_candidates.py only ever READ the cache
-    (load_team_hr_rate_allowed_cache). The writer was
-    lib/sports/mlb/homeRunLiveMatchup.ts, read-through on snapshot rebuild.
+    — its only reader was prop_candidates.py, deleted in Phase 1.1. The
+    writer was lib/sports/mlb/homeRunLiveMatchup.ts, read-through on snapshot
+    rebuild. Phase 3.2 of docs/master-plan-2026-09-06.md owns whether the
+    home-run model survives at all; until it answers, this job keeps the
+    signal current rather than letting it rot mid-decision.
 
     6 hours. This pulls every qualified batter's current-season game log —
     the same expensive pull home_run_model_fit.py's training builder does —
@@ -771,121 +773,6 @@ async def _maintain_mlb_hr_matchup_inner() -> dict:
         await refresh_team_hr_rate_allowed(client, season)
     cache = await load_team_hr_rate_allowed_cache(season)
     return {"season": season, "league_hr_rate": cache.league_hr_rate, "teams": len(cache._by_team)}
-
-
-async def job_compute_mlb_prop_predictions(yield_fn=None) -> dict:
-    """Player-prop predictions — port of adapter.ts's prediction-relevant
-    candidate-building logic (predict/prop_candidates.py) plus Prop Score
-    v1 (predict/prop_pick_history.py), run on a schedule instead of inside
-    every live snapshot request. No status ('pre'/'live'/'done') gate,
-    matching adapter.ts's own unconditional candidate loop — see
-    prop_candidates.build_todays_candidates's docstring for why. Writes
-    via db.log_surfaced's first-surfaced-wins INSERT ... ON CONFLICT DO
-    NOTHING — whichever cycle is first to surface a (subject, dimension,
-    category, game) tuple today locks its model_prob for the day, same as
-    the TS original's logSnapshotCandidates."""
-    return await _run_timed("computeMlbPropPredictionsJob", _compute_mlb_prop_predictions_inner())
-
-
-def apply_prop_calibrations(candidates: list, calibrations: dict) -> tuple[list, int]:
-    """Return (candidates with calibrated model_prob, how many were changed).
-
-    Task 4.3 / Q39. Pulled out of _compute_mlb_prop_predictions_inner so it can
-    be tested without a database -- see test_prop_calibration_applied.py. The
-    job itself is a network+DB call end to end, which is exactly the shape that
-    let 4.3 ship a calibration nothing applied.
-
-    A candidate whose market has no ACTIVE calibration, or whose model_prob is
-    None, passes through untouched. `dataclasses.replace` rather than mutation
-    because CandidateResult is shared with the pick_history writer and an
-    in-place edit would be invisible at the call site.
-    """
-    import dataclasses
-
-    from predict.calibration import apply_calibration
-
-    changed = 0
-    out = []
-    for c in candidates:
-        row = calibrations.get(c.dimension)
-        if row is not None and c.model_prob is not None:
-            c = dataclasses.replace(c, model_prob=apply_calibration(c.model_prob, row))
-            changed += 1
-        out.append(c)
-    return out, changed
-
-
-async def _compute_mlb_prop_predictions_inner() -> dict:
-    from predict import prop_candidates as pc
-    from predict import prop_pick_history
-    from predict import statsapi as sa
-
-    today = sa.eastern_date()
-    season = int(today[:4])
-    async with httpx.AsyncClient() as client:
-        ctx = await pc.build_snapshot_context(client, season)
-        candidates = await pc.build_todays_candidates(client, today, season, ctx)
-
-        # Task 4.3 / Q39 — APPLY the fitted calibrations. Until the Phase 4
-        # gate this did not happen anywhere: 4.3 fitted seven Platt
-        # calibrations into model_calibration and its VERIFY ("the table is no
-        # longer empty") passed, but the only serve-time consumer
-        # (odds_lines_cycle.py:557) asks for ('mlb','moneyline') and every
-        # fitted row is a PROP market. So P3 H1 -- "probabilities are
-        # uncalibrated" -- was still true of every number this job produced.
-        #
-        # This is the right insertion point rather than either writer, because
-        # log_snapshot_candidates and write_prop_model_cache below deliberately
-        # consume THIS ONE list so they cannot disagree about what the model
-        # computed. Calibrating here keeps that invariant; calibrating in one
-        # writer would break it.
-        #
-        # get_active_calibration returns only active=true rows, so a market
-        # whose calibration lost to its baseline (runs, total-bases) is left
-        # uncalibrated -- apply_calibration(p, None) is a no-op by design.
-        calibrations: dict[str, "db.CalibrationRow"] = {}
-        for dim in sorted({c.dimension for c in candidates}):
-            row = await db.get_active_calibration("mlb", dim)
-            if row is not None:
-                calibrations[dim] = row
-        if calibrations:
-            candidates, calibrated_n = apply_prop_calibrations(candidates, calibrations)
-            print(
-                f"[computeMlbPropPredictionsJob] calibrated {calibrated_n} of "
-                f"{len(candidates)} candidates across {len(calibrations)} markets: "
-                f"{', '.join(sorted(calibrations))}",
-                flush=True,
-            )
-
-        await prop_pick_history.log_snapshot_candidates("mlb", candidates)
-
-        # Task 2.7a — the same candidates, written a second way, for a
-        # different job. log_snapshot_candidates above is the immutable
-        # record (first-surfaced-wins, never revised); this is the mutable
-        # current state lib/sports/mlb/adapter.ts reads instead of
-        # recomputing the model itself. Both come from THIS list, in one
-        # pass, so they cannot disagree about what the model computed —
-        # they differ only in which moment each preserves. See migration
-        # 20260829010000.
-        cached = await db.write_prop_model_cache(
-            [
-                db.PropModelCacheRow(
-                    sport="mlb", game_id=c.game_id, subject_id=c.subject_id,
-                    dimension=c.dimension, category=c.category, line=c.line,
-                    model_prob=c.model_prob, model_std_dev=c.model_std_dev,
-                    model_sample_size=c.model_sample_size, league_rate=c.league_rate,
-                    matchup_favorable=c.matchup_favorable, model_version=c.model_version,
-                )
-                for c in candidates
-            ]
-        )
-        pruned = await db.prune_prop_model_cache()
-
-    by_dimension: dict[str, int] = {}
-    for c in candidates:
-        by_dimension[c.dimension] = by_dimension.get(c.dimension, 0) + 1
-
-    return {"candidates": len(candidates), "by_dimension": by_dimension, "model_cache_rows": cached, "model_cache_pruned": pruned}
 
 
 async def job_golf_predictions(yield_fn=None) -> dict:
@@ -979,57 +866,14 @@ async def _grade_mlb_props_inner() -> dict:
         return await grade_finished_games(client)
 
 
-async def job_grade_generic_props(yield_fn=None) -> dict:
-    """Phase 7 of docs/daily-picks-full-model-build-2026-08-27.md — real
-    grading for the six sports Phase 4/5 produce pick_history candidates
-    for. See predict/generic_prop_grading.py's own docstring for the real
-    gap this closes: no generic prop-grading path existed anywhere in
-    this codebase before this job (MLB's own grading.ts is the only
-    prior writer, and it's MLB-specific end to end)."""
-    return await _run_timed("gradeGenericPropsJob", _grade_generic_props_inner())
-
-
-async def _grade_generic_props_inner() -> dict:
-    from predict.generic_prop_grading import grade_all_sports
-
-    results = await grade_all_sports()
-    return {"per_sport": results}
-
-
-def _make_generic_prop_production_job(sport_key: str, job_name: str):
-    """One job function per sport, not one shared job looping all six —
-    same reasoning refreshNflJob/refreshCfbJob/etc are already separate
-    registry entries: a single slow sport (CFB's ~130-team, ~60-game
-    Saturday slate is the real worst case) shouldn't risk the queue's
-    600s per-job timeout for every other sport too. Real, disclosed risk
-    not fully solved here: a genuinely maximal CFB Saturday could still
-    exceed 600s and get cancelled mid-run — predict.generic_prop_
-    production.run_sport writes db.log_surfaced incrementally (per team,
-    not once at the end), so a cancellation loses only the remainder of
-    that run, not partial/corrupt rows; the next tick picks up cleanly.
-    Chunking a single sport's run across multiple ticks would fix this
-    for real but is real, separate follow-on work, not attempted here."""
-
-    async def _inner() -> dict:
-        from predict.generic_prop_production import run_sport
-
-        async with httpx.AsyncClient() as client:
-            return await run_sport(sport_key, client)
-
-    async def job(yield_fn=None) -> dict:
-        return await _run_timed(job_name, _inner())
-
-    job.__name__ = job_name
-    return job
-
-
 async def job_mlb_projections(yield_fn=None) -> dict:
     """Phase 5.8 — the PROJECTION pipe for MLB: what the MLB stats board reads.
 
-    Separate from genericPropProductionJob (the EDGE pipe, writing pick_history
-    from a different model) for the same reason NHL's is: two pipes, two tables,
-    two gates. This one ships on ordering; that one waits on a betting gate
-    nothing has cleared.
+    Phase 1.1 (2026-09-06) removed the other pipe. There used to be an EDGE
+    pipe alongside this one — genericPropProductionJob and
+    computeMlbPropPredictionsJob, writing pick_history from a separate,
+    unvalidated model that no walk-forward ever cleared. Deleting it is what
+    makes this the single MLB prop pipe rather than one of two.
 
     Lines matter only for markets whose calibration earned a displayed
     probability; every other market gets a projection and a null probability
@@ -1052,11 +896,10 @@ async def job_mlb_projections(yield_fn=None) -> dict:
 async def job_nhl_projections(yield_fn=None) -> dict:
     """Phase 4.9 — the PROJECTION pipe: what the NHL stats board reads.
 
-    Deliberately separate from genericPropProductionNhlJob, which is the EDGE
-    pipe (writes `pick_history` from `generic_prop_score.build_candidate`, a
-    different model that the 4.5-4.8 walk-forward says nothing about). Two
-    pipes, two tables, two gates: this one ships on ordering, that one stays
-    behind 4.7.
+    Phase 1.1 (2026-09-06) deleted genericPropProductionNhlJob, the EDGE pipe
+    that used to sit beside this one writing `pick_history` from
+    `generic_prop_score.build_candidate` — a model the 4.5-4.8 walk-forward
+    said nothing about. This is now the only NHL prop pipe.
 
     Serves TODAY's slate. NHL is out of season until October, so this returns
     zero projections until then and that is the correct result, not a failure —
@@ -1071,14 +914,6 @@ async def job_nhl_projections(yield_fn=None) -> dict:
     # a null probability regardless of what is passed here.
     return await _run_timed("nhlProjectionsJob",
                             run(_date.today(), {"points": 0.5, "assists": 0.5}))
-
-
-job_generic_prop_production_nfl = _make_generic_prop_production_job("nfl", "genericPropProductionNflJob")
-job_generic_prop_production_cfb = _make_generic_prop_production_job("cfb", "genericPropProductionCfbJob")
-job_generic_prop_production_nba = _make_generic_prop_production_job("nba", "genericPropProductionNbaJob")
-job_generic_prop_production_nhl = _make_generic_prop_production_job("nhl", "genericPropProductionNhlJob")
-job_generic_prop_production_soccer_epl = _make_generic_prop_production_job("soccer_epl", "genericPropProductionSoccerEplJob")
-job_generic_prop_production_soccer_mls = _make_generic_prop_production_job("soccer_mls", "genericPropProductionSoccerMlsJob")
 
 
 async def job_player_history_freshness(yield_fn=None) -> dict:
@@ -1354,7 +1189,6 @@ JOB_REGISTRY = [
     # wins" capture pattern needs to run often enough that a candidate's
     # model_prob locks in early, not whatever a much-later refresh would
     # have computed.
-    ("computeMlbPropPredictionsJob", job_compute_mlb_prop_predictions, 5 * 60),
     # Task 2.9 — the two seasonal aggregates the Phase 2 gate found had no
     # scheduled writer in either language's registry, only a TypeScript
     # read-through on snapshot rebuild. 6h: both are season-to-date figures
@@ -1405,27 +1239,15 @@ JOB_REGISTRY = [
     # current without adding real ESPN load beyond what a normal day's
     # game volume already costs.
     ("genericPlayerHistoryFreshnessJob", job_player_history_freshness, 30 * 60),
-    # NOTE: the six genericPropProduction*Job entries that used to sit here
-    # are in DISABLED_JOBS below — see that list for why.
     # Not time-critical (a graded prop doesn't need to land within
     # seconds), matches gradeFinishedGenericPicksJob's own 15min
     # reasoning — real per-tick cost is cheap (a handful of ESPN
     # scoreboard calls plus DB reads for whatever's still ungraded).
-    ("gradeGenericPropsJob", job_grade_generic_props, 15 * 60),
     ("gradeMlbPropsJob", job_grade_mlb_props, 15 * 60),
-    # Re-enabled by Phase 2.2 (2026-08-28) after finding P3 H4's leakage was
-    # fixed — see the note above DISABLED_JOBS. Back on their original
-    # 60-minute cadence: the interval was never the bug, the missing
-    # start-time check was, and a shorter interval would only have made a
-    # leaked first-tick land sooner.
+    # The two projection pipes — the only prop model output this app now
+    # produces. 60 minutes.
     ("nhlProjectionsJob", job_nhl_projections, 60 * 60),
     ("mlbProjectionsJob", job_mlb_projections, 60 * 60),
-    ("genericPropProductionNflJob", job_generic_prop_production_nfl, 60 * 60),
-    ("genericPropProductionCfbJob", job_generic_prop_production_cfb, 60 * 60),
-    ("genericPropProductionNbaJob", job_generic_prop_production_nba, 60 * 60),
-    ("genericPropProductionNhlJob", job_generic_prop_production_nhl, 60 * 60),
-    ("genericPropProductionSoccerEplJob", job_generic_prop_production_soccer_epl, 60 * 60),
-    ("genericPropProductionSoccerMlsJob", job_generic_prop_production_soccer_mls, 60 * 60),
 ]
 
 
@@ -1443,21 +1265,6 @@ JOB_REGISTRY = [
 # deliberately off should not be reported as stale. Rule G6 of
 # docs/audit-remediation-plan.md applies — every entry needs a date, a
 # reason, and the phase that re-enables it.
-#
-# ---------------------------------------------------------------------------
-# 2026-08-28 — Phase 2.2 re-enabled the six genericPropProduction*Job entries
-# that lived here. Finding P3 H4 (docs/audit-phase-3.md:1183) is fixed, not
-# merely worked around, by two guards in predict/generic_prop_production.py:
-#
-#   1. run_sport now drops any game whose commence_time has passed
-#      (_has_not_started, which fails CLOSED on a missing or unparseable
-#      time — an unknown start skips the game rather than predicting it).
-#   2. _without_game strips the game being predicted out of every player's
-#      own history before a candidate is built, so a prediction cannot
-#      contain its own outcome even if guard 1 is bypassed or removed.
-#
-# pick_history.commence_time (migration 20260828120000) makes every row this
-# job writes from now on auditable for leakage, which no row was before.
 #
 # Empty on purpose. If something is added here it needs a date, a reason,
 # and the phase that re-enables it — rule G6 of docs/audit-remediation-plan.md.

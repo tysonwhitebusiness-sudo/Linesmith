@@ -70,6 +70,13 @@ import math
 from dataclasses import dataclass
 from datetime import date
 
+from predict import count_prop_engine as _engine
+from predict.count_prop_engine import (  # re-exported under NHL's names: see the note below
+    PlayerHistory,
+    Projection,
+    nb_prob_over,
+)
+
 # Shrinkage strength: the number of prior games at which a player's own rate and
 # the league mean carry equal weight. 10 is roughly an eighth of a season —
 # enough that a regular stands on his own record by midseason, while a callup
@@ -95,99 +102,59 @@ class PropRow:
     toi: float
 
 
+# ---------------------------------------------------------------------------
+# THE MATH LIVES IN count_prop_engine.py. Phase 1.2 of
+# docs/master-plan-2026-09-06.md (2026-09-06).
+#
+# This file grew the engine first, and 5.3 extracted it so MLB could share it
+# rather than get a second copy. That left NHL running the original and MLB the
+# extraction — two implementations of one model, which is exactly the state the
+# extraction existed to prevent. `test_count_prop_engine.py` asserted they
+# agreed, and it passed, which is the good case; the bad case is the one where
+# it stops passing and somebody picks a winner under time pressure.
+#
+# So the duplicate is gone. `PlayerHistory`, `Projection`, `project`,
+# `shrunk_rate` and `nb_prob_over` are re-exported from the engine below under
+# the names this file's callers already use, and the NHL-specific constant that
+# was hard-coded in the old `shrunk_rate` — 18 minutes as one regular's game —
+# is now passed in as `volume_per_game`, which is what it always was.
+#
+# WHAT CHANGED NUMERICALLY: nothing that any caller can reach.
+#   - `shrunk_rate`/`project`/`PlayerHistory` were bit-identical already, and
+#     `nhl_props_golden.json` pins 1,500 pre-migration projections that the
+#     engine still reproduces exactly (test_nhl_props.py).
+#   - `nb_prob_over` differs by at most 2.72e-6, and only at the Poisson limit,
+#     where the engine takes the exact limit and this file evaluated the NB at a
+#     very large r. Four orders of magnitude below the fit's gate tolerance, and
+#     the 1,200 pinned probabilities in the same golden file bound it.
+#   - The engine's recent-volume buffer holds 200 entries where this file held
+#     40. Unreachable here: TOI_WINDOWS tops out at 40, so both take the same
+#     last-40 slice, and window=0 reads the running totals rather than the
+#     buffer at all.
+# ---------------------------------------------------------------------------
+
+# 18 min ~ one regular's game. Converts minutes into games-equivalent so that
+# SHRINK_K is a number of GAMES rather than of minutes — see the engine's
+# `shrunk_rate` docstring for why that distinction is load-bearing across
+# sports.
+MINUTES_PER_GAME = 18.0
+
+
 def shrunk_rate(player_events: float, player_minutes: float,
                 league_rate: float, k: float = SHRINK_K) -> float:
-    """Shots per minute, shrunk toward the league by sample size.
-
-    The weight is on GAMES-worth of minutes rather than raw minutes, so that a
-    player with many short appearances is not treated as more certain than one
-    with a few long ones.
-    """
-    if player_minutes <= 0:
-        return league_rate
-    own = player_events / player_minutes
-    games_equiv = player_minutes / 18.0        # 18 min ~ one regular's game
-    w = games_equiv / (games_equiv + k)
-    return w * own + (1.0 - w) * league_rate
-
-
-def nb_prob_over(line: float, mean: float, dispersion: float) -> float:
-    """P(X > line) for a negative binomial with the given mean.
-
-    `dispersion` is the NB size parameter r: variance = mean + mean^2 / r, so a
-    LARGE r approaches Poisson and a small r is heavily overdispersed. Shots are
-    overdispersed because minutes and role vary between games, which a single
-    Poisson rate cannot express.
-    """
-    if mean <= 0:
-        return 0.0
-    r = max(1e-6, dispersion)
-    p = r / (r + mean)                          # P(success) in the NB param
-    # P(X <= floor(line)) summed directly; lines are 0.5-steps so floor is exact.
-    k_max = int(math.floor(line))
-    if k_max < 0:
-        return 1.0
-    cum = 0.0
-    term = p ** r                               # P(X = 0)
-    cum += term
-    for k in range(1, k_max + 1):
-        term *= (r + k - 1) / k * (1.0 - p)
-        cum += term
-    return max(0.0, min(1.0, 1.0 - cum))
-
-
-class PlayerHistory:
-    """Running, strictly-before-only history for one player.
-
-    RATE AND VOLUME ARE ESTIMATED OVER DIFFERENT WINDOWS, on purpose. Shots per
-    minute is a comparatively stable skill and wants ALL the history it can get.
-    Time on ice is a ROLE, and a role changes — a promotion to the top line or a
-    drop to the fourth moves it within days. Averaging a player's ice time over
-    a whole season smooths away exactly the change that matters most, which is
-    the leading suspect for the 4.5% over-projection measured in 4.5.
-    """
-
-    __slots__ = ("sog", "minutes", "games", "recent_min")
-
-    def __init__(self):
-        self.sog = 0.0
-        self.minutes = 0.0
-        self.games = 0
-        self.recent_min: list[float] = []
-
-    def add(self, sog: float, minutes: float) -> None:
-        self.sog += sog
-        self.minutes += minutes
-        self.games += 1
-        self.recent_min.append(minutes)
-        if len(self.recent_min) > 40:            # bounded; no window exceeds this
-            self.recent_min.pop(0)
-
-    def mean_toi(self, league_toi: float, window: int = 0) -> float:
-        """Mean ice time. `window` 0 uses all history, N uses the last N games."""
-        if not self.games:
-            return league_toi
-        if window and self.recent_min:
-            w = self.recent_min[-window:]
-            return sum(w) / len(w)
-        return self.minutes / self.games
-
-
-@dataclass
-class Projection:
-    expected_sog: float
-    projected_toi: float
-    rate_per_min: float
-    games_of_history: int
+    """Shots per minute, shrunk toward the league by sample size. NHL's binding
+    of the shared engine's `shrunk_rate`."""
+    return _engine.shrunk_rate(player_events, player_minutes, league_rate, k,
+                               MINUTES_PER_GAME)
 
 
 def project(hist: PlayerHistory, league_rate: float, league_toi: float,
             k: float = SHRINK_K, toi_window: int = 0) -> Projection:
-    """Volume x rate. Shape is applied separately, at the line."""
-    toi = hist.mean_toi(league_toi, toi_window)
-    rate = shrunk_rate(hist.sog, hist.minutes, league_rate, k)
-    return Projection(expected_sog=toi * rate, projected_toi=toi,
-                      rate_per_min=rate, games_of_history=hist.games)
+    """Volume x rate, with NHL's minutes-per-game binding. Shape is applied
+    separately, at the line."""
+    return _engine.project(hist, league_rate, league_toi, k=k,
+                           volume_window=toi_window,
+                           volume_per_game=MINUTES_PER_GAME)
 
 
 # ---------------------------------------------------------------------------

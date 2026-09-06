@@ -127,7 +127,7 @@ def walk(rows, w, k, disp, lr, lt, games):
         h = hist.get(r.athlete_id)
         if h is not None and h.games >= MIN_PRIOR:
             p = npx.project(h, lr, lt, k=k, toi_window=w)
-            out.append((r, npx.nb_prob_over(r.line, p.expected_sog, disp), p.expected_sog))
+            out.append((r, npx.nb_prob_over(r.line, p.expected, disp), p.expected))
     return out
 
 

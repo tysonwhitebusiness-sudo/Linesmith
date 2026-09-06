@@ -10,7 +10,13 @@ Covered so far:
   P3 M4  the starter blend mixed two units at a hand-set 50/50
   P3 M7  the golf model double-counted the subject golfer's own scores
   P3 M5  home-field/form were ADDED to a probability instead of log-odds
-  P3 M6  compute_league_rate returned a fabricated 0.5 on no sample
+
+P3 M6 (compute_league_rate returned a fabricated 0.5 on no sample) was covered
+here until Phase 1.1 of docs/master-plan-2026-09-06.md (2026-09-06) deleted
+`generic_prop_score.py` along with the rest of the condemned scoring layer. The
+finding is closed by removal rather than by fix: there is no longer a code path
+that computes a league rate for those markets at all. Nothing inherited the
+function, so nothing inherited the test.
 
 Also covers task 4.11 (P3 C2), which is not a 4.12 item but shares this file's
 "measured against reality, not asserted" shape.
@@ -40,7 +46,6 @@ from predict.game_model import (  # noqa: E402
     poisson_over_probability,
     poisson_push_probability,
 )
-from predict.generic_prop_score import compute_league_rate  # noqa: E402
 from predict.golf_models import (  # noqa: E402
     _OWN_EXTRA_WEIGHT,
     _PRIOR_WEIGHT,
@@ -195,40 +200,6 @@ def test_log_odds_round_trip():
     for p in (0.01, 0.25, 0.5, 0.75, 0.99):
         close(f"round-trip {p}", _from_log_odds(_to_log_odds(p)), p, eps=1e-9)
     check("a zero adjustment changes nothing", round(_from_log_odds(_to_log_odds(0.62) + 0.0), 9), 0.62)
-
-
-# ---------------------------------------------------------------------------
-# P3 M6
-# ---------------------------------------------------------------------------
-
-class _Game:
-    def __init__(self, stats):
-        self.stats = stats
-
-
-def test_no_sample_returns_none_not_a_coin_flip():
-    """0.5 asserted as a measurement is indistinguishable downstream from a real
-    50% base rate — and for the RARE markets this serves (triple-doubles,
-    hat-tricks) a true rate near 0.5 is impossible, so the fabricated value was
-    always wrong in the direction that makes a prop look attractive."""
-    print("\nP3 M6: no qualifying games -> None, not 0.5")
-    check("empty input", compute_league_rate({}, "points", 10.5), None)
-    check("players present but no matching stat",
-          compute_league_rate({"a": [_Game({"rebounds": 5, "minutes": 30})]}, "points", 10.5), None)
-    check("stat present but every game below the minutes floor",
-          compute_league_rate({"a": [_Game({"points": 20, "minutes": 1})]}, "points", 10.5), None)
-
-
-def test_a_real_sample_still_computes():
-    print("\nP3 M6: a real sample still returns a real rate")
-    sample = {
-        "a": [_Game({"points": 20, "minutes": 30}), _Game({"points": 5, "minutes": 30})],
-        "b": [_Game({"points": 15, "minutes": 30}), _Game({"points": 2, "minutes": 30})],
-    }
-    check("2 of 4 games over 10.5", compute_league_rate(sample, "points", 10.5), 0.5)
-    check("and that 0.5 is COMPUTED, not the old fallback",
-          compute_league_rate(sample, "points", 10.5) is not None, True)
-
 
 
 # ---------------------------------------------------------------------------
@@ -426,8 +397,6 @@ def main() -> bool:
     test_elo_sort_still_orders_by_date_first()
     test_home_field_is_applied_in_log_odds()
     test_log_odds_round_trip()
-    test_no_sample_returns_none_not_a_coin_flip()
-    test_a_real_sample_still_computes()
     test_starter_blend_weights_sum_to_one_and_mean_something()
     test_era_is_grossed_up_to_total_runs()
     test_starter_quality_is_not_compressed()

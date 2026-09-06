@@ -501,68 +501,13 @@ async def check_odds_history_and_prices_freshness() -> dict:
     }
 
 
-async def check_prop_predictions_freshness() -> dict:
-    """Ground truth for job_compute_mlb_prop_predictions (predict/
-    prop_candidates.py + predict/prop_pick_history.py) — verifies real
-    pick_history rows are landing for today's real slate, not just that
-    the job reports ok. Deliberately doesn't recompute the full candidate
-    pipeline here (expensive — real stat-API fetches for every batter/
-    starter on the slate, same cost as a real job run); instead
-    cross-checks the job's own last-run candidate count against
-    pick_history's actual row count for today's real games (from a cheap
-    schedule read, same source check_game_picks_freshness already uses),
-    generous enough (50% floor) to absorb normal day-to-day variance
-    (lineup changes, off days) without false-positiving, while still
-    catching a genuine write-path break."""
-    # Task 3.3 — a wide window cannot tell a quiet market from a dead worker.
-    # See feeding_job_stale() for why this consults the job rather than
-    # narrowing the window.
-    stale_reason = await feeding_job_stale("computeMlbPropPredictionsJob", 5 * 60)
-    if stale_reason:
-        return {
-            "name": "propPredictionsFreshness",
-            "status": f"cannot vouch for freshness — {stale_reason}",
-            "healthy": False,
-        }
-
-    import httpx
-
-    from predict import statsapi as sa
-    from predict.prop_candidates import STAT_MARKET_BY_DIMENSION
-
-    payload = await db.read_snapshot("python-harness:job-run:computeMlbPropPredictionsJob")
-    if payload is None:
-        return {"name": "propPredictionsFreshness", "status": "NEVER RUN — computeMlbPropPredictionsJob has no run breadcrumb yet", "healthy": False}
-    last_run = json.loads(payload)
-    if not last_run.get("ok"):
-        return {"name": "propPredictionsFreshness", "status": f"job's last run failed: {last_run.get('error', 'unknown error')}", "healthy": False}
-
-    expected = last_run.get("candidates", 0)
-    if expected == 0:
-        return {"name": "propPredictionsFreshness", "status": "healthy — no prop candidates on the last run (off day or empty slate)", "healthy": True}
-
-    today = sa.eastern_date()
-    async with httpx.AsyncClient() as client:
-        games = await sa.get_schedule_range(client, today, today)
-    if not games:
-        return {"name": "propPredictionsFreshness", "status": "healthy — no MLB games today", "healthy": True}
-
-    pool = await db.get_pool()
-    actual = await pool.fetchval(
-        "SELECT COUNT(*) FROM pick_history WHERE sport = 'mlb' AND model_prob IS NOT NULL "
-        "AND game_id = ANY($1::text[]) AND dimension = ANY($2::text[])",
-        [str(g.game_pk) for g in games],
-        [*STAT_MARKET_BY_DIMENSION.keys(), "hit-in-game"],
-    )
-
-    if actual < expected * 0.5:
-        return {
-            "name": "propPredictionsFreshness",
-            "status": f"STALE — last run reported {expected} candidates but pick_history only has {actual} rows for today's real "
-            "games — computeMlbPropPredictionsJob's write path needs investigating",
-            "healthy": False,
-        }
-    return {"name": "propPredictionsFreshness", "status": f"healthy — {actual} pick_history rows for today's real games (last run reported {expected} candidates)", "healthy": True}
+# Phase 1.1 of docs/master-plan-2026-09-06.md (2026-09-06) removed
+# check_prop_predictions_freshness. It verified that computeMlbPropPredictionsJob's
+# pick_history writes were landing for today's real slate; that job and the
+# pipeline behind it (predict/prop_candidates.py, predict/prop_pick_history.py)
+# were deleted as part of the condemned scoring layer, so the check had nothing
+# left to vouch for. The surviving prop pipes are mlbProjectionsJob and
+# nhlProjectionsJob, both covered generically by JOB_REGISTRY staleness.
 
 
 GAME_ODDS_BOOK_LINES_SPORTS = ["mlb", "nfl", "cfb", "nba", "nhl", "soccer", "tennis"]  # every sport odds-architecture-rebuild-2026-08-25.md covers except golf, which has no game-line concept at all
@@ -887,7 +832,6 @@ async def main() -> int:
         await check_game_model_freshness(),
         await check_game_picks_freshness(),
         await check_odds_history_and_prices_freshness(),
-        await check_prop_predictions_freshness(),
         await check_golf_predictions_freshness(),
         await check_game_odds_book_lines_freshness(),
         await check_snapshot_cache_size(),

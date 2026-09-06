@@ -32,9 +32,9 @@ import httpx
 
 import db
 from predict import statsapi
-from predict.edge_model import ModelProbabilityInput, compute_model_probability
 from predict.home_run_model import (
     HOME_RUN_FEATURE_NAMES,
+    beta_binomial_hr_prob,
     NEUTRAL_EXPECTED_PA,
     expected_pa_centered_from_trailing_average,
     park_hr_factor_centered,
@@ -172,14 +172,11 @@ async def build_home_run_season_rows(client: httpx.AsyncClient, season: int) -> 
                 continue
             had_hr = 1 if _num((g.stat or {}).get("homeRuns")) >= 1 else 0
 
-            baseline = compute_model_probability(
-                ModelProbabilityInput(
-                    dimension="home-runs",
-                    league_rate=league_hr_rate,
-                    over_count=prior_games_with_hr,
-                    total_count=prior_games,
-                    matchup_favorable=None,  # no historical barrelPct replication here — disclosed, see module header
-                )
+            baseline = beta_binomial_hr_prob(
+                league_rate=league_hr_rate,
+                over_count=prior_games_with_hr,
+                total_count=prior_games,
+                matchup_favorable=None,  # no historical barrelPct replication here — disclosed, see module header
             )
 
             venue_id = venue_by_game.get(g.game_pk) if g.game_pk is not None else None

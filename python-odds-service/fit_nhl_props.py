@@ -69,8 +69,8 @@ def run(rows, toi_window: int, k: float, disp: float,
         h = hist.setdefault(r.athlete_id, npx.PlayerHistory())
         if h.games >= MIN_PRIOR_GAMES:
             p = npx.project(h, league_rate, league_toi, k=k, toi_window=toi_window)
-            over = npx.nb_prob_over(r.line, p.expected_sog, disp)
-            out.append((r, over, p.expected_sog))
+            over = npx.nb_prob_over(r.line, p.expected, disp)
+            out.append((r, over, p.expected))
         h.add(r.actual_sog, r.toi)          # AFTER predicting, never before
     return out
 

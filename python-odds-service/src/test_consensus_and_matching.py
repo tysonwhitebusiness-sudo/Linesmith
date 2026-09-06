@@ -24,7 +24,7 @@ sys.path.insert(0, "src")
 
 from db import PropOddsRow  # noqa: E402
 from entity_resolution import normalize_team_name, team_name_words  # noqa: E402
-from predict.live_edge import _consensus_reference_prob  # noqa: E402
+from predict.price_resolution import _consensus_reference_prob  # noqa: E402
 from providers import _team_match, drain_team_match_misses, record_team_match_miss  # noqa: E402
 
 _failures = 0

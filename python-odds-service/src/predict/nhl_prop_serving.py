@@ -168,11 +168,11 @@ async def build(conn, as_of: date, lines: dict[str, float] | None = None) -> dic
                             k=cal["shrink_k"], toi_window=int(cal["toi_window"] or 0))
             prob = None
             if show_prob:
-                raw = npx.nb_prob_over(line, p.expected_sog, cal["dispersion"])
+                raw = npx.nb_prob_over(line, p.expected, cal["dispersion"])
                 prob = _temper(raw, cal["temperature"])
             out.append(ServedProjection(
                 athlete_id=aid, game_id=gid, dimension=dim,
-                projection=p.expected_sog, projected_toi=p.projected_toi,
+                projection=p.expected, projected_toi=p.projected_volume,
                 games_of_history=p.games_of_history,
                 league_rate=cal["league_rate"],
                 line=line if show_prob else None,

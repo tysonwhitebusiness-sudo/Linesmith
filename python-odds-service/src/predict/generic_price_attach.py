@@ -18,13 +18,13 @@ reads db.read_game_odds_book_lines_for_sport(app_sport) directly and joins
 on game_id, no name-matching layer needed.
 
 Picks one reference bookmaker's price per (game_id, market, side): a named
-sharp book first (live_edge.SHARP_REFERENCE_PRIORITY — the same priority
+sharp book first (price_resolution.SHARP_REFERENCE_PRIORITY — the same priority
 order the player-prop edge model already uses), else whichever book's row
 was fetched most recently. This is a capture/grading price (what would a
 real $10 bet have paid), not a claim that the chosen book is optimal.
 """
 import db
-from predict.live_edge import SHARP_REFERENCE_PRIORITY
+from predict.price_resolution import SHARP_REFERENCE_PRIORITY
 from predict.odds_math import american_to_decimal, devig_two_way, is_plausible_decimal_odds
 
 

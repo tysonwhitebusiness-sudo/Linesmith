@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, "src")
 
 from db import PropOddsRow  # noqa: E402
-from predict.live_edge import _MAX_ROW_AGE_SECONDS, _too_stale  # noqa: E402
+from predict.price_resolution import _MAX_ROW_AGE_SECONDS, _too_stale  # noqa: E402
 
 _failures = 0
 

@@ -12,7 +12,11 @@
  * specifically: the rule this replaces (Track E of audit-remediation-plan.md)
  * passed only because nothing rendered at all, and was flagged the next day as
  * "a SUPPRESSION STATE, not a test". These assertions run against real files
- * that really do render, so they can actually fail.
+ * that really do serve, so they can actually fail.
+ *
+ * Phase 1.3 (2026-09-06) deleted the rendering half of that surface. See the
+ * note on SURFACE below for what survives and why, and the note above the
+ * removed copy-language test for the guard Phase 2 owes in its place.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,15 +35,25 @@ import {
 const ROOT = join(__dirname, '..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 
-/** Files that make up the stats-board surface. */
+/**
+ * Files that make up the projection-serving surface.
+ *
+ * Phase 1.3 of docs/master-plan-2026-09-06.md (2026-09-06) deleted the pages
+ * that used to render this data — `components/StatsBoard.tsx` and the two
+ * per-sport panels, plus `/mlb/projections` and `/nhl/projections`. They were
+ * built on 2026-09-05/06 and nothing ever linked to them; the master plan's
+ * "one surface" rule puts model output on Scan and nowhere else.
+ *
+ * What survives is the PIPE: the adapters and the routes. That is deliberate —
+ * Phase 2 rebuilds Scan's table on exactly this data, so the transform and the
+ * endpoint are the part worth keeping, and the rule below still has real files
+ * to enforce itself against.
+ */
 const SURFACE = [
-  'components/StatsBoard.tsx',
-  'components/NhlProjectionsPanel.tsx',
   'lib/sports/nhl/adapters/statsBoardAdapter.ts',
   'app/api/nhl/projections/route.ts',
   // MLB joined the board in 5.8. Every sport's surface files go in here, or the
   // guard protects only the sport that happened to be added first.
-  'components/MlbProjectionsPanel.tsx',
   'lib/sports/mlb/adapters/statsBoardAdapter.ts',
   'app/api/mlb/projections/route.ts',
 ];
@@ -92,28 +106,21 @@ test('the stats board imports nothing from the odds or edge modules', () => {
   }
 });
 
-test('profit and edge language stays out of the rendered copy', () => {
-  // Rendered strings only: JSX text and string literals, comments stripped.
-  const code = stripComments(read('components/StatsBoard.tsx'));
-  for (const phrase of [
-    'edge',
-    'profit',
-    'value bet',
-    'beat the',
-    '+EV',
-    'guaranteed',
-    'lock',
-    'sharp',
-  ]) {
-    // Substring, not regex: these are literal phrases and "+EV" is not a valid
-    // pattern.
-    assert.ok(
-      !code.toLowerCase().includes(phrase.toLowerCase()),
-      `StatsBoard renders the phrase "${phrase}" — the board states an opinion ` +
-        `about a player, never a claim about a price or a payout.`,
-    );
-  }
-});
+// The third guard here used to read `components/StatsBoard.tsx` and assert that
+// no edge or profit language reached its rendered copy. Phase 1.3 deleted that
+// component, so the assertion has no rendered copy left to read.
+//
+// It is NOT re-pointed at Scan, and that is a real decision rather than an
+// oversight. Phase 2 of the master plan deliberately puts a model probability
+// next to an implied one on Scan — the operator's call, recorded 2026-09-06 —
+// so the copy rule this test encoded does not survive contact with the surface
+// Phase 2 builds. Re-aiming it at Scan today would fail on work that has not
+// been done yet, and quietly dropping it would lose the constraint entirely.
+//
+// PHASE 2 OWES A REPLACEMENT: whatever Scan renders still must not claim an
+// edge, a profit or a beaten close, and only the two identifiers the operator
+// approved (a model probability and an implied probability, side by side) are
+// licensed to appear. That guard belongs with the surface that has them.
 
 test('a market without calibration is ranked but shows no probability', () => {
   const rows: NhlProjectionApiRow[] = [

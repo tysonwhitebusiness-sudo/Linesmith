@@ -1,11 +1,25 @@
-"""Phase 1.1 — the under-side sign, in both places it was wrong.
+"""The under-side sign on the market reference.
 
 Audit finding P3 C3: a candidate whose proposition is the under carried the
 OVER's probability, and the market reference it was compared against was also
-the over's. The bug existed at two independent points, so this covers both:
+the over's. The bug existed at two independent points, and this file used to
+cover both.
 
-  1. prop_candidates._prob_for_category — the model's own belief
-  2. live_edge._two_sided_devigged_for_row — the market reference
+**Phase 1.1 of docs/master-plan-2026-09-06.md (2026-09-06) removed the first
+half.** The model-side fix lived in `prop_candidates._prob_for_category`, and
+`prop_candidates.py` was deleted with the rest of the condemned scoring layer.
+Nothing inherited it, because nothing needs it: the two surviving prop pipes
+(`mlb_prop_serving`, `nhl_prop_serving`) emit `category="projection"` rows and
+assert it, so no under-side row is produced anywhere for a probability to be
+inverted on. Re-adding an inversion helper with no caller would be carrying a
+fix for a bug that can no longer occur.
+
+What remains here is the half that still has live code under it:
+`price_resolution._two_sided_devigged_for_row` — the market reference. When
+Phase 2 puts a probability next to an implied price on Scan, the "P(over) +
+P(under) = 1.0" item in the master plan's Phase 8 truthfulness list applies to
+whatever that surface renders, and this file is where its market-side half is
+pinned.
 
 Pure functions only, no network and no database, so this runs in CI (unlike the
 model-training tests, which need ~25-50 minutes and live data — see the Phase 0
@@ -19,8 +33,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, "src")
 
 from db import PropOddsRow  # noqa: E402
-from predict.live_edge import _two_sided_devigged_for_row  # noqa: E402
-from predict.prop_candidates import _prob_for_category  # noqa: E402
+from predict.price_resolution import _two_sided_devigged_for_row  # noqa: E402
 
 _failures = 0
 
@@ -33,23 +46,6 @@ def check(label: str, actual, expected) -> None:
     else:
         _failures += 1
         print(f"FAIL: {label} — got {actual!r}, expected {expected!r}")
-
-
-def test_model_probability_follows_the_category() -> None:
-    """P(over) = 0.62 means P(under) = 0.38. The over-side categories keep it;
-    the under-side categories invert it. All six categories, because the
-    category->side map knows all six and a partial fix would be worse than
-    none."""
-    for category in ("over", "hit", "run"):
-        check(f"model prob kept for '{category}'", _prob_for_category(0.62, category), 0.62)
-    for category in ("under", "no-hit", "no-run"):
-        check(f"model prob inverted for '{category}'", _prob_for_category(0.62, category), 0.38)
-
-    check("None stays None", _prob_for_category(None, "under"), None)
-    # An unknown category resolves to no side; keeping the value unchanged is
-    # the safe default — inverting on a category we don't understand would be
-    # inventing a claim.
-    check("unknown category left alone", _prob_for_category(0.62, "banana"), 0.62)
 
 
 def _row(side: str, american: int) -> PropOddsRow:
@@ -95,43 +91,30 @@ def test_market_reference_follows_the_side() -> None:
     check("the two sides are not the same number", p_over != p_under, True)
 
 
-def test_the_two_fixes_agree() -> None:
-    """The end-to-end property the audit actually asserts: model_prob and the
-    market reference describe the SAME proposition as the category, and the
-    resulting edge is the exact negation of the buggy one.
+def test_the_reference_is_not_symmetric_by_accident() -> None:
+    """The property the audit actually asserts, restated for the surviving
+    half: asking for the under returns a genuinely different number from the
+    over, and the gap is real rather than a rounding artefact.
 
-    With over -200 / under +150 the devig is (0.625, 0.375) and a 0.62 model
-    over-probability becomes 0.38 on the under. So:
-
-        buggy  (both over-side) : 0.62 - 0.625 = -0.005
-        fixed  (both under-side): 0.38 - 0.375 = +0.005
-
-    Equal magnitude, opposite sign — which is the audit's core claim, that the
-    displayed number was 'the exact negation of the edge on the bet they are
-    being shown'. Asserting the negation rather than a sign is what makes this
-    test independent of which example numbers get picked.
+    With over -200 / under +150 the devig is (0.625, 0.375). Before the fix
+    both calls returned 0.625, so any comparison made against the under-side
+    reference was made against the over's. Asserting the exact difference
+    rather than a sign keeps this independent of the example numbers.
     """
     matched = [_row("over", -200), _row("under", +150)]
     over_row, under_row = matched
 
     market_over = _two_sided_devigged_for_row(matched, "over", over_row)
     market_under = _two_sided_devigged_for_row(matched, "under", under_row)
-    model_over = 0.62
-    model_under = _prob_for_category(model_over, "under")
 
-    check("model side is the under's", model_under, 0.38)
-    check("market side is the under's", market_under < 0.5, True)
-
-    buggy_edge = model_over - market_over      # what both sites produced before
-    fixed_edge = model_under - market_under    # what they produce now
-    check("fixed edge is the exact negation of the buggy one", round(fixed_edge + buggy_edge, 12), 0.0)
-    check("and it is not merely the same number", fixed_edge != buggy_edge, True)
+    check("over reference", round(market_over, 9), 0.625)
+    check("under reference", round(market_under, 9), 0.375)
+    check("the difference is the full 0.25, not zero", round(market_over - market_under, 9), 0.25)
 
 
 def main() -> bool:
-    test_model_probability_follows_the_category()
     test_market_reference_follows_the_side()
-    test_the_two_fixes_agree()
+    test_the_reference_is_not_symmetric_by_accident()
     print(f"\n{'ALL PASS' if _failures == 0 else f'{_failures} FAILURE(S)'}")
     return _failures == 0
 

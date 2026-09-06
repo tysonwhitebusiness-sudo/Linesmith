@@ -79,9 +79,9 @@ async def main() -> int:
         pf = npx.project(hf, lr, lt, k=k, toi_window=w)
         ps = npx.project(hs, lr, lt, k=k, toi_window=w)
         gaps.append((hs.games, hf.games))
-        diffs.append(abs(ps.expected_sog - pf.expected_sog))
-        worst.append((abs(ps.expected_sog - pf.expected_sog), aid,
-                      hf.games, hs.games, pf.expected_sog, ps.expected_sog))
+        diffs.append(abs(ps.expected - pf.expected))
+        worst.append((abs(ps.expected - pf.expected), aid,
+                      hf.games, hs.games, pf.expected, ps.expected))
 
     n = len(diffs)
     print(f"comparable players (>=5 games both ways): {n}\n")

@@ -1,9 +1,28 @@
 """Direct port of lib/sports/mlb/homeRunModel.ts — not a reimplementation.
 
 Home Run model — standalone fitted regression, `market = 'home-run'` in
-`model_weights`. Extends the live Beta-Binomial `home-runs` prop posterior
-(edge_model.py) with three signals absent from it: park factor, an explicit
-pitcher-vs-batter matchup blend, and lineup-order/expected-PA.
+`model_weights`. Extends a Beta-Binomial `home-runs` posterior (now
+`beta_binomial_hr_prob` below) with three signals absent from it: park
+factor, an explicit pitcher-vs-batter matchup blend, and
+lineup-order/expected-PA.
+
+**Phase 1.1 (2026-09-06)** — the posterior used to come from
+`edge_model.py`, which was deleted as part of the condemned scoring layer.
+Only home runs still needed it, so rather than keeping a 118-line
+general-purpose module alive for one caller, the ~20 lines this model
+actually uses were specialised to home runs and moved here. What was
+dropped in the move: the per-market `PRIOR_STRENGTH` table (only the
+`home-runs` entry, 50, survives as a constant), the `recent_over_count`
+L10 re-weighting (the historical HR builder never passed it), and the
+`ModelProbabilityInput`/`Result` dataclasses that existed to carry those.
+The arithmetic that remains is unchanged, and `test_home_run_model.py`
+pins it.
+
+This posterior is still the same hand-set, never-fitted prior the deleted
+module disclosed. Phase 3.2 of `docs/master-plan-2026-09-06.md` owns the
+question of whether the home-run model is testable at all — its archive
+ends 2025-11-02, so the season split currently leaves no held-out rows.
+Nothing here should be treated as validated until that is answered.
 
 Combined the same way the game model's Moneyline/Totals are: raw signals as
 named features, `fit_logistic_regression` (home_run_model_fit.py) learns the
@@ -20,6 +39,65 @@ from predict.logistic_regression import predict_prob
 # Same feature order as HOME_RUN_FEATURE_NAMES in home_run_model_fit.py —
 # shared so training and live prediction can never drift apart.
 HOME_RUN_FEATURE_NAMES: tuple[str, ...] = ("betaBinomialHrProb", "parkHrFactorCentered", "pitcherMatchupSignal", "expectedPaCentered")
+
+
+# Effective prior sample size for home runs — how many "pseudo-games" of
+# league-average behavior the prior is worth before real data takes over.
+# 50, deliberately strong: a batter going 2-for-5 on home runs this month is
+# not actually a 40% home run hitter, and a weak prior would let a tiny
+# sample say so. Carried unchanged from the deleted edge_model.PRIOR_STRENGTH.
+HR_PRIOR_STRENGTH = 50.0
+
+# How hard the matchup nudges the prior mean before real data is applied.
+# Scaled by mean*(1-mean) so the shift is naturally smaller near 0 or 1 and
+# larger near 0.5. Bounded to keep a single matchup signal from dominating
+# the league rate.
+MATCHUP_SHIFT_WEIGHT = 0.35
+
+
+def shifted_prior_mean(league_rate: float, favorable: bool | None) -> float:
+    if favorable is None:
+        return league_rate
+    direction = 1 if favorable else -1
+    shift = MATCHUP_SHIFT_WEIGHT * direction * league_rate * (1 - league_rate)
+    return min(0.97, max(0.03, league_rate + shift))
+
+
+@dataclass
+class BetaBinomialHrPosterior:
+    prob: float
+    std_dev: float
+    sample_size: float
+    prior_mean: float
+    prior_strength: float
+
+
+def beta_binomial_hr_prob(
+    league_rate: float,
+    over_count: float,
+    total_count: float,
+    matchup_favorable: bool | None = None,
+) -> BetaBinomialHrPosterior:
+    """The trailing-rate posterior that feeds this model's first feature.
+
+    Conjugate Beta prior on a Bernoulli rate, so the posterior after
+    observing real games is closed-form. The prior's center is the real
+    league home-run rate; `over_count`/`total_count` are the batter's own
+    games with a home run, out of games played.
+    """
+    prior_mean = shifted_prior_mean(league_rate, matchup_favorable)
+    alpha = prior_mean * HR_PRIOR_STRENGTH + over_count
+    beta = (1 - prior_mean) * HR_PRIOR_STRENGTH + max(0.0, total_count - over_count)
+    total_ab = alpha + beta
+    mean = alpha / total_ab
+    variance = (alpha * beta) / (total_ab * total_ab * (total_ab + 1))
+    return BetaBinomialHrPosterior(
+        prob=mean,
+        std_dev=math.sqrt(variance),
+        sample_size=total_count,
+        prior_mean=prior_mean,
+        prior_strength=HR_PRIOR_STRENGTH,
+    )
 
 
 def park_hr_factor_centered(park_factor: float) -> float:
@@ -107,8 +185,8 @@ def apply_fitted_home_run_weights(inputs: HomeRunFeatureInputs, weights: list[fl
     set. The feature vector here is already fully assembled by the caller
     rather than built from a shared diagnostics object, since this model
     has no moneyline-style "raw formula" stage of its own —
-    beta_binomial_hr_prob IS the raw signal, computed by edge_model.py's
-    compute_model_probability."""
+    beta_binomial_hr_prob IS the raw signal, computed by this module's
+    own beta_binomial_hr_prob() above."""
     features = [
         inputs.beta_binomial_hr_prob,
         inputs.park_hr_factor_centered,

@@ -1,15 +1,31 @@
-"""Originally a direct port of lib/odds/props/liveEdge.ts; the edge
-computation itself was redesigned 2026-08-27 (see
-docs/edge-redesign-and-prop-score-gameplan-2026-08-27.md), so this file
-has diverged from that TS source on purpose — the TS side has not been
-migrated (a real, separate decision, not an oversight).
+"""Price resolution for player props: which real price exists, at which
+book, how old it is, and what the market's own de-vigged opinion is.
 
-Pure functions, no I/O — the caller (predict/prop_candidates.py) reads
-prop_odds once per game via db.read_prop_odds_for_game and passes the
-rows in here per candidate, same shape as pickHistoryLog.ts's
-logSnapshotCandidates fetching once per gameId in TS.
+**Phase 1.1 (2026-09-06) — this file was `live_edge.py`.** The master plan
+(`docs/master-plan-2026-09-06.md`) condemned four modules as a scoring layer
+that had failed measurement. `live_edge` was only half that: the edge score
+came from here, but so does every piece of genuine price machinery this app
+has — the sharp/consensus reference, the two-sided de-vig, the staleness
+bounds, and the resolution of what line the market is actually offering.
+Deleting the file wholesale would have taken real, separately-tested
+correctness work out with the condemned arithmetic, so it was split instead.
 
-Real audit before this redesign (2026-08-27): the original edge was
+What was removed in that split: `resolve_candidate_edge`'s `raw_model_prob`
+parameter and its `model_prob` result field. Both were already dead — the
+2026-08-27 redesign stopped feeding the model's belief into the edge and kept
+the parameter only "for signature stability with existing callers". Those
+callers (`prop_score.py`, `generic_prop_score.py`, `prop_pick_history.py`,
+`generic_rare_markets.py`) are all deleted as of Phase 1, so the last reason
+to carry a dead parameter went with them.
+
+Nothing here consults a model. `edge` below is a price-versus-price
+quantity — a sharp reference against the book you would actually bet at —
+which is why it survived a phase that deleted the model-versus-market edge.
+
+Pure functions, no I/O — the caller reads `prop_odds` once per game via
+`db.read_prop_odds_for_game` and passes the rows in here per candidate.
+
+Real audit before the 2026-08-27 redesign: the original edge was
 `our_own_model_probability - one_retail_book's_own_devigged_price` — our
 model versus whatever single book happened to be chosen (the user's own
 preferred book, or the best-paying one). That's "does our model disagree
@@ -21,7 +37,7 @@ genuinely sharp reference against the book you'd actually bet at, to
 find real market inefficiency, rather than leaning on an internal
 model's own (disclosed-guess-calibrated) belief.
 
-New design, three tiers:
+Three tiers:
   Tier 1 — a named sharp book (SHARP_REFERENCE_PRIORITY below), first
     one with a genuine two-sided, non-stale price for this exact
     candidate wins.
@@ -30,9 +46,8 @@ New design, three tiers:
     candidate. Median, not mean, so one outlier book can't skew it — the
     same class of problem odds_math.is_plausible_decimal_odds guards
     against elsewhere in this codebase.
-  Tier 3 — neither exists: edge is None, honest absence (Prop Score v1
-    already redistributes E's weight over M/P/X in this case, unchanged
-    by this redesign).
+  Tier 3 — neither exists: `edge` and `market_prob` are None, honest
+    absence rather than a fabricated reference.
 
 Real, checked coverage for MLB at the exact candidate level (not just
 per-game): only 1,221 of 36,955 real (game, player, market, line)
@@ -347,7 +362,10 @@ def _consensus_reference_prob(
 
 
 @dataclass
-class CandidateEdgeInfo:
+class CandidatePriceInfo:
+    """What price genuinely exists for one candidate, and what the market
+    thinks. No model output appears on this type — see the module docstring
+    for why the `model_prob` field that used to sit here was removed."""
     price: int | None
     price_source: str | None
     price_captured_at: str | None
@@ -359,7 +377,6 @@ class CandidateEdgeInfo:
     # it away would erase it).
     implied_raw: float | None
     edge: float | None
-    model_prob: float | None
     market_prob: float | None
     # 'pinnacle'/'circa'/'novig'/'kalshi' (Tier 1) or 'consensus' (Tier 2)
     # — which real reference actually produced market_prob/edge. None
@@ -367,26 +384,21 @@ class CandidateEdgeInfo:
     edge_source: str | None
 
 
-def resolve_candidate_edge(
+def resolve_candidate_price(
     subject_id: str,
     dimension: str,
     category: str,
     line: float | None,
-    raw_model_prob: float | None,
     prop_rows: list[PropOddsRow],
     user_sportsbook: str,
-) -> CandidateEdgeInfo:
-    """The price/edge resolution — real sharp-vs-soft market edge (see
-    module docstring for the full redesign rationale, 2026-08-27), plus
-    the real bettable price/book info this app surfaces regardless of
-    whether an edge could be computed for this candidate.
+) -> CandidatePriceInfo:
+    """The real bettable price/book info this app surfaces, plus the
+    market's own de-vigged reference and the sharp-vs-bettable gap between
+    them (see module docstring for the full redesign rationale, 2026-08-27).
 
-    `raw_model_prob` is accepted (and still returned on the result, for
-    display/debugging) purely for signature stability with existing
-    callers — it no longer feeds the edge computation itself. M
-    (predict/prop_score.py's own model-vs-league-rate component) is
-    where the model's own belief already enters the score; folding it
-    into E again under a different name would double-count it.
+    Was `resolve_candidate_edge`. The rename is not cosmetic: this returns
+    prices and a market reference, and the thing the old name promised —
+    an edge against a model — is exactly what Phase 1 deleted.
     """
     side = candidate_category_to_side(category) or "over"
     market_key = candidate_dimension_to_market_key(dimension)
@@ -417,7 +429,7 @@ def resolve_candidate_edge(
             market_prob, edge_source = reference
             edge = market_prob - implied_raw
 
-    return CandidateEdgeInfo(
+    return CandidatePriceInfo(
         price=price,
         price_source=price_source,
         price_captured_at=price_captured_at,
@@ -425,7 +437,6 @@ def resolve_candidate_edge(
         book_count=book_count,
         implied_raw=implied_raw,
         edge=edge,
-        model_prob=raw_model_prob,
         market_prob=market_prob,
         edge_source=edge_source,
     )

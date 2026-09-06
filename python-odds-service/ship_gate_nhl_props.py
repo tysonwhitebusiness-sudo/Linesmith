@@ -87,7 +87,7 @@ async def main() -> int:
         if h.games >= MIN_PRIOR_GAMES:
             p = npx.project(h, league_rate, league_toi, k=SHRINK_K,
                             toi_window=TOI_WINDOW)
-            scored.append((r, npx.nb_prob_over(r.line, p.expected_sog, DISPERSION)))
+            scored.append((r, npx.nb_prob_over(r.line, p.expected, DISPERSION)))
         h.add(r.actual_sog, r.toi)        # AFTER predicting
 
     # Two-sided only, and split by the window the parameters were fitted on.

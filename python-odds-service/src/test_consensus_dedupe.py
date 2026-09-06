@@ -17,7 +17,7 @@ import sys
 from datetime import datetime, timezone
 
 from db import PropOddsRow
-from predict import live_edge
+from predict import price_resolution
 
 _failures = 0
 
@@ -32,7 +32,7 @@ def check(label, actual, expected):
 
 
 def row(book, provider, side, odds, delay=None, is_delayed=False, line=0.5):
-    # fetched_at must be RELATIVE TO NOW, not a fixed string. live_edge filters
+    # fetched_at must be RELATIVE TO NOW, not a fixed string. price_resolution filters
     # stale prices, so a hardcoded timestamp makes this test pass on the day it
     # is written and fail silently thereafter — which is exactly what happened
     # to the first draft, six hours after it was written.
@@ -57,13 +57,13 @@ def test_same_book_from_three_providers_votes_once():
         matched += _two_sided("draftkings", prov, -110, -110)
     matched += _two_sided("pinnacle", "propline", 200, -240)
 
-    got = live_edge._consensus_reference(matched, "over")
+    got = price_resolution._consensus_reference(matched, "over")
     assert got is not None, "expected a consensus"
     # Two distinct books => median of two terms. If DraftKings still voted three
     # times the median would sit on DraftKings' own number instead of between
     # the two books.
-    dk = live_edge._two_sided_devigged_for_row(matched, "over", matched[0])
-    pin = live_edge._two_sided_devigged_for_row(matched, "over", matched[-2])
+    dk = price_resolution._two_sided_devigged_for_row(matched, "over", matched[0])
+    pin = price_resolution._two_sided_devigged_for_row(matched, "over", matched[-2])
     check("median is between the two BOOKS, not pinned to draftkings",
           round(got[0], 6), round((dk + pin) / 2, 6))
     check("labelled consensus", got[1], "consensus")
@@ -75,9 +75,9 @@ def test_freshest_quote_wins_within_a_book():
     print("\ndedupe — freshest quote wins")
     fresh = _two_sided("draftkings", "propline", -105, -115, delay=0)
     stale = _two_sided("draftkings", "sharpapi", -200, 170, delay=60)
-    got_fresh_first = live_edge._consensus_reference(fresh + stale, "over")
-    got_stale_first = live_edge._consensus_reference(stale + fresh, "over")
-    expected = live_edge._two_sided_devigged_for_row(fresh + stale, "over", fresh[0])
+    got_fresh_first = price_resolution._consensus_reference(fresh + stale, "over")
+    got_stale_first = price_resolution._consensus_reference(stale + fresh, "over")
+    expected = price_resolution._two_sided_devigged_for_row(fresh + stale, "over", fresh[0])
     check("picks the 0s quote regardless of input order",
           (round(got_fresh_first[0], 6), round(got_stale_first[0], 6)),
           (round(expected, 6), round(expected, 6)))
@@ -86,14 +86,14 @@ def test_freshest_quote_wins_within_a_book():
 def test_staleness_ordering():
     print("\ndedupe — staleness ranking")
     check("declared 0s beats declared 60s",
-          live_edge._staleness(row("b", "p", "over", -110, delay=0))
-          < live_edge._staleness(row("b", "p", "over", -110, delay=60)), True)
+          price_resolution._staleness(row("b", "p", "over", -110, delay=0))
+          < price_resolution._staleness(row("b", "p", "over", -110, delay=60)), True)
     check("undeclared beats declared 60s",
-          live_edge._staleness(row("b", "p", "over", -110))
-          < live_edge._staleness(row("b", "p", "over", -110, delay=60)), True)
+          price_resolution._staleness(row("b", "p", "over", -110))
+          < price_resolution._staleness(row("b", "p", "over", -110, delay=60)), True)
     check("is_delayed with no number sorts worst",
-          live_edge._staleness(row("b", "p", "over", -110, is_delayed=True))
-          > live_edge._staleness(row("b", "p", "over", -110, delay=999)), True)
+          price_resolution._staleness(row("b", "p", "over", -110, is_delayed=True))
+          > price_resolution._staleness(row("b", "p", "over", -110, delay=999)), True)
 
 
 def test_excluded_book_still_excluded():
@@ -103,8 +103,8 @@ def test_excluded_book_still_excluded():
     matched = _two_sided("draftkings", "propline", -110, -110) \
         + _two_sided("draftkings", "sharpapi", -110, -110) \
         + _two_sided("pinnacle", "propline", 200, -240)
-    got = live_edge._consensus_reference(matched, "over", exclude_bookmaker="draftkings")
-    pin = live_edge._two_sided_devigged_for_row(matched, "over", matched[-2])
+    got = price_resolution._consensus_reference(matched, "over", exclude_bookmaker="draftkings")
+    pin = price_resolution._two_sided_devigged_for_row(matched, "over", matched[-2])
     check("draftkings excluded from both providers", round(got[0], 6), round(pin, 6))
 
 
@@ -115,18 +115,18 @@ def test_single_book_is_not_a_consensus():
     matched = _two_sided("draftkings", "propline", -110, -110) \
         + _two_sided("draftkings", "sharpapi", -110, -110)
     check("three providers, one book, excluded -> None",
-          live_edge._consensus_reference(matched, "over", exclude_bookmaker="draftkings"), None)
+          price_resolution._consensus_reference(matched, "over", exclude_bookmaker="draftkings"), None)
 
 
 if __name__ == "__main__":
     # The consensus helper is private; resolve its real name once so a rename
     # fails loudly here instead of silently skipping every test.
-    name = next((n for n in dir(live_edge)
-                 if n.startswith("_consensus") and callable(getattr(live_edge, n))), None)
+    name = next((n for n in dir(price_resolution)
+                 if n.startswith("_consensus") and callable(getattr(price_resolution, n))), None)
     if name is None:
-        print("no _consensus* function found in live_edge")
+        print("no _consensus* function found in price_resolution")
         sys.exit(1)
-    live_edge._consensus_reference = getattr(live_edge, name)
+    price_resolution._consensus_reference = getattr(price_resolution, name)
     print(f"(consensus function under test: {name})")
 
     test_same_book_from_three_providers_votes_once()

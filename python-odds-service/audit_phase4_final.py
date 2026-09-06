@@ -81,10 +81,10 @@ async def check_paths_agree(conn) -> bool:
             mism.append((aid, "no fit history"))
             continue
         pf = npx.project(h, lr, lt, k=k, toi_window=w)
-        d = abs(pf.expected_sog - s.projection)
+        d = abs(pf.expected - s.projection)
         diffs.append(d)
         if d > 1e-9 or h.games != s.games_of_history:
-            mism.append((aid, f"proj {pf.expected_sog:.6f} vs {s.projection:.6f}, "
+            mism.append((aid, f"proj {pf.expected:.6f} vs {s.projection:.6f}, "
                               f"games {h.games} vs {s.games_of_history}"))
 
     n = len(diffs)

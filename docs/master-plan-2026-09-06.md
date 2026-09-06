@@ -39,30 +39,136 @@ Checked 2026-09-06:
 
 ---
 
-# Phase 1 — Consolidation
+# Phase 1 — Consolidation — **DONE 2026-09-06**
 
 **Goal:** one model, one table, one surface. Nothing new is built until this
 lands.
+
+**Net: 3,435 lines deleted, 222 added.** 21 modules removed, 8 jobs
+de-registered, 2 pages and 3 components gone.
+
+## What was planned, and what was actually done
 
 - **1.1 Delete the condemned scoring layer.** `edge_model` (118 lines),
   `prop_score` (180), `good_bets` (139), `live_edge` (431). The audit named all
   four for deletion; task 4.12 already measured `prop_score` and found that with
   `model_prob` held fixed its ordering collapses — D outranks C+, A is
-  indistinguishable from B. Its extra terms carry almost no signal. Fix whatever
-  breaks by pointing it at the validated model.
+  indistinguishable from B. Its extra terms carry almost no signal.
+
+  **Done, with one deliberate departure: `live_edge` was SPLIT, not deleted.**
+  Only about a third of it was the condemned edge score. The rest is the only
+  genuine price machinery this app has — the sharp/consensus reference, the
+  two-sided de-vig, the staleness bounds, `real_line_for`, `best_price` — with
+  four dedicated test files, a live import from `generic_price_attach`, and
+  three of Phase 8's own sourcing items written as assertions about it. Phase 2
+  needs it for the implied-probability column. It is now
+  `predict/price_resolution.py`; `resolve_candidate_edge` became
+  `resolve_candidate_price`, and the dead `raw_model_prob`/`model_prob`
+  passthrough (kept since 2026-08-27 "for signature stability with existing
+  callers", all of whom are now deleted) went with the rest.
+
 - **1.2 One prop engine.** Migrate `nhl_props` onto `count_prop_engine` and
-  delete the duplicated maths (~90 lines). `test_count_prop_engine.py` already
-  asserts they agree. Known and accepted: they differ by 2.72e-6 at the Poisson
-  limit, four orders below the gate tolerance.
+  delete the duplicated maths (~90 lines).
+
+  **Done — 95 lines.** `nhl_props` now binds the shared engine with
+  `MINUTES_PER_GAME = 18.0`, the NHL constant that used to be hard-coded inside
+  its private `shrunk_rate`. Every caller was moved to the engine's field names
+  (`expected`/`projected_volume`/`rate_per_chance`) rather than left behind a
+  translation shim, so there is no second vocabulary either.
+
+  `test_count_prop_engine.py` asserted the two implementations agreed. That
+  assertion is now meaningless — there is only one — so the file was rewritten
+  as a **regression pin**: `src/nhl_props_golden.json` holds 1,500 projections
+  and 1,500 probabilities computed by the pre-migration code (recovered from
+  commit `a49f8b5` and executed, not transcribed) before it was deleted. The
+  engine reproduces all 1,500 projections **exactly**, and the probabilities to
+  a worst deviation of **6.99e-07** — inside the 2.72e-6 the plan predicted, and
+  four orders below the gate tolerance. A fourth test asserts the *structural*
+  claim too (NHL's types must BE the engine's), because a future private copy
+  would otherwise pass the numeric pin on the day it was written.
+
 - **1.3 Delete the parallel surfaces.** `/mlb/projections`, `/nhl/projections`,
   `StatsBoard.tsx`, both projection panels. Built 2026-09-05/06 and never asked
   for. The serving pipe, `prop_model_cache`, the calibration store and the
   adapters survive.
+
+  **Done.** Confirmed first that nothing linked to either page — they were
+  reachable only by typing the URL. Both now 404 on a clean server; the routes
+  and adapters still serve real ranked data.
+
 - **1.4 Retire the generic prop pipeline** once Phase 2 proves the replacement —
   `generic_prop_score` (226) + `generic_prop_production` (541).
 
-**Gate:** one implementation of the prop maths; one table holding model output;
-no page renders a model number except Scan; `npm test` and `tsc` clean.
+  **PULLED FORWARD into 1.1 by operator decision (2026-09-06).** Keeping it
+  would have defeated 1.1 entirely: the six `genericPropProduction*Jobs` and
+  `computeMlbPropPredictionsJob` were the condemned layer's only real consumers,
+  so leaving them alive meant leaving the condemned arithmetic alive inside
+  them. Deleted with the layer: `generic_prop_score`, `generic_prop_production`,
+  `generic_rare_markets`, `generic_dimension_configs`, `generic_prop_grading`,
+  `prop_candidates`, `prop_pick_history`, `market_trust`, `windowed_stat`.
+
+## Operator decisions recorded 2026-09-06
+
+1. **`live_edge` is split, not deleted** — see 1.1 above.
+2. **The generic pipeline dies now, not after Phase 2.** Accepted cost:
+   `pick_history` stops accruing new prop rows for seven sports, and Scan's
+   non-MLB/NHL prop rows go away until Phases 4-7 restore them on validated
+   models.
+3. **The TypeScript twins survive until Phase 2.** `propScore.ts`,
+   `goodBets.ts`, `edgeModel.ts` and `liveEdge.ts` are what Scan renders today;
+   deleting them in Phase 1 would have left Scan blank for a whole phase with
+   nothing built to replace them. They die when Phase 2 replaces the surface.
+4. **Model % may appear alongside Implied %** on Scan. This closes the open item
+   in §2.3 — both columns ship.
+
+## Three things found while doing it
+
+1. **`prop_candidates.py` was the live MLB prop producer, not just condemned
+   code.** Deleting it looked like it would blank MLB props on Scan.
+   `lib/sports/mlb/adapter.ts` turns out to have a documented fallback
+   (`PROP_MODEL_CACHE_MAX_AGE_MS`) that recomputes the prop model locally when
+   the cache goes stale, so the TS twin — kept by decision 3 — covers the gap.
+   Checked before deleting, not after.
+2. **Two modules reached into the delete set for things that were not condemned
+   math**, and both were re-homed rather than dragged along: `mlb_prop_grading`
+   needed the live-feed market map, now `predict/mlb_stat_markets.py`;
+   `home_run_model_fit` needed one beta-binomial posterior, now ~20 lines
+   specialised to home runs inside `home_run_model.py` and verified **bit-exact**
+   against the deleted general version across the matchup shift and standard
+   deviation. The 118-line general module and its per-market prior table are
+   gone.
+3. **`db.live_market_skill` was orphaned** by `market_trust`'s deletion — 33
+   lines with no remaining Python caller. Removed. The TS twin is still live and
+   is Phase 2's to decide on.
+
+## Gate — met
+
+- **One implementation of the prop maths** — in Python. The TS twins survive by
+  explicit decision 3 above; Phase 1 did not and could not close that half.
+- **One table holding prop model output** — `prop_model_cache`, written only by
+  `mlb_prop_serving` and `nhl_prop_serving`. `pick_history` now receives only
+  MLB game-moneyline rows, from the validated game model.
+- **No page renders a model number except Scan** — both projection pages 404,
+  verified in a browser on a clean server. (The first check was run against a
+  dev server started before this work and returned the page from a stale
+  compiled route; a fresh server was used instead.)
+- **`tsc` clean; 346 TS tests, 0 fail** (347 before — the one removed is the
+  copy-language assertion that read the deleted `StatsBoard.tsx`; see below).
+  **50 Python test files pass**, same 4 pre-existing non-failures as before
+  (2 exceed a 180s cutoff, 2 environmental). Production build succeeds.
+
+## What Phase 2 inherits
+
+- **A guard it owes.** `tests/stats-board-no-edge.test.ts` asserted that no edge
+  or profit language reached the board's rendered copy. That component is gone
+  and the assertion was NOT re-aimed at Scan, because decision 4 deliberately
+  puts a model probability next to an implied one there — re-aiming it today
+  would fail on work not yet done. Phase 2 must restore the constraint against
+  the surface it builds: no edge, no profit, no beaten close, and only the two
+  approved identifiers.
+- `prop_model_cache` and `/api/{mlb,nhl}/projections`, serving 11 MLB and 5 NHL
+  markets with a per-market `hasProbability` flag — the ranked data §2.1 needs.
+- Four TypeScript modules still to delete when the surface is rebuilt.
 
 ---
 
@@ -124,9 +230,14 @@ number next to something validated.
 - `Diff` becomes **projection − line**, not average − line. It is the column
   people sort on and it currently inherits every weakness of the naive mean.
 - **Confidence** from sample size.
-- `IP` stays. **Whether `Model %` sits beside it is an open operator decision** —
-  it lets anyone subtract the two and read an edge, which is a claim no model
-  here has earned. Recorded, not decided.
+- `IP` stays, and **`Model %` sits beside it — decided by the operator
+  2026-09-06.** The concern that prompted the question stands and is now a
+  design constraint rather than a reason not to ship: anyone can subtract the
+  two columns and read an edge, which is a claim no model here has earned. So
+  the two numbers appear, and nothing on the page computes, names, sorts by or
+  colours that difference. The guard Phase 1 handed back
+  (`tests/stats-board-no-edge.test.ts`, see Phase 1's "What Phase 2 inherits")
+  is where that gets enforced.
 
 ## 2.4 Compliance is a blocker
 

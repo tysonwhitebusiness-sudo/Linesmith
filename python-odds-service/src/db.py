@@ -1773,42 +1773,13 @@ async def league_base_rates(sport: str) -> list[LeagueBaseRate]:
     return [LeagueBaseRate(dimension=r["dimension"], rate=r["rate"], n=r["n"]) for r in rows]
 
 
-@dataclass
-class LiveMarketSkill:
-    dimension: str
-    n: int
-    bss: float | None
-
-
-async def live_market_skill(sport: str) -> list[LiveMarketSkill]:
-    """Direct port of lib/db/client.ts's liveMarketSkill — live (non-
-    backfill) Brier Skill Score per dimension, the input to
-    predict.market_trust.trust_tier_from_live_bss."""
-    pool = await get_pool()
-    rows = await pool.fetch(
-        """
-        SELECT dimension,
-               COUNT(*) AS n,
-               SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) AS wins,
-               AVG((model_prob - (CASE WHEN outcome = 'win' THEN 1.0 ELSE 0.0 END)) *
-                   (model_prob - (CASE WHEN outcome = 'win' THEN 1.0 ELSE 0.0 END)))::float8 AS brier
-        FROM pick_history
-        WHERE sport = $1 AND model_prob IS NOT NULL AND outcome IS NOT NULL
-              AND (event_context IS NULL OR event_context != 'backfill')
-        GROUP BY dimension
-        """,
-        sport,
-    )
-    out: list[LiveMarketSkill] = []
-    for r in rows:
-        n = r["n"]
-        p = r["wins"] / n
-        naive_brier = p * (1 - p)
-        bss = 1 - r["brier"] / naive_brier if naive_brier > 0 else None
-        out.append(LiveMarketSkill(dimension=r["dimension"], n=n, bss=bss))
-    return out
-
-
+# Phase 1.1 of docs/master-plan-2026-09-06.md (2026-09-06) removed
+# LiveMarketSkill / live_market_skill. It computed a per-dimension Brier Skill
+# Score over pick_history as the input to predict/market_trust.py's
+# trust_tier_from_live_bss, and market_trust.py was deleted with the rest of the
+# condemned scoring layer. Nothing else ever called it in Python — the TS twin
+# (lib/db/client.ts's liveMarketSkill) is still live and is Phase 2's to decide
+# on, since it feeds the surface that phase rebuilds.
 @dataclass
 class GameOddsHistoryInput:
     event_id: str

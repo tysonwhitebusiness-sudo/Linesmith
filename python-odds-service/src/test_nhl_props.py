@@ -103,28 +103,28 @@ def test_projection_is_volume_times_rate() -> None:
     print("\nprojection = volume x rate, and volume dominates")
     h = npx.PlayerHistory()
     for _ in range(20):
-        h.add(sog=3.0, minutes=20.0)
+        h.add(events=3.0, volume=20.0)
     p = npx.project(h, league_rate=0.12, league_toi=18.0)
-    close("projected TOI is the player's own mean", p.projected_toi, 20.0, 1e-9)
-    close("expected = toi * rate", p.expected_sog, p.projected_toi * p.rate_per_min, 1e-12)
+    close("projected TOI is the player's own mean", p.projected_volume, 20.0, 1e-9)
+    close("expected = toi * rate", p.expected, p.projected_volume * p.rate_per_chance, 1e-12)
     check("history length is reported", p.games_of_history, 20)
 
     # Same rate, half the minutes -> half the shots. Volume is the first
     # ingredient for a reason.
     h2 = npx.PlayerHistory()
     for _ in range(20):
-        h2.add(sog=1.5, minutes=10.0)
+        h2.add(events=1.5, volume=10.0)
     p2 = npx.project(h2, league_rate=0.12, league_toi=18.0)
     close("half the minutes at the same rate halves the projection",
-          p2.expected_sog / p.expected_sog, 0.5, 0.02)
+          p2.expected / p.expected, 0.5, 0.02)
 
 
 def test_empty_history_uses_league() -> None:
     print("\na player with no history falls back to the league, not to zero")
     p = npx.project(npx.PlayerHistory(), league_rate=0.12, league_toi=18.5)
-    close("toi falls back to the league mean", p.projected_toi, 18.5, 1e-12)
-    close("rate falls back to the league mean", p.rate_per_min, 0.12, 1e-12)
-    check("so the projection is non-zero", p.expected_sog > 0, True)
+    close("toi falls back to the league mean", p.projected_volume, 18.5, 1e-12)
+    close("rate falls back to the league mean", p.rate_per_chance, 0.12, 1e-12)
+    check("so the projection is non-zero", p.expected > 0, True)
 
 
 def main() -> int:

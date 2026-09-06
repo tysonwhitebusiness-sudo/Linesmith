@@ -31,7 +31,7 @@ import httpx
 import db
 from entity_resolution import candidate_category_to_side
 from predict.odds_math import american_to_decimal, devig_two_way
-from predict.prop_candidates import PITCHER_MARKET_DIMENSIONS, STAT_MARKET_BY_DIMENSION
+from predict.mlb_stat_markets import PITCHER_MARKET_DIMENSIONS, STAT_MARKET_BY_DIMENSION
 from predict.statsapi import MlbLiveFeed, get_live_feed
 
 
