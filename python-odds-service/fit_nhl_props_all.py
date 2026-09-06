@@ -220,23 +220,29 @@ async def run_market(market: str, persist: bool = False) -> None:
     # not passing. `order` stays empty and monotone is False.
     monotone = bool(order) and all(
         order[i][2] <= order[i + 1][2] + 1e-9 for i in range(len(order) - 1))
-    cal = [ll(temper(o, bestT) if r.actual_sog > r.line else 1 - temper(o, bestT))
-           for r, o, _ in held["rows"]]
-    worst = 0.0
-    cb: dict[int, list] = {}
-    for (r, o, _), c in zip(held["rows"], cal):
-        cb.setdefault(min(9, int(temper(o, bestT) * 10)), []).append(r)
-    for b, v in cb.items():
-        if len(v) < 40:
-            continue
-        pred = (b + 0.5) / 10
-        act = sum(1 for r in v if r.actual_sog > r.line) / len(v)
-        worst = max(worst, abs(pred - act))
+    # CORRECTED METRIC (5.4). The version this replaces had two real bugs,
+    # both found on MLB and both of which affected the NHL verdicts too:
+    #   - it compared actual to the bucket MIDPOINT rather than to the mean
+    #     PREDICTION in that bucket, charging the model for where a bin boundary
+    #     happens to fall;
+    #   - its floor was n >= 40, which is noise for a proportion (at n=45 a true
+    #     0.30 has a 95% interval of about +/-0.14), so one sparse bucket could
+    #     decide a market's verdict.
+    # `count_prop_engine.calibration` fixes both and returns ECE alongside the
+    # worst bucket. Re-running NHL under it is what this comment is for: a
+    # metric fixed for one sport and left broken in another is worse than
+    # either.
+    from predict import count_prop_engine as _eng
+    _cal = _eng.calibration(
+        [(temper(o, bestT), r.actual_sog > r.line) for r, o, _ in held["rows"]])
+    ece, worst = _cal["ece"], _cal["worst"]
     print("  STATS BAR — ordering by projection quintile: " +
           (", ".join(f"Q{b}->{m:.2f} (n={n})" for b, n, m in order)
            if order else "TOO FEW ROWS FOR 5 BINS — untested, not passing"))
-    print(f"    monotone: {monotone}   worst calibration gap after T: {worst:.3f}"
-          f"   {'PASS' if monotone and worst <= 0.05 else 'FAIL'}")
+    prob_ok = bool(monotone and ece <= 0.025 and worst <= 0.05)
+    print(f"    monotone: {monotone}   after T: ECE {ece:.4f} (<=0.025), "
+          f"worst bucket {worst:.3f} (<=0.05)   "
+          f"ranks={'YES' if monotone else 'NO'} probability={'YES' if prob_ok else 'NO'}")
 
     # ---- BETTING BAR: informational ---------------------------------------
     # None when this market has no two-sided prices at all — persisted as a
@@ -290,9 +296,11 @@ async def run_market(market: str, persist: bool = False) -> None:
                 "select_cutoff": CUTOFF.isoformat(),
                 "ordering": [{"quintile": b, "n": n, "actual": m} for b, n, m in order],
                 "ordering_monotone": monotone,
+                "calibration_ece": ece,
                 "worst_calibration_gap": worst,
+                "calibration_table": _cal["table"],
                 "ranking_ok": monotone,
-                "probability_ok": bool(monotone and worst <= 0.05),
+                "probability_ok": prob_ok,
                 "holdout_accuracy": held["acc"],
                 "projection_bias": held["bias"],
             },
@@ -305,8 +313,7 @@ async def run_market(market: str, persist: bool = False) -> None:
         activate=monotone,
     )
     print(f"  persisted to model_calibration: nhl/{DIMENSION[market]}  "
-          f"active={monotone} (ranking), probability_ok="
-          f"{bool(monotone and worst <= 0.05)}")
+          f"active={monotone} (ranking), probability_ok={prob_ok}")
 
 
 async def main() -> int:
