@@ -35,6 +35,7 @@ export interface MlbProjectionApiRow {
   line: number | null;
   volume: number | null;
   sampleSize: number | null;
+  leagueBaseline: number | null;
 }
 
 /**
@@ -115,6 +116,7 @@ export function toMlbStatsBoardData(
       line: r.modelProb == null ? null : r.line,
       volume: r.volume,
       sampleSize: r.sampleSize ?? 0,
+      leagueBaseline: r.modelProb == null ? null : r.leagueBaseline,
     });
     byMarket.set(r.dimension, list);
   }

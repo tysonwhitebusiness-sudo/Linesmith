@@ -24,9 +24,9 @@ import type { NhlTeamDefenseAllowed } from '@/lib/sports/nhl/teamDefenseAllowed'
 import { nhlMatchupFavorableFor } from '@/lib/sports/nhl/matchupFavorable';
 import { mergeMatchupFavorable } from '@/lib/odds/props/matchupFavorable';
 import { useMarketCalibration } from './useMarketCalibration';
+import { useProjections, projectionKey } from './useProjections';
 import { useGamePickHistory } from './useGamePickRecord';
 import { TodaysPicksButton } from './TodaysPicksModal';
-import { isGoodBet, candidateGoodBetSignals } from '@/lib/odds/goodBets';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import ScanCard from './ScanCard';
 import SlipModal from './SlipModal';
@@ -63,16 +63,22 @@ import { useFilters, applyFilters, filtersActive, activeFilterCount } from './us
 import { easternDate, shiftDate } from '@/lib/sports/mlb/statsapi';
 
 /**
+ * Phase 2 — GOOD BETS IS GONE, and the ranking replaced it.
+ *
+ * It was an edge-gated subset built by the scoring layer Phase 1 deleted, and
+ * it answered a different question from the one this product asks. "Which of
+ * these is a bet" is a claim about someone else's price; "who has the most
+ * value today" is a claim about players, which is the only kind this project
+ * has evidence for. The replacement is not another tab — it is the DEFAULT
+ * ORDER of the table itself (see `ScanTable`'s `rank` sort and
+ * `lib/sports/propRanking.ts`), so the board opens ranked rather than asking
+ * anyone to pick a lens first.
+ *
  * "All" leads because the table is meant to be swept.
  *
  * "Coming up" is empty by definition until first pitch, so opening on it meant
  * arriving at an empty screen for most of the day — the table has to actually
  * have the slate in it to be worth defaulting to.
- *
- * "Good Bets" now leads instead — the Good Bets engine (edge + calibration
- * trust + price ceiling, lib/odds/goodBets.ts) is the app's actual selling
- * point, so the app should open on it rather than making it one tab among
- * several.
  *
  * Consistent and Hot/Cold used to be separate tabs here; they're now filter
  * toggles instead (Hot Streak / Cold Streak / Consistent, in the filter bar)
@@ -84,7 +90,7 @@ import { easternDate, shiftDate } from '@/lib/sports/mlb/statsapi';
  * filter+sort added to `views` below, rendered through the same
  * renderList/ScanTable machinery.
  */
-const SCAN_VIEWS = ['Good Bets', 'All', 'Coming up', 'Watchlist', 'Home Runs'] as const;
+const SCAN_VIEWS = ['All', 'Coming up', 'Watchlist', 'Home Runs'] as const;
 type ScanView = (typeof SCAN_VIEWS)[number];
 
 const LAST_SPORT_KEY = 'linesmith:last-sport';
@@ -202,11 +208,15 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
       setPendingTab(null);
     });
   };
-  // NFL/soccer default to All rather than Good Bets — the Good Bets scoring
-  // engine needs graded-outcome data to calibrate a threshold against, which
-  // a brand-new sport doesn't have yet (same reasoning as hiding it below).
-  const [scanView, setScanView] = useState<ScanView>(() => (sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl' || sport === 'tennis' ? 'All' : 'Good Bets'));
+  // Every sport opens on All, which is now the ranked board rather than an
+  // unordered dump — Phase 2 made the ranking the table's default sort, so
+  // there is no longer a "best" tab to land on instead of the whole slate.
+  const [scanView, setScanView] = useState<ScanView>('All');
   const calibration = useMarketCalibration(true, sport);
+  // Phase 2 — the validated prop model. Runs for every sport and is inert for
+  // the seven with no fitted model, same as every other hook here (rules of
+  // hooks: always called, mostly idle).
+  const projections = useProjections(sport);
   const gamePickHistory = useGamePickHistory(sport);
   const [scanScope, setScanScope] = useState<'players' | 'games'>('players');
   // Golf only: Hole Props (the existing per-hole pattern-scan market) vs.
@@ -277,7 +287,6 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
     toggleHotStreak,
     toggleColdStreak,
     toggleConsistentOnly,
-    toggleGoodBetOnly,
     clearAll,
   } = useFilters();
 
@@ -311,14 +320,10 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   useEffect(() => {
     setSelectedSubjects(new Set());
     clearAll();
-    // Home Runs is hidden from golf's tab row, Good Bets + Home Runs both
-    // hidden from NFL's (see SCAN_VIEWS.filter below) — if one was active,
-    // switching sports shouldn't land on a tab that no longer has a button.
-    setScanView((v) => {
-      if (sport === 'golf' && v === 'Home Runs') return 'Good Bets';
-      if ((sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl' || sport === 'tennis') && (v === 'Home Runs' || v === 'Good Bets')) return 'All';
-      return v;
-    });
+    // Home Runs is hidden from every sport but MLB (see SCAN_VIEWS.filter
+    // below) — if it was active, switching sports shouldn't land on a tab that
+    // no longer has a button.
+    setScanView((v) => (v === 'Home Runs' && sport !== 'mlb' ? 'All' : v));
   }, [sport, clearAll]);
 
   const candidates = useMemo(() => {
@@ -359,9 +364,9 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   }, [snapshot]);
 
   // Base filtering shared by every tab, deliberately stopping short of the
-  // price-existence check below — Good Bets (views.goodBets) builds from
-  // this directly so a candidate with no posted price yet can still qualify
-  // there, flagged rather than silently dropped (see ScanTable's Odds
+  // price-existence check below — the Home Runs board builds from this
+  // directly, so a candidate with no posted price yet still appears on a
+  // rankings board, flagged rather than silently dropped (see ScanTable's Odds
   // column). All/Coming Up/Watchlist go one step further, through `filtered`.
   const filteredBeforePriceGate = useMemo(() => {
     let result = applyFilters(candidates, filters);
@@ -407,27 +412,12 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // now (filters.sportsbook), falling back to their saved default.
   const effectiveSportsbook = filters.sportsbook ?? slateProps.userSportsbook;
 
-  const isCandidateGoodBet = (c: PickCandidate) => {
-    const info = resolveCandidateEdge(c, slateProps.rows, effectiveSportsbook);
-    return isGoodBet(
-      {
-        edge: info.edge,
-        marketProb: info.marketProb,
-        sampleSize: c.sampleSize,
-        dimension: c.dimension,
-        priceAmerican: info.price,
-        ...candidateGoodBetSignals(c),
-      },
-      calibration.trustedMarkets,
-    );
-  };
-
-  // Odds range + hot/cold streak narrowing, factored out so Good Bets can
-  // apply the same lenses starting from `filteredBeforePriceGate` instead of
-  // `filtered` — everywhere else goes through the price-existence gate first,
-  // Good Bets deliberately doesn't. Not memoized itself (cheap array filters,
-  // and memoizing a function value here would just move the dependency-array
-  // bookkeeping without saving real work).
+  // Odds range + hot/cold streak narrowing. Still factored out because the
+  // Home Runs board applies the same lenses starting from
+  // `filteredBeforePriceGate` rather than from `filtered` — a batter with no
+  // posted price yet still belongs on a rankings board. Not memoized itself
+  // (cheap array filters, and memoizing a function value here would just move
+  // the dependency-array bookkeeping without saving real work).
   const narrowByOddsAndStreak = (base: PickCandidate[]) => {
     let result = base;
 
@@ -458,27 +448,16 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // than in useFilters' pure `applyFilters` — but they narrow every tab
   // uniformly (Hot Streak isn't its own tab anymore, it's a lens onto
   // whichever tab you're already looking at).
-  const narrowed = useMemo(() => {
-    let result = narrowByOddsAndStreak(filtered);
-    if (filters.goodBetOnly) {
-      result = result.filter(isCandidateGoodBet);
-    }
-    return result;
-  }, [filtered, filters.oddsMin, filters.oddsMax, filters.showNoOdds, filters.hotStreak, filters.coldStreak, filters.goodBetOnly, slateProps.rows, effectiveSportsbook, calibration.trustedMarkets]);
+  const narrowed = useMemo(
+    () => narrowByOddsAndStreak(filtered),
+    [filtered, filters.oddsMin, filters.oddsMax, filters.showNoOdds, filters.hotStreak, filters.coldStreak, slateProps.rows, effectiveSportsbook],
+  );
 
   const views = useMemo(() => {
     const comingUp = scanComingUp(narrowed, { maxDistance: 6, minSampleSize: 2 });
     const watchlist = sortByComingUp(narrowed.filter((c) => slip.watchedIds.has(c.subjectId)));
     // The whole filtered set, ordered by imminence. The table sorts it further.
     const all = sortByComingUp(narrowed);
-    // The Good Bets engine (lib/odds/goodBets.ts) — same edge/price/calibration
-    // resolution ScanTable's own Edge column uses, reused rather than
-    // recomputed, so a candidate shown here always agrees with its own row.
-    // Built from `filteredBeforePriceGate`, not `narrowed`/`filtered` — a
-    // candidate with no posted price yet can still qualify on performance or
-    // matchup alone; ScanTable's Odds column flags the gap instead of this
-    // silently dropping it.
-    const goodBets = sortByComingUp(narrowByOddsAndStreak(filteredBeforePriceGate).filter(isCandidateGoodBet));
     // Home Run model plan, Phase 7 — the standalone model's daily board,
     // ranked by its own modelProb (whichever source populated it: the fitted
     // home-run model when active, the plain Beta-Binomial baseline
@@ -491,8 +470,8 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
       .filter((r): r is { candidate: PickCandidate; prob: number } => typeof r.prob === 'number')
       .sort((a, b) => b.prob - a.prob)
       .map((r) => r.candidate);
-    return { all, comingUp, watchlist, goodBets, homeRuns };
-  }, [narrowed, filteredBeforePriceGate, slip.watchedIds, filters.oddsMin, filters.oddsMax, filters.showNoOdds, filters.hotStreak, filters.coldStreak, slateProps.rows, effectiveSportsbook, calibration.trustedMarkets]);
+    return { all, comingUp, watchlist, homeRuns };
+  }, [narrowed, filteredBeforePriceGate, slip.watchedIds, filters.oddsMin, filters.oddsMax, filters.showNoOdds, filters.hotStreak, filters.coldStreak, slateProps.rows, effectiveSportsbook]);
 
   // Odds columns in the dense scan view need each subject's game.
   const slate = useMemo(() => {
@@ -545,7 +524,14 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // so Scan/Players get their own notice instead of a generic "no results".
   const golfFieldPending = sport === 'golf' && snapshot != null && snapshot.status === 'pre' && (snapshot.subjects?.length ?? 0) === 0;
 
-  const renderList = (list: PickCandidate[], emptyMessage: string, showReasons = false, defaultSortColumn?: ScanTableProps['defaultSortColumn']) => {
+  // One lookup shared by the table and the cards, memoized on the fetched map
+  // so `rows` inside ScanTable is not invalidated on every render.
+  const projectionForCandidate = useMemo(
+    () => (c: PickCandidate) => projections.byKey.get(projectionKey(c.subjectId, c.dimension)) ?? null,
+    [projections.byKey],
+  );
+
+  const renderList = (list: PickCandidate[], emptyMessage: string, defaultSortColumn?: ScanTableProps['defaultSortColumn']) => {
     if (dataLoading && list.length === 0) {
       return dense ? <ScanTableSkeleton /> : <ScanListSkeleton />;
     }
@@ -563,9 +549,9 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
           propRows={slateProps.rows}
           userSportsbook={effectiveSportsbook}
           trustedMarkets={calibration.trustedMarkets}
-          showReasons={showReasons}
           trustTiers={calibration.trustTiers}
           defaultSortColumn={defaultSortColumn}
+          projectionFor={projectionForCandidate}
         />
       );
     }
@@ -793,17 +779,13 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                   <div className="mb-1 flex items-center justify-between gap-3 border-b border-line">
                     <div className="lb-scroll-x flex items-center gap-6">
                       {/* Home Runs is the standalone home-run model's board — an
-                          MLB-only dimension (candidateGoodBetSignals never
+                          MLB-only dimension (the streak signals never
                           produces one for golf), so the tab is hidden for golf
                           rather than opening onto a permanently-empty list.
                           Good Bets is hidden for NFL too — its scoring engine
                           has no calibrated threshold for a sport with no
                           graded history yet (see scanView default above). */}
-                      {SCAN_VIEWS.filter((v) => {
-                        if (sport === 'golf') return v !== 'Home Runs';
-                        if (sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl' || sport === 'tennis') return v !== 'Home Runs' && v !== 'Good Bets';
-                        return true;
-                      }).map((v) => (
+                      {SCAN_VIEWS.filter((v) => v !== 'Home Runs' || sport === 'mlb').map((v) => (
                         <button
                           key={v}
                           type="button"
@@ -829,7 +811,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                     <FilterSearchBox value={filters.playerSearch} onChange={setPlayerSearch} />
                     <div className="flex-1" />
                     <DensityToggle dense={dense} onChange={setDense} />
-                    <OverflowMenu active={selectedSubjects.size > 0 || filters.goodBetOnly || filters.sportsbook != null}>
+                    <OverflowMenu active={selectedSubjects.size > 0 || filters.sportsbook != null}>
                       <button
                         type="button"
                         onClick={() => setFilterOpen(true)}
@@ -838,7 +820,6 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                         <span>Players</span>
                         <span className="text-ink-faint">{selectedSubjects.size > 0 ? selectedSubjects.size : 'All'}</span>
                       </button>
-                      <BooleanCheckboxRow label="Good Bet only" checked={filters.goodBetOnly} onChange={toggleGoodBetOnly} />
                       {filtersActive(filters) ? (
                         <button
                           type="button"
@@ -968,14 +949,6 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                     </FilterBar>
                   ) : null}
 
-                  {scanView === 'Good Bets'
-                    ? renderList(
-                        views.goodBets,
-                        'No good bets clear the bar right now — a real edge, strong recent form, or a favorable matchup, on a market we trust and a price no worse than -300. Check back as odds update, or browse All.',
-                        true,
-                      )
-                    : null}
-
                   {scanView === 'All' ? renderList(views.all, 'No candidates match these filters.') : null}
 
                   {scanView === 'Coming up'
@@ -987,7 +960,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                     : null}
 
                   {scanView === 'Home Runs'
-                    ? renderList(views.homeRuns, 'No home-run projections available for today’s slate yet.', false, 'modelProb')
+                    ? renderList(views.homeRuns, 'No home-run projections available for today’s slate yet.', 'modelProb')
                     : null}
                 </div>
               </div>

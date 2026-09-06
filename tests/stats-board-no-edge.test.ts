@@ -224,7 +224,7 @@ function mkMlb(
   return {
     subjectId: id, subjectName: name, teamAbbr: null, gameId: 'g1',
     dimension, projection, modelProb: null, line: null,
-    volume: 4.1, sampleSize: 40,
+    volume: 4.1, sampleSize: 40, leagueBaseline: null,
   };
 }
 
@@ -247,5 +247,6 @@ function mk(
     line,
     projectedToi: 16.4,
     sampleSize: 30,
+    leagueBaseline: modelProb == null ? null : 0.3,
   };
 }

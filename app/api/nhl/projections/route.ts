@@ -34,7 +34,13 @@ export async function GET() {
     countNhlProjectionsWithoutName(),
   ]);
 
-  const data = toNhlStatsBoardData(rows, null);
+  // The slate these projections are for. Every row in one serving run shares a
+  // `computed_at`, and `LATEST_PROJECTION_BATCH` already narrows the read to a
+  // single run, so any row's value is the batch's. Surfaced rather than passed
+  // as null: NHL is out of season for part of the year, and a board that
+  // cannot say which day it is describing is a board that shows a stale slate
+  // as though it were today's.
+  const data = toNhlStatsBoardData(rows, rows[0]?.computedAt ?? null);
 
   return NextResponse.json({
     ...data,

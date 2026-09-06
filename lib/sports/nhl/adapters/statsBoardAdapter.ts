@@ -53,6 +53,17 @@ export interface StatsBoardRow {
   volume: number | null;
   /** Games of history the projection rests on. Drives the confidence display. */
   sampleSize: number;
+  /**
+   * League-wide P(stat > `line`) for this market, measured by the serving job
+   * over the same history the projection was built from. The anchor Scan's
+   * cross-market ranking subtracts (`lib/sports/propRanking.ts`).
+   *
+   * NOT `prop_model_cache.league_rate`, which is the engine's per-CHANCE rate
+   * (hits per plate appearance) and is not a probability — see migration
+   * 20260906120000. Null exactly when `probability` is: with no line there is
+   * no "over" to have a league rate of.
+   */
+  leagueBaseline: number | null;
 }
 
 export interface StatsBoardMarket {
@@ -106,6 +117,7 @@ export interface NhlProjectionApiRow {
   line: number | null;
   projectedToi: number | null;
   sampleSize: number | null;
+  leagueBaseline: number | null;
 }
 
 /**
@@ -164,6 +176,7 @@ export function toNhlStatsBoardData(
       line: r.modelProb == null ? null : r.line,
       volume: r.projectedToi,
       sampleSize: r.sampleSize ?? 0,
+      leagueBaseline: r.modelProb == null ? null : r.leagueBaseline,
     });
     byMarket.set(r.dimension, list);
   }

@@ -13,7 +13,6 @@ import { MarketLine } from './MarketLabel';
 import { formatRate, InsufficientMark } from './StatCells';
 import { InsightList } from './InsightRow';
 import { resolveCandidateEdge, type PropOddsRow } from './usePropOdds';
-import { computePropScore } from '@/lib/odds/props/propScore';
 import type { MarketTrust } from '@/lib/odds/props/marketTrust';
 
 /** The distance chip. Exact counts are loud; estimates are quiet and marked. */
@@ -257,7 +256,6 @@ export function ScanCard({ candidate, form, added, watched, onAdd, onToggleWatch
   // auto-fills it rather than leaving the slip to ask for one by hand.
   const trustTier = trustTiers?.get(candidate.dimension) ?? null;
   const edgeInfo = resolveCandidateEdge(candidate, propRows, userSportsbook);
-  const propScore = trustTier === 'excluded' ? null : computePropScore(candidate, edgeInfo);
   const addOdds =
     edgeInfo.price != null
       ? { americanOdds: String(edgeInfo.price), source: edgeInfo.priceSource ?? 'odds-api', bookmaker: edgeInfo.bookmaker }

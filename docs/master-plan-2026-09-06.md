@@ -172,84 +172,132 @@ de-registered, 2 pages and 3 components gone.
 
 ---
 
-# Phase 2 — Scan, the only surface
+# Phase 2 — Scan, the only surface — **BUILT 2026-09-06**
 
 **This is the product. Everything else feeds it.**
 
-## 2.0 The goal, stated once and precisely
+## What shipped
 
-> **Scan shows every player prop we can model, from every market, ranked against
-> each other, with #1 at the top. The market filter is an option, not the
-> organising principle.**
+- **Good Bets is gone from Scan** — the tab, the "Good Bet only" filter and the
+  Reason column. `propScore.ts` and `PropScoreBadge.tsx` are deleted.
+- **The ranking is the table's default sort**, not a tab. Every sport opens on
+  All, ranked.
+- **Columns**: `Avg L10` → **`Proj`** (the hero number, unit muted after it),
+  `Diff` is now **projection − line**, **`Model %`** sits beside `IP`, and
+  **`Conf`** shows sample size as Thin/Some/Deep history.
+- **Rank chip** in the leftmost cell: 1-3 filled, 4-10 outlined, 11+ muted.
+- **`lib/sports/propRanking.ts`** — the metric, with 8 tests.
+- **`tests/scan-no-edge.test.ts`** — the guard Phase 1 owed, now aimed at Scan.
 
-Today Scan has a **Good Bets** tab, an **All** tab, and a table sorted by
-whatever column you click. **Good Bets goes away.** It was an edge-gated subset
-produced by the scoring layer Phase 1 deletes, and it answered a different
-question ("which of these is a bet") from the one the product asks ("who has the
-most value today").
+## Four things that were wrong underneath, found by building on them
 
-The ranking replaces it. Not as a tab — as the default state of the table.
+1. **The ranking metric had no valid input.** The plan said to rank on
+   `P(over) − league baseline`, and the obvious candidate — `league_rate`, which
+   `prop_model_cache` already carried on every row — is **not a probability**.
+   It is the engine's per-CHANCE rate: 0.222 hits per plate appearance, 0.318
+   strikeouts per out recorded. Subtracting it from a calibrated probability is
+   a unit error that produces a plausible number rather than an error. Added
+   `league_baseline` (migration `20260906120000`), computed by each serving job
+   as P(stat > line) over the same history it built the projections from.
 
-## 2.1 What ranks, and on what
+   **The population is the whole question, not a detail.** P(K > 4.5) is
+   **0.129** across all pitcher-games and **0.630** across starts of 15+ outs —
+   a five-fold swing that reorders the entire board. Neither pipe picks a
+   threshold; each measures over exactly the history it already loaded, so the
+   population matches the rows served by construction.
 
-Cross-market ranking needs one **unitless** quantity. Raw projections cannot be
-compared (1.25 hits against 7.5 strikeouts); probabilities alone favour every
-0.5 line.
+2. **The serving pipe could not serve a live slate.** `build()` took its slate
+   from `player_game_history WHERE game_date = as_of` — games *already played
+   and recorded*. That is the walk-forward's shape and it can never answer "who
+   plays tonight". `player_game_history` also ended 2026-08-28, so all 338
+   cached MLB rows were nine days stale. Added `live_slate_subjects`, which
+   resolves today's posted lineups and probable starters from the MLB schedule,
+   with each team's most recent lineup as the pre-lineup fallback. Verified
+   live: **15 games, 29 posted lineups, 1 projected, 2,078 projections.** The
+   model math is untouched; only which players it is asked about changed.
 
-**Rank on `calibrated P(over) − league baseline for that market`.** A 73% chance
-to clear 0.5 hits is unremarkable when the league clears it 68%; a 52% chance to
-clear 4.5 strikeouts when the league clears it 41% is not. This is the same delta
-shape `prop_score` used and the only part of it that measured as real.
+3. **The projection reads served a union of slates.** `prop_model_cache` upserts
+   on `(sport, game_id, subject_id, dimension, category)`, so a new run sits
+   beside the old rather than replacing it, and the routes had **no date
+   predicate at all**. Measured: five runs coexisting, spanning 15- and 17-game
+   slates, with the same player appearing more than once. Reads are now scoped
+   to `computed_at = max(computed_at)` — one transaction, one timestamp, one
+   slate — and `asOf` is exposed so a stale board can say so.
 
-**Only markets that earned a probability enter the global ranking.** Today that
-is 9 MLB and 4 NHL markets. A market that ranks but has no calibrated
-probability still appears, still shows a projection, and is ranked **within its
-own market** — it just does not get a global position. Nothing unvalidated gets a
-number next to something validated.
+4. **The board opened at #117.** Ranking was computed over the served board
+   while the table shows a filtered subset (it drops rows with no posted price),
+   so the top 116 were real but elsewhere. `rankWithin` is now applied to the
+   rows actually rendered, which is also what makes a market filter produce a
+   1..N leaderboard for free. It was made non-mutating at the same time — it had
+   been renumbering the hook's shared rows as a side effect of one component's
+   filtering.
 
-## 2.2 The ranking UI
+## The pitcher markets: an operator decision, and what it produced
 
-- **Rank chip in the leftmost cell**, where the star sits today.
-- **Top 3 carry real emphasis** — larger numeral, heavier weight, filled chip
-  against outlined for the rest. Not medals; this is a graphite system and gold
-  would fight it. A clear three-tier drop-off so #1 reads instantly.
-- **#4–#10 solid, #11+ muted**, so the eye lands on the top without the list
-  going noisy.
-- **The projection is the hero number** in its cell — bold, tabular, unit muted
-  after it (`1.25` `hits`).
-- **Sample size is visible** on every row. A 9-game callup must not look like
-  Ohtani.
-- **Filtering by market re-ranks 1..N within that market**, so the same table is
-  both the cross-market board and the per-market leaderboard.
+Before building, measurement found two defects in the *fitted* calibrations:
 
-## 2.3 The columns
+- **`pitcher-outs` ranks backwards.** `corr(projection, model_prob) = −0.933`;
+  its Platt slope is negative (−0.065). Every other market is +0.94 to +0.996.
+- **`pitcher-strikeouts` is crushed flat.** Slope 0.104 maps raw 63% → 51.9% and
+  raw 0.55% → 37.2%.
 
-- `Avg L10` → **`Proj`**. Avg L10 is a ten-game mean with no volume term, no
-  shrinkage, no baseline and no calibration. The model is all four, validated on
-  30,000 held-out rows.
-- `Diff` becomes **projection − line**, not average − line. It is the column
-  people sort on and it currently inherits every weakness of the naive mean.
-- **Confidence** from sample size.
-- `IP` stays, and **`Model %` sits beside it — decided by the operator
-  2026-09-06.** The concern that prompted the question stands and is now a
-  design constraint rather than a reason not to ship: anyone can subtract the
-  two columns and read an edge, which is a claim no model here has earned. So
-  the two numbers appear, and nothing on the page computes, names, sorts by or
-  colours that difference. The guard Phase 1 handed back
-  (`tests/stats-board-no-edge.test.ts`, see Phase 1's "What Phase 2 inherits")
-  is where that gets enforced.
+Root cause: those calibrations were fitted against rows at the **market's own
+lines** (centred near 50%) and are served at the board's **fixed** line, far
+outside the region they were fitted in. The fit's gate checked
+`ordering_monotone` on the *projection*, never on the *calibrated probability*,
+so the hole was never tested.
 
-## 2.4 Compliance is a blocker
+**The operator decided 2026-09-06 to keep all pitcher probabilities and fix them
+in Phase 3.** Built as decided. The measured consequence, from the live board:
 
-`ComplianceFooter` and `/privacy` exist as of 2026-09-05 but **the privacy policy
-has not been reviewed by the operator** and states things about retention and
-jurisdiction that only the operator can confirm. No public exposure until it is.
+```
+#1  Luis Torrens    pitcher-outs  proj 2.00 outs  P 65.1%  base 37.0%  +28.1pt
+#2  Jhonny Pereda   pitcher-outs  proj 2.20 outs  P 64.0%  base 37.0%  +27.0pt
+#3  Kody Clemens    pitcher-outs  proj 2.40 outs  P 63.1%  base 37.0%  +26.0pt
+```
 
-**Gate:** Good Bets gone; one table; ranked #1..#N across markets by default;
-market filter re-ranks; every row carries a sample size; verified in a browser
-with the top of each market face-valid.
+Those are position players and backup catchers who threw a mop-up inning,
+holding the top of the entire cross-market board, because the inverted
+calibration rewards the *lowest* projection. **Phase 3.4 owns the re-fit.** A
+one-line serving guard (refuse a non-positive calibration slope) would drop
+`pitcher-outs` to projection-only under the plan's existing rule for a market
+that has not earned a probability; it is not applied, by decision.
 
----
+## Gate
+
+- **Good Bets gone** — verified in a browser: the tab strip reads
+  All / Coming up / Watchlist / Home Runs.
+- **One table, ranked by default** — verified in a browser with real data: 150
+  rows, headers `Player | Odds | IP | Model % | DVP | Proj | Diff | Conf | L5 |
+  L10 | L15 | H2H | Strk | SZN`, rank chips rendering.
+- **Market filter re-ranks 1..N** — verified against the live API through the
+  real modules: served ranks `91, 109, 135, 138, 146, 155` renumber to
+  `1, 2, 3, 4, 5, 6`.
+- **Every row carries a sample size** — the `Conf` column, on every row with a
+  projection.
+- **`tsc` clean; 359 TS tests, 0 fail** (346 before; 13 added).
+
+**One gate item is not fully met and is stated rather than claimed.** "Verified
+in a browser with the top of each market face-valid" was confirmed for the
+column set and the chips, but tonight's MLB slate finished during the work
+(2,382 of 2,739 candidates went `done`), so the ranked board could not be
+painted at #1 in a browser; that step was verified against the live API through
+the real ranking module instead. And the top of `pitcher-outs` is **not**
+face-valid — see above. It is a known, measured, deliberately-retained defect,
+not an unverified one.
+
+## Deliberately out of scope
+
+`goodBets.ts`, `edgeModel.ts` and `liveEdge.ts` survive. Phase 1 listed four
+TypeScript modules to delete here; that list was made before their reach was
+mapped:
+
+- **`liveEdge.ts` is price plumbing**, the TS twin of the `price_resolution.py`
+  Phase 1 deliberately kept. It drives Scan's Odds and IP columns.
+- **`edgeModel.ts`** feeds PlayerDetail and the Home Runs board, both of which
+  Phase 3 owns.
+- **`goodBets.ts`** no longer touches Scan, but still serves GameDetail's panel
+  and the historical track record. Phase 11 owns that page.
 
 # Phase 3 — Finish MLB
 

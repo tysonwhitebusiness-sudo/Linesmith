@@ -2248,6 +2248,10 @@ export interface NhlProjectionRow {
   line: number | null;
   projectedToi: number | null;
   sampleSize: number | null;
+  /** League-wide P(stat > line) for this market at this line. The anchor the ranking subtracts; see migration 20260906120000 for why it is not `leagueRate`. */
+  leagueBaseline: number | null;
+  /** When the serving job produced this batch. Identifies the slate. */
+  computedAt: string;
 }
 
 /**
@@ -2274,12 +2278,15 @@ export async function readNhlProjections(): Promise<NhlProjectionRow[]> {
     `SELECT p.subject_id AS "subjectId", x.athlete_name AS "subjectName",
             NULL AS "teamAbbr", p.game_id AS "gameId", p.dimension,
             p.projection, p.model_prob AS "modelProb", p.line,
-            p.projected_toi AS "projectedToi", p.model_sample_size AS "sampleSize"
+            p.projected_toi AS "projectedToi", p.model_sample_size AS "sampleSize",
+            p.league_baseline AS "leagueBaseline",
+            p.computed_at AS "computedAt"
        FROM prop_model_cache p
        JOIN athlete_crosswalk x
          ON x.sport = 'nhl' AND x.athlete_id = p.subject_id
       WHERE p.sport = 'nhl' AND p.category = 'projection'
-        AND p.projection IS NOT NULL`,
+        AND p.projection IS NOT NULL
+        AND ${LATEST_PROJECTION_BATCH('nhl')}`,
     [],
   );
 }
@@ -2298,12 +2305,37 @@ export async function countNhlProjectionsWithoutName(): Promise<number> {
     `SELECT count(DISTINCT p.subject_id)::int AS n FROM prop_model_cache p
       WHERE p.sport = 'nhl' AND p.category = 'projection'
         AND p.projection IS NOT NULL
+        AND ${LATEST_PROJECTION_BATCH('nhl')}
         AND NOT EXISTS (SELECT 1 FROM athlete_crosswalk x
                          WHERE x.sport = 'nhl' AND x.athlete_id = p.subject_id)`,
     [],
   );
   return row?.n ?? 0;
 }
+
+/**
+ * Phase 2 — one read, one slate.
+ *
+ * `prop_model_cache` accumulates: the serving jobs upsert on
+ * (sport, game_id, subject_id, dimension, category), so a new run does not
+ * replace a previous day's rows, it sits beside them. Measured 2026-09-06, the
+ * table held five runs at once spanning different slates — 17 games from one,
+ * 15 from another — and these reads had no date predicate at all, so the board
+ * rendered a union of them with the same player appearing more than once under
+ * slightly different sample sizes.
+ *
+ * Every row a job writes shares one `computed_at`: `write_prop_model_cache`
+ * writes inside a single transaction and Postgres's `now()` is the transaction
+ * timestamp, not the statement's. So "the latest batch" is exactly
+ * `computed_at = max(computed_at)`, and equality is used rather than a window
+ * because a tolerance wide enough to be safe against clock skew is also wide
+ * enough to let two nearby runs merge back into one board — the very thing
+ * this fixes.
+ */
+const LATEST_PROJECTION_BATCH = (sport: string) =>
+  `p.computed_at = (SELECT max(computed_at) FROM prop_model_cache
+                     WHERE sport = '${sport}' AND category = 'projection'
+                       AND projection IS NOT NULL)`;
 
 export interface MlbProjectionRow {
   subjectId: string;
@@ -2316,6 +2348,10 @@ export interface MlbProjectionRow {
   line: number | null;
   volume: number | null;
   sampleSize: number | null;
+  /** League-wide P(stat > line) for this market at this line. The anchor the ranking subtracts; see migration 20260906120000 for why it is not `leagueRate`. */
+  leagueBaseline: number | null;
+  /** When the serving job produced this batch. Identifies the slate. */
+  computedAt: string;
 }
 
 /**
@@ -2337,12 +2373,15 @@ export async function readMlbProjections(): Promise<MlbProjectionRow[]> {
     `SELECT p.subject_id AS "subjectId", x.athlete_name AS "subjectName",
             NULL AS "teamAbbr", p.game_id AS "gameId", p.dimension,
             p.projection, p.model_prob AS "modelProb", p.line,
-            p.projected_toi AS "volume", p.model_sample_size AS "sampleSize"
+            p.projected_toi AS "volume", p.model_sample_size AS "sampleSize",
+            p.league_baseline AS "leagueBaseline",
+            p.computed_at AS "computedAt"
        FROM prop_model_cache p
        JOIN athlete_crosswalk x
          ON x.sport = 'mlb' AND x.athlete_id = p.subject_id
       WHERE p.sport = 'mlb' AND p.category = 'projection'
-        AND p.projection IS NOT NULL`,
+        AND p.projection IS NOT NULL
+        AND ${LATEST_PROJECTION_BATCH('mlb')}`,
     [],
   );
 }
@@ -2353,6 +2392,7 @@ export async function countMlbProjectionsWithoutName(): Promise<number> {
     `SELECT count(DISTINCT p.subject_id)::int AS n FROM prop_model_cache p
       WHERE p.sport = 'mlb' AND p.category = 'projection'
         AND p.projection IS NOT NULL
+        AND ${LATEST_PROJECTION_BATCH('mlb')}
         AND NOT EXISTS (SELECT 1 FROM athlete_crosswalk x
                          WHERE x.sport = 'mlb' AND x.athlete_id = p.subject_id)`,
     [],

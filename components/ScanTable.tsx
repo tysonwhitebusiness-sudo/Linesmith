@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { HistoryEntry, PickCandidate, Sport } from '@/lib/core/types';
 import { candidateKey } from '@/lib/core/types';
+import { confidenceOf, confidenceLabel, rankWithin, type RankedRow } from '@/lib/sports/propRanking';
 import {
   windowSet,
   subsetWindow,
@@ -20,13 +21,6 @@ import { AverageCell, GradientRateCell, GradientStreakCell, GradientDeltaCell } 
 import { OddsChip, NoOddsCell } from './OddsChip';
 import { BookLogo } from './BookLogo';
 import { resolveCandidateEdge, type PropOddsRow } from './usePropOdds';
-import {
-  goodBetReasons,
-  candidateGoodBetSignals,
-  performanceMatchDetails,
-  type GoodBetReason,
-} from '@/lib/odds/goodBets';
-import { computePropScore, type PropScore } from '@/lib/odds/props/propScore';
 import type { MarketTrust } from '@/lib/odds/props/marketTrust';
 
 /**
@@ -49,7 +43,6 @@ type SortColumn =
   | 'player'
   | 'odds'
   | 'ip'
-  | 'edge'
   | 'modelProb'
   | 'dvp'
   | 'avg'
@@ -60,15 +53,17 @@ type SortColumn =
   | 'h2h'
   | 'strk'
   | 'szn'
-  | 'reason'
-  | 'score'
   | 'r1'
   | 'r2'
   | 'r3'
   | 'r4'
   | 'hole'
   | 'thru'
-  | 'line';
+  | 'line'
+  | 'rank'
+  | 'proj'
+  | 'model'
+  | 'conf';
 
 type SortDir = 'asc' | 'desc';
 
@@ -80,12 +75,30 @@ interface Column {
   numeric: boolean;
 }
 
+/**
+ * Phase 2 — `Avg L10` became `Proj`, and `Diff` changed meaning underneath it.
+ *
+ * Avg L10 was a ten-game mean: no volume term, no shrinkage, no league
+ * baseline, no calibration. `Diff` was that mean minus the line, so it
+ * inherited every one of those weaknesses while being the column people
+ * actually sort on. The model is all four of those things and was validated on
+ * ~31,000 held-out MLB rows, so `Proj` is the projection and `Diff` is
+ * projection minus line.
+ *
+ * `Model %` sits beside `IP` by an explicit operator decision (2026-09-06).
+ * Both are shown; NOTHING here computes, names, sorts by or colours the
+ * difference between them, because that difference is an edge and no model in
+ * this project has earned the right to claim one. The two columns are adjacent
+ * and independent, and `tests/scan-no-edge.test.ts` holds that line.
+ */
 const COLUMNS: Column[] = [
   { key: 'odds', label: 'Odds', title: 'Price', numeric: true },
-  { key: 'ip', label: 'IP', title: 'Implied probability', numeric: true },
+  { key: 'ip', label: 'IP', title: 'Implied probability, from the book price', numeric: true },
+  { key: 'model', label: 'Model %', title: "Our model's probability of going over this line", numeric: true },
   { key: 'dvp', label: 'DVP', title: "Opponent's rank in this row's matchup stat", numeric: true },
-  { key: 'avg', label: 'Avg L10', title: 'Average over the last 10 games', numeric: true },
-  { key: 'diff', label: 'Diff', title: 'Average versus the line', numeric: true },
+  { key: 'proj', label: 'Proj', title: 'What the model projects for this market', numeric: true },
+  { key: 'diff', label: 'Diff', title: 'Projection versus the line', numeric: true },
+  { key: 'conf', label: 'Conf', title: 'How much history the projection rests on', numeric: true },
   { key: 'l5', label: 'L5', title: 'Hit rate, last 5 games', numeric: true },
   { key: 'l10', label: 'L10', title: 'Hit rate, last 10 games', numeric: true },
   { key: 'l15', label: 'L15', title: 'Hit rate, last 15 games', numeric: true },
@@ -214,20 +227,6 @@ function OddsCell({
   );
 }
 
-/** Reason column — one pill per track a row cleared (goodBetReasons can return more than one). Same semantic-green styling as the rest of the app's positive/qualifying badges — the label carries the distinction, not the color. */
-const REASON_STYLE: Record<GoodBetReason, { label: string; className: string }> = {
-  edge: { label: 'E', className: 'bg-good/10 text-good' },
-  performance: { label: 'P', className: 'bg-good/10 text-good' },
-  matchup: { label: 'M', className: 'bg-good/10 text-good' },
-};
-
-/** Priority order for sorting the Reason column — performance outweighs edge outweighs matchup, matching goodBetReasons' own push order. A row's rank is its single best reason. */
-const REASON_RANK: Record<GoodBetReason, number> = { performance: 3, edge: 2, matchup: 1 };
-function reasonRank(reasons: GoodBetReason[]): number | null {
-  if (reasons.length === 0) return null;
-  return Math.max(...reasons.map((r) => REASON_RANK[r]));
-}
-
 /** Everything one row needs, computed once so sort and render agree exactly. */
 interface Row {
   candidate: PickCandidate;
@@ -244,20 +243,72 @@ interface Row {
   impliedRaw: number | null;
   dvp: number | null;
   dvpLabel?: string;
+  /** Sharp-reference minus the bettable book's implied price — a price-versus-price quantity from `usePropOdds`, not a model claim. Retained because `OddsCell` reads it for book context; deliberately NOT sortable, so the board cannot be ordered by it. */
   edge: number | null;
   /** Edge-resolution's modelProb — only set when a genuine live two-sided book price exists (see liveEdge.ts's resolveCandidateEdge); null far more often than the model actually having an answer. Kept as-is for the Edge column's own math. */
   modelProb: number | null;
   /** The model's own probability, independent of whether a live price exists to compare it against — straight off subjectMeta, same source computePropScore's `M` component reads. This is what the Model % column and its sort key use. */
   ownModelProb: number | null;
   marketProb: number | null;
-  /** Which Good Bets track(s) this row qualifies on, in priority order — empty when `trustedMarkets` wasn't supplied to `buildRow` (i.e. outside the Good Bets tab). */
-  reasons: GoodBetReason[];
-  /** Which specific performance sub-criteria matched — short form shown right in the pill, long form (with thresholds) as its tooltip. Both null when `performance` isn't one of `reasons`. */
-  performanceLabel: string | null;
-  performanceDetail: string | null;
-  /** Prop Score v1 — null when there's no model probability to build one from (see computePropScore). Shown regardless of `showReasons`, unlike the Good-Bets-only Reason column. */
-  propScore: PropScore | null;
   trustTier: MarketTrust | null;
+  /**
+   * The validated model's row for this (player, market), or null when this
+   * sport/market has no fitted model or this player has too little history.
+   * Null is why a row can appear on the board with no rank and no projection —
+   * it is a real state, not a loading one.
+   */
+  projection: RankedRow | null;
+}
+
+/**
+ * Phase 2 — where a row placed, in the leftmost cell.
+ *
+ * THREE TIERS, and the drop-off between them is the point: #1 has to read
+ * instantly on a table of 150 rows without the rest of the list going noisy.
+ *   1-3   filled chip, larger numeral, heaviest weight
+ *   4-10  outlined chip, solid ink
+ *   11+   no chip, muted ink
+ *
+ * NOT MEDALS. This is a graphite system and gold would fight everything else on
+ * the page; the emphasis is carried by weight, fill and size instead of by hue,
+ * which also means it survives dark mode and a colourblind reader unchanged.
+ *
+ * A null rank renders as blank rather than as a dash or a large number. Rows
+ * without a projection are genuinely unplaced — the market has no fitted model,
+ * or the player has too little history — and inventing a position for them at
+ * the bottom of the list would be exactly the "unvalidated number next to a
+ * validated one" the plan forbids.
+ */
+function RankChip({ rank }: { rank: number | null }) {
+  if (rank == null) return <span className="w-6 shrink-0" aria-hidden />;
+  if (rank <= 3) {
+    return (
+      <span
+        className="inline-flex h-5 w-6 shrink-0 items-center justify-center rounded-md bg-ink text-[12px] font-bold tabular-nums text-paper"
+        title={`Ranked #${rank} — by our model's probability against this market's league baseline`}
+      >
+        {rank}
+      </span>
+    );
+  }
+  if (rank <= 10) {
+    return (
+      <span
+        className="inline-flex h-5 w-6 shrink-0 items-center justify-center rounded-md border border-line text-[11px] font-semibold tabular-nums text-ink"
+        title={`Ranked #${rank}`}
+      >
+        {rank}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex h-5 w-6 shrink-0 items-center justify-center text-[11px] tabular-nums text-ink-faint"
+      title={`Ranked #${rank}`}
+    >
+      {rank}
+    </span>
+  );
 }
 
 function meta(candidate: PickCandidate): Record<string, unknown> {
@@ -274,6 +325,7 @@ function buildRow(
   userSportsbook: string,
   trustedMarkets?: ReadonlySet<string>,
   trustTiers?: ReadonlyMap<string, MarketTrust>,
+  projection?: RankedRow | null,
 ): Row {
   const m = meta(candidate);
   const windows = windowSet(candidate.history, candidate.category);
@@ -291,7 +343,18 @@ function buildRow(
   );
 
   const avgL10 = fixedWindow(candidate.history, candidate.category, 10);
-  const diff = candidate.line != null ? deltaFromLine(avgL10, candidate.line) : null;
+  // Diff is PROJECTION minus line where the model has a projection, and falls
+  // back to the trailing mean only where it does not. Both are labelled the
+  // same because they answer the same question; they are not equally good at
+  // it, which is why the model wins whenever it has an answer.
+  const diffBasis = projection ? projection.projection : averageOrNull(avgL10);
+  const diff =
+    candidate.line != null && diffBasis != null
+      ? {
+          absolute: diffBasis - candidate.line,
+          percent: candidate.line === 0 ? null : (diffBasis - candidate.line) / Math.abs(candidate.line),
+        }
+      : null;
 
   // Real book prices from the five-provider feed, same resolution the Game
   // Detail candidate row uses — `candidate.odds` is only ever populated by a
@@ -299,21 +362,7 @@ function buildRow(
   // column would sit empty regardless of what books actually have posted.
   const edgeInfo = resolveCandidateEdge(candidate, propRows, userSportsbook);
 
-  const goodBetInput = {
-    edge: edgeInfo.edge,
-    marketProb: edgeInfo.marketProb,
-    sampleSize: candidate.sampleSize,
-    dimension: candidate.dimension,
-    priceAmerican: edgeInfo.price,
-    ...candidateGoodBetSignals(candidate),
-  };
-  const reasons = trustedMarkets ? goodBetReasons(goodBetInput, trustedMarkets) : [];
-  const performanceDetails = reasons.includes('performance') ? performanceMatchDetails(goodBetInput) : [];
-  const performanceLabel = performanceDetails.length > 0 ? performanceDetails.map((d) => d.short).join(', ') : null;
-  const performanceDetail = performanceDetails.length > 0 ? performanceDetails.map((d) => d.long).join('; ') : null;
-
   const trustTier = trustTiers?.get(candidate.dimension) ?? null;
-  const propScore = trustTier === 'excluded' ? null : computePropScore(candidate, edgeInfo);
 
   return {
     candidate,
@@ -334,11 +383,8 @@ function buildRow(
     modelProb: edgeInfo.modelProb,
     ownModelProb: typeof m.modelProb === 'number' ? m.modelProb : null,
     marketProb: edgeInfo.marketProb,
-    reasons,
-    performanceLabel,
-    performanceDetail,
-    propScore,
     trustTier,
+    projection: projection ?? null,
   };
 }
 
@@ -349,16 +395,25 @@ function sortValue(row: Row, column: SortColumn): number | null {
       return row.price;
     case 'ip':
       return row.impliedRaw;
-    case 'edge':
-      return row.edge;
     case 'modelProb':
       return row.ownModelProb;
     // A higher rank number means a softer opponent, which is the better matchup,
     // so descending on DVP puts the most exploitable defences on top.
     case 'dvp':
       return row.dvp;
-    case 'avg':
-      return averageOrNull(row.avgL10);
+    // Ranking is ascending-best (#1 is the top), so the raw rank is negated:
+    // every other numeric column here is "bigger is better" and the table's
+    // shared comparator sinks nulls regardless of direction.
+    case 'rank':
+      // Sorting by delta is equivalent to sorting by rank and does not need the
+      // renumbered map, which is derived FROM this sort.
+      return row.projection?.delta ?? null;
+    case 'proj':
+      return row.projection ? row.projection.projection : averageOrNull(row.avgL10);
+    case 'model':
+      return row.projection?.probability ?? null;
+    case 'conf':
+      return row.projection ? row.projection.sampleSize : null;
     case 'diff':
       return row.diff ? row.diff.absolute : null;
     case 'l5':
@@ -373,10 +428,8 @@ function sortValue(row: Row, column: SortColumn): number | null {
       return row.windows.streak;
     case 'szn':
       return rateOrNull(row.windows.szn);
-    case 'reason':
-      return reasonRank(row.reasons);
-    case 'score':
-      return row.propScore?.score ?? null;
+
+
     case 'r1':
     case 'r2':
     case 'r3':
@@ -413,15 +466,20 @@ export interface ScanTableProps {
   /** Real book prices from the five-provider feed, across the whole slate. */
   propRows?: PropOddsRow[];
   userSportsbook?: string;
-  /** Markets whose calibration currently passes isMarketTrusted — required to show the Reason column, since a reason means nothing on an untrusted market. */
+  /** Markets whose calibration currently passes isMarketTrusted. Retained for the trust badge; no longer gates a Reason column, which went with Good Bets in Phase 2. */
   trustedMarkets?: ReadonlySet<string>;
-  /** Good Bets tab only — everywhere else, a "why" column for a bar the row isn't even being held to would be misleading. */
-  showReasons?: boolean;
-  /** Prop Score v1's Market Trust badge per dimension (lib/odds/props/marketTrust.ts) — shown alongside the Score column regardless of `showReasons`, since the score is useful everywhere Scan is used, not just the Good Bets tab. */
+  /** Market Trust badge per dimension (lib/odds/props/marketTrust.ts). */
   trustTiers?: ReadonlyMap<string, MarketTrust>;
-  /** Overrides the tab's usual default sort (reason for Good Bets, L10 hit rate everywhere else) — e.g. the Home Runs board defaults to 'modelProb' so it opens ranked by who's most likely to go deep, not by an unrelated hit-rate column. */
+  /** Overrides the table's default sort, which is the Phase 2 ranking — e.g. the Home Runs board passes 'modelProb' so it opens ranked by who is most likely to go deep. */
   defaultSortColumn?: SortColumn;
   defaultSortDir?: SortDir;
+  /**
+   * The validated model's row for a candidate, or null/undefined when it has
+   * none. Supplied by the caller (`useProjections`) rather than fetched here so
+   * the table stays a pure render of what it is handed, and so the seven sports
+   * with no fitted model simply pass nothing.
+   */
+  projectionFor?: (candidate: PickCandidate) => RankedRow | null | undefined;
 }
 
 export function ScanTable({
@@ -436,10 +494,10 @@ export function ScanTable({
   propRows = [],
   userSportsbook = 'fanatics',
   trustedMarkets,
-  showReasons = false,
   trustTiers,
   defaultSortColumn,
   defaultSortDir,
+  projectionFor,
 }: ScanTableProps) {
   const router = useRouter();
   // Good Bets defaults to ranking by which track a row cleared (performance
@@ -448,8 +506,11 @@ export function ScanTable({
   // Golf has no L10 column at all, so it defaults to TRN (tournament-to-date
   // rate) instead. `defaultSortColumn`/`defaultSortDir` (e.g. Home Runs ->
   // 'modelProb') take priority over both when the caller supplies them.
+  // Phase 2 — the ranking is the DEFAULT STATE of the table, not a tab and not
+  // one sort among many. Golf has no fitted model, so it keeps its own default;
+  // an explicit `defaultSortColumn` from the caller still wins.
   const [sortCol, setSortCol] = useState<SortColumn>(
-    defaultSortColumn ?? (showReasons ? 'reason' : sport === 'golf' ? 'szn' : 'l10'),
+    defaultSortColumn ?? (sport === 'golf' ? 'szn' : 'rank'),
   );
   const [sortDir, setSortDir] = useState<SortDir>(defaultSortDir ?? 'desc');
 
@@ -480,7 +541,8 @@ export function ScanTable({
   const columns = useMemo(() => (sport === 'golf' ? golfColumns(golfRounds) : COLUMNS), [sport, golfRounds]);
 
   const rows = useMemo(() => {
-    const built = candidates.map((c) => buildRow(c, propRows, userSportsbook, showReasons ? trustedMarkets : undefined, trustTiers));
+    const built = candidates.map((c) =>
+      buildRow(c, propRows, userSportsbook, trustedMarkets, trustTiers, projectionFor?.(c)));
 
     built.sort((a, b) => {
       if (sortCol === 'player') {
@@ -501,7 +563,30 @@ export function ScanTable({
     });
 
     return built;
-  }, [candidates, sortCol, sortDir, propRows, userSportsbook, showReasons, trustedMarkets, trustTiers]);
+  }, [candidates, sortCol, sortDir, propRows, userSportsbook, trustedMarkets, trustTiers, projectionFor]);
+
+  /**
+   * The rank actually shown, renumbered over the rows on screen.
+   *
+   * `useProjections` ranks the whole served board; this table is a filtered
+   * view of it (no posted price, market/team/odds filters, the golf split), so
+   * the served numbers do not describe this list. Rendering them directly
+   * opened the board at "#117" with no #1 anywhere — the missing rows were real
+   * and simply elsewhere, which is not something a reader can be expected to
+   * reconstruct. Recomputed here, from the same metric, over exactly what is
+   * rendered — which is also what makes filtering to one market produce a 1..N
+   * leaderboard for free.
+   */
+  const displayRank = useMemo(() => {
+    const withProjection = rows
+      .map((r) => r.projection)
+      .filter((p): p is RankedRow => p != null);
+    const map = new Map<string, number>();
+    for (const r of rankWithin(withProjection)) {
+      if (r.globalRank != null) map.set(`${r.subjectId}|${r.marketKey}`, r.globalRank);
+    }
+    return map;
+  }, [rows]);
 
   // Cheapest real signal for "is the odds refresh for this slate still in
   // flight, or has it already run and this row genuinely has no coverage" —
@@ -572,17 +657,6 @@ export function ScanTable({
                   {column.label} <SortMark active={sortCol === column.key} dir={sortDir} />
                 </th>
               ))}
-              {showReasons ? (
-                <th
-                  scope="col"
-                  onClick={() => handleSort('reason')}
-                  aria-sort={sortCol === 'reason' ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
-                  title="Which Good Bets track(s) this row cleared, ranked Performance > Edge > Matchup — Performance (recent-form ladder, H2H, season rate, or hot streak — any one), Edge (real, priced), Matchup (opponent difficulty)"
-                  className="sticky top-0 z-20 cursor-pointer whitespace-nowrap border-b border-line bg-paper px-2 py-1.5 text-center font-semibold text-ink-muted"
-                >
-                  Reason <SortMark active={sortCol === 'reason'} dir={sortDir} />
-                </th>
-              ) : null}
               {onAdd ? (
                 <th scope="col" className="sticky top-0 z-20 border-b border-line bg-paper px-2 py-1.5">
                   <span className="sr-only">Add to slip</span>
@@ -607,6 +681,13 @@ export function ScanTable({
                   {/* 1 — Player / Line, pinned */}
                   <td className="sticky left-0 z-10 max-w-[190px] bg-card px-2 py-1 group-hover:bg-[#dcdee1]">
                     <div className="flex items-center gap-1.5">
+                      <RankChip
+                        rank={
+                          row.projection
+                            ? (displayRank.get(`${row.projection.subjectId}|${row.projection.marketKey}`) ?? null)
+                            : null
+                        }
+                      />
                       {onToggleWatch ? (
                         <button
                           type="button"
@@ -735,7 +816,26 @@ export function ScanTable({
                         ) : null}
                       </td>
 
-                      {/* 4 — DVP */}
+                      {/* 4 — Model %. Sits directly beside IP by operator
+                          decision (2026-09-06). Deliberately styled the SAME as
+                          IP — same size, same weight, same muted ink — because
+                          any visual asymmetry between them would start to read
+                          as a recommendation about which one is right, and the
+                          difference between them is an edge this project has not
+                          earned the right to claim. No colour, no arrow, no
+                          delta. */}
+                      <td className="px-2 py-1 text-center tabular-nums">
+                        {row.projection?.probability != null ? (
+                          <span
+                            className="text-[11px] text-ink-muted"
+                            title={`Our model's probability of going over ${row.projection.line ?? 'the line'}. Calibrated on held-out games; not a comparison to the book's price.`}
+                          >
+                            {(row.projection.probability * 100).toFixed(1)}%
+                          </span>
+                        ) : null}
+                      </td>
+
+                      {/* 5 — DVP */}
                       <td className="px-2 py-1 text-center tabular-nums">
                         {row.dvp != null ? (
                           <span
@@ -749,13 +849,54 @@ export function ScanTable({
                         )}
                       </td>
 
-                      {/* 5 — Avg L10 */}
+                      {/* 6 — Proj. THE HERO NUMBER in this cell: bold and
+                          tabular, with its unit muted after it, so the eye lands
+                          on the quantity rather than on the word. Falls back to
+                          the trailing ten-game mean where the model has nothing
+                          for this row, visibly marked so the two are never
+                          confused for each other. */}
                       <td className="px-2 py-1 text-center">
-                        <AverageCell stat={row.avgL10} />
+                        {row.projection ? (
+                          <span className="inline-flex items-baseline gap-1">
+                            <span className="text-[13px] font-semibold tabular-nums text-ink">
+                              {row.projection.projection.toFixed(2)}
+                            </span>
+                            <span className="text-[10px] text-ink-faint">{row.projection.unit}</span>
+                          </span>
+                        ) : (
+                          <span title="No model projection for this market yet — showing the trailing 10-game average instead.">
+                            <AverageCell stat={row.avgL10} />
+                          </span>
+                        )}
                       </td>
 
-                      {/* 6 — Diff */}
+                      {/* 7 — Diff: projection minus line (see buildRow). */}
                       <GradientDeltaCell delta={row.diff} />
+
+                      {/* 8 — Confidence. Sample size made legible: a nine-game
+                          callup must not read like a career regular on a board
+                          that ranks them against each other. The real count is
+                          in the tooltip, because the bucket is the thing to scan
+                          and the number is the thing to check. */}
+                      <td className="px-2 py-1 text-center">
+                        {row.projection ? (
+                          (() => {
+                            const c = confidenceOf(row.projection.sampleSize);
+                            const tone =
+                              c === 'high' ? 'text-ink' : c === 'medium' ? 'text-ink-muted' : 'text-ink-faint';
+                            return (
+                              <span
+                                className={`text-[10px] ${tone}`}
+                                title={`${confidenceLabel(c)} — ${row.projection.sampleSize} games behind this projection`}
+                              >
+                                {confidenceLabel(c)}
+                              </span>
+                            );
+                          })()
+                        ) : (
+                          <span className="text-[10px] text-ink-faint">—</span>
+                        )}
+                      </td>
 
                       {/* 7–9 — fixed windows; denominator is in the header. Each
                           cell renders its own `<td>` with a full-bleed gradient
@@ -777,23 +918,6 @@ export function ScanTable({
                     </>
                   )}
 
-                  {showReasons ? (
-                    <td className="px-2 py-1 text-center">
-                      <div className="flex flex-wrap justify-center gap-1">
-                        {row.reasons.map((reason) => (
-                          <span
-                            key={reason}
-                            title={
-                              reason === 'performance' ? (row.performanceDetail ?? undefined) : undefined
-                            }
-                            className={`rounded px-1 py-0.5 text-[10px] font-semibold ${REASON_STYLE[reason].className}`}
-                          >
-                            {REASON_STYLE[reason].label}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                  ) : null}
 
                   {onAdd ? (
                     <td className="px-2 py-1 text-center">

@@ -76,6 +76,7 @@ class ServedProjection:
     league_rate: float
     line: float | None
     model_prob: float | None
+    league_baseline: float | None
 
 
 def _temper(p: float, t: float) -> float:
@@ -160,6 +161,20 @@ async def build(conn, as_of: date, lines: dict[str, float] | None = None) -> dic
 
         line = (lines or {}).get(dim)
         show_prob = bool(cal.get("probability_ok")) and line is not None
+
+        # Phase 2 — league-wide P(stat > line), the anchor Scan's cross-market
+        # ranking subtracts. NOT `cal["league_rate"]`, which is the engine's
+        # per-CHANCE rate (events per minute of ice time) and is not a
+        # probability; see migration 20260906120000. Computed over exactly the
+        # history rows feeding the projections below — this market's stat, this
+        # slate's skaters, strictly before as_of — which is the same rule
+        # `mlb_prop_serving.league_baseline_for` applies, so the two sports'
+        # baselines are the same quantity.
+        baseline = None
+        if show_prob:
+            vals = [float(st[stat]) for _aid, st in parsed if stat in st]
+            baseline = (sum(1 for v in vals if v > line) / len(vals)) if vals else None
+
         for aid, gid in subjects.items():
             h = hists.get(aid)
             if h is None or h.games < MIN_PRIOR_GAMES:
@@ -176,7 +191,7 @@ async def build(conn, as_of: date, lines: dict[str, float] | None = None) -> dic
                 games_of_history=p.games_of_history,
                 league_rate=cal["league_rate"],
                 line=line if show_prob else None,
-                model_prob=prob))
+                model_prob=prob, league_baseline=baseline))
 
     return {"served": out, "markets": sorted(markets),
             "subjects": len(subjects), "history_rows": len(parsed)}
@@ -204,7 +219,8 @@ def to_cache_rows(served: list[ServedProjection]) -> list:
             line=s.line, model_prob=s.model_prob, model_std_dev=None,
             model_sample_size=s.games_of_history, league_rate=s.league_rate,
             matchup_favorable=None, model_version=MODEL_VERSION,
-            projection=s.projection, projected_toi=s.projected_toi))
+            projection=s.projection, projected_toi=s.projected_toi,
+            league_baseline=s.league_baseline))
     assert all(r.category == "projection" for r in rows)
     return rows
 

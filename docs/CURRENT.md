@@ -1,14 +1,32 @@
 # CURRENT — pick up here
 
-**Phase 1 of `docs/master-plan-2026-09-06.md` is COMPLETE, tested and
-committed. Phase 2 (Scan, the only surface) is next and has not started.**
+**Phases 1 and 2 of `docs/master-plan-2026-09-06.md` are COMPLETE, tested and
+committed. Phase 3 (Finish MLB) is next and has not started.**
+
+**READ THIS FIRST: Scan's #1 is currently a backup catcher.** `pitcher-outs`'s
+fitted calibration has a NEGATIVE Platt slope (corr(projection, model_prob) =
+-0.933), so the lower the projection the higher the probability. The live board
+opens:
+
+```
+#1  Luis Torrens   pitcher-outs  proj 2.00 outs  P 65.1%  +28.1pt
+#2  Jhonny Pereda  pitcher-outs  proj 2.20 outs  P 64.0%  +27.0pt
+#3  Kody Clemens   pitcher-outs  proj 2.40 outs  P 63.1%  +26.0pt
+```
+
+Position players who threw a mop-up inning, above every real prop. The operator
+decided 2026-09-06 to keep all pitcher probabilities and fix them in Phase 3, so
+this is deliberate and measured, not an oversight. **Phase 3.4 owns the re-fit.**
+The cause: those calibrations were fitted at the MARKET's lines and are served at
+the board's FIXED line, far outside the region they were fitted in. The fit's
+gate checks `ordering_monotone` on the projection, never on the calibrated
+probability — that hole is what let it through.
 
 The master plan supersedes `model-build-plan-2026-09-02.md`'s phase numbering
 and `audit-remediation-plan.md`'s track lettering. Read it first; Phase 1's
 section records what actually happened versus what was planned.
 
-`tsc` clean, **346 TS tests / 0 fail**, **50 Python test files pass**,
-production build succeeds.
+`tsc` clean, **359 TS tests / 0 fail**, **50 Python test files pass**.
 
 ## 1. What Phase 1 did
 
@@ -40,30 +58,50 @@ production build succeeds.
 4. **Model % may appear alongside Implied % on Scan.** Closes the open item in
    the plan's §2.3.
 
-## 3. START HERE: what Phase 2 must not lose
+## 3. What Phase 2 did
 
-**`tests/stats-board-no-edge.test.ts` is one assertion lighter than it was.**
-It enforced that no edge or profit language reached the board's rendered copy;
-that component is deleted, and the assertion was deliberately NOT re-aimed at
-Scan, because decision 4 puts a model probability next to an implied one there
-and re-aiming it today would fail on unbuilt work.
+**Good Bets is gone from Scan** — tab, filter and Reason column. `propScore.ts`
+and `PropScoreBadge.tsx` deleted. The ranking is now the table's **default
+sort**, not a tab.
 
-**Phase 2 owes the replacement.** Whatever Scan renders must still not claim an
-edge, a profit or a beaten close, and only the two approved identifiers are
-licensed. The two columns ship; nothing computes, names, sorts by or colours
-their difference. The file itself carries this note above the removed test.
+**Columns**: `Avg L10` → `Proj` (hero number, unit muted after it), `Diff` is
+projection − line, `Model %` sits beside `IP`, `Conf` shows sample size. Rank
+chip in the leftmost cell (1-3 filled, 4-10 outlined, 11+ muted).
 
-## 4. What Phase 2 inherits, concretely
+New: `lib/sports/propRanking.ts` (the metric, 8 tests),
+`components/useProjections.ts`, `tests/scan-no-edge.test.ts` (the guard Phase 1
+owed, now aimed at Scan).
 
-- `/api/mlb/projections` and `/api/nhl/projections` — direct reads of
-  `prop_model_cache`, kept fresh by `mlbProjectionsJob`/`nhlProjectionsJob`.
-  Verified live: MLB returns 11 markets, each with a `hasProbability` flag,
-  rows carrying `projection` / `probability` / `line` / `volume` / `sampleSize`.
-  That is exactly the ranked data the plan's §2.1 and §2.3 describe.
-- `lib/sports/{mlb,nhl}/adapters/statsBoardAdapter.ts` — the transform, kept.
-  `StatsBoardData` is declared in the NHL adapter (NHL was ported first) and
-  re-exported by MLB, per the sport-adapter convention.
-- Four TypeScript modules still to delete when the surface is rebuilt.
+**Four things were wrong underneath and were fixed on the way** — each is
+written up in the plan's Phase 2 section:
+
+1. **`league_rate` is not a probability.** It is the engine's per-CHANCE rate
+   (0.222 hits per plate appearance). Ranking on `P(over) − league_rate` would
+   have been a silent unit error. Added `league_baseline` (migration
+   `20260906120000`) = P(stat > line), measured by each serving job over the
+   same history it built its projections from.
+2. **The serving pipe could not serve a live slate.** It took its slate from
+   games already PLAYED, so it could never project tonight's players — and
+   `player_game_history` ended 2026-08-28, making every cached row nine days
+   stale. `live_slate_subjects` now resolves today's posted lineups and probable
+   starters from the schedule. Verified: 15 games, 2,078 projections.
+3. **The projection reads served a union of slates** — five runs coexisted in
+   `prop_model_cache` with no date predicate on the routes. Reads are now scoped
+   to `computed_at = max(computed_at)`, and `asOf` is exposed.
+4. **The board opened at #117.** Ranking ran over the served board while the
+   table shows a filtered subset. `rankWithin` is now applied to the rows
+   actually rendered (and was made non-mutating).
+
+## 4. Phase 3 starts here
+
+- **3.4 owes the pitcher re-fit** — see the top of this file. `pitcher-outs` is
+  inverted and `pitcher-strikeouts` is crushed flat (slope 0.104: raw 0.55% →
+  37.2%). Both were fitted at market lines and are served at a fixed line.
+  **Re-fit at the line the board serves**, and add a gate on the CALIBRATED
+  probability's monotonicity — the existing `ordering_monotone` check only looks
+  at the projection, which is why this shipped.
+- A one-line guard would drop an inverted market to projection-only under the
+  plan's existing rule. Not applied, by operator decision.
 
 ## 5. Known gaps, carried forward
 
@@ -97,5 +135,12 @@ their difference. The file itself carries this note above the removed test.
   stale compiled build.** This happened during Phase 1's verification and looked
   exactly like a failed deletion. Verify page removal on a freshly started
   server, or against `npm run build`'s route list.
+- **Scan empties once a slate finishes.** It drops candidates whose game is
+  `done`, so late in the evening the board is legitimately blank (2,382 of 2,739
+  MLB candidates were `done` at 9pm ET on 2026-09-06). Verify the ranked board
+  earlier in the day, or against `/api/{sport}/projections` directly.
+- **A long-lived dev server degrades**: `/api/props/lines` returns ~94k rows and
+  after a while `slateProps.loading` stops settling, leaving permanent
+  skeletons. Restarting the server fixes it; it is not a render bug.
 - **The shared Postgres pooler caps at 15 connections.** Check for running fits
   or a second dev server before starting anything DB-touching.

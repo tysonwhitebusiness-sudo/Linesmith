@@ -30,9 +30,7 @@ import { BookLogo } from './BookLogo';
 import { usePropOdds, resolveCandidateEdge } from './usePropOdds';
 import { PropOddsBoard } from './PropOddsPanel';
 import { SegmentedToggle } from './SegmentedToggle';
-import { computePropScore } from '@/lib/odds/props/propScore';
 import { useMarketCalibration, type MarketCalibrationState } from './useMarketCalibration';
-import { PropScoreBadge } from './PropScoreBadge';
 import { MatchupExplorerCard } from './MatchupExplorerCard';
 import { LiveLineTrackerCard } from './LiveLineTrackerCard';
 import { useTeamDefenseAllowed } from './useTeamDefenseAllowed';
@@ -1333,7 +1331,6 @@ export function PlayerDetail({
   // the OddsChip display beside it already uses).
   const activeTrustTier = calibration.trustTiers.get(active.dimension) ?? null;
   const activeEdgeInfo = resolveCandidateEdge(active, propOdds.rows, propOdds.userSportsbook);
-  const activePropScore = activeTrustTier === 'excluded' ? null : computePropScore(active, activeEdgeInfo);
   const addOdds =
     lineOffset === 0 && activeEdgeInfo.price != null
       ? { americanOdds: String(activeEdgeInfo.price), source: activeEdgeInfo.priceSource ?? 'odds-api', bookmaker: activeEdgeInfo.bookmaker }
@@ -1433,7 +1430,6 @@ export function PlayerDetail({
               </div>
             </div>
 
-            {lineOffset === 0 ? <PropScoreBadge score={activePropScore} trust={null} size="sm" /> : null}
           </div>
         </section>
       ) : null}
@@ -1522,7 +1518,6 @@ export function PlayerDetail({
             <GetOddsButton onClick={() => onAdd(active)} label="Add to slip to record a price" />
           ) : null}
 
-          {lineOffset === 0 && !previewingOtherGolfCategory ? <PropScoreBadge score={activePropScore} trust={activeTrustTier} /> : null}
 
           {lineOffset !== 0 ? (
             <button

@@ -1293,6 +1293,12 @@ class PropModelCacheRow:
     # caller keeps its current shape unchanged.
     projection: float | None = None
     projected_toi: float | None = None
+    # Phase 2 — league-wide P(stat > line) for this market at this row's line,
+    # the anchor Scan's cross-market ranking subtracts. Deliberately NOT
+    # `league_rate` above, which is the engine's per-CHANCE rate (hits per plate
+    # appearance) and is not a probability; see migration 20260906120000 for the
+    # unit error that would have been.
+    league_baseline: float | None = None
 
 
 async def write_prop_model_cache(rows: list[PropModelCacheRow]) -> int:
@@ -1316,9 +1322,9 @@ async def write_prop_model_cache(rows: list[PropModelCacheRow]) -> int:
                   sport, game_id, subject_id, dimension, category, line,
                   model_prob, model_std_dev, model_sample_size, league_rate,
                   matchup_favorable, model_version, projection, projected_toi,
-                  computed_at
+                  league_baseline, computed_at
                 )
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
                 ON CONFLICT (sport, game_id, subject_id, dimension, category) DO UPDATE SET
                   line = excluded.line,
                   model_prob = excluded.model_prob,
@@ -1329,12 +1335,14 @@ async def write_prop_model_cache(rows: list[PropModelCacheRow]) -> int:
                   model_version = excluded.model_version,
                   projection = excluded.projection,
                   projected_toi = excluded.projected_toi,
+                  league_baseline = excluded.league_baseline,
                   computed_at = excluded.computed_at
                 """,
                 [
                     (r.sport, r.game_id, r.subject_id, r.dimension, r.category, r.line,
                      r.model_prob, r.model_std_dev, r.model_sample_size, r.league_rate,
-                     r.matchup_favorable, r.model_version, r.projection, r.projected_toi)
+                     r.matchup_favorable, r.model_version, r.projection, r.projected_toi,
+                     r.league_baseline)
                     for r in rows
                 ],
             )
