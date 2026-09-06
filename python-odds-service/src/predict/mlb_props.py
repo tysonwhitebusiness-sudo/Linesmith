@@ -236,7 +236,6 @@ async def load_game_history(slug: str, conn=None) -> list[tuple]:
            AND {has_keys}
            AND stats ? '{spec.volume_key}'
            AND {spec.volume_sql} > 0
-         ORDER BY game_date, athlete_id
     """
     if conn is not None:
         raw = await conn.fetch(sql)
@@ -244,8 +243,12 @@ async def load_game_history(slug: str, conn=None) -> list[tuple]:
         pool = await _db.get_pool()
         async with pool.acquire(timeout=300.0) as c:
             raw = await c.fetch(sql)
-    return [(r["game_date"], str(r["athlete_id"]), float(r["stat"]),
-             float(r["volume"])) for r in raw]
+    # Sorted in Python: ordering 425k rows in Postgres spills to temp disk, and
+    # the database has under 2 GB of headroom. See fit_mlb_props.load_props.
+    out = [(r["game_date"], str(r["athlete_id"]), float(r["stat"]),
+            float(r["volume"])) for r in raw]
+    out.sort(key=lambda t: (t[0], t[1]))
+    return out
 
 
 def market_name_sql(slug: str) -> tuple[str, list[str]]:

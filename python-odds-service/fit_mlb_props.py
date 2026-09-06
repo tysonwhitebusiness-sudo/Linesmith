@@ -139,11 +139,17 @@ async def load_props(conn, spec) -> list[tuple]:
            AND {' AND '.join(f"g.stats ? '{k}'" for k in spec.required_keys)}
            AND g.stats ? '{spec.volume_key}'
            AND {spec.volume_sql} > 0
-         ORDER BY p.game_date, g.athlete_id
     """
     rows = await conn.fetch(sql, list(spec.names))
-    return [(r["game_date"], str(r["athlete_id"]), float(r["line"]),
-             r["over_price"], r["under_price"], float(r["actual"])) for r in rows]
+    # SORTED IN PYTHON, NOT IN POSTGRES. The ORDER BY here made the planner sort
+    # a multi-hundred-thousand-row join, which spills to `base/pgsql_tmp` — and
+    # the database is at 6.4 GB of an 8 GB ceiling, so the fit died with
+    # DiskFullError. A hundred thousand tuples sort in memory in well under a
+    # second and cost the database nothing.
+    out = [(r["game_date"], str(r["athlete_id"]), float(r["line"]),
+            r["over_price"], r["under_price"], float(r["actual"])) for r in rows]
+    out.sort(key=lambda t: (t[0], t[1]))
+    return out
 
 
 def walk(props, games, w, k, shape, lr, lv):
