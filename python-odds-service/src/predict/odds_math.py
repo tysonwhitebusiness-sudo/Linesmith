@@ -49,3 +49,132 @@ def devig_two_way(a_decimal: float | None, b_decimal: float | None) -> tuple[flo
     if total <= 0:
         return None
     return (raw_a / total, raw_b / total)
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.1/5.7 — longshot-aware de-vigging.
+#
+# `devig_two_way` above is the MULTIPLICATIVE (proportional) method, and until
+# now it was the only one Python had. TypeScript has carried power, Shin and
+# worst-case in `lib/odds/devigMethods.ts` for some time, with
+# `tests/devig-methods.test.ts` asserting that "power and Shin shade the
+# longshot relative to multiplicative" — so the model layer was using the
+# weakest method in the repo while the frontend had the better ones.
+#
+# THAT COST WAS MEASURED, not assumed. Phase 5.1 compared each MLB market's
+# realised over rate against its own de-vigged price, across 14 markets:
+#
+#   realised BELOW implied in 14 of 14 markets      (P = 2^-14 under no bias)
+#   correlation(|over rate - 50%|, gap)             +0.637
+#   markets near 50%   (n=8)   mean gap             1.55pt
+#   longshot markets   (n=4)   mean gap             3.33pt
+#
+# Proportional de-vigging assumes the vig is spread in proportion to
+# probability; books load more of it onto longshots, so proportional overstates
+# a longshot's true probability — exactly the pattern above. The three largest
+# gaps were the three longest shots (stolen bases, doubles, home runs).
+#
+# Ported here rather than reimplemented: same bisection, same brackets, same
+# residual normalisation, so the two languages cannot disagree about a price.
+# ---------------------------------------------------------------------------
+
+DEVIG_METHODS = ("multiplicative", "power", "shin", "worst_case")
+
+
+def _raw_pair(a_decimal, b_decimal):
+    if not a_decimal or not b_decimal or a_decimal <= 1.0 or b_decimal <= 1.0:
+        return None
+    return 1.0 / a_decimal, 1.0 / b_decimal
+
+
+def devig_power(a_decimal, b_decimal):
+    """Find k with a^k + b^k = 1.
+
+    BISECTION, NOT NEWTON: the function is monotone in k over the bracket, so it
+    converges without a derivative and cannot diverge on a pathological pair.
+    k > 1 whenever there is a real overround, because raising a number below one
+    to a larger power makes it smaller. A booksum at or below one has no vig to
+    remove and is returned unchanged rather than having one invented.
+    """
+    raw = _raw_pair(a_decimal, b_decimal)
+    if raw is None:
+        return None
+    a, b = raw
+    s = a + b
+    if s <= 1.0:
+        return a, b
+    lo, hi = 1.0, 8.0
+    for _ in range(60):
+        k = (lo + hi) / 2.0
+        if a ** k + b ** k > 1.0:
+            lo = k
+        else:
+            hi = k
+    k = (lo + hi) / 2.0
+    fa, fb = a ** k, b ** k
+    t = fa + fb
+    # Bisection lands within ~1e-15 of the root; a pair summing to 0.9999999999
+    # would leak into every downstream calculation.
+    return fa / t, fb / t
+
+
+def devig_shin(a_decimal, b_decimal):
+    """Solve for the insider proportion z, then normalise.
+
+    z IS BRACKETED IN [0, 0.4). It is a proportion of money from insiders;
+    values approaching one are not a market, they are a division by something
+    near zero. A real book's z is a couple of percent, and the bracket stops a
+    degenerate pair producing a confident absurdity.
+    """
+    raw = _raw_pair(a_decimal, b_decimal)
+    if raw is None:
+        return None
+    a, b = raw
+    s = a + b
+    if s <= 1.0:
+        return a, b
+
+    def shin_prob(p: float, z: float) -> float:
+        return ((z * z + 4.0 * (1.0 - z) * (p * p / s)) ** 0.5 - z) / (2.0 * (1.0 - z))
+
+    lo, hi = 0.0, 0.4
+    for _ in range(60):
+        z = (lo + hi) / 2.0
+        # The sum decreases as z rises, so overshoot means z is too small.
+        if shin_prob(a, z) + shin_prob(b, z) > 1.0:
+            lo = z
+        else:
+            hi = z
+    z = (lo + hi) / 2.0
+    fa, fb = shin_prob(a, z), shin_prob(b, z)
+    t = fa + fb
+    return fa / t, fb / t
+
+
+def devig_worst_case(a_decimal, b_decimal):
+    """Each side's fair probability is 1 minus the OTHER side's raw implied.
+
+    Assumes the entire margin sits on the other side — the least favourable
+    reading for whoever backs this one. A floor, not a model, and the two sides
+    deliberately do NOT sum to one: they sum to 2 - S. Normalising would turn a
+    conservative bound back into a point estimate and discard the only thing it
+    was for.
+    """
+    raw = _raw_pair(a_decimal, b_decimal)
+    if raw is None:
+        return None
+    a, b = raw
+    return max(0.0, 1.0 - b), max(0.0, 1.0 - a)
+
+
+def devig_by(method: str, a_decimal, b_decimal):
+    """One entry point, so a caller holds the method as data, not a branch."""
+    if method == "multiplicative":
+        return devig_two_way(a_decimal, b_decimal)
+    if method == "power":
+        return devig_power(a_decimal, b_decimal)
+    if method == "shin":
+        return devig_shin(a_decimal, b_decimal)
+    if method == "worst_case":
+        return devig_worst_case(a_decimal, b_decimal)
+    raise ValueError(f"unknown de-vig method: {method}")
