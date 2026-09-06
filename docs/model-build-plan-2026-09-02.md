@@ -2317,6 +2317,38 @@ actually being gated on would be the more honest design.
 gate 3 (no leakage), gate 5 (no edge fields) and gate 6 (served ⊆ active) all
 pass, probability present on exactly goals, points and shots-on-goal.
 
+**NHL RE-FIT UNDER THE CORRECTED CALIBRATION METRIC, 2026-09-06. Probabilities
+go from 3 markets to 4, and the metric bug was worst exactly where the low-mean
+markets are.**
+
+| market | before (buggy metric) | after (corrected) | change |
+|---|---|---|---|
+| Assists | rank only, gap **0.090** | ECE 0.0101, worst **0.009** | **GAINED a probability** |
+| Hits | rank only, gap **0.053** | ECE 0.0131, worst **0.021** | **GAINED a probability** |
+| Shots on goal | probability, gap 0.037 | ECE 0.0116, worst 0.015 | unchanged |
+| Points | probability, gap 0.015 | ECE 0.0147, worst 0.021 | unchanged |
+| Goals | probability, gap 0.045 | ECE 0.0151, worst **0.057** | **LOST its probability** |
+| Blocked shots | off the board | ordering still inverts | unchanged |
+
+**Assists moved 0.090 to 0.009 — a tenfold correction.** That is the
+bucket-midpoint bug at its worst: assists average 0.44, so the model's
+predictions cluster at the low end of each bin and the bin's MIDPOINT sits far
+from the mean prediction inside it. The old metric charged the model the whole
+of that distance. Low-mean markets were penalised hardest, which is why NHL —
+whose markets are mostly sub-1 — was the sport most misjudged by it.
+
+**It moved in both directions, which is the point.** `goals` lost a probability
+it had not earned (worst bucket 0.057 measured properly). A metric fix that only
+ever loosened would be a sign the new metric was simply weaker; this one
+discriminates.
+
+**Blocked shots is unchanged and unchangeable by any calibration metric** — its
+ordering inverts, and ordering is not a calibration question.
+
+Re-verified on the 2026-03-24 slate: 5 markets served, 2,680 rows, no leakage,
+no edge fields, probability present on exactly assists, hits, points and
+shots-on-goal.
+
 #### PHASE 4 AUDIT, 2026-09-05 — one serious defect found, fixed, and it changed every verdict
 
 **THE SERVED MODEL WAS NOT THE VALIDATED MODEL.** The walk-forward built each
