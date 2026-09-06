@@ -256,3 +256,61 @@ def market_name_sql(slug: str) -> tuple[str, list[str]]:
     the live feed — which is the whole point of finding 1.
     """
     return "type_name = ANY($1)", [list(BY_SLUG[slug].names)]
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.2 — resolving a prop row's athlete to the id player_game_history uses.
+# ---------------------------------------------------------------------------
+
+# `prop_odds_archive.athlete_id` HOLDS TWO DIFFERENT ID SPACES IN ONE COLUMN,
+# split by the same 2026-09-03 cutover that renamed the markets:
+#
+#   historical (bookmaker NULL)  ESPN athlete ids     1,172 ids, length 4-7
+#   live       (bookmaker set)   MLB StatsAPI ids       404 ids, length 6,
+#                                                       range 453,286-815,873
+#
+# `build_athlete_crosswalk.py` assumes every id in this column is an ESPN id —
+# true when it was written, and the reason it resolves 1,160 of 1,576 and stalls
+# there. Its own log shows the bottleneck is upstream of matching: "espn
+# metadata: 1162 resolved" out of 1,576, because ESPN has no athlete page for an
+# MLB StatsAPI id. The 404 unresolved are not unmatched, they are in the other
+# space.
+#
+# THE TWO SPACES ARE PROVABLY DISJOINT, which is what makes a COALESCE safe
+# rather than a guess:
+#
+#   ids valid as an ESPN id for one player AND an MLB id for another        0
+#   historical ids valid as ESPN 1,160 / valid as MLB                       0
+#   live ids valid as ESPN           0 / valid as MLB                     398
+#
+# So an id can be tried as ESPN, then as MLB, and cannot be silently wrong.
+#
+# WHY THE DATE TEST CANNOT ADJUDICATE THIS. `player_game_history` for MLB ends
+# 2026-08-28; the live feed spans 2026-09-03 to 2026-09-06. There is no overlap,
+# so a date join is IMPOSSIBLE here, not failed — exactly the situation
+# build_athlete_crosswalk.py documents for NHL. The evidence is instead the
+# disjointness above plus direct name agreement: the live ids resolve through
+# `athlete_crosswalk.athlete_id` to Max Scherzer (453286), Jose Altuve (514888)
+# and Freddie Freeman (518692), and the feed's own `athlete_name` matches the
+# crosswalk's on 366 of 398 (92.0%) — the residue being accents, apostrophes and
+# generational suffixes, not different people.
+RESOLVE_ATHLETE_SQL = """
+    COALESCE(
+      (SELECT x.athlete_id FROM athlete_crosswalk x
+        WHERE x.sport = 'mlb' AND x.espn_athlete_id = {col}),
+      (SELECT x.athlete_id FROM athlete_crosswalk x
+        WHERE x.sport = 'mlb' AND x.athlete_id = {col})
+    )"""
+
+
+def resolve_athlete_sql(col: str = "p.athlete_id") -> str:
+    """SQL resolving a prop row's athlete id to the `player_game_history` id.
+
+    Handles BOTH id spaces. Coverage measured 2026-09-05: 1,558 of 1,576 prop
+    athletes (98.9%), against 73.6% for the ESPN path alone.
+
+    Use this everywhere a prop row is joined to an outcome. Joining on
+    `athlete_id` directly matches 399 athletes by coincidence and 0.00% of those
+    rows land on the right game date.
+    """
+    return RESOLVE_ATHLETE_SQL.format(col=col)

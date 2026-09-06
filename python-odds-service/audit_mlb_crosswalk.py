@@ -29,20 +29,26 @@ async def main() -> int:
 
         rows = await conn.fetchval(
             "SELECT count(*) FROM prop_odds_archive WHERE sport='mlb'")
+        # Through the DUAL-SPACE resolver (5.2): prop_odds_archive.athlete_id
+        # holds ESPN ids before the 2026-09-03 cutover and MLB StatsAPI ids
+        # after it. Measuring only the ESPN path reports 73.6% and hides that
+        # the rest are resolvable, just in the other space.
         rows_ok = await conn.fetchval("""
             SELECT count(*) FROM prop_odds_archive p
              WHERE p.sport='mlb' AND EXISTS (
                SELECT 1 FROM athlete_crosswalk x
-                WHERE x.sport='mlb' AND x.espn_athlete_id = p.athlete_id)""")
+                WHERE x.sport='mlb' AND (x.espn_athlete_id = p.athlete_id
+                                      OR x.athlete_id = p.athlete_id))""")
         ath = await conn.fetchval(
             "SELECT count(DISTINCT athlete_id) FROM prop_odds_archive WHERE sport='mlb'")
         ath_ok = await conn.fetchval("""
             SELECT count(*) FROM (
               SELECT DISTINCT athlete_id FROM prop_odds_archive WHERE sport='mlb') a
              WHERE EXISTS (SELECT 1 FROM athlete_crosswalk x
-                            WHERE x.sport='mlb' AND x.espn_athlete_id = a.athlete_id)""")
+                            WHERE x.sport='mlb' AND (x.espn_athlete_id = a.athlete_id
+                                                  OR x.athlete_id = a.athlete_id))""")
         print(f"  PROP ROWS     {rows_ok:>9,} / {rows:>9,}   {rows_ok/rows*100:5.1f}%"
-              f"   <- what the builder optimised")
+              f"   <- via the dual-space resolver")
         print(f"  PROP ATHLETES {ath_ok:>9,} / {ath:>9,}   {ath_ok/ath*100:5.1f}%")
 
         print("\n  SLATE COVERAGE — the number the board actually depends on")
@@ -74,9 +80,9 @@ async def main() -> int:
         no_hist = await conn.fetchval("""
             SELECT count(*) FROM (
               SELECT DISTINCT athlete_id FROM prop_odds_archive WHERE sport='mlb') a
-             LEFT JOIN athlete_crosswalk x
-                    ON x.sport='mlb' AND x.espn_athlete_id = a.athlete_id
-             WHERE x.athlete_id IS NULL""")
+             WHERE NOT EXISTS (SELECT 1 FROM athlete_crosswalk x
+                                WHERE x.sport='mlb' AND (x.espn_athlete_id = a.athlete_id
+                                                      OR x.athlete_id = a.athlete_id))""")
         print(f"    prop athletes with NO crosswalk row:            {no_hist:,} / {ath:,}")
 
         # How much do the unresolved actually matter? A tail of one-row athletes
@@ -87,7 +93,8 @@ async def main() -> int:
               SELECT p.athlete_id, count(*) n FROM prop_odds_archive p
                WHERE p.sport='mlb' AND p.athlete_id IS NOT NULL
                  AND NOT EXISTS (SELECT 1 FROM athlete_crosswalk x
-                                  WHERE x.sport='mlb' AND x.espn_athlete_id = p.athlete_id)
+                                  WHERE x.sport='mlb' AND (x.espn_athlete_id = p.athlete_id
+                                                        OR x.athlete_id = p.athlete_id))
                GROUP BY 1)
             SELECT count(*) athletes, sum(n) rows, max(n) worst,
                    percentile_cont(0.5) WITHIN GROUP (ORDER BY n) med FROM un""")
@@ -115,7 +122,8 @@ async def main() -> int:
               FROM prop_odds_archive p
              WHERE p.sport='mlb' AND p.athlete_id IS NOT NULL
                AND NOT EXISTS (SELECT 1 FROM athlete_crosswalk x
-                                WHERE x.sport='mlb' AND x.espn_athlete_id = p.athlete_id)
+                                WHERE x.sport='mlb' AND (x.espn_athlete_id = p.athlete_id
+                                                      OR x.athlete_id = p.athlete_id))
              GROUP BY 1 ORDER BY 2 DESC LIMIT 12""")
         for t in top:
             print(f"    espn {t['athlete_id']:>9}  {t['n']:>6,} rows  "

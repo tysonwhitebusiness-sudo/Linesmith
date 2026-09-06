@@ -83,10 +83,13 @@ async def main() -> int:
                    AND {spec.volume_sql} > 0
                    AND EXISTS (
                      SELECT 1 FROM prop_odds_archive p
-                       JOIN athlete_crosswalk x
-                         ON x.sport='mlb' AND x.espn_athlete_id = p.athlete_id
                       WHERE p.sport='mlb' AND p.type_name = ANY($1::text[])
-                        AND x.athlete_id = g.athlete_id
+                        AND (
+                     COALESCE(
+                       (SELECT x.athlete_id FROM athlete_crosswalk x
+                         WHERE x.sport='mlb' AND x.espn_athlete_id = p.athlete_id),
+                       (SELECT x.athlete_id FROM athlete_crosswalk x
+                         WHERE x.sport='mlb' AND x.athlete_id = p.athlete_id))) = g.athlete_id
                         AND p.game_date = g.game_date)""",
                 list(spec.names))
             row = await conn.fetchrow("""
@@ -138,10 +141,13 @@ async def main() -> int:
                                     ELSE (-p.under_price)/((-p.under_price)+100.0) END))
                           ) implied
                   FROM prop_odds_archive p
-                  JOIN athlete_crosswalk x
-                    ON x.sport='mlb' AND x.espn_athlete_id = p.athlete_id
                   JOIN player_game_history g
-                    ON g.sport='mlb' AND g.athlete_id = x.athlete_id
+                    ON g.sport='mlb'
+                   AND g.athlete_id = COALESCE(
+                        (SELECT x.athlete_id FROM athlete_crosswalk x
+                          WHERE x.sport='mlb' AND x.espn_athlete_id = p.athlete_id),
+                        (SELECT x.athlete_id FROM athlete_crosswalk x
+                          WHERE x.sport='mlb' AND x.athlete_id = p.athlete_id))
                    AND g.game_date = p.game_date
                  WHERE p.sport='mlb' AND p.type_name = ANY($1::text[])
                    AND p.line IS NOT NULL
