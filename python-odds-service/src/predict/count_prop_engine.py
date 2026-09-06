@@ -49,9 +49,19 @@ import math
 from dataclasses import dataclass
 
 # How many recent games the volume window may hold. A window longer than this
-# cannot be requested because the buffer does not keep more, which makes the
-# grid's upper end a structural ceiling rather than an arbitrary one.
-MAX_RECENT = 40
+# cannot differ from it, because the buffer does not keep more.
+#
+# RAISED FROM 40 TO 200 BY THE PHASE 5 AUDIT. 40 was inherited from NHL, where
+# it is half a season and generous. In MLB it is a quarter of one, and the audit
+# found EVERY fitted market pinned at volume_window=40 — the fit asking for more
+# volume history than the buffer could hold, and being silently capped. A ceiling
+# the model is always pressed against is not a ceiling that was chosen, it is one
+# that was inherited.
+#
+# The cost is bounded and small: 200 floats per player per market. The identity
+# with `nhl_props` is unaffected because that comparison only ever requests
+# windows of 40 or fewer, and the last 40 of 200 are the same 40.
+MAX_RECENT = 200
 
 
 class PlayerHistory:

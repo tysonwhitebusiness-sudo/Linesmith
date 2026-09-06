@@ -64,13 +64,18 @@ from predict import mlb_props as mp  # noqa: E402
 CUTOFF = date(2026, 1, 1)
 MIN_PRIOR = 5
 
-# volume_window 40 is a STRUCTURAL ceiling, not a grid edge: PlayerHistory keeps
-# only MAX_RECENT=40 recent games, so a longer window cannot differ from 40.
-VOLUME_WINDOWS = [0, 5, 10, 20, 40]
-# Extended to 160 after the first run pinned hits at k=40. k is in GAMES, and a
-# batter's rate is noisier per game than a skater's, so heavier shrinkage is
-# plausible rather than pathological.
-SHRINK_KS = [0.0, 1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0]
+# WIDENED BY THE PHASE 5 AUDIT, which found every fitted market pinned at the
+# old maximum of 40. `PlayerHistory` now keeps 200 games, so 200 is the real
+# structural ceiling and 0 ("all history") remains the floor — both genuine
+# endpoints, with room between them for the optimum to actually sit.
+VOLUME_WINDOWS = [0, 5, 10, 20, 40, 80, 160, 200]
+# Extended twice: to 160 after the first run pinned hits at 40, then to 1280
+# after the audit found three of four markets pinned at 160. k is in GAMES, and
+# a batter's per-game rate is far noisier than a skater's — a season is 150-odd
+# games and a hitter's true talent moves slowly — so shrinkage measured in
+# hundreds of games is plausible rather than pathological. The point is that the
+# optimum must sit INSIDE the grid, wherever that turns out to be.
+SHRINK_KS = [0.0, 1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0, 640.0, 1280.0]
 # SHAPES, not dispersions. The NB family spans variance >= mean only, so a
 # stat whose variance is BELOW its mean has no reachable shape in it. Measured:
 # hits var/mean 0.854 (under-dispersed, because a batter cannot out-hit his
@@ -152,8 +157,19 @@ async def load_props(conn, spec) -> list[tuple]:
     return out
 
 
-def walk(props, games, w, k, shape, lr, lv):
-    """Walk-forward. History from EVERY game, strictly before the prop's date."""
+def snapshot(props, games, lv):
+    """Walk the history ONCE and record what every grid point will need per row.
+
+    THE WALK IS THE EXPENSIVE PART AND IT DOES NOT DEPEND ON THE PARAMETERS.
+    Re-folding 425k games for each of 672 grid points is 285 million adds per
+    market, and every one of those folds produces the SAME history — only the
+    projection computed from it varies. So the fold happens once and each row
+    keeps the scalars any combo can be evaluated from, plus the mean volume at
+    each candidate window, that being the one quantity a window changes.
+
+    Strictly-before is enforced here, in the single place it can be: a game
+    enters history only once its date is behind the prop's.
+    """
     hist, out, i = {}, [], 0
     for gd, aid, line, op, up, actual in props:
         while i < len(games) and games[i][0] < gd:
@@ -162,10 +178,19 @@ def walk(props, games, w, k, shape, lr, lv):
             i += 1
         h = hist.get(aid)
         if h is not None and h.games >= MIN_PRIOR:
-            pr = eng.project(h, lr, lv, k=k, volume_window=w)
-            prob = eng.shape_prob_over(shape[0], shape[1], line,
-                                       pr.expected, pr.projected_volume)
-            out.append((gd, line, op, up, actual, prob, pr.expected))
+            out.append((gd, line, op, up, actual, h.events, h.volume, h.games,
+                        tuple(h.mean_volume(lv, w) for w in VOLUME_WINDOWS)))
+    return out
+
+
+def evaluate(snap, wi, k, shape, lr, lv):
+    """Score one grid point off the snapshot — no history walk, no allocation."""
+    out = []
+    for gd, line, op, up, actual, events, volume, games, vols in snap:
+        vol = vols[wi]
+        expected = vol * eng.shrunk_rate(events, volume, lr, k, lv)
+        prob = eng.shape_prob_over(shape[0], shape[1], line, expected, vol)
+        out.append((gd, line, op, up, actual, prob, expected))
     return out
 
 
@@ -202,18 +227,24 @@ async def run_market(conn, slug: str, persist: bool) -> dict | None:
     lr = sum(g[2] for g in sel_games) / sum(g[3] for g in sel_games)
     lv = sum(g[3] for g in sel_games) / len(sel_games)
 
+    snap = snapshot(props, games, lv)
+    if not snap:
+        print(f"\n{slug}: no rows cleared the {MIN_PRIOR}-game floor")
+        return None
+    sel_snap = [r for r in snap if r[0] < CUTOFF]
+
     best = None
-    for w in VOLUME_WINDOWS:
+    for wi, w in enumerate(VOLUME_WINDOWS):
         for k in SHRINK_KS:
             for sh in SHAPES:
-                m = score(walk(props, games, w, k, sh, lr, lv), hi=CUTOFF)
+                m = score(evaluate(sel_snap, wi, k, sh, lr, lv))
                 if m and (best is None or m["ll"] < best[0]):
-                    best = (m["ll"], w, k, sh)
+                    best = (m["ll"], wi, w, k, sh)
     if best is None:
         print(f"\n{slug}: nothing scored")
         return None
-    _, bw, bk, bsh = best
-    sc = walk(props, games, bw, bk, bsh, lr, lv)
+    _, bwi, bw, bk, bsh = best
+    sc = evaluate(snap, bwi, bk, bsh, lr, lv)
     sel, held = score(sc, hi=CUTOFF), score(sc, lo=CUTOFF)
     if not held:
         print(f"\n{slug}: no held-out rows")
