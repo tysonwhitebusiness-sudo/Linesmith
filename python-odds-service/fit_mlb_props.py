@@ -343,7 +343,14 @@ async def main() -> int:
 
     pool = await db.get_pool()
     results = []
-    async with pool.acquire(timeout=600.0) as conn:
+    async with pool.acquire(timeout=1800.0) as conn:
+        # THIS IS AN OFFLINE FIT, NOT A REQUEST PATH. The default 2-minute
+        # statement timeout is right for anything a user waits on and wrong
+        # here: one market's join spans 1.3M prop rows against 727k player-games
+        # and the run died on it twice. Raised deliberately and only for this
+        # connection, alongside the indexes in migration 20260906010000 that make
+        # it unnecessary in the normal case.
+        await conn.execute("SET statement_timeout = '15min'")
         for slug in slugs:
             r = await run_market(conn, slug, persist)
             if r:
