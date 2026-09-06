@@ -31,9 +31,21 @@ from predict import nhl_props as npx  # noqa: E402
 from predict import nhl_prop_serving as srv  # noqa: E402
 
 AS_OF = date(2026, 3, 28)
-TOI_WINDOWS = [0, 5, 10]
-SHRINK_KS = [5.0, 10.0, 20.0]
-DISPERSIONS = [1.0, 2.0, 4.0, 8.0, 20.0, 1e6]
+
+# THE GRIDS ARE IMPORTED, NOT COPIED. This file originally declared its own copy
+# and went stale the moment the fit's grids were widened -- it then reported
+# parameters as "pinned" against bounds that no longer existed. A checker
+# carrying its own copy of the thing it checks is two things that can disagree,
+# which is precisely the defect this audit exists to find.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fit_nhl_props_all import TOI_WINDOWS, SHRINK_KS, DISPERSIONS  # noqa: E402
+
+# Grid edges that are GENUINE ENDPOINTS rather than truncations. A parameter
+# sitting on one of these is fully fitted -- there is nothing beyond it to
+# search, so it is not a warning.
+#   dispersion 1e6 : the Poisson limit; overdispersion converges here.
+#   toi_window 0   : "use all history"; a window cannot be negative.
+ENDPOINTS = {("dispersion", "HI"), ("toi_window", "LO")}
 
 
 async def check_paths_agree(conn) -> bool:
@@ -95,27 +107,35 @@ async def check_bounds(conn) -> bool:
         "WHERE sport='nhl' AND active=true ORDER BY market")
     grids = {"toi_window": TOI_WINDOWS, "shrink_k": SHRINK_KS,
              "dispersion": DISPERSIONS}
-    any_pinned = False
-    print(f"  {'market':<16} {'toi_window':>11} {'shrink_k':>9} {'dispersion':>11}")
+    print(f"  grids: toi_window={TOI_WINDOWS}  shrink_k={SHRINK_KS}")
+    print(f"         dispersion={['Poisson' if d > 1e5 else d for d in DISPERSIONS]}\n")
+    pinned_all = []
+    print(f"  {'market':<16} {'toi_window':>12} {'shrink_k':>10} {'dispersion':>12}")
     for r in rows:
         p = json.loads(r["params_json"])
-        cells, pinned = [], []
+        cells = []
         for name, grid in grids.items():
             v = float(p[name])
             lo, hi = min(grid), max(grid)
-            mark = ""
-            if v <= lo:
-                mark, any_pinned = " LO", True
-                pinned.append(name)
-            elif v >= hi:
-                mark, any_pinned = " HI", True
-                pinned.append(name)
+            edge = "LO" if v <= lo else ("HI" if v >= hi else "")
+            # An ENDPOINT is fully searched; only a TRUNCATION is a warning.
+            real = bool(edge) and (name, edge) not in ENDPOINTS
+            if real:
+                pinned_all.append(f"{r['market']}.{name} = {v:g}  ({edge} bound)")
+            mark = ("*" + edge) if real else ("." + edge if edge else "")
             shown = "Poisson" if name == "dispersion" and v > 1e5 else f"{v:g}"
-            cells.append(f"{shown + mark:>11}" if name != "shrink_k"
-                         else f"{shown + mark:>9}")
+            w = 10 if name == "shrink_k" else 12
+            cells.append(f"{shown + ' ' + mark if mark else shown:>{w}}")
         print(f"  {r['market']:<16} {cells[0]} {cells[1]} {cells[2]}")
-    print(f"\n  VERDICT: {'PINNED PARAMETERS PRESENT' if any_pinned else 'PASS — nothing on a bound'}")
-    return not any_pinned
+    print("\n  legend:  *LO/*HI on a real BOUND (warning)"
+          "    .LO/.HI on a genuine ENDPOINT (fine)")
+    if pinned_all:
+        print("\n  ON A REAL BOUND:")
+        for x in pinned_all:
+            print(f"    {x}")
+    print(f"\n  VERDICT: "
+          f"{'BOUND-PINNED PARAMETERS PRESENT' if pinned_all else 'PASS — nothing on a real bound'}")
+    return not pinned_all
 
 
 async def check_coherence(conn) -> bool:

@@ -55,7 +55,10 @@ MIN_PRIOR = 5
 # Only real truncations are widened. `recent_min` retains 40 games, so a window
 # of 40 is itself a structural ceiling rather than an arbitrary one.
 TOI_WINDOWS = [0, 5, 10, 20, 40]
-SHRINK_KS = [1.0, 2.0, 5.0, 10.0, 20.0, 40.0]
+# 0.0 added after the bounds check found hits pinned at k=1: shrinkage is
+# n/(n+k), so k=0 is NO shrinkage at all — a genuine endpoint, which makes the
+# low end fully searched rather than truncated.
+SHRINK_KS = [0.0, 1.0, 2.0, 5.0, 10.0, 20.0, 40.0]
 DISPERSIONS = [1.0, 2.0, 4.0, 8.0, 20.0, 1e6]
 
 MARKETS = ["Total Shots on Goal", "Total Points", "Total Assists",
