@@ -45,8 +45,12 @@ export interface StatsBoardRow {
   probability: number | null;
   /** The line `probability` is measured against. Null whenever probability is. */
   line: number | null;
-  /** Projected minutes behind a volume-driven number. Evidence, not decoration. */
-  projectedToi: number | null;
+  /**
+   * Projected CHANCES behind the number — minutes in NHL, plate appearances or
+   * outs in MLB. Evidence, not decoration. What it means is named by the
+   * market's `volumeLabel`/`volumeUnit`, never assumed by the component.
+   */
+  volume: number | null;
   /** Games of history the projection rests on. Drives the confidence display. */
   sampleSize: number;
 }
@@ -57,6 +61,21 @@ export interface StatsBoardMarket {
   label: string;
   /** Unit shown after the projection, e.g. "shots". */
   unit: string;
+  /**
+   * What `StatsBoardRow.volume` MEANS in this market, as a column header and a
+   * unit — "Ice time"/"min" in NHL, "Plate appearances"/"PA" for an MLB batter,
+   * "Outs"/"outs" for a pitcher.
+   *
+   * These exist because the board originally hard-coded NHL's answer. That was
+   * invisible while NHL was the only sport and wrong the moment MLB arrived:
+   * a batter's chances are plate appearances, and rendering "3.7 min" under a
+   * heading of "Ice time" would have been confidently, silently false. The
+   * convention (CLAUDE.md §4) forbids a `sport === 'x'` branch inside a shared
+   * component — it does not forbid replacing a hard-coded assumption with data,
+   * which is what this is.
+   */
+  volumeLabel: string;
+  volumeUnit: string;
   /** True when every row in this market carries a calibrated probability. */
   hasProbability: boolean;
   rows: StatsBoardRow[];
@@ -143,7 +162,7 @@ export function toNhlStatsBoardData(
       projection: r.projection,
       probability: r.modelProb,
       line: r.modelProb == null ? null : r.line,
-      projectedToi: r.projectedToi,
+      volume: r.projectedToi,
       sampleSize: r.sampleSize ?? 0,
     });
     byMarket.set(r.dimension, list);
@@ -159,6 +178,8 @@ export function toNhlStatsBoardData(
       key,
       label: NHL_MARKETS[key].label,
       unit: NHL_MARKETS[key].unit,
+      volumeLabel: 'Ice time',
+      volumeUnit: 'min',
       // Every row in a market shares a calibration verdict — the serving job
       // writes a probability for all of a market's rows or none of them — so
       // reading the first row is not a sample, it is the market's own state.

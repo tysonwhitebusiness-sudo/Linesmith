@@ -23,6 +23,10 @@ import {
   toNhlStatsBoardData,
   type NhlProjectionApiRow,
 } from '../lib/sports/nhl/adapters/statsBoardAdapter';
+import {
+  toMlbStatsBoardData,
+  type MlbProjectionApiRow,
+} from '../lib/sports/mlb/adapters/statsBoardAdapter';
 
 const ROOT = join(__dirname, '..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
@@ -33,6 +37,11 @@ const SURFACE = [
   'components/NhlProjectionsPanel.tsx',
   'lib/sports/nhl/adapters/statsBoardAdapter.ts',
   'app/api/nhl/projections/route.ts',
+  // MLB joined the board in 5.8. Every sport's surface files go in here, or the
+  // guard protects only the sport that happened to be added first.
+  'components/MlbProjectionsPanel.tsx',
+  'lib/sports/mlb/adapters/statsBoardAdapter.ts',
+  'app/api/mlb/projections/route.ts',
 ];
 
 /**
@@ -165,6 +174,52 @@ test('every market the serving job may write has a display contract', () => {
     `every dimension the serving job can write must render; got ` +
       `${data.markets.map((m) => m.key).join(', ')}`);
 });
+
+test('MLB names its volume column per SIDE, never as ice time', () => {
+  // The board hard-coded "Ice time"/"min" until MLB arrived. A batter's chances
+  // are plate appearances and a pitcher's are outs; rendering either as minutes
+  // would be silently, confidently wrong. This asserts the parameterisation
+  // rather than trusting the comment that explains it.
+  const data = toMlbStatsBoardData(
+    [mkMlb('1', 'A', 'hits', 1.1), mkMlb('2', 'B', 'pitcher-outs', 16.2)],
+    '2026-08-20',
+  );
+  const hits = data.markets.find((m) => m.key === 'hits');
+  const outs = data.markets.find((m) => m.key === 'pitcher-outs');
+  assert.equal(hits!.volumeLabel, 'Plate appearances');
+  assert.equal(hits!.volumeUnit, 'PA');
+  assert.equal(outs!.volumeLabel, 'Outs recorded');
+  assert.equal(outs!.volumeUnit, 'outs');
+  for (const m of data.markets) {
+    assert.ok(!/ice time|min/i.test(m.volumeLabel + ' ' + m.volumeUnit),
+      `MLB market ${m.key} carries an NHL volume label`);
+  }
+});
+
+test('MLB ranks by projection and refuses an unrecognised market', () => {
+  const data = toMlbStatsBoardData(
+    [mkMlb('1', 'A', 'hits', 0.8), mkMlb('2', 'B', 'hits', 1.2),
+     mkMlb('3', 'C', 'sacrifice-flies', 0.3)],
+    '2026-08-20',
+  );
+  assert.equal(data.markets.length, 1, 'the unknown dimension must not render');
+  assert.deepEqual(data.markets[0].rows.map((r) => r.subjectId), ['2', '1']);
+  assert.equal(data.markets[0].hasProbability, false,
+    'a null probability must read as "rank only", not as a missing value');
+});
+
+function mkMlb(
+  id: string,
+  name: string,
+  dimension: string,
+  projection: number,
+): MlbProjectionApiRow {
+  return {
+    subjectId: id, subjectName: name, teamAbbr: null, gameId: 'g1',
+    dimension, projection, modelProb: null, line: null,
+    volume: 4.1, sampleSize: 40,
+  };
+}
 
 function mk(
   id: string,

@@ -52,11 +52,13 @@ function ProjectionRow({
   row,
   rank,
   unit,
+  volumeUnit,
   showProbability,
 }: {
   row: StatsBoardRow;
   rank: number;
   unit: string;
+  volumeUnit: string;
   showProbability: boolean;
 }) {
   const conf = confidence(row.sampleSize);
@@ -86,7 +88,7 @@ function ProjectionRow({
         </td>
       ) : null}
       <td className="py-2 pr-3 text-right tabular-nums text-ink-secondary">
-        {row.projectedToi != null ? `${row.projectedToi.toFixed(1)} min` : '—'}
+        {row.volume != null ? `${row.volume.toFixed(1)} ${volumeUnit}` : '—'}
       </td>
       <td className={`py-2 text-right text-[11px] ${conf.className}`}>
         {conf.label}
@@ -185,7 +187,7 @@ export default function StatsBoard({
                 </th>
               ) : null}
               <th scope="col" className="py-2 pr-3 text-right font-medium">
-                Ice time
+                {active.volumeLabel}
               </th>
               <th scope="col" className="py-2 text-right font-medium">
                 Based on
@@ -199,6 +201,7 @@ export default function StatsBoard({
                 row={row}
                 rank={i + 1}
                 unit={active.unit}
+                volumeUnit={active.volumeUnit}
                 showProbability={active.hasProbability}
               />
             ))}

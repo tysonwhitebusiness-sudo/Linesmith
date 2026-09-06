@@ -2305,6 +2305,61 @@ export async function countNhlProjectionsWithoutName(): Promise<number> {
   return row?.n ?? 0;
 }
 
+export interface MlbProjectionRow {
+  subjectId: string;
+  subjectName: string | null;
+  teamAbbr: string | null;
+  gameId: string;
+  dimension: string;
+  projection: number | null;
+  modelProb: number | null;
+  line: number | null;
+  volume: number | null;
+  sampleSize: number | null;
+}
+
+/**
+ * Phase 5.8 — the MLB stats board's read. Pattern 2, same as the NHL one:
+ * a direct read of a real table kept fresh out-of-band by `mlbProjectionsJob`.
+ *
+ * The name join is a plain inner join on `athlete_crosswalk.athlete_id`, which
+ * after 5.2's backfill covers 100% of slate players (measured on three separate
+ * slates). NHL's equivalent still drops a residue; MLB's does not, because every
+ * player in `player_game_history` now has a row — a name-only one where no ESPN
+ * mapping exists.
+ *
+ * `category = 'projection'` separates the projection pipe's rows from the edge
+ * pipe's in the same table. Dropping it would put edge-gated rows on a board
+ * that has not passed the edge gate.
+ */
+export async function readMlbProjections(): Promise<MlbProjectionRow[]> {
+  return pgAll<MlbProjectionRow>(
+    `SELECT p.subject_id AS "subjectId", x.athlete_name AS "subjectName",
+            NULL AS "teamAbbr", p.game_id AS "gameId", p.dimension,
+            p.projection, p.model_prob AS "modelProb", p.line,
+            p.projected_toi AS "volume", p.model_sample_size AS "sampleSize"
+       FROM prop_model_cache p
+       JOIN athlete_crosswalk x
+         ON x.sport = 'mlb' AND x.athlete_id = p.subject_id
+      WHERE p.sport = 'mlb' AND p.category = 'projection'
+        AND p.projection IS NOT NULL`,
+    [],
+  );
+}
+
+/** Players the name join drops. Reported, not hidden. */
+export async function countMlbProjectionsWithoutName(): Promise<number> {
+  const row = await pgGet<{ n: number }>(
+    `SELECT count(DISTINCT p.subject_id)::int AS n FROM prop_model_cache p
+      WHERE p.sport = 'mlb' AND p.category = 'projection'
+        AND p.projection IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM athlete_crosswalk x
+                         WHERE x.sport = 'mlb' AND x.athlete_id = p.subject_id)`,
+    [],
+  );
+  return row?.n ?? 0;
+}
+
 export async function readGameModelCache(sport: string, gameId: string): Promise<GameModelCacheRow | null> {
   const row = await pgGet<any>(
     `SELECT sport, game_id AS "gameId",
