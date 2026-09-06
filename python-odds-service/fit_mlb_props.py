@@ -75,7 +75,16 @@ VOLUME_WINDOWS = [0, 5, 10, 20, 40, 80, 160, 200]
 # games and a hitter's true talent moves slowly — so shrinkage measured in
 # hundreds of games is plausible rather than pathological. The point is that the
 # optimum must sit INSIDE the grid, wherever that turns out to be.
-SHRINK_KS = [0.0, 1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0, 640.0, 1280.0]
+# 1e9 is the FULL-SHRINKAGE LIMIT and a genuine endpoint, the mirror of 0.0 at
+# the other end and of dispersion=1e6 for shape. At k that large the weight
+# n/(n+k) is zero for any real sample, so the projection ignores the player's own
+# rate entirely and uses the league rate times his volume. That is a meaningful
+# answer, not a degenerate one: it says this market's per-player rate carries no
+# signal the volume does not already carry. Including it makes the top of the
+# grid an endpoint rather than a truncation, so a market landing there has been
+# fitted rather than clipped.
+SHRINK_KS = [0.0, 1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0, 640.0,
+             1280.0, 2560.0, 5120.0, 1e9]
 # SHAPES, not dispersions. The NB family spans variance >= mean only, so a
 # stat whose variance is BELOW its mean has no reachable shape in it. Measured:
 # hits var/mean 0.854 (under-dispersed, because a batter cannot out-hit his
@@ -264,13 +273,54 @@ async def run_market(conn, slug: str, persist: bool,
         return None
     sel_snap = [r for r in snap if r[0] < CUTOFF]
 
-    best = None
+    # SELECTION: best SELECT log-loss, TIE-BROKEN ON SELECT ORDERING.
+    #
+    # Hyperparameters were selected purely on log-loss while the gate is ordering
+    # plus calibration — different objectives, and a config can win one while
+    # losing the other. That bit for real on `doubles`: two configs scored
+    # 0.43549 and 0.43551 on SELECT log-loss, indistinguishable, and the sweep
+    # took the marginally better one, whose held-out ordering was INVERTED
+    # (Q1 0.142 > Q2 0.138). A market went off the board on a fourth-decimal
+    # coin-flip.
+    #
+    # Fixed by treating anything within TIE_TOL of the best log-loss as tied and
+    # preferring, among those, a config whose ordering is monotone. Both criteria
+    # are measured on SELECT, so nothing about the held-out window influences the
+    # choice — this is a tiebreak, not a change of objective, and it cannot
+    # rescue a config that log-loss genuinely rejects.
+    TIE_TOL = 1e-3
+
+    def sel_ordering_monotone(rows) -> bool:
+        if len(rows) < 5 * 30:
+            return False
+        r = sorted(rows, key=lambda t: t[6])
+        step = len(r) // 5
+        means = []
+        for i in range(5):
+            chunk = r[i * step:(i + 1) * step if i < 4 else len(r)]
+            means.append(sum(x[4] for x in chunk) / len(chunk))
+        return all(means[i] <= means[i + 1] + 1e-9 for i in range(4))
+
+    cands = []
     for wi, w in enumerate(VOLUME_WINDOWS):
         for k in SHRINK_KS:
             for sh in SHAPES:
-                m = score(evaluate(sel_snap, wi, k, sh, lr, lv))
-                if m and (best is None or m["ll"] < best[0]):
-                    best = (m["ll"], wi, w, k, sh)
+                rows = evaluate(sel_snap, wi, k, sh, lr, lv)
+                m = score(rows)
+                if m:
+                    cands.append((m["ll"], wi, w, k, sh, rows))
+    if not cands:
+        print()
+        print(f"{slug}: nothing scored")
+        return None
+    floor = min(c[0] for c in cands)
+    tied = [c for c in cands if c[0] <= floor + TIE_TOL]
+    ordered = [c for c in tied if sel_ordering_monotone(c[5])]
+    pool_ = ordered or tied
+    best = min(pool_, key=lambda c: c[0])[:5]
+    if ordered and len(ordered) < len(tied):
+        print(f"  tiebreak: {len(tied)} configs within {TIE_TOL} of the best "
+              f"SELECT log-loss; {len(ordered)} of them order monotonically")
     if best is None:
         print(f"\n{slug}: nothing scored")
         return None

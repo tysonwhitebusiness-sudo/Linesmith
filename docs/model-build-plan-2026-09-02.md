@@ -2868,6 +2868,76 @@ volume, shrunk per-market rate, and a count distribution at the line.
 
 **Exit:** per-market metrics, ordering by quintile, no pinned parameters.
 
+**RESULT — 5.4, 5.6, 5.7 and 5.8 COMPLETE, 2026-09-06. `/mlb/projections`
+renders 11 ranked markets, 9 of them with a calibrated probability.**
+
+| market | held out | log-loss | acc | ECE | worst | verdict |
+|---|---|---|---|---|---|---|
+| runs | 30,061 | 0.65432 | 62.8% | **0.0045** | 0.020 | rank + probability |
+| pitcher-outs | 2,328 | 0.72893 | — | **0.0050** | 0.005 | rank + probability |
+| hits-runs-rbis | 30,879 | 0.69391 | — | **0.0060** | 0.043 | rank + probability |
+| rbis | 30,848 | 0.59952 | 71.2% | **0.0087** | 0.025 | rank + probability |
+| singles | 30,871 | 0.68086 | — | **0.0093** | 0.031 | rank + probability |
+| stolen-bases | 11,190 | 0.33012 | — | **0.0108** | 0.017 | rank + probability |
+| hits | 30,950 | 0.67135 | 59.0% | **0.0121** | 0.039 | rank + probability |
+| total-bases | 16,423 | 0.66990 | 61.0% | 0.0122 | **0.065** | rank only |
+| pitcher-strikeouts | 2,474 | 0.71349 | — | **0.0145** | 0.033 | rank + probability |
+| pitcher-walks-allowed | 2,381 | 0.70843 | — | **0.0188** | 0.022 | rank + probability |
+| pitcher-hits-allowed | 2,419 | 0.72440 | — | 0.0292 | 0.029 | rank only |
+| doubles | 30,863 | 0.42378 | 84.9% | 0.0050 | 0.005 | **OFF — ordering inverts** |
+| earned-runs | 2,415 | 0.71221 | 53.6% | 0.0135 | 0.011 | **OFF — ordering inverts** |
+| home-runs | — | — | — | — | — | **UNTESTABLE** |
+
+**MLB carries far more of its markets than NHL did** — 9 with a probability
+against NHL's 3, on samples 10-13x larger (30,000 held-out rows against 2,300).
+That is the reason the plan put MLB here: it is the real test of whether the prop
+approach generalises, and it does.
+
+**`home-runs` is UNTESTABLE, not failed.** Its archive ends 2025-11-02, entirely
+inside the SELECT window, so the season split leaves it no held-out rows at all.
+The 5.1 audit flagged that coverage hole; this is where it bites.
+
+**Two markets fail on ORDERING while looking excellent on calibration**, which is
+exactly why the two bars are separate. `doubles` has the second-best ECE of any
+market (0.0050) and its ranking still runs backwards out of sample (Q1 0.142 >
+Q2 0.138). A model can be well-calibrated in aggregate and still order players
+wrongly; a single combined score would have hidden that.
+
+##### The domain check, which is the one that cannot be faked
+
+| market | top three |
+|---|---|
+| Hits | **Luis Arraez**, Trea Turner, Bo Bichette |
+| Singles | **Luis Arraez**, Chandler Simpson, Xavier Edwards |
+| Total bases | **Shohei Ohtani**, Yordan Alvarez, Mike Trout |
+| RBIs | Yordan Alvarez, Esmerlyn Valdez, Pete Alonso |
+| Runs scored | Mike Trout, Mookie Betts, Shohei Ohtani |
+| Stolen bases | Nasim Nunez, Chandler Simpson, **Elly De La Cruz** |
+| Strikeouts (pitcher) | Shohei Ohtani, Kyle Bradish, **Gerrit Cole** |
+
+**The differentiation BETWEEN markets is the strongest evidence.** Arraez leads
+hits and singles and appears nowhere near total bases; Ohtani leads total bases
+and pitcher strikeouts; the stolen-base list is three genuine burners and shares
+no names with the power lists. A broken model ranks the same stars everywhere.
+Arraez topping hits is a three-time batting champion known specifically for
+contact, found from box scores with no position or role input.
+
+##### Verified on the page, not asserted
+
+- 11 tabs render; the two rank-only markets (`total-bases`, `hits allowed`) show
+  NO Chance column, matching `probability_ok=False`.
+- The volume column reads **"PLATE APPEARANCES / 4.4 PA"** for batters and
+  **"OUTS RECORDED / 20.4 outs"** for pitchers — the parameterisation that
+  replaced the board's hard-coded "Ice time".
+- `Jake Bennett` ranks 2nd in hits allowed on 9 games and is labelled **"Thin
+  history(9)"**, so the confidence column is doing its job at the low end.
+- No console errors other than the dev server's own HMR socket.
+
+**One cosmetic oddity worth recording:** on `Outs recorded`, the projection and
+the volume column are the same number (20.40 outs / 20.4 outs), because for that
+one market the projected stat IS the volume. Not wrong, but redundant, and worth
+collapsing when the board is next touched.
+
 #### 5.5 — Statcast as a skill-vs-luck prior — now genuinely available
 
 `estimated_woba` separates what a batter *earned* from what he *got*. With the

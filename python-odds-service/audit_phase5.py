@@ -207,7 +207,10 @@ async def check_54(conn) -> None:
     for slug, c in cals.items():
         if c["volume_window"] >= max(F.VOLUME_WINDOWS):
             pinned.append(f"{slug}.volume_window={c['volume_window']}")
-        if c["shrink_k"] >= max(F.SHRINK_KS):
+        # 1e9 is the full-shrinkage ENDPOINT (weight n/(n+k) -> 0, so the
+        # projection is league rate x volume), the mirror of k=0. Landing there
+        # is a fitted answer, not a clipped one.
+        if max(F.SHRINK_KS) > c["shrink_k"] >= sorted(F.SHRINK_KS)[-2]:
             pinned.append(f"{slug}.shrink_k={c['shrink_k']}")
     record("no fitted parameter sits on a real (non-endpoint) bound",
            not pinned, "; ".join(pinned))
