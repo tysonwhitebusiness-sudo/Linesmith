@@ -107,13 +107,32 @@ async def load_props(conn, spec) -> list[tuple]:
 
     Returns (game_date, athlete_id, line, over_price, under_price, actual).
     """
+    # THE RESOLVER IS A CTE, NOT A CORRELATED SUBQUERY. Written the obvious way —
+    # COALESCE of two scalar subqueries in the JOIN condition — Postgres
+    # evaluates it per candidate row and the query blew the 2-minute statement
+    # timeout on the fifth market. Materialising the id map once turns it into a
+    # hash join.
+    #
+    # The UNION ALL is safe because the two id spaces are PROVABLY DISJOINT
+    # (5.2: zero ids valid in both), so no prop row can match twice. If that ever
+    # stops being true this produces duplicate rows rather than wrong ones, and
+    # the row counts in audit_mlb_crosswalk.py would show it.
     sql = f"""
+        WITH xw AS (
+            SELECT espn_athlete_id AS ext_id, athlete_id
+              FROM athlete_crosswalk
+             WHERE sport = 'mlb' AND espn_athlete_id IS NOT NULL
+            UNION ALL
+            SELECT athlete_id AS ext_id, athlete_id
+              FROM athlete_crosswalk WHERE sport = 'mlb'
+        )
         SELECT p.game_date, g.athlete_id, p.line, p.over_price, p.under_price,
                {spec.stat_sql} AS actual
           FROM prop_odds_archive p
+          JOIN xw ON xw.ext_id = p.athlete_id
           JOIN player_game_history g
             ON g.sport = 'mlb'
-           AND g.athlete_id = {mp.resolve_athlete_sql('p.athlete_id')}
+           AND g.athlete_id = xw.athlete_id
            AND g.game_date = p.game_date
          WHERE p.sport = 'mlb' AND p.type_name = ANY($1::text[])
            AND p.line IS NOT NULL
@@ -315,6 +334,7 @@ async def main() -> int:
     wanted = [a for a in sys.argv[1:] if not a.startswith("--")]
     slugs = wanted or [s.slug for s in mp.MARKETS if s.slug not in NOT_YET]
 
+    sys.stdout.reconfigure(line_buffering=True)
     print(f"Phase 5.3/5.4 — MLB prop walk-forward, {len(slugs)} markets"
           + ("   [--persist]" if persist else ""))
     print(f"SELECT < {CUTOFF} <= HELD OUT.  "

@@ -38,6 +38,13 @@ from . import mlb_props as mp
 MODEL_VERSION = 1
 MIN_PRIOR_GAMES = 5
 
+# Every parameter this pipe reads out of a calibration row. A row lacking any of
+# them was produced by a different fitter and is skipped, not defaulted.
+REQUIRED_PARAMS = (
+    "league_rate", "league_volume", "shrink_k", "volume_window",
+    "shape_kind", "calibration_a", "calibration_b",
+)
+
 
 @dataclass
 class ServedProjection:
@@ -56,11 +63,26 @@ async def _active_markets(conn) -> dict[str, dict]:
     rows = await conn.fetch(
         "SELECT market, params_json, version FROM model_calibration "
         "WHERE sport = 'mlb' AND active = true")
+    # A ROW MUST CARRY EVERY PARAMETER THIS PIPE NEEDS, or it is not a fitted
+    # model and must not be served. `model_calibration` already held seven MLB
+    # rows from an earlier phase — 'walks', 'hits-runs-rbis', 'pitcher-strikeouts'
+    # among them — written by a different fitter, still `active`, and carrying
+    # none of the volume/shape/shrink parameters this engine reads. Serving one
+    # would either raise on a missing key or, worse, fall back to a default and
+    # publish a projection nobody fitted.
+    #
+    # Checked by REQUIRED_PARAMS rather than by a version number or a date,
+    # because the question is not "is this row old" but "does it describe the
+    # model this code runs".
     out: dict[str, dict] = {}
     for r in rows:
         if r["market"] not in mp.BY_SLUG:
             continue
-        out[r["market"]] = {**json.loads(r["params_json"]), "version": r["version"]}
+        p = json.loads(r["params_json"])
+        missing = [k for k in REQUIRED_PARAMS if k not in p]
+        if missing:
+            continue
+        out[r["market"]] = {**p, "version": r["version"]}
     return out
 
 
