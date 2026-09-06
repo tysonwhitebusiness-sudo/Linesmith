@@ -1023,6 +1023,32 @@ def _make_generic_prop_production_job(sport_key: str, job_name: str):
     return job
 
 
+async def job_mlb_projections(yield_fn=None) -> dict:
+    """Phase 5.8 — the PROJECTION pipe for MLB: what the MLB stats board reads.
+
+    Separate from genericPropProductionJob (the EDGE pipe, writing pick_history
+    from a different model) for the same reason NHL's is: two pipes, two tables,
+    two gates. This one ships on ordering; that one waits on a betting gate
+    nothing has cleared.
+
+    Lines matter only for markets whose calibration earned a displayed
+    probability; every other market gets a projection and a null probability
+    regardless of what is passed. These are the standard numbers.
+    """
+    from datetime import date as _date
+    from predict.mlb_prop_serving import run
+
+    return await _run_timed("mlbProjectionsJob", run(_date.today(), {
+        "hits": 0.5, "total-bases": 1.5, "hits-runs-rbis": 1.5,
+        "home-runs": 0.5, "rbis": 0.5, "runs": 0.5, "singles": 0.5,
+        "doubles": 0.5, "triples": 0.5, "walks": 0.5,
+        "batter-strikeouts": 0.5, "stolen-bases": 0.5,
+        "pitcher-strikeouts": 4.5, "pitcher-outs": 16.5,
+        "pitcher-hits-allowed": 4.5, "earned-runs": 2.5,
+        "pitcher-walks-allowed": 1.5,
+    }))
+
+
 async def job_nhl_projections(yield_fn=None) -> dict:
     """Phase 4.9 — the PROJECTION pipe: what the NHL stats board reads.
 
@@ -1393,6 +1419,7 @@ JOB_REGISTRY = [
     # start-time check was, and a shorter interval would only have made a
     # leaked first-tick land sooner.
     ("nhlProjectionsJob", job_nhl_projections, 60 * 60),
+    ("mlbProjectionsJob", job_mlb_projections, 60 * 60),
     ("genericPropProductionNflJob", job_generic_prop_production_nfl, 60 * 60),
     ("genericPropProductionCfbJob", job_generic_prop_production_cfb, 60 * 60),
     ("genericPropProductionNbaJob", job_generic_prop_production_nba, 60 * 60),

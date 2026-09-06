@@ -1,103 +1,92 @@
 # CURRENT — pick up here
 
-**Phase 4 is COMPLETE and audited.** `/nhl/projections` renders **six** ranked
-NHL markets in a real browser. That is the first user-visible model output this
-project has produced — Phases 2, 3 and the first nine steps of 4 all finished at
-a number in a document.
+**Phase 4 is complete and audited. Phase 5 is mid-flight: 5.1, 5.2, 5.3, 5.4 and
+5.8's surface are built; the full MLB fit is the thing to check first.**
 
-`tsc` clean, **345 tests, 0 fail**, production build exit 0. Plan:
-`docs/model-build-plan-2026-09-02.md`.
+`tsc` clean, **347 tests, 0 fail**. Plan: `docs/model-build-plan-2026-09-02.md`.
 
-## 1. What shipped in 4.8 / 4.9 / 4.10
+## 1. FIRST THING: the MLB fit result
 
-**All six NHL markets rank; four carry a calibrated probability.** Board is live
-at `/nhl/projections`.
+`python fit_mlb_props.py --persist` was running when this was written (14
+markets x 315 combos). If `model_calibration` has `sport='mlb'` rows carrying
+`shape_kind` in their params, it finished. If not, re-run it.
 
-| market | ordering (quintiles) | calib gap | ranks | shows a % |
-|---|---|---|---|---|
-| Points | 0.43 - 0.57 - 0.61 - 0.74 - 1.07 | 0.015 | yes | **yes** |
-| Hits | 1.60 - 1.87 - 2.20 - 2.43 - 2.83 | 0.022 | yes | **yes** |
-| Shots on goal | 1.72 - 2.02 - 2.13 - 2.36 - 3.02 | 0.037 | yes | **yes** |
-| Goals | 0.06 - 0.10 - 0.11 - 0.20 - 0.37 | 0.045 | yes | **yes** |
-| Blocked shots | 1.56 - 1.68 - 1.72 - 1.86 - 2.02 | 0.058 | yes | no |
-| Assists | 0.29 - 0.32 - 0.39 - 0.46 - 0.67 | 0.090 | yes | no |
+Then, in order:
 
-**4.9 - serving, split by consumer.** Projection pipe ships on ordering; edge
-pipe stays behind 4.7. `prop_model_cache` (renamed from `mlb_prop_model_cache`)
-is Python-written, TS read-only.
+```bash
+python fit_nhl_props_all.py --persist   # NHL under the CORRECTED metric — will change verdicts
+python verify_nhl_serving.py            # re-verify after that re-fit
+```
 
-**4.10 - the board.** Compliance strings in the root layout, privacy policy,
-shared `StatsBoard`, NHL adapter, pattern-2 read route, 6-test no-edge guard
-that was checked to actually fail.
+**The NHL re-run is not optional.** The calibration metric was fixed in 5.4 and
+NHL's persisted verdicts were produced under the buggy one.
 
-## 2. The audit found one serious defect, and it changed every verdict
+## 2. What shipped
 
-**The served model was not the validated model.** The walk-forward built history
-from PROP ROWS (18.8 games/player); serving built it from every game (553.8).
-Same player, same date, same constants disagreed by a mean 0.38 shots, with only
-16% agreeing within 0.10. **No test caught it because both sides were
-individually correct** - only comparing them found it.
+**5.1 — market map + one history loader** (`predict/mlb_props.py`). 17 markets,
+14 modellable, 10 excluded with reasons in code.
 
-Fixed by pointing the fit at the serving path's source. Re-fitting flipped four
-of six verdicts, all toward better: **hits and blocked shots, whose ordering had
-been measured BACKWARDS, both order cleanly with full history** - the inversion
-was a sample-size artifact. Shots on goal and goals earned probabilities;
-assists lost its one.
+**5.2 — crosswalk.** Slate coverage 83-86% -> **100%**, prop athletes 73.6% ->
+**99.0%**.
 
-Three smaller things from the same audit:
+**5.3/5.4 — the model and its walk-forward** (`predict/count_prop_engine.py`,
+`fit_mlb_props.py`). Shared engine extracted from `nhl_props`; NHL deliberately
+not migrated, with `test_count_prop_engine.py` asserting the two agree exactly.
 
-1. **The league rate was derived from prop rows**, which skew to high-volume
-   players - biased upward relative to the population histories are drawn from.
-   Now taken from the SELECT-window games.
-2. **Two stale gates hard-coded a measurement instead of a rule** (the adapter
-   map and the verifier both named hits/blocked-shots). The gate now lives in one
-   place: `model_calibration.active`.
-3. **The 4.9 verification slate sat outside the prop window** (2024-01-13, before
-   the archive starts). Re-verified on 2026-03-28.
+**5.8 — MLB on the shared board** (adapter, route, page, panel, job). Needs the
+fit to have persisted before it renders anything.
 
-Earlier in the phase, two more of the same species: an ordering check that was
-vacuous for low-mean markets (`all()` over one bucket), and a
-`write_calibration` that could not RETIRE a market because it deactivated prior
-versions only when the new one activated.
+## 3. Six findings, each of which would have shipped something wrong
 
-## 3. Where things stand overall
+1. **The market names changed on 2026-09-03 and the old ones are gone.** Two
+   disjoint naming schemes; a model fitted on "Total Hits" matches nothing live.
+2. **Two id spaces in one column** — ESPN before the cutover, MLB StatsAPI after.
+   Provably disjoint (0 collisions), so a COALESCE resolver is safe.
+3. **`pit_inningsPitched` is outs notation, not a decimal.** "1.2" is FIVE outs.
+   `ip * 3` would have corrupted every pitcher projection, plausibly.
+4. **The shape grid only went one direction.** NB spans variance >= mean; hits
+   are UNDER-dispersed (var/mean 0.854) because a batter cannot out-hit his
+   plate appearances. Added a binomial shape.
+5. **Temperature cannot fix a bias.** It rotates about 0.5 and corrects
+   overconfidence (NHL's failure). MLB's is a uniform under-prediction, which
+   only a shift term absorbs. Added two-parameter Platt.
+6. **The calibration metric had two bugs** — it compared actual to the bucket
+   MIDPOINT rather than the mean prediction, and its floor of n>=40 is noise for
+   a proportion. On MLB hits, Platt improved ECE 0.0226 -> 0.0140 and improved
+   every substantial bucket while the reported "worst gap" got WORSE on one
+   45-row bin. Gate is now ECE <= 0.025 AND worst <= 0.05 at n >= 200.
 
-- **No model has beaten a closing line.** Tennis t=+20.68, soccer t=+3.05, NHL
-  games t=+5.07, NHL props t=+3.03. The betting board stays suppressed and
-  `EdgeBadge` stays off. That is the expected state for every sport right now.
-- **The stats board does not wait on that** and never should have. A ranking is
-  an opinion; an edge is a claim about someone else's price. Different claims,
-  different evidence, different gates.
-- 4.7's one genuinely positive result stands unexploited: priced at the OPEN,
-  ROI rises monotonically with edge (+22.84% at the 10% threshold, t=+2.93). The
-  model beats the market's FIRST GUESS, not its close.
+## 4. Known gaps, deliberately left
 
-## 4. Next actions
+- **Park factors are not wired and cannot be.** No path from a player-game to a
+  venue: `player_game_history` has no venue column and its `event_id` matches
+  `game_result.event_ref` on **0** of 4,456 distinct 2025+ MLB games. The
+  multiplier hook exists in the engine and is tested inert at 1.0.
+- **MLB prop prices exist in three eras and the middle has none** — 753k rows of
+  lines with no odds (2026-03..08). Fine for the board, useless for the betting
+  bar. The walk-forward splits on the season boundary because of it.
+- **Three markets are unmodellable**: `triples`, `walks`, `batter-strikeouts`
+  are live-scheme only, four days deep.
+- **`Total Home Runs Hit` ends 2025-11-02**, ten months before the rest.
 
-1. **The operator must read `app/privacy/page.tsx` before it is public.** It is
-   accurate to the codebase, but the hosting/database retention terms and the
-   governing jurisdiction are outside the repo and only the operator can confirm
-   them. Marked inline in the file.
-2. **A live October slate is the first real test of `nhlProjectionsJob`.** The
-   historical run proved the projection and the leakage discipline; it did NOT
-   prove scheduling or roster resolution, because it learned who dressed from
-   the games themselves. The job is registered hourly and correctly returns zero
-   until the season opens.
-3. **Phase 5 (MLB) ends with an MLB board**, per the dissolved Phase 9. Every
-   sport phase now ends on a screen, not a gate result.
-4. **Points is fitted directly, not convolved from goals and assists.** It
-   passes that way, but P(points) is not guaranteed coherent with the goal and
-   assist distributions it is made of — and the board now shows all three side
-   by side, where a user could see them disagree.
-5. **The game-id crosswalk is still unbuilt** (85.2% resolvable, 1,281 unique /
-   68 ambiguous). It unblocks the empty-net correction, OT measurement, an exact
-   prop join and xG.
+## 5. Remaining Phase 5 steps
 
-## 5. Standing constraints
+- **5.5** Statcast prior. `mlb_pitch_events` has 2.16M pitches and **joins
+  natively** — `player_game_history.event_id` IS the MLB gamePk, 6,885 games,
+  **100.00% date agreement**. The one place MLB is easier than NHL.
+- **5.6/5.7** pitcher markets and per-market gating — the fit already covers
+  both; they need recording, not building.
+- **5.9-5.11** the PA simulation, then whether it beats the direct model.
+- **Port Shin/power de-vig into Python.** TS has them; `odds_math.py` carries
+  only proportional, and 5.1 measured the consequence (longshot gaps to 4.8pt).
 
-- **Do not deploy to Render or start 6.29 (the model rebuild) without asking.**
+## 6. Standing constraints
+
+- **Do not deploy to Render or start 6.29 without asking.**
 - **Never `git add -A` or `git add docs/`** — `docs/discord-community-prompt.md`
   is the operator's.
 - **A numeric id matching the expected shape is not evidence it is the right
-  id.** Verify every crosswalk by joining on a real date, never by counting
-  overlaps.
+  id.** Verified again in 5.2: 399 MLB ids matched by shape and **0.00%** landed
+  on the right game date.
+- **The operator must read `app/privacy/page.tsx` before it is public** — the
+  hosting/retention terms and the governing jurisdiction are outside the repo.
