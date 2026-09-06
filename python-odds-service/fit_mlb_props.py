@@ -107,53 +107,81 @@ def paired(a, b):
     return m, se, (m / se if se else float("nan"))
 
 
-async def load_props(conn, spec) -> list[tuple]:
-    """Prop rows joined to the settled outcome, through the dual-space resolver.
+async def load_crosswalk(conn) -> dict[str, str]:
+    """External prop athlete id -> the id `player_game_history` uses.
+
+    Covers BOTH id spaces: ESPN ids before the 2026-09-03 cutover, MLB StatsAPI
+    ids after it. Safe as one flat dict because 5.2 proved the spaces disjoint —
+    zero ids are valid in both — so no key can be claimed twice.
+    """
+    out: dict[str, str] = {}
+    for r in await conn.fetch(
+            "SELECT espn_athlete_id, athlete_id FROM athlete_crosswalk "
+            "WHERE sport = 'mlb'"):
+        mlb_id = str(r["athlete_id"])
+        out[mlb_id] = mlb_id
+        if r["espn_athlete_id"]:
+            out[str(r["espn_athlete_id"])] = mlb_id
+    return out
+
+
+async def load_props(conn, spec, xw: dict[str, str],
+                     games: list[tuple]) -> list[tuple]:
+    """Prop rows joined to their settled outcome — JOINED IN PYTHON.
 
     Returns (game_date, athlete_id, line, over_price, under_price, actual).
+
+    THE DATABASE NO LONGER DOES THIS JOIN. Three separate runs died on it: twice
+    on the statement timeout and twice with DiskFullError writing to
+    `base/pgsql_tmp`. Joining 1.3M prop rows against 727k player-games needs a
+    hash table Postgres has to spill, and the database is at 79% of an 8 GB
+    ceiling with no room to spill into. Moving the sort out helped and was not
+    enough, because the JOIN itself is what needs the temp space.
+
+    So each side is fetched on its own — a filtered scan, which the
+    `(sport, type_name, game_date)` index now serves — and matched here against
+    a dict keyed on (athlete, date). `games` is already loaded for the
+    walk-forward and already carries the settling stat, so the outcome comes
+    from the SAME rows the history is built from. That is not merely convenient:
+    it makes it structurally impossible for the outcome and the history to
+    disagree about what a player did, which is the class of defect that cost
+    Phase 4 a full re-fit.
     """
-    # THE RESOLVER IS A CTE, NOT A CORRELATED SUBQUERY. Written the obvious way —
-    # COALESCE of two scalar subqueries in the JOIN condition — Postgres
-    # evaluates it per candidate row and the query blew the 2-minute statement
-    # timeout on the fifth market. Materialising the id map once turns it into a
-    # hash join.
-    #
-    # The UNION ALL is safe because the two id spaces are PROVABLY DISJOINT
-    # (5.2: zero ids valid in both), so no prop row can match twice. If that ever
-    # stops being true this produces duplicate rows rather than wrong ones, and
-    # the row counts in audit_mlb_crosswalk.py would show it.
-    sql = f"""
-        WITH xw AS (
-            SELECT espn_athlete_id AS ext_id, athlete_id
-              FROM athlete_crosswalk
-             WHERE sport = 'mlb' AND espn_athlete_id IS NOT NULL
-            UNION ALL
-            SELECT athlete_id AS ext_id, athlete_id
-              FROM athlete_crosswalk WHERE sport = 'mlb'
-        )
-        SELECT p.game_date, g.athlete_id, p.line, p.over_price, p.under_price,
-               {spec.stat_sql} AS actual
-          FROM prop_odds_archive p
-          JOIN xw ON xw.ext_id = p.athlete_id
-          JOIN player_game_history g
-            ON g.sport = 'mlb'
-           AND g.athlete_id = xw.athlete_id
-           AND g.game_date = p.game_date
-         WHERE p.sport = 'mlb' AND p.type_name = ANY($1::text[])
-           AND p.line IS NOT NULL
-           AND {' AND '.join(f"g.stats ? '{k}'" for k in spec.required_keys)}
-           AND g.stats ? '{spec.volume_key}'
-           AND {spec.volume_sql} > 0
-    """
-    rows = await conn.fetch(sql, list(spec.names))
-    # SORTED IN PYTHON, NOT IN POSTGRES. The ORDER BY here made the planner sort
-    # a multi-hundred-thousand-row join, which spills to `base/pgsql_tmp` — and
-    # the database is at 6.4 GB of an 8 GB ceiling, so the fit died with
-    # DiskFullError. A hundred thousand tuples sort in memory in well under a
-    # second and cost the database nothing.
-    out = [(r["game_date"], str(r["athlete_id"]), float(r["line"]),
-            r["over_price"], r["under_price"], float(r["actual"])) for r in rows]
+    # DOUBLEHEADERS ARE AMBIGUOUS AND ARE DROPPED, NOT GUESSED AT. 6,617
+    # (athlete, date) pairs in MLB history have TWO games. A prop is posted for a
+    # player on a DATE, so on those days there is no way to know which game it
+    # settles against — and both earlier versions of this loader got it wrong in
+    # different directions. The SQL join emitted a row per game, scoring one prop
+    # line against two different outcomes; a plain dict silently kept whichever
+    # row arrived last. Same rule NHL's loader already applies to its own
+    # ambiguous dates: drop, never guess.
+    outcome: dict[tuple[str, object], float | None] = {}
+    for gd, aid, stat, _ in games:
+        key = (aid, gd)
+        outcome[key] = None if key in outcome else stat
+    ambiguous = sum(1 for v in outcome.values() if v is None)
+
+    rows = await conn.fetch(
+        "SELECT game_date, athlete_id, line, over_price, under_price "
+        "  FROM prop_odds_archive "
+        " WHERE sport = 'mlb' AND type_name = ANY($1::text[]) "
+        "   AND line IS NOT NULL AND athlete_id IS NOT NULL",
+        list(spec.names))
+
+    out = []
+    for r in rows:
+        aid = xw.get(str(r["athlete_id"]))
+        if aid is None:
+            continue
+        actual = outcome.get((aid, r["game_date"]))
+        if actual is None:
+            continue          # no settled game, or an ambiguous doubleheader
+        out.append((r["game_date"], aid, float(r["line"]),
+                    r["over_price"], r["under_price"], actual))
     out.sort(key=lambda t: (t[0], t[1]))
+    if ambiguous:
+        print(f"  {ambiguous:,} (athlete, date) pairs were doubleheaders "
+              f"and were dropped as ambiguous")
     return out
 
 
@@ -209,10 +237,13 @@ def score(sc, lo=None, hi=None):
             "bias": proj / act - 1 if act else float("nan"), "rows": v}
 
 
-async def run_market(conn, slug: str, persist: bool) -> dict | None:
+async def run_market(conn, slug: str, persist: bool,
+                     xw: dict[str, str]) -> dict | None:
     spec = mp.BY_SLUG[slug]
-    props = await load_props(conn, spec)
+    # Games first: they carry the settling stat, so the outcome a prop is scored
+    # against comes from the same rows its history is built from.
     games = await mp.load_game_history(slug, conn=conn)
+    props = await load_props(conn, spec, xw, games)
 
     sel_props = [p for p in props if p[0] < CUTOFF]
     if len(sel_props) < 500:
@@ -379,6 +410,9 @@ async def main() -> int:
           f"= {len(VOLUME_WINDOWS)*len(SHRINK_KS)*len(SHAPES)} combos/market")
 
     pool = await db.get_pool()
+    async with pool.acquire(timeout=120.0) as conn:
+        xw = await load_crosswalk(conn)
+    print(f"crosswalk: {len(xw):,} external ids resolve to an MLB athlete")
     results = []
     # ONE CONNECTION PER MARKET, NOT ONE FOR THE WHOLE RUN. Holding a single
     # connection across a multi-hour fit means the pool eventually reclaims it
@@ -395,7 +429,7 @@ async def main() -> int:
             # indexes in migration 20260906010000 that should make it moot.
             await conn.execute("SET statement_timeout = '15min'")
             try:
-                r = await run_market(conn, slug, persist)
+                r = await run_market(conn, slug, persist, xw)
             except Exception as exc:                       # noqa: BLE001
                 # ONE MARKET'S FAILURE MUST NOT COST THE OTHER THIRTEEN. Three
                 # earlier runs lost every subsequent market to a single query
