@@ -40,8 +40,22 @@ from predict import nhl_props as npx  # noqa: E402
 
 CUTOFF = date(2025, 11, 8)
 MIN_PRIOR = 5
-TOI_WINDOWS = [0, 5, 10]
-SHRINK_KS = [5.0, 10.0, 20.0]
+# Grids widened 2026-09-05 after an audit found parameters sitting ON their
+# bounds — a value at the edge of its grid is not a fitted value, because the
+# real optimum may lie outside and the sweep could not have seen it. The
+# original [0,5,10] / [5,10,20] pinned toi_window HIGH for three markets and
+# shrink_k at one end or the other for four.
+#
+# TWO OF THE ORIGINAL "PINNED" READINGS WERE FALSE POSITIVES and are left alone
+# deliberately:
+#   - dispersion 1e6 is the POISSON LIMIT, not a truncation. Overdispersion
+#     converges to Poisson as the parameter grows; there is nothing beyond it.
+#   - toi_window 0 means "use all history". A window cannot be negative, so 0 is
+#     a genuine endpoint too.
+# Only real truncations are widened. `recent_min` retains 40 games, so a window
+# of 40 is itself a structural ceiling rather than an arbitrary one.
+TOI_WINDOWS = [0, 5, 10, 20, 40]
+SHRINK_KS = [1.0, 2.0, 5.0, 10.0, 20.0, 40.0]
 DISPERSIONS = [1.0, 2.0, 4.0, 8.0, 20.0, 1e6]
 
 MARKETS = ["Total Shots on Goal", "Total Points", "Total Assists",

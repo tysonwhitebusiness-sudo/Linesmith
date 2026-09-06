@@ -2620,51 +2620,219 @@ anywhere in the app. Those ship first or nothing does.
 **Done when:** an NHL shots-on-goal ranking is visible, calibrated, carries no
 edge language, and the betting surfaces are still suppressed.
 
-### Phase 5 — MLB · plate-appearance Monte Carlo, game and props from one engine
+### Phase 5 — MLB · REWRITTEN 2026-09-05, in steps
 
-**Infrastructure first: `ingestStatcastPitchesJob`** (never run). Statcast is the
-skill-vs-luck prior below.
+**Three of the old stub's load-bearing claims were wrong. Measured, not assumed:**
 
-**Why here.** The largest prop evidence base in the project by a factor of seven,
-and the props are a by-product of the game model rather than a second build.
+| stub said | measured 2026-09-05 |
+|---|---|
+| `ingestStatcastPitchesJob` **never run** | **2,164,767 pitches**, 8,042 games, 2024-03-01 → 2026-09-04 |
+| Statcast "covers 4,069 of 31,781 priced games, so it **cannot drive** the simulation" | true against the whole 2010-2026 game archive, and **irrelevant to the props**: the MLB prop archive starts 2025-03-27, and **349 of 359 prop dates have Statcast** |
+| (unstated) whether Statcast joins to anything | **`player_game_history.event_id` IS the MLB gamePk.** 6,885 of 8,042 Statcast games join, and **100.00% agree on `game_date`** — verified by date, per the standing rule, not by id shape |
 
-**Simply.** Take both lineups and the starting pitchers. For each plate
-appearance, draw an outcome — single, walk, strikeout, home run — from a
-distribution built out of that batter's skill, that pitcher's skill, and the park.
-Play nine innings. Repeat ten thousand times. The share of runs where the home
-team wins is the moneyline; the share where the total cleared is the total.
+**That last row is the single biggest difference between this phase and Phase 4.**
+NHL had two id spaces and no game crosswalk; every join went through a date rule
+that dropped ambiguous rows. **MLB has one id space and it is confirmed.** Statcast
+is not a distant prior here — it is directly joinable evidence for the entire
+window in which props exist.
 
-**And every run produces a full line for every batter** — hits, total bases, home
-runs, RBIs — so the entire player-prop surface falls out of the same engine. That
-is why this was chosen over a run-rate model, which gives game markets and nothing
-else.
+**Verified data, for planning against:**
 
-**In detail.** The per-PA outcome distribution comes from a log5-style combination
-of batter rate, pitcher rate and league baseline, adjusted by park. Base-out state
-advances through a standard transition model. Batting order can be inferred from
-PA counts.
+```
+player_game_history mlb   727,613 rows   stats keyed bat_* / pit_*
+mlb_pitch_events        2,164,767 pitches, 8,042 games, launch_speed/
+                                  launch_angle/estimated_woba/plate_x/plate_z
+prop_odds_archive mlb   1,334,911 rows, 54 markets, 2025-03-27 → 2026-09-06
+  Total Singles 86,253  Hits 85,727  RBIs 85,042  H+R+RBI 82,985
+  Runs 81,360  Doubles 79,992  Total Bases 74,006  Home Runs 54,740
+athlete_crosswalk mlb       1,160 rows — 83-85% slate coverage (NHL: 94-98%)
+park_factors                  542 rows
+```
 
-**Statcast is a prior, not the input.** It covers 4,069 of 31,781 priced games, so
-it cannot drive the simulation. What it can do: `estimated_woba` separates skill
-from luck, so use the overlap to learn how much of a player's line is signal, then
-shrink the eleven-season estimates toward it.
+---
 
-**Not optional.** The 2019 ball and the 2023 pitch clock changed how many runs a
-season produces. Player estimates must be **per-season against a league
-baseline**, or a 2016 hitter looks better than he was.
+#### THE ORDER IS PROPS FIRST, SIMULATION SECOND — a change from the stub
 
-**Data.** 1.87M plate appearances (2016–2026) across 727,613 player-game rows;
-31,780 priced games on a now-continuous 2010–2026 history (0.6); 1,083,266 props
-joining to an outcome; 36 markets, 22 carrying 90%.
+The stub leads with the plate-appearance Monte Carlo because game markets and
+props fall out of one engine. That is genuinely elegant and it is still the right
+end state. **It is the wrong thing to build first, for a reason Phase 4 paid for
+in full.**
 
-**Ship gate.** Game model: positive CLV against the closing moneyline and total.
-Props: the rank check in §4, plus bar 3 per market with the §1 caveat about the
-softness of the prop close. **MLB is the only sport with a sample large enough to
-tell whether the whole prop approach works — if it fails here, it is not tried
-elsewhere.**
+Four phases have now produced exactly one user-visible thing, and it came from
+the *simplest* model in the project. Every betting gate has failed: tennis
+t=+20.68, soccer t=+3.05, NHL games t=+5.07, NHL props t=+3.03. A PA-level
+simulation is the largest build in this plan and its payoff is concentrated in
+the game markets — the side that has never once cleared a gate. **The props are
+what reach a board, the board is what ships, and the prop engine already exists
+and is proven.**
 
-**Also fix here:** `computeMlbGameModelJob`, failing every run on an
-int-where-string argument. It belongs to the layer being rebuilt.
+So: prop model onto the board first (5.1-5.7), simulation after (5.8-5.11), with
+the sim's own props checked *against* the direct model rather than assumed better.
+
+---
+
+#### 5.1 — Data audit, and ONE history loader before any model
+
+**Build the shared loader FIRST.** Phase 4's most expensive defect was that the
+walk-forward and the serving path built player history from different sources
+(18.8 games/player vs 553.8, projections disagreeing by a mean 0.38 shots, 16%
+agreeing within 0.10). Both were individually correct; only comparing them found
+it. **The fix was to make one loader serve both, and in MLB that loader is written
+before either caller exists.**
+
+- `mlb_props.load_game_history(stat_key)` — the `nhl_props.load_game_history`
+  shape: extraction in SQL, four scalars per row, date-ordered.
+- Audit `bat_*`/`pit_*` key coverage per market and record which markets have no
+  settling stat at all. **NHL's Power Play Points failed this way and was found
+  only at fit time** — the DB had `powerPlayGoals` while the market settles
+  goals+assists, so the computed outcome was not the one the bet settles on.
+- The volume analogue of ice time is **plate appearances** (`bat_plateAppearances`),
+  already present. Pitchers use `pit_inningsPitched`.
+
+**Exit:** one loader, both future callers use it, per-market stat coverage table
+recorded.
+
+#### 5.2 — The athlete crosswalk, because 85% is not good enough for a board
+
+NHL shipped at 94-98% name coverage and still hid 25 players. **MLB is at 83-85%**,
+so roughly one batter in six would be dropped from a ranking — and a ranking
+silently missing a sixth of the field is a distorted ranking, not a partial one.
+
+- Extend `athlete_crosswalk` for MLB by the same name+DOB method already used.
+- **Verify by joining on a real date**, never by counting overlaps.
+- Target: ≥95% on a recent slate, with the residue counted and reported.
+
+**Exit:** measured coverage on three separate real slates, not one.
+
+#### 5.3 — The batter prop model
+
+Port the proven engine: **volume × rate × shape**, with plate appearances as
+volume, shrunk per-market rate, and a count distribution at the line.
+
+- **Per-season league baselines, not pooled.** The 2019 ball and the 2023 pitch
+  clock moved run scoring; a rate estimated across eleven seasons against one
+  baseline makes a 2016 hitter look better than he was. This is the one piece of
+  the old stub that is unambiguously right and it survives unchanged.
+- Park factors enter as a rate multiplier (`park_factors`, 542 rows).
+- **Start at Poisson for anything under ~1 event per game.** Phase 4.8 measured
+  this: Poisson won outright for points, assists, goals and blocked shots; only
+  the high-volume markets (shots, hits) needed real overdispersion. Home runs,
+  triples, stolen bases are all sub-1 markets.
+
+**Exit:** a projection for one market, sane against a known season.
+
+#### 5.4 — Walk-forward, with Phase 4's three corrections built in from the start
+
+1. **Quintile ordering, never integer buckets.** `int(expected)` put every row of
+   a low-mean market in one bucket, and `all()` over a one-element list is
+   vacuously `True` — assists and goals both "passed" a check with nothing to
+   compare. Home runs (mean ≈0.14) would fail identically.
+2. **No parameter on a sweep bound.** Grids must be wide enough that the fitted
+   value sits inside them; a value at the edge is not a fitted value.
+   **Distinguish real truncations from genuine endpoints** — dispersion `1e6` is
+   the Poisson limit and window `0` means "all history"; neither is a bound.
+3. **Strictly-before, asserted by row count.** Not by comment.
+
+**Exit:** per-market metrics, ordering by quintile, no pinned parameters.
+
+#### 5.5 — Statcast as a skill-vs-luck prior — now genuinely available
+
+`estimated_woba` separates what a batter *earned* from what he *got*. With the
+join confirmed, this is real evidence over the whole prop window rather than a
+sparse prior.
+
+- Shrink each batter's observed rate toward his Statcast-implied rate.
+- **Measure whether it helps before keeping it.** Same discipline as
+  `model_calibration.active`: MLB already carries `active=false` rows for two
+  markets where calibration did not help. A prior that does not improve held-out
+  log-loss is dropped, not kept for elegance.
+
+**Exit:** a measured delta per market, and the honest answer if it is zero.
+
+#### 5.6 — Pitcher props
+
+Strikeouts, hits allowed, earned runs. Volume is `pit_inningsPitched`; the
+opponent matters far more than for batters, so this is the first market where a
+real opponent term is likely to earn its place.
+
+**Exit:** same bars as 5.4, reported separately from the batters.
+
+#### 5.7 — Every two-sided market, each gated separately
+
+Run all 54, keep what clears, **report each on its own**. Pooling lets a strong
+market hide a broken one. Milestone markets are excluded (one-sided).
+
+**Exit:** a table like 4.8's — ordering, calibration gap, ranks / shows a
+probability — per market.
+
+#### 5.8 — Serving and THE MLB BOARD
+
+**This phase ends on a screen, like Phase 4.** The surface already exists.
+
+- `mlb_prop_serving.py` on the `nhl_prop_serving.py` shape: constants read from
+  `model_calibration`, never transcribed; `model_prob` null where calibration was
+  not earned; no edge fields, asserted.
+- Writes `prop_model_cache` (already sport-keyed, already Python-owned).
+- One new adapter — `lib/sports/mlb/adapters/statsBoardAdapter.ts` — importing
+  `StatsBoardData` from the NHL file. **No changes to `StatsBoard.tsx`.** If the
+  shared board needs editing to fit MLB, that is the signal something is being
+  modelled wrong.
+- `mlbProjectionsJob` in `JOB_REGISTRY`.
+- Add MLB's surface files to `tests/stats-board-no-edge.test.ts`.
+
+**Exit:** `/mlb/projections` renders, verified in a browser, and the top of each
+ranking is **face-valid to someone who watches baseball**. That check found more
+in Phase 4 than any aggregate statistic — a model ranking forwards above
+defencemen for blocked shots is obviously broken in a way log-loss never says.
+
+#### 5.9 — The plate-appearance simulation
+
+Now, with the props already shipping and a benchmark to beat.
+
+Draw each PA outcome from a log5 combination of batter rate, pitcher rate and
+league baseline, park-adjusted; advance a base-out state; play nine innings;
+repeat. Share of wins is the moneyline, share clearing is the total.
+
+**Exit:** sane scores on a known season; ratings that survive a bounds check.
+
+#### 5.10 — Does the simulation beat the direct model at its own job?
+
+The sim produces props as a by-product. **That is a claim, and 5.3-5.7 built the
+control to test it against.** Same walk-forward, same markets, same windows.
+
+**If the sim's props do not beat the direct model's, the direct model keeps the
+board** and the sim is judged on game markets alone. Elegance is not evidence.
+
+#### 5.11 — Game-model ship gate
+
+Positive CLV against the closing moneyline and total, out of sample, calibration
+ruled out first.
+
+**Reported, and it does not gate the board** — that split is settled. It governs
+the betting board only, which stays suppressed for every sport.
+
+---
+
+#### Exit gate for Phase 5
+
+1. One history loader, used by both the fit and the serving path — **verified by
+   comparing their outputs**, not by inspection (5.1).
+2. MLB crosswalk ≥95% on three real slates, verified by date join (5.2).
+3. Per-season baselines, park factors applied (5.3).
+4. Walk-forward with quintile ordering, no pinned parameters, leakage asserted by
+   count (5.4).
+5. Statcast prior measured and kept only if it helps (5.5).
+6. Batter and pitcher markets gated and reported **separately** (5.6, 5.7).
+7. **`/mlb/projections` renders**, face-valid, no edge fields, shared board
+   unmodified (5.8).
+8. Simulation built and its props measured **against the direct model** (5.9, 5.10).
+9. Game ship gate run and reported, pass or fail (5.11).
+
+**MLB is the largest prop evidence base in the project and the strongest test of
+whether the prop approach generalises.** NHL's board rests on ~1.5 seasons of
+prop lines; MLB's window is comparable in length but roughly 7x the rows. If the
+approach fails here, that is a real answer about the approach and not about the
+sport.
 
 ---
 
