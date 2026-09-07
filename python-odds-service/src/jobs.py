@@ -880,17 +880,10 @@ async def job_mlb_projections(yield_fn=None) -> dict:
     regardless of what is passed. These are the standard numbers.
     """
     from datetime import date as _date
+    from predict.mlb_board_lines import BOARD_LINES
     from predict.mlb_prop_serving import run
 
-    return await _run_timed("mlbProjectionsJob", run(_date.today(), {
-        "hits": 0.5, "total-bases": 1.5, "hits-runs-rbis": 1.5,
-        "home-runs": 0.5, "rbis": 0.5, "runs": 0.5, "singles": 0.5,
-        "doubles": 0.5, "triples": 0.5, "walks": 0.5,
-        "batter-strikeouts": 0.5, "stolen-bases": 0.5,
-        "pitcher-strikeouts": 4.5, "pitcher-outs": 16.5,
-        "pitcher-hits-allowed": 4.5, "earned-runs": 2.5,
-        "pitcher-walks-allowed": 1.5,
-    }))
+    return await _run_timed("mlbProjectionsJob", run(_date.today(), BOARD_LINES))
 
 
 async def job_nhl_projections(yield_fn=None) -> dict:

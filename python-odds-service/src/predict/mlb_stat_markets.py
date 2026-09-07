@@ -22,6 +22,8 @@ BATTER_STAT_MARKETS / PITCHER_STAT_MARKETS / STAT_MARKET_BY_DIMENSION.
 from dataclasses import dataclass
 from typing import Callable
 
+from .mlb_board_lines import BOARD_LINES
+
 
 def _num0(v) -> float:
     if v is None:
@@ -67,32 +69,32 @@ class StatMarketDef:
 
 
 BATTER_STAT_MARKETS: list[StatMarketDef] = [
-    StatMarketDef("total-bases", lambda s: _num0(s.get("totalBases")), 1.5),
-    StatMarketDef("home-runs", lambda s: _num0(s.get("homeRuns")), 0.5, interest_side="over"),
-    StatMarketDef("rbis", lambda s: _num0(s.get("rbi")), 0.5),
-    StatMarketDef("runs", lambda s: _num0(s.get("runs")), 0.5),
-    StatMarketDef("walks", lambda s: _num0(s.get("baseOnBalls")), 0.5),
-    StatMarketDef("batter-strikeouts", lambda s: _num0(s.get("strikeOuts")), 0.5),
+    StatMarketDef("total-bases", lambda s: _num0(s.get("totalBases")), BOARD_LINES["total-bases"]),
+    StatMarketDef("home-runs", lambda s: _num0(s.get("homeRuns")), BOARD_LINES["home-runs"], interest_side="over"),
+    StatMarketDef("rbis", lambda s: _num0(s.get("rbi")), BOARD_LINES["rbis"]),
+    StatMarketDef("runs", lambda s: _num0(s.get("runs")), BOARD_LINES["runs"]),
+    StatMarketDef("walks", lambda s: _num0(s.get("baseOnBalls")), BOARD_LINES["walks"]),
+    StatMarketDef("batter-strikeouts", lambda s: _num0(s.get("strikeOuts")), BOARD_LINES["batter-strikeouts"]),
     # Real sportsbooks only ever post the Over on doubles — same
     # interestSide treatment as home runs/triples/stolen bases.
-    StatMarketDef("doubles", lambda s: _num0(s.get("doubles")), 0.5, interest_side="over"),
-    StatMarketDef("triples", lambda s: _num0(s.get("triples")), 0.5, interest_side="over"),
+    StatMarketDef("doubles", lambda s: _num0(s.get("doubles")), BOARD_LINES["doubles"], interest_side="over"),
+    StatMarketDef("triples", lambda s: _num0(s.get("triples")), BOARD_LINES["triples"], interest_side="over"),
     # Not reported directly — hits minus every extra-base hit.
-    StatMarketDef("singles", lambda s: _num0(s.get("hits")) - _num0(s.get("doubles")) - _num0(s.get("triples")) - _num0(s.get("homeRuns")), 0.5),
-    StatMarketDef("stolen-bases", lambda s: _num0(s.get("stolenBases")), 0.5, interest_side="over"),
-    StatMarketDef("hits-runs-rbis", lambda s: _num0(s.get("hits")) + _num0(s.get("runs")) + _num0(s.get("rbi")), 1.5),
+    StatMarketDef("singles", lambda s: _num0(s.get("hits")) - _num0(s.get("doubles")) - _num0(s.get("triples")) - _num0(s.get("homeRuns")), BOARD_LINES["singles"]),
+    StatMarketDef("stolen-bases", lambda s: _num0(s.get("stolenBases")), BOARD_LINES["stolen-bases"], interest_side="over"),
+    StatMarketDef("hits-runs-rbis", lambda s: _num0(s.get("hits")) + _num0(s.get("runs")) + _num0(s.get("rbi")), BOARD_LINES["hits-runs-rbis"]),
 ]
 
 PITCHER_STAT_MARKETS: list[StatMarketDef] = [
-    StatMarketDef("pitcher-strikeouts", lambda s: _num0(s.get("strikeOuts")), 4.5),
-    StatMarketDef("earned-runs", lambda s: _num0(s.get("earnedRuns")), 2.5),
-    StatMarketDef("pitcher-outs", lambda s: _outs_from_innings_pitched(s.get("inningsPitched")), 15.5),
+    StatMarketDef("pitcher-strikeouts", lambda s: _num0(s.get("strikeOuts")), BOARD_LINES["pitcher-strikeouts"]),
+    StatMarketDef("earned-runs", lambda s: _num0(s.get("earnedRuns")), BOARD_LINES["earned-runs"]),
+    StatMarketDef("pitcher-outs", lambda s: _outs_from_innings_pitched(s.get("inningsPitched")), BOARD_LINES["pitcher-outs"]),
     # Pitching-group gamelogs report hits/baseOnBalls as allowed, not
     # earned by the pitcher at bat — same field names as the batting
     # group, different meaning, because they come from a differently-
     # scoped fetch (get_people_with_game_logs(ids, 'pitching', season)).
-    StatMarketDef("pitcher-hits-allowed", lambda s: _num0(s.get("hits")), 5.5),
-    StatMarketDef("pitcher-walks-allowed", lambda s: _num0(s.get("baseOnBalls")), 1.5),
+    StatMarketDef("pitcher-hits-allowed", lambda s: _num0(s.get("hits")), BOARD_LINES["pitcher-hits-allowed"]),
+    StatMarketDef("pitcher-walks-allowed", lambda s: _num0(s.get("baseOnBalls")), BOARD_LINES["pitcher-walks-allowed"]),
 ]
 
 STAT_MARKET_BY_DIMENSION: dict[str, StatMarketDef] = {d.dimension: d for d in [*BATTER_STAT_MARKETS, *PITCHER_STAT_MARKETS]}

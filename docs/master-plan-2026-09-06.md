@@ -301,6 +301,10 @@ mapped:
 
 # Phase 3 — Finish MLB
 
+- **3.0** **The pitcher re-fit — BUILT 2026-09-06.** Carried in from Phase 2,
+  which shipped `pitcher-outs` inverted by operator decision. Written up in
+  full below; it is unnumbered in the original plan because `CURRENT.md` filed
+  it under "3.4", a number already taken by the simulation comparison.
 - **3.1** Statcast skill-vs-luck prior. `estimated_woba` separates what a batter
   earned from what he got. The join is proven: `player_game_history.event_id` IS
   the MLB gamePk, 6,885 games, **100.00% date agreement**. Kept only if it
@@ -314,6 +318,87 @@ mapped:
   control exists and is strong. If it does not, the direct model keeps the board
   and the sim is judged on game markets alone.
 - **3.5** Game ship gate: CLV against the closing moneyline and total.
+
+## 3.0 — the pitcher re-fit, and a calibration measured where it is served
+
+**The defect.** `pitcher-outs` served a Platt slope of **-0.0649** with
+`probability_ok = True`. `platt` is sigmoid(a*logit(p)+b), so a negative `a`
+mirrors the curve: the lower the raw probability, the higher the number
+published. At the board's fixed line of 16.5 outs that put position players who
+threw a mop-up inning at the top of the entire cross-market board.
+
+**Three gates existed and none of them asked the right question.**
+`ordering_monotone` is measured on the PROJECTION; `ECE` and `worst bucket` were
+measured at each archive row's OWN market line. All three passed. Measured at
+market lines, `pitcher-outs` had **the best calibration numbers of any MLB
+market — ECE 0.0050, worst bucket 0.005** — while being catastrophically
+inverted at the line it was actually served at.
+
+**The root cause, as one number.** The calibration was fitted at each row's
+market line and applied at one fixed board line. Where a market's posted line
+barely moves those are the same question; where it moves a lot the fit is
+extrapolated. Across 11 markets, the share of posted lines sitting at the board
+line predicts the fitted slope at **r = +0.849** (n=9,193 archived rows for
+pitcher-outs alone):
+
+    stolen-bases         100% of lines at 0.5     slope  0.7676
+    singles               93% at 0.5              slope  0.9470
+    hits                  84% at 0.5              slope  0.9236
+    pitcher-hits-allowed  47% at 4.5              slope  0.1492
+    pitcher-strikeouts    31% at 4.5              slope  0.1044
+    pitcher-outs          16% at 16.5             slope -0.0649   <- inverted
+
+**Three fixes, deliberately independent.**
+
+1. `count_prop_engine.probability_is_servable`, called by BOTH serving pipes, so
+   a row already persisted cannot reach a board inverted. It reads the slope via
+   `effective_calibration_slope` rather than off one key: MLB stores
+   `calibration_a` and serves through `platt`, NHL stores `temperature` and
+   serves through `temper` (the a=1/T case). Reading only `calibration_a` would
+   have silently blanked **all four NHL markets**.
+2. `fit_mlb_props.py` refuses `probability_ok` on a non-positive slope, and now
+   fits the calibration — and measures ECE/worst — **at the board's line**.
+3. `predict/mlb_board_lines.py`: ONE definition of that line. There were two and
+   they disagreed — `pitcher-outs` served at 16.5 but graded at 15.5,
+   `pitcher-hits-allowed` served at 4.5 but graded at 5.5. Measured against
+   `prop_odds_archive`, the served values are the correct ones (they are the
+   median posted line); the grading fallbacks were wrong.
+
+**Measured result.** Both broken markets are repaired as models and then fail
+honestly as probabilities:
+
+| market | slope before -> after | ECE before -> after | probability |
+|---|---|---|---|
+| pitcher-outs | -0.0649 -> **+1.1063** | 0.0050 -> 0.0430 | loses it |
+| pitcher-strikeouts | +0.1044 -> **+0.9740** | 0.0145 -> 0.0360 | loses it |
+| pitcher-walks-allowed | +0.3966 -> +0.4888 | 0.0188 -> 0.0271 | loses it |
+| pitcher-hits-allowed | +0.1492 -> +0.2515 | 0.0292 -> **0.0214** | **gains it** |
+
+Both repaired markets now discriminate strongly (served spread ~70pt against
+`hits`' 40pt) and order monotonically — they rank well and are not calibrated
+well enough to publish a number at a fixed line. That is the plan's existing
+rule, now measured correctly rather than assumed.
+
+**The neutrality check, which is what made this safe to ship.** Moving the
+calibration target had to be neutral for the healthy markets, not merely good
+for the broken ones. All six batter markets that published a probability keep
+it; `hits` improved (0.0121 -> 0.0115), `stolen-bases` (100% line concentration)
+is bit-identical, and `hits-runs-rbis` gained a lot of slope (0.5453 -> 0.8234)
+exactly as its 72% concentration predicted. Held-out log-loss is unchanged for
+every market, because the grid selection was deliberately left on market lines —
+it chooses the projection model, where every posted line is a real observation.
+Only the calibration, which must answer a question about one specific line,
+moved.
+
+**Net effect on the board: 9 markets with a probability become 7.** Three that
+were not earning theirs lose them; one that was wrongly excluded gains one.
+
+**Still open, and not gated.** A positive slope only says the ordering is not
+reversed. `pitcher-strikeouts` shipped monotone at +0.971 and useless —
+projections spanning 0.56..7.35 strikeouts mapped into a 35.3%..51.7% band, a
+16.4pt spread where `hits` got 46.9pt. `served_probability_spread` is now
+computed and persisted, but NOT gated: the honest threshold is not yet known and
+inventing one would be a guess dressed as a criterion.
 
 ---
 

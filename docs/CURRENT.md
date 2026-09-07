@@ -1,146 +1,154 @@
 # CURRENT — pick up here
 
-**Phases 1 and 2 of `docs/master-plan-2026-09-06.md` are COMPLETE, tested and
-committed. Phase 3 (Finish MLB) is next and has not started.**
+**Phases 1 and 2 of `docs/master-plan-2026-09-06.md` are COMPLETE. Phase 3.0
+(the pitcher re-fit) is COMPLETE and persisted. Phase 3.1 (the Statcast prior)
+is next and has not started.**
 
-**READ THIS FIRST: Scan's #1 is currently a backup catcher.** `pitcher-outs`'s
-fitted calibration has a NEGATIVE Platt slope (corr(projection, model_prob) =
--0.933), so the lower the projection the higher the probability. The live board
-opens:
+Phases 1 and 2 were independently re-verified 2026-09-06 before 3.0 began —
+deletions, additions, gates and both suites. The plan document was accurate on
+every claim checked, including the one gate item it declined to claim.
 
-```
-#1  Luis Torrens   pitcher-outs  proj 2.00 outs  P 65.1%  +28.1pt
-#2  Jhonny Pereda  pitcher-outs  proj 2.20 outs  P 64.0%  +27.0pt
-#3  Kody Clemens   pitcher-outs  proj 2.40 outs  P 63.1%  +26.0pt
-```
+`tsc` clean, **359 TS tests / 0 fail**.
 
-Position players who threw a mop-up inning, above every real prop. The operator
-decided 2026-09-06 to keep all pitcher probabilities and fix them in Phase 3, so
-this is deliberate and measured, not an oversight. **Phase 3.4 owns the re-fit.**
-The cause: those calibrations were fitted at the MARKET's lines and are served at
-the board's FIXED line, far outside the region they were fitted in. The fit's
-gate checks `ordering_monotone` on the projection, never on the calibrated
-probability — that hole is what let it through.
+## 1. What Phase 3.0 did — and why it was not just a re-fit
 
-The master plan supersedes `model-build-plan-2026-09-02.md`'s phase numbering
-and `audit-remediation-plan.md`'s track lettering. Read it first; Phase 1's
-section records what actually happened versus what was planned.
+**Scan's #1 is no longer a backup catcher.** `pitcher-outs` served a Platt slope
+of **-0.0649**, which mirrors the calibration curve: the lower the raw
+probability, the higher the number published. At the board's fixed 16.5-out line
+that put position players who threw a mop-up inning at the top of the entire
+cross-market board.
 
-`tsc` clean, **359 TS tests / 0 fail**, **50 Python test files pass**.
+**Three gates existed and none asked the right question.** `ordering_monotone`
+is measured on the PROJECTION; ECE and worst-bucket were measured at each
+archive row's OWN market line. Measured that way, `pitcher-outs` had **the best
+calibration numbers of any MLB market — ECE 0.0050, worst bucket 0.005** — while
+being catastrophically inverted where it was actually served.
 
-## 1. What Phase 1 did
+**Root cause, as one number.** The calibration was fitted at market lines and
+applied at one fixed board line. Across 11 markets, the share of posted lines
+sitting at the board line predicts the fitted slope at **r = +0.849**.
+`stolen-bases` (100% at 0.5) fitted 0.7676; `pitcher-outs` (16% at 16.5) fitted
+-0.0649 and inverted.
 
-**3,435 lines deleted, 222 added.** One model, one table, one surface.
+Three independent fixes, all shipped:
 
-- **Deleted the condemned scoring layer and the generic prop pipeline together**
-  — 21 modules, 8 jobs. `edge_model`, `prop_score`, `good_bets`,
-  `generic_prop_score`, `generic_prop_production`, `generic_rare_markets`,
-  `generic_dimension_configs`, `generic_prop_grading`, `prop_candidates`,
-  `prop_pick_history`, `market_trust`, `windowed_stat`, plus three test files
-  that only covered them.
-- **`live_edge` was SPLIT, not deleted** → `predict/price_resolution.py`. Two
-  thirds of it was real price machinery (de-vig, sharp/consensus reference,
-  staleness) that Phase 2 and three Phase 8 items depend on.
-- **`nhl_props` now binds `count_prop_engine`** instead of carrying its own copy
-  of the maths.
-- **`/mlb/projections` and `/nhl/projections` are gone**, with `StatsBoard.tsx`
-  and both panels. The routes and adapters survive — they are Phase 2's input.
+1. **`count_prop_engine.probability_is_servable`** — called by BOTH serving
+   pipes, so a row already persisted cannot reach a board inverted. Reads the
+   slope through `effective_calibration_slope`, because MLB stores
+   `calibration_a` and NHL stores `temperature` (the a=1/T case) — reading only
+   `calibration_a` would have **silently blanked all four NHL markets**.
+2. **`fit_mlb_props.py`** — refuses `probability_ok` on a non-positive slope,
+   and now fits the calibration AND measures ECE **at the board's line**.
+3. **`predict/mlb_board_lines.py`** — ONE definition of that line. There were
+   two and they disagreed: `pitcher-outs` served at 16.5 but graded at 15.5,
+   `pitcher-hits-allowed` served at 4.5 but graded at 5.5. The served values are
+   the correct ones (they are the median posted line, n=9,193 / n=9,627).
 
-## 2. Four operator decisions, made 2026-09-06
+## 2. Measured outcome
 
-1. `live_edge` split rather than deleted.
-2. Generic pipeline deleted NOW rather than after Phase 2 — accepted cost:
-   `pick_history` stops accruing prop rows for seven sports, and Scan's
-   non-MLB/NHL prop rows go until Phases 4-7 restore them.
-3. **The TypeScript twins (`propScore.ts`, `goodBets.ts`, `edgeModel.ts`,
-   `liveEdge.ts`) survive until Phase 2** and are what Scan renders today.
-   Phase 2 deletes them when it replaces the surface.
-4. **Model % may appear alongside Implied % on Scan.** Closes the open item in
-   the plan's §2.3.
+| market | slope before -> after | ECE before -> after | probability |
+|---|---|---|---|
+| pitcher-outs | -0.0649 -> **+1.1063** | 0.0050 -> 0.0430 | loses it |
+| pitcher-strikeouts | +0.1044 -> **+0.9740** | 0.0145 -> 0.0360 | loses it |
+| pitcher-walks-allowed | +0.3966 -> +0.4888 | 0.0188 -> 0.0271 | loses it |
+| pitcher-hits-allowed | +0.1492 -> +0.2515 | 0.0292 -> **0.0214** | **gains it** |
 
-## 3. What Phase 2 did
+**Every stored slope is now positive** — no inversion anywhere in MLB or NHL —
+and the serving guard now changes **0 markets**, because the fitter itself
+produces correct verdicts. The guard is a backstop that no longer fires, which
+is the intended end state, not a sign it is unnecessary.
 
-**Good Bets is gone from Scan** — tab, filter and Reason column. `propScore.ts`
-and `PropScoreBadge.tsx` deleted. The ranking is now the table's **default
-sort**, not a tab.
+**The neutrality check is what made this safe.** All six batter markets that
+published a probability keep it; `hits` improved (0.0121 -> 0.0115),
+`stolen-bases` (100% concentration) is bit-identical, `hits-runs-rbis` gained
+slope 0.5453 -> 0.8234 exactly as its 72% concentration predicted. Held-out
+log-loss is unchanged for every market: the grid selection was deliberately left
+on market lines (it chooses the projection model, where every posted line is a
+real observation); only the calibration moved.
 
-**Columns**: `Avg L10` → `Proj` (hero number, unit muted after it), `Diff` is
-projection − line, `Model %` sits beside `IP`, `Conf` shows sample size. Rank
-chip in the leftmost cell (1-3 filled, 4-10 outlined, 11+ muted).
+**Net: the board goes from 9 markets with a probability to 7.** Verified on the
+live 2026-09-07 board — `pitcher-outs` / `pitcher-strikeouts` /
+`pitcher-walks-allowed` / `total-bases` serve 0 probabilities,
+`pitcher-hits-allowed` serves 33, and the top is face-valid.
 
-New: `lib/sports/propRanking.ts` (the metric, 8 tests),
-`components/useProjections.ts`, `tests/scan-no-edge.test.ts` (the guard Phase 1
-owed, now aimed at Scan).
+## 3. Phase 3.1 starts here
 
-**Four things were wrong underneath and were fixed on the way** — each is
-written up in the plan's Phase 2 section:
+The plan's 3.1-3.5 are unchanged. Note **3.4 in the master plan is the
+simulation-vs-direct-model comparison**, not the pitcher re-fit — the previous
+handoff filed the re-fit under "3.4", a number already taken. It is now 3.0.
 
-1. **`league_rate` is not a probability.** It is the engine's per-CHANCE rate
-   (0.222 hits per plate appearance). Ranking on `P(over) − league_rate` would
-   have been a silent unit error. Added `league_baseline` (migration
-   `20260906120000`) = P(stat > line), measured by each serving job over the
-   same history it built its projections from.
-2. **The serving pipe could not serve a live slate.** It took its slate from
-   games already PLAYED, so it could never project tonight's players — and
-   `player_game_history` ended 2026-08-28, making every cached row nine days
-   stale. `live_slate_subjects` now resolves today's posted lineups and probable
-   starters from the schedule. Verified: 15 games, 2,078 projections.
-3. **The projection reads served a union of slates** — five runs coexisted in
-   `prop_model_cache` with no date predicate on the routes. Reads are now scoped
-   to `computed_at = max(computed_at)`, and `asOf` is exposed.
-4. **The board opened at #117.** Ranking ran over the served board while the
-   table shows a filtered subset. `rankWithin` is now applied to the rows
-   actually rendered (and was made non-mutating).
+## 4. Open, deliberately not closed
 
-## 4. Phase 3 starts here
-
-- **3.4 owes the pitcher re-fit** — see the top of this file. `pitcher-outs` is
-  inverted and `pitcher-strikeouts` is crushed flat (slope 0.104: raw 0.55% →
-  37.2%). Both were fitted at market lines and are served at a fixed line.
-  **Re-fit at the line the board serves**, and add a gate on the CALIBRATED
-  probability's monotonicity — the existing `ordering_monotone` check only looks
-  at the projection, which is why this shipped.
-- A one-line guard would drop an inverted market to projection-only under the
-  plan's existing rule. Not applied, by operator decision.
+- **`served_probability_spread` is computed and persisted but NOT gated.** A
+  positive slope only says the ordering is not reversed. `pitcher-strikeouts`
+  shipped monotone at +0.971 and useless: projections spanning 0.56..7.35
+  strikeouts mapped into a 35.3%..51.7% band, 16.4pt where `hits` got 46.9pt.
+  The honest threshold is not known; inventing one would be a guess dressed as
+  a criterion.
+- **The ranking metric favours low-baseline rare-event markets.** On the
+  2026-09-07 board, 8 of the top 12 are `stolen-bases` (P ~23% against a 7.0%
+  baseline). That is `P - baseline` behaving exactly as specified, but it is a
+  ranking-quality question worth the operator's eye. It became visible only
+  because the uncalibrated `pitcher-walks-allowed` rows that used to occupy
+  those slots are gone.
+- **`hits` has a board line but no `StatMarketDef`**, so `mlb_prop_grading`
+  cannot grade it. Latent, not live: grading only handles
+  `category in ("over","under")` and the board writes `category="projection"`,
+  so that path has no input today. It becomes real whenever prop grading is
+  restored.
+- **`logSurfaced` (`lib/db/client.ts:1021`) has zero callers** — an
+  unreferenced writer still inserting `prop_score`/`score_grade`/`trust_tier`
+  into `pick_history`. Residue from Phase 1.
 
 ## 5. Known gaps, carried forward
 
 - **`prop_model_cache` is the only table holding prop model output.**
-  `pick_history` now receives only MLB game-moneyline rows from the validated
-  game model. The historical prop rows in `pick_history` were produced by the
-  deleted model — treat the existing track record accordingly.
-- **`odds_unresolved` is 22,838 rows**, not near zero. Phase 8.
-- **The database is 79% full** (6,459 MB of 8,192) and grew ~1.2 GB in a week.
-  `prop_odds_history` (823 MB) and `odds_import_staging` (270 MB) are the first
-  prune candidates. This already killed a fit run once.
-- **Home runs may be unmodellable.** Its archive ends 2025-11-02, so the season
-  split leaves no held-out rows. Phase 3.2 decides. Its beta-binomial prior now
-  lives inside `home_run_model.py` (bit-exact with the deleted `edge_model`
-  version), so the module is intact for that decision.
+  `pick_history` receives only MLB game-moneyline rows. Its historical prop rows
+  came from the deleted model — treat that track record accordingly.
+- **`odds_unresolved` is 22,838 rows.** Phase 8.
+- **THE DATABASE IS THE NEAREST HARD LIMIT: 81.3% (6,659 MB of 8,192)**,
+  measured 2026-09-06, up 200 MB in the week since the last handoff said 6,459.
+  At the recorded ~1.2 GB/week ambient growth that is roughly **nine days** of
+  headroom, and the clock runs on the harvester rather than on any work done
+  here. Phase 3 fits; Phases 4-7 as a block do not. The operator has a database
+  optimisation (egress and size) planned after these phases — it is now on the
+  critical path, not after it. Largest tables: `player_game_history` 1,754 MB,
+  `odds_archive` 1,144 MB, `prop_odds_history` 979 MB, `prop_odds_archive`
+  767 MB.
+- **Home runs may be unmodellable.** Archive ends 2025-11-02, so the season
+  split leaves no held-out rows. Phase 3.2 decides.
 - **Park factors still are not wired and cannot be** — no path from a
   player-game to a venue. The engine's multiplier hook is tested inert at 1.0.
+- **A calibration backup exists** at
+  `python-odds-service/mlb_calibration_backup_20260906.json` (untracked): the 13
+  active MLB rows as they stood before 3.0. `write_calibration` is versioned and
+  deactivates prior rows, so a revert is a version flip or a re-fit.
 
 ## 6. Standing constraints
 
-- **Do not deploy to Render without asking.**
+- **Do not deploy to Render without asking.** The worker still runs pre-3.0
+  code until it is deployed, so its scheduled `mlbProjectionsJob` will keep
+  writing rows from the OLD calibrations until then. The new calibrations are
+  already in `model_calibration`; only the code that gates on them is not
+  deployed.
 - **Never `git add -A` or `git add docs/`** — `docs/discord-community-prompt.md`
   is the operator's.
 - **A numeric id matching the expected shape is not evidence it is the right
   id.** 399 MLB ids once matched by shape and **0.00%** landed on the right
   game date.
-- **The operator must read `app/privacy/page.tsx` before it is public** — the
-  hosting/retention terms and governing jurisdiction are outside the repo. This
-  blocks any public exposure, per the plan's §2.4.
+- **The operator must read `app/privacy/page.tsx` before it is public.** Blocks
+  any public exposure, per the plan's §2.4.
 - **A dev server started before your changes can serve a deleted route from a
-  stale compiled build.** This happened during Phase 1's verification and looked
-  exactly like a failed deletion. Verify page removal on a freshly started
-  server, or against `npm run build`'s route list.
-- **Scan empties once a slate finishes.** It drops candidates whose game is
-  `done`, so late in the evening the board is legitimately blank (2,382 of 2,739
-  MLB candidates were `done` at 9pm ET on 2026-09-06). Verify the ranked board
-  earlier in the day, or against `/api/{sport}/projections` directly.
+  stale compiled build.** Verify page removal on a freshly started server.
+- **Scan empties once a slate finishes** — it drops candidates whose game is
+  `done`. Verify the board earlier in the day, or rebuild it in memory against
+  `mlb_prop_serving.build()`, which needs no dev server and writes nothing.
 - **A long-lived dev server degrades**: `/api/props/lines` returns ~94k rows and
-  after a while `slateProps.loading` stops settling, leaving permanent
-  skeletons. Restarting the server fixes it; it is not a render bug.
+  `slateProps.loading` eventually stops settling. Restart fixes it.
 - **The shared Postgres pooler caps at 15 connections.** Check for running fits
-  or a second dev server before starting anything DB-touching.
+  before starting anything DB-touching. A full `fit_mlb_props.py` run is ~40
+  minutes for 14 markets.
+- **The Python tests are standalone scripts, not pytest** — `pytest` is not
+  installed. Run each with `.venv/Scripts/python.exe <file>`; two of them
+  (`test_mlb_mlp.py`, `test_mlb_tree_models.py`) do live model fits and take
+  ~10 minutes each. The TS suite is `npm test` (`node --test`), not vitest.

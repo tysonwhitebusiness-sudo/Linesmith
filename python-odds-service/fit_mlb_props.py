@@ -43,6 +43,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from predict import count_prop_engine as eng  # noqa: E402
 from predict import mlb_props as mp  # noqa: E402
+from predict.mlb_board_lines import BOARD_LINES  # noqa: E402
 
 # SEASON-LEVEL SPLIT: SELECT is the 2025 season, HELD OUT is 2026. Chosen
 # against a structural fact about the archive that no plan anticipated —
@@ -220,6 +221,12 @@ def snapshot(props, games, lv):
     return out
 
 
+# Row layout emitted by `evaluate`, named because several call sites index it
+# positionally and one of them used to take "the last element" (`*_, e`), which
+# silently becomes the wrong field the moment a column is appended.
+R_DATE, R_LINE, R_OVER, R_UNDER, R_ACTUAL, R_PROB, R_EXPECTED, R_VOL = range(8)
+
+
 def evaluate(snap, wi, k, shape, lr, lv):
     """Score one grid point off the snapshot — no history walk, no allocation."""
     out = []
@@ -227,7 +234,10 @@ def evaluate(snap, wi, k, shape, lr, lv):
         vol = vols[wi]
         expected = vol * eng.shrunk_rate(events, volume, lr, k, lv)
         prob = eng.shape_prob_over(shape[0], shape[1], line, expected, vol)
-        out.append((gd, line, op, up, actual, prob, expected))
+        # `vol` is carried so the calibration step can recompute this row's raw
+        # probability at the BOARD's line rather than this row's market line —
+        # see `cal_rows` below. Nothing else reads it.
+        out.append((gd, line, op, up, actual, prob, expected, vol))
     return out
 
 
@@ -236,12 +246,12 @@ def score(sc, lo=None, hi=None):
     if not v:
         return None
     n = len(v)
-    L = sum(ll(o if actual > line else 1 - o)
-            for _, line, _, _, actual, o, _ in v) / n
-    acc = sum(1 for _, line, _, _, actual, o, _ in v
-              if (o > 0.5) == (actual > line)) / n
-    proj = sum(e for *_, e in v) / n
-    act = sum(a for _, _, _, _, a, _, _ in v) / n
+    L = sum(ll(x[R_PROB] if x[R_ACTUAL] > x[R_LINE] else 1 - x[R_PROB])
+            for x in v) / n
+    acc = sum(1 for x in v
+              if (x[R_PROB] > 0.5) == (x[R_ACTUAL] > x[R_LINE])) / n
+    proj = sum(x[R_EXPECTED] for x in v) / n
+    act = sum(x[R_ACTUAL] for x in v) / n
     return {"n": n, "ll": L, "acc": acc,
             "bias": proj / act - 1 if act else float("nan"), "rows": v}
 
@@ -339,7 +349,37 @@ async def run_market(conn, slug: str, persist: bool,
     # measured on MLB hits, every bucket at every line was off positively.
     # Whichever form wins on SELECT is kept, so a market that needs only
     # temperature is not charged a second parameter.
-    cal_rows = [(o, a > line) for _, line, _, _, a, o, _ in sel["rows"]]
+    # CALIBRATE AT THE LINE THE BOARD SERVES, not at each row's market line.
+    #
+    # This is the Phase 3.0 correction. The calibration used to be fitted on
+    # `(prob_at_that_row's_market_line, actual > that_row's_market_line)` and
+    # then applied, at serving time, to a raw probability computed at the ONE
+    # fixed line the board shows. For a market whose posted line barely moves
+    # those are the same question; for one whose line moves a lot the fit is
+    # being extrapolated far outside the region it was measured in.
+    #
+    # Measured across 11 markets on 2026-09-06, the share of posted lines
+    # sitting at the board line correlates with the fitted slope at r = +0.849:
+    # `stolen-bases` (100% at 0.5) fitted 0.7676, `pitcher-strikeouts` (31% at
+    # 4.5) fitted 0.1044, and `pitcher-outs` (16% at 16.5) fitted -0.0649 and
+    # inverted outright. See `predict/mlb_board_lines.py`.
+    #
+    # The GRID selection above is deliberately left on market lines. It chooses
+    # volume_window/shrink_k/shape — the projection model — and every posted
+    # line is a real, independent observation of that model's quality. Only the
+    # calibration, which is the step that must answer a question about one
+    # specific line, moves.
+    board_line = BOARD_LINES.get(slug)
+    if board_line is None:
+        # No board line means this market is not served with a probability at
+        # all, so there is no fixed line to calibrate for. Fall back to the old
+        # behaviour rather than inventing one.
+        cal_rows = [(r[R_PROB], r[R_ACTUAL] > r[R_LINE]) for r in sel["rows"]]
+    else:
+        cal_rows = [(eng.shape_prob_over(bsh[0], bsh[1], board_line,
+                                         r[R_EXPECTED], r[R_VOL]),
+                     r[R_ACTUAL] > board_line)
+                    for r in sel["rows"]]
 
     bestT, bv = 1.0, None
     for i in range(70):
@@ -382,7 +422,24 @@ async def run_market(conn, slug: str, persist: bool,
     monotone = bool(order) and all(
         order[i][2] <= order[i + 1][2] + 1e-9 for i in range(len(order) - 1))
 
-    cal = eng.calibration([(corrected(r[5]), r[4] > r[1]) for r in held["rows"]])
+    # MEASURED WHERE IT IS SERVED. ECE and the worst bucket used to be computed
+    # at each held-out row's own market line, which asks whether the model is
+    # calibrated for a question the board never puts to it. Both now use the
+    # board line, so the number that gates `probability_ok` is the number a
+    # board reader depends on. Held-out rows, so this is still a test and not a
+    # description of the fit.
+    def board_raw(r):
+        return eng.shape_prob_over(bsh[0], bsh[1], board_line,
+                                   r[R_EXPECTED], r[R_VOL])
+
+    if board_line is None:
+        cal = eng.calibration([(corrected(r[R_PROB]), r[R_ACTUAL] > r[R_LINE])
+                               for r in held["rows"]])
+        served_pairs = []
+    else:
+        served_pairs = [(corrected(board_raw(r)), r[R_ACTUAL] > board_line)
+                        for r in held["rows"]]
+        cal = eng.calibration(served_pairs)
     ece, worst = cal["ece"], cal["worst"]
     # BOTH must hold. ECE is the n-weighted average error and answers "is this
     # calibrated?"; `worst` catches a model fine on average and badly wrong in
@@ -405,14 +462,30 @@ async def run_market(conn, slug: str, persist: bool,
     # about. `temperature` is the a = 1/T special case and is positive by
     # construction, so this only ever binds on a genuinely inverted Platt fit.
     slope_ok = cal_a > 0.0
+
+    # DOES THE SERVED CURVE ACTUALLY DISCRIMINATE? A positive slope only says
+    # the ordering is not reversed; it does not say the probabilities separate
+    # enough to rank on. `pitcher-strikeouts` shipped monotone (+0.971) and
+    # useless: projections spanning 0.56..7.35 strikeouts mapped to a
+    # 35.3%..51.7% band, a 16.4pt spread where `hits` gets 46.9pt. Reported,
+    # not gated — the honest threshold is not yet known, and inventing one here
+    # would be a guess dressed as a criterion.
+    served_spread = None
+    if served_pairs:
+        ps = [p for p, _ in served_pairs]
+        served_spread = max(ps) - min(ps)
+
     prob_ok = bool(monotone and slope_ok and ece <= 0.025 and worst <= 0.05)
 
     print("  ORDERING by projection quintile: " +
           (", ".join(f"Q{b}->{m:.3f} (n={n})" for b, n, m in order)
            if order else "TOO FEW ROWS FOR 5 BINS — untested, not passing"))
+    spread_txt = (f"   served spread {served_spread * 100:.1f}pt"
+                  if served_spread is not None else "")
     print(f"    monotone: {monotone}   after {cal_kind}: "
           f"ECE {ece:.4f} (<=0.025), worst bucket {worst:.3f} (<=0.05, n>={cal['worst_n']})"
           f"   slope a={cal_a:+.4f} {'OK' if slope_ok else 'INVERTED'}"
+          f"{spread_txt}"
           f"   ranks={'YES' if monotone else 'NO'} probability={'YES' if prob_ok else 'NO'}")
 
     market_ll = None
@@ -450,6 +523,8 @@ async def run_market(conn, slug: str, persist: bool,
                     "calibration_table": cal["table"],
                     "ranking_ok": monotone,
                     "calibration_slope_ok": slope_ok,
+                    "calibrated_at_line": board_line,
+                    "served_probability_spread": served_spread,
                     "probability_ok": prob_ok,
                     "holdout_accuracy": held["acc"],
                     "projection_bias": held["bias"],
