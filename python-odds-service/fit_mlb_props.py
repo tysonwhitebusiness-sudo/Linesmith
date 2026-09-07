@@ -387,13 +387,32 @@ async def run_market(conn, slug: str, persist: bool,
     # BOTH must hold. ECE is the n-weighted average error and answers "is this
     # calibrated?"; `worst` catches a model fine on average and badly wrong in
     # one place. Thresholds: 0.025 and 0.05.
-    prob_ok = bool(monotone and ece <= 0.025 and worst <= 0.05)
+    # THE CALIBRATED CURVE MUST POINT THE RIGHT WAY.
+    #
+    # `monotone` above is measured on the PROJECTION (quintiles of expected
+    # value against realised outcome) and `ece`/`worst` are measured at each
+    # row's OWN market line. Neither asks the question the board depends on:
+    # does the calibration, once applied, order rows the same way the model
+    # does? Nothing here tested that, and it is how `pitcher-outs` shipped with
+    # a = -0.0649 and probability_ok = True, then held the top three places on
+    # the whole cross-market board with position players who threw a mop-up
+    # inning (measured 2026-09-06 — see `count_prop_engine.probability_is_servable`).
+    #
+    # `platt` is sigmoid(a * logit(p) + b), so it is monotone increasing in the
+    # raw probability exactly when a > 0 and mirrored when a < 0. That makes the
+    # sign of `a` a complete, closed-form answer for both calibration forms this
+    # fitter produces — no binning, no sample-size floor, no threshold to argue
+    # about. `temperature` is the a = 1/T special case and is positive by
+    # construction, so this only ever binds on a genuinely inverted Platt fit.
+    slope_ok = cal_a > 0.0
+    prob_ok = bool(monotone and slope_ok and ece <= 0.025 and worst <= 0.05)
 
     print("  ORDERING by projection quintile: " +
           (", ".join(f"Q{b}->{m:.3f} (n={n})" for b, n, m in order)
            if order else "TOO FEW ROWS FOR 5 BINS — untested, not passing"))
     print(f"    monotone: {monotone}   after {cal_kind}: "
           f"ECE {ece:.4f} (<=0.025), worst bucket {worst:.3f} (<=0.05, n>={cal['worst_n']})"
+          f"   slope a={cal_a:+.4f} {'OK' if slope_ok else 'INVERTED'}"
           f"   ranks={'YES' if monotone else 'NO'} probability={'YES' if prob_ok else 'NO'}")
 
     market_ll = None
@@ -430,6 +449,7 @@ async def run_market(conn, slug: str, persist: bool,
                     "worst_calibration_gap": worst,
                     "calibration_table": cal["table"],
                     "ranking_ok": monotone,
+                    "calibration_slope_ok": slope_ok,
                     "probability_ok": prob_ok,
                     "holdout_accuracy": held["acc"],
                     "projection_bias": held["bias"],
@@ -439,7 +459,7 @@ async def run_market(conn, slug: str, persist: bool,
                 baseline_holdout_log_loss=market_ll),
             activate=monotone)
         print(f"  persisted: mlb/{slug}  active={monotone} "
-              f"probability_ok={bool(monotone and worst <= 0.05)}")
+              f"probability_ok={prob_ok}")
 
     return {"slug": slug, "monotone": monotone, "gap": worst, "ece": ece,
             "prob_ok": prob_ok, "n": held["n"], "ll": held["ll"]}

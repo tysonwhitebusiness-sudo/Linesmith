@@ -291,6 +291,81 @@ def platt(p: float, a: float, b: float) -> float:
     return 1.0 / (1.0 + math.exp(-(a * lo + b)))
 
 
+def probability_is_servable(cal: dict) -> bool:
+    """Is this calibration row fit to publish a PROBABILITY, not just a projection?
+
+    `probability_ok` is the fit's own verdict and remains the primary gate. This
+    adds the one invariant that verdict never tested: **the calibrated curve has
+    to point the right way.**
+
+    `platt` is sigmoid(a * logit(p) + b). A NEGATIVE `a` mirrors the curve, so a
+    higher raw probability comes out LOWER — the model's ordering is inverted at
+    serving time no matter how well it ordered when it was fitted.
+
+    This is not hypothetical. Measured 2026-09-06, MLB `pitcher-outs` shipped
+    with a = -0.0649 and `probability_ok = True`, and it held the top three
+    places on the entire cross-market board with position players who threw a
+    mop-up inning:
+
+        Luis Torrens   proj  2.00 outs   P 65.1%   (line 16.5)
+        a real starter proj 16.00 outs   P ~50.1%
+
+    Because logit(~0) is a large negative number, multiplying it by a negative
+    `a` produces a large POSITIVE logit — the less likely the event, the higher
+    the published probability. Exactly backwards, and monotone in the wrong
+    direction across the whole range.
+
+    WHY THE FIT DID NOT CATCH IT. `ordering_monotone` is measured on the
+    PROJECTION (quintiles of expected value against realised outcome), never on
+    the calibrated probability the board actually shows. A market can order its
+    projections perfectly and still invert when the calibration is applied,
+    which is precisely what happened. `fit_mlb_props.py` now gates on the
+    calibrated probability too; this is the serving-side half of that, so a row
+    already persisted — or written by any future fitter — cannot reach a board
+    inverted.
+
+    A market rejected here is not dropped from the board. It serves its
+    projection with a NULL probability, which is the plan's existing rule for a
+    market that has not earned one: it still ranks within its own market and
+    simply takes no global position.
+
+    TWO PARAMETERISATIONS, ONE INVARIANT. MLB persists `calibration_a`/
+    `calibration_b` and serves through `platt`; NHL persists `temperature` and
+    serves through `temper`, which is the a = 1/T special case (b = 0). Reading
+    only `calibration_a` would therefore have rejected every NHL market — all
+    four of them — because NHL rows do not carry that key at all. The slope is
+    derived from whichever key the row actually has, so the check follows the
+    invariant rather than one sport's storage choice.
+
+    Self-disarming by construction: nothing here is market-specific, so a re-fit
+    that returns a positive slope is served again with no code change.
+    """
+    if not cal.get("probability_ok"):
+        return False
+    slope = effective_calibration_slope(cal)
+    return slope is not None and slope > 0.0
+
+
+def effective_calibration_slope(cal: dict) -> float | None:
+    """The logit-space slope this calibration row will actually apply, or None.
+
+    `platt(p, a, b)` is sigmoid(a * logit(p) + b) -> slope a.
+    `temper(p, T)`   is sigmoid(logit(p) / T)     -> slope 1/T.
+
+    Returned as one number so callers compare a single quantity regardless of
+    which form was fitted. None means the row names no calibration this engine
+    knows how to apply, which is not the same as a flat one and must not be
+    treated as servable.
+    """
+    a = cal.get("calibration_a")
+    if isinstance(a, (int, float)):
+        return float(a)
+    t = cal.get("temperature")
+    if isinstance(t, (int, float)) and t != 0.0:
+        return 1.0 / float(t)
+    return None
+
+
 def fit_platt(rows, iters: int = 60) -> tuple[float, float]:
     """Fit (a, b) by coordinate descent on log-loss. `rows` is [(p, hit)].
 

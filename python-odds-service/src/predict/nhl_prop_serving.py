@@ -45,6 +45,7 @@ import math
 from dataclasses import dataclass
 from datetime import date
 
+from . import count_prop_engine as eng
 from . import nhl_props as npx
 
 MODEL_VERSION = 1
@@ -160,7 +161,7 @@ async def build(conn, as_of: date, lines: dict[str, float] | None = None) -> dic
                 float(st[stat]), float(st["toiMinutes"]))
 
         line = (lines or {}).get(dim)
-        show_prob = bool(cal.get("probability_ok")) and line is not None
+        show_prob = eng.probability_is_servable(cal) and line is not None
 
         # Phase 2 — league-wide P(stat > line), the anchor Scan's cross-market
         # ranking subtracts. NOT `cal["league_rate"]`, which is the engine's

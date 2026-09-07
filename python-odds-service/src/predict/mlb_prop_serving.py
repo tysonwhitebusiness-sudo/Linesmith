@@ -243,7 +243,7 @@ async def build(conn, as_of: date, lines: dict[str, float] | None = None,
         history_rows += sum(h.games for h in hists.values())
 
         line = (lines or {}).get(dim)
-        show_prob = bool(cal.get("probability_ok")) and line is not None
+        show_prob = eng.probability_is_servable(cal) and line is not None
         shape = (cal.get("shape_kind", "nb"), cal.get("shape_param"))
 
         # Phase 2 — the anchor Scan's cross-market ranking subtracts. See
