@@ -305,10 +305,9 @@ mapped:
   which shipped `pitcher-outs` inverted by operator decision. Written up in
   full below; it is unnumbered in the original plan because `CURRENT.md` filed
   it under "3.4", a number already taken by the simulation comparison.
-- **3.1** Statcast skill-vs-luck prior. `estimated_woba` separates what a batter
-  earned from what he got. The join is proven: `player_game_history.event_id` IS
-  the MLB gamePk, 6,885 games, **100.00% date agreement**. Kept only if it
-  improves held-out log-loss.
+- **3.1** Statcast skill-vs-luck prior — **MEASURED NO, 2026-09-07.** Built,
+  measured, rejected. Reproducible: `python experiment_statcast_prior.py`.
+  Written up below.
 - **3.2** Home runs currently **untestable** — its archive ends 2025-11-02, so
   the season split leaves no held-out rows. Either find a split that tests it or
   record it as unmodellable.
@@ -318,6 +317,52 @@ mapped:
   control exists and is strong. If it does not, the direct model keeps the board
   and the sim is judged on game markets alone.
 - **3.5** Game ship gate: CLV against the closing moneyline and total.
+
+## 3.1 — the Statcast prior is a measured NO
+
+**The join is real and was re-verified before anything was built on it.**
+`player_game_history.event_id` IS the MLB `gamePk`: 6,885 distinct games in the
+overlap window, **100.00% matched with 100.00% game_date agreement**, and
+**98.3% coverage** of the batter player-games the model actually fits (136,518
+of 138,902 since 2024-03-01). Nothing below is a data-plumbing artifact.
+
+**The first answer was wrong, which is the point.** Against a control of prior
+hit-rate alone, xwOBA looks like a clear win — held-out log-loss 0.620443 ->
+0.620221 at **t = -4.06**. It is not. Almost all of that is xwOBA proxying for
+the batter's POWER, which the model already reads off his own `bat_totalBases`
+history for free:
+
+    corr(prior xwOBA, prior TB/PA)    = +0.658
+    corr(prior xwOBA, prior hits/PA)  = +0.461
+    R^2 of xwOBA from those two       =  0.433
+
+Put prior TB/PA in the control — ask xwOBA to beat what the model ALREADY HAS
+rather than a strawman — and the effect collapses **8.5x**, to delta -0.000026.
+That is 0.004% of the log-loss, against the **0.064** that prior hit-rate itself
+buys over the league base rate: three hundred times smaller than the signal it
+is being added to.
+
+**1 of 8 fair tests found any improvement.** The power markets are where the
+hypothesis should be strongest — xwOBA is weighted toward extra-base hits — and
+they tie with the sign pointing the wrong way. A gradient-boosted model finds
+nothing linear regression missed. And the prior-game bands kill the last version
+of the claim: a prior binds hardest when the observed rate is noisiest, and the
+5-14-prior-games band ties too.
+
+*(An earlier cut of that band test used a FLOOR rather than bands, which never
+isolates a noisy player at all — a min-5 population still contains every
+veteran. Worth knowing before re-running this with a "fix".)*
+
+**What it would have cost:** a join against `mlb_pitch_events` (452 MB, 2.17M
+rows) inside the serving pipe, a second freshness contract (Statcast runs to
+2026-09-06, `player_game_history` ends 2026-08-28), and a new empty case for the
+18.2% of batter-games with no tracked contact.
+
+**Recorded like tennis (t=+20.68) and soccer (t=+3.05): built, measured,
+rejected — not "not built yet."** Reopening needs a NEW feature, not a re-run.
+xwOBA per se is spent. The candidates this did not test, because the data is not
+in `player_game_history`, are batted-ball spray and pitcher-side contact quality
+allowed. Neither is a re-fit of this.
 
 ## 3.0 — the pitcher re-fit, and a calibration measured where it is served
 

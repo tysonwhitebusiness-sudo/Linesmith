@@ -73,3 +73,6 @@ python-odds-service/.crosswalk_cache/
 
 # Ad-hoc query/verification scripts, session-local.
 .scratch/
+
+# Phase 3.1 experiment cache (regenerated from the DB by experiment_statcast_prior.py)
+python-odds-service/.statcast_batter_games.csv

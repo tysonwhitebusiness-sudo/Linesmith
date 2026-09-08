@@ -2,7 +2,13 @@
 
 **Phases 1 and 2 of `docs/master-plan-2026-09-06.md` are COMPLETE. Phase 3.0
 (the pitcher re-fit) is COMPLETE and persisted. Phase 3.1 (the Statcast prior)
-is next and has not started.**
+is a MEASURED NO — built, measured, rejected. Phase 3.2 (home runs) is next.**
+
+All work through 3.1 is pushed to `origin/main`. **The Render worker is
+`autoDeploy: false` and has NOT been deployed** — it still runs pre-3.0 code, so
+its scheduled `mlbProjectionsJob` keeps writing projections from the OLD
+calibrations until the operator triggers a manual deploy. The new calibrations
+are already in `model_calibration`; only the code that gates on them is behind.
 
 Phases 1 and 2 were independently re-verified 2026-09-06 before 3.0 began —
 deletions, additions, gates and both suites. The plan document was accurate on
@@ -71,13 +77,45 @@ live 2026-09-07 board — `pitcher-outs` / `pitcher-strikeouts` /
 `pitcher-walks-allowed` / `total-bases` serve 0 probabilities,
 `pitcher-hits-allowed` serves 33, and the top is face-valid.
 
-## 3. Phase 3.1 starts here
+## 3. Phase 3.1 — a measured NO, and why it is not reopenable by re-running
 
-The plan's 3.1-3.5 are unchanged. Note **3.4 in the master plan is the
-simulation-vs-direct-model comparison**, not the pitcher re-fit — the previous
+`estimated_woba` does NOT improve the model. Reproducible end-to-end from the
+database: `python experiment_statcast_prior.py`, whose docstring carries the
+full argument.
+
+**The join is real** and was re-verified before anything was built on it: 6,885
+games, **100.00% matched, 100.00% date agreement**, **98.3% coverage** of the
+batter player-games the model fits. The NO is not a plumbing artifact.
+
+**The trap, worth remembering.** Against a control of prior hit-rate alone,
+xwOBA looks like a clear win: log-loss 0.620443 -> 0.620221 at **t = -4.06**.
+Almost all of it is xwOBA proxying for the batter's POWER, which the model
+already gets free from his own `bat_totalBases` history (corr +0.658, R^2 0.433
+from features already in hand). Add prior TB/PA to the control and the effect
+collapses 8.5x to **delta -0.000026** — 0.004% of the log-loss, against the
+0.064 that prior hit-rate itself buys.
+
+**1 of 8 fair tests improved.** Power markets — where the hypothesis should be
+strongest — tie with the sign backwards. Gradient boosting finds nothing linear
+regression missed. Prior-game bands tie at every level including the noisiest,
+which is the plan's actual stated use case for a prior.
+
+**Reopening needs a NEW feature, not a re-run.** xwOBA is spent. The untested
+candidates are batted-ball spray and pitcher-side contact quality allowed;
+neither is in `player_game_history` today.
+
+## 4. Phase 3.2 starts here
+
+The plan's 3.2-3.5 are unchanged. Note **3.4 in the master plan is the
+simulation-vs-direct-model comparison**, not the pitcher re-fit — an earlier
 handoff filed the re-fit under "3.4", a number already taken. It is now 3.0.
 
-## 4. Open, deliberately not closed
+**3.2 is home runs, and the plan already suspects it is untestable**: the
+archive ends 2025-11-02, so the season split leaves no held-out rows. The task
+is to either find a split that tests it or record it as unmodellable — a
+decision, not a model.
+
+## 5. Open, deliberately not closed
 
 - **`served_probability_spread` is computed and persisted but NOT gated.** A
   positive slope only says the ordering is not reversed. `pitcher-strikeouts`
@@ -100,7 +138,7 @@ handoff filed the re-fit under "3.4", a number already taken. It is now 3.0.
   unreferenced writer still inserting `prop_score`/`score_grade`/`trust_tier`
   into `pick_history`. Residue from Phase 1.
 
-## 5. Known gaps, carried forward
+## 6. Known gaps, carried forward
 
 - **`prop_model_cache` is the only table holding prop model output.**
   `pick_history` receives only MLB game-moneyline rows. Its historical prop rows
@@ -124,7 +162,7 @@ handoff filed the re-fit under "3.4", a number already taken. It is now 3.0.
   active MLB rows as they stood before 3.0. `write_calibration` is versioned and
   deactivates prior rows, so a revert is a version flip or a re-fit.
 
-## 6. Standing constraints
+## 7. Standing constraints
 
 - **Do not deploy to Render without asking.** The worker still runs pre-3.0
   code until it is deployed, so its scheduled `mlbProjectionsJob` will keep
