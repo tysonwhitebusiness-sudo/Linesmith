@@ -310,12 +310,65 @@ mapped:
   Written up below.
 - **3.2** Home runs — **MODELLABLE AND SHIPPED, 2026-09-07.** The premise was
   wrong: the data existed under a `type_name` nothing read. Written up below.
-- **3.3** Plate-appearance simulation. log5 per-PA draw, base-out state, nine
-  innings, ten thousand times.
+- **3.3** Plate-appearance simulation — **BUILT AND VALIDATED, 2026-09-07.**
+  `predict/mlb_pa_sim.py`, `calibrate_pa_sim.py`, `src/test_pa_sim.py`. Written
+  up below. NOT wired to any surface: 3.4 decides that.
 - **3.4** **Does the simulation beat the direct model at its own job?** The
   control exists and is strong. If it does not, the direct model keeps the board
   and the sim is judged on game markets alone.
 - **3.5** Game ship gate: CLV against the closing moneyline and total.
+
+## 3.3 — the plate-appearance simulation, and a run deficit that is explained
+
+`predict/mlb_pa_sim.py`. Eight PA outcomes (1B/2B/3B/HR/BB/HBP/K/OUT), combined
+batter-against-pitcher by log5, drawn into an explicit base-out state, nine
+innings, ten thousand times. **Nothing is wired to a surface** — Phase 3.4
+decides whether it earns one.
+
+**Validated against real baseball**, league-average lineups, 5,000 games:
+
+    runs per team-game   4.16    real 4.4 - 4.6    <- short by ~0.3, explained
+    PA per team-game    38.7     real ~37.9        <- high by ~0.8, same cause
+    hits per team-game   8.56    real 8.0 - 8.5
+    shutout pct          7.0%    real 7 - 8%
+    10+ run pct          5.1%    real 3.5 - 5.5%
+    P(home run)          0.121   measured baseline 0.112
+    P(a single)          0.470   measured baseline 0.447
+
+**THE RUN DEFICIT IS EXPLAINED AND DELIBERATELY NOT TUNED AWAY.** This model
+scores only through plate appearances. Real baseball also scores on events that
+are not plate appearances — reached-on-error ~0.12 runs/team-game, net stolen
+bases ~0.10, wild pitches and passed balls ~0.08, totalling ~0.30. That puts
+4.16 + 0.30 = **4.46, inside the real range**. The PA excess is the mirror image:
+real games fit fewer plate appearances into 27 outs because caught stealings and
+pickoffs consume outs without a PA.
+
+**The sweep's best parameters were REJECTED.** `calibrate_pa_sim.py` scores best
+at `P_GIDP=0.19` — half again baseball's real 0.12-0.13. It wins only by
+dragging PA/game toward target, standing in for a mechanism the model does not
+have. Tuning one parameter past its real value to cover for a different absent
+one buys the aggregate and loses everything underneath, which is the precise
+failure this phase is exposed to. Every constant is held at its real value and
+the residual is documented instead.
+
+**WHICH MARKETS THIS BIASES.** Hits, singles, doubles, triples, home runs, total
+bases and strikeouts are PURE PA OUTCOMES — baserunning does not touch them, so
+the deficit does not bias them at all, and those are what 3.4 compares on. Runs,
+RBIs and any game total DO depend on advancement and run low; **Phase 3.5's game
+gate needs non-PA events modelled first.**
+
+**Two real bugs were caught building this, both by measurement rather than
+inspection.** A first cut of the single-advancement rule scored the runner from
+second only when the runner from first did not take third — conflating two
+independent runners, and costing runs in a way that read as a modelling choice.
+And `LEAGUE_PA` summed to 1.00001, so `matchup`'s renormalisation shifted every
+rate even for the average-vs-average case that should be an identity. Both are
+pinned by `src/test_pa_sim.py`.
+
+Still absent, each a candidate if 3.4 says the idea has legs: errors, steals,
+wild pitches, sacrifices; park factors (no player-game-to-venue join exists);
+platoon splits; times-through-the-order; and a real bullpen — today a starter is
+pulled after 24 batters faced and everything after is league-average.
 
 ## 3.2 — home runs was never unmodellable; 37,252 rows were unread
 

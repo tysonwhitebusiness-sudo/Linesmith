@@ -1,11 +1,15 @@
 # CURRENT — pick up here
 
-**Phases 1 and 2 of `docs/master-plan-2026-09-06.md` are COMPLETE. Phase 3.0
-(the pitcher re-fit) is COMPLETE and persisted. Phase 3.1 (the Statcast prior)
-is a MEASURED NO. Phase 3.2 (home runs) is COMPLETE, persisted and live —
-the market was never unmodellable. Phase 3.3 (the PA simulation) is next.**
+**Phases 1 and 2 of `docs/master-plan-2026-09-06.md` are COMPLETE.
+Phase 3.0 (the pitcher re-fit) is COMPLETE and persisted.
+Phase 3.1 (the Statcast prior) is a MEASURED NO — built, measured, rejected.
+Phase 3.2 (home runs) is COMPLETE, persisted and live — it was never
+unmodellable.
+Phase 3.3 (the PA simulation) is BUILT AND VALIDATED, and deliberately wired to
+nothing.
+Phase 3.4 — does the simulation beat the direct model? — is NEXT.**
 
-All work through 3.2 is pushed to `origin/main`. **The Render worker is
+All work through 3.3 is pushed to `origin/main`. **The Render worker is
 `autoDeploy: false` and has NOT been deployed** — it still runs pre-3.0 code, so
 its scheduled `mlbProjectionsJob` keeps writing projections from the OLD
 calibrations until the operator triggers a manual deploy. The new calibrations
@@ -134,17 +138,42 @@ board is now 8 markets with a probability, up from 7.**
 **An audit confirmed no market was ingesting an integer scheme through `names`**,
 so no historical fit was corrupted.
 
-## 5. Phase 3.3 starts here
+## 5. Phase 3.3 — the simulation is BUILT and VALIDATED, and wired to nothing
 
-**3.3 is the plate-appearance simulation** (log5 per-PA draw, base-out state,
-nine innings, ten thousand times), and **3.4 asks whether it beats the direct
-model at its own job**. Note 3.4 is the SIMULATION COMPARISON — an earlier
-handoff filed the pitcher re-fit under "3.4", a number already taken; that work
-is now 3.0.
+`predict/mlb_pa_sim.py` + `calibrate_pa_sim.py` + `src/test_pa_sim.py`. Eight PA
+outcomes combined batter-against-pitcher by log5, drawn into an explicit
+base-out state, nine innings, ten thousand times. **It is deliberately connected
+to no surface** — 3.4 decides whether it earns one.
 
-The control 3.4 measures against is stronger than when the plan was written:
-the direct model now has a correct calibration (3.0) and one more validated
-market (3.2).
+Validated on league-average lineups, 5,000 games: runs/team-game 4.16,
+PA/team-game 38.7, hits 8.56, shutout 7.0%, 10+ 5.1%, P(HR) 0.121 against a
+measured 0.112, P(single) 0.470 against 0.447.
+
+**The run deficit is explained, not mysterious, and not tuned away.** This model
+scores only through plate appearances; real baseball also scores on
+reached-on-error (~0.12), net steals (~0.10) and wild pitches (~0.08) — ~0.30,
+giving 4.16 + 0.30 = **4.46, inside the real 4.4-4.6**. The PA excess mirrors
+it: real games fit fewer PA into 27 outs because caught stealings consume outs
+without one.
+
+**The sweep's best parameters were REJECTED**: `calibrate_pa_sim.py` scores best
+at `P_GIDP=0.19`, half again baseball's real 0.12-0.13, winning only by dragging
+PA/game toward target while standing in for a mechanism the model lacks. Every
+constant is held at its real value.
+
+**This matters for what 3.4 may compare on.** Hits, singles, doubles, triples,
+home runs, total bases and strikeouts are pure PA outcomes and are NOT biased.
+Runs, RBIs and game totals ARE — **3.5's game gate needs non-PA events first.**
+
+## 6. Phase 3.4 starts here
+
+**3.4 asks whether the simulation beats the direct model at its own job.** If it
+does not, the direct model keeps the board and the sim is judged on game markets
+alone. The control is stronger than when the plan was written: correct
+calibration since 3.0, plus a validated home-run market from 3.2.
+
+Compare on PA-outcome markets only (see above), on the same
+SELECT/HELD-OUT split the fitter uses, with the same paired t-test.
 
 **All five milestone schemes are now wired.** They were not five wins; they were
 two, and the reason matters more than the wiring.
@@ -180,7 +209,7 @@ A confidence gain, not a performance gain. `stolen-bases`' log-loss 0.330 ->
 evidence instead of possibly being small-sample noise, and `stolen-bases` shows
 Q1 0.019 -> Q5 0.181 (9.5x) across 40,322 rows.
 
-## 6. Open, deliberately not closed
+## 7. Open, deliberately not closed
 
 - **`served_probability_spread` is computed and persisted but NOT gated.** A
   positive slope only says the ordering is not reversed. `pitcher-strikeouts`
@@ -203,7 +232,7 @@ Q1 0.019 -> Q5 0.181 (9.5x) across 40,322 rows.
   unreferenced writer still inserting `prop_score`/`score_grade`/`trust_tier`
   into `pick_history`. Residue from Phase 1.
 
-## 7. Known gaps, carried forward
+## 8. Known gaps, carried forward
 
 - **`prop_model_cache` is the only table holding prop model output.**
   `pick_history` receives only MLB game-moneyline rows. Its historical prop rows
@@ -227,7 +256,7 @@ Q1 0.019 -> Q5 0.181 (9.5x) across 40,322 rows.
   active MLB rows as they stood before 3.0. `write_calibration` is versioned and
   deactivates prior rows, so a revert is a version flip or a re-fit.
 
-## 8. Standing constraints
+## 9. Standing constraints
 
 - **Do not deploy to Render without asking.** The worker still runs pre-3.0
   code until it is deployed, so its scheduled `mlbProjectionsJob` will keep
