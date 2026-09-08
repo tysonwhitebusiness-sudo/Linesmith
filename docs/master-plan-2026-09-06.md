@@ -308,15 +308,120 @@ mapped:
 - **3.1** Statcast skill-vs-luck prior — **MEASURED NO, 2026-09-07.** Built,
   measured, rejected. Reproducible: `python experiment_statcast_prior.py`.
   Written up below.
-- **3.2** Home runs currently **untestable** — its archive ends 2025-11-02, so
-  the season split leaves no held-out rows. Either find a split that tests it or
-  record it as unmodellable.
+- **3.2** Home runs — **MODELLABLE AND SHIPPED, 2026-09-07.** The premise was
+  wrong: the data existed under a `type_name` nothing read. Written up below.
 - **3.3** Plate-appearance simulation. log5 per-PA draw, base-out state, nine
   innings, ten thousand times.
 - **3.4** **Does the simulation beat the direct model at its own job?** The
   control exists and is strong. If it does not, the direct model keeps the board
   and the sim is judged on game markets alone.
 - **3.5** Game ship gate: CLV against the closing moneyline and total.
+
+## 3.2 — home runs was never unmodellable; 37,252 rows were unread
+
+**The plan's premise was wrong, and so was the market map's own note.** Both
+said home-run coverage ends 2025-11-02, leaving no held-out rows. Measured, the
+archive holds **three** schemes for one market:
+
+| `type_name` | rows | span | in the map? |
+|---|---|---|---|
+| `Total Home Runs Hit` | 54,740 | 2025-03-27 .. **2025-11-02** | yes |
+| `home-runs` (live feed) | 4,373 | 2026-09-03 .. 09-07 | yes |
+| **`Home Runs Milestones`** | **37,252** | **2026-04-11 .. 2026-09-02** | **no** |
+
+The two mapped schemes really do leave nothing testable — the historical one
+ends in 2025 and the live one begins *after* `player_game_history`'s last
+outcome (2026-08-28). So "no held-out rows" was true of what the fitter was
+looking at. It was not true of the data.
+
+**Why the third scheme was excluded: its lines are integer MILESTONES.** A
+milestone line `L` means "L or more", where every other line in this archive is
+a half-integer meaning "strictly more than". Verified empirically rather than
+assumed, n=31,238 joined rows:
+
+    P(hr >= line) = 0.1119     <- correct; matches the half-integer scheme
+    P(hr >  line) = 0.0069     <- an ordinary-line reading: "2+ home runs"
+    reference, `Total Home Runs Hit` at 0.5:  P(hr > 0.5) = 0.1170
+
+0.1119 against 0.1170 is one event on two schemes. 0.0069 is a market sixteen
+times rarer, and nothing about it looks wrong on inspection — it would simply
+train and calibrate confidently on the wrong question. **This is the same trap
+the plan already records for NFL in Phase 6.**
+
+`MarketSpec.milestone_names` now carries such schemes separately from `names`,
+and the loader converts `L -> L - 0.5`. A non-integer line under a milestone
+name is SKIPPED rather than shifted, because shifting one would create the very
+off-by-one the branch removes.
+
+**Result — home runs passes every gate:**
+
+    held out n=30,975   log-loss 0.34510   acc 88.8%   slope +0.9995
+    ordering Q1 0.070 -> Q5 0.176 (monotone, 2.5x)
+    ECE 0.0090 (<=0.025)   worst 0.020 (<=0.05)   verdict: rank + probability
+
+Against a constant predictor fitted on SELECT it gains **+0.00677 log-loss
+(1.92%)** — for scale, that is **260x** the xwOBA effect rejected in 3.1.
+Persisted and live: home runs serves 196 projections, all with a probability.
+**The board goes from 7 markets with a probability to 8.**
+
+**An audit found NO market ingesting an integer scheme through `names`**, so no
+historical fit was corrupted. Pinned by `src/test_milestone_lines.py`.
+
+### The other four milestone schemes — wired, and only two of them helped
+
+All four are now declared. **They are not four wins; they are two**, and the
+reason is worth keeping.
+
+**Every milestone scheme sits entirely inside the held-out window (2026).** A
+fit needs rows on BOTH sides of the cutoff — SELECT to choose the grid point and
+fit the calibration, held-out to test it:
+
+| market | SELECT | held-out before -> after | outcome |
+|---|---|---|---|
+| stolen-bases | 8,899 | 12,548 -> **46,087** | fittable; test set 3.6x |
+| pitcher-strikeouts | 5,568 | 3,401 -> **6,797** | fittable; test set 2x |
+| batter-strikeouts | **0** | 35,627 | NOT fittable |
+| walks | **0** | 69,624 | NOT fittable |
+
+`walks` and `batter-strikeouts` have the opposite of the usual problem: tens of
+thousands of rows to TEST against and nothing to TRAIN on. No milestone wiring
+fixes that. Their names are declared anyway so each becomes fittable the moment
+a pre-2026 source appears, with no code change.
+
+**`NOT_YET`'s stated reason was wrong and is corrected.** It said "live scheme
+only, four days deep". For `walks` that is false — `Total Walks (Batter)` alone
+carries 34,534 usable rows. The real reason is zero SELECT-era data. Same
+conclusion, wrong evidence, and the wrong evidence would have sent the next
+person hunting for the wrong fix.
+
+**For the two that were fittable, the MODEL DID NOT CHANGE — only the test.**
+Milestone rows are all held-out, so SELECT was untouched, and SELECT is what
+picks the grid point and fits the calibration. Both calibrations came back
+bit-identical (+0.7676 and +0.9740). This is a confidence gain, not a
+performance gain:
+
+    stolen-bases        n 11,190 -> 40,322   ECE 0.0108 -> 0.0132   still rank+probability
+                        ordering Q1 0.019 -> Q5 0.181 (9.5x) on 40k rows
+    pitcher-strikeouts  n  2,474 ->  4,944   ECE 0.0360 -> 0.0360   still rank only
+
+`stolen-bases`' log-loss "improving" 0.330 -> 0.256 is NOT a real gain — the
+2026 population has a lower base rate (0.0665 against 0.1134), so the number is
+not comparable across different test sets. What is real: `pitcher-strikeouts`'
+ECE failure is now confirmed on double the evidence rather than possibly being
+small-sample noise.
+
+**Semantics were verified per scheme, not assumed.** `stolen-bases` initially
+looked wrong (milestone 0.0665 against a 0.1134 reference, a 1.7x gap). The
+clean test is rows where the SAME (athlete, date) carries both schemes, which
+admits no population or era confound: **100.0% agreement** for walks
+(41,890/41,893) and stolen bases (15,403/15,404). The gap was population. The
+`Strikeouts Thrown` mismatches (84.7%) are books posting genuinely different
+alt-lines — 6 against 4.5 — not a semantic difference.
+
+Also still unread: `Total Walks (Batter)` (34,534 usable rows, half-integer),
+whose exclusion note blamed missing PRICES. That reason stopped binding when
+Phase 3.0 moved calibration to the board line — the stats bar never reads a
+price — but it does not matter either way while walks has no SELECT rows.
 
 ## 3.1 — the Statcast prior is a measured NO
 

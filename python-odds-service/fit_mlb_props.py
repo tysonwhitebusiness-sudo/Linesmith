@@ -93,7 +93,25 @@ SHRINK_KS = [0.0, 1.0, 2.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0, 320.0, 640.0,
 # needs all three directions; NHL only ever needed two.
 SHAPES = eng.SHAPES
 
-# Markets with no history to fit on (live scheme only, four days deep).
+# Markets that cannot be FITTED, for two different reasons — both measured
+# 2026-09-07, and neither one "the archive is missing data".
+#
+# A fit needs rows on BOTH sides of CUTOFF: SELECT rows to choose the grid point
+# and fit the calibration, held-out rows to test it. Having one side is not
+# enough, and these markets have only one side:
+#
+#   walks               SELECT 0, HELD-OUT 69,624   (three schemes, all 2026)
+#   batter-strikeouts   SELECT 0, HELD-OUT 35,627   (two schemes, all 2026)
+#   triples             SELECT 0, HELD-OUT      0   (119 live rows, all after
+#                                                    player_game_history ends)
+#
+# So walks and batter-strikeouts are the opposite of the usual problem: tens of
+# thousands of usable rows to TEST against, and nothing to TRAIN on. Wiring
+# their milestone schemes (Phase 3.2) added the held-out rows and could not add
+# SELECT rows, so they stay here. `triples` has neither and is simply too new.
+#
+# The milestone names are declared on their specs regardless, so each becomes
+# fittable the moment a pre-2026 source for it appears — no code change.
 NOT_YET = {"triples", "walks", "batter-strikeouts"}
 
 
@@ -171,14 +189,17 @@ async def load_props(conn, spec, xw: dict[str, str],
         outcome[key] = None if key in outcome else stat
     ambiguous = sum(1 for v in outcome.values() if v is None)
 
+    # `type_name` is selected because a MILESTONE row's line means something
+    # different from an ordinary one — see MarketSpec.milestone_names.
     rows = await conn.fetch(
-        "SELECT game_date, athlete_id, line, over_price, under_price "
+        "SELECT game_date, athlete_id, line, over_price, under_price, type_name "
         "  FROM prop_odds_archive "
         " WHERE sport = 'mlb' AND type_name = ANY($1::text[]) "
         "   AND line IS NOT NULL AND athlete_id IS NOT NULL",
-        list(spec.names))
+        list(spec.names) + list(spec.milestone_names))
 
-    out = []
+    milestones = set(spec.milestone_names)
+    out, ms_used, ms_noninteger = [], 0, 0
     for r in rows:
         aid = xw.get(str(r["athlete_id"]))
         if aid is None:
@@ -186,8 +207,26 @@ async def load_props(conn, spec, xw: dict[str, str],
         actual = outcome.get((aid, r["game_date"]))
         if actual is None:
             continue          # no settled game, or an ambiguous doubleheader
-        out.append((r["game_date"], aid, float(r["line"]),
+        line = float(r["line"])
+        if r["type_name"] in milestones:
+            # An integer L means "L or more". Every other line in this file is a
+            # half-integer meaning "strictly more than". Converting to L - 0.5
+            # puts the milestone on the same footing as everything else, so no
+            # code downstream of here has to know which scheme a row came from.
+            if line != round(line):
+                # A half-integer under a milestone name is not a milestone. It
+                # would already be in the right units, and shifting it would
+                # CREATE the off-by-one this branch exists to remove. Skipped
+                # rather than guessed at, and counted so it cannot pass silently.
+                ms_noninteger += 1
+                continue
+            line -= 0.5
+            ms_used += 1
+        out.append((r["game_date"], aid, line,
                     r["over_price"], r["under_price"], actual))
+    if ms_used or ms_noninteger:
+        print(f"  {ms_used:,} milestone rows converted (integer L -> L-0.5)"
+              + (f"; {ms_noninteger:,} SKIPPED as non-integer" if ms_noninteger else ""))
     out.sort(key=lambda t: (t[0], t[1]))
     if ambiguous:
         print(f"  {ambiguous:,} (athlete, date) pairs were doubleheaders "

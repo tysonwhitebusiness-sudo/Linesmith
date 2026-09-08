@@ -2,9 +2,10 @@
 
 **Phases 1 and 2 of `docs/master-plan-2026-09-06.md` are COMPLETE. Phase 3.0
 (the pitcher re-fit) is COMPLETE and persisted. Phase 3.1 (the Statcast prior)
-is a MEASURED NO — built, measured, rejected. Phase 3.2 (home runs) is next.**
+is a MEASURED NO. Phase 3.2 (home runs) is COMPLETE, persisted and live —
+the market was never unmodellable. Phase 3.3 (the PA simulation) is next.**
 
-All work through 3.1 is pushed to `origin/main`. **The Render worker is
+All work through 3.2 is pushed to `origin/main`. **The Render worker is
 `autoDeploy: false` and has NOT been deployed** — it still runs pre-3.0 code, so
 its scheduled `mlbProjectionsJob` keeps writing projections from the OLD
 calibrations until the operator triggers a manual deploy. The new calibrations
@@ -72,10 +73,10 @@ log-loss is unchanged for every market: the grid selection was deliberately left
 on market lines (it chooses the projection model, where every posted line is a
 real observation); only the calibration moved.
 
-**Net: the board goes from 9 markets with a probability to 7.** Verified on the
-live 2026-09-07 board — `pitcher-outs` / `pitcher-strikeouts` /
-`pitcher-walks-allowed` / `total-bases` serve 0 probabilities,
-`pitcher-hits-allowed` serves 33, and the top is face-valid.
+**Net for 3.0 alone: the board went from 9 markets with a probability to 7**
+(3.2 then took it back to 8 — see below). Verified on the live 2026-09-07 board:
+`pitcher-outs` / `pitcher-strikeouts` / `pitcher-walks-allowed` / `total-bases`
+serve 0 probabilities, `pitcher-hits-allowed` serves 33, top is face-valid.
 
 ## 3. Phase 3.1 — a measured NO, and why it is not reopenable by re-running
 
@@ -104,18 +105,82 @@ which is the plan's actual stated use case for a prior.
 candidates are batted-ball spray and pitcher-side contact quality allowed;
 neither is in `player_game_history` today.
 
-## 4. Phase 3.2 starts here
+## 4. Phase 3.2 — home runs was never unmodellable; 37,252 rows were unread
 
-The plan's 3.2-3.5 are unchanged. Note **3.4 in the master plan is the
-simulation-vs-direct-model comparison**, not the pitcher re-fit — an earlier
-handoff filed the re-fit under "3.4", a number already taken. It is now 3.0.
+**The plan's premise was wrong, and so was the market map's own note.** Both
+said coverage ends 2025-11-02. It does — for the two schemes the fitter was
+looking at. A third, `Home Runs Milestones` (37,252 rows, 2026-04-11..
+2026-09-02), covers the whole held-out season and was excluded because nothing
+read its INTEGER lines.
 
-**3.2 is home runs, and the plan already suspects it is untestable**: the
-archive ends 2025-11-02, so the season split leaves no held-out rows. The task
-is to either find a split that tests it or record it as unmodellable — a
-decision, not a model.
+**A milestone line `L` means "L or more"**, where every other line here is a
+half-integer meaning "strictly more than". Verified, not assumed (n=31,238):
 
-## 5. Open, deliberately not closed
+    P(hr >= line) = 0.1119   <- correct; matches the half-integer scheme's 0.1170
+    P(hr >  line) = 0.0069   <- an ordinary reading: a 16x rarer market
+
+Nothing about the wrong reading looks wrong on inspection — it would train and
+calibrate confidently on the wrong question. **Same trap the plan records for
+NFL in Phase 6.** `MarketSpec.milestone_names` now holds such schemes apart from
+`names`; the loader converts `L -> L-0.5` and SKIPS a non-integer under a
+milestone name rather than shifting it. Pinned by `src/test_milestone_lines.py`.
+
+**Home runs passes every gate** — held out n=30,975, log-loss 0.34510, slope
++0.9995, ordering Q1 0.070 -> Q5 0.176 monotone, ECE 0.0090, worst 0.020. It
+beats a constant predictor by **+0.00677 (1.92%)**, which is **260x** the xwOBA
+effect rejected in 3.1. Live: 196 projections, all with a probability. **The
+board is now 8 markets with a probability, up from 7.**
+
+**An audit confirmed no market was ingesting an integer scheme through `names`**,
+so no historical fit was corrupted.
+
+## 5. Phase 3.3 starts here
+
+**3.3 is the plate-appearance simulation** (log5 per-PA draw, base-out state,
+nine innings, ten thousand times), and **3.4 asks whether it beats the direct
+model at its own job**. Note 3.4 is the SIMULATION COMPARISON — an earlier
+handoff filed the pitcher re-fit under "3.4", a number already taken; that work
+is now 3.0.
+
+The control 3.4 measures against is stronger than when the plan was written:
+the direct model now has a correct calibration (3.0) and one more validated
+market (3.2).
+
+**All five milestone schemes are now wired.** They were not five wins; they were
+two, and the reason matters more than the wiring.
+
+**Every milestone scheme sits entirely inside the held-out window (2026)**, and
+a fit needs rows on BOTH sides of the cutoff — SELECT to choose the grid point
+and fit the calibration, held-out to test it:
+
+| market | SELECT | held-out before -> after | outcome |
+|---|---|---|---|
+| stolen-bases | 8,899 | 12,548 -> **46,087** | fittable; test 3.6x |
+| pitcher-strikeouts | 5,568 | 3,401 -> **6,797** | fittable; test 2x |
+| batter-strikeouts | **0** | 35,627 | NOT fittable |
+| walks | **0** | 69,624 | NOT fittable |
+
+`walks` and `batter-strikeouts` have the opposite of the usual problem — plenty
+to TEST against, nothing to TRAIN on. Their names are declared anyway, so each
+becomes fittable the moment a pre-2026 source appears, with no code change.
+
+**`NOT_YET`'s stated reason was WRONG and is corrected.** It said "live scheme
+only, four days deep"; for `walks` that is false (`Total Walks (Batter)` alone
+has 34,534 usable rows). The real reason is zero SELECT-era data — same
+conclusion, wrong evidence, and the wrong evidence would send the next person
+after the wrong fix.
+
+**For the two fittable markets the MODEL DID NOT CHANGE — only the test.**
+Milestone rows are all held-out, so SELECT was untouched, and SELECT is what
+fits everything. Both calibrations came back bit-identical (+0.7676, +0.9740).
+A confidence gain, not a performance gain. `stolen-bases`' log-loss 0.330 ->
+0.256 is NOT real improvement — the 2026 population has a lower base rate
+(0.0665 vs 0.1134), so it is not comparable across test sets. What IS real:
+`pitcher-strikeouts`' ECE failure (0.0360) is now confirmed on double the
+evidence instead of possibly being small-sample noise, and `stolen-bases` shows
+Q1 0.019 -> Q5 0.181 (9.5x) across 40,322 rows.
+
+## 6. Open, deliberately not closed
 
 - **`served_probability_spread` is computed and persisted but NOT gated.** A
   positive slope only says the ordering is not reversed. `pitcher-strikeouts`
@@ -138,7 +203,7 @@ decision, not a model.
   unreferenced writer still inserting `prop_score`/`score_grade`/`trust_tier`
   into `pick_history`. Residue from Phase 1.
 
-## 6. Known gaps, carried forward
+## 7. Known gaps, carried forward
 
 - **`prop_model_cache` is the only table holding prop model output.**
   `pick_history` receives only MLB game-moneyline rows. Its historical prop rows
@@ -162,7 +227,7 @@ decision, not a model.
   active MLB rows as they stood before 3.0. `write_calibration` is versioned and
   deactivates prior rows, so a revert is a version flip or a re-fit.
 
-## 7. Standing constraints
+## 8. Standing constraints
 
 - **Do not deploy to Render without asking.** The worker still runs pre-3.0
   code until it is deployed, so its scheduled `mlbProjectionsJob` will keep

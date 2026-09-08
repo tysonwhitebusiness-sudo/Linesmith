@@ -76,6 +76,18 @@ class MarketSpec:
     stat_sql: str                  # settling stat, computed from the stats jsonb
     required_keys: tuple[str, ...]  # every jsonb key stat_sql reads
     names: tuple[str, ...]         # historical AND live spellings
+    # Names whose line is a MILESTONE: an integer L meaning "L or more", not a
+    # half-integer meaning "more than L". They are kept apart from `names`
+    # because they need the off-by-one conversion in `load_props` and folding
+    # them in would silently shift every one of their rows by a full unit.
+    #
+    # Measured on `Home Runs Milestones` (2026-09-07, n=31,238 joined):
+    #     P(hr >= line)  = 0.1119     <- the correct reading
+    #     P(hr >  line)  = 0.0069     <- what treating it as a normal line gives
+    # against `Total Home Runs Hit` at its real 0.5 line, P(hr > 0.5) = 0.1170.
+    # 0.1119 vs 0.1170 is the same event; 0.0069 is "two or more home runs".
+    # The same trap is recorded for NFL in the master plan's Phase 6.
+    milestone_names: tuple[str, ...] = ()
     two_sided: bool = True
     note: str = ""
 
@@ -143,30 +155,48 @@ MARKETS: list[MarketSpec] = [
         slug="home-runs", label="Home runs", side="bat",
         stat_sql=_bat("bat_homeRuns"), required_keys=("bat_homeRuns",),
         names=("Total Home Runs Hit", "home-runs"),
-        note=("Historical coverage ENDS 2025-11-02, ten months before the rest of "
-              "the archive. Real gap, not a filter artifact."),
+        milestone_names=("Home Runs Milestones",),
+        note=("Three schemes, and the gap between them is only apparent. "
+              "'Total Home Runs Hit' really does end 2025-11-02 and 'home-runs' "
+              "(the live feed) starts 2026-09-03 — after player_game_history's "
+              "last outcome — so on those two alone the market has NO held-out "
+              "rows and Phase 3.2 was recorded as untestable. "
+              "'Home Runs Milestones' covers 2026-04-11..2026-09-02, 37,252 rows, "
+              "and was excluded only because nothing read its integer lines. "
+              "See `milestone_names`."),
     ),
     MarketSpec(
         slug="walks", label="Walks", side="bat",
         stat_sql=_bat("bat_baseOnBalls"), required_keys=("bat_baseOnBalls",),
         names=("walks",),
-        note=("Live scheme only. The historical 'Total Walks (Batter)' is excluded: "
-              "every line is 0.5 and no row carries both prices."),
+        milestone_names=("Walks (Batter) Milestones",),
+        note=("NOT FITTABLE, and the old reason here was the wrong one. It said "
+              "'Total Walks (Batter)' was excluded for carrying no prices — true, "
+              "but beside the point: that scheme is 2026-only (34,534 usable rows, "
+              "all after the 2026-01-01 cutoff), as is 'Walks (Batter) Milestones' "
+              "(35,090) and the live 'walks' feed. The market has 69,624 usable "
+              "HELD-OUT rows and ZERO SELECT-era rows, so there is nothing to train "
+              "on. Prices stopped mattering once Phase 3.0 moved calibration to the "
+              "board line — the stats bar never reads one. The milestone name is "
+              "declared here so this is ready the moment a pre-2026 source appears."),
     ),
     MarketSpec(
         slug="batter-strikeouts", label="Strikeouts (batter)", side="bat",
         stat_sql=_bat("bat_strikeOuts"), required_keys=("bat_strikeOuts",),
         names=("batter-strikeouts",),
+        milestone_names=("Strikeouts (Batter) Milestones",),
     ),
     MarketSpec(
         slug="stolen-bases", label="Stolen bases", side="bat",
         stat_sql=_bat("bat_stolenBases"), required_keys=("bat_stolenBases",),
         names=("Total Stolen Bases", "stolen-bases"),
+        milestone_names=("Stolen Bases Milestones",),
     ),
     MarketSpec(
         slug="pitcher-strikeouts", label="Strikeouts (pitcher)", side="pit",
         stat_sql=_bat("pit_strikeOuts"), required_keys=("pit_strikeOuts",),
         names=("Total Strikeouts", "pitcher-strikeouts"),
+        milestone_names=("Strikeouts Thrown Milestones",),
         note="'Total Strikeouts' resolved to the PITCHER market by line magnitude.",
     ),
     MarketSpec(
