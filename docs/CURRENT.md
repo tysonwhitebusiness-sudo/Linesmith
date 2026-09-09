@@ -20,13 +20,36 @@ the game ship gate could only be measured on 129 picks over 11 days, and no
 amount of work creates evidence that was never captured. Only the ORDER changed;
 neither sport's model content moved.
 
-**Before fitting anything for NFL, audit its `type_name` list for integer-line
-MILESTONE schemes.** The plan already flagged this as an NFL issue, and Phase
-3.2 proved it is not NFL-only: MLB had five such schemes, and one of them was
-the sole 2026 coverage of a market the plan had written off as unmodellable. The
-mechanism exists (`MarketSpec.milestone_names`, `L -> L-0.5` in the loader,
-pinned by `src/test_milestone_lines.py`). The wrong reading does not look wrong
-— it trains and calibrates confidently on a market ~16x rarer than intended.
+**4.0 IS DONE — all three gates pass.** Reproducible: `python
+audit_nfl_phase4.py`, which re-derives every number and exits non-zero if a
+classification stops matching the data. **4.1 (margin-adjusted Elo) is next.**
+
+**The headline finding changes the architecture, not a constant: NFL CANNOT
+SERVE PROPS AT A FIXED BOARD LINE.** MLB shows every batter at 0.5 hits, which
+works only because 84-93% of really posted hits lines ARE 0.5. NFL's line
+concentration: Total Rushing+Receiving Yards 7.1%, Total Rushing Yards 8.5%,
+Total Receiving Yards 10.3%, Longest Reception 12.8%. Phase 3.0 measured that
+concentration predicts calibration slope at r=+0.849, and `pitcher-outs`
+inverted at **16%**. **Fifteen NFL markets sit below that.** A WR1's line is
+70.5 and a WR3's is 15.5 — no single number describes both.
+
+**So the rule Phase 3.0 established is more general than it looked. It is not
+"calibrate at the fixed board line" — that was the fix for a board that serves
+fixed. It is CALIBRATE WHERE YOU SERVE.** MLB serves fixed and calibrates fixed;
+NFL serves per-player and calibrates at each row's own line. The pre-3.0 MLB
+approach was not wrong in itself, only wrong for a board that had changed under
+it. Getting this backwards either way is the same invisible bug.
+
+Only `Total Sacks` (96.4%) and `Total Defensive Interceptions` (100%) may be
+served fixed; both are declared in `audit_nfl_phase4.FIXED_LINE_MARKETS` and the
+audit fails if that stops matching measurement.
+
+**Other 4.0 results:** the join is sound — 97.5% of prop rows reach a real
+player-game with **zero off-by-one dates** (the 10% that miss are players who
+did not play). The 20 milestone schemes are **excluded, not mapped**: 415 rows
+total, largest 59, none two-sided — the opposite call from MLB's 37,252-row
+scheme, from the same check on different data. And `Anytime Touchdown Scorer` is
+not one market but an alt-line family (0.5 / 1.5 / 2.5 / 3.5).
 
 All work through 3.3 is pushed to `origin/main`. **The Render worker is
 `autoDeploy: false` and has NOT been deployed** — it still runs pre-3.0 code, so

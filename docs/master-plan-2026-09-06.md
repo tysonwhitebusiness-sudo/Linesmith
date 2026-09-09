@@ -792,38 +792,104 @@ the prop ship gate cannot be run in September. It accrues.
 
 ---
 
-## 4.0 — Audit before fitting. Do not skip this.
+## 4.0 — Audit before fitting — **DONE 2026-09-08. All three gates pass.**
 
-Phase 3 spent most of its cost on premises that were wrong in ways no code
-review would catch. Three cheap checks, each of which has already caught a real
-defect once:
+Reproducible: `python audit_nfl_phase4.py`. It re-derives every number below and
+exits non-zero if any classification stops matching the data.
 
-- **4.0a — Audit `type_name` for integer MILESTONE schemes.** NFL has **20 of
-  them** (`Receiving Yards Milestones` 59 rows, `Sacks Milestones` 45,
-  `Receptions Milestones` 45, and 17 more, every one integer-lined). Far smaller
-  than MLB's — where one such scheme carried 37,252 rows and was the sole 2026
-  coverage of a market this plan had written off as unmodellable — but the
-  failure mode is identical and silent: a line of 2.0 means over 1.5, and
-  reading it as ">2" trains the model on a market roughly sixteen times rarer.
-  The mechanism already exists: `MarketSpec.milestone_names` plus the
-  `L -> L-0.5` conversion in the loader, pinned by
-  `src/test_milestone_lines.py`. Declare them or deliberately exclude them; do
-  not leave them unread.
-- **4.0b — Measure the crosswalk join rate in ROWS, not ids.** Prop rows carry
-  1,039 distinct athletes; `athlete_crosswalk` has 1,020 NFL rows;
-  `player_game_history` has 6,740 NFL athletes. Those three numbers do not imply
-  a join rate. The standing rule applies: **a numeric id matching the expected
-  shape is not evidence it is the right id** — 399 MLB ids once matched by shape
-  and 0.00% landed on the right game date. Verify by DATE AGREEMENT, as Phase
-  3.1 did (6,885 games, 100.00%).
-- **4.0c — Fix the board line per market before fitting anything.** Phase 3.0
-  found MLB serving `pitcher-outs` at 16.5 while grading it at 15.5, from two
-  hardcoded lists that disagreed. NFL has no `mlb_board_lines.py` equivalent; it
-  needs one, and its values must be the measured median posted line, not a
-  guess.
+### 4.0a — every `type_name` classified
 
-**Gate:** every NFL `type_name` classified (ordinary / milestone / excluded,
-with a reason); a measured join rate with date agreement; one board-line table.
+68 distinct schemes carrying a line, 152,417 rows, split three ways:
+
+    player props   33 schemes   151,364 rows
+    milestone      20 schemes       415 rows
+    game/team      15 schemes     3,925 rows
+
+Two assertions run on every audit, both currently zero: **no scheme classified
+as a player prop carries integer lines** (that is the unread-milestone defect,
+and it is silent), and **no declared milestone is actually half-integer**.
+
+**The 20 milestone schemes are EXCLUDED, not mapped.** 415 rows across all
+twenty, largest 59, and **not one carries a two-sided price**. There is not
+enough there to fit, and folding them into an ordinary market's `names` would
+import the `L` vs `L-0.5` off-by-one for no gain. This is the opposite call from
+MLB, where one such scheme held 37,252 rows and was the sole 2026 coverage of a
+market the plan had written off as unmodellable — the same check, a different
+answer, because the data is different.
+
+Semantics were still verified where testable: on rows where a milestone and an
+ordinary scheme cover the same athlete and date and post the same value,
+`L -> L-0.5` holds (8 -> 7.5, 11 -> 10.5, 3 -> 2.5). The apparent mismatches are
+not off-by-one — yardage milestones post round numbers (25, 60) while ordinary
+yardage lines are arbitrary (20.5, 57.5), so they are simply different bets.
+
+**`Anytime Touchdown Scorer` is not one market.** It is an alt-line family:
+0.5 (4,670 rows), 1.5 (4,277), 2.5 (2,764), 3.5 (51). Only the 0.5 line is
+genuinely "anytime". Each row carries its own line so the data is usable as-is,
+but treating the `type_name` as a single market would be wrong.
+
+### 4.0b — the join, verified by DATE AGREEMENT
+
+    exact date match       : 6,969 pairs (89.7%)   138,372 rows (97.5%)
+    off by exactly ONE day :     0 pairs ( 0.0%)   <- a date bug would live here
+    within a week, not 1   :   401 pairs ( 5.2%)   bye week / DNP
+    no game within a week  :   396 pairs ( 5.1%)   inactive / never played
+    id never resolved      :    28 pairs ( 0.4%)
+
+**Zero off-by-one is the result that matters.** The standing rule is that a
+numeric id matching the expected shape is not evidence it is the right id — 399
+MLB ids once matched by shape and 0.00% landed on the right game date. Here the
+10% that miss are players who did not play, which is correct behaviour for a
+prop posted on someone later inactive, not a keying defect.
+
+### 4.0c — NFL CANNOT SERVE PROPS AT A FIXED BOARD LINE
+
+This is the finding 4.0 existed to produce, and it changes the architecture
+rather than a constant.
+
+MLB shows every batter at 0.5 hits. That is legitimate **only because 84-93% of
+really posted hits lines are 0.5**. NFL is not like that. Share of rows sitting
+at each market's single most common line:
+
+    Total Rushing Plus Receiving Yards    7.1%
+    Total Rushing Yards                   8.5%
+    Total Receiving Yards                10.3%
+    Longest Reception                    12.8%
+    Total Carries                        14.9%
+    Total Receptions                     16.9%
+    ...
+    Total Sacks                          96.4%
+    Total Defensive Interceptions       100.0%
+
+Phase 3.0 measured that this concentration predicts the fitted calibration slope
+at **r = +0.849**, and that `pitcher-outs` — MLB's worst at **16%** — came out
+with a NEGATIVE slope and put backup catchers at the top of the board.
+**Fifteen NFL markets sit below that 16%.** Serving them at one fixed line would
+reproduce that failure fifteen times over.
+
+The cause is physical, not a data defect: a WR1's receiving line is 70.5 and a
+WR3's is 15.5. No single number describes both.
+
+**So NFL serves each player at HIS OWN posted line — and therefore calibrates at
+that line.**
+
+### The general rule this establishes
+
+Phase 3.0 is usually remembered as "calibrate at the board's fixed line". That
+is the instance, not the rule. **The rule is CALIBRATE WHERE YOU SERVE.**
+
+    MLB   serves a fixed line      -> calibrate at the fixed line   (3.0's fix)
+    NFL   serves per-player lines  -> calibrate at each row's line
+
+Which means the PRE-3.0 MLB approach — fitting at each row's own market line —
+was not wrong in itself; it was wrong for a board that had been changed to serve
+fixed. Getting this backwards in either direction is the same bug, and it is
+invisible: `pitcher-outs` shipped inverted with the best ECE in the book.
+
+`Total Sacks` and `Total Defensive Interceptions` are the two exceptions,
+concentrating at 0.5 like MLB's batter markets, and may be served fixed. They
+are declared in `audit_nfl_phase4.FIXED_LINE_MARKETS`, and the audit fails if
+that declaration ever stops matching the measurement.
 
 ---
 
