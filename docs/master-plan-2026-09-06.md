@@ -313,10 +313,86 @@ mapped:
 - **3.3** Plate-appearance simulation — **BUILT AND VALIDATED, 2026-09-07.**
   `predict/mlb_pa_sim.py`, `calibrate_pa_sim.py`, `src/test_pa_sim.py`. Written
   up below. NOT wired to any surface: 3.4 decides that.
-- **3.4** **Does the simulation beat the direct model at its own job?** The
-  control exists and is strong. If it does not, the direct model keeps the board
-  and the sim is judged on game markets alone.
+- **3.4** Sim vs direct model — **MEASURED: A TIE, 2026-09-08.** The direct
+  model keeps the props board; the simulation's case rests on game markets.
+  `compare_sim_vs_direct.py`. Written up below.
 - **3.5** Game ship gate: CLV against the closing moneyline and total.
+
+## 3.4 — a dead heat, and the first answer was an artifact of my own comparison
+
+`compare_sim_vs_direct.py`. Both models scored on **identical held-out rows**,
+same 2026-01-01 split, same strictly-before leakage rule, same paired t-test the
+fitter uses for its betting bar. The direct model's numbers come from the
+PERSISTED calibration — the control the board actually has.
+
+**Result, 2,647 simulated games at 4,000 iterations:**
+
+| market | n | direct | sim | delta | t | verdict |
+|---|---|---|---|---|---|---|
+| hits | 28,239 | 0.66798 | 0.66790 | -0.00008 | -0.18 | TIE |
+| singles | 28,175 | 0.68305 | 0.68269 | -0.00036 | -0.90 | TIE |
+| **home-runs** | 28,251 | 0.35356 | **0.35266** | **-0.00090** | **-2.69** | **SIM BETTER** |
+| total-bases | 15,942 | 0.67102 | 0.67120 | +0.00018 | +0.26 | TIE |
+| **pooled** | **100,607** | 0.58439 | 0.58404 | -0.00035 | **-1.57** | **TIE** |
+
+**THE FIRST RUN SAID THE OPPOSITE, AND IT WAS MY COMPARISON THAT WAS WRONG.**
+Uncalibrated, the simulation lost decisively — pooled **t = +6.12**, "DIRECT
+BETTER" on three markets. That verdict looked clean and publishable. It was an
+artifact: the direct model's probability passes through a fitted Platt
+calibration and the simulation's was raw Monte Carlo frequency, so the two were
+never comparable. The tell was that the simulation ran high on **all four**
+markets at once — four independent failures in the same direction is a missing
+layer, not a modelling defect.
+
+Giving the simulation its own Platt, **fitted on SELECT only** (fitting it on
+held-out rows would be leakage and would flatter it into an unearned win), moved
+the pooled result from t=+6.12 against to t=-1.57 slightly for. The simulation
+is now **better calibrated than the direct model on three of four markets**:
+
+    market        mean p_direct   mean p_sim   actual
+    hits             0.5760        0.5683      0.5622
+    singles          0.4543        0.4519      0.4483
+    home-runs        0.1182        0.1162      0.1159
+    total-bases      0.3781        0.3980      0.3932
+
+**A CAVEAT THAT CUTS ONE WAY.** Monte Carlo noise at 4,000 iterations adds
+~1.5e-4 to the simulation's log-loss and falls only on the simulation. So the
+home-runs win is CONSERVATIVE — the true effect is at least that large — and the
+pooled TIE may understate the simulation: removing that penalty from a -0.00035
+delta would put t near -2.2, which is significant. The pooled verdict genuinely
+sits on the boundary and is not claimed as more than a tie. Settling it needs a
+10,000-iteration re-run.
+
+**THE VERDICT: the direct model keeps the props board.** A tie means no change,
+because the simulation is the more expensive thing to run and maintain, and
+-0.0005 log-loss does not buy a Monte Carlo per slate against a closed-form
+model.
+
+**But this is not a rejection the way 3.1 was.** A from-scratch simulation
+fought a tuned, validated, calibrated direct model to a statistical draw and beat
+it on one market. The simulation's real case was never props — it is game
+markets, which the direct model cannot answer at all. If Phase 3.5 puts it in
+production for moneyline and totals, serving home runs from it costs nothing
+extra.
+
+**THREE BUGS FOUND HERE, ALL IN PHASE 3.3 CODE COMMITTED THE DAY BEFORE**, none
+visible by reading it:
+
+1. **`PaRates.from_counts` double-subtracted strikeouts.** `raw[:I_OUT]` spans
+   indices 0..6, which already includes K at 6, and K was subtracted again. OUT
+   was understated by the whole strikeout rate, the distribution summed to 0.778,
+   and normalisation inflated every other outcome by **1.286x**. The 3.3 tests
+   could not catch it: they all build `PaRates(LEAGUE_PA)` directly and never
+   call `from_counts`. It surfaced as a simulated home-run rate of 0.203 against
+   a real 0.116, found by a calibration diagnostic. Now pinned by a round-trip
+   identity test.
+2. **The calibration asymmetry above.**
+3. **An unbounded half-inning.** `while outs < 3` never terminates if a matchup
+   yields P(K)+P(OUT) ~ 0. Capped at 60 batters — about 3x the largest half-inning
+   in major-league history, verified bit-identical on real play. It would have
+   been indistinguishable from the machine-sleep hangs that killed two runs.
+
+---
 
 ## 3.3 — the plate-appearance simulation, and a run deficit that is explained
 

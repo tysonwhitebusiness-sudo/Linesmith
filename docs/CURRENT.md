@@ -7,7 +7,9 @@ Phase 3.2 (home runs) is COMPLETE, persisted and live — it was never
 unmodellable.
 Phase 3.3 (the PA simulation) is BUILT AND VALIDATED, and deliberately wired to
 nothing.
-Phase 3.4 — does the simulation beat the direct model? — is NEXT.**
+Phase 3.4 is MEASURED: a TIE — the direct model keeps the props board, and the
+simulation's case rests on game markets.
+Phase 3.5 (the game ship gate) is NEXT, and has a hard prerequisite — see §7.**
 
 All work through 3.3 is pushed to `origin/main`. **The Render worker is
 `autoDeploy: false` and has NOT been deployed** — it still runs pre-3.0 code, so
@@ -165,15 +167,54 @@ constant is held at its real value.
 home runs, total bases and strikeouts are pure PA outcomes and are NOT biased.
 Runs, RBIs and game totals ARE — **3.5's game gate needs non-PA events first.**
 
-## 6. Phase 3.4 starts here
+## 6. Phase 3.4 — a dead heat; the direct model keeps the props board
 
-**3.4 asks whether the simulation beats the direct model at its own job.** If it
-does not, the direct model keeps the board and the sim is judged on game markets
-alone. The control is stronger than when the plan was written: correct
-calibration since 3.0, plus a validated home-run market from 3.2.
+`compare_sim_vs_direct.py`, 2,647 simulated games at 4,000 iterations, both
+models scored on identical held-out rows:
 
-Compare on PA-outcome markets only (see above), on the same
-SELECT/HELD-OUT split the fitter uses, with the same paired t-test.
+| market | n | direct | sim | t | verdict |
+|---|---|---|---|---|---|
+| hits | 28,239 | 0.66798 | 0.66790 | -0.18 | TIE |
+| singles | 28,175 | 0.68305 | 0.68269 | -0.90 | TIE |
+| **home-runs** | 28,251 | 0.35356 | **0.35266** | **-2.69** | **SIM BETTER** |
+| total-bases | 15,942 | 0.67102 | 0.67120 | +0.26 | TIE |
+| **pooled** | **100,607** | 0.58439 | 0.58404 | **-1.57** | **TIE** |
+
+**THE FIRST RUN SAID THE OPPOSITE (pooled t=+6.12, direct wins) AND IT WAS THE
+COMPARISON THAT WAS WRONG** — the direct model got a fitted Platt and the
+simulation got raw Monte Carlo frequencies. The tell was the simulation running
+high on all four markets at once. Giving it its own Platt, fitted on SELECT only
+(held-out would be leakage), flipped t=+6.12 against to t=-1.57 for. The
+simulation is now better calibrated than the direct model on 3 of 4 markets.
+
+**Caveat, and it cuts one way.** Monte Carlo noise at 4,000 iterations adds
+~1.5e-4 to the simulation's log-loss and falls only on it. The home-runs win is
+therefore CONSERVATIVE, and the pooled TIE may understate the simulation —
+removing that penalty puts pooled t near -2.2. **Not claimed as more than a
+tie.** A 10,000-iteration re-run would settle it (~2h).
+
+**Verdict: the direct model keeps the props board.** A tie means no change; a
+-0.0005 log-loss gain does not buy a Monte Carlo per slate against closed form.
+This is NOT a rejection like 3.1 — the simulation drew with a tuned, validated
+control and beat it once. Its real case is game markets, which the direct model
+cannot answer at all.
+
+## 7. Phase 3.5 starts here — and it has a hard prerequisite
+
+**3.5 is the game ship gate: CLV against the closing moneyline and total.**
+
+**READ THIS BEFORE STARTING.** Phase 3.3 measured the simulation ~0.3
+runs/team-game light because it scores ONLY through plate appearances. Real
+baseball also scores on reached-on-error (~0.12), net stolen bases (~0.10) and
+wild pitches/passed balls (~0.08). That deficit does not touch hits/singles/
+home-runs/total-bases — which is why 3.4 could compare on them fairly — but it
+**directly biases every game total and moneyline**, which is exactly what 3.5
+measures. Modelling non-PA events is a prerequisite for 3.5, not an optional
+refinement.
+
+Also absent and relevant to game markets: no home-field advantage, no extra
+innings (10.5% of simulated games tie), and the bullpen is one league-average
+arm after 24 batters faced.
 
 **All five milestone schemes are now wired.** They were not five wins; they were
 two, and the reason matters more than the wiring.
@@ -209,7 +250,7 @@ A confidence gain, not a performance gain. `stolen-bases`' log-loss 0.330 ->
 evidence instead of possibly being small-sample noise, and `stolen-bases` shows
 Q1 0.019 -> Q5 0.181 (9.5x) across 40,322 rows.
 
-## 7. Open, deliberately not closed
+## 8. Open, deliberately not closed
 
 - **`served_probability_spread` is computed and persisted but NOT gated.** A
   positive slope only says the ordering is not reversed. `pitcher-strikeouts`
@@ -232,7 +273,7 @@ Q1 0.019 -> Q5 0.181 (9.5x) across 40,322 rows.
   unreferenced writer still inserting `prop_score`/`score_grade`/`trust_tier`
   into `pick_history`. Residue from Phase 1.
 
-## 8. Known gaps, carried forward
+## 9. Known gaps, carried forward
 
 - **`prop_model_cache` is the only table holding prop model output.**
   `pick_history` receives only MLB game-moneyline rows. Its historical prop rows
@@ -256,7 +297,7 @@ Q1 0.019 -> Q5 0.181 (9.5x) across 40,322 rows.
   active MLB rows as they stood before 3.0. `write_calibration` is versioned and
   deactivates prior rows, so a revert is a version flip or a re-fit.
 
-## 9. Standing constraints
+## 10. Standing constraints
 
 - **Do not deploy to Render without asking.** The worker still runs pre-3.0
   code until it is deployed, so its scheduled `mlbProjectionsJob` will keep

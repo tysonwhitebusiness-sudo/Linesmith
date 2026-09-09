@@ -56,6 +56,38 @@ def test_league_rates_are_a_distribution():
     check("there are exactly eight outcomes", len(S.OUTCOMES), 8)
 
 
+def test_from_counts_round_trips_the_league():
+    """THE IDENTITY THAT WAS MISSING, and the bug it would have caught.
+
+    Feeding the league's own counts back through `from_counts` with no shrink
+    must return the league distribution. It did not: `raw[:I_OUT]` already
+    includes K, and an earlier version subtracted K a second time, understating
+    OUT by the whole strikeout rate. The distribution then summed to 0.778 and
+    normalisation scaled all seven other outcomes by 1.286.
+
+    Nothing caught it because every other test in this file builds
+    PaRates(LEAGUE_PA) directly. It showed up in Phase 3.4 as a simulated
+    home-run rate of 0.203 against a real 0.116.
+    """
+    pa = 100_000.0
+    counts = {n: S.LEAGUE_PA[i] * pa for i, n in enumerate(S.OUTCOMES) if n != "OUT"}
+    r = S.PaRates.from_counts(counts, pa, prior_pa=0.0)
+    for i, name in enumerate(S.OUTCOMES):
+        approx(f"round-trip preserves the league {name} rate",
+               r.p[i], S.LEAGUE_PA[i] - 1e-6, S.LEAGUE_PA[i] + 1e-6)
+
+    # And the shrink must move a player TOWARD the league, never past it.
+    hot = dict(counts)
+    hot["HR"] = counts["HR"] * 3
+    r_raw = S.PaRates.from_counts(hot, pa, prior_pa=0.0)
+    r_shrunk = S.PaRates.from_counts(hot, pa, prior_pa=pa)   # equal weight
+    check("shrinking pulls a hot HR rate back toward the league",
+          S.LEAGUE_PA[S.I_HR] < r_shrunk.p[S.I_HR] < r_raw.p[S.I_HR], True)
+
+    check("a player with no history falls back to the league exactly",
+          S.PaRates.from_counts({}, 0.0).p, S.LEAGUE_PA)
+
+
 def test_log5_algebra():
     """The three identities that make log5 the right combination."""
     lg = 0.25
@@ -216,6 +248,7 @@ def test_the_home_ninth_is_skipped_when_it_should_be():
 
 def main() -> bool:
     test_league_rates_are_a_distribution()
+    test_from_counts_round_trips_the_league()
     test_log5_algebra()
     test_matchup_renormalises()
     test_home_run_clears_the_bases()

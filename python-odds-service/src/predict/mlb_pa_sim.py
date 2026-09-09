@@ -131,7 +131,19 @@ class PaRates:
         raw = [max(0.0, counts.get(k, 0.0)) / pa for k in OUTCOMES]
         # Whatever is unaccounted for is an out; negative means the inputs
         # disagree with each other and is clamped rather than propagated.
-        raw[I_OUT] = max(0.0, 1.0 - sum(raw[:I_OUT]) - raw[I_K])
+        #
+        # `raw[:I_OUT]` is indices 0..6, which ALREADY INCLUDES K at index 6.
+        # An earlier version subtracted `raw[I_K]` again here. That understated
+        # OUT by the whole strikeout rate (~0.222), so the distribution summed
+        # to ~0.778 and the normalisation below scaled every other outcome up by
+        # 1/0.778 = 1.286. Round-tripping the league rates through this function
+        # returned 1.286x on all seven non-OUT outcomes instead of the identity.
+        #
+        # It survived because nothing tested `from_counts` — the module's own
+        # tests build PaRates(LEAGUE_PA) directly. It surfaced in Phase 3.4 as a
+        # simulated home-run rate of 0.203 against a real 0.116, found by a
+        # calibration diagnostic rather than by reading the code.
+        raw[I_OUT] = max(0.0, 1.0 - sum(raw[:I_OUT]))
         w = pa / (pa + prior_pa) if (pa + prior_pa) > 0 else 0.0
         blended = [w * raw[i] + (1 - w) * league[i] for i in range(len(OUTCOMES))]
         s = sum(blended)
@@ -326,7 +338,17 @@ def _half_inning(lineup: list[tuple[float, ...]], start_idx: int,
     outs, runs = 0, 0
     bases = [False, False, False]
     idx = start_idx
-    while outs < 3:
+    # A HALF-INNING MUST TERMINATE. `while outs < 3` is unbounded if a matchup
+    # ever produces P(K) + P(OUT) ~ 0 — the simulation would spin forever inside
+    # one game, indistinguishable from a hung process, and take a multi-hour
+    # batch run with it. Shrinkage toward the league makes that distribution
+    # very unlikely, but "very unlikely" times millions of half-innings is not a
+    # guarantee. 60 batters is roughly three times the largest half-inning in
+    # major-league history, so this cannot bind on a real one.
+    MAX_BATTERS = 60
+    seen = 0
+    while outs < 3 and seen < MAX_BATTERS:
+        seen += 1
         slot = idx % len(lineup)
         cum = lineup[slot]
         r = rng.random()
