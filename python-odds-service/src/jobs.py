@@ -909,6 +909,32 @@ async def job_nhl_projections(yield_fn=None) -> dict:
                             run(_date.today(), {"points": 0.5, "assists": 0.5}))
 
 
+async def job_nfl_projections(yield_fn=None) -> dict:
+    """Phase 4.6 — the PROJECTION pipe for NFL: what Scan's NFL board reads.
+
+    NO LINES ARE PASSED, unlike MLB and NHL, and that is the design rather than
+    an omission. Those sports serve every player at one fixed line per market,
+    which works only because their lines really do concentrate there — 84-93%
+    of posted MLB hits lines are 0.5. Phase 4.0c measured NFL at 7.1-14.9%
+    across every yardage market, all below the 16% at which `pitcher-outs`
+    inverted, because a WR1's receiving line is 70.5 and a WR3's is 15.5. NFL
+    therefore serves a projection with a NULL line and Scan pairs it with each
+    candidate's own posted line.
+
+    Every NFL calibration is `probability_ok = False`, so this writes no
+    probability at all. Phase 4.5 owns that gate and needs the 2026 season to
+    produce held-out prop rows.
+
+    Runs hourly like its siblings. Out of season it resolves an empty slate and
+    reports that rather than raising, so health_check sees a job that ran fine
+    with nothing to do.
+    """
+    from datetime import date as _date
+    from predict.nfl_prop_serving import run
+
+    return await _run_timed("nflProjectionsJob", run(_date.today()))
+
+
 async def job_player_history_freshness(yield_fn=None) -> dict:
     """Phase 0 of docs/daily-picks-full-model-build-2026-08-27.md — keeps
     player_game_history current going forward, forever, once the one-time
@@ -1240,6 +1266,7 @@ JOB_REGISTRY = [
     # The two projection pipes — the only prop model output this app now
     # produces. 60 minutes.
     ("nhlProjectionsJob", job_nhl_projections, 60 * 60),
+    ("nflProjectionsJob", job_nfl_projections, 60 * 60),
     ("mlbProjectionsJob", job_mlb_projections, 60 * 60),
 ]
 

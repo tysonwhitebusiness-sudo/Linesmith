@@ -2337,6 +2337,49 @@ const LATEST_PROJECTION_BATCH = (sport: string) =>
                      WHERE sport = '${sport}' AND category = 'projection'
                        AND projection IS NOT NULL)`;
 
+/** One NFL projection row. Same shape as the MLB/NHL rows so the shared
+ *  `StatsBoardData` adapter reads all three identically. */
+export type NflProjectionRow = NhlProjectionRow;
+
+/**
+ * Phase 4.6 — Scan's NFL model rows. Pattern 2 from CLAUDE.md, kept fresh
+ * out-of-band by `nflProjectionsJob`.
+ *
+ * NO NAME JOIN, unlike MLB and NHL, and that is measured rather than
+ * careless. Those two INNER JOIN `athlete_crosswalk` to resolve a display
+ * name, because a board row rendering a raw athlete id is worse than an absent
+ * one. NFL cannot: measured 2026-09-09, `athlete_crosswalk` holds **zero** NFL
+ * rows with a non-null `athlete_name`. The join would therefore drop 177 of
+ * 1,931 rows (51 of 495 players) and still render every survivor nameless —
+ * paying a real cost for nothing.
+ *
+ * It is also unnecessary. Scan takes a player's NAME from the CANDIDATE, and
+ * uses the projection only for the model's own columns; `useProjections` joins
+ * the two on `subjectId|dimension`. So `subjectName` is null here and no row
+ * is lost.
+ *
+ * `line`, `modelProb` and `leagueBaseline` are null on every NFL row by
+ * construction — the serving pipe asserts it. NFL serves per-player lines
+ * (Phase 4.0c) so there is no board line to price against, and every NFL
+ * calibration is `probability_ok = false` until Phase 4.5 has a held-out
+ * season to gate on.
+ */
+export async function readNflProjections(): Promise<NflProjectionRow[]> {
+  return pgAll<NflProjectionRow>(
+    `SELECT p.subject_id AS "subjectId", NULL AS "subjectName",
+            NULL AS "teamAbbr", p.game_id AS "gameId", p.dimension,
+            p.projection, p.model_prob AS "modelProb", p.line,
+            p.projected_toi AS "projectedToi", p.model_sample_size AS "sampleSize",
+            p.league_baseline AS "leagueBaseline",
+            p.computed_at AS "computedAt"
+       FROM prop_model_cache p
+      WHERE p.sport = 'nfl' AND p.category = 'projection'
+        AND p.projection IS NOT NULL
+        AND ${LATEST_PROJECTION_BATCH('nfl')}`,
+    [],
+  );
+}
+
 export interface MlbProjectionRow {
   subjectId: string;
   subjectName: string | null;

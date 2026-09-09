@@ -17,18 +17,32 @@
  * separate: the model going missing leaves Scan a working board without a
  * ranking, rather than an error page.
  *
- * ONLY MLB AND NHL HAVE A MODEL. Every other sport gets `null` and Scan renders
- * exactly as it did before — no rank column, no projection. That is the plan's
- * rule showing through the types: nothing unvalidated gets a number next to
- * something validated, and the other seven sports have not been fitted yet.
+ * ONLY MLB, NHL AND NFL HAVE A MODEL. Every other sport gets `null` and Scan
+ * renders exactly as it did before — no rank column, no projection. That is the
+ * plan's rule showing through the types: nothing unvalidated gets a number next
+ * to something validated, and the remaining six sports have not been fitted yet.
+ *
+ * NFL IS FITTED BUT CARRIES NO PROBABILITY (Phase 4.6). Its five markets serve
+ * a projection and a sample size with `probability` null on every row, because
+ * every NFL calibration is `probability_ok = false` until Phase 4.5 has a
+ * held-out season to gate on — NFL's whole prop archive is one season, dense
+ * only Sept-Nov 2025, and at MLB's cutoff its largest market has 42 held-out
+ * rows. Under Phase 2's rule those rows appear, show a projection, and rank
+ * within their own market while taking no global position. `rankAcrossMarkets`
+ * already does exactly that for a null probability, so NFL needs no special
+ * case here — which is the point of the null being the signal rather than a
+ * flag beside it.
  */
 import { useEffect, useState } from 'react';
 import type { Sport } from '@/lib/core/types';
 import type { StatsBoardData } from '@/lib/sports/nhl/adapters/statsBoardAdapter';
 import { rankAcrossMarkets, type RankedRow } from '@/lib/sports/propRanking';
 
-/** Sports with a fitted, gated prop model. Everything else has no projection pipe at all. */
-const MODELLED: ReadonlySet<string> = new Set(['mlb', 'nhl']);
+/** Sports with a fitted prop model and a `/api/{sport}/projections` route.
+ *  Everything else has no projection pipe at all. Membership here means a
+ *  PROJECTION exists — not that any market has earned a probability; NFL is in
+ *  the set with `probability` null on all five of its markets. */
+const MODELLED: ReadonlySet<string> = new Set(['mlb', 'nhl', 'nfl']);
 
 /**
  * Scan's dimension vocabulary against the model's.
