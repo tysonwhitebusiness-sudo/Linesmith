@@ -1294,6 +1294,60 @@ surface.
 **Gate:** NFL rows appear on Scan, ranked against MLB rows, with a sample size on
 every row and no probability on any market that has not cleared 4.5.
 
+**4.6 IS COMPLETE (2026-09-08), and the gate's two halves turned out to
+contradict each other.** "Ranked against MLB rows" and "no probability on any
+market that has not cleared 4.5" cannot both hold: the cross-market rank IS
+`calibrated P(over) - league baseline`, so a row with no probability has no
+quantity to rank on. The no-probability half wins, because it is the half
+carrying the evidence claim. Under Phase 2's own rule an unranked row is a
+first-class state: it appears, shows its projection, and ranks WITHIN its
+market, but takes no global position. Measured live on `/nfl`: 0 rank chips,
+which is correct rather than degraded. NFL joins the board on **Phase 2's
+terms**, not on a rank it has not earned.
+
+Five pieces, one pipe:
+
+| piece | file |
+|---|---|
+| shared market table | `python-odds-service/src/predict/nfl_markets.py` |
+| the pipe | `python-odds-service/src/predict/nfl_prop_serving.py` |
+| the schedule | `nflProjectionsJob` in `jobs.py`'s `JOB_REGISTRY` (hourly) |
+| the read | `readNflProjections()` + `app/api/nfl/projections/route.ts` |
+| the board shape | `lib/sports/nfl/adapters/statsBoardAdapter.ts` |
+
+**No board line is served**, per 4.0c: line concentration is 7.1-14.9% across
+every yardage market, all below the 16% at which MLB's `pitcher-outs` inverted,
+because a WR1's receiving line is 70.5 and a WR3's is 15.5. Scan pairs each
+projection with the candidate's OWN posted line, which is where the per-player
+line comes from for free.
+
+**The subject-id prefix is not what the code says it is.**
+`lib/sports/nfl/adapter.ts` documents the scheme as `espn:nfl:{id}`;
+`teamSportEspn.ts` actually builds `espn:${espnSport}:${id}`, and NFL's
+`espnSport` is **football**. Measured live: `espn:football:4678006`. Stripping
+the literal `espn:nfl:` would have left every id untouched and matched ZERO
+history rows — **silently**, because a miss is a skipped player, not an error.
+This is the same failure class that cost 4.3 an hour (MLB's crosswalk reused for
+NFL, zero joins, no error). `_bare_id` splits on the last `:` instead, so it is
+correct for all three forms.
+
+`readNflProjections` does **no name join**: `athlete_crosswalk` holds zero NFL
+rows with a name, so joining would have dropped 177 of 1,931 rows and still
+rendered the rest nameless. Scan takes the name from the candidate.
+
+**Verified on a production build against real data.** `/api/nfl/projections`
+returns 5 markets / 1,931 rows, `hasProbability=false` on all five. On the live
+`/nfl` board, 7 of 7 Receptions candidates join and render a projection with its
+sample size ("Some history — 30 games behind this projection"); the 2 Passing
+Yards rows correctly carry none, that market being unfitted. `tsc` clean,
+359/359 TS tests, 38/38 job registry contract.
+
+**Shipped alongside** (`c229399`): Scan's row footer is now always rendered when
+there are rows — "Showing 150 of 1,604" with "Show 50 more" and "Show all". An
+absent footer was ambiguous between "everything is already on screen" and "the
+button is broken", and late on a slate the count is what makes a board falling
+from 844 rows to 33 legible rather than alarming.
+
 ---
 
 # Phase 5 — College football
