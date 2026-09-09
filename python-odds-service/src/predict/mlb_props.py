@@ -479,7 +479,7 @@ async def load_start_keys(conn=None,
     return {(r["game_date"], str(r["athlete_id"])) for r in raw}
 
 
-def load_game_history_parquet(slug: str, parquet_path: str,
+def load_game_history_parquet(slug: str, parquet_path: str | None = None,
                               athlete_ids: list[str] | None = None) -> list[tuple]:
     """`load_game_history`, reading the Parquet corpus instead of Postgres.
 
@@ -500,8 +500,6 @@ def load_game_history_parquet(slug: str, parquet_path: str,
     athlete_id, stat, volume), sorted the same way — because `build` walks the
     list and `break`s on `as_of`, which is only correct while it stays sorted.
     """
-    import duckdb
-
     spec = BY_SLUG[slug]
     where = [f"sport = 'mlb'",
              required_keys_sql(spec),
@@ -514,9 +512,19 @@ def load_game_history_parquet(slug: str, parquet_path: str,
     sql = (f"SELECT id, game_date, athlete_id, {spec.stat_sql} AS stat, "
            f"{spec.volume_sql} AS volume "
            f"FROM read_parquet(?) WHERE {' AND '.join(where)}")
-    con = duckdb.connect()
-    try:
+    # The connection and the glob both come from `corpus_location`, so this
+    # query is byte-identical whether the corpus is a local directory or an
+    # S3 bucket — moving it is an env var, not a code change.
+    from corpus_location import corpus_location, read_parquet_glob
+
+    if parquet_path is None:
+        con, parquet_path = read_parquet_glob(corpus_location(), "player_game_history")
+    else:
+        import duckdb
+
+        con = duckdb.connect()
         con.execute("INSTALL json; LOAD json;")
+    try:
         raw = con.execute(sql, [parquet_path, *params]).fetchall()
     finally:
         con.close()
