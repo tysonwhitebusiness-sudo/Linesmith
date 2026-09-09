@@ -316,7 +316,80 @@ mapped:
 - **3.4** Sim vs direct model — **MEASURED: A TIE, 2026-09-08.** The direct
   model keeps the props board; the simulation's case rests on game markets.
   `compare_sim_vs_direct.py`. Written up below.
-- **3.5** Game ship gate: CLV against the closing moneyline and total.
+- **3.5** Game ship gate — **MEASURED 2026-09-08: NO DEMONSTRATED EDGE, and the
+  first measurement was contaminated.** `clv_pregame_rebuild.py`. Written up
+  below.
+
+## 3.5 — the game ship gate, and a broken measurement that looked like a broken model
+
+**First answer, from `clv_backtest` as it stood:** moneyline CLV mean -0.0791,
+34.5% beating the close, **t = -5.83**; total mean -0.0168, **t = -2.78**. Read
+literally, the game model was losing badly to the closing line on both markets.
+
+**That measurement was contaminated, and the contamination was in the entry
+price.** The worst rows had entry prices of -10000 — a 99% implied probability
+— sitting in the same `game_picks` row as a pinnacle market probability of 0.50.
+
+The cause is not corrupt data. It is IN-PLAY data. Measured on
+`game_odds_book_lines`, MLB moneylines, joined to each game's own commence_time:
+
+    implausible prices (|odds| >= 1000):  70 rows, 70 fetched AFTER first
+                                          pitch — 100.0%
+    ordinary prices    (|odds| <  1000): 629 rows, 537 after — 85.4%
+
+A moneyline reaches -10000 once a team has all but won, so those are REAL
+prices — just not prices anyone could have taken at pick time. One game carried
+betmgm home -200, fanduel home +215 and hardrockbet home -10000 side by side,
+which is only possible across different in-game moments. Both price-attach
+paths recorded whatever the book was quoting when their job ran, and those jobs
+run during games; `attach_moneyline_price` writes once behind a `price IS NULL`
+guard, so the first value in became permanent. **22 of 291 MLB picks** were
+priced this way.
+
+`_market_prob_for`, in the same file reading the same rows, was never affected —
+it requires both sides from the same book and de-vigs, so a lone in-play row
+cannot satisfy it. One column of `game_picks` was right while the column beside
+it was wrong.
+
+**Both write paths are now guarded** — `_reference_row` takes a `commence_time`
+and returns nothing rather than an in-play price; `odds_lines_cycle` skips a
+game that has already started. Pinned by `src/test_pregame_price_only.py`.
+
+**The history could not be repaired in place** — only 6 of 295 MLB picks have
+any pregame row in `game_odds_book_lines`. But `game_odds_history` is a genuine
+point-in-time log (223,995 rows, 735 events, 51.9% pregame coverage, 0.76%
+implausible), so the measurement was rebuilt from it: entry = last observation
+at or before the pick's own capture time, close = last before first pitch, both
+from the SAME book, entry strictly before close.
+
+**REBUILT RESULT — one value per pick, averaged across the 18 books with real
+coverage:**
+
+| market | n | mean | median | beat close | mean t | sign test |
+|---|---|---|---|---|---|---|
+| moneyline | 129 | -0.00709 | -0.00659 | **34.9%** | -1.57 | **z=-3.43, p=0.0006** |
+| total | 133 | -0.00038 | -0.00177 | 48.9% | -0.12 | p=0.79 |
+
+**The two tests disagree on moneyline, and both are reported rather than
+choosing the flattering one.** The distribution is skewed: more picks lose a
+little to the close than beat it (sign test, significant), but the wins are
+larger when they come (mean test, not significant). Economically the mean is
+what a bettor collects; the sign test says the model is more often on the wrong
+side of small moves.
+
+**VERDICT: no demonstrated edge on either market, and no evidence of the severe
+negative CLV originally reported.** The gate asks for positive closing line
+value. There is none — moneyline is mildly and inconsistently negative, totals
+are indistinguishable from noise. The game model does not ship on this evidence.
+
+**Two limits on how far this should be pushed.** The window is short —
+`clv_backtest`'s own docstring records that everything before 2026-08-27 is
+permanently unjoinable, because the-odds-api rows were keyed by a foreign UUID
+rather than the real MLB game_pk. And n=129/133 picks is thin for a market
+question. The honest reading is "no edge demonstrated yet", not "no edge
+exists"; the corrected pipeline will accumulate clean evidence from here.
+
+---
 
 ## 3.4 — a dead heat, and the first answer was an artifact of my own comparison
 

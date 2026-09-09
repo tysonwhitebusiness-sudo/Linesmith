@@ -38,6 +38,7 @@ _to_unified below does directly.
 """
 import json
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import httpx
 
@@ -666,6 +667,26 @@ async def _current_moneyline_edge_significant(sport: str) -> bool | None:
     return result.significant
 
 
+def _has_started(commence_time) -> bool:
+    """True when first pitch is already in the past.
+
+    Returns False for a missing or unparseable commence_time: refusing to
+    attach a price because a timestamp could not be read would silently drop
+    real pregame prices, which is the opposite of the defect being fixed.
+    """
+    if not commence_time:
+        return False
+    ct = commence_time
+    if isinstance(ct, str):
+        try:
+            ct = datetime.fromisoformat(ct[:-1] + "+00:00" if ct.endswith("Z") else ct)
+        except ValueError:
+            return False
+    if ct.tzinfo is None:
+        ct = ct.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) > ct
+
+
 async def attach_prices_from_lines(lines: list[GameLine], games: list[SnapshotGame]) -> None:
     if not lines:
         return
@@ -693,6 +714,28 @@ async def attach_prices_from_lines(lines: list[GameLine], games: list[SnapshotGa
         game_id = game.game_pk
         pick = await db.get_game_pick("mlb", game_id)
         if pick is None:
+            continue
+
+        # NO PRICE IS ATTACHED AFTER FIRST PITCH.
+        #
+        # `line` is whatever the provider is quoting right now, and this job
+        # runs on a cycle — so when it runs during a game it was writing an
+        # IN-PLAY price into the pick's entry price, permanently, because
+        # attach_moneyline_price writes once behind a `price IS NULL` guard.
+        #
+        # Measured 2026-09-08: 22 of 291 MLB picks carried an entry price of
+        # |odds| >= 1000, nine at exactly -10000 — a 99% implied probability
+        # sitting in the same row as a market probability of 0.50 from
+        # pinnacle. A moneyline reaches -10000 when a team has all but won, so
+        # these were real prices, just not prices anyone could have taken at
+        # pick time. `clv_backtest` then compared them against a genuine
+        # pregame close and reported CLV of -57 probability points, which made
+        # the game model look far worse than the evidence supports.
+        #
+        # Skipping is the correct behaviour rather than a loss: a pick with no
+        # pregame price recorded is honestly un-priced, and NULL is already
+        # what every downstream reader handles.
+        if _has_started(pick.commence_time):
             continue
 
         if line.moneyline and line.moneyline.home is not None and pick.ml_initial_side == "home":

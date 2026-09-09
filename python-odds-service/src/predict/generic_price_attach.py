@@ -23,13 +23,59 @@ order the player-prop edge model already uses), else whichever book's row
 was fetched most recently. This is a capture/grading price (what would a
 real $10 bet have paid), not a claim that the chosen book is optimal.
 """
+from datetime import datetime, timezone
+
 import db
 from predict.price_resolution import SHARP_REFERENCE_PRIORITY
 from predict.odds_math import american_to_decimal, devig_two_way, is_plausible_decimal_odds
 
 
-def _reference_row(rows: list["db.GameOddsBookLineRow"], game_id: str, market: str, side: str) -> "db.GameOddsBookLineRow | None":
+def _reference_row(
+    rows: list["db.GameOddsBookLineRow"],
+    game_id: str,
+    market: str,
+    side: str,
+    commence_time: "datetime | None" = None,
+) -> "db.GameOddsBookLineRow | None":
+    """The price attached to a captured pick — which must be a PREGAME price.
+
+    `commence_time` is not optional in spirit. Without it this function
+    happily returns an IN-PLAY price, and that is not a hypothetical:
+
+    `game_odds_book_lines` is overwhelmingly a post-commence snapshot table.
+    Measured 2026-09-08 on MLB moneylines, joined to each game's own
+    `commence_time`:
+
+        implausible prices (|odds| >= 1000):  70 rows, 70 fetched AFTER first
+                                              pitch — 100.0%
+        ordinary prices    (|odds| <  1000): 629 rows, 537 after — 85.4%
+
+    A moneyline swings to -10000 once a team is nearly certain to win, so
+    those 70 rows are REAL prices, just not prices anybody could have bet at
+    pick time. One game showed betmgm home -200, fanduel home +215 and
+    hardrockbet home -10000 side by side, which is only possible across
+    different in-game moments.
+
+    What that cost: `attach_moneyline_price` writes once (`price IS NULL`
+    guard), so whichever row this returned first became the pick's permanent
+    entry price. 22 of 291 MLB picks got an entry price of |odds| >= 1000,
+    nine at exactly -10000. Then `clv_backtest` compared that against a real
+    pregame close and reported CLV of -57 probability points, making the game
+    model look far worse than it is. The measurement was broken, not
+    necessarily the model.
+
+    Note `_market_prob_for` below never had this problem, for an accidental
+    reason worth keeping: it requires BOTH sides from the SAME book and
+    de-vigs them, so a lone in-play row cannot satisfy it and it falls through
+    to a book with a sane two-sided price. Its numbers were right while this
+    function's were wrong, in the same row of the same table.
+    """
     candidates = [r for r in rows if r.game_id == game_id and r.market == market and r.side == side]
+    if commence_time is not None:
+        pregame = [r for r in candidates if _fetched_before(r, commence_time)]
+        # No pregame price is a real answer: better to attach nothing than to
+        # attach a price from the seventh inning and call it an entry.
+        candidates = pregame
     if not candidates:
         return None
     for name in SHARP_REFERENCE_PRIORITY:
@@ -37,6 +83,35 @@ def _reference_row(rows: list["db.GameOddsBookLineRow"], game_id: str, market: s
             if r.bookmaker.lower() == name:
                 return r
     return max(candidates, key=lambda r: r.fetched_at)
+
+
+def _fetched_before(row: "db.GameOddsBookLineRow", commence_time: "datetime") -> bool:
+    """True when this row was observed strictly before first pitch.
+
+    `fetched_at` arrives as either a datetime or an ISO string depending on the
+    driver path, and a naive/aware mismatch would raise rather than compare —
+    so both are normalised to UTC-aware here instead of at each call site.
+    """
+    fetched = row.fetched_at
+    if fetched is None:
+        return False
+    if isinstance(fetched, str):
+        try:
+            fetched = datetime.fromisoformat(
+                fetched[:-1] + "+00:00" if fetched.endswith("Z") else fetched)
+        except ValueError:
+            return False
+    if fetched.tzinfo is None:
+        fetched = fetched.replace(tzinfo=timezone.utc)
+    ct = commence_time
+    if isinstance(ct, str):
+        try:
+            ct = datetime.fromisoformat(ct[:-1] + "+00:00" if ct.endswith("Z") else ct)
+        except ValueError:
+            return False
+    if ct.tzinfo is None:
+        ct = ct.replace(tzinfo=timezone.utc)
+    return fetched <= ct
 
 
 _OPPOSITE = {"home": "away", "away": "home", "over": "under", "under": "over"}
@@ -126,7 +201,7 @@ async def attach_prices_for_sport(sport_key: str, app_sport: str) -> dict:
         for slot, ml_side in (("initial", pick.ml_initial_side), ("final", pick.ml_final_side)):
             if not ml_side:
                 continue
-            ref = _reference_row(rows, game_id, "moneyline", ml_side)
+            ref = _reference_row(rows, game_id, "moneyline", ml_side, pick.commence_time)
             if ref is not None:
                 await db.attach_moneyline_price(app_sport, game_id, slot, ml_side, int(ref.american_odds))
                 attached += 1
@@ -142,7 +217,7 @@ async def attach_prices_for_sport(sport_key: str, app_sport: str) -> dict:
         for slot, total_side in (("initial", pick.total_initial_side), ("final", pick.total_final_side)):
             if not total_side:
                 continue
-            ref = _reference_row(rows, game_id, "total", total_side)
+            ref = _reference_row(rows, game_id, "total", total_side, pick.commence_time)
             if ref is not None:
                 await db.attach_total_price(app_sport, game_id, slot, total_side, int(ref.american_odds))
                 attached += 1

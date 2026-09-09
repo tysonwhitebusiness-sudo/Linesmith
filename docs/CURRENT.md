@@ -7,9 +7,10 @@ Phase 3.2 (home runs) is COMPLETE, persisted and live — it was never
 unmodellable.
 Phase 3.3 (the PA simulation) is BUILT AND VALIDATED, and deliberately wired to
 nothing.
-Phase 3.4 is MEASURED: a TIE — the direct model keeps the props board, and the
-simulation's case rests on game markets.
-Phase 3.5 (the game ship gate) is NEXT, and has a hard prerequisite — see §7.**
+Phase 3.4 is MEASURED: a TIE — the direct model keeps the props board.
+Phase 3.5 is MEASURED: NO DEMONSTRATED EDGE on moneyline or total, after fixing
+a contaminated measurement that had reported severe negative CLV.
+**PHASE 3 IS COMPLETE. Phase 4 (NBA) is next.**
 
 All work through 3.3 is pushed to `origin/main`. **The Render worker is
 `autoDeploy: false` and has NOT been deployed** — it still runs pre-3.0 code, so
@@ -199,22 +200,61 @@ This is NOT a rejection like 3.1 — the simulation drew with a tuned, validated
 control and beat it once. Its real case is game markets, which the direct model
 cannot answer at all.
 
-## 7. Phase 3.5 starts here — and it has a hard prerequisite
+## 7. Phase 3.5 — no demonstrated edge, and a broken measurement first
 
-**3.5 is the game ship gate: CLV against the closing moneyline and total.**
+**3.5 measures the EXISTING game model, not the simulation.** The simulation
+cannot be graded on game markets yet — see §7b.
 
-**READ THIS BEFORE STARTING.** Phase 3.3 measured the simulation ~0.3
-runs/team-game light because it scores ONLY through plate appearances. Real
-baseball also scores on reached-on-error (~0.12), net stolen bases (~0.10) and
-wild pitches/passed balls (~0.08). That deficit does not touch hits/singles/
-home-runs/total-bases — which is why 3.4 could compare on them fairly — but it
-**directly biases every game total and moneyline**, which is exactly what 3.5
-measures. Modelling non-PA events is a prerequisite for 3.5, not an optional
-refinement.
+**The first answer was contaminated.** `clv_backtest` reported moneyline CLV
+mean -0.0791 at **t=-5.83** and totals at t=-2.78: the model losing badly to the
+close. The entry prices were IN-PLAY prices. `game_odds_book_lines` is
+overwhelmingly post-commence (100% of implausible MLB moneylines and 85.4% of
+ordinary ones fetched after first pitch), a moneyline reaches -10000 once a team
+has all but won, and both attach paths wrote whatever was quoted when their job
+ran. 22 of 291 MLB picks were priced that way, nine at exactly -10000 beside a
+pinnacle market probability of 0.50.
 
-Also absent and relevant to game markets: no home-field advantage, no extra
-innings (10.5% of simulated games tie), and the bullpen is one league-average
-arm after 24 batters faced.
+**FIXED at both write paths** — `_reference_row` takes a `commence_time` and
+returns nothing rather than an in-play price; `odds_lines_cycle` skips a started
+game. Pinned by `src/test_pregame_price_only.py`. `_market_prob_for` was never
+affected because it needs both sides from one book, which a lone in-play row
+cannot satisfy — one column right, the column beside it wrong.
+
+**REBUILT from `game_odds_history`** (a real point-in-time log: 223,995 rows,
+51.9% pregame coverage, 0.76% implausible) via `clv_pregame_rebuild.py`. Only 6
+of 295 picks had a pregame row in `game_odds_book_lines`, so the stored prices
+could not be repaired in place.
+
+| market | n | mean | median | beat close | mean t | sign test |
+|---|---|---|---|---|---|---|
+| moneyline | 129 | -0.00709 | -0.00659 | **34.9%** | -1.57 | **z=-3.43, p=0.0006** |
+| total | 133 | -0.00038 | -0.00177 | 48.9% | -0.12 | p=0.79 |
+
+**Both tests reported, not the flattering one.** The moneyline distribution is
+skewed: more picks lose a little to the close than beat it (sign test
+significant), but wins are larger when they come (mean test not significant).
+
+**VERDICT: no demonstrated edge; and no evidence of the severe negative CLV
+originally reported.** The gate asks for positive CLV and there is none. The
+game model does not ship on this evidence. Window is short (everything before
+2026-08-27 is permanently unjoinable — foreign-UUID keying, see
+`clv_backtest`'s docstring) and n is thin, so this is "no edge demonstrated
+yet", not "no edge exists". The corrected pipeline accrues clean evidence from
+here.
+
+## 7b. The simulation still cannot be graded on game markets
+
+Phase 3.3 scores runs ONLY through plate appearances. Measured:
+
+    total runs mean   8.28   real 8.8-9.2
+    P(total > 8.5)    0.435  the sim would say UNDER on nearly every total
+    home win pct      44.8%  real 52-54%; no home-field advantage modelled
+    ties              10.0%  real 0%; no extra innings, so a moneyline cannot
+                             even be quoted without arbitrarily reallocating
+
+Three prerequisites before the simulation can face this gate: non-PA scoring
+(reached-on-error ~0.12, steals ~0.10, wild pitches ~0.08 runs/team-game),
+extra innings, and home-field advantage.
 
 **All five milestone schemes are now wired.** They were not five wins; they were
 two, and the reason matters more than the wiring.
