@@ -60,7 +60,7 @@ de-registered, 2 pages and 3 components gone.
   genuine price machinery this app has — the sharp/consensus reference, the
   two-sided de-vig, the staleness bounds, `real_line_for`, `best_price` — with
   four dedicated test files, a live import from `generic_price_attach`, and
-  three of Phase 8's own sourcing items written as assertions about it. Phase 2
+  three of Phase 9's own sourcing items written as assertions about it. Phase 2
   needs it for the implied-probability column. It is now
   `predict/price_resolution.py`; `resolve_candidate_edge` became
   `resolve_candidate_price`, and the dead `raw_model_prob`/`model_prob`
@@ -297,7 +297,7 @@ mapped:
 - **`edgeModel.ts`** feeds PlayerDetail and the Home Runs board, both of which
   Phase 3 owns.
 - **`goodBets.ts`** no longer touches Scan, but still serves GameDetail's panel
-  and the historical track record. Phase 11 owns that page.
+  and the historical track record. Phase 12 owns that page.
 
 # Phase 3 — Finish MLB
 
@@ -548,7 +548,7 @@ assumed, n=31,238 joined rows:
 0.1119 against 0.1170 is one event on two schemes. 0.0069 is a market sixteen
 times rarer, and nothing about it looks wrong on inspection — it would simply
 train and calibrate confidently on the wrong question. **This is the same trap
-the plan already records for NFL in Phase 6.**
+the plan already records for NFL in Phase 4.**
 
 `MarketSpec.milestone_names` now carries such schemes separately from `names`,
 and the loader converts `L -> L - 0.5`. A non-integer line under a milestone
@@ -757,7 +757,7 @@ inventing one would be a guess dressed as a criterion.
 # Phase 4 — NFL
 
 **MOVED AHEAD OF NBA on 2026-09-08: the NFL season starts 2026-09-09.** NBA
-(now Phase 6) tips off in late October and loses nothing by waiting; its
+(now Phase 7) tips off in late October and loses nothing by waiting; its
 evidence base is entirely historical either way.
 
 **Every claim below was re-measured 2026-09-08 before these steps were
@@ -1350,7 +1350,243 @@ from 844 rows to 33 legible rather than alarming.
 
 ---
 
-# Phase 5 — College football
+# Phase 5 — Sustainability
+
+**Inserted 2026-09-09, between NFL and CFB, because the platform cannot carry
+another sport.** Every number here was measured on 2026-09-09 and is
+reproducible; none of it is inherited from the earlier audit, two of whose
+headline claims did not survive re-measurement (see 5.0).
+
+**THREE CEILINGS, AND ONE JOB IS THE LARGEST CONTRIBUTOR TO ALL THREE.**
+
+| ceiling | limit | measured | state |
+|---|---|---|---|
+| database | 8,192 MB | **7,174 MB (87.6%)** | ~7 days at +142 MB/day |
+| egress | 250 GB/mo | **~500 GB** | 2x over, billing overage |
+| worker RAM | 512 MB | **385 MB peak** | already OOM-killing a job |
+
+**The pattern behind all three is the same: the system moves and keeps
+everything, forever.** `mlbProjectionsJob` downloads 7,184,704 rows every run to
+compute 300 numbers, discarding 74% of what it transfers. That single query
+family is **64.7% of every row this database returns** (counted in
+`pg_stat_statements` over a 4.76-day window: 685,336,093 rows total, 143.9M/day).
+It is simultaneously the largest egress line, the cause of the worker OOM, and
+why the MLB board sat 13 hours stale on 2026-09-09.
+
+**WHY "SIX MONTHS OF HEADROOM" BECAME SEVEN DAYS.** The estimate was not
+careless; the regime changed underneath it. `prop_odds_history` went from 4,238
+rows/day across 12 books on 2026-08-24 to 775,342 rows/day across 26 books on
+2026-09-04 — **183x in eleven days** — as book coverage doubled and football
+season multiplied the slate. The two compound. Any projection made before
+2026-09-01 was describing a different system. **A linear headroom estimate is not
+a safe instrument here; 5.5 replaces it with a measured rate and an alarm.**
+
+**THE GOAL IS A STEADY STATE, NOT A BIGGER CEILING.** No tier upgrade, no
+overage. Today everything grows with TIME, so the 8 GB is a countdown. After
+this phase the serving database grows with the SLATE — how many games are on
+today's board, which does not increase year over year — and the corpus grows
+where growth is free.
+
+---
+
+## 5.0 — Pin the audit so it can be re-run, not re-argued
+
+`audit_storage.py`, in the shape of `audit_nfl_phase4.py`: re-derives every
+number in this phase and exits non-zero when a finding stops matching the data.
+
+**Two claims from the earlier audit did NOT survive re-measurement, and both are
+recorded here so they are not re-inherited:**
+
+- **"Historical data is sitting in live tables" — NOT CONFIRMED.** Retention
+  works exactly as written. `prop_odds` holds a 6-day span with **zero** rows
+  past its 7-day rule; `game_odds_book_lines` a 1-day span against a 2-day rule.
+- **The `_team_ids()` scan is NOT an egress problem.** It reads 572,366 rows to
+  produce 66 team names, which looks alarming and is not: the `UNION` dedupes
+  server-side, so **14 KB** crosses the wire per rebuild, not 26 MB. Rows
+  scanned is not rows sent, and this phase's numbers are all rows SENT.
+
+**Gate:** `python audit_storage.py` reproduces the ceiling table above and exits
+zero.
+
+---
+
+## 5.1 — Serving asks a question instead of downloading the corpus
+
+**THE ONE CHANGE THAT MOVES ALL THREE CEILINGS.** `mlb_prop_serving` calls
+`mlb_props.load_game_history(dim)` per market, which pulls every MLB player-game
+for that market — 511,257 rows for `hits` alone — and then both consumers
+immediately discard most of it: `build`'s history loop keeps only
+`aid in subjects`, and `league_baseline_for` skips everything else. 299 players
+are served from 7,184,704 transferred rows.
+
+**NHL AND NFL ALREADY DO THIS CORRECTLY.** Both filter in SQL
+(`athlete_id = ANY($2::text[])`). MLB is the oldest pipe and never caught up.
+This is not a redesign; it is bringing the original up to the pattern its own
+successors already use.
+
+| | before | after |
+|---|---|---|
+| rows per run | 7,184,704 | ~3,600 |
+| wire bytes per run | 194 MB | ~0.2 MB |
+| egress | ~140 GB/mo | ~0.16 GB/mo |
+| worker peak RSS | 385 MB | ~250 MB |
+
+`load_game_history` is shared with the walk-forward, which genuinely needs every
+row — **"THE ONE HISTORY SOURCE... so the model that is measured is the model
+that is served."** So the filter is an OPTIONAL parameter the serving path
+passes and the fitter does not. Changing the default would silently narrow every
+backtest.
+
+**Gate:** the served board is **identical row-for-row** to a pre-change run —
+same projections, same baselines, same sample sizes — with peak RSS and rows
+transferred both measured before and after. A faster board that changed a number
+is a failure, not a win.
+
+---
+
+## 5.2 — The corpus moves out of Postgres; nothing is deleted
+
+**RETENTION IS THE WRONG MECHANISM FOR EVERYTHING EXCEPT 5.3.** What the
+database actually holds:
+
+| table | span | replaceable |
+|---|---|---|
+| `odds_archive` | **27.3 years** (1999-) | no |
+| `game_result` | **27.0 years** | no |
+| `player_game_history` | **16.1 years** | no |
+| `mlb_pitch_events` | 2.5 years | partially |
+| `prop_odds_archive` | 1.5 years | **never** — `client.ts`: *"no backfill exists anywhere for this, forward accumulation only"* |
+
+Deleting any of it destroys irreplaceable model fuel. The problem is not that
+too much history is kept — it is that **27 years of immutable, bulk-read columnar
+data lives in a transactional row-store with a hard 8 GB ceiling.**
+`odds_archive` carries 663 MB of index on 539 MB of heap, doing point-lookup
+work for something only ever read in full scans by fitters.
+
+Parquet on object storage, date-partitioned, read by DuckDB with the same SQL
+the fits already write. ~4,600 MB compresses to roughly 500-900 MB, at storage
+prices, **with no ceiling** — the missing decade of `player_game_history` then
+costs nothing to add.
+
+**THE FLUSH BOUNDARY IS "GAME FINAL", NOT AN AGE.** These tables are not
+append-only: `prop_odds_archive` shows ~8.2M updates against 84k inserts, because
+`archiveClosingLinesJob` keeps upserting so *"whatever is in the row when the
+game begins IS the closing line."* A row is mutable until kickoff and frozen
+forever after, so the boundary is derived from the data's own lifecycle rather
+than a chosen constant, and no row is ever flushed while still being written.
+
+**Supabase Storage first, R2 reserved.** Same account, S3-compatible, 100 GB
+included on Pro. R2's zero egress only wins if Render does repeated bulk corpus
+reads — which 5.1 specifically prevents. The destination is a config value; a
+later move is a bucket copy.
+
+**Gate:** every fit script produces **bit-identical output** reading Parquet
+versus reading Postgres, on the same input window. Postgres drops the flushed
+rows only after that passes.
+
+---
+
+## 5.3 — Roll up the one log no model reads
+
+`prop_odds_history` is the fastest-growing object in the database — **122.7
+MB/day, 86% of all growth, +246% week-over-week** — and it is **read 8,358 times
+against 1,858,112 inserts, a 1:222 ratio.** No fit and no serving pipe touches
+it (verified by grepping every `FROM` in the fit and serving modules). Its
+consumers are the price chart, per-key grading, and user CLV.
+
+**The data is legitimate; do not look for a dedup win.** Three hypotheses were
+tested and rejected: the movement-only rule holds (**0.0%** of rows repeat the
+previous price), null lines are 6.5% not the 53% a code comment implies for one
+market, and alt-lines average 2.0 per series. Books genuinely reprice ~4.3 times
+a day across 90,194 active series.
+
+**The chart is unaffected by construction.** `line-history/route.ts` caps at
+`MAX_HOURS = 24*30` and returns 400 beyond it, and at that 30-day maximum
+`bucketSecondsFor(720)` already collapses everything into **12-hour buckets**.
+Tick resolution older than the retained window is discarded at read time today.
+
+**5.3a IS A GATE, NOT A STEP.** `userClv.ts` queries by key with `observed_at <
+?` and **no lower time bound**, so a CLV lookup on an old pick reaches into
+rolled-up data. Whether that matters depends on whether the entry price comes
+from `pick_history` — where Phase 3.5 deliberately put it — or from
+`prop_odds_history`. **Measure that before choosing the window.** A daily
+open/high/low/close roll-up preserves the closing price CLV compares against but
+loses the intraday tick.
+
+**Gate:** the chart renders identically for every window the route permits, and
+CLV is unchanged for a sampled set of real historical picks.
+
+---
+
+## 5.4 — Reclaim what is provably inert
+
+Mechanical, reversible, no model data:
+
+- **324 MB of leftover tables.** `odds_import_staging` alone is 284 MB /
+  1,140,676 rows, **every one written inside a nine-minute window on 2026-09-02**
+  — a staging table that never drained. Plus six migration backups from
+  2026-08-29 and 2026-09-01.
+- **324 MB of indexes never scanned once.** `prop_odds_archive_close_lookup`
+  (162 MB), `idx_prop_odds_game` (52 MB), `odds_archive_pregame` (31 MB) and
+  more. **Evidence checked before trusting it:** `stats_reset` is NULL, so the
+  counters cover the database's whole lifetime, and sibling indexes on the same
+  tables show 8.6M, 16M and 1.5M scans. The zeros are real, not a reset artifact.
+- **One `VACUUM FULL` in a quiet window.** `run_retention`'s own docstring is the
+  reason this is a deliberate operator action: *"`DELETE` marks rows dead; only
+  VACUUM FULL returns the space... takes an ACCESS EXCLUSIVE lock that would
+  block every reader."* Deletes in 5.2/5.3 free nothing on disk until this runs.
+
+**Gate:** `pg_database_size` drops by at least 600 MB and every test suite still
+passes.
+
+---
+
+## 5.5 — Make a regression impossible to miss
+
+The failure mode this phase exists to prevent is not a crash; it is silence.
+`mlbProjectionsJob` died for 13 hours and **nothing surfaced it** — an OOM kill
+writes no breadcrumb, and `_run_one`'s timeout and unexpected-raise paths both
+`return` without one either, so all three failure modes look identical from
+outside. `health_check` DID detect it (`healthy=false, "stale — last run 751min
+ago, expected within 120min"`) and wrote it to `job_health_checks`, where nobody
+was looking.
+
+- **A job that dies abnormally leaves a breadcrumb.** An OOM cannot be caught,
+  but timeout and raise can, and today they are indistinguishable from silence.
+- **An unhealthy check has to reach the operator.** This is Phase 9's
+  *"all jobs healthy with a test alert actually received"*, pulled forward
+  because it just demonstrated its cost.
+- **Track worker RAM as a ceiling beside database size.** The plan tracked
+  8,192 MB and said nothing about 512 MB, and it was the unwatched one that
+  broke. Baseline: 385/512 MB on 2026-09-09.
+- **Alarm on the rate, not the level.** A linear headroom estimate missed a 183x
+  change in eleven days. Alert on MB/day and rows/day per table.
+
+**Gate:** a deliberately failed job produces a visible alert the operator
+actually receives.
+
+---
+
+## What this phase is worth
+
+```
+database   7,174 MB (87.6%)  ->  ~2,400 MB (29%), and stops climbing
+egress     ~500 GB/mo        ->  ~180 GB/mo, inside the 250 GB allowance
+worker     385 MB peak       ->  ~250 MB, stops crashing
+corpus     capped at 8 GB    ->  unbounded, compressed, storage-priced
+```
+
+**Two things this phase deliberately does not promise.** The ~180 GB egress
+figure is a projection that assumes bytes track rows; the **64.7% share is
+counted, the conversion is not**, so verify against Supabase's own egress graph a
+week after 5.1 rather than against this number. And **book coverage is a product
+decision this architecture cannot make** — 12 to 26 books in two weeks is what
+moved the growth curve, and the log tier scales with it. The plumbing absorbs it
+far better; it does not decide it.
+
+---
+
+# Phase 6 — College football
 
 - Ridge/least-squares rating on margin; residual against the closing spread is
   the signal. Cap or shrink blowout margins.
@@ -1362,7 +1598,7 @@ from 844 rows to 33 legible rather than alarming.
 
 ---
 
-# Phase 6 — NBA
+# Phase 7 — NBA
 
 **MOVED BACK FROM PHASE 4 on 2026-09-08** — see Phase 4's note. NBA tips off in
 late October; nothing here depends on the season being live, so it loses
@@ -1381,7 +1617,7 @@ nothing by waiting.
 
 ---
 
-# Phase 7 — Golf, tennis, soccer: decide
+# Phase 8 — Golf, tennis, soccer: decide
 
 Three sports in an undecided state. Each needs a written decision, not drift.
 
@@ -1394,7 +1630,7 @@ Three sports in an undecided state. Each needs a written decision, not drift.
 
 ---
 
-# Phase 8 — Correctness backlog
+# Phase 9 — Correctness backlog
 
 The 36 unchecked remediation items, minus those now satisfied. Grouped:
 
@@ -1421,7 +1657,7 @@ first prune candidates. This already killed a fit run.
 
 ---
 
-# Phase 9 — Production infrastructure
+# Phase 10 — Production infrastructure
 
 - **No hosted web app exists.** Deploy it.
 - Staging; load test; uptime monitoring; alerts as a product feature.
@@ -1433,7 +1669,7 @@ first prune candidates. This already killed a fit run.
 
 ---
 
-# Phase 10 — Commercial readiness
+# Phase 11 — Commercial readiness
 
 **Last by design.** Nothing here is worth doing until the product is.
 
@@ -1448,7 +1684,7 @@ first prune candidates. This already killed a fit run.
 
 ---
 
-# Phase 11 — UI design passes
+# Phase 12 — UI design passes
 
 Four briefs exist and none has been executed: `prompt-1-scan.md`,
 `prompt-2-player-detail.md`, `prompt-3-teams.md`, `prompt-4-diagnostics.md`.
@@ -1465,12 +1701,14 @@ Diagnostics stand as written.
 1  Consolidation        stops the add-only pattern before five sports are added to it
 2  Scan                 proves the pipeline end-to-end on the two sports that work
 3  Finish MLB           the largest evidence base; the sim has a real control now
-4  NFL  5 CFB  6 NBA    in-season first; each ends in Scan, not a new page
-7  Golf/tennis/soccer   decide rather than drift
-8  Correctness          before anyone outside sees it
-9  Infrastructure       before anyone outside can reach it
-10 Commercial           last
-11 UI polish            after the structure stops moving
+4  NFL                  in-season first; ends in Scan, not a new page
+5  Sustainability       the ceilings are days away, and one job causes all three
+6  CFB  7 NBA           in-season order resumes once the platform can carry them
+8  Golf/tennis/soccer   decide rather than drift
+9  Correctness          before anyone outside sees it
+10 Infrastructure       before anyone outside can reach it
+11 Commercial           last
+12 UI polish            after the structure stops moving
 ```
 
 **Phase 2 before Phase 3** is deliberate. Two sports already have validated
