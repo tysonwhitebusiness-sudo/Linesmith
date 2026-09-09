@@ -16,3 +16,17 @@ scikit-learn>=1.4
 catboost>=1.2
 xgboost>=2.0
 lightgbm>=4.3
+
+# Phase 5.2 — the corpus store. `player_game_history`, `odds_archive`,
+# `game_result`, `prop_odds_archive` and `mlb_pitch_events` are 4.6 GB of an
+# 8,192 MB ceiling, are never updated once a game is final, and are only ever
+# read by a fitter doing a full scan. Parquet is what that shape belongs in.
+#
+# pyarrow is what the WORKER needs: it only ever WRITES the corpus. Measured
+# +14.2 MB RSS on import, against a 512 MB plan where 5.1 left the projection
+# job peaking at 143 MB — so the flush job can live on Render rather than
+# adding a laptop dependency Phase 10 is trying to remove.
+pyarrow>=17
+# duckdb READS Parquet with the same SQL the fit scripts already write, so
+# repointing a fitter is a connection change rather than a rewrite. +15.6 MB.
+duckdb>=1.0
