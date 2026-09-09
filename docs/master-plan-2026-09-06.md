@@ -976,28 +976,65 @@ captured from Week 1 onward are clean by construction under the Phase 3.5 fix.
 
 ---
 
-## 4.2 — The game ship gate: CLV, measured the way 3.5 learned to
+## 4.2 — The game ship gate — **CANNOT BE GATED YET, 2026-09-08. Machinery ready.**
 
-**Do not reuse `clv_backtest` naively.** Phase 3.5 found its entry prices were
-IN-PLAY prices — `game_odds_book_lines` is overwhelmingly a post-commence
-snapshot (85.4% of ordinary MLB moneylines, 100% of implausible ones), and both
-attach paths recorded whatever was quoted when their job ran. It reported
-moneyline CLV at t=-5.83; rebuilt from pregame data the same picks came out
-indistinguishable from zero.
+**There are 17 NFL picks, 15 graded.** `clv_pregame_rebuild.py nfl` runs and
+correctly reports nothing measurable: zero books reach the 60-pair minimum. This
+is not a failure to build the gate; it is the gate honestly saying there is no
+evidence yet, the same wall Phase 3.5 hit with MLB's 129 picks over 11 days.
 
-Both write paths are now guarded, so **NFL picks captured from Week 1 onward are
-clean by construction** — the second reason this phase belongs in September. Use
-`clv_pregame_rebuild.py`'s method: entry = last observation at or before the
-pick's own capture time, close = last before kickoff, both from the SAME book,
-entry strictly before close, reported across every book with real coverage
-rather than one thin feed.
+For scale, the whole `game_picks` table: mlb 295, cfb 85, soccer 64, nfl 17.
+NFL's season starts 2026-09-09.
 
-**Report the sign test alongside the mean.** They disagreed on MLB moneyline
-(beat rate 34.9%, p=0.0006 significant; mean t=-1.57 not) because the
-distribution is skewed, and reporting only the flattering one would have been a
-choice.
+**What was done instead, and it is the part that could only be done now:**
 
-**Gate:** positive CLV, or an explicit recorded decision that it is not there.
+### The measurement is ready
+
+`clv_pregame_rebuild.py` now takes a sport argument rather than hard-coding MLB,
+so 4.2 uses the same measurement 3.5 arrived at rather than a second copy to
+keep correct: entry = last observation at or before the pick's own capture time,
+close = last before kickoff, both from the SAME book, entry strictly before
+close, reported across every book with real coverage, with the sign test beside
+the mean.
+
+### The existing NFL picks are clean — but not because of the fix
+
+All 17 carry sane pregame prices (-105 to -189, each consistent with its own
+recorded market probability) and **none was captured after kickoff**. Zero
+contaminated, against MLB's 22 of 291.
+
+That is structural rather than earned. NFL plays weekly with a long pregame
+window, so its capture job rarely overlaps a live game; MLB plays daily and its
+jobs run straight through the slate. NFL was less exposed to the same bug, not
+protected from it.
+
+**Sunday is where NFL becomes exposed.** Games kick at 1pm, 4pm and 8pm ET. A
+pick on a 4:25pm game whose price is still NULL when a job runs at 4:40pm gets
+an in-play entry price, permanently, because `attach_moneyline_price` writes once
+behind a `price IS NULL` guard.
+
+### THE DEPLOYED WORKER DOES NOT HAVE THE PHASE 3.5 FIX
+
+Established by probing what the live jobs actually write, not by assuming:
+
+    home-runs rows in prop_model_cache, written 0.4h ago   -> Phase 3.2 IS live
+    pitcher-outs rows carrying a probability: 0            -> Phase 3.0 IS live
+    every stale job (~25h) is one Phase 1 DELETED          -> deploy landed
+
+    deploy landed          2026-09-08 ~02:16 UTC
+    Phase 3.3  (8aa8962)   2026-09-07 21:23   before  -> deployed
+    Phase 3.5  (9a5e862)   2026-09-08 20:14   AFTER   -> NOT deployed
+
+So the running worker predates the pregame-price guard. **Deploying before
+Sunday is what protects Week 1's CLV evidence**, and Week 1 can only be captured
+once — the same reason everything before 2026-08-27 is permanently unjoinable
+and left Phase 3.5 with 129 picks to work from.
+
+### Gate
+
+Unchanged and unmet: positive CLV, or an explicit recorded decision that it is
+not there. It runs when the season has produced enough picks. Until then NFL
+game picks are captured but nothing is claimed about them.
 
 ---
 

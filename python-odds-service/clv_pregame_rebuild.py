@@ -1,6 +1,6 @@
 """Phase 3.5 — closing line value, rebuilt from PREGAME prices only.
 
-    python clv_pregame_rebuild.py
+    python clv_pregame_rebuild.py [sport]        # default mlb
 
 WHY THIS EXISTS RATHER THAN JUST RUNNING `clv_backtest`. That module takes its
 entry price from `game_picks.ml_initial_price`, and those stored values are
@@ -50,7 +50,9 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
-SPORT = "mlb"
+# Sport is an argument: Phase 4.2 needs exactly this measurement for NFL, and a
+# second copy of it would be a second thing to keep correct.
+SPORT = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") else "mlb"
 
 
 def implied(american: int) -> float | None:
