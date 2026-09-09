@@ -227,6 +227,40 @@ def project_all(snap, wi, k, shape, lr, lv):
     return out
 
 
+# The median line each market really posts, measured against
+# `prop_odds_archive` in Phase 4.0. Used ONLY to produce a comparable log-loss
+# for `model_calibration`, whose `train_log_loss` column is NOT NULL.
+#
+# This model is SELECTED on mean absolute error, because a per-player-line
+# market has no single line to score a probability at — that is the whole of
+# 4.0c. But a projection still implies P(stat > L) for any L, so evaluating at
+# the market's own median line gives a real, comparable number rather than a
+# placeholder. It is a summary statistic, NOT the selection metric, and nothing
+# chooses a parameter by it.
+MEDIAN_LINE = {
+    "receptions": 3.5,
+    "receiving-yards": 49.5,
+    "carries": 10.5,
+    "rushing-yards": 44.5,
+}
+
+
+def median_line_logloss(rows, slug, shape, lo=None, hi=None):
+    line = MEDIAN_LINE.get(slug)
+    if line is None:
+        return None
+    v = [r for r in rows
+         if (lo is None or season_of(r[0]) >= lo) and (hi is None or season_of(r[0]) < hi)]
+    if not v:
+        return None
+    total = 0.0
+    for _gd, _aid, stat, expected, vol in v:
+        p = eng.shape_prob_over(shape[0], shape[1], line, expected, max(vol, 1e-9))
+        p = min(1 - 1e-12, max(1e-12, p))
+        total += -math.log(p if stat > line else 1 - p)
+    return total / len(v)
+
+
 def proj_score(rows, lo=None, hi=None):
     """Projection quality WITHOUT lines: mean absolute error and bias.
 
@@ -306,7 +340,42 @@ async def main() -> int:
             print(f"  archived prop rows joined: {len(props):,}"
                   f"  ({len(two):,} two-sided)")
             print("  NO PROBABILITY IS PUBLISHED: 4.5 owns that gate and needs the"
-                  " 2026 season.\n")
+                  " 2026 season.")
+
+            if persist:
+                # `probability_ok=False` is the point, not an oversight. The
+                # serving pipe reads these parameters to build a PROJECTION;
+                # Phase 3.0's guard then refuses to publish a probability for
+                # any market whose calibration has not earned one, and no NFL
+                # market can earn one until 4.5 has a held-out season to measure
+                # against. Persisting the projection parameters now is what lets
+                # 4.6 serve at all.
+                await db.write_calibration(db.CalibrationInput(
+                    sport="nfl", market=slug, method="count_engine",
+                    params={
+                        "volume_window": bw, "shrink_k": bk,
+                        "shape_kind": SHAPES[0][0], "shape_param": SHAPES[0][1],
+                        "league_rate": lr, "league_volume": lv,
+                        "min_prior_games": MIN_PRIOR_GAMES,
+                        "proj_cutoff_season": PROJ_CUTOFF,
+                        "holdout_mae": held["mae"],
+                        "flat_baseline_mae": flat,
+                        "beats_flat_baseline": bool(held["mae"] < flat),
+                        "projection_bias": held["bias"],
+                        # No probability until 4.5. Deliberate.
+                        "probability_ok": False,
+                        "ranking_ok": True,
+                    },
+                    train_games=sel["n"],
+                    train_log_loss=median_line_logloss(
+                        rows, slug, SHAPES[0], hi=PROJ_CUTOFF),
+                    holdout_games=held["n"],
+                    holdout_log_loss=median_line_logloss(
+                        rows, slug, SHAPES[0], lo=PROJ_CUTOFF),
+                    baseline_holdout_log_loss=None),
+                    activate=True)
+                print(f"  persisted: nfl/{slug}  active=True probability_ok=False")
+            print()
     return 0
 
 

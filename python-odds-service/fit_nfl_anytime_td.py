@@ -194,6 +194,37 @@ async def main() -> int:
     print(f"  ECE {cal['ece']:.4f} (<=0.025)   worst bucket {cal['worst']:.3f} (<=0.05)")
     ok = mono and cal["ece"] <= 0.025 and cal["worst"] <= 0.05 and held["ll"] < const
     print(f"\n  WOULD CLEAR A HOME-RUNS-STYLE GATE: {ok}")
+
+    if "--persist" in sys.argv:
+        # `probability_ok=False` even though the gate numbers above pass, and
+        # that is the point: those numbers are measured on HISTORY, while 4.5's
+        # gate needs a held-out PROP season that does not exist until 2026. The
+        # parameters are persisted so 4.6 can serve a PROJECTION; the guard in
+        # `count_prop_engine.probability_is_servable` then keeps any probability
+        # off the board until the real gate clears.
+        await db.write_calibration(db.CalibrationInput(
+            sport="nfl", market="anytime-td", method="count_engine",
+            params={
+                "volume_window": bw, "shrink_k": bk,
+                "shape_kind": bsh[0], "shape_param": bsh[1],
+                "league_rate": lr, "league_volume": lv,
+                "min_prior_games": MIN_PRIOR_GAMES,
+                "line": LINE,
+                "opportunity": "touches" if per_touch else "game",
+                "proj_cutoff_season": PROJ_CUTOFF,
+                "ordering": [{"quintile": b, "n": n, "actual": m} for b, n, m in q],
+                "ordering_monotone": mono,
+                "calibration_ece": cal["ece"],
+                "worst_calibration_gap": cal["worst"],
+                "would_clear_history_gate": ok,
+                "probability_ok": False,
+                "ranking_ok": mono,
+            },
+            train_games=0, train_log_loss=results[per_touch][0],
+            holdout_games=held["n"], holdout_log_loss=held["ll"],
+            baseline_holdout_log_loss=const),
+            activate=True)
+        print("  persisted: nfl/anytime-td  active=True probability_ok=False")
     print("  (4.5 still owns the ship gate — NFL has no held-out PROP season")
     print("   until 2026 produces one. This is the model, measured on history.)")
     return 0
