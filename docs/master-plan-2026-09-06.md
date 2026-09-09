@@ -893,21 +893,86 @@ that declaration ever stops matching the measurement.
 
 ---
 
-## 4.1 — The game model: margin-adjusted Elo
+## 4.1 — The game model — **MEASURED 2026-09-08: DOES NOT BEAT THE MARKET**
 
-Margin-adjusted Elo with diminishing returns on blowouts, over 7,561 games back
-to 1999. Both spread sides are priced, so **NFL spread can be de-vigged** —
-unlike NBA, EPL and CFB, where the spread is effectively one-sided. That makes
-NFL the first sport where a spread model can be judged against a real
-probability rather than only against the posted line.
+`fit_nfl_elo.py`. Fitted on seasons 1999-2020, gated once on 2021-2025.
 
-Season-boundary splits are available in abundance here; use one rather than
-inventing a cutoff.
+**Not a rewrite.** `predict/generic_team_elo.py` already carried the whole
+apparatus — logistic expectation, a log-scaled margin-of-victory multiplier
+dampened by how big a favourite the winner already was, season regression. That
+IS the "margin-adjusted Elo with diminishing returns on blowouts" this phase
+asked for. Two things were missing, and they were the whole of 4.1:
 
-**Gate:** held-out log-loss beats a market-implied baseline on the same rows,
-with the paired t-test `fit_mlb_props.py` already uses. Beating a constant is
-not sufficient — Phase 3.2 showed a market can clear a constant by 1.92% and
-still be the weakest thing on the board.
+1. **Nothing was ever fitted.** NFL sat on `k_factor=20, home_bonus=48`, which
+   that module's own docstring calls "reasonable, standard sports-Elo starting
+   points".
+2. **It only ever saw ~400 days.** `backfill_sport_elo` walks ESPN's scoreboard
+   with `days_back=400`, while the database holds **7,561 NFL games with scores
+   back to 1999-09-12**, 7,264 joining to archived odds.
+
+Fitted on SELECT: `k=20, home_bonus=56, season_regression=0.6`.
+
+### Result
+
+    always-home-at-0.544 baseline   0.68919
+    fitted Elo                      0.62365     gains +0.06553 over the constant
+    de-vigged closing moneyline     0.61028
+                                    ---------
+    delta +0.01337   t = +2.55      MARKET BEATS MODEL
+
+n = 1,709 held-out games with a two-sided price. **The gate fails.** The Elo
+captures **83%** of the market's edge over a constant and still loses to it,
+which is the expected result: NFL closing lines are among the most efficient in
+sport, and this model has no injury, quarterback, rest, travel or weather
+information at all.
+
+### A flaw in the first measurement, found before it was reported
+
+The first run said `t = +7.82`. That was **my query, not the model**. It took
+`MAX(price)` for home and `MAX(price)` for away independently across ALL
+bookmakers, which is a cross-book de-vig — not any book's opinion — and by
+taking the best price on each side it stripped the vig entirely, synthesising a
+sharper line than any real book ever posted. Corrected to ONE book quoting both
+sides, with `is_live` rows excluded, the market's edge fell from t=+7.82 to
+t=+2.55. Same rule `_market_prob_for` enforces everywhere else in this repo.
+
+### Home-field advantage is NOT a constant, and the fit cannot see that
+
+Measured by era:
+
+    1999-2007   home win 0.5757   ->  53.0 Elo points
+    2008-2014   home win 0.5730   ->  51.1
+    2015-2020   home win 0.5524   ->  36.5      (all three inside SELECT)
+    2021-2025   home win 0.5445   ->  31.0      (held out; confirms the trend)
+
+A single global fit picks ~56 from the high-advantage era and then over-favours
+the home side on every held-out game. **The decline is fully visible inside
+SELECT alone**, so an adaptive estimator is justifiable without looking at the
+test window — and one was built and offered to the fit.
+
+**It lost on SELECT (0.62983 against 0.62957) and was therefore NOT adopted**,
+leaving the held-out number unchanged at 0.62365. That is the correct outcome
+rather than a disappointing one: SELECT is dominated by the high-advantage era,
+so an estimator that tracks the decline is genuinely worse *there*. Choosing it
+because the era table suggests it would do better on 2021-2025 would be tuning
+against the held-out set, which is the one thing the split exists to prevent.
+
+**A legitimate future attempt** would use an inner validation slice —
+fit 1999-2014, choose the variant on 2015-2020 where the decline is already
+underway, gate once on 2021+. That is a protocol change justified entirely by
+SELECT-era evidence, not a re-run.
+
+### What this means
+
+The Elo does not ship as an edge. It is a real baseline — 83% of the way from a
+constant to the market — and that is worth having as a fallback where no market
+price exists, but it is not evidence of an edge and must not be displayed as
+one. Phase 3.0's rule applies unchanged: a model that has not earned a
+probability does not get to publish one.
+
+**4.2's CLV gate is now the more informative measurement**, because it tests the
+picks actually made rather than a retrospective log-loss, and because NFL picks
+captured from Week 1 onward are clean by construction under the Phase 3.5 fix.
 
 ---
 

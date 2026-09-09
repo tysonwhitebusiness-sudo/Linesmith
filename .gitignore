@@ -76,3 +76,6 @@ python-odds-service/.crosswalk_cache/
 
 # Phase 3.1 experiment cache (regenerated from the DB by experiment_statcast_prior.py)
 python-odds-service/.statcast_batter_games.csv
+
+# Phase 4.1 fit cache (regenerated from the DB by fit_nfl_elo.py)
+python-odds-service/.nfl_elo_games.csv

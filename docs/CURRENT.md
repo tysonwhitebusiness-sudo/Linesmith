@@ -20,9 +20,40 @@ the game ship gate could only be measured on 129 picks over 11 days, and no
 amount of work creates evidence that was never captured. Only the ORDER changed;
 neither sport's model content moved.
 
-**4.0 IS DONE — all three gates pass.** Reproducible: `python
-audit_nfl_phase4.py`, which re-derives every number and exits non-zero if a
-classification stops matching the data. **4.1 (margin-adjusted Elo) is next.**
+**4.0 AND 4.1 ARE DONE. 4.2 (the CLV game gate) is next.**
+
+**4.1 — the Elo does NOT beat the market.** `fit_nfl_elo.py`, fitted on seasons
+1999-2020, gated once on 2021-2025 (n=1,709):
+
+    always-home-at-0.544        0.68919
+    fitted Elo (k=20, hb=56)    0.62365   +0.06553 over the constant
+    de-vigged closing moneyline 0.61028
+    delta +0.01337  t=+2.55     MARKET BEATS MODEL
+
+It captures 83% of the market's edge over a constant and still loses. Expected:
+NFL closing lines are among the most efficient in sport and this model has no
+injury, QB, rest, travel or weather input. **It is a real baseline, not an edge,
+and must not be displayed as one** — Phase 3.0's rule applies unchanged.
+
+Two things worth carrying forward. **The first measurement said t=+7.82 and that
+was my query, not the model**: it de-vigged `MAX(price)` home against
+`MAX(price)` away across ALL books, which is no book's opinion and strips the vig
+entirely, synthesising a sharper line than any real book posted. One book, both
+sides, no `is_live` rows → t=+2.55.
+
+And **home-field advantage is not a constant**: 53.0 Elo points in 1999-2007,
+36.5 by 2015-2020, 31.0 in 2021-2025. A global fit picks ~56 from the
+high-advantage era and over-favours home teams on every held-out game. An
+adaptive estimator was built and offered to the fit — it **lost on SELECT**
+(0.62983 vs 0.62957) and so was NOT adopted, because SELECT is dominated by the
+high-advantage era. Choosing it because the era table suggests it would win on
+2021-2025 would be tuning against the test set. A legitimate future attempt uses
+an inner validation slice: fit 1999-2014, choose on 2015-2020, gate once on
+2021+.
+
+**4.0 findings** — reproducible via `python audit_nfl_phase4.py`, which
+re-derives every number and exits non-zero if a classification stops matching
+the data.
 
 **The headline finding changes the architecture, not a constant: NFL CANNOT
 SERVE PROPS AT A FIXED BOARD LINE.** MLB shows every batter at 0.5 hits, which
