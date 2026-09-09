@@ -240,6 +240,33 @@ EXCLUDED: dict[str, str] = {
 }
 
 
+def required_keys_sql(spec: "MarketSpec") -> str:
+    """The "this row carries the stats we need" test, in SQL BOTH ENGINES SPEAK.
+
+    This used to be Postgres's `stats ? 'key'` jsonb containment operator, which
+    is a parse error in DuckDB — so the same market SQL could not run against
+    the Parquet corpus (Phase 5.2) without a per-query translation layer, and a
+    translation layer between the fitter's SQL and the server's SQL is exactly
+    where the two silently drift apart.
+
+    `stats->>'key' IS NOT NULL` is accepted by both and, MEASURED ON THE REAL
+    DATA 2026-09-09, selects identically:
+
+        pit_hits      ? = 213,119   ->> IS NOT NULL = 213,119
+        bat_hits      ? = 569,459   ->> IS NOT NULL = 569,459
+        bat_doubles / bat_triples / bat_homeRuns    identical
+
+    THE TWO ARE NOT EQUIVALENT IN GENERAL, and the difference is worth knowing:
+    `?` is true for a key present with a JSON null value, where `->> IS NOT
+    NULL` is false. There are ZERO such rows today (the `json_null` column of
+    that measurement was 0 everywhere), and a row like that would be unusable
+    anyway — the very next thing this SQL does is cast the value to float. If
+    such rows ever appear, this filter drops them instead of failing the cast,
+    which is the safer of the two behaviours rather than a silent change.
+    """
+    return " AND ".join(f"stats->>'{k}' IS NOT NULL" for k in spec.required_keys)
+
+
 async def load_game_history(slug: str, conn=None,
                             athlete_ids: list[str] | None = None) -> list[tuple]:
     """Every player-game for one market, as (game_date, athlete_id, stat, volume).
@@ -257,7 +284,7 @@ async def load_game_history(slug: str, conn=None,
     import db as _db
 
     spec = BY_SLUG[slug]
-    has_keys = " AND ".join(f"stats ? '{k}'" for k in spec.required_keys)
+    has_keys = required_keys_sql(spec)
     # `athlete_ids` NARROWS THE PULL TO THE PLAYERS THE CALLER WILL ACTUALLY
     # USE, and it is optional because the two callers need opposite things.
     #
@@ -430,3 +457,49 @@ async def load_start_keys(conn=None,
         async with pool.acquire(timeout=300.0) as c:
             raw = await c.fetch(sql, *args)
     return {(r["game_date"], str(r["athlete_id"])) for r in raw}
+
+
+def load_game_history_parquet(slug: str, parquet_path: str,
+                              athlete_ids: list[str] | None = None) -> list[tuple]:
+    """`load_game_history`, reading the Parquet corpus instead of Postgres.
+
+    THE POINT IS THAT THE SQL IS THE SAME SQL. `stat_sql`, `volume_sql` and
+    `required_keys_sql` are shared verbatim with the Postgres path, so the two
+    backends cannot drift into computing different numbers from the same rows —
+    which is precisely the failure this module's header opens with, where the
+    walk-forward and the serving path built history from different sources and
+    disagreed by a mean 0.38 shots without either being obviously wrong.
+
+    Only three things differ, and none of them touch the arithmetic:
+      * the FROM clause reads a file rather than a table,
+      * `sport` is still filtered here even though a per-sport export makes it
+        redundant, because a shared export must not silently widen the result,
+      * the athlete filter binds a DuckDB list parameter instead of `ANY($n)`.
+
+    Returns the identical shape to `load_game_history` — (game_date,
+    athlete_id, stat, volume), sorted the same way — because `build` walks the
+    list and `break`s on `as_of`, which is only correct while it stays sorted.
+    """
+    import duckdb
+
+    spec = BY_SLUG[slug]
+    where = [f"sport = 'mlb'",
+             required_keys_sql(spec),
+             f"stats->>'{spec.volume_key}' IS NOT NULL",
+             f"{spec.volume_sql} > 0"]
+    params: list = []
+    if athlete_ids is not None:
+        where.append("list_contains(?::VARCHAR[], athlete_id)")
+        params.append(list(athlete_ids))
+    sql = (f"SELECT game_date, athlete_id, {spec.stat_sql} AS stat, "
+           f"{spec.volume_sql} AS volume "
+           f"FROM read_parquet(?) WHERE {' AND '.join(where)}")
+    con = duckdb.connect()
+    try:
+        con.execute("INSTALL json; LOAD json;")
+        raw = con.execute(sql, [parquet_path, *params]).fetchall()
+    finally:
+        con.close()
+    out = [(r[0], str(r[1]), float(r[2]), float(r[3])) for r in raw]
+    out.sort(key=lambda t: (t[0], t[1]))
+    return out
