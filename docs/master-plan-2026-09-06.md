@@ -756,34 +756,186 @@ inventing one would be a guess dressed as a criterion.
 
 # Phase 4 — NFL
 
-**MOVED AHEAD OF NBA on 2026-09-08: the NFL season starts 2026-09-09.** The
-model content below is unchanged; only its position is. An in-season sport
-produces live lines, live results and a CLV signal that accumulates every week,
-while an out-of-season one produces none of those until it starts. Phase 3.5
-ended with the gate blocked on exactly that — n=129 picks over 11 days, because
-everything earlier is unjoinable — so ordering the sports by whether they are
-actually playing is worth more than their alphabet.
-
-NBA (now Phase 6) tips off in late October, so it loses nothing by waiting; its
+**MOVED AHEAD OF NBA on 2026-09-08: the NFL season starts 2026-09-09.** NBA
+(now Phase 6) tips off in late October and loses nothing by waiting; its
 evidence base is entirely historical either way.
 
-- Margin-adjusted Elo with diminishing returns on blowouts. 7,336 spread/total
-  games back to 1999; both spread sides priced, so NFL spread **can** be
-  de-vigged unlike NBA/EPL/CFB.
-- **Props are NOT blocked on snap counts.** 58,152 rows carry
-  `receiving.receivingTargets`; a target is the opportunity, a blocking snap is
-  not. `nfl_target_events` already holds 35,430 rows.
-- **Longest reception needs extreme-value treatment** — it is a maximum, not a
-  sum. Second-biggest NFL market by volume.
-- **Milestone alt-lines are off by one**: a line of 2.0 means over 1.5.
-  **PHASE 3.2 PROVED THIS IS NOT AN NFL-ONLY ISSUE.** MLB had five such schemes
-  and one of them (`Home Runs Milestones`, 37,252 rows) was the sole 2026
-  coverage of a market the plan had written off as unmodellable. The mechanism
-  already exists — `MarketSpec.milestone_names` plus an `L -> L-0.5` conversion
-  in the loader, pinned by `src/test_milestone_lines.py`. **Audit NFL's
-  `type_name` list for integer-line schemes BEFORE fitting anything**, because
-  the wrong reading does not look wrong: it trains and calibrates confidently on
-  a market roughly sixteen times rarer than the one intended.
+**Every claim below was re-measured 2026-09-08 before these steps were
+written**, because Phase 3 found four of its five premises wrong. Three
+inherited NFL claims survived exactly (`nfl_target_events` 35,430 rows; 58,152
+player rows carrying `receivingTargets`; games back to 1999). Two facts the plan
+did not record change the shape of the whole phase:
+
+**1. GAME MARKETS AND PROPS ARE IN COMPLETELY DIFFERENT STATES.**
+
+    game markets   spread 15,269 / total 15,762 / moneyline 11,540 rows,
+                   1999-09-12 .. 2026-12-25, 7,561 games in game_result
+    props          152,417 rows across 1,039 athletes, but ONE season only:
+                   2025-09-05 .. 2026-01-18, and dense only Sept-Nov
+
+Game markets have deep multi-season history and are testable immediately.
+Props are not.
+
+**2. NFL PROPS CANNOT BE WALK-FORWARD VALIDATED ON EXISTING DATA.** There is no
+split that works. Measured on the largest market, `Total Receiving Yards`:
+
+    cutoff 2026-01-01 (MLB's):  20,433 SELECT /  42 held out
+    cutoff 2025-12-01:          20,330 SELECT / 145 held out, 11 two-sided
+    `Anytime Touchdown Scorer` at MLB's cutoff:      0 held out
+
+Forty-two rows is not a test. This is the same wall Phase 3.5 hit — evidence
+never captured cannot be recovered — and it has exactly one honest resolution:
+**fit on the 2025 season and let the 2026 season, starting 2026-09-09, BE the
+held-out set.** That is a real walk-forward with a real time boundary, and it is
+only available because this phase starts the day the season does. It also means
+the prop ship gate cannot be run in September. It accrues.
+
+---
+
+## 4.0 — Audit before fitting. Do not skip this.
+
+Phase 3 spent most of its cost on premises that were wrong in ways no code
+review would catch. Three cheap checks, each of which has already caught a real
+defect once:
+
+- **4.0a — Audit `type_name` for integer MILESTONE schemes.** NFL has **20 of
+  them** (`Receiving Yards Milestones` 59 rows, `Sacks Milestones` 45,
+  `Receptions Milestones` 45, and 17 more, every one integer-lined). Far smaller
+  than MLB's — where one such scheme carried 37,252 rows and was the sole 2026
+  coverage of a market this plan had written off as unmodellable — but the
+  failure mode is identical and silent: a line of 2.0 means over 1.5, and
+  reading it as ">2" trains the model on a market roughly sixteen times rarer.
+  The mechanism already exists: `MarketSpec.milestone_names` plus the
+  `L -> L-0.5` conversion in the loader, pinned by
+  `src/test_milestone_lines.py`. Declare them or deliberately exclude them; do
+  not leave them unread.
+- **4.0b — Measure the crosswalk join rate in ROWS, not ids.** Prop rows carry
+  1,039 distinct athletes; `athlete_crosswalk` has 1,020 NFL rows;
+  `player_game_history` has 6,740 NFL athletes. Those three numbers do not imply
+  a join rate. The standing rule applies: **a numeric id matching the expected
+  shape is not evidence it is the right id** — 399 MLB ids once matched by shape
+  and 0.00% landed on the right game date. Verify by DATE AGREEMENT, as Phase
+  3.1 did (6,885 games, 100.00%).
+- **4.0c — Fix the board line per market before fitting anything.** Phase 3.0
+  found MLB serving `pitcher-outs` at 16.5 while grading it at 15.5, from two
+  hardcoded lists that disagreed. NFL has no `mlb_board_lines.py` equivalent; it
+  needs one, and its values must be the measured median posted line, not a
+  guess.
+
+**Gate:** every NFL `type_name` classified (ordinary / milestone / excluded,
+with a reason); a measured join rate with date agreement; one board-line table.
+
+---
+
+## 4.1 — The game model: margin-adjusted Elo
+
+Margin-adjusted Elo with diminishing returns on blowouts, over 7,561 games back
+to 1999. Both spread sides are priced, so **NFL spread can be de-vigged** —
+unlike NBA, EPL and CFB, where the spread is effectively one-sided. That makes
+NFL the first sport where a spread model can be judged against a real
+probability rather than only against the posted line.
+
+Season-boundary splits are available in abundance here; use one rather than
+inventing a cutoff.
+
+**Gate:** held-out log-loss beats a market-implied baseline on the same rows,
+with the paired t-test `fit_mlb_props.py` already uses. Beating a constant is
+not sufficient — Phase 3.2 showed a market can clear a constant by 1.92% and
+still be the weakest thing on the board.
+
+---
+
+## 4.2 — The game ship gate: CLV, measured the way 3.5 learned to
+
+**Do not reuse `clv_backtest` naively.** Phase 3.5 found its entry prices were
+IN-PLAY prices — `game_odds_book_lines` is overwhelmingly a post-commence
+snapshot (85.4% of ordinary MLB moneylines, 100% of implausible ones), and both
+attach paths recorded whatever was quoted when their job ran. It reported
+moneyline CLV at t=-5.83; rebuilt from pregame data the same picks came out
+indistinguishable from zero.
+
+Both write paths are now guarded, so **NFL picks captured from Week 1 onward are
+clean by construction** — the second reason this phase belongs in September. Use
+`clv_pregame_rebuild.py`'s method: entry = last observation at or before the
+pick's own capture time, close = last before kickoff, both from the SAME book,
+entry strictly before close, reported across every book with real coverage
+rather than one thin feed.
+
+**Report the sign test alongside the mean.** They disagreed on MLB moneyline
+(beat rate 34.9%, p=0.0006 significant; mean t=-1.57 not) because the
+distribution is skewed, and reporting only the flattering one would have been a
+choice.
+
+**Gate:** positive CLV, or an explicit recorded decision that it is not there.
+
+---
+
+## 4.3 — Props: the receiving and rushing family
+
+The volume markets, in order of real size:
+
+    Total Receiving Yards        20,475 rows   2,103 two-sided
+    Longest Reception            15,929        2,024
+    Total Rushing Yards          11,993        1,068
+    Anytime Touchdown Scorer     11,762          265
+    Total Receptions             11,669        2,074
+
+**Opportunity is the modellable quantity, not the yardage.** 58,152 player rows
+carry `receiving.receivingTargets` and `nfl_target_events` holds 35,430 rows
+(2024-2025). A target is the opportunity; a blocking snap is not — which is why
+the older claim that NFL props are blocked on snap counts was wrong.
+
+The two-sided fraction is ~10-13% throughout. Fine for the stats bar, which
+needs projection, line and outcome and never touches a price; fatal for anything
+needing a de-vigged market probability. Same split MLB has, same consequence.
+
+**Gate:** fit on 2025; NO probability is published until 4.5 clears. Projection
+only, exactly as Phase 3.0's rule requires for a market that has not earned one.
+
+---
+
+## 4.4 — Longest reception needs extreme-value treatment
+
+Second-biggest NFL market by volume, and **a maximum rather than a sum**. Every
+model in this repo — `count_prop_engine`, the Beta-Binomial priors, the
+plate-appearance simulation — projects totals. The distribution of a maximum has
+a different shape and a heavier right tail, and fitting it with a count model
+will misprice the tail in the direction that matters.
+
+Treat it as its own model, not a parameterisation of the others. If it does not
+clear its gate, record it as unmodellable and serve a projection.
+
+---
+
+## 4.5 — The gate that can only run in-season
+
+**The prop ship gate cannot be run in September.** There is no held-out data
+until the 2026 season produces it, and the 2025 archive is training data. Not a
+delay to work around; the honest structure of the problem.
+
+Each week of the 2026 season adds real held-out rows. The gate runs when there
+are enough; until then every NFL prop market serves a projection with a NULL
+probability. Phase 3.0's rule already covers this: a market that has not earned a
+probability does not get one, ranks within its own market, and takes no global
+position on the board.
+
+**Gate:** ordering monotone, ECE <= 0.025 and worst bucket <= 0.05 **measured at
+the board's line** (Phase 3.0), and a positive calibration slope. Do not measure
+calibration at each row's market line and serve at a fixed one — that is exactly
+how `pitcher-outs` shipped inverted with the best-looking ECE in the book.
+
+---
+
+## 4.6 — It ends in Scan
+
+No new page. NFL props join the existing cross-market board through the same
+`prop_model_cache` and the same adapters, ranked on `calibrated P(over) - league
+baseline` like everything else. The sport-adapter architecture already has NFL
+adapters for `PlayerDetail`/`TeamDetail`/`GameDetail`; nothing here needs a new
+surface.
+
+**Gate:** NFL rows appear on Scan, ranked against MLB rows, with a sample size on
+every row and no probability on any market that has not cleared 4.5.
 
 ---
 
