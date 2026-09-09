@@ -264,7 +264,14 @@ def required_keys_sql(spec: "MarketSpec") -> str:
     such rows ever appear, this filter drops them instead of failing the cast,
     which is the safer of the two behaviours rather than a silent change.
     """
-    return " AND ".join(f"stats->>'{k}' IS NOT NULL" for k in spec.required_keys)
+    # PARENTHESISED, and that is load-bearing rather than tidy. DuckDB binds
+    # `IS NOT NULL` tighter than `->>`, so the unparenthesised form parses as
+    # `stats ->> ('key' IS NOT NULL)` and fails with "Could not convert string
+    # ... to BOOL when casting from source column stats". Postgres happens to
+    # parse it the intended way, so this is a difference that only appears on
+    # the corpus path -- which is exactly the kind of divergence a shared SQL
+    # string exists to prevent.
+    return " AND ".join(f"(stats->>'{k}') IS NOT NULL" for k in spec.required_keys)
 
 
 async def load_game_history(slug: str, conn=None,
@@ -312,14 +319,27 @@ async def load_game_history(slug: str, conn=None,
     if athlete_ids is not None:
         args.append(list(athlete_ids))
         where_ids = f" AND athlete_id = ANY(${len(args)}::text[])"
+    # `id` IS SELECTED ONLY TO MAKE THE SORT TOTAL, and is dropped again below.
+    # Sorting on (game_date, athlete_id) alone is not a total order: MLB plays
+    # DOUBLEHEADERS, and there are 6,617 (game_date, athlete_id) pairs covering
+    # 13,234 rows where one player has two games on one date. Python's sort is
+    # stable, so those rows kept whatever order the database happened to return
+    # them in -- and a bare SELECT has no ordering guarantee at all.
+    #
+    # THAT IS NOT COSMETIC. `PlayerHistory.recent_volume` is an ordered list and
+    # `mean_volume(window=N)` takes the LAST N, so swapping a doubleheader pair
+    # at the window boundary changes `projected_volume` and therefore the
+    # projection. The Postgres path was already nondeterministic run to run;
+    # this was only noticed because Parquet returned the same rows in a
+    # different order and the 5.2b identity gate refused them.
     sql = f"""
-        SELECT game_date, athlete_id,
+        SELECT id, game_date, athlete_id,
                {spec.stat_sql} AS stat,
                {spec.volume_sql} AS volume
           FROM player_game_history
          WHERE sport = 'mlb'
            AND {has_keys}
-           AND stats ? '{spec.volume_key}'
+           AND (stats->>'{spec.volume_key}') IS NOT NULL
            AND {spec.volume_sql} > 0{where_ids}
     """
     if conn is not None:
@@ -331,9 +351,9 @@ async def load_game_history(slug: str, conn=None,
     # Sorted in Python: ordering 425k rows in Postgres spills to temp disk, and
     # the database has under 2 GB of headroom. See fit_mlb_props.load_props.
     out = [(r["game_date"], str(r["athlete_id"]), float(r["stat"]),
-            float(r["volume"])) for r in raw]
-    out.sort(key=lambda t: (t[0], t[1]))
-    return out
+            float(r["volume"]), r["id"]) for r in raw]
+    out.sort(key=lambda t: (t[0], t[1], t[4]))
+    return [t[:4] for t in out]
 
 
 def market_name_sql(slug: str) -> tuple[str, list[str]]:
@@ -485,13 +505,13 @@ def load_game_history_parquet(slug: str, parquet_path: str,
     spec = BY_SLUG[slug]
     where = [f"sport = 'mlb'",
              required_keys_sql(spec),
-             f"stats->>'{spec.volume_key}' IS NOT NULL",
+             f"(stats->>'{spec.volume_key}') IS NOT NULL",
              f"{spec.volume_sql} > 0"]
     params: list = []
     if athlete_ids is not None:
         where.append("list_contains(?::VARCHAR[], athlete_id)")
         params.append(list(athlete_ids))
-    sql = (f"SELECT game_date, athlete_id, {spec.stat_sql} AS stat, "
+    sql = (f"SELECT id, game_date, athlete_id, {spec.stat_sql} AS stat, "
            f"{spec.volume_sql} AS volume "
            f"FROM read_parquet(?) WHERE {' AND '.join(where)}")
     con = duckdb.connect()
@@ -500,6 +520,8 @@ def load_game_history_parquet(slug: str, parquet_path: str,
         raw = con.execute(sql, [parquet_path, *params]).fetchall()
     finally:
         con.close()
-    out = [(r[0], str(r[1]), float(r[2]), float(r[3])) for r in raw]
-    out.sort(key=lambda t: (t[0], t[1]))
-    return out
+    # Same total order as the Postgres path -- see `load_game_history` for the
+    # doubleheader that makes the `id` tiebreaker necessary rather than tidy.
+    out = [(r[1], str(r[2]), float(r[3]), float(r[4]), r[0]) for r in raw]
+    out.sort(key=lambda t: (t[0], t[1], t[4]))
+    return [t[:4] for t in out]
