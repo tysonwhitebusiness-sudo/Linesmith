@@ -1038,27 +1038,78 @@ game picks are captured but nothing is claimed about them.
 
 ---
 
-## 4.3 — Props: the receiving and rushing family
+## 4.3 — Props: the receiving and rushing family — **BUILT AND MEASURED 2026-09-08**
 
-The volume markets, in order of real size:
+`fit_nfl_props.py`. **Projections only. No probability is published** — 4.5 owns
+that gate and needs the 2026 season.
 
-    Total Receiving Yards        20,475 rows   2,103 two-sided
-    Longest Reception            15,929        2,024
-    Total Rushing Yards          11,993        1,068
-    Anytime Touchdown Scorer     11,762          265
-    Total Receptions             11,669        2,074
+### The structural insight: two sources, very different depth
 
-**Opportunity is the modellable quantity, not the yardage.** 58,152 player rows
-carry `receiving.receivingTargets` and `nfl_target_events` holds 35,430 rows
-(2024-2025). A target is the opportunity; a blocking snap is not — which is why
-the older claim that NFL props are blocked on snap counts was wrong.
+    player_game_history   58,116 target-games, 29,867 carry-games,
+                          2012-09-06 .. 2026-01-05, ~4,000-4,600 per season
+    prop_odds_archive     ONE season of lines, dense only Sept-Nov 2025
 
-The two-sided fraction is ~10-13% throughout. Fine for the stats bar, which
-needs projection, line and outcome and never touches a price; fatal for anything
-needing a de-vigged market probability. Same split MLB has, same consequence.
+Phase 4's opening measurement said NFL props "cannot be walk-forward validated",
+and that is true of anything needing a LINE. It is not true of the PROJECTION,
+which needs no lines at all — only what a player did and how much opportunity he
+had. That splits the phase cleanly: the projection gets a genuine multi-season
+walk-forward now; the probability waits for 4.5.
 
-**Gate:** fit on 2025; NO probability is published until 4.5 clears. Projection
-only, exactly as Phase 3.0's rule requires for a market that has not earned one.
+### Result — every market beats a flat league average
+
+Fitted on seasons before 2024, held out on 2024-2025:
+
+| market | held-out n | MAE | flat baseline | gain | bias |
+|---|---|---|---|---|---|
+| receptions | 7,860 | 1.4007 | 1.7566 | **+0.3559** | +0.7% |
+| receiving-yards | 7,860 | 19.1733 | 23.7051 | **+4.5318** | +4.3% |
+| carries | 3,970 | 2.8383 | 5.1186 | **+2.2803** | +1.4% |
+| rushing-yards | 3,970 | 18.2224 | 25.8217 | **+7.5994** | +3.9% |
+
+The flat baseline is "predict the league average for everyone", which is the
+right control: it asks whether the player's own history contributes anything at
+all. All four clear it, and the projection biases are small (+0.7% to +4.3%).
+
+Archived prop rows now join: 11,177 receptions, 19,627 receiving yards, 3,890
+carries, 11,656 rushing yards.
+
+### Calibrated at each row's own line, not a fixed board line
+
+The opposite of `fit_mlb_props.py`, deliberately, and 4.0c is why: MLB's line
+concentration is 84-93% while NFL's runs 7.1-14.9% — every yardage market below
+the 16% at which `pitcher-outs` inverted. **Calibrate where you serve.**
+
+### Two bugs found, both mine, both silent
+
+1. **The NFL fit was using MLB's crosswalk.** `fit_mlb_props.load_crosswalk`
+   hardcodes `sport = 'mlb'`, so NFL prop ids were resolved against MLB players
+   and **zero** prop rows joined. It failed silently because a crosswalk miss is
+   a `continue`, not an error — and it was visible only because the joined-row
+   count is printed. That is the argument for printing counts that ought to be
+   non-zero. Fixed with a real NFL loader (1,020 ids); 4.0b had already measured
+   the true rate at 97.5% with zero off-by-one dates.
+
+2. **A "fix" that made things worse, reverted with the measurement.** Carries
+   uses `rushingAttempts` as its own volume, which reads as degenerate — carries
+   per carry, a league rate of exactly 1.000. The obvious correction is to make
+   the opportunity "played a game". That was tried and **measured 3.0915 against
+   2.8383**, because the engine's `volume_window` applies to VOLUME, not to the
+   rate: pinning volume at 1.0 makes the window inert and forces a career
+   average, which the fit duly picked. With carries as its own volume the window
+   does real work and the model becomes "project this back's recent carry load".
+
+   Recency matters here in a way it does not for a catch rate: a running back's
+   workload moves with the depth chart and game script, while his hands do not.
+   The rate of 1.000 is therefore not a bug but an honest description of a market
+   with no sub-opportunity, and it is documented in place so the next reader does
+   not re-make the same correction.
+
+### Still open in this family
+
+`Anytime Touchdown Scorer` (11,762 rows) is not modelled here. Phase 4.0a found
+it is not one market but an alt-line family — 0.5 / 1.5 / 2.5 / 3.5 — and
+touchdowns are a rare, high-variance event that the count engine's shape grid may
+not fit. It needs its own decision, like `Longest Reception` in 4.4.
 
 ---
 
