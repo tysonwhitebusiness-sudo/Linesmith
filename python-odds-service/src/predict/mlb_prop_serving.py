@@ -158,7 +158,8 @@ async def live_slate_subjects(client, as_of: date) -> tuple[dict[str, str], dict
                       "projected_lineups": projected}
 
 
-def league_baseline_for(games, subjects, line: float | None, as_of: date) -> float | None:
+def league_baseline_for(games, subjects, line: float | None, as_of: date,
+                        eligible: set | None = None) -> float | None:
     """League-wide P(stat > line) for one market, from the same history list
     this pipe already loaded to build player histories.
 
@@ -197,6 +198,12 @@ def league_baseline_for(games, subjects, line: float | None, as_of: date) -> flo
             break
         if aid not in subjects:
             continue
+        # `eligible` narrows the population to appearances of the SAME KIND as
+        # the one being served — supplied only for pitcher markets, where it is
+        # the set of starts. See `mlb_props.load_start_keys` for the measurement
+        # that made this necessary and for why role beats any volume rule.
+        if eligible is not None and (gd, aid) not in eligible:
+            continue
         total += 1
         if ev > line:
             over += 1
@@ -230,6 +237,9 @@ async def build(conn, as_of: date, lines: dict[str, float] | None = None,
 
     out: list[ServedProjection] = []
     history_rows = 0
+    # Loaded at most once per run, and only if a pitcher market actually serves
+    # a probability — a board with no servable pitcher market never pays for it.
+    start_keys: set | None = None
     for dim, cal in sorted(markets.items()):
         # ONE history source, shared with the walk-forward. Strictly before
         # as_of — asserted, because this is the whole leakage control.
@@ -249,7 +259,17 @@ async def build(conn, as_of: date, lines: dict[str, float] | None = None,
         # Phase 2 — the anchor Scan's cross-market ranking subtracts. See
         # `league_baseline_for` for why it is computed from `games` rather than
         # read from `cal["league_rate"]`, which is a different quantity.
-        baseline = league_baseline_for(games, subjects, line, as_of) if show_prob else None
+        # A pitcher market is served to tonight's STARTERS, so its baseline may
+        # only count starts; a batter's appearances are homogeneous and pass
+        # `eligible=None`, which is what keeps this a no-op for every batter
+        # market rather than a behaviour change dressed as a fix.
+        eligible = None
+        if show_prob and mp.BY_SLUG[dim].side == "pit":
+            if start_keys is None:
+                start_keys = await mp.load_start_keys(conn=conn)
+            eligible = start_keys
+        baseline = (league_baseline_for(games, subjects, line, as_of, eligible=eligible)
+                    if show_prob else None)
         for aid, gid in subjects.items():
             h = hists.get(aid)
             if h is None or h.games < MIN_PRIOR_GAMES:
@@ -270,8 +290,54 @@ async def build(conn, as_of: date, lines: dict[str, float] | None = None,
                 line=line if show_prob else None, model_prob=prob,
                 league_baseline=baseline))
 
+    edges, warnings = _market_edge_diagnostics(out)
     return {"served": out, "markets": sorted(markets),
-            "subjects": len(subjects), "history_rows": history_rows}
+            "subjects": len(subjects), "history_rows": history_rows,
+            "market_edge": edges, "warnings": warnings}
+
+
+# A market's MEDIAN edge should sit near zero: half the players on a slate are
+# better than a typical one and half are worse, so the anchor should land in the
+# middle of the field it anchors. Measured on a healthy 2026-09-09 board the
+# whole spread was -2.9pt..+0.4pt across eight markets; the population defect
+# that swept the top 19 rows read +18.3pt.
+#
+# THIS NUMBER IS A TRIPWIRE, NOT A TRUTH, and it is deliberately an order of
+# magnitude outside the observed healthy band rather than fitted to it. It does
+# not refuse to serve, because a hard gate on an invented constant would be a
+# guess dressed as a criterion — the same objection `CURRENT.md` already records
+# against picking a `served_probability_spread` threshold out of the air. It
+# raises a warning into the job summary, where `health_check.py` already reads.
+MEDIAN_EDGE_TRIPWIRE = 0.10
+
+
+def _market_edge_diagnostics(served: list[ServedProjection]) -> tuple[dict, list[str]]:
+    """Per-market median `P(over) - baseline`, plus a warning per outlier.
+
+    Exists because the defect this catches is invisible per-row: every single
+    `pitcher-hits-allowed` row looked plausible on its own (55-58% on a 4.5
+    line), and only the market's median against its own anchor showed that the
+    ENTIRE market had been shifted. A per-row check could not have found it.
+    """
+    by: dict[str, list[float]] = {}
+    for s in served:
+        if s.model_prob is None or s.league_baseline is None:
+            continue
+        by.setdefault(s.dimension, []).append(s.model_prob - s.league_baseline)
+
+    edges: dict[str, float] = {}
+    warnings: list[str] = []
+    for dim, es in sorted(by.items()):
+        es.sort()
+        med = es[len(es) // 2]
+        edges[dim] = round(med, 4)
+        if abs(med) > MEDIAN_EDGE_TRIPWIRE:
+            warnings.append(
+                f"{dim}: median edge {med:+.1%} exceeds the {MEDIAN_EDGE_TRIPWIRE:.0%} "
+                f"tripwire — the whole market is displaced against its own baseline, "
+                f"which usually means the anchor's population does not match the "
+                f"population being served (see mlb_props.load_start_keys)")
+    return edges, warnings
 
 
 def to_cache_rows(served: list[ServedProjection]) -> list:

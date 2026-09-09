@@ -347,3 +347,48 @@ def resolve_athlete_sql(col: str = "p.athlete_id") -> str:
     rows land on the right game date.
     """
     return RESOLVE_ATHLETE_SQL.format(col=col)
+
+
+async def load_start_keys(conn=None) -> set[tuple]:
+    """`(game_date, athlete_id)` for every pitcher appearance that was a START.
+
+    WHY THIS EXISTS: `league_baseline_for` anchors Scan's cross-market ranking,
+    and an anchor is only meaningful if it describes the same population as the
+    number subtracted from it. A pitcher market is SERVED to tonight's probable
+    starters, but a pitcher's history mixes starts with relief outings, and the
+    two are not the same event. Measured 2026-09-09 on the live board:
+    38.3% of `pitcher-hits-allowed`'s baseline rows were relief appearances
+    (p10 = 3 outs, p25 = 7 outs), where clearing a starter's line is close to
+    impossible. That dragged the baseline from 59.1% to 38.2% and handed every
+    one of the 35 pitchers a fake +18.3pt edge, which swept the top 19 slots of
+    the MLB board.
+
+    ROLE, NOT VOLUME, IS THE DISCRIMINATOR, and that distinction was measured
+    rather than assumed. Two threshold-free volume rules were tried first and
+    BOTH were rejected because they moved markets that were already correct:
+    volume-weighting left `pitcher-hits-allowed` at +4.1 while shifting all six
+    batter markets down 3-4pt, and cutting at a percentile of tonight's
+    projected volumes fixed the pitcher market only at p50, where it moved
+    batters by 4-8pt. `pit_gamesStarted` is a fact in the row rather than a
+    cutoff chosen to produce an answer, and because only `side == "pit"` markets
+    consult it, every batter market is a NO-OP BY CONSTRUCTION — verified
+    byte-identical across all seven.
+
+    Stored as `"0.0"`/`"1.0"`, so the cast is float and the test is `>= 1`; an
+    int cast raises on this data.
+    """
+    import db as _db
+
+    sql = """
+        SELECT game_date, athlete_id FROM player_game_history
+         WHERE sport = 'mlb'
+           AND stats ? 'pit_gamesStarted'
+           AND (stats->>'pit_gamesStarted')::float >= 1
+    """
+    if conn is not None:
+        raw = await conn.fetch(sql)
+    else:
+        pool = await _db.get_pool()
+        async with pool.acquire(timeout=300.0) as c:
+            raw = await c.fetch(sql)
+    return {(r["game_date"], str(r["athlete_id"])) for r in raw}
