@@ -521,9 +521,14 @@ export function ScanTable({
   // max-height — is what was freezing the tab on every NFL page open. Same
   // "Show N more" convention NflTeamDetail's roster already uses.
   const PAGE_SIZE = 150;
-  const [showAllRows, setShowAllRows] = useState(false);
+  // Rows revealed per click after the first page. The first page stays at
+  // PAGE_SIZE for the mount-cost reason above; growing in smaller steps after
+  // that keeps each subsequent commit cheap, where a single "show everything"
+  // button could mount 694 rows in one go (measured on a real MLB board).
+  const STEP = 50;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   useEffect(() => {
-    setShowAllRows(false);
+    setVisibleCount(PAGE_SIZE);
   }, [candidates]);
 
   // Every hole-N candidate for every golfer carries one history entry per
@@ -666,7 +671,7 @@ export function ScanTable({
           </thead>
 
           <tbody>
-            {(showAllRows ? rows : rows.slice(0, PAGE_SIZE)).map((row) => {
+            {rows.slice(0, visibleCount).map((row) => {
               const { candidate } = row;
               const m = meta(candidate);
               const added = pickedKeys?.has(row.key);
@@ -948,15 +953,37 @@ export function ScanTable({
           </tbody>
         </table>
       </div>
-      {!showAllRows && rows.length > PAGE_SIZE ? (
-        <div className="border-t border-line p-2 text-center">
-          <button
-            type="button"
-            onClick={() => setShowAllRows(true)}
-            className="text-[12px] font-medium text-masters hover:underline"
-          >
-            Show {rows.length - PAGE_SIZE} more rows
-          </button>
+      {/* ALWAYS RENDERED WHEN THERE ARE ROWS, even with nothing left to reveal.
+          An absent footer is ambiguous: "no button because every row is already
+          on screen" and "the button is broken" look identical. Late on a slate
+          this matters — Scan drops candidates whose game is `done`, so a board
+          that carried 844 rows in the afternoon legitimately falls to 33 at
+          midnight, and the count is what makes that legible rather than
+          alarming. */}
+      {rows.length > 0 ? (
+        <div className="flex items-center justify-center gap-3 border-t border-line p-2 text-center">
+          <span className="text-[12px] text-ink-muted">
+            Showing {Math.min(visibleCount, rows.length).toLocaleString()} of{' '}
+            {rows.length.toLocaleString()}
+          </span>
+          {visibleCount < rows.length ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setVisibleCount((n) => n + STEP)}
+                className="text-[12px] font-medium text-masters hover:underline"
+              >
+                Show {Math.min(STEP, rows.length - visibleCount)} more
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisibleCount(rows.length)}
+                className="text-[12px] text-ink-muted hover:text-ink hover:underline"
+              >
+                Show all {rows.length.toLocaleString()}
+              </button>
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>
