@@ -754,18 +754,36 @@ inventing one would be a guess dressed as a criterion.
 
 ---
 
-# Phase 4 — NBA
+# Phase 4 — NFL
 
-- Possessions × points-per-possession. Possessions are computable from
-  FGA/FTA/TOV/OREB, all already in the player rows.
-- 24,705 priced games, dense 2008–2019 and 2021–2025, 100% result coverage.
-- `nba_shot_events` **already holds 219,873 rows** — the plan's "never run" is
-  stale.
-- **Props are the thinnest of any viable sport**: 4,480 graded player-games, a
-  sixteenth of MLB's. Minutes are the least predictable part, so an NBA prop
-  model is mostly a minutes model. Build it knowing that.
-- Spread is home-side only — judged against the posted line, not a de-vigged
-  probability. Moneyline and total are the primary gates.
+**MOVED AHEAD OF NBA on 2026-09-08: the NFL season starts 2026-09-09.** The
+model content below is unchanged; only its position is. An in-season sport
+produces live lines, live results and a CLV signal that accumulates every week,
+while an out-of-season one produces none of those until it starts. Phase 3.5
+ended with the gate blocked on exactly that — n=129 picks over 11 days, because
+everything earlier is unjoinable — so ordering the sports by whether they are
+actually playing is worth more than their alphabet.
+
+NBA (now Phase 6) tips off in late October, so it loses nothing by waiting; its
+evidence base is entirely historical either way.
+
+- Margin-adjusted Elo with diminishing returns on blowouts. 7,336 spread/total
+  games back to 1999; both spread sides priced, so NFL spread **can** be
+  de-vigged unlike NBA/EPL/CFB.
+- **Props are NOT blocked on snap counts.** 58,152 rows carry
+  `receiving.receivingTargets`; a target is the opportunity, a blocking snap is
+  not. `nfl_target_events` already holds 35,430 rows.
+- **Longest reception needs extreme-value treatment** — it is a maximum, not a
+  sum. Second-biggest NFL market by volume.
+- **Milestone alt-lines are off by one**: a line of 2.0 means over 1.5.
+  **PHASE 3.2 PROVED THIS IS NOT AN NFL-ONLY ISSUE.** MLB had five such schemes
+  and one of them (`Home Runs Milestones`, 37,252 rows) was the sole 2026
+  coverage of a market the plan had written off as unmodellable. The mechanism
+  already exists — `MarketSpec.milestone_names` plus an `L -> L-0.5` conversion
+  in the loader, pinned by `src/test_milestone_lines.py`. **Audit NFL's
+  `type_name` list for integer-line schemes BEFORE fitting anything**, because
+  the wrong reading does not look wrong: it trains and calibrates confidently on
+  a market roughly sixteen times rarer than the one intended.
 
 ---
 
@@ -781,17 +799,22 @@ inventing one would be a guess dressed as a criterion.
 
 ---
 
-# Phase 6 — NFL
+# Phase 6 — NBA
 
-- Margin-adjusted Elo with diminishing returns on blowouts. 7,336 spread/total
-  games back to 1999; both spread sides priced, so NFL spread **can** be
-  de-vigged unlike NBA/EPL/CFB.
-- **Props are NOT blocked on snap counts.** 58,152 rows carry
-  `receiving.receivingTargets`; a target is the opportunity, a blocking snap is
-  not. `nfl_target_events` already holds 35,430 rows.
-- **Longest reception needs extreme-value treatment** — it is a maximum, not a
-  sum. Second-biggest NFL market by volume.
-- **Milestone alt-lines are off by one**: a line of 2.0 means over 1.5.
+**MOVED BACK FROM PHASE 4 on 2026-09-08** — see Phase 4's note. NBA tips off in
+late October; nothing here depends on the season being live, so it loses
+nothing by waiting.
+
+- Possessions × points-per-possession. Possessions are computable from
+  FGA/FTA/TOV/OREB, all already in the player rows.
+- 24,705 priced games, dense 2008–2019 and 2021–2025, 100% result coverage.
+- `nba_shot_events` **already holds 219,873 rows** — the plan's "never run" is
+  stale.
+- **Props are the thinnest of any viable sport**: 4,480 graded player-games, a
+  sixteenth of MLB's. Minutes are the least predictable part, so an NBA prop
+  model is mostly a minutes model. Build it knowing that.
+- Spread is home-side only — judged against the posted line, not a de-vigged
+  probability. Moneyline and total are the primary gates.
 
 ---
 
@@ -879,7 +902,7 @@ Diagnostics stand as written.
 1  Consolidation        stops the add-only pattern before five sports are added to it
 2  Scan                 proves the pipeline end-to-end on the two sports that work
 3  Finish MLB           the largest evidence base; the sim has a real control now
-4  NBA  5 CFB  6 NFL    each ends in Scan, not a new page
+4  NFL  5 CFB  6 NBA    in-season first; each ends in Scan, not a new page
 7  Golf/tennis/soccer   decide rather than drift
 8  Correctness          before anyone outside sees it
 9  Infrastructure       before anyone outside can reach it
@@ -890,3 +913,21 @@ Diagnostics stand as written.
 **Phase 2 before Phase 3** is deliberate. Two sports already have validated
 models and neither is visible in the product. Adding a third before the first two
 are on screen repeats exactly the pattern that produced this document.
+
+**NFL AND NBA SWAPPED, 2026-09-08.** NFL was Phase 6 and is now Phase 4,
+because the NFL season starts 2026-09-09 and the NBA's does not start until late
+October. The sports are now ordered by whether they are actually being played:
+NFL (starts tomorrow), CFB (already underway), NBA (late October).
+
+This is not a preference. **Phase 3.5 ended blocked on exactly this problem** —
+the game ship gate could only be measured on 129 picks over 11 days, because
+everything before 2026-08-27 is permanently unjoinable, and no amount of work
+creates evidence that was never captured. An in-season sport produces live
+lines, live results and CLV that accumulates every week; an out-of-season one
+produces none of that until it starts. Building NBA in September means finishing
+it and then waiting six weeks to learn whether it works.
+
+MLB's own season ends in October, which is a second reason not to spend the
+autumn on a sport that is not playing.
+
+Nothing about either sport's model content changed — only their position.

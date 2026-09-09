@@ -10,7 +10,23 @@ nothing.
 Phase 3.4 is MEASURED: a TIE — the direct model keeps the props board.
 Phase 3.5 is MEASURED: NO DEMONSTRATED EDGE on moneyline or total, after fixing
 a contaminated measurement that had reported severe negative CLV.
-**PHASE 3 IS COMPLETE. Phase 4 (NBA) is next.**
+**PHASE 3 IS COMPLETE. Phase 4 is next, and it is now NFL, not NBA.**
+
+**NFL AND NBA WERE SWAPPED 2026-09-08** (NFL was Phase 6, NBA was Phase 4). The
+NFL season starts 2026-09-09; the NBA's does not start until late October. The
+sports are now ordered by whether they are actually being played — NFL, then
+CFB (already underway), then NBA. Phase 3.5 ended blocked on precisely this:
+the game ship gate could only be measured on 129 picks over 11 days, and no
+amount of work creates evidence that was never captured. Only the ORDER changed;
+neither sport's model content moved.
+
+**Before fitting anything for NFL, audit its `type_name` list for integer-line
+MILESTONE schemes.** The plan already flagged this as an NFL issue, and Phase
+3.2 proved it is not NFL-only: MLB had five such schemes, and one of them was
+the sole 2026 coverage of a market the plan had written off as unmodellable. The
+mechanism exists (`MarketSpec.milestone_names`, `L -> L-0.5` in the loader,
+pinned by `src/test_milestone_lines.py`). The wrong reading does not look wrong
+— it trains and calibrates confidently on a market ~16x rarer than intended.
 
 All work through 3.3 is pushed to `origin/main`. **The Render worker is
 `autoDeploy: false` and has NOT been deployed** — it still runs pre-3.0 code, so
