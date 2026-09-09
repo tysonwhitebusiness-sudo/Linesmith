@@ -240,7 +240,8 @@ EXCLUDED: dict[str, str] = {
 }
 
 
-async def load_game_history(slug: str, conn=None) -> list[tuple]:
+async def load_game_history(slug: str, conn=None,
+                            athlete_ids: list[str] | None = None) -> list[tuple]:
     """Every player-game for one market, as (game_date, athlete_id, stat, volume).
 
     THE ONE HISTORY SOURCE. Both the walk-forward and the serving path call this
@@ -257,6 +258,33 @@ async def load_game_history(slug: str, conn=None) -> list[tuple]:
 
     spec = BY_SLUG[slug]
     has_keys = " AND ".join(f"stats ? '{k}'" for k in spec.required_keys)
+    # `athlete_ids` NARROWS THE PULL TO THE PLAYERS THE CALLER WILL ACTUALLY
+    # USE, and it is optional because the two callers need opposite things.
+    #
+    # THE SERVING PATH passes tonight's slate. Both of its consumers already
+    # discard everything else in Python — `mlb_prop_serving.build`'s history
+    # loop keeps only `aid in subjects`, and `league_baseline_for` skips the
+    # rest — so the filter changes what is TRANSFERRED, never what is computed.
+    # Measured 2026-09-09 before it existed: 299 players were served out of
+    # 7,184,704 rows pulled, 74.2% of them discarded on arrival. That single
+    # query family was 64.7% of every row this database returned, and the
+    # 385 MB it materialised is what OOM-killed `mlbProjectionsJob` on a 512 MB
+    # worker. NHL and NFL's pipes have always filtered this way; MLB is the
+    # oldest and never caught up.
+    #
+    # THE WALK-FORWARD MUST NOT PASS IT and therefore gets `None`. This function
+    # is THE ONE HISTORY SOURCE precisely so the model that is measured is the
+    # model that is served, and a default that silently narrowed the corpus
+    # would narrow every backtest with it — the same class of error as fitting
+    # at a line you do not serve.
+    #
+    # Bound as a parameter rather than interpolated: everything else in this
+    # SQL comes from `MarketSpec` constants, but an athlete list is caller data.
+    args: list = []
+    where_ids = ""
+    if athlete_ids is not None:
+        args.append(list(athlete_ids))
+        where_ids = f" AND athlete_id = ANY(${len(args)}::text[])"
     sql = f"""
         SELECT game_date, athlete_id,
                {spec.stat_sql} AS stat,
@@ -265,14 +293,14 @@ async def load_game_history(slug: str, conn=None) -> list[tuple]:
          WHERE sport = 'mlb'
            AND {has_keys}
            AND stats ? '{spec.volume_key}'
-           AND {spec.volume_sql} > 0
+           AND {spec.volume_sql} > 0{where_ids}
     """
     if conn is not None:
-        raw = await conn.fetch(sql)
+        raw = await conn.fetch(sql, *args)
     else:
         pool = await _db.get_pool()
         async with pool.acquire(timeout=300.0) as c:
-            raw = await c.fetch(sql)
+            raw = await c.fetch(sql, *args)
     # Sorted in Python: ordering 425k rows in Postgres spills to temp disk, and
     # the database has under 2 GB of headroom. See fit_mlb_props.load_props.
     out = [(r["game_date"], str(r["athlete_id"]), float(r["stat"]),
@@ -349,7 +377,8 @@ def resolve_athlete_sql(col: str = "p.athlete_id") -> str:
     return RESOLVE_ATHLETE_SQL.format(col=col)
 
 
-async def load_start_keys(conn=None) -> set[tuple]:
+async def load_start_keys(conn=None,
+                          athlete_ids: list[str] | None = None) -> set[tuple]:
     """`(game_date, athlete_id)` for every pitcher appearance that was a START.
 
     WHY THIS EXISTS: `league_baseline_for` anchors Scan's cross-market ranking,
@@ -379,16 +408,25 @@ async def load_start_keys(conn=None) -> set[tuple]:
     """
     import db as _db
 
-    sql = """
+    # Same optional narrowing as `load_game_history`, for the same reason: the
+    # only consumer is `league_baseline_for`, which counts rows for the slate's
+    # own pitchers and ignores every other start. Unfiltered this returns every
+    # start in 16 years of history to answer a question about tonight's 35.
+    args: list = []
+    where_ids = ""
+    if athlete_ids is not None:
+        args.append(list(athlete_ids))
+        where_ids = f" AND athlete_id = ANY(${len(args)}::text[])"
+    sql = f"""
         SELECT game_date, athlete_id FROM player_game_history
          WHERE sport = 'mlb'
            AND stats ? 'pit_gamesStarted'
-           AND (stats->>'pit_gamesStarted')::float >= 1
+           AND (stats->>'pit_gamesStarted')::float >= 1{where_ids}
     """
     if conn is not None:
-        raw = await conn.fetch(sql)
+        raw = await conn.fetch(sql, *args)
     else:
         pool = await _db.get_pool()
         async with pool.acquire(timeout=300.0) as c:
-            raw = await c.fetch(sql)
+            raw = await c.fetch(sql, *args)
     return {(r["game_date"], str(r["athlete_id"])) for r in raw}

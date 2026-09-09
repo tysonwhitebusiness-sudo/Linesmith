@@ -240,10 +240,18 @@ async def build(conn, as_of: date, lines: dict[str, float] | None = None,
     # Loaded at most once per run, and only if a pitcher market actually serves
     # a probability — a board with no servable pitcher market never pays for it.
     start_keys: set | None = None
+    # Materialised once: every history query below is narrowed to exactly these
+    # players, which is the whole of 5.1.
+    subject_ids = list(subjects)
     for dim, cal in sorted(markets.items()):
         # ONE history source, shared with the walk-forward. Strictly before
         # as_of — asserted, because this is the whole leakage control.
-        games = await mp.load_game_history(dim, conn=conn)
+        # ONLY THE SLATE'S PLAYERS CROSS THE WIRE. Both consumers below already
+        # discard everyone else — this loop keeps `aid in subjects` and
+        # `league_baseline_for` skips the rest — so this narrows what is
+        # TRANSFERRED, never what is computed. See `mp.load_game_history` for
+        # the measurement and for why the walk-forward must not pass it.
+        games = await mp.load_game_history(dim, conn=conn, athlete_ids=subject_ids)
         hists: dict[str, eng.PlayerHistory] = {}
         for gd, aid, ev, vol in games:
             if gd >= as_of:
@@ -266,7 +274,7 @@ async def build(conn, as_of: date, lines: dict[str, float] | None = None,
         eligible = None
         if show_prob and mp.BY_SLUG[dim].side == "pit":
             if start_keys is None:
-                start_keys = await mp.load_start_keys(conn=conn)
+                start_keys = await mp.load_start_keys(conn=conn, athlete_ids=subject_ids)
             eligible = start_keys
         baseline = (league_baseline_for(games, subjects, line, as_of, eligible=eligible)
                     if show_prob else None)
