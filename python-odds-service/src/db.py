@@ -440,6 +440,23 @@ class PropOddsInput:
     delay_seconds: int | None = None
 
 
+# The only side values `prop_odds_side_valid` permits. Kept beside the writer
+# that enforces them so the constraint and the code that satisfies it are read
+# together — the schema is the authority, this is the adapter to it.
+PROP_SIDE_VALID = ("over", "under", "other")
+
+
+def canonical_prop_side(raw) -> str:
+    """Any provider's selection label -> a value the schema accepts.
+
+    Case- and whitespace-insensitive; everything unrecognised becomes `other`
+    rather than raising or being dropped. See `write_prop_odds` for the outage
+    that made this necessary and for why `other` is the right bucket.
+    """
+    s = str(raw or "").strip().lower()
+    return s if s in PROP_SIDE_VALID else "other"
+
+
 async def write_prop_odds(rows: list[PropOddsInput]) -> None:
     """Direct port of lib/db/client.ts's writePropOdds — not a simplified
     reimplementation. Per row, within one real transaction covering the
@@ -481,9 +498,32 @@ async def write_prop_odds(rows: list[PropOddsInput]) -> None:
         return
     fetched_at = datetime.now(timezone.utc)
 
+    # SIDE IS CANONICALISED HERE, at the shared writer, for the same reason
+    # `canonical_bookmaker` is (task 5.3): a producer that forgets is a producer
+    # that takes down the whole batch, and there are six of them. `side` is
+    # constrained to over/under/other in the schema, and `executemany` is a
+    # SINGLE statement — one bad value raises CheckViolationError and discards
+    # every other row in the batch with it.
+    #
+    # That is not hypothetical. 2026-09-09, `refreshTennisAtpJob` died on
+    # `side = 'away'` — a two-way selection SharpAPI emits alongside real props
+    # — and lost the entire tennis write with it. It only surfaced when
+    # pagination started reading past page one, which is where such rows live;
+    # the row had presumably been sitting there for months, unreachable.
+    #
+    # `other` is SharpAPI's OWN convention for a selection with no line (286 of
+    # 400 NFL rows surveyed), and it is already 752 rows of real data here, so
+    # mapping to it follows the vendor rather than inventing a category. No
+    # yes/no mapping is included because no producer sends one — measured, not
+    # assumed. Anything unrecognised lands in `other` rather than being dropped:
+    # a row we cannot grade is still a price someone posted.
+    for r in rows:
+        r.side = canonical_prop_side(r.side)
+
     # Deduplicate within the batch on the natural key, keeping the last row —
     # the per-row loop this replaced had that behaviour implicitly, since a
-    # later write simply overwrote an earlier one's effect.
+    # later write simply overwrote an earlier one's effect. Runs AFTER
+    # canonicalisation so two rows differing only by side spelling collapse.
     latest: dict[tuple, PropOddsInput] = {}
     for r in rows:
         latest[(r.provider_id, r.game_id, r.subject_id, r.market_key, r.line, r.side, r.bookmaker)] = r
