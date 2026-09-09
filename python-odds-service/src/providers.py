@@ -318,47 +318,141 @@ def _normalize_row(
     )
 
 
+# SharpAPI free tier: 12 req/min, no daily or monthly budget. See config.py's
+# SHARPAPI_RATE_PER_MIN / SHARPAPI_MAX_PAGES for the operator-tunable versions.
+SHARPAPI_DEFAULT_RATE_PER_MIN = 12
+SHARPAPI_DEFAULT_MAX_PAGES = 12
+
+
 async def fetch_sharpapi(
-    client: httpx.AsyncClient, api_key: str, games: list[Game], sport: str = "baseball", league: str = "mlb"
+    client: httpx.AsyncClient, api_key: str, games: list[Game], sport: str = "baseball",
+    league: str = "mlb", yield_fn=None, max_pages: int | None = None,
+    rate_per_min: int | None = None,
 ) -> FetchOutcome:
+    """SharpAPI's player-prop board for one league, FOLLOWED TO THE END.
+
+    THIS USED TO READ ONE PAGE. The request asks for `limit=500`; the server
+    silently caps a page at 200 and hands back `has_more: true` with a
+    `next_cursor`, which the previous version discarded. Measured 2026-09-09,
+    that made NFL's entire ingested board the first 200 rows — ONE game (the
+    Thursday opener), ONE book, and 2 of the 19 markets that game actually had
+    — while FanDuel was posting the full slate. Scan rendered 9 candidates and
+    looked like a filtering bug; it was this.
+
+    It was invisible because nothing failed: 200 rows is a plausible response,
+    every row in it is real, and no error is raised. The tell was only in the
+    `pagination` block nobody read. Every sport this fetcher serves — MLB, NFL,
+    CFB, NBA, NHL, soccer, tennis — was truncated the same way.
+
+    `offset` IS NOT AN OPTION for the fix: it 400s past 500 with
+    `offset_too_large`, and the error text names `cursor` as the deep-pagination
+    path. So the walk threads `next_cursor`.
+
+    PACING IS THE ONLY REAL CONSTRAINT. SharpAPI's free tier has no daily or
+    monthly budget — `provider_matrix._sharpapi` sets `cap_kind="none"` for that
+    reason — just 12 requests/minute, so paginating spends no budget at all. The
+    walk goes through `rate_limit.within_rate`, the same check-and-consume gate
+    `fetch_sportsgameodds` uses, and yields to the job's pacer between pages
+    rather than sleeping through them.
+    """
     out = FetchOutcome(provider_id="sharpapi")
     if not games:
         return out
-    url = f"https://api.sharpapi.io/api/v1/odds?sport={sport}&league={league}&is_player_prop=true&limit=500"
-    try:
-        res = await client.get(url, headers={"X-API-Key": api_key}, timeout=TIMEOUT)
-    except httpx.HTTPError as e:
-        out.warnings.append(f"sharpapi request failed: {e}")
-        return out
-    out.requests = 1
-    if res.status_code != 200:
-        out.warnings.append(f"sharpapi HTTP {res.status_code}")
-        return out
+    # Defaults live here so a direct caller (tests, one-off scripts) needs no
+    # config; the real values come from provider_matrix, which owns config the
+    # way every other provider in this module is wired.
+    max_pages = max_pages or SHARPAPI_DEFAULT_MAX_PAGES
+    rate_per_min = rate_per_min or SHARPAPI_DEFAULT_RATE_PER_MIN
 
-    body = res.json()  # fallback materialization — see module docstring
-    raw_rows = body.get("data") or []
-    delay_seconds = (body.get("meta") or {}).get("tier", {}).get("data_delay_seconds") or 0
-    # Immediately compact: keep only the fields sharpapi.ts:297-338 actually
-    # uses (sportsbook, event_id, home/away, player_name, stat_category,
-    # selection_type, line, odds_american, odds_decimal) — drop the rest of
-    # each verbose raw row right away, matching Constraint 1's discipline.
-    compact = [
-        (
-            r.get("home_team"),
-            r.get("away_team"),
-            r.get("event_id"),
-            r.get("player_name"),
-            r.get("stat_category"),
-            r.get("sportsbook"),
-            r.get("selection_type"),
-            r.get("line"),
-            r.get("odds_american"),
-            r.get("odds_decimal"),
+    base = (f"https://api.sharpapi.io/api/v1/odds?sport={sport}&league={league}"
+            f"&is_player_prop=true&limit=500")
+    compact: list[tuple] = []
+    delay_seconds = 0
+    cursor: str | None = None
+    truncated = False
+
+    for page in range(max_pages):
+        # Check-and-consume: a True return has already spent the slot, so there
+        # is no separate record() to make. Mirrors fetch_sportsgameodds.
+        while not rate_limit.within_rate("sharpapi", rate_per_min, 60.0):
+            wait_hint = rate_limit.seconds_until_capacity("sharpapi", 60.0)
+            yielded = await yield_fn(wait_hint) if yield_fn else False
+            if not yielded:
+                await asyncio.sleep(min(wait_hint, 1.0) + 0.05)
+
+        url = base if cursor is None else f"{base}&cursor={cursor}"
+        try:
+            res = await client.get(url, headers={"X-API-Key": api_key}, timeout=TIMEOUT)
+        except httpx.HTTPError as e:
+            out.warnings.append(f"sharpapi request failed on page {page + 1}: {e}")
+            break
+        out.requests += 1
+        if res.status_code == 429:
+            rate_limit.force_exhausted("sharpapi", rate_per_min, 60.0)
+            out.rate_limited = True
+            out.warnings.append(f"sharpapi HTTP 429 on page {page + 1} — backing off")
+            break
+        if res.status_code != 200:
+            # The body is included because this vendor's errors are ACTIONABLE
+            # and we lost months to not reading one: the offset variant replies
+            # `offset must be <= 500; use cursor=` and names its own fix. A bare
+            # status code would have hidden that.
+            out.warnings.append(
+                f"sharpapi HTTP {res.status_code} on page {page + 1}: {res.text[:200]}")
+            break
+
+        body = res.json()  # fallback materialization — see module docstring
+        raw_rows = body.get("data") or []
+        # The vendor also warns in-band on a 200 — `limit=500 exceeded max=200;
+        # applied=200` was being returned on every single request and silently
+        # discarded. Surfaced once rather than per page.
+        page_warning = (body.get("pagination") or {}).get("warning")
+        if page_warning and page == 0:
+            out.warnings.append(f"sharpapi says: {page_warning}")
+        if not delay_seconds:
+            delay_seconds = (body.get("meta") or {}).get("tier", {}).get("data_delay_seconds") or 0
+        # Immediately compact: keep only the fields sharpapi.ts:297-338 actually
+        # uses (sportsbook, event_id, home/away, player_name, stat_category,
+        # selection_type, line, odds_american, odds_decimal) — drop the rest of
+        # each verbose raw row right away, matching Constraint 1's discipline.
+        # Done PER PAGE so no run ever holds more than one raw page in memory.
+        compact.extend(
+            (
+                r.get("home_team"),
+                r.get("away_team"),
+                r.get("event_id"),
+                r.get("player_name"),
+                r.get("stat_category"),
+                r.get("sportsbook"),
+                r.get("selection_type"),
+                r.get("line"),
+                r.get("odds_american"),
+                r.get("odds_decimal"),
+            )
+            for r in raw_rows
+            if r.get("player_name") and r.get("stat_category")
         )
-        for r in raw_rows
-        if r.get("player_name") and r.get("stat_category")
-    ]
-    del raw_rows, body
+        pagination = body.get("pagination") or {}
+        del raw_rows, body
+
+        if not pagination.get("has_more"):
+            break
+        cursor = pagination.get("next_cursor")
+        if not cursor:
+            # has_more with no cursor is the vendor contradicting itself. Stop
+            # rather than re-request page one forever, and say so.
+            out.warnings.append("sharpapi reported has_more with no next_cursor — stopping")
+            break
+    else:
+        truncated = True
+
+    if truncated:
+        # Reported, not absorbed: the un-paginated version failed silently for
+        # months precisely because truncation looked like a complete response.
+        out.warnings.append(
+            f"sharpapi {sport}/{league}: hit the {max_pages}-page cap with more "
+            f"data available ({len(compact)} rows read) — raise SHARPAPI_MAX_PAGES "
+            f"if this persists")
 
     for game in games:
         roster_index = build_roster_index(game.roster)

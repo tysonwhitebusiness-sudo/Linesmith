@@ -64,6 +64,33 @@ DB_POOLER_MODE = (env("DB_POOLER_MODE", "session") or "session").strip().lower()
 SHARPAPI_KEY = env("SHARPAPI_KEY")
 SHARPAPI_ENABLED = env_bool("SHARPAPI_ENABLED") and bool(SHARPAPI_KEY)
 
+# SharpAPI's player-prop board is CURSOR-PAGINATED and we used to read page one
+# and stop. Measured 2026-09-09: the request asks for `limit=500`, the server
+# silently caps the page at 200 and returns `has_more: true` with a
+# `next_cursor` we threw away — so NFL's whole board was the first 200 rows,
+# which was ONE game (the Thursday opener), ONE book, and 2 of its 19 markets,
+# while FanDuel was posting the full slate. Scan showed 9 candidates.
+#
+# 12 requests/minute is SharpAPI's real free-tier limit and the reason
+# `provider_matrix._sharpapi` sets `cap_kind="none"` — there is no daily or
+# monthly budget to spend, only a rate to respect. The page walk is paced
+# through `rate_limit.within_rate` against exactly this number.
+SHARPAPI_RATE_PER_MIN = int(env("SHARPAPI_RATE_PER_MIN", "12") or 12)
+
+# Hard stop on the walk, per sport per cycle. NOT a budget — a blast radius.
+# At 200 rows/page this is 2,400 rows, which covered a full NFL Sunday plus the
+# standalone games in testing. Stopping early is REPORTED as a warning rather
+# than absorbed, the same discipline `fetch_sportsgameodds` applies to its own
+# unpaginated limit: a slate that outgrows this should be noticed, not silently
+# truncated the way the un-paginated version was for months.
+SHARPAPI_MAX_PAGES = int(env("SHARPAPI_MAX_PAGES", "12") or 12)
+
+# True only when the operator SET the variable. Without this, the default value
+# above would silently beat `provider_matrix.SHARPAPI_MAX_PAGES_BY_SPORT` and
+# hand MLB a 12-page walk every 2.5 minutes — the exact overspend the per-sport
+# budget exists to prevent. An env override has to be deliberate to win.
+SHARPAPI_MAX_PAGES_OVERRIDE = env("SHARPAPI_MAX_PAGES") is not None
+
 # CFB's X-signal (Phase 3 of docs/daily-picks-full-model-build-2026-08-27.
 # md) — the same account/key lib/sports/cfb/cfbd.ts already uses on the TS
 # side (user-confirmed 2026-08-27: reuse, not a separate key), already

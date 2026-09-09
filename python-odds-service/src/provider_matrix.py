@@ -169,6 +169,58 @@ MLB_SGO_ONLY: tuple[str, ...] = ("sportsgameodds",)
 # Builders. One per provider; the matrix picks which run.
 # ---------------------------------------------------------------------------
 
+# PAGE BUDGET PER SPORT, because the page walk multiplies against each job's
+# OWN cadence and a single global cap silently overspends the fastest one.
+#
+# SharpAPI allows 12 req/min = 720 req/hour, shared by every sport. Cadences
+# come from JOB_REGISTRY: MLB's `refreshTier1` ticks every 2.5 min (24x/hour);
+# every other sport's refresh job ticks every 20 min (3x/hour). A flat 12-page
+# cap would therefore cost MLB alone 288 req/hour and the whole worker ~540,
+# which is 75% of the ceiling in bursts — measured to 429 in testing, not
+# hypothesised.
+#
+# What each sport actually needs is different, and it is about SLATE SHAPE
+# rather than importance. NFL and CFB post a large multi-game board days ahead
+# and are read once per 20 minutes, so depth is what they need. MLB re-reads the
+# same board 24 times an hour and takes most of its props from Propline anyway
+# (252,811 rows in three days against SharpAPI's 6,681), so paying for depth
+# there buys a near-duplicate of what the previous tick already wrote.
+#
+# Budget at these numbers: MLB 24x3=72, NFL 3x12=36, CFB 3x12=36, the six
+# remaining sports 3x4=72. Total ~216 req/hour, under a third of the ceiling,
+# leaving real headroom for the game-lines fetcher and for bursts.
+SHARPAPI_MAX_PAGES_BY_SPORT: dict[str, int] = {
+    "mlb": 3,
+    "nfl": 12,
+    "cfb": 12,
+}
+SHARPAPI_DEFAULT_SPORT_PAGES = 4
+
+
+def _sharpapi_pages(sport: str) -> int:
+    """Per-sport page cap. `SHARPAPI_MAX_PAGES` env overrides everything, which
+    is the operator's escape hatch when a slate outgrows these numbers — the
+    fetcher warns by name when it hits the cap with data still available."""
+    if config.SHARPAPI_MAX_PAGES_OVERRIDE:
+        return config.SHARPAPI_MAX_PAGES
+    return SHARPAPI_MAX_PAGES_BY_SPORT.get(sport, SHARPAPI_DEFAULT_SPORT_PAGES)
+
+
+def _sharpapi_paging(sport: str, lines: bool, yf) -> dict:
+    """Pagination kwargs for the PROP fetcher only.
+
+    `fetch_sharpapi_game_lines` has a different signature and does not
+    paginate — game lines are one row per game per book, which fits a page.
+    Returning `{}` for it keeps that call byte-identical rather than making
+    both fetchers accept arguments only one of them uses.
+    """
+    if lines:
+        return {}
+    return {"yield_fn": yf,
+            "max_pages": _sharpapi_pages(sport),
+            "rate_per_min": config.SHARPAPI_RATE_PER_MIN}
+
+
 def _sharpapi(sport: str, yield_fn, lines: bool) -> ProviderSpec:
     tokens = SHARPAPI_TOKENS.get(sport)
     fetcher = fetch_sharpapi_game_lines if lines else fetch_sharpapi
@@ -177,13 +229,24 @@ def _sharpapi(sport: str, yield_fn, lines: bool) -> ProviderSpec:
         enabled=config.SHARPAPI_ENABLED and tokens is not None,
         # MLB keeps calling with the function's own defaults rather than
         # explicit tokens, so this refactor cannot change its request URL.
+        # `yf` is now THREADED, not discarded. The prop fetcher paginates (see
+        # `providers.fetch_sharpapi` — page one was all we ever read), and a
+        # multi-page walk has to yield to the job's pacer between pages instead
+        # of blocking the event loop on its own sleeps. The game-lines fetcher
+        # takes no such argument, so only the prop path receives it.
         fetch=(
-            (lambda client, games, yf: fetcher(client, config.SHARPAPI_KEY, games))
+            (lambda client, games, yf: fetcher(
+                client, config.SHARPAPI_KEY, games, **_sharpapi_paging(sport, lines, yf)))
             if sport == "mlb" else
             (lambda client, games, yf, t=tokens: fetcher(
-                client, config.SHARPAPI_KEY, games, sport=t[0], league=t[1]))
+                client, config.SHARPAPI_KEY, games, sport=t[0], league=t[1],
+                **_sharpapi_paging(sport, lines, yf)))
         ),
-        cap_kind="none",  # 12 req/min vendor limit only; job cadence stays far under it
+        # No daily or monthly budget exists to spend — 12 req/min is the only
+        # vendor limit, and `fetch_sharpapi` paces its own page walk against it
+        # through `rate_limit.within_rate`. Paginating therefore costs nothing
+        # against any cap, which is why the fix needed no budget decision.
+        cap_kind="none",
     )
 
 
