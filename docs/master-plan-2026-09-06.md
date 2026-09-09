@@ -1193,6 +1193,77 @@ than one market, and touchdowns are rare and high-variance.
 
 ---
 
+## 4.4b — Anytime Touchdown Scorer — **BUILT AND MEASURED 2026-09-08**
+
+`fit_nfl_anytime_td.py`. **Operator decision: model it** — anytime touchdown is
+the NFL equivalent of MLB home runs, the marquee rare-event market.
+
+### Only the 0.5 line, deliberately
+
+`Anytime Touchdown Scorer` is four markets under one name. Measured base rates:
+
+    line 0.5   4,670 rows   P(>=1 TD) = 0.2103    modelled
+    line 1.5   4,277 rows   P(>=2 TD) = 0.0333    not modelled
+    line 2.5   2,764 rows   P(>=3 TD) = 0.0039    not modelled, 1 in 258
+    line 3.5      51 rows                          not modelled
+
+The alt-lines are left alone. A 0.4% event with 61 two-sided rows is where a
+wrong tail does the most damage — the Phase 4.4 lesson — and nothing here has
+earned the right to quote one.
+
+### Why it needed its own file
+
+**A touchdown spans two stat groups.** `receiving.receivingTouchdowns` appears on
+58,152 player-games and `rushing.rushingTouchdowns` on 29,878, but only **17,485
+carry both**. A player's touchdown total is the sum of two keys that are usually
+not both present, while every market in `fit_nfl_props.py` reads exactly one key
+with exactly one volume.
+
+### Two things decided by measurement, neither of them the line
+
+**The opportunity denominator.** A touchdown has no obvious one. Both candidates
+were fitted and compared on SELECT:
+
+    per game    volume = 1,                  rate 0.24809/game    ll 0.50153
+    per touch   volume = targets + carries,  rate 0.03985/touch   ll 0.49674
+
+**Per touch won**, which is also the more sensible story — a player with 20
+touches has more chances to score than one with 3. Worth noting it was measured
+rather than assumed, because 4.3 produced the opposite outcome: for carries the
+principled-looking correction measured WORSE and was reverted.
+
+**The distribution** came from the engine's usual grid: `nb(4)`, window 8,
+shrink_k 20.
+
+### Result — clears a home-runs-style gate
+
+Fitted on seasons before 2024, held out on 2024-2025, n = 9,683:
+
+    log-loss                0.48807
+    constant-rate baseline  0.52530     model gains +0.03723  (7.1% relative)
+    ordering  Q1 0.091 -> Q2 0.123 -> Q3 0.200 -> Q4 0.278 -> Q5 0.400   monotone
+    ECE                     0.0156      (gate <= 0.025)
+    worst bucket            0.022       (gate <= 0.05)
+    bias                    -5.6%       (slightly under-predicts)
+
+**It is stronger than the MLB market it was modelled on.** Home runs (3.2)
+discriminates 2.5x across its quintiles and beats a constant by 1.92%; anytime
+touchdown discriminates **4.4x** and beats a constant by **7.1%**.
+
+### One difference from 4.4 worth keeping straight
+
+Phase 4.4's longest-reception number used each game's ACTUAL receptions and
+yards, because the question there was which DISTRIBUTION fits. This is a genuine
+forward projection: volume comes from the player's prior games only, so the
+error already includes the projection's own. The two numbers are not comparable
+and 4.4's is the more flattered of the pair.
+
+**4.5 still owns the ship gate.** NFL has no held-out PROP season until 2026
+produces one; this is the model measured on history, and no probability reaches
+a board until that gate clears.
+
+---
+
 ## 4.5 — The gate that can only run in-season
 
 **The prop ship gate cannot be run in September.** There is no held-out data
