@@ -1113,16 +1113,83 @@ not fit. It needs its own decision, like `Longest Reception` in 4.4.
 
 ---
 
-## 4.4 — Longest reception needs extreme-value treatment
+## 4.4 — Longest reception as an extreme value — **BUILT AND MEASURED 2026-09-08**
 
-Second-biggest NFL market by volume, and **a maximum rather than a sum**. Every
-model in this repo — `count_prop_engine`, the Beta-Binomial priors, the
-plate-appearance simulation — projects totals. The distribution of a maximum has
-a different shape and a heavier right tail, and fitting it with a count model
-will misprice the tail in the direction that matters.
+`fit_nfl_longest.py`. **Projection only** — 4.5 owns the probability gate.
 
-Treat it as its own model, not a parameterisation of the others. If it does not
-clear its gate, record it as unmodellable and serve a projection.
+**Why it is not `fit_nfl_props.py` with a different stat key.** Every model in
+this repo projects a SUM: `count_prop_engine` multiplies a rate by a volume, the
+Beta-Binomial priors count successes, the plate-appearance simulation adds
+outcomes. Longest reception is a MAXIMUM, and the tail is precisely the part a
+24.5-yard line asks about.
+
+### The model needs no new data
+
+    P(longest > L)  =  1 - F(L)^N
+
+N is the receptions in the game and F the distribution of ONE reception's
+length. Both inputs already exist: 4.3 fitted receptions and receiving yards, so
+N and the mean length `mu = yards / receptions` come free.
+
+### F was chosen by measurement, and the obvious guess was wrong
+
+Exponential has the clean closed form and is the natural first try. It is
+falsified sharply. Under Exp(mu), `E[max of N] = mu * H_N`, so actual/predicted
+should be 1.00 at every N. Over 51,382 player-games:
+
+    N        1      2      3      4      5      6      8     10
+    ratio  1.000  0.951  0.926  0.906  0.897  0.878  0.878  0.868
+
+Monotone decline: exponential over-predicts the longest catch by ~13% at ten
+receptions. Real reception lengths have a **lighter** tail than exponential — a
+receiver's catches cluster more than a memoryless process would.
+
+So F is Weibull, the one-parameter generalisation that expresses exactly that:
+
+    F(L) = 1 - exp(-(L/lambda)^k),   lambda = mu / Gamma(1 + 1/k)
+
+k = 1 recovers the exponential; k > 1 is the lighter tail the data shows.
+
+### Fitted k = 1.25, and it transfers
+
+Shape fitted on seasons before 2024 by matching the E[max]/mu ratios, then
+applied unchanged to 2024-2025:
+
+    N        SELECT ratio      HELD-OUT ratio
+    1           1.000              0.999
+    2           1.000              1.002
+    3           1.004              1.000
+    4           1.001              1.002
+    5           1.003              1.030
+    6           0.997              0.987
+    7           1.008              0.994
+    8           1.010              1.038
+
+Against the exponential's 0.868-1.000 decline, this is flat at 1.00 across the
+whole range on data the shape never saw.
+
+### At the market's own lines
+
+n = 14,076 archived `Longest Reception` rows joined to real outcomes:
+
+    exponential (k=1)     log-loss 0.28752
+    Weibull (k=1.25)      log-loss 0.25390
+    delta -0.03362   t = -44.99      WEIBULL BETTER
+
+An 11.7% relative reduction, which is very large for a one-parameter change and
+is what the plan predicted would be at stake in the tail.
+
+### The honest limit on that number
+
+**This uses each game's ACTUAL receptions and yards.** It therefore isolates the
+DISTRIBUTION choice, which is what 4.4 is about, and does not claim the served
+model will be this accurate: serving needs PROJECTED N and mu from 4.3, whose
+own error stacks on top. 4.5 owns that measurement, and it needs the 2026
+season.
+
+`Anytime Touchdown Scorer` (11,762 rows) remains unmodelled and needs its own
+decision — 4.0a found it is an alt-line family (0.5 / 1.5 / 2.5 / 3.5) rather
+than one market, and touchdowns are rare and high-variance.
 
 ---
 
