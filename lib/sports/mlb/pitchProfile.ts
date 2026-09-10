@@ -39,6 +39,56 @@ export { ZONE_GRID, PITCH_TYPE_LABELS, pitchTypeLabel } from './pitchProfileShap
 const ROLE_COLUMN = { pitcher: 'pitcher_id', batter: 'batter_id' } as const;
 
 /**
+ * Where the pruner publishes the oldest season Postgres still holds.
+ *
+ * PHASE 5.S.5 TRIMS `mlb_pitch_events` TO A HOT WINDOW, with every older season
+ * living in the Parquet corpus. That creates a distinction this route could not
+ * previously make, and getting it wrong is worse than an error: a request for a
+ * pruned season would aggregate zero rows and return a perfectly well-formed
+ * profile saying the player threw nothing. The route's own comment already
+ * names that failure — it is why the floor was hardcoded to 2024 in the first
+ * place — but a hardcoded floor cannot track a window that moves every season.
+ *
+ * So the floor is DATA, not a constant: `prune_pitch_events.py` writes it here
+ * after each prune, and this reader asks. A cross-language constant would have
+ * to be kept in step by hand in two languages, which is the exact drift
+ * `tests/config-drift.test.ts` exists to catch; a value published by the only
+ * process that can change it cannot drift.
+ *
+ * Absent means "nothing has ever been pruned", so every season the table
+ * declares is real — which is the correct reading for a database that has not
+ * run 5.S.5 yet, including a fresh one.
+ */
+const FLOOR_CACHE_KEY = 'mlb:pitch-events:retained-floor';
+
+export class SeasonNotRetained extends Error {
+  constructor(
+    readonly season: number,
+    readonly floor: number,
+  ) {
+    super(
+      `season ${season} is no longer held in Postgres (oldest retained: ${floor}). ` +
+        `It is in the Parquet corpus — see python-odds-service/prune_pitch_events.py.`,
+    );
+    this.name = 'SeasonNotRetained';
+  }
+}
+
+/** The oldest season Postgres still holds, or null if nothing was ever pruned. */
+export async function retainedSeasonFloor(): Promise<number | null> {
+  const rows = await pgAll<{ payload: unknown }>(
+    `SELECT payload FROM snapshot_cache WHERE cache_key = ?`,
+    [FLOOR_CACHE_KEY],
+  );
+  if (!rows.length) return null;
+  // `payload` is jsonb; the driver may hand back an object or the raw text.
+  const raw = rows[0].payload;
+  const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  const floor = Number((parsed as { floor?: unknown })?.floor);
+  return Number.isInteger(floor) ? floor : null;
+}
+
+/**
  * One subject's pitch profile for one season.
  *
  * Two aggregates in two queries rather than one wide one: the zone rollup and
@@ -53,6 +103,11 @@ export async function getPitchProfile(
 ): Promise<PitchProfile> {
   const column = ROLE_COLUMN[role];
   if (!column) throw new Error(`getPitchProfile: unknown role ${role}`);
+
+  // Asked BEFORE the aggregates run, so a pruned season costs one indexed
+  // lookup rather than three full rollups that were always going to be empty.
+  const floor = await retainedSeasonFloor();
+  if (floor != null && season < floor) throw new SeasonNotRetained(season, floor);
 
   const zoneRows = await pgAll<{ zone: number; xwoba: string | null; xwoba_n: string; bip: string; pitches: string }>(
     `SELECT zone,

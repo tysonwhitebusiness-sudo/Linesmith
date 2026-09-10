@@ -1558,12 +1558,49 @@ the next one too.
 
 All 8 audit checks pass.
 
-**5.S.5 — Port `mlb_pitch_events` readers, then prune it.** 476 MB. Smallest
-reader surface of the three remaining corpus tables: `/api/mlb/pitch-profile`,
-`lib/sports/mlb/pitchProfile.ts`, `pitchRoles.ts`, `playerDetailAdapter.ts`.
-Also the worst compression ratio (10x), so the least valuable to keep in Postgres.
-**Gate:** measure what window each reader needs, keep that, prune the rest;
-pitch-profile renders identically for a sampled set of players.
+**5.S.5 — `mlb_pitch_events`. DONE 2026-09-10.** Tool:
+`python-odds-service/prune_pitch_events.py` (verify-only by default).
+**477 MB → 289 MB**, 746,576 rows removed. Database now **5,362 MB / 65.5%**.
+
+**What the readers needed, measured — which was this step's gate:**
+- **Serving** (`lib/sports/mlb/pitchProfile.ts` via `/api/mlb/pitch-profile`)
+  issues three aggregates and every one is `WHERE {pitcher_id|batter_id} = ?
+  AND season = ?`. Never a range. `PlayerDetail.tsx` passes
+  `new Date().getUTCFullYear()` at the only call site, so exactly ONE season is
+  ever asked for.
+- **`experiment_statcast_prior.py`** aggregates every season with no filter —
+  a fit/experiment script, the category 5.2 says reads the corpus. **Ported.**
+  Left on Postgres it would still have RUN and quietly answered a narrower
+  question than its recorded conclusion was drawn from, which is the worst
+  outcome available for a file that exists to record a measured NO.
+
+**Kept two seasons, not one.** The route permits 2024+ and the UI's
+`getUTCFullYear()` rolls over on 1 January, months before a season starts, so
+for a quarter of every year the "current" season is nearly empty. The previous
+season leaves that fallback implementable. `--keep 1` frees ~160 MB more.
+
+**THE FLOOR IS PUBLISHED, NOT HARDCODED — and this is the part worth copying to
+5.S.6 and 5.S.7.** A season trimmed to the corpus and a player who threw
+nothing were previously indistinguishable: both aggregate to an empty profile.
+The route's own comment already recorded that confusion as the reason its
+static 2024 floor exists, but a constant cannot track a window that moves every
+season. So the pruner writes the oldest retained season to `snapshot_cache`
+(`mlb:pitch-events:retained-floor`) and the route answers **410 Gone** with the
+floor and a pointer to the corpus — checked BEFORE `cachedRoute`, so a
+retention answer can never be stored under a profile cache key. The static 2024
+ingest floor stays: the two answer different questions, *"we never had this"*
+versus *"we have it, elsewhere"*.
+
+**Gate met.** The three aggregates were snapshotted for the 30 highest-volume
+subjects (15 pitchers, 15 batters) before and after: byte-for-byte identical,
+digest `7b203ff2…`. Every 2024 row was proven present in the corpus by
+comparing **id sets, not counts** — two equal counts over different id sets is
+exactly the agreement that looks like proof and is not.
+
+**One trap for the next of these:** DuckDB's S3 read is a blocking C call, and
+running it inside an `async` function starves asyncpg's keepalive — the pooler
+drops the connection and the process dies 60s later in `Pool.close()` with a
+GIL error naming none of it. It goes through `asyncio.to_thread`.
 
 **5.S.6 — Port `prop_odds_archive` readers, then prune it.** 854 MB. Read by
 `nhl_props.py` and every prop fitter. The fits already have a proven Parquet

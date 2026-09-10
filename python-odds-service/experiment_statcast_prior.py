@@ -86,37 +86,63 @@ CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 
 async def pull() -> None:
-    """Batter-game aggregates. Aggregated IN the database on purpose — the raw
-    pitch table is 452 MB and none of it needs to cross the wire."""
-    import db
-    pool = await db.get_pool()
-    async with pool.acquire(timeout=1800.0) as c:
-        rows = await c.fetch("""
+    """Batter-game aggregates, READ FROM THE PARQUET CORPUS.
+
+    THIS USED TO READ POSTGRES AND CAN NO LONGER, which is a fact about the
+    database rather than a preference. Phase 5 trimmed both of its inputs to hot
+    windows: `player_game_history` keeps three seasons (5.2d) and
+    `mlb_pitch_events` keeps two (5.S.5). The full history of each lives in the
+    corpus. Left pointed at Postgres this script would still RUN, and would
+    quietly answer a narrower question than the one its conclusions were drawn
+    from -- the worst available outcome for a file whose whole purpose is to
+    record a measured result.
+
+    5.2's gate is exactly this: *every fit script produces bit-identical output
+    reading Parquet versus reading Postgres, on the same input window.* The SQL
+    below is the same SQL, with two `read_parquet` globs in place of two table
+    names; DuckDB's `->>` on the `stats` JSON behaves as Postgres's does, which
+    is what `mlb_props.load_game_history_parquet` already relies on.
+
+    Still aggregated at the source: the pitch table is ~2.19M rows and none of
+    it needs to cross the wire.
+    """
+    from corpus_location import corpus_location, read_parquet_glob
+
+    backend = corpus_location()
+    con, pgh = read_parquet_glob(backend, "player_game_history")
+    pitches = backend.table_glob("mlb_pitch_events")
+    try:
+        rows = con.execute(
+            """
             SELECT p.athlete_id::int aid, p.game_date gd,
-                   (p.stats->>'bat_plateAppearances')::numeric pa,
-                   (p.stats->>'bat_hits')::numeric hits,
-                   (p.stats->>'bat_totalBases')::numeric tb,
+                   (p.stats->>'bat_plateAppearances')::double pa,
+                   (p.stats->>'bat_hits')::double hits,
+                   (p.stats->>'bat_totalBases')::double tb,
                    COALESCE(s.xw_sum, 0) xw_sum, COALESCE(s.bip, 0) bip
-              FROM player_game_history p
+              FROM read_parquet(?) p
               LEFT JOIN (SELECT game_pk, batter_id,
                                 SUM(estimated_woba) xw_sum,
                                 COUNT(estimated_woba) bip
-                           FROM mlb_pitch_events
+                           FROM read_parquet(?)
                           GROUP BY game_pk, batter_id) s
                 ON s.game_pk = p.event_id::bigint
                AND s.batter_id = p.athlete_id::int
              WHERE p.sport = 'mlb' AND p.event_id IS NOT NULL
                AND p.game_date >= '2024-03-01'
-               AND (p.stats->>'bat_plateAppearances')::numeric > 0
-             ORDER BY p.game_date, p.athlete_id""")
+               AND (p.stats->>'bat_plateAppearances')::double > 0
+             ORDER BY p.game_date, p.athlete_id
+            """,
+            [pgh, pitches],
+        ).fetchall()
+    finally:
+        con.close()
     with open(CACHE, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["aid", "gd", "pa", "hits", "tb", "xw_sum", "bip"])
         for r in rows:
-            w.writerow([r["aid"], r["gd"], float(r["pa"]), float(r["hits"]),
-                        float(r["tb"] or 0), float(r["xw_sum"] or 0),
-                        int(r["bip"] or 0)])
-    print(f"pulled {len(rows):,} batter-games -> {CACHE}")
+            w.writerow([r[0], r[1], float(r[2]), float(r[3]),
+                        float(r[4] or 0), float(r[5] or 0), int(r[6] or 0)])
+    print(f"pulled {len(rows):,} batter-games from the corpus -> {CACHE}")
 
 
 def load():

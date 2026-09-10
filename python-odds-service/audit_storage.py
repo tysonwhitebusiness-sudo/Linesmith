@@ -253,7 +253,7 @@ async def check_union_dedupe(conn) -> bool:
 # where nothing had been lost: all 2,807,445 rows and the full 16.1 years sat in
 # Supabase Storage, readable. An audit that cries data loss over a planned prune
 # is an audit people learn to skip, which is the one failure it cannot afford.
-PRUNED_TO_HOT_WINDOW = {"player_game_history"}
+PRUNED_TO_HOT_WINDOW = {"player_game_history", "mlb_pitch_events"}
 
 
 def _corpus_span(table: str, col: str):

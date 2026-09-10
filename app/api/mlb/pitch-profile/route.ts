@@ -23,7 +23,7 @@
 
 import { NextResponse } from 'next/server';
 import { cachedRoute } from '@/lib/cachedRoute';
-import { getPitchProfile } from '@/lib/sports/mlb/pitchProfile';
+import { getPitchProfile, retainedSeasonFloor } from '@/lib/sports/mlb/pitchProfile';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,12 +62,45 @@ export async function GET(request: Request) {
   // Floor is 2024, not 2000: that is the operator-approved ingest scope, and a
   // request for 2019 would cache an empty profile that looks like a real
   // "this player threw nothing" answer.
+  //
+  // 2024 remains the INGEST floor and is still the right static bound here.
+  // Since 5.S.5 there is a second, MOVING floor — the oldest season Postgres
+  // still holds, the rest having been trimmed to the Parquet corpus — and that
+  // one cannot be a constant. `getPitchProfile` reads it from the value the
+  // pruner publishes and throws `SeasonNotRetained`, which is turned into a 410
+  // below. Both floors exist because they answer different questions: "we never
+  // had this" versus "we have it, elsewhere".
   const season = parseSeason(url.searchParams.get('season') ?? String(new Date().getUTCFullYear()));
   if (season == null) {
     return NextResponse.json(
       { error: 'season must be a year from 2024 onwards — mlb_pitch_events holds nothing earlier' },
       { status: 400 },
     );
+  }
+
+  // 410 GONE, ANSWERED BEFORE THE CACHE. A season trimmed to the corpus is not
+  // a transient failure and must never be stored under a profile cache key:
+  // a cached empty profile is indistinguishable from "this player threw
+  // nothing", which is the precise failure the static floor above exists to
+  // prevent. Checked here rather than inside `build()` so it can never become
+  // a cached payload at all.
+  try {
+    const floor = await retainedSeasonFloor();
+    if (floor != null && season < floor) {
+      return NextResponse.json(
+        {
+          error: `season ${season} is no longer in Postgres (oldest retained: ${floor})`,
+          retainedFloor: floor,
+          hint: 'the full history is in the Parquet corpus',
+        },
+        { status: 410 },
+      );
+    }
+  } catch {
+    // The floor is an optimisation for the error message, not a gate. If the
+    // lookup itself fails, fall through: `getPitchProfile` re-checks and throws
+    // `SeasonNotRetained`, and a real outage should surface as the 500 it is
+    // rather than as a confident 410 about retention.
   }
 
   return cachedRoute({
