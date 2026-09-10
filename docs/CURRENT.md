@@ -9,73 +9,83 @@ ordering conversationally — that is exactly what §5.S exists to stop.
 
 ---
 
-## READ THIS FIRST: state as of 2026-09-10 15:20Z
+## READ THIS FIRST: state as of 2026-09-10 17:00Z
 
-**Both of the previous handover's "live conditions" are RESOLVED.** They are
-written out here rather than deleted so the next reader can tell a resolved
-condition from one nobody looked at.
-
-**1. THE WORKER IS RUNNING.** `dep-dahc2ght0dsc73ff65n0`, commit `6779a3c8`,
-live 2026-09-10 14:41:31Z. Every job has a breadcrumb from the post-deploy
-startup burst (14:26-14:47Z). Verified through the Render API, not inferred
-from breadcrumbs — see "Render answers deploy questions directly" below.
-
-**2. PRODUCTION NO LONGER REPLAYS THE TRUNCATED TABLE. §5.S.1 IS DONE.**
-`mlbProjectionsJob` ran at 14:47:16Z: 100 subjects, 640 projections written,
-0.48s, `history_rows` 355,764. A local `build()` on the same slate reproduces
-it **row for row** — all 640 rows identical on projection, projected volume,
-model probability, league baseline and sample size, and the identical
-`history_rows` and per-market edges. The summary path is what production
-serves, and it serves the same numbers the model was measured on.
-
-### THE ONE THING THAT IS BROKEN, and it is new
-
-**`mlbHistorySummaryJob` FAILS ON RENDER**, every run, since the deploy:
+**§5.S.1, §5.S.2 and §5.S.3 are DONE.** §5.S.4 is next and is READY but was not
+started — see "why" below, it is a real reason and not an omission.
 
 ```
-IOException: No files found that match the pattern
-"/opt/render/project/src/python-odds-service/corpus/player_game_history/*.parquet"
+database   7,282 MB  ->  7,174 MB     88.9% -> 87.6%
 ```
 
-**The Render service has no `CORPUS_*` environment variables** (confirmed
-against `/v1/services/.../env-vars`: 25 vars, none of them corpus). So
-`corpus_location()` takes its documented default — a LOCAL directory — and on
-Render that directory is empty. The job was built and proven against the
-operator's local staging copy and has never had a path to the corpus in
-production.
+That is 108 MB from 5.S.2 (7 tables dropped) and 5.S.3 (2 indexes dropped). The
+big one is still ahead: **~266 MB of 5.S.2's deleted rows are still occupying
+their file**, and only 5.S.4's `VACUUM FULL` returns them.
 
-**What it costs while it stays broken, precisely:** nothing is wrong today, and
-that is the trap. `read_history_summary` takes the newest summary at or before
-`as_of`, so the board is being served from the **2026-09-09** summary (written
-2026-09-10 02:59Z by a local run, 3,591 players, full lifetime history). That
-degrades gracefully and silently, one day further behind every day, and the
-first visible symptom would be a player with a genuinely changed recent form
-projecting off stale numbers. `job_mlb_history_summary`'s own docstring says
-it: *"if this job stops, the summary goes stale and the board silently serves
-yesterday's history."*
+### The worker
 
-**The fix is five environment variables on the Render service** —
-`CORPUS_URI`, `CORPUS_S3_ENDPOINT`, `CORPUS_S3_REGION`, `CORPUS_S3_KEY_ID`,
-`CORPUS_S3_SECRET`, the same values already in `.env.local`. That is a config
-change to a live service and it restarts the worker, so it is an operator
-decision, not a code change. Egress is not an objection: the job is daily by
-deliberate design (its docstring reasons about exactly this), so it is roughly
-one corpus read per day, not per hour.
+`dep-dahdveifngtc73945db0`, commit `16d77532`, live 2026-09-10 16:51:35Z.
+Verified through the Render API — `GET /v1/services/.../deploys` and
+`/events` — not inferred from breadcrumbs. `RENDER_API_KEY` is in `.env.local`.
+**A breadcrumb tells you a job ran, not which code ran it.**
 
-### Also failing, and it predates all of this
+**§5.S.1's gate passed before any of today's work:** `mlbProjectionsJob` at
+14:47:16Z reproduced row-for-row by a local `build()` on the same slate — all
+640 rows identical on projection, projected volume, model probability, league
+baseline and sample size, `history_rows` 355,764 both sides.
+
+### mlbHistorySummaryJob was failing, and it cost more than staleness
+
+The Render service had **no `CORPUS_*` environment variables**, so
+`corpus_location()` took its documented default — a local directory — which on
+Render is empty. Fixed: all five vars set via the API and confirmed present
+(30 vars on the service now).
+
+**A RENDER RESTART DOES NOT RE-READ ENVIRONMENT VARIABLES. A DEPLOY DOES.**
+`POST /services/{id}/restart` ran at 16:41:29Z and the job failed again at
+16:44 with the identical error. `POST /services/{id}/deploys` at 16:50 is what
+actually picked them up. Worth knowing before diagnosing this class of thing
+for an hour.
+
+**What the failure actually cost, measured rather than guessed.** Today's board
+was being served from the 2026-09-09 summary (`read_history_summary` takes the
+newest at or before `as_of`, which degrades quietly by design). Rebuilding
+today's summary from the corpus moved the board from **640 projections to 800**
+and restored the whole of **`pitcher-hits-allowed`**, which the stale summary
+had silently dropped because it held no rows for tonight's starters. Batter
+projections moved ~0.001-0.007, and every market edge stayed inside the healthy
+-0.03..+0.013 band. So the cost was not "slightly stale numbers"; it was 160
+missing rows and a missing market.
+
+Today's summary is already written (1,242 rows, `source=union`, as_of
+2026-09-10). **The corpus reads fine from Supabase over S3** — 2,807,445 rows
+visible via DuckDB, ~240s for a full summary rebuild, which is why the job is
+daily and must stay daily.
+
+### Still broken, and it predates all of this
 
 **`computeMlbPropPredictionsJob` has been dead since 2026-09-08 02:23Z** —
-`KeyError: 'a'` in `apply_prop_calibrations` (`jobs.py:812`). Two and a half
-days of a job failing with nobody noticing is precisely the failure mode
-**§5.S.9** exists to end. Not chased here because §5.S is worked in order; it
-is the concrete test case §5.S.9's gate should be written against.
+`KeyError: 'a'` in `apply_prop_calibrations` (`jobs.py:812`). Untouched because
+§5.S is worked in order; it is the concrete test case §5.S.9's gate should be
+written against.
 
-### Render answers deploy questions directly
+### Why 5.S.4 was not started
 
-`RENDER_API_KEY` is in `.env.local`. `GET /v1/services` and
-`GET /v1/services/srv-da36bm2bkg8c73fqrdeg/deploys` give deploy id, status,
-commit and finish time. **Use it instead of inferring deploy state from job
-breadcrumbs** — a breadcrumb tells you a job ran, not which code ran it.
+Two conditions, both checked, both temporary:
+
+1. **The pooler was at 16 connections against a cap of 15** — the worker's
+   post-deploy startup burst. `VACUUM FULL` takes an ACCESS EXCLUSIVE lock on
+   `player_game_history` and competes for the same pool. A `vacuum_reclaim.py`
+   planning run hung for 5 minutes on exactly this and had to be killed.
+2. **`mlbHistorySummaryJob` was mid-run on the worker** (started 16:55:09Z,
+   ~4 minutes), reading the corpus and writing the summary.
+
+`python-odds-service/vacuum_reclaim.py` is WRITTEN AND READY. It plans by
+default and refuses to `--apply` unless the projected new relation plus a
+250 MB margin fits in the headroom — because `VACUUM FULL` builds the new copy
+BESIDE the old one and swaps at the end, so peak usage is both at once. Run
+`python vacuum_reclaim.py player_game_history` first; it prints every other
+connection that will block. **Wait for a quiet pooler.**
 
 ---
 

@@ -32,6 +32,13 @@ const read = (p: string) => fs.readFileSync(p, 'utf8');
 const TS_ENTITY = read('lib/odds/props/entityResolution.ts');
 const PY_ENTITY = read('python-odds-service/src/entity_resolution.py');
 const PY_CONFIG = read('python-odds-service/src/config.py');
+// Phase 5.2c added a SECOND Python config reader, and this test did not know
+// about it — so the five CORPUS_* vars read perfectly well by
+// `corpus_location.py` were reported as orphans from 219d4e1 onward, and the
+// suite sat red across several commits without anyone noticing. Scanning the
+// real reader is the fix the test's own comment below prescribes; an allowlist
+// entry would have been the drift it exists to catch.
+const PY_CORPUS_CONFIG = read('python-odds-service/src/corpus_location.py');
 const ENV_EXAMPLE = read('.env.example');
 const TS_PROVIDER_CONFIG = read('lib/odds/props/config.ts');
 // A few vars are read directly by the Next app rather than through either
@@ -139,7 +146,7 @@ test('no orphan provider env vars: everything in .env.example is read somewhere'
   const declared = [...ENV_EXAMPLE.matchAll(/^([A-Z][A-Z0-9_]*)=/gm)].map((m) => m[1]);
   assert.ok(declared.length > 20, `.env.example looks unparsed (${declared.length} vars)`);
 
-  const readers = PY_CONFIG + TS_PROVIDER_CONFIG + NEXT_ENV_USAGE;
+  const readers = PY_CONFIG + PY_CORPUS_CONFIG + TS_PROVIDER_CONFIG + NEXT_ENV_USAGE;
   const orphans = declared.filter((v) => !readers.includes(v));
   assert.deepEqual(
     orphans,
