@@ -46,6 +46,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from . import count_prop_engine as eng
+from . import history_summary as hs
 from . import nhl_props as npx
 
 MODEL_VERSION = 1
@@ -108,7 +109,8 @@ def _stats(raw) -> dict:
     return st
 
 
-async def build(conn, as_of: date, lines: dict[str, float] | None = None) -> dict:
+async def build(conn, as_of: date, lines: dict[str, float] | None = None,
+                write_summary: bool = True) -> dict:
     """Projections for every skater who appears on `as_of`'s slate.
 
     `lines` maps dimension -> the line to price against, used only for markets
@@ -151,14 +153,25 @@ async def build(conn, as_of: date, lines: dict[str, float] | None = None) -> dic
         parsed.append((str(r["athlete_id"]), st))
 
     out: list[ServedProjection] = []
+    summary_rows: list[tuple] = []
     for dim, cal in sorted(markets.items()):
         stat = DIMENSION_STAT[dim]
+        line_for_summary = (lines or {}).get(dim)
+        # PHASE 5.2: the same replay, but it also accumulates the summary that
+        # will replace it. Building both in one pass is what makes the
+        # changeover checkable — `--summary` serving and this replay must
+        # produce the same board before `player_game_history` is trimmed, and a
+        # summary derived from a DIFFERENT pass would not prove that.
+        accs: dict[str, hs.Accumulator] = {}
         hists: dict[str, npx.PlayerHistory] = {}
         for aid, st in parsed:
             if stat not in st:
                 continue
-            hists.setdefault(aid, npx.PlayerHistory()).add(
-                float(st[stat]), float(st["toiMinutes"]))
+            ev, vol = float(st[stat]), float(st["toiMinutes"])
+            hists.setdefault(aid, npx.PlayerHistory()).add(ev, vol)
+            accs.setdefault(aid, hs.Accumulator()).add(ev, vol, line=line_for_summary)
+        summary_rows.extend(
+            a.row("nhl", dim, aid, as_of, line_for_summary) for aid, a in accs.items())
 
         line = (lines or {}).get(dim)
         show_prob = eng.probability_is_servable(cal) and line is not None
@@ -194,7 +207,10 @@ async def build(conn, as_of: date, lines: dict[str, float] | None = None) -> dic
                 line=line if show_prob else None,
                 model_prob=prob, league_baseline=baseline))
 
+    if write_summary:
+        await hs.upsert_rows(conn, summary_rows)
     return {"served": out, "markets": sorted(markets),
+            "summary_rows": len(summary_rows) if write_summary else 0,
             "subjects": len(subjects), "history_rows": len(parsed)}
 
 

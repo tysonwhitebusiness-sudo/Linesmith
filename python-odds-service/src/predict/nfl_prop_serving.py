@@ -48,6 +48,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from . import count_prop_engine as eng
+from . import history_summary as hs
 from .nfl_markets import MARKETS, BY_SLUG, NflMarket
 
 MODEL_VERSION = 1
@@ -152,7 +153,8 @@ async def slate_subjects() -> tuple[dict[str, str], dict]:
                       "rostered": len(subjects)}
 
 
-async def build(conn, as_of: date, subjects: dict[str, str] | None = None) -> dict:
+async def build(conn, as_of: date, subjects: dict[str, str] | None = None,
+                write_summary: bool = True) -> dict:
     """Projections for every rostered player on `as_of`'s upcoming slate."""
     cals = await _active_markets(conn)
     if not cals:
@@ -175,14 +177,25 @@ async def build(conn, as_of: date, subjects: dict[str, str] | None = None) -> di
         parsed.append((str(r["athlete_id"]), _stats(r["stats"])))
 
     out: list[ServedProjection] = []
+    summary_rows: list[tuple] = []
     for slug, cal in sorted(cals.items()):
         m: NflMarket = BY_SLUG[slug]
+        # PHASE 5.2: accumulate the summary in the SAME pass as the replay, so
+        # the changeover is checkable rather than merely plausible. NFL passes
+        # no line because it serves none until 4.5 clears, so `baseline_over`
+        # and `baseline_total` stay zero here and `read` correctly reports no
+        # baseline rather than a fabricated one.
+        accs: dict[str, hs.Accumulator] = {}
         hists: dict[str, eng.PlayerHistory] = {}
         for aid, st in parsed:
             vol = _sum_keys(st, m.volume_keys)
             if vol <= 0:
                 continue          # no opportunity carries no information
-            hists.setdefault(aid, eng.PlayerHistory()).add(_sum_keys(st, m.stat_keys), vol)
+            ev = _sum_keys(st, m.stat_keys)
+            hists.setdefault(aid, eng.PlayerHistory()).add(ev, vol)
+            accs.setdefault(aid, hs.Accumulator()).add(ev, vol, line=None)
+        summary_rows.extend(a.row("nfl", slug, aid, as_of, None)
+                            for aid, a in accs.items())
 
         for aid, gid in subjects.items():
             h = hists.get(aid)
@@ -197,7 +210,10 @@ async def build(conn, as_of: date, subjects: dict[str, str] | None = None) -> di
                 games_of_history=pr.games_of_history,
                 league_rate=cal["league_rate"]))
 
+    if write_summary:
+        await hs.upsert_rows(conn, summary_rows)
     return {"served": out, "markets": sorted(cals),
+            "summary_rows": len(summary_rows) if write_summary else 0,
             "subjects": len(subjects), "history_rows": len(parsed)}
 
 
