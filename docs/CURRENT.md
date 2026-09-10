@@ -9,153 +9,81 @@ ordering conversationally — that is exactly what §5.S exists to stop.
 
 ---
 
-## READ THIS FIRST: state as of 2026-09-10 17:00Z
-
-**§5.S.1 through §5.S.5 are DONE. §5.S.6 is PART-DONE — read its section below
-before touching `prop_odds_archive`; nothing has been pruned from it.**
+## READ THIS FIRST: state at 2026-09-10, end of session
 
 ```
-database   7,282 MB  ->  5,362 MB     88.9% -> 65.5%
+database   7,282 MB  ->  4,530 MB     88.9% -> 55.3%
 ```
 
-`player_game_history` 1,839 -> 460 MB, `mlb_pitch_events` 477 -> 289 MB,
-`odds_import_staging` 262 -> 2 MB, seven dead tables dropped, two redundant
-indexes dropped. **All 8 checks of `audit_storage.py` pass; tsc clean; TS suite
-359/359.**
+**§5.S.1 through §5.S.6 are DONE. §5.S.7 is HALF DONE and the safe half is the
+half that shipped.**
 
-The remaining ~2,300 MB is 5.S.6-5.S.8 and is reader-porting, not discovery:
-`prop_odds_history` (1,214 MB), `odds_archive` (1,204 MB) and
-`prop_odds_archive` (864 MB) are all exported and verified in object storage
-already.
+### The one thing that is mid-flight
 
-### The pattern 5.S.6 and 5.S.7 should copy from 5.S.5
+**`odds_archive` still holds all 1,982,889 rows. It has NOT been pruned.**
+The verify pass says 1,962,631 are provably in the corpus and would be deleted.
+`--apply` was deliberately not run — the session ended first.
 
-**Publish the retained floor; do not hardcode it.** A season trimmed to the
-corpus and a subject with genuinely no rows both aggregate to an empty result,
-and nothing downstream can tell them apart. `prune_pitch_events.py` writes the
-oldest retained season to `snapshot_cache`
-(`mlb:pitch-events:retained-floor`); `/api/mlb/pitch-profile` reads it and
-answers **410 Gone** with the floor and a pointer to the corpus, checked BEFORE
-`cachedRoute` so a retention answer never lands under a data cache key.
-Verified live against a dev server: 2024 -> 410, 2026 -> 200 with 2,624
-pitches, 2019 -> 400 (the separate, static *ingest* floor). Two floors, two
-different questions: *"we never had this"* vs *"we have it, elsewhere"*.
+**Production is consistent.** Render runs the previous commit, which still
+scans `odds_archive`, and `odds_archive` is intact. Nothing is half-deleted and
+nothing is waiting on a process that died.
 
-**Prove coverage by ID SET, not by count.** Two equal counts over different id
-sets is exactly the agreement that looks like proof and is not.
+**To finish it** (all readers are already ported and gated):
+```bash
+cd python-odds-service
+.venv/Scripts/python.exe -u prune_corpus.py --apply odds_archive
+.venv/Scripts/python.exe -u vacuum_reclaim.py odds_archive --apply
+```
+Expect ~1,180 MB back, taking the database to roughly **41%**.
 
-**`asyncio.to_thread` every DuckDB corpus read.** It is a blocking C call;
-inside an `async` function it starves asyncpg's keepalive, the pooler drops the
-connection, and the process dies 60s later in `Pool.close()` with a GIL error
-that names none of it.
+**One thing to do BEFORE that prune, or the fix is incomplete:** the worker must
+be running the new `archival_bridge` (it reads `team_name_index` instead of
+scanning the archive) and `teamNameIndexJob`. Both are committed but **not
+deployed**. Deploy first, then prune. Pruning against the old worker would
+collapse team resolution into `odds_unresolved` silently.
 
-### 5.S.6 — where it actually stands
+`team_name_index` is already created and seeded (859 pairs, 7 sports) in the
+live database, and the lookup it produces is byte-identical to the old scan for
+every sport — so the table is ready and waiting for the code that reads it.
 
-**DO NOT PRUNE `prop_odds_archive` YET.** Two readers are still on Postgres and
-would silently train on a truncated population.
+### What §5.S.7 turned out to be about
 
-**The structural finding is better than the plan assumed: NO SERVING PATH READS
-THIS TABLE.** Every use in `jobs.py`, `db.py` and `archival_bridge.py` is a
-WRITE. `nhl_props.load_shot_props` looks like a serving reader because
-`nhl_prop_serving.py` imports the module, but its only callers are
-`fit_nhl_props.py`, `fit_nhl_props_all.py`, `audit_fit_vs_serve.py` and
-`ship_gate_nhl_props.py` — all offline. The hot window is therefore bounded by
-the WRITER (`db.py:4430` only ever updates `event_start > now()`), not by any
-reader, so almost the whole 864 MB can go once the ports land.
+Not the fitters. **A live path nobody had counted**: `_team_ids` derived 859
+team-name pairs by scanning 1.98M rows, 99.8% of which are frozen. That is now
+a stored index refreshed hourly from the unfrozen tail. And
+`health_check.check_capture_latency` takes a median over a 7-day window whose
+rows are mostly frozen, which is why `prune_corpus` now keeps a 30-day margin
+for this table (20,258 rows — free).
 
-**DONE:** `src/corpus_reads.py` (`load_prop_archive`) — one union reader
-replacing a query three fitters had each hand-copied. Proven byte-identical to
-the old Postgres read for mlb (74,006 rows), nfl (15,929), nhl (46,205), cfb
-(46,775) and soccer_epl (26,510). **The union is not theoretical: cfb has 58
-rows in Postgres that the corpus export predates.** `fit_mlb_props.py`,
-`fit_nfl_props.py` and `fit_nfl_longest.py` are ported.
-`PROP_ARCHIVE_SOURCE=postgres|union|corpus` forces the source process-wide so a
-multi-minute fit can be run both ways and diffed.
+### A real bug the gate found, unrelated to storage
 
-**REMAINING, in order:**
-1. `src/predict/nhl_props.py:184 load_shot_props` — joins to
-   `athlete_crosswalk` (7,236 rows). Cross-source: pull the small side into
-   DuckDB, or join in Python.
-2. `build_athlete_crosswalk.py:338,413` — joins to `game_result` (184,108).
-3. The audits, plus `scripts/gate/gate2b_prop_join.mjs` and
-   `gate7_athlete_crosswalk.mjs`.
-4. Then prune to `event_start > now()` plus a margin, publish the retained
-   floor the way 5.S.5 does, and `VACUUM FULL`.
+`fit_nfl_elo` ordered by `(game_date, event_ref)`, which is **not unique** —
+232 groups in its own population share both. Elo is path-dependent, so those
+464 rows updated the ratings in whatever order the engine returned: **the fit
+was not reproducible run to run and nobody could have seen it.** Postgres and
+DuckDB tie-broke them differently; the row sets were identical and only the
+order was not. Now ordered totally, and both engines agree byte for byte.
 
-### The worker
+### Still open
 
-`dep-dahdveifngtc73945db0`, commit `16d77532`, live 2026-09-10 16:51:35Z.
-Verified through the Render API — `GET /v1/services/.../deploys` and
-`/events` — not inferred from breadcrumbs. `RENDER_API_KEY` is in `.env.local`.
-**A breadcrumb tells you a job ran, not which code ran it.**
+- **`computeMlbPropPredictionsJob` has been dead since 2026-09-08 02:23Z** —
+  `KeyError: 'a'` at `jobs.py:812`. Untouched; it is §5.S.9's test case.
+- **§5.S.8** (`prop_odds_history`, 1,239 MB, the fastest-growing object) has not
+  been started. Its 5.3a gate — does `userClv.ts` take entry price from
+  `pick_history` or from `prop_odds_history` — is still unmeasured.
+- **An egress check was requested and not run.** ~15 GB was consumed today, and
+  **a real share of that is mine**: this session read the Parquet corpus from
+  Supabase Storage repeatedly (every prune verification, every union view, the
+  `--seed`). Separate my usage from the baseline before drawing conclusions
+  about whether 5.1's fix is holding.
 
-**§5.S.1's gate passed before any of today's work:** `mlbProjectionsJob` at
-14:47:16Z reproduced row-for-row by a local `build()` on the same slate — all
-640 rows identical on projection, projected volume, model probability, league
-baseline and sample size, `history_rows` 355,764 both sides.
+### The measurement trap that recurred three times
 
-### mlbHistorySummaryJob was failing, and it cost more than staleness
-
-The Render service had **no `CORPUS_*` environment variables**, so
-`corpus_location()` took its documented default — a local directory — which on
-Render is empty. Fixed: all five vars set via the API and confirmed present
-(30 vars on the service now).
-
-**A RENDER RESTART DOES NOT RE-READ ENVIRONMENT VARIABLES. A DEPLOY DOES.**
-`POST /services/{id}/restart` ran at 16:41:29Z and the job failed again at
-16:44 with the identical error. `POST /services/{id}/deploys` at 16:50 is what
-actually picked them up. Worth knowing before diagnosing this class of thing
-for an hour.
-
-**What the failure actually cost, measured rather than guessed.** Today's board
-was being served from the 2026-09-09 summary (`read_history_summary` takes the
-newest at or before `as_of`, which degrades quietly by design). Rebuilding
-today's summary from the corpus moved the board from **640 projections to 800**
-and restored the whole of **`pitcher-hits-allowed`**, which the stale summary
-had silently dropped because it held no rows for tonight's starters. Batter
-projections moved ~0.001-0.007, and every market edge stayed inside the healthy
--0.03..+0.013 band. So the cost was not "slightly stale numbers"; it was 160
-missing rows and a missing market.
-
-Today's summary is already written (1,242 rows, `source=union`, as_of
-2026-09-10). **The corpus reads fine from Supabase over S3** — 2,807,445 rows
-visible via DuckDB, ~240s for a full summary rebuild, which is why the job is
-daily and must stay daily.
-
-### Still broken, and it predates all of this
-
-**`computeMlbPropPredictionsJob` has been dead since 2026-09-08 02:23Z** —
-`KeyError: 'a'` in `apply_prop_calibrations` (`jobs.py:812`). Untouched because
-§5.S is worked in order; it is the concrete test case §5.S.9's gate should be
-written against.
-
-### The one measurement trap that keeps recurring
-
-**The 2026-09-04 23:33:51Z restart discarded the cumulative statistics, and
-`pg_stat_database.stats_reset` is STILL NULL.** It has now poisoned three
-separate measurements in this phase:
-
-1. 5.S.3's index gate — `idx_scan = 0` read as "never", was "not in 5.7 days".
-2. `vacuum_reclaim.py`'s first run — `n_live_tup` read `game_result` as 199
-   rows (really 184,108), which would have rewritten two dense tables.
-3. `audit_storage.py`'s own 5.0g check, which asserted the void gate verbatim.
-
-All three are fixed and each says so in its own comments. **Assume it has
-poisoned the next one too.** Anything from `pg_stat_*` covers 5.7 days, not the
-database's life; `pg_class.reltuples` and `pg_postmaster_start_time()` are the
-things that survive a restart.
-
-### Tools this session added
-
-| tool | does |
-|---|---|
-| `prune_dead_tables.py` | export + digest-verify + `DROP`/`DELETE` the dead tables |
-| `audit_index_usage.py` | decides index death by **EXPLAIN**, not `idx_scan`; `--snapshot` records counters durably |
-| `vacuum_reclaim.py` | `VACUUM FULL` with a headroom check, because the rewrite needs both copies at once |
-
-`audit_index_usage.py --snapshot` has one snapshot (2026-09-10, 145 rows). **In
-a month the delta is real index usage** and the ~260 MB of indexes kept today
-can be re-examined against evidence rather than a five-day window.
+The **2026-09-04 23:33:51Z restart discarded the cumulative statistics while
+`pg_stat_database.stats_reset` stayed NULL.** It poisoned 5.S.3's index gate,
+`vacuum_reclaim`'s bloat estimate, and `audit_storage`'s own 5.0g check.
+Anything from `pg_stat_*` covers days, not the database's life;
+`pg_class.reltuples` and `pg_postmaster_start_time()` survive a restart.
 
 ---
 
