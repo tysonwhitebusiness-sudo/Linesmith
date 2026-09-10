@@ -11,20 +11,42 @@ ordering conversationally — that is exactly what §5.S exists to stop.
 
 ## READ THIS FIRST: state as of 2026-09-10 17:00Z
 
-**§5.S.1 through §5.S.4 are DONE.** §5.S.5 is next and nothing blocks it.
+**§5.S.1 through §5.S.5 are DONE.** §5.S.6 is next and nothing blocks it.
 
 ```
-database   7,282 MB  ->  5,545 MB     88.9% -> 67.7%
+database   7,282 MB  ->  5,362 MB     88.9% -> 65.5%
 ```
 
-`player_game_history` 1,839 -> 460 MB, `odds_import_staging` 262 -> 2 MB,
-seven dead tables dropped, two redundant indexes dropped. **All 8 checks of
-`audit_storage.py` pass.**
+`player_game_history` 1,839 -> 460 MB, `mlb_pitch_events` 477 -> 289 MB,
+`odds_import_staging` 262 -> 2 MB, seven dead tables dropped, two redundant
+indexes dropped. **All 8 checks of `audit_storage.py` pass; tsc clean; TS suite
+359/359.**
 
-The remaining ~2,500 MB is 5.S.5-5.S.8 and is all reader-porting, not
-discovery: `odds_archive` (1,204 MB), `prop_odds_history` (1,214 MB),
-`prop_odds_archive` (864 MB) and `mlb_pitch_events` (477 MB) are exported and
-verified in object storage already.
+The remaining ~2,300 MB is 5.S.6-5.S.8 and is reader-porting, not discovery:
+`prop_odds_history` (1,214 MB), `odds_archive` (1,204 MB) and
+`prop_odds_archive` (864 MB) are all exported and verified in object storage
+already.
+
+### The pattern 5.S.6 and 5.S.7 should copy from 5.S.5
+
+**Publish the retained floor; do not hardcode it.** A season trimmed to the
+corpus and a subject with genuinely no rows both aggregate to an empty result,
+and nothing downstream can tell them apart. `prune_pitch_events.py` writes the
+oldest retained season to `snapshot_cache`
+(`mlb:pitch-events:retained-floor`); `/api/mlb/pitch-profile` reads it and
+answers **410 Gone** with the floor and a pointer to the corpus, checked BEFORE
+`cachedRoute` so a retention answer never lands under a data cache key.
+Verified live against a dev server: 2024 -> 410, 2026 -> 200 with 2,624
+pitches, 2019 -> 400 (the separate, static *ingest* floor). Two floors, two
+different questions: *"we never had this"* vs *"we have it, elsewhere"*.
+
+**Prove coverage by ID SET, not by count.** Two equal counts over different id
+sets is exactly the agreement that looks like proof and is not.
+
+**`asyncio.to_thread` every DuckDB corpus read.** It is a blocking C call;
+inside an `async` function it starves asyncpg's keepalive, the pooler drops the
+connection, and the process dies 60s later in `Pool.close()` with a GIL error
+that names none of it.
 
 ### The worker
 
