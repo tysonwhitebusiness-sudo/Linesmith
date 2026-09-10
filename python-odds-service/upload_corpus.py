@@ -140,9 +140,18 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Upload the corpus to object storage")
     ap.add_argument("tables", nargs="*")
     a = ap.parse_args()
+    root = local_root()
     tabs = a.tables or list(cs.CORPUS)
-    unknown = [t for t in tabs if t not in cs.CORPUS]
+    # VALIDATED AGAINST THE DISK, NOT AGAINST `cs.CORPUS`. 5.S.2 exports dead
+    # tables through the same streaming exporter but deliberately keeps them out
+    # of the corpus registry (see `corpus_store.spec_for`), and they still need
+    # to reach object storage before anything is dropped. What makes a name
+    # uploadable is that the exporter actually wrote a directory of Parquet for
+    # it -- which is a stronger check than registry membership, because a
+    # registered table with no export would have passed the old test and
+    # uploaded nothing.
+    unknown = [t for t in tabs if not os.path.isdir(os.path.join(root, t))]
     if unknown:
-        print(f"unknown corpus table(s): {unknown}")
+        print(f"no exported Parquet under {root} for: {unknown}")
         sys.exit(2)
-    sys.exit(main(tabs, local_root()))
+    sys.exit(main(tabs, root))

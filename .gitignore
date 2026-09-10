@@ -79,3 +79,10 @@ python-odds-service/.statcast_batter_games.csv
 
 # Phase 4.1 fit cache (regenerated from the DB by fit_nfl_elo.py)
 python-odds-service/.nfl_elo_games.csv
+
+# Phase 5.2/5.S.2 — Parquet staging for the corpus and the dead-table backups.
+# Both are local copies of Postgres data (the corpus is 129.7 MB across 441
+# files) whose authoritative home is Supabase Storage, not git. Neither was
+# ignored, which meant one `git add` away from committing them.
+python-odds-service/corpus/
+python-odds-service/dead_tables_backup/

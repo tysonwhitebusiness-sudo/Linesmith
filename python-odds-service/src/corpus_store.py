@@ -108,6 +108,26 @@ CORPUS: dict[str, CorpusTable] = {
 }
 
 
+def spec_for(table: str, spec: "CorpusTable | None" = None) -> CorpusTable:
+    """The `CorpusTable` describing `table`, defaulting to the corpus registry.
+
+    WHY THIS IS A PARAMETER RATHER THAN A LOOKUP. The streaming export below is
+    the only correct export in this codebase -- declared Arrow schema, keyset
+    chunking under a 2-minute `statement_timeout`, a digest accumulated as rows
+    go past and re-checked against the file re-read from disk. It should be
+    reused by anything that exports a table, and `5.S.2` is the first caller
+    that is NOT the corpus: it backs up dead tables in order to DROP them.
+
+    Those two registries must not merge. `CORPUS` is documented as irreplaceable
+    model fuel from which nothing may ever be deleted; `prune_dead_tables.DEAD`
+    is the exact opposite, a list of things whose whole purpose is to go away.
+    Putting a backup table into `CORPUS` would make every corpus-span assertion
+    in `audit_storage.py` answer a question nobody asked. So: one engine, two
+    registries, and the registry is an argument.
+    """
+    return spec if spec is not None else CORPUS[table]
+
+
 async def column_names(conn, table: str) -> list[str]:
     rows = await conn.fetch(
         """SELECT column_name FROM information_schema.columns
@@ -130,9 +150,10 @@ def _cell(value):
 
 
 async def fetch_frozen(conn, table: str, limit: int | None = None,
-                       extra_where: str | None = None) -> tuple[list[str], list[tuple]]:
+                       extra_where: str | None = None,
+                       spec: CorpusTable | None = None) -> tuple[list[str], list[tuple]]:
     """Every frozen row of one table, as (columns, rows). Read-only."""
-    spec = CORPUS[table]
+    spec = spec_for(table, spec)
     cols = await column_names(conn, table)
     where = spec.frozen_where()
     if extra_where:
@@ -365,7 +386,8 @@ def partition_path(out_dir: str, table: str, part: int | str) -> str:
     return os.path.join(out_dir, table, f"{table}_{part}.parquet")
 
 
-async def partitions_for(conn, table: str) -> list[tuple]:
+async def partitions_for(conn, table: str,
+                         spec: CorpusTable | None = None) -> list[tuple]:
     """The partitions to export, as (sport, year) or (None, id_lo) tuples.
 
     Sports come from `DISTINCT sport`, which is an index-prefix scan rather than
@@ -373,7 +395,7 @@ async def partitions_for(conn, table: str) -> list[tuple]:
     (sport, game_date) index answers it directly -- an unqualified min/max on
     `game_date` cannot use that index and times out.
     """
-    spec = CORPUS[table]
+    spec = spec_for(table, spec)
     if spec.partition_by == "id_chunk":
         row = await conn.fetchrow(f"SELECT min(id) a, max(id) b FROM {table}")
         if not row or row["a"] is None:
@@ -393,9 +415,10 @@ async def partitions_for(conn, table: str) -> list[tuple]:
     return out
 
 
-def _partition_query(table: str, cols: list[str], part: tuple, chunk_rows: int):
+def _partition_query(table: str, cols: list[str], part: tuple, chunk_rows: int,
+                     spec: CorpusTable | None = None):
     """(sql, args-prefix) for one partition, shaped to the indexes that exist."""
-    spec = CORPUS[table]
+    spec = spec_for(table, spec)
     sport, key = part
     if spec.partition_by == "id_chunk":
         where = (f"{spec.frozen_where()} AND id >= ${{n}} AND id < ${{m}} "
@@ -419,7 +442,8 @@ def partition_name(table: str, part: tuple) -> str:
 
 
 async def export_partition(conn, table: str, part: tuple, out_dir: str,
-                           chunk_rows: int = CHUNK_ROWS) -> dict:
+                           chunk_rows: int = CHUNK_ROWS,
+                           spec: CorpusTable | None = None) -> dict:
     """Stream one partition to one Parquet file. Returns a verification verdict.
 
     The digest is accumulated AS THE ROWS GO PAST, then recomputed by re-reading
@@ -439,7 +463,7 @@ async def export_partition(conn, table: str, part: tuple, out_dir: str,
     sent = RowDigest(cols)
     writer = None
     last_id = -1
-    sql, prefix = _partition_query(table, cols, part, chunk_rows)
+    sql, prefix = _partition_query(table, cols, part, chunk_rows, spec)
     try:
         while True:
             raw = await conn.fetch(sql, *prefix, last_id)
@@ -517,19 +541,33 @@ EXPORT_STATEMENT_TIMEOUT = "30min"
 # operation run deliberately, not a JOB_REGISTRY entry.
 
 
-async def export_table(conn, table: str, out_dir: str,
-                       chunk_rows: int = CHUNK_ROWS,
-                       parts: list[tuple] | None = None,
-                       progress=None, resume: bool = True) -> dict:
-    """Every frozen partition of one table. Exports only; deletes nothing.
+async def export_table_pooled(pool, table: str, out_dir: str,
+                              chunk_rows: int = CHUNK_ROWS,
+                              parts: list[tuple] | None = None,
+                              progress=None, resume: bool = True,
+                              spec: CorpusTable | None = None) -> dict:
+    """`export_table`, but taking a POOL and acquiring one connection PER
+    PARTITION rather than holding one for the whole table.
 
-    THIS IS A MAINTENANCE OPERATION, not something a request path calls. It
-    holds one pooler connection (of 15) for its duration and competes with the
-    live worker, so it should be run deliberately rather than on a schedule
-    that can collide with a busy slate.
+    WHY: Supabase's transaction-mode pooler recycles connections, and a table
+    like `odds_archive` is ~196 partitions -- far longer than a connection
+    survives. Two full-export attempts died with
+
+        asyncpg.exceptions.ConnectionDoesNotExistError:
+        connection was closed in the middle of operation
+
+    the first when the machine powered off and the second while it was sitting
+    idle, which is what ruled out the machine and pointed at the pooler.
+
+    Resume already made that cost only the partition in flight, but a job that
+    reliably dies two-thirds of the way through is a job nobody finishes. A
+    short-lived connection per partition is the shape the pooler is built for.
     """
-    await conn.execute(f"SET statement_timeout = '{EXPORT_STATEMENT_TIMEOUT}'")
-    parts = parts if parts is not None else await partitions_for(conn, table)
+    if parts is None:
+        async with pool.acquire(timeout=600.0) as conn:
+            await conn.execute(f"SET statement_timeout = '{EXPORT_STATEMENT_TIMEOUT}'")
+            parts = await partitions_for(conn, table, spec)
+
     verdicts = []
     for part in parts:
         path = os.path.join(out_dir, table, f"{partition_name(table, part)}.parquet")
@@ -542,7 +580,60 @@ async def export_table(conn, table: str, out_dir: str,
                  "digest_match": True, "columns_match": True, "ok": True,
                  "resumed": True}
         else:
-            v = await export_partition(conn, table, part, out_dir, chunk_rows)
+            async with pool.acquire(timeout=600.0) as conn:
+                await conn.execute(
+                    f"SET statement_timeout = '{EXPORT_STATEMENT_TIMEOUT}'")
+                v = await export_partition(conn, table, part, out_dir, chunk_rows,
+                                           spec=spec)
+            if v.get("ok") and not v.get("skipped"):
+                write_manifest(path, v)
+        verdicts.append(v)
+        if progress:
+            progress(part, v)
+
+    real = [v for v in verdicts if not v.get("skipped")]
+    names = {partition_name(table, p) for p in parts}
+    return {
+        "table": table,
+        "partitions": len(real),
+        "resumed": sum(1 for v in real if v.get("resumed")),
+        "stale_files": stale_partition_files(out_dir, table, names),
+        "rows": sum(v["pg_rows"] for v in real),
+        "bytes": sum(v["bytes"] for v in real),
+        "all_verified": all(v["ok"] for v in real),
+        "failed": [v["path"] for v in real if not v["ok"]],
+        "verdicts": verdicts,
+    }
+
+
+async def export_table(conn, table: str, out_dir: str,
+                       chunk_rows: int = CHUNK_ROWS,
+                       parts: list[tuple] | None = None,
+                       spec: CorpusTable | None = None,
+                       progress=None, resume: bool = True) -> dict:
+    """Every frozen partition of one table. Exports only; deletes nothing.
+
+    THIS IS A MAINTENANCE OPERATION, not something a request path calls. It
+    holds one pooler connection (of 15) for its duration and competes with the
+    live worker, so it should be run deliberately rather than on a schedule
+    that can collide with a busy slate.
+    """
+    await conn.execute(f"SET statement_timeout = '{EXPORT_STATEMENT_TIMEOUT}'")
+    parts = parts if parts is not None else await partitions_for(conn, table, spec)
+    verdicts = []
+    for part in parts:
+        path = os.path.join(out_dir, table, f"{partition_name(table, part)}.parquet")
+        done = completed_manifest(path) if resume else None
+        if done is not None:
+            v = {"path": path, "partition": part, "table": table,
+                 "pg_rows": done["rows"], "file_rows": done["rows"],
+                 "pg_digest": done["digest"], "file_digest": done["digest"],
+                 "bytes": done["bytes"], "row_count_match": True,
+                 "digest_match": True, "columns_match": True, "ok": True,
+                 "resumed": True}
+        else:
+            v = await export_partition(conn, table, part, out_dir, chunk_rows,
+                                       spec=spec)
             if v.get("ok") and not v.get("skipped"):
                 write_manifest(path, v)
         verdicts.append(v)

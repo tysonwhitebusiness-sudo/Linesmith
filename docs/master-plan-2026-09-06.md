@@ -1415,17 +1415,71 @@ holding 27% of what it replays. Nothing wrong has been written yet only because
 **Gate:** `mlbProjectionsJob` completes and its `history_rows` matches a local
 `build()` on the same slate.
 
-**5.S.2 — Back up and drop the dead tables.** 324 MB. `odds_import_staging`
-alone is 284 MB / 1,140,676 rows, every one written inside a nine-minute window
-on 2026-09-02 — a staging table that never drained. Six migration backups from
-2026-08-29 and 2026-09-01 make up the rest.
-**Gate:** each table exported to Parquet and digest-verified BEFORE its `DROP`.
+**5.S.2 — Back up and remove the dead tables.** 324 MB. Tool:
+`python-odds-service/prune_dead_tables.py` (verify-only by default, `--apply`
+to act). **DONE except for `--apply`:** all 8 tables exported, 1,463,329 rows
+digest-verified locally, and uploaded to Supabase Storage (21 files / 10.8 MB,
+each re-read remotely to confirm).
 
-**5.S.3 — Drop the never-scanned indexes.** 314 MB across `prop_odds_archive_close_lookup`
-(162 MB), `idx_prop_odds_game` (52 MB), `odds_archive_pregame` (31 MB) and others.
-**Gate:** `pg_stat_database.stats_reset` is still NULL at drop time — that is the
-only thing making `idx_scan = 0` mean "never used" rather than "not used lately".
-Re-check it immediately before, not from this document.
+**TWO PREMISES IN THE ORIGINAL WORDING WERE WRONG, both corrected by
+measurement rather than inherited:**
+
+1. *"a staging table that never drained"* — **it drained completely.** All
+   1,138,756 resolved rows of `odds_import_staging` are present in
+   `odds_archive`; an anti-join on the full promotion key returns **zero**
+   unmatched. It is post-promotion residue, not a backlog. (The nine-minute
+   window is real: `ingested_at` spans 2026-09-02 00:03:18Z to 00:12:37Z.)
+2. *"drop"* — **`odds_import_staging` must NOT be dropped.** It is live
+   infrastructure: five importers write it, `scripts/gate/promote_odds.mjs`
+   drains it, and three scripts read it. Its ROWS are dead; its SCHEMA is not.
+   The tool therefore has two dispositions — `drop` (the six migration
+   backups) and `delete` (this table's resolved rows, keeping the 2,876
+   unresolved ones that `gate4_staging.mjs` reads and that were never promoted
+   anywhere).
+
+**Gate:** each table exported to Parquet and digest-verified BEFORE removal —
+met, via `corpus_store.deletion_manifest`, which raises rather than warning.
+**Expect ~40 MB back, not 324.** `DROP TABLE` returns its file; the `DELETE`
+only marks rows dead, and that 266 MB comes back at 5.S.4.
+
+**5.S.3 — Drop the never-scanned indexes.** 314.8 MB across 25 indexes in
+`public` that are neither PRIMARY nor UNIQUE. That total is re-derived and
+correct — it reproduces to 0.2 MB.
+
+**THE GATE THIS STEP WAS GIVEN IS VOID, AND THE STEP CANNOT PROCEED ON IT.**
+The gate said: `pg_stat_database.stats_reset` still NULL proves `idx_scan = 0`
+means "never used" rather than "not used lately". Measured 2026-09-10:
+`stats_reset` **is** NULL — and the counters are nonetheless only 5.7 days old.
+
+The decisive test, because a gate that cannot fail is not a gate:
+`odds_import_staging` holds 1,140,676 rows whose `ingested_at` all fall on
+2026-09-02, yet `pg_stat_user_tables.n_tup_ins` for it is **0**.
+`historical_odds` (37,922 rows) and `prop_odds_dedup_backup_20260829` (178,238
+rows): also 0. The cumulative statistics were discarded at the
+**2026-09-04 23:33:51Z** restart (`pg_postmaster_start_time`, which
+`pg_stat_statements_info.stats_reset` matches to the millisecond) — and
+`stats_reset` stayed NULL straight through it. **NULL never meant what the gate
+claimed it meant.**
+
+So `idx_scan = 0` currently reads "not scanned since 2026-09-04", which is
+strong evidence about the hourly worker's hot path and **no evidence at all**
+about anything that runs weekly or by hand — fitters, gate scripts, backfills.
+That distinction is not academic: `odds_archive_pregame`
+(`(sport, market, game_date) WHERE NOT is_live`) has real consumers in
+`scripts/gate/gate9_model_readiness.mjs` and `gate5_archive.mjs`, which query
+`market='moneyline' AND NOT is_live` — an exact match for the index predicate,
+from scripts nobody has run this week.
+
+**REVISED GATE, two conditions, both required per index:**
+1. `idx_scan = 0` over a stats window whose age is stated, not assumed — derive
+   it from `pg_postmaster_start_time()`, never from `stats_reset` being NULL;
+   AND
+2. no query shape in either tree matches the index, checked by grep — because
+   for a rarely-run consumer the counter cannot see it.
+
+Where (1) and (2) disagree, (2) wins. Drop only what passes both, keep the
+`CREATE INDEX` statements in the commit so any drop is one paste to undo, and
+say plainly how much less than 314.8 MB that turns out to be.
 
 **5.S.4 — `VACUUM FULL player_game_history`.** 1,342 MB. The table holds 2,424
 bytes per live row against its natural 655; the prune's space is still in the

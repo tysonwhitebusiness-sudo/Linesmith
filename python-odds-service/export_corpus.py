@@ -65,8 +65,10 @@ async def main(tables: list[str]) -> int:
             print(f"   {_t:<22}{str(part):<18}{tag}  "
                   f"{'OK' if v['ok'] else 'FAIL'}", flush=True)
 
-        async with pool.acquire(timeout=3600.0) as conn:
-            r = await cs.export_table(conn, table, root, progress=progress)
+        # Pooled: one short-lived connection PER PARTITION. Supabase's pooler
+        # recycles connections, and holding one across ~196 partitions killed
+        # two full-export attempts with ConnectionDoesNotExistError.
+        r = await cs.export_table_pooled(pool, table, root, progress=progress)
         totals["rows"] += r["rows"]
         totals["bytes"] += r["bytes"]
         totals["resumed"] += r["resumed"]
