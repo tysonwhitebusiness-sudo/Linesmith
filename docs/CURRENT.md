@@ -1,212 +1,155 @@
 # CURRENT — pick up here
 
-**Phases 1, 2 and 3 of `docs/master-plan-2026-09-06.md` are COMPLETE.**
-**Phase 4 (NFL) is COMPLETE except for 4.2 and 4.5, which the season blocks.**
+**Phases 1–4 are COMPLETE. Phase 5 (Sustainability) is IN PROGRESS.**
 
-Phase 3's full narrative now lives in the master plan (§3.0–§3.5) rather than
-here — it is closed, and this file is the baton, not the archive.
-
----
-
-## THE ONE THING BLOCKING PROGRESS: a Render deploy only the operator can do
-
-**I cannot deploy.** There is no Render CLI or deploy script in this repo and
-`render.yaml` sets `autoDeploy: false`. This has to be a manual deploy from the
-Render dashboard.
-
-Two separate things are waiting on it, and the first is time-critical:
-
-1. **The Phase 3.5 pregame-price fix (`9a5e862`, 2026-09-08 20:14) is NOT on
-   the deployed worker.** The last deploy landed ~2026-09-08 02:16, eighteen
-   hours earlier. Until it deploys, `generic_price_attach` can still record an
-   **in-play** price as a pick's permanent entry price. This is exactly the bug
-   that made Phase 3.5's first CLV measurement report severe negative edge that
-   did not exist — 85.4% of MLB moneyline rows in `game_odds_book_lines` are
-   post-commence.
-
-   **NFL Week 1 is 2026-09-09.** Sunday's 4:25pm and 8:20pm windows are when
-   games overlap most and in-play rows are densest. Every pick written before
-   this deploys risks a contaminated entry price, and an entry price is
-   permanent — it is not recoverable by a later re-fit. The 3.5 measurement had
-   to be rebuilt from `game_odds_history` to work around exactly this.
-
-2. **`nflProjectionsJob` does not exist on the deployed worker.** It was added
-   to `JOB_REGISTRY` in `341358f` and runs hourly. Until deploy, the NFL board
-   serves whatever the last manual run wrote and then goes stale.
-
-Deploying also picks up 3.0's calibration gating and all of Phase 4's fits.
+**`docs/master-plan-2026-09-06.md` §5.S is the authority on what remains.** It
+lists every remaining step in execution order with its own gate. Work it in
+order; deviating needs a reason written into that section. Do NOT re-derive the
+ordering conversationally — that is exactly what §5.S exists to stop.
 
 ---
 
-## Where Phase 4 stands
+## READ THIS FIRST: two live conditions
 
-| step | state |
+**1. THE WORKER IS NOT RUNNING.** Every job's breadcrumb is ~854 minutes old
+(`mlbProjectionsJob`, `refreshTennisAtpJob`, all of them). The operator was
+mid-deploy at handover. This is currently *protective* — see condition 2 — but
+the platform is down, not merely slow.
+
+**2. POSTGRES NO LONGER HOLDS WHAT THE DEPLOYED CODE REPLAYS.**
+`player_game_history` was pruned from 2,807,445 to 758,819 rows. The deployed
+worker still runs the pre-5.1 replay path, which rebuilds player history by
+reading that table. **If the old code runs, it will compute projections from
+truncated history and write wrong numbers to the live board.** Nothing wrong has
+been written yet only because the worker is down.
+
+The fix is already committed and pushed (through `5d42c4b`). **The deploy is the
+first remaining step (§5.S.1) and it is urgent, not routine.**
+
+---
+
+## What changed today, in one paragraph
+
+The audit found three ceilings — database 88.5%, egress ~2× its allowance,
+worker RAM already OOM-killing a job — and that **one query family was the
+largest contributor to all three**: `mlbProjectionsJob` transferred 7,184,704
+rows per run to compute 300 numbers. Fixing it (5.1) cut that job 152s → 12.6s
+and ended a 13-hour silent outage. Then the corpus (4,434 MB across five tables)
+was exported to Parquet, verified, and uploaded to Supabase Storage, and
+`player_game_history` was trimmed to a hot window behind a summary table that
+reproduces the model exactly.
+
+---
+
+## Where the space is, so the number stops moving
+
+```
+now                                        7,258 MB   88.6%
+after 5.S.2 + 5.S.3 + 5.S.4               ~5,269 MB   64%
+after 5.S.5 + 5.S.6 + 5.S.7               ~2,736 MB   33%
+after 5.S.8                               ~2,400 MB   29%
+```
+
+**The ~2,400 MB in Phase 5's header was always the figure for a COMPLETED
+Phase 5.** `odds_archive` (1,203 MB), `prop_odds_archive` (854 MB) and
+`mlb_pitch_events` (476 MB) are all exported and verified in object storage;
+none has been deleted, because their readers still query Postgres. That is the
+entire remaining gap. Porting those readers is now a *proven pattern* —
+`player_game_history` went through it end to end — not an unknown.
+
+---
+
+## The corpus
+
+**441 files / 129.7 MB in Supabase Storage**, `s3://linesmith-corpus/v1`, every
+file verified against its local original by size and MD5.
+
+**THE LOCAL STAGING COPY IS GONE.** It lived in the previous session's
+scratchpad. `prune_player_history.py` and `prune_corpus.py` both verify against
+a local copy, so **re-download from Supabase before running either**. The
+credentials are in `.env.local` as `CORPUS_URI` / `CORPUS_S3_*` (Supabase's S3
+access keys — NOT the anon key, NOT the service-role key).
+
+Tools, all in `python-odds-service/`:
+
+| tool | does |
 |---|---|
-| 4.0 audit | DONE — `python audit_nfl_phase4.py` re-derives every number, exits non-zero if a classification stops matching the data |
-| 4.1 Elo | DONE — **the market beats the model**, t=+2.55. A baseline, not an edge; must not be displayed as one |
-| 4.2 CLV game gate | **BLOCKED ON THE SEASON** — 17 NFL picks exist |
-| 4.3 prop projections | DONE — beat a flat baseline on all four markets |
-| 4.4 longest reception | DONE — Weibull; the exponential guess was wrong |
-| 4.4b anytime TD | DONE — clears a home-runs gate and beats home runs |
-| 4.5 probability gate | **BLOCKED ON THE SEASON** — see below |
-| 4.6 Scan | DONE (`341358f`), verified live |
-
-**4.5 cannot be run, and this is not a scheduling excuse.** NFL's entire prop
-archive is one season, dense only Sept–Nov 2025. At MLB's cutoff its largest
-market has **42 held-out rows**. There is no held-out set to gate a probability
-on until the 2026 season produces one. Every NFL calibration is therefore
-persisted `probability_ok = false`, and `nfl_prop_serving.to_cache_rows`
-**asserts** `model_prob is None` on every row before writing.
-
-**4.6's gate contradicted itself, and the resolution matters.** It asked for
-NFL rows "ranked against MLB rows" AND "no probability on any market that has
-not cleared 4.5". Both cannot hold — the cross-market rank *is*
-`P(over) − baseline`, so a row with no probability has nothing to rank on. The
-no-probability half wins, because it is the half carrying the evidence claim.
-Under Phase 2's own rule an unranked row is a first-class state: it appears,
-shows its projection, ranks WITHIN its market, and takes no global position.
-Measured live on `/nfl`: **0 rank chips**, which is correct, not degraded.
+| `audit_storage.py` | re-derives every Phase 5 number; exits non-zero when a claim stops matching |
+| `export_corpus.py` | Postgres → Parquet, resumable, verifies every partition |
+| `upload_corpus.py` | Parquet → Supabase, re-reads each object to confirm it landed |
+| `prune_corpus.py` | verify-only by default; deletes by verified row id |
+| `prune_player_history.py` | trims to `season >= max(season) - 2`, per sport |
+| `measure_projection_memory.py` | worker RSS against the 512 MB plan |
 
 ---
 
-## What 4.6 shipped, and how it was verified
+## Traps that cost real time today
 
-Five pieces: `predict/nfl_markets.py`, `predict/nfl_prop_serving.py`,
-`nflProjectionsJob` in `JOB_REGISTRY`, `readNflProjections()` +
-`app/api/nfl/projections/route.ts`, and
-`lib/sports/nfl/adapters/statsBoardAdapter.ts`.
-
-Verified on a **production build against real data**, not a unit test:
-`/api/nfl/projections` returns 5 markets / 1,931 rows with
-`hasProbability=false` on all five; on the live `/nfl` board 7 of 7 Receptions
-candidates join and render a projection with its sample size ("Some history —
-30 games behind this projection"), and the 2 Passing Yards rows correctly carry
-none, that market being unfitted. `tsc` clean, 359/359 TS tests, 38/38 job
-registry contract.
-
-**Two things here will bite anyone who assumes rather than measures.**
-
-- **The subject-id prefix is not what the code says it is.**
-  `lib/sports/nfl/adapter.ts` documents `espn:nfl:{id}`; `teamSportEspn.ts`
-  actually builds `espn:${espnSport}:${id}`, and NFL's `espnSport` is
-  **football**. Live value: `espn:football:4678006`. Stripping the literal
-  `espn:nfl:` leaves every id untouched and matches **zero** history rows —
-  silently, because a miss is a skipped player, not an error. `_bare_id` splits
-  on the last `:` instead. Same failure class that cost 4.3 an hour.
-- **`athlete_crosswalk` holds zero NFL rows with a name**, so
-  `readNflProjections` does no name join at all — joining would have dropped
-  177 of 1,931 rows and still rendered the rest nameless. Scan takes the name
-  from the candidate.
-
-Also shipped (`c229399`): Scan's row footer is now **always** rendered when
-there are rows — "Showing 150 of 1,604" plus "Show 50 more" / "Show all".
-Verified on MLB: 150 → 200 on one click. An absent footer was ambiguous between
-"everything is on screen already" and "the button is broken".
+- **`statement_timeout` is 2 minutes** and the pooler recycles long-lived
+  connections. Maintenance work uses one short connection PER PARTITION and
+  raises its own timeout. Two full exports died mid-run before this.
+- **Every date index is `btree (sport, game_date)`** — composite, `sport`
+  leading. A bare `game_date` predicate cannot use any of them.
+  `extract(year …)` is likewise non-sargable.
+- **A chunk of all-NULLs types an Arrow column as `null`** and poisons the
+  writer for every later chunk. The corpus schema is DECLARED from
+  `information_schema`, never inferred.
+- **CPython's `sum()` is compensated (Neumaier)** and differs from a `+=` loop
+  by ~1 ulp. Exact float identity between a summary and a replay is not
+  achievable and is not the gate; the served projection is.
+- **MLB plays doubleheaders** — 6,617 `(game_date, athlete_id)` pairs are not
+  unique, so history sorts need an `id` tiebreaker or the order (and therefore
+  `recent_volume`) is unstable.
+- **boto3 multipart starts at 8 MB**, and a multipart ETag is an md5-of-md5s.
+  Uploads are forced single-part so the cheap hash check stays valid.
+- **An exact `as_of` lookup on the summary blanks the board at midnight.** It
+  did. `read` now takes the newest summary at or before `as_of`.
 
 ---
 
-## Next actions, in order
+## Standing constraints
 
-1. **Operator deploys to Render.** Nothing below is worth doing first, and item
-   1 above degrades with every hour of live NFL.
-2. **Phase 5 — college football.** Already underway as a season, so it is next
-   by the same ordering rule that moved NFL ahead of NBA. Ridge/least-squares
-   rating on margin; residual against the closing spread is the signal. Spreads
-   back to 2013 (13,569 games) vs moneylines only from 2021 (4,017) — model the
-   spread. CFBD spread rows carry lines but **zero prices**, so CLV is
-   measurable only on the 2025–26 ESPN rows. **Props are out of scope**: zero of
-   45,000 rows are two-sided.
-3. **The database optimisation the operator has planned is now on the critical
-   path** — see the headroom number below. It is no longer something that
-   happens after the phases.
-4. **4.2 and 4.5 reopen once the 2026 NFL season produces rows.** Nothing to do
-   until then; do not re-run them hoping for a different answer.
+- **Do not deploy to Render without asking** — but the deploy is §5.S.1, so ask.
+- **Never `git add -A` or `git add docs/`** — `docs/discord-community-prompt.md`
+  is the operator's.
+- **Back up before deleting.** Every prune tool refuses without a verified
+  corpus copy, and refuses outright while that copy is local-only.
+- **`DELETE` does not return space.** Only `VACUUM FULL` does, and it takes an
+  ACCESS EXCLUSIVE lock. That is §5.S.4 and wants a quiet window.
+- **The Postgres pooler caps at 15 connections.** Maintenance competes with the
+  worker; check what is running first.
+- **The Python tests are standalone scripts, not pytest.** Run each with
+  `.venv/Scripts/python.exe src/<file>.py`. `test_harvester_scrape.py` cannot
+  run locally (imports `oddsharvester`, not installed). TS suite is `npm test`.
+- **`.venv/Scripts/python.exe`**, not the system Python.
 
 ---
 
 ## Open, deliberately not closed
 
-- **`served_probability_spread` is computed and persisted but NOT gated.** A
-  positive slope only says the ordering is not reversed. `pitcher-strikeouts`
-  shipped monotone at +0.971 and useless: projections spanning 0.56–7.35
-  strikeouts mapped into a 35.3%–51.7% band, 16.4pt where `hits` got 46.9pt.
-  The honest threshold is not known; inventing one would be a guess dressed as
-  a criterion.
-- **The ranking metric favours low-baseline rare-event markets.** On the
-  2026-09-07 board, 8 of the top 12 were `stolen-bases` (P ≈ 23% against a 7.0%
-  baseline). That is `P − baseline` behaving exactly as specified, but it is a
-  ranking-quality question worth the operator's eye.
-- **`hits` has a board line but no `StatMarketDef`**, so `mlb_prop_grading`
-  cannot grade it. Latent, not live: grading only handles
-  `category in ("over","under")` and the board writes `category="projection"`.
-- **`logSurfaced` (`lib/db/client.ts:1021`) has zero callers** — an
-  unreferenced writer still inserting `prop_score`/`score_grade`/`trust_tier`
-  into `pick_history`. Residue from Phase 1.
-- **The PA simulation (3.3) is built, validated, and wired to nothing.** 3.4 was
-  a dead heat, and a tie means no change. Do not wire it without a new
-  measurement.
+- **~35% of egress is unattributed.** The 64.7% share belonging to the corpus
+  pull is counted; the rest is not investigated and may hold another 5.1-sized
+  win. **The one post-5.1 rate measurement taken was contaminated** — heavy
+  local experiments ran during the window. Re-measure while genuinely idle.
+- **Supabase quota: egress, restricting 05 Oct 2026.** Database size is a
+  separate ceiling; §5.S.2–4 do not help egress.
+- **MLB serves `line: 4.5` while Scan shows the book's posted line** (5.5 on
+  2026-09-09). `mlb_board_lines.py` records only 47% of posted lines are 4.5, so
+  the displayed Model % answers a different question than the row's bet more
+  than half the time. Operator's call.
+- **Book coverage went 12 → 26 in two weeks**, which is what moved the growth
+  curve. A product decision the architecture absorbs but cannot make.
+- **`served_probability_spread` is computed and persisted but still ungated.**
 
-## Known gaps, carried forward
+---
 
-- **`prop_model_cache` is the only table holding prop model output.**
-  `pick_history` receives only MLB game-moneyline rows; its historical prop rows
-  came from the deleted model — treat that track record accordingly.
-- **THE DATABASE IS THE NEAREST HARD LIMIT: 81.3% (6,659 MB of 8,192)**,
-  measured 2026-09-06, up 200 MB in the week prior. At ~1.2 GB/week ambient
-  growth that is roughly **nine days** of headroom from that date, and the clock
-  runs on the harvester, not on work done here. Largest tables:
-  `player_game_history` 1,754 MB, `odds_archive` 1,144 MB, `prop_odds_history`
-  979 MB, `prop_odds_archive` 767 MB.
-- **`odds_unresolved` is 22,838 rows.** Phase 8.
-- **Park factors still are not wired and cannot be** — no path from a
-  player-game to a venue. The engine's multiplier hook is tested inert at 1.0.
-- **A calibration backup exists** at
-  `python-odds-service/mlb_calibration_backup_20260906.json` (untracked): the 13
-  active MLB rows as they stood before 3.0. `write_calibration` is versioned and
-  deactivates prior rows, so a revert is a version flip or a re-fit.
+## The habit that keeps paying
 
-## Standing constraints
-
-- **Do not deploy to Render without asking** — but note the deploy is now the
-  top item above, so ask.
-- **Never `git add -A` or `git add docs/`** — `docs/discord-community-prompt.md`
-  is the operator's.
-- **A numeric id matching the expected shape is not evidence it is the right
-  id.** 399 MLB ids once matched by shape and **0.00%** landed on the right game
-  date. The `espn:football:` finding above is the same lesson from a third
-  direction.
-- **The operator must read `app/privacy/page.tsx` before it is public.** Blocks
-  any public exposure, per the plan's §2.4.
-- **A dev server started before your changes can serve a deleted route from a
-  stale compiled build.** Verify page removal on a freshly started server. A
-  stale server on port 3000 404'd `/api/nfl/projections` during 4.6 for exactly
-  this reason.
-- **Scan empties once a slate finishes** — it drops candidates whose game is
-  `done`, so a board carrying 844 rows in the afternoon legitimately falls to 33
-  at midnight. Verify earlier in the day, or rebuild in memory against
-  `mlb_prop_serving.build()`, which needs no dev server and writes nothing.
-- **A long-lived dev server degrades**: `/api/props/lines` returns ~94k rows and
-  `slateProps.loading` eventually stops settling. Restart fixes it.
-- **The shared Postgres pooler caps at 15 connections.** Check for running fits
-  before starting anything DB-touching. A full `fit_mlb_props.py` run is ~40
-  minutes for 14 markets.
-- **The Python tests are standalone scripts, not pytest** — `pytest` is not
-  installed. Run each with `.venv/Scripts/python.exe <file>`; two of them
-  (`test_mlb_mlp.py`, `test_mlb_tree_models.py`) do live model fits and take
-  ~10 minutes each. `test_harvester_scrape.py` cannot run locally at all — it
-  imports `oddsharvester`, which is not installed here. The TS suite is
-  `npm test` (`node --test`), not vitest.
-
-## The standing heuristic Phase 3 produced, and Phase 4 kept using
-
-**Four of Phase 3's five sub-phases turned on a measurement being wrong rather
-than a model being wrong**, and each produced a confident, publishable-looking
-number first: `pitcher-outs` had the *best* ECE in the book while its
-calibration was inverted; xwOBA lost at t=−4.06; the simulation lost at t=+6.12;
-CLV read t=−5.83. Phase 4 hit it twice more — the Elo's first t=+7.82 was a
-cross-book de-vig that stripped the vig entirely, and `fit_nfl_props.py`
-silently joined zero rows by reusing MLB's crosswalk.
-
-**The tell is the same every time**: a result that is too clean, or several
-things failing in the same direction at once. Check the measurement before
-believing the model — in both directions, including when the number flatters.
+Four of Phase 3's five sub-phases, and most of today's findings, turned on a
+**measurement** being wrong rather than a model. Today alone: an equality check
+that would have blocked pruning forever, a digest comparing Python reprs instead
+of values, a jsonb test passing while comparing two empty lists, a test
+asserting a row count that the prune invalidated, and an egress measurement
+contaminated by the measurer. **The tell is a result that is too clean, or one
+that fails in a way that flatters the thing you just built.** Check the
+measurement before believing the model — in both directions.
