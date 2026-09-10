@@ -1389,6 +1389,101 @@ where growth is free.
 
 ---
 
+## 5.S — WHAT IS DONE AND WHAT REMAINS (the working checklist)
+
+**This section is the authority on Phase 5's remaining work.** Steps are done in
+number order. A step is DONE only when its gate has actually been run, not when
+the code exists. Updated 2026-09-10.
+
+### DONE
+
+| step | evidence |
+|---|---|
+| 5.0 audit | `python audit_storage.py` exits 0, 8/8 checks |
+| 5.1 serving aggregation | deployed; `mlbProjectionsJob` 152.36s -> 12.64s, board bit-identical |
+| 5.2a corpus format | round-trip verified, digest compares canonical values not reprs |
+| 5.2b identity gate | 10 MLB markets byte-identical from Parquet vs Postgres |
+| 5.2c object storage | 441 files / 129.7 MB in Supabase, every one verified remotely |
+| 5.2d (player_game_history only) | 2,048,626 rows pruned; board byte-identical after |
+| summary infrastructure | `player_history_summary` + `mlbHistorySummaryJob`; MLB/NHL/NFL all reproduce |
+
+### REMAINING, IN ORDER
+
+**5.S.1 — DEPLOY.** Production runs the pre-5.1 replay path against a table now
+holding 27% of what it replays. Nothing wrong has been written yet only because
+`mlbProjectionsJob` has not run since 00:30Z. *Operator action.*
+**Gate:** `mlbProjectionsJob` completes and its `history_rows` matches a local
+`build()` on the same slate.
+
+**5.S.2 — Back up and drop the dead tables.** 324 MB. `odds_import_staging`
+alone is 284 MB / 1,140,676 rows, every one written inside a nine-minute window
+on 2026-09-02 — a staging table that never drained. Six migration backups from
+2026-08-29 and 2026-09-01 make up the rest.
+**Gate:** each table exported to Parquet and digest-verified BEFORE its `DROP`.
+
+**5.S.3 — Drop the never-scanned indexes.** 314 MB across `prop_odds_archive_close_lookup`
+(162 MB), `idx_prop_odds_game` (52 MB), `odds_archive_pregame` (31 MB) and others.
+**Gate:** `pg_stat_database.stats_reset` is still NULL at drop time — that is the
+only thing making `idx_scan = 0` mean "never used" rather than "not used lately".
+Re-check it immediately before, not from this document.
+
+**5.S.4 — `VACUUM FULL player_game_history`.** 1,342 MB. The table holds 2,424
+bytes per live row against its natural 655; the prune's space is still in the
+file. Takes an ACCESS EXCLUSIVE lock, so it needs a quiet window, and it rewrites
+into a new file so it needs ~500 MB free while it runs — which is why 5.S.2 and
+5.S.3 come first.
+**Gate:** `pg_total_relation_size` drops to ~497 MB and the board is unchanged.
+
+**5.S.5 — Port `mlb_pitch_events` readers, then prune it.** 476 MB. Smallest
+reader surface of the three remaining corpus tables: `/api/mlb/pitch-profile`,
+`lib/sports/mlb/pitchProfile.ts`, `pitchRoles.ts`, `playerDetailAdapter.ts`.
+Also the worst compression ratio (10x), so the least valuable to keep in Postgres.
+**Gate:** measure what window each reader needs, keep that, prune the rest;
+pitch-profile renders identically for a sampled set of players.
+
+**5.S.6 — Port `prop_odds_archive` readers, then prune it.** 854 MB. Read by
+`nhl_props.py` and every prop fitter. The fits already have a proven Parquet
+path (5.2b); this is applying it.
+**Gate:** each fit produces bit-identical output reading Parquet vs Postgres.
+
+**5.S.7 — Port `odds_archive` readers, then prune it.** 1,203 MB, and the
+largest single remaining win. Read by `nhl_props.py`, `archival_bridge.py`,
+`health_check.py` and `gameModelBackfill.ts`. Note `archival_bridge` WRITES it
+continuously, so only frozen rows may be pruned — `FROZEN_PREDICATE` already
+encodes that boundary.
+**Gate:** `fit_nfl_elo` reproduces its published numbers from Parquet.
+
+**5.S.8 — 5.3's roll-up of `prop_odds_history`.** 1,189 MB, growing 122.7 MB/day,
+read 8,358 times against 1,858,112 inserts. **The CLV question is MINE to
+measure, not a decision to escalate:** determine whether `userClv.ts` takes its
+entry price from `pick_history` (where Phase 3.5 put it) or from
+`prop_odds_history`. Only if it is the latter does the retention window become
+an operator choice.
+**Gate:** the chart renders identically for every window the route permits, and
+CLV is unchanged for a sampled set of real historical picks.
+
+**5.S.9 — 5.5's guardrails.** A job that dies abnormally leaves a breadcrumb; an
+unhealthy check reaches the operator; worker RAM is tracked as a ceiling beside
+database size; the alarm is on MB/day, not percent-full.
+**Gate:** a deliberately failed job produces an alert the operator actually
+receives.
+
+### WHERE THE SPACE IS, SO THE NUMBERS STOP MOVING
+
+```
+now                                        7,249 MB   88.5%
+after 5.S.2 + 5.S.3 + 5.S.4               ~5,269 MB   64%
+after 5.S.5 + 5.S.6 + 5.S.7               ~2,736 MB   33%
+after 5.S.8                               ~2,400 MB   29%
+```
+
+**The ~2,400 MB target in this phase's header was always the figure for a
+COMPLETED Phase 5, not for 5.4 alone.** Every table in 5.S.5 through 5.S.7 is
+already exported and verified in the corpus; none has been deleted, because
+their readers still query Postgres. That is the whole of the remaining gap.
+
+---
+
 ## 5.0 — Pin the audit so it can be re-run, not re-argued
 
 `audit_storage.py`, in the shape of `audit_nfl_phase4.py`: re-derives every
