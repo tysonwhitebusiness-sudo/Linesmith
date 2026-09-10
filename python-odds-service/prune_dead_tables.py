@@ -273,7 +273,10 @@ async def main(tables: list[str], out_dir: str, apply: bool) -> int:
             "SELECT pg_database_size(current_database())") / 1e6
 
     print(f"\n  database {db_before:,.0f} MB -> {db_after:,.0f} MB "
-          f"({db_before - db_after:+,.0f} MB)")
+          f"({db_before - db_after:,.0f} MB reclaimed)")
+    # Reported as "reclaimed", not as a signed delta: the first version printed
+    # `{...:+,.0f}` and rendered a 40 MB REDUCTION as "+40 MB", which reads as
+    # growth on exactly the number this whole phase is trying to move down.
     print("  The DELETEd rows are still on disk until VACUUM FULL (5.S.4).\n")
     await pool.close()
     return 0

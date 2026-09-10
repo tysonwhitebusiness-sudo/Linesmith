@@ -1470,16 +1470,45 @@ That distinction is not academic: `odds_archive_pregame`
 `market='moneyline' AND NOT is_live` — an exact match for the index predicate,
 from scripts nobody has run this week.
 
-**REVISED GATE, two conditions, both required per index:**
-1. `idx_scan = 0` over a stats window whose age is stated, not assumed — derive
-   it from `pg_postmaster_start_time()`, never from `stats_reset` being NULL;
-   AND
-2. no query shape in either tree matches the index, checked by grep — because
-   for a rarely-run consumer the counter cannot see it.
+**RESOLVED 2026-09-10. Tool: `python-odds-service/audit_index_usage.py`**
+(report by default, `--ddl` for the undo statements, `--apply` to drop,
+`--snapshot` to record counters durably). It replaces the counter with the
+PLANNER: every candidate carries real queries lifted from the codebase, each
+with its `file:line`, and Postgres is asked to plan them. Three outcomes, not
+two — `USES`, `no`, and **`ERROR`, which blocks a drop verdict**, because the
+first version folded a failed EXPLAIN into "does not use it" and reported four
+indexes droppable on probes that had never executed.
 
-Where (1) and (2) disagree, (2) wins. Drop only what passes both, keep the
-`CREATE INDEX` statements in the commit so any drop is one paste to undo, and
-say plainly how much less than 314.8 MB that turns out to be.
+**THE ANSWER IS 54.5 MB, NOT 314.8 MB, AND THE DIFFERENCE IS THE POINT.**
+Of the 11 candidates worth probing, **9 (262.7 MB) are planned onto by real
+call sites despite a zero counter** — golf shot profiles
+(`lib/sports/golf/shotProfile.ts:50`, an exact match for an expression index on
+`lower(player_name)`), the tennis surface fit (`fit_tennis_elo.py:55`),
+`scripts/gate/gate9_model_readiness.mjs` and `gate5_archive.mjs`, and
+`promote_odds.mjs`. Dropping them on the original gate would have made a
+539 MB table seq-scan for several of them. **The counter was wrong about 83% of
+the megabytes it was being asked to authorise.**
+
+What actually went, and why — the reason is subsumption, which is stronger
+evidence than any probe because it holds for queries nobody has written yet:
+
+| index | MB | why |
+|---|---|---|
+| `idx_prop_odds_game` | 52.0 | `idx_prop_odds_subject (game_id, subject_id, market_key)` leads with the same column, is **18.9 MB against its 52.0**, and already carries 3.7M scans. The planner picks the composite for both real `game_id` call sites (`db.py:650`, `db.py:4393`). |
+| `idx_nba_shot_events_game` | 2.5 | Prefix of the `(game_id, event_idx)` unique constraint, which can never be dropped. Neither real consumer filters on `game_id` at all. |
+
+Both dropped `CONCURRENTLY` (a plain `DROP INDEX` takes ACCESS EXCLUSIVE on the
+*table*, and `prop_odds` is written every few minutes). The `CREATE INDEX`
+undo for each is in the tool's output and in the commit.
+
+**AND THE DURABLE FIX, so this is answerable rather than re-litigable:**
+`--snapshot` writes `pg_stat_user_indexes` into `index_usage_snapshot` with
+`pg_postmaster_start_time()` beside it. The delta between two snapshots is real
+usage; a counter that went *down* means a restart, and the recorded
+`postmaster_at` says so instead of being read as negative use. First snapshot
+taken 2026-09-10 (145 rows). **In a month this question has a real answer**, and
+the remaining ~260 MB can be re-examined against evidence rather than against a
+five-day window.
 
 **5.S.4 — `VACUUM FULL player_game_history`.** 1,342 MB. The table holds 2,424
 bytes per live row against its natural 655; the prune's space is still in the
