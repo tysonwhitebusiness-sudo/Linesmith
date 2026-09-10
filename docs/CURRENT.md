@@ -11,7 +11,8 @@ ordering conversationally — that is exactly what §5.S exists to stop.
 
 ## READ THIS FIRST: state as of 2026-09-10 17:00Z
 
-**§5.S.1 through §5.S.5 are DONE.** §5.S.6 is next and nothing blocks it.
+**§5.S.1 through §5.S.5 are DONE. §5.S.6 is PART-DONE — read its section below
+before touching `prop_odds_archive`; nothing has been pruned from it.**
 
 ```
 database   7,282 MB  ->  5,362 MB     88.9% -> 65.5%
@@ -47,6 +48,39 @@ sets is exactly the agreement that looks like proof and is not.
 inside an `async` function it starves asyncpg's keepalive, the pooler drops the
 connection, and the process dies 60s later in `Pool.close()` with a GIL error
 that names none of it.
+
+### 5.S.6 — where it actually stands
+
+**DO NOT PRUNE `prop_odds_archive` YET.** Two readers are still on Postgres and
+would silently train on a truncated population.
+
+**The structural finding is better than the plan assumed: NO SERVING PATH READS
+THIS TABLE.** Every use in `jobs.py`, `db.py` and `archival_bridge.py` is a
+WRITE. `nhl_props.load_shot_props` looks like a serving reader because
+`nhl_prop_serving.py` imports the module, but its only callers are
+`fit_nhl_props.py`, `fit_nhl_props_all.py`, `audit_fit_vs_serve.py` and
+`ship_gate_nhl_props.py` — all offline. The hot window is therefore bounded by
+the WRITER (`db.py:4430` only ever updates `event_start > now()`), not by any
+reader, so almost the whole 864 MB can go once the ports land.
+
+**DONE:** `src/corpus_reads.py` (`load_prop_archive`) — one union reader
+replacing a query three fitters had each hand-copied. Proven byte-identical to
+the old Postgres read for mlb (74,006 rows), nfl (15,929), nhl (46,205), cfb
+(46,775) and soccer_epl (26,510). **The union is not theoretical: cfb has 58
+rows in Postgres that the corpus export predates.** `fit_mlb_props.py`,
+`fit_nfl_props.py` and `fit_nfl_longest.py` are ported.
+`PROP_ARCHIVE_SOURCE=postgres|union|corpus` forces the source process-wide so a
+multi-minute fit can be run both ways and diffed.
+
+**REMAINING, in order:**
+1. `src/predict/nhl_props.py:184 load_shot_props` — joins to
+   `athlete_crosswalk` (7,236 rows). Cross-source: pull the small side into
+   DuckDB, or join in Python.
+2. `build_athlete_crosswalk.py:338,413` — joins to `game_result` (184,108).
+3. The audits, plus `scripts/gate/gate2b_prop_join.mjs` and
+   `gate7_athlete_crosswalk.mjs`.
+4. Then prune to `event_start > now()` plus a margin, publish the retained
+   floor the way 5.S.5 does, and `VACUUM FULL`.
 
 ### The worker
 

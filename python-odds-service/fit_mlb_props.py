@@ -41,6 +41,8 @@ from datetime import date
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
+from corpus_reads import load_prop_archive  # noqa: E402
+
 from predict import count_prop_engine as eng  # noqa: E402
 from predict import mlb_props as mp  # noqa: E402
 from predict.mlb_board_lines import BOARD_LINES  # noqa: E402
@@ -191,12 +193,14 @@ async def load_props(conn, spec, xw: dict[str, str],
 
     # `type_name` is selected because a MILESTONE row's line means something
     # different from an ordinary one — see MarketSpec.milestone_names.
-    rows = await conn.fetch(
-        "SELECT game_date, athlete_id, line, over_price, under_price, type_name "
-        "  FROM prop_odds_archive "
-        " WHERE sport = 'mlb' AND type_name = ANY($1::text[]) "
-        "   AND line IS NOT NULL AND athlete_id IS NOT NULL",
-        list(spec.names) + list(spec.milestone_names))
+    # Phase 5.S.6 — READ THROUGH `corpus_reads`, not this table directly.
+    # `prop_odds_archive` is split between Postgres (recent captures) and the
+    # Parquet corpus (everything), and `load_prop_archive` unions the two. A
+    # bare SELECT here would train this fit on whichever half survived the
+    # prune, quietly and undetectably. Same shape, same order, same rows --
+    # proven identical to the old query for five sports before the switch.
+    rows = await load_prop_archive(
+        conn, "mlb", list(spec.names) + list(spec.milestone_names))
 
     milestones = set(spec.milestone_names)
     out, ms_used, ms_noninteger = [], 0, 0

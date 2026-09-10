@@ -1602,10 +1602,64 @@ running it inside an `async` function starves asyncpg's keepalive — the pooler
 drops the connection and the process dies 60s later in `Pool.close()` with a
 GIL error naming none of it. It goes through `asyncio.to_thread`.
 
-**5.S.6 — Port `prop_odds_archive` readers, then prune it.** 854 MB. Read by
-`nhl_props.py` and every prop fitter. The fits already have a proven Parquet
-path (5.2b); this is applying it.
+**5.S.6 — Port `prop_odds_archive` readers, then prune it.** 864 MB.
+**IN PROGRESS 2026-09-10: the reader is built and proven, three fitters are
+ported, two cross-source readers remain, and NOTHING HAS BEEN PRUNED.**
+
+**THE STRUCTURAL FINDING, and it is bigger than the plan assumed: NO SERVING
+PATH READS THIS TABLE AT ALL.** Every use of `prop_odds_archive` in
+`jobs.py`, `db.py` and `archival_bridge.py` is a WRITE. `nhl_props.
+load_shot_props` looked like a serving reader because `nhl_prop_serving.py`
+imports the module — but its only callers are `fit_nhl_props.py`,
+`fit_nhl_props_all.py`, `audit_fit_vs_serve.py` and `ship_gate_nhl_props.py`,
+all offline. So the hot window is bounded by the WRITER, not by any reader:
+`db.py:4430`'s upsert only ever touches rows with `event_start > now()`, and
+`health_check.check_archive_freshness` reads `odds_archive`, not this table.
+**Once the readers are ported, almost the whole 864 MB can go.**
+
+**`src/corpus_reads.py` — `load_prop_archive(conn, sport, type_names)`.** One
+reader for a query three fitters had each hand-copied. That was harmless with
+one place to read from and stops being harmless the moment the table is split,
+because then every copy has to independently remember to read BOTH halves —
+the same reasoning `job_runner.run_provider_specs` applies to cap-checking.
+
+**It is a UNION, and the union is not theoretical.** Measured across five
+sports: `cfb` has **46,775 rows in Postgres against 46,717 in the corpus** —
+58 rows captured since the export. Corpus-only would have silently dropped
+them; Postgres-only will silently truncate the history the moment 5.S.6 prunes.
+`pg == union` is byte-identical for mlb (74,006), nfl (15,929), nhl (46,205),
+cfb (46,775) and soccer_epl (26,510).
+
+*(The first run of that gate "passed" NHL by comparing two empty lists — the
+type names were guessed, and `Total Shots on Geal`-style guesses match nothing.
+Real names came from the table. A vacuous pass is the house failure mode.)*
+
+**PORTED:** `fit_mlb_props.py`, `fit_nfl_props.py`, `fit_nfl_longest.py`.
+`PROP_ARCHIVE_SOURCE=postgres|union|corpus` overrides the source process-wide,
+which is the only practical way to run a multi-minute fit both ways and diff it.
+
+**STILL TO DO before anything may be pruned:**
+1. `src/predict/nhl_props.py:184 load_shot_props` — **the hard one, and
+   harder than it looks.** It is a THREE-way join: `prop_odds_archive` to
+   `athlete_crosswalk` (Postgres, 7,236 rows) and then TWICE to
+   `player_game_history` — which 5.2d has ALSO split between a Postgres hot
+   window and the corpus. So a naive port that reads only the prop side from
+   Parquet still joins against a truncated history, and the `has_m1`/`has_0`
+   day-ambiguity logic would silently start dropping different rows. Both
+   Parquet sides need the same corpus∪Postgres union `load_prop_archive`
+   applies; `athlete_crosswalk` is small enough to pull into DuckDB whole.
+   NHL's current spans happen to overlap (props from 2025-03-27, history from
+   2023-10-10), so this is not broken TODAY — it becomes broken the moment
+   either window moves.
+2. `build_athlete_crosswalk.py:338,413` — joins to `game_result` (Postgres,
+   184,108 rows). Same shape.
+3. The audits and `scripts/gate/gate2b_prop_join.mjs`, `gate7_athlete_crosswalk.mjs`.
+4. THEN prune, keeping only `event_start > now()` plus a margin, and
+   `VACUUM FULL`.
+
 **Gate:** each fit produces bit-identical output reading Parquet vs Postgres.
+Copy 5.S.5's **published retained floor** so a pruned window and a genuinely
+empty result stay distinguishable.
 
 **5.S.7 — Port `odds_archive` readers, then prune it.** 1,203 MB, and the
 largest single remaining win. Read by `nhl_props.py`, `archival_bridge.py`,

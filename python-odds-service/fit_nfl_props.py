@@ -53,6 +53,8 @@ from dataclasses import dataclass
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
+from corpus_reads import load_prop_archive  # noqa: E402
+
 from predict import count_prop_engine as eng  # noqa: E402
 
 # The projection walk-forward: seasons before CUTOFF choose the grid point,
@@ -175,11 +177,10 @@ async def load_history(conn, m: NflMarket):
 
 
 async def load_props(conn, m: NflMarket, xw, outcome):
-    rows = await conn.fetch("""
-        SELECT game_date, athlete_id, line, over_price, under_price
-          FROM prop_odds_archive
-         WHERE sport='nfl' AND type_name = ANY($1::text[])
-           AND line IS NOT NULL AND athlete_id IS NOT NULL""", list(m.names))
+    # Phase 5.S.6 — see fit_mlb_props.load_props for why this is not a bare
+    # SELECT any more: the table is split between Postgres and the corpus, and
+    # `load_prop_archive` is the only reader that sees both halves.
+    rows = await load_prop_archive(conn, "nfl", list(m.names))
     out = []
     for r in rows:
         aid = xw.get(str(r["athlete_id"]))

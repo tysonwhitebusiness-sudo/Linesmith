@@ -46,6 +46,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
+from corpus_reads import load_prop_archive  # noqa: E402
+
 PROJ_CUTOFF = 2024
 MAX_N = 12          # beyond this the per-N sample thins out fast
 
@@ -162,10 +164,11 @@ async def main() -> int:
             xw[a] = a
             if r["espn_athlete_id"]:
                 xw[str(r["espn_athlete_id"])] = a
-        props = await c.fetch("""
-            SELECT game_date, athlete_id, line FROM prop_odds_archive
-             WHERE sport='nfl' AND type_name='Longest Reception (incl. overtime)'
-               AND line IS NOT NULL AND athlete_id IS NOT NULL""")
+        # Phase 5.S.6 — see fit_mlb_props.load_props. The table is split
+        # between Postgres and the Parquet corpus; `load_prop_archive` is the
+        # only reader that sees both halves.
+        props = await load_prop_archive(
+            c, "nfl", ["Longest Reception (incl. overtime)"])
 
     truth = {}
     for s, a, n, yds, lg in rows:
