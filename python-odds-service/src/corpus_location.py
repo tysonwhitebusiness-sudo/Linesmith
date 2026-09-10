@@ -37,19 +37,48 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+# READ THROUGH `config.env`, NOT `os.environ` DIRECTLY. Real environment
+# variables still win -- that is how Render supplies them -- but this also picks
+# up `.env.local`, which is where a local operator actually puts a credential
+# and which is gitignored. Reading os.environ alone would have meant setting
+# CORPUS_S3_* correctly in .env.local and still being told the corpus was not
+# configured, with nothing to point at.
+try:
+    from config import env as _env
+except ImportError:                     # importable without the worker's config
+    def _env(key, default=None):
+        return os.environ.get(key, default)
+
 # Set to a directory path, or to s3://bucket/prefix. Absent means "local, in
 # the default directory" so a developer needs no configuration at all.
-CORPUS_URI = os.environ.get("CORPUS_URI") or ""
+_PLACEHOLDER_PREFIX = "REPLACE"
+
+CORPUS_URI = _env("CORPUS_URI") or ""
+# A bucket still named REPLACE_... is not a bucket.
+if _PLACEHOLDER_PREFIX in CORPUS_URI.upper():
+    CORPUS_URI = ""
 
 # S3-compatible credentials. For SUPABASE STORAGE these are NOT the anon key and
 # NOT the service-role key — Supabase issues separate S3 access keys from
 # Storage settings, and the endpoint looks like
 # https://<project>.supabase.co/storage/v1/s3 with a region from the dashboard.
 # For R2 they are the R2 token's key pair.
-CORPUS_S3_ENDPOINT = os.environ.get("CORPUS_S3_ENDPOINT") or ""
-CORPUS_S3_REGION = os.environ.get("CORPUS_S3_REGION") or "us-east-1"
-CORPUS_S3_KEY_ID = os.environ.get("CORPUS_S3_KEY_ID") or ""
-CORPUS_S3_SECRET = os.environ.get("CORPUS_S3_SECRET") or ""
+# A PLACEHOLDER COUNTS AS UNSET. `.env.local` ships this block with
+# REPLACE_* filler so the operator has the right shape to edit, and filler is
+# non-empty -- so a plain truthiness check would decide the corpus WAS
+# configured and hand `REPLACE_ACCESS_KEY_ID` to S3. The failure would be a
+# signature error from boto3 naming nothing useful, instead of the message this
+# module wrote specifically to say which key is wanted.
+
+def _cred(key: str, default: str = "") -> str:
+    v = (_env(key) or "").strip()
+    return "" if v.startswith(_PLACEHOLDER_PREFIX) else (v or default)
+
+
+CORPUS_S3_ENDPOINT = _cred("CORPUS_S3_ENDPOINT")
+CORPUS_S3_REGION = _cred("CORPUS_S3_REGION", "us-east-1")
+CORPUS_S3_KEY_ID = _cred("CORPUS_S3_KEY_ID")
+CORPUS_S3_SECRET = _cred("CORPUS_S3_SECRET")
 
 DEFAULT_LOCAL_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "corpus")

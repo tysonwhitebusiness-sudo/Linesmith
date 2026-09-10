@@ -60,7 +60,15 @@ async def verify_partition_live(conn, table: str, part: tuple, path: str) -> dic
 
     cols = await cs.column_names(conn, table)
     if not os.path.exists(path):
-        return {"ok": False, "reason": "corpus file missing", "path": path, "ids": []}
+        # EVERY verdict carries the same keys, including the early returns.
+        # The first version omitted `live_rows` here and the caller raised
+        # KeyError on the first partition with no file -- which is a normal
+        # state, not an error: `mlb_pitch_events` is partitioned over a
+        # contiguous id range and legitimately has empty chunks. A verify tool
+        # that crashes on a normal state is a verify tool nobody can trust.
+        return {"ok": False, "reason": "corpus file missing", "path": path,
+                "partition": part, "live_rows": 0, "file_rows": 0,
+                "digest_match": False, "ids_missing_from_corpus": 0, "ids": []}
 
     live = cs.RowDigest(cols)
     ids: list[int] = []
@@ -130,6 +138,8 @@ async def prune_table(conn, table: str, backend, apply: bool,
         path = os.path.join(root, table, f"{cs.partition_name(table, part)}.parquet")
         v = await verify_partition_live(conn, table, part, path)
         if v["live_rows"] == 0 and not os.path.exists(path):
+            continue          # an empty id-chunk or an off-season year
+        if v["live_rows"] == 0 and v["file_rows"] == 0:
             continue
         status = "OK" if v["ok"] else "MISMATCH"
         print(f"   {str(part):<18}live {v['live_rows']:>9,}  file {v['file_rows']:>9,}  "

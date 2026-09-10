@@ -110,3 +110,66 @@ for fn in (test_no_uri_is_local_and_needs_nothing, test_plain_path_is_local,
            test_local_put_does_not_copy_a_file_onto_itself):
     fn()
 print("\nall corpus-location checks passed")
+
+
+def test_placeholders_count_as_unset():
+    """`.env.local` ships REPLACE_* filler so the operator has the right shape
+    to edit. Filler is NON-EMPTY, so a plain truthiness check would decide the
+    corpus was configured and hand `REPLACE_ACCESS_KEY_ID` to S3 — producing a
+    boto3 signature error naming nothing useful, instead of the message this
+    module wrote specifically to say which key is wanted.
+
+    Exercises the REAL `_cred` by swapping the env reader, rather than
+    re-implementing the rule in the assertion — a test that restates the logic
+    it is checking passes whatever the code does.
+    """
+    fake = {"A": "REPLACE_ACCESS_KEY_ID", "B": "sb_real_key",
+            "C": "  REPLACE_SECRET  ", "D": "   ", "E": ""}
+    saved = cl._env
+    cl._env = lambda k, default=None: fake.get(k, default)
+    try:
+        check("placeholder -> unset", cl._cred("A"), "")
+        check("real value kept", cl._cred("B"), "sb_real_key")
+        check("placeholder survives surrounding whitespace", cl._cred("C"), "")
+        check("whitespace-only -> unset", cl._cred("D"), "")
+        check("missing -> default applies", cl._cred("E", "us-east-1"), "us-east-1")
+        check("placeholder does NOT take the default",
+              cl._cred("A", "us-east-1"), "")
+    finally:
+        cl._env = saved
+
+
+def test_placeholder_credentials_still_refuse_an_s3_uri():
+    """End to end: filler creds must produce CorpusNotConfigured, not a boto3
+    signature error twenty minutes into an upload."""
+    saved = (cl.CORPUS_S3_ENDPOINT, cl.CORPUS_S3_KEY_ID, cl.CORPUS_S3_SECRET)
+    fake = {"CORPUS_S3_ENDPOINT": "https://x.supabase.co/storage/v1/s3",
+            "CORPUS_S3_KEY_ID": "REPLACE_ACCESS_KEY_ID",
+            "CORPUS_S3_SECRET": "REPLACE_SECRET_ACCESS_KEY"}
+    saved_env = cl._env
+    cl._env = lambda k, default=None: fake.get(k, default)
+    try:
+        cl.CORPUS_S3_ENDPOINT = cl._cred("CORPUS_S3_ENDPOINT")
+        cl.CORPUS_S3_KEY_ID = cl._cred("CORPUS_S3_KEY_ID")
+        cl.CORPUS_S3_SECRET = cl._cred("CORPUS_S3_SECRET")
+        try:
+            cl.corpus_location("s3://real-bucket/v1")
+            raise AssertionError("FAIL: placeholder credentials were accepted")
+        except cl.CorpusNotConfigured as e:
+            assert "CORPUS_S3_KEY_ID" in str(e), str(e)
+            print("PASS  placeholder credentials raise CorpusNotConfigured")
+    finally:
+        cl._env = saved_env
+        cl.CORPUS_S3_ENDPOINT, cl.CORPUS_S3_KEY_ID, cl.CORPUS_S3_SECRET = saved
+
+
+def test_placeholder_bucket_is_not_a_destination():
+    check("a REPLACE_ bucket name is detected",
+          cl._PLACEHOLDER_PREFIX in "s3://REPLACE_BUCKET_NAME/v1".upper(), True)
+
+
+for fn in (test_placeholders_count_as_unset,
+           test_placeholder_credentials_still_refuse_an_s3_uri,
+           test_placeholder_bucket_is_not_a_destination):
+    fn()
+print("all placeholder checks passed")
