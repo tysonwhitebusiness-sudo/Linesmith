@@ -211,7 +211,8 @@ def league_baseline_for(games, subjects, line: float | None, as_of: date,
 
 
 async def build(conn, as_of: date, lines: dict[str, float] | None = None,
-                subjects: dict[str, str] | None = None) -> dict:
+                subjects: dict[str, str] | None = None,
+                use_summary: bool = True) -> dict:
     """Projections for everyone on `as_of`'s slate, per active market.
 
     `subjects` is {athlete_id: game_id}. Passing it in is the SERVING path —
@@ -246,18 +247,26 @@ async def build(conn, as_of: date, lines: dict[str, float] | None = None,
     for dim, cal in sorted(markets.items()):
         # ONE history source, shared with the walk-forward. Strictly before
         # as_of — asserted, because this is the whole leakage control.
-        # ONLY THE SLATE'S PLAYERS CROSS THE WIRE. Both consumers below already
-        # discard everyone else — this loop keeps `aid in subjects` and
-        # `league_baseline_for` skips the rest — so this narrows what is
-        # TRANSFERRED, never what is computed. See `mp.load_game_history` for
-        # the measurement and for why the walk-forward must not pass it.
-        games = await mp.load_game_history(dim, conn=conn, athlete_ids=subject_ids)
-        hists: dict[str, eng.PlayerHistory] = {}
-        for gd, aid, ev, vol in games:
-            if gd >= as_of:
-                break
-            if aid in subjects:
-                hists.setdefault(aid, eng.PlayerHistory()).add(ev, vol)
+        # READ THE SUMMARY, NOT THE HISTORY. `player_history_summary` stores the
+        # four numbers `PlayerHistory` actually needs, so serving no longer
+        # replays 2,807,445 rows an hour to derive them — which is what lets
+        # `player_game_history` be trimmed to a hot window without changing the
+        # model. `use_summary=False` replays instead, and exists so the two can
+        # be compared: a summary nobody has checked against the thing it
+        # replaces is a guess.
+        summary_baseline = None
+        if use_summary:
+            hists, summary_baseline = await mp.read_history_summary(
+                conn, as_of, dim, athlete_ids=subject_ids)
+        else:
+            games = await mp.load_game_history(dim, conn=conn,
+                                               athlete_ids=subject_ids)
+            hists = {}
+            for gd, aid, ev, vol in games:
+                if gd >= as_of:
+                    break
+                if aid in subjects:
+                    hists.setdefault(aid, eng.PlayerHistory()).add(ev, vol)
         history_rows += sum(h.games for h in hists.values())
 
         line = (lines or {}).get(dim)
@@ -271,13 +280,21 @@ async def build(conn, as_of: date, lines: dict[str, float] | None = None,
         # only count starts; a batter's appearances are homogeneous and pass
         # `eligible=None`, which is what keeps this a no-op for every batter
         # market rather than a behaviour change dressed as a fix.
-        eligible = None
-        if show_prob and mp.BY_SLUG[dim].side == "pit":
-            if start_keys is None:
-                start_keys = await mp.load_start_keys(conn=conn, athlete_ids=subject_ids)
-            eligible = start_keys
-        baseline = (league_baseline_for(games, subjects, line, as_of, eligible=eligible)
-                    if show_prob else None)
+        if not show_prob:
+            baseline = None
+        elif use_summary:
+            # Already summed across the slate from the same population the
+            # replay would have counted, starts-only rule included.
+            baseline = summary_baseline
+        else:
+            eligible = None
+            if mp.BY_SLUG[dim].side == "pit":
+                if start_keys is None:
+                    start_keys = await mp.load_start_keys(
+                        conn=conn, athlete_ids=subject_ids)
+                eligible = start_keys
+            baseline = league_baseline_for(games, subjects, line, as_of,
+                                           eligible=eligible)
         for aid, gid in subjects.items():
             h = hists.get(aid)
             if h is None or h.games < MIN_PRIOR_GAMES:

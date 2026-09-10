@@ -533,3 +533,127 @@ def load_game_history_parquet(slug: str, parquet_path: str | None = None,
     out = [(r[1], str(r[2]), float(r[3]), float(r[4]), r[0]) for r in raw]
     out.sort(key=lambda t: (t[0], t[1], t[4]))
     return [t[:4] for t in out]
+
+
+async def write_history_summary(conn, as_of, athlete_ids: list[str] | None = None,
+                                slugs: list[str] | None = None,
+                                source: str = "corpus") -> dict:
+    """Compute per-(market, athlete) aggregates and store them.
+
+    THIS IS WHAT LETS `player_game_history` LEAVE POSTGRES. The serving pipes
+    replayed 2,807,445 rows every hour to derive four numbers per player-market;
+    this derives them once and stores ~20k rows. See the migration
+    `20260910030000_player_history_summary.sql` for why trimming the history
+    instead was rejected (it moves 59.7% of projections) and why serving reading
+    Parquet hourly was rejected (13-17s per market, and Storage egress).
+
+    `source='corpus'` reads the Parquet corpus, which holds ALL history and is
+    the point of the exercise. `source='postgres'` reads the live table and
+    exists so the two can be compared -- a summary nobody has checked against
+    the thing it replaces is not a summary, it is a guess.
+
+    THE ARRAY IS WRITTEN IN THE ORDER THE REPLAY WOULD HAVE PRODUCED, because
+    `mean_volume(window=N)` takes the LAST N. Both loaders already return a
+    total order (game_date, athlete_id, id), so this preserves it rather than
+    re-sorting.
+    """
+    from . import count_prop_engine as eng
+
+    from .mlb_board_lines import BOARD_LINES
+
+    slugs = slugs or [s for s in BY_SLUG]
+    subject_filter = set(athlete_ids) if athlete_ids else None
+    written = 0
+    per_market: dict[str, int] = {}
+    # Pitcher markets count STARTS ONLY toward the baseline. That is the
+    # population fix that took `pitcher-hits-allowed` from a fake +18.3pt edge
+    # (which swept the top 19 rows of the board) to -2.6 -- 38.3% of its
+    # baseline rows were relief outings. Loaded once, and only if a pitcher
+    # market is being summarised.
+    start_keys = None
+    if any(BY_SLUG[s].side == "pit" for s in slugs if s in BY_SLUG):
+        start_keys = await load_start_keys(conn=conn, athlete_ids=athlete_ids)
+
+    for slug in slugs:
+        if source == "corpus":
+            rows = load_game_history_parquet(slug, athlete_ids=athlete_ids)
+        else:
+            rows = await load_game_history(slug, conn=conn, athlete_ids=athlete_ids)
+
+        spec = BY_SLUG[slug]
+        line = BOARD_LINES.get(slug)
+        eligible = start_keys if spec.side == "pit" else None
+
+        agg: dict[str, list] = {}
+        for gd, aid, ev, vol in rows:
+            if gd >= as_of:
+                break                       # leakage control, same as the replay
+            if subject_filter is not None and aid not in subject_filter:
+                continue
+            a = agg.get(aid)
+            if a is None:
+                a = agg[aid] = [0.0, 0.0, 0, [], 0, 0]
+            a[0] += ev
+            a[1] += vol
+            a[2] += 1
+            a[3].append(vol)
+            if len(a[3]) > eng.MAX_RECENT:
+                a[3].pop(0)
+            # The baseline counts a DIFFERENT population from the projection:
+            # eligible rows only, and it is a count over the board line rather
+            # than a sum. Kept per athlete so `league_baseline_for` can sum
+            # across whatever slate it is given.
+            if line is not None and (eligible is None or (gd, aid) in eligible):
+                a[5] += 1
+                if ev > line:
+                    a[4] += 1
+
+        if not agg:
+            continue
+        payload = [("mlb", slug, aid, as_of, a[0], a[1], a[2], a[3], a[4], a[5], line)
+                   for aid, a in agg.items()]
+        await conn.executemany(
+            """INSERT INTO player_history_summary
+                 (sport, market, athlete_id, as_of, events, volume, games,
+                  recent_volume, baseline_over, baseline_total, board_line,
+                  computed_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
+               ON CONFLICT (sport, market, athlete_id, as_of) DO UPDATE SET
+                 events = excluded.events, volume = excluded.volume,
+                 games = excluded.games, recent_volume = excluded.recent_volume,
+                 baseline_over = excluded.baseline_over,
+                 baseline_total = excluded.baseline_total,
+                 board_line = excluded.board_line,
+                 computed_at = now()""", payload)
+        written += len(payload)
+        per_market[slug] = len(payload)
+
+    return {"written": written, "markets": per_market, "source": source,
+            "as_of": str(as_of)}
+
+
+async def read_history_summary(conn, as_of, slug: str,
+                               athlete_ids: list[str] | None = None) -> tuple:
+    """({athlete_id: PlayerHistory}, league_baseline) for one market.
+
+    The baseline comes back with the histories because it is derived from the
+    SAME population -- summing `baseline_over / baseline_total` across the slate
+    reproduces `league_baseline_for` exactly, including its starts-only rule for
+    pitcher markets.
+    """
+    from . import count_prop_engine as eng
+
+    args: list = ["mlb", slug, as_of]
+    where = "sport = $1 AND market = $2 AND as_of = $3"
+    if athlete_ids is not None:
+        args.append(list(athlete_ids))
+        where += f" AND athlete_id = ANY(${len(args)}::text[])"
+    rows = await conn.fetch(
+        f"SELECT athlete_id, events, volume, games, recent_volume, "
+        f"       baseline_over, baseline_total "
+        f"  FROM player_history_summary WHERE {where}", *args)
+    hists = {str(r["athlete_id"]): eng.history_from_summary(
+        r["events"], r["volume"], r["games"], r["recent_volume"]) for r in rows}
+    over = sum(int(r["baseline_over"]) for r in rows)
+    total = sum(int(r["baseline_total"]) for r in rows)
+    return hists, (over / total if total else None)

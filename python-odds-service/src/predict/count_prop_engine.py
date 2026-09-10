@@ -443,3 +443,46 @@ def calibration(rows, n_floor: int = 200) -> dict:
             worst, worst_n = gap, len(v)
     return {"ece": ece, "worst": worst, "worst_n": worst_n,
             "table": table, "n": total}
+
+
+def history_from_summary(events: float, volume: float, games: int,
+                         recent_volume) -> PlayerHistory:
+    """Rebuild a `PlayerHistory` from a stored summary instead of replaying rows.
+
+    PHASE 5.2: THIS IS WHAT LETS THE CORPUS LEAVE POSTGRES. The serving pipes
+    replayed every historical row to build these four numbers -- 2,807,445 rows
+    of `player_game_history` to serve ~300 players -- which is why that table
+    could not be trimmed without changing the model. Measured 2026-09-10, a
+    3-season window moved 59.7% of projections (median 0.0167, p95 0.115, max
+    0.862) and dropped 44 rows below MIN_PRIOR_GAMES, because `shrunk_rate` uses
+    LIFETIME totals.
+
+    A summary reproduces the model exactly while being ~20k rows instead of
+    2.8M, so the full history can live in object storage and the serving path
+    never touches it. The alternative -- serving reading Parquet from S3 hourly
+    -- measured 13-17s per market and would spend Storage egress every hour,
+    partially undoing what 5.1 saved.
+
+    `recent_volume` is ORDER-SENSITIVE: `mean_volume(window=N)` takes the LAST
+    N, so a summary must store these in the same date order the replay produced
+    and must not have been built from an unstable sort. See
+    `mlb_props.load_game_history` for the doubleheader tiebreaker that makes
+    that order total.
+
+    EXACT FLOAT IDENTITY WITH THE REPLAY IS NOT ACHIEVABLE, AND IS NOT THE GATE.
+    `PlayerHistory.add` accumulates with `+=` in a loop; any summary computes a
+    SUM. CPython's `sum()` uses compensated (Neumaier) summation and agrees with
+    `math.fsum` exactly, so it is MORE accurate than the loop it reproduces --
+    measured, the two differ by about one ulp (657.501510197628 against
+    657.5015101976278). A SQL `SUM()` will differ again, by its own accumulation
+    order. Chasing bit-equality here would mean deliberately making the summary
+    less accurate. The gate is that the SERVED PROJECTION is unchanged to a
+    precision far beyond anything the board renders, which it is: a 1-ulp
+    difference in a lifetime total propagates to ~1e-14 on a projection near 6.
+    """
+    h = PlayerHistory()
+    h.events = float(events)
+    h.volume = float(volume)
+    h.games = int(games)
+    h.recent_volume = [float(v) for v in (recent_volume or [])][-MAX_RECENT:]
+    return h
