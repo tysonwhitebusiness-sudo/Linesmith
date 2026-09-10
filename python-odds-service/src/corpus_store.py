@@ -586,7 +586,9 @@ async def export_table(conn, table: str, out_dir: str,
 
 _PG_TO_ARROW = {
     "bigint": "int64", "integer": "int32", "smallint": "int16",
-    "boolean": "bool_",   # pa.bool_(), not pa.bool "double precision": "float64", "real": "float32",
+    "boolean": "bool_",            # pa.bool_(), not pa.bool
+    "double precision": "float64",
+    "real": "float32",
     "text": "string", "character varying": "string", "character": "string",
     "uuid": "string", "date": "date32",
     "jsonb": "string", "json": "string",   # canonicalised to text by `_cell`

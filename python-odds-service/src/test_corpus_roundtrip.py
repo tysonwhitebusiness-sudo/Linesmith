@@ -53,9 +53,43 @@ async def roundtrip(conn, table: str) -> dict:
     return cs.verify_export(cols, rows, path), cols, rows
 
 
+async def test_every_corpus_column_type_is_mapped(conn):
+    """Every Postgres type in every corpus table must have an Arrow mapping.
+
+    THE OBVIOUS CHECK IS THE WRONG ONE. Iterating `_PG_TO_ARROW` and asserting
+    each value names a real pyarrow type passes trivially -- it only validates
+    the entries that are present, and says nothing about the ones that are
+    missing. That check passed while `double precision` and `real` had been
+    silently deleted from the map by an inline comment swallowing the rest of
+    its line, and the export died on the first `odds_archive` partition.
+
+    This asks the opposite question, which is the one that matters: does the
+    map cover what the DATA actually contains?
+    """
+    unmapped = []
+    for table in sorted(cs.CORPUS):
+        for r in await conn.fetch(
+                """SELECT column_name, data_type FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name=$1""", table):
+            dt = r["data_type"]
+            if dt.startswith("timestamp"):
+                continue
+            if dt not in cs._PG_TO_ARROW:
+                unmapped.append(f"{table}.{r['column_name']} :: {dt}")
+    check(f"every corpus column type is mapped ({len(cs._PG_TO_ARROW)} entries)",
+          unmapped, [])
+    # And the mappings that exist must name real pyarrow constructors.
+    import pyarrow as pa
+    for pg, name in cs._PG_TO_ARROW.items():
+        assert hasattr(pa, name), f"{pg} -> pa.{name} does not exist"
+        getattr(pa, name)()
+    print("PASS  every mapping resolves to a real pyarrow type")
+
+
 async def main():
     pool = await _db.get_pool()
     async with pool.acquire(timeout=900.0) as conn:
+        await test_every_corpus_column_type_is_mapped(conn)
         for table in sorted(cs.CORPUS):
             verdict, cols, rows = await roundtrip(conn, table)
             n = verdict["pg_rows"]
