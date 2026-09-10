@@ -537,7 +537,7 @@ def load_game_history_parquet(slug: str, parquet_path: str | None = None,
 
 async def write_history_summary(conn, as_of, athlete_ids: list[str] | None = None,
                                 slugs: list[str] | None = None,
-                                source: str = "corpus") -> dict:
+                                source: str = "union") -> dict:
     """Compute per-(market, athlete) aggregates and store them.
 
     THIS IS WHAT LETS `player_game_history` LEAVE POSTGRES. The serving pipes
@@ -577,8 +577,30 @@ async def write_history_summary(conn, as_of, athlete_ids: list[str] | None = Non
     for slug in slugs:
         if source == "corpus":
             rows = load_game_history_parquet(slug, athlete_ids=athlete_ids)
-        else:
+        elif source == "postgres":
             rows = await load_game_history(slug, conn=conn, athlete_ids=athlete_ids)
+        else:
+            # UNION, and it is the only correct source once the history has been
+            # trimmed. The corpus holds everything up to its last export;
+            # Postgres holds the hot window, which includes games played SINCE
+            # that export. Neither alone is complete, and building from either
+            # would be wrong in a way that looks fine: corpus-only silently
+            # omits the newest games, Postgres-only silently truncates the
+            # lifetime totals `shrunk_rate` depends on.
+            #
+            # Deduped on the row `id`, which both loaders sort by, so the union
+            # keeps the same total order the replay produced -- `recent_volume`
+            # is order-sensitive.
+            from_corpus = load_game_history_parquet(slug, athlete_ids=athlete_ids)
+            from_pg = await load_game_history(slug, conn=conn, athlete_ids=athlete_ids)
+            seen = set()
+            merged = []
+            for r in sorted(from_corpus + from_pg, key=lambda t: (t[0], t[1], t[2], t[3])):
+                if r in seen:
+                    continue
+                seen.add(r)
+                merged.append(r)
+            rows = merged
 
         spec = BY_SLUG[slug]
         line = BOARD_LINES.get(slug)
@@ -648,6 +670,14 @@ async def read_history_summary(conn, as_of, slug: str,
     if athlete_ids is not None:
         args.append(list(athlete_ids))
         where += f" AND athlete_id = ANY(${len(args)}::text[])"
+    # Newest summary at or before `as_of` -- an exact match blanks the board the
+    # moment the date rolls. See history_summary.latest_as_of.
+    resolved = await conn.fetchval(
+        "SELECT max(as_of) FROM player_history_summary "
+        " WHERE sport = 'mlb' AND market = $1 AND as_of <= $2", slug, as_of)
+    if resolved is None:
+        return {}, None
+    args[2] = resolved
     rows = await conn.fetch(
         f"SELECT athlete_id, events, volume, games, recent_volume, "
         f"       baseline_over, baseline_total "

@@ -866,6 +866,51 @@ async def _grade_mlb_props_inner() -> dict:
         return await grade_finished_games(client)
 
 
+async def job_mlb_history_summary(yield_fn=None) -> dict:
+    """Phase 5.2 — rebuild `player_history_summary` for MLB.
+
+    THE SERVING PATH DEPENDS ON THIS AND CANNOT REBUILD IT. `mlbProjectionsJob`
+    now READS the summary instead of replaying `player_game_history`, which is
+    what allowed that table to be trimmed from 2,807,445 rows to 758,819. If
+    this job stops, the summary goes stale and the board silently serves
+    yesterday's history -- and if it had never run at all after the trim, the
+    board would have served nothing.
+
+    DAILY, NOT HOURLY. History only changes when games finish, and the union
+    source reads the Parquet corpus, which costs Storage egress -- the thing
+    5.1 exists to have reduced. Hourly would spend it 24 times for one day's
+    worth of new rows.
+
+    SOURCE IS THE UNION of the corpus and the Postgres hot window, because
+    neither alone is complete once the trim has happened: the corpus omits games
+    played since its last export, and Postgres omits everything before the hot
+    window. Building from either would be wrong in a way that looks fine.
+    """
+    from datetime import date as _date
+
+    from predict.mlb_board_lines import BOARD_LINES
+    from predict.mlb_prop_serving import live_slate_subjects
+    from predict.mlb_props import write_history_summary
+
+    async def _run() -> dict:
+        import httpx
+
+        as_of = _date.today()
+        async with httpx.AsyncClient() as client:
+            subjects, meta = await live_slate_subjects(client, as_of)
+        if not subjects:
+            return {"note": "no mlb slate", **meta}
+        pool = await db.get_pool()
+        async with pool.acquire(timeout=1800.0) as conn:
+            await conn.execute("SET statement_timeout = '30min'")
+            out = await write_history_summary(
+                conn, as_of, athlete_ids=list(subjects),
+                slugs=list(BOARD_LINES), source="union")
+        return {**out, **meta}
+
+    return await _run_timed("mlbHistorySummaryJob", _run())
+
+
 async def job_mlb_projections(yield_fn=None) -> dict:
     """Phase 5.8 — the PROJECTION pipe for MLB: what the MLB stats board reads.
 
@@ -1267,6 +1312,10 @@ JOB_REGISTRY = [
     # produces. 60 minutes.
     ("nhlProjectionsJob", job_nhl_projections, 60 * 60),
     ("nflProjectionsJob", job_nfl_projections, 60 * 60),
+    # MUST come before mlbProjectionsJob in this list: the projections job
+    # now READS the summary this one writes, and on a cold start the
+    # registry order is the burst order.
+    ("mlbHistorySummaryJob", job_mlb_history_summary, 24 * 60 * 60),
     ("mlbProjectionsJob", job_mlb_projections, 60 * 60),
 ]
 

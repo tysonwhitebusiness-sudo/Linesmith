@@ -84,9 +84,40 @@ async def upsert_rows(conn, rows: list[tuple]) -> int:
     return len(rows)
 
 
+async def latest_as_of(conn, sport: str, market: str, as_of) -> "date | None":
+    """The newest summary at or before `as_of`.
+
+    AN EXACT-DATE LOOKUP BLANKS THE BOARD AT MIDNIGHT, and it did. The summary
+    was written for 2026-09-09; the date rolled to 2026-09-10 and serving found
+    nothing, so it produced ZERO projections -- indistinguishable from "no slate"
+    and silent. That is the same class of failure as mlbProjectionsJob's OOM
+    writing no breadcrumb, and it is worse here because the history has since
+    been trimmed, so there is nothing to fall back to.
+
+    Falling back to the newest earlier summary is CONSERVATIVE rather than
+    leaky: a summary for date D contains history strictly before D, so using it
+    on D+1 omits D's games. It under-informs, never over-informs, which is the
+    correct direction for a leakage control. `staleness_days` reports the gap so
+    a stale board is visible instead of merely wrong.
+    """
+    return await conn.fetchval(
+        "SELECT max(as_of) FROM player_history_summary "
+        " WHERE sport = $1 AND market = $2 AND as_of <= $3", sport, market, as_of)
+
+
 async def read(conn, sport: str, market: str, as_of,
-               athlete_ids: list[str] | None = None) -> tuple[dict, float | None]:
-    """({athlete_id: PlayerHistory}, league_baseline) for one sport-market."""
+               athlete_ids: list[str] | None = None,
+               exact: bool = False) -> tuple[dict, float | None]:
+    """({athlete_id: PlayerHistory}, league_baseline) for one sport-market.
+
+    Uses the newest summary at or before `as_of` unless `exact=True`. See
+    `latest_as_of` for why an exact match is the wrong default.
+    """
+    if not exact:
+        resolved = await latest_as_of(conn, sport, market, as_of)
+        if resolved is None:
+            return {}, None
+        as_of = resolved
     args: list = [sport, market, as_of]
     where = "sport = $1 AND market = $2 AND as_of = $3"
     if athlete_ids is not None:
