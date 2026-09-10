@@ -1510,12 +1510,53 @@ taken 2026-09-10 (145 rows). **In a month this question has a real answer**, and
 the remaining ~260 MB can be re-examined against evidence rather than against a
 five-day window.
 
-**5.S.4 — `VACUUM FULL player_game_history`.** 1,342 MB. The table holds 2,424
-bytes per live row against its natural 655; the prune's space is still in the
-file. Takes an ACCESS EXCLUSIVE lock, so it needs a quiet window, and it rewrites
-into a new file so it needs ~500 MB free while it runs — which is why 5.S.2 and
-5.S.3 come first.
-**Gate:** `pg_total_relation_size` drops to ~497 MB and the board is unchanged.
+**5.S.4 — `VACUUM FULL`. DONE 2026-09-10.** Tool:
+`python-odds-service/vacuum_reclaim.py` (plans by default; `--apply` to rewrite).
+
+| table | before | after | reclaimed |
+|---|---|---|---|
+| `player_game_history` | 1,839 MB | **460 MB** | 1,379 MB in 36s |
+| `odds_import_staging` | 262 MB | ~2 MB | 260 MB |
+
+**Gate met on both halves.** The projected ~497 MB came in at 460 MB, and the
+board is **unchanged**: 800 served rows compared row-for-row against what the
+production worker wrote at 17:00:27Z — identical projection, projected volume,
+model probability, league baseline and sample size on every one.
+
+**Database 7,282 MB → 5,545 MB across 5.S.2+3+4. 88.9% → 67.7%.**
+
+The tool refuses to `--apply` unless the projected new relation plus a 250 MB
+margin fits the headroom, because `VACUUM FULL` builds the new copy BESIDE the
+old one and swaps at the end — peak usage is both at once, which is the whole
+risk on a database near a hard ceiling. It also prints every other connection
+that will block on the ACCESS EXCLUSIVE lock. `odds_import_staging` was
+deliberately rewritten FIRST: a small rewrite that returns 260 MB is the
+headroom the 1.8 GB rewrite then gets to spend.
+
+**ITS OWN FIRST RUN WAS WRONG, in the same way 5.S.3's gate was wrong.** It
+sized tables from `pg_stat_user_tables.n_live_tup` — cumulative statistics,
+discarded at the 2026-09-04 restart — and so read `game_result` as 199 live
+rows (really 184,108) and `mlb_pitch_events` as 25,532 (really ~1.98M), making
+both look bloated at 143,216 and 11,324 bytes per row. `--all` would have
+rewritten two perfectly dense tables. Now sized from `pg_class.reltuples`,
+which VACUUM and ANALYZE maintain and which survives a restart. **That restart
+has now poisoned three separate measurements in this phase** — the index gate,
+the bloat estimate, and the audit's own evidence check. Assume it has poisoned
+the next one too.
+
+**`audit_storage.py` was itself asserting two false things and both are fixed:**
+- **5.0e cried data loss over a planned prune.** After 5.2d trimmed
+  `player_game_history` it reported *"A CORPUS SPAN SHRANK — irreplaceable model
+  fuel was deleted"* on a database where nothing was lost. The check now asks
+  the **corpus** for any table in `PRUNED_TO_HOT_WINDOW`, and reports 16.1y
+  intact from Supabase. An unreadable corpus is a FAILURE there, not a skip —
+  for a trimmed table it is the only copy.
+- **5.0g asserted the void gate**, verbatim: *"counters cover the database
+  lifetime, so idx_scan=0 is trustworthy."* It now derives the real window from
+  `pg_postmaster_start_time()`, reports the counter as a HINT rather than a
+  licence, and points at `audit_index_usage.py`.
+
+All 8 audit checks pass.
 
 **5.S.5 — Port `mlb_pitch_events` readers, then prune it.** 476 MB. Smallest
 reader surface of the three remaining corpus tables: `/api/mlb/pitch-profile`,

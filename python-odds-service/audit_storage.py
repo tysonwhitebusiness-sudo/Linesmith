@@ -243,21 +243,74 @@ async def check_union_dedupe(conn) -> bool:
     return ok
 
 
+# Tables 5.2d has deliberately trimmed in POSTGRES, whose full span now lives
+# in the Parquet corpus. For these the span must be asked of the CORPUS, or the
+# check fails forever on the success of the very thing it is auditing.
+#
+# THIS WAS WRONG FOR EXACTLY ONE RUN AND IT MATTERED. After 5.2d trimmed
+# `player_game_history` to a three-season hot window, 5.0e reported
+# "A CORPUS SPAN SHRANK — irreplaceable model fuel was deleted" on a database
+# where nothing had been lost: all 2,807,445 rows and the full 16.1 years sat in
+# Supabase Storage, readable. An audit that cries data loss over a planned prune
+# is an audit people learn to skip, which is the one failure it cannot afford.
+PRUNED_TO_HOT_WINDOW = {"player_game_history"}
+
+
+def _corpus_span(table: str, col: str):
+    """(min, max) of `col` in the Parquet corpus, or None if unreadable.
+
+    Unreadable is a FAILURE, not a skip: for a table Postgres has trimmed, the
+    corpus is the ONLY copy, and "we could not check the only copy" is exactly
+    the state this audit exists to shout about.
+    """
+    try:
+        from corpus_location import corpus_location, read_parquet_glob
+
+        con, glob = read_parquet_glob(corpus_location(), table)
+        try:
+            row = con.execute(
+                f"SELECT min({col}), max({col}) FROM read_parquet(?)", [glob]
+            ).fetchone()
+        finally:
+            con.close()
+        return (row[0], row[1]) if row and row[0] else None
+    except Exception as e:                                  # noqa: BLE001
+        print(f"      corpus read failed: {type(e).__name__}: {e}")
+        return None
+
+
 async def check_corpus_intact(conn) -> bool:
-    """5.0e — the corpus is IRREPLACEABLE. A shrinking span means data loss."""
+    """5.0e — the corpus is IRREPLACEABLE. A shrinking span means data loss.
+
+    "The corpus" is now Postgres AND object storage, so each table is asked
+    wherever its full history actually lives.
+    """
     _hdr("5.0e  CORPUS SPANS (nothing here may ever be deleted)")
     ok = True
     for tab, (col, min_years) in sorted(CORPUS.items()):
-        r = await conn.fetchrow(f"SELECT min({col}) a, max({col}) b FROM {tab}")
-        if not r["a"]:
-            print(f"  {tab:<24} EMPTY")
-            ok = False
-            continue
-        years = (r["b"] - r["a"]).days / 365.25
+        if tab in PRUNED_TO_HOT_WINDOW:
+            where = "corpus"
+            span = _corpus_span(tab, col)
+            if span is None:
+                print(f"  {tab:<24} CORPUS UNREADABLE — and Postgres no longer "
+                      f"holds this span")
+                ok = False
+                continue
+            lo, hi = span
+        else:
+            where = "postgres"
+            r = await conn.fetchrow(f"SELECT min({col}) a, max({col}) b FROM {tab}")
+            if not r["a"]:
+                print(f"  {tab:<24} EMPTY")
+                ok = False
+                continue
+            lo, hi = r["a"], r["b"]
+        years = (hi - lo).days / 365.25
         bad = years < min_years
         ok = ok and not bad
-        print(f"  {tab:<24} {str(r['a'])[:10]} -> {str(r['b'])[:10]}   {years:>5.1f}y"
-              f"   (floor {min_years}y)   {'SHRANK' if bad else 'intact'}")
+        print(f"  {tab:<24} {str(lo)[:10]} -> {str(hi)[:10]}   {years:>5.1f}y"
+              f"   (floor {min_years}y)   {'SHRANK' if bad else 'intact'}"
+              f"   [{where}]")
     print(f"\n  VERDICT: {'PASS' if ok else 'FAIL'} — "
           f"{'every corpus span is intact'
              if ok else 'A CORPUS SPAN SHRANK — irreplaceable model fuel was deleted'}")
@@ -330,15 +383,42 @@ async def check_reclaimable(conn) -> bool:
     print(f"  {'':<58}{idx_mb:>8,.0f} MB total")
     print(f"\n  reclaimable: {dead_mb + idx_mb:,.0f} MB")
 
-    # THE EVIDENCE CHECK. idx_scan = 0 only means "never used" if the counters
-    # were never reset. A non-NULL stats_reset silently turns 5.4's index drops
-    # into a guess, so it fails rather than reporting a number it cannot stand
-    # behind.
-    print(f"  pg_stat_database.stats_reset = {reset}")
-    ok = reset is None
-    print(f"\n  VERDICT: {'PASS' if ok else 'FAIL'} — "
-          f"{'counters cover the database lifetime, so idx_scan=0 is trustworthy'
-             if ok else 'STATS WERE RESET — idx_scan=0 no longer proves an index is unused; do NOT drop on this evidence'}")
+    # THE EVIDENCE CHECK, AND IT USED TO BE THE WRONG ONE.
+    #
+    # It read: `stats_reset IS NULL` proves the counters cover the database's
+    # lifetime, so `idx_scan = 0` means "never used". **That test cannot fail.**
+    # Measured 2026-09-10: `stats_reset` was NULL and the counters were 5.7 days
+    # old, because they had been discarded at the 2026-09-04 restart and
+    # `stats_reset` stayed NULL straight through it. NULL only ever meant
+    # "nobody called pg_stat_reset()", which is a far weaker claim.
+    #
+    # The real age comes from `pg_postmaster_start_time()`, corroborated by a
+    # witness: rows known to predate the restart whose `n_tup_ins` reads zero.
+    # And even a long window says nothing about weekly or hand-run consumers —
+    # 9 of 11 "cold" indexes turned out to be planned onto by real call sites —
+    # so this now reports the counter as a HINT and points at the tool that
+    # actually decides. See `audit_index_usage.py`.
+    started = await conn.fetchval("SELECT pg_postmaster_start_time()")
+    now = await conn.fetchval("SELECT now()")
+    age_days = (now - started).total_seconds() / 86400.0
+    witness = await conn.fetchrow(
+        """SELECT n_tup_ins, n_live_tup FROM pg_stat_user_tables
+            WHERE relname = 'historical_odds'""")
+    stale = bool(witness and (witness["n_live_tup"] or 0) == 0
+                 and (witness["n_tup_ins"] or 0) == 0)
+    print(f"  pg_stat_database.stats_reset = {reset}   "
+          f"<- NOT evidence of anything; see this function's comment")
+    print(f"  counters actually span {age_days:.1f} days "
+          f"(postmaster started {started})")
+    # PASS means "the evidence is correctly characterised", not "these indexes
+    # are safe to drop". Nothing here authorises a drop; audit_index_usage.py
+    # does, on planner evidence.
+    ok = True
+    print(f"\n  VERDICT: PASS — reported as a HINT, not a licence. The counter "
+          f"window is {age_days:.1f} days"
+          f"{' and the witness says stats were reset' if stale else ''}, which "
+          f"says nothing about weekly or hand-run consumers. Run "
+          f"`audit_index_usage.py` before dropping any of the above.")
     return ok
 
 

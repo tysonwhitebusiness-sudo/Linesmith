@@ -11,16 +11,20 @@ ordering conversationally — that is exactly what §5.S exists to stop.
 
 ## READ THIS FIRST: state as of 2026-09-10 17:00Z
 
-**§5.S.1, §5.S.2 and §5.S.3 are DONE.** §5.S.4 is next and is READY but was not
-started — see "why" below, it is a real reason and not an omission.
+**§5.S.1 through §5.S.4 are DONE.** §5.S.5 is next and nothing blocks it.
 
 ```
-database   7,282 MB  ->  7,174 MB     88.9% -> 87.6%
+database   7,282 MB  ->  5,545 MB     88.9% -> 67.7%
 ```
 
-That is 108 MB from 5.S.2 (7 tables dropped) and 5.S.3 (2 indexes dropped). The
-big one is still ahead: **~266 MB of 5.S.2's deleted rows are still occupying
-their file**, and only 5.S.4's `VACUUM FULL` returns them.
+`player_game_history` 1,839 -> 460 MB, `odds_import_staging` 262 -> 2 MB,
+seven dead tables dropped, two redundant indexes dropped. **All 8 checks of
+`audit_storage.py` pass.**
+
+The remaining ~2,500 MB is 5.S.5-5.S.8 and is all reader-porting, not
+discovery: `odds_archive` (1,204 MB), `prop_odds_history` (1,214 MB),
+`prop_odds_archive` (864 MB) and `mlb_pitch_events` (477 MB) are exported and
+verified in object storage already.
 
 ### The worker
 
@@ -69,23 +73,33 @@ daily and must stay daily.
 §5.S is worked in order; it is the concrete test case §5.S.9's gate should be
 written against.
 
-### Why 5.S.4 was not started
+### The one measurement trap that keeps recurring
 
-Two conditions, both checked, both temporary:
+**The 2026-09-04 23:33:51Z restart discarded the cumulative statistics, and
+`pg_stat_database.stats_reset` is STILL NULL.** It has now poisoned three
+separate measurements in this phase:
 
-1. **The pooler was at 16 connections against a cap of 15** — the worker's
-   post-deploy startup burst. `VACUUM FULL` takes an ACCESS EXCLUSIVE lock on
-   `player_game_history` and competes for the same pool. A `vacuum_reclaim.py`
-   planning run hung for 5 minutes on exactly this and had to be killed.
-2. **`mlbHistorySummaryJob` was mid-run on the worker** (started 16:55:09Z,
-   ~4 minutes), reading the corpus and writing the summary.
+1. 5.S.3's index gate — `idx_scan = 0` read as "never", was "not in 5.7 days".
+2. `vacuum_reclaim.py`'s first run — `n_live_tup` read `game_result` as 199
+   rows (really 184,108), which would have rewritten two dense tables.
+3. `audit_storage.py`'s own 5.0g check, which asserted the void gate verbatim.
 
-`python-odds-service/vacuum_reclaim.py` is WRITTEN AND READY. It plans by
-default and refuses to `--apply` unless the projected new relation plus a
-250 MB margin fits in the headroom — because `VACUUM FULL` builds the new copy
-BESIDE the old one and swaps at the end, so peak usage is both at once. Run
-`python vacuum_reclaim.py player_game_history` first; it prints every other
-connection that will block. **Wait for a quiet pooler.**
+All three are fixed and each says so in its own comments. **Assume it has
+poisoned the next one too.** Anything from `pg_stat_*` covers 5.7 days, not the
+database's life; `pg_class.reltuples` and `pg_postmaster_start_time()` are the
+things that survive a restart.
+
+### Tools this session added
+
+| tool | does |
+|---|---|
+| `prune_dead_tables.py` | export + digest-verify + `DROP`/`DELETE` the dead tables |
+| `audit_index_usage.py` | decides index death by **EXPLAIN**, not `idx_scan`; `--snapshot` records counters durably |
+| `vacuum_reclaim.py` | `VACUUM FULL` with a headroom check, because the rewrite needs both copies at once |
+
+`audit_index_usage.py --snapshot` has one snapshot (2026-09-10, 145 rows). **In
+a month the delta is real index usage** and the ~260 MB of indexes kept today
+can be re-examined against evidence rather than a five-day window.
 
 ---
 
