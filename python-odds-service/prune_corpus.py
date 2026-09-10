@@ -51,60 +51,92 @@ DELETE_BATCH = 5_000
 
 
 async def verify_partition_live(conn, table: str, part: tuple, path: str) -> dict:
-    """Re-derive the partition from Postgres and compare it to the file.
+    """Compare the corpus file to live Postgres, and return the ids it is SAFE
+    to delete.
 
-    Returns the verdict AND the exact ids the corpus holds, because those ids —
-    not a predicate — are what a delete is allowed to touch.
+    THE CHECK IS A SUBSET CHECK, NOT AN EQUALITY CHECK, AND THAT DISTINCTION IS
+    THE WHOLE DESIGN. The first version demanded live == file exactly, and it
+    failed on `prop_odds_archive ('mlb', 2026)`: live held 899,868 rows against
+    the file's 896,885. Nothing was corrupt -- `archivePropsJob` runs every five
+    minutes, and 2,983 rows crossed their freeze boundary between the export and
+    the verify. An equality rule would block pruning FOREVER on any table still
+    receiving writes, which is every table worth pruning.
+
+    The property that actually matters is narrower: NEVER DELETE A ROW THAT IS
+    NOT IN THE CORPUS. So:
+
+      * a row live but not in the file  -> not deleted, waits for the next export
+      * a row in the file but not live  -> already gone; nothing to do
+      * a row in BOTH, content equal    -> safe to delete
+      * a row in BOTH, content DIFFERS  -> CORRUPTION. The partition is refused
+                                           outright; this is the case the digest
+                                           existed to catch, and it survives.
+
+    Content is compared per-id rather than by an aggregate digest, because an
+    aggregate over two sets that are legitimately different sizes cannot
+    distinguish "behind" from "wrong".
     """
+    import hashlib
+
     import pyarrow.parquet as pq
 
     cols = await cs.column_names(conn, table)
     if not os.path.exists(path):
-        # EVERY verdict carries the same keys, including the early returns.
-        # The first version omitted `live_rows` here and the caller raised
-        # KeyError on the first partition with no file -- which is a normal
-        # state, not an error: `mlb_pitch_events` is partitioned over a
-        # contiguous id range and legitimately has empty chunks. A verify tool
-        # that crashes on a normal state is a verify tool nobody can trust.
+        # EVERY verdict carries the same keys, including the early returns. The
+        # first version omitted `live_rows` and the caller raised KeyError on the
+        # first partition with no file -- a NORMAL state, since mlb_pitch_events
+        # is partitioned over a contiguous id range with empty chunks in it.
         return {"ok": False, "reason": "corpus file missing", "path": path,
                 "partition": part, "live_rows": 0, "file_rows": 0,
-                "digest_match": False, "ids_missing_from_corpus": 0, "ids": []}
+                "deletable": 0, "live_only": 0, "file_only": 0,
+                "corrupt": 0, "ids": []}
 
-    live = cs.RowDigest(cols)
-    ids: list[int] = []
+    def _fp(row) -> int:
+        line = "".join(cs._canon(v) for v in row)
+        return int(hashlib.sha256(line.encode()).hexdigest()[:16], 16)
+
+    id_i = cols.index("id")
+    file_fp: dict[int, int] = {}
+    pf = pq.ParquetFile(path)
+    for batch in pf.iter_batches(batch_size=cs.CHUNK_ROWS):
+        d = batch.to_pydict()
+        for row in zip(*(d[c] for c in cols)):
+            file_fp[int(row[id_i])] = _fp(row)
+
+    live_rows = 0
+    deletable: list[int] = []
+    live_only = 0
+    corrupt: list[int] = []
     sql, prefix = cs._partition_query(table, cols, part, cs.CHUNK_ROWS)
     last_id = -1
     while True:
         raw = await conn.fetch(sql, *prefix, last_id)
         if not raw:
             break
-        chunk = [tuple(cs._cell(r[c]) for c in cols) for r in raw]
-        live.update(chunk)
-        ids.extend(int(r["id"]) for r in raw)
+        for r in raw:
+            live_rows += 1
+            rid = int(r["id"])
+            want = file_fp.get(rid)
+            if want is None:
+                live_only += 1                 # exported later, not yet copied
+            elif want == _fp(tuple(cs._cell(r[c]) for c in cols)):
+                deletable.append(rid)
+            else:
+                corrupt.append(rid)
         last_id = raw[-1]["id"]
 
-    stored = cs.RowDigest(cols)
-    pf = pq.ParquetFile(path)
-    file_ids: set[int] = set()
-    id_i = cols.index("id")
-    for batch in pf.iter_batches(batch_size=cs.CHUNK_ROWS):
-        d = batch.to_pydict()
-        rows = list(zip(*(d[c] for c in cols)))
-        stored.update(rows)
-        file_ids.update(int(r[id_i]) for r in rows)
-
-    ok = (list(pf.schema_arrow.names) == cols
-          and live.rows == stored.rows
-          and live.hexdigest() == stored.hexdigest())
-    # Belt and braces: the digest already covers this, but a delete is worth an
-    # explicit id-level check rather than a hash argument.
-    missing = [i for i in ids if i not in file_ids]
+    schema_ok = list(pf.schema_arrow.names) == cols
     return {
-        "ok": bool(ok and not missing), "path": path, "partition": part,
-        "live_rows": live.rows, "file_rows": stored.rows,
-        "digest_match": live.hexdigest() == stored.hexdigest(),
-        "ids_missing_from_corpus": len(missing),
-        "ids": ids if ok and not missing else [],
+        "ok": bool(schema_ok and not corrupt),
+        "path": path, "partition": part,
+        "live_rows": live_rows, "file_rows": len(file_fp),
+        "deletable": len(deletable),
+        "live_only": live_only,
+        "file_only": len(file_fp) - (len(deletable) + len(corrupt)),
+        "corrupt": len(corrupt),
+        "reason": (None if schema_ok else "schema differs") or
+                  (f"{len(corrupt)} row(s) differ in content" if corrupt else None),
+        "ids": deletable if (schema_ok and not corrupt) else [],
     }
 
 
@@ -141,9 +173,10 @@ async def prune_table(conn, table: str, backend, apply: bool,
             continue          # an empty id-chunk or an off-season year
         if v["live_rows"] == 0 and v["file_rows"] == 0:
             continue
-        status = "OK" if v["ok"] else "MISMATCH"
+        status = "OK" if v["ok"] else "CORRUPT"
+        lag = f"  +{v['live_only']:,} not yet exported" if v.get("live_only") else ""
         print(f"   {str(part):<18}live {v['live_rows']:>9,}  file {v['file_rows']:>9,}  "
-              f"{status}")
+              f"deletable {v['deletable']:>9,}  {status}{lag}")
         if not v["ok"]:
             bad.append(f"{part}: {v.get('reason') or 'digest/ids differ'}")
             continue
