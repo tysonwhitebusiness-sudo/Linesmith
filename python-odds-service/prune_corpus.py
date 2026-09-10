@@ -50,7 +50,8 @@ from corpus_location import LocalCorpus, corpus_location      # noqa: E402
 DELETE_BATCH = 5_000
 
 
-async def verify_partition_live(conn, table: str, part: tuple, path: str) -> dict:
+async def verify_partition_live(conn, table: str, part: tuple, path: str,
+                                backend=None, filename: str | None = None) -> dict:
     """Compare the corpus file to live Postgres, and return the ids it is SAFE
     to delete.
 
@@ -81,7 +82,21 @@ async def verify_partition_live(conn, table: str, part: tuple, path: str) -> dic
     import pyarrow.parquet as pq
 
     cols = await cs.column_names(conn, table)
-    if not os.path.exists(path):
+    # THE CORPUS IS READ WHERE IT LIVES, which since 5.2c is object storage.
+    # This used to require a local staging copy and refused outright without
+    # one -- and the staging copy is exactly the thing that does not survive a
+    # session. Downloading 130 MB to verify a delete that reads the same bytes
+    # remotely was never the safety property; having read them back at all is.
+    source = path
+    if backend is not None and filename is not None and not os.path.exists(path):
+        try:
+            source = backend.open_object(table, filename)
+        except Exception as e:                              # noqa: BLE001
+            return {"ok": False, "reason": f"corpus unreadable: {e}", "path": path,
+                    "partition": part, "live_rows": 0, "file_rows": 0,
+                    "deletable": 0, "live_only": 0, "file_only": 0,
+                    "corrupt": 0, "ids": []}
+    elif not os.path.exists(path):
         # EVERY verdict carries the same keys, including the early returns. The
         # first version omitted `live_rows` and the caller raised KeyError on the
         # first partition with no file -- a NORMAL state, since mlb_pitch_events
@@ -97,7 +112,7 @@ async def verify_partition_live(conn, table: str, part: tuple, path: str) -> dic
 
     id_i = cols.index("id")
     file_fp: dict[int, int] = {}
-    pf = pq.ParquetFile(path)
+    pf = pq.ParquetFile(source)
     for batch in pf.iter_batches(batch_size=cs.CHUNK_ROWS):
         d = batch.to_pydict()
         for row in zip(*(d[c] for c in cols)):
@@ -152,11 +167,12 @@ async def prune_table(conn, table: str, backend, apply: bool,
               "pass\n  --i-have-my-own-backup to override deliberately.")
         return 2
 
-    root = getattr(backend, "root", None)
-    if root is None:
-        print("Pruning currently verifies against a local staging copy; "
-              "download the corpus first.")
-        return 2
+    # No local copy is required any more: `verify_partition_live` reads the
+    # corpus object from the backend when the file is not on disk. `root` is
+    # still used as the preferred source when a local staging copy DOES exist,
+    # because reading a local file is free and reading S3 is not.
+    root = getattr(backend, "root", None) or os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "corpus")
 
     await conn.execute(f"SET statement_timeout = '{cs.EXPORT_STATEMENT_TIMEOUT}'")
     parts = await cs.partitions_for(conn, table)
@@ -167,9 +183,11 @@ async def prune_table(conn, table: str, backend, apply: bool,
     deleted = 0
     bad: list[str] = []
     for part in parts:
-        path = os.path.join(root, table, f"{cs.partition_name(table, part)}.parquet")
-        v = await verify_partition_live(conn, table, part, path)
-        if v["live_rows"] == 0 and not os.path.exists(path):
+        fname = f"{cs.partition_name(table, part)}.parquet"
+        path = os.path.join(root, table, fname)
+        v = await verify_partition_live(conn, table, part, path,
+                                        backend=backend, filename=fname)
+        if v["live_rows"] == 0 and v["file_rows"] == 0:
             continue          # an empty id-chunk or an off-season year
         if v["live_rows"] == 0 and v["file_rows"] == 0:
             continue

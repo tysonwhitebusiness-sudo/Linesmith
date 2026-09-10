@@ -219,12 +219,44 @@ async def load_shot_props(conn=None, market: str = "Total Shots on Goal",
            AND g.game_date = c.game_date - (CASE WHEN c.has_m1 = 1 THEN 1 ELSE 0 END)
          WHERE NOT (c.has_m1 = 1 AND c.has_0 = 1)      -- ambiguous: drop, never guess
     """
+    # Phase 5.S.6 — THE SAME SQL, RUN IN DUCKDB OVER (corpus UNION postgres).
+    #
+    # This statement joins THREE tables and two of them are now split between
+    # Postgres and the Parquet corpus: `prop_odds_archive` (5.S.6) and
+    # `player_game_history` (5.2d). Read from Postgres alone it would silently
+    # train on whatever survived the prune -- and the damage would not be a
+    # missing row here and there, because the `has_m1`/`has_0` rule DROPS a prop
+    # whose player appears on both candidate dates. Truncate the history and
+    # that ambiguity resolves differently, so rows change their minds about
+    # being dropped. Nothing downstream can see that happen.
+    #
+    # So the query is not reimplemented in Python: it is handed, unchanged apart
+    # from `$1` -> `?`, to an engine that can see both halves. `union_view`
+    # registers each split table; `athlete_crosswalk` is Postgres-only and small
+    # (7,236 rows), so it is pulled whole.
+    from corpus_reads import duck_connection, pg_view, union_view
+
+    async def _run(c):
+        con = duck_connection()
+        try:
+            await union_view(con, c, "prop_odds_archive")
+            await union_view(con, c, "player_game_history")
+            await pg_view(con, c, "athlete_crosswalk",
+                          "SELECT sport, espn_athlete_id, athlete_id "
+                          "  FROM athlete_crosswalk")
+            duck_sql = sql.replace("$1", "?")
+            cur = con.execute(duck_sql, [market])
+            names = [d[0] for d in cur.description]
+            return [dict(zip(names, r)) for r in cur.fetchall()]
+        finally:
+            con.close()
+
     if conn is not None:
-        raw = await conn.fetch(sql, market)
+        raw = await _run(conn)
     else:
         pool = await _db.get_pool()
-        async with pool.acquire(timeout=60.0) as c:
-            raw = await c.fetch(sql, market)
+        async with pool.acquire(timeout=300.0) as c:
+            raw = await _run(c)
 
     rows, goalies, no_sog = [], 0, 0
     for r in raw:

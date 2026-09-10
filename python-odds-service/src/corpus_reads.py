@@ -100,3 +100,97 @@ async def load_prop_archive(conn, sport: str, type_names: list[str],
     # incidental ordering keeps behaving.
     merged.sort(key=lambda t: (t[1], str(t[2]), t[0]))
     return [dict(zip(COLUMNS, r)) for r in merged]
+
+
+# ---------------------------------------------------------------------------
+# CROSS-SOURCE QUERIES — for readers whose SQL joins a corpus table to a
+# Postgres-only one, which `load_prop_archive` cannot serve.
+# ---------------------------------------------------------------------------
+#
+# `nhl_props.load_shot_props` is the case that forced this: it joins
+# `prop_odds_archive` to `athlete_crosswalk` AND twice to
+# `player_game_history` -- two split tables and one Postgres-only one, in a
+# single statement with date arithmetic and an ambiguity rule that decides which
+# rows get DROPPED. Rewriting that as three Python fetches and a manual join
+# would be a reimplementation of the query, and a reimplementation is exactly
+# where the has_m1/has_0 rule quietly stops matching.
+#
+# So the SQL stays the SQL. `union_view` registers each table DuckDB needs as a
+# view over (corpus UNION postgres), `pg_view` registers a Postgres-only table,
+# and the caller runs its original statement against DuckDB with `$1` rewritten
+# to `?`. Same text, same joins, same drop rule.
+
+
+async def pg_view(con, conn, name: str, sql: str, *args) -> int:
+    """Register a Postgres result as a DuckDB view. Returns the row count.
+
+    For the SMALL, Postgres-only side of a join -- `athlete_crosswalk` is 7,236
+    rows. Pulling it whole is cheaper than any cleverness, and it keeps the
+    join in one engine.
+    """
+    rows = await conn.fetch(sql, *args)
+    cols = list(rows[0].keys()) if rows else []
+    if not rows:
+        con.execute(f'CREATE OR REPLACE VIEW "{name}" AS SELECT NULL WHERE FALSE')
+        return 0
+    import pyarrow as pa
+
+    tbl = pa.table({c: [r[c] for r in rows] for c in cols})
+    con.register(f"_pg_{name}", tbl)
+    con.execute(f'CREATE OR REPLACE VIEW "{name}" AS SELECT * FROM "_pg_{name}"')
+    return len(rows)
+
+
+async def union_view(con, conn, table: str, backend=None) -> dict:
+    """Register `table` in DuckDB as (Parquet corpus UNION Postgres), by id.
+
+    THE POSTGRES HALF IS NOT OPTIONAL AND IS NOT SMALL FOREVER. The corpus is a
+    snapshot; every capture since the last export lives only in Postgres. On
+    2026-09-10 that was 58 `cfb` rows of `prop_odds_archive` -- invisible in a
+    row count, and enough to make a fit train on a different population than the
+    one its numbers were published from.
+
+    Columns are taken from POSTGRES' `information_schema`, not from the Parquet
+    file, so the two halves are selected in the same declared order and a column
+    added to the table after the last export fails loudly here instead of
+    silently shifting a positional UNION.
+    """
+    from corpus_location import corpus_location, read_parquet_glob  # noqa: F401
+
+    backend = backend or corpus_location()
+    cols = [r["column_name"] for r in await conn.fetch(
+        """SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = $1
+            ORDER BY ordinal_position""", table)]
+    if not cols:
+        raise ValueError(f"{table} has no columns in information_schema")
+    quoted = ", ".join(f'"{c}"' for c in cols)
+
+    n_pg = await pg_view(con, conn, f"{table}__pg",
+                         f"SELECT {quoted} FROM {table}")
+    glob = backend.table_glob(table)
+    # DISTINCT ON id via a window, because a row present in both halves must be
+    # counted once. Corpus first so a row's corpus copy wins -- the two are
+    # identical by construction (the export is digest-verified), and picking a
+    # side deterministically keeps this reproducible.
+    con.execute(f'''
+        CREATE OR REPLACE VIEW "{table}" AS
+        SELECT {quoted} FROM (
+            SELECT {quoted}, row_number() OVER (PARTITION BY id) AS _rn
+              FROM (
+                SELECT {quoted} FROM read_parquet('{glob}')
+                UNION ALL
+                SELECT {quoted} FROM "{table}__pg"
+              )
+        ) WHERE _rn = 1
+    ''')
+    n = con.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
+    return {"table": table, "postgres_rows": n_pg, "union_rows": n}
+
+
+def duck_connection():
+    """A DuckDB connection configured for the corpus backend."""
+    from corpus_location import corpus_location, read_parquet_glob
+
+    con, _ = read_parquet_glob(corpus_location(), "prop_odds_archive")
+    return con

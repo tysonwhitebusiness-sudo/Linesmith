@@ -94,6 +94,10 @@ class CorpusBackend:
     def table_glob(self, table: str) -> str:
         raise NotImplementedError
 
+    def open_object(self, table: str, filename: str):
+        """One corpus file as a seekable stream pyarrow can read."""
+        raise NotImplementedError
+
     def configure_duckdb(self, con) -> None:
         """Whatever the connection needs before it can read `table_glob`."""
 
@@ -105,6 +109,9 @@ class CorpusBackend:
 @dataclass
 class LocalCorpus(CorpusBackend):
     root: str
+
+    def open_object(self, table: str, filename: str):
+        return os.path.join(self.root, table, filename)
 
     def put(self, local_path: str, table: str, filename: str) -> str:
         # The exporter already writes into this layout, so a local backend is a
@@ -153,6 +160,28 @@ class S3Corpus(CorpusBackend):
     def table_glob(self, table: str) -> str:
         parts = [p for p in (self.prefix, table) if p]
         return f"s3://{self.bucket}/{'/'.join(parts)}/{table}_*.parquet"
+
+    def open_object(self, table: str, filename: str):
+        """One corpus file as a seekable, pyarrow-readable stream.
+
+        WHY PYARROW AND NOT DUCKDB. `prune_corpus.verify_partition_live`
+        fingerprints every corpus row and compares it to the live Postgres row
+        through `corpus_store._canon`, and `_canon` was written against the
+        exact value types `pyarrow` produces -- that is the whole reason it
+        exists (asyncpg hands back `timezone.utc`, pyarrow `ZoneInfo('UTC')`,
+        and the first version of the digest called those two instants
+        different). Reading the same bytes through a different engine would
+        introduce a second set of type conventions into the one comparison in
+        this codebase that authorises a DELETE. So the remote read changes WHERE
+        the bytes come from and nothing about how they are decoded.
+        """
+        import pyarrow.fs as pafs
+
+        fs = pafs.S3FileSystem(
+            endpoint_override=self.endpoint, region=self.region,
+            access_key=self.key_id, secret_key=self.secret,
+            allow_bucket_creation=False, allow_bucket_deletion=False)
+        return fs.open_input_file(f"{self.bucket}/{self._key(table, filename)}")
 
     def configure_duckdb(self, con) -> None:
         # httpfs is what lets DuckDB read s3:// directly, so a fitter's query is

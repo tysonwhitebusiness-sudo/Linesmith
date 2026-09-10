@@ -352,11 +352,50 @@ GROUP BY 1, 2
 
 async def verify_local(pool, sport, mapping):
     """MLB path: prove the pair against player_game_history on an exact game
-    date AND the right team."""
+    date AND the right team.
+
+    Phase 5.S.6 — THE SAME SQL, RUN IN DUCKDB OVER (corpus UNION postgres).
+    All three tables this touches are split between Postgres and the Parquet
+    corpus: `odds_archive`, `prop_odds_archive` and `player_game_history`. This
+    query COUNTS -- `hits` and `chances` are how a candidate pair is accepted
+    or rejected -- so reading a truncated half does not lose rows visibly, it
+    silently lowers everybody's hit rate and unverifies real players. That
+    exact failure already happened once here for a different reason, and the
+    comment in `fetch_nhl_gamelogs` records it: 64 real NHL players were dropped
+    as unconfirmed when the only thing missing was their game log.
+
+    `unnest($2, $3)` has no DuckDB equivalent taking two parallel arrays, so the
+    mapping is registered as a view named `m` and the CTE that built it is
+    dropped from the text. Nothing else about the statement changes.
+    """
+    from corpus_reads import duck_connection, union_view
+
     espn_ids = list(mapping)
     ours = [mapping[e][0] for e in espn_ids]
-    async with pool.acquire() as c:
-        rows = await c.fetch(VERIFY_SQL, sport, espn_ids, ours)
+    duck_sql = VERIFY_SQL.replace(
+        """), m AS (
+  SELECT * FROM unnest($2::text[], $3::text[]) AS t(espn_id, ours)
+)""", ")").replace("$1", "?")
+    async with pool.acquire(timeout=900.0) as c:
+        await c.execute("SET statement_timeout = '15min'")
+        con = duck_connection()
+        try:
+            for t in ("odds_archive", "prop_odds_archive", "player_game_history"):
+                await union_view(con, c, t)
+            import pyarrow as pa
+
+            con.register("_m", pa.table({"espn_id": [str(x) for x in espn_ids],
+                                         "ours": [str(x) for x in ours]}))
+            con.execute('CREATE OR REPLACE VIEW "m" AS SELECT * FROM "_m"')
+            # `$1` appears THREE times in VERIFY_SQL (the ev filter, the pr
+            # filter, and the player_game_history join), and DuckDB's `?` is
+            # positional rather than numbered, so the value is repeated per
+            # occurrence rather than passed once.
+            cur = con.execute(duck_sql, [sport] * duck_sql.count("?"))
+            names = [d[0] for d in cur.description]
+            rows = [dict(zip(names, r)) for r in cur.fetchall()]
+        finally:
+            con.close()
     return {r["espn_id"]: (r["verified_date"], r["hits"], r["chances"]) for r in rows}
 
 
@@ -405,15 +444,29 @@ def fetch_nhl_gamelogs(our_ids):
 
 async def nhl_prop_games(pool):
     """{espn_athlete_id: [(game_date, {our home id, our away id}), ...]}"""
-    async with pool.acquire() as c:
-        rows = await c.fetch("""
+    # Phase 5.S.6 — see `verify_local`. Both tables are split; the SQL is
+    # unchanged and runs against DuckDB views over (corpus UNION postgres).
+    from corpus_reads import duck_connection, union_view
+
+    NHL_PROP_GAMES_SQL = """
             WITH ev AS (SELECT DISTINCT event_ref, game_date, home_team_id, away_team_id
                         FROM odds_archive WHERE sport='nhl' AND event_ref IS NOT NULL)
             SELECT p.athlete_id espn_id, e.game_date, e.home_team_id, e.away_team_id
             FROM (SELECT DISTINCT athlete_id, event_ref FROM prop_odds_archive
                   WHERE sport='nhl' AND athlete_id IS NOT NULL) p
             JOIN ev e ON e.event_ref = p.event_ref
-        """)
+    """
+    async with pool.acquire(timeout=900.0) as c:
+        await c.execute("SET statement_timeout = '15min'")
+        con = duck_connection()
+        try:
+            await union_view(con, c, "odds_archive")
+            await union_view(con, c, "prop_odds_archive")
+            cur = con.execute(NHL_PROP_GAMES_SQL)
+            names = [d[0] for d in cur.description]
+            rows = [dict(zip(names, r)) for r in cur.fetchall()]
+        finally:
+            con.close()
     want = {}
     for r in rows:
         want.setdefault(r["espn_id"], []).append(
