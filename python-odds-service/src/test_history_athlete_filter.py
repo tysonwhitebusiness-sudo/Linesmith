@@ -42,6 +42,12 @@ async def _load():
     pool = await _db.get_pool()
     async with pool.acquire(timeout=600.0) as conn:
         full = await mp.load_game_history(SLUG, conn=conn)
+        spec = mp.BY_SLUG[SLUG]
+        _state["live_rows"] = await conn.fetchval(
+            f"SELECT count(*) FROM player_game_history "
+            f" WHERE sport='mlb' AND {mp.required_keys_sql(spec)} "
+            f"   AND (stats->>'{spec.volume_key}') IS NOT NULL "
+            f"   AND {spec.volume_sql} > 0")
         # A stable, real sample of athletes — taken from the data so this test
         # needs no fixture and cannot drift out of date.
         ids = sorted({r[1] for r in full})[:40]
@@ -51,10 +57,20 @@ async def _load():
 
 
 def test_default_is_unfiltered():
-    """THE GUARD ON EVERY BACKTEST. No argument means the whole corpus."""
+    """THE GUARD ON EVERY BACKTEST. No argument means everything the table holds.
+
+    Asserted against the table's OWN row count rather than a constant. The
+    first version required `> 100_000` because `pitcher-hits-allowed` had
+    209,924 rows -- and then Phase 5.2 trimmed the table to a hot window and the
+    test failed on a change it was never meant to police. A threshold that
+    encodes today's data size is a test that breaks when the data legitimately
+    changes, which trains people to ignore it.
+    """
     full = _state["full"]
-    assert len(full) > 100_000, f"default returned only {len(full):,} rows"
-    print(f"PASS  default returns the whole corpus ({len(full):,} rows)")
+    live = _state["live_rows"]
+    assert len(full) == live, (
+        f"default returned {len(full):,} of {live:,} rows the table holds")
+    print(f"PASS  default returns every row the table holds ({len(full):,})")
 
 
 def test_sql_filter_equals_python_filter():
