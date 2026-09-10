@@ -61,17 +61,30 @@ async def _team_ids(sport: str) -> dict[str, str]:
     hit = _team_index.get(sport)
     if hit is not None and time.monotonic() < hit[1]:
         return hit[0]
+    # Phase 5.S.7 — READ THE DERIVED INDEX, NOT THE ARCHIVE.
+    #
+    # This used to scan `odds_archive` twice per sport -- 1,982,889 rows to
+    # produce 874 pairs, of which 859 survive normalisation. That was merely
+    # wasteful while the whole archive lived here. It became a correctness
+    # problem when 5.S.7 pruned the archive to its unfrozen tail: 99.8% of those
+    # rows are frozen, so the same query now yields a handful of pairs and every
+    # name it cannot resolve is routed to `odds_unresolved`. Nothing would have
+    # raised. The bridge would have kept running and quietly stopped resolving.
+    #
+    # `team_name_index` is seeded from the Parquet corpus and refreshed from the
+    # live tail alone -- see `build_team_name_index.py` for why that split is
+    # about Storage egress rather than tidiness.
+    #
+    # The names are stored ALREADY NORMALISED, by the same `normalize_team_name`
+    # used on the lookup side, so the transform happens once and cannot drift
+    # between writer and reader.
     pool = await db.get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            """SELECT home_team_raw AS raw, home_team_id AS id FROM odds_archive
-                WHERE sport = $1 AND home_team_id IS NOT NULL AND home_team_raw IS NOT NULL
-               UNION
-               SELECT away_team_raw, away_team_id FROM odds_archive
-                WHERE sport = $1 AND away_team_id IS NOT NULL AND away_team_raw IS NOT NULL""",
+            "SELECT name_key, team_id FROM team_name_index WHERE sport = $1",
             sport,
         )
-    idx = {normalize_team_name(r["raw"]): r["id"] for r in rows if r["raw"]}
+    idx = {r["name_key"]: r["team_id"] for r in rows}
     _team_index[sport] = (idx, time.monotonic() + _TEAM_INDEX_TTL)
     return idx
 

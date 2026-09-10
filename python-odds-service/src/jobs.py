@@ -28,7 +28,10 @@ pre-checked in this port at all — each now has the same real gate its TS
 equivalent does (tier1Refresh.ts, sportsGameOddsRefresh.ts,
 multiSportRefresh.ts).
 """
+import asyncio
 import json
+import os
+import sys
 import time
 import traceback
 from datetime import datetime, timezone
@@ -1190,6 +1193,49 @@ async def job_nfl_pbp(yield_fn=None) -> dict:
         return await _run_timed("ingestNflPbpJob", nfl_pbp.ingest_recent(client, yield_fn=yield_fn))
 
 
+async def job_team_name_index(yield_fn=None) -> dict:
+    """Phase 5.S.7 — keep `team_name_index` current from the LIVE tail.
+
+    `archival_bridge._team_ids` no longer scans `odds_archive` (1,982,889 rows
+    for 859 pairs); it reads this index. Once 5.S.7 pruned the archive to its
+    unfrozen tail plus a 30-day margin, that scan could no longer have found the
+    pairs anyway.
+
+    THIS JOB IS WHY THE INDEX DOES NOT GO STALE. A genuinely new team spelling
+    arrives as a LIVE odds_archive row, so a scan of the unfrozen tail sees it
+    before the row freezes and is pruned. Miss that window and the spelling is
+    lost to the index forever and every capture carrying it lands in
+    `odds_unresolved` -- silently, which is the whole failure this index exists
+    to prevent, reintroduced by neglecting to refresh it.
+
+    Hourly, not daily, for exactly that reason: the window in which a new
+    spelling is visible is bounded by the retention margin, but a slate's worth
+    of captures is bounded by hours.
+
+    IT NEVER READS THE CORPUS. `build_team_name_index.py --seed` does that, once,
+    by hand. Re-reading ~100 MB of Parquet hourly to rebuild 859 rows would
+    spend Storage egress to solve a problem this table already solves.
+    """
+    import subprocess
+
+    _here = os.path.dirname(os.path.abspath(__file__))
+
+    def _run():
+        return subprocess.run(
+            [sys.executable,
+             os.path.join(_here, "..", "build_team_name_index.py"), "--apply"],
+            capture_output=True, text=True, timeout=900)
+
+    async def _inner() -> dict:
+        r = await asyncio.to_thread(_run)
+        tail = [l for l in (r.stdout or "").splitlines() if l.strip()][-3:]
+        if r.returncode != 0:
+            raise RuntimeError(f"build_team_name_index failed: {(r.stderr or '')[-400:]}")
+        return {"ok": True, "output": tail}
+
+    return await _run_timed("teamNameIndexJob", _inner())
+
+
 JOB_REGISTRY = [
     # Phase 0.2 — the one job whose absence let the database reach 3x the
     # Free tier ceiling. Daily is the right cadence: every rule's window is
@@ -1199,6 +1245,9 @@ JOB_REGISTRY = [
     # its own, per CLAUDE.md's job architecture — a claim the Phase 0 gate
     # tests rather than assumes.
     ("retentionJob", job_retention, 24 * 60 * 60),
+    # Phase 5.S.7 — hourly, because a new team spelling is only visible in
+    # odds_archive's unfrozen tail before the prune reaches it.
+    ("teamNameIndexJob", job_team_name_index, 60 * 60),
     # Task 4.5 — CLV only moves when games finish and their closing prices are
     # logged, and the backtest walks every captured pick per run, so hourly is
     # the right cadence. health_check.py picks this up with no edit of its own.

@@ -197,14 +197,30 @@ def match(espn_names, source_names):
 async def source_games(pool, sport):
     """{tennis-data name: [(date, ...)]} — every match the source says this
     player played, from the rows already loaded into odds_archive."""
-    async with pool.acquire() as c:
-        rows = await c.fetch("""
+    # Phase 5.S.7 — the same SQL, run in DuckDB over (corpus UNION postgres).
+    # All 448,914 `tennis_data` rows are frozen history and now live in the
+    # corpus; read from Postgres alone this would return almost nothing and
+    # every tennis player would look like they had never played, which the
+    # crosswalk would report as "unverifiable" rather than as an empty read.
+    from corpus_reads import duck_connection, union_view
+
+    TENNIS_SQL = """
             SELECT home_team_raw nm, game_date FROM odds_archive
-              WHERE sport=$1 AND source='tennis_data' GROUP BY 1,2
+              WHERE sport=? AND source='tennis_data' GROUP BY 1,2
             UNION
             SELECT away_team_raw nm, game_date FROM odds_archive
-              WHERE sport=$1 AND source='tennis_data' GROUP BY 1,2
-        """, sport)
+              WHERE sport=? AND source='tennis_data' GROUP BY 1,2
+    """
+    async with pool.acquire(timeout=900.0) as c:
+        await c.execute("SET statement_timeout = '15min'")
+        con = duck_connection()
+        try:
+            await union_view(con, c, "odds_archive")
+            cur = con.execute(TENNIS_SQL, [sport, sport])
+            names = [d[0] for d in cur.description]
+            rows = [dict(zip(names, r)) for r in cur.fetchall()]
+        finally:
+            con.close()
     out = defaultdict(set)
     for r in rows:
         out[r["nm"]].add(r["game_date"])

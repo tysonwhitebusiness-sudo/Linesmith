@@ -78,9 +78,20 @@ def season_of(game_date: str) -> int:
 
 async def pull() -> None:
     import db
+    # Phase 5.S.7 — THE SAME SQL, RUN IN DUCKDB OVER (corpus UNION postgres).
+    # Both tables this reads are corpus members: `odds_archive` is pruned to its
+    # unfrozen tail, and `game_result` may follow. Read from Postgres alone this
+    # fit would silently lose the pregame moneyline for almost every historical
+    # game -- the `LEFT JOIN mkt` means those games do not disappear, they just
+    # arrive with a NULL market price, so the Elo would still fit, on a
+    # population with no market to calibrate against. That is the worst possible
+    # shape of failure: a complete-looking run with the benchmark quietly gone.
+    from corpus_reads import duck_connection, union_view
+
     pool = await db.get_pool()
     async with pool.acquire(timeout=1800.0) as c:
-        rows = await c.fetch("""
+        await c.execute("SET statement_timeout = '30min'")
+        _sql = ("""
             -- ONE BOOK, BOTH SIDES. A home price from one book de-vigged
             -- against an away price from another is not either book's opinion,
             -- and taking MAX on each side separately picks the best available
@@ -111,7 +122,25 @@ async def pull() -> None:
               LEFT JOIN mkt m ON m.event_ref = g.event_ref
              WHERE g.sport='nfl' AND g.home_score IS NOT NULL
                AND g.home_team_id IS NOT NULL AND g.away_team_id IS NOT NULL
-             ORDER BY g.game_date, g.event_ref""")
+             -- TOTAL ORDER, AND IT IS NOT COSMETIC. `(game_date, event_ref)`
+             -- is NOT unique here: 232 groups in this very population share
+             -- both, so the walk's order among them was whatever the engine
+             -- happened to return. Elo is path-dependent -- each game updates
+             -- the ratings the next one is scored against -- so those 464 rows
+             -- moved the fitted numbers by an amount nobody could reproduce.
+             -- Found when Postgres and DuckDB tie-broke them differently; the
+             -- ROW SETS were identical, only the order was not. Same lesson as
+             -- `mlb_props.load_game_history`'s doubleheader tiebreaker.
+             ORDER BY g.game_date, g.event_ref, g.home_team_id, g.away_team_id""")
+        con = duck_connection()
+        try:
+            await union_view(con, c, "odds_archive")
+            await union_view(con, c, "game_result")
+            cur = con.execute(_sql)
+            names = [d[0] for d in cur.description]
+            rows = [dict(zip(names, r)) for r in cur.fetchall()]
+        finally:
+            con.close()
     with open(CACHE, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["game_date", "event_ref", "home", "away", "hs", "as_",

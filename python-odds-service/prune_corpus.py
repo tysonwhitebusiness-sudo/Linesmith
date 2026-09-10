@@ -155,6 +155,34 @@ async def verify_partition_live(conn, table: str, part: tuple, path: str,
     }
 
 
+# Tables that keep a RECENT tail in Postgres on top of the unfrozen rows,
+# because a live consumer reads by recency rather than by freeze state.
+#
+# `odds_archive` is the case: `health_check.check_capture_latency` measures the
+# median capture-to-start over `captured_at > now() - interval '7 days'`, and
+# almost every row in that window is FROZEN (the game has started). Pruning on
+# freeze state alone would leave that check a handful of rows, and a median over
+# a handful is not a health check, it is a coin toss that reports a number.
+# 30 days of odds_archive is 20,258 rows -- the margin costs nothing and is
+# wider than the only consumer that needs it.
+KEEP_RECENT_DAYS = {"odds_archive": 30}
+
+
+async def _recent_ids(conn, table: str, days: int) -> set[int]:
+    """Ids too recent to delete regardless of freeze state."""
+    cols = await cs.column_names(conn, table)
+    preds = []
+    if "captured_at" in cols:
+        preds.append(f"captured_at > now() - interval '{days} days'")
+    if "game_date" in cols:
+        preds.append(f"game_date > current_date - {days}")
+    if not preds:
+        return set()
+    rows = await conn.fetch(
+        f"SELECT id FROM {table} WHERE {' OR '.join(preds)}")
+    return {int(r["id"]) for r in rows}
+
+
 async def prune_table(conn, table: str, backend, apply: bool,
                       allow_local: bool) -> int:
     if isinstance(backend, LocalCorpus) and apply and not allow_local:
@@ -179,6 +207,13 @@ async def prune_table(conn, table: str, backend, apply: bool,
     print(f"{table}: {len(parts)} partitions to verify "
           f"({'APPLY' if apply else 'VERIFY ONLY'})\n")
 
+    keep_days = KEEP_RECENT_DAYS.get(table, 0)
+    keep_ids: set[int] = set()
+    if keep_days:
+        keep_ids = await _recent_ids(conn, table, keep_days)
+        print(f"   retention margin: keeping {len(keep_ids):,} row(s) newer than "
+              f"{keep_days} days regardless of freeze state\n")
+
     total_ids = 0
     deleted = 0
     bad: list[str] = []
@@ -198,10 +233,16 @@ async def prune_table(conn, table: str, backend, apply: bool,
         if not v["ok"]:
             bad.append(f"{part}: {v.get('reason') or 'digest/ids differ'}")
             continue
-        total_ids += len(v["ids"])
-        if apply and v["ids"]:
-            for i in range(0, len(v["ids"]), DELETE_BATCH):
-                batch = v["ids"][i:i + DELETE_BATCH]
+        # The margin is applied AFTER verification, never before: a row is
+        # still proven to be in the corpus, it is simply not deleted yet.
+        ids = [i for i in v["ids"] if i not in keep_ids] if keep_ids else v["ids"]
+        if keep_ids and len(ids) != len(v["ids"]):
+            print(f"   {'':<18}held back {len(v['ids']) - len(ids):,} "
+                  f"within the {keep_days}-day margin")
+        total_ids += len(ids)
+        if apply and ids:
+            for i in range(0, len(ids), DELETE_BATCH):
+                batch = ids[i:i + DELETE_BATCH]
                 # BY ID, never by predicate — see rule 2.
                 res = await conn.execute(
                     f"DELETE FROM {table} WHERE id = ANY($1::bigint[])", batch)
