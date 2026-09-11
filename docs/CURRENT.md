@@ -9,38 +9,80 @@ ordering conversationally — that is exactly what §5.S exists to stop.
 
 ---
 
-## READ THIS FIRST: PHASE 5 IS **NOT** COMPLETE — corrected 2026-09-11
+## READ THIS FIRST: PHASE 5 IS **NOT** COMPLETE — updated 2026-09-11 (2nd revision)
 
-I previously wrote that Phase 5 was complete because §5.S.1–5.S.9 all passed
-their gates. **That was wrong.** The checklist was the means; the **three
-ceilings** in the phase header are the end.
+The §5.S checklist was the means; the **three ceilings** in the phase header are
+the end. Two are now cleared. The third is not merely unverified — it is
+**confirmed over budget and being billed**.
 
 | ceiling | limit | at phase start | now | state |
 |---|---|---|---|---|
-| database | 8,192 MB | 7,174 MB (87.6%) | **3,225 MB (39.4%)** | **CLEARED** |
-| egress | 250 GB/mo | ~500 GB | idle rate 7.6% of cumulative | improved, **not verified in GB** |
-| worker RAM | 512 MB | **385 MB peak** | **489 MB resting / 560 MB peak (109%)** | **WORSE THAN AT START** |
+| database | 8,192 MB | 7,174 MB (87.6%) | **~3,200 MB (39%)** | **CLEARED** |
+| worker RAM | 512 MB | 385 MB peak | **311 MB resting / 360 peak (70%)** | **CLEARED** |
+| egress | 250 GB/mo | ~500 GB | **623.32 GB used, 373.32 GB OVERAGE** | **FAILED** |
 
-### The one thing left: clear the RAM ceiling
+### The RAM ceiling is cleared
 
-**It regressed during the phase and 5.S.2 is the largest identifiable
-contributor.** One worker lifetime, traced: 44 MB at start → 272 MB after the
-first ingest cycle → **390 MB after `mlbHistorySummaryJob` read the Parquet
-corpus** (+118 MB in a single job) → a ~490 MB plateau it never leaves.
+It had regressed to 489 resting / 560 peak because 5.S.2 put a Parquet corpus
+read inside `mlbHistorySummaryJob` (+118 MB in one job, never released — CPython
+does not return freed arenas to the OS). Moving that read off the worker, behind
+the precomputed `player_history_prefix` table, took it to **311 MB resting /
+360 MB peak**, with the job itself running at 293 MB on `source="prefix"`.
 
-`corpus_store` had already measured that CPython does not return freed arenas to
-the OS, and barred the corpus **export** from the worker for exactly that
-reason. The summary job's corpus **read** was never costed the same way when
-5.S.2 put it there.
+### The egress ceiling FAILED, and this is now scope, not a gate
 
-First move to scope: take `mlbHistorySummaryJob`'s corpus read off the worker,
-the way the export already is. It is a design change — the summary has to be
-built somewhere, and the operator's machine already runs `refresh_corpus.py` —
-so it wants scoping, not a patch.
+Supabase's own usage graph, billing period 28 Aug – 28 Sep 2026:
 
-**Tracking a ceiling is not clearing it.** 5.S.9 built the instrument
-(`workerMemory`); the instrument is what makes the breach visible, and the
-breach is still a breach.
+```
+  Included in Pro Plan   250 GB
+  Used in period         623.32 GB
+  Overage in period      373.32 GB
+  2026-09-11             19.483 GB/day   -- Shared Pooler Egress, 100.0%
+```
+
+At ~19.5 GB/day the run-rate is **~585 GB/month, 2.3× the allowance**. Landing
+under 250 GB needs **≤8.3 GB/day** — about a 2.4× cut.
+
+**It is 100% Shared Pooler, 0% Storage.** The Parquet corpus is NOT contributing
+to this bill; moving 13.9M rows out of Postgres was correct and the corpus reads
+are not leaking back in. Every one of those 623 GB is database rows crossing the
+pooler, so the remedy is in the serving queries, not in storage layout.
+
+### How the measurement got here, because it was wrong three times
+
+`measure_egress_rate.py` reported a clean `0.00 GB/day` from **three independent
+defects**, any one of which alone produced that same plausible zero: query text
+truncated to 110 chars (the `FROM` clause sits at char 311); `_table_widths`
+called on a connection already released to the pool; and a literal **0x08
+backspace byte** where `\b` belonged, written in by a heredoc that ate the
+backslash — a regex that could never match anything.
+
+Then the rows→bytes model was wrong twice more. A single mean width is invalid
+for `snapshot_cache`, which stores 80-byte `provider-throttle:*` keys beside a
+12.4 MB `mlb:full-raw` blob; charging the mean over-counted the throttle reads
+**644×** and invented 153 MB out of 238 KB. Excluding such tables then
+over-corrected the other way — the full band contained the true 19.483 GB/day,
+the excluding version sat below it.
+
+**The lesson to carry: a zero, or any clean number, from a broken parser looks
+exactly like a real measurement.** Three separate bugs each produced the same
+tidy answer, and the only thing that caught it was refusing to accept a figure
+that flattered. The tool now reports a band and calibrates against a known
+actual via `--actual-gb-day`.
+
+### Next actions on egress
+
+1. A **3-hour** measurement window is the minimum honest one — five jobs in
+   `JOB_REGISTRY` are on 86,400s (daily) schedules and the shortest is 150s, so
+   a 10-minute window extrapolated ×144 badly over-weights whatever periodic
+   job happened to land in it. The tool now flags any query with fewer than
+   `MIN_CALLS_TO_TRUST` calls as extrapolation-unsafe.
+2. Rank contributors by **bytes**, not rows, and cut the largest serving reads.
+   Early signal (unconfirmed, from a 600s window): `SELECT DISTINCT ON (game_id,
+   subject_id, market_key, line, bookmaker, side) …` at ~13,500 rows/call.
+3. Re-check the Supabase graph after any change — it is the only authority on
+   bytes, and there is no management token in `.env.local`, so it needs the
+   operator.
 
 ### Everything else Phase 5 did land
 
