@@ -29,7 +29,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { readLineHistory } from '@/lib/odds/props/lineHistory';
+import { readLineHistory, retainedHours } from '@/lib/odds/props/lineHistory';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,7 +81,23 @@ export async function GET(request: Request) {
   }
 
   try {
-    return NextResponse.json(await readLineHistory({ gameId, subjectId, marketKey, side, hours, line }));
+    // CLAMP TO WHAT POSTGRES STILL HOLDS, and SAY SO rather than quietly
+    // returning a shorter series. Since 5.S.8 the older ticks live in the
+    // Parquet corpus, which this runtime cannot read — so an unclamped 30-day
+    // request would render as though the market simply had not been quoted
+    // before the retention boundary. That is the same confusion 5.S.5's
+    // `retainedFloor` exists to prevent on the pitch profile.
+    const retained = await retainedHours();
+    const effectiveHours = retained == null ? hours : Math.min(hours, retained);
+    const body = await readLineHistory({
+      gameId, subjectId, marketKey, side, hours: effectiveHours, line,
+    });
+    return NextResponse.json(
+      effectiveHours < hours
+        ? { ...body, requestedHours: hours, servedHours: effectiveHours,
+            truncated: `history older than ${effectiveHours}h is in the Parquet corpus, not Postgres` }
+        : body,
+    );
   } catch (err) {
     // Task 3.10's rule — the detail goes to the server log, never to the client.
     console.error('[props/line-history] failed', err);

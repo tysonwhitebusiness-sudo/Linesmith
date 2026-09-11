@@ -58,6 +58,14 @@ FROZEN_PREDICATE = (
 # Tables with no `event_start` at all are frozen on their game date alone.
 GAME_DATE_ONLY_PREDICATE = "game_date < current_date - 1"
 
+# `prop_odds_history` has NEITHER `event_start` NOR `game_date` -- only
+# `observed_at`. It also does not need them: it is a pure append-only log
+# (`db.py`'s writer is a bare INSERT with no ON CONFLICT, and the only DELETE in
+# either tree is a test's cleanup), so a row is immutable the MOMENT it is
+# written. The two-hour buffer is not a freeze rule, it is a guard against
+# exporting a row while its own transaction is still in flight.
+OBSERVED_AT_PREDICATE = "observed_at < now() - interval '2 hours'"
+
 
 @dataclass(frozen=True)
 class CorpusTable:
@@ -104,6 +112,28 @@ CORPUS: dict[str, CorpusTable] = {
     # definition, so nothing is lost by not partitioning on sport.
     "mlb_pitch_events": CorpusTable(
         "mlb_pitch_events", "game_date", GAME_DATE_ONLY_PREDICATE,
+        partition_by="id_chunk"),
+    # Phase 5.S.8. The tick-by-tick price MOVEMENT log -- the only large table
+    # that had never been exported, and the fastest-growing object in the
+    # database at ~123 MB/day and accelerating (25k -> 194k -> 422k -> 465k
+    # rows/day across its own age bands as book coverage went 12 -> 26).
+    #
+    # WHY IT IS CORPUS DATA AND NOT SOMETHING TO ROLL UP AND DISCARD.
+    # `prop_odds_archive` already banks both ENDS of every series -- `open_*`
+    # and the close frozen at kickoff -- and that is what the fits read today
+    # (audit 5.0f: "model/serving modules referencing it: none"). What only
+    # THIS table holds is the PATH between those two ends: intraday movement,
+    # steam, the shape of the drift. `client.ts` records that no backfill
+    # exists anywhere for it, forward accumulation only. Discarding the path to
+    # save space would destroy the one input a future line-movement model would
+    # need, permanently, to solve a problem object storage solves for ~12 MB/day.
+    #
+    # No `sport` and no `game_date`, so it keyset-chunks on its primary key like
+    # `mlb_pitch_events`. That PK index therefore MUST NOT be dropped, however
+    # unused `idx_scan` makes it look: it is what keeps this export from
+    # sequentially scanning a 632 MB heap once per chunk.
+    "prop_odds_history": CorpusTable(
+        "prop_odds_history", "observed_at", OBSERVED_AT_PREDICATE,
         partition_by="id_chunk"),
 }
 

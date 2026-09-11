@@ -114,6 +114,38 @@ const MAX_BUCKETS = 160;
  * and hand the browser a chart nobody can read. The ladder tops out, and the
  * count is clamped after, so the point budget holds for any window.
  */
+/**
+ * How far back `prop_odds_history` still reaches in Postgres, in hours.
+ *
+ * PHASE 5.S.8 TRIMS THAT TABLE TO A HOT WINDOW, with every older tick in the
+ * Parquet corpus — and TypeScript has no way to read the corpus. So a window
+ * wider than what Postgres retains cannot be served at all, and the failure is
+ * silent by default: the chart simply renders a shorter series, which is
+ * indistinguishable from a market that genuinely was not quoted earlier.
+ *
+ * The floor is DATA, published by the pruner under
+ * `corpus:retained-floor:prop_odds_history`, for the same reason 5.S.5's pitch
+ * profile reads its floor rather than hardcoding one: the window moves every
+ * time the retention setting changes, and a constant in a second language
+ * cannot track it.
+ *
+ * `null` means nothing has been pruned, so every window the route permits is
+ * real — the correct reading for a database that has not run 5.S.8 yet.
+ */
+export async function retainedHours(): Promise<number | null> {
+  const rows = await pgAll<{ payload: unknown }>(
+    `SELECT payload FROM snapshot_cache WHERE cache_key = ?`,
+    ['corpus:retained-floor:prop_odds_history'],
+  );
+  if (!rows.length) return null;
+  const raw = rows[0].payload;
+  const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  const floor = (parsed as { floor?: string } | null)?.floor;
+  if (!floor) return null;
+  const hours = (Date.now() - new Date(floor).getTime()) / 3_600_000;
+  return Number.isFinite(hours) && hours > 0 ? Math.floor(hours) : null;
+}
+
 export function bucketSecondsFor(hours: number): number {
   const windowSeconds = hours * 3600;
   for (const b of BUCKET_LADDER_SECONDS) {

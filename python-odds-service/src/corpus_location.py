@@ -209,6 +209,24 @@ class CorpusNotConfigured(RuntimeError):
     """
 
 
+def staging_root() -> str:
+    """Where the exporter WRITES before uploading.
+
+    THE STAGING PATH AND THE DESTINATION ARE DIFFERENT THINGS, and conflating
+    them broke three tools in a row. Each took `getattr(backend, "root", None)`
+    and gave up when the corpus was an s3:// location -- `upload_corpus` and
+    `prune_corpus` refused outright, and `export_corpus` printed "set CORPUS_URI
+    to a directory", which is advice to UNDO the configuration that made the
+    corpus durable in the first place.
+
+    A remote corpus still needs somewhere local to build a Parquet file before
+    it can be uploaded. That somewhere has never been a function of the
+    destination. `CORPUS_LOCAL_DIR` overrides it; otherwise it is the module
+    default, which is gitignored.
+    """
+    return os.environ.get("CORPUS_LOCAL_DIR") or DEFAULT_LOCAL_DIR
+
+
 def corpus_location(uri: str | None = None) -> CorpusBackend:
     uri = (uri if uri is not None else CORPUS_URI).strip()
     if not uri:

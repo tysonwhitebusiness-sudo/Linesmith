@@ -37,6 +37,7 @@ FOUR RULES, EACH ONE LOAD-BEARING.
 """
 import argparse
 import asyncio
+import json
 import os
 import sys
 
@@ -165,7 +166,18 @@ async def verify_partition_live(conn, table: str, part: tuple, path: str,
 # a handful is not a health check, it is a coin toss that reports a number.
 # 30 days of odds_archive is 20,258 rows -- the margin costs nothing and is
 # wider than the only consumer that needs it.
-KEEP_RECENT_DAYS = {"odds_archive": 30}
+KEEP_RECENT_DAYS = {
+    "odds_archive": 30,
+    # Phase 5.S.8. This is the SERVING window, not a safety margin: the price
+    # chart, per-key grading and `userClv.closingPropPrice` all read this table
+    # from TypeScript, where there is no DuckDB and so no corpus read. Whatever
+    # is not here cannot be served at all.
+    #
+    # 14 days costs ~1,725 MB steady state at the current 465k rows/day and
+    # covers the chart natively to 13.3 days (its 2-hour bucket tier). 7 would
+    # halve it and cap the chart at 6.7 days.
+    "prop_odds_history": 14,
+}
 
 
 async def _recent_ids(conn, table: str, days: int) -> set[int]:
@@ -176,6 +188,11 @@ async def _recent_ids(conn, table: str, days: int) -> set[int]:
         preds.append(f"captured_at > now() - interval '{days} days'")
     if "game_date" in cols:
         preds.append(f"game_date > current_date - {days}")
+    if "observed_at" in cols:
+        # `prop_odds_history` has NEITHER of the above -- only `observed_at`.
+        # Without this it would match no predicate, `_recent_ids` would return
+        # an empty set, and the margin would silently protect nothing.
+        preds.append(f"observed_at > now() - interval '{days} days'")
     if not preds:
         return set()
     rows = await conn.fetch(
@@ -247,6 +264,25 @@ async def prune_table(conn, table: str, backend, apply: bool,
                 res = await conn.execute(
                     f"DELETE FROM {table} WHERE id = ANY($1::bigint[])", batch)
                 deleted += int(res.split()[-1]) if res.split()[-1].isdigit() else 0
+
+    if keep_days and apply:
+        # PUBLISH THE FLOOR, as 5.S.5 does for mlb_pitch_events. A window that
+        # has been pruned and a series that genuinely has no ticks look
+        # identical to every reader, and the reader is the one that has to tell
+        # a user which it is looking at.
+        floor = await conn.fetchval(
+            f"SELECT min(COALESCE("
+            f"  {'observed_at' if 'observed_at' in await cs.column_names(conn, table) else 'captured_at'}"
+            f", now())) FROM {table}")
+        await conn.execute(
+            """INSERT INTO snapshot_cache (cache_key, payload, fetched_at)
+               VALUES ($1, $2, now())
+               ON CONFLICT (cache_key) DO UPDATE
+                 SET payload = excluded.payload, fetched_at = excluded.fetched_at""",
+            f"corpus:retained-floor:{table}",
+            json.dumps({"table": table, "keep_days": keep_days,
+                        "floor": floor.isoformat() if floor else None}))
+        print(f"   retained floor published: {floor}")
 
     print()
     if bad:

@@ -25,7 +25,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
 import corpus_store as cs                                     # noqa: E402
-from corpus_location import LocalCorpus, corpus_location, DEFAULT_LOCAL_DIR  # noqa: E402
+from corpus_location import LocalCorpus, corpus_location, staging_root  # noqa: E402
 
 
 def _md5(path: str) -> str:
@@ -37,9 +37,9 @@ def _md5(path: str) -> str:
 
 
 def local_root() -> str:
-    """Where the exporter wrote. `CORPUS_URI` now names the REMOTE corpus, so
-    the staging directory is the module default unless overridden."""
-    return os.environ.get("CORPUS_LOCAL_DIR") or DEFAULT_LOCAL_DIR
+    """Where the exporter wrote — shared with `export_corpus`, so the two
+    cannot disagree about the staging path."""
+    return staging_root()
 
 
 def main(tables: list[str], root: str) -> int:

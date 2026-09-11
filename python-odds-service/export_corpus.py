@@ -25,7 +25,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
 import corpus_store as cs          # noqa: E402
-from corpus_location import corpus_location  # noqa: E402
+from corpus_location import corpus_location, staging_root  # noqa: E402
 
 _peak = [0.0]
 _stop = [False]
@@ -44,12 +44,13 @@ async def main(tables: list[str]) -> int:
     import db as _db
 
     backend = corpus_location()
-    root = getattr(backend, "root", None)
-    if root is None:
-        print("Export writes locally first, then uploads. Set CORPUS_URI to a "
-              "directory for the staging path, or leave it unset.")
-        return 2
-    print(f"destination: {backend.describe}\n")
+    # Staging is local even when the corpus is REMOTE — see
+    # `corpus_location.staging_root`. This used to refuse outright whenever
+    # CORPUS_URI named an s3:// bucket, i.e. exactly once the corpus became
+    # durable, and its advice was to undo that configuration.
+    root = getattr(backend, "root", None) or staging_root()
+    print(f"destination: {backend.describe}")
+    print(f"staging    : {root}\n")
 
     threading.Thread(target=_sample, daemon=True).start()
     pool = await _db.get_pool()
