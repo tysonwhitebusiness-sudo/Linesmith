@@ -1661,12 +1661,48 @@ which is the only practical way to run a multi-minute fit both ways and diff it.
 Copy 5.S.5's **published retained floor** so a pruned window and a genuinely
 empty result stay distinguishable.
 
-**5.S.7 — Port `odds_archive` readers, then prune it.** 1,203 MB, and the
-largest single remaining win. Read by `nhl_props.py`, `archival_bridge.py`,
-`health_check.py` and `gameModelBackfill.ts`. Note `archival_bridge` WRITES it
-continuously, so only frozen rows may be pruned — `FROZEN_PREDICATE` already
-encodes that boundary.
-**Gate:** `fit_nfl_elo` reproduces its published numbers from Parquet.
+**5.S.7 — `odds_archive`. DONE 2026-09-11.** 1,962,750 rows deleted, every one
+verified present in the corpus first. **1,171 MB → 8 MB.** Database **41.3%**.
+
+**THE BLOCKER WAS NOT A FITTER — IT WAS A LIVE PATH NOBODY HAD COUNTED.**
+`archival_bridge._team_ids` resolved an incoming team name by scanning this
+table: 1,982,889 rows to yield 874 pairs, 859 after normalisation. 99.8% of
+those rows are frozen, so pruning on freeze state alone would have collapsed the
+index to a handful and routed every unresolved capture into `odds_unresolved` —
+silently. Fixed by storing the pairs (`team_name_index`, migration
+`20260910180000`) and refreshing them hourly from the LIVE tail only, never the
+corpus. **Gate: the resolved dict is identical key-for-key for all 7 sports,
+before and after the prune, with the table emptied.**
+
+**A second live reader set the retention shape.**
+`health_check.check_capture_latency` medians over `captured_at > now() - 7 days`,
+and nearly every row in that window is already frozen. `prune_corpus` therefore
+grew a per-table recency margin (`KEEP_RECENT_DAYS`); `odds_archive` keeps 30
+days — 20,258 rows, free, and **strictly containing** the only window that reads
+it. Verified after: oldest surviving `live_capture` row 2026-09-03, 12,529 rows
+in the 7-day window, so the prune provably could not have touched that check.
+
+**Offline readers ported, each running its OWN SQL in DuckDB over
+(corpus ∪ postgres)** rather than being reimplemented: `fit_nfl_elo.pull`
+(**gate: byte-identical, 7,562 games, before AND after the prune**),
+`build_tennis_crosswalk`, `build_athlete_crosswalk`.
+
+**THE GATE FOUND A BUG THAT PREDATES ALL OF THIS.** `fit_nfl_elo` ordered by
+`(game_date, event_ref)` — not unique: **232 groups in its own population share
+both.** Elo is path-dependent, so those 464 rows updated the ratings in whatever
+order the engine returned. **The fit was never reproducible run to run and
+nobody could have seen it.** It surfaced only because Postgres and DuckDB
+tie-broke them differently — the row SETS were identical and only the order was
+not. Now ordered totally; both engines agree byte for byte.
+
+**And the audit caught a flaw in its own fix.** Adding these tables to
+`PRUNED_TO_HOT_WINDOW` made 5.0e read the span from the corpus alone, which
+holds only FROZEN rows — so `odds_archive` reported SHRANK at 27.0y while
+Postgres still held scheduled `game_date`s out to 2026-12-25. The span is now
+the **union** of both halves. *Third time in this phase that reading one half of
+a split table produced a confident wrong answer.*
+
+All 8 audit checks pass; tsc clean; TS 359/359; JOB_REGISTRY contract 40/40.
 
 **5.S.8 — `prop_odds_history`.** 1,239 MB, the largest remaining object.
 **ITS GATE WAS MEASURED 2026-09-11 AND BOTH OF ITS PREMISES WERE WRONG.**

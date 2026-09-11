@@ -253,7 +253,8 @@ async def check_union_dedupe(conn) -> bool:
 # where nothing had been lost: all 2,807,445 rows and the full 16.1 years sat in
 # Supabase Storage, readable. An audit that cries data loss over a planned prune
 # is an audit people learn to skip, which is the one failure it cannot afford.
-PRUNED_TO_HOT_WINDOW = {"player_game_history", "mlb_pitch_events"}
+PRUNED_TO_HOT_WINDOW = {"player_game_history", "mlb_pitch_events",
+                        "prop_odds_archive", "odds_archive"}
 
 
 def _corpus_span(table: str, col: str):
@@ -289,7 +290,15 @@ async def check_corpus_intact(conn) -> bool:
     ok = True
     for tab, (col, min_years) in sorted(CORPUS.items()):
         if tab in PRUNED_TO_HOT_WINDOW:
-            where = "corpus"
+            # THE SPAN IS THE UNION, NOT THE CORPUS ALONE. The corpus holds only
+            # FROZEN rows, so it ends at the last finished game; Postgres holds
+            # the unfrozen tail, which includes FUTURE scheduled dates. Checking
+            # the corpus by itself understates the top of the range and reported
+            # `odds_archive` as SHRANK at 27.0y the moment it was pruned —
+            # against a corpus that had lost nothing, while Postgres still held
+            # game_dates out to 2026-12-25. Third time today that reading one
+            # half of a split table produced a confident wrong answer.
+            where = "corpus+pg"
             span = _corpus_span(tab, col)
             if span is None:
                 print(f"  {tab:<24} CORPUS UNREADABLE — and Postgres no longer "
@@ -297,6 +306,11 @@ async def check_corpus_intact(conn) -> bool:
                 ok = False
                 continue
             lo, hi = span
+            live = await conn.fetchrow(
+                f"SELECT min({col}) a, max({col}) b FROM {tab}")
+            if live and live["a"]:
+                lo = min(lo, live["a"])
+                hi = max(hi, live["b"])
         else:
             where = "postgres"
             r = await conn.fetchrow(f"SELECT min({col}) a, max({col}) b FROM {tab}")
