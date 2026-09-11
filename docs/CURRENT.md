@@ -52,6 +52,27 @@ required rather than optional.
 **THE SUPABASE GRAPH IS THE ONLY AUTHORITY.** No management token exists in
 `.env.local`, so the operator must check it 24–48h after 2026-09-11.
 
+
+### MEASUREMENT TRAP — this has now caused two false conclusions
+
+**A short window extrapolated to a day is wrong for BURSTY jobs, and a
+minimum-call threshold does not catch it.**
+
+2026-09-11, twice:
+- A 600s window saw a `player_game_history` stats query 10 times and reported
+  **99M rows/day**. Its lifetime figure is **206 calls total, 105/day — ~7.4M
+  rows/day**. The window had landed inside a burst. It cleared the
+  `MIN_CALLS_TO_TRUST = 5` guard precisely because a burst produces *many*
+  calls in a short span, which is the same signature as a high steady rate.
+- Earlier the same day, single-call samples were extrapolated x144 and produced
+  a ranking that sent an hour of work at the wrong target.
+
+**The rule: for any query, cross-check the window rate against the LIFETIME
+rate (`rows / stats_since`). If they disagree by more than ~3x, the window
+caught a burst and the window figure must be discarded, not averaged.** Neither
+number alone is trustworthy — cumulative cannot tell live from dead, and a
+window cannot tell bursty from steady.
+
 ### Next actions
 
 1. **Operator: read the Supabase egress graph for 12–13 Sep.** That is the verdict.
