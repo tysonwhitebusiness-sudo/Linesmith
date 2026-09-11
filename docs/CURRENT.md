@@ -9,76 +9,74 @@ ordering conversationally — that is exactly what §5.S exists to stop.
 
 ---
 
-## READ THIS FIRST: state at 2026-09-11 01:50Z
+## READ THIS FIRST: PHASE 5 IS COMPLETE — 2026-09-11
 
 ```
-database   7,282 MB  ->  3,382 MB     88.9% -> 41.3%
+database   7,282 MB  ->  3,143 MB     88.9% -> 38.4%
 ```
 
-**§5.S.1 through §5.S.7 are DONE.** All 8 `audit_storage.py` checks pass, tsc is
-clean, TS is 359/359, JOB_REGISTRY contract 40/40. Worker is on `4eed32d`.
+**§5.S.1 through §5.S.9 are all DONE.** All 8 `audit_storage.py` checks pass,
+`health_check.py` exits 0, tsc is clean, TS 359/359, registry contract 40/40.
 
 | table | before | after |
 |---|---|---|
 | `odds_archive` | 1,171 MB | **8 MB** |
 | `prop_odds_archive` | 871 MB | **7 MB** |
 | `player_game_history` | 1,839 MB | **460 MB** |
+| `prop_odds_history` | 1,279 MB | **1,037 MB** (capped ~1,727) |
 | `mlb_pitch_events` | 477 MB | **289 MB** |
 | `odds_import_staging` | 262 MB | **2 MB** |
 | 7 dead tables, 2 redundant indexes | 364 MB | **gone** |
 
-### What remains
+**Nothing was deleted that is not in the corpus.** Every prune verified each row
+present in Parquet first, by id and content fingerprint.
 
-**5.S.8 — `prop_odds_history` (1,239 MB). NEEDS RESCOPING, NOT EXECUTING.**
-Its gate was measured and **both premises were wrong** — see the plan. Short
-version: retention already works (2,534 rows survive 30 days); the mass is
-~122.7 MB/day flowing into a 14-day window that every consumer reads. Rolling up
-"old" rows reclaims almost nothing. And any roll-up must preserve *the last tick
-before each game's start*, not the calendar-day close, or CLV goes quietly wrong
-rather than missing. `bets` holds **2 rows**, so urgency is low — good time to
-pick the shape deliberately.
+---
 
-**5.S.9 — guardrails, part done.** `check_orphan_job_breadcrumbs` is in and
-found **ten** tombstones. Still missing: the plan's own gate (*a deliberately
-failed job produces an alert the operator actually receives*), an alarm on
-**MB/day rather than percent-full**, and worker RAM tracked as a ceiling. The
-alert *channel* already exists — health_check is a Render cron every 15 min,
-exits 1, and Render's cron-failure notification pages the operator.
+## THE ONE THING THAT MUST HAPPEN ON THE OPERATOR'S MACHINE
 
-**`captureLatency` reports FAIL and it is not damage.** NFL median 3,795 min
-(n=1,680) against a 60-minute threshold — a weekly sport captured days ahead,
-measured by a rule calibrated for daily ones. Pre-existing; the prune provably
-could not have touched it (the 30-day retention margin strictly contains the
-check's 7-day window, and the oldest surviving row is 2026-09-03).
+**`scripts/corpus-refresh-setup.ps1` HAS NOT BEEN RUN.** Until it is, nothing
+exports the corpus on a schedule.
 
-**`docs/table-ownership.md` is stale** — 51 live tables against the 36 it
-documents, `odds_archive` and `game_result` missing entirely. Flagged in a box
-at the top of that file; a re-derivation is queued as its own task.
+```powershell
+.\scripts\corpus-refresh-setup.ps1
+```
 
-### The lesson that recurred three times today
+Why it matters: Postgres now keeps a **14-day** window of `prop_odds_history`
+and the corpus is the only copy of anything older. A stalled export does **not**
+lose data — `prune_corpus` refuses to delete a row it cannot see in the corpus
+— it stops reclaiming space while the table grows ~123 MB/day.
+`health_check.corpusFreshness` alarms at 250,000 unexported rows (about half a
+day). It cannot be a `JOB_REGISTRY` entry: the export peaks at ~280 MB RSS
+against a 512 MB plan shared with 37 jobs.
 
-**Reading ONE HALF of a split table gives a confident wrong answer.** It cost:
-a fit that would have trained on a truncated population, a team index that would
-have silently stopped resolving, and the audit's own span check reporting
-`odds_archive` as SHRANK while the data was intact. Every reader of a corpus
-table goes through a union — `corpus_reads.load_prop_archive` or
-`corpus_reads.union_view`, which registers the table in DuckDB so the ORIGINAL
-SQL can run unchanged rather than being reimplemented in Python.
+---
 
-**And its sibling:** the 2026-09-04 restart discarded the cumulative statistics
-while `pg_stat_database.stats_reset` stayed NULL. It poisoned 5.S.3's index
-gate, `vacuum_reclaim`'s bloat estimate, and `audit_storage`'s own 5.0g check.
-Anything from `pg_stat_*` covers days, not the database's life.
+## Two real problems that are TRACKED, not fixed
 
-### Egress
+Both are acknowledged in `health_check.ACKNOWLEDGED_CHECKS` so the alert channel
+stays usable. Each names the task that clears it; delete the entry when fixed.
 
-Measured **idle** on 2026-09-11: **10,747,983 rows/day**, against a cumulative
-figure of 140,531,438 — because the cumulative window contains five days of
-pre-5.1 behaviour, including the old serving query at 511,257 rows/call.
-**5.1 is holding.** Tool: `measure_egress_rate.py` (snapshots, waits,
-subtracts). Note that a real share of 2026-09-10's ~15 GB was this session's own
-corpus verification reads from Supabase Storage; that day is an outlier, not a
-baseline. Re-measure over a longer idle window before drawing conclusions.
+1. **NFL "closing" lines are not closes.** `live_capture` rows stop updating a
+   median **61 hours** before kickoff, while mlb and cfb reach 2 minutes.
+   `fit_nfl_elo` benchmarks against exactly those moneylines. *I twice called
+   this a threshold artifact; it is not.*
+2. **`cfb/sportsgameodds` is declared and produces nothing** while CFB is live.
+
+## What Phase 5 actually taught, in two lines
+
+**Reading ONE HALF of a split table gives a confident wrong answer** — it cost a
+fit trained on a truncated population, a team index that would have silently
+stopped resolving, and the audit's own span check crying data loss over intact
+data. Every reader now unions, via `corpus_reads.load_prop_archive` or
+`union_view`, which runs the ORIGINAL SQL rather than a reimplementation.
+
+**A measurement that flatters the thing you just built is wrong.** The
+2026-09-04 restart discarded `pg_stat_*` while `stats_reset` stayed NULL and
+poisoned three separate measurements. The index gate could not fail. The bloat
+estimate read `game_result` as 199 rows. `databaseGrowth` extrapolated a 2 MB
+wobble to 700 MB/day. A corpus comparison "failed" on timezone formatting. Each
+was caught by the output looking wrong, never by a test.
 
 ---
 
