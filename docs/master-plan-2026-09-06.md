@@ -1755,11 +1755,41 @@ path is essentially unexercised today. Nothing here is load-bearing yet, which
 makes it a good time to choose the roll-up shape deliberately rather than under
 pressure.
 
-**5.S.9 — 5.5's guardrails.** A job that dies abnormally leaves a breadcrumb; an
-unhealthy check reaches the operator; worker RAM is tracked as a ceiling beside
-database size; the alarm is on MB/day, not percent-full.
-**Gate:** a deliberately failed job produces an alert the operator actually
-receives.
+**5.S.9 — Guardrails. DONE 2026-09-11.**
+
+**THE GATE'S ANSWER WAS NO, AND NOT FOR WANT OF CHECKS.** `health_check` exits 1
+on any unhealthy check and Render's cron-failure notification pages — so two
+structural reds (`captureLatency`, `declaredPairsProduce`) had been firing
+**every 15 minutes, ~96 pages a day, indefinitely**. The channel worked
+perfectly and carried no information. A new failure was indistinguishable from
+the noise, which makes "the operator receives an alert" false in the only sense
+that matters. Both acknowledged with the task that clears them; the run exits 0.
+
+**`captureLatency` is REAL and was mis-called a threshold artifact** (by me,
+twice). NFL `live_capture` rows stop updating a median **3,692 min (61h)**
+before kickoff while mlb and cfb both reach 2 min — so NFL "closing" lines in
+`odds_archive` are ~2.5-day-early prices, and `fit_nfl_elo` benchmarks against
+exactly those moneylines. Tracked separately, not dismissed.
+
+**Gate verified by breaking something:** a synthetic `ok=false` on
+`mlbProjectionsJob`'s breadcrumb reads `healthy=False`, is unacknowledged,
+drives the exit code and pages. Breadcrumb restored.
+
+| check | what it catches |
+|---|---|
+| `corpusFreshness` | the export stalling — 5.S.8 made it load-bearing, and it fails SILENTLY (prune stops reclaiming, table grows ~123 MB/day, everything still green) |
+| `databaseGrowth` | **MB/day, not percent-full.** A level reads the same at 40% climbing 123 MB/day as at 40% flat. Reports days of headroom, fails under a month |
+| `workerMemory` | the other ceiling. 512 MB has already OOM-killed a job this phase and **nothing recorded RSS** — the only way to learn was to watch it die |
+| `orphanJobBreadcrumbs` | a job dropped from `JOB_REGISTRY` and silently unmonitored. Found **ten** tombstones |
+
+**`databaseGrowth`'s own first version was wrong in this phase's signature way:**
+it computed a slope from two samples four minutes apart, extrapolated a 2 MB
+wobble to ~700 MB/day, and failed on a database freshly pruned to 38%. It now
+requires a full day of history before it will state a rate.
+
+**`scripts/corpus-refresh-setup.ps1`** schedules `refresh_corpus.py` six-hourly
+on the operator's machine — NOT a `JOB_REGISTRY` entry, because the export peaks
+at ~280 MB RSS against a 512 MB plan shared with 37 jobs.
 
 ### WHERE THE SPACE IS, SO THE NUMBERS STOP MOVING
 
