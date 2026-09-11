@@ -236,3 +236,48 @@ asserting a row count that the prune invalidated, and an egress measurement
 contaminated by the measurer. **The tell is a result that is too clean, or one
 that fails in a way that flatters the thing you just built.** Check the
 measurement before believing the model — in both directions.
+
+---
+
+## PARKED until egress is fixed — cfb / provider coverage (2026-09-11)
+
+Deliberately deferred at the operator's request. All findings below are
+measured, not guessed; pick them up after the egress ceiling is under control.
+
+**cfb harvester — partly fixed, not finished.**
+- FIXED: discovery walked all 85 league fixtures and died at the 1800s cap.
+  Now filtered via schema.org JSON-LD from the league page (one plain HTTP GET)
+  to matches that are ours; commits `d5e41de`, `9c4f825`.
+- STILL OPEN: the fallback filter only takes 85 → **72** pages, because we track
+  166 cfb games and almost every NCAA fixture is ours. At the measured 12–21s
+  per page that is 850–1,512s against an 1,800s cap — it will complete on a good
+  day and time out on a slow one. **The real fix is to bound work per cycle and
+  rotate** (scrape the N most imminent games each run; the scheduled task fires
+  every ~20 min, so the slate still gets covered) rather than shrinking the
+  kickoff window, which buys cost by giving up lead time.
+- STILL OPEN: blocked/dashed moneylines are silently discarded. A real cfb page
+  returns `{"1": "-", "2": "41.00", "blocked_outcomes": ["1","2"]}` — books will
+  not price an FBS-vs-FCS mismatch two-way. `_parse_decimal_odds("-")` returns
+  None, which is indistinguishable from a parse failure. Count them explicitly.
+- NOT YET OBSERVED: a cfb run finishing end to end. Both attempts were killed by
+  a 900s timeout in the test harness, not by the code under test.
+
+**cfb game-line coverage is thin for a provider reason, not a harvester one.**
+`refreshCfbJob` is healthy and writes ~1,614 rows/run, but
+`game_odds_book_lines` holds only 25 cfb rows across 4 games. Its own warnings:
+```
+sharpapi says: limit=500 exceeded max=200; applied=200
+sharpapi HTTP 429 on page 12 - backing off
+sportsgameodds throttled -- last run 416244s ago, required 2592000s
+```
+- SharpAPI paginates at 200/page and gets **429'd on page 12** (free tier is
+  12 req/min). Leading explanation for the thin coverage — correlated, **not yet
+  proven causal**; nobody has traced which records were lost.
+- SportsGameOdds is on a 30-day cadence, so it contributes to no given slate.
+- ParlayAPI is enabled for cfb and has written zero cfb game lines. Unexplained.
+- Propline's absence is DELIBERATE and documented in `provider_matrix.py`:
+  1+N requests per cycle means a 178-game slate is ~179 requests against
+  SharpAPI's 1. Do not "fix" this without redoing that arithmetic.
+
+Consequence: only **7 of 166** cfb games have a reference total/spread, so the
+dynamic-lines discovery pass has almost nothing to aim at even when fast.
