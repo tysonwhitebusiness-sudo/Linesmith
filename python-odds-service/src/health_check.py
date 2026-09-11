@@ -31,6 +31,7 @@ detection logic that would sit behind it.
 """
 import asyncio
 import json
+import os
 import re
 import sys
 from datetime import datetime, timezone
@@ -43,6 +44,24 @@ from jobs import JOB_REGISTRY
 # offseason night without crying wolf — 72 is about 24h at that cadence.
 SKIP_STREAK_LIMIT = 72
 STALE_MULTIPLIER = 2.0
+
+# Phase 5.S.9. Half a day of `prop_odds_history` inflow (~465k rows/day). Below
+# this the corpus refresh is merely due; above it, the scheduled task has
+# stopped. Rows, not MB, because that is what the lag can actually be counted in.
+CORPUS_LAG_ROWS = 250_000
+
+# Days of headroom below which the growth alarm fires. A month is enough time to
+# port a reader or add a retention rule deliberately; Phase 5 began with far
+# less and had to do all of it at once.
+GROWTH_DAYS_WARN = 30
+# Minimum history before a slope means anything. A VACUUM FULL or one import can
+# move the size by hundreds of MB in a minute; only a day smooths that out.
+GROWTH_MIN_WINDOW_DAYS = 1.0
+DB_LIMIT_MB = 8192          # Supabase Pro
+WORKER_LIMIT_MB = 512       # Render plan
+# 80%: measure_projection_memory.py already treats 60% as the danger band for a
+# single job, and this is the whole process across a sequential queue.
+WORKER_RSS_WARN_PCT = 80.0
 
 
 async def feeding_job_stale(name: str, interval_seconds: float) -> str | None:
@@ -799,6 +818,28 @@ async def check_golf_predictions_freshness() -> dict:
 #   3. An acknowledged check that turns healthy should be deleted from here,
 #      not left "in case." The run output flags that for you.
 ACKNOWLEDGED_CHECKS: dict[str, str] = {
+    # Phase 5.S.9 — THE ALERT CHANNEL WAS TECHNICALLY LIVE AND PRACTICALLY DEAD.
+    # health_check exits 1 on any unhealthy check and Render's cron-failure
+    # notification pages the operator, so these two structural reds had been
+    # firing every 15 minutes — ~96 pages a day, indefinitely. A genuinely new
+    # failure would have been indistinguishable from that noise, which makes
+    # "the operator receives an alert" false in the only sense that matters.
+    # Acknowledged so the channel means something again; each names the task
+    # that clears it, and every run still prints them and will announce their
+    # recovery.
+    "captureLatency": (
+        "2026-09-11, task 5.S.9 — REAL, not a threshold artifact. NFL's "
+        "live_capture rows stop updating a median 3,692 min (61h) before "
+        "kickoff while mlb and cfb both reach 2 min, so NFL 'closing' lines in "
+        "odds_archive are mostly ~2.5-day-early prices. That matters to any "
+        "model benchmarking against them, fit_nfl_elo included. Cleared by the "
+        "NFL capture-cadence fix."
+    ),
+    "declaredPairsProduce": (
+        "2026-09-11, task 5.S.9 — cfb/sportsgameodds is declared in the "
+        "provider matrix and produced nothing while CFB was live. A real "
+        "provider gap, not a check bug. Cleared by reconciling that pair."
+    ),
     "snapshotCacheSize": (
         "2026-08-28, task 3.3 — threshold is deliberately below real state "
         "(largest payload 11.3MB vs a 10MB guard) and stays red until the MLB "
@@ -819,6 +860,170 @@ def _validate_acknowledged() -> None:
 
 
 _validate_acknowledged()
+
+
+async def check_worker_memory() -> dict:
+    """Phase 5.S.9 — the OTHER ceiling, which had no alarm at all.
+
+    Render's plan is 512 MB and it has already OOM-killed a job in this phase.
+    Until now nothing recorded RSS, so the only way to discover the worker was
+    near its limit was to watch it die — while `pg_database_size` gave the
+    database a number anyone could read at any time.
+
+    `_run_timed` now stamps `rss_mb` on every breadcrumb, so this reads the
+    high-water mark across the jobs that have actually run. Reported per job,
+    because "which job" is the actionable half: a single heavy job is a
+    different problem from a slow leak across all of them.
+    """
+    worst_name, worst_mb = None, 0.0
+    for name, _, _ in JOB_REGISTRY:
+        payload = await db.read_snapshot(f"python-harness:job-run:{name}")
+        if not payload:
+            continue
+        try:
+            mb = json.loads(payload).get("rss_mb")
+        except (ValueError, AttributeError):
+            continue
+        if isinstance(mb, (int, float)) and mb > worst_mb:
+            worst_name, worst_mb = name, float(mb)
+
+    if worst_name is None:
+        return {"name": "workerMemory", "healthy": True,
+                "status": "no job has recorded rss_mb yet (needs one run of the "
+                          "current build)"}
+    pct = worst_mb / WORKER_LIMIT_MB * 100
+    healthy = pct < WORKER_RSS_WARN_PCT
+    return {"name": "workerMemory", "healthy": healthy,
+            "status": (f"{'healthy' if healthy else 'NEAR THE PLAN LIMIT'} — peak "
+                       f"{worst_mb:,.0f} MB of {WORKER_LIMIT_MB} MB ({pct:.0f}%), "
+                       f"highest in {worst_name}")}
+
+
+async def check_database_growth() -> dict:
+    """Phase 5.S.9 — the alarm is on MB/DAY, not percent-full.
+
+    PERCENT-FULL TOLD US NOTHING USEFUL ALL THE WAY TO 88.9%. A level is a
+    lagging indicator: it is equally calm at 40% climbing 123 MB/day (five weeks
+    from the wall) and at 40% flat (never). What actually predicts the ceiling
+    is the RATE, and the rate is what moved this database from comfortable to
+    nearly-full without any single day looking alarming.
+
+    So this reports DAYS OF HEADROOM at the current growth rate and fails when
+    that falls under a month — long enough to do something deliberate about it,
+    which is exactly the margin Phase 5 did NOT have when it started.
+
+    The rate comes from `snapshot_cache`'s own history of this measurement
+    rather than from a table scan: each run records the size, and the slope
+    across runs is the growth. A single reading cannot produce a rate, so the
+    first run after a deploy reports "establishing baseline" and passes.
+    """
+    pool = await db.get_pool()
+    key = "health:db-size-history"
+    async with pool.acquire(timeout=30.0) as conn:
+        size_mb = await conn.fetchval(
+            "SELECT pg_database_size(current_database())") / 1e6
+        now = await conn.fetchval("SELECT now()")
+        raw = await db.read_snapshot(key)
+        hist = json.loads(raw) if raw else []
+        hist.append({"at": now.isoformat(), "mb": round(size_mb, 1)})
+        # Keep a week at this cron's 15-minute cadence. Enough to smooth a
+        # single VACUUM FULL or a one-off import out of the slope.
+        hist = hist[-672:]
+        await conn.execute(
+            """INSERT INTO snapshot_cache (cache_key, payload, fetched_at)
+               VALUES ($1, $2, now())
+               ON CONFLICT (cache_key) DO UPDATE
+                 SET payload = excluded.payload, fetched_at = excluded.fetched_at""",
+            key, json.dumps(hist))
+
+    pct = size_mb / DB_LIMIT_MB * 100
+    first = datetime.fromisoformat(hist[0]["at"])
+    days = (now - first).total_seconds() / 86400.0
+    # A RATE NEEDS A WINDOW, AND TWO SAMPLES MINUTES APART IS NOT ONE. The first
+    # version computed a slope as soon as it had two readings: on its second run,
+    # 4 minutes after its first, a 2 MB wobble extrapolated to ~700 MB/day and
+    # the check failed on a database that had just been pruned to 38%. An alarm
+    # whose first act is to cry wolf is an alarm nobody reads.
+    if days < GROWTH_MIN_WINDOW_DAYS:
+        return {"name": "databaseGrowth", "healthy": True,
+                "status": (f"{size_mb:,.0f} MB ({pct:.1f}%) — establishing baseline "
+                           f"({days * 24:.1f}h of {GROWTH_MIN_WINDOW_DAYS * 24:.0f}h)")}
+    mb_per_day = (size_mb - hist[0]["mb"]) / days
+    if mb_per_day <= 0:
+        return {"name": "databaseGrowth", "healthy": True,
+                "status": (f"{size_mb:,.0f} MB ({pct:.1f}%), "
+                           f"{mb_per_day:+,.1f} MB/day over {days:.1f}d — not growing")}
+    days_left = (DB_LIMIT_MB - size_mb) / mb_per_day
+    healthy = days_left >= GROWTH_DAYS_WARN
+    return {"name": "databaseGrowth", "healthy": healthy,
+            "status": (f"{'healthy' if healthy else 'CEILING APPROACHING'} — "
+                       f"{size_mb:,.0f} MB ({pct:.1f}%), +{mb_per_day:,.1f} MB/day "
+                       f"over {days:.1f}d, {days_left:,.0f} days of headroom")}
+
+
+async def check_corpus_freshness() -> dict:
+    """Phase 5.S.9 — is the corpus export still running?
+
+    THIS IS THE ALARM 5.S.8 CREATED THE NEED FOR. Before it, the corpus was a
+    convenience: `prop_odds_history` held everything and a stale export cost
+    nothing but freshness. Now Postgres keeps a 14-day hot window and the corpus
+    is the ONLY copy of anything older.
+
+    The failure mode is NOT data loss — `prune_corpus` refuses to delete a row
+    it cannot see in the corpus, so a stalled export fails safe. It is SILENCE:
+    the export stops, the prune quietly stops reclaiming, and the table resumes
+    growing at ~123 MB/day with every check still green. That is precisely the
+    shape this whole file exists to catch.
+
+    The measure is "rows Postgres has that the corpus does not", compared by id.
+    NOT "frozen rows" — `refresh_corpus` got that wrong first and reported
+    4,389,730 for `prop_odds_history`, every one already exported and
+    deliberately retained inside the hot window. Frozen means a row will never
+    change; it says nothing about whether anyone copied it.
+
+    Thresholds are inflow-relative, not absolute: ~465k rows/day for
+    `prop_odds_history` means half a day behind is a late task and two days
+    behind is a stopped one.
+    """
+    import asyncio as _asyncio
+
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import corpus_store as _cs
+
+    def _corpus_max(table):
+        try:
+            from corpus_location import corpus_location, read_parquet_glob
+
+            con, glob = read_parquet_glob(corpus_location(), table)
+            try:
+                r = con.execute("SELECT max(id) FROM read_parquet(?)", [glob]).fetchone()
+            finally:
+                con.close()
+            return int(r[0]) if r and r[0] is not None else None
+        except Exception:                                     # noqa: BLE001
+            return None
+
+    tables = [t for t, sp in _cs.CORPUS.items() if sp.partition_by == "id_chunk"]
+    pool = await db.get_pool()
+    worst, detail = 0, []
+    for table in tables:
+        spec = _cs.CORPUS[table]
+        cmax = await _asyncio.to_thread(_corpus_max, table)
+        if cmax is None:
+            return {"name": "corpusFreshness", "healthy": False,
+                    "status": f"CANNOT READ THE CORPUS for {table} — it is the only "
+                              f"copy of everything outside the hot window"}
+        async with pool.acquire(timeout=30.0) as conn:
+            behind = await conn.fetchval(
+                f"SELECT count(*) FROM {table} WHERE id > $1 AND {spec.frozen_where()}",
+                cmax)
+        worst = max(worst, behind)
+        detail.append(f"{table} {behind:,}")
+    healthy = worst < CORPUS_LAG_ROWS
+    return {"name": "corpusFreshness", "healthy": healthy,
+            "status": (f"{'healthy' if healthy else 'EXPORT HAS STALLED'} — rows in "
+                       f"Postgres and not the corpus: {', '.join(detail)} "
+                       f"(alarm at {CORPUS_LAG_ROWS:,})")}
 
 
 async def check_orphan_job_breadcrumbs() -> dict:
@@ -875,6 +1080,9 @@ async def main() -> int:
         await check_snapshot_cache_size(),
         await check_declared_pairs_produce(),
         await check_orphan_job_breadcrumbs(),
+        await check_corpus_freshness(),
+        await check_database_growth(),
+        await check_worker_memory(),
     ]
 
     print(f"[health_check] {datetime.now(timezone.utc).isoformat()}", flush=True)

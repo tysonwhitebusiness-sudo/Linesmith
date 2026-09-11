@@ -88,6 +88,23 @@ async def _run_timed(job_name: str, coro) -> dict:
         summary["traceback"] = "".join(traceback.format_exc().splitlines(keepends=True)[-12:])
     summary["elapsed_seconds"] = round(time.monotonic() - t0, 2)
 
+    # Phase 5.S.9 — WORKER RAM IS A CEILING TOO, AND IT HAD NO ALARM.
+    # The 512 MB Render plan is as hard a limit as the 8,192 MB database, and it
+    # has already OOM-killed a job in this phase — but nothing recorded it, so
+    # the only way to learn the worker was near its limit was to watch it die.
+    # Database size had `pg_database_size`; RAM had a one-off script.
+    #
+    # RSS is the whole PROCESS, not this job: the queue is sequential, so the
+    # reading is "the worker's high-water mark as of this job", which is exactly
+    # what a ceiling alarm wants. It is best-effort — psutil is a measurement
+    # dependency and a monitoring read must never be able to fail a real job.
+    try:
+        import psutil
+
+        summary["rss_mb"] = round(psutil.Process().memory_info().rss / 1e6, 1)
+    except Exception:                                        # noqa: BLE001
+        pass
+
     # CARRY A SKIP STREAK FORWARD. gameday.skip_summary sets fetched=False for a
     # cycle that ran but deliberately called no provider. One of those is the
     # tier gate working; a long unbroken run of them means either nothing is
