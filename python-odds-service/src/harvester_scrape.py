@@ -733,11 +733,33 @@ def _league_urls(target: "ScrapeTarget") -> list[str]:
     return urls
 
 
+@dataclass
+class _LinkSets:
+    """Two different answers to "which pages are worth opening", because the
+    two consumers have genuinely different needs:
+
+      ours            -- every upcoming match we track. The FALLBACK wants
+                         these: it only collects the plain moneyline, which
+                         needs no reference price at all.
+      with_reference  -- the subset that ALSO has a real total/spread from
+                         another provider. Only DISCOVERY needs these, because
+                         its whole job is to pick the discovered line closest
+                         to a real reference.
+
+    Filtering discovery but not the fallback is how cfb stayed broken after the
+    first fix: discovery dropped to 2 pages while the fallback quietly went on
+    scraping all 85 fixtures in NCAA, ~12-21s each, straight back into the
+    1800s cap it was supposed to escape.
+    """
+    ours: list[str]
+    with_reference: list[str]
+
+
 def _reference_backed_links(
     target: "ScrapeTarget", games: list[Game],
     reference_points: dict[tuple[str, str], float],
-) -> list[str] | None:
-    """Match URLs worth opening: upcoming, ours, and backed by a real price.
+) -> "_LinkSets | None":
+    """Match URLs worth opening: upcoming and ours, split by reference price.
 
     Returns None when the cheap listing could not be read, which means "fall
     back to the old whole-league walk" -- NOT "there is nothing to do". The two
@@ -761,7 +783,8 @@ def _reference_backed_links(
             return None
 
     now = datetime.now(timezone.utc)
-    links: list[str] = []
+    ours: list[str] = []
+    with_ref: list[str] = []
     seen: set[str] = set()
     considered = upcoming = 0
     for ev in events:
@@ -788,24 +811,27 @@ def _reference_backed_links(
         game = _match_game(games, a, b) or _match_game(games, b, a)
         if game is None:
             continue
-        if ((game.game_id, "total") not in reference_points
-                and (game.game_id, "spread") not in reference_points):
-            continue
+        has_ref = ((game.game_id, "total") in reference_points
+                   or (game.game_id, "spread") in reference_points)
         # STRIP THE FRAGMENT. JSON-LD publishes ".../villanova-wildcats-hCWxDEOg/#SplmjWpI",
         # and the scraper appends its own trailing slash, producing
         # ".../#SplmjWpI/" -- which loads a page that never hydrates
         # ("match view hydration failed", both links, 2 attempts each). The
         # match URL the scraper wants is the path alone.
         clean = url.split("#", 1)[0].rstrip("/") + "/"
-        if clean not in seen:
-            seen.add(clean)
-            links.append(clean)
+        if clean in seen:
+            continue
+        seen.add(clean)
+        ours.append(clean)
+        if has_ref:
+            with_ref.append(clean)
 
     print(f"[harvester_scrape] {target.sport}: listing advertised {considered} matches, "
-          f"{upcoming} within {target.kickoff_hours:.0f}h, {len(links)} of those are ours "
-          f"AND have a real reference price - opening {len(links)} pages instead of {upcoming}",
+          f"{upcoming} within {target.kickoff_hours:.0f}h, {len(ours)} are ours, "
+          f"{len(with_ref)} of those have a real reference price "
+          f"(discovery opens {len(with_ref)}, fallback {len(ours)}, instead of {upcoming})",
           flush=True)
-    return links
+    return _LinkSets(ours=ours, with_reference=with_ref)
 
 
 async def run_dynamic_lines_target(target: ScrapeTarget, games: list[Game]) -> list[dict]:
@@ -863,13 +889,15 @@ async def run_dynamic_lines_target(target: ScrapeTarget, games: list[Game]) -> l
     )
     # Filter BEFORE the per-page cost, not after it. See _reference_backed_links.
     links = _reference_backed_links(target, games, reference_points)
-    if links is not None and not links:
+    fallback_links = links.ours if links else None
+    if links is not None and not links.with_reference:
         print(f"[harvester_scrape] {target.sport}: no upcoming match has both our game "
               f"and a real reference price - scraping {target.markets} only this cycle",
               flush=True)
-        return await _run_harvester_cli(dataclasses.replace(target, dynamic_lines=False))
-    if links:
-        discovery_kwargs["match_links"] = links
+        return await _run_harvester_cli(
+            dataclasses.replace(target, dynamic_lines=False), match_links=fallback_links)
+    if links and links.with_reference:
+        discovery_kwargs["match_links"] = links.with_reference
     elif target.leagues is not None:
         discovery_kwargs["leagues"] = target.leagues
         discovery_kwargs["kickoff_within_hours"] = target.kickoff_hours
@@ -913,7 +941,8 @@ async def run_dynamic_lines_target(target: ScrapeTarget, games: list[Game]) -> l
             f"reference — {target.markets} only this cycle",
             flush=True,
         )
-        return await _run_harvester_cli(dataclasses.replace(target, dynamic_lines=False))
+        return await _run_harvester_cli(
+            dataclasses.replace(target, dynamic_lines=False), match_links=fallback_links)
 
     all_tokens = sorted({t for tokens in match_targets.values() for t in tokens})
     print(
@@ -992,7 +1021,8 @@ BROWSER_TIMEZONE = "UTC"
 SCRAPE_TIMEOUT_SECONDS = 1800
 
 
-async def _run_harvester_cli(target: ScrapeTarget) -> list[dict]:
+async def _run_harvester_cli(target: ScrapeTarget,
+                             match_links: list[str] | None = None) -> list[dict]:
     """Calls the vendored oddsharvester package's own scraper function
     IN-PROCESS — not a subprocess at all, deliberately.
 
@@ -1072,7 +1102,12 @@ async def _run_harvester_cli(target: ScrapeTarget) -> list[dict]:
         browser_locale_timezone=BROWSER_LOCALE,
         browser_timezone_id=BROWSER_TIMEZONE,
     )
-    if target.leagues is not None:
+    # Explicit links win. Handing the scraper a league key makes it walk every
+    # fixture in that league; handing it the matches we actually track skips
+    # the ones we would discard after paying to open them.
+    if match_links:
+        kwargs["match_links"] = match_links
+    elif target.leagues is not None:
         kwargs["leagues"] = target.leagues
         kwargs["kickoff_within_hours"] = target.kickoff_hours
     else:
