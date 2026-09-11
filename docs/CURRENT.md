@@ -31,7 +31,7 @@ the precomputed `player_history_prefix` table, took it to **311 MB resting /
 
 ### The egress ceiling FAILED, and this is now scope, not a gate
 
-Supabase's own usage graph, billing period 28 Aug – 28 Sep 2026:
+Supabase's own usage graph, billing period 28 Aug - 28 Sep 2026:
 
 ```
   Included in Pro Plan   250 GB
@@ -40,49 +40,97 @@ Supabase's own usage graph, billing period 28 Aug – 28 Sep 2026:
   2026-09-11             19.483 GB/day   -- Shared Pooler Egress, 100.0%
 ```
 
-At ~19.5 GB/day the run-rate is **~585 GB/month, 2.3× the allowance**. Landing
-under 250 GB needs **≤8.3 GB/day** — about a 2.4× cut.
+This billing period is already lost. The target is the NEXT one: get the daily
+rate from ~19.5 to **<=8.3 GB/day** before 28 Sep.
 
-**It is 100% Shared Pooler, 0% Storage.** The Parquet corpus is NOT contributing
-to this bill; moving 13.9M rows out of Postgres was correct and the corpus reads
-are not leaking back in. Every one of those 623 GB is database rows crossing the
-pooler, so the remedy is in the serving queries, not in storage layout.
+**It is 100% Shared Pooler, 0% Storage.** The Parquet corpus is NOT on this
+bill. Every byte is database rows crossing the pooler.
 
-### How the measurement got here, because it was wrong three times
+## ROOT CAUSE (measured 2026-09-11, two independent methods agreeing)
 
-`measure_egress_rate.py` reported a clean `0.00 GB/day` from **three independent
-defects**, any one of which alone produced that same plausible zero: query text
-truncated to 110 chars (the `FROM` clause sits at char 311); `_table_widths`
-called on a connection already released to the pool; and a literal **0x08
-backspace byte** where `\b` belonged, written in by a heredoc that ate the
-backslash — a regex that could never match anything.
+**Postgres is being used as a blob cache, and every cache hit is billed as
+egress.** A cache that lives in the database does not save traffic, it
+manufactures it.
 
-Then the rows→bytes model was wrong twice more. A single mean width is invalid
-for `snapshot_cache`, which stores 80-byte `provider-throttle:*` keys beside a
-12.4 MB `mlb:full-raw` blob; charging the mean over-counted the throttle reads
-**644×** and invented 153 MB out of 238 KB. Excluding such tables then
-over-corrected the other way — the full band contained the true 19.483 GB/day,
-the excluding version sat below it.
+| finding | figure |
+|---|---|
+| `snapshot_cache` reads | **~16 GB/day of 19.483 (80%)** |
+| - via blocks touched | 53,212 B/call x 265,538 calls/day |
+| - via residual | (19.483 - 3.6) / 265,536 rows = ~60 KB/read |
+| ALL other live query traffic | 24.3M rows/day = **~3.6 GB/day** |
 
-**The lesson to carry: a zero, or any clean number, from a broken parser looks
-exactly like a real measurement.** Three separate bugs each produced the same
-tidy answer, and the only thing that caught it was refusing to accept a figure
-that flattered. The tool now reports a band and calibrates against a known
-actual via `--actual-gb-day`.
+The blobs:
+- `mlb:snapshot` **6.6 MB**, read by `load_mlb_games()` -- **32 call sites**
+- `mlb:full-raw:<date>` **12.3 MB**
+- `nfl:boxscoreRaw:*` **~106 KB** each, 612 keys, read per-game inside loops
 
-### Next actions on egress
+## THE MEASUREMENT METHOD THAT WORKS (three earlier ones did not)
 
-1. A **3-hour** measurement window is the minimum honest one — five jobs in
-   `JOB_REGISTRY` are on 86,400s (daily) schedules and the shortest is 150s, so
-   a 10-minute window extrapolated ×144 badly over-weights whatever periodic
-   job happened to land in it. The tool now flags any query with fewer than
-   `MIN_CALLS_TO_TRUST` calls as extrapolation-unsafe.
-2. Rank contributors by **bytes**, not rows, and cut the largest serving reads.
-   Early signal (unconfirmed, from a 600s window): `SELECT DISTINCT ON (game_id,
-   subject_id, market_key, line, bookmaker, side) …` at ~13,500 rows/call.
-3. Re-check the Supabase graph after any change — it is the only authority on
-   bytes, and there is no management token in `.env.local`, so it needs the
-   operator.
+- **call rate** -> from a DELTA (only a delta separates live from dead)
+- **rows per call** -> from CUMULATIVE `pg_stat_statements` (millions of samples)
+- **bytes per row** -> measured per table
+
+Only 35 SELECT statements are actually live. **The pre-5.1 query is DEAD** --
+it still shows 45M rows/day cumulative and ran ZERO times in a live window, so
+that fix holds and the cumulative figure is a ghost. Cumulative alone cannot
+tell live from dead; a short sample cannot give a reliable call rate. Both.
+
+Methods that FAILED and must not be repeated: extrapolating a 10-minute window
+(1-call frequencies x144); using `shared_blks` as a byte proxy (**off by 100x**
+-- it counts every buffer hit in a scan); a single mean row width on a
+heterogeneous table.
+
+## THE PLAN -- APPROVED by the operator 2026-09-11, not yet built
+
+**1. Validation-cache in front of `read_snapshot`/`read_snapshot_with_age` (~13 GB/day).**
+NOT a TTL cache. Ask Postgres for `fetched_at` ONLY (~8 bytes); if the local
+copy carries that same stamp, serve the payload from local disk. `fetched_at`
+IS the version, so there is no staleness window at all. Turns a 6.6 MB transfer
+into ~30 bytes.
+- **DECIDED: disk, not memory.** Worker RAM is a ceiling we just cleared
+  (311/512 MB) and CPython does not return freed arenas, so an in-memory cache
+  is permanent once touched. Disk costs no RAM. Reversible decision.
+- Must degrade gracefully to a direct DB read if the filesystem is unavailable.
+
+**2. Stop shipping whole blobs to read part of them (~2 GB/day).**
+`load_mlb_games` pulls 6.6 MB to build a game list. Push field selection into
+SQL with jsonb operators.
+
+**3. Archive family into SQL (~2.5 GB/day) -- INDEPENDENT of 1/2/4, additive.**
+`archivePropsJob` and `archiveClosingLinesJob` read Postgres -> reshape in
+Python -> write Postgres. `INSERT ... SELECT` keeps the rows in the server.
+Measured live: 9.13M + 8.61M + 2.10M rows/day.
+- **GATE: assert IDENTICAL ROWS between the Python and SQL paths, not similar
+  counts.** This project has been bitten twice by comparisons that matched on
+  the wrong key (the board comparison missing `game_id`; the prefix-vs-union
+  check that revealed the OLD path was wrong).
+
+**4. Never re-read immutable data (~1 GB/day).** A finished game's boxscore
+never changes. `nfl:boxscoreRaw:*` should be cached permanently.
+
+**SAVINGS IN 1, 2 AND 4 OVERLAP -- they are NOT additive.** All three attack the
+same ~16 GB; item 4 is item 1 with an infinite TTL. Item 1 alone likely captures
+most of it. `item 1 + item 3` may already reach ~4 GB/day, which would make 2
+and 4 refinements rather than requirements. Re-measure after 1+3 before
+building the rest.
+
+Projected: **19.5 -> ~4 GB/day** against a <=8.3 target.
+
+## VERIFICATION ORDER (operator's explicit instruction: build first, test after)
+
+1. Build items 1 and 3.
+2. Correctness tests against the DB (cheap -- a test reads a few thousand rows
+   against a platform moving 24.5M/day, i.e. <0.1%; there is no measurement to
+   protect).
+3. Re-run the live-delta measurement.
+4. **Deploy requires asking the operator first** (standing rule).
+5. Confirm on the Supabase graph after 24-48h -- the ONLY authority on bytes.
+   There is no management token in `.env.local`, so the operator must check it.
+
+Nothing is in flight. The 3-hour measurement window was killed deliberately: it
+used the band estimator, which is the least reliable method for the one
+contributor that dominates the bill, and it had already been contaminated by
+this session's own diagnostic queries.
 
 ### Everything else Phase 5 did land
 
