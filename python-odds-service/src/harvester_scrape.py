@@ -26,9 +26,12 @@ and the `oddsharvester` package installed with its Playwright browser.
 import asyncio
 import dataclasses
 import functools
+import json
 import re
 import sys
 import unicodedata
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -93,6 +96,22 @@ class ScrapeTarget:
     # direction, after a live run discovered 41 real-but-irrelevant
     # alternate total lines for one NFL game. See run_dynamic_lines_target.
     dynamic_lines: bool = False
+    # HOW FAR AHEAD DISCOVERY LOOKS, and it is per-sport because the cost is
+    # per-MATCH, not per-sport. The discovery pass previews submarkets on EVERY
+    # match page inside this window, so the window's real price is the number of
+    # games it contains -- and that varies by an order of magnitude:
+    #
+    #   measured 2026-09-11, games inside a 168h window
+    #     mlb   ~15/day, spread evenly
+    #     nfl    14      (one Sunday slate plus strays)
+    #     cfb   ~83      (71 of them on ONE Saturday)
+    #
+    # 168h on cfb is ~83 page visits at >21s each, which is how
+    # `discovery pass for cfb exceeded 1800s` happened. It only started
+    # happening once the v0.12.0 upgrade made the scraper find matches again --
+    # before that it failed fast on zero, so the window was never actually paid
+    # for.
+    kickoff_hours: float = 168.0
 
 
 SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
@@ -172,6 +191,13 @@ SCRAPE_CONFIG: dict[str, ScrapeTarget] = {
         markets=["home_away"],
         load_games=functools.partial(load_sport_games, "cfb"),
         dynamic_lines=True,
+        # 54h, NOT the 168h default. College football plays ~71 games on ONE
+        # Saturday, and discovery visits every match page in the window -- 168h
+        # is ~83 pages at >21s, which blew the 1800s budget outright. 54h still
+        # picks up Saturday's full slate from Thursday morning, and at a 150-min
+        # cadence that slate gets ~25 scrape cycles before kickoff, so nothing
+        # is lost but the wasted early-week passes.
+        kickoff_hours=54.0,
     ),
     # NBA/NHL: wired up ahead of their real seasons starting (both are
     # genuinely off-season right now - NBA preseason starts October, NHL
@@ -621,6 +647,167 @@ def _closest_line_token(discovered_rows: list, main_market: str, harvester_sport
     return line_name_to_token(harvester_sport, main_market, best_label)
 
 
+# ---------------------------------------------------------------------------
+# CHEAP LINK DISCOVERY, SO THE EXPENSIVE PASS ONLY VISITS PAGES WORTH VISITING
+# ---------------------------------------------------------------------------
+#
+# THE PROBLEM THIS SOLVES, MEASURED. `run_dynamic_lines_target`'s discovery
+# pass reads ONE PAGE PER MATCH across the whole league, and only afterwards
+# discards every match that has no real reference price to aim at. For cfb on
+# 2026-09-11 that was 85 upcoming matches at >21s each -- about 1,785s against
+# an 1,800s budget -- so the job died with
+# `discovery pass for cfb exceeded 1800s` having produced nothing at all.
+#
+# NARROWING THE KICKOFF WINDOW DOES NOT FIX IT, and the numbers say why. The
+# league page advertises, from 2026-09-11:
+#
+#     24h ->  22 matches      54h ->  85 matches
+#     30h ->  75 matches     168h ->  85 matches
+#
+# The Saturday slate lands inside 30h, so 54h and 168h discover the IDENTICAL
+# 85 matches. An earlier attempt at this set cfb to 54h expecting a reduction;
+# it bought nothing, because the cost is driven by one day's fixture list
+# rather than by how far ahead we look.
+#
+# WHAT ACTUALLY COSTS NOTHING. The league listing page carries schema.org
+# JSON-LD -- one plain HTTP GET, no browser, no Playwright -- and each record
+# holds `name`, `url` and `startDate`. That is precisely the three things
+# needed to decide whether a match is worth opening, so the filter can run
+# BEFORE the per-page cost instead of after it.
+#
+# `@type` is the LIST ["Event", "SportsEvent"], not the string "SportsEvent".
+# Checking it as a string finds zero records on a page carrying 153 of them,
+# which reads exactly like "the site stopped publishing structured data".
+_LD_JSON_RE = re.compile(
+    r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>', re.S)
+_LISTING_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+_LISTING_TIMEOUT = 60
+
+
+def _is_sports_event(t) -> bool:
+    return t == "SportsEvent" or (isinstance(t, list) and "SportsEvent" in t)
+
+
+def _listing_events(league_url: str) -> list[dict]:
+    """Every match a league page advertises, over plain HTTP. Raises on failure."""
+    req = urllib.request.Request(league_url, headers={"User-Agent": _LISTING_UA})
+    html = urllib.request.urlopen(req, timeout=_LISTING_TIMEOUT).read().decode("utf-8", "replace")
+    found: list[dict] = []
+
+    def walk(o):
+        if isinstance(o, dict):
+            if _is_sports_event(o.get("@type")):
+                found.append(o)
+            for v in o.values():
+                walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+
+    for block in _LD_JSON_RE.findall(html):
+        try:
+            walk(json.loads(block))
+        except (ValueError, TypeError):
+            continue
+    return found
+
+
+def _league_urls(target: "ScrapeTarget") -> list[str]:
+    """League page URLs for a target, from the VENDORED map rather than built
+    here -- the country segment ('usa' in .../american-football/usa/ncaa/) is
+    not in our own config and must not be guessed."""
+    from oddsharvester.utils.sport_league_constants import SPORTS_LEAGUES_URLS_MAPPING
+
+    # Scoped to THIS target's sport. Iterating every sport's map and matching on
+    # the league key alone pulled basketball's NCAA page in alongside college
+    # football's -- both are keyed "ncaa" -- which would have sent the filter
+    # hunting for football fixtures in a basketball listing.
+    urls = []
+    for sport, by_league in SPORTS_LEAGUES_URLS_MAPPING.items():
+        if getattr(sport, "value", sport) != target.harvester_sport:
+            continue
+        for league in (target.leagues or []):
+            u = by_league.get(league)
+            if u:
+                urls.append(u)
+    return urls
+
+
+def _reference_backed_links(
+    target: "ScrapeTarget", games: list[Game],
+    reference_points: dict[tuple[str, str], float],
+) -> list[str] | None:
+    """Match URLs worth opening: upcoming, ours, and backed by a real price.
+
+    Returns None when the cheap listing could not be read, which means "fall
+    back to the old whole-league walk" -- NOT "there is nothing to do". The two
+    are opposite instructions and collapsing them would silently turn a network
+    blip into a skipped scrape.
+
+    Returns [] when the listing was read fine and genuinely nothing qualifies.
+    """
+    urls = _league_urls(target)
+    if not urls:
+        return None
+
+    events = []
+    for u in urls:
+        try:
+            events.extend(_listing_events(u))
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            print(f"[harvester_scrape] {target.sport}: listing fetch failed for {u} "
+                  f"({type(e).__name__}: {e}) - falling back to whole-league discovery",
+                  flush=True)
+            return None
+
+    now = datetime.now(timezone.utc)
+    links: list[str] = []
+    seen: set[str] = set()
+    considered = upcoming = 0
+    for ev in events:
+        url, name, start = ev.get("url"), ev.get("name"), ev.get("startDate")
+        if not url or not name or not start:
+            continue
+        considered += 1
+        try:
+            when = datetime.fromisoformat(str(start).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        ahead = (when - now).total_seconds() / 3600.0
+        if ahead < 0 or ahead > target.kickoff_hours:
+            continue
+        upcoming += 1
+        # "Home - Away" per the listing, but the URL's own slug order disagrees
+        # on real records (name "Virginia - Norfolk State" vs url
+        # .../norfolk-state-.../virginia-...), so the pair is matched BOTH ways
+        # round rather than trusting either order.
+        parts = [p.strip() for p in str(name).split(" - ", 1)]
+        if len(parts) != 2:
+            continue
+        a, b = parts
+        game = _match_game(games, a, b) or _match_game(games, b, a)
+        if game is None:
+            continue
+        if ((game.game_id, "total") not in reference_points
+                and (game.game_id, "spread") not in reference_points):
+            continue
+        # STRIP THE FRAGMENT. JSON-LD publishes ".../villanova-wildcats-hCWxDEOg/#SplmjWpI",
+        # and the scraper appends its own trailing slash, producing
+        # ".../#SplmjWpI/" -- which loads a page that never hydrates
+        # ("match view hydration failed", both links, 2 attempts each). The
+        # match URL the scraper wants is the path alone.
+        clean = url.split("#", 1)[0].rstrip("/") + "/"
+        if clean not in seen:
+            seen.add(clean)
+            links.append(clean)
+
+    print(f"[harvester_scrape] {target.sport}: listing advertised {considered} matches, "
+          f"{upcoming} within {target.kickoff_hours:.0f}h, {len(links)} of those are ours "
+          f"AND have a real reference price - opening {len(links)} pages instead of {upcoming}",
+          flush=True)
+    return links
+
+
 async def run_dynamic_lines_target(target: ScrapeTarget, games: list[Game]) -> list[dict]:
     """Real totals/spread for a dynamic_lines sport (NFL/CFB), narrowed to
     one real line per match instead of every alternate OddsPortal renders.
@@ -671,10 +858,21 @@ async def run_dynamic_lines_target(target: ScrapeTarget, games: list[Game]) -> l
         preview_submarkets_only=True,
         headless=True,
         concurrency_tasks=1,
+        browser_locale_timezone=BROWSER_LOCALE,
+        browser_timezone_id=BROWSER_TIMEZONE,
     )
-    if target.leagues is not None:
+    # Filter BEFORE the per-page cost, not after it. See _reference_backed_links.
+    links = _reference_backed_links(target, games, reference_points)
+    if links is not None and not links:
+        print(f"[harvester_scrape] {target.sport}: no upcoming match has both our game "
+              f"and a real reference price - scraping {target.markets} only this cycle",
+              flush=True)
+        return await _run_harvester_cli(dataclasses.replace(target, dynamic_lines=False))
+    if links:
+        discovery_kwargs["match_links"] = links
+    elif target.leagues is not None:
         discovery_kwargs["leagues"] = target.leagues
-        discovery_kwargs["kickoff_within_hours"] = 168.0
+        discovery_kwargs["kickoff_within_hours"] = target.kickoff_hours
     else:
         discovery_kwargs["date"] = datetime.now(timezone.utc).strftime("%Y%m%d")
 
@@ -770,6 +968,25 @@ async def run_dynamic_lines_target(target: ScrapeTarget, games: list[Game]) -> l
 # closest-so-far number. Re-measure before adding a 3rd total line, another
 # market, or trusting this margin forever - tennis's own match count isn't
 # bounded by anything in this codebase, so an even busier night is possible.
+# WHY THESE TWO ARE PINNED.
+#
+# LOCALE. OddsPortal localises by client hints, and with nothing pinned it
+# served soccer_epl match pages in POLISH on 2026-09-11 -- "13 Wrz 2026 08:00".
+# `base_scraper._parse_match_date_from_dom` parses with "%d %b %Y %H:%M", whose
+# %b is C-locale English, so all 10 EPL pages logged "DOM parse failed for
+# match_date" and returned None. The scrape still reported ok/20 matched
+# because a fallback supplied the date, which is precisely why this went
+# unnoticed: a silent degradation behind a healthy summary.
+#
+# TIMEZONE. This one is the more dangerous of the pair. With timezone_id unset,
+# PlaywrightManager ASKS THE BROWSER what zone it is in
+# (`page.evaluate` -> Intl), and `_resolved_browser_timezone()` then interprets
+# every scraped wall-clock time in whatever came back. Kickoff times therefore
+# depended on the operator machine's clock settings. Pinning to UTC makes the
+# site render UTC and makes us read it as UTC -- the same number on any host.
+BROWSER_LOCALE = "en-GB"
+BROWSER_TIMEZONE = "UTC"
+
 SCRAPE_TIMEOUT_SECONDS = 1800
 
 
@@ -850,10 +1067,12 @@ async def _run_harvester_cli(target: ScrapeTarget) -> list[dict]:
         markets=target.markets,
         headless=True,
         concurrency_tasks=1,
+        browser_locale_timezone=BROWSER_LOCALE,
+        browser_timezone_id=BROWSER_TIMEZONE,
     )
     if target.leagues is not None:
         kwargs["leagues"] = target.leagues
-        kwargs["kickoff_within_hours"] = 168.0
+        kwargs["kickoff_within_hours"] = target.kickoff_hours
     else:
         kwargs["date"] = datetime.now(timezone.utc).strftime("%Y%m%d")
 

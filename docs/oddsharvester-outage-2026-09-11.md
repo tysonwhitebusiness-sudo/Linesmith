@@ -127,3 +127,83 @@ That second one is the more important lesson. This is the same class of gap as
 `orphanJobBreadcrumbs`: **monitoring that enumerates one registry cannot see
 anything outside it**, and a producer writing diligently into a table nobody
 reads is indistinguishable from silence.
+
+## Postscript: the upgrade fixed five sports, and exposed three more things
+
+Measured after re-vendoring at v0.12.0, same day.
+
+| sport | result |
+|---|---|
+| mlb | 15 records, **15/15 matched** |
+| nfl | 15 records, **15/15 matched** |
+| soccer_mls | 15 records, **15/15 matched** |
+| soccer_epl | 20 records, **20/20 matched** |
+| tennis | 18 records, 4 matched, 12 unmatched |
+| cfb | **still failing** — `discovery pass exceeded 1800s` |
+| nba, nhl | `no games loaded from snapshot` — out of season, expected |
+
+### 1. cfb: narrowing the kickoff window was the wrong fix
+
+An earlier attempt set cfb's `kickoff_hours` to 54.0, expecting fewer page
+visits. It bought **nothing**, and the league listing says why:
+
+```
+ 24h ->  22 matches       54h ->  85 matches
+ 30h ->  75 matches      168h ->  85 matches
+```
+
+The Saturday slate lands inside 30h, so 54h and 168h discover the **identical
+85 matches**. The cost is driven by one day's fixture list, not by how far
+ahead we look. 85 pages at >21s is ~1,785s against an 1,800s budget.
+
+The real problem is ordering: the discovery pass opens **one page per match
+across the whole league** and only *afterwards* discards every match with no
+real reference price to aim at. cfb's log is full of `discovery found no lines
+close enough to any real reference`, i.e. the expensive pass routinely
+completes and produces nothing.
+
+**The fix filters before the cost, not after it.** The league listing page
+carries schema.org JSON-LD — one plain HTTP GET, no browser — with `name`,
+`url` and `startDate` per match, which is exactly enough to decide whether a
+page is worth opening. `_reference_backed_links` now does that, and discovery
+receives `match_links` instead of a whole league.
+
+One trap worth recording: **`@type` is the list `["Event", "SportsEvent"]`, not
+the string `"SportsEvent"`.** Testing it as a string finds 0 records on a page
+carrying 153, which reads exactly like "the site stopped publishing structured
+data" — a false negative that looks like a site change.
+
+A second: the league key alone is not unique across sports. `ncaa` exists under
+both `american-football` and `basketball`, so the URL lookup must be scoped by
+the target's own sport or college football goes looking for its fixtures in a
+basketball listing.
+
+### 2. soccer_epl was being served Polish, and nobody could tell
+
+All 10 EPL match pages logged `DOM parse failed for match_date: time data
+'13 Wrz 2026 08:00' does not match format '%d %b %Y %H:%M'`. `Wrz` is
+*wrzesień* — September. `%b` is C-locale English, so every date failed, fell
+back, and the run still reported `ok / 20 matched`. A silent degradation behind
+a healthy summary.
+
+Worse, and unrelated to locale: **`timezone_id` was unpinned**, so
+`PlaywrightManager` asked the browser what zone it was in and
+`_parse_match_date_from_dom` interpreted every scraped wall-clock time in
+whatever came back. Kickoff times depended on the operator machine's clock
+settings.
+
+Both are now pinned at **our** call sites (`BROWSER_LOCALE = "en-GB"`,
+`BROWSER_TIMEZONE = "UTC"` in `harvester_scrape.py`) rather than in the
+vendored tree, so the v0.12.0 files stay byte-identical to upstream. `run_scraper`
+already exposed `browser_locale_timezone` and `browser_timezone_id`; we were
+simply passing neither.
+
+### 3. tennis's 12 unmatched is unproven, not benign
+
+Every tennis run before the upgrade was `records: 0`, so there is **no
+pre-outage baseline** to compare against — the 12/18 unmatched rate cannot be
+called "pre-existing" on the evidence available. The unmatched names
+(`Augusto dos Santos R.`, `Kokkinis T.`, `Khomutsianskaya D.`) are
+ITF/challenger-tier, which *suggests* the date-page path scrapes a broader
+universe than our 1,400-game reference list covers — a scope mismatch rather
+than a parsing failure. That is an inference from the names, not a measurement.
