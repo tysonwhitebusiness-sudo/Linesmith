@@ -9,87 +9,76 @@ ordering conversationally — that is exactly what §5.S exists to stop.
 
 ---
 
-## READ THIS FIRST: state at 2026-09-10, end of session
+## READ THIS FIRST: state at 2026-09-11 01:50Z
 
 ```
-database   7,282 MB  ->  4,530 MB     88.9% -> 55.3%
+database   7,282 MB  ->  3,382 MB     88.9% -> 41.3%
 ```
 
-**§5.S.1 through §5.S.6 are DONE. §5.S.7 is HALF DONE and the safe half is the
-half that shipped.**
+**§5.S.1 through §5.S.7 are DONE.** All 8 `audit_storage.py` checks pass, tsc is
+clean, TS is 359/359, JOB_REGISTRY contract 40/40. Worker is on `4eed32d`.
 
-### The one thing that is mid-flight
+| table | before | after |
+|---|---|---|
+| `odds_archive` | 1,171 MB | **8 MB** |
+| `prop_odds_archive` | 871 MB | **7 MB** |
+| `player_game_history` | 1,839 MB | **460 MB** |
+| `mlb_pitch_events` | 477 MB | **289 MB** |
+| `odds_import_staging` | 262 MB | **2 MB** |
+| 7 dead tables, 2 redundant indexes | 364 MB | **gone** |
 
-**`odds_archive` still holds all 1,982,889 rows. It has NOT been pruned.**
-The verify pass says 1,962,631 are provably in the corpus and would be deleted.
-`--apply` was deliberately not run — the session ended first.
+### What remains
 
-**Production is consistent.** Render runs the previous commit, which still
-scans `odds_archive`, and `odds_archive` is intact. Nothing is half-deleted and
-nothing is waiting on a process that died.
+**5.S.8 — `prop_odds_history` (1,239 MB). NEEDS RESCOPING, NOT EXECUTING.**
+Its gate was measured and **both premises were wrong** — see the plan. Short
+version: retention already works (2,534 rows survive 30 days); the mass is
+~122.7 MB/day flowing into a 14-day window that every consumer reads. Rolling up
+"old" rows reclaims almost nothing. And any roll-up must preserve *the last tick
+before each game's start*, not the calendar-day close, or CLV goes quietly wrong
+rather than missing. `bets` holds **2 rows**, so urgency is low — good time to
+pick the shape deliberately.
 
-**To finish it** (all readers are already ported and gated):
-```bash
-cd python-odds-service
-.venv/Scripts/python.exe -u prune_corpus.py --apply odds_archive
-.venv/Scripts/python.exe -u vacuum_reclaim.py odds_archive --apply
-```
-Expect ~1,180 MB back, taking the database to roughly **41%**.
+**5.S.9 — guardrails, part done.** `check_orphan_job_breadcrumbs` is in and
+found **ten** tombstones. Still missing: the plan's own gate (*a deliberately
+failed job produces an alert the operator actually receives*), an alarm on
+**MB/day rather than percent-full**, and worker RAM tracked as a ceiling. The
+alert *channel* already exists — health_check is a Render cron every 15 min,
+exits 1, and Render's cron-failure notification pages the operator.
 
-**One thing to do BEFORE that prune, or the fix is incomplete:** the worker must
-be running the new `archival_bridge` (it reads `team_name_index` instead of
-scanning the archive) and `teamNameIndexJob`. Both are committed but **not
-deployed**. Deploy first, then prune. Pruning against the old worker would
-collapse team resolution into `odds_unresolved` silently.
+**`captureLatency` reports FAIL and it is not damage.** NFL median 3,795 min
+(n=1,680) against a 60-minute threshold — a weekly sport captured days ahead,
+measured by a rule calibrated for daily ones. Pre-existing; the prune provably
+could not have touched it (the 30-day retention margin strictly contains the
+check's 7-day window, and the oldest surviving row is 2026-09-03).
 
-`team_name_index` is already created and seeded (859 pairs, 7 sports) in the
-live database, and the lookup it produces is byte-identical to the old scan for
-every sport — so the table is ready and waiting for the code that reads it.
+**`docs/table-ownership.md` is stale** — 51 live tables against the 36 it
+documents, `odds_archive` and `game_result` missing entirely. Flagged in a box
+at the top of that file; a re-derivation is queued as its own task.
 
-### What §5.S.7 turned out to be about
+### The lesson that recurred three times today
 
-Not the fitters. **A live path nobody had counted**: `_team_ids` derived 859
-team-name pairs by scanning 1.98M rows, 99.8% of which are frozen. That is now
-a stored index refreshed hourly from the unfrozen tail. And
-`health_check.check_capture_latency` takes a median over a 7-day window whose
-rows are mostly frozen, which is why `prune_corpus` now keeps a 30-day margin
-for this table (20,258 rows — free).
+**Reading ONE HALF of a split table gives a confident wrong answer.** It cost:
+a fit that would have trained on a truncated population, a team index that would
+have silently stopped resolving, and the audit's own span check reporting
+`odds_archive` as SHRANK while the data was intact. Every reader of a corpus
+table goes through a union — `corpus_reads.load_prop_archive` or
+`corpus_reads.union_view`, which registers the table in DuckDB so the ORIGINAL
+SQL can run unchanged rather than being reimplemented in Python.
 
-### A real bug the gate found, unrelated to storage
+**And its sibling:** the 2026-09-04 restart discarded the cumulative statistics
+while `pg_stat_database.stats_reset` stayed NULL. It poisoned 5.S.3's index
+gate, `vacuum_reclaim`'s bloat estimate, and `audit_storage`'s own 5.0g check.
+Anything from `pg_stat_*` covers days, not the database's life.
 
-`fit_nfl_elo` ordered by `(game_date, event_ref)`, which is **not unique** —
-232 groups in its own population share both. Elo is path-dependent, so those
-464 rows updated the ratings in whatever order the engine returned: **the fit
-was not reproducible run to run and nobody could have seen it.** Postgres and
-DuckDB tie-broke them differently; the row sets were identical and only the
-order was not. Now ordered totally, and both engines agree byte for byte.
+### Egress
 
-### Still open
-
-- **`computeMlbPropPredictionsJob` is NOT a failing job — that was my error,
-  twice.** It is not in `JOB_REGISTRY`; Phase 1.1 deleted it. The `ok=false`
-  breadcrumb from 2026-09-08 is a **tombstone** sitting in `snapshot_cache`, and
-  it reads exactly like a job that has been failing for days. `health_check`
-  never looks at it, because it enumerates the registry by name. That blind spot
-  is real and now has a check (`check_orphan_job_breadcrumbs`, 5.S.9): a job
-  dropped from the registry by accident would otherwise stop being monitored
-  with nothing to say so.
-- **§5.S.8** (`prop_odds_history`, 1,239 MB, the fastest-growing object) has not
-  been started. Its 5.3a gate — does `userClv.ts` take entry price from
-  `pick_history` or from `prop_odds_history` — is still unmeasured.
-- **An egress check was requested and not run.** ~15 GB was consumed today, and
-  **a real share of that is mine**: this session read the Parquet corpus from
-  Supabase Storage repeatedly (every prune verification, every union view, the
-  `--seed`). Separate my usage from the baseline before drawing conclusions
-  about whether 5.1's fix is holding.
-
-### The measurement trap that recurred three times
-
-The **2026-09-04 23:33:51Z restart discarded the cumulative statistics while
-`pg_stat_database.stats_reset` stayed NULL.** It poisoned 5.S.3's index gate,
-`vacuum_reclaim`'s bloat estimate, and `audit_storage`'s own 5.0g check.
-Anything from `pg_stat_*` covers days, not the database's life;
-`pg_class.reltuples` and `pg_postmaster_start_time()` survive a restart.
+Measured **idle** on 2026-09-11: **10,747,983 rows/day**, against a cumulative
+figure of 140,531,438 — because the cumulative window contains five days of
+pre-5.1 behaviour, including the old serving query at 511,257 rows/call.
+**5.1 is holding.** Tool: `measure_egress_rate.py` (snapshots, waits,
+subtracts). Note that a real share of 2026-09-10's ~15 GB was this session's own
+corpus verification reads from Supabase Storage; that day is an outlier, not a
+baseline. Re-measure over a longer idle window before drawing conclusions.
 
 ---
 
