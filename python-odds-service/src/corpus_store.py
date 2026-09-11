@@ -430,7 +430,22 @@ async def partitions_for(conn, table: str,
         row = await conn.fetchrow(f"SELECT min(id) a, max(id) b FROM {table}")
         if not row or row["a"] is None:
             return []
-        return [(None, y) for y in range(row["a"], row["b"] + 1, ID_CHUNK_SPAN)]
+        # THE GRID IS ANCHORED TO A FIXED ORIGIN, NOT TO `min(id)`, AND THAT IS
+        # WHAT MAKES IT SURVIVE A PRUNE.
+        #
+        # This used to start at `min(id)`. `prune_corpus` then deleted the
+        # oldest rows, `min(id)` jumped 1 -> 426,314, and the very next
+        # `partitions_for` produced boundaries at 426314 / 926314 / ... against
+        # a corpus holding files named for 1 / 500001 / 1000001. A re-export
+        # would have written a COMPLETE SECOND GENERATION of overlapping files
+        # under new names, and flagged all ten originals as stale — with every
+        # later prune shifting the grid again.
+        #
+        # Anchored at 1, a partition's name is a pure function of the ids it
+        # holds, so the same rows always land in the same file no matter what
+        # has been deleted around them.
+        first = ((row["a"] - 1) // ID_CHUNK_SPAN) * ID_CHUNK_SPAN + 1
+        return [(None, y) for y in range(first, row["b"] + 1, ID_CHUNK_SPAN)]
 
     sports = [r["sport"] for r in
               await conn.fetch(f"SELECT DISTINCT sport FROM {table} ORDER BY sport")]
