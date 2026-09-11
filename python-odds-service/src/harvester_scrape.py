@@ -938,11 +938,29 @@ async def run_target(target: ScrapeTarget) -> dict:
     # night otherwise. Distinguishing them: games were on the slate (checked
     # above) but the scrape returned nothing at all.
     healthy = len(records) > 0 or len(games) == 0
+    # DO NOT NAME A CAUSE THIS CODE CANNOT SEE. The old message said
+    # "possible anti-bot block", and on 2026-09-11 that was actively
+    # misleading: every sport had returned 0 records since 2026-09-01, and the
+    # cause was not a block at all. Fetched by hand from this same machine and
+    # IP, oddsportal.com returned HTTP 200 and 699 KB of real markup with the
+    # fixtures in it -- while containing ZERO `data-testid` attributes, the
+    # thing every selector in the vendored scraper keys on. The site had
+    # rebuilt its frontend; upstream shipped the selector rewrite in v0.11/
+    # v0.12 on 2026-09-02/03 and we are pinned at 0.10.0.
+    #
+    # A guessed cause sends the next reader hunting proxies and residential
+    # IPs for a fortnight. The observable facts are "games were scheduled" and
+    # "the scraper returned nothing"; the message now says exactly that, and
+    # points at the one command that tells the two apart.
     status = (
         f"{len(matched_lines)}/{len(records)} matched, {unmatched} unmatched"
         + (f", {doubles_skipped} doubles skipped" if doubles_skipped else "")
         if records
-        else f"0 records returned for {len(games)} scheduled game(s) — possible anti-bot block"
+        else (f"0 records for {len(games)} scheduled game(s) — the scrape ran and "
+              f"parsed nothing. Cause NOT determined here: a block and a changed "
+              f"page look identical from inside. Check by hand: "
+              f"`curl -s -o /dev/null -w '%{{http_code}}' https://www.oddsportal.com/` "
+              f"(200 = reachable, so suspect selectors//vendored version first)")
     )
     await _write_health(target.sport, healthy=healthy, status=status, matched=len(matched_lines), records=len(records))
 

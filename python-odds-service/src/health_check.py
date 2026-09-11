@@ -57,6 +57,9 @@ GROWTH_DAYS_WARN = 30
 # Minimum history before a slope means anything. A VACUUM FULL or one import can
 # move the size by hundreds of MB in a minute; only a day smooths that out.
 GROWTH_MIN_WINDOW_DAYS = 1.0
+# The harvester runs every ~150 min per sport (scripts/harvester-laptop-setup.ps1),
+# so 6h clears several cycles without crying wolf over one skipped run.
+HARVESTER_STALE_HOURS = 6
 DB_LIMIT_MB = 8192          # Supabase Pro
 WORKER_LIMIT_MB = 512       # Render plan
 # 80%: measure_projection_memory.py already treats 60% as the danger band for a
@@ -961,6 +964,57 @@ async def check_database_growth() -> dict:
                        f"over {days:.1f}d, {days_left:,.0f} days of headroom")}
 
 
+async def check_harvester_scrapes() -> dict:
+    """Phase 5.S.9 — OddsHarvester's own health, which nothing was reading.
+
+    THIS IS THE GAP THAT HID A TEN-DAY OUTAGE. `harvester_scrape.py` writes a
+    per-sport row to `job_health_checks` on every run, and it had been writing
+    `healthy=false` for every sport since 2026-09-01 — but nothing consumed
+    those rows. `check_job` walks JOB_REGISTRY, and the harvester is NOT in
+    JOB_REGISTRY: it runs as a Windows scheduled task on the operator's
+    machine, not on the Render worker. So the records existed, the dashboard
+    had them, and the exit code never saw them.
+
+    Worse, the job itself returns `{'ok': True}` on a zero-record run, because
+    from its own point of view it completed. Nothing anywhere was in a position
+    to say otherwise.
+
+    Two failure shapes, both covered:
+      * UNHEALTHY  — it ran and parsed nothing (selectors, block, site change).
+      * STALE      — it has not written at all, so the scheduled task is dead
+                     or the laptop is off. A check that only reads `healthy`
+                     would call a silent task perfectly fine.
+    """
+    pool = await db.get_pool()
+    async with pool.acquire(timeout=15.0) as conn:
+        rows = await conn.fetch(
+            """SELECT check_name, healthy, status, checked_at
+                 FROM job_health_checks
+                WHERE check_name LIKE 'oddsharvester_scrape%'
+                ORDER BY check_name""")
+    if not rows:
+        return {"name": "harvesterScrapes", "healthy": True,
+                "status": "no oddsharvester rows yet — the scheduled task has "
+                          "never reported"}
+    now = datetime.now(timezone.utc)
+    unhealthy = [r for r in rows if not r["healthy"]]
+    stale = [r for r in rows
+             if (now - r["checked_at"]).total_seconds() > HARVESTER_STALE_HOURS * 3600]
+    healthy = not unhealthy and not stale
+    bits = []
+    if unhealthy:
+        bits.append(f"{len(unhealthy)}/{len(rows)} returning nothing: "
+                    + ", ".join(r["check_name"].replace("oddsharvester_scrape_", "")
+                                for r in unhealthy))
+    if stale:
+        oldest = min(r["checked_at"] for r in stale)
+        bits.append(f"{len(stale)} not reported in {HARVESTER_STALE_HOURS}h "
+                    f"(oldest {oldest:%Y-%m-%d %H:%M}Z) — scheduled task stopped?")
+    return {"name": "harvesterScrapes", "healthy": healthy,
+            "status": ("all " + str(len(rows)) + " sports scraping"
+                       if healthy else "; ".join(bits))}
+
+
 async def check_corpus_freshness() -> dict:
     """Phase 5.S.9 — is the corpus export still running?
 
@@ -1081,6 +1135,7 @@ async def main() -> int:
         await check_declared_pairs_produce(),
         await check_orphan_job_breadcrumbs(),
         await check_corpus_freshness(),
+        await check_harvester_scrapes(),
         await check_database_growth(),
         await check_worker_memory(),
     ]
