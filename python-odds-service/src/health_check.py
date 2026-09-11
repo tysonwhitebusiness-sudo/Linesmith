@@ -821,6 +821,44 @@ def _validate_acknowledged() -> None:
 _validate_acknowledged()
 
 
+async def check_orphan_job_breadcrumbs() -> dict:
+    """Phase 5.S.9 — a breadcrumb whose job is no longer in JOB_REGISTRY.
+
+    THE MONITORING HERE IS NAME-KEYED, and that is a blind spot. `check_job`
+    iterates JOB_REGISTRY and reads `python-harness:job-run:{name}`, so a job
+    that LEAVES the registry stops being checked entirely and nothing says so.
+    Deleting a job deliberately looks identical to dropping one by accident
+    during a refactor, and the second case is a job that silently stops running
+    forever with a green board above it.
+
+    An orphan breadcrumb is the only surviving evidence either happened.
+
+    IT IS A WARNING, NOT A FAILURE, because the common case is benign: Phase 1.1
+    deleted `computeMlbPropPredictionsJob` and its last run log (2026-09-08,
+    ok=false) is still sitting in `snapshot_cache`. That tombstone read exactly
+    like a job that had been failing for days and misled a reader into chasing
+    it twice before anyone checked whether it was still registered. Naming it is
+    the whole value; failing the run over it would train people to ignore this.
+    """
+    registered = {name for name, _, _ in JOB_REGISTRY}
+    pool = await db.get_pool()
+    async with pool.acquire(timeout=15.0) as conn:
+        rows = await conn.fetch(
+            """SELECT cache_key, fetched_at FROM snapshot_cache
+                WHERE cache_key LIKE 'python-harness:job-run:%'
+                ORDER BY fetched_at DESC""")
+    orphans = [(r["cache_key"].split(":")[-1], r["fetched_at"]) for r in rows
+               if r["cache_key"].split(":")[-1] not in registered]
+    if not orphans:
+        return {"name": "orphanJobBreadcrumbs", "healthy": True,
+                "status": f"every breadcrumb maps to one of {len(registered)} registered jobs"}
+    detail = ", ".join(f"{n} (last {t:%Y-%m-%d})" for n, t in orphans[:6])
+    return {"name": "orphanJobBreadcrumbs", "healthy": True,
+            "status": (f"{len(orphans)} breadcrumb(s) with no JOB_REGISTRY entry — "
+                       f"deleted on purpose, or dropped by accident and now "
+                       f"unmonitored? {detail}")}
+
+
 async def main() -> int:
     job_results = await asyncio.gather(*(check_job(name, interval) for name, _, interval in JOB_REGISTRY))
     results = [
@@ -836,6 +874,7 @@ async def main() -> int:
         await check_game_odds_book_lines_freshness(),
         await check_snapshot_cache_size(),
         await check_declared_pairs_produce(),
+        await check_orphan_job_breadcrumbs(),
     ]
 
     print(f"[health_check] {datetime.now(timezone.utc).isoformat()}", flush=True)
