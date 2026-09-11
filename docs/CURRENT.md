@@ -9,123 +9,63 @@ ordering conversationally — that is exactly what §5.S exists to stop.
 
 ---
 
-## READ THIS FIRST: PHASE 5 IS COMPLETE — 2026-09-11
+## READ THIS FIRST: PHASE 5 IS **NOT** COMPLETE — corrected 2026-09-11
 
-```
-database   7,282 MB  ->  3,143 MB     88.9% -> 38.4%
-```
+I previously wrote that Phase 5 was complete because §5.S.1–5.S.9 all passed
+their gates. **That was wrong.** The checklist was the means; the **three
+ceilings** in the phase header are the end.
 
-**§5.S.1 through §5.S.9 are all DONE.** All 8 `audit_storage.py` checks pass,
-`health_check.py` exits 0, tsc is clean, TS 359/359, registry contract 40/40.
+| ceiling | limit | at phase start | now | state |
+|---|---|---|---|---|
+| database | 8,192 MB | 7,174 MB (87.6%) | **3,225 MB (39.4%)** | **CLEARED** |
+| egress | 250 GB/mo | ~500 GB | idle rate 7.6% of cumulative | improved, **not verified in GB** |
+| worker RAM | 512 MB | **385 MB peak** | **489 MB resting / 560 MB peak (109%)** | **WORSE THAN AT START** |
 
-| table | before | after |
-|---|---|---|
-| `odds_archive` | 1,171 MB | **8 MB** |
-| `prop_odds_archive` | 871 MB | **7 MB** |
-| `player_game_history` | 1,839 MB | **460 MB** |
-| `prop_odds_history` | 1,279 MB | **1,037 MB** (capped ~1,727) |
-| `mlb_pitch_events` | 477 MB | **289 MB** |
-| `odds_import_staging` | 262 MB | **2 MB** |
-| 7 dead tables, 2 redundant indexes | 364 MB | **gone** |
+### The one thing left: clear the RAM ceiling
 
-**Nothing was deleted that is not in the corpus.** Every prune verified each row
-present in Parquet first, by id and content fingerprint.
+**It regressed during the phase and 5.S.2 is the largest identifiable
+contributor.** One worker lifetime, traced: 44 MB at start → 272 MB after the
+first ingest cycle → **390 MB after `mlbHistorySummaryJob` read the Parquet
+corpus** (+118 MB in a single job) → a ~490 MB plateau it never leaves.
 
----
+`corpus_store` had already measured that CPython does not return freed arenas to
+the OS, and barred the corpus **export** from the worker for exactly that
+reason. The summary job's corpus **read** was never costed the same way when
+5.S.2 put it there.
 
-## THE ONE THING THAT MUST HAPPEN ON THE OPERATOR'S MACHINE
+First move to scope: take `mlbHistorySummaryJob`'s corpus read off the worker,
+the way the export already is. It is a design change — the summary has to be
+built somewhere, and the operator's machine already runs `refresh_corpus.py` —
+so it wants scoping, not a patch.
 
-**`scripts/corpus-refresh-setup.ps1` HAS NOT BEEN RUN.** Until it is, nothing
-exports the corpus on a schedule.
+**Tracking a ceiling is not clearing it.** 5.S.9 built the instrument
+(`workerMemory`); the instrument is what makes the breach visible, and the
+breach is still a breach.
 
-```powershell
-.\scripts\corpus-refresh-setup.ps1
-```
+### Everything else Phase 5 did land
 
-Why it matters: Postgres now keeps a **14-day** window of `prop_odds_history`
-and the corpus is the only copy of anything older. A stalled export does **not**
-lose data — `prune_corpus` refuses to delete a row it cannot see in the corpus
-— it stops reclaiming space while the table grows ~123 MB/day.
-`health_check.corpusFreshness` alarms at 250,000 unexported rows (about half a
-day). It cannot be a `JOB_REGISTRY` entry: the export peaks at ~280 MB RSS
-against a 512 MB plan shared with 37 jobs.
+**Database 7,282 → 3,225 MB, 88.9% → 39.4%.** Nothing deleted: 13.9M rows in
+Parquet, every prune verifying each row present there by id and content
+fingerprint first. `odds_archive` 1,171→8 MB, `prop_odds_archive` 871→7,
+`player_game_history` 1,839→460, `mlb_pitch_events` 477→289,
+`odds_import_staging` 262→2, plus 7 dead tables and 2 redundant indexes.
 
----
+Serving stopped transferring 7.2M rows to compute 300 numbers. `fit_nfl_elo`
+got a total sort after 232 groups were found sharing `(game_date, event_ref)` —
+it was never reproducible run to run. OddsHarvester, dead since 2026-09-01, was
+diagnosed (site rebuild, not a block) and fixed by re-vendoring upstream
+v0.12.0; MLB and NFL both scrape again at 15/15 matched.
 
-## Verified end-to-end 2026-09-11 14:05Z, after a full day in production
+Four alarms now watch rates and boundaries rather than levels:
+`databaseGrowth` (MB/day), `corpusFreshness`, `workerMemory`,
+`harvesterScrapes`/`orphanJobBreadcrumbs`. The alert channel was paging ~96×/day
+on structural reds, which made a real failure invisible; those are acknowledged
+with the task that clears them, verified by deliberately breaking a job.
 
-Worker deployed at `0c76ca4c` (13:41:58Z). Database **3,199 MB / 39.0%**.
-8/8 audit checks, tsc clean, TS 359/359, 7 Python suites, corpus 13,915,007 rows
-across 6 tables readable with spans 1999→yesterday. Board: **2,332 projections,
-zero mismatches** against production. Routes exercised live: pitch-profile
-200/410, chart rendering 16 books of real ticks, clamp reporting
-`servedHours: 345`.
-
-### Three things the new alarms surfaced on their first day
-
-1. **`workerMemory` — 445 MB of 512 (87%), heaviest in `refreshTier1`.** Above
-   the 80% warn line. This is the ceiling the plan said had already OOM-killed a
-   job; it is now a number anyone can read instead of something you learn by
-   watching a job die.
-2. **`refreshTier1` takes ~341s against a 300s interval.** It cannot meet its
-   own cadence, so `check_job` will mark it stale on any run that is not
-   perfectly timed, and `gameOddsBookLinesFreshness` fails as a consequence. It
-   is not broken — a healthy run writes ~76,000 rows — the interval is simply
-   shorter than the work. One of them has to move.
-3. **A statement timeout during the post-deploy burst.** `refreshTier1` failed
-   once at 13:49 with `QueryCanceledError`, then recovered unaided.
-   **Ruled out as a Phase 5 side effect:** the planner was shown the actual
-   prior-rows query with real values and chose `idx_prop_odds_subject` — the
-   composite that was KEPT — not `idx_prop_odds_game`, which 5.S.3 dropped and
-   which it would not have used anyway (three matched columns against one).
-
-### OddsHarvester: ten days of silent zero — DIAGNOSED, fix not yet applied
-
-Full audit: **`docs/oddsharvester-outage-2026-09-11.md`**. Short version: not an
-anti-bot block. OddsPortal rebuilt its frontend and removed every `data-testid`,
-which is what all 29 of the vendored scraper's selectors key on; the site still
-returns HTTP 200 and 699 KB of real fixtures. **Upstream already fixed it** —
-we vendor 0.10.0, upstream shipped the selector rewrite in v0.11.0/v0.12.0 on
-2026-09-02/03, one and two days after we broke. The upgrade is the fix and our
-coupling is four imports, all of which still exist with an identical
-`run_scraper` signature.
-
-### Egress
-
-Measured over 20 minutes: **30,967,292 rows/day extrapolated, 22.9% of the
-135.5M cumulative figure**. **That window was NOT idle** — it contains this
-session's own verification (a 40,011-row `player_game_history` pull, a 14.8 MB
-props route fetch), so treat it as an upper bound rather than a steady state.
-The team-index fix is visible and working: `SELECT sport, name_key, team_id FROM
-team_name_index` reads **859 rows/call** where `_team_ids` used to scan 1.98M.
-
----
-
-## Two real problems that are TRACKED, not fixed
-
-Both are acknowledged in `health_check.ACKNOWLEDGED_CHECKS` so the alert channel
-stays usable. Each names the task that clears it; delete the entry when fixed.
-
-1. **NFL "closing" lines are not closes.** `live_capture` rows stop updating a
-   median **61 hours** before kickoff, while mlb and cfb reach 2 minutes.
-   `fit_nfl_elo` benchmarks against exactly those moneylines. *I twice called
-   this a threshold artifact; it is not.*
-2. **`cfb/sportsgameodds` is declared and produces nothing** while CFB is live.
-
-## What Phase 5 actually taught, in two lines
-
-**Reading ONE HALF of a split table gives a confident wrong answer** — it cost a
-fit trained on a truncated population, a team index that would have silently
-stopped resolving, and the audit's own span check crying data loss over intact
-data. Every reader now unions, via `corpus_reads.load_prop_archive` or
-`union_view`, which runs the ORIGINAL SQL rather than a reimplementation.
-
-**A measurement that flatters the thing you just built is wrong.** The
-2026-09-04 restart discarded `pg_stat_*` while `stats_reset` stayed NULL and
-poisoned three separate measurements. The index gate could not fail. The bloat
-estimate read `game_result` as 199 rows. `databaseGrowth` extrapolated a 2 MB
-wobble to 700 MB/day. A corpus comparison "failed" on timezone formatting. Each
-was caught by the output looking wrong, never by a test.
+**Two of those alarms were wrong on their first attempt** — `databaseGrowth`
+extrapolated a 2 MB wobble into 700 MB/day, `workerMemory` blamed a job that
+ran for 0.02 seconds. Both now refuse to state a trend without real history.
+Treat them as proven in about a week, not today.
 
 ---
 

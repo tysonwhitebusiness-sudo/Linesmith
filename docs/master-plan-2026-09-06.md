@@ -1357,6 +1357,45 @@ another sport.** Every number here was measured on 2026-09-09 and is
 reproducible; none of it is inherited from the earlier audit, two of whose
 headline claims did not survive re-measurement (see 5.0).
 
+> ## ⚠ PHASE 5 IS NOT COMPLETE — corrected 2026-09-11
+>
+> **§5.S.1 through §5.S.9 all passed their gates, and I wrote that up as "Phase 5
+> complete". That was wrong, and the operator caught it.** The §5.S checklist was
+> the MEANS; the three ceilings below are the END. Scoring the means and
+> declaring the end met is exactly the substitution this phase keeps documenting
+> elsewhere.
+>
+> | ceiling | limit | at phase start | now | state |
+> |---|---|---|---|---|
+> | database | 8,192 MB | 7,174 MB (87.6%) | **3,225 MB (39.4%)** | **CLEARED** |
+> | egress | 250 GB/mo | ~500 GB | idle rate 7.6% of the cumulative figure | improved, **not verified in GB** |
+> | worker RAM | 512 MB | **385 MB peak** | **489 MB resting, 560 MB peak (109%)** | **WORSE THAN AT PHASE START** |
+>
+> **The RAM ceiling regressed during the phase, and 5.S.2 is the largest
+> identifiable contributor.** Traced across one worker lifetime: 44 MB at start,
+> 272 MB after the first ingest cycle, **390 MB after `mlbHistorySummaryJob`
+> read the Parquet corpus** (+118 MB in one job), then a ~490 MB plateau it
+> never comes back down from. `corpus_store` had already measured that CPython
+> does not return freed arenas to the OS, and barred the corpus EXPORT from the
+> worker for exactly this reason. The summary job's corpus READ was never costed
+> the same way when 5.S.2 put it there.
+>
+> §5.5 asked to *"track worker RAM as a ceiling beside database size"*, and
+> 5.S.9 did that. **Tracking a ceiling is not clearing it.** The instrument is
+> what makes the breach visible; the breach is still a breach.
+>
+> One honesty note on the comparison: 385 MB came from
+> `measure_projection_memory.py` profiling one job, while 489/560 come from the
+> `rss_mb` stamp on every breadcrumb. Different instruments, so the 385→489
+> delta is indicative rather than exact. **560 MB against a 512 MB plan is an
+> absolute breach regardless of what it is compared to.**
+>
+> **WHAT REMAINS: clear the RAM ceiling.** The obvious first move is taking
+> `mlbHistorySummaryJob`'s corpus read off the worker, the way the export
+> already is — but that is a design change (the summary has to be built
+> somewhere, and the operator's machine already runs the export), so it wants
+> scoping rather than a patch.
+
 **THREE CEILINGS, AND ONE JOB IS THE LARGEST CONTRIBUTOR TO ALL THREE.**
 
 | ceiling | limit | measured | state |
