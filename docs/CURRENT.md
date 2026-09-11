@@ -73,6 +73,35 @@ caught a burst and the window figure must be discarded, not averaged.** Neither
 number alone is trustworthy — cumulative cannot tell live from dead, and a
 window cannot tell bursty from steady.
 
+
+### POST-DEPLOY OBSERVATIONS (2026-09-11 22:15Z)
+
+**The cache works, measured in production, not inferred.** Job breadcrumbs now
+carry `cache_hit_rate` / `cache_saved_mb` / `cache_fetched_mb`:
+
+```
+  hit rate  0.995      saved 140.1 MB      fetched 78.1 MB
+```
+
+**99.5% of reads hit.** The earlier "61%" was an artifact of computing hit rate
+from `pg_stat_statements`, which counts THIS SESSION'S local diagnostic scripts
+too -- those run against a different cache directory and miss constantly. The
+78.1 MB fetched is the one-time cost of filling the cache after a restart.
+
+**archivePropsJob runs in 8.6s on the worker** (37,620 rows), not the 81s
+measured locally -- that difference was this machine's round-trip latency to a
+remote database, not the job. Item 3 is fast.
+
+**Worker RAM improved again: 259 MB resting** (was 311), 406 MB peak.
+
+**OPEN — refreshTier1 overruns its own interval: 171.75s against a 150s
+schedule**, which is why `gameOddsBookLinesFreshness` and `refreshTier1` show
+red. It writes 89,157 rows across 5 providers, so it is provider-network-bound.
+**Unknown whether this predates the 2026-09-11 deploys** -- no pre-deploy health
+check was captured that day. The blob cache makes reads cheaper, so the
+mechanism does not explain it, but that is reasoning, not evidence. Check
+whether it was red before concluding either way.
+
 ### Next actions
 
 1. **Operator: read the Supabase egress graph for 12–13 Sep.** That is the verdict.
