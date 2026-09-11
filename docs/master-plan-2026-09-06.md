@@ -1390,11 +1390,42 @@ headline claims did not survive re-measurement (see 5.0).
 > delta is indicative rather than exact. **560 MB against a 512 MB plan is an
 > absolute breach regardless of what it is compared to.**
 >
-> **WHAT REMAINS: clear the RAM ceiling.** The obvious first move is taking
-> `mlbHistorySummaryJob`'s corpus read off the worker, the way the export
-> already is — but that is a design change (the summary has to be built
-> somewhere, and the operator's machine already runs the export), so it wants
-> scoping rather than a patch.
+> **THE CORPUS READ IS OFF THE WORKER as of 2026-09-11** (commit `5aaf025`).
+> Measured on the same slate and `as_of`: **+39 MB instead of +118 MB, ~20s
+> instead of ~317s.**
+>
+> Not by moving the job to the laptop — that would make the board depend on a
+> laptop being on. The summary is SPLIT at the hot window instead: the corpus
+> half **never changes** (every game before it is finished forever), so
+> `build_history_prefix.py` computes it once, off the worker, into
+> `player_history_prefix` (38,062 rows at cutoff 2024-03-20), and the daily job
+> merges that with the hot window using nothing but Postgres. All six aggregates
+> decompose additively across a date split; `recent_volume` concatenates
+> correctly **only** because the prefix is entirely earlier, which is what
+> `cutoff` pins down.
+>
+> **THE GATE FAILED AND IT WAS RIGHT TO — the OLD path was wrong.**
+> `source="union"` claimed in its own comment to dedup "on the row `id`". It did
+> not: the loaders drop `id`, so it deduped on `(game_date, athlete_id, stat,
+> volume)` — **and MLB plays doubleheaders.** Two games on one date with the
+> same line collapsed into one. Proven on athlete 668709, stolen-bases: 507
+> corpus rows, exactly 2 duplicate 4-tuples (2022-08-13 and 2022-09-12, 0 steals
+> in 4 PA in BOTH halves), union reported 505. It also re-sorted by value rather
+> than `id`, so order-sensitive `recent_volume` differed too. `union` is
+> deleted, not warned about.
+>
+> Board impact, measured: **2,554 games recovered**, 40.4% of projections moved
+> by median 0.000000 / p95 0.0027 / max 0.036, no row appearing or
+> disappearing — against the 3-season trim this phase REJECTED at p95 0.115 /
+> max 0.862.
+>
+> **Still to confirm: whether the ~490 MB resting FLOOR actually falls.** The
+> job's own cost is down 79 MB, but the floor accrued across many jobs and
+> removing one contributor does not necessarily remove its share. Being
+> measured after the deploy rather than predicted.
+>
+> Re-run `build_history_prefix.py --apply` whenever the hot window moves (after
+> a `prune_player_history`). Nothing else can change its answer.
 
 **THREE CEILINGS, AND ONE JOB IS THE LARGEST CONTRIBUTOR TO ALL THREE.**
 
