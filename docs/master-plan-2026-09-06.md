@@ -1668,14 +1668,56 @@ continuously, so only frozen rows may be pruned — `FROZEN_PREDICATE` already
 encodes that boundary.
 **Gate:** `fit_nfl_elo` reproduces its published numbers from Parquet.
 
-**5.S.8 — 5.3's roll-up of `prop_odds_history`.** 1,189 MB, growing 122.7 MB/day,
-read 8,358 times against 1,858,112 inserts. **The CLV question is MINE to
-measure, not a decision to escalate:** determine whether `userClv.ts` takes its
-entry price from `pick_history` (where Phase 3.5 put it) or from
-`prop_odds_history`. Only if it is the latter does the retention window become
-an operator choice.
-**Gate:** the chart renders identically for every window the route permits, and
-CLV is unchanged for a sampled set of real historical picks.
+**5.S.8 — `prop_odds_history`.** 1,239 MB, the largest remaining object.
+**ITS GATE WAS MEASURED 2026-09-11 AND BOTH OF ITS PREMISES WERE WRONG.**
+
+**Premise 1 — the CLV question was the wrong question.** 5.3a asked whether
+`userClv.ts` takes its ENTRY price from `pick_history` or from
+`prop_odds_history`, *"only if it is the latter does the retention window become
+an operator choice."* It takes it from **neither**: the entry price is
+`bet.american_odds`, off the bet row (`lib/odds/userClv.ts:204`). By the stated
+test, retention would be free.
+
+**It is not free, for a reason the test could not see.** The CLOSING price comes
+from `prop_odds_history`, through `closingPropPrice`, and the key is *how*:
+
+```sql
+WHERE ... AND observed_at < ?      -- ? is GAME START, not end of day
+ORDER BY observed_at DESC LIMIT 1
+```
+
+A daily open/high/low/close roll-up stores the **calendar-day** close, ~23:59.
+CLV needs the last tick before a **7:05pm first pitch**. Those are different
+prices and the later one may be in-play or post-game. So an OHLC roll-up would
+not make CLV unavailable — it would make it **quietly wrong**, which is strictly
+worse than missing. Any roll-up here must preserve *the last observation before
+each game's start*, not the day's close.
+
+**Premise 2 — this is not a retention problem at all.** Measured:
+
+```
+prop_odds_history   4,817,085 rows, span 2026-08-11 -> 2026-09-11
+  older than  7d    1,766,329
+  older than 14d      425,307
+  older than 30d        2,534
+```
+
+**Retention already works.** Essentially nothing survives 30 days. The table is
+1,239 MB because it ingests ~122.7 MB/day into a ~14-day window, not because old
+data piles up. So "roll up the old rows" reclaims almost nothing: the mass is in
+the 0-14 day band that every consumer actually reads.
+
+**What that leaves, and it is a different piece of work than this step
+describes:** either (a) roll up the 7-14 day band while preserving the
+pre-game-start tick, which is where ~1.3M of the rows are, or (b) reduce what is
+written — 90,194 active series repriced ~4.3x/day is the input, and 5.3 already
+proved the movement-only rule holds at **0.0%** repeats, so there is no dedup
+win. (b) is a product decision about book coverage, not an architectural one.
+
+**Urgency is low and should be stated:** `bets` holds **2 rows**, so the user-CLV
+path is essentially unexercised today. Nothing here is load-bearing yet, which
+makes it a good time to choose the roll-up shape deliberately rather than under
+pressure.
 
 **5.S.9 — 5.5's guardrails.** A job that dies abnormally leaves a breadcrumb; an
 unhealthy check reaches the operator; worker RAM is tracked as a ceiling beside
