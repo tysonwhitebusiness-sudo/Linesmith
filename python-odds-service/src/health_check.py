@@ -1028,6 +1028,56 @@ async def check_harvester_scrapes() -> dict:
                        if healthy else "; ".join(bits))}
 
 
+async def check_history_prefix_cutoff() -> dict:
+    """Phase 5 — does `player_history_prefix` still meet the hot window exactly?
+
+    THE SUMMARY IS BUILT FROM TWO HALVES AND THEY HAVE TO TOUCH. The prefix
+    holds every game STRICTLY BEFORE its `cutoff`; Postgres holds everything
+    from the hot window's first game onwards. If those two dates drift apart the
+    result is silent and wrong in one of two directions:
+
+      cutoff  <  hot floor   -> a GAP: games in neither half, lost from every
+                                lifetime total
+      cutoff  >  hot floor   -> an OVERLAP: games counted TWICE
+
+    They drift the moment `prune_player_history` moves the hot window, because
+    the prefix is precomputed and does not follow. Nothing else can move them,
+    which is why the fix is simply to re-run `build_history_prefix.py --apply`
+    after a prune -- and why something has to say so when it has not happened.
+
+    Fails rather than warns: a wrong lifetime total feeds `shrunk_rate`, which
+    is the thing 5.2's whole summary design exists to preserve.
+    """
+    pool = await db.get_pool()
+    async with pool.acquire(timeout=30.0) as conn:
+        hot_floor = await conn.fetchval(
+            "SELECT min(game_date) FROM player_game_history WHERE sport = 'mlb'")
+        cutoffs = await conn.fetch(
+            "SELECT DISTINCT cutoff FROM player_history_prefix WHERE sport = 'mlb'")
+    if hot_floor is None:
+        return {"name": "historyPrefixCutoff", "healthy": True,
+                "status": "player_game_history holds no mlb rows to anchor to"}
+    if not cutoffs:
+        return {"name": "historyPrefixCutoff", "healthy": False,
+                "status": ("player_history_prefix is EMPTY — mlbHistorySummaryJob "
+                           "will build lifetime totals from the hot window alone. "
+                           "Run build_history_prefix.py --apply")}
+    if len(cutoffs) > 1:
+        return {"name": "historyPrefixCutoff", "healthy": False,
+                "status": (f"player_history_prefix holds {len(cutoffs)} different "
+                           f"cutoffs {[str(r['cutoff']) for r in cutoffs]} — a "
+                           f"half-finished rebuild. Re-run "
+                           f"build_history_prefix.py --apply")}
+    cutoff = cutoffs[0]["cutoff"]
+    if cutoff == hot_floor:
+        return {"name": "historyPrefixCutoff", "healthy": True,
+                "status": f"prefix ends and the hot window begins at {cutoff}"}
+    shape = "GAP — games in neither half" if cutoff < hot_floor else             "OVERLAP — games counted twice"
+    return {"name": "historyPrefixCutoff", "healthy": False,
+            "status": (f"{shape}: prefix cutoff {cutoff}, hot window starts "
+                       f"{hot_floor}. Re-run build_history_prefix.py --apply")}
+
+
 async def check_corpus_freshness() -> dict:
     """Phase 5.S.9 — is the corpus export still running?
 
@@ -1210,6 +1260,7 @@ async def main() -> int:
         await check_declared_pairs_produce(),
         await check_orphan_job_breadcrumbs(),
         await check_corpus_freshness(),
+        await check_history_prefix_cutoff(),
         await check_harvester_scrapes(),
         await check_database_growth(),
         await check_worker_memory(),
