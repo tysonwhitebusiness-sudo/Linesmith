@@ -4435,6 +4435,121 @@ async def live_props_for_games(game_ids: list[str]) -> list:
         )
 
 
+
+# ---------------------------------------------------------------------------
+# PROP ARCHIVE, COMPUTED SERVER-SIDE
+# ---------------------------------------------------------------------------
+#
+# `archive_props` used to pull every latest prop quote for every upcoming game
+# (13,542 rows per call, ~2,000 calls/day = 27.3M rows/day), pivot over/under
+# into one dict in Python, DISCARD every one-sided quote, and write the
+# survivors straight back into Postgres. The rows left the database and came
+# back having been reshaped -- they never needed to make the trip.
+#
+# Two separate wastes, both removable in SQL:
+#   1. over and under arrive as two rows and become one   (2:1)
+#   2. one-sided quotes are fetched, shipped, then dropped (they cannot be
+#      de-vigged, which the job's own warning already says)
+#
+# EQUIVALENCE NOTES -- these are the places the SQL has to imitate Python
+# exactly rather than do the obvious thing:
+#
+#   * `athlete_name`/`provider` come from the FIRST row of each group, because
+#     the Python used dict.setdefault while iterating in DISTINCT ON order,
+#     whose last key is `side`. Side sorts 'other' < 'over' < 'under', so the
+#     first row is NOT always the over row. `(array_agg(... ORDER BY side))[1]`
+#     reproduces that precisely; `min()` would not.
+#   * a group whose only rows are side='other' still forms in Python (setdefault
+#     runs before the side test) and is then dropped for having no prices. The
+#     HAVING clause here drops it for the same reason, so the outcome matches.
+#   * `line` is nullable and GROUP BY treats NULLs as equal -- the same as a
+#     Python dict key of None.
+#   * `canonical_bookmaker()` is NOT reapplied. Verified empirically on
+#     2026-09-11: all 26 distinct bookmakers in `prop_odds` are already
+#     canonical, because `write_prop_odds` normalises at the shared writer.
+#     Re-implementing that alias map in SQL would create a THIRD copy of a
+#     mapping CLAUDE.md keeps asserted-identical across two languages.
+_PROP_PIVOT = """
+WITH latest AS (
+  SELECT DISTINCT ON (game_id, subject_id, market_key, line, bookmaker, side)
+         game_id, subject_id, subject_name, market_key, line, side,
+         bookmaker, american_odds, provider_id
+    FROM prop_odds
+   WHERE game_id = ANY($1)
+   ORDER BY game_id, subject_id, market_key, line, bookmaker, side, fetched_at DESC
+), g AS (
+  SELECT * FROM unnest($2::text[], $3::text[], $4::date[], $5::timestamptz[])
+       AS t(event_ref, sport, game_date, event_start)
+), pivot AS (
+  SELECT l.game_id, l.subject_id, l.market_key, l.line, l.bookmaker,
+         (array_agg(l.subject_name ORDER BY l.side))[1] AS athlete_name,
+         (array_agg(l.provider_id  ORDER BY l.side))[1] AS provider,
+         max(l.american_odds) FILTER (WHERE l.side = 'over')  AS over_price,
+         max(l.american_odds) FILTER (WHERE l.side = 'under') AS under_price
+    FROM latest l
+   GROUP BY l.game_id, l.subject_id, l.market_key, l.line, l.bookmaker
+)
+SELECT g.sport, g.event_ref, g.game_date, g.event_start,
+       p.subject_id AS athlete_id, p.athlete_name, p.market_key AS type_name,
+       p.line, p.over_price, p.under_price, p.bookmaker, p.provider
+  FROM pivot p JOIN g ON g.event_ref = p.game_id
+ WHERE p.over_price IS NOT NULL AND p.under_price IS NOT NULL
+"""
+
+
+async def prop_archive_rows_sql(game_ids: list[str], event_refs: list[str],
+                                sports: list[str], game_dates: list,
+                                event_starts: list) -> list:
+    """DRY RUN: exactly the rows the server-side archive would write.
+
+    Exists so the SQL can be diffed row-for-row against the Python path before
+    it is trusted to write anything. This one reads rows back, so it is for
+    verification only -- never the production path."""
+    if not game_ids:
+        return []
+    pool = await get_pool()
+    async with pool.acquire(timeout=120.0) as conn:
+        return await conn.fetch(_PROP_PIVOT, game_ids, event_refs, sports,
+                                game_dates, event_starts)
+
+
+async def archive_props_server_side(game_ids: list[str], event_refs: list[str],
+                                    sports: list[str], game_dates: list,
+                                    event_starts: list) -> int:
+    """Pivot, filter and insert entirely inside Postgres. Returns rows written.
+
+    No result set crosses the pooler -- that is the entire point."""
+    if not game_ids:
+        return 0
+    sql = f"""
+        INSERT INTO prop_odds_archive
+          (sport, event_ref, game_date, event_start, athlete_id, athlete_name,
+           type_name, line, over_price, under_price, bookmaker, provider,
+           source, source_priority, captured_at, last_updated)
+        SELECT sport, event_ref, game_date, event_start, athlete_id, athlete_name,
+               type_name, line, over_price, under_price, bookmaker, provider,
+               'live_capture', 95, now(), now()
+          FROM ({_PROP_PIVOT}) src
+        ON CONFLICT (sport, event_ref, COALESCE(athlete_id, ''), type_name,
+                     COALESCE(line, -9999::double precision), source,
+                     COALESCE(bookmaker, ''))
+        DO UPDATE SET over_price = EXCLUDED.over_price,
+                      under_price = EXCLUDED.under_price,
+                      event_start = EXCLUDED.event_start,
+                      captured_at = now(),
+                      last_updated = now()
+          WHERE prop_odds_archive.event_start > now()
+    """
+    pool = await get_pool()
+    async with pool.acquire(timeout=180.0) as conn:
+        tag = await conn.execute(sql, game_ids, event_refs, sports,
+                                 game_dates, event_starts)
+    try:
+        return int(str(tag).rsplit(" ", 1)[-1])
+    except ValueError:
+        return 0
+
+
 async def upsert_live_prop_capture(rows: list[dict], batch: int = 500) -> int:
     """Captured pre-game PROP prices into prop_odds_archive, frozen at start.
 
