@@ -105,6 +105,22 @@ async def _run_timed(job_name: str, coro) -> dict:
     except Exception:                                        # noqa: BLE001
         pass
 
+    # BLOB CACHE VISIBILITY. The validation cache (blob_cache.py) is the main
+    # egress fix, and its effect was being INFERRED from pg_stat_statements call
+    # counts rather than observed. Hit RATE alone is misleading here: tiny
+    # `provider-throttle:*` keys are rewritten every job run and therefore always
+    # miss, dragging the rate down while costing ~80 bytes each, whereas the
+    # expensive keys (mlb:snapshot at 6.6 MB) hit. `saved_mb` is the figure that
+    # actually maps to the bill, so record both and stop guessing.
+    try:
+        import blob_cache
+        cs = blob_cache.stats()
+        summary["cache_hit_rate"] = round(cs["hit_rate"], 3)
+        summary["cache_saved_mb"] = round(cs["saved_bytes"] / 1e6, 1)
+        summary["cache_fetched_mb"] = round(cs["bytes_fetched"] / 1e6, 1)
+    except Exception:                                        # noqa: BLE001
+        pass
+
     # CARRY A SKIP STREAK FORWARD. gameday.skip_summary sets fetched=False for a
     # cycle that ran but deliberately called no provider. One of those is the
     # tier gate working; a long unbroken run of them means either nothing is
