@@ -65,6 +65,13 @@ WORKER_LIMIT_MB = 512       # Render plan
 # 80%: measure_projection_memory.py already treats 60% as the danger band for a
 # single job, and this is the whole process across a sequential queue.
 WORKER_RSS_WARN_PCT = 80.0
+# Only jobs that ran this recently describe the process as it is NOW.
+RSS_WINDOW_MINUTES = 90
+# A job must stand this far clear of the resting floor before it is named as
+# responsible. Below it, the floor is the finding.
+RSS_SPIKE_MB = 25.0
+# Below this much history a "baseline" is one reading, and a drift is noise.
+RSS_TREND_MIN_HOURS = 12.0
 
 
 async def feeding_job_stale(name: str, interval_seconds: float) -> str | None:
@@ -868,100 +875,106 @@ _validate_acknowledged()
 async def check_worker_memory() -> dict:
     """Phase 5.S.9 — the OTHER ceiling, which had no alarm at all.
 
-    Render's plan is 512 MB and it has already OOM-killed a job in this phase.
-    Until now nothing recorded RSS, so the only way to discover the worker was
-    near its limit was to watch it die — while `pg_database_size` gave the
-    database a number anyone could read at any time.
+    Render's plan is 512 MB and it has already OOM-killed a job. Until `rss_mb`
+    was stamped on every breadcrumb, the only way to discover the worker was
+    near its limit was to watch it die, while the database had
+    `pg_database_size` all along.
 
-    `_run_timed` now stamps `rss_mb` on every breadcrumb, so this reads the
-    high-water mark across the jobs that have actually run. Reported per job,
-    because "which job" is the actionable half: a single heavy job is a
-    different problem from a slow leak across all of them.
+    RSS IS THE PROCESS, NOT THE JOB, AND THE FIRST VERSION OF THIS GOT THAT
+    WRONG. The worker is one long-lived process running jobs sequentially, so a
+    breadcrumb's `rss_mb` is the worker's footprint when that job FINISHED --
+    not what that job used. The first version reported "highest in X" and
+    blamed whichever job happened to be running at the high-water mark:
+    `maintainMlbEloJob` runs for 0.02 seconds and reported 503 MB, which it
+    plainly did not allocate.
+
+    So this reports the BASELINE -- the median across recently-run jobs, i.e.
+    the process's resting footprint -- and treats a single job as responsible
+    only when its reading stands clear of that baseline by `RSS_SPIKE_MB`.
+    Below that margin it says no single job stands out, which is the honest
+    answer for a process whose floor has simply risen.
+
+    WHY THE BASELINE IS THE NUMBER THAT MATTERS. Traced across one worker
+    lifetime on 2026-09-11: 44 MB at start, 272 MB after the first ingest
+    cycle, 390 MB after `mlbHistorySummaryJob` read the Parquet corpus, then a
+    ~500 MB plateau it never came back down from. CPython does not return freed
+    arenas to the OS -- `corpus_store` measured exactly that and it is why the
+    corpus EXPORT is barred from the worker. At a 500 MB floor against a 512 MB
+    plan, any job with a real allocation spike is rolling dice.
+
+    The history is kept so "500 MB" can be told apart from "500 MB and
+    climbing", which a single reading cannot distinguish.
     """
-    worst_name, worst_mb = None, 0.0
+    readings: list[tuple] = []
     for name, _, _ in JOB_REGISTRY:
         payload = await db.read_snapshot(f"python-harness:job-run:{name}")
         if not payload:
             continue
         try:
-            mb = json.loads(payload).get("rss_mb")
+            summary = json.loads(payload)
+            mb = summary.get("rss_mb")
+            at = summary.get("started_at")
         except (ValueError, AttributeError):
             continue
-        if isinstance(mb, (int, float)) and mb > worst_mb:
-            worst_name, worst_mb = name, float(mb)
+        if isinstance(mb, (int, float)) and at:
+            readings.append((datetime.fromisoformat(at), float(mb), name))
 
-    if worst_name is None:
+    if not readings:
         return {"name": "workerMemory", "healthy": True,
                 "status": "no job has recorded rss_mb yet (needs one run of the "
                           "current build)"}
-    pct = worst_mb / WORKER_LIMIT_MB * 100
-    healthy = pct < WORKER_RSS_WARN_PCT
-    return {"name": "workerMemory", "healthy": healthy,
-            "status": (f"{'healthy' if healthy else 'NEAR THE PLAN LIMIT'} — peak "
-                       f"{worst_mb:,.0f} MB of {WORKER_LIMIT_MB} MB ({pct:.0f}%), "
-                       f"highest in {worst_name}")}
 
+    now = datetime.now(timezone.utc)
+    # Only jobs that ran RECENTLY describe the process as it is now. A daily
+    # job's breadcrumb is hours old and reports the footprint the worker had
+    # back then -- including, right after a restart, the 44 MB it starts at.
+    recent = [r for r in readings
+              if (now - r[0]).total_seconds() <= RSS_WINDOW_MINUTES * 60]
+    if not recent:
+        recent = sorted(readings)[-5:]
+    values = sorted(v for _, v, _ in recent)
+    baseline = values[len(values) // 2]
+    peak_at, peak_mb, peak_job = max(recent, key=lambda r: r[1])
 
-async def check_database_growth() -> dict:
-    """Phase 5.S.9 — the alarm is on MB/DAY, not percent-full.
-
-    PERCENT-FULL TOLD US NOTHING USEFUL ALL THE WAY TO 88.9%. A level is a
-    lagging indicator: it is equally calm at 40% climbing 123 MB/day (five weeks
-    from the wall) and at 40% flat (never). What actually predicts the ceiling
-    is the RATE, and the rate is what moved this database from comfortable to
-    nearly-full without any single day looking alarming.
-
-    So this reports DAYS OF HEADROOM at the current growth rate and fails when
-    that falls under a month — long enough to do something deliberate about it,
-    which is exactly the margin Phase 5 did NOT have when it started.
-
-    The rate comes from `snapshot_cache`'s own history of this measurement
-    rather than from a table scan: each run records the size, and the slope
-    across runs is the growth. A single reading cannot produce a rate, so the
-    first run after a deploy reports "establishing baseline" and passes.
-    """
+    # Trend: record the baseline so a later run can say whether it is climbing.
+    key = "health:worker-rss-history"
+    trend = ""
     pool = await db.get_pool()
-    key = "health:db-size-history"
-    async with pool.acquire(timeout=30.0) as conn:
-        size_mb = await conn.fetchval(
-            "SELECT pg_database_size(current_database())") / 1e6
-        now = await conn.fetchval("SELECT now()")
+    async with pool.acquire(timeout=15.0) as conn:
         raw = await db.read_snapshot(key)
         hist = json.loads(raw) if raw else []
-        hist.append({"at": now.isoformat(), "mb": round(size_mb, 1)})
-        # Keep a week at this cron's 15-minute cadence. Enough to smooth a
-        # single VACUUM FULL or a one-off import out of the slope.
-        hist = hist[-672:]
+        hist.append({"at": now.isoformat(), "baseline": round(baseline, 1),
+                     "peak": round(peak_mb, 1)})
+        hist = hist[-672:]                       # a week at the 15-min cadence
         await conn.execute(
             """INSERT INTO snapshot_cache (cache_key, payload, fetched_at)
                VALUES ($1, $2, now())
                ON CONFLICT (cache_key) DO UPDATE
                  SET payload = excluded.payload, fetched_at = excluded.fetched_at""",
             key, json.dumps(hist))
-
-    pct = size_mb / DB_LIMIT_MB * 100
     first = datetime.fromisoformat(hist[0]["at"])
-    days = (now - first).total_seconds() / 86400.0
-    # A RATE NEEDS A WINDOW, AND TWO SAMPLES MINUTES APART IS NOT ONE. The first
-    # version computed a slope as soon as it had two readings: on its second run,
-    # 4 minutes after its first, a 2 MB wobble extrapolated to ~700 MB/day and
-    # the check failed on a database that had just been pruned to 38%. An alarm
-    # whose first act is to cry wolf is an alarm nobody reads.
-    if days < GROWTH_MIN_WINDOW_DAYS:
-        return {"name": "databaseGrowth", "healthy": True,
-                "status": (f"{size_mb:,.0f} MB ({pct:.1f}%) — establishing baseline "
-                           f"({days * 24:.1f}h of {GROWTH_MIN_WINDOW_DAYS * 24:.0f}h)")}
-    mb_per_day = (size_mb - hist[0]["mb"]) / days
-    if mb_per_day <= 0:
-        return {"name": "databaseGrowth", "healthy": True,
-                "status": (f"{size_mb:,.0f} MB ({pct:.1f}%), "
-                           f"{mb_per_day:+,.1f} MB/day over {days:.1f}d — not growing")}
-    days_left = (DB_LIMIT_MB - size_mb) / mb_per_day
-    healthy = days_left >= GROWTH_DAYS_WARN
-    return {"name": "databaseGrowth", "healthy": healthy,
-            "status": (f"{'healthy' if healthy else 'CEILING APPROACHING'} — "
-                       f"{size_mb:,.0f} MB ({pct:.1f}%), +{mb_per_day:,.1f} MB/day "
-                       f"over {days:.1f}d, {days_left:,.0f} days of headroom")}
+    hours = (now - first).total_seconds() / 3600.0
+    if hours >= RSS_TREND_MIN_HOURS:
+        drift = baseline - hist[0]["baseline"]
+        trend = (f", baseline {drift:+,.0f} MB over {hours:.0f}h"
+                 if abs(drift) >= 5 else f", baseline flat over {hours:.0f}h")
+    else:
+        trend = f", trend needs {RSS_TREND_MIN_HOURS - hours:.0f}h more history"
+
+    # A job is named only if it stands clear of the floor. Otherwise the floor
+    # IS the story and naming a job would repeat the original mistake.
+    spike = peak_mb - baseline
+    attribution = (f"; {peak_job} spiked +{spike:,.0f} MB above it"
+                   if spike >= RSS_SPIKE_MB
+                   else "; no single job stands out — this is the process floor")
+
+    pct = baseline / WORKER_LIMIT_MB * 100
+    healthy = pct < WORKER_RSS_WARN_PCT
+    return {"name": "workerMemory", "healthy": healthy,
+            "status": (f"{'healthy' if healthy else 'BASELINE NEAR THE PLAN LIMIT'} — "
+                       f"resting {baseline:,.0f} MB of {WORKER_LIMIT_MB} MB "
+                       f"({pct:.0f}%), peak {peak_mb:,.0f} MB across "
+                       f"{len(recent)} recent job(s){trend}{attribution}")}
 
 
 async def check_harvester_scrapes() -> dict:
@@ -1116,6 +1129,68 @@ async def check_orphan_job_breadcrumbs() -> dict:
             "status": (f"{len(orphans)} breadcrumb(s) with no JOB_REGISTRY entry — "
                        f"deleted on purpose, or dropped by accident and now "
                        f"unmonitored? {detail}")}
+
+
+async def check_database_growth() -> dict:
+    """Phase 5.S.9 — the alarm is on MB/DAY, not percent-full.
+
+    PERCENT-FULL TOLD US NOTHING USEFUL ALL THE WAY TO 88.9%. A level is a
+    lagging indicator: it is equally calm at 40% climbing 123 MB/day (five weeks
+    from the wall) and at 40% flat (never). What actually predicts the ceiling
+    is the RATE, and the rate is what moved this database from comfortable to
+    nearly-full without any single day looking alarming.
+
+    So this reports DAYS OF HEADROOM at the current growth rate and fails when
+    that falls under a month — long enough to do something deliberate about it,
+    which is exactly the margin Phase 5 did NOT have when it started.
+
+    The rate comes from `snapshot_cache`'s own history of this measurement
+    rather than from a table scan: each run records the size, and the slope
+    across runs is the growth. A single reading cannot produce a rate, so the
+    first run after a deploy reports "establishing baseline" and passes.
+    """
+    pool = await db.get_pool()
+    key = "health:db-size-history"
+    async with pool.acquire(timeout=30.0) as conn:
+        size_mb = await conn.fetchval(
+            "SELECT pg_database_size(current_database())") / 1e6
+        now = await conn.fetchval("SELECT now()")
+        raw = await db.read_snapshot(key)
+        hist = json.loads(raw) if raw else []
+        hist.append({"at": now.isoformat(), "mb": round(size_mb, 1)})
+        # Keep a week at this cron's 15-minute cadence. Enough to smooth a
+        # single VACUUM FULL or a one-off import out of the slope.
+        hist = hist[-672:]
+        await conn.execute(
+            """INSERT INTO snapshot_cache (cache_key, payload, fetched_at)
+               VALUES ($1, $2, now())
+               ON CONFLICT (cache_key) DO UPDATE
+                 SET payload = excluded.payload, fetched_at = excluded.fetched_at""",
+            key, json.dumps(hist))
+
+    pct = size_mb / DB_LIMIT_MB * 100
+    first = datetime.fromisoformat(hist[0]["at"])
+    days = (now - first).total_seconds() / 86400.0
+    # A RATE NEEDS A WINDOW, AND TWO SAMPLES MINUTES APART IS NOT ONE. The first
+    # version computed a slope as soon as it had two readings: on its second run,
+    # 4 minutes after its first, a 2 MB wobble extrapolated to ~700 MB/day and
+    # the check failed on a database that had just been pruned to 38%. An alarm
+    # whose first act is to cry wolf is an alarm nobody reads.
+    if days < GROWTH_MIN_WINDOW_DAYS:
+        return {"name": "databaseGrowth", "healthy": True,
+                "status": (f"{size_mb:,.0f} MB ({pct:.1f}%) — establishing baseline "
+                           f"({days * 24:.1f}h of {GROWTH_MIN_WINDOW_DAYS * 24:.0f}h)")}
+    mb_per_day = (size_mb - hist[0]["mb"]) / days
+    if mb_per_day <= 0:
+        return {"name": "databaseGrowth", "healthy": True,
+                "status": (f"{size_mb:,.0f} MB ({pct:.1f}%), "
+                           f"{mb_per_day:+,.1f} MB/day over {days:.1f}d — not growing")}
+    days_left = (DB_LIMIT_MB - size_mb) / mb_per_day
+    healthy = days_left >= GROWTH_DAYS_WARN
+    return {"name": "databaseGrowth", "healthy": healthy,
+            "status": (f"{'healthy' if healthy else 'CEILING APPROACHING'} — "
+                       f"{size_mb:,.0f} MB ({pct:.1f}%), +{mb_per_day:,.1f} MB/day "
+                       f"over {days:.1f}d, {days_left:,.0f} days of headroom")}
 
 
 async def main() -> int:
