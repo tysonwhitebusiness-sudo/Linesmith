@@ -17,6 +17,7 @@ import json
 import re
 import ssl
 from dataclasses import dataclass, replace
+import blob_cache
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -173,10 +174,46 @@ async def get_pool() -> asyncpg.Pool:
 # unbounded wait, watchdog or not.
 
 
-async def read_snapshot(cache_key: str) -> str | None:
+async def _snapshot_validated(cache_key: str) -> tuple[str, "datetime"] | None:
+    """(payload, fetched_at) for a snapshot key, served from local disk when
+    the stored version matches — see blob_cache for the full reasoning.
+
+    THE POINT OF THE TWO QUERIES. The first asks for `fetched_at` alone, which
+    is ~8 bytes on the wire against payloads that run to 12 MB. Only on a miss
+    does the second query pull the payload. Measured 2026-09-11, these reads
+    were ~16 GB/day of a 19.483 GB/day egress bill — 80% of it — because on a
+    hosted database every cache HIT is a billed network transfer.
+
+    THE SECOND QUERY RE-READS `fetched_at` AND CACHES UNDER *THAT*. A writer can
+    land between the two statements; storing the new payload under the stamp
+    read by the FIRST query would file it under a version it does not have, and
+    that entry would then be served as a match forever. Caching under the stamp
+    returned alongside the payload is the only pairing that cannot go stale.
+    """
     pool = await get_pool()
-    row = await pool.fetchrow("SELECT payload FROM snapshot_cache WHERE cache_key = $1", cache_key)
-    return row["payload"] if row else None
+    meta = await pool.fetchrow(
+        "SELECT fetched_at FROM snapshot_cache WHERE cache_key = $1", cache_key)
+    if meta is None:
+        return None
+    stamp = meta["fetched_at"]
+    if stamp is not None:
+        hit = await asyncio.to_thread(blob_cache.get, cache_key, stamp)
+        if hit is not None:
+            return hit, stamp
+
+    row = await pool.fetchrow(
+        "SELECT payload, fetched_at FROM snapshot_cache WHERE cache_key = $1", cache_key)
+    if row is None:                      # deleted between the two reads
+        return None
+    payload, actual = row["payload"], row["fetched_at"]
+    if actual is not None and payload is not None:
+        await asyncio.to_thread(blob_cache.put, cache_key, actual, payload)
+    return payload, actual
+
+
+async def read_snapshot(cache_key: str) -> str | None:
+    got = await _snapshot_validated(cache_key)
+    return got[0] if got else None
 
 
 async def read_snapshot_with_age(cache_key: str) -> tuple[str, float] | None:
@@ -184,12 +221,13 @@ async def read_snapshot_with_age(cache_key: str) -> tuple[str, float] | None:
     lib/db/client.ts's readSnapshotCache (payload + fetchedAt), needed for
     TTL-checked caches like ESPN roster data (game_context.py). Returns None
     if the key doesn't exist."""
-    pool = await get_pool()
-    row = await pool.fetchrow("SELECT payload, fetched_at FROM snapshot_cache WHERE cache_key = $1", cache_key)
-    if row is None:
+    got = await _snapshot_validated(cache_key)
+    if got is None:
         return None
-    age = (datetime.now(timezone.utc) - row["fetched_at"]).total_seconds()
-    return row["payload"], age
+    payload, stamp = got
+    if stamp is None:
+        return payload, 0.0
+    return payload, (datetime.now(timezone.utc) - stamp).total_seconds()
 
 
 async def write_snapshot(cache_key: str, payload: str) -> None:
