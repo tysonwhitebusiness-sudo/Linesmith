@@ -66,8 +66,14 @@ order was not. Now ordered totally, and both engines agree byte for byte.
 
 ### Still open
 
-- **`computeMlbPropPredictionsJob` has been dead since 2026-09-08 02:23Z** —
-  `KeyError: 'a'` at `jobs.py:812`. Untouched; it is §5.S.9's test case.
+- **`computeMlbPropPredictionsJob` is NOT a failing job — that was my error,
+  twice.** It is not in `JOB_REGISTRY`; Phase 1.1 deleted it. The `ok=false`
+  breadcrumb from 2026-09-08 is a **tombstone** sitting in `snapshot_cache`, and
+  it reads exactly like a job that has been failing for days. `health_check`
+  never looks at it, because it enumerates the registry by name. That blind spot
+  is real and now has a check (`check_orphan_job_breadcrumbs`, 5.S.9): a job
+  dropped from the registry by accident would otherwise stop being monitored
+  with nothing to say so.
 - **§5.S.8** (`prop_odds_history`, 1,239 MB, the fastest-growing object) has not
   been started. Its 5.3a gate — does `userClv.ts` take entry price from
   `pick_history` or from `prop_odds_history` — is still unmeasured.

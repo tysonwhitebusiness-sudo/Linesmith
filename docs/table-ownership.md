@@ -1,5 +1,41 @@
 # Table ownership
 
+> ## ⚠ THIS MAP IS STALE AS OF 2026-09-11 AND A RE-DERIVATION IS DUE
+>
+> **The live database has 51 base tables in `public`; the derivation note below
+> says 36.** Fifteen real tables are absent from the map entirely, including
+> core ones — `odds_archive`, `game_result`, `prop_odds_archive`,
+> `mlb_pitch_events`, `athlete_crosswalk`, `injury_report`, the four
+> `*_shot_events`/`*_target_events` tables, `odds_import_staging`,
+> `venue_factors`, `player_history_summary`.
+>
+> This is recorded rather than quietly patched because the file's own rule is
+> that it must be **re-derived, not edited** — parse every `INSERT`/`UPDATE`/
+> `DELETE` in `lib/db/client.ts` and `python-odds-service/src/db.py`, map each to
+> its enclosing exported function, then grep both trees for call sites. Adding
+> fifteen rows by hand would produce a map that looks complete and was never
+> checked, which is worse than one that admits it is behind.
+>
+> **What Phase 5 changed on 2026-09-10/11, so the next derivation starts from
+> the truth:**
+>
+> | table | change | owner |
+> |---|---|---|
+> | `team_name_index` | **NEW** (migration `20260910180000`) | Python — `build_team_name_index.py` / `teamNameIndexJob`; read by `archival_bridge` |
+> | `index_usage_snapshot` | **NEW** | Python — `audit_index_usage.py --snapshot` |
+> | `player_history_summary` | NEW in 5.2 | Python — `mlbHistorySummaryJob` |
+> | `odds_import_staging` | rows pruned, table kept | Python importers write; `scripts/gate/promote_odds.mjs` drains |
+> | `prop_odds_dedup_backup_20260829` | **DROPPED** | — |
+> | `team_elo_history_int_backup_20260901` | **DROPPED** | — |
+> | `game_odds_history_bookmaker_backup_20260829` | **DROPPED** | — |
+> | `game_odds_book_lines_bookmaker_backup_20260829` | **DROPPED** | — |
+> | `pick_history_game_model_backup_20260829` | **DROPPED** | — |
+> | `game_odds_book_lines_quarantine_20260829` | **DROPPED** | — |
+> | `prop_import_staging` | **DROPPED** (never written) | — |
+>
+> Nothing below this box has been re-verified since 2026-08-29.
+
+
 > **One table, one writer.** Task 2.1 of `docs/audit-remediation-plan.md`,
 > closing P2 M9 and P3 §4 (22 of 35 tables with writers in both languages).
 >
