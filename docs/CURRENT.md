@@ -52,6 +52,55 @@ against a 512 MB plan shared with 37 jobs.
 
 ---
 
+## Verified end-to-end 2026-09-11 14:05Z, after a full day in production
+
+Worker deployed at `0c76ca4c` (13:41:58Z). Database **3,199 MB / 39.0%**.
+8/8 audit checks, tsc clean, TS 359/359, 7 Python suites, corpus 13,915,007 rows
+across 6 tables readable with spans 1999→yesterday. Board: **2,332 projections,
+zero mismatches** against production. Routes exercised live: pitch-profile
+200/410, chart rendering 16 books of real ticks, clamp reporting
+`servedHours: 345`.
+
+### Three things the new alarms surfaced on their first day
+
+1. **`workerMemory` — 445 MB of 512 (87%), heaviest in `refreshTier1`.** Above
+   the 80% warn line. This is the ceiling the plan said had already OOM-killed a
+   job; it is now a number anyone can read instead of something you learn by
+   watching a job die.
+2. **`refreshTier1` takes ~341s against a 300s interval.** It cannot meet its
+   own cadence, so `check_job` will mark it stale on any run that is not
+   perfectly timed, and `gameOddsBookLinesFreshness` fails as a consequence. It
+   is not broken — a healthy run writes ~76,000 rows — the interval is simply
+   shorter than the work. One of them has to move.
+3. **A statement timeout during the post-deploy burst.** `refreshTier1` failed
+   once at 13:49 with `QueryCanceledError`, then recovered unaided.
+   **Ruled out as a Phase 5 side effect:** the planner was shown the actual
+   prior-rows query with real values and chose `idx_prop_odds_subject` — the
+   composite that was KEPT — not `idx_prop_odds_game`, which 5.S.3 dropped and
+   which it would not have used anyway (three matched columns against one).
+
+### OddsHarvester: ten days of silent zero — DIAGNOSED, fix not yet applied
+
+Full audit: **`docs/oddsharvester-outage-2026-09-11.md`**. Short version: not an
+anti-bot block. OddsPortal rebuilt its frontend and removed every `data-testid`,
+which is what all 29 of the vendored scraper's selectors key on; the site still
+returns HTTP 200 and 699 KB of real fixtures. **Upstream already fixed it** —
+we vendor 0.10.0, upstream shipped the selector rewrite in v0.11.0/v0.12.0 on
+2026-09-02/03, one and two days after we broke. The upgrade is the fix and our
+coupling is four imports, all of which still exist with an identical
+`run_scraper` signature.
+
+### Egress
+
+Measured over 20 minutes: **30,967,292 rows/day extrapolated, 22.9% of the
+135.5M cumulative figure**. **That window was NOT idle** — it contains this
+session's own verification (a 40,011-row `player_game_history` pull, a 14.8 MB
+props route fetch), so treat it as an upper bound rather than a steady state.
+The team-index fix is visible and working: `SELECT sport, name_key, team_id FROM
+team_name_index` reads **859 rows/call** where `_team_ids` used to scan 1.98M.
+
+---
+
 ## Two real problems that are TRACKED, not fixed
 
 Both are acknowledged in `health_check.ACKNOWLEDGED_CHECKS` so the alert channel
