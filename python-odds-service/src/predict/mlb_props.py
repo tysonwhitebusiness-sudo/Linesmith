@@ -547,10 +547,31 @@ async def write_history_summary(conn, as_of, athlete_ids: list[str] | None = Non
     instead was rejected (it moves 59.7% of projections) and why serving reading
     Parquet hourly was rejected (13-17s per market, and Storage egress).
 
-    `source='corpus'` reads the Parquet corpus, which holds ALL history and is
-    the point of the exercise. `source='postgres'` reads the live table and
-    exists so the two can be compared -- a summary nobody has checked against
-    the thing it replaces is not a summary, it is a guess.
+    `source='prefix'` IS THE SERVING PATH and reads nothing but Postgres:
+    `player_history_prefix` (everything before the hot window, precomputed off
+    the worker by `build_history_prefix.py`) merged with the hot window itself.
+    `source='corpus'` and `source='postgres'` read one half each and exist so
+    the two can be compared -- a summary nobody has checked against the thing it
+    replaces is not a summary, it is a guess.
+
+    `source='union'` WAS REMOVED ON 2026-09-11, AND IT WAS WRONG THE WHOLE TIME.
+    It concatenated the corpus and Postgres halves and deduped them, and its own
+    comment claimed the dedup was "on the row `id`". It was not: the loaders
+    drop `id` before returning, so it deduped on `(game_date, athlete_id, stat,
+    volume)` -- and MLB PLAYS DOUBLEHEADERS. Two games on one date with the same
+    line collapse into one. Measured on athlete 668709, stolen-bases: the corpus
+    holds 507 rows, exactly 2 of which are duplicate 4-tuples (2022-08-13 and
+    2022-09-12, 0 steals in 4 PA in BOTH halves of each doubleheader), and the
+    union reported 505 games. It also re-sorted by `(date, athlete, stat,
+    volume)` rather than the canonical `(date, athlete, id)`, so `recent_volume`
+    -- which is order-sensitive -- came out in a different order too.
+
+    The prefix path cannot have either bug: its two halves are DISJOINT by
+    construction (`cutoff` is exactly where Postgres begins), so there is
+    nothing to dedup and nothing to re-sort. Switching recovered 2,554 games
+    across one slate and moved 40.4% of projections by a median of 0.000000,
+    p95 0.0027 and max 0.036 -- against the 3-season trim this phase REJECTED at
+    p95 0.115 / max 0.862. No row appeared or disappeared.
 
     THE ARRAY IS WRITTEN IN THE ORDER THE REPLAY WOULD HAVE PRODUCED, because
     `mean_volume(window=N)` takes the LAST N. Both loaders already return a
@@ -575,38 +596,58 @@ async def write_history_summary(conn, as_of, athlete_ids: list[str] | None = Non
         start_keys = await load_start_keys(conn=conn, athlete_ids=athlete_ids)
 
     for slug in slugs:
-        if source == "corpus":
+        prefix_rows: dict[str, tuple] = {}
+        if source == "prefix":
+            # THE WORKER'S PATH SINCE PHASE 5: no corpus read at all.
+            #
+            # The corpus half of this summary never changes -- every game before
+            # the hot window is finished forever -- so it is precomputed off the
+            # worker into `player_history_prefix` and merged here. That removes
+            # the +118 MB DuckDB/Parquet step that was the largest contributor
+            # to the worker's memory climb, which is one of Phase 5's three
+            # ceilings and the one that got WORSE during the phase.
+            #
+            # `rows` therefore covers only the hot window; `prefix_rows` carries
+            # everything before it, already aggregated.
+            rows = await load_game_history(slug, conn=conn, athlete_ids=athlete_ids)
+            pref = await conn.fetch(
+                "SELECT athlete_id, events, volume, games, recent_volume, "
+                "       baseline_over, baseline_total, cutoff "
+                "  FROM player_history_prefix "
+                " WHERE sport = 'mlb' AND market = $1"
+                + (" AND athlete_id = ANY($2::text[])" if athlete_ids else ""),
+                *( [slug, list(athlete_ids)] if athlete_ids else [slug] ))
+            prefix_rows = {
+                str(r["athlete_id"]): (float(r["events"]), float(r["volume"]),
+                                       int(r["games"]), list(r["recent_volume"]),
+                                       int(r["baseline_over"]), int(r["baseline_total"]))
+                for r in pref}
+        elif source == "corpus":
             rows = load_game_history_parquet(slug, athlete_ids=athlete_ids)
         elif source == "postgres":
             rows = await load_game_history(slug, conn=conn, athlete_ids=athlete_ids)
         else:
-            # UNION, and it is the only correct source once the history has been
-            # trimmed. The corpus holds everything up to its last export;
-            # Postgres holds the hot window, which includes games played SINCE
-            # that export. Neither alone is complete, and building from either
-            # would be wrong in a way that looks fine: corpus-only silently
-            # omits the newest games, Postgres-only silently truncates the
-            # lifetime totals `shrunk_rate` depends on.
-            #
-            # Deduped on the row `id`, which both loaders sort by, so the union
-            # keeps the same total order the replay produced -- `recent_volume`
-            # is order-sensitive.
-            from_corpus = load_game_history_parquet(slug, athlete_ids=athlete_ids)
-            from_pg = await load_game_history(slug, conn=conn, athlete_ids=athlete_ids)
-            seen = set()
-            merged = []
-            for r in sorted(from_corpus + from_pg, key=lambda t: (t[0], t[1], t[2], t[3])):
-                if r in seen:
-                    continue
-                seen.add(r)
-                merged.append(r)
-            rows = merged
+            raise ValueError(
+                f"unknown source {source!r}; use 'prefix' (the serving path), "
+                f"or 'corpus'/'postgres' to compare one half against the other. "
+                f"'union' was REMOVED -- see this function's docstring."
+            )
 
         spec = BY_SLUG[slug]
         line = BOARD_LINES.get(slug)
         eligible = start_keys if spec.side == "pit" else None
 
         agg: dict[str, list] = {}
+        # SEEDED FROM THE PREFIX, so the hot-window walk below appends to a
+        # history that already contains everything older. `recent_volume` is
+        # order-sensitive and this is the only ordering that is correct: the
+        # prefix is ENTIRELY earlier than the hot window, so its tail comes
+        # first and the cap is applied as the walk proceeds, exactly as it
+        # would have been on one continuous pass.
+        for aid, (ev0, vol0, n0, rec0, over0, tot0) in prefix_rows.items():
+            if subject_filter is not None and aid not in subject_filter:
+                continue
+            agg[aid] = [ev0, vol0, n0, list(rec0)[-eng.MAX_RECENT:], over0, tot0]
         for gd, aid, ev, vol in rows:
             if gd >= as_of:
                 break                       # leakage control, same as the replay

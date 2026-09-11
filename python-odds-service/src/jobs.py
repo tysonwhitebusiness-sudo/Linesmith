@@ -901,10 +901,24 @@ async def job_mlb_history_summary(yield_fn=None) -> dict:
     5.1 exists to have reduced. Hourly would spend it 24 times for one day's
     worth of new rows.
 
-    SOURCE IS THE UNION of the corpus and the Postgres hot window, because
-    neither alone is complete once the trim has happened: the corpus omits games
-    played since its last export, and Postgres omits everything before the hot
-    window. Building from either would be wrong in a way that looks fine.
+    SOURCE IS `prefix`, NOT `union`, AND THAT IS A MEMORY DECISION.
+    It used to union the Parquet corpus with the Postgres hot window, which was
+    correct but cost +118 MB of worker RSS that never came back -- traced across
+    one worker lifetime on 2026-09-11: 272 MB before this job, 390 MB after.
+    `corpus_store` had already measured that CPython does not return freed
+    arenas to the OS and barred the corpus EXPORT from the worker for that
+    reason; this job's corpus READ was never costed the same way. Worker RAM is
+    one of Phase 5's three ceilings and it was the one that got WORSE during the
+    phase.
+    
+    The corpus half never changes -- every game before the hot window is
+    finished forever -- so it is precomputed OFF the worker by
+    `build_history_prefix.py` into `player_history_prefix`, and this job merges
+    that with the hot window using nothing but Postgres. Same numbers, no
+    DuckDB, no Parquet, no S3.
+    
+    Re-run `build_history_prefix.py --apply` whenever the hot window moves (i.e.
+    after a `prune_player_history`). Nothing else can change its answer.
     """
     from datetime import date as _date
 
@@ -925,7 +939,7 @@ async def job_mlb_history_summary(yield_fn=None) -> dict:
             await conn.execute("SET statement_timeout = '30min'")
             out = await write_history_summary(
                 conn, as_of, athlete_ids=list(subjects),
-                slugs=list(BOARD_LINES), source="union")
+                slugs=list(BOARD_LINES), source="prefix")
         return {**out, **meta}
 
     return await _run_timed("mlbHistorySummaryJob", _run())
