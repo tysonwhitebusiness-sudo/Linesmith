@@ -931,6 +931,8 @@ async def run_dynamic_lines_target(target: ScrapeTarget, games: list[Game]) -> l
                 markets=[*target.markets, *all_tokens],
                 headless=True,
                 concurrency_tasks=1,
+                browser_locale_timezone=BROWSER_LOCALE,
+                browser_timezone_id=BROWSER_TIMEZONE,
             ),
             timeout=SCRAPE_TIMEOUT_SECONDS,
         )
