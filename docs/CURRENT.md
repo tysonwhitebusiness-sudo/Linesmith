@@ -189,6 +189,47 @@ of thing a CLV model would want to see. Adding provider to the key is a
 migration and changes archive cardinality, so it needs a real decision rather
 than a quiet fix.
 
+
+### corpusFreshness FIXED (2026-09-12 03:05Z) — and two things it uncovered
+
+**The alarm could never be satisfied.** Its own docstring calibrated 250,000
+rows as "half a day at ~465k rows/day". Measured: `prop_odds_history` takes
+**~68k rows/HOUR (~1.63M/day)**, more than triple. One 6-hour refresh cycle
+deposits **~407,616 rows**, so the threshold sat BELOW the floor of normal
+operation and went red every cycle regardless of health.
+
+**The root cause was that nothing could SEE whether the export ran.**
+`check_corpus_freshness` runs on the Render worker; `refresh_corpus` runs as a
+Windows Scheduled Task on the operator's machine. The worker cannot read Task
+Scheduler, so it could only infer liveness from a row count -- and a row count
+cannot separate "mid-cycle, working fine" from "stopped three days ago".
+
+Same gap and same fix as OddsHarvester: `refresh_corpus._write_heartbeat` now
+writes `job_health_checks['corpus_refresh']` on every run, and the check reads
+it. Red means the export actually FAILED, or has not succeeded within 1.5
+cycles (9h). The row count survives only as a transitional fallback (1.2M,
+~3 measured cycles) for the window before the first heartbeat exists.
+
+Verified all four branches on real data: fresh (1h) healthy, late (8h) healthy,
+stale (12h) red, last-run-failed red. Producer write confirmed end to end.
+**The first real heartbeat lands on the 05:16Z task run.**
+
+## OPEN, NOT MINE — eloFreshness
+
+`eloFreshness` went red at ~03:05Z: **1 of 11 finished games today has no
+`team_elo_history` row (game_pk 824873)**. It is NOT a sync delay --
+`maintainMlbEloJob` ran at 03:25:26Z with ok=True and still did not cover it,
+which is the case the check's own message says needs investigating.
+
+**Ruled out as a side effect of the 2026-09-12 blob cache**, by measurement
+rather than reasoning: `read_snapshot("mlb:snapshot")` returns a payload
+**byte-identical** to a direct Postgres read (same sha256 over 26,127,752
+bytes), and game 824873 is present in both. The cache is not serving stale data.
+
+Also noticed while checking, and NOT yet explained: `mlb:snapshot` carries
+`fetched_at 2026-09-11 22:26:36Z` -- roughly 5 hours stale at the time of
+writing. Whether that is normal cadence or a second problem is unknown.
+
 ### Next actions
 
 1. **Operator: read the Supabase egress graph for 12–13 Sep.** That is the verdict.
