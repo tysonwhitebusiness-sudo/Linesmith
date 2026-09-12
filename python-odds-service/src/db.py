@@ -4326,6 +4326,103 @@ async def live_book_lines_for_games(sport: str, game_ids: list[str]) -> list:
         )
 
 
+# The closing-lines twin of _PROP_PIVOT. Same principle, one real difference:
+# every field the archive needs about the GAME (team ids, raw names, start) lives
+# in Python, not in game_odds_book_lines -- so the per-game metadata is sent IN
+# as parallel arrays and unnested server-side. That direction is ingress, which
+# is not what the bill counts; the big table never leaves the server.
+#
+# Bookmaker is NOT re-canonicalised here, and that is checked rather than
+# assumed: all 25 distinct bookmakers in game_odds_book_lines are already
+# canonical (write_game_odds_book_lines applies canonical_bookmaker at write
+# time), so canonical_bookmaker() is a verified no-op on this source. If a
+# non-canonical spelling ever reaches that table, THAT is the bug to fix, at the
+# writer -- not here.
+_CLOSING_PIVOT = """
+WITH latest AS (
+  SELECT DISTINCT ON (game_id, market, side, bookmaker, source)
+         game_id, market, side, bookmaker, source, point, american_odds, fetched_at
+    FROM game_odds_book_lines
+   WHERE sport = $1 AND game_id = ANY($2)
+   ORDER BY game_id, market, side, bookmaker, source, fetched_at DESC
+), g AS (
+  SELECT * FROM unnest($2::text[], $3::date[], $4::timestamptz[],
+                       $5::text[], $6::text[], $7::text[], $8::text[])
+       AS t(event_ref, game_date, event_start, home_team_id, away_team_id,
+            home_team_raw, away_team_raw)
+)
+-- DISTINCT ON matches odds_archive_natural_key, and note what is NOT in it:
+-- `provider`. The archive keys on `source`, which this insert sets to the
+-- CONSTANT 'live_capture', so two providers quoting the SAME book collapse to
+-- one archive row. Measured on NFL: oddsharvester and propline both quote
+-- fanduel moneyline, at different prices (-118 vs -124).
+--
+-- That collision is NOT new. The old executemany path hit it too and resolved
+-- it silently -- last row written won, in whatever order the fetch returned --
+-- so the archive has always kept an arbitrary one of the two. A single
+-- INSERT..SELECT cannot do that: Postgres rejects a command proposing the same
+-- key twice, which is how a years-old silent behaviour finally surfaced.
+--
+-- Made DETERMINISTIC rather than arbitrary: newest quote wins. That is the
+-- defensible reading of "current book line", and it is now a stated rule
+-- instead of an accident of row order.
+SELECT DISTINCT ON (g.event_ref, l.market, l.side, COALESCE(l.bookmaker, ''))
+       $1::text AS sport, g.event_ref, g.game_date, g.event_start,
+       g.home_team_id, g.away_team_id, g.home_team_raw, g.away_team_raw,
+       l.market, l.side, l.point AS line, l.american_odds AS price,
+       l.bookmaker, l.source AS provider
+  FROM latest l JOIN g ON g.event_ref = l.game_id
+ ORDER BY g.event_ref, l.market, l.side, COALESCE(l.bookmaker, ''), l.fetched_at DESC
+"""
+
+
+async def archive_closing_lines_server_side(
+    sport: str, game_ids: list[str], game_dates: list, event_starts: list,
+    home_ids: list[str], away_ids: list[str],
+    home_raws: list[str], away_raws: list[str]) -> int:
+    """Latest book line per (game, market, side, book, source) into odds_archive,
+    entirely inside Postgres. Returns rows written.
+
+    No result set crosses the pooler -- that is the entire point. This replaces
+    a read-reshape-write round trip that moved ~8.6-24.8M rows/day out of the
+    database only to put them back.
+
+    NOTE the return differs in KIND from the old path. `upsert_live_capture`
+    returned rows OFFERED (executemany cannot report per-row results); this
+    returns the count Postgres actually inserted or updated. The new number is
+    the more truthful one, but it is not comparable to the old one, so do not
+    read a drop as lost data.
+    """
+    if not game_ids:
+        return 0
+    sql = f"""
+        INSERT INTO odds_archive
+          (sport, event_ref, game_date, event_start, home_team_id, away_team_id,
+           home_team_raw, away_team_raw, market, side, line, price, bookmaker,
+           provider, source, source_priority, is_live, captured_at)
+        SELECT sport, event_ref, game_date, event_start, home_team_id, away_team_id,
+               home_team_raw, away_team_raw, market, side, line, price, bookmaker,
+               provider, 'live_capture', 95, false, now()
+          FROM ({_CLOSING_PIVOT}) src
+        ON CONFLICT (sport, game_date, home_team_id, away_team_id, market, side,
+                     COALESCE(bookmaker, ''), source, COALESCE(event_ref, ''))
+          WHERE home_team_id IS NOT NULL AND away_team_id IS NOT NULL
+        DO UPDATE SET line = EXCLUDED.line,
+                      price = EXCLUDED.price,
+                      event_start = EXCLUDED.event_start,
+                      captured_at = now()
+          WHERE odds_archive.event_start > now()
+    """
+    pool = await get_pool()
+    async with pool.acquire(timeout=180.0) as conn:
+        tag = await conn.execute(sql, sport, game_ids, game_dates, event_starts,
+                                 home_ids, away_ids, home_raws, away_raws)
+    try:
+        return int(str(tag).rsplit(" ", 1)[-1])
+    except ValueError:
+        return 0
+
+
 async def upsert_live_capture(rows: list[dict], batch: int = 500) -> int:
     """Write captured pre-game prices into odds_archive, FROZEN once the game
     starts. Returns rows OFFERED, not landed — see below.

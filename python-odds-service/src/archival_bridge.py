@@ -117,7 +117,6 @@ async def archive_closing_lines(sports: list[str] | None = None) -> dict:
     odds_archive. Returns the standard job summary shape."""
     now = datetime.now(timezone.utc)
     written = 0
-    considered = 0
     unresolved: list[str] = []
     warnings: list[str] = []
 
@@ -139,37 +138,43 @@ async def archive_closing_lines(sports: list[str] | None = None) -> dict:
             continue
 
         idx = await _team_ids(sport)
-        rows = await db.live_book_lines_for_games(sport, list(upcoming))
-        considered += len(rows)
 
-        payload = []
-        for r in rows:
-            g, start = upcoming[str(r["game_id"])]
+        # SERVER-SIDE. This used to fetch the latest book line for every upcoming
+        # game (~8.6-24.8M rows/day), rebuild each row as a dict in Python, and
+        # write them straight back into the same database. The rows made a round
+        # trip across the pooler to be reshaped and returned.
+        #
+        # Team-id resolution still happens HERE, deliberately. It needs the
+        # in-memory Game objects and the name index, and a game whose ids do not
+        # resolve must be EXCLUDED rather than archived against a guess -- a
+        # wrong team id attaches a price to the wrong game, which is worse than
+        # not archiving it. So the resolved metadata is sent IN as parallel
+        # arrays (ingress, which is not what the bill counts) and the big table
+        # never leaves the server.
+        ids: list[str] = []
+        gdates: list = []
+        gstarts: list = []
+        hids: list[str] = []
+        aids: list[str] = []
+        hraws: list[str] = []
+        araws: list[str] = []
+        for gid, (g, start) in upcoming.items():
             hid = idx.get(normalize_team_name(g.home_team_name))
             aid = idx.get(normalize_team_name(g.away_team_name))
             if not hid or not aid:
-                # Counted, never guessed: a wrong team id attaches a price to the
-                # wrong game, which is worse than not archiving it.
                 unresolved.append(f"{sport}: {g.away_team_name} @ {g.home_team_name}")
                 continue
-            payload.append({
-                "sport": sport,
-                "event_ref": str(g.game_id),
-                "game_date": start.date(),
-                "event_start": start,
-                "home_team_id": hid,
-                "away_team_id": aid,
-                "home_team_raw": g.home_team_name,
-                "away_team_raw": g.away_team_name,
-                "market": r["market"],
-                "side": r["side"],
-                "line": r["point"],
-                "price": r["american_odds"],
-                "bookmaker": r["bookmaker"],
-                "provider": r["source"],
-            })
-        if payload:
-            written += await db.upsert_live_capture(payload)
+            ids.append(gid)
+            gdates.append(start.date())
+            gstarts.append(start)
+            hids.append(hid)
+            aids.append(aid)
+            hraws.append(g.home_team_name)
+            araws.append(g.away_team_name)
+
+        if ids:
+            written += await db.archive_closing_lines_server_side(
+                sport, ids, gdates, gstarts, hids, aids, hraws, araws)
 
     if unresolved:
         uniq = sorted(set(unresolved))
@@ -179,7 +184,10 @@ async def archive_closing_lines(sports: list[str] | None = None) -> dict:
         )
     return {
         "games": len(set(u.split(":")[0] for u in unresolved)) if unresolved else 0,
-        "rows_matched": considered,
+        # rows_matched was a count of rows FETCHED, which is precisely the
+        # transfer this function no longer performs. Counting it again would
+        # mean pulling the rows back to count them.
+        "rows_matched": written,
         "rows_written": written,
         "unresolved": len(set(unresolved)),
         "requests": 0,   # reads live tables only — spends no provider budget
