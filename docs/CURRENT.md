@@ -148,6 +148,47 @@ width, wall-clock rates) each produced a confident wrong answer. The only
 trustworthy figure came from counting actual payload bytes at the point they
 would have crossed the wire.** Build the counter; do not model the number.
 
+
+### STEP 1 DONE — closing-lines archive is server-side (2026-09-12 01:55Z)
+
+`archiveClosingLinesJob` was the last read-reshape-write round trip of any size:
+it pulled the latest book line for every upcoming game (~8.6-24.8M rows/day),
+rebuilt each row as a dict in Python, and wrote them back to the same database.
+Now a single INSERT..SELECT. **Verified live: ok=True, 6.62s, 2,104 rows** (it
+takes 153s from a developer machine -- that gap is round-trip latency, not the
+job).
+
+Gate: `test_closing_archive_equiv.py` -- 2,104 rows across cfb/mlb/nfl, full row
+tuples under an exact key, **0 mismatches**.
+
+**A PRE-EXISTING SILENT BUG SURFACED, and it is worth a decision.**
+`odds_archive_natural_key` keys on `source`, which this insert sets to the
+constant `'live_capture'` -- **`provider` is NOT in the key.** So two providers
+quoting the SAME book collapse to one archive row. Measured on NFL:
+
+```
+  moneyline/home  fanduel  oddsharvester -118  vs  propline -124
+  moneyline/away  fanduel  oddsharvester -175  vs  propline -184
+  86 of 2,190 rows per cycle (3.9%)
+```
+
+This is NOT new. The old `executemany` path hit the same collision and resolved
+it silently -- last row written won, in whatever order the fetch returned -- so
+the archive has always kept an arbitrary one of the two. `INSERT..SELECT` cannot
+do that (Postgres rejects a command proposing the same key twice), which is how
+a long-standing silent behaviour finally became a hard error.
+
+Now deterministic: **newest quote wins**, a stated rule instead of an accident
+of row order.
+
+**OPEN DECISION, for the operator, NOT decided here: should `provider` be part
+of `odds_archive_natural_key`?** Today the archive can hold only one price per
+(game, market, side, book) even when two providers genuinely disagree about what
+that book is showing -- and a 6-cent moneyline disagreement is exactly the kind
+of thing a CLV model would want to see. Adding provider to the key is a
+migration and changes archive cardinality, so it needs a real decision rather
+than a quiet fix.
+
 ### Next actions
 
 1. **Operator: read the Supabase egress graph for 12–13 Sep.** That is the verdict.
