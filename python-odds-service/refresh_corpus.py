@@ -50,7 +50,7 @@ import argparse
 import asyncio
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "src"))
@@ -61,6 +61,23 @@ import db                                                     # noqa: E402
 
 # The name check_corpus_freshness looks for. One string, two files.
 CORPUS_REFRESH_CHECK = "corpus_refresh"
+
+# WHY PRUNE IS NOT ON THE 6-HOURLY CADENCE.
+#
+# Exporting is cheap and incremental; VERIFYING is neither. `prune_table` walks
+# EVERY non-empty corpus partition and re-reads it, because its Rule 1 is that
+# verification must not trust the export's own manifests. That is the right
+# call for a destructive step, but it means one pass re-reads the whole corpus
+# (441 files) plus a per-partition Postgres query. Running that every 6 hours
+# would spend a large part of what Phase 5's egress work just saved.
+#
+# Once a day is enough to hold the line: `prop_odds_history` grows ~1.63M
+# rows/day (~400 MB), and one daily pass reclaims a day.
+PRUNE_EVERY_HOURS = 24.0
+
+# One table at a time, named -- prune_corpus Rule 3, mirrored here rather than
+# passing a list, so a mistake stays partial.
+PRUNE_TABLES = ("prop_odds_history", "mlb_pitch_events")
 
 # Only these are keyset-chunked on `id` and therefore subject to the open-final-
 # partition rule above. Date-partitioned tables re-export a whole year, so their
@@ -104,7 +121,7 @@ async def open_partitions(conn, table: str, root: str) -> list[str]:
     return stale
 
 
-async def main(tables: list[str], check_only: bool) -> int:
+async def main(tables: list[str], check_only: bool, prune: bool = False) -> int:
     backend = corpus_location()
     root = getattr(backend, "root", None) or staging_root()
     pool = await db.get_pool()
@@ -168,9 +185,78 @@ async def main(tables: list[str], check_only: bool) -> int:
             await _close(pool)
             return r.returncode
 
-    await _write_heartbeat(True, {"tables": tables, "lagging_before": lagging})
+    # PRUNE closes the loop. Without it the corpus accumulates a faithful copy
+    # and Postgres never sheds anything: measured 2026-09-12, the database was
+    # growing +469.6 MB/day with 10 days of headroom, because Phase 5's
+    # 7,282 -> 3,200 MB reduction came from running these tools BY HAND and
+    # nothing repeated them.
+    #
+    # prune_corpus is the safety layer and is not duplicated here: it verifies
+    # every partition against live Postgres independently of the export's
+    # manifests, deletes by verified row id rather than by predicate, and
+    # refuses outright while the corpus is local-only.
+    pruned: list[str] = []
+    prune_age = await _hours_since_last_prune()
+    if prune and (prune_age is None or prune_age >= PRUNE_EVERY_HOURS):
+        for table in PRUNE_TABLES:
+            if table not in tables:
+                continue
+            print(f"\n  $ prune_corpus.py {table} --apply", flush=True)
+            r = subprocess.run([sys.executable, os.path.join(HERE, "prune_corpus.py"),
+                                table, "--apply"], cwd=HERE)
+            if r.returncode != 0:
+                print(f"\n  prune_corpus FAILED for {table} (exit {r.returncode}).\n")
+                await _write_heartbeat(False, {"step": "prune_corpus", "table": table,
+                                               "exit": r.returncode, "tables": tables})
+                await _close(pool)
+                return r.returncode
+            pruned.append(table)
+    elif prune:
+        print(f"\n  prune not due ({prune_age:.1f}h since last, every "
+              f"{PRUNE_EVERY_HOURS:.0f}h)", flush=True)
+
+    beat = {"tables": tables, "lagging_before": lagging, "pruned": pruned}
+    if pruned:
+        beat["last_prune_at"] = datetime.now(timezone.utc).isoformat()
+    elif prune_age is not None:
+        # Carry the existing stamp forward so a non-prune cycle does not look
+        # like "never pruned" and re-trigger on the very next run.
+        beat["last_prune_at"] = (
+            datetime.now(timezone.utc) - timedelta(hours=prune_age)).isoformat()
+    await _write_heartbeat(True, beat)
     await _close(pool)
     return 0
+
+
+async def _hours_since_last_prune() -> float | None:
+    """Hours since the last successful prune, from our own heartbeat.
+
+    Returns None if we have never recorded one, which means "due".
+    """
+    try:
+        pool = await db.get_pool()
+        async with pool.acquire(timeout=30.0) as conn:
+            row = await conn.fetchrow(
+                "SELECT detail FROM job_health_checks WHERE check_name = $1",
+                CORPUS_REFRESH_CHECK)
+        if not row or not row["detail"]:
+            return None
+        raw = row["detail"]
+        if isinstance(raw, str):
+            import json as _json
+            raw = _json.loads(raw)
+        stamp = raw.get("last_prune_at")
+        if not stamp:
+            return None
+        when = datetime.fromisoformat(stamp)
+        return (datetime.now(timezone.utc) - when).total_seconds() / 3600.0
+    except Exception as e:                                    # noqa: BLE001
+        # Unknown means DUE, not skip. Failing closed here would silently stop
+        # pruning and let the database refill -- the exact failure this whole
+        # step exists to prevent.
+        print(f"[refresh_corpus] could not read last prune time "
+              f"({type(e).__name__}: {e}); treating as due", flush=True)
+        return None
 
 
 async def _write_heartbeat(ok: bool, detail: dict) -> None:
@@ -212,10 +298,16 @@ if __name__ == "__main__":
     ap.add_argument("tables", nargs="*", default=None)
     ap.add_argument("--check", action="store_true",
                     help="report lag only; safe to run anywhere")
+    # OPT-IN, deliberately. A bare `python refresh_corpus.py` stays
+    # non-destructive so a manual run cannot delete anything by surprise --
+    # the same default prune_corpus itself uses. The scheduled task passes it.
+    ap.add_argument("--prune", action="store_true",
+                    help=f"after export+upload, prune what the corpus provably holds "
+                         f"(at most every {PRUNE_EVERY_HOURS:.0f}h)")
     a = ap.parse_args()
     tabs = a.tables or ID_CHUNKED
     unknown = [t for t in tabs if t not in cs.CORPUS]
     if unknown:
         print(f"unknown corpus table(s): {unknown}")
         raise SystemExit(2)
-    raise SystemExit(asyncio.run(main(tabs, a.check)))
+    raise SystemExit(asyncio.run(main(tabs, a.check, a.prune)))

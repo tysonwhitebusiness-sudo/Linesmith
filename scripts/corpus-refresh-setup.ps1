@@ -79,7 +79,7 @@ $batPath = Join-Path $pyOddsDir "run-corpus-refresh.bat"
 @"
 @echo off
 echo ---- %date% %time% ---- >> "$logPath"
-"$venvPython" refresh_corpus.py >> "$logPath" 2>&1
+"$venvPython" refresh_corpus.py --prune >> "$logPath" 2>&1
 "@ | Set-Content -Path $batPath -Encoding ASCII
 
 $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
