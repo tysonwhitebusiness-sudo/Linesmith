@@ -230,6 +230,53 @@ Also noticed while checking, and NOT yet explained: `mlb:snapshot` carries
 `fetched_at 2026-09-11 22:26:36Z` -- roughly 5 hours stale at the time of
 writing. Whether that is normal cadence or a second problem is unknown.
 
+
+### CEILING 1 WAS NOT SUSTAINABLY CLEARED — found and fixed 2026-09-12 04:00Z
+
+**The correction:** this file has said "database: CLEARED" since 2026-09-11.
+That was true as a point-in-time measurement (44.2%) and WRONG as a
+sustainability claim, which is what Phase 5 is about.
+
+Once `databaseGrowth` had its full 24h of history it said:
+
+```
+  CEILING APPROACHING - 3,623 MB (44.2%), +469.6 MB/day over 1.0d,
+  10 days of headroom
+```
+
+44.2% full looks fine. The RATE does not. The alarm built in 5.S.9 was working
+correctly; it had been reading "establishing baseline" and was skimmed past.
+
+**ROOT CAUSE: the loop was never closed.** `refresh_corpus` ran
+`export_corpus` + `upload_corpus` and stopped. The corpus accumulated a
+faithful copy and Postgres never shed anything. The 7,282 -> 3,200 MB reduction
+came from running the prune tools BY HAND; nothing repeated them, so the
+database simply refilled. **A one-time cleanup is not sustainability.**
+
+`prop_odds_history` alone: 245 bytes/row x ~1.63M rows/day = **~400 MB/day**,
+nearly all of the measured growth. Fully corpus-backed, fully prunable, tooling
+proven -- it just never ran.
+
+**FIXED** (`35392eb`): `refresh_corpus --prune` now runs `prune_corpus <table>
+--apply` after export and upload succeed.
+- **Daily, not 6-hourly.** Exporting is incremental and cheap; VERIFYING is
+  neither -- `prune_table` re-reads every non-empty partition and a verify-only
+  pass exceeded 10 minutes. Running it every cycle would spend much of what the
+  egress work just saved. One daily pass reclaims a day.
+- **Opt-in.** A bare `python refresh_corpus.py` stays non-destructive, matching
+  prune_corpus's own default. The scheduled task passes `--prune` via
+  `scripts/corpus-refresh-setup.ps1` -- the generated `.bat` is gitignored, so
+  THE GENERATOR is what must carry the flag.
+- **"Unknown" means DUE.** The cadence gate reads `last_prune_at` from the
+  heartbeat; if it cannot, it prunes. Failing closed would silently stop
+  pruning and let the database refill -- the exact failure this prevents.
+- `prune_corpus` is untouched and remains the safety layer: verification
+  independent of the export's manifests, deletion by verified row id not by
+  predicate, refusal while the corpus is local-only.
+
+**First automated prune: the 05:16Z task run.** Watch `databaseGrowth` after it
+-- the number to see is MB/day falling to ~0, not the absolute percentage.
+
 ### Next actions
 
 1. **Operator: read the Supabase egress graph for 12–13 Sep.** That is the verdict.
