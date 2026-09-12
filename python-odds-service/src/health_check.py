@@ -48,7 +48,29 @@ STALE_MULTIPLIER = 2.0
 # Phase 5.S.9. Half a day of `prop_odds_history` inflow (~465k rows/day). Below
 # this the corpus refresh is merely due; above it, the scheduled task has
 # stopped. Rows, not MB, because that is what the lag can actually be counted in.
-CORPUS_LAG_ROWS = 250_000
+# HOW OFTEN refresh_corpus is scheduled to run, on the operator's machine.
+# scripts/corpus-refresh-setup.ps1 registers it every 360 minutes.
+CORPUS_REFRESH_HOURS = 6.0
+# A run may be late without being dead. 1.5 cycles is late; past that it has
+# stopped.
+CORPUS_HEARTBEAT_SLACK = 1.5
+# Fallback ONLY for the window before the first heartbeat exists (first deploy,
+# or the scheduled task has not yet run the new code). Once refresh_corpus
+# reports, the heartbeat is authoritative and this is never consulted.
+#
+# WHY NOT AN ABSOLUTE NUMBER. It was 250,000, described in this function's own
+# docstring as "half a day at ~465k rows/day". Measured 2026-09-12, inflow is
+# ~68k rows/HOUR (~1.63M/day) -- more than triple. One 6-hour cycle now
+# deposits ~407k rows, so the alarm sat BELOW the floor of normal operation and
+# went red every single cycle no matter what. A threshold that cannot be
+# satisfied by healthy behaviour carries no information, and this phase already
+# paid for that lesson once with an alert channel firing 96x/day.
+#
+# Set to ~3 cycles of MEASURED inflow (407k rows per 6h cycle on 2026-09-12),
+# so it means "several cycles behind", not "mid-cycle". It is deliberately
+# generous because it is a stopgap for one cycle, not the real signal -- and a
+# stopgap that cries wolf is worse than one that waits for the heartbeat.
+CORPUS_LAG_FALLBACK = 1_200_000
 
 # Days of headroom below which the growth alarm fires. A month is enough time to
 # port a reader or add a retention rule deliberately; Phase 5 began with far
@@ -1136,11 +1158,44 @@ async def check_corpus_freshness() -> dict:
                 cmax)
         worst = max(worst, behind)
         detail.append(f"{table} {behind:,}")
-    healthy = worst < CORPUS_LAG_ROWS
+
+    # THE HEARTBEAT IS THE PRIMARY SIGNAL. A row count cannot separate
+    # "mid-cycle, working fine" from "stopped days ago"; the time since the task
+    # last succeeded can. refresh_corpus writes CORPUS_REFRESH_CHECK on every
+    # run -- see its _write_heartbeat, and the OddsHarvester outage for what
+    # happens when a producer outside JOB_REGISTRY reports to nobody.
+    hb_age_h = None
+    hb_ok = None
+    async with pool.acquire(timeout=30.0) as conn:
+        hb = await conn.fetchrow(
+            """SELECT healthy, checked_at FROM job_health_checks
+                WHERE check_name = 'corpus_refresh'""")
+    if hb is not None:
+        hb_age_h = (datetime.now(timezone.utc) - hb["checked_at"]).total_seconds() / 3600.0
+        hb_ok = bool(hb["healthy"])
+
+    limit = CORPUS_REFRESH_HOURS * CORPUS_HEARTBEAT_SLACK
+    if hb_age_h is not None:
+        if not hb_ok:
+            return {"name": "corpusFreshness", "healthy": False,
+                    "status": (f"EXPORT FAILED on its last run ({hb_age_h:.1f}h ago) — "
+                               f"rows in Postgres and not the corpus: {', '.join(detail)}")}
+        if hb_age_h > limit:
+            return {"name": "corpusFreshness", "healthy": False,
+                    "status": (f"EXPORT HAS STALLED — last successful run {hb_age_h:.1f}h "
+                               f"ago, expected within {limit:.0f}h; rows in Postgres and "
+                               f"not the corpus: {', '.join(detail)}")}
+        return {"name": "corpusFreshness", "healthy": True,
+                "status": (f"healthy — export ran {hb_age_h:.1f}h ago (limit {limit:.0f}h); "
+                           f"lag mid-cycle: {', '.join(detail)}")}
+
+    # No heartbeat yet (first deploy, or the task has not run the new code).
+    alarm = CORPUS_LAG_FALLBACK
+    healthy = worst < alarm
     return {"name": "corpusFreshness", "healthy": healthy,
             "status": (f"{'healthy' if healthy else 'EXPORT HAS STALLED'} — rows in "
                        f"Postgres and not the corpus: {', '.join(detail)} "
-                       f"(alarm at {CORPUS_LAG_ROWS:,})")}
+                       f"(no heartbeat yet — transitional fallback, alarm at {alarm:,})")}
 
 
 async def check_orphan_job_breadcrumbs() -> dict:

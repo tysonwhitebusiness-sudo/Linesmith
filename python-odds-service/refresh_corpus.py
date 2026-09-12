@@ -50,6 +50,7 @@ import argparse
 import asyncio
 import os
 import sys
+from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "src"))
@@ -57,6 +58,9 @@ sys.path.insert(0, os.path.join(HERE, "src"))
 import corpus_store as cs                                     # noqa: E402
 from corpus_location import corpus_location, staging_root     # noqa: E402
 import db                                                     # noqa: E402
+
+# The name check_corpus_freshness looks for. One string, two files.
+CORPUS_REFRESH_CHECK = "corpus_refresh"
 
 # Only these are keyset-chunked on `id` and therefore subject to the open-final-
 # partition rule above. Date-partitioned tables re-export a whole year, so their
@@ -159,11 +163,41 @@ async def main(tables: list[str], check_only: bool) -> int:
                            cwd=HERE)
         if r.returncode != 0:
             print(f"\n  {cmd[0]} FAILED (exit {r.returncode}); stopping.\n")
+            await _write_heartbeat(False, {"step": cmd[0], "exit": r.returncode,
+                                           "tables": tables})
             await _close(pool)
             return r.returncode
 
+    await _write_heartbeat(True, {"tables": tables, "lagging_before": lagging})
     await _close(pool)
     return 0
+
+
+async def _write_heartbeat(ok: bool, detail: dict) -> None:
+    """Tell the Render worker this task is alive.
+
+    WHY THIS EXISTS. `check_corpus_freshness` runs on the worker; this script
+    runs as a Windows Scheduled Task on the operator's machine. The worker
+    cannot see Task Scheduler, so before this it could only INFER liveness from
+    a row-count lag -- and a row count cannot separate "mid-cycle, working
+    fine" from "stopped three days ago". Only a heartbeat can.
+
+    Same gap, same fix, as OddsHarvester: a producer outside JOB_REGISTRY writes
+    its own breadcrumb and the check reads it. There, rows were written
+    diligently, nothing consumed them, and the outage hid for ten days.
+
+    Never raises. A heartbeat that breaks the export it monitors would be worse
+    than no heartbeat at all.
+    """
+    try:
+        await db.write_health_check_results([{
+            "name": CORPUS_REFRESH_CHECK,
+            "healthy": ok,
+            "status": "healthy - export completed" if ok else "export FAILED",
+            "raw": {**detail, "ran_at": datetime.now(timezone.utc).isoformat()},
+        }])
+    except Exception as e:                                    # noqa: BLE001
+        print(f"[refresh_corpus] heartbeat write failed: {type(e).__name__}: {e}", flush=True)
 
 
 async def _close(pool) -> None:
