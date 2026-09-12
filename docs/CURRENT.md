@@ -277,6 +277,58 @@ proven -- it just never ran.
 **First automated prune: the 05:16Z task run.** Watch `databaseGrowth` after it
 -- the number to see is MB/day falling to ~0, not the absolute percentage.
 
+
+### ...BUT THE PRUNE ALONE DOES NOT CLEAR CEILING 1 — decision needed
+
+Verify-only prune, 2026-09-12 04:40Z:
+
+```
+  retention margin: keeping 5,155,194 row(s) newer than 14 days
+  VERIFY ONLY: 103,942 rows would be deleted
+```
+
+Only 103,942 of 5,159,084 rows are prunable. The 14-day retention margin holds
+back essentially the whole table.
+
+**SAME STALE-CALIBRATION BUG AS THE corpusFreshness THRESHOLD, IN A SECOND
+PLACE.** `KEEP_RECENT_DAYS["prop_odds_history"] = 14` carries the comment "14
+days costs ~1,725 MB steady state at the current **465k rows/day**". Measured
+inflow is now **1.63M rows/day -- 3.5x** what it was sized against.
+
+| retention | steady-state rows | prop_odds_history |
+|---|---|---|
+| **14d (current)** | 22.8M | **5,591 MB** |
+| 7d | 11.4M | 2,795 MB |
+| 3d | 4.9M | 1,198 MB |
+
+Other tables ~2,358 MB, so the CURRENT setting settles at **~7,950 MB against
+an 8,192 MB ceiling -- 97%**, with no room for inflow to rise again.
+
+Closing the loop was NECESSARY but is NOT SUFFICIENT: it converts unbounded
+growth into a plateau, and the plateau is at 97%.
+
+**THIS IS A PRODUCT DECISION, NOT AN ENGINEERING ONE, and it is NOT made here.**
+The 14 days is a SERVING window, not a safety margin -- the table's own comment:
+"the price chart, per-key grading and `userClv.closingPropPrice` all read this
+table from TypeScript, where there is no DuckDB and so no corpus read. Whatever
+is not here cannot be served at all." 7 days halves the footprint (total ~5,150
+MB, 63%) and caps the price chart at 6.7 days instead of 13.3.
+
+Options, for the operator:
+  a) cut KEEP_RECENT_DAYS to 7 -- chart loses half its native range
+  b) keep 14 and reduce INFLOW instead (prop_odds_history is log-on-change;
+     1.63M/day means prices are changing, or being re-logged, very often --
+     worth auditing before accepting it as given)
+  c) keep 14, accept ~97%, and monitor -- no headroom for growth
+  d) serve the chart from the corpus (removes the serving constraint entirely,
+     but there is no DuckDB in TypeScript, so this is real work)
+
+**LESSON, now twice in one day: a constant calibrated against a measured rate
+goes stale silently when the rate changes. Both the corpusFreshness threshold
+and this retention window were sized against ~465k rows/day and neither was
+revisited when inflow tripled. Any constant derived from a measurement needs
+the measurement re-checked, or the constant derived at runtime.**
+
 ### Next actions
 
 1. **Operator: read the Supabase egress graph for 12–13 Sep.** That is the verdict.
