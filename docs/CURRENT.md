@@ -102,6 +102,52 @@ check was captured that day. The blob cache makes reads cheaper, so the
 mechanism does not explain it, but that is reasoning, not evidence. Check
 whether it was red before concluding either way.
 
+
+### THE 3x GAP, RESOLVED (2026-09-12 01:10Z) — measured, not modelled
+
+Two estimates disagreed 3x. BOTH were wrong, in opposite directions, and the
+baseline they were compared against was contaminated. Measured truth, from the
+cache's own byte counters over 702s of SAME-PROCESS time:
+
+```
+  blob egress AVOIDED   : 8.52  GB/day
+  blob egress REMAINING : 0.012 GB/day      (99.86% eliminated)
+```
+
+**Error 1 - the 16 GB/day estimate was INFLATED.** It priced `snapshot_cache`
+by BLOCKS TOUCHED, which counts index and heap pages rather than bytes sent.
+Proof from today: `SELECT fetched_at FROM snapshot_cache WHERE cache_key = $1`
+shows **16.2 GB/day of block traffic while sending ~8 bytes per call**. The
+"independent corroboration" (residual = total minus everything else) was NOT
+independent -- an underestimate of everything else becomes an overestimate here
+by construction.
+
+**Error 2 - the 4.7 GB/day figure was DEFLATED.** Cumulative counters (526.9 MB)
+were divided by 2.7h of WALL CLOCK, but the worker had restarted and the
+counters reset, so true elapsed time was far shorter. **Per-process counters may
+only ever be divided by same-process elapsed time.** A counter that goes
+BACKWARDS is the signal a restart happened.
+
+**Error 3 - the 19.483 GB/day BASELINE is contaminated by our own maintenance.**
+`measure_egress_rate.py` has a `MINE` constant built to attribute exactly this,
+and it was not applied:
+
+```
+  61,250,313 rows   corpus export/verify tooling (quoted-identifier SQL)
+                    6.6% of all rows read since stats_reset
+                    ~12.3 GB, concentrated on 10-11 Sep
+```
+
+2026-09-11 -- the day of the 19.483 GB reading -- had corpus exports and prune
+verifications running all day. **The platform's steady state was never 19.5
+GB/day.** The graph's own shape agrees: 57-69 GB on heavy-corpus days, ~11 GB on
+28 Aug before that work started.
+
+**LESSON: three different proxies for "bytes sent" (block counts, average row
+width, wall-clock rates) each produced a confident wrong answer. The only
+trustworthy figure came from counting actual payload bytes at the point they
+would have crossed the wire.** Build the counter; do not model the number.
+
 ### Next actions
 
 1. **Operator: read the Supabase egress graph for 12–13 Sep.** That is the verdict.
