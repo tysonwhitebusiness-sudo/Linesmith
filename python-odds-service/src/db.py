@@ -3538,6 +3538,30 @@ async def read_game_odds_reference_points(sport: str) -> dict[tuple[str, str], f
     return {(r["game_id"], r["market"]): float(r["point"]) for r in rows}
 
 
+async def read_game_odds_book_lines_for_game(sport: str, game_id: str) -> list[GameOddsBookLineRow]:
+    """Current rows for ONE game. Same shape as ..._for_sport, filtered in SQL.
+
+    WHY THIS EXISTS. `generic_team_elo.predict_moneyline_market_only` and
+    `predict_total_market_only` each loaded EVERY current row for the whole
+    sport and then discarded all but one game with
+    `if r.game_id != game_id: continue` -- while being called ONCE PER GAME.
+    Measured 2026-09-12: 12,432 calls/day against a 4,173-row mlb sport read,
+    ~1.51 GB/day of egress confirmed live, to use ~60 rows a time.
+
+    The predicate is the only difference; every column, and the row mapping,
+    are identical to the sport-wide reader.
+    """
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT sport, game_id, market, side, bookmaker, source, american_odds, point, decimal_odds, fetched_at
+        FROM game_odds_book_lines WHERE sport = $1 AND game_id = $2
+        """,
+        _GENERIC_SPORT_KEY.get(sport, sport), game_id,
+    )
+    return [_map_game_odds_book_line_row(r) for r in rows]
+
+
 async def read_game_odds_book_lines_for_source(sport: str, source: str) -> list[GameOddsBookLineRow]:
     """Every current row a given source has written for a sport — the read
     half of write_game_odds_book_lines. Not filtered to "today's games";

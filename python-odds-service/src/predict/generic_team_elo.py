@@ -307,7 +307,7 @@ async def best_market_moneyline_prob(app_sport: str, game_id: str) -> tuple[floa
     that function's MLB-specific SnapshotGame/GameLine machinery. `None`
     when no plausible two-sided price exists for this game yet — never a
     fabricated 50/50 guess."""
-    rows = await db.read_game_odds_book_lines_for_sport(app_sport)
+    rows = await db.read_game_odds_book_lines_for_game(app_sport, game_id)
     home_best: float | None = None
     away_best: float | None = None
     for r in rows:
@@ -373,7 +373,7 @@ class TotalPrediction:
 
 
 async def predict_total_market_only(app_sport: str, game_id: str) -> TotalPrediction:
-    rows = await db.read_game_odds_book_lines_for_sport(app_sport)
+    rows = await db.read_game_odds_book_lines_for_game(app_sport, game_id)
     over_best: float | None = None
     under_best: float | None = None
     point: float | None = None
