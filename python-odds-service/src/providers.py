@@ -207,7 +207,24 @@ def drain_team_match_misses() -> list[str]:
 
 
 def _team_match(row_home: str, row_away: str, game: Game) -> bool:
-    """Does this provider row describe this game?
+    """Does this provider row describe this game? See _team_orientation."""
+    return _team_orientation(row_home, row_away, game) is not None
+
+
+_FLIP_SIDE = {"home": "away", "away": "home"}
+
+
+def _team_orientation(row_home: str, row_away: str, game: Game) -> str | None:
+    """"same" if the provider row describes this game with the same home team,
+    "reversed" if it lists our away team as its home team, None if it is not
+    this game. "same" wins when both would match.
+
+    REVERSED MATTERS, and ignoring it was a bug. A reversed listing always
+    counted as a match, but the game-line builders then copied the provider's
+    own home/away onto our game, storing each team's price against the other
+    team. Rare in team sports, where sources agree on the home team; common in
+    tennis, where "home" is arbitrary per source (master plan Phase 8, 8.2).
+    A builder that writes a home/away side must flip it on "reversed".
 
     Task 5.8 (P3 M13). This was raw string equality, so a provider changing
     "LA Galaxy" to "Los Angeles Galaxy", or adding an accent to "Montreal",
@@ -226,16 +243,20 @@ def _team_match(row_home: str, row_away: str, game: Game) -> bool:
     """
     home_n, away_n = normalize_team_name(row_home), normalize_team_name(row_away)
     g_home_n, g_away_n = normalize_team_name(game.home_team_name), normalize_team_name(game.away_team_name)
-    if (home_n == g_home_n and away_n == g_away_n) or (home_n == g_away_n and away_n == g_home_n):
-        return True
+    if home_n == g_home_n and away_n == g_away_n:
+        return "same"
+    if home_n == g_away_n and away_n == g_home_n:
+        return "reversed"
     # Order-independent word-set equality — "Red Bull New York" vs "New York
     # Red Bulls", verified live in MLS.
     home_w, away_w = team_name_words(row_home), team_name_words(row_away)
     g_home_w, g_away_w = team_name_words(game.home_team_name), team_name_words(game.away_team_name)
     if not (home_w and away_w and g_home_w and g_away_w):
-        return False
-    if (home_w == g_home_w and away_w == g_away_w) or (home_w == g_away_w and away_w == g_home_w):
-        return True
+        return None
+    if home_w == g_home_w and away_w == g_away_w:
+        return "same"
+    if home_w == g_away_w and away_w == g_home_w:
+        return "reversed"
 
     # SUBSET FALLBACK, added 2026-09-03. The provider's words must ALL appear in
     # ours, on BOTH sides.
@@ -257,8 +278,11 @@ def _team_match(row_home: str, row_away: str, game: Game) -> bool:
     # misses -- "UMass" vs "Massachusetts Minutemen". Counted by callers rather
     # than guessed at, because attaching odds to the WRONG game is worse than
     # attaching none.
-    return ((home_w <= g_home_w and away_w <= g_away_w)
-            or (home_w <= g_away_w and away_w <= g_home_w))
+    if home_w <= g_home_w and away_w <= g_away_w:
+        return "same"
+    if home_w <= g_away_w and away_w <= g_home_w:
+        return "reversed"
+    return None
 
 
 def _normalize_row(
@@ -496,10 +520,13 @@ def _sharpapi_game_line_rows(
     rows: list[GameOddsBookLineInput] = []
     for game in games:
         for home, away, sportsbook, market_type, team_side, selection_type, line, american in compact:
-            if not _team_match(home, away, game):
+            orientation = _team_orientation(home, away, game)
+            if orientation is None:
                 continue
             if american is None or not sportsbook:
                 continue
+            if orientation == "reversed":
+                team_side = _FLIP_SIDE.get(team_side, team_side)
 
             if market_type == _SHARPAPI_MONEYLINE_TYPE:
                 if team_side not in ("home", "away"):
@@ -795,7 +822,8 @@ def _sgo_name_from_player_id(player_id: str) -> str:
 _SGO_GAME_LEVEL_BET_TYPES = {"ml", "sp", "ou"}
 
 
-def _sgo_game_line_rows(event: dict, sport: str, game_id: str) -> list[GameOddsBookLineInput]:
+def _sgo_game_line_rows(event: dict, sport: str, game_id: str,
+                        reversed_orientation: bool = False) -> list[GameOddsBookLineInput]:
     """Real moneyline/spread/total, per real bookmaker, for one event —
     walks the exact same event["odds"] the player-prop loop below already
     receives in the same response (`if not player_id: continue` previously
@@ -816,6 +844,10 @@ def _sgo_game_line_rows(event: dict, sport: str, game_id: str) -> list[GameOddsB
         if bet_type not in _SGO_GAME_LEVEL_BET_TYPES:
             continue
         side_id = odd.get("sideID")
+        if reversed_orientation:
+            # home/away only; over/under pass through. A spread value belongs to
+            # its team, so it moves with the side and keeps its sign.
+            side_id = _FLIP_SIDE.get(side_id, side_id)
 
         for book_raw, book in (odd.get("byBookmaker") or {}).items():
             if not book.get("available"):
@@ -860,6 +892,10 @@ def _sgo_game_line_rows(event: dict, sport: str, game_id: str) -> list[GameOddsB
 
 
 def _sgo_event_matches(event: dict, game: Game) -> bool:
+    return _sgo_event_orientation(event, game) is not None
+
+
+def _sgo_event_orientation(event: dict, game: Game) -> str | None:
     """Does this SportsGameOdds event describe this game?
 
     Replaces building a teamID string and filtering the API by it. That
@@ -892,11 +928,11 @@ def _sgo_event_matches(event: dict, game: Game) -> bool:
     ev_home = ((teams.get("home") or {}).get("names") or {}).get("long") or ""
     ev_away = ((teams.get("away") or {}).get("names") or {}).get("long") or ""
     if not ev_home or not ev_away:
-        return False
-    # The subset rule now lives in _team_match itself, so every provider gets it
-    # -- SharpAPI hit the identical CFB problem and would otherwise need its own
-    # copy of the same logic.
-    return _team_match(ev_home, ev_away, game)
+        return None
+    # The subset rule now lives in _team_orientation itself, so every provider
+    # gets it -- SharpAPI hit the identical CFB problem and would otherwise need
+    # its own copy of the same logic.
+    return _team_orientation(ev_home, ev_away, game)
 
 
 async def fetch_sportsgameodds(
@@ -972,7 +1008,9 @@ async def fetch_sportsgameodds(
                 continue
             matched += 1
             roster_index = build_roster_index(game.roster)
-            out.game_line_rows.extend(_sgo_game_line_rows(event, game.sport, game.game_id))
+            out.game_line_rows.extend(_sgo_game_line_rows(
+                event, game.sport, game.game_id,
+                reversed_orientation=_sgo_event_orientation(event, game) == "reversed"))
             players = event.get("players") or {}
             odds = event.get("odds") or {}
             for odd in odds.values():

@@ -290,7 +290,51 @@ def test_sharpapi_game_line_rows_unknown_market_type_dropped():
     check("a market_type outside moneyline/spread/total is ignored, not guessed", rows, [])
 
 
+def test_sharpapi_game_line_rows_reversed_orientation_flips_side():
+    """A provider that lists OUR away team as ITS home team must have its sides
+    flipped. `_team_match` has always accepted a reversed listing, and this
+    builder copied the provider's `team_side` straight through, so a reversed
+    match stored each team's price against the other team. Tennis made it
+    common: 'home' is arbitrary per source there (master plan Phase 8, 8.2)."""
+    print("\n_sharpapi_game_line_rows (provider lists the teams reversed)")
+    # The provider calls Boston 'home'. Our game has Boston AWAY.
+    compact = [
+        ("Boston Red Sox", "New York Yankees", "draftkings", "moneyline", "home", None, None, 130),   # Boston's price
+        ("Boston Red Sox", "New York Yankees", "draftkings", "moneyline", "away", None, None, -150),  # Yankees' price
+        ("Boston Red Sox", "New York Yankees", "draftkings", "run_line", "home", None, 1.5, -120),    # Boston +1.5
+        ("Boston Red Sox", "New York Yankees", "draftkings", "total_runs", None, "over", 8.5, -105),
+    ]
+    rows = _sharpapi_game_line_rows(compact, [_sharpapi_game()])
+    expected = {
+        ("mlb", "778899", "moneyline", "away", "draftkings", "sharpapi", 130, None),
+        ("mlb", "778899", "moneyline", "home", "draftkings", "sharpapi", -150, None),
+        ("mlb", "778899", "spread", "away", "draftkings", "sharpapi", -120, 1.5),
+        ("mlb", "778899", "total", "over", "draftkings", "sharpapi", -105, 8.5),
+    }
+    check("each price lands on the team it belongs to; the total is untouched", _row_tuples(rows), expected)
+
+
+def test_sgo_game_line_rows_reversed_orientation_flips_side():
+    print("\n_sgo_game_line_rows (event lists the teams reversed)")
+    event = {
+        "odds": {
+            "points-home-game-ml-home": {
+                "betTypeID": "ml", "periodID": "game", "sideID": "home",
+                "byBookmaker": {"draftkings": {"odds": "+130", "available": True}},
+            },
+        }
+    }
+    same = _row_tuples(_sgo_game_line_rows(event, "mlb", "g1"))
+    flipped = _row_tuples(_sgo_game_line_rows(event, "mlb", "g1", reversed_orientation=True))
+    check("same orientation keeps the provider's side",
+          {(r[2], r[3]) for r in same}, {("moneyline", "home")})
+    check("reversed orientation flips it",
+          {(r[2], r[3]) for r in flipped}, {("moneyline", "away")})
+
+
 if __name__ == "__main__":
+    test_sharpapi_game_line_rows_reversed_orientation_flips_side()
+    test_sgo_game_line_rows_reversed_orientation_flips_side()
     test_sgo_game_line_rows_moneyline_spread_total()
     test_sgo_game_line_rows_empty_odds()
     test_sgo_game_line_rows_missing_point_excluded()
