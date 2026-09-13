@@ -15,24 +15,19 @@ import {
   parkFactorCoverage,
   historicalOddsCoverage,
   listRecentSystemEvents,
-  golfCalibrationSummary,
 } from '@/lib/db/client';
 import { recentFetchErrors } from '@/lib/sports/mlb/statsapi';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const [tables, dataAccumulation, elo, parkFactors, historicalOdds, recentEvents, golfCalibration] = await Promise.all([
+  const [tables, dataAccumulation, elo, parkFactors, historicalOdds, recentEvents] = await Promise.all([
     dbTableRowCounts(),
     dataAccumulationSnapshot(),
     eloCoverage(),
     parkFactorCoverage(),
     historicalOddsCoverage(),
     listRecentSystemEvents(50),
-    // Golf Phase A models' "how is it performing" check — see project
-    // memory's golf model gameplan. Every field stays null until at least
-    // one logged prediction has actually been graded against a real result.
-    golfCalibrationSummary(),
   ]);
   return NextResponse.json({
     tables,
@@ -42,6 +37,5 @@ export async function GET() {
     historicalOdds,
     statsApiErrors: recentFetchErrors(),
     recentEvents,
-    golfCalibration,
   });
 }

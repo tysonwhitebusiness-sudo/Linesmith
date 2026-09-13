@@ -64,6 +64,15 @@ unreachable** once their last callers were deleted — `pickHistoryLog.ts`,
 would have missed every one of them: each still *appeared* used, because the
 comments explaining the removal name the functions they replaced.
 
+**Phase 8 (2026-09-13) found the same thing in `lib/db/client.ts`.** The golf
+writers' *callers* were deleted in 2.4, but the nine exported functions
+(`writeGolfTournament` through `writeGradedTournamentPredictions`, plus
+`getGolferHoleHistory`, `getCourseHoleBaselines` and `golfCalibrationSummary`)
+stayed, unreachable, until Phase 8 removed them with the golf model layer. The
+Python side deleted the prediction writers outright; rows 15–16 now have no
+writer at all, and the four golf history tables keep `golfHistoryJob` (renamed
+from `golfPredictionsJob`) as their sole writer.
+
 ## How to read the Owner column
 
 | Owner | Meaning |
@@ -94,8 +103,8 @@ comments explaining the removal name the functions they replaced.
 | 12 | `pick_history` | **Python** | ⚠ `logSurfaced` ← `pickHistoryLog.ts`; `writeGrades` ← `grading.ts`; `writeBackfill` ← two backfills | `log_surfaced`, `write_pick_history_grades` | **2.3**, **2.7** |
 | 13 | `game_odds_book_lines` | **Python** | ⚠ `writeGameOddsBookLines` ← `espnBookLines.ts` ← `recordEspnPregameLine` ← `/api/{cfb,nba,soccer,…}/game/[gameId]` **on GET** | `write_game_odds_book_lines` | **2.3** (see note) |
 | 14 | `odds_cache` | **Python** | ⚠ `writeOddsCache` ← `golfLines.ts`, `oddsApi.ts`, `tennisLines.ts`, on odds-route GETs | `write_odds_cache` | 2.3 (see note) |
-| 15 | `golf_model_predictions` | **Python** | ⚠ `logGolfModelPredictions` ← `golf/adapter.ts:675`; `writeGradedHolePredictions` ← `golf/models/grading.ts` | `log_golf_model_predictions`, `write_graded_hole_predictions` | **2.4** |
-| 16 | `golf_tournament_predictions` | **Python** | ⚠ `logGolfTournamentPredictions` ← `golf/adapter.ts:661`; `writeGradedTournamentPredictions` ← `grading.ts` | `log_golf_tournament_predictions`, `write_graded_tournament_predictions` | **2.4** |
+| 15 | `golf_model_predictions` | **none — writer deleted** | ⚠ `logGolfModelPredictions` ← `golf/adapter.ts:675`; `writeGradedHolePredictions` ← `golf/models/grading.ts` | ~~`log_golf_model_predictions`, `write_graded_hole_predictions`~~ deleted Phase 8 (2026-09-13); table frozen, rows backed up | **2.4**, master plan 8.1 |
+| 16 | `golf_tournament_predictions` | **none — writer deleted** | ⚠ `logGolfTournamentPredictions` ← `golf/adapter.ts:661`; `writeGradedTournamentPredictions` ← `grading.ts` | ~~`log_golf_tournament_predictions`, `write_graded_tournament_predictions`~~ deleted Phase 8 (2026-09-13); table frozen, rows backed up | **2.4**, master plan 8.1 |
 | 17 | `golf_hole_scores` | **Python** | ⚠ `writeGolfHoleScores` ← `historyIngest.ts` ← `adapter.ts:689` | `write_golf_hole_scores` | **2.4** |
 | 18 | `golf_round_scores` | **Python** | ⚠ `writeGolfRoundScores` ← `historyIngest.ts` | `write_golf_round_scores` | **2.4** |
 | 19 | `golf_tournaments` | **Python** | ⚠ `writeGolfTournament` ← `historyIngest.ts` | `write_golf_tournament` | **2.4** |

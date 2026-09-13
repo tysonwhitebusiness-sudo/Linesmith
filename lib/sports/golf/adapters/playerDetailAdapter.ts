@@ -244,21 +244,12 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
   // `opponentUnit` for golf is THE FIELD -- there is no single opponent, which
   // is exactly the case `playerRoles.ts`'s role table names for this sport.
   //
-  // The numbers come from the tournament simulation already in the snapshot,
-  // and every one is about the FIELD rather than this player: how many are in
-  // it, and how concentrated the win probability is at the top. A player's own
-  // odds live on the prop board; repeating them here would make this a second
-  // copy of that card instead of a description of who he is beating.
-  const outcomes = Array.isArray(golfContext.tournamentPrediction)
-    ? []
-    : (((golfContext.tournamentPrediction ?? {}) as Record<string, unknown>).outcomes as
-        | Array<{ espnId?: string; probWin?: number; probTop10?: number }>
-        | undefined) ?? [];
-  const fieldSize = outcomes.length;
-  const favourite = outcomes.reduce<{ espnId?: string; probWin?: number } | null>(
-    (best, o) => ((o.probWin ?? 0) > (best?.probWin ?? -1) ? o : best),
-    null,
-  );
+  // The field size is ESPN's own field, from the snapshot's subjects. It used
+  // to come from the tournament-win simulation, alongside a "Favourite win %"
+  // stat; that simulation was unfitted and was deleted with the rest of the
+  // golf model layer (master plan Phase 8, 8.1). A count of players is a fact
+  // and needs no model.
+  const fieldSize = snapshot?.subjects?.length ?? 0;
   const opponentUnit: OpponentUnitRole | null =
     fieldSize > 0
       ? {
@@ -270,13 +261,8 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
           // These two have neither -- a field size is not ranked against
           // anything -- and passing 0 rendered a stray rank dash beside every
           // row. `RoleStat.rank` is optional precisely for this case.
-          stats: [
-            { key: 'fieldSize', label: 'Players', value: fieldSize, decimals: 0 },
-            ...(favourite?.probWin != null
-              ? [{ key: 'favWin', label: 'Favourite win %', value: favourite.probWin * 100, decimals: 1 }]
-              : []),
-          ],
-          emptyMessage: 'No field simulation for this tournament yet.',
+          stats: [{ key: 'fieldSize', label: 'Players', value: fieldSize, decimals: 0 }],
+          emptyMessage: 'No field posted for this tournament yet.',
         }
       : null;
 

@@ -176,10 +176,11 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   const dataLoading = loading || (hasPropsPipeline && slateProps.loading);
   // Scan-table Score-column fix (2026-08-27) — these five sports' own
   // adapter.ts files never populated subjectMeta.modelProb (no real model
-  // existed for them until predict/generic_prop_production.py). mlb/golf
-  // already have their own real, independently-fitted models wired in at
-  // snapshot-build time; merging pick_history's generic model on top there
-  // would silently overwrite a better number with a worse one.
+  // existed for them until predict/generic_prop_production.py). MLB has its
+  // own fitted model wired in at snapshot-build time; merging pick_history's
+  // generic model on top there would overwrite a better number with a worse
+  // one. (This comment used to say golf had a fitted model too. It never did:
+  // golf's were unfitted priors, deleted in master plan Phase 8.)
   const shouldMergeModelData = needsModelDataMerge(sport);
   const modelData = usePickHistoryModelData(sport, snapshot?.fetchedAt ?? null, shouldMergeModelData);
   // X-signal for CFB (Phase C of docs/x-signal-remaining-sports-gameplan-

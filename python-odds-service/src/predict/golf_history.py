@@ -18,9 +18,8 @@ from predict.golf_espn import EspnGolfEvent
 
 
 def _parse_relative(value: str | None) -> float | None:
-    """Same parse golf_candidates.py's category derivation does —
-    duplicated locally rather than imported, matching this codebase's
-    existing convention of duplicating small pure helpers per file."""
+    """ESPN's per-hole score-to-par string ('E', '-1', '+2') as a number.
+    Mirrors lib/sports/golf/adapter.ts's parseRelativeToPar."""
     if not isinstance(value, str):
         return None
     trimmed = value.strip()

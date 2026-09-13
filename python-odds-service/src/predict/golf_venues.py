@@ -4,9 +4,9 @@ table for recurring PGA Tour venues) only. `resolveCourseCoords`'s
 city-level geocode fallback (via lib/weather/openMeteo.ts's `geocode`,
 for a course not in this table) is NOT ported — a disclosed
 simplification: most major/recurring tournaments are already in this
-24-venue table, and the wind signal it feeds (golf_models.py's
-predict_round_score) is a minor effect gated behind wind > 10mph, not
-worth a second geocoding integration for this pass. A course missing
+24-venue table, and what it feeds now is the weather columns stored with
+golf_round_scores (golf_history.py); the model that once read the wind was
+deleted in Phase 8. A course missing
 from this table simply gets no weather this poll, same "degrade
 honestly" contract as every other optional signal in this codebase.
 """

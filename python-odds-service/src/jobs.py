@@ -811,39 +811,29 @@ async def _maintain_mlb_hr_matchup_inner() -> dict:
     return {"season": season, "league_hr_rate": cache.league_hr_rate, "teams": len(cache._by_team)}
 
 
-async def job_golf_predictions(yield_fn=None) -> dict:
-    """Port of golf's own inline "Phase A prediction models" block
-    (adapter.ts, adjacent to candidatesForGolfer/roundScoreCandidate) —
-    compute models -> log predictions -> ingest history -> grade, on a
-    scheduled interval. Golf has no pick-lock system (see
-    predict/golf_history.py's own docstring) — this faithfully reproduces
-    the real poll-and-upsert-until-graded capture pattern, not a new
-    scheduled-lock design.
+async def job_golf_history(yield_fn=None) -> dict:
+    """Golf results history: tournaments, hole scores, round scores (with the
+    course weather at the time) and final results, from ESPN's live feed.
+    The sole writer of those four tables.
 
-    This docstring used to say the work had been "moved from inside every
-    live snapshot request". **That was false for six days.** adapter.ts
-    kept all four of its write calls (logGolfTournamentPredictions ~661,
-    logGolfModelPredictions ~675, void ingestGolfHistory ~689, void
-    gradeAllGolfPredictions ~696) and kept running them on every golf page
-    load, alongside this job, into the same six tables — finding P2 H1,
-    which resolved an earlier phase's open question about what was writing
-    golf_model_predictions while the worker was hung. The answer was
-    adapter.ts. pg_stat_user_tables showed 5,243 updates against 4 inserts
-    while every worker job's last run was hours stale.
-
-    The TS calls were deleted in task 2.4 (2026-08-28), so this job is now
-    the sole writer of all six golf tables in fact and not only on paper.
-    Verified by observation, not by reading this file: golfPredictionsJob's
-    own run breadcrumb at 22:51:07Z that day reported
-    hole_round_predictions_logged=556, tournament_predictions_logged=30,
-    predictions_ok=true, immediately before the deletion — the point being
-    that a comment claiming a migration happened is worth nothing without
-    the observation showing the remaining writer works."""
-    return await _run_timed("golfPredictionsJob", _golf_predictions_inner())
+    THIS WAS golfPredictionsJob UNTIL 2026-09-13, and the model half was
+    deleted by operator decision (master plan Phase 8, 8.1). What it deleted,
+    so nobody rebuilds it by accident:
+      - the three models were hand-picked priors, never fitted;
+      - predictions were UPSERTED until graded, so each tournament's stored
+        rows carried one `predicted_at` stamped during the final round:
+        winners at P(win) 1.0, 1.0, 0.954, and a "calibration" Brier of
+        0.00003 that was really a record of the leaderboard;
+      - no golf price was ever archived, so nothing could gate them.
+    The history ingestion is DATA, not model, and is what a future rebuild
+    needs. A rebuild must freeze predictions before the first tee shot and
+    capture outright prices first. Backup of the deleted tables' rows:
+    python-odds-service/golf_model_layer_backup_20260913/ (operator machine)."""
+    return await _run_timed("golfHistoryJob", _golf_history_inner())
 
 
-async def _golf_predictions_inner() -> dict:
-    from predict import golf_candidates, golf_grading, golf_history
+async def _golf_history_inner() -> dict:
+    from predict import golf_history
     from predict.golf_espn import fetch_golf_event
     from predict.golf_venues import venue_coords
     from predict.weather import get_weather
@@ -860,27 +850,12 @@ async def _golf_predictions_inner() -> dict:
             if weather:
                 wind_mph, temp_f, precip_prob = weather.wind_mph, weather.temp_f, weather.rain_pct
 
-        try:
-            prediction_summary = await golf_candidates.compute_and_log_golf_predictions(client, event, wind_mph)
-            predictions_ok = True
-            hole_round_logged = prediction_summary.hole_round_predictions_logged
-            tournament_logged = prediction_summary.tournament_predictions_logged
-        except Exception as err:  # noqa: BLE001 — a model failure must never break history/grading below
-            await db.log_system_event("error", "golf/predictions", "Failed to compute golf prediction models for this poll", str(err))
-            predictions_ok = False
-            hole_round_logged = tournament_logged = 0
-
         await golf_history.ingest_golf_history(event, wind_mph, temp_f, precip_prob)
-        graded = await golf_grading.grade_all_golf_predictions()
 
     return {
         "event": event.id,
         "event_name": event.name,
         "golfers": len(event.golfers),
-        "predictions_ok": predictions_ok,
-        "hole_round_predictions_logged": hole_round_logged,
-        "tournament_predictions_logged": tournament_logged,
-        "graded": graded,
     }
 
 
@@ -1371,11 +1346,9 @@ JOB_REGISTRY = [
     ("ingestNflPbpJob", job_nfl_pbp, 24 * 60 * 60),
     ("maintainMlbParkFactorsJob", job_maintain_mlb_park_factors, 6 * 60 * 60),
     ("maintainMlbHrMatchupJob", job_maintain_mlb_hr_matchup, 6 * 60 * 60),
-    # Moved from "inside every live golf page request" (adapter.ts) to a
-    # schedule — 5min matches the MLB props job's own "first-surfaced-
-    # wins" cadence; golf's capture pattern is the same idea (poll-and-
-    # upsert-until-graded), just simpler (no lock windows).
-    ("golfPredictionsJob", job_golf_predictions, 5 * 60),
+    # 5 min so a round's hole scores and its weather are captured while the
+    # round is played. Was golfPredictionsJob; see job_golf_history.
+    ("golfHistoryJob", job_golf_history, 5 * 60),
     # Matches mlbOddsLinesCycleJob's own 5min cadence and reasoning — see
     # job_generic_capture's own docstring.
     ("genericCaptureJob", job_generic_capture, 5 * 60),

@@ -18,11 +18,6 @@ import type { EspnCourse, EspnGolfer, EspnGolfEvent } from './espn';
 import { fieldMedianPace, golfEta, holesUntil, teeTimeForDisplay } from './timing';
 import { getWeather } from '../../weather/openMeteo';
 import { resolveCourseCoords } from './venues';
-import { logSystemEvent } from '../../db/client';
-import { getSeasonStrokesGained } from './pgatourStats';
-import { predictHoleScore, priorHoleCategoryRate, type HoleFieldObservation } from './models/holeScoreModel';
-import { predictRoundScore, fieldBaselineBucketProbs, ROUND_SCORE_SD, type RoundFieldObservation } from './models/roundScoreModel';
-import { predictTournament, type GolferProjection, type TournamentPrediction } from './models/tournamentWinModel';
 
 export type GolfCategory = 'birdie' | 'par' | 'bogey';
 
@@ -534,145 +529,12 @@ export async function getGolfSnapshot(now: Date = new Date()): Promise<SportSnap
   const status: LiveStatus =
     event.state === 'in' ? 'live' : event.state === 'pre' ? 'pre' : event.completed ? 'done' : 'unknown';
 
-  // Phase A prediction models (see project memory's golf model gameplan) —
-  // attaches modelProb/leagueRate/modelSampleSize onto each hole/round-score
-  // candidate's subjectMeta so the existing Prop Score machinery (ScanTable's
-  // Score column, PlayerDetail's PropScoreBadge) lights up for golf the same
-  // way it already does for MLB, with no new UI surface. Wrapped in
-  // try/catch, same non-fatal contract as ingestGolfHistory below — a model
-  // failure must never break the live snapshot the rest of the app depends on.
-  let tournamentPrediction: TournamentPrediction | null = null;
-  try {
-    const subjects: SubjectSummary[] = event.golfers.map((g) => ({ subjectId: g.id, subjectName: g.name }));
-    const sgResult = await getSeasonStrokesGained(subjects);
-    const sgByEspnId = new Map(sgResult.golfers.filter((g) => g.espnId !== null).map((g) => [g.espnId as string, g.avgPerRound]));
-    const matchedSg = [...sgByEspnId.values()].filter((v): v is number => v != null);
-    const fieldAvgSgTotal = matchedSg.length > 0 ? matchedSg.reduce((a, b) => a + b, 0) / matchedSg.length : null;
-    const windMph = weather?.windMph ?? null;
-
-    // Logged once per poll for grading later (see grading.ts) — the "how is
-    // it performing" half of the model gameplan. Collected here, written in
-    // one batch after the loop below rather than one DB write per candidate.
-
-    const historyObservations = (history: PickCandidate['history']) =>
-      history
-        .map((h) => ({ relativeToPar: (h.raw as Record<string, unknown> | undefined)?.relativeToPar as number }))
-        .filter((o): o is HoleFieldObservation => Number.isFinite(o.relativeToPar));
-
-    const byDimension = new Map<string, PickCandidate[]>();
-    for (const c of candidates) {
-      const list = byDimension.get(c.dimension);
-      if (list) list.push(c);
-      else byDimension.set(c.dimension, [c]);
-    }
-
-    for (const [dimension, group] of byDimension) {
-      if (dimension.startsWith('hole-')) {
-        const hole = Number(dimension.slice('hole-'.length));
-        const par = event.course?.holes.find((h) => h.number === hole)?.shotsToPar ?? null;
-        const fieldObservations = group.flatMap((c) => historyObservations(c.history));
-
-        for (const c of group) {
-          const golferSgTotal = sgByEspnId.get(c.subjectId) ?? null;
-          const prediction = predictHoleScore({
-            par,
-            fieldObservations,
-            golferOwnObservations: historyObservations(c.history),
-            golferSgTotal,
-            fieldAvgSgTotal,
-          });
-          const category = c.category as GolfCategory;
-          const modelProb = { birdie: prediction.probBirdie, par: prediction.probPar, bogey: prediction.probBogey }[category];
-          const leagueRate = priorHoleCategoryRate(par, category);
-          c.subjectMeta = { ...c.subjectMeta, modelProb, leagueRate, modelSampleSize: prediction.fieldSampleSize };
-
-        }
-      } else if (dimension === 'round-score') {
-        const fieldObservations: RoundFieldObservation[] = group.flatMap((c) => historyObservations(c.history));
-        const leagueBuckets = fieldBaselineBucketProbs(fieldObservations);
-
-        for (const c of group) {
-          const golferSgTotal = sgByEspnId.get(c.subjectId) ?? null;
-          const prediction = predictRoundScore({
-            fieldObservations,
-            golferOwnObservations: historyObservations(c.history),
-            golferSgTotal,
-            fieldAvgSgTotal,
-            windMph,
-          });
-          const category = c.category as GolfCategory;
-          const modelProb = { birdie: prediction.probUnderPar, par: prediction.probEvenPar, bogey: prediction.probOverPar }[category];
-          const leagueRate = { birdie: leagueBuckets.probUnderPar, par: leagueBuckets.probEvenPar, bogey: leagueBuckets.probOverPar }[category];
-          c.subjectMeta = { ...c.subjectMeta, modelProb, leagueRate, modelSampleSize: prediction.fieldSampleSize };
-        }
-
-        // Tournament winner — one sim for the whole field, attached at event
-        // level (context.other) rather than per-candidate: P(win)/P(top5)/
-        // etc. are properties of the whole field's simulated outcomes, not
-        // any single golfer's round-score candidate.
-        const cutOutPattern = /^(cut|wd|dq)$/i;
-        const projections: GolferProjection[] = group
-          .filter((c) => {
-            const position = (c.subjectMeta as Record<string, unknown> | undefined)?.position;
-            return typeof position !== 'string' || !cutOutPattern.test(position.trim());
-          })
-          .map((c) => {
-            const completedRounds = [...c.history]
-              .sort((a, b) => a.period - b.period)
-              .map((h) => (h.raw as Record<string, unknown> | undefined)?.relativeToPar as number)
-              .filter((v) => Number.isFinite(v));
-            const golferSgTotal = sgByEspnId.get(c.subjectId) ?? null;
-            const { expectedRelativeToPar } = predictRoundScore({
-              fieldObservations,
-              golferOwnObservations: completedRounds.map((relativeToPar) => ({ relativeToPar })),
-              golferSgTotal,
-              fieldAvgSgTotal,
-              windMph,
-            });
-            return { espnId: c.subjectId, completedRounds, projectedRoundMean: expectedRelativeToPar };
-          });
-
-        if (projections.length > 0) {
-          const roundsInProgress = Math.max(0, ...projections.map((p) => p.completedRounds.length));
-          tournamentPrediction = predictTournament({
-            golfers: projections,
-            totalRounds: 4,
-            // The real cut already happened once round 3 is underway — the
-            // CUT/WD/DQ filter above already reflects who actually survived,
-            // so re-modeling a cut at that point would double-apply it.
-            cutSize: roundsInProgress >= 2 ? null : 65,
-            cutAfterRound: 2,
-            iterations: 3000,
-            roundScoreSd: ROUND_SCORE_SD,
-          });
-        }
-      }
-    }
-  } catch (err) {
-    warnings.push('Golf prediction models failed to compute this poll — Scan/Player Detail scores unavailable until next refresh.');
-    await logSystemEvent({
-      level: 'error',
-      source: 'golf/adapter/predictions',
-      message: 'Failed to compute golf prediction models for this poll',
-      detail: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  // Golf's four write paths used to run here, on every golf page load:
-  // logGolfTournamentPredictions, logGolfModelPredictions, and the two
-  // floating `void` promises ingestGolfHistory + gradeAllGolfPredictions.
-  // All four are now owned solely by the Python worker's golfPredictionsJob
-  // (jobs.py -> _golf_predictions_inner), every 5 minutes — finding P2 H1,
-  // task 2.4. That job already did all four; this path was a second,
-  // separately-maintained writer of the same six golf tables, from ported
-  // model code that could drift.
-  //
-  // The models above still run — they produce what this page renders. What
-  // moved is the persistence, not the computation.
-  //
-  // The two `void` calls were also unhandled rejections by construction,
-  // and were failing for real: system_events held 46 x golf/historyIngest
-  // and 15 x golf/models/grading errors with nowhere to surface.
+  // NO MODEL NUMBERS. Hole, round-score and tournament-win models used to run
+  // here on every poll and put modelProb / leagueRate / P(win) on these
+  // candidates. They were hand-picked priors, never fitted, never gated
+  // against a price, and deleted by operator decision (master plan Phase 8,
+  // 8.1, 2026-09-13). The candidates below are the observed hole patterns
+  // only. A golf model returns in Python, measured, or not at all.
 
   return {
     sport: 'golf',
@@ -683,26 +545,15 @@ export async function getGolfSnapshot(now: Date = new Date()): Promise<SportSnap
     subjects: event.golfers.map((g) => subjectSummary(g, now)),
     context: {
       weather,
-      other:
-        event.course || tournamentPrediction
-          ? {
-              ...(event.course
-                ? {
-                    courseName: event.course.name,
-                    par: event.course.shotsToPar,
-                    yards: event.course.totalYards,
-                    city: [event.course.address?.city, event.course.address?.state].filter(Boolean).join(', '),
-                    holes: event.course.holes,
-                  }
-                : {}),
-              // Tournament winner model output — every golfer still in
-              // contention, sorted by P(win) descending (see
-              // tournamentWinModel.ts). Null when the sim didn't run this
-              // poll (no round-score candidates yet, or the model errored —
-              // see the warnings array above).
-              tournamentPrediction,
-            }
-          : undefined,
+      other: event.course
+        ? {
+            courseName: event.course.name,
+            par: event.course.shotsToPar,
+            yards: event.course.totalYards,
+            city: [event.course.address?.city, event.course.address?.state].filter(Boolean).join(', '),
+            holes: event.course.holes,
+          }
+        : undefined,
     },
     warnings,
     fetchedAt: now.toISOString(),

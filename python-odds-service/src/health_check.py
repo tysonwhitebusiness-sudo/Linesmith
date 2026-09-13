@@ -769,57 +769,6 @@ async def check_snapshot_cache_size() -> dict:
     }
 
 
-async def check_golf_predictions_freshness() -> dict:
-    """Ground truth for job_golf_predictions (predict/golf_candidates.py
-    + predict/golf_history.py + predict/golf_grading.py) — verifies real
-    golf_model_predictions/golf_tournament_predictions rows exist for
-    today's real field, not just that the job reports ok. `probWin`/
-    `probTop5`/`probTop10`/`probMadeCut` are also range-sanity-checked
-    (each in [0,1], `probTop5 >= probWin`, `probTop10 >= probTop5`) —
-    golf has no MLB-style fixed schedule to check candidate counts
-    against, so a probability-shape check is the meaningful ground truth
-    here instead."""
-    payload = await db.read_snapshot("python-harness:job-run:golfPredictionsJob")
-    if payload is None:
-        return {"name": "golfPredictionsFreshness", "status": "NEVER RUN — golfPredictionsJob has no run breadcrumb yet", "healthy": False}
-    last_run = json.loads(payload)
-    if not last_run.get("ok"):
-        return {"name": "golfPredictionsFreshness", "status": f"job's last run failed: {last_run.get('error', 'unknown error')}", "healthy": False}
-
-    event_id = last_run.get("event")
-    if not event_id:
-        return {"name": "golfPredictionsFreshness", "status": "healthy — no golf event in progress (ESPN feed reported nothing to show)", "healthy": True}
-
-    golfers = last_run.get("golfers", 0)
-    if golfers == 0:
-        return {"name": "golfPredictionsFreshness", "status": "healthy — event reported but no golfers in the field yet", "healthy": True}
-
-    pool = await db.get_pool()
-    hole_round_rows = await pool.fetchval("SELECT COUNT(DISTINCT espn_id) FROM golf_model_predictions WHERE event_id = $1", event_id)
-    tournament_rows = await pool.fetch("SELECT prob_win, prob_top5, prob_top10, prob_made_cut FROM golf_tournament_predictions WHERE event_id = $1", event_id)
-
-    problems: list[str] = []
-    if hole_round_rows == 0:
-        problems.append("zero golfers have any hole/round-score prediction row")
-    for r in tournament_rows:
-        vals = (r["prob_win"], r["prob_top5"], r["prob_top10"], r["prob_made_cut"])
-        if any(v is not None and not (0.0 <= v <= 1.0) for v in vals):
-            problems.append(f"a tournament prediction row has a probability outside [0,1]: {vals}")
-            break
-    bad_ordering = next((r for r in tournament_rows if r["prob_top5"] is not None and r["prob_win"] is not None and r["prob_top5"] < r["prob_win"] - 1e-9), None)
-    if bad_ordering:
-        problems.append("a golfer's probTop5 is less than their own probWin — impossible ordering")
-
-    if problems:
-        return {"name": "golfPredictionsFreshness", "status": f"STALE/BROKEN — {'; '.join(problems)} (event {event_id}, {golfers} golfers reported by last run)", "healthy": False}
-
-    return {
-        "name": "golfPredictionsFreshness",
-        "status": f"healthy — {hole_round_rows} golfers have hole/round predictions, {len(tournament_rows)} have tournament predictions, all probabilities well-formed (event {event_id})",
-        "healthy": True,
-    }
-
-
 
 # ---------------------------------------------------------------------------
 # Acknowledged checks — reported, but not alerted on
@@ -1309,7 +1258,6 @@ async def main() -> int:
         await check_game_model_freshness(),
         await check_game_picks_freshness(),
         await check_odds_history_and_prices_freshness(),
-        await check_golf_predictions_freshness(),
         await check_game_odds_book_lines_freshness(),
         await check_snapshot_cache_size(),
         await check_declared_pairs_produce(),

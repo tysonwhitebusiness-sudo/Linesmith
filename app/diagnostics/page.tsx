@@ -391,19 +391,6 @@ interface SystemEventRow {
   occurredAt: string;
 }
 
-interface GolfCalibrationSummary {
-  holeRound: { total: number; graded: number; ungraded: number; hitRate: number | null; meanBrier: number | null };
-  tournament: {
-    total: number;
-    graded: number;
-    ungraded: number;
-    winBrier: number | null;
-    top5Brier: number | null;
-    top10Brier: number | null;
-    madeCutBrier: number | null;
-  };
-}
-
 interface SystemHealthResponse {
   tables: TableRowCount[];
   dataAccumulation: DataAccumulationRow[];
@@ -420,7 +407,6 @@ interface SystemHealthResponse {
     topKeys: { key: string; failures: number }[];
   };
   recentEvents: SystemEventRow[];
-  golfCalibration: GolfCalibrationSummary;
 }
 
 // ---------------------------------------------------------------------------
@@ -2682,70 +2668,6 @@ export default function DiagnosticsPage() {
                         })}
                       </tbody>
                     </table>
-                  </div>
-
-                  {/* Golf Phase A models' "how is it performing" check — separate
-                      from the row-counts/accumulation tables above, which only
-                      answer "is data coming in." A prediction is logged every
-                      poll (adapter.ts) and graded once a real outcome lands
-                      (grading.ts); every field here stays a dash until at
-                      least one has actually been graded — no fabricated
-                      placeholder score. */}
-                  <h3 className="mb-2 border-t border-line pt-3 text-[12px] font-semibold text-ink-muted">
-                    Golf model performance
-                  </h3>
-                  <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="rounded border border-line p-2.5 text-[11px]">
-                      <div className="mb-1.5 font-semibold text-ink-muted">Hole &amp; round predictions</div>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                        <span className="text-ink-faint">Logged</span>
-                        <span className="text-right tabular-nums font-medium">{systemHealth.golfCalibration.holeRound.total.toLocaleString()}</span>
-                        <span className="text-ink-faint">Graded</span>
-                        <span className="text-right tabular-nums font-medium">
-                          {systemHealth.golfCalibration.holeRound.graded.toLocaleString()}
-                          <span className="text-ink-faint"> ({systemHealth.golfCalibration.holeRound.ungraded.toLocaleString()} pending)</span>
-                        </span>
-                        <span className="text-ink-faint">Hit rate</span>
-                        <span className="text-right tabular-nums font-medium">
-                          {systemHealth.golfCalibration.holeRound.hitRate != null ? `${(systemHealth.golfCalibration.holeRound.hitRate * 100).toFixed(1)}%` : '—'}
-                        </span>
-                        <span className="text-ink-faint" title="Mean (predicted − actual)² across every graded prediction. Lower is better; 0.25 is what a coin-flip forecaster scores on a 50/50 event.">
-                          Brier score
-                        </span>
-                        <span className="text-right tabular-nums font-medium">
-                          {systemHealth.golfCalibration.holeRound.meanBrier != null ? systemHealth.golfCalibration.holeRound.meanBrier.toFixed(4) : '—'}
-                        </span>
-                      </div>
-                      {systemHealth.golfCalibration.holeRound.graded === 0 ? (
-                        <p className="mt-1.5 text-[10px] text-ink-faint">No predictions graded yet — needs a hole/round to actually finish first.</p>
-                      ) : null}
-                    </div>
-
-                    <div className="rounded border border-line p-2.5 text-[11px]">
-                      <div className="mb-1.5 font-semibold text-ink-muted">Tournament winner</div>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                        <span className="text-ink-faint">Logged</span>
-                        <span className="text-right tabular-nums font-medium">{systemHealth.golfCalibration.tournament.total.toLocaleString()}</span>
-                        <span className="text-ink-faint">Graded</span>
-                        <span className="text-right tabular-nums font-medium">
-                          {systemHealth.golfCalibration.tournament.graded.toLocaleString()}
-                          <span className="text-ink-faint"> ({systemHealth.golfCalibration.tournament.ungraded.toLocaleString()} pending)</span>
-                        </span>
-                        <span className="text-ink-faint">Win Brier</span>
-                        <span className="text-right tabular-nums font-medium">
-                          {systemHealth.golfCalibration.tournament.winBrier != null ? systemHealth.golfCalibration.tournament.winBrier.toFixed(4) : '—'}
-                        </span>
-                        <span className="text-ink-faint">Top5 / Top10 Brier</span>
-                        <span className="text-right tabular-nums font-medium">
-                          {systemHealth.golfCalibration.tournament.top5Brier != null
-                            ? `${systemHealth.golfCalibration.tournament.top5Brier.toFixed(4)} / ${systemHealth.golfCalibration.tournament.top10Brier?.toFixed(4)}`
-                            : '—'}
-                        </span>
-                      </div>
-                      {systemHealth.golfCalibration.tournament.graded === 0 ? (
-                        <p className="mt-1.5 text-[10px] text-ink-faint">Only grades once a full tournament finishes — none have yet since this started logging.</p>
-                      ) : null}
-                    </div>
                   </div>
 
                   {(() => {
