@@ -2480,7 +2480,7 @@ bug doesn't apply to them.
 | 2 | delete the golf model layer; keep leaderboard, Match Winner lines, schedule, shot profile | **DONE, deployed.** `bc18db2`. `golfPredictionsJob` → `golfHistoryJob` (history ingestion unchanged, first run ok). The two prediction tables are **left frozen** (operator), rows backed up to CSV on the operator's machine (`python-odds-service/golf_model_layer_backup_20260913/`). **Not yet rendered with a live field**: no tournament was in progress |
 | 3 | `golf_shot_events` (230 MB): keep for now | no action; revisit with Phase 5's database-growth work |
 | 4 | stop soccer's generic-Elo picks | **DONE, deployed.** `669eefa`. Capture excludes soccer (verified: `genericCaptureJob` now covers nfl/cfb/nba/nhl only); open picks still grade. Rendered before/after: Scan's "ML 33-18 / O/U 32-7" record is gone, MLB's stays |
-| 5 | BUILD tennis capture | **BUILT** `c34dacd`, deploy in progress at the time of writing; see CURRENT.md |
+| 5 | BUILD tennis capture | **DONE, deployed, verified in production** (`c34dacd`, `de8ccca`): first tennis `live_capture` closes (57 WTA) and results (ATP 232 / WTA 362) at 22:54 UTC |
 
 **Two more bugs found while building 5, both fixed:**
 

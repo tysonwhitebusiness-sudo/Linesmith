@@ -26,7 +26,7 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-**Phase 8 — AUDITED; operator DECIDED 2026-09-13, executing.** Decisions and
+**Phase 8 — all five decisions DONE and deployed 2026-09-13.** Close the phase once the owed checks below are done, then read the master plan for Phase 9. Decisions and
 progress (audit detail in the master plan's Phase 8 section, 8.0–8.3):
 
 | # | decision | state |
@@ -35,13 +35,9 @@ progress (audit detail in the master plan's Phase 8 section, 8.0–8.3):
 | 2 | delete the golf model layer; keep leaderboard, Match Winner lines, schedule, shot profile; back up golf tables first | **DONE + DEPLOYED** bc18db2. Prediction tables left frozen (operator). Backup CSVs at `python-odds-service/golf_model_layer_backup_20260913/` (local, uncommitted) |
 | 3 | `golf_shot_events` (230 MB): keep for now | no action |
 | 4 | stop soccer generic-Elo picks | **DONE + DEPLOYED** 669eefa; verified in prod and on the page |
-| 5 | BUILD tennis capture (player resolution for the bridge) | **BUILT c34dacd + de8ccca, deploy dep-dajiiae7bikc73c78ltg** (verify below) |
+| 5 | BUILD tennis capture (player resolution for the bridge) | **DONE + DEPLOYED** c34dacd + de8ccca. Verified in prod 22:54 UTC: 57 tennis_wta closes; results ATP 232 / WTA 362; 13 retirements/walkovers skipped as designed; no insert failures |
 
 **Checks still owed:**
-- **Tennis in production:** `odds_archive` and `game_result` rows with
-  `source='live_capture'` and `sport LIKE 'tennis%'` should appear within
-  about 15 min of the deploy; the bridge's warnings should show no
-  `archive insert failed`.
 - **Golf with a live field:** the golf Scan and PlayerDetail have not been
   rendered since the model was removed, because no tournament was in progress.
   Open them during the next event.
