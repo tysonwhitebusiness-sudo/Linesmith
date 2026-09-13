@@ -3476,6 +3476,68 @@ async def read_game_odds_book_lines_for_sport(sport: str) -> list[GameOddsBookLi
     return [_map_game_odds_book_line_row(r) for r in rows]
 
 
+async def read_game_odds_reference_points(sport: str) -> dict[tuple[str, str], float]:
+    """(game_id, market) -> the freshest real reference point, reduced IN POSTGRES.
+
+    WHAT THIS REPLACES. `read_game_odds_book_lines_for_sport` returns EVERY
+    current row for a sport -- no time filter, no limit -- and
+    `harvester_scrape._reference_points_by_game` then threw almost all of it
+    away in Python to keep one freshest row per (game_id, market). Measured
+    2026-09-12: 4,173 rows for mlb collapsing to 99, and at 10,532 calls/day
+    across all sports that read was **2.26 GB/day of egress**, third largest on
+    the bill. Measured on the wire, one mlb call: 0.46 MB -> 0.01 MB.
+
+    THE REDUCTION IS EXACT, not approximate. It reproduces
+    `_reference_points_by_game` clause for clause:
+      - source <> 'oddsharvester'  (this exists to give OddsHarvester's own
+        discovery something REAL to aim at, so its own guesses must never
+        become the reference)
+      - point IS NOT NULL
+      - 'total' is side-independent; 'spread' takes the HOME side's signed
+        point, matching handicap_point's sign convention
+      - each BOOK's freshest quote, then the MEDIAN across books
+
+    THE MEDIAN IS A DELIBERATE CORRECTION, not a port. "Freshest wins" does not
+    discriminate: measured on mlb game 824873, 68 candidate rows share just 4
+    distinct `fetched_at` values, because every book is written in one batch.
+    The books genuinely disagree (8.0 / 8.5 / 9.5), so the old rule picked
+    whichever row Postgres happened to return first -- an unordered SELECT with
+    no guarantee, i.e. the reference line was NON-DETERMINISTIC run to run, and
+    OddsHarvester could target a different line each cycle. Same bug class as
+    fit_nfl_elo's non-total ordering.
+
+    `percentile_disc` returns an ACTUALLY OBSERVED point rather than
+    interpolating, so a median of 8.5 and 9.5 is one of those, never 9.0 -- a
+    line no book is offering is not a reference. This is what a "reference
+    point" was always meant to be: the consensus, not a coin flip.
+
+    Sport is normalised through the same _GENERIC_SPORT_KEY map the underlying
+    reader uses: callers pass an internal routing key ('soccer_epl') while the
+    table is keyed by the app-facing value, and querying with the raw key
+    returns zero rows for exactly the sports that need this most.
+    """
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        WITH fresh AS (
+          SELECT DISTINCT ON (game_id, market, bookmaker, source)
+                 game_id, market, point
+            FROM game_odds_book_lines
+           WHERE sport = $1
+             AND source <> 'oddsharvester'
+             AND point IS NOT NULL
+             AND (market = 'total' OR (market = 'spread' AND side = 'home'))
+           ORDER BY game_id, market, bookmaker, source, fetched_at DESC
+        )
+        SELECT game_id, market,
+               percentile_disc(0.5) WITHIN GROUP (ORDER BY point) AS point
+          FROM fresh GROUP BY game_id, market
+        """,
+        _GENERIC_SPORT_KEY.get(sport, sport),
+    )
+    return {(r["game_id"], r["market"]): float(r["point"]) for r in rows}
+
+
 async def read_game_odds_book_lines_for_source(sport: str, source: str) -> list[GameOddsBookLineRow]:
     """Every current row a given source has written for a sport — the read
     half of write_game_odds_book_lines. Not filtered to "today's games";

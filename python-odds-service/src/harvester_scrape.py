@@ -868,7 +868,10 @@ async def run_dynamic_lines_target(target: ScrapeTarget, games: list[Game]) -> l
     `games` is passed in rather than loaded here — run_target already loads
     it once for the later team-name matching pass, no reason to load twice.
     """
-    reference_points = _reference_points_by_game(await db.read_game_odds_book_lines_for_sport(target.sport))
+    # Reduced in Postgres, not here. `_reference_points_by_game` is kept
+    # below as the reference implementation and as the equivalence gate's
+    # other side -- see test_reference_points_equiv.py.
+    reference_points = await db.read_game_odds_reference_points(target.sport)
     if not reference_points:
         print(
             f"[harvester_scrape] {target.sport}: no reference totals/spreads recovered yet from any other "
