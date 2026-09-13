@@ -26,9 +26,18 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-**Phase 8 — AUDITED, awaiting five operator decisions.** The audit and the exact
-decision list are in the master plan's Phase 8 section (8.0–8.3). Get the answers,
-then act on them. **Do not build or delete anything before that.**
+**Phase 8 — AUDITED; operator DECIDED 2026-09-13, executing.** Decisions and
+progress (audit detail in the master plan's Phase 8 section, 8.0–8.3):
+
+| # | decision | state |
+|---|---|---|
+| 1 | fix soccer bridge key bug + deploy | **DONE + DEPLOYED** (99d65f2, deploy dep-dajhgne7bikc73c3ol20). Verified in prod: first-ever soccer live_capture rows, EPL 803 / MLS 953 at 21:42:55 UTC |
+| 2 | delete the golf model layer; keep leaderboard, Match Winner lines, schedule, shot profile; back up golf tables first | **IN PROGRESS** |
+| 3 | `golf_shot_events` (230 MB): keep for now | no action |
+| 4 | stop soccer generic-Elo picks | **committed 669eefa, NOT YET DEPLOYED** (bundle with golf). Scan change verified on the page |
+| 5 | BUILD tennis capture (player resolution for the bridge) | not started |
+
+The worker deploy for 4 is pending and gets bundled with 2. **Ask before deploying.**
 
 The three findings that matter most:
 1. **URGENT, data loss while you read this:** the archival bridge has archived
