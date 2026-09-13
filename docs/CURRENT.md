@@ -2,8 +2,8 @@
 
 **Phases 1–4 COMPLETE. Phase 5 OPEN (monitoring only). Phase 6 CLOSED (CFB,
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
-built, decision recorded). Phase 8 AUDITED 2026-09-13; five decisions are
-pending with the operator, and nothing has been built or deleted.**
+built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
+decisions done and deployed; three checks owed before closing it.**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -47,20 +47,9 @@ progress (audit detail in the master plan's Phase 8 section, 8.0–8.3):
   archived closes it mis-sided in team sports is UNMEASURED; see the master
   plan's 8.3 decisions note.
 
-The three findings that matter most:
-1. **URGENT, data loss while you read this:** the archival bridge has archived
-   zero soccer closing lines. `_CLOSING_PIVOT` in
-   `db.archive_closing_lines_server_side` filters `game_odds_book_lines` on
-   `soccer_epl`, but rows are stored under `_GENERIC_SPORT_KEY` → `soccer`. EPL
-   and MLS are in season. The fix is one parameter plus a deploy (**ask before
-   deploying**).
-2. **Golf's stored predictions are graded after the result is known**: Brier
-   0.00003, winners stored at P(win) = 1.0. And the golf page renders a second,
-   unfitted TS copy of the model on every poll.
-3. **Golf has zero archived prices**, so no golf model can be gated at all.
-
-If the operator approves the golf deletion: back up the golf tables first, and
-remember `golf_shot_events` (230 MB) is its own separate decision.
+**Worker is live at `c34dacd`** (Render deploy dep-dajiiae7bikc73c78ltg, 22:53 UTC).
+Three API deploys went out this session, each approved first: 99d65f2, then
+bc18db2, then c34dacd.
 
 ---
 
