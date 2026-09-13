@@ -1,400 +1,108 @@
 # CURRENT — pick up here
 
-**Phases 1–4 COMPLETE. Phase 5 (Sustainability) IN PROGRESS — egress fixes deployed 2026-09-11, awaiting billing confirmation.**
+**Phases 1–4 COMPLETE. Phase 5 OPEN (monitoring only). Phase 6 CLOSED (measured
+NO). Phase 7 ACTIVE — gameplan approved, step 1 is next.**
+
+`docs/master-plan-2026-09-06.md` is the authority on build order. Phase 6 and
+Phase 7 both carry **audit notes correcting premises that were measured false** —
+read those before trusting any number in a phase brief.
 
 ---
 
-## STATE AS OF 2026-09-11 ~17:00Z
+## THE ONE HABIT THAT KEEPS PAYING: audit a phase's premises before building
 
-| ceiling | limit | status |
+Phase 6 had **four** false premises. Phase 7 has **two**. In both cases a day of
+checking saved weeks of building on sand. Every phase brief was written before
+Phase 5 moved data into the Parquet corpus, so **any claim about where data
+lives is stale by default.**
+
+---
+
+# Phase 7 — NBA — ACTIVE
+
+## Audit, 2026-09-13 — two premises false
+
+| plan says | measured | |
 |---|---|---|
-| database | 8,192 MB | **CLEARED** — 7,282 → ~3,200 MB |
-| worker RAM | 512 MB | **CLEARED** — 311 resting / 360 peak |
-| egress | 250 GB/mo | **FIXES DEPLOYED, NOT YET CONFIRMED** |
-
-### What egress was, and what was done
-
-Supabase graph, period 28 Aug – 28 Sep: **623.32 GB used of 250, 373.32 GB
-overage, 19.483 GB/day on 11 Sep, 100% Shared Pooler (0% Storage).**
-Target for the next period: **≤8.3 GB/day**.
-
-Root cause: **Postgres was being used as a blob cache, and on a hosted database
-every cache HIT is a billed network transfer.** `snapshot_cache` reads were
-~16 GB/day of the 19.483 — 80% — confirmed two independent ways (blocks
-touched: 53,212 B/call × 265,538 calls/day; residual after pricing every other
-live query: ~60 KB/read). Every other live query totals ~3.6 GB/day.
-
-**DEPLOYED — item 1** (`82bac81`, live 16:21Z): validation cache
-(`src/blob_cache.py`). Asks Postgres for `fetched_at` only (~8 bytes); serves
-the payload from local disk when the stamp matches. NOT a TTL cache — the
-version IS the stamp, so staleness is impossible by construction. Disk not
-memory, deliberately, to protect the RAM ceiling. Every failure path degrades
-to a direct DB read. `test_blob_cache.py`: 16 checks, all pass.
-
-**DEPLOYED — item 3** (live 16:45Z): prop archive pivots server-side. Was
-fetching 13,542 rows/call × ~2,000 calls/day = 27.3M rows/day, pivoting in
-Python, discarding one-sided quotes, writing back to the same database. Now one
-`INSERT … SELECT`; no result set crosses the pooler.
-`test_prop_archive_equiv.py`: **36,361 rows, 7 sports, ZERO mismatches.**
-
-### THE OPEN QUESTION — read this before declaring victory
-
-Cache hit rate measured **43% cold → 61% warm**, against ~97% predicted from the
-30:1 read:write ratio. **Hit rate is probably the wrong metric**: the hypothesis
-is that `provider-throttle:*` keys (80 bytes, rewritten every job run) always
-miss by design and dilute the rate while costing nothing, whereas the expensive
-keys (`mlb:snapshot` 6.6 MB, rewritten only ~every 84 min) hit. **UNVERIFIED.**
-
-If bytes track the 61% rather than the hypothesis, the saving is ~9.8 GB/day,
-landing at ~9.7 — still ABOVE the 8.3 target — and items 2 and 4 become
-required rather than optional.
-
-**THE SUPABASE GRAPH IS THE ONLY AUTHORITY.** No management token exists in
-`.env.local`, so the operator must check it 24–48h after 2026-09-11.
-
-
-### MEASUREMENT TRAP — this has now caused two false conclusions
-
-**A short window extrapolated to a day is wrong for BURSTY jobs, and a
-minimum-call threshold does not catch it.**
-
-2026-09-11, twice:
-- A 600s window saw a `player_game_history` stats query 10 times and reported
-  **99M rows/day**. Its lifetime figure is **206 calls total, 105/day — ~7.4M
-  rows/day**. The window had landed inside a burst. It cleared the
-  `MIN_CALLS_TO_TRUST = 5` guard precisely because a burst produces *many*
-  calls in a short span, which is the same signature as a high steady rate.
-- Earlier the same day, single-call samples were extrapolated x144 and produced
-  a ranking that sent an hour of work at the wrong target.
-
-**The rule: for any query, cross-check the window rate against the LIFETIME
-rate (`rows / stats_since`). If they disagree by more than ~3x, the window
-caught a burst and the window figure must be discarded, not averaged.** Neither
-number alone is trustworthy — cumulative cannot tell live from dead, and a
-window cannot tell bursty from steady.
-
-
-### POST-DEPLOY OBSERVATIONS (2026-09-11 22:15Z)
-
-**The cache works, measured in production, not inferred.** Job breadcrumbs now
-carry `cache_hit_rate` / `cache_saved_mb` / `cache_fetched_mb`:
+| `nba_shot_events` holds 219,873 rows | **219,873** exactly | ✅ |
+| possessions from FGA/FTA/TOV/OREB in player rows | all four present | ✅ |
+| 100% result coverage | 24,934 games, all scored, 2007–2026 | ✅ |
+| "24,705 **priced** games, dense 2008–2019 and 2021–2025" | **5,301 games with odds, ZERO before 2022** | ❌ |
+| "props thinnest… 4,480 graded player-games" | **36,335 two-sided, 96.3% gradeable** | ❌ |
 
 ```
-  hit rate  0.995      saved 140.1 MB      fetched 78.1 MB
+NBA games WITH ODDS, by season
+  2022    538      2024  1,326      2026    834
+  2023  1,266      2025  1,337      2007-2021: ZERO
 ```
 
-**99.5% of reads hit.** The earlier "61%" was an artifact of computing hit rate
-from `pg_stat_statements`, which counts THIS SESSION'S local diagnostic scripts
-too -- those run against a different cache directory and miss constantly. The
-78.1 MB fetched is the one-time cost of filling the cache after a restart.
+**Results are plentiful; PRICES are the scarce thing** — the same shape as CFB,
+where 13,659 games had spread *lines* and 75 had real *prices*. A model is
+graded against prices.
 
-**archivePropsJob runs in 8.6s on the worker** (37,620 rows), not the 81s
-measured locally -- that difference was this machine's round-trip latency to a
-remote database, not the job. Item 3 is fast.
+**THE NBA GAME-LINE CLV GATE CANNOT BE BUILT.** `odds_archive` for nba has
+**zero `captured_at` and zero `open_line`** across all 81,023 espn_core rows, so
+there is no way to tell when a price was taken and "closing line" is undefined.
+A second source (`sbr`, 39,114 rows) has **null `event_ref`** and cannot be
+joined to results at all — that is also what produced a misleading 2007 minimum
+game_date against zero games per season.
 
-**Worker RAM improved again: 259 MB resting** (was 311), 406 MB peak.
-
-**OPEN — refreshTier1 overruns its own interval: 171.75s against a 150s
-schedule**, which is why `gameOddsBookLinesFreshness` and `refreshTier1` show
-red. It writes 89,157 rows across 5 providers, so it is provider-network-bound.
-**Unknown whether this predates the 2026-09-11 deploys** -- no pre-deploy health
-check was captured that day. The blob cache makes reads cheaper, so the
-mechanism does not explain it, but that is reasoning, not evidence. Check
-whether it was red before concluding either way.
-
-
-### THE 3x GAP, RESOLVED (2026-09-12 01:10Z) — measured, not modelled
-
-Two estimates disagreed 3x. BOTH were wrong, in opposite directions, and the
-baseline they were compared against was contaminated. Measured truth, from the
-cache's own byte counters over 702s of SAME-PROCESS time:
+**PROPS ARE THE ONLY PATH WITH A REAL GATE**, which inverts the plan:
 
 ```
-  blob egress AVOIDED   : 8.52  GB/day
-  blob egress REMAINING : 0.012 GB/day      (99.86% eliminated)
+36,335 two-sided props -> 34,998 joined to a player result (96.3%)
+  Total Points                        6,653 props  327 athletes
+  Total Rebounds                      5,195        315
+  Total 3-Point Field Goals           3,809        264
+  Total Points and Rebounds           3,598        304
+  Total Assists                       3,546        259
+  Total Points, Rebounds and Assists  3,366        293
 ```
 
-**Error 1 - the 16 GB/day estimate was INFLATED.** It priced `snapshot_cache`
-by BLOCKS TOUCHED, which counts index and heap pages rather than bytes sent.
-Proof from today: `SELECT fetched_at FROM snapshot_cache WHERE cache_key = $1`
-shows **16.2 GB/day of block traffic while sending ~8 bytes per call**. The
-"independent corroboration" (residual = total minus everything else) was NOT
-independent -- an underestimate of everything else becomes an overestimate here
-by construction.
+## APPROVED GAMEPLAN (operator approved 2026-09-13)
 
-**Error 2 - the 4.7 GB/day figure was DEFLATED.** Cumulative counters (526.9 MB)
-were divided by 2.7h of WALL CLOCK, but the worker had restarted and the
-counters reset, so true elapsed time was far shorter. **Per-process counters may
-only ever be divided by same-process elapsed time.** A counter that goes
-BACKWARDS is the signal a restart happened.
+**Step 1 — Build the prop training set.** Join the 36,335 two-sided props to
+player results; ~35,000 rows, ONE season (2025-10-21 → 2026-06-14), 355
+athletes. **Gate: de-vig the two-sided prices and compare implied probability to
+the realised over-rate.** The market should come out near-calibrated. This is
+the same self-validation trick that caught nothing wrong in CFB (residual mean
+−0.03 over 13,650 games); if it comes out skewed, the join or the de-vig is
+wrong, not the market.
 
-**Error 3 - the 19.483 GB/day BASELINE is contaminated by our own maintenance.**
-`measure_egress_rate.py` has a `MINE` constant built to attribute exactly this,
-and it was not applied:
+**Step 2 — Build the MINUTES model first.** The plan's own note that "an NBA
+prop model is mostly a minutes model" is right: points/rebounds/assists are
+roughly rate × minutes and minutes are the volatile part. Possessions from
+FGA/FTA/TOV/OREB (all confirmed present in `player_game_history.stats`).
 
-```
-  61,250,313 rows   corpus export/verify tooling (quoted-identifier SQL)
-                    6.6% of all rows read since stats_reset
-                    ~12.3 GB, concentrated on 10-11 Sep
-```
+**Step 3 — Rate stats per minute**, combined with projected minutes into a
+distribution per prop.
 
-2026-09-11 -- the day of the 19.483 GB reading -- had corpus exports and prune
-verifications running all day. **The platform's steady state was never 19.5
-GB/day.** The graph's own shape agrees: 57-69 GB on heavy-corpus days, ~11 GB on
-28 Aug before that work started.
+**Step 4 — The edge test**, identical in shape to CFB step 3: does
+model-minus-line predict outcome-minus-line? Walk-forward WITHIN the season,
+Wilson intervals, −110 break-even (52.38%) drawn on every bucket, pushes
+excluded.
 
-**LESSON: three different proxies for "bytes sent" (block counts, average row
-width, wall-clock rates) each produced a confident wrong answer. The only
-trustworthy figure came from counting actual payload bytes at the point they
-would have crossed the wire.** Build the counter; do not model the number.
+**Step 5 — Write the game-line decision.** Not a model — a recorded decision
+that NBA game lines have no timing data, so CLV is unmeasurable, and either we
+start capturing timestamps going forward or the game model waits.
 
+**Step 6 — Wire into a job**, only if step 4 passes.
 
-### STEP 1 DONE — closing-lines archive is server-side (2026-09-12 01:55Z)
+**RISK TO STATE UP FRONT: one season is thin.** 36,335 props are ~355 athletes
+over one year, heavily correlated within players and within nights. Expect
+"promising, needs another season" rather than a clean yes.
 
-`archiveClosingLinesJob` was the last read-reshape-write round trip of any size:
-it pulled the latest book line for every upcoming game (~8.6-24.8M rows/day),
-rebuilt each row as a dict in Python, and wrote them back to the same database.
-Now a single INSERT..SELECT. **Verified live: ok=True, 6.62s, 2,104 rows** (it
-takes 153s from a developer machine -- that gap is round-trip latency, not the
-job).
+---
 
-Gate: `test_closing_archive_equiv.py` -- 2,104 rows across cfb/mlb/nfl, full row
-tuples under an exact key, **0 mismatches**.
+# Phase 5 — OPEN, monitoring only
 
-**A PRE-EXISTING SILENT BUG SURFACED, and it is worth a decision.**
-`odds_archive_natural_key` keys on `source`, which this insert sets to the
-constant `'live_capture'` -- **`provider` is NOT in the key.** So two providers
-quoting the SAME book collapse to one archive row. Measured on NFL:
-
-```
-  moneyline/home  fanduel  oddsharvester -118  vs  propline -124
-  moneyline/away  fanduel  oddsharvester -175  vs  propline -184
-  86 of 2,190 rows per cycle (3.9%)
-```
-
-This is NOT new. The old `executemany` path hit the same collision and resolved
-it silently -- last row written won, in whatever order the fetch returned -- so
-the archive has always kept an arbitrary one of the two. `INSERT..SELECT` cannot
-do that (Postgres rejects a command proposing the same key twice), which is how
-a long-standing silent behaviour finally became a hard error.
-
-Now deterministic: **newest quote wins**, a stated rule instead of an accident
-of row order.
-
-**OPEN DECISION, for the operator, NOT decided here: should `provider` be part
-of `odds_archive_natural_key`?** Today the archive can hold only one price per
-(game, market, side, book) even when two providers genuinely disagree about what
-that book is showing -- and a 6-cent moneyline disagreement is exactly the kind
-of thing a CLV model would want to see. Adding provider to the key is a
-migration and changes archive cardinality, so it needs a real decision rather
-than a quiet fix.
-
-
-### corpusFreshness FIXED (2026-09-12 03:05Z) — and two things it uncovered
-
-**The alarm could never be satisfied.** Its own docstring calibrated 250,000
-rows as "half a day at ~465k rows/day". Measured: `prop_odds_history` takes
-**~68k rows/HOUR (~1.63M/day)**, more than triple. One 6-hour refresh cycle
-deposits **~407,616 rows**, so the threshold sat BELOW the floor of normal
-operation and went red every cycle regardless of health.
-
-**The root cause was that nothing could SEE whether the export ran.**
-`check_corpus_freshness` runs on the Render worker; `refresh_corpus` runs as a
-Windows Scheduled Task on the operator's machine. The worker cannot read Task
-Scheduler, so it could only infer liveness from a row count -- and a row count
-cannot separate "mid-cycle, working fine" from "stopped three days ago".
-
-Same gap and same fix as OddsHarvester: `refresh_corpus._write_heartbeat` now
-writes `job_health_checks['corpus_refresh']` on every run, and the check reads
-it. Red means the export actually FAILED, or has not succeeded within 1.5
-cycles (9h). The row count survives only as a transitional fallback (1.2M,
-~3 measured cycles) for the window before the first heartbeat exists.
-
-Verified all four branches on real data: fresh (1h) healthy, late (8h) healthy,
-stale (12h) red, last-run-failed red. Producer write confirmed end to end.
-**The first real heartbeat lands on the 05:16Z task run.**
-
-## OPEN, NOT MINE — eloFreshness
-
-`eloFreshness` went red at ~03:05Z: **1 of 11 finished games today has no
-`team_elo_history` row (game_pk 824873)**. It is NOT a sync delay --
-`maintainMlbEloJob` ran at 03:25:26Z with ok=True and still did not cover it,
-which is the case the check's own message says needs investigating.
-
-**Ruled out as a side effect of the 2026-09-12 blob cache**, by measurement
-rather than reasoning: `read_snapshot("mlb:snapshot")` returns a payload
-**byte-identical** to a direct Postgres read (same sha256 over 26,127,752
-bytes), and game 824873 is present in both. The cache is not serving stale data.
-
-Also noticed while checking, and NOT yet explained: `mlb:snapshot` carries
-`fetched_at 2026-09-11 22:26:36Z` -- roughly 5 hours stale at the time of
-writing. Whether that is normal cadence or a second problem is unknown.
-
-
-### CEILING 1 WAS NOT SUSTAINABLY CLEARED — found and fixed 2026-09-12 04:00Z
-
-**The correction:** this file has said "database: CLEARED" since 2026-09-11.
-That was true as a point-in-time measurement (44.2%) and WRONG as a
-sustainability claim, which is what Phase 5 is about.
-
-Once `databaseGrowth` had its full 24h of history it said:
-
-```
-  CEILING APPROACHING - 3,623 MB (44.2%), +469.6 MB/day over 1.0d,
-  10 days of headroom
-```
-
-44.2% full looks fine. The RATE does not. The alarm built in 5.S.9 was working
-correctly; it had been reading "establishing baseline" and was skimmed past.
-
-**ROOT CAUSE: the loop was never closed.** `refresh_corpus` ran
-`export_corpus` + `upload_corpus` and stopped. The corpus accumulated a
-faithful copy and Postgres never shed anything. The 7,282 -> 3,200 MB reduction
-came from running the prune tools BY HAND; nothing repeated them, so the
-database simply refilled. **A one-time cleanup is not sustainability.**
-
-`prop_odds_history` alone: 245 bytes/row x ~1.63M rows/day = **~400 MB/day**,
-nearly all of the measured growth. Fully corpus-backed, fully prunable, tooling
-proven -- it just never ran.
-
-**FIXED** (`35392eb`): `refresh_corpus --prune` now runs `prune_corpus <table>
---apply` after export and upload succeed.
-- **Daily, not 6-hourly.** Exporting is incremental and cheap; VERIFYING is
-  neither -- `prune_table` re-reads every non-empty partition and a verify-only
-  pass exceeded 10 minutes. Running it every cycle would spend much of what the
-  egress work just saved. One daily pass reclaims a day.
-- **Opt-in.** A bare `python refresh_corpus.py` stays non-destructive, matching
-  prune_corpus's own default. The scheduled task passes `--prune` via
-  `scripts/corpus-refresh-setup.ps1` -- the generated `.bat` is gitignored, so
-  THE GENERATOR is what must carry the flag.
-- **"Unknown" means DUE.** The cadence gate reads `last_prune_at` from the
-  heartbeat; if it cannot, it prunes. Failing closed would silently stop
-  pruning and let the database refill -- the exact failure this prevents.
-- `prune_corpus` is untouched and remains the safety layer: verification
-  independent of the export's manifests, deletion by verified row id not by
-  predicate, refusal while the corpus is local-only.
-
-**First automated prune: the 05:16Z task run.** Watch `databaseGrowth` after it
--- the number to see is MB/day falling to ~0, not the absolute percentage.
-
-
-### ...BUT THE PRUNE ALONE DOES NOT CLEAR CEILING 1 — decision needed
-
-Verify-only prune, 2026-09-12 04:40Z:
-
-```
-  retention margin: keeping 5,155,194 row(s) newer than 14 days
-  VERIFY ONLY: 103,942 rows would be deleted
-```
-
-Only 103,942 of 5,159,084 rows are prunable. The 14-day retention margin holds
-back essentially the whole table.
-
-**SAME STALE-CALIBRATION BUG AS THE corpusFreshness THRESHOLD, IN A SECOND
-PLACE.** `KEEP_RECENT_DAYS["prop_odds_history"] = 14` carries the comment "14
-days costs ~1,725 MB steady state at the current **465k rows/day**". Measured
-inflow is now **1.63M rows/day -- 3.5x** what it was sized against.
-
-| retention | steady-state rows | prop_odds_history |
-|---|---|---|
-| **14d (current)** | 22.8M | **5,591 MB** |
-| 7d | 11.4M | 2,795 MB |
-| 3d | 4.9M | 1,198 MB |
-
-Other tables ~2,358 MB, so the CURRENT setting settles at **~7,950 MB against
-an 8,192 MB ceiling -- 97%**, with no room for inflow to rise again.
-
-Closing the loop was NECESSARY but is NOT SUFFICIENT: it converts unbounded
-growth into a plateau, and the plateau is at 97%.
-
-**THIS IS A PRODUCT DECISION, NOT AN ENGINEERING ONE, and it is NOT made here.**
-The 14 days is a SERVING window, not a safety margin -- the table's own comment:
-"the price chart, per-key grading and `userClv.closingPropPrice` all read this
-table from TypeScript, where there is no DuckDB and so no corpus read. Whatever
-is not here cannot be served at all." 7 days halves the footprint (total ~5,150
-MB, 63%) and caps the price chart at 6.7 days instead of 13.3.
-
-Options, for the operator:
-  a) cut KEEP_RECENT_DAYS to 7 -- chart loses half its native range
-  b) keep 14 and reduce INFLOW instead (prop_odds_history is log-on-change;
-     1.63M/day means prices are changing, or being re-logged, very often --
-     worth auditing before accepting it as given)
-  c) keep 14, accept ~97%, and monitor -- no headroom for growth
-  d) serve the chart from the corpus (removes the serving constraint entirely,
-     but there is no DuckDB in TypeScript, so this is real work)
-
-**LESSON, now twice in one day: a constant calibrated against a measured rate
-goes stale silently when the rate changes. Both the corpusFreshness threshold
-and this retention window were sized against ~465k rows/day and neither was
-revisited when inflow tripled. Any constant derived from a measurement needs
-the measurement re-checked, or the constant derived at runtime.**
-
-
-### EGRESS, ROUND 2 — 2026-09-13. Read this before measuring anything.
-
-**12 Sep billed 19.066 GB, against 19.483 on 11 Sep. The cache and the archive
-fixes did NOT move the bill.** They worked (payload reads fell 265,538/day ->
-2,880/day); they simply were not where the bytes were.
-
-**WIRE COST IS 109 B/ROW, MEASURED** with psutil NIC counters around a real
-4,173-row query -- against a `pg_column_size` of 110. The width model was
-ACCURATE all along. A "stored vs wire" theory was raised and disproved the same
-hour; do not resurrect it.
-
-**THE REAL ERROR WAS SAMPLING, EVERY TIME.** Three estimates, three biases:
-  - cumulative pg_stat_statements: 26 GB/day -- inflated by pre-5.1 history
-  - a 420s live window: 6.31 GB/day -- misses bursty daily jobs entirely
-  - the truth: ~19 GB/day, sitting between two biased estimators
-
-**A 420-SECOND WINDOW CANNOT PROVE A QUERY IS DEAD.** A query running 73x/day
-appears 0.35 times in 420s. On that basis the 511,257-rows/call query was
-declared dead; it was the single largest line on the bill. **Absence in a short
-window is not evidence.** This is the third variant of the same sampling
-mistake in two days.
-
-## Fixed this round (all deployed, all gated)
-
-| GB/day | change | gate |
-|---|---|---|
-| 3.54 | hot window aggregates in Postgres (`load_hot_window_agg`) | 17,118 athlete-markets, 0 diffs; plus summary == prefix+hot on 15,642 |
-| ~1.5 | team-elo reads ONE game, not the whole sport | identical rows on 5 games |
-| part of 2.26 | reference points reduce server-side | 299 points, deterministic, every one really quoted |
-
-`generic_team_elo` was loading every row for the sport and then discarding all
-but one game with `if r.game_id != game_id: continue` -- **while being called
-once per game**, 12,432 calls/day at 4,173 rows a call.
-
-**A CORRECTNESS BUG CAME OUT OF IT.** The reference line OddsHarvester targets
-was NON-DETERMINISTIC: 68 candidate rows share 4 distinct `fetched_at` values
-(all books written in one batch) and the books disagree (8.0/8.5/9.5), so
-"freshest wins" kept whatever an unordered SELECT returned first. Now each
-book's freshest quote, then the MEDIAN across books -- the consensus.
-`percentile_disc` guarantees a really-quoted line, never an interpolated 9.0.
-It differed from the old pick on 118 of 299 keys (39%).
-
-## OPEN
-
-`pg_stat_statements` was **RESET at 2026-09-13 00:47:57Z** for a clean,
-full-coverage window -- no stale pre-5.1 entries, no sampling gaps. Read it
-after 6-12h and the attribution is exact for the first time.
-
-~13 GB/day was still unattributed by any window before these fixes. The clean
-read is what closes that, and it is the next thing to do.
-
-Three `game_odds_book_lines` callers still do the full-sport read
-(`generic_price_attach:189`, `odds_lines_cycle:708` and `:860`); each genuinely
-joins across all games, so each needs its own reduction rather than a swap.
-
-
-### STATE AS OF 2026-09-13 — Phase 5 OPEN (monitoring), Phase 6 CLOSED, Phase 7 ACTIVE
-
-**PHASE 5 IS DELIBERATELY LEFT OPEN** at the operator's direction, to retest
-egress over several days rather than close on one day's reading.
+Left open at the operator's direction to retest egress over several days rather
+than close on one reading.
 
 | ceiling | state |
 |---|---|
 | database | **CLEARED and SUSTAINABLE** — 42.4%, prune loop closed, runs daily |
-| worker RAM | **CLEARED** — 185 MB resting, trending -305 MB over 32h |
+| worker RAM | **CLEARED** — 185 MB resting, trending −305 MB over 32h |
 | egress | **halved, not yet at target — WATCH THIS** |
 
 ```
@@ -403,249 +111,159 @@ egress over several days rather than close on one day's reading.
   target              <= 8.3 GB/day
 ```
 
-The graph's own shape confirms it: 35-67 GB/day in late August, ~19 GB through
-07-12 Sep, ~7 on the 13th. Four fixes landed: the blob validation-cache, the
-prop archive server-side, the closing-lines archive server-side, the hot-window
-aggregation, and the team-elo per-game read.
+The graph's shape confirms it: 35–67 GB/day late August, ~19 GB through 07–12
+Sep, ~7 on the 13th.
 
-**WHAT TO CHECK, over several days:** the Supabase egress graph. A single day is
-not a trend, and 13 Sep was partly a deploy day.
-
-**DO NOT TRUST A FOURTH ESTIMATE FROM pg_stat_statements.** Three have now
-bracketed the truth without landing on it -- flat 109 B/row said 4.08 GB/day,
-per-table width said 24.63, the graph says ~10. The width model fails in BOTH
-directions: flat undercounts JSONB rows (`stats` is ~600 B), per-table
-overcharges narrow selects (`SELECT fetched_at` billed at snapshot_cache's
-39,510 B row). A correct estimator needs SELECTED-COLUMN widths, which nobody
-has built. **The graph is the authority; the RANKING from pg_stat_statements is
-what is actionable, not its absolute numbers.**
-
-Direct wire measurement with psutil also FAILED for small queries: `SELECT 1`
-measured at 19,417 B/call, which is impossible -- net_io_counters sees all
-machine traffic and 500 queries take ~30s. It worked for a 4,173-row query where
-payload dominated. Do not reuse it below a few MB.
+**WHAT TO CHECK:** the Supabase egress graph, over several days. One day is not
+a trend and 13 Sep was partly a deploy day. **There is no API token for it — the
+operator must look.**
 
 **THE LARGEST REMAINING LEVER, independent of any byte estimate:**
-`SELECT fetched_at FROM snapshot_cache` runs **424,958 times/day** -- 5 calls a
-second, by far the highest call count of anything. That is the blob cache's
+`SELECT fetched_at FROM snapshot_cache` runs **424,958 times/day** — 5 calls a
+second, by far the highest call count of anything. It is the blob cache's
 validation query. Memoising it in-process for a few seconds would collapse burst
-reads of the same key into one, with no staleness risk beyond seconds (the
-payload is already versioned by `fetched_at`). NOT BUILT. Size unknown.
+reads of one key into one query, with no staleness risk beyond seconds (the
+payload is already versioned by `fetched_at`). **NOT BUILT. Size unknown.**
 
-### Phase 6 — CLOSED, measured NO (see master plan for the full record)
+## What shipped in Phase 5 (all deployed, all gated)
 
-Ridge margin rating, 13,650 games, three benchmarks all negative. The high-edge
-band trended monotonically but every Wilson interval spans break-even, 2024 sits
-at 49.08%, and validating it would need ~80 seasons. Pre-registered reopening
-hypothesis: week 5+, |edge| >= 16, large spreads.
-
-### Next actions
-
-1. **Operator: read the Supabase egress graph for 12–13 Sep.** That is the verdict.
-2. If still >8.3 GB/day: build item 2 (jsonb field selection — `load_mlb_games`
-   pulls 6.6 MB to produce a game list, 32 call sites) and item 4 (immutable
-   `nfl:boxscoreRaw:*` cached permanently).
-3. Instrument `blob_cache.stats()` into `health_check.py` so hit rate and
-   bytes-saved are visible in production rather than inferred.
-4. `archive_props` now takes ~81s per run against a 300s interval — fine, but
-   worth watching.
-
----
-
-### Everything else Phase 5 did land
-
-**Database 7,282 → 3,225 MB, 88.9% → 39.4%.** Nothing deleted: 13.9M rows in
-Parquet, every prune verifying each row present there by id and content
-fingerprint first. `odds_archive` 1,171→8 MB, `prop_odds_archive` 871→7,
-`player_game_history` 1,839→460, `mlb_pitch_events` 477→289,
-`odds_import_staging` 262→2, plus 7 dead tables and 2 redundant indexes.
-
-Serving stopped transferring 7.2M rows to compute 300 numbers. `fit_nfl_elo`
-got a total sort after 232 groups were found sharing `(game_date, event_ref)` —
-it was never reproducible run to run. OddsHarvester, dead since 2026-09-01, was
-diagnosed (site rebuild, not a block) and fixed by re-vendoring upstream
-v0.12.0; MLB and NFL both scrape again at 15/15 matched.
-
-Four alarms now watch rates and boundaries rather than levels:
-`databaseGrowth` (MB/day), `corpusFreshness`, `workerMemory`,
-`harvesterScrapes`/`orphanJobBreadcrumbs`. The alert channel was paging ~96×/day
-on structural reds, which made a real failure invisible; those are acknowledged
-with the task that clears them, verified by deliberately breaking a job.
-
-**Two of those alarms were wrong on their first attempt** — `databaseGrowth`
-extrapolated a 2 MB wobble into 700 MB/day, `workerMemory` blamed a job that
-ran for 0.02 seconds. Both now refuse to state a trend without real history.
-Treat them as proven in about a week, not today.
+- **blob validation-cache** — `read_snapshot`/`read_snapshot_with_age` ask
+  Postgres only for `fetched_at` and serve the payload from local disk when the
+  stamp matches. **99.5% hit rate in production.** Disk, not memory, to protect
+  the RAM ceiling.
+- **prop archive server-side** — `INSERT … SELECT`; 36,361 rows, 7 sports, 0
+  mismatches.
+- **closing-lines archive server-side** — 2,104 rows, 0 mismatches, 6.62s on the
+  worker.
+- **hot-window aggregation** — `load_hot_window_agg`; 1,958,099 rows → 17,118
+  (99.1% fewer). Gated at 17,118 athlete-markets, 0 diffs, plus
+  `summary == prefix + hot` on 15,642.
+- **team-elo per-game read** — was loading the whole sport then discarding all
+  but one game, *while being called once per game* (12,432 calls/day).
+- **reference points server-side** — and it fixed a NON-DETERMINISM: 68
+  candidate rows share 4 `fetched_at` values, books disagree (8.0/8.5/9.5), so
+  "freshest wins" returned whatever an unordered SELECT gave first. Now each
+  book's freshest quote then the MEDIAN across books; `percentile_disc` so the
+  answer is a really-quoted line. Differed from the old pick on 39% of keys.
+- **corpus prune loop closed** — `refresh_corpus --prune` runs `prune_corpus`
+  daily after export+upload. Before this the database grew +469.6 MB/day with 10
+  days of headroom, because the 7,282 → 3,200 MB reduction came from running
+  those tools BY HAND and nothing repeated them.
+- **corpusFreshness heartbeat** — `refresh_corpus` now writes
+  `job_health_checks['corpus_refresh']`; the check reads it. The old alarm sat
+  BELOW the floor of normal operation (250k threshold vs ~407k rows per cycle)
+  and went red every cycle regardless of health.
 
 ---
 
-## What changed today, in one paragraph
+## MEASUREMENT LESSONS — read before measuring anything
 
-The audit found three ceilings — database 88.5%, egress ~2× its allowance,
-worker RAM already OOM-killing a job — and that **one query family was the
-largest contributor to all three**: `mlbProjectionsJob` transferred 7,184,704
-rows per run to compute 300 numbers. Fixing it (5.1) cut that job 152s → 12.6s
-and ended a 13-hour silent outage. Then the corpus (4,434 MB across five tables)
-was exported to Parquet, verified, and uploaded to Supabase Storage, and
-`player_game_history` was trimmed to a hot window behind a summary table that
-reproduces the model exactly.
+**1. A SHORT WINDOW CANNOT PROVE A QUERY IS DEAD.** A query running 73×/day
+appears **0.35 times** in 420 seconds. On that basis a query was declared dead;
+it was the largest line on the bill.
 
----
+**2. A MINIMUM-CALL THRESHOLD DOES NOT CATCH A BURSTY JOB.** A burst produces
+many calls in a short span — the same signature as a high steady rate. A 600s
+window reported 99M rows/day for a query whose lifetime rate is 7.4M. **Cross-
+check window rate against lifetime rate (`rows / stats_since`); disagreement
+>3× means discard the window figure, not average it.**
 
-## Where the space is, so the number stops moving
+**3. THE WIDTH MODEL FAILS IN BOTH DIRECTIONS.** Flat 109 B/row said 4.08
+GB/day (undercounts JSONB `stats` rows at ~600 B); per-table width said 24.63
+(charges `SELECT fetched_at` the full 39,510 B `snapshot_cache` row for an
+8-byte timestamp). The graph said ~10. **A correct estimator needs
+SELECTED-COLUMN widths. Nobody has built one.**
 
-```
-now                                        7,258 MB   88.6%
-after 5.S.2 + 5.S.3 + 5.S.4               ~5,269 MB   64%
-after 5.S.5 + 5.S.6 + 5.S.7               ~2,736 MB   33%
-after 5.S.8                               ~2,400 MB   29%
-```
+**4. psutil WIRE MEASUREMENT FAILS BELOW A FEW MB.** `SELECT 1` measured at
+19,417 B/call, which is impossible — `net_io_counters` sees all machine traffic
+and 500 queries take ~30s. It worked for a 4,173-row query where payload
+dominated.
 
-**The ~2,400 MB in Phase 5's header was always the figure for a COMPLETED
-Phase 5.** `odds_archive` (1,203 MB), `prop_odds_archive` (854 MB) and
-`mlb_pitch_events` (476 MB) are all exported and verified in object storage;
-none has been deleted, because their readers still query Postgres. That is the
-entire remaining gap. Porting those readers is now a *proven pattern* —
-`player_game_history` went through it end to end — not an unknown.
+**5. BLOCKS TOUCHED ARE NOT BYTES SENT.** `shared_blks` counts index and heap
+pages; it was off by 100×.
 
----
-
-## The corpus
-
-**441 files / 129.7 MB in Supabase Storage**, `s3://linesmith-corpus/v1`, every
-file verified against its local original by size and MD5.
-
-**THE LOCAL STAGING COPY IS GONE.** It lived in the previous session's
-scratchpad. `prune_player_history.py` and `prune_corpus.py` both verify against
-a local copy, so **re-download from Supabase before running either**. The
-credentials are in `.env.local` as `CORPUS_URI` / `CORPUS_S3_*` (Supabase's S3
-access keys — NOT the anon key, NOT the service-role key).
-
-Tools, all in `python-odds-service/`:
-
-| tool | does |
-|---|---|
-| `audit_storage.py` | re-derives every Phase 5 number; exits non-zero when a claim stops matching |
-| `export_corpus.py` | Postgres → Parquet, resumable, verifies every partition |
-| `upload_corpus.py` | Parquet → Supabase, re-reads each object to confirm it landed |
-| `prune_corpus.py` | verify-only by default; deletes by verified row id |
-| `prune_player_history.py` | trims to `season >= max(season) - 2`, per sport |
-| `measure_projection_memory.py` | worker RSS against the 512 MB plan |
+**THE RULE: the Supabase graph is the authority on bytes. The RANKING from
+pg_stat_statements is actionable; its absolute numbers are not.**
 
 ---
 
-## Traps that cost real time today
+# Phase 6 — CLOSED, measured NO
 
-- **`statement_timeout` is 2 minutes** and the pooler recycles long-lived
-  connections. Maintenance work uses one short connection PER PARTITION and
-  raises its own timeout. Two full exports died mid-run before this.
-- **Every date index is `btree (sport, game_date)`** — composite, `sport`
-  leading. A bare `game_date` predicate cannot use any of them.
-  `extract(year …)` is likewise non-sargable.
-- **A chunk of all-NULLs types an Arrow column as `null`** and poisons the
-  writer for every later chunk. The corpus schema is DECLARED from
-  `information_schema`, never inferred.
-- **CPython's `sum()` is compensated (Neumaier)** and differs from a `+=` loop
-  by ~1 ulp. Exact float identity between a summary and a replay is not
-  achievable and is not the gate; the served projection is.
-- **MLB plays doubleheaders** — 6,617 `(game_date, athlete_id)` pairs are not
-  unique, so history sorts need an `id` tiebreaker or the order (and therefore
-  `recent_volume`) is unstable.
-- **boto3 multipart starts at 8 MB**, and a multipart ETag is an md5-of-md5s.
-  Uploads are forced single-part so the cheap hash check stays valid.
-- **An exact `as_of` lookup on the summary blanks the board at midnight.** It
-  did. `read` now takes the newest summary at or before `as_of`.
+Ridge margin rating, 13,650 games, refit per season-week with no leakage, 90-cell
+sweep. Three benchmarks all negative: vs closing spread (t +0.23), vs opening
+spread (t +0.20), and predicting the market's own move (t −0.77, mildly
+anti-correlated).
+
+The high-edge band is recorded rather than buried: monotone 51.59 → 55.00%
+across thresholds, balanced by side, sensible by week — but every Wilson interval
+spans break-even, **2024 sits at 49.08%**, ROI is +0.74%, and validating it would
+need **~80 seasons**. Unfalsifiable at CFB volumes.
+
+**Pre-registered reopening hypothesis: week 5+, |edge| ≥ 16, large spreads. Test
+that and nothing else.** Closes the APPROACH, not the sport — reopening needs
+new features, not a re-fit, the same rule as tennis.
+
+Tooling kept: `build_cfb_training_set.py`, `fit_cfb_ratings.py`,
+`sweep_cfb_ratings.py`, `test_cfb_edge.py`, `test_cfb_edge_open.py`,
+`test_cfb_high_edge.py`.
 
 ---
 
-## Standing constraints
+## PARKED — cfb harvester and provider coverage
 
-- **Do not deploy to Render without asking** — but the deploy is §5.S.1, so ask.
+Deferred at the operator's request; all measured, none urgent.
+
+- **cfb discovery cost FIXED** — was walking all 85 league fixtures at >21s each
+  into the 1800s cap. Now filtered via schema.org JSON-LD from the league page.
+  **STILL OPEN:** the fallback filter only takes 85 → 72 (we track 166 cfb
+  games), so at 12–21s/page it completes on a good day and times out on a slow
+  one. **The real fix is bounded rotation** — scrape the N most imminent games
+  per cycle; the task fires every ~20 min so the slate still gets covered.
+- **Blocked/dashed moneylines are silently discarded.** A real cfb page returns
+  `{"1": "-", "2": "41.00", "blocked_outcomes": ["1","2"]}` — books will not
+  price an FBS-vs-FCS mismatch two-way. `_parse_decimal_odds("-")` returns None,
+  indistinguishable from a parse failure. Count them explicitly.
+- **SharpAPI 429s mid-pagination** (page 12, free tier 12 req/min), which is the
+  leading explanation for cfb's thin game-line coverage. Correlated, **not proven
+  causal**.
+- **Propline's absence from cfb is DELIBERATE** and documented in
+  `provider_matrix.py`: 1+N requests per cycle means a 178-game slate is ~179
+  requests vs SharpAPI's 1. Do not "fix" without redoing that arithmetic.
+
+---
+
+## OPEN ITEMS
+
+- **`refreshTier1` overruns its interval** — 171.75s against 150s, but only on
+  the cycle where all five provider throttle windows open at once (most cycles
+  it finishes in ~2.5s). The red I originally flagged was caused by my own
+  deploy restarts. Optional improvement: make the staleness rule
+  `2 × interval + last_run_duration`.
+- **`price` holds a copy of `line` on espn_core spread rows** (`line = -30.5,
+  price = -30`); zero of 988 are plausible odds. Phase 9 sourcing already lists
+  "implausible price excluded with a test" — the guard is that a price outside
+  ±100…100000 is not a price.
+- **The corpus refresh and harvester only run while the operator's machine is
+  awake.** 3 missed corpus runs and 3 stale harvester sports were both just the
+  laptop being closed. That is Phase 10 scope ("move OddsHarvester off the
+  laptop") arriving early.
+
+---
+
+## STANDING CONSTRAINTS
+
+- **Ask before deploying to Render.** (The operator granted blanket API-deploy
+  permission for the 2026-09-12/13 egress work specifically; that does not carry
+  forward.)
 - **Never `git add -A` or `git add docs/`** — `docs/discord-community-prompt.md`
   is the operator's.
-- **Back up before deleting.** Every prune tool refuses without a verified
-  corpus copy, and refuses outright while that copy is local-only.
-- **`DELETE` does not return space.** Only `VACUUM FULL` does, and it takes an
-  ACCESS EXCLUSIVE lock. That is §5.S.4 and wants a quiet window.
-- **The Postgres pooler caps at 15 connections.** Maintenance competes with the
-  worker; check what is running first.
-- **The Python tests are standalone scripts, not pytest.** Run each with
-  `.venv/Scripts/python.exe src/<file>.py`. `test_harvester_scrape.py` cannot
-  run locally (imports `oddsharvester`, not installed). TS suite is `npm test`.
-- **`.venv/Scripts/python.exe`**, not the system Python.
-
----
-
-## Open, deliberately not closed
-
-- **~35% of egress is unattributed.** The 64.7% share belonging to the corpus
-  pull is counted; the rest is not investigated and may hold another 5.1-sized
-  win. **The one post-5.1 rate measurement taken was contaminated** — heavy
-  local experiments ran during the window. Re-measure while genuinely idle.
-- **Supabase quota: egress, restricting 05 Oct 2026.** Database size is a
-  separate ceiling; §5.S.2–4 do not help egress.
-- **MLB serves `line: 4.5` while Scan shows the book's posted line** (5.5 on
-  2026-09-09). `mlb_board_lines.py` records only 47% of posted lines are 4.5, so
-  the displayed Model % answers a different question than the row's bet more
-  than half the time. Operator's call.
-- **Book coverage went 12 → 26 in two weeks**, which is what moved the growth
-  curve. A product decision the architecture absorbs but cannot make.
-- **`served_probability_spread` is computed and persisted but still ungated.**
-
----
-
-## The habit that keeps paying
-
-Four of Phase 3's five sub-phases, and most of today's findings, turned on a
-**measurement** being wrong rather than a model. Today alone: an equality check
-that would have blocked pruning forever, a digest comparing Python reprs instead
-of values, a jsonb test passing while comparing two empty lists, a test
-asserting a row count that the prune invalidated, and an egress measurement
-contaminated by the measurer. **The tell is a result that is too clean, or one
-that fails in a way that flatters the thing you just built.** Check the
-measurement before believing the model — in both directions.
-
----
-
-## PARKED until egress is fixed — cfb / provider coverage (2026-09-11)
-
-Deliberately deferred at the operator's request. All findings below are
-measured, not guessed; pick them up after the egress ceiling is under control.
-
-**cfb harvester — partly fixed, not finished.**
-- FIXED: discovery walked all 85 league fixtures and died at the 1800s cap.
-  Now filtered via schema.org JSON-LD from the league page (one plain HTTP GET)
-  to matches that are ours; commits `d5e41de`, `9c4f825`.
-- STILL OPEN: the fallback filter only takes 85 → **72** pages, because we track
-  166 cfb games and almost every NCAA fixture is ours. At the measured 12–21s
-  per page that is 850–1,512s against an 1,800s cap — it will complete on a good
-  day and time out on a slow one. **The real fix is to bound work per cycle and
-  rotate** (scrape the N most imminent games each run; the scheduled task fires
-  every ~20 min, so the slate still gets covered) rather than shrinking the
-  kickoff window, which buys cost by giving up lead time.
-- STILL OPEN: blocked/dashed moneylines are silently discarded. A real cfb page
-  returns `{"1": "-", "2": "41.00", "blocked_outcomes": ["1","2"]}` — books will
-  not price an FBS-vs-FCS mismatch two-way. `_parse_decimal_odds("-")` returns
-  None, which is indistinguishable from a parse failure. Count them explicitly.
-- NOT YET OBSERVED: a cfb run finishing end to end. Both attempts were killed by
-  a 900s timeout in the test harness, not by the code under test.
-
-**cfb game-line coverage is thin for a provider reason, not a harvester one.**
-`refreshCfbJob` is healthy and writes ~1,614 rows/run, but
-`game_odds_book_lines` holds only 25 cfb rows across 4 games. Its own warnings:
-```
-sharpapi says: limit=500 exceeded max=200; applied=200
-sharpapi HTTP 429 on page 12 - backing off
-sportsgameodds throttled -- last run 416244s ago, required 2592000s
-```
-- SharpAPI paginates at 200/page and gets **429'd on page 12** (free tier is
-  12 req/min). Leading explanation for the thin coverage — correlated, **not yet
-  proven causal**; nobody has traced which records were lost.
-- SportsGameOdds is on a 30-day cadence, so it contributes to no given slate.
-- ParlayAPI is enabled for cfb and has written zero cfb game lines. Unexplained.
-- Propline's absence is DELIBERATE and documented in `provider_matrix.py`:
-  1+N requests per cycle means a 178-game slate is ~179 requests against
-  SharpAPI's 1. Do not "fix" this without redoing that arithmetic.
-
-Consequence: only **7 of 166** cfb games have a reference total/spread, so the
-dynamic-lines discovery pass has almost nothing to aim at even when fast.
+- **Back up before deleting.** `prune_corpus` satisfies this by verifying every
+  row is in the corpus by id and content fingerprint before deleting, and
+  refusing outright while the corpus is local-only.
+- The Postgres pooler caps at **15 connections** — check for running fits before
+  starting DB work.
+- Python tests are standalone scripts: `.venv/Scripts/python.exe <file>.py`.
+- Corpus reads cost ~300 MB of RAM and are **barred from the Render worker** —
+  they run on the operator's machine (`refresh_corpus`, `build_history_prefix`,
+  and all Phase 6/7 fitting).
+- **At ~92% context, stop and hand off** by rewriting this file.
