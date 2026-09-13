@@ -329,6 +329,62 @@ and this retention window were sized against ~465k rows/day and neither was
 revisited when inflow tripled. Any constant derived from a measurement needs
 the measurement re-checked, or the constant derived at runtime.**
 
+
+### EGRESS, ROUND 2 — 2026-09-13. Read this before measuring anything.
+
+**12 Sep billed 19.066 GB, against 19.483 on 11 Sep. The cache and the archive
+fixes did NOT move the bill.** They worked (payload reads fell 265,538/day ->
+2,880/day); they simply were not where the bytes were.
+
+**WIRE COST IS 109 B/ROW, MEASURED** with psutil NIC counters around a real
+4,173-row query -- against a `pg_column_size` of 110. The width model was
+ACCURATE all along. A "stored vs wire" theory was raised and disproved the same
+hour; do not resurrect it.
+
+**THE REAL ERROR WAS SAMPLING, EVERY TIME.** Three estimates, three biases:
+  - cumulative pg_stat_statements: 26 GB/day -- inflated by pre-5.1 history
+  - a 420s live window: 6.31 GB/day -- misses bursty daily jobs entirely
+  - the truth: ~19 GB/day, sitting between two biased estimators
+
+**A 420-SECOND WINDOW CANNOT PROVE A QUERY IS DEAD.** A query running 73x/day
+appears 0.35 times in 420s. On that basis the 511,257-rows/call query was
+declared dead; it was the single largest line on the bill. **Absence in a short
+window is not evidence.** This is the third variant of the same sampling
+mistake in two days.
+
+## Fixed this round (all deployed, all gated)
+
+| GB/day | change | gate |
+|---|---|---|
+| 3.54 | hot window aggregates in Postgres (`load_hot_window_agg`) | 17,118 athlete-markets, 0 diffs; plus summary == prefix+hot on 15,642 |
+| ~1.5 | team-elo reads ONE game, not the whole sport | identical rows on 5 games |
+| part of 2.26 | reference points reduce server-side | 299 points, deterministic, every one really quoted |
+
+`generic_team_elo` was loading every row for the sport and then discarding all
+but one game with `if r.game_id != game_id: continue` -- **while being called
+once per game**, 12,432 calls/day at 4,173 rows a call.
+
+**A CORRECTNESS BUG CAME OUT OF IT.** The reference line OddsHarvester targets
+was NON-DETERMINISTIC: 68 candidate rows share 4 distinct `fetched_at` values
+(all books written in one batch) and the books disagree (8.0/8.5/9.5), so
+"freshest wins" kept whatever an unordered SELECT returned first. Now each
+book's freshest quote, then the MEDIAN across books -- the consensus.
+`percentile_disc` guarantees a really-quoted line, never an interpolated 9.0.
+It differed from the old pick on 118 of 299 keys (39%).
+
+## OPEN
+
+`pg_stat_statements` was **RESET at 2026-09-13 00:47:57Z** for a clean,
+full-coverage window -- no stale pre-5.1 entries, no sampling gaps. Read it
+after 6-12h and the attribution is exact for the first time.
+
+~13 GB/day was still unattributed by any window before these fixes. The clean
+read is what closes that, and it is the next thing to do.
+
+Three `game_odds_book_lines` callers still do the full-sport read
+(`generic_price_attach:189`, `odds_lines_cycle:708` and `:860`); each genuinely
+joins across all games, so each needs its own reduction rather than a swap.
+
 ### Next actions
 
 1. **Operator: read the Supabase egress graph for 12–13 Sep.** That is the verdict.
