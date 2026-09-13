@@ -385,6 +385,60 @@ Three `game_odds_book_lines` callers still do the full-sport read
 (`generic_price_attach:189`, `odds_lines_cycle:708` and `:860`); each genuinely
 joins across all games, so each needs its own reduction rather than a swap.
 
+
+### STATE AS OF 2026-09-13 — Phase 5 OPEN (monitoring), Phase 6 CLOSED, Phase 7 ACTIVE
+
+**PHASE 5 IS DELIBERATELY LEFT OPEN** at the operator's direction, to retest
+egress over several days rather than close on one day's reading.
+
+| ceiling | state |
+|---|---|
+| database | **CLEARED and SUSTAINABLE** — 42.4%, prune loop closed, runs daily |
+| worker RAM | **CLEARED** — 185 MB resting, trending -305 MB over 32h |
+| egress | **halved, not yet at target — WATCH THIS** |
+
+```
+  before the fixes   ~19.1 GB/day
+  2026-09-13          7.051 GB at ~17h  ->  ~10 GB/day projected
+  target              <= 8.3 GB/day
+```
+
+The graph's own shape confirms it: 35-67 GB/day in late August, ~19 GB through
+07-12 Sep, ~7 on the 13th. Four fixes landed: the blob validation-cache, the
+prop archive server-side, the closing-lines archive server-side, the hot-window
+aggregation, and the team-elo per-game read.
+
+**WHAT TO CHECK, over several days:** the Supabase egress graph. A single day is
+not a trend, and 13 Sep was partly a deploy day.
+
+**DO NOT TRUST A FOURTH ESTIMATE FROM pg_stat_statements.** Three have now
+bracketed the truth without landing on it -- flat 109 B/row said 4.08 GB/day,
+per-table width said 24.63, the graph says ~10. The width model fails in BOTH
+directions: flat undercounts JSONB rows (`stats` is ~600 B), per-table
+overcharges narrow selects (`SELECT fetched_at` billed at snapshot_cache's
+39,510 B row). A correct estimator needs SELECTED-COLUMN widths, which nobody
+has built. **The graph is the authority; the RANKING from pg_stat_statements is
+what is actionable, not its absolute numbers.**
+
+Direct wire measurement with psutil also FAILED for small queries: `SELECT 1`
+measured at 19,417 B/call, which is impossible -- net_io_counters sees all
+machine traffic and 500 queries take ~30s. It worked for a 4,173-row query where
+payload dominated. Do not reuse it below a few MB.
+
+**THE LARGEST REMAINING LEVER, independent of any byte estimate:**
+`SELECT fetched_at FROM snapshot_cache` runs **424,958 times/day** -- 5 calls a
+second, by far the highest call count of anything. That is the blob cache's
+validation query. Memoising it in-process for a few seconds would collapse burst
+reads of the same key into one, with no staleness risk beyond seconds (the
+payload is already versioned by `fetched_at`). NOT BUILT. Size unknown.
+
+### Phase 6 — CLOSED, measured NO (see master plan for the full record)
+
+Ridge margin rating, 13,650 games, three benchmarks all negative. The high-edge
+band trended monotonically but every Wilson interval spans break-even, 2024 sits
+at 49.08%, and validating it would need ~80 seasons. Pre-registered reopening
+hypothesis: week 5+, |edge| >= 16, large spreads.
+
 ### Next actions
 
 1. **Operator: read the Supabase egress graph for 12–13 Sep.** That is the verdict.
