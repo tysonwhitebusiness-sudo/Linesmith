@@ -1,8 +1,9 @@
 # CURRENT — pick up here
 
 **Phases 1–4 COMPLETE. Phase 5 OPEN (monitoring only). Phase 6 CLOSED (measured
-NO). Phase 7 ACTIVE — steps 1, 2 and 3 DONE and measured. Step 4 (the edge test)
-is next and NOT STARTED; its hypothesis must be pre-registered first.**
+NO). Phase 7 ACTIVE — steps 1–4 DONE. Step 4 measured NO: the prop model has no
+edge (pre-registered, H1 FAIL). Step 6 is therefore cancelled; step 5 (a written
+decision, not a model) is what remains.**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order. Phase 7's brief
 in it has **four premises now measured false** (below) — read those before
@@ -21,13 +22,22 @@ Parquet corpus, so **any claim about where data lives is stale by default.**
 
 # START HERE — the exact next action
 
-**Step 4 — the edge test. Pre-register the hypothesis in this file BEFORE
-writing or running anything that looks at outcomes.** Read step 3's result below
-first: it sets expectations for step 4 low, on purpose.
+**Step 5 — write the NBA decision record.** Not a model. It records two things.
+First, NBA game lines carry no timing data, so CLV can't be measured. Second,
+props were tested and have no edge at six weeks (step 4). Then it names what
+would reopen each: timestamped game-line capture going forward; a full season
+of priced props plus an active-roster feed; and the H2 assists pocket on
+2026-27 prices. **Ask the operator where the decision record should live**
+(master plan vs a new doc) before writing it. Then close Phase 7 and read the
+master plan for Phase 8.
 
-Step 4 reads `nba_prop_probs.csv` (9,477 EVAL rows). All four local artefacts
-exist on the operator's machine as of 2026-09-13; all are gitignored, so on a
-fresh clone rebuild them in order:
+**Do NOT run more step-4 variants** (other thresholds, markets, a de-shrunk
+edge). The test was pre-registered, it failed, and the diagnostic below already
+explains why. Searching further is the Phase 6 high-edge-band mistake.
+
+All local artefacts exist on the operator's machine as of 2026-09-13
+(`nba_prop_probs.csv` is NOT gitignored — do not commit it). To reproduce on a
+fresh clone, rebuild in order:
 
 ```bash
 cd python-odds-service
@@ -36,9 +46,10 @@ cd python-odds-service
 # ~25 min wall, 128 GBM refits, ~850 MB RAM. -u and redirect to a file; never `| tail`.
 .venv/Scripts/python.exe -u fit_nba_minutes.py --out nba_minutes_pred.parquet
 .venv/Scripts/python.exe -u fit_nba_prop_rates.py --out nba_prop_probs.csv        # ~1 min
+.venv/Scripts/python.exe -u test_nba_prop_edge.py                                   # ~10 s
 ```
 
-**Steps 1–3 are finished. Do not redo them.**
+**Steps 1–4 are finished. Do not redo them.**
 
 ---
 
@@ -211,12 +222,46 @@ Verified before it ran: **the prop set joins the panel 25,420/25,420 on
 `(athlete_id, event_id)` with zero stat disagreements and zero minutes
 disagreements.** 0 props fell back to rolling-5 for lack of a minutes prediction.
 
-## Steps 4–6, unchanged and approved
+## Step 4 — DONE, measured NO (pre-registered; `test_nba_prop_edge.py`)
 
-**Step 4 — the edge test**, identical in shape to CFB step 3: does
-model-minus-line predict outcome-minus-line? Walk-forward WITHIN the window,
-Wilson intervals, −110 break-even (52.38%) drawn on every bucket, pushes
-excluded. **Pre-register the hypothesis before looking**, the Phase 6 rule.
+**H1 FAILS on both legs, as predicted in advance. H2 was not tested (below).**
+
+| | result | CI (wider of date/athlete cluster bootstrap) | verdict |
+|---|---|---|---|
+| H1a slope of (y − market) on edge | **−0.055**, corr −0.005 | [−0.268, +0.165] | FAIL |
+| H1b ROI, model side, \|edge\| ≥ 0.05, n=1,989 | **−8.78%** | [−13.34, −3.75] | FAIL |
+| control: always the under, same rows | −1.53% | | |
+| model − control | **−7.25pt** | [−12.53, −2.10] | |
+
+This is not a near miss. The slope is zero, and betting the model's side does
+**significantly worse** than the dumb control. Win rate falls as the edge grows:
+49.2% → 47.4% → 43.8% → 40.5% across the four bands, and ROI goes
+−6.5 → −12.7%.
+
+**WHY, measured after the verdict. This is a diagnostic, NOT a new hypothesis.**
+The model's "edge" is mostly its own shrinkage toward 50%.
+`corr(edge, market_p − 0.5) = −0.67`, and **88% of the |edge| ≥ 0.05 bets land
+on the side the market prices below 50%.** Step 3 already showed 95% of the
+model's probabilities sit in 0.4–0.6 while the market goes out to 0.88. So a big
+"disagreement" usually means the market is confident and the model isn't, and
+betting it means betting longshots into the favourite–longshot bias. **With that
+shrinkage component regressed out, the remaining edge has corr −0.004 with the
+outcome.** The model holds no information the price doesn't already have.
+
+**H2, the contaminated split.** Step 1's 546 rows reproduced exactly. The pocket
+shows up about equally in both halves: SELECT n=357, 57.31% implied, 50.70%
+realised; EVAL n=189, 57.58% implied, 50.26% realised. That rules out one kind
+of fragility (sitting in one sub-period) **and confirms nothing**. It stays
+pre-registered for 2026-27 prices, untouched.
+
+**What Phase 7 concludes for NBA props:** on six weeks of prices, a rate ×
+minutes model built on public box-score history is calibrated and has no edge.
+The measured lever is DATA, not modelling. The 240-normalised bound from step 2
+prices an active-roster feed at 5.6% off minutes MAE. Step 3 shows minutes
+improvements don't reach the probability unless they carry information the line
+lacks, and who is playing is exactly that. **Reopen condition: a full season of
+priced props AND an active-roster/injury feed.** Without both, don't rebuild
+this.
 
 ### STEP 4 PRE-REGISTRATION — committed 2026-09-13, before any step-4 code existed
 
@@ -268,26 +313,15 @@ one sub-period (a sign of fragility). It cannot confirm anything.
 the market (step 3) rarely has disagreement worth betting. A fail is the finding
 that sends NBA props to "wait for a season and an active-roster feed."
 
-**Step 5 — write the game-line decision.** Not a model: a recorded decision that
+## Steps 5–6
+
+**Step 5 — write the game-line decision (NEXT).** Not a model: a recorded decision that
 NBA game lines have no timing data so CLV is unmeasurable, and either we start
 capturing timestamps going forward or the game model waits. **Note the new
 nuance:** props DO carry opening lines, so the decision is narrower than the
 master plan assumes.
 
-**Step 6 — wire into a job**, only if step 4 passes.
-
-**RISK, NOW LARGER THAN THE GAMEPLAN ASSUMED.** The brief said one season is
-thin. It is **six weeks** — 25,420 props, 329 athletes, 41 game days, heavily
-correlated within players and within nights, and the SELECT/EVAL split leaves
-roughly 10,000 rows to judge on. **"Promising, needs another season" is the
-likely honest outcome and is a fine answer.** Do not manufacture a positive by
-searching the bucket grid until something clears 52.38% — that is exactly what
-Phase 6's high-edge band turned out to be.
-
-One thing already spotted that is step-4 material, recorded so it is not
-rediscovered as a finding: in the step-1 gate, **`Total Assists` in the 0.55–0.60
-implied band realised 50.55% against 57.40% implied over n=546.** Suggestive,
-small, one pocket. Test it as a pre-registered hypothesis or not at all.
+**Step 6 — wire into a job — CANCELLED.** It was conditional on step 4 passing.
 
 ---
 
