@@ -32,12 +32,24 @@ progress (audit detail in the master plan's Phase 8 section, 8.0–8.3):
 | # | decision | state |
 |---|---|---|
 | 1 | fix soccer bridge key bug + deploy | **DONE + DEPLOYED** (99d65f2, deploy dep-dajhgne7bikc73c3ol20). Verified in prod: first-ever soccer live_capture rows, EPL 803 / MLS 953 at 21:42:55 UTC |
-| 2 | delete the golf model layer; keep leaderboard, Match Winner lines, schedule, shot profile; back up golf tables first | **IN PROGRESS** |
+| 2 | delete the golf model layer; keep leaderboard, Match Winner lines, schedule, shot profile; back up golf tables first | **DONE + DEPLOYED** bc18db2. Prediction tables left frozen (operator). Backup CSVs at `python-odds-service/golf_model_layer_backup_20260913/` (local, uncommitted) |
 | 3 | `golf_shot_events` (230 MB): keep for now | no action |
-| 4 | stop soccer generic-Elo picks | **committed 669eefa, NOT YET DEPLOYED** (bundle with golf). Scan change verified on the page |
-| 5 | BUILD tennis capture (player resolution for the bridge) | not started |
+| 4 | stop soccer generic-Elo picks | **DONE + DEPLOYED** 669eefa; verified in prod and on the page |
+| 5 | BUILD tennis capture (player resolution for the bridge) | **BUILT c34dacd + de8ccca, deploy dep-dajiiae7bikc73c78ltg** (verify below) |
 
-The worker deploy for 4 is pending and gets bundled with 2. **Ask before deploying.**
+**Checks still owed:**
+- **Tennis in production:** `odds_archive` and `game_result` rows with
+  `source='live_capture'` and `sport LIKE 'tennis%'` should appear within
+  about 15 min of the deploy; the bridge's warnings should show no
+  `archive insert failed`.
+- **Golf with a live field:** the golf Scan and PlayerDetail have not been
+  rendered since the model was removed, because no tournament was in progress.
+  Open them during the next event.
+- **`orphanJobBreadcrumbs` will name `golfPredictionsJob`.** That's the rename,
+  deliberate, not a dropped job.
+- **Reversed-orientation bug (de8ccca):** fixed going forward, but how many
+  archived closes it mis-sided in team sports is UNMEASURED; see the master
+  plan's 8.3 decisions note.
 
 The three findings that matter most:
 1. **URGENT, data loss while you read this:** the archival bridge has archived

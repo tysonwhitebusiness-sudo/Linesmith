@@ -2355,8 +2355,8 @@ nothing by waiting.
 > did NOT know changes every decision: golf's stored predictions are graded
 > after the outcome is known; golf has zero archived prices, so no golf model
 > can be gated; and the archival bridge has silently archived **nothing** for
-> soccer or tennis, while EPL and MLS are in season. **DECISIONS PENDING WITH
-> THE OPERATOR.** Nothing has been built or deleted.
+> soccer or tennis, while EPL and MLS are in season. **Decided and executed the
+> same day. See "Decisions recorded" at the end of this section.**
 >
 > Audit scripts were run from the session scratchpad and not committed; every
 > query was a read-only aggregate. Postgres was read directly; the Parquet
@@ -2471,6 +2471,41 @@ bug doesn't apply to them.
 5. **Tennis:** keep collecting? The bridge can't capture it without player
    resolution, so "keep" means building that; otherwise the tennis provider jobs
    serve display only.
+
+## Decisions recorded 2026-09-13, and what was done
+
+| # | decision | outcome |
+|---|---|---|
+| 1 | fix the soccer bridge key bug, deploy | **DONE, deployed, verified in production.** `99d65f2`. First-ever soccer `live_capture` rows: EPL 803 / MLS 953 at 21:42:55 UTC. The equivalence gate had agreed with the bug (both sides used the wrong key); it now fails on a silent zero |
+| 2 | delete the golf model layer; keep leaderboard, Match Winner lines, schedule, shot profile | **DONE, deployed.** `bc18db2`. `golfPredictionsJob` → `golfHistoryJob` (history ingestion unchanged, first run ok). The two prediction tables are **left frozen** (operator), rows backed up to CSV on the operator's machine (`python-odds-service/golf_model_layer_backup_20260913/`). **Not yet rendered with a live field**: no tournament was in progress |
+| 3 | `golf_shot_events` (230 MB): keep for now | no action; revisit with Phase 5's database-growth work |
+| 4 | stop soccer's generic-Elo picks | **DONE, deployed.** `669eefa`. Capture excludes soccer (verified: `genericCaptureJob` now covers nfl/cfb/nba/nhl only); open picks still grade. Rendered before/after: Scan's "ML 33-18 / O/U 32-7" record is gone, MLB's stays |
+| 5 | BUILD tennis capture | **BUILT** `c34dacd`, deploy in progress at the time of writing; see CURRENT.md |
+
+**Two more bugs found while building 5, both fixed:**
+
+- **The tennis loader loaded every joint-event match under BOTH tours.**
+  ESPN's `atp` and `wta` scoreboards each return all groupings of a joint
+  event, doubles included. `load_tennis_games` never filtered on the singles
+  slug that `lib/sports/tennis/schedule.ts` already used. That produced the
+  duplicated tennis prop rows in 8.2 and the blank player names in the bridge's
+  warnings, and it kept ATP's paid providers running on women's matches.
+  Before/after: 625 / 953 games → 239 / 493, overlap 0.
+- **Reversed team listings stored game-line prices on the wrong side, in every
+  sport** (`de8ccca`). `_team_match` accepted a provider row listing our away
+  team as its home team, and the SharpAPI and SportsGameOdds builders then
+  copied the provider's home/away onto our game. A regression test fails on
+  the old code. **How often it hit team sports is UNMEASURED**: a cross-source
+  comparison was confounded by in-play prices in `game_odds_book_lines`, so it
+  isn't evidence either way. The archive is protected from in-play prices by
+  the `event_start` freeze, but not from a side stored wrong before kick-off.
+
+**Tennis capture, as built:** players resolve by ESPN athlete id, the id
+space `athlete_crosswalk` maps to tennis_data's "Surname I." names. Closes go
+through the existing pivot. Results record sets won, and **retirements and
+walkovers are skipped and counted**, because `game_result` has no winner
+column. Tennis closes and results join to each other by ESPN competition id,
+and to the 2015–2026 history only through the crosswalk (87% / 85% coverage).
 
 ## Original Phase 8 brief
 
