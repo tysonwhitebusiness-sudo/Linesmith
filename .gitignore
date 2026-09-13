@@ -91,3 +91,4 @@ python-odds-service/dead_tables_backup/
 # machine-specific paths, regenerated on every setup run. Its log is already
 # covered by the blanket *.log rule.
 python-odds-service/run-corpus-refresh.bat
+python-odds-service/cfb_train.csv
