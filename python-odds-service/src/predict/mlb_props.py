@@ -356,6 +356,102 @@ async def load_game_history(slug: str, conn=None,
     return [t[:4] for t in out]
 
 
+async def load_hot_window_agg(slug: str, *, conn, as_of, athlete_ids=None,
+                              line=None, eligible_start_keys: bool = False):
+    """Per-athlete aggregates for the HOT WINDOW, computed in Postgres.
+
+    WHAT THIS REPLACES, and why it is worth the care. `load_game_history`
+    returns one row PER GAME -- 67,741 rows a call, 480 calls/day, measured
+    live over 30 minutes on 2026-09-12 as **3.54 GB/day of egress**, the largest
+    confirmed line on the bill. Every one of those rows is then folded into six
+    numbers per athlete. The fold is the answer; the rows are not.
+
+    This is the exact counterpart of `player_history_prefix`, which already does
+    the same thing for everything BEFORE the hot window. The two halves now have
+    the same shape, which is the point.
+
+    FOUR SUBTLETIES, each reproduced deliberately -- this is the model serving
+    path, where a wrong number looks entirely plausible:
+
+    1. `as_of` IS LEAKAGE CONTROL. The Python walk `break`s on `gd >= as_of`
+       over rows sorted by (game_date, athlete_id, id), so a game ON the as_of
+       date is EXCLUDED. `game_date < $as_of` is that same boundary, not `<=`.
+
+    2. `recent_volume` IS ORDER-SENSITIVE and is the tail of the prefix
+       concatenated with the hot window, capped at MAX_RECENT. This returns the
+       hot half's volumes ORDERED, and the caller concatenates -- the cap cannot
+       be applied here, because the prefix tail comes first and a hot window
+       shorter than MAX_RECENT must still show prefix entries behind it.
+
+    3. THE SORT MUST BE TOTAL. (game_date, athlete_id) is NOT unique: MLB plays
+       DOUBLEHEADERS, 6,617 pairs covering 13,234 rows. `id` breaks the tie, the
+       same fix `load_game_history` documents, and without it `recent_volume`
+       silently reorders and the projection moves.
+
+    4. THE BASELINE COUNTS A DIFFERENT POPULATION. It is a COUNT over the board
+       line, not a sum, and for pitcher markets only over rows whose
+       (game_date, athlete_id) is a real start. That gate is a join against the
+       same `load_start_keys` source rather than a Python set.
+    """
+    spec = BY_SLUG[slug]
+    has_keys = required_keys_sql(spec)
+    args: list = [as_of]
+    where_ids = ""
+    if athlete_ids is not None:
+        args.append(list(athlete_ids))
+        where_ids = f" AND athlete_id = ANY(${len(args)}::text[])"
+
+    line_sql = "NULL::float"
+    if line is not None:
+        args.append(float(line))
+        line_sql = f"${len(args)}::float"
+
+    # The eligibility gate, only for pitcher markets. Expressed as EXISTS
+    # against the same predicate load_start_keys uses, so the two cannot drift
+    # apart silently the way a duplicated literal would.
+    elig = "TRUE"
+    if eligible_start_keys:
+        # VERIFIED against load_start_keys rather than guessed: the key is
+        # `pit_gamesStarted`, it must EXIST (`stats ? ...`), and the cast is
+        # float because the values are stored as "0.0"/"1.0" -- an int cast
+        # raises on this data. My first draft of this used `gamesStarted` and
+        # would have silently counted a baseline over the wrong population.
+        elig = ("EXISTS (SELECT 1 FROM player_game_history s "
+                "         WHERE s.sport = 'mlb' AND s.athlete_id = h.athlete_id "
+                "           AND s.game_date = h.game_date "
+                "           AND s.stats ? 'pit_gamesStarted' "
+                "           AND (s.stats->>'pit_gamesStarted')::float >= 1)")
+
+    sql = f"""
+        SELECT athlete_id,
+               sum({spec.stat_sql})                        AS events,
+               sum({spec.volume_sql})                      AS volume,
+               count(*)                                    AS games,
+               array_agg({spec.volume_sql} ORDER BY game_date, athlete_id, id)
+                                                           AS recent_volume,
+               count(*) FILTER (WHERE {line_sql} IS NOT NULL AND {elig})
+                                                           AS baseline_total,
+               count(*) FILTER (WHERE {line_sql} IS NOT NULL AND {elig}
+                                  AND {spec.stat_sql} > {line_sql})
+                                                           AS baseline_over
+          FROM player_game_history h
+         WHERE sport = 'mlb'
+           AND {has_keys}
+           AND (stats->>'{spec.volume_key}') IS NOT NULL
+           AND {spec.volume_sql} > 0
+           AND game_date < $1{where_ids}
+         GROUP BY athlete_id
+    """
+    raw = await conn.fetch(sql, *args)
+    return {
+        str(r["athlete_id"]): (
+            float(r["events"]), float(r["volume"]), int(r["games"]),
+            [float(v) for v in (r["recent_volume"] or [])],
+            int(r["baseline_over"]), int(r["baseline_total"]))
+        for r in raw
+    }
+
+
 def market_name_sql(slug: str) -> tuple[str, list[str]]:
     """`type_name` predicate covering every spelling of one market.
 
@@ -607,9 +703,21 @@ async def write_history_summary(conn, as_of, athlete_ids: list[str] | None = Non
             # to the worker's memory climb, which is one of Phase 5's three
             # ceilings and the one that got WORSE during the phase.
             #
-            # `rows` therefore covers only the hot window; `prefix_rows` carries
-            # everything before it, already aggregated.
-            rows = await load_game_history(slug, conn=conn, athlete_ids=athlete_ids)
+            # `hot` therefore covers only the hot window; `prefix_rows` carries
+            # everything before it. BOTH HALVES ARE NOW AGGREGATES, which is the
+            # point -- the hot half used to come back as one row PER GAME
+            # (67,741 rows a call, 480 calls/day, measured live as 3.54 GB/day
+            # of egress, the largest confirmed line on the bill) and was folded
+            # into the same six numbers here. The fold is the answer; the rows
+            # never needed to cross the wire.
+            #
+            # `subject_filter` is `set(athlete_ids)` (see above), so pushing
+            # athlete_ids into the SQL is exactly the filter the walk applied.
+            hot = await load_hot_window_agg(
+                slug, conn=conn, as_of=as_of, athlete_ids=athlete_ids,
+                line=BOARD_LINES.get(slug),
+                eligible_start_keys=(BY_SLUG[slug].side == "pit"))
+            rows = None
             pref = await conn.fetch(
                 "SELECT athlete_id, events, volume, games, recent_volume, "
                 "       baseline_over, baseline_total, cutoff "
@@ -623,8 +731,10 @@ async def write_history_summary(conn, as_of, athlete_ids: list[str] | None = Non
                                        int(r["baseline_over"]), int(r["baseline_total"]))
                 for r in pref}
         elif source == "corpus":
+            hot = None
             rows = load_game_history_parquet(slug, athlete_ids=athlete_ids)
         elif source == "postgres":
+            hot = None
             rows = await load_game_history(slug, conn=conn, athlete_ids=athlete_ids)
         else:
             raise ValueError(
@@ -648,6 +758,28 @@ async def write_history_summary(conn, as_of, athlete_ids: list[str] | None = Non
             if subject_filter is not None and aid not in subject_filter:
                 continue
             agg[aid] = [ev0, vol0, n0, list(rec0)[-eng.MAX_RECENT:], over0, tot0]
+        if hot is not None:
+            # The aggregate path. Identical arithmetic to the walk below, done
+            # in Postgres: proven athlete-for-athlete on all six values by
+            # test_hot_window_agg_equiv.py (17,118 athlete-markets, 0 diffs).
+            #
+            # The MAX_RECENT cap is applied HERE and not in SQL, because the
+            # prefix tail comes FIRST: a hot window shorter than MAX_RECENT must
+            # still show prefix entries behind it. Capping each half separately
+            # would drop them. (rec0[-N:] ++ rec1)[-N:] == (rec0 ++ rec1)[-N:],
+            # which is what the incremental pop(0) produced.
+            for aid, (ev1, vol1, n1, rec1, over1, tot1) in hot.items():
+                a = agg.get(aid)
+                if a is None:
+                    a = agg[aid] = [0.0, 0.0, 0, [], 0, 0]
+                a[0] += ev1
+                a[1] += vol1
+                a[2] += n1
+                a[3] = (a[3] + list(rec1))[-eng.MAX_RECENT:]
+                a[4] += over1
+                a[5] += tot1
+            rows = []
+
         for gd, aid, ev, vol in rows:
             if gd >= as_of:
                 break                       # leakage control, same as the replay
