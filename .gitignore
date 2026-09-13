@@ -95,3 +95,5 @@ python-odds-service/cfb_train.csv
 # Same reasoning: regenerated in full by build_nba_prop_training_set.py from
 # the corpus, and the script's own gate is what says whether it is sound.
 python-odds-service/nba_props_train.csv
+python-odds-service/nba_panel.parquet
+python-odds-service/nba_minutes_pred.parquet
