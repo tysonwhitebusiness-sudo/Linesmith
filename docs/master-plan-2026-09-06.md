@@ -2074,7 +2074,64 @@ far better; it does not decide it.
 
 ---
 
-# Phase 6 — College football
+# Phase 6 — College football — **CLOSED, MEASURED NO, 2026-09-13**
+
+> **THE APPROACH IS CLOSED, NOT THE SPORT.** Same discipline as tennis:
+> reopening needs NEW FEATURES, not a re-fit. Trying another `lam` does not
+> qualify.
+
+**WHAT WAS BUILT AND TESTED.** Ridge/least-squares team rating on margin —
+exactly what this section specified — refit **per season-week on strictly
+earlier games** (no game informs its own rating), hyper-parameters swept across
+90 cells rather than guessed, and the grid widened when the optimum sat on a
+boundary. Training set: 13,650 games, 2013–2026, self-validated by a residual
+mean of −0.03.
+
+    raw margin  22.22      MODEL  17.17      MARKET  15.52
+
+**THE RESULT: NO EDGE, on three independent benchmarks.**
+
+| test | holdout slope | t | verdict |
+|---|---|---|---|
+| vs **closing** spread | +0.0068 | +0.23 | nothing |
+| vs **opening** spread | +0.0091 | +0.20 | nothing |
+| predicts the **line move** | −0.0050 | −0.77 | mildly *anti*-correlated |
+
+The third is the most informative: a model carrying real information shows up
+there even when it cannot beat a closing price, because the market later
+incorporates the same information. Ours does not.
+
+**THE HIGH-EDGE BAND WAS EXAMINED SEPARATELY** after it trended upward, and is
+recorded here so nobody re-discovers it as news. The gradient is monotone across
+eight thresholds (51.59 → 55.00% from |edge| 8 to 25), balanced between home and
+away, and behaves sensibly (weeks 1–4 are 45.24%, week 5+ is 53.29%). But
+**every Wilson interval spans break-even**, it is **unstable by season** (2023
+52.67, 2024 **49.08**, 2025 54.89, 2026 50.00), and ROI is **+0.74%** with the
+interval including losing money.
+
+**AND IT CANNOT BE VALIDATED.** Detecting 54.6% against a 52.38% break-even at
+80% power needs ~4,000 games in the |edge|≥20 band. That band yields ~49 games a
+season — roughly eighty seasons. The choice was never "close it or prove it"; it
+was "close it, or stake money on an unfalsifiable 2.2-point effect that one
+season in four already contradicts".
+
+**PRE-REGISTERED REOPENING HYPOTHESIS, deliberately narrow:** week 5+,
+|edge| ≥ 16, large spreads. Test that and nothing else — re-running sixteen
+cells and picking the best is how this becomes a false positive.
+
+**WHAT STAYS.** `build_cfb_training_set.py`, `fit_cfb_ratings.py`,
+`sweep_cfb_ratings.py`, `test_cfb_edge.py`, `test_cfb_edge_open.py`,
+`test_cfb_high_edge.py`. A future attempt starts from a validated 13,650-game
+dataset and a leakage-controlled harness. CFB collection continues — the priced
+spread history (75 games today, all from our own `live_capture`) accumulates
+weekly and is the natural reopening trigger: **data, not effort**.
+
+**NOT TESTED:** efficiency/pace, returning production, rest and travel, weather,
+injuries. The plan specified the rating; the rating is what failed.
+
+---
+
+## Original Phase 6 brief (superseded by the close above) — College football
 
 > **AUDITED 2026-09-13 against real data, after Phase 5.** Three premises here
 > held up exactly; two did not, and Phase 5 added a constraint that was not in
