@@ -633,7 +633,14 @@ def load_game_history_parquet(slug: str, parquet_path: str | None = None,
 
 async def write_history_summary(conn, as_of, athlete_ids: list[str] | None = None,
                                 slugs: list[str] | None = None,
-                                source: str = "union") -> dict:
+                                # "prefix" IS the serving path. The default used
+                                # to be "union", which 5.S.8 REMOVED -- so any
+                                # caller that did not pass source explicitly got
+                                # a ValueError rather than a summary. The one
+                                # real caller (mlbHistorySummaryJob) passes it,
+                                # so this was dormant, but a default that cannot
+                                # run is a trap for the next caller.
+                                source: str = "prefix") -> dict:
     """Compute per-(market, athlete) aggregates and store them.
 
     THIS IS WHAT LETS `player_game_history` LEAVE POSTGRES. The serving pipes
