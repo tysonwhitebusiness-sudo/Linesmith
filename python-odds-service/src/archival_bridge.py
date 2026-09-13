@@ -173,8 +173,14 @@ async def archive_closing_lines(sports: list[str] | None = None) -> dict:
             araws.append(g.away_team_name)
 
         if ids:
-            written += await db.archive_closing_lines_server_side(
-                sport, ids, gdates, gstarts, hids, aids, hraws, araws)
+            # Per sport, so one sport's failed insert cannot silently cost every
+            # sport after it in the loop -- the same isolation the game load
+            # above already has.
+            try:
+                written += await db.archive_closing_lines_server_side(
+                    sport, ids, gdates, gstarts, hids, aids, hraws, araws)
+            except Exception as e:                               # noqa: BLE001
+                warnings.append(f"{sport}: archive insert failed — {type(e).__name__}: {e}")
 
     if unresolved:
         uniq = sorted(set(unresolved))

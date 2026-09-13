@@ -18,6 +18,14 @@ Comparing rows OFFERED would report 86 false failures on rows that never
 coexisted in the table. So both sides are collapsed by the same newest-wins rule
 and the collapse count is reported separately.
 
+THIS GATE ONCE AGREED WITH A BUG FOR A WHOLE PHASE. Both sides queried
+`game_odds_book_lines` with the granular sport ('soccer_epl'), but that table
+is keyed by `_GENERIC_SPORT_KEY` ('soccer'). Both found zero soccer and tennis
+rows, agreed, and the gate passed while those sports archived nothing. Two
+guards now: the reference side uses the generic key, and a sport whose book
+lines EXIST for the resolved games but whose pivot returns nothing is a
+failure, not a quiet zero.
+
 WHAT IT DOES NOT COVER, stated so nobody assumes otherwise:
   - The INSERT's ON CONFLICT behaviour. That clause is byte-identical to the one
     `upsert_live_capture` already uses, and is unchanged.
@@ -80,7 +88,7 @@ async def python_side(conn, sport: str, meta: dict) -> tuple[dict, int]:
              FROM game_odds_book_lines
             WHERE sport = $1 AND game_id = ANY($2)
             ORDER BY game_id, market, side, bookmaker, source, fetched_at DESC""",
-        sport, list(meta))
+        db._GENERIC_SPORT_KEY.get(sport, sport), list(meta))
     best: dict = {}
     for r in rows:
         gid = str(r["game_id"])
@@ -115,7 +123,8 @@ async def sql_side(conn, sport: str, meta: dict) -> dict:
         [meta[i]["home_team_id"] for i in ids],
         [meta[i]["away_team_id"] for i in ids],
         [meta[i]["home_team_raw"] for i in ids],
-        [meta[i]["away_team_raw"] for i in ids])
+        [meta[i]["away_team_raw"] for i in ids],
+        db._GENERIC_SPORT_KEY.get(sport, sport))
     out = {}
     for r in rows:
         key = (str(r["event_ref"]), r["market"], r["side"], r["bookmaker"] or "")
@@ -167,6 +176,11 @@ async def main() -> int:
         total_py += len(py)
         total_sql += len(sq)
         bad = 0
+        if py and not sq:
+            # Book lines exist for these games and the pivot found none: the
+            # silent-zero failure this gate used to miss.
+            bad += 1
+            examples.append(f"    SILENT ZERO  {sport}: {len(py):,} expected rows, pivot returned none")
         for k in py.keys() | sq.keys():
             a, b = py.get(k), sq.get(k)
             if a is None:

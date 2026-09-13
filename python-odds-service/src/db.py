@@ -4429,7 +4429,11 @@ WITH latest AS (
   SELECT DISTINCT ON (game_id, market, side, bookmaker, source)
          game_id, market, side, bookmaker, source, point, american_odds, fetched_at
     FROM game_odds_book_lines
-   WHERE sport = $1 AND game_id = ANY($2)
+   -- $9, NOT $1. The book-line table is keyed by _GENERIC_SPORT_KEY ('soccer'),
+   -- the archive by the granular sport ('soccer_epl'). Filtering on $1 matched
+   -- zero soccer and tennis rows and raised nothing, so from Phase 5 until
+   -- 2026-09-13 not one soccer closing line was archived (Phase 8 audit, 8.3).
+   WHERE sport = $9 AND game_id = ANY($2)
    ORDER BY game_id, market, side, bookmaker, source, fetched_at DESC
 ), g AS (
   SELECT * FROM unnest($2::text[], $3::date[], $4::timestamptz[],
@@ -4502,7 +4506,8 @@ async def archive_closing_lines_server_side(
     pool = await get_pool()
     async with pool.acquire(timeout=180.0) as conn:
         tag = await conn.execute(sql, sport, game_ids, game_dates, event_starts,
-                                 home_ids, away_ids, home_raws, away_raws)
+                                 home_ids, away_ids, home_raws, away_raws,
+                                 _GENERIC_SPORT_KEY.get(sport, sport))
     try:
         return int(str(tag).rsplit(" ", 1)[-1])
     except ValueError:
