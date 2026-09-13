@@ -1,8 +1,8 @@
 # CURRENT — pick up here
 
 **Phases 1–4 COMPLETE. Phase 5 OPEN (monitoring only). Phase 6 CLOSED (measured
-NO). Phase 7 ACTIVE — steps 1 and 2 DONE and measured, step 3 written but NEVER
-RUN.**
+NO). Phase 7 ACTIVE — steps 1, 2 and 3 DONE and measured. Step 4 (the edge test)
+is next and NOT STARTED; its hypothesis must be pre-registered first.**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order. Phase 7's brief
 in it has **four premises now measured false** (below) — read those before
@@ -21,31 +21,24 @@ Parquet corpus, so **any claim about where data lives is stale by default.**
 
 # START HERE — the exact next action
 
-Step 3's script exists and has **never been executed**. It is blocked on one
-artefact that a long-running job was still producing when the session ended.
+**Step 4 — the edge test. Pre-register the hypothesis in this file BEFORE
+writing or running anything that looks at outcomes.** Read step 3's result below
+first: it sets expectations for step 4 low, on purpose.
+
+Step 4 reads `nba_prop_probs.csv` (9,477 EVAL rows). All four local artefacts
+exist on the operator's machine as of 2026-09-13; all are gitignored, so on a
+fresh clone rebuild them in order:
 
 ```bash
 cd python-odds-service
-# 1. regenerate the two local artefacts (both gitignored, neither survives a clone)
-.venv/Scripts/python.exe build_nba_player_panel.py --out nba_panel.parquet      # ~2 min
+.venv/Scripts/python.exe build_nba_player_panel.py --out nba_panel.parquet         # ~2 min
 .venv/Scripts/python.exe build_nba_prop_training_set.py --out nba_props_train.csv  # ~2 min
-# 2. THE SLOW ONE — ~25 min wall, 128 GBM refits, ~850 MB RAM. Do not pipe it
-#    through `tail`: that buffers everything and you get no output until the end.
+# ~25 min wall, 128 GBM refits, ~850 MB RAM. -u and redirect to a file; never `| tail`.
 .venv/Scripts/python.exe -u fit_nba_minutes.py --out nba_minutes_pred.parquet
-# 3. the thing that has never run
-.venv/Scripts/python.exe -u fit_nba_prop_rates.py --out nba_prop_probs.csv
+.venv/Scripts/python.exe -u fit_nba_prop_rates.py --out nba_prop_probs.csv        # ~1 min
 ```
 
-`nba_panel.parquet` and `nba_props_train.csv` **did exist** on the operator's
-machine at handoff and may still; check before regenerating.
-`nba_minutes_pred.parquet` **also exists** — the export finished at 13:55 on
-2026-09-13 (246,482 rows) after this file was drafted, so step 2 of the recipe
-above can be skipped on the operator's machine.
-
-**Steps 1 and 2 are finished and committed. Do not redo them.** Their numbers
-are below and in the scripts' own docstrings. Step 3 has produced no numbers at
-all; treat its docstring's claims about what it MEASURES as a plan, and its
-claims about the DATA as measured.
+**Steps 1–3 are finished. Do not redo them.**
 
 ---
 
@@ -161,11 +154,46 @@ predicted minutes: sd 6.56 below 10, **7.07 at 10–18**, 6.65 at 18–24, 6.11 
 24–30, 5.54 at 30–34, 5.06 above 34. The worst band is the fringe rotation
 player with an unsettled role — exactly who props get offered on.
 
-## Step 3 — WRITTEN, NEVER RUN (commit 3b4e796)
+## Step 3 — DONE, calibrated but nearly uninformative (commit 3b4e796, run 2026-09-13)
 
 `fit_nba_prop_rates.py`. Rate per minute × projected minutes → expected count →
-shape → P(over the line). **It parses and its `count_prop_engine` calls were
-spot-checked by hand. It has produced no numbers.**
+shape → P(over the line). SELECT 15,943 props to 2025-11-15, EVAL 9,477 after;
+shape and shrinkage chosen per market on SELECT only.
+
+| pooled EVAL, n=9,477 | log loss | Brier | ECE | worst bucket gap |
+|---|---|---|---|---|
+| model | 0.6908 | 0.2488 | **0.0120** | **0.0347** (n=227) |
+| market (de-vigged) | **0.6861** | **0.2466** | 0.0133 | 0.0639 |
+| constant at the realised rate 48.20% *(hindsight)* | 0.6925 | — | — | — |
+
+**It passes the test it was set, and that test turned out to be weak.** ECE is
+below the market's, as required. But **9,045 of 9,477 predictions (95%) sit in
+the 0.4–0.6 buckets**, and a model that barely moves off the base rate is
+calibrated almost by construction. Log loss is 0.0017 better than a constant
+guess and 0.0047 worse than the market. **The market beats it on log loss in 8 of
+9 markets** and ties on PRA. Read it as calibrated and close to uninformative,
+not as a working model.
+
+One real miss inside the calibration: **the 0.5 bucket predicts 51.6% and
+realises 49.0% over n=3,033**, the model leaning over where the market's own
+under-lean (step 1) also showed up. Realised over-rate on EVAL is 48.2% against
+a model mean of 49.1%.
+
+**THE MINUTES MODEL BOUGHT NOTHING AT THE PROP LEVEL.** The same pipeline driven
+by rolling-5 minutes scores **0.6910 against 0.6908**. Step 2's 6–9% MAE gain
+does not reach the probability. The likely reason is that the line already
+prices minutes. Only the active-roster information (the 240-normalised upper
+bound) is a candidate to change that, and it needs a data feed.
+
+Chosen per market (shape, k): Points nb(2)/40, Rebounds nb(4)/5, Assists
+nb(2)/5, 3PM nb(8)/10, Steals binomial/40, Blocks nb(2)/2, PR nb(2)/10, PA
+nb(2)/20, PRA nb(2)/40. The k grid runs to 80, so none of the picks sit at its
+edge.
+
+**What this means for step 4:** a model this much weaker than the market is
+unlikely to show an edge, and the honest expected outcome is NO. Run it anyway,
+pre-registered, because "no edge at six weeks" is the finding that justifies
+waiting for a season and a roster feed.
 
 It **binds to `predict/count_prop_engine.py`** rather than adding a tenth
 distribution — CLAUDE.md is explicit that there is one prop engine. NBA supplies
@@ -177,17 +205,11 @@ which is the exact quantity step 2 improved, so this calls `shrunk_rate`
 directly and multiplies by the step-2 projection. The run reports the identical
 pipeline driven by rolling-5 minutes beside it, so **"the better minutes model
 helps the props" comes out as a number** rather than an assumption. Read that
-comparison first — if the two log losses are equal, step 2 bought nothing at the
-prop level and that is worth knowing plainly.
+comparison first. It came out equal (above).
 
-Verified before it ever ran: **the prop set joins the panel 25,420/25,420 on
+Verified before it ran: **the prop set joins the panel 25,420/25,420 on
 `(athlete_id, event_id)` with zero stat disagreements and zero minutes
-disagreements.**
-
-**What to check when it does run:** the ECE and the bucket table against the
-market's own ECE printed beside it. Beating the market's Brier is **not** the
-test and is not expected — the market has injury and rest information this model
-does not. Step 3 succeeds if the probability is CALIBRATED.
+disagreements.** 0 props fell back to rolling-5 for lack of a minutes prediction.
 
 ## Steps 4–6, unchanged and approved
 
