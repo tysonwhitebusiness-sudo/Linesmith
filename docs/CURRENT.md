@@ -218,6 +218,56 @@ model-minus-line predict outcome-minus-line? Walk-forward WITHIN the window,
 Wilson intervals, −110 break-even (52.38%) drawn on every bucket, pushes
 excluded. **Pre-register the hypothesis before looking**, the Phase 6 rule.
 
+### STEP 4 PRE-REGISTRATION — committed 2026-09-13, before any step-4 code existed
+
+Written before `test_nba_prop_edge.py` was written or run. What had been seen
+of the EVAL outcomes at this point: only step 3's aggregate log loss, Brier,
+ECE, calibration buckets and the pooled over-rate (48.20%). Nothing broken out by
+edge, side or price. The edge DISTRIBUTION was looked at (no outcomes) to size
+the threshold: |edge| ≥ 0.05 selects 1,989 of 9,477 rows.
+
+**Data.** `nba_prop_probs.csv`, all 9,477 EVAL rows (2025-11-16 → 2025-12-01, 15
+game days). The model's shape and shrinkage were chosen on SELECT only, so EVAL
+is out of sample for the model. No price filter, no market filter. Every line
+is a half-point, so there are no pushes.
+`edge = model_p_over − market_p_over` (market = `devig_two_way`, as step 3).
+
+**H1 — does the model's disagreement with the market carry information?**
+- **H1a, threshold-free (primary):** OLS slope of `y − market_p_over` on `edge`.
+  PASS needs slope > 0 with the 95% CI excluding 0.
+- **H1b, betting:** at |edge| ≥ **0.05**, bet one unit on the model's side at
+  that side's ACTUAL American price. PASS needs flat-stake ROI with a 95% CI
+  lower bound > 0, **and** ROI above the CONTROL: betting the UNDER on the same
+  rows. The control is there because the market's over side is known to be
+  overpriced (step 1, −0.69pt) and the model leans under relative to the market
+  (mean 49.1% vs 49.5%). An "edge" that is only that under-lean is not an edge.
+- **H1 passes only if H1a AND H1b both pass.**
+- **Inference is clustered.** Props are correlated within a night and within a
+  player (Points, PR, PA and PRA on one player-game are near-duplicates). CIs
+  come from a cluster bootstrap by game_date AND by athlete_id, 2,000 draws
+  each, and **the wider of the two is the one reported**. Fifteen date clusters
+  is few, so even the date bootstrap understates uncertainty. Plain Wilson
+  intervals are printed for reference only.
+- Win rate by edge band (0–0.02, 0.02–0.05, 0.05–0.10, 0.10+) and per market is
+  printed with the 52.38% line and each band's own mean break-even from the
+  actual prices. **Descriptive only, not the test.** No band or market found in
+  that table may be reported as a finding.
+
+**H2 — Total Assists priced at 55–60% over realise below price: FADE THE OVER.**
+**NOT CLEANLY TESTABLE ON THIS DATA, and recorded as such before looking.** The
+pocket (n=546, 57.40% implied, 50.55% realised) was found by the step-1 gate,
+which ran over all 25,420 props, including every EVAL day. There are no priced
+NBA props outside that window. H2 is therefore **pre-registered for the
+2026-27 season's prices**: Total Assists, `market_p_over` in [0.55, 0.60), bet
+the under at the actual price, PASS needs a date-clustered ROI CI above 0.
+Step 4 prints the SELECT-period and EVAL-period split of the pocket, labelled
+CONTAMINATED. The only thing it is allowed to show is whether the pocket sits in
+one sub-period (a sign of fragility). It cannot confirm anything.
+
+**Expected result, written in advance:** H1 FAILS. A model 0.0047 log loss behind
+the market (step 3) rarely has disagreement worth betting. A fail is the finding
+that sends NBA props to "wait for a season and an active-roster feed."
+
 **Step 5 — write the game-line decision.** Not a model: a recorded decision that
 NBA game lines have no timing data so CLV is unmeasurable, and either we start
 capturing timestamps going forward or the game model waits. **Note the new
