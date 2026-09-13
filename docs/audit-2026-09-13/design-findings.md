@@ -6,8 +6,10 @@ file logs each example with its cause in code so none is lost between
 sessions. These feed the design phases being added to `build-plan.md`
 (pending three operator answers, see the end of this file).
 
-The test every card must pass: **what one sentence is this card saying, and
-does the visual say it faster than the sentence would?**
+**These are examples of the kind of problem to find on every card, not a
+to-do list.** The design audit (`design-audit-plan.md`) asks two questions of
+every single card: *does this make sense at all for this sport, and does this
+help at all?*
 
 ---
 
@@ -91,10 +93,8 @@ different UI" case, selected by data, never by a `sport === 'x'` check.
 
 ---
 
-## Open questions to the operator (asked 2026-09-13, unanswered)
+## Superseded
 
-1. Design calls: mockups proposed in this repo, or run through a separate design
-   chat as before?
-2. Season scope before deep history (Phase 7)?
-3. Placement: images and interaction right after Phase 1, and season scope
-   before the live-card phase?
+The three questions previously listed here were withdrawn. The operator chose a
+full design audit instead of adding design phases to the build plan; see
+`design-audit-plan.md`.

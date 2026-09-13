@@ -2,7 +2,11 @@
 
 **Status: APPROVED 2026-09-13. All five decisions taken as recommended (below).
 Phase 0 DONE 2026-09-13 — baseline in `before/README.md`, which adds three
-findings to 1b and one to 5b. Phase 1 is next, awaiting go.**
+findings to 1b and one to 5b.**
+
+**ON HOLD 2026-09-13 at operator instruction** pending a full design audit
+(`design-audit-plan.md`), whose findings merge into this plan before building
+resumes. See that plan's Decision 2 for which Phase 1 items may proceed.
 
 Turns `phase-d-remediation.md` into build phases. Every Phase D idea is in here;
 the order and sizes differ where re-reading the code on 2026-09-13 changed them.
