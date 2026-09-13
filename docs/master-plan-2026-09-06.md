@@ -2076,6 +2076,47 @@ far better; it does not decide it.
 
 # Phase 6 — College football
 
+> **AUDITED 2026-09-13 against real data, after Phase 5.** Three premises here
+> held up exactly; two did not, and Phase 5 added a constraint that was not in
+> this section at all.
+>
+> **VERIFIED:** 13,659 games with spread lines (plan said 13,569); 4,104 games
+> with priced moneylines, first season 2021 (plan said 4,017); and priced spread
+> games are **exactly zero** for all eleven seasons 2013-2024.
+>
+> **CORRECTED - WORSE THAN "zero prices".** The 2025 "priced" spread rows are
+> `espn_core` rows whose `price` column holds a ROUNDED COPY OF THE LINE
+> (`line = -30.5, price = -30`). Zero of those 988 rows are plausible American
+> odds. Counting only real prices, **cfb games with a genuine spread price = 75**,
+> all 2026, all from our own `live_capture`. **THE SPREAD CLV GATE DOES NOT EXIST
+> TODAY.** It becomes one as live_capture accumulates week by week.
+>
+> **CORRECTED - "Props out of scope, zero of 45,000 two-sided" is FALSE.**
+> 46,717 corpus rows, of which **1,717 ARE two-sided**, plus 1,218 in Postgres
+> (all two-sided, because `archive_props` discards one-sided quotes by
+> construction). Thin against MLB's 443,990, but not zero - so "out of scope"
+> needs a real reason, not this one.
+>
+> **NEW CONSTRAINT FROM PHASE 5.** The cfb odds history no longer lives in
+> Postgres: `odds_archive` retains 30 days (**4,493 cfb rows, 2026-08-27
+> onward**). All 13,659 games are in the **Parquet corpus**, so the fit reads it
+> through DuckDB - which costs ~300 MB of RAM and is therefore **barred from the
+> Render worker**, the same rule as `refresh_corpus` and `build_history_prefix`.
+> The fit runs on the operator's machine.
+>
+> **THIS RE-ORDERS THE PHASE.** The text below says "Model the spread" and treats
+> moneyline as the constrained side. It is the other way round:
+> **training signal** is the spread (13,659 games of line + final margin - lines
+> need no prices to teach a margin model); **validation** must be **moneyline CLV
+> over 4,104 genuinely priced games**. Do NOT gate the phase on spread CLV.
+>
+> **A DATA-QUALITY BUG FALLS OUT, for Phase 9 sourcing.** `price` holding a copy
+> of `line` on espn_core spread rows is a defect in the ESPN ingest path, not
+> merely missing data: anything reading a spread price treats `-30` as odds. The
+> guard is trivial - a price outside +/-100..100000 is not a price - and Phase 9
+> already lists "implausible price excluded with a test".
+
+
 - Ridge/least-squares rating on margin; residual against the closing spread is
   the signal. Cap or shrink blowout margins.
 - Spreads back to 2013 (13,569 games) against moneylines only from 2021 (4,017).
