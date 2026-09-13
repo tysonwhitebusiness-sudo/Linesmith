@@ -2184,7 +2184,149 @@ injuries. The plan specified the rating; the rating is what failed.
 
 ---
 
-# Phase 7 — NBA
+# Phase 7 — NBA — **CLOSED, MEASURED NO ON PROPS, GAME MODEL NOT BUILT, 2026-09-13**
+
+> **THE APPROACH IS CLOSED, NOT THE SPORT.** As with CFB and tennis, reopening
+> needs NEW DATA. Another threshold, shape or shrinkage does not count. The
+> reopen conditions are written below and are narrow on purpose.
+
+Code: `build_nba_prop_training_set.py`, `build_nba_player_panel.py`,
+`fit_nba_minutes.py`, `fit_nba_prop_rates.py`, `test_nba_prop_edge.py`. Commits
+4624647, 527342c, 3b4e796, 0fbb022 (pre-registration), 3f8829f.
+
+## The brief was wrong about the data in four places, and one of them decided the phase
+
+| brief says | measured 2026-09-13 |
+|---|---|
+| "24,705 **priced** games, dense 2008–2019 and 2021–2025" | **5,301 games with odds, ZERO before 2022** |
+| "props thinnest… 4,480 graded player-games" | **36,335 two-sided rows**; 30,437 in the nine projectable player markets; **25,420** join to a result |
+| props span one season | rows do, but **PRICES STOP 2025-12-01**. After the provider switch to DraftKings the archive records 11,978 lines with both price columns null |
+| NBA CLV is unmeasurable | true of `odds_archive` (zero `captured_at`, zero `open_line` on 81,023 espn_core rows; `sbr`'s 39,114 have null `event_ref`), **false of `prop_odds_archive`** (`open_line` moves on 35.7% of priced props) |
+
+**The priced prop window is six weeks, 41 game days, not a season.** Everything
+below was measured on that window, and its conclusions carry that limit.
+
+## What was built and measured
+
+**Step 1 — training set, gate PASSED.** 25,420 two-sided props joined to results
+(99.9%). De-vigged implied vs realised over-rate: −0.69 / −0.60 / −0.63pt across
+multiplicative, power and Shin. The skew reproduces Phase 5.1's MLB finding in a
+new sport: symmetric combo markets within ±0.2pt, longshot-shaped ones miss low
+(Steals −3.44, Blocks −2.67), monotone in line size. **A join hazard was found
+and closed:** 1,863 (athlete, game_date) pairs in `player_game_history` carry two
+real games under one date. The first join returned 100.4%, which is impossible,
+and that is the only reason 288 wrongly graded props were caught. **Any NBA
+prop-to-result join must use `event_ref`.**
+
+**Step 2 — minutes model, beats the bar by 6%.** 246,482 player-games 2017–2026,
+walked forward in 14-day blocks. Gradient boosting MAE 4.873 against a rolling-5
+bar of 5.181 (prop window: 4.713 vs 5.198), and it removes rolling-5's
++0.378-minute early-season bias. **Real, not transformative:** residual sd ~6
+minutes against a mean of 22.7. The team-minutes-conserved version, which needs
+the active roster and the game length and so can't be built, scores MAE 4.599.
+**That prices an active-roster feed at a further 5.6%, the largest single
+improvement available.** There is no `injury_snapshot` table (the job of that name
+writes nothing). A DNP is an absent row, not a zero, so the model predicts minutes
+*given the player played*. That is the right conditioning for props, since a
+scratch voids.
+
+**Step 3 — rate × minutes prop model, calibrated and nearly uninformative.** Binds
+to `count_prop_engine` (`shrunk_rate` + `SHAPES`); shape and shrinkage chosen per
+market on SELECT (15,943 props), reported on EVAL (9,477).
+
+| EVAL | log loss | Brier | ECE |
+|---|---|---|---|
+| model | 0.6908 | 0.2488 | 0.0120 |
+| market | **0.6861** | **0.2466** | 0.0133 |
+| constant at realised rate | 0.6925 | — | — |
+
+Its calibration beats the market's, but 95% of predictions sit in 0.4–0.6. The
+market wins log loss in 8 of 9 markets. **The better minutes model bought nothing
+at the prop level:** the same pipeline on rolling-5 minutes scores 0.6910.
+
+**Step 4 — the edge test, PRE-REGISTERED (0fbb022) before the test existed. H1
+FAILS.**
+
+| | result | 95% CI, cluster bootstrap (wider of date/athlete) |
+|---|---|---|
+| H1a slope of (y − market) on (model − market) | −0.055 | [−0.268, +0.165] |
+| H1b ROI on the model's side at \|edge\| ≥ 0.05, n=1,989 | **−8.78%** | [−13.34, −3.75] |
+| control: always the under, same rows | −1.53% | |
+| model − control | **−7.25pt** | [−12.53, −2.10] |
+
+Not a near miss. Betting the model's side does significantly worse than the dumb
+control, and win rate falls as edge grows (49.2 → 40.5%). **Why, measured after
+the verdict as a diagnostic:** the edge is the model's shrinkage toward 50%.
+`corr(edge, market_p − 0.5) = −0.67`, and 88% of the threshold bets land on the
+side the market prices below 50%, i.e. longshots into the favourite–longshot
+bias. With that component regressed out, the rest of the edge has corr −0.004
+with the outcome. **The model holds nothing the price doesn't already have.**
+
+## THE DECISION — NBA props
+
+**Not shipped, not wired to a job.** On six weeks of prices, a public box-score
+rate × minutes model is calibrated and has no edge. **The measured lever is DATA,
+not modelling:** step 2 puts the active roster at 5.6% off minutes MAE, and step 3
+shows minutes gains don't reach the probability unless they carry information the
+line lacks. Who is playing is exactly that information.
+
+**REOPEN ONLY WHEN BOTH HOLD:**
+1. **A full season of two-sided prop PRICES.** Today they stop at 2025-12-01. The
+   first check next season is whether `prop_odds_archive` rows for nba carry
+   non-null `over_price`/`under_price` past December, since the DraftKings
+   switch is what zeroed them last time.
+2. **An active-roster / injury feed** joined pre-tip. Without it, rebuilding
+   reproduces this result.
+
+**PRE-REGISTERED FOR 2026-27, test nothing else from this window:** *H2 — Total
+Assists with de-vigged `market_p_over` in [0.55, 0.60): bet the under at the
+actual price; PASS needs a date-clustered ROI 95% CI above 0.* The pocket
+(n=546, 57.40% implied, 50.55% realised) was found by step 1 on all 25,420 props,
+so **no data in this window can test it**. Its SELECT/EVAL split (50.70% /
+50.26% realised) shows only that it isn't confined to one sub-period.
+
+## THE DECISION — NBA game lines
+
+**The game model (possessions × points-per-possession) was NOT BUILT in this
+phase, deliberately.** Props went first because they were the only NBA market with
+a price history carrying movement. The game-line position:
+
+- **Historical CLV and line-movement tests cannot be built.** `odds_archive` has
+  no `captured_at` and no `open_line` for NBA, and the second source can't be
+  joined to results. No work recovers that.
+- **A closing-line residual test CAN be built**, the same shape as Phase 6's
+  first CFB benchmark, on the **5,301 games with odds since 2022**. It needs no
+  timestamps. That's the cheapest honest first measurement if the game model is
+  ever attempted. Phase 6 is the warning about what it's likely to show.
+- **Timestamped closes accumulate automatically from tip-off, 2026-10.** The
+  archival bridge's `MATRIX` already includes `nba`, and `upsert_live_capture`
+  stamps `captured_at` and freezes each row at `event_start`. **No new capture
+  work is needed**; it's unverified for NBA until real games run. The first check
+  after tip-off: `odds_archive` rows with `source='live_capture'`, `sport='nba'`,
+  non-null `captured_at`.
+- **Gap for Phase 9:** `upsert_live_capture` overwrites `line` on every tick and
+  never sets `open_line`, so live capture keeps the CLOSE but not the OPEN. The
+  line-movement test (Phase 6's third and most informative benchmark) stays
+  impossible for every sport fed by the bridge until an insert-only `open_line`
+  is added.
+
+**So: the NBA game model waits for an in-season sample of captured closes.**
+Build it then, starting with the closing-line residual test on the 2022+ games.
+
+## What stays
+
+All five scripts above, a validated 25,420-prop training set with an exact
+`event_ref` join, a 246,482-row leakage-controlled player panel, and a
+pre-registered, cluster-bootstrapped edge harness that transfers to any prop
+sport.
+
+**NOT TESTED:** usage/role-change features, pace, rest and back-to-backs, travel,
+referee, and anything injury-derived. The plan specified rate × minutes, and rate
+× minutes is what failed.
+
+---
+
+## Original Phase 7 brief (superseded by the close above) — NBA
 
 **MOVED BACK FROM PHASE 4 on 2026-09-08** — see Phase 4's note. NBA tips off in
 late October; nothing here depends on the season being live, so it loses
@@ -2234,6 +2376,12 @@ The 36 unchecked remediation items, minus those now satisfied. Grouped:
   rejected by a CHECK constraint; implausible price excluded with a test;
   consensus excludes the compared book; concurrent job failure preserves
   siblings' rows.
+  **Added 2026-09-13 from Phase 7:** `upsert_live_capture` never sets
+  `open_line`, so live capture keeps each game's close but loses its open. Set
+  it on INSERT only. Without that, the line-movement benchmark can't run for
+  any sport fed by the bridge. Also found in Phase 7: NBA two-sided prop prices
+  go null after the 2025-12 switch to DraftKings, and `athlete_name` is NULL on
+  every NBA prop row.
 - **Operational (5)** — restore tested with a row count; no `EMAXCONNSESSION` in
   an hour; all jobs healthy **with a test alert actually received**.
 
@@ -2290,6 +2438,7 @@ Diagnostics stand as written.
 4  NFL                  in-season first; ends in Scan, not a new page
 5  Sustainability       the ceilings are days away, and one job causes all three
 6  CFB  7 NBA           in-season order resumes once the platform can carry them
+                        (both CLOSED 2026-09-13, measured NO; reopen on new data)
 8  Golf/tennis/soccer   decide rather than drift
 9  Correctness          before anyone outside sees it
 10 Infrastructure       before anyone outside can reach it
