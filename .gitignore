@@ -92,3 +92,6 @@ python-odds-service/dead_tables_backup/
 # covered by the blanket *.log rule.
 python-odds-service/run-corpus-refresh.bat
 python-odds-service/cfb_train.csv
+# Same reasoning: regenerated in full by build_nba_prop_training_set.py from
+# the corpus, and the script's own gate is what says whether it is sound.
+python-odds-service/nba_props_train.csv
