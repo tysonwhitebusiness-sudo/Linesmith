@@ -35,6 +35,7 @@ import db
 from entity_resolution import normalize_team_name
 from game_context import (
     completed_espn_games,
+    completed_tennis_matches,
     load_mlb_games,
     load_nhl_games,
     load_sport_games,
@@ -103,6 +104,23 @@ async def _games_for(sport: str):
     return [g for g in games if not g.is_final]
 
 
+# TENNIS RESOLVES BY ATHLETE ID, NOT BY NAME. There are no teams, so
+# `team_name_index` has no tennis entries and never will; every tennis game
+# fell into `unresolved` and nothing was archived (master plan Phase 8, 8.2).
+# The ids written are ESPN athlete ids, the id space `athlete_crosswalk` maps
+# to tennis_data's "Surname I." names, so live captures can still be joined to
+# the 2015-2026 name-keyed history.
+_TENNIS = frozenset({"tennis_atp", "tennis_wta"})
+_TENNIS_SUBJECT_PREFIX = "espn:tennis:"
+
+
+def _tennis_ids(g) -> tuple[str | None, str | None]:
+    """(home, away) athlete ids from the loader's roster, home first."""
+    ids = [r.subject_id[len(_TENNIS_SUBJECT_PREFIX):] for r in (g.roster or [])
+           if r.subject_id and r.subject_id.startswith(_TENNIS_SUBJECT_PREFIX)]
+    return (ids[0], ids[1]) if len(ids) == 2 else (None, None)
+
+
 def _parse_start(raw: str | None) -> datetime | None:
     if not raw:
         return None
@@ -137,7 +155,7 @@ async def archive_closing_lines(sports: list[str] | None = None) -> dict:
         if not upcoming:
             continue
 
-        idx = await _team_ids(sport)
+        idx = {} if sport in _TENNIS else await _team_ids(sport)
 
         # SERVER-SIDE. This used to fetch the latest book line for every upcoming
         # game (~8.6-24.8M rows/day), rebuild each row as a dict in Python, and
@@ -159,8 +177,11 @@ async def archive_closing_lines(sports: list[str] | None = None) -> dict:
         hraws: list[str] = []
         araws: list[str] = []
         for gid, (g, start) in upcoming.items():
-            hid = idx.get(normalize_team_name(g.home_team_name))
-            aid = idx.get(normalize_team_name(g.away_team_name))
+            if sport in _TENNIS:
+                hid, aid = _tennis_ids(g)
+            else:
+                hid = idx.get(normalize_team_name(g.home_team_name))
+                aid = idx.get(normalize_team_name(g.away_team_name))
             if not hid or not aid:
                 unresolved.append(f"{sport}: {g.away_team_name} @ {g.home_team_name}")
                 continue
@@ -272,19 +293,38 @@ async def archive_results(days_back: int = 3) -> dict:
         sources.append(("mlb", await _mlb_finals(days_back)))
     except Exception as e:
         warnings.append(f"mlb: {type(e).__name__}: {e}")
+    # Tennis: the scoreboard holds the current tournaments' matches rather than
+    # a date window, so `days_back` does not apply. Re-writing a known final is
+    # free (ON CONFLICT DO NOTHING).
+    not_clean_finals = 0
+    for sport in sorted(_TENNIS):
+        try:
+            finals = await completed_tennis_matches(sport)
+        except Exception as e:
+            warnings.append(f"{sport}: {type(e).__name__}: {e}")
+            continue
+        # A retirement or walkover has no clean result: sets won can favour
+        # the player who lost, and game_result has no winner column to say so.
+        # Skipped and counted rather than stored as a score that grades wrong.
+        clean = [g for g in finals if g.get("statusName") == "STATUS_FINAL"]
+        not_clean_finals += len(finals) - len(clean)
+        sources.append((sport, clean))
 
     for sport, finals in sources:
         if not finals:
             continue
-        idx = await _team_ids(sport)
+        idx = {} if sport in _TENNIS else await _team_ids(sport)
         rows = []
         for g in finals:
             considered += 1
             home_name, away_name = g.get("homeTeamName"), g.get("awayTeamName")
             if not home_name or not away_name:
                 continue
-            hid = idx.get(normalize_team_name(home_name))
-            aid = idx.get(normalize_team_name(away_name))
+            if sport in _TENNIS:
+                hid, aid = g.get("homeAthleteId"), g.get("awayAthleteId")
+            else:
+                hid = idx.get(normalize_team_name(home_name))
+                aid = idx.get(normalize_team_name(away_name))
             if not hid or not aid:
                 unresolved.append(f"{sport}: {away_name} @ {home_name}")
                 continue
@@ -306,6 +346,9 @@ async def archive_results(days_back: int = 3) -> dict:
         uniq = sorted(set(unresolved))
         warnings.append(f"{len(uniq)} completed game(s) had no resolvable team id: "
                         + "; ".join(uniq[:5]) + ("…" if len(uniq) > 5 else ""))
+    if not_clean_finals:
+        warnings.append(f"{not_clean_finals} tennis match(es) ended by retirement or "
+                        "walkover and were not archived as results")
     return {
         "games": considered, "rows_matched": considered, "rows_written": written,
         "unresolved": len(set(unresolved)), "requests": 0, "objects": 0,

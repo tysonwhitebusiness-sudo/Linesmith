@@ -406,6 +406,52 @@ async def load_nhl_games() -> list[Game]:
 
 _TENNIS_TOUR_LEAGUE = {"tennis_atp": "atp", "tennis_wta": "wta"}
 
+# THE TOUR ENDPOINT IS NOT THE TOUR. ESPN's atp and wta scoreboards both return
+# every grouping of a joint event: at the 2026 US Open each returned men's AND
+# women's singles, both doubles and the mixed doubles (measured 2026-09-13).
+# Unfiltered, every joint-event match was loaded under BOTH tours, which is why
+# prop_odds_archive held every ATP row a second time as tennis_wta, and doubles
+# pairs arrived as "matches" with no athlete name at all. lib/sports/tennis/
+# schedule.ts already filters on these slugs; this loader never did.
+_TENNIS_SINGLES_SLUG = {"tennis_atp": "mens-singles", "tennis_wta": "womens-singles"}
+
+
+async def _tennis_singles_competitions(sport: str) -> list[dict]:
+    """This tour's singles competitions from ESPN's scoreboard, each with its
+    tournament event attached as `_event`. [] on any fetch failure."""
+    tour = _TENNIS_TOUR_LEAGUE[sport]
+    slug = _TENNIS_SINGLES_SLUG[sport]
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(f"{_ESPN_BASE}/tennis/{tour}/scoreboard", timeout=httpx.Timeout(10.0))
+    except httpx.HTTPError:
+        return []
+    if res.status_code != 200:
+        return []
+    data = res.json()
+    out: list[dict] = []
+    for ev in data.get("events") or []:
+        for grouping in ev.get("groupings") or []:
+            if ((grouping.get("grouping") or {}).get("slug")) != slug:
+                continue
+            for comp in grouping.get("competitions") or []:
+                out.append({**comp, "_event": ev})
+    return out
+
+
+def _tennis_sides(comp: dict) -> tuple[dict, dict] | None:
+    competitors = comp.get("competitors") or []
+    home = next((c for c in competitors if c.get("homeAway") == "home"), None)
+    away = next((c for c in competitors if c.get("homeAway") == "away"), None)
+    # The athlete id is the competitor object's own "id", NOT athlete["id"] —
+    # the nested athlete dict carries guid/displayName/fullName/flag/links but
+    # no bare id field (confirmed live against ESPN's real response). Reading
+    # athlete["id"] here always misses, which silently dropped every tennis
+    # match (this loader returned an empty list).
+    if not home or not away or not home.get("id") or not away.get("id"):
+        return None
+    return home, away
+
 
 async def load_tennis_games(sport: str) -> list[Game]:
     """Direct port of espnTennis.ts's fetchTennisMatches — structurally
@@ -417,51 +463,66 @@ async def load_tennis_games(sport: str) -> list[Game]:
     props, same as the TS version. subjectId matches TS's own scheme
     (`espn:tennis:{athleteId}`) so entity resolution stays consistent
     with whatever the TS side already writes for the same real athlete.
-    """
-    tour = _TENNIS_TOUR_LEAGUE[sport]
-    try:
-        async with httpx.AsyncClient() as client:
-            res = await client.get(f"{_ESPN_BASE}/tennis/{tour}/scoreboard", timeout=httpx.Timeout(10.0))
-    except httpx.HTTPError:
-        return []
-    if res.status_code != 200:
-        return []
-    data = res.json()
 
+    SINGLES OF THIS TOUR ONLY — see _TENNIS_SINGLES_SLUG.
+    """
     games: list[Game] = []
-    for ev in data.get("events") or []:
-        for grouping in ev.get("groupings") or []:
-            for comp in grouping.get("competitions") or []:
-                competitors = comp.get("competitors") or []
-                home = next((c for c in competitors if c.get("homeAway") == "home"), None)
-                away = next((c for c in competitors if c.get("homeAway") == "away"), None)
-                home_athlete = (home or {}).get("athlete") or {}
-                away_athlete = (away or {}).get("athlete") or {}
-                # The athlete id is the competitor object's own "id", NOT
-                # athlete["id"] — the nested athlete dict carries guid/
-                # displayName/fullName/flag/links but no bare id field
-                # (confirmed live against ESPN's real response). Reading
-                # athlete["id"] here always misses, which silently dropped
-                # every tennis match (this loader returned an empty list).
-                home_id = (home or {}).get("id")
-                away_id = (away or {}).get("id")
-                if not home_id or not away_id:
-                    continue
-                status = ((comp.get("status") or {}).get("type") or {})
-                games.append(
-                    Game(
-                        sport=sport,
-                        game_id=str(comp.get("id")),
-                        away_team_name=away_athlete.get("fullName") or "",
-                        home_team_name=home_athlete.get("fullName") or "",
-                        away_abbr=away_athlete.get("fullName") or "",
-                        home_abbr=home_athlete.get("fullName") or "",
-                        game_date=comp.get("date") or "",
-                        is_final=bool(status.get("completed")),
-                        roster=[
-                            RosterEntry(subject_id=f"espn:tennis:{home_id}", subject_name=home_athlete.get("fullName") or ""),
-                            RosterEntry(subject_id=f"espn:tennis:{away_id}", subject_name=away_athlete.get("fullName") or ""),
-                        ],
-                    )
-                )
+    for comp in await _tennis_singles_competitions(sport):
+        sides = _tennis_sides(comp)
+        if sides is None:
+            continue
+        home, away = sides
+        home_athlete = home.get("athlete") or {}
+        away_athlete = away.get("athlete") or {}
+        status = ((comp.get("status") or {}).get("type") or {})
+        games.append(
+            Game(
+                sport=sport,
+                game_id=str(comp.get("id")),
+                away_team_name=away_athlete.get("fullName") or "",
+                home_team_name=home_athlete.get("fullName") or "",
+                away_abbr=away_athlete.get("fullName") or "",
+                home_abbr=home_athlete.get("fullName") or "",
+                game_date=comp.get("date") or "",
+                is_final=bool(status.get("completed")),
+                roster=[
+                    RosterEntry(subject_id=f"espn:tennis:{home['id']}", subject_name=home_athlete.get("fullName") or ""),
+                    RosterEntry(subject_id=f"espn:tennis:{away['id']}", subject_name=away_athlete.get("fullName") or ""),
+                ],
+            )
+        )
     return games
+
+
+async def completed_tennis_matches(sport: str) -> list[dict]:
+    """Finished singles matches for this tour, in the dict shape
+    archival_bridge.archive_results builds rows from.
+
+    SCORES ARE SETS WON, the convention tennis_data's game_result rows already
+    use. `homeWinner`/`awayWinner` carry ESPN's own winner flag separately,
+    because a retirement can leave the set count level or even favour the
+    player who lost."""
+    out: list[dict] = []
+    for comp in await _tennis_singles_competitions(sport):
+        status = ((comp.get("status") or {}).get("type") or {})
+        if not status.get("completed"):
+            continue
+        sides = _tennis_sides(comp)
+        if sides is None:
+            continue
+        home, away = sides
+        out.append({
+            "gameId": str(comp.get("id")),
+            "date": comp.get("date"),
+            "homeAthleteId": str(home["id"]),
+            "awayAthleteId": str(away["id"]),
+            "homeTeamName": (home.get("athlete") or {}).get("fullName") or "",
+            "awayTeamName": (away.get("athlete") or {}).get("fullName") or "",
+            "homeScore": sum(1 for ls in (home.get("linescores") or []) if ls.get("winner")),
+            "awayScore": sum(1 for ls in (away.get("linescores") or []) if ls.get("winner")),
+            "homeWinner": bool(home.get("winner")),
+            "awayWinner": bool(away.get("winner")),
+            "venue": ((comp.get("venue") or {}).get("fullName")),
+            "statusName": status.get("name"),
+        })
+    return out

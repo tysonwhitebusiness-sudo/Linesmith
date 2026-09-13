@@ -43,7 +43,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "src"))
 
 import db                                                      # noqa: E402
-from archival_bridge import _games_for, _parse_start, _team_ids  # noqa: E402
+from archival_bridge import _TENNIS, _games_for, _parse_start, _team_ids, _tennis_ids  # noqa: E402
 from entity_resolution import normalize_team_name              # noqa: E402
 from provider_matrix import MATRIX                             # noqa: E402
 
@@ -150,14 +150,17 @@ async def main() -> int:
             print(f"  {sport:<12} game load failed: {type(e).__name__}: {e}")
             continue
 
-        idx = await _team_ids(sport)
+        idx = {} if sport in _TENNIS else await _team_ids(sport)
         meta = {}
         for g in games:
             start = _parse_start(g.game_date)
             if start is None or start <= now:
                 continue
-            hid = idx.get(normalize_team_name(g.home_team_name))
-            aid = idx.get(normalize_team_name(g.away_team_name))
+            if sport in _TENNIS:
+                hid, aid = _tennis_ids(g)        # same resolution the bridge uses
+            else:
+                hid = idx.get(normalize_team_name(g.home_team_name))
+                aid = idx.get(normalize_team_name(g.away_team_name))
             if not hid or not aid:
                 continue          # excluded by BOTH paths, identically
             meta[str(g.game_id)] = {
