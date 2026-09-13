@@ -2,7 +2,8 @@
 
 **Phases 1–4 COMPLETE. Phase 5 OPEN (monitoring only). Phase 6 CLOSED (CFB,
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
-built, decision recorded). Phase 8 is next and NOT STARTED.**
+built, decision recorded). Phase 8 AUDITED 2026-09-13; five decisions are
+pending with the operator, and nothing has been built or deleted.**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -25,20 +26,24 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-**Phase 8 — Golf, tennis, soccer: decide.** Read the Phase 8 section of the master
-plan. It is short, and **it has not been audited against the data.** It asks for a
-written decision per sport, not a model:
+**Phase 8 — AUDITED, awaiting five operator decisions.** The audit and the exact
+decision list are in the master plan's Phase 8 section (8.0–8.3). Get the answers,
+then act on them. **Do not build or delete anything before that.**
 
-- **Golf**: rebuild onto the shared engine (match winner, top 3/5/10, hole-score
-  prop) or delete the live model layer. The brief cites 1,033,752 shot events and
-  7,333 stored predictions; check both before trusting them.
-- **Tennis**: closed with a measured NO (t=+20.68). Reopening needs new features.
-- **Soccer**: failed at t=+3.05; no second attempt scheduled.
+The three findings that matter most:
+1. **URGENT, data loss while you read this:** the archival bridge has archived
+   zero soccer closing lines. `_CLOSING_PIVOT` in
+   `db.archive_closing_lines_server_side` filters `game_odds_book_lines` on
+   `soccer_epl`, but rows are stored under `_GENERIC_SPORT_KEY` → `soccer`. EPL
+   and MLS are in season. The fix is one parameter plus a deploy (**ask before
+   deploying**).
+2. **Golf's stored predictions are graded after the result is known**: Brier
+   0.00003, winners stored at P(win) = 1.0. And the golf page renders a second,
+   unfitted TS copy of the model on every poll.
+3. **Golf has zero archived prices**, so no golf model can be gated at all.
 
-**First action:** audit those premises (counts, where each sport's data lives,
-whether the golf model layer is still being written or read, and by what), then
-bring the operator a decision per sport **before building or deleting anything.**
-Golf deletion is outward-facing and hard to reverse: ask first, and back up.
+If the operator approves the golf deletion: back up the golf tables first, and
+remember `golf_shot_events` (230 MB) is its own separate decision.
 
 ---
 

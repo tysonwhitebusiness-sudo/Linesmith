@@ -2301,7 +2301,11 @@ a price history carrying movement. The game-line position:
 - **Timestamped closes accumulate automatically from tip-off, 2026-10.** The
   archival bridge's `MATRIX` already includes `nba`, and `upsert_live_capture`
   stamps `captured_at` and freezes each row at `event_start`. **No new capture
-  work is needed**; it's unverified for NBA until real games run. The first check
+  work is needed**; it's unverified for NBA until real games run. *(Phase 8
+  audit, same day: the bridge silently archives nothing for soccer or tennis
+  because of a sport-key mismatch, see 8.3. NBA isn't in that key map, so the
+  bug shouldn't apply, but that is exactly why "verify at tip-off" stays
+  mandatory rather than optional.)* The first check
   after tip-off: `odds_archive` rows with `source='live_capture'`, `sport='nba'`,
   non-null `captured_at`.
 - **Gap for Phase 9:** `upsert_live_capture` overwrites `line` on every tick and
@@ -2346,6 +2350,129 @@ nothing by waiting.
 ---
 
 # Phase 8 — Golf, tennis, soccer: decide
+
+> **AUDITED 2026-09-13, before any decision.** The brief's numbers hold. What it
+> did NOT know changes every decision: golf's stored predictions are graded
+> after the outcome is known; golf has zero archived prices, so no golf model
+> can be gated; and the archival bridge has silently archived **nothing** for
+> soccer or tennis, while EPL and MLS are in season. **DECISIONS PENDING WITH
+> THE OPERATOR.** Nothing has been built or deleted.
+>
+> Audit scripts were run from the session scratchpad and not committed; every
+> query was a read-only aggregate. Postgres was read directly; the Parquet
+> corpus via DuckDB with column projection.
+
+## Audit 8.0 — the brief against the data
+
+| brief says | measured |
+|---|---|
+| golf: 1,033,752 shot events | **exact**, but **2020–2022 only**, 486 players, **230 MB** (6.4% of a 3,571 MB database that is growing 164 MB/day). A static seed; its one reader is the shot-profile display route. No model uses it |
+| golf: 7,333 stored predictions | **exact**. 18 holes + round-score × **3 tournaments**. Nothing written since 2026-09-01 |
+| golf: a live model layer | **true, and worse**: see 8.1 |
+| tennis: measured NO, t=+20.68 | **holds.** 19,025 held-out matches in `model-build-plan-2026-09-02.md` §2.5, calibration ruled out (Platt recovered 3%), and ROI worsens as the edge filter tightens |
+| soccer: failed, t=+3.05 | **holds**, against Pinnacle AND market_avg, calibration fixed first. Pinnacle EPL carries `open_price` on **12,030 / 12,030** rows, as §3.5 said |
+| (not in brief) | **the NO was on game lines only** for both. Neither sport's props were ever tested; see 8.2 and 8.3 for why that stays so |
+
+## 8.1 — Golf: the model layer can't be trusted, and can't be gated
+
+**THE TOURNAMENT PREDICTIONS ARE GRADED AFTER THE RESULT IS KNOWN.**
+`golf_tournament_predictions` averages Brier 0.00003, and its mean P(win) equals
+the realised win rate to five places (0.02013 = 3/149). The mechanism:
+`log_golf_tournament_predictions` upserts `ON CONFLICT … WHERE graded_at IS
+NULL`, and the job reruns every 5 minutes through the final round. So every
+field's rows share ONE `predicted_at`, stamped during the last round. The winners
+were stored at P(win) **1.0000, 1.0000, 0.9540**, with 68/69, 49/50 and 28/30 of
+each field at exactly 0. **`golfCalibrationSummary` on `/api/props/system-health`
+reports this as calibration.** It is a record of the leaderboard.
+
+**Hole and round-score predictions have the same overwrite shape.** In 5 of 6
+graded (tournament, round) groups, the last prediction write lands hours after
+that round's first hole scores were ingested. They can't be graded as pre-round
+predictions either.
+
+**The page doesn't render the Python predictions; it renders a second, TS copy
+of the same unfitted math.** `lib/sports/golf/adapter.ts` runs
+`predictHoleScore`, `predictRoundScore` and a 3,000-iteration
+`predictTournament` Monte Carlo **on every poll**, from
+`lib/sports/golf/models/*.ts`. Those files' own headers say "hand-picked prior
+placeholder math… never fitted." Their output reaches users as Scan's golf
+`modelProb` and PlayerDetail's "Favourite win %"
+(`golf/adapters/playerDetailAdapter.ts:276`). That breaks two CLAUDE.md rules
+at once: model math lives in Python, and no unvalidated model number reaches a
+user surface. **Phase 1's check likely missed it because `AppShell.tsx:176`
+claims golf has a "real, independently-fitted" model**, which is false.
+
+**THERE IS NO GOLF PRICE HISTORY TO GATE AGAINST.** Zero golf rows in
+`odds_archive`, `prop_odds_archive` and `game_odds_book_lines`; one live
+`odds_cache` blob (SharpAPI's current outright board). Per the 2026-08-16 provider
+survey, top-5/top-10 prices exist on no integrated provider, and hole-score props
+on none. **A golf rebuild can't be measured until outright prices are captured
+and frozen pre-tournament, for a season.** The golf tables hold 3 finished
+tournaments.
+
+Also stale: `docs/table-ownership.md` says golf's TS writers were deleted. Their
+**callers** were; nine exported writers remain in `lib/db/client.ts` (3099–3410)
+with no callers.
+
+## 8.2 — Tennis: stays closed, and nothing is collecting its history
+
+- The measured NO stands; nothing here reopens it.
+- **Tennis odds history stopped on 2026-08-29.** All 448,914 archived rows are
+  `tennis_data` imports (2015 → 2026-08-29), with **zero `open_price`, zero
+  `captured_at`**, so CLV was never measurable. Nothing has written since.
+- **The archival bridge cannot capture tennis as designed.** It resolves games
+  through `team_name_index`, which has no tennis entries; the tennis loader also
+  returns empty player names (`"tennis_wta:  @ "` in the bridge's own warnings).
+  And the key bug in 8.3 applies too.
+- **Tennis props are written twice.** All 265 corpus `tennis_atp` prop rows are
+  identical to `tennis_wta` rows, and all 33 recent Postgres ATP rows are too. Two
+  markets (games-won, aces) over one week. Phase 9.
+- No tennis model is served and tennis has no `game_picks`. The live provider
+  jobs (`refreshTennisAtpJob`/`WtaJob`, every 20 min) feed display only.
+
+## 8.3 — Soccer: the closest miss, and its live data is being lost
+
+**THE ARCHIVAL BRIDGE HAS ARCHIVED ZERO SOCCER LINES, EVER.** `odds_archive`
+`live_capture` rows exist only for cfb, mlb and nfl. Root cause, one line:
+`write_game_odds_book_lines` stores soccer and tennis under a generic key
+(`_GENERIC_SPORT_KEY`: `soccer_epl` → `soccer`), and every reader applies that
+map **except `_CLOSING_PIVOT`** (`db.archive_closing_lines_server_side`, added in
+Phase 5), which filters `game_odds_book_lines` on the raw `soccer_epl`. It matches
+nothing and raises no warning. The 4,005 soccer book-line rows of the last three
+days (oddsharvester, propline, sharpapi) are never promoted. **Soccer's archived
+odds therefore end 2026-08-31, when the footballdata import stopped, and every
+closing line since is gone for good.** NBA and NHL aren't in the map, so this
+bug doesn't apply to them.
+
+- **Soccer props are effectively one-sided.** 63,895 EPL prop rows, **56**
+  two-sided; MLS 2 of 15,774. There's no de-vigged prop market to gate against.
+- **An ungated soccer model is still making picks.** `genericCaptureJob` writes
+  generic-Elo moneyline/total picks into `game_picks`: soccer 88 rows, 51 graded,
+  through 2026-09-14. Generic Elo is simpler than the Dixon-Coles model that
+  failed. `GameHeroCard` renders a pick's side (its probability was removed in
+  Phase 1.3). **Whether soccer's game page shows these is UNVERIFIED — open it
+  before deciding.**
+- `pick_history` holds 3,593 soccer rows from the deleted generic prop pipeline,
+  last 2026-09-06. `needsModelDataMerge` still lists soccer; nothing new arrives.
+
+## Decisions required (operator)
+
+1. **Soccer bridge key bug:** fix now? It's a one-parameter change in
+   `archive_closing_lines_server_side` (look up book lines by the generic key,
+   write the archive row under the granular one) plus a deploy. Every in-season
+   day unfixed loses closes permanently.
+2. **Golf:** delete the model layer (TS models + adapter computation + rendered
+   numbers + `golfPredictionsJob`'s prediction logging + dead TS writers), keeping
+   the data pages (leaderboard, Match Winner lines, schedule, shot profile)?
+   Or rebuild, which first needs a season of frozen pre-tournament outright
+   prices?
+3. **Golf shot events, 230 MB:** keep in Postgres, move to the corpus, or drop?
+4. **Soccer generic-Elo picks:** stop capturing (and rendering, if they render)?
+5. **Tennis:** keep collecting? The bridge can't capture it without player
+   resolution, so "keep" means building that; otherwise the tennis provider jobs
+   serve display only.
+
+## Original Phase 8 brief
 
 Three sports in an undecided state. Each needs a written decision, not drift.
 
