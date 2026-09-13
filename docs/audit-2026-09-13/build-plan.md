@@ -1,7 +1,8 @@
 # Card audit — build plan
 
 **Status: APPROVED 2026-09-13. All five decisions taken as recommended (below).
-Phase 0 IN PROGRESS.**
+Phase 0 DONE 2026-09-13 — baseline in `before/README.md`, which adds three
+findings to 1b and one to 5b. Phase 1 is next, awaiting go.**
 
 Turns `phase-d-remediation.md` into build phases. Every Phase D idea is in here;
 the order and sizes differ where re-reading the code on 2026-09-13 changed them.
@@ -90,6 +91,12 @@ Four located bugs with known causes and no design decisions.
 - When the season hasn't started, the header shows `seasonStatus.label` in
   place of `0-0`. Following the adapter rule, the label reaches the header
   through `TeamDetailData`, not by the component reading `snapshot`.
+- **Added by the Phase 0 baseline** (`before/README.md`): MLB passes a bare
+  `"4"` with no ordinal or division name. NHL shows **last season's** record
+  with no label and passes the conference as a division. **Soccer's record
+  drops draws** (`0-1 · 15th, 3 pts`), so soccer needs W-D-L, which means
+  `record` gains an optional `draws`, rendered when present. NBA and NHL show
+  different seasons during the same offseason; the header must say which one.
 - Verify: render one team page per sport. NBA and NHL are offseason, which is
   exactly the state this fix is for.
 
@@ -97,9 +104,11 @@ Four located bugs with known causes and no design decisions.
 strings listed above. Comments stay as they are.
 
 **1d. NFL dead link (B5)**
-- Confirm `fetchScoreboard`'s default window, then give the NFL game route a
-  back-window at least as long as the strip's retention. `fetchTennisMatchDetail`
-  already uses 21 days back.
+- **Confirmed in Phase 0:** `fetchScoreboard` defaults to `daysBack = 0`
+  (`teamSportEspn.ts:85`), so every game dated before today UTC 404s. Give the
+  NFL game route a real back-window. `fetchTennisMatchDetail` already uses 21
+  days back. The strip no longer shows the original id, so verify against it
+  directly.
 - Check whether the CFB game route has the same shape; fix the same way if so.
 - Verify: `/api/nfl/game/401872657` resolves, or the strip no longer lists it.
 
@@ -191,7 +200,9 @@ percentile has to mean "allows more", or the floor points the wrong way. It is
 shared, so render one page per sport.
 
 **5b. Position-aware default market (C8)** — soccer's candidate order follows
-Decision 2's map, using `subjectMeta.position`. Verify on the right-back page
+Decision 2's map, using `subjectMeta.position`. The baseline showed the
+right-back's default is a **real priced line** (Propline), so the ordering
+applies to both the snapshot's priced candidates and the synthetic fallback. Verify on the right-back page
 (`espn:soccer:122268`) plus one GK, one MID and one FWD.
 
 **Done when:** rendered, committed. **Stop.**

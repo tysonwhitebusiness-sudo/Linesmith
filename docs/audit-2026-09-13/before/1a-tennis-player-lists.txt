@@ -1,0 +1,7 @@
+Captured 2026-09-13 ~19:12Z, before Phase 1a.
+
+## /api/tennis/wta — 50 distinct players, 101 candidates
+Alexander Zverev, Alycia Parks, Anastasia Tikhonova, Anna Blinkova, Astra Sharma, Ben Shelton, Bianca Andreescu, Cadence Brace, Carol Young Suh Lee, Carolina Alves, Chloe Paquet, Claire Liu, Cristina Bucsa, Darja Semenistaja, Darja Vidmanova, Dominika Salkova, Elina Avanesyan, Elsa Jacquemot, Elvina Kalieva, Emiliana Arango, Eva Lys, Gabriela Ce, Hayu Kinoshita, Janice Tjen, Jessica Bouzas Maneiro, Julia Riera, Justina Mikulskyte, Kaitlin Quevedo, Kayla Day, Laura Pigossi, Leolia Jeanjean, Liudmila Samsonova, Lois Boisson, Lucrezia Stefanini, Mary Stoiana, Mayar Sherif, Nadia Podoroska, Nauhany Vitoria Leme Da Silva, Panna Udvardy, Paula Badosa, Peyton Stearns, Suzan Lamens, Tatjana Maria, Taylor Townsend, Teodora Kostovic, Varvara Lepchenko, Vendula Valdmannova, Victoria Bosio, Victoria Luiza Barros, Whitney Osuigwe
+
+## /api/tennis/atp — 2 distinct players, 6 candidates
+Alexander Zverev, Ben Shelton
