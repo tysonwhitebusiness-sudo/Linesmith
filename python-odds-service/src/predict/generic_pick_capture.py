@@ -199,6 +199,13 @@ async def capture_today_for_sport(client: httpx.AsyncClient, sport_key: str, app
 # team_elo_history needs the two rating pools kept separate.
 _APP_SPORT_BY_KEY = {"nfl": "nfl", "cfb": "cfb", "nba": "nba", "nhl": "nhl", "soccer_epl": "soccer", "soccer_mls": "soccer"}
 
+# NO NEW PICKS for these, by operator decision (master plan Phase 8, 2026-09-13).
+# Soccer's Dixon-Coles model FAILED its gate (t=+3.05), and generic Elo is the
+# simpler model, never gated at all. It was still putting a W-L record on Scan.
+# Excluded from CAPTURE only: _APP_SPORT_BY_KEY still drives grading and price
+# attachment, so picks already captured settle normally instead of hanging open.
+CAPTURE_EXCLUDED = frozenset({"soccer_epl", "soccer_mls"})
+
 
 async def capture_all_sports_today(client: httpx.AsyncClient) -> list[dict]:
     """Real orchestration: runs capture_today_for_sport for every sport
@@ -210,5 +217,7 @@ async def capture_all_sports_today(client: httpx.AsyncClient) -> list[dict]:
     today = datetime.now(timezone.utc).strftime("%Y%m%d")
     results = []
     for sport_key, app_sport in _APP_SPORT_BY_KEY.items():
+        if sport_key in CAPTURE_EXCLUDED:
+            continue
         results.append(await capture_today_for_sport(client, sport_key, app_sport, today))
     return results

@@ -157,8 +157,10 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // gates the Today's Picks button, hasPropsPipeline gates the Scan
   // tab's slate-wide book-price table). Golf/Tennis stay out — no daily-
   // games concept (golf) or no design yet (tennis), same as the rest of
-  // this build.
-  const hasTodaysPicks = sport === 'mlb' || sport === 'nfl' || sport === 'cfb' || sport === 'nba' || sport === 'nhl' || sport === 'soccer';
+  // this build. Soccer OUT by operator decision (master plan Phase 8,
+  // 2026-09-13): its picks came from generic Elo, a model never gated, while
+  // the richer Dixon-Coles failed its gate.
+  const hasTodaysPicks = sport === 'mlb' || sport === 'nfl' || sport === 'cfb' || sport === 'nba' || sport === 'nhl';
   const { snapshot, loading, error, lastFetched, refresh } = useSnapshot(sport, sport === 'mlb' ? scanDate : undefined, league);
   const slip = useSlip(sport);
 
