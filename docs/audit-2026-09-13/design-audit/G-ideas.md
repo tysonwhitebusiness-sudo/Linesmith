@@ -11,6 +11,25 @@ Everything here follows three settled rules:
 
 ---
 
+## Operator decision after review, 2026-09-14: keep the prop analysis block
+
+The boards folded the current player page's **prop analysis block** into a
+collapsed odds section. The operator wants it kept, as the one part of the
+current design to preserve:
+
+- market tabs (Rushing yards · Rushing TDs · Receiving yards…)
+- line stepper with the current price and its age
+- window chips: vs opponent · Last 5 · Last 10 · Last 15 · Season
+- hit-rate tiles per window (with average and sample)
+- the bar chart of each game against the line, green when cleared
+
+It stays on the player page as its own section near the top, alongside the new
+research depth, not inside the collapsed odds section. What still applies to it
+from Phase F and F2 is only presentation: label the season behind "12 games in
+scope" (the bars are all 2025 week labels), hide a tile with no sample (L15 "–"),
+open on recent games, and the F2 type and contrast rules. Its behavior and
+content stay as they are. Phase H treats it as **keep**.
+
 ## The boards
 
 Five self-contained HTML boards in `docs/design/phase-g/`. Open any of them

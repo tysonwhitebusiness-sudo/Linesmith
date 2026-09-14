@@ -38,6 +38,16 @@ corpus or the fetcher's own parser on 2026-09-14.
 
 ---
 
+## Operator decision after Phase G review, 2026-09-14
+
+**Keep the player-page prop analysis block** (market tabs, line stepper with
+price, window chips, hit-rate tiles, bar chart against the line). Where rows
+below say the bar chart becomes a generic stat-over-time chart with the line as
+an optional overlay, or that the line picker moves into a collapsed odds
+section, **this decision overrides them**: the block stays as it is, near the
+top of the player page, with presentation fixes only (season label, empty tiles
+hidden, F2 type and contrast). See `G-ideas.md`.
+
 ## Summary
 
 1. **The pages show a thin slice of what we hold.** Every sport has stats sitting in
