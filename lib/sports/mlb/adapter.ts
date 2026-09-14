@@ -23,6 +23,7 @@ import type {
   WeatherContext,
 } from '../../core/types';
 import { standardWindows, subsetSplit } from '../../core/pickEngine';
+import { inningsPitchedToOuts } from './innings';
 import {
   easternDate,
   extractTeamResults,
@@ -992,10 +993,9 @@ function firstInningCandidates(
 
 const OU_LABELS: Record<string, string> = { over: 'Over', under: 'Under' };
 
-/** MLB's innings-pitched notation ("6.1" = 6⅓ IP) converted to outs recorded. */
+/** MLB's innings-pitched notation ("6.1" = 6⅓ IP) converted to outs recorded; 0 for a missing or malformed value, as before. */
 function outsFromInningsPitched(raw: unknown): number {
-  const [whole, frac] = String(raw ?? '0').split('.');
-  return (Number(whole) || 0) * 3 + (Number(frac) || 0);
+  return inningsPitchedToOuts(raw) ?? 0;
 }
 
 // ---------------------------------------------------------------------------

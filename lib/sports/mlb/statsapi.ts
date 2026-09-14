@@ -6,6 +6,8 @@
  * change between refreshes.
  */
 
+import { inningsPitchedToOuts, outsToInnings } from './innings';
+
 const BASE = 'https://statsapi.mlb.com/api';
 
 interface CacheEntry<T> {
@@ -601,14 +603,10 @@ function computeKbbPct(k: number, bb: number, battersFaced: number): number | un
 }
 
 /** IP is reported as e.g. "6.1" meaning 6 and 1/3 innings, not 6.1 innings — the fractional part is thirds, not tenths. */
+/** Real innings (6.1 → 6.333…), or `undefined` for a malformed value. Parsing lives in `innings.ts`. */
 function parseInningsPitched(raw: unknown): number | undefined {
-  const s = typeof raw === 'string' ? raw : String(raw ?? '');
-  const m = s.match(/^(-?\d+)(?:\.(\d))?$/);
-  if (!m) return undefined;
-  const whole = Number(m[1]);
-  const thirds = m[2] ? Number(m[2]) : 0;
-  if (!Number.isFinite(whole) || thirds > 2) return undefined;
-  return whole + thirds / 3;
+  const outs = inningsPitchedToOuts(raw);
+  return outs == null ? undefined : outsToInnings(outs);
 }
 
 const num = (v: unknown) => {

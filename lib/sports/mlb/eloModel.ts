@@ -178,14 +178,6 @@ export function computeGameScore(line: PitcherLineForGameScore): number {
   );
 }
 
-/** "6.1" (6 innings, 1 out) → 19 outs. MLB's innings-pitched notation is not decimal — .1/.2 mean 1 or 2 extra outs, never a fraction. */
-export function inningsPitchedToOuts(inningsPitched: string | number): number {
-  const [wholeStr, partialStr] = String(inningsPitched).split('.');
-  const whole = Number(wholeStr) || 0;
-  const partial = Number(partialStr) || 0;
-  return whole * 3 + partial;
-}
-
 /** 538's published multiplier: a start's Game Score, compared to the team's own rolling baseline, swings that team's effective rating by roughly 4.7x the gap. */
 export const PITCHER_ADJ_MULTIPLIER = 4.7;
 /** How many of a pitcher's own recent starts the rolling trend averages over — not disclosed by 538, a reasonable, disclosed window. */
