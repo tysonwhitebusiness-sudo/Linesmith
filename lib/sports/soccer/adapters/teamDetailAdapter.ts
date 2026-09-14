@@ -157,23 +157,28 @@ export function toTeamDetailData(input: SoccerTeamDetailInput): TeamDetailData {
     };
   });
 
-  const opponentIsHome = nextGame ? nextGame.homeTeamId === team.teamId : false;
-  const opponentAbbr = nextGame ? (opponentIsHome ? nextGame.awayAbbr : nextGame.homeAbbr) : undefined;
-  // Moneyline here is the *this team's* side of a real 3-way (home/away/draw)
-  // market — `TeamNextGame.moneyline` only has away/home slots (built for
-  // MLB/NFL's 2-way markets), so the draw price has nowhere to go yet; not
-  // lost, just not surfaced by this shared shape. `away`/`home` map to
-  // which side of the real match this team actually is, not to this team
-  // specifically vs. "the other one" — same convention MLB/NFL already use.
+  // F-B9. This flag tested whether THIS team is the home team while being
+  // named for the opponent, and was then negated — so a team's own home
+  // fixture was reported as away. The prices were never wrong; the labels
+  // beside them were, which is why a real page read "Man City ML 800" at
+  // "Sunderland ML -340" for a match Manchester City hosted as a -340
+  // favourite (measured: homeTeamId 382 = MNC, moneylineHome -340,
+  // moneylineAway 800).
+  const subjectIsHome = nextGame ? nextGame.homeTeamId === team.teamId : false;
+  const opponentAbbr = nextGame ? (subjectIsHome ? nextGame.awayAbbr : nextGame.homeAbbr) : undefined;
+  // A real 3-way (home/away/draw) market. `away`/`home` map to which side of
+  // the real match each price belongs to, not to this team vs "the other
+  // one" — the same convention MLB/NFL use. The draw now has a slot of its
+  // own (F-B9); it was being fetched and dropped.
   const nextGameData: TeamNextGame | null = nextGame
     ? {
         opponentAbbr: opponentAbbr ?? '',
         opponentTeamId: null,
         opponentLogoUrl: undefined,
-        isHome: !opponentIsHome,
+        isHome: subjectIsHome,
         startTime: nextGame.date,
         moneyline: nextGameLine
-          ? { away: nextGameLine.moneylineAway, home: nextGameLine.moneylineHome }
+          ? { away: nextGameLine.moneylineAway, home: nextGameLine.moneylineHome, draw: nextGameLine.moneylineDraw ?? null }
           : null,
         total: nextGameLine?.overUnder != null ? { point: nextGameLine.overUnder, overPrice: nextGameLine.overOdds } : null,
         gameHref: `/soccer/${league}/game/${nextGame.gameId}`,
@@ -183,7 +188,7 @@ export function toTeamDetailData(input: SoccerTeamDetailInput): TeamDetailData {
   const ownStanding = standingsTeams.find((s) => s.teamId === Number(team.teamId));
 
   // ---- Real team-level candidates from this team's own recent results ----
-  const today = nextGame && opponentAbbr ? { opponentAbbr, isHome: !opponentIsHome, gamePk: nextGame.gameId } : null;
+  const today = nextGame && opponentAbbr ? { opponentAbbr, isHome: subjectIsHome, gamePk: nextGame.gameId } : null;
   const moneyline = buildSoccerMoneylineCandidate({ teamId: team.teamId, teamName: team.name, teamAbbr: team.abbreviation, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr });
   const total = buildSoccerGameTotalCandidate({ teamId: team.teamId, teamName: team.name, teamAbbr: team.abbreviation, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr }, nextGameLine?.overUnder ?? null);
   const goalsFor = buildSoccerGoalsForCandidate({ teamId: team.teamId, teamName: team.name, teamAbbr: team.abbreviation, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr });

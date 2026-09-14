@@ -178,8 +178,18 @@ export async function buildUnderstatTeamDefenseIndex(season: string, minGames = 
   const currentTeams = current?.teams ?? {};
   const priorTeams = prior?.teams ?? {};
 
+  // F-B7. THE POOL IS THIS SEASON'S LEAGUE, NOT THE UNION OF TWO SEASONS.
+  // Ranking over `current ∪ prior` puts last season's relegated sides in the
+  // table beside this season's promoted ones, which is how a 20-team league
+  // produced "16 of 23" — and made one page read "1st of 20" beside "2nd of
+  // 23". The prior season is a fallback for a TEAM'S RATE when its current
+  // sample is under `minGames` (the reason below), never an addition to the
+  // field being ranked. If Understat has not published the new season at all
+  // yet, the prior season becomes the whole pool rather than a half-empty one.
+  const poolTeamIds = Object.keys(currentTeams).length > 0 ? Object.keys(currentTeams) : Object.keys(priorTeams);
+
   const rates = new Map<string, { teamTitle: string; gamesPlayed: number; goalsAgainstPerGame: number; xGAPerGame: number; goalsForPerGame: number }>();
-  for (const teamId of new Set([...Object.keys(currentTeams), ...Object.keys(priorTeams)])) {
+  for (const teamId of poolTeamIds) {
     const useTeam = (currentTeams[teamId]?.history.length ?? 0) >= minGames ? currentTeams[teamId] : (priorTeams[teamId] ?? currentTeams[teamId]);
     if (!useTeam || useTeam.history.length === 0) continue;
     const n = useTeam.history.length;

@@ -130,7 +130,14 @@ export interface TeamNextGame {
   opponentLogoUrl?: string;
   isHome: boolean;
   startTime: string | null;
-  moneyline: { away: number | null; home: number | null } | null;
+  /**
+   * `draw` is soccer's real third outcome (F-B9) — the same named,
+   * presence-checked shape `GameDetailData.pregameLines.moneyline.draw`
+   * already uses, and for the same reason: no amount of refactoring collapses
+   * a three-way market into a two-way one. `nextGameLine.moneylineDraw` was
+   * already being fetched and dropped here. Absent for every other sport.
+   */
+  moneyline: { away: number | null; home: number | null; draw?: number | null } | null;
   total: { point: number | null; overPrice: number | null } | null;
   /** PHASE 2 ADDITION — pre-resolved link to the game page (`/mlb/game/{gamePk}` / `/nfl/game/{gameId}`), so the hero header's "vs/@ opponent →" link never needs a sport check to build its own href. */
   gameHref?: string | null;

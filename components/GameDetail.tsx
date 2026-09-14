@@ -117,7 +117,10 @@ export interface GameDetailGame extends SlateGame {
 export interface StatKeyDef {
   key: string;
   label: string;
+  /** Places for the SEASON TOTAL. For MLB, `3` also marks a rate stat. */
   decimals: number;
+  /** Places for the PER-GAME rate, where that differs (F-B5). Falls back to `decimals`. */
+  perGameDecimals?: number;
 }
 
 /** What the three Rankings views actually read off `game.away`/`game.home` — narrower than `GameDetailGame` so a non-MLB caller (NFL) can pass a minimal compatible object instead of fabricating MLB-only TeamGameContext fields (record, lastTen, forStatsSeason, ...) it has no use for. */

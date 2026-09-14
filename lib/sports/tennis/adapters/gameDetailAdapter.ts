@@ -59,9 +59,21 @@ function toRows(wire: RecentResultRowWire[]): RecentResultRow[] {
   return wire.map((r) => ({ gameId: r.gameId, date: r.date, win: r.win, opponentAbbr: r.opponentAbbr, isHome: r.isHome, scoreFor: r.scoreFor, scoreAgainst: r.scoreAgainst }));
 }
 
-function toRecord(rows: RecentResultRow[]): { wins: number; losses: number } | null {
-  if (rows.length === 0) return null;
-  return { wins: rows.filter((r) => r.win === true).length, losses: rows.filter((r) => r.win === false).length };
+/**
+ * F-B13. The "Season" tab was summing the WHOLE match list, which
+ * `player{1,2}Recent` returns career-spanning — a real page labelled Zverev
+ * "103-38" as one season's record, and the win% printed beside it (.717)
+ * didn't even match its own W-L.
+ *
+ * A tennis season is the calendar year, and the season a MATCH PAGE means is
+ * the year that match was played in, not today's — so an old match still
+ * reads as the season it belonged to. Both numbers now come from the one
+ * filtered set, so they agree by construction.
+ */
+function toRecord(rows: RecentResultRow[], seasonYear: number): { wins: number; losses: number } | null {
+  const inSeason = rows.filter((r) => new Date(r.date).getUTCFullYear() === seasonYear);
+  if (inSeason.length === 0) return null;
+  return { wins: inSeason.filter((r) => r.win === true).length, losses: inSeason.filter((r) => r.win === false).length };
 }
 
 export interface TennisGameDetailInput {
@@ -104,6 +116,8 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
 
   const p1Recent = toRows(player1Recent);
   const p2Recent = toRows(player2Recent);
+  // The season this page means: the year the match itself was played.
+  const matchSeasonYear = new Date(meta.date).getUTCFullYear();
   const p1H2h = toRows(player1H2h);
   const p2H2h = toRows(player2H2h);
 
@@ -119,7 +133,7 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
       name: meta.player2.name,
       href: `/tennis/${tour}/player/${encodeURIComponent(meta.player2.subjectId)}`,
       logoUrl: meta.player2.flagUrl ?? undefined,
-      record: toRecord(p2Recent),
+      record: toRecord(p2Recent, matchSeasonYear),
       streak: null,
       tintColor: 'rgba(120,120,120,0.15)',
     },
@@ -128,7 +142,7 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
       name: meta.player1.name,
       href: `/tennis/${tour}/player/${encodeURIComponent(meta.player1.subjectId)}`,
       logoUrl: meta.player1.flagUrl ?? undefined,
-      record: toRecord(p1Recent),
+      record: toRecord(p1Recent, matchSeasonYear),
       streak: null,
       tintColor: 'rgba(120,120,120,0.15)',
     },
@@ -149,8 +163,8 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
   };
 
   const records: { away: RecordsSectionTeam; home: RecordsSectionTeam; loading: boolean } = {
-    away: { abbr: meta.player2.name, logoUrl: meta.player2.flagUrl ?? undefined, divisionRank: null, season: toRecord(p2Recent), seasonHome: null, seasonAway: null, recent: p2Recent.slice(0, 5), h2h: p2H2h },
-    home: { abbr: meta.player1.name, logoUrl: meta.player1.flagUrl ?? undefined, divisionRank: null, season: toRecord(p1Recent), seasonHome: null, seasonAway: null, recent: p1Recent.slice(0, 5), h2h: p1H2h },
+    away: { abbr: meta.player2.name, logoUrl: meta.player2.flagUrl ?? undefined, divisionRank: null, season: toRecord(p2Recent, matchSeasonYear), seasonHome: null, seasonAway: null, recent: p2Recent.slice(0, 5), h2h: p2H2h },
+    home: { abbr: meta.player1.name, logoUrl: meta.player1.flagUrl ?? undefined, divisionRank: null, season: toRecord(p1Recent, matchSeasonYear), seasonHome: null, seasonAway: null, recent: p1Recent.slice(0, 5), h2h: p1H2h },
     loading: false,
   };
 

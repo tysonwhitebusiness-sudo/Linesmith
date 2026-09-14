@@ -343,10 +343,21 @@ export function LiveBoxTable({
 // Empty/loading state — matches MLB LiveTab's own copy pattern
 // ---------------------------------------------------------------------------
 
+/**
+ * F-B10. A FINAL GAME NEVER SHOWS A LOADING STATE.
+ *
+ * Real final CFB and NHL game pages sat on "Loading live details…"
+ * indefinitely (Ohio State @ Texas, TOR @ DET). Whatever leaves `loading`
+ * true — a live route that has nothing to say about a finished game, a
+ * poll that never resolves — a finished game is not still loading, and
+ * saying so promises something that will never arrive. `isFinal` is checked
+ * first, so the worst case is an honest "unavailable" instead of a
+ * permanent spinner.
+ */
 export function LiveTabEmptyState({ loading, isFinal, notStartedText }: { loading: boolean; isFinal: boolean; notStartedText: string }) {
   return (
     <div className="px-[26px] py-10 text-center text-body" style={{ color: C.recordText }}>
-      {loading ? 'Loading live details…' : isFinal ? 'Live details are unavailable for this game.' : notStartedText}
+      {isFinal ? 'This game is final — no live detail was captured for it.' : loading ? 'Loading live details…' : notStartedText}
     </div>
   );
 }

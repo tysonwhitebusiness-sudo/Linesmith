@@ -985,10 +985,12 @@ export function LiveTab({
   if (!data) {
     return (
       <div className="px-[26px] py-10 text-center text-body" style={{ color: C.recordText }}>
-        {loading
-          ? 'Loading live details…'
-          : isFinal
-            ? 'Live details are unavailable for this game.'
+        {/* F-B10: `isFinal` is checked before `loading` — see
+            `LiveTabEmptyState`. A finished game is not still loading. */}
+        {isFinal
+          ? 'This game is final — no live detail was captured for it.'
+          : loading
+            ? 'Loading live details…'
             : "First pitch hasn't been thrown yet — live details will show up here once the game starts."}
       </div>
     );

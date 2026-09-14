@@ -855,6 +855,14 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
                     </span>
                     <span className="font-semibold text-ink">{data.nextGame.moneyline.home}</span>
                   </div>
+                  {/* Soccer's real third outcome — rendered on presence, not
+                      on a sport check (F-B9). */}
+                  {data.nextGame.moneyline.draw != null ? (
+                    <div className="flex items-center justify-between">
+                      <span className="text-ink-muted">Draw</span>
+                      <span className="font-semibold text-ink">{data.nextGame.moneyline.draw}</span>
+                    </div>
+                  ) : null}
                 </>
               ) : null}
               {data.nextGame.total?.point != null ? (

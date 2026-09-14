@@ -128,14 +128,21 @@ export function toTeamDetailData(input: NbaTeamDetailInput): TeamDetailData {
     };
   });
 
-  const opponentIsHome = nextGame ? nextGame.homeTeamId === team.teamId : false;
-  const opponentAbbr = nextGame ? (opponentIsHome ? nextGame.awayAbbr : nextGame.homeAbbr) : undefined;
+  // F-B9. This flag tested whether THIS team is the home team while being
+  // named for the opponent, and was then negated — so a team's own home
+  // fixture was reported as away. The prices were never wrong; the labels
+  // beside them were, which is why a real page read "Man City ML 800" at
+  // "Sunderland ML -340" for a match Manchester City hosted as a -340
+  // favourite (measured: homeTeamId 382 = MNC, moneylineHome -340,
+  // moneylineAway 800).
+  const subjectIsHome = nextGame ? nextGame.homeTeamId === team.teamId : false;
+  const opponentAbbr = nextGame ? (subjectIsHome ? nextGame.awayAbbr : nextGame.homeAbbr) : undefined;
   const nextGameData: TeamNextGame | null = nextGame
     ? {
         opponentAbbr: opponentAbbr ?? '',
         opponentTeamId: null,
         opponentLogoUrl: undefined,
-        isHome: !opponentIsHome,
+        isHome: subjectIsHome,
         startTime: nextGame.date,
         moneyline: nextGameLine ? { away: nextGameLine.moneylineAway, home: nextGameLine.moneylineHome } : null,
         total: nextGameLine?.overUnder != null ? { point: nextGameLine.overUnder, overPrice: nextGameLine.overOdds } : null,
@@ -146,7 +153,7 @@ export function toTeamDetailData(input: NbaTeamDetailInput): TeamDetailData {
   const ownStanding = standingsTeams.find((s) => s.teamId === Number(team.teamId));
 
   // ---- Real team-level candidates from this team's own recent results ----
-  const today = nextGame && opponentAbbr ? { opponentAbbr, isHome: !opponentIsHome, gamePk: nextGame.gameId } : null;
+  const today = nextGame && opponentAbbr ? { opponentAbbr, isHome: subjectIsHome, gamePk: nextGame.gameId } : null;
   const moneyline = buildNbaMoneylineCandidate({ teamId: team.teamId, teamName: team.name, teamAbbr: team.abbreviation, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr });
   const total = buildNbaGameTotalCandidate({ teamId: team.teamId, teamName: team.name, teamAbbr: team.abbreviation, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr }, nextGameLine?.overUnder ?? null);
   const pointsFor = buildNbaPointsForCandidate({ teamId: team.teamId, teamName: team.name, teamAbbr: team.abbreviation, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr });

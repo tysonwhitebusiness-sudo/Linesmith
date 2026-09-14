@@ -27,7 +27,9 @@ export function teamSeasonStatRows(
       const value = team.forStats[k.key];
       const rank = parseRank(team.forRanks[k.key]);
       if (value == null || rank == null) return null;
-      return { key: k.key, label: k.label, value, decimals: k.decimals, rank, poolSize };
+      // F-B5: `value` here is `perGame(...)`, so it needs the per-game places.
+      // At `decimals: 0` a 4.28 and a 3.61 both rendered "4".
+      return { key: k.key, label: k.label, value, decimals: k.perGameDecimals ?? k.decimals, rank, poolSize };
     })
     .filter((s): s is OpposingStarterStat => s != null);
 }

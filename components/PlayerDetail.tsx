@@ -2208,7 +2208,11 @@ export function PlayerDetail({
                   ) : (
                     <div key={r.key} className="flex items-baseline justify-between gap-2 text-[12px]">
                       <span className="w-20 shrink-0 text-ink-faint">{r.label}</span>
-                      <span className="font-semibold tabular-nums">{r.value}</span>
+                      {/* F-B6: this branch printed the raw number and ignored
+                          `r.decimals`, which the ranked branch beside it has
+                          always honoured — so soccer's unranked xG rendered as
+                          "3.4237903356552124". */}
+                      <span className="font-semibold tabular-nums">{r.value.toFixed(r.decimals)}</span>
                     </div>
                   ),
                 )}

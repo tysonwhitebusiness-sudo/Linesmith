@@ -375,23 +375,34 @@ export async function getPeopleWithGameLogs(
  * The stat set both reference products compare teams on, in their order.
  * `key` is what the API calls it; `label` is what a scoreboard calls it.
  */
+/**
+ * `decimals` is for the SEASON TOTAL (147 runs, not 147.0) and is also the
+ * rate-stat discriminator (`decimals === 3` means AVG/OBP/SLG/OPS, which
+ * `perGame` must not divide and the game page splits into its own group).
+ *
+ * `perGameDecimals` is for the same stat AS A PER-GAME RATE — F-B5. Rendering
+ * a per-game rate at `decimals: 0` made 4.28 and 3.61 runs both print "4",
+ * so a real page showed KC and BOS as equal on R, H and BB at once. Stats
+ * that sit near or below 1 a game (triples, home runs, stolen bases) get two
+ * places; the rest get one.
+ */
 export const TEAM_STAT_KEYS = [
-  { key: 'runs', label: 'R', decimals: 0 },
-  { key: 'hits', label: 'H', decimals: 0 },
-  { key: 'singles', label: '1B', decimals: 0 },
-  { key: 'doubles', label: '2B', decimals: 0 },
-  { key: 'triples', label: '3B', decimals: 0 },
-  { key: 'totalBases', label: 'TB', decimals: 0 },
-  { key: 'earnedRuns', label: 'ER', decimals: 0 },
-  { key: 'homeRuns', label: 'HR', decimals: 0 },
-  { key: 'rbi', label: 'RBI', decimals: 0 },
-  { key: 'baseOnBalls', label: 'BB', decimals: 0 },
-  { key: 'strikeOuts', label: 'SO', decimals: 0 },
-  { key: 'stolenBases', label: 'SB', decimals: 0 },
-  { key: 'avg', label: 'AVG', decimals: 3 },
-  { key: 'obp', label: 'OBP', decimals: 3 },
-  { key: 'slg', label: 'SLG', decimals: 3 },
-  { key: 'ops', label: 'OPS', decimals: 3 },
+  { key: 'runs', label: 'R', decimals: 0, perGameDecimals: 1 },
+  { key: 'hits', label: 'H', decimals: 0, perGameDecimals: 1 },
+  { key: 'singles', label: '1B', decimals: 0, perGameDecimals: 1 },
+  { key: 'doubles', label: '2B', decimals: 0, perGameDecimals: 2 },
+  { key: 'triples', label: '3B', decimals: 0, perGameDecimals: 2 },
+  { key: 'totalBases', label: 'TB', decimals: 0, perGameDecimals: 1 },
+  { key: 'earnedRuns', label: 'ER', decimals: 0, perGameDecimals: 1 },
+  { key: 'homeRuns', label: 'HR', decimals: 0, perGameDecimals: 2 },
+  { key: 'rbi', label: 'RBI', decimals: 0, perGameDecimals: 1 },
+  { key: 'baseOnBalls', label: 'BB', decimals: 0, perGameDecimals: 1 },
+  { key: 'strikeOuts', label: 'SO', decimals: 0, perGameDecimals: 1 },
+  { key: 'stolenBases', label: 'SB', decimals: 0, perGameDecimals: 2 },
+  { key: 'avg', label: 'AVG', decimals: 3, perGameDecimals: 3 },
+  { key: 'obp', label: 'OBP', decimals: 3, perGameDecimals: 3 },
+  { key: 'slg', label: 'SLG', decimals: 3, perGameDecimals: 3 },
+  { key: 'ops', label: 'OPS', decimals: 3, perGameDecimals: 3 },
 ] as const;
 
 export type TeamStatKey = (typeof TEAM_STAT_KEYS)[number]['key'];
