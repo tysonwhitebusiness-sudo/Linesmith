@@ -15,41 +15,48 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 - **R1 DONE and signed off**, including the Render deploy (`dep-dak36up42hec73bri7hg`
   on `46a2def`, live 17:50 UTC — verified in prod: `refreshNflJob games=33`,
   `refreshCfbJob games=146`).
-- **R2 IN PROGRESS.** Commit `33ce1f2` lands **2 of R2's 10 items**:
-  the `game_result` read module (rule 3) and the `cachedRoute` staleness
-  ceiling, which the operator folded into R2.
+- **R2 IN PROGRESS — 3 of 10 items.** `33ce1f2` (game_result read module +
+  cachedRoute staleness ceiling) and `8aedacf` (season convention).
 
 ## R2 — what is done and what is left
 
-**Done (`33ce1f2`):**
-- **`game_result` read module** — `lib/history/gameResults.ts`, route
-  `GET /api/history/results`, 13 tests, plus `scripts/verify-game-results.ts`
-  which runs it against real Postgres. Fixture reproduced three independent
-  ways: the Raiders go 71 raw rows -> **54 games**.
-- **`cachedRoute` staleness ceiling** — `x-cache: expired`, `x-cache-age-ms`
-  on every cached response, and a logged system event past the ceiling.
+**Done:**
+- **`game_result` read module** (`33ce1f2`) — `lib/history/gameResults.ts`,
+  route `GET /api/history/results`, 13 tests, plus
+  `scripts/verify-game-results.ts` which runs it against real Postgres.
+  Fixture reproduced three independent ways: the Raiders go 71 raw rows ->
+  **54 games**.
+- **`cachedRoute` staleness ceiling** (`33ce1f2`) — `x-cache: expired`,
+  `x-cache-age-ms` on every cached response, a logged event past the ceiling.
+- **Season convention** (`8aedacf`) — `lib/sports/shared/season.ts` +
+  `python-odds-service/src/season.py`, one table, drift test that was checked
+  by deliberately diverging it. Seven scattered TS helpers now delegate.
+  `realTeams` / `real_teams` is the All-Star filter AND the rank-pool
+  predicate, measured (9 fake NBA teams, 130 rows, all on All-Star weekend).
 
-**Left, in this order (the first four are dependency-ordered, the rest are
+  **`season.py` is committed but NOTHING IMPORTS IT YET**, so no Render deploy
+  has been done — deploying a dormant module would restart the worker's queue
+  for nothing. **The operator has already granted deploy permission**; deploy
+  when a job actually calls it.
+
+**Left, in this order (the first two are dependency-ordered, the rest are
 independent):**
-1. **Season convention** — one helper mapping (sport, season) to its label and
-   date range. NBA uses the end year; NHL/NFL/CFB/EPL the start year. Drop
-   stray All-Star team ids. Ranks and the early-season fallback both need it.
-2. **Ranks** — computed over the league's real teams for that season (>=30% of
+1. **Ranks** — computed over the league's real teams for that season (>=30% of
    max games played), each stat with a declared better/worse direction,
    football per game. ESPN's published ranks are never used. Neutral stats
    (fouls, possession share) get no good/bad colour.
-3. **Early-season fallback** — open on last season under MIN_GAMES
+2. **Early-season fallback** — open on last season under MIN_GAMES
    (NFL/CFB 4, NBA/NHL 15, MLB 20, soccer 6), with the reason stated.
-4. **Prop main line** — the largest. Last PRE-GAME quote per book/side/line;
+3. **Prop main line** — the largest. Last PRE-GAME quote per book/side/line;
    the main line is the one quoted on both sides by the most books, ties to
    the price nearest even; pick'em books never count as a price; yes/no
    markets keep a 0.5 line with 2+ books over; one-sided markets are flagged
    "alternate lines only". **This is F-B12's fix** — see below.
-5. **Pre-start odds filter** — split `game_odds_history` at the game's start.
-6. **Innings pitched** — carry outs, render whole.thirds only.
-7. **NBA shot coordinates** — rim origin y ~= 1ft not 5.25; a miss's point
+4. **Pre-start odds filter** — split `game_odds_history` at the game's start.
+5. **Innings pitched** — carry outs, render whole.thirds only.
+6. **NBA shot coordinates** — rim origin y ~= 1ft not 5.25; a miss's point
    value comes from the arc.
-8. **Source quirks** — Understat newest-first, TennisMyLife tournament-start
+7. **Source quirks** — Understat newest-first, TennisMyLife tournament-start
    dates, ESPN soccer fixtures param.
 
 ## Still owed from R1

@@ -59,10 +59,16 @@ thread's own baton is `docs/audit-2026-09-13/RESUME-PROMPT.md`.
 - **MLB regular season ends late September:** the R8 MLB live state must be
   verified before then or on postseason games.
 
-**R2 IN PROGRESS 2026-09-14** (`33ce1f2`): 2 of 10 items done — the
+**R2 IN PROGRESS 2026-09-14** (`33ce1f2`, `8aedacf`): 3 of 10 items done — the
 `game_result` read module (Raiders 71 raw rows -> 54 games, verified three
-ways) and the `cachedRoute` staleness ceiling the operator folded in. Eight
-rules left; `RESUME-PROMPT.md` lists them in dependency order.
+ways), the `cachedRoute` staleness ceiling the operator folded in, and the
+season convention (one table in both languages, drift-tested; seven scattered
+TS helpers now delegate). Seven rules left; `RESUME-PROMPT.md` lists them in
+dependency order.
+
+`python-odds-service/src/season.py` is committed and **not deployed** — no job
+imports it yet, so a deploy would restart the worker queue for nothing.
+Operator has pre-approved the deploy for when one does.
 
 **The ceiling immediately found two real problems nobody had seen:**
 `/api/mlb/team/110` serving a **28-day-old** payload silently, and
