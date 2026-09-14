@@ -115,6 +115,8 @@ surfaces.
     following week). Cause and scope are recorded in `build-plan.md` item 1d:
     after midnight UTC the scoreboard range skips the game's US Eastern date,
     so **every primetime NFL game vanishes while it's being played.**
+    **Fixed 00:35Z** (commit `cf022f5`); re-captured at 00:37Z, 16 cards,
+    live score in the hero. Past-game pages remain open (build-plan 1d).
 19. **Live NFL player pages look the same as pre-game.** Jaxson Dart, Malik
     Nabers and Cam Skattebo captured live render the same 17–18 cards as before
     kickoff: no score, no in-game stat line, no "live" card (MLB's player pages

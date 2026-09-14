@@ -124,6 +124,25 @@ strings listed above. Comments stay as they are.
   evening US games (CFB Saturday nights, NBA, NHL) should be checked for the
   same failure.
 - Check whether the CFB game route has the same shape; fix the same way if so.
+- **FIXED 2026-09-14 (operator: fix before Phase F), in part:**
+  - `teamSportEspn.ts` `dateRangeParam` now builds the range from the US
+    Eastern date (reusing `easternDate`/`shiftDate` from `mlb/statsapi.ts`).
+    Fixes every `fetchScoreboard` caller at once: the NFL/CFB/soccer/NBA slates
+    and games strip, and the team routes.
+  - `/api/nfl/game/[gameId]` gets 21 days back. Verified: live `401872930`,
+    past `401872657` and today's `401872925` all return 200.
+- **Still open:**
+  - **Past-game pages.** `app/nfl/game/[gameId]/page.tsx` finds its game in
+    the snapshot's games strip, not through the game route, and the strip only
+    holds today onward. A finished game from an earlier day therefore still
+    renders "Game not found" even though its route now resolves. The fix is for
+    the page to fall back to the game route; not done. MLB's game page uses
+    the same pattern.
+  - **Python has the same UTC bug.** `python-odds-service/src/game_context.py:156`
+    `_date_range_param` builds its range in UTC, so the worker's NFL/CFB jobs
+    stop seeing primetime games after 00:00Z (no in-game refresh, and a tier
+    computed without them). Needs a Render deploy, so it waits for operator
+    approval.
 - Verify: `/api/nfl/game/401872657` resolves, or the strip no longer lists it.
 
 **Done when:** `tsc --noEmit` clean, before/after renders captured, committed.
