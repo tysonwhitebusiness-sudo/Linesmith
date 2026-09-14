@@ -58,4 +58,17 @@ docs/design/phase-g2/
 
 ## Status
 
-- [x] 1 player data (13 subjects, 2026-09-14) · [ ] 2 player page · [ ] 3 game page · [ ] 4 team page · [ ] 5 wrap-up
+- [x] 1 player data (13 subjects, 2026-09-14) · [x] 2 player page · [ ] 3 game page · [ ] 4 team page · [ ] 5 wrap-up
+
+Step 2 as built: `player.html` (open directly; `?sport=&subject=` deep-links). Modules actually landed as
+`src/kit2.js` (page blocks incl. the kept prop block), `src/sports/common.js` (page composer),
+`mlb.js`, `football.js` (NFL+CFB), `hoops-hockey.js` (NBA+NHL), `soccer-tennis-golf.js`.
+Checked: 13 subjects × 1440/400px — no page errors, no NaN/undefined text, no horizontal overflow.
+
+Data findings while building (for the Phase H data plan):
+- `nba_shot_events.y_coord` has the rim at ≈1 ft, not 5.25 (fitted: 99.8% of makes classify to their
+  stored point value with that origin). Every **miss** is stored with `point_value` 2, so missed threes
+  are indistinguishable without geometry. The mockup derives miss value from the arc.
+- Understat match list comes back newest-first; anything taking "last N" must sort by date.
+- TennisMyLife `tourney_date` is the tournament start, so every match in an event shares a date.
+- Golf `golf_*` events carry no names in the tables; lie codes in shot events are not decoded.
