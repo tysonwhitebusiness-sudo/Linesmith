@@ -172,6 +172,18 @@ class ProviderSpec:
     # spending what is left over the time that is left, weighted toward when
     # games actually start.
     cost_per_cycle: object | None = None
+    # WHO SHARES THIS PROVIDER'S THROTTLE. None keeps one clock per provider.
+    # Set to the sport by provider_matrix for budget-paced providers, so each
+    # sport gets its own clock and its own turn; job_runner then stretches each
+    # sport's paced interval by how many sports are actively drawing on the
+    # same budget, so total spend keeps the pacer's rate.
+    #
+    # Why (2026-09-14): one `provider-throttle:propline` clock was shared by six
+    # sports' jobs. refreshTier1 (every 150s) grabbed every window the moment it
+    # opened, so refreshNflJob (every 20 min) always found it "throttled -- last
+    # run 143s ago": NFL's last Propline row was 32 hours old on game day, and
+    # EPL's job logged the same. Half of NFL's priced props read hours stale.
+    throttle_scope: str | None = None
     pool: tuple[tuple[str, str], ...] | None = None
     # Called as fetch_keyed(client, games, yield_fn, api_key) when `pool` is set.
     fetch_keyed: Callable[..., Awaitable["FetchOutcome"]] | None = None

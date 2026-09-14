@@ -40,13 +40,19 @@ def check(label: str, actual, expected) -> None:
 class _Recorder:
     """Stands in for every db call run_provider_specs makes."""
 
-    def __init__(self, last_run_age=None):
+    def __init__(self, last_run_age=None, active_scopes=0):
         self.last_run_age = last_run_age
+        self.active_scopes = active_scopes
+        self.keys_read = []
         self.reserves = 0
         self.snapshots_written = []
 
     async def read_snapshot_with_age(self, key):
+        self.keys_read.append(key)
         return None if self.last_run_age is None else ("t", self.last_run_age)
+
+    async def count_fresh_snapshots(self, prefix, max_age):
+        return self.active_scopes
 
     async def write_snapshot(self, key, payload):
         self.snapshots_written.append(key)
@@ -79,7 +85,7 @@ class _Recorder:
 
 
 def _install(rec):
-    for name in ("read_snapshot_with_age", "write_snapshot", "try_reserve_daily",
+    for name in ("read_snapshot_with_age", "count_fresh_snapshots", "write_snapshot", "try_reserve_daily",
                  "try_reserve_monthly", "record_daily_spend", "record_monthly_spend",
                  "write_prop_odds", "write_game_odds_book_lines",
                  "replace_unresolved_for_provider", "log_system_event"):
@@ -87,7 +93,7 @@ def _install(rec):
 
 
 _original = {n: getattr(db, n, None) for n in (
-    "read_snapshot_with_age", "write_snapshot", "try_reserve_daily", "try_reserve_monthly",
+    "read_snapshot_with_age", "count_fresh_snapshots", "write_snapshot", "try_reserve_daily", "try_reserve_monthly",
     "record_daily_spend", "record_monthly_spend", "write_prop_odds",
     "write_game_odds_book_lines", "replace_unresolved_for_provider", "log_system_event")}
 
@@ -176,8 +182,93 @@ def test_propline_is_actually_wired_with_a_floor():
     check("stays under the measured 1,000/day cap", int(cycles * 16) < 1000, True)
 
 
+def _paced_spec(fetched, scope):
+    async def fetch_keyed(client, games, yield_fn, key):
+        fetched.append(1)
+        out = FetchOutcome(provider_id="propline")
+        out.requests = 2
+        return out
+
+    return ProviderSpec(
+        provider_id="propline", enabled=True, fetch=None, fetch_keyed=fetch_keyed,
+        pool=(("propline_k1", "key"),), cap_kind="daily", cap_limit=1000,
+        cost_per_cycle=lambda games: 2, min_interval_seconds=25 * 60, throttle_scope=scope,
+    )
+
+
+def _with_pace(seconds, fn):
+    import pace
+    original = pace.next_interval
+
+    async def fixed(*a, **kw):
+        return seconds
+
+    pace.next_interval = fixed
+    try:
+        return fn()
+    finally:
+        pace.next_interval = original
+
+
+def test_each_sport_has_its_own_clock():
+    """2026-09-14: one shared `provider-throttle:propline` let refreshTier1 (every
+    150s) take every window, and NFL's last Propline row was 32 hours old."""
+    print("\nfair share — a clock per sport")
+    rec = _Recorder(last_run_age=None, active_scopes=0)
+    _install(rec)
+    fetched = []
+    _with_pace(600, lambda: asyncio.run(job_runner.run_provider_specs(None, [], [_paced_spec(fetched, "nfl")])))
+    check("fetched", len(fetched), 1)
+    check("stamped the SPORT's clock", rec.snapshots_written, ["provider-throttle:propline:nfl"])
+    check("read the sport's clock, never the shared one", "provider-throttle:propline" in rec.keys_read, False)
+
+
+def test_shared_budget_stretches_each_sports_wait():
+    """k active sports each wait k times the paced interval, so together they
+    spend at the pacer's rate rather than k times it."""
+    print("\nfair share — k sports share the budget's pace")
+    # Paced 600s; three sports active (this one included, stamped 1,500s ago):
+    # the wait is 1,800s, so a run 1,500s after the last is still throttled.
+    rec = _Recorder(last_run_age=1500, active_scopes=3)
+    _install(rec)
+    fetched = []
+    summary = _with_pace(600, lambda: asyncio.run(job_runner.run_provider_specs(None, [], [_paced_spec(fetched, "mlb")])))
+    check("throttled at 3 x 600s", len(fetched), 0)
+    check("warning names the stretched wait", any("required 1800s" in w for w in summary.get("warnings", [])), True)
+
+    rec = _Recorder(last_run_age=1801, active_scopes=3)
+    _install(rec)
+    fetched = []
+    _with_pace(600, lambda: asyncio.run(job_runner.run_provider_specs(None, [], [_paced_spec(fetched, "mlb")])))
+    check("runs once 3 x 600s has passed", len(fetched), 1)
+
+
+def test_a_starved_sport_counts_itself():
+    """A sport whose own stamp is stale is not in the fresh count, but it is
+    still a consumer: k must include it."""
+    print("\nfair share — the starved sport")
+    rec = _Recorder(last_run_age=None, active_scopes=1)  # only MLB fresh; NFL never ran
+    _install(rec)
+    fetched = []
+    _with_pace(600, lambda: asyncio.run(job_runner.run_provider_specs(None, [], [_paced_spec(fetched, "nfl")])))
+    check("a never-run sport fetches immediately", len(fetched), 1)
+
+
+def test_budget_paced_providers_are_scoped_by_sport():
+    print("\nfair share — provider_matrix wiring")
+    import provider_matrix
+    nfl = {s.provider_id: s for s in provider_matrix.specs_for("nfl")}
+    check("propline scoped to nfl", nfl["propline"].throttle_scope, "nfl")
+    check("parlayapi scoped to nfl", nfl["parlayapi"].throttle_scope, "nfl")
+    check("sharpapi keeps no clock of its own", nfl["sharpapi"].throttle_scope, None)
+
+
 if __name__ == "__main__":
     try:
+        test_each_sport_has_its_own_clock()
+        test_shared_budget_stretches_each_sports_wait()
+        test_a_starved_sport_counts_itself()
+        test_budget_paced_providers_are_scoped_by_sport()
         test_throttled_provider_does_not_fetch()
         test_provider_runs_once_the_interval_has_passed()
         test_first_ever_run_is_not_throttled()

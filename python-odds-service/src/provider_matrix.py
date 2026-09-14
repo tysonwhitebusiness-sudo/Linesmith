@@ -268,6 +268,7 @@ def _oddsapiio(sport: str, yield_fn) -> ProviderSpec:
         # Fallback if pacing ever raises. 500/day at ~16 per cycle is ~31 cycles,
         # or one per ~46 minutes; 45 keeps it just inside that.
         min_interval_seconds=45 * 60,
+        throttle_scope=sport,
     )
 
 
@@ -296,6 +297,7 @@ def _propline(sport: str, yield_fn) -> ProviderSpec:
         cost_per_cycle=lambda games: 1 + len(games),
         # Kept as the fallback if pacing ever fails — never unpaced.
         min_interval_seconds=25 * 60,
+        throttle_scope=sport,
     )
 
 
@@ -324,6 +326,7 @@ def _parlayapi(sport: str, yield_fn) -> ProviderSpec:
         # reason ParlayAPI scales to a full CFB Saturday where Propline cannot.
         cost_per_cycle=lambda games: 1,
         min_interval_seconds=45 * 60,
+        throttle_scope=sport,
     )
 
 
@@ -347,6 +350,7 @@ def _sgo(sport: str, yield_fn) -> ProviderSpec:
         # Billed in OBJECTS, not requests: one event object per game returned,
         # so the slate size is the cost.
         cost_per_cycle=lambda games: max(1, len(games)),
+        throttle_scope=sport,
     )
 
 

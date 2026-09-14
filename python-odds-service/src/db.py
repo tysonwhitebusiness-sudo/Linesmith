@@ -247,6 +247,21 @@ async def write_snapshot(cache_key: str, payload: str) -> None:
     )
 
 
+async def count_fresh_snapshots(key_prefix: str, max_age_seconds: float) -> int:
+    """How many snapshot_cache keys under `key_prefix` were written within
+    `max_age_seconds`. Used by job_runner to count the sports actively sharing a
+    provider's budget (their per-sport throttle stamps)."""
+    pool = await get_pool()
+    return int(await pool.fetchval(
+        """
+        SELECT count(*) FROM snapshot_cache
+         WHERE cache_key LIKE $1 AND fetched_at > now() - make_interval(secs => $2)
+        """,
+        key_prefix.replace('%', r'\%').replace('_', r'\_') + '%',
+        float(max_age_seconds),
+    ) or 0)
+
+
 def eastern_date_key(now: datetime | None = None) -> str:
     now = now or datetime.now(timezone.utc)
     return now.astimezone(_EASTERN).strftime("%Y-%m-%d")
