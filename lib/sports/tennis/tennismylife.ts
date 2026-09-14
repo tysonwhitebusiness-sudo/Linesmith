@@ -52,6 +52,9 @@ interface RawTennisRow {
   score: string;
   w_ace: string;
   l_ace: string;
+  /** Absent on rows cached before R2; ordering then falls back to file order. */
+  round?: string;
+  match_num?: string;
 }
 
 /** Plain comma-split is safe: confirmed live, this archive's fields (tournament/player names included) never contain commas or quoting. */
@@ -71,6 +74,8 @@ function parseTennisCsv(text: string): RawTennisRow[] {
     score: col('score'),
     w_ace: col('w_ace'),
     l_ace: col('l_ace'),
+    round: col('round'),
+    match_num: col('match_num'),
   };
   const rows: RawTennisRow[] = [];
   for (let i = 1; i < lines.length; i++) {
@@ -89,9 +94,25 @@ function parseTennisCsv(text: string): RawTennisRow[] {
       score: cells[idx.score] ?? '',
       w_ace: cells[idx.w_ace] ?? '',
       l_ace: cells[idx.l_ace] ?? '',
+      round: idx.round >= 0 ? (cells[idx.round] ?? '') : '',
+      match_num: idx.match_num >= 0 ? (cells[idx.match_num] ?? '') : '',
     });
   }
   return rows;
+}
+
+/**
+ * `tourney_date` is the tournament's START (G2 data finding): every match in an
+ * event carries the same date, so date alone cannot order a player's run
+ * through a draw. Rounds are ordered here; round-robin and unknown rounds sit
+ * before the knockout, and `match_num` breaks ties within a round.
+ */
+const ROUND_ORDER: Record<string, number> = { Q1: 0, Q2: 1, Q3: 2, Q4: 3, RR: 4, R128: 5, R64: 6, R32: 7, R16: 8, QF: 9, SF: 10, BR: 11, F: 12 };
+
+export function roundOrder(round: string | undefined, matchNum: string | undefined): number {
+  const r = ROUND_ORDER[(round ?? '').trim().toUpperCase()] ?? 4;
+  const n = Number(matchNum);
+  return r * 10_000 + (Number.isFinite(n) ? Math.min(Math.max(n, 0), 9_999) : 0);
 }
 
 /** `tourney_date` is `YYYYMMDD`. */
@@ -119,7 +140,10 @@ function parseSetGames(score: string): Array<[number, number]> {
 
 export interface TennisMatch {
   matchId: string;
+  /** The TOURNAMENT's start date, shared by every match in the event — not the day this match was played. */
   date: string;
+  /** Order within the event: round, then match number. See `ROUND_ORDER`. */
+  order: number;
   tournamentName: string;
   surface: string;
   opponent: string;
@@ -165,6 +189,7 @@ export async function loadTennisSeasonContext(tour: TennisTour, season: number):
       const sets = parseSetGames(row.score);
       if (sets.length === 0) continue; // walkover / unparseable — no real per-match stat to attach
       const date = toIsoDate(row.tourney_date);
+      const order = roundOrder(row.round, row.match_num);
       const matchId = `${row.tourney_name}-${row.tourney_date}-${row.winner_id}-${row.loser_id}`;
 
       const winnerGames = sets.reduce((sum, [a]) => sum + a, 0);
@@ -175,6 +200,7 @@ export async function loadTennisSeasonContext(tour: TennisTour, season: number):
       const winnerEntry: TennisMatch = {
         matchId,
         date,
+        order,
         tournamentName: row.tourney_name,
         surface: row.surface,
         opponent: row.loser_name,
@@ -187,6 +213,7 @@ export async function loadTennisSeasonContext(tour: TennisTour, season: number):
       const loserEntry: TennisMatch = {
         matchId,
         date,
+        order,
         tournamentName: row.tourney_name,
         surface: row.surface,
         opponent: row.winner_name,
@@ -210,7 +237,7 @@ export async function loadTennisSeasonContext(tour: TennisTour, season: number):
   ingest(prior);
   ingest(current);
   for (const entry of byName.values()) {
-    entry.matches.sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+    entry.matches.sort((a, b) => Date.parse(a.date) - Date.parse(b.date) || a.order - b.order);
   }
   return { byName };
 }

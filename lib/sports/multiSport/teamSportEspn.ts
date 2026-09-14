@@ -165,6 +165,20 @@ interface RawScheduleCompetitor {
   score?: { value: number; displayValue: string };
 }
 
+type RawScheduleEvent = { id: string; date: string; competitions?: Array<{ competitors?: RawScheduleCompetitor[]; status?: { type?: { completed?: boolean; state?: string; shortDetail?: string } } }> };
+
+/** One schedule request's events, or `null` when the request or its JSON failed. */
+async function fetchScheduleEvents(url: string): Promise<RawScheduleEvent[] | null> {
+  try {
+    const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15_000) });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { events?: RawScheduleEvent[] };
+    return json.events ?? [];
+  } catch {
+    return null;
+  }
+}
+
 /**
  * One team's own real full-season schedule — unlike `fetchScoreboard`,
  * which is a league-wide query capped at 100 events by ESPN regardless of
@@ -182,28 +196,23 @@ export async function fetchTeamSchedule(espnSport: string, espnLeague: string, t
     return JSON.parse(cached.payload) as EspnTeamSportGame[];
   }
 
-  let res: Response;
-  try {
-    res = await fetch(`${BASE}/${espnSport}/${espnLeague}/teams/${teamId}/schedule?season=${season}`, { cache: 'no-store', signal: AbortSignal.timeout(15_000) });
-  } catch {
-    return cached ? (JSON.parse(cached.payload) as EspnTeamSportGame[]) : [];
-  }
-  if (!res.ok) return cached ? (JSON.parse(cached.payload) as EspnTeamSportGame[]) : [];
-  let json: { events?: Array<{ id: string; date: string; competitions?: Array<{ competitors?: RawScheduleCompetitor[]; status?: { type?: { completed?: boolean; state?: string; shortDetail?: string } } }> }> };
-  try {
-    json = await res.json();
-  } catch {
-    return cached ? (JSON.parse(cached.payload) as EspnTeamSportGame[]) : [];
-  }
+  // SOCCER NEEDS TWO CALLS (R2 source quirk, checked 2026-09-14 against EPL
+  // team 382): the plain schedule returns only PLAYED matches (4 of them,
+  // newest first), and unplayed fixtures come back only with `fixture=true`
+  // (34, all future). Every other sport on this fetcher returns both from one.
+  const urls = [`${BASE}/${espnSport}/${espnLeague}/teams/${teamId}/schedule?season=${season}`];
+  if (espnSport === 'soccer') urls.push(`${urls[0]}&fixture=true`);
+  const responses = await Promise.all(urls.map(fetchScheduleEvents));
+  if (responses.every((r) => r == null)) return cached ? (JSON.parse(cached.payload) as EspnTeamSportGame[]) : [];
 
-  const games: EspnTeamSportGame[] = [];
-  for (const ev of json.events ?? []) {
+  const byId = new Map<string, EspnTeamSportGame>();
+  for (const ev of responses.flatMap((r) => r ?? [])) {
     const comp = ev.competitions?.[0];
     const home = comp?.competitors?.find((c) => c.homeAway === 'home');
     const away = comp?.competitors?.find((c) => c.homeAway === 'away');
     if (!home || !away) continue;
     const statusType = comp?.status?.type;
-    games.push({
+    byId.set(String(ev.id), {
       gameId: String(ev.id),
       date: ev.date,
       homeTeamId: String(home.team.id),
@@ -220,6 +229,9 @@ export async function fetchTeamSchedule(espnSport: string, espnLeague: string, t
       awayScore: away.score?.value,
     });
   }
+  // Oldest first, always. ESPN's own order is not chronological (soccer's
+  // played list is newest-first), and a "last N" taken from it would be wrong.
+  const games = [...byId.values()].sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
 
   await writeSnapshotCache(cacheKey, JSON.stringify(games));
   return games;

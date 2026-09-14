@@ -410,7 +410,7 @@ export function resolveMatchVenue(
  */
 export async function fetchUnderstatPlayerMatches(understatId: string, understatTeamTitle: string): Promise<UnderstatMatch[]> {
   const cached = await readPlayerPayload(understatId);
-  if (cached) return cached.matches;
+  if (cached) return oldestFirst(cached.matches);
 
   const json = await fetchJson<{
     matches: RawPlayerMatch[];
@@ -419,7 +419,7 @@ export async function fetchUnderstatPlayerMatches(understatId: string, understat
   }>(`/getPlayerData/${understatId}`);
   if (!json) {
     const stale = await readPlayerPayload(understatId, { ignoreAge: true });
-    return stale?.matches ?? [];
+    return oldestFirst(stale?.matches ?? []);
   }
 
   // Which club(s) this player turned out for, per season. A set, not a string:
@@ -453,7 +453,17 @@ export async function fetchUnderstatPlayerMatches(understatId: string, understat
   // once per accessor — would double the request rate against a site we do not
   // own for data we already had in hand.
   await writeSnapshotCache(playerCacheKey(understatId), JSON.stringify({ matches, shots: json.shots ?? [] }));
-  return matches;
+  return oldestFirst(matches);
+}
+
+/**
+ * Understat returns a player's matches NEWEST FIRST (G2 data finding). Every
+ * other history in this app runs oldest first, and a "last N" sliced off the
+ * raw order takes the first N games of a career. Sorted here, at the source,
+ * rather than trusting each consumer to remember.
+ */
+function oldestFirst(matches: UnderstatMatch[]): UnderstatMatch[] {
+  return [...matches].sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
 }
 
 /**
