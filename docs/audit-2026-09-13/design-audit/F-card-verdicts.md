@@ -1,8 +1,48 @@
 # Phase F — Verdict on every card
 
-**Status: IN PROGRESS 2026-09-14.** Judged from the Phase E captures: every card
-image, its captured text, and the full page. Two questions per card: **does it
-make sense for this sport, and does it help?**
+**Status: COMPLETE 2026-09-14** for every page the calendar allowed (not judged:
+golf, NBA/NHL live, CFB markets on a live Saturday, soccer and tennis live).
+Judged from the Phase E captures: every card image, its captured text, and the
+full page. Two questions per card: **does it make sense for this sport, and does
+it help?**
+
+## Summary — what the verdicts add up to
+
+1. **Pages answer one question many times and others not at all.** Every player
+   page says "did he clear the line" in 4–5 cards (bar chart, Rolling form, Game
+   context, Where this sits, Situational splits). Every game page compares the
+   two teams in 4 cards (Matchup, Team stat comparison, Rankings, Unit grades).
+   The questions a bettor actually asks per sport (NFL targets and snap share,
+   NBA pace and ratings, NHL starting goalies, soccer minutes and position,
+   tennis serve stats and surface) have no card.
+2. **Dead cards.** Form ("vs MIA –"), empty Line movement, Live line tracker
+   when nothing's tracked, Today's line after the game, Recorded price repeating
+   the line picker: **remove** or show only when they hold something.
+3. **Seasons are unlabeled or mixed on nearly every card.** Bar charts open at the
+   oldest game with no years; NFL records span seasons under a 0-0 record;
+   soccer ranks "of 23" in a 20-team league; tennis records of 103-38 labeled one
+   season; last season shown as current form in Week 1.
+4. **The sport-native form is missing.** Strike-zone grids for football targets
+   and soccer shots; NFL standings with GB and L10; soccer records without draws;
+   NHL records without OT losses; tennis pages with home/away, injuries, unit
+   grades and a "team" stat comparison; "Contact quality matchup" on soccer and
+   CFB team pages.
+5. **Encoding says the wrong thing.** Good/bad colors on neutral stats (fouls,
+   saves, target share); `#18`-style ranks that read as jersey numbers; "biggest
+   edge" at the 32nd–48th percentile; green highlighting an edge that works
+   against the bet; per-game stats rounded to integers; raw floats and ISO
+   timestamps.
+6. **Identity.** Initials instead of photos across many cards; club crests
+   instead of player photos in soccer; blank NHL logos.
+7. **Two MLB cards are the model for every sport.** *Live today* (score, state,
+   every line with a check as it clears) and *Pitching matchup* (two sides, the
+   stats that matter, percentile chips, bullpen). Other sports need the
+   equivalent, not a copy of the baseball content.
+8. **Blank player pages** (7 of 22 player captures) → a player page must always
+   render the player; market cards appear only when a market exists.
+9. **13 correctness bugs** found while judging (F-B1…F-B13, bottom of this
+   file), including a Rankings card that invents "against" numbers in four
+   sports.
 
 **Verdicts:** **keep** (at most polish) · **rework** (the idea helps, the showing
 doesn't) · **replace** (this slot should say something else for this sport) ·
@@ -317,13 +357,145 @@ shot data source covering European leagues.
 
 ---
 
+## CFB
+
+**Player pages: blank** (QB Julian Sayin, WR Jeremiah Smith). "No tracked
+markets for this player on today's slate" on a Sunday. Verdict for the page:
+**replace the empty state.** A player page should always render the player:
+headshot, position, season and career stats, game log, next game. Market cards
+appear only when there's a market. This holds for every sport (see "Blank player
+pages" below). CFB market-card verdicts wait for a live Saturday (build Phase 2).
+
+**Team page (Ohio State):** the same cards as NFL's, including **"Contact
+quality matchup"** (a baseball term, rework as for soccer), "NEXT GAME" twice,
+Roster (100) alphabetical with initials. Same verdicts as NFL/soccer. College
+football-specific **gaps:** AP/CFP ranking, conference record, strength of
+schedule. The standings card should be the conference table, not a league-wide
+one.
+
+**Game page (Ohio State at Texas, final 23–24):** 10 cards, the thinnest
+game page. The final box score is **stuck on "Loading live details…"** (F-B10),
+the records show dashes, and there's no matchup, team stats, rankings or unit
+grades, for a top-10 matchup. **Verdict: rework.** At minimum the box score,
+team stats and the offense/defense matchup NFL has, plus both teams' rankings.
+
+## NBA (offseason: pages judged as they render today)
+
+**Player pages: blank** (Luka Doncic, Walker Kessler). Same verdict as CFB. In
+the offseason the page should show last season, labeled.
+
+**Team page (Lakers):**
+
+| card | verdict | fails | what instead |
+|---|---|---|---|
+| **Team stats** (Offence/Defence/Rebounding, 12 counting stats) | **rework** | Nat, Enc | Box-score counting stats only. What basketball bettors use is **pace, offensive and defensive rating, net rating, eFG%, rebound%, turnover%**. Fouls "3rd of 30" green with no direction. "Offence/Defence" spelling. |
+| **Standings** (all 0-0 · .000, GB, L10) | **rework** | Sco | In the offseason, show **last season's final standings**, labeled, with seeds and play-in lines. GB and L10 are right for the NBA. |
+| **Untitled card: "No upcoming game scheduled."** | **replace** | Sen | The snapshot already has "The 2026-27 NBA season hasn't tipped off" and the first game date (build 1b). Say that, with the opener. |
+| **Hero** ("0-0 · 0th seed, Eastern Conference in division") | **rework** | Sen | Build 1b. |
+| **Bar chart (82 games), Rating history, Last 15, Situational splits, Home/Away, Roster, Form, Recent results, Game context, Line movement** | same as NFL | | |
+
+**Game page (last season, MIN vs LAL):** **Matchup** has the same text collision
+("7th of 3POINTS/GAME") and counting stats only; **Rankings** is mirrored
+(F-B1); **Team stat comparison** is labeled "2026 season" for the 2025-26
+season, which will read as the coming season within weeks. Basketball-native
+gaps: **pace matchup, projected total from pace × ratings, rest days /
+back-to-back, starters' minutes and injuries.** Live states: October.
+
+## NHL (offseason)
+
+**Player pages: blank** (Matthew Knies, Sergei Bobrovsky). Same verdict as CFB.
+A goalie page especially needs save %, GSAx and starts.
+
+**Team page (Toronto):**
+
+| card | verdict | fails | what instead |
+|---|---|---|---|
+| **Hero** ("32-36 · Eastern in division") | **rework + bug** | Nat, Sen | **An NHL record needs overtime losses** (W-L-OTL); "32-36" drops them (F-B11). Conference passed as a division (build 1b). |
+| **Team stats** (offence, discipline, defence) | **rework** | Nat, Enc | **"Saves/game 28.9, 1st of 32" in green**: the most saves means facing the most shots, a defensive weakness. "Hits 5th" green. Missing what hockey bettors use: **PP%, PK%, 5v5 xGF%, save %, shots for/against**. |
+| **Standings, untitled "No upcoming game scheduled", Bar chart, Roster, etc.** | as NBA | | |
+
+**Game page (last season, TOR @ DET, final 3–6):** 9 cards. **Team logos render
+as blank white squares**, the box score is **stuck on "Loading live details…"**
+(F-B10), and there's no matchup, team stats, rankings or goalie matchup. In
+hockey the **starting goalies** are the single most important game-page fact,
+and there is no card for them. **Verdict: rework**, goalie matchup first.
+
+## Tennis (ATP; WTA spot-check)
+
+**The whole tennis game page is a team-sport page with player names in the slots.**
+
+**Player page (Zverev):**
+
+| card | sentence | verdict | fails | what instead |
+|---|---|---|---|---|
+| **Hero** ("AZ", "@ Ben Shelton", 1:15 PM, aces O 24.5) | "Zverev vs Shelton, aces over 24.5" | **rework** | Ide, Nat, Sen | Initials, no headshot or flag. **"@" implies a home/away tennis doesn't have.** No ranking, tournament, round or surface. **Instead:** flag, ranking, tournament, round, surface, start time or live score by set. |
+| **Bar chart** ("141 matches · green cleared over 24.5") | "never cleared" | **fix (suspected bug F-B12) + rework** | **data likely wrong**, Sco | Zverev's aces per match run ~5–21, the line is 24.5, and 0 of 141 cleared. The line looks like **total match aces (both players)** compared with his own. Also opens at the oldest match, no years. |
+| **Surface** (Hard vs Clay: cleared 0% / 0%, aces 9.1 / 5.4) | "he serves more aces on hard courts" | **rework** | Nat | The right idea for tennis (C7), but **grass is missing**, and today's surface isn't marked. **Instead:** hard / clay / grass with match counts, today's surface highlighted. |
+| **Opponent** (Shelton averages n=110: aces 9.8, games won 14.5, "To win a set 0.8") | "Shelton serves big too" | **rework** | Sen | "To win a set 0.8" is unexplained. **Instead:** serve and return stats that drive aces and games (1st-serve %, aces/match, return games won %), both players side by side. |
+| **Head to head** ("0% · cleared 0 of 4", four **green** squares) | "never cleared vs Shelton" | **rework** | Enc | Squares are green while the headline says 0 of 4, so the colors must mean match wins. **Instead:** list the meetings with score, surface, and his aces. |
+| **Game log** ("Last 15 games") | "his recent matches" | **rework** | Nat, Ide | Tennis plays **matches**. Rows show aces and games but **no result, score, tournament or surface**; empty avatar circles. |
+
+**Game page (Shelton vs Zverev, final 1–3):**
+
+| card | verdict | fails | what instead |
+|---|---|---|---|
+| **Hero + live panel** (flags, "AWAY"/"HOME", records 73-37 and 103-38) | **rework + bug** | Nat, Dup, Sco, Ren | **"Away/Home" labels** in tennis; the name text overlaps the flag (D1's fault); the panel repeats the hero. **Records "103-38" labeled "2026 season"**, far more matches than a player plays in a year (F-B13). |
+| **By set** (3·6, 6(2)·7(7), 7·5, 2·6) | **keep** | — | Native and correct. |
+| **Team stat comparison** ("Team", "Qualifying share 0.000") | **replace** | Nat, Sen | **Instead:** serve/return comparison (aces, double faults, 1st-serve % and points won, break points saved/converted), this season, plus on this surface. |
+| **Unit grades** ("Results A / A+", "Game control B- / B+") | **remove** | Nat, Sen | Invented units for an individual sport. |
+| **Injuries** ("0 players out", each name printed twice) | **replace** | Nat, Ren | **Instead:** fitness signals that exist for tennis: retirements/withdrawals this season, matches in the last 7 days, time on court last round. |
+| **Rankings** ("of 349", FOR/AGN) | **remove + bug** | Nat, **data wrong** | Mirrored (F-B1). "Against" means nothing for one player. **Instead:** ATP/WTA ranking and Elo, overall and on this surface. |
+| **Records** (Home / Away dashes) | **rework** | Nat | Season W-L, W-L on this surface, H2H by surface. |
+
+---
+
+## Every page
+
+### Blank player pages (CFB, NBA, NHL, EPL goalkeeper)
+
+**Seven of 22 player captures render one sentence.** The page exists only when a
+book prices a market for today. **Verdict: replace.** A player page is about the
+player first. Always render identity, season and last-season stats, game log,
+next game, injury status. Market cards appear when there's a market. This alone
+covers every blank page in Phase E, and it's the precondition for the
+deep-history work in build Phase 7.
+
+### The games strip (top of every sport page)
+
+Fixed-width game buttons push every page wider than a 400px phone screen (E
+fact 2), and the strip's sticky header covered card content in several crops.
+**Verdict: rework.** Horizontally scrollable inside its own container, and the
+sticky header must not overlap cards.
+
+### Dark mode
+
+The app has none (E fact 3). **Verdict:** not a card verdict; recorded for
+Phase G as a product decision, not assumed.
+
+### Interaction
+
+76% of cards have no hover state (E fact 15). Charts don't show a value on
+hover. **Verdict (all charts):** hover detail on every mark (game, date,
+opponent, value, line, hit/miss), and a shared crosshair where two charts show
+the same games. The chart library already has `useChartCrosshair` for this.
+
+### Identity
+
+Initials instead of photos on Last 5 games (every game page), rosters (MLB,
+NFL, CFB), the soccer matchup, the NFL live panel and the tennis hero; soccer
+player heroes show the club crest; NHL game logos render blank. **Verdict:** one
+shared player-photo / team-logo resolver per sport, with a consistent fallback
+(silhouette and team color, not initials).
+
+---
+
 ## Correctness bugs found during Phase F
 
 Data errors, not design judgments. They go to the build plan in Phase H.
 
 | # | where | what | evidence |
 |---|---|---|---|
-| **F-B1** | NFL game page, **Rankings** | The "AGN" (allowed) columns show the **opponent's offense** ranks, not this team's defense. DAL AGN equals NYG FOR on every row, and NYG AGN equals DAL FOR. The heat colors are therefore wrong too. | Rankings: DAL AGN pass yds 21 · Matchup, same page: DAL pass yds allowed **32nd of 32** |
+| **F-B1** | Game page **Rankings** in **NFL, NBA, soccer and tennis** (not MLB) | The "AGN" (allowed) columns show the **opponent's "FOR" ranks**, not this side's defense. Every AGN column equals the other team's FOR column. Heat colors are therefore wrong too. MLB's is correct. | NFL: DAL AGN pass yds 21 but Matchup says DAL pass yds allowed **32nd of 32**. NBA: MIN AGN = LAL FOR. Soccer: NEW AGN = LEE FOR. Tennis: Shelton AGN = Zverev FOR. |
 | **F-B2** | NFL game page, **Records** | Home and away records total 13 games each, more than an NFL season, under a 0-0 season record. | DAL Home 6-7 · Away 5-7; NYG Home 4-8 · Away 1-12 |
 | **F-B3** | NFL team page, **bar chart** | Two seasons of games out of chronological order, no years. | 11/16 … 01/04, then 09/06 … 12/20 |
 | **F-B4** | MLB pitcher page, **game log** | Totals all zero and every start row blank (no stat line, empty opponent logo). The bar chart above it has the same starts with real values. | Noah Cameron: "Strikeouts 0 · Walks 0 · Hits allowed 0 · Earned runs 0"; 9 empty rows |
@@ -332,3 +504,7 @@ Data errors, not design judgments. They go to the build plan in Phase H.
 | **F-B7** | Soccer player, team and game pages, **rank pools** | Ranks "of 23" in a 20-team league: relegated teams from last season remain in the pool. Pools also differ between cards on one page ("of 20" and "of 23"). | Man United defence "16 of 23"; City team stats "1st of 20" beside "2nd of 23" |
 | **F-B8** | Soccer game page, **Records** | Draws shown as losses (or dropped), producing a losing record for an unbeaten team. Related to build-plan 1b's soccer header. | Newcastle 1W 2D 0L in standings → "1-2 · .333"; Leeds 1W 2D 0L → "1-1 · .500" |
 | **F-B9** *(suspected)* | Soccer team page, **Next game** | Moneylines likely assigned to the wrong teams; no draw price. Verify against a book before fixing. | Man City (1st-2nd, unbeaten) "ML 800" at Sunderland (16th) "ML -340" |
+| **F-B10** | CFB and NHL game pages, **final box score** | Stuck on "Loading live details…" for completed games. NHL's team logos also render blank. | Ohio State @ Texas 23–24 final; TOR @ DET 3–6 final |
+| **F-B11** | NHL team page, **hero record** | Overtime losses dropped from the record (W-L instead of W-L-OTL). Same family as soccer's draws (F-B8, build 1b). | Toronto "32-36" |
+| **F-B12** *(suspected)* | Tennis player page, **aces line vs history** | The line appears to be total match aces while the history is the player's own aces, so nothing ever clears. Verify the market definition before fixing. | Zverev aces O 24.5; 0 of 141 matches, 0 of 4 H2H; his per-match aces ~5–21 |
+| **F-B13** | Tennis game page, **Records** | Multi-season win-loss labeled "2026 season", and inconsistent with the card's own win % (73-37 = .664, shown beside a 0.717 match win %). | Zverev 103-38, Shelton 73-37 |

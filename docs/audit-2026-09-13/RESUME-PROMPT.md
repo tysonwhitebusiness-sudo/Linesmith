@@ -15,7 +15,7 @@ to me.
 2. **Build plan: APPROVED, Phase 0 done, then ON HOLD.**
    `docs/audit-2026-09-13/build-plan.md`. The "before" baseline is in
    `before/README.md`.
-3. **Design audit: APPROVED. Phase E COMPLETE (2026-09-14 00:30Z); Phase F next, awaiting operator go.**
+3. **Design audit: APPROVED. Phases E and F COMPLETE (2026-09-14); Phase G (new ideas + mockups) next, awaiting operator go.**
    `docs/audit-2026-09-13/design-audit-plan.md`. Every single card on every
    player/team/game page, every sport, judged by two questions: **does this make
    sense at all for this sport, and does this help at all?** Phases:
@@ -24,7 +24,7 @@ to me.
    Stop after each.
    - Operator examples: `design-findings.md` D1–D5. These are **examples of
      the kind of problem to find everywhere**, not a to-do list.
-   - Phase E so far: `design-audit/E-inventory.md` (coverage + facts),
+   - Results: `design-audit/E-inventory.md` (coverage + facts), `F-card-verdicts.md` (every card, 13 data bugs F-B1..B13),
      `E-matrix.md` (generated), `E-raw/` (captured card data).
 
 ## Decisions already made — don't reopen
