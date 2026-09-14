@@ -1,6 +1,7 @@
 # Research pages — master plan (Phase H)
 
-**Status: DRAFT for operator approval, 2026-09-14. No code until approved.**
+**Status: APPROVED by the operator 2026-09-14, as written (including picks G1–G7
+as taken in §3). Next: R1, R2 and R3 (any order). No phase started yet.**
 
 This is Phase H of `design-audit-plan.md`: every audit finding, every card verdict,
 the visual and interaction system, the G2 mockups and the data work behind them,

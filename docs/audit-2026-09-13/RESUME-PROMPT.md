@@ -1,50 +1,68 @@
-# Resume prompt — research pages thread (2026-09-14)
+# Resume prompt — research pages build (2026-09-14)
 
 Paste everything below the line into a fresh session on any account.
 
 ---
 
-I'm resuming the research-pages thread in this repo. Read `CLAUDE.md` first, then
-the files below **before doing anything**. Don't restate them back to me.
+I'm resuming the research-pages build in this repo. Read these first, **before doing anything**, and don't restate them back to me:
+1. `CLAUDE.md`
+2. `docs/CURRENT.md` (the project baton; the research pages track is in "START HERE")
+3. `docs/audit-2026-09-13/research-pages-master-plan.md` (**approved as written 2026-09-14**, the build order)
 
 ## Where the work is
 
-1. **Card audit (A–D) and design audit (E, F, F2, G, G2): DONE.**
-2. **Phase H: DONE as a draft.** `docs/audit-2026-09-13/research-pages-master-plan.md` is the one
-   build order now. It merges:
-   - the card audit and `build-plan.md` (now marked superseded; Appendix C maps every item);
-   - the F verdicts and F-B1..F-B13 (Appendix A ledger);
-   - the F2 visual and UX system;
-   - the G2 mockups, including game states and the compare control;
-   - `BUILDABILITY.md` (sources and tables per card).
-   Phases R0–R11. §1 says how close the build gets to the mockups and where it differs.
-   §3 records picks G1–G7 as built in G2.
-3. **Waiting on operator approval of the master plan.** No code before approval. Once approved:
-   - R1 (correctness on today's pages), R2 (shared data rules) and R3 (design system) can start in any order.
-   - The CFB check (R1f 2b) is Saturday 2026-09-19.
-   - The Python UTC fix (R1d) needs deploy approval.
-4. **The spec is the G2 mockups:** `docs/design/phase-g2/` (`player.html`, `game.html`, `team.html`; `PLAN.md` explains rebuilding).
-   - The datasets in `data/` are the reference fixtures every rebuild phase is checked against (plan Appendix B).
-   - Rebuild with `node docs/design/phase-g2/build.mjs`.
-   - Refresh data with the venv Python from the repo root: `tools/build_player_data.py`, `build_game_data.py`, `build_team_data.py`, `build_matchup_data.py`.
+- **Done:**
+  - Card audit (A–D).
+  - Design audit (E, F, F2, G, G2), including game states and the compare control.
+  - Phase H, which produced the master plan. `build-plan.md` is superseded; the plan's Appendix C maps every item.
+- **Approved and not started:** phases R0–R11.
+  - R0 is done.
+  - **Next: R1** (correctness on today's pages). R2 (shared data rules) and R3 (design system) don't depend on it and can go in any order.
+  - Start R1 by re-checking each item's cited file and line. The plan was written from audit notes, and line numbers drift.
+- **Spec:** the G2 mockups in `docs/design/phase-g2/`:
+  - pages: `player.html`, `game.html`, `team.html`;
+  - how to rebuild them: `PLAN.md`;
+  - per-card sources and tables: `BUILDABILITY.md`;
+  - reference fixtures: the datasets in `data/` (plan Appendix B).
+  - Rebuild with `node docs/design/phase-g2/build.mjs`.
+  - Refresh data with the venv Python from the repo root: `tools/build_player_data.py`, `build_game_data.py`, `build_team_data.py`, `build_matchup_data.py`.
+- **Approvals and dates inside R1:**
+  - the Python UTC fix (R1d) needs a Render deploy, so ask first;
+  - the CFB odds-job check (R1f 2b) is **Saturday 2026-09-19** during the live window;
+  - the MLB live game state (R8) must be verified before the regular season ends in late September, or on postseason games.
+
+## How every phase runs (plan §2)
+
+1. Build.
+2. `tsc --noEmit`.
+3. Render each affected sport at 1440px and 400px.
+4. Put each page beside its G2 mockup and check the numbers match the dataset.
+5. Delete what the phase replaces, in the same phase.
+6. Commit by explicit path.
+7. Update the plan's status line and rewrite this file.
+8. **Stop for my sign-off.**
 
 ## Decisions already made — don't reopen
 
-- Pages are in-depth research pages; odds are one section. **Keep the prop analysis block** near the top of the
-  player page:
+- **Pages are research pages.** Odds are one section, **except the prop analysis block**, which stays near the top of the player page:
   - market tabs, line stepper with price, vs-opp/L5/L10/L15/Season chips, hit-rate tiles, bars vs line;
   - presentation fixes only.
-- Every card is judged by "does this make sense for this sport / does this help". No earlier design is the standard.
-- Real data only; show a status where data is missing. Don't fix only screenshots. Don't add design calls to the plan.
-- Game page has three states: before start, live, final. Player and team pages have a compare control.
-- Golf is held until a live tournament. NBA/NHL live waits for October. Scan and slate pages are out of scope
-  (slate research views deferred).
+- **How cards are judged:** "does this make sense for this sport / does this help". No earlier design is the standard. Don't fix only screenshots. Don't add design calls to the plan.
+- **Data:** real data only; show a status where data is missing.
+- **Picks as built in G2:**
+  - system sans (drop Plex Mono);
+  - raised cards;
+  - sectioned layouts with a sticky section nav;
+  - slate research views deferred;
+  - everything the mockups show goes into the build.
+- **Deferred:** golf is held until a live tournament; NBA/NHL live waits for October; Scan and slate pages are out of scope.
 
 ## Standing constraints
 
 - Postgres pooler caps at 15 connections. Check for running fits, harvester cycles and other sessions' jobs before DB work.
-- Don't touch `docs/CURRENT.md` (another session's baton). This file is this thread's baton; rewrite it at every stop.
-- Never `git add -A` or `git add docs/` (`docs/discord-community-prompt.md` is the operator's). Add explicit paths.
-- Ask before deploying to Render. Don't push unless asked. At ~92% context, stop and hand off.
-- Playwright MCP checks of the mockups: route `http://phase-g2.local/**` to the local files and run scripts from
-  `.playwright-mcp/` (file access is limited to the repo and that folder).
+- **Git:**
+  - never `git add -A` or `git add docs/` (`docs/discord-community-prompt.md` is mine); add explicit paths;
+  - don't push unless I ask.
+- Ask before deploying to Render.
+- At ~92% context, stop and hand off: rewrite this file, and update the research pages track in `docs/CURRENT.md` without disturbing the model track's sections.
+- **Playwright MCP checks of the mockups:** route `http://phase-g2.local/**` to the local files and run scripts from `.playwright-mcp/` (file access is limited to the repo and that folder).

@@ -3,11 +3,19 @@
 **Phases 1–4 COMPLETE. Phase 5 OPEN (monitoring only). Phase 6 CLOSED (CFB,
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
-decisions done and deployed; three checks owed before closing it.**
+decisions done and deployed; three checks owed before closing it.
+Research pages plan APPROVED 2026-09-14 (second track, below); R1 next.**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
 and the reopen conditions. Don't duplicate them here.
+
+**Second track, APPROVED 2026-09-14: research pages.**
+`docs/audit-2026-09-13/research-pages-master-plan.md` rebuilds the player, team
+and game pages to the G2 mockups (`docs/design/phase-g2/`), phases R0–R11. It
+covers only those pages and adds no new surface; the model and product order
+above is unchanged. That thread's own baton is
+`docs/audit-2026-09-13/RESUME-PROMPT.md`; read it before any R-phase work.
 
 ---
 
@@ -25,6 +33,24 @@ untestable, instead of a false positive.
 ---
 
 # START HERE — the exact next action
+
+## Research pages track — next action: R1
+
+Plan approved as written 2026-09-14; no phase started. **R1 (correctness on
+today's pages), R2 (shared data rules) and R3 (design system) can run in any
+order**; R1 is the default start because its bugs are live. Calendar and
+approvals owed inside R1:
+- **R1f 2b, Saturday 2026-09-19:** read `refreshCfbJob`'s run log during the
+  live CFB window before touching `gameday.py`.
+- **R1d:** the Python `_date_range_param` UTC fix
+  (`python-odds-service/src/game_context.py:148`) needs a Render deploy; ask
+  first.
+- **MLB regular season ends late September:** the R8 MLB live state must be
+  verified before then or on postseason games.
+
+Each R-phase ends with a stop for sign-off (plan §2).
+
+## Model track — Phase 8
 
 **Phase 8 — all five decisions DONE and deployed 2026-09-13.** Close the phase once the owed checks below are done, then read the master plan for Phase 9. Decisions and
 progress (audit detail in the master plan's Phase 8 section, 8.0–8.3):
