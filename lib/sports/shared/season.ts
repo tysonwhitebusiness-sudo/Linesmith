@@ -187,3 +187,62 @@ export function realTeams<T extends { teamId: string; games: number }>(rows: T[]
   const floor = max * REAL_TEAM_MIN_GAMES_FRACTION;
   return rows.filter((r) => r.games >= floor);
 }
+
+/**
+ * How many games a season needs before a page opens on it — R2.
+ *
+ * Distinct from the rank pool's per-sport `minGames`, which asks how many
+ * games one TEAM needs to be ranked. This asks whether the SEASON has enough
+ * of itself to be worth showing: in week 1 every card reads "1 game" and
+ * every split is empty, which is worse than last season's real numbers
+ * clearly labelled as last season's.
+ *
+ * The numbers are the plan's, and they scale with how long a season is:
+ * four games is a quarter of a football season, fifteen is a fifth of a
+ * basketball or hockey one, twenty is an eighth of a baseball one, six is a
+ * sixth of a league campaign.
+ */
+export const SEASON_MIN_GAMES: Record<string, number> = {
+  nfl: 4,
+  cfb: 4,
+  nba: 15,
+  nhl: 15,
+  mlb: 20,
+  soccer_epl: 6,
+  soccer_mls: 6,
+  // Tennis has no team season to be thin: a player's calendar year either has
+  // matches in it or does not, and a page opens on whatever there is.
+  tennis_atp: 0,
+  tennis_wta: 0,
+};
+
+export interface SeasonScope {
+  /** The season to open on. */
+  season: number;
+  /** True when that is not the current one. */
+  isFallback: boolean;
+  /** A sentence to render. `null` when opening on the current season. */
+  reason: string | null;
+}
+
+/**
+ * Which season a page should open on, given how many games the current one
+ * has so far.
+ *
+ * ALWAYS STATES THE REASON when it falls back. The failure this exists to
+ * prevent is not showing the wrong season — it is showing the wrong season
+ * silently, which is exactly what `/api/season-ranks` was doing for cfb,
+ * soccer_epl and soccer_mls on 2026-09-14.
+ */
+export function seasonScope(sport: string, gamesInCurrentSeason: number, now: Date = new Date()): SeasonScope {
+  const current = seasonForDate(sport, now);
+  const min = SEASON_MIN_GAMES[sport] ?? 0;
+  if (gamesInCurrentSeason >= min) return { season: current, isFallback: false, reason: null };
+  const previous = current - 1;
+  const played = gamesInCurrentSeason === 1 ? '1 game' : `${gamesInCurrentSeason} games`;
+  return {
+    season: previous,
+    isFallback: true,
+    reason: `${seasonLabel(sport, current)} is ${played} old, so this shows ${seasonLabel(sport, previous)}.`,
+  };
+}

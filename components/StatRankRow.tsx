@@ -10,13 +10,22 @@ import { ordinal, type OpposingStarterStat } from './PlayerDetail';
  * same way: Team Detail's Advanced Stats/Season Team Stats, Player Detail's
  * Hitter Stats card, and the matchup card's solo (non-shared) stat rows.
  */
+/**
+ * The bar's colour, or a flat neutral grey for a stat with no good/bad
+ * direction (R2). The bar's LENGTH still shows where the value sits; only the
+ * verdict is withheld.
+ */
+function barColor(stat: OpposingStarterStat, pct: number): string {
+  return stat.neutral ? 'var(--color-ink-faint, #b6b7ba)' : heatFill(pct / 100);
+}
+
 export function StatRankRow({ stat }: { stat: OpposingStarterStat }) {
   const pct = percentileOf(stat) ?? 0;
   return (
     <div className="flex items-center gap-2">
       <span className="w-20 shrink-0 truncate text-[9px] uppercase tracking-wide text-ink-faint">{stat.label}</span>
       <div className="h-[5px] flex-1 rounded-full bg-line-hair">
-        <div className="h-[5px] rounded-full" style={{ width: `${pct}%`, backgroundColor: heatFill(pct / 100) }} />
+        <div className="h-[5px] rounded-full" style={{ width: `${pct}%`, backgroundColor: barColor(stat, pct) }} />
       </div>
       <span className="w-10 shrink-0 text-right text-[10.5px] font-semibold tabular-nums">{stat.value.toFixed(stat.decimals)}</span>
       <span className="w-16 shrink-0 truncate text-right text-[9px] text-ink-faint" title={`${stat.rank} of ${stat.poolSize}`}>
@@ -51,10 +60,10 @@ export function TwoSidedStatRankRow({
           {subject ? subject.value.toFixed(subject.decimals) : '—'}
         </span>
         <div className="h-[5px] overflow-hidden rounded-full bg-line-hair">
-          <div className="ml-auto h-full rounded-full" style={{ width: `${sp}%`, backgroundColor: heatFill(sp / 100) }} />
+          <div className="ml-auto h-full rounded-full" style={{ width: `${sp}%`, backgroundColor: subject ? barColor(subject, sp) : heatFill(sp / 100) }} />
         </div>
         <div className="h-[5px] overflow-hidden rounded-full bg-line-hair">
-          <div className="h-full rounded-full" style={{ width: `${op}%`, backgroundColor: heatFill(op / 100) }} />
+          <div className="h-full rounded-full" style={{ width: `${op}%`, backgroundColor: opponent ? barColor(opponent, op) : heatFill(op / 100) }} />
         </div>
         <span className="text-[10.5px] font-semibold tabular-nums">
           {opponent ? opponent.value.toFixed(opponent.decimals) : '—'}

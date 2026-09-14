@@ -37,6 +37,22 @@ export interface SeasonStatDef {
   /** A lower number is better (turnovers, penalty minutes, games lost). */
   lowerIsBetter?: boolean;
   /**
+   * This stat has NO good/bad direction — R2. It is still ranked, because
+   * "12th most fouls" is a real fact, but it is rendered without the heat
+   * colour, because it is not a verdict.
+   *
+   * The audit's complaint was fouls and offsides showing green. A side that
+   * commits many fouls is playing a style (a high press, a physical front
+   * seven); a side that is caught offside often is playing a high line. NHL
+   * hits are the same, and were worse: with no `lowerIsBetter` they ranked
+   * higher-is-better, so the most physical team in the league read as the
+   * best at something.
+   *
+   * `neutral` and `lowerIsBetter` are mutually exclusive — a stat that has a
+   * direction is not neutral. Asserted in `seasonAggregateSpecs`' own test.
+   */
+  neutral?: boolean;
+  /**
    * Take the MAX within one entity-game instead of the sum, then sum those
    * per-game maxima across the season.
    *
@@ -245,7 +261,7 @@ export function rankPool(spec: SeasonAggregateSpec, entities: readonly EntitySum
       const value = ranksByStat[i].values.get(e.entityId);
       const rank = ranksByStat[i].ranks.get(e.entityId);
       if (value == null || rank == null || !Number.isFinite(value)) continue;
-      stats.push({ key: def.key, label: def.label, value, decimals: def.decimals, rank, poolSize });
+      stats.push({ key: def.key, label: def.label, value, decimals: def.decimals, rank, poolSize, ...(def.neutral ? { neutral: true } : {}) });
     }
 
     const statByKey = new Map(stats.map((s) => [s.key, s]));
@@ -253,7 +269,16 @@ export function rankPool(spec: SeasonAggregateSpec, entities: readonly EntitySum
       .map((u) =>
         unitGradeFromRanked(
           { key: u.key, label: u.label, ...(u.short ? { short: u.short } : {}) },
-          u.statKeys.map((k) => statByKey.get(k)).filter((s): s is OpposingStarterStat => s != null),
+          // R2: A NEUTRAL STAT CANNOT CONTRIBUTE TO A GRADE. A grade is a
+          // composite of ranks, and a rank only means "good" if the stat has
+          // a direction. NBA's `defence` unit included fouls and soccer's
+          // `discipline` included fouls committed, so part of each grade was
+          // reading a style choice as quality. Dropped here rather than
+          // removed from `statKeys`, so the stat still RENDERS in its group —
+          // it just stops voting.
+          u.statKeys
+            .map((k) => statByKey.get(k))
+            .filter((st): st is OpposingStarterStat => st != null && st.neutral !== true),
         ),
       )
       .filter((u): u is UnitGrade => u != null);

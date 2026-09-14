@@ -125,6 +125,14 @@ export interface OpposingStarterStat {
   decimals: number;
   rank: number;
   poolSize: number;
+  /**
+   * This stat has no good/bad direction, so it is ranked but NOT coloured
+   * (R2). A team that commits many fouls or throws many hits is playing a
+   * style, not playing badly — the audit's complaint was fouls and offsides
+   * rendering green. The rank still shows: "12th most fouls" is a real fact,
+   * it just isn't a verdict.
+   */
+  neutral?: boolean;
 }
 
 export function ordinal(rank: number): string {

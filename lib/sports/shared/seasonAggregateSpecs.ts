@@ -55,7 +55,7 @@ export const NHL_SEASON_SPEC: SeasonAggregateSpec = {
     { key: 'blockedShots', label: 'Blocks/game', statKey: 'blockedShots', decimals: 1, perGame: true, group: 'Defence' },
     { key: 'takeaways', label: 'Takeaways/game', statKey: 'takeaways', decimals: 1, perGame: true, group: 'Defence' },
     { key: 'giveaways', label: 'Giveaways/game', statKey: 'giveaways', decimals: 1, perGame: true, lowerIsBetter: true, group: 'Discipline' },
-    { key: 'hits', label: 'Hits/game', statKey: 'hits', decimals: 1, perGame: true, group: 'Discipline' },
+    { key: 'hits', label: 'Hits/game', statKey: 'hits', decimals: 1, perGame: true, neutral: true, group: 'Discipline' },
     { key: 'pim', label: 'Penalty min/game', statKey: 'pim', decimals: 1, perGame: true, lowerIsBetter: true, group: 'Discipline' },
   ],
   units: [
@@ -92,7 +92,7 @@ export const NBA_SEASON_SPEC: SeasonAggregateSpec = {
     { key: 'steals', label: 'Steals/game', statKey: 'steals', decimals: 1, perGame: true, group: 'Defence' },
     { key: 'blocks', label: 'Blocks/game', statKey: 'blocks', decimals: 1, perGame: true, group: 'Defence' },
     { key: 'turnovers', label: 'Turnovers/game', statKey: 'turnovers', decimals: 1, perGame: true, lowerIsBetter: true, group: 'Defence' },
-    { key: 'fouls', label: 'Fouls/game', statKey: 'fouls', decimals: 1, perGame: true, lowerIsBetter: true, group: 'Defence' },
+    { key: 'fouls', label: 'Fouls/game', statKey: 'fouls', decimals: 1, perGame: true, neutral: true, group: 'Defence' },
   ],
   units: [
     { key: 'offence', label: 'Offence', short: 'OFF', statKeys: ['points', 'assists', 'fgMade', 'threesMade'] },
@@ -241,10 +241,10 @@ export const SOCCER_EPL_SEASON_SPEC: SeasonAggregateSpec = {
     { key: 'shots', label: 'Shots/game', statKey: 'totalShots', decimals: 1, perGame: true, group: 'Attack' },
     { key: 'shotsOnTarget', label: 'On target/game', statKey: 'shotsOnTarget', decimals: 1, perGame: true, group: 'Attack' },
     { key: 'goalsConceded', label: 'Conceded/game', statKey: 'goalsConceded', decimals: 2, perGame: true, perGameMax: true, lowerIsBetter: true, group: 'Defence' },
-    { key: 'foulsCommitted', label: 'Fouls/game', statKey: 'foulsCommitted', decimals: 1, perGame: true, lowerIsBetter: true, group: 'Discipline' },
+    { key: 'foulsCommitted', label: 'Fouls/game', statKey: 'foulsCommitted', decimals: 1, perGame: true, neutral: true, group: 'Discipline' },
     { key: 'yellowCards', label: 'Yellows/game', statKey: 'yellowCards', decimals: 2, perGame: true, lowerIsBetter: true, group: 'Discipline' },
     { key: 'redCards', label: 'Reds/game', statKey: 'redCards', decimals: 3, perGame: true, lowerIsBetter: true, group: 'Discipline' },
-    { key: 'offsides', label: 'Offsides/game', statKey: 'offsides', decimals: 2, perGame: true, lowerIsBetter: true, group: 'Discipline' },
+    { key: 'offsides', label: 'Offsides/game', statKey: 'offsides', decimals: 2, perGame: true, neutral: true, group: 'Discipline' },
   ],
   units: [
     { key: 'attack', label: 'Attack', short: 'ATK', statKeys: ['goals', 'assists', 'shots', 'shotsOnTarget'] },

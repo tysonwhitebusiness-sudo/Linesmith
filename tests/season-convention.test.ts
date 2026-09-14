@@ -262,3 +262,92 @@ test('rankScopeLabel is undefined when there is no pool to label', async () => {
     undefined,
   );
 });
+
+// ---------------------------------------------------------------------------
+// Page-level early-season fallback
+// ---------------------------------------------------------------------------
+
+test('a season too young to open on falls back, and says why', async () => {
+  const { seasonScope, SEASON_MIN_GAMES } = await import('../lib/sports/shared/season');
+  // Week 2 of an NFL season: 1 game played, 4 needed.
+  const s = seasonScope('nfl', 1, new Date('2026-09-14T12:00:00Z'));
+  assert.equal(s.isFallback, true);
+  assert.equal(s.season, 2025);
+  assert.ok(s.reason?.includes('2026-27'), s.reason ?? '');
+  assert.ok(s.reason?.includes('1 game'), s.reason ?? '');
+  assert.ok(!s.reason?.includes('1 games'), 'singular, not "1 games"');
+  assert.equal(SEASON_MIN_GAMES.nfl, 4);
+});
+
+test('a season past the threshold opens on itself, with no reason to state', async () => {
+  const { seasonScope } = await import('../lib/sports/shared/season');
+  const s = seasonScope('nfl', 4, new Date('2026-10-14T12:00:00Z'));
+  assert.equal(s.isFallback, false);
+  assert.equal(s.season, 2026);
+  assert.equal(s.reason, null);
+});
+
+test('each sport\'s threshold scales with its season length', async () => {
+  const { SEASON_MIN_GAMES } = await import('../lib/sports/shared/season');
+  assert.equal(SEASON_MIN_GAMES.cfb, 4);
+  assert.equal(SEASON_MIN_GAMES.nba, 15);
+  assert.equal(SEASON_MIN_GAMES.nhl, 15);
+  assert.equal(SEASON_MIN_GAMES.mlb, 20);
+  assert.equal(SEASON_MIN_GAMES.soccer_epl, 6);
+  assert.equal(SEASON_MIN_GAMES.soccer_mls, 6);
+});
+
+test('tennis never falls back — a calendar year either has matches or does not', async () => {
+  const { seasonScope } = await import('../lib/sports/shared/season');
+  assert.equal(seasonScope('tennis_atp', 0, new Date('2026-01-02T12:00:00Z')).isFallback, false);
+});
+
+// ---------------------------------------------------------------------------
+// Neutral stats
+// ---------------------------------------------------------------------------
+
+test('direction-less stats are declared neutral, and never also have a direction', async () => {
+  const { SEASON_AGGREGATE_SPECS } = await import('../lib/sports/shared/seasonAggregateSpecs');
+  const neutral: string[] = [];
+  for (const spec of Object.values(SEASON_AGGREGATE_SPECS)) {
+    for (const st of spec.stats) {
+      if (st.neutral) {
+        neutral.push(`${spec.sport}.${st.key}`);
+        assert.notEqual(st.lowerIsBetter, true, `${spec.sport}.${st.key} is both neutral and lowerIsBetter`);
+      }
+    }
+  }
+  // The audit's complaint was fouls and offsides rendering green; NHL hits had
+  // no direction at all and so ranked higher-is-better.
+  assert.ok(neutral.includes('nba.fouls'), neutral.join(','));
+  assert.ok(neutral.includes('soccer_epl.foulsCommitted'), neutral.join(','));
+  assert.ok(neutral.includes('soccer_epl.offsides'), neutral.join(','));
+  assert.ok(neutral.includes('nhl.hits'), neutral.join(','));
+});
+
+test('a neutral stat is ranked but does not vote in a unit grade', async () => {
+  const { rankPool } = await import('../lib/sports/shared/seasonAggregateShapes');
+  const spec = {
+    sport: 'test',
+    groupBy: 'team_id' as const,
+    minGames: 1,
+    stats: [
+      { key: 'good', label: 'Good', statKey: 'good', decimals: 1, perGame: false },
+      { key: 'style', label: 'Style', statKey: 'style', decimals: 1, perGame: false, neutral: true },
+    ],
+    units: [{ key: 'u', label: 'Unit', statKeys: ['good', 'style'] }],
+  };
+  const out = rankPool(spec as never, [
+    { entityId: 'a', games: 10, sums: [100, 1] },
+    { entityId: 'b', games: 10, sums: [1, 100] },
+  ]);
+  // Both stats still rank — "most of X" is a fact either way.
+  assert.equal(out.a.stats.length, 2);
+  assert.equal(out.a.stats.find((s) => s.key === 'style')?.neutral, true);
+  assert.equal(out.a.stats.find((s) => s.key === 'good')?.neutral, undefined);
+  // `a` is best at the graded stat and worst at the neutral one. If the
+  // neutral stat voted, both grades would land mid-table; with only the
+  // graded stat voting they are the extremes.
+  assert.equal(out.a.units[0].composite, 100, 'the neutral stat voted in the grade');
+  assert.equal(out.b.units[0].composite, 0, 'the neutral stat voted in the grade');
+});

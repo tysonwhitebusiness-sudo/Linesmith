@@ -175,13 +175,35 @@ test('every unit grades on stats its own spec defines', () => {
 test('stats where fewer is better are flagged lowerIsBetter', () => {
   // Getting this wrong does not throw — it inverts the ranking and shows the
   // worst team in the league as first.
+  //
+  // R2 REMOVED `fouls` FROM THIS LIST, deliberately. It was flagged
+  // `lowerIsBetter`, which claims a side that fouls less is playing better;
+  // it is playing a different style. The design audit's complaint was fouls
+  // rendering green. Fouls, fouls committed, offsides and NHL hits are now
+  // `neutral` — ranked, so "12th most fouls" still shows, but not coloured
+  // and not voting in a unit grade. The next test guards that.
   const FEWER_IS_BETTER = [
-    'goalsAgainst', 'giveaways', 'pim', 'turnovers', 'fouls', 'setsLost', 'gamesLost', 'qualifying',
+    'goalsAgainst', 'giveaways', 'pim', 'turnovers', 'setsLost', 'gamesLost', 'qualifying',
   ];
   for (const [sport, spec] of Object.entries(SEASON_AGGREGATE_SPECS)) {
     for (const s of spec.stats) {
       if (FEWER_IS_BETTER.includes(s.key)) {
         assert.equal(s.lowerIsBetter, true, `${sport}'s \`${s.key}\`: fewer is better, but it ranks highest-first.`);
+      }
+    }
+  }
+});
+
+test('a direction-less stat is neutral, never silently higher-is-better', () => {
+  // The failure this replaces: NHL `hits` had NO direction flag at all, so it
+  // ranked higher-is-better and the most physical team in the league read as
+  // the best at something.
+  const NO_DIRECTION = ['fouls', 'foulsCommitted', 'offsides', 'hits'];
+  for (const [sport, spec] of Object.entries(SEASON_AGGREGATE_SPECS)) {
+    for (const s of spec.stats) {
+      if (NO_DIRECTION.includes(s.key)) {
+        assert.equal(s.neutral, true, `${sport}'s \`${s.key}\` has no good/bad direction and must be neutral.`);
+        assert.notEqual(s.lowerIsBetter, true, `${sport}'s \`${s.key}\` cannot be both neutral and directional.`);
       }
     }
   }
