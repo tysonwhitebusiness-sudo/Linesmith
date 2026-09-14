@@ -5,6 +5,11 @@ as taken in §3). R0 done. R1 BUILT 2026-09-14 and awaiting sign-off — every
 item done or measured except three that could not be reproduced today (see
 below). Next after sign-off: R2 and R3 (any order).**
 
+**R2 IN PROGRESS, 7 of 9 rules done (2026-09-14).** Prop main line landed in
+`b8f80d8` and closes F-B12's cause. Left: the pre-start odds filter, then the
+three small rules, then the R2 sign-off pass. Detail in
+`docs/audit-2026-09-13/RESUME-PROMPT.md`.
+
 **R1 outcome, 2026-09-14** — commits f89d704, 69cf490, 770f6c9, 3f61ee6,
 16e8227. Done: R1a, R1b, R1c, R1d (TS + Python; **deployed 2026-09-14**,
 Render `dep-dak36up42hec73bri7hg` on `46a2def` — verified in prod:

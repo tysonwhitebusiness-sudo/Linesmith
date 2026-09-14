@@ -15,12 +15,12 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 - **R1 DONE and signed off**, including the Render deploy (`dep-dak36up42hec73bri7hg`
   on `46a2def`, live 17:50 UTC — verified in prod: `refreshNflJob games=33`,
   `refreshCfbJob games=146`).
-- **R2 IN PROGRESS — 6 of R2's 9 rules done**, plus the `cachedRoute` item the
-  operator folded in. Commits `33ce1f2`, `8aedacf`, `4509175`, `6ebf081`.
-  Everything is committed and pushed; tree clean, tsc clean, 426/426 tests.
+- **R2 IN PROGRESS — 7 of R2's 9 rules done**, plus the `cachedRoute` item the
+  operator folded in. Commits `33ce1f2`, `8aedacf`, `4509175`, `6ebf081`,
+  `b8f80d8` (prop main line). tsc clean, 435/435 tests.
 
-  **THE NEXT RULE IS THE PROP MAIN LINE, and its measurement is already done**
-  — see §1 below. Do not re-measure it.
+  **THE NEXT RULE IS THE PRE-START ODDS FILTER (§2).** Before the sign-off
+  pass, look at the tennis/soccer nested-route 404 logged under §1.
 
 ## R2 — what is done and what is left
 
@@ -55,7 +55,46 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 
 **Left — 3 rules, in this order:**
 
-### 1. Prop main line — START HERE. The measurement is already done.
+### 1. Prop main line — DONE 2026-09-14 (`b8f80d8`)
+
+`lib/odds/props/mainLine.ts` (`pickMainLine`, `candidateLine`), 9 tests in
+`tests/prop-main-line.test.ts`, `readPreGamePropOddsForGame` in
+`lib/db/client.ts`. All six `bestRow`/`bestOverPrice` copies are deleted, and
+`liveEdge.bestPrice` no longer counts pick'em books. Rendered live: NFL Mahomes
+passing yards 149.5 at +2000 (the old pick) became 223.5 at −112; CFB alternates-only
+note checked at 400px. What re-checking the premises changed:
+- **`prop_odds` is upserted in place**, so a post-start poll overwrites the
+  pre-game price. For a started game the reader takes the last
+  `prop_odds_history` row at or before the start (history is pruned at 14 days).
+- **SharpAPI's yes side is stored as `other`**, not `over`. Missed at first and
+  caught on the WTA render: every to-win-a-set had lost its price.
+- **MLB does not pick a line from `prop_odds` at all.** It uses fixed lines
+  (`lib/sports/mlb/adapter.ts` ~1466, e.g. pitcher strikeouts 4.5) and matches rows
+  exactly. It was left untouched because the MLB prop model cache is keyed to those
+  lines. Golf does not read `prop_odds`.
+- `/api/props/lines` stays a raw row feed; the pick happens in the adapters.
+- `pick6` (DraftKings pick'em) was added to the pick'em list the plan gave.
+- `lineHistory.ts`'s `pinLine` is a separate modal-line picker for line-movement
+  charts. Left alone.
+
+**Found in passing, logged and not chased:**
+1. **Every nested page under a dynamic segment 404s in dev**:
+   `/tennis/{tour}/player/*`, `/tennis/{tour}/game/*`, `/soccer/{league}/player/*`,
+   on hard load AND client navigation. `/nba/player/*` and `/cfb/player/*` work.
+   The page component calls `notFound()`, which suggests `useParams().tour`
+   is not resolving. Not caused by `b8f80d8`, which touches no routing. **This
+   blocks rendering tennis and soccer pages for the R2 sign-off pass**, so it
+   must be looked at first.
+2. **Yes/no `other` rows disagree in direction across books**: WTA 183796
+   Stephens to-win-a-set is DraftKings +650 and FanDuel −1450, captured at the same
+   moment before the start. One book's `other` is probably the opposite selection.
+   Ingest problem; the old code showed +650 too.
+3. **"Last quote per book" keeps rungs a book has stopped quoting**: `prop_odds`
+   never deletes, so a 12:19 DraftKings row sat beside 19:18 FanDuel rows on WTA
+   183791.
+4. NFL prop prices on the DEN @ KC page read "19h ago" at 19:26 UTC on game day.
+
+### 1 (original brief, kept for reference). The measurement is already done.
 
 The rule (plan §R2): take the last **pre-game** quote per book, side and line.
 The main line is the one quoted on both sides by the most books; ties go to

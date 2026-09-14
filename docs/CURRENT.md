@@ -59,7 +59,7 @@ thread's own baton is `docs/audit-2026-09-13/RESUME-PROMPT.md`.
 - **MLB regular season ends late September:** the R8 MLB live state must be
   verified before then or on postseason games.
 
-**R2 IN PROGRESS 2026-09-14** (`33ce1f2`, `8aedacf`, `4509175`, `6ebf081`): **6 of R2's 9 rules done**, plus the folded-in cachedRoute item — the
+**R2 IN PROGRESS 2026-09-14** (`33ce1f2`, `8aedacf`, `4509175`, `6ebf081`, `b8f80d8`): **7 of R2's 9 rules done**, plus the folded-in cachedRoute item — the
 `game_result` read module (Raiders 71 raw rows -> 54 games, verified three
 ways), the `cachedRoute` staleness ceiling the operator folded in, and the
 season convention (one table in both languages, drift-tested; seven scattered
@@ -78,10 +78,13 @@ for nba.fouls, soccer.foulsCommitted, soccer.offsides and nhl.hits. Two of the
 plan's ranks sub-items turned out already true (football is already per-game;
 no ESPN published rank is read anywhere).
 
-**Three rules left: prop main line, pre-start odds filter, and the three small
-ones (innings pitched, NBA shot coordinates, source quirks).** The prop
-main-line MEASUREMENT IS ALREADY DONE and written into `RESUME-PROMPT.md` §1 —
-the next session should start from it, not re-query.
+**Prop main line DONE (`b8f80d8`)**: one shared rule
+(`lib/odds/props/mainLine.ts`) replaced six adapters' "highest over price
+across every line", which chose the top ladder rung (NFL passing yards 149.5 at
++2000). **Two rules left: pre-start odds filter, then the three small ones.**
+**Found and logged:** tennis and soccer nested pages (`/tennis/{tour}/player/*`
+and the like) 404 in dev on every load. That blocks the R2 sign-off render;
+see `RESUME-PROMPT.md` §1.
 
 `python-odds-service/src/season.py` is committed and **not deployed** — no job
 imports it yet, so a deploy would restart the worker queue for nothing.
