@@ -112,6 +112,108 @@ question going unanswered.
 
 **Deliverable:** `design-audit/F-card-verdicts.md`. **Stop.**
 
+## Phase F2 — Visual system, UX and interaction
+
+**Added 2026-09-14 at operator request. AWAITING APPROVAL.** Phases E and F
+judged what each card *says*. F2 judges how the whole app **looks, reads,
+flows and responds**, including making every card feel interactive where it
+can be. Charcoal (the graphite palette) is the approved color direction and
+stays; everything else is open.
+
+### Why: measured before proposing, 2026-09-14
+
+| area | measured |
+|---|---|
+| Type sizes | `tailwind.config.ts` defines a 10-step scale (`micro` 9px … `display-lg` 44px). Components use **795 hand-typed `text-[Npx]` sizes vs 266 scale tokens**, across **21 distinct pixel values** (8, 9, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13 … 28), plus 154 Tailwind default sizes. |
+| Weights | semibold 422, medium 162, bold 99, normal 23, extrabold 4 |
+| Card headers | **at least 12 distinct heading class strings**: uppercase bold 10.5px on a tinted bar, sentence-case 12px, `text-meta` tracked uppercase, 15px plain… |
+| Colors | 130 hardcoded color literals in components beyond the tokens. The `card` token (93% lightness) is darker than `paper` (96%), inverting elevation (recorded 2026-08-29, still true). |
+| Hover | hover styles in **30 of 73** component files; `cursor-pointer` 13 times; **24% of rendered cards** have any hover (Phase E) |
+| Focus | **0** `focus-visible` styles: no keyboard focus indication anywhere |
+| Tooltips | 97 native `title=` tooltips; almost no styled tooltip component |
+| Motion | the `motion` library is imported by **1 file**; 111 `transition` classes; keyframes only for pulse and shimmer |
+| Font | system `ui-sans-serif` for text, IBM Plex Mono loaded for numbers |
+
+### Scope — three layers
+
+**A. Visual system**
+
+1. **Typography:** every rendered size, weight and line height mapped to a
+   proposed ramp; numeric style (tabular figures, mono vs sans for stats);
+   typeface choice (system sans today).
+2. **Color in use:** within the charcoal palette, how semantic colors (good,
+   bad, warn, heat ramps, live) are applied; the 130 hardcoded literals; text
+   contrast (WCAG AA) of every ink tone on every surface; the card/paper
+   elevation inversion.
+3. **Spacing and density:** card padding, gaps, header heights, table row
+   heights, rail and column widths, measured per page.
+4. **Card anatomy:** one proposed anatomy (header · scope/subtitle · body ·
+   caption · actions) against the 12+ header variants; tabs and segmented
+   controls, chips, tables, buttons and pills as a component inventory.
+5. **Imagery:** photo, logo and flag sizes, crops and fallbacks.
+6. **Data-viz styling:** axis, tick and label type; gridlines; color ramps;
+   whether charts use the shared `components/charts/` primitives.
+
+**B. UX**
+
+7. **Page structure:** section order, what's above the fold, main column vs
+   rail, section navigation on long pages (the NFL game page runs 16+ cards).
+8. **Navigation and flow:** every player, team and game name linked; player ↔
+   team ↔ game cross-links; back behavior; the games strip.
+9. **States:** loading (skeletons), empty, error (D5's raw error text), stale,
+   offseason, live, final, and what each looks like.
+10. **Responsive:** 400 / 768 / 1024 / 1440px per surface (every phone capture
+    overflows today).
+11. **Accessibility:** keyboard navigation and focus, ARIA on interactive
+    controls, contrast, motion sensitivity (`prefers-reduced-motion`).
+
+**C. Interaction and motion** (the operator's emphasis)
+
+12. **Interaction inventory per card:** what can be clicked, hovered, toggled,
+    sorted or expanded today, and what should be. The baseline target: every
+    stat, name, logo and chart mark does something.
+13. **Target interaction model**, per card type:
+    - Hover detail on every chart mark.
+    - A shared crosshair across charts of the same games.
+    - Click a stat to open its trend and splits.
+    - Scope toggles (season / last N / career).
+    - Sortable tables.
+    - Compare mode (player vs player, team vs team).
+    - Drill-down panels instead of navigating away.
+    - Deep links that preserve state.
+14. **Motion:** duration and easing tokens, transitions for tabs, expansion and
+    data changes, number transitions and change flashes on live values, loading
+    to content, reduced-motion fallbacks.
+15. **Feedback:** hover, pressed, selected and disabled states; styled
+    tooltips; confirmations (added to slip, tracked).
+
+### Method
+
+- **Code measurement:** token vs arbitrary usage, component variants, interaction
+  and motion primitives (as the table above, but per component and per page).
+- **Rendered measurement:** a Playwright pass over the Phase E pages collecting
+  **computed** font size, weight, line height, color and padding for every text
+  node and card, so the audit reports what users actually see, not what class
+  names say.
+- **Interaction probe:** per card, hover every interactive-looking element and
+  record whether anything changes; tab through the page and record focus order
+  and visibility; check links on names and logos.
+- **States:** force loading (throttled network), empty, error and phone width.
+- **External references** (for example Baseball Savant, FBref, NBA.com stats)
+  are used as inspiration for patterns in Phase G, **not as a standard**.
+
+### Deliverables
+
+- `design-audit/F2-visual-system.md`: measured inventory plus a proposed
+  system (type ramp, spacing scale, card anatomy, component inventory, color-use
+  rules, motion tokens). Proposal only.
+- `design-audit/F2-ux-interaction.md`: per-page UX findings, and a per-card
+  interaction inventory with the target interaction for each.
+
+**Stop** after F2. Phase G's mockups are then drawn in the proposed system with
+the proposed interactions, and Phase H merges F2's system work into the build
+plan as the foundation, ahead of card-level changes.
+
 ## Phase G — New ideas and mockups
 
 Phase F says which slots need something different. Phase G says what.
@@ -155,6 +257,9 @@ component covering every sport's "where" card). Sequenced so dependencies hold:
 | 1 | Archetype set above | as listed |
 | 2 | Do build Phase 1's pure data bugs proceed during the audit? | **Yes: 1a (men on WTA), 1c (spelling), 1d (NFL dead link).** None changes how a card looks. **Hold 1b (team header)**, which the audit will judge. |
 | 3 | Mockups per surface in Phase G | 2–3 of the strongest ideas |
+| 4 | *(F2)* Typeface: stay on system sans, or evaluate a brand typeface? | **Evaluate 2–3 in Phase G mockups** beside system sans; decide by looking |
+| 5 | *(F2)* Dark mode: none exists. Design for it now or not? | **Build the proposed tokens so dark mode is possible**; decide whether to ship it separately |
+| 6 | *(F2)* Interaction ambition | **Two tiers:** a baseline on every card (hover detail, linked names, scope toggles, focus states) and deeper interactions (drill-downs, compare mode) where they add real insight |
 
 ## Ground rules
 
