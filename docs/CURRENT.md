@@ -4,7 +4,7 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages: R1 BUILT 2026-09-14, awaiting sign-off (second track, below).**
+Research pages: R1 signed off; R2 COMPLETE 2026-09-14, awaiting sign-off (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -34,11 +34,10 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R1 BUILT 2026-09-14, awaiting sign-off
+## Research pages track — R1 signed off and deployed; R2 COMPLETE, awaiting sign-off
 
-Five commits, nothing pushed: `f89d704`, `69cf490`, `770f6c9`, `3f61ee6`,
-`16e8227`. Everything in R1 is done or measured except three items that could
-not be reproduced today. Full record in the master plan's status block; the
+R1 commits `f89d704`, `69cf490`, `770f6c9`, `3f61ee6`, `16e8227` (pushed).
+Everything in R1 is done or measured except the owed items below. Full record in the master plan's status block; the
 thread's own baton is `docs/audit-2026-09-13/RESUME-PROMPT.md`.
 
 **R1d is DEPLOYED** — Render `dep-dak36up42hec73bri7hg` on `46a2def`, live
@@ -50,41 +49,25 @@ thread's own baton is `docs/audit-2026-09-13/RESUME-PROMPT.md`.
   live CFB window before touching `gameday.py`.
 - **F-B4** (MLB pitcher game log): today's slate has no MLB pitcher markets, so
   no pitcher page renders a game log. Retry on a slate that has them.
-- **A decision on `cachedRoute`'s stale ceiling.** It serves stale with NO
-  maximum age, so a route whose `build()` keeps failing serves its last good
-  payload forever with no signal to the page. That is how a Sep 13 CFB rebuild
-  listed Sep 3/4 games. It does not reproduce today, and both UTC date-range
-  bugs are ruled out (a one-day shift cannot make a nine-day gap). Changing it
-  affects every route.
 - **MLB regular season ends late September:** the R8 MLB live state must be
   verified before then or on postseason games.
 
-**R2 IN PROGRESS 2026-09-14** (`33ce1f2`, `8aedacf`, `4509175`, `6ebf081`, `b8f80d8`): **7 of R2's 9 rules done**, plus the folded-in cachedRoute item — the
-`game_result` read module (Raiders 71 raw rows -> 54 games, verified three
-ways), the `cachedRoute` staleness ceiling the operator folded in, and the
-season convention (one table in both languages, drift-tested; seven scattered
-TS helpers now delegate), and the ranked-block season label.
+**R2 COMPLETE 2026-09-14 — awaiting operator sign-off.** All 9 rules plus the
+folded-in `cachedRoute` ceiling, pushed through `fcaef2c`; tsc clean, 448/448
+tests. Per-rule commits and notes are in `RESUME-PROMPT.md`. Headlines:
+- **Prop main line** (`b8f80d8`): six adapters picked the top ladder rung
+  (NFL passing yards 149.5 at +2000); one shared rule now picks 223.5.
+- **Pre-start odds filter** (`3a421b6`): game line history splits at the
+  start; KC @ BOS's in-game prices no longer read as pre-game movement.
+- Innings pitched, NBA shots (rim y=1, miss value from the arc), and three
+  source quirks. Two of those premises were wrong on re-check.
+- **Found in the sign-off pass and fixed:** the top bar overflowed a 400px
+  screen on every page (`fcaef2c`).
+- **Cfb/soccer/MLS were serving last season's ranks silently** — fixed
+  earlier in R2 (`4509175`); blocks now say which season they rank.
 
-**Found live and fixed 2026-09-14:** cfb, soccer_epl and soccer_mls were all
-serving LAST season's ranks — three weeks into one season and a month into
-another — with nothing on the page to say so. The walk-back was deliberate;
-the silence was not. Blocks now read e.g. "2025-26 season · 2026-27 has too
-few games to rank yet". NBA's label was also wrong in every sport-agnostic
-block ("2026 season" for the 2025-26 one).
-
-Ranks and the early-season fallback are now COMPLETE. Stats gained a third
-direction, `neutral` — ranked but uncoloured and not voting in a unit grade —
-for nba.fouls, soccer.foulsCommitted, soccer.offsides and nhl.hits. Two of the
-plan's ranks sub-items turned out already true (football is already per-game;
-no ESPN published rank is read anywhere).
-
-**Prop main line DONE (`b8f80d8`)**: one shared rule
-(`lib/odds/props/mainLine.ts`) replaced six adapters' "highest over price
-across every line", which chose the top ladder rung (NFL passing yards 149.5 at
-+2000). **Two rules left: pre-start odds filter, then the three small ones.**
-**Found and logged:** tennis and soccer nested pages (`/tennis/{tour}/player/*`
-and the like) 404 in dev on every load. That blocks the R2 sign-off render;
-see `RESUME-PROMPT.md` §1.
+Non-breaking finds are logged in `RESUME-PROMPT.md`, not fixed. **Next after
+sign-off: R3, design system foundations.**
 
 `python-odds-service/src/season.py` is committed and **not deployed** — no job
 imports it yet, so a deploy would restart the worker queue for nothing.
@@ -93,8 +76,8 @@ Operator has pre-approved the deploy for when one does.
 **The ceiling immediately found two real problems nobody had seen:**
 `/api/mlb/team/110` serving a **28-day-old** payload silently, and
 `soccer:snapshot:epl` unable to write its cache at all (statement timeout), so
-it rebuilds on every request and discards the result. Neither is fixed. R2 also inherits F-B2 and F-B12 (measured in R1
-as an alternate-line ladder, not a match-total market); R7 inherits F-B3.
+it rebuilds on every request and discards the result. Neither is fixed.
+F-B2 and F-B12 were closed by R2; R7 inherits F-B3.
 
 Each R-phase ends with a stop for sign-off (plan §2).
 

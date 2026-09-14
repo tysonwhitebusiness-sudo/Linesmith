@@ -1,14 +1,16 @@
 # Research pages — master plan (Phase H)
 
 **Status: APPROVED by the operator 2026-09-14, as written (including picks G1–G7
-as taken in §3). R0 done. R1 BUILT 2026-09-14 and awaiting sign-off — every
-item done or measured except three that could not be reproduced today (see
-below). Next after sign-off: R2 and R3 (any order).**
+as taken in §3). R0 done. R1 signed off and deployed. R2 COMPLETE 2026-09-14,
+awaiting sign-off (below). Next: R3.**
 
-**R2 IN PROGRESS, 7 of 9 rules done (2026-09-14).** Prop main line landed in
-`b8f80d8` and closes F-B12's cause. Left: the pre-start odds filter, then the
-three small rules, then the R2 sign-off pass. Detail in
-`docs/audit-2026-09-13/RESUME-PROMPT.md`.
+**R2 COMPLETE 2026-09-14, awaiting sign-off.** All 9 rules (`33ce1f2`,
+`8aedacf`, `4509175`, `6ebf081`, `b8f80d8`, `3a421b6`, `94b0f53`, `287d15f`,
+`3e83af2`), plus a 400px top-bar fix from the sign-off pass (`fcaef2c`).
+Three premises were wrong on re-check: MLB picks no line from `prop_odds`;
+no TS path summed innings pitched as decimals; the NBA rim was at y=0, not
+5.25. Per-rule record in `docs/audit-2026-09-13/RESUME-PROMPT.md`. Next after
+sign-off: R3.
 
 **R1 outcome, 2026-09-14** — commits f89d704, 69cf490, 770f6c9, 3f61ee6,
 16e8227. Done: R1a, R1b, R1c, R1d (TS + Python; **deployed 2026-09-14**,
