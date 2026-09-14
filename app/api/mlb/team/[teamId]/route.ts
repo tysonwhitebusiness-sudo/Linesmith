@@ -74,7 +74,15 @@ async function buildTeamPayload(teamId: number): Promise<Record<string, unknown>
     abbreviation: info.abbreviation,
     logoUrl: mlbTeamLogoUrl(teamId),
     record: record
-      ? { wins: record.wins, losses: record.losses, divisionRank: record.divisionRank }
+      ? {
+          wins: record.wins,
+          losses: record.losses,
+          divisionRank: record.divisionRank,
+          // R1b: the rank alone is a bare "2" — the standings call already
+          // hydrates division, so send the name the header needs with it
+          // rather than having the page invent "in division".
+          divisionShortName: record.divisionShortName ?? record.divisionName ?? null,
+        }
       : null,
     roster: roster.map((p) => ({
       id: p.id,

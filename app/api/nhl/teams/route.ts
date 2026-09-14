@@ -27,9 +27,13 @@ export async function GET(request: Request) {
           divisionShortName: t.conference ?? 'NHL',
           wins: s?.wins ?? 0,
           losses: s?.losses ?? 0,
+          // NHL's `standings/now` publishes points and conference but no
+          // rank, so there is no standing to show (R1b) — the conference name
+          // alone was being rendered as "Eastern in division".
           divisionRank: '',
           gamesBack: '',
           lastTen: null,
+          otLosses: s?.otLosses ?? 0,
         };
       });
       return { teams: rows };

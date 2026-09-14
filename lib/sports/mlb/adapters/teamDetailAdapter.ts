@@ -47,6 +47,7 @@ import type { BatterPitcherMatchupProps } from '@/components/BatterPitcherMatchu
 import type { PitchingMatchupGame } from '@/components/PitchingMatchupCard';
 import type { TeamBullpen } from '@/components/useBullpen';
 import type { NflPlayerVsDefenseCardProps } from '@/components/NflPlayerVsDefenseCard';
+import { standingPhrase } from '@/lib/sports/shared/teamRecord';
 import { unitGradeFromRanked, type UnitGrade } from '@/lib/sports/shared/unitGrades';
 import type { TeamRatingHistoryData } from '@/lib/sports/shared/teamRatingShapes';
 import { toRatingHistoryRole } from '@/lib/sports/shared/ratingHistoryRole';
@@ -165,7 +166,36 @@ export interface TeamMatchupData {
 
 export interface TeamDetailData {
   team: { teamId: number; name: string; abbr: string; logoUrl: string };
-  record: { wins: number; losses: number; divisionRank: string } | null;
+  /**
+   * R1b. `divisionRank` used to be a bare number for MLB, a full phrase for
+   * NBA/CFB/soccer and a conference name for NHL, and `TeamDetail` appended
+   * " in division" to all of them. Now the adapter owns the phrase (`standing`,
+   * `''` for "no real standing to show") and the counts stay counts, so the
+   * component can format a sport's real record shape from presence alone.
+   */
+  record: {
+    wins: number;
+    losses: number;
+    /** Soccer only — W-D-L. See `formatTeamRecord`. */
+    draws?: number;
+    /** NHL only — W-L-OTL (F-B11). */
+    otLosses?: number;
+    /** Already-built standing phrase, e.g. "2nd in AL Central". `''` renders nothing. */
+    standing: string;
+  } | null;
+  /**
+   * Set only when the record above is NOT the current season's — out of season
+   * every source still serves the last completed season's standings, and a
+   * header that doesn't say so is claiming a stale record as today's.
+   */
+  recordSeasonLabel?: string | null;
+  /**
+   * The sport snapshot's own season state, carried onto the page data so the
+   * header can use it (B6: the field was populated and unread, so an NBA page
+   * showed a meaningless `0-0` in the middle of the offseason while this very
+   * object said "The 2026-27 NBA season hasn't tipped off yet").
+   */
+  seasonStatus?: { started: boolean; nextGameDate: string | null; label?: string } | null;
   /**
    * This team's graded units, in render order — Phase 6.1.
    *
@@ -639,7 +669,15 @@ export function toTeamDetailData(input: ToTeamDetailDataInput): TeamDetailData {
     teamRoles,
     ratingHistory: toRatingHistoryRole({ state: input.ratingHistory }),
     team: { teamId, name: roster.teamName, abbr: roster.abbreviation, logoUrl: roster.logoUrl },
-    record: roster.record,
+    record: roster.record
+      ? {
+          wins: roster.record.wins,
+          losses: roster.record.losses,
+          standing: standingPhrase(roster.record.divisionRank, roster.record.divisionShortName),
+        }
+      : null,
+    seasonStatus: snapshot?.seasonStatus ?? null,
+    recordSeasonLabel: snapshot?.seasonStatus && !snapshot.seasonStatus.started ? 'Last season' : null,
     unitGrades: mlbUnitGrades.length > 0 ? mlbUnitGrades : null,
     candidates,
     games: gameRows,

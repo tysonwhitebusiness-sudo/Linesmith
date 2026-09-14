@@ -37,6 +37,7 @@ import type {
   TeamNextGame,
   TeamWindowedForm,
 } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
+import { standingPhrase } from '@/lib/sports/shared/teamRecord';
 import { toRatingHistoryRole } from '@/lib/sports/shared/ratingHistoryRole';
 import type { TeamRatingHistory } from '@/lib/sports/shared/teamRatingShapes';
 import { buildTeamRoles } from '@/lib/sports/shared/teamRoles';
@@ -339,7 +340,20 @@ export function toTeamDetailData(input: NflTeamDetailInput): TeamDetailData {
     teamRoles,
     ratingHistory: toRatingHistoryRole({ state: input.ratingHistory }),
     team: { teamId: Number(team.teamId), name: team.displayName, abbr: team.abbreviation, logoUrl },
-    record: { wins: team.wins, losses: team.losses, divisionRank: team.divisionRank ?? '' },
+    // R1b. `team.divisionRank` is already an ordinal ("2nd") from the route's
+    // own `computeDivisionRank`; the division name it was ranked within lives
+    // beside it and was being thrown away, which is what left the header
+    // saying "in division" instead of "in NFC East".
+    record: {
+      wins: team.wins,
+      losses: team.losses,
+      // ESPN splits the name in two — `conference: "AFC"`, `division: "West"`
+      // — and "1st in West" names no real division, so rejoin them.
+      standing: standingPhrase(
+        team.divisionRank ? Number(String(team.divisionRank).replace(/\D/g, '')) : null,
+        [team.conference, team.division].filter(Boolean).join(' ') || null,
+      ),
+    },
     unitGrades: ownUnitGrades,
     candidates,
     games: gameRows,

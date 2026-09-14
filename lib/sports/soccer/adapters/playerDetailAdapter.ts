@@ -333,8 +333,8 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
   const opponentUnit: OpponentUnitRole | null =
     opponentDefense && opponentName
       ? {
-          title: 'Opposing defence',
-          name: `${opponentName} defence`,
+          title: 'Opposing defense',
+          name: `${opponentName} defense`,
           subtitle: 'Allows',
           logoUrl: opponentLogoUrl,
           stats: [

@@ -179,10 +179,10 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
         : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => isOpponentMatch(rawOf(e).opponentAbbr as string | undefined, opponentName), { minimum: 1 }),
   };
 
-  // ---- Role 1 | opponentUnit: the defence this player faces.
+  // ---- Role 1 | opponentUnit: the defense this player faces.
   // CFB CAN BE PRECISE where NBA and NHL cannot: its groups are
   // passing/rushing/receiving, and the candidate's own market names which one
-  // applies -- a receiving-yards prop is read against the receiving defence,
+  // applies -- a receiving-yards prop is read against the receiving defense,
   // not against all three. Falls back to every group only when the market is
   // one this mapping does not cover, which is honest rather than silent.
   const cfbDefenseGroupKey = active.dimension.startsWith('passing-')
@@ -198,8 +198,8 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
     : [...CFB_MATCHUP_GROUPS];
   const opponentUnit: OpponentUnitRole | null = cfbDefenseTeam
     ? {
-        title: 'Opposing defence',
-        name: `${opponentName} defence`,
+        title: 'Opposing defense',
+        name: `${opponentName} defense`,
         subtitle: 'Allows',
         logoUrl: opponentLogoUrl,
         stats: cfbDefenseGroups.flatMap((g) =>

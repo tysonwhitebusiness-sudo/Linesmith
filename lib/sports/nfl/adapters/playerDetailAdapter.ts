@@ -416,7 +416,7 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   const matchupOpponentStats = opponentDefenseAllowed.map(toStatRow);
   const matchupGroup = position ? MATCHUP_GROUP_BY_POSITION[position] : undefined;
 
-  // ---- Role 1 | opponentUnit: the defence this player faces.
+  // ---- Role 1 | opponentUnit: the defense this player faces.
   // `opponentDefenseAllowed` is already filtered to THIS player's position
   // groups upstream (see the adapter's richMeta note), so these are the
   // defensive numbers that actually bear on his market -- not the unit's
@@ -424,8 +424,8 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   const opponentUnit: OpponentUnitRole | null =
     opponentAbbr && matchupOpponentStats.length > 0
       ? {
-          title: 'Opposing defence',
-          name: `${opponentAbbr} defence`,
+          title: 'Opposing defense',
+          name: `${opponentAbbr} defense`,
           subtitle: 'Allows',
           logoUrl: opponentLogoUrl,
           stats: matchupOpponentStats.map((st) => toRoleStat(st)),

@@ -16,7 +16,7 @@ export interface TeamRosterData {
   teamName: string;
   abbreviation: string;
   logoUrl: string;
-  record: { wins: number; losses: number; divisionRank: string } | null;
+  record: { wins: number; losses: number; divisionRank: string; divisionShortName?: string | null } | null;
   roster: TeamRosterPlayer[];
   fetchedAt: string;
 }

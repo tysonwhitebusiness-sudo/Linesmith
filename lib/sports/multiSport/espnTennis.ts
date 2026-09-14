@@ -13,6 +13,23 @@
 
 const BASE = 'https://site.api.espn.com/apis/site/v2/sports/tennis';
 
+/**
+ * A tour's scoreboard is NOT limited to that tour. Measured live 2026-09-14:
+ * the `atp` scoreboard's US Open event carries a `womens-singles` grouping of
+ * 239 competitions, and the `wta` scoreboard's carries `mens-singles` with the
+ * same 239 — a combined event is published in full under both tours. Doubles
+ * leak too: the `athlete` guard below was documented as excluding them, but
+ * only some events shape them that way (Korea Open `womens-doubles` passed
+ * 15 of 15, Guadalajara 6 of 15), so it is not a filter.
+ *
+ * Keep only this tour's singles, the same slug test `schedule.ts` already
+ * makes for the draw.
+ */
+const SINGLES_SLUG: Record<'atp' | 'wta', string> = {
+  atp: 'mens-singles',
+  wta: 'womens-singles',
+};
+
 export interface EspnTennisMatch {
   matchId: string;
   date: string;
@@ -38,6 +55,7 @@ export async function fetchTennisMatches(tour: 'atp' | 'wta'): Promise<EspnTenni
     events?: Array<{
       name: string;
       groupings?: Array<{
+        grouping?: { slug?: string };
         competitions?: Array<{
           id: string;
           date: string;
@@ -49,8 +67,10 @@ export async function fetchTennisMatches(tour: 'atp' | 'wta'): Promise<EspnTenni
   };
 
   const matches: EspnTennisMatch[] = [];
+  const singlesSlug = SINGLES_SLUG[tour];
   for (const ev of json.events ?? []) {
     for (const grouping of ev.groupings ?? []) {
+      if (grouping.grouping?.slug !== singlesSlug) continue;
       for (const comp of grouping.competitions ?? []) {
         const home = comp.competitors?.find((c) => c.homeAway === 'home');
         const away = comp.competitors?.find((c) => c.homeAway === 'away');
@@ -106,6 +126,7 @@ export async function fetchTennisMatchDetail(tour: 'atp' | 'wta', matchId: strin
     events?: Array<{
       name: string;
       groupings?: Array<{
+        grouping?: { slug?: string };
         competitions?: Array<{
           id: string;
           date: string;
@@ -125,8 +146,10 @@ export async function fetchTennisMatchDetail(tour: 'atp' | 'wta', matchId: strin
     }>;
   };
 
+  const singlesSlug = SINGLES_SLUG[tour];
   for (const ev of json.events ?? []) {
     for (const grouping of ev.groupings ?? []) {
+      if (grouping.grouping?.slug !== singlesSlug) continue;
       for (const comp of grouping.competitions ?? []) {
         if (String(comp.id) !== matchId) continue;
         const home = comp.competitors?.find((c) => c.homeAway === 'home');

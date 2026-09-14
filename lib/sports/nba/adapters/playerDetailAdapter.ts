@@ -229,18 +229,18 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
   });
 
   // ---- Role 1 | opponentUnit: the defensive unit this subject faces.
-  // Same league-wide defence-allowed leaderboard the matchup card already
+  // Same league-wide defense-allowed leaderboard the matchup card already
   // reads, reduced to the one opponent and rendered as a named unit.
   //
   // ONE ROW PER GROUP, each labelled by the group. The candidate carries no
   // position for this sport, so picking a single group would mean guessing
   // which one applies -- and there are only three of them. Showing all of
-  // them labelled is the honest read of what this defence allows.
+  // them labelled is the honest read of what this defense allows.
   const opponentDefenseTeam = opponentAbbr ? teamDefenseAllowed.find((t) => t.abbr === opponentAbbr) : undefined;
   const opponentUnit: OpponentUnitRole | null = opponentDefenseTeam
     ? {
-        title: 'Opposing defence',
-        name: `${opponentAbbr} defence`,
+        title: 'Opposing defense',
+        name: `${opponentAbbr} defense`,
         subtitle: 'Allows',
         logoUrl: opponentLogoUrl,
         stats: NBA_MATCHUP_GROUPS.flatMap((g) =>

@@ -46,7 +46,7 @@ export interface NflTeamRecentResult {
 }
 
 export interface NflTeamDetailApiResponse {
-  team: { teamId: string; abbreviation: string; displayName: string; logoUrl: string | null; wins: number; losses: number; divisionRank?: string | null };
+  team: { teamId: string; abbreviation: string; displayName: string; logoUrl: string | null; wins: number; losses: number; divisionRank?: string | null; conference?: string | null; division?: string | null };
   roster: NflTeamRosterPlayer[];
   recentResults: NflTeamRecentResult[];
   teamStats: NflTeamStatLine[];

@@ -43,6 +43,7 @@ import { toTeamDetailData as toSoccerTeamDetailData } from '@/lib/sports/soccer/
 import { toTeamDetailData as toCfbTeamDetailData } from '@/lib/sports/cfb/adapters/teamDetailAdapter';
 import { toTeamDetailData as toNbaTeamDetailData } from '@/lib/sports/nba/adapters/teamDetailAdapter';
 import { toTeamDetailData as toNhlTeamDetailData } from '@/lib/sports/nhl/adapters/teamDetailAdapter';
+import { formatTeamRecord, hasPlayedGames } from '@/lib/sports/shared/teamRecord';
 import { PlayerRoleMainSections, PlayerRoleRailSections } from './PlayerRoleSections';
 import { PlayerAnalyticsMainSections, PlayerAnalyticsRailSections } from './PlayerAnalyticsSections';
 import { LineMovementCard } from './LineMovementCard';
@@ -158,19 +159,19 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
         : null
       : sport === 'soccer'
         ? soccerTeam.data && league
-          ? toSoccerTeamDetailData({ league, data: soccerTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data, ratingHistory })
+          ? toSoccerTeamDetailData({ league, data: soccerTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data, ratingHistory, seasonStatus: snapshot?.seasonStatus ?? null })
           : null
         : sport === 'cfb'
           ? cfbTeam.data
-            ? toCfbTeamDetailData({ data: cfbTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data, ratingHistory })
+            ? toCfbTeamDetailData({ data: cfbTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data, ratingHistory, seasonStatus: snapshot?.seasonStatus ?? null })
             : null
           : sport === 'nba'
             ? nbaTeam.data
-              ? toNbaTeamDetailData({ data: nbaTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data, ratingHistory })
+              ? toNbaTeamDetailData({ data: nbaTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data, ratingHistory, seasonStatus: snapshot?.seasonStatus ?? null })
               : null
             : sport === 'nhl'
               ? nhlTeam.data
-                ? toNhlTeamDetailData({ data: nhlTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data, ratingHistory })
+                ? toNhlTeamDetailData({ data: nhlTeam.data, scope: { market, lineOffset, opponentOnly, venue, lastN }, standingsTeams, seasonRanks: seasonRanks.data, ratingHistory, seasonStatus: snapshot?.seasonStatus ?? null })
                 : null
               : roster.data
               ? toMlbTeamDetailData({
@@ -309,11 +310,28 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
             <TeamLogo logoUrl={team.logoUrl} abbreviation={team.abbr} size={44} />
             <div>
               <h1 className="text-lg font-semibold">{team.name}</h1>
+              {/* R1b. The component no longer builds this sentence. It shows
+                  the record in whatever shape the sport really has (W-L,
+                  W-D-L, W-L-OTL — from `draws`/`otLosses` presence), the
+                  standing phrase the adapter owns, and — before a season
+                  starts — the snapshot's own words instead of a meaningless
+                  `0-0` (B6). */}
               <p className="text-[12px] text-ink-muted">
-                {data.record
-                  ? `${data.record.wins}-${data.record.losses}${data.record.divisionRank ? ` · ${data.record.divisionRank} in division` : ''}`
-                  : 'Record unavailable'}
+                {data.seasonStatus && !data.seasonStatus.started
+                  ? (data.seasonStatus.label ?? 'The season hasn’t started yet')
+                  : data.record
+                    ? `${formatTeamRecord(data.record)}${data.record.standing ? ` · ${data.record.standing}` : ''}`
+                    : 'Record unavailable'}
               </p>
+              {/* Only when there really are games behind it — NBA's offseason
+                  standings row is `0-0`, and calling that "Last season" would
+                  state a result that never happened. */}
+              {data.seasonStatus && !data.seasonStatus.started && data.record && hasPlayedGames(data.record) ? (
+                <p className="text-[11px] text-ink-faint">
+                  {data.recordSeasonLabel ?? 'Last season'}: {formatTeamRecord(data.record)}
+                  {data.record.standing ? ` · ${data.record.standing}` : ''}
+                </p>
+              ) : null}
               {/* Header grade chips — Phase 6.1. Was three hardcoded
                   `<GradeChip label="OFF">`/`"DEF"`/`"ST"` calls reading
                   `data.grades.offense` etc., which is what made this row NFL-

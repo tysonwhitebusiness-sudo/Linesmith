@@ -31,6 +31,7 @@ import type { EspnTeamSportGame } from '@/lib/sports/multiSport/teamSportEspn';
 import type { CfbTeamDefenseAllowed } from '@/lib/sports/cfb/teamDefenseAllowed';
 import type { EspnInjuryRow } from '@/lib/sports/multiSport/teamSportEspn';
 import { buildCfbMoneylineCandidate, buildCfbGameTotalCandidate, buildCfbPointsForCandidate } from '@/lib/sports/cfb/teamFormCandidates';
+import { standingPhrase } from '@/lib/sports/shared/teamRecord';
 import { toRatingHistoryRole } from '@/lib/sports/shared/ratingHistoryRole';
 import type { TeamRatingHistory } from '@/lib/sports/shared/teamRatingShapes';
 import { buildTeamRoles } from '@/lib/sports/shared/teamRoles';
@@ -121,12 +122,6 @@ export interface CfbTeamDetailApiResponse {
   logoByAbbr: Record<string, string>;
 }
 
-/** Local copy of the same small ordinal helper every other adapter in this family carries — avoids a circular value-import. */
-function ordinal(rank: number): string {
-  const suffix = rank % 100 >= 11 && rank % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][rank % 10] ?? 'th');
-  return `${rank}${suffix}`;
-}
-
 /** Real final scores from ESPN's scoreboard `score`/`status` fields — no draws in football, so `isDraw` is always false (the field exists on `RecentResultRow` for soccer; harmless/unused here). */
 export function toCfbRecentResultRows(games: EspnTeamSportGame[], teamId: string): RecentResultRow[] {
   return games.map((g) => {
@@ -170,6 +165,12 @@ export interface CfbTeamDetailInput {
    * league-wide ranked aggregate to build from before. `null` while loading.
    */
   seasonRanks: SeasonAggregateResult | null;
+  /**
+   * The sport snapshot's season state (B6). Out of season the standings feed
+   * still serves the last completed season, so the header needs to know both
+   * that the new season hasn't started and what to say instead of `0-0`.
+   */
+  seasonStatus?: { started: boolean; nextGameDate: string | null; label?: string } | null;
 }
 
 export function toTeamDetailData(input: CfbTeamDetailInput): TeamDetailData {
@@ -347,13 +348,18 @@ export function toTeamDetailData(input: CfbTeamDetailInput): TeamDetailData {
       ? {
           wins: ownStanding.wins,
           losses: ownStanding.losses,
-          divisionRank: ownStanding.divisionRank ? `${ordinal(Number(ownStanding.divisionRank))} in ${ownStanding.divisionName}` : '',
+          standing: standingPhrase(ownStanding.divisionRank, ownStanding.divisionName),
         }
       : null,
     // Phase 6.1 — `grades` (nine hardcoded NFL unit names) became `unitGrades`.
     // Phase 6.15 fills it: the same rollup behind `statGroups` above, so a
     // team's rank in a stat row and the ranks behind its unit grade cannot
     // disagree.
+    seasonStatus: input.seasonStatus ?? null,
+    // Out of season every source still returns last season's standings. The
+    // page has no season helper yet (that is R2's season-convention rule), but
+    // "not the current one" is exactly what `started: false` means.
+    recordSeasonLabel: input.seasonStatus && !input.seasonStatus.started ? 'Last season' : null,
     unitGrades: ownUnitGrades,
     candidates,
     games: gameRows,

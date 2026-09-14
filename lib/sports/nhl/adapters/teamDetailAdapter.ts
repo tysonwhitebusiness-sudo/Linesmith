@@ -25,6 +25,7 @@ import type { GameRow, RecentResultRow, RosterPlayer, TeamDetailData, TeamDistri
 import type { NhlTeam, NhlGame } from '@/lib/sports/nhl/nhle';
 import { buildNhlMoneylineCandidate, buildNhlGameTotalCandidate, buildNhlGoalsForCandidate } from '@/lib/sports/nhl/teamFormCandidates';
 import type { EspnInjuryRow } from '@/lib/sports/multiSport/teamSportEspn';
+import { standingPhrase } from '@/lib/sports/shared/teamRecord';
 import { toRatingHistoryRole } from '@/lib/sports/shared/ratingHistoryRole';
 import type { TeamRatingHistory } from '@/lib/sports/shared/teamRatingShapes';
 import { buildTeamRoles } from '@/lib/sports/shared/teamRoles';
@@ -100,6 +101,12 @@ export interface NhlTeamDetailInput {
    * fall back to their empty states.
    */
   seasonRanks: SeasonAggregateResult | null;
+  /**
+   * The sport snapshot's season state (B6). Out of season the standings feed
+   * still serves the last completed season, so the header needs to know both
+   * that the new season hasn't started and what to say instead of `0-0`.
+   */
+  seasonStatus?: { started: boolean; nextGameDate: string | null; label?: string } | null;
 }
 
 export function toTeamDetailData(input: NhlTeamDetailInput): TeamDetailData {
@@ -229,12 +236,25 @@ export function toTeamDetailData(input: NhlTeamDetailInput): TeamDetailData {
       ? {
           wins: ownStanding.wins,
           losses: ownStanding.losses,
-          divisionRank: team.conference ? `${team.conference}` : '',
+          // F-B11: an overtime loss is neither a win nor a regulation loss,
+          // and folding it into `losses` misstated every NHL record.
+          otLosses: ownStanding.otLosses ?? 0,
+          // NHL's standings feed publishes points and conference but no rank
+          // (`/api/nhl/teams` sends `divisionRank: ''`). A conference name on
+          // its own is not a standing — it was rendering as "Eastern in
+          // division" — so there is nothing honest to show until R7's hero
+          // computes a real one.
+          standing: standingPhrase(ownStanding.divisionRank, ownStanding.divisionName),
         }
       : null,
     // Phase 6.1 — `grades` (nine hardcoded NFL unit names) became `unitGrades`.
     // Still null here: this sport has no league-wide ranked team aggregate to
     // grade from yet. 6.1b adds one for NBA and NHL; see this file's header.
+    seasonStatus: input.seasonStatus ?? null,
+    // Out of season every source still returns last season's standings. The
+    // page has no season helper yet (that is R2's season-convention rule), but
+    // "not the current one" is exactly what `started: false` means.
+    recordSeasonLabel: input.seasonStatus && !input.seasonStatus.started ? 'Last season' : null,
     unitGrades: ownUnitGrades,
     candidates,
     games: gameRows,

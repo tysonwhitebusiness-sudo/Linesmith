@@ -25,6 +25,12 @@ export interface TeamStandingRow {
   draws?: number;
   points?: number;
   goalDifferential?: number;
+  /**
+   * NHL only — an overtime/shootout loss, which is neither a win nor a
+   * regulation loss and earns a point. `undefined` for every other sport;
+   * its presence is what switches a record to W-L-OTL (F-B11).
+   */
+  otLosses?: number;
 }
 
 export interface AllTeamsState {
