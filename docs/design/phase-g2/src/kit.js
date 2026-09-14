@@ -203,14 +203,14 @@ function lineChartDraw(__W, { series, labels, height = 220, yMin, yMax, yTicks =
 function columnChartDraw(__W, { bars, height = 180, yFmt = (v) => fmt.n(v), refs = [], tooltip, onClick, labelEvery }) {
   const W = __W, H = height, m = { l: 36, r: 8, t: 10, b: 24 };
   const hi = Math.max(...bars.map((b) => b.value), ...refs.map((r) => r.y)) * 1.05 || 1;
-  const band = (W - m.l - m.r) / bars.length; const bw = Math.min(24, band - 2);
+  const band = (W - m.l - m.r) / bars.length; const bw = Math.max(1, Math.min(24, band - (band > 4 ? 2 : 0.5)));
   const y = (v) => m.t + (1 - v / hi) * (H - m.t - m.b);
   const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
   for (let k = 0; k <= 3; k++) { const v = (hi * k) / 3; svg.append(s('line', { class: 'grid-l', x1: m.l, x2: W - m.r, y1: y(v), y2: y(v) }), s('text', { class: 'axis-t', x: m.l - 6, y: y(v) + 3, 'text-anchor': 'end' }, yFmt(v))); }
   const every = labelEvery || Math.max(1, Math.ceil(bars.length / 10));
   bars.forEach((b, i) => {
     const cx = m.l + band * i + band / 2; const top = y(b.value); const hgt = Math.max(0, H - m.b - top);
-    const r = Math.min(4, bw / 2, hgt);
+    const r = Math.max(0, Math.min(4, bw / 2, hgt));
     const path = `M${cx - bw / 2},${H - m.b}V${top + r}q0,-${r} ${r},-${r}h${bw - 2 * r}q${r},0 ${r},${r}V${H - m.b}Z`;
     const g = s('g', { tabindex: '0', style: onClick ? 'cursor:pointer' : null });
     g.append(s('rect', { x: cx - band / 2, y: m.t, width: band, height: H - m.t - m.b, fill: 'transparent' }), s('path', { d: path, fill: b.color || 'var(--ink)', class: 'bar' }));

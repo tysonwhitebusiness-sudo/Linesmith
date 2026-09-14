@@ -65,6 +65,10 @@ MARKETS = {
 }
 
 
+# Pick'em apps post fixed payouts, not prices; they count toward which line is main but never as a price.
+PICKEM = {"prizepicks", "underdog", "sleeper", "dabble", "parlayplay", "betr", "chalkboard"}
+
+
 def _ip_outs(ip):
     if ip is None:
         return 0
@@ -134,21 +138,60 @@ async def game_results(c, sport, team_id, tmap):
 
 
 async def prop_lines(c, subject_ids):
-    rows = await c.fetch("""SELECT market_key, line, side, bookmaker, american_odds, fetched_at FROM prop_odds
-                            WHERE subject_id = ANY($1::text[]) ORDER BY fetched_at DESC""", subject_ids)
-    best = {}
+    """Main line per market for the player's most recent game with props, pre-game quotes only.
+
+    prop_odds holds alternate ladders (some providers file them under the main market key) and keeps capturing
+    after the start, so "the latest row" is not the line. The main line is the one quoted on both sides by the
+    most books; ties go to the price nearest even money.
+    """
+    games = await c.fetch("""SELECT p.game_id, max(p.fetched_at) t, min(g.event_start) start FROM prop_odds p
+                              LEFT JOIN game_result g ON g.event_ref = p.game_id
+                              WHERE p.subject_id = ANY($1::text[]) GROUP BY p.game_id ORDER BY t DESC LIMIT 6""", subject_ids)
+    latest, rows = None, []
+    for gm in games:
+        rs = await c.fetch("""SELECT market_key, line, side, bookmaker, american_odds, fetched_at FROM prop_odds
+                              WHERE subject_id = ANY($1::text[]) AND game_id = $2 AND ($3::timestamptz IS NULL OR fetched_at <= $3)
+                              ORDER BY fetched_at""", subject_ids, gm["game_id"], gm["start"])
+        # The most recent game with a real pre-game market (3+ sportsbooks, pick'em apps excluded).
+        if len({r["bookmaker"] for r in rs if r["bookmaker"] not in PICKEM}) >= 3 or (not latest and rs):
+            latest, rows = gm, rs
+            if len({r["bookmaker"] for r in rs if r["bookmaker"] not in PICKEM}) >= 3:
+                break
+    if not latest:
+        return {}
+    last = {}
     for r in rows:
-        k = r["market_key"]
-        if k in best and len(best[k]["books"]) >= 12:
+        last[(r["market_key"], r["bookmaker"], (r["side"] or "").lower(), r["line"])] = r
+    by_market = defaultdict(list)
+    for (mk, _book, _side, _ln), r in last.items():
+        by_market[mk].append(r)
+    implied = lambda p: 100 / (p + 100) if p > 0 else -p / (-p + 100)  # noqa: E731
+    best = {}
+    for mk, rs in by_market.items():
+        lines = {r["line"] for r in rs if r["line"] is not None}
+        if not lines:
             continue
-        b = best.setdefault(k, {"line": r["line"], "over": None, "under": None, "books": {}, "capturedAt": r["fetched_at"].isoformat()})
-        if r["line"] != b["line"]:
+
+        def score(ln):
+            at = [r for r in rs if r["line"] == ln]
+            overs = {r["bookmaker"] for r in at if (r["side"] or "").lower() == "over"}
+            unders = {r["bookmaker"] for r in at if (r["side"] or "").lower() == "under"}
+            imps = [implied(r["american_odds"]) for r in at if (r["side"] or "").lower() == "over" and r["american_odds"] and r["bookmaker"] not in PICKEM]
+            return (len(overs & unders), -abs(statistics.mean(imps) - 0.5) if imps else -1, len(overs | unders))
+        line = max(lines, key=score)
+        if score(line)[0] == 0:
+            # Nothing quoted on both sides: what was stored is an alternate ladder, not the market's line.
+            best[mk] = {"altOnly": True, "capturedAt": max(r["fetched_at"] for r in rs).isoformat(), "gameId": latest["game_id"]}
             continue
-        side = (r["side"] or "").lower()
-        b["books"].setdefault(r["bookmaker"], {})[side] = r["american_odds"]
-        cur = b.get(side)
-        if side in ("over", "under") and r["american_odds"] is not None and (cur is None or r["american_odds"] > cur["price"]):
-            b[side] = {"price": r["american_odds"], "book": r["bookmaker"]}
+        at = [r for r in rs if r["line"] == line]
+        b = {"line": line, "over": None, "under": None, "books": {}, "capturedAt": max(r["fetched_at"] for r in at).isoformat(), "gameId": latest["game_id"], "gameStart": latest["start"].isoformat() if latest["start"] else None}
+        for r in at:
+            side = (r["side"] or "").lower()
+            b["books"].setdefault(r["bookmaker"], {})[side] = r["american_odds"]
+            cur = b.get(side)
+            if side in ("over", "under") and r["american_odds"] is not None and r["bookmaker"] not in PICKEM and (cur is None or r["american_odds"] > cur["price"]):
+                b[side] = {"price": r["american_odds"], "book": r["bookmaker"]}
+        best[mk] = b
     return best
 
 
@@ -188,11 +231,14 @@ def markets_block(kind, games, lines, candidates):
         values = [{"date": g["date"], "season": g["season"], "opp": g.get("oppAbbr"), "home": g["home"], "v": stat_value(g["stats"], spec)} for g in games]
         values = [v for v in values if v["v"] is not None]
         line = lines.get(mk)
+        alt_only = bool(line and line.get("altOnly"))
+        if alt_only:
+            line = None
         cand = next((x for x in candidates if x.get("dimension") == mk), None)
         blocks.append({"key": mk, "label": label, "line": (line or {}).get("line") if line else (cand or {}).get("line"),
                        "over": (line or {}).get("over"), "under": (line or {}).get("under"), "books": len((line or {}).get("books", {})),
-                       "capturedAt": (line or {}).get("capturedAt"), "values": values,
-                       "status": "priced" if line else ("line without price" if cand and cand.get("line") is not None else "no line posted")})
+                       "capturedAt": (line or {}).get("capturedAt"), "gameId": (line or {}).get("gameId"), "gameStart": (line or {}).get("gameStart"), "values": values,
+                       "status": "priced" if line else ("alternate lines only (no two-sided market stored)" if alt_only else "line without price" if cand and cand.get("line") is not None else "no line posted")})
     return blocks
 
 

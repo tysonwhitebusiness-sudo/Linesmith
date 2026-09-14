@@ -1,0 +1,75 @@
+<meta charset="utf-8">
+<title>Team Page — Sport Switcher</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--SYSTEM-->
+<!--DATA:ALL-->
+<style>
+  .switch-bar { background: var(--card); border-bottom: 1px solid var(--line); }
+  .switch-bar .inner { max-width: 1280px; margin: 0 auto; padding: 10px var(--s5); display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; }
+  .switch-bar .sport-tabs button { border-color: var(--line); color: var(--ink-2); }
+  .switch-bar .sport-tabs button:hover { background: var(--card-sunk); }
+  .switch-bar .sport-tabs button[aria-pressed="true"] { background: var(--masters); color: #fff; border-color: var(--masters); }
+  .switch-bar .sport-tabs { max-width: 100%; }
+  .secnav .tabs { overflow-x: auto; scrollbar-width: none; }
+  .scope-bar { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin-top: var(--s4); }
+  @media (max-width: 720px) { .switch-bar .inner { padding-left: var(--s4); padding-right: var(--s4); } }
+</style>
+<body>
+<div id="bar"></div>
+<div id="switch"></div>
+<main class="page" id="app"></main>
+<script>
+const params = new URLSearchParams(location.search);
+const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } return null; };
+let sport = params.get('sport') || store('g2-team-sport') || 'nfl';
+if (!TEAM_SPORTS[sport]) sport = 'nfl';
+let season = null, observer = null;
+document.getElementById('bar').append(boardBar('Phase G2 · Team page', 'Real data · switch sport below'));
+
+function renderSwitch(doc) {
+  const btns = h('div', { class: 'sport-tabs', role: 'group', 'aria-label': 'Sport' }, ...Object.entries(TEAM_SPORTS).map(([key, def]) => h('button', { type: 'button', 'aria-pressed': String(key === sport), onclick: () => { sport = key; season = null; store('g2-team-sport', key); renderAll(); } }, def.label)));
+  put(document.getElementById('switch'), h('div', { class: 'switch-bar' }, h('div', { class: 'inner' }, h('span', { class: 't-over' }, 'Sport'), btns, h('span', { style: { flex: 1 } }), h('span', { class: 't-over' }, 'Team'), h('span', { class: 'chip' }, doc?.team?.name || TEAM_SPORTS[sport].label))));
+}
+
+function renderPage() {
+  const def = TEAM_SPORTS[sport];
+  const app = document.getElementById('app');
+  if (def.none) { renderSwitch(null); put(app, h('section', { class: 'hero' }, h('div', { class: 'state' }, h('b', null, `No team page for ${def.label}`), def.none))); return; }
+  const doc = loadData(`team-${def.slug}`);
+  renderSwitch(doc);
+  if (!doc) { put(app, h('div', { class: 'state' }, `No dataset for ${def.slug}`)); return; }
+  const spec = def.spec;
+  const seasons = Object.keys(doc.schedule).map(Number).sort((a, b) => b - a);
+  const cur = seasons[0], prev = seasons[1];
+  const played = T.done(doc.schedule[String(cur)]).length;
+  const early = played < spec.minGames;
+  if (season == null) season = early && prev ? prev : cur;
+  const scope = h('div', { class: 'scope-bar' },
+    h('span', { class: 't-over' }, 'Season'),
+    segmented(seasons.map((s) => ({ value: s, label: `${spec.seasonName(s)}${s === cur ? ` (${played} played)` : ''}` })), season, (v) => { season = Number(v); renderPage(); }),
+    h('span', { class: 't-label' }, early ? `${spec.seasonName(cur)} has ${played} ${played === 1 ? 'game' : 'games'}, so the page opens on ${spec.seasonName(prev)}. Every card below follows this switch.` : 'Every card below follows this switch.'));
+  const { hero, sections } = buildTeamPage(doc, spec, season);
+  const navTabs = tabs(sections.map((x) => ({ value: x.id, label: x.label })), sections[0].id, (v) => document.getElementById(`sec-${v}`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
+  const nav = h('div', { class: 'secnav sticky', style: { marginTop: 'var(--s4)' } }, navTabs);
+  put(app, hero, scope, nav, ...sections.map((x) => x.node));
+  const barH = document.getElementById('bar').offsetHeight;
+  nav.style.top = `${barH}px`;
+  document.querySelectorAll('.psec').forEach((el) => { el.style.scrollMarginTop = `${barH + nav.offsetHeight + 12}px`; });
+  if (observer) observer.disconnect();
+  observer = new IntersectionObserver((entries) => {
+    const vis = entries.filter((e) => e.isIntersecting).sort((x, y) => x.boundingClientRect.top - y.boundingClientRect.top)[0];
+    if (!vis) return;
+    navTabs.querySelectorAll('[role="tab"]').forEach((b, i) => { const on = sections[i].id === vis.target.dataset.sec; b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; if (on && navTabs.scrollWidth > navTabs.clientWidth) navTabs.scrollLeft = b.offsetLeft - 24; });
+  }, { rootMargin: `-${barH + 60}px 0px -60% 0px` });
+  document.querySelectorAll('.psec').forEach((el) => observer.observe(el));
+  document.title = `Team Page — ${doc.team.name}`;
+}
+
+function renderAll() {
+  const u = new URL(location.href); u.searchParams.set('sport', sport);
+  try { history.replaceState(null, '', u); } catch {}
+  renderPage(); window.scrollTo({ top: 0 });
+}
+renderAll();
+</script>
+</body>

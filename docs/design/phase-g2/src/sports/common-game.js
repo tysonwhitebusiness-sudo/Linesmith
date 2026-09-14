@@ -208,7 +208,7 @@ function propsResultCard(doc, resolve) {
     const settled = all.filter((r) => r.res);
     put(host, 
       h('div', { class: 'row', style: { marginBottom: '8px' } }, selectBox([{ value: 'all', label: `All markets (${rows.length})` }, ...markets.map((m) => ({ value: m, label: `${MARKET_LABELS[m] || m} (${rows.filter((r) => r.market === m).length})` }))], mk, (v) => { mk = v; limit = 20; draw(); }, 'Market'),
-        h('span', { class: 't-label' }, settled.length ? `${settled.filter((r) => r.res === 'Over').length} over · ${settled.filter((r) => r.res === 'Under').length} under · ${all.length - all.filter((r) => r.res).length} not matched to the box score` : 'No results matched')),
+        h('span', { class: 't-label' }, `${settled.length ? `${settled.filter((r) => r.res === 'Over').length} over · ${settled.filter((r) => r.res === 'Under').length} under · ${all.length - all.filter((r) => r.res).length} not matched to the box score` : 'No results matched'}${doc.propsAltOnly ? ` · ${doc.propsAltOnly} player markets had only alternate lines stored and are left out` : ''}`)),
       dataTable([
         { key: 'name', label: 'Player', render: (r) => h('a', { class: 'lnk', href: '#player' }, r.name) },
         { key: 'label', label: 'Market' },

@@ -270,14 +270,15 @@ async def odds(c, doc, event_ids, start_iso):
     for r in props:
         last[(r["subject_id"], r["market_key"], r["bookmaker"], r["side"], r["line"])] = r
     grouped = defaultdict(lambda: dict(lines=[], over=[], under=[]))
+    pickem = {"prizepicks", "underdog", "sleeper", "dabble", "parlayplay", "betr", "chalkboard"}  # fixed payouts, not prices
     for (sid, mk, book, side, _ln), r in last.items():
         g = grouped[(sid, mk)]
         g["name"] = r["subject_name"]
         if r["line"] is not None:
             g["lines"].append(float(r["line"]))
-        if side and side.lower() in ("over", "under") and r["american_odds"] is not None:
+        if side and side.lower() in ("over", "under") and r["american_odds"] is not None and book not in pickem:
             g[side.lower()].append((r["american_odds"], book, float(r["line"]) if r["line"] is not None else None))
-    prop_rows = []
+    prop_rows, alt_only = [], 0
     for (sid, mk), g in grouped.items():
         if not g["lines"]:
             continue
@@ -292,11 +293,15 @@ async def odds(c, doc, event_ids, start_iso):
         cands = set(g["lines"])
         even = lambda ln: abs(statistics.mean(imp[ln]) - 0.5) if imp[ln] else 1  # noqa: E731
         line = max(cands, key=lambda ln: (len(over_books[ln] & under_books[ln]), -even(ln), len(over_books[ln] | under_books[ln])))
+        if not (over_books[line] & under_books[line]):
+            alt_only += 1  # only one-sided / alternate quotes stored: not a market line
+            continue
         best = lambda arr: max((x for x in arr if x[2] == line), default=None, key=lambda x: x[0])  # noqa: E731
         bo, bu = best(g["over"]), best(g["under"])
         prop_rows.append(dict(id=sid, name=g["name"], market=mk, line=line, books=len({x[1] for x in g["over"] + g["under"]}), over=bo and dict(price=bo[0], book=bo[1]), under=bu and dict(price=bu[0], book=bu[1])))
     doc["odds"] = dict(fields=["market", "side", "book", "odds", "point", "t", "afterStart"], rows=rows, start=start_iso)
     doc["props"] = prop_rows
+    doc["propsAltOnly"] = alt_only
     doc["sources"].append(f"game_odds_history ({len(rows)} snapshots) · prop_odds ({len(prop_rows)} player markets, last pre-game line per book)")
 
 
