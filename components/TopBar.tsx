@@ -75,11 +75,14 @@ export function TopBar({
   };
 
   return (
-    <div className="flex h-12 items-center gap-3 px-3">
+    <div className="flex h-12 items-center gap-2 px-2 sm:gap-3 sm:px-3">
       {/* Identity + sport */}
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
         <img src="/brand/linesmith-mark.png" alt="" width={28} height={18} className="h-[18px] w-auto select-none" />
-        <span className="select-none text-[15px] font-semibold tracking-tight text-ink">
+        {/* Wordmark and Diagnostics drop below `sm`: at 400px the bar was 31px
+            wider than the screen on every page, so phones scrolled sideways.
+            The mark stays as the identity; Diagnostics is an admin tool. */}
+        <span className="hidden select-none text-[15px] font-semibold tracking-tight text-ink sm:inline">
           Linesmith
         </span>
         <label className="sr-only" htmlFor="lb-sport">
@@ -92,7 +95,7 @@ export function TopBar({
             navigate('sport', e.target.value === 'soccer' ? '/soccer/epl' : e.target.value === 'tennis' ? '/tennis/atp' : `/${e.target.value}`)
           }
           disabled={isPending && pendingTarget === 'sport'}
-          className="cursor-pointer rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-none disabled:cursor-wait disabled:opacity-70"
+          className="max-w-[5.5rem] cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-none disabled:cursor-wait disabled:opacity-70 sm:max-w-none"
         >
           {SPORTS.map((s) => (
             <option key={s} value={s}>
@@ -109,7 +112,7 @@ export function TopBar({
               id="lb-league"
               value={league}
               onChange={(e) => onLeagueChange(e.target.value as SoccerLeague)}
-              className="cursor-pointer rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-none"
+              className="max-w-[5.5rem] cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-none sm:max-w-none"
             >
               {SOCCER_LEAGUES.map((l) => (
                 <option key={l} value={l}>
@@ -128,7 +131,7 @@ export function TopBar({
               id="lb-tour"
               value={league}
               onChange={(e) => onLeagueChange(e.target.value as TennisTour)}
-              className="cursor-pointer rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-none"
+              className="max-w-[5.5rem] cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-none sm:max-w-none"
             >
               {TENNIS_TOURS.map((t) => (
                 <option key={t} value={t}>
@@ -179,7 +182,7 @@ export function TopBar({
           onClick={() => router.push('/diagnostics')}
           aria-label="Diagnostics"
           title="Diagnostics — odds provider status, budgets, unresolved rows"
-          className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-ink/5 hover:text-ink"
+          className="hidden rounded-md p-1.5 text-ink-muted transition-colors hover:bg-ink/5 hover:text-ink sm:block"
         >
           <svg viewBox="0 0 16 16" width={15} height={15} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
             <path d="M8 1.5v3M8 11.5v3M2.6 4.6l2.1 2.1M11.3 9.3l2.1 2.1M1.5 8h3M11.5 8h3M2.6 11.4l2.1-2.1M11.3 6.7l2.1-2.1" strokeLinecap="round" />
@@ -219,9 +222,11 @@ export function TopBar({
           onClick={onRefresh}
           // The timestamp is the label: a bare refresh icon says an update is
           // possible, this says whether one is needed.
+          // Hidden below `sm` for width: `useSnapshot` already re-polls on an
+          // interval and on tab focus, so a phone loses no data by it.
           title={lastFetched ? `Last updated ${lastFetched.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : 'Refresh'}
           aria-label="Refresh data"
-          className="flex items-center gap-1 rounded-md px-1.5 py-1.5 text-[11px] text-ink-faint transition-colors hover:bg-ink/5 hover:text-ink-muted"
+          className="hidden items-center gap-1 rounded-md px-1.5 py-1.5 text-[11px] text-ink-faint transition-colors hover:bg-ink/5 hover:text-ink-muted sm:flex"
         >
           <svg
             viewBox="0 0 16 16"
