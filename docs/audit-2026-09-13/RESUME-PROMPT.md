@@ -15,8 +15,9 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 - **R1 DONE and signed off**, including the Render deploy (`dep-dak36up42hec73bri7hg`
   on `46a2def`, live 17:50 UTC — verified in prod: `refreshNflJob games=33`,
   `refreshCfbJob games=146`).
-- **R2 IN PROGRESS — 3 of 10 items.** `33ce1f2` (game_result read module +
-  cachedRoute staleness ceiling) and `8aedacf` (season convention).
+- **R2 IN PROGRESS — 4.5 of 10 items.** `33ce1f2` (game_result read module +
+  cachedRoute staleness ceiling), `8aedacf` (season convention), `4509175`
+  (ranked-block season label + explicit early-season fallback).
 
 ## R2 — what is done and what is left
 

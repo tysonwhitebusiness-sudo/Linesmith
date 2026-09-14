@@ -59,12 +59,23 @@ thread's own baton is `docs/audit-2026-09-13/RESUME-PROMPT.md`.
 - **MLB regular season ends late September:** the R8 MLB live state must be
   verified before then or on postseason games.
 
-**R2 IN PROGRESS 2026-09-14** (`33ce1f2`, `8aedacf`): 3 of 10 items done — the
+**R2 IN PROGRESS 2026-09-14** (`33ce1f2`, `8aedacf`, `4509175`): 4.5 of 10 items done — the
 `game_result` read module (Raiders 71 raw rows -> 54 games, verified three
 ways), the `cachedRoute` staleness ceiling the operator folded in, and the
 season convention (one table in both languages, drift-tested; seven scattered
-TS helpers now delegate). Seven rules left; `RESUME-PROMPT.md` lists them in
-dependency order.
+TS helpers now delegate), and the ranked-block season label.
+
+**Found live and fixed 2026-09-14:** cfb, soccer_epl and soccer_mls were all
+serving LAST season's ranks — three weeks into one season and a month into
+another — with nothing on the page to say so. The walk-back was deliberate;
+the silence was not. Blocks now read e.g. "2025-26 season · 2026-27 has too
+few games to rank yet". NBA's label was also wrong in every sport-agnostic
+block ("2026 season" for the 2025-26 one).
+
+Rules left: the rest of ranks (per-stat direction incl. a NEUTRAL state; drop
+any remaining ESPN published ranks), page-level early-season fallback, prop
+main line, pre-start odds filter, innings pitched, NBA shot coordinates,
+source quirks. `RESUME-PROMPT.md` lists them in order.
 
 `python-odds-service/src/season.py` is committed and **not deployed** — no job
 imports it yet, so a deploy would restart the worker queue for nothing.
