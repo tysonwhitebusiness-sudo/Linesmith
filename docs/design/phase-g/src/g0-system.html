@@ -1,0 +1,109 @@
+<meta charset="utf-8">
+<title>Design System Board</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--SYSTEM-->
+<style>
+  .spec { display: grid; grid-template-columns: 150px 1fr; gap: var(--s3); align-items: baseline; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+  .spec:last-child { border-bottom: 0; }
+  .swatch { display: grid; grid-template-columns: 44px 1fr auto; gap: var(--s3); align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+  .swatch:last-child { border-bottom: 0; }
+  .sw { width: 44px; height: 32px; border-radius: 8px; border: 1px solid var(--line-soft); }
+  .ramp { display: flex; height: 28px; border-radius: 8px; overflow: hidden; }
+  .ramp div { flex: 1; }
+  /* "Today" replica, measured in F2: 10.5px uppercase bold header, 9–11px body, ink-faint text on a darker card */
+  .today { background: oklch(93% 0.003 260); border-radius: 10px; overflow: hidden; font-family: ui-sans-serif, system-ui, sans-serif; }
+  .today .th { background: oklch(89% 0.004 260); padding: 6px 12px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: oklch(20% 0.006 260); }
+  .today .tb { padding: 10px 12px; }
+  .today .r { display: flex; justify-content: space-between; font-size: 11px; padding: 3px 0; color: rgb(151, 152, 155); }
+  .today .r b { color: oklch(16% 0.004 260); font-weight: 600; font-size: 12px; }
+  .today .cap { font-size: 9px; color: rgb(151, 152, 155); margin-top: 6px; }
+  .mini-page { border-radius: 12px; padding: 12px; border: 1px solid var(--line); }
+  .mini-card { height: 46px; border-radius: 8px; margin-top: 8px; }
+</style>
+<body>
+<div id="app"></div>
+<script>
+const app = document.getElementById('app');
+const cv = document.createElement('canvas'); cv.width = cv.height = 1; const g2 = cv.getContext('2d', { willReadFrequently: true });
+const rgb = (c) => { g2.clearRect(0, 0, 1, 1); g2.fillStyle = '#000'; g2.fillStyle = c; g2.fillRect(0, 0, 1, 1); const d = g2.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2]]; };
+const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+const resolve = (v) => getComputedStyle(document.body).getPropertyValue(v).trim();
+const ratio = (a, b) => { const L1 = lum(rgb(a)), L2 = lum(rgb(b)); return (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05); };
+
+function typeCard() {
+  const ramp = [['t-display', 'Display · 32 / 700', 'Live score 27 – 13'], ['t-heading', 'Heading · 22 / 600', 'Bobby Witt Jr.'], ['t-title', 'Title · 17 / 600', 'Power profile section'], ['t-card', 'Card title · 14 / 600', 'Exit velocity by game'], ['t-body', 'Body · 14 / 400', 'Hardest-hit ball each game, with his rolling average.'], ['t-sm', 'Body small · 13 / 400', 'Four-seam · 597 seen · 17.7% whiff'], ['t-label', 'Label · 12 / 500', '2026 season · 390 balls in play'], ['t-over', 'Overline · 11 / 600', 'Passing']];
+  return card({ title: 'Type ramp', scope: '8 steps · nothing under 11px outside charts', info: 'Today the app renders 57 distinct text styles and half its text under 11px (F2 §1).', body: h('div', null, ...ramp.map(([cls, spec, sample]) => h('div', { class: 'spec' }, h('div', { class: 't-label' }, spec), h('div', { class: cls }, sample)))) });
+}
+
+function beforeAfter() {
+  const today = h('div', { class: 'today' }, h('div', { class: 'th' }, 'Season stats · ranked among WRs'), h('div', { class: 'tb' }, ...[['Games', '17'], ['RECEPTIONS', '57 · 35th of 217'], ['REC YDS', '696 · 37th of 217'], ['REC TD', '5 · 34th of 217']].map(([l, v]) => h('div', { class: 'r' }, h('span', null, l), h('b', null, v))), h('div', { class: 'cap' }, 'Scope unstated · 9px caption · ink-faint text (2.4:1)')));
+  const proposed = card({ title: 'Season stats', scope: '2025 · among WRs with 8+ games', info: 'Same numbers, proposed system.', body: h('div', null, pbar('Receptions', '57', 84), pbar('Receiving yards', '696', 83), pbar('Receiving TDs', '5', 84), pbar('Targets / game', 'not shown today', 50)), foot: '17 games · ranks from the app\'s existing data' });
+  return card({ title: 'Before and after', scope: 'the same card', body: h('div', { class: 'grid cols-2', style: { alignItems: 'start' } }, h('div', null, h('div', { class: 't-over', style: { marginBottom: '8px' } }, 'Today (replica of the rendered card)'), today), h('div', null, h('div', { class: 't-over', style: { marginBottom: '8px' } }, 'Proposed'), proposed)) });
+}
+
+function contrastCard() {
+  const surfaces = [['card', 'var(--card)'], ['paper', 'var(--paper)']];
+  const inks = [['Ink', '--ink', 'values, names'], ['Ink 2', '--ink-2', 'supporting values'], ['Ink muted', '--ink-muted', 'captions, labels (floor for text)'], ['Ink faint', '--ink-faint', 'decoration only, never text']];
+  const today = [['Today\'s ink-faint', 'rgb(151,152,155)', 'is 41% of all rendered text']];
+  const rows = [...inks.map(([n, v, use]) => [n, resolve(v), use]), ...today].map(([n, color, use]) => {
+    const r = ratio(color, resolve('--card'));
+    return h('div', { class: 'swatch' }, h('div', { class: 'sw', style: { background: color } }), h('div', null, h('div', { class: 't-sm', style: { fontWeight: 600, color } }, `${n} — sample text`), h('div', { class: 't-label' }, use)), h('span', { class: `chip ${r >= 4.5 ? 'good' : 'bad'}` }, `${r.toFixed(2)}:1 ${r >= 4.5 ? 'AA' : 'fails'}`));
+  });
+  return card({ title: 'Text color and contrast', scope: 'measured live against the card surface', info: 'WCAG AA needs 4.5:1 for normal text. 43% of the app\'s text fails today.', body: h('div', null, ...rows) });
+}
+
+function colorRules() {
+  const seq = Array.from({ length: 7 }, (_, i) => `oklch(${92 - i * 10}% 0.005 260)`);
+  const div = ['var(--bad)', 'color-mix(in srgb, var(--bad) 55%, #d9dadc)', 'color-mix(in srgb, var(--bad) 25%, #d9dadc)', '#d9dadc', 'color-mix(in srgb, var(--good) 25%, #d9dadc)', 'color-mix(in srgb, var(--good) 55%, #d9dadc)', 'var(--good)'];
+  const block = (title, desc, node) => h('div', { style: { marginBottom: 'var(--s4)' } }, h('div', { class: 't-sm', style: { fontWeight: 600 } }, title), h('div', { class: 't-label', style: { marginBottom: '6px' } }, desc), node);
+  return card({ title: 'Color rules within charcoal', body: h('div', null,
+    block('Better / worse', 'Only when a stat has a declared direction. Fewer turnovers is green.', h('div', { class: 'row' }, h('span', { class: 'chip good' }, '▲ 3rd in fewest turnovers'), h('span', { class: 'chip bad' }, '▼ 30th in points allowed'))),
+    block('Volume, share, usage', 'Single charcoal hue, light to dark. Target share and pitch mix are not good or bad.', h('div', { class: 'ramp' }, ...seq.map((c) => h('div', { style: { background: c } })))),
+    block('Diverging', 'Red to neutral gray to green around a meaningful midpoint (league average). No amber midpoint.', h('div', { class: 'ramp' }, ...div.map((c) => h('div', { style: { background: c } })))),
+    block('Compare mode', 'Two validated hues, always with a legend (colorblind separation ΔE 22.2).', h('div', { class: 'legend row' }, h('span', { class: 'chip' }, h('span', { style: { width: '10px', height: '10px', borderRadius: '2px', background: 'var(--cmp-a)', display: 'inline-block' } }), 'Player A'), h('span', { class: 'chip' }, h('span', { style: { width: '10px', height: '10px', borderRadius: '2px', background: 'var(--cmp-b)', display: 'inline-block' } }), 'Player B'))),
+    block('Live', 'Only the live element pulses.', h('span', { class: 'chip live' }, 'Q3 8:12'))) });
+}
+
+function elevationCard() {
+  const mini = (label, paper, cardBg, shadow, border) => h('div', null, h('div', { class: 't-label', style: { marginBottom: '6px' } }, label), h('div', { class: 'mini-page', style: { background: paper } }, ...[0, 1, 2].map(() => h('div', { class: 'mini-card', style: { background: cardBg, boxShadow: shadow, border } }))));
+  return card({ title: 'Elevation', scope: 'decision 4 · also switchable in the bar above', info: 'Today cards are darker (93%) than the page (96%), which inverts the shadows.', body: h('div', { class: 'grid cols-3' },
+    mini('Today: card darker than page', 'oklch(96% 0.002 260)', 'oklch(93% 0.003 260)', '0 1px 3px rgba(0,0,0,.06)', '0'),
+    mini('Proposed A: cards raised', 'oklch(94.5% 0.003 260)', 'oklch(98.5% 0.002 260)', '0 1px 2px rgba(15,18,24,.05), 0 2px 8px -4px rgba(15,18,24,.08)', '1px solid oklch(92.5% 0.003 260)'),
+    mini('Proposed B: flat with borders', 'oklch(97.5% 0.002 260)', 'oklch(97.5% 0.002 260)', 'none', '1px solid oklch(89% 0.004 260)')) });
+}
+
+function componentsCard() {
+  let seg = 'season';
+  const tipTarget = h('button', { class: 'btn', type: 'button' }, 'Hover or focus me'); Tip.bind(tipTarget, () => [tipRow('104.8 mph', 'avg HR exit velo'), tipText('Styled tooltip: same content on hover, focus and tap')]);
+  const liveVal = h('span', { class: 't-display num' }, '13'); liveVal.dataset.v = 13;
+  const table = dataTable([{ key: 'p', label: 'Player' }, { key: 'tgt', label: 'Targets', num: true }, { key: 'yds', label: 'Yards', num: true }], [{ p: 'Brock Bowers', tgt: 9, yds: 102 }, { p: 'Tre Tucker', tgt: 6, yds: 46 }, { p: 'Jack Bech', tgt: 4, yds: 31 }], { sortKey: 'yds' });
+  return card({ title: 'Components', scope: 'one of each, used everywhere', body: h('div', { class: 'stack' },
+    h('div', { class: 'row' }, h('span', { class: 't-label', style: { width: '120px' } }, 'Segmented toggle'), segmented([{ value: 'season', label: 'Season' }, { value: 'l10', label: 'Last 10' }, { value: 'career', label: 'Career' }], seg, () => {})),
+    h('div', { class: 'row' }, h('span', { class: 't-label', style: { width: '120px' } }, 'Tabs'), tabs([{ value: 'a', label: 'Overview' }, { value: 'b', label: 'Stats' }, { value: 'c', label: 'Game log' }], 'a', () => {})),
+    h('div', { class: 'row' }, h('span', { class: 't-label', style: { width: '120px' } }, 'Chips'), h('span', { class: 'chip' }, 'Neutral'), h('span', { class: 'chip good' }, 'Better'), h('span', { class: 'chip bad' }, 'Worse'), h('span', { class: 'chip live' }, 'Live')),
+    h('div', { class: 'row' }, h('span', { class: 't-label', style: { width: '120px' } }, 'Buttons'), h('button', { class: 'btn', type: 'button' }, 'Secondary'), h('button', { class: 'btn primary', type: 'button' }, 'Primary')),
+    h('div', { class: 'row' }, h('span', { class: 't-label', style: { width: '120px' } }, 'Tooltip'), tipTarget),
+    h('div', { class: 'row' }, h('span', { class: 't-label', style: { width: '120px' } }, 'Avatars'), avatar('https://a.espncdn.com/i/headshots/nfl/players/full/4432665.png', 40, { label: 'Brock Bowers' }), avatar('https://example.invalid/missing.png', 40, { color: '#a5acaf', label: 'Photo missing: silhouette on team color' }), avatar('https://a.espncdn.com/i/teamlogos/nfl/500/lv.png', 40, { logo: true, label: 'Raiders' }), h('span', { class: 't-label' }, 'photo · missing photo (silhouette, never initials) · logo')),
+    h('div', null, h('span', { class: 't-label' }, 'Percentile bar'), pbar('Hard-hit rate', '52.1%', 95, { info: 'among 331 hitters' })),
+    h('div', null, h('div', { class: 't-label', style: { marginBottom: '4px' } }, 'Sortable table (click a header)'), table),
+    h('div', { class: 'row' }, h('span', { class: 't-label', style: { width: '120px' } }, 'Live value'), liveVal, h('button', { class: 'btn', type: 'button', onclick: () => tween(liveVal, Number(liveVal.dataset.v) + 7) }, 'Score a touchdown'), h('span', { class: 't-label' }, 'tween + flash, off under reduced motion')),
+    h('div', { class: 'row' }, h('span', { class: 't-label', style: { width: '120px' } }, 'Drill-down'), h('button', { class: 'btn', type: 'button', onclick: () => Drill.open('Receiving yards', 'Trend and splits for one stat', h('div', { class: 'stack' }, lineChart({ series: [{ name: 'yds', color: 'var(--ink)', values: [30, 49, 43, 0, 24, 20, 28, 47, 28, 38, 33, 70, 62, 13, 145] }], labels: ['W3', 'W4', 'W5', 'W6', 'W7', 'W9', 'W10', 'W11', 'W12', 'W13', 'W14', 'W15', 'W16', 'W17', 'W18'].reverse(), height: 180, yMin: 0, yFmt: (v) => `${Math.round(v)}`, tooltip: (i) => [tipRow('yds', `game ${i + 1}`)] }), h('div', { class: 'callout' }, 'Opened from a stat. Splits (home/away, vs opponent quality, by month) sit below the trend in the full build.'))) }, 'Open panel'))) });
+}
+
+function statesCard() {
+  return card({ title: 'States', scope: 'built into every card', body: h('div', { class: 'grid cols-3' },
+    h('div', null, h('div', { class: 't-over', style: { marginBottom: '6px' } }, 'Loading'), h('div', { class: 'sk', style: { height: '14px', width: '60%' } }), h('div', { class: 'sk', style: { height: '90px', marginTop: '10px' } })),
+    h('div', null, h('div', { class: 't-over', style: { marginBottom: '6px' } }, 'Empty, with a reason'), h('div', { class: 'state', style: { padding: '12px' } }, h('b', null, 'No 2026 games yet'), 'Showing 2025-26. The season starts Oct 21.')),
+    h('div', null, h('div', { class: 't-over', style: { marginBottom: '6px' } }, 'Error, human'), h('div', { class: 'state', style: { padding: '12px' } }, h('b', null, 'Couldn\'t load team stats'), h('button', { class: 'btn', type: 'button', style: { marginTop: '8px' } }, 'Retry')))) });
+}
+
+function render() {
+  app.replaceChildren(
+    boardBar('Phase G · Design system', 'The F2 proposal, live. Typeface and elevation switches apply to every board.'),
+    h('div', { class: 'page' },
+      h('div', { class: 'callout', style: { marginBottom: 'var(--s4)' } }, h('b', null, 'Decisions on this board: '), 'typeface (4 options in the bar), elevation (raised cards vs flat with borders), and the type ramp. Every other board uses the same system, so switching here changes them too.'),
+      h('div', { class: 'stack' }, beforeAfter(), h('div', { class: 'grid cols-2', style: { alignItems: 'start' } }, typeCard(), h('div', { class: 'stack' }, contrastCard(), elevationCard())), h('div', { class: 'grid cols-2', style: { alignItems: 'start' } }, componentsCard(), h('div', { class: 'stack' }, colorRules(), statesCard())))));
+}
+render();
+</script>
+</body>
