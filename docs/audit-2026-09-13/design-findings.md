@@ -91,6 +91,26 @@ role data, and add a sport-appropriate surface chosen by the adapter (e.g.
 rendered by one component per surface. That's `CLAUDE.md` §4's "genuinely
 different UI" case, selected by data, never by a `sport === 'x'` check.
 
+## D5 — Rate-limit errors reach the page as raw text, from a budget every route shares
+
+Found during design audit Phase E, 2026-09-13 ~23:40Z. `/nfl/team/13` rendered
+only: *"Limit is 60 per 60s for this route. HTTP 429 No teams match. Limit is 60
+per 60s for this route."*
+
+- **What the user sees:** the API's raw error detail, printed as page content,
+  plus "No teams match", which is false (the teams exist; the request was
+  refused).
+- **The message is wrong about scope.** `proxy.ts:132`'s `default` rule buckets
+  by rule label + client key (`proxy.ts:156`). Every `/api/*` route with no
+  specific rule shares **one** 60-per-minute budget, not one per route.
+- **Realistic to hit.** One page load fires `picks`, `watchlist`,
+  `tracked-lines`, the sport snapshot, teams and more, and live pages poll. A
+  few minutes of normal browsing across pages, or one live page left open,
+  can exhaust it. On a dev machine (no `x-forwarded-for`) every client shares
+  the `unknown` key.
+- Not a card, but it decides whether any card renders at all. Carried into the
+  build-plan merge (Phase H).
+
 ---
 
 ## Superseded
