@@ -13,9 +13,12 @@ cards already raised as examples:
 > **1. Does this make sense at all for this sport?**
 > **2. Does this help at all?**
 
-"Help" means help the person on this page decide something about this player,
-team or game. A card that is correct, populated and well drawn can still fail
-question 2, and it gets removed or replaced, not polished.
+**"Help" means real, in-depth insight into this player, team or game** — any
+stat that could matter to an informed decision. **The pages are research pages,
+not betting pages:** odds, lines and hit rates are one section, and a card is
+never judged by whether it bears on today's line (operator, 2026-09-14). A card
+that repeats another, says nothing, or is wrong for the sport still fails
+question 2. A real stat that simply isn't about a bet does not.
 
 **This audit looks forward, not back.** It doesn't try to establish how a card
 got the way it is, and no earlier design (including the Aug 29 per-sport

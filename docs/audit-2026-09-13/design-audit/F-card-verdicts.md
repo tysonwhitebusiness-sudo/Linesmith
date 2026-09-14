@@ -6,6 +6,44 @@ Judged from the Phase E captures: every card image, its captured text, and the
 full page. Two questions per card: **does it make sense for this sport, and does
 it help?**
 
+## ⚠ Correction, 2026-09-14 — read before using these verdicts
+
+**The operator corrected the frame this phase was written in.** Verdicts below
+judged cards by "does it help decide today's bet", with the prop line as the
+organising question. **That's wrong for this product.** Player, team and game
+pages are **in-depth research pages**: every stat relevant to an informed
+decision belongs on them, and odds/lines are one section.
+
+Under the corrected frame:
+
+- **Duplicates, empty cards, wrong-sport forms, bad encoding, missing scope,
+  identity and every data bug still stand.** None of those depended on the frame.
+- **"Remove" verdicts that removed depth are withdrawn.** Only genuine
+  duplicates and empty cards get removed.
+- **The line becomes an optional overlay, never the default frame.** Where a
+  verdict says "mark hit/miss against today's line" or "cleared N of M", read it
+  as one available view on a full stat card, not the card's purpose.
+- **"What instead" means more depth, not less.**
+
+Verdicts that change:
+
+| card | was | now |
+|---|---|---|
+| **Player bar chart** ("N games in scope · cleared the line") | rework around "cleared 46.5 in 6 of 17" | **rework as a stat-over-time chart** for any stat, with scope toggles; the line is an optional overlay |
+| **Rolling form** (NFL, MLB, all) | remove | **rework:** the trend is real insight; draw it on the stat chart or keep a trend card for several stats at once, not a copy of one |
+| **Game log** (every sport) | rework around hit/miss vs the line | **rework as a full stat log**: every stat for the sport, result and score, opponent, season grouping; line markers optional |
+| **Game context** | remove | **replace** with a real summary card: season, last-10 and career averages for the key stats, sample sizes, labeled |
+| **Situational splits / Home & Away** (player and team) | replace with ATS records / remove | **rework as performance splits** (home/away, rest, vs winning teams, by month, by surface/park): stats, not "share over 0.5"; ATS and over/under records are one split among them |
+| **Soccer shot types** | merge (doesn't affect a goal bet) | **keep**, alongside the shot map |
+| **MLB pitch mix / platoon / strike zone** | rework (samples) | unchanged: rework for sample size; all are depth to keep |
+| **Where this sits** | replace or remove | **rework:** percentile among position peers for **several key stats**, not one market |
+| **Opposing defence / Opponent / Opposing starter** | merge into Matchup | unchanged, but the merged card shows the opponent's full relevant profile, not only the prop's stat |
+| **Team stats, Advanced stats, Hitter stats, Season stats** | keep/polish | unchanged, and **expanded**: these are the core of the page (NBA ratings and pace, NHL special teams and goalie stats, NFL EPA and success rate, soccer xG per 90, tennis serve/return) |
+| **Team page line picker / team bar chart** | remove / replace | unchanged: a moneyline picker isn't research. The results strip replaces the chart. |
+
+Phase G's ideas start from this frame: **what does a complete, in-depth page for
+this player, team or game look like in this sport**, with odds as one section.
+
 ## Summary — what the verdicts add up to
 
 1. **Pages answer one question many times and others not at all.** Every player
