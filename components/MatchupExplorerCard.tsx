@@ -29,6 +29,12 @@ import type { MatchupExplorerData, MatchupStatRow } from '@/lib/sports/mlb/adapt
 
 type ViewMode = 'overview' | 'grid' | 'profile';
 
+/**
+ * Below this, the card says "no clear edge" instead of naming one. 70th
+ * percentile, operator decision 2026-09-13 (build plan D1).
+ */
+const EDGE_FLOOR = 70;
+
 function pctOf(row: MatchupStatRow | undefined | null): number | null {
   if (!row || row.rank == null || row.poolSize == null) return null;
   return percentileOf({ rank: row.rank, poolSize: row.poolSize });
@@ -295,15 +301,37 @@ export function MatchupExplorerCard({ data }: { data: MatchupExplorerData }) {
   const subjectRoleLabel = data.subjectRoleLabel ?? 'Produces';
   const opponentRoleLabel = data.opponentRoleLabel ?? 'Allows';
 
+  /**
+   * R1h (C9). Two faults, not one.
+   *
+   * 1. **The direction was backwards.** `pctOf` maps rank 1 to the 100th
+   *    percentile, and on the opponent side rank 1 is the STRONGEST unit:
+   *    `matchupFavorable.ts` states the convention ("1 = best defense, fewest
+   *    allowed") and says every sport's rank field was read to confirm it, and
+   *    `toAllowedSpec` inverts polarity for the same reason. This picked the
+   *    MAXIMUM, so it was naming the opponent's best category as the subject's
+   *    biggest edge — while the copy read "ranks in the Nth percentile
+   *    allowing it", implying high meant allows-more. The edge is the LOWEST
+   *    opponent percentile; `edge` below is that, expressed as exploitability.
+   *
+   * 2. **There was no floor**, so an argmax always named something however
+   *    flat the distribution — the audit found it announcing an edge at the
+   *    48th percentile, which is the league average. `EDGE_FLOOR` is the
+   *    operator's 70th-percentile decision ("keeps real edges and suppresses
+   *    anything near the league middle"), applied to exploitability so the
+   *    decision means what it said.
+   */
   const headline = useMemo(() => {
-    let best: { label: string; pct: number } | null = null;
+    let weakest: { label: string; defensePct: number; rank: number; poolSize: number } | null = null;
     for (const groupOfOpponent of Object.values(data.opponentStatsByGroup[opponentId] ?? {})) {
       for (const row of groupOfOpponent) {
         const p = pctOf(row);
-        if (p != null && (best == null || p > best.pct)) best = { label: row.label, pct: p };
+        if (p == null || row.rank == null || row.poolSize == null) continue;
+        if (weakest == null || p < weakest.defensePct) weakest = { label: row.label, defensePct: p, rank: row.rank, poolSize: row.poolSize };
       }
     }
-    return best;
+    if (weakest == null) return null;
+    return { ...weakest, edge: Math.round(100 - weakest.defensePct) };
   }, [data.opponentStatsByGroup, opponentId]);
 
   const profileKeys = useMemo(() => {
@@ -382,16 +410,18 @@ export function MatchupExplorerCard({ data }: { data: MatchupExplorerData }) {
           >
             {view === 'overview' ? (
               <div className="py-2 text-[12px]">
-                {headline ? (
+                {headline == null ? (
+                  <p className="text-ink-faint">Not enough ranked data yet for a headline stat.</p>
+                ) : headline.edge >= EDGE_FLOOR ? (
                   <p>
-                    Biggest edge: <span className="font-semibold text-ink">{headline.label}</span> — {opponent?.name ?? 'this opponent'} ranks in the{' '}
-                    <span className="font-semibold" style={{ color: heatFill(headline.pct / 100) }}>
-                      {headline.pct}th percentile
+                    Biggest edge: <span className="font-semibold text-ink">{headline.label}</span> — {opponent?.name ?? 'this opponent'} ranks{' '}
+                    <span className="font-semibold" style={{ color: heatFill(headline.edge / 100) }}>
+                      {ordinal(headline.rank)} of {headline.poolSize}
                     </span>{' '}
-                    allowing it.
+                    at allowing it.
                   </p>
                 ) : (
-                  <p className="text-ink-faint">Not enough ranked data yet for a headline stat.</p>
+                  <p className="text-ink-faint">No clear edge against this opponent.</p>
                 )}
               </div>
             ) : view === 'grid' ? (
