@@ -1,4 +1,5 @@
 import type { GameDetailGame, PicksPanelGame, RecordsSectionTeam, LastFiveGamesTeam, StatKeyDef, RankableTeamStats } from '@/components/GameDetail';
+import { toStartsAt } from '@/lib/sports/shared/startsAt';
 import type { RecentGameResult, InjuryEntry } from '@/lib/sports/mlb/statsapi';
 import type { GameHeroTeamPanelData, GameHeroModel, VenueForecastData } from '@/components/GameHeroCard';
 import type { PitchingMatchupGame } from '@/components/PitchingMatchupCard';
@@ -300,6 +301,8 @@ export interface GameDetailData {
     livePeriodLabel?: string;
     startTimeLabel: string;
     startTimeCaption?: string;
+    /** The start as ISO with a time, or `null` when unknown. Splits pre-game from in-game odds history (R2). */
+    startsAt: string | null;
     model: GameHeroModel | null;
     pickLockAt: Date | null;
     pickLoading: boolean;
@@ -431,6 +434,7 @@ function mlbSideGrades(statcast: TeamStatcastState): UnitGrade[] | null {
   return units.length > 0 ? units : null;
 }
 
+
 export function toGameDetailData(input: MlbGameDetailInput): GameDetailData {
   const { game, statKeys, gameContext, bullpen, gameLine, trustedMarkets, gamePick, pickLoading, candidates, awayStatcast, homeStatcast } = input;
   const [awayAbbr, homeAbbr] = (game.matchup ?? '').split('@').map((s) => s.trim());
@@ -449,6 +453,7 @@ export function toGameDetailData(input: MlbGameDetailInput): GameDetailData {
     livePeriodLabel: game.livePeriod,
     startTimeLabel: game.firstPitch ? new Date(game.firstPitch).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'TBD',
     startTimeCaption: 'FIRST PITCH',
+    startsAt: toStartsAt(game.firstPitch),
     model: toGameHeroModel(game.gameModel, matchupProjected?.moneyline, matchupProjected?.total, trustedMarkets, gamePick),
     pickLockAt: game.firstPitch ? new Date(new Date(game.firstPitch).getTime() - 3 * 60 * 60 * 1000) : null,
     pickLoading,

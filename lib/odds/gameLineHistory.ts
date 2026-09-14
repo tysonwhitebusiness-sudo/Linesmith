@@ -50,43 +50,71 @@ export interface GameLineHistoryQuery {
   /** 'home' | 'away' | 'over' | 'under' | 'draw' — whatever the writer recorded for this market. */
   side: string;
   hours: number;
+  /**
+   * The game's start, ISO with a time. With it, pre-game history is the `hours`
+   * ending AT the start and in-game history comes back separately (R2). Without
+   * it the window ends now and nothing is split, which is only right for a game
+   * that has not started.
+   */
+  startsAt?: string | null;
 }
 
-export interface GameLineHistoryResult {
+export interface GameLineSeriesBlock {
+  bucketSeconds: number;
+  buckets: string[];
+  series: LineHistorySeries[];
+}
+
+export interface GameLineHistoryResult extends GameLineSeriesBlock {
   eventId: string;
   market: string;
   side: string;
   /** Handicap the series is for, or `null` for a market with none (moneyline). */
   resolvedPoint: number | null;
-  bucketSeconds: number;
-  buckets: string[];
-  series: LineHistorySeries[];
   /** Sides actually present for this event and market, so a caller can offer the other one. */
   availableSides: string[];
+  /** Echo of the start the split used; `null` when none was given. */
+  startsAt: string | null;
+  /** Prices observed after the start. `null` when no start was given or the game has not started. */
+  inGame: GameLineSeriesBlock | null;
 }
 
-export async function readGameLineHistory(q: GameLineHistoryQuery): Promise<GameLineHistoryResult> {
-  const bucketSeconds = bucketSecondsFor(q.hours);
+/**
+ * An in-game block runs at most this long past the start. `game_odds_history`
+ * keeps capturing after the final whistle, and a price quoted the next morning
+ * is neither pre-game nor in-game.
+ */
+export const IN_GAME_HOURS = 8;
 
-  // Both are interpolated into an interval literal and a divisor, so both must
-  // be numbers THIS module chose rather than caller text — the same guard the
-  // prop reader carries, for the same reason: a `?` placeholder cannot stand in
-  // for an interval and the compiler cannot help here.
+export interface HistoryWindows {
+  pre: { from: Date; to: Date };
+  inGame: { from: Date; to: Date } | null;
+}
+
+/**
+ * R2's pre-start split, as plain time windows — pure so the rule is tested
+ * directly. Measured on the G2 fixture (MLB KC @ BOS, pk 824711): 1,790 of the
+ * 2,782 `game_odds_history` rows were observed after first pitch, so a window
+ * that ends "now" draws a game's in-play swings as if they were the pre-game
+ * market.
+ *
+ * `from` is exclusive and `to` inclusive, so a quote stamped exactly at the
+ * start counts as pre-game.
+ */
+export function historyWindows(startsAt: string | null | undefined, hours: number, now: Date = new Date()): HistoryWindows {
+  const start = startsAt && startsAt.includes('T') ? new Date(startsAt) : null;
+  if (!start || !Number.isFinite(start.getTime()) || start > now) {
+    return { pre: { from: new Date(now.getTime() - hours * 3600_000), to: now }, inGame: null };
+  }
+  const inGameEnd = new Date(Math.min(now.getTime(), start.getTime() + IN_GAME_HOURS * 3600_000));
+  return {
+    pre: { from: new Date(start.getTime() - hours * 3600_000), to: start },
+    inGame: { from: start, to: inGameEnd },
+  };
+}
+
+async function readBlock(q: GameLineHistoryQuery, from: Date, to: Date, bucketSeconds: number) {
   if (!Number.isInteger(bucketSeconds) || bucketSeconds <= 0) throw new Error('bucketSeconds must be a positive integer');
-  if (!Number.isFinite(q.hours) || q.hours <= 0) throw new Error('hours must be a positive number');
-  const hours = Math.round(q.hours);
-
-  const sideRows = await pgAll<{ side: string; n: string }>(
-    `SELECT side, count(*) AS n
-       FROM game_odds_history
-      WHERE event_id = ? AND market = ?
-        AND observed_at >= now() - interval '${hours} hours'
-      GROUP BY side
-      ORDER BY count(*) DESC`,
-    [q.eventId, q.market],
-  );
-  const availableSides = sideRows.map((r) => r.side);
-
   const rows = await pgAll<{
     bookmaker: string;
     bucket: Date | string;
@@ -100,12 +128,12 @@ export async function readGameLineHistory(q: GameLineHistoryQuery): Promise<Game
             american_odds
        FROM game_odds_history
       WHERE event_id = ? AND market = ? AND side = ?
-        AND observed_at >= now() - interval '${hours} hours'
+        AND observed_at > ? AND observed_at <= ?
       -- DESC on observed_at makes DISTINCT ON take the LAST real observation in
       -- each bucket rather than the first, so a bucket reads as "where the
       -- price ended up" rather than "where it happened to start".
       ORDER BY bookmaker, bucket, observed_at DESC`,
-    [q.eventId, q.market, q.side],
+    [q.eventId, q.market, q.side, from.toISOString(), to.toISOString()],
   );
 
   const byBook = new Map<string, LineHistoryPoint[]>();
@@ -121,14 +149,6 @@ export async function readGameLineHistory(q: GameLineHistoryQuery): Promise<Game
     byBook.set(r.bookmaker, points);
   }
 
-  // The most-quoted handicap, for the caption. NOT a filter: unlike a prop's
-  // alternate lines, a game total genuinely MOVING from 8.5 to 9 is the story
-  // this card exists to tell, so every observation stays in the series and this
-  // only names where the market mostly sat.
-  const resolvedPoint =
-    [...pointCounts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0] ?? null;
-
-  const buckets = [...bucketSet].sort();
   const series: LineHistorySeries[] = [...byBook.entries()]
     .map(([bookmaker, points]) => ({ bookmaker, points: points.sort((a, b) => a.t.localeCompare(b.t)) }))
     // Most-observed book first: a book with two points in a week is not a
@@ -136,5 +156,50 @@ export async function readGameLineHistory(q: GameLineHistoryQuery): Promise<Game
     // ones that have something to show.
     .sort((a, b) => b.points.length - a.points.length || a.bookmaker.localeCompare(b.bookmaker));
 
-  return { eventId: q.eventId, market: q.market, side: q.side, resolvedPoint, bucketSeconds, buckets, series, availableSides };
+  return { block: { bucketSeconds, buckets: [...bucketSet].sort(), series }, pointCounts };
+}
+
+export async function readGameLineHistory(q: GameLineHistoryQuery): Promise<GameLineHistoryResult> {
+  const bucketSeconds = bucketSecondsFor(q.hours);
+
+  // `hours` sizes the window and `bucketSeconds` reaches a divisor in the SQL,
+  // so both must be numbers THIS module chose rather than caller text. The
+  // window bounds themselves are passed as parameters.
+  if (!Number.isInteger(bucketSeconds) || bucketSeconds <= 0) throw new Error('bucketSeconds must be a positive integer');
+  if (!Number.isFinite(q.hours) || q.hours <= 0) throw new Error('hours must be a positive number');
+  const hours = Math.round(q.hours);
+  const windows = historyWindows(q.startsAt, hours);
+
+  const sideRows = await pgAll<{ side: string; n: string }>(
+    `SELECT side, count(*) AS n
+       FROM game_odds_history
+      WHERE event_id = ? AND market = ?
+        AND observed_at > ? AND observed_at <= ?
+      GROUP BY side
+      ORDER BY count(*) DESC`,
+    [q.eventId, q.market, windows.pre.from.toISOString(), (windows.inGame?.to ?? windows.pre.to).toISOString()],
+  );
+  const availableSides = sideRows.map((r) => r.side);
+
+  const pre = await readBlock(q, windows.pre.from, windows.pre.to, bucketSeconds);
+  const inGame = windows.inGame ? (await readBlock(q, windows.inGame.from, windows.inGame.to, bucketSecondsFor(IN_GAME_HOURS))).block : null;
+
+  // The most-quoted handicap, for the caption. NOT a filter: unlike a prop's
+  // alternate lines, a game total genuinely MOVING from 8.5 to 9 is the story
+  // this card exists to tell, so every observation stays in the series and this
+  // only names where the market mostly sat. Pre-game only: an in-play total is
+  // a different market.
+  const resolvedPoint =
+    [...pre.pointCounts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0] ?? null;
+
+  return {
+    eventId: q.eventId,
+    market: q.market,
+    side: q.side,
+    resolvedPoint,
+    availableSides,
+    startsAt: q.startsAt ?? null,
+    inGame,
+    ...pre.block,
+  };
 }

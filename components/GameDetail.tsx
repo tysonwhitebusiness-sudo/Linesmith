@@ -2055,7 +2055,10 @@ export function GameDetail({
   // spread. Defaulting to spread would leave the card blank on almost every
   // game. `home` is the side because the hero and the price card already name
   // the home team.
-  const gameLineHistory = useGameLineHistory(gameId, 'moneyline', 'home');
+  //
+  // Called below, once `data` exists: the read needs the game's start time to
+  // keep in-play prices out of the pre-game series (R2), and `data.hero` is
+  // the one place every sport's start is already normalised.
 
   // Both teams' Statcast rollups -- MLB's game-page unit grades (6.15).
   // Called UNCONDITIONALLY per the rules of hooks and this component's own
@@ -2174,6 +2177,10 @@ export function GameDetail({
                     homeStatcast,
                   })
                 : null;
+
+  // Waits for `data` so the first request already carries the start; firing
+  // with no start and again with one would fetch the unsplit log first.
+  const gameLineHistory = useGameLineHistory(data ? gameId : undefined, 'moneyline', 'home', data?.hero.startsAt);
 
   const detailError =
     sport === 'nfl'

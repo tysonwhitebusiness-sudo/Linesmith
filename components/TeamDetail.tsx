@@ -48,6 +48,7 @@ import { PlayerRoleMainSections, PlayerRoleRailSections } from './PlayerRoleSect
 import { PlayerAnalyticsMainSections, PlayerAnalyticsRailSections } from './PlayerAnalyticsSections';
 import { LineMovementCard } from './LineMovementCard';
 import { useGameLineHistory } from './useGameLineHistory';
+import { toStartsAt } from '@/lib/sports/shared/startsAt';
 import { useUserSportsbook } from './useUserSportsbook';
 
 const POSITION_ORDER = ['P', 'C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH', 'QB', 'RB', 'FB', 'WR', 'TE', 'K', 'OL', 'DL', 'LB', 'DB', 'S', 'CB'];
@@ -197,7 +198,9 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
   // route; the only difference from the game page is which event id it asks
   // about. Idles when the team has no next game scheduled.
   const nextGameId = data?.nextGame?.gameHref?.split('/').pop();
-  const teamLineHistory = useGameLineHistory(nextGameId, 'moneyline', 'home');
+  // `toStartsAt` because NFL's next game carries a bare date, which is no start
+  // and which the route rejects.
+  const teamLineHistory = useGameLineHistory(nextGameId, 'moneyline', 'home', toStartsAt(data?.nextGame?.startTime));
 
   const detailLoading =
     sport === 'nfl'

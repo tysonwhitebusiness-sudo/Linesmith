@@ -27,6 +27,8 @@ export function useGameLineHistory(
   eventId: string | undefined,
   market: 'moneyline' | 'total' | 'spread' | undefined,
   side: string | undefined,
+  /** The game's start (ISO). Splits pre-game from in-game history; see `historyWindows`. */
+  startsAt?: string | null,
   hours = 48,
 ): GameLineHistoryState {
   const [data, setData] = useState<GameLineHistoryResult | null>(null);
@@ -47,6 +49,7 @@ export function useGameLineHistory(
 
     const qs = new URLSearchParams({ eventId, market, hours: String(hours) });
     if (side) qs.set('side', side);
+    if (startsAt) qs.set('startsAt', startsAt);
 
     void (async () => {
       try {
@@ -60,7 +63,7 @@ export function useGameLineHistory(
     })();
 
     return () => controller.abort();
-  }, [eventId, market, side, hours]);
+  }, [eventId, market, side, startsAt, hours]);
 
   return { data, loading };
 }

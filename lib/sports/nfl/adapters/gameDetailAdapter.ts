@@ -21,6 +21,7 @@ import { NFL_STAT_KEYS, toForRanks, toAgainstRanks } from '@/lib/sports/nfl/stat
 import type { NflGameMetaResponse } from '@/components/useNflGameDetail';
 import type { NflTeamDetailApiResponse, NflTeamRosterPlayer, NflTeamStatLine } from '@/components/useNflTeamDetail';
 import type { GameDetailData, GameMatchupData, RankingsData, StatComparisonData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
+import { toStartsAt } from '@/lib/sports/shared/startsAt';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
 import { toPriceRange } from '@/lib/sports/shared/priceRange';
 import { toGameTeamForm } from '@/lib/sports/shared/gameTeamForm';
@@ -152,6 +153,7 @@ export function toGameDetailData(input: NflGameDetailInput): GameDetailData {
     liveScore: liveState ? { away: String(liveState.awayScore ?? 0), home: String(liveState.homeScore ?? 0) } : undefined,
     livePeriodLabel: liveState ? [liveState.period ? `Q${liveState.period}` : '', liveState.displayClock ?? ''].filter(Boolean).join(' ') : undefined,
     startTimeLabel: new Date(game.date).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+    startsAt: toStartsAt(game.date),
     model: null,
     pickLockAt: null,
     pickLoading: false,

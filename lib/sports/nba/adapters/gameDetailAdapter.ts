@@ -20,6 +20,7 @@ import type { NbaGameSummary } from '@/lib/sports/nba/espn';
 import type { NbaTeamDetailApiResponse } from './teamDetailAdapter';
 import { toNbaRecentResultRows } from './teamDetailAdapter';
 import type { GameDetailData, StatComparisonData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
+import { toStartsAt } from '@/lib/sports/shared/startsAt';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
 import type { TeamStandingRow } from '@/components/useAllTeams';
 import type { UnifiedGameLine } from '@/lib/odds/types';
@@ -118,6 +119,7 @@ export function toGameDetailData(input: NbaGameDetailInput): GameDetailData {
     liveScore: isLive || isFinal ? { away: String(game.awayScore ?? 0), home: String(game.homeScore ?? 0) } : undefined,
     livePeriodLabel: isLive ? game.status?.shortDetail : undefined,
     startTimeLabel: new Date(game.date).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+    startsAt: toStartsAt(game.date),
     model: null,
     pickLockAt: null,
     pickLoading: false,

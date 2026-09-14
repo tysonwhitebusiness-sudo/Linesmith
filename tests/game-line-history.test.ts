@@ -64,3 +64,38 @@ test('the default market is moneyline, because spread is absent from most games'
   // renders a blank card on almost every game.
   assert.match(ROUTE, /get\('market'\) \?\? 'moneyline'/);
 });
+
+// R2 — the pre-start split. On the G2 fixture (MLB KC @ BOS, pk 824711) 1,790 of
+// 2,782 rows were observed after first pitch; a window ending "now" drew those
+// in-play swings as the pre-game market.
+import { historyWindows, IN_GAME_HOURS } from '../lib/odds/gameLineHistory';
+
+test('a started game: pre-game ends AT the start, in-game runs from it', () => {
+  const now = new Date('2026-09-14T20:00:00Z');
+  const w = historyWindows('2026-09-13T23:10:00Z', 48, now);
+  assert.equal(w.pre.to.toISOString(), '2026-09-13T23:10:00.000Z');
+  assert.equal(w.pre.from.toISOString(), '2026-09-11T23:10:00.000Z', 'the 48h are counted back from the start, not from now');
+  assert.ok(w.inGame);
+  assert.equal(w.inGame!.from.toISOString(), '2026-09-13T23:10:00.000Z');
+  assert.equal(w.inGame!.to.getTime() - w.inGame!.from.getTime(), IN_GAME_HOURS * 3600_000, 'next-morning quotes are not in-game');
+});
+
+test('a game in progress: in-game stops at now', () => {
+  const now = new Date('2026-09-14T20:00:00Z');
+  const w = historyWindows('2026-09-14T19:00:00Z', 48, now);
+  assert.equal(w.inGame!.to.toISOString(), now.toISOString());
+});
+
+test('no split before the start, or without a real start time', () => {
+  const now = new Date('2026-09-14T20:00:00Z');
+  for (const startsAt of ['2026-09-15T00:00:00Z', '2026-09-14', null, undefined, 'not a date']) {
+    const w = historyWindows(startsAt, 48, now);
+    assert.equal(w.inGame, null, String(startsAt));
+    assert.equal(w.pre.to.toISOString(), now.toISOString());
+  }
+});
+
+test('the route parses startsAt rather than passing caller text through', () => {
+  assert.match(ROUTE, /startsAt = new Date\(t\)\.toISOString\(\)/);
+  assert.match(ROUTE, /!rawStartsAt\.includes\('T'\)/);
+});

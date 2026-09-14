@@ -37,6 +37,7 @@
 import type { PickCandidate, TennisTour } from '@/lib/core/types';
 import type { EspnTennisMatchDetail } from '@/lib/sports/multiSport/espnTennis';
 import type { GameDetailData, RecentResultRow, StatComparisonData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
+import { toStartsAt } from '@/lib/sports/shared/startsAt';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
 import type { UnifiedGameLine } from '@/lib/odds/types';
 import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
@@ -151,6 +152,7 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
     liveScore: isLive || isFinal ? { away: String(meta.player2.setsWon[0] ?? 0), home: String(meta.player1.setsWon[0] ?? 0) } : undefined,
     livePeriodLabel: isLive || isFinal ? meta.status.detail : undefined,
     startTimeLabel: new Date(meta.date).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+    startsAt: toStartsAt(meta.date),
     model: null,
     pickLockAt: null,
     pickLoading: false,

@@ -1,5 +1,8 @@
 /**
- * GET /api/odds/game-line-history?eventId=X&market=moneyline[&side=home][&hours=48]
+ * GET /api/odds/game-line-history?eventId=X&market=moneyline[&side=home][&hours=48][&startsAt=ISO]
+ *
+ * `startsAt` splits the log at the game's start (R2): `series` is the `hours`
+ * before it, `inGame` what was quoted after. See `historyWindows`.
  *
  * Price movement for one GAME market — Phase 6.22, the game/team twin of
  * `/api/props/line-history`.
@@ -66,8 +69,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: `hours must be an integer from 1 to ${MAX_HOURS}` }, { status: 400 });
   }
 
+  // Parsed, not pattern-matched, and re-serialised before use, so no caller
+  // text reaches the reader. A bare date is rejected: it has no start time.
+  const rawStartsAt = url.searchParams.get('startsAt');
+  let startsAt: string | null = null;
+  if (rawStartsAt != null) {
+    const t = Date.parse(rawStartsAt);
+    if (!rawStartsAt.includes('T') || !Number.isFinite(t)) {
+      return NextResponse.json({ error: 'startsAt must be an ISO timestamp with a time' }, { status: 400 });
+    }
+    startsAt = new Date(t).toISOString();
+  }
+
   try {
-    const result = await readGameLineHistory({ eventId, market: market as GameHistoryMarket, side, hours });
+    const result = await readGameLineHistory({ eventId, market: market as GameHistoryMarket, side, hours, startsAt });
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(

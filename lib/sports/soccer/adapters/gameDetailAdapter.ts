@@ -26,6 +26,7 @@ import type { SoccerGameSummary } from '@/lib/sports/soccer/espn';
 import type { SoccerTeamDetailApiResponse } from './teamDetailAdapter';
 import { toSoccerRecentResultRows } from './teamDetailAdapter';
 import type { GameDetailData, GameMatchupData, StatComparisonData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
+import { toStartsAt } from '@/lib/sports/shared/startsAt';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
 import type { UnifiedGameLine } from '@/lib/odds/types';
@@ -135,6 +136,7 @@ export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
     liveScore: isLive || isFinal ? { away: String(game.awayScore ?? 0), home: String(game.homeScore ?? 0) } : undefined,
     livePeriodLabel: isLive ? game.status?.shortDetail : undefined,
     startTimeLabel: new Date(game.date).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+    startsAt: toStartsAt(game.date),
     model: null,
     pickLockAt: null,
     pickLoading: false,
