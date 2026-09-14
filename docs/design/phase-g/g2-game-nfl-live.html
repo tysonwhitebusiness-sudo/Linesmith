@@ -1,0 +1,605 @@
+<meta charset="utf-8">
+<title>Live Game Board — DAL at NYG</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap"><style>/* Phase G mockup system — the F2 proposal as tokens. Charcoal palette (approved). */
+:root {
+  --paper: oklch(94.5% 0.003 260);
+  --card: oklch(98.5% 0.002 260);
+  --card-sunk: oklch(96.5% 0.002 260);
+  --line: oklch(89% 0.004 260);
+  --line-soft: oklch(92.5% 0.003 260);
+  --ink: oklch(18% 0.005 260);
+  --ink-2: oklch(34% 0.005 260);
+  --ink-muted: oklch(47% 0.005 260);      /* lightest gray allowed for text */
+  --ink-faint: oklch(72% 0.004 260);      /* decoration only */
+  --masters: oklch(20% 0.006 260);
+  --good: #0f7a4f;
+  --bad: #c23b2c;
+  --warn: #b7791f;
+  --cmp-a: #2f6fb3;                        /* compare slot 1 (validated) */
+  --cmp-b: #c56a1c;                        /* compare slot 2 (validated) */
+  --live: #0f7a4f;
+  --focus: oklch(18% 0.005 260);
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --r-card: 12px; --r-hero: 16px; --r-ctl: 8px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+  --shadow-card: 0 1px 2px rgba(15, 18, 24, .05), 0 2px 8px -4px rgba(15, 18, 24, .08);
+  --shadow-pop: 0 8px 28px -8px rgba(15, 18, 24, .28), 0 2px 6px rgba(15, 18, 24, .08);
+  --ease: cubic-bezier(.2, 0, 0, 1); --ease-em: cubic-bezier(.3, 0, 0, 1);
+  --t-instant: 100ms; --t-quick: 180ms; --t-smooth: 280ms; --t-data: 450ms;
+}
+body.elev-flat { --paper: oklch(97.5% 0.002 260); --card: oklch(97.5% 0.002 260); --shadow-card: none; }
+body.font-inter { --font: "Inter", ui-sans-serif, system-ui, sans-serif; }
+body.font-plex { --font: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; }
+body.font-source { --font: "Source Sans 3", ui-sans-serif, system-ui, sans-serif; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 400 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+a { color: inherit; text-decoration: none; }
+a.lnk:hover, a.lnk:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; } }
+
+/* Type ramp */
+.t-display { font-size: 32px; line-height: 1.1; font-weight: 700; letter-spacing: -.01em; }
+.t-heading { font-size: 22px; line-height: 1.2; font-weight: 600; letter-spacing: -.005em; }
+.t-title { font-size: 17px; line-height: 1.3; font-weight: 600; }
+.t-card { font-size: 14px; line-height: 1.3; font-weight: 600; }
+.t-body { font-size: 14px; line-height: 1.5; }
+.t-sm { font-size: 13px; line-height: 1.45; }
+.t-label { font-size: 12px; line-height: 1.35; font-weight: 500; color: var(--ink-muted); }
+.t-over { font-size: 11px; line-height: 1.3; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-muted); }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-muted); } .ink2 { color: var(--ink-2); }
+
+/* Layout */
+.page { max-width: 1280px; margin: 0 auto; padding: var(--s5) var(--s5) 80px; }
+@media (max-width: 720px) { .page { padding: var(--s4) var(--s4) 64px; } }
+.grid { display: grid; gap: var(--s3); }
+.cols-main { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; }
+.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1024px) { .cols-main, .cols-3 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 720px) { .cols-2 { grid-template-columns: minmax(0, 1fr); } }
+.stack > * + * { margin-top: var(--s3); }
+.row { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.between { justify-content: space-between; }
+.sticky { position: sticky; top: 0; z-index: 20; }
+
+/* Board chrome (mockup-only) */
+.board-bar { position: sticky; top: 0; z-index: 50; background: var(--masters); color: #fff; }
+.board-bar .inner { max-width: 1280px; margin: 0 auto; padding: 10px var(--s5); display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.board-bar .title { font-weight: 600; font-size: 14px; }
+.board-bar .note { font-size: 12px; color: rgba(255, 255, 255, .72); }
+.board-bar .seg { --seg-bg: rgba(255, 255, 255, .12); --seg-on: #fff; --seg-on-ink: var(--ink); --seg-ink: rgba(255, 255, 255, .85); }
+.callout { border-left: 3px solid var(--ink); background: var(--card-sunk); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 13px; color: var(--ink-2); }
+.callout b { color: var(--ink); }
+.pill-note { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--card-sunk); border: 1px dashed var(--line); color: var(--ink-muted); }
+
+/* Card anatomy */
+.card { background: var(--card); border-radius: var(--r-card); box-shadow: var(--shadow-card); border: 1px solid var(--line-soft); min-width: 0; }
+body.elev-flat .card { border-color: var(--line); }
+.card-h { display: flex; align-items: center; gap: var(--s2); min-height: 44px; padding: 0 var(--s2) 0 var(--s4); border-bottom: 1px solid var(--line-soft); }
+.card-h .t-card { flex: 1; min-width: 0; }
+.card-h .scope { font-size: 12px; font-weight: 500; color: var(--ink-muted); white-space: nowrap; }
+.card-b { padding: var(--s4); }
+.card-b.dense { padding: var(--s3); }
+.card-f { padding: 0 var(--s4) var(--s3); font-size: 12px; color: var(--ink-muted); }
+.icon-btn { width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: var(--r-ctl); border: 0; background: transparent; color: var(--ink-muted); cursor: pointer; transition: background var(--t-instant) var(--ease), color var(--t-instant) var(--ease); }
+.icon-btn:hover { background: var(--card-sunk); color: var(--ink); }
+.hero { background: var(--card); border-radius: var(--r-hero); box-shadow: var(--shadow-card); border: 1px solid var(--line-soft); padding: var(--s5); }
+
+/* Controls */
+.seg { --seg-bg: var(--card-sunk); --seg-on: var(--card); --seg-on-ink: var(--ink); --seg-ink: var(--ink-muted); display: inline-flex; gap: 2px; padding: 3px; background: var(--seg-bg); border-radius: 10px; }
+.seg button { border: 0; background: transparent; color: var(--seg-ink); font: 500 13px/1 var(--font); padding: 7px 12px; border-radius: 7px; cursor: pointer; transition: background var(--t-quick) var(--ease), color var(--t-quick) var(--ease), box-shadow var(--t-quick) var(--ease); white-space: nowrap; }
+.seg button:hover { color: var(--seg-on-ink); }
+.seg button[aria-pressed="true"] { background: var(--seg-on); color: var(--seg-on-ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+.tabs { display: flex; gap: var(--s4); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.tabs [role="tab"] { border: 0; background: transparent; font: 600 14px/1 var(--font); color: var(--ink-muted); padding: 12px 0 11px; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; transition: color var(--t-quick) var(--ease), border-color var(--t-quick) var(--ease); }
+.tabs [role="tab"]:hover { color: var(--ink); }
+.tabs [role="tab"][aria-selected="true"] { color: var(--ink); border-color: var(--ink); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 600 11px/1 var(--font); letter-spacing: .02em; padding: 5px 9px; border-radius: 999px; background: var(--card-sunk); color: var(--ink-2); border: 1px solid var(--line-soft); white-space: nowrap; }
+.chip.good { color: var(--good); background: color-mix(in oklch, var(--good) 10%, var(--card)); border-color: color-mix(in oklch, var(--good) 25%, var(--card)); }
+.chip.bad { color: var(--bad); background: color-mix(in oklch, var(--bad) 9%, var(--card)); border-color: color-mix(in oklch, var(--bad) 25%, var(--card)); }
+.chip.live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--live); animation: pulse 1.6s var(--ease) infinite; }
+@keyframes pulse { 50% { opacity: .35; transform: scale(.8); } }
+.btn { border: 1px solid var(--line); background: var(--card); color: var(--ink); font: 600 13px/1 var(--font); padding: 9px 14px; border-radius: var(--r-ctl); cursor: pointer; transition: background var(--t-instant) var(--ease), border-color var(--t-instant) var(--ease), transform var(--t-instant) var(--ease); }
+.btn:hover { background: var(--card-sunk); border-color: var(--ink-faint); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--masters); color: #fff; border-color: var(--masters); }
+.btn.primary:hover { background: oklch(28% 0.006 260); }
+.scope-row { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin: var(--s5) 0 var(--s3); }
+.scope-row h2 { margin: 0; }
+
+/* Section nav */
+.secnav { background: color-mix(in oklch, var(--paper) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); margin: 0 calc(-1 * var(--s5)); padding: 0 var(--s5); }
+.secnav .tabs { border-bottom: 0; }
+
+/* Avatar */
+.av { position: relative; flex: none; border-radius: 50%; overflow: hidden; background: var(--team, oklch(80% 0.01 260)); display: grid; place-items: center; }
+.av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.av.logo { border-radius: 10px; background: var(--card); border: 1px solid var(--line-soft); }
+.av.logo img { object-fit: contain; padding: 12%; }
+.av .sil { width: 62%; height: 62%; fill: rgba(255, 255, 255, .85); }
+
+/* Stat value + percentile */
+.stat { min-width: 0; }
+.stat .v { font-size: 22px; line-height: 1.15; font-weight: 600; letter-spacing: -.01em; }
+.stat .l { font-size: 12px; font-weight: 500; color: var(--ink-muted); }
+.stat .d { font-size: 12px; font-weight: 600; }
+.pbar { display: grid; grid-template-columns: minmax(84px, 140px) 1fr 40px; align-items: center; gap: var(--s3); padding: 6px 0; cursor: default; border-radius: 6px; }
+.pbar:hover { background: var(--card-sunk); }
+.pbar .track { position: relative; height: 8px; border-radius: 99px; background: var(--card-sunk); border: 1px solid var(--line-soft); }
+.pbar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 99px; transition: width var(--t-data) var(--ease-em); }
+.pbar .dot { position: absolute; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; display: grid; place-items: center; font: 700 10px/1 var(--font); color: #fff; box-shadow: 0 0 0 2px var(--card); transition: left var(--t-data) var(--ease-em); }
+
+/* Tables */
+.tbl-wrap { overflow-x: auto; }
+table.dt { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.dt th { font: 600 12px/1.2 var(--font); color: var(--ink-muted); text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; position: sticky; top: 0; background: var(--card); }
+table.dt th[data-sort] { cursor: pointer; user-select: none; }
+table.dt th[data-sort]:hover { color: var(--ink); }
+table.dt th .arr { opacity: 0; margin-left: 3px; }
+table.dt th[aria-sort] .arr { opacity: 1; }
+table.dt td { padding: 9px 10px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+table.dt td.n, table.dt th.n { text-align: right; font-variant-numeric: tabular-nums; }
+table.dt tbody tr { transition: background var(--t-instant) var(--ease); }
+table.dt tbody tr:hover { background: var(--card-sunk); }
+table.dt tbody tr.clickable { cursor: pointer; }
+table.dt td:first-child, table.dt th:first-child { position: sticky; left: 0; background: inherit; }
+table.dt tbody td:first-child { background: var(--card); }
+table.dt tbody tr:hover td:first-child { background: var(--card-sunk); }
+
+/* Tooltip */
+.tip { position: fixed; z-index: 100; pointer-events: none; background: var(--masters); color: #fff; border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.4; max-width: 280px; box-shadow: var(--shadow-pop); opacity: 0; transform: translateY(4px); transition: opacity var(--t-quick) var(--ease), transform var(--t-quick) var(--ease); }
+.tip.on { opacity: 1; transform: none; }
+.tip .tv { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tip .tk { color: rgba(255, 255, 255, .7); }
+.tip .key { display: inline-block; width: 12px; height: 2px; vertical-align: middle; margin-right: 6px; }
+
+/* Drill-down panel */
+.scrim { position: fixed; inset: 0; background: rgba(12, 14, 18, .32); opacity: 0; pointer-events: none; transition: opacity var(--t-smooth) var(--ease); z-index: 80; }
+.scrim.on { opacity: 1; pointer-events: auto; }
+.panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); background: var(--card); z-index: 90; box-shadow: var(--shadow-pop); transform: translateX(104%); transition: transform var(--t-smooth) var(--ease-em); display: flex; flex-direction: column; }
+.panel.on { transform: none; }
+.panel-h { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s3) var(--s3) var(--s5); border-bottom: 1px solid var(--line); min-height: 60px; }
+.panel-b { padding: var(--s5); overflow: auto; flex: 1; }
+
+/* Charts */
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart-host { width: 100%; min-width: 0; }
+.chart .grid-l { stroke: var(--line-soft); stroke-width: 1; }
+.chart .axis-t { fill: var(--ink-muted); font-size: 10px; font-family: var(--font); }
+.chart .xh { stroke: var(--ink); stroke-width: 1; opacity: 0; transition: opacity var(--t-instant); }
+.chart:hover .xh { opacity: .35; }
+
+/* Skeleton + states */
+.sk { background: linear-gradient(90deg, var(--card-sunk) 0%, var(--line-soft) 50%, var(--card-sunk) 100%); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; border-radius: 6px; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.state { text-align: center; padding: var(--s6) var(--s4); color: var(--ink-muted); font-size: 13px; }
+.state b { display: block; color: var(--ink); font-size: 14px; margin-bottom: 4px; }
+
+/* Live value flash */
+.flash { animation: flash 1.2s var(--ease); }
+@keyframes flash { 0% { background: color-mix(in oklch, var(--good) 22%, transparent); } 100% { background: transparent; } }
+</style><script>/* Phase G mockup UI kit: one implementation of each F2 component. Plain JS, no deps.
+   All data-derived text goes through textContent (never innerHTML). */
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
+    else if (k.startsWith('on') && typeof v === 'function') e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+}
+function s(tag, attrs, ...kids) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) e.setAttribute(k, v);
+  for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+}
+const fmt = {
+  n: (v, d = 0) => (v == null || Number.isNaN(v) ? '—' : Number(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })),
+  pct: (v, d = 0) => (v == null ? '—' : `${Number(v).toFixed(d)}%`),
+  rate3: (v) => (v == null ? '—' : Number(v).toFixed(3).replace(/^0/, '')),
+  ord: (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); },
+};
+
+/* Tooltip — one element, shown on hover and on keyboard focus. */
+const Tip = {
+  el: null,
+  show(x, y, ...nodes) {
+    if (!this.el) { this.el = h('div', { class: 'tip', role: 'tooltip' }); document.body.append(this.el); }
+    this.el.replaceChildren(...nodes);
+    const r = this.el.getBoundingClientRect();
+    const left = Math.min(window.innerWidth - r.width - 8, Math.max(8, x + 14));
+    const top = y - r.height - 12 < 8 ? y + 16 : y - r.height - 12;
+    this.el.style.left = `${left}px`; this.el.style.top = `${top}px`;
+    this.el.classList.add('on');
+  },
+  hide() { this.el && this.el.classList.remove('on'); },
+  bind(target, content) {
+    const show = (e) => { const r = target.getBoundingClientRect(); Tip.show(e.clientX ?? r.left + r.width / 2, e.clientY ?? r.top, ...content()); };
+    target.addEventListener('pointermove', show);
+    target.addEventListener('pointerleave', () => Tip.hide());
+    target.addEventListener('focus', () => { const r = target.getBoundingClientRect(); Tip.show(r.left + r.width / 2, r.top, ...content()); });
+    target.addEventListener('blur', () => Tip.hide());
+    if (!target.hasAttribute('tabindex') && !/^(A|BUTTON|INPUT|SELECT)$/.test(target.tagName)) target.setAttribute('tabindex', '0');
+  },
+};
+const tipRow = (value, label, color) => h('div', null, color ? h('span', { class: 'key', style: { background: color } }) : null, h('span', { class: 'tv' }, value), ' ', h('span', { class: 'tk' }, label));
+const tipText = (t) => h('div', { class: 'tk', style: { marginTop: '2px' } }, t);
+
+/* Segmented toggle. options: [{value,label}] */
+function segmented(options, value, onChange, extraClass = '') {
+  const wrap = h('div', { class: `seg ${extraClass}`, role: 'group' });
+  const render = () => wrap.replaceChildren(...options.map((o) => h('button', { type: 'button', 'aria-pressed': String(o.value === value), onclick: () => { value = o.value; render(); onChange(value); } }, o.label)));
+  render();
+  return wrap;
+}
+/* Tabs. */
+function tabs(items, selected, onChange) {
+  const bar = h('div', { class: 'tabs', role: 'tablist' });
+  const render = () => bar.replaceChildren(...items.map((it) => h('button', { role: 'tab', type: 'button', 'aria-selected': String(it.value === selected), tabindex: it.value === selected ? '0' : '-1', onclick: () => { selected = it.value; render(); onChange(selected); } }, it.label)));
+  bar.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const i = items.findIndex((it) => it.value === selected); const n = items[(i + (e.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length];
+    selected = n.value; render(); onChange(selected); bar.querySelector('[aria-selected="true"]').focus();
+  });
+  render();
+  return bar;
+}
+
+/* Card with the F2 anatomy. */
+function card({ title, scope, info, expand, body, foot, dense }) {
+  const head = h('div', { class: 'card-h' }, h('div', { class: 't-card' }, title), scope ? h('span', { class: 'scope' }, scope) : null);
+  if (info) { const b = h('button', { class: 'icon-btn', type: 'button', 'aria-label': `About ${title}` }, 'ⓘ'); Tip.bind(b, () => [h('div', { style: { maxWidth: '240px' } }, info)]); head.append(b); }
+  if (expand) head.append(h('button', { class: 'icon-btn', type: 'button', 'aria-label': `Expand ${title}`, onclick: expand }, '⤢'));
+  return h('section', { class: 'card' }, head, h('div', { class: `card-b${dense ? ' dense' : ''}` }, body), foot ? h('div', { class: 'card-f' }, foot) : null);
+}
+
+/* Drill-down side panel. */
+const Drill = {
+  open(title, subtitle, body) {
+    if (!this.panel) {
+      this.scrim = h('div', { class: 'scrim', onclick: () => this.close() });
+      this.titleEl = h('div', { class: 't-title' }); this.subEl = h('div', { class: 't-label' });
+      this.bodyEl = h('div', { class: 'panel-b' });
+      this.panel = h('aside', { class: 'panel', role: 'dialog', 'aria-modal': 'true' },
+        h('div', { class: 'panel-h' }, h('div', { style: { flex: 1 } }, this.titleEl, this.subEl), h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Close', onclick: () => this.close() }, '✕')), this.bodyEl);
+      document.body.append(this.scrim, this.panel);
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.close(); });
+    }
+    this.titleEl.textContent = title; this.subEl.textContent = subtitle || '';
+    this.bodyEl.replaceChildren(body);
+    this.scrim.classList.add('on'); this.panel.classList.add('on');
+    this.panel.querySelector('.icon-btn').focus();
+  },
+  close() { this.scrim?.classList.remove('on'); this.panel?.classList.remove('on'); },
+};
+
+/* Sortable data table. columns: [{key,label,num,fmt,sort}] */
+function dataTable(columns, rows, { onRow, sortKey, desc = true } = {}) {
+  const table = h('table', { class: 'dt' });
+  const thead = h('thead'); const tbody = h('tbody');
+  const render = () => {
+    const col = columns.find((c) => c.key === sortKey);
+    const sorted = col ? [...rows].sort((a, b) => { const va = a[col.key], vb = b[col.key]; if (va == null) return 1; if (vb == null) return -1; return (va > vb ? 1 : va < vb ? -1 : 0) * (desc ? -1 : 1); }) : rows;
+    thead.replaceChildren(h('tr', null, ...columns.map((c) => {
+      const th = h('th', { class: c.num ? 'n' : '', 'data-sort': c.sort === false ? null : c.key, scope: 'col', 'aria-sort': c.key === sortKey ? (desc ? 'descending' : 'ascending') : null, tabindex: c.sort === false ? null : '0' }, c.label, h('span', { class: 'arr' }, c.key === sortKey && !desc ? '▲' : '▼'));
+      if (c.sort !== false) { const go = () => { if (sortKey === c.key) desc = !desc; else { sortKey = c.key; desc = true; } render(); }; th.addEventListener('click', go); th.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }); }
+      return th;
+    })));
+    tbody.replaceChildren(...sorted.map((r) => {
+      const tr = h('tr', { class: onRow ? 'clickable' : '', tabindex: onRow ? '0' : null });
+      if (onRow) { tr.addEventListener('click', () => onRow(r)); tr.addEventListener('keydown', (e) => { if (e.key === 'Enter') onRow(r); }); }
+      for (const c of columns) { const v = c.render ? c.render(r) : c.fmt ? c.fmt(r[c.key], r) : r[c.key]; tr.append(h('td', { class: c.num ? 'n' : '' }, v ?? '—')); }
+      return tr;
+    }));
+  };
+  table.append(thead, tbody); render();
+  return h('div', { class: 'tbl-wrap' }, table);
+}
+
+/* Avatar: photo / logo with a silhouette-on-team-color fallback, never initials. */
+function avatar(url, size, { logo = false, color, label } = {}) {
+  const box = h('span', { class: `av${logo ? ' logo' : ''}`, style: { width: `${size}px`, height: `${size}px`, '--team': color || 'oklch(62% 0.01 260)' }, role: 'img', 'aria-label': label || '' });
+  const sil = () => box.replaceChildren(s('svg', { class: 'sil', viewBox: '0 0 24 24' }, s('path', { d: 'M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.4 0-8 2.3-8 5.2V21h16v-1.8c0-2.9-3.6-5.2-8-5.2Z' })));
+  if (url) { const img = h('img', { src: url, alt: '', loading: 'lazy' }); img.addEventListener('error', sil); box.append(img); } else sil();
+  return box;
+}
+
+/* Percentile bar row (Savant-style). direction: 'up' higher is better. */
+function pbar(label, valueText, pct, { info } = {}) {
+  const color = pct >= 50 ? `color-mix(in oklch, var(--good) ${Math.round(30 + (pct - 50) * 1.4)}%, oklch(70% 0.004 260))` : `color-mix(in oklch, var(--bad) ${Math.round(30 + (50 - pct) * 1.4)}%, oklch(70% 0.004 260))`;
+  const row = h('div', { class: 'pbar' },
+    h('div', { class: 't-sm ink2' }, label),
+    h('div', { class: 'track' }, h('div', { class: 'fill', style: { width: `${pct}%`, background: `color-mix(in oklch, ${color} 35%, transparent)` } }), h('div', { class: 'dot', style: { left: `${pct}%`, background: color } }, String(pct))),
+    h('div', { class: 't-sm num', style: { textAlign: 'right', fontWeight: 600 } }, valueText));
+  Tip.bind(row, () => [tipRow(valueText, label), tipText(`${fmt.ord(pct)} percentile${info ? ` · ${info}` : ''}`)]);
+  return row;
+}
+
+/* Number tween for live values. */
+function tween(el, to, { from, d = 0, ms = 400 } = {}) {
+  const start = from ?? Number(el.dataset.v ?? to); const t0 = performance.now();
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const step = (t) => { const k = reduce ? 1 : Math.min(1, (t - t0) / ms); const v = start + (to - start) * (1 - Math.pow(1 - k, 3)); el.textContent = fmt.n(v, d); if (k < 1) requestAnimationFrame(step); };
+  el.dataset.v = to; requestAnimationFrame(step);
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+}
+
+/* Line chart with snapping crosshair. series: [{name,color,values:[number|null], width, dash, area}] */
+function lineChartDraw(__W, { series, labels, height = 220, yMin, yMax, yTicks = 4, yFmt = (v) => fmt.n(v), refs = [], markers = [], tooltip, onClick, band }) {
+  const W = __W, H = height, m = { l: 40, r: 14, t: 12, b: 26 };
+  const n = labels.length;
+  const all = series.flatMap((se) => se.values).filter((v) => v != null);
+  const lo = yMin ?? Math.min(...all), hi = yMax ?? Math.max(...all);
+  const x = (i) => m.l + (n <= 1 ? 0 : (i * (W - m.l - m.r)) / (n - 1));
+  const y = (v) => m.t + (1 - (v - lo) / (hi - lo || 1)) * (H - m.t - m.b);
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
+  if (band) svg.append(s('rect', { x: m.l, y: y(band.to), width: W - m.l - m.r, height: Math.max(0, y(band.from) - y(band.to)), fill: band.fill }));
+  for (let k = 0; k <= yTicks; k++) { const v = lo + ((hi - lo) * k) / yTicks; svg.append(s('line', { class: 'grid-l', x1: m.l, x2: W - m.r, y1: y(v), y2: y(v) }), s('text', { class: 'axis-t', x: m.l - 6, y: y(v) + 3, 'text-anchor': 'end' }, yFmt(v))); }
+  const every = Math.max(1, Math.ceil(n / Math.max(3, Math.floor(W / 90))));
+  const sparse = labels.filter(Boolean).length <= 12;
+  labels.forEach((lb, i) => { if (!lb) return; if (sparse || i % every === 0 || i === n - 1) svg.append(s('text', { class: 'axis-t', x: x(i), y: H - 8, 'text-anchor': i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle' }, lb)); });
+  for (const r of refs) svg.append(s('line', { x1: m.l, x2: W - m.r, y1: y(r.y), y2: y(r.y), stroke: 'var(--ink-muted)', 'stroke-width': 1, 'stroke-dasharray': r.dash ? '4 4' : null }), r.label ? s('text', { class: 'axis-t', x: W - m.r, y: y(r.y) - 4, 'text-anchor': 'end' }, r.label) : null);
+  for (const se of series) {
+    let d = ''; se.values.forEach((v, i) => { if (v == null) return; d += `${d && se.values[i - 1] != null ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`; });
+    if (se.area) { const first = se.values.findIndex((v) => v != null); const last = se.values.length - 1 - [...se.values].reverse().findIndex((v) => v != null); svg.append(s('path', { d: `${d}L${x(last)},${y(se.area)}L${x(first)},${y(se.area)}Z`, fill: se.color, opacity: 0.1 })); }
+    svg.append(s('path', { d, fill: 'none', stroke: se.color, 'stroke-width': se.width || 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'stroke-dasharray': se.dash || null, opacity: se.opacity || 1 }));
+    if (se.dots) se.values.forEach((v, i) => { if (v != null) svg.append(s('circle', { cx: x(i), cy: y(v), r: 2.2, fill: se.color, opacity: 0.55 })); });
+  }
+  for (const mk of markers) svg.append(s('circle', { cx: x(mk.i), cy: y(mk.y), r: 5, fill: mk.color || 'var(--ink)', stroke: 'var(--card)', 'stroke-width': 2 }));
+  const xh = s('line', { class: 'xh', x1: 0, x2: 0, y1: m.t, y2: H - m.b });
+  const focusDots = series.map((se) => s('circle', { r: 4.5, fill: se.color, stroke: 'var(--card)', 'stroke-width': 2, opacity: 0 }));
+  svg.append(xh, ...focusDots);
+  const hit = s('rect', { x: m.l, y: 0, width: W - m.l - m.r, height: H, fill: 'transparent', style: onClick ? 'cursor:pointer' : null });
+  svg.append(hit);
+  const wrap = h('div', { class: 'chart', tabindex: '0', 'aria-label': 'Chart: use left and right arrows to read values' }, svg);
+  let cur = -1;
+  const setIdx = (i, cx, cy) => {
+    cur = Math.max(0, Math.min(n - 1, i));
+    xh.setAttribute('x1', x(cur)); xh.setAttribute('x2', x(cur)); xh.style.opacity = 0.35;
+    series.forEach((se, k) => { const v = se.values[cur]; focusDots[k].setAttribute('opacity', v == null ? 0 : 1); if (v != null) { focusDots[k].setAttribute('cx', x(cur)); focusDots[k].setAttribute('cy', y(v)); } });
+    if (tooltip) Tip.show(cx, cy, ...tooltip(cur));
+  };
+  hit.addEventListener('pointermove', (e) => { const r = svg.getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; setIdx(Math.round(((px - m.l) / (W - m.l - m.r)) * (n - 1)), e.clientX, e.clientY); });
+  hit.addEventListener('pointerleave', () => { Tip.hide(); focusDots.forEach((d) => d.setAttribute('opacity', 0)); xh.style.opacity = 0; });
+  if (onClick) hit.addEventListener('click', () => cur >= 0 && onClick(cur));
+  wrap.addEventListener('keydown', (e) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) return; e.preventDefault();
+    if (e.key === 'Enter') { if (onClick && cur >= 0) onClick(cur); return; }
+    const r = svg.getBoundingClientRect(); const i = cur < 0 ? n - 1 : cur + (e.key === 'ArrowRight' ? 1 : -1);
+    setIdx(i, r.left + (x(Math.max(0, Math.min(n - 1, i))) / W) * r.width, r.top + 20);
+  });
+  wrap.addEventListener('blur', () => Tip.hide());
+  return wrap;
+}
+
+/* Column chart, one mark per value; the mark is the hit target. */
+function columnChartDraw(__W, { bars, height = 180, yFmt = (v) => fmt.n(v), refs = [], tooltip, onClick, labelEvery }) {
+  const W = __W, H = height, m = { l: 36, r: 8, t: 10, b: 24 };
+  const hi = Math.max(...bars.map((b) => b.value), ...refs.map((r) => r.y)) * 1.05 || 1;
+  const band = (W - m.l - m.r) / bars.length; const bw = Math.min(24, band - 2);
+  const y = (v) => m.t + (1 - v / hi) * (H - m.t - m.b);
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
+  for (let k = 0; k <= 3; k++) { const v = (hi * k) / 3; svg.append(s('line', { class: 'grid-l', x1: m.l, x2: W - m.r, y1: y(v), y2: y(v) }), s('text', { class: 'axis-t', x: m.l - 6, y: y(v) + 3, 'text-anchor': 'end' }, yFmt(v))); }
+  const every = labelEvery || Math.max(1, Math.ceil(bars.length / 10));
+  bars.forEach((b, i) => {
+    const cx = m.l + band * i + band / 2; const top = y(b.value); const hgt = Math.max(0, H - m.b - top);
+    const r = Math.min(4, bw / 2, hgt);
+    const path = `M${cx - bw / 2},${H - m.b}V${top + r}q0,-${r} ${r},-${r}h${bw - 2 * r}q${r},0 ${r},${r}V${H - m.b}Z`;
+    const g = s('g', { tabindex: '0', style: onClick ? 'cursor:pointer' : null });
+    g.append(s('rect', { x: cx - band / 2, y: m.t, width: band, height: H - m.t - m.b, fill: 'transparent' }), s('path', { d: path, fill: b.color || 'var(--ink)', class: 'bar' }));
+    g.addEventListener('pointermove', (e) => { g.querySelector('.bar').setAttribute('opacity', 0.75); tooltip && Tip.show(e.clientX, e.clientY, ...tooltip(b, i)); });
+    g.addEventListener('pointerleave', () => { g.querySelector('.bar').setAttribute('opacity', 1); Tip.hide(); });
+    g.addEventListener('focus', () => { const rr = g.getBoundingClientRect(); tooltip && Tip.show(rr.left + rr.width / 2, rr.top, ...tooltip(b, i)); });
+    g.addEventListener('blur', () => Tip.hide());
+    if (onClick) { g.addEventListener('click', () => onClick(b, i)); g.addEventListener('keydown', (e) => { if (e.key === 'Enter') onClick(b, i); }); }
+    svg.append(g);
+    if (b.label && i % every === 0) svg.append(s('text', { class: 'axis-t', x: cx, y: H - 8, 'text-anchor': 'middle' }, b.label));
+  });
+  for (const r of refs) svg.append(s('line', { x1: m.l, x2: W - m.r, y1: y(r.y), y2: y(r.y), stroke: 'var(--ink-muted)', 'stroke-dasharray': '4 4' }), s('text', { class: 'axis-t', x: W - m.r, y: y(r.y) - 4, 'text-anchor': 'end' }, r.label || ''));
+  return h('div', { class: 'chart' }, svg);
+}
+
+/* Board chrome: title, notes, typeface + elevation switchers (persisted per viewer). */
+function boardBar(title, note, extra = []) {
+  const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } return null; };
+  const apply = () => {
+    document.body.classList.remove('font-inter', 'font-plex', 'font-source', 'elev-flat');
+    const f = store('g-font') || 'system'; if (f !== 'system') document.body.classList.add(`font-${f}`);
+    if ((store('g-elev') || 'raised') === 'flat') document.body.classList.add('elev-flat');
+  };
+  apply();
+  const fontSeg = segmented([{ value: 'system', label: 'System' }, { value: 'inter', label: 'Inter' }, { value: 'plex', label: 'IBM Plex Sans' }, { value: 'source', label: 'Source Sans 3' }], store('g-font') || 'system', (v) => { store('g-font', v); apply(); });
+  const elevSeg = segmented([{ value: 'raised', label: 'Cards raised' }, { value: 'flat', label: 'Flat + borders' }], store('g-elev') || 'raised', (v) => { store('g-elev', v); apply(); });
+  return h('div', { class: 'board-bar' }, h('div', { class: 'inner' },
+    h('div', null, h('div', { class: 'title' }, title), h('div', { class: 'note' }, note)),
+    h('div', { style: { flex: 1 } }),
+    ...extra,
+    h('div', { class: 'row' }, h('span', { class: 'note' }, 'Typeface'), Object.assign(fontSeg, { className: 'seg' })),
+    h('div', { class: 'row' }, h('span', { class: 'note' }, 'Elevation'), Object.assign(elevSeg, { className: 'seg' }))));
+}
+
+function lineChart(opts) {
+  const host = h('div', { class: 'chart-host' });
+  let last = 0;
+  const draw = (w) => { const W = Math.max(280, Math.round(w)); if (Math.abs(W - last) < 8) return; last = W; host.replaceChildren(lineChartDraw(W, opts)); };
+  const ro = new ResizeObserver((entries) => draw(entries[0].contentRect.width));
+  ro.observe(host);
+  requestAnimationFrame(() => draw(host.clientWidth || 720));
+  return host;
+}
+
+function columnChart(opts) {
+  const host = h('div', { class: 'chart-host' });
+  let last = 0;
+  const draw = (w) => { const W = Math.max(280, Math.round(w)); if (Math.abs(W - last) < 8) return; last = W; host.replaceChildren(columnChartDraw(W, opts)); };
+  const ro = new ResizeObserver((entries) => draw(entries[0].contentRect.width));
+  ro.observe(host);
+  requestAnimationFrame(() => draw(host.clientWidth || 720));
+  return host;
+}
+</script>
+<script type="application/json" id="data-nfl-dal-nyg">{"source":"ESPN site API summary, event 401872930, fetched 2026-09-14T02:08:04.837Z","status":"Halftime","state":"in","venue":"MetLife Stadium","teams":[{"id":"19","abbr":"NYG","name":"New York Giants","short":"Giants","color":"003c7f","alt":"c9243f","logo":"https://a.espncdn.com/i/teamlogos/nfl/500/nyg.png","homeAway":"home","score":14,"record":"0-0"},{"id":"6","abbr":"DAL","name":"Dallas Cowboys","short":"Cowboys","color":"002a5c","alt":"b0b7bc","logo":"https://a.espncdn.com/i/teamlogos/nfl/500/dal.png","homeAway":"away","score":7,"record":"0-0"}],"wp":[{"id":"4018729301","home":0.4073},{"id":"40187293039","home":0.3863},{"id":"40187293062","home":0.4017},{"id":"40187293084","home":0.413},{"id":"401872930107","home":0.4269},{"id":"401872930132","home":0.4314},{"id":"401872930160","home":0.4174},{"id":"401872930180","home":0.4173},{"id":"401872930202","home":0.4255},{"id":"401872930224","home":0.4308},{"id":"401872930246","home":0.4529},{"id":"401872930271","home":0.4503},{"id":"401872930304","home":0.4293},{"id":"401872930327","home":0.5138},{"id":"401872930370","home":0.5072},{"id":"401872930392","home":0.5117},{"id":"401872930403","home":0.519},{"id":"401872930414","home":0.5534},{"id":"401872930446","home":0.5868},{"id":"401872930477","home":0.5898},{"id":"401872930484","home":0.6055},{"id":"401872930525","home":0.6033},{"id":"401872930547","home":0.6182},{"id":"401872930571","home":0.5868},{"id":"401872930596","home":0.5682},{"id":"401872930626","home":0.5816},{"id":"401872930648","home":0.5686},{"id":"401872930670","home":0.5888},{"id":"401872930693","home":0.5759},{"id":"401872930718","home":0.6176},{"id":"401872930752","home":0.6105},{"id":"401872930762","home":0.6122},{"id":"401872930772","home":0.611},{"id":"401872930801","home":0.6269},{"id":"401872930823","home":0.607},{"id":"401872930846","home":0.637},{"id":"401872930887","home":0.6376},{"id":"401872930907","home":0.6472},{"id":"401872930931","home":0.6307},{"id":"401872930953","home":0.6514},{"id":"401872930978","home":0.6056},{"id":"4018729301000","home":0.6029},{"id":"4018729301024","home":0.6149},{"id":"4018729301034","home":0.6155},{"id":"4018729301044","home":0.6011},{"id":"4018729301073","home":0.5998},{"id":"4018729301097","home":0.5929},{"id":"4018729301119","home":0.6403},{"id":"4018729301152","home":0.5508},{"id":"4018729301186","home":0.5544},{"id":"4018729301208","home":0.5308},{"id":"4018729301233","home":0.5272},{"id":"4018729301255","home":0.5833},{"id":"4018729301291","home":0.5307},{"id":"4018729301316","home":0.4708},{"id":"4018729301350","home":0.474},{"id":"4018729301422","home":0.4466},{"id":"4018729301456","home":0.4444},{"id":"4018729301463","home":0.4341},{"id":"4018729301504","home":0.4578},{"id":"4018729301531","home":0.4372},{"id":"4018729301553","home":0.4248},{"id":"4018729301576","home":0.4898},{"id":"4018729301606","home":0.481},{"id":"4018729301628","home":0.5357},{"id":"4018729301658","home":0.5066},{"id":"4018729301673","home":0.5074},{"id":"4018729301688","home":0.4265},{"id":"4018729301711","home":0.4329},{"id":"4018729301733","home":0.4199},{"id":"4018729301769","home":0.4368},{"id":"4018729301793","home":0.4043},{"id":"4018729301823","home":0.427},{"id":"4018729301846","home":0.4189},{"id":"4018729301859","home":0.4225},{"id":"4018729301871","home":0.4808},{"id":"4018729301891","home":0.4736},{"id":"4018729301910","home":0.4536},{"id":"4018729301940","home":0.4686},{"id":"4018729301953","home":0.4652},{"id":"4018729301965","home":0.4421},{"id":"4018729301996","home":0.5018},{"id":"4018729302026","home":0.539},{"id":"4018729302056","home":0.5476},{"id":"4018729302086","home":0.6647},{"id":"4018729302127","home":0.6615},{"id":"4018729302139","home":0.6636},{"id":"4018729302150","home":0.6559},{"id":"4018729302167","home":0.659},{"id":"4018729302183","home":0.659},{"id":"4018729302213","home":0.6649},{"id":"4018729302235","home":0.6636}],"plays":[{"id":"40187293039","drive":"4018729301","team":"DAL","period":1,"clock":"15:00","text":"D.Zvada kicks 62 yards from NYG 35 to DAL 3. K.Turpin to DAL 28 for 25 yards (Z.Barnes).","type":"Kickoff","yds":25,"start":35,"end":72,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":0},{"id":"40187293062","drive":"4018729301","team":"DAL","period":1,"clock":"14:54","text":"J.Williams left guard to DAL 29 for 1 yard (A.Carter; D.Reader).","type":"Rush","yds":1,"start":72,"end":71,"down":2,"dist":9,"downText":"2nd & 9","score":false,"away":0,"home":0},{"id":"40187293084","drive":"4018729301","team":"DAL","period":1,"clock":"14:18","text":"(Shotgun) D.Prescott pass incomplete deep left to C.Lamb.","type":"Pass Incompletion","yds":0,"start":71,"end":71,"down":3,"dist":9,"downText":"3rd & 9","score":false,"away":0,"home":0},{"id":"401872930107","drive":"4018729301","team":"DAL","period":1,"clock":"14:14","text":"(Shotgun) D.Prescott pass short right to G.Pickens to DAL 37 for 8 yards (G.Newsome).  The ball spot was assisted by replay.","type":"Pass Reception","yds":8,"start":71,"end":63,"down":4,"dist":1,"downText":"4th & 1","score":false,"away":0,"home":0},{"id":"401872930132","drive":"4018729301","team":"DAL","period":1,"clock":"13:18","text":"(Shotgun) PENALTY on DAL, Delay of Game, 4 yards, enforced at DAL 37 - No Play.","type":"Penalty","yds":-4,"start":63,"end":67,"down":4,"dist":5,"downText":"4th & 5","score":false,"away":0,"home":0},{"id":"401872930160","drive":"4018729301","team":"DAL","period":1,"clock":"12:59","text":"B.Anger punts 50 yards to NYG 17, Center-T.Sieg, fair catch by B.Berrios.","type":"Punt","yds":0,"start":67,"end":17,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":0},{"id":"401872930180","drive":"4018729302","team":"NYG","period":1,"clock":"12:53","text":"C.Skattebo right tackle to NYG 22 for 5 yards (K.Clark).","type":"Rush","yds":5,"start":17,"end":22,"down":2,"dist":5,"downText":"2nd & 5","score":false,"away":0,"home":0},{"id":"401872930202","drive":"4018729302","team":"NYG","period":1,"clock":"12:12","text":"D.Singletary left tackle to NYG 26 for 4 yards (D.Ezeiruaku).","type":"Rush","yds":4,"start":22,"end":26,"down":3,"dist":1,"downText":"3rd & 1","score":false,"away":0,"home":0},{"id":"401872930224","drive":"4018729302","team":"NYG","period":1,"clock":"11:34","text":"J.Dart up the middle to NYG 27 for 1 yard (D.Overshown; O.Ogbonnia).","type":"Rush","yds":1,"start":26,"end":27,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":0},{"id":"401872930246","drive":"4018729302","team":"NYG","period":1,"clock":"10:49","text":"(Shotgun) J.Dart pass short left to M.Nabers to NYG 36 for 9 yards (D.Bland).","type":"Pass Reception","yds":9,"start":27,"end":36,"down":2,"dist":1,"downText":"2nd & 1","score":false,"away":0,"home":0},{"id":"401872930271","drive":"4018729302","team":"NYG","period":1,"clock":"10:09","text":"C.Skattebo right end to NYG 39 for 3 yards (D.Winters; J.Thompson).PENALTY on DAL-Q.Williams, Defensive Offside, 5 yards, enforced at NYG 36 - No Play.","type":"Penalty","yds":5,"start":36,"end":41,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":0},{"id":"401872930304","drive":"4018729302","team":"NYG","period":1,"clock":"9:43","text":"J.Dart pass incomplete short middle to P.Ricard (L.Overton).","type":"Pass Incompletion","yds":0,"start":41,"end":41,"down":2,"dist":10,"downText":"2nd & 10","score":false,"away":0,"home":0},{"id":"401872930327","drive":"4018729302","team":"NYG","period":1,"clock":"9:38","text":"(Shotgun) J.Dart left end ran ob at DAL 37 for 22 yards (D.Overshown).PENALTY on DAL-D.Overshown, Unnecessary Roughness, 15 yards, enforced at DAL 37.","type":"Rush","yds":22,"start":41,"end":78,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":0},{"id":"401872930370","drive":"4018729302","team":"NYG","period":1,"clock":"9:05","text":"D.Singletary right tackle to DAL 19 for 3 yards (M.Lawrence; J.Thompson).","type":"Rush","yds":3,"start":78,"end":81,"down":2,"dist":7,"downText":"2nd & 7","score":false,"away":0,"home":0},{"id":"401872930392","drive":"4018729302","team":"NYG","period":1,"clock":"8:19","text":"C.Skattebo right guard to DAL 16 for 3 yards (D.Overshown; D.Bland).","type":"Rush","yds":3,"start":81,"end":84,"down":3,"dist":4,"downText":"3rd & 4","score":false,"away":0,"home":0},{"id":"401872930403","drive":"4018729302","team":"NYG","period":1,"clock":"7:32","text":"Timeout #1 by NYG at 07:32.","type":"Timeout","yds":0,"start":85,"end":85,"down":3,"dist":3,"downText":"3rd & 3","score":false,"away":0,"home":0},{"id":"401872930414","drive":"4018729302","team":"NYG","period":1,"clock":"7:32","text":"(Shotgun) J.Dart pass short middle to I.Likely to DAL 3 for 13 yards (M.Hooker).","type":"Pass Reception","yds":13,"start":84,"end":97,"down":1,"dist":3,"downText":"1st & Goal","score":false,"away":0,"home":0},{"id":"401872930446","drive":"4018729302","team":"NYG","period":1,"clock":"6:40","text":"(Shotgun) C.Skattebo left end for 3 yards, TOUCHDOWN. D.Zvada extra point is GOOD, Center-B.Mann, Holder-J.Stout.","type":"Rushing Touchdown","yds":3,"start":97,"end":100,"down":-1,"dist":10,"downText":"1st & Goal","score":true,"away":0,"home":7},{"id":"401872930477","drive":"4018729302","team":"NYG","period":1,"clock":"6:40","text":"Official Timeout at 06:40.","type":"Official Timeout","yds":0,"start":85,"end":85,"down":-1,"dist":0,"downText":" & Goal","score":false,"away":0,"home":7},{"id":"401872930484","drive":"4018729303","team":"DAL","period":1,"clock":"6:40","text":"D.Zvada kicks 60 yards from NYG 35 to DAL 5. K.Turpin to DAL 22 for 17 yards (M.Harrison).PENALTY on DAL-J.Mingo, Low Block, 11 yards, enforced at DAL 22.","type":"Kickoff","yds":6,"start":35,"end":89,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":7},{"id":"401872930525","drive":"4018729303","team":"DAL","period":1,"clock":"6:35","text":"(Shotgun) J.Williams right tackle to DAL 16 for 5 yards (A.Reese).","type":"Rush","yds":5,"start":89,"end":84,"down":2,"dist":5,"downText":"2nd & 5","score":false,"away":0,"home":7},{"id":"401872930547","drive":"4018729303","team":"DAL","period":1,"clock":"6:05","text":"D.Shelton reported in as eligible.  C.Lamb left end to DAL 16 for no gain (A.Phillips).","type":"Rush","yds":0,"start":84,"end":84,"down":3,"dist":5,"downText":"3rd & 5","score":false,"away":0,"home":7},{"id":"401872930571","drive":"4018729303","team":"DAL","period":1,"clock":"5:23","text":"(Shotgun) D.Prescott pass short right to G.Pickens to DAL 25 for 9 yards (A.Phillips).","type":"Pass Reception","yds":9,"start":84,"end":75,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":7},{"id":"401872930596","drive":"4018729303","team":"DAL","period":1,"clock":"4:48","text":"D.Prescott pass short right to B.Spann-Ford pushed ob at DAL 33 for 8 yards (A.Reese).","type":"Pass Reception","yds":8,"start":75,"end":67,"down":2,"dist":2,"downText":"2nd & 2","score":false,"away":0,"home":7},{"id":"401872930626","drive":"4018729303","team":"DAL","period":1,"clock":"4:11","text":"J.Williams up the middle to DAL 33 for no gain (A.Carter; K.Thibodeaux).","type":"Rush","yds":0,"start":67,"end":67,"down":3,"dist":2,"downText":"3rd & 2","score":false,"away":0,"home":7},{"id":"401872930648","drive":"4018729303","team":"DAL","period":1,"clock":"3:28","text":"(Shotgun) J.Williams up the middle to DAL 37 for 4 yards (C.Golston).","type":"Rush","yds":4,"start":67,"end":63,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":7},{"id":"401872930670","drive":"4018729303","team":"DAL","period":1,"clock":"2:59","text":"D.Prescott pass incomplete deep left.","type":"Pass Incompletion","yds":0,"start":63,"end":63,"down":2,"dist":10,"downText":"2nd & 10","score":false,"away":0,"home":7},{"id":"401872930693","drive":"4018729303","team":"DAL","period":1,"clock":"2:52","text":"(Shotgun) D.Prescott pass short right to B.Spann-Ford to DAL 43 for 6 yards (T.Edmunds).","type":"Pass Reception","yds":6,"start":63,"end":57,"down":3,"dist":4,"downText":"3rd & 4","score":false,"away":0,"home":7},{"id":"401872930718","drive":"4018729303","team":"DAL","period":1,"clock":"2:11","text":"(2:11) (Shotgun) D.Prescott pass incomplete deep right to G.Pickens [A.Reese].\nPenalty on DAL, Illegal Shift, declined.","type":"Pass Incompletion","yds":0,"start":57,"end":57,"down":4,"dist":4,"downText":"4th & 4","score":false,"away":0,"home":7},{"id":"401872930752","drive":"4018729303","team":"DAL","period":1,"clock":"2:05","text":"B.Anger punts 46 yards to NYG 11, Center-T.Sieg, fair catch by B.Berrios.","type":"Punt","yds":0,"start":57,"end":11,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":7},{"id":"401872930762","drive":"4018729303","team":"DAL","period":1,"clock":"1:59","text":"Official Timeout at 01:59.","type":"Official Timeout","yds":0,"start":12,"end":12,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":7},{"id":"401872930772","drive":"4018729304","team":"NYG","period":1,"clock":"1:59","text":"C.Skattebo up the middle to NYG 16 for 5 yards (L.Overton; J.Thompson).","type":"Rush","yds":5,"start":11,"end":16,"down":2,"dist":5,"downText":"2nd & 5","score":false,"away":0,"home":7},{"id":"401872930801","drive":"4018729304","team":"NYG","period":1,"clock":"1:18","text":"T.Tracy left tackle to NYG 22 for 6 yards (R.Gary; J.Bullard).","type":"Rush","yds":6,"start":16,"end":22,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":7},{"id":"401872930823","drive":"4018729304","team":"NYG","period":1,"clock":"0:33","text":"J.Dart pass incomplete short right to M.Nabers (C.Durant) [R.Gary].","type":"Pass Incompletion","yds":0,"start":22,"end":22,"down":2,"dist":10,"downText":"2nd & 10","score":false,"away":0,"home":7},{"id":"401872930846","drive":"4018729304","team":"NYG","period":1,"clock":"0:28","text":"(Shotgun) J.Dart pass short middle to I.Likely to NYG 29 for 7 yards (D.Ezeiruaku; J.Thompson). FUMBLES (D.Ezeiruaku), recovered by NYG-P.Ricard at NYG 31.","type":"Fumble Recovery (Own)","yds":9,"start":22,"end":31,"down":3,"dist":1,"downText":"3rd & 1","score":false,"away":0,"home":7},{"id":"401872930887","drive":"4018729304","team":"NYG","period":1,"clock":"0:00","text":"END QUARTER 1","type":"End Period","yds":0,"start":31,"end":31,"down":3,"dist":1,"downText":"3rd & 1","score":false,"away":0,"home":7},{"id":"401872930907","drive":"4018729304","team":"NYG","period":2,"clock":"15:00","text":"(Shotgun) PENALTY on DAL-J.Barham, Neutral Zone Infraction, 5 yards, enforced at NYG 31 - No Play.","type":"Penalty","yds":5,"start":31,"end":36,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":7},{"id":"401872930931","drive":"4018729304","team":"NYG","period":2,"clock":"15:00","text":"C.Skattebo left end to NYG 37 for 1 yard (O.Ogbonnia).","type":"Rush","yds":1,"start":36,"end":37,"down":2,"dist":9,"downText":"2nd & 9","score":false,"away":0,"home":7},{"id":"401872930953","drive":"4018729304","team":"NYG","period":2,"clock":"14:13","text":"(Shotgun) J.Dart pass short right to M.Nabers to NYG 44 for 7 yards (C.Downs).","type":"Pass Reception","yds":7,"start":37,"end":44,"down":3,"dist":2,"downText":"3rd & 2","score":false,"away":0,"home":7},{"id":"401872930978","drive":"4018729304","team":"NYG","period":2,"clock":"13:31","text":"C.Skattebo right tackle to NYG 44 for no gain (K.Clark).","type":"Rush","yds":0,"start":44,"end":44,"down":4,"dist":2,"downText":"4th & 2","score":false,"away":0,"home":7},{"id":"4018729301000","drive":"4018729304","team":"NYG","period":2,"clock":"12:45","text":"(Shotgun) PENALTY on NYG-J.Runyan, False Start, 5 yards, enforced at NYG 44 - No Play.","type":"Penalty","yds":-5,"start":44,"end":39,"down":4,"dist":7,"downText":"4th & 7","score":false,"away":0,"home":7},{"id":"4018729301024","drive":"4018729304","team":"NYG","period":2,"clock":"12:38","text":"J.Stout punts 46 yards to DAL 15, Center-B.Mann, downed by NYG-M.Harrison.","type":"Punt","yds":0,"start":39,"end":85,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":7},{"id":"4018729301034","drive":"4018729304","team":"NYG","period":2,"clock":"12:28","text":"Official Timeout at 12:28.","type":"Official Timeout","yds":0,"start":85,"end":85,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":7},{"id":"4018729301044","drive":"4018729305","team":"DAL","period":2,"clock":"12:28","text":"(Shotgun) D.Prescott scrambles up the middle to DAL 25 for 10 yards (B.Burns).","type":"Rush","yds":10,"start":85,"end":75,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":7},{"id":"4018729301073","drive":"4018729305","team":"DAL","period":2,"clock":"11:50","text":"D.Shelton reported in as eligible.  J.Williams left tackle to DAL 30 for 5 yards (T.Nubin).","type":"Rush","yds":5,"start":75,"end":70,"down":2,"dist":5,"downText":"2nd & 5","score":false,"away":0,"home":7},{"id":"4018729301097","drive":"4018729305","team":"DAL","period":2,"clock":"11:06","text":"(Shotgun) D.Prescott scrambles right tackle to DAL 34 for 4 yards (G.Newsome; T.Edmunds).","type":"Rush","yds":4,"start":70,"end":66,"down":3,"dist":1,"downText":"3rd & 1","score":false,"away":0,"home":7},{"id":"4018729301119","drive":"4018729305","team":"DAL","period":2,"clock":"10:25","text":"J.Williams right guard to DAL 36 for 2 yards (C.Golston; K.Thibodeaux).PENALTY on DAL-L.Schoonmaker, Offensive Holding, 10 yards, enforced at DAL 34 - No Play.","type":"Penalty","yds":-10,"start":66,"end":76,"down":3,"dist":11,"downText":"3rd & 11","score":false,"away":0,"home":7},{"id":"4018729301152","drive":"4018729305","team":"DAL","period":2,"clock":"9:57","text":"(Shotgun) D.Prescott pass incomplete deep right to G.Pickens (G.Newsome) [B.Burns].PENALTY on NYG-G.Newsome, Defensive Pass Interference, 38 yards, enforced at DAL 24 - No Play.","type":"Penalty","yds":38,"start":76,"end":38,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":7},{"id":"4018729301186","drive":"4018729305","team":"DAL","period":2,"clock":"9:50","text":"(Shotgun) J.Williams left guard to NYG 35 for 3 yards (B.Burns).","type":"Rush","yds":3,"start":38,"end":35,"down":2,"dist":7,"downText":"2nd & 7","score":false,"away":0,"home":7},{"id":"4018729301208","drive":"4018729305","team":"DAL","period":2,"clock":"9:13","text":"(Shotgun) D.Prescott pass short left to K.Turpin to NYG 27 for 8 yards (D.Banks).","type":"Pass Reception","yds":8,"start":35,"end":27,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":0,"home":7},{"id":"4018729301233","drive":"4018729305","team":"DAL","period":2,"clock":"8:33","text":"(Shotgun) E.Demercado left guard to NYG 23 for 4 yards (B.Okoye; C.Golston).","type":"Rush","yds":4,"start":27,"end":23,"down":2,"dist":6,"downText":"2nd & 6","score":false,"away":0,"home":7},{"id":"4018729301255","drive":"4018729305","team":"DAL","period":2,"clock":"7:50","text":"(Shotgun) D.Prescott pass short left to J.Williams to NYG 12 for 11 yards (D.Banks).PENALTY on DAL-T.Steele, Illegal Use of Hands, 10 yards, enforced at NYG 23 - No Play.","type":"Penalty","yds":-10,"start":23,"end":33,"down":2,"dist":16,"downText":"2nd & 16","score":false,"away":0,"home":7},{"id":"4018729301291","drive":"4018729305","team":"DAL","period":2,"clock":"7:26","text":"(Shotgun) D.Prescott pass short left to L.Schoonmaker to NYG 21 for 12 yards (T.Nubin).","type":"Pass Reception","yds":12,"start":33,"end":21,"down":3,"dist":4,"downText":"3rd & 4","score":false,"away":0,"home":7},{"id":"4018729301316","drive":"4018729305","team":"DAL","period":2,"clock":"6:45","text":"(Shotgun) D.Prescott pass incomplete deep right to J.Ferguson (A.Phillips).PENALTY on NYG-A.Phillips, Defensive Pass Interference, 19 yards, enforced at NYG 21 - No Play.","type":"Penalty","yds":19,"start":21,"end":2,"down":1,"dist":2,"downText":"1st & Goal","score":false,"away":0,"home":7},{"id":"4018729301350","drive":"4018729305","team":"DAL","period":2,"clock":"6:38","text":"J.Williams right guard to NYG 1 for 1 yard (D.Reader).","type":"Rush","yds":1,"start":2,"end":1,"down":2,"dist":1,"downText":"2nd & Goal","score":false,"away":0,"home":7},{"id":"4018729301422","drive":"4018729305","team":"DAL","period":2,"clock":"5:44","text":"(Shotgun) D.Prescott pass short left to C.Lamb for 1 yard, TOUCHDOWN. B.Aubrey extra point is GOOD, Center-T.Sieg, Holder-B.Anger.","type":"Passing Touchdown","yds":1,"start":1,"end":0,"down":-1,"dist":10,"downText":"3rd & Goal","score":true,"away":7,"home":7},{"id":"4018729301456","drive":"4018729305","team":"DAL","period":2,"clock":"5:44","text":"Official Timeout at 05:44.","type":"Official Timeout","yds":0,"start":15,"end":15,"down":-1,"dist":0,"downText":" & Goal","score":false,"away":7,"home":7},{"id":"4018729301463","drive":"4018729306","team":"NYG","period":2,"clock":"5:44","text":"B.Aubrey kicks 58 yards from DAL 35 to NYG 7. D.Banks to NYG 41 for 34 yards (B.Spann-Ford; C.Downs).PENALTY on NYG-E.Campbell, Offensive Holding, 10 yards, enforced at NYG 25.","type":"Kickoff","yds":6,"start":65,"end":15,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":7,"home":7},{"id":"4018729301504","drive":"4018729306","team":"NYG","period":2,"clock":"5:38","text":"J.Dart left end ran ob at NYG 31 for 16 yards (J.Barham).","type":"Rush","yds":16,"start":15,"end":31,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":7,"home":7},{"id":"4018729301531","drive":"4018729306","team":"NYG","period":2,"clock":"5:01","text":"(Shotgun) J.Dart sacked at NYG 31 for 0 yards (sack split by D.Ezeiruaku and J.Bullard).","type":"Sack","yds":0,"start":31,"end":31,"down":2,"dist":10,"downText":"2nd & 10","score":false,"away":7,"home":7},{"id":"4018729301553","drive":"4018729306","team":"NYG","period":2,"clock":"4:19","text":"(Shotgun) J.Dart pass incomplete deep left to M.Fields [D.Ezeiruaku].","type":"Pass Incompletion","yds":0,"start":31,"end":31,"down":3,"dist":10,"downText":"3rd & 10","score":false,"away":7,"home":7},{"id":"4018729301576","drive":"4018729306","team":"NYG","period":2,"clock":"4:14","text":"(Shotgun) J.Dart pass short left to I.Likely pushed ob at 50 for 19 yards (S.Revel) [Q.Williams].","type":"Pass Reception","yds":19,"start":31,"end":50,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":7,"home":7},{"id":"4018729301606","drive":"4018729306","team":"NYG","period":2,"clock":"3:39","text":"D.Singletary left tackle to DAL 47 for 3 yards (O.Ogbonnia).","type":"Rush","yds":3,"start":50,"end":53,"down":2,"dist":7,"downText":"2nd & 7","score":false,"away":7,"home":7},{"id":"4018729301628","drive":"4018729306","team":"NYG","period":2,"clock":"3:01","text":"J.Dart pass short left to M.Fields pushed ob at DAL 28 for 19 yards (D.Winters).","type":"Pass Reception","yds":19,"start":53,"end":72,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":7,"home":7},{"id":"4018729301658","drive":"4018729306","team":"NYG","period":2,"clock":"2:36","text":"(No Huddle, Shotgun) J.Dart sacked at DAL 36 for -8 yards (C.Downs). FUMBLES (C.Downs) [C.Downs], recovered by NYG-J.Runyan at DAL 34. J.Runyan to DAL 29 for 5 yards (D.Winters).","type":"Fumble Recovery (Own)","yds":-1,"start":72,"end":71,"down":2,"dist":11,"downText":"2nd & 11","score":false,"away":7,"home":7},{"id":"4018729301673","drive":"4018729306","team":"NYG","period":2,"clock":"2:00","text":"Two-Minute Warning","type":"Two-minute warning","yds":0,"start":71,"end":71,"down":2,"dist":11,"downText":"2nd & 11","score":false,"away":7,"home":7},{"id":"4018729301688","drive":"4018729306","team":"NYG","period":2,"clock":"2:00","text":"(Shotgun) T.Tracy left end to DAL 21 for 8 yards (Q.Williams). FUMBLES (Q.Williams), RECOVERED by DAL-S.Revel at DAL 19. S.Revel to DAL 16 for -3 yards (A.Thomas).","type":"Fumble Recovery (Opponent)","yds":-3,"start":71,"end":84,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":7,"home":7},{"id":"4018729301711","drive":"4018729306","team":"NYG","period":2,"clock":"1:50","text":"Official Timeout at 01:50.","type":"Official Timeout","yds":0,"start":88,"end":88,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":7,"home":7},{"id":"4018729301733","drive":"4018729307","team":"DAL","period":2,"clock":"1:50","text":"J.Williams right guard to DAL 22 for 6 yards (A.Reese).","type":"Rush","yds":6,"start":84,"end":78,"down":2,"dist":4,"downText":"2nd & 4","score":false,"away":7,"home":7},{"id":"4018729301769","drive":"4018729307","team":"DAL","period":2,"clock":"1:24","text":"(Shotgun) D.Prescott pass incomplete deep right to G.Pickens.","type":"Pass Incompletion","yds":0,"start":78,"end":78,"down":3,"dist":4,"downText":"3rd & 4","score":false,"away":7,"home":7},{"id":"4018729301793","drive":"4018729307","team":"DAL","period":2,"clock":"1:18","text":"(Shotgun) D.Prescott pass short left to C.Lamb pushed ob at DAL 31 for 9 yards (K.Thibodeaux).","type":"Pass Reception","yds":9,"start":78,"end":69,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":7,"home":7},{"id":"4018729301823","drive":"4018729307","team":"DAL","period":2,"clock":"1:13","text":"(No Huddle, Shotgun) D.Prescott pass incomplete deep left [K.Thibodeaux].","type":"Pass Incompletion","yds":0,"start":69,"end":69,"down":2,"dist":10,"downText":"2nd & 10","score":false,"away":7,"home":7},{"id":"4018729301846","drive":"4018729307","team":"DAL","period":2,"clock":"1:07","text":"(Shotgun) D.Prescott pass short left to R.Flournoy to DAL 36 for 5 yards (D.Banks).","type":"Pass Reception","yds":5,"start":69,"end":64,"down":3,"dist":5,"downText":"3rd & 5","score":false,"away":7,"home":7},{"id":"4018729301859","drive":"4018729307","team":"DAL","period":2,"clock":"0:58","text":"Timeout #1 by DAL at 00:58.","type":"Timeout","yds":0,"start":64,"end":64,"down":3,"dist":5,"downText":"3rd & 5","score":false,"away":7,"home":7},{"id":"4018729301871","drive":"4018729307","team":"DAL","period":2,"clock":"0:58","text":"(Shotgun) D.Prescott pass deep right INTERCEPTED by J.Holland at NYG 45. J.Holland ran ob at NYG 45 for no gain.","type":"Pass Interception Return","yds":0,"start":64,"end":45,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":7,"home":7},{"id":"4018729301891","drive":"4018729307","team":"DAL","period":2,"clock":"0:49","text":"Official Timeout at 00:49.","type":"Official Timeout","yds":0,"start":45,"end":45,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":7,"home":7},{"id":"4018729301910","drive":"4018729308","team":"NYG","period":2,"clock":"0:49","text":"(Shotgun) J.Dart pass incomplete short left to M.Nabers.","type":"Pass Incompletion","yds":0,"start":45,"end":45,"down":2,"dist":10,"downText":"2nd & 10","score":false,"away":7,"home":7},{"id":"4018729301940","drive":"4018729308","team":"NYG","period":2,"clock":"0:45","text":"(Shotgun) J.Dart pass short left to M.Fields to DAL 49 for 6 yards (D.Bland).","type":"Pass Reception","yds":6,"start":45,"end":51,"down":3,"dist":4,"downText":"3rd & 4","score":false,"away":7,"home":7},{"id":"4018729301953","drive":"4018729308","team":"NYG","period":2,"clock":"0:40","text":"Timeout #2 by NYG at 00:40.","type":"Timeout","yds":0,"start":51,"end":51,"down":3,"dist":4,"downText":"3rd & 4","score":false,"away":7,"home":7},{"id":"4018729301965","drive":"4018729308","team":"NYG","period":2,"clock":"0:40","text":"(Shotgun) PENALTY on NYG-J.Runyan, False Start, 5 yards, enforced at DAL 49 - No Play.","type":"Penalty","yds":-5,"start":51,"end":46,"down":3,"dist":9,"downText":"3rd & 9","score":false,"away":7,"home":7},{"id":"4018729301996","drive":"4018729308","team":"NYG","period":2,"clock":"0:40","text":"(Shotgun) J.Dart pass deep left to M.Nabers ran ob at DAL 38 for 16 yards.","type":"Pass Reception","yds":16,"start":46,"end":62,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":7,"home":7},{"id":"4018729302026","drive":"4018729308","team":"NYG","period":2,"clock":"0:35","text":"(Shotgun) J.Dart pass deep right to D.Mooney ran ob at DAL 20 for 18 yards.","type":"Pass Reception","yds":18,"start":62,"end":80,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":7,"home":7},{"id":"4018729302056","drive":"4018729308","team":"NYG","period":2,"clock":"0:31","text":"(Shotgun) J.Dart pass short right to I.Likely pushed ob at DAL 15 for 5 yards (D.Winters).","type":"Pass Reception","yds":5,"start":80,"end":85,"down":2,"dist":5,"downText":"2nd & 5","score":false,"away":7,"home":7},{"id":"4018729302086","drive":"4018729308","team":"NYG","period":2,"clock":"0:20","text":"(Shotgun) J.Dart pass short right to I.Likely for 15 yards, TOUCHDOWN. D.Zvada extra point is GOOD, Center-B.Mann, Holder-J.Stout.","type":"Passing Touchdown","yds":15,"start":85,"end":100,"down":-1,"dist":10,"downText":"2nd & 5","score":true,"away":7,"home":14},{"id":"4018729302127","drive":"4018729309","team":"DAL","period":2,"clock":"0:20","text":"D.Zvada kicks 64 yards from NYG 35 to DAL 1. K.Turpin to DAL 32 for 31 yards (M.Harrison).","type":"Kickoff","yds":31,"start":35,"end":68,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":7,"home":14},{"id":"4018729302139","drive":"4018729309","team":"DAL","period":2,"clock":"0:14","text":"Timeout #3 by NYG at 00:14.","type":"Timeout","yds":0,"start":68,"end":68,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":7,"home":14},{"id":"4018729302150","drive":"4018729309","team":"DAL","period":2,"clock":"0:14","text":"(Shotgun) D.Prescott pass short right to J.Ferguson to DAL 38 for 6 yards (T.Edmunds).","type":"Pass Reception","yds":6,"start":68,"end":62,"down":2,"dist":4,"downText":"2nd & 4","score":false,"away":7,"home":14},{"id":"4018729302167","drive":"4018729309","team":"DAL","period":2,"clock":"0:09","text":"Timeout #2 by DAL at 00:09.","type":"Timeout","yds":0,"start":62,"end":62,"down":2,"dist":4,"downText":"2nd & 4","score":false,"away":7,"home":14},{"id":"4018729302183","drive":"4018729309","team":"DAL","period":2,"clock":"0:09","text":"(Shotgun) D.Prescott pass incomplete short left to R.Flournoy (D.Banks).","type":"Pass Incompletion","yds":0,"start":62,"end":62,"down":3,"dist":4,"downText":"3rd & 4","score":false,"away":7,"home":14},{"id":"4018729302213","drive":"4018729309","team":"DAL","period":2,"clock":"0:03","text":"(Shotgun) H.Luepke up the middle to DAL 45 for 7 yards (C.Golston).","type":"Rush","yds":7,"start":62,"end":55,"down":1,"dist":10,"downText":"1st & 10","score":false,"away":7,"home":14},{"id":"4018729302235","drive":"4018729309","team":"DAL","period":2,"clock":"0:00","text":"END QUARTER 2","type":"End of Half","yds":0,"start":55,"end":55,"down":1,"dist":10,"score":false,"away":7,"home":14}],"drives":[{"id":"4018729301","team":"DAL","result":"Punt","yards":5,"plays":3,"time":"2:07","start":72,"end":67,"period":1},{"id":"4018729302","team":"NYG","result":"Touchdown","yards":83,"plays":10,"time":"6:13","start":17,"end":100,"period":1},{"id":"4018729303","team":"DAL","result":"Punt","yards":32,"plays":9,"time":"4:41","start":89,"end":57,"period":1},{"id":"4018729304","team":"NYG","result":"Punt","yards":28,"plays":7,"time":"4:31","start":11,"end":39,"period":1},{"id":"4018729305","team":"DAL","result":"Touchdown","yards":85,"plays":10,"time":"6:44","start":85,"end":0,"period":2},{"id":"4018729306","team":"NYG","result":"Fumble","yards":64,"plays":8,"time":"3:54","start":15,"end":71,"period":2},{"id":"4018729307","team":"DAL","result":"Interception","yards":20,"plays":6,"time":"1:01","start":84,"end":64,"period":2},{"id":"4018729308","team":"NYG","result":"Touchdown","yards":55,"plays":6,"time":"0:29","start":45,"end":100,"period":2},{"id":"4018729309","team":"DAL","result":"End of Half","yards":13,"plays":3,"time":"0:20","start":68,"end":62,"period":2},{"id":"4018729309","team":"DAL","result":"End of Half","yards":13,"plays":3,"time":"0:20","start":68,"end":62,"period":2}],"leaders":[{"team":"NYG","cats":[{"name":"Passing Yards","athlete":"Jaxson Dart","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4689114.png","value":"11/15, 134 YDS, 1 TD"},{"name":"Rushing Yards","athlete":"Jaxson Dart","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4689114.png","value":"3 CAR, 39 YDS"},{"name":"Receiving Yards","athlete":"Isaiah Likely","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4361050.png","value":"5 REC, 59 YDS, 1 TD"},{"name":"Sacks"},{"name":"Tackles","athlete":"Tremaine Edmunds","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/3929950.png","value":"4"}]},{"team":"DAL","cats":[{"name":"Passing Yards","athlete":"Dak Prescott","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/2577417.png","value":"10/17, 72 YDS, 1 TD, 1 INT"},{"name":"Rushing Yards","athlete":"Javonte Williams","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4361579.png","value":"9 CAR, 25 YDS"},{"name":"Receiving Yards","athlete":"George Pickens","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4426354.png","value":"2 REC, 17 YDS"},{"name":"Sacks","athlete":"Caleb Downs","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4870706.png","value":"1"},{"name":"Tackles","athlete":"Jalen Thompson","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4043089.png","value":"3"}]}]}</script>
+<style>
+  .score-hero { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--s5); }
+  .team-side { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+  .team-side.home { justify-content: flex-end; text-align: right; }
+  .score { font-size: 44px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+  .wp-mini { display: flex; align-items: center; gap: 10px; }
+  .wp-meter { width: 160px; height: 8px; border-radius: 99px; overflow: hidden; display: flex; background: var(--card-sunk); }
+  .drive-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; transition: background var(--t-instant) var(--ease), border-color var(--t-instant) var(--ease); }
+  .drive-row:hover { background: var(--card-sunk); }
+  .drive-row[aria-current="true"] { background: var(--card-sunk); border-color: var(--line); }
+  .play-row { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
+  .play-row:last-child { border-bottom: 0; }
+  .leader { display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+  .leader:last-child { border-bottom: 0; }
+  .field-wrap svg text { font-family: var(--font); }
+  .opt-b .live-grid { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  @media (max-width: 900px) { .score-hero { grid-template-columns: 1fr; text-align: center; } .team-side, .team-side.home { justify-content: center; text-align: center; } .opt-b .live-grid { grid-template-columns: 1fr; } }
+</style>
+<body>
+<div id="app"></div>
+<script>
+const D = JSON.parse(document.getElementById('data-nfl-dal-nyg').textContent);
+const away = D.teams.find((t) => t.homeAway === 'away'), home = D.teams.find((t) => t.homeAway === 'home');
+D.drives = D.drives.filter((d, i, a) => a.findIndex((x) => x.id === d.id) === i);
+const col = (t) => `#${t.color || '555'}`;
+const playById = new Map(D.plays.map((p) => [p.id, p]));
+const wpPts = D.wp.map((w) => ({ ...w, play: playById.get(w.id) })).filter((w) => w.play);
+const withYards = (p) => typeof p.start === 'number' && typeof p.end === 'number';
+const xFromAwayGoal = (yardLine) => 100 - yardLine; // ESPN yardLine counts from the HOME goal line (verified against play text)
+let option = 'a', tab = 'live';
+let selDrive = D.drives[D.drives.length - 1].id;
+const app = document.getElementById('app');
+
+function fieldGraphic(driveId) {
+  const W = 760, H = 190, ez = 52, fieldW = W - 2 * ez, top = 58, fh = 96;
+  const X = (yardsFromAwayGoal) => ez + (yardsFromAwayGoal / 100) * fieldW;
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Field position for the selected drive' });
+  svg.append(s('rect', { x: 0, y: top, width: W, height: fh, rx: 8, fill: 'oklch(96% 0.01 150)' }));
+  svg.append(s('rect', { x: 0, y: top, width: ez, height: fh, rx: 8, fill: col(away) }), s('rect', { x: W - ez, y: top, width: ez, height: fh, rx: 8, fill: col(home) }));
+  svg.append(s('text', { x: ez / 2, y: top + fh / 2, fill: '#fff', 'font-size': 13, 'font-weight': 700, 'text-anchor': 'middle', transform: `rotate(-90 ${ez / 2} ${top + fh / 2})`, 'letter-spacing': '.08em' }, away.short.toUpperCase()));
+  svg.append(s('text', { x: W - ez / 2, y: top + fh / 2, fill: '#fff', 'font-size': 13, 'font-weight': 700, 'text-anchor': 'middle', transform: `rotate(90 ${W - ez / 2} ${top + fh / 2})`, 'letter-spacing': '.08em' }, home.short.toUpperCase()));
+  for (let yd = 10; yd < 100; yd += 10) {
+    svg.append(s('line', { x1: X(yd), x2: X(yd), y1: top, y2: top + fh, stroke: yd === 50 ? 'oklch(60% 0.01 150)' : 'oklch(84% 0.01 150)', 'stroke-width': yd === 50 ? 2 : 1 }));
+    svg.append(s('text', { x: X(yd), y: top + fh + 18, fill: 'var(--ink-muted)', 'font-size': 11, 'text-anchor': 'middle' }, String(yd <= 50 ? yd : 100 - yd)));
+  }
+  const drive = D.drives.find((d) => d.id === driveId);
+  const plays = D.plays.filter((p) => p.drive === driveId && withYards(p) && !/kickoff|punt|timeout|end of|field goal|extra point/i.test(`${p.type} ${p.text}`));
+  const offense = D.teams.find((t) => t.abbr === (drive && drive.team)) || away;
+  let lastX = null;
+  plays.forEach((p, i) => {
+    const x1 = X(xFromAwayGoal(p.start)), x2 = X(xFromAwayGoal(p.end));
+    const isPass = /pass/i.test(p.type || '') || /pass/i.test(p.text || '');
+    const lift = isPass ? 40 : 18; const mid = (x1 + x2) / 2;
+    const path = s('path', { d: `M${x1},${top + fh / 2} Q${mid},${top + fh / 2 - lift - Math.min(30, Math.abs(x2 - x1) / 4)} ${x2},${top + fh / 2}`, fill: 'none', stroke: p.isPenalty ? 'var(--ink-faint)' : col(offense), 'stroke-width': 2, 'stroke-dasharray': isPass ? '5 4' : null, opacity: 0.35 + (0.65 * (i + 1)) / plays.length });
+    const hit = s('path', { d: path.getAttribute('d'), fill: 'none', stroke: 'transparent', 'stroke-width': 16, style: 'cursor:default' });
+    hit.addEventListener('pointermove', (e) => Tip.show(e.clientX, e.clientY, tipRow(`${p.yds > 0 ? '+' : ''}${p.yds} yds`, `${p.downText || ''} · Q${p.period} ${p.clock}`), tipText(p.text)));
+    hit.addEventListener('pointerleave', () => Tip.hide());
+    svg.append(path, hit); lastX = x2;
+  });
+  if (lastX != null) {
+    svg.append(s('line', { x1: lastX, x2: lastX, y1: top - 6, y2: top + fh + 4, stroke: 'var(--warn)', 'stroke-width': 3 }));
+    svg.append(s('circle', { cx: lastX, cy: top - 22, r: 16, fill: '#fff', stroke: col(offense), 'stroke-width': 2 }));
+    const img = s('image', { href: offense.logo, x: lastX - 11, y: top - 33, width: 22, height: 22 }); svg.append(img);
+  }
+  return h('div', { class: 'field-wrap chart' }, svg);
+}
+
+function wpChart() {
+  const labels = wpPts.map((w) => `Q${w.play.period}`);
+  const values = wpPts.map((w) => w.home * 100);
+  const markers = wpPts.map((w, i) => ({ w, i })).filter(({ w }) => w.play.score).map(({ w, i }) => ({ i, y: w.home * 100, color: 'var(--ink)' }));
+  return lineChart({
+    series: [{ name: `${home.abbr} win probability`, color: 'var(--ink)', values, area: 50 }],
+    labels: labels.map((l, i) => (i === 0 || l !== labels[i - 1] ? l : '')), height: 230, yMin: 0, yMax: 100, yTicks: 4, yFmt: (v) => `${Math.round(v)}%`,
+    refs: [{ y: 50, dash: true, label: '50%' }], markers,
+    tooltip: (i) => { const w = wpPts[i]; const p = w.play; return [tipRow(`${(w.home * 100).toFixed(1)}%`, `${home.abbr} win probability`), tipText(`Q${p.period} ${p.clock} · ${away.abbr} ${p.away}–${p.home} ${home.abbr}`), tipText(p.text)]; },
+    onClick: (i) => { selDrive = wpPts[i].play.drive; render(); },
+  });
+}
+
+function drivesList() {
+  return h('div', null, ...[...D.drives].reverse().map((d) => {
+    const t = D.teams.find((x) => x.abbr === d.team) || away;
+    const row = h('div', { class: 'drive-row', tabindex: '0', 'aria-current': String(d.id === selDrive), onclick: () => { selDrive = d.id; render(); } },
+      avatar(t.logo, 24, { logo: true, label: t.name }),
+      h('div', { style: { minWidth: 0 } }, h('div', { class: 't-sm', style: { fontWeight: 600 } }, d.result || 'In progress'), h('div', { class: 't-label' }, `Q${d.period} · ${d.plays ?? '—'} plays, ${d.yards ?? 0} yds · ${d.time || ''}`)),
+      h('span', { class: 'chip' }, t.abbr));
+    row.addEventListener('keydown', (e) => { if (e.key === 'Enter') { selDrive = d.id; render(); } });
+    return row;
+  }));
+}
+
+function leadersCard() {
+  const rows = [];
+  for (const t of D.leaders) for (const c of t.cats.slice(0, 3)) rows.push(h('div', { class: 'leader' }, avatar(c.headshot, 36, { color: col(D.teams.find((x) => x.abbr === t.team) || away), label: c.athlete }), h('div', { style: { minWidth: 0 } }, h('a', { class: 'lnk t-sm', href: '#', style: { fontWeight: 600 } }, c.athlete || '—'), h('div', { class: 't-label' }, `${t.team} · ${c.name}`)), h('div', { class: 't-sm num ink2' }, c.value || '')));
+  return card({ title: 'Leaders', scope: 'this game', body: h('div', null, ...rows) });
+}
+
+function lastPlays() {
+  const plays = D.plays.filter((p) => p.drive === selDrive).slice().reverse();
+  return h('div', null, ...plays.map((p) => h('div', { class: 'play-row' }, h('div', { class: 't-label num' }, `Q${p.period} ${p.clock}`), h('div', null, h('div', { class: 'ink2' }, p.text), p.downText ? h('div', { class: 't-label' }, `${p.downText}${typeof p.yds === 'number' ? ` · ${p.yds > 0 ? '+' : ''}${p.yds} yds` : ''}`) : null))));
+}
+
+function header() {
+  const last = wpPts[wpPts.length - 1];
+  const hp = last.home * 100;
+  const pts = wpPts.slice(-40).map((w) => w.home * 100);
+  const sw = 160, sh = 36, sx = (i) => (i * sw) / (pts.length - 1), sy = (v) => sh - (v / 100) * sh;
+  const wpSpark = h('div', { class: 'row' }, h('span', { class: 't-label' }, 'Last 40 plays'), (() => { const svg = s('svg', { width: sw, height: sh, viewBox: `0 0 ${sw} ${sh}`, 'aria-hidden': 'true' }); svg.append(s('line', { x1: 0, x2: sw, y1: sy(50), y2: sy(50), stroke: 'var(--line)', 'stroke-dasharray': '3 3' }), s('path', { d: pts.map((v, i) => `${i ? 'L' : 'M'}${sx(i).toFixed(1)},${sy(v).toFixed(1)}`).join(''), fill: 'none', stroke: 'var(--ink)', 'stroke-width': 1.5 }), s('circle', { cx: sx(pts.length - 1), cy: sy(pts[pts.length - 1]), r: 3, fill: 'var(--ink)' })); return svg; })());
+  const side = (t, isHome) => h('div', { class: `team-side${isHome ? ' home' : ''}` },
+    isHome ? null : avatar(t.logo, 56, { logo: true, label: t.name }),
+    h('div', { style: { minWidth: 0 } }, h('a', { class: 'lnk t-heading', href: '#' }, t.name), h('div', { class: 't-label' }, `${t.record || '0-0'} · ${isHome ? 'Home' : 'Away'}`)),
+    isHome ? avatar(t.logo, 56, { logo: true, label: t.name }) : null);
+  return h('section', { class: 'hero' },
+    h('div', { class: 'score-hero' }, side(away, false),
+      h('div', { style: { textAlign: 'center' } }, h('div', { class: 'row', style: { justifyContent: 'center', marginBottom: '6px' } }, h('span', { class: `chip${D.state === 'in' ? ' live' : ''}` }, D.status)), h('div', { class: 'score num' }, `${away.score} – ${home.score}`), h('div', { class: 't-label', style: { marginTop: '6px' } }, D.venue || '')),
+      side(home, true)),
+    h('div', { class: 'row between', style: { marginTop: 'var(--s4)', paddingTop: 'var(--s4)', borderTop: '1px solid var(--line-soft)' } },
+      h('div', { class: 'wp-mini' }, h('span', { class: 't-label' }, 'Win probability'), h('div', { class: 'wp-meter', 'aria-hidden': 'true' }, h('div', { style: { width: `${100 - hp}%`, background: col(away) } }), h('div', { style: { width: `${hp}%`, background: col(home) } })), h('span', { class: 't-sm num', style: { fontWeight: 600 } }, `${home.abbr} ${hp.toFixed(1)}%`)),
+      wpSpark));
+}
+
+function liveTab() {
+  const drive = D.drives.find((d) => d.id === selDrive);
+  const offense = D.teams.find((t) => t.abbr === drive.team) || away;
+  const fieldCard = card({ title: `${offense.name} drive`, scope: `${drive.result || 'In progress'} · ${drive.plays ?? '—'} plays, ${drive.yards ?? 0} yds`, info: 'Each arc is one play: solid for runs, dashed for passes. Hover an arc for the play. Pick another drive from the list or click the win probability chart.', body: fieldGraphic(selDrive), foot: 'Ball position from ESPN play data (drives[].plays[].start/end.yardLine). Feed already called by the app; not stored today.' });
+  const wpCard = card({ title: 'Win probability', scope: `${home.abbr} · every play`, info: 'Home team win probability after each play. Dots mark scoring plays. Hover to read the play; click to jump the field to that drive.', body: wpChart(), foot: `${wpPts.length} plays · source: ESPN winprobability (already in the feed the app calls; discarded today)` });
+  const drivesCard = card({ title: 'Drives', scope: `${D.drives.length} so far`, body: drivesList(), dense: true });
+  const playsCard = card({ title: 'Plays on this drive', body: lastPlays() });
+  if (option === 'a') return h('div', { class: 'stack' }, fieldCard, h('div', { class: 'grid cols-main' }, h('div', { class: 'stack' }, wpCard, playsCard), h('div', { class: 'stack' }, drivesCard, leadersCard())));
+  return h('div', { class: 'grid live-grid', style: { alignItems: 'start' } }, h('div', { class: 'stack' }, fieldCard, drivesCard), h('div', { class: 'stack' }, wpCard, leadersCard(), playsCard));
+}
+
+function otherTab(name) {
+  const what = { box: 'Full box score by unit, every player linked, players with props marked.', team: 'Key team stats (8 rows, "show all"), each side ranked, direction-aware color.', pbp: 'Every play, filterable by quarter, team and play type; scoring plays highlighted.', odds: 'Best prices for spread / total / moneyline, movement chart, props for this game.' }[name];
+  return card({ title: { box: 'Box score', team: 'Team stats', pbp: 'Play-by-play', odds: 'Odds & lines' }[name], body: h('div', { class: 'state' }, h('b', null, 'Out of scope for this board'), what) });
+}
+
+function render() {
+  app.replaceChildren(
+    boardBar('Phase G · Game page · Live (NFL)', 'Real data: DAL @ NYG, ESPN feed at halftime, 2026-09-13. Inspired by ESPN\'s game page (operator reference), not copied.',
+      [segmented([{ value: 'a', label: 'Option A · stacked' }, { value: 'b', label: 'Option B · split' }], option, (v) => { option = v; render(); })]),
+    h('div', { class: `page opt-${option}` },
+      h('div', { class: 'callout', style: { marginBottom: 'var(--s4)' } }, h('b', null, 'What this replaces: '), 'the repeated score block, the fully expanded box score and 30-row team table, and pregame cards that stayed on screen during the game (F-verdicts, F2 §7). ', h('b', null, 'Try: '), 'hover the win-probability line and the play arcs, click a point or a drive, use the tabs, or tab through with the keyboard.'),
+      header(),
+      h('div', { class: 'secnav sticky', style: { marginTop: 'var(--s4)' } }, tabs([{ value: 'live', label: 'Live' }, { value: 'box', label: 'Box score' }, { value: 'team', label: 'Team stats' }, { value: 'pbp', label: 'Play-by-play' }, { value: 'odds', label: 'Odds' }], tab, (v) => { tab = v; render(); })),
+      h('div', { style: { marginTop: 'var(--s4)' } }, tab === 'live' ? liveTab() : otherTab(tab))));
+}
+render();
+</script>
+</body>

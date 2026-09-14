@@ -1,0 +1,156 @@
+<meta charset="utf-8">
+<title>Live Game Board — DAL at NYG</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--SYSTEM-->
+<!--DATA:nfl-dal-nyg.json-->
+<style>
+  .score-hero { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--s5); }
+  .team-side { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+  .team-side.home { justify-content: flex-end; text-align: right; }
+  .score { font-size: 44px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+  .wp-mini { display: flex; align-items: center; gap: 10px; }
+  .wp-meter { width: 160px; height: 8px; border-radius: 99px; overflow: hidden; display: flex; background: var(--card-sunk); }
+  .drive-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; transition: background var(--t-instant) var(--ease), border-color var(--t-instant) var(--ease); }
+  .drive-row:hover { background: var(--card-sunk); }
+  .drive-row[aria-current="true"] { background: var(--card-sunk); border-color: var(--line); }
+  .play-row { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
+  .play-row:last-child { border-bottom: 0; }
+  .leader { display: grid; grid-template-columns: 36px 1fr auto; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
+  .leader:last-child { border-bottom: 0; }
+  .field-wrap svg text { font-family: var(--font); }
+  .opt-b .live-grid { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+  @media (max-width: 900px) { .score-hero { grid-template-columns: 1fr; text-align: center; } .team-side, .team-side.home { justify-content: center; text-align: center; } .opt-b .live-grid { grid-template-columns: 1fr; } }
+</style>
+<body>
+<div id="app"></div>
+<script>
+const D = JSON.parse(document.getElementById('data-nfl-dal-nyg').textContent);
+const away = D.teams.find((t) => t.homeAway === 'away'), home = D.teams.find((t) => t.homeAway === 'home');
+D.drives = D.drives.filter((d, i, a) => a.findIndex((x) => x.id === d.id) === i);
+const col = (t) => `#${t.color || '555'}`;
+const playById = new Map(D.plays.map((p) => [p.id, p]));
+const wpPts = D.wp.map((w) => ({ ...w, play: playById.get(w.id) })).filter((w) => w.play);
+const withYards = (p) => typeof p.start === 'number' && typeof p.end === 'number';
+const xFromAwayGoal = (yardLine) => 100 - yardLine; // ESPN yardLine counts from the HOME goal line (verified against play text)
+let option = 'a', tab = 'live';
+let selDrive = D.drives[D.drives.length - 1].id;
+const app = document.getElementById('app');
+
+function fieldGraphic(driveId) {
+  const W = 760, H = 190, ez = 52, fieldW = W - 2 * ez, top = 58, fh = 96;
+  const X = (yardsFromAwayGoal) => ez + (yardsFromAwayGoal / 100) * fieldW;
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Field position for the selected drive' });
+  svg.append(s('rect', { x: 0, y: top, width: W, height: fh, rx: 8, fill: 'oklch(96% 0.01 150)' }));
+  svg.append(s('rect', { x: 0, y: top, width: ez, height: fh, rx: 8, fill: col(away) }), s('rect', { x: W - ez, y: top, width: ez, height: fh, rx: 8, fill: col(home) }));
+  svg.append(s('text', { x: ez / 2, y: top + fh / 2, fill: '#fff', 'font-size': 13, 'font-weight': 700, 'text-anchor': 'middle', transform: `rotate(-90 ${ez / 2} ${top + fh / 2})`, 'letter-spacing': '.08em' }, away.short.toUpperCase()));
+  svg.append(s('text', { x: W - ez / 2, y: top + fh / 2, fill: '#fff', 'font-size': 13, 'font-weight': 700, 'text-anchor': 'middle', transform: `rotate(90 ${W - ez / 2} ${top + fh / 2})`, 'letter-spacing': '.08em' }, home.short.toUpperCase()));
+  for (let yd = 10; yd < 100; yd += 10) {
+    svg.append(s('line', { x1: X(yd), x2: X(yd), y1: top, y2: top + fh, stroke: yd === 50 ? 'oklch(60% 0.01 150)' : 'oklch(84% 0.01 150)', 'stroke-width': yd === 50 ? 2 : 1 }));
+    svg.append(s('text', { x: X(yd), y: top + fh + 18, fill: 'var(--ink-muted)', 'font-size': 11, 'text-anchor': 'middle' }, String(yd <= 50 ? yd : 100 - yd)));
+  }
+  const drive = D.drives.find((d) => d.id === driveId);
+  const plays = D.plays.filter((p) => p.drive === driveId && withYards(p) && !/kickoff|punt|timeout|end of|field goal|extra point/i.test(`${p.type} ${p.text}`));
+  const offense = D.teams.find((t) => t.abbr === (drive && drive.team)) || away;
+  let lastX = null;
+  plays.forEach((p, i) => {
+    const x1 = X(xFromAwayGoal(p.start)), x2 = X(xFromAwayGoal(p.end));
+    const isPass = /pass/i.test(p.type || '') || /pass/i.test(p.text || '');
+    const lift = isPass ? 40 : 18; const mid = (x1 + x2) / 2;
+    const path = s('path', { d: `M${x1},${top + fh / 2} Q${mid},${top + fh / 2 - lift - Math.min(30, Math.abs(x2 - x1) / 4)} ${x2},${top + fh / 2}`, fill: 'none', stroke: p.isPenalty ? 'var(--ink-faint)' : col(offense), 'stroke-width': 2, 'stroke-dasharray': isPass ? '5 4' : null, opacity: 0.35 + (0.65 * (i + 1)) / plays.length });
+    const hit = s('path', { d: path.getAttribute('d'), fill: 'none', stroke: 'transparent', 'stroke-width': 16, style: 'cursor:default' });
+    hit.addEventListener('pointermove', (e) => Tip.show(e.clientX, e.clientY, tipRow(`${p.yds > 0 ? '+' : ''}${p.yds} yds`, `${p.downText || ''} · Q${p.period} ${p.clock}`), tipText(p.text)));
+    hit.addEventListener('pointerleave', () => Tip.hide());
+    svg.append(path, hit); lastX = x2;
+  });
+  if (lastX != null) {
+    svg.append(s('line', { x1: lastX, x2: lastX, y1: top - 6, y2: top + fh + 4, stroke: 'var(--warn)', 'stroke-width': 3 }));
+    svg.append(s('circle', { cx: lastX, cy: top - 22, r: 16, fill: '#fff', stroke: col(offense), 'stroke-width': 2 }));
+    const img = s('image', { href: offense.logo, x: lastX - 11, y: top - 33, width: 22, height: 22 }); svg.append(img);
+  }
+  return h('div', { class: 'field-wrap chart' }, svg);
+}
+
+function wpChart() {
+  const labels = wpPts.map((w) => `Q${w.play.period}`);
+  const values = wpPts.map((w) => w.home * 100);
+  const markers = wpPts.map((w, i) => ({ w, i })).filter(({ w }) => w.play.score).map(({ w, i }) => ({ i, y: w.home * 100, color: 'var(--ink)' }));
+  return lineChart({
+    series: [{ name: `${home.abbr} win probability`, color: 'var(--ink)', values, area: 50 }],
+    labels: labels.map((l, i) => (i === 0 || l !== labels[i - 1] ? l : '')), height: 230, yMin: 0, yMax: 100, yTicks: 4, yFmt: (v) => `${Math.round(v)}%`,
+    refs: [{ y: 50, dash: true, label: '50%' }], markers,
+    tooltip: (i) => { const w = wpPts[i]; const p = w.play; return [tipRow(`${(w.home * 100).toFixed(1)}%`, `${home.abbr} win probability`), tipText(`Q${p.period} ${p.clock} · ${away.abbr} ${p.away}–${p.home} ${home.abbr}`), tipText(p.text)]; },
+    onClick: (i) => { selDrive = wpPts[i].play.drive; render(); },
+  });
+}
+
+function drivesList() {
+  return h('div', null, ...[...D.drives].reverse().map((d) => {
+    const t = D.teams.find((x) => x.abbr === d.team) || away;
+    const row = h('div', { class: 'drive-row', tabindex: '0', 'aria-current': String(d.id === selDrive), onclick: () => { selDrive = d.id; render(); } },
+      avatar(t.logo, 24, { logo: true, label: t.name }),
+      h('div', { style: { minWidth: 0 } }, h('div', { class: 't-sm', style: { fontWeight: 600 } }, d.result || 'In progress'), h('div', { class: 't-label' }, `Q${d.period} · ${d.plays ?? '—'} plays, ${d.yards ?? 0} yds · ${d.time || ''}`)),
+      h('span', { class: 'chip' }, t.abbr));
+    row.addEventListener('keydown', (e) => { if (e.key === 'Enter') { selDrive = d.id; render(); } });
+    return row;
+  }));
+}
+
+function leadersCard() {
+  const rows = [];
+  for (const t of D.leaders) for (const c of t.cats.slice(0, 3)) rows.push(h('div', { class: 'leader' }, avatar(c.headshot, 36, { color: col(D.teams.find((x) => x.abbr === t.team) || away), label: c.athlete }), h('div', { style: { minWidth: 0 } }, h('a', { class: 'lnk t-sm', href: '#', style: { fontWeight: 600 } }, c.athlete || '—'), h('div', { class: 't-label' }, `${t.team} · ${c.name}`)), h('div', { class: 't-sm num ink2' }, c.value || '')));
+  return card({ title: 'Leaders', scope: 'this game', body: h('div', null, ...rows) });
+}
+
+function lastPlays() {
+  const plays = D.plays.filter((p) => p.drive === selDrive).slice().reverse();
+  return h('div', null, ...plays.map((p) => h('div', { class: 'play-row' }, h('div', { class: 't-label num' }, `Q${p.period} ${p.clock}`), h('div', null, h('div', { class: 'ink2' }, p.text), p.downText ? h('div', { class: 't-label' }, `${p.downText}${typeof p.yds === 'number' ? ` · ${p.yds > 0 ? '+' : ''}${p.yds} yds` : ''}`) : null))));
+}
+
+function header() {
+  const last = wpPts[wpPts.length - 1];
+  const hp = last.home * 100;
+  const pts = wpPts.slice(-40).map((w) => w.home * 100);
+  const sw = 160, sh = 36, sx = (i) => (i * sw) / (pts.length - 1), sy = (v) => sh - (v / 100) * sh;
+  const wpSpark = h('div', { class: 'row' }, h('span', { class: 't-label' }, 'Last 40 plays'), (() => { const svg = s('svg', { width: sw, height: sh, viewBox: `0 0 ${sw} ${sh}`, 'aria-hidden': 'true' }); svg.append(s('line', { x1: 0, x2: sw, y1: sy(50), y2: sy(50), stroke: 'var(--line)', 'stroke-dasharray': '3 3' }), s('path', { d: pts.map((v, i) => `${i ? 'L' : 'M'}${sx(i).toFixed(1)},${sy(v).toFixed(1)}`).join(''), fill: 'none', stroke: 'var(--ink)', 'stroke-width': 1.5 }), s('circle', { cx: sx(pts.length - 1), cy: sy(pts[pts.length - 1]), r: 3, fill: 'var(--ink)' })); return svg; })());
+  const side = (t, isHome) => h('div', { class: `team-side${isHome ? ' home' : ''}` },
+    isHome ? null : avatar(t.logo, 56, { logo: true, label: t.name }),
+    h('div', { style: { minWidth: 0 } }, h('a', { class: 'lnk t-heading', href: '#' }, t.name), h('div', { class: 't-label' }, `${t.record || '0-0'} · ${isHome ? 'Home' : 'Away'}`)),
+    isHome ? avatar(t.logo, 56, { logo: true, label: t.name }) : null);
+  return h('section', { class: 'hero' },
+    h('div', { class: 'score-hero' }, side(away, false),
+      h('div', { style: { textAlign: 'center' } }, h('div', { class: 'row', style: { justifyContent: 'center', marginBottom: '6px' } }, h('span', { class: `chip${D.state === 'in' ? ' live' : ''}` }, D.status)), h('div', { class: 'score num' }, `${away.score} – ${home.score}`), h('div', { class: 't-label', style: { marginTop: '6px' } }, D.venue || '')),
+      side(home, true)),
+    h('div', { class: 'row between', style: { marginTop: 'var(--s4)', paddingTop: 'var(--s4)', borderTop: '1px solid var(--line-soft)' } },
+      h('div', { class: 'wp-mini' }, h('span', { class: 't-label' }, 'Win probability'), h('div', { class: 'wp-meter', 'aria-hidden': 'true' }, h('div', { style: { width: `${100 - hp}%`, background: col(away) } }), h('div', { style: { width: `${hp}%`, background: col(home) } })), h('span', { class: 't-sm num', style: { fontWeight: 600 } }, `${home.abbr} ${hp.toFixed(1)}%`)),
+      wpSpark));
+}
+
+function liveTab() {
+  const drive = D.drives.find((d) => d.id === selDrive);
+  const offense = D.teams.find((t) => t.abbr === drive.team) || away;
+  const fieldCard = card({ title: `${offense.name} drive`, scope: `${drive.result || 'In progress'} · ${drive.plays ?? '—'} plays, ${drive.yards ?? 0} yds`, info: 'Each arc is one play: solid for runs, dashed for passes. Hover an arc for the play. Pick another drive from the list or click the win probability chart.', body: fieldGraphic(selDrive), foot: 'Ball position from ESPN play data (drives[].plays[].start/end.yardLine). Feed already called by the app; not stored today.' });
+  const wpCard = card({ title: 'Win probability', scope: `${home.abbr} · every play`, info: 'Home team win probability after each play. Dots mark scoring plays. Hover to read the play; click to jump the field to that drive.', body: wpChart(), foot: `${wpPts.length} plays · source: ESPN winprobability (already in the feed the app calls; discarded today)` });
+  const drivesCard = card({ title: 'Drives', scope: `${D.drives.length} so far`, body: drivesList(), dense: true });
+  const playsCard = card({ title: 'Plays on this drive', body: lastPlays() });
+  if (option === 'a') return h('div', { class: 'stack' }, fieldCard, h('div', { class: 'grid cols-main' }, h('div', { class: 'stack' }, wpCard, playsCard), h('div', { class: 'stack' }, drivesCard, leadersCard())));
+  return h('div', { class: 'grid live-grid', style: { alignItems: 'start' } }, h('div', { class: 'stack' }, fieldCard, drivesCard), h('div', { class: 'stack' }, wpCard, leadersCard(), playsCard));
+}
+
+function otherTab(name) {
+  const what = { box: 'Full box score by unit, every player linked, players with props marked.', team: 'Key team stats (8 rows, "show all"), each side ranked, direction-aware color.', pbp: 'Every play, filterable by quarter, team and play type; scoring plays highlighted.', odds: 'Best prices for spread / total / moneyline, movement chart, props for this game.' }[name];
+  return card({ title: { box: 'Box score', team: 'Team stats', pbp: 'Play-by-play', odds: 'Odds & lines' }[name], body: h('div', { class: 'state' }, h('b', null, 'Out of scope for this board'), what) });
+}
+
+function render() {
+  app.replaceChildren(
+    boardBar('Phase G · Game page · Live (NFL)', 'Real data: DAL @ NYG, ESPN feed at halftime, 2026-09-13. Inspired by ESPN\'s game page (operator reference), not copied.',
+      [segmented([{ value: 'a', label: 'Option A · stacked' }, { value: 'b', label: 'Option B · split' }], option, (v) => { option = v; render(); })]),
+    h('div', { class: `page opt-${option}` },
+      h('div', { class: 'callout', style: { marginBottom: 'var(--s4)' } }, h('b', null, 'What this replaces: '), 'the repeated score block, the fully expanded box score and 30-row team table, and pregame cards that stayed on screen during the game (F-verdicts, F2 §7). ', h('b', null, 'Try: '), 'hover the win-probability line and the play arcs, click a point or a drive, use the tabs, or tab through with the keyboard.'),
+      header(),
+      h('div', { class: 'secnav sticky', style: { marginTop: 'var(--s4)' } }, tabs([{ value: 'live', label: 'Live' }, { value: 'box', label: 'Box score' }, { value: 'team', label: 'Team stats' }, { value: 'pbp', label: 'Play-by-play' }, { value: 'odds', label: 'Odds' }], tab, (v) => { tab = v; render(); })),
+      h('div', { style: { marginTop: 'var(--s4)' } }, tab === 'live' ? liveTab() : otherTab(tab))));
+}
+render();
+</script>
+</body>
