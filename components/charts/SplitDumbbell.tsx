@@ -1,6 +1,8 @@
 'use client';
 
 import { compareInk } from '@/lib/ui/heat';
+import { MarkTip } from './MarkTip';
+import { useChartWidth } from './useChartWidth';
 import { GRID, INK3, INK4, SIZE, SURFACE, type Formatter } from './tokens';
 import { fmt as fmts } from './tokens';
 
@@ -50,11 +52,13 @@ export function SplitDumbbell({
   rows,
   aLabel,
   bLabel,
-  width = 340,
+  width: fallbackWidth = 340,
   rowHeight = 26,
   label,
   className,
 }: SplitDumbbellProps) {
+  // R3 3c: draw at the host's real pixel width; `width` below is the measured value.
+  const [hostRef, width] = useChartWidth(fallbackWidth);
   const usable = rows.filter((r) => r.a != null && r.b != null && Number.isFinite(r.a) && Number.isFinite(r.b));
   if (usable.length === 0) {
     return (
@@ -75,18 +79,19 @@ export function SplitDumbbell({
   const height = usable.length * rowHeight + 14;
 
   return (
+    <div ref={hostRef} className="min-w-0">
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      width="100%"
+      width={width}
       role="img"
       aria-label={`${label}: ${aLabel} versus ${bLabel}`}
       className={className}
-      style={{ display: 'block', overflow: 'visible', maxWidth: width }}
+      style={{ display: 'block', overflow: 'visible', maxWidth: '100%' }}
     >
-      <text x={trackLeft} y={9} fill={INK4} fontSize={SIZE.tick}>
+      <text x={trackLeft} y={9} fill={INK3} fontSize={SIZE.tick}>
         {aLabel}
       </text>
-      <text x={trackLeft + trackWidth} y={9} fill={INK4} fontSize={SIZE.tick} textAnchor="end">
+      <text x={trackLeft + trackWidth} y={9} fill={INK3} fontSize={SIZE.tick} textAnchor="end">
         {bLabel}
       </text>
 
@@ -108,7 +113,9 @@ export function SplitDumbbell({
         const gapHeat = bBetter ? 0.82 : 0.18;
 
         return (
-          <g key={r.key}>
+          <MarkTip key={r.key} tip={`${r.label} — ${aLabel} ${f(a)}${r.aSample != null ? ` (n=${r.aSample})` : ''} vs ${bLabel} ${f(b)}${
+                r.bSample != null ? ` (n=${r.bSample})` : ''
+              }`}>
             <text x={0} y={y + 3} fill={INK3} fontSize={SIZE.label}>
               {r.label}
             </text>
@@ -120,20 +127,16 @@ export function SplitDumbbell({
             <circle cx={x(b)} cy={y} r={4.6} fill={SURFACE} />
             <circle cx={x(b)} cy={y} r={3.2} fill={compareInk(gapHeat)} />
 
-            <text x={labelW + numW - 8} y={y + 3} fill={INK4} fontSize={SIZE.tick} textAnchor="end" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            <text x={labelW + numW - 8} y={y + 3} fill={INK3} fontSize={SIZE.tick} textAnchor="end" style={{ fontVariantNumeric: 'tabular-nums' }}>
               {f(a)}
             </text>
             <text x={width} y={y + 3} fill={INK3} fontSize={SIZE.tick} textAnchor="end" style={{ fontVariantNumeric: 'tabular-nums' }}>
               {f(b)}
             </text>
-            <title>
-              {`${r.label} — ${aLabel} ${f(a)}${r.aSample != null ? ` (n=${r.aSample})` : ''} vs ${bLabel} ${f(b)}${
-                r.bSample != null ? ` (n=${r.bSample})` : ''
-              }`}
-            </title>
-          </g>
+          </MarkTip>
         );
       })}
     </svg>
+    </div>
   );
 }

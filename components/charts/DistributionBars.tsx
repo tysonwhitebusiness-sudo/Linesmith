@@ -1,10 +1,12 @@
 'use client';
 
 import { toneFill, compareInk } from '@/lib/ui/heat';
+import { MarkTip } from './MarkTip';
 import { ChartFrame, type PlotArea } from './ChartFrame';
 import { GRID, INK1, INK4, SIZE, type Formatter } from './tokens';
 import { fmt as fmts } from './tokens';
-import { niceDomain, xScale, yScale } from './scale';
+import { niceDomain, yScale } from './scale';
+import { NO_CROSSHAIR, type ChartCrosshair } from './useChartCrosshair';
 
 /**
  * 03 · DistributionBars — per-game results against a line.
@@ -41,6 +43,8 @@ export interface DistributionBarsProps {
   /** `true` = over clears, `false` = under clears. */
   wantOver: boolean;
   format?: Formatter;
+  /** Shared hover with other charts of the same games (R3 3c). Omit for a standalone chart. */
+  crosshair?: ChartCrosshair;
   width?: number;
   height?: number;
   isLoading?: boolean;
@@ -54,6 +58,7 @@ export function DistributionBars({
   line,
   wantOver,
   format = fmts.one,
+  crosshair = NO_CROSSHAIR,
   width = 420,
   height = 120,
   isLoading,
@@ -82,12 +87,23 @@ export function DistributionBars({
       emptyMessage={emptyMessage ?? 'No completed games in this window.'}
       label={`${label}: cleared ${cleared} of ${played.length}`}
       className={className}
+      onPointerMove={(e, plot) => {
+        const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+        const band = plot.width / Math.max(1, bars.length);
+        const i = Math.floor((e.clientX - rect.left - plot.left) / band);
+        crosshair.setIndex(i >= 0 && i < bars.length ? i : null);
+      }}
+      onPointerLeave={crosshair.clear}
     >
       {(plot: PlotArea) => {
-        const x = xScale(bars.length, plot.left, plot.width);
+        // COLUMN LAYOUT (R3 3c): one equal band per game, the bar centred in it,
+        // width clamped to max(1, min(24, band - gap)). A few games get fat bars
+        // no wider than 24px; a season of games gets thin ones that still fit.
+        const band = plot.width / Math.max(1, bars.length);
+        const gap = band > 4 ? 2 : 0.5;
+        const barW = Math.max(1, Math.min(24, band - gap));
+        const x = (i: number) => plot.left + band * (i + 0.5);
         const y = yScale(domain, plot.top, plot.height);
-        const slot = bars.length > 1 ? plot.width / (bars.length - 1) : plot.width;
-        const barW = Math.max(3, Math.min(22, slot * 0.62));
         const baseline = y(Math.max(0, domain.lo));
         const lineY = y(line);
 
@@ -99,20 +115,24 @@ export function DistributionBars({
               const top = y(v);
               const didClear = wantOver ? v > line : v < line;
               return (
-                <g key={b.key}>
+                <MarkTip key={b.key} tip={`${b.title ?? b.key} · ${format(v)} · ${didClear ? 'cleared' : 'missed'}`}>
+                  {/* Transparent hit area: the whole band, so a short bar is as easy to hover as a tall one. */}
+                  <rect x={x(i) - band / 2} y={plot.top} width={band} height={plot.height} fill="transparent" />
                   <rect
                     x={x(i) - barW / 2}
                     y={Math.min(top, baseline)}
                     width={barW}
                     height={Math.max(1, Math.abs(baseline - top))}
-                    rx={2}
-                    fill={toneFill(didClear ? 'good' : 'bad', 0.75)}
+                    rx={Math.min(2, barW / 2)}
+                    fill={toneFill(didClear ? 'good' : 'bad', crosshair.index == null || crosshair.index === i ? 0.75 : 0.4)}
                   />
-                  <title>{`${b.title ?? b.key} ${format(v)} ${didClear ? '· cleared' : '· missed'}`}</title>
-                </g>
+                </MarkTip>
               );
             })}
 
+            {/* A ZERO LINE where values go negative (R3 3c), so a bar below it reads as below zero. */}
+            {domain.lo < 0 ? <line x1={plot.left} x2={plot.left + plot.width} y1={baseline} y2={baseline} stroke={INK4} strokeWidth={1} /> : null}
+            {/* The prop line is a DASHED reference (R3 3c): a threshold, not a data series. */}
             <line
               x1={plot.left}
               x2={plot.left + plot.width}
@@ -120,6 +140,7 @@ export function DistributionBars({
               y2={lineY}
               stroke={INK1}
               strokeWidth={1.25}
+              strokeDasharray="4 4"
             />
             <text
               x={plot.left + plot.width}

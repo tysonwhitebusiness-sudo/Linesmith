@@ -176,6 +176,8 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
   const spatialGrid: SpatialGridRole | null = nbaShots
     ? {
         title: 'Shot profile',
+        surface: 'halfCourt',
+        measure: 'share',
         cells: nbaShots.cells.map((row) =>
           row.map((c) => ({ key: c.key, value: c.attempts > 0 ? c.share : null, sampleSize: c.attempts })),
         ),

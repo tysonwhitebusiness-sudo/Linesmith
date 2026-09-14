@@ -68,3 +68,30 @@ export const fmt = {
 } as const;
 
 export type Formatter = (v: number) => string;
+
+/**
+ * Sport surface grounds (R3 3c). The only place a court, field, rink or pitch
+ * tint is defined — chart literals live in this file, not in components. Each
+ * sits a shade off the card so the marks on top keep their contrast.
+ */
+export const SURFACE_TINT = {
+  field: 'oklch(96% 0.012 150)',
+  fieldLine: 'oklch(84% 0.012 150)',
+  court: 'oklch(97% 0.012 70)',
+  rink: 'oklch(97.5% 0.006 230)',
+  rinkBlue: 'rgb(var(--cmp-a))',
+  rinkRed: 'rgb(var(--bad))',
+  pitch: 'oklch(96% 0.02 150)',
+  pitchLine: 'oklch(80% 0.02 150)',
+} as const;
+
+/** Single-hue intensity for VOLUME and SHARE data (D4): darker = more. Never good or bad. */
+export function volumeFill(t: number): string {
+  const k = Math.max(0, Math.min(1, t));
+  return `color-mix(in oklch, oklch(var(--ink)) ${Math.round(8 + k * 62)}%, oklch(var(--card)))`;
+}
+
+/** Text that stays legible on `volumeFill(t)`. */
+export function volumeInk(t: number): string {
+  return t > 0.55 ? 'oklch(98.5% 0.002 260)' : 'oklch(var(--ink))';
+}

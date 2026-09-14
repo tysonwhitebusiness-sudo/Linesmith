@@ -195,6 +195,20 @@ export interface UsageMixRole {
  */
 export interface SpatialGridRole {
   title: string;
+  /**
+   * WHERE this grid is drawn (R3 3c, design finding D4): the sport's own
+   * surface, chosen by the adapter — never by a `sport === 'x'` check in the
+   * component. Before this, every sport's grid drew as a baseball strike zone.
+   * `matrix` is for grid data that is not a place (golf proximity by lie).
+   */
+  surface: 'zone' | 'field' | 'halfCourt' | 'rink' | 'pitch' | 'matrix';
+  /**
+   * `share` = volume (share of a player's attempts from each place): one hue,
+   * darker = more, never good or bad. `judged` = a rate with a direction
+   * (xwOBA allowed), on the good/bad ramp. D4 found share of targets drawn as
+   * good/bad, so "2% of targets deep right" read as bad.
+   */
+  measure: 'share' | 'judged';
   /** Row-major. Every row the same length. */
   cells: Array<Array<{ key: string; value: number | null; sampleSize?: number | null }>>;
   rowLabels?: string[];

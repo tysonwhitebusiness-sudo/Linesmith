@@ -270,6 +270,8 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   const spatialGrid: SpatialGridRole | null = nflTargets
     ? {
         title: 'Target map',
+        surface: 'field',
+        measure: 'share',
         cells: nflTargets.cells.map((row) =>
           row.map((c) => ({ key: c.key, value: c.targets > 0 ? c.share : null, sampleSize: c.targets })),
         ),

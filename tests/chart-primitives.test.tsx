@@ -46,7 +46,6 @@ test('HeatGrid renders a >1.0 non-MLB value correctly — the "4.800" bug', () =
           { key: 'deep-right', value: 11.4 },
         ],
       ]}
-      aspect="zone"
       unit="yards/target"
       label="Target map"
     />,
@@ -64,7 +63,6 @@ test('HeatGrid still renders MLB rates correctly when asked to', () => {
   const markup = renderToStaticMarkup(
     <HeatGrid
       rows={[[{ key: 'up-in', value: 0.412 }]]}
-      aspect="zone"
       format={fmt.rate3}
       unit="xwOBA"
       caption="catcher view · xwOBA by zone"
@@ -247,4 +245,42 @@ test('the default number format is not baseballs rate convention', () => {
   assert.equal(fmt.one(14.8), '14.8');
   const heatGridSrc = readFileSync('components/charts/HeatGrid.tsx', 'utf8');
   assert.match(heatGridSrc, /format = fmts\.one/, 'HeatGrid default format changed — check it is not a rate format');
+});
+
+// ---------------------------------------------------------------------------
+// R3 3c / design finding D4 — a spatial grid draws on its sport's surface.
+// ---------------------------------------------------------------------------
+import { SpatialSurface } from '../components/charts/SpatialSurface';
+import { readFileSync as readSurfaceSource } from 'node:fs';
+import type { SpatialGridRole } from '../lib/sports/shared/playerRoles';
+
+const shareRole = (surface: SpatialGridRole['surface'], rows: number, cols: number): SpatialGridRole => ({
+  title: 'Where',
+  surface,
+  measure: 'share',
+  cells: Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (__, c) => ({ key: `${r}-${c}`, value: 10 + r * cols + c, sampleSize: 5 }))),
+  format: (v: number) => `${v.toFixed(0)}%`,
+  unit: 'of attempts',
+  caption: 'test',
+});
+
+test('every surface draws one region per band, with its value', () => {
+  const shapes: Array<[SpatialGridRole['surface'], number, number]> = [['zone', 3, 3], ['field', 2, 3], ['halfCourt', 4, 1], ['rink', 3, 3], ['pitch', 3, 3], ['matrix', 2, 3]];
+  for (const [surface, rows, cols] of shapes) {
+    const markup = renderToStaticMarkup(<SpatialSurface role={shareRole(surface, rows, cols)} />);
+    for (let i = 0; i < rows * cols; i++) assert.ok(markup.includes(`>${10 + i}%<`), `${surface}: band ${i} missing`);
+  }
+});
+
+test('the surface is chosen from data, never from a sport check (CLAUDE.md §4)', () => {
+  const src = readSurfaceSource('components/charts/SpatialSurface.tsx', 'utf8');
+  assert.doesNotMatch(src, /sport\s*===/);
+  assert.doesNotMatch(readSurfaceSource('components/PlayerRoleSections.tsx', 'utf8'), /aspect="zone"/, 'the hardcoded strike zone is back');
+});
+
+test('share data is volume, never judged good or bad (D4)', () => {
+  // "2% of targets deep right" rendered as BAD on the red-green ramp.
+  const markup = renderToStaticMarkup(<SpatialSurface role={shareRole('field', 2, 3)} />);
+  assert.match(markup, /color-mix\(in oklch, oklch\(var\(--ink\)\)/, 'share cells use the single-hue volume ramp');
+  assert.doesNotMatch(markup, /var\(--good\)|var\(--bad\)|#0f7a4f|#c23b2c/, 'share cells must not carry good/bad color');
 });

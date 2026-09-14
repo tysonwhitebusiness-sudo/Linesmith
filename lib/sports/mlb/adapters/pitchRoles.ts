@@ -219,6 +219,9 @@ export function toSpatialGridRole(profile: PitchProfile | null): SpatialGridRole
 
   return {
     title: 'Strike zone',
+    surface: 'zone',
+    // xwOBA has a direction (lower is better for a pitcher, set below).
+    measure: 'judged',
     cells,
     format: fmt.rate3,
     unit: 'xwOBA',

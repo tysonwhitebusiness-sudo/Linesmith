@@ -1,6 +1,8 @@
 'use client';
 
 import { toneFill, compareInk } from '@/lib/ui/heat';
+import { MarkTip } from './MarkTip';
+import { useChartWidth } from './useChartWidth';
 import { GRID, INK1, INK3, INK4, SIZE, type Formatter } from './tokens';
 import { fmt as fmts } from './tokens';
 
@@ -51,12 +53,14 @@ export function ContributionBars({
   contributions,
   unit,
   format = fmts.signed2,
-  width = 340,
+  width: fallbackWidth = 340,
   rowHeight = 20,
   maxRows = 8,
   label,
   className,
 }: ContributionBarsProps) {
+  // R3 3c: draw at the host's real pixel width; `width` below is the measured value.
+  const [hostRef, width] = useChartWidth(fallbackWidth);
   const usable = contributions.filter((c) => Number.isFinite(c.value));
   if (usable.length === 0) {
     return (
@@ -87,13 +91,14 @@ export function ContributionBars({
   const height = rows.length * rowHeight;
 
   return (
+    <div ref={hostRef} className="min-w-0">
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      width="100%"
+      width={width}
       role="img"
       aria-label={label}
       className={className}
-      style={{ display: 'block', overflow: 'visible', maxWidth: width }}
+      style={{ display: 'block', overflow: 'visible', maxWidth: '100%' }}
     >
       <line x1={centre} x2={centre} y1={0} y2={height} stroke={GRID} strokeWidth={1} />
       {rows.map((c, i) => {
@@ -102,7 +107,7 @@ export function ContributionBars({
         const len = (Math.abs(c.value) / magnitude) * half;
         const positive = c.value >= 0;
         return (
-          <g key={c.key}>
+          <MarkTip key={c.key} tip={`${c.label}: ${format(c.value)}${unit ? ` ${unit}` : ''}${'note' in c && c.note ? ` — ${c.note}` : ''}`}>
             <text x={labelW - 8} y={y + rowHeight / 2 + 3} fill={INK3} fontSize={SIZE.label} textAnchor="end">
               {c.label}
             </text>
@@ -125,12 +130,10 @@ export function ContributionBars({
             >
               {format(c.value)}
             </text>
-            <title>
-              {`${c.label}: ${format(c.value)}${unit ? ` ${unit}` : ''}${'note' in c && c.note ? ` — ${c.note}` : ''}`}
-            </title>
-          </g>
+          </MarkTip>
         );
       })}
     </svg>
+    </div>
   );
 }

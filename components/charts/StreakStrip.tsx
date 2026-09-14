@@ -1,6 +1,7 @@
 'use client';
 
 import { toneFill } from '@/lib/ui/heat';
+import { MarkTip } from './MarkTip';
 import { INK4, SIZE } from './tokens';
 
 /**
@@ -70,14 +71,13 @@ export function StreakStrip({
           const x = i * (cellWidth + gap);
           const common = { x, y: 0, width: cellWidth, height, rx: 2 };
           return (
-            <g key={i}>
+            <MarkTip key={i} tip={titles?.[i] ?? (o == null ? 'No result' : o ? 'Cleared' : 'Missed')}>
               {o == null ? (
                 <rect {...common} fill="none" stroke={INK4} strokeWidth={1} opacity={opacity} />
               ) : (
                 <rect {...common} fill={toneFill(o ? 'good' : 'bad')} opacity={opacity} />
               )}
-              {titles?.[i] ? <title>{titles[i]}</title> : null}
-            </g>
+            </MarkTip>
           );
         })}
       </svg>

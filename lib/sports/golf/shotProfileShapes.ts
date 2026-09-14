@@ -166,6 +166,9 @@ export function toGolfProximityGrid(rows: readonly GolfShotRow[]): SpatialGridRo
   const bandedTotal = approaches.length;
   return {
     title: 'Proximity by lie',
+    // Not a place: proximity bands by lie. A green view needs shot coordinates.
+    surface: 'matrix',
+    measure: 'share',
     cells,
     rowLabels: rowCodes.map(lieLabel),
     columnLabels: PROXIMITY_BANDS.map((b) => b.label),

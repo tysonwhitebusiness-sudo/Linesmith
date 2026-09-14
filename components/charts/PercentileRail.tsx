@@ -1,6 +1,8 @@
 'use client';
 
 import { heatFill, heatInk, rankToHeat } from '@/lib/ui/heat';
+import { MarkTip } from './MarkTip';
+import { useChartWidth } from './useChartWidth';
 import { GRID, INK3, INK4, SIZE, SURFACE, type Formatter } from './tokens';
 import { fmt as fmts } from './tokens';
 
@@ -45,11 +47,13 @@ export interface PercentileRailProps {
 export function PercentileRail({
   rows,
   rowHeight = 22,
-  width = 320,
+  width: fallbackWidth = 320,
   showRank = true,
   label,
   className,
 }: PercentileRailProps) {
+  // R3 3c: draw at the host's real pixel width; `width` below is the measured value.
+  const [hostRef, width] = useChartWidth(fallbackWidth);
   const usable = rows.filter((r) => Number.isFinite(r.value) && r.poolSize > 1);
   if (usable.length === 0) {
     return (
@@ -71,13 +75,14 @@ export function PercentileRail({
   const height = usable.length * rowHeight;
 
   return (
+    <div ref={hostRef} className="min-w-0">
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      width="100%"
+      width={width}
       role="img"
       aria-label={label}
       className={className}
-      style={{ display: 'block', overflow: 'visible', maxWidth: width }}
+      style={{ display: 'block', overflow: 'visible', maxWidth: '100%' }}
     >
       {usable.map((r, i) => {
         // Percentile from rank, so a rail and a unit grade never disagree —
@@ -89,7 +94,7 @@ export function PercentileRail({
         const dotX = railLeft + (pct / 100) * railWidth;
         const f = r.format ?? fmts.one;
         return (
-          <g key={r.key}>
+          <MarkTip key={r.key} tip={`${r.label}: ${f(r.value)} · ${r.rank} of ${r.poolSize}`}>
             <text x={0} y={y + 3} fill={INK3} fontSize={SIZE.label}>
               {r.label}
             </text>
@@ -112,7 +117,7 @@ export function PercentileRail({
               <text
                 x={width}
                 y={y + 3}
-                fill={INK4}
+                fill={INK3}
                 fontSize={SIZE.tick}
                 textAnchor="end"
                 style={{ fontVariantNumeric: 'tabular-nums' }}
@@ -120,10 +125,10 @@ export function PercentileRail({
                 {`${r.rank} of ${r.poolSize}`}
               </text>
             ) : null}
-            <title>{`${r.label}: ${f(r.value)}, ${r.rank} of ${r.poolSize}`}</title>
-          </g>
+          </MarkTip>
         );
       })}
     </svg>
+    </div>
   );
 }

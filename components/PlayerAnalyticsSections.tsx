@@ -131,7 +131,6 @@ function SituationalSplitsSection({ role }: { role: SituationalSplitsRole }) {
         format={fmt.pct0}
         unit="cover rate"
         caption={role.caption}
-        aspect="matrix"
         label={role.title}
       />
     </AnalyticsCard>

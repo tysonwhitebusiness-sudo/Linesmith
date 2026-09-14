@@ -149,6 +149,8 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
   const spatialGrid: SpatialGridRole | null = shotProfile
     ? {
         title: 'Shot location',
+        surface: 'rink',
+        measure: 'share',
         cells: shotProfile.cells.map((row) =>
           row.map((c) => ({ key: c.key, value: c.shots > 0 ? c.share : null, sampleSize: c.shots })),
         ),

@@ -1,6 +1,8 @@
 'use client';
 
-import { INK1, INK4, INK5, GRID, SURFACE, SIZE, type Formatter } from './tokens';
+import { INK1, INK3, INK4, INK5, GRID, SURFACE, SIZE, type Formatter } from './tokens';
+import { MarkTip } from './MarkTip';
+import { useChartWidth } from './useChartWidth';
 import { fmt as defaultFmt } from './tokens';
 
 /**
@@ -46,13 +48,15 @@ export function RangeBar({
   points,
   highlightBook,
   consensus,
-  width = 220,
+  width: fallbackWidth = 220,
   height = 34,
   format = defaultFmt.american,
   higherIsBetter = true,
   label,
   className,
 }: RangeBarProps) {
+  // R3 3c: draw at the host's real pixel width; `width` below is the measured value.
+  const [hostRef, width] = useChartWidth(fallbackWidth);
   const finite = points.filter((p) => Number.isFinite(p.value));
   if (finite.length === 0) {
     return (
@@ -84,60 +88,47 @@ export function RangeBar({
   const highlighted = highlightBook ? finite.find((p) => p.book === highlightBook) : undefined;
 
   return (
+    <div ref={hostRef} className="min-w-0">
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      width="100%"
+      width={width}
       role="img"
       aria-label={`${label}: ${finite.length} books, ${format(worst)} to ${format(best)}`}
       className={className}
-      style={{ display: 'block', overflow: 'visible', maxWidth: width }}
+      style={{ display: 'block', overflow: 'visible', maxWidth: '100%' }}
     >
       <line x1={padL} x2={padL + trackWidth} y1={midY} y2={midY} stroke={GRID} strokeWidth={6} strokeLinecap="round" />
 
       {consensus != null && Number.isFinite(consensus) ? (
-        <line
-          x1={x(consensus)}
-          x2={x(consensus)}
-          y1={midY - 9}
-          y2={midY + 9}
-          stroke={INK4}
-          strokeWidth={1}
-          strokeDasharray="2 2"
-        >
-          <title>Consensus {format(consensus)}</title>
-        </line>
+        <MarkTip tip={`Consensus ${format(consensus)}`}>
+          <rect x={x(consensus) - 5} y={midY - 10} width={10} height={20} fill="transparent" />
+          <line x1={x(consensus)} x2={x(consensus)} y1={midY - 9} y2={midY + 9} stroke={INK4} strokeWidth={1} strokeDasharray="2 2" />
+        </MarkTip>
       ) : null}
 
       {finite.map((p, i) => (
-        <line
-          key={`${p.book}-${i}`}
-          x1={x(p.value)}
-          x2={x(p.value)}
-          y1={midY - 5}
-          y2={midY + 5}
-          stroke={INK5}
-          strokeWidth={1.5}
-          strokeLinecap="round"
-        >
-          <title>{`${p.book} ${format(p.value)}`}</title>
-        </line>
+        <MarkTip key={`${p.book}-${i}`} tip={`${p.book} ${format(p.value)}`}>
+          <rect x={x(p.value) - 4} y={midY - 8} width={8} height={16} fill="transparent" />
+          <line x1={x(p.value)} x2={x(p.value)} y1={midY - 5} y2={midY + 5} stroke={INK5} strokeWidth={1.5} strokeLinecap="round" />
+        </MarkTip>
       ))}
 
       {highlighted ? (
         <g>
           <circle cx={x(highlighted.value)} cy={midY} r={5} fill={SURFACE} />
-          <circle cx={x(highlighted.value)} cy={midY} r={3.4} fill={INK1}>
-            <title>{`${highlighted.book} ${format(highlighted.value)}`}</title>
-          </circle>
+          <MarkTip tip={`${highlighted.book} ${format(highlighted.value)}`}>
+            <circle cx={x(highlighted.value)} cy={midY} r={3.4} fill={INK1} />
+          </MarkTip>
         </g>
       ) : null}
 
-      <text x={padL - 6} y={midY + 3.5} fill={INK4} fontSize={SIZE.tick} textAnchor="end" style={{ fontVariantNumeric: 'tabular-nums' }}>
+      <text x={padL - 6} y={midY + 3.5} fill={INK3} fontSize={SIZE.tick} textAnchor="end" style={{ fontVariantNumeric: 'tabular-nums' }}>
         {format(min)}
       </text>
-      <text x={padL + trackWidth + 6} y={midY + 3.5} fill={INK4} fontSize={SIZE.tick} style={{ fontVariantNumeric: 'tabular-nums' }}>
+      <text x={padL + trackWidth + 6} y={midY + 3.5} fill={INK3} fontSize={SIZE.tick} style={{ fontVariantNumeric: 'tabular-nums' }}>
         {format(max)}
       </text>
     </svg>
+    </div>
   );
 }

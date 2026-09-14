@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ChartFrame, type PlotArea } from './ChartFrame';
-import { CONTEXT, CONTEXT_OPACITY, EMPHASIS, INK4, SIZE, SURFACE, type Formatter } from './tokens';
+import { CONTEXT, CONTEXT_OPACITY, EMPHASIS, INK3, INK4, SIZE, SURFACE, type Formatter } from './tokens';
 import { fmt as fmts } from './tokens';
 import { linePath, nearestIndex, niceDomain, xScale, yScale } from './scale';
 import { NO_CROSSHAIR, type ChartCrosshair } from './useChartCrosshair';
@@ -49,6 +49,8 @@ export interface SeriesChartProps {
   crosshair?: ChartCrosshair;
   /** Tooltip unit ("consensus", "Elo"). */
   unit?: string;
+  /** A threshold drawn as a DASHED reference line (R3 3c) — a prop line, league average. */
+  reference?: { value: number; label?: string };
   width?: number;
   height?: number;
   tickCount?: number;
@@ -68,6 +70,7 @@ export function SeriesChart({
   format = fmts.one,
   crosshair = NO_CROSSHAIR,
   unit,
+  reference,
   width = 640,
   height = 132,
   tickCount = 3,
@@ -82,7 +85,7 @@ export function SeriesChart({
   const finite = values.filter((v) => Number.isFinite(v));
   const isEmpty = finite.length < 2;
 
-  const all = [...values, ...(context ?? []).flat()];
+  const all = [...values, ...(context ?? []).flat(), ...(reference ? [reference.value] : [])];
   const domain = niceDomain(all, { zeroBased, min, max });
   const padB = xLabels ? 24 : 8;
 
@@ -113,9 +116,9 @@ export function SeriesChart({
         return { x: x(hovered), y: y(v), rows: [{ value: format(v), label: xLabels?.[hovered] ?? unit }] };
       }}
       onPointerMove={(e, plot) => {
+        // Real pixel width (R3 3c): a client pixel is a plot unit.
         const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
-        const scale = rect.width / width || 1;
-        const px = (e.clientX - rect.left) / scale;
+        const px = e.clientX - rect.left;
         publish(nearestIndex(px, values.length, plot.left, plot.width));
       }}
       onPointerLeave={() => publish(null)}
@@ -128,6 +131,18 @@ export function SeriesChart({
 
         return (
           <>
+            {/* A ZERO LINE where the domain crosses zero (R3 3c). */}
+            {domain.lo < 0 && domain.hi > 0 ? <line x1={plot.left} x2={plot.left + plot.width} y1={y(0)} y2={y(0)} stroke={INK4} strokeWidth={1} /> : null}
+            {reference && Number.isFinite(reference.value) ? (
+              <g>
+                <line x1={plot.left} x2={plot.left + plot.width} y1={y(reference.value)} y2={y(reference.value)} stroke={INK3} strokeWidth={1} strokeDasharray="4 4" />
+                {reference.label ? (
+                  <text x={plot.left + plot.width} y={y(reference.value) - 4} fill={INK3} fontSize={SIZE.tick} textAnchor="end">
+                    {reference.label}
+                  </text>
+                ) : null}
+              </g>
+            ) : null}
             {(context ?? []).map((line, i) => (
               <path
                 key={i}
@@ -166,7 +181,7 @@ export function SeriesChart({
                       key={i}
                       x={x(i)}
                       y={plot.top + plot.height + 15}
-                      fill={INK4}
+                      fill={INK3}
                       fontSize={SIZE.tick}
                       textAnchor="middle"
                     >

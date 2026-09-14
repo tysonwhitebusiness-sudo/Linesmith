@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { GRID, INK4, FONT_STACK, SIZE, type Formatter } from './tokens';
+import type { ReactNode } from 'react';
+import { GRID, INK3, FONT_STACK, SIZE, type Formatter } from './tokens';
+import { useChartWidth } from './useChartWidth';
 import { ticksFor, yScale, type Domain } from './scale';
 
 /**
@@ -32,7 +33,11 @@ import { ticksFor, yScale, type Domain } from './scale';
  */
 
 export interface ChartFrameProps {
-  /** Intrinsic width in SVG user units. The chart scales down responsively but never renders above 1:1. */
+  /**
+   * The width to draw at BEFORE the host is measured (first and server render).
+   * After that the chart draws at its host's REAL pixel width (R3 3c), so text
+   * and marks are never scaled by a viewBox.
+   */
   width: number;
   height: number;
   /** Plot insets. Left needs room for tick labels; bottom needs room only when an x-axis renders. */
@@ -111,26 +116,22 @@ export function ChartFrame({
   onPointerLeave,
   className,
 }: ChartFrameProps) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const [hostWidth, setHostWidth] = useState<number>(width);
+  const [hostRef, measured] = useChartWidth(width);
+  const frameWidth = measured || width;
 
   const pad = { ...DEFAULT_PADDING, ...padding };
-  const plotWidth = Math.max(0, width - pad.left - pad.right);
+  const plotWidth = Math.max(0, frameWidth - pad.left - pad.right);
   const plotHeight = Math.max(0, height - pad.top - pad.bottom);
   const plot: PlotArea = {
     left: pad.left,
     top: pad.top,
     width: plotWidth,
     height: plotHeight,
-    frameWidth: width,
+    frameWidth,
     frameHeight: height,
     y: domain ? yScale(domain, pad.top, plotHeight) : (v) => v,
     domain: domain ?? null,
   };
-
-  const measure = useCallback((node: HTMLDivElement | null) => {
-    if (node) setHostWidth(node.clientWidth || width);
-  }, [width]);
 
   // Loading takes precedence over empty: "we do not know yet" and "there is
   // nothing" are different claims, and showing the second while the first is
@@ -156,23 +157,18 @@ export function ChartFrame({
     );
   }
 
-  const scale = hostWidth > 0 ? Math.min(1, hostWidth / width) : 1;
   const resolvedTooltip = typeof tooltip === 'function' ? tooltip(plot) : tooltip;
 
   return (
-    <div
-      ref={(n) => {
-        hostRef.current = n;
-        measure(n);
-      }}
-      className={`relative ${className ?? ''}`}
-    >
+    <div ref={hostRef} className={`relative min-w-0 ${className ?? ''}`}>
       <svg
-        viewBox={`0 0 ${width} ${height}`}
-        width="100%"
+        viewBox={`0 0 ${frameWidth} ${height}`}
+        width={frameWidth}
+        height={height}
         role="img"
         aria-label={label}
-        style={{ display: 'block', overflow: 'visible', maxWidth: width, fontFamily: FONT_STACK }}
+        // maxWidth only matters before the first measure, when `frameWidth` is still the fallback.
+        style={{ display: 'block', overflow: 'visible', maxWidth: '100%', fontFamily: FONT_STACK }}
         onPointerMove={onPointerMove ? (e) => onPointerMove(e, plot) : undefined}
         onPointerLeave={onPointerLeave}
       >
@@ -181,11 +177,11 @@ export function ChartFrame({
               const y = plot.y(v);
               return (
                 <g key={i}>
-                  <line x1={plot.left} x2={width - pad.right} y1={y} y2={y} stroke={GRID} strokeWidth={1} />
+                  <line x1={plot.left} x2={frameWidth - pad.right} y1={y} y2={y} stroke={GRID} strokeWidth={1} />
                   <text
                     x={plot.left - 7}
                     y={y + 3}
-                    fill={INK4}
+                    fill={INK3}
                     fontSize={SIZE.tick}
                     textAnchor="end"
                     style={{ fontVariantNumeric: 'tabular-nums' }}
@@ -198,34 +194,32 @@ export function ChartFrame({
           : null}
         {children(plot)}
       </svg>
-      {resolvedTooltip ? <ChartTooltip content={resolvedTooltip} scale={scale} hostWidth={hostWidth} /> : null}
+      {resolvedTooltip ? <ChartTooltip content={resolvedTooltip} hostWidth={frameWidth} /> : null}
     </div>
   );
 }
 
 /**
- * The shared tooltip.
+ * The shared chart tooltip, in the design-system tooltip's look (R3).
  *
  * Values go in as text nodes, never as markup — the same untrusted-data
- * discipline the mockup's own tooltip kept. Positioned in host pixels, so the
- * SVG user-unit coordinates are scaled by the frame's own responsive factor.
+ * discipline the mockup's own tooltip kept. The chart draws at real pixel width
+ * now, so SVG coordinates ARE host pixels; no scaling.
  */
-function ChartTooltip({ content, scale, hostWidth }: { content: TooltipContent; scale: number; hostWidth: number }) {
-  const px = content.x * scale;
-  const py = content.y * scale;
+function ChartTooltip({ content, hostWidth }: { content: TooltipContent; hostWidth: number }) {
   // Clamp so a tooltip near either edge stays inside the card.
-  const left = Math.max(0, Math.min(hostWidth - 120, px - 60));
+  const left = Math.max(0, Math.min(hostWidth - 140, content.x - 70));
   return (
     <div
-      className="pointer-events-none absolute z-10 rounded-[6px] border border-line bg-paper px-2 py-1 shadow-card"
-      style={{ left, top: Math.max(0, py - 44), minWidth: 96 }}
+      className="pointer-events-none absolute z-10 rounded-ctl bg-masters px-2.5 py-1.5 text-white shadow-pop"
+      style={{ left, top: Math.max(0, content.y - 52), minWidth: 110 }}
       role="status"
     >
       {content.rows.map((r, i) => (
-        <div key={i} className="flex items-baseline gap-1.5 whitespace-nowrap text-[10.5px] leading-tight">
+        <div key={i} className="flex items-baseline gap-1.5 whitespace-nowrap text-label">
           {r.color ? <span className="inline-block h-2 w-2 shrink-0 rounded-[2px]" style={{ background: r.color }} /> : null}
-          <span className="font-semibold tabular-nums text-ink">{r.value}</span>
-          {r.label ? <span className="text-ink-muted">{r.label}</span> : null}
+          <span className="font-bold tabular-nums">{r.value}</span>
+          {r.label ? <span className="text-white/70">{r.label}</span> : null}
         </div>
       ))}
     </div>

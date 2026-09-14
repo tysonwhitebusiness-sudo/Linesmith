@@ -1,6 +1,6 @@
 'use client';
 
-import { HeatGrid } from './charts/HeatGrid';
+import { SpatialSurface } from './charts/SpatialSurface';
 import { SplitDumbbell } from './charts/SplitDumbbell';
 import { StatTable } from './charts/StatTable';
 import { StreakStrip } from './charts/StreakStrip';
@@ -266,18 +266,8 @@ function UsageMixSection({ role }: { role: UsageMixRole }) {
 function SpatialGridSection({ role }: { role: SpatialGridRole }) {
   return (
     <RoleCard title={role.title}>
-      <HeatGrid
-        rows={role.cells}
-        rowLabels={role.rowLabels}
-        columnLabels={role.columnLabels}
-        domain={role.domain}
-        format={role.format}
-        unit={role.unit}
-        caption={role.caption}
-        aspect="zone"
-        lowerIsBetter={role.lowerIsBetter}
-        label={role.title}
-      />
+      {/* R3 3c / D4: drawn on the sport's own surface, chosen by `role.surface`. */}
+      <SpatialSurface role={role} />
     </RoleCard>
   );
 }

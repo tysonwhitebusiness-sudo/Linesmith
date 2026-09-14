@@ -1,8 +1,9 @@
 'use client';
 
 import { heatInk, rankToHeat } from '@/lib/ui/heat';
+import { MarkTip } from './MarkTip';
 import { ChartFrame, type PlotArea } from './ChartFrame';
-import { GRID, INK1, INK4, INK5, SIZE, SURFACE, type Formatter } from './tokens';
+import { GRID, INK1, INK3, INK4, INK5, SIZE, SURFACE, type Formatter } from './tokens';
 import { fmt as fmts } from './tokens';
 import { niceDomain } from './scale';
 
@@ -104,6 +105,16 @@ export function DensityCurve({
               strokeWidth={1}
             />
             <path d={area} fill={INK5} opacity={0.35} />
+            {/* Hover every bin (R3 3c): its value range and how many of the pool sit in it. */}
+            {counts.map((c, i) => {
+              const binLo = domain.lo + ((domain.hi - domain.lo) * i) / binCount;
+              const binHi = domain.lo + ((domain.hi - domain.lo) * (i + 1)) / binCount;
+              return (
+                <MarkTip key={i} tip={`${format(binLo)}–${format(binHi)} · ${c} of ${pop.length}`}>
+                  <rect x={plot.left + (i / binCount) * plot.width} y={plot.top} width={plot.width / binCount} height={plot.height} fill="transparent" />
+                </MarkTip>
+              );
+            })}
             <path
               d={counts.map((c, i) => `${i ? 'L' : 'M'}${binX(i).toFixed(1)} ${binY(c).toFixed(1)}`).join(' ')}
               fill="none"
@@ -113,7 +124,7 @@ export function DensityCurve({
             />
 
             {value != null && Number.isFinite(value) ? (
-              <g>
+              <MarkTip tip={`${format(value)}${rank != null ? ` · ${rank} of ${pop.length}` : ''}`}>
                 <line x1={x(value)} x2={x(value)} y1={plot.top - 4} y2={plot.top + plot.height} stroke={INK1} strokeWidth={1.25} />
                 <circle cx={x(value)} cy={plot.top - 4} r={4.4} fill={SURFACE} />
                 <circle cx={x(value)} cy={plot.top - 4} r={3} fill={heatInk(heat)} />
@@ -129,16 +140,16 @@ export function DensityCurve({
                   {format(value)}
                   {rank != null ? ` · ${rank} of ${pop.length}` : ''}
                 </text>
-              </g>
+              </MarkTip>
             ) : null}
 
-            <text x={plot.left} y={plot.top + plot.height + 13} fill={INK4} fontSize={SIZE.tick} style={{ fontVariantNumeric: 'tabular-nums' }}>
+            <text x={plot.left} y={plot.top + plot.height + 13} fill={INK3} fontSize={SIZE.tick} style={{ fontVariantNumeric: 'tabular-nums' }}>
               {format(domain.lo)}
             </text>
             <text
               x={plot.left + plot.width}
               y={plot.top + plot.height + 13}
-              fill={INK4}
+              fill={INK3}
               fontSize={SIZE.tick}
               textAnchor="end"
               style={{ fontVariantNumeric: 'tabular-nums' }}

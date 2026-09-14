@@ -178,6 +178,8 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
   const spatialGrid: SpatialGridRole | null = shotGrid
     ? {
         title: 'Shot location',
+        surface: 'pitch',
+        measure: 'share',
         cells: shotGrid.cells.map((row) =>
           row.map((c) => ({ key: c.key, value: c.shots > 0 ? c.share : null, sampleSize: c.shots })),
         ),
