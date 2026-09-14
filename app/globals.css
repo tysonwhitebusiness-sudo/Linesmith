@@ -17,15 +17,22 @@
   button {
     -webkit-tap-highlight-color: transparent;
   }
+
+  /* R3 3d: ONE visible focus ring, everywhere — 2px, offset 2px. F2 probed 300
+     keyboard focus stops and most had no visible indicator. */
+  :focus-visible {
+    outline: 2px solid theme('colors.focus');
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
 }
 
 @layer components {
-  /* Design refresh: separation is borders only, no ambient shadow — a card
-     sitting in a list reads fine on a border alone; shadows stay reserved for
-     things that are actually floating (drawers/modals use shadow-drawer/-pop
-     directly, not this class). */
+  /* R3: RAISED cards (the G2 pick) on a paper ground that is now darker than
+     the card. Before R3 cards were border-only and sat BELOW the page (card 93%
+     vs paper 96%). Floating layers still use shadow-pop / shadow-drawer. */
   .lb-card {
-    @apply rounded-card border border-line bg-card;
+    @apply rounded-card border border-line-soft bg-card shadow-card;
   }
 
   /* The one card allowed real elevation — reserved for a single top-of-page
@@ -33,9 +40,7 @@
      the shadow+radius pairing is a deliberate, reusable variant rather than
      a one-off hand-rolled style. */
   .lb-card-hero {
-    @apply border border-line bg-card;
-    border-radius: 14px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    @apply rounded-card-hero border border-line-soft bg-card shadow-card;
   }
 
   /* Cards you can act on lift slightly, so they read as surfaces not boxes. */
@@ -73,7 +78,7 @@
     @apply text-lg font-semibold leading-none tabular-nums;
   }
   .lb-stat-label {
-    @apply mt-1 text-[10px] font-medium uppercase tracking-wider text-ink-faint;
+    @apply mt-1 text-overline uppercase text-ink-muted;
   }
 
   /* Primary CTA press feel (Slip, Add to slip, Submit, Rescan): a graphite
@@ -94,12 +99,12 @@
   }
 
   .lb-skel {
-    @apply rounded bg-line/70;
+    @apply rounded bg-card-sunk;
     background-image: linear-gradient(
       90deg,
-      rgba(211, 212, 215, 0) 0%,
-      rgba(255, 255, 255, 0.85) 50%,
-      rgba(211, 212, 215, 0) 100%
+      rgba(255, 255, 255, 0) 0%,
+      theme('colors.line.soft / 90%') 50%,
+      rgba(255, 255, 255, 0) 100%
     );
     background-size: 200% 100%;
     background-repeat: no-repeat;
@@ -119,16 +124,26 @@
 
 /* Dense table view: header row sticks while a long list scrolls under it. */
 .lb-dense th {
-  @apply sticky top-0 z-10 bg-paper/95 px-2 py-1.5 text-left text-[10px] font-semibold uppercase
-    tracking-wider text-ink-faint backdrop-blur;
+  @apply sticky top-0 z-10 bg-paper/95 px-2 py-1.5 text-left text-overline uppercase
+    text-ink-muted backdrop-blur;
 }
 .lb-dense td {
   @apply border-t border-line px-2 py-2 align-middle text-[13px];
 }
 
+/* R3 3a: reduced motion falls back to fades only. Tweens and movement collapse
+   to near-instant; opacity changes still read. */
 @media (prefers-reduced-motion: reduce) {
   .lb-skel,
-  .animate-lb-pulse {
+  .animate-lb-pulse,
+  .animate-lb-flash {
     animation: none !important;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-property: opacity !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
   }
 }

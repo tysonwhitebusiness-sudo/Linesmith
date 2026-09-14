@@ -1,16 +1,6 @@
 import type { Metadata, Viewport } from 'next';
-import { IBM_Plex_Mono } from 'next/font/google';
 import './globals.css';
 import ComplianceFooter from '@/components/ComplianceFooter';
-
-// Numerals and mono-label chrome across the redesigned cards lean on this —
-// declared once here so every page gets the same font file, not a per-card fetch.
-const plexMono = IBM_Plex_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  variable: '--font-plex-mono',
-  display: 'swap',
-});
 
 export const metadata: Metadata = {
   title: 'Linesmith',
@@ -26,7 +16,9 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={plexMono.variable}>
+    // R3: no web font. The IBM Plex Mono load was used by one element (F2); every
+    // page renders the system sans stack.
+    <html lang="en">
       {/*
         The compliance strings are mounted HERE, not per page, because
         docs/audit-phase-5.md recorded them as missing entirely and they block

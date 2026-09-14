@@ -63,7 +63,7 @@ export function SplitDumbbell({
         role="img"
         aria-label={`${label}: no split recorded`}
       >
-        <p className="text-[11px] text-ink-faint">No split data for this subject yet.</p>
+        <p className="text-[11px] text-ink-muted">No split data for this subject yet.</p>
       </div>
     );
   }

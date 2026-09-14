@@ -183,7 +183,7 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
                           <span className="lb-chip shrink-0 bg-ink/5 text-[9px] text-ink-muted">{meta.position}</span>
                         ) : null}
                       </span>
-                      {s.statusLine ? <span className="block truncate text-[10px] text-ink-faint">{s.statusLine}</span> : null}
+                      {s.statusLine ? <span className="block truncate text-[10px] text-ink-muted">{s.statusLine}</span> : null}
                     </span>
                     {count > 0 ? (
                       <span className="shrink-0 rounded-full bg-ink/5 px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">

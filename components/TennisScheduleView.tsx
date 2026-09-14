@@ -84,7 +84,7 @@ function MatchHeroCarousel({ matches, tour }: { matches: DrawMatch[]; tour: Tenn
   return (
     <div className="shrink-0 overflow-hidden rounded-xl border border-line bg-card/90">
       <Link href={`/tennis/${tour}/game/${m.matchId}`} className="flex flex-col gap-1 px-3 py-2 transition-colors hover:bg-surface-subtle">
-        <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">{label}</span>
+        <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{label}</span>
         <span className="flex items-center gap-1.5 text-[12px] font-semibold text-ink">
           <SubjectAvatar name={m.home.name} fallbackUrl={m.home.flagUrl ?? undefined} size={18} />
           {m.home.name}
@@ -136,7 +136,7 @@ function MatchHeroCard({ event, draw, tour }: { event: ScheduleEvent; draw: Tour
             <span>{formatDateRange(event.startDate, event.endDate)}</span>
             {draw.venueCity ? (
               <>
-                <span className="text-ink-faint">·</span>
+                <span className="text-ink-muted">·</span>
                 <span>{draw.venueCity}</span>
               </>
             ) : null}
@@ -176,7 +176,7 @@ function TodaysMatchesCard({ matches, tour, moneylines }: { matches: DrawMatch[]
           const ml = moneylineByMatch.get(m.matchId);
           return (
             <Link key={m.matchId} href={`/tennis/${tour}/game/${m.matchId}`} className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-surface-subtle">
-              <div className="w-16 shrink-0 text-[10px] text-ink-faint">
+              <div className="w-16 shrink-0 text-[10px] text-ink-muted">
                 {m.state === 'in' ? <span className="lb-chip bg-good/10 text-good">Live</span> : m.court || m.round}
               </div>
               <div className="min-w-0 flex-1 space-y-0.5">
@@ -207,7 +207,7 @@ function TodaysMatchesCard({ matches, tour, moneylines }: { matches: DrawMatch[]
 
 function SeedBadge({ seed }: { seed: number | null }) {
   if (seed == null) return null;
-  return <span className="shrink-0 text-[9px] font-semibold text-ink-faint">({seed})</span>;
+  return <span className="shrink-0 text-[9px] font-semibold text-ink-muted">({seed})</span>;
 }
 
 function DrawMatchRow({ match, tour }: { match: DrawMatch; tour: TennisTour }) {
@@ -219,12 +219,12 @@ function DrawMatchRow({ match, tour }: { match: DrawMatch; tour: TennisTour }) {
             <SubjectAvatar name={c.name} fallbackUrl={c.flagUrl ?? undefined} size={16} />
             <SeedBadge seed={c.seed} />
             <span className={`min-w-0 flex-1 truncate ${c.winner ? 'font-semibold text-ink' : 'text-ink-muted'}`}>{c.name}</span>
-            {match.completed || match.state === 'in' ? <span className={`shrink-0 tabular-nums ${c.winner ? 'font-bold text-ink' : 'text-ink-faint'}`}>{formatSetScore(c.sets)}</span> : null}
+            {match.completed || match.state === 'in' ? <span className={`shrink-0 tabular-nums ${c.winner ? 'font-bold text-ink' : 'text-ink-muted'}`}>{formatSetScore(c.sets)}</span> : null}
           </div>
         ))}
       </div>
       {!match.completed && match.state !== 'in' ? (
-        <span className="shrink-0 text-[10px] text-ink-faint">{new Date(match.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+        <span className="shrink-0 text-[10px] text-ink-muted">{new Date(match.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
       ) : null}
     </Link>
   );
@@ -275,7 +275,7 @@ function DrawBracketCard({ matches, tour }: { matches: DrawMatch[]; tour: Tennis
                 className="flex w-full items-center justify-between px-3 py-2 text-left transition-colors hover:bg-surface-subtle"
               >
                 <span className="text-[12px] font-semibold text-ink">{round}</span>
-                <span className="flex items-center gap-2 text-[10px] text-ink-faint">
+                <span className="flex items-center gap-2 text-[10px] text-ink-muted">
                   {roundMatches.length} match{roundMatches.length === 1 ? '' : 'es'}
                   <span className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}>▾</span>
                 </span>
@@ -327,7 +327,7 @@ function TournamentInsightsCard({
 
       <div className="p-3">
         <div className="mb-1.5 flex items-center justify-between gap-2">
-          <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Season leaders (tour-wide)</span>
+          <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Season leaders (tour-wide)</span>
           <span className="inline-flex items-center gap-0.5 rounded-lg bg-ink/[0.05] p-0.5">
             {(['aces', 'gamesWon'] as const).map((s) => (
               <button
@@ -343,9 +343,9 @@ function TournamentInsightsCard({
           </span>
         </div>
         {seasonLeadersLoading && seasonLeaders.length === 0 ? (
-          <p className="text-[11px] text-ink-faint">Loading…</p>
+          <p className="text-[11px] text-ink-muted">Loading…</p>
         ) : seasonLeaders.length === 0 ? (
-          <p className="text-[11px] text-ink-faint">No season data yet.</p>
+          <p className="text-[11px] text-ink-muted">No season data yet.</p>
         ) : (
           <ul className="space-y-1">
             {seasonLeaders.slice(0, 5).map((row, i) => (
@@ -360,7 +360,7 @@ function TournamentInsightsCard({
             ))}
           </ul>
         )}
-        <p className="mt-1 text-[9px] text-ink-faint">Season totals across all real matches this year — not tournament-specific.</p>
+        <p className="mt-1 text-[9px] text-ink-muted">Season totals across all real matches this year — not tournament-specific.</p>
       </div>
     </section>
   );
@@ -384,7 +384,7 @@ function TournamentInfoCard({ draw, tour }: { draw: TournamentDraw; tour: Tennis
       <div className="space-y-2 p-3 text-[12px]">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="text-ink-muted">Surface</span>
-          {surface ? <SurfaceChip surface={surface} /> : <span className="text-ink-faint">Not on file yet</span>}
+          {surface ? <SurfaceChip surface={surface} /> : <span className="text-ink-muted">Not on file yet</span>}
         </div>
         {draw.venueCity ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -443,7 +443,7 @@ function WeatherCard({ weather }: { weather: WeatherContext }) {
           <span className="text-ink-muted">{weather.rainPct}% rain</span>
           {weather.tempF != null ? <span className="text-ink-muted">{weather.tempF}°F</span> : null}
         </div>
-        <p className="mt-1 text-[10px] text-ink-faint">{weather.approximateLocation ? 'City-level estimate' : 'Venue-exact'}</p>
+        <p className="mt-1 text-[10px] text-ink-muted">{weather.approximateLocation ? 'City-level estimate' : 'Venue-exact'}</p>
       </div>
     </section>
   );
@@ -454,7 +454,7 @@ function WeatherCard({ weather }: { weather: WeatherContext }) {
 // ---------------------------------------------------------------------------
 
 function TrendArrow({ current, previous }: { current: number; previous: number | null }) {
-  if (previous == null || previous === current) return <span className="text-[10px] text-ink-faint">–</span>;
+  if (previous == null || previous === current) return <span className="text-[10px] text-ink-muted">–</span>;
   const up = previous > current; // a lower rank number is better
   return <span className={`text-[10px] font-bold ${up ? 'text-good' : 'text-bad'}`}>{up ? `▲${previous - current}` : `▼${current - previous}`}</span>;
 }
@@ -505,7 +505,7 @@ function WorldRankingsCard({ tour, rankings, loading }: { tour: TennisTour; rank
           </li>
         ))}
       </ul>
-      <p className="border-t border-line-soft px-3 py-1.5 text-[9px] text-ink-faint">Official ATP/WTA ranking points — not a priced market.</p>
+      <p className="border-t border-line-soft px-3 py-1.5 text-[9px] text-ink-muted">Official ATP/WTA ranking points — not a priced market.</p>
     </section>
   );
 }
@@ -533,7 +533,7 @@ function OurLinesCard({ candidates, onAdd, addedKeys }: { candidates: PickCandid
               <SubjectAvatar name={c.subjectName} size={20} />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium text-ink">{c.subjectName}</div>
-                <div className="truncate text-[10px] text-ink-faint">
+                <div className="truncate text-[10px] text-ink-muted">
                   {c.dimensionLabel} · {c.categoryLabel} · {c.sampleSize} match{c.sampleSize === 1 ? '' : 'es'}
                 </div>
               </div>
@@ -650,7 +650,7 @@ export function TennisScheduleView({
                       </span>
                       <StatusChip status={e.status} completed={e.completed} />
                     </span>
-                    <span className="text-[10px] text-ink-faint">{formatDateRange(e.startDate, e.endDate)}</span>
+                    <span className="text-[10px] text-ink-muted">{formatDateRange(e.startDate, e.endDate)}</span>
                   </button>
                 </li>
               );
@@ -665,7 +665,7 @@ export function TennisScheduleView({
         ) : drawLoading && !draw ? (
           <div className="lb-card h-48 animate-pulse" />
         ) : !draw ? (
-          <div className="lb-card p-3 text-[12px] text-ink-faint">
+          <div className="lb-card p-3 text-[12px] text-ink-muted">
             {drawWarnings[0] ?? `Couldn't load ${active.name}'s draw right now.`}
           </div>
         ) : (

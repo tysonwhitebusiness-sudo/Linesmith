@@ -132,9 +132,9 @@ function TeamListShell({
                     <TeamLogo logoUrl={t.logoUrl} abbreviation={t.abbreviation} size={26} />
                     <span className="min-w-0 flex-1">
                       <span className={`block truncate text-[13px] ${selected ? 'font-semibold text-masters' : ''}`}>{t.name}</span>
-                      <span className="block truncate text-[10px] text-ink-faint">{t.divisionShortName}</span>
+                      <span className="block truncate text-[10px] text-ink-muted">{t.divisionShortName}</span>
                     </span>
-                    <span className="shrink-0 text-[10px] tabular-nums text-ink-faint">
+                    <span className="shrink-0 text-[10px] tabular-nums text-ink-muted">
                       {t.wins}-{t.losses}
                     </span>
                   </button>

@@ -61,7 +61,7 @@ function OddsProvenance({ pick }: { pick: PickRow }) {
     return <BookLogo bookId={pick.bookmaker} size={13} withLabel className="text-[10px]" />;
   }
   const label = pick.oddsSource ? (SOURCE_LABEL[pick.oddsSource] ?? (bookLabel(pick.oddsSource) || pick.oddsSource)) : null;
-  return label ? <span className="text-[10px] text-ink-faint">{label}</span> : null;
+  return label ? <span className="text-[10px] text-ink-muted">{label}</span> : null;
 }
 
 function OddsField({ pick, onSetOdds }: { pick: PickRow; onSetOdds: SlipModalProps['onSetOdds'] }) {
@@ -115,7 +115,7 @@ function ScanLegRow({
     <li className="lb-card flex items-center gap-2 p-2.5">
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13px] font-semibold">{matchedName}</p>
-        <p className="truncate text-[11px] text-ink-faint">
+        <p className="truncate text-[11px] text-ink-muted">
           Screenshot said “{dimensionLabel} {categoryLabel}” @ {americanOdds}
         </p>
         {options.length > 1 ? (
@@ -301,7 +301,7 @@ export function SlipModal({
                 Clear
               </button>
             ) : null}
-            <button type="button" onClick={onClose} aria-label="Close" className="text-lg leading-none text-ink-faint">
+            <button type="button" onClick={onClose} aria-label="Close" className="text-lg leading-none text-ink-muted">
               ×
             </button>
           </div>
@@ -318,7 +318,7 @@ export function SlipModal({
             >
               {importing ? 'Reading your screenshot…' : 'Scan a bet slip'}
             </button>
-            <p className="mt-1.5 text-center text-[11px] text-ink-faint">
+            <p className="mt-1.5 text-center text-[11px] text-ink-muted">
               Reads odds from a screenshot you took. Never connects to a sportsbook.
             </p>
           </div>
@@ -346,7 +346,7 @@ export function SlipModal({
 
               {creatableLegs.length > 0 ? (
                 <div>
-                  <p className="mb-1.5 text-meta font-semibold uppercase tracking-wide text-ink-muted">
+                  <p className="mb-1.5 text-label font-semibold uppercase tracking-wide text-ink-muted">
                     From your screenshot
                   </p>
                   <ul className="space-y-1.5">
@@ -374,7 +374,7 @@ export function SlipModal({
                       <li key={`${leg.subjectName}-${i}`} className="text-ink-muted">
                         “{leg.subjectName}” {leg.categoryLabel} {leg.americanOdds}
                         {leg.suggestions.length > 0 ? (
-                          <span className="text-ink-faint"> — did you mean {leg.suggestions.map((s) => s.subjectName).join(' / ')}?</span>
+                          <span className="text-ink-muted"> — did you mean {leg.suggestions.map((s) => s.subjectName).join(' / ')}?</span>
                         ) : null}
                       </li>
                     ))}
@@ -415,7 +415,7 @@ export function SlipModal({
                           type="button"
                           onClick={() => onRemove(pick.id)}
                           aria-label={`Remove ${pick.subjectName}`}
-                          className="px-1 text-lg leading-none text-ink-faint"
+                          className="px-1 text-lg leading-none text-ink-muted"
                         >
                           ×
                         </button>

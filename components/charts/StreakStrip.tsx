@@ -82,7 +82,7 @@ export function StreakStrip({
         })}
       </svg>
       {showRecord ? (
-        <span className="tabular-nums text-ink-faint" style={{ fontSize: SIZE.value }}>
+        <span className="tabular-nums text-ink-muted" style={{ fontSize: SIZE.value }}>
           {wins}-{losses}
         </span>
       ) : null}

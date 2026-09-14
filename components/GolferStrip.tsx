@@ -122,7 +122,7 @@ export function GolferStrip({ subjects, selectedPlayerId, onSelectPlayer, onNavi
 
   if (subjects.length === 0) {
     return (
-      <div className="border-t border-line bg-ink/[0.02] py-2 text-center text-[11px] text-ink-faint">
+      <div className="border-t border-line bg-ink/[0.02] py-2 text-center text-[11px] text-ink-muted">
         No field posted yet
       </div>
     );
@@ -191,11 +191,11 @@ export function GolferStrip({ subjects, selectedPlayerId, onSelectPlayer, onNavi
                 </span>
               </span>
               <span className="flex w-full items-center gap-1 text-[10px]">
-                <span className={`font-semibold uppercase tracking-wide ${selected ? 'text-white/80' : 'text-ink-faint'}`}>
+                <span className={`font-semibold uppercase tracking-wide ${selected ? 'text-white/80' : 'text-ink-muted'}`}>
                   {position ?? '—'}
                 </span>
                 <span className={`ml-auto font-bold tabular-nums ${selected ? 'text-white' : 'text-ink'}`}>{score}</span>
-                {thru ? <span className={`shrink-0 ${selected ? 'text-white/75' : 'text-ink-faint'}`}>{thru}</span> : null}
+                {thru ? <span className={`shrink-0 ${selected ? 'text-white/75' : 'text-ink-muted'}`}>{thru}</span> : null}
               </span>
             </button>
           );
@@ -208,7 +208,7 @@ export function GolferStrip({ subjects, selectedPlayerId, onSelectPlayer, onNavi
         onClick={() => setPlaying((v) => !v)}
         aria-label={playing ? 'Pause field auto-scroll' : 'Resume field auto-scroll'}
         title={playing ? 'Pause auto-scroll' : 'Resume auto-scroll'}
-        className="shrink-0 rounded-full p-1.5 text-ink-faint opacity-40 transition-opacity hover:opacity-100"
+        className="shrink-0 rounded-full p-1.5 text-ink-muted opacity-40 transition-opacity hover:opacity-100"
       >
         {playing ? <PauseIcon size={11} /> : <PlayIcon size={11} />}
       </button>

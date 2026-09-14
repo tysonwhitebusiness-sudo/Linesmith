@@ -34,17 +34,17 @@ function ProgressRow({
   return (
     <div className="flex flex-col gap-1.5 border-b border-line-soft px-3 py-2.5 last:border-b-0">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-dense font-medium text-ink">
+        <span className="text-label font-medium text-ink">
           {side === 'over' ? 'Over' : 'Under'} {line} {label}
         </span>
         <div className="flex items-center gap-2">
           <span
-            className="text-dense font-semibold tabular-nums"
+            className="text-label font-semibold tabular-nums"
             style={{ color: hasValue ? heatInk(hit ? 0.9 : 0.3) : undefined }}
           >
             {hasValue ? liveValue : loadingValue ? '…' : '—'}
           </span>
-          <button type="button" onClick={onRemove} className="text-label text-ink-faint hover:text-bad" aria-label="Remove tracked line">
+          <button type="button" onClick={onRemove} className="text-label text-ink-muted hover:text-bad" aria-label="Remove tracked line">
             ✕
           </button>
         </div>
@@ -96,12 +96,12 @@ function AddLineForm({
   return (
     <div className="flex flex-col gap-2 border-t border-line-soft bg-surface-subtle p-3">
       <div className="flex items-center gap-2">
-        <select value={statKey} onChange={(e) => setStatKey(e.target.value)} className="min-w-0 flex-1 rounded-md border border-line px-2 py-1.5 text-dense">
+        <select value={statKey} onChange={(e) => setStatKey(e.target.value)} className="min-w-0 flex-1 rounded-md border border-line px-2 py-1.5 text-label">
           {availableStats.map((s) => (
             <option key={s.key} value={s.key}>{s.label}</option>
           ))}
         </select>
-        <select value={side} onChange={(e) => setSide(e.target.value as 'over' | 'under')} className="rounded-md border border-line px-2 py-1.5 text-dense">
+        <select value={side} onChange={(e) => setSide(e.target.value as 'over' | 'under')} className="rounded-md border border-line px-2 py-1.5 text-label">
           <option value="over">Over</option>
           <option value="under">Under</option>
         </select>
@@ -112,15 +112,15 @@ function AddLineForm({
           value={lineText}
           onChange={(e) => setLineText(e.target.value)}
           placeholder="Line"
-          className="w-20 rounded-md border border-line px-2 py-1.5 text-dense"
+          className="w-20 rounded-md border border-line px-2 py-1.5 text-label"
         />
       </div>
       {error ? <p className="text-label text-bad">{error}</p> : null}
       <div className="flex items-center gap-2">
-        <button type="button" onClick={submit} disabled={submitting} className="rounded-full bg-masters px-3 py-1.5 text-dense font-medium text-white disabled:opacity-50">
+        <button type="button" onClick={submit} disabled={submitting} className="rounded-full bg-masters px-3 py-1.5 text-label font-medium text-white disabled:opacity-50">
           {submitting ? 'Adding…' : 'Track this line'}
         </button>
-        <button type="button" onClick={onCancel} className="rounded-full border border-line px-3 py-1.5 text-dense text-ink-muted">
+        <button type="button" onClick={onCancel} className="rounded-full border border-line px-3 py-1.5 text-label text-ink-muted">
           Cancel
         </button>
       </div>
@@ -158,9 +158,9 @@ export function LiveLineTrackerCard({ data, subjectName }: { data: LiveLineTrack
       </div>
 
       {loading && lines.length === 0 ? (
-        <div className="p-3 text-dense text-ink-muted">Loading…</div>
+        <div className="p-3 text-label text-ink-muted">Loading…</div>
       ) : lines.length === 0 && !adding ? (
-        <div className="p-3 text-dense text-ink-muted">
+        <div className="p-3 text-label text-ink-muted">
           {data.availableStats.length === 0 ? 'No trackable stats for this sport yet.' : 'No lines tracked yet — add one to follow it live.'}
         </div>
       ) : (

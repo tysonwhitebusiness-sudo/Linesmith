@@ -64,7 +64,7 @@ export function StatTable({ rows, caption, showRank = true, emptyMessage, classN
   if (usable.length === 0) {
     return (
       <div className={`rounded-[6px] border border-dashed border-line-soft px-4 py-5 text-center ${className ?? ''}`}>
-        <p className="text-[11px] text-ink-faint">{emptyMessage ?? 'No stats recorded for this window.'}</p>
+        <p className="text-[11px] text-ink-muted">{emptyMessage ?? 'No stats recorded for this window.'}</p>
       </div>
     );
   }
@@ -72,7 +72,7 @@ export function StatTable({ rows, caption, showRank = true, emptyMessage, classN
   return (
     <div className={className}>
       {caption ? (
-        <div className="mb-1 text-[9px] font-semibold uppercase tracking-[.18em] text-ink-faint">{caption}</div>
+        <div className="mb-1 text-[9px] font-semibold uppercase tracking-[.18em] text-ink-muted">{caption}</div>
       ) : null}
       <table className="w-full border-collapse">
         <tbody>
@@ -87,7 +87,7 @@ export function StatTable({ rows, caption, showRank = true, emptyMessage, classN
               <tr key={r.key} className="border-b border-line-hair last:border-b-0">
                 <td className="py-[3px] pr-2 align-middle">
                   <span className="block text-[11px] leading-tight text-ink-muted">{r.label}</span>
-                  {r.sub ? <span className="block text-[9.5px] leading-tight text-ink-faint">{r.sub}</span> : null}
+                  {r.sub ? <span className="block text-[9.5px] leading-tight text-ink-muted">{r.sub}</span> : null}
                 </td>
                 <td className="w-[92px] py-[3px] align-middle">
                   {/* The bar IS the cell background — see this file's header. */}
@@ -111,7 +111,7 @@ export function StatTable({ rows, caption, showRank = true, emptyMessage, classN
                 </td>
                 {showRank ? (
                   <td className="w-[54px] py-[3px] pl-2 text-right align-middle">
-                    <span className="text-[9.5px] tabular-nums text-ink-faint">
+                    <span className="text-[9.5px] tabular-nums text-ink-muted">
                       {ranked ? `${r.rank} of ${r.poolSize}` : '—'}
                     </span>
                   </td>

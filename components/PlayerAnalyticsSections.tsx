@@ -64,7 +64,7 @@ function AnalyticsCard({ title, subtitle, children }: { title: string; subtitle?
     <section className="lb-card overflow-hidden">
       <div className="flex items-baseline justify-between gap-2 bg-accent-soft px-3 py-1.5">
         <h2 className="text-[10.5px] font-bold uppercase tracking-wide text-masters">{title}</h2>
-        {subtitle ? <span className="truncate text-[9.5px] text-ink-faint">{subtitle}</span> : null}
+        {subtitle ? <span className="truncate text-[9.5px] text-ink-muted">{subtitle}</span> : null}
       </div>
       <div className="p-3">{children}</div>
     </section>
@@ -104,7 +104,7 @@ function RollingFormSection({ role }: { role: RollingFormRole }) {
         label={role.title}
       />
       {role.line != null ? (
-        <p className="mt-2 text-[10.5px] text-ink-faint">
+        <p className="mt-2 text-[10.5px] text-ink-muted">
           Line {role.line} {MIDDOT} the grey series is each individual game
         </p>
       ) : null}

@@ -165,13 +165,13 @@ export default function BetDetailPage() {
               {bet.team || bet.opponent ? (
                 <div className="mt-3 flex items-center gap-2 text-[12px]">
                   <TeamLogo logoUrl={mlbTeamLogoUrl(bet.teamId ?? undefined)} abbreviation={bet.team ?? undefined} size={18} />
-                  <span className="text-ink-faint">vs</span>
+                  <span className="text-ink-muted">vs</span>
                   <TeamLogo logoUrl={mlbTeamLogoUrl(bet.opponentId ?? undefined)} abbreviation={bet.opponent ?? undefined} size={18} />
                 </div>
               ) : null}
 
               {bet.eventContext || bet.americanOdds ? (
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-ink-faint">
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-ink-muted">
                   {bet.eventContext ? <span>{bet.eventContext}</span> : null}
                   {bet.americanOdds ? (
                     <span className="flex items-center gap-1.5">
@@ -187,10 +187,10 @@ export default function BetDetailPage() {
 
             {settled ? (
               <section className="lb-card p-4 text-center">
-                <p className="text-meta font-semibold uppercase tracking-wide text-ink-muted">Final</p>
+                <p className="text-label font-semibold uppercase tracking-wide text-ink-muted">Final</p>
                 <p className="mt-1 text-2xl font-bold tabular-nums" style={{ color: heatInk(bet.status === 'won' ? 1 : bet.status === 'lost' ? 0 : 0.5) }}>
                   {bet.actualValue ?? '—'}
-                  {bet.line != null ? <span className="text-base text-ink-faint"> / line {bet.line}</span> : null}
+                  {bet.line != null ? <span className="text-base text-ink-muted"> / line {bet.line}</span> : null}
                 </p>
               </section>
             ) : !gamePk ? (
@@ -205,7 +205,7 @@ export default function BetDetailPage() {
               <>
                 <section className="lb-card flex items-center justify-between p-4">
                   <div>
-                    <p className="text-meta font-semibold uppercase tracking-wide text-ink-muted">
+                    <p className="text-label font-semibold uppercase tracking-wide text-ink-muted">
                       {live.data.inning.ordinal} {live.data.inning.half}
                     </p>
                     <p className="mt-0.5 text-[13px] tabular-nums text-ink-muted">
@@ -222,7 +222,7 @@ export default function BetDetailPage() {
                           <p className="text-2xl font-bold tabular-nums" style={{ color: heatInk(tone) }}>
                             {value}
                           </p>
-                          <p className="text-[11px] text-ink-faint">
+                          <p className="text-[11px] text-ink-muted">
                             {directionMark(bet.category) === 'U' ? 'Under' : 'Over'} {bet.line} · {state === 'ahead' ? 'on track' : state === 'exact' ? 'right on the line' : 'needs work'}
                           </p>
                         </div>
@@ -233,24 +233,24 @@ export default function BetDetailPage() {
 
                 {live.data.player ? (
                   <section className="lb-card p-4">
-                    <p className="mb-2 text-meta font-semibold uppercase tracking-wide text-ink-muted">Today's line</p>
+                    <p className="mb-2 text-label font-semibold uppercase tracking-wide text-ink-muted">Today's line</p>
                     {live.data.player.batting ? (
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] tabular-nums">
                         <span>{live.data.player.batting.hits}-for-{live.data.player.batting.atBats}</span>
-                        <span className="text-ink-faint">R {live.data.player.batting.runs}</span>
-                        <span className="text-ink-faint">RBI {live.data.player.batting.rbi}</span>
-                        <span className="text-ink-faint">BB {live.data.player.batting.walks}</span>
-                        <span className="text-ink-faint">K {live.data.player.batting.strikeOuts}</span>
+                        <span className="text-ink-muted">R {live.data.player.batting.runs}</span>
+                        <span className="text-ink-muted">RBI {live.data.player.batting.rbi}</span>
+                        <span className="text-ink-muted">BB {live.data.player.batting.walks}</span>
+                        <span className="text-ink-muted">K {live.data.player.batting.strikeOuts}</span>
                       </div>
                     ) : null}
                     {live.data.player.pitching ? (
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[13px] tabular-nums">
                         <span>{live.data.player.pitching.inningsPitched} IP</span>
-                        <span className="text-ink-faint">H {live.data.player.pitching.hits}</span>
-                        <span className="text-ink-faint">ER {live.data.player.pitching.earnedRuns}</span>
-                        <span className="text-ink-faint">BB {live.data.player.pitching.walks}</span>
-                        <span className="text-ink-faint">K {live.data.player.pitching.strikeOuts}</span>
-                        <span className="text-ink-faint">{live.data.player.pitching.pitches}p</span>
+                        <span className="text-ink-muted">H {live.data.player.pitching.hits}</span>
+                        <span className="text-ink-muted">ER {live.data.player.pitching.earnedRuns}</span>
+                        <span className="text-ink-muted">BB {live.data.player.pitching.walks}</span>
+                        <span className="text-ink-muted">K {live.data.player.pitching.strikeOuts}</span>
+                        <span className="text-ink-muted">{live.data.player.pitching.pitches}p</span>
                       </div>
                     ) : null}
                   </section>
@@ -258,14 +258,14 @@ export default function BetDetailPage() {
 
                 {live.data.subjectPlays && live.data.subjectPlays.length > 0 ? (
                   <section className="lb-card p-4">
-                    <p className="mb-2 text-meta font-semibold uppercase tracking-wide text-ink-muted">Plays today</p>
+                    <p className="mb-2 text-label font-semibold uppercase tracking-wide text-ink-muted">Plays today</p>
                     <ul className="space-y-2">
                       {[...live.data.subjectPlays].reverse().map((play, i) => (
                         <li key={i} className="text-[13px]">
                           <span className="font-medium" style={{ color: play.rbi > 0 ? heatFill(1) : undefined }}>
                             {play.event}
                           </span>
-                          <span className="text-ink-faint"> · Inning {play.inning} — {play.description}</span>
+                          <span className="text-ink-muted"> · Inning {play.inning} — {play.description}</span>
                         </li>
                       ))}
                     </ul>

@@ -105,12 +105,12 @@ export function StandingsTables({
               const isPointsTable = rows.length > 0 && rows.every((t) => t.points !== undefined);
               return (
                 <div key={division} className="lb-card overflow-hidden">
-                  <div className="border-b border-line bg-ink/[0.02] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                  <div className="border-b border-line bg-ink/[0.02] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
                     {division}
                   </div>
                   <table className="w-full text-[13px]">
                     <thead>
-                      <tr className="text-left text-[10px] uppercase tracking-wide text-ink-faint">
+                      <tr className="text-left text-[10px] uppercase tracking-wide text-ink-muted">
                         <th className="py-1.5 pl-3">Team</th>
                         <th className="py-1.5 text-right">W</th>
                         {isPointsTable ? <th className="py-1.5 text-right">D</th> : null}
@@ -148,7 +148,7 @@ export function StandingsTables({
                           <td className="py-1.5 text-right tabular-nums">{t.losses}</td>
                           {isPointsTable ? (
                             <>
-                              <td className="py-1.5 text-right tabular-nums text-ink-faint">
+                              <td className="py-1.5 text-right tabular-nums text-ink-muted">
                                 {(t.goalDifferential ?? 0) > 0 ? `+${t.goalDifferential}` : t.goalDifferential ?? 0}
                               </td>
                               <td className="py-1.5 pr-3 text-right font-semibold tabular-nums">{t.points}</td>
@@ -156,8 +156,8 @@ export function StandingsTables({
                           ) : (
                             <>
                               <td className="py-1.5 text-right tabular-nums">{winPct(t.wins, t.losses)}</td>
-                              <td className="py-1.5 text-right tabular-nums text-ink-faint">{t.gamesBack}</td>
-                              <td className="py-1.5 pr-3 text-right tabular-nums text-ink-faint">
+                              <td className="py-1.5 text-right tabular-nums text-ink-muted">{t.gamesBack}</td>
+                              <td className="py-1.5 pr-3 text-right tabular-nums text-ink-muted">
                                 {t.lastTen ? `${t.lastTen.wins}-${t.lastTen.losses}` : '—'}
                               </td>
                             </>

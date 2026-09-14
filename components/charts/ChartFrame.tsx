@@ -151,7 +151,7 @@ export function ChartFrame({
         role="img"
         aria-label={`${label}: ${emptyMessage}`}
       >
-        <p className="text-[11px] leading-snug text-ink-faint">{emptyMessage}</p>
+        <p className="text-[11px] leading-snug text-ink-muted">{emptyMessage}</p>
       </div>
     );
   }
@@ -225,7 +225,7 @@ function ChartTooltip({ content, scale, hostWidth }: { content: TooltipContent; 
         <div key={i} className="flex items-baseline gap-1.5 whitespace-nowrap text-[10.5px] leading-tight">
           {r.color ? <span className="inline-block h-2 w-2 shrink-0 rounded-[2px]" style={{ background: r.color }} /> : null}
           <span className="font-semibold tabular-nums text-ink">{r.value}</span>
-          {r.label ? <span className="text-ink-faint">{r.label}</span> : null}
+          {r.label ? <span className="text-ink-muted">{r.label}</span> : null}
         </div>
       ))}
     </div>

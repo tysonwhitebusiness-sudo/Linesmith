@@ -32,7 +32,7 @@ export function PropSideOdds({
 }) {
   const best = bestPrice(rows, side);
   const mine = userBookPrice(rows, side, userSportsbook);
-  if (!best) return <span className="text-[11px] text-ink-faint">—</span>;
+  if (!best) return <span className="text-[11px] text-ink-muted">—</span>;
 
   const sameBook = !!mine && mine.bookmaker === best.bookmaker;
 
@@ -73,7 +73,7 @@ export function PropOddsSummary({
   userSportsbook: string;
 }) {
   const rows = rowsFor(allRows, subjectId, marketKey, line);
-  if (rows.length === 0) return <span className="text-[11px] text-ink-faint">—</span>;
+  if (rows.length === 0) return <span className="text-[11px] text-ink-muted">—</span>;
   const books = new Set(rows.map((r) => r.bookmaker)).size;
   const mine = userBookPrice(rows, 'over', userSportsbook) ?? userBookPrice(rows, 'under', userSportsbook);
 
@@ -92,7 +92,7 @@ export function PropOddsSummary({
           className={mine ? 'border-masters/50' : undefined}
         />
       </span>
-      <span className="text-[9px] text-ink-faint">{books} book{books === 1 ? '' : 's'}</span>
+      <span className="text-[9px] text-ink-muted">{books} book{books === 1 ? '' : 's'}</span>
     </span>
   );
 }
@@ -141,7 +141,7 @@ export function GamePropLineShoppingRail({ allRows, userSportsbook }: { allRows:
   }, [allRows, selectedId]);
 
   if (subjects.length === 0) {
-    return <p className="text-[12px] text-ink-faint">No player props tracked for this game yet.</p>;
+    return <p className="text-[12px] text-ink-muted">No player props tracked for this game yet.</p>;
   }
 
   return (
@@ -160,9 +160,9 @@ export function GamePropLineShoppingRail({ allRows, userSportsbook }: { allRows:
       </select>
 
       {!selectedId ? (
-        <p className="text-[12px] text-ink-faint">Pick a player above to see their shoppable lines.</p>
+        <p className="text-[12px] text-ink-muted">Pick a player above to see their shoppable lines.</p>
       ) : markets.length === 0 ? (
-        <p className="text-[12px] text-ink-faint">No prop prices tracked yet for this player.</p>
+        <p className="text-[12px] text-ink-muted">No prop prices tracked yet for this player.</p>
       ) : (
         <div className="space-y-3">
           {markets.map((m) => (
@@ -196,7 +196,7 @@ export function PropOddsBoard({
 }) {
   const rows = rowsFor(allRows, subjectId, marketKey, line);
   if (rows.length === 0) {
-    return <p className="text-[12px] text-ink-faint">No prices fetched yet for this market/line.</p>;
+    return <p className="text-[12px] text-ink-muted">No prices fetched yet for this market/line.</p>;
   }
 
   const byBook = new Map<string, { over?: PropOddsRow; under?: PropOddsRow }>();
@@ -236,19 +236,19 @@ export function PropOddsBoard({
             {over ? (
               <OddsChip price={over.americanOdds} source={over.providerId} side="O" capturedAt={over.fetchedAt} isDelayed={over.isDelayed} delaySeconds={over.delaySeconds} />
             ) : (
-              <span className="text-ink-faint text-[11px]">—</span>
+              <span className="text-ink-muted text-[11px]">—</span>
             )}
             {under ? (
               <OddsChip price={under.americanOdds} source={under.providerId} side="U" capturedAt={under.fetchedAt} isDelayed={under.isDelayed} delaySeconds={under.delaySeconds} />
             ) : (
-              <span className="text-ink-faint text-[11px]">—</span>
+              <span className="text-ink-muted text-[11px]">—</span>
             )}
           </span>
         </li>
       ))}
     </ul>
     {summary ? (
-      <p className={`mt-1.5 text-[9.5px] ${coverage.stale > 0 ? 'text-warn' : 'text-ink-faint'}`}>{summary}</p>
+      <p className={`mt-1.5 text-[9.5px] ${coverage.stale > 0 ? 'text-warn' : 'text-ink-muted'}`}>{summary}</p>
     ) : null}
     </>
   );

@@ -95,7 +95,7 @@ export function HeatGrid({
         role="img"
         aria-label={`${label}: no data`}
       >
-        <p className="text-[11px] text-ink-faint">No splits recorded yet.</p>
+        <p className="text-[11px] text-ink-muted">No splits recorded yet.</p>
       </div>
     );
   }

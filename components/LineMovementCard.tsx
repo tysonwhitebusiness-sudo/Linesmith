@@ -155,7 +155,7 @@ export function LineMovementCard({
     <section className="lb-card overflow-hidden">
       <div className="flex items-baseline justify-between gap-2 bg-accent-soft px-3 py-1.5">
         <h2 className="text-[12px] font-semibold text-masters">Line movement</h2>
-        <span className="truncate text-[9.5px] text-ink-faint">
+        <span className="truncate text-[9.5px] text-ink-muted">
           {lineLabel}
           {subject ? ` ${MIDDOT} ${subject.bookmaker}` : ''}
           {hoursSpan > 0 ? ` ${MIDDOT} ${hoursSpan}h` : ''}
@@ -179,13 +179,13 @@ export function LineMovementCard({
         {/* The alternates are real and the pinned line is only one of them.
             Saying so beats letting the chart imply it is the whole market. */}
         {drawable && data && (data.availableLines?.length ?? 0) > 1 ? (
-          <p className="mt-1.5 text-[9.5px] text-ink-faint">
+          <p className="mt-1.5 text-[9.5px] text-ink-muted">
             {data.availableLines!.length} lines quoted ({data.availableLines![0]}–
             {data.availableLines![data.availableLines!.length - 1]}); showing the most-quoted.
           </p>
         ) : null}
         {drawable && others.length > 0 ? (
-          <p className="mt-1 text-[9.5px] text-ink-faint">
+          <p className="mt-1 text-[9.5px] text-ink-muted">
             {subject?.bookmaker} in front, {others.length} other {others.length === 1 ? 'book' : 'books'} behind.
             {' '}A flat line is a book that has not moved, not a book with no data.
           </p>

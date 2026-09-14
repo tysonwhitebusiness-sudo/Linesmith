@@ -118,7 +118,7 @@ export function BatterPitcherMatchupCard({
             <SubjectAvatar name={subjectName} headshotUrl={subjectHeadshotUrl} size={40} />
             <div className="min-w-0">
               <TeamLogo logoUrl={subjectTeamLogoUrl} abbreviation={subjectTeamAbbr} size={13} />
-              <div className="truncate text-emphasis font-bold leading-tight text-ink">{subjectName}</div>
+              <div className="truncate text-body font-bold leading-tight text-ink">{subjectName}</div>
             </div>
           </div>
 
@@ -128,8 +128,8 @@ export function BatterPitcherMatchupCard({
               <div className="flex flex-row-reverse items-center">
                 <TeamLogo logoUrl={opponentTeamLogoUrl} abbreviation={opponentTeamAbbr} size={13} />
               </div>
-              <div className="truncate text-emphasis font-bold leading-tight text-ink">{opponentName}</div>
-              {opponentHand ? <div className="text-label text-ink-faint">{opponentHand}HP</div> : null}
+              <div className="truncate text-body font-bold leading-tight text-ink">{opponentName}</div>
+              {opponentHand ? <div className="text-label text-ink-muted">{opponentHand}HP</div> : null}
             </div>
           </div>
         </div>
@@ -141,7 +141,7 @@ export function BatterPitcherMatchupCard({
             Contact below, where every stat genuinely is shared. */}
         {hasSeason ? (
           <div className="mt-3 border-t border-line pt-3">
-            <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Season stats</div>
+            <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Season stats</div>
             <div className="grid grid-cols-1 gap-x-5 gap-y-1.5 sm:grid-cols-2">
               <div className="space-y-1.5">
                 {subjectSeasonStats.map((s) => (
@@ -159,7 +159,7 @@ export function BatterPitcherMatchupCard({
 
         {hasQuality ? (
           <div className="mt-3 border-t border-line pt-3">
-            <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Quality of contact</div>
+            <div className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Quality of contact</div>
             <div className="mb-1 grid grid-cols-[44px_1fr_1fr_44px] items-center gap-1.5">
               <span aria-hidden />
               <span className="text-[9px] font-semibold uppercase tracking-wide text-masters">{subjectRoleLabel}</span>

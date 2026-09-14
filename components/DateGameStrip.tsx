@@ -220,7 +220,7 @@ export function DateGameStrip({ scanDate, onSetDate, games, selectedGamePk, onSe
         </button>
 
         {games.length === 0 ? (
-          <span className="shrink-0 text-[11px] text-ink-faint">No games scheduled</span>
+          <span className="shrink-0 text-[11px] text-ink-muted">No games scheduled</span>
         ) : (
           ordered.map((game) => {
             const gamePk = Number(game.gamePk);
@@ -250,7 +250,7 @@ export function DateGameStrip({ scanDate, onSetDate, games, selectedGamePk, onSe
                     <TeamMark teamId={game.awayTeamId} />
                   ) : null}
                   <span>{awayAbbrev}</span>
-                  <span className="text-[10px] font-normal text-ink-faint">@</span>
+                  <span className="text-[10px] font-normal text-ink-muted">@</span>
                   <span>{homeAbbrev}</span>
                   {logoFor ? (
                     <TeamMark logoUrl={logoFor(homeAbbrev)} />
@@ -266,9 +266,9 @@ export function DateGameStrip({ scanDate, onSetDate, games, selectedGamePk, onSe
                       {live.livePeriod ? <span className="font-normal opacity-70">{live.livePeriod}</span> : null}
                     </span>
                   ) : isFinal ? (
-                    <span className="text-ink-faint">{score ? `${score} ` : ''}Final</span>
+                    <span className="text-ink-muted">{score ? `${score} ` : ''}Final</span>
                   ) : (
-                    <span className="text-ink-faint">{formatGameTime(game.firstPitch)}</span>
+                    <span className="text-ink-muted">{formatGameTime(game.firstPitch)}</span>
                   )}
                 </span>
               </button>
@@ -283,7 +283,7 @@ export function DateGameStrip({ scanDate, onSetDate, games, selectedGamePk, onSe
         onClick={() => setPlaying((v) => !v)}
         aria-label={playing ? 'Pause game strip auto-scroll' : 'Resume game strip auto-scroll'}
         title={playing ? 'Pause auto-scroll' : 'Resume auto-scroll'}
-        className="shrink-0 rounded-full p-1.5 text-ink-faint opacity-40 transition-opacity hover:opacity-100"
+        className="shrink-0 rounded-full p-1.5 text-ink-muted opacity-40 transition-opacity hover:opacity-100"
       >
         {playing ? <PauseIcon size={11} /> : <PlayIcon size={11} />}
       </button>

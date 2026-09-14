@@ -98,7 +98,7 @@ function HeadlineGradientBox({ stat }: { stat: WindowedStat }) {
     return (
       <div className="w-full rounded-xl border border-line bg-card px-3 py-3 text-center">
         <InsufficientMark available={stat.available} required={stat.required} className="text-[13px]" />
-        <div className="mt-1 text-[10px] text-ink-faint">needs {stat.required}</div>
+        <div className="mt-1 text-[10px] text-ink-muted">needs {stat.required}</div>
       </div>
     );
   }
@@ -113,7 +113,7 @@ function HeadlineGradientBox({ stat }: { stat: WindowedStat }) {
       <div className="relative text-[26px] font-bold leading-none tabular-nums" style={{ color: gradient.valueColor }}>
         {formatRate(stat.rate)}
       </div>
-      <div className="relative mt-1 text-[10px] tabular-nums text-ink-faint">
+      <div className="relative mt-1 text-[10px] tabular-nums text-ink-muted">
         {stat.hits}/{stat.total}
       </div>
       <div className="relative mt-2 h-1.5 rounded-full bg-black/[0.06]">
@@ -132,7 +132,7 @@ function HeadlineGradientBox({ stat }: { stat: WindowedStat }) {
 
 function GameStrip({ games, sport }: { games: HistoryEntry[]; sport: PickCandidate['sport'] }) {
   if (games.length === 0) {
-    return <p className="py-2 text-[11px] text-ink-faint">No games in this window.</p>;
+    return <p className="py-2 text-[11px] text-ink-muted">No games in this window.</p>;
   }
 
   const points = toSeries(games);
@@ -358,7 +358,7 @@ export function ScanCard({ candidate, form, added, watched, onAdd, onToggleWatch
         {/* RIGHT — the breakdown: games behind whichever row is selected,
             then the full list of rows themselves. */}
         <div className="min-w-0">
-          <div className="truncate text-[10px] font-semibold uppercase tracking-wide text-ink-faint">{selected.label}</div>
+          <div className="truncate text-[10px] font-semibold uppercase tracking-wide text-ink-muted">{selected.label}</div>
           <GameStrip games={selected.games} sport={candidate.sport} />
 
           <ul className="mt-1 divide-y divide-line/60">
@@ -372,7 +372,7 @@ export function ScanCard({ candidate, form, added, watched, onAdd, onToggleWatch
       </div>
 
       {weather ? (
-        <p className="mt-2 text-[11px] text-ink-faint">
+        <p className="mt-2 text-[11px] text-ink-muted">
           {weather.tempF != null ? `${weather.tempF}°F · ` : ''}Wind {weather.windMph} mph {weather.windDir}
           {weather.rainPct > 20 ? ` · ${weather.rainPct}% rain` : ''}
         </p>

@@ -112,16 +112,16 @@ function RecordChip({ label, wins, losses }: { label: string; wins: number; loss
       className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-2.5 py-1 text-[11px]"
       title={`${label} picks locked 3 hours before first pitch, graded once final.`}
     >
-      <span className="font-medium text-ink-faint">{label}</span>
+      <span className="font-medium text-ink-muted">{label}</span>
       {total > 0 ? (
         <>
           <span className="font-semibold tabular-nums text-ink">
             {wins}-{losses}
           </span>
-          {winRate != null ? <span className="text-ink-faint">({winRate.toFixed(1)}%)</span> : null}
+          {winRate != null ? <span className="text-ink-muted">({winRate.toFixed(1)}%)</span> : null}
         </>
       ) : (
-        <span className="text-ink-faint">no graded picks yet</span>
+        <span className="text-ink-muted">no graded picks yet</span>
       )}
     </span>
   );
@@ -821,7 +821,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                         className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-[13px] hover:bg-accent-soft/30"
                       >
                         <span>Players</span>
-                        <span className="text-ink-faint">{selectedSubjects.size > 0 ? selectedSubjects.size : 'All'}</span>
+                        <span className="text-ink-muted">{selectedSubjects.size > 0 ? selectedSubjects.size : 'All'}</span>
                       </button>
                       {filtersActive(filters) ? (
                         <button
@@ -934,9 +934,9 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                         active={filters.hotStreak || filters.coldStreak || filters.consistentOnly}
                       >
                         <div className="space-y-0.5">
-                          <BooleanCheckboxRow label="Hot streak" checked={filters.hotStreak} onChange={toggleHotStreak} icon={<FlameIcon size={14} className="text-ink-faint" />} />
-                          <BooleanCheckboxRow label="Cold streak" checked={filters.coldStreak} onChange={toggleColdStreak} icon={<SnowflakeIcon size={14} className="text-ink-faint" />} />
-                          <BooleanCheckboxRow label="Consistent" checked={filters.consistentOnly} onChange={toggleConsistentOnly} icon={<CheckCircleIcon size={14} className="text-ink-faint" />} />
+                          <BooleanCheckboxRow label="Hot streak" checked={filters.hotStreak} onChange={toggleHotStreak} icon={<FlameIcon size={14} className="text-ink-muted" />} />
+                          <BooleanCheckboxRow label="Cold streak" checked={filters.coldStreak} onChange={toggleColdStreak} icon={<SnowflakeIcon size={14} className="text-ink-muted" />} />
+                          <BooleanCheckboxRow label="Consistent" checked={filters.consistentOnly} onChange={toggleConsistentOnly} icon={<CheckCircleIcon size={14} className="text-ink-muted" />} />
                         </div>
                       </FilterDropdown>
 

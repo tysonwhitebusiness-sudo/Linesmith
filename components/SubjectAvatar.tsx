@@ -161,7 +161,7 @@ export function GameMatchupLabel({
   return (
     <span className="inline-flex items-center gap-1.5">
       <TeamLogo logoUrl={mlbTeamLogoUrl(awayTeamId)} abbreviation={away} size={size} />
-      <span className="text-ink-faint">@</span>
+      <span className="text-ink-muted">@</span>
       <TeamLogo logoUrl={mlbTeamLogoUrl(homeTeamId)} abbreviation={home} size={size} />
     </span>
   );

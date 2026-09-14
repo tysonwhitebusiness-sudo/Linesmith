@@ -29,30 +29,48 @@ const config: Config = {
         // and stay exactly as they were.
         good: '#0f7a4f',
         bad: '#c23b2c',
-        warn: '#c98a1f',
-        paper: 'oklch(96% 0.002 260 / <alpha-value>)',
-        card: 'oklch(93% 0.003 260 / <alpha-value>)',
-        // Subtle inset surfaces used inside cards (score filter bars, header
-        // fills) — distinct from the page background itself.
-        surface: {
-          subtle: 'oklch(96% 0.002 260 / <alpha-value>)',
-          header: 'oklch(96% 0.002 260 / <alpha-value>)',
+        warn: '#b7791f',
+        // R3 (research-pages plan 3a, F2 visual system, G2 `system.css`).
+        // RAISED ELEVATION: paper is now DARKER than card. Before R3, card
+        // (93%) sat below paper (96%), the reverse of what card shadows assume.
+        paper: 'oklch(94.5% 0.003 260 / <alpha-value>)',
+        card: {
+          DEFAULT: 'oklch(98.5% 0.002 260 / <alpha-value>)',
+          /** Inset surfaces inside a card: toggle tracks, hover rows, skeletons. */
+          sunk: 'oklch(96.5% 0.002 260 / <alpha-value>)',
         },
+        // Kept as names for existing callers; both now resolve to `card-sunk`.
+        surface: {
+          subtle: 'oklch(96.5% 0.002 260 / <alpha-value>)',
+          header: 'oklch(96.5% 0.002 260 / <alpha-value>)',
+        },
+        // TEXT ROLES. `ink-muted` is the lightest gray allowed for TEXT and
+        // passes AA on card, paper and card-sunk. `ink-faint` and
+        // `ink-disabled` are DECORATION ONLY (dividers, disabled controls):
+        // F2 measured `ink-faint` as 41% of all rendered text at about 2.4:1,
+        // most of the app's 43% AA failure rate. R3 moved every
+        // `text-ink-faint` / `text-ink-soft` to `text-ink-muted`.
         ink: {
-          DEFAULT: 'oklch(16% 0.004 260 / <alpha-value>)',
-          secondary: 'oklch(32% 0.004 260 / <alpha-value>)',
-          muted: 'oklch(50% 0.005 260 / <alpha-value>)',
-          soft: 'oklch(60% 0.004 260 / <alpha-value>)',
-          faint: 'oklch(68% 0.004 260 / <alpha-value>)',
-          disabled: 'oklch(78% 0.004 260 / <alpha-value>)',
+          DEFAULT: 'oklch(18% 0.005 260 / <alpha-value>)',
+          secondary: 'oklch(34% 0.005 260 / <alpha-value>)',
+          muted: 'oklch(47% 0.005 260 / <alpha-value>)',
+          soft: 'oklch(47% 0.005 260 / <alpha-value>)',
+          faint: 'oklch(72% 0.004 260 / <alpha-value>)',
+          disabled: 'oklch(80% 0.004 260 / <alpha-value>)',
         },
         // `line` is the standard card border; `line-soft`/`line-hair` are
         // progressively lighter dividers for rows within a card.
         line: {
-          DEFAULT: 'oklch(87% 0.004 260 / <alpha-value>)',
-          soft: 'oklch(90% 0.004 260 / <alpha-value>)',
-          hair: 'oklch(93% 0.003 260 / <alpha-value>)',
+          DEFAULT: 'oklch(89% 0.004 260 / <alpha-value>)',
+          soft: 'oklch(92.5% 0.003 260 / <alpha-value>)',
+          hair: 'oklch(95% 0.003 260 / <alpha-value>)',
         },
+        // Compare slots (R9). Validated: worst colorblind deltaE 22.2.
+        cmp: {
+          a: '#2f6fb3',
+          b: '#c56a1c',
+        },
+        focus: 'oklch(18% 0.005 260 / <alpha-value>)',
         // Placeholder fill behind subject initials (SubjectAvatar) — sits
         // between `card` and `line` in lightness, distinct enough from both
         // to read as a deliberate placeholder rather than a stray surface.
@@ -69,41 +87,63 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
-        mono: ['var(--font-plex-mono)', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        // R3: the IBM Plex Mono load is gone (F2: loaded on every page, used by
+        // one element). Numbers are sans with tabular figures.
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
-      // The full sitewide type scale — every card picks a role from this
-      // list rather than an arbitrary text-[Npx] value. "display" sizes are
-      // for the one anchor number a card is allowed; everything else is
-      // for labels/body copy. See the design spec for the audit that
-      // produced this list.
+      // THE TYPE RAMP (R3 3a, F2 section 1). Eight steps. Nothing below 11px
+      // outside `components/charts/` (chart ticks are 10px, `text-tick`).
+      // Hierarchy by size first, weight second, uppercase only with `overline`.
+      //
+      // R3 moved every use of the old ten-step scale onto this one by F2's
+      // mapping: micro/label (9-10px) -> `overline` when the class list was
+      // already uppercase, else `label`; meta/dense (11-12) -> `label`; the old
+      // 13px `body` -> `body-sm`; emphasis (14) -> `body`; 16-20 -> `title`;
+      // 28 -> `heading`; 44 -> `display`. Hand-typed `text-[Npx]` sizes are
+      // replaced as each page is rebuilt (R6-R8), not mechanically here.
       fontSize: {
-        micro: ['9px', { lineHeight: '1.3' }],
-        label: ['10px', { lineHeight: '1.3' }],
-        meta: ['11px', { lineHeight: '1.4' }],
-        dense: ['12px', { lineHeight: '1.4' }],
-        body: ['13px', { lineHeight: '1.5' }],
-        emphasis: ['14px', { lineHeight: '1.45' }],
-        title: ['16px', { lineHeight: '1.3' }],
-        'display-sm': ['20px', { lineHeight: '1.1' }],
-        'display-md': ['28px', { lineHeight: '1.05' }],
-        'display-lg': ['44px', { lineHeight: '.95' }],
+        display: ['32px', { lineHeight: '1.1', fontWeight: '700', letterSpacing: '-0.01em' }],
+        heading: ['22px', { lineHeight: '1.2', fontWeight: '600', letterSpacing: '-0.005em' }],
+        title: ['17px', { lineHeight: '1.3', fontWeight: '600' }],
+        'card-title': ['14px', { lineHeight: '1.3', fontWeight: '600' }],
+        body: ['14px', { lineHeight: '1.5' }],
+        'body-sm': ['13px', { lineHeight: '1.45' }],
+        label: ['12px', { lineHeight: '1.35', fontWeight: '500' }],
+        overline: ['11px', { lineHeight: '1.3', fontWeight: '600', letterSpacing: '0.04em' }],
+        /** Chart ticks only, inside `components/charts/`. */
+        tick: ['10px', { lineHeight: '1.2' }],
       },
       boxShadow: {
         // Neutral now that the page itself is graphite grey rather than warm
         // cream — a tinted shadow would read as arbitrary on a neutral ground.
-        card: '0 1px 3px rgba(0, 0, 0, 0.06), 0 6px 16px -6px rgba(0, 0, 0, 0.10)',
+        // Raised elevation (G2 pick): a soft lift on every card.
+        card: '0 1px 2px rgba(15, 18, 24, 0.05), 0 2px 8px -4px rgba(15, 18, 24, 0.08)',
         'card-hover': '0 2px 6px rgba(0, 0, 0, 0.10), 0 12px 24px -8px rgba(0, 0, 0, 0.16)',
         /** Expanded disclosures sit above the card they came from. */
-        pop: '0 4px 10px rgba(0, 0, 0, 0.10), 0 16px 32px -12px rgba(0, 0, 0, 0.18)',
+        pop: '0 8px 28px -8px rgba(15, 18, 24, 0.28), 0 2px 6px rgba(15, 18, 24, 0.08)',
         /** Inner glow marking the one thing on the page that's actually live — the pulse dot carries the "live" signal, this glow is just depth. */
         live: 'inset 0 0 0 1px rgba(0, 0, 0, 0.16), inset 0 1px 10px rgba(0, 0, 0, 0.10)',
         drawer: '0 -8px 32px rgba(0, 0, 0, 0.18)',
         /** The one card allowed real elevation — see .lb-card-hero in globals.css. */
         hero: '0 1px 2px rgba(0, 0, 0, 0.04)',
       },
+      // Radius: 12 card, 16 hero, 8 controls.
       borderRadius: {
-        card: '10px',
-        'card-hero': '14px',
+        card: '12px',
+        'card-hero': '16px',
+        ctl: '8px',
+      },
+      // Motion (R3 3a). `live` is the value tween; the flash is `lb-flash`.
+      transitionDuration: {
+        instant: '100ms',
+        quick: '180ms',
+        smooth: '280ms',
+        data: '450ms',
+        live: '400ms',
+      },
+      transitionTimingFunction: {
+        standard: 'cubic-bezier(0.2, 0, 0, 1)',
+        emphasized: 'cubic-bezier(0.3, 0, 0, 1)',
       },
       keyframes: {
         // Slower and shallower than Tailwind's stock pulse: a live indicator
@@ -124,11 +164,17 @@ const config: Config = {
           '0%': { opacity: '0', transform: 'translateX(8px)' },
           '100%': { opacity: '1', transform: 'translateX(0)' },
         },
+        /** A live value that just changed. */
+        'lb-flash': {
+          '0%': { backgroundColor: 'rgb(15 122 79 / 0.22)' },
+          '100%': { backgroundColor: 'transparent' },
+        },
       },
       animation: {
         'lb-pulse': 'lb-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         'lb-shimmer': 'lb-shimmer 1.6s ease-in-out infinite',
         'lb-fade-slide': 'lb-fade-slide 0.4s ease-out',
+        'lb-flash': 'lb-flash 1.2s cubic-bezier(0.2, 0, 0, 1)',
       },
     },
   },

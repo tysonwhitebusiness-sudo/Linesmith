@@ -80,7 +80,7 @@ export function TournamentLinesView({
         </div>
       ) : null}
 
-      {eventName ? <p className="px-1 text-[11px] text-ink-faint">{eventName} · Match Winner</p> : null}
+      {eventName ? <p className="px-1 text-[11px] text-ink-muted">{eventName} · Match Winner</p> : null}
 
       <div className="lb-card divide-y divide-line overflow-hidden">
         {lines.map((line) => {
@@ -95,7 +95,7 @@ export function TournamentLinesView({
               <SubjectAvatar name={line.golferName} headshotUrl={headshotUrl} fallbackUrl={flagUrl} size={28} />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] font-medium text-ink">{line.golferName}</div>
-                <div className="flex items-center gap-1.5 text-[11px] text-ink-faint">
+                <div className="flex items-center gap-1.5 text-[11px] text-ink-muted">
                   {subject?.statusLine ?? 'Not in today\'s field'}
                   <PositionBadge position={position} />
                 </div>
@@ -106,7 +106,7 @@ export function TournamentLinesView({
                   <BookLogo bookId={line.bestPrice.bookmaker} size={11} withLabel />
                 </div>
               ) : (
-                <span className="text-[11px] text-ink-faint">—</span>
+                <span className="text-[11px] text-ink-muted">—</span>
               )}
             </div>
           );

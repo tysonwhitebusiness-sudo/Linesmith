@@ -270,7 +270,7 @@ export function DistributionChart({
               ) : (
                 <span className="h-3 w-3 shrink-0" aria-hidden />
               )}
-              <span className="w-full truncate text-center text-[8px] leading-none text-ink-faint">
+              <span className="w-full truncate text-center text-[8px] leading-none text-ink-muted">
                 {/* periodLabel is "MM-DD vs/@ Opponent Name" (adapter.ts) — the
                     logo above already says who, so only the date needs to fit
                     here; the full label is still on the bar's own title. */}
@@ -364,7 +364,7 @@ function BaseDiamond({ first, second, third }: { first: boolean; second: boolean
 function CountDots({ label, filled, total, color }: { label: string; filled: number; total: number; color: string }) {
   return (
     <span className="flex items-center gap-1">
-      <span className="text-[8px] font-semibold uppercase tracking-wide text-ink-faint">{label}</span>
+      <span className="text-[8px] font-semibold uppercase tracking-wide text-ink-muted">{label}</span>
       <span className="flex gap-0.5">
         {Array.from({ length: total }).map((_, i) => (
           <span key={i} className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: i < filled ? color : '#d3d4d7' }} />
@@ -428,7 +428,7 @@ export function WindowBox({
   if (stat.status === 'insufficient') {
     return (
       <div className="relative min-w-[76px] flex-1 overflow-hidden rounded-[10px] border border-line bg-card px-1.5 py-2 text-center transition-all duration-150 ease-out hover:-translate-y-0.5 hover:border-masters/30">
-        <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">{label}</div>
+        <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{label}</div>
         <div className="mt-1 text-[14px] font-bold">
           <InsufficientMark available={stat.available} required={stat.required} />
         </div>
@@ -450,8 +450,8 @@ export function WindowBox({
       <div className="relative text-[14px] font-bold leading-tight" style={{ color: gradient.valueColor }}>
         {formatRate(stat.rate)}
       </div>
-      <div className="relative mt-px text-[9px] font-semibold uppercase tracking-wide text-ink-faint">{label}</div>
-      <div className="relative mt-[3px] text-[8px] tabular-nums text-ink-faint/80">{caption}</div>
+      <div className="relative mt-px text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{label}</div>
+      <div className="relative mt-[3px] text-[8px] tabular-nums text-ink-muted/80">{caption}</div>
       <div className="relative mt-1 h-1 rounded-full bg-black/[0.06]">
         <div
           className="h-full rounded-full"
@@ -561,7 +561,7 @@ function GolfCategoryPicker({
 function MatchupHoleCell({ value }: { value: number | null }) {
   if (value === null) {
     return (
-      <td className="bg-ink/5 px-1.5 py-1 text-center align-middle text-ink-faint" title="Not played yet">
+      <td className="bg-ink/5 px-1.5 py-1 text-center align-middle text-ink-muted" title="Not played yet">
         –
       </td>
     );
@@ -610,7 +610,7 @@ function LiveMatchupCard({
             <SubjectAvatar name={selfName} headshotUrl={selfHeadshotUrl} size={20} />
             {selfName}
           </span>
-          <span className="text-ink-faint">vs</span>
+          <span className="text-ink-muted">vs</span>
           <span className="flex items-center gap-1.5 font-semibold text-ink">
             <SubjectAvatar name={matchup.opponent.name} headshotUrl={matchup.opponent.headshotUrl} size={20} />
             {matchup.opponent.name}
@@ -672,12 +672,12 @@ function PastRoundMatchupsCard({ active, meta }: { active: PickCandidate; meta: 
     <section className="lb-card lb-card-interactive overflow-hidden">
       <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Past round matchups</h3>
       {rounds.length === 0 ? (
-        <p className="p-3 text-[12px] text-ink-faint">No completed rounds with pairing data yet.</p>
+        <p className="p-3 text-[12px] text-ink-muted">No completed rounds with pairing data yet.</p>
       ) : (
         <div className="divide-y divide-line-soft">
           {rounds.map((r) => (
             <div key={r.round} className="p-3">
-              <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Round {r.round}</div>
+              <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Round {r.round}</div>
               <ul className="space-y-1.5">
                 <li className="flex items-center gap-2 rounded-lg bg-accent-soft px-1.5 py-1">
                   <SubjectAvatar name={active.subjectName} headshotUrl={headshotUrl} size={24} />
@@ -715,7 +715,7 @@ function ConsistentHolesForm({ holes }: { holes: PickCandidate[] }) {
       </h3>
       <ul className="space-y-2 p-3">
         {holes.length === 0 ? (
-          <li className="text-[12px] text-ink-faint">No hole has the same result in every round yet.</li>
+          <li className="text-[12px] text-ink-muted">No hole has the same result in every round yet.</li>
         ) : (
           holes.slice(0, 5).map((c) => (
             <li key={c.dimension} className="flex items-baseline justify-between gap-2 text-[12px]">
@@ -761,8 +761,8 @@ function RoundScoreBox({
   if (value === null) {
     return (
       <div className="relative min-w-[76px] flex-1 overflow-hidden rounded-[10px] border border-line bg-card px-1.5 py-2 text-center">
-        <div className="text-[14px] font-bold text-ink-faint">–</div>
-        <div className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-ink-faint">{label}</div>
+        <div className="text-[14px] font-bold text-ink-muted">–</div>
+        <div className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{label}</div>
       </div>
     );
   }
@@ -777,7 +777,7 @@ function RoundScoreBox({
       <div className="relative text-[14px] font-bold leading-tight" style={{ color: gradient.valueColor }}>
         {format(value)}
       </div>
-      <div className="relative mt-px text-[9px] font-semibold uppercase tracking-wide text-ink-faint">
+      <div className="relative mt-px text-[9px] font-semibold uppercase tracking-wide text-ink-muted">
         {label}
         {hit != null ? <span className="ml-1" style={{ color: gradient.valueColor }}>{hit ? '✓' : '✕'}</span> : null}
       </div>
@@ -839,7 +839,7 @@ function ScorecardChart({
                 style={{ height: barHeight(h.strokes), background: v == null ? 'rgb(147 162 154 / 0.35)' : gradient?.fillBackground }}
                 title={h.strokes != null ? `${h.strokes} shot${h.strokes === 1 ? '' : 's'}${v != null ? ` (${relDisplay(v)})` : ''}` : 'Not played yet'}
               />
-              <span className="mt-0.5 text-[9px] font-semibold text-ink-faint">{h.hole}</span>
+              <span className="mt-0.5 text-[9px] font-semibold text-ink-muted">{h.hole}</span>
               <span className="text-[10px] font-bold text-ink-muted">{h.par != null ? `Par ${h.par}` : '–'}</span>
             </div>
           );
@@ -1398,7 +1398,7 @@ export function PlayerDetail({
 
             <div className="min-w-0 flex-1">
               <h1 className="truncate text-[24px] font-bold leading-tight text-ink">
-                {data.subject.rankPrefix ? <span className="text-ink-faint">{data.subject.rankPrefix}</span> : null}
+                {data.subject.rankPrefix ? <span className="text-ink-muted">{data.subject.rankPrefix}</span> : null}
                 {data.subject.name}
               </h1>
               <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-ink-muted">
@@ -1411,16 +1411,16 @@ export function PlayerDetail({
                   </>
                 ) : null}
                 {data.subject.gameStartTime ? (
-                  <span className="text-ink-faint">
+                  <span className="text-ink-muted">
                     {new Date(data.subject.gameStartTime).toLocaleTimeString('en-US', {
                       hour: 'numeric',
                       minute: '2-digit',
                     })}
                   </span>
                 ) : null}
-                {data.subject.gameStatus ? <span className="text-ink-faint">· {data.subject.gameStatus}</span> : null}
+                {data.subject.gameStatus ? <span className="text-ink-muted">· {data.subject.gameStatus}</span> : null}
               </p>
-              {data.subject.rankDetail ? <p className="mt-0.5 text-[10.5px] text-ink-faint">{data.subject.rankDetail}</p> : null}
+              {data.subject.rankDetail ? <p className="mt-0.5 text-[10.5px] text-ink-muted">{data.subject.rankDetail}</p> : null}
             </div>
 
             <span className="hidden h-11 w-px shrink-0 bg-masters/20 sm:block" />
@@ -1517,13 +1517,13 @@ export function PlayerDetail({
               size="md"
             />
           ) : lineOffset !== 0 ? (
-            <span className="text-[11px] text-ink-faint">No price recorded at this alternate line.</span>
+            <span className="text-[11px] text-ink-muted">No price recorded at this alternate line.</span>
           ) : previewingOtherGolfCategory ? (
-            <span className="text-[11px] text-ink-faint">
+            <span className="text-[11px] text-ink-muted">
               Previewing {golfCategoryLabel(active.dimension, effectiveGolfCategory)} — this golfer&apos;s tracked pattern is {active.categoryLabel}.
             </span>
           ) : active.lineStatus === 'alternates-only' ? (
-            <span className="text-[11px] text-ink-faint">Alternate lines only — no book quoted both sides, so this line is not a market line.</span>
+            <span className="text-[11px] text-ink-muted">Alternate lines only — no book quoted both sides, so this line is not a market line.</span>
           ) : onAdd ? (
             <GetOddsButton onClick={() => onAdd(active)} label="Add to slip to record a price" />
           ) : null}
@@ -1673,9 +1673,9 @@ export function PlayerDetail({
                           <div className="flex items-center gap-2 rounded-lg border border-line px-2.5 py-2 text-[11px]">
                             <SubjectAvatar name={live.batter.name} headshotUrl={mlbHeadshotUrl(live.batter.id)} size={32} />
                             <div className="min-w-0 flex-1">
-                              <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">At the plate</div>
+                              <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">At the plate</div>
                               <div className="truncate font-semibold text-ink">{live.batter.name}</div>
-                              <div className="text-ink-faint">{live.batter.todayLine}</div>
+                              <div className="text-ink-muted">{live.batter.todayLine}</div>
                             </div>
                           </div>
                         ) : null}
@@ -1683,9 +1683,9 @@ export function PlayerDetail({
                           <div className="flex items-center gap-2 rounded-lg border border-line px-2.5 py-2 text-[11px]">
                             <SubjectAvatar name={currentPitcher.name} headshotUrl={mlbHeadshotUrl(currentPitcher.id)} size={32} />
                             <div className="min-w-0 flex-1">
-                              <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">On the mound</div>
+                              <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">On the mound</div>
                               <div className="truncate font-semibold text-ink">{currentPitcher.name}</div>
-                              <div className="text-ink-faint tabular-nums">
+                              <div className="text-ink-muted tabular-nums">
                                 {currentPitcher.ip} IP · {currentPitcher.h} H · {currentPitcher.k} K
                               </div>
                             </div>
@@ -1762,7 +1762,7 @@ export function PlayerDetail({
                             <span>{live.player!.pitching.earnedRuns} ER</span>
                             <span>{live.player!.pitching.walks} BB</span>
                             <span>{live.player!.pitching.strikeOuts} K</span>
-                            <span className="text-ink-faint">{live.player!.pitching.pitches} pitches</span>
+                            <span className="text-ink-muted">{live.player!.pitching.pitches} pitches</span>
                             {live.player!.isCurrentPitcher ? <span className="text-[11px] font-semibold text-masters">On the mound</span> : null}
                           </>
                         ) : null}
@@ -1771,9 +1771,9 @@ export function PlayerDetail({
 
                     {/* Right — line tracker */}
                     <div className="space-y-1.5">
-                      <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Today&apos;s lines</div>
+                      <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Today&apos;s lines</div>
                       {trackableCandidates.length === 0 ? (
-                        <p className="text-[11px] text-ink-faint">No live-trackable lines for this player&apos;s markets.</p>
+                        <p className="text-[11px] text-ink-muted">No live-trackable lines for this player&apos;s markets.</p>
                       ) : (
                         trackableCandidates.map((c) => (
                           <LineTrackerRow key={candidateRowKey(c)} candidate={c} liveValue={live.liveValues?.[c.dimension]} />
@@ -1962,7 +1962,7 @@ export function PlayerDetail({
                             showed two differently-scoped cards under one name;
                             and the toggle beside this one switches to L15, at
                             which point "Season" was simply untrue. */}
-                        <h3 className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Totals</h3>
+                        <h3 className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Totals</h3>
                         <SegmentedToggle
                           value={kpiScope}
                           onChange={setKpiScope}
@@ -1978,7 +1978,7 @@ export function PlayerDetail({
                       <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-4">
                         {data.gamelog.summaryStrip.map((stat) => (
                           <div key={stat.label} className="min-w-0">
-                            <div className="truncate text-[9px] font-semibold uppercase tracking-wide text-ink-faint">{stat.label}</div>
+                            <div className="truncate text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{stat.label}</div>
                             <div className="mt-0.5 text-[16px] font-bold leading-none tabular-nums text-ink">{stat.display}</div>
                           </div>
                         ))}
@@ -2041,7 +2041,7 @@ export function PlayerDetail({
                                       return (
                                         <td key={column.key} className="px-2 py-1 text-right tabular-nums">
                                           {value == null || value === '' ? (
-                                            <span className="text-ink-faint">–</span>
+                                            <span className="text-ink-muted">–</span>
                                           ) : (
                                             String(value)
                                           )}
@@ -2118,7 +2118,7 @@ export function PlayerDetail({
                 <div className="space-y-1.5">
                   <div className="rounded-lg border border-line bg-card p-2">
                     <div className="mb-1 flex items-center justify-between">
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">Moneyline</span>
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-ink-muted">Moneyline</span>
                       <BookLogo bookId={data.model.todaysLine.moneyline.book} size={13} withLabel />
                     </div>
                     <div className="flex gap-1.5">
@@ -2135,7 +2135,7 @@ export function PlayerDetail({
                   {data.model.todaysLine.total ? (
                     <div className="rounded-lg border border-line bg-card p-2">
                       <div className="mb-1 flex items-center justify-between">
-                        <span className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">Total {data.model.todaysLine.total.point}</span>
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-ink-muted">Total {data.model.todaysLine.total.point}</span>
                         <BookLogo bookId={data.model.todaysLine.total.book} size={13} withLabel />
                       </div>
                       <div className="flex gap-1.5">
@@ -2152,7 +2152,7 @@ export function PlayerDetail({
                   ) : null}
                 </div>
               ) : (
-                <p className="text-[12px] text-ink-faint">No game line for this matchup yet.</p>
+                <p className="text-[12px] text-ink-muted">No game line for this matchup yet.</p>
               )}
             </div>
           </section>
@@ -2176,7 +2176,7 @@ export function PlayerDetail({
                     unranked tiles. */}
                 {data.hitterStats.seasonAverages && data.hitterStats.seasonAverages.length > 0 ? (
                   <div className="mb-3">
-                    <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Season averages</div>
+                    <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Season averages</div>
                     <div className="space-y-1.5">
                       {data.hitterStats.seasonAverages.map((s) => (
                         <StatRankRow key={s.key} stat={s} />
@@ -2185,9 +2185,9 @@ export function PlayerDetail({
                   </div>
                 ) : null}
 
-                <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Quality of contact</div>
+                <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Quality of contact</div>
                 {data.hitterStats.summaryLine ? (
-                  <p className="mb-2 text-[9px] text-ink-faint">{data.hitterStats.summaryLine}</p>
+                  <p className="mb-2 text-[9px] text-ink-muted">{data.hitterStats.summaryLine}</p>
                 ) : null}
                 <div className="space-y-1.5">
                   {data.hitterStats.own.map((s) => (
@@ -2208,7 +2208,7 @@ export function PlayerDetail({
               <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
                 Season stats
                 {data.nflSeasonStats.rankedAmongLabel ? (
-                  <span className="ml-1.5 font-normal normal-case text-ink-faint">· ranked among {data.nflSeasonStats.rankedAmongLabel}s</span>
+                  <span className="ml-1.5 font-normal normal-case text-ink-muted">· ranked among {data.nflSeasonStats.rankedAmongLabel}s</span>
                 ) : null}
               </h3>
               <div className="space-y-1.5 p-3">
@@ -2217,7 +2217,7 @@ export function PlayerDetail({
                     <StatRankRow key={r.key} stat={{ key: r.key, label: r.label, value: r.value, decimals: r.decimals, rank: r.rank.rank, poolSize: r.rank.poolSize }} />
                   ) : (
                     <div key={r.key} className="flex items-baseline justify-between gap-2 text-[12px]">
-                      <span className="w-20 shrink-0 text-ink-faint">{r.label}</span>
+                      <span className="w-20 shrink-0 text-ink-muted">{r.label}</span>
                       {/* F-B6: this branch printed the raw number and ignored
                           `r.decimals`, which the ranked branch beside it has
                           always honoured — so soccer's unranked xG rendered as
@@ -2262,7 +2262,7 @@ export function PlayerDetail({
                   </li>
                 ))}
                 {(data.formWindows ?? []).length === 0 ? (
-                  <li className="text-[12px] text-ink-faint">No corroborating splits yet.</li>
+                  <li className="text-[12px] text-ink-muted">No corroborating splits yet.</li>
                 ) : null}
               </ul>
             </section>
@@ -2297,12 +2297,12 @@ export function PlayerDetail({
             <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Recorded price</h3>
             <div className="p-3">
               {!active.odds ? (
-                <p className="text-[12px] text-ink-faint">No price recorded for this market yet.</p>
+                <p className="text-[12px] text-ink-muted">No price recorded for this market yet.</p>
               ) : null}
               {active.odds ? (
                 <div className="mt-2 flex items-center gap-2">
                   <OddsChip price={active.odds.americanOdds} source={active.odds.source} capturedAt={active.odds.capturedAt} />
-                  <span className="text-[10px] text-ink-faint">
+                  <span className="text-[10px] text-ink-muted">
                     recorded {new Date(active.odds.capturedAt).toLocaleString('en-US', {
                       month: 'short',
                       day: 'numeric',

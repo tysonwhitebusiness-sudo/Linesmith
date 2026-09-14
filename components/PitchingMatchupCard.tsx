@@ -178,14 +178,14 @@ function PitcherHeader({
     <div className={`flex min-w-0 items-center gap-2.5 ${reversed ? 'flex-row-reverse text-right' : 'text-left'}`}>
       <PercentileRing percentile={pitcher.overallPercentile} color={color} headshotUrl={mlbHeadshotUrl(pitcher.personId)} teamLogoUrl={teamLogoUrl} name={pitcher.name} />
       <div className="min-w-0">
-        <div className={`flex items-center gap-1 text-label font-semibold uppercase tracking-wide text-ink-faint ${reversed ? 'flex-row-reverse' : ''}`}>
+        <div className={`flex items-center gap-1 text-overline font-semibold uppercase tracking-wide text-ink-muted ${reversed ? 'flex-row-reverse' : ''}`}>
           {teamAbbr}
         </div>
-        <div className="truncate text-emphasis font-bold leading-tight" style={{ color }}>
+        <div className="truncate text-body font-bold leading-tight" style={{ color }}>
           {pitcher.name}
         </div>
-        {pitcher.overallRankLabel ? <div className="text-label text-ink-faint">{pitcher.overallRankLabel}</div> : null}
-        {line ? <div className="mt-0.5 truncate text-meta text-ink-muted tabular-nums">{line}</div> : null}
+        {pitcher.overallRankLabel ? <div className="text-label text-ink-muted">{pitcher.overallRankLabel}</div> : null}
+        {line ? <div className="mt-0.5 truncate text-label text-ink-muted tabular-nums">{line}</div> : null}
       </div>
     </div>
   );
@@ -207,7 +207,7 @@ function ScoutingRow({ def, away, home }: { def: StatDef; away?: OpposingStarter
       <span className="flex justify-end">
         <ValuePercentile value={away ? away.value.toFixed(def.decimals) : '—'} percentile={ap} color={AWAY_COLOR} winning={awayWins} reverse />
       </span>
-      <span className="whitespace-nowrap text-center text-micro uppercase tracking-wide text-ink-faint">{def.label}</span>
+      <span className="whitespace-nowrap text-center text-overline uppercase tracking-wide text-ink-muted">{def.label}</span>
       <ValuePercentile value={home ? home.value.toFixed(def.decimals) : '—'} percentile={hp} color={HOME_COLOR} winning={homeWins} />
     </div>
   );
@@ -218,7 +218,7 @@ function ScoutingBody({ away, home }: { away: Map<string, OpposingStarterStat>; 
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       {STAT_GROUPS.map((group) => (
         <div key={group.title}>
-          <div className="mb-1 text-label font-semibold uppercase tracking-wide text-ink-faint">{group.title}</div>
+          <div className="mb-1 text-overline font-semibold uppercase tracking-wide text-ink-muted">{group.title}</div>
           <div className="divide-y divide-line rounded-md border border-line bg-card px-2.5">
             {group.stats.map((def) => (
               <ScoutingRow key={def.key} def={def} away={away.get(def.key)} home={home.get(def.key)} />
@@ -240,16 +240,16 @@ function HeadToHeadRow({ def, away, home }: { def: StatDef; away?: OpposingStart
   return (
     <div className="py-1">
       <div className="grid grid-cols-[48px_1fr_1fr_48px] items-center gap-1.5">
-        <span className="text-right text-meta font-semibold tabular-nums">{away ? away.value.toFixed(def.decimals) : '—'}</span>
+        <span className="text-right text-label font-semibold tabular-nums">{away ? away.value.toFixed(def.decimals) : '—'}</span>
         <div className="h-2 overflow-hidden rounded-full bg-line/60">
           <div className="ml-auto h-full rounded-full" style={{ width: `${ap}%`, backgroundColor: AWAY_COLOR }} />
         </div>
         <div className="h-2 overflow-hidden rounded-full bg-line/60">
           <div className="h-full rounded-full" style={{ width: `${hp}%`, backgroundColor: HOME_COLOR }} />
         </div>
-        <span className="text-meta font-semibold tabular-nums">{home ? home.value.toFixed(def.decimals) : '—'}</span>
+        <span className="text-label font-semibold tabular-nums">{home ? home.value.toFixed(def.decimals) : '—'}</span>
       </div>
-      <div className="text-center text-micro uppercase tracking-wide text-ink-faint">{def.label}</div>
+      <div className="text-center text-overline uppercase tracking-wide text-ink-muted">{def.label}</div>
     </div>
   );
 }
@@ -259,7 +259,7 @@ function HeadToHeadBody({ away, home }: { away: Map<string, OpposingStarterStat>
     <div className="space-y-3">
       {STAT_GROUPS.map((group) => (
         <div key={group.title}>
-          <div className="mb-0.5 text-label font-semibold uppercase tracking-wide text-ink-faint">{group.title}</div>
+          <div className="mb-0.5 text-overline font-semibold uppercase tracking-wide text-ink-muted">{group.title}</div>
           <div className="divide-y divide-line/50">
             {group.stats.map((def) => (
               <HeadToHeadRow key={def.key} def={def} away={away.get(def.key)} home={home.get(def.key)} />
@@ -294,16 +294,16 @@ function RailsRow({
   return (
     <div className="py-2">
       <div className="grid grid-cols-[44px_1fr_44px] items-center gap-2">
-        <span className="text-right text-meta font-semibold tabular-nums">{away ? away.value.toFixed(def.decimals) : '—'}</span>
+        <span className="text-right text-label font-semibold tabular-nums">{away ? away.value.toFixed(def.decimals) : '—'}</span>
         {/* Fixed-height track so the markers' `top-1/2` centres on the rail itself, not on the row's overall content (which used to include the label and pushed the midpoint down onto it). */}
         <div className="relative h-[18px]">
           <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-line" />
           {ap != null ? <RailMarker pct={ap} color={AWAY_COLOR} logoUrl={awayLogoUrl} title={`${ap}th percentile`} /> : null}
           {hp != null ? <RailMarker pct={hp} color={HOME_COLOR} logoUrl={homeLogoUrl} title={`${hp}th percentile`} /> : null}
         </div>
-        <span className="text-meta font-semibold tabular-nums">{home ? home.value.toFixed(def.decimals) : '—'}</span>
+        <span className="text-label font-semibold tabular-nums">{home ? home.value.toFixed(def.decimals) : '—'}</span>
       </div>
-      <div className="mt-1 text-center text-micro uppercase tracking-wide text-ink-faint">{def.label}</div>
+      <div className="mt-1 text-center text-overline uppercase tracking-wide text-ink-muted">{def.label}</div>
     </div>
   );
 }
@@ -321,14 +321,14 @@ function RailsBody({
 }) {
   return (
     <div>
-      <div className="mb-1 grid grid-cols-[44px_1fr_44px] gap-2 text-center text-micro uppercase tracking-wide text-ink-faint">
+      <div className="mb-1 grid grid-cols-[44px_1fr_44px] gap-2 text-center text-overline uppercase tracking-wide text-ink-muted">
         <span />
         <span>Worse ← league percentile → better</span>
         <span />
       </div>
       {STAT_GROUPS.map((group) => (
         <div key={group.title} className="mb-2">
-          <div className="mb-0.5 text-label font-semibold uppercase tracking-wide text-ink-faint">{group.title}</div>
+          <div className="mb-0.5 text-overline font-semibold uppercase tracking-wide text-ink-muted">{group.title}</div>
           <div className="divide-y divide-line/50">
             {group.stats.map((def) => (
               <RailsRow key={def.key} def={def} away={away.get(def.key)} home={home.get(def.key)} awayLogoUrl={awayLogoUrl} homeLogoUrl={homeLogoUrl} />
@@ -396,15 +396,15 @@ function PitcherRow({
       style={active ? { boxShadow: `inset 0 0 0 1.5px ${color}` } : undefined}
     >
       <span
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-meta font-bold text-white"
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-label font-bold text-white"
         style={{ backgroundColor: color }}
         title={entry.pitcher.overallRankLabel ?? undefined}
       >
         {entry.rankBadge}
       </span>
       <span className="min-w-0 flex-1">
-        <div className="truncate text-dense font-semibold">{entry.pitcher.name}</div>
-        <div className="text-micro uppercase tracking-wide text-ink-faint">{entry.roleLabel}</div>
+        <div className="truncate text-label font-semibold">{entry.pitcher.name}</div>
+        <div className="text-overline uppercase tracking-wide text-ink-muted">{entry.roleLabel}</div>
       </span>
     </button>
   );
@@ -434,7 +434,7 @@ function PitchersColumn({
   const reversed = align === 'right';
   return (
     <div className={reversed ? 'text-right' : 'text-left'}>
-      <div className={`mb-1.5 flex items-center gap-1.5 text-dense font-semibold ${reversed ? 'flex-row-reverse' : ''}`}>
+      <div className={`mb-1.5 flex items-center gap-1.5 text-label font-semibold ${reversed ? 'flex-row-reverse' : ''}`}>
         <TeamLogo logoUrl={teamLogoUrl} abbreviation={abbr} size={15} />
       </div>
       <div className="space-y-1">
@@ -482,7 +482,7 @@ function PitchersSection({
 }) {
   return (
     <div className="mt-3 border-t border-line pt-3">
-      <h3 className="mb-2 text-meta font-semibold uppercase tracking-wide text-ink-muted">Pitchers</h3>
+      <h3 className="mb-2 text-label font-semibold uppercase tracking-wide text-ink-muted">Pitchers</h3>
       <div className="grid grid-cols-2 gap-3">
         <PitchersColumn
           abbr={awayAbbr}
@@ -574,12 +574,12 @@ export function PitchingMatchupCard({
   return (
     <section className="lb-card p-3">
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-meta font-semibold uppercase tracking-wide text-ink-muted">Pitching matchup</h2>
+        <h2 className="text-label font-semibold uppercase tracking-wide text-ink-muted">Pitching matchup</h2>
         {hasStats ? (
           <SegmentedToggle
             value={view}
             onChange={setView}
-            className="rounded-lg border border-line p-0.5 text-meta"
+            className="rounded-lg border border-line p-0.5 text-label"
             buttonClassName="rounded-md px-2 py-0.5"
             gliderClassName="rounded-md"
             options={VIEWS}
@@ -591,10 +591,10 @@ export function PitchingMatchupCard({
         <PitcherHeader pitcher={activeAway} teamAbbr={awayAbbr} teamLogoUrl={awayLogoUrl} color={AWAY_COLOR} align="left" />
         {hasStats && (edge.away > 0 || edge.home > 0) ? (
           <div className="flex shrink-0 flex-col items-center pt-1.5">
-            <span className="text-micro font-semibold uppercase tracking-wide text-ink-faint">Stat edge</span>
-            <span className="text-emphasis font-bold tabular-nums">
+            <span className="text-overline font-semibold uppercase tracking-wide text-ink-muted">Stat edge</span>
+            <span className="text-body font-bold tabular-nums">
               <span style={{ color: AWAY_COLOR }}>{edge.away}</span>
-              <span className="text-ink-faint"> – </span>
+              <span className="text-ink-muted"> – </span>
               <span style={{ color: HOME_COLOR }}>{edge.home}</span>
             </span>
           </div>

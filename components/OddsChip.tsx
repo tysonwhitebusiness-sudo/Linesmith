@@ -188,7 +188,7 @@ export function OddsChip({
     .join(' · ');
 
   if (numeric == null || !Number.isFinite(numeric)) {
-    return <span className={`text-[11px] text-ink-faint ${className}`}>—</span>;
+    return <span className={`text-[11px] text-ink-muted ${className}`}>—</span>;
   }
 
   return (
@@ -198,10 +198,10 @@ export function OddsChip({
       } ${size === 'md' ? 'px-2 py-1 text-[13px]' : 'px-1.5 py-0.5 text-[11px]'} ${className}`}
       title={title}
     >
-      {side ? <span className="text-ink-faint">{side}</span> : null}
+      {side ? <span className="text-ink-muted">{side}</span> : null}
       <span className="font-semibold">{formatAmerican(numeric)}</span>
       {mark ? (
-        <span className="text-[9px] text-ink-faint" aria-hidden>
+        <span className="text-[9px] text-ink-muted" aria-hidden>
           {mark}
         </span>
       ) : null}
@@ -249,7 +249,7 @@ export function OddsPair({
 
   return (
     <span className={`inline-flex flex-col items-stretch gap-0.5 ${className}`}>
-      {label ? <span className="text-[9px] uppercase tracking-wide text-ink-faint">{label}</span> : null}
+      {label ? <span className="text-[9px] uppercase tracking-wide text-ink-muted">{label}</span> : null}
       {hasOver ? <OddsChip price={over} source={source} side="O" /> : null}
       {hasUnder ? <OddsChip price={under} source={source} side="U" /> : null}
     </span>
@@ -280,7 +280,7 @@ export function NoOddsCell({ pending, onAdd }: { pending: boolean; onAdd?: () =>
   if (pending) {
     return <Skeleton w={74} h={18} rounded="rounded-full" className="inline-block" />;
   }
-  if (!onAdd) return <span className="text-ink-faint">—</span>;
+  if (!onAdd) return <span className="text-ink-muted">—</span>;
   return (
     <button type="button" onClick={onAdd} className="transition-opacity hover:opacity-80">
       <Chip
@@ -322,7 +322,7 @@ export function GetOddsButton({ onClick, label = 'Get odds' }: { onClick?: () =>
       type="button"
       onClick={onClick}
       disabled={!onClick}
-      className="rounded-md border border-dashed border-line px-1.5 py-0.5 text-[10px] text-ink-faint transition-colors hover:border-masters/40 hover:text-masters disabled:hover:border-line disabled:hover:text-ink-faint"
+      className="rounded-md border border-dashed border-line px-1.5 py-0.5 text-[10px] text-ink-muted transition-colors hover:border-masters/40 hover:text-masters disabled:hover:border-line disabled:hover:text-ink-muted"
     >
       {label}
     </button>

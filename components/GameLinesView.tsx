@@ -81,7 +81,7 @@ function PickStrip({
           {totalSide === 'over' ? 'Over' : 'Under'} {totalLine ?? ''}
         </span>
       ) : null}
-      {!locked ? <span className="text-ink-faint">not locked yet</span> : null}
+      {!locked ? <span className="text-ink-muted">not locked yet</span> : null}
     </div>
   );
 }
@@ -155,7 +155,7 @@ export function GameLinesView({
                 ) : (
                   <span>{entry.awayAbbrev}</span>
                 )}
-                <span className="text-ink-faint">@</span>
+                <span className="text-ink-muted">@</span>
                 {entry.game.homeTeamId != null ? (
                   <Link href={`/mlb/team/${entry.game.homeTeamId}`} className="flex items-center gap-1.5 hover:underline">
                     <TeamLogo logoUrl={teamLogoUrl(entry.game.homeTeamId)} abbreviation={entry.homeAbbrev} size={20} />
@@ -171,13 +171,13 @@ export function GameLinesView({
             </div>
 
             {!projected?.available ? (
-              <p className="text-[12px] text-ink-faint">No game line yet.</p>
+              <p className="text-[12px] text-ink-muted">No game line yet.</p>
             ) : (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {projected.moneyline ? (
                   <div className="rounded-lg border border-line bg-card p-2">
                     <div className="mb-1 flex items-center justify-between">
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">Moneyline</span>
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-ink-muted">Moneyline</span>
                       <BookLogo bookId={projected.moneyline.book} size={12} withLabel />
                     </div>
                     <div className="flex gap-1.5">
@@ -196,7 +196,7 @@ export function GameLinesView({
                 {projected.total?.point != null ? (
                   <div className="rounded-lg border border-line bg-card p-2">
                     <div className="mb-1 flex items-center justify-between">
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-ink-faint">Total {projected.total.point}</span>
+                      <span className="text-[10px] font-medium uppercase tracking-wide text-ink-muted">Total {projected.total.point}</span>
                       <BookLogo bookId={projected.total.book} size={12} withLabel />
                     </div>
                     <div className="flex gap-1.5">

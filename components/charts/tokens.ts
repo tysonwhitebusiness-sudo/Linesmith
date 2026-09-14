@@ -13,24 +13,22 @@
  * mockups ported that file verbatim precisely so the two could not drift.
  * Import from `@/lib/ui/heat`; do not add a second copy of a ramp here.
  *
- * ON `card` BEING DARKER THAN `paper`. `card` is oklch 93% and `paper` is 96%,
- * so a card sits *below* the page rather than above it. That inversion is
- * pre-existing (a graphite reskin held paper and dropped card) and is flagged
- * in the handoff notes as worth confirming rather than inheriting. `SURFACE`
- * below follows `card` because that is the ground a chart actually sits on
- * today — if the elevation model is ever corrected, this is the one place that
- * needs to change.
+ * ELEVATION WAS CORRECTED IN R3: `card` is oklch 98.5% on a 94.5% `paper`
+ * (it used to be 93% on 96%, a card below its page). `SURFACE` follows `card`,
+ * the ground a chart actually sits on.
  */
 
 /** The ground every mark sits on — `--card`. Used for the ring that keeps a dot legible where it crosses its own line. */
-export const SURFACE = 'oklch(93% 0.003 260)';
+export const SURFACE = 'oklch(98.5% 0.002 260)';
 /** `--line-soft`. Grid hairlines are SOLID and one step off the surface — never dashed, which reads as "provisional". */
-export const GRID = 'oklch(90% 0.004 260)';
+export const GRID = 'oklch(92.5% 0.003 260)';
 
-export const INK1 = 'oklch(16% 0.004 260)';
-export const INK3 = 'oklch(50% 0.005 260)';
-export const INK4 = 'oklch(68% 0.004 260)';
-export const INK5 = 'oklch(78% 0.004 260)';
+export const INK1 = 'oklch(18% 0.005 260)';
+/** `ink-muted`: the lightest gray allowed for chart TEXT. */
+export const INK3 = 'oklch(47% 0.005 260)';
+/** `ink-faint`: marks and decoration only, never text. */
+export const INK4 = 'oklch(72% 0.004 260)';
+export const INK5 = 'oklch(80% 0.004 260)';
 
 /** The emphasis stroke — one series is the subject, everything else is context. */
 export const EMPHASIS = INK1;
@@ -43,8 +41,12 @@ export const FONT_STACK = 'ui-sans-serif, system-ui, sans-serif';
 
 export const MIDDOT = '·';
 
-/** Default type sizes, in SVG user units. Deliberately small — a chart label is not body copy. */
-export const SIZE = { tick: 9, label: 9, value: 10, caption: 9 } as const;
+/**
+ * Chart type sizes (R3 3c, F2 section 6): ticks 10, axis labels 11. Charts now
+ * render at their real pixel width, so a user unit is a CSS pixel and these
+ * are the sizes on screen.
+ */
+export const SIZE = { tick: 10, label: 11, value: 11, caption: 11 } as const;
 
 /**
  * Formatters a primitive can be handed. Every primitive that prints a number

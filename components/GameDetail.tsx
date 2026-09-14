@@ -277,7 +277,7 @@ function WindowBar({ label, stat }: { label: string; stat: WindowedStat }) {
       <div className="flex flex-col gap-1">
         <div className="h-[5px] rounded-[3px]" style={{ backgroundColor: '#dcdee1' }} />
         <div className="flex items-baseline gap-1">
-          <span className="text-micro tracking-[.06em] text-ink-faint">{label}</span>
+          <span className="text-label tracking-[.06em] text-ink-muted">{label}</span>
           <InsufficientMark available={stat.available} required={stat.required} />
         </div>
       </div>
@@ -290,8 +290,8 @@ function WindowBar({ label, stat }: { label: string; stat: WindowedStat }) {
         <div className="h-full rounded-[3px]" style={{ width: `${pct}%`, backgroundColor: windowFill(pct) }} />
       </div>
       <div className="flex items-baseline gap-[5px]">
-        <span className="text-micro tracking-[.06em] text-ink-faint">{label}</span>
-        <span className="text-meta" style={{ color: windowInk(pct) }}>{pct}%</span>
+        <span className="text-label tracking-[.06em] text-ink-muted">{label}</span>
+        <span className="text-label" style={{ color: windowInk(pct) }}>{pct}%</span>
       </div>
     </div>
   );
@@ -358,8 +358,8 @@ function ScoreFilterBar({
   return (
     <div className="flex flex-col gap-2 px-4 py-2.5" style={{ backgroundColor: '#f1f2f3', borderBottom: '1px solid #dcdee1' }}>
       <div className="flex items-center justify-between">
-        <span className="text-label uppercase tracking-[.14em] text-ink-faint">Min score</span>
-        <span className="text-meta text-ink-secondary">{summary}</span>
+        <span className="text-overline uppercase tracking-[.14em] text-ink-muted">Min score</span>
+        <span className="text-label text-ink-secondary">{summary}</span>
       </div>
       <div className="flex gap-[5px]">
         {SCORE_CHIPS.map((c) => (
@@ -368,7 +368,7 @@ function ScoreFilterBar({
             type="button"
             onClick={() => onChange(c.key)}
             aria-pressed={value === c.key}
-            className="flex-1 rounded-full py-1 text-center text-meta transition-colors"
+            className="flex-1 rounded-full py-1 text-center text-label transition-colors"
             style={{
               border: value === c.key ? 'none' : '1px solid #d3d4d7',
               backgroundColor: value === c.key ? '#141619' : 'transparent',
@@ -402,7 +402,7 @@ function PropTile({ scored, selected, onSelect }: { scored: ScoredCandidate; sel
       <div className="flex items-center justify-between gap-2">
         <MarketLine sport={candidate.sport} dimension={candidate.dimension} category={candidate.category} line={candidate.line} />
         {headline != null ? (
-          <span className="text-dense font-semibold" style={{ color: windowInk(headline) }}>{headline}% L15</span>
+          <span className="text-label font-semibold" style={{ color: windowInk(headline) }}>{headline}% L15</span>
         ) : null}
       </div>
       <div className="grid grid-cols-3 gap-1.5">
@@ -429,7 +429,7 @@ function OwnStatcastBadge({ meta }: { meta: Record<string, unknown> }) {
   if (summary?.overallRank == null) return null;
   return (
     <span
-      className="whitespace-nowrap rounded-full bg-accent-soft px-1.5 py-0.5 text-micro font-semibold text-masters"
+      className="whitespace-nowrap rounded-full bg-accent-soft px-1.5 py-0.5 text-label font-semibold text-masters"
       title={`Quality of contact: ${ordinal(summary.overallRank)} of ${summary.poolSize} overall${
         summary.positionRank != null ? `, ${ordinal(summary.positionRank)} of ${summary.positionPoolSize} at ${summary.position}` : ''
       }`}
@@ -463,12 +463,12 @@ function PlayerGroup({
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="truncate text-emphasis font-semibold">{first.subjectName}</span>
+            <span className="truncate text-body font-semibold">{first.subjectName}</span>
             <OwnStatcastBadge meta={meta} />
           </div>
-          <div className="text-label uppercase tracking-[.1em] text-ink-faint">{scoredProps[0].meta}</div>
+          <div className="text-overline uppercase tracking-[.1em] text-ink-muted">{scoredProps[0].meta}</div>
         </div>
-        <span className="text-meta text-ink-soft">{scoredProps.length} prop{scoredProps.length === 1 ? '' : 's'}</span>
+        <span className="text-label text-ink-muted">{scoredProps.length} prop{scoredProps.length === 1 ? '' : 's'}</span>
       </div>
       <div className="flex flex-col gap-2">
         {scoredProps.map((s) => (
@@ -512,14 +512,14 @@ function RankedRow({
       style={{ borderBottom: '1px solid #e7e8ea', backgroundColor: selected ? '#f1f2f3' : undefined }}
     >
       <div className="flex h-[38px] w-[38px] shrink-0 flex-col items-center justify-center rounded-[9px]" style={{ backgroundColor: bucket.bg }}>
-        <div className="text-emphasis font-semibold leading-none" style={{ color: bucket.ink }}>{score}</div>
-        <div className="text-micro uppercase tracking-[.1em] opacity-70" style={{ color: bucket.ink }}>score</div>
+        <div className="text-body font-semibold leading-none" style={{ color: bucket.ink }}>{score}</div>
+        <div className="text-overline uppercase tracking-[.1em] opacity-70" style={{ color: bucket.ink }}>score</div>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-baseline gap-1.5">
-          <span className="truncate text-body font-semibold">{candidate.subjectName}</span>
+          <span className="truncate text-body-sm font-semibold">{candidate.subjectName}</span>
           <OwnStatcastBadge meta={meta} />
-          <span className="whitespace-nowrap text-label text-ink-faint">{scored.meta}</span>
+          <span className="whitespace-nowrap text-label text-ink-muted">{scored.meta}</span>
         </div>
         <MarketLine sport={candidate.sport} dimension={candidate.dimension} category={candidate.category} line={candidate.line} className="text-ink-secondary" />
         <div className="flex items-center gap-2">
@@ -529,8 +529,8 @@ function RankedRow({
               return <div key={i} className="w-[9px] rounded-t-[2px]" style={{ height: Math.max(4, Math.round(pct * 0.16)), backgroundColor: isOk(w) ? windowFill(pct) : '#dcdee1' }} />;
             })}
           </div>
-          <span className="text-label text-ink-faint">L5 · L10 · L15</span>
-          <span className="ml-auto text-meta" style={{ color: TREND_INK[trend] }}>{TREND_LABEL[trend]}</span>
+          <span className="text-label text-ink-muted">L5 · L10 · L15</span>
+          <span className="ml-auto text-label" style={{ color: TREND_INK[trend] }}>{TREND_LABEL[trend]}</span>
         </div>
       </div>
     </button>
@@ -570,14 +570,14 @@ function TileCard({ scored, selected, onSelect }: { scored: ScoredCandidate; sel
               fallbackUrl={typeof meta.teamLogoUrl === 'string' ? meta.teamLogoUrl : undefined}
               size={20}
             />
-            <span className="text-dense text-ink-secondary">{candidate.subjectName}</span>
+            <span className="text-label text-ink-secondary">{candidate.subjectName}</span>
             <OwnStatcastBadge meta={meta} />
-            <span className="text-label text-ink-faint">{scored.meta}</span>
+            <span className="text-label text-ink-muted">{scored.meta}</span>
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-0.5">
-          <span className="text-display-md font-medium leading-none tracking-[-.03em]" style={{ color: windowInk(best) }}>{best}%</span>
-          <span className="text-micro uppercase tracking-[.14em] text-ink-faint">Last 15</span>
+          <span className="text-heading font-medium leading-none tracking-[-.03em]" style={{ color: windowInk(best) }}>{best}%</span>
+          <span className="text-overline uppercase tracking-[.14em] text-ink-muted">Last 15</span>
         </div>
       </div>
       <div className="grid grid-cols-3" style={{ borderTop: '1px solid #d3d4d7' }}>
@@ -587,19 +587,19 @@ function TileCard({ scored, selected, onSelect }: { scored: ScoredCandidate; sel
             <div key={w.label} className="flex flex-col gap-1.5 p-2.5" style={i > 0 ? { borderLeft: '1px solid #e7e8ea' } : undefined}>
               {pct == null ? (
                 <>
-                  <InsufficientMark available={(w.stat as { available: number }).available} required={(w.stat as { required: number }).required} className="text-micro" />
+                  <InsufficientMark available={(w.stat as { available: number }).available} required={(w.stat as { required: number }).required} className="text-label" />
                   <div className="h-1 rounded-[2px]" style={{ backgroundColor: '#f1f2f3' }} />
                 </>
               ) : (
                 <>
                   <div className="flex items-baseline gap-[5px]">
-                    <span className="text-micro tracking-[.1em] text-ink-faint">{w.label}</span>
-                    <span className="text-dense" style={{ color: windowInk(pct) }}>{pct}%</span>
+                    <span className="text-label tracking-[.1em] text-ink-muted">{w.label}</span>
+                    <span className="text-label" style={{ color: windowInk(pct) }}>{pct}%</span>
                   </div>
                   <div className="h-1 rounded-[2px]" style={{ backgroundColor: '#f1f2f3' }}>
                     <div className="h-full rounded-[2px]" style={{ width: `${pct}%`, backgroundColor: windowFill(pct) }} />
                   </div>
-                  <span className="text-micro" style={{ color: '#b6b7ba' }}>
+                  <span className="text-label" style={{ color: '#b6b7ba' }}>
                     {isOk(w.stat) ? `${w.stat.hits} of ${w.stat.total}` : ''}
                   </span>
                 </>
@@ -630,14 +630,14 @@ function TeamScopePanel({
   return (
     <div className="flex flex-col gap-3 p-4">
       <div className="flex flex-col gap-2 rounded-[9px] p-4" style={{ border: '1px dashed #dcdee1', backgroundColor: '#f1f2f3' }}>
-        <span className="text-label uppercase tracking-[.14em] text-ink-faint">
+        <span className="text-overline uppercase tracking-[.14em] text-ink-muted">
           0 of {rawTeamCandidates.length || 0} market{rawTeamCandidates.length === 1 ? '' : 's'} qualify
         </span>
-        <p className="text-body leading-[1.45]">No team candidate clears the Good Bets bar for this game.</p>
+        <p className="text-body-sm leading-[1.45]">No team candidate clears the Good Bets bar for this game.</p>
         {rawTeamCandidates.length > 0 ? (
           <div className="flex flex-col gap-1.5 pt-1">
             {rawTeamCandidates.map((c) => (
-              <div key={candidateKey(c)} className="flex items-center justify-between text-dense text-ink-soft">
+              <div key={candidateKey(c)} className="flex items-center justify-between text-label text-ink-muted">
                 <span>{c.dimensionLabel}</span>
                 <span>below bar</span>
               </div>
@@ -647,7 +647,7 @@ function TeamScopePanel({
       </div>
       {topPlayerPicks.length > 0 ? (
         <>
-          <span className="text-dense text-ink-soft">Strongest player props instead:</span>
+          <span className="text-label text-ink-muted">Strongest player props instead:</span>
           {topPlayerPicks.map((s) => (
             <button
               key={candidateKey(s.candidate)}
@@ -656,12 +656,12 @@ function TeamScopePanel({
               className="flex items-center gap-2.5 rounded-lg p-2.5 text-left"
               style={{ border: '1px solid #d3d4d7', backgroundColor: '#f1f2f3' }}
             >
-              <span className="text-body" style={{ color: isOk(s.l15) ? windowInk(Math.round(s.l15.rate * 100)) : '#97989b' }}>
+              <span className="text-body-sm" style={{ color: isOk(s.l15) ? windowInk(Math.round(s.l15.rate * 100)) : '#97989b' }}>
                 {isOk(s.l15) ? `${Math.round(s.l15.rate * 100)}%` : '—'}
               </span>
               <div className="min-w-0 flex-1">
                 <MarketLine sport={s.candidate.sport} dimension={s.candidate.dimension} category={s.candidate.category} line={s.candidate.line} className="truncate" />
-                <div className="truncate text-label text-ink-faint">{s.candidate.subjectName}</div>
+                <div className="truncate text-label text-ink-muted">{s.candidate.subjectName}</div>
               </div>
             </button>
           ))}
@@ -670,7 +670,7 @@ function TeamScopePanel({
       <button
         type="button"
         onClick={onGoPlayers}
-        className="rounded-full py-1.5 text-center text-dense transition-colors"
+        className="rounded-full py-1.5 text-center text-label transition-colors"
         style={{ border: '1px solid #d3d4d7', color: '#141619' }}
       >
         See player candidates
@@ -801,14 +801,14 @@ export function LeftRail({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-baseline gap-2">
             <h2 className="text-title font-semibold">Candidates</h2>
-            <span className="text-meta text-ink-faint">
+            <span className="text-label text-ink-muted">
               {scope === 'team' ? teamCandidates.length : byScore.length} {scope === 'team' ? 'markets' : 'props'}
             </span>
           </div>
           <RailPills options={[{ key: 'player', label: 'Player' }, { key: 'team', label: 'Team' }]} value={scope} onChange={setScope} />
         </div>
         <div className="flex items-center justify-between gap-2">
-          <span className="text-label uppercase tracking-[.14em] text-ink-faint">View</span>
+          <span className="text-overline uppercase tracking-[.14em] text-ink-muted">View</span>
           <RailPills
             options={[{ key: 'grouped', label: 'Player' }, { key: 'ranked', label: 'Ranked' }, { key: 'tiles', label: 'Tiles' }]}
             value={view}
@@ -843,16 +843,16 @@ export function LeftRail({
           )
         ) : byScore.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-4 py-7 text-center">
-            <p className="text-body font-semibold">No props at {minScore}+</p>
+            <p className="text-body-sm font-semibold">No props at {minScore}+</p>
             {playerScored.length > 0 ? (
-              <p className="text-dense leading-[1.5] text-ink-soft">
+              <p className="text-label leading-[1.5] text-ink-muted">
                 The strongest candidate in this game scores {Math.max(...playerScored.map((s) => s.score ?? 0))}.
               </p>
             ) : (
-              <p className="text-dense leading-[1.5] text-ink-soft">No player candidate clears the Good Bets bar for this game right now.</p>
+              <p className="text-label leading-[1.5] text-ink-muted">No player candidate clears the Good Bets bar for this game right now.</p>
             )}
             {minScore > 0 ? (
-              <button type="button" onClick={() => setScoreFilter('all')} className="rounded-full px-3.5 py-1.5 text-dense" style={{ border: '1px solid #d3d4d7', color: '#141619' }}>
+              <button type="button" onClick={() => setScoreFilter('all')} className="rounded-full px-3.5 py-1.5 text-label" style={{ border: '1px solid #d3d4d7', color: '#141619' }}>
                 Clear filter
               </button>
             ) : null}
@@ -895,11 +895,11 @@ export function LeftRail({
 
         {scope === 'player' && byScore.length > 0 ? (
           remaining > 0 ? (
-            <button type="button" onClick={() => setExpanded(true)} className="w-full py-2.5 text-center text-dense text-ink-muted">
+            <button type="button" onClick={() => setExpanded(true)} className="w-full py-2.5 text-center text-label text-ink-muted">
               Show {remaining} more
             </button>
           ) : (
-            <p className="py-2.5 text-center text-dense text-ink-muted">That&rsquo;s all for this game.</p>
+            <p className="py-2.5 text-center text-label text-ink-muted">That&rsquo;s all for this game.</p>
           )
         ) : null}
       </div>
@@ -910,7 +910,7 @@ export function LeftRail({
 function CardHeader({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line-soft px-4 py-3">
-      <h2 className="text-meta font-semibold uppercase tracking-[.18em] text-ink-secondary">{children}</h2>
+      <h2 className="text-label font-semibold uppercase tracking-[.18em] text-ink-secondary">{children}</h2>
       {right}
     </div>
   );
@@ -959,20 +959,20 @@ function RecordPanel({
       <div className={`flex items-center gap-2.5 ${reversed ? 'flex-row-reverse' : ''}`}>
         <TeamLogo logoUrl={logoUrl} abbreviation={abbr} size={26} />
         <span className="text-title font-semibold">{abbr}</span>
-        <span className={`text-dense text-ink-muted ${reversed ? 'mr-auto' : 'ml-auto'}`}>{winPctStr(record)}</span>
+        <span className={`text-label text-ink-muted ${reversed ? 'mr-auto' : 'ml-auto'}`}>{winPctStr(record)}</span>
       </div>
       <div className={`mt-2 flex items-baseline gap-2 ${reversed ? 'flex-row-reverse' : ''}`}>
-        <span className="text-display-lg font-medium leading-[.9] tracking-[-.03em]" style={{ color: leading ? '#0f7a4f' : '#0c0d0f' }}>
+        <span className="text-display font-medium leading-[.9] tracking-[-.03em]" style={{ color: leading ? '#0f7a4f' : '#0c0d0f' }}>
           {fmtRecord(record)}
         </span>
-        {standing ? <span className="text-dense text-ink-soft">{standing}</span> : null}
+        {standing ? <span className="text-label text-ink-muted">{standing}</span> : null}
       </div>
       <div className="mt-3 border-t border-line-soft">
-        <div className="flex items-center justify-between border-b border-line-soft py-[11px] text-body">
+        <div className="flex items-center justify-between border-b border-line-soft py-[11px] text-body-sm">
           <span className="text-ink-muted">Home</span>
           <span className="font-medium">{fmtRecord(home)}</span>
         </div>
-        <div className="flex items-center justify-between py-[11px] text-body">
+        <div className="flex items-center justify-between py-[11px] text-body-sm">
           <span className="text-ink-muted">Away</span>
           <span className="font-medium">{fmtRecord(away)}</span>
         </div>
@@ -1105,11 +1105,11 @@ function StatComparison({ data }: { data: StatComparisonData }) {
   return (
     <section className="lb-card p-5">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-meta font-semibold uppercase tracking-[.18em] text-ink-secondary">
+        <h2 className="text-label font-semibold uppercase tracking-[.18em] text-ink-secondary">
           Team stat comparison
-          {data.seasonLabel ? <span className="ml-2 font-normal normal-case tracking-normal text-ink-faint">· {data.seasonLabel}</span> : null}
+          {data.seasonLabel ? <span className="ml-2 font-normal normal-case tracking-normal text-ink-muted">· {data.seasonLabel}</span> : null}
         </h2>
-        <div className="flex items-center gap-3 text-micro uppercase tracking-wide text-ink-faint">
+        <div className="flex items-center gap-3 text-overline uppercase tracking-wide text-ink-muted">
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm" style={{ backgroundColor: '#b6b7ba' }} />{data.awayAbbr}</span>
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-masters" />{data.homeAbbr}</span>
         </div>
@@ -1118,7 +1118,7 @@ function StatComparison({ data }: { data: StatComparisonData }) {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {data.ranked.map((g) => (
             <div key={g.label}>
-              <div className="mb-1 text-center text-label font-semibold uppercase tracking-[.18em] text-ink-faint">{g.label}</div>
+              <div className="mb-1 text-center text-overline font-semibold uppercase tracking-[.18em] text-ink-muted">{g.label}</div>
               {g.rows.map((r) => (
                 <TwoSidedStatRankRow key={r.key} label={r.label} subject={r.away} opponent={r.home} />
               ))}
@@ -1152,7 +1152,7 @@ function GameTile({ g }: { g: RecentResultRow }) {
   const win = g.win;
   return (
     <div
-      className="shrink-0 rounded-lg border px-2.5 py-2 text-center text-meta leading-tight"
+      className="shrink-0 rounded-lg border px-2.5 py-2 text-center text-label leading-tight"
       style={{ borderColor: win ? '#dde8e1' : '#f0ddda', backgroundColor: win ? '#f2f6f3' : '#fbf3f2' }}
     >
       <div className="flex items-center justify-center gap-1.5">
@@ -1162,11 +1162,11 @@ function GameTile({ g }: { g: RecentResultRow }) {
         >
           {win ? 'W' : 'L'}
         </span>
-        <span className="text-emphasis tabular-nums" style={{ color: win ? '#0f7a4f' : '#c23b2c' }}>{g.scoreFor}-{g.scoreAgainst}</span>
+        <span className="text-body tabular-nums" style={{ color: win ? '#0f7a4f' : '#c23b2c' }}>{g.scoreFor}-{g.scoreAgainst}</span>
       </div>
       <div className="mt-1 flex items-center justify-center gap-1 text-ink-muted">
         {g.isHome ? 'vs' : '@'} {g.opponentAbbr}
-        <span className="text-ink-faint">· {shortDate(g.date)}</span>
+        <span className="text-ink-muted">· {shortDate(g.date)}</span>
       </div>
     </div>
   );
@@ -1178,18 +1178,18 @@ function BoxScorePanel({ abbr, logoUrl, games }: { abbr: string; logoUrl?: strin
     <div className="overflow-hidden rounded-lg border border-line-soft">
       <div className="flex items-center gap-2 bg-surface-header px-3 py-2">
         <TeamLogo logoUrl={logoUrl} abbreviation={abbr} size={18} />
-        <span className="text-label uppercase tracking-wide text-ink-muted">{fmtRecord(rec)} last five</span>
+        <span className="text-overline uppercase tracking-wide text-ink-muted">{fmtRecord(rec)} last five</span>
       </div>
       {games.length === 0 ? (
-        <p className="p-3 text-meta text-ink-faint">No recent results in this window.</p>
+        <p className="p-3 text-label text-ink-muted">No recent results in this window.</p>
       ) : (
         <div className="divide-y divide-line-hair">
           {games.map((g) => (
             <div key={g.gameId} className="px-3 py-2">
-              <div className="grid grid-cols-[20px_1fr_54px] items-center gap-2 text-dense">
+              <div className="grid grid-cols-[20px_1fr_54px] items-center gap-2 text-label">
                 <span className="font-semibold" style={{ color: g.win ? '#0f7a4f' : '#c23b2c' }}>{g.win ? 'W' : 'L'}</span>
                 <span className="truncate text-ink-muted">
-                  {g.isHome ? 'vs' : '@'} {g.opponentAbbr} <span className="text-ink-faint">· {shortDate(g.date)}</span>
+                  {g.isHome ? 'vs' : '@'} {g.opponentAbbr} <span className="text-ink-muted">· {shortDate(g.date)}</span>
                 </span>
                 <span className="text-right tabular-nums">{g.scoreFor}-{g.scoreAgainst}</span>
               </div>
@@ -1227,7 +1227,7 @@ export function LastFiveGames({ away, home, loading }: {
   return (
     <section className="lb-card p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-meta font-semibold uppercase tracking-[.18em] text-ink-secondary">Last 5 games</h2>
+        <h2 className="text-label font-semibold uppercase tracking-[.18em] text-ink-secondary">Last 5 games</h2>
         <SegmentedToggle
           value={mode}
           onChange={setMode}
@@ -1251,14 +1251,14 @@ export function LastFiveGames({ away, home, loading }: {
                 <div className="w-[130px] shrink-0">
                   <div className="flex items-center gap-1.5">
                     <TeamLogo logoUrl={logoUrl} abbreviation={abbr} size={20} />
-                    <span className="text-body font-semibold">{abbr}</span>
+                    <span className="text-body-sm font-semibold">{abbr}</span>
                   </div>
                   <div className="mt-0.5 text-title font-medium">{fmtRecord(recordFrom(games))}</div>
-                  {streak !== 0 ? <div className="text-meta text-ink-soft">{streak > 0 ? `W${streak}` : `L${-streak}`}</div> : null}
+                  {streak !== 0 ? <div className="text-label text-ink-muted">{streak > 0 ? `W${streak}` : `L${-streak}`}</div> : null}
                 </div>
                 <div className="lb-scroll-x flex flex-1 gap-1.5">
                   {games.length === 0 ? (
-                    <span className="self-center text-meta text-ink-faint">No recent results in this window.</span>
+                    <span className="self-center text-label text-ink-muted">No recent results in this window.</span>
                   ) : (
                     games.map((g) => <GameTile key={g.gameId} g={g} />)
                   )}
@@ -1324,18 +1324,18 @@ export function RankingsHeatGrid({
 }) {
   return (
     <div className="lb-scroll-x overflow-auto">
-      <table className="w-full min-w-[480px] text-dense">
+      <table className="w-full min-w-[480px] text-label">
         <thead>
           <tr className="bg-surface-header">
-            <th className="px-3 py-2 text-left text-label font-medium uppercase tracking-[.1em] text-ink-faint">Stat</th>
-            <th className="border-l border-line-soft px-2 py-2 text-right text-label font-medium uppercase tracking-[.1em] text-ink-secondary">
+            <th className="px-3 py-2 text-left text-overline font-medium uppercase tracking-[.1em] text-ink-muted">Stat</th>
+            <th className="border-l border-line-soft px-2 py-2 text-right text-overline font-medium uppercase tracking-[.1em] text-ink-secondary">
               <span className="inline-flex items-center justify-end gap-1"><TeamLogo logoUrl={awayLogoUrl} size={12} />{awayAbbr} for</span>
             </th>
-            <th className="px-2 py-2 text-right text-label font-medium uppercase tracking-[.1em] text-ink-faint">{awayAbbr} agn</th>
-            <th className="border-l border-line-soft px-2 py-2 text-right text-label font-medium uppercase tracking-[.1em] text-ink-secondary">
+            <th className="px-2 py-2 text-right text-overline font-medium uppercase tracking-[.1em] text-ink-muted">{awayAbbr} agn</th>
+            <th className="border-l border-line-soft px-2 py-2 text-right text-overline font-medium uppercase tracking-[.1em] text-ink-secondary">
               <span className="inline-flex items-center justify-end gap-1"><TeamLogo logoUrl={homeLogoUrl} size={12} />{homeAbbr} for</span>
             </th>
-            <th className="px-2 py-2 text-right text-label font-medium uppercase tracking-[.1em] text-ink-faint">{homeAbbr} agn</th>
+            <th className="px-2 py-2 text-right text-overline font-medium uppercase tracking-[.1em] text-ink-muted">{homeAbbr} agn</th>
           </tr>
         </thead>
         <tbody>
@@ -1348,7 +1348,7 @@ export function RankingsHeatGrid({
             ];
             return (
               <tr key={k.key} className="border-t border-line-hair">
-                <td className="px-3 py-1 font-sans text-body font-medium text-ink">{k.label}</td>
+                <td className="px-3 py-1 font-sans text-body-sm font-medium text-ink">{k.label}</td>
                 {cells.map((rank, i) => {
                   const s = rankHeatStyle(rank);
                   return (
@@ -1377,7 +1377,7 @@ export function RankingsScale({ game, statKeys, awayAbbr, homeAbbr, poolSize = 3
 
   return (
     <div className="p-4">
-      <div className="mb-3 flex justify-between text-micro uppercase tracking-[.1em] text-ink-faint">
+      <div className="mb-3 flex justify-between text-overline uppercase tracking-[.1em] text-ink-muted">
         <span>1st</span>
         <span>{ordinal(mid)}</span>
         <span>{ordinal(poolSize)}</span>
@@ -1388,7 +1388,7 @@ export function RankingsScale({ game, statKeys, awayAbbr, homeAbbr, poolSize = 3
           const width = Math.abs(pos(r.away) - pos(r.home));
           return (
             <div key={r.key}>
-              <div className="mb-1 text-meta font-medium text-ink-secondary">{r.label}</div>
+              <div className="mb-1 text-label font-medium text-ink-secondary">{r.label}</div>
               <div className="relative h-[3px] rounded-full bg-line-soft">
                 <div className="absolute top-1/2 h-[5px] -translate-y-1/2 rounded-full bg-line" style={{ left: `${left}%`, width: `${width}%` }} />
                 <span
@@ -1421,20 +1421,20 @@ export function RankingsTiers({ game, statKeys, awayAbbr, homeAbbr, poolSize = 3
     <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
       {columns.map((col) => (
         <div key={col.label} className="rounded-lg border border-line-soft p-3">
-          <div className="mb-2 text-label font-semibold uppercase tracking-[.14em] text-ink-faint">{col.label}</div>
+          <div className="mb-2 text-overline font-semibold uppercase tracking-[.14em] text-ink-muted">{col.label}</div>
           <div className="space-y-1.5">
             {statKeys.map((k) => {
               const rank = parseRank(col.ranks?.[k.key]);
               const tier = tierFor(rank, poolSize);
               return (
-                <div key={k.key} className="flex items-center justify-between gap-2 text-meta">
+                <div key={k.key} className="flex items-center justify-between gap-2 text-label">
                   <span className="text-ink-muted">{k.label}</span>
                   {tier ? (
-                    <span className="rounded-full px-1.5 py-0.5 text-micro font-semibold" style={{ backgroundColor: tier.bg, color: tier.fg }}>
+                    <span className="rounded-full px-1.5 py-0.5 text-label font-semibold" style={{ backgroundColor: tier.bg, color: tier.fg }}>
                       {rank}
                     </span>
                   ) : (
-                    <span className="text-ink-faint">—</span>
+                    <span className="text-ink-muted">—</span>
                   )}
                 </div>
               );
@@ -1465,7 +1465,7 @@ function Rankings({ data }: { data: RankingsData }) {
         }
       >
         Rankings · of {data.poolSize}
-        {data.seasonLabel ? <span className="ml-2 font-normal normal-case tracking-normal text-ink-faint">· {data.seasonLabel}</span> : null}
+        {data.seasonLabel ? <span className="ml-2 font-normal normal-case tracking-normal text-ink-muted">· {data.seasonLabel}</span> : null}
       </CardHeader>
       {view === 'heat' ? <RankingsHeatGrid game={game} statKeys={data.statKeys} awayAbbr={data.awayAbbr} homeAbbr={data.homeAbbr} awayLogoUrl={data.awayLogoUrl} homeLogoUrl={data.homeLogoUrl} /> : null}
       {view === 'scale' ? <RankingsScale game={game} statKeys={data.statKeys} awayAbbr={data.awayAbbr} homeAbbr={data.homeAbbr} poolSize={data.poolSize} /> : null}
@@ -1492,21 +1492,21 @@ function InjuryPanel({ abbr, logoUrl, rows, subtle }: { abbr: string; logoUrl?: 
     <div className={subtle ? 'bg-surface-subtle' : ''}>
       <div className="flex items-center gap-2 px-4 py-2.5">
         <TeamLogo logoUrl={logoUrl} abbreviation={abbr} size={22} />
-        <span className="text-body font-semibold">{abbr}</span>
-        <span className="ml-auto text-meta text-ink-faint">{rows.length}</span>
+        <span className="text-body-sm font-semibold">{abbr}</span>
+        <span className="ml-auto text-label text-ink-muted">{rows.length}</span>
       </div>
       {rows.length === 0 ? (
-        <p className="px-4 pb-3 text-meta text-ink-faint">No reported injuries.</p>
+        <p className="px-4 pb-3 text-label text-ink-muted">No reported injuries.</p>
       ) : (
         <div>
           {rows.map((r, i) => (
             <div key={i} className="flex items-center gap-3 border-t border-line-hair px-4 py-2.5">
               <span className="h-[30px] w-[3px] shrink-0 rounded-full" style={{ backgroundColor: severityColor(r.status) }} />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-body font-medium">{r.playerName}</div>
-                <div className="text-label uppercase tracking-[.1em] text-ink-faint">{r.position || 'P'} · {r.note ?? 'Not reported'}</div>
+                <div className="truncate text-body-sm font-medium">{r.playerName}</div>
+                <div className="text-overline uppercase tracking-[.1em] text-ink-muted">{r.position || 'P'} · {r.note ?? 'Not reported'}</div>
               </div>
-              <span className="shrink-0 text-meta text-ink-muted">{r.status}</span>
+              <span className="shrink-0 text-label text-ink-muted">{r.status}</span>
             </div>
           ))}
         </div>
@@ -1526,7 +1526,7 @@ export function Injuries({ away, home, loading }: { away: InjuriesTeam; home: In
 
   return (
     <section className="lb-card overflow-hidden">
-      <CardHeader right={<span className="text-dense text-ink-soft">{total} player{total === 1 ? '' : 's'} out</span>}>Injuries</CardHeader>
+      <CardHeader right={<span className="text-label text-ink-muted">{total} player{total === 1 ? '' : 's'} out</span>}>Injuries</CardHeader>
       {loading ? (
         <div className="space-y-2 p-4">
           <div className="h-10 animate-pulse rounded bg-line-soft" />
@@ -1620,15 +1620,15 @@ export function PicksPanel({
   return (
     <aside className="space-y-3">
       <section className="lb-card p-3">
-        <h2 className="mb-2 text-meta font-semibold uppercase tracking-wide text-ink-muted">
+        <h2 className="mb-2 text-label font-semibold uppercase tracking-wide text-ink-muted">
           My picks ({scoped.length})
         </h2>
         {scoped.length === 0 ? (
-          <p className="text-dense text-ink-faint">Nothing on the slip for this game yet.</p>
+          <p className="text-label text-ink-muted">Nothing on the slip for this game yet.</p>
         ) : (
           <ul className="space-y-1.5">
             {scoped.map((p) => (
-              <li key={p.id} className="flex items-center justify-between gap-2 text-dense">
+              <li key={p.id} className="flex items-center justify-between gap-2 text-label">
                 <div className="min-w-0 truncate">
                   <span className="font-medium">{p.subjectName}</span>{' '}
                   <MarketLabel sport={game.sport} dimension={p.dimension} category={p.category} mode="compact" />
@@ -1637,7 +1637,7 @@ export function PicksPanel({
                   <StoredOddsChip
                     odds={p.americanOdds ? { americanOdds: p.americanOdds, source: (p.oddsSource as any) ?? 'manual', capturedAt: p.createdAt } : undefined}
                   />
-                  <button type="button" onClick={() => onRemovePick(p.id)} aria-label="Remove pick" className="text-ink-faint hover:text-bad">
+                  <button type="button" onClick={() => onRemovePick(p.id)} aria-label="Remove pick" className="text-ink-muted hover:text-bad">
                     ✕
                   </button>
                 </div>
@@ -1648,14 +1648,14 @@ export function PicksPanel({
       </section>
 
       <section className="lb-card p-3">
-        <h2 className="mb-2 text-meta font-semibold uppercase tracking-wide text-ink-muted">Add to picks</h2>
+        <h2 className="mb-2 text-label font-semibold uppercase tracking-wide text-ink-muted">Add to picks</h2>
         {!projected?.available ? (
-          <p className="text-dense text-ink-faint">No game line for this matchup yet.</p>
+          <p className="text-label text-ink-muted">No game line for this matchup yet.</p>
         ) : (
-          <div className="space-y-2.5 text-dense">
+          <div className="space-y-2.5 text-label">
             {projected.moneyline ? (
               <div>
-                <div className="mb-1 flex items-center justify-between text-label uppercase tracking-wide text-ink-faint">
+                <div className="mb-1 flex items-center justify-between text-overline uppercase tracking-wide text-ink-muted">
                   <span>Moneyline</span>
                   <BookLogo bookId={projected.moneyline.book} size={12} withLabel />
                 </div>
@@ -1677,7 +1677,7 @@ export function PicksPanel({
             ) : null}
             {projected.spread ? (
               <div>
-                <div className="mb-1 flex items-center justify-between text-label uppercase tracking-wide text-ink-faint">
+                <div className="mb-1 flex items-center justify-between text-overline uppercase tracking-wide text-ink-muted">
                   <span>Spread</span>
                   <BookLogo bookId={projected.spread.book} size={12} withLabel />
                 </div>
@@ -1693,7 +1693,7 @@ export function PicksPanel({
             ) : null}
             {projected.total?.point != null ? (
               <div>
-                <div className="mb-1 flex items-center justify-between text-label uppercase tracking-wide text-ink-faint">
+                <div className="mb-1 flex items-center justify-between text-overline uppercase tracking-wide text-ink-muted">
                   <span>Total {projected.total.point}</span>
                   <BookLogo bookId={projected.total.book} size={12} withLabel />
                 </div>
@@ -1746,19 +1746,19 @@ function LineShoppingSection({
   return (
     <section className="lb-card p-3">
       <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-meta font-semibold uppercase tracking-wide text-ink-muted">Line shopping</h2>
+        <h2 className="text-label font-semibold uppercase tracking-wide text-ink-muted">Line shopping</h2>
         <div className="inline-flex rounded-md border border-line p-0.5 text-[11px]">
           <button
             type="button"
             onClick={() => setView('game')}
-            className={`rounded px-2 py-0.5 font-medium ${view === 'game' ? 'bg-accent-soft text-masters' : 'text-ink-faint'}`}
+            className={`rounded px-2 py-0.5 font-medium ${view === 'game' ? 'bg-accent-soft text-masters' : 'text-ink-muted'}`}
           >
             Game
           </button>
           <button
             type="button"
             onClick={() => setView('player')}
-            className={`rounded px-2 py-0.5 font-medium ${view === 'player' ? 'bg-accent-soft text-masters' : 'text-ink-faint'}`}
+            className={`rounded px-2 py-0.5 font-medium ${view === 'player' ? 'bg-accent-soft text-masters' : 'text-ink-muted'}`}
           >
             Player
           </button>
@@ -1774,7 +1774,7 @@ function LineShoppingSection({
             homeLabel={homeAbbr}
           />
         ) : (
-          <p className="text-dense text-ink-faint">No game line for this matchup yet.</p>
+          <p className="text-label text-ink-muted">No game line for this matchup yet.</p>
         )
       ) : (
         <GamePropLineShoppingRail allRows={propRows} userSportsbook={userSportsbook} />
@@ -1800,7 +1800,7 @@ function PriceRangeSection({ data }: { data: NonNullable<GameDetailData['priceRa
     <section className="lb-card overflow-hidden">
       <div className="flex items-baseline justify-between gap-2 bg-accent-soft px-3 py-1.5">
         <h2 className="text-[10.5px] font-bold uppercase tracking-wide text-masters">{data.title}</h2>
-        <span className="text-[9.5px] text-ink-faint">{data.points.length} books</span>
+        <span className="text-[9.5px] text-ink-muted">{data.points.length} books</span>
       </div>
       <div className="p-3">
         <RangeBar
@@ -2268,7 +2268,7 @@ export function GameDetail({
             <button
               type="button"
               onClick={() => onSelectCandidate(null)}
-              className="text-dense font-medium text-masters"
+              className="text-label font-medium text-masters"
             >
               ← Game summary
             </button>
@@ -2301,7 +2301,7 @@ export function GameDetail({
               isFinal={data.hero.isFinal}
               liveScore={data.hero.liveScore}
               livePeriodLabel={data.hero.livePeriodLabel}
-              renderLiveExtra={data.hero.liveExtraText ? () => <span className="text-[10px] text-ink-faint">{data.hero.liveExtraText}</span> : undefined}
+              renderLiveExtra={data.hero.liveExtraText ? () => <span className="text-[10px] text-ink-muted">{data.hero.liveExtraText}</span> : undefined}
               startTimeLabel={data.hero.startTimeLabel}
               startTimeCaption={data.hero.startTimeCaption}
               model={data.hero.model}
@@ -2319,14 +2319,14 @@ export function GameDetail({
                             </span>
                           ) : null}
                           {data.hero.pregameLines.spread ? (
-                            <span className="tabular-nums text-ink-faint">
+                            <span className="tabular-nums text-ink-muted">
                               Spread {data.hero.pregameLines.spread.homePoint != null ? (data.hero.pregameLines.spread.homePoint > 0 ? `+${data.hero.pregameLines.spread.homePoint}` : data.hero.pregameLines.spread.homePoint) : '—'}
                             </span>
                           ) : null}
-                          {data.hero.pregameLines.total?.point != null ? <span className="tabular-nums text-ink-faint">O/U {data.hero.pregameLines.total.point}</span> : null}
+                          {data.hero.pregameLines.total?.point != null ? <span className="tabular-nums text-ink-muted">O/U {data.hero.pregameLines.total.point}</span> : null}
                         </div>
                       ) : (
-                        <span className="text-[10.5px] text-ink-faint">No game line yet</span>
+                        <span className="text-[10.5px] text-ink-muted">No game line yet</span>
                       )
                   : undefined
               }

@@ -29,7 +29,7 @@ export function NflTeamScopePanel({
   pickedKeys?: Set<string>;
 }) {
   if (rawTeamCandidates.length === 0) {
-    return <p className="p-4 text-center text-dense text-ink-faint">No team-level line yet.</p>;
+    return <p className="p-4 text-center text-label text-ink-muted">No team-level line yet.</p>;
   }
 
   return (
@@ -50,7 +50,7 @@ export function NflTeamScopePanel({
         const picked = pickedKeys?.has(candidateKey(c)) ?? false;
 
         return (
-          <div key={candidateKey(c)} className="flex items-center justify-between gap-2 px-3 py-2.5 text-dense">
+          <div key={candidateKey(c)} className="flex items-center justify-between gap-2 px-3 py-2.5 text-label">
             <span className="flex min-w-0 items-center gap-2">
               <TeamLogo logoUrl={nflTeamLogoUrl(teamAbbr)} abbreviation={teamAbbr} size={20} />
               <span className="truncate">{label}</span>
@@ -59,7 +59,7 @@ export function NflTeamScopePanel({
               {american != null ? (
                 <OddsChip price={american} source="odds-api" />
               ) : (
-                <span className="text-[10.5px] text-ink-faint">No price yet</span>
+                <span className="text-[10.5px] text-ink-muted">No price yet</span>
               )}
               {onAdd ? (
                 <button

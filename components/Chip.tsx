@@ -25,8 +25,8 @@ const TONE_CLASSES: Record<ChipTone, string> = {
 };
 
 const RECIPES: Record<ChipShape, Record<ChipSize, string>> = {
-  pill: { sm: 'rounded-full px-2 py-0.5 text-dense', md: 'rounded-full px-2.5 py-1 text-body' },
-  box: { sm: 'rounded-md px-1.5 py-0.5 text-meta', md: 'rounded-md px-2 py-1 text-body' },
+  pill: { sm: 'rounded-full px-2 py-0.5 text-label', md: 'rounded-full px-2.5 py-1 text-body-sm' },
+  box: { sm: 'rounded-md px-1.5 py-0.5 text-label', md: 'rounded-md px-2 py-1 text-body-sm' },
 };
 
 export interface ChipProps {

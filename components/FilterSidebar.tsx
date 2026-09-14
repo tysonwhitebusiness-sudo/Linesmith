@@ -44,7 +44,7 @@ function AccordionSection({
           {icon}
           {title}
         </span>
-        <ChevronDownIcon className={`text-ink-faint transition-transform ${open ? '' : '-rotate-90'}`} />
+        <ChevronDownIcon className={`text-ink-muted transition-transform ${open ? '' : '-rotate-90'}`} />
       </button>
       {open ? <div className="flex flex-col gap-2.5">{children}</div> : null}
     </div>
@@ -170,9 +170,9 @@ export function FilterSidebar({
       </AccordionSection>
 
       <AccordionSection icon={<FlameIcon size={16} />} title="Performance">
-        <BooleanCheckboxRow label="Hot streak" checked={hotStreak} onChange={onToggleHotStreak} icon={<FlameIcon size={14} className="text-ink-faint" />} />
-        <BooleanCheckboxRow label="Cold streak" checked={coldStreak} onChange={onToggleColdStreak} icon={<SnowflakeIcon size={14} className="text-ink-faint" />} />
-        <BooleanCheckboxRow label="Consistent" checked={consistentOnly} onChange={onToggleConsistentOnly} icon={<CheckCircleIcon size={14} className="text-ink-faint" />} />
+        <BooleanCheckboxRow label="Hot streak" checked={hotStreak} onChange={onToggleHotStreak} icon={<FlameIcon size={14} className="text-ink-muted" />} />
+        <BooleanCheckboxRow label="Cold streak" checked={coldStreak} onChange={onToggleColdStreak} icon={<SnowflakeIcon size={14} className="text-ink-muted" />} />
+        <BooleanCheckboxRow label="Consistent" checked={consistentOnly} onChange={onToggleConsistentOnly} icon={<CheckCircleIcon size={14} className="text-ink-muted" />} />
       </AccordionSection>
 
       <AccordionSection icon={<SlidersIcon size={16} />} title="Odds range">

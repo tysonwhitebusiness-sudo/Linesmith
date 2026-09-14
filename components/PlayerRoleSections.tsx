@@ -92,7 +92,7 @@ function RoleCard({ title, subtitle, children }: { title: string; subtitle?: str
     <section className="lb-card overflow-hidden">
       <div className="flex items-baseline justify-between gap-2 bg-accent-soft px-3 py-1.5">
         <h2 className="text-[10.5px] font-bold uppercase tracking-wide text-masters">{title}</h2>
-        {subtitle ? <span className="truncate text-[9.5px] text-ink-faint">{subtitle}</span> : null}
+        {subtitle ? <span className="truncate text-[9.5px] text-ink-muted">{subtitle}</span> : null}
       </div>
       <div className="p-3">{children}</div>
     </section>
@@ -153,7 +153,7 @@ function UsageMixSection({ role }: { role: UsageMixRole }) {
   if (slices.length === 0) {
     return (
       <RoleCard title={role.title}>
-        <p className="py-3 text-center text-[11px] text-ink-faint">
+        <p className="py-3 text-center text-[11px] text-ink-muted">
           {role.emptyMessage ?? 'No usage breakdown available yet.'}
         </p>
       </RoleCard>
@@ -186,7 +186,7 @@ function UsageMixSection({ role }: { role: UsageMixRole }) {
             nothing. */}
         {cmp ? (
           <thead>
-            <tr className="border-b border-line text-[9px] uppercase tracking-wide text-ink-faint">
+            <tr className="border-b border-line text-[9px] uppercase tracking-wide text-ink-muted">
               <th className="py-1 pr-2 text-left font-semibold">Pitch</th>
               <th className="py-1 text-right font-semibold" colSpan={2}>{cmp.label}</th>
               <th className="py-1 pl-3 text-right font-semibold" colSpan={2}>{cmp.subjectLabel}</th>
@@ -215,7 +215,7 @@ function UsageMixSection({ role }: { role: UsageMixRole }) {
                   <td className="w-[52px] py-[3px] text-right text-[11.5px] font-semibold tabular-nums text-ink">
                     {cmpByKey.get(s.key) ? `${cmpByKey.get(s.key)!.share.toFixed(1)}%` : '—'}
                   </td>
-                  <td className="w-[56px] py-[3px] pl-1 text-right text-[10.5px] tabular-nums text-ink-faint">
+                  <td className="w-[56px] py-[3px] pl-1 text-right text-[10.5px] tabular-nums text-ink-muted">
                     {(() => {
                       const o = cmpByKey.get(s.key);
                       return o && o.value != null && Number.isFinite(o.value)
@@ -228,7 +228,7 @@ function UsageMixSection({ role }: { role: UsageMixRole }) {
               <td className={`w-[52px] py-[3px] text-right text-[11.5px] font-semibold tabular-nums${cmp ? ' pl-3' : ''}`}>
                 {s.share.toFixed(1)}%
               </td>
-              <td className="w-[64px] py-[3px] pl-2 text-right text-[10.5px] tabular-nums text-ink-faint">
+              <td className="w-[64px] py-[3px] pl-2 text-right text-[10.5px] tabular-nums text-ink-muted">
                 {s.value != null && Number.isFinite(s.value)
                   ? `${(role.valueFormat ?? ((v: number) => v.toFixed(s.decimals ?? 2)))(s.value)}${
                       s.valueLabel ? ` ${s.valueLabel}` : ''
@@ -244,7 +244,7 @@ function UsageMixSection({ role }: { role: UsageMixRole }) {
                 whose outcome is as dense as its share pays nothing for this.
               */}
               {anySample ? (
-                <td className="w-[46px] py-[3px] pl-1 text-right text-[9.5px] tabular-nums text-ink-faint">
+                <td className="w-[46px] py-[3px] pl-1 text-right text-[9.5px] tabular-nums text-ink-muted">
                   {s.valueSample != null && s.valueSample > 0 ? `n=${s.valueSample}` : ''}
                 </td>
               ) : null}
@@ -345,7 +345,7 @@ function CareerH2HSection({ role }: { role: CareerH2HRole }) {
 
       {role.meetings && role.meetings.length > 0 ? (
         <div className="mt-2.5">
-          <div className="mb-1 text-[9.5px] uppercase tracking-wide text-ink-faint">
+          <div className="mb-1 text-[9.5px] uppercase tracking-wide text-ink-muted">
             Oldest {MIDDOT} newest
           </div>
           <StreakStrip
@@ -360,7 +360,7 @@ function CareerH2HSection({ role }: { role: CareerH2HRole }) {
               "05-08 vs Washington Nationals", and two of those under a strip of
               eleven squares wrapped onto three lines and buried the squares.
               The whole label is still on each square's own tooltip. */}
-          <div className="mt-1 flex justify-between gap-2 text-[9.5px] text-ink-faint">
+          <div className="mt-1 flex justify-between gap-2 text-[9.5px] text-ink-muted">
             <span className="truncate">{shortMeetingDate(role.meetings[0]?.date)}</span>
             {role.meetings.length > 1 ? (
               <span className="truncate">{shortMeetingDate(role.meetings[role.meetings.length - 1]?.date)}</span>
@@ -399,7 +399,7 @@ function ConditionsSection({ role }: { role: ConditionsRole }) {
   if (role.facts.length === 0) {
     return (
       <RoleCard title={role.title}>
-        <p className="py-3 text-center text-[11px] text-ink-faint">
+        <p className="py-3 text-center text-[11px] text-ink-muted">
           {role.emptyMessage ?? 'No venue conditions available.'}
         </p>
       </RoleCard>
@@ -410,7 +410,7 @@ function ConditionsSection({ role }: { role: ConditionsRole }) {
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5">
         {role.facts.map((f) => (
           <div key={f.key} className="min-w-0">
-            <dt className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">{f.label}</dt>
+            <dt className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{f.label}</dt>
             <dd className="truncate text-[12px] text-ink">
               {f.value}
               {f.impact ? (

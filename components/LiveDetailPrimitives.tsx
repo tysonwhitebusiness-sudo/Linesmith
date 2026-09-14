@@ -38,11 +38,11 @@ function LiveBandTeamPanel({ side, team }: { side: 'away' | 'home'; team: LiveBa
           <TeamLogo logoUrl={team.logoUrl} abbreviation={team.abbr} size={36} />
         </div>
         <div>
-          <div className="text-meta tracking-[.12em]" style={{ color: C.liveSecondary }}>{away ? 'AWAY' : 'HOME'}</div>
-          <div className="text-display-sm font-bold tracking-[-.02em] text-white">{team.name ?? team.abbr}</div>
+          <div className="text-label tracking-[.12em]" style={{ color: C.liveSecondary }}>{away ? 'AWAY' : 'HOME'}</div>
+          <div className="text-title font-bold tracking-[-.02em] text-white">{team.name ?? team.abbr}</div>
         </div>
       </div>
-      {team.statLine ? <div className="text-body tabular-nums" style={{ color: C.liveSecondary }}>{team.statLine}</div> : null}
+      {team.statLine ? <div className="text-body-sm tabular-nums" style={{ color: C.liveSecondary }}>{team.statLine}</div> : null}
     </div>
   );
 }
@@ -75,19 +75,19 @@ export function LiveBandHeader({
         style={{ borderLeft: `1px solid ${C.liveMuted}`, borderRight: `1px solid ${C.liveMuted}` }}
       >
         {isFinal ? (
-          <span className="text-meta font-medium tabular-nums tracking-[.14em]" style={{ color: C.liveSecondary }}>FINAL</span>
+          <span className="text-label font-medium tabular-nums tracking-[.14em]" style={{ color: C.liveSecondary }}>FINAL</span>
         ) : (
           <div className="flex items-center gap-2.5">
             <span className="h-1.5 w-1.5 animate-lb-pulse rounded-full" style={{ backgroundColor: C.liveGreen }} />
-            <span className="text-meta font-medium tabular-nums tracking-[.14em]" style={{ color: C.liveGreen }}>
+            <span className="text-label font-medium tabular-nums tracking-[.14em]" style={{ color: C.liveGreen }}>
               {statusLabel ?? 'LIVE'}
             </span>
           </div>
         )}
-        <div className="text-display-lg font-extrabold leading-none tabular-nums tracking-[-.04em] text-white">
+        <div className="text-display font-extrabold leading-none tabular-nums tracking-[-.04em] text-white">
           {score.away}–{score.home}
         </div>
-        {subLabel ? <div className="text-dense" style={{ color: C.liveSecondary }}>{subLabel}</div> : null}
+        {subLabel ? <div className="text-label" style={{ color: C.liveSecondary }}>{subLabel}</div> : null}
         {extra}
       </div>
       <LiveBandTeamPanel side="home" team={home} />
@@ -121,11 +121,11 @@ export function LiveSpotlightCard({
     <div className="flex items-center gap-3 px-[26px] py-4" style={border === 'right' ? { borderRight: `1px solid ${C.divider}` } : undefined}>
       <SubjectAvatar name={name} headshotUrl={headshotUrl} size={44} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 text-meta tracking-[.1em]" style={{ color: C.faintMono }}>
+        <div className="flex items-center gap-1.5 text-label tracking-[.1em]" style={{ color: C.faintMono }}>
           <TeamLogo logoUrl={teamLogoUrl} abbreviation={teamAbbr} size={13} /> {role} · {teamAbbr}
         </div>
         <div className="truncate text-title font-semibold" style={{ color: C.ink }}>{name}</div>
-        <div className="text-dense tabular-nums" style={{ color: C.recordText }}>{statLine}</div>
+        <div className="text-label tabular-nums" style={{ color: C.recordText }}>{statLine}</div>
       </div>
     </div>
   );
@@ -162,8 +162,8 @@ export function LivePeriodStrip({
   return (
     <div className="flex flex-col gap-2.5 px-[26px] py-4" style={{ borderBottom: `1px solid ${C.divider}` }}>
       <div className="flex items-center justify-between">
-        <div className="text-meta tracking-[.12em]" style={{ color: C.faintMono }}>{title}</div>
-        {totalsLine ? <div className="text-dense tabular-nums" style={{ color: C.recordText }}>{totalsLine}</div> : null}
+        <div className="text-label tracking-[.12em]" style={{ color: C.faintMono }}>{title}</div>
+        {totalsLine ? <div className="text-label tabular-nums" style={{ color: C.recordText }}>{totalsLine}</div> : null}
       </div>
       <div className="flex gap-1.5">
         {segments.map((seg) => {
@@ -189,7 +189,7 @@ export function LivePeriodStrip({
             >
               <div className="text-label tabular-nums" style={{ color: played ? (current || isExpanded ? C.olive : C.faintMono) : C.inningFuture }}>{seg.label}</div>
               <div
-                className="text-body tabular-nums"
+                className="text-body-sm tabular-nums"
                 style={{ color: played ? (current || isExpanded ? C.olive : C.ink) : C.inningFuture, fontWeight: current || isExpanded ? 500 : 400 }}
               >
                 {played ? `${seg.away ?? '–'} · ${seg.home ?? '–'}` : '·'}
@@ -222,8 +222,8 @@ export function LiveEventRow({
   return (
     <div className="flex items-start justify-between gap-3 py-1.5" style={{ borderTop: `1px solid ${C.divider}` }}>
       <div className="min-w-0">
-        <span className="text-dense font-medium" style={{ color: C.ink }}>{primary}</span>
-        {secondary ? <span className="text-dense" style={{ color: C.recordText }}> — {secondary}</span> : null}
+        <span className="text-label font-medium" style={{ color: C.ink }}>{primary}</span>
+        {secondary ? <span className="text-label" style={{ color: C.recordText }}> — {secondary}</span> : null}
       </div>
       {badgeText ? (
         <span
@@ -257,7 +257,7 @@ export function LiveSubTabBar<T extends string>({
           key={t.key}
           type="button"
           onClick={() => onChange(t.key)}
-          className="rounded-full px-3 py-1 text-dense font-medium tracking-[.04em]"
+          className="rounded-full px-3 py-1 text-label font-medium tracking-[.04em]"
           style={{
             backgroundColor: active === t.key ? C.tabActiveBg : 'transparent',
             color: active === t.key ? C.tabActiveText : C.tabInactiveText,
@@ -302,13 +302,13 @@ export function LiveBoxTable({
       <div className="mb-2 flex items-center gap-2">
         <TeamLogo logoUrl={teamLogoUrl} abbreviation={teamAbbr} size={18} />
         <span className="text-title font-semibold" style={{ color: C.ink }}>{teamAbbr}</span>
-        {summaryLine ? <span className="ml-auto text-dense tabular-nums" style={{ color: C.recordText }}>{summaryLine}</span> : null}
+        {summaryLine ? <span className="ml-auto text-label tabular-nums" style={{ color: C.recordText }}>{summaryLine}</span> : null}
       </div>
       {rows.length === 0 ? (
-        <p className="py-1 text-dense" style={{ color: C.faintMono }}>{emptyLabel}</p>
+        <p className="py-1 text-label" style={{ color: C.faintMono }}>{emptyLabel}</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-dense">
+          <table className="w-full text-label">
             <thead>
               <tr style={{ color: C.faintMono }}>
                 <th className="py-1 text-left font-medium">Player</th>
@@ -356,7 +356,7 @@ export function LiveBoxTable({
  */
 export function LiveTabEmptyState({ loading, isFinal, notStartedText }: { loading: boolean; isFinal: boolean; notStartedText: string }) {
   return (
-    <div className="px-[26px] py-10 text-center text-body" style={{ color: C.recordText }}>
+    <div className="px-[26px] py-10 text-center text-body-sm" style={{ color: C.recordText }}>
       {isFinal ? 'This game is final — no live detail was captured for it.' : loading ? 'Loading live details…' : notStartedText}
     </div>
   );

@@ -46,7 +46,7 @@ export interface GamesStripProps {
 export function GamesStrip({ games, selectedGamePk, onSelectGame, onNavigateToGame, logoFor }: GamesStripProps) {
   if (games.length === 0) {
     return (
-      <div className="border-t border-line bg-ink/[0.02] py-2 text-center text-[11px] text-ink-faint">
+      <div className="border-t border-line bg-ink/[0.02] py-2 text-center text-[11px] text-ink-muted">
         No games scheduled
       </div>
     );
@@ -102,7 +102,7 @@ export function GamesStrip({ games, selectedGamePk, onSelectGame, onNavigateToGa
                 <TeamMark teamId={game.awayTeamId} />
               ) : null}
               <span>{awayAbbrev}</span>
-              <span className="text-[9px] font-normal text-ink-faint">@</span>
+              <span className="text-[9px] font-normal text-ink-muted">@</span>
               <span>{homeAbbrev}</span>
               {logoFor ? (
                 <TeamMark logoUrl={logoFor(homeAbbrev)} />
@@ -119,11 +119,11 @@ export function GamesStrip({ games, selectedGamePk, onSelectGame, onNavigateToGa
                   {live.livePeriod ? <span className="font-normal opacity-70">{live.livePeriod}</span> : null}
                 </span>
               ) : isFinal ? (
-                <span className="text-ink-faint">
+                <span className="text-ink-muted">
                   {score ? `${score} ` : ''}Final
                 </span>
               ) : (
-                <span className="text-ink-faint">{formatGameTime(game.firstPitch)}</span>
+                <span className="text-ink-muted">{formatGameTime(game.firstPitch)}</span>
               )}
             </span>
           </button>

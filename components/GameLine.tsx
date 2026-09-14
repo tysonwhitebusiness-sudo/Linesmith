@@ -78,7 +78,7 @@ export function LiveScoreBar({
       <div className="min-w-0">
         {/* Scores are strings — OddsPortal sends "—" and "NP" — never parsed. */}
         <div className="text-2xl font-semibold leading-none tabular-nums text-masters">
-          {liveScore.away} <span className="text-ink-faint">–</span> {liveScore.home}
+          {liveScore.away} <span className="text-ink-muted">–</span> {liveScore.home}
         </div>
         <div className="lb-stat-label truncate">
           {awayLabel} at {homeLabel}
@@ -189,11 +189,11 @@ export function BookmakerBreakdown({
   return (
     <details className="group mt-2.5 rounded-lg border border-line bg-paper/60 open:shadow-pop">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-2.5 py-1.5 text-[11px] font-medium text-ink-muted">
-        <span className="text-ink-faint transition-transform group-open:rotate-90" aria-hidden>
+        <span className="text-ink-muted transition-transform group-open:rotate-90" aria-hidden>
           ›
         </span>
         {bookmakers.length} bookmaker{bookmakers.length === 1 ? '' : 's'}
-        <span className="ml-auto text-[10px] text-ink-faint">
+        <span className="ml-auto text-[10px] text-ink-muted">
           {awayLabel} / {homeLabel}
         </span>
       </summary>
@@ -202,7 +202,7 @@ export function BookmakerBreakdown({
         <table className="w-full border-collapse text-[10.5px]">
           <thead>
             <tr>
-              <th className="sticky left-0 z-10 bg-paper/95 px-1.5 py-1 text-left font-medium text-ink-faint">Market</th>
+              <th className="sticky left-0 z-10 bg-paper/95 px-1.5 py-1 text-left font-medium text-ink-muted">Market</th>
               {bookmakers.map((book) => {
                 const selected = selectedBook === book.bookmaker;
                 return (
@@ -232,11 +232,11 @@ export function BookmakerBreakdown({
                     >
                       {cell ? (
                         <span className="flex flex-col items-end">
-                          {cell.point != null ? <span className="text-[9px] text-ink-faint">{formatPoint(cell.point)}</span> : null}
+                          {cell.point != null ? <span className="text-[9px] text-ink-muted">{formatPoint(cell.point)}</span> : null}
                           <span className={best ? 'font-bold text-good' : 'font-semibold'}>{formatAmerican(decimalToAmerican(cell.price))}</span>
                         </span>
                       ) : (
-                        <span className="text-ink-faint">—</span>
+                        <span className="text-ink-muted">—</span>
                       )}
                     </td>
                   );
@@ -246,7 +246,7 @@ export function BookmakerBreakdown({
           </tbody>
         </table>
       </div>
-      <p className="px-2.5 py-2 text-[10px] text-ink-faint">
+      <p className="px-2.5 py-2 text-[10px] text-ink-muted">
         Colour compares each price against the others in its row — green is the best of these books. Points can differ by book; check the number next to the price.
       </p>
     </details>
@@ -291,7 +291,7 @@ export function GameLineBlock({
         {score ? (
           <LiveScoreBar liveScore={score} livePeriod={period} awayLabel={away} homeLabel={home} />
         ) : null}
-        <p className="text-[11px] text-ink-faint">No lines from this source for this game.</p>
+        <p className="text-[11px] text-ink-muted">No lines from this source for this game.</p>
       </div>
     );
   }
@@ -309,7 +309,7 @@ export function GameLineBlock({
           {line.moneyline ? (
             <StatCell label={`Moneyline · ${away} / ${home}`}>
               <OddsValue price={line.moneyline.away} />
-              <span className="text-sm text-ink-faint">/</span>
+              <span className="text-sm text-ink-muted">/</span>
               <OddsValue price={line.moneyline.home} />
             </StatCell>
           ) : null}
@@ -339,7 +339,7 @@ export function GameLineBlock({
           </StatCell>
         </div>
       ) : (
-        <p className="text-[11px] text-ink-faint">No priced markets for this game yet.</p>
+        <p className="text-[11px] text-ink-muted">No priced markets for this game yet.</p>
       )}
 
       <BookmakerBreakdown
@@ -349,7 +349,7 @@ export function GameLineBlock({
         homeLabel={home}
       />
 
-      <p className="mt-2 text-[10px] text-ink-faint">
+      <p className="mt-2 text-[10px] text-ink-muted">
         {sourceLabel(line.source)}
         {line.headlineBook
           ? ` · showing ${line.headlineBook}`
@@ -395,16 +395,16 @@ export function OddsStatusPanel({ result }: { result: UnifiedLinesResult }) {
         <p className="text-xs text-ink-muted">
           Game lines{' '}
           {formatStamp(result.fetchedAt) ? `as of ${formatStamp(result.fetchedAt)}` : 'unavailable'}
-          {result.fromCache ? <span className="text-ink-faint"> (cached)</span> : null}
+          {result.fromCache ? <span className="text-ink-muted"> (cached)</span> : null}
         </p>
         {credits != null ? (
-          <p className={`text-[11px] font-medium tabular-nums ${low ? 'text-warn' : 'text-ink-faint'}`}>
+          <p className={`text-[11px] font-medium tabular-nums ${low ? 'text-warn' : 'text-ink-muted'}`}>
             {credits} credits left this month
           </p>
         ) : null}
       </div>
 
-      <p className="mt-0.5 text-[10px] text-ink-faint">
+      <p className="mt-0.5 text-[10px] text-ink-muted">
         {feeds || 'no active feed'}
         {scraperOn ? ` · ${liveMatches} live match${liveMatches === 1 ? '' : 'es'} from OddsPortal` : ''}
       </p>
@@ -414,7 +414,7 @@ export function OddsStatusPanel({ result }: { result: UnifiedLinesResult }) {
           Only {credits} credits remain — lines are no longer auto-refreshing. Showing the last fetch.
         </p>
       ) : result.nextRefreshAt ? (
-        <p className="mt-0.5 text-[10px] text-ink-faint">
+        <p className="mt-0.5 text-[10px] text-ink-muted">
           Next refresh after {formatClock(result.nextRefreshAt)}. Lines move — treat these as a reference
           point, not a live price.
         </p>
@@ -463,7 +463,7 @@ export function TodaysLine({
         {projected.moneyline ? (
           <StatCell label={`ML · ${away} / ${home}`}>
             <OddsValue price={projected.moneyline.away} />
-            <span className="text-sm text-ink-faint">/</span>
+            <span className="text-sm text-ink-muted">/</span>
             <OddsValue price={projected.moneyline.home} />
           </StatCell>
         ) : null}
@@ -476,7 +476,7 @@ export function TodaysLine({
         ) : null}
       </div>
 
-      <p className="mt-2 text-[10px] text-ink-faint">
+      <p className="mt-2 text-[10px] text-ink-muted">
         {sourceLabel(projected.source)} · best of {projected.bookCount} book
         {projected.bookCount === 1 ? '' : 's'}
         {projected.moneyline?.book ? ` · ${projected.moneyline.book}` : ''}

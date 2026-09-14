@@ -98,7 +98,7 @@ function splitStatusLine(statusLine: string | undefined): [string, string | null
 
 function MiniHoleCell({ value }: { value: number | null }) {
   if (value === null) {
-    return <td className="bg-ink/5 px-1 py-1 text-center align-middle text-ink-faint">–</td>;
+    return <td className="bg-ink/5 px-1 py-1 text-center align-middle text-ink-muted">–</td>;
   }
   const gradient = gradientCardStyle(golfScoreHeat(value));
   return (
@@ -223,7 +223,7 @@ function HeroSpotlightCarousel({ cards }: { cards: SpotlightCard[] }) {
       >
         <SubjectAvatar name={card.name} headshotUrl={card.headshotUrl} fallbackUrl={card.flagUrl} size={30} />
         <div className="min-w-0 text-left">
-          <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">{card.label}</div>
+          <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{card.label}</div>
           <div className="max-w-[110px] truncate text-[12.5px] font-semibold text-ink">{card.name}</div>
         </div>
         <div className={`shrink-0 text-[18px] font-bold tabular-nums ${toneClass}`}>{card.value}</div>
@@ -280,13 +280,13 @@ function TournamentHeroCard({
             <span>{formatDateRange(event.startDate, event.endDate)}</span>
             {courseName ? (
               <>
-                <span className="text-ink-faint">·</span>
+                <span className="text-ink-muted">·</span>
                 <span>{courseName}</span>
               </>
             ) : null}
             {weather ? (
               <>
-                <span className="text-ink-faint">·</span>
+                <span className="text-ink-muted">·</span>
                 <span>
                   {weather.tempF != null ? `${weather.tempF}°F · ` : ''}
                   Wind {weather.windMph} mph {weather.windDir}
@@ -325,7 +325,7 @@ function buildMoveMap(candidates: PickCandidate[], currentRound: number | null, 
 }
 
 function MoveCell({ move }: { move: number | null }) {
-  if (move == null || move === 0) return <td className="px-1.5 py-1.5 text-center text-[11px] tabular-nums text-ink-faint">–</td>;
+  if (move == null || move === 0) return <td className="px-1.5 py-1.5 text-center text-[11px] tabular-nums text-ink-muted">–</td>;
   return (
     <td className={`px-1.5 py-1.5 text-center text-[11px] font-bold tabular-nums ${move > 0 ? 'text-good' : 'text-bad'}`}>
       {move > 0 ? `▲${move}` : `▼${Math.abs(move)}`}
@@ -434,7 +434,7 @@ function LiveLeaderboardCard({
                     {avg != null ? relDisplayAvg(avg) : '–'}
                   </td>
                   <td className="px-1.5 py-1.5 text-center text-[13px] font-bold tabular-nums text-ink">{score}</td>
-                  <td className="px-1.5 py-1.5 text-center text-[10.5px] tabular-nums text-ink-faint">
+                  <td className="px-1.5 py-1.5 text-center text-[10.5px] tabular-nums text-ink-muted">
                     {thru != null && thru > 0 ? `thru ${thru}` : (formatTeeTime(teeTime) ?? '–')}
                   </td>
                   <MoveCell move={moveMap.get(s.subjectId) ?? null} />
@@ -554,13 +554,13 @@ function AllMatchupsCard({
                       .map((m) => `${m.name}${m.position ? ` (${m.position})` : ''}`)
                       .join(' · ')}
                   </span>
-                  <span className="shrink-0 flex items-center gap-2 text-[11px] tabular-nums text-ink-faint">
+                  <span className="shrink-0 flex items-center gap-2 text-[11px] tabular-nums text-ink-muted">
                     {g.members.map((m) => splitStatusLine(m.totalScore)[0]).join(' / ')}
                   </span>
-                  <span className="shrink-0 w-24 text-right text-[10.5px] tabular-nums text-ink-faint">
+                  <span className="shrink-0 w-24 text-right text-[10.5px] tabular-nums text-ink-muted">
                     {g.thru != null && g.thru > 0 ? `thru ${g.thru}` : (formatTeeTime(g.teeTime) ?? '–')}
                   </span>
-                  <span className={`shrink-0 text-ink-faint transition-transform ${isOpen ? 'rotate-180' : ''}`}>▾</span>
+                  <span className={`shrink-0 text-ink-muted transition-transform ${isOpen ? 'rotate-180' : ''}`}>▾</span>
                 </button>
 
                 {isOpen ? (
@@ -653,7 +653,7 @@ function MoverRow({ row }: { row: MoverRowData }) {
         <span className="shrink-0 font-bold tabular-nums" style={{ color: gradient.valueColor }}>
           {relDisplay(row.total)}
         </span>
-        <span className="w-14 shrink-0 text-right text-[10px] text-ink-faint">thru {row.thru}</span>
+        <span className="w-14 shrink-0 text-right text-[10px] text-ink-muted">thru {row.thru}</span>
       </Link>
     </li>
   );
@@ -809,7 +809,7 @@ function buildHoleScoringDistribution(candidates: PickCandidate[]): HoleDistribu
 
 function DifficultyCell({ value }: { value: number | null }) {
   if (value === null) {
-    return <td className="bg-ink/5 px-1 py-1 text-center align-middle text-ink-faint">–</td>;
+    return <td className="bg-ink/5 px-1 py-1 text-center align-middle text-ink-muted">–</td>;
   }
   const gradient = gradientCardStyle(golfScoreHeat(value));
   return (
@@ -864,7 +864,7 @@ function CourseInsightsCard({
                 <th key={h.hole} className="p-0 text-center font-semibold text-ink-muted">
                   <Link href={`/golf?market=hole-${h.hole}`} className="block px-1 py-1 transition-colors hover:bg-accent-soft hover:text-masters" title={`See every golfer's hole ${h.hole} market in Scan`}>
                     {h.hole}
-                    {h.par != null ? <div className="text-[8px] font-normal text-ink-faint">Par {h.par}</div> : null}
+                    {h.par != null ? <div className="text-[8px] font-normal text-ink-muted">Par {h.par}</div> : null}
                   </Link>
                 </th>
               ))}
@@ -901,7 +901,7 @@ function CourseInsightsCard({
       <div className="grid grid-cols-1 gap-4 border-t border-line-soft p-3 sm:grid-cols-2">
         <div>
           <div className="mb-1.5 flex items-center justify-between gap-2">
-            <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Scoring distribution ({distribution.total} holes played)</span>
+            <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Scoring distribution ({distribution.total} holes played)</span>
             <button type="button" onClick={() => setShowByHole((v) => !v)} className="shrink-0 text-[10px] font-medium text-masters hover:underline">
               {showByHole ? 'Hide by hole' : 'By hole'}
             </button>
@@ -911,7 +911,7 @@ function CourseInsightsCard({
             <div className="bg-warn" style={{ width: `${distribution.parPct}%` }} title={`Par: ${distribution.parPct.toFixed(1)}%`} />
             <div className="bg-bad" style={{ width: `${distribution.bogeyPct}%` }} title={`Bogey or worse: ${distribution.bogeyPct.toFixed(1)}%`} />
           </div>
-          <div className="mt-1.5 flex justify-between text-[10px] text-ink-faint">
+          <div className="mt-1.5 flex justify-between text-[10px] text-ink-muted">
             <span>Birdie {distribution.birdiePct.toFixed(0)}%</span>
             <span>Par {distribution.parPct.toFixed(0)}%</span>
             <span>Bogey {distribution.bogeyPct.toFixed(0)}%</span>
@@ -930,7 +930,7 @@ function CourseInsightsCard({
                       <div className="bg-warn" style={{ height: `${h.parPct}%` }} />
                       <div className="bg-bad" style={{ height: `${h.bogeyPct}%` }} />
                     </div>
-                    <span className="text-[8px] text-ink-faint">{h.hole}</span>
+                    <span className="text-[8px] text-ink-muted">{h.hole}</span>
                   </div>
                 ))}
               </div>
@@ -939,13 +939,13 @@ function CourseInsightsCard({
         </div>
 
         <div>
-          <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-faint">
+          <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">
             Season SG leaders in this field{fieldStats ? ` · ${new Date().getFullYear()}` : ''}
           </div>
           {fieldStatsLoading && sgLeaders.length === 0 ? (
-            <p className="text-[11px] text-ink-faint">Loading…</p>
+            <p className="text-[11px] text-ink-muted">Loading…</p>
           ) : sgLeaders.length === 0 ? (
-            <p className="text-[11px] text-ink-faint">No strokes-gained data matched to this field yet.</p>
+            <p className="text-[11px] text-ink-muted">No strokes-gained data matched to this field yet.</p>
           ) : (
             <ul className="space-y-1">
               {sgLeaders.map((g) => (
@@ -962,7 +962,7 @@ function CourseInsightsCard({
               ))}
             </ul>
           )}
-          <p className="mt-1 text-[9px] text-ink-faint">Season strokes-gained, not tournament-specific — pgatour.com official stats.</p>
+          <p className="mt-1 text-[9px] text-ink-muted">Season strokes-gained, not tournament-specific — pgatour.com official stats.</p>
         </div>
       </div>
     </section>
@@ -995,10 +995,10 @@ function CourseOverviewCard({
             <span className="font-semibold text-ink">{courseName}</span>
             {par != null ? <span className="text-ink-muted">Par {par}</span> : null}
             {yards != null ? <span className="text-ink-muted">{yards.toLocaleString()} yds</span> : null}
-            {city ? <span className="text-ink-faint">{city}</span> : null}
+            {city ? <span className="text-ink-muted">{city}</span> : null}
           </div>
         ) : (
-          <p className="mb-2 text-[12px] text-ink-faint">No course record for this event yet.</p>
+          <p className="mb-2 text-[12px] text-ink-muted">No course record for this event yet.</p>
         )}
 
         {holes.length > 0 ? (
@@ -1026,7 +1026,7 @@ function CourseOverviewCard({
                 {holes.some((h) => h.totalYards) ? (
                   <tr>
                     {holes.map((h) => (
-                      <td key={h.number} className="px-1.5 py-1 text-center tabular-nums text-ink-faint">
+                      <td key={h.number} className="px-1.5 py-1 text-center tabular-nums text-ink-muted">
                         {h.totalYards ?? '—'}
                       </td>
                     ))}
@@ -1098,7 +1098,7 @@ function WeatherCard({ weather }: { weather: WeatherContext }) {
           <span className="text-ink-muted">{weather.rainPct}% rain</span>
           {weather.tempF != null ? <span className="text-ink-muted">{weather.tempF}°F</span> : null}
         </div>
-        <p className="mt-1 text-[10px] text-ink-faint">{weather.approximateLocation ? 'City-level estimate' : 'Course-exact'}</p>
+        <p className="mt-1 text-[10px] text-ink-muted">{weather.approximateLocation ? 'City-level estimate' : 'Course-exact'}</p>
 
         {forecast.length > 1 ? (
           <div className="mt-3 flex gap-2 overflow-x-auto lb-scroll-x">
@@ -1114,12 +1114,12 @@ function WeatherCard({ weather }: { weather: WeatherContext }) {
                     isSelected ? 'border-masters bg-accent-soft' : 'border-line hover:border-masters/30'
                   }`}
                 >
-                  <span className="text-[9px] font-semibold text-ink-faint">
+                  <span className="text-[9px] font-semibold text-ink-muted">
                     {i === 0 ? 'Now' : new Date(f.time).toLocaleTimeString('en-US', { hour: 'numeric' })}
                   </span>
                   <WeatherIcon windMph={f.windMph} rainPct={f.rainPct} size={16} className={isSelected ? 'text-masters' : 'text-ink-muted'} />
                   <span className="text-[12px] font-bold tabular-nums text-ink">{f.windMph}</span>
-                  <span className="text-[8px] text-ink-faint">{f.windDir} mph</span>
+                  <span className="text-[8px] text-ink-muted">{f.windDir} mph</span>
                   {f.tempF != null ? <span className="text-[10px] text-ink-muted">{f.tempF}°</span> : null}
                 </button>
               );
@@ -1202,7 +1202,7 @@ function TopStandingsCard({ subjects }: { subjects: SubjectSummary[] }) {
           );
         })}
       </ul>
-      <p className="border-t border-line-soft px-3 py-1.5 text-[9px] text-ink-faint">
+      <p className="border-t border-line-soft px-3 py-1.5 text-[9px] text-ink-muted">
         Current standing, not a priced line — no free Top 5/Top 10 odds source exists yet.
       </p>
     </section>
@@ -1248,7 +1248,7 @@ function OurLinesCard({
               <SubjectAvatar name={c.subjectName} headshotUrl={typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined} size={20} />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium text-ink">{c.subjectName}</div>
-                <div className="truncate text-[10px] text-ink-faint">
+                <div className="truncate text-[10px] text-ink-muted">
                   {c.categoryLabel} · {c.sampleSize}/{c.sampleSize} rounds
                 </div>
               </div>
@@ -1377,7 +1377,7 @@ export function GolfScheduleView({
                       </span>
                       <StatusChip status={e.status} completed={e.completed} />
                     </span>
-                    <span className="text-[10px] text-ink-faint">{formatDateRange(e.startDate, e.endDate)}</span>
+                    <span className="text-[10px] text-ink-muted">{formatDateRange(e.startDate, e.endDate)}</span>
                   </button>
                 </li>
               );
@@ -1396,9 +1396,9 @@ export function GolfScheduleView({
                 <h2 className="text-[15px] font-semibold text-ink">{active.name}</h2>
                 <StatusChip status={active.status} completed={active.completed} />
               </div>
-              <p className="text-[12px] text-ink-faint">{formatDateRange(active.startDate, active.endDate)}</p>
+              <p className="text-[12px] text-ink-muted">{formatDateRange(active.startDate, active.endDate)}</p>
             </div>
-            <div className="lb-card p-3 text-[12px] text-ink-faint">
+            <div className="lb-card p-3 text-[12px] text-ink-muted">
               Detailed course info, leaderboard, matchups and weather are only available once this becomes the active
               tournament — ESPN&apos;s schedule feed doesn&apos;t carry that detail for future or past weeks. Check back
               when {active.name} is live.

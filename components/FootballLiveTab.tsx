@@ -56,7 +56,7 @@ function TeamStatTables({ teamAbbr, teamLogoUrl, players }: { teamAbbr: string; 
         />
       ) : null}
       {passers.length === 0 && rushers.length === 0 && receivers.length === 0 ? (
-        <p className="px-[26px] py-3 text-dense" style={{ color: C.faintMono }}>No box score yet.</p>
+        <p className="px-[26px] py-3 text-label" style={{ color: C.faintMono }}>No box score yet.</p>
       ) : null}
     </div>
   );
@@ -120,9 +120,9 @@ export function FootballLiveTab({
 
       <div style={{ borderBottom: `1px solid ${C.divider}` }}>
         <div className="flex items-center justify-between px-[26px] pt-4">
-          <div className="text-meta tracking-[.1em]" style={{ color: C.faintMono }}>FULL BOX SCORE — EVERY PLAYER</div>
+          <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>FULL BOX SCORE — EVERY PLAYER</div>
           {!isFinal ? (
-            <div className="flex items-center gap-1.5 text-meta font-medium" style={{ color: C.olive }}>
+            <div className="flex items-center gap-1.5 text-label font-medium" style={{ color: C.olive }}>
               <span className="h-1.5 w-1.5 animate-lb-pulse rounded-full" style={{ backgroundColor: C.olive }} />
               UPDATING LIVE
             </div>
@@ -137,9 +137,9 @@ export function FootballLiveTab({
       <LivePeriodStrip title="BY QUARTER" segments={segments} currentIndex={data.period} />
 
       <div className="px-[26px] py-3" style={{ borderBottom: `1px solid ${C.divider}` }}>
-        <div className="mb-1 text-meta tracking-[.1em]" style={{ color: C.faintMono }}>SCORING PLAYS</div>
+        <div className="mb-1 text-label tracking-[.1em]" style={{ color: C.faintMono }}>SCORING PLAYS</div>
         {data.scoringPlays.length === 0 ? (
-          <p className="py-1 text-dense" style={{ color: C.faintMono }}>No scores yet.</p>
+          <p className="py-1 text-label" style={{ color: C.faintMono }}>No scores yet.</p>
         ) : (
           data.scoringPlays.map((p, i) => (
             <LiveEventRow
@@ -155,7 +155,7 @@ export function FootballLiveTab({
 
       {(data.teamStats.away.length > 0 || data.teamStats.home.length > 0) ? (
         <div className="px-[26px] py-3">
-          <div className="mb-2 flex items-center justify-between text-micro uppercase tracking-wide" style={{ color: C.faintMono }}>
+          <div className="mb-2 flex items-center justify-between text-overline uppercase tracking-wide" style={{ color: C.faintMono }}>
             <span>{away.abbr}</span>
             <span>Team stats</span>
             <span>{home.abbr}</span>
@@ -164,9 +164,9 @@ export function FootballLiveTab({
             const awayStat = data.teamStats.away[i];
             if (!awayStat) return null;
             return (
-              <div key={homeStat.label} className="flex items-center justify-between py-1 text-dense" style={{ borderTop: i > 0 ? `1px solid ${C.divider}` : undefined }}>
+              <div key={homeStat.label} className="flex items-center justify-between py-1 text-label" style={{ borderTop: i > 0 ? `1px solid ${C.divider}` : undefined }}>
                 <span className="w-16 text-left tabular-nums font-medium" style={{ color: C.ink }}>{awayStat.displayValue}</span>
-                <span className="text-label uppercase tracking-wide" style={{ color: C.faintMono }}>{homeStat.label}</span>
+                <span className="text-overline uppercase tracking-wide" style={{ color: C.faintMono }}>{homeStat.label}</span>
                 <span className="w-16 text-right tabular-nums font-medium" style={{ color: C.ink }}>{homeStat.displayValue}</span>
               </div>
             );

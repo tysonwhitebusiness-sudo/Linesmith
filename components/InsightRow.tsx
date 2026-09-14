@@ -113,7 +113,7 @@ export function InsightIcon({ kind, className = '' }: { kind: InsightKind; class
       fill="currentColor"
       role="img"
       aria-label={INSIGHT_LABEL[kind]}
-      className={`shrink-0 text-ink-faint ${className}`}
+      className={`shrink-0 text-ink-muted ${className}`}
     >
       <IconPath kind={kind} />
     </svg>
@@ -180,7 +180,7 @@ export function SplitInsightRow({ split, className = '' }: { split: SplitEvidenc
     return (
       <li className={`flex items-center gap-1.5 text-[12px] leading-tight ${className}`}>
         <InsightIcon kind={split.kind} />
-        <span className="min-w-0 flex-1 truncate text-ink-faint">{split.label}</span>
+        <span className="min-w-0 flex-1 truncate text-ink-muted">{split.label}</span>
         <InsufficientMark available={split.stat.available} required={split.stat.required} />
       </li>
     );

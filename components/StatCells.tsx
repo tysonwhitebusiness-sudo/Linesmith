@@ -37,7 +37,7 @@ export function InsufficientMark({
 }) {
   const reason = `Not enough games — ${available} of the ${required} this window needs`;
   return (
-    <span className={`text-ink-faint ${className}`} title={reason}>
+    <span className={`text-ink-muted ${className}`} title={reason}>
       <span aria-hidden>–</span>
       <span className="sr-only">{reason}</span>
     </span>
@@ -129,7 +129,7 @@ export function HitRateBadge({ stat, size = 'sm' }: { stat: WindowedStat; size?:
   if (stat.status === 'insufficient') {
     return (
       <span
-        className={`inline-flex items-baseline rounded-md border border-line text-ink-faint ${
+        className={`inline-flex items-baseline rounded-md border border-line text-ink-muted ${
           size === 'md' ? 'px-2 py-1 text-sm' : 'px-1.5 py-0.5 text-xs'
         }`}
       >
@@ -179,7 +179,7 @@ export function DeltaCell({
   if (!delta) {
     return (
       <span className={`flex flex-col ${alignment} ${className}`}>
-        <span className="text-ink-faint" title="No filled window to compare against the line">
+        <span className="text-ink-muted" title="No filled window to compare against the line">
           <span aria-hidden>–</span>
           <span className="sr-only">No filled window to compare against the line</span>
         </span>
@@ -225,7 +225,7 @@ function signed(value: number, places: number): string {
  */
 export function StreakCell({ streak, className = '' }: { streak: number; className?: string }) {
   if (streak === 0) {
-    return <span className={`text-ink-faint ${className}`}>–</span>;
+    return <span className={`text-ink-muted ${className}`}>–</span>;
   }
 
   const magnitude = Math.min(Math.abs(streak), 5) / 5;
@@ -296,7 +296,7 @@ export function GradientRateCell({
         {formatRate(stat.rate)}
       </div>
       {showFraction ? (
-        <div className="text-[8px] leading-none tabular-nums text-ink-faint">
+        <div className="text-[8px] leading-none tabular-nums text-ink-muted">
           {stat.hits}/{stat.total}
         </div>
       ) : null}
@@ -310,7 +310,7 @@ export function GradientRateCell({
 /** Dense-table counterpart to `StreakCell` — driven off a pseudo-rate so a hot streak reads green and a cold one reads red on the same ramp as every other gradient cell. */
 export function GradientStreakCell({ streak, className = '' }: { streak: number; className?: string }) {
   if (streak === 0) {
-    return <td className={`bg-ink/5 px-1.5 py-1 text-center align-middle text-ink-faint ${className}`}>–</td>;
+    return <td className={`bg-ink/5 px-1.5 py-1 text-center align-middle text-ink-muted ${className}`}>–</td>;
   }
 
   const magnitude = Math.min(Math.abs(streak), 5) / 5;
@@ -340,7 +340,7 @@ export function GradientStreakCell({ streak, className = '' }: { streak: number;
 /** Dense-table counterpart to `DeltaCell` — green gradient above the line, red below it, plain neutral text when the two are indistinguishable. */
 export function GradientDeltaCell({ delta, className = '' }: { delta: Delta | null; className?: string }) {
   if (!delta) {
-    return <td className={`bg-ink/5 px-1.5 py-1 text-center align-middle text-ink-faint ${className}`}>–</td>;
+    return <td className={`bg-ink/5 px-1.5 py-1 text-center align-middle text-ink-muted ${className}`}>–</td>;
   }
 
   // Arithmetic noise, not a real lean either way — amber, same as a coin-flip
@@ -368,7 +368,7 @@ export function GradientDeltaCell({ delta, className = '' }: { delta: Delta | nu
         {signed(delta.absolute, 1)}
       </div>
       {delta.percent !== null ? (
-        <div className="text-[8px] leading-none tabular-nums text-ink-faint">{signed(delta.percent * 100, 1)}%</div>
+        <div className="text-[8px] leading-none tabular-nums text-ink-muted">{signed(delta.percent * 100, 1)}%</div>
       ) : null}
       <div className="mx-auto mt-0.5 h-[3px] w-full max-w-[64px] rounded-full bg-black/[0.06]">
         <div

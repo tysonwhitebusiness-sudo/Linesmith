@@ -167,7 +167,7 @@ function GolfRoundCell({ entry }: { entry: HistoryEntry | undefined }) {
   const relativeToPar = entry ? entryValue(entry) : null;
   if (entry == null || relativeToPar === null) {
     return (
-      <td className="bg-ink/5 px-1.5 py-1 text-center align-middle text-ink-faint" title="Not played yet">
+      <td className="bg-ink/5 px-1.5 py-1 text-center align-middle text-ink-muted" title="Not played yet">
         –
       </td>
     );
@@ -303,7 +303,7 @@ function RankChip({ rank }: { rank: number | null }) {
   }
   return (
     <span
-      className="inline-flex h-5 w-6 shrink-0 items-center justify-center text-[11px] tabular-nums text-ink-faint"
+      className="inline-flex h-5 w-6 shrink-0 items-center justify-center text-[11px] tabular-nums text-ink-muted"
       title={`Ranked #${rank}`}
     >
       {rank}
@@ -702,7 +702,7 @@ export function ScanTable({
                           }}
                           aria-pressed={watched}
                           aria-label={watched ? `Unfollow ${candidate.subjectName}` : `Follow ${candidate.subjectName}`}
-                          className={`shrink-0 text-[13px] leading-none ${watched ? 'text-masters' : 'text-ink-faint hover:text-ink-muted'}`}
+                          className={`shrink-0 text-[13px] leading-none ${watched ? 'text-masters' : 'text-ink-muted hover:text-ink-muted'}`}
                         >
                           {watched ? '★' : '☆'}
                         </button>
@@ -723,12 +723,12 @@ export function ScanTable({
                               TeamLogo's built-in text fallback would just
                               duplicate it on a failed image load. */}
                           <TeamLogo logoUrl={str(m.teamLogoUrl)} size={12} />
-                          <span className="shrink-0 text-[10px] text-ink-faint">
+                          <span className="shrink-0 text-[10px] text-ink-muted">
                             {[str(m.team), str(m.position)].filter(Boolean).join(' ')}
                           </span>
                         </div>
                         {m.isHome === false || str(m.opponent) ? (
-                          <div className="flex items-center gap-1 truncate text-[10px] text-ink-faint">
+                          <div className="flex items-center gap-1 truncate text-[10px] text-ink-muted">
                             {m.isHome ? 'vs' : '@'}
                             <TeamLogo logoUrl={str(m.opponentLogoUrl)} size={12} />
                             {str(m.opponent) ?? ''}
@@ -754,7 +754,7 @@ export function ScanTable({
                         ) : null}
                         {/* Round Score rows only — who this golfer is grouped with today (inferred from shared tee time, see adapter.ts's buildGroups). Skipped on Hole Props rows, which are already dense with 18 rows per golfer. */}
                         {sport === 'golf' && candidate.dimension === 'round-score' && Array.isArray(m.groupedWith) && m.groupedWith.length > 0 ? (
-                          <div className="truncate text-[10px] text-ink-faint">
+                          <div className="truncate text-[10px] text-ink-muted">
                             w/ {(m.groupedWith as Array<{ name: string }>).map((g) => g.name).join(', ')}
                           </div>
                         ) : null}
@@ -769,7 +769,7 @@ export function ScanTable({
 
                       {/* Hole — blank for round-score rows, which price the whole round rather than one hole. */}
                       <td className="px-2 py-1 text-center tabular-nums text-[11px] text-ink-muted">
-                        {holeNumberOf(candidate.dimension) ?? <span className="text-ink-faint">—</span>}
+                        {holeNumberOf(candidate.dimension) ?? <span className="text-ink-muted">—</span>}
                       </td>
 
                       <OddsCell row={row} candidate={candidate} onAdd={onAdd} pending={oddsPending} />
@@ -794,7 +794,7 @@ export function ScanTable({
                             );
                           }
                           const teeTime = formatTeeTime(typeof m.teeTime === 'string' ? m.teeTime : null);
-                          return teeTime ?? <span className="text-ink-faint">—</span>;
+                          return teeTime ?? <span className="text-ink-muted">—</span>;
                         })()}
                       </td>
 
@@ -850,7 +850,7 @@ export function ScanTable({
                             {row.dvp}
                           </span>
                         ) : (
-                          <span className="text-[10px] text-ink-faint">N/A</span>
+                          <span className="text-[10px] text-ink-muted">N/A</span>
                         )}
                       </td>
 
@@ -866,7 +866,7 @@ export function ScanTable({
                             <span className="text-[13px] font-semibold tabular-nums text-ink">
                               {row.projection.projection.toFixed(2)}
                             </span>
-                            <span className="text-[10px] text-ink-faint">{row.projection.unit}</span>
+                            <span className="text-[10px] text-ink-muted">{row.projection.unit}</span>
                           </span>
                         ) : (
                           <span title="No model projection for this market yet — showing the trailing 10-game average instead.">
@@ -888,7 +888,7 @@ export function ScanTable({
                           (() => {
                             const c = confidenceOf(row.projection.sampleSize);
                             const tone =
-                              c === 'high' ? 'text-ink' : c === 'medium' ? 'text-ink-muted' : 'text-ink-faint';
+                              c === 'high' ? 'text-ink' : c === 'medium' ? 'text-ink-muted' : 'text-ink-muted';
                             return (
                               <span
                                 className={`text-[10px] ${tone}`}
@@ -899,7 +899,7 @@ export function ScanTable({
                             );
                           })()
                         ) : (
-                          <span className="text-[10px] text-ink-faint">—</span>
+                          <span className="text-[10px] text-ink-muted">—</span>
                         )}
                       </td>
 
@@ -991,7 +991,7 @@ export function ScanTable({
 }
 
 function SortMark({ active, dir }: { active: boolean; dir: SortDir }) {
-  if (!active) return <span className="text-[8px] text-ink-faint/40">↕</span>;
+  if (!active) return <span className="text-[8px] text-ink-muted/40">↕</span>;
   return (
     <span className="text-[8px] text-masters" aria-hidden>
       {dir === 'asc' ? '▲' : '▼'}

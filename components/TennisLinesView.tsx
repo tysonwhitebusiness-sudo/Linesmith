@@ -56,7 +56,7 @@ export function TennisLinesView({
         </div>
       ) : null}
 
-      {eventName ? <p className="px-1 text-[11px] text-ink-faint">{eventName} · Tournament Winner</p> : null}
+      {eventName ? <p className="px-1 text-[11px] text-ink-muted">{eventName} · Tournament Winner</p> : null}
 
       <div className="lb-card divide-y divide-line overflow-hidden">
         {lines.map((line) => {
@@ -72,7 +72,7 @@ export function TennisLinesView({
                   <BookLogo bookId={line.bestPrice.bookmaker} size={11} withLabel />
                 </div>
               ) : (
-                <span className="text-[11px] text-ink-faint">—</span>
+                <span className="text-[11px] text-ink-muted">—</span>
               )}
             </div>
           );

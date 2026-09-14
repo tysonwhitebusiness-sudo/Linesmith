@@ -66,7 +66,7 @@ export function PercentileRing({
       ) : null}
       {percentile != null ? (
         <span
-          className="absolute -bottom-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-card px-1 text-micro font-bold text-white"
+          className="absolute -bottom-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-card px-1 text-label font-bold text-white"
           style={{ backgroundColor: color }}
           title={`${percentile}th percentile overall`}
         >
@@ -99,10 +99,10 @@ export function ValuePercentile({
 }) {
   return (
     <span className={`flex items-center gap-1.5 tabular-nums ${reverse ? 'flex-row-reverse' : ''}`}>
-      <span className="text-dense font-semibold">{value}</span>
+      <span className="text-label font-semibold">{value}</span>
       {percentile != null ? (
         <span
-          className="rounded px-1 py-[1px] text-micro font-semibold transition-shadow"
+          className="rounded px-1 py-[1px] text-label font-semibold transition-shadow"
           style={{
             color,
             backgroundColor: `${color}1A`,

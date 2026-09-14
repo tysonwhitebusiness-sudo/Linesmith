@@ -13,7 +13,7 @@ export function SegmentedToggle<T extends string>({
   options,
   value,
   onChange,
-  className = 'rounded-full border border-line p-0.5 text-meta',
+  className = 'rounded-full border border-line p-0.5 text-label',
   buttonClassName = 'rounded-full px-2.5 py-1',
   gliderClassName = 'rounded-full',
 }: {

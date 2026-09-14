@@ -58,7 +58,7 @@ export function PercentileRail({
         role="img"
         aria-label={`${label}: no ranked stats`}
       >
-        <p className="text-[11px] text-ink-faint">No league-ranked stats for this sport yet.</p>
+        <p className="text-[11px] text-ink-muted">No league-ranked stats for this sport yet.</p>
       </div>
     );
   }

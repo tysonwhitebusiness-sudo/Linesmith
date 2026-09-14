@@ -226,7 +226,7 @@ export function TopBar({
           // interval and on tab focus, so a phone loses no data by it.
           title={lastFetched ? `Last updated ${lastFetched.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : 'Refresh'}
           aria-label="Refresh data"
-          className="hidden items-center gap-1 rounded-md px-1.5 py-1.5 text-[11px] text-ink-faint transition-colors hover:bg-ink/5 hover:text-ink-muted sm:flex"
+          className="hidden items-center gap-1 rounded-md px-1.5 py-1.5 text-[11px] text-ink-muted transition-colors hover:bg-ink/5 hover:text-ink-muted sm:flex"
         >
           <svg
             viewBox="0 0 16 16"

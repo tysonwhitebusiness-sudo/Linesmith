@@ -58,7 +58,7 @@ function SoloRow({ row }: { row: MatchupStatRow }) {
   const p = pctOf(row);
   return (
     <div className="flex items-center gap-2">
-      <span className="w-20 shrink-0 truncate text-[9px] uppercase tracking-wide text-ink-faint">{row.label}</span>
+      <span className="w-20 shrink-0 truncate text-[9px] uppercase tracking-wide text-ink-muted">{row.label}</span>
       <MotionBar percentile={p} />
       <motion.span
         key={row.value}
@@ -68,7 +68,7 @@ function SoloRow({ row }: { row: MatchupStatRow }) {
       >
         {row.value.toFixed(row.decimals)}
       </motion.span>
-      <span className="w-16 shrink-0 truncate text-right text-[9px] text-ink-faint">
+      <span className="w-16 shrink-0 truncate text-right text-[9px] text-ink-muted">
         {row.rank != null && row.poolSize != null ? `${ordinal(row.rank)} of ${row.poolSize}` : '—'}
       </span>
     </div>
@@ -86,7 +86,7 @@ function TwoSidedRow({ label, subject, opponent }: { label: string; subject?: Ma
         <MotionBar percentile={op} />
         <span className="text-[10.5px] font-semibold tabular-nums">{opponent ? opponent.value.toFixed(opponent.decimals) : '—'}</span>
       </div>
-      <div className="text-center text-[9px] uppercase tracking-wide text-ink-faint">{label}</div>
+      <div className="text-center text-[9px] uppercase tracking-wide text-ink-muted">{label}</div>
     </div>
   );
 }
@@ -110,7 +110,7 @@ function GroupGrid({
   const soloOpponent = opponentRows.filter((r) => !sharedSet.has(r.key));
 
   if (subjectRows.length === 0 && opponentRows.length === 0) {
-    return <p className="py-4 text-center text-[11px] text-ink-faint">No stats available for this group yet.</p>;
+    return <p className="py-4 text-center text-[11px] text-ink-muted">No stats available for this group yet.</p>;
   }
 
   return (
@@ -163,7 +163,7 @@ function ProfileRadar({
   opponentLabel: string;
 }) {
   if (keys.length < 3) {
-    return <p className="py-4 text-center text-[11px] text-ink-faint">Not enough ranked stats for a profile view yet — see the Stat grid tab instead.</p>;
+    return <p className="py-4 text-center text-[11px] text-ink-muted">Not enough ranked stats for a profile view yet — see the Stat grid tab instead.</p>;
   }
   const size = 220;
   const center = size / 2;
@@ -188,7 +188,7 @@ function ProfileRadar({
           const lx = center + (maxR + 16) * Math.cos(a);
           const ly = center + (maxR + 16) * Math.sin(a);
           return (
-            <text key={k.key} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" className="fill-current text-ink-faint" style={{ fontSize: 9 }}>
+            <text key={k.key} x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" className="fill-current text-ink-muted" style={{ fontSize: 9 }}>
               {k.label}
             </text>
           );
@@ -354,7 +354,7 @@ export function MatchupExplorerCard({ data }: { data: MatchupExplorerData }) {
             <SubjectAvatar name={data.subjectName} headshotUrl={data.subjectHeadshotUrl ?? undefined} fallbackUrl={data.subjectFallbackUrl ?? undefined} size={40} />
             <div className="min-w-0">
               <TeamLogo logoUrl={data.subjectTeamLogoUrl ?? undefined} abbreviation={data.subjectTeamAbbr ?? undefined} size={13} />
-              <div className="truncate text-emphasis font-bold leading-tight text-ink">{data.subjectName}</div>
+              <div className="truncate text-body font-bold leading-tight text-ink">{data.subjectName}</div>
             </div>
           </div>
           <AnimatePresence mode="wait">
@@ -371,14 +371,14 @@ export function MatchupExplorerCard({ data }: { data: MatchupExplorerData }) {
                 <div className="flex flex-row-reverse items-center">
                   <TeamLogo logoUrl={opponent?.logoUrl ?? undefined} abbreviation={opponent?.abbr} size={13} />
                 </div>
-                <div className="truncate text-emphasis font-bold leading-tight text-ink">{opponent?.name ?? 'Opponent'}</div>
-                {opponent?.hand ? <div className="text-label text-ink-faint">{opponent.hand}HP</div> : null}
+                <div className="truncate text-body font-bold leading-tight text-ink">{opponent?.name ?? 'Opponent'}</div>
+                {opponent?.hand ? <div className="text-label text-ink-muted">{opponent.hand}HP</div> : null}
               </div>
             </motion.div>
           </AnimatePresence>
         </div>
 
-        {data.contextLine ? <p className="mt-1.5 truncate text-[10px] text-ink-faint">{data.contextLine}</p> : null}
+        {data.contextLine ? <p className="mt-1.5 truncate text-[10px] text-ink-muted">{data.contextLine}</p> : null}
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
           <SegmentedToggle
@@ -411,7 +411,7 @@ export function MatchupExplorerCard({ data }: { data: MatchupExplorerData }) {
             {view === 'overview' ? (
               <div className="py-2 text-[12px]">
                 {headline == null ? (
-                  <p className="text-ink-faint">Not enough ranked data yet for a headline stat.</p>
+                  <p className="text-ink-muted">Not enough ranked data yet for a headline stat.</p>
                 ) : headline.edge >= EDGE_FLOOR ? (
                   <p>
                     Biggest edge: <span className="font-semibold text-ink">{headline.label}</span> — {opponent?.name ?? 'this opponent'} ranks{' '}
@@ -421,7 +421,7 @@ export function MatchupExplorerCard({ data }: { data: MatchupExplorerData }) {
                     at allowing it.
                   </p>
                 ) : (
-                  <p className="text-ink-faint">No clear edge against this opponent.</p>
+                  <p className="text-ink-muted">No clear edge against this opponent.</p>
                 )}
               </div>
             ) : view === 'grid' ? (

@@ -86,9 +86,9 @@ export function FilterSelect({
   return (
     <span className={`relative ${FILTER_BASE} ${fullWidth ? 'w-full justify-between' : ''} ${active ? FILTER_ACTIVE : FILTER_INACTIVE}`}>
       {icon}
-      <span className="text-ink-faint">{label}</span>
+      <span className="text-ink-muted">{label}</span>
       <span className="max-w-[120px] truncate font-semibold">{current?.label ?? value}</span>
-      <ChevronDownIcon className="text-ink-faint" />
+      <ChevronDownIcon className="text-ink-muted" />
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -124,7 +124,7 @@ export function FilterSearchInput({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="w-28 bg-transparent text-[13px] outline-none placeholder:text-ink-faint"
+        className="w-28 bg-transparent text-[13px] outline-none placeholder:text-ink-muted"
       />
     </span>
   );
@@ -142,7 +142,7 @@ export function FilterSearchBox({
 }) {
   return (
     <span className="flex max-w-[280px] flex-1 items-center gap-2 rounded-xl border border-line bg-card px-3.5 py-2.5">
-      <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-ink-faint">
+      <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0 text-ink-muted">
         <circle cx="11" cy="11" r="7" />
         <line x1="21" y1="21" x2="16.65" y2="16.65" />
       </svg>
@@ -152,7 +152,7 @@ export function FilterSearchBox({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="w-full bg-transparent text-[13px] outline-none placeholder:text-ink-faint"
+        className="w-full bg-transparent text-[13px] outline-none placeholder:text-ink-muted"
       />
     </span>
   );
@@ -183,9 +183,9 @@ export function FilterOddsRangeInputs({
         onChange={(e) => onChange(parse(e.target.value), max)}
         placeholder="-300"
         aria-label="Minimum odds"
-        className="w-16 rounded-lg border border-line bg-transparent px-2 py-1.5 text-[13px] outline-none placeholder:text-ink-faint focus:border-masters"
+        className="w-16 rounded-lg border border-line bg-transparent px-2 py-1.5 text-[13px] outline-none placeholder:text-ink-muted focus:border-masters"
       />
-      <span className="text-ink-faint">to</span>
+      <span className="text-ink-muted">to</span>
       <input
         type="number"
         inputMode="numeric"
@@ -193,7 +193,7 @@ export function FilterOddsRangeInputs({
         onChange={(e) => onChange(min, parse(e.target.value))}
         placeholder="+300"
         aria-label="Maximum odds"
-        className="w-16 rounded-lg border border-line bg-transparent px-2 py-1.5 text-[13px] outline-none placeholder:text-ink-faint focus:border-masters"
+        className="w-16 rounded-lg border border-line bg-transparent px-2 py-1.5 text-[13px] outline-none placeholder:text-ink-muted focus:border-masters"
       />
     </div>
   );
@@ -317,7 +317,7 @@ export function FilterDropdown({
           {icon}
           <span>{label}</span>
           {badge != null && badge !== '' && badge !== 0 ? <span className="font-semibold">{badge}</span> : null}
-          <ChevronDownIcon className={`text-ink-faint ${fullWidth ? 'ml-auto' : ''}`} />
+          <ChevronDownIcon className={`text-ink-muted ${fullWidth ? 'ml-auto' : ''}`} />
         </button>
       )}
 
@@ -354,7 +354,7 @@ export function CheckboxList({
   onClear,
 }: CheckboxListProps) {
   if (options.length === 0) {
-    return <p className="py-2 text-center text-[11px] text-ink-faint">Nothing to filter</p>;
+    return <p className="py-2 text-center text-[11px] text-ink-muted">Nothing to filter</p>;
   }
 
   return (

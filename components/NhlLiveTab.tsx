@@ -106,7 +106,7 @@ export function NhlLiveTab({
 
           {data.goals.length > 0 ? (
             <div className="px-[26px] py-3" style={{ borderBottom: `1px solid ${C.divider}` }}>
-              <div className="mb-1 text-meta tracking-[.1em]" style={{ color: C.faintMono }}>SCORING</div>
+              <div className="mb-1 text-label tracking-[.1em]" style={{ color: C.faintMono }}>SCORING</div>
               {data.goals.map((g, i) => (
                 <LiveEventRow
                   key={i}
@@ -121,13 +121,13 @@ export function NhlLiveTab({
 
           {data.penalties.length > 0 ? (
             <div className="px-[26px] py-3">
-              <div className="mb-1 text-meta tracking-[.1em]" style={{ color: C.faintMono }}>PENALTIES</div>
+              <div className="mb-1 text-label tracking-[.1em]" style={{ color: C.faintMono }}>PENALTIES</div>
               {data.penalties.map((p, i) => (
                 <LiveEventRow key={i} primary={p.teamAbbr} secondary={`${p.description} · P${p.period}`} />
               ))}
             </div>
           ) : (
-            <p className="px-[26px] pb-3 text-dense" style={{ color: C.faintMono }}>No penalties.</p>
+            <p className="px-[26px] pb-3 text-label" style={{ color: C.faintMono }}>No penalties.</p>
           )}
         </>
       ) : (

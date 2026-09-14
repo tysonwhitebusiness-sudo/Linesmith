@@ -108,7 +108,7 @@ export function NflPlayerVsDefenseCard({
             <SubjectAvatar name={playerName} headshotUrl={playerHeadshotUrl} fallbackUrl={playerFallbackUrl} size={40} />
             <div className="min-w-0">
               <TeamLogo logoUrl={playerTeamLogoUrl} abbreviation={playerTeamAbbr} size={13} />
-              <div className="truncate text-emphasis font-bold leading-tight text-ink">{playerName}</div>
+              <div className="truncate text-body font-bold leading-tight text-ink">{playerName}</div>
             </div>
           </div>
           <div className="flex min-w-0 flex-row-reverse items-center gap-2.5 text-right">
@@ -117,21 +117,21 @@ export function NflPlayerVsDefenseCard({
               <div className="flex flex-row-reverse items-center">
                 <TeamLogo logoUrl={opponentLogoUrl} abbreviation={opponentAbbr} size={13} />
               </div>
-              <div className="truncate text-emphasis font-bold leading-tight text-ink">{opponentAbbr} defense</div>
+              <div className="truncate text-body font-bold leading-tight text-ink">{opponentAbbr} defense</div>
             </div>
           </div>
         </div>
 
         <div className="mt-3 border-t border-line pt-3">
-          <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-faint">Season stats</div>
+          <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Season stats</div>
           <div className="grid grid-cols-1 gap-x-5 gap-y-1.5 sm:grid-cols-2">
             <div className="space-y-1.5">
               {ownRows.length === 0 ? (
-                <p className="text-[11px] text-ink-faint">No season stats yet.</p>
+                <p className="text-[11px] text-ink-muted">No season stats yet.</p>
               ) : (
                 ownRows.map((r) => (
                   <div key={r.label} className="flex items-center justify-between gap-2 text-[11px]">
-                    <span className="text-ink-faint">{r.label}</span>
+                    <span className="text-ink-muted">{r.label}</span>
                     <span className="font-semibold tabular-nums">{r.value.toFixed(r.decimals)}</span>
                   </div>
                 ))

@@ -50,7 +50,7 @@ function MatchupCell({ row }: { row: GamePickView }) {
     <div className="flex min-w-0 items-center gap-1.5">
       <TeamBadge teamId={row.awayTeamId} />
       <span className="max-w-[96px] truncate font-medium">{row.awayTeamName ?? '?'}</span>
-      <span className="text-ink-faint">@</span>
+      <span className="text-ink-muted">@</span>
       <TeamBadge teamId={row.homeTeamId} />
       <span className="max-w-[96px] truncate font-medium">{row.homeTeamName ?? '?'}</span>
     </div>
@@ -74,7 +74,7 @@ function ResultBadge({ outcome }: { outcome: 'win' | 'loss' | null }) {
     );
   }
   return (
-    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-ink/10 text-ink-faint" title="Not graded yet">
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-ink/10 text-ink-muted" title="Not graded yet">
       –
     </span>
   );
@@ -100,7 +100,7 @@ function PickRow({
           {label}
           {price != null ? <span className="ml-1 font-normal text-ink-muted tabular-nums">{formatAmerican(price)}</span> : null}
         </div>
-        {pct != null ? <div className="text-[11px] text-ink-faint">{pct}% conf</div> : null}
+        {pct != null ? <div className="text-[11px] text-ink-muted">{pct}% conf</div> : null}
       </div>
       <ResultBadge outcome={outcome} />
     </div>
@@ -108,7 +108,7 @@ function PickRow({
 }
 
 function MoneylineCell({ pick, commenceTime }: { pick: GamePickView['moneyline']; commenceTime: string | null }) {
-  if (!pick.pickTeamName) return <span className="text-ink-faint">—</span>;
+  if (!pick.pickTeamName) return <span className="text-ink-muted">—</span>;
   return (
     <PickRow
       label={pick.pickTeamName}
@@ -124,7 +124,7 @@ function MoneylineCell({ pick, commenceTime }: { pick: GamePickView['moneyline']
 }
 
 function TotalCell({ pick, commenceTime }: { pick: GamePickView['total']; commenceTime: string | null }) {
-  if (!pick.pickSide) return <span className="text-ink-faint">—</span>;
+  if (!pick.pickSide) return <span className="text-ink-muted">—</span>;
   return (
     <PickRow
       label={`${pick.pickSide === 'over' ? 'Over' : 'Under'} ${pick.line ?? ''}`}
@@ -157,10 +157,10 @@ function TodaysPicksTable({ rows }: { rows: GamePickView[] }) {
       <table className="w-full border-collapse text-[13px]">
         <thead>
           <tr className="border-b border-line text-left">
-            <th className="py-2 pr-3 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">Matchup</th>
-            <th className="py-2 pr-3 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">Time</th>
-            <th className="py-2 pr-3 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">Moneyline</th>
-            <th className="py-2 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">O/U</th>
+            <th className="py-2 pr-3 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">Matchup</th>
+            <th className="py-2 pr-3 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">Time</th>
+            <th className="py-2 pr-3 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">Moneyline</th>
+            <th className="py-2 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">O/U</th>
           </tr>
         </thead>
         <tbody>
@@ -184,7 +184,7 @@ function TodaysPicksTable({ rows }: { rows: GamePickView[] }) {
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="w-full py-3 text-center text-[12px] text-ink-faint hover:text-ink"
+          className="w-full py-3 text-center text-[12px] text-ink-muted hover:text-ink"
         >
           +{remaining} more game{remaining === 1 ? '' : 's'} today
         </button>
@@ -192,7 +192,7 @@ function TodaysPicksTable({ rows }: { rows: GamePickView[] }) {
         <button
           type="button"
           onClick={() => setExpanded(false)}
-          className="w-full py-3 text-center text-[12px] text-ink-faint hover:text-ink"
+          className="w-full py-3 text-center text-[12px] text-ink-muted hover:text-ink"
         >
           Show fewer
         </button>
@@ -354,7 +354,7 @@ function PropPickListCard({ row }: { row: PropPickView }) {
     <div className="lb-card flex items-center justify-between gap-3 p-3">
       <div className="min-w-0">
         <div className="truncate text-[13px] font-semibold">{row.subjectName}</div>
-        <div className="text-[11px] text-ink-faint">
+        <div className="text-[11px] text-ink-muted">
           {dimensionLabel(row.dimension)}
           {row.line != null ? ` ${row.line}+` : ''}
           {row.price != null ? <span className="ml-1.5 tabular-nums text-ink-muted">{formatAmerican(row.price)}</span> : null}
@@ -503,7 +503,7 @@ export function TodaysPicksButton({ sport, date }: { sport: Sport; date?: string
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
               <div>
                 <h2 className="text-sm font-semibold">Today&apos;s Picks</h2>
-                <p className="text-[11px] text-ink-faint">
+                <p className="text-[11px] text-ink-muted">
                   <BankrollLine bankroll={bankroll} />
                 </p>
               </div>
@@ -511,7 +511,7 @@ export function TodaysPicksButton({ sport, date }: { sport: Sport; date?: string
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close"
-                className="rounded-full p-1.5 text-ink-faint hover:bg-ink/5 hover:text-ink"
+                className="rounded-full p-1.5 text-ink-muted hover:bg-ink/5 hover:text-ink"
               >
                 ✕
               </button>
@@ -524,7 +524,7 @@ export function TodaysPicksButton({ sport, date }: { sport: Sport; date?: string
                   type="button"
                   onClick={() => setTab(t)}
                   className={`rounded-t-md px-3 py-1.5 text-[12px] font-semibold transition-colors ${
-                    tab === t ? 'border-b-2 border-masters text-masters' : 'text-ink-faint hover:text-ink'
+                    tab === t ? 'border-b-2 border-masters text-masters' : 'text-ink-muted hover:text-ink'
                   }`}
                 >
                   {TAB_LABEL[t]}
@@ -535,7 +535,7 @@ export function TodaysPicksButton({ sport, date }: { sport: Sport; date?: string
                   type="button"
                   onClick={() => setTab('rareMarkets')}
                   className={`rounded-t-md px-3 py-1.5 text-[12px] font-semibold transition-colors ${
-                    tab === 'rareMarkets' ? 'border-b-2 border-masters text-masters' : 'text-ink-faint hover:text-ink'
+                    tab === 'rareMarkets' ? 'border-b-2 border-masters text-masters' : 'text-ink-muted hover:text-ink'
                   }`}
                 >
                   {isMlb ? 'Top 5 Home Runs' : rareMarketLabel}

@@ -330,7 +330,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
                   standings row is `0-0`, and calling that "Last season" would
                   state a result that never happened. */}
               {data.seasonStatus && !data.seasonStatus.started && data.record && hasPlayedGames(data.record) ? (
-                <p className="text-[11px] text-ink-faint">
+                <p className="text-[11px] text-ink-muted">
                   {data.recordSeasonLabel ?? 'Last season'}: {formatTeamRecord(data.record)}
                   {data.record.standing ? ` · ${data.record.standing}` : ''}
                 </p>
@@ -357,10 +357,10 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
             >
               {data.nextGame.isHome ? 'vs' : '@'} <TeamLogo logoUrl={data.nextGame.opponentLogoUrl} abbreviation={data.nextGame.opponentAbbr} size={18} />{' '}
               {data.nextGame.opponentAbbr}
-              <span className="text-ink-faint">→</span>
+              <span className="text-ink-muted">→</span>
             </Link>
           ) : (
-            <span className="text-[12px] text-ink-faint">No game today</span>
+            <span className="text-[12px] text-ink-muted">No game today</span>
           )}
         </div>
       </section>
@@ -425,11 +425,11 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
             {lineOffset === 0 && active.odds ? (
               <OddsChip price={active.odds.americanOdds} source={active.odds.source} capturedAt={active.odds.capturedAt} size="md" />
             ) : lineOffset !== 0 ? (
-              <span className="text-[11px] text-ink-faint">No price recorded at this alternate line.</span>
+              <span className="text-[11px] text-ink-muted">No price recorded at this alternate line.</span>
             ) : onAdd ? (
               <GetOddsButton onClick={() => onAdd(active)} label="Add to slip to record a price" />
             ) : (
-              <span className="text-[11px] text-ink-faint">No price yet.</span>
+              <span className="text-[11px] text-ink-muted">No price yet.</span>
             )}
 
             {lineOffset !== 0 ? (
@@ -568,9 +568,9 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
                         <td className="px-2 py-1 text-right tabular-nums font-semibold">{g.resultText}</td>
                         <td className="px-2 py-1 text-right">
                           {g.cleared == null ? (
-                            <span className="text-ink-faint">—</span>
+                            <span className="text-ink-muted">—</span>
                           ) : (
-                            <span className={g.cleared ? 'text-good' : 'text-ink-faint'}>{g.cleared ? '✓' : '✗'}</span>
+                            <span className={g.cleared ? 'text-good' : 'text-ink-muted'}>{g.cleared ? '✓' : '✗'}</span>
                           )}
                         </td>
                       </tr>
@@ -597,7 +597,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
             <SegmentedToggle
               value={activeMatchupTab ?? ''}
               onChange={setMatchupTab}
-              className="rounded-lg border border-line bg-card p-0.5 text-meta"
+              className="rounded-lg border border-line bg-card p-0.5 text-label"
               buttonClassName="rounded-md px-2 py-0.5"
               gliderClassName="rounded-md"
               options={data.matchup.tabs.map((t) => ({ key: t.key, label: t.label }))}
@@ -687,7 +687,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
             {data.statGroups.map((g) => (
               <div key={g.label}>
                 <div className="mb-1.5 flex items-center gap-1.5">
-                  <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-faint">{g.label}</span>
+                  <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{g.label}</span>
                   {g.grade ? <GradeChip label="" grade={g.grade} /> : null}
                 </div>
                 <div className="space-y-1.5">
@@ -746,7 +746,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
                           </span>
                         ) : null}
                       </div>
-                      <p className="truncate text-[11px] text-ink-faint">{p.seasonLineText}</p>
+                      <p className="truncate text-[11px] text-ink-muted">{p.seasonLineText}</p>
                     </div>
                   </>
                 );
@@ -874,7 +874,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
                   <span className="font-semibold text-ink">O {data.nextGame.total.overPrice}</span>
                 </div>
               ) : null}
-              {!data.nextGame.moneyline && data.nextGame.total?.point == null ? <p className="text-ink-faint">No line yet.</p> : null}
+              {!data.nextGame.moneyline && data.nextGame.total?.point == null ? <p className="text-ink-muted">No line yet.</p> : null}
             </div>
           </section>
         ) : null}
@@ -899,7 +899,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
                 ))}
               </ul>
             ) : (
-              <p className="p-3 text-[12px] text-ink-faint">No candidates yet.</p>
+              <p className="p-3 text-[12px] text-ink-muted">No candidates yet.</p>
             )}
           </section>
         ) : null}
@@ -914,18 +914,18 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
                     <TeamLogo logoUrl={data.nextGame.isHome ? data.nextGame.opponentLogoUrl : team.logoUrl} size={14} />{' '}
                     {data.nextGame.isHome ? data.nextGame.opponentAbbr : team.abbr}
                   </span>
-                  <span className="text-ink-faint">@</span>
+                  <span className="text-ink-muted">@</span>
                   <span className="flex items-center gap-1.5 text-ink-muted">
                     {data.nextGame.isHome ? team.abbr : data.nextGame.opponentAbbr}{' '}
                     <TeamLogo logoUrl={data.nextGame.isHome ? team.logoUrl : data.nextGame.opponentLogoUrl} size={14} />
                   </span>
                 </div>
-                <p className="text-ink-faint">{data.nextGame.startTime}</p>
-                {!active?.odds ? <p className="text-ink-faint">No live line yet.</p> : null}
+                <p className="text-ink-muted">{data.nextGame.startTime}</p>
+                {!active?.odds ? <p className="text-ink-muted">No live line yet.</p> : null}
               </div>
             </section>
           ) : (
-            <section className="lb-card p-3 text-[11px] text-ink-faint">No upcoming game scheduled.</section>
+            <section className="lb-card p-3 text-[11px] text-ink-muted">No upcoming game scheduled.</section>
           )
         ) : null}
 
@@ -936,7 +936,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
             <div className="space-y-3 p-3">
               {data.advancedStats.map((g) => (
                 <div key={g.label}>
-                  <h4 className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-faint">{g.label}</h4>
+                  <h4 className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{g.label}</h4>
                   <div className="space-y-1.5">
                     {g.stats.map((s) => (
                       <StatRankRow key={s.key} stat={s} />
@@ -957,7 +957,7 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
                   <span className="flex items-center gap-1.5 text-ink-muted">
                     <TeamLogo logoUrl={sport === 'nfl' ? nflTeamLogoUrl(g.opponentAbbr) : undefined} abbreviation={g.opponentAbbr} size={14} /> {g.isHome ? 'vs' : '@'} {g.opponentAbbr}
                   </span>
-                  <span className={`font-semibold ${g.win ? 'text-good' : g.isDraw ? 'text-ink-muted' : 'text-ink-faint'}`}>
+                  <span className={`font-semibold ${g.win ? 'text-good' : g.isDraw ? 'text-ink-muted' : 'text-ink-muted'}`}>
                     {g.isDraw ? `D ${g.scoreFor}-${g.scoreAgainst}` : g.win != null ? `${g.win ? 'W' : 'L'} ${g.scoreFor}-${g.scoreAgainst}` : '—'}
                   </span>
                 </li>

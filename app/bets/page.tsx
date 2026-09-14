@@ -89,19 +89,19 @@ function LiveProgress({ bet }: { bet: BetRow }) {
     return (
       <p className="text-[13px] tabular-nums" style={{ color: heatInk(bet.status === 'won' ? 1 : bet.status === 'lost' ? 0 : 0.5) }}>
         Final: {bet.actualValue ?? '—'}
-        {bet.line != null ? <span className="text-ink-faint"> / {bet.line}</span> : null}
+        {bet.line != null ? <span className="text-ink-muted"> / {bet.line}</span> : null}
       </p>
     );
   }
 
-  if (!enabled) return <p className="text-[12px] text-ink-faint">Not started</p>;
-  if (live.loading && !live.data) return <p className="text-[12px] text-ink-faint">Loading…</p>;
-  if (!live.data) return <p className="text-[12px] text-ink-faint">Not started</p>;
+  if (!enabled) return <p className="text-[12px] text-ink-muted">Not started</p>;
+  if (live.loading && !live.data) return <p className="text-[12px] text-ink-muted">Loading…</p>;
+  if (!live.data) return <p className="text-[12px] text-ink-muted">Not started</p>;
 
   const value = bet.dimension && live.data.liveValues ? live.data.liveValues[bet.dimension] : undefined;
   if (bet.line == null || value == null) {
     return (
-      <p className="text-[12px] text-ink-faint tabular-nums">
+      <p className="text-[12px] text-ink-muted tabular-nums">
         {live.data.inning.ordinal} {live.data.inning.half} · {live.data.score.away}–{live.data.score.home}
       </p>
     );
@@ -111,7 +111,7 @@ function LiveProgress({ bet }: { bet: BetRow }) {
   const tone = state === 'ahead' ? 1 : state === 'behind' ? 0 : 0.5;
   return (
     <p className="text-[13px] font-semibold tabular-nums" style={{ color: heatInk(tone) }}>
-      {value} <span className="font-normal text-ink-faint">/ {directionMark(bet.category) === 'U' ? 'U' : 'O'}{bet.line}</span>
+      {value} <span className="font-normal text-ink-muted">/ {directionMark(bet.category) === 'U' ? 'U' : 'O'}{bet.line}</span>
     </p>
   );
 }
@@ -213,7 +213,7 @@ export default function LiveBetsPage() {
                     {bet.team || bet.opponent ? (
                       <div className="mt-0.5 flex items-center gap-1">
                         <TeamLogo logoUrl={mlbTeamLogoUrl(bet.teamId ?? undefined)} abbreviation={bet.team ?? undefined} size={13} />
-                        <span className="text-[10px] text-ink-faint">vs</span>
+                        <span className="text-[10px] text-ink-muted">vs</span>
                         <TeamLogo logoUrl={mlbTeamLogoUrl(bet.opponentId ?? undefined)} abbreviation={bet.opponent ?? undefined} size={13} />
                       </div>
                     ) : null}

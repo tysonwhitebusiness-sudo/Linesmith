@@ -45,7 +45,7 @@ function GolfStatRangeRow({
 
   return (
     <div className="py-1">
-      <div className="flex items-center justify-between text-[9px] uppercase tracking-wide text-ink-faint">
+      <div className="flex items-center justify-between text-[9px] uppercase tracking-wide text-ink-muted">
         <span className="truncate">{stat.label}</span>
         <span className="shrink-0 tabular-nums" title={`${stat.rank} of ${stat.poolSize}`}>
           {ordinal(stat.rank)} of {stat.poolSize}
@@ -59,7 +59,7 @@ function GolfStatRangeRow({
       <div className="relative mx-2.5 h-3">
         {avgPct != null ? (
           <span
-            className="absolute -translate-x-1/2 whitespace-nowrap text-[8px] font-medium text-ink-faint"
+            className="absolute -translate-x-1/2 whitespace-nowrap text-[8px] font-medium text-ink-muted"
             style={{ left: `${avgPct}%` }}
           >
             {stat.avgValue!.toFixed(stat.decimals)}
@@ -92,7 +92,7 @@ function GolfStatRangeRow({
         </span>
       </div>
 
-      <div className="mx-2.5 mt-0.5 flex items-center justify-between text-[9px] tabular-nums text-ink-faint">
+      <div className="mx-2.5 mt-0.5 flex items-center justify-between text-[9px] tabular-nums text-ink-muted">
         <span>{stat.worstValue.toFixed(stat.decimals)}</span>
         <span>{stat.bestValue.toFixed(stat.decimals)}</span>
       </div>
@@ -164,7 +164,7 @@ export function GolfPlayerStatsCard({
   return (
     <div className="lb-card lb-card-interactive space-y-3 p-3">
       <div>
-        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
           Advanced stats · {new Date().getFullYear()} season
         </h3>
 
@@ -180,7 +180,7 @@ export function GolfPlayerStatsCard({
         </div>
 
         {tabRows.length === 0 ? (
-          <p className="text-[12px] text-ink-faint">
+          <p className="text-[12px] text-ink-muted">
             {loading ? 'Loading…' : 'No PGA Tour data matched to this golfer yet for this category.'}
           </p>
         ) : (
@@ -191,21 +191,21 @@ export function GolfPlayerStatsCard({
           </div>
         )}
 
-        <p className="mt-2 text-[10px] text-ink-faint">Source: pgatour.com official stats, not a documented API — see /diagnostics for freshness.</p>
+        <p className="mt-2 text-[10px] text-ink-muted">Source: pgatour.com official stats, not a documented API — see /diagnostics for freshness.</p>
       </div>
 
       <div className="border-t border-line-soft pt-3">
-        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Recent tournaments</h3>
+        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Recent tournaments</h3>
         {recentEvents.length === 0 ? (
-          <p className="text-[12px] text-ink-faint">No tournament history found for this golfer this season.</p>
+          <p className="text-[12px] text-ink-muted">No tournament history found for this golfer this season.</p>
         ) : (
           <ul className="divide-y divide-line">
             {recentEvents.map((e) => (
               <li key={e.eventId} className="flex items-center justify-between py-1.5 text-[12px]">
                 <span className="min-w-0 truncate text-ink">{e.eventName}</span>
                 <span className="ml-2 flex shrink-0 items-center gap-2 tabular-nums">
-                  <span className={e.madeCut ? 'text-ink-muted' : 'text-ink-faint'}>{e.madeCut ? e.position : 'CUT'}</span>
-                  <span className="text-ink-faint">{e.scoreDisplay}</span>
+                  <span className={e.madeCut ? 'text-ink-muted' : 'text-ink-muted'}>{e.madeCut ? e.position : 'CUT'}</span>
+                  <span className="text-ink-muted">{e.scoreDisplay}</span>
                 </span>
               </li>
             ))}

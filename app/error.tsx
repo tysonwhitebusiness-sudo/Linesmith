@@ -36,7 +36,7 @@ export default function RouteError({ error, reset }: { error: Error & { digest?:
     <div className="flex min-h-[60vh] items-center justify-center px-4 py-16">
       <div className="lb-card w-full max-w-md p-6 text-center">
         <h1 className="text-title font-semibold text-ink">This page didn&apos;t load</h1>
-        <p className="mx-auto mt-2 max-w-[38ch] text-body text-ink-secondary">
+        <p className="mx-auto mt-2 max-w-[38ch] text-body-sm text-ink-secondary">
           Something went wrong fetching the data for this view. It&apos;s usually temporary — a
           cold cache on the first request will often work on a second try.
         </p>
@@ -45,22 +45,22 @@ export default function RouteError({ error, reset }: { error: Error & { digest?:
           <button
             type="button"
             onClick={reset}
-            className="lb-btn-primary rounded-full bg-masters px-4 py-2 text-emphasis font-medium text-white"
+            className="lb-btn-primary rounded-full bg-masters px-4 py-2 text-body font-medium text-white"
           >
             Try again
           </button>
           <button
             type="button"
             onClick={() => router.back()}
-            className="rounded-full border border-line px-4 py-2 text-emphasis font-medium text-ink-secondary transition-colors hover:bg-accent-soft"
+            className="rounded-full border border-line px-4 py-2 text-body font-medium text-ink-secondary transition-colors hover:bg-accent-soft"
           >
             Go back
           </button>
         </div>
 
         <details className="mt-5 text-left">
-          <summary className="cursor-pointer text-meta text-ink-muted">Technical details</summary>
-          <p className="mt-2 break-words rounded border border-line bg-surface-subtle p-2 font-mono text-meta text-ink-secondary">
+          <summary className="cursor-pointer text-label text-ink-muted">Technical details</summary>
+          <p className="mt-2 break-words rounded border border-line bg-surface-subtle p-2 font-mono text-label text-ink-secondary">
             {error.message || 'No message provided.'}
             {error.digest ? ` (${error.digest})` : ''}
           </p>

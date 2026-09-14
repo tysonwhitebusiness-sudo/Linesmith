@@ -186,7 +186,7 @@ function VenueForecastFooter({
           {venue ?? '—'}
         </div>
         {weather ? (
-          <div className="text-meta tracking-[.1em]" style={{ color: C.faintMono }}>
+          <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>
             GAME-TIME FORECAST
           </div>
         ) : null}
@@ -194,38 +194,38 @@ function VenueForecastFooter({
       {weather ? (
         <div className="grid grid-cols-2 gap-x-0 gap-y-3 px-[26px] pb-5 pt-3.5 sm:grid-cols-4">
           <div className="flex flex-col gap-1 pr-[18px]">
-            <div className="text-meta tracking-[.1em]" style={{ color: C.faintMono }}>TEMP</div>
-            <div className="text-display-sm font-bold tabular-nums tracking-[-.02em]" style={{ color: C.ink }}>
+            <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>TEMP</div>
+            <div className="text-title font-bold tabular-nums tracking-[-.02em]" style={{ color: C.ink }}>
               {weather.tempF != null ? `${Math.round(weather.tempF)}°F` : '—'}
             </div>
-            <div className="text-dense" style={{ color: C.recordText }}>{weatherNarrative ?? ''}</div>
+            <div className="text-label" style={{ color: C.recordText }}>{weatherNarrative ?? ''}</div>
           </div>
           <div className="flex flex-col gap-1 px-[18px]" style={{ borderLeft: `1px solid ${C.divider}` }}>
-            <div className="text-meta tracking-[.1em]" style={{ color: C.faintMono }}>WIND</div>
-            <div className="flex items-baseline gap-1.5 text-display-sm font-bold tabular-nums tracking-[-.02em]" style={{ color: C.ink }}>
+            <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>WIND</div>
+            <div className="flex items-baseline gap-1.5 text-title font-bold tabular-nums tracking-[-.02em]" style={{ color: C.ink }}>
               {weather.windMph != null ? (
                 <>
                   <svg viewBox="0 0 16 16" width={14} height={14} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ transform: bearing != null ? `rotate(${bearing}deg)` : undefined }}>
                     <path d="M8 1.5v13M8 1.5 4.5 6M8 1.5 11.5 6" />
                   </svg>
                   {weather.windMph}
-                  <span className="text-emphasis font-medium" style={{ color: C.tabInactiveText }}>mph {weather.windDir ?? ''}</span>
+                  <span className="text-body font-medium" style={{ color: C.tabInactiveText }}>mph {weather.windDir ?? ''}</span>
                 </>
               ) : '—'}
             </div>
-            <div className="text-dense" style={{ color: C.recordText }}>&nbsp;</div>
+            <div className="text-label" style={{ color: C.recordText }}>&nbsp;</div>
           </div>
           <div className="flex flex-col gap-1 px-[18px]" style={{ borderLeft: `1px solid ${C.divider}` }}>
-            <div className="text-meta tracking-[.1em]" style={{ color: C.faintMono }}>RAIN</div>
-            <div className="text-display-sm font-bold tabular-nums tracking-[-.02em]" style={{ color: C.ink }}>
+            <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>RAIN</div>
+            <div className="text-title font-bold tabular-nums tracking-[-.02em]" style={{ color: C.ink }}>
               {weather.rainPct != null ? `${Math.round(weather.rainPct)}%` : '—'}
             </div>
-            <div className="text-dense" style={{ color: C.recordText }}>&nbsp;</div>
+            <div className="text-label" style={{ color: C.recordText }}>&nbsp;</div>
           </div>
           {impact ? (
             <div className="flex flex-col gap-1.5 pl-[18px]" style={{ borderLeft: `1px solid ${C.divider}` }}>
-              <div className="text-meta tracking-[.1em]" style={{ color: C.faintMono }}>WEATHER IMPACT</div>
-              <div className="text-display-sm font-bold tracking-[-.02em]" style={{ color: C.ink }}>{impact.level}</div>
+              <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>WEATHER IMPACT</div>
+              <div className="text-title font-bold tracking-[-.02em]" style={{ color: C.ink }}>{impact.level}</div>
               <div className="flex gap-1">
                 {[0, 1, 2, 3].map((i) => (
                   <div key={i} className="h-1.5 w-7 rounded-full" style={{ backgroundColor: i < impact.segments ? C.olive : C.weatherEmpty }} />
@@ -265,13 +265,13 @@ function PickPanel({
       className="flex flex-col gap-2.5 px-[26px] py-[18px]"
       style={border === 'right' ? { borderRight: `1px solid ${C.divider}` } : undefined}
     >
-      <div className="text-meta tracking-[.12em]" style={{ color: C.faintMono }}>{label}</div>
+      <div className="text-label tracking-[.12em]" style={{ color: C.faintMono }}>{label}</div>
       {headline ? (
         <>
           <div className="flex items-center justify-between gap-3">
-            <div className="text-display-sm font-bold" style={{ color: C.ink }}>{headline}</div>
+            <div className="text-title font-bold" style={{ color: C.ink }}>{headline}</div>
             {percent != null ? (
-              <div className="rounded-lg px-2.5 py-1 text-body font-medium tabular-nums text-white" style={{ backgroundColor: C.olive }}>
+              <div className="rounded-lg px-2.5 py-1 text-body-sm font-medium tabular-nums text-white" style={{ backgroundColor: C.olive }}>
                 {percent}%
               </div>
             ) : null}
@@ -281,7 +281,7 @@ function PickPanel({
               <div className="h-full" style={{ width: `${percent}%`, backgroundColor: C.olive }} />
             </div>
           ) : null}
-          <div className="flex items-center gap-1.5 text-meta" style={{ color: C.faintMono }}>
+          <div className="flex items-center gap-1.5 text-label" style={{ color: C.faintMono }}>
             {locked ? (
               <span className="inline-flex items-center gap-1"><LockIcon size={9} /> Locked</span>
             ) : lockTime ? (
@@ -295,7 +295,7 @@ function PickPanel({
           </div>
         </>
       ) : (
-        <div className="text-body" style={{ color: C.tabInactiveText }}>—</div>
+        <div className="text-body-sm" style={{ color: C.tabInactiveText }}>—</div>
       )}
     </div>
   );
@@ -325,11 +325,11 @@ function TeamPanel({ side, team }: { side: 'away' | 'home'; team: GameHeroTeamPa
           <TeamLogo logoUrl={team.logoUrl} size={36} />
         </div>
         <div>
-          <div className="text-meta tracking-[.12em]" style={{ color: C.faintMono }}>{away ? 'AWAY' : 'HOME'}</div>
-          <div className="text-display-sm font-bold tracking-[-.02em]" style={{ color: C.ink }}>{team.name ?? team.abbr}</div>
+          <div className="text-label tracking-[.12em]" style={{ color: C.faintMono }}>{away ? 'AWAY' : 'HOME'}</div>
+          <div className="text-title font-bold tracking-[-.02em]" style={{ color: C.ink }}>{team.name ?? team.abbr}</div>
         </div>
       </div>
-      <div className="text-body" style={{ color: C.recordText }}>{meta || '—'}</div>
+      <div className="text-body-sm" style={{ color: C.recordText }}>{meta || '—'}</div>
       {team.renderBadges ? <div className={`flex flex-wrap gap-1 ${away ? '' : 'justify-end'}`}>{team.renderBadges()}</div> : null}
     </>
   );
@@ -377,13 +377,13 @@ function CenterStatus({
         className="flex flex-col items-center justify-center gap-1.5 px-[30px] py-7"
         style={{ borderLeft: `1px solid ${C.divider}`, borderRight: `1px solid ${C.divider}` }}
       >
-        <div className="text-display-lg font-extrabold leading-none tabular-nums tracking-[-.04em]" style={{ color: C.ink }}>
+        <div className="text-display font-extrabold leading-none tabular-nums tracking-[-.04em]" style={{ color: C.ink }}>
           {liveScore.away}–{liveScore.home}
         </div>
         {livePeriodLabel ? (
           <div className="flex items-center gap-1.5 rounded-full px-2.5 py-1" style={{ backgroundColor: C.statusPillBg }}>
             <span className="h-1.5 w-1.5 animate-lb-pulse rounded-full" style={{ backgroundColor: C.pulseDot }} />
-            <span className="text-meta font-medium uppercase tracking-[.1em]" style={{ color: C.pulseDot }}>{livePeriodLabel}</span>
+            <span className="text-label font-medium uppercase tracking-[.1em]" style={{ color: C.pulseDot }}>{livePeriodLabel}</span>
           </div>
         ) : null}
         {renderLiveExtra ? <div className="mt-0.5">{renderLiveExtra()}</div> : null}
@@ -396,10 +396,10 @@ function CenterStatus({
         className="flex flex-col items-center justify-center gap-1.5 px-[30px] py-7"
         style={{ borderLeft: `1px solid ${C.divider}`, borderRight: `1px solid ${C.divider}` }}
       >
-        <div className="text-display-lg font-extrabold leading-none tabular-nums tracking-[-.04em]" style={{ color: C.tabInactiveText }}>
+        <div className="text-display font-extrabold leading-none tabular-nums tracking-[-.04em]" style={{ color: C.tabInactiveText }}>
           {liveScore ? `${liveScore.away}–${liveScore.home}` : '—'}
         </div>
-        <div className="text-meta tracking-[.1em]" style={{ color: C.faintMono }}>FINAL</div>
+        <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>FINAL</div>
       </div>
     );
   }
@@ -408,8 +408,8 @@ function CenterStatus({
       className="flex flex-col items-center justify-center gap-1.5 px-[30px] py-7"
       style={{ borderLeft: `1px solid ${C.divider}`, borderRight: `1px solid ${C.divider}` }}
     >
-      <div className="text-display-sm font-bold" style={{ color: C.ink }}>{startTimeLabel}</div>
-      {startTimeCaption ? <div className="text-meta tracking-[.1em]" style={{ color: C.faintMono }}>{startTimeCaption}</div> : null}
+      <div className="text-title font-bold" style={{ color: C.ink }}>{startTimeLabel}</div>
+      {startTimeCaption ? <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>{startTimeCaption}</div> : null}
       {renderCenterPregameExtra ? <div className="mt-1">{renderCenterPregameExtra()}</div> : null}
     </div>
   );
@@ -565,9 +565,9 @@ function InningPlayRow({ play }: { play: LiveInningPlay }) {
   return (
     <div className="flex items-start justify-between gap-3 py-1.5" style={{ borderTop: `1px solid ${C.divider}` }}>
       <div className="min-w-0">
-        <span className="text-dense font-medium" style={{ color: C.ink }}>{play.batter}</span>
+        <span className="text-label font-medium" style={{ color: C.ink }}>{play.batter}</span>
         {play.description ? (
-          <span className="text-dense" style={{ color: C.recordText }}> — {play.description}</span>
+          <span className="text-label" style={{ color: C.recordText }}> — {play.description}</span>
         ) : null}
       </div>
       <span
@@ -597,18 +597,18 @@ function InningDetail({
     <div className="rounded-lg px-3 py-2" style={{ backgroundColor: C.tabTrack, border: `1px solid ${C.divider}` }}>
       {top.length > 0 ? (
         <div className="mb-2">
-          <div className="text-meta tracking-[.1em]" style={{ color: C.faintMono }}>TOP · {awayAbbr}</div>
+          <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>TOP · {awayAbbr}</div>
           {top.map((p, i) => <InningPlayRow key={i} play={p} />)}
         </div>
       ) : null}
       {bottom.length > 0 ? (
         <div>
-          <div className="text-meta tracking-[.1em]" style={{ color: C.faintMono }}>BOTTOM · {homeAbbr}</div>
+          <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>BOTTOM · {homeAbbr}</div>
           {bottom.map((p, i) => <InningPlayRow key={i} play={p} />)}
         </div>
       ) : null}
       {top.length === 0 && bottom.length === 0 ? (
-        <p className="py-1 text-dense" style={{ color: C.faintMono }}>No play-by-play available for this inning.</p>
+        <p className="py-1 text-label" style={{ color: C.faintMono }}>No play-by-play available for this inning.</p>
       ) : null}
     </div>
   );
@@ -640,10 +640,10 @@ function InningStrip({
   return (
     <div className="flex flex-col gap-2.5 px-[26px] py-4" style={{ borderBottom: `1px solid ${C.divider}` }}>
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-meta tracking-[.12em]" style={{ color: C.faintMono }}>
+        <div className="flex items-center gap-1.5 text-label tracking-[.12em]" style={{ color: C.faintMono }}>
           BY INNING · <TeamLogo logoUrl={mlbTeamLogoUrl(awayTeamId)} size={12} /> {awayAbbr} · <TeamLogo logoUrl={mlbTeamLogoUrl(homeTeamId)} size={12} /> {homeAbbr}
         </div>
-        <div className="text-dense tabular-nums" style={{ color: C.recordText }}>
+        <div className="text-label tabular-nums" style={{ color: C.recordText }}>
           R {totals.away.r}–{totals.home.r} · H {totals.away.h}–{totals.home.h} · E {totals.away.e}–{totals.home.e}
         </div>
       </div>
@@ -672,7 +672,7 @@ function InningStrip({
             >
               <div className="text-label tabular-nums" style={{ color: played ? (current || isExpanded ? C.olive : C.faintMono) : C.inningFuture }}>{n}</div>
               <div
-                className="text-body tabular-nums"
+                className="text-body-sm tabular-nums"
                 style={{ color: played ? (current || isExpanded ? C.olive : C.ink) : C.inningFuture, fontWeight: current || isExpanded ? 500 : 400 }}
               >
                 {played ? `${line?.away ?? '–'} · ${line?.home ?? '–'}` : '·'}
@@ -706,11 +706,11 @@ function CurrentPitcherSpotlight({
     >
       <SubjectAvatar name={pitcher.name} headshotUrl={mlbHeadshotUrl(pitcher.id)} size={44} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 text-meta tracking-[.1em]" style={{ color: C.faintMono }}>
+        <div className="flex items-center gap-1.5 text-label tracking-[.1em]" style={{ color: C.faintMono }}>
           <TeamLogo logoUrl={mlbTeamLogoUrl(teamId)} size={13} /> ON THE MOUND · {teamAbbr}
         </div>
         <div className="truncate text-title font-semibold" style={{ color: C.ink }}>{pitcher.name}</div>
-        <div className="text-dense tabular-nums" style={{ color: C.recordText }}>
+        <div className="text-label tabular-nums" style={{ color: C.recordText }}>
           {pitcher.ip} IP · {pitcher.h} H · {pitcher.r} R · {pitcher.k} K · {pitcher.pitches} P
         </div>
       </div>
@@ -731,11 +731,11 @@ function CurrentBatterSpotlight({
     <div className="flex items-center gap-3 px-[26px] py-4">
       <SubjectAvatar name={batter.name} headshotUrl={mlbHeadshotUrl(batter.id)} size={44} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5 text-meta tracking-[.1em]" style={{ color: C.faintMono }}>
+        <div className="flex items-center gap-1.5 text-label tracking-[.1em]" style={{ color: C.faintMono }}>
           <TeamLogo logoUrl={mlbTeamLogoUrl(teamId)} size={13} /> AT THE PLATE · {teamAbbr}
         </div>
         <div className="truncate text-title font-semibold" style={{ color: C.ink }}>{batter.name}</div>
-        <div className="text-dense tabular-nums" style={{ color: C.recordText }}>{batter.todayLine}</div>
+        <div className="text-label tabular-nums" style={{ color: C.recordText }}>{batter.todayLine}</div>
       </div>
     </div>
   );
@@ -747,15 +747,15 @@ function BoxScoreTable({ team, teamAbbr, teamId }: { team: BoxScoreTeam; teamAbb
       <div className="mb-2 flex items-center gap-2">
         <TeamLogo logoUrl={mlbTeamLogoUrl(teamId)} size={18} />
         <span className="text-title font-semibold" style={{ color: C.ink }}>{teamAbbr}</span>
-        <span className="ml-auto text-dense tabular-nums" style={{ color: C.recordText }}>
+        <span className="ml-auto text-label tabular-nums" style={{ color: C.recordText }}>
           R {team.totals.r} · H {team.totals.h} · E {team.totals.e}
         </span>
       </div>
       {team.batters.length === 0 ? (
-        <p className="py-1 text-dense" style={{ color: C.faintMono }}>No plate appearances yet.</p>
+        <p className="py-1 text-label" style={{ color: C.faintMono }}>No plate appearances yet.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-dense">
+          <table className="w-full text-label">
             <thead>
               <tr style={{ color: C.faintMono }}>
                 <th className="py-1 text-left font-medium">Batter</th>
@@ -793,9 +793,9 @@ function BoxScoreTable({ team, teamAbbr, teamId }: { team: BoxScoreTeam; teamAbb
 
       {team.pitchers.length > 0 ? (
         <>
-          <div className="mb-1 mt-3 text-meta tracking-[.1em]" style={{ color: C.faintMono }}>PITCHING</div>
+          <div className="mb-1 mt-3 text-label tracking-[.1em]" style={{ color: C.faintMono }}>PITCHING</div>
           <div className="overflow-x-auto">
-            <table className="w-full text-dense">
+            <table className="w-full text-label">
               <thead>
                 <tr style={{ color: C.faintMono }}>
                   <th className="py-1 text-left font-medium">Pitcher</th>
@@ -840,11 +840,11 @@ function ReliefRow({ pitcher, role }: { pitcher: RankedPitcherSummary; role: str
     <div className="flex items-center gap-2.5 py-1.5" style={{ borderTop: `1px solid ${C.divider}` }}>
       <SubjectAvatar name={pitcher.fullName} headshotUrl={mlbHeadshotUrl(pitcher.personId)} size={26} />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-dense font-medium" style={{ color: C.ink }}>{pitcher.fullName}</div>
-        <div className="text-meta" style={{ color: C.faintMono }}>{role}</div>
+        <div className="truncate text-label font-medium" style={{ color: C.ink }}>{pitcher.fullName}</div>
+        <div className="text-label" style={{ color: C.faintMono }}>{role}</div>
       </div>
       {pitcher.overallRank != null ? (
-        <span className="text-dense tabular-nums" style={{ color: C.recordText }}>#{pitcher.overallRank}</span>
+        <span className="text-label tabular-nums" style={{ color: C.recordText }}>#{pitcher.overallRank}</span>
       ) : null}
     </div>
   );
@@ -862,7 +862,7 @@ function BullpenTeam({ bullpen, teamAbbr, teamId }: { bullpen: TeamBullpen | und
       {(bullpen?.setup ?? []).map((p) => (
         <ReliefRow key={p.personId} pitcher={p} role="Setup" />
       ))}
-      {!hasAny ? <p className="py-2 text-dense" style={{ color: C.faintMono }}>No ranked relievers available.</p> : null}
+      {!hasAny ? <p className="py-2 text-label" style={{ color: C.faintMono }}>No ranked relievers available.</p> : null}
     </div>
   );
 }
@@ -882,7 +882,7 @@ function LiveSubTabBar({ subTab, onChange }: { subTab: LiveSubTab; onChange: (t:
           key={t.key}
           type="button"
           onClick={() => onChange(t.key)}
-          className="rounded-full px-3 py-1 text-dense font-medium tracking-[.04em]"
+          className="rounded-full px-3 py-1 text-label font-medium tracking-[.04em]"
           style={{
             backgroundColor: subTab === t.key ? C.tabActiveBg : 'transparent',
             color: subTab === t.key ? C.tabActiveText : C.tabInactiveText,
@@ -916,11 +916,11 @@ function LiveTeamPanel({
           <TeamLogo logoUrl={mlbTeamLogoUrl(teamId)} size={36} />
         </div>
         <div>
-          <div className="text-meta tracking-[.12em]" style={{ color: C.liveSecondary }}>{away ? 'AWAY' : 'HOME'}</div>
-          <div className="text-display-sm font-bold tracking-[-.02em] text-white">{name ?? abbr}</div>
+          <div className="text-label tracking-[.12em]" style={{ color: C.liveSecondary }}>{away ? 'AWAY' : 'HOME'}</div>
+          <div className="text-title font-bold tracking-[-.02em] text-white">{name ?? abbr}</div>
         </div>
       </div>
-      <div className="text-body tabular-nums" style={{ color: C.liveSecondary }}>{totals.h} H · {totals.e} E</div>
+      <div className="text-body-sm tabular-nums" style={{ color: C.liveSecondary }}>{totals.h} H · {totals.e} E</div>
     </div>
   );
 }
@@ -948,19 +948,19 @@ function LiveCenterStatus({
       style={{ borderLeft: `1px solid ${C.liveMuted}`, borderRight: `1px solid ${C.liveMuted}` }}
     >
       {isFinal ? (
-        <span className="text-meta font-medium tabular-nums tracking-[.14em]" style={{ color: C.liveSecondary }}>FINAL</span>
+        <span className="text-label font-medium tabular-nums tracking-[.14em]" style={{ color: C.liveSecondary }}>FINAL</span>
       ) : (
         <div className="flex items-center gap-2.5">
           <span className="h-1.5 w-1.5 animate-lb-pulse rounded-full" style={{ backgroundColor: C.liveGreen }} />
-          <span className="text-meta font-medium tabular-nums tracking-[.14em]" style={{ color: C.liveGreen }}>
+          <span className="text-label font-medium tabular-nums tracking-[.14em]" style={{ color: C.liveGreen }}>
             {inning.half.toUpperCase()} {inning.ordinal.toUpperCase()} · {outs} OUT{outs === 1 ? '' : 'S'} · {count.balls}–{count.strikes} COUNT
           </span>
         </div>
       )}
-      <div className="text-display-lg font-extrabold leading-none tabular-nums tracking-[-.04em] text-white">
+      <div className="text-display font-extrabold leading-none tabular-nums tracking-[-.04em] text-white">
         {score.away}–{score.home}
       </div>
-      <div className="text-dense" style={{ color: C.liveSecondary }}>{leadsText}</div>
+      <div className="text-label" style={{ color: C.liveSecondary }}>{leadsText}</div>
       {bases ? <BasesDiamond bases={bases} /> : null}
     </div>
   );
@@ -984,7 +984,7 @@ export function LiveTab({
 
   if (!data) {
     return (
-      <div className="px-[26px] py-10 text-center text-body" style={{ color: C.recordText }}>
+      <div className="px-[26px] py-10 text-center text-body-sm" style={{ color: C.recordText }}>
         {/* F-B10: `isFinal` is checked before `loading` — see
             `LiveTabEmptyState`. A finished game is not still loading. */}
         {isFinal
@@ -1086,10 +1086,10 @@ function LiveSectionBand({ isLive }: { isLive: boolean }) {
       {isLive ? (
         <>
           <span className="h-1.5 w-1.5 animate-lb-pulse rounded-full" style={{ backgroundColor: C.pulseDot }} />
-          <span className="text-meta font-semibold uppercase tracking-[.14em]" style={{ color: C.olive }}>Live</span>
+          <span className="text-label font-semibold uppercase tracking-[.14em]" style={{ color: C.olive }}>Live</span>
         </>
       ) : (
-        <span className="text-meta font-semibold uppercase tracking-[.14em]" style={{ color: C.faintMono }}>Final box score</span>
+        <span className="text-label font-semibold uppercase tracking-[.14em]" style={{ color: C.faintMono }}>Final box score</span>
       )}
     </div>
   );

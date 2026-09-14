@@ -62,7 +62,7 @@ export function RangeBar({
         role="img"
         aria-label={`${label}: no prices`}
       >
-        <span className="text-[11px] text-ink-faint">No book prices yet.</span>
+        <span className="text-[11px] text-ink-muted">No book prices yet.</span>
       </div>
     );
   }

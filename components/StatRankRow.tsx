@@ -23,12 +23,12 @@ export function StatRankRow({ stat }: { stat: OpposingStarterStat }) {
   const pct = percentileOf(stat) ?? 0;
   return (
     <div className="flex items-center gap-2">
-      <span className="w-20 shrink-0 truncate text-[9px] uppercase tracking-wide text-ink-faint">{stat.label}</span>
+      <span className="w-20 shrink-0 truncate text-[9px] uppercase tracking-wide text-ink-muted">{stat.label}</span>
       <div className="h-[5px] flex-1 rounded-full bg-line-hair">
         <div className="h-[5px] rounded-full" style={{ width: `${pct}%`, backgroundColor: barColor(stat, pct) }} />
       </div>
       <span className="w-10 shrink-0 text-right text-[10.5px] font-semibold tabular-nums">{stat.value.toFixed(stat.decimals)}</span>
-      <span className="w-16 shrink-0 truncate text-right text-[9px] text-ink-faint" title={`${stat.rank} of ${stat.poolSize}`}>
+      <span className="w-16 shrink-0 truncate text-right text-[9px] text-ink-muted" title={`${stat.rank} of ${stat.poolSize}`}>
         {ordinal(stat.rank)} of {stat.poolSize}
       </span>
     </div>
@@ -69,7 +69,7 @@ export function TwoSidedStatRankRow({
           {opponent ? opponent.value.toFixed(opponent.decimals) : '—'}
         </span>
       </div>
-      <div className="text-center text-[9px] uppercase tracking-wide text-ink-faint">{label}</div>
+      <div className="text-center text-[9px] uppercase tracking-wide text-ink-muted">{label}</div>
     </div>
   );
 }

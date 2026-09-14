@@ -65,7 +65,7 @@ export function ContributionBars({
         role="img"
         aria-label={`${label}: no model contributions`}
       >
-        <p className="text-[11px] text-ink-faint">No fitted model for this sport yet.</p>
+        <p className="text-[11px] text-ink-muted">No fitted model for this sport yet.</p>
       </div>
     );
   }
