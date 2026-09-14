@@ -17,6 +17,7 @@
  * matcher at the same 0.85 confidence bar.
  */
 
+import { seasonForDate } from '@/lib/sports/shared/season';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import { normalizeName, scoreNameMatch } from '@/lib/odds/screenshotImport';
 
@@ -26,7 +27,8 @@ export type TennisTour = 'atp' | 'wta';
 
 /** ATP/WTA seasons are calendar years — no cross-year-boundary complication like Understat's Aug-May soccer season. */
 export function currentTennisSeason(now: Date = new Date()): number {
-  return now.getUTCFullYear();
+  // R2: delegates to the one season convention (`lib/sports/shared/season.ts`) rather than re-deriving it. Same value; the boundary is now read on the Eastern date rather than UTC, which is the same rule R1d applied to ESPN's date ranges.
+  return seasonForDate('tennis_atp', now);
 }
 
 async function fetchCsvText(url: string): Promise<string | null> {

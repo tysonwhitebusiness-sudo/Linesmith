@@ -18,6 +18,7 @@
  * real check against a live team before its output should be trusted.
  */
 
+import { seasonForDate } from '@/lib/sports/shared/season';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import { fetchAllTeams } from './espn';
 import { fetchNbaBoxscore } from './boxscore';
@@ -65,9 +66,10 @@ async function fetchNbaTeamSchedule(teamId: string, season: string): Promise<Nba
 
 /** NBA season label convention: ESPN's `season` param is the year the season ENDS in (e.g. 2026 for the 2025-26 season). Season runs Oct-June. */
 export function currentNbaSeasonYear(now: Date = new Date()): number {
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth(); // 0-indexed, 9 = October
-  return month >= 9 ? year + 1 : year;
+  // R2: delegates to the one season convention (`lib/sports/shared/season.ts`) rather than re-deriving it. Same value; the boundary is now read on the Eastern date rather than UTC, which is the same rule R1d applied to ESPN's date ranges. This and `currentNbaSeason` were byte-for-byte the same
+  // rule in two files — the drift risk having already happened and simply not
+  // yet diverged.
+  return seasonForDate('nba', now);
 }
 
 async function lastNCompletedGames(teamId: string, seasonYear: number, n: number): Promise<NbaScheduleGame[]> {

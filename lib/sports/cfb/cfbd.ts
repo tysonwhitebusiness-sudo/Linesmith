@@ -20,6 +20,7 @@
  * param, and far cheaper than indexing the whole league for every subject).
  */
 
+import { seasonForDate } from '@/lib/sports/shared/season';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import { normalizeName, scoreNameMatch } from '@/lib/odds/screenshotImport';
 
@@ -28,9 +29,8 @@ const API_KEY = process.env.CFBD_API_KEY;
 
 /** CFB season year is the fall the season starts in — season runs Aug-Jan, so Jan-Jun still belongs to the previous fall's season for roster/stats purposes. */
 export function currentCfbdSeason(now: Date = new Date()): string {
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth(); // 0-indexed, 6 = July
-  return String(month >= 6 ? year : year - 1);
+  // R2: delegates to the one season convention (`lib/sports/shared/season.ts`) rather than re-deriving it. Same value; the boundary is now read on the Eastern date rather than UTC, which is the same rule R1d applied to ESPN's date ranges.
+  return String(seasonForDate('cfb', now));
 }
 
 async function fetchJson<T>(path: string, timeoutMs = 15_000): Promise<T | null> {

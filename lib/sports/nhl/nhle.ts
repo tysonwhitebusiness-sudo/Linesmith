@@ -24,6 +24,7 @@
  * `null` throughout this sport rather than attempting that join.
  */
 
+import { seasonForDate } from '@/lib/sports/shared/season';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 
 const BASE = 'https://api-web.nhle.com/v1';
@@ -31,9 +32,10 @@ const STATS_BASE = 'https://api.nhle.com/stats/rest/en';
 
 /** NHL season id format: concatenated start+end years ("20252026" for the 2025-26 season). Season runs Oct-June; before October, the just-completed season is still the most current real data available (same "between seasons" state as NBA/CFB this session). */
 export function currentNhlSeason(now: Date = new Date()): string {
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth(); // 0-indexed, 9 = October
-  const startYear = month >= 9 ? year : year - 1;
+  // NHL's API wants the two years concatenated ("20252026"), which is a
+  // FORMAT this function still owns — but WHICH season it is now comes from
+  // the one convention. R2: delegates to the one season convention (`lib/sports/shared/season.ts`) rather than re-deriving it. Same value; the boundary is now read on the Eastern date rather than UTC, which is the same rule R1d applied to ESPN's date ranges.
+  const startYear = seasonForDate('nhl', now);
   return `${startYear}${startYear + 1}`;
 }
 

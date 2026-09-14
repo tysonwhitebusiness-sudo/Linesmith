@@ -12,6 +12,7 @@
  * confirmed live.
  */
 
+import { seasonForDate } from '@/lib/sports/shared/season';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import { normalizeName, scoreNameMatch } from '@/lib/odds/screenshotImport';
 
@@ -19,9 +20,8 @@ const BASE = 'https://github.com/sportsdataverse/sportsdataverse-data/releases/d
 
 /** NBA's regular season runs Oct-Apr, playoffs into June — a season that STARTS in year Y is labeled Y+1 in this convention. Before the new season's opening tip (roughly October), the most recently completed season's file is still the real most-current data available. */
 export function currentNbaSeason(now: Date = new Date()): string {
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth(); // 0-indexed, 9 = October
-  return String(month >= 9 ? year + 1 : year);
+  // R2: delegates to the one season convention (`lib/sports/shared/season.ts`) rather than re-deriving it. Same value; the boundary is now read on the Eastern date rather than UTC, which is the same rule R1d applied to ESPN's date ranges.
+  return String(seasonForDate('nba', now));
 }
 
 const COLUMNS = [

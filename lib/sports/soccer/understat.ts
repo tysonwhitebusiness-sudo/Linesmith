@@ -18,6 +18,7 @@
  * `americanSocceranalysis.ts`.
  */
 
+import { seasonForDate } from '@/lib/sports/shared/season';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import type { UnderstatShot } from './understatShots';
 import { normalizeName, scoreNameMatch } from '@/lib/odds/screenshotImport';
@@ -27,9 +28,8 @@ const HEADERS = { 'X-Requested-With': 'XMLHttpRequest' };
 
 /** Understat's season param is the year the season *starts* in (e.g. "2026" for the 2026-27 season) — season runs Aug-May, so before August still belongs to the previous year's season. */
 export function currentUnderstatSeason(now: Date = new Date()): string {
-  const year = now.getUTCFullYear();
-  const month = now.getUTCMonth(); // 0-indexed, 7 = August
-  return String(month >= 7 ? year : year - 1);
+  // R2: delegates to the one season convention (`lib/sports/shared/season.ts`) rather than re-deriving it. Same value; the boundary is now read on the Eastern date rather than UTC, which is the same rule R1d applied to ESPN's date ranges.
+  return String(seasonForDate('soccer_epl', now));
 }
 
 async function fetchJson<T>(path: string): Promise<T | null> {

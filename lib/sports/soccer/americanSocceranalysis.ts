@@ -14,6 +14,7 @@
  * JSON to a plain unauthenticated request.
  */
 
+import { seasonForDate } from '@/lib/sports/shared/season';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import { normalizeName, scoreNameMatch } from '@/lib/odds/screenshotImport';
 import { awaitRebuild, triggerBackgroundRebuild } from '@/lib/staleCache';
@@ -22,7 +23,8 @@ const BASE = 'https://app.americansocceranalysis.com/api/v1';
 
 /** ASA's season_name is the real calendar year the MLS season is played in (no split-year convention, unlike Understat's EPL). */
 export function currentAsaSeason(now: Date = new Date()): string {
-  return String(now.getUTCFullYear());
+  // R2: delegates to the one season convention (`lib/sports/shared/season.ts`) rather than re-deriving it. Same value; the boundary is now read on the Eastern date rather than UTC, which is the same rule R1d applied to ESPN's date ranges.
+  return String(seasonForDate('soccer_mls', now));
 }
 
 async function fetchJson<T>(path: string, timeoutMs = 10_000): Promise<T | null> {
