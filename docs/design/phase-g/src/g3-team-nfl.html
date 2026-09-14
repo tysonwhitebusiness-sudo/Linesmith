@@ -1,0 +1,133 @@
+<meta charset="utf-8">
+<title>Team Research Board — Las Vegas Raiders</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--SYSTEM-->
+<!--DATA:nfl-lv-team.json-->
+<!--DATA:nfl-lv-results.json-->
+<style>
+  .hero-grid { display: grid; grid-template-columns: auto 1fr auto; gap: var(--s5); align-items: center; }
+  .grades { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); }
+  .grade { display: grid; grid-template-columns: 38px 1fr; gap: 10px; align-items: center; padding: 8px; border-radius: 10px; border: 1px solid var(--line-soft); cursor: default; transition: background var(--t-instant) var(--ease); }
+  .grade:hover { background: var(--card-sunk); }
+  .grade .g { width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center; font: 700 15px/1 var(--font); color: #fff; }
+  .results { display: flex; flex-wrap: wrap; gap: 6px; }
+  .res { display: grid; place-items: center; width: 58px; padding: 6px 0; border-radius: 8px; border: 1px solid var(--line-soft); font-size: 11px; line-height: 1.3; cursor: pointer; transition: transform var(--t-instant) var(--ease), background var(--t-instant) var(--ease); }
+  .res:hover { transform: translateY(-1px); background: var(--card-sunk); }
+  .res b { font-size: 13px; }
+  .res.pre { opacity: .55; border-style: dashed; }
+  .roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 4px 12px; }
+  .person { display: grid; grid-template-columns: 36px 1fr; gap: 10px; align-items: center; padding: 6px; border-radius: 8px; transition: background var(--t-instant) var(--ease); }
+  .person:hover { background: var(--card-sunk); }
+  .opt-b .layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: var(--s3); align-items: start; }
+  @media (max-width: 1024px) { .grades { grid-template-columns: repeat(2, minmax(0, 1fr)); } .opt-b .layout { grid-template-columns: 1fr; } .hero-grid { grid-template-columns: auto 1fr; } .hero-grid > :last-child { grid-column: 1 / -1; } }
+</style>
+<body>
+<div id="app"></div>
+<script>
+const T = JSON.parse(document.getElementById('data-nfl-lv-team').textContent);
+const R = JSON.parse(document.getElementById('data-nfl-lv-results').textContent);
+const TEAM_COLOR = '#0b0b0b';
+const LOGO = (abbr) => `https://a.espncdn.com/i/teamlogos/nfl/500/${String(abbr).toLowerCase()}.png`;
+const isPre = (g) => Number(g.date.slice(5, 7)) === 8 || (Number(g.date.slice(5, 7)) === 9 && Number(g.date.slice(8, 10)) < 4 && g.season < 2026);
+const seasons = [...new Set(R.games.map((g) => g.season))].sort((a, b) => b - a);
+let option = 'a', season = 2025, unit = 'offense';
+const app = document.getElementById('app');
+const GROUPS = { offense: ['QB', 'RB', 'FB', 'WR', 'TE', 'OT', 'G', 'C'], defense: ['DE', 'DT', 'LB', 'CB', 'S'], special: ['PK', 'P', 'LS'] };
+
+function record(s) { const gs = R.games.filter((g) => g.season === s && !isPre(g)); const w = gs.filter((g) => g.result === 'W').length, l = gs.filter((g) => g.result === 'L').length, t = gs.filter((g) => g.result === 'T').length; return `${w}-${l}${t ? `-${t}` : ''}`; }
+
+function hero() {
+  const last = [...R.games].reverse().find((g) => !isPre(g));
+  const n = T.nextGame;
+  return h('section', { class: 'hero' }, h('div', { class: 'hero-grid' },
+    avatar(T.team.logoUrl, 84, { logo: true, label: T.team.displayName }),
+    h('div', null, h('div', { class: 't-heading' }, T.team.displayName), h('div', { class: 'row t-sm ink2', style: { marginTop: '4px' } }, h('span', null, `${T.team.wins}-${T.team.losses} · ${T.team.divisionRank} in ${T.team.conference} ${T.team.division}`), h('span', { class: 'muted' }, '·'), h('span', null, `2025: ${record(2025)}`))),
+    h('div', { class: 'row' },
+      last ? h('span', { class: `chip ${last.result === 'W' ? 'good' : 'bad'}` }, `${last.result} ${last.pf}–${last.pa} ${last.home ? 'vs' : '@'} ${last.opp.length > 4 ? last.opp.split(' ').pop() : last.opp}`) : null,
+      n ? h('a', { class: 'btn lnk', href: '#' }, `Next: ${n.homeTeam === 'LV' ? 'vs' : '@'} ${n.homeTeam === 'LV' ? n.awayTeam : n.homeTeam} · ${new Date(`${n.gameday}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} →`) : null)));
+}
+
+function marginChart(games) {
+  const host = h('div', { class: 'chart-host' });
+  const draw = (Wd) => {
+    const W = Math.max(320, Wd), H = 170, m = { l: 34, r: 8, t: 10, b: 22 };
+    const max = Math.max(14, ...games.map((g) => Math.abs(g.pf - g.pa)));
+    const band = (W - m.l - m.r) / games.length, bw = Math.min(24, band - 2);
+    const Y = (v) => m.t + ((max - v) / (2 * max)) * (H - m.t - m.b);
+    const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Point margin by game' });
+    for (const v of [-max, -Math.round(max / 2), 0, Math.round(max / 2), max]) svg.append(s('line', { class: 'grid-l', x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: v === 0 ? 'var(--ink-faint)' : null }), s('text', { class: 'axis-t', x: m.l - 6, y: Y(v) + 3, 'text-anchor': 'end' }, v > 0 ? `+${v}` : String(v)));
+    games.forEach((g, i) => {
+      const mg = g.pf - g.pa, cx = m.l + band * i + band / 2, y0 = Y(0), y1 = Y(mg);
+      const top = Math.min(y0, y1), hh = Math.max(1, Math.abs(y1 - y0));
+      const gEl = s('g', { tabindex: '0', style: 'cursor:pointer' });
+      gEl.append(s('rect', { x: cx - band / 2, y: m.t, width: band, height: H - m.t - m.b, fill: 'transparent' }), s('rect', { class: 'b', x: cx - bw / 2, y: top, width: bw, height: hh, rx: 3, fill: mg >= 0 ? 'var(--good)' : 'var(--bad)', opacity: isPre(g) ? 0.35 : 0.9 }));
+      const tip = () => [tipRow(`${mg > 0 ? '+' : ''}${mg}`, `${g.result} ${g.pf}–${g.pa}`), tipText(`${g.home ? 'vs' : '@'} ${g.opp} · ${new Date(`${g.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}${isPre(g) ? ' · preseason' : ''}`)];
+      gEl.addEventListener('pointermove', (e) => Tip.show(e.clientX, e.clientY, ...tip())); gEl.addEventListener('pointerleave', () => Tip.hide());
+      gEl.addEventListener('focus', () => { const b = gEl.getBoundingClientRect(); Tip.show(b.left, b.top, ...tip()); }); gEl.addEventListener('blur', () => Tip.hide());
+      gEl.addEventListener('click', () => openGame(g));
+      svg.append(gEl);
+    });
+    host.replaceChildren(h('div', { class: 'chart' }, svg));
+  };
+  new ResizeObserver((en) => draw(Math.round(en[0].contentRect.width))).observe(host);
+  return host;
+}
+
+function openGame(g) {
+  Drill.open(`${g.home ? 'vs' : '@'} ${g.opp}`, `${new Date(`${g.date}T12:00:00`).toDateString()}${isPre(g) ? ' · preseason' : ''}`, h('div', { class: 'stack' },
+    h('div', { class: 'grid cols-3' }, ...[['Result', g.result], ['Score', `${g.pf}–${g.pa}`], ['Margin', `${g.pf - g.pa > 0 ? '+' : ''}${g.pf - g.pa}`]].map(([l, v]) => h('div', { class: 'stat' }, h('div', { class: 'l' }, l), h('div', { class: 'v' }, v)))),
+    h('div', { class: 'callout' }, 'Full build: box score, team stat comparison, drives and win probability for this game, and a link to its game page.')));
+}
+
+function resultsCard() {
+  const gs = R.games.filter((g) => g.season === season);
+  const strip = h('div', { class: 'results' }, ...gs.map((g) => {
+    const el = h('button', { class: `res${isPre(g) ? ' pre' : ''}`, type: 'button', onclick: () => openGame(g) }, h('span', { class: 't-label' }, `${g.home ? 'vs' : '@'} ${g.opp.length > 4 ? g.opp.split(' ').pop() : g.opp}`), h('b', { style: { color: g.result === 'W' ? 'var(--good)' : g.result === 'L' ? 'var(--bad)' : 'var(--ink)' } }, `${g.result} ${g.pf}-${g.pa}`));
+    Tip.bind(el, () => [tipRow(`${g.pf}–${g.pa}`, g.result === 'W' ? 'win' : g.result === 'L' ? 'loss' : 'tie'), tipText(`${new Date(`${g.date}T12:00:00`).toDateString()}${isPre(g) ? ' · preseason (excluded from record)' : ''}`)]);
+    return el;
+  }));
+  const pre = gs.filter(isPre).length;
+  return card({ title: 'Results', scope: `${season} · ${record(season)}${pre ? ` + ${pre} preseason` : ''}`, info: 'Every game with score. Click a game to open it; hover for the date.',
+    body: h('div', { class: 'stack' }, h('div', { class: 'row' }, segmented(seasons.map((y) => ({ value: y, label: String(y) })), season, (v) => { season = v; render(); })), strip, marginChart(gs)),
+    foot: `Source: game_result — ${R.rawRows} rows are ${R.games.length} games: ${R.duplicatesRemoved} are the same game from a second source, ${R.duplicatesWithDateShift} of them dated a day apart (evening kickoffs stored under UTC by one source).` });
+}
+
+function statsCard() {
+  const groups = [...new Set(T.teamStats.map((x) => x.group))];
+  return card({ title: 'Team stats', scope: '2025 season · rank of 32', info: 'Bars show league percentile from the rank, already direction-aware (fewer sacks taken ranks higher). Hover for value and rank.',
+    body: h('div', { class: 'stack' }, ...groups.map((grp) => h('div', null, h('div', { class: 't-over', style: { margin: '4px 0' } }, grp), ...T.teamStats.filter((x) => x.group === grp).map((x) => pbar(x.label, x.decimals ? Number(x.value).toFixed(x.decimals) : fmt.n(x.value, 1), Math.round(((32 - x.rank) / 31) * 100), { info: `${fmt.ord(x.rank)} of 32` }))))),
+    foot: '2026 has one game so far; the season toggle above the section would switch this to 2026 once the sample is meaningful' });
+}
+
+function gradesCard() {
+  const names = { offense: 'Offense', defense: 'Defense', specialTeams: 'Special teams', passingOffense: 'Passing offense', rushingOffense: 'Rushing offense', receivingOffense: 'Receiving', dLine: 'D-line', linebackers: 'Linebackers', secondary: 'Secondary' };
+  const tone = (c) => (c >= 60 ? 'var(--good)' : c >= 35 ? 'oklch(45% 0.005 260)' : 'var(--bad)');
+  return card({ title: 'Unit grades', scope: '2025 · vs league', info: 'Letter from a composite of each unit\'s ranked stats. Hover for rank.',
+    body: h('div', { class: 'grades' }, ...Object.entries(T.grades).map(([k, g]) => { const el = h('div', { class: 'grade' }, h('div', { class: 'g', style: { background: tone(g.composite) } }, g.grade), h('div', null, h('div', { class: 't-sm', style: { fontWeight: 600 } }, names[k] || k), h('div', { class: 't-label' }, `${fmt.ord(g.rank)} of ${g.poolSize}`))); Tip.bind(el, () => [tipRow(g.grade, names[k] || k), tipText(`composite ${Math.round(g.composite)} · ${fmt.ord(g.rank)} of ${g.poolSize}`)]); return el; })) });
+}
+
+function rosterCard() {
+  const order = GROUPS[unit];
+  const people = T.roster.filter((p) => order.includes(p.pos)).sort((a, b) => order.indexOf(a.pos) - order.indexOf(b.pos) || a.name.localeCompare(b.name));
+  return card({ title: 'Roster', scope: `${people.length} players`, info: 'Grouped by position. Every name links to the player page. Depth-chart order and jersey numbers need data the app does not hold.', dense: true,
+    body: h('div', { class: 'stack' }, h('div', { class: 'row' }, segmented([{ value: 'offense', label: 'Offense' }, { value: 'defense', label: 'Defense' }, { value: 'special', label: 'Special teams' }], unit, (v) => { unit = v; render(); })),
+      h('div', { class: 'roster' }, ...people.map((p) => h('a', { class: 'person', href: '#' }, avatar(p.headshot, 36, { color: TEAM_COLOR, label: p.name }), h('div', { style: { minWidth: 0 } }, h('div', { class: 't-sm lnk', style: { fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, p.name), h('div', { class: 't-label' }, p.pos)))))),
+    foot: 'Depth chart order and jersey numbers: not held' });
+}
+
+function render() {
+  const scope = h('div', { class: 'scope-row' }, h('h2', { class: 't-title' }, 'Season'), segmented([{ value: '2026', label: '2026' }, { value: '2025', label: '2025' }, { value: 'l3', label: 'Last 3 seasons' }], '2025', () => {}), h('span', { class: 't-label' }, 'Scopes stats and grades. 2026 has one game, so the board shows 2025.'));
+  const nav = h('div', { class: 'secnav sticky', style: { marginTop: 'var(--s4)' } }, tabs([{ value: 'o', label: 'Overview' }, { value: 'r', label: 'Results' }, { value: 's', label: 'Stats' }, { value: 'ro', label: 'Roster' }, { value: 'sc', label: 'Schedule' }, { value: 'od', label: 'Odds' }], 'o', () => {}));
+  const content = option === 'a'
+    ? h('div', { class: 'stack' }, resultsCard(), scope, h('div', { class: 'grid cols-2', style: { alignItems: 'start' } }, statsCard(), h('div', { class: 'stack' }, gradesCard(), card({ title: 'Injuries', scope: 'this week', body: h('div', { class: 'state' }, h('b', null, 'Only players with a status'), 'Starters first, position and photo, "props affected" beside players with markets.') }))), rosterCard())
+    : h('div', { class: 'layout' }, h('div', { class: 'stack' }, resultsCard(), rosterCard()), h('div', { class: 'stack' }, gradesCard(), statsCard()));
+  app.replaceChildren(
+    boardBar('Phase G · Team page (NFL)', `Real data: Las Vegas Raiders — team API (2025 stats, grades, roster) and game_result (${R.games.length} games, 2023–2026).`,
+      [segmented([{ value: 'a', label: 'Option A · sectioned' }, { value: 'b', label: 'Option B · dashboard' }], option, (v) => { option = v; render(); })]),
+    h('div', { class: `page opt-${option}` },
+      h('div', { class: 'callout', style: { marginBottom: 'var(--s4)' } }, h('b', null, 'What this replaces: '), 'the moneyline picker, the 25-game win bars with two seasons out of order, Form, Recent results and Last 15 games (Phase F). ', h('b', null, 'Try: '), 'switch seasons in Results, hover and click games and margin bars, hover stat bars and grades, switch roster units.'),
+      hero(), option === 'a' ? nav : null, h('div', { style: { marginTop: 'var(--s4)' } }, content)));
+}
+render();
+</script>
+</body>

@@ -1,0 +1,582 @@
+<meta charset="utf-8">
+<title>Team Research Board — Las Vegas Raiders</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap"><style>/* Phase G mockup system — the F2 proposal as tokens. Charcoal palette (approved). */
+:root {
+  --paper: oklch(94.5% 0.003 260);
+  --card: oklch(98.5% 0.002 260);
+  --card-sunk: oklch(96.5% 0.002 260);
+  --line: oklch(89% 0.004 260);
+  --line-soft: oklch(92.5% 0.003 260);
+  --ink: oklch(18% 0.005 260);
+  --ink-2: oklch(34% 0.005 260);
+  --ink-muted: oklch(47% 0.005 260);      /* lightest gray allowed for text */
+  --ink-faint: oklch(72% 0.004 260);      /* decoration only */
+  --masters: oklch(20% 0.006 260);
+  --good: #0f7a4f;
+  --bad: #c23b2c;
+  --warn: #b7791f;
+  --cmp-a: #2f6fb3;                        /* compare slot 1 (validated) */
+  --cmp-b: #c56a1c;                        /* compare slot 2 (validated) */
+  --live: #0f7a4f;
+  --focus: oklch(18% 0.005 260);
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --r-card: 12px; --r-hero: 16px; --r-ctl: 8px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+  --shadow-card: 0 1px 2px rgba(15, 18, 24, .05), 0 2px 8px -4px rgba(15, 18, 24, .08);
+  --shadow-pop: 0 8px 28px -8px rgba(15, 18, 24, .28), 0 2px 6px rgba(15, 18, 24, .08);
+  --ease: cubic-bezier(.2, 0, 0, 1); --ease-em: cubic-bezier(.3, 0, 0, 1);
+  --t-instant: 100ms; --t-quick: 180ms; --t-smooth: 280ms; --t-data: 450ms;
+}
+body.elev-flat { --paper: oklch(97.5% 0.002 260); --card: oklch(97.5% 0.002 260); --shadow-card: none; }
+body.font-inter { --font: "Inter", ui-sans-serif, system-ui, sans-serif; }
+body.font-plex { --font: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; }
+body.font-source { --font: "Source Sans 3", ui-sans-serif, system-ui, sans-serif; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 400 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+a { color: inherit; text-decoration: none; }
+a.lnk:hover, a.lnk:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; } }
+
+/* Type ramp */
+.t-display { font-size: 32px; line-height: 1.1; font-weight: 700; letter-spacing: -.01em; }
+.t-heading { font-size: 22px; line-height: 1.2; font-weight: 600; letter-spacing: -.005em; }
+.t-title { font-size: 17px; line-height: 1.3; font-weight: 600; }
+.t-card { font-size: 14px; line-height: 1.3; font-weight: 600; }
+.t-body { font-size: 14px; line-height: 1.5; }
+.t-sm { font-size: 13px; line-height: 1.45; }
+.t-label { font-size: 12px; line-height: 1.35; font-weight: 500; color: var(--ink-muted); }
+.t-over { font-size: 11px; line-height: 1.3; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-muted); }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-muted); } .ink2 { color: var(--ink-2); }
+
+/* Layout */
+.page { max-width: 1280px; margin: 0 auto; padding: var(--s5) var(--s5) 80px; }
+@media (max-width: 720px) { .page { padding: var(--s4) var(--s4) 64px; } }
+.grid { display: grid; gap: var(--s3); }
+.cols-main { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; }
+.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1024px) { .cols-main, .cols-3 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 720px) { .cols-2 { grid-template-columns: minmax(0, 1fr); } }
+.stack > * + * { margin-top: var(--s3); }
+.row { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.between { justify-content: space-between; }
+.sticky { position: sticky; top: 0; z-index: 20; }
+
+/* Board chrome (mockup-only) */
+.board-bar { position: sticky; top: 0; z-index: 50; background: var(--masters); color: #fff; }
+.board-bar .inner { max-width: 1280px; margin: 0 auto; padding: 10px var(--s5); display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.board-bar .title { font-weight: 600; font-size: 14px; }
+.board-bar .note { font-size: 12px; color: rgba(255, 255, 255, .72); }
+.board-bar .seg { --seg-bg: rgba(255, 255, 255, .12); --seg-on: #fff; --seg-on-ink: var(--ink); --seg-ink: rgba(255, 255, 255, .85); }
+.callout { border-left: 3px solid var(--ink); background: var(--card-sunk); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 13px; color: var(--ink-2); }
+.callout b { color: var(--ink); }
+.pill-note { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--card-sunk); border: 1px dashed var(--line); color: var(--ink-muted); }
+
+/* Card anatomy */
+.card { background: var(--card); border-radius: var(--r-card); box-shadow: var(--shadow-card); border: 1px solid var(--line-soft); min-width: 0; }
+body.elev-flat .card { border-color: var(--line); }
+.card-h { display: flex; align-items: center; gap: var(--s2); min-height: 44px; padding: 0 var(--s2) 0 var(--s4); border-bottom: 1px solid var(--line-soft); }
+.card-h .t-card { flex: 1; min-width: 0; }
+.card-h .scope { font-size: 12px; font-weight: 500; color: var(--ink-muted); white-space: nowrap; }
+.card-b { padding: var(--s4); }
+.card-b.dense { padding: var(--s3); }
+.card-f { padding: 0 var(--s4) var(--s3); font-size: 12px; color: var(--ink-muted); }
+.icon-btn { width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: var(--r-ctl); border: 0; background: transparent; color: var(--ink-muted); cursor: pointer; transition: background var(--t-instant) var(--ease), color var(--t-instant) var(--ease); }
+.icon-btn:hover { background: var(--card-sunk); color: var(--ink); }
+.hero { background: var(--card); border-radius: var(--r-hero); box-shadow: var(--shadow-card); border: 1px solid var(--line-soft); padding: var(--s5); }
+
+/* Controls */
+.seg { --seg-bg: var(--card-sunk); --seg-on: var(--card); --seg-on-ink: var(--ink); --seg-ink: var(--ink-muted); display: inline-flex; gap: 2px; padding: 3px; background: var(--seg-bg); border-radius: 10px; }
+.seg button { border: 0; background: transparent; color: var(--seg-ink); font: 500 13px/1 var(--font); padding: 7px 12px; border-radius: 7px; cursor: pointer; transition: background var(--t-quick) var(--ease), color var(--t-quick) var(--ease), box-shadow var(--t-quick) var(--ease); white-space: nowrap; }
+.seg button:hover { color: var(--seg-on-ink); }
+.seg button[aria-pressed="true"] { background: var(--seg-on); color: var(--seg-on-ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+.tabs { display: flex; gap: var(--s4); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.tabs [role="tab"] { border: 0; background: transparent; font: 600 14px/1 var(--font); color: var(--ink-muted); padding: 12px 0 11px; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; transition: color var(--t-quick) var(--ease), border-color var(--t-quick) var(--ease); }
+.tabs [role="tab"]:hover { color: var(--ink); }
+.tabs [role="tab"][aria-selected="true"] { color: var(--ink); border-color: var(--ink); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 600 11px/1 var(--font); letter-spacing: .02em; padding: 5px 9px; border-radius: 999px; background: var(--card-sunk); color: var(--ink-2); border: 1px solid var(--line-soft); white-space: nowrap; }
+.chip.good { color: var(--good); background: color-mix(in oklch, var(--good) 10%, var(--card)); border-color: color-mix(in oklch, var(--good) 25%, var(--card)); }
+.chip.bad { color: var(--bad); background: color-mix(in oklch, var(--bad) 9%, var(--card)); border-color: color-mix(in oklch, var(--bad) 25%, var(--card)); }
+.chip.live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--live); animation: pulse 1.6s var(--ease) infinite; }
+@keyframes pulse { 50% { opacity: .35; transform: scale(.8); } }
+.btn { border: 1px solid var(--line); background: var(--card); color: var(--ink); font: 600 13px/1 var(--font); padding: 9px 14px; border-radius: var(--r-ctl); cursor: pointer; transition: background var(--t-instant) var(--ease), border-color var(--t-instant) var(--ease), transform var(--t-instant) var(--ease); }
+.btn:hover { background: var(--card-sunk); border-color: var(--ink-faint); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--masters); color: #fff; border-color: var(--masters); }
+.btn.primary:hover { background: oklch(28% 0.006 260); }
+.scope-row { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin: var(--s5) 0 var(--s3); }
+.scope-row h2 { margin: 0; }
+
+/* Section nav */
+.secnav { background: color-mix(in oklch, var(--paper) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); margin: 0 calc(-1 * var(--s5)); padding: 0 var(--s5); }
+.secnav .tabs { border-bottom: 0; }
+
+/* Avatar */
+.av { position: relative; flex: none; border-radius: 50%; overflow: hidden; background: var(--team, oklch(80% 0.01 260)); display: grid; place-items: center; }
+.av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.av.logo { border-radius: 10px; background: var(--card); border: 1px solid var(--line-soft); }
+.av.logo img { object-fit: contain; padding: 12%; }
+.av .sil { width: 62%; height: 62%; fill: rgba(255, 255, 255, .85); }
+
+/* Stat value + percentile */
+.stat { min-width: 0; }
+.stat .v { font-size: 22px; line-height: 1.15; font-weight: 600; letter-spacing: -.01em; }
+.stat .l { font-size: 12px; font-weight: 500; color: var(--ink-muted); }
+.stat .d { font-size: 12px; font-weight: 600; }
+.pbar { display: grid; grid-template-columns: minmax(84px, 140px) 1fr 76px; align-items: center; gap: var(--s3); padding: 6px 0; cursor: default; border-radius: 6px; }
+.pbar:hover { background: var(--card-sunk); }
+.pbar .track { position: relative; height: 8px; border-radius: 99px; background: var(--card-sunk); border: 1px solid var(--line-soft); }
+.pbar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 99px; transition: width var(--t-data) var(--ease-em); }
+.pbar .dot { position: absolute; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; display: grid; place-items: center; font: 700 10px/1 var(--font); color: #fff; box-shadow: 0 0 0 2px var(--card); transition: left var(--t-data) var(--ease-em); }
+
+/* Tables */
+.tbl-wrap { overflow-x: auto; }
+table.dt { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.dt th { font: 600 12px/1.2 var(--font); color: var(--ink-muted); text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; position: sticky; top: 0; background: var(--card); }
+table.dt th[data-sort] { cursor: pointer; user-select: none; }
+table.dt th[data-sort]:hover { color: var(--ink); }
+table.dt th .arr { opacity: 0; margin-left: 3px; }
+table.dt th[aria-sort] .arr { opacity: 1; }
+table.dt td { padding: 9px 10px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+table.dt td.n, table.dt th.n { text-align: right; font-variant-numeric: tabular-nums; }
+table.dt tbody tr { transition: background var(--t-instant) var(--ease); }
+table.dt tbody tr:hover { background: var(--card-sunk); }
+table.dt tbody tr.clickable { cursor: pointer; }
+table.dt td:first-child, table.dt th:first-child { position: sticky; left: 0; background: inherit; }
+table.dt tbody td:first-child { background: var(--card); }
+table.dt tbody tr:hover td:first-child { background: var(--card-sunk); }
+
+/* Tooltip */
+.tip { position: fixed; z-index: 100; pointer-events: none; background: var(--masters); color: #fff; border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.4; max-width: 280px; box-shadow: var(--shadow-pop); opacity: 0; transform: translateY(4px); transition: opacity var(--t-quick) var(--ease), transform var(--t-quick) var(--ease); }
+.tip.on { opacity: 1; transform: none; }
+.tip .tv { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tip .tk { color: rgba(255, 255, 255, .7); }
+.tip .key { display: inline-block; width: 12px; height: 2px; vertical-align: middle; margin-right: 6px; }
+
+/* Drill-down panel */
+.scrim { position: fixed; inset: 0; background: rgba(12, 14, 18, .32); opacity: 0; pointer-events: none; transition: opacity var(--t-smooth) var(--ease); z-index: 80; }
+.scrim.on { opacity: 1; pointer-events: auto; }
+.panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); background: var(--card); z-index: 90; box-shadow: var(--shadow-pop); transform: translateX(104%); transition: transform var(--t-smooth) var(--ease-em); display: flex; flex-direction: column; }
+.panel.on { transform: none; }
+.panel-h { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s3) var(--s3) var(--s5); border-bottom: 1px solid var(--line); min-height: 60px; }
+.panel-b { padding: var(--s5); overflow: auto; flex: 1; }
+
+/* Charts */
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart-host { width: 100%; min-width: 0; }
+.chart .grid-l { stroke: var(--line-soft); stroke-width: 1; }
+.chart .axis-t { fill: var(--ink-muted); font-size: 10px; font-family: var(--font); }
+.chart .xh { stroke: var(--ink); stroke-width: 1; opacity: 0; transition: opacity var(--t-instant); }
+.chart:hover .xh { opacity: .35; }
+
+/* Skeleton + states */
+.sk { background: linear-gradient(90deg, var(--card-sunk) 0%, var(--line-soft) 50%, var(--card-sunk) 100%); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; border-radius: 6px; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.state { text-align: center; padding: var(--s6) var(--s4); color: var(--ink-muted); font-size: 13px; }
+.state b { display: block; color: var(--ink); font-size: 14px; margin-bottom: 4px; }
+
+/* Live value flash */
+.flash { animation: flash 1.2s var(--ease); }
+@keyframes flash { 0% { background: color-mix(in oklch, var(--good) 22%, transparent); } 100% { background: transparent; } }
+</style><script>/* Phase G mockup UI kit: one implementation of each F2 component. Plain JS, no deps.
+   All data-derived text goes through textContent (never innerHTML). */
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
+    else if (k.startsWith('on') && typeof v === 'function') e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+}
+function s(tag, attrs, ...kids) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) e.setAttribute(k, v);
+  for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+}
+const fmt = {
+  n: (v, d = 0) => (v == null || Number.isNaN(v) ? '—' : Number(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })),
+  pct: (v, d = 0) => (v == null ? '—' : `${Number(v).toFixed(d)}%`),
+  rate3: (v) => (v == null ? '—' : Number(v).toFixed(3).replace(/^0/, '')),
+  ord: (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); },
+};
+
+/* Tooltip — one element, shown on hover and on keyboard focus. */
+const Tip = {
+  el: null,
+  show(x, y, ...nodes) {
+    if (!this.el) { this.el = h('div', { class: 'tip', role: 'tooltip' }); document.body.append(this.el); }
+    this.el.replaceChildren(...nodes);
+    const r = this.el.getBoundingClientRect();
+    const left = Math.min(window.innerWidth - r.width - 8, Math.max(8, x + 14));
+    const top = y - r.height - 12 < 8 ? y + 16 : y - r.height - 12;
+    this.el.style.left = `${left}px`; this.el.style.top = `${top}px`;
+    this.el.classList.add('on');
+  },
+  hide() { this.el && this.el.classList.remove('on'); },
+  bind(target, content) {
+    const show = (e) => { const r = target.getBoundingClientRect(); Tip.show(e.clientX ?? r.left + r.width / 2, e.clientY ?? r.top, ...content()); };
+    target.addEventListener('pointermove', show);
+    target.addEventListener('pointerleave', () => Tip.hide());
+    target.addEventListener('focus', () => { const r = target.getBoundingClientRect(); Tip.show(r.left + r.width / 2, r.top, ...content()); });
+    target.addEventListener('blur', () => Tip.hide());
+    if (!target.hasAttribute('tabindex') && !/^(A|BUTTON|INPUT|SELECT)$/.test(target.tagName)) target.setAttribute('tabindex', '0');
+  },
+};
+const tipRow = (value, label, color) => h('div', null, color ? h('span', { class: 'key', style: { background: color } }) : null, h('span', { class: 'tv' }, value), ' ', h('span', { class: 'tk' }, label));
+const tipText = (t) => h('div', { class: 'tk', style: { marginTop: '2px' } }, t);
+
+/* Segmented toggle. options: [{value,label}] */
+function segmented(options, value, onChange, extraClass = '') {
+  const wrap = h('div', { class: `seg ${extraClass}`, role: 'group' });
+  const render = () => wrap.replaceChildren(...options.map((o) => h('button', { type: 'button', 'aria-pressed': String(o.value === value), onclick: () => { value = o.value; render(); onChange(value); } }, o.label)));
+  render();
+  return wrap;
+}
+/* Tabs. */
+function tabs(items, selected, onChange) {
+  const bar = h('div', { class: 'tabs', role: 'tablist' });
+  const render = () => bar.replaceChildren(...items.map((it) => h('button', { role: 'tab', type: 'button', 'aria-selected': String(it.value === selected), tabindex: it.value === selected ? '0' : '-1', onclick: () => { selected = it.value; render(); onChange(selected); } }, it.label)));
+  bar.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const i = items.findIndex((it) => it.value === selected); const n = items[(i + (e.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length];
+    selected = n.value; render(); onChange(selected); bar.querySelector('[aria-selected="true"]').focus();
+  });
+  render();
+  return bar;
+}
+
+/* Card with the F2 anatomy. */
+function card({ title, scope, info, expand, body, foot, dense }) {
+  const head = h('div', { class: 'card-h' }, h('div', { class: 't-card' }, title), scope ? h('span', { class: 'scope' }, scope) : null);
+  if (info) { const b = h('button', { class: 'icon-btn', type: 'button', 'aria-label': `About ${title}` }, 'ⓘ'); Tip.bind(b, () => [h('div', { style: { maxWidth: '240px' } }, info)]); head.append(b); }
+  if (expand) head.append(h('button', { class: 'icon-btn', type: 'button', 'aria-label': `Expand ${title}`, onclick: expand }, '⤢'));
+  return h('section', { class: 'card' }, head, h('div', { class: `card-b${dense ? ' dense' : ''}` }, body), foot ? h('div', { class: 'card-f' }, foot) : null);
+}
+
+/* Drill-down side panel. */
+const Drill = {
+  open(title, subtitle, body) {
+    if (!this.panel) {
+      this.scrim = h('div', { class: 'scrim', onclick: () => this.close() });
+      this.titleEl = h('div', { class: 't-title' }); this.subEl = h('div', { class: 't-label' });
+      this.bodyEl = h('div', { class: 'panel-b' });
+      this.panel = h('aside', { class: 'panel', role: 'dialog', 'aria-modal': 'true' },
+        h('div', { class: 'panel-h' }, h('div', { style: { flex: 1 } }, this.titleEl, this.subEl), h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Close', onclick: () => this.close() }, '✕')), this.bodyEl);
+      document.body.append(this.scrim, this.panel);
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.close(); });
+    }
+    this.titleEl.textContent = title; this.subEl.textContent = subtitle || '';
+    this.bodyEl.replaceChildren(body);
+    this.scrim.classList.add('on'); this.panel.classList.add('on');
+    this.panel.querySelector('.icon-btn').focus();
+  },
+  close() { this.scrim?.classList.remove('on'); this.panel?.classList.remove('on'); },
+};
+
+/* Sortable data table. columns: [{key,label,num,fmt,sort}] */
+function dataTable(columns, rows, { onRow, sortKey, desc = true } = {}) {
+  const table = h('table', { class: 'dt' });
+  const thead = h('thead'); const tbody = h('tbody');
+  const render = () => {
+    const col = columns.find((c) => c.key === sortKey);
+    const sorted = col ? [...rows].sort((a, b) => { const va = a[col.key], vb = b[col.key]; if (va == null) return 1; if (vb == null) return -1; return (va > vb ? 1 : va < vb ? -1 : 0) * (desc ? -1 : 1); }) : rows;
+    thead.replaceChildren(h('tr', null, ...columns.map((c) => {
+      const th = h('th', { class: c.num ? 'n' : '', 'data-sort': c.sort === false ? null : c.key, scope: 'col', 'aria-sort': c.key === sortKey ? (desc ? 'descending' : 'ascending') : null, tabindex: c.sort === false ? null : '0' }, c.label, h('span', { class: 'arr' }, c.key === sortKey && !desc ? '▲' : '▼'));
+      if (c.sort !== false) { const go = () => { if (sortKey === c.key) desc = !desc; else { sortKey = c.key; desc = true; } render(); }; th.addEventListener('click', go); th.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }); }
+      return th;
+    })));
+    tbody.replaceChildren(...sorted.map((r) => {
+      const tr = h('tr', { class: onRow ? 'clickable' : '', tabindex: onRow ? '0' : null });
+      if (onRow) { tr.addEventListener('click', () => onRow(r)); tr.addEventListener('keydown', (e) => { if (e.key === 'Enter') onRow(r); }); }
+      for (const c of columns) { const v = c.render ? c.render(r) : c.fmt ? c.fmt(r[c.key], r) : r[c.key]; tr.append(h('td', { class: c.num ? 'n' : '' }, v ?? '—')); }
+      return tr;
+    }));
+  };
+  table.append(thead, tbody); render();
+  return h('div', { class: 'tbl-wrap' }, table);
+}
+
+/* Avatar: photo / logo with a silhouette-on-team-color fallback, never initials. */
+function avatar(url, size, { logo = false, color, label } = {}) {
+  const box = h('span', { class: `av${logo ? ' logo' : ''}`, style: { width: `${size}px`, height: `${size}px`, '--team': color || 'oklch(62% 0.01 260)' }, role: 'img', 'aria-label': label || '' });
+  const sil = () => box.replaceChildren(s('svg', { class: 'sil', viewBox: '0 0 24 24' }, s('path', { d: 'M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.4 0-8 2.3-8 5.2V21h16v-1.8c0-2.9-3.6-5.2-8-5.2Z' })));
+  if (url) { const img = h('img', { src: url, alt: '', loading: 'lazy' }); img.addEventListener('error', sil); box.append(img); } else sil();
+  return box;
+}
+
+/* Percentile bar row (Savant-style). direction: 'up' higher is better. */
+function pbar(label, valueText, pct, { info } = {}) {
+  const color = pct >= 50 ? `color-mix(in srgb, var(--good) ${Math.round(30 + (pct - 50) * 1.4)}%, oklch(70% 0.004 260))` : `color-mix(in srgb, var(--bad) ${Math.round(30 + (50 - pct) * 1.4)}%, oklch(70% 0.004 260))`;
+  const row = h('div', { class: 'pbar' },
+    h('div', { class: 't-sm ink2' }, label),
+    h('div', { class: 'track' }, h('div', { class: 'fill', style: { width: `${pct}%`, background: `color-mix(in oklch, ${color} 35%, transparent)` } }), h('div', { class: 'dot', style: { left: `${pct}%`, background: color } }, String(pct))),
+    h('div', { class: 't-sm num', style: { textAlign: 'right', fontWeight: 600 } }, valueText));
+  Tip.bind(row, () => [tipRow(valueText, label), tipText(`${fmt.ord(pct)} percentile${info ? ` · ${info}` : ''}`)]);
+  return row;
+}
+
+/* Number tween for live values. */
+function tween(el, to, { from, d = 0, ms = 400 } = {}) {
+  const start = from ?? Number(el.dataset.v ?? to); const t0 = performance.now();
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const step = (t) => { const k = reduce ? 1 : Math.min(1, (t - t0) / ms); const v = start + (to - start) * (1 - Math.pow(1 - k, 3)); el.textContent = fmt.n(v, d); if (k < 1) requestAnimationFrame(step); };
+  el.dataset.v = to; requestAnimationFrame(step);
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+}
+
+/* Line chart with snapping crosshair. series: [{name,color,values:[number|null], width, dash, area}] */
+function lineChartDraw(__W, { series, labels, height = 220, yMin, yMax, yTicks = 4, yFmt = (v) => fmt.n(v), refs = [], markers = [], tooltip, onClick, band }) {
+  const W = __W, H = height, m = { l: 40, r: 14, t: 12, b: 26 };
+  const n = labels.length;
+  const all = series.flatMap((se) => se.values).filter((v) => v != null);
+  const lo = yMin ?? Math.min(...all), hi = yMax ?? Math.max(...all);
+  const x = (i) => m.l + (n <= 1 ? 0 : (i * (W - m.l - m.r)) / (n - 1));
+  const y = (v) => m.t + (1 - (v - lo) / (hi - lo || 1)) * (H - m.t - m.b);
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
+  if (band) svg.append(s('rect', { x: m.l, y: y(band.to), width: W - m.l - m.r, height: Math.max(0, y(band.from) - y(band.to)), fill: band.fill }));
+  for (let k = 0; k <= yTicks; k++) { const v = lo + ((hi - lo) * k) / yTicks; svg.append(s('line', { class: 'grid-l', x1: m.l, x2: W - m.r, y1: y(v), y2: y(v) }), s('text', { class: 'axis-t', x: m.l - 6, y: y(v) + 3, 'text-anchor': 'end' }, yFmt(v))); }
+  const every = Math.max(1, Math.ceil(n / Math.max(3, Math.floor(W / 90))));
+  const sparse = labels.filter(Boolean).length <= 12;
+  labels.forEach((lb, i) => { if (!lb) return; if (sparse || i % every === 0 || i === n - 1) svg.append(s('text', { class: 'axis-t', x: x(i), y: H - 8, 'text-anchor': i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle' }, lb)); });
+  for (const r of refs) svg.append(s('line', { x1: m.l, x2: W - m.r, y1: y(r.y), y2: y(r.y), stroke: 'var(--ink-muted)', 'stroke-width': 1, 'stroke-dasharray': r.dash ? '4 4' : null }), r.label ? s('text', { class: 'axis-t', x: W - m.r, y: y(r.y) - 4, 'text-anchor': 'end' }, r.label) : null);
+  for (const se of series) {
+    let d = ''; se.values.forEach((v, i) => { if (v == null) return; d += `${d && se.values[i - 1] != null ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`; });
+    if (se.area) { const first = se.values.findIndex((v) => v != null); const last = se.values.length - 1 - [...se.values].reverse().findIndex((v) => v != null); svg.append(s('path', { d: `${d}L${x(last)},${y(se.area)}L${x(first)},${y(se.area)}Z`, fill: se.color, opacity: 0.1 })); }
+    svg.append(s('path', { d, fill: 'none', stroke: se.color, 'stroke-width': se.width || 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'stroke-dasharray': se.dash || null, opacity: se.opacity || 1 }));
+    if (se.dots) se.values.forEach((v, i) => { if (v != null) svg.append(s('circle', { cx: x(i), cy: y(v), r: 2.2, fill: se.color, opacity: 0.55 })); });
+  }
+  for (const mk of markers) svg.append(s('circle', { cx: x(mk.i), cy: y(mk.y), r: 5, fill: mk.color || 'var(--ink)', stroke: 'var(--card)', 'stroke-width': 2 }));
+  const xh = s('line', { class: 'xh', x1: 0, x2: 0, y1: m.t, y2: H - m.b });
+  const focusDots = series.map((se) => s('circle', { r: 4.5, fill: se.color, stroke: 'var(--card)', 'stroke-width': 2, opacity: 0 }));
+  svg.append(xh, ...focusDots);
+  const hit = s('rect', { x: m.l, y: 0, width: W - m.l - m.r, height: H, fill: 'transparent', style: onClick ? 'cursor:pointer' : null });
+  svg.append(hit);
+  const wrap = h('div', { class: 'chart', tabindex: '0', 'aria-label': 'Chart: use left and right arrows to read values' }, svg);
+  let cur = -1;
+  const setIdx = (i, cx, cy) => {
+    cur = Math.max(0, Math.min(n - 1, i));
+    xh.setAttribute('x1', x(cur)); xh.setAttribute('x2', x(cur)); xh.style.opacity = 0.35;
+    series.forEach((se, k) => { const v = se.values[cur]; focusDots[k].setAttribute('opacity', v == null ? 0 : 1); if (v != null) { focusDots[k].setAttribute('cx', x(cur)); focusDots[k].setAttribute('cy', y(v)); } });
+    if (tooltip) Tip.show(cx, cy, ...tooltip(cur));
+  };
+  hit.addEventListener('pointermove', (e) => { const r = svg.getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; setIdx(Math.round(((px - m.l) / (W - m.l - m.r)) * (n - 1)), e.clientX, e.clientY); });
+  hit.addEventListener('pointerleave', () => { Tip.hide(); focusDots.forEach((d) => d.setAttribute('opacity', 0)); xh.style.opacity = 0; });
+  if (onClick) hit.addEventListener('click', () => cur >= 0 && onClick(cur));
+  wrap.addEventListener('keydown', (e) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) return; e.preventDefault();
+    if (e.key === 'Enter') { if (onClick && cur >= 0) onClick(cur); return; }
+    const r = svg.getBoundingClientRect(); const i = cur < 0 ? n - 1 : cur + (e.key === 'ArrowRight' ? 1 : -1);
+    setIdx(i, r.left + (x(Math.max(0, Math.min(n - 1, i))) / W) * r.width, r.top + 20);
+  });
+  wrap.addEventListener('blur', () => Tip.hide());
+  return wrap;
+}
+
+/* Column chart, one mark per value; the mark is the hit target. */
+function columnChartDraw(__W, { bars, height = 180, yFmt = (v) => fmt.n(v), refs = [], tooltip, onClick, labelEvery }) {
+  const W = __W, H = height, m = { l: 36, r: 8, t: 10, b: 24 };
+  const hi = Math.max(...bars.map((b) => b.value), ...refs.map((r) => r.y)) * 1.05 || 1;
+  const band = (W - m.l - m.r) / bars.length; const bw = Math.min(24, band - 2);
+  const y = (v) => m.t + (1 - v / hi) * (H - m.t - m.b);
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
+  for (let k = 0; k <= 3; k++) { const v = (hi * k) / 3; svg.append(s('line', { class: 'grid-l', x1: m.l, x2: W - m.r, y1: y(v), y2: y(v) }), s('text', { class: 'axis-t', x: m.l - 6, y: y(v) + 3, 'text-anchor': 'end' }, yFmt(v))); }
+  const every = labelEvery || Math.max(1, Math.ceil(bars.length / 10));
+  bars.forEach((b, i) => {
+    const cx = m.l + band * i + band / 2; const top = y(b.value); const hgt = Math.max(0, H - m.b - top);
+    const r = Math.min(4, bw / 2, hgt);
+    const path = `M${cx - bw / 2},${H - m.b}V${top + r}q0,-${r} ${r},-${r}h${bw - 2 * r}q${r},0 ${r},${r}V${H - m.b}Z`;
+    const g = s('g', { tabindex: '0', style: onClick ? 'cursor:pointer' : null });
+    g.append(s('rect', { x: cx - band / 2, y: m.t, width: band, height: H - m.t - m.b, fill: 'transparent' }), s('path', { d: path, fill: b.color || 'var(--ink)', class: 'bar' }));
+    g.addEventListener('pointermove', (e) => { g.querySelector('.bar').setAttribute('opacity', 0.75); tooltip && Tip.show(e.clientX, e.clientY, ...tooltip(b, i)); });
+    g.addEventListener('pointerleave', () => { g.querySelector('.bar').setAttribute('opacity', 1); Tip.hide(); });
+    g.addEventListener('focus', () => { const rr = g.getBoundingClientRect(); tooltip && Tip.show(rr.left + rr.width / 2, rr.top, ...tooltip(b, i)); });
+    g.addEventListener('blur', () => Tip.hide());
+    if (onClick) { g.addEventListener('click', () => onClick(b, i)); g.addEventListener('keydown', (e) => { if (e.key === 'Enter') onClick(b, i); }); }
+    svg.append(g);
+    if (b.label && i % every === 0) svg.append(s('text', { class: 'axis-t', x: cx, y: H - 8, 'text-anchor': 'middle' }, b.label));
+  });
+  for (const r of refs) svg.append(s('line', { x1: m.l, x2: W - m.r, y1: y(r.y), y2: y(r.y), stroke: 'var(--ink-muted)', 'stroke-dasharray': '4 4' }), s('text', { class: 'axis-t', x: W - m.r, y: y(r.y) - 4, 'text-anchor': 'end' }, r.label || ''));
+  return h('div', { class: 'chart' }, svg);
+}
+
+/* Board chrome: title, notes, typeface + elevation switchers (persisted per viewer). */
+function boardBar(title, note, extra = []) {
+  const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } return null; };
+  const apply = () => {
+    document.body.classList.remove('font-inter', 'font-plex', 'font-source', 'elev-flat');
+    const f = store('g-font') || 'system'; if (f !== 'system') document.body.classList.add(`font-${f}`);
+    if ((store('g-elev') || 'raised') === 'flat') document.body.classList.add('elev-flat');
+  };
+  apply();
+  const fontSeg = segmented([{ value: 'system', label: 'System' }, { value: 'inter', label: 'Inter' }, { value: 'plex', label: 'IBM Plex Sans' }, { value: 'source', label: 'Source Sans 3' }], store('g-font') || 'system', (v) => { store('g-font', v); apply(); });
+  const elevSeg = segmented([{ value: 'raised', label: 'Cards raised' }, { value: 'flat', label: 'Flat + borders' }], store('g-elev') || 'raised', (v) => { store('g-elev', v); apply(); });
+  return h('div', { class: 'board-bar' }, h('div', { class: 'inner' },
+    h('div', null, h('div', { class: 'title' }, title), h('div', { class: 'note' }, note)),
+    h('div', { style: { flex: 1 } }),
+    ...extra,
+    h('div', { class: 'row' }, h('span', { class: 'note' }, 'Typeface'), Object.assign(fontSeg, { className: 'seg' })),
+    h('div', { class: 'row' }, h('span', { class: 'note' }, 'Elevation'), Object.assign(elevSeg, { className: 'seg' }))));
+}
+
+function lineChart(opts) {
+  const host = h('div', { class: 'chart-host' });
+  let last = 0;
+  const draw = (w) => { const W = Math.max(280, Math.round(w)); if (Math.abs(W - last) < 8) return; last = W; host.replaceChildren(lineChartDraw(W, opts)); };
+  const ro = new ResizeObserver((entries) => draw(entries[0].contentRect.width));
+  ro.observe(host);
+  requestAnimationFrame(() => draw(host.clientWidth || 720));
+  return host;
+}
+
+function columnChart(opts) {
+  const host = h('div', { class: 'chart-host' });
+  let last = 0;
+  const draw = (w) => { const W = Math.max(280, Math.round(w)); if (Math.abs(W - last) < 8) return; last = W; host.replaceChildren(columnChartDraw(W, opts)); };
+  const ro = new ResizeObserver((entries) => draw(entries[0].contentRect.width));
+  ro.observe(host);
+  requestAnimationFrame(() => draw(host.clientWidth || 720));
+  return host;
+}
+</script>
+<script type="application/json" id="data-nfl-lv-team">{"team":{"teamId":"13","abbreviation":"LV","displayName":"Las Vegas Raiders","logoUrl":"https://a.espncdn.com/i/teamlogos/nfl/500/lv.png","wins":1,"losses":0,"conference":"AFC","division":"West","divisionRank":"1st"},"teamStats":[{"key":"points-per-game","label":"Points/Gm","value":14.176470588235293,"decimals":1,"group":"Scoring","rank":32},{"key":"pass-yards","label":"Pass Yds/Gm","value":195,"decimals":1,"group":"Passing","rank":26},{"key":"pass-tds","label":"Pass TD/Gm","value":1.1764705882352942,"decimals":2,"group":"Passing","rank":25},{"key":"pass-epa","label":"Passing EPA/Play","value":-0.20887920421063885,"decimals":2,"group":"Passing","rank":30},{"key":"pass-cpoe","label":"CPOE","value":-1.01893837997305,"decimals":1,"group":"Passing","rank":22},{"key":"sacks-taken","label":"Sacks Taken/Gm","value":3.764705882352941,"decimals":1,"group":"Passing","rank":32},{"key":"rush-yards","label":"Rush Yds/Gm","value":77.47058823529412,"decimals":1,"group":"Rushing","rank":32},{"key":"rush-tds","label":"Rush TD/Gm","value":0.29411764705882354,"decimals":2,"group":"Rushing","rank":32},{"key":"rush-epa","label":"Rushing EPA/Play","value":-0.2624390919635263,"decimals":2,"group":"Rushing","rank":32},{"key":"receptions","label":"Receptions/Gm","value":20,"decimals":1,"group":"Receiving","rank":18},{"key":"turnovers","label":"Turnovers/Gm","value":1.3529411764705883,"decimals":1,"group":"Scoring","rank":24},{"key":"def-sacks","label":"Sacks/Gm","value":2.1176470588235294,"decimals":1,"group":"Defense","rank":21},{"key":"def-interceptions","label":"INTs/Gm","value":0.47058823529411764,"decimals":2,"group":"Defense","rank":25},{"key":"def-qb-hits","label":"QB Hits/Gm","value":4.823529411764706,"decimals":1,"group":"Defense","rank":26},{"key":"penalties","label":"Penalties/Gm","value":6.352941176470588,"decimals":1,"group":"Scoring","rank":18}],"grades":{"offense":{"grade":"F","composite":10,"rank":31,"poolSize":32},"defense":{"grade":"C","composite":39.516129032258064,"rank":24,"poolSize":32},"specialTeams":{"grade":"D","composite":29.83870967741936,"rank":28,"poolSize":32},"secondary":{"grade":"C-","composite":26.451612903225804,"rank":25,"poolSize":32},"linebackers":{"grade":"C","composite":32.903225806451616,"rank":24,"poolSize":32},"dLine":{"grade":"A","composite":87.58064516129033,"rank":4,"poolSize":32},"passingOffense":{"grade":"D","composite":17.258064516129036,"rank":28,"poolSize":32},"rushingOffense":{"grade":"F","composite":0,"rank":32,"poolSize":32},"receivingOffense":{"grade":"B-","composite":45.16129032258065,"rank":18,"poolSize":32}},"recentResults":[{"gameId":"2026_01_MIA_LV","espnGameId":"401872928","season":"2026","week":"1","seasonType":"REG","gameday":"2026-09-13","awayTeam":"MIA","homeTeam":"LV","awayScore":13,"homeScore":27,"completed":true},{"gameId":"2025_18_KC_LV","espnGameId":"401772957","season":"2025","week":"18","seasonType":"REG","gameday":"2026-01-04","awayTeam":"KC","homeTeam":"LV","awayScore":12,"homeScore":14,"completed":true},{"gameId":"2025_17_NYG_LV","espnGameId":"401772950","season":"2025","week":"17","seasonType":"REG","gameday":"2025-12-28","awayTeam":"NYG","homeTeam":"LV","awayScore":34,"homeScore":10,"completed":true},{"gameId":"2025_16_LV_HOU","espnGameId":"401772805","season":"2025","week":"16","seasonType":"REG","gameday":"2025-12-21","awayTeam":"LV","homeTeam":"HOU","awayScore":21,"homeScore":23,"completed":true},{"gameId":"2025_15_LV_PHI","espnGameId":"401772906","season":"2025","week":"15","seasonType":"REG","gameday":"2025-12-14","awayTeam":"LV","homeTeam":"PHI","awayScore":0,"homeScore":31,"completed":true},{"gameId":"2025_14_DEN_LV","espnGameId":"401772794","season":"2025","week":"14","seasonType":"REG","gameday":"2025-12-07","awayTeam":"DEN","homeTeam":"LV","awayScore":24,"homeScore":17,"completed":true},{"gameId":"2025_13_LV_LAC","espnGameId":"401772788","season":"2025","week":"13","seasonType":"REG","gameday":"2025-11-30","awayTeam":"LV","homeTeam":"LAC","awayScore":14,"homeScore":31,"completed":true},{"gameId":"2025_12_CLE_LV","espnGameId":"401772784","season":"2025","week":"12","seasonType":"REG","gameday":"2025-11-23","awayTeam":"CLE","homeTeam":"LV","awayScore":24,"homeScore":10,"completed":true},{"gameId":"2025_11_DAL_LV","espnGameId":"401772819","season":"2025","week":"11","seasonType":"REG","gameday":"2025-11-17","awayTeam":"DAL","homeTeam":"LV","awayScore":33,"homeScore":16,"completed":true},{"gameId":"2025_10_LV_DEN","espnGameId":"401772944","season":"2025","week":"10","seasonType":"REG","gameday":"2025-11-06","awayTeam":"LV","homeTeam":"DEN","awayScore":7,"homeScore":10,"completed":true},{"gameId":"2025_09_JAX_LV","espnGameId":"401772873","season":"2025","week":"9","seasonType":"REG","gameday":"2025-11-02","awayTeam":"JAX","homeTeam":"LV","awayScore":30,"homeScore":29,"completed":true},{"gameId":"2025_07_LV_KC","espnGameId":"401772753","season":"2025","week":"7","seasonType":"REG","gameday":"2025-10-19","awayTeam":"LV","homeTeam":"KC","awayScore":0,"homeScore":31,"completed":true},{"gameId":"2025_06_TEN_LV","espnGameId":"401772859","season":"2025","week":"6","seasonType":"REG","gameday":"2025-10-12","awayTeam":"TEN","homeTeam":"LV","awayScore":10,"homeScore":20,"completed":true},{"gameId":"2025_05_LV_IND","espnGameId":"401772851","season":"2025","week":"5","seasonType":"REG","gameday":"2025-10-05","awayTeam":"LV","homeTeam":"IND","awayScore":6,"homeScore":40,"completed":true},{"gameId":"2025_04_CHI_LV","espnGameId":"401772742","season":"2025","week":"4","seasonType":"REG","gameday":"2025-09-28","awayTeam":"CHI","homeTeam":"LV","awayScore":25,"homeScore":24,"completed":true},{"gameId":"2025_03_LV_WAS","espnGameId":"401772841","season":"2025","week":"3","seasonType":"REG","gameday":"2025-09-21","awayTeam":"LV","homeTeam":"WSH","awayScore":24,"homeScore":41,"completed":true},{"gameId":"2025_02_LAC_LV","espnGameId":"401772811","season":"2025","week":"2","seasonType":"REG","gameday":"2025-09-15","awayTeam":"LAC","homeTeam":"LV","awayScore":20,"homeScore":9,"completed":true},{"gameId":"2025_01_LV_NE","espnGameId":"401772720","season":"2025","week":"1","seasonType":"REG","gameday":"2025-09-07","awayTeam":"LV","homeTeam":"NE","awayScore":20,"homeScore":13,"completed":true},{"gameId":"2024_18_LAC_LV","espnGameId":"401671839","season":"2024","week":"18","seasonType":"REG","gameday":"2025-01-05","awayTeam":"LAC","homeTeam":"LV","awayScore":34,"homeScore":20,"completed":true},{"gameId":"2024_17_LV_NO","espnGameId":"401671738","season":"2024","week":"17","seasonType":"REG","gameday":"2024-12-29","awayTeam":"LV","homeTeam":"NO","awayScore":25,"homeScore":10,"completed":true},{"gameId":"2024_16_JAX_LV","espnGameId":"401671673","season":"2024","week":"16","seasonType":"REG","gameday":"2024-12-22","awayTeam":"JAX","homeTeam":"LV","awayScore":14,"homeScore":19,"completed":true},{"gameId":"2024_15_ATL_LV","espnGameId":"401671697","season":"2024","week":"15","seasonType":"REG","gameday":"2024-12-16","awayTeam":"ATL","homeTeam":"LV","awayScore":15,"homeScore":9,"completed":true},{"gameId":"2024_14_LV_TB","espnGameId":"401671654","season":"2024","week":"14","seasonType":"REG","gameday":"2024-12-08","awayTeam":"LV","homeTeam":"TB","awayScore":13,"homeScore":28,"completed":true},{"gameId":"2024_13_LV_KC","espnGameId":"401671806","season":"2024","week":"13","seasonType":"REG","gameday":"2024-11-29","awayTeam":"LV","homeTeam":"KC","awayScore":17,"homeScore":19,"completed":true},{"gameId":"2024_12_DEN_LV","espnGameId":"401671656","season":"2024","week":"12","seasonType":"REG","gameday":"2024-11-24","awayTeam":"DEN","homeTeam":"LV","awayScore":29,"homeScore":19,"completed":true}],"nextGame":{"gameId":"2026_02_LV_LAC","espnGameId":"401872941","season":"2026","week":"2","seasonType":"REG","gameday":"2026-09-20","awayTeam":"LV","homeTeam":"LAC","awayScore":null,"homeScore":null,"completed":false},"roster":[{"name":"Jack Bech","pos":"WR","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4603186.png","id":"espn:football:4603186"},{"name":"Malik Benson","pos":"WR","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/5150247.png","id":"espn:football:5150247"},{"name":"Brock Bowers","pos":"TE","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4432665.png","id":"espn:football:4432665"},{"name":"Spencer Burford","pos":"G","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4362999.png","id":"espn:football:4362999"},{"name":"Bryce Cabeldue","pos":"G","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4612077.png","id":"espn:football:4612077"},{"name":"Kirk Cousins","pos":"QB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/14880.png","id":"espn:football:14880"},{"name":"DJ Glaze","pos":"OT","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4606683.png","id":"espn:football:4606683"},{"name":"Charles Grant","pos":"OT","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4694505.png","id":"espn:football:4694505"},{"name":"Connor Heyward","pos":"FB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4241961.png","id":"espn:football:4241961"},{"name":"Ashton Jeanty","pos":"RB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4890973.png","id":"espn:football:4890973"},{"name":"Dylan Laube","pos":"RB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4366963.png","id":"espn:football:4366963"},{"name":"Tyler Linderbaum","pos":"C","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4360499.png","id":"espn:football:4360499"},{"name":"Michael Mayer","pos":"TE","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4429086.png","id":"espn:football:4429086"},{"name":"Fernando Mendoza","pos":"QB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4837248.png","id":"espn:football:4837248"},{"name":"Kolton Miller","pos":"OT","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/3134312.png","id":"espn:football:3134312"},{"name":"Chris Myarick","pos":"TE","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/3138744.png","id":"espn:football:3138744"},{"name":"Jalen Nailor","pos":"WR","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4382466.png","id":"espn:football:4382466"},{"name":"Aidan O'Connell","pos":"QB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4260394.png","id":"espn:football:4260394"},{"name":"Jackson Powers-Johnson","pos":"G","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4875295.png","id":"espn:football:4875295"},{"name":"Caleb Rogers","pos":"G","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4433889.png","id":"espn:football:4433889"},{"name":"Ian Thomas","pos":"TE","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4045305.png","id":"espn:football:4045305"},{"name":"Tre Tucker","pos":"WR","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4428718.png","id":"espn:football:4428718"},{"name":"Mike Washington Jr.","pos":"RB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4686658.png","id":"espn:football:4686658"},{"name":"Cody White","pos":"WR","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4241983.png","id":"espn:football:4241983"},{"name":"Dareke Young","pos":"WR","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4401805.png","id":"espn:football:4401805"},{"name":"Trey Zuhn III","pos":"C","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4431623.png","id":"espn:football:4431623"},{"name":"Thomas Booker IV","pos":"DT","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4360749.png","id":"espn:football:4360749"},{"name":"Adam Butler","pos":"DT","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/2972342.png","id":"espn:football:2972342"},{"name":"Jeremy Chinn","pos":"S","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4043169.png","id":"espn:football:4043169"},{"name":"Maxx Crosby","pos":"DE","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/3916655.png","id":"espn:football:3916655"},{"name":"Nakobe Dean","pos":"LB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4426340.png","id":"espn:football:4426340"},{"name":"Tommy Eichenberg","pos":"LB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4429560.png","id":"espn:football:4429560"},{"name":"Folorunso Fatukasi","pos":"DT","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/3045172.png","id":"espn:football:3045172"},{"name":"Tonka Hemingway","pos":"DT","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4429109.png","id":"espn:football:4429109"},{"name":"Dalton Johnson","pos":"S","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4682488.png","id":"espn:football:4682488"},{"name":"Patrick Johnson","pos":"DE","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4243916.png","id":"espn:football:4243916"},{"name":"Taron Johnson","pos":"CB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/3121003.png","id":"espn:football:3121003"},{"name":"Malcolm Koonce","pos":"DE","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4239719.png","id":"espn:football:4239719"},{"name":"Jonah Laulu","pos":"DT","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4373956.png","id":"espn:football:4373956"},{"name":"Cody Lindenberg","pos":"LB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4685126.png","id":"espn:football:4685126"},{"name":"Darrell Luter Jr.","pos":"CB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4685978.png","id":"espn:football:4685978"},{"name":"Hezekiah Masses","pos":"CB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4917354.png","id":"espn:football:4917354"},{"name":"Tristin McCollum","pos":"S","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4250393.png","id":"espn:football:4250393"},{"name":"Jermod McCoy","pos":"CB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/5157289.png","id":"espn:football:5157289"},{"name":"Segun Olubi","pos":"LB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4260703.png","id":"espn:football:4260703"},{"name":"Kwity Paye","pos":"DE","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4258194.png","id":"espn:football:4258194"},{"name":"JJ Pegues","pos":"DT","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4430896.png","id":"espn:football:4430896"},{"name":"Isaiah Pola-Mao","pos":"S","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4259632.png","id":"espn:football:4259632"},{"name":"Darien Porter","pos":"CB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4430330.png","id":"espn:football:4430330"},{"name":"Eric Stokes","pos":"CB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4259561.png","id":"espn:football:4259561"},{"name":"Treydan Stukes","pos":"S","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4697757.png","id":"espn:football:4697757"},{"name":"Quay Walker","pos":"LB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4379416.png","id":"espn:football:4379416"},{"name":"AJ Cole","pos":"P","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/3686689.png","id":"espn:football:3686689"},{"name":"Matt Gay","pos":"PK","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4249087.png","id":"espn:football:4249087"},{"name":"Alex Ward","pos":"LS","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4243545.png","id":"espn:football:4243545"},{"name":"Chigozie Anusiem","pos":"CB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4360475.png","id":"espn:football:4360475"},{"name":"Chris Collier","pos":"RB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4698191.png","id":"espn:football:4698191"},{"name":"Keyron Crawford","pos":"DE","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4911904.png","id":"espn:football:4911904"},{"name":"Brennan Jackson","pos":"LB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4373471.png","id":"espn:football:4373471"},{"name":"Justin Pickett","pos":"G","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4688538.png","id":"espn:football:4688538"},{"name":"Corey Rucker","pos":"WR","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4433901.png","id":"espn:football:4433901"},{"name":"Carter Runyon","pos":"TE","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/5155825.png","id":"espn:football:5155825"},{"name":"Justin Shorter","pos":"WR","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4361426.png","id":"espn:football:4361426"},{"name":"Dont'e Thornton Jr.","pos":"WR","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4432775.png","id":"espn:football:4432775"},{"name":"Ronnie Bell","pos":"WR","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4372063.png","id":"espn:football:4372063"},{"name":"Brandon Cleveland","pos":"DT","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4685305.png","id":"espn:football:4685305"},{"name":"Patrick Gurd","pos":"TE","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4693208.png","id":"espn:football:4693208"},{"name":"Roman Hemby","pos":"RB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4688835.png","id":"espn:football:4688835"},{"name":"Niklas Henning","pos":"OT","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/5348412.png","id":"espn:football:5348412"},{"name":"Tim Keenan III","pos":"DT","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4431414.png","id":"espn:football:4431414"},{"name":"Kansei Matsuzawa","pos":"PK","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/5158921.png","id":"espn:football:5158921"},{"name":"Cameron McGrone","pos":"LB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4372085.png","id":"espn:football:4372085"},{"name":"Evan Neal","pos":"G","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4567134.png","id":"espn:football:4567134"},{"name":"Dare Ogunbowale","pos":"RB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/2983509.png","id":"espn:football:2983509"},{"name":"Azeez Ojulari","pos":"LB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4379409.png","id":"espn:football:4379409"},{"name":"Will Putnam","pos":"C","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4426393.png","id":"espn:football:4426393"},{"name":"Cian Slone","pos":"DE","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/5153665.png","id":"espn:football:5153665"},{"name":"Deven Thompkins","pos":"WR","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4374187.png","id":"espn:football:4374187"},{"name":"Greedy Vance","pos":"CB","headshot":"https://a.espncdn.com/i/headshots/nfl/players/full/4686337.png","id":"espn:football:4686337"}]}</script>
+<script type="application/json" id="data-nfl-lv-results">{"source": "game_result, deduplicated: same score and home/away within one day counts as one game", "rawRows": 69, "duplicatesRemoved": 17, "duplicatesWithDateShift": 3, "games": [{"date": "2023-09-10", "season": 2023, "home": false, "opp": "DEN", "pf": 17, "pa": 16, "source": "nflverse", "result": "W"}, {"date": "2023-09-17", "season": 2023, "home": false, "opp": "BUF", "pf": 10, "pa": 38, "source": "nflverse", "result": "L"}, {"date": "2023-09-24", "season": 2023, "home": true, "opp": "PIT", "pf": 18, "pa": 23, "source": "nflverse", "result": "L"}, {"date": "2023-10-01", "season": 2023, "home": false, "opp": "LAC", "pf": 17, "pa": 24, "source": "nflverse", "result": "L"}, {"date": "2023-10-09", "season": 2023, "home": true, "opp": "GB", "pf": 17, "pa": 13, "source": "nflverse", "result": "W"}, {"date": "2023-10-15", "season": 2023, "home": true, "opp": "NE", "pf": 21, "pa": 17, "source": "nflverse", "result": "W"}, {"date": "2023-10-22", "season": 2023, "home": false, "opp": "CHI", "pf": 12, "pa": 30, "source": "nflverse", "result": "L"}, {"date": "2023-10-30", "season": 2023, "home": false, "opp": "DET", "pf": 14, "pa": 26, "source": "nflverse", "result": "L"}, {"date": "2023-11-05", "season": 2023, "home": true, "opp": "NYG", "pf": 30, "pa": 6, "source": "nflverse", "result": "W"}, {"date": "2023-11-12", "season": 2023, "home": true, "opp": "NYJ", "pf": 16, "pa": 12, "source": "nflverse", "result": "W"}, {"date": "2023-11-19", "season": 2023, "home": false, "opp": "MIA", "pf": 13, "pa": 20, "source": "nflverse", "result": "L"}, {"date": "2023-11-26", "season": 2023, "home": true, "opp": "KC", "pf": 17, "pa": 31, "source": "nflverse", "result": "L"}, {"date": "2023-12-10", "season": 2023, "home": true, "opp": "MIN", "pf": 0, "pa": 3, "source": "nflverse", "result": "L"}, {"date": "2023-12-14", "season": 2023, "home": true, "opp": "LAC", "pf": 63, "pa": 21, "source": "nflverse", "result": "W"}, {"date": "2023-12-25", "season": 2023, "home": false, "opp": "KC", "pf": 20, "pa": 14, "source": "nflverse", "result": "W"}, {"date": "2023-12-31", "season": 2023, "home": false, "opp": "IND", "pf": 20, "pa": 23, "source": "nflverse", "result": "L"}, {"date": "2024-01-07", "season": 2023, "home": true, "opp": "DEN", "pf": 27, "pa": 14, "source": "nflverse", "result": "W"}, {"date": "2024-09-08", "season": 2024, "home": false, "opp": "LAC", "pf": 10, "pa": 22, "source": "nflverse", "result": "L"}, {"date": "2024-09-15", "season": 2024, "home": false, "opp": "BAL", "pf": 26, "pa": 23, "source": "nflverse", "result": "W"}, {"date": "2024-09-22", "season": 2024, "home": true, "opp": "CAR", "pf": 22, "pa": 36, "source": "nflverse", "result": "L"}, {"date": "2024-09-29", "season": 2024, "home": true, "opp": "CLE", "pf": 20, "pa": 16, "source": "nflverse", "result": "W"}, {"date": "2024-10-06", "season": 2024, "home": false, "opp": "DEN", "pf": 18, "pa": 34, "source": "nflverse", "result": "L"}, {"date": "2024-10-13", "season": 2024, "home": true, "opp": "PIT", "pf": 13, "pa": 32, "source": "nflverse", "result": "L"}, {"date": "2024-10-20", "season": 2024, "home": false, "opp": "LA", "pf": 15, "pa": 20, "source": "nflverse", "result": "L"}, {"date": "2024-10-27", "season": 2024, "home": true, "opp": "KC", "pf": 20, "pa": 27, "source": "nflverse", "result": "L"}, {"date": "2024-11-03", "season": 2024, "home": false, "opp": "CIN", "pf": 24, "pa": 41, "source": "nflverse", "result": "L"}, {"date": "2024-11-17", "season": 2024, "home": false, "opp": "MIA", "pf": 19, "pa": 34, "source": "nflverse", "result": "L"}, {"date": "2024-11-24", "season": 2024, "home": true, "opp": "DEN", "pf": 19, "pa": 29, "source": "nflverse", "result": "L"}, {"date": "2024-11-29", "season": 2024, "home": false, "opp": "KC", "pf": 17, "pa": 19, "source": "nflverse", "result": "L"}, {"date": "2024-12-08", "season": 2024, "home": false, "opp": "TB", "pf": 13, "pa": 28, "source": "nflverse", "result": "L"}, {"date": "2024-12-16", "season": 2024, "home": true, "opp": "ATL", "pf": 9, "pa": 15, "source": "nflverse", "result": "L"}, {"date": "2024-12-22", "season": 2024, "home": true, "opp": "JAX", "pf": 19, "pa": 14, "source": "nflverse", "result": "W"}, {"date": "2024-12-29", "season": 2024, "home": false, "opp": "NO", "pf": 25, "pa": 10, "source": "nflverse", "result": "W"}, {"date": "2025-01-05", "season": 2024, "home": true, "opp": "LAC", "pf": 20, "pa": 34, "source": "nflverse", "result": "L"}, {"date": "2025-09-07", "season": 2025, "home": false, "opp": "NE", "pf": 20, "pa": 13, "source": "nflverse", "result": "W"}, {"date": "2025-09-15", "season": 2025, "home": true, "opp": "LAC", "pf": 9, "pa": 20, "source": "nflverse", "result": "L"}, {"date": "2025-09-21", "season": 2025, "home": false, "opp": "WAS", "pf": 24, "pa": 41, "source": "nflverse", "result": "L"}, {"date": "2025-09-28", "season": 2025, "home": true, "opp": "CHI", "pf": 24, "pa": 25, "source": "nflverse", "result": "L"}, {"date": "2025-10-05", "season": 2025, "home": false, "opp": "IND", "pf": 6, "pa": 40, "source": "nflverse", "result": "L"}, {"date": "2025-10-12", "season": 2025, "home": true, "opp": "TEN", "pf": 20, "pa": 10, "source": "nflverse", "result": "W"}, {"date": "2025-10-19", "season": 2025, "home": false, "opp": "KC", "pf": 0, "pa": 31, "source": "nflverse", "result": "L"}, {"date": "2025-11-02", "season": 2025, "home": true, "opp": "JAX", "pf": 29, "pa": 30, "source": "nflverse", "result": "L"}, {"date": "2025-11-06", "season": 2025, "home": false, "opp": "DEN", "pf": 7, "pa": 10, "source": "nflverse", "result": "L"}, {"date": "2025-11-17", "season": 2025, "home": true, "opp": "DAL", "pf": 16, "pa": 33, "source": "nflverse", "result": "L"}, {"date": "2025-11-23", "season": 2025, "home": true, "opp": "CLE", "pf": 10, "pa": 24, "source": "nflverse", "result": "L"}, {"date": "2025-11-30", "season": 2025, "home": false, "opp": "LAC", "pf": 14, "pa": 31, "source": "nflverse", "result": "L"}, {"date": "2025-12-07", "season": 2025, "home": true, "opp": "DEN", "pf": 17, "pa": 24, "source": "nflverse", "result": "L"}, {"date": "2025-12-14", "season": 2025, "home": false, "opp": "PHI", "pf": 0, "pa": 31, "source": "nflverse", "result": "L"}, {"date": "2025-12-21", "season": 2025, "home": false, "opp": "HOU", "pf": 21, "pa": 23, "source": "nflverse", "result": "L"}, {"date": "2025-12-28", "season": 2025, "home": true, "opp": "NYG", "pf": 10, "pa": 34, "source": "nflverse", "result": "L"}, {"date": "2026-01-04", "season": 2025, "home": true, "opp": "KC", "pf": 14, "pa": 12, "source": "nflverse", "result": "W"}, {"date": "2026-09-13", "season": 2026, "home": true, "opp": "Miami Dolphins", "pf": 27, "pa": 13, "source": "live_capture", "result": "W"}]}</script>
+<style>
+  .hero-grid { display: grid; grid-template-columns: auto 1fr auto; gap: var(--s5); align-items: center; }
+  .grades { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); }
+  .grade { display: grid; grid-template-columns: 38px 1fr; gap: 10px; align-items: center; padding: 8px; border-radius: 10px; border: 1px solid var(--line-soft); cursor: default; transition: background var(--t-instant) var(--ease); }
+  .grade:hover { background: var(--card-sunk); }
+  .grade .g { width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center; font: 700 15px/1 var(--font); color: #fff; }
+  .results { display: flex; flex-wrap: wrap; gap: 6px; }
+  .res { display: grid; place-items: center; width: 58px; padding: 6px 0; border-radius: 8px; border: 1px solid var(--line-soft); font-size: 11px; line-height: 1.3; cursor: pointer; transition: transform var(--t-instant) var(--ease), background var(--t-instant) var(--ease); }
+  .res:hover { transform: translateY(-1px); background: var(--card-sunk); }
+  .res b { font-size: 13px; }
+  .res.pre { opacity: .55; border-style: dashed; }
+  .roster { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 4px 12px; }
+  .person { display: grid; grid-template-columns: 36px 1fr; gap: 10px; align-items: center; padding: 6px; border-radius: 8px; transition: background var(--t-instant) var(--ease); }
+  .person:hover { background: var(--card-sunk); }
+  .opt-b .layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: var(--s3); align-items: start; }
+  @media (max-width: 1024px) { .grades { grid-template-columns: repeat(2, minmax(0, 1fr)); } .opt-b .layout { grid-template-columns: 1fr; } .hero-grid { grid-template-columns: auto 1fr; } .hero-grid > :last-child { grid-column: 1 / -1; } }
+</style>
+<body>
+<div id="app"></div>
+<script>
+const T = JSON.parse(document.getElementById('data-nfl-lv-team').textContent);
+const R = JSON.parse(document.getElementById('data-nfl-lv-results').textContent);
+const TEAM_COLOR = '#0b0b0b';
+const LOGO = (abbr) => `https://a.espncdn.com/i/teamlogos/nfl/500/${String(abbr).toLowerCase()}.png`;
+const isPre = (g) => Number(g.date.slice(5, 7)) === 8 || (Number(g.date.slice(5, 7)) === 9 && Number(g.date.slice(8, 10)) < 4 && g.season < 2026);
+const seasons = [...new Set(R.games.map((g) => g.season))].sort((a, b) => b - a);
+let option = 'a', season = 2025, unit = 'offense';
+const app = document.getElementById('app');
+const GROUPS = { offense: ['QB', 'RB', 'FB', 'WR', 'TE', 'OT', 'G', 'C'], defense: ['DE', 'DT', 'LB', 'CB', 'S'], special: ['PK', 'P', 'LS'] };
+
+function record(s) { const gs = R.games.filter((g) => g.season === s && !isPre(g)); const w = gs.filter((g) => g.result === 'W').length, l = gs.filter((g) => g.result === 'L').length, t = gs.filter((g) => g.result === 'T').length; return `${w}-${l}${t ? `-${t}` : ''}`; }
+
+function hero() {
+  const last = [...R.games].reverse().find((g) => !isPre(g));
+  const n = T.nextGame;
+  return h('section', { class: 'hero' }, h('div', { class: 'hero-grid' },
+    avatar(T.team.logoUrl, 84, { logo: true, label: T.team.displayName }),
+    h('div', null, h('div', { class: 't-heading' }, T.team.displayName), h('div', { class: 'row t-sm ink2', style: { marginTop: '4px' } }, h('span', null, `${T.team.wins}-${T.team.losses} · ${T.team.divisionRank} in ${T.team.conference} ${T.team.division}`), h('span', { class: 'muted' }, '·'), h('span', null, `2025: ${record(2025)}`))),
+    h('div', { class: 'row' },
+      last ? h('span', { class: `chip ${last.result === 'W' ? 'good' : 'bad'}` }, `${last.result} ${last.pf}–${last.pa} ${last.home ? 'vs' : '@'} ${last.opp.length > 4 ? last.opp.split(' ').pop() : last.opp}`) : null,
+      n ? h('a', { class: 'btn lnk', href: '#' }, `Next: ${n.homeTeam === 'LV' ? 'vs' : '@'} ${n.homeTeam === 'LV' ? n.awayTeam : n.homeTeam} · ${new Date(`${n.gameday}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} →`) : null)));
+}
+
+function marginChart(games) {
+  const host = h('div', { class: 'chart-host' });
+  const draw = (Wd) => {
+    const W = Math.max(320, Wd), H = 170, m = { l: 34, r: 8, t: 10, b: 22 };
+    const max = Math.max(14, ...games.map((g) => Math.abs(g.pf - g.pa)));
+    const band = (W - m.l - m.r) / games.length, bw = Math.min(24, band - 2);
+    const Y = (v) => m.t + ((max - v) / (2 * max)) * (H - m.t - m.b);
+    const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Point margin by game' });
+    for (const v of [-max, -Math.round(max / 2), 0, Math.round(max / 2), max]) svg.append(s('line', { class: 'grid-l', x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: v === 0 ? 'var(--ink-faint)' : null }), s('text', { class: 'axis-t', x: m.l - 6, y: Y(v) + 3, 'text-anchor': 'end' }, v > 0 ? `+${v}` : String(v)));
+    games.forEach((g, i) => {
+      const mg = g.pf - g.pa, cx = m.l + band * i + band / 2, y0 = Y(0), y1 = Y(mg);
+      const top = Math.min(y0, y1), hh = Math.max(1, Math.abs(y1 - y0));
+      const gEl = s('g', { tabindex: '0', style: 'cursor:pointer' });
+      gEl.append(s('rect', { x: cx - band / 2, y: m.t, width: band, height: H - m.t - m.b, fill: 'transparent' }), s('rect', { class: 'b', x: cx - bw / 2, y: top, width: bw, height: hh, rx: 3, fill: mg >= 0 ? 'var(--good)' : 'var(--bad)', opacity: isPre(g) ? 0.35 : 0.9 }));
+      const tip = () => [tipRow(`${mg > 0 ? '+' : ''}${mg}`, `${g.result} ${g.pf}–${g.pa}`), tipText(`${g.home ? 'vs' : '@'} ${g.opp} · ${new Date(`${g.date}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}${isPre(g) ? ' · preseason' : ''}`)];
+      gEl.addEventListener('pointermove', (e) => Tip.show(e.clientX, e.clientY, ...tip())); gEl.addEventListener('pointerleave', () => Tip.hide());
+      gEl.addEventListener('focus', () => { const b = gEl.getBoundingClientRect(); Tip.show(b.left, b.top, ...tip()); }); gEl.addEventListener('blur', () => Tip.hide());
+      gEl.addEventListener('click', () => openGame(g));
+      svg.append(gEl);
+    });
+    host.replaceChildren(h('div', { class: 'chart' }, svg));
+  };
+  new ResizeObserver((en) => draw(Math.round(en[0].contentRect.width))).observe(host);
+  return host;
+}
+
+function openGame(g) {
+  Drill.open(`${g.home ? 'vs' : '@'} ${g.opp}`, `${new Date(`${g.date}T12:00:00`).toDateString()}${isPre(g) ? ' · preseason' : ''}`, h('div', { class: 'stack' },
+    h('div', { class: 'grid cols-3' }, ...[['Result', g.result], ['Score', `${g.pf}–${g.pa}`], ['Margin', `${g.pf - g.pa > 0 ? '+' : ''}${g.pf - g.pa}`]].map(([l, v]) => h('div', { class: 'stat' }, h('div', { class: 'l' }, l), h('div', { class: 'v' }, v)))),
+    h('div', { class: 'callout' }, 'Full build: box score, team stat comparison, drives and win probability for this game, and a link to its game page.')));
+}
+
+function resultsCard() {
+  const gs = R.games.filter((g) => g.season === season);
+  const strip = h('div', { class: 'results' }, ...gs.map((g) => {
+    const el = h('button', { class: `res${isPre(g) ? ' pre' : ''}`, type: 'button', onclick: () => openGame(g) }, h('span', { class: 't-label' }, `${g.home ? 'vs' : '@'} ${g.opp.length > 4 ? g.opp.split(' ').pop() : g.opp}`), h('b', { style: { color: g.result === 'W' ? 'var(--good)' : g.result === 'L' ? 'var(--bad)' : 'var(--ink)' } }, `${g.result} ${g.pf}-${g.pa}`));
+    Tip.bind(el, () => [tipRow(`${g.pf}–${g.pa}`, g.result === 'W' ? 'win' : g.result === 'L' ? 'loss' : 'tie'), tipText(`${new Date(`${g.date}T12:00:00`).toDateString()}${isPre(g) ? ' · preseason (excluded from record)' : ''}`)]);
+    return el;
+  }));
+  const pre = gs.filter(isPre).length;
+  return card({ title: 'Results', scope: `${season} · ${record(season)}${pre ? ` + ${pre} preseason` : ''}`, info: 'Every game with score. Click a game to open it; hover for the date.',
+    body: h('div', { class: 'stack' }, h('div', { class: 'row' }, segmented(seasons.map((y) => ({ value: y, label: String(y) })), season, (v) => { season = v; render(); })), strip, marginChart(gs)),
+    foot: `Source: game_result — ${R.rawRows} rows are ${R.games.length} games: ${R.duplicatesRemoved} are the same game from a second source, ${R.duplicatesWithDateShift} of them dated a day apart (evening kickoffs stored under UTC by one source).` });
+}
+
+function statsCard() {
+  const groups = [...new Set(T.teamStats.map((x) => x.group))];
+  return card({ title: 'Team stats', scope: '2025 season · rank of 32', info: 'Bars show league percentile from the rank, already direction-aware (fewer sacks taken ranks higher). Hover for value and rank.',
+    body: h('div', { class: 'stack' }, ...groups.map((grp) => h('div', null, h('div', { class: 't-over', style: { margin: '4px 0' } }, grp), ...T.teamStats.filter((x) => x.group === grp).map((x) => pbar(x.label, x.decimals ? Number(x.value).toFixed(x.decimals) : fmt.n(x.value, 1), Math.round(((32 - x.rank) / 31) * 100), { info: `${fmt.ord(x.rank)} of 32` }))))),
+    foot: '2026 has one game so far; the season toggle above the section would switch this to 2026 once the sample is meaningful' });
+}
+
+function gradesCard() {
+  const names = { offense: 'Offense', defense: 'Defense', specialTeams: 'Special teams', passingOffense: 'Passing offense', rushingOffense: 'Rushing offense', receivingOffense: 'Receiving', dLine: 'D-line', linebackers: 'Linebackers', secondary: 'Secondary' };
+  const tone = (c) => (c >= 60 ? 'var(--good)' : c >= 35 ? 'oklch(45% 0.005 260)' : 'var(--bad)');
+  return card({ title: 'Unit grades', scope: '2025 · vs league', info: 'Letter from a composite of each unit\'s ranked stats. Hover for rank.',
+    body: h('div', { class: 'grades' }, ...Object.entries(T.grades).map(([k, g]) => { const el = h('div', { class: 'grade' }, h('div', { class: 'g', style: { background: tone(g.composite) } }, g.grade), h('div', null, h('div', { class: 't-sm', style: { fontWeight: 600 } }, names[k] || k), h('div', { class: 't-label' }, `${fmt.ord(g.rank)} of ${g.poolSize}`))); Tip.bind(el, () => [tipRow(g.grade, names[k] || k), tipText(`composite ${Math.round(g.composite)} · ${fmt.ord(g.rank)} of ${g.poolSize}`)]); return el; })) });
+}
+
+function rosterCard() {
+  const order = GROUPS[unit];
+  const people = T.roster.filter((p) => order.includes(p.pos)).sort((a, b) => order.indexOf(a.pos) - order.indexOf(b.pos) || a.name.localeCompare(b.name));
+  return card({ title: 'Roster', scope: `${people.length} players`, info: 'Grouped by position. Every name links to the player page. Depth-chart order and jersey numbers need data the app does not hold.', dense: true,
+    body: h('div', { class: 'stack' }, h('div', { class: 'row' }, segmented([{ value: 'offense', label: 'Offense' }, { value: 'defense', label: 'Defense' }, { value: 'special', label: 'Special teams' }], unit, (v) => { unit = v; render(); })),
+      h('div', { class: 'roster' }, ...people.map((p) => h('a', { class: 'person', href: '#' }, avatar(p.headshot, 36, { color: TEAM_COLOR, label: p.name }), h('div', { style: { minWidth: 0 } }, h('div', { class: 't-sm lnk', style: { fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, p.name), h('div', { class: 't-label' }, p.pos)))))),
+    foot: 'Depth chart order and jersey numbers: not held' });
+}
+
+function render() {
+  const scope = h('div', { class: 'scope-row' }, h('h2', { class: 't-title' }, 'Season'), segmented([{ value: '2026', label: '2026' }, { value: '2025', label: '2025' }, { value: 'l3', label: 'Last 3 seasons' }], '2025', () => {}), h('span', { class: 't-label' }, 'Scopes stats and grades. 2026 has one game, so the board shows 2025.'));
+  const nav = h('div', { class: 'secnav sticky', style: { marginTop: 'var(--s4)' } }, tabs([{ value: 'o', label: 'Overview' }, { value: 'r', label: 'Results' }, { value: 's', label: 'Stats' }, { value: 'ro', label: 'Roster' }, { value: 'sc', label: 'Schedule' }, { value: 'od', label: 'Odds' }], 'o', () => {}));
+  const content = option === 'a'
+    ? h('div', { class: 'stack' }, resultsCard(), scope, h('div', { class: 'grid cols-2', style: { alignItems: 'start' } }, statsCard(), h('div', { class: 'stack' }, gradesCard(), card({ title: 'Injuries', scope: 'this week', body: h('div', { class: 'state' }, h('b', null, 'Only players with a status'), 'Starters first, position and photo, "props affected" beside players with markets.') }))), rosterCard())
+    : h('div', { class: 'layout' }, h('div', { class: 'stack' }, resultsCard(), rosterCard()), h('div', { class: 'stack' }, gradesCard(), statsCard()));
+  app.replaceChildren(
+    boardBar('Phase G · Team page (NFL)', `Real data: Las Vegas Raiders — team API (2025 stats, grades, roster) and game_result (${R.games.length} games, 2023–2026).`,
+      [segmented([{ value: 'a', label: 'Option A · sectioned' }, { value: 'b', label: 'Option B · dashboard' }], option, (v) => { option = v; render(); })]),
+    h('div', { class: `page opt-${option}` },
+      h('div', { class: 'callout', style: { marginBottom: 'var(--s4)' } }, h('b', null, 'What this replaces: '), 'the moneyline picker, the 25-game win bars with two seasons out of order, Form, Recent results and Last 15 games (Phase F). ', h('b', null, 'Try: '), 'switch seasons in Results, hover and click games and margin bars, hover stat bars and grades, switch roster units.'),
+      hero(), option === 'a' ? nav : null, h('div', { style: { marginTop: 'var(--s4)' } }, content)));
+}
+render();
+</script>
+</body>
