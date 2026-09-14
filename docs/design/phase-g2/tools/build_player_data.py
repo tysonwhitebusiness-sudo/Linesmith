@@ -453,14 +453,11 @@ async def run_subject(c, slug, cfg):
         rounds = await c.fetch("SELECT event_id, round, total_strokes, relative_to_par, wind_mph, temp_f FROM golf_round_scores WHERE espn_id=$1 ORDER BY event_id, round", pid)
         holes = await c.fetch("SELECT event_id, round, hole, par, strokes, relative_to_par, category FROM golf_hole_scores WHERE espn_id=$1 ORDER BY event_id, round, hole", pid)
         shots = await c.fetch("SELECT tournament_id, round_number, hole_number, shot_number, distance_yds, left_yds, from_lie, to_lie, is_putt FROM golf_shot_events WHERE player_name=$1", cfg["name"])
-        events = {}
-        for eid in {r["event_id"] for r in rounds}:
-            try:
-                ev = get_json(f"https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard?event={eid}")
-                e0 = (ev.get("events") or [{}])[0]
-                events[eid] = {"name": e0.get("name"), "date": e0.get("date")}
-            except Exception:
-                events[eid] = {"name": None}
+        # Event names live in golf_tournaments (written by the golf jobs).
+        names = await c.fetch("SELECT event_id, name, course_name FROM golf_tournaments WHERE event_id = ANY($1::text[])", list({str(r["event_id"]) for r in rounds}))
+        events = {str(n["event_id"]): {"name": n["name"], "course": n["course_name"]} for n in names}
+        for eid in {str(r["event_id"]) for r in rounds}:
+            events.setdefault(eid, {"name": None})
         doc["golf"] = {"source": "golf_round_scores, golf_hole_scores (3 events), golf_shot_events (season)", "events": events,
                        "rounds": [dict(r) for r in rounds], "holes": [dict(h) for h in holes],
                        "shots": [[s["tournament_id"], s["round_number"], s["hole_number"], s["shot_number"], s["distance_yds"], s["left_yds"], s["from_lie"], s["to_lie"], bool(s["is_putt"])] for s in shots],

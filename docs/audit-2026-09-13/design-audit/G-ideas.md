@@ -20,7 +20,13 @@ verified 2026-09-14).
 The G2 pages use the sectioned layout (A) with a sticky section nav. Picks G3 and G5 below
 still stand if you want the dashboard variant.
 
+Whether every card is buildable from what the app has is checked card by card in
+`docs/design/phase-g2/BUILDABILITY.md` (2026-09-14).
+
 ## Data findings made while building G2 (to Phase H)
+
+- **`mlb_pitch_events` is a hot window (5 days on 2026-09-14).** Season-long pitch cards need a
+  Python rollup over the Parquet corpus; no TypeScript route can read the corpus.
 
 These came from reading the stored data closely enough to draw it. Each one would put a
 wrong number on a page if the app read the data the way the mockups first did.
@@ -38,9 +44,9 @@ wrong number on a page if the app read the data the way the mockups first did.
   not 5.25 (99.8% of makes classify to their stored point value with that origin). Every
   **miss is stored with point value 2**, so a missed three is indistinguishable without the
   arc.
-- **Seasons in `player_game_history` mean different things by sport:** NHL uses the start
-  year (2025 = 2025-26), NBA the end year (2026 = 2025-26). Stray team ids appear for
-  All-Star-type events.
+- **Seasons in `player_game_history` follow each upstream's convention** (NBA end year, NHL/NFL/CFB/EPL
+  start year — documented in `backfill_player_game_history.py`). Not a bug, but every page mapping a
+  season has to follow it. Stray team ids appear for All-Star-type events.
 - **NBA and NHL shot tables hold 2024-25 only,** while game logs reach 2025-26.
 - **MLB innings pitched is stored as whole.thirds per game** (6.2); summing it gives wrong
   season innings. Carry outs.
@@ -55,7 +61,7 @@ wrong number on a page if the app read the data the way the mockups first did.
   win probability and shot coordinates. NHL has neither in ESPN, but the NHL API has shot
   coordinates. ESPN soccer commentary has pitch positions for the match's shots.
 - Smaller: the Understat match list comes newest-first; TennisMyLife dates are the
-  tournament start; golf events carry no names; golf lie codes aren't decoded; ESPN's soccer
+  tournament start; golf lie codes aren't decoded; ESPN's soccer
   team schedule returns only played fixtures unless asked for fixtures.
 
 Everything here follows three settled rules:
