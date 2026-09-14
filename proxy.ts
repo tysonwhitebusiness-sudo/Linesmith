@@ -128,6 +128,36 @@ export const LIMITS: { test: (p: string) => boolean; limit: number; windowMs: nu
   },
   // Routes that can reach an external provider or run real computation.
   { test: (p) => p.startsWith('/api/odds/') || p.startsWith('/api/props/') || p.startsWith('/api/diagnostics/'), limit: 10, windowMs: 60_000, label: 'provider' },
+  //
+  // R1e. THE REST OF A PAGE'S OWN READS, sized to a page's real fan-out.
+  //
+  // Before this, every unlisted route shared the 60/minute `default` bucket
+  // below — the sport snapshot, both teams, the game, season ranks, the
+  // signed-in user's picks and watchlist, all of it. Measured on one NFL game
+  // page load: 7 distinct routes in this class, and a game page re-polls the
+  // snapshot while it is open. Six or seven page views a minute — ordinary
+  // browsing, and less than that with live polling running — exhausted a
+  // budget meant to stop abuse.
+  //
+  // 240/minute is roughly ten page loads plus their polling, which no real
+  // session reaches and a scraper still does. These are all cached reads of
+  // our own Postgres or a snapshot; the vendor-touching routes stay on the
+  // 10/minute `provider` budget above, which is the one that protects spend.
+  //
+  // `/api/picks` and `/api/watchlist` are here because they are per-page
+  // reads like the rest, not because they are cheap — they are session-scoped
+  // and already authenticated.
+  {
+    test: (p) =>
+      /^\/api\/(mlb|nfl|cfb|nba|nhl|soccer|tennis|golf)(\/|$)/.test(p) ||
+      p.startsWith('/api/season-ranks') ||
+      p.startsWith('/api/team-rating-history') ||
+      p.startsWith('/api/picks') ||
+      p.startsWith('/api/watchlist'),
+    limit: 240,
+    windowMs: 60_000,
+    label: 'page-load',
+  },
   // Everything else under /api.
   { test: (p) => p.startsWith('/api/'), limit: 60, windowMs: 60_000, label: 'default' },
 ];
@@ -163,8 +193,19 @@ function rateLimit(request: NextRequest, pathname: string): NextResponse | null 
   if (existing.count <= rule.limit) return null;
 
   const retryAfter = Math.max(1, Math.ceil((existing.resetAt - now) / 1000));
+  // R1e: the old wording said "for this route", which was wrong — the budget
+  // is shared across a whole class of routes — and it was written for a
+  // developer reading a response body. A page must not print this at all
+  // (see `ErrorState`, R3); if anything ever does, it should read like a
+  // sentence.
   return NextResponse.json(
-    { error: 'Too many requests', detail: `Limit is ${rule.limit} per ${rule.windowMs / 1000}s for this route.` },
+    {
+      error: 'Too many requests',
+      detail: `Too many requests — try again in ${retryAfter}s.`,
+      limit: rule.limit,
+      windowSeconds: rule.windowMs / 1000,
+      scope: rule.label,
+    },
     { status: 429, headers: { 'retry-after': String(retryAfter) } },
   );
 }

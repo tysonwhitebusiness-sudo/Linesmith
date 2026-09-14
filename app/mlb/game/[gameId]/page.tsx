@@ -110,7 +110,16 @@ export default function GameDetailPage() {
         {loading && !selectedGame ? (
           <BrandedLoader size="page" />
         ) : !selectedGame ? (
-          <div className="lb-card p-6 text-center text-sm text-ink-muted">Game not found.</div>
+          /* B5. MLB's GameDetail reads the game out of the slate snapshot, and
+             unlike every other sport there is no `/api/mlb/game/{id}` route to
+             fall back to — only `.../live` exists (audit B8, believed
+             deliberate). So a past game genuinely cannot be resolved here yet;
+             the fix is a per-game read, which belongs with R8's game-page
+             rebuild. Until then the page says what is actually true instead of
+             claiming the game does not exist. */
+          <div className="lb-card p-6 text-center text-sm text-ink-muted">
+            This game isn’t on today’s slate. MLB game pages currently only cover today’s games.
+          </div>
         ) : (
           <>
             {!detailReady && <BrandedLoader size="page" />}

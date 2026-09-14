@@ -105,12 +105,17 @@ export default function NflGameDetailPage() {
       <main className="px-3 py-3">
         {error ? <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad">{error}</div> : null}
 
-        {loading && !selectedGame ? (
+        {/* B5. This used to render "Game not found." for any game missing from
+            TODAY'S strip, which is every past game — so every link out of a
+            game log, a results list or a schedule was dead. `GameDetail`
+            fetches NFL by id through `useNflGameDetail`, so it does not need
+            the strip at all; CFB, soccer, NBA, NHL and tennis already render
+            it unconditionally for exactly that reason. The strip stays as
+            navigation; it is no longer a gate. */}
+        {loading && !selectedGame && games.length === 0 ? (
           <div className="lb-card p-4">
             <div className="h-20 animate-pulse rounded-lg bg-line/30" />
           </div>
-        ) : !selectedGame ? (
-          <div className="lb-card p-6 text-center text-sm text-ink-muted">Game not found.</div>
         ) : (
           <>
             {!detailReady && <BrandedLoader size="page" />}

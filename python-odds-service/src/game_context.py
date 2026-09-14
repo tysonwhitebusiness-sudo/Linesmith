@@ -31,6 +31,7 @@ import asyncio
 import json
 import re
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -145,17 +146,30 @@ def _int_or_none(v) -> int | None:
         return None
 
 
+# ESPN files every game under its US EASTERN date, so a date range has to be
+# built from the Eastern date, never from UTC. `teamSportEspn.ts` was fixed the
+# same way 2026-09-14; this is the Python half of R1d.
+_ESPN_TZ = ZoneInfo("America/New_York")
+
+
 def _date_range_param(days_ahead: int) -> str:
     """ESPN wants YYYYMMDD-YYYYMMDD with the EARLIER date first.
 
-    A negative `days_ahead` therefore has to swap the ends, not just subtract:
+    THE RANGE IS BUILT FROM THE US EASTERN DATE. It used to use UTC, so after
+    00:00Z -- 8pm Eastern -- "today" rolled over to tomorrow and the window no
+    longer covered the evening's own games. Every NFL and CFB primetime game
+    hit this, every week: ESPN returned DAL @ NYG (kickoff 00:20Z) for
+    `dates=20260913` and not for a range starting 20260914, so the job simply
+    did not see it.
+
+    A negative `days_ahead` still has to swap the ends, not just subtract:
     passing -3 naively yields "20260903-20260831", which is a backwards range
     and returns nothing. archiveResultsJob asks for a backwards window, so this
     orders the pair rather than assuming the caller wants the future.
     """
-    now = datetime.now(timezone.utc)
-    other = now + timedelta(days=days_ahead)
-    start, end = (now, other) if days_ahead >= 0 else (other, now)
+    today = datetime.now(_ESPN_TZ).date()
+    other = today + timedelta(days=days_ahead)
+    start, end = (today, other) if days_ahead >= 0 else (other, today)
     return f"{start.strftime('%Y%m%d')}-{end.strftime('%Y%m%d')}"
 
 

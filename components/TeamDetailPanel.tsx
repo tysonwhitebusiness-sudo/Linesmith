@@ -52,6 +52,7 @@ function TeamListShell({
   onSearchChange,
   activeTeamId,
   onSelect,
+  onRetry,
   children,
 }: {
   sortedTeams: TeamStandingRow[];
@@ -61,6 +62,8 @@ function TeamListShell({
   onSearchChange: (value: string) => void;
   activeTeamId: number;
   onSelect: (teamId: number) => void;
+  /** Re-runs the teams fetch. Absent where the sport's hook exposes no refresh. */
+  onRetry?: () => void;
   children: ReactNode;
 }) {
   const filtered = useMemo(() => {
@@ -83,12 +86,35 @@ function TeamListShell({
             className="w-full rounded-lg border border-line bg-card px-2.5 py-1.5 text-[13px] shadow-card focus:border-masters focus:outline-none"
           />
         </div>
-        {error ? <p className="p-3 text-[11px] text-bad">{error}</p> : null}
+        {/* D5/R1e. This printed the raw API error text straight onto the page,
+            including the rate limiter's own "Limit is 60 per 60s" — and then,
+            because the list was empty, told the user "No teams match", which
+            is false: the teams didn't load. A failed load and an empty search
+            are different things and now say so. R3's `ErrorState` replaces
+            this with the shared primitive. */}
+        {error ? (
+          <p className="p-3 text-[11px] text-bad">
+            Couldn’t load teams.{' '}
+            {onRetry ? (
+              <button type="button" onClick={onRetry} className="underline underline-offset-2">
+                Retry
+              </button>
+            ) : (
+              <button type="button" onClick={() => window.location.reload()} className="underline underline-offset-2">
+                Retry
+              </button>
+            )}
+          </p>
+        ) : null}
         <ul className="max-h-[70vh] overflow-y-auto p-1.5" role="listbox" aria-label="Teams">
           {loading && sortedTeams.length === 0 ? (
             <li className="p-4 text-center text-[12px] text-ink-muted">Loading…</li>
+          ) : error && sortedTeams.length === 0 ? (
+            <li className="p-4 text-center text-[12px] text-ink-muted">Teams unavailable right now.</li>
           ) : filtered.length === 0 ? (
-            <li className="p-4 text-center text-[12px] text-ink-muted">No teams match.</li>
+            <li className="p-4 text-center text-[12px] text-ink-muted">
+              {search.trim() ? `No teams match “${search.trim()}”.` : 'No teams to show.'}
+            </li>
           ) : (
             filtered.map((t) => {
               const selected = t.teamId === activeTeamId;
