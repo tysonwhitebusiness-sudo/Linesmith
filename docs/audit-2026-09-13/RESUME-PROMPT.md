@@ -24,10 +24,14 @@ to me.
    Stop after each.
    - Operator examples: `design-findings.md` D1–D5. These are **examples of
      the kind of problem to find everywhere**, not a to-do list.
-   - Results: `design-audit/E-inventory.md` (coverage + facts), `F-card-verdicts.md` (every card, 13 data bugs F-B1..B13),
+   - Results: `design-audit/E-inventory.md` (coverage + facts), `F-card-verdicts.md` (REDONE 2026-09-14 under the research frame: every card, a depth ledger per sport, slate research views, 13 data bugs F-B1..B13),
      `E-matrix.md` (generated), `E-raw/` (captured card data).
 
 ## Decisions already made — don't reopen
+
+- **Pages are in-depth research pages, not betting pages.** Any stat relevant to an
+  informed decision belongs on player/team/game pages; odds and lines are one
+  section, never the frame cards are judged by (operator, 2026-09-14).
 
 - **The design audit looks forward.** Don't try to work out what went wrong or
   who caused it. **No earlier design is the standard**, including the Aug 29

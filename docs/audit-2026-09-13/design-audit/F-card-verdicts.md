@@ -1,529 +1,430 @@
-# Phase F — Verdict on every card
+# Phase F — Verdict on every card (redone)
 
-**Status: COMPLETE 2026-09-14** for every page the calendar allowed (not judged:
-golf, NBA/NHL live, CFB markets on a live Saturday, soccer and tennis live).
-Judged from the Phase E captures: every card image, its captured text, and the
-full page. Two questions per card: **does it make sense for this sport, and does
-it help?**
+**Status: COMPLETE 2026-09-14, second version.** Replaces the first version
+(commit `9357b19`), which judged every card by whether it helped decide today's
+bet. The operator corrected that: **player, team and game pages are in-depth
+research pages. Any stat relevant to an informed decision belongs on them; odds
+and lines are one section, not the point.**
 
-## ⚠ Correction, 2026-09-14 — read before using these verdicts
+Not judged (calendar): golf, NBA/NHL live states, CFB market cards on a live
+Saturday, soccer and tennis live.
 
-**The operator corrected the frame this phase was written in.** Verdicts below
-judged cards by "does it help decide today's bet", with the prop line as the
-organising question. **That's wrong for this product.** Player, team and game
-pages are **in-depth research pages**: every stat relevant to an informed
-decision belongs on them, and odds/lines are one section.
+## How this version judges
 
-Under the corrected frame:
+**Two questions per card:** does it make sense for this sport, and does it give
+real insight into this player, team or game?
 
-- **Duplicates, empty cards, wrong-sport forms, bad encoding, missing scope,
-  identity and every data bug still stand.** None of those depended on the frame.
-- **"Remove" verdicts that removed depth are withdrawn.** Only genuine
-  duplicates and empty cards get removed.
-- **The line becomes an optional overlay, never the default frame.** Where a
-  verdict says "mark hit/miss against today's line" or "cleared N of M", read it
-  as one available view on a full stat card, not the card's purpose.
-- **"What instead" means more depth, not less.**
+**Verdicts:** **keep** · **rework** (the insight is right, the showing isn't) ·
+**replace** (this slot should hold something else) · **remove** (true duplicate
+or empty). **Depth is never removed.** A real stat that doesn't bear on a bet
+stays.
 
-Verdicts that change:
+**Checks behind each verdict:** **Ins**ight · **Nat**ive form · **Sco**pe ·
+**Enc**oding · **Dup**lication · **Ide**ntity · **Int**eraction · **Ren**dering.
 
-| card | was | now |
+**New in this version: a depth ledger per sport.** The operator's test case
+("longest home run of the day") showed the page can fall short for three
+different reasons, and each has a different fix:
+
+| column | meaning | fix |
 |---|---|---|
-| **Player bar chart** ("N games in scope · cleared the line") | rework around "cleared 46.5 in 6 of 17" | **rework as a stat-over-time chart** for any stat, with scope toggles; the line is an optional overlay |
-| **Rolling form** (NFL, MLB, all) | remove | **rework:** the trend is real insight; draw it on the stat chart or keep a trend card for several stats at once, not a copy of one |
-| **Game log** (every sport) | rework around hit/miss vs the line | **rework as a full stat log**: every stat for the sport, result and score, opponent, season grouping; line markers optional |
-| **Game context** | remove | **replace** with a real summary card: season, last-10 and career averages for the key stats, sample sizes, labeled |
-| **Situational splits / Home & Away** (player and team) | replace with ATS records / remove | **rework as performance splits** (home/away, rest, vs winning teams, by month, by surface/park): stats, not "share over 0.5"; ATS and over/under records are one split among them |
-| **Soccer shot types** | merge (doesn't affect a goal bet) | **keep**, alongside the shot map |
-| **MLB pitch mix / platoon / strike zone** | rework (samples) | unchanged: rework for sample size; all are depth to keep |
-| **Where this sits** | replace or remove | **rework:** percentile among position peers for **several key stats**, not one market |
-| **Opposing defence / Opponent / Opposing starter** | merge into Matchup | unchanged, but the merged card shows the opponent's full relevant profile, not only the prop's stat |
-| **Team stats, Advanced stats, Hitter stats, Season stats** | keep/polish | unchanged, and **expanded**: these are the core of the page (NBA ratings and pace, NHL special teams and goalie stats, NFL EPA and success rate, soccer xG per 90, tennis serve/return) |
-| **Team page line picker / team bar chart** | remove / replace | unchanged: a moneyline picker isn't research. The results strip replaces the chart. |
+| **Shown** | on the page today | — |
+| **Held, not shown** | in our database or corpus, never rendered | a read path and a card |
+| **Dropped at ingest** | the source we already call provides it; our parser throws it away | keep the column, backfill |
+| **Not held** | no source we use provides it | a new source, or derive it |
 
-Phase G's ideas start from this frame: **what does a complete, in-depth page for
-this player, team or game look like in this sport**, with odds as one section.
-
-## Summary — what the verdicts add up to
-
-1. **Pages answer one question many times and others not at all.** Every player
-   page says "did he clear the line" in 4–5 cards (bar chart, Rolling form, Game
-   context, Where this sits, Situational splits). Every game page compares the
-   two teams in 4 cards (Matchup, Team stat comparison, Rankings, Unit grades).
-   The questions a bettor actually asks per sport (NFL targets and snap share,
-   NBA pace and ratings, NHL starting goalies, soccer minutes and position,
-   tennis serve stats and surface) have no card.
-2. **Dead cards.** Form ("vs MIA –"), empty Line movement, Live line tracker
-   when nothing's tracked, Today's line after the game, Recorded price repeating
-   the line picker: **remove** or show only when they hold something.
-3. **Seasons are unlabeled or mixed on nearly every card.** Bar charts open at the
-   oldest game with no years; NFL records span seasons under a 0-0 record;
-   soccer ranks "of 23" in a 20-team league; tennis records of 103-38 labeled one
-   season; last season shown as current form in Week 1.
-4. **The sport-native form is missing.** Strike-zone grids for football targets
-   and soccer shots; NFL standings with GB and L10; soccer records without draws;
-   NHL records without OT losses; tennis pages with home/away, injuries, unit
-   grades and a "team" stat comparison; "Contact quality matchup" on soccer and
-   CFB team pages.
-5. **Encoding says the wrong thing.** Good/bad colors on neutral stats (fouls,
-   saves, target share); `#18`-style ranks that read as jersey numbers; "biggest
-   edge" at the 32nd–48th percentile; green highlighting an edge that works
-   against the bet; per-game stats rounded to integers; raw floats and ISO
-   timestamps.
-6. **Identity.** Initials instead of photos across many cards; club crests
-   instead of player photos in soccer; blank NHL logos.
-7. **Two MLB cards are the model for every sport.** *Live today* (score, state,
-   every line with a check as it clears) and *Pitching matchup* (two sides, the
-   stats that matter, percentile chips, bullpen). Other sports need the
-   equivalent, not a copy of the baseball content.
-8. **Blank player pages** (7 of 22 player captures) → a player page must always
-   render the player; market cards appear only when a market exists.
-9. **13 correctness bugs** found while judging (F-B1…F-B13, bottom of this
-   file), including a Rankings card that invents "against" numbers in four
-   sports.
-
-**Verdicts:** **keep** (at most polish) · **rework** (the idea helps, the showing
-doesn't) · **replace** (this slot should say something else for this sport) ·
-**remove** (doesn't help). Every non-keep says **what instead**.
-
-Each row names the card's **sentence** (what one sentence it's trying to say,
-or *none*) and the checks it fails: **Sen**tence, **Nat**ive form,
-**Sco**pe, **Enc**oding, **Dup**lication, **Ide**ntity, **Int**eraction,
-**Ren**dering.
+Every ledger row was checked against the database schema, the local Parquet
+corpus or the fetcher's own parser on 2026-09-14.
 
 ---
 
-## NFL — player page
+## Summary
 
-Captured: WR Tre Tucker (after his game), RB Ashton Jeanty (after), QB J.J.
-McCarthy (after), QB Jaxson Dart and WR Malik Nabers (pre-game and live).
-
-### The page as a whole
-
-**The page answers one question five times and several others not at all.** "Did
-he clear 46.5?" is said by the bar chart header, the bar chart itself, Rolling
-form, Game context ("6 of 17 · 35%") and Where this sits. Meanwhile the
-questions a bettor on a receiving prop actually asks go unanswered: **how many
-targets is he getting now, who's throwing to him, what's his snap/route share,
-and is anyone injured around him?**
-
-**Every number is last season's and says so nowhere.** All 17 bars are
-`25-Wk1`…`25-Wk18`. The game being bet on is 2026 Week 1. "Season stats",
-"17 games in scope" and "Season average" all mean 2025 without saying it.
-
-**Live looks identical to pre-game.** Captured seven minutes into the Giants'
-game, the Dart and Nabers pages were the same cards as before kickoff: no score,
-no in-game stat line, no "he has 38 yards, needs 9 more".
-
-**Empty cards take real space.** On Tre Tucker's page, five of 17 cards say nothing:
-Live line tracker ("No lines tracked yet"), Today's line ("No game line for this
-matchup yet"), Form ("vs MIA –"), Line movement ("No price history recorded")
-and, on a one-book prop, All books.
-
-### Cards
-
-| card | sentence | verdict | fails | what instead |
-|---|---|---|---|---|
-| **Hero** | "Tre Tucker, WR, LV vs MIA, receiving yards over 46.5" | **rework** | Sen, Sco | `#64` reads as a jersey number but is a rank. "244th of 564 offense" ranks a QB against every offensive player, which means nothing. After the game it still shows the kickoff time. **Instead:** jersey-style `#` gone; rank only within position ("31st of 74 QBs, 2025"); game state in the hero (pre: kickoff + spread/total · live: score + clock + his line so far · final: result + his final line). |
-| **Line picker** (− O 46.5 + · price · Add to slip) | "the line and price" | **keep** | Sco | Price age ("4d ago") is right to show; put the book name beside it. |
-| **Bar chart** ("17 games in scope") | "he cleared 46.5 in 6 of 17 games" | **rework** | Sco, Enc | The strongest card on the page. But "17 games in scope" hides that all 17 are 2025, and the bars show nothing about opportunity. **Instead:** title "2025 season · cleared 46.5 in 6 of 17"; a scope toggle (this season / last season / last 10 / vs opponent); targets as a small mark on each bar, since yards without targets can't separate a bad game from no looks. |
-| **Matchup** (Overview / Stat grid / Profile tabs) | "MIA's pass defense is average" | **rework** | Sen, Dup | "Biggest edge… 45th percentile" names an edge that isn't one (card audit C9), behind three tabs of chrome for one sentence. **Instead:** merge with Opposing defence into one card: what MIA allows **to wide receivers** (yards, catches, TDs per game), ranked 1–32, colored by whether it favors the over, with "no clear edge" when nothing is. |
-| **Target map** | "where his targets go" | **rework for WR/TE, remove for RB** | Nat, Enc, Sco | Football data on a strike-zone grid, good/bad colors on a volume measure, no season (D4). For a WR, depth is real signal: 14% deep says "big-play receiver". **Instead, WR/TE:** a half-field drawing, line of scrimmage at the bottom, short and deep zones with target share as single-color intensity and catch rate on hover, season labeled. **RB:** 83% short behind the line tells a bettor nothing; replace with **rushing direction/gap share** or remove. |
-| **Rolling form** | "his 5-game average is falling" | **remove** | Dup, Enc | Plots the same 17 games as the bar chart. The line (46.5) is named in the caption but not drawn; the y-axis ticks (54.1, 108.3, 162.4) are arbitrary. **Instead:** fold the trend into the bar chart as a rolling-average line over the bars. |
-| **Live line tracker** | none (empty) | **remove as a card** | Sen, Dup | "No lines tracked yet" when signed out. **Instead:** a "Track this line" action on the line picker; show the tracker only when something is tracked and the game is live. |
-| **All books** | "prices at every book" | **rework** | Dup | Useful when several books post the prop. Here: one book (Underdog), stale. Its price repeats the line picker and Recorded price. **Instead:** one "Best price" block next to the line picker (best over, best under, how many books, how stale), expandable to all books. Hide the list with one book. |
-| **Game log** ("Last 15 games") | "what he did each game" | **rework** | Sen, Enc, Ren | Rows show TGT/REC/YDS/TD but **not whether he cleared the line**, the one thing this page is about, and not the result or score. Opponent is a logo only. Wide empty space to the right. The sticky site header covered the card's summary numbers in the capture. **Instead:** each row = week, opponent name + logo, W/L and score, stat line, and a hit/miss mark against today's line; group by season. |
-| **Opposing defence** | "MIA allows 230.6 pass yds/game, 18th of 32" | **merge into Matchup** | Dup, Enc, Sco | Swatch colors are near-identical tans that encode nothing readable. "Pass TD allowed" is team-level, not what MIA gives up to receivers. Season unnamed. |
-| **Head to head** (QB page: "vs DAL, 50%, cleared 1 of 2") | "he cleared the line in 1 of 2 meetings" | **rework** | Sen, Enc | A 50% headline from two games oversells a coin flip. **Instead:** show the meetings themselves ("2025 Wk2: 32 yds · Wk18: 198 yds") and only show a rate at 5+ meetings. |
-| **Conditions** (QB page: 75°F, wind 5 mph) | "the weather at kickoff" | **rework** | Sen | Outdoor weather matters for passing and kicking, but the card doesn't say whether it matters today, and "Area, not on-site" is jargon. **Instead:** only for outdoor stadiums, with an impact line ("wind under 15 mph, no expected effect on passing"); fold into the hero. |
-| **Where this sits** | "75th of 404" | **replace** | Sen, Enc, Sco | D3. The pool is every player with a receiving yard, including linemen and backups. **Instead:** "Rank among WRs with 5+ targets/game, 2025: 42nd of 96" as one percentile bar, or remove. |
-| **Game context** | "cleared 6 of 17, avg 40.94 vs line 46.5" | **remove** | Dup, Sco | D2. Every row repeats the bar chart; "Season average" is over 2025 without saying so. **Instead:** move "average vs line (-5.6)" and "median" into the bar chart header. |
-| **Today's line** | "the game's spread and total" | **rework** | Sen | Empty after the game. Spread and total are real context for a receiving prop (game script). **Instead:** a line in the hero ("MIA +3 · O/U 44.5"); hide when missing. |
-| **Season stats** ("ranked among WRs") | "2025: 57 rec, 696 yds, 5 TD, ~35th of 217" | **rework** | Sco, Enc | Useful, but "Games 17" and the ranks hide the season, and 217 "WRs" includes practice-squad call-ups. The green bars don't say what their length means. **Instead:** "2025 season · among WRs with 8+ games"; add **targets per game and target share**, the receiver stats that drive yardage; a percentile bar with better marked. |
-| **Form** ("vs MIA –") | none (empty) | **remove** | Sen | Says nothing on every NFL capture. |
-| **Line movement** | none (empty) | **remove when empty** | Sen | "No price history recorded" is most NFL props. When history exists: a line-and-price chart, open to now, with book markers. |
-| **Recorded price** | "-110, recorded Sep 9" | **remove** | Dup | Repeats the line picker's price and age. |
-
-### What this page is missing (seeds for Phase G)
-
-- **Opportunity:** targets/game, target share, snap share, routes run. The
-  things that predict yards better than past yards do.
-- **Who's throwing and who's out:** starting QB, injured teammates at his
-  position (more targets) and the defense's injured corners.
-- **Live:** his line so far against today's number, with the game state.
-- **This season vs last:** two games into a new season, the page should say
-  how 2026 compares to 2025, not pretend 2025 is now.
+1. **The pages show a thin slice of what we hold.** Every sport has stats sitting in
+   the database or corpus that no page renders, and several parsers throw away
+   columns the source already sends:
+   - MLB hit distance and spray angle.
+   - Tennis serve and break-point stats.
+   - Soccer xG, fetched per page but never stored.
+2. **Pages are organised around one market, not the subject.** A player page
+   opens on one prop and most cards re-describe that one stat against that one
+   line. A research page should open on the player: role, season, trends,
+   splits, advanced profile, matchup, health, then odds.
+3. **Real duplication still exists:** 4–5 cards restating one hit rate on player
+   pages; 4 cards comparing the same team stats on game pages; the live panel
+   repeating the hero; "Next game" twice.
+4. **Seasons are unlabeled or mixed nearly everywhere.** Charts open at the oldest
+   game without years; records span seasons under a 0-0 record; ranks "of 23" in
+   a 20-team league.
+5. **Forms from the wrong sport:** strike-zone grids for football targets and
+   soccer shots; baseball standings columns in the NFL; soccer records without
+   draws; NHL without overtime losses; tennis with home/away, injuries and "unit
+   grades"; "Contact quality" on soccer and CFB.
+6. **Encoding misleads:** good/bad colors on neutral stats; ranks shown like jersey
+   numbers; per-game stats rounded to integers; raw floats and timestamps.
+7. **Identity:** initials instead of photos across many cards; club crests for
+   soccer players; blank NHL logos.
+8. **Blank player pages** (7 of 22 player captures). A player page must exist
+   without a market.
+9. **MLB's "Live today" and "Pitching matchup"** are the models: dense, true to
+   the sport, two-sided.
+10. **Cross-slate research questions have no home.** "Who hits the longest home
+    run today" needs every hitter's power profile beside every park's carry and
+    weather, a view no single page provides (see "Slate research views").
+11. **13 correctness bugs** (F-B1 to F-B13), unchanged from the first version.
 
 ---
 
-## NFL — game page
+## What every research page needs (applies to all sports)
 
-Captured: DAL @ NYG live (Q1, after the date fix), GB @ MIN late, TB @ CIN
-final, DAL @ NYG pre-game.
+Each surface should cover these sections in the sport's own terms. The per-sport
+sections below judge the existing cards against them.
 
-### The page as a whole
-
-**The same team comparison is shown four times.** Matchup (offense vs defense
-tables), Team stat comparison (bars), Rankings (heat grid) and Unit grades
-(letters) all describe the same 2025 team stats in different forms. None of them
-says **which side of the bet the numbers favor**.
-
-**Live, it becomes a box-score page with the betting page still around it.**
-The live panel repeats the hero's teams, logos and score (D1), then adds a full
-box score, quarter scores, scoring plays and a 30-row team stat table. That's
-good live content, but the pregame cards below it (Situational splits, Records,
-Rankings) don't change or step aside.
-
-**Records mix seasons.** "0-0 · 2nd in division" sits above "Home 6-7, Away
-5-7" for Dallas and "Home 4-8, Away 1-12" for the Giants. An NFL season has 8–9
-home games, so 13 games each way covers more than one season, unlabeled. The
-hero's `L1`/`W2` streaks in Week 1 (0-0) come from last season too.
-
-### Cards
-
-| card | sentence | verdict | fails | what instead |
-|---|---|---|---|---|
-| **Candidates rail** (props list, left) | "props for players in this game" | **keep** | Ren | Long, dense list in a narrow rail. Fine as navigation. |
-| **Hero** (teams, records, grade chips, kickoff/score) | "DAL @ NYG, 0–0 Q1" | **rework** | Sco, Dup | Streaks from last season; grade chips from 2025 unlabeled. **Instead:** season-true record and streak; spread/total/moneyline in the hero pre-game; live score and clock here, and nowhere else. |
-| **Weather** (MetLife, 75°F, wind, "Weather impact Low") | "weather won't matter" | **keep** | — | The impact meter is the right idea. Hide for domes. |
-| **Live panel** (black score block + passing leaders) | "0–0, Q1 9:38, Dak 1/2 8 yds" | **rework** | Dup, Ide | Repeats the hero (D1); logos overlap their abbreviations; initials for Prescott and Dart. **Instead:** the hero becomes live; this panel keeps only leaders and drives, with headshots. |
-| **Box score** (every player, by unit) | "who's done what so far" | **keep** | Ide | Right for live and final. Headshots instead of initials; highlight players with props on this page. |
-| **By quarter / Scoring plays / Team stats table** | "how the game is going" | **keep** | Ren | The 30-row team stat table is long. Collapse to 8 key rows with "show all". |
-| **Matchup** (Team / Player; DAL offense vs NYG defense tables) | "Dallas's offense is elite, and New York's pass defense is middling" | **rework** | Enc, Ren, Sco, Dup | The most useful team card, badly drawn: rank text collides with the neighbouring column ("1st of 32PASS YDS ALLOWE…"), labels truncate, "Season stats" means 2025. **Instead:** one row per pairing, e.g. "DAL pass offense 1st ⟷ NYG pass defense 17th: edge DAL", colored by who it favors; season labeled. This absorbs Team stat comparison, Rankings and Unit grades. |
-| **Records** (Season / Last 5 / Head to head) | "0-0; home 6-7, away 5-7" | **rework** | Sco | Home/away totals span more than a season (13 games each). **Instead:** this season's record, plus last season's record labeled as such until week 4 or so; head to head as a list of meetings with scores. |
-| **Situational splits** ("share of games over -3") | none readable | **replace** | Sen, Enc, Sco | "Over -3" doesn't say whose spread; percentages on tan/red cells read as bad everywhere. **Instead:** ATS record by situation in plain words ("NYG covered 3 of 12 as an underdog, 2025"), W-L-P with sample size. |
-| **Team stat comparison** (paired bars) | same as Matchup | **remove** | Dup, Enc | Bar colors (green/olive/orange) don't match the DAL/NYG legend and don't say better/worse; turnovers use the same "more is green" logic as points. |
-| **Last 5 games** (W/L chips with scores) | "DAL lost 4 of its last 5, NYG won its last 2" | **rework** | Sco, Ide | Clear and good, but these are December–January 2025 games shown at the start of 2026 as current form. Initials used on this card in every sport (E fact 13). **Instead:** label "end of 2025 season" until 2026 games exist; team logos, not initials. |
-| **Rankings** (heat grid, DAL FOR/AGN, NYG FOR/AGN) | "rank of each team's offense and defense" | **remove, and fix the bug** | Dup, **data wrong** | **The "AGN" columns show the other team's offense ranks, not this team's defense.** DAL AGN = NYG FOR exactly (21, 24, 5, 6…), and NYG AGN = DAL FOR (1, 5, 9, 11…). The Matchup card on the same page shows DAL's pass defense is 32nd, not 21st. See "Correctness bugs" below. |
-| **Unit grades** (9 letter grades per team) | "DAL: A- offense, F defense" | **merge into Matchup** | Dup, Sco, Sen | Letters with no season and no explanation of how they're graded. Useful as the headline of each Matchup pairing. |
-| **Injuries** | "who's out" | **rework** | Sen, Ide, Enc | Lists the **entire roster**, "Active" players included, every row labeled "P · NOT REPORTED". The players who matter (Out, Doubtful, Questionable, starters) are buried. **Instead:** only players with a status, starters first, real position, headshot, and "props affected" beside a player with markets. |
-| **Game context** ("Games in scope 25 · Season average -5.48 · Line -3") | none readable | **remove** | Sen, Sco, Dup | D2 on a game page: the -5.48 is a margin for an unnamed team over 25 games spanning seasons. |
-| **Line movement** (tiny chart, "bet365 in front, 2 other books behind…") | "NYG's moneyline moved" | **rework** | Enc, Ren, Sen | Axis unreadable at this size; the caption is jargon. **Instead:** a full-width chart of open → now for spread, total and moneyline, one line per major book, hover crosshair. |
-| **NYG moneyline** (tick strip +119 … +154, "19 books") | "prices range from +119 to +154" | **rework** | Sen, Enc | Unlabeled dots and ticks. **Instead:** "Best NYG price +154 at X · worst +119 · 19 books", both sides. |
-| **Line shopping** (collapsed "21 bookmakers") | same as above | **merge** | Dup | Fold into one "Best prices" card for spread, total and moneyline. |
-| **My picks / Add to picks** | "your slip for this game" | **keep** | — | User tools. |
+| Player page | Team page | Game page |
+|---|---|---|
+| **Identity & role:** photo, position, team, jersey, age, depth-chart/lineup spot, injury status | **Identity & state:** logo, record (sport-correct format), standings position, streak, next/last game | **Header:** teams, records, venue, start time or live state, weather where it matters |
+| **Season & career stats:** full box-score vocabulary, per-game and per-minute/90 rates, this season vs last vs career | **Team stats:** traditional and advanced, ranked, offense and defense, this season vs last | **Two-sided matchup:** each unit against its opposite, with the stats this sport actually uses |
+| **Trends:** any stat over time, rolling averages, scope toggles | **Results & trends:** results with scores by season, ATS / over-under as one view | **Lineups / starters / goalies / pitchers**, injuries by importance |
+| **Splits:** home/away, rest, opponent quality, surface/park, by month, by role | **Splits:** home/away, rest, vs winning teams, by month | **History:** head to head over years (`game_result` holds 16–27) |
+| **Advanced / tracking profile:** the sport's deep stats | **Roster & depth chart**, injuries | **Box score & play-by-play** (live and final) |
+| **Matchup:** opponent's relevant defensive/pitching/goalie profile | **Schedule difficulty & rest** | **Odds & lines section:** best prices, movement history, props for this game |
+| **Game log:** every stat, result, opponent, grouped by season | **Odds & lines section** | |
+| **Odds & lines section:** props, best price, line movement, hit rates as one optional view | | |
 
 ---
 
-## NFL — team page
+## MLB
 
-Captured: Las Vegas Raiders, Week 1 day (their game already final).
+### Player page (hitter Bobby Witt Jr. live; pitcher Noah Cameron live)
 
-### The page as a whole
+**As research:** the richest page in the app, and the closest to the target. It
+still opens on one prop ("Hits O 0.5"), and its deepest cards run on tiny samples:
+pitch mix on **33 pitches**, platoon on **41**, strike zone on **7 balls in
+play**. Meanwhile **1.45M pitches** sit in the corpus.
 
-**It shows the moneyline betting layout, and a team page isn't a bet.** The top
-of the page is a line picker set to "Win · Moneyline" with no price, and a bar
-chart of 25 wins and losses as bars reaching a 0.5 line. A team page's
-questions are **how good is this team now, what's changed, who's hurt, what's
-next, and how have they done against the spread and totals**.
-
-**Seasons are mixed everywhere, and the dates hide it.** The 25-game chart runs
-11/16 … 01/04, then 09/06 … 12/20: two seasons, out of order, no years. "Last
-15 games", "Recent results", "Form", "Situational splits" and "Home/Away" each
-draw on that same unlabeled pool.
-
-**Four cards list the same recent games:** the bar chart, Last 15 games, Recent
-results and Form.
-
-### Cards
-
-| card | sentence | verdict | fails | what instead |
+| card | insight | verdict | fails | what instead |
 |---|---|---|---|---|
-| **Hero** (LV 0-0 · 3rd in division, OFF F · DEF C · ST D, "vs MIA →") | "the Raiders, 0-0, next vs MIA" | **rework** | Sco | Next game points at a game already played today; grades unlabeled. **Instead:** season record, this week's result if played, next opponent with date, "2025 grades" labeled. |
-| **Team line picker** ("Win · Moneyline · Add to slip to record a price") | none | **remove** | Sen | No price, no line. Team bets belong on the game page. |
-| **Bar chart** ("25 games in scope · green cleared a win") | "won 4 of 25" | **replace** | Nat, Enc, Sco | Wins drawn as tall bars over a 0.5 line, losses as flat red slivers; two seasons, dates out of order. **Instead:** a season-by-season results strip (W/L chips with score and opponent logo), plus ATS and total records per season. |
-| **Rating history** (Elo 1249–1539, "1419 now · +15 across 2026") | "the Raiders' strength rating is falling" | **rework** | Sen, Enc | "Rating" and its units mean nothing to a reader. **Instead:** "Power rank 22nd of 32 (was 28th at the end of 2025)", with the rating on hover. |
-| **Last 15 games** (dates, W/L, ✓/✗) | "lost 13 of 15" | **merge** | Dup, Sco | No scores, no years. Merge into the results strip. |
-| **Team matchup — offense vs defense** | "LV's offense is bottom-5 vs MIA's defense" | **rework** | Enc, Ren, Dup | Rows ranked 32nd have **no bar at all**, which reads as missing data. Labels truncate. Duplicates Team stats. Same fix as the game page's Matchup. |
-| **Situational splits** ("share of games over 0.5") | none readable | **replace** | Sen, Enc | "Over 0.5" is the win line in disguise. **Instead:** ATS and over/under records by home/away/favorite/underdog, per season. |
-| **Home / Away** ("Cleared the line 23% / 17% · Moneyline 0.2 / 0.2") | none readable | **remove** | Sen, Enc | "Moneyline 0.2" means nothing. Covered by the split above. |
-| **Team stats** (Scoring, Passing D, Rushing F…) | "2025: 32nd in points and rushing" | **keep, polish** | Sco, Enc | Useful. Label the season; draw a bar for last place instead of none. Absorb the matchup table above. |
-| **Roster (79)** | "who plays for them" | **rework** | Sen, Ide, Sco | Alphabetical, so starters are buried. `#170` beside a name reads as a jersey number but is a rank. Some photos missing. "2 games played" has no season. **Instead:** depth chart order by unit, real jersey numbers, injury status inline, season stats labeled. |
-| **Standings** | "AFC West: everyone 0-0" | **rework** | Nat | NFL standings with **GB and L10 columns**, baseball/basketball concepts, empty ("—") here. **Instead:** W-L-T, PCT, division record, streak, points for/against; highlight this team's division, collapse the rest. |
-| **Line movement** (no data) | none | **remove when empty** | Sen | |
-| **Game context** | none readable | **remove** | Sen, Sco, Dup | D2. |
-| **Form** (Last 5 20% · Last 10 10% · vs MIA 0%) | "won 20% of the last 5" | **remove** | Dup, Sen | Unlabeled win percentages; repeats the results. |
-| **Next game** ("MIA @ LV · 2026-09-13 · No live line yet") | "next: MIA" | **rework** | Sco, Sen | The game already happened; raw ISO date. **Instead:** the real next game, formatted date and kickoff, spread/total when posted. |
-| **Recent results** ("KC vs KC W 14-12") | "beat KC 14-12" | **merge** | Ren, Dup | Opponent appears twice ("KC vs KC"); repeats Last 15 games. |
+| **Hero** | who, team, game state, one prop | **rework** | Ins, Ide | Drop `#18` (a rank shown like a jersey number). Add lineup spot, bats/throws, age, injury status, live score. The prop moves to the odds section. |
+| **Live today** | score, count, bases, batter/pitcher, his at-bats, every line with a check | **keep** | Ide | The model for every sport. Headshots for everyone named. |
+| **Bar chart** ("131 games in scope") | a stat per game | **rework** | Sco, Int | A stat-over-time chart for **any** stat (hits, EV, total bases…), opening on the latest games, season labeled, rolling average drawn on it, line as an optional overlay. |
+| **Rolling form** | trend in one stat | **merge** | Dup | Into the stat chart as the rolling-average line. The trend itself is kept. |
+| **Matchup** ("Biggest edge: strikeouts… 94th percentile") | pitcher vs hitter profile | **rework** | Enc, Sco | Two-sided, like the game page's Pitching matchup: today's pitcher's arsenal and results against this hitter's handedness beside the hitter's results against those pitch types. Live: the pitcher actually on the mound. |
+| **Pitch mix seen** (n=33) | what pitches he faces | **rework** | Sco | Season sample from `mlb_pitch_events` (hundreds of pitches per hitter), with results per pitch type: AVG, xwOBA, whiff%, EV. Sample size per row. |
+| **Platoon split** (41 pitches) | vs LHP / RHP | **rework** | Sco, Enc | Season and last-season AVG/OBP/SLG/xwOBA and PA vs each hand, today's pitcher's hand marked. |
+| **Strike zone** (n=7) | where he does damage | **rework** | Sco | Correct form for baseball. Season sample, zone plus chase edges, xwOBA / whiff% / swing% layers, opposing pitcher's locations on top. |
+| **Situational splits** ("share of games over 0.5") | hit rate by window and venue | **rework** | Ins, Enc | Real performance splits as stats: home/away, day/night, vs LHP/RHP, by month, by lineup spot, with PA. |
+| **Game log** | per-game line | **rework** | Ins | Full batting line, opponent and starter, result, EV max per game; grouped by season; line hit/miss optional. |
+| **Opposing starter** (12 stats) | how good the pitcher is | **rework** | Enc | Keep the depth. Color from the viewed hitter's perspective, add handedness, pitch mix and velocity, headshot. |
+| **Head to head** ("vs BOS 5 of 6") | results vs a team | **rework** | Nat | Batter vs **this pitcher** first (PA, H, HR, K, xwOBA), team splits second. |
+| **Conditions** (raw ISO, 67°F, wind N, rain 91%) | weather | **rework** | Nat, Ren | Temperature, wind **relative to the field**, roof, rain risk, and the **park factor** (held, not shown). Formatted time. |
+| **Hitter stats** | season line + quality of contact | **keep, expand** | Sco | Add max EV, 90th-pct EV, sweet-spot %, pull%, bat speed (see ledger), with season / last season / career columns. |
+| **Where this sits** | percentile in one stat | **rework** | Enc | Percentile bars for 8–10 key stats among qualified hitters (the Savant-style profile). |
+| **Game context** | line-based summary rows | **replace** | Ins | Season / last-30 / career summary of the key stats with samples. |
+| **Odds section** (line picker, All books, Line movement, Recorded price, Live line tracker, Today's line) | prices and movement | **rework as one section** | Dup | One grouped section: props for this player, best prices, movement from `prop_odds_history` (5.2M rows), tracking. Recorded price merges into it; empty parts hide. |
+| **Form** ("vs BOS –") | none | **remove** | — | Empty everywhere. |
+| **Pitcher page** | | **rework** | Ins | Pitchers get **no** matchup, pitch-mix or zone cards though `mlb_pitch_events` holds every pitch they threw. Needs: arsenal (usage, velo, spin from ledger), results by pitch type, zone, splits by batter hand, pitch count/leash trend, opposing lineup profile. Game log is empty (F-B4). |
+
+### Team page (Kansas City)
+
+| card | verdict | what instead |
+|---|---|---|
+| **Hero** | rework | Record, division place, streak, run differential, next game with probable starters. |
+| **Team line picker, "149 games" win bars** | replace | Results strip by month with scores; run differential over time; ATS/over-under as one view. |
+| **Rating history** | rework | "Power rank 22nd" with the rating on hover. |
+| **Pitching matchup** | keep | Today's game. |
+| **Team stats** (per game rounded to integers, F-B5) | rework | One set of rates to proper precision, season vs last season, offense and pitching. |
+| **Advanced stats** | keep, expand | Add team xwOBA, chase rate, bullpen vs rotation splits (from `mlb_pitch_events`). |
+| **Standings** | keep | Native. |
+| **Situational splits / Home & Away** | rework | Real team splits: home/away, vs LHP/RHP starters, one-run games, by month. |
+| **Roster** | rework | Depth chart / lineup order, IL status, photos, real numbers. |
+| **Game context, Form, Next game** | replace / remove / rework | As player page; next game with probable pitchers. |
+
+### Game page (KC @ BOS)
+
+| card | verdict | what instead |
+|---|---|---|
+| **Pitching matchup** | keep, polish | Label bullpen rank circles; live marker for the current pitcher. |
+| **Records** | keep | Season-true. |
+| **Team stat comparison, Rankings, Unit grades** | merge | One two-sided matchup: each lineup vs the opposing staff, proper decimals (F-B5). |
+| **Situational splits, Game context** | replace | Real splits for both teams; remove the line rows. |
+| **Last 5 games** | keep, polish | Logos, not initials. |
+| **Injuries** | rework | IL and day-to-day only, impact order, photos. |
+| **Missing** | add | **Lineups** (batting order, handedness) when posted; **park factor and weather impact**; **head to head over seasons** (`game_result` from 2010); umpire is out of scope (officials cut 2026-08-29). |
+| **Odds section** | rework | Best prices, movement (`game_odds_history`), props for this game. |
+
+### MLB depth ledger
+
+| | |
+|---|---|
+| **Shown** | batting and pitching box lines; season AVG/OBP/SLG/OPS/HR/RBI; season barrel%, avg EV, hard-hit%, whiff% (Savant aggregate); small-sample pitch mix, platoon and zone; weather; opposing starter's Statcast aggregate |
+| **Held, not shown** | **1.45M pitches, 2025–2026** (`corpus/mlb_pitch_events`): per-pitch velocity, type, location, EV and launch angle for **246,709 batted balls and 11,421 HRs**, enough for max EV, EV distribution, launch-angle profile, results by pitch type and zone, pitcher arsenals. `park_factors` (542 venue-seasons) not on player pages. `player_game_history` 2024–2026 while pages read one season. `game_result` from 2010 for head to head. `prop_odds_history` / `game_odds_history` for movement. |
+| **Dropped at ingest** | Savant's export includes **hit distance (`hit_distance_sc`), spray coordinates (`hc_x/hc_y`), batted-ball type, bat speed and swing length, spin rate, pitch movement, release extension**; `statcast_pitches.py` keeps ~20 columns and discards them. |
+| **Not held** | park orientation and dimensions (for wind direction relative to the field and a carry-specific park factor); confirmed lineups history. |
 
 ---
 
-## MLB — player page
+## NFL
 
-Captured live: hitter Bobby Witt Jr. (KC @ BOS, bottom 8th), starting pitcher
-Noah Cameron (same game, already pulled).
+### Player page (WR Tre Tucker, RB Ashton Jeanty, QB J.J. McCarthy; QB Jaxson Dart and WR Malik Nabers pre and live)
 
-### The page as a whole
+**As research:** thin for the sport with the richest vocabulary stored (57 keys).
+It shows receptions, yards and TDs; it doesn't show **targets per game, target
+share, yards after catch, air yards, catch rate over time, snap share or
+efficiency**, and all 17 bars are 2025 labeled as nothing.
 
-**MLB's live player page is the model for every other sport.** "Live today"
-shows the score, count and bases, who's batting and pitching, his at-bats, and
-**every one of today's lines with a check once it's cleared**. That's the
-sentence a live bettor wants ("he has 1 hit, needs nothing more"), said in one
-glance. No other sport has it (E fact 19).
-
-**The deep stats run on tiny samples, and the cards don't warn.** "Pitch mix
-seen" is **33 pitches**, with xwOBA per pitch type on 1–2 balls. "Platoon split"
-is 41 pitches. "Strike zone" is **7 balls in play**. These are the most
-MLB-native cards on the page, and at these samples they're noise presented as
-insight.
-
-**The pitcher page is thin and partly broken.** Its game log shows zero totals
-and nine empty rows (F-B4), and it lacks the hitter page's matchup, zone and
-pitch-mix cards, where a pitcher prop needs them most: the opposing lineup's
-strikeout rate and handedness.
-
-### Cards
-
-Cards already judged on the NFL page (line picker, Live line tracker, All
-books, Where this sits, Game context, Today's line, Form, Line movement,
-Recorded price) get **the same verdict here**; only MLB-specific points are
-listed.
-
-| card | sentence | verdict | fails | what instead |
+| card | insight | verdict | fails | what instead |
 |---|---|---|---|---|
-| **Hero** | "Witt, SS, KC @ BOS, In Progress, hits O 0.5" | **rework** | Sen | `#18` is a rank shown like a jersey number (same as NFL). "In Progress" without the score. |
-| **Live today** | "KC 1–4 BOS, bottom 8th; Witt 1-for-3; hits ✓, walks ✓, total bases 1 of 2" | **keep** | Ide | The best card in the app. Copy it to every sport (card audit C4). Minor: headshots for every player named. |
-| **Bar chart** ("131 games in scope") | "he got a hit in most games" | **rework** | Sco, Int | Opens scrolled to **March**, the oldest games; recent form is off-screen to the right. No year on dates. **Instead:** open at the most recent game, label the season, default to the last 20 with a season toggle. |
-| **Matchup** ("Biggest edge: strikeouts — Tolle 94th percentile allowing it") | "Tolle strikes a lot of hitters out" | **rework** | Sen, Enc, Sco | The edge is **against** the hits-over bet, but it's colored green like a positive. "Allowing strikeouts" is backwards wording for a pitcher's strength. First pitch shown as raw `2026-09-13T19:05:00Z`. Mid-game, the named starter has already been pulled. **Instead:** state which side it favors ("Tolle's 94th-percentile K rate works against hits over"); show today's actual pitcher when live. |
-| **Pitch mix seen** (n=33) | "he's seen mostly sinkers" | **rework** | Sco, Enc | 33 pitches; xwOBA on 1–2 balls per type. **Instead:** the opposing pitcher's **actual arsenal** beside Witt's **season** results against each pitch type (hundreds of pitches), with sample size per row and anything under ~25 PA greyed out. |
-| **Platoon split** (vs LHP 23 pitches, vs RHP 18) | "he hits righties far better" | **rework** | Sco, Enc | "Pitches seen" isn't a stat anyone bets on, and the xwOBA is from 41 pitches. **Instead:** season (and career) AVG/OPS vs LHP and RHP with plate appearances, and a marker for today's pitcher's hand. |
-| **Strike zone** (3×3, n=7) | "where he does damage" | **rework** | Sco | The zone is the right shape for baseball, unlike every other sport (D4), but 7 balls in play can't say anything, and empty cells read as broken. **Instead:** season sample, the zone plus chase edges, and the opposing pitcher's most-used locations drawn on top. |
-| **Rolling form** | "trend in hits" | **remove** | Dup | Same as NFL. |
-| **Situational splits** ("share of games over 0.5") | "got a hit in 73% of games" | **rework** | Sen, Enc | Useful facts in unreadable form. **Instead:** plain sentences with samples: "Hit in 73% of games this season · 74% at home · 60% over his last 5". |
-| **Game log** ("Last 15 games") | "what he did each game" | **rework** | Sen | Same as NFL: mark hit/miss against today's line, opponent pitcher, result. |
-| **Opposing starter** (12 stats, "60 of 364") | "Tolle is a good pitcher" | **rework** | Enc, Sen, Ide | Colors show how good the **pitcher** is, so green means bad news for the hitter being viewed. Twelve stats, lowercase labels ("era", "whip"). **Instead:** 4–5 stats that matter for this prop (K%, hard-hit% allowed, AVG against by batter hand, pitch count trend), colored from the hitter's side, with the pitcher's headshot and throwing hand. Merge into Matchup. |
-| **Head to head** ("vs BOS · 83% · 5 of 6") | "he hit in 5 of 6 games vs Boston" | **rework** | Nat, Sco | In baseball the meaningful head to head is **batter vs this pitcher**, not vs the team. **Instead:** Witt vs Tolle (PA, H, K, HR) when they've met, and team splits only as secondary. |
-| **Conditions** (first pitch raw ISO, 67°F, wind 5 mph N, rain 91%) | "the weather" | **rework** | Sen, Nat | Raw ISO timestamp, truncated. No statement of impact. **Missing the thing baseball bettors use most: park factor** (Fenway for doubles, Coors for runs). **Instead:** park factor for this stat, wind direction relative to the field (out to left/in from right), rain-delay risk, all as one-line impacts. |
-| **Hitter stats** (season averages + quality of contact, "69th of 657") | "a good, not elite, hitter" | **keep, polish** | Sco, Enc | Strong content. Label the season; rank among qualified hitters, not 657 players with any PA (the "1st of 58 at SS" line is the better frame). |
+| **Hero** | who, game, one prop | **rework** | Ins, Sco | Position, depth-chart role, jersey (not rank), injury status, game state (score live). Odds to the odds section. |
+| **Bar chart** | one stat per game | **rework** | Sco | Any stat over time (targets, receptions, yards, YAC, air yards), season labeled, rolling average, line optional. |
+| **Rolling form** | trend | **merge** | Dup | Into the stat chart. |
+| **Matchup** (biggest edge at the 45th percentile) | opponent profile | **rework** | Enc, Dup | Two-sided unit matchup: this player's usage/efficiency vs what the defense allows **to his position**, ranked, season labeled; "no clear edge" when flat. |
+| **Opposing defence** | defense allows | **merge into Matchup** | Dup, Enc | Same. |
+| **Target map** | where targets go | **rework for WR/TE; replace for RB** | Nat, Enc | Half-field drawing with depth zones, share as single-hue intensity, catch rate and YAC on hover (`nfl_target_events`: air yards, YAC, location, 2024–2026). RB: rushing profile (carries by run gap is not held; use rushing yards/attempt trend and receiving role). |
+| **Game log** | per game | **rework** | Ins | Full line: targets, rec, yds, YAC, air yds, TD, long, fumbles; result and score; season grouping. |
+| **Season stats** | season line, ranked | **keep, expand** | Sco, Enc | Targets, target share, catch rate, yards/target, YAC/rec, air yards/target, long, TDs; season / last season / career; pool of qualified players. |
+| **Head to head** (QB: 2 meetings, 50%) | vs opponent | **rework** | Enc | List the meetings with the full stat line; rates only at 5+. |
+| **Conditions** | weather | **rework** | Ins | Outdoor only, with impact on passing and kicking. |
+| **Where this sits** | percentile in one stat | **rework** | Enc | Percentile bars for the position's key stats. |
+| **Game context** | line-based rows | **replace** | Ins | Season / last-4 / career summary. |
+| **Odds section** (picker, All books, Line movement, Recorded price, Live tracker, Today's line) | prices | **rework as one section** | Dup | As MLB. Game spread/total moves to the hero. |
+| **Form** | none | **remove** | — | Empty. |
+| **Live** | — | **add** | Ins | A live player card like MLB's (card audit C4): his stat line so far, snaps, targets, game state. |
 
-## MLB — pitcher page (Noah Cameron)
+### Team page (Las Vegas)
 
-| card | sentence | verdict | fails | what instead |
-|---|---|---|---|---|
-| **Live today** (6.0 IP, 4 H, 1 R, 4 K; today's lines with checks) | "he's done: 6 IP, 4 K, under 0.5 1st-inning runs ✓" | **keep** | — | Same model as the hitter's. |
-| **Bar chart** ("9 games in scope · green cleared under 0.5") | "1 of 9 starts allowed a 1st-inning run" | **rework** | Enc | Zero-run games draw as flat green slivers, indistinguishable from missing data. **Instead:** a hit/miss strip for yes/no markets; bars only for counting stats (strikeouts, outs). |
-| **Game log** ("Last 9 games") | none | **fix (bug F-B4)** | **data missing** | Totals read 0 strikeouts, 0 walks, 0 hits allowed, 0 earned runs; all nine rows are blank with empty opponent circles. |
-| **Missing for a pitcher** | — | **add** | — | Opposing lineup's K% and handedness mix, his pitch count / leash trend, his splits by batter hand. The hitter page has matchup cards; the pitcher page has none. |
+| card | verdict | what instead |
+|---|---|---|
+| **Hero** | rework | Record, division place, streak, point differential, next game (the listed one had already been played). |
+| **Line picker, 25-game win bars** (two seasons out of order, F-B3) | replace | Results strip by season with scores; ATS/over-under as one view. |
+| **Rating history** | rework | Power rank with context. |
+| **Team matchup** (no bar for 32nd) | rework | Unit vs unit two-sided, bars for every rank. |
+| **Team stats** | keep, expand | Label season; add EPA/play, success rate, red zone %, 3rd-down %, explosive play rate (team EPA/CPOE already computed from nflverse). |
+| **Situational splits, Home/Away** | rework | Real team splits (home/away, division, vs winning teams, by quarter). |
+| **Roster** | rework | Depth chart by unit, jersey numbers, injury status, photos. |
+| **Standings** | rework | W-L-T, PCT, division record, streak, PF/PA; drop GB and L10. |
+| **Last 15, Recent results, Form** | merge | Into the results strip. |
+| **Game context, Next game** | replace / rework | Summary; real next game. |
 
-## MLB — game page
+### Game page (DAL @ NYG live, GB @ MIN, TB @ CIN final)
 
-| card | sentence | verdict | fails | what instead |
-|---|---|---|---|---|
-| **Pitching matchup** (Scouting / Head-to-head / Rails; "Stat edge 0–12"; bullpen) | "Tolle outclasses Cameron; Boston's bullpen is deeper" | **keep, polish** | Enc, Sen | The best game-page card in the app: two starters, 12 stats in three groups with percentile chips, and the bullpens. Polish: bullpen circles (95, 50, 64) are ranks that read like jersey numbers; "Stat edge 0–12" counts stats won, which overstates a close matchup; live, mark who's actually pitching now. |
-| **Records** (66-83 · Home 39-36 · Away 27-47) | "KC is 66-83" | **keep** | — | Season-true and adds up, unlike NFL's (F-B2). |
-| **Rankings** (heat grid, 16 stats × FOR/AGN) | "rank of each team's hitting and pitching" | **remove** | Dup, Enc | Not mirrored like NFL's (F-B1 is NFL-only), but it's a 64-cell wall of rank numbers repeating Team stat comparison. |
-| **Team stat comparison** | "Boston hits slightly better" | **rework** | Enc | **Per-game stats rounded to whole numbers**, so R 4 vs 4, H 8 vs 8, BB 3 vs 3 read as identical while the bars differ. **Instead:** two decimals (4.25 vs 4.61 R/G), colored by who's better, merged with the matchup's hitting-vs-pitching pairs. |
-| **Unit grades** (Hitting C / B-, Pitching C / A-) | "Boston is better on both sides" | **merge** | Dup | Two rows. Headline for the pitching matchup and team comparison. |
-| **Situational splits, Last 5, Injuries, Game context, Line movement, Moneyline strip, Line shopping** | — | same as NFL | — | See the NFL game page. |
+| card | verdict | what instead |
+|---|---|---|
+| **Hero + live panel** | rework | One header that becomes live; remove the repeated score block; photos for leaders. |
+| **Weather** | keep | Hide for domes. |
+| **Box score, By quarter, Scoring plays, Team stats table** | keep | Collapse the 30-row table to key rows with "show all". |
+| **Matchup** (text collisions) | rework | Unit-vs-unit two-sided with the sport's stats (EPA/play, success rate, pass/rush rates, pressure), season labeled. Absorbs Team stat comparison, Rankings (F-B1) and Unit grades. |
+| **Records** (13 home games, F-B2) | rework | This season, last season labeled, head to head by season from `game_result` (NFL from 1999). |
+| **Situational splits, Game context** | replace | Team splits; summary. |
+| **Last 5 games** | keep, polish | Label season; logos. |
+| **Injuries** (entire roster listed) | rework | Only players with a status, starters first, position, photo. |
+| **Odds section** (Line movement, Moneyline strip, Line shopping, My picks) | rework as one section | Best prices for spread/total/moneyline, movement chart, props list. |
 
-## MLB — team page (Kansas City)
+### NFL depth ledger
 
-| card | sentence | verdict | fails | what instead |
-|---|---|---|---|---|
-| **Bar chart** ("149 games in scope · green cleared a win") | "66-83" | **replace** | Nat, Enc, Int | Same as NFL's, and opens scrolled to March. **Instead:** results strip by month, run differential, and ATS/over-under records. |
-| **Pitching matchup** | same card as the game page | **keep** | — | Good on the team page too, for today's game. |
-| **Team stats** (Per game · Season) | "KC: 22nd in runs, 2nd in doubles" | **rework** | Enc, Dup | The per-game column is rounded to whole numbers (R 4, HR 1, 3B 0) and repeats the season column's ranks. **Instead:** one column, rates to two decimals, season labeled. |
-| **Advanced stats** (barrel%, exit velo, hard-hit%, whiff%, hitting and pitching) | "KC makes weak contact but rarely whiffs" | **keep** | Enc | Real MLB signal. Better direction is handled correctly (low whiff% ranks 5th, green). |
-| **Standings** (W, L, PCT, GB, L10) | "KC is 10.5 back in the Central" | **keep** | — | GB and L10 are right for baseball (and wrong for the NFL, where the same component shows them). |
-| **Roster, Next game, Game context, Line movement, Rating history, Situational splits, Home/Away** | — | same as NFL | — | See the NFL team page. |
-
----
-
-## Soccer (EPL; MLS spot-check) — player page
-
-Captured: forward Erling Haaland, defender Adam Smith, goalkeeper Gianluigi
-Donnarumma (blank page), MLS forward Denis Bouanga.
-
-### The page as a whole
-
-**It's built around goals, and most players don't score.** Every captured soccer
-player page opens on Anytime Goalscorer, including the right-back (1.9% of 259
-games, card audit C8). The goalkeeper's page is completely empty: EPL has no
-goalkeeper markets in the data, so there's nothing to open on (E facts 1, 17).
-Soccer props the page could open on instead are shots, shots on target, tackles,
-fouls, cards and saves, and the right one depends on position, which soccer
-candidates don't carry (E fact 16).
-
-**Seasons blur into careers.** Haaland's bar chart spans **203 games back to a
-January of some year**, dated without years; shot data is labeled "2019-2026";
-"Season stats" shows **4 games** (this season). The page mixes a career, a season
-and an unlabeled window without saying which card uses which.
-
-**Soccer's native visual is a pitch, and the page has none.** Shot location is a
-3×3 strike-zone box (D4).
-
-**MLS pages are thinner:** Bouanga's page has no matchup, shot type, shot
-location or season stats cards (13 cards vs Haaland's 19), consistent with the
-shot data source covering European leagues.
-
-### Cards (soccer-specific; shared cards as NFL)
-
-| card | sentence | verdict | fails | what instead |
-|---|---|---|---|---|
-| **Hero** | "Haaland, MNC @ MAN, 10:30 AM, anytime goalscorer" | **rework** | Ide, Sco, Sen | **Club crest instead of a headshot** (the headshot exists on the team roster). No position. Kickoff time shown hours after full time. Abbreviations "MNC"/"MAN" aren't how anyone writes Man City/Man United (MCI/MUN). |
-| **Default market** | — | **replace** | Sen | Position-aware default (build 5b): FWD → goalscorer/shots, MID → shots on target/assists, DEF → tackles/fouls, GK → saves. Needs position on the candidate. |
-| **Bar chart** ("203 games in scope") | "scores in about half his games" | **rework** | Sco, Int | Opens at the oldest game, 203 games with no years. **Instead:** open on the latest game, this season by default, season toggle, and mark minutes played (a 20-minute sub appearance isn't a miss). |
-| **Matchup** ("Biggest edge: Goals allowed/gm — MAN 32nd percentile") | "United concede an average amount" | **rework** | Enc, Ide | Initials "EH" instead of a photo; "MAN MAN" repeated; an "edge" at the 32nd percentile (C9). Same fix as NFL's matchup. |
-| **Shot types** (left foot 63%, header 22%, n=700) | "Haaland mostly scores with his left foot" | **merge** | Sen | Real soccer data, but it doesn't change an anytime-goal bet. **Instead:** fold into the shot map as a filter (foot/head). |
-| **Shot location** (3×3: in the box / edge / long range × left/central/right) | "64% of his shots are central, in the box" | **rework** | Nat, Enc | D4: drawn as a strike zone with good/bad colors on volume. **Instead:** a half-pitch shot map (penalty area, six-yard box), shots as dots sized by xG, goals highlighted, filterable by season. |
-| **Home / Away** ("Cleared 59% / 53% · Anytime Goalscorer 1.0 / 0.8") | "scores slightly more at home" | **rework** | Sen, Enc | "1.0 / 0.8" is goals per game, unlabeled; the dumbbell adds nothing. **Instead:** one line: "Scored in 59% of home games, 53% away (this season: 2 of 2 home)". |
-| **Opposing defence** ("Manchester United defence, goals allowed 1.75, 16 of 23") | "United concede a lot" | **merge into Matchup** | Sco | **"Of 23" in a 20-team league**: last season's relegated teams are in the ranking pool (F-B7). |
-| **Head to head** ("vs Man United · 63% · 5 of 8") | "scored in 5 of 8 meetings" | **keep, polish** | — | A real sample. Show the meetings with scores and his goals. |
-| **Season stats** ("ranked among Fs") | "4 goals in 4 games" | **fix + rework** | **Ren (bug)**, Sen | **Raw floats** ("xG 3.4237903356552124", F-B6). Only goals is ranked. "Fs" for forwards. **Instead:** goals, xG, shots, shots on target per 90 and minutes, formatted, ranked among forwards, season labeled. |
-| **Goalkeeper page** (entire page) | none | **replace** | Sen | An empty page for a starting goalkeeper. **Instead:** a non-market profile (saves, goals conceded, clean sheets, xG faced, season and last 5), shown even when no book prices a keeper. |
-
-## Soccer — team page (Manchester City)
-
-| card | sentence | verdict | fails | what instead |
-|---|---|---|---|---|
-| **"Contact quality matchup"** | "City's attack vs Sunderland's defense" | **rework** | **Nat (title)**, Sco, Ren | A **baseball Statcast term** on a soccer page; the game page calls the same card "Team matchup — attack vs. defense". Ranks "of 23". Truncated labels. |
-| **Bar chart** ("4 games in scope · green cleared a win") | "won all 4" | **replace** | Nat, Enc | Soccer has three outcomes, and a win/0.5 bar can't show a draw. **Instead:** a W/D/L strip with scores. |
-| **Team stats** (attack, defence, discipline, xG) | "City lead the league in goals and assists" | **rework** | Enc, Sco | Color follows rank without direction: **most fouls and most offsides are green** like most goals. "Reds/game 0.000". Pools mix "of 20" and "of 23". **Instead:** direction-aware color (fewer fouls = better), neutral color for style stats (fouls, offsides), one pool, season labeled. |
-| **Standings** (W D L GD PTS) | "City 2nd, 12 pts" | **keep** | — | Native soccer table, current season. |
-| **Next game** (card 1: "MNC ML 800 · SUN ML -340 · Total 2.5 O -175") | "City are huge underdogs at Sunderland" | **fix (suspected bug F-B9)** | **data likely wrong** | City (4-0-0, 2nd) at +800 vs Sunderland (1-1-2, 16th) at -340 looks like the two moneylines are swapped. Needs verification against a book. Also no draw price, which every soccer moneyline has. |
-| **Next game** (card 2: "MNC @ SUN · 2026-09-20T13:00Z · No live line yet") | "next: at Sunderland" | **merge** | Dup, Ren | The **same "Next game" card twice** (E fact 8), and this one says there's no line while the other shows one. Raw ISO date. |
-| **Rating history, Last 4 games, Roster, Form, Recent results, Game context, Line movement** | — | same as NFL | — | See the NFL team page. |
-
-## Soccer — game page (Newcastle vs Leeds, pre-game)
-
-| card | sentence | verdict | fails | what instead |
-|---|---|---|---|---|
-| **Matchup** ("Team matchup — attack vs. defense", both directions) | "Newcastle's attack vs Leeds's defense" | **rework** | Ren, Sco | Rank text collides with the next label ("4th of 2GOALS ALLOWED"), the same fault as NFL's. Two stats per side only. |
-| **Records** ("NEW 1-2 · .333", "LEE 1-1 · .500") | "Newcastle have a losing record" | **fix (bug F-B8)** | **data wrong** | Newcastle are **unbeaten** (1W 2D 0L in the standings), but the card shows 1-2 and .333, so draws display as losses. Leeds shows 1-1 for the same 1W 2D. Home/away are dashes. **Instead:** W-D-L and points, home and away. |
-| **Team stat comparison** ("2025 season") | "Newcastle scored more last season" | **rework** | Sco, Enc | Last season's stats, four games into the new one, labeled at least. Same color problem as the team page (more fouls green). **Instead:** this season with last season beside it until ~10 games in. |
-| **Rankings** ("of 20 · 2025 season"), **Unit grades**, **Last 5**, **Injuries**, **Line movement**, **moneyline strip**, **Line shopping** | — | same as NFL | — | Plus: soccer's moneyline strip must show the **draw**. |
+| | |
+|---|---|
+| **Shown** | receptions/yards/TD, passing and rushing totals, team offense/defense per-game and ranks, team EPA/CPOE on matchup cards, target map, weather, injuries |
+| **Held, not shown** | `player_game_history` 57 keys incl. **targets, long reception, adjusted QBR, QB rating, sacks, kicking, punting, returns, defense (tackles, QB hits, TFL, passes defended)**; `nfl_target_events` 2024–2026 with **air yards, YAC, completion, TD, INT per target**; `game_result` from 1999; `team_elo_history`; `injury_report` (since 2026-09-01) |
+| **Dropped at ingest** | the nflverse play-by-play the target job already reads carries **EPA, success, down and distance, CPOE per play**; `nfl_target_events` keeps 12 columns and none of those |
+| **Not held** | snap counts, routes run, route participation, separation (NFL Next Gen Stats), depth charts |
 
 ---
 
 ## CFB
 
-**Player pages: blank** (QB Julian Sayin, WR Jeremiah Smith). "No tracked
-markets for this player on today's slate" on a Sunday. Verdict for the page:
-**replace the empty state.** A player page should always render the player:
-headshot, position, season and career stats, game log, next game. Market cards
-appear only when there's a market. This holds for every sport (see "Blank player
-pages" below). CFB market-card verdicts wait for a live Saturday (build Phase 2).
+**Player pages are blank** (Julian Sayin, Jeremiah Smith): "No tracked markets".
+**Verdict: replace the empty state** with a real player page. The corpus holds
+**52 stat keys, 2024–2026, 21,232 athletes**, enough for full season and game
+logs for every player. Market verdicts wait for a live Saturday.
 
-**Team page (Ohio State):** the same cards as NFL's, including **"Contact
-quality matchup"** (a baseball term, rework as for soccer), "NEXT GAME" twice,
-Roster (100) alphabetical with initials. Same verdicts as NFL/soccer. College
-football-specific **gaps:** AP/CFP ranking, conference record, strength of
-schedule. The standings card should be the conference table, not a league-wide
-one.
+**Team page (Ohio State):** as NFL, plus "Contact quality matchup" is a baseball
+title (**rework** as unit-vs-unit), and "Next game" appears twice. Missing: AP/CFP
+rank, conference record and standings, strength of schedule.
 
-**Game page (Ohio State at Texas, final 23–24):** 10 cards, the thinnest
-game page. The final box score is **stuck on "Loading live details…"** (F-B10),
-the records show dashes, and there's no matchup, team stats, rankings or unit
-grades, for a top-10 matchup. **Verdict: rework.** At minimum the box score,
-team stats and the offense/defense matchup NFL has, plus both teams' rankings.
+**Game page (Ohio State @ Texas, final):** 10 cards, box score stuck loading
+(F-B10), no matchup, team stats or rankings for a top-10 game. **Rework** to
+NFL's game page depth.
 
-## NBA (offseason: pages judged as they render today)
+**CFB ledger:** *Held, not shown:* 52 per-player keys for 21k athletes, team
+offense stats, `game_result` from 2013. *Dropped at ingest / not held:* CFBD
+publishes PPA (EPA-style) and team ratings; not ingested.
 
-**Player pages: blank** (Luka Doncic, Walker Kessler). Same verdict as CFB. In
-the offseason the page should show last season, labeled.
+---
 
-**Team page (Lakers):**
+## Soccer (EPL; MLS spot-check)
 
-| card | verdict | fails | what instead |
-|---|---|---|---|
-| **Team stats** (Offence/Defence/Rebounding, 12 counting stats) | **rework** | Nat, Enc | Box-score counting stats only. What basketball bettors use is **pace, offensive and defensive rating, net rating, eFG%, rebound%, turnover%**. Fouls "3rd of 30" green with no direction. "Offence/Defence" spelling. |
-| **Standings** (all 0-0 · .000, GB, L10) | **rework** | Sco | In the offseason, show **last season's final standings**, labeled, with seeds and play-in lines. GB and L10 are right for the NBA. |
-| **Untitled card: "No upcoming game scheduled."** | **replace** | Sen | The snapshot already has "The 2026-27 NBA season hasn't tipped off" and the first game date (build 1b). Say that, with the opener. |
-| **Hero** ("0-0 · 0th seed, Eastern Conference in division") | **rework** | Sen | Build 1b. |
-| **Bar chart (82 games), Rating history, Last 15, Situational splits, Home/Away, Roster, Form, Recent results, Game context, Line movement** | same as NFL | | |
+### Player page (Haaland FWD, Adam Smith DEF, Donnarumma GK blank; MLS Bouanga)
 
-**Game page (last season, MIN vs LAL):** **Matchup** has the same text collision
-("7th of 3POINTS/GAME") and counting stats only; **Rankings** is mirrored
-(F-B1); **Team stat comparison** is labeled "2026 season" for the 2025-26
-season, which will read as the coming season within weeks. Basketball-native
-gaps: **pace matchup, projected total from pace × ratings, rest days /
-back-to-back, starters' minutes and injuries.** Live states: October.
+**As research:** built around goals. It shows goals, shots, shot types and
+location; it doesn't show **minutes, starts vs sub appearances, xG and xA per 90
+over time, key passes, cards and fouls trends, defensive actions**, and the
+goalkeeper's page is empty.
+
+| card | insight | verdict | fails | what instead |
+|---|---|---|---|---|
+| **Hero** | who, game, one prop | **rework** | Ide, Sco | **Player photo, not the club crest**; position; standard abbreviations; match state (not kickoff time after full time). |
+| **Bar chart** (203 games) | goals per game | **rework** | Sco | Any stat over time (goals, xG, shots, SOT, minutes), season labeled, opens on the latest; minutes played marked so a 15-minute sub isn't read as a blank. |
+| **Matchup** | opponent defense | **rework** | Ide, Enc | Photo; two-sided: his attacking profile vs the opponent's defensive profile (goals and xG conceded, shots allowed, by zone). |
+| **Shot types** | how he shoots | **keep** | — | Depth to keep; pair with the shot map. |
+| **Shot location** (3×3 grid) | where he shoots | **rework** | Nat, Enc | Half-pitch shot map, dots sized by xG, goals highlighted, season filter. |
+| **Home / Away** ("1.0 / 0.8" unlabeled) | venue split | **rework** | Enc | Goals, xG, shots per 90 home vs away, with minutes. |
+| **Opposing defence** ("of 23", F-B7) | defense allows | **merge into Matchup** | Sco | |
+| **Head to head** (8 meetings) | vs opponent | **keep, polish** | — | List meetings with his stat line. |
+| **Season stats** (raw floats, F-B6) | season line | **fix + expand** | Ren | Minutes, starts, goals, xG, npxG, xA, shots, SOT, key passes, per 90, ranked among position peers, season / last season / career. |
+| **Game log** | per match | **rework** | Ins | Minutes, start/sub, goals, xG, shots, SOT, key passes, cards; result and score. |
+| **Default market** (right-back opens on anytime goalscorer) | — | **replace** | Ins | The page opens on the player, not a market. |
+| **Goalkeeper page** (blank) | — | **replace** | Ins | Saves, goals conceded, save %, clean sheets, shots faced, from stored keys (`saves`, `shotsFaced`, `goalsConceded`). |
+| **Game context, Where this sits, Rolling form, Form, odds cards** | | as MLB/NFL | | |
+
+### Team page (Man City)
+
+| card | verdict | what instead |
+|---|---|---|
+| **"Contact quality matchup"** | rework | Retitle and rebuild as attack vs defense, both ways. |
+| **"4 games" win bars** | replace | W/D/L strip with scores. |
+| **Team stats** (fouls and offsides green) | rework | Direction-aware color, neutral for style stats; add xG for/against, possession, shots for/against, set-piece goals; one rank pool (F-B7). |
+| **Standings** | keep | Native. |
+| **Next game** ×2 (swapped-looking moneylines, F-B9) | merge + verify | One card with date, time, and a draw price. |
+| **Roster** | rework | By position, minutes, photos. |
+| **Others** | as NFL | |
+
+### Game page (Newcastle vs Leeds)
+
+| card | verdict | what instead |
+|---|---|---|
+| **Matchup** (collisions) | rework | Attack vs defense with xG, shots, set pieces. |
+| **Records** (draws as losses, F-B8) | fix + rework | W-D-L, points, home/away, head to head over seasons from `game_result` (EPL from 2015). |
+| **Team stat comparison ("2025 season")** | rework | This season with last season beside it. |
+| **Rankings** (F-B1), **Unit grades** | merge | Into the matchup. |
+| **Missing** | add | **Probable lineups / formations**, **injuries and suspensions (card accumulation)**, goals by 15-minute window. |
+| **Odds section** | rework | Three-way moneyline with the draw. |
+
+### Soccer depth ledger
+
+| | |
+|---|---|
+| **Shown** | goals, shots, SOT, assists; shot type and location (career); goals/xG allowed by opponent; team per-game stats; standings |
+| **Held, not shown** | `player_game_history` 16 keys incl. **starts vs sub-ins, fouls committed/suffered, offsides, cards, saves, shots faced, goals conceded**; `game_result` from 2015 (EPL) / 2012 (MLS) |
+| **Dropped at ingest** | Understat data the page **fetches live** (xG, xA, key passes, minutes, position, per-match history) is **never stored**, so no rank, trend or cross-player view can use it; soccer candidates also carry no position (E fact 16) |
+| **Not held** | passing, tackles, interceptions, progressive actions, lineups/formations; MLS shot data (Bouanga's page has no shot cards) |
+
+---
+
+## NBA (offseason: pages as they render today)
+
+**Player pages are blank** (Doncic, Kessler). **Replace the empty state.** Held
+per player: 17 box-score keys 2024–2026 and **214k shot events** (x/y, type, made)
+for 2024-25, enough for a full player page and a real shot chart year-round.
+
+**Team page (Lakers):** team stats are counting totals only (**rework**: pace,
+offensive/defensive/net rating, eFG%, TOV%, OREB%, FT rate, all derivable from
+the held box scores); standings show 0-0 in the offseason (**rework**: last
+season's final table, labeled); "No upcoming game scheduled" (**replace** with the
+season opener, build 1b).
+
+**Game page (last season):** matchup counting stats with text collisions, Rankings
+mirrored (F-B1). **Rework:** pace and ratings matchup, rest days and back-to-backs
+(derivable from `game_result` dates), starters and minutes, injuries.
+
+**NBA ledger:** *Held, not shown:* box scores 2024–2026 (minutes, plus-minus,
+FGA/FTA/TOV/OREB, so possessions, pace and ratings are derivable); shot events
+2024-25; `game_result` from 2007. *Not held:* usage%, lineup/on-off data,
+player tracking; shot events for other seasons.
 
 ## NHL (offseason)
 
-**Player pages: blank** (Matthew Knies, Sergei Bobrovsky). Same verdict as CFB.
-A goalie page especially needs save %, GSAx and starts.
+**Player pages are blank** (Knies, Bobrovsky). **Replace.** Held: 21 keys
+2023–2025 including **TOI, shifts, SOG, hits, blocks, PPG, faceoff %, and goalie
+saves / shots against / goals against**, plus **178k shot events** (x/y, shot type,
+goalie) for 2024-25. A goalie page can show save % and goals against today from
+stored data.
 
-**Team page (Toronto):**
+**Team page (Toronto):** record drops OT losses (F-B11); "Saves/game 1st" colored
+green (**rework** direction); missing PP%, PK%, shots for/against, save %.
 
-| card | verdict | fails | what instead |
-|---|---|---|---|
-| **Hero** ("32-36 · Eastern in division") | **rework + bug** | Nat, Sen | **An NHL record needs overtime losses** (W-L-OTL); "32-36" drops them (F-B11). Conference passed as a division (build 1b). |
-| **Team stats** (offence, discipline, defence) | **rework** | Nat, Enc | **"Saves/game 28.9, 1st of 32" in green**: the most saves means facing the most shots, a defensive weakness. "Hits 5th" green. Missing what hockey bettors use: **PP%, PK%, 5v5 xGF%, save %, shots for/against**. |
-| **Standings, untitled "No upcoming game scheduled", Bar chart, Roster, etc.** | as NBA | | |
+**Game page (last season):** 9 cards, blank logos, box score stuck (F-B10), and
+**no starting goalie matchup**, the single most important hockey game fact.
+**Rework**, goalies first.
 
-**Game page (last season, TOR @ DET, final 3–6):** 9 cards. **Team logos render
-as blank white squares**, the box score is **stuck on "Loading live details…"**
-(F-B10), and there's no matchup, team stats, rankings or goalie matchup. In
-hockey the **starting goalies** are the single most important game-page fact,
-and there is no card for them. **Verdict: rework**, goalie matchup first.
+**NHL ledger:** *Held, not shown:* player TOI/shifts/SOG/hits/blocks/PPG/faceoffs,
+goalie saves and shots against, shot events with coordinates and goalie,
+`game_result` from 2007. *Not parsed:* power-play and shorthanded points and time-on-ice splits
+aren't read by `nhle.ts`; whether the NHL endpoints the app calls carry them is
+unverified.
+*Not held:* expected goals (derivable from shot location and type), confirmed
+starting goalies.
+
+---
 
 ## Tennis (ATP; WTA spot-check)
 
-**The whole tennis game page is a team-sport page with player names in the slots.**
+**The match page is a team page with player names in the slots**, and the player
+page lacks the stats tennis is decided on.
 
-**Player page (Zverev):**
+### Player page (Zverev)
 
-| card | sentence | verdict | fails | what instead |
-|---|---|---|---|---|
-| **Hero** ("AZ", "@ Ben Shelton", 1:15 PM, aces O 24.5) | "Zverev vs Shelton, aces over 24.5" | **rework** | Ide, Nat, Sen | Initials, no headshot or flag. **"@" implies a home/away tennis doesn't have.** No ranking, tournament, round or surface. **Instead:** flag, ranking, tournament, round, surface, start time or live score by set. |
-| **Bar chart** ("141 matches · green cleared over 24.5") | "never cleared" | **fix (suspected bug F-B12) + rework** | **data likely wrong**, Sco | Zverev's aces per match run ~5–21, the line is 24.5, and 0 of 141 cleared. The line looks like **total match aces (both players)** compared with his own. Also opens at the oldest match, no years. |
-| **Surface** (Hard vs Clay: cleared 0% / 0%, aces 9.1 / 5.4) | "he serves more aces on hard courts" | **rework** | Nat | The right idea for tennis (C7), but **grass is missing**, and today's surface isn't marked. **Instead:** hard / clay / grass with match counts, today's surface highlighted. |
-| **Opponent** (Shelton averages n=110: aces 9.8, games won 14.5, "To win a set 0.8") | "Shelton serves big too" | **rework** | Sen | "To win a set 0.8" is unexplained. **Instead:** serve and return stats that drive aces and games (1st-serve %, aces/match, return games won %), both players side by side. |
-| **Head to head** ("0% · cleared 0 of 4", four **green** squares) | "never cleared vs Shelton" | **rework** | Enc | Squares are green while the headline says 0 of 4, so the colors must mean match wins. **Instead:** list the meetings with score, surface, and his aces. |
-| **Game log** ("Last 15 games") | "his recent matches" | **rework** | Nat, Ide | Tennis plays **matches**. Rows show aces and games but **no result, score, tournament or surface**; empty avatar circles. |
+| card | verdict | what instead |
+|---|---|---|
+| **Hero** (initials, "@ Ben Shelton") | rework | Photo, flag, ranking, tournament, round, surface, no "@". |
+| **Bar chart** (aces line never cleared, F-B12) | rework + verify | Any stat over time (aces, double faults, 1st-serve %, games won), matches grouped by tournament and surface. |
+| **Surface** (hard vs clay) | rework | Hard / clay / grass W-L and serve stats; today's surface marked. |
+| **Opponent** | rework | Side-by-side serve and return profile. |
+| **Head to head** (green squares for 0 of 4) | rework | Meetings with score, surface, round. |
+| **Game log** ("Last 15 games") | rework | Matches: result, score, tournament, round, surface, serve stats. |
+| **Rolling form, Game context, Where this sits, odds cards, Form** | as other sports | |
 
-**Game page (Shelton vs Zverev, final 1–3):**
+### Match page (Shelton vs Zverev)
 
-| card | verdict | fails | what instead |
-|---|---|---|---|
-| **Hero + live panel** (flags, "AWAY"/"HOME", records 73-37 and 103-38) | **rework + bug** | Nat, Dup, Sco, Ren | **"Away/Home" labels** in tennis; the name text overlaps the flag (D1's fault); the panel repeats the hero. **Records "103-38" labeled "2026 season"**, far more matches than a player plays in a year (F-B13). |
-| **By set** (3·6, 6(2)·7(7), 7·5, 2·6) | **keep** | — | Native and correct. |
-| **Team stat comparison** ("Team", "Qualifying share 0.000") | **replace** | Nat, Sen | **Instead:** serve/return comparison (aces, double faults, 1st-serve % and points won, break points saved/converted), this season, plus on this surface. |
-| **Unit grades** ("Results A / A+", "Game control B- / B+") | **remove** | Nat, Sen | Invented units for an individual sport. |
-| **Injuries** ("0 players out", each name printed twice) | **replace** | Nat, Ren | **Instead:** fitness signals that exist for tennis: retirements/withdrawals this season, matches in the last 7 days, time on court last round. |
-| **Rankings** ("of 349", FOR/AGN) | **remove + bug** | Nat, **data wrong** | Mirrored (F-B1). "Against" means nothing for one player. **Instead:** ATP/WTA ranking and Elo, overall and on this surface. |
-| **Records** (Home / Away dashes) | **rework** | Nat | Season W-L, W-L on this surface, H2H by surface. |
+| card | verdict | what instead |
+|---|---|---|
+| **Hero + live panel** ("Away/Home", overlapping names) | rework | Players, flags, rankings, set score, no home/away, no repeated block. |
+| **By set** | keep | Native. |
+| **Team stat comparison, Unit grades, Injuries** | replace | Serve/return comparison; fatigue (matches and minutes in the last 7 days, retirements); no invented units. |
+| **Rankings** (mirrored, F-B1) | replace | ATP/WTA rank, surface Elo. |
+| **Records** (multi-season labeled one, F-B13) | rework | Season W-L, W-L on this surface, H2H by surface. |
+
+### Tennis depth ledger
+
+| | |
+|---|---|
+| **Shown** | games and sets won/lost; aces (fetched live); match results |
+| **Held, not shown** | `game_result` **56,386 matches with surface** since 2015; `player_game_history` 8 keys incl. majors, qualifying and tiebreaks |
+| **Dropped at ingest** | the TennisMyLife CSV the app parses (`tennismylife.ts`) carries **double faults, serve points, 1st serve in/won, 2nd serve won, service games, break points saved/faced, match minutes and rankings**; the parser reads only aces |
+| **Not held** | point-by-point (cut 2026-08-29), live serve stats |
 
 ---
 
 ## Every page
 
-### Blank player pages (CFB, NBA, NHL, EPL goalkeeper)
+- **Blank player pages → a player page always renders the player.** Market cards
+  appear when a market exists.
+- **One odds section per page.** Line picker, best prices, All books, Line
+  movement (from 5.2M prop and 299k game price rows), Recorded price, Live
+  tracker and Today's line become one grouped, collapsible section. Hit rates
+  against a line are one view inside it.
+- **Every stat card gets scope toggles** (this season / last season / career / last
+  N) and says which is showing.
+- **Games strip:** scroll inside its own container; stop the page overflowing on
+  phones; the sticky header must not cover cards.
+- **Interaction:** hover detail on every chart mark; shared crosshair across charts
+  of the same games (`useChartCrosshair` exists).
+- **Identity:** one photo/logo resolver per sport with a silhouette-and-team-color
+  fallback, not initials.
+- **Dark mode:** none exists; a product decision for Phase G, not a card verdict.
 
-**Seven of 22 player captures render one sentence.** The page exists only when a
-book prices a market for today. **Verdict: replace.** A player page is about the
-player first. Always render identity, season and last-season stats, game log,
-next game, injury status. Market cards appear when there's a market. This alone
-covers every blank page in Phase E, and it's the precondition for the
-deep-history work in build Phase 7.
+## Slate research views (no page holds these today)
 
-### The games strip (top of every sport page)
+The operator's test case can't be answered on any single page. Questions that
+span a whole slate, each built from data we hold or can keep:
 
-Fixed-width game buttons push every page wider than a 400px phone screen (E
-fact 2), and the strip's sticky header covered card content in several crops.
-**Verdict: rework.** Horizontally scrollable inside its own container, and the
-sticky header must not overlap cards.
-
-### Dark mode
-
-The app has none (E fact 3). **Verdict:** not a card verdict; recorded for
-Phase G as a product decision, not assumed.
-
-### Interaction
-
-76% of cards have no hover state (E fact 15). Charts don't show a value on
-hover. **Verdict (all charts):** hover detail on every mark (game, date,
-opponent, value, line, hit/miss), and a shared crosshair where two charts show
-the same games. The chart library already has `useChartCrosshair` for this.
-
-### Identity
-
-Initials instead of photos on Last 5 games (every game page), rosters (MLB,
-NFL, CFB), the soccer matchup, the NFL live panel and the tennis hero; soccer
-player heroes show the club crest; NHL game logos render blank. **Verdict:** one
-shared player-photo / team-logo resolver per sport, with a consistent fallback
-(silhouette and team color, not initials).
+| question | what it needs | status |
+|---|---|---|
+| **Longest home run of the day** | each hitter's max and 90th-pct EV, HR launch angle, **HR distance**; park carry; temperature; wind relative to field; opposing pitcher's velocity and EV allowed | EV/LA **held**; distance **dropped at ingest**; park orientation **not held** |
+| **First / anytime TD scorer** | red-zone targets and carries, TD share, opponent TDs allowed by position | targets held; red-zone splits need play-by-play (**dropped**) |
+| **Pace-up NBA games / player minutes** | pace and ratings by team, rest, injuries | **derivable** from held box scores and `game_result` |
+| **Goalie matchups / shots props** | starting goalies, shots for/against, save % | shots and saves **held**; confirmed starters **not held** |
+| **Anytime goalscorer across a matchday** | xG per 90 and minutes for every attacker, opponent xG conceded | xG **fetched but not stored** |
+| **Aces / serve props on a tournament day** | serve stats by surface, opponent return profile | serve stats **dropped at ingest** |
 
 ---
 
@@ -533,16 +434,16 @@ Data errors, not design judgments. They go to the build plan in Phase H.
 
 | # | where | what | evidence |
 |---|---|---|---|
-| **F-B1** | Game page **Rankings** in **NFL, NBA, soccer and tennis** (not MLB) | The "AGN" (allowed) columns show the **opponent's "FOR" ranks**, not this side's defense. Every AGN column equals the other team's FOR column. Heat colors are therefore wrong too. MLB's is correct. | NFL: DAL AGN pass yds 21 but Matchup says DAL pass yds allowed **32nd of 32**. NBA: MIN AGN = LAL FOR. Soccer: NEW AGN = LEE FOR. Tennis: Shelton AGN = Zverev FOR. |
-| **F-B2** | NFL game page, **Records** | Home and away records total 13 games each, more than an NFL season, under a 0-0 season record. | DAL Home 6-7 · Away 5-7; NYG Home 4-8 · Away 1-12 |
-| **F-B3** | NFL team page, **bar chart** | Two seasons of games out of chronological order, no years. | 11/16 … 01/04, then 09/06 … 12/20 |
-| **F-B4** | MLB pitcher page, **game log** | Totals all zero and every start row blank (no stat line, empty opponent logo). The bar chart above it has the same starts with real values. | Noah Cameron: "Strikeouts 0 · Walks 0 · Hits allowed 0 · Earned runs 0"; 9 empty rows |
-| **F-B5** | MLB game and team pages, **Team stats / Team stat comparison** | Per-game stats rounded to integers, so different values display as equal. | KC vs BOS: R 4 / 4, H 8 / 8, BB 3 / 3, with bars of different lengths |
-| **F-B6** | Soccer player page, **Season stats** | Unformatted floating-point numbers rendered. | Haaland: "xG 3.4237903356552124", "xA 0.6280249953269958" |
-| **F-B7** | Soccer player, team and game pages, **rank pools** | Ranks "of 23" in a 20-team league: relegated teams from last season remain in the pool. Pools also differ between cards on one page ("of 20" and "of 23"). | Man United defence "16 of 23"; City team stats "1st of 20" beside "2nd of 23" |
-| **F-B8** | Soccer game page, **Records** | Draws shown as losses (or dropped), producing a losing record for an unbeaten team. Related to build-plan 1b's soccer header. | Newcastle 1W 2D 0L in standings → "1-2 · .333"; Leeds 1W 2D 0L → "1-1 · .500" |
-| **F-B9** *(suspected)* | Soccer team page, **Next game** | Moneylines likely assigned to the wrong teams; no draw price. Verify against a book before fixing. | Man City (1st-2nd, unbeaten) "ML 800" at Sunderland (16th) "ML -340" |
-| **F-B10** | CFB and NHL game pages, **final box score** | Stuck on "Loading live details…" for completed games. NHL's team logos also render blank. | Ohio State @ Texas 23–24 final; TOR @ DET 3–6 final |
-| **F-B11** | NHL team page, **hero record** | Overtime losses dropped from the record (W-L instead of W-L-OTL). Same family as soccer's draws (F-B8, build 1b). | Toronto "32-36" |
-| **F-B12** *(suspected)* | Tennis player page, **aces line vs history** | The line appears to be total match aces while the history is the player's own aces, so nothing ever clears. Verify the market definition before fixing. | Zverev aces O 24.5; 0 of 141 matches, 0 of 4 H2H; his per-match aces ~5–21 |
-| **F-B13** | Tennis game page, **Records** | Multi-season win-loss labeled "2026 season", and inconsistent with the card's own win % (73-37 = .664, shown beside a 0.717 match win %). | Zverev 103-38, Shelton 73-37 |
+| **F-B1** | Game page **Rankings** in **NFL, NBA, soccer and tennis** (not MLB) | Every "AGN" column equals the other team's "FOR" column, so the "allowed" ranks are invented and the heat colors wrong. | NFL: DAL AGN pass yds 21 but Matchup says DAL pass yds allowed **32nd of 32**. NBA: MIN AGN = LAL FOR. Soccer: NEW AGN = LEE FOR. Tennis: Shelton AGN = Zverev FOR. |
+| **F-B2** | NFL game page, **Records** | Home and away records total 13 games each under a 0-0 season record. | DAL Home 6-7 · Away 5-7; NYG Home 4-8 · Away 1-12 |
+| **F-B3** | NFL team page, **bar chart** | Two seasons out of chronological order, no years. | 11/16 … 01/04, then 09/06 … 12/20 |
+| **F-B4** | MLB pitcher page, **game log** | Totals all zero, every start row blank. | Noah Cameron: 0 K, 0 BB, 0 H, 0 ER; 9 empty rows |
+| **F-B5** | MLB game and team pages, **team stats** | Per-game stats rounded to integers, so different values display as equal. | KC vs BOS: R 4 / 4, H 8 / 8, BB 3 / 3 |
+| **F-B6** | Soccer player page, **Season stats** | Raw floats rendered. | "xG 3.4237903356552124", "xA 0.6280249953269958" |
+| **F-B7** | Soccer pages, **rank pools** | "Of 23" in a 20-team league; pools differ between cards. | Man United defence "16 of 23"; City "1st of 20" beside "2nd of 23" |
+| **F-B8** | Soccer game page, **Records** | Draws shown as losses. | Newcastle 1W 2D 0L → "1-2 · .333" |
+| **F-B9** *(suspected)* | Soccer team page, **Next game** | Moneylines likely on the wrong teams; no draw. | Man City "ML 800" at Sunderland "ML -340" |
+| **F-B10** | CFB and NHL game pages, **final box score** | Stuck on "Loading live details…"; NHL logos blank. | Ohio State @ Texas final; TOR @ DET final |
+| **F-B11** | NHL team page, **record** | OT losses dropped. | Toronto "32-36" |
+| **F-B12** *(suspected)* | Tennis player page, **aces line vs history** | Line looks like total match aces vs the player's own. | Zverev O 24.5; 0 of 141 cleared |
+| **F-B13** | Tennis game page, **Records** | Multi-season W-L labeled one season, inconsistent with its own win %. | Zverev 103-38; Shelton 73-37 beside 0.717 |
