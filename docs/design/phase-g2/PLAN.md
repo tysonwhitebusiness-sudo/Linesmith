@@ -58,4 +58,4 @@ docs/design/phase-g2/
 
 ## Status
 
-- [ ] 1 player data · [ ] 2 player page · [ ] 3 game page · [ ] 4 team page · [ ] 5 wrap-up
+- [x] 1 player data (13 subjects, 2026-09-14) · [ ] 2 player page · [ ] 3 game page · [ ] 4 team page · [ ] 5 wrap-up
