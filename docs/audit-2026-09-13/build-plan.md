@@ -1,5 +1,9 @@
 # Card audit — build plan
 
+> **SUPERSEDED 2026-09-14 by `research-pages-master-plan.md`** (Phase H). Every
+> item below is carried there (its Appendix C maps each one). This file is kept
+> for its measured findings.
+
 **Status: APPROVED 2026-09-13. All five decisions taken as recommended (below).
 Phase 0 DONE 2026-09-13 — baseline in `before/README.md`, which adds three
 findings to 1b and one to 5b.**
