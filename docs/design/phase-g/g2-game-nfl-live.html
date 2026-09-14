@@ -128,7 +128,7 @@ body.elev-flat .card { border-color: var(--line); }
 .stat .v { font-size: 22px; line-height: 1.15; font-weight: 600; letter-spacing: -.01em; }
 .stat .l { font-size: 12px; font-weight: 500; color: var(--ink-muted); }
 .stat .d { font-size: 12px; font-weight: 600; }
-.pbar { display: grid; grid-template-columns: minmax(84px, 140px) 1fr 40px; align-items: center; gap: var(--s3); padding: 6px 0; cursor: default; border-radius: 6px; }
+.pbar { display: grid; grid-template-columns: minmax(84px, 140px) 1fr 76px; align-items: center; gap: var(--s3); padding: 6px 0; cursor: default; border-radius: 6px; }
 .pbar:hover { background: var(--card-sunk); }
 .pbar .track { position: relative; height: 8px; border-radius: 99px; background: var(--card-sunk); border: 1px solid var(--line-soft); }
 .pbar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 99px; transition: width var(--t-data) var(--ease-em); }
@@ -319,7 +319,7 @@ function avatar(url, size, { logo = false, color, label } = {}) {
 
 /* Percentile bar row (Savant-style). direction: 'up' higher is better. */
 function pbar(label, valueText, pct, { info } = {}) {
-  const color = pct >= 50 ? `color-mix(in oklch, var(--good) ${Math.round(30 + (pct - 50) * 1.4)}%, oklch(70% 0.004 260))` : `color-mix(in oklch, var(--bad) ${Math.round(30 + (50 - pct) * 1.4)}%, oklch(70% 0.004 260))`;
+  const color = pct >= 50 ? `color-mix(in srgb, var(--good) ${Math.round(30 + (pct - 50) * 1.4)}%, oklch(70% 0.004 260))` : `color-mix(in srgb, var(--bad) ${Math.round(30 + (50 - pct) * 1.4)}%, oklch(70% 0.004 260))`;
   const row = h('div', { class: 'pbar' },
     h('div', { class: 't-sm ink2' }, label),
     h('div', { class: 'track' }, h('div', { class: 'fill', style: { width: `${pct}%`, background: `color-mix(in oklch, ${color} 35%, transparent)` } }), h('div', { class: 'dot', style: { left: `${pct}%`, background: color } }, String(pct))),

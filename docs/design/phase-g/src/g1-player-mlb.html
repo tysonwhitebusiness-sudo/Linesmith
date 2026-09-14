@@ -1,0 +1,165 @@
+<meta charset="utf-8">
+<title>Player Research Board — Bobby Witt Jr.</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--SYSTEM-->
+<!--DATA:mlb-power.json-->
+<style>
+  .hero-grid { display: grid; grid-template-columns: auto 1fr auto; gap: var(--s5); align-items: center; }
+  .tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--s3); margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid var(--line-soft); }
+  .tile { padding: 4px 0; cursor: default; border-radius: 8px; }
+  .tile:hover { background: var(--card-sunk); }
+  .zone { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; width: min(240px, 100%); margin: 0 auto; }
+  .zone div { aspect-ratio: 1 / 1.15; border-radius: 6px; display: grid; place-items: center; font: 600 13px/1 var(--font); font-variant-numeric: tabular-nums; cursor: default; transition: transform var(--t-instant) var(--ease); }
+  .zone div:hover { transform: scale(1.04); }
+  .cmp-row { display: grid; grid-template-columns: 120px 1fr 64px; gap: var(--s3); align-items: center; padding: 6px 0; }
+  .cmp-bars { display: grid; gap: 3px; }
+  .cmp-bars span { display: block; height: 8px; border-radius: 0 4px 4px 0; transition: width var(--t-data) var(--ease-em); }
+  .legend { display: flex; gap: var(--s4); font-size: 12px; color: var(--ink-2); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .opt-b .layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--s3); align-items: start; }
+  @media (max-width: 1024px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } .hero-grid { grid-template-columns: auto 1fr; } .hero-grid > :last-child { grid-column: 1 / -1; } .opt-b .layout { grid-template-columns: 1fr; } }
+</style>
+<body>
+<div id="app"></div>
+<script>
+const D = JSON.parse(document.getElementById('data-mlb-power').textContent);
+const W = D.witt;
+// Season slash line as rendered by the app's Hitter stats card on 2026-09-13 (Phase F capture).
+const SEASON = { AVG: '.280', OBP: '.359', SLG: '.450', OPS: '.809', HR: String(W.hr), RBI: '54' };
+const HEADSHOT = (id) => `https://img.mlbstatic.com/mlb-photos/image/upload/w_213,q_auto:best/v1/people/${id}/headshot/67/current`;
+const PITCH = { FF: 'Four-seam', SI: 'Sinker', FC: 'Cutter', SL: 'Slider', ST: 'Sweeper', CH: 'Changeup', CU: 'Curveball', KC: 'Knuckle curve', FS: 'Splitter', SV: 'Slurve', FO: 'Forkball', EP: 'Eephus', KN: 'Knuckleball', CS: 'Slow curve', PO: 'Pitchout', FA: 'Fastball', '?': 'Unclassified' };
+let option = 'a', section = 'overview', compareId = null;
+const app = document.getElementById('app');
+
+function hero() {
+  const tiles = h('div', { class: 'tiles' }, ...Object.entries(SEASON).map(([k, v]) => {
+    const t = h('div', { class: 'tile stat' }, h('div', { class: 'l' }, k), h('div', { class: 'v' }, v));
+    Tip.bind(t, () => [tipRow(v, k), tipText('2026 season · click any stat in the full build to open its trend and splits')]);
+    return t;
+  }));
+  return h('section', { class: 'hero' },
+    h('div', { class: 'hero-grid' },
+      avatar(HEADSHOT(W.id), 88, { color: '#004687', label: W.name }),
+      h('div', { style: { minWidth: 0 } },
+        h('div', { class: 't-heading' }, W.name),
+        h('div', { class: 'row t-sm ink2', style: { marginTop: '4px' } }, h('span', null, `${W.pos || 'SS'} · Bats ${W.bats || 'R'}`), h('span', { class: 'muted' }, '·'), avatar('https://www.mlbstatic.com/team-logos/118.svg', 20, { logo: true, label: 'Kansas City Royals' }), h('a', { class: 'lnk', href: '#' }, W.team || 'Kansas City Royals'))),
+      h('div', { class: 'row' }, h('span', { class: 'pill-note' }, 'Next game · from the schedule in the full build'), h('button', { class: 'btn', type: 'button', onclick: () => openCompare() }, compareId ? 'Change comparison' : 'Compare…'))),
+    tiles);
+}
+
+function powerProfile() {
+  const p = W.percentiles; const pool = `among ${W.qualifiedPool} hitters with 150+ balls in play`;
+  const rows = [
+    pbar('Max exit velo', `${W.maxEV} mph`, p.maxEV, { info: pool }),
+    pbar('90th pct exit velo', `${W.p90EV} mph`, p.p90EV, { info: pool }),
+    pbar('Avg exit velo', `${W.avgEV} mph`, p.avgEV, { info: pool }),
+    pbar('Hard-hit rate', `${W.hardHitPct}%`, p.hardHitPct, { info: `balls hit 95+ mph · ${pool}` }),
+    pbar('Home runs', String(W.hr), p.hr, { info: pool }),
+  ];
+  return card({ title: 'Power profile', scope: '2026 · league percentile', info: 'Where he ranks among qualified hitters. Hover a row for the value and the pool.', body: h('div', null, ...rows), foot: `${W.bip} balls in play · source: Statcast pitch corpus (held, not shown in the app today)` });
+}
+
+function evDistribution() {
+  const bars = W.evHist.map((b) => ({ label: b.lo % 10 === 0 ? String(b.lo) : '', value: b.n, lo: b.lo, color: b.lo >= 95 ? 'var(--ink)' : 'oklch(70% 0.004 260)' }));
+  return card({ title: 'Exit velocity distribution', scope: '2026 · every ball in play', info: 'Dark bars are hard-hit (95+ mph). A long right tail is what separates real power from a high average.',
+    body: columnChart({ bars, height: 170, labelEvery: 1, tooltip: (b) => [tipRow(`${b.value} balls`, `${b.lo}–${b.lo + 2} mph`), tipText(b.lo >= 95 ? 'hard-hit' : '')] }),
+    foot: `Max ${W.maxEV} mph · 90th percentile ${W.p90EV} mph` });
+}
+
+function evTrend() {
+  const g = W.evByGame;
+  const labels = g.map((x) => { const d = new Date(`${x.date}T12:00:00`); return d.getDate() <= 7 ? d.toLocaleString('en-US', { month: 'short' }) : ''; });
+  return card({ title: 'Exit velocity by game', scope: '2026 · rolling 40 balls in play', info: 'Line: average of his last 40 balls in play. Dots: hardest-hit ball each game. Click a game to open it.',
+    body: lineChart({ series: [{ name: 'Rolling avg', color: 'var(--ink)', values: g.map((x, i) => (i < 4 ? null : x.rolling40)) }, { name: 'Game max', color: 'oklch(62% 0.004 260)', values: g.map((x) => x.maxEV), width: 0.001, dots: true }],
+      labels, height: 220, yMin: 60, yMax: 120, yFmt: (v) => `${Math.round(v)}`, refs: [{ y: 95, dash: true, label: 'hard-hit 95' }],
+      tooltip: (i) => [tipRow(`${g[i].rolling40} mph`, 'rolling average', 'var(--ink)'), tipRow(`${g[i].maxEV} mph`, 'hardest this game', 'oklch(62% 0.004 260)'), tipText(new Date(`${g[i].date}T12:00:00`).toDateString())],
+      onClick: (i) => Drill.open(new Date(`${g[i].date}T12:00:00`).toDateString(), 'Game drill-down', h('div', { class: 'stack' }, h('div', { class: 'grid cols-2' }, h('div', { class: 'stat' }, h('div', { class: 'l' }, 'Avg exit velo'), h('div', { class: 'v' }, `${g[i].gameAvgEV} mph`)), h('div', { class: 'stat' }, h('div', { class: 'l' }, 'Hardest hit'), h('div', { class: 'v' }, `${g[i].maxEV} mph`))), h('div', { class: 'callout' }, 'In the full build this panel shows the box score line, every plate appearance with pitch, result, exit velocity and launch angle, and a link to the game page.'))) }),
+    foot: 'Legend: line = rolling average · dots = game max' });
+}
+
+function pitchTable() {
+  const rows = W.byPitch.filter((r) => r.seen >= 40).map((r) => ({ ...r, name: PITCH[r.type] || r.type }));
+  return card({ title: 'Results by pitch type', scope: '2026 · pitches seen', info: 'Sort any column. Click a row for that pitch type in detail.', dense: true,
+    body: dataTable([
+      { key: 'name', label: 'Pitch' }, { key: 'seen', label: 'Seen', num: true, fmt: (v) => fmt.n(v) },
+      { key: 'whiffPct', label: 'Whiff %', num: true, fmt: (v) => fmt.pct(v, 1) }, { key: 'bip', label: 'In play', num: true },
+      { key: 'xwoba', label: 'xwOBA', num: true, fmt: (v) => fmt.rate3(v) }, { key: 'avgEV', label: 'Avg EV', num: true, fmt: (v) => (v == null ? '—' : `${v}`) },
+    ], rows, { sortKey: 'seen', onRow: (r) => Drill.open(r.name, `${r.seen} pitches seen in 2026`, h('div', { class: 'stack' }, h('div', { class: 'grid cols-3' }, ...[['Whiff %', fmt.pct(r.whiffPct, 1)], ['xwOBA on contact', fmt.rate3(r.xwoba)], ['Avg exit velo', r.avgEV ? `${r.avgEV} mph` : '—']].map(([l, v]) => h('div', { class: 'stat' }, h('div', { class: 'l' }, l), h('div', { class: 'v' }, v)))), h('div', { class: 'callout' }, 'Full build: location heat map for this pitch type, results by count, and which of today\'s opposing pitchers throw it most.'))) }),
+    foot: 'Pitch types with 40+ pitches · xwOBA on balls in play' });
+}
+
+function zoneMap() {
+  const z = W.zones; const lg = 0.36; // approximate league xwOBA on contact, for the neutral midpoint
+  const cells = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => {
+    const c = z[k] || {}; const v = c.xwoba;
+    const t = v == null ? 0 : Math.max(-1, Math.min(1, (v - lg) / 0.18));
+    const bg = v == null ? 'var(--card-sunk)' : t >= 0 ? `color-mix(in srgb, var(--good) ${Math.round(t * 55)}%, oklch(93% 0.003 260))` : `color-mix(in srgb, var(--bad) ${Math.round(-t * 55)}%, oklch(93% 0.003 260))`;
+    const cell = h('div', { style: { background: bg, color: Math.abs(t) > 0.7 ? '#fff' : 'var(--ink)' } }, v == null ? '—' : fmt.rate3(v));
+    Tip.bind(cell, () => [tipRow(fmt.rate3(v), 'xwOBA on contact'), tipText(`${c.pitches} pitches · ${c.bip} in play`)]);
+    return cell;
+  });
+  return card({ title: 'Strike zone', scope: '2026 · catcher\'s view', info: 'xwOBA on balls in play by zone. Green is above the league midpoint, red below, gray is neutral.', body: h('div', null, h('div', { class: 'zone' }, ...cells)), foot: 'Full season sample (Phase F: the live card uses 7 balls in play)' });
+}
+
+function hrList() {
+  return card({ title: 'Home runs', scope: `2026 · ${W.hrList.length}`, dense: true, info: 'Every home run with how hard and at what angle it left the bat. Distance is in Statcast\'s export but dropped by our ingest today.',
+    body: dataTable([
+      { key: 'date', label: 'Date', fmt: (v) => new Date(`${v}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) },
+      { key: 'ev', label: 'Exit velo', num: true, fmt: (v) => `${v?.toFixed(1)}` }, { key: 'la', label: 'Launch °', num: true, fmt: (v) => (v == null ? '—' : `${Math.round(v)}°`) },
+      { key: 'pitch', label: 'Pitch', fmt: (v) => PITCH[v] || v }, { key: 'velo', label: 'Pitch mph', num: true, fmt: (v) => (v == null ? '—' : v.toFixed(1)) },
+      { key: 'dist', label: 'Distance', sort: false, render: () => h('span', { class: 'pill-note' }, 'not stored') },
+    ], W.hrList, { sortKey: 'ev' }),
+    foot: 'Distance: Savant sends hit_distance_sc; statcast_pitches.py discards it (Phase F ledger)' });
+}
+
+function comparePanel() {
+  const other = D.leaders.find((p) => p.id === compareId); if (!other) return null;
+  const metrics = [['Max exit velo', 'maxEV', ' mph'], ['90th pct exit velo', 'p90EV', ' mph'], ['Avg exit velo', 'avgEV', ' mph'], ['Hard-hit rate', 'hardHitPct', '%'], ['Home runs', 'hr', ''], ['HR avg exit velo', 'hrAvgEV', ' mph'], ['HR avg launch °', 'hrAvgLA', '°']];
+  const body = h('div', null, h('div', { class: 'legend', style: { marginBottom: '8px' } }, h('span', null, h('i', { style: { background: 'var(--cmp-a)' } }), W.name), h('span', null, h('i', { style: { background: 'var(--cmp-b)' } }), other.name)),
+    ...metrics.map(([label, key, unit]) => {
+      const a = W[key], b = other[key]; const max = Math.max(a || 0, b || 0) || 1; const min = key.includes('EV') ? 80 : 0;
+      const w = (v) => `${Math.max(2, ((v - min) / (max - min || 1)) * 100)}%`;
+      const row = h('div', { class: 'cmp-row' }, h('div', { class: 't-sm ink2' }, label), h('div', { class: 'cmp-bars' }, h('span', { style: { width: w(a), background: 'var(--cmp-a)' } }), h('span', { style: { width: w(b), background: 'var(--cmp-b)' } })), h('div', { class: 't-sm num', style: { textAlign: 'right' } }, `${a ?? '—'} / ${b ?? '—'}`));
+      Tip.bind(row, () => [tipRow(`${a ?? '—'}${unit}`, W.name, 'var(--cmp-a)'), tipRow(`${b ?? '—'}${unit}`, other.name, 'var(--cmp-b)')]);
+      return row;
+    }));
+  return card({ title: `Compare: ${W.name} vs ${other.name}`, scope: '2026', body, foot: h('button', { class: 'btn', type: 'button', onclick: () => { compareId = null; render(); } }, 'Clear comparison') });
+}
+
+function openCompare() {
+  const list = h('div', null, ...D.leaders.map((p) => {
+    const row = h('div', { class: 'drive-row', tabindex: '0', style: { display: 'grid', gridTemplateColumns: '36px 1fr auto', gap: '10px', alignItems: 'center', padding: '8px', borderRadius: '8px', cursor: 'pointer' }, onclick: () => { compareId = p.id; Drill.close(); render(); } },
+      avatar(HEADSHOT(p.id), 36, { label: p.name }), h('div', null, h('div', { class: 't-sm', style: { fontWeight: 600 } }, p.name), h('div', { class: 't-label' }, `${p.team || ''} · ${p.hr} HR`)), h('div', { class: 't-sm num ink2' }, `${p.p90EV} mph`));
+    row.addEventListener('keydown', (e) => { if (e.key === 'Enter') row.click(); });
+    return row;
+  }));
+  Drill.open('Compare with…', 'Top 20 hitters by 90th-percentile exit velocity, 2026', list);
+}
+
+function oddsSection() {
+  return card({ title: 'Odds & props', scope: 'today', body: h('div', { class: 'state' }, h('b', null, 'One grouped section, collapsed by default'), 'Props for this player, best price per market, line movement and tracking. It lives at the bottom of a research page, not at the top.') });
+}
+
+function render() {
+  const nav = h('div', { class: 'secnav sticky', style: { marginTop: 'var(--s4)' } }, tabs([{ value: 'overview', label: 'Overview' }, { value: 'power', label: 'Power' }, { value: 'discipline', label: 'Pitch types & zone' }, { value: 'hrs', label: 'Home runs' }, { value: 'odds', label: 'Odds' }], section, (v) => { section = v; document.getElementById(`sec-${v}`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }));
+  const scope = h('div', { class: 'scope-row' }, h('h2', { class: 't-title' }, 'Season'), segmented([{ value: '2026', label: '2026' }, { value: 'l30', label: 'Last 30 days' }, { value: '2025', label: '2025' }, { value: 'career', label: 'Career' }], '2026', () => {}), h('span', { class: 't-label' }, 'Scopes every card below. Board uses 2026 only.'));
+  const cmp = comparePanel();
+  let content;
+  if (option === 'a') {
+    content = h('div', { class: 'stack' }, scope, cmp,
+      h('div', { id: 'sec-power', class: 'grid cols-2' }, powerProfile(), evDistribution()), evTrend(),
+      h('div', { id: 'sec-discipline', class: 'grid cols-main' }, pitchTable(), zoneMap()),
+      h('div', { id: 'sec-hrs' }, hrList()), h('div', { id: 'sec-odds' }, oddsSection()));
+  } else {
+    content = h('div', { class: 'stack' }, scope, cmp, h('div', { class: 'layout' }, h('div', { class: 'stack' }, evTrend(), pitchTable(), hrList()), h('div', { class: 'stack' }, powerProfile(), zoneMap(), evDistribution(), oddsSection())));
+  }
+  app.replaceChildren(
+    boardBar('Phase G · Player page (MLB)', 'Real data: Bobby Witt Jr., 2026 Statcast corpus to Sep 11 (1.45M pitches). A research page first; odds are one section.',
+      [segmented([{ value: 'a', label: 'Option A · sectioned' }, { value: 'b', label: 'Option B · dashboard' }], option, (v) => { option = v; render(); })]),
+    h('div', { class: `page opt-${option}` },
+      h('div', { class: 'callout', style: { marginBottom: 'var(--s4)' } }, h('b', null, 'Try: '), 'hover percentile rows, histogram bars, zone cells and the trend line; click a game or a pitch-type row to open a drill-down; sort the tables; press "Compare…" to pick another power hitter. ', h('b', null, 'Also: '), 'switch typeface and elevation in the bar above.'),
+      hero(), option === 'a' ? nav : null, h('div', { id: 'sec-overview' }), content));
+}
+render();
+</script>
+</body>

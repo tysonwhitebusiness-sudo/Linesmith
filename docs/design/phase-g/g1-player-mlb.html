@@ -1,0 +1,614 @@
+<meta charset="utf-8">
+<title>Player Research Board — Bobby Witt Jr.</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap"><style>/* Phase G mockup system — the F2 proposal as tokens. Charcoal palette (approved). */
+:root {
+  --paper: oklch(94.5% 0.003 260);
+  --card: oklch(98.5% 0.002 260);
+  --card-sunk: oklch(96.5% 0.002 260);
+  --line: oklch(89% 0.004 260);
+  --line-soft: oklch(92.5% 0.003 260);
+  --ink: oklch(18% 0.005 260);
+  --ink-2: oklch(34% 0.005 260);
+  --ink-muted: oklch(47% 0.005 260);      /* lightest gray allowed for text */
+  --ink-faint: oklch(72% 0.004 260);      /* decoration only */
+  --masters: oklch(20% 0.006 260);
+  --good: #0f7a4f;
+  --bad: #c23b2c;
+  --warn: #b7791f;
+  --cmp-a: #2f6fb3;                        /* compare slot 1 (validated) */
+  --cmp-b: #c56a1c;                        /* compare slot 2 (validated) */
+  --live: #0f7a4f;
+  --focus: oklch(18% 0.005 260);
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --r-card: 12px; --r-hero: 16px; --r-ctl: 8px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
+  --shadow-card: 0 1px 2px rgba(15, 18, 24, .05), 0 2px 8px -4px rgba(15, 18, 24, .08);
+  --shadow-pop: 0 8px 28px -8px rgba(15, 18, 24, .28), 0 2px 6px rgba(15, 18, 24, .08);
+  --ease: cubic-bezier(.2, 0, 0, 1); --ease-em: cubic-bezier(.3, 0, 0, 1);
+  --t-instant: 100ms; --t-quick: 180ms; --t-smooth: 280ms; --t-data: 450ms;
+}
+body.elev-flat { --paper: oklch(97.5% 0.002 260); --card: oklch(97.5% 0.002 260); --shadow-card: none; }
+body.font-inter { --font: "Inter", ui-sans-serif, system-ui, sans-serif; }
+body.font-plex { --font: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; }
+body.font-source { --font: "Source Sans 3", ui-sans-serif, system-ui, sans-serif; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 400 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+a { color: inherit; text-decoration: none; }
+a.lnk:hover, a.lnk:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; } }
+
+/* Type ramp */
+.t-display { font-size: 32px; line-height: 1.1; font-weight: 700; letter-spacing: -.01em; }
+.t-heading { font-size: 22px; line-height: 1.2; font-weight: 600; letter-spacing: -.005em; }
+.t-title { font-size: 17px; line-height: 1.3; font-weight: 600; }
+.t-card { font-size: 14px; line-height: 1.3; font-weight: 600; }
+.t-body { font-size: 14px; line-height: 1.5; }
+.t-sm { font-size: 13px; line-height: 1.45; }
+.t-label { font-size: 12px; line-height: 1.35; font-weight: 500; color: var(--ink-muted); }
+.t-over { font-size: 11px; line-height: 1.3; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-muted); }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-muted); } .ink2 { color: var(--ink-2); }
+
+/* Layout */
+.page { max-width: 1280px; margin: 0 auto; padding: var(--s5) var(--s5) 80px; }
+@media (max-width: 720px) { .page { padding: var(--s4) var(--s4) 64px; } }
+.grid { display: grid; gap: var(--s3); }
+.cols-main { grid-template-columns: minmax(0, 1fr) 320px; align-items: start; }
+.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1024px) { .cols-main, .cols-3 { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 720px) { .cols-2 { grid-template-columns: minmax(0, 1fr); } }
+.stack > * + * { margin-top: var(--s3); }
+.row { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.between { justify-content: space-between; }
+.sticky { position: sticky; top: 0; z-index: 20; }
+
+/* Board chrome (mockup-only) */
+.board-bar { position: sticky; top: 0; z-index: 50; background: var(--masters); color: #fff; }
+.board-bar .inner { max-width: 1280px; margin: 0 auto; padding: 10px var(--s5); display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.board-bar .title { font-weight: 600; font-size: 14px; }
+.board-bar .note { font-size: 12px; color: rgba(255, 255, 255, .72); }
+.board-bar .seg { --seg-bg: rgba(255, 255, 255, .12); --seg-on: #fff; --seg-on-ink: var(--ink); --seg-ink: rgba(255, 255, 255, .85); }
+.callout { border-left: 3px solid var(--ink); background: var(--card-sunk); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 13px; color: var(--ink-2); }
+.callout b { color: var(--ink); }
+.pill-note { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--card-sunk); border: 1px dashed var(--line); color: var(--ink-muted); }
+
+/* Card anatomy */
+.card { background: var(--card); border-radius: var(--r-card); box-shadow: var(--shadow-card); border: 1px solid var(--line-soft); min-width: 0; }
+body.elev-flat .card { border-color: var(--line); }
+.card-h { display: flex; align-items: center; gap: var(--s2); min-height: 44px; padding: 0 var(--s2) 0 var(--s4); border-bottom: 1px solid var(--line-soft); }
+.card-h .t-card { flex: 1; min-width: 0; }
+.card-h .scope { font-size: 12px; font-weight: 500; color: var(--ink-muted); white-space: nowrap; }
+.card-b { padding: var(--s4); }
+.card-b.dense { padding: var(--s3); }
+.card-f { padding: 0 var(--s4) var(--s3); font-size: 12px; color: var(--ink-muted); }
+.icon-btn { width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: var(--r-ctl); border: 0; background: transparent; color: var(--ink-muted); cursor: pointer; transition: background var(--t-instant) var(--ease), color var(--t-instant) var(--ease); }
+.icon-btn:hover { background: var(--card-sunk); color: var(--ink); }
+.hero { background: var(--card); border-radius: var(--r-hero); box-shadow: var(--shadow-card); border: 1px solid var(--line-soft); padding: var(--s5); }
+
+/* Controls */
+.seg { --seg-bg: var(--card-sunk); --seg-on: var(--card); --seg-on-ink: var(--ink); --seg-ink: var(--ink-muted); display: inline-flex; gap: 2px; padding: 3px; background: var(--seg-bg); border-radius: 10px; }
+.seg button { border: 0; background: transparent; color: var(--seg-ink); font: 500 13px/1 var(--font); padding: 7px 12px; border-radius: 7px; cursor: pointer; transition: background var(--t-quick) var(--ease), color var(--t-quick) var(--ease), box-shadow var(--t-quick) var(--ease); white-space: nowrap; }
+.seg button:hover { color: var(--seg-on-ink); }
+.seg button[aria-pressed="true"] { background: var(--seg-on); color: var(--seg-on-ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+.tabs { display: flex; gap: var(--s4); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.tabs [role="tab"] { border: 0; background: transparent; font: 600 14px/1 var(--font); color: var(--ink-muted); padding: 12px 0 11px; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; transition: color var(--t-quick) var(--ease), border-color var(--t-quick) var(--ease); }
+.tabs [role="tab"]:hover { color: var(--ink); }
+.tabs [role="tab"][aria-selected="true"] { color: var(--ink); border-color: var(--ink); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 600 11px/1 var(--font); letter-spacing: .02em; padding: 5px 9px; border-radius: 999px; background: var(--card-sunk); color: var(--ink-2); border: 1px solid var(--line-soft); white-space: nowrap; }
+.chip.good { color: var(--good); background: color-mix(in oklch, var(--good) 10%, var(--card)); border-color: color-mix(in oklch, var(--good) 25%, var(--card)); }
+.chip.bad { color: var(--bad); background: color-mix(in oklch, var(--bad) 9%, var(--card)); border-color: color-mix(in oklch, var(--bad) 25%, var(--card)); }
+.chip.live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--live); animation: pulse 1.6s var(--ease) infinite; }
+@keyframes pulse { 50% { opacity: .35; transform: scale(.8); } }
+.btn { border: 1px solid var(--line); background: var(--card); color: var(--ink); font: 600 13px/1 var(--font); padding: 9px 14px; border-radius: var(--r-ctl); cursor: pointer; transition: background var(--t-instant) var(--ease), border-color var(--t-instant) var(--ease), transform var(--t-instant) var(--ease); }
+.btn:hover { background: var(--card-sunk); border-color: var(--ink-faint); }
+.btn:active { transform: translateY(1px); }
+.btn.primary { background: var(--masters); color: #fff; border-color: var(--masters); }
+.btn.primary:hover { background: oklch(28% 0.006 260); }
+.scope-row { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin: var(--s5) 0 var(--s3); }
+.scope-row h2 { margin: 0; }
+
+/* Section nav */
+.secnav { background: color-mix(in oklch, var(--paper) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); margin: 0 calc(-1 * var(--s5)); padding: 0 var(--s5); }
+.secnav .tabs { border-bottom: 0; }
+
+/* Avatar */
+.av { position: relative; flex: none; border-radius: 50%; overflow: hidden; background: var(--team, oklch(80% 0.01 260)); display: grid; place-items: center; }
+.av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.av.logo { border-radius: 10px; background: var(--card); border: 1px solid var(--line-soft); }
+.av.logo img { object-fit: contain; padding: 12%; }
+.av .sil { width: 62%; height: 62%; fill: rgba(255, 255, 255, .85); }
+
+/* Stat value + percentile */
+.stat { min-width: 0; }
+.stat .v { font-size: 22px; line-height: 1.15; font-weight: 600; letter-spacing: -.01em; }
+.stat .l { font-size: 12px; font-weight: 500; color: var(--ink-muted); }
+.stat .d { font-size: 12px; font-weight: 600; }
+.pbar { display: grid; grid-template-columns: minmax(84px, 140px) 1fr 76px; align-items: center; gap: var(--s3); padding: 6px 0; cursor: default; border-radius: 6px; }
+.pbar:hover { background: var(--card-sunk); }
+.pbar .track { position: relative; height: 8px; border-radius: 99px; background: var(--card-sunk); border: 1px solid var(--line-soft); }
+.pbar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 99px; transition: width var(--t-data) var(--ease-em); }
+.pbar .dot { position: absolute; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; display: grid; place-items: center; font: 700 10px/1 var(--font); color: #fff; box-shadow: 0 0 0 2px var(--card); transition: left var(--t-data) var(--ease-em); }
+
+/* Tables */
+.tbl-wrap { overflow-x: auto; }
+table.dt { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.dt th { font: 600 12px/1.2 var(--font); color: var(--ink-muted); text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; position: sticky; top: 0; background: var(--card); }
+table.dt th[data-sort] { cursor: pointer; user-select: none; }
+table.dt th[data-sort]:hover { color: var(--ink); }
+table.dt th .arr { opacity: 0; margin-left: 3px; }
+table.dt th[aria-sort] .arr { opacity: 1; }
+table.dt td { padding: 9px 10px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+table.dt td.n, table.dt th.n { text-align: right; font-variant-numeric: tabular-nums; }
+table.dt tbody tr { transition: background var(--t-instant) var(--ease); }
+table.dt tbody tr:hover { background: var(--card-sunk); }
+table.dt tbody tr.clickable { cursor: pointer; }
+table.dt td:first-child, table.dt th:first-child { position: sticky; left: 0; background: inherit; }
+table.dt tbody td:first-child { background: var(--card); }
+table.dt tbody tr:hover td:first-child { background: var(--card-sunk); }
+
+/* Tooltip */
+.tip { position: fixed; z-index: 100; pointer-events: none; background: var(--masters); color: #fff; border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.4; max-width: 280px; box-shadow: var(--shadow-pop); opacity: 0; transform: translateY(4px); transition: opacity var(--t-quick) var(--ease), transform var(--t-quick) var(--ease); }
+.tip.on { opacity: 1; transform: none; }
+.tip .tv { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tip .tk { color: rgba(255, 255, 255, .7); }
+.tip .key { display: inline-block; width: 12px; height: 2px; vertical-align: middle; margin-right: 6px; }
+
+/* Drill-down panel */
+.scrim { position: fixed; inset: 0; background: rgba(12, 14, 18, .32); opacity: 0; pointer-events: none; transition: opacity var(--t-smooth) var(--ease); z-index: 80; }
+.scrim.on { opacity: 1; pointer-events: auto; }
+.panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); background: var(--card); z-index: 90; box-shadow: var(--shadow-pop); transform: translateX(104%); transition: transform var(--t-smooth) var(--ease-em); display: flex; flex-direction: column; }
+.panel.on { transform: none; }
+.panel-h { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s3) var(--s3) var(--s5); border-bottom: 1px solid var(--line); min-height: 60px; }
+.panel-b { padding: var(--s5); overflow: auto; flex: 1; }
+
+/* Charts */
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart-host { width: 100%; min-width: 0; }
+.chart .grid-l { stroke: var(--line-soft); stroke-width: 1; }
+.chart .axis-t { fill: var(--ink-muted); font-size: 10px; font-family: var(--font); }
+.chart .xh { stroke: var(--ink); stroke-width: 1; opacity: 0; transition: opacity var(--t-instant); }
+.chart:hover .xh { opacity: .35; }
+
+/* Skeleton + states */
+.sk { background: linear-gradient(90deg, var(--card-sunk) 0%, var(--line-soft) 50%, var(--card-sunk) 100%); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; border-radius: 6px; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.state { text-align: center; padding: var(--s6) var(--s4); color: var(--ink-muted); font-size: 13px; }
+.state b { display: block; color: var(--ink); font-size: 14px; margin-bottom: 4px; }
+
+/* Live value flash */
+.flash { animation: flash 1.2s var(--ease); }
+@keyframes flash { 0% { background: color-mix(in oklch, var(--good) 22%, transparent); } 100% { background: transparent; } }
+</style><script>/* Phase G mockup UI kit: one implementation of each F2 component. Plain JS, no deps.
+   All data-derived text goes through textContent (never innerHTML). */
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
+    else if (k.startsWith('on') && typeof v === 'function') e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+}
+function s(tag, attrs, ...kids) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) e.setAttribute(k, v);
+  for (const k of kids.flat()) if (k != null) e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return e;
+}
+const fmt = {
+  n: (v, d = 0) => (v == null || Number.isNaN(v) ? '—' : Number(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })),
+  pct: (v, d = 0) => (v == null ? '—' : `${Number(v).toFixed(d)}%`),
+  rate3: (v) => (v == null ? '—' : Number(v).toFixed(3).replace(/^0/, '')),
+  ord: (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); },
+};
+
+/* Tooltip — one element, shown on hover and on keyboard focus. */
+const Tip = {
+  el: null,
+  show(x, y, ...nodes) {
+    if (!this.el) { this.el = h('div', { class: 'tip', role: 'tooltip' }); document.body.append(this.el); }
+    this.el.replaceChildren(...nodes);
+    const r = this.el.getBoundingClientRect();
+    const left = Math.min(window.innerWidth - r.width - 8, Math.max(8, x + 14));
+    const top = y - r.height - 12 < 8 ? y + 16 : y - r.height - 12;
+    this.el.style.left = `${left}px`; this.el.style.top = `${top}px`;
+    this.el.classList.add('on');
+  },
+  hide() { this.el && this.el.classList.remove('on'); },
+  bind(target, content) {
+    const show = (e) => { const r = target.getBoundingClientRect(); Tip.show(e.clientX ?? r.left + r.width / 2, e.clientY ?? r.top, ...content()); };
+    target.addEventListener('pointermove', show);
+    target.addEventListener('pointerleave', () => Tip.hide());
+    target.addEventListener('focus', () => { const r = target.getBoundingClientRect(); Tip.show(r.left + r.width / 2, r.top, ...content()); });
+    target.addEventListener('blur', () => Tip.hide());
+    if (!target.hasAttribute('tabindex') && !/^(A|BUTTON|INPUT|SELECT)$/.test(target.tagName)) target.setAttribute('tabindex', '0');
+  },
+};
+const tipRow = (value, label, color) => h('div', null, color ? h('span', { class: 'key', style: { background: color } }) : null, h('span', { class: 'tv' }, value), ' ', h('span', { class: 'tk' }, label));
+const tipText = (t) => h('div', { class: 'tk', style: { marginTop: '2px' } }, t);
+
+/* Segmented toggle. options: [{value,label}] */
+function segmented(options, value, onChange, extraClass = '') {
+  const wrap = h('div', { class: `seg ${extraClass}`, role: 'group' });
+  const render = () => wrap.replaceChildren(...options.map((o) => h('button', { type: 'button', 'aria-pressed': String(o.value === value), onclick: () => { value = o.value; render(); onChange(value); } }, o.label)));
+  render();
+  return wrap;
+}
+/* Tabs. */
+function tabs(items, selected, onChange) {
+  const bar = h('div', { class: 'tabs', role: 'tablist' });
+  const render = () => bar.replaceChildren(...items.map((it) => h('button', { role: 'tab', type: 'button', 'aria-selected': String(it.value === selected), tabindex: it.value === selected ? '0' : '-1', onclick: () => { selected = it.value; render(); onChange(selected); } }, it.label)));
+  bar.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const i = items.findIndex((it) => it.value === selected); const n = items[(i + (e.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length];
+    selected = n.value; render(); onChange(selected); bar.querySelector('[aria-selected="true"]').focus();
+  });
+  render();
+  return bar;
+}
+
+/* Card with the F2 anatomy. */
+function card({ title, scope, info, expand, body, foot, dense }) {
+  const head = h('div', { class: 'card-h' }, h('div', { class: 't-card' }, title), scope ? h('span', { class: 'scope' }, scope) : null);
+  if (info) { const b = h('button', { class: 'icon-btn', type: 'button', 'aria-label': `About ${title}` }, 'ⓘ'); Tip.bind(b, () => [h('div', { style: { maxWidth: '240px' } }, info)]); head.append(b); }
+  if (expand) head.append(h('button', { class: 'icon-btn', type: 'button', 'aria-label': `Expand ${title}`, onclick: expand }, '⤢'));
+  return h('section', { class: 'card' }, head, h('div', { class: `card-b${dense ? ' dense' : ''}` }, body), foot ? h('div', { class: 'card-f' }, foot) : null);
+}
+
+/* Drill-down side panel. */
+const Drill = {
+  open(title, subtitle, body) {
+    if (!this.panel) {
+      this.scrim = h('div', { class: 'scrim', onclick: () => this.close() });
+      this.titleEl = h('div', { class: 't-title' }); this.subEl = h('div', { class: 't-label' });
+      this.bodyEl = h('div', { class: 'panel-b' });
+      this.panel = h('aside', { class: 'panel', role: 'dialog', 'aria-modal': 'true' },
+        h('div', { class: 'panel-h' }, h('div', { style: { flex: 1 } }, this.titleEl, this.subEl), h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Close', onclick: () => this.close() }, '✕')), this.bodyEl);
+      document.body.append(this.scrim, this.panel);
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') this.close(); });
+    }
+    this.titleEl.textContent = title; this.subEl.textContent = subtitle || '';
+    this.bodyEl.replaceChildren(body);
+    this.scrim.classList.add('on'); this.panel.classList.add('on');
+    this.panel.querySelector('.icon-btn').focus();
+  },
+  close() { this.scrim?.classList.remove('on'); this.panel?.classList.remove('on'); },
+};
+
+/* Sortable data table. columns: [{key,label,num,fmt,sort}] */
+function dataTable(columns, rows, { onRow, sortKey, desc = true } = {}) {
+  const table = h('table', { class: 'dt' });
+  const thead = h('thead'); const tbody = h('tbody');
+  const render = () => {
+    const col = columns.find((c) => c.key === sortKey);
+    const sorted = col ? [...rows].sort((a, b) => { const va = a[col.key], vb = b[col.key]; if (va == null) return 1; if (vb == null) return -1; return (va > vb ? 1 : va < vb ? -1 : 0) * (desc ? -1 : 1); }) : rows;
+    thead.replaceChildren(h('tr', null, ...columns.map((c) => {
+      const th = h('th', { class: c.num ? 'n' : '', 'data-sort': c.sort === false ? null : c.key, scope: 'col', 'aria-sort': c.key === sortKey ? (desc ? 'descending' : 'ascending') : null, tabindex: c.sort === false ? null : '0' }, c.label, h('span', { class: 'arr' }, c.key === sortKey && !desc ? '▲' : '▼'));
+      if (c.sort !== false) { const go = () => { if (sortKey === c.key) desc = !desc; else { sortKey = c.key; desc = true; } render(); }; th.addEventListener('click', go); th.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } }); }
+      return th;
+    })));
+    tbody.replaceChildren(...sorted.map((r) => {
+      const tr = h('tr', { class: onRow ? 'clickable' : '', tabindex: onRow ? '0' : null });
+      if (onRow) { tr.addEventListener('click', () => onRow(r)); tr.addEventListener('keydown', (e) => { if (e.key === 'Enter') onRow(r); }); }
+      for (const c of columns) { const v = c.render ? c.render(r) : c.fmt ? c.fmt(r[c.key], r) : r[c.key]; tr.append(h('td', { class: c.num ? 'n' : '' }, v ?? '—')); }
+      return tr;
+    }));
+  };
+  table.append(thead, tbody); render();
+  return h('div', { class: 'tbl-wrap' }, table);
+}
+
+/* Avatar: photo / logo with a silhouette-on-team-color fallback, never initials. */
+function avatar(url, size, { logo = false, color, label } = {}) {
+  const box = h('span', { class: `av${logo ? ' logo' : ''}`, style: { width: `${size}px`, height: `${size}px`, '--team': color || 'oklch(62% 0.01 260)' }, role: 'img', 'aria-label': label || '' });
+  const sil = () => box.replaceChildren(s('svg', { class: 'sil', viewBox: '0 0 24 24' }, s('path', { d: 'M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.4 0-8 2.3-8 5.2V21h16v-1.8c0-2.9-3.6-5.2-8-5.2Z' })));
+  if (url) { const img = h('img', { src: url, alt: '', loading: 'lazy' }); img.addEventListener('error', sil); box.append(img); } else sil();
+  return box;
+}
+
+/* Percentile bar row (Savant-style). direction: 'up' higher is better. */
+function pbar(label, valueText, pct, { info } = {}) {
+  const color = pct >= 50 ? `color-mix(in srgb, var(--good) ${Math.round(30 + (pct - 50) * 1.4)}%, oklch(70% 0.004 260))` : `color-mix(in srgb, var(--bad) ${Math.round(30 + (50 - pct) * 1.4)}%, oklch(70% 0.004 260))`;
+  const row = h('div', { class: 'pbar' },
+    h('div', { class: 't-sm ink2' }, label),
+    h('div', { class: 'track' }, h('div', { class: 'fill', style: { width: `${pct}%`, background: `color-mix(in oklch, ${color} 35%, transparent)` } }), h('div', { class: 'dot', style: { left: `${pct}%`, background: color } }, String(pct))),
+    h('div', { class: 't-sm num', style: { textAlign: 'right', fontWeight: 600 } }, valueText));
+  Tip.bind(row, () => [tipRow(valueText, label), tipText(`${fmt.ord(pct)} percentile${info ? ` · ${info}` : ''}`)]);
+  return row;
+}
+
+/* Number tween for live values. */
+function tween(el, to, { from, d = 0, ms = 400 } = {}) {
+  const start = from ?? Number(el.dataset.v ?? to); const t0 = performance.now();
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const step = (t) => { const k = reduce ? 1 : Math.min(1, (t - t0) / ms); const v = start + (to - start) * (1 - Math.pow(1 - k, 3)); el.textContent = fmt.n(v, d); if (k < 1) requestAnimationFrame(step); };
+  el.dataset.v = to; requestAnimationFrame(step);
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+}
+
+/* Line chart with snapping crosshair. series: [{name,color,values:[number|null], width, dash, area}] */
+function lineChartDraw(__W, { series, labels, height = 220, yMin, yMax, yTicks = 4, yFmt = (v) => fmt.n(v), refs = [], markers = [], tooltip, onClick, band }) {
+  const W = __W, H = height, m = { l: 40, r: 14, t: 12, b: 26 };
+  const n = labels.length;
+  const all = series.flatMap((se) => se.values).filter((v) => v != null);
+  const lo = yMin ?? Math.min(...all), hi = yMax ?? Math.max(...all);
+  const x = (i) => m.l + (n <= 1 ? 0 : (i * (W - m.l - m.r)) / (n - 1));
+  const y = (v) => m.t + (1 - (v - lo) / (hi - lo || 1)) * (H - m.t - m.b);
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
+  if (band) svg.append(s('rect', { x: m.l, y: y(band.to), width: W - m.l - m.r, height: Math.max(0, y(band.from) - y(band.to)), fill: band.fill }));
+  for (let k = 0; k <= yTicks; k++) { const v = lo + ((hi - lo) * k) / yTicks; svg.append(s('line', { class: 'grid-l', x1: m.l, x2: W - m.r, y1: y(v), y2: y(v) }), s('text', { class: 'axis-t', x: m.l - 6, y: y(v) + 3, 'text-anchor': 'end' }, yFmt(v))); }
+  const every = Math.max(1, Math.ceil(n / Math.max(3, Math.floor(W / 90))));
+  const sparse = labels.filter(Boolean).length <= 12;
+  labels.forEach((lb, i) => { if (!lb) return; if (sparse || i % every === 0 || i === n - 1) svg.append(s('text', { class: 'axis-t', x: x(i), y: H - 8, 'text-anchor': i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle' }, lb)); });
+  for (const r of refs) svg.append(s('line', { x1: m.l, x2: W - m.r, y1: y(r.y), y2: y(r.y), stroke: 'var(--ink-muted)', 'stroke-width': 1, 'stroke-dasharray': r.dash ? '4 4' : null }), r.label ? s('text', { class: 'axis-t', x: W - m.r, y: y(r.y) - 4, 'text-anchor': 'end' }, r.label) : null);
+  for (const se of series) {
+    let d = ''; se.values.forEach((v, i) => { if (v == null) return; d += `${d && se.values[i - 1] != null ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`; });
+    if (se.area) { const first = se.values.findIndex((v) => v != null); const last = se.values.length - 1 - [...se.values].reverse().findIndex((v) => v != null); svg.append(s('path', { d: `${d}L${x(last)},${y(se.area)}L${x(first)},${y(se.area)}Z`, fill: se.color, opacity: 0.1 })); }
+    svg.append(s('path', { d, fill: 'none', stroke: se.color, 'stroke-width': se.width || 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'stroke-dasharray': se.dash || null, opacity: se.opacity || 1 }));
+    if (se.dots) se.values.forEach((v, i) => { if (v != null) svg.append(s('circle', { cx: x(i), cy: y(v), r: 2.2, fill: se.color, opacity: 0.55 })); });
+  }
+  for (const mk of markers) svg.append(s('circle', { cx: x(mk.i), cy: y(mk.y), r: 5, fill: mk.color || 'var(--ink)', stroke: 'var(--card)', 'stroke-width': 2 }));
+  const xh = s('line', { class: 'xh', x1: 0, x2: 0, y1: m.t, y2: H - m.b });
+  const focusDots = series.map((se) => s('circle', { r: 4.5, fill: se.color, stroke: 'var(--card)', 'stroke-width': 2, opacity: 0 }));
+  svg.append(xh, ...focusDots);
+  const hit = s('rect', { x: m.l, y: 0, width: W - m.l - m.r, height: H, fill: 'transparent', style: onClick ? 'cursor:pointer' : null });
+  svg.append(hit);
+  const wrap = h('div', { class: 'chart', tabindex: '0', 'aria-label': 'Chart: use left and right arrows to read values' }, svg);
+  let cur = -1;
+  const setIdx = (i, cx, cy) => {
+    cur = Math.max(0, Math.min(n - 1, i));
+    xh.setAttribute('x1', x(cur)); xh.setAttribute('x2', x(cur)); xh.style.opacity = 0.35;
+    series.forEach((se, k) => { const v = se.values[cur]; focusDots[k].setAttribute('opacity', v == null ? 0 : 1); if (v != null) { focusDots[k].setAttribute('cx', x(cur)); focusDots[k].setAttribute('cy', y(v)); } });
+    if (tooltip) Tip.show(cx, cy, ...tooltip(cur));
+  };
+  hit.addEventListener('pointermove', (e) => { const r = svg.getBoundingClientRect(); const px = ((e.clientX - r.left) / r.width) * W; setIdx(Math.round(((px - m.l) / (W - m.l - m.r)) * (n - 1)), e.clientX, e.clientY); });
+  hit.addEventListener('pointerleave', () => { Tip.hide(); focusDots.forEach((d) => d.setAttribute('opacity', 0)); xh.style.opacity = 0; });
+  if (onClick) hit.addEventListener('click', () => cur >= 0 && onClick(cur));
+  wrap.addEventListener('keydown', (e) => {
+    if (!['ArrowLeft', 'ArrowRight', 'Enter'].includes(e.key)) return; e.preventDefault();
+    if (e.key === 'Enter') { if (onClick && cur >= 0) onClick(cur); return; }
+    const r = svg.getBoundingClientRect(); const i = cur < 0 ? n - 1 : cur + (e.key === 'ArrowRight' ? 1 : -1);
+    setIdx(i, r.left + (x(Math.max(0, Math.min(n - 1, i))) / W) * r.width, r.top + 20);
+  });
+  wrap.addEventListener('blur', () => Tip.hide());
+  return wrap;
+}
+
+/* Column chart, one mark per value; the mark is the hit target. */
+function columnChartDraw(__W, { bars, height = 180, yFmt = (v) => fmt.n(v), refs = [], tooltip, onClick, labelEvery }) {
+  const W = __W, H = height, m = { l: 36, r: 8, t: 10, b: 24 };
+  const hi = Math.max(...bars.map((b) => b.value), ...refs.map((r) => r.y)) * 1.05 || 1;
+  const band = (W - m.l - m.r) / bars.length; const bw = Math.min(24, band - 2);
+  const y = (v) => m.t + (1 - v / hi) * (H - m.t - m.b);
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img' });
+  for (let k = 0; k <= 3; k++) { const v = (hi * k) / 3; svg.append(s('line', { class: 'grid-l', x1: m.l, x2: W - m.r, y1: y(v), y2: y(v) }), s('text', { class: 'axis-t', x: m.l - 6, y: y(v) + 3, 'text-anchor': 'end' }, yFmt(v))); }
+  const every = labelEvery || Math.max(1, Math.ceil(bars.length / 10));
+  bars.forEach((b, i) => {
+    const cx = m.l + band * i + band / 2; const top = y(b.value); const hgt = Math.max(0, H - m.b - top);
+    const r = Math.min(4, bw / 2, hgt);
+    const path = `M${cx - bw / 2},${H - m.b}V${top + r}q0,-${r} ${r},-${r}h${bw - 2 * r}q${r},0 ${r},${r}V${H - m.b}Z`;
+    const g = s('g', { tabindex: '0', style: onClick ? 'cursor:pointer' : null });
+    g.append(s('rect', { x: cx - band / 2, y: m.t, width: band, height: H - m.t - m.b, fill: 'transparent' }), s('path', { d: path, fill: b.color || 'var(--ink)', class: 'bar' }));
+    g.addEventListener('pointermove', (e) => { g.querySelector('.bar').setAttribute('opacity', 0.75); tooltip && Tip.show(e.clientX, e.clientY, ...tooltip(b, i)); });
+    g.addEventListener('pointerleave', () => { g.querySelector('.bar').setAttribute('opacity', 1); Tip.hide(); });
+    g.addEventListener('focus', () => { const rr = g.getBoundingClientRect(); tooltip && Tip.show(rr.left + rr.width / 2, rr.top, ...tooltip(b, i)); });
+    g.addEventListener('blur', () => Tip.hide());
+    if (onClick) { g.addEventListener('click', () => onClick(b, i)); g.addEventListener('keydown', (e) => { if (e.key === 'Enter') onClick(b, i); }); }
+    svg.append(g);
+    if (b.label && i % every === 0) svg.append(s('text', { class: 'axis-t', x: cx, y: H - 8, 'text-anchor': 'middle' }, b.label));
+  });
+  for (const r of refs) svg.append(s('line', { x1: m.l, x2: W - m.r, y1: y(r.y), y2: y(r.y), stroke: 'var(--ink-muted)', 'stroke-dasharray': '4 4' }), s('text', { class: 'axis-t', x: W - m.r, y: y(r.y) - 4, 'text-anchor': 'end' }, r.label || ''));
+  return h('div', { class: 'chart' }, svg);
+}
+
+/* Board chrome: title, notes, typeface + elevation switchers (persisted per viewer). */
+function boardBar(title, note, extra = []) {
+  const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } return null; };
+  const apply = () => {
+    document.body.classList.remove('font-inter', 'font-plex', 'font-source', 'elev-flat');
+    const f = store('g-font') || 'system'; if (f !== 'system') document.body.classList.add(`font-${f}`);
+    if ((store('g-elev') || 'raised') === 'flat') document.body.classList.add('elev-flat');
+  };
+  apply();
+  const fontSeg = segmented([{ value: 'system', label: 'System' }, { value: 'inter', label: 'Inter' }, { value: 'plex', label: 'IBM Plex Sans' }, { value: 'source', label: 'Source Sans 3' }], store('g-font') || 'system', (v) => { store('g-font', v); apply(); });
+  const elevSeg = segmented([{ value: 'raised', label: 'Cards raised' }, { value: 'flat', label: 'Flat + borders' }], store('g-elev') || 'raised', (v) => { store('g-elev', v); apply(); });
+  return h('div', { class: 'board-bar' }, h('div', { class: 'inner' },
+    h('div', null, h('div', { class: 'title' }, title), h('div', { class: 'note' }, note)),
+    h('div', { style: { flex: 1 } }),
+    ...extra,
+    h('div', { class: 'row' }, h('span', { class: 'note' }, 'Typeface'), Object.assign(fontSeg, { className: 'seg' })),
+    h('div', { class: 'row' }, h('span', { class: 'note' }, 'Elevation'), Object.assign(elevSeg, { className: 'seg' }))));
+}
+
+function lineChart(opts) {
+  const host = h('div', { class: 'chart-host' });
+  let last = 0;
+  const draw = (w) => { const W = Math.max(280, Math.round(w)); if (Math.abs(W - last) < 8) return; last = W; host.replaceChildren(lineChartDraw(W, opts)); };
+  const ro = new ResizeObserver((entries) => draw(entries[0].contentRect.width));
+  ro.observe(host);
+  requestAnimationFrame(() => draw(host.clientWidth || 720));
+  return host;
+}
+
+function columnChart(opts) {
+  const host = h('div', { class: 'chart-host' });
+  let last = 0;
+  const draw = (w) => { const W = Math.max(280, Math.round(w)); if (Math.abs(W - last) < 8) return; last = W; host.replaceChildren(columnChartDraw(W, opts)); };
+  const ro = new ResizeObserver((entries) => draw(entries[0].contentRect.width));
+  ro.observe(host);
+  requestAnimationFrame(() => draw(host.clientWidth || 720));
+  return host;
+}
+</script>
+<script type="application/json" id="data-mlb-power">{"source": "corpus/mlb_pitch_events, season 2026 (to 2026-09-11); names from statsapi.mlb.com", "qualifiedMinBip": 150, "leaders": [{"id": 665833, "bip": 199, "maxEV": 119.0, "p90EV": 112.4, "avgEV": 94.9, "hardHitPct": 55.3, "hr": 17, "hrAvgEV": 108.9, "hrAvgLA": 27.6, "hrMaxEV": 117.4, "name": "Oneil Cruz", "team": "Pittsburgh Pirates", "bats": "L", "pos": "CF"}, {"id": 695578, "bip": 308, "maxEV": 116.3, "p90EV": 111.2, "avgEV": 95.4, "hardHitPct": 58.1, "hr": 28, "hrAvgEV": 108.7, "hrAvgLA": 27.9, "hrMaxEV": 114.5, "name": "James Wood", "team": "Washington Nationals", "bats": "L", "pos": "RF"}, {"id": 691406, "bip": 428, "maxEV": 116.9, "p90EV": 111.1, "avgEV": 93.2, "hardHitPct": 51.2, "hr": 37, "hrAvgEV": 107.6, "hrAvgLA": 27.2, "hrMaxEV": 114.3, "name": "Junior Caminero", "team": "Tampa Bay Rays", "bats": "R", "pos": "3B"}, {"id": 682829, "bip": 342, "maxEV": 116.8, "p90EV": 110.8, "avgEV": 94.9, "hardHitPct": 54.7, "hr": 26, "hrAvgEV": 106.9, "hrAvgLA": 28.6, "hrMaxEV": 115.2, "name": "Elly De La Cruz", "team": "Cincinnati Reds", "bats": "S", "pos": "SS"}, {"id": 695506, "bip": 327, "maxEV": 116.1, "p90EV": 110.5, "avgEV": 93.4, "hardHitPct": 54.7, "hr": 20, "hrAvgEV": 108.1, "hrAvgLA": 28.6, "hrMaxEV": 113.7, "name": "Jac Caglianone", "team": "Kansas City Royals", "bats": "L", "pos": "RF"}, {"id": 701762, "bip": 223, "maxEV": 115.9, "p90EV": 110.5, "avgEV": 93.8, "hardHitPct": 58.3, "hr": 21, "hrAvgEV": 107.7, "hrAvgLA": 29.4, "hrMaxEV": 115.9, "name": "Nick Kurtz", "team": "Athletics", "bats": "L", "pos": "1B"}, {"id": 691023, "bip": 402, "maxEV": 116.6, "p90EV": 110.4, "avgEV": 92.8, "hardHitPct": 49.8, "hr": 26, "hrAvgEV": 107.8, "hrAvgLA": 25.9, "hrMaxEV": 116.6, "name": "Jordan Walker", "team": "St. Louis Cardinals", "bats": "R", "pos": "RF"}, {"id": 670541, "bip": 403, "maxEV": 118.5, "p90EV": 110.2, "avgEV": 94.5, "hardHitPct": 53.3, "hr": 37, "hrAvgEV": 107.5, "hrAvgLA": 29.0, "hrMaxEV": 116.2, "name": "Yordan Alvarez", "team": "Houston Astros", "bats": "L", "pos": "DH"}, {"id": 691723, "bip": 249, "maxEV": 116.5, "p90EV": 109.8, "avgEV": 92.0, "hardHitPct": 51.0, "hr": 24, "hrAvgEV": 107.5, "hrAvgLA": 28.2, "hrMaxEV": 114.2, "name": "Coby Mayo", "team": "Baltimore Orioles", "bats": "R", "pos": "3B"}, {"id": 660271, "bip": 337, "maxEV": 117.1, "p90EV": 109.4, "avgEV": 93.1, "hardHitPct": 51.3, "hr": 28, "hrAvgEV": 108.5, "hrAvgLA": 27.5, "hrMaxEV": 114.6, "name": "Shohei Ohtani", "team": "Los Angeles Dodgers", "bats": "L", "pos": "TWP"}, {"id": 703607, "bip": 260, "maxEV": 113.6, "p90EV": 109.4, "avgEV": 90.0, "hardHitPct": 48.1, "hr": 12, "hrAvgEV": 106.1, "hrAvgLA": 27.3, "hrMaxEV": 111.5, "name": "Henry Bolte", "team": "Athletics", "bats": "R", "pos": "CF"}, {"id": 669003, "bip": 275, "maxEV": 115.5, "p90EV": 109.2, "avgEV": 93.1, "hardHitPct": 52.7, "hr": 12, "hrAvgEV": 108.0, "hrAvgLA": 26.3, "hrMaxEV": 115.5, "name": "Garrett Mitchell", "team": "Milwaukee Brewers", "bats": "L", "pos": "CF"}, {"id": 665487, "bip": 423, "maxEV": 115.7, "p90EV": 109.2, "avgEV": 92.2, "hardHitPct": 53.9, "hr": 19, "hrAvgEV": 107.1, "hrAvgLA": 26.7, "hrMaxEV": 115.5, "name": "Fernando Tatis Jr.", "team": "San Diego Padres", "bats": "R", "pos": "RF"}, {"id": 666176, "bip": 399, "maxEV": 114.9, "p90EV": 108.7, "avgEV": 90.6, "hardHitPct": 44.9, "hr": 23, "hrAvgEV": 107.8, "hrAvgLA": 28.7, "hrMaxEV": 114.5, "name": "Jo Adell", "team": "Cleveland Guardians", "bats": "R", "pos": "RF"}, {"id": 656941, "bip": 309, "maxEV": 113.2, "p90EV": 108.7, "avgEV": 92.3, "hardHitPct": 49.2, "hr": 42, "hrAvgEV": 106.5, "hrAvgLA": 29.0, "hrMaxEV": 113.0, "name": "Kyle Schwarber", "team": "Philadelphia Phillies", "bats": "L", "pos": "DH"}, {"id": 666211, "bip": 162, "maxEV": 113.3, "p90EV": 108.6, "avgEV": 88.0, "hardHitPct": 39.5, "hr": 7, "hrAvgEV": 108.2, "hrAvgLA": 28.0, "hrMaxEV": 113.3, "name": "Taylor Trammell", "team": "Houston Astros", "bats": "L", "pos": "LF"}, {"id": 624585, "bip": 197, "maxEV": 113.3, "p90EV": 108.6, "avgEV": 89.0, "hardHitPct": 44.2, "hr": 14, "hrAvgEV": 106.5, "hrAvgLA": 27.5, "hrMaxEV": 110.4, "name": "Jorge Soler", "team": "Los Angeles Angels", "bats": "R", "pos": "DH"}, {"id": 665489, "bip": 412, "maxEV": 116.3, "p90EV": 108.5, "avgEV": 90.8, "hardHitPct": 45.4, "hr": 8, "hrAvgEV": 105.0, "hrAvgLA": 27.4, "hrMaxEV": 108.5, "name": "Vladimir Guerrero Jr.", "team": "Toronto Blue Jays", "bats": "R", "pos": "1B"}, {"id": 808959, "bip": 221, "maxEV": 114.1, "p90EV": 108.4, "avgEV": 93.8, "hardHitPct": 56.6, "hr": 29, "hrAvgEV": 107.2, "hrAvgLA": 33.8, "hrMaxEV": 114.1, "name": "Munetaka Murakami", "team": "Chicago White Sox", "bats": "L", "pos": "1B"}, {"id": 682626, "bip": 228, "maxEV": 112.6, "p90EV": 108.3, "avgEV": 90.9, "hardHitPct": 46.9, "hr": 15, "hrAvgEV": 106.1, "hrAvgLA": 28.3, "hrMaxEV": 111.5, "name": "Francisco Alvarez", "team": "New York Mets", "bats": "R", "pos": "C"}], "witt": {"id": 677951, "bip": 390, "maxEV": 117.2, "p90EV": 107.6, "avgEV": 92.5, "hardHitPct": 52.1, "hr": 18, "hrAvgEV": 104.8, "hrAvgLA": 26.0, "hrMaxEV": 108.7, "percentiles": {"maxEV": 99, "p90EV": 90, "avgEV": 94, "hardHitPct": 95, "hr": 74}, "qualifiedPool": 331, "evHist": [{"lo": 60, "n": 1}, {"lo": 62, "n": 1}, {"lo": 64, "n": 4}, {"lo": 66, "n": 6}, {"lo": 68, "n": 1}, {"lo": 70, "n": 7}, {"lo": 72, "n": 3}, {"lo": 74, "n": 15}, {"lo": 76, "n": 6}, {"lo": 78, "n": 10}, {"lo": 80, "n": 18}, {"lo": 82, "n": 10}, {"lo": 84, "n": 16}, {"lo": 86, "n": 17}, {"lo": 88, "n": 16}, {"lo": 90, "n": 11}, {"lo": 92, "n": 23}, {"lo": 94, "n": 21}, {"lo": 96, "n": 24}, {"lo": 98, "n": 26}, {"lo": 100, "n": 27}, {"lo": 102, "n": 29}, {"lo": 104, "n": 23}, {"lo": 106, "n": 26}, {"lo": 108, "n": 11}, {"lo": 110, "n": 12}, {"lo": 112, "n": 9}, {"lo": 114, "n": 2}, {"lo": 116, "n": 1}, {"lo": 118, "n": 0}], "byPitch": [{"type": "FF", "seen": 597, "whiffPct": 17.7, "bip": 82, "xwoba": 0.476, "avgEV": 95.9}, {"type": "SI", "seen": 303, "whiffPct": 11.3, "bip": 72, "xwoba": 0.45, "avgEV": 96.0}, {"type": "SL", "seen": 281, "whiffPct": 32.1, "bip": 60, "xwoba": 0.398, "avgEV": 91.7}, {"type": "ST", "seen": 242, "whiffPct": 35.4, "bip": 48, "xwoba": 0.413, "avgEV": 88.0}, {"type": "FC", "seen": 209, "whiffPct": 22.7, "bip": 43, "xwoba": 0.502, "avgEV": 90.8}, {"type": "CH", "seen": 157, "whiffPct": 22.0, "bip": 46, "xwoba": 0.447, "avgEV": 91.5}, {"type": "CU", "seen": 134, "whiffPct": 14.3, "bip": 33, "xwoba": 0.361, "avgEV": 88.0}, {"type": "?", "seen": 44, "whiffPct": null, "bip": 0, "xwoba": null, "avgEV": null}, {"type": "FS", "seen": 30, "whiffPct": 18.8, "bip": 6, "xwoba": 0.449, "avgEV": 91.2}, {"type": "KC", "seen": 23, "whiffPct": 30.0, "bip": 3, "xwoba": 0.41, "avgEV": 94.9}, {"type": "SV", "seen": 4, "whiffPct": 0.0, "bip": 1, "xwoba": 0.36, "avgEV": 95.7}, {"type": "FO", "seen": 4, "whiffPct": null, "bip": 0, "xwoba": null, "avgEV": null}, {"type": "EP", "seen": 3, "whiffPct": null, "bip": 0, "xwoba": null, "avgEV": null}, {"type": "FA", "seen": 2, "whiffPct": null, "bip": 0, "xwoba": null, "avgEV": null}, {"type": "KN", "seen": 1, "whiffPct": null, "bip": 0, "xwoba": null, "avgEV": null}], "zones": {"1": {"pitches": 75, "bip": 23, "xwoba": 0.355}, "2": {"pitches": 115, "bip": 25, "xwoba": 0.687}, "3": {"pitches": 82, "bip": 17, "xwoba": 0.365}, "4": {"pitches": 82, "bip": 27, "xwoba": 0.518}, "5": {"pitches": 128, "bip": 49, "xwoba": 0.584}, "6": {"pitches": 138, "bip": 46, "xwoba": 0.503}, "7": {"pitches": 50, "bip": 18, "xwoba": 0.424}, "8": {"pitches": 105, "bip": 52, "xwoba": 0.437}, "9": {"pitches": 115, "bip": 28, "xwoba": 0.291}}, "evByGame": [{"date": "2026-03-20", "gameAvgEV": 74.7, "maxEV": 74.7, "rolling40": 74.7}, {"date": "2026-03-21", "gameAvgEV": 103.2, "maxEV": 103.2, "rolling40": 88.9}, {"date": "2026-03-23", "gameAvgEV": 99.1, "maxEV": 105.2, "rolling40": 95.0}, {"date": "2026-03-24", "gameAvgEV": 95.7, "maxEV": 95.7, "rolling40": 95.1}, {"date": "2026-03-27", "gameAvgEV": 94.3, "maxEV": 103.9, "rolling40": 94.9}, {"date": "2026-03-28", "gameAvgEV": 85.1, "maxEV": 106.2, "rolling40": 92.4}, {"date": "2026-03-29", "gameAvgEV": 91.2, "maxEV": 102.6, "rolling40": 92.2}, {"date": "2026-03-30", "gameAvgEV": 86.9, "maxEV": 105.8, "rolling40": 91.1}, {"date": "2026-04-01", "gameAvgEV": 97.6, "maxEV": 104.6, "rolling40": 92.2}, {"date": "2026-04-02", "gameAvgEV": 105.4, "maxEV": 110.1, "rolling40": 93.3}, {"date": "2026-04-04", "gameAvgEV": 89.5, "maxEV": 106.6, "rolling40": 92.8}, {"date": "2026-04-05", "gameAvgEV": 92.6, "maxEV": 92.6, "rolling40": 92.8}, {"date": "2026-04-06", "gameAvgEV": 109.2, "maxEV": 115.6, "rolling40": 94.8}, {"date": "2026-04-07", "gameAvgEV": 79.3, "maxEV": 106.2, "rolling40": 93.9}, {"date": "2026-04-08", "gameAvgEV": 105.2, "maxEV": 111.1, "rolling40": 94.8}, {"date": "2026-04-09", "gameAvgEV": 86.0, "maxEV": 113.4, "rolling40": 94.2}, {"date": "2026-04-10", "gameAvgEV": 95.2, "maxEV": 98.7, "rolling40": 93.9}, {"date": "2026-04-11", "gameAvgEV": 78.1, "maxEV": 84.4, "rolling40": 92.0}, {"date": "2026-04-14", "gameAvgEV": 98.0, "maxEV": 107.1, "rolling40": 93.6}, {"date": "2026-04-15", "gameAvgEV": 80.8, "maxEV": 96.0, "rolling40": 92.4}, {"date": "2026-04-16", "gameAvgEV": 101.5, "maxEV": 104.1, "rolling40": 93.5}, {"date": "2026-04-17", "gameAvgEV": 86.4, "maxEV": 108.3, "rolling40": 92.6}, {"date": "2026-04-18", "gameAvgEV": 82.4, "maxEV": 88.4, "rolling40": 91.6}, {"date": "2026-04-19", "gameAvgEV": 113.8, "maxEV": 113.8, "rolling40": 91.9}, {"date": "2026-04-20", "gameAvgEV": 90.7, "maxEV": 114.2, "rolling40": 92.0}, {"date": "2026-04-21", "gameAvgEV": 87.3, "maxEV": 102.1, "rolling40": 90.4}, {"date": "2026-04-22", "gameAvgEV": 91.8, "maxEV": 98.8, "rolling40": 90.1}, {"date": "2026-04-24", "gameAvgEV": 90.4, "maxEV": 99.5, "rolling40": 88.6}, {"date": "2026-04-25", "gameAvgEV": 89.0, "maxEV": 103.7, "rolling40": 89.3}, {"date": "2026-04-26", "gameAvgEV": 103.3, "maxEV": 108.4, "rolling40": 90.6}, {"date": "2026-04-28", "gameAvgEV": 96.2, "maxEV": 103.7, "rolling40": 91.5}, {"date": "2026-04-29", "gameAvgEV": 95.1, "maxEV": 99.0, "rolling40": 92.6}, {"date": "2026-04-30", "gameAvgEV": 80.0, "maxEV": 85.8, "rolling40": 91.5}, {"date": "2026-05-01", "gameAvgEV": 94.4, "maxEV": 104.2, "rolling40": 92.1}, {"date": "2026-05-02", "gameAvgEV": 86.7, "maxEV": 94.1, "rolling40": 91.0}, {"date": "2026-05-03", "gameAvgEV": 97.2, "maxEV": 98.0, "rolling40": 91.6}, {"date": "2026-05-04", "gameAvgEV": 90.5, "maxEV": 107.1, "rolling40": 92.7}, {"date": "2026-05-05", "gameAvgEV": 103.9, "maxEV": 108.6, "rolling40": 93.0}, {"date": "2026-05-06", "gameAvgEV": 102.0, "maxEV": 106.5, "rolling40": 93.9}, {"date": "2026-05-07", "gameAvgEV": 96.2, "maxEV": 110.7, "rolling40": 94.5}, {"date": "2026-05-08", "gameAvgEV": 97.9, "maxEV": 111.8, "rolling40": 94.7}, {"date": "2026-05-09", "gameAvgEV": 94.9, "maxEV": 106.5, "rolling40": 94.8}, {"date": "2026-05-10", "gameAvgEV": 88.3, "maxEV": 88.3, "rolling40": 94.7}, {"date": "2026-05-12", "gameAvgEV": 96.6, "maxEV": 102.7, "rolling40": 94.4}, {"date": "2026-05-13", "gameAvgEV": 100.1, "maxEV": 104.5, "rolling40": 95.0}, {"date": "2026-05-14", "gameAvgEV": 91.3, "maxEV": 96.2, "rolling40": 94.7}, {"date": "2026-05-15", "gameAvgEV": 107.9, "maxEV": 111.6, "rolling40": 96.2}, {"date": "2026-05-16", "gameAvgEV": 89.3, "maxEV": 99.7, "rolling40": 96.2}, {"date": "2026-05-17", "gameAvgEV": 102.5, "maxEV": 104.3, "rolling40": 96.9}, {"date": "2026-05-18", "gameAvgEV": 91.8, "maxEV": 109.6, "rolling40": 97.1}, {"date": "2026-05-19", "gameAvgEV": 92.4, "maxEV": 103.6, "rolling40": 97.1}, {"date": "2026-05-20", "gameAvgEV": 106.1, "maxEV": 113.3, "rolling40": 97.2}, {"date": "2026-05-22", "gameAvgEV": 89.5, "maxEV": 91.6, "rolling40": 96.5}, {"date": "2026-05-23", "gameAvgEV": 84.3, "maxEV": 107.6, "rolling40": 95.2}, {"date": "2026-05-24", "gameAvgEV": 91.4, "maxEV": 104.4, "rolling40": 94.6}, {"date": "2026-05-25", "gameAvgEV": 105.4, "maxEV": 112.2, "rolling40": 95.8}, {"date": "2026-05-26", "gameAvgEV": 107.2, "maxEV": 111.3, "rolling40": 96.2}, {"date": "2026-05-27", "gameAvgEV": 89.9, "maxEV": 98.4, "rolling40": 96.0}, {"date": "2026-05-29", "gameAvgEV": 99.9, "maxEV": 112.8, "rolling40": 96.0}, {"date": "2026-05-30", "gameAvgEV": 99.6, "maxEV": 112.2, "rolling40": 96.4}, {"date": "2026-05-31", "gameAvgEV": 86.0, "maxEV": 86.0, "rolling40": 95.8}, {"date": "2026-06-01", "gameAvgEV": 98.0, "maxEV": 100.3, "rolling40": 95.4}, {"date": "2026-06-02", "gameAvgEV": 82.4, "maxEV": 88.7, "rolling40": 95.3}, {"date": "2026-06-03", "gameAvgEV": 79.3, "maxEV": 86.5, "rolling40": 94.3}, {"date": "2026-06-04", "gameAvgEV": 94.1, "maxEV": 99.2, "rolling40": 93.4}, {"date": "2026-06-05", "gameAvgEV": 97.6, "maxEV": 107.6, "rolling40": 94.2}, {"date": "2026-06-06", "gameAvgEV": 80.6, "maxEV": 100.3, "rolling40": 92.2}, {"date": "2026-06-09", "gameAvgEV": 93.8, "maxEV": 104.6, "rolling40": 91.8}, {"date": "2026-06-10", "gameAvgEV": 97.4, "maxEV": 105.4, "rolling40": 94.0}, {"date": "2026-06-11", "gameAvgEV": 83.0, "maxEV": 110.9, "rolling40": 91.8}, {"date": "2026-06-12", "gameAvgEV": 101.9, "maxEV": 105.9, "rolling40": 92.3}, {"date": "2026-06-13", "gameAvgEV": 85.6, "maxEV": 101.2, "rolling40": 90.5}, {"date": "2026-06-14", "gameAvgEV": 97.1, "maxEV": 106.6, "rolling40": 90.4}, {"date": "2026-06-15", "gameAvgEV": 97.7, "maxEV": 102.3, "rolling40": 90.7}, {"date": "2026-06-16", "gameAvgEV": 91.6, "maxEV": 96.5, "rolling40": 90.9}, {"date": "2026-06-17", "gameAvgEV": 90.6, "maxEV": 106.2, "rolling40": 91.7}, {"date": "2026-06-18", "gameAvgEV": 106.2, "maxEV": 107.4, "rolling40": 92.3}, {"date": "2026-06-26", "gameAvgEV": 85.4, "maxEV": 91.7, "rolling40": 91.7}, {"date": "2026-06-27", "gameAvgEV": 91.5, "maxEV": 117.2, "rolling40": 92.8}, {"date": "2026-06-28", "gameAvgEV": 102.0, "maxEV": 102.0, "rolling40": 92.7}, {"date": "2026-06-30", "gameAvgEV": 96.4, "maxEV": 107.3, "rolling40": 93.2}, {"date": "2026-07-01", "gameAvgEV": 90.2, "maxEV": 108.3, "rolling40": 93.0}, {"date": "2026-07-02", "gameAvgEV": 91.0, "maxEV": 98.2, "rolling40": 93.3}, {"date": "2026-07-04", "gameAvgEV": 85.5, "maxEV": 102.7, "rolling40": 92.0}, {"date": "2026-07-05", "gameAvgEV": 97.6, "maxEV": 97.6, "rolling40": 92.0}, {"date": "2026-07-06", "gameAvgEV": 104.2, "maxEV": 107.9, "rolling40": 94.1}, {"date": "2026-07-07", "gameAvgEV": 93.2, "maxEV": 111.7, "rolling40": 93.6}, {"date": "2026-07-08", "gameAvgEV": 87.4, "maxEV": 94.0, "rolling40": 93.3}, {"date": "2026-07-09", "gameAvgEV": 96.9, "maxEV": 105.3, "rolling40": 93.9}, {"date": "2026-07-10", "gameAvgEV": 84.8, "maxEV": 103.5, "rolling40": 92.9}, {"date": "2026-07-11", "gameAvgEV": 73.6, "maxEV": 83.1, "rolling40": 92.3}, {"date": "2026-07-12", "gameAvgEV": 97.3, "maxEV": 104.6, "rolling40": 92.7}, {"date": "2026-07-17", "gameAvgEV": 78.6, "maxEV": 81.3, "rolling40": 91.8}, {"date": "2026-07-18", "gameAvgEV": 70.8, "maxEV": 101.8, "rolling40": 89.9}, {"date": "2026-08-04", "gameAvgEV": 95.1, "maxEV": 108.0, "rolling40": 90.4}, {"date": "2026-08-05", "gameAvgEV": 86.8, "maxEV": 100.2, "rolling40": 91.0}, {"date": "2026-08-06", "gameAvgEV": 101.5, "maxEV": 109.2, "rolling40": 91.1}, {"date": "2026-08-07", "gameAvgEV": 85.0, "maxEV": 105.0, "rolling40": 89.8}, {"date": "2026-08-08", "gameAvgEV": 94.6, "maxEV": 99.2, "rolling40": 90.1}, {"date": "2026-08-09", "gameAvgEV": 97.5, "maxEV": 97.5, "rolling40": 89.8}, {"date": "2026-08-10", "gameAvgEV": 100.2, "maxEV": 100.2, "rolling40": 90.0}, {"date": "2026-08-11", "gameAvgEV": 85.8, "maxEV": 106.1, "rolling40": 89.3}, {"date": "2026-08-12", "gameAvgEV": 87.0, "maxEV": 102.3, "rolling40": 89.1}, {"date": "2026-08-14", "gameAvgEV": 97.5, "maxEV": 102.1, "rolling40": 90.3}, {"date": "2026-08-15", "gameAvgEV": 84.9, "maxEV": 94.5, "rolling40": 89.7}, {"date": "2026-08-16", "gameAvgEV": 98.4, "maxEV": 98.4, "rolling40": 89.8}, {"date": "2026-08-17", "gameAvgEV": 96.2, "maxEV": 107.3, "rolling40": 90.5}, {"date": "2026-08-18", "gameAvgEV": 86.9, "maxEV": 107.6, "rolling40": 90.8}, {"date": "2026-08-19", "gameAvgEV": 71.6, "maxEV": 92.0, "rolling40": 89.9}, {"date": "2026-08-20", "gameAvgEV": 94.3, "maxEV": 104.3, "rolling40": 90.1}, {"date": "2026-08-21", "gameAvgEV": 109.5, "maxEV": 112.0, "rolling40": 90.7}, {"date": "2026-08-22", "gameAvgEV": 91.2, "maxEV": 112.3, "rolling40": 91.2}, {"date": "2026-08-23", "gameAvgEV": 101.9, "maxEV": 103.8, "rolling40": 91.6}, {"date": "2026-08-25", "gameAvgEV": 81.9, "maxEV": 93.2, "rolling40": 91.0}, {"date": "2026-08-26", "gameAvgEV": 93.2, "maxEV": 101.8, "rolling40": 90.8}, {"date": "2026-08-27", "gameAvgEV": 81.5, "maxEV": 104.8, "rolling40": 89.9}, {"date": "2026-08-28", "gameAvgEV": 95.8, "maxEV": 109.2, "rolling40": 90.8}, {"date": "2026-08-29", "gameAvgEV": 91.4, "maxEV": 110.3, "rolling40": 90.7}, {"date": "2026-08-30", "gameAvgEV": 90.9, "maxEV": 98.5, "rolling40": 90.1}, {"date": "2026-09-01", "gameAvgEV": 85.6, "maxEV": 98.0, "rolling40": 90.2}, {"date": "2026-09-02", "gameAvgEV": 92.6, "maxEV": 97.8, "rolling40": 92.4}, {"date": "2026-09-03", "gameAvgEV": 78.3, "maxEV": 96.8, "rolling40": 90.8}, {"date": "2026-09-04", "gameAvgEV": 106.8, "maxEV": 106.9, "rolling40": 90.7}, {"date": "2026-09-05", "gameAvgEV": 98.4, "maxEV": 111.9, "rolling40": 90.6}, {"date": "2026-09-06", "gameAvgEV": 94.3, "maxEV": 112.5, "rolling40": 90.4}, {"date": "2026-09-07", "gameAvgEV": 92.7, "maxEV": 101.4, "rolling40": 90.7}, {"date": "2026-09-08", "gameAvgEV": 94.0, "maxEV": 101.8, "rolling40": 91.6}, {"date": "2026-09-09", "gameAvgEV": 85.2, "maxEV": 104.1, "rolling40": 91.8}, {"date": "2026-09-11", "gameAvgEV": 103.2, "maxEV": 103.3, "rolling40": 93.4}], "hrList": [{"date": "2026-04-26", "ev": 108.4000015258789, "la": 26.0, "pitch": "CH", "velo": 82.19999694824219}, {"date": "2026-04-28", "ev": 103.69999694824219, "la": 23.0, "pitch": "FC", "velo": 87.9000015258789}, {"date": "2026-05-04", "ev": 107.0999984741211, "la": 32.0, "pitch": "FC", "velo": 85.80000305175781}, {"date": "2026-05-07", "ev": 104.9000015258789, "la": 31.0, "pitch": "CH", "velo": 83.9000015258789}, {"date": "2026-05-09", "ev": 101.69999694824219, "la": -6.0, "pitch": "FF", "velo": 95.9000015258789}, {"date": "2026-05-12", "ev": 102.69999694824219, "la": 24.0, "pitch": "SI", "velo": 94.30000305175781}, {"date": "2026-05-13", "ev": 104.5, "la": 28.0, "pitch": "ST", "velo": 83.9000015258789}, {"date": "2026-05-25", "ev": 108.69999694824219, "la": 28.0, "pitch": "CU", "velo": 80.5999984741211}, {"date": "2026-05-26", "ev": 103.19999694824219, "la": 22.0, "pitch": "FC", "velo": 94.4000015258789}, {"date": "2026-06-18", "ev": 105.0999984741211, "la": 29.0, "pitch": "CU", "velo": 80.19999694824219}, {"date": "2026-06-30", "ev": 107.30000305175781, "la": 24.0, "pitch": "ST", "velo": 87.5999984741211}, {"date": "2026-06-30", "ev": 103.0999984741211, "la": 28.0, "pitch": "ST", "velo": 83.69999694824219}, {"date": "2026-07-09", "ev": 105.30000305175781, "la": 27.0, "pitch": "FC", "velo": 83.5999984741211}, {"date": "2026-08-16", "ev": 98.4000015258789, "la": 38.0, "pitch": "ST", "velo": 81.4000015258789}, {"date": "2026-08-17", "ev": 106.5999984741211, "la": 22.0, "pitch": "FF", "velo": 94.5999984741211}, {"date": "2026-08-20", "ev": 104.30000305175781, "la": 31.0, "pitch": "FF", "velo": 94.30000305175781}, {"date": "2026-09-04", "ev": 106.69999694824219, "la": 23.0, "pitch": "FC", "velo": 87.0999984741211}, {"date": "2026-09-09", "ev": 104.0999984741211, "la": 38.0, "pitch": "SI", "velo": 94.9000015258789}], "name": "Bobby Witt Jr.", "team": "Kansas City Royals", "bats": "R", "pos": "SS"}}</script>
+<style>
+  .hero-grid { display: grid; grid-template-columns: auto 1fr auto; gap: var(--s5); align-items: center; }
+  .tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--s3); margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid var(--line-soft); }
+  .tile { padding: 4px 0; cursor: default; border-radius: 8px; }
+  .tile:hover { background: var(--card-sunk); }
+  .zone { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; width: min(240px, 100%); margin: 0 auto; }
+  .zone div { aspect-ratio: 1 / 1.15; border-radius: 6px; display: grid; place-items: center; font: 600 13px/1 var(--font); font-variant-numeric: tabular-nums; cursor: default; transition: transform var(--t-instant) var(--ease); }
+  .zone div:hover { transform: scale(1.04); }
+  .cmp-row { display: grid; grid-template-columns: 120px 1fr 64px; gap: var(--s3); align-items: center; padding: 6px 0; }
+  .cmp-bars { display: grid; gap: 3px; }
+  .cmp-bars span { display: block; height: 8px; border-radius: 0 4px 4px 0; transition: width var(--t-data) var(--ease-em); }
+  .legend { display: flex; gap: var(--s4); font-size: 12px; color: var(--ink-2); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .opt-b .layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: var(--s3); align-items: start; }
+  @media (max-width: 1024px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } .hero-grid { grid-template-columns: auto 1fr; } .hero-grid > :last-child { grid-column: 1 / -1; } .opt-b .layout { grid-template-columns: 1fr; } }
+</style>
+<body>
+<div id="app"></div>
+<script>
+const D = JSON.parse(document.getElementById('data-mlb-power').textContent);
+const W = D.witt;
+// Season slash line as rendered by the app's Hitter stats card on 2026-09-13 (Phase F capture).
+const SEASON = { AVG: '.280', OBP: '.359', SLG: '.450', OPS: '.809', HR: String(W.hr), RBI: '54' };
+const HEADSHOT = (id) => `https://img.mlbstatic.com/mlb-photos/image/upload/w_213,q_auto:best/v1/people/${id}/headshot/67/current`;
+const PITCH = { FF: 'Four-seam', SI: 'Sinker', FC: 'Cutter', SL: 'Slider', ST: 'Sweeper', CH: 'Changeup', CU: 'Curveball', KC: 'Knuckle curve', FS: 'Splitter', SV: 'Slurve', FO: 'Forkball', EP: 'Eephus', KN: 'Knuckleball', CS: 'Slow curve', PO: 'Pitchout', FA: 'Fastball', '?': 'Unclassified' };
+let option = 'a', section = 'overview', compareId = null;
+const app = document.getElementById('app');
+
+function hero() {
+  const tiles = h('div', { class: 'tiles' }, ...Object.entries(SEASON).map(([k, v]) => {
+    const t = h('div', { class: 'tile stat' }, h('div', { class: 'l' }, k), h('div', { class: 'v' }, v));
+    Tip.bind(t, () => [tipRow(v, k), tipText('2026 season · click any stat in the full build to open its trend and splits')]);
+    return t;
+  }));
+  return h('section', { class: 'hero' },
+    h('div', { class: 'hero-grid' },
+      avatar(HEADSHOT(W.id), 88, { color: '#004687', label: W.name }),
+      h('div', { style: { minWidth: 0 } },
+        h('div', { class: 't-heading' }, W.name),
+        h('div', { class: 'row t-sm ink2', style: { marginTop: '4px' } }, h('span', null, `${W.pos || 'SS'} · Bats ${W.bats || 'R'}`), h('span', { class: 'muted' }, '·'), avatar('https://www.mlbstatic.com/team-logos/118.svg', 20, { logo: true, label: 'Kansas City Royals' }), h('a', { class: 'lnk', href: '#' }, W.team || 'Kansas City Royals'))),
+      h('div', { class: 'row' }, h('span', { class: 'pill-note' }, 'Next game · from the schedule in the full build'), h('button', { class: 'btn', type: 'button', onclick: () => openCompare() }, compareId ? 'Change comparison' : 'Compare…'))),
+    tiles);
+}
+
+function powerProfile() {
+  const p = W.percentiles; const pool = `among ${W.qualifiedPool} hitters with 150+ balls in play`;
+  const rows = [
+    pbar('Max exit velo', `${W.maxEV} mph`, p.maxEV, { info: pool }),
+    pbar('90th pct exit velo', `${W.p90EV} mph`, p.p90EV, { info: pool }),
+    pbar('Avg exit velo', `${W.avgEV} mph`, p.avgEV, { info: pool }),
+    pbar('Hard-hit rate', `${W.hardHitPct}%`, p.hardHitPct, { info: `balls hit 95+ mph · ${pool}` }),
+    pbar('Home runs', String(W.hr), p.hr, { info: pool }),
+  ];
+  return card({ title: 'Power profile', scope: '2026 · league percentile', info: 'Where he ranks among qualified hitters. Hover a row for the value and the pool.', body: h('div', null, ...rows), foot: `${W.bip} balls in play · source: Statcast pitch corpus (held, not shown in the app today)` });
+}
+
+function evDistribution() {
+  const bars = W.evHist.map((b) => ({ label: b.lo % 10 === 0 ? String(b.lo) : '', value: b.n, lo: b.lo, color: b.lo >= 95 ? 'var(--ink)' : 'oklch(70% 0.004 260)' }));
+  return card({ title: 'Exit velocity distribution', scope: '2026 · every ball in play', info: 'Dark bars are hard-hit (95+ mph). A long right tail is what separates real power from a high average.',
+    body: columnChart({ bars, height: 170, labelEvery: 1, tooltip: (b) => [tipRow(`${b.value} balls`, `${b.lo}–${b.lo + 2} mph`), tipText(b.lo >= 95 ? 'hard-hit' : '')] }),
+    foot: `Max ${W.maxEV} mph · 90th percentile ${W.p90EV} mph` });
+}
+
+function evTrend() {
+  const g = W.evByGame;
+  const labels = g.map((x) => { const d = new Date(`${x.date}T12:00:00`); return d.getDate() <= 7 ? d.toLocaleString('en-US', { month: 'short' }) : ''; });
+  return card({ title: 'Exit velocity by game', scope: '2026 · rolling 40 balls in play', info: 'Line: average of his last 40 balls in play. Dots: hardest-hit ball each game. Click a game to open it.',
+    body: lineChart({ series: [{ name: 'Rolling avg', color: 'var(--ink)', values: g.map((x, i) => (i < 4 ? null : x.rolling40)) }, { name: 'Game max', color: 'oklch(62% 0.004 260)', values: g.map((x) => x.maxEV), width: 0.001, dots: true }],
+      labels, height: 220, yMin: 60, yMax: 120, yFmt: (v) => `${Math.round(v)}`, refs: [{ y: 95, dash: true, label: 'hard-hit 95' }],
+      tooltip: (i) => [tipRow(`${g[i].rolling40} mph`, 'rolling average', 'var(--ink)'), tipRow(`${g[i].maxEV} mph`, 'hardest this game', 'oklch(62% 0.004 260)'), tipText(new Date(`${g[i].date}T12:00:00`).toDateString())],
+      onClick: (i) => Drill.open(new Date(`${g[i].date}T12:00:00`).toDateString(), 'Game drill-down', h('div', { class: 'stack' }, h('div', { class: 'grid cols-2' }, h('div', { class: 'stat' }, h('div', { class: 'l' }, 'Avg exit velo'), h('div', { class: 'v' }, `${g[i].gameAvgEV} mph`)), h('div', { class: 'stat' }, h('div', { class: 'l' }, 'Hardest hit'), h('div', { class: 'v' }, `${g[i].maxEV} mph`))), h('div', { class: 'callout' }, 'In the full build this panel shows the box score line, every plate appearance with pitch, result, exit velocity and launch angle, and a link to the game page.'))) }),
+    foot: 'Legend: line = rolling average · dots = game max' });
+}
+
+function pitchTable() {
+  const rows = W.byPitch.filter((r) => r.seen >= 40).map((r) => ({ ...r, name: PITCH[r.type] || r.type }));
+  return card({ title: 'Results by pitch type', scope: '2026 · pitches seen', info: 'Sort any column. Click a row for that pitch type in detail.', dense: true,
+    body: dataTable([
+      { key: 'name', label: 'Pitch' }, { key: 'seen', label: 'Seen', num: true, fmt: (v) => fmt.n(v) },
+      { key: 'whiffPct', label: 'Whiff %', num: true, fmt: (v) => fmt.pct(v, 1) }, { key: 'bip', label: 'In play', num: true },
+      { key: 'xwoba', label: 'xwOBA', num: true, fmt: (v) => fmt.rate3(v) }, { key: 'avgEV', label: 'Avg EV', num: true, fmt: (v) => (v == null ? '—' : `${v}`) },
+    ], rows, { sortKey: 'seen', onRow: (r) => Drill.open(r.name, `${r.seen} pitches seen in 2026`, h('div', { class: 'stack' }, h('div', { class: 'grid cols-3' }, ...[['Whiff %', fmt.pct(r.whiffPct, 1)], ['xwOBA on contact', fmt.rate3(r.xwoba)], ['Avg exit velo', r.avgEV ? `${r.avgEV} mph` : '—']].map(([l, v]) => h('div', { class: 'stat' }, h('div', { class: 'l' }, l), h('div', { class: 'v' }, v)))), h('div', { class: 'callout' }, 'Full build: location heat map for this pitch type, results by count, and which of today\'s opposing pitchers throw it most.'))) }),
+    foot: 'Pitch types with 40+ pitches · xwOBA on balls in play' });
+}
+
+function zoneMap() {
+  const z = W.zones; const lg = 0.36; // approximate league xwOBA on contact, for the neutral midpoint
+  const cells = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((k) => {
+    const c = z[k] || {}; const v = c.xwoba;
+    const t = v == null ? 0 : Math.max(-1, Math.min(1, (v - lg) / 0.18));
+    const bg = v == null ? 'var(--card-sunk)' : t >= 0 ? `color-mix(in srgb, var(--good) ${Math.round(t * 55)}%, oklch(93% 0.003 260))` : `color-mix(in srgb, var(--bad) ${Math.round(-t * 55)}%, oklch(93% 0.003 260))`;
+    const cell = h('div', { style: { background: bg, color: Math.abs(t) > 0.7 ? '#fff' : 'var(--ink)' } }, v == null ? '—' : fmt.rate3(v));
+    Tip.bind(cell, () => [tipRow(fmt.rate3(v), 'xwOBA on contact'), tipText(`${c.pitches} pitches · ${c.bip} in play`)]);
+    return cell;
+  });
+  return card({ title: 'Strike zone', scope: '2026 · catcher\'s view', info: 'xwOBA on balls in play by zone. Green is above the league midpoint, red below, gray is neutral.', body: h('div', null, h('div', { class: 'zone' }, ...cells)), foot: 'Full season sample (Phase F: the live card uses 7 balls in play)' });
+}
+
+function hrList() {
+  return card({ title: 'Home runs', scope: `2026 · ${W.hrList.length}`, dense: true, info: 'Every home run with how hard and at what angle it left the bat. Distance is in Statcast\'s export but dropped by our ingest today.',
+    body: dataTable([
+      { key: 'date', label: 'Date', fmt: (v) => new Date(`${v}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) },
+      { key: 'ev', label: 'Exit velo', num: true, fmt: (v) => `${v?.toFixed(1)}` }, { key: 'la', label: 'Launch °', num: true, fmt: (v) => (v == null ? '—' : `${Math.round(v)}°`) },
+      { key: 'pitch', label: 'Pitch', fmt: (v) => PITCH[v] || v }, { key: 'velo', label: 'Pitch mph', num: true, fmt: (v) => (v == null ? '—' : v.toFixed(1)) },
+      { key: 'dist', label: 'Distance', sort: false, render: () => h('span', { class: 'pill-note' }, 'not stored') },
+    ], W.hrList, { sortKey: 'ev' }),
+    foot: 'Distance: Savant sends hit_distance_sc; statcast_pitches.py discards it (Phase F ledger)' });
+}
+
+function comparePanel() {
+  const other = D.leaders.find((p) => p.id === compareId); if (!other) return null;
+  const metrics = [['Max exit velo', 'maxEV', ' mph'], ['90th pct exit velo', 'p90EV', ' mph'], ['Avg exit velo', 'avgEV', ' mph'], ['Hard-hit rate', 'hardHitPct', '%'], ['Home runs', 'hr', ''], ['HR avg exit velo', 'hrAvgEV', ' mph'], ['HR avg launch °', 'hrAvgLA', '°']];
+  const body = h('div', null, h('div', { class: 'legend', style: { marginBottom: '8px' } }, h('span', null, h('i', { style: { background: 'var(--cmp-a)' } }), W.name), h('span', null, h('i', { style: { background: 'var(--cmp-b)' } }), other.name)),
+    ...metrics.map(([label, key, unit]) => {
+      const a = W[key], b = other[key]; const max = Math.max(a || 0, b || 0) || 1; const min = key.includes('EV') ? 80 : 0;
+      const w = (v) => `${Math.max(2, ((v - min) / (max - min || 1)) * 100)}%`;
+      const row = h('div', { class: 'cmp-row' }, h('div', { class: 't-sm ink2' }, label), h('div', { class: 'cmp-bars' }, h('span', { style: { width: w(a), background: 'var(--cmp-a)' } }), h('span', { style: { width: w(b), background: 'var(--cmp-b)' } })), h('div', { class: 't-sm num', style: { textAlign: 'right' } }, `${a ?? '—'} / ${b ?? '—'}`));
+      Tip.bind(row, () => [tipRow(`${a ?? '—'}${unit}`, W.name, 'var(--cmp-a)'), tipRow(`${b ?? '—'}${unit}`, other.name, 'var(--cmp-b)')]);
+      return row;
+    }));
+  return card({ title: `Compare: ${W.name} vs ${other.name}`, scope: '2026', body, foot: h('button', { class: 'btn', type: 'button', onclick: () => { compareId = null; render(); } }, 'Clear comparison') });
+}
+
+function openCompare() {
+  const list = h('div', null, ...D.leaders.map((p) => {
+    const row = h('div', { class: 'drive-row', tabindex: '0', style: { display: 'grid', gridTemplateColumns: '36px 1fr auto', gap: '10px', alignItems: 'center', padding: '8px', borderRadius: '8px', cursor: 'pointer' }, onclick: () => { compareId = p.id; Drill.close(); render(); } },
+      avatar(HEADSHOT(p.id), 36, { label: p.name }), h('div', null, h('div', { class: 't-sm', style: { fontWeight: 600 } }, p.name), h('div', { class: 't-label' }, `${p.team || ''} · ${p.hr} HR`)), h('div', { class: 't-sm num ink2' }, `${p.p90EV} mph`));
+    row.addEventListener('keydown', (e) => { if (e.key === 'Enter') row.click(); });
+    return row;
+  }));
+  Drill.open('Compare with…', 'Top 20 hitters by 90th-percentile exit velocity, 2026', list);
+}
+
+function oddsSection() {
+  return card({ title: 'Odds & props', scope: 'today', body: h('div', { class: 'state' }, h('b', null, 'One grouped section, collapsed by default'), 'Props for this player, best price per market, line movement and tracking. It lives at the bottom of a research page, not at the top.') });
+}
+
+function render() {
+  const nav = h('div', { class: 'secnav sticky', style: { marginTop: 'var(--s4)' } }, tabs([{ value: 'overview', label: 'Overview' }, { value: 'power', label: 'Power' }, { value: 'discipline', label: 'Pitch types & zone' }, { value: 'hrs', label: 'Home runs' }, { value: 'odds', label: 'Odds' }], section, (v) => { section = v; document.getElementById(`sec-${v}`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); }));
+  const scope = h('div', { class: 'scope-row' }, h('h2', { class: 't-title' }, 'Season'), segmented([{ value: '2026', label: '2026' }, { value: 'l30', label: 'Last 30 days' }, { value: '2025', label: '2025' }, { value: 'career', label: 'Career' }], '2026', () => {}), h('span', { class: 't-label' }, 'Scopes every card below. Board uses 2026 only.'));
+  const cmp = comparePanel();
+  let content;
+  if (option === 'a') {
+    content = h('div', { class: 'stack' }, scope, cmp,
+      h('div', { id: 'sec-power', class: 'grid cols-2' }, powerProfile(), evDistribution()), evTrend(),
+      h('div', { id: 'sec-discipline', class: 'grid cols-main' }, pitchTable(), zoneMap()),
+      h('div', { id: 'sec-hrs' }, hrList()), h('div', { id: 'sec-odds' }, oddsSection()));
+  } else {
+    content = h('div', { class: 'stack' }, scope, cmp, h('div', { class: 'layout' }, h('div', { class: 'stack' }, evTrend(), pitchTable(), hrList()), h('div', { class: 'stack' }, powerProfile(), zoneMap(), evDistribution(), oddsSection())));
+  }
+  app.replaceChildren(
+    boardBar('Phase G · Player page (MLB)', 'Real data: Bobby Witt Jr., 2026 Statcast corpus to Sep 11 (1.45M pitches). A research page first; odds are one section.',
+      [segmented([{ value: 'a', label: 'Option A · sectioned' }, { value: 'b', label: 'Option B · dashboard' }], option, (v) => { option = v; render(); })]),
+    h('div', { class: `page opt-${option}` },
+      h('div', { class: 'callout', style: { marginBottom: 'var(--s4)' } }, h('b', null, 'Try: '), 'hover percentile rows, histogram bars, zone cells and the trend line; click a game or a pitch-type row to open a drill-down; sort the tables; press "Compare…" to pick another power hitter. ', h('b', null, 'Also: '), 'switch typeface and elevation in the bar above.'),
+      hero(), option === 'a' ? nav : null, h('div', { id: 'sec-overview' }), content));
+}
+render();
+</script>
+</body>

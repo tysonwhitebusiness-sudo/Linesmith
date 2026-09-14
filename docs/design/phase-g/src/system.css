@@ -125,7 +125,7 @@ body.elev-flat .card { border-color: var(--line); }
 .stat .v { font-size: 22px; line-height: 1.15; font-weight: 600; letter-spacing: -.01em; }
 .stat .l { font-size: 12px; font-weight: 500; color: var(--ink-muted); }
 .stat .d { font-size: 12px; font-weight: 600; }
-.pbar { display: grid; grid-template-columns: minmax(84px, 140px) 1fr 40px; align-items: center; gap: var(--s3); padding: 6px 0; cursor: default; border-radius: 6px; }
+.pbar { display: grid; grid-template-columns: minmax(84px, 140px) 1fr 76px; align-items: center; gap: var(--s3); padding: 6px 0; cursor: default; border-radius: 6px; }
 .pbar:hover { background: var(--card-sunk); }
 .pbar .track { position: relative; height: 8px; border-radius: 99px; background: var(--card-sunk); border: 1px solid var(--line-soft); }
 .pbar .fill { position: absolute; inset: 0 auto 0 0; border-radius: 99px; transition: width var(--t-data) var(--ease-em); }

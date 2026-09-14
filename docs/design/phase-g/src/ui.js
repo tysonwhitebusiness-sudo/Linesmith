@@ -133,7 +133,7 @@ function avatar(url, size, { logo = false, color, label } = {}) {
 
 /* Percentile bar row (Savant-style). direction: 'up' higher is better. */
 function pbar(label, valueText, pct, { info } = {}) {
-  const color = pct >= 50 ? `color-mix(in oklch, var(--good) ${Math.round(30 + (pct - 50) * 1.4)}%, oklch(70% 0.004 260))` : `color-mix(in oklch, var(--bad) ${Math.round(30 + (50 - pct) * 1.4)}%, oklch(70% 0.004 260))`;
+  const color = pct >= 50 ? `color-mix(in srgb, var(--good) ${Math.round(30 + (pct - 50) * 1.4)}%, oklch(70% 0.004 260))` : `color-mix(in srgb, var(--bad) ${Math.round(30 + (50 - pct) * 1.4)}%, oklch(70% 0.004 260))`;
   const row = h('div', { class: 'pbar' },
     h('div', { class: 't-sm ink2' }, label),
     h('div', { class: 'track' }, h('div', { class: 'fill', style: { width: `${pct}%`, background: `color-mix(in oklch, ${color} 35%, transparent)` } }), h('div', { class: 'dot', style: { left: `${pct}%`, background: color } }, String(pct))),
