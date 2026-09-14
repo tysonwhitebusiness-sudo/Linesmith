@@ -23,7 +23,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ gam
   const { gameId } = await params;
 
   try {
-    const games = await fetchScoreboard('football', 'nfl');
+    // 21 days back so a link to a recently finished game still resolves. With
+    // the default of 0, a game dated before today 404'd: the games strip's
+    // links broke overnight, and so did a team page's recent results.
+    const games = await fetchScoreboard('football', 'nfl', 14, 21);
     const game = games.find((g) => g.gameId === gameId);
     if (!game) {
       return NextResponse.json({ error: `No NFL game with id ${gameId}` }, { status: 404 });

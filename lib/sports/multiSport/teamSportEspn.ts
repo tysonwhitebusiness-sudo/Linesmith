@@ -15,6 +15,7 @@
 
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import { normalizeName } from '@/lib/odds/screenshotImport';
+import { easternDate, shiftDate } from '@/lib/sports/mlb/statsapi';
 
 const BASE = 'https://site.api.espn.com/apis/site/v2/sports';
 
@@ -63,11 +64,20 @@ interface RawCompetitor {
   score?: string;
 }
 
+/**
+ * ESPN files every game under its US EASTERN date, so the range must be built
+ * from the Eastern date too, never from UTC.
+ *
+ * It used to use UTC, and after 00:00Z (8pm Eastern) the range started on the
+ * next day. The in-progress Sunday night game (DAL @ NYG, 401872930, kickoff
+ * 00:20Z) then vanished mid-game: ESPN returned it for `dates=20260913` and not
+ * for `20260914-…`, so the NFL games strip dropped it and its game page
+ * rendered "Game not found". Every primetime game hit this, every week.
+ */
 function dateRangeParam(daysAhead: number, daysBack: number): string {
-  const fmt = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '');
-  const start = new Date(Date.now() - daysBack * 86_400_000);
-  const end = new Date(Date.now() + daysAhead * 86_400_000);
-  return `${fmt(start)}-${fmt(end)}`;
+  const today = easternDate();
+  const ymd = (isoDate: string) => isoDate.replace(/-/g, '');
+  return `${ymd(shiftDate(today, -daysBack))}-${ymd(shiftDate(today, daysAhead))}`;
 }
 
 /**
