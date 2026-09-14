@@ -9,31 +9,34 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 2. `docs/CURRENT.md` (the project baton; the research pages track is in "START HERE")
 3. `docs/audit-2026-09-13/research-pages-master-plan.md` (**approved as written 2026-09-14**, the build order). Its status block records what R1 and R2 actually did.
 
-## IN FLIGHT — paused mid-task 2026-09-14 ~21:30 UTC (read this first)
+## IN FLIGHT — R3 underway (autonomous run, operator away). Read first.
 
-The operator asked to fix the NFL "19h ago" find (routed to R1f 2b) BEFORE
-signing off R2. Diagnosis done: it was two bugs, not the game-day tier.
+Operator instruction 2026-09-14: finish the throttle fix, then complete R3
+ONLY, and stop when R3 is done. R2 is treated as signed off by that.
 
-1. **DONE, committed `4b4c5c5`:** stale prop rungs counted in the main line
-   (TS read-side fix in `lib/odds/props/mainLine.ts`). Verified live.
-2. **IN PROGRESS, UNCOMMITTED in the working tree:** Propline (and ParlayAPI,
-   SGO, Odds-API.io) share ONE throttle clock across all sports, so
-   refreshTier1 (every 150s) takes every window and NFL/EPL starve. NFL's last
-   Propline row was 32h old on game day; 11 of 22 priced NFL props read >1h
-   stale. Fix: per-sport clock (`ProviderSpec.throttle_scope`, set in
-   `provider_matrix.py`) plus a fair-share multiplier in `job_runner.py`
-   (wait x k active sports, via new `db.count_fresh_snapshots`).
-   Files touched: `python-odds-service/src/{providers,provider_matrix,job_runner,db,test_provider_throttle}.py`.
-   **State:** code written; `test_provider_throttle.py` has a SyntaxError from
-   the edit (an escaped newline in the new tests' `print("
-...")` lines came
-   out as a literal line break around line 216) — fix those strings, run
-   `.venv/Scripts/python.exe test_provider_throttle.py` from `src/`, then
-   commit by path. **Needs a Render deploy — ASK the operator first.** After
-   deploy, confirm `provider-throttle:propline:nfl` appears and NFL Propline
-   rows refresh on a hot day.
-3. Then update plan R1f 2b / Appendix A (R2-F1 is resolved by these two, not
-   by `gameday.py`), and return to R2 sign-off.
+- **Throttle fix DONE + DEPLOYED** (`4b4c5c5` read-side stale rungs; `2228a3d`
+  per-sport provider clock, deploy `dep-dak6nkad0e5s73b736u0` live 21:50 UTC).
+  Verified in prod: `provider-throttle:propline:nfl` stamped 21:53; DEN @ KC
+  Propline rows fresh at 21:53 (were 32h old). R2-F1 is resolved by these.
+- **R3 3a DONE** `7adb8c4` — tokens: F2 type ramp (266 old token uses
+  codemodded by F2's mapping), elevation flipped (paper 94.5 under card 98.5),
+  502 `text-ink-faint/soft` -> `text-ink-muted`, motion tokens, focus ring,
+  Plex Mono dropped. 10 pages x 400/1440: no overflow.
+- **R3 3b primitives DONE** `a477d60` — `components/ui/` (Card, Section +
+  SectionNav, SegmentedToggle, Tabs, SelectBox, Chip + StatusPill, Tooltip,
+  StatValue/StatGrid, RankRow, FactList, VizLegend, DataTable, Avatar,
+  DrillDownPanel, Skeleton/EmptyState/ErrorState, BackLink, useUrlState).
+  Palette now in CSS vars (globals.css :root). Chip.tsx re-exports the
+  primitive; SubjectAvatar renders Avatar (no initials). Rules test:
+  `tests/ui-primitives.test.ts`.
+- **NEXT:** 3b adoption — each primitive on one real card on an existing page
+  (plan's Verify); 3c charts (ResizeObserver real width, hover on every mark,
+  column clamp, dashed ref line, zero line, sport surfaces by adapter field,
+  HeatGrid `aspect` removal); 3d (Links on names/photos, URL state, BackLink,
+  breakpoints); then the R3 verify pass (contrast, focus, 400px, beside G2
+  kit), plan status + batons, STOP.
+- **Routed find (not R3's):** NFL game matchup card's "17th of 32" column
+  overlaps its label at 1440 (hand-typed 9px grid) — pre-existing, goes to R8.
 
 ## Where the work is
 
