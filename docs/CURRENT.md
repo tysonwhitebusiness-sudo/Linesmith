@@ -59,8 +59,15 @@ thread's own baton is `docs/audit-2026-09-13/RESUME-PROMPT.md`.
 - **MLB regular season ends late September:** the R8 MLB live state must be
   verified before then or on postseason games.
 
-**R2 STARTED 2026-09-14**, operator go-ahead given, with the `cachedRoute`
-stale ceiling folded into it. R2 also inherits F-B2 and F-B12 (measured in R1
+**R2 IN PROGRESS 2026-09-14** (`33ce1f2`): 2 of 10 items done — the
+`game_result` read module (Raiders 71 raw rows -> 54 games, verified three
+ways) and the `cachedRoute` staleness ceiling the operator folded in. Eight
+rules left; `RESUME-PROMPT.md` lists them in dependency order.
+
+**The ceiling immediately found two real problems nobody had seen:**
+`/api/mlb/team/110` serving a **28-day-old** payload silently, and
+`soccer:snapshot:epl` unable to write its cache at all (statement timeout), so
+it rebuilds on every request and discards the result. Neither is fixed. R2 also inherits F-B2 and F-B12 (measured in R1
 as an alternate-line ladder, not a match-total market); R7 inherits F-B3.
 
 Each R-phase ends with a stop for sign-off (plan §2).

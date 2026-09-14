@@ -1,4 +1,4 @@
-# Resume prompt — research pages build (2026-09-14, after R1)
+# Resume prompt — research pages build (2026-09-14, mid-R2)
 
 Paste everything below the line into a fresh session on any account.
 
@@ -12,17 +12,48 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 ## Where the work is
 
 - **Done:** card audit (A–D), design audit (E, F, F2, G, G2), Phase H (the master plan), R0.
-- **R1 BUILT 2026-09-14, awaiting the operator's sign-off.** Five commits:
-  `f89d704`, `69cf490`, `770f6c9`, `3f61ee6`, `16e8227`. Nothing pushed.
-- **Next, once R1 is signed off: R2 and R3, in any order.** Neither depends on
-  the other, and R2 has the larger backlog pointed at it.
+- **R1 DONE and signed off**, including the Render deploy (`dep-dak36up42hec73bri7hg`
+  on `46a2def`, live 17:50 UTC — verified in prod: `refreshNflJob games=33`,
+  `refreshCfbJob games=146`).
+- **R2 IN PROGRESS.** Commit `33ce1f2` lands **2 of R2's 10 items**:
+  the `game_result` read module (rule 3) and the `cachedRoute` staleness
+  ceiling, which the operator folded into R2.
 
-## What R1 left owed — read before starting anything
+## R2 — what is done and what is left
 
-- **The Python UTC fix is committed and NOT deployed.** `_date_range_param`
-  in `python-odds-service/src/game_context.py` now builds its window from the
-  US Eastern date. It is worker code; it needs a Render deploy, and the
-  operator has not been asked yet. **Ask before deploying.**
+**Done (`33ce1f2`):**
+- **`game_result` read module** — `lib/history/gameResults.ts`, route
+  `GET /api/history/results`, 13 tests, plus `scripts/verify-game-results.ts`
+  which runs it against real Postgres. Fixture reproduced three independent
+  ways: the Raiders go 71 raw rows -> **54 games**.
+- **`cachedRoute` staleness ceiling** — `x-cache: expired`, `x-cache-age-ms`
+  on every cached response, and a logged system event past the ceiling.
+
+**Left, in this order (the first four are dependency-ordered, the rest are
+independent):**
+1. **Season convention** — one helper mapping (sport, season) to its label and
+   date range. NBA uses the end year; NHL/NFL/CFB/EPL the start year. Drop
+   stray All-Star team ids. Ranks and the early-season fallback both need it.
+2. **Ranks** — computed over the league's real teams for that season (>=30% of
+   max games played), each stat with a declared better/worse direction,
+   football per game. ESPN's published ranks are never used. Neutral stats
+   (fouls, possession share) get no good/bad colour.
+3. **Early-season fallback** — open on last season under MIN_GAMES
+   (NFL/CFB 4, NBA/NHL 15, MLB 20, soccer 6), with the reason stated.
+4. **Prop main line** — the largest. Last PRE-GAME quote per book/side/line;
+   the main line is the one quoted on both sides by the most books, ties to
+   the price nearest even; pick'em books never count as a price; yes/no
+   markets keep a 0.5 line with 2+ books over; one-sided markets are flagged
+   "alternate lines only". **This is F-B12's fix** — see below.
+5. **Pre-start odds filter** — split `game_odds_history` at the game's start.
+6. **Innings pitched** — carry outs, render whole.thirds only.
+7. **NBA shot coordinates** — rim origin y ~= 1ft not 5.25; a miss's point
+   value comes from the arc.
+8. **Source quirks** — Understat newest-first, TennisMyLife tournament-start
+   dates, ESPN soccer fixtures param.
+
+## Still owed from R1
+
 - **R1f 2b is Saturday 2026-09-19**, during the live CFB window: read
   `refreshCfbJob`'s run log, tier and `prop_odds` rows. Change `gameday.py`
   only if the tier is still cold with kickoffs inside 6h.
@@ -41,22 +72,20 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
   resolve a past game. It now says so honestly instead of "Game not found."
   The per-game read belongs with R8.
 
-## The one live bug R1 found and deliberately did not fix
+## Two live problems the staleness ceiling exposed — NOT yet acted on
 
-`lib/cachedRoute.ts` serves stale **with no maximum age**:
+Both surfaced the moment the ceiling shipped, and both are real:
 
-    if (cached) { triggerBackgroundRebuild(...); return respondCached(payload, 'stale'); }
+1. **`/api/mlb/team/110` was serving a payload 671 hours — 28 days — old**,
+   silently. Its build has been failing for weeks and nothing reported it.
+   Nobody has looked at why.
+2. **`soccer:snapshot:epl` cannot write its cache**: `system_events` carries
+   `canceling statement due to statement timeout` for it. The route rebuilds
+   every request and throws the result away, which is both slow and the reason
+   an edit to soccer data appears to "not take" until several requests later.
 
-A route whose `build()` keeps failing serves its last good payload
-indefinitely, and the page has no way to know. CFB's build is the one already
-documented as timing out (`CURRENT.md`, PARKED), which is how a Sep 13 rebuild
-listed Sep 3/4 games. **It does not reproduce today** — `/api/cfb` returns 146
-games all dated Sep 17–27 — and both UTC date-range bugs are ruled out as the
-cause, since a one-day shift cannot produce a nine-day gap.
-
-A maximum stale age changes every route's contract and needs its own
-measurement per route. **Put it to the operator; don't decide it inside a
-phase.**
+Neither is an R2 rule. Decide whether they get fixed inside R2 or become their
+own task.
 
 ## First reply
 
