@@ -32,6 +32,35 @@ function ordinal(rank: number): string {
   return `${rank}${suffix}`;
 }
 
+/**
+ * Which headline stat has a real allowed counterpart in nflverse's
+ * `DEFENSE_STAT_DEFS`, and under which key.
+ *
+ * Four of the eight do. The other four have none, and two of those
+ * (`def-sacks`, `def-interceptions`) are already defensive stats, so an
+ * "allowed" version of them would not mean anything. They stay `null`, which
+ * the grid renders as "—" (F-B1: they used to be filled with the OPPOSING
+ * team's produced rank).
+ */
+const ALLOWED_KEY_BY_STAT: Record<string, string | undefined> = {
+  'pass-yards': 'pass-yards-allowed',
+  'pass-tds': 'pass-tds-allowed',
+  'rush-yards': 'rush-yards-allowed',
+  'rush-tds': 'rush-tds-allowed',
+};
+
+/** The "against" half: this team's OWN allowed ranks, from `getTeamDefenseAllowedWithRank`. */
+export function toAgainstRanks(teamDefenseAllowed: NflverseTeamStatLine[]): Record<string, string | null> {
+  const byKey = new Map(teamDefenseAllowed.map((s) => [s.key, s]));
+  const out: Record<string, string | null> = {};
+  for (const def of NFL_STAT_KEYS) {
+    const allowedKey = ALLOWED_KEY_BY_STAT[def.key];
+    const line = allowedKey ? byKey.get(allowedKey) : undefined;
+    out[def.key] = line ? ordinal(line.rank) : null;
+  }
+  return out;
+}
+
 /** Ordinal-formats each headline stat's rank for one team's own production — the "for" half of RankingsHeatGrid's for/against pair. */
 export function toForRanks(teamStats: NflverseTeamStatLine[]): Record<string, string | null> {
   const byKey = new Map(teamStats.map((s) => [s.key, s]));

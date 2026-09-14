@@ -99,6 +99,12 @@ export interface CfbGameDetailInput {
    * feeds then stay null and render their honest empty state.
    */
   seasonRanks: SeasonAggregateResult | null;
+  /**
+   * The same rollup asked from the other end (`side=allowed`, grouped by
+   * `opponent_id`) — what each team GAVE UP. F-B1: without it the "agn"
+   * column was filled with the opposing team's produced ranks.
+   */
+  seasonRanksAllowed: SeasonAggregateResult | null;
 }
 
 /**
@@ -112,7 +118,7 @@ function toRankMap(agg: { stats: Array<{ key: string; rank: number }> }): Record
 }
 
 export function toGameDetailData(input: CfbGameDetailInput): GameDetailData {
-  const { meta, home, away, candidates, gameLine, seasonRanks } = input;
+  const { meta, home, away, candidates, gameLine, seasonRanks, seasonRanksAllowed } = input;
   const game = meta.game;
   if (!game) throw new Error('toGameDetailData called without a resolved game — caller must gate on meta.game first');
 
@@ -267,6 +273,8 @@ export function toGameDetailData(input: CfbGameDetailInput): GameDetailData {
   // Turnovers, which is the block's whole point.
   const awayAgg = away ? seasonRanks?.byEntity[String(away.team.teamId)] : null;
   const homeAgg = home ? seasonRanks?.byEntity[String(home.team.teamId)] : null;
+  const awayAllowedAgg = away ? seasonRanksAllowed?.byEntity[String(away.team.teamId)] : null;
+  const homeAllowedAgg = home ? seasonRanksAllowed?.byEntity[String(home.team.teamId)] : null;
   // Said out loud on the card. CFB's newest season is a stub in August, so the
   // rollup legitimately falls back a year -- unlabelled, last season's ranks
   // beside this season's odds read as a claim about today.
@@ -293,8 +301,15 @@ export function toGameDetailData(input: CfbGameDetailInput): GameDetailData {
             // block. `EntitySeasonAggregate` carries no allowed split, so
             // inventing a second meaning here would make one block mean two
             // things across sports.
-            away: { forRanks: toRankMap(awayAgg), againstRanks: toRankMap(homeAgg) },
-            home: { forRanks: toRankMap(homeAgg), againstRanks: toRankMap(awayAgg) },
+            // F-B1. `againstRanks` used to be the OPPONENT'S OWN for-ranks,
+            // under a column labelled "{abbr} agn" that reads as what this
+            // team allows — so every allowed rank on the page was a different
+            // team's produced rank ("NEW AGN = LEE FOR" on a real page). The
+            // allowed side already existed behind `/api/season-ranks?side=
+            // allowed`; this reads it. No aggregate yet renders "—", not
+            // somebody else's number.
+            away: { forRanks: toRankMap(awayAgg), againstRanks: awayAllowedAgg ? toRankMap(awayAllowedAgg) : {} },
+            home: { forRanks: toRankMap(homeAgg), againstRanks: homeAllowedAgg ? toRankMap(homeAllowedAgg) : {} },
             statKeys: awayAgg.stats.map((st) => ({ key: st.key, label: st.label, decimals: st.decimals })),
             awayAbbr: game.awayAbbr,
             homeAbbr: game.homeAbbr,

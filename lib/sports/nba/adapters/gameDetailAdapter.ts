@@ -222,8 +222,21 @@ export function toGameDetailData(input: NbaGameDetailInput): GameDetailData {
     rankings:
       awayAgg && homeAgg
         ? {
-            away: { forRanks: toRankMap(awayAgg), againstRanks: toRankMap(homeAgg) },
-            home: { forRanks: toRankMap(homeAgg), againstRanks: toRankMap(awayAgg) },
+            // F-B1. `againstRanks` USED TO BE THE OPPONENT'S OWN FOR-RANKS.
+            // The column is labelled "{abbr} agn" and read as what this team
+            // allows, so every allowed rank on the page was a different team's
+            // produced rank — measured on real pages as "MIN AGN = LAL FOR",
+            // "NEW AGN = LEE FOR", "Shelton AGN = Zverev FOR", and on NFL as
+            // DAL allowing the 21st-most pass yards in this block while the
+            // matchup card beside it said 32nd of 32.
+            //
+            // The real allowed side already existed: `/api/season-ranks`
+            // takes `side=allowed`, which rolls the same rows up by
+            // `opponent_id`. This reads it. A team with no allowed aggregate
+            // yet gets an empty map, which renders as "—" rather than as
+            // somebody else's number.
+            away: { forRanks: toRankMap(awayAgg), againstRanks: awayAllowed ? toRankMap(awayAllowed) : {} },
+            home: { forRanks: toRankMap(homeAgg), againstRanks: homeAllowed ? toRankMap(homeAllowed) : {} },
             statKeys: awayAgg.stats.map((st) => ({ key: st.key, label: st.label, decimals: st.decimals })),
             awayAbbr: game.awayAbbr,
             homeAbbr: game.homeAbbr,

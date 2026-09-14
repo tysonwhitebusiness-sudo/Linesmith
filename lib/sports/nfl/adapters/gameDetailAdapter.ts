@@ -17,7 +17,7 @@ import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import { teamPrimaryColor, withAlpha } from '@/lib/sports/nfl/teamColors';
 import { MATCHUP_GROUP_BY_POSITION, playerMatchupRows } from '@/components/NflPlayerVsDefenseCard';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
-import { NFL_STAT_KEYS, toForRanks } from '@/lib/sports/nfl/statKeys';
+import { NFL_STAT_KEYS, toForRanks, toAgainstRanks } from '@/lib/sports/nfl/statKeys';
 import type { NflGameMetaResponse } from '@/components/useNflGameDetail';
 import type { NflTeamDetailApiResponse, NflTeamRosterPlayer, NflTeamStatLine } from '@/components/useNflTeamDetail';
 import type { GameDetailData, GameMatchupData, RankingsData, StatComparisonData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
@@ -315,9 +315,16 @@ export function toGameDetailData(input: NflGameDetailInput): GameDetailData {
   // ---- Rankings ----
   const awayForRanks = toForRanks(away?.teamStats ?? []);
   const homeForRanks = toForRanks(home?.teamStats ?? []);
+  // F-B1. `againstRanks` was the OTHER team's for-ranks, under a column
+  // labelled "{abbr} agn" — so the page said DAL allowed the 21st-most pass
+  // yards while the matchup card beside it said 32nd of 32. Real allowed
+  // ranks now come from nflverse's own by-opponent rollup, which the team
+  // route already computed and threw away for this side.
+  const awayAgainstRanks = toAgainstRanks(away?.teamDefenseAllowed ?? []);
+  const homeAgainstRanks = toAgainstRanks(home?.teamDefenseAllowed ?? []);
   const rankings: RankingsData = {
-    away: { forRanks: awayForRanks, againstRanks: homeForRanks },
-    home: { forRanks: homeForRanks, againstRanks: awayForRanks },
+    away: { forRanks: awayForRanks, againstRanks: awayAgainstRanks },
+    home: { forRanks: homeForRanks, againstRanks: homeAgainstRanks },
     statKeys: NFL_STAT_KEYS,
     awayAbbr: game.awayAbbr,
     homeAbbr: game.homeAbbr,

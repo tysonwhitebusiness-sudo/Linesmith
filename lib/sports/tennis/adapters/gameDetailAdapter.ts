@@ -86,6 +86,12 @@ export interface TennisGameDetailInput {
    * Phase 6.2b. `null` while loading or if the rollup fails.
    */
   seasonRanks: SeasonAggregateResult | null;
+  /**
+   * The same rollup asked from the other end (`side=allowed`, grouped by
+   * `opponent_id`) — what each team GAVE UP. F-B1: without it the "agn"
+   * column was filled with the opposing team's produced ranks.
+   */
+  seasonRanksAllowed: SeasonAggregateResult | null;
 }
 
 /** `EntitySeasonAggregate.stats` -> the `Record<key, rank>` the Rankings block reads. A missing rank stays `null` rather than becoming "0", which would render as the best rank in the pool. */
@@ -94,7 +100,7 @@ function toRankMap(agg: { stats: Array<{ key: string; rank: number }> }): Record
 }
 
 export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
-  const { tour, meta, player1Recent, player2Recent, player1H2h, player2H2h, candidates, gameLine, seasonRanks } = input;
+  const { tour, meta, player1Recent, player2Recent, player1H2h, player2H2h, candidates, gameLine, seasonRanks, seasonRanksAllowed } = input;
 
   const p1Recent = toRows(player1Recent);
   const p2Recent = toRows(player2Recent);
@@ -172,6 +178,10 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
   const bareId = (subjectId: string) => subjectId.replace(/^espn:tennis:/, '');
   const p2Agg = seasonRanks?.byEntity[bareId(meta.player2.subjectId)] ?? null;
   const p1Agg = seasonRanks?.byEntity[bareId(meta.player1.subjectId)] ?? null;
+  // For a player, "allowed" is what opponents produced against them — the
+  // same rows grouped by `opponent_id`, e.g. aces conceded.
+  const p2Allowed = seasonRanksAllowed?.byEntity[bareId(meta.player2.subjectId)] ?? null;
+  const p1Allowed = seasonRanksAllowed?.byEntity[bareId(meta.player1.subjectId)] ?? null;
   // Which season these ranks are FROM, said on the card -- the rollup falls
   // back a season when the newest one is still a stub.
   const seasonLabel = seasonRanks?.season ? `${seasonRanks.season} season` : undefined;
@@ -201,8 +211,15 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
     rankings:
       p1Agg && p2Agg
         ? {
-            away: { forRanks: toRankMap(p2Agg), againstRanks: toRankMap(p1Agg) },
-            home: { forRanks: toRankMap(p1Agg), againstRanks: toRankMap(p2Agg) },
+            // F-B1. `againstRanks` used to be the OPPONENT'S OWN for-ranks,
+            // under a column labelled "{abbr} agn" that reads as what this
+            // team allows — so every allowed rank on the page was a different
+            // team's produced rank ("NEW AGN = LEE FOR" on a real page). The
+            // allowed side already existed behind `/api/season-ranks?side=
+            // allowed`; this reads it. No aggregate yet renders "—", not
+            // somebody else's number.
+            away: { forRanks: toRankMap(p2Agg), againstRanks: p2Allowed ? toRankMap(p2Allowed) : {} },
+            home: { forRanks: toRankMap(p1Agg), againstRanks: p1Allowed ? toRankMap(p1Allowed) : {} },
             statKeys: p1Agg.stats.map((st) => ({ key: st.key, label: st.label, decimals: st.decimals })),
             awayAbbr: meta.player2.name,
             homeAbbr: meta.player1.name,

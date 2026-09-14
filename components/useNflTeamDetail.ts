@@ -53,6 +53,8 @@ export interface NflTeamDetailApiResponse {
   nextGame: { gameId: string; gameday: string; homeTeam: string; awayTeam: string } | null;
   opponentAbbr: string | null;
   opponentDefenseAllowed: NflTeamStatLine[];
+  /** What THIS team allows — the real "agn" side of a game page's rankings grid (F-B1). */
+  teamDefenseAllowed?: NflTeamStatLine[];
   grades: TeamGrades | null;
   opponentGrades: TeamGrades | null;
   candidates: { moneyline: PickCandidate | null; total: PickCandidate | null; teamTotal: PickCandidate | null };

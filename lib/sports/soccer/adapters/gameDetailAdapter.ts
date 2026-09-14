@@ -51,11 +51,18 @@ function defenseRows(t: SoccerTeamDetailApiResponse | null): OpposingStarterStat
   ];
 }
 
-function toOptionalRecord(games: ReturnType<typeof toSoccerRecentResultRows>): { wins: number; losses: number } | null {
+/**
+ * F-B8. `win` is `scoreFor > scoreAgainst`, so a drawn game arrives here as
+ * `win: false` and was counted as a loss — Newcastle's 1W 2D 0L rendered
+ * "1-2 · .333". `isDraw` is already set right beside `win` in
+ * `toSoccerRecentResultRows`; this reads it, and the record renders W-D-L.
+ */
+function toOptionalRecord(games: ReturnType<typeof toSoccerRecentResultRows>): { wins: number; losses: number; draws?: number } | null {
   if (games.length === 0) return null;
-  const wins = games.filter((g) => g.win === true).length;
-  const losses = games.filter((g) => g.win === false).length;
-  return { wins, losses };
+  const draws = games.filter((g) => g.isDraw === true).length;
+  const wins = games.filter((g) => !g.isDraw && g.win === true).length;
+  const losses = games.filter((g) => !g.isDraw && g.win === false).length;
+  return { wins, losses, draws };
 }
 
 export interface SoccerGameDetailInput {
@@ -78,6 +85,12 @@ export interface SoccerGameDetailInput {
    * by the time it arrives.
    */
   seasonRanks: SeasonAggregateResult | null;
+  /**
+   * The same rollup asked from the other end (`side=allowed`, grouped by
+   * `opponent_id`) — what each team GAVE UP. F-B1: without it the "agn"
+   * column was filled with the opposing team's produced ranks.
+   */
+  seasonRanksAllowed: SeasonAggregateResult | null;
 }
 
 /** `EntitySeasonAggregate.stats` -> the `Record<key, rank>` the Rankings block reads. A missing rank stays `null` rather than becoming "0", which would render as the best rank in the league. */
@@ -86,7 +99,7 @@ function toRankMap(agg: { stats: Array<{ key: string; rank: number }> }): Record
 }
 
 export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
-  const { league, meta, home, away, candidates, gameLine, seasonRanks } = input;
+  const { league, meta, home, away, candidates, gameLine, seasonRanks, seasonRanksAllowed } = input;
   const game = meta.game;
   if (!game) throw new Error('toGameDetailData called without a resolved game — caller must gate on meta.game first');
 
@@ -236,6 +249,8 @@ export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
   const spec = league === 'mls' ? SOCCER_MLS_SEASON_SPEC : SOCCER_EPL_SEASON_SPEC;
   const awayAgg = away ? seasonRanks?.byEntity[String(away.team.teamId)] : null;
   const homeAgg = home ? seasonRanks?.byEntity[String(home.team.teamId)] : null;
+  const awayAllowedAgg = away ? seasonRanksAllowed?.byEntity[String(away.team.teamId)] : null;
+  const homeAllowedAgg = home ? seasonRanksAllowed?.byEntity[String(home.team.teamId)] : null;
   // Said out loud on the card: the rollup falls back a season when the newest
   // one is still a stub, which is the normal August state of both leagues.
   const seasonLabel = seasonRanks?.season ? `${seasonRanks.season} season` : undefined;
@@ -258,8 +273,15 @@ export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
         ? {
             // `againstRanks` is the opponent's own for-ranks -- "the ranks you
             // are up against" -- NFL's existing convention on this block.
-            away: { forRanks: toRankMap(awayAgg), againstRanks: toRankMap(homeAgg) },
-            home: { forRanks: toRankMap(homeAgg), againstRanks: toRankMap(awayAgg) },
+            // F-B1. `againstRanks` used to be the OPPONENT'S OWN for-ranks,
+            // under a column labelled "{abbr} agn" that reads as what this
+            // team allows — so every allowed rank on the page was a different
+            // team's produced rank ("NEW AGN = LEE FOR" on a real page). The
+            // allowed side already existed behind `/api/season-ranks?side=
+            // allowed`; this reads it. No aggregate yet renders "—", not
+            // somebody else's number.
+            away: { forRanks: toRankMap(awayAgg), againstRanks: awayAllowedAgg ? toRankMap(awayAllowedAgg) : {} },
+            home: { forRanks: toRankMap(homeAgg), againstRanks: homeAllowedAgg ? toRankMap(homeAllowedAgg) : {} },
             statKeys: awayAgg.stats.map((st) => ({ key: st.key, label: st.label, decimals: st.decimals })),
             awayAbbr: game.awayAbbr,
             homeAbbr: game.homeAbbr,

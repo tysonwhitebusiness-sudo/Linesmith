@@ -83,7 +83,13 @@ async function buildTeamPayload(teamId: string): Promise<Record<string, unknown>
   const opponentAbbr = nextGame
     ? (nextGame.awayTeam === team.abbreviation ? nextGame.homeTeam : nextGame.awayTeam)
     : null;
-  const defenseAllowed = opponentAbbr ? (await getTeamDefenseAllowedWithRank())[opponentAbbr] ?? [] : [];
+  // One fetch, both sides. `opponentDefenseAllowed` is what the NEXT
+  // OPPONENT allows (the "vs. Defense" card); `teamDefenseAllowed` is what
+  // THIS team allows, which is what a game page's "{abbr} agn" column means
+  // and was previously filled with the other team's produced ranks (F-B1).
+  const defenseAllowedByTeam = await getTeamDefenseAllowedWithRank();
+  const defenseAllowed = opponentAbbr ? defenseAllowedByTeam[opponentAbbr] ?? [] : [];
+  const ownDefenseAllowed = defenseAllowedByTeam[team.abbreviation] ?? [];
 
   // Real season stats attached per roster player — same fetch already
   // needed for the player-picker matchup mode, doubles as the roster
@@ -122,6 +128,7 @@ async function buildTeamPayload(teamId: string): Promise<Record<string, unknown>
     nextGame,
     opponentAbbr,
     opponentDefenseAllowed: defenseAllowed,
+    teamDefenseAllowed: ownDefenseAllowed,
     grades: teamGrades[team.abbreviation] ?? null,
     opponentGrades: opponentAbbr ? teamGrades[opponentAbbr] ?? null : null,
     candidates: {

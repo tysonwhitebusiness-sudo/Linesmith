@@ -35,6 +35,7 @@ import { useAllNhlTeams } from './useAllNhlTeams';
 import type { PickRow } from './useSlip';
 import { SubjectAvatar, TeamLogo, nflTeamLogoUrl } from './SubjectAvatar';
 import { TwoSidedStatRankRow } from './StatRankRow';
+import { formatTeamRecord } from '@/lib/sports/shared/teamRecord';
 import { MarketLabel, MarketLine } from './MarketLabel';
 import { OddsChip, StoredOddsChip, EdgeBadge } from './OddsChip';
 import { BookLogo } from './BookLogo';
@@ -129,13 +130,26 @@ function teamLogoUrl(teamId?: number): string | undefined {
   return teamId ? `https://www.mlbstatic.com/team-logos/${teamId}.svg` : undefined;
 }
 
-function fmtRecord(r: { wins: number; losses: number } | null): string {
-  return r ? `${r.wins}-${r.losses}` : '—';
+function fmtRecord(r: { wins: number; losses: number; draws?: number } | null): string {
+  return r ? formatTeamRecord(r) : '—';
 }
 
-function recordFrom(games: { win: boolean | null }[]): { wins: number; losses: number } | null {
+/**
+ * F-B8. `losses` was `!g.win`, which counts a draw as a loss AND counts a game
+ * whose result isn't known yet as a loss too — measured on a real page as
+ * Newcastle's 1W 2D 0L rendering "1-2 · .333".
+ *
+ * `isDraw` already existed on `RecentResultRow` for exactly this ("a real
+ * draw, distinct from `win: null`'s 'result not yet known'"); this reads it.
+ * A sport with no draws sets it nowhere, so `draws` stays 0 and the record
+ * formats as W-L exactly as before.
+ */
+function recordFrom(games: { win: boolean | null; isDraw?: boolean }[]): { wins: number; losses: number; draws?: number } | null {
   if (games.length === 0) return null;
-  return { wins: games.filter((g) => g.win).length, losses: games.filter((g) => !g.win).length };
+  const draws = games.filter((g) => g.isDraw).length;
+  const wins = games.filter((g) => !g.isDraw && g.win === true).length;
+  const losses = games.filter((g) => !g.isDraw && g.win === false).length;
+  return draws > 0 ? { wins, losses, draws } : { wins, losses };
 }
 
 function shortDate(iso: string): string {
@@ -903,10 +917,18 @@ function CardHeader({ children, right }: { children: React.ReactNode; right?: Re
 // Records
 // ---------------------------------------------------------------------------
 
-/** Mono win% as ".xxx" — the stats-page convention, not "0.xxx". */
-function winPctStr(r: { wins: number; losses: number } | null): string {
-  if (!r || r.wins + r.losses === 0) return '—';
-  return (r.wins / (r.wins + r.losses)).toFixed(3).replace(/^0/, '');
+/**
+ * Mono win% as ".xxx" — the stats-page convention, not "0.xxx".
+ *
+ * Draws go in the denominator (F-B8). A drawn game was played and was not
+ * won; dividing by wins+losses alone would make Newcastle's 1W 2D 0L read
+ * 1.000. Sports with no draws are unaffected — `draws` is absent and the
+ * arithmetic is identical.
+ */
+function winPctStr(r: { wins: number; losses: number; draws?: number } | null): string {
+  const played = r ? r.wins + r.losses + (r.draws ?? 0) : 0;
+  if (!r || played === 0) return '—';
+  return (r.wins / played).toFixed(3).replace(/^0/, '');
 }
 
 function RecordPanel({
@@ -960,9 +982,10 @@ export interface RecordsSectionTeam {
   abbr: string;
   logoUrl?: string;
   divisionRank?: string | null;
-  season: { wins: number; losses: number } | null;
-  seasonHome: { wins: number; losses: number } | null;
-  seasonAway: { wins: number; losses: number } | null;
+  /** `draws` present only where the sport has them (soccer) — F-B8. */
+  season: { wins: number; losses: number; draws?: number } | null;
+  seasonHome: { wins: number; losses: number; draws?: number } | null;
+  seasonAway: { wins: number; losses: number; draws?: number } | null;
   /** Most-recent-first, sliced to the last 5 by the caller (matches computeStreak's own "already sliced" contract). */
   recent: RecentResultRow[];
   /** Meetings within the tracked H2H window — MLB: 45 days; each sport's adapter decides its own window. */
@@ -2077,6 +2100,7 @@ export function GameDetail({
               candidates,
               gameLine: gameOddsBookLine,
               seasonRanks: seasonRanks.data,
+              seasonRanksAllowed: seasonRanksAllowed.data,
             })
           : null
         : sport === 'cfb'
@@ -2088,6 +2112,7 @@ export function GameDetail({
                 candidates,
                 gameLine: gameOddsBookLine,
                 seasonRanks: seasonRanks.data,
+                seasonRanksAllowed: seasonRanksAllowed.data,
               })
             : null
           : sport === 'nba'
@@ -2127,7 +2152,8 @@ export function GameDetail({
                       player2H2h: tennisGame.player2H2h,
                       candidates,
                       gameLine: gameOddsBookLine,
-                                          seasonRanks: seasonRanks.data,
+                      seasonRanks: seasonRanks.data,
+                      seasonRanksAllowed: seasonRanksAllowed.data,
                     })
                   : null
               : mlbGame
