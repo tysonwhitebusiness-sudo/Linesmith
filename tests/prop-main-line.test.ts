@@ -127,3 +127,36 @@ test('a market quoted on one side only is alternates-only, with no line', () => 
   const rows = [row('draftkings', 249.5, 'over', -110), row('fanduel', 274.5, 'over', 150)];
   assert.deepEqual(pickMainLine(rows, START), { kind: 'alternates-only', availableLines: [249.5, 274.5] });
 });
+
+test('a rung its book stopped quoting does not count (Mahomes passing yards, DEN @ KC, 2026-09-14)', () => {
+  // DraftKings moved off 223.5 at 00:05 and last quoted 221.5 at 20:57; FanDuel
+  // still quoted 223.5 at 20:57. Counting the dead DraftKings row made 223.5
+  // the main line with a 19-hour-old price.
+  const kickoff = '2026-09-14T23:15:00Z';
+  const rows = [
+    row('draftkings', 223.5, 'over', -112, '2026-09-14T00:05:57Z'), row('draftkings', 223.5, 'under', -112, '2026-09-14T00:05:57Z'),
+    row('draftkings', 221.5, 'over', -111, '2026-09-14T20:57:12Z'), row('draftkings', 221.5, 'under', -113, '2026-09-14T20:57:12Z'),
+    row('fanduel', 223.5, 'over', -113, '2026-09-14T20:57:12Z'), row('fanduel', 223.5, 'under', -113, '2026-09-14T20:57:12Z'),
+  ];
+  const now = Date.parse('2026-09-14T21:00:00Z');
+  const withClock = pickMainLine(rows, kickoff, { now });
+  assert.equal(withClock.kind, 'main');
+  if (withClock.kind === 'main') {
+    assert.equal(withClock.twoSidedBooks, 1, 'DraftKings no longer quotes 223.5');
+    assert.ok(![withClock.over, withClock.under].some((r) => r && String(r.fetchedAt).startsWith('2026-09-14T00:05')), 'the dead quote is gone');
+  }
+  const noClock = pickMainLine(rows, kickoff);
+  assert.equal(noClock.kind === 'main' && noClock.line, 223.5, 'without a clock the old behaviour stands (the pure default)');
+});
+
+test('after the start, history timestamps are not read as superseded', () => {
+  // prop_odds_history records a price when it CHANGES, so a stable rung that was
+  // quoted right up to kickoff can carry a morning timestamp.
+  const kickoff = '2026-09-14T23:15:00Z';
+  const rows = [
+    row('draftkings', 5.5, 'over', -110, '2026-09-14T09:00:00Z'), row('draftkings', 5.5, 'under', -110, '2026-09-14T09:00:00Z'),
+    row('draftkings', 6.5, 'over', 150, '2026-09-14T22:50:00Z'),
+  ];
+  const result = pickMainLine(rows, kickoff, { now: Date.parse('2026-09-15T01:00:00Z') });
+  assert.equal(result.kind === 'main' && result.line, 5.5);
+});

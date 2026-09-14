@@ -23,7 +23,7 @@
  * (357,296 vs 168,036), so rule 3 disqualifying one-sided rungs is the rule
  * working, not a data gap.
  *
- * Pure: no database, no clock. `readPreGamePropOddsForGame` in
+ * Pure: no database, and no clock unless a caller passes `now` (see `MainLineOptions`). `readPreGamePropOddsForGame` in
  * `lib/db/client.ts` supplies the pre-game rows; this module still filters on
  * the start time so a caller that passes current rows cannot leak an in-play
  * price into the answer.
@@ -89,17 +89,55 @@ function parseStart(startIso: string | null | undefined): number | null {
 }
 
 /**
+ * A rung this much older than its book's newest quote for the same market is
+ * one the book has stopped offering. One NFL/CFB refresh cycle is 20 minutes;
+ * every row one fetch writes shares a single `fetched_at`.
+ */
+export const SUPERSEDED_AFTER_MS = 30 * 60_000;
+
+export interface MainLineOptions {
+  /**
+   * The clock, for deciding whether the game has started. Superseded rungs are
+   * only dropped BEFORE the start: a started game's rows come from
+   * `prop_odds_history`, which records a price when it changes, so a stable,
+   * still-quoted rung carries an old timestamp there and would be dropped
+   * wrongly. Omit to skip the check (the pure default).
+   */
+  now?: number;
+}
+
+/**
  * Last counted, pre-start quote per (book, side, line). `prop_odds` is keyed on
  * provider too, so one book arriving through two providers is two rows; the
  * later one stands for the book.
+ *
+ * SUPERSEDED RUNGS ARE DROPPED. `prop_odds` is an upsert that never deletes, so
+ * a line a book pulled hours ago still reads as current. Measured 2026-09-14,
+ * Mahomes passing yards (DEN @ KC): DraftKings moved 223.5 -> 220.5 -> 222.5
+ * -> 225.5 -> 226.5 -> 221.5 during the day, every rung stayed, and its dead
+ * 00:05 quote at 223.5 plus FanDuel's live 223.5 made 223.5 "the main line",
+ * shown as "19h ago" on game day. The writer should delete them (plan R5e);
+ * until it does, a rung older than its book's newest quote for the market by
+ * more than `SUPERSEDED_AFTER_MS` does not count.
  */
-export function lastPreGameQuotes(rows: PropOddsRow[], startIso?: string | null): PropOddsRow[] {
+export function lastPreGameQuotes(rows: PropOddsRow[], startIso?: string | null, options: MainLineOptions = {}): PropOddsRow[] {
   const start = parseStart(startIso);
+  const counted = rows.filter((r) => !isPickemBook(r.bookmaker) && (start == null || timeOf(r.fetchedAt) <= start));
+
+  const dropSuperseded = options.now != null && (start == null || options.now < start);
+  const newestByBook = new Map<string, number>();
+  if (dropSuperseded) {
+    for (const r of counted) {
+      const book = r.bookmaker.toLowerCase();
+      newestByBook.set(book, Math.max(newestByBook.get(book) ?? 0, timeOf(r.fetchedAt)));
+    }
+  }
+
   const latest = new Map<string, PropOddsRow>();
-  for (const r of rows) {
-    if (isPickemBook(r.bookmaker)) continue;
-    if (start != null && timeOf(r.fetchedAt) > start) continue;
-    const key = `${r.bookmaker.toLowerCase()}|${r.side}|${r.line ?? 'null'}`;
+  for (const r of counted) {
+    const book = r.bookmaker.toLowerCase();
+    if (dropSuperseded && timeOf(r.fetchedAt) < newestByBook.get(book)! - SUPERSEDED_AFTER_MS) continue;
+    const key = `${book}|${r.side}|${r.line ?? 'null'}`;
     const prev = latest.get(key);
     if (!prev || timeOf(r.fetchedAt) > timeOf(prev.fetchedAt)) latest.set(key, r);
   }
@@ -111,8 +149,8 @@ function highest(rows: PropOddsRow[]): PropOddsRow | null {
 }
 
 /** Rows for ONE subject + market. */
-export function pickMainLine(rows: PropOddsRow[], startIso?: string | null): MainLineResult {
-  const quotes = lastPreGameQuotes(rows, startIso);
+export function pickMainLine(rows: PropOddsRow[], startIso?: string | null, options: MainLineOptions = {}): MainLineResult {
+  const quotes = lastPreGameQuotes(rows, startIso, options);
   if (quotes.length === 0) return { kind: 'none' };
 
   const withLine = quotes.filter((q) => q.line != null);
@@ -178,8 +216,9 @@ export function candidateLine(
   rows: PropOddsRow[],
   startIso: string | null | undefined,
   kind: 'threshold' | 'binary' = 'threshold',
+  now: number = Date.now(),
 ): Pick<PickCandidate, 'line' | 'odds' | 'lineStatus'> {
-  const result = pickMainLine(rows, startIso);
+  const result = pickMainLine(rows, startIso, { now });
   const odds = (row: PropOddsRow): OddsInfo => ({ americanOdds: String(row.americanOdds), source: 'odds-api', capturedAt: row.fetchedAt });
   if (kind === 'binary') {
     if (result.kind === 'yes-no' || result.kind === 'main') return { line: undefined, odds: odds(result.over) };
