@@ -40,7 +40,7 @@ import type { GameDetailData, RecentResultRow, StatComparisonData } from '@/lib/
 import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDetail';
 import type { UnifiedGameLine } from '@/lib/odds/types';
 import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
-import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
+import { toStatComparisonGroups, rankScopeLabel } from '@/lib/sports/shared/seasonAggregateShapes';
 import { TENNIS_ATP_SEASON_SPEC, TENNIS_WTA_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 import { toPriceRange } from '@/lib/sports/shared/priceRange';
 import { toGameTeamForm } from '@/lib/sports/shared/gameTeamForm';
@@ -198,7 +198,7 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
   const p1Allowed = seasonRanksAllowed?.byEntity[bareId(meta.player1.subjectId)] ?? null;
   // Which season these ranks are FROM, said on the card -- the rollup falls
   // back a season when the newest one is still a stub.
-  const seasonLabel = seasonRanks?.season ? `${seasonRanks.season} season` : undefined;
+  const seasonLabel = rankScopeLabel(seasonRanks);
   const tennisStatGroups = toStatComparisonGroups(tennisSpec, p2Agg, p1Agg);
   const statComparison: StatComparisonData | null =
     tennisStatGroups.length > 0

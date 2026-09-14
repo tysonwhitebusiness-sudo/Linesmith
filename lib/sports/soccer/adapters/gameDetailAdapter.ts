@@ -31,7 +31,7 @@ import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDet
 import type { UnifiedGameLine } from '@/lib/odds/types';
 import { toVenueForecastFromCandidates } from '@/lib/sports/shared/venueForecast';
 import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
-import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
+import { toStatComparisonGroups, rankScopeLabel } from '@/lib/sports/shared/seasonAggregateShapes';
 import { SOCCER_EPL_SEASON_SPEC, SOCCER_MLS_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 import { toPriceRange } from '@/lib/sports/shared/priceRange';
 import { toGameTeamForm } from '@/lib/sports/shared/gameTeamForm';
@@ -253,7 +253,7 @@ export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
   const homeAllowedAgg = home ? seasonRanksAllowed?.byEntity[String(home.team.teamId)] : null;
   // Said out loud on the card: the rollup falls back a season when the newest
   // one is still a stub, which is the normal August state of both leagues.
-  const seasonLabel = seasonRanks?.season ? `${seasonRanks.season} season` : undefined;
+  const seasonLabel = rankScopeLabel(seasonRanks);
   const statComparisonGroups = toStatComparisonGroups(spec, awayAgg, homeAgg);
   const statComparison: StatComparisonData | null =
     statComparisonGroups.length > 0

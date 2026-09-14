@@ -48,6 +48,7 @@
 
 import { pgAll } from '@/lib/db/pgClient';
 import { rankPool } from './seasonAggregateShapes';
+import { seasonLabel } from './season';
 import type { SeasonAggregateSpec, SeasonAggregateResult } from './seasonAggregateShapes';
 
 export * from './seasonAggregateShapes';
@@ -101,7 +102,17 @@ export async function computeSeasonAggregates(
     )[0]?.season;
 
   if (latestSeason == null) {
-    return { sport: spec.sport, season: 0, poolSize: 0, byEntity: {}, throughDate: null, computedAt: new Date().toISOString() };
+    return {
+      sport: spec.sport,
+      season: 0,
+      requestedSeason: 0,
+      isFallback: false,
+      fallbackReason: null,
+      poolSize: 0,
+      byEntity: {},
+      throughDate: null,
+      computedAt: new Date().toISOString(),
+    };
   }
 
   // WALK BACK ONLY ON AN EMPTY POOL, never speculatively. A sport in mid-season
@@ -116,7 +127,20 @@ export async function computeSeasonAggregates(
       result = await aggregateOneSeason(spec, latestSeason - back);
     }
   }
-  return result;
+
+  // R2. SAY SO WHEN THIS IS NOT THE CURRENT SEASON. The walk-back above is
+  // right — an empty ranking helps nobody — but until now the result looked
+  // identical either way, so a page rendered last season's ranks as though
+  // they were today's. The numbers are real; only the label was missing.
+  const isFallback = result.season !== latestSeason;
+  return {
+    ...result,
+    requestedSeason: latestSeason,
+    isFallback,
+    fallbackReason: isFallback
+      ? `No ${spec.groupBy === 'athlete_id' ? 'player' : 'team'} has played the ${spec.minGames} games needed to rank in ${seasonLabel(spec.sport, latestSeason)} yet, so these are ${seasonLabel(spec.sport, result.season)} ranks.`
+      : null,
+  };
 }
 
 /**
@@ -134,7 +158,14 @@ export async function computeSeasonAggregates(
  */
 const SEASON_FALLBACK_ATTEMPTS = 2;
 
-async function aggregateOneSeason(spec: SeasonAggregateSpec, resolvedSeason: number): Promise<SeasonAggregateResult> {
+/**
+ * One season's pool, with no opinion about whether it is the current one —
+ * `computeSeasonAggregates` owns the walk-back and therefore owns the
+ * `requestedSeason`/`isFallback`/`fallbackReason` fields.
+ */
+type OneSeasonResult = Omit<SeasonAggregateResult, 'requestedSeason' | 'isFallback' | 'fallbackReason'>;
+
+async function aggregateOneSeason(spec: SeasonAggregateSpec, resolvedSeason: number): Promise<OneSeasonResult> {
   // TWO GROUPING LEVELS, ONE SCAN. The inner level collapses a team's player
   // rows to one row per game, so a stat carrying a TEAM fact on every player
   // row (`perGameMax` -- see its doc comment) is taken once instead of once per

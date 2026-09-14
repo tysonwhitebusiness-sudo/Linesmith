@@ -224,3 +224,41 @@ test('the TypeScript table covers every sport the app stores history for', () =>
     assert.ok(isSeasonSport(sport), `${sport} missing from SEASON_CONVENTIONS`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// The ranked-block label (R2 ranks + early-season fallback)
+// ---------------------------------------------------------------------------
+
+test('rankScopeLabel uses each sport\'s own convention, not the bare number', async () => {
+  const { rankScopeLabel } = await import('../lib/sports/shared/seasonAggregateShapes');
+  const base = { poolSize: 30, byEntity: {}, throughDate: null, computedAt: '' };
+  // NBA's label is the year the season ENDS — `${season} season` printed
+  // "2026 season" for the 2025-26 one.
+  assert.equal(
+    rankScopeLabel({ ...base, sport: 'nba', season: 2026, requestedSeason: 2026, isFallback: false, fallbackReason: null }),
+    '2025-26 season',
+  );
+  assert.equal(
+    rankScopeLabel({ ...base, sport: 'tennis_atp', season: 2026, requestedSeason: 2026, isFallback: false, fallbackReason: null }),
+    '2026 season',
+  );
+});
+
+test('rankScopeLabel says so when the ranks are last season\'s', async () => {
+  const { rankScopeLabel } = await import('../lib/sports/shared/seasonAggregateShapes');
+  const base = { poolSize: 138, byEntity: {}, throughDate: null, computedAt: '' };
+  // The measured 2026-09-14 state: CFB serving 2025 ranks three weeks into 2026.
+  const label = rankScopeLabel({ ...base, sport: 'cfb', season: 2025, requestedSeason: 2026, isFallback: true, fallbackReason: 'x' });
+  assert.ok(label?.startsWith('2025-26 season'), label);
+  assert.ok(label?.includes('2026-27'), label);
+  assert.ok(label?.includes('too few games'), label);
+});
+
+test('rankScopeLabel is undefined when there is no pool to label', async () => {
+  const { rankScopeLabel } = await import('../lib/sports/shared/seasonAggregateShapes');
+  assert.equal(rankScopeLabel(null), undefined);
+  assert.equal(
+    rankScopeLabel({ sport: 'nba', season: 0, requestedSeason: 0, isFallback: false, fallbackReason: null, poolSize: 0, byEntity: {}, throughDate: null, computedAt: '' }),
+    undefined,
+  );
+});

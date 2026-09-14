@@ -18,6 +18,7 @@
 
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import { unitGradeFromRanked, type UnitGrade } from './unitGrades';
+import { seasonLabel } from './season';
 
 /** One aggregated, rankable stat. */
 export interface SeasonStatDef {
@@ -128,7 +129,23 @@ export interface EntitySeasonAggregate {
 
 export interface SeasonAggregateResult {
   sport: string;
+  /** The season these ranks are actually FROM. May not be the current one — see `isFallback`. */
   season: number;
+  /**
+   * The season that was asked for before any fallback: an explicit `season`
+   * argument, or the newest one stored.
+   *
+   * R2. The fallback below has always been deliberate, but the result never
+   * said it had happened, so every consumer treated last season's ranks as
+   * this season's. Measured 2026-09-14, three weeks into the college football
+   * season and a month into the Premier League's: cfb, soccer_epl and
+   * soccer_mls were all serving 2025 ranks with nothing on the page to say so.
+   */
+  requestedSeason: number;
+  /** `season !== requestedSeason` — the newest season is too thin to rank yet. */
+  isFallback: boolean;
+  /** A sentence a page can render verbatim. `null` when this is the real current season. */
+  fallbackReason: string | null;
   /** How many entities cleared `minGames` — the pool every rank below is against. */
   poolSize: number;
   byEntity: Record<string, EntitySeasonAggregate>;
@@ -137,6 +154,30 @@ export interface SeasonAggregateResult {
   computedAt: string;
 }
 
+
+/**
+ * What to print above a ranked block — R2.
+ *
+ * Replaces `` `${seasonRanks.season} season` ``, which five adapters each
+ * built identically and which was wrong twice over:
+ *
+ *  - **NBA's label is the year the season ENDS**, so `season: 2026` printed
+ *    "2026 season" for the 2025-26 one. `seasonLabel` knows each sport's
+ *    convention.
+ *  - **A fallback looked exactly like the current season.** Measured
+ *    2026-09-14: cfb, soccer_epl and soccer_mls were all serving 2025 ranks,
+ *    three weeks into one season and a month into another, with nothing on
+ *    the page to say so.
+ *
+ * One string, because the block has one slot for it — so the reason rides
+ * along with the label rather than needing a card change R2 is not making.
+ */
+export function rankScopeLabel(result: SeasonAggregateResult | null | undefined): string | undefined {
+  if (!result || !result.season) return undefined;
+  const base = `${seasonLabel(result.sport, result.season)} season`;
+  if (!result.isFallback) return base;
+  return `${base} · ${seasonLabel(result.sport, result.requestedSeason)} has too few games to rank yet`;
+}
 
 /** One entity's season totals, in `spec.stats` order, before any ranking. */
 export interface EntitySums {

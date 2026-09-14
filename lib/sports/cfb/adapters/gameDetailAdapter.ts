@@ -25,7 +25,7 @@ import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDet
 import type { UnifiedGameLine } from '@/lib/odds/types';
 import { toVenueForecastFromCandidates } from '@/lib/sports/shared/venueForecast';
 import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
-import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
+import { toStatComparisonGroups, rankScopeLabel } from '@/lib/sports/shared/seasonAggregateShapes';
 import { CFB_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 import { toPriceRange } from '@/lib/sports/shared/priceRange';
 import { toGameTeamForm } from '@/lib/sports/shared/gameTeamForm';
@@ -278,7 +278,7 @@ export function toGameDetailData(input: CfbGameDetailInput): GameDetailData {
   // Said out loud on the card. CFB's newest season is a stub in August, so the
   // rollup legitimately falls back a year -- unlabelled, last season's ranks
   // beside this season's odds read as a claim about today.
-  const seasonLabel = seasonRanks?.season ? `${seasonRanks.season} season` : undefined;
+  const seasonLabel = rankScopeLabel(seasonRanks);
   const statComparisonGroups = toStatComparisonGroups(CFB_SEASON_SPEC, awayAgg, homeAgg);
   const statComparison: StatComparisonData | null =
     statComparisonGroups.length > 0

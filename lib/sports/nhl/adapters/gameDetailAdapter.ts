@@ -24,7 +24,7 @@ import type { RecordsSectionTeam, LastFiveGamesTeam } from '@/components/GameDet
 import type { TeamStandingRow } from '@/components/useAllTeams';
 import type { UnifiedGameLine } from '@/lib/odds/types';
 import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
-import { toStatComparisonGroups } from '@/lib/sports/shared/seasonAggregateShapes';
+import { toStatComparisonGroups, rankScopeLabel } from '@/lib/sports/shared/seasonAggregateShapes';
 import { NHL_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
 import { toProducedAllowedMatchup } from '@/lib/sports/shared/producedAllowedMatchup';
 import { toPriceRange } from '@/lib/sports/shared/priceRange';
@@ -178,7 +178,7 @@ export function toGameDetailData(input: NhlGameDetailInput): GameDetailData {
   // Which season these ranks are FROM, said on the card. The rollup falls
   // back a season when the newest one is still a stub, so an unlabelled block
   // can silently show last year's ranks beside this year's odds.
-  const seasonLabel = seasonRanks?.season ? `${seasonRanks.season} season` : undefined;
+  const seasonLabel = rankScopeLabel(seasonRanks);
   const statComparisonGroups = toStatComparisonGroups(NHL_SEASON_SPEC, awayAgg, homeAgg);
   const statComparison: StatComparisonData | null =
     statComparisonGroups.length > 0
