@@ -25,12 +25,11 @@ Whether every card is buildable from what the app has is checked card by card in
 
 ## Data findings made while building G2 (to Phase H)
 
-- **`mlb_pitch_events` is a hot window (5 days on 2026-09-14).** Season-long pitch cards need a
-  Python rollup over the Parquet corpus; no TypeScript route can read the corpus.
-
 These came from reading the stored data closely enough to draw it. Each one would put a
 wrong number on a page if the app read the data the way the mockups first did.
 
+- **`mlb_pitch_events` is a hot window (5 days on 2026-09-14).** Season-long pitch cards need a
+  Python rollup over the Parquet corpus; no TypeScript route can read the corpus.
 - **Player prop lines.** `prop_odds` files alternate ladders under the main market key (one
   provider stored 14.5–144.5 under a QB's passing yards), keeps capturing for up to two days
   after a game has finished, and stores pick'em payouts (+100) as if they were prices. "The latest row" is
