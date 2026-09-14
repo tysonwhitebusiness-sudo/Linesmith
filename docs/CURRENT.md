@@ -4,7 +4,7 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages plan APPROVED 2026-09-14 (second track, below); R1 next.**
+Research pages: R1 BUILT 2026-09-14, awaiting sign-off (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -34,21 +34,32 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — next action: R1
+## Research pages track — R1 BUILT 2026-09-14, awaiting sign-off
 
-Plan approved as written 2026-09-14; no phase started. **A new session first
-explains back the goal, the phase order and its R1 approach, then waits for the
-operator's go-ahead before any code** (see `RESUME-PROMPT.md`). **R1 (correctness on
-today's pages), R2 (shared data rules) and R3 (design system) can run in any
-order**; R1 is the default start because its bugs are live. Calendar and
-approvals owed inside R1:
+Five commits, nothing pushed: `f89d704`, `69cf490`, `770f6c9`, `3f61ee6`,
+`16e8227`. Everything in R1 is done or measured except three items that could
+not be reproduced today. Full record in the master plan's status block; the
+thread's own baton is `docs/audit-2026-09-13/RESUME-PROMPT.md`.
+
+**Owed:**
+- **A Render deploy, not yet asked for.** The Python `_date_range_param` UTC
+  fix (`python-odds-service/src/game_context.py`) is committed and undeployed.
 - **R1f 2b, Saturday 2026-09-19:** read `refreshCfbJob`'s run log during the
   live CFB window before touching `gameday.py`.
-- **R1d:** the Python `_date_range_param` UTC fix
-  (`python-odds-service/src/game_context.py:148`) needs a Render deploy; ask
-  first.
+- **F-B4** (MLB pitcher game log): today's slate has no MLB pitcher markets, so
+  no pitcher page renders a game log. Retry on a slate that has them.
+- **A decision on `cachedRoute`'s stale ceiling.** It serves stale with NO
+  maximum age, so a route whose `build()` keeps failing serves its last good
+  payload forever with no signal to the page. That is how a Sep 13 CFB rebuild
+  listed Sep 3/4 games. It does not reproduce today, and both UTC date-range
+  bugs are ruled out (a one-day shift cannot make a nine-day gap). Changing it
+  affects every route.
 - **MLB regular season ends late September:** the R8 MLB live state must be
   verified before then or on postseason games.
+
+**Next after sign-off: R2 and R3, either order.** R2 also inherits F-B2, F-B12
+(measured in R1 as an alternate-line ladder, not a match-total market) and the
+prop main-line rule; R7 inherits F-B3.
 
 Each R-phase ends with a stop for sign-off (plan §2).
 

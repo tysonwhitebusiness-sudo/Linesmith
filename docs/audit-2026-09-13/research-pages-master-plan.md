@@ -1,7 +1,48 @@
 # Research pages — master plan (Phase H)
 
 **Status: APPROVED by the operator 2026-09-14, as written (including picks G1–G7
-as taken in §3). Next: R1, R2 and R3 (any order). No phase started yet.**
+as taken in §3). R0 done. R1 BUILT 2026-09-14 and awaiting sign-off — every
+item done or measured except three that could not be reproduced today (see
+below). Next after sign-off: R2 and R3 (any order).**
+
+**R1 outcome, 2026-09-14** — commits f89d704, 69cf490, 770f6c9, 3f61ee6,
+16e8227. Done: R1a, R1b, R1c, R1d (TS + Python; **the Python half is committed
+and NOT deployed**), R1e, R1f 2a, R1g except F-B4, R1h. Owed:
+- **F-B4** (MLB pitcher game log) — not reproducible: today's MLB slate carries
+  no pitcher markets at all, so no pitcher page renders a game log. Needs a
+  slate with pitcher props.
+- **F-B12** (tennis aces) — MEASURED AND RE-ROUTED TO R2. It is not a
+  match-total market: `prop_odds` holds 503 aces rows over 45 subjects with a
+  0.5–29.5 spread, and one subject-game (Ben Shelton, 182766) carries 9
+  distinct lines from 8.5 to 29.5 across 2 books. That is an alternate ladder
+  filed under the main key — exactly what R2's prop-main-line rule fixes. Do
+  not fix it here; that would be a second main-line implementation.
+- **R1f 2b** — calendar-blocked to Saturday 2026-09-19.
+- **F-B2, F-B3** — already assigned to R2 and R7.
+
+**Three plan corrections found by re-checking the cited lines (plan §R1):**
+1. R1c said "three user-facing strings". There are ten, in five adapters —
+   NHL and soccer were missed because those pages could not be rendered when
+   the audit ran.
+2. R1h said to check whether a high `pctOf` means "allows more". It does not,
+   in any sport: rank 1 is the STRONGEST unit, so the headline was naming the
+   opponent's best category as the subject's biggest edge. The missing floor
+   was the smaller of the two faults.
+3. F-B9 said the soccer moneylines were "likely on the wrong teams". They were
+   not. `opponentIsHome` tested whether THIS team is home while being named for
+   the opponent, and `isHome` negated it, so the two price rows were labelled
+   with each other's team. The same inverted flag was in soccer, CFB, NBA and
+   NHL.
+
+**One live bug found in R1f 2a that R1 did not fix, and a decision is owed:**
+`cachedRoute` serves stale **with no maximum age** — `if (cached) { trigger
+rebuild; return stale }`. A route whose `build()` keeps failing serves its last
+good payload forever and the page cannot tell. CFB's build is the one
+documented as timing out, which is how a Sep 13 rebuild listed Sep 3/4 games.
+The symptom does not reproduce today (146 games, all dated Sep 17–27), and the
+TS and Python UTC fixes are a one-day shift that cannot explain a nine-day gap,
+so they are ruled out as the cause. A maximum stale age changes every route's
+contract and needs its own measurement; it is not an R1 call.
 
 This is Phase H of `design-audit-plan.md`: every audit finding, every card verdict,
 the visual and interaction system, the G2 mockups and the data work behind them,
