@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shotDistance, toNbaShotProfile } from '../lib/sports/nba/shotProfileShapes';
+import { isBeyondArc, shotDistance, shotValue, toNbaShotProfile } from '../lib/sports/nba/shotProfileShapes';
 
 /**
  * Phase 6.7 — NBA's shot chart.
@@ -18,11 +18,26 @@ const shot = (x: number | null, y: number | null, made = false, pointValue = 2) 
   pointValue,
 });
 
-test('the basket is at (25, 0) and the units are feet', () => {
-  assert.equal(shotDistance(25, 0), 0, 'a shot at the rim is zero feet from it');
-  assert.equal(shotDistance(25, 10), 10);
-  // A corner three: 22 feet from the basket along the baseline.
-  assert.ok(Math.abs(shotDistance(3, 0) - 22) < 1e-9);
+test('the basket is at (25, 1) and the units are feet', () => {
+  // R2: fitted in G2, 99.8% of makes classify to their stored value with this origin.
+  assert.equal(shotDistance(25, 1), 0, 'a shot at the rim is zero feet from it');
+  assert.equal(shotDistance(25, 11), 10);
+  assert.ok(Math.abs(shotDistance(3, 1) - 22) < 1e-9, 'a corner three is 22 feet along the baseline');
+});
+
+test("a miss's value comes from the arc, because every miss is stored as 2", () => {
+  assert.equal(shotValue({ xCoord: 25, yCoord: 26, made: false, pointValue: 2 }), 3, 'a missed three at the top');
+  assert.equal(shotValue({ xCoord: 3, yCoord: 2, made: false, pointValue: 2 }), 3, 'a missed corner three');
+  assert.equal(shotValue({ xCoord: 25, yCoord: 15, made: false, pointValue: 2 }), 2);
+  assert.equal(shotValue({ xCoord: 25, yCoord: 24.5, made: true, pointValue: 2 }), 2, 'a make keeps its stored value');
+});
+
+test('an above-the-break long two is a two, not a three', () => {
+  // 22.5 feet out at the top: inside the 23.25 arc. The old band was ">22 feet".
+  assert.equal(isBeyondArc(25, 23.5), false);
+  const profile = toNbaShotProfile([shot(25, 23.5)])!;
+  assert.equal(profile.cells[3][0].attempts, 0);
+  assert.equal(profile.cells[2][0].attempts, 1);
 });
 
 test('bands are anchored on real basketball distances', () => {
@@ -48,7 +63,7 @@ test('an unlocated attempt is counted but never placed at the rim', () => {
 });
 
 test('field-goal percentage is per band and null where empty', () => {
-  const profile = toNbaShotProfile([shot(25, 2, true), shot(25, 2, false), shot(25, 25, true)])!;
+  const profile = toNbaShotProfile([shot(25, 2, true), shot(25, 2, false), shot(25, 26, true, 3)])!;
   assert.equal(profile.cells[0][0].fgPct, 50);
   assert.equal(profile.cells[1][0].fgPct, null, 'an empty band has no percentage, not zero');
   assert.equal(profile.cells[3][0].fgPct, 100);

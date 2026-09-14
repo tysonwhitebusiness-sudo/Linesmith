@@ -7,7 +7,8 @@
  *
  * ============ GEOMETRY, ESTABLISHED FROM GROUND TRUTH ======================
  *
- * The basket is at (25, 0) and the units are FEET. That was not assumed — it
+ * The units are FEET, and the basket was first placed at (25, 0) (corrected to
+ * (25, 1) in R2, below). That was not assumed — it
  * was measured against the one distance in basketball whose real value is
  * known: on a real game's 195 attempts, three-pointers averaged **26.6 feet**
  * from (25, 0) and two-pointers **12.9**, against a three-point line of 22 feet
@@ -17,6 +18,22 @@
  * The bands below follow from that, and from how basketball is actually
  * described: the restricted area is ~4 feet, the paint runs to the free-throw
  * line at 15, and the three-point line sits at 22-23.75.
+ *
+ * R2 CORRECTED TWO THINGS (G2 data findings, `docs/design/phase-g2/PLAN.md`):
+ *
+ *  1. **The rim is at y ≈ 1, not 0.** Fitted in G2 with the arc below: 99.8%
+ *     of MADE shots classify to their stored `point_value` with the rim at
+ *     (25, 1). The 6.7 averages above could not separate one foot.
+ *  2. **Every MISS is stored with `point_value` 2.** A missed three is
+ *     indistinguishable from a missed two in the column, so a miss's value
+ *     comes from the arc; a make keeps its stored value. The three-point band
+ *     is now "worth three", not "farther than 22 feet": an above-the-break
+ *     long two at 22.5 feet is a two, and it used to be counted as a three.
+ *
+ * The arc constants are the fitted ones the G2 tools use
+ * (`build_team_data.py` `nba_zone`, translated out of its shifted y): three
+ * when 23.25+ feet from the rim, or in the corner (21.5+ feet off centre and
+ * within 8.75 feet of the rim's y).
  *
  * A shot with no location does NOT land at the rim. ESPN's missing-coordinate
  * sentinel is rejected at ingest, so those arrive as NULL and are excluded from
@@ -66,21 +83,40 @@ export interface NbaShotProfile {
 }
 
 /** Basket position, in the feed's own units. */
-const RIM_X = 25;
-const RIM_Y = 0;
+export const RIM_X = 25;
+export const RIM_Y = 1;
 
-/** Distance bands, in feet. The restricted area, the paint, mid-range, and beyond the arc. */
+const ARC_FEET = 23.25;
+const CORNER_OFF_CENTRE_FEET = 21.5;
+const CORNER_MAX_Y = RIM_Y + 8.75;
+
+/** Distance bands for twos, in feet, then everything worth three. */
 const BANDS: Array<{ label: string; max: number }> = [
   { label: 'At the rim', max: 4 },
   { label: 'Paint', max: 15 },
-  { label: 'Mid-range', max: 22 },
+  { label: 'Mid-range', max: Number.POSITIVE_INFINITY },
   { label: 'Three-point', max: Number.POSITIVE_INFINITY },
 ];
+const THREE_BAND = BANDS.length - 1;
 
 const COLUMN_LABELS = ['Share'];
 
 export function shotDistance(x: number, y: number): number {
   return Math.hypot(x - RIM_X, y - RIM_Y);
+}
+
+/** Beyond the three-point line, from location alone. */
+export function isBeyondArc(x: number, y: number): boolean {
+  return shotDistance(x, y) >= ARC_FEET || (Math.abs(x - RIM_X) >= CORNER_OFF_CENTRE_FEET && y <= CORNER_MAX_Y);
+}
+
+/**
+ * What the attempt was worth. A make keeps its stored `point_value`; a miss is
+ * always stored as 2, so its value comes from the arc.
+ */
+export function shotValue(row: { xCoord: number; yCoord: number; made: boolean; pointValue: number | null }): 2 | 3 {
+  if (row.made && (row.pointValue === 2 || row.pointValue === 3)) return row.pointValue;
+  return isBeyondArc(row.xCoord, row.yCoord) ? 3 : 2;
 }
 
 /**
@@ -111,9 +147,11 @@ export function toNbaShotProfile(rows: readonly NbaShotRow[]): NbaShotProfile | 
       unlocated += 1;
       continue;
     }
-    const d = shotDistance(r.xCoord, r.yCoord);
-    const bandIndex = BANDS.findIndex((b) => d <= b.max);
-    const cell = cells[bandIndex === -1 ? BANDS.length - 1 : bandIndex][0];
+    const bandIndex =
+      shotValue({ xCoord: r.xCoord, yCoord: r.yCoord, made: r.made, pointValue: r.pointValue }) === 3
+        ? THREE_BAND
+        : BANDS.findIndex((b) => shotDistance(r.xCoord!, r.yCoord!) <= b.max);
+    const cell = cells[bandIndex][0];
     cell.attempts += 1;
     placed += 1;
     if (r.made) {
