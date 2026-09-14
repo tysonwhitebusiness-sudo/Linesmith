@@ -17,6 +17,12 @@ verified 2026-09-14).
 | `game.html` | KC @ BOS · DAL @ NYG · OSU @ TEX · OKC @ LAL · FLA @ TOR · MCI @ MUN · Paul v Zverev | NFL/CFB: win probability with biggest swings, **drive chart** + selected-drive field model, scoring, situational team stats. NBA: win probability, lead tracker, scoring runs, two-team shot chart. NHL: shot-attempt flow (no WP is published), full-rink shot map, goaltending, penalties. MLB: WP by plate appearance, **spray chart with distance**, at-bat explorer with every pitch located, pitch mix per pitcher. Soccer: timeline, shot map, formations, commentary. Tennis: serve/return comparison, head-to-head, form vs season averages. All: lines open → close, stored pre-game movement, **player props vs results** |
 | `team.html` | Royals · Raiders · Ohio State · Lakers · Maple Leafs · Man City (tennis and golf explain why there's no team page) | One season switch scopes the page and opens on last season when the current one is too young. Results and splits, standings, **league ranks computed across every team** with a dot strip, roster production. MLB: team Statcast percentiles. NFL: target share and throw map vs league. CFB: ranked opponents. NBA: shot profile vs league. NHL: shot map for/against |
 
+**Added 2026-09-14 (operator request):** the game page has three states, **Before start** (research as of
+kickoff), **Live** (the real game cut at a moment, with a props tracker and in-game odds) and **Final** (recap plus
+the kickoff research kept). Player and team pages have a **Compare against** control: an opponent team (default next
+opponent) with history and what that team gives up to the position, a same-position player, tennis vs any top-60
+player, golf vs the field. All on real data; buildability in `BUILDABILITY.md` → "Added 2026-09-14".
+
 The G2 pages use the sectioned layout (A) with a sticky section nav. Picks G3 and G5 below
 still stand if you want the dashboard variant.
 

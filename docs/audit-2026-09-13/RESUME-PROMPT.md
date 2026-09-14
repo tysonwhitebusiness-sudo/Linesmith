@@ -15,7 +15,7 @@ to me.
 2. **Build plan: APPROVED, Phase 0 done, then ON HOLD.**
    `docs/audit-2026-09-13/build-plan.md`. The "before" baseline is in
    `before/README.md`.
-3. **Design audit: APPROVED. Phases E, F, F2, G and G2 COMPLETE (2026-09-14).** G2 built
+3. **Design audit: APPROVED. Phases E, F, F2, G and G2 COMPLETE (2026-09-14), including game states (before start / live / final) and the compare control.** G2 built
    sport-switchable, real-data mockups of the player, game and team pages
    (`docs/design/phase-g2/`, `PLAN.md` explains rebuilding). **Waiting on the operator's
    picks G1–G7** in `design-audit/G-ideas.md`, which now opens with the G2 boards and the
