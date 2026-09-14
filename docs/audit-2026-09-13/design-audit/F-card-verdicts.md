@@ -251,6 +251,72 @@ listed.
 
 ---
 
+## Soccer (EPL; MLS spot-check) — player page
+
+Captured: forward Erling Haaland, defender Adam Smith, goalkeeper Gianluigi
+Donnarumma (blank page), MLS forward Denis Bouanga.
+
+### The page as a whole
+
+**It's built around goals, and most players don't score.** Every captured soccer
+player page opens on Anytime Goalscorer, including the right-back (1.9% of 259
+games, card audit C8). The goalkeeper's page is completely empty: EPL has no
+goalkeeper markets in the data, so there's nothing to open on (E facts 1, 17).
+Soccer props the page could open on instead are shots, shots on target, tackles,
+fouls, cards and saves, and the right one depends on position, which soccer
+candidates don't carry (E fact 16).
+
+**Seasons blur into careers.** Haaland's bar chart spans **203 games back to a
+January of some year**, dated without years; shot data is labeled "2019-2026";
+"Season stats" shows **4 games** (this season). The page mixes a career, a season
+and an unlabeled window without saying which card uses which.
+
+**Soccer's native visual is a pitch, and the page has none.** Shot location is a
+3×3 strike-zone box (D4).
+
+**MLS pages are thinner:** Bouanga's page has no matchup, shot type, shot
+location or season stats cards (13 cards vs Haaland's 19), consistent with the
+shot data source covering European leagues.
+
+### Cards (soccer-specific; shared cards as NFL)
+
+| card | sentence | verdict | fails | what instead |
+|---|---|---|---|---|
+| **Hero** | "Haaland, MNC @ MAN, 10:30 AM, anytime goalscorer" | **rework** | Ide, Sco, Sen | **Club crest instead of a headshot** (the headshot exists on the team roster). No position. Kickoff time shown hours after full time. Abbreviations "MNC"/"MAN" aren't how anyone writes Man City/Man United (MCI/MUN). |
+| **Default market** | — | **replace** | Sen | Position-aware default (build 5b): FWD → goalscorer/shots, MID → shots on target/assists, DEF → tackles/fouls, GK → saves. Needs position on the candidate. |
+| **Bar chart** ("203 games in scope") | "scores in about half his games" | **rework** | Sco, Int | Opens at the oldest game, 203 games with no years. **Instead:** open on the latest game, this season by default, season toggle, and mark minutes played (a 20-minute sub appearance isn't a miss). |
+| **Matchup** ("Biggest edge: Goals allowed/gm — MAN 32nd percentile") | "United concede an average amount" | **rework** | Enc, Ide | Initials "EH" instead of a photo; "MAN MAN" repeated; an "edge" at the 32nd percentile (C9). Same fix as NFL's matchup. |
+| **Shot types** (left foot 63%, header 22%, n=700) | "Haaland mostly scores with his left foot" | **merge** | Sen | Real soccer data, but it doesn't change an anytime-goal bet. **Instead:** fold into the shot map as a filter (foot/head). |
+| **Shot location** (3×3: in the box / edge / long range × left/central/right) | "64% of his shots are central, in the box" | **rework** | Nat, Enc | D4: drawn as a strike zone with good/bad colors on volume. **Instead:** a half-pitch shot map (penalty area, six-yard box), shots as dots sized by xG, goals highlighted, filterable by season. |
+| **Home / Away** ("Cleared 59% / 53% · Anytime Goalscorer 1.0 / 0.8") | "scores slightly more at home" | **rework** | Sen, Enc | "1.0 / 0.8" is goals per game, unlabeled; the dumbbell adds nothing. **Instead:** one line: "Scored in 59% of home games, 53% away (this season: 2 of 2 home)". |
+| **Opposing defence** ("Manchester United defence, goals allowed 1.75, 16 of 23") | "United concede a lot" | **merge into Matchup** | Sco | **"Of 23" in a 20-team league**: last season's relegated teams are in the ranking pool (F-B7). |
+| **Head to head** ("vs Man United · 63% · 5 of 8") | "scored in 5 of 8 meetings" | **keep, polish** | — | A real sample. Show the meetings with scores and his goals. |
+| **Season stats** ("ranked among Fs") | "4 goals in 4 games" | **fix + rework** | **Ren (bug)**, Sen | **Raw floats** ("xG 3.4237903356552124", F-B6). Only goals is ranked. "Fs" for forwards. **Instead:** goals, xG, shots, shots on target per 90 and minutes, formatted, ranked among forwards, season labeled. |
+| **Goalkeeper page** (entire page) | none | **replace** | Sen | An empty page for a starting goalkeeper. **Instead:** a non-market profile (saves, goals conceded, clean sheets, xG faced, season and last 5), shown even when no book prices a keeper. |
+
+## Soccer — team page (Manchester City)
+
+| card | sentence | verdict | fails | what instead |
+|---|---|---|---|---|
+| **"Contact quality matchup"** | "City's attack vs Sunderland's defense" | **rework** | **Nat (title)**, Sco, Ren | A **baseball Statcast term** on a soccer page; the game page calls the same card "Team matchup — attack vs. defense". Ranks "of 23". Truncated labels. |
+| **Bar chart** ("4 games in scope · green cleared a win") | "won all 4" | **replace** | Nat, Enc | Soccer has three outcomes, and a win/0.5 bar can't show a draw. **Instead:** a W/D/L strip with scores. |
+| **Team stats** (attack, defence, discipline, xG) | "City lead the league in goals and assists" | **rework** | Enc, Sco | Color follows rank without direction: **most fouls and most offsides are green** like most goals. "Reds/game 0.000". Pools mix "of 20" and "of 23". **Instead:** direction-aware color (fewer fouls = better), neutral color for style stats (fouls, offsides), one pool, season labeled. |
+| **Standings** (W D L GD PTS) | "City 2nd, 12 pts" | **keep** | — | Native soccer table, current season. |
+| **Next game** (card 1: "MNC ML 800 · SUN ML -340 · Total 2.5 O -175") | "City are huge underdogs at Sunderland" | **fix (suspected bug F-B9)** | **data likely wrong** | City (4-0-0, 2nd) at +800 vs Sunderland (1-1-2, 16th) at -340 looks like the two moneylines are swapped. Needs verification against a book. Also no draw price, which every soccer moneyline has. |
+| **Next game** (card 2: "MNC @ SUN · 2026-09-20T13:00Z · No live line yet") | "next: at Sunderland" | **merge** | Dup, Ren | The **same "Next game" card twice** (E fact 8), and this one says there's no line while the other shows one. Raw ISO date. |
+| **Rating history, Last 4 games, Roster, Form, Recent results, Game context, Line movement** | — | same as NFL | — | See the NFL team page. |
+
+## Soccer — game page (Newcastle vs Leeds, pre-game)
+
+| card | sentence | verdict | fails | what instead |
+|---|---|---|---|---|
+| **Matchup** ("Team matchup — attack vs. defense", both directions) | "Newcastle's attack vs Leeds's defense" | **rework** | Ren, Sco | Rank text collides with the next label ("4th of 2GOALS ALLOWED"), the same fault as NFL's. Two stats per side only. |
+| **Records** ("NEW 1-2 · .333", "LEE 1-1 · .500") | "Newcastle have a losing record" | **fix (bug F-B8)** | **data wrong** | Newcastle are **unbeaten** (1W 2D 0L in the standings), but the card shows 1-2 and .333, so draws display as losses. Leeds shows 1-1 for the same 1W 2D. Home/away are dashes. **Instead:** W-D-L and points, home and away. |
+| **Team stat comparison** ("2025 season") | "Newcastle scored more last season" | **rework** | Sco, Enc | Last season's stats, four games into the new one, labeled at least. Same color problem as the team page (more fouls green). **Instead:** this season with last season beside it until ~10 games in. |
+| **Rankings** ("of 20 · 2025 season"), **Unit grades**, **Last 5**, **Injuries**, **Line movement**, **moneyline strip**, **Line shopping** | — | same as NFL | — | Plus: soccer's moneyline strip must show the **draw**. |
+
+---
+
 ## Correctness bugs found during Phase F
 
 Data errors, not design judgments. They go to the build plan in Phase H.
@@ -262,3 +328,7 @@ Data errors, not design judgments. They go to the build plan in Phase H.
 | **F-B3** | NFL team page, **bar chart** | Two seasons of games out of chronological order, no years. | 11/16 … 01/04, then 09/06 … 12/20 |
 | **F-B4** | MLB pitcher page, **game log** | Totals all zero and every start row blank (no stat line, empty opponent logo). The bar chart above it has the same starts with real values. | Noah Cameron: "Strikeouts 0 · Walks 0 · Hits allowed 0 · Earned runs 0"; 9 empty rows |
 | **F-B5** | MLB game and team pages, **Team stats / Team stat comparison** | Per-game stats rounded to integers, so different values display as equal. | KC vs BOS: R 4 / 4, H 8 / 8, BB 3 / 3, with bars of different lengths |
+| **F-B6** | Soccer player page, **Season stats** | Unformatted floating-point numbers rendered. | Haaland: "xG 3.4237903356552124", "xA 0.6280249953269958" |
+| **F-B7** | Soccer player, team and game pages, **rank pools** | Ranks "of 23" in a 20-team league: relegated teams from last season remain in the pool. Pools also differ between cards on one page ("of 20" and "of 23"). | Man United defence "16 of 23"; City team stats "1st of 20" beside "2nd of 23" |
+| **F-B8** | Soccer game page, **Records** | Draws shown as losses (or dropped), producing a losing record for an unbeaten team. Related to build-plan 1b's soccer header. | Newcastle 1W 2D 0L in standings → "1-2 · .333"; Leeds 1W 2D 0L → "1-1 · .500" |
+| **F-B9** *(suspected)* | Soccer team page, **Next game** | Moneylines likely assigned to the wrong teams; no draw price. Verify against a book before fixing. | Man City (1st-2nd, unbeaten) "ML 800" at Sunderland (16th) "ML -340" |
