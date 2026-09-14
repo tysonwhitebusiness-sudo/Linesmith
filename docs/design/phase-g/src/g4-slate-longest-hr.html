@@ -1,0 +1,97 @@
+<meta charset="utf-8">
+<title>Longest Home Run Slate Board</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--SYSTEM-->
+<!--DATA:mlb-power.json-->
+<style>
+  .who { display: flex; align-items: center; gap: 10px; min-width: 190px; }
+  .ev-cell { display: grid; grid-template-columns: 44px 70px; align-items: center; gap: 8px; justify-content: end; }
+  .ev-cell .bar { height: 6px; border-radius: 0 3px 3px 0; background: var(--ink); }
+  .status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s3); }
+  .status { border: 1px solid var(--line-soft); border-radius: 10px; padding: 12px; background: var(--card); }
+  .status h4 { margin: 0 0 6px; font-size: 13px; }
+  .status ul { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ink-2); }
+  .dotlab { font: 600 11px var(--font); fill: var(--ink-2); }
+  @media (max-width: 900px) { .status-grid { grid-template-columns: 1fr; } }
+</style>
+<body>
+<div id="app"></div>
+<script>
+const D = JSON.parse(document.getElementById('data-mlb-power').textContent);
+const HEADSHOT = (id) => `https://img.mlbstatic.com/mlb-photos/image/upload/w_120,q_auto:best/v1/people/${id}/headshot/67/current`;
+let minHr = 0, sortKey = 'p90EV';
+const app = document.getElementById('app');
+
+function scatter(rows) {
+  const host = h('div', { class: 'chart-host' });
+  const draw = (Wd) => {
+    const W = Math.max(320, Wd), H = 300, m = { l: 44, r: 16, t: 14, b: 36 };
+    const xs = rows.map((r) => r.p90EV), ys = rows.map((r) => r.hrAvgLA ?? 0);
+    const x0 = Math.floor(Math.min(...xs) - 0.5), x1 = Math.ceil(Math.max(...xs) + 0.5), y0 = Math.floor(Math.min(...ys) - 1), y1 = Math.ceil(Math.max(...ys) + 1);
+    const X = (v) => m.l + ((v - x0) / (x1 - x0)) * (W - m.l - m.r), Y = (v) => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+    const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Hitters by 90th percentile exit velocity and home run launch angle' });
+    for (let v = Math.ceil(x0); v <= x1; v++) svg.append(s('line', { class: 'grid-l', x1: X(v), x2: X(v), y1: m.t, y2: H - m.b }), s('text', { class: 'axis-t', x: X(v), y: H - m.b + 14, 'text-anchor': 'middle' }, String(v)));
+    for (let v = Math.ceil(y0); v <= y1; v += 2) svg.append(s('line', { class: 'grid-l', x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v) }), s('text', { class: 'axis-t', x: m.l - 6, y: Y(v) + 3, 'text-anchor': 'end' }, `${v}°`));
+    svg.append(s('text', { class: 'axis-t', x: (W + m.l) / 2, y: H - 4, 'text-anchor': 'middle', style: 'font-size:11px' }, '90th percentile exit velocity (mph) →'), s('text', { class: 'axis-t', x: 12, y: m.t + 4, style: 'font-size:11px' }, 'HR launch angle'));
+    const used = [];
+    const topIds = new Set([...rows].sort((a, b) => b.p90EV - a.p90EV).slice(0, 3).map((r) => r.id));
+    for (const r of rows) {
+      const cx = X(r.p90EV), cy = Y(r.hrAvgLA ?? 0), rad = 4 + Math.sqrt(r.hr) * 0.9;
+      const g = s('g', { tabindex: '0' });
+      g.append(s('circle', { cx, cy, r: Math.max(12, rad + 6), fill: 'transparent' }), s('circle', { class: 'm', cx, cy, r: rad, fill: 'var(--ink)', 'fill-opacity': 0.78, stroke: 'var(--card)', 'stroke-width': 2 }));
+      if (topIds.has(r.id)) { const left = cx > W - 150; let ly = cy + 4; for (const u of used) if (Math.abs(u - ly) < 14) ly = u + 14; used.push(ly); svg.append(s('text', { class: 'dotlab', x: left ? cx - rad - 6 : cx + rad + 6, y: ly, 'text-anchor': left ? 'end' : 'start' }, r.name)); }
+      const tip = () => [tipRow(`${r.p90EV} mph`, '90th pct exit velo'), tipRow(`${r.hrAvgLA}°`, 'avg HR launch angle'), tipText(`${r.name} · ${r.hr} HR · max ${r.maxEV} mph`)];
+      g.addEventListener('pointermove', (e) => { g.querySelector('.m').setAttribute('fill-opacity', 1); Tip.show(e.clientX, e.clientY, ...tip()); });
+      g.addEventListener('pointerleave', () => { g.querySelector('.m').setAttribute('fill-opacity', 0.78); Tip.hide(); });
+      g.addEventListener('focus', () => { const b = g.getBoundingClientRect(); Tip.show(b.left + b.width / 2, b.top, ...tip()); });
+      g.addEventListener('blur', () => Tip.hide());
+      g.addEventListener('click', () => openHitter(r));
+      svg.append(g);
+    }
+    host.replaceChildren(h('div', { class: 'chart' }, svg));
+  };
+  const ro = new ResizeObserver((en) => draw(Math.round(en[0].contentRect.width))); ro.observe(host);
+  return host;
+}
+
+function openHitter(r) {
+  Drill.open(r.name, `${r.team || ''} · ${r.hr} HR in 2026`, h('div', { class: 'stack' },
+    h('div', { class: 'row' }, avatar(HEADSHOT(r.id), 64, { label: r.name }), h('div', null, h('div', { class: 't-title' }, r.name), h('div', { class: 't-label' }, `${r.pos || ''} · bats ${r.bats || '—'}`))),
+    h('div', { class: 'grid cols-3' }, ...[['Max EV', `${r.maxEV}`], ['90th pct EV', `${r.p90EV}`], ['Hard-hit %', `${r.hardHitPct}%`], ['HR avg EV', `${r.hrAvgEV}`], ['HR hardest', `${r.hrMaxEV}`], ['HR avg LA', `${r.hrAvgLA}°`]].map(([l, v]) => h('div', { class: 'stat' }, h('div', { class: 'l' }, l), h('div', { class: 'v' }, v)))),
+    h('div', { class: 'callout' }, h('b', null, 'Today, in the full build: '), 'opponent starter with his velocity and exit velocity allowed, the park\'s carry, first-pitch temperature and wind relative to the field, then a link to the player page.')));
+}
+
+function render() {
+  const rows = D.leaders.filter((r) => r.hr >= minHr);
+  const maxP90 = Math.max(...D.leaders.map((r) => r.p90EV)), minP90 = Math.min(...D.leaders.map((r) => r.p90EV)) - 1;
+  const evCell = (v) => h('div', { class: 'ev-cell' }, h('span', { class: 'num' }, v.toFixed(1)), h('div', { class: 'bar', style: { width: `${Math.max(4, ((v - minP90) / (maxP90 - minP90)) * 70)}px` } }));
+  const table = dataTable([
+    { key: 'name', label: 'Hitter', render: (r) => h('div', { class: 'who' }, avatar(HEADSHOT(r.id), 32, { label: r.name }), h('div', null, h('a', { class: 'lnk t-sm', href: '#', style: { fontWeight: 600 }, onclick: (e) => { e.preventDefault(); e.stopPropagation(); openHitter(r); } }, r.name), h('div', { class: 't-label' }, r.team || ''))) },
+    { key: 'p90EV', label: '90th pct EV', num: true, render: (r) => evCell(r.p90EV) },
+    { key: 'maxEV', label: 'Max EV', num: true, fmt: (v) => v.toFixed(1) },
+    { key: 'hardHitPct', label: 'Hard-hit %', num: true, fmt: (v) => `${v.toFixed(1)}%` },
+    { key: 'hr', label: 'HR', num: true },
+    { key: 'hrAvgEV', label: 'HR avg EV', num: true, fmt: (v) => (v == null ? '—' : v.toFixed(1)) },
+    { key: 'hrAvgLA', label: 'HR avg LA', num: true, fmt: (v) => (v == null ? '—' : `${v.toFixed(1)}°`) },
+    { key: 'dist', label: 'Avg HR distance', sort: false, render: () => h('span', { class: 'pill-note' }, 'dropped at ingest') },
+  ], rows, { sortKey, onRow: openHitter });
+
+  app.replaceChildren(
+    boardBar('Phase G · Slate research view · Longest home run today', 'Real data: 2026 Statcast corpus (to Sep 11), hitters with 150+ balls in play. The operator\'s own test case.'),
+    h('div', { class: 'page' },
+      h('div', { class: 'callout', style: { marginBottom: 'var(--s4)' } }, h('b', null, 'Why this is its own view: '), 'no single player page answers "who hits the longest home run today". It needs every hitter\'s peak power side by side with today\'s parks and weather. ', h('b', null, 'Try: '), 'sort the table, filter by home runs, hover and click the dots or rows.'),
+      h('div', { class: 'row between', style: { marginBottom: 'var(--s3)' } },
+        h('div', null, h('div', { class: 't-heading' }, 'Longest home run today'), h('div', { class: 't-label' }, 'Top 20 hitters by 90th-percentile exit velocity · 2026 season')),
+        h('div', { class: 'row' }, h('span', { class: 't-label' }, 'Home runs'), segmented([{ value: 0, label: 'All' }, { value: 20, label: '20+' }, { value: 30, label: '30+' }], minHr, (v) => { minHr = v; render(); }), h('button', { class: 'btn', type: 'button', disabled: true, title: 'Needs today\'s schedule joined to the hitters' }, 'Today\'s slate only'))),
+      h('div', { class: 'grid cols-main', style: { alignItems: 'start' } },
+        card({ title: 'Power leaders', scope: `${rows.length} hitters`, dense: true, info: '90th-percentile exit velocity captures how hard a hitter hits his best-struck balls, the best proxy for distance we hold today.', body: table, foot: 'Exit velocity and launch angle: held (corpus). Distance: Savant sends it, our ingest discards it. Park carry and wind direction relative to the field: not held.' }),
+        h('div', { class: 'stack' },
+          card({ title: 'What this view needs', body: h('div', { class: 'status-grid', style: { gridTemplateColumns: '1fr' } },
+            h('div', { class: 'status' }, h('h4', null, 'Held today'), h('ul', null, h('li', null, 'Exit velocity, launch angle per batted ball'), h('li', null, 'Pitch velocity and type per pitch'), h('li', null, 'Temperature and wind speed per game'))),
+            h('div', { class: 'status' }, h('h4', null, 'Dropped at ingest'), h('ul', null, h('li', null, 'Projected distance (hit_distance_sc)'), h('li', null, 'Spray direction (hc_x, hc_y)'), h('li', null, 'Bat speed and swing length'))),
+            h('div', { class: 'status' }, h('h4', null, 'Not held'), h('ul', null, h('li', null, 'Park orientation and dimensions'), h('li', null, 'A carry-specific park factor (altitude, air density)'), h('li', null, 'A "longest home run" market in the odds feeds')))) }))),
+      h('div', { style: { marginTop: 'var(--s3)' } }, card({ title: 'Peak power vs home run launch angle', scope: 'dot size = home runs', info: 'Right = hits the ball harder at the top end. Long home runs come from high exit velocity at roughly 25–32° launch.', body: scatter(rows) }))));
+}
+render();
+</script>
+</body>
