@@ -58,7 +58,18 @@ docs/design/phase-g2/
 
 ## Status
 
-- [x] 1 player data (13 subjects, 2026-09-14) · [x] 2 player page · [ ] 3 game page · [ ] 4 team page · [ ] 5 wrap-up
+**COMPLETE 2026-09-14.** - [x] 1 player data · [x] 2 player page · [x] 3 game page · [x] 4 team page · [x] 5 wrap-up
+
+Open `player.html`, `game.html` or `team.html` directly (`?sport=` deep-links). Rebuild pages with
+`node docs/design/phase-g2/build.mjs`. Refresh data from the repo root with the venv Python:
+`tools/build_player_data.py`, `tools/build_game_data.py`, `tools/build_team_data.py` (each takes slugs;
+the player and team builders read the Statcast corpus and take a few minutes; the team builder fetches every
+team's ESPN statistics to compute ranks). The consolidated data findings are in
+`docs/audit-2026-09-13/design-audit/G-ideas.md` → "Data findings made while building G2".
+
+Steps 3–4 as built: `src/sports/common-game.js` + `game-football.js`, `game-hoops-hockey.js`, `game-mlb.js`,
+`game-soccer-tennis.js`; `src/sports/team-common.js` + `team-sports.js`. Verified: 56 renders (all pages ×
+all sports × 1440/400px) with no page errors, console errors, overflow or placeholder text.
 
 Step 2 as built: `player.html` (open directly; `?sport=&subject=` deep-links). Modules actually landed as
 `src/kit2.js` (page blocks incl. the kept prop block), `src/sports/common.js` (page composer),

@@ -1,7 +1,62 @@
 # Phase G — New ideas and mockups
 
-**Status: COMPLETE 2026-09-14. Waiting for operator picks.** Nothing in the app
-has changed.
+**Status: COMPLETE 2026-09-14, including Phase G2 (sport-switchable mockups). Waiting for
+operator picks.** Nothing in the app has changed.
+
+## Phase G2 boards — use these to judge every card per sport
+
+Three pages in `docs/design/phase-g2/`, each with a sport switcher, all on real data. Open
+the HTML files directly. Rebuild with `node docs/design/phase-g2/build.mjs`; refresh data
+with the three builders in `docs/design/phase-g2/tools/` (see `PLAN.md`). Every page renders
+without errors, console errors, overflow or placeholder text at 1440px and 400px (56 renders,
+verified 2026-09-14).
+
+| page | sports × subjects | what each sport gets beyond the shared skeleton |
+|---|---|---|
+| `player.html` | MLB hitter + pitcher · NFL WR + QB · CFB QB · NBA guard + big · NHL skater + goalie · soccer FW + GK · tennis · golf | **Kept prop block** on every sport, then seasons, trends, splits, game log. MLB: Statcast contact profile, EV distribution and by game, pitch types, zone map, vs LHP/RHP, every HR; pitcher arsenal and locations. NFL: target/pass chart and depth by season. NBA: shot chart by zone. NHL: rink map, official totals. Soccer: Understat shot map, goals vs xG, per 90. Tennis: surface splits, serve/return trend, ranking. Golf: rounds, scoring by par, driving, approach proximity, putting by distance |
+| `game.html` | KC @ BOS · DAL @ NYG · OSU @ TEX · OKC @ LAL · FLA @ TOR · MCI @ MUN · Paul v Zverev | NFL/CFB: win probability with biggest swings, **drive chart** + selected-drive field model, scoring, situational team stats. NBA: win probability, lead tracker, scoring runs, two-team shot chart. NHL: shot-attempt flow (no WP is published), full-rink shot map, goaltending, penalties. MLB: WP by plate appearance, **spray chart with distance**, at-bat explorer with every pitch located, pitch mix per pitcher. Soccer: timeline, shot map, formations, commentary. Tennis: serve/return comparison, head-to-head, form vs season averages. All: lines open → close, stored pre-game movement, **player props vs results** |
+| `team.html` | Royals · Raiders · Ohio State · Lakers · Maple Leafs · Man City (tennis and golf explain why there's no team page) | One season switch scopes the page and opens on last season when the current one is too young. Results and splits, standings, **league ranks computed across every team** with a dot strip, roster production. MLB: team Statcast percentiles. NFL: target share and throw map vs league. CFB: ranked opponents. NBA: shot profile vs league. NHL: shot map for/against |
+
+The G2 pages use the sectioned layout (A) with a sticky section nav. Picks G3 and G5 below
+still stand if you want the dashboard variant.
+
+## Data findings made while building G2 (to Phase H)
+
+These came from reading the stored data closely enough to draw it. Each one would put a
+wrong number on a page if the app read the data the way the mockups first did.
+
+- **Player prop lines.** `prop_odds` files alternate ladders under the main market key (one
+  provider stored 14.5–144.5 under a QB's passing yards), keeps capturing for up to two days
+  after a game has finished, and stores pick'em payouts (+100) as if they were prices. "The latest row" is
+  not the line. The mockups use: last pre-game quote per book and line, the **main line is
+  the one quoted on both sides by the most books**, pick'em never counts as a price, and a
+  market with only one-sided quotes is labelled "alternate lines only" instead of shown.
+- **Game line history.** `game_odds_history` keeps storing quotes after the start, 1,790 of
+  2,782 rows for KC @ BOS. Soccer moneylines store home and away but not the draw, so the
+  vig can't be removed.
+- **NBA shot coordinates.** In `nba_shot_events` (and the ESPN feed) the rim sits at y ≈ 1 ft,
+  not 5.25 (99.8% of makes classify to their stored point value with that origin). Every
+  **miss is stored with point value 2**, so a missed three is indistinguishable without the
+  arc.
+- **Seasons in `player_game_history` mean different things by sport:** NHL uses the start
+  year (2025 = 2025-26), NBA the end year (2026 = 2025-26). Stray team ids appear for
+  All-Star-type events.
+- **NBA and NHL shot tables hold 2024-25 only,** while game logs reach 2025-26.
+- **MLB innings pitched is stored as whole.thirds per game** (6.2); summing it gives wrong
+  season innings. Carry outs.
+- **ESPN's published team ranks are unusable:** ranks exceed the number of teams (MLB
+  total bases 122nd) and carry no better/worse direction. CFB red-zone % is 0 for every team
+  and CFB possession time is about half a game per game. The mockups compute ranks across
+  every team with a declared direction, per game for football.
+- **The Statcast corpus has no team column.** Joining pitches to teams through
+  `player_game_history` matched 79% of 2026 pitches.
+- **Sources carry more than the app reads:** the MLB live feed has distance, exit velocity and
+  launch angle for every batted ball and every pitch location. ESPN NBA summaries have per-play
+  win probability and shot coordinates. NHL has neither in ESPN, but the NHL API has shot
+  coordinates. ESPN soccer commentary has pitch positions for the match's shots.
+- Smaller: the Understat match list comes newest-first; TennisMyLife dates are the
+  tournament start; golf events carry no names; golf lie codes aren't decoded; ESPN's soccer
+  team schedule returns only played fixtures unless asked for fixtures.
 
 Everything here follows three settled rules:
 - **Pages are in-depth research pages;** odds are one section (operator, 2026-09-14).
@@ -88,8 +143,9 @@ Every board renders without errors at 1440px and at 400px phone width (verified
   sources must agree on dates at ingest.
 - **The ESPN summary feed carries per-play win probability and full drive data**
   (`winprobability`, `drives.previous/current` with yard lines, down and distance);
-  `footballLiveGame.ts` reads neither. Whether the NBA and NHL summary endpoints
-  carry the same is to be verified.
+  `footballLiveGame.ts` reads neither. Verified in G2: the NBA summary carries both
+  win probability and shot coordinates; NHL carries neither, but the NHL API has shot
+  coordinates.
 
 ---
 

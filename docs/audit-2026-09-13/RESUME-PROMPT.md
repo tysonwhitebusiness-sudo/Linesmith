@@ -15,7 +15,13 @@ to me.
 2. **Build plan: APPROVED, Phase 0 done, then ON HOLD.**
    `docs/audit-2026-09-13/build-plan.md`. The "before" baseline is in
    `before/README.md`.
-3. **Design audit: APPROVED. Phases E, F, F2 and G COMPLETE (2026-09-14). **Now building Phase G2: sport-switchable, maximally detailed mockups for the player, team and game pages. Plan, architecture and a progress checklist: `docs/design/phase-g2/PLAN.md` — read it and continue from the first unchecked step.** Operator picks G1–G7 in `design-audit/G-ideas.md` wait until G2 is done; then Phase H.**
+3. **Design audit: APPROVED. Phases E, F, F2, G and G2 COMPLETE (2026-09-14).** G2 built
+   sport-switchable, real-data mockups of the player, game and team pages
+   (`docs/design/phase-g2/`, `PLAN.md` explains rebuilding). **Waiting on the operator's
+   picks G1–G7** in `design-audit/G-ideas.md`, which now opens with the G2 boards and the
+   G2 data findings (prop main lines, post-start odds capture, NBA rim origin and miss point
+   values, season conventions, innings pitched, ESPN ranks). **Next: Phase H** — merge the
+   verdicts, picks and data findings into the build plan. Don't start H before the picks.
    `docs/audit-2026-09-13/design-audit-plan.md`. Every single card on every
    player/team/game page, every sport, judged by two questions: **does this make
    sense at all for this sport, and does this help at all?** Phases:
