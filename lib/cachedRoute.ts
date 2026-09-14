@@ -72,6 +72,28 @@ export interface CachedRouteOptions<T, R = T> {
    */
   force?: boolean;
   /**
+   * How old a cached payload may get before the response says so — R2.
+   *
+   * THE PROBLEM THIS SOLVES, measured in R1f: stale is served with no ceiling
+   * at all. `if (cached) { trigger rebuild; return stale }` means a route
+   * whose `build()` keeps failing serves its last good payload FOREVER, and
+   * nothing downstream can tell. That is how a Sep 13 CFB rebuild served a
+   * slate of Sep 3/4 games: the payload was nine days old, the rebuild had
+   * been failing the whole time, and every layer above reported success.
+   *
+   * Past the ceiling the response is STILL SERVED — old data beats an error
+   * on a research page, and blocking on a rebuild that is already known to
+   * fail (CFB's takes up to 1800s) would hang the request instead. What
+   * changes is that it stops being silent: `x-cache: expired`, a logged
+   * system event, and `x-cache-age-ms` on every cached response so a page can
+   * render the staleness badge the G2 mockups already draw.
+   *
+   * Default: 12x the TTL, at least an hour, at most a day — so no route
+   * serves data over a day old without saying so, and a short-TTL route is
+   * not flagged for one slow rebuild.
+   */
+  maxStaleMs?: number;
+  /**
    * The route's own `Request` — read only for its `Accept-Encoding` header,
    * to negotiate gzip via `jsonPassthrough`/`jsonResponse`. Omit only when
    * a route genuinely has no `Request` in scope (a bare `GET()`); the route
@@ -84,18 +106,50 @@ export interface CachedRouteOptions<T, R = T> {
 
 export async function cachedRoute<T, R = T>(opts: CachedRouteOptions<T, R>): Promise<Response> {
   const { cacheKey, ttlMs, build, notFoundMessage, transform, routeName, errorMessage, skipWrite, force, request } = opts;
+  const maxStaleMs = opts.maxStaleMs ?? Math.min(Math.max(ttlMs * 12, 60 * 60_000), 24 * 60 * 60_000);
   const acceptEncoding = request?.headers.get('accept-encoding') ?? null;
 
-  function respondCached(rawPayload: string, cacheState: 'hit' | 'stale'): Response {
+  function respondCached(rawPayload: string, cacheState: 'hit' | 'stale', ageMs?: number): Response {
+    // `expired` is a wire-level signal only — `cacheControlFor` and
+    // `jsonPassthrough` still see 'stale', so no HTTP caching behaviour
+    // changes. The header is what a page reads for its staleness badge.
+    const ageHeaders: Record<string, string> = ageMs == null ? {} : { 'x-cache-age-ms': String(Math.round(ageMs)) };
+    const expired = ageMs != null && ageMs > maxStaleMs;
     if (transform) {
       // Same real HTTP-layer caching as jsonPassthrough's own cacheState
       // handling (see that function's docstring) — a transform()ed value
       // is still deterministic per (cacheKey, transform) for a given
       // cache generation, so a genuine 'hit' is just as safe to let a
       // CDN/browser dedupe for a short window.
-      return jsonResponse(transform(JSON.parse(rawPayload) as T), { 'cache-control': cacheControlFor(cacheState), 'x-cache': cacheState }, acceptEncoding);
+      return jsonResponse(
+        transform(JSON.parse(rawPayload) as T),
+        { 'cache-control': cacheControlFor(cacheState), 'x-cache': expired ? 'expired' : cacheState, ...ageHeaders },
+        acceptEncoding,
+      );
     }
-    return jsonPassthrough(rawPayload, cacheState, cacheKey, acceptEncoding);
+    const res = jsonPassthrough(rawPayload, cacheState, cacheKey, acceptEncoding);
+    for (const [k, v] of Object.entries(ageHeaders)) res.headers.set(k, v);
+    if (expired) res.headers.set('x-cache', 'expired');
+    return res;
+  }
+
+  /**
+   * Fired when a payload is served past `maxStaleMs`. Not fatal, and
+   * deliberately not rate-limited here: the condition means a route's
+   * `build()` has been failing for hours, which is exactly what nobody
+   * noticed for nine days. `source` is fixed so /diagnostics can count the
+   * spike across routes; the key and age go in `detail`.
+   */
+  async function reportExpired(ageMs: number): Promise<void> {
+    console.error(`[${routeName ?? cacheKey}] served cache ${Math.round(ageMs / 60_000)}min old, past its ${Math.round(maxStaleMs / 60_000)}min ceiling`);
+    await logSystemEvent({
+      level: 'error',
+      source: 'cachedRoute',
+      message: 'Served a cached payload past its staleness ceiling — build() has been failing.',
+      detail: `${cacheKey}: age ${Math.round(ageMs / 1000)}s, ceiling ${Math.round(maxStaleMs / 1000)}s`,
+    }).catch(() => {
+      // Nowhere left to record it; the console line above has already fired.
+    });
   }
 
   async function rebuild(): Promise<T | null | undefined> {
@@ -141,11 +195,12 @@ export async function cachedRoute<T, R = T>(opts: CachedRouteOptions<T, R>): Pro
     const age = cached ? Date.now() - Date.parse(cached.fetchedAt) : Infinity;
 
     if (cached && age < ttlMs) {
-      return respondCached(cached.payload, 'hit');
+      return respondCached(cached.payload, 'hit', age);
     }
     if (cached) {
       triggerBackgroundRebuild(cacheKey, rebuild);
-      return respondCached(cached.payload, 'stale');
+      if (age > maxStaleMs) void reportExpired(age);
+      return respondCached(cached.payload, 'stale', age);
     }
 
     const started = Date.now();
@@ -166,7 +221,9 @@ export async function cachedRoute<T, R = T>(opts: CachedRouteOptions<T, R>): Pro
     console.error(`[${routeName ?? cacheKey}]`, error);
     const stale = await readSnapshotCache(cacheKey);
     if (stale) {
-      return respondCached(stale.payload, 'stale');
+      const staleAge = Date.now() - Date.parse(stale.fetchedAt);
+      if (staleAge > maxStaleMs) void reportExpired(staleAge);
+      return respondCached(stale.payload, 'stale', staleAge);
     }
     // Phase 1.10 (audit finding P4 M4). This used to return `detail` to every
     // caller, including anonymous ones. `pg` errors carry table, column and
