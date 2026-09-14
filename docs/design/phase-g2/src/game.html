@@ -1,0 +1,64 @@
+<meta charset="utf-8">
+<title>Game Page — Sport Switcher</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--SYSTEM-->
+<!--DATA:ALL-->
+<style>
+  .switch-bar { background: var(--card); border-bottom: 1px solid var(--line); }
+  .switch-bar .inner { max-width: 1280px; margin: 0 auto; padding: 10px var(--s5); display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; }
+  .switch-bar .sport-tabs button { border-color: var(--line); color: var(--ink-2); }
+  .switch-bar .sport-tabs button:hover { background: var(--card-sunk); }
+  .switch-bar .sport-tabs button[aria-pressed="true"] { background: var(--masters); color: #fff; border-color: var(--masters); }
+  .switch-bar .sport-tabs { max-width: 100%; }
+  .secnav .tabs { overflow-x: auto; scrollbar-width: none; }
+  @media (max-width: 720px) { .switch-bar .inner { padding-left: var(--s4); padding-right: var(--s4); } }
+</style>
+<body>
+<div id="bar"></div>
+<div id="switch"></div>
+<main class="page" id="app"></main>
+<script>
+const params = new URLSearchParams(location.search);
+const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } return null; };
+let sport = params.get('sport') || store('g2-game-sport') || 'nfl';
+if (!GAME_SPORTS[sport]) sport = 'nfl';
+let observer = null;
+document.getElementById('bar').append(boardBar('Phase G2 · Game page', 'Real data · switch sport below'));
+
+function renderSwitch(doc) {
+  const btns = h('div', { class: 'sport-tabs', role: 'group', 'aria-label': 'Sport' }, ...Object.entries(GAME_SPORTS).map(([key, def]) => h('button', { type: 'button', 'aria-pressed': String(key === sport), onclick: () => { sport = key; store('g2-game-sport', key); renderAll(); } }, def.label)));
+  document.getElementById('switch').replaceChildren(h('div', { class: 'switch-bar' }, h('div', { class: 'inner' }, h('span', { class: 't-over' }, 'Sport'), btns, h('span', { style: { flex: 1 } }), h('span', { class: 't-over' }, 'Game'), h('span', { class: 'chip' }, doc?.label || '—'))));
+}
+
+function renderPage() {
+  const def = GAME_SPORTS[sport].games[0];
+  const doc = loadData(`game-${def.slug}`);
+  renderSwitch(doc);
+  const app = document.getElementById('app');
+  if (!doc) { app.replaceChildren(h('div', { class: 'state' }, `No dataset for ${def.slug}`)); return; }
+  const { hero, sections } = (() => { const r = def.build(doc); return Array.isArray(r) ? { hero: null, sections: r } : r; })();
+  const heroNode = hero || gameHero(doc, { chips: lineResultChips(doc), ...(GAME_SPORTS[sport].hero || {}) });
+  const navTabs = tabs(sections.map((x) => ({ value: x.id, label: x.label })), sections[0].id, (v) => document.getElementById(`sec-${v}`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
+  const nav = h('div', { class: 'secnav sticky', style: { marginTop: 'var(--s4)' } }, navTabs);
+  app.replaceChildren(heroNode, nav, ...sections.map((x) => x.node));
+  const barH = document.getElementById('bar').offsetHeight;
+  nav.style.top = `${barH}px`;
+  document.querySelectorAll('.psec').forEach((el) => { el.style.scrollMarginTop = `${barH + nav.offsetHeight + 12}px`; });
+  if (observer) observer.disconnect();
+  observer = new IntersectionObserver((entries) => {
+    const vis = entries.filter((e) => e.isIntersecting).sort((x, y) => x.boundingClientRect.top - y.boundingClientRect.top)[0];
+    if (!vis) return;
+    navTabs.querySelectorAll('[role="tab"]').forEach((b, i) => { const on = sections[i].id === vis.target.dataset.sec; b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; if (on && navTabs.scrollWidth > navTabs.clientWidth) navTabs.scrollLeft = b.offsetLeft - 24; });
+  }, { rootMargin: `-${barH + 60}px 0px -60% 0px` });
+  document.querySelectorAll('.psec').forEach((el) => observer.observe(el));
+  document.title = `Game Page — ${doc.label}`;
+}
+
+function renderAll() {
+  const u = new URL(location.href); u.searchParams.set('sport', sport);
+  try { history.replaceState(null, '', u); } catch {}
+  renderPage(); window.scrollTo({ top: 0 });
+}
+renderAll();
+</script>
+</body>

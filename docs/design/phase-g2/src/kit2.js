@@ -192,3 +192,6 @@ function oddsCard(markets) {
       : h('div', { class: 'state' }, h('b', null, 'No prices posted'), 'Offseason, or no game on the slate. The research above doesn\'t depend on a line.'),
     foot: 'Line movement from prop_odds_history in the full build (5.2M rows held)' });
 }
+
+/* replaceChildren that skips null/false children (they would otherwise render as text). */
+function put(el, ...kids) { el.replaceChildren(...kids.flat().filter((k) => k != null && k !== false)); return el; }
