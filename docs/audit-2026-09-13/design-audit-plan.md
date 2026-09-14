@@ -1,6 +1,7 @@
 # Design audit — plan
 
-**Status: AWAITING OPERATOR APPROVAL. Created 2026-09-13. Nothing started.**
+**Status (2026-09-14): APPROVED. Phase E complete · Phase F complete (redone
+under the research frame) · Phase F2 complete · G next, awaiting go · H not started.**
 
 **The build plan (`build-plan.md`) is ON HOLD after Phase 0** until this audit
 finishes and its results are merged in (Phase H). The exception is Decision 2.
@@ -114,7 +115,7 @@ question going unanswered.
 
 ## Phase F2 — Visual system, UX and interaction
 
-**Added 2026-09-14 at operator request. AWAITING APPROVAL.** Phases E and F
+**Added 2026-09-14 at operator request. APPROVED 2026-09-14 with decisions 4–6 as recommended. COMPLETE 2026-09-14.** Phases E and F
 judged what each card *says*. F2 judges how the whole app **looks, reads,
 flows and responds**, including making every card feel interactive where it
 can be. Charcoal (the graphite palette) is the approved color direction and

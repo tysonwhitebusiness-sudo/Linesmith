@@ -1,0 +1,20 @@
+pages: nfl-player-wr, mlb-player-hitter, mlb-game, mlb-team, nfl-game, nfl-team, soccer-player-fw, soccer-team, soccer-game, nba-team, nhl-team, tennis-game
+text nodes 9986 · distinct styles (size|weight|family|case) 57 · per page 34/42/42/35/39/33/36/32/35/33/33/35
+sizes: 8px 7% · 9px 16% · 9.5px 2% · 10px 16% · 10.5px 10% · 11px 22% · 11.5px 1% · 12px 11% · 13px 13% · 14px 2% · 15px 0% · 16px 1% · 18px 0% · 20px 0% · 22px 0% · 24px 0% · 28px 0% · 44px 0%
+under 11px: 50%
+weights: 400 62% · 500 10% · 600 24% · 700 4% · 800 0%
+families: ui-sans-serif 100% · uppercase 11% · in charts 3%
+WCAG AA contrast fails: 4296/9986 (43%) · per page nfl-player-wr 32%, mlb-player-hitter 38%, mlb-game 38%, mlb-team 56%, nfl-game 44%, nfl-team 45%, soccer-player-fw 50%, soccer-team 39%, soccer-game 39%, nba-team 45%, nhl-team 45%, tennis-game 28%
+text colors in use: 80 · top: rgb(151,152,155) 41% · rgb(12,13,15) 28% · rgb(97,99,102) 18% · rgb(20,22,25) 5% · rgb(15,122,79) 2% · rgb(255,255,255) 1% · rgb(50,51,53) 1% · rgb(194,59,44) 1%
+cards 200 · header styles 9: 10.5px 700 UPPER no-bar ×57 · 10.5px 700 UPPER bar ×39 · 12px 600 mixed no-bar ×38 · 11px 600 UPPER no-bar ×34 · 16px 400 mixed no-bar ×17 · 18px 600 mixed no-bar ×5 · 16px 600 mixed no-bar ×4 · 24px 700 mixed no-bar ×3 · 9.5px 700 UPPER bar ×1
+card padding values 5: 0px ×168 · 12px ×16 · 10px ×8 · 20px ×4 · 16px ×4
+card radius values: 14px ×12 · 10px ×183 · 0px ×5 · with shadow 12
+charts 38 · with any hover handler 15 (39%)
+images 1258 · inside a link/button 398 (32%) · cards with zero clickable elements 129/200 (65%) · native title tooltips 1135
+hover probes by target: card 15/200 responded (8%), 15 showed new content · control 97/179 responded (54%), 0 showed new content · chart 14/51 responded (27%), 14 showed new content
+cards where nothing responded to hover: 138/200
+focus stops 300 · outline styles: solid 2px ×20 · auto 1px ×267 · auto 2.5px ×11 · auto 2px ×2
+load: nfl-player-wr first-card undefinedms no-skeleton · mlb-player-hitter first-card undefinedms no-skeleton · mlb-game first-card 8179ms no-skeleton · mlb-team first-card undefinedms no-skeleton · nfl-game first-card 1ms skeleton · nfl-team first-card 1ms no-skeleton · soccer-player-fw first-card 6654ms no-skeleton · soccer-team first-card 0ms no-skeleton · soccer-game first-card 0ms skeleton · nba-team first-card 0ms no-skeleton · nhl-team first-card 1ms no-skeleton · tennis-game first-card 0ms skeleton · m400-nfl-player first-card 4147ms no-skeleton · m400-nfl-game first-card 1ms skeleton · m400-soccer-team first-card 0ms no-skeleton
+transitions: 0.15s cubic-bezier(0.4, 0, 0.2… ×1661 · 0.5s cubic-bezier(0, 0, 0.2, … ×703 · 0.15s cubic-bezier(0, 0, 0.2, … ×40 · 0.2s cubic-bezier(0, 0, 0.2, … ×25 · 0.3s cubic-bezier(0.4, 0, 0.2… ×20
+animations running: {"lb-pulse":5,"spin":1}
+mobile: m400-nfl-player 431px wide in 400px · m400-nfl-game 431px wide in 400px · m400-soccer-team 570px wide in 400px

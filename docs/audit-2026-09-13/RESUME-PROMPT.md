@@ -15,7 +15,7 @@ to me.
 2. **Build plan: APPROVED, Phase 0 done, then ON HOLD.**
    `docs/audit-2026-09-13/build-plan.md`. The "before" baseline is in
    `before/README.md`.
-3. **Design audit: APPROVED. Phases E and F COMPLETE (2026-09-14); Phase G (new ideas + mockups) next, awaiting operator go.**
+3. **Design audit: APPROVED. Phases E, F and F2 (visual system, UX, interaction) COMPLETE (2026-09-14); Phase G (new ideas + mockups, drawn in the F2 system) next, awaiting operator go.**
    `docs/audit-2026-09-13/design-audit-plan.md`. Every single card on every
    player/team/game page, every sport, judged by two questions: **does this make
    sense at all for this sport, and does this help at all?** Phases:
@@ -24,7 +24,7 @@ to me.
    Stop after each.
    - Operator examples: `design-findings.md` D1–D5. These are **examples of
      the kind of problem to find everywhere**, not a to-do list.
-   - Results: `design-audit/E-inventory.md` (coverage + facts), `F-card-verdicts.md` (REDONE 2026-09-14 under the research frame: every card, a depth ledger per sport, slate research views, 13 data bugs F-B1..B13),
+   - Results: `design-audit/E-inventory.md` (coverage + facts), `F-card-verdicts.md` (REDONE 2026-09-14 under the research frame: every card, a depth ledger per sport, slate research views, 13 data bugs F-B1..B13), `F2-visual-system.md` and `F2-ux-interaction.md` (measured system + two-tier interaction target + live-game layout; ESPN's NFL game page is an operator-supplied inspiration, not a standard),
      `E-matrix.md` (generated), `E-raw/` (captured card data).
 
 ## Decisions already made — don't reopen
