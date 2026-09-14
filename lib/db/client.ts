@@ -884,6 +884,53 @@ export async function readPropOddsForGame(gameId: string): Promise<PropOddsRow[]
   return rows.map(mapPropOddsRow);
 }
 
+/**
+ * Prop rows as they stood at the start of the game — the input to R2's main
+ * line (`lib/odds/props/mainLine.ts`).
+ *
+ * `prop_odds` is current state: the writer upserts one row per (provider, book,
+ * line, side), and it keeps polling for up to two days after a game, so once a
+ * game starts an in-play price overwrites the pre-game one. The pre-game price
+ * survives in `prop_odds_history`, which logs every price change, so the price
+ * in effect at the start is the last history row at or before it. Current rows
+ * last polled before the start are unioned in as well, which covers a key
+ * whose only history row has aged past the 14-day prune (`prune_corpus.py`).
+ *
+ * Before the start (or with no parseable start time) this is just
+ * `readPropOddsForGame`.
+ */
+export async function readPreGamePropOddsForGame(gameId: string, startIso: string | null | undefined): Promise<PropOddsRow[]> {
+  const start = startIso && startIso.includes('T') ? Date.parse(startIso) : NaN;
+  if (!Number.isFinite(start) || start > Date.now()) return readPropOddsForGame(gameId);
+  const startAt = new Date(start).toISOString();
+  const rows = await pgAll<any>(
+    `SELECT ${PROP_ODDS_COLUMNS} FROM prop_odds WHERE game_id = ? AND fetched_at <= ?
+     UNION ALL
+     SELECT * FROM (
+       SELECT DISTINCT ON (h.provider_id, h.subject_id, h.market_key, h.line, h.side, h.bookmaker)
+         h.id,
+         h.provider_id   AS "providerId",
+         h.game_id       AS "gameId",
+         h.subject_id    AS "subjectId",
+         COALESCE((SELECT p.subject_name FROM prop_odds p WHERE p.game_id = h.game_id AND p.subject_id = h.subject_id LIMIT 1), h.subject_id) AS "subjectName",
+         h.market_key    AS "marketKey",
+         h.line,
+         h.side,
+         h.bookmaker,
+         h.american_odds AS "americanOdds",
+         h.decimal_odds  AS "decimalOdds",
+         h.observed_at   AS "fetchedAt",
+         h.is_delayed    AS "isDelayed",
+         h.delay_seconds AS "delaySeconds"
+       FROM prop_odds_history h
+       WHERE h.game_id = ? AND h.observed_at <= ?
+       ORDER BY h.provider_id, h.subject_id, h.market_key, h.line, h.side, h.bookmaker, h.observed_at DESC
+     ) latest`,
+    [gameId, startAt, gameId, startAt],
+  );
+  return rows.map(mapPropOddsRow);
+}
+
 export async function readPropOddsForSubject(gameId: string, subjectId: string): Promise<PropOddsRow[]> {
   const rows = await pgAll<any>(
     `SELECT ${PROP_ODDS_COLUMNS} FROM prop_odds WHERE game_id = ? AND subject_id = ? ORDER BY market_key, bookmaker`,

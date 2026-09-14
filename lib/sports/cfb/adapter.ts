@@ -21,7 +21,8 @@ import type { WeatherContext } from '@/lib/core/types';
 import { subsetWindow, shortDate } from '@/lib/core/windowedStat';
 import { normalizeName } from '@/lib/odds/screenshotImport';
 import { loadGameContextsForSport } from '@/lib/odds/props/multiSportGameContext';
-import { readPropOddsForGame, type PropOddsRow } from '@/lib/db/client';
+import { readPreGamePropOddsForGame, type PropOddsRow } from '@/lib/db/client';
+import { candidateLine, historyAverageLine } from '@/lib/odds/props/mainLine';
 import { cfbTeamLogoByAbbr, fetchAllTeams } from './espn';
 import { currentCfbdSeason, matchCfbdTeamName, fetchFbsTeamNames, loadCfbdTeamContext, cfbdPlayerMatchesFromContext, fetchSeasonStatus, type CfbdMatchStat } from './cfbd';
 
@@ -35,12 +36,6 @@ const MARKET_META: Record<string, { label: string }> = {
   'longest-completion': { label: 'Longest Completion' },
   'kicking-points': { label: 'Kicking Points' },
 };
-
-function bestRow(rows: PropOddsRow[], side: string): PropOddsRow | null {
-  const matching = rows.filter((r) => r.side === side);
-  if (matching.length === 0) return null;
-  return matching.reduce((best, r) => (r.americanOdds > best.americanOdds ? r : best), matching[0]);
-}
 
 /** Which markets have a real per-game field in CFBD's box score, and how to read it — `longest-completion` has none (see file header) and stays out of this map. */
 const HISTORY_FIELD: Record<string, (m: CfbdMatchStat) => number> = {
@@ -168,6 +163,8 @@ async function attachRealHistory(candidates: PickCandidate[]): Promise<void> {
         meta.seasonStats = seasonStats;
         candidate.subjectMeta = meta;
 
+        const field = HISTORY_FIELD[candidate.dimension];
+        if (candidate.line == null && field) candidate.line = historyAverageLine(matches.map(field));
         const startingLine = candidate.line ?? 0.5;
         const entries = toHistoryEntries(matches, candidate.dimension, startingLine, logoByCfbdName);
         if (entries.length === 0) continue;
@@ -310,7 +307,7 @@ export async function buildCfbSnapshot(): Promise<SportSnapshot> {
       });
     }
 
-    const rows = await readPropOddsForGame(game.gameId);
+    const rows = await readPreGamePropOddsForGame(game.gameId, game.gameDate);
     if (rows.length === 0) continue;
 
     const rowsBySubjectMarket = new Map<string, PropOddsRow[]>();
@@ -337,7 +334,7 @@ export async function buildCfbSnapshot(): Promise<SportSnapshot> {
       const opponentAbbr = teamAbbr ? (isHome ? game.awayAbbr : game.homeAbbr) : undefined;
       const opponentName = teamAbbr ? (isHome ? game.awayTeamName : game.homeTeamName) : undefined;
 
-      const best = bestRow(marketRows, 'over') ?? marketRows[0];
+      const priced = candidateLine(marketRows, game.gameDate);
 
       candidates.push({
         sport: 'cfb',
@@ -363,12 +360,13 @@ export async function buildCfbSnapshot(): Promise<SportSnapshot> {
         dimensionLabel: meta.label,
         category: 'over',
         categoryLabel: 'Over',
-        line: best.line ?? undefined,
+        line: priced.line,
+        lineStatus: priced.lineStatus,
         history: [],
         consistent: false,
         sampleSize: 0,
         liveState: liveStateFor(game.gameDate),
-        odds: { americanOdds: String(best.americanOdds), source: 'odds-api', capturedAt: best.fetchedAt },
+        odds: priced.odds,
         // Populates the `conditions` role (6.10). Absent for an indoor venue or
         // one whose roof ESPN did not report — the adapter renders no card
         // rather than an empty one.

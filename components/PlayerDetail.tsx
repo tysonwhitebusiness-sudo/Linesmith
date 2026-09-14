@@ -1522,6 +1522,8 @@ export function PlayerDetail({
             <span className="text-[11px] text-ink-faint">
               Previewing {golfCategoryLabel(active.dimension, effectiveGolfCategory)} — this golfer&apos;s tracked pattern is {active.categoryLabel}.
             </span>
+          ) : active.lineStatus === 'alternates-only' ? (
+            <span className="text-[11px] text-ink-faint">Alternate lines only — no book quoted both sides, so this line is not a market line.</span>
           ) : onAdd ? (
             <GetOddsButton onClick={() => onAdd(active)} label="Add to slip to record a price" />
           ) : null}

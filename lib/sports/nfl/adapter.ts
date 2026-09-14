@@ -35,7 +35,8 @@ import { candidateKey } from '@/lib/core/types';
 import { subsetWindow } from '@/lib/core/windowedStat';
 import { loadGameContextsForSport } from '@/lib/odds/props/multiSportGameContext';
 import { favorableFromRank } from '@/lib/odds/props/matchupFavorable';
-import { readPropOddsForGame, type PropOddsRow } from '@/lib/db/client';
+import { readPreGamePropOddsForGame, type PropOddsRow } from '@/lib/db/client';
+import { candidateLine } from '@/lib/odds/props/mainLine';
 import {
   getEspnToGsisMap,
   getPlayerMarketHistory,
@@ -178,12 +179,6 @@ export const MARKETS_BY_POSITION: Record<string, string[]> = {
   TE: ['receiving-yards', 'receptions', 'receiving-tds'],
 };
 
-function bestOverPrice(rows: PropOddsRow[]): PropOddsRow | null {
-  const overs = rows.filter((r) => r.side === 'over');
-  if (overs.length === 0) return null;
-  return overs.reduce((best, r) => (r.americanOdds > best.americanOdds ? r : best), overs[0]);
-}
-
 function liveStateFor(gameDate: string): LiveState {
   const kickoff = Date.parse(gameDate);
   const now = Date.now();
@@ -249,18 +244,15 @@ export async function buildNflSnapshot(): Promise<SportSnapshot> {
   for (const game of games) {
     // Real book prices, keyed by subjectId|marketKey — an overlay, not a gate.
     const rowsByKey = new Map<string, PropOddsRow[]>();
-    for (const row of await readPropOddsForGame(game.gameId)) {
+    for (const row of await readPreGamePropOddsForGame(game.gameId, game.gameDate)) {
       if (!(row.marketKey in NFLVERSE_STAT_COLUMN_BY_MARKET)) continue;
       const key = `${row.subjectId}|${row.marketKey}`;
       const bucket = rowsByKey.get(key) ?? [];
       bucket.push(row);
       rowsByKey.set(key, bucket);
     }
-    const priceByKey = new Map<string, PropOddsRow>();
-    for (const [key, rows] of rowsByKey) {
-      const best = bestOverPrice(rows);
-      if (best) priceByKey.set(key, best);
-    }
+    const priceByKey = new Map<string, ReturnType<typeof candidateLine>>();
+    for (const [key, rows] of rowsByKey) priceByKey.set(key, candidateLine(rows, game.gameDate));
 
     for (const rosterEntry of game.roster) {
       const marketsForPosition = rosterEntry.position ? MARKETS_BY_POSITION[rosterEntry.position] : undefined;
@@ -392,7 +384,8 @@ export async function buildNflSnapshot(): Promise<SportSnapshot> {
           consistent,
           sampleSize: history.length,
           liveState: liveStateFor(game.gameDate),
-          odds: realPrice ? { americanOdds: String(realPrice.americanOdds), source: 'odds-api', capturedAt: realPrice.fetchedAt } : undefined,
+          odds: realPrice?.odds,
+          lineStatus: realPrice?.lineStatus,
           // Populates the `conditions` role (6.10). Absent for an indoor venue
           // — five of sixteen NFL stadiums on a live scoreboard are domed —
           // and the adapter renders no card rather than an empty one.

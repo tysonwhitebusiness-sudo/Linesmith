@@ -21,7 +21,8 @@
 import type { HistoryEntry, PickCandidate, SportSnapshot, SubjectSummary, TennisTour } from '@/lib/core/types';
 import { loadGameContextsForSport } from '@/lib/odds/props/multiSportGameContext';
 import { shortDate } from '@/lib/core/windowedStat';
-import { readPropOddsForGame, type PropOddsRow } from '@/lib/db/client';
+import { readPreGamePropOddsForGame, type PropOddsRow } from '@/lib/db/client';
+import { candidateLine, historyAverageLine } from '@/lib/odds/props/mainLine';
 import { currentTennisSeason, loadTennisSeasonContext, matchTennisIndex, type TennisMatch } from './tennismylife';
 
 const TOUR_TO_SPORT_KEY: Record<TennisTour, 'tennis_atp' | 'tennis_wta'> = {
@@ -40,12 +41,6 @@ const HISTORY_FIELD: Record<string, (m: TennisMatch) => number> = {
   'games-won': (m) => m.gamesWon,
   'to-win-a-set': (m) => (m.wonAtLeastOneSet ? 1 : 0),
 };
-
-function bestRow(rows: PropOddsRow[], side: string): PropOddsRow | null {
-  const matching = rows.filter((r) => r.side === side);
-  if (matching.length === 0) return null;
-  return matching.reduce((best, r) => (r.americanOdds > best.americanOdds ? r : best), matching[0]);
-}
 
 function toHistoryEntries(matches: TennisMatch[], marketKey: string, startingLine: number): HistoryEntry[] {
   const field = HISTORY_FIELD[marketKey];
@@ -94,6 +89,8 @@ async function attachRealHistory(candidates: PickCandidate[], tour: TennisTour, 
     if (!matches || matches.length === 0) return;
 
     for (const candidate of subjectCandidates) {
+      const field = HISTORY_FIELD[candidate.dimension];
+      if (candidate.line == null && field && MARKET_META[candidate.dimension]?.kind === 'threshold') candidate.line = historyAverageLine(matches.map(field));
       const startingLine = candidate.line ?? 0.5;
       const entries = toHistoryEntries(matches, candidate.dimension, startingLine);
       if (entries.length === 0) continue;
@@ -189,7 +186,7 @@ export async function buildTennisSnapshot(tour: TennisTour): Promise<SportSnapsh
       });
     }
 
-    const rows = await readPropOddsForGame(game.gameId);
+    const rows = await readPreGamePropOddsForGame(game.gameId, game.gameDate);
     if (rows.length === 0) continue;
 
     const rowsBySubjectMarket = new Map<string, PropOddsRow[]>();
@@ -214,12 +211,12 @@ export async function buildTennisSnapshot(tour: TennisTour): Promise<SportSnapsh
       const opponentEntry = game.roster.find((r) => r.subjectId !== subjectId);
       const opponentName = opponentEntry?.subjectName;
 
-      const best = bestRow(marketRows, 'over') ?? bestRow(marketRows, 'yes') ?? marketRows[0];
+      const priced = candidateLine(marketRows, game.gameDate, meta.kind);
       // Binary market ("to-win-a-set") gets `line: undefined`, same
       // real-book-row-matching reasoning soccer's adapter documents — a
       // fabricated 0.5 line would fail propOddsBoard's exact `row.line ===
       // line` match against real book rows.
-      const line = meta.kind === 'binary' ? undefined : (best.line ?? undefined);
+      const line = priced.line;
       const category = meta.kind === 'binary' ? 'yes' : 'over';
       const categoryLabel = meta.kind === 'binary' ? 'Yes' : 'Over';
 
@@ -238,11 +235,12 @@ export async function buildTennisSnapshot(tour: TennisTour): Promise<SportSnapsh
         category,
         categoryLabel,
         line,
+        lineStatus: priced.lineStatus,
         history: [],
         consistent: false,
         sampleSize: 0,
         liveState: liveStateFor(game.gameDate),
-        odds: { americanOdds: String(best.americanOdds), source: 'odds-api', capturedAt: best.fetchedAt },
+        odds: priced.odds,
       });
 
       if (!subjectsMap.has(subjectId)) {

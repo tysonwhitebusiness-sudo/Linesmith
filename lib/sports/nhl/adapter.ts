@@ -18,7 +18,8 @@
 import type { HistoryEntry, PickCandidate, SportSnapshot, SubjectSummary } from '@/lib/core/types';
 import { subsetWindow, shortDate } from '@/lib/core/windowedStat';
 import { loadGameContextsForSport } from '@/lib/odds/props/multiSportGameContext';
-import { readPropOddsForGame, type PropOddsRow } from '@/lib/db/client';
+import { readPreGamePropOddsForGame, type PropOddsRow } from '@/lib/db/client';
+import { candidateLine, historyAverageLine } from '@/lib/odds/props/mainLine';
 import { fetchSeasonStatus } from '@/lib/sports/multiSport/teamSportEspn';
 import {
   currentNhlSeason,
@@ -40,12 +41,6 @@ const MARKET_META: Record<string, { label: string }> = {
   saves: { label: 'Saves' },
   'goals-against': { label: 'Goals Against' },
 };
-
-function bestRow(rows: PropOddsRow[], side: string): PropOddsRow | null {
-  const matching = rows.filter((r) => r.side === side);
-  if (matching.length === 0) return null;
-  return matching.reduce((best, r) => (r.americanOdds > best.americanOdds ? r : best), matching[0]);
-}
 
 export interface NhlMatchStat {
   gameId: string;
@@ -209,6 +204,8 @@ async function attachRealHistory(candidates: PickCandidate[], teamLogoUrl: (abbr
         meta.seasonStats = seasonStats;
         candidate.subjectMeta = meta;
 
+        const field = HISTORY_FIELD[candidate.dimension];
+        if (candidate.line == null && field) candidate.line = historyAverageLine(matches.map(field));
         const startingLine = candidate.line ?? 0.5;
         const entries = toHistoryEntries(matches, candidate.dimension, startingLine, (abbr) => teamLogoUrl(abbr));
         if (entries.length === 0) continue;
@@ -426,7 +423,7 @@ export async function buildNhlSnapshot(): Promise<SportSnapshot> {
       });
     }
 
-    const rows = await readPropOddsForGame(game.gameId);
+    const rows = await readPreGamePropOddsForGame(game.gameId, game.gameDate);
     if (rows.length === 0) continue;
 
     const rowsBySubjectMarket = new Map<string, PropOddsRow[]>();
@@ -452,7 +449,7 @@ export async function buildNhlSnapshot(): Promise<SportSnapshot> {
       const isHome = teamAbbr === game.homeAbbr;
       const opponentAbbr = teamAbbr ? (isHome ? game.awayAbbr : game.homeAbbr) : undefined;
 
-      const best = bestRow(marketRows, 'over') ?? marketRows[0];
+      const priced = candidateLine(marketRows, game.gameDate);
 
       candidates.push({
         sport: 'nhl',
@@ -471,12 +468,13 @@ export async function buildNhlSnapshot(): Promise<SportSnapshot> {
         dimensionLabel: meta.label,
         category: 'over',
         categoryLabel: 'Over',
-        line: best.line ?? undefined,
+        line: priced.line,
+        lineStatus: priced.lineStatus,
         history: [],
         consistent: false,
         sampleSize: 0,
         liveState: liveStateFor(game.gameDate),
-        odds: { americanOdds: String(best.americanOdds), source: 'odds-api', capturedAt: best.fetchedAt },
+        odds: priced.odds,
       });
 
       if (!subjectsMap.has(subjectId)) {

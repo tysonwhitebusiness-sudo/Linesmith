@@ -19,7 +19,8 @@
 import type { HistoryEntry, PickCandidate, SplitEvidence, SportSnapshot, SubjectSummary, SoccerLeague } from '@/lib/core/types';
 import { subsetWindow, shortDate } from '@/lib/core/windowedStat';
 import { loadGameContextsForSport } from '@/lib/odds/props/multiSportGameContext';
-import { readPropOddsForGame, type PropOddsRow } from '@/lib/db/client';
+import { readPreGamePropOddsForGame, type PropOddsRow } from '@/lib/db/client';
+import { candidateLine, historyAverageLine } from '@/lib/odds/props/mainLine';
 import { soccerTeamLogoByAbbr, soccerTeamLogoByName, matchSoccerTeamLogo, ESPN_LEAGUE_SLUG } from './espn';
 import { fetchSeasonStatus } from '@/lib/sports/multiSport/teamSportEspn';
 import { currentUnderstatSeason, buildUnderstatNameIndex, matchUnderstatIndex, fetchUnderstatPlayerMatches, buildUnderstatTeamDefenseIndex, matchUnderstatTeamName, type UnderstatMatch, type UnderstatSeasonStats, type UnderstatTeamDefense } from './understat';
@@ -60,12 +61,6 @@ const MARKET_META: Record<string, { label: string; kind: 'binary' | 'threshold' 
   'yellow-cards': { label: 'Yellow Card', kind: 'binary' },
   saves: { label: 'Saves', kind: 'threshold' },
 };
-
-function bestRow(rows: PropOddsRow[], side: string): PropOddsRow | null {
-  const matching = rows.filter((r) => r.side === side);
-  if (matching.length === 0) return null;
-  return matching.reduce((best, r) => (r.americanOdds > best.americanOdds ? r : best), matching[0]);
-}
 
 /** Which markets have a real per-match stat field in Understat/ASA, and how to compute it — the rest stay `history: []`, a real data limitation, not an oversight. */
 const HISTORY_FIELD: Record<string, (m: { goals: number; shots: number; assists: number }) => number> = {
@@ -323,6 +318,8 @@ async function attachRealHistory(candidates: PickCandidate[], league: SoccerLeag
 
     if (matches.length === 0) return;
     for (const candidate of subjectCandidates) {
+      const field = HISTORY_FIELD[candidate.dimension];
+      if (candidate.line == null && field && MARKET_META[candidate.dimension]?.kind === 'threshold') candidate.line = historyAverageLine(matches.map(field));
       const startingLine = candidate.line ?? 0.5;
       const entries = toHistoryEntries(matches, candidate.dimension, startingLine, logoByName);
       if (entries.length === 0) continue;
@@ -437,7 +434,7 @@ export async function buildSoccerSnapshot(league: SoccerLeague): Promise<SportSn
       });
     }
 
-    const rows = await readPropOddsForGame(game.gameId);
+    const rows = await readPreGamePropOddsForGame(game.gameId, game.gameDate);
     if (rows.length === 0) continue;
 
     const rowsBySubjectMarket = new Map<string, PropOddsRow[]>();
@@ -464,7 +461,7 @@ export async function buildSoccerSnapshot(league: SoccerLeague): Promise<SportSn
       const opponentAbbr = teamAbbr ? (isHome ? game.awayAbbr : game.homeAbbr) : undefined;
       const opponentName = teamAbbr ? (isHome ? game.awayTeamName : game.homeTeamName) : undefined;
 
-      const best = bestRow(marketRows, 'over') ?? bestRow(marketRows, 'yes') ?? marketRows[0];
+      const priced = candidateLine(marketRows, game.gameDate, meta.kind);
       // Binary markets deliberately get `line: undefined` here, matching
       // Propline's real `line: null` rows — the UI's own `active.line ?? 0.5`
       // fallback (PlayerDetail.tsx, NFL's adapter's identical pattern) still
@@ -472,7 +469,7 @@ export async function buildSoccerSnapshot(league: SoccerLeague): Promise<SportSn
       // `rowsFor()` filter does an exact `row.line === line` match against
       // the *real* prop_odds rows — inventing 0.5 here made every real book
       // row fail that match and the board render permanently empty.
-      const line = meta.kind === 'binary' ? undefined : (best.line ?? undefined);
+      const line = priced.line;
       const category = meta.kind === 'binary' ? 'yes' : 'over';
       const categoryLabel = meta.kind === 'binary' ? 'Yes' : 'Over';
 
@@ -496,11 +493,12 @@ export async function buildSoccerSnapshot(league: SoccerLeague): Promise<SportSn
         category,
         categoryLabel,
         line,
+        lineStatus: priced.lineStatus,
         history: [],
         consistent: false,
         sampleSize: 0,
         liveState: liveStateFor(game.gameDate),
-        odds: { americanOdds: String(best.americanOdds), source: 'odds-api', capturedAt: best.fetchedAt },
+        odds: priced.odds,
       });
 
       if (!subjectsMap.has(subjectId)) {

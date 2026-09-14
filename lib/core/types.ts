@@ -224,6 +224,13 @@ export interface PickCandidate {
    * produce numbers that mean nothing.
    */
   line?: number;
+  /**
+   * `alternates-only`: books quoted this market only one-sided, so no line is
+   * the main one (R2, `lib/odds/props/mainLine.ts`). `line` is then the
+   * adapter's no-market fallback (history average; NFL's default line), and
+   * the page must say so rather than present it as a book's line.
+   */
+  lineStatus?: 'alternates-only';
 
   history: HistoryEntry[];
   /** True when every history entry falls in `category`. */

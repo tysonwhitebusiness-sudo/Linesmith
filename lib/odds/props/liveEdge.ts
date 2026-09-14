@@ -14,6 +14,7 @@ import type { PropOddsRow } from '../../db/client';
 import { americanToDecimal } from '../display';
 import { devigTwoWay } from '../devig';
 import { candidateCategoryToSide, candidateDimensionToMarketKey } from './entityResolution';
+import { isPickemBook } from './mainLine';
 
 export type { PropOddsRow };
 
@@ -22,9 +23,13 @@ export function rowsFor(rows: PropOddsRow[], subjectId: string, marketKey: strin
   return rows.filter((r) => r.subjectId === subjectId && r.marketKey === marketKey && r.line === line);
 }
 
-/** Best (highest payout) American price for a side, and whether it's the user's own book. */
+/**
+ * Best (highest payout) American price for a side. Pick'em books never count as
+ * a price (R2, `mainLine.ts`): their fixed +100-style payout would otherwise win
+ * this comparison on almost every market.
+ */
 export function bestPrice(rows: PropOddsRow[], side: string): PropOddsRow | null {
-  const sided = rows.filter((r) => r.side === side);
+  const sided = rows.filter((r) => r.side === side && !isPickemBook(r.bookmaker));
   if (sided.length === 0) return null;
   return sided.reduce((best, r) => (r.americanOdds > best.americanOdds ? r : best));
 }
