@@ -15,7 +15,7 @@ to me.
 2. **Build plan: APPROVED, Phase 0 done, then ON HOLD.**
    `docs/audit-2026-09-13/build-plan.md`. The "before" baseline is in
    `before/README.md`.
-3. **Design audit: APPROVED, Phase E IN PROGRESS.**
+3. **Design audit: APPROVED. Phase E COMPLETE (2026-09-14 00:30Z); Phase F next, awaiting operator go.**
    `docs/audit-2026-09-13/design-audit-plan.md`. Every single card on every
    player/team/game page, every sport, judged by two questions: **does this make
    sense at all for this sport, and does this help at all?** Phases:

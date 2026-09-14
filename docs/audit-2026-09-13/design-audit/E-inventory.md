@@ -1,8 +1,13 @@
 # Phase E — Render inventory
 
-**Status: IN PROGRESS 2026-09-13.** Captures from the local dev server, not
-signed in. This phase records **what renders**. It gives no verdicts; those are
-Phase F.
+**Status: COMPLETE 2026-09-14 00:30Z** for everything the calendar allows;
+deferred states are listed under Coverage. Captures from the local dev server,
+not signed in. This phase records **what renders**. It gives no verdicts;
+those are Phase F.
+
+**Totals:** 42 desktop captures, **544 cards**, 96 distinct cards across the
+three surfaces (33 player, 32 team, 31 game), plus 5 phone-width captures and
+3 dark-mode checks.
 
 - **Matrix:** `E-matrix.md`, every card × every capture, generated from the raw
   data.
@@ -22,7 +27,7 @@ The calendar decides which states can be captured. Audit day is **Sunday
 | sport | player pages | team page | game pages | deferred, and why |
 |---|---|---|---|---|
 | MLB | hitter **live** · SP **live** | **live** day | **live** · final | pre-game: no unstarted games tonight |
-| NFL | QB · WR · RB (game just ended) · QB/WR **pre** (SNF) | ✓ | late/live · pre · final | live player pages: SNF, below |
+| NFL | QB · WR · RB (game just ended) · QB/WR **pre** · QB/WR/RB **live** (SNF) | ✓ | late · pre · final · **live: "Game not found"** (fact 18) | — |
 | CFB | QB · WR (both blank) | ✓ | final | live: next Saturday |
 | Soccer EPL | FW · DEF · GK (blank) | ✓ | final · pre | live: next matchday |
 | MLS (spot) | FW | — | pre | — |
@@ -101,6 +106,19 @@ surfaces.
 17. **No EPL goalkeeper markets exist** in today's data (dimensions: anytime
     goalscorer, assists, first goalscorer, shots, 2+ goals). Combined with fact
     1, a goalkeeper's page is empty.
+
+### Live state (Sunday night NFL, DAL @ NYG, kicked off 00:20Z)
+
+18. **The live game's page rendered only "Game not found."** Captured at
+    00:27Z, seven minutes into the game. `/api/nfl/game/401872930` returned
+    404, and the NFL games strip no longer listed the game (it showed the
+    following week). Cause and scope are recorded in `build-plan.md` item 1d:
+    after midnight UTC the scoreboard range skips the game's US Eastern date,
+    so **every primetime NFL game vanishes while it's being played.**
+19. **Live NFL player pages look the same as pre-game.** Jaxson Dart, Malik
+    Nabers and Cam Skattebo captured live render the same 17–18 cards as before
+    kickoff: no score, no in-game stat line, no "live" card (MLB's player pages
+    carry "LIVE TODAY"). Card audit C4 recorded this in code; now observed.
 
 ### Capture method notes
 

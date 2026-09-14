@@ -113,6 +113,16 @@ strings listed above. Comments stay as they are.
   NFL game route a real back-window. `fetchTennisMatchDetail` already uses 21
   days back. The strip no longer shows the original id, so verify against it
   directly.
+- **Worse than recorded — observed live 2026-09-14 00:27Z:** the Sunday night
+  game DAL @ NYG (`401872930`), **in progress**, rendered "Game not found."
+  (`/api/nfl/game/401872930` → 404) and had dropped out of the NFL games strip,
+  which listed only the following week. Once UTC passes midnight
+  (8pm Eastern), the scoreboard range starts on the new UTC date, while ESPN
+  files the game under its US Eastern date. **Every primetime game (SNF, MNF,
+  TNF) disappears while it is being played.** A back-window alone fixes the
+  route; the strip needs the same check. Any sport using `fetchScoreboard` for
+  evening US games (CFB Saturday nights, NBA, NHL) should be checked for the
+  same failure.
 - Check whether the CFB game route has the same shape; fix the same way if so.
 - Verify: `/api/nfl/game/401872657` resolves, or the strip no longer lists it.
 
