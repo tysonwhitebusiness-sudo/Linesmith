@@ -15,7 +15,7 @@
     const seasons = Object.keys(sc.seasons).sort();
     let season = seasons[seasons.length - 1];
     const host = h('div', { class: 'stack' });
-    const draw = () => host.replaceChildren(h('div', { class: 'row' }, h('span', { class: 't-label' }, 'Statcast season'), segmented(seasons.map((x) => ({ value: x, label: x })), season, (v) => { season = v; draw(); }), h('span', { class: 't-label' }, sc.source)), ...render(sc.seasons[season], season, sc));
+    const draw = () => put(host, h('div', { class: 'row' }, h('span', { class: 't-label' }, 'Statcast season'), segmented(seasons.map((x) => ({ value: x, label: x })), season, (v) => { season = v; draw(); }), h('span', { class: 't-label' }, sc.source)), ...render(sc.seasons[season], season, sc));
     draw();
     return host;
   }

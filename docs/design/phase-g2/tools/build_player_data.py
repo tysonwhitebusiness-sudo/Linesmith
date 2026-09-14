@@ -46,6 +46,19 @@ SUBJECTS = {
     "soccer-donnarumma": dict(sport="soccer_epl", kind="goalkeeper", id="217092", name="Gianluigi Donnarumma"),
     "tennis-zverev": dict(sport="tennis_atp", kind="player", id="2375", name="Alexander Zverev"),
     "golf-scheffler": dict(sport="golf", kind="golfer", id="9478", name="Scottie Scheffler"),
+    # Compare peers: same position, lighter build (no corpus or Understat extras).
+    "mlb-judge": dict(sport="mlb", kind="hitter", id="592450", name="Aaron Judge", peer=True),
+    "mlb-skenes": dict(sport="mlb", kind="pitcher", id="694973", name="Paul Skenes", peer=True),
+    "nfl-chase": dict(sport="nfl", kind="receiver", id="4362628", name="Ja'Marr Chase", peer=True),
+    "nfl-allen": dict(sport="nfl", kind="quarterback", id="3918298", name="Josh Allen", peer=True),
+    "cfb-manning": dict(sport="cfb", kind="quarterback", id="4870906", name="Arch Manning", peer=True),
+    "nba-sga": dict(sport="nba", kind="guard", id="4278073", name="Shai Gilgeous-Alexander", peer=True),
+    "nba-wembanyama": dict(sport="nba", kind="big", id="5104157", name="Victor Wembanyama", peer=True),
+    "nhl-mackinnon": dict(sport="nhl", kind="skater", id="8477492", name="Nathan MacKinnon", peer=True),
+    "nhl-vasilevskiy": dict(sport="nhl", kind="goalie", id="8476883", name="Andrei Vasilevskiy", peer=True),
+    "soccer-cunha": dict(sport="soccer_epl", kind="forward", id="259902", name="Matheus Cunha", peer=True),
+    "soccer-lammens": dict(sport="soccer_epl", kind="goalkeeper", id="301425", name="Senne Lammens", peer=True),
+    "tennis-alcaraz": dict(sport="tennis_atp", kind="player", id="3782", name="Carlos Alcaraz", peer=True),
 }
 
 # Market definitions per subject kind: (market key used by props, label, stat key or function of stats).
@@ -105,10 +118,11 @@ def stat_value(stats, spec):
 
 
 async def teams_map(sport):
-    path = {"soccer_epl": "soccer/epl", "soccer_mls": "soccer/mls"}.get(sport, sport)
+    """Team directory straight from the league APIs (no local app server)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import g2lib
     try:
-        j = get_json(f"{APP}/api/{path}/teams", timeout=150)
-        return {str(t["teamId"]): {"abbr": t.get("abbreviation"), "name": t.get("name"), "logo": t.get("logoUrl")} for t in j.get("teams", [])}
+        return g2lib.teams_map({"soccer_epl": "soccer_epl"}.get(sport, sport))
     except Exception as e:
         print("  teams map failed", sport, e)
         return {}
@@ -179,7 +193,10 @@ async def prop_lines(c, subject_ids):
             imps = [implied(r["american_odds"]) for r in at if (r["side"] or "").lower() == "over" and r["american_odds"] and r["bookmaker"] not in PICKEM]
             return (len(overs & unders), -abs(statistics.mean(imps) - 0.5) if imps else -1, len(overs | unders))
         line = max(lines, key=score)
-        if score(line)[0] == 0:
+        yes_books = {r["bookmaker"] for r in rs if r["line"] == 0.5 and (r["side"] or "").lower() == "over" and r["bookmaker"] not in PICKEM}
+        if score(line)[0] == 0 and len(yes_books) >= 2:
+            line = 0.5  # a yes/no market (anytime scorer, to homer): one-sided by nature
+        elif score(line)[0] == 0:
             # Nothing quoted on both sides: what was stored is an alternate ladder, not the market's line.
             best[mk] = {"altOnly": True, "capturedAt": max(r["fetched_at"] for r in rs).isoformat(), "gameId": latest["game_id"]}
             continue
@@ -400,7 +417,8 @@ async def run_subject(c, slug, cfg):
     doc["markets"] = markets_block(kind, games, lines, cands)
     doc["sources"].append(f"prop_odds ({len(lines)} priced markets) + app snapshot candidates ({len(cands)})")
 
-    if sport == "mlb":
+    doc["peer"] = bool(cfg.get("peer"))
+    if sport == "mlb" and not cfg.get("peer"):
         doc["statcast"] = mlb_extras(kind, pid)
         doc["sources"].append(doc["statcast"]["source"])
         doc["status"]["hitDistance"] = "dropped at ingest (hit_distance_sc)"

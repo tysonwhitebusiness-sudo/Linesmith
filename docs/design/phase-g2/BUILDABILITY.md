@@ -110,3 +110,50 @@ more of what is already in hand**:
 4. Correct NBA shot coordinates at read time (or at ingest), and extend NBA/NHL shot ingest to
    2025-26.
 5. One new endpoint on an existing host each: MLB win probability, NHL player landing.
+
+---
+
+## Added 2026-09-14: game states and the compare control
+
+Same legend. These cards were built on the same stored data; the table says what the app would need.
+
+### Game page — before start (as of kickoff)
+
+| card | data | status |
+|---|---|---|
+| Header: start time, venue, weather, records entering, closing line chips | ESPN summary / MLB feed, `game_result` | Read |
+| Strength vs strength (one side's production against what the other allows, league ranks) | `player_game_history` rolled up for and by opponent, cut at kickoff | Read for the rollup (`/api/season-ranks` has `side=allowed`); **In hand**: a date cutoff so it's "as of kickoff" |
+| Form coming in, head-to-head | `game_result` (de-duplicated) | Read |
+| Player props with each player's last 10 and history vs this opponent | `prop_odds` (main-line rule) + `player_game_history` | Read, plus the main-line rule |
+| Players to watch (NBA, NHL, soccer): season and vs-opponent averages | `player_game_history` | Read |
+| Injuries | ESPN summary `injuries` (NFL also calls the ESPN injuries endpoint) | Read for NFL; **In hand** elsewhere. The summary carries the current report, not a snapshot from before kickoff |
+| NFL passing matchup: where each offense throws vs where the other defense is thrown at | `nfl_target_events` (defense derived from the game id) | Read for offense; **In hand** for the defense view |
+| NBA shot zones: one team's shots vs zones the other allows | `nba_shot_events` by game (2024-25 only) | Read, with the coordinate correction |
+| MLB starters: season line, last starts, pitch mix; lineup vs the starter's hand and head-to-head | `player_game_history` + Statcast corpus before the game | **In hand (corpus)**: Python rollup |
+| NHL goalie form | `player_game_history` | Read |
+| Soccer lineups | ESPN summary `rosters` | **In hand** |
+| Tennis serve vs return, form before this round | TennisMyLife | **In hand** (only aces parsed) |
+
+### Game page — live (the real game cut at a moment)
+
+| card | data | status |
+|---|---|---|
+| Score, linescore, win probability, drive chart, shot maps, spray chart up to the moment | the same feeds as the final page | as the final page (mostly **In hand** parsers) |
+| Props tracker: stat so far against the line | MLB plate appearances, soccer commentary; NFL/CFB play text in the mockup | The live app would read the live box score it already refreshes (`footballLiveGame.ts`, `nba/liveGame.ts`, `nhl/liveGame.ts` read `boxscore`): **Read** |
+| In-game odds up to the moment | `game_odds_history` rows after the start | Read (the rows exist; today they're mixed into pre-game history) |
+
+### Player and team pages — compare control
+
+| card | data | status |
+|---|---|---|
+| Player vs a team: games against them, averages vs season | `player_game_history` | Read |
+| What the team gives up to the player's position (per game, league rank) | `player_game_history` by opponent + positions (nflverse for NFL, ESPN rosters for NBA/soccer) | Read for team-level allowed; **In hand**: position grouping |
+| NFL: defense thrown-at map to receivers vs the player's targets | `nfl_target_events` + nflverse positions | **In hand** |
+| NBA: player's zones vs zones allowed to the position | `nba_shot_events` + roster positions | **In hand** (2024-25 only) |
+| MLB: opponent staff vs right/left-handed hitters, lineup vs right/left-handed pitchers | Statcast corpus by team | **In hand (corpus)** |
+| Player vs a same-position player: season side by side, trend overlay | `player_game_history` | Read |
+| Tennis vs another player: season serve/return profiles, head-to-head | TennisMyLife | **In hand** (fields) / Read (head-to-head) |
+| Golf vs the field, round by round | `golf_round_scores`, `golf_tournaments`, ESPN athlete names | Read |
+| Team vs team: strength vs strength, head-to-head, form, key players | `player_game_history` rollups, `game_result` | Read |
+
+Nothing in either addition needs a source the app doesn't already call.

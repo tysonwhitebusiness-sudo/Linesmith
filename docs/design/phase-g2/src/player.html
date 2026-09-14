@@ -3,6 +3,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!--SYSTEM-->
 <!--DATA:ALL-->
+<!--DATA:PREFIX:matchup-->
 <style>
   .switch-bar { background: var(--card); border-bottom: 1px solid var(--line); }
   .switch-bar .inner { max-width: 1280px; margin: 0 auto; padding: 10px var(--s5); display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; }
@@ -25,14 +26,15 @@ let sport = params.get('sport') || store('g2-player-sport') || 'mlb';
 if (!SPORTS[sport]) sport = 'mlb';
 let subject = params.get('subject') || store(`g2-player-subject-${sport}`) || SPORTS[sport].subjects[0].slug;
 let observer = null;
+const cmpState = { vs: params.get('vs') ?? undefined, peer: params.get('peer') || '' };
 
 document.getElementById('bar').append(boardBar('Phase G2 · Player page', 'Real data · switch sport and player below'));
 
 function renderSwitch() {
   const subjects = SPORTS[sport].subjects;
   if (!subjects.some((x) => x.slug === subject)) subject = subjects[0].slug;
-  const sportBtns = h('div', { class: 'sport-tabs', role: 'group', 'aria-label': 'Sport' }, ...Object.entries(SPORTS).map(([key, def]) => h('button', { type: 'button', 'aria-pressed': String(key === sport), onclick: () => { sport = key; store('g2-player-sport', key); subject = store(`g2-player-subject-${key}`) || SPORTS[key].subjects[0].slug; renderAll(); } }, def.label)));
-  const subjSeg = subjects.length > 1 ? segmented(subjects.map((x) => ({ value: x.slug, label: x.label })), subject, (v) => { subject = v; store(`g2-player-subject-${sport}`, v); renderAll(); }) : h('span', { class: 'chip' }, subjects[0].label);
+  const sportBtns = h('div', { class: 'sport-tabs', role: 'group', 'aria-label': 'Sport' }, ...Object.entries(SPORTS).map(([key, def]) => h('button', { type: 'button', 'aria-pressed': String(key === sport), onclick: () => { sport = key; cmpState.vs = undefined; cmpState.peer = ''; store('g2-player-sport', key); subject = store(`g2-player-subject-${key}`) || SPORTS[key].subjects[0].slug; renderAll(); } }, def.label)));
+  const subjSeg = subjects.length > 1 ? segmented(subjects.map((x) => ({ value: x.slug, label: x.label })), subject, (v) => { cmpState.vs = undefined; cmpState.peer = ''; subject = v; store(`g2-player-subject-${sport}`, v); renderAll(); }) : h('span', { class: 'chip' }, subjects[0].label);
   document.getElementById('switch').replaceChildren(h('div', { class: 'switch-bar' }, h('div', { class: 'inner' }, h('span', { class: 't-over' }, 'Sport'), sportBtns, h('span', { style: { flex: 1 } }), h('span', { class: 't-over' }, 'Player'), subjSeg)));
 }
 
@@ -43,11 +45,13 @@ function renderPage() {
   if (!raw) { app.replaceChildren(h('div', { class: 'state' }, `No dataset for ${subject}`)); return; }
   const doc = def.spec.transform ? def.spec.transform(raw) : raw;
   const spec = { ...def.spec, transform: null };
-  const sections = buildPlayerPage(doc, spec, { sport, subject });
+  const cmp = CMP.playerCompare(doc, spec, subject, cmpState, () => renderAll(false));
+  const base = buildPlayerPage(doc, spec, { sport, subject });
+  const sections = [base[0], ...cmp.sections, ...base.slice(1)];
   let active = sections[0].id;
   const navTabs = tabs(sections.map((x) => ({ value: x.id, label: x.label })), active, (v) => { document.getElementById(`sec-${v}`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }); });
   const nav = h('div', { class: 'secnav sticky', style: { marginTop: 'var(--s4)' } }, navTabs);
-  app.replaceChildren(playerHero(doc, spec), nav, ...sections.map((x) => x.node));
+  put(app, playerHero(doc, spec), cmp.bar, nav, ...sections.map((x) => x.node));
   const barH = document.getElementById('bar').offsetHeight;
   nav.style.top = `${barH}px`;
   document.querySelectorAll('.psec').forEach((el) => { el.style.scrollMarginTop = `${barH + nav.offsetHeight + 12}px`; });
@@ -63,10 +67,12 @@ function renderPage() {
   document.title = `Player Page — ${doc.bio?.name || subject} (${SPORTS[sport].label})`;
 }
 
-function renderAll() {
+function renderAll(top = true) {
   const u = new URL(location.href); u.searchParams.set('sport', sport); u.searchParams.set('subject', subject);
+  if (cmpState.vs !== undefined) u.searchParams.set('vs', cmpState.vs); else u.searchParams.delete('vs');
+  if (cmpState.peer) u.searchParams.set('peer', cmpState.peer); else u.searchParams.delete('peer');
   try { history.replaceState(null, '', u); } catch {}
-  renderSwitch(); renderPage(); window.scrollTo({ top: 0 });
+  const y = window.scrollY; renderSwitch(); renderPage(); window.scrollTo({ top: top ? 0 : y });
 }
 renderAll();
 </script>

@@ -117,7 +117,7 @@ function espnBoxCard(doc, { groupLabels = {}, hideGroups = [] } = {}) {
 }
 
 /* Lines: ESPN open/close, plus stored snapshots from game_odds_history (pre-game only). */
-function linesCard(doc, { threeWay = false } = {}) {
+function linesCard(doc, { threeWay = false, results = true } = {}) {
   const L = doc.lines; const [a, hm] = doc.header.teams;
   const parts = [];
   if (L) {
@@ -127,7 +127,7 @@ function linesCard(doc, { threeWay = false } = {}) {
       L.totalLine?.over?.close?.line != null ? { m: 'Total', open: `${L.totalLine.over.open?.line ?? '—'} (${L.totalLine.over.open?.odds ?? '—'})`, close: `${L.totalLine.over.close.line} (${L.totalLine.over.close.odds ?? '—'})` } : null,
     ].filter(Boolean);
     parts.push(dataTable([{ key: 'm', label: 'Market' }, { key: 'open', label: 'Open' }, { key: 'close', label: 'Close' }], rows, { sortKey: null }));
-    parts.push(h('div', { class: 'result-chips', style: { justifyContent: 'flex-start' } }, ...lineResultChips(doc)));
+    if (results) parts.push(h('div', { class: 'result-chips', style: { justifyContent: 'flex-start' } }, ...lineResultChips(doc)));
   }
   const O = doc.odds; let movement = null;
   if (!L && O && O.rows.length) {
@@ -149,7 +149,7 @@ function linesCard(doc, { threeWay = false } = {}) {
       const chips = [];
       if (rl != null) { const m = hm.score - a.score + rl; chips.push(h('span', { class: 'chip' }, m === 0 ? 'Run line push' : `${m > 0 ? hm.abbr : a.abbr} covered the run line (${hm.abbr} ${rl > 0 ? '+' : ''}${rl})`)); }
       if (tot != null) { const sum = a.score + hm.score; chips.push(h('span', { class: 'chip' }, sum === tot ? `Total push ${tot}` : `${sum > tot ? 'Over' : 'Under'} ${tot} (${sum})`)); }
-      parts.push(h('div', { class: 'result-chips', style: { justifyContent: 'flex-start' } }, ...chips));
+      if (results) parts.push(h('div', { class: 'result-chips', style: { justifyContent: 'flex-start' } }, ...chips));
     }
   }
   if (O && O.rows.length) {

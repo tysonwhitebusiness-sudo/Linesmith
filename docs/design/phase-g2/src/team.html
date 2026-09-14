@@ -3,6 +3,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!--SYSTEM-->
 <!--DATA:ALL-->
+<!--DATA:PREFIX:matchup-->
 <style>
   .switch-bar { background: var(--card); border-bottom: 1px solid var(--line); }
   .switch-bar .inner { max-width: 1280px; margin: 0 auto; padding: 10px var(--s5); display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; }
@@ -24,10 +25,12 @@ const store = (k, v) => { try { if (v === undefined) return localStorage.getItem
 let sport = params.get('sport') || store('g2-team-sport') || 'nfl';
 if (!TEAM_SPORTS[sport]) sport = 'nfl';
 let season = null, observer = null;
+const cmpState = { vs: params.get('vs') ?? undefined };
+const DB_TEAM = { mlb: '118', nhl: '10' };
 document.getElementById('bar').append(boardBar('Phase G2 · Team page', 'Real data · switch sport below'));
 
 function renderSwitch(doc) {
-  const btns = h('div', { class: 'sport-tabs', role: 'group', 'aria-label': 'Sport' }, ...Object.entries(TEAM_SPORTS).map(([key, def]) => h('button', { type: 'button', 'aria-pressed': String(key === sport), onclick: () => { sport = key; season = null; store('g2-team-sport', key); renderAll(); } }, def.label)));
+  const btns = h('div', { class: 'sport-tabs', role: 'group', 'aria-label': 'Sport' }, ...Object.entries(TEAM_SPORTS).map(([key, def]) => h('button', { type: 'button', 'aria-pressed': String(key === sport), onclick: () => { sport = key; season = null; cmpState.vs = undefined; store('g2-team-sport', key); renderAll(); } }, def.label)));
   put(document.getElementById('switch'), h('div', { class: 'switch-bar' }, h('div', { class: 'inner' }, h('span', { class: 't-over' }, 'Sport'), btns, h('span', { style: { flex: 1 } }), h('span', { class: 't-over' }, 'Team'), h('span', { class: 'chip' }, doc?.team?.name || TEAM_SPORTS[sport].label))));
 }
 
@@ -48,10 +51,13 @@ function renderPage() {
     h('span', { class: 't-over' }, 'Season'),
     segmented(seasons.map((s) => ({ value: s, label: `${spec.seasonName(s)}${s === cur ? ` (${played} played)` : ''}` })), season, (v) => { season = Number(v); renderPage(); }),
     h('span', { class: 't-label' }, early ? `${spec.seasonName(cur)} has ${played} ${played === 1 ? 'game' : 'games'}, so the page opens on ${spec.seasonName(prev)}. Every card below follows this switch.` : 'Every card below follows this switch.'));
-  const { hero, sections } = buildTeamPage(doc, spec, season);
+  const built = buildTeamPage(doc, spec, season);
+  const cmp = CMP.teamCompare(doc, spec, season, cmpState, () => renderAll(false), DB_TEAM[sport] || doc.team.id, sport);
+  const hero = built.hero;
+  const sections = [...cmp.sections, ...built.sections];
   const navTabs = tabs(sections.map((x) => ({ value: x.id, label: x.label })), sections[0].id, (v) => document.getElementById(`sec-${v}`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
   const nav = h('div', { class: 'secnav sticky', style: { marginTop: 'var(--s4)' } }, navTabs);
-  put(app, hero, scope, nav, ...sections.map((x) => x.node));
+  put(app, hero, scope, cmp.bar, nav, ...sections.map((x) => x.node));
   const barH = document.getElementById('bar').offsetHeight;
   nav.style.top = `${barH}px`;
   document.querySelectorAll('.psec').forEach((el) => { el.style.scrollMarginTop = `${barH + nav.offsetHeight + 12}px`; });
@@ -65,10 +71,11 @@ function renderPage() {
   document.title = `Team Page — ${doc.team.name}`;
 }
 
-function renderAll() {
+function renderAll(top = true) {
   const u = new URL(location.href); u.searchParams.set('sport', sport);
+  if (cmpState.vs !== undefined) u.searchParams.set('vs', cmpState.vs); else u.searchParams.delete('vs');
   try { history.replaceState(null, '', u); } catch {}
-  renderPage(); window.scrollTo({ top: 0 });
+  const y = window.scrollY; renderPage(); window.scrollTo({ top: top ? 0 : y });
 }
 renderAll();
 </script>

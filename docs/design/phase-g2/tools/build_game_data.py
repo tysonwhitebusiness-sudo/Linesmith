@@ -21,6 +21,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "python-odds-service", "src"))
 os.chdir(os.path.join(ROOT, "python-odds-service"))
 from config import DATABASE_URL  # noqa: E402
@@ -115,7 +116,7 @@ def football(cfg, d, doc):
             plays.append(dict(id=p["id"], drive=dr["id"], team=(st.get("team") or {}).get("id") or dr["team"]["id"], period=(p.get("period") or {}).get("number"),
                               clock=(p.get("clock") or {}).get("displayValue"), type=(p.get("type") or {}).get("text"), text=p.get("text"), yds=p.get("statYardage"),
                               start=st.get("yardsToEndzone"), end=en.get("yardsToEndzone"), down=st.get("down"), dist=st.get("distance"), downText=st.get("shortDownDistanceText"),
-                              spot=st.get("possessionText"), score=p.get("scoringPlay"), turnover=p.get("isTurnover"), penalty=p.get("isPenalty"), away=p.get("awayScore"), home=p.get("homeScore")))
+                              spot=st.get("possessionText"), wall=p.get("wallclock"), score=p.get("scoringPlay"), turnover=p.get("isTurnover"), penalty=p.get("isPenalty"), away=p.get("awayScore"), home=p.get("homeScore")))
     doc.update(plays=plays, drives=drives, wp=espn_wp(d))
     doc["status"]["epa"] = "not in ESPN summary (nflverse play-by-play carries it; dropped at ingest)" if cfg["sport"] == "nfl" else "not held (CFBD publishes PPA; not ingested)"
 
@@ -126,7 +127,7 @@ def nba(cfg, d, doc):
         c = p.get("coordinate") or {}
         x, y = c.get("x"), c.get("y")
         plays.append(dict(id=p["id"], period=(p.get("period") or {}).get("number"), clock=(p.get("clock") or {}).get("displayValue"), type=(p.get("type") or {}).get("text"),
-                          text=p.get("text"), team=(p.get("team") or {}).get("id"), away=p.get("awayScore"), home=p.get("homeScore"), score=p.get("scoringPlay"), pts=p.get("scoreValue"),
+                          text=p.get("text"), wall=p.get("wallclock"), team=(p.get("team") or {}).get("id"), away=p.get("awayScore"), home=p.get("homeScore"), score=p.get("scoringPlay"), pts=p.get("scoreValue"),
                           shot=p.get("shootingPlay"), att=p.get("pointsAttempted"), x=x if (x is not None and -10 < x < 60) else None, y=y if (y is not None and -10 < y < 100) else None,
                           who=((p.get("participants") or [{}])[0].get("athlete") or {}).get("id")))
     doc.update(plays=plays, wp=espn_wp(d))
@@ -141,7 +142,7 @@ def soccer(cfg, d, doc):
                            x=p.get("fieldPositionX"), y=p.get("fieldPositionY"), x2=p.get("fieldPosition2X"), y2=p.get("fieldPosition2Y"),
                            who=[(q.get("athlete") or {}).get("displayName") for q in p.get("participants") or []]))
     key = [dict(minute=(k.get("clock") or {}).get("displayValue"), sec=(k.get("clock") or {}).get("value"), type=(k.get("type") or {}).get("text"), team=(k.get("team") or {}).get("id"),
-                text=k.get("text"), short=k.get("shortText"), score=k.get("scoringPlay"), x=k.get("fieldPositionX"), y=k.get("fieldPositionY"),
+                text=k.get("text"), short=k.get("shortText"), wall=k.get("wallclock"), score=k.get("scoringPlay"), x=k.get("fieldPositionX"), y=k.get("fieldPositionY"),
                 who=[(q.get("athlete") or {}).get("displayName") for q in k.get("participants") or []]) for k in d.get("keyEvents", [])]
     rosters = []
     for r in d.get("rosters", []):
@@ -207,7 +208,7 @@ def mlb(cfg, doc):
                 h = e["hitData"]
                 hit = dict(ev=h.get("launchSpeed"), la=h.get("launchAngle"), dist=h.get("totalDistance"), traj=h.get("trajectory"), x=(h.get("coordinates") or {}).get("coordX"), y=(h.get("coordinates") or {}).get("coordY"))
         a, r, m = p["about"], p["result"], p["matchup"]
-        abs_.append(dict(i=a["atBatIndex"], inning=a["inning"], half=a["halfInning"], batter=m["batter"]["fullName"], batterId=m["batter"]["id"], bats=m["batSide"]["code"], pitcher=m["pitcher"]["fullName"],
+        abs_.append(dict(i=a["atBatIndex"], t=a.get("startTime"), inning=a["inning"], half=a["halfInning"], batter=m["batter"]["fullName"], batterId=m["batter"]["id"], bats=m["batSide"]["code"], pitcher=m["pitcher"]["fullName"],
                          pitcherId=m["pitcher"]["id"], throws=m["pitchHand"]["code"], event=r.get("event"), eventType=r.get("eventType"), desc=r.get("description"), rbi=r.get("rbi"), away=r.get("awayScore"),
                          home=r.get("homeScore"), scoring=a.get("isScoringPlay"), outs=(p.get("count") or {}).get("outs"), pitches=pitches, hit=hit))
     doc["atBats"] = abs_
@@ -293,12 +294,16 @@ async def odds(c, doc, event_ids, start_iso):
         cands = set(g["lines"])
         even = lambda ln: abs(statistics.mean(imp[ln]) - 0.5) if imp[ln] else 1  # noqa: E731
         line = max(cands, key=lambda ln: (len(over_books[ln] & under_books[ln]), -even(ln), len(over_books[ln] | under_books[ln])))
+        one_sided = False
         if not (over_books[line] & under_books[line]):
-            alt_only += 1  # only one-sided / alternate quotes stored: not a market line
-            continue
+            if 0.5 in cands and len(over_books[0.5]) >= 2:
+                line, one_sided = 0.5, True  # a yes/no market (anytime scorer, to homer): one-sided by nature
+            else:
+                alt_only += 1  # only one-sided / alternate quotes stored: not a market line
+                continue
         best = lambda arr: max((x for x in arr if x[2] == line), default=None, key=lambda x: x[0])  # noqa: E731
         bo, bu = best(g["over"]), best(g["under"])
-        prop_rows.append(dict(id=sid, name=g["name"], market=mk, line=line, books=len({x[1] for x in g["over"] + g["under"]}), over=bo and dict(price=bo[0], book=bo[1]), under=bu and dict(price=bu[0], book=bu[1])))
+        prop_rows.append(dict(id=sid, name=g["name"], market=mk, line=line, books=len({x[1] for x in g["over"] + g["under"]}), over=bo and dict(price=bo[0], book=bo[1]), under=bu and dict(price=bu[0], book=bu[1]), yesNo=one_sided))
     doc["odds"] = dict(fields=["market", "side", "book", "odds", "point", "t", "afterStart"], rows=rows, start=start_iso)
     doc["props"] = prop_rows
     doc["propsAltOnly"] = alt_only
@@ -318,6 +323,7 @@ async def build(slug, cfg, c):
         doc["header"] = espn_header(d)
         doc["teamStats"] = espn_team_stats(d, doc["header"]["teams"])
         doc["box"] = espn_box(d)
+        doc["injuries"] = [dict(team=(t.get("team") or {}).get("id"), items=[dict(name=((i.get("athlete") or {}).get("displayName")), pos=(((i.get("athlete") or {}).get("position") or {}).get("abbreviation")), status=i.get("status"), type=((i.get("type") or {}).get("description") or (i.get("details") or {}).get("type")), detail=((i.get("details") or {}).get("detail") or (i.get("details") or {}).get("returnDate")), date=i.get("date")) for i in t.get("injuries", [])]) for t in d.get("injuries", [])]
         doc["lines"] = espn_lines(d)
         doc["leaders"] = [dict(team=l["team"]["id"], cats=[dict(name=x.get("displayName"), leaders=[dict(id=(y.get("athlete") or {}).get("id"), name=(y.get("athlete") or {}).get("displayName"), headshot=((y.get("athlete") or {}).get("headshot") or {}).get("href"), value=y.get("displayValue")) for y in x.get("leaders", [])[:1]]) for x in l.get("leaders", [])]) for l in d.get("leaders", [])]
         series = (d.get("seasonseries") or [None])[0]
@@ -329,6 +335,10 @@ async def build(slug, cfg, c):
         event_ids = [cfg["event"]]
     if event_ids:
         await odds(c, doc, event_ids, doc["header"].get("date"))
+    if cfg["sport"] != "tennis":
+        from pregame import pregame
+        doc["pregame"] = await pregame(c, cfg, doc)
+        doc["sources"].append("Pre-game snapshot as of kickoff: game_result (form, head-to-head), player_game_history before the start (team strength and ranks, player history), ESPN injuries" + (", Statcast corpus before the start (starters, lineup vs pitcher)" if cfg["sport"] == "mlb" else ""))
     path = os.path.join(OUT, f"game-{slug}.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(doc, f, separators=(",", ":"))

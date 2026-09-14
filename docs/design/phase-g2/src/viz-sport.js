@@ -6,7 +6,7 @@ const PITCH_NAMES = { FF: 'Four-seam', SI: 'Sinker', FC: 'Cutter', SL: 'Slider',
 function svgHost(draw) {
   const host = h('div', { class: 'chart-host' });
   let last = 0;
-  new ResizeObserver((en) => { const w = Math.round(en[0].contentRect.width); if (Math.abs(w - last) < 8) return; last = w; host.replaceChildren(draw(Math.max(260, w))); }).observe(host);
+  new ResizeObserver((en) => { const w = Math.round(en[0].contentRect.width); if (Math.abs(w - last) < 8) return; last = w; put(host, draw(Math.max(260, w))); }).observe(host);
   return host;
 }
 function hoverable(el, tip, onClick) {
@@ -48,7 +48,7 @@ function mlbZoneMap(zones, { perspective = 'hitter' } = {}) {
       svg.append(hoverable(g, () => [tipRow(fmtZ(v), metrics.find((m) => m.value === metric).label), tipText(`Zone ${z} · ${zones[z]?.n ?? 0} pitches · swing ${zones[z]?.swing ?? '—'}% · whiff ${zones[z]?.whiff ?? '—'}%`)]));
     }
     function fmtZ(v) { return v == null ? '—' : metric === 'xwoba' ? fmt.rate3(v) : `${Math.round(v)}%`; }
-    wrap.replaceChildren(h('div', { class: 'row', style: { marginBottom: '8px' } }, segmented(metrics, metric, (v) => { metric = v; draw(); })), svg,
+    put(wrap, h('div', { class: 'row', style: { marginBottom: '8px' } }, segmented(metrics, metric, (v) => { metric = v; draw(); })), svg,
       h('div', { class: 'viz-legend' }, h('span', null, 'Catcher\'s view · inner 3×3 is the strike zone · corners are chase zones'), metric === 'xwoba' ? h('span', null, perspective === 'hitter' ? 'green = above league (.360)' : 'green = suppresses contact') : h('span', null, 'darker = more')));
   };
   draw();
@@ -61,7 +61,7 @@ function mlbPitchLocations(locations) {
   const counts = locations.reduce((m, r) => ((m[r[0]] = (m[r[0]] || 0) + 1), m), {});
   const types = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([t]) => t).slice(0, 6);
   let on = new Set(types.slice(0, 3));
-  const draw = () => wrap.replaceChildren(
+  const draw = () => put(wrap, 
     h('div', { class: 'row', style: { marginBottom: '8px' } }, ...types.map((t, i) => h('button', { class: `wchip${on.has(t) ? ' on' : ''}`, type: 'button', onclick: () => { on.has(t) ? on.delete(t) : on.add(t); draw(); } }, h('span', { class: 'sw-dot', style: { background: CAT[i], marginRight: '6px' } }), `${PITCH_NAMES[t] || t} · ${counts[t]}`))),
     svgHost((W) => {
       const H = Math.min(420, W * 0.95), X = (x) => W / 2 + (x / 2.2) * (W / 2) * 0.9, Y = (z) => H - (z / 5) * H;
@@ -102,7 +102,7 @@ function nflTargetField(rows, { role = 'receiver' } = {}) {
       return svg;
     });
     const zoneRows = ['deep', 'short'].flatMap((len) => ['left', 'middle', 'right'].map((side) => { const z = zones[`${len}|${side}`] || { n: 0, c: 0, yac: [], air: [], td: 0 }; return { zone: `${len[0].toUpperCase() + len.slice(1)} ${side}`, n: z.n, share: rs.length ? (100 * z.n) / rs.length : 0, catch: z.n ? (100 * z.c) / z.n : null, air: U.avg(z.air), yac: U.avg(z.yac), td: z.td }; }));
-    wrap.replaceChildren(h('div', { class: 'row', style: { marginBottom: '8px' } }, segmented(seasons.map((x) => ({ value: x, label: String(x) })), season, (v) => { season = v; draw(); }), h('span', { class: 't-label' }, `${rs.length} located ${role === 'receiver' ? 'targets' : 'passes'}`)),
+    put(wrap, h('div', { class: 'row', style: { marginBottom: '8px' } }, segmented(seasons.map((x) => ({ value: x, label: String(x) })), season, (v) => { season = v; draw(); }), h('span', { class: 't-label' }, `${rs.length} located ${role === 'receiver' ? 'targets' : 'passes'}`)),
       h('div', { class: 'split-2' }, h('div', null, body, h('div', { class: 'viz-legend' }, h('span', null, h('i', { style: { background: 'var(--ink)' } }), 'caught'), h('span', null, h('i', { style: { background: 'var(--card)', border: '1px solid var(--ink)' } }), 'incomplete'), h('span', null, h('i', { style: { background: 'var(--good)' } }), 'touchdown'), h('span', null, h('i', { style: { background: 'var(--card)', border: '2px solid var(--bad)' } }), 'intercepted'))),
         dataTable([{ key: 'zone', label: 'Zone' }, { key: 'n', label: role === 'receiver' ? 'Targets' : 'Att', num: true }, { key: 'share', label: 'Share', num: true, fmt: (v) => `${fmt.n(v, 0)}%` }, { key: 'catch', label: role === 'receiver' ? 'Catch %' : 'Comp %', num: true, fmt: (v) => (v == null ? '—' : `${fmt.n(v, 0)}%`) }, { key: 'air', label: 'Air yds', num: true, fmt: (v) => fmt.n(v, 1) }, { key: 'yac', label: 'YAC', num: true, fmt: (v) => fmt.n(v, 1) }, { key: 'td', label: 'TD', num: true }], zoneRows, { sortKey: null })));
   };
@@ -123,7 +123,7 @@ function nbaShotChart(rawRows) {
     const zones = {};
     for (const r of rows) { if (r[1] > 47) continue; const z = zoneOf(r); const q = (zones[z] = zones[z] || { fga: 0, fgm: 0, pts: 0 }); q.fga++; if (r[2]) { q.fgm++; q.pts += r[4]; } }
     const total = Object.values(zones).reduce((s2, z) => s2 + z.fga, 0);
-    wrap.replaceChildren(h('div', { class: 'row', style: { marginBottom: '8px' } }, segmented([{ value: 'all', label: 'All' }, { value: 'made', label: 'Makes' }, { value: 'miss', label: 'Misses' }], show, (v) => { show = v; draw(); }), h('span', { class: 't-label' }, `${rows.length} shots · 2024-25`)),
+    put(wrap, h('div', { class: 'row', style: { marginBottom: '8px' } }, segmented([{ value: 'all', label: 'All' }, { value: 'made', label: 'Makes' }, { value: 'miss', label: 'Misses' }], show, (v) => { show = v; draw(); }), h('span', { class: 't-label' }, `${rows.length} shots · 2024-25`)),
       h('div', { class: 'split-2' }, svgHost((W) => {
         const H = W * (47 / 50), X = (x) => (x / 50) * W, Y = (y) => (y / 47) * H;
         const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Shot chart' });
@@ -151,7 +151,7 @@ function nhlRinkMap(rows, { goalie = false } = {}) {
     const rs = rows.filter((r) => (show === 'all' ? true : show === 'goals' ? r[2] === 'goal' : ['goal', 'shot-on-goal'].includes(r[2])));
     const stat = (f) => { const sub = rows.filter((r) => ['goal', 'shot-on-goal'].includes(r[2])).filter((r) => f(...fold(r))); const g = sub.filter((r) => r[2] === 'goal').length; return { sog: sub.length, g, pct: sub.length ? (100 * g) / sub.length : null }; };
     const slot = stat(isSlot), outside = stat((x, y) => !isSlot(x, y));
-    wrap.replaceChildren(h('div', { class: 'row', style: { marginBottom: '8px' } }, segmented([{ value: 'on', label: 'On goal' }, { value: 'goals', label: 'Goals' }, { value: 'all', label: 'All attempts' }], show, (v) => { show = v; draw(); }), h('span', { class: 't-label' }, `${rows.length} attempts ${goalie ? 'faced' : 'taken'} · 2024-25`)),
+    put(wrap, h('div', { class: 'row', style: { marginBottom: '8px' } }, segmented([{ value: 'on', label: 'On goal' }, { value: 'goals', label: 'Goals' }, { value: 'all', label: 'All attempts' }], show, (v) => { show = v; draw(); }), h('span', { class: 't-label' }, `${rows.length} attempts ${goalie ? 'faced' : 'taken'} · 2024-25`)),
       h('div', { class: 'split-2' }, svgHost((W) => {
         const H = W * (85 / 75), X = (x) => ((x - 25) / 75) * W, Y = (y) => ((42.5 - y) / 85) * H;
         const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Shot map' });
@@ -179,7 +179,7 @@ function soccerShotMap(shots) {
   const draw = () => {
     const rs = shots.filter((r) => (season === 'all' || r[6] === season) && (sit === 'all' || r[4] === sit));
     const goals = rs.filter((r) => r[3] === 'Goal').length, xg = U.sum(rs.map((r) => r[2]));
-    wrap.replaceChildren(h('div', { class: 'row', style: { marginBottom: '8px' } }, selectBox([{ value: 'all', label: 'All seasons held' }, ...seasons.map((x) => ({ value: x, label: `${x}-${String(Number(x) + 1).slice(2)}` }))], season, (v) => { season = v; draw(); }, 'Season'),
+    put(wrap, h('div', { class: 'row', style: { marginBottom: '8px' } }, selectBox([{ value: 'all', label: 'All seasons held' }, ...seasons.map((x) => ({ value: x, label: `${x}-${String(Number(x) + 1).slice(2)}` }))], season, (v) => { season = v; draw(); }, 'Season'),
       segmented([{ value: 'all', label: 'All' }, { value: 'OpenPlay', label: 'Open play' }, { value: 'SetPiece', label: 'Set piece' }, { value: 'FromCorner', label: 'Corners' }, { value: 'Penalty', label: 'Penalties' }], sit, (v) => { sit = v; draw(); })),
       h('div', { class: 'split-2' }, svgHost((W) => {
         const H = W * 0.78, X = (y) => y * W, Y = (x) => H - ((x - 0.5) / 0.5) * H;

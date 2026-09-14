@@ -3,6 +3,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!--SYSTEM-->
 <!--DATA:ALL-->
+<!--DATA:PREFIX:matchup-->
 <style>
   .switch-bar { background: var(--card); border-bottom: 1px solid var(--line); }
   .switch-bar .inner { max-width: 1280px; margin: 0 auto; padding: 10px var(--s5); display: flex; gap: var(--s3); align-items: center; flex-wrap: wrap; }
@@ -11,6 +12,8 @@
   .switch-bar .sport-tabs button[aria-pressed="true"] { background: var(--masters); color: #fff; border-color: var(--masters); }
   .switch-bar .sport-tabs { max-width: 100%; }
   .secnav .tabs { overflow-x: auto; scrollbar-width: none; }
+  .state-bar { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; margin-top: var(--s4); }
+  .state-bar .seg button { font-weight: 600; }
   @media (max-width: 720px) { .switch-bar .inner { padding-left: var(--s4); padding-right: var(--s4); } }
 </style>
 <body>
@@ -23,10 +26,11 @@ const store = (k, v) => { try { if (v === undefined) return localStorage.getItem
 let sport = params.get('sport') || store('g2-game-sport') || 'nfl';
 if (!GAME_SPORTS[sport]) sport = 'nfl';
 let observer = null;
+let state = params.get('state') || 'pre', moment = params.get('moment') || null;
 document.getElementById('bar').append(boardBar('Phase G2 · Game page', 'Real data · switch sport below'));
 
 function renderSwitch(doc) {
-  const btns = h('div', { class: 'sport-tabs', role: 'group', 'aria-label': 'Sport' }, ...Object.entries(GAME_SPORTS).map(([key, def]) => h('button', { type: 'button', 'aria-pressed': String(key === sport), onclick: () => { sport = key; store('g2-game-sport', key); renderAll(); } }, def.label)));
+  const btns = h('div', { class: 'sport-tabs', role: 'group', 'aria-label': 'Sport' }, ...Object.entries(GAME_SPORTS).map(([key, def]) => h('button', { type: 'button', 'aria-pressed': String(key === sport), onclick: () => { sport = key; moment = null; store('g2-game-sport', key); renderAll(); } }, def.label)));
   document.getElementById('switch').replaceChildren(h('div', { class: 'switch-bar' }, h('div', { class: 'inner' }, h('span', { class: 't-over' }, 'Sport'), btns, h('span', { style: { flex: 1 } }), h('span', { class: 't-over' }, 'Game'), h('span', { class: 'chip' }, doc?.label || '—'))));
 }
 
@@ -36,11 +40,20 @@ function renderPage() {
   renderSwitch(doc);
   const app = document.getElementById('app');
   if (!doc) { app.replaceChildren(h('div', { class: 'state' }, `No dataset for ${def.slug}`)); return; }
-  const { hero, sections } = (() => { const r = def.build(doc); return Array.isArray(r) ? { hero: null, sections: r } : r; })();
+  const moments = def.moments(doc);
+  if (state === 'live' && !moments.length) state = 'final';
+  if (!moment || !moments.some((m) => m.id === moment)) moment = (moments.find((m) => /half|ht|i5|p2/.test(m.id)) || moments[0] || {}).id;
+  let view = state === 'pre' ? def.pre(doc) : state === 'live' ? def.live(doc, moment) : def.final(doc);
+  if (!view) { state = 'final'; view = def.final(doc); }
+  const { hero, sections } = view;
   const heroNode = hero || gameHero(doc, { chips: lineResultChips(doc), ...(GAME_SPORTS[sport].hero || {}) });
+  const stateBar = h('div', { class: 'state-bar' }, h('span', { class: 't-over' }, 'Game state'),
+    segmented([{ value: 'pre', label: 'Before start' }, ...(moments.length ? [{ value: 'live', label: 'Live' }] : []), { value: 'final', label: 'Final' }], state, (v) => { state = v; renderAll(false); }),
+    state === 'live' ? selectBox(moments.map((m) => ({ value: m.id, label: m.label })), moment, (v) => { moment = v; renderAll(false); }, 'Moment') : null,
+    h('span', { class: 't-label' }, state === 'pre' ? 'Research as of kickoff: nothing from the game itself is used.' : state === 'live' ? 'The real game cut at this moment: only plays up to here are used.' : 'The full game, with the pre-game research kept at the bottom.'));
   const navTabs = tabs(sections.map((x) => ({ value: x.id, label: x.label })), sections[0].id, (v) => document.getElementById(`sec-${v}`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
   const nav = h('div', { class: 'secnav sticky', style: { marginTop: 'var(--s4)' } }, navTabs);
-  app.replaceChildren(heroNode, nav, ...sections.map((x) => x.node));
+  put(app, heroNode, stateBar, nav, ...sections.map((x) => x.node));
   const barH = document.getElementById('bar').offsetHeight;
   nav.style.top = `${barH}px`;
   document.querySelectorAll('.psec').forEach((el) => { el.style.scrollMarginTop = `${barH + nav.offsetHeight + 12}px`; });
@@ -54,10 +67,10 @@ function renderPage() {
   document.title = `Game Page — ${doc.label}`;
 }
 
-function renderAll() {
-  const u = new URL(location.href); u.searchParams.set('sport', sport);
+function renderAll(top = true) {
+  const u = new URL(location.href); u.searchParams.set('sport', sport); u.searchParams.set('state', state); if (moment) u.searchParams.set('moment', moment); else u.searchParams.delete('moment');
   try { history.replaceState(null, '', u); } catch {}
-  renderPage(); window.scrollTo({ top: 0 });
+  const y = window.scrollY; renderPage(); window.scrollTo({ top: top ? 0 : Math.min(y, 200) });
 }
 renderAll();
 </script>

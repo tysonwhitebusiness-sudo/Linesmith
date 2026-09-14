@@ -83,3 +83,16 @@ Data findings while building (for the Phase H data plan):
 - Understat match list comes back newest-first; anything taking "last N" must sort by date.
 - TennisMyLife `tourney_date` is the tournament start, so every match in an event shares a date.
 - Golf `golf_*` events carry no names in the tables; lie codes in shot events are not decoded.
+
+
+## Added 2026-09-14 (operator request): game states and compare control
+
+- **Game page states.** `?state=pre|live|final` (and `&moment=`). *Before start* is research as of kickoff
+  (`pregame` in each game dataset, built by `tools/pregame.py`). *Live* cuts the real game at a moment and reuses the
+  final modules on plays up to then (`src/sports/game-states.js`). *Final* is the recap with the kickoff research kept
+  in a "Before the game" section.
+- **Compare control.** Player page: opponent team (default next opponent) and a same-position player; team page:
+  opponent team. Data: `data/matchup-<sport>.json` from `tools/build_matchup_data.py` (shared helpers in
+  `tools/g2lib.py`). Code: `src/sports/compare.js`. Peers are extra light subjects in `build_player_data.py`.
+- The player builder no longer needs the local app server for team names (league APIs via `g2lib.teams_map`).
+- Buildability of the new cards: `BUILDABILITY.md` → "Added 2026-09-14".

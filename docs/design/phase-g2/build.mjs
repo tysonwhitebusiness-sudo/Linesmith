@@ -17,6 +17,7 @@ for (const file of readdirSync(join(root, 'src')).filter((f) => f.endsWith('.htm
   let html = read('src', file);
   html = html.replace('<!--SYSTEM-->', `${fonts}<style>${css}</style><script>${js}</script>`);
   html = html.replace('<!--DATA:ALL-->', () => readdirSync(join(root, 'data')).filter((f) => f.startsWith(`${surface}-`) && f.endsWith('.json')).map(dataTag).join('\n'));
+  html = html.replace(/<!--DATA:PREFIX:([\w-]+)-->/g, (_, p) => readdirSync(join(root, 'data')).filter((f) => f.startsWith(`${p}-`) && f.endsWith('.json')).map(dataTag).join('\n'));
   html = html.replace(/<!--DATA:([\w.-]+)-->/g, (_, name) => dataTag(name));
   writeFileSync(join(root, file), html);
   console.log(`built ${file} (${Math.round(html.length / 1024)} KB)`);

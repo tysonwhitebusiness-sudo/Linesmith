@@ -56,7 +56,7 @@ function propBlock({ sport, markets, periodLabel, onOpenGame, unitHint }) {
     const lastSeason = vals[vals.length - 1].season;
     if (line == null) line = m.line != null ? m.line : Math.max(0.5, Math.round((U.avg(vals.filter((v) => v.season === lastSeason).map((v) => v.v)) ?? 0) * 2) / 2 - 0.5);
     const opps = [...new Set(vals.map((v) => v.opp).filter(Boolean))];
-    if (!vsOpp || !opps.includes(vsOpp)) vsOpp = vals[vals.length - 1].opp || opps[0];
+    if (!vsOpp || !opps.includes(vsOpp)) vsOpp = (window.__cmpOppAbbr && opps.includes(window.__cmpOppAbbr)) ? window.__cmpOppAbbr : vals[vals.length - 1].opp || opps[0];
     const windows = [
       { key: 'opp', label: `vs ${vsOpp || '—'}`, rows: vals.filter((v) => v.opp === vsOpp) },
       { key: 'l5', label: 'Last 5', rows: vals.slice(-5) }, { key: 'l10', label: 'Last 10', rows: vals.slice(-10) }, { key: 'l15', label: 'Last 15', rows: vals.slice(-15) },
@@ -91,7 +91,7 @@ function propBlock({ sport, markets, periodLabel, onOpenGame, unitHint }) {
       tooltip: (b) => [tipRow(fmt.n(b.value, b.value % 1 ? 1 : 0), `${m.label}${b.value > line ? ' · over' : ' · under'}`), tipText(`${b.r.home ? 'vs' : '@'} ${b.r.opp || '—'} · ${U.longDate(b.r.date)}`)],
       onClick: onOpenGame ? (b) => onOpenGame(b.r.date) : null,
     });
-    root.replaceChildren(
+    put(root, 
       tabsEl,
       h('div', { class: 'prop-top' }, stepper, price),
       chips, tiles,
@@ -119,7 +119,7 @@ function trendCard({ sport, games, stats, periodLabel, compare, title = 'Trends'
       series[1].color = 'var(--cmp-a)';
     }
     const seasonStart = rows.map((g, i) => (i === 0 || g.season !== rows[i - 1].season ? U.seasonLabel(sport, g.season) : ''));
-    wrap.replaceChildren(
+    put(wrap, 
       h('div', { class: 'row', style: { marginBottom: '8px' } }, selectBox(stats.map((x) => ({ value: x.key, label: x.label })), key, (v) => { key = v; draw(); }, 'Stat'),
         segmented([{ value: 3, label: '3' }, { value: 5, label: '5' }, { value: 10, label: '10' }], w, (v) => { w = v; draw(); }), h('span', { class: 't-label' }, 'game average'),
         segmented([{ value: 'season', label: 'This season' }, { value: 'last2', label: 'Last 2' }, { value: 'all', label: 'All held' }], scope, (v) => { scope = v; draw(); }),
@@ -172,7 +172,7 @@ function gameLog({ sport, games, cols, periodLabel }) {
       h('div', { class: 'callout' }, 'Full build: box score for both teams, this player\'s line against today\'s markets, and a link to the game page.')));
   const draw = () => {
     const rows = games.filter((g) => g.season === season).slice().reverse().map((g) => { const r = { _g: g, date: g.date, opp: g, res: g.result ? `${g.result} ${U.score(g)}` : '—' }; for (const c of cols) r[c.key] = c.fn(g); return r; });
-    wrap.replaceChildren(
+    put(wrap, 
       h('div', { class: 'row', style: { marginBottom: '8px' } }, segmented(seasons.map((s) => ({ value: s, label: U.seasonLabel(sport, s) })), season, (v) => { season = v; draw(); })),
       dataTable([
         { key: 'date', label: 'Date', fmt: (v, r) => periodLabel(r._g) },

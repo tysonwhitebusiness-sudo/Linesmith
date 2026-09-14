@@ -283,3 +283,6 @@ dl.facts dt { color: var(--ink-muted); } dl.facts dd { margin: 0; color: var(--i
 
 .card-h { flex-wrap: wrap; row-gap: 4px; }
 .card-h .scope { white-space: normal; min-width: 0; }
+
+.card-h .t-card { flex: 1 1 auto; min-width: 9em; }
+.card-h .scope { flex: 0 1 auto; text-align: right; }
