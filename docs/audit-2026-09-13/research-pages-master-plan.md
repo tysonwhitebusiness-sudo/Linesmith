@@ -6,8 +6,10 @@ item done or measured except three that could not be reproduced today (see
 below). Next after sign-off: R2 and R3 (any order).**
 
 **R1 outcome, 2026-09-14** — commits f89d704, 69cf490, 770f6c9, 3f61ee6,
-16e8227. Done: R1a, R1b, R1c, R1d (TS + Python; **the Python half is committed
-and NOT deployed**), R1e, R1f 2a, R1g except F-B4, R1h. Owed:
+16e8227. Done: R1a, R1b, R1c, R1d (TS + Python; **deployed 2026-09-14**,
+Render `dep-dak36up42hec73bri7hg` on `46a2def` — verified in prod:
+`refreshNflJob games=33`, `refreshCfbJob games=146`, matching the frontend's
+own slate counts exactly), R1e, R1f 2a, R1g except F-B4, R1h. Owed:
 - **F-B4** (MLB pitcher game log) — not reproducible: today's MLB slate carries
   no pitcher markets at all, so no pitcher page renders a game log. Needs a
   slate with pitcher props.

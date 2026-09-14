@@ -41,9 +41,11 @@ Five commits, nothing pushed: `f89d704`, `69cf490`, `770f6c9`, `3f61ee6`,
 not be reproduced today. Full record in the master plan's status block; the
 thread's own baton is `docs/audit-2026-09-13/RESUME-PROMPT.md`.
 
+**R1d is DEPLOYED** — Render `dep-dak36up42hec73bri7hg` on `46a2def`, live
+2026-09-14 17:50 UTC. Verified in prod: `refreshNflJob games=33`,
+`refreshCfbJob games=146`, the same counts the frontend routes return.
+
 **Owed:**
-- **A Render deploy, not yet asked for.** The Python `_date_range_param` UTC
-  fix (`python-odds-service/src/game_context.py`) is committed and undeployed.
 - **R1f 2b, Saturday 2026-09-19:** read `refreshCfbJob`'s run log during the
   live CFB window before touching `gameday.py`.
 - **F-B4** (MLB pitcher game log): today's slate has no MLB pitcher markets, so
@@ -57,9 +59,9 @@ thread's own baton is `docs/audit-2026-09-13/RESUME-PROMPT.md`.
 - **MLB regular season ends late September:** the R8 MLB live state must be
   verified before then or on postseason games.
 
-**Next after sign-off: R2 and R3, either order.** R2 also inherits F-B2, F-B12
-(measured in R1 as an alternate-line ladder, not a match-total market) and the
-prop main-line rule; R7 inherits F-B3.
+**R2 STARTED 2026-09-14**, operator go-ahead given, with the `cachedRoute`
+stale ceiling folded into it. R2 also inherits F-B2 and F-B12 (measured in R1
+as an alternate-line ladder, not a match-total market); R7 inherits F-B3.
 
 Each R-phase ends with a stop for sign-off (plan §2).
 
