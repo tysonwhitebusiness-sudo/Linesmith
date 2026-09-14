@@ -170,6 +170,87 @@ results and Form.
 
 ---
 
+## MLB — player page
+
+Captured live: hitter Bobby Witt Jr. (KC @ BOS, bottom 8th), starting pitcher
+Noah Cameron (same game, already pulled).
+
+### The page as a whole
+
+**MLB's live player page is the model for every other sport.** "Live today"
+shows the score, count and bases, who's batting and pitching, his at-bats, and
+**every one of today's lines with a check once it's cleared**. That's the
+sentence a live bettor wants ("he has 1 hit, needs nothing more"), said in one
+glance. No other sport has it (E fact 19).
+
+**The deep stats run on tiny samples, and the cards don't warn.** "Pitch mix
+seen" is **33 pitches**, with xwOBA per pitch type on 1–2 balls. "Platoon split"
+is 41 pitches. "Strike zone" is **7 balls in play**. These are the most
+MLB-native cards on the page, and at these samples they're noise presented as
+insight.
+
+**The pitcher page is thin and partly broken.** Its game log shows zero totals
+and nine empty rows (F-B4), and it lacks the hitter page's matchup, zone and
+pitch-mix cards, where a pitcher prop needs them most: the opposing lineup's
+strikeout rate and handedness.
+
+### Cards
+
+Cards already judged on the NFL page (line picker, Live line tracker, All
+books, Where this sits, Game context, Today's line, Form, Line movement,
+Recorded price) get **the same verdict here**; only MLB-specific points are
+listed.
+
+| card | sentence | verdict | fails | what instead |
+|---|---|---|---|---|
+| **Hero** | "Witt, SS, KC @ BOS, In Progress, hits O 0.5" | **rework** | Sen | `#18` is a rank shown like a jersey number (same as NFL). "In Progress" without the score. |
+| **Live today** | "KC 1–4 BOS, bottom 8th; Witt 1-for-3; hits ✓, walks ✓, total bases 1 of 2" | **keep** | Ide | The best card in the app. Copy it to every sport (card audit C4). Minor: headshots for every player named. |
+| **Bar chart** ("131 games in scope") | "he got a hit in most games" | **rework** | Sco, Int | Opens scrolled to **March**, the oldest games; recent form is off-screen to the right. No year on dates. **Instead:** open at the most recent game, label the season, default to the last 20 with a season toggle. |
+| **Matchup** ("Biggest edge: strikeouts — Tolle 94th percentile allowing it") | "Tolle strikes a lot of hitters out" | **rework** | Sen, Enc, Sco | The edge is **against** the hits-over bet, but it's colored green like a positive. "Allowing strikeouts" is backwards wording for a pitcher's strength. First pitch shown as raw `2026-09-13T19:05:00Z`. Mid-game, the named starter has already been pulled. **Instead:** state which side it favors ("Tolle's 94th-percentile K rate works against hits over"); show today's actual pitcher when live. |
+| **Pitch mix seen** (n=33) | "he's seen mostly sinkers" | **rework** | Sco, Enc | 33 pitches; xwOBA on 1–2 balls per type. **Instead:** the opposing pitcher's **actual arsenal** beside Witt's **season** results against each pitch type (hundreds of pitches), with sample size per row and anything under ~25 PA greyed out. |
+| **Platoon split** (vs LHP 23 pitches, vs RHP 18) | "he hits righties far better" | **rework** | Sco, Enc | "Pitches seen" isn't a stat anyone bets on, and the xwOBA is from 41 pitches. **Instead:** season (and career) AVG/OPS vs LHP and RHP with plate appearances, and a marker for today's pitcher's hand. |
+| **Strike zone** (3×3, n=7) | "where he does damage" | **rework** | Sco | The zone is the right shape for baseball, unlike every other sport (D4), but 7 balls in play can't say anything, and empty cells read as broken. **Instead:** season sample, the zone plus chase edges, and the opposing pitcher's most-used locations drawn on top. |
+| **Rolling form** | "trend in hits" | **remove** | Dup | Same as NFL. |
+| **Situational splits** ("share of games over 0.5") | "got a hit in 73% of games" | **rework** | Sen, Enc | Useful facts in unreadable form. **Instead:** plain sentences with samples: "Hit in 73% of games this season · 74% at home · 60% over his last 5". |
+| **Game log** ("Last 15 games") | "what he did each game" | **rework** | Sen | Same as NFL: mark hit/miss against today's line, opponent pitcher, result. |
+| **Opposing starter** (12 stats, "60 of 364") | "Tolle is a good pitcher" | **rework** | Enc, Sen, Ide | Colors show how good the **pitcher** is, so green means bad news for the hitter being viewed. Twelve stats, lowercase labels ("era", "whip"). **Instead:** 4–5 stats that matter for this prop (K%, hard-hit% allowed, AVG against by batter hand, pitch count trend), colored from the hitter's side, with the pitcher's headshot and throwing hand. Merge into Matchup. |
+| **Head to head** ("vs BOS · 83% · 5 of 6") | "he hit in 5 of 6 games vs Boston" | **rework** | Nat, Sco | In baseball the meaningful head to head is **batter vs this pitcher**, not vs the team. **Instead:** Witt vs Tolle (PA, H, K, HR) when they've met, and team splits only as secondary. |
+| **Conditions** (first pitch raw ISO, 67°F, wind 5 mph N, rain 91%) | "the weather" | **rework** | Sen, Nat | Raw ISO timestamp, truncated. No statement of impact. **Missing the thing baseball bettors use most: park factor** (Fenway for doubles, Coors for runs). **Instead:** park factor for this stat, wind direction relative to the field (out to left/in from right), rain-delay risk, all as one-line impacts. |
+| **Hitter stats** (season averages + quality of contact, "69th of 657") | "a good, not elite, hitter" | **keep, polish** | Sco, Enc | Strong content. Label the season; rank among qualified hitters, not 657 players with any PA (the "1st of 58 at SS" line is the better frame). |
+
+## MLB — pitcher page (Noah Cameron)
+
+| card | sentence | verdict | fails | what instead |
+|---|---|---|---|---|
+| **Live today** (6.0 IP, 4 H, 1 R, 4 K; today's lines with checks) | "he's done: 6 IP, 4 K, under 0.5 1st-inning runs ✓" | **keep** | — | Same model as the hitter's. |
+| **Bar chart** ("9 games in scope · green cleared under 0.5") | "1 of 9 starts allowed a 1st-inning run" | **rework** | Enc | Zero-run games draw as flat green slivers, indistinguishable from missing data. **Instead:** a hit/miss strip for yes/no markets; bars only for counting stats (strikeouts, outs). |
+| **Game log** ("Last 9 games") | none | **fix (bug F-B4)** | **data missing** | Totals read 0 strikeouts, 0 walks, 0 hits allowed, 0 earned runs; all nine rows are blank with empty opponent circles. |
+| **Missing for a pitcher** | — | **add** | — | Opposing lineup's K% and handedness mix, his pitch count / leash trend, his splits by batter hand. The hitter page has matchup cards; the pitcher page has none. |
+
+## MLB — game page
+
+| card | sentence | verdict | fails | what instead |
+|---|---|---|---|---|
+| **Pitching matchup** (Scouting / Head-to-head / Rails; "Stat edge 0–12"; bullpen) | "Tolle outclasses Cameron; Boston's bullpen is deeper" | **keep, polish** | Enc, Sen | The best game-page card in the app: two starters, 12 stats in three groups with percentile chips, and the bullpens. Polish: bullpen circles (95, 50, 64) are ranks that read like jersey numbers; "Stat edge 0–12" counts stats won, which overstates a close matchup; live, mark who's actually pitching now. |
+| **Records** (66-83 · Home 39-36 · Away 27-47) | "KC is 66-83" | **keep** | — | Season-true and adds up, unlike NFL's (F-B2). |
+| **Rankings** (heat grid, 16 stats × FOR/AGN) | "rank of each team's hitting and pitching" | **remove** | Dup, Enc | Not mirrored like NFL's (F-B1 is NFL-only), but it's a 64-cell wall of rank numbers repeating Team stat comparison. |
+| **Team stat comparison** | "Boston hits slightly better" | **rework** | Enc | **Per-game stats rounded to whole numbers**, so R 4 vs 4, H 8 vs 8, BB 3 vs 3 read as identical while the bars differ. **Instead:** two decimals (4.25 vs 4.61 R/G), colored by who's better, merged with the matchup's hitting-vs-pitching pairs. |
+| **Unit grades** (Hitting C / B-, Pitching C / A-) | "Boston is better on both sides" | **merge** | Dup | Two rows. Headline for the pitching matchup and team comparison. |
+| **Situational splits, Last 5, Injuries, Game context, Line movement, Moneyline strip, Line shopping** | — | same as NFL | — | See the NFL game page. |
+
+## MLB — team page (Kansas City)
+
+| card | sentence | verdict | fails | what instead |
+|---|---|---|---|---|
+| **Bar chart** ("149 games in scope · green cleared a win") | "66-83" | **replace** | Nat, Enc, Int | Same as NFL's, and opens scrolled to March. **Instead:** results strip by month, run differential, and ATS/over-under records. |
+| **Pitching matchup** | same card as the game page | **keep** | — | Good on the team page too, for today's game. |
+| **Team stats** (Per game · Season) | "KC: 22nd in runs, 2nd in doubles" | **rework** | Enc, Dup | The per-game column is rounded to whole numbers (R 4, HR 1, 3B 0) and repeats the season column's ranks. **Instead:** one column, rates to two decimals, season labeled. |
+| **Advanced stats** (barrel%, exit velo, hard-hit%, whiff%, hitting and pitching) | "KC makes weak contact but rarely whiffs" | **keep** | Enc | Real MLB signal. Better direction is handled correctly (low whiff% ranks 5th, green). |
+| **Standings** (W, L, PCT, GB, L10) | "KC is 10.5 back in the Central" | **keep** | — | GB and L10 are right for baseball (and wrong for the NFL, where the same component shows them). |
+| **Roster, Next game, Game context, Line movement, Rating history, Situational splits, Home/Away** | — | same as NFL | — | See the NFL team page. |
+
+---
+
 ## Correctness bugs found during Phase F
 
 Data errors, not design judgments. They go to the build plan in Phase H.
@@ -179,3 +260,5 @@ Data errors, not design judgments. They go to the build plan in Phase H.
 | **F-B1** | NFL game page, **Rankings** | The "AGN" (allowed) columns show the **opponent's offense** ranks, not this team's defense. DAL AGN equals NYG FOR on every row, and NYG AGN equals DAL FOR. The heat colors are therefore wrong too. | Rankings: DAL AGN pass yds 21 · Matchup, same page: DAL pass yds allowed **32nd of 32** |
 | **F-B2** | NFL game page, **Records** | Home and away records total 13 games each, more than an NFL season, under a 0-0 season record. | DAL Home 6-7 · Away 5-7; NYG Home 4-8 · Away 1-12 |
 | **F-B3** | NFL team page, **bar chart** | Two seasons of games out of chronological order, no years. | 11/16 … 01/04, then 09/06 … 12/20 |
+| **F-B4** | MLB pitcher page, **game log** | Totals all zero and every start row blank (no stat line, empty opponent logo). The bar chart above it has the same starts with real values. | Noah Cameron: "Strikeouts 0 · Walks 0 · Hits allowed 0 · Earned runs 0"; 9 empty rows |
+| **F-B5** | MLB game and team pages, **Team stats / Team stat comparison** | Per-game stats rounded to integers, so different values display as equal. | KC vs BOS: R 4 / 4, H 8 / 8, BB 3 / 3, with bars of different lengths |
