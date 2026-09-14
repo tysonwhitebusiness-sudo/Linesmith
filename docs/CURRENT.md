@@ -59,7 +59,7 @@ thread's own baton is `docs/audit-2026-09-13/RESUME-PROMPT.md`.
 - **MLB regular season ends late September:** the R8 MLB live state must be
   verified before then or on postseason games.
 
-**R2 IN PROGRESS 2026-09-14** (`33ce1f2`, `8aedacf`, `4509175`): 4.5 of 10 items done — the
+**R2 IN PROGRESS 2026-09-14** (`33ce1f2`, `8aedacf`, `4509175`, `6ebf081`): **6 of R2's 9 rules done**, plus the folded-in cachedRoute item — the
 `game_result` read module (Raiders 71 raw rows -> 54 games, verified three
 ways), the `cachedRoute` staleness ceiling the operator folded in, and the
 season convention (one table in both languages, drift-tested; seven scattered
@@ -72,10 +72,16 @@ the silence was not. Blocks now read e.g. "2025-26 season · 2026-27 has too
 few games to rank yet". NBA's label was also wrong in every sport-agnostic
 block ("2026 season" for the 2025-26 one).
 
-Rules left: the rest of ranks (per-stat direction incl. a NEUTRAL state; drop
-any remaining ESPN published ranks), page-level early-season fallback, prop
-main line, pre-start odds filter, innings pitched, NBA shot coordinates,
-source quirks. `RESUME-PROMPT.md` lists them in order.
+Ranks and the early-season fallback are now COMPLETE. Stats gained a third
+direction, `neutral` — ranked but uncoloured and not voting in a unit grade —
+for nba.fouls, soccer.foulsCommitted, soccer.offsides and nhl.hits. Two of the
+plan's ranks sub-items turned out already true (football is already per-game;
+no ESPN published rank is read anywhere).
+
+**Three rules left: prop main line, pre-start odds filter, and the three small
+ones (innings pitched, NBA shot coordinates, source quirks).** The prop
+main-line MEASUREMENT IS ALREADY DONE and written into `RESUME-PROMPT.md` §1 —
+the next session should start from it, not re-query.
 
 `python-odds-service/src/season.py` is committed and **not deployed** — no job
 imports it yet, so a deploy would restart the worker queue for nothing.

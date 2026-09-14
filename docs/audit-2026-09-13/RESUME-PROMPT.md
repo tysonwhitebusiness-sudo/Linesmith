@@ -1,4 +1,4 @@
-# Resume prompt — research pages build (2026-09-14, mid-R2)
+# Resume prompt — research pages build (2026-09-14, mid-R2 — prop main line next)
 
 Paste everything below the line into a fresh session on any account.
 
@@ -15,9 +15,12 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 - **R1 DONE and signed off**, including the Render deploy (`dep-dak36up42hec73bri7hg`
   on `46a2def`, live 17:50 UTC — verified in prod: `refreshNflJob games=33`,
   `refreshCfbJob games=146`).
-- **R2 IN PROGRESS — 4.5 of 10 items.** `33ce1f2` (game_result read module +
-  cachedRoute staleness ceiling), `8aedacf` (season convention), `4509175`
-  (ranked-block season label + explicit early-season fallback).
+- **R2 IN PROGRESS — 6 of R2's 9 rules done**, plus the `cachedRoute` item the
+  operator folded in. Commits `33ce1f2`, `8aedacf`, `4509175`, `6ebf081`.
+  Everything is committed and pushed; tree clean, tsc clean, 426/426 tests.
+
+  **THE NEXT RULE IS THE PROP MAIN LINE, and its measurement is already done**
+  — see §1 below. Do not re-measure it.
 
 ## R2 — what is done and what is left
 
@@ -29,6 +32,16 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
   **54 games**.
 - **`cachedRoute` staleness ceiling** (`33ce1f2`) — `x-cache: expired`,
   `x-cache-age-ms` on every cached response, a logged event past the ceiling.
+- **Ranks** (`4509175`, `6ebf081`) — COMPLETE. Season-correct block labels, an
+  explicit fallback, and a third stat direction: `neutral`. Neutral stats rank
+  but are not coloured and do not vote in unit grades (nba.fouls,
+  soccer.foulsCommitted, soccer.offsides, nhl.hits). Two of the plan's ranks
+  sub-items were already true and were checked, not built: football stats are
+  already `perGame`, and no ESPN published rank is read anywhere.
+- **Early-season fallback** (`4509175`, `6ebf081`) — COMPLETE. The ranks path
+  reports `requestedSeason`/`isFallback`/`fallbackReason`; `SEASON_MIN_GAMES`
+  + `seasonScope()` give pages the same rule (NFL/CFB 4, NBA/NHL 15, MLB 20,
+  soccer 6), always with the reason stated.
 - **Season convention** (`8aedacf`) — `lib/sports/shared/season.ts` +
   `python-odds-service/src/season.py`, one table, drift test that was checked
   by deliberately diverging it. Seven scattered TS helpers now delegate.
@@ -40,25 +53,66 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
   for nothing. **The operator has already granted deploy permission**; deploy
   when a job actually calls it.
 
-**Left, in this order (the first two are dependency-ordered, the rest are
-independent):**
-1. **Ranks** — computed over the league's real teams for that season (>=30% of
-   max games played), each stat with a declared better/worse direction,
-   football per game. ESPN's published ranks are never used. Neutral stats
-   (fouls, possession share) get no good/bad colour.
-2. **Early-season fallback** — open on last season under MIN_GAMES
-   (NFL/CFB 4, NBA/NHL 15, MLB 20, soccer 6), with the reason stated.
-3. **Prop main line** — the largest. Last PRE-GAME quote per book/side/line;
-   the main line is the one quoted on both sides by the most books, ties to
-   the price nearest even; pick'em books never count as a price; yes/no
-   markets keep a 0.5 line with 2+ books over; one-sided markets are flagged
-   "alternate lines only". **This is F-B12's fix** — see below.
-4. **Pre-start odds filter** — split `game_odds_history` at the game's start.
-5. **Innings pitched** — carry outs, render whole.thirds only.
-6. **NBA shot coordinates** — rim origin y ~= 1ft not 5.25; a miss's point
-   value comes from the arc.
-7. **Source quirks** — Understat newest-first, TennisMyLife tournament-start
-   dates, ESPN soccer fixtures param.
+**Left — 3 rules, in this order:**
+
+### 1. Prop main line — START HERE. The measurement is already done.
+
+The rule (plan §R2): take the last **pre-game** quote per book, side and line.
+The main line is the one quoted on both sides by the most books; ties go to
+the price nearest even. Pick'em books never count as a price. Yes/no markets
+keep a 0.5 line with 2+ books on the over. A market with only one-sided quotes
+is flagged "alternate lines only" and not shown as a line.
+
+**Measured against production 2026-09-14 — use these, do NOT re-query:**
+
+- `prop_odds` columns: `subject_id, game_id, market_key, line, side,
+  bookmaker, american_odds, decimal_odds, fetched_at, is_delayed,
+  delay_seconds`. The market column is **`market_key`**, not `market`.
+- **Sides:** `over` 357,296 · `under` 168,036 · `other` 727. Overs outnumber
+  unders 2:1, so "quoted on both sides by the most books" will disqualify many
+  ladder rungs — that is the rule working, not a bug.
+- **Ladders are over half the data.** Distinct lines per
+  (subject, game, market): 1 → 6,479 keys · 2 → 4,629 · 3 → 3,105 · 4 → 2,246
+  · 5-11+ → ~3,500. And 4,995 keys have **0** distinct lines (null `line` —
+  the yes/no markets the rule's 0.5 clause covers).
+- **Pick'em books actually present**, by rows: `prizepicks` 47,725,
+  `underdog` 25,498, `sleeper` 17,954. The plan also names Dabble, ParlayPlay,
+  Betr and Chalkboard — **none appear in the data at all**, so still list them
+  (they can return) but expect no effect today. `novig`, `prophetx`, `kalshi`
+  and `smarkets` are EXCHANGES, not pick'em: they post real two-sided prices
+  and must NOT be excluded.
+- **F-B12 is this rule's test case.** Ben Shelton, game `182766`, market
+  `aces`: 9 distinct lines from 8.5 to 29.5 across 2 books. The audit saw 24.5
+  chosen; the main line should land near the 8.5-10.5 end. `aces` overall
+  spans 0.5-29.5 across 503 rows / 45 subjects, median 6.5.
+- **"Pre-game" needs the game's start time**, which `prop_odds` does not
+  carry — join `game_result.event_start` or the sport's game context. The plan
+  notes `prop_odds` keeps capturing for up to two days AFTER a game.
+
+Where it goes: a shared TS module under `lib/odds/props/`, read by
+`app/api/props/lines/route.ts` and every adapter that picks a line.
+
+### 2. Pre-start odds filter
+
+Split `game_odds_history` at the game's start time: before is pre-game
+history, after is in-game. In `lib/odds/gameLineHistory.ts`. Fixture: 1,790 of
+2,782 KC @ BOS rows are after the start.
+
+### 3. The three small ones
+
+- **Innings pitched** — carry outs; render whole.thirds (6.2) only at render.
+  MLB adapters. The Python rollup half is R5's, not this.
+- **NBA shot coordinates** — rim origin y ≈ 1 ft, not 5.25; a miss's point
+  value comes from the arc, because every miss is stored as a 2. Read time in
+  `/api/nba/shot-profile`. Ingest-time + backfill is R5c.
+- **Source quirks** — Understat match lists come newest-first (sort before any
+  "last N"); a TennisMyLife `tourney_date` is the tournament start (order by
+  round within an event); ESPN's soccer team schedule needs the fixtures
+  parameter for unplayed games.
+
+Then: the R2 sign-off render pass (plan §2 — every affected sport at 1440 and
+400px, numbers against the G2 fixtures), update the plan's status line,
+rewrite this file, stop for sign-off.
 
 ## Still owed from R1
 
@@ -79,20 +133,25 @@ independent):**
   resolve a past game. It now says so honestly instead of "Game not found."
   The per-game read belongs with R8.
 
-## Two live problems the staleness ceiling exposed — NOT yet acted on
+## Three live problems found and NOT yet acted on
 
-Both surfaced the moment the ceiling shipped, and both are real:
+All measured, none fixed. The operator's standing instruction is to keep
+chasing real bugs but not at R2's expense — so these are logged, not chased:
 
 1. **`/api/mlb/team/110` was serving a payload 671 hours — 28 days — old**,
    silently. Its build has been failing for weeks and nothing reported it.
    Nobody has looked at why.
 2. **`soccer:snapshot:epl` cannot write its cache**: `system_events` carries
-   `canceling statement due to statement timeout` for it. The route rebuilds
-   every request and throws the result away, which is both slow and the reason
-   an edit to soccer data appears to "not take" until several requests later.
+   `canceling statement due to statement timeout`. **Cause measured:** the
+   payload is **22 MB** against a 2-minute `statement_timeout`. The route
+   rebuilds every request and throws the result away. That is a payload-size
+   problem — R6's per-section loading is what fixes it, not an R2 rule. It
+   does NOT block R2: `/api/season-ranks` has its own key and a 27 KB payload.
+3. **`snapshot_cache` holds several very large, very old rows** —
+   `mlb:full-raw:*` at 79/78/52 MB and `mlb:snapshot:2026-08-16` at 22 MB and
+   29 days old. Relevant to the database-growth line in `CURRENT.md`.
 
-Neither is an R2 rule. Decide whether they get fixed inside R2 or become their
-own task.
+None is an R2 rule.
 
 ## First reply
 
