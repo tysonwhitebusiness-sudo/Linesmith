@@ -66,7 +66,8 @@ tests. Per-rule commits and notes are in `RESUME-PROMPT.md`. Headlines:
 - **Cfb/soccer/MLS were serving last season's ranks silently** — fixed
   earlier in R2 (`4509175`); blocks now say which season they rank.
 
-Non-breaking finds are logged in `RESUME-PROMPT.md`, not fixed. **Next after
+Non-breaking finds are routed into the phases that fix them (plan Appendix A,
+R2-F1..F11; the rule is now in plan §2). **Next after
 sign-off: R3, design system foundations.**
 
 `python-odds-service/src/season.py` is committed and **not deployed** — no job
@@ -169,6 +170,11 @@ ceiling as "CLEARED and SUSTAINABLE" at 42.4%. It is growing at 164 MB/day —
 much better than the +469.6 it was, but **not flat, and 28 days is not a lot.**
 Nobody has looked at what is growing.
 
+**Known contributor, routed here from R2 (2026-09-14):** `snapshot_cache` holds
+several very large, very old rows — `mlb:full-raw:*` at 79/78/52 MB and
+`mlb:snapshot:2026-08-16` at 22 MB, 29 days old. Check whether anything still
+reads those keys before pruning them.
+
 **THE LARGEST REMAINING EGRESS LEVER, independent of any byte estimate:**
 `SELECT fetched_at FROM snapshot_cache` runs **424,958 times/day** — 5 a second,
 by far the highest call count of anything. It is the blob cache's validation
@@ -267,6 +273,13 @@ healthy. The laptop was awake, so the usual "corpus and harvester go stale when
 the machine is closed" did not apply this time.
 
 ---
+
+## PARKED — Scan at phone width
+
+Scan pages overflow a 400px screen (`/mlb` 776px, `/soccer/mls` 837px), found
+in R2's sign-off pass. Scan is out of the research-pages plan's scope, so no
+R-phase owns it. The player/game/team pages' top bar was fixed in `fcaef2c`;
+Scan's own layout was not.
 
 ## PARKED — cfb harvester and provider coverage
 

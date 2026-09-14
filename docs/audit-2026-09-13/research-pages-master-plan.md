@@ -115,6 +115,11 @@ that.
 
 ## 2. Rules for every phase
 
+- **Findings go to the phase that fixes them best.** A bug found mid-phase that
+  breaks the app is fixed on the spot. Anything else is written into the
+  receiving phase's own section (an "Also in R*n*" block) and given a row in
+  Appendix A, so the session that builds that phase reads it. Nothing is left
+  only in a handoff file.
 - **Build, type-check, render, compare, commit, stop.**
   - `tsc --noEmit`.
   - Render every affected sport at 1440px and 400px.
@@ -271,6 +276,11 @@ the rebuild.
 - **2b, Saturday 2026-09-19:** during the live window, read `refreshCfbJob`'s
   run log, tier and `prop_odds` rows. Change `gameday.py` only if the tier is
   still cold with kickoffs inside 6h (asks before deploy).
+  - **Routed from R2 (2026-09-14): check NFL in the same pass, on Sunday
+    2026-09-20.** DEN @ KC's prop prices read "19h ago" at 19:26 UTC with
+    kickoff ~4h away, which is the same symptom: a game-day tier that is not
+    refreshing. Read `refreshNflJob`'s run log and tier; one `gameday.py` fix
+    covers both sports if the cause is shared.
 - **2c:** once pages render, append CFB verdicts to
   `phase-c-card-verdicts.md`.
 
@@ -536,6 +546,22 @@ already computes for and allowed):
   by receiver position.
 - The defense is derived from the game id plus the offense.
 
+**5e. Prop odds ingest (routed from R2, 2026-09-14).** Both are writer
+problems, and R2's main line (`lib/odds/props/mainLine.ts`) can only work
+around them on read:
+- **Yes/no `other` rows disagree in direction across books.** WTA 183796,
+  Stephens to-win-a-set: DraftKings +650 and FanDuel −1450 at the same
+  pre-start moment, so one book's `other` is the opposite selection. Find where
+  the SharpAPI selection is mapped (`db.write_prop_odds` canonicalises side to
+  `other`) and carry which selection it is, per book. Measure how many
+  yes/no keys disagree before and after.
+- **`prop_odds` keeps rungs a book stopped quoting.** It is an upsert that never
+  deletes, so a line pulled hours ago still reads as current (WTA 183791: a
+  12:19 DraftKings row beside 19:18 FanDuel rows). On each provider fetch,
+  mark or delete that provider's rows for the same (game, subject, market) that
+  the fetch did not return. `prop_odds_history` keeps the record. Then R2's
+  "last quote per book" needs no staleness guess.
+
 **Verify:**
 - Rollup values match the G2 datasets (Witt 390 balls in play and 18 HR in the
   G-board; Skenes arsenal; Royals team Statcast).
@@ -610,6 +636,23 @@ Spec: `docs/design/phase-g2/src/player.html`, `src/sports/common.js` (skeleton),
 5. NBA and NHL, built now and render-verified in October.
 6. Golf, built and verified at the next tournament.
 
+**Also in R6 (routed from R2, 2026-09-14):**
+- **MLB props read R2's main line.** `lib/sports/mlb/adapter.ts` (~1466) uses
+  fixed lines (pitcher strikeouts 4.5, total bases 1.5) and never picks one
+  from `prop_odds`, so an MLB prop block can sit on a line no book posted.
+  Move MLB onto `candidateLine()`. Check first what `mlb_prop_model_cache` is
+  keyed on, since the model probability must be for the same line.
+- **The line movement card pins to R2's main line**, not
+  `lineHistory.ts`'s `pinLine` modal line (most observations, which on a ladder
+  is not the main line). One rule for "the line" on the page.
+- **The price chip on a started game.** `liveEdge.resolveCandidateEdge` reads
+  current `prop_odds` rows, so after the start it can show an in-play price
+  beside a pre-game line. Label it or hold the pre-game price.
+- **`soccer:snapshot:epl` cannot write its cache**: the payload is 22 MB
+  against a 2-minute `statement_timeout`, so it rebuilds on every request and
+  discards the result. Per-section loading is the fix; confirm the write
+  succeeds once soccer's page is rebuilt.
+
 **Verify, per sport:**
 - Render the G2 subjects: Judge 592450, Skenes 694973, Chase 4362628, Allen
   3918298, Manning 4870906, SGA 4278073, Wembanyama 5104157, MacKinnon 8477492,
@@ -658,6 +701,16 @@ Spec: `docs/design/phase-g2/src/team.html`, `src/sports/team-common.js`,
 | NHL | Shot map for / against | `nhl_shot_events` by `team_id` | Read |
 | Soccer | W-D-L throughout; team totals ranked | `player_game_history`, `/api/season-ranks` | R2 |
 | Tennis, golf | No team page; the route explains why | — | — |
+
+**Also in R7 (routed from R2, 2026-09-14):**
+- **Team pages fire MLB hooks for every sport.** `/nfl/team/13` and
+  `/nba/team/13` request `/api/mlb/team-form?teamId=13` and `/api/mlb/team/13`,
+  which 400. The rebuild's hooks must idle for other sports (pass `undefined`,
+  per the adapter convention in `CLAUDE.md`), and verification checks the
+  network tab, not only the render.
+- **`/api/mlb/team/110` served a 28-day-old payload**, found by R2's staleness
+  ceiling: its `build()` has been failing for weeks. Find why before the MLB
+  team page is rebuilt on top of it.
 
 **Delete:**
 - line picker and 25-game win bars (F-B3);
@@ -900,6 +953,17 @@ rebuilt pages use.
 | G2 NBA rim origin and miss value | `nba_shot_events` | R2, R5c |
 | G2 IP summed as decimals | MLB | R2 |
 | G2 ESPN ranks unusable | team ranks | R2 |
+| R2-F1 NFL prop prices 19h old on game day | worker game-day tier | R1f 2b (NFL, Sun 2026-09-20) |
+| R2-F2 yes/no `other` direction disagrees across books | `prop_odds` writer | R5e |
+| R2-F3 stale rungs never removed | `prop_odds` writer | R5e |
+| R2-F4 MLB props on fixed lines, not the main line | MLB adapter | R6 |
+| R2-F5 line movement pinned to modal, not main line | `lineHistory.ts` | R6 |
+| R2-F6 in-play price beside pre-game line | `liveEdge.ts` | R6 |
+| R2-F7 MLB hooks fire on other sports' team pages | `TeamDetail` | R7 |
+| R2-F8 `/api/mlb/team/110` 28-day-old payload | MLB team route | R7 |
+| R2-F9 `soccer:snapshot:epl` 22 MB cannot write its cache | soccer snapshot | R6 (per-section loading) |
+| R2-F10 Scan pages overflow at 400px | Scan | **no R-phase** — Scan is out of scope; parked in `docs/CURRENT.md` |
+| R2-F11 huge old `snapshot_cache` rows | database | **model track Phase 5** (database growth), `docs/CURRENT.md` |
 
 ## Appendix B — Reference fixtures (G2 datasets)
 

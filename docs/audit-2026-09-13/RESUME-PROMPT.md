@@ -45,22 +45,19 @@ The "tennis/soccer nested pages 404" logged under the prop main line was **a
 broken dev-server state, not a code bug**. A fresh `next dev` serves every one
 of those routes. If a page 404s in dev, restart the server before debugging.
 
-## Found and NOT fixed (none app-breaking — logged per the operator's rule)
+## Findings from R2 — routed to the phase that fixes them
 
-1. **Team pages fire MLB hooks for other sports**: `/nfl/team/13` and
-   `/nba/team/13` request `/api/mlb/team-form?teamId=13` and
-   `/api/mlb/team/13`, which 400. Wasted requests, nothing rendered wrong.
-2. **Scan pages overflow at 400px** (`/mlb` 776px, `/soccer/mls` 837px). Scan
-   is out of scope.
-3. **Yes/no `other` rows disagree in direction across books** (WTA 183796
-   Stephens to-win-a-set: DK +650 vs FD -1450, same pre-start moment).
-   Ingest problem.
-4. **`prop_odds` never drops rungs a book stopped quoting**, so "last quote per
-   book" can include a stale rung.
-5. **NFL prop prices read "19h ago" on game day** (DEN @ KC, 19:26 UTC).
-6. Carried from earlier: `/api/mlb/team/110` served a 28-day-old payload;
-   `soccer:snapshot:epl` (22 MB) cannot write its cache (statement timeout,
-   R6's per-section loading fixes it); several huge old `snapshot_cache` rows.
+None breaks the app. Each is written into its receiving phase's section of the
+master plan and has a row (R2-F1..F11) in its Appendix A ledger:
+
+| find | goes to |
+|---|---|
+| NFL prop prices 19h old on game day | **R1f 2b** — check NFL on Sun 2026-09-20 alongside CFB |
+| Yes/no `other` direction disagrees across books; stale rungs never removed | **R5e** (prop odds writer) |
+| MLB props on fixed lines; line movement pinned to the modal line; in-play price chip; EPL snapshot cache cannot write | **R6** |
+| MLB hooks fire on other sports' team pages; `/api/mlb/team/110` 28-day-old payload | **R7** |
+| Scan pages overflow at 400px | no R-phase (Scan out of scope) — parked in `CURRENT.md` |
+| Huge old `snapshot_cache` rows | model track Phase 5, `CURRENT.md` |
 
 ## Still owed from R1
 
@@ -125,7 +122,7 @@ Each would have been shipped wrong if the plan had been taken at face value.
   - never `git add -A` or `git add docs/` (`docs/discord-community-prompt.md` is mine); add explicit paths;
   - don't push unless I ask.
 - Ask before deploying to Render.
-- **Bugs found mid-phase:** fix app-breaking ones on the spot (in their own commit); log non-breaking ones here and keep moving.
+- **Bugs found mid-phase:** fix app-breaking ones on the spot (in their own commit). Route everything else into the phase that fixes it best: an "Also in R*n*" block in that phase's plan section plus an Appendix A row (plan §2). Never leave a find only in this file.
 - At ~92% context, stop and hand off: rewrite this file, and update the research pages track in `docs/CURRENT.md` without disturbing the model track's sections.
 - **Playwright MCP checks of the mockups:** route `http://phase-g2.local/**` to the local files and run scripts from `.playwright-mcp/` (file access is limited to the repo and that folder).
 
