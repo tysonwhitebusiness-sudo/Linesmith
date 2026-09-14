@@ -1,0 +1,210 @@
+# Phase G — New ideas and mockups
+
+**Status: COMPLETE 2026-09-14. Waiting for operator picks.** Nothing in the app
+has changed.
+
+Everything here follows three settled rules:
+- **Pages are in-depth research pages;** odds are one section (operator, 2026-09-14).
+- **Drawn in the F2 system** (`F2-visual-system.md`).
+- **Two-tier interaction:** a baseline on every card, drill-downs and compare mode
+  where they add insight.
+
+---
+
+## The boards
+
+Five self-contained HTML boards in `docs/design/phase-g/`. Open any of them
+directly in a browser. They're built from `src/` by `node docs/design/phase-g/build.mjs`.
+Every board has the **typeface and elevation switches** in its top bar, and the
+choice carries across boards. **All data is real**; where data isn't available
+the board says so rather than inventing it.
+
+| board | what it shows | real data | options |
+|---|---|---|---|
+| `g0-system.html` | Type ramp; today's card beside the proposed one; text contrast measured live; color rules; elevation; every component; loading/empty/error states; live-value motion; a drill-down panel | Witt pitch types; Tucker 2025 ranks and game log | typeface ×4, elevation ×2 |
+| `g1-player-mlb.html` | **Player research page**: identity and season line; section nav; one scope control per section; power profile (league percentiles); exit-velocity distribution; exit velocity by game (hover, click to drill down); results by pitch type (sortable, row drill-down); full-season strike zone; every home run; **compare mode** against another power hitter; odds collapsed at the bottom | Bobby Witt Jr., 2026 Statcast corpus (390 balls in play, 18 HR, percentiles among 331 qualified hitters) | A sectioned · B dashboard |
+| `g2-game-nfl-live.html` | **Live game page, inspired by ESPN's** (operator reference): one live header with win probability; **field graphic of the drive** (hover each play's arc); **win probability for every play** (hover reads the play; click jumps the field to that drive); drive list; plays on the drive; leaders; tabs instead of a wall | DAL @ NYG at halftime: 91 plays, 9 drives, 92 win-probability points from the ESPN feed the app already calls | A stacked · B split |
+| `g3-team-nfl.html` | **Team research page**: record and next game; results by season with scores (click a game); point margin by game; team stats as ranked percentile bars; unit grades; roster grouped by unit with photos and links | Las Vegas Raiders: team API (2025 stats, grades, 79-man roster) and `game_result` (52 games, 2023–2026) | A sectioned · B dashboard |
+| `g4-slate-longest-hr.html` | **Slate research view, built from the operator's own question**: "who hits the longest home run today". Peak-power leaderboard, peak power vs home-run launch angle, and exactly which inputs are held, dropped or missing | Top 20 hitters by 90th-percentile exit velocity, 2026 | — |
+
+Every board renders without errors at 1440px and at 400px phone width (verified
+2026-09-14).
+
+## Picks needed from the operator
+
+| # | pick | options |
+|---|---|---|
+| G1 | **Typeface** | System · Inter · IBM Plex Sans · Source Sans 3 (bar switch) |
+| G2 | **Elevation** | Cards raised · Flat with borders |
+| G3 | **Player page layout** | A sectioned (long page, sticky section nav) · B dashboard (two columns) |
+| G4 | **Live game layout** | A stacked (field full width) · B split (field and drives left, win probability right) |
+| G5 | **Team page layout** | A sectioned · B dashboard |
+| G6 | **Slate research views as a product surface** | Yes: a "Research" area with views like longest home run, anytime TD, NBA pace · No: keep research on player, team and game pages |
+| G7 | **Which ideas below go into the build** | per sport, per row, or "all held and derivable first" |
+
+---
+
+## Refinements to F2 found while building
+
+- **Big standalone numbers use proportional figures;** aligned (tabular) digits only
+  in columns (dataviz reference). F2 said tabular everywhere.
+- **Scope controls sit in one row above the section they scope,** not inside each
+  card; each card states its scope in its header. F2 put a picker in every card
+  header.
+- **Charts render at their real pixel width,** not a scaled `viewBox`. Scaling
+  shrank 10px ticks to ~7px in a half-width column. Fixed in the mockup kit;
+  the app's `components/charts/` should follow the same rule.
+- **Compare-mode colors** `#2f6fb3` / `#c56a1c` pass the palette validator (worst
+  colorblind separation ΔE 22.2, contrast ≥ 3:1).
+- **Silhouette-on-team-color fallback** for missing photos confirmed working.
+
+## Data findings made while building (to Phase H)
+
+- **Correction to F-B2's cause.** The NFL home/away records totaling 13 games aren't
+  preseason games. `game_result` holds **the same game from two sources**: 69 rows
+  for 52 Raiders games since 2023. **3 of the 17 duplicates are dated a day
+  apart**, all evening kickoffs: one source stores the UTC date, the other the
+  local date, the same class of bug as the NFL game-page fix (`cf022f5`). Any read
+  of `game_result` must de-duplicate on score and home/away within a day, or the
+  sources must agree on dates at ingest.
+- **The ESPN summary feed carries per-play win probability and full drive data**
+  (`winprobability`, `drives.previous/current` with yard lines, down and distance);
+  `footballLiveGame.ts` reads neither. Whether the NBA and NHL summary endpoints
+  carry the same is to be verified.
+
+---
+
+## Ideas by sport
+
+**Data status:** **Held** = in our database or corpus · **Derivable** = computable from
+held data · **Dropped** = the source we already call sends it, our parser
+discards it · **Not held** = no current source · **Verify** = likely in a source
+we call, unconfirmed.
+
+### MLB
+
+| surface | idea | what it tells you | status | replaces |
+|---|---|---|---|---|
+| Player | Power profile: max and 90th-pct exit velocity, hard-hit %, barrel-style rates as league percentiles | real peak power, not averages | Held | "Where this sits" |
+| Player | Exit velocity by game with a rolling average | form in contact quality, ahead of results | Held | Rolling form |
+| Player | Results by pitch type, full season | how he handles what today's starter throws | Held | Pitch mix seen (33 pitches) |
+| Player | Full-season zone map with the opposing starter's locations overlaid | where the matchup is won | Held | Strike zone (7 balls in play) |
+| Player | Batter vs this pitcher (PA, H, HR, K, xwOBA) | the real head to head | Derivable (pitch events) | Head to head vs team |
+| Player | Home run list with distance and spray direction | how far and where he hits them | **Dropped** (distance, spray) | — |
+| Player | Bat speed and swing length trend | swing changes before results show | **Dropped** | — |
+| Pitcher | Arsenal: usage, velocity, results by pitch, splits by batter hand | what he'll throw and how it plays | Held (spin/movement **Dropped**) | empty pitcher page |
+| Team | Lineup vs opposing staff; bullpen usage and fatigue | how the game will be pitched | Held / Derivable | Team stat comparison, Rankings |
+| Game | Park factor and weather impact on carry | runs and home runs environment | Held (park factor); wind vs field **Not held** | Conditions |
+| Game | Confirmed lineups with handedness | who actually plays | **Not held** | — |
+| Live | Pitch-by-pitch strip: velocity, location, last batted ball's exit velo | the at-bat as it happens | Verify (live feed) | — |
+
+### NFL
+
+| surface | idea | what it tells you | status | replaces |
+|---|---|---|---|---|
+| Player | Targets, target share, catch rate, yards per target over time | opportunity, which predicts yardage | Held (targets); share Derivable | bar chart of yards only |
+| Player | Air yards, YAC and depth profile on a half-field | how he's used | Held (`nfl_target_events`) | Target map (strike-zone grid) |
+| Player | EPA per target / per dropback; success rate | efficiency | **Dropped** (play-by-play) | — |
+| Player | Snap share, routes run | role and workload | **Not held** | — |
+| Player | Red-zone targets and carries | touchdown opportunity | **Dropped** (play-by-play) | — |
+| Team | Unit vs unit matchup with EPA, success rate, pressure rate | where the game will be decided | Held (team EPA/CPOE) / partly Dropped | Matchup, Team stat comparison, Rankings, Unit grades |
+| Team | Results by season with scores; ATS and over/under as one view | true form | Held (after de-duplication) | win bars, Form, Last 15, Recent results |
+| Game | **Field graphic of the drive; win probability per play** | the live game at a glance | Fetched, **Dropped** | live panel wall |
+| Game | Injuries: only players with a status, starters first, props affected | who's missing | Held | whole-roster injury list |
+| Game | Weather impact (outdoor only) | wind and cold effect | Held | — |
+
+### CFB
+
+| surface | idea | status |
+|---|---|---|
+| Player | A real player page every day: season and career lines, game log, splits | Held (52 keys, 21k players) — today blank |
+| Team | Conference standings and record; AP/CFP rank | Verify (ESPN scoreboard rank fields) |
+| Team / Game | Team efficiency (PPA/EPA-style), strength of schedule | **Not held** (CFBD publishes; not ingested) |
+| Game | NFL's unit matchup, box score and drive/win-probability live view | Verify (same ESPN summary shape) |
+
+### NBA (offseason; design now, render-verify in October)
+
+| surface | idea | status |
+|---|---|---|
+| Player | Minutes, usage-style share, points/rebounds/assists per 36 and trend | Held (box); shares Derivable |
+| Player | Shot chart with zone efficiency | Held for 2024-25 only (`nba_shot_events`) |
+| Team | Pace, offensive/defensive/net rating, eFG%, TOV%, rebound% | Derivable from held box scores |
+| Team / Game | Rest days and back-to-backs | Derivable (`game_result` dates) |
+| Game | Pace matchup and projected possessions; injuries weighted by minutes | Derivable / Held |
+| Player | On/off, lineup data | **Not held** |
+| Live | Game flow (lead over time), runs, win probability | Verify (ESPN summary) |
+
+### NHL (offseason)
+
+| surface | idea | status |
+|---|---|---|
+| Player | Time on ice trend (all / PP / SH), shots and shooting % | TOI Held; PP/SH splits not parsed |
+| Player | Shot map with danger zones | Held for 2024-25 (`nhl_shot_events`) |
+| Goalie | Save %, goals against, shots faced, workload | Held |
+| Goalie | Goals saved above expected | Derivable (needs an xG model from shot location and type) |
+| Game | **Starting goalie matchup** (the key hockey fact) | Confirmed starters **Not held** |
+| Team | Power play %, penalty kill %, shots for/against | Verify (not parsed today) |
+| Live | Live shot map by period | Verify (live feed coordinates) |
+
+### Soccer (EPL, MLS)
+
+| surface | idea | status |
+|---|---|---|
+| Player | Minutes, starts vs sub appearances, goals / xG / xA per 90 over time | Minutes/starts Held; xG/xA fetched live, **not stored** |
+| Player | Half-pitch shot map, xG-sized dots, foot/head filter | Fetched live (Understat), **not stored** |
+| Player | Position-aware page (defenders: tackles, fouls, cards; keepers: saves, goals conceded, save %) | Keeper and discipline keys Held; tackles/passes **Not held** |
+| Team | xG for/against trend, W/D/L strip, set-piece share | xG fetched, not stored; results Held |
+| Game | Probable lineups and formations; suspensions from card accumulation | **Not held** / Derivable (cards) |
+| Game | Three-way moneyline with the draw | Held |
+| Live | Attack momentum / xG race timeline | Verify |
+
+### Tennis
+
+| surface | idea | status |
+|---|---|---|
+| Player | Serve and return profile: aces, double faults, 1st-serve in/won, 2nd-serve won, break points saved/converted | **Dropped** (parser keeps aces only) |
+| Player | Surface record: hard / clay / grass W-L, today's surface marked | Derivable (`game_result`: 56,386 matches with surface) |
+| Player | Fatigue: matches and minutes in the last 7 days, retirements | Matches Derivable; minutes **Dropped** |
+| Player | Ranking and ranking history | **Dropped** (CSV carries ranks) |
+| Game | Serve/return comparison; H2H by surface; no home/away, no injuries, no unit grades | Dropped / Derivable |
+| Live | Set and game score with break points | Held (live route) |
+
+### Golf (held until a live tournament)
+
+| surface | idea | status |
+|---|---|---|
+| Player | Strokes-gained-style category profile (off the tee, approach, around the green, putting) | Verify against `golf_shot_events` (1.03M rows) |
+| Player | Proximity by approach distance; course-fit comparison | Held (shot events) |
+| Live | Hole-by-hole scorecard with position movement | Held (`golf_hole_scores`, recent weeks only) |
+
+---
+
+## Slate research views (G6)
+
+Questions that span a slate, and the view each needs:
+
+| view | built from | status |
+|---|---|---|
+| **Longest home run today** (mocked: `g4`) | peak exit velocity, HR launch angle, HR distance, park carry, temperature, wind vs field, opposing velocity | EV/LA Held · distance **Dropped** · park orientation **Not held** |
+| Anytime TD scorer | red-zone targets and carries, TD share, opponent TDs allowed by position | targets Held · red zone **Dropped** |
+| NBA pace-up spots | pace and ratings by team, rest, injuries | Derivable |
+| Goalie and shots | starting goalies, shots for/against, save % | shots/saves Held · starters **Not held** |
+| Anytime goalscorer across a matchday | xG per 90 and minutes for every attacker, opponent xG conceded | xG **not stored** |
+| Aces and serve props | serve stats by surface, opponent return profile | **Dropped** |
+
+---
+
+## What Phase H merges
+
+1. **Foundations first:** F2 tokens and the component set proven in the boards
+   (`Card`, `SegmentedToggle`, `Tabs`, `Chip`, `Tooltip`, `Avatar`, `StatValue`/
+   percentile bar, `DataTable`, `DrillDownPanel`, `Skeleton`/`EmptyState`/
+   `ErrorState`), charts at real width.
+2. **Data kept at ingest** (cheapest depth per unit of work): MLB distance, spray,
+   bat speed, spin; tennis serve stats, ranks, minutes; soccer xG/xA stored;
+   NFL play-by-play EPA and red-zone fields; ESPN win probability and drives.
+3. **Read paths for held data:** Statcast corpus on player pages; `game_result`
+   with de-duplication; NBA derived ratings; tennis surface records.
+4. **Page rebuilds in the picked layouts,** sport by sport, cards per Phase F.
+5. **Correctness bugs** F-B1…F-B13, with F-B2's corrected cause.
+6. **Slate research views** if G6 is yes.

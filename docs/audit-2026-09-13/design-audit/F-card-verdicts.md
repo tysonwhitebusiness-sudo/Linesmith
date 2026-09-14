@@ -435,7 +435,7 @@ Data errors, not design judgments. They go to the build plan in Phase H.
 | # | where | what | evidence |
 |---|---|---|---|
 | **F-B1** | Game page **Rankings** in **NFL, NBA, soccer and tennis** (not MLB) | Every "AGN" column equals the other team's "FOR" column, so the "allowed" ranks are invented and the heat colors wrong. | NFL: DAL AGN pass yds 21 but Matchup says DAL pass yds allowed **32nd of 32**. NBA: MIN AGN = LAL FOR. Soccer: NEW AGN = LEE FOR. Tennis: Shelton AGN = Zverev FOR. |
-| **F-B2** | NFL game page, **Records** | Home and away records total 13 games each under a 0-0 season record. | DAL Home 6-7 · Away 5-7; NYG Home 4-8 · Away 1-12 |
+| **F-B2** | NFL game page, **Records** | Home and away records total 13 games each under a 0-0 season record. **Cause found in Phase G:** `game_result` stores the same game from two sources (69 rows for 52 Raiders games since 2023), and 3 duplicates are dated a day apart (evening kickoffs, UTC vs local date), so date-only de-duplication misses them. | DAL Home 6-7 · Away 5-7; NYG Home 4-8 · Away 1-12 |
 | **F-B3** | NFL team page, **bar chart** | Two seasons out of chronological order, no years. | 11/16 … 01/04, then 09/06 … 12/20 |
 | **F-B4** | MLB pitcher page, **game log** | Totals all zero, every start row blank. | Noah Cameron: 0 K, 0 BB, 0 H, 0 ER; 9 empty rows |
 | **F-B5** | MLB game and team pages, **team stats** | Per-game stats rounded to integers, so different values display as equal. | KC vs BOS: R 4 / 4, H 8 / 8, BB 3 / 3 |

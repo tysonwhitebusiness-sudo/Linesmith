@@ -1,7 +1,7 @@
 # Design audit — plan
 
 **Status (2026-09-14): APPROVED. Phase E complete · Phase F complete (redone
-under the research frame) · Phase F2 complete · G next, awaiting go · H not started.**
+under the research frame) · Phase F2 complete · Phase G complete (5 boards + G-ideas.md), awaiting operator picks G1–G7 · H not started.**
 
 **The build plan (`build-plan.md`) is ON HOLD after Phase 0** until this audit
 finishes and its results are merged in (Phase H). The exception is Decision 2.
