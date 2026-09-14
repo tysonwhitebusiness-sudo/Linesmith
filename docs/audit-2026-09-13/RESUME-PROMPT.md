@@ -67,7 +67,6 @@ independent):**
   across 2 books — an alternate ladder under the main key, which is exactly
   what R2's prop-main-line rule exists to fix. Fixing it separately would be a
   second main-line implementation.
-- **A decision is owed on `cachedRoute`'s stale ceiling** — see below.
 - **MLB has no `/api/mlb/game/{id}` route**, so an MLB game page still cannot
   resolve a past game. It now says so honestly instead of "Game not found."
   The per-game read belongs with R8.
