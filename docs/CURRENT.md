@@ -36,7 +36,9 @@ untestable, instead of a false positive.
 
 ## Research pages track — next action: R1
 
-Plan approved as written 2026-09-14; no phase started. **R1 (correctness on
+Plan approved as written 2026-09-14; no phase started. **A new session first
+explains back the goal, the phase order and its R1 approach, then waits for the
+operator's go-ahead before any code** (see `RESUME-PROMPT.md`). **R1 (correctness on
 today's pages), R2 (shared data rules) and R3 (design system) can run in any
 order**; R1 is the default start because its bugs are live. Calendar and
 approvals owed inside R1:

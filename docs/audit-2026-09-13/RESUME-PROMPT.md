@@ -4,10 +4,24 @@ Paste everything below the line into a fresh session on any account.
 
 ---
 
-I'm resuming the research-pages build in this repo. Read these first, **before doing anything**, and don't restate them back to me:
+I'm resuming the research-pages build in this repo. Read these first, **before doing anything**:
 1. `CLAUDE.md`
 2. `docs/CURRENT.md` (the project baton; the research pages track is in "START HERE")
 3. `docs/audit-2026-09-13/research-pages-master-plan.md` (**approved as written 2026-09-14**, the build order)
+
+## First reply: show me you understand the goal. Don't start building.
+
+**Don't start R1 or any other phase, and don't edit code, until I say go.** After reading, reply in plain
+language with:
+
+1. **The goal:** what these pages become and why, the rules that shape them, and what "done" looks like
+   against the G2 mockups.
+2. **How close the build will be to the mockups,** and where it will differ.
+3. **The phase order (R1–R11)** and why that order holds.
+4. **Exactly what you'd do first in R1:** which items, in which files, and how you'd verify each one.
+5. **Everything you'd need from me:** approvals, dates, and open questions (if any).
+
+Keep it short enough to read in a couple of minutes. Then wait for my go-ahead.
 
 ## Where the work is
 
