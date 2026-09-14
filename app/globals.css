@@ -3,6 +3,32 @@
 @tailwind utilities;
 
 @layer base {
+  /* R3 PALETTE — the single source. `tailwind.config.ts` colors point here, and
+     components needing a color outside a class (inline style, SVG) use
+     `rgb(var(--good))` / `oklch(var(--ink-muted))`. oklch values are
+     "lightness chroma hue"; rgb values are space-separated channels, so both
+     accept an alpha. Charcoal palette, approved in F2/G2. */
+  :root {
+    --paper: 94.5% 0.003 260;
+    --card: 98.5% 0.002 260;
+    --card-sunk: 96.5% 0.002 260;
+    --line: 89% 0.004 260;
+    --line-soft: 92.5% 0.003 260;
+    --line-hair: 95% 0.003 260;
+    --ink: 18% 0.005 260;
+    --ink-secondary: 34% 0.005 260;
+    --ink-muted: 47% 0.005 260; /* lightest gray allowed for text */
+    --ink-faint: 72% 0.004 260; /* decoration only */
+    --ink-disabled: 80% 0.004 260;
+    --good: 15 122 79; /* #0f7a4f */
+    --bad: 194 59 44; /* #c23b2c */
+    --warn: 183 121 31; /* #b7791f */
+    --cmp-a: 47 111 179; /* #2f6fb3 */
+    --cmp-b: 197 106 28; /* #c56a1c */
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
   }
@@ -21,7 +47,7 @@
   /* R3 3d: ONE visible focus ring, everywhere — 2px, offset 2px. F2 probed 300
      keyboard focus stops and most had no visible indicator. */
   :focus-visible {
-    outline: 2px solid theme('colors.focus');
+    outline: 2px solid oklch(var(--ink));
     outline-offset: 2px;
     border-radius: 4px;
   }
@@ -103,7 +129,7 @@
     background-image: linear-gradient(
       90deg,
       rgba(255, 255, 255, 0) 0%,
-      theme('colors.line.soft / 90%') 50%,
+      oklch(var(--line-soft) / 0.9) 50%,
       rgba(255, 255, 255, 0) 100%
     );
     background-size: 200% 100%;

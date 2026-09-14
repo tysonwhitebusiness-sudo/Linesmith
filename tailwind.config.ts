@@ -27,50 +27,52 @@ const config: Config = {
         // Untouched by the graphite reskin — these are functional signals
         // (hit rate, live status, positive/negative), not brand identity,
         // and stay exactly as they were.
-        good: '#0f7a4f',
-        bad: '#c23b2c',
-        warn: '#b7791f',
-        // R3 (research-pages plan 3a, F2 visual system, G2 `system.css`).
-        // RAISED ELEVATION: paper is now DARKER than card. Before R3, card
-        // (93%) sat below paper (96%), the reverse of what card shadows assume.
-        paper: 'oklch(94.5% 0.003 260 / <alpha-value>)',
+        // R3: EVERY PALETTE VALUE LIVES IN A CSS VARIABLE (`app/globals.css`
+        // :root), and these entries only point at it. Components that need a
+        // color in an inline style or SVG attribute (`var(--good)`) then read
+        // the same value Tailwind classes do, instead of a second literal.
+        //
+        // RAISED ELEVATION: paper is DARKER than card. Before R3 the card
+        // (93%) sat below the paper (96%).
+        //
+        // TEXT ROLES: `ink-muted` is the lightest gray allowed for text and
+        // passes AA on card, paper and card-sunk. `ink-faint` / `ink-disabled`
+        // are DECORATION ONLY. F2 measured `ink-faint` as 41% of all text at
+        // about 2.4:1; R3 moved every `text-ink-faint` / `text-ink-soft` to
+        // `text-ink-muted`.
+        good: 'rgb(var(--good) / <alpha-value>)',
+        bad: 'rgb(var(--bad) / <alpha-value>)',
+        warn: 'rgb(var(--warn) / <alpha-value>)',
+        paper: 'oklch(var(--paper) / <alpha-value>)',
         card: {
-          DEFAULT: 'oklch(98.5% 0.002 260 / <alpha-value>)',
+          DEFAULT: 'oklch(var(--card) / <alpha-value>)',
           /** Inset surfaces inside a card: toggle tracks, hover rows, skeletons. */
-          sunk: 'oklch(96.5% 0.002 260 / <alpha-value>)',
+          sunk: 'oklch(var(--card-sunk) / <alpha-value>)',
         },
-        // Kept as names for existing callers; both now resolve to `card-sunk`.
+        // Kept as names for existing callers; both resolve to `card-sunk`.
         surface: {
-          subtle: 'oklch(96.5% 0.002 260 / <alpha-value>)',
-          header: 'oklch(96.5% 0.002 260 / <alpha-value>)',
+          subtle: 'oklch(var(--card-sunk) / <alpha-value>)',
+          header: 'oklch(var(--card-sunk) / <alpha-value>)',
         },
-        // TEXT ROLES. `ink-muted` is the lightest gray allowed for TEXT and
-        // passes AA on card, paper and card-sunk. `ink-faint` and
-        // `ink-disabled` are DECORATION ONLY (dividers, disabled controls):
-        // F2 measured `ink-faint` as 41% of all rendered text at about 2.4:1,
-        // most of the app's 43% AA failure rate. R3 moved every
-        // `text-ink-faint` / `text-ink-soft` to `text-ink-muted`.
         ink: {
-          DEFAULT: 'oklch(18% 0.005 260 / <alpha-value>)',
-          secondary: 'oklch(34% 0.005 260 / <alpha-value>)',
-          muted: 'oklch(47% 0.005 260 / <alpha-value>)',
-          soft: 'oklch(47% 0.005 260 / <alpha-value>)',
-          faint: 'oklch(72% 0.004 260 / <alpha-value>)',
-          disabled: 'oklch(80% 0.004 260 / <alpha-value>)',
+          DEFAULT: 'oklch(var(--ink) / <alpha-value>)',
+          secondary: 'oklch(var(--ink-secondary) / <alpha-value>)',
+          muted: 'oklch(var(--ink-muted) / <alpha-value>)',
+          soft: 'oklch(var(--ink-muted) / <alpha-value>)',
+          faint: 'oklch(var(--ink-faint) / <alpha-value>)',
+          disabled: 'oklch(var(--ink-disabled) / <alpha-value>)',
         },
-        // `line` is the standard card border; `line-soft`/`line-hair` are
-        // progressively lighter dividers for rows within a card.
         line: {
-          DEFAULT: 'oklch(89% 0.004 260 / <alpha-value>)',
-          soft: 'oklch(92.5% 0.003 260 / <alpha-value>)',
-          hair: 'oklch(95% 0.003 260 / <alpha-value>)',
+          DEFAULT: 'oklch(var(--line) / <alpha-value>)',
+          soft: 'oklch(var(--line-soft) / <alpha-value>)',
+          hair: 'oklch(var(--line-hair) / <alpha-value>)',
         },
         // Compare slots (R9). Validated: worst colorblind deltaE 22.2.
         cmp: {
-          a: '#2f6fb3',
-          b: '#c56a1c',
+          a: 'rgb(var(--cmp-a) / <alpha-value>)',
+          b: 'rgb(var(--cmp-b) / <alpha-value>)',
         },
-        focus: 'oklch(18% 0.005 260 / <alpha-value>)',
+        focus: 'oklch(var(--ink) / <alpha-value>)',
         // Placeholder fill behind subject initials (SubjectAvatar) — sits
         // between `card` and `line` in lightness, distinct enough from both
         // to read as a deliberate placeholder rather than a stray surface.

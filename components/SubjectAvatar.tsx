@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Avatar } from './ui/Avatar';
 
 export interface SubjectAvatarProps {
   name: string;
@@ -17,73 +18,18 @@ export interface SubjectAvatarProps {
   shape?: 'circle' | 'rounded';
 }
 
-function initials(name: string): string {
-  const parts = name
-    .replace(/\(.*?\)/g, '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
 /**
- * Subject image with an honest degradation chain:
- * headshot → sport fallback (flag / logo) → initials.
+ * Subject image: headshot → sport fallback (flag / logo) → a silhouette.
  *
- * Deliberately does NOT fall back to ESPN's `nophoto.png`. Out of its own
- * context that asset reads as a broken or generic ESPN image; initials look
- * intentional and stay inside the app's own visual language.
+ * R3: renders through the design-system `Avatar`, so the last step is the
+ * silhouette, NEVER initials (F2 found initials standing in for photos on 16
+ * captured cards). Still does not fall back to ESPN's `nophoto.png`, which out
+ * of context reads as a broken image.
  *
- * A missing headshot is normal, not an error — plenty of athletes have no photo
- * on file — so a failed load advances the chain silently rather than logging.
+ * Decorative by default, as before: every caller shows the name beside it.
  */
-export function SubjectAvatar({
-  name,
-  headshotUrl,
-  fallbackUrl,
-  size = 36,
-  className = '',
-  shape = 'circle',
-}: SubjectAvatarProps) {
-  const sources = [headshotUrl, fallbackUrl].filter((s): s is string => Boolean(s));
-  const [index, setIndex] = useState(0);
-  const roundedClass = shape === 'rounded' ? 'rounded-xl' : 'rounded-full';
-
-  // A recycled card (virtualised list, filter change) must restart the chain,
-  // otherwise one subject's failure would hide the next subject's photo.
-  useEffect(() => {
-    setIndex(0);
-  }, [headshotUrl, fallbackUrl]);
-
-  const src = sources[index];
-  const dimension = { width: size, height: size };
-
-  if (!src) {
-    return (
-      <span
-        aria-hidden
-        style={dimension}
-        className={`flex shrink-0 items-center justify-center ${roundedClass} bg-avatar text-[11px] font-semibold text-masters ${className}`}
-      >
-        {initials(name)}
-      </span>
-    );
-  }
-
-  return (
-    <img
-      src={src}
-      alt=""
-      aria-hidden
-      loading="lazy"
-      decoding="async"
-      style={dimension}
-      onError={() => setIndex((i) => i + 1)}
-      className={`shrink-0 ${roundedClass} bg-ink/5 object-cover ${className}`}
-    />
-  );
+export function SubjectAvatar({ name, headshotUrl, fallbackUrl, size = 36, className = '', shape = 'circle' }: SubjectAvatarProps) {
+  return <Avatar label={name} src={headshotUrl} fallbackSrc={fallbackUrl} size={size} rounded={shape === 'rounded'} decorative className={className} />;
 }
 
 export function mlbHeadshotUrl(personId: number | undefined): string | undefined {
