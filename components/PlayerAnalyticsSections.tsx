@@ -1,6 +1,7 @@
 'use client';
 
 import { SeriesChart } from './charts/SeriesChart';
+import { Card, FactList } from './ui';
 import { HeatGrid } from './charts/HeatGrid';
 import { DensityCurve } from './charts/DensityCurve';
 import { MIDDOT, fmt } from './charts/tokens';
@@ -58,16 +59,12 @@ export function PlayerAnalyticsRailSections({ roles }: { roles: AnalyticsRoles }
   );
 }
 
-/** Identical chrome to `PlayerRoleSections`' own `RoleCard` — the two files' cards sit in the same column and must not look like two systems. */
+/** R3: every analytics section is the design-system Card — one header style, sentence case. */
 function AnalyticsCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <section className="lb-card overflow-hidden">
-      <div className="flex items-baseline justify-between gap-2 bg-accent-soft px-3 py-1.5">
-        <h2 className="text-[10.5px] font-bold uppercase tracking-wide text-masters">{title}</h2>
-        {subtitle ? <span className="truncate text-[9.5px] text-ink-muted">{subtitle}</span> : null}
-      </div>
-      <div className="p-3">{children}</div>
-    </section>
+    <Card title={title} scope={subtitle} dense>
+      {children}
+    </Card>
   );
 }
 
@@ -165,14 +162,7 @@ function WhereThisSitsSection({ role }: { role: WhereThisSitsRole }) {
 function GameContextSection({ role }: { role: GameContextRole }) {
   return (
     <AnalyticsCard title={role.title}>
-      <dl className="grid grid-cols-1 gap-y-1.5">
-        {role.rows.map((r) => (
-          <div key={r.key} className="flex items-baseline justify-between gap-3 border-b border-line/60 pb-1 last:border-0 last:pb-0">
-            <dt className="text-[11.5px] text-ink-muted">{r.label}</dt>
-            <dd className="m-0 text-[12px] font-semibold tabular-nums text-ink">{r.value}</dd>
-          </div>
-        ))}
-      </dl>
+      <FactList items={role.rows.map((r) => [r.label, r.value] as [string, string])} />
     </AnalyticsCard>
   );
 }

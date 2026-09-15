@@ -3,6 +3,19 @@ import type { Config } from 'tailwindcss';
 const config: Config = {
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
+    // R3 3d BREAKPOINTS: 400 / 768 / 1024 / 1440 are the design targets. Declared
+    // as the WHOLE ordered set (not `extend`), because Tailwind emits screens in
+    // the order given and an extended `xs` would land after `2xl` and lose every
+    // cascade. The defaults keep their values, so no existing class moves.
+    screens: {
+      xs: '400px',
+      sm: '640px',
+      md: '768px',
+      lg: '1024px',
+      xl: '1280px',
+      wide: '1440px',
+      '2xl': '1536px',
+    },
     extend: {
       colors: {
         // Graphite theme (2026-08): neutral grey brand identity replacing the

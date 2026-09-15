@@ -72,6 +72,7 @@ import { toGameDetailData as toNhlGameDetailData } from '@/lib/sports/nhl/adapte
 import { toGameDetailData as toTennisGameDetailData } from '@/lib/sports/tennis/adapters/gameDetailAdapter';
 import type { SoccerLeague, TennisTour } from '@/lib/core/types';
 import { heatFill, heatInk } from '@/lib/ui/heat';
+import { SectionNav, SelectBox, useUrlState } from './ui';
 
 /**
  * Game Detail's main pane, at the depth spec'd for a Linemate-equivalent game
@@ -995,7 +996,9 @@ export interface RecordsSectionTeam {
   h2h: RecentResultRow[];
 }
 
-export function RecordsSection({
+export const RECORD_SCOPES = ['season', 'last5', 'h2h'] as const;
+
+function RecordsSection({
   away,
   home,
   loading,
@@ -1004,7 +1007,8 @@ export function RecordsSection({
   home: RecordsSectionTeam;
   loading: boolean;
 }) {
-  const [tab, setTab] = useState<'season' | 'last5' | 'h2h'>('season');
+  // R3 3d: the scope lives in the URL (?records=last5), so the page can be linked and reloaded as it was.
+  const [tab, setTab] = useUrlState('records', 'season', RECORD_SCOPES);
 
   const data = useMemo(() => {
     if (tab === 'season') {
@@ -1900,16 +1904,12 @@ function MatchupSection({
           )
         ) : activeTab === 'player' && data.selectedPlayerCard ? (
           <>
-            <select
+            <SelectBox
+              label="Pick a player"
               value={data.selectedPlayerId ?? ''}
-              onChange={(e) => onMatchupPlayerChange(e.target.value)}
-              aria-label="Pick a player"
-              className="rounded-lg border border-line bg-card px-2 py-1 text-[12px] focus:border-masters focus:outline-none"
-            >
-              {(data.playerOptions ?? []).map((p) => (
-                <option key={p.id} value={p.id}>{p.label}</option>
-              ))}
-            </select>
+              onChange={onMatchupPlayerChange}
+              options={(data.playerOptions ?? []).map((p) => ({ value: p.id, label: p.label }))}
+            />
             <NflPlayerVsDefenseCard {...data.selectedPlayerCard} />
           </>
         ) : (
@@ -2346,13 +2346,29 @@ export function GameDetail({
                             : undefined
               }
             />
-            <MatchupSection
-              data={data.matchup}
-              matchupTab={matchupTab}
-              onMatchupTabChange={setMatchupTab}
-              onMatchupPlayerChange={setMatchupPlayerId}
+            {/* R3 3b: SectionNav over the game summary — sticky, tracks scroll, hash in the URL. */}
+            <SectionNav
+              top={104}
+              label="Game sections"
+              items={[
+                { id: 'matchup', label: 'Matchup' },
+                { id: 'records', label: 'Records' },
+                ...(data.statComparison ? [{ id: 'stats', label: 'Stats' }] : []),
+                { id: 'form', label: 'Last 5' },
+                { id: 'injuries', label: 'Injuries' },
+              ]}
             />
-            <RecordsSection away={data.records.away} home={data.records.home} loading={data.records.loading} />
+            <div id="sec-matchup" data-sec="matchup" className="scroll-mt-[160px]">
+              <MatchupSection
+                data={data.matchup}
+                matchupTab={matchupTab}
+                onMatchupTabChange={setMatchupTab}
+                onMatchupPlayerChange={setMatchupPlayerId}
+              />
+            </div>
+            <div id="sec-records" data-sec="records" className="scroll-mt-[160px]">
+              <RecordsSection away={data.records.away} home={data.records.home} loading={data.records.loading} />
+            </div>
             {/* Phase 6.21 — the board's situational grid, the home side's cover
                 rate by venue and recency. Only the two slots the GAME board
                 actually draws are rendered: the builder also returns a rolling
@@ -2366,11 +2382,19 @@ export function GameDetail({
                 gameContext: null,
               }}
             />
-            {data.statComparison ? <StatComparison data={data.statComparison} /> : null}
-            <LastFiveGames away={data.lastFive.away} home={data.lastFive.home} loading={data.lastFive.loading} />
+            {data.statComparison ? (
+              <div id="sec-stats" data-sec="stats" className="scroll-mt-[160px]">
+                <StatComparison data={data.statComparison} />
+              </div>
+            ) : null}
+            <div id="sec-form" data-sec="form" className="scroll-mt-[160px]">
+              <LastFiveGames away={data.lastFive.away} home={data.lastFive.home} loading={data.lastFive.loading} />
+            </div>
             {data.rankings ? <Rankings data={data.rankings} /> : null}
             {data.unitGrades ? <UnitGradesSection data={data.unitGrades} /> : null}
-            <Injuries away={data.injuries.away} home={data.injuries.home} loading={data.injuries.loading} />
+            <div id="sec-injuries" data-sec="injuries" className="scroll-mt-[160px]">
+              <Injuries away={data.injuries.away} home={data.injuries.home} loading={data.injuries.loading} />
+            </div>
           </>
         )}
       </div>

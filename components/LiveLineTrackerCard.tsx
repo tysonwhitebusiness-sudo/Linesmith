@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useTrackedLines } from './useTrackedLines';
 import { useLiveLineValues } from './useLiveLineValues';
 import { heatFill, heatInk } from '@/lib/ui/heat';
+import { SelectBox } from './ui';
 
 export interface LiveLineTrackerData {
   subjectId: string;
@@ -96,15 +97,9 @@ function AddLineForm({
   return (
     <div className="flex flex-col gap-2 border-t border-line-soft bg-surface-subtle p-3">
       <div className="flex items-center gap-2">
-        <select value={statKey} onChange={(e) => setStatKey(e.target.value)} className="min-w-0 flex-1 rounded-md border border-line px-2 py-1.5 text-label">
-          {availableStats.map((s) => (
-            <option key={s.key} value={s.key}>{s.label}</option>
-          ))}
-        </select>
-        <select value={side} onChange={(e) => setSide(e.target.value as 'over' | 'under')} className="rounded-md border border-line px-2 py-1.5 text-label">
-          <option value="over">Over</option>
-          <option value="under">Under</option>
-        </select>
+        {/* R3: SelectBox — a named, styled native select. */}
+        <SelectBox label="Stat" className="min-w-0 flex-1" value={statKey} onChange={setStatKey} options={availableStats.map((s) => ({ value: s.key, label: s.label }))} />
+        <SelectBox<'over' | 'under'> label="Side" value={side} onChange={setSide} options={[{ value: 'over', label: 'Over' }, { value: 'under', label: 'Under' }]} />
         <input
           type="number"
           inputMode="decimal"

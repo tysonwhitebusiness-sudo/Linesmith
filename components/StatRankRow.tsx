@@ -1,6 +1,7 @@
 'use client';
 
 import { heatFill } from '@/lib/ui/heat';
+import { RankRow } from './ui';
 import { percentileOf } from './PercentileRing';
 import { ordinal, type OpposingStarterStat } from './PlayerDetail';
 
@@ -10,29 +11,31 @@ import { ordinal, type OpposingStarterStat } from './PlayerDetail';
  * same way: Team Detail's Advanced Stats/Season Team Stats, Player Detail's
  * Hitter Stats card, and the matchup card's solo (non-shared) stat rows.
  */
-/**
- * The bar's colour, or a flat neutral grey for a stat with no good/bad
- * direction (R2). The bar's LENGTH still shows where the value sits; only the
- * verdict is withheld.
- */
-function barColor(stat: OpposingStarterStat, pct: number): string {
-  return stat.neutral ? 'var(--color-ink-faint, #b6b7ba)' : heatFill(pct / 100);
-}
-
 export function StatRankRow({ stat }: { stat: OpposingStarterStat }) {
+  // R3: rendered by the design-system RankRow (percentile dot strip, a real
+  // tooltip). `percentileOf` is rank-based, so 100 is already the BEST in the
+  // stat's direction; a `neutral` stat (R2) keeps its position and loses the
+  // verdict color. This replaced a hand-rolled bar whose neutral fill pointed
+  // at a CSS variable that does not exist (`--color-ink-faint`).
   const pct = percentileOf(stat) ?? 0;
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-20 shrink-0 truncate text-[9px] uppercase tracking-wide text-ink-muted">{stat.label}</span>
-      <div className="h-[5px] flex-1 rounded-full bg-line-hair">
-        <div className="h-[5px] rounded-full" style={{ width: `${pct}%`, backgroundColor: barColor(stat, pct) }} />
-      </div>
-      <span className="w-10 shrink-0 text-right text-[10.5px] font-semibold tabular-nums">{stat.value.toFixed(stat.decimals)}</span>
-      <span className="w-16 shrink-0 truncate text-right text-[9px] text-ink-muted" title={`${stat.rank} of ${stat.poolSize}`}>
-        {ordinal(stat.rank)} of {stat.poolSize}
-      </span>
-    </div>
+    <RankRow
+      label={stat.label}
+      valueText={stat.value.toFixed(stat.decimals)}
+      percentile={pct}
+      direction={stat.neutral ? 'neutral' : 'higher'}
+      rank={{ rank: stat.rank, of: stat.poolSize }}
+    />
   );
+}
+
+/**
+ * The two-sided bar's colour, or a flat neutral grey for a stat with no
+ * good/bad direction (R2). The bar's LENGTH still shows where the value sits;
+ * only the verdict is withheld.
+ */
+function barColor(stat: OpposingStarterStat, pct: number): string {
+  return stat.neutral ? 'oklch(var(--ink-faint))' : heatFill(pct / 100);
 }
 
 /**

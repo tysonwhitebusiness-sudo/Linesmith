@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useState } from 'react';
+import { Chip, SegmentedToggle as ToggleGroup, StatusPill, Tabs } from './ui';
 import Link from 'next/link';
 import type { PickCandidate, SportSnapshot, HistoryEntry } from '@/lib/core/types';
 import { entryValue, isOk, type WindowedStat } from '@/lib/core/windowedStat';
@@ -1444,30 +1445,18 @@ export function PlayerDetail({
 
       {/* Market tabs — re-scope everything below without a reload. */}
       {candidates.length > 1 ? (
-        <div className="lb-scroll-x flex gap-1 border-b border-line">
-          {candidates.map((candidate) => {
-            const selected = candidate.dimension === active.dimension;
-            return (
-              <button
-                key={candidateRowKey(candidate)}
-                type="button"
-                onClick={() => {
-                  setLineOffset(0);
-                  setShowAllGames(false);
-                  onMarketChange?.(candidate.dimension);
-                }}
-                aria-current={selected ? 'true' : undefined}
-                className={`relative whitespace-nowrap px-2.5 pb-1.5 pt-1 text-[12px] transition-colors ${
-                  selected
-                    ? 'font-semibold text-ink after:absolute after:inset-x-2.5 after:bottom-0 after:h-[2px] after:rounded-full after:bg-masters'
-                    : 'text-ink-muted hover:text-ink'
-                }`}
-              >
-                {marketText(candidate.sport, candidate.dimension, 'full')}
-              </button>
-            );
-          })}
-        </div>
+        // R3: real tabs (role="tab", arrow keys) instead of buttons styled as tabs.
+        // One tab per market: a market can carry several candidates (golf's categories).
+        <Tabs
+          label="Market"
+          value={active.dimension}
+          items={[...new Map(candidates.map((c) => [c.dimension, c])).values()].map((c) => ({ value: c.dimension, label: marketText(c.sport, c.dimension, 'full') }))}
+          onChange={(dimension) => {
+            setLineOffset(0);
+            setShowAllGames(false);
+            onMarketChange?.(dimension);
+          }}
+        />
       ) : null}
 
       {/* Line stepper + price — one grouped cluster, dividers between logical
@@ -1523,7 +1512,7 @@ export function PlayerDetail({
               Previewing {golfCategoryLabel(active.dimension, effectiveGolfCategory)} — this golfer&apos;s tracked pattern is {active.categoryLabel}.
             </span>
           ) : active.lineStatus === 'alternates-only' ? (
-            <span className="text-[11px] text-ink-muted">Alternate lines only — no book quoted both sides, so this line is not a market line.</span>
+            <StatusPill>Alternate lines only — no book quoted both sides, so this is not a market line</StatusPill>
           ) : onAdd ? (
             <GetOddsButton onClick={() => onAdd(active)} label="Add to slip to record a price" />
           ) : null}
@@ -1925,22 +1914,16 @@ export function PlayerDetail({
                       </button>
                     ) : null;
                   })()}
-                  <div className="flex rounded-lg border border-line bg-card p-0.5" role="tablist" aria-label="Gamelog view">
-                    {(['cards', 'table'] as const).map((v) => (
-                      <button
-                        key={v}
-                        type="button"
-                        role="tab"
-                        aria-selected={gamelogView === v}
-                        onClick={() => setGamelogView(v)}
-                        className={`rounded-md px-2.5 py-0.5 text-[11px] font-medium capitalize transition-colors ${
-                          gamelogView === v ? 'bg-masters text-white' : 'text-ink-muted hover:text-ink'
-                        }`}
-                      >
-                        {v}
-                      </button>
-                    ))}
-                  </div>
+                  <ToggleGroup
+                    label="Gamelog view"
+                    size="sm"
+                    value={gamelogView}
+                    onChange={setGamelogView}
+                    options={[
+                      { value: 'cards', label: 'Cards' },
+                      { value: 'table', label: 'Table' },
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -2329,17 +2312,11 @@ export function FilterChip({
   onClick: () => void;
   children: React.ReactNode;
 }) {
+  // R3: the G2 window chip (Last 5 / Last 10 / Season), through the one Chip.
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors ${
-        active ? 'border-masters bg-accent-soft text-masters' : 'border-line bg-card text-ink-muted hover:border-masters/30'
-      }`}
-    >
+    <Chip size="md" onClick={onClick} selected={active} className="shrink-0">
       {children}
-    </button>
+    </Chip>
   );
 }
 

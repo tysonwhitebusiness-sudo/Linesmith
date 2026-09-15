@@ -13,6 +13,7 @@ import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import SlipModal from '@/components/SlipModal';
 import { BrandedLoader } from '@/components/BrandedLoader';
 import type { SlateGame } from '@/lib/odds/matching';
+import { BackLink, ErrorState } from '@/components/ui';
 
 /** NFL's version of the MLB player-detail page — same shape, `/nfl` routes. */
 export default function NflPlayerDetailPage() {
@@ -81,6 +82,12 @@ export default function NflPlayerDetailPage() {
     return Number.isFinite(n) ? n : null;
   }, [mine]);
 
+  const backGame = useMemo(() => {
+    const g = games.find((x) => String(x.gamePk) === String(gamePk));
+    // `matchup` is the slate's own "DEN @ KC" label; team names are the fallback.
+    return g && g.gamePk != null ? { gamePk: g.gamePk, label: g.matchup ?? `${g.awayTeamName ?? 'Away'} @ ${g.homeTeamName ?? 'Home'}` } : null;
+  }, [games, gamePk]);
+
   const eventContext = snapshot
     ? [snapshot.eventName, snapshot.eventDetail].filter(Boolean).join(' · ')
     : null;
@@ -91,13 +98,9 @@ export default function NflPlayerDetailPage() {
         <TopBar
           sport={sport}
           leading={
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="whitespace-nowrap px-2 py-3 text-[13px] font-medium text-masters"
-            >
-              ← Back
-            </button>
+            // R3 3d: a back link that NAMES where it goes, instead of router.back()
+            // (which can leave the app entirely on a direct visit).
+            backGame ? <BackLink href={`/nfl/game/${backGame.gamePk}`} label={backGame.label} /> : <BackLink href="/nfl" label="NFL" />
           }
           slipCount={slip.picks.length}
           onOpenSlip={() => setSlipOpen(true)}
@@ -116,7 +119,9 @@ export default function NflPlayerDetailPage() {
 
       <main className="px-3 py-3">
         {error ? (
-          <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad">{error}</div>
+          // R3: human text and a retry, never the raw error string (D5). Whatever
+          // the page already had stays on screen below it.
+          <ErrorState className="mb-3" message="We couldn't refresh this player's data." onRetry={refresh} />
         ) : null}
 
         {loading && mine.length === 0 ? (

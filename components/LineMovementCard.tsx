@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { SeriesChart } from './charts/SeriesChart';
-import { MIDDOT, fmt } from './charts/tokens';
+import { CONTEXT, EMPHASIS, MIDDOT, fmt } from './charts/tokens';
+import { Card, DataTable, DrillDownPanel, Skeleton, VizLegend } from './ui';
 import type { LineHistoryResult } from '@/lib/odds/props/lineHistory';
 
 /**
@@ -151,46 +153,88 @@ export function LineMovementCard({
       ? Math.round((Date.parse(buckets[buckets.length - 1]) - Date.parse(buckets[0])) / 3_600_000)
       : 0;
 
+  const [expanded, setExpanded] = useState(false);
+
+  // R3: the first real card on the design-system primitives — Card anatomy
+  // (sentence-case header, scope, ⓘ, ⤢), built-in loading and empty states,
+  // a VizLegend, and a DrillDownPanel holding every book as a sortable table.
+  const scope = [lineLabel, subject?.bookmaker, hoursSpan > 0 ? `${hoursSpan}h` : null].filter(Boolean).join(` ${MIDDOT} `);
+  const bookRows = usable.map((s) => {
+    const prices = s.points.map((p) => p.americanOdds).filter((v): v is number => v != null);
+    return { book: s.bookmaker, first: prices[0] ?? null, last: prices[prices.length - 1] ?? null, changes: Math.max(0, prices.length - 1) };
+  });
+
   return (
-    <section className="lb-card overflow-hidden">
-      <div className="flex items-baseline justify-between gap-2 bg-accent-soft px-3 py-1.5">
-        <h2 className="text-[12px] font-semibold text-masters">Line movement</h2>
-        <span className="truncate text-[9.5px] text-ink-muted">
-          {lineLabel}
-          {subject ? ` ${MIDDOT} ${subject.bookmaker}` : ''}
-          {hoursSpan > 0 ? ` ${MIDDOT} ${hoursSpan}h` : ''}
-        </span>
-      </div>
-      <div className="p-2.5">
+    <>
+      <Card
+        title="Line movement"
+        scope={scope}
+        info="Your book is the dark line; every other book is a grey line behind it. Prices are logged when they change, so a flat line is a book that has not moved, not a book with no data."
+        onExpand={drawable ? () => setExpanded(true) : undefined}
+        dense
+        state={
+          loading
+            ? { kind: 'loading', skeleton: <Skeleton h={120} className="w-full" /> }
+            : !drawable
+              ? { kind: 'empty', title: usable.length === 0 ? 'No price history yet' : 'No movement yet', reason: emptyMessage }
+              : { kind: 'ready' }
+        }
+        caption={
+          drawable && data && (data.availableLines?.length ?? 0) > 1
+            ? `${data.availableLines!.length} lines quoted (${data.availableLines![0]}–${data.availableLines![data.availableLines!.length - 1]}); showing the most-quoted.`
+            : undefined
+        }
+      >
         <SeriesChart
-          values={drawable && subject ? align(subject.bookmaker) : []}
-          context={drawable ? others.map((s) => align(s.bookmaker)) : []}
+          values={subject ? align(subject.bookmaker) : []}
+          context={others.map((s) => align(s.bookmaker))}
           // American odds cross zero and have no meaningful origin — a
           // zero-based axis would squash every real move into nothing. This is
           // the parameter `SeriesChart` deliberately gives no default for.
           zeroBased={false}
           format={fmt.american}
           unit="odds"
-          isLoading={loading}
           label={`Price movement for ${lineLabel}`}
           emptyMessage={emptyMessage}
           height={120}
         />
-        {/* The alternates are real and the pinned line is only one of them.
-            Saying so beats letting the chart imply it is the whole market. */}
-        {drawable && data && (data.availableLines?.length ?? 0) > 1 ? (
-          <p className="mt-1.5 text-[9.5px] text-ink-muted">
-            {data.availableLines!.length} lines quoted ({data.availableLines![0]}–
-            {data.availableLines![data.availableLines!.length - 1]}); showing the most-quoted.
-          </p>
+        {others.length > 0 ? (
+          <VizLegend
+            items={[
+              { label: subject?.bookmaker ?? 'This book', color: EMPHASIS },
+              { label: `${others.length} other ${others.length === 1 ? 'book' : 'books'}`, color: CONTEXT },
+            ]}
+          />
         ) : null}
-        {drawable && others.length > 0 ? (
-          <p className="mt-1 text-[9.5px] text-ink-muted">
-            {subject?.bookmaker} in front, {others.length} other {others.length === 1 ? 'book' : 'books'} behind.
-            {' '}A flat line is a book that has not moved, not a book with no data.
-          </p>
-        ) : null}
-      </div>
-    </section>
+      </Card>
+
+      <DrillDownPanel open={expanded} onClose={() => setExpanded(false)} title="Line movement" subtitle={scope}>
+        <SeriesChart
+          values={subject ? align(subject.bookmaker) : []}
+          context={others.map((s) => align(s.bookmaker))}
+          zeroBased={false}
+          format={fmt.american}
+          unit="odds"
+          label={`Price movement for ${lineLabel}, expanded`}
+          emptyMessage={emptyMessage}
+          height={240}
+          tickCount={4}
+        />
+        <div className="mt-4">
+          <DataTable
+            caption={`Every book's price for ${lineLabel}`}
+            columns={[
+              { key: 'book', label: 'Book' },
+              { key: 'first', label: 'First', numeric: true, render: (r) => (r.first == null ? '—' : fmt.american(r.first)) },
+              { key: 'last', label: 'Latest', numeric: true, render: (r) => (r.last == null ? '—' : fmt.american(r.last)) },
+              { key: 'changes', label: 'Moves', numeric: true },
+            ]}
+            rows={bookRows}
+            rowKey={(r) => r.book}
+            initialSort={{ key: 'changes', desc: true }}
+          />
+        </div>
+      </DrillDownPanel>
+    </>
   );
 }

@@ -10,6 +10,7 @@ import { useLiveGame } from './useLiveGame';
 import { useBullpen, type TeamBullpen, type RankedPitcherSummary } from './useBullpen';
 import type { GameDetailGame } from './GameDetail';
 import type { BoxScoreTeam, BoxScoreBatter, BoxScorePitcher, LiveInningPlay, LiveTotals } from '@/lib/sports/mlb/liveGame';
+import { StatGrid, StatValue } from './ui';
 
 /**
  * Game hero card — top-of-page matchup summary. One card, state-driven, no
@@ -185,55 +186,48 @@ function VenueForecastFooter({
         <div className="text-title font-semibold" style={{ color: C.ink }}>
           {venue ?? '—'}
         </div>
-        {weather ? (
-          <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>
-            GAME-TIME FORECAST
-          </div>
-        ) : null}
+        {weather ? <div className="text-label text-ink-muted">Game-time forecast</div> : null}
       </div>
       {weather ? (
-        <div className="grid grid-cols-2 gap-x-0 gap-y-3 px-[26px] pb-5 pt-3.5 sm:grid-cols-4">
-          <div className="flex flex-col gap-1 pr-[18px]">
-            <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>TEMP</div>
-            <div className="text-title font-bold tabular-nums tracking-[-.02em]" style={{ color: C.ink }}>
-              {weather.tempF != null ? `${Math.round(weather.tempF)}°F` : '—'}
-            </div>
-            <div className="text-label" style={{ color: C.recordText }}>{weatherNarrative ?? ''}</div>
-          </div>
-          <div className="flex flex-col gap-1 px-[18px]" style={{ borderLeft: `1px solid ${C.divider}` }}>
-            <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>WIND</div>
-            <div className="flex items-baseline gap-1.5 text-title font-bold tabular-nums tracking-[-.02em]" style={{ color: C.ink }}>
-              {weather.windMph != null ? (
-                <>
-                  <svg viewBox="0 0 16 16" width={14} height={14} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ transform: bearing != null ? `rotate(${bearing}deg)` : undefined }}>
+        // R3 3b: StatGrid + StatValue — the design-system stat tile, sentence-case
+        // labels, no hardcoded colors.
+        <StatGrid className="px-[22px] pb-4 pt-3" min={120}>
+          <StatValue label="Temperature" value={weather.tempF != null ? `${Math.round(weather.tempF)}°F` : '—'} size="compact" info={weatherNarrative ?? undefined} />
+          <StatValue
+            label="Wind"
+            size="compact"
+            value={
+              weather.windMph != null ? (
+                <span className="inline-flex items-baseline gap-1">
+                  <svg viewBox="0 0 16 16" width={13} height={13} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden style={{ transform: bearing != null ? `rotate(${bearing}deg)` : undefined }}>
                     <path d="M8 1.5v13M8 1.5 4.5 6M8 1.5 11.5 6" />
                   </svg>
                   {weather.windMph}
-                  <span className="text-body font-medium" style={{ color: C.tabInactiveText }}>mph {weather.windDir ?? ''}</span>
-                </>
-              ) : '—'}
-            </div>
-            <div className="text-label" style={{ color: C.recordText }}>&nbsp;</div>
-          </div>
-          <div className="flex flex-col gap-1 px-[18px]" style={{ borderLeft: `1px solid ${C.divider}` }}>
-            <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>RAIN</div>
-            <div className="text-title font-bold tabular-nums tracking-[-.02em]" style={{ color: C.ink }}>
-              {weather.rainPct != null ? `${Math.round(weather.rainPct)}%` : '—'}
-            </div>
-            <div className="text-label" style={{ color: C.recordText }}>&nbsp;</div>
-          </div>
+                </span>
+              ) : (
+                '—'
+              )
+            }
+            unit={weather.windMph != null ? `mph ${weather.windDir ?? ''}` : undefined}
+          />
+          <StatValue label="Chance of rain" value={weather.rainPct != null ? `${Math.round(weather.rainPct)}%` : '—'} size="compact" />
           {impact ? (
-            <div className="flex flex-col gap-1.5 pl-[18px]" style={{ borderLeft: `1px solid ${C.divider}` }}>
-              <div className="text-label tracking-[.1em]" style={{ color: C.faintMono }}>WEATHER IMPACT</div>
-              <div className="text-title font-bold tracking-[-.02em]" style={{ color: C.ink }}>{impact.level}</div>
-              <div className="flex gap-1">
-                {[0, 1, 2, 3].map((i) => (
-                  <div key={i} className="h-1.5 w-7 rounded-full" style={{ backgroundColor: i < impact.segments ? C.olive : C.weatherEmpty }} />
-                ))}
-              </div>
-            </div>
+            <StatValue
+              label="Weather impact"
+              size="compact"
+              value={
+                <span className="inline-flex flex-col gap-1">
+                  {impact.level}
+                  <span className="flex gap-1" aria-hidden>
+                    {[0, 1, 2, 3].map((i) => (
+                      <span key={i} className={`h-1.5 w-6 rounded-full ${i < impact.segments ? 'bg-good' : 'bg-line'}`} />
+                    ))}
+                  </span>
+                </span>
+              }
+            />
           ) : null}
-        </div>
+        </StatGrid>
       ) : null}
     </div>
   );
