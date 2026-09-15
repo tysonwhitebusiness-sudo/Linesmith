@@ -177,6 +177,12 @@ KEEP_RECENT_DAYS = {
     # covers the chart natively to 13.3 days (its 2-hour bucket tier). 7 would
     # halve it and cap the chart at 6.7 days.
     "prop_odds_history": 14,
+    # R5 (2026-09-14). NOT a serving window: the hourly Statcast ingest
+    # re-fetches the last 3 days, so a pitch pruned inside that window comes
+    # back under a new id and is exported twice (see corpus_store's
+    # PITCH_EVENTS_PREDICATE). The freeze rule now keeps new exports clear of the
+    # window; this also protects rows already exported under the old rule.
+    "mlb_pitch_events": 5,
 }
 
 

@@ -58,6 +58,19 @@ FROZEN_PREDICATE = (
 # Tables with no `event_start` at all are frozen on their game date alone.
 GAME_DATE_ONLY_PREDICATE = "game_date < current_date - 1"
 
+# `mlb_pitch_events` IS NOT FINISHED WHEN ITS GAME IS: ITS INGEST RE-FETCHES IT.
+# `ingestStatcastPitchesJob` pulls the last 3 days every hour, and the table's
+# uniqueness is (game_pk, at_bat_number, pitch_number), not `id`. Under the
+# game-date rule above a pitch two days old was frozen, exported and pruned —
+# then the next hourly fetch inserted it again under a NEW id, which was exported
+# again. Found 2026-09-14 (research pages R5): 13,298 duplicate rows in the corpus
+# since pruning began on 09-11, 8,865 pitches from 09-11/12 held up to three
+# times, ~9k more a day, and every corpus reader dedupes only by `id`.
+# Freezing it only once it is past the ingest window (3 days, plus a day of
+# timezone buffer) means a pruned pitch is never fetched again. Change the
+# window in `statcast_pitches.ingest_recent` and this must move with it.
+PITCH_EVENTS_PREDICATE = "game_date < current_date - 4"
+
 # `prop_odds_history` has NEITHER `event_start` NOR `game_date` -- only
 # `observed_at`. It also does not need them: it is a pure append-only log
 # (`db.py`'s writer is a bare INSERT with no ON CONFLICT, and the only DELETE in
@@ -111,7 +124,7 @@ CORPUS: dict[str, CorpusTable] = {
     # primary key rather than partitioned by date. It is MLB-only by
     # definition, so nothing is lost by not partitioning on sport.
     "mlb_pitch_events": CorpusTable(
-        "mlb_pitch_events", "game_date", GAME_DATE_ONLY_PREDICATE,
+        "mlb_pitch_events", "game_date", PITCH_EVENTS_PREDICATE,
         partition_by="id_chunk"),
     # Phase 5.S.8. The tick-by-tick price MOVEMENT log -- the only large table
     # that had never been exported, and the fastest-growing object in the
