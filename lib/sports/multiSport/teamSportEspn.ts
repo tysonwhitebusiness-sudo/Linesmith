@@ -47,6 +47,21 @@ export interface EspnTeamSportGame {
    * has to be geocoded and comes back flagged `approximate`.
    */
   venue?: EspnVenue;
+  /**
+   * R4: the poll rank ESPN shows beside a college team (`curatedRank.current`),
+   * as of that game for a played one and the current poll for a future one.
+   * `null` when there is no poll rank: ESPN sends 99 for an unranked college
+   * team AND for every NFL team (checked 2026-09-14), so render only a number.
+   */
+  homeRank?: number | null;
+  awayRank?: number | null;
+}
+
+/** ESPN's `curatedRank`: 1-25 is a poll rank; 99 means none (unranked college team, or a pro league). */
+export function pollRank(c: { curatedRank?: { current?: number } }): number | null | undefined {
+  const r = c.curatedRank?.current;
+  if (r == null) return undefined;
+  return r >= 1 && r <= 25 ? r : null;
 }
 
 export interface EspnVenue {
@@ -62,6 +77,7 @@ interface RawCompetitor {
   homeAway: 'home' | 'away';
   team: { id: string; displayName: string; abbreviation: string };
   score?: string;
+  curatedRank?: { current?: number };
 }
 
 /**
@@ -153,6 +169,8 @@ export async function fetchScoreboard(espnSport: string, espnLeague: string, day
             indoor: comp.venue.indoor,
           }
         : undefined,
+      homeRank: pollRank(home),
+      awayRank: pollRank(away),
     });
   }
   return games;
@@ -163,6 +181,7 @@ interface RawScheduleCompetitor {
   team: { id: string; displayName: string; abbreviation: string };
   /** Real shape difference from the scoreboard endpoint's `RawCompetitor.score` (a plain string) — confirmed live 2026-08-24 against a real completed NBA game. */
   score?: { value: number; displayValue: string };
+  curatedRank?: { current?: number };
 }
 
 type RawScheduleEvent = { id: string; date: string; competitions?: Array<{ competitors?: RawScheduleCompetitor[]; status?: { type?: { completed?: boolean; state?: string; shortDetail?: string } } }> };
@@ -190,7 +209,8 @@ async function fetchScheduleEvents(url: string): Promise<RawScheduleEvent[] | nu
  * mislabeled as a season.
  */
 export async function fetchTeamSchedule(espnSport: string, espnLeague: string, teamId: string, season: string): Promise<EspnTeamSportGame[]> {
-  const cacheKey = `espnTeamSport:schedule:${espnSport}:${espnLeague}:${teamId}:${season}`;
+  // v2 (R4): games carry poll ranks; entries cached under the old key lack them.
+  const cacheKey = `espnTeamSport:schedule:v2:${espnSport}:${espnLeague}:${teamId}:${season}`;
   const cached = await readSnapshotCache(cacheKey);
   if (cached && Date.now() - Date.parse(cached.fetchedAt) < 6 * 60 * 60_000) {
     return JSON.parse(cached.payload) as EspnTeamSportGame[];
@@ -227,6 +247,8 @@ export async function fetchTeamSchedule(espnSport: string, espnLeague: string, t
           : undefined,
       homeScore: home.score?.value,
       awayScore: away.score?.value,
+      homeRank: pollRank(home),
+      awayRank: pollRank(away),
     });
   }
   // Oldest first, always. ESPN's own order is not chronological (soccer's

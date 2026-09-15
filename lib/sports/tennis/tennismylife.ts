@@ -41,62 +41,34 @@ async function fetchCsvText(url: string): Promise<string | null> {
   }
 }
 
-interface RawTennisRow {
-  tourney_name: string;
-  surface: string;
-  tourney_date: string;
-  winner_id: string;
-  winner_name: string;
-  loser_id: string;
-  loser_name: string;
-  score: string;
-  w_ace: string;
-  l_ace: string;
-  /** Absent on rows cached before R2; ordering then falls back to file order. */
-  round?: string;
-  match_num?: string;
-}
+/** Service-game counts for one side of a match, Sackmann's column names without the `w_`/`l_` prefix. */
+const SERVE_COLUMNS = ['ace', 'df', 'svpt', '1stIn', '1stWon', '2ndWon', 'SvGms', 'bpSaved', 'bpFaced'] as const;
+type ServeColumn = (typeof SERVE_COLUMNS)[number];
+
+/** Every column kept, as the raw string (empty when the archive left it blank). */
+const KEPT_COLUMNS = [
+  'tourney_name', 'surface', 'tourney_date', 'tourney_level', 'indoor', 'round', 'match_num', 'best_of', 'minutes', 'score',
+  'winner_id', 'winner_name', 'winner_rank', 'winner_rank_points', 'winner_seed',
+  'loser_id', 'loser_name', 'loser_rank', 'loser_rank_points', 'loser_seed',
+  ...SERVE_COLUMNS.map((c) => `w_${c}` as const),
+  ...SERVE_COLUMNS.map((c) => `l_${c}` as const),
+] as const;
+
+export type RawTennisRow = Record<(typeof KEPT_COLUMNS)[number], string>;
 
 /** Plain comma-split is safe: confirmed live, this archive's fields (tournament/player names included) never contain commas or quoting. */
-function parseTennisCsv(text: string): RawTennisRow[] {
+export function parseTennisCsv(text: string): RawTennisRow[] {
   const lines = text.split('\n').filter((l) => l.trim().length > 0);
   if (lines.length < 2) return [];
-  const header = lines[0].split(',');
-  const col = (name: string) => header.indexOf(name);
-  const idx = {
-    tourney_name: col('tourney_name'),
-    surface: col('surface'),
-    tourney_date: col('tourney_date'),
-    winner_id: col('winner_id'),
-    winner_name: col('winner_name'),
-    loser_id: col('loser_id'),
-    loser_name: col('loser_name'),
-    score: col('score'),
-    w_ace: col('w_ace'),
-    l_ace: col('l_ace'),
-    round: col('round'),
-    match_num: col('match_num'),
-  };
+  const header = lines[0].trim().split(',');
+  const idx = KEPT_COLUMNS.map((name) => [name, header.indexOf(name)] as const);
   const rows: RawTennisRow[] = [];
   for (let i = 1; i < lines.length; i++) {
-    const cells = lines[i].split(',');
-    const winnerName = cells[idx.winner_name];
-    const loserName = cells[idx.loser_name];
-    if (!winnerName || !loserName) continue;
-    rows.push({
-      tourney_name: cells[idx.tourney_name] ?? '',
-      surface: cells[idx.surface] ?? '',
-      tourney_date: cells[idx.tourney_date] ?? '',
-      winner_id: cells[idx.winner_id] ?? '',
-      winner_name: winnerName,
-      loser_id: cells[idx.loser_id] ?? '',
-      loser_name: loserName,
-      score: cells[idx.score] ?? '',
-      w_ace: cells[idx.w_ace] ?? '',
-      l_ace: cells[idx.l_ace] ?? '',
-      round: idx.round >= 0 ? (cells[idx.round] ?? '') : '',
-      match_num: idx.match_num >= 0 ? (cells[idx.match_num] ?? '') : '',
-    });
+    const cells = lines[i].trim().split(',');
+    const row = {} as RawTennisRow;
+    for (const [name, at] of idx) row[name] = at >= 0 ? (cells[at] ?? '') : '';
+    if (!row.winner_name || !row.loser_name) continue;
+    rows.push(row);
   }
   return rows;
 }
@@ -153,6 +125,69 @@ export interface TennisMatch {
   gamesLost: number;
   /** Did this player win at least one set — real market ("to-win-a-set"), derived from the actual per-set arithmetic, not assumed true for the match winner (a retirement can leave the winner having taken zero completed sets). */
   wonAtLeastOneSet: boolean;
+  /** R4: the rest of the row. Null wherever the archive left the cell blank (walkovers, retirements, some lower-level events). */
+  round: string | null;
+  /** Sackmann's level code: G slam, M Masters, A/250/500 tour, F finals, D Davis Cup, C challenger. */
+  level: string | null;
+  indoor: boolean | null;
+  bestOf: number | null;
+  minutes: number | null;
+  rank: number | null;
+  rankPoints: number | null;
+  seed: number | null;
+  opponentRank: number | null;
+  /** This player's service games. */
+  serve: ServeStats | null;
+  /** The opponent's service games — this player's return. */
+  opponentServe: ServeStats | null;
+}
+
+export interface ServeStats {
+  aces: number | null;
+  doubleFaults: number | null;
+  servePoints: number | null;
+  firstIn: number | null;
+  firstWon: number | null;
+  secondWon: number | null;
+  serviceGames: number | null;
+  breakPointsSaved: number | null;
+  breakPointsFaced: number | null;
+}
+
+const count = (v: string | undefined): number | null => {
+  if (v == null || v.trim() === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+function serveStats(row: RawTennisRow, side: 'w' | 'l'): ServeStats | null {
+  const get = (c: ServeColumn) => count(row[`${side}_${c}`]);
+  const s: ServeStats = {
+    aces: get('ace'),
+    doubleFaults: get('df'),
+    servePoints: get('svpt'),
+    firstIn: get('1stIn'),
+    firstWon: get('1stWon'),
+    secondWon: get('2ndWon'),
+    serviceGames: get('SvGms'),
+    breakPointsSaved: get('bpSaved'),
+    breakPointsFaced: get('bpFaced'),
+  };
+  return s.servePoints == null ? null : s;
+}
+
+/** Return points won: the opponent's serve points they did not win. */
+export function returnPointsWon(m: Pick<TennisMatch, 'opponentServe'>): { won: number; of: number } | null {
+  const o = m.opponentServe;
+  if (!o || o.servePoints == null || o.firstWon == null || o.secondWon == null) return null;
+  return { won: o.servePoints - o.firstWon - o.secondWon, of: o.servePoints };
+}
+
+/** Break points converted: the opponent's break points faced and not saved. */
+export function breakPointsConverted(m: Pick<TennisMatch, 'opponentServe'>): { won: number; of: number } | null {
+  const o = m.opponentServe;
+  if (!o || o.breakPointsFaced == null || o.breakPointsSaved == null) return null;
+  return { won: o.breakPointsFaced - o.breakPointsSaved, of: o.breakPointsFaced };
 }
 
 interface TennisSeasonEntry {
@@ -166,7 +201,8 @@ export interface TennisSeasonContext {
 }
 
 async function fetchSeasonRows(tour: TennisTour, season: number): Promise<RawTennisRow[]> {
-  const cacheKey = `tennis:tml:${tour}:${season}`;
+  // v2 (R4): rows now carry serve, rank and minutes columns; rows cached under the old key lack them.
+  const cacheKey = `tennis:tml:v2:${tour}:${season}`;
   const cached = await readSnapshotCache(cacheKey);
   if (cached && Date.now() - Date.parse(cached.fetchedAt) < 6 * 60 * 60_000) {
     return JSON.parse(cached.payload) as RawTennisRow[];
@@ -182,60 +218,78 @@ async function fetchSeasonRows(tour: TennisTour, season: number): Promise<RawTen
 /** Loaded once per rebuild (soccer's own understat.ts/americanSocceranalysis.ts learned this the hard way — see adapter.ts's own comment), not once per subject. */
 export async function loadTennisSeasonContext(tour: TennisTour, season: number): Promise<TennisSeasonContext> {
   const [current, prior] = await Promise.all([fetchSeasonRows(tour, season), fetchSeasonRows(tour, season - 1)]);
+  return buildTennisSeasonContext([...prior, ...current]);
+}
+
+/** Pure: parsed rows to each player's chronological matches. */
+export function buildTennisSeasonContext(rows: readonly RawTennisRow[]): TennisSeasonContext {
   const byName = new Map<string, TennisSeasonEntry>();
+  for (const row of rows) {
+    const sets = parseSetGames(row.score);
+    if (sets.length === 0) continue; // walkover / unparseable — no real per-match stat to attach
+    const date = toIsoDate(row.tourney_date);
+    const order = roundOrder(row.round, row.match_num);
+    const matchId = `${row.tourney_name}-${row.tourney_date}-${row.winner_id}-${row.loser_id}`;
 
-  function ingest(rows: RawTennisRow[]) {
-    for (const row of rows) {
-      const sets = parseSetGames(row.score);
-      if (sets.length === 0) continue; // walkover / unparseable — no real per-match stat to attach
-      const date = toIsoDate(row.tourney_date);
-      const order = roundOrder(row.round, row.match_num);
-      const matchId = `${row.tourney_name}-${row.tourney_date}-${row.winner_id}-${row.loser_id}`;
+    const winnerGames = sets.reduce((sum, [a]) => sum + a, 0);
+    const loserGames = sets.reduce((sum, [, b]) => sum + b, 0);
+    const winnerSetsWon = sets.filter(([a, b]) => a > b).length;
+    const loserSetsWon = sets.filter(([a, b]) => b > a).length;
+    const indoor = row.indoor === 'I' ? true : row.indoor === 'O' ? false : null;
+    const shared = {
+      matchId,
+      date,
+      order,
+      tournamentName: row.tourney_name,
+      surface: row.surface,
+      round: row.round || null,
+      level: row.tourney_level || null,
+      indoor,
+      bestOf: count(row.best_of),
+      minutes: count(row.minutes),
+    };
+    const wServe = serveStats(row, 'w');
+    const lServe = serveStats(row, 'l');
 
-      const winnerGames = sets.reduce((sum, [a]) => sum + a, 0);
-      const loserGames = sets.reduce((sum, [, b]) => sum + b, 0);
-      const winnerSetsWon = sets.filter(([a, b]) => a > b).length;
-      const loserSetsWon = sets.filter(([a, b]) => b > a).length;
+    const winnerEntry: TennisMatch = {
+      ...shared,
+      opponent: row.loser_name,
+      isWinner: true,
+      aces: Number(row.w_ace) || 0,
+      gamesWon: winnerGames,
+      gamesLost: loserGames,
+      wonAtLeastOneSet: winnerSetsWon >= 1,
+      rank: count(row.winner_rank),
+      rankPoints: count(row.winner_rank_points),
+      seed: count(row.winner_seed),
+      opponentRank: count(row.loser_rank),
+      serve: wServe,
+      opponentServe: lServe,
+    };
+    const loserEntry: TennisMatch = {
+      ...shared,
+      opponent: row.winner_name,
+      isWinner: false,
+      aces: Number(row.l_ace) || 0,
+      gamesWon: loserGames,
+      gamesLost: winnerGames,
+      wonAtLeastOneSet: loserSetsWon >= 1,
+      rank: count(row.loser_rank),
+      rankPoints: count(row.loser_rank_points),
+      seed: count(row.loser_seed),
+      opponentRank: count(row.winner_rank),
+      serve: lServe,
+      opponentServe: wServe,
+    };
 
-      const winnerEntry: TennisMatch = {
-        matchId,
-        date,
-        order,
-        tournamentName: row.tourney_name,
-        surface: row.surface,
-        opponent: row.loser_name,
-        isWinner: true,
-        aces: Number(row.w_ace) || 0,
-        gamesWon: winnerGames,
-        gamesLost: loserGames,
-        wonAtLeastOneSet: winnerSetsWon >= 1,
-      };
-      const loserEntry: TennisMatch = {
-        matchId,
-        date,
-        order,
-        tournamentName: row.tourney_name,
-        surface: row.surface,
-        opponent: row.winner_name,
-        isWinner: false,
-        aces: Number(row.l_ace) || 0,
-        gamesWon: loserGames,
-        gamesLost: winnerGames,
-        wonAtLeastOneSet: loserSetsWon >= 1,
-      };
-
-      for (const [name, entry] of [[row.winner_name, winnerEntry] as const, [row.loser_name, loserEntry] as const]) {
-        const key = normalizeName(name);
-        if (!key) continue;
-        const bucket = byName.get(key) ?? { realName: name, matches: [] };
-        bucket.matches.push(entry);
-        byName.set(key, bucket);
-      }
+    for (const [name, entry] of [[row.winner_name, winnerEntry] as const, [row.loser_name, loserEntry] as const]) {
+      const key = normalizeName(name);
+      if (!key) continue;
+      const bucket = byName.get(key) ?? { realName: name, matches: [] };
+      bucket.matches.push(entry);
+      byName.set(key, bucket);
     }
   }
-
-  ingest(prior);
-  ingest(current);
   for (const entry of byName.values()) {
     entry.matches.sort((a, b) => Date.parse(a.date) - Date.parse(b.date) || a.order - b.order);
   }
