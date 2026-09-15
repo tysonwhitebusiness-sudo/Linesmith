@@ -8,6 +8,9 @@
  * NHL yet. `propOddsBoard` is real and independent of history.
  */
 
+import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
+import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
+import { nhlResearchSpec } from './playerResearchSpec';
 import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import { buildAnalyticsRoles } from '@/lib/sports/shared/analyticsRoles';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
@@ -444,3 +447,14 @@ const NHL_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
   { key: 'hits', label: 'Hits' },
   { key: 'blocked_shots', label: 'Blocked Shots' },
 ];
+
+/**
+ * The player page's shared research sections (Seasons, Trends, Splits, Game
+ * log, the hero's season tiles) — R6.1a. Built from the player's history and
+ * bio, never from a candidate, so the page renders with no market at all.
+ * The columns are this sport's `playerResearchSpec.ts`; the work is
+ * `buildPlayerResearch`, shared by every sport.
+ */
+export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date }): PlayerResearchData | null {
+  return buildPlayerResearch({ sport: 'nhl', history: input.history, spec: nhlResearchSpec(input.bio, input.history.games), now: input.now });
+}

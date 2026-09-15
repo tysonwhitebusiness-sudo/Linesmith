@@ -27,6 +27,9 @@
  * `propOddsBoard` is real and independent of history, same as before.
  */
 
+import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
+import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
+import { soccerResearchSpec } from './playerResearchSpec';
 import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
 import { buildAnalyticsRoles } from '@/lib/sports/shared/analyticsRoles';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
@@ -473,4 +476,16 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     // until soccer gets a real per-player live source.
     liveLineTracker: null,
   };
+}
+
+/**
+ * The player page's shared research sections (Seasons, Trends, Splits, Game
+ * log, the hero's season tiles) — R6.1a. Built from the player's history and
+ * bio, never from a candidate, so the page renders with no market at all.
+ * The columns are this sport's `playerResearchSpec.ts`; the work is
+ * `buildPlayerResearch`, shared by every sport.
+ */
+export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date }): PlayerResearchData | null {
+  const league = input.history.sport === 'soccer_mls' ? 'mls' : 'epl';
+  return buildPlayerResearch({ sport: input.history.sport, history: input.history, spec: soccerResearchSpec(league, input.bio, input.history.games), now: input.now });
 }

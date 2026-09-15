@@ -65,6 +65,14 @@ export interface NhlPlayerLanding {
   shootsCatches: string | null;
   birthDate: string | null;
   headshot: string | null;
+  /** R6.1a: the player page hero. NHL API team ids, the same space `player_game_history` uses for NHL. */
+  teamId: number | null;
+  teamName: string | null;
+  teamLogo: string | null;
+  heightInches: number | null;
+  weightPounds: number | null;
+  birthPlace: string | null;
+  draft: { year: number | null; teamAbbrev: string | null; round: number | null; pickInRound: number | null; overallPick: number | null } | null;
   /** NHL regular seasons only, oldest first. */
   seasons: NhlSeasonLine[];
   careerRegularSeason: NhlSeasonLine | null;
@@ -111,6 +119,21 @@ export function parsePlayerLanding(json: J | null): NhlPlayerLanding | null {
     shootsCatches: str(json.shootsCatches),
     birthDate: str(json.birthDate),
     headshot: str(json.headshot),
+    teamId: num(json.currentTeamId),
+    teamName: loc(json.fullTeamName),
+    teamLogo: str(json.teamLogo),
+    heightInches: num(json.heightInInches),
+    weightPounds: num(json.weightInPounds),
+    birthPlace: [loc(json.birthCity), loc(json.birthStateProvince), str(json.birthCountry)].filter(Boolean).join(', ') || null,
+    draft: json.draftDetails
+      ? {
+          year: num(json.draftDetails.year),
+          teamAbbrev: str(json.draftDetails.teamAbbrev),
+          round: num(json.draftDetails.round),
+          pickInRound: num(json.draftDetails.pickInRound),
+          overallPick: num(json.draftDetails.overallPick),
+        }
+      : null,
     // gameTypeId 2 is the regular season; a traded player has one row per team.
     seasons: arr(json.seasonTotals)
       .filter((s) => s.leagueAbbrev === 'NHL' && s.gameTypeId === 2)

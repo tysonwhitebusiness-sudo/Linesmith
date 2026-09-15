@@ -14,6 +14,7 @@
  * module once `PlayerDetail.tsx` itself consumes it).
  */
 
+import type { PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
 import { buildAnalyticsRoles } from '@/lib/sports/shared/analyticsRoles';
 import { directionMark } from '@/components/MarketLabel';
@@ -373,4 +374,13 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
     // already lives in `liveMatchup` above, a genuinely different feature.
     liveLineTracker: null,
   };
+}
+
+/**
+ * Golf has no per-game history table: rounds and holes are their own tables,
+ * and golf's research sections are R6.6's, held until a live tournament. So
+ * the shared sections stay empty for golf rather than being faked from rounds.
+ */
+export function toPlayerResearchData(): PlayerResearchData | null {
+  return null;
 }

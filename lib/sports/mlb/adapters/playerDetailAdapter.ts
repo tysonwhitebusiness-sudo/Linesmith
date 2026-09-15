@@ -28,6 +28,9 @@
  * JSX inside `PlayerDetail.tsx`.
  */
 
+import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
+import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
+import { mlbResearchSpec } from './playerResearchSpec';
 import type { HistoryEntry, PickCandidate, SplitEvidence, Sport, SportSnapshot, WeatherContext } from '@/lib/core/types';
 import { buildAnalyticsRoles } from '@/lib/sports/shared/analyticsRoles';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
@@ -1029,3 +1032,14 @@ const MLB_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
 // kept imported (not re-exported) so callers of formWindows can branch the
 // way `PlayerDetail.tsx`'s own JSX already does (`isOk(split.stat)`).
 export { isOk };
+
+/**
+ * The player page's shared research sections (Seasons, Trends, Splits, Game
+ * log, the hero's season tiles) — R6.1a. Built from the player's history and
+ * bio, never from a candidate, so the page renders with no market at all.
+ * The columns are this sport's `playerResearchSpec.ts`; the work is
+ * `buildPlayerResearch`, shared by every sport.
+ */
+export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date }): PlayerResearchData | null {
+  return buildPlayerResearch({ sport: 'mlb', history: input.history, spec: mlbResearchSpec(input.bio, input.history.games), now: input.now });
+}

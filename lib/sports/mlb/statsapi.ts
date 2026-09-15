@@ -1017,6 +1017,45 @@ export interface TeamListing {
 }
 
 /** All 30 teams with their division/league, in one call — the Teams index page groups by this rather than issuing 30 individual lookups. */
+export interface MlbFinalScore {
+  homeTeamId: string;
+  awayTeamId: string;
+  homeScore: number;
+  awayScore: number;
+}
+
+/**
+ * Final scores for one team's regular season, keyed by game pk — the player
+ * page's game-log results (R6.1a).
+ *
+ * WHY NOT `game_result`, measured 2026-09-15: MLB's rows carry no game pk
+ * before the August 2026 live capture (`lc2024-03-30T2010` CSV refs and ESPN
+ * event ids), `espn_core` dates evening games by UTC, and some games are
+ * absent (NYY @ CLE's 2024-04-13 doubleheader, KC @ CLE 2024-08-26). Joined by
+ * date, 25 of 449 of Witt's games took a neighbouring game's score. This
+ * endpoint is keyed by the same pk `player_game_history` uses, so the join is
+ * exact and doubleheaders are two games.
+ *
+ * `fields=` keeps a season to a few kilobytes. In-memory cache only: a past
+ * season never changes, the current one refreshes every 30 minutes.
+ */
+export async function getTeamSeasonFinals(teamId: number, season: number): Promise<Map<string, MlbFinalScore>> {
+  const current = season >= Number(easternDate().slice(0, 4));
+  const url = `${BASE}/v1/schedule?sportId=1&teamId=${teamId}&season=${season}&gameType=R&fields=dates,games,gamePk,status,abstractGameState,teams,home,away,team,id,score`;
+  const json = await cachedJson(`team-finals:${teamId}:${season}`, url, current ? 30 * 60_000 : 7 * 24 * 60 * 60_000);
+  const out = new Map<string, MlbFinalScore>();
+  for (const d of json?.dates ?? []) {
+    for (const g of d.games ?? []) {
+      const home = g.teams?.home;
+      const away = g.teams?.away;
+      // A suspended game appears twice under one pk; only its final entry has both scores.
+      if (g.status?.abstractGameState !== 'Final' || home?.score == null || away?.score == null) continue;
+      out.set(String(g.gamePk), { homeTeamId: String(home.team.id), awayTeamId: String(away.team.id), homeScore: home.score, awayScore: away.score });
+    }
+  }
+  return out;
+}
+
 export async function getAllTeams(): Promise<TeamListing[]> {
   const url = `${BASE}/v1/teams?sportId=1&hydrate=division,league`;
   const json = await cachedJson('teams:all', url, 12 * 60 * 60_000);

@@ -47,6 +47,10 @@ const DB_MODULES = [
   '@/lib/sports/shared/teamProduction',
   // R5d: NFL team target map read. Types live in `teamTargetShapes.ts`.
   '@/lib/sports/nfl/teamTargets',
+  // R6.1a: the player page's history and bio readers. Types and the pure
+  // builders live in `playerResearchShapes.ts`, `playerResearch.ts`, `playerBio.ts`.
+  '@/lib/sports/shared/playerHistoryServer',
+  '@/lib/sports/shared/playerBioServer',
   // 6.7: `components/useNhlShotProfile.ts` takes its type from the SHAPES file;
   // this one value-imports `pgAll`.
   '@/lib/sports/nhl/shotProfile',
@@ -108,6 +112,10 @@ const SELF = [
   'lib/sports/shared/venueFactor.ts',
   // R5b: the strength rollup tables span seven sports, the same reason again.
   'lib/sports/shared/teamProduction.ts',
+  // R6.1a: one player page for eight sports — `player_game_history` and the
+  // league bio endpoints — the same reason again.
+  'lib/sports/shared/playerHistoryServer.ts',
+  'lib/sports/shared/playerBioServer.ts',
 ];
 
 function walk(dir: string): string[] {

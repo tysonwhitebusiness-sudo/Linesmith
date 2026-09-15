@@ -14,6 +14,9 @@
  * and independent of history, same as every other sport's adapter.
  */
 
+import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
+import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
+import { footballResearchSpec } from '@/lib/sports/nfl/adapters/playerResearchSpec';
 import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import { buildAnalyticsRoles } from '@/lib/sports/shared/analyticsRoles';
 import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
@@ -429,3 +432,14 @@ const FOOTBALL_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
   { key: 'receiving_tds', label: 'Receiving TDs' },
   { key: 'receptions', label: 'Receptions' },
 ];
+
+/**
+ * The player page's shared research sections (Seasons, Trends, Splits, Game
+ * log, the hero's season tiles) — R6.1a. Built from the player's history and
+ * bio, never from a candidate, so the page renders with no market at all.
+ * The columns are this sport's `playerResearchSpec.ts`; the work is
+ * `buildPlayerResearch`, shared by every sport.
+ */
+export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date }): PlayerResearchData | null {
+  return buildPlayerResearch({ sport: 'cfb', history: input.history, spec: footballResearchSpec('cfb', input.bio, input.history.games), now: input.now });
+}
