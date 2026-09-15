@@ -27,6 +27,9 @@
 > | `mlb_statcast_player_season` | **NEW** in R5a (migration `20260915040000`) | Python — `build_statcast_rollups.py` on the operator machine, after each corpus refresh; read by `/api/mlb/statcast/player/[playerId]` and `/api/mlb/pitch-profile` |
 > | `mlb_statcast_team_season` | **NEW** in R5a | Python — `build_statcast_rollups.py`; read by `/api/mlb/statcast/team/[teamId]` |
 > | `mlb_statcast_game_pregame` | **NEW** in R5a | Python — `build_statcast_rollups.py`; read by `/api/mlb/game/[gameId]/pregame-statcast` |
+> | `athlete_positions` | **NEW** in R5b (migration `20260915060000`) | Python — `teamProductionJob` (nflverse, ESPN and api-web rosters) |
+> | `team_game_production` | **NEW** in R5b | Python — `teamProductionJob`; read by `/api/team-production` |
+> | `player_season_production` | **NEW** in R5b | Python — `teamProductionJob`; read by `/api/key-players` |
 > | `odds_import_staging` | rows pruned, table kept | Python importers write; `scripts/gate/promote_odds.mjs` drains |
 > | `prop_odds_dedup_backup_20260829` | **DROPPED** | — |
 > | `team_elo_history_int_backup_20260901` | **DROPPED** | — |

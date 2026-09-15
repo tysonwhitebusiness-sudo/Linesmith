@@ -43,6 +43,8 @@ const DB_MODULES = [
   '@/lib/sports/mlb/pitchProfile',
   // R5a: the Statcast rollup reads. Types live in `statcastRollupShapes.ts`.
   '@/lib/sports/mlb/statcastRollups',
+  // R5b: strength rollup reads. Types live in `teamProductionShapes.ts`.
+  '@/lib/sports/shared/teamProduction',
   // 6.7: `components/useNhlShotProfile.ts` takes its type from the SHAPES file;
   // this one value-imports `pgAll`.
   '@/lib/sports/nhl/shotProfile',

@@ -43,6 +43,25 @@ PROGRESS (below).**
   zone (`getPitchProfile`) aggregated `mlb_pitch_events`, which Phase 5 cut to
   five days, and labelled it the season. Now read from the rollup (Skubal
   n=2,002 on the rendered page).
+- **5b DONE (job not yet deployed).** `teamProductionJob` (daily) writes
+  `athlete_positions`, `team_game_production` (per team, game and position
+  group, so a kickoff cutoff is a `game_date <` sum) and
+  `player_season_production` (production score and team share). Routes
+  `/api/team-production?sport&season&before` (G2's matchup rollup shape) and
+  `/api/key-players`. Tables filled from the operator machine (229 s for every
+  sport). Against G2's matchup datasets on completed seasons, for and allowed
+  totals match on all 758 team sides in six sports, NFL allowed-by-position
+  matches exactly, and Dallas's key players come out in G2's order. NBA,
+  soccer and NHL position groups differ from G2 by design: G2 grouped only
+  players on rosters the day it ran, and NHL as skater/goalie; these use
+  season rosters (NHL F/D/G) plus athlete lookups, and cover all but a handful
+  of player-games.
+- **5b premise corrections.** `player_game_history` has no position anywhere
+  (checked every sport's stat keys), so positions got their own table. ESPN's
+  NBA roster ignores `?season=`; past NBA players come from the athlete
+  endpoint, 150 a run. NHL history uses NHL ids, so NHL positions come from
+  api-web, not ESPN. CFB has no position source in the plan and gets totals
+  only.
 
 **R4 COMPLETE 2026-09-14, awaiting sign-off.** Commits `f7c341d` (one shared
 ESPN summary fetch), `aebd6a3` (ESPN summary parsers), `c649234` (MLB pitches,

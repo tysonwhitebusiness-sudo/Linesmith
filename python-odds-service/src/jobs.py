@@ -1059,6 +1059,27 @@ async def job_retention(yield_fn=None) -> dict:
 CLV_SUMMARY_CACHE_KEY = "python-harness:clv-summary"
 
 
+async def job_team_production(yield_fn=None) -> dict:
+    """R5b (research pages) -- strength rollups: production for and allowed per
+    team, game and position group, and each player's production score. See
+    `team_production.py`.
+
+    DAILY. Every input is a finished game in `player_game_history`, which
+    `genericPlayerHistoryFreshnessJob` keeps current; the rebuild is plain
+    Postgres (INSERT ... SELECT), and positions change with rosters, not by the
+    hour. Measured from the operator machine: 229 s for every sport, most of it
+    roster requests.
+    """
+    import team_production
+
+    async def run() -> dict:
+        pool = await db.get_pool()
+        async with pool.acquire(timeout=120.0) as conn, httpx.AsyncClient(follow_redirects=True) as client:
+            return await team_production.run(conn, client)
+
+    return await _run_timed("teamProductionJob", run())
+
+
 async def job_venue_factors(yield_fn=None) -> dict:
     """Phase 6.10 -- home/road scoring factors for the sports that are not
     baseball. `park_factors` stays MLB's, keyed by a real venue id; nothing
@@ -1385,6 +1406,8 @@ JOB_REGISTRY = [
     # now READS the summary this one writes, and on a cold start the
     # registry order is the burst order.
     ("mlbHistorySummaryJob", job_mlb_history_summary, 24 * 60 * 60),
+    # R5b -- strength rollups for the research pages. Daily; see the job.
+    ("teamProductionJob", job_team_production, 24 * 60 * 60),
     ("mlbProjectionsJob", job_mlb_projections, 60 * 60),
 ]
 
