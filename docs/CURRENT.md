@@ -4,7 +4,7 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages: R1-R2 done; R3 COMPLETE 2026-09-14, awaiting sign-off (second track, below).**
+Research pages: R1-R3 done; R4 COMPLETE 2026-09-14, awaiting sign-off (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -34,24 +34,22 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R3 COMPLETE 2026-09-14, awaiting sign-off
+## Research pages track — R4 COMPLETE 2026-09-14, awaiting sign-off
 
-R1 signed off and deployed; R2 done; **R3 (design system foundations) complete
-and stopped for sign-off**, per the operator's "complete R3 only" instruction.
-Next after sign-off: **R4**. Full record, caveats and routed findings:
-`docs/audit-2026-09-13/RESUME-PROMPT.md`.
+R1 signed off and deployed; R2 done; R3 signed off; **R4 (parsers for feeds
+already fetched, two new endpoints) complete and stopped for sign-off.** Next
+after sign-off: **R5** (Python rollups and ingest; asks before Render deploys).
+Full record, caveats and routed findings: `docs/audit-2026-09-13/RESUME-PROMPT.md`.
 
-- **R3:** tokens (`7adb8c4`), `components/ui/` primitives (`a477d60`), charts at
-  real width with a tooltip on every mark and sport surfaces for D4
-  (`a2ba642`), primitives adopted on real cards (`f7dbd4f`), verify fixes
-  (`9fbb74e`). 460/460 tests. 0 AA failures inside the primitives; whole pages
-  still carry legacy failures and sizes that R6-R8 replace.
-- **Worker deployed this run (approved):** `dep-dak6nkad0e5s73b736u0` on
-  `2228a3d` — a provider throttle clock per sport. NFL Propline prices had been
-  32h stale because MLB's 150s job took every shared window. Verified in prod.
-- `python-odds-service/src/season.py` is still not deployed on its own merits
-  (nothing imports it); the deploy above shipped it along with everything else
-  on `main`, which is harmless.
+- **R4:** one shared ESPN summary fetch (`f7c341d`, which also fixed soccer's
+  live tab never loading), ESPN summary parsers (`aebd6a3`), MLB pitches,
+  batted balls and win probability (`c649234`), NHL landing and play-by-play
+  (`cbce19e`), TennisMyLife serve/return/ranks and CFB poll ranks (`e1e11d9`).
+  All checked field by field against the G2 datasets. 485/485 tests. No card
+  reads them yet; R6-R8 do.
+- **R4-F1** (TennisMyLife lags ~2 weeks) routed to R6 tennis.
+- Worker last deployed `dep-dak6nkad0e5s73b736u0` on `2228a3d` (per-sport
+  provider throttle clock). R4 was TypeScript only.
 
 **Owed:** F-B4 on a slate with pitcher props; MLB live state (R8) before the
 regular season ends late September; a look at `refreshCfbJob` on Saturday

@@ -1,4 +1,4 @@
-# Resume prompt — research pages build (2026-09-14, R3 COMPLETE — awaiting sign-off)
+# Resume prompt — research pages build (2026-09-14, R4 COMPLETE — awaiting sign-off)
 
 Paste everything below the line into a fresh session on any account.
 
@@ -7,74 +7,70 @@ Paste everything below the line into a fresh session on any account.
 I'm resuming the research-pages build in this repo. Read these first, **before doing anything**:
 1. `CLAUDE.md`
 2. `docs/CURRENT.md` (the project baton; the research pages track is in "START HERE")
-3. `docs/audit-2026-09-13/research-pages-master-plan.md` (approved 2026-09-14, the build order). Its status block records R1-R3.
+3. `docs/audit-2026-09-13/research-pages-master-plan.md` (approved 2026-09-14, the build order). Its status block records R1-R4.
 
 ## Where the work is
 
-- **R1** signed off and deployed. **R2** done (the operator's instruction to
-  proceed to R3 stands as its sign-off).
-- **R3 COMPLETE 2026-09-14, AWAITING OPERATOR SIGN-OFF.** Run autonomously on
-  the instruction "complete R3 only, then stop". Next after sign-off: **R4**
-  (parsers for feeds already fetched, plus two new endpoints).
-- Everything committed and pushed. tsc clean, 460/460 tests.
-- **Worker deployed this run** (operator-approved): `dep-dak6nkad0e5s73b736u0`
-  on `2228a3d`, live 21:50 UTC.
+- **R1** signed off and deployed. **R2** done. **R3** signed off 2026-09-14.
+- **R4 COMPLETE 2026-09-14, AWAITING OPERATOR SIGN-OFF.** Next after sign-off:
+  **R5** (Python rollups and ingest; large, and it needs Render deploy asks).
+- Everything committed and pushed. tsc clean, 485/485 tests.
+- No worker deploy in R4 (TypeScript only).
 
-## What was done before R3 (the operator folded it in first)
+## R4 — what landed
 
-The NFL "19h ago" find was fixed, not checked on Saturday:
-- `4b4c5c5` — a prop rung its book stopped quoting no longer counts in the
-  main line (Mahomes 223.5 was a dead 00:05 DraftKings quote). Read side only,
-  before the start; the writer-side delete stays in R5e.
-- `2228a3d` — provider throttle gets a clock per sport, and each sport's paced
-  interval is multiplied by the number of sports sharing the budget. One
-  `provider-throttle:propline` clock let refreshTier1 (150s) take every window;
-  NFL's Propline rows were 32h old. Verified in prod: `provider-throttle:propline:nfl`
-  stamped, DEN @ KC Propline rows fresh.
+Parsers only: every one is a pure function over the raw payload, tested on a
+real saved payload, and checked field by field against the G2 dataset built
+from the same document. **No card reads them yet** — R6-R8 wire them in.
 
-## R3 — what landed
-
-| part | commit | what |
+| step | commit | what |
 |---|---|---|
-| 3a tokens | `7adb8c4` | F2 type ramp (display 32 · heading 22 · title 17 · card-title 14 · body 14 · body-sm 13 · label 12 · overline 11; `tick` 10 for charts). The old scale's 266 uses codemodded by F2's mapping. Elevation flipped (paper 94.5% under card 98.5%). 502 `text-ink-faint/soft` -> `text-ink-muted`. Motion tokens and easings, reduced-motion fades, one 2px focus ring, radius 12/16/8, Plex Mono dropped. |
-| 3b primitives | `a477d60` | `components/ui/`: Card, Section + SectionNav, SegmentedToggle, Tabs, SelectBox, Chip + StatusPill, Tooltip, StatValue/StatGrid, RankRow, FactList, VizLegend, DataTable, Avatar, DrillDownPanel, Skeleton/EmptyState/ErrorState, BackLink, useUrlState. Palette in CSS variables (`globals.css` :root); Tailwind points at them. `Chip.tsx` re-exports the primitive; `SubjectAvatar` renders `Avatar` (initials gone app-wide). Rules test `tests/ui-primitives.test.ts`. |
-| 3c charts | `a2ba642` | `useChartWidth`: charts draw at real pixel width (ChartFrame + 5 primitives). `MarkTip` replaces every SVG `<title>` (hover, focus, tap). Column chart clamp, dashed prop line, zero lines, shared crosshair. **Sport surfaces (D4):** `SpatialGridRole.surface` + `measure`, set by each adapter; `SpatialSurface` draws zone / field / halfCourt / rink / pitch / matrix with each sport's real banding; share data on a single-hue ramp. |
-| adoption, 3d | `f7dbd4f` | LineMovementCard on Card + VizLegend + DrillDownPanel (sortable DataTable); PlayerDetail market Tabs, window Chips, gamelog SegmentedToggle, StatusPill; AnalyticsCard -> Card; Game context -> FactList; StatRankRow -> RankRow; weather -> StatGrid; SelectBox in the NFL matchup picker; GameDetail SectionNav + `?records=` via useUrlState; NFL player page BackLink ("DEN @ KC") + ErrorState. Breakpoints xs 400 / wide 1440. |
-| verify fixes | `9fbb74e` | SectionNav bleed opt-in (overflowed at 400); closed DrillDownPanel `inert` (was Tab-reachable); StatusPill wraps (tennis page 60px over at 400); RankRow track 48px floor (dot sat on labels in half-width columns). |
+| 1 shared fetch | `f7c341d` | `lib/sports/espn/summary.ts` `fetchEspnSummary(leaguePath, eventId)`: one fetch for the 8 modules that each fetched the ESPN summary themselves; in-flight dedupe; in memory, final 10 min, open 5 s; failures never cached. **Fixed on the spot:** soccer's live tab had never loaded (asked for `epl`, ESPN wants `eng.1`). |
+| 2 ESPN parsers | `aebd6a3` | `lib/sports/espn/summaryParsers.ts`: win probability + biggest swings; drives with plays (NFL/CFB); court plays with ESPN's -2^31 sentinel as null, lead tracker, scoring runs (NBA); lines open/close as numbers with the soccer draw, `resultVsLine`; season series; injuries stamped with fetch time; soccer lineups, commentary pitch positions, last five. Fixtures `tests/fixtures/espn/summary-*.json`. |
+| 3-4 MLB | `c649234` | `lib/sports/mlb/liveFeedParsers.ts`: every pitch (type, speed, pX/pZ, call, zone, count) and batted ball (EV, LA, distance, coordinates), `pitchMix`; new endpoint `statsapi.getWinProbability` + `parseMlbWinProbability` (0-1 home). Fixture gamePk 824711. |
+| 4 NHL | `cbce19e` | `lib/sports/nhl/apiWebParsers.ts` + `nhle.ts`: new `/v1/player/{id}/landing` (official regular-season lines and career, skater and goalie) and `/v1/gamecenter/{id}/play-by-play` (rink x/y, shooter, goalie, situation code, roster). |
+| 5 tennis, CFB | `e1e11d9` | `tennismylife.ts` keeps level, round, indoor, best-of, minutes, rank/points/seed, opponent rank and both sides' serve counts (`serve`, `opponentServe`), `returnPointsWon`, `breakPointsConverted`; pure `buildTennisSeasonContext`; cache key `tennis:tml:v2:`. ESPN scoreboard/schedule games carry `homeRank`/`awayRank` (`pollRank`); schedule key `espnTeamSport:schedule:v2:`. |
 
-**Verify pass (done):** 6 pages x 400/1440, no overflow, no page errors.
-Keyboard focus shows the ring and opens tooltips; SectionNav writes the hash;
-Records scope writes `?records=`; market tabs follow arrow keys and `?market=`;
-drill-down opens a sortable table, closes on Escape, returns focus. Contrast:
-**0 AA failures inside the primitives** on 5 pages. Screenshots in
-`.playwright-mcp/r3v-*.png`, the kit's in `r3v-g2-game-1440.png`.
+**Verify (done):** each parser against G2 in tests (win probability point for
+point, drives/plays, NBA coordinates, lines for all five summary sports,
+injuries, lineups and commentary, MLB pitches and win probability, NHL landing
+and events, tennis serve on both sides of a win and a loss). The whole live
+2026 ATP CSV parses (serve and minutes 100%, rank 99.8%). Ohio State's live
+schedule ranks equal G2 on 12 of 12 games. `/api/cfb/team/194` 200 on the new
+key. No UI changed, so no page renders were owed.
 
-## R3 caveats — honest, and where each goes
+## R4 caveats — honest, and where each goes
 
-- **Whole pages are not yet at F2's targets.** AA failures per page: NFL game
-  18/1018, NFL player 24/457, NBA team 86/716 (F2 measured 43% before R3). Text
-  colors per page 12-38 against a target of 8. 801 hand-typed `text-[Npx]`
-  sizes remain. All of it is legacy card code: **R6-R8 rebuild those cards on
-  the primitives** (ledger R3-F2).
-- **Adopted once, not everywhere,** per R3's own verify step. `Section` (the
-  wrapper) is built but the GameDetail adoption used plain `id` wrappers under
-  `SectionNav`; R6 uses `Section` for the rebuilt pages.
-- **3d "every name, photo and logo is a Link"**: `Avatar href` and `BackLink`
-  exist and the hero already linked teams; linking every name app-wide happens
-  as pages rebuild (R6-R8). Game state and compare target in the URL are R8/R9.
-- **Not rendered in their triggering state:** the NFL player page ErrorState
-  (needs a failing fetch) and the LiveLineTrackerCard SelectBox (behind login).
-- **NBA and NHL surfaces** were checked by static render (off-season pages are
-  empty); golf is `matrix` until shot coordinates and a live tournament.
+- **Finished-game caching is in memory, not `cachedRoute()`**, because R4 adds
+  no routes. When R8's game routes read these parsers, finished games get the
+  plan's long-TTL `cachedRoute()`; live routes keep their no-cache contract.
+- **Not exercised in a live state:** drives on an in-progress NFL/CFB game, an
+  MLB feed mid-game, NHL play-by-play on a live game (off-season). R8 renders
+  each state and verifies there (MLB before late September).
+- **The eight modules moved onto the shared fetch still do their own parsing**
+  (`nba/liveGame.ts`, `multiSport/footballLiveGame.ts` and the rest); R6-R8
+  move each card onto the new parsers and delete what they replace.
+- **R4-F1, routed to R6 tennis:** TennisMyLife's archive lags about two weeks
+  (no US Open on 2026-09-14). Show its last match date beside tennis history
+  tiles; fill later matches from ESPN where needed.
+- **Tennis `snapshot_cache` rows got wider** (12 columns kept to 45); 2,132
+  rows for 2026 ATP. Watch it alongside R2-F11 if the table grows.
 
-## Findings routed (R2-F1..F11, R3-F1..F2)
+## Findings routed (R2-F1..F11, R3-F1..F2, R4-F1)
 
 R2-F1 and R3-F1 are **resolved**. The rest stand as routed in the plan's
-Appendix A: R5e (yes/no `other` direction; the writer deleting stale rungs —
-the read-side guard is in), R6 (MLB fixed prop lines; line-movement pinned to
-the modal line; in-play price chip; EPL snapshot cache), R7 (MLB hooks on other
-sports' team pages; `/api/mlb/team/110` stale payload), parked (Scan at 400px),
-model track Phase 5 (huge `snapshot_cache` rows), R6-R8 (R3-F2 above).
+Appendix A: R5e (yes/no `other` direction; the writer deleting stale rungs),
+R6 (MLB fixed prop lines; line-movement pinned to the modal line; in-play price
+chip; EPL snapshot cache; tennis archive lag), R7 (MLB hooks on other sports'
+team pages; `/api/mlb/team/110` stale payload), parked (Scan at 400px), model
+track Phase 5 (huge `snapshot_cache` rows), R6-R8 (R3-F2 legacy sizes and
+contrast).
+
+## R3 caveats still standing
+
+- Whole pages are not yet at F2's type and contrast targets (R3-F2): R6-R8.
+- `Section` is built but not yet adopted; R6 uses it. Links on every name and
+  photo, game state and compare target in the URL arrive with R6-R9.
 
 ## Still owed from R1
 
@@ -82,7 +78,7 @@ model track Phase 5 (huge `snapshot_cache` rows), R6-R8 (R3-F2 above).
 - **MLB has no `/api/mlb/game/{id}`** for past games — R8.
 - **MLB regular season ends late September**: R8's MLB live state before then.
 - R1f 2b's CFB check (Saturday 2026-09-19) is still worth a look at
-  `refreshCfbJob`'s log; its NFL half was resolved above.
+  `refreshCfbJob`'s log.
 
 ## First reply
 

@@ -2,8 +2,27 @@
 
 **Status: APPROVED by the operator 2026-09-14, as written (including picks G1–G7
 as taken in §3). R0 done. R1 signed off and deployed. R2 done (signed off by
-the operator's instruction to proceed). R3 COMPLETE 2026-09-14, awaiting
-sign-off (below). Next after sign-off: R4.**
+the operator's instruction to proceed). R3 signed off 2026-09-14. R4 COMPLETE
+2026-09-14, awaiting sign-off (below). Next after sign-off: R5.**
+
+**R4 COMPLETE 2026-09-14, awaiting sign-off.** Commits `f7c341d` (one shared
+ESPN summary fetch), `aebd6a3` (ESPN summary parsers), `c649234` (MLB pitches,
+batted balls, win probability), `cbce19e` (NHL landing and play-by-play), `e1e11d9`
+(TennisMyLife serve/return/ranks, CFB poll ranks). Every parser is a pure
+function tested on a real saved payload and checked field by field against the
+G2 datasets. No card reads them yet; R6-R8 do. What re-checking the premises
+changed:
+- There was no "shared summary parser": eight modules fetched the same ESPN
+  summary separately. One fetch with in-flight dedupe now serves all of them.
+  Soccer's live tab had never loaded (it asked ESPN for `epl`, not `eng.1`) and
+  was fixed in the same commit.
+- NHL shot coordinates for a live game come from a new api-web play-by-play
+  call, not ESPN: ESPN's NHL plays carry coordinates without shooter, goalie or
+  strength situation.
+- The summary cache is in memory (final 10 min, open 5 s), not
+  `cachedRoute()`: R4 adds no routes. The long-TTL cache for finished games is
+  set when R8's game routes read these parsers.
+- R4-F1 routed to R6 (tennis archive lag, below).
 
 **R3 COMPLETE 2026-09-14, awaiting sign-off.** Commits `7adb8c4` (3a tokens),
 `a477d60` (3b primitives), `a2ba642` (3c charts and surfaces), `f7dbd4f`
@@ -673,6 +692,14 @@ Spec: `docs/design/phase-g2/src/player.html`, `src/sports/common.js` (skeleton),
   discards the result. Per-section loading is the fix; confirm the write
   succeeds once soccer's page is rebuilt.
 
+**Also in R6 (routed from R4, 2026-09-14):**
+- **Tennis history says how current it is.** TennisMyLife's 2026 ATP archive
+  ended at Winston-Salem (starting 2026-08-30) on 2026-09-14, a day after the US
+  Open final: the latest slam is missing, and form, fatigue and serve/return
+  tiles would read as current without it. Show the archive's last match date
+  beside those tiles, and fill matches after it from ESPN results where the
+  card needs them.
+
 **Verify, per sport:**
 - Render the G2 subjects: Judge 592450, Skenes 694973, Chase 4362628, Allen
   3918298, Manning 4870906, SGA 4278073, Wembanyama 5104157, MacKinnon 8477492,
@@ -986,6 +1013,7 @@ rebuilt pages use.
 | R2-F9 `soccer:snapshot:epl` 22 MB cannot write its cache | soccer snapshot | R6 (per-section loading) |
 | R2-F10 Scan pages overflow at 400px | Scan | **no R-phase** — Scan is out of scope; parked in `docs/CURRENT.md` |
 | R2-F11 huge old `snapshot_cache` rows | database | **model track Phase 5** (database growth), `docs/CURRENT.md` |
+| R4-F1 TennisMyLife archive lags ~2 weeks (no US Open on 2026-09-14) | tennis history | R6 tennis (show the archive's last date; ESPN results after it) |
 
 ## Appendix B — Reference fixtures (G2 datasets)
 
