@@ -4,8 +4,31 @@
 as taken in §3). R0 done. R1 signed off and deployed. R2 done (signed off by
 the operator's instruction to proceed). R3 and R4 signed off 2026-09-14. R5
 signed off 2026-09-15. R6 STARTED 2026-09-15: Step 0 done, corrections and
-decisions recorded in the R6 section. R6.1a SIGNED OFF 2026-09-15. R6.1b (MLB
-hitter) COMPLETE 2026-09-15; R6.1c (MLB pitcher) next.**
+decisions recorded in the R6 section. R6.1a and R6.1b SIGNED OFF 2026-09-15.
+R6.1c (MLB pitcher) COMPLETE 2026-09-15; R6.1d (MLB odds and live) next.**
+
+**R6.1c COMPLETE 2026-09-15.** MLB pitcher "Arsenal & command".
+- **Built:** `mlbPitcherSection` (`playerResearchSections.ts`): arsenal table
+  (usage, velo, whiff, CSW, xwOBA, EV allowed; spin and movement stated as not
+  held), pitch locations (the rollup's latest 500, the six most thrown types
+  with chip toggles, three on by default; new `ZoneScatter` primitive and a
+  `scatter` card kind; a status card under the 500-pitch threshold), where he
+  pitches (zone map, pitcher views: share, whiff, xwOBA allowed with low = good),
+  fastball velocity by start (average and hardest), vs LHH/RHH. Coverage note
+  against batters faced (at bats + walks + HBP from the box scores, which can
+  only understate). `CATEGORICAL` palette in chart tokens.
+- **Removed:** the prop block's strike zone and platoon split for pitchers
+  (`spatialGrid`/`binarySplit` are null for MLB now), with their builders
+  `toSpatialGridRole`/`toPlatoonBinarySplit` and their tests.
+- **Verified:** the section equals `/api/mlb/statcast/player` on Skubal (FF
+  37.4% 96.8 20.9 26.1 .363 86.6; 548 of 568 batters faced, 96%) and Yamamoto;
+  De Paula (four games) and Witt unchanged. Yamamoto has a market today: his
+  prop block keeps the pitch mix, has no strike zone or platoon split, and the
+  shared game log shows IP per start — **F-B4 resolved** (the R6.1a game log
+  reads `player_game_history`, not the slate). 1440 and 400 (the arsenal table
+  scrolls in its own container at 400). tsc clean, 497/497 tests (11 zone and
+  platoon role tests went with their builders; 4 pitcher tests added), build
+  passes.
 
 **R6.1b COMPLETE 2026-09-15.** MLB hitter "Contact quality & approach".
 - **Built:** sport sections as data (`ResearchSection`/`ResearchCard` in
@@ -237,7 +260,8 @@ Render `dep-dak36up42hec73bri7hg` on `46a2def` — verified in prod:
 own slate counts exactly), R1e, R1f 2a, R1g except F-B4, R1h. Owed:
 - **F-B4** (MLB pitcher game log) — not reproducible: today's MLB slate carries
   no pitcher markets at all, so no pitcher page renders a game log. Needs a
-  slate with pitcher props.
+  slate with pitcher props. **Resolved in R6.1c's render (Yamamoto, with a
+  market): the game log is R6.1a's, from `player_game_history`.**
 - **F-B12** (tennis aces) — MEASURED AND RE-ROUTED TO R2. It is not a
   match-total market: `prop_odds` holds 503 aces rows over 45 subjects with a
   0.5–29.5 spread, and one subject-game (Ben Shelton, 182766) carries 9
@@ -1241,7 +1265,7 @@ rebuilt pages use.
 | F-B1 mirrored allowed ranks | NFL/NBA/soccer/tennis game | R1g |
 | F-B2 duplicate games in records | `game_result` | R2 |
 | F-B3 seasons out of order | NFL team chart | R7 (R1 if R7 is far) |
-| F-B4 pitcher game log empty | MLB | R1g |
+| F-B4 pitcher game log empty | MLB | **resolved** R6.1a/R6.1c (shared game log from `player_game_history`; Yamamoto verified with a market) |
 | F-B5 integer-rounded rates | MLB game/team | R1g |
 | F-B6 raw floats | soccer player | R1g |
 | F-B7 rank pools | soccer | R1g, R2 ranks |

@@ -1,4 +1,4 @@
-# Resume prompt — research pages build (2026-09-15, R6.1b COMPLETE — R6.1c next)
+# Resume prompt — research pages build (2026-09-15, R6.1c COMPLETE — R6.1d next)
 
 Paste everything below the line into a fresh session on any account.
 
@@ -8,22 +8,25 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 1. `CLAUDE.md` (the sport-adapter rule 2 now names `toPlayerResearchData`)
 2. `docs/CURRENT.md` (the research pages track is in "START HERE")
 3. `docs/audit-2026-09-13/research-pages-master-plan.md` — the status block
-   (R6.1a and R6.1b records), the R6 section in full including "R6 Step 0
+   (R6.1a-c records), the R6 section in full including "R6 Step 0
    premise audit", "Also in R6.4", §1, §2, "Also in R8", and Appendix A rows
-   R6-F1..F7.
+   R2-F4..F6 and R6-F1..F7.
 4. The G2 player spec: `docs/design/phase-g2/src/player.html`,
-   `src/sports/common.js`, `mlb.js` (R6.1b/c), `src/kit2.js`; datasets in
+   `src/sports/common.js`, `mlb.js`, `src/kit2.js`; datasets in
    `docs/design/phase-g2/data/player-*.json`.
 
 ## Where the work is
 
-- **R1-R5 and R6.1a signed off. R6.1b (MLB hitter Contact quality) complete
-  2026-09-15.** Next is R6.1c; confirm with the operator before starting it.
+- **R1-R5, R6.1a and R6.1b signed off. R6.1c (MLB pitcher Arsenal & command)
+  complete 2026-09-15.** Next is R6.1d; confirm with the operator before
+  starting it. Stop for sign-off after R6.1d.
 - Commits: `512b42a` (Step 0), `0169de1` and `5c46b29` (R6.1a), `48abdc5`
-  (R6.1a docs), then the R6.1b commit. Pushed only if the operator asked.
-  Nothing deployed: R6.1a-b changed no Python.
-- tsc clean, 504/504 TS tests, `npm run build` passes (build with
-  `LB_DIST_DIR=.next-verify` while a dev server holds `.next`).
+  (R6.1a docs), `7893e82` and `478e196` (R6.1b), then the R6.1c commits.
+  Pushed only if the operator asked. Nothing deployed: R6.1a-c changed no
+  Python.
+- tsc clean, 497/497 TS tests, `npm run build` passes (build with
+  `LB_DIST_DIR=.next-verify` while a dev server holds `.next`; delete stale
+  `.next*/types` first if a validator names a deleted route).
 
 ## Operator decisions (2026-09-15) — don't reopen
 
@@ -70,19 +73,20 @@ books" — R6.1d replaces the odds cards.
   (chase zones) drawn by `SpatialSurface`'s zone geometry.
 - Tests: `tests/mlb-research-sections.test.ts`.
 - **R6-F7:** Statcast rollups cover 91-94% of plate appearances (partly
-  ingested games); sections state coverage under 99%. A pitcher's section
-  should state coverage the same way (batters faced against the box score).
+  ingested games); sections state coverage under 99%.
 
-## Next: R6.1c-d (MLB), then stop
+## What R6.1c added
 
-**R6.1c — MLB pitcher, "Arsenal & command"** from the rollup's `pitching` row:
-arsenal table (usage, velo, whiff, CSW, xwOBA, EV allowed), pitch locations
-(`payload.locations`, the latest 500, by type — needs a scatter on the zone),
-where he pitches (`zoneViews(zones, 'pitcher')`), fastball velocity by start
-(`payload.trend`), vs LHH/RHH. Check against Skubal's G2 block (Skenes has
-none). Then remove the pitcher's prop-block strike zone and platoon split
-(`isPitcherSubject ?` in the MLB adapter; update `tests/player-roles.test.ts`).
-The per-start game log (F-B4) already exists in the shared Game log.
+- `mlbPitcherSection` in `playerResearchSections.ts` (arsenal, pitch locations,
+  zone map, fastball velocity by start, vs LHH/RHH; coverage against batters
+  faced). New card kind `scatter`, drawn by `ScatterCard` with the new
+  `components/charts/ZoneScatter.tsx`; `CATEGORICAL` palette in chart tokens.
+- MLB's prop block no longer has a strike zone or platoon split for anyone:
+  `spatialGrid`/`binarySplit` are null for MLB; `toSpatialGridRole` and
+  `toPlatoonBinarySplit` are deleted. The pitch mix and opposing starter stay.
+- F-B4 resolved (Yamamoto rendered with a market; IP per start).
+
+## Next: R6.1d (MLB), then stop
 
 **R6.1d — routed items:** the MLB line decision above; line movement pinned to
 R2's main line (`lineHistory.ts` `pinLine` is modal); the price chip on a
@@ -128,7 +132,7 @@ Then R6.2-R6.6 as written in the plan (NFL/CFB, soccer, tennis, NBA/NHL, golf).
   refresh; if the PC is off, Statcast rows show an older `as_of`.
 - **MLB regular season ends late September:** R8's MLB live state must be
   verified before then (or on postseason games) — keep R6.1 moving.
-- F-B4 on a slate with pitcher props; `refreshCfbJob` on Saturday 2026-09-19.
+- `refreshCfbJob` on Saturday 2026-09-19.
 
 ## Spec
 

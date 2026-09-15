@@ -4,7 +4,7 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages: R1-R5 and R6.1a signed off; R6.1b complete, R6.1c next (second track, below).**
+Research pages: R1-R5, R6.1a and R6.1b signed off; R6.1c complete, R6.1d next (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -34,11 +34,12 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R6.1a signed off; R6.1b COMPLETE 2026-09-15; R6.1c next
+## Research pages track — R6.1a-b signed off; R6.1c COMPLETE 2026-09-15; R6.1d next
 
-R1-R5 and R6.1a signed off. **R6.1b (MLB hitter Contact quality) is done;
-R6.1c (MLB pitcher Arsenal & command) is next.** The handoff is
-`docs/audit-2026-09-13/RESUME-PROMPT.md`; the record is the plan's status block.
+R1-R5, R6.1a and R6.1b signed off. **R6.1c (MLB pitcher Arsenal & command) is
+done; R6.1d (MLB main line, odds section, game state) is next, then a stop for
+sign-off.** The handoff is `docs/audit-2026-09-13/RESUME-PROMPT.md`; the record
+is the plan's status block.
 
 - **R6.1a:** the player is the page for every sport — hero from the league bio,
   Seasons / Trends / Splits / Game log from every season of
@@ -67,7 +68,7 @@ R6.1c (MLB pitcher Arsenal & command) is next.** The handoff is
   Python prune removes the old ones after three days — they were among the
   large `snapshot_cache` rows Phase 5 flagged.
 
-**Owed:** F-B4 on a slate with pitcher props; MLB live state (R8) before the
+**Owed:** MLB live state (R8) before the
 regular season ends late September; a look at `refreshCfbJob` on Saturday
 2026-09-19.
 
