@@ -104,6 +104,8 @@ const SELF = [
   // 6.10: one `venue_factors` table across six sports, so there is no
   // `lib/sports/{sport}/` to put it in — the same reason the two above live here.
   'lib/sports/shared/venueFactor.ts',
+  // R5b: the strength rollup tables span seven sports, the same reason again.
+  'lib/sports/shared/teamProduction.ts',
 ];
 
 function walk(dir: string): string[] {
