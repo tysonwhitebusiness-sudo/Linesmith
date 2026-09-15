@@ -35,7 +35,6 @@ import { BookLogo } from './BookLogo';
 import { usePropOdds, resolveCandidateEdge } from './usePropOdds';
 import { PropOddsBoard } from './PropOddsPanel';
 import { SegmentedToggle } from './SegmentedToggle';
-import { useMarketCalibration, type MarketCalibrationState } from './useMarketCalibration';
 import { MatchupExplorerCard } from './MatchupExplorerCard';
 import { LiveLineTrackerCard } from './LiveLineTrackerCard';
 import { useTeamDefenseAllowed } from './useTeamDefenseAllowed';
@@ -800,20 +799,18 @@ export interface PlayerDetailProps {
     loading: boolean;
   };
   /**
-   * Reuse a parent's already-fetched `usePropOdds`/`useMarketCalibration`
-   * results instead of this component fetching its own copy of the exact
-   * same game's data — set by `GameDetail` when it mounts this component
-   * nested (for a selected player within a game already on screen), which
-   * has already called both hooks with the same gameId/refreshKey for its
-   * own use (LeftRail, PicksPanel). Omitted by every other caller (the
+   * Reuse a parent's already-fetched `usePropOdds` result instead of this
+   * component fetching its own copy of the exact same game's data — set by
+   * `GameDetail` when it mounts this component nested (for a selected player
+   * within a game already on screen), which has already called the hook with
+   * the same gameId/refreshKey for its own use (LeftRail, PicksPanel). Omitted by every other caller (the
    * standalone player page, PlayerDetailPanel), which fall back to fetching
    * their own as before.
    */
   sharedPropOdds?: ReturnType<typeof usePropOdds>;
-  sharedCalibration?: MarketCalibrationState;
   /**
    * Fires whenever this component's OWN data-fetching hooks (live game,
-   * opponent team Statcast, prop odds, market calibration — see the "Hooks
+   * opponent team Statcast, prop odds — see the "Hooks
    * that fetch live data stay in the component" block below) settle, not
    * just when the parent's outer snapshot fetch resolves. A host page uses
    * this to hold a full-page loader until the whole page is genuinely ready
@@ -844,7 +841,6 @@ export function PlayerDetail({
   embedded = false,
   golfStats,
   sharedPropOdds,
-  sharedCalibration,
   onReadyChange,
   subject,
   marketsLoading = false,
@@ -1024,8 +1020,9 @@ export function PlayerDetail({
 
   const propOddsFetched = usePropOdds(gamePkStr, snapshot?.fetchedAt, !sharedPropOdds, startIso);
   const propOdds = sharedPropOdds ?? propOddsFetched;
-  const calibrationFetched = useMarketCalibration(!sharedCalibration, active?.sport ?? 'mlb');
-  const calibration = sharedCalibration ?? calibrationFetched;
+  // Market calibration is no longer fetched here (R6.1d): its only reader, a
+  // trust-tier value, had not been rendered since the page's R3 rebuild, and
+  // a cold `/api/props/calibration` takes 60+ seconds.
 
   // R6.1a — the player, independent of any market. The embedded game-page host
   // passes no subject and keeps the prop block alone; every other host gets the
@@ -1198,12 +1195,6 @@ export function PlayerDetail({
   // when its id argument is undefined, so a sport that never fires one is
   // never blocked by it. That is what makes listing all of them correct
   // rather than merely thorough — see each hook's own early return.
-  //
-  // `calibration` STAYS EXCLUDED, and this is the one real exception:
-  // `/api/props/calibration` was measured taking 60+ seconds on a cold cache
-  // in this codebase, and it drives a badge, not a card. Blocking the page on
-  // it would trade a small pop-in for a minute of spinner. It renders through
-  // a neutral default instead.
   const detailPending =
     playerLive.loading ||
     opponentTeamStatcast.loading ||

@@ -2282,7 +2282,6 @@ export function GameDetail({
               addedKeys={pickedKeys}
               embedded
               sharedPropOdds={props}
-              sharedCalibration={calibration}
             />
           </>
         ) : (
