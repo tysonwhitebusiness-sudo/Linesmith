@@ -271,15 +271,18 @@ async def prune_table(conn, table: str, backend, apply: bool,
                     f"DELETE FROM {table} WHERE id = ANY($1::bigint[])", batch)
                 deleted += int(res.split()[-1]) if res.split()[-1].isdigit() else 0
 
-    if keep_days and apply:
-        # PUBLISH THE FLOOR, as 5.S.5 does for mlb_pitch_events. A window that
-        # has been pruned and a series that genuinely has no ticks look
-        # identical to every reader, and the reader is the one that has to tell
-        # a user which it is looking at.
-        floor = await conn.fetchval(
-            f"SELECT min(COALESCE("
-            f"  {'observed_at' if 'observed_at' in await cs.column_names(conn, table) else 'captured_at'}"
-            f", now())) FROM {table}")
+    cols = await cs.column_names(conn, table)
+    time_col = "observed_at" if "observed_at" in cols else "captured_at" if "captured_at" in cols else None
+    if keep_days and apply and time_col:
+        # PUBLISH THE FLOOR. A window that has been pruned and a series that
+        # genuinely has no ticks look identical to every reader, and the reader
+        # is the one that has to tell a user which it is looking at.
+        #
+        # Only for a table read by recency. `mlb_pitch_events` keeps a margin
+        # (R5-F2) but has neither column and no recency reader; before this
+        # check it crashed here on `captured_at` (2026-09-15, after deleting
+        # nothing: every partition's margin held its rows back).
+        floor = await conn.fetchval(f"SELECT min(COALESCE({time_col}, now())) FROM {table}")
         await conn.execute(
             """INSERT INTO snapshot_cache (cache_key, payload, fetched_at)
                VALUES ($1, $2, now())
