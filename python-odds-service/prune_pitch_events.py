@@ -29,14 +29,11 @@ route permits any season from 2024 and the UI's `getUTCFullYear()` rolls over on
 "current" season is nearly empty. Keeping the previous season leaves the obvious
 fallback implementable. `--keep 1` frees ~160 MB more if that is ever wanted.
 
-THE FLOOR IS PUBLISHED, NOT ASSUMED. After a successful prune this writes the
-oldest retained season to `snapshot_cache` under
-`mlb:pitch-events:retained-floor`, and `getPitchProfile` reads it to tell
-"pruned to the corpus" (410) apart from "this player threw nothing" (an empty
-profile). Those two were indistinguishable before, and the route's own comment
-already recorded that confusion as the reason its static floor exists. A
-cross-language constant would have had to be hand-maintained in both languages;
-a value published by the only process that can change it cannot drift.
+NO FLOOR IS PUBLISHED ANY MORE (R5, 2026-09-14). This used to write the oldest
+retained season to `snapshot_cache` for `getPitchProfile`, so a pruned season
+could 410 instead of reading as empty. The page no longer reads this table:
+Phase 5 cut it to a hot window of days, not seasons, and the season profile now
+comes from `mlb_statcast_player_season` (`build_statcast_rollups.py`).
 
 THE SAME FOUR REFUSALS as `prune_corpus.py` and `prune_player_history.py`:
   1. verify-only by default;
@@ -52,7 +49,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import os
 import sys
 
@@ -65,7 +61,6 @@ import db                                                     # noqa: E402
 TABLE = "mlb_pitch_events"
 KEEP_SEASONS = 2
 DELETE_BATCH = 5_000
-FLOOR_CACHE_KEY = "mlb:pitch-events:retained-floor"
 
 
 def corpus_ids(season: int) -> set[int]:
@@ -160,20 +155,9 @@ async def main(keep: int, apply: bool, force_local: bool) -> int:
                 removed += int(tag.split()[-1])
             print(f"  season {s}: deleted {len(ids):,}")
 
-        # PUBLISH THE FLOOR. Written only after the deletes succeed, because a
-        # floor claiming rows are gone while they are still present would make
-        # the route 410 on data it could have served.
-        await conn.execute(
-            """INSERT INTO snapshot_cache (cache_key, payload, fetched_at)
-               VALUES ($1, $2, now())
-               ON CONFLICT (cache_key) DO UPDATE
-                 SET payload = excluded.payload, fetched_at = excluded.fetched_at""",
-            FLOOR_CACHE_KEY,
-            json.dumps({"floor": floor, "kept": kept, "pruned": doomed,
-                        "rows_deleted": removed, "table": TABLE}))
         after = await conn.fetchval(
             f"SELECT pg_total_relation_size('{TABLE}')") / 1e6
-        print(f"\n  deleted {removed:,} rows; retained floor published as {floor}")
+        print(f"\n  deleted {removed:,} rows; seasons kept from {floor}")
         print(f"  {TABLE}: {size:,.0f} MB -> {after:,.0f} MB "
               f"(VACUUM FULL returns the space — vacuum_reclaim.py)\n")
 

@@ -75,11 +75,16 @@ if (-not $corpusConfigured) {
 # nothing and left no way to see why. Same fix: a tiny .bat wrapper that
 # redirects into its own log.
 $logPath = Join-Path $pyOddsDir "corpus-refresh.log"
+$rollupLogPath = Join-Path $pyOddsDir "statcast-rollups.log"
 $batPath = Join-Path $pyOddsDir "run-corpus-refresh.bat"
+# R5a: the MLB Statcast rollups read the corpus this refresh just wrote, so they
+# run straight after it, into their own log (build_statcast_rollups.py).
 @"
 @echo off
 echo ---- %date% %time% ---- >> "$logPath"
 "$venvPython" refresh_corpus.py --prune >> "$logPath" 2>&1
+echo ---- %date% %time% ---- >> "$rollupLogPath"
+"$venvPython" build_statcast_rollups.py --apply >> "$rollupLogPath" 2>&1
 "@ | Set-Content -Path $batPath -Encoding ASCII
 
 $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue

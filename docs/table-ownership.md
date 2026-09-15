@@ -24,6 +24,9 @@
 > | `team_name_index` | **NEW** (migration `20260910180000`) | Python — `build_team_name_index.py` / `teamNameIndexJob`; read by `archival_bridge` |
 > | `index_usage_snapshot` | **NEW** | Python — `audit_index_usage.py --snapshot` |
 > | `player_history_summary` | NEW in 5.2 | Python — `mlbHistorySummaryJob` |
+> | `mlb_statcast_player_season` | **NEW** in R5a (migration `20260915040000`) | Python — `build_statcast_rollups.py` on the operator machine, after each corpus refresh; read by `/api/mlb/statcast/player/[playerId]` and `/api/mlb/pitch-profile` |
+> | `mlb_statcast_team_season` | **NEW** in R5a | Python — `build_statcast_rollups.py`; read by `/api/mlb/statcast/team/[teamId]` |
+> | `mlb_statcast_game_pregame` | **NEW** in R5a | Python — `build_statcast_rollups.py`; read by `/api/mlb/game/[gameId]/pregame-statcast` |
 > | `odds_import_staging` | rows pruned, table kept | Python importers write; `scripts/gate/promote_odds.mjs` drains |
 > | `prop_odds_dedup_backup_20260829` | **DROPPED** | — |
 > | `team_elo_history_int_backup_20260901` | **DROPPED** | — |

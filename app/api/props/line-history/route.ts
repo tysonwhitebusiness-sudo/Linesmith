@@ -85,8 +85,8 @@ export async function GET(request: Request) {
     // returning a shorter series. Since 5.S.8 the older ticks live in the
     // Parquet corpus, which this runtime cannot read — so an unclamped 30-day
     // request would render as though the market simply had not been quoted
-    // before the retention boundary. That is the same confusion 5.S.5's
-    // `retainedFloor` exists to prevent on the pitch profile.
+    // before the retention boundary. The pitch profile made exactly that
+    // mistake, serving five days of pitches as a season, until R5.
     const retained = await retainedHours();
     const effectiveHours = retained == null ? hours : Math.min(hours, retained);
     const body = await readLineHistory({

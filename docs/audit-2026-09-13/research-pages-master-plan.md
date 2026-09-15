@@ -22,6 +22,27 @@ PROGRESS (below).**
   StatsAPI schedule's game type.
 - **Skenes has no Statcast block in G2**; Skubal's dataset is the pitcher
   reference for the arsenal check.
+- **5a DONE.** `build_statcast_rollups.py` (chained in the corpus refresh task;
+  96-146 s) writes `mlb_statcast_player_season` (3,047 rows),
+  `mlb_statcast_team_season` (120) and `mlb_statcast_game_pregame` (today's and
+  tomorrow's games, kept from kickoff), about 30 MB. Direct-read routes:
+  `/api/mlb/statcast/player/[playerId]`, `/api/mlb/statcast/team/[teamId]`,
+  `/api/mlb/game/[gameId]/pregame-statcast`. `verify_statcast_rollups_g2.py`
+  reproduces the G2 datasets on 4,648 fields with none different (Witt 393 BIP,
+  18 HR, pool 333; Skubal; Royals both sides; both KC @ BOS starters), run on
+  the corpus files G2 was built from. Production differs from G2 on purpose:
+  regular season only, one copy per pitch, every HR with its distance.
+- **5a premise corrections.** Hit distance needs no ingest column: the season
+  HR list is its only card, and one Savant query per season (5,164 HRs in
+  2026, 12 s) carries `hit_distance_sc`. The team join needed no roster-by-date
+  work once R5-F1 was fixed: 100% of regular-season pitches join.
+- **R5-F2, fixed:** the pitch corpus was duplicating (a pruned pitch re-fetched
+  by the 3-day ingest under a new id); 13,298 duplicate rows. Freeze rule moved
+  past the ingest window (`a706141`); readers dedupe by pitch.
+- **R5-F3, fixed:** the MLB player page's pitch mix, platoon split and strike
+  zone (`getPitchProfile`) aggregated `mlb_pitch_events`, which Phase 5 cut to
+  five days, and labelled it the season. Now read from the rollup (Skubal
+  n=2,002 on the rendered page).
 
 **R4 COMPLETE 2026-09-14, awaiting sign-off.** Commits `f7c341d` (one shared
 ESPN summary fetch), `aebd6a3` (ESPN summary parsers), `c649234` (MLB pitches,
@@ -710,6 +731,13 @@ Spec: `docs/design/phase-g2/src/player.html`, `src/sports/common.js` (skeleton),
   discards the result. Per-section loading is the fix; confirm the write
   succeeds once soccer's page is rebuilt.
 
+**Also in R6 (routed from R5, 2026-09-14):**
+- **`/api/mlb/pitch-profile` goes with the cards it feeds.** R5 repointed it at
+  the rollup's `profile` block to fix R5-F3; the rebuilt MLB sections read
+  `/api/mlb/statcast/player/[playerId]`, which carries that block and the rest.
+  Delete the route, `useMlbPitchProfile` and `pitchProfile.ts` when the old
+  pitch-mix/zone roles are replaced.
+
 **Also in R6 (routed from R4, 2026-09-14):**
 - **Tennis history says how current it is.** TennisMyLife's 2026 ATP archive
   ended at Winston-Salem (starting 2026-08-30) on 2026-09-14, a day after the US
@@ -1033,6 +1061,8 @@ rebuilt pages use.
 | R2-F11 huge old `snapshot_cache` rows | database | **model track Phase 5** (database growth), `docs/CURRENT.md` |
 | R4-F1 TennisMyLife archive lags ~2 weeks (no US Open on 2026-09-14) | tennis history | R6 tennis (show the archive's last date; ESPN results after it) |
 | R5-F1 MLB and tennis `player_game_history` stopped 2026-08-28 (hand backfill, never scheduled); MLB board projected without those games | `genericPlayerHistoryFreshnessJob` | **resolved** `3867f60`, deployed `dep-dakbn4tg1s2s73bor350` |
+| R5-F2 pitch corpus duplicating: prune froze pitches inside the 3-day ingest window, so they came back under new ids (13,298 duplicate rows) | `corpus_store` freeze rule, `prune_corpus` | **resolved** `a706141` (new exports); the existing duplicate rows stay in the corpus files, readers dedupe by pitch. Rewriting the files is a model track Phase 5 decision |
+| R5-F3 MLB player page pitch mix, platoon and strike zone were the last ~5 days labelled as the season | `getPitchProfile` on a pruned `mlb_pitch_events` | **resolved** in R5a (reads `mlb_statcast_player_season`); route deleted with its cards in R6 |
 
 ## Appendix B — Reference fixtures (G2 datasets)
 

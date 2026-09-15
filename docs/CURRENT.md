@@ -47,7 +47,19 @@ status block holds its decisions and findings. Full R4 record:
   catch-up run from the operator machine (226 MLB games); worker deployed
   `dep-dakbn4tg1s2s73bor350`, live 03:31 UTC 2026-09-15.
 - **5a runs on the operator machine** (operator decision): Statcast rollups
-  chained after the corpus refresh, never on the worker.
+  chained after the corpus refresh, never on the worker. **5a done**:
+  `build_statcast_rollups.py`, three `mlb_statcast_*` tables, three direct-read
+  routes, G2 parity on 4,648 fields.
+- **Affects the model track: R5-F2, fixed for new exports.** The pitch corpus
+  was duplicating: `prune_corpus` froze `mlb_pitch_events` inside the 3-day
+  ingest window, so pruned pitches came back under new ids and were exported
+  again. 13,298 duplicate rows (09-11/12) remain in the corpus files; any
+  corpus reader of `mlb_pitch_events` must dedupe on (game_pk, at_bat_number,
+  pitch_number) keeping the highest id. Whether to rewrite those files is a
+  Phase 5 decision (`a706141`).
+- **R5-F3, fixed:** the MLB player page's pitch mix and strike zone had been
+  showing the last ~5 days as the season (`getPitchProfile` read the pruned
+  table); it reads the rollup now.
 
 **Owed:** F-B4 on a slate with pitcher props; MLB live state (R8) before the
 regular season ends late September; a look at `refreshCfbJob` on Saturday

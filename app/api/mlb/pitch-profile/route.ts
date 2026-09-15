@@ -1,50 +1,28 @@
 /**
- * One subject's pitch-level profile — the read path for Phase 6.6.
+ * One subject's pitch profile.
  *
  * GET /api/mlb/pitch-profile?role=pitcher&subjectId=666200&season=2026
  *
- * Feeds MLB's `usageMix` (pitch mix) and `spatialGrid` (strike zone) roles,
- * the two that had no source before `mlb_pitch_events` existed.
+ * Feeds MLB's `usageMix` (pitch mix), `spatialGrid` (strike zone) and platoon
+ * roles.
  *
- * CACHING — pattern 1 (`cachedRoute`), per CLAUDE.md's convention. The
- * underlying table holds ~700k rows per season and both aggregates are indexed
- * scans over one subject's slice, so this is not free; and a player page is
- * exactly the kind of thing that gets reloaded repeatedly.
+ * PATTERN 2 — a direct read, refreshed out of band (CLAUDE.md). This route used
+ * `cachedRoute()` because it aggregated `mlb_pitch_events` per request; since
+ * R5 it reads one row of `mlb_statcast_player_season`, which
+ * `build_statcast_rollups.py` rewrites after every corpus refresh. See
+ * `lib/sports/mlb/pitchProfile.ts` for why: the old aggregates had been
+ * reading a five-day hot window as the season.
  *
- * TTL is 30 minutes, grounded in how fast the data actually moves:
- * `ingestStatcastPitchesJob` runs hourly, so anything shorter re-computes an
- * identical answer and anything much longer would sit behind a fresh ingest
- * for no reason.
- *
- * CACHE KEY: `mlb:pitch-profile:{role}:{subjectId}:{season}` — grepped before
- * choosing, per the warning about `snapshot_cache` being one flat namespace.
- * Nothing else uses a `mlb:pitch-profile:` prefix.
+ * R6 builds the new MLB cards on `/api/mlb/statcast/player/[playerId]`, which
+ * returns the whole rollup; this route stays until the cards it feeds are
+ * replaced, then goes with them.
  */
 
 import { NextResponse } from 'next/server';
-import { cachedRoute } from '@/lib/cachedRoute';
-import { getPitchProfile, retainedSeasonFloor } from '@/lib/sports/mlb/pitchProfile';
+import { getPitchProfile } from '@/lib/sports/mlb/pitchProfile';
+import { parseMlbId, parseStatcastSeason } from '@/lib/sports/mlb/statcastParams';
 
 export const dynamic = 'force-dynamic';
-
-const CACHE_TTL_MS = 30 * 60 * 1000;
-
-/**
- * Bounded before it reaches a cache key — task 3.5's lesson: an unbounded id
- * mints a permanent `snapshot_cache` row per value, and `Number.isFinite(x) &&
- * x > 0` accepted 888801, 1e9 and 2.5 alike.
- */
-function parseId(raw: string | null): number | null {
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0 || n > 9_999_999) return null;
-  return n;
-}
-
-function parseSeason(raw: string | null): number | null {
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 2024 || n > 2100) return null;
-  return n;
-}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -53,62 +31,22 @@ export async function GET(request: Request) {
   if (role !== 'pitcher' && role !== 'batter') {
     return NextResponse.json({ error: "role must be 'pitcher' or 'batter'" }, { status: 400 });
   }
-
-  const subjectId = parseId(url.searchParams.get('subjectId'));
+  const subjectId = parseMlbId(url.searchParams.get('subjectId'));
   if (subjectId == null) {
     return NextResponse.json({ error: 'subjectId must be a positive integer' }, { status: 400 });
   }
-
-  // Floor is 2024, not 2000: that is the operator-approved ingest scope, and a
-  // request for 2019 would cache an empty profile that looks like a real
-  // "this player threw nothing" answer.
-  //
-  // 2024 remains the INGEST floor and is still the right static bound here.
-  // Since 5.S.5 there is a second, MOVING floor — the oldest season Postgres
-  // still holds, the rest having been trimmed to the Parquet corpus — and that
-  // one cannot be a constant. `getPitchProfile` reads it from the value the
-  // pruner publishes and throws `SeasonNotRetained`, which is turned into a 410
-  // below. Both floors exist because they answer different questions: "we never
-  // had this" versus "we have it, elsewhere".
-  const season = parseSeason(url.searchParams.get('season') ?? String(new Date().getUTCFullYear()));
+  const season = parseStatcastSeason(url.searchParams.get('season') ?? String(new Date().getUTCFullYear()));
   if (season == null) {
-    return NextResponse.json(
-      { error: 'season must be a year from 2024 onwards — mlb_pitch_events holds nothing earlier' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'season must be a year from 2025 onwards' }, { status: 400 });
   }
 
-  // 410 GONE, ANSWERED BEFORE THE CACHE. A season trimmed to the corpus is not
-  // a transient failure and must never be stored under a profile cache key:
-  // a cached empty profile is indistinguishable from "this player threw
-  // nothing", which is the precise failure the static floor above exists to
-  // prevent. Checked here rather than inside `build()` so it can never become
-  // a cached payload at all.
   try {
-    const floor = await retainedSeasonFloor();
-    if (floor != null && season < floor) {
-      return NextResponse.json(
-        {
-          error: `season ${season} is no longer in Postgres (oldest retained: ${floor})`,
-          retainedFloor: floor,
-          hint: 'the full history is in the Parquet corpus',
-        },
-        { status: 410 },
-      );
+    const profile = await getPitchProfile(role, subjectId, season);
+    if (!profile) {
+      return NextResponse.json({ error: `No Statcast pitches on record for ${role} ${subjectId} in ${season}` }, { status: 404 });
     }
+    return NextResponse.json(profile);
   } catch {
-    // The floor is an optimisation for the error message, not a gate. If the
-    // lookup itself fails, fall through: `getPitchProfile` re-checks and throws
-    // `SeasonNotRetained`, and a real outage should surface as the 500 it is
-    // rather than as a confident 410 about retention.
+    return NextResponse.json({ error: 'Pitch profile lookup failed' }, { status: 500 });
   }
-
-  return cachedRoute({
-    cacheKey: `mlb:pitch-profile:${role}:${subjectId}:${season}`,
-    ttlMs: CACHE_TTL_MS,
-    routeName: 'mlb/pitch-profile',
-    build: () => getPitchProfile(role, subjectId, season),
-    errorMessage: 'Pitch profile lookup failed',
-    request,
-  });
 }
