@@ -4,7 +4,7 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages: R1-R5 signed off; R6 next, gameplan in RESUME-PROMPT.md (second track, below).**
+Research pages: R1-R5 signed off; R6.1a complete, awaiting sign-off (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -34,39 +34,32 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R5 SIGNED OFF 2026-09-15; R6 next
+## Research pages track — R6.1a COMPLETE 2026-09-15, awaiting sign-off
 
-R1-R5 signed off. **Next: R6** (player page rebuild), moving to a fresh chat.
-Its gameplan and the handoff are `docs/audit-2026-09-13/RESUME-PROMPT.md`; R5's
-record is in the plan's status block.
+R1-R5 signed off. **R6 (player page rebuild) is under way: R6.1a is done and
+waiting for the operator's sign-off; R6.1b (MLB hitter) is next.** The handoff is
+`docs/audit-2026-09-13/RESUME-PROMPT.md`; the record is the plan's status block.
 
-- **Built:** Statcast rollups (operator machine, after each corpus refresh),
-  strength, shot and NFL target rollups (`teamProductionJob`, daily), and a
-  corrected prop writer. Each checked against the G2 datasets. Worker deployed
-  `dep-dakl7c61egvs738eomf0` on `a445cc2`.
-- **Affects the model track:**
-  - R5-F1: MLB and tennis `player_game_history` had stopped on 2026-08-28;
-    scheduled and caught up (MLB board had projected without those games).
-  - R5-F2: the pitch corpus had been duplicating; fixed for new exports. The
-    13,298 duplicate rows in the corpus files stay; any corpus reader of
-    `mlb_pitch_events` must dedupe on (game_pk, at_bat_number, pitch_number)
-    keeping the highest id. Rewriting those files is a Phase 5 decision.
-  - R5-F4: the scheduled `mlb_pitch_events` prune crashed after R5-F2's
-    margin (nothing deleted); fixed `706a874`.
-  - 5e: SharpAPI yes/no props now store Yes/No as over/under (a book's two
-    prices had shared one key), and a complete fetch removes withdrawn rungs.
-    `prop_odds_history` keeps the mixed yes/no rows from before.
-- **R5-F3, fixed:** the MLB player page's pitch mix and strike zone had shown
-  the last ~5 days as the season.
-- **R5-F5 — FOR THE MODEL TRACK, and it is live: the worker is OOM-looping.**
-  Render shows it killed at the 512 MB limit 4-9 times an hour since about
-  22:00 UTC on 2026-09-11 (before R5), each kill dropping whatever job was
-  running. The Phase 5 table below says worker RAM is CLEARED; the events say
-  otherwise. The kills cluster after `refreshTier1`, `mlbProjectionsJob` and the
-  archive jobs. Read the service's `server_failed` events before touching jobs.
-- After the R5 deploy the worker also stalled ~40 min (no logs, no OOM) while
-  the operator machine held several connections at once; restarted 14:59 UTC
-  2026-09-15 and healthy since.
+- **R6.1a:** the player is the page for every sport — hero from the league bio,
+  Seasons / Trends / Splits / Game log from every season of
+  `player_game_history`, the prop block as one section. Nothing deployed (no
+  Python change). Verified against all 24 G2 player datasets and refereed
+  against the leagues.
+- **Affects the model track (Python writers, not fixed in R6):**
+  - R6-F5: MLB `game_result` has no game pk before the 2026-08 live capture,
+    dates night games by UTC and misses some games, so it cannot be joined to
+    MLB games by date (25 of Witt's 449 took a neighbour's score). The player
+    page reads StatsAPI finals instead. Anything else joining MLB results by
+    date inherits the error.
+  - R6-F3: `is_major` is 0 on every tennis row (`backfill_player_game_history.py:854`
+    looks for "grand slam" in slam names).
+  - R6-F4: MLB history stores no sacrifice flies, so OBP from it is over PA.
+- **Still for the model track from R5:** R5-F5, the worker OOM loop (512 MB,
+  4-9 kills an hour since 2026-09-11). Read the service's `server_failed`
+  events before touching jobs. R5-F1/F2/F4 and 5e as recorded in the plan.
+- `mlb:full-raw:<date>` rows are no longer written (R6-F2); the existing
+  Python prune removes the old ones after three days — they were among the
+  large `snapshot_cache` rows Phase 5 flagged.
 
 **Owed:** F-B4 on a slate with pitcher props; MLB live state (R8) before the
 regular season ends late September; a look at `refreshCfbJob` on Saturday

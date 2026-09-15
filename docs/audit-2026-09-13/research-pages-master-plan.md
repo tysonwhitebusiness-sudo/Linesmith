@@ -4,7 +4,59 @@
 as taken in §3). R0 done. R1 signed off and deployed. R2 done (signed off by
 the operator's instruction to proceed). R3 and R4 signed off 2026-09-14. R5
 signed off 2026-09-15. R6 STARTED 2026-09-15: Step 0 done, corrections and
-decisions recorded in the R6 section; building R6.1a.**
+decisions recorded in the R6 section. R6.1a COMPLETE, awaiting sign-off; R6.1b
+(MLB hitter) next.**
+
+**R6.1a COMPLETE 2026-09-15, awaiting sign-off.** The player is the page, for
+every sport. Commits `0169de1` (history and bio readers, shared builder) and
+the R6.1a commit after it (page, routes, removals).
+- **Built:** `/api/player-history` (direct read, every season, results joined)
+  and `/api/player-bio` (StatsAPI, NHL api-web, ESPN athlete; injuries). Each
+  sport's `toPlayerResearchData` builds the hero tiles, Season by season,
+  Trends, Splits and Game log through one `buildPlayerResearch`. All eight
+  player routes and the Players tab render the player with or without a market;
+  the prop block is one section with a skeleton while the slate loads and a
+  reasoned empty state after. Sticky section nav, Sources with as-of times.
+- **Removed:** the old "Last 15 games" gamelog card and its adapters' gamelog
+  and summary-strip code in all eight sports; Rolling form, Situational
+  splits, Where this sits and Game context from the player page (the builders
+  stay: team and game pages render them, R7/R8); `/api/mlb/player-gamelog`,
+  `playerGamelogCache.ts` and the `mlb:full-raw:<date>` write (R6-F2; the
+  Python prune clears the old rows after three days); `fallbackSubjectId` and
+  the page-level identity cards.
+- **Verified:** `scripts/verify-player-history.ts` — all 24 G2 player
+  datasets, every G2 game present with identical stats and opponent; scores
+  refereed by the leagues: MLB 995/995 against StatsAPI, NHL 751/751 against
+  api-web. `scripts/verify-player-research-g2.ts` — G2's own spec formulas run
+  over the same games: 856/856 season-table cells equal (IP printed in thirds
+  by design, R2). Rendered 13 subjects (the G2 players plus Vasilevskiy,
+  Lammens and injured Clarke Schmidt) at 1440 and 400: every section present,
+  no horizontal overflow, nav pins under each header. tsc clean, 499/499 tests,
+  `npm run build` passes.
+- **Before R6.1a, 11 of those 13 page loads showed only "No tracked markets".**
+- **What re-checking changed while building:**
+  - **The G2 datasets' results are wrong on back-to-backs and series.** G2
+    joined results by team name within a day and took the neighbouring game
+    (Dončić 2023-11-16 at WAS, a 130-117 win, sits in G2 as the previous
+    night's 110-131 loss). 8-87 games per NBA/NHL/MLB fixture; every disputed
+    game checked agreed with the league. Measurement trap added below.
+  - **MLB `game_result` cannot be joined to game pks (R6-F5).** No pk before
+    the 2026-08 live capture (`lc…` CSV refs, ESPN ids), `espn_core` dates night
+    games by UTC, and some games are absent (NYY @ CLE 2024-04-13 doubleheader).
+    Joined by date, 25 of Witt's 449 games took a neighbour's score. MLB
+    results now come from StatsAPI team schedules by pk.
+  - **`is_major` is 0 on every tennis row (R6-F3),** already measured
+    2026-08-30 and never fixed; majors columns were dropped rather than shown
+    as zero.
+  - **MLB OBP uses plate appearances (R6-F4):** the history stores no sacrifice
+    flies, so OBP reads a few points under official where a hitter has them.
+    G2 used the same formula. Labelled on the tile.
+  - **StatsAPI's `currentTeam` is the rehab affiliate** for a player on a rehab
+    assignment (Schmidt showed as the Somerset Patriots); the hero uses the
+    MLB-level roster row.
+  - **Past-game pages do not exist for MLB and NFL,** so their game-log rows are
+    unlinked until R8 (no dead links, B5). CFB, NBA, NHL, soccer and tennis
+    rows link.
 
 **R5 SIGNED OFF 2026-09-15.** Decisions, findings and numbers:
 - **5a's rollups run on the operator's machine** (operator, 2026-09-14), chained
@@ -799,6 +851,13 @@ Spec: `docs/design/phase-g2/src/player.html`, `src/sports/common.js` (skeleton),
   Delete the route, `useMlbPitchProfile` and `pitchProfile.ts` when the old
   pitch-mix/zone roles are replaced.
 
+**Also in R6.4 (routed from R6.1a, 2026-09-15):**
+- **Tournament level (majors) from TennisMyLife, not `is_major`** (R6-F3).
+  Fixing `is_major` itself is a Python change to
+  `backfill_player_game_history.py:854` plus a re-run, for the model track.
+- **Tennis opponent names:** 13-17 of Alcaraz's and Zverev's opponents have no
+  `athlete_crosswalk` name and show "—" in the game log.
+
 **Also in R6 (routed from R4, 2026-09-14):**
 - **Tennis history says how current it is.** TennisMyLife's 2026 ATP archive
   ended at Winston-Salem (starting 2026-08-30) on 2026-09-14, a day after the US
@@ -934,6 +993,16 @@ Spec: `docs/design/phase-g2/src/game.html`, `common-game.js`,
 `game-football.js`, `game-hoops-hockey.js`, `game-mlb.js`,
 `game-soccer-tennis.js`, `game-states.js`. State comes from the game's real
 status. `?state=` is only for review.
+
+**Also in R8 (routed from R6.1a, 2026-09-15):**
+- **Turn on the player game-log links for MLB and NFL** once past games
+  resolve: `gameHref` in `lib/sports/mlb/adapters/playerResearchSpec.ts` and
+  `lib/sports/nfl/adapters/playerResearchSpec.ts` return `null` today because
+  `/mlb/game/[id]` covers only today's slate and `/nfl/game/[id]` does not find
+  last week's game.
+- **MLB records and results must not come from `game_result` by date (R6-F5).**
+  Use StatsAPI's schedule by pk (`getTeamSeasonFinals` in `statsapi.ts`), as
+  the player page now does.
 
 **Page rules:**
 - One header. The live panel no longer repeats the hero (D1).
@@ -1100,6 +1169,9 @@ rebuilt pages use.
 - API limiter: pace page captures, and watch for "Limit is 60 per 60s" until R1e.
 - No `#` fragment in phone-width capture URLs (rendered zero cards).
 - Loading shells look settled. Wait for real cards.
+- **The G2 datasets' results (`result`, `pf`, `pa`) are wrong on back-to-backs
+  and series**: joined by team name within a day. Referee scores against the
+  league (StatsAPI, api-web), never against G2 (found in R6.1a).
 - **Data traps found building G2:**
   - `prop_odds` keeps capturing for up to two days after a game, and files
     alternate ladders under the main key;
@@ -1175,7 +1247,11 @@ rebuilt pages use.
 | R5-F5 worker OOM-killed 4-9 times an hour since 2026-09-11 ~22:00 UTC | Render worker, 512 MB | **model track Phase 5** (worker RAM), `docs/CURRENT.md` |
 | R5 NBA misses all stored as twos; NHL shots mixed preseason and playoffs | shot ingest | **resolved** in R5c (ingest and stored rows) |
 | R6-F1 every player page blank without a market today (8 of 10 G2 subjects on 2026-09-15) | all eight player routes | R6.1a (player-first entry) |
-| R6-F2 MLB "all games" reads 79 MB `mlb:full-raw:*` blobs | `/api/mlb/player-gamelog` | R6.1d (game log reads `player_game_history`; route and stash deleted) |
+| R6-F2 MLB "all games" reads 79 MB `mlb:full-raw:*` blobs | `/api/mlb/player-gamelog` | **resolved** R6.1a (game log reads `player_game_history`; route and stash deleted; Python prunes the old rows) |
+| R6-F3 `is_major` 0 on every tennis row ("grand slam" never appears in slam names) | `backfill_player_game_history.py:854` | R6.4 reads level from TennisMyLife; the column fix is model track |
+| R6-F4 MLB OBP over PA: no sacrifice flies stored per game | `player_game_history` MLB batting keys | labelled in R6.1a; adding `sacFlies` to the ingest is model track |
+| R6-F5 MLB `game_result` has no game pk before 2026-08, UTC-dated night games, missing games | `game_result` (mlb) | R6.1a reads StatsAPI finals; R7/R8 MLB records must not join by date; source fix is model track |
+| R6-F6 MLB and NFL past-game pages missing, so player game-log links would dead-end | `/mlb/game/[id]`, `/nfl/game/[id]` | R8 (links held off until then) |
 
 ## Appendix B — Reference fixtures (G2 datasets)
 

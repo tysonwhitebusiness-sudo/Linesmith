@@ -1,210 +1,157 @@
-# Resume prompt — research pages build (2026-09-15, R5 SIGNED OFF — R6 next)
+# Resume prompt — research pages build (2026-09-15, R6.1a COMPLETE — awaiting sign-off)
 
 Paste everything below the line into a fresh session on any account.
 
 ---
 
 I'm resuming the research-pages build in this repo. Read these first, **before doing anything**:
-1. `CLAUDE.md`
-2. `docs/CURRENT.md` (the project baton; the research pages track is in "START HERE")
-3. `docs/audit-2026-09-13/research-pages-master-plan.md` — the R6 section in full, §1 (how close the build gets to the mockups), §2 (rules), and Appendix A rows routed to R6.
-4. The G2 player spec: `docs/design/phase-g2/src/player.html`, `src/sports/common.js` (skeleton), `mlb.js`, `football.js`, `hoops-hockey.js`, `soccer-tennis-golf.js`; datasets in `docs/design/phase-g2/data/player-*.json`.
+1. `CLAUDE.md` (the sport-adapter rule 2 now names `toPlayerResearchData`)
+2. `docs/CURRENT.md` (the research pages track is in "START HERE")
+3. `docs/audit-2026-09-13/research-pages-master-plan.md` — the status block
+   (R6.1a record), the R6 section in full including "R6 Step 0 premise audit",
+   "Also in R6.4", §1, §2, "Also in R8", and Appendix A rows R6-F1..F6.
+4. The G2 player spec: `docs/design/phase-g2/src/player.html`,
+   `src/sports/common.js`, `mlb.js` (R6.1b/c), `src/kit2.js`; datasets in
+   `docs/design/phase-g2/data/player-*.json`.
 
 ## Where the work is
 
-- **R1-R5 signed off** (R5 on 2026-09-15). **R6 (player page rebuild) is next
-  and not started.** The gameplan below was written at R5's close; confirm it
-  with me before building.
-- Everything committed and pushed. Worker live on `a445cc2`
-  (`dep-dakl7c61egvs738eomf0`), restarted 14:59 UTC 2026-09-15.
-- tsc clean, 485/485 TS tests.
+- **R1-R5 signed off. R6.1a complete 2026-09-15, awaiting the operator's
+  sign-off.** Don't start R6.1b until it is given.
+- Commits: `512b42a` (Step 0 corrections and decisions), `0169de1` (history and
+  bio readers, shared builder), then the R6.1a page commit. Pushed only if the
+  operator asked. Nothing deployed: R6.1a changed no Python.
+- tsc clean, 499/499 TS tests, `npm run build` passes (build with
+  `LB_DIST_DIR=.next-verify` while a dev server holds `.next`).
 
-## What R5 left for R6 to read (all pattern-2 direct reads)
+## Operator decisions (2026-09-15) — don't reopen
 
-| data | route | shape |
-|---|---|---|
-| MLB Statcast season, hitter and pitcher | `/api/mlb/statcast/player/[playerId]?season` | `lib/sports/mlb/statcastRollupShapes.ts` |
-| MLB pitch mix / zone / platoon (legacy shape) | `/api/mlb/pitch-profile` | delete with its cards in R6 |
-| Strength for/allowed by team, game, position (kickoff cutoff) | `/api/team-production?sport&season&before` | `lib/sports/shared/teamProductionShapes.ts` |
-| Key players by production | `/api/key-players?sport&season&teamId` | same |
-| NBA/NHL team shot views | `/api/team-shot-profile` | same |
-| NFL team target maps | `/api/nfl/team-targets` | `lib/sports/nfl/teamTargetShapes.ts` |
-| ESPN summary, MLB feed, NHL landing/pbp, TennisMyLife serve/return (R4 parsers) | parsers in `lib/sports/espn/summaryParsers.ts`, `mlb/liveFeedParsers.ts`, `nhl/apiWebParsers.ts`, `tennis/tennismylife.ts` | no routes yet |
-| Player history, every season | `player_game_history` (MLB and tennis now current again, R5-F1) | — |
-| NBA shots 2024-25 and 2025-26, misses valued; NHL regular season both seasons | `/api/nba/shot-profile`, `/api/nhl/shot-profile` | existing |
+- **The player is the page, not the market.** Every route renders the player
+  with or without a candidate; the shared sections land for every sport at
+  once; sport sections stay per sub-phase.
+- **MLB lines:** the player page's prop block uses `candidateLine()` for its
+  line, hit rates and price; the model % shows only when the cached row's line
+  equals the line on screen, otherwise it is labelled "model at 1.5". Scan and
+  the Python model keep `BOARD_LINES`. (Built in R6.1d.)
 
-## R6 gameplan (confirm before building)
+## What R6.1a built (read these before R6.1b)
 
-**Step 0 — premise audit, before any code.** Re-check every cited file and
-line: `PlayerDetail.tsx` (size, sections, the stale comment near :1601),
-`toGameContext` / `toWhereThisSits` / `DensityCurve` callers, MLB's fixed prop
-lines in `lib/sports/mlb/adapter.ts` (~1466) and what `mlb_prop_model_cache` is
-keyed on, `lineHistory.ts` `pinLine`, `liveEdge.resolveCandidateEdge`, the
-`soccer:snapshot:epl` payload size, and how each sport's player page renders
-today (before screenshots at 1440 and 400). Report wrong premises before
-building, as every earlier phase found some.
+| piece | file |
+|---|---|
+| types, `historySportFor`, `athleteIdOf`, `sameSubject`, `formatResearchValue` | `lib/sports/shared/playerResearchShapes.ts` |
+| shared builder + stat helpers (`total`, `ratio`, `perGame`, `col`…) | `lib/sports/shared/playerResearch.ts` |
+| per-sport columns | `lib/sports/{mlb,nfl,nba,nhl,soccer,tennis}/adapters/playerResearchSpec.ts` (CFB uses NFL's) |
+| history read + results join | `lib/sports/shared/playerHistoryServer.ts` → `/api/player-history` |
+| bio parsers / fetch | `lib/sports/shared/playerBio.ts`, `playerBioServer.ts` → `/api/player-bio` |
+| MLB finals by game pk | `getTeamSeasonFinals` in `lib/sports/mlb/statsapi.ts` |
+| sections UI | `components/PlayerResearchSections.tsx`, hooks `components/usePlayerResearch.ts` |
+| page frame | `components/PlayerDetail.tsx` (`subject`, `marketsLoading`, `renderPage`) |
+| verification | `scripts/verify-player-history.ts` (DB + leagues), `scripts/verify-player-research-g2.ts` (no DB) |
 
-**R6.0 — shared skeleton, inside R6.1.** Built once in `PlayerDetail` on the R3
-primitives (`Section`, `SectionNav`, `Card`, `DataTable`, `StatGrid`...), fed by
-adapters, never a sport check:
-1. Hero (photo, position, team, jersey, age, injury, links); the page always
-   renders the player, market or not.
-2. Prop analysis — the kept block on R2's main line; season in scope labelled,
-   empty tiles hidden, opens on recent games.
-3. Season by season from every `player_game_history` season (R2 season helper).
-4. Trends (any stat, rolling average, scope toggles, crosshair).
-5. Splits (home/away, W/L from R2's `game_result` read, opponent, month).
-6. The sport's own sections.
-7. Game log (every stat, by season, rows link to the game).
-8. Odds & prices from `prop_odds` (best price, books, movement on the main line).
-9. Sources with as-of times.
-Each section loads on its own with skeleton / empty / human error / staleness
-(plan §1 row 2). New fields go on `PlayerDetailData` (the MLB adapter owns the
-type) and are `null` for a sport not yet rebuilt, so NFL, soccer and the rest
-keep today's cards until their own sub-phase — **every sub-phase re-renders the
-other sports' pages to prove nothing regressed.** D2/D3 cards are deleted when
-their content has moved; D4 spatial roles draw on the adapter's surface.
+The old prop block (market tabs, stepper, chips, windows, bars, matchup explorer,
+role cards, rail) sits unchanged inside the "Prop analysis" section. Its rail
+still carries MLB "Hitter stats", "Today's line", "Form", "Line movement",
+"Recorded price" and "All books" — R6.1b-d replace those.
 
-**R6.1 — MLB (first, while the season is live).**
-- Hitter: Contact quality & approach (power profile with percentiles, EV
-  distribution, EV by game, results by pitch type, strike zone, vs LHP/RHP,
-  home runs with distance) from `/api/mlb/statcast/player`.
-- Pitcher: Arsenal & command (arsenal, locations, where he pitches, fastball
-  velocity by start, vs LHH/RHH); game log per start (F-B4, IP as outs).
-- Routed items: MLB props onto `candidateLine()` (model probability must be for
-  the same line); line movement pinned to the main line; the price chip on a
-  started game labelled or held; C4 live card slot (MLB count, bases, batter,
-  pitcher as a presence-checked field; hooks unconditional, `enabled` per sport).
-- Delete `/api/mlb/pitch-profile`, `useMlbPitchProfile`, `pitchProfile.ts` and
-  the cards replaced.
-- Verify: Judge 592450, Witt, Skubal (Skenes has no Statcast block in G2), plus
-  one no-market, one injured and one early-season player; 1440 and 400;
-  numbers equal to `player-mlb-*.json` (production is regular season only and
-  one copy per pitch, so G2's spring-inclusive numbers differ — say which).
-  **Stop.**
+## Next: R6.1b-d (MLB), then stop
 
-**R6.2 — NFL and CFB.** Usage & depth (WR/TE/RB target chart on a half field,
-depth by season), QB pass chart, CFB advanced passing as "Not held". C4 "your
-lines so far" from the live box score. Verify Chase 4362628, Allen 3918298,
-Manning 4870906 (a Saturday gives CFB live). **Stop.**
+**R6.1b — MLB hitter, "Contact quality & approach"** from
+`/api/mlb/statcast/player/[playerId]?season` (`statcastRollupShapes.ts`):
+power profile with percentiles (every season's pool, not 2026 only), EV
+distribution, EV by game, results by pitch type, strike zone, vs LHP/RHP, home
+runs with distance. Season switch. Move the matchup card's opposing-starter pitch
+mix off `useMlbPitchProfile` onto the Statcast route. Check against Witt's G2
+`statcast` block (Judge and Skenes have none). Replace the rail's "Hitter stats"
+card where its content moves.
 
-**R6.3 — Soccer.** Chances & finishing (shot map, goals vs xG, per 90 by
-season), GK shot-stopping; C8 default market by position; per-section loading
-so `soccer:snapshot:epl` (22 MB) stops failing its cache write — confirm the
-write. Verify Cunha 259902, Lammens 301425. **Stop.**
+**R6.1c — MLB pitcher, "Arsenal & command":** arsenal, pitch locations, where he
+pitches, fastball velocity by start, vs LHH/RHH. Check against Skubal's G2
+block. The per-start game log (F-B4) already exists in the shared Game log.
 
-**R6.4 — Tennis.** Surface & serve (by surface with today's surface marked from
-`tennis/schedule.ts`, C7; ranking; serve and return by match from R4's
-TennisMyLife fields); show the archive's last match date and fill later matches
-from ESPN (R4-F1). Verify Alcaraz 3782. **Stop.**
+**R6.1d — routed items:** the MLB line decision above; line movement pinned to
+R2's main line (`lineHistory.ts` `pinLine` is modal); the price chip on a
+started game labelled or held (`liveEdge.resolveCandidateEdge` reads current
+`prop_odds`, and `/api/props/lines` does not cut at the start); an "Odds &
+prices" section (best price, books, movement) replacing the rail's odds cards;
+the C4 game-state slot (MLB count/bases/batter/pitcher as a presence-checked
+field; `LiveLineTrackerCard` already covers tracked lines for five sports).
+Delete `/api/mlb/pitch-profile`, `useMlbPitchProfile`, `pitchProfile.ts` (keep
+`pitchProfileShapes.ts`) and the cards replaced; fix the stale comment above
+`data.liveGame` in `PlayerDetail.tsx` ("MLB only — ... above the Contact
+quality matchup card").
 
-**R6.5 — NBA and NHL.** Shot chart by zone (2025-26 now held); NHL skater shot
-map and official totals (R4 landing parser), goalie shots faced. Built now,
-render-verified in October. Verify SGA 4278073, Wembanyama 5104157, MacKinnon
-8477492, Vasilevskiy 8476883 as far as the off-season allows. **Stop.**
+**Verify (each sub-phase):** Judge 592450, Witt 677951, Skubal 669373, one
+no-market player, injured Clarke Schmidt 657376, one early-season player; 1440
+and 400 (`scratchpad` Python Playwright script pattern — Playwright MCP and the
+Browser pane screenshots were unavailable this session); re-render the other
+sports' pages to prove nothing regressed; contrast inside rebuilt cards (R3-F2);
+tsc, `npm test`, `npm run build`. **Stop for sign-off after R6.1d.**
 
-**R6.6 — Golf.** Scoring and shot profile; built, verified at the next
-tournament. **Stop.**
+Then R6.2-R6.6 as written in the plan (NFL/CFB, soccer, tennis, NBA/NHL, golf).
 
-**Every sub-phase:** `tsc`, `npm test`, and **`npm run build`** before claiming
-UI work done (a client module importing a DB module passes tsc and tests and
-breaks every page); render at 1440/400; contrast inside the rebuilt cards
-(R3-F2); commit by explicit path; update the plan status and this file.
+## Lessons from R6.1a
+
+- **G2's results are wrong on back-to-backs and series.** Referee scores
+  against StatsAPI / api-web, never against a G2 `result`/`pf`/`pa`.
+- **Read the existing notes on a stat key before using it.** `is_major` had been
+  documented as always-zero since 2026-08-30 and still went onto the page until
+  a render showed Alcaraz with no major wins.
+- **A render finds what the numbers don't:** a rehab affiliate as the team, a
+  truncated tile label, dead game links. Open the page.
+- **Stopping the dev server can leave half-written `.next/dev/types`** that
+  break `tsc`. Deleting the generated `types` folder fixes it.
+- **The Browser pane can't screenshot while the window is hidden**; the venv's
+  Python Playwright (`python-odds-service/.venv`) against the dev server works.
 
 ## Open items that are not R6's
 
-- **R5-F5, model track:** the worker has been OOM-killed 4-9 times an hour since
-  2026-09-11 (pre-R5). Don't chase it in R6; it's in `CURRENT.md`.
+- **R5-F5, model track:** the worker OOM loop. Don't chase it in R6.
+- **Model track, from R6.1a:** R6-F3 (`is_major`), R6-F4 (no sacrifice flies in
+  MLB history), R6-F5 (MLB `game_result` not joinable to game pks).
 - **Operator machine:** `build_statcast_rollups.py` runs after each corpus
-  refresh; if the PC is off, MLB Statcast rows show an older `as_of`.
+  refresh; if the PC is off, Statcast rows show an older `as_of`.
 - **MLB regular season ends late September:** R8's MLB live state must be
   verified before then (or on postseason games) — keep R6.1 moving.
-- F-B4 on a slate with pitcher props; `refreshCfbJob` on Saturday 2026-09-19;
-  MLB has no `/api/mlb/game/{id}` for past games (R8).
-
-## Lessons from R5 worth carrying
-
-- **Keep to ONE database connection from the operator machine.** R5 ran two
-  backfills, the corpus refresh and the rollups at once beside the harvester;
-  the worker stalled for ~40 minutes and needed a restart.
-- **Run a new check against a reference before trusting a mismatch.** The NHL
-  shot parity "failed" because the G2 file carried ESPN's team id, not the NHL
-  API's; the data was right.
-- **A dev server that 404s every nested API route needs a restart**, not a fix.
-- **`&&` after `grep` commits even when the test before it failed.** Check the
-  test's exit status, not its output.
-
-## First reply
-
-Say what you've read, confirm the state above matches `git log`, run Step 0's
-premise audit (read-only), and come back with the R6 gameplan confirmed or
-corrected by what it found. Then wait for the go-ahead.
+- F-B4 on a slate with pitcher props; `refreshCfbJob` on Saturday 2026-09-19.
 
 ## Spec
 
-The G2 mockups in `docs/design/phase-g2/`:
-- pages: `player.html`, `game.html`, `team.html`;
-- how to rebuild them: `PLAN.md`;
-- per-card sources and tables: `BUILDABILITY.md`;
-- reference fixtures: the datasets in `data/` (plan Appendix B).
-- Rebuild with `node docs/design/phase-g2/build.mjs`.
-- Refresh data with the venv Python from the repo root: `tools/build_player_data.py`, `build_game_data.py`, `build_team_data.py`, `build_matchup_data.py`.
+The G2 mockups in `docs/design/phase-g2/`: pages `player.html`, `game.html`,
+`team.html`; rebuild notes `PLAN.md`; per-card sources `BUILDABILITY.md`;
+datasets in `data/` (plan Appendix B). Rebuild with
+`node docs/design/phase-g2/build.mjs`.
 
 ## How every phase runs (plan §2)
 
-1. Build.
-2. `tsc --noEmit`.
-3. Render each affected sport at 1440px and 400px.
-4. Put each page beside its G2 mockup and check the numbers match the dataset.
+1. Re-check every cited file and line first.
+2. Build. 3. `tsc --noEmit`, `npm test`, `npm run build`.
+4. Render each affected sport at 1440 and 400; compare with the G2 dataset.
 5. Delete what the phase replaces, in the same phase.
-6. Commit by explicit path.
-7. Update the plan's status line and rewrite this file.
-8. **Stop for my sign-off.**
-
-**Start every phase by re-checking each item's cited file and line.** R1 found
-three wrong premises that way — a spelling fix that spanned five adapters and
-not three, an "add a floor" item whose metric was inverted, and a "suspected
-wrong teams" item where the prices were right and the labels were swapped.
-Each would have been shipped wrong if the plan had been taken at face value.
+6. Commit by explicit path. 7. Update the plan's status and this file.
+8. **Stop for sign-off.**
 
 ## Decisions already made — don't reopen
 
-- **Pages are research pages.** Odds are one section, **except the prop analysis block**, which stays near the top of the player page:
-  - market tabs, line stepper with price, vs-opp/L5/L10/L15/Season chips, hit-rate tiles, bars vs line;
-  - presentation fixes only.
-- **How cards are judged:** "does this make sense for this sport / does this help". No earlier design is the standard. Don't fix only screenshots. Don't add design calls to the plan.
-- **Data:** real data only; show a status where data is missing.
-- **Picks as built in G2:**
-  - system sans (drop Plex Mono);
-  - raised cards;
-  - sectioned layouts with a sticky section nav;
-  - slate research views deferred;
-  - everything the mockups show goes into the build.
-- **Deferred:** golf is held until a live tournament; NBA/NHL live waits for October; Scan and slate pages are out of scope.
-- **The MLB live game state (R8) must be verified before the regular season ends in late September**, or on postseason games.
+- **Pages are research pages.** Odds are one section, **except the prop analysis
+  block** (market tabs, line stepper with price, vs-opp/L5/L10/L15/Season chips,
+  hit-rate tiles, bars vs line) — presentation fixes only.
+- **How cards are judged:** "does this make sense for this sport / does this
+  help". Real data only; show a status where data is missing.
+- **G2 picks:** system sans; raised cards; sectioned layouts with a sticky
+  section nav; slate research views deferred; everything the mockups show goes
+  in.
+- **Deferred:** golf until a live tournament; NBA/NHL live until October; Scan
+  and slate pages out of scope.
 
 ## Standing constraints
 
-- Postgres pooler caps at 15 connections. Check for running fits, harvester cycles and other sessions' jobs before DB work.
-- **Git:**
-  - never `git add -A` or `git add docs/` (`docs/discord-community-prompt.md` is mine); add explicit paths;
-  - don't push unless I ask.
+- **One database connection at a time from the operator machine** (pooler caps
+  at 15). Check for running fits, harvester cycles and other sessions first.
+  The dev server's pool is up to 6: load pages one at a time.
+- **Git:** never `git add -A` or `git add docs/` (`docs/discord-community-prompt.md`
+  is the operator's); add explicit paths; don't push unless asked.
 - Ask before deploying to Render.
-- **Bugs found mid-phase:** fix app-breaking ones on the spot (in their own commit). Route everything else into the phase that fixes it best: an "Also in R*n*" block in that phase's plan section plus an Appendix A row (plan §2). Never leave a find only in this file.
-- At ~92% context, stop and hand off: rewrite this file, and update the research pages track in `docs/CURRENT.md` without disturbing the model track's sections.
-- **Playwright MCP checks of the mockups:** route `http://phase-g2.local/**` to the local files and run scripts from `.playwright-mcp/` (file access is limited to the repo and that folder).
-
-## Useful things R1 learned
-
-- **A cache rebuild lands between your edit and your check.** Two numbers in
-  R1 read as unfixed because the route was still serving the payload built
-  before the edit. Re-fetch, and check the build's own timestamp moved.
-- **ESPN 403s `curl` even with a browser UA**, but `node`'s `fetch` with the
-  same UA gets 200. Understat needs `X-Requested-With: XMLHttpRequest` and
-  403s a browser UA. Use `node` for one-off ESPN checks.
-- **Git Bash `/tmp` is not visible to Windows Python.** Write scratch files to
-  the session scratchpad directory instead.
-- **`asyncpg` is the driver available in `python-odds-service/.venv`** (no
-  psycopg). `prop_odds`'s market column is `market_key`, not `market`.
-- **A render is worth more than a type-check every time.** "Last season: 0-0"
-  type-checked perfectly and was a false claim; only the NBA page showed it.
+- **Bugs found mid-phase:** fix app-breaking ones on the spot (own commit);
+  route the rest into the receiving phase's section plus an Appendix A row.
+- At ~92% context, stop and hand off: rewrite this file and the research track
+  in `docs/CURRENT.md` (leave the model track's sections alone), commit, push.
