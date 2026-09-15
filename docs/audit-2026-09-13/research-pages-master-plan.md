@@ -3,9 +3,10 @@
 **Status: APPROVED by the operator 2026-09-14, as written (including picks G1–G7
 as taken in §3). R0 done. R1 signed off and deployed. R2 done (signed off by
 the operator's instruction to proceed). R3 and R4 signed off 2026-09-14. R5
-COMPLETE 2026-09-15, awaiting sign-off (below). Next after sign-off: R6.**
+signed off 2026-09-15. R6 NEXT: gameplan in `RESUME-PROMPT.md`, to be confirmed
+with the operator before building.**
 
-**R5 COMPLETE 2026-09-15, awaiting sign-off.** Decisions, findings and numbers:
+**R5 SIGNED OFF 2026-09-15.** Decisions, findings and numbers:
 - **5a's rollups run on the operator's machine** (operator, 2026-09-14), chained
   after the corpus refresh in `run-corpus-refresh.bat`. The Render worker has
   no corpus credentials, and the corpus docs measured ~280-312 MB per partition

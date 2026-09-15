@@ -4,7 +4,7 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages: R1-R4 done; R5 COMPLETE 2026-09-15, awaiting sign-off (second track, below).**
+Research pages: R1-R5 signed off; R6 next, gameplan in RESUME-PROMPT.md (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -34,11 +34,11 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R5 COMPLETE 2026-09-15, awaiting sign-off
+## Research pages track — R5 SIGNED OFF 2026-09-15; R6 next
 
-R1-R4 signed off. **R5 (Python rollups and ingest) complete and stopped for
-sign-off.** Next after sign-off: **R6** (player page rebuild). Full record:
-`docs/audit-2026-09-13/RESUME-PROMPT.md` and the plan's status block.
+R1-R5 signed off. **Next: R6** (player page rebuild), moving to a fresh chat.
+Its gameplan and the handoff are `docs/audit-2026-09-13/RESUME-PROMPT.md`; R5's
+record is in the plan's status block.
 
 - **Built:** Statcast rollups (operator machine, after each corpus refresh),
   strength, shot and NFL target rollups (`teamProductionJob`, daily), and a
