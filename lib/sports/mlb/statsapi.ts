@@ -237,6 +237,16 @@ export async function getLiveFeed(gamePk: number): Promise<MlbLiveFeed | null> {
   };
 }
 
+/**
+ * Win probability by plate appearance — R4 step 4, a NEW endpoint for this app.
+ * Raw JSON; `parseMlbWinProbability` (liveFeedParsers.ts) turns it into points.
+ * Uncached here for the same reason as the live feed: during a game it changes
+ * every plate appearance. A route serving a FINAL game caches the parsed result.
+ */
+export async function getWinProbability(gamePk: number): Promise<unknown | null> {
+  return getJson(`${BASE}/v1/game/${gamePk}/winProbability`);
+}
+
 // ---------------------------------------------------------------------------
 // People / stats
 // ---------------------------------------------------------------------------
