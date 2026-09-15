@@ -1,4 +1,4 @@
-# Resume prompt — research pages build (2026-09-15, R6.1a COMPLETE — awaiting sign-off)
+# Resume prompt — research pages build (2026-09-15, R6.1b COMPLETE — R6.1c next)
 
 Paste everything below the line into a fresh session on any account.
 
@@ -8,20 +8,21 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 1. `CLAUDE.md` (the sport-adapter rule 2 now names `toPlayerResearchData`)
 2. `docs/CURRENT.md` (the research pages track is in "START HERE")
 3. `docs/audit-2026-09-13/research-pages-master-plan.md` — the status block
-   (R6.1a record), the R6 section in full including "R6 Step 0 premise audit",
-   "Also in R6.4", §1, §2, "Also in R8", and Appendix A rows R6-F1..F6.
+   (R6.1a and R6.1b records), the R6 section in full including "R6 Step 0
+   premise audit", "Also in R6.4", §1, §2, "Also in R8", and Appendix A rows
+   R6-F1..F7.
 4. The G2 player spec: `docs/design/phase-g2/src/player.html`,
    `src/sports/common.js`, `mlb.js` (R6.1b/c), `src/kit2.js`; datasets in
    `docs/design/phase-g2/data/player-*.json`.
 
 ## Where the work is
 
-- **R1-R5 signed off. R6.1a complete 2026-09-15, awaiting the operator's
-  sign-off.** Don't start R6.1b until it is given.
-- Commits: `512b42a` (Step 0 corrections and decisions), `0169de1` (history and
-  bio readers, shared builder), then the R6.1a page commit. Pushed only if the
-  operator asked. Nothing deployed: R6.1a changed no Python.
-- tsc clean, 499/499 TS tests, `npm run build` passes (build with
+- **R1-R5 and R6.1a signed off. R6.1b (MLB hitter Contact quality) complete
+  2026-09-15.** Next is R6.1c; confirm with the operator before starting it.
+- Commits: `512b42a` (Step 0), `0169de1` and `5c46b29` (R6.1a), `48abdc5`
+  (R6.1a docs), then the R6.1b commit. Pushed only if the operator asked.
+  Nothing deployed: R6.1a-b changed no Python.
+- tsc clean, 504/504 TS tests, `npm run build` passes (build with
   `LB_DIST_DIR=.next-verify` while a dev server holds `.next`).
 
 ## Operator decisions (2026-09-15) — don't reopen
@@ -49,24 +50,39 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 | verification | `scripts/verify-player-history.ts` (DB + leagues), `scripts/verify-player-research-g2.ts` (no DB) |
 
 The old prop block (market tabs, stepper, chips, windows, bars, matchup explorer,
-role cards, rail) sits unchanged inside the "Prop analysis" section. Its rail
-still carries MLB "Hitter stats", "Today's line", "Form", "Line movement",
-"Recorded price" and "All books" — R6.1b-d replace those.
+role cards, rail) sits inside the "Prop analysis" section. R6.1b removed its
+"Hitter stats" card and a hitter's strike zone and platoon split; the rail still
+carries "Today's line", "Form", "Line movement", "Recorded price" and "All
+books" — R6.1d replaces the odds cards.
 
-## Next: R6.1b-d (MLB), then stop
+## What R6.1b added (read before R6.1c)
 
-**R6.1b — MLB hitter, "Contact quality & approach"** from
-`/api/mlb/statcast/player/[playerId]?season` (`statcastRollupShapes.ts`):
-power profile with percentiles (every season's pool, not 2026 only), EV
-distribution, EV by game, results by pitch type, strike zone, vs LHP/RHP, home
-runs with distance. Season switch. Move the matchup card's opposing-starter pitch
-mix off `useMlbPitchProfile` onto the Statcast route. Check against Witt's G2
-`statcast` block (Judge and Skenes have none). Replace the rail's "Hitter stats"
-card where its content moves.
+- **Sport sections are data:** `ResearchSection` / `ResearchCard` (kinds
+  `percentiles`, `histogram`, `series`, `table`, `surface`, `status`) in
+  `playerResearchShapes.ts`, drawn by `ResearchSectionBody` /
+  `ResearchCardView` in `components/PlayerResearchSections.tsx`. A sport adds a
+  section by returning it from `toPlayerResearchData`; the component has no
+  sport check. Sections sit between Splits and Game log in the nav.
+- MLB's builder: `lib/sports/mlb/adapters/playerResearchSections.ts`
+  (`mlbHitterSection`; `zoneViews(zones, 'pitcher')` is already written for
+  R6.1c; `coverageNote`). Data from `components/useMlbStatcast.ts`.
+- Primitives: `components/charts/Histogram.tsx`; `SpatialGridRole.outside`
+  (chase zones) drawn by `SpatialSurface`'s zone geometry.
+- Tests: `tests/mlb-research-sections.test.ts`.
+- **R6-F7:** Statcast rollups cover 91-94% of plate appearances (partly
+  ingested games); sections state coverage under 99%. A pitcher's section
+  should state coverage the same way (batters faced against the box score).
 
-**R6.1c — MLB pitcher, "Arsenal & command":** arsenal, pitch locations, where he
-pitches, fastball velocity by start, vs LHH/RHH. Check against Skubal's G2
-block. The per-start game log (F-B4) already exists in the shared Game log.
+## Next: R6.1c-d (MLB), then stop
+
+**R6.1c — MLB pitcher, "Arsenal & command"** from the rollup's `pitching` row:
+arsenal table (usage, velo, whiff, CSW, xwOBA, EV allowed), pitch locations
+(`payload.locations`, the latest 500, by type — needs a scatter on the zone),
+where he pitches (`zoneViews(zones, 'pitcher')`), fastball velocity by start
+(`payload.trend`), vs LHH/RHH. Check against Skubal's G2 block (Skenes has
+none). Then remove the pitcher's prop-block strike zone and platoon split
+(`isPitcherSubject ?` in the MLB adapter; update `tests/player-roles.test.ts`).
+The per-start game log (F-B4) already exists in the shared Game log.
 
 **R6.1d — routed items:** the MLB line decision above; line movement pinned to
 R2's main line (`lineHistory.ts` `pinLine` is modal); the price chip on a
@@ -75,8 +91,7 @@ started game labelled or held (`liveEdge.resolveCandidateEdge` reads current
 prices" section (best price, books, movement) replacing the rail's odds cards;
 the C4 game-state slot (MLB count/bases/batter/pitcher as a presence-checked
 field; `LiveLineTrackerCard` already covers tracked lines for five sports).
-Delete `/api/mlb/pitch-profile`, `useMlbPitchProfile`, `pitchProfile.ts` (keep
-`pitchProfileShapes.ts`) and the cards replaced; fix the stale comment above
+Delete the cards replaced; fix the stale comment above
 `data.liveGame` in `PlayerDetail.tsx` ("MLB only — ... above the Contact
 quality matchup card").
 
@@ -106,8 +121,9 @@ Then R6.2-R6.6 as written in the plan (NFL/CFB, soccer, tennis, NBA/NHL, golf).
 ## Open items that are not R6's
 
 - **R5-F5, model track:** the worker OOM loop. Don't chase it in R6.
-- **Model track, from R6.1a:** R6-F3 (`is_major`), R6-F4 (no sacrifice flies in
-  MLB history), R6-F5 (MLB `game_result` not joinable to game pks).
+- **Model track, from R6.1a-b:** R6-F3 (`is_major`), R6-F4 (no sacrifice flies
+  in MLB history), R6-F5 (MLB `game_result` not joinable to game pks), R6-F7
+  (the pitch corpus holds about 12% of games only in part).
 - **Operator machine:** `build_statcast_rollups.py` runs after each corpus
   refresh; if the PC is off, Statcast rows show an older `as_of`.
 - **MLB regular season ends late September:** R8's MLB live state must be

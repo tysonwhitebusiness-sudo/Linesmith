@@ -4,7 +4,7 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages: R1-R5 signed off; R6.1a complete, awaiting sign-off (second track, below).**
+Research pages: R1-R5 and R6.1a signed off; R6.1b complete, R6.1c next (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -34,10 +34,10 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R6.1a COMPLETE 2026-09-15, awaiting sign-off
+## Research pages track — R6.1a signed off; R6.1b COMPLETE 2026-09-15; R6.1c next
 
-R1-R5 signed off. **R6 (player page rebuild) is under way: R6.1a is done and
-waiting for the operator's sign-off; R6.1b (MLB hitter) is next.** The handoff is
+R1-R5 and R6.1a signed off. **R6.1b (MLB hitter Contact quality) is done;
+R6.1c (MLB pitcher Arsenal & command) is next.** The handoff is
 `docs/audit-2026-09-13/RESUME-PROMPT.md`; the record is the plan's status block.
 
 - **R6.1a:** the player is the page for every sport — hero from the league bio,
@@ -54,6 +54,12 @@ waiting for the operator's sign-off; R6.1b (MLB hitter) is next.** The handoff i
   - R6-F3: `is_major` is 0 on every tennis row (`backfill_player_game_history.py:854`
     looks for "grand slam" in slam names).
   - R6-F4: MLB history stores no sacrifice flies, so OBP from it is over PA.
+  - **R6-F7: the pitch corpus holds some games only in part.** 281 of 2,229
+    regular-season 2026 games in `corpus/mlb_pitch_events` have under three
+    pitch rows per plate appearance, every month, 2025 too; Statcast rollups
+    cover 91-94% of a hitter's plate appearances (Judge: 14 Statcast HR to 18
+    in the box scores). Every corpus-based model input inherits this. The
+    player page states the coverage.
 - **Still for the model track from R5:** R5-F5, the worker OOM loop (512 MB,
   4-9 kills an hour since 2026-09-11). Read the service's `server_failed`
   events before touching jobs. R5-F1/F2/F4 and 5e as recorded in the plan.

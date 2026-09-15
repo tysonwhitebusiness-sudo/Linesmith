@@ -4,10 +4,40 @@
 as taken in §3). R0 done. R1 signed off and deployed. R2 done (signed off by
 the operator's instruction to proceed). R3 and R4 signed off 2026-09-14. R5
 signed off 2026-09-15. R6 STARTED 2026-09-15: Step 0 done, corrections and
-decisions recorded in the R6 section. R6.1a COMPLETE, awaiting sign-off; R6.1b
-(MLB hitter) next.**
+decisions recorded in the R6 section. R6.1a SIGNED OFF 2026-09-15. R6.1b (MLB
+hitter) COMPLETE 2026-09-15; R6.1c (MLB pitcher) next.**
 
-**R6.1a COMPLETE 2026-09-15, awaiting sign-off.** The player is the page, for
+**R6.1b COMPLETE 2026-09-15.** MLB hitter "Contact quality & approach".
+- **Built:** sport sections as data (`ResearchSection`/`ResearchCard` in
+  `playerResearchShapes.ts`) drawn by one renderer (`ResearchSectionBody`);
+  MLB's hitter section (`lib/sports/mlb/adapters/playerResearchSections.ts`):
+  power profile with league percentiles for every season held (plus sweet-spot
+  and barrel-style rate), exit-velocity distribution (new `Histogram`
+  primitive), exit velocity by game, results by pitch type, strike zone with
+  G2's three views and the four chase zones (`SpatialSurface` zone extended),
+  vs LHP/RHP, home runs with distance. Season control, 2025 and 2026.
+- **Removed:** `/api/mlb/pitch-profile`, `useMlbPitchProfile`,
+  `lib/sports/mlb/pitchProfile.ts` (the matchup roles read the rollup row's
+  `profile` block through `useMlbStatcast`); the rail's "Hitter stats" card;
+  the prop block's strike zone and platoon split for hitters (a pitcher's stay
+  until R6.1c).
+- **Verified:** the section equals `/api/mlb/statcast/player` field for field
+  on Witt (2026, and 2025 through the season control) and Judge; Witt against
+  G2 differs only as R5a said (regular season, one copy per pitch: 387 balls in
+  play to G2's 393, pool 307 to 333, avg EV 92.4 to 92.5); the opposing
+  starter's pitch mix still renders beside the hitter's; every other sport's
+  page unchanged (same sections and heights). 1440 and 400. tsc clean, 504/504
+  tests, build passes.
+- **R6-F7, found rendering Judge (14 Statcast home runs against 18 in the box
+  scores): the pitch corpus holds some games only in part.** 281 of 2,229
+  regular-season 2026 games in `corpus/mlb_pitch_events` have fewer than three
+  pitch rows per plate appearance (Judge's 2026-04-19 game: 143 pitches), in
+  every month, and 2025 is the same. Rollups cover 91-94% of a hitter's plate
+  appearances (Judge 261/283, Witt 545/581). Not fixable in TypeScript; the
+  section states its coverage whenever it is under 99%. Routed to the model
+  track (ingest and corpus, Phase 5) and Appendix A.
+
+**R6.1a SIGNED OFF 2026-09-15.** The player is the page, for
 every sport. Commits `0169de1` (history and bio readers, shared builder) and
 the R6.1a commit after it (page, routes, removals).
 - **Built:** `/api/player-history` (direct read, every season, results joined)
@@ -1252,6 +1282,7 @@ rebuilt pages use.
 | R6-F4 MLB OBP over PA: no sacrifice flies stored per game | `player_game_history` MLB batting keys | labelled in R6.1a; adding `sacFlies` to the ingest is model track |
 | R6-F5 MLB `game_result` has no game pk before 2026-08, UTC-dated night games, missing games | `game_result` (mlb) | R6.1a reads StatsAPI finals; R7/R8 MLB records must not join by date; source fix is model track |
 | R6-F6 MLB and NFL past-game pages missing, so player game-log links would dead-end | `/mlb/game/[id]`, `/nfl/game/[id]` | R8 (links held off until then) |
+| R6-F7 pitch corpus holds 281 of 2,229 regular-season 2026 games only in part (<3 pitches per PA); Statcast rollups cover 91-94% of a hitter's PA | `corpus/mlb_pitch_events`, pitch ingest | coverage stated on the page (R6.1b); the ingest gap is model track Phase 5 |
 
 ## Appendix B — Reference fixtures (G2 datasets)
 
