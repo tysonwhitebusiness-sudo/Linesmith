@@ -281,6 +281,19 @@ export type ResearchCard =
       /** One or more views of the same place; the card switches between them. */
       views: Array<{ key: string; label: string; role: import('./playerRoles').SpatialGridRole }>;
     }
+  | {
+      kind: 'scatter';
+      key: string;
+      title: string;
+      scope?: string;
+      caption?: string;
+      /** Where the points are drawn. `zone` is the strike zone, catcher's view, feet. */
+      surface: 'zone';
+      points: Array<[string | null, number, number]>;
+      /** Most common first; colour follows this order. The reader toggles groups on and off. */
+      groups: Array<{ key: string; label: string; count: number }>;
+      defaultVisible: string[];
+    }
   | { kind: 'status'; key: string; title: string; headline: string; reason: string };
 
 export interface ResearchSection {

@@ -95,3 +95,12 @@ export function volumeFill(t: number): string {
 export function volumeInk(t: number): string {
   return t > 0.55 ? 'oklch(98.5% 0.002 260)' : 'oklch(var(--ink))';
 }
+
+/**
+ * Categories that are not ordered — pitch types on a location plot (R6.1c).
+ * G2's categorical order (`docs/design/phase-g2/src/viz-sport.js` `CAT`),
+ * which the mockups took from the dataviz reference palette: six hues distinct
+ * in hue and lightness, in the order they are assigned. A seventh category
+ * should be grouped, not given a seventh colour.
+ */
+export const CATEGORICAL = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300'] as const;

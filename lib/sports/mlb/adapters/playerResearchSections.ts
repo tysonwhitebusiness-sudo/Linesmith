@@ -1,7 +1,7 @@
 /**
- * MLB's own player-page sections, as data (R6.1b hitter; R6.1c adds the
- * pitcher). Spec: `docs/design/phase-g2/src/sports/mlb.js`, the hitter's
- * "Contact quality & approach". Source: the R5a Statcast rollup
+ * MLB's own player-page sections, as data: the hitter's "Contact quality &
+ * approach" (R6.1b) and the pitcher's "Arsenal & command" (R6.1c). Spec:
+ * `docs/design/phase-g2/src/sports/mlb.js`. Source: the R5a Statcast rollup
  * (`mlb_statcast_player_season` through `/api/mlb/statcast/player`).
  *
  * Differences from G2, all on purpose:
@@ -14,7 +14,7 @@
  */
 
 import { fmt } from '@/components/charts/tokens';
-import { pitchTypeLabel } from '@/lib/sports/mlb/pitchProfileShapes';
+import { ZONE_GRID, pitchTypeLabel } from '@/lib/sports/mlb/pitchProfileShapes';
 import type { PlayerStatcastRow, PlayerStatcastSeason, ZoneRow } from '@/lib/sports/mlb/statcastRollupShapes';
 import type { SpatialGridRole } from '@/lib/sports/shared/playerRoles';
 import type { ResearchCard, ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
@@ -45,11 +45,7 @@ function rolling(values: Array<number | null>, w: number): number[] {
 
 /** The zone map's views for a hitter: xwOBA on contact, swing rate, whiff rate. Chase zones 11-14 draw outside the box. */
 function zoneViews(zones: Record<string, ZoneRow>, perspective: 'hitter' | 'pitcher'): Array<{ key: string; label: string; role: SpatialGridRole }> {
-  const grid = [
-    ['1', '2', '3'],
-    ['4', '5', '6'],
-    ['7', '8', '9'],
-  ];
+  const grid = ZONE_GRID.map((row) => row.map(String));
   const view = (metric: 'xwoba' | 'swing' | 'whiff' | 'share', label: string, measure: SpatialGridRole['measure'], format: (v: number) => string, lowerIsBetter: boolean): { key: string; label: string; role: SpatialGridRole } => ({
     key: metric,
     label,
@@ -194,10 +190,11 @@ function hitterCards(S: PlayerStatcastSeason, season: number): ResearchCard[][] 
  * what is held, so the section says how much that is rather than letting a
  * home-run count quietly disagree with the season table above it.
  */
-function coverageNote(S: PlayerStatcastSeason, historyPA: number | null, season: number): string | undefined {
+function coverageNote(S: PlayerStatcastSeason, boxScore: number | null, season: number, what: 'plate appearances' | 'batters faced'): string | undefined {
   const held = (S.splitsByHand.L?.pa ?? 0) + (S.splitsByHand.R?.pa ?? 0);
-  if (!historyPA || held >= historyPA * 0.99) return undefined;
-  return `Statcast holds ${held.toLocaleString()} of this player's ${historyPA.toLocaleString()} plate appearances in ${season} (${Math.round((100 * held) / historyPA)}%): some games are only partly in the pitch data, so counts such as home runs can be below the season line.`;
+  if (!boxScore || held >= boxScore * 0.99) return undefined;
+  const counts = what === 'plate appearances' ? 'counts such as home runs' : 'counts such as strikeouts';
+  return `Statcast holds ${held.toLocaleString()} of this player's ${boxScore.toLocaleString()} ${what} in ${season} (${Math.round((100 * held) / boxScore)}%): some games are only partly in the pitch data, so ${counts} can be below the season line.`;
 }
 
 /** "Contact quality & approach" for a hitter. `historyPA` is the season's plate appearances from the box scores, for the coverage note. */
@@ -223,7 +220,130 @@ export function mlbHitterSection(input: MlbStatcastInput, historyPA: number | nu
     ...base,
     rows: hitterCards(row.payload, input.season),
     state: { kind: 'ready' },
-    note: coverageNote(row.payload, historyPA, input.season),
+    note: coverageNote(row.payload, historyPA, input.season, 'plate appearances'),
+    source: { label: 'Statcast', detail: 'mlb_statcast_player_season (Baseball Savant pitches, regular season)', asOf: row.asOf },
+  };
+}
+
+function pitcherCards(S: PlayerStatcastSeason, season: number): ResearchCard[][] {
+  const arsenal: ResearchCard = {
+    kind: 'table',
+    key: 'arsenal',
+    title: 'Arsenal',
+    scope: `${season} · ${S.pitches.toLocaleString()} pitches`,
+    info: 'CSW = called strikes plus whiffs per pitch. xwOBA and exit velocity are what hitters did against the pitch.',
+    caption: 'Spin rate and movement: not held (the pitch data the app stores has neither)',
+    labelHeader: 'Pitch',
+    columns: [
+      { key: 'usage', label: 'Usage', decimals: 1, format: 'percent' },
+      { key: 'velo', label: 'Velo', decimals: 1 },
+      { key: 'whiff', label: 'Whiff %', decimals: 1 },
+      { key: 'csw', label: 'CSW %', decimals: 1 },
+      { key: 'xwoba', label: 'xwOBA', decimals: 3, format: 'rate3' },
+      { key: 'ev', label: 'EV allowed', decimals: 1 },
+    ],
+    rows: [...S.pitchTypes]
+      .sort((a, b) => (b.usage ?? 0) - (a.usage ?? 0))
+      .map((p) => ({ key: p.type, label: pitchName(p.type), values: { usage: p.usage, velo: p.velo, whiff: p.whiff, csw: p.csw, xwoba: p.xwoba, ev: p.ev } })),
+    emptyText: 'No pitch type thrown 25 times this season.',
+  };
+
+  let locations: ResearchCard;
+  if (S.locations && S.locations.length) {
+    const counts = new Map<string, number>();
+    for (const [t] of S.locations) if (t) counts.set(t, (counts.get(t) ?? 0) + 1);
+    const groups = [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([key, count]) => ({ key, label: pitchName(key), count }));
+    locations = {
+      kind: 'scatter',
+      key: 'locations',
+      title: 'Pitch locations',
+      scope: `${season} · latest ${S.locations.length} pitches`,
+      caption: 'The six most thrown types; pick which to show.',
+      surface: 'zone',
+      points: S.locations.map((l) => [l[0], l[1], l[2]] as [string | null, number, number]),
+      groups,
+      defaultVisible: groups.slice(0, 3).map((g) => g.key),
+    };
+  } else {
+    locations = {
+      kind: 'status',
+      key: 'locations',
+      title: 'Pitch locations',
+      headline: 'Too few pitches for a location plot',
+      reason: 'The rollup keeps locations for pitchers with 500 or more pitches in the season.',
+    };
+  }
+
+  const where: ResearchCard = { kind: 'surface', key: 'zone', title: 'Where he pitches', scope: `${season} · zone map`, views: zoneViews(S.zones, 'pitcher') };
+
+  const trend = S.trend;
+  const velo: ResearchCard = {
+    kind: 'series',
+    key: 'fastballVelo',
+    title: 'Fastball velocity by start',
+    scope: `${season} · four-seam and sinker`,
+    values: trend.map((t) => (t.avg == null ? NaN : t.avg)),
+    context: trend.map((t) => (t.max == null ? NaN : t.max)),
+    xLabels: trend.map((t, i) => (i === 0 || t.date.slice(5, 7) !== trend[i - 1].date.slice(5, 7) ? new Date(`${t.date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }) : '')),
+    zeroBased: false,
+    decimals: 1,
+    unit: 'mph',
+    tips: trend.map((t) => [`${n1(t.avg)} mph · average`, `${n1(t.max)} mph · hardest`, `${longDate(t.date)} · ${t.n} fastballs`]),
+    legend: [
+      { label: 'Average fastball', dark: true },
+      { label: 'Hardest fastball', dark: false },
+    ],
+  };
+
+  const hands: ResearchCard = {
+    kind: 'table',
+    key: 'hands',
+    title: 'vs left- and right-handed hitters',
+    scope: `${season} · plate appearances`,
+    labelHeader: 'vs',
+    columns: [
+      { key: 'pa', label: 'PA', decimals: 0 },
+      { key: 'avg', label: 'AVG', decimals: 3, format: 'rate3' },
+      { key: 'slg', label: 'SLG', decimals: 3, format: 'rate3' },
+      { key: 'kPct', label: 'K %', decimals: 1 },
+      { key: 'bbPct', label: 'BB %', decimals: 1 },
+      { key: 'hr', label: 'HR', decimals: 0 },
+    ],
+    rows: (['L', 'R'] as const)
+      .filter((k) => S.splitsByHand[k])
+      .map((k) => ({ key: k, label: k === 'L' ? 'LHH' : 'RHH', values: { ...S.splitsByHand[k]! } })),
+    emptyText: 'No plate appearances by hitter hand this season.',
+  };
+  return [[arsenal], [locations, where], [velo, hands]];
+}
+
+/** "Arsenal & command" for a pitcher. `battersFaced` is at bats, walks and hit-by-pitches from the box scores, for the coverage note. */
+export function mlbPitcherSection(input: MlbStatcastInput, battersFaced: number | null = null): ResearchSection {
+  const base = {
+    id: 'arsenal',
+    navLabel: 'Arsenal',
+    title: 'Arsenal & command',
+    sub: 'Statcast, regular season',
+    season: { value: input.season, options: input.seasons.map((s) => ({ value: s, label: String(s) })) },
+  };
+  if (input.loading) return { ...base, rows: [], state: { kind: 'loading' } };
+  if (input.error) return { ...base, rows: [], state: { kind: 'error', message: input.error } };
+  const row = input.pitching;
+  if (!row) {
+    return {
+      ...base,
+      rows: [],
+      state: { kind: 'empty', title: `No Statcast pitching for ${input.season}`, reason: 'The rollup holds regular-season pitches from 2025 on; this pitcher threw none in this season.' },
+    };
+  }
+  return {
+    ...base,
+    rows: pitcherCards(row.payload, input.season),
+    state: { kind: 'ready' },
+    note: coverageNote(row.payload, battersFaced, input.season, 'batters faced'),
     source: { label: 'Statcast', detail: 'mlb_statcast_player_season (Baseball Savant pitches, regular season)', asOf: row.asOf },
   };
 }

@@ -1,23 +1,12 @@
 /**
- * The database-free half of `pitchProfile.ts` — Phase 6.6's shapes and lookups.
+ * The pitch-profile shape and Savant lookups — database-free, so client code
+ * may import them.
  *
- * ================== WHY THIS FILE EXISTS AS A SEPARATE FILE =================
- *
- * `pitchProfile.ts` value-imports `pgAll`. **Anything a `'use client'`
- * component reaches must not**, or Next bundles `pg` for the browser and every
- * page importing it dies with `Module not found: Can't resolve 'dns'`. That
- * happened twice in Phase 6 and survived six commits: `tsc --noEmit` passes it
- * and so did all 103 unit tests, because it is a bundling boundary, not a type
- * error.
- *
- * `mlb/adapters/playerDetailAdapter.ts` needs `ZONE_GRID` and `pitchTypeLabel`
- * as REAL RUNTIME VALUES to build the `usageMix` and `spatialGrid` roles — an
- * `import type` would not do, since it is erased. So the pure half lives here,
- * with no database import, exactly as `seasonAggregateShapes.ts` and
- * `nflUnitGrades.ts` were split out for the same reason.
- *
- * `tests/client-bundle-boundary.test.ts` fails if this file ever grows one.
- * ===========================================================================
+ * The profile block is carried inside each R5a Statcast rollup row
+ * (`statcastRollupShapes.ts` `profile`) and feeds the prop block's pitch-mix
+ * role (`adapters/pitchRoles.ts`). `pitchProfile.ts`, the reader that served it
+ * through `/api/mlb/pitch-profile`, was deleted in R6.1b; the strike zone and
+ * platoon split it also fed are the player page's Statcast sections now.
  *
  * SAVANT'S ZONE CODES ARE NOT A ROW/COLUMN PAIR. 1-9 are the strike zone as a
  * 3x3 grid read from the CATCHER's view; 11-14 are the four outside quadrants.

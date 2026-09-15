@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { mlbHitterSection } from '../lib/sports/mlb/adapters/playerResearchSections';
+import { mlbHitterSection, mlbPitcherSection } from '../lib/sports/mlb/adapters/playerResearchSections';
 import type { PlayerStatcastRow, PlayerStatcastSeason } from '../lib/sports/mlb/statcastRollupShapes';
 
 /**
@@ -59,4 +59,53 @@ test('coverage is stated when the pitch data holds under 99% of the season', () 
   const note = mlbHitterSection(input(row(S)), Math.round(held / 0.92)).note ?? '';
   assert.match(note, new RegExp(`Statcast holds ${held} of this player's`));
   assert.match(note, /\(92%\)/);
+});
+
+// ---------------------------------------------------------------------------
+// R6.1c — the pitcher's "Arsenal & command", from Skubal's G2 block
+// ---------------------------------------------------------------------------
+
+const sk = JSON.parse(readFileSync('docs/design/phase-g2/data/player-mlb-skubal.json', 'utf8'));
+const P = sk.statcast.seasons['2026'] as PlayerStatcastSeason;
+const pitRow = (payload: PlayerStatcastSeason): PlayerStatcastRow => ({ season: 2026, playerId: 669373, role: 'pit', asOf: '2026-09-11', qualified: true, payload });
+const pitInput = (pitching: PlayerStatcastRow | null, extra: Partial<Parameters<typeof mlbPitcherSection>[0]> = {}) => ({ season: 2026, seasons: [2026, 2025], batting: null, pitching, loading: false, error: null, ...extra });
+
+test('the pitcher section is G2s cards, in G2s order', () => {
+  const sec = mlbPitcherSection(pitInput(pitRow(P)));
+  assert.equal(sec.state.kind, 'ready');
+  assert.deepEqual(sec.rows.map((r) => r.map((c) => c.key)), [['arsenal'], ['locations', 'zone'], ['fastballVelo', 'hands']]);
+  const arsenal = sec.rows[0][0];
+  assert.ok(arsenal.kind === 'table');
+  // Most used first, every pitch type G2 lists, with G2's own numbers.
+  assert.equal(arsenal.rows[0].key, [...P.pitchTypes].sort((a, b) => (b.usage ?? 0) - (a.usage ?? 0))[0].type);
+  assert.equal(arsenal.rows.length, P.pitchTypes.length);
+  const ff = arsenal.rows.find((r) => r.key === 'FF')!;
+  const g2ff = P.pitchTypes.find((t) => t.type === 'FF')!;
+  assert.deepEqual([ff.values.usage, ff.values.velo, ff.values.whiff, ff.values.csw, ff.values.xwoba, ff.values.ev], [g2ff.usage, g2ff.velo, g2ff.whiff, g2ff.csw, g2ff.xwoba, g2ff.ev]);
+});
+
+test('pitch locations group the six most thrown types and open on three', () => {
+  const sec = mlbPitcherSection(pitInput(pitRow(P)));
+  const loc = sec.rows[1][0];
+  assert.ok(loc.kind === 'scatter');
+  assert.equal(loc.points.length, P.locations!.length);
+  assert.ok(loc.groups.length <= 6);
+  assert.deepEqual(loc.defaultVisible, loc.groups.slice(0, 3).map((g) => g.key));
+  assert.ok(loc.groups.every((g, i) => i === 0 || loc.groups[i - 1].count >= g.count), 'most thrown first');
+});
+
+test('a pitcher under the location threshold gets a status card, and the zone map runs the pitcher way', () => {
+  const sec = mlbPitcherSection(pitInput(pitRow({ ...P, locations: undefined })));
+  assert.equal(sec.rows[1][0].kind, 'status');
+  const zone = sec.rows[1][1];
+  assert.ok(zone.kind === 'surface');
+  assert.deepEqual(zone.views.map((v) => v.key), ['share', 'whiff', 'xwoba']);
+  assert.equal(zone.views.find((v) => v.key === 'xwoba')!.role.lowerIsBetter, true, 'a pitcher wants low xwOBA allowed');
+});
+
+test('pitcher coverage is stated against batters faced', () => {
+  const held = (P.splitsByHand.L?.pa ?? 0) + (P.splitsByHand.R?.pa ?? 0);
+  assert.equal(mlbPitcherSection(pitInput(pitRow(P)), held).note, undefined);
+  assert.match(mlbPitcherSection(pitInput(pitRow(P)), held + 60).note ?? '', /batters faced/);
+  assert.equal(mlbPitcherSection(pitInput(null)).state.kind, 'empty');
 });

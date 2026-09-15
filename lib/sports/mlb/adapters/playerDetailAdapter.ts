@@ -31,7 +31,7 @@
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { mlbResearchSpec } from './playerResearchSpec';
-import { mlbHitterSection, type MlbStatcastInput } from './playerResearchSections';
+import { mlbHitterSection, mlbPitcherSection, type MlbStatcastInput } from './playerResearchSections';
 import type { PickCandidate, SplitEvidence, Sport, SportSnapshot, WeatherContext } from '@/lib/core/types';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import {
@@ -52,7 +52,7 @@ import {
   type OpponentUnitRole,
   type RoleStat,
 } from '@/lib/sports/shared/playerRoles';
-import { toOpposingStarterFromProfile, toPlatoonBinarySplit, toSpatialGridRole, toUsageMixRole } from './pitchRoles';
+import { toOpposingStarterFromProfile, toUsageMixRole } from './pitchRoles';
 import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
 import type { PitchProfile } from '@/lib/sports/mlb/pitchProfileShapes';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
@@ -727,9 +727,11 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
       : null,
     active.subjectName,
   );
-  // A hitter's strike zone and platoon split live in "Contact quality &
-  // approach" now (R6.1b), from the same rollup; the pitcher's move in R6.1c.
-  const spatialGrid = isPitcherSubject ? toSpatialGridRole(profile) : null;
+  // MLB's strike zone and platoon split live in the page's Statcast sections
+  // now — "Contact quality & approach" for a hitter (R6.1b), "Arsenal &
+  // command" for a pitcher (R6.1c) — from the same rollup, with more views. The
+  // prop block no longer repeats them, so both roles are null for MLB.
+  const spatialGrid = null;
 
 
 
@@ -768,14 +770,7 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     conditions,
     usageMix,
     spatialGrid,
-    // Role 4 | binarySplit -- the PLATOON split, vs LHP/RHP.
-    //
-    // This was `null` with the comment "MLB's binarySplit is vs LHP/RHP and
-    // this app stores no platoon split". True when written; 6.6 made it stale.
-    // `mlb_pitch_events` carries `p_throws` and `stand` on every one of its
-    // 2,140,525 rows. Left as a worked example of why a null justified in prose
-    // needs re-reading whenever its sourcing task lands.
-    binarySplit: isPitcherSubject ? toPlatoonBinarySplit(profile) : null,
+    binarySplit: null,
     careerH2H,
     liveLineTracker: {
       subjectId: active.subjectId,
@@ -823,9 +818,17 @@ export function toPlayerResearchData(input: { history: PlayerHistory; bio: Playe
   const spec = mlbResearchSpec(input.bio, input.history.games);
   const research = buildPlayerResearch({ sport: 'mlb', history: input.history, spec, now: input.now });
   if (!research || !input.statcast) return research;
-  // MLB's own sections (R6.1b hitter; the pitcher's arsenal is R6.1c).
-  const seasonPA = input.history.games
-    .filter((g) => g.season === input.statcast!.season)
-    .reduce((n, g) => n + (typeof g.stats.bat_plateAppearances === 'number' ? g.stats.bat_plateAppearances : 0), 0);
-  return { ...research, sections: spec.kind === 'hitter' ? [mlbHitterSection(input.statcast, seasonPA || null)] : [] };
+  // MLB's own sections: the hitter's contact quality (R6.1b), the pitcher's arsenal (R6.1c).
+  const season = input.history.games.filter((g) => g.season === input.statcast!.season);
+  const sum = (keys: string[]) => season.reduce((n, g) => n + keys.reduce((m, k) => m + (typeof g.stats[k] === 'number' ? (g.stats[k] as number) : 0), 0), 0);
+  // Box-score counts for the coverage note. A pitcher's history has no batters
+  // faced, so at bats + walks + hit-by-pitches stands in (it leaves out
+  // sacrifices and interference, so it can only understate).
+  return {
+    ...research,
+    sections:
+      spec.kind === 'hitter'
+        ? [mlbHitterSection(input.statcast, sum(['bat_plateAppearances']) || null)]
+        : [mlbPitcherSection(input.statcast, sum(['pit_atBats', 'pit_baseOnBalls', 'pit_hitByPitch']) || null)],
+  };
 }

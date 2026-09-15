@@ -62,3 +62,4 @@ export { StreakStrip, type StreakStripProps } from './StreakStrip';
 // 11 A vs B on one shared scale
 export { SplitDumbbell, type SplitDumbbellProps, type SplitDumbbellRow } from './SplitDumbbell';
 export { Histogram, type HistogramBin } from './Histogram';
+export { ZoneScatter, type ZoneScatterGroup } from './ZoneScatter';

@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
-import { Avatar, Card, DataTable, EmptyState, ErrorState, FactList, RankRow, SegmentedToggle, SelectBox, Skeleton, StatGrid, StatValue, StatusPill, VizLegend, type CardState, type Column } from './ui';
-import { Histogram, SeriesChart } from './charts';
+import { Avatar, Card, Chip, DataTable, EmptyState, ErrorState, FactList, RankRow, SegmentedToggle, SelectBox, Skeleton, StatGrid, StatValue, StatusPill, VizLegend, type CardState, type Column } from './ui';
+import { CATEGORICAL, Histogram, SeriesChart, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import {
   formatResearchValue,
@@ -409,6 +409,30 @@ function SurfaceCard({ card }: { card: Extract<ResearchCard, { kind: 'surface' }
   );
 }
 
+function ScatterCard({ card }: { card: Extract<ResearchCard, { kind: 'scatter' }> }) {
+  const [visible, setVisible] = useState<Set<string>>(() => new Set(card.defaultVisible));
+  const toggle = (key: string) =>
+    setVisible((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  return (
+    <Card title={card.title} scope={card.scope} caption={card.caption}>
+      <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label={`${card.title}: groups shown`}>
+        {card.groups.map((g, i) => (
+          <Chip key={g.key} size="md" selected={visible.has(g.key)} onClick={() => toggle(g.key)}>
+            <span aria-hidden className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full" style={{ background: CATEGORICAL[i % CATEGORICAL.length] }} />
+            {g.label} · {g.count}
+          </Chip>
+        ))}
+      </div>
+      <ZoneScatter points={card.points} groups={card.groups} visible={visible} label={card.title} />
+    </Card>
+  );
+}
+
 /** One card of a sport section, by kind. Knows nothing about which sport built it. */
 export function ResearchCardView({ card }: { card: ResearchCard }) {
   switch (card.kind) {
@@ -480,6 +504,8 @@ export function ResearchCardView({ card }: { card: ResearchCard }) {
     }
     case 'surface':
       return <SurfaceCard card={card} />;
+    case 'scatter':
+      return <ScatterCard card={card} />;
     case 'status':
       return (
         <Card title={card.title}>

@@ -66,30 +66,21 @@ test('MLB returns every role key, filling only the ones it has data for', () => 
   assert.match(MLB_ADAPTER, /const opponentUnit: OpponentUnitRole \| null =/, 'MLB stopped building opponentUnit');
   assert.match(MLB_ADAPTER, /const conditions: ConditionsRole \| null =/, 'MLB stopped building conditions');
   assert.match(MLB_ADAPTER, /const usageMix = toUsageMixRole\(/, 'MLB stopped building usageMix');
-  // R6.1b: a HITTER's strike zone and platoon split moved to the page's
-  // "Contact quality & approach" section (same Statcast rollup, richer cards),
-  // so the prop block builds these two roles for a pitcher only until R6.1c.
-  assert.match(MLB_ADAPTER, /const spatialGrid = isPitcherSubject \? toSpatialGridRole\(/, 'MLB stopped building spatialGrid');
+  // R6.1b-c: MLB's strike zone and platoon split moved OUT of the prop block to
+  // the player page's Statcast sections ("Contact quality & approach",
+  // "Arsenal & command"), from the same rollup with more views. The roles are
+  // null for MLB because the page shows them elsewhere, not because the data
+  // went away.
+  assert.match(MLB_ADAPTER, /const spatialGrid = null;/, 'MLB rebuilt a prop-block strike zone beside the Statcast section');
   // `careerH2H` joined them in 6.13 — built from the SAME opponent predicate
   // `windows.h2h` already uses, and earning its place by adding the
   // per-meeting history a single rate cannot express. Behaviour is tested in
   // `tests/career-h2h.test.ts`, not asserted by shape here.
   assert.match(MLB_ADAPTER, /toCareerH2H\(\{/, 'MLB stopped building careerH2H');
-  // `binarySplit` USED to be the null one, with the comment "this app stores no
-  // platoon split". This test said: "If 6.6-6.9 landed, good — update this
-  // test." 6.6 landed, and `mlb_pitch_events` carries `p_throws` and `stand` on
-  // all 2,140,525 rows. Updated 2026-08-30 — MLB now fills all six.
-  //
-  // Kept as an assertion rather than deleted: the point was never that MLB has
-  // exactly one null, it was that a role must be REAL or absent, never a
-  // placeholder. `toPlatoonBinarySplit` returns null unless both hands have a
-  // real sample, which is what makes filling it honest.
-  assert.match(MLB_ADAPTER, /binarySplit: isPitcherSubject \? toPlatoonBinarySplit\(/, 'MLB stopped building its platoon split');
-  assert.doesNotMatch(
-    MLB_ADAPTER,
-    /binarySplit: null/,
-    'MLB is back to a null binarySplit — if the platoon source went away, say so in the comment rather than reverting silently.',
-  );
+  // `binarySplit` was null ("no platoon split stored"), then filled from 6.6's
+  // pitch data, and is null again for the reason above: vs LHP/RHP and vs
+  // LHH/RHH are tables in the Statcast sections.
+  assert.match(MLB_ADAPTER, /binarySplit: null,/, 'MLB rebuilt a prop-block platoon split beside the Statcast section');
 });
 
 test('no role type names a sport', () => {

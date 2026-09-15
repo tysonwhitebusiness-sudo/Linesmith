@@ -1,11 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toSpatialGridRole, toUsageMixRole, toPlatoonBinarySplit } from '../lib/sports/mlb/adapters/pitchRoles';
-import { ZONE_GRID, pitchTypeLabel } from '../lib/sports/mlb/pitchProfileShapes';
+import { toUsageMixRole } from '../lib/sports/mlb/adapters/pitchRoles';
+import { pitchTypeLabel } from '../lib/sports/mlb/pitchProfileShapes';
+import { fmt } from '../components/charts/tokens';
 import type { PitchProfile } from '../lib/sports/mlb/pitchProfileShapes';
 
 /**
- * Phase 6.6's read path, as the two roles it fills.
+ * Phase 6.6's read path, as the pitch-mix role (the zone grid and platoon split
+ * it also filled moved to the player page's Statcast sections in R6.1b-c).
  *
  * These are behavioural, not source greps: every assertion runs the real
  * builder over a real-shaped profile. The numbers in the fixtures are the
@@ -91,91 +93,6 @@ test('usageMix is null rather than an empty card when there is nothing', () => {
   assert.equal(toUsageMixRole({ ...pitcherProfile(), pitchTypes: [] }), null);
 });
 
-test('spatialGrid renders the 3x3 and excludes Savant zones 11-14', () => {
-  const role = toSpatialGridRole(pitcherProfile());
-  assert.ok(role);
-  assert.equal(role.cells.length, 3, 'the strike zone is three rows');
-  for (const row of role.cells) assert.equal(row.length, 3, 'every row is three cells');
-
-  const keys = role.cells.flat().map((c) => c.key);
-  assert.deepEqual(keys, ZONE_GRID.flat().map(String), 'the grid must follow ZONE_GRID, row-major');
-  // Zone 13 is an OUTSIDE quadrant. Folding it into an edge cell would put real
-  // pitches in the wrong place, and its .201 would drag that cell down.
-  assert.ok(!keys.includes('13'), 'an outside quadrant leaked into the 3x3');
-});
-
-test('spatialGrid carries each cell its own xwOBA sample, and null where there is none', () => {
-  const role = toSpatialGridRole(pitcherProfile())!;
-  const cells = role.cells.flat();
-  assert.equal(cells.find((c) => c.key === '1')!.sampleSize, 11);
-  assert.equal(cells.find((c) => c.key === '1')!.value, 0.367);
-  const empty = cells.find((c) => c.key === '9')!;
-  assert.equal(empty.value, null, 'a zone with no measurable outcome is null, not 0');
-  assert.equal(empty.sampleSize, 0);
-});
-
-test('the caption counts only the nine cells actually drawn', () => {
-  const role = toSpatialGridRole(pitcherProfile())!;
-  // 11+18+9+14+22+12+8+15+0 = 109 across zones 1-9. Zone 13's 30 rows are NOT
-  // included: they are an outside quadrant and no cell on this card shows them.
-  assert.match(role.caption, /n=109/, 'the caption must count the drawn cells, not every zone in the profile');
-  assert.doesNotMatch(role.caption, /n=139/, 'the caption is counting the outside quadrants it does not draw');
-  assert.match(role.caption, /catcher view/, 'without this the grid is mirrored from what a reader assumes');
-  assert.match(role.caption, /balls in play/, 'the numbers are not over every pitch and must not look like they are');
-});
-
-test('a profile whose only outcomes are OUTSIDE the zone renders no card at all', () => {
-  // THE DEFECT THIS PINS, found by opening the page and not by any test:
-  // Jackson Merrill's real 2026 profile had all three of its expected-wOBA rows
-  // in Savant's zones 11-14. The 3x3 correctly excluded them, so the card drew
-  // nine cells reading "no data" — under a caption that said "n=3". Every
-  // number was individually defensible and the card as a whole was false.
-  const outsideOnly: PitchProfile = {
-    ...pitcherProfile(),
-    zones: [
-      { zone: 1, xwoba: null, xwobaSample: 0, ballsInPlay: 0, pitches: 3 },
-      { zone: 5, xwoba: null, xwobaSample: 0, ballsInPlay: 0, pitches: 4 },
-      { zone: 13, xwoba: 0.21, xwobaSample: 2, ballsInPlay: 2, pitches: 12 },
-      { zone: 14, xwoba: 0.119, xwobaSample: 1, ballsInPlay: 1, pitches: 17 },
-    ],
-  };
-  assert.equal(
-    toSpatialGridRole(outsideOnly),
-    null,
-    'nine empty cells under a caption quoting the outside quadrants is worse than no card',
-  );
-});
-
-test('spatialGrid requires the three fields the "4.800" bug was made of', () => {
-  const role = toSpatialGridRole(pitcherProfile())!;
-  assert.equal(role.unit, 'xwOBA');
-  assert.ok(role.caption.length > 0);
-  // Baseball rate convention — .367, not 0.367. A generic two-decimal format is
-  // what rendered NFL's 14.8 as "4.800" on the board.
-  assert.equal(role.format(0.367), '.367');
-});
-
-test('the heat flips with the SUBJECT, not the sport', () => {
-  // The single assertion that cannot be moved into the component: the component
-  // does not know what a strike zone is, and .455 in zone 5 is a disaster for
-  // the pitcher who allowed it and a triumph for the batter who produced it.
-  assert.equal(toSpatialGridRole(pitcherProfile())!.lowerIsBetter, true, 'a pitcher wants LOW xwOBA allowed');
-  assert.equal(
-    toSpatialGridRole({ ...pitcherProfile(), role: 'batter' })!.lowerIsBetter,
-    false,
-    'a batter wants HIGH xwOBA — running the heat one way for both is the defect',
-  );
-});
-
-test('spatialGrid is null when nothing in the grid carries an xwOBA', () => {
-  assert.equal(toSpatialGridRole(null), null);
-  const blank = {
-    ...pitcherProfile(),
-    zones: pitcherProfile().zones.map((z) => ({ ...z, xwoba: null, xwobaSample: 0 })),
-  };
-  assert.equal(toSpatialGridRole(blank), null, 'nine empty cells under a heading say less than no card');
-});
-
 test('pitchTypeLabel falls through to the raw code rather than dropping it', () => {
   assert.equal(pitchTypeLabel('FF'), 'Four-seam');
   // Savant adds codes. An unknown one showing as "XX" is information; showing
@@ -183,74 +100,13 @@ test('pitchTypeLabel falls through to the raw code rather than dropping it', () 
   assert.equal(pitchTypeLabel('XX'), 'XX');
 });
 
-test('the mix and the grid print the same statistic the same way', () => {
+test('the mix prints xwOBA the way the zone map does', () => {
   // One page, one number. The grid printed `.717` and the mix printed `0.796`
   // until the role carried its own formatter — the same defect family as the
-  // "4.800" bug, where a component-side default outvoted the sport.
+  // "4.800" bug, where a component-side default outvoted the sport. Since
+  // R6.1b-c the zone map is the Statcast section's, formatted with `fmt.rate3`.
   const mix = toUsageMixRole(pitcherProfile())!;
-  const grid = toSpatialGridRole(pitcherProfile())!;
   assert.ok(mix.valueFormat, 'usageMix must carry a formatter, not lean on a toFixed default');
   assert.equal(mix.valueFormat!(0.796), '.796', 'baseball rate convention: .796, not 0.796');
-  assert.equal(mix.valueFormat!(0.796), grid.format(0.796), 'the two cards must agree');
-});
-
-// ---------------------------------------------------------------------------
-// The platoon split — MLB's binarySplit, and the null that outlived its reason.
-// ---------------------------------------------------------------------------
-
-const platoonProfile = (platoon: Array<{ hand: string; pitches: number; ballsInPlay: number; xwoba: number | null; xwobaSample: number }>, role: 'batter' | 'pitcher' = 'batter') => ({
-  season: 2026,
-  role,
-  subjectId: 1,
-  totalPitches: platoon.reduce((s, p) => s + p.pitches, 0),
-  zones: [],
-  pitchTypes: [],
-  platoon,
-});
-
-const side = (hand: string, pitches: number, xwoba: number | null = 0.32, xwobaSample = 40) => ({
-  hand,
-  pitches,
-  ballsInPlay: Math.round(pitches / 5),
-  xwoba,
-  xwobaSample,
-});
-
-test('the split is labelled by the OPPOSING hand, and the role decides which', () => {
-  // A batter split by his own stance gives one populated side and one empty.
-  // The column is `p_throws` for a batter and `stand` for a pitcher.
-  const batter = toPlatoonBinarySplit(platoonProfile([side('L', 600), side('R', 1800)], 'batter'))!;
-  assert.equal(batter.aLabel, 'vs LHP');
-  assert.equal(batter.bLabel, 'vs RHP');
-  const pitcher = toPlatoonBinarySplit(platoonProfile([side('L', 600), side('R', 1800)], 'pitcher'))!;
-  assert.equal(pitcher.aLabel, 'vs LHB');
-  assert.equal(pitcher.bLabel, 'vs RHB');
-});
-
-test('one-sided data is no split at all', () => {
-  // Every batter faces both hands, so a missing side is missing DATA, never a
-  // real zero. Rendering it would print "vs LHP 0" as though he never got out.
-  assert.equal(toPlatoonBinarySplit(platoonProfile([side('R', 1800)])), null);
-  assert.equal(toPlatoonBinarySplit(platoonProfile([side('L', 600)])), null);
-  assert.equal(toPlatoonBinarySplit(platoonProfile([])), null);
-  assert.equal(toPlatoonBinarySplit(null), null);
-});
-
-test('xwOBA carries its OWN sample, not the pitch count', () => {
-  // ~22% of balls in play have an estimated_woba. Quoting pitches beside it
-  // overstates the sample by an order of magnitude — the same trap the mix and
-  // the zone grid both carry.
-  const role = toPlatoonBinarySplit(platoonProfile([side('L', 600, 0.301, 37), side('R', 1800, 0.34, 122)]))!;
-  const xwoba = role.rows.find((r) => r.key === 'xwoba')!;
-  assert.equal(xwoba.aSample, 37);
-  assert.equal(xwoba.bSample, 122);
-  assert.notEqual(xwoba.aSample, 600);
-  assert.equal(xwoba.decimals, 3, 'a rate shown to 0 decimals is not a rate');
-});
-
-test('xwOBA appears only when BOTH sides have one', () => {
-  // One number and one blank invites reading the gap as a split.
-  const half = toPlatoonBinarySplit(platoonProfile([side('L', 600, null, 0), side('R', 1800, 0.34, 122)]))!;
-  assert.equal(half.rows.find((r) => r.key === 'xwoba'), undefined);
-  assert.ok(half.rows.some((r) => r.key === 'pitches'), 'the pitch counts are still a real split');
+  assert.equal(mix.valueFormat!(0.796), fmt.rate3(0.796), 'the mix and the zone map must agree');
 });
