@@ -1,4 +1,4 @@
-# Resume prompt — research pages build (2026-09-14, R4 COMPLETE — awaiting sign-off)
+# Resume prompt — research pages build (2026-09-15, R5 COMPLETE — awaiting sign-off)
 
 Paste everything below the line into a fresh session on any account.
 
@@ -7,70 +7,77 @@ Paste everything below the line into a fresh session on any account.
 I'm resuming the research-pages build in this repo. Read these first, **before doing anything**:
 1. `CLAUDE.md`
 2. `docs/CURRENT.md` (the project baton; the research pages track is in "START HERE")
-3. `docs/audit-2026-09-13/research-pages-master-plan.md` (approved 2026-09-14, the build order). Its status block records R1-R4.
+3. `docs/audit-2026-09-13/research-pages-master-plan.md` (approved 2026-09-14, the build order). Its status block records R1-R5, with R5's decisions, findings and numbers.
 
 ## Where the work is
 
-- **R1** signed off and deployed. **R2** done. **R3** signed off 2026-09-14.
-- **R4 COMPLETE 2026-09-14, AWAITING OPERATOR SIGN-OFF.** Next after sign-off:
-  **R5** (Python rollups and ingest; large, and it needs Render deploy asks).
-- Everything committed and pushed. tsc clean, 485/485 tests.
-- No worker deploy in R4 (TypeScript only).
+- **R1-R4** signed off. **R5 COMPLETE 2026-09-15, AWAITING OPERATOR SIGN-OFF.**
+  Next after sign-off: **R6** (player page rebuild, one sub-phase per sport,
+  stop after each).
+- Everything committed and pushed. Worker deployed twice this phase (the
+  operator approved both): `dep-dakbn4tg1s2s73bor350` (history freshness) and
+  `dep-dakl7c61egvs738eomf0` on `a445cc2` (teamProductionJob, shot ingest,
+  prop writer). The prune fix `706a874` runs on the operator machine.
 
-## R4 — what landed
+## R5 — what landed
 
-Parsers only: every one is a pure function over the raw payload, tested on a
-real saved payload, and checked field by field against the G2 dataset built
-from the same document. **No card reads them yet** — R6-R8 wire them in.
+Python writes the rollups; TypeScript reads them directly (pattern 2). Each
+part was checked against the G2 datasets on the same inputs.
 
-| step | commit | what |
-|---|---|---|
-| 1 shared fetch | `f7c341d` | `lib/sports/espn/summary.ts` `fetchEspnSummary(leaguePath, eventId)`: one fetch for the 8 modules that each fetched the ESPN summary themselves; in-flight dedupe; in memory, final 10 min, open 5 s; failures never cached. **Fixed on the spot:** soccer's live tab had never loaded (asked for `epl`, ESPN wants `eng.1`). |
-| 2 ESPN parsers | `aebd6a3` | `lib/sports/espn/summaryParsers.ts`: win probability + biggest swings; drives with plays (NFL/CFB); court plays with ESPN's -2^31 sentinel as null, lead tracker, scoring runs (NBA); lines open/close as numbers with the soccer draw, `resultVsLine`; season series; injuries stamped with fetch time; soccer lineups, commentary pitch positions, last five. Fixtures `tests/fixtures/espn/summary-*.json`. |
-| 3-4 MLB | `c649234` | `lib/sports/mlb/liveFeedParsers.ts`: every pitch (type, speed, pX/pZ, call, zone, count) and batted ball (EV, LA, distance, coordinates), `pitchMix`; new endpoint `statsapi.getWinProbability` + `parseMlbWinProbability` (0-1 home). Fixture gamePk 824711. |
-| 4 NHL | `cbce19e` | `lib/sports/nhl/apiWebParsers.ts` + `nhle.ts`: new `/v1/player/{id}/landing` (official regular-season lines and career, skater and goalie) and `/v1/gamecenter/{id}/play-by-play` (rink x/y, shooter, goalie, situation code, roster). |
-| 5 tennis, CFB | `e1e11d9` | `tennismylife.ts` keeps level, round, indoor, best-of, minutes, rank/points/seed, opponent rank and both sides' serve counts (`serve`, `opponentServe`), `returnPointsWon`, `breakPointsConverted`; pure `buildTennisSeasonContext`; cache key `tennis:tml:v2:`. ESPN scoreboard/schedule games carry `homeRank`/`awayRank` (`pollRank`); schedule key `espnTeamSport:schedule:v2:`. |
+| part | where it runs | tables | routes | G2 check |
+|---|---|---|---|---|
+| 5a Statcast | operator machine, chained after the corpus refresh (`build_statcast_rollups.py`, ~2-3 min) | `mlb_statcast_player_season`, `_team_season`, `_game_pregame` | `/api/mlb/statcast/player/[playerId]`, `/team/[teamId]`, `/api/mlb/game/[gameId]/pregame-statcast` | 4,648 fields equal (`verify_statcast_rollups_g2.py`) |
+| 5b strength | worker, `teamProductionJob` daily | `athlete_positions`, `team_game_production`, `player_season_production` | `/api/team-production?sport&season&before`, `/api/key-players` | 758 team sides equal; NFL allowed-by-position equal |
+| 5c shots | worker (ingest hourly, rollup in teamProductionJob) | `team_shot_profile` | `/api/team-shot-profile` | Lakers zones/league/bins, 30 teams' allowed zones, Leafs bins: equal |
+| 5d NFL targets | worker, teamProductionJob | `team_target_profile` | `/api/nfl/team-targets` | 160 team rows and league cells equal |
+| 5e prop writer | worker, every provider job | `prop_odds` | — | yes/no and stale-rung fixes, tested on Postgres |
 
-**Verify (done):** each parser against G2 in tests (win probability point for
-point, drives/plays, NBA coordinates, lines for all five summary sports,
-injuries, lineups and commentary, MLB pitches and win probability, NHL landing
-and events, tennis serve on both sides of a win and a loss). The whole live
-2026 ATP CSV parses (serve and minutes 100%, rank 99.8%). Ohio State's live
-schedule ranks equal G2 on 12 of 12 games. `/api/cfb/team/194` 200 on the new
-key. No UI changed, so no page renders were owed.
+Production differs from G2 on purpose, and says so in the code: regular
+season only everywhere; one copy per pitch; every HR with distance; NBA, soccer
+and NHL positions from season rosters (NHL F/D/G).
 
-## R4 caveats — honest, and where each goes
+## Bugs found in R5 and what happened
 
-- **Finished-game caching is in memory, not `cachedRoute()`**, because R4 adds
-  no routes. When R8's game routes read these parsers, finished games get the
-  plan's long-TTL `cachedRoute()`; live routes keep their no-cache contract.
-- **Not exercised in a live state:** drives on an in-progress NFL/CFB game, an
-  MLB feed mid-game, NHL play-by-play on a live game (off-season). R8 renders
-  each state and verifies there (MLB before late September).
-- **The eight modules moved onto the shared fetch still do their own parsing**
-  (`nba/liveGame.ts`, `multiSport/footballLiveGame.ts` and the rest); R6-R8
-  move each card onto the new parsers and delete what they replace.
-- **R4-F1, routed to R6 tennis:** TennisMyLife's archive lags about two weeks
-  (no US Open on 2026-09-14). Show its last match date beside tennis history
-  tiles; fill later matches from ESPN where needed.
-- **Tennis `snapshot_cache` rows got wider** (12 columns kept to 45); 2,132
-  rows for 2026 ATP. Watch it alongside R2-F11 if the table grows.
+- **R5-F1** MLB and tennis `player_game_history` stopped 2026-08-28 (hand
+  backfill never scheduled); MLB board projected without two weeks. Fixed,
+  caught up, deployed.
+- **R5-F2** pitch corpus duplicating (prune froze pitches inside the 3-day
+  ingest window). Freeze rule and prune margin fixed; the 13,298 duplicate rows
+  already in the corpus files stay (a Phase 5 decision), and readers dedupe by
+  pitch.
+- **R5-F3** MLB player page pitch mix and strike zone were the last ~5 days
+  labelled as the season. Now read from the rollup.
+- **R5-F4** the scheduled prune crashed on R5-F2's margin (`captured_at`);
+  fixed, nothing had been deleted.
+- NBA misses all stored as twos; NHL shots mixed preseason and playoffs. Fixed
+  at ingest and in the stored rows.
+- **R5-F5, routed to the model track:** the worker has been OOM-killed 4-9
+  times an hour since 2026-09-11 (pre-R5). And after the R5 deploy it stalled
+  ~40 minutes while this machine held several DB connections at once;
+  restarted 14:59 UTC, healthy since. Keep to one connection.
 
-## Findings routed (R2-F1..F11, R3-F1..F2, R4-F1)
+## R5 caveats — honest, and where each goes
 
-R2-F1 and R3-F1 are **resolved**. The rest stand as routed in the plan's
-Appendix A: R5e (yes/no `other` direction; the writer deleting stale rungs),
-R6 (MLB fixed prop lines; line-movement pinned to the modal line; in-play price
-chip; EPL snapshot cache; tennis archive lag), R7 (MLB hooks on other sports'
-team pages; `/api/mlb/team/110` stale payload), parked (Scan at 400px), model
-track Phase 5 (huge `snapshot_cache` rows), R6-R8 (R3-F2 legacy sizes and
-contrast).
+- **5a depends on the operator machine** being on: if it is off, the
+  `mlb_statcast_*` tables stop moving and each row's `as_of` says so. The
+  pregame row is written for today's and tomorrow's games only.
+- **Positions:** CFB and MLB have none (the plan names no CFB source; MLB
+  splits by stat group). NBA athletes missing from current rosters are looked
+  up 150 per run.
+- **`/api/mlb/pitch-profile`** now reads the rollup and is deleted with its
+  cards in R6 (plan "Also in R6").
+- **R2 read-side prop guards stay** after 5e (history union, harvester).
+- **`prop_odds_history`** still holds the mixed yes/no rows written before 5e.
 
-## R3 caveats still standing
+## Findings routed (R2-F1..F11, R3-F1..F2, R4-F1, R5-F1..F4)
 
-- Whole pages are not yet at F2's type and contrast targets (R3-F2): R6-R8.
-- `Section` is built but not yet adopted; R6 uses it. Links on every name and
-  photo, game state and compare target in the URL arrive with R6-R9.
+R2-F1, R3-F1 and R5-F1..F4 are **resolved**. The rest stand as routed in the
+plan's Appendix A: R5e items are now done; R6 (MLB fixed prop lines;
+line-movement pinned to the modal line; in-play price chip; EPL snapshot
+cache; tennis archive lag; delete pitch-profile), R7 (MLB hooks on other
+sports' team pages; `/api/mlb/team/110` stale payload), parked (Scan at
+400px), model track Phase 5 (huge `snapshot_cache` rows; the duplicate pitch
+rows in the corpus files), R6-R8 (R3-F2 legacy sizes and contrast).
 
 ## Still owed from R1
 

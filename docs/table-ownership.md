@@ -30,6 +30,8 @@
 > | `athlete_positions` | **NEW** in R5b (migration `20260915060000`) | Python — `teamProductionJob` (nflverse, ESPN and api-web rosters) |
 > | `team_game_production` | **NEW** in R5b | Python — `teamProductionJob`; read by `/api/team-production` |
 > | `player_season_production` | **NEW** in R5b | Python — `teamProductionJob`; read by `/api/key-players` |
+> | `team_shot_profile` | **NEW** in R5c | Python — `teamProductionJob` (from `nba_shot_events`, `nhl_shot_events`); read by `/api/team-shot-profile` |
+> | `team_target_profile` | **NEW** in R5d | Python — `teamProductionJob` (from `nfl_target_events`); read by `/api/nfl/team-targets` |
 > | `odds_import_staging` | rows pruned, table kept | Python importers write; `scripts/gate/promote_odds.mjs` drains |
 > | `prop_odds_dedup_backup_20260829` | **DROPPED** | — |
 > | `team_elo_history_int_backup_20260901` | **DROPPED** | — |

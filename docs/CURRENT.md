@@ -4,7 +4,7 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages: R1-R4 done; R5 in progress (second track, below).**
+Research pages: R1-R4 done; R5 COMPLETE 2026-09-15, awaiting sign-off (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -34,32 +34,39 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R5 IN PROGRESS (started 2026-09-14)
+## Research pages track — R5 COMPLETE 2026-09-15, awaiting sign-off
 
-R1-R4 signed off. **R5 (Python rollups and ingest)** is being built; the plan's
-status block holds its decisions and findings. Full R4 record:
-`docs/audit-2026-09-13/RESUME-PROMPT.md`.
+R1-R4 signed off. **R5 (Python rollups and ingest) complete and stopped for
+sign-off.** Next after sign-off: **R6** (player page rebuild). Full record:
+`docs/audit-2026-09-13/RESUME-PROMPT.md` and the plan's status block.
 
-- **Affects the model track: R5-F1, fixed and deployed.** MLB and tennis
-  `player_game_history` had stopped on 2026-08-28 (task 4.7's hand backfill was
-  never scheduled), so `mlbHistorySummaryJob` fed `mlbProjectionsJob` two weeks
-  stale. `genericPlayerHistoryFreshnessJob` now covers both (`3867f60`);
-  catch-up run from the operator machine (226 MLB games); worker deployed
-  `dep-dakbn4tg1s2s73bor350`, live 03:31 UTC 2026-09-15.
-- **5a runs on the operator machine** (operator decision): Statcast rollups
-  chained after the corpus refresh, never on the worker. **5a done**:
-  `build_statcast_rollups.py`, three `mlb_statcast_*` tables, three direct-read
-  routes, G2 parity on 4,648 fields.
-- **Affects the model track: R5-F2, fixed for new exports.** The pitch corpus
-  was duplicating: `prune_corpus` froze `mlb_pitch_events` inside the 3-day
-  ingest window, so pruned pitches came back under new ids and were exported
-  again. 13,298 duplicate rows (09-11/12) remain in the corpus files; any
-  corpus reader of `mlb_pitch_events` must dedupe on (game_pk, at_bat_number,
-  pitch_number) keeping the highest id. Whether to rewrite those files is a
-  Phase 5 decision (`a706141`).
-- **R5-F3, fixed:** the MLB player page's pitch mix and strike zone had been
-  showing the last ~5 days as the season (`getPitchProfile` read the pruned
-  table); it reads the rollup now.
+- **Built:** Statcast rollups (operator machine, after each corpus refresh),
+  strength, shot and NFL target rollups (`teamProductionJob`, daily), and a
+  corrected prop writer. Each checked against the G2 datasets. Worker deployed
+  `dep-dakl7c61egvs738eomf0` on `a445cc2`.
+- **Affects the model track:**
+  - R5-F1: MLB and tennis `player_game_history` had stopped on 2026-08-28;
+    scheduled and caught up (MLB board had projected without those games).
+  - R5-F2: the pitch corpus had been duplicating; fixed for new exports. The
+    13,298 duplicate rows in the corpus files stay; any corpus reader of
+    `mlb_pitch_events` must dedupe on (game_pk, at_bat_number, pitch_number)
+    keeping the highest id. Rewriting those files is a Phase 5 decision.
+  - R5-F4: the scheduled `mlb_pitch_events` prune crashed after R5-F2's
+    margin (nothing deleted); fixed `706a874`.
+  - 5e: SharpAPI yes/no props now store Yes/No as over/under (a book's two
+    prices had shared one key), and a complete fetch removes withdrawn rungs.
+    `prop_odds_history` keeps the mixed yes/no rows from before.
+- **R5-F3, fixed:** the MLB player page's pitch mix and strike zone had shown
+  the last ~5 days as the season.
+- **R5-F5 — FOR THE MODEL TRACK, and it is live: the worker is OOM-looping.**
+  Render shows it killed at the 512 MB limit 4-9 times an hour since about
+  22:00 UTC on 2026-09-11 (before R5), each kill dropping whatever job was
+  running. The Phase 5 table below says worker RAM is CLEARED; the events say
+  otherwise. The kills cluster after `refreshTier1`, `mlbProjectionsJob` and the
+  archive jobs. Read the service's `server_failed` events before touching jobs.
+- After the R5 deploy the worker also stalled ~40 min (no logs, no OOM) while
+  the operator machine held several connections at once; restarted 14:59 UTC
+  2026-09-15 and healthy since.
 
 **Owed:** F-B4 on a slate with pitcher props; MLB live state (R8) before the
 regular season ends late September; a look at `refreshCfbJob` on Saturday

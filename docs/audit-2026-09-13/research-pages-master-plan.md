@@ -2,10 +2,10 @@
 
 **Status: APPROVED by the operator 2026-09-14, as written (including picks G1–G7
 as taken in §3). R0 done. R1 signed off and deployed. R2 done (signed off by
-the operator's instruction to proceed). R3 and R4 signed off 2026-09-14. R5 IN
-PROGRESS (below).**
+the operator's instruction to proceed). R3 and R4 signed off 2026-09-14. R5
+COMPLETE 2026-09-15, awaiting sign-off (below). Next after sign-off: R6.**
 
-**R5 in progress (started 2026-09-14).** Decisions and findings so far:
+**R5 COMPLETE 2026-09-15, awaiting sign-off.** Decisions, findings and numbers:
 - **5a's rollups run on the operator's machine** (operator, 2026-09-14), chained
   after the corpus refresh in `run-corpus-refresh.bat`. The Render worker has
   no corpus credentials, and the corpus docs measured ~280-312 MB per partition
@@ -56,6 +56,47 @@ PROGRESS (below).**
   players on rosters the day it ran, and NHL as skater/goalie; these use
   season rosters (NHL F/D/G) plus athlete lookups, and cover all but a handful
   of player-games.
+- **5c DONE.** Shot ingest is regular season only, and NBA misses are stored
+  with their real value (every miss had been a two: ESPN's play type never
+  says "three point"); the stored 2024-25 rows were corrected (59,235 missed
+  threes) and NHL 2024-25's preseason and playoff shots removed (21,339).
+  2025-26 backfilled: NBA 1,239 games / 220,723 shots, NHL 1,312 / 153,754.
+  Team views: `team_shot_profile` (NBA zones and bins for, allowed, allowed by
+  position; NHL bins and types) via `/api/team-shot-profile`, leagues over
+  teams with 40+ games. Equal to G2 on the Lakers' zones, league distributions
+  and bins, all 30 teams' allowed zones, and the Leafs' bins both ways.
+- **5d DONE.** `team_target_profile` (offense, defense, defense by receiver
+  group; defense from the game id) via `/api/nfl/team-targets`. Equal to G2's
+  matchup-nfl 2025 on 160 team rows and the league cells.
+- **5e DONE.** SharpAPI yes/no rows now keep both sides (Yes -> over, No ->
+  under); before, a book's Yes and No shared one key and the last read won,
+  and 35 of 118 two-book yes/no markets disagreed in direction. A provider
+  whose fetch read everything now has its withdrawn rungs removed on write
+  (a partial SharpAPI walk removes nothing). R2's read-side guards stay:
+  pre-game reads union `prop_odds_history`, and the harvester does not pass
+  the flag.
+- **Deployed:** `dep-dakl7c61egvs738eomf0` on `a445cc2` (teamProductionJob,
+  shot ingest, prop writer).
+- **Verified in production after the deploy:** `teamProductionJob` ran on the
+  worker (144 s, RSS 344 MB, every sport's rows rebuilt); SharpAPI's WTA
+  to-win-a-set rows now arrive as over/under, and 0 of 29 two-book yes/no
+  markets written since disagree in direction (35 of 118 before).
+- **R5-F5, routed to the model track (worker RAM, Phase 5):** the worker has
+  been OOM-killed at its 512 MB limit 4-9 times an hour since about 22:00 UTC
+  on 2026-09-11 — before R5 — with a quiet stretch on 09-14. Each kill drops
+  whatever the queue was running. `docs/CURRENT.md` Phase 5 still records worker
+  RAM as cleared.
+- **The worker stalled for ~40 minutes after the R5 deploy** (last log
+  14:20:57 UTC, `ingestNhlShotsJob` starting; no OOM event). It coincided with
+  this session holding several connections on the operator machine at once
+  (two shot backfills, the corpus refresh, the Statcast rollup) alongside the
+  harvester, against a 15-connection pooler. Restarted 14:59 UTC; the queue
+  ran through the same job in 19 s. The standing one-connection rule is the
+  lesson.
+- **R5-F4, fixed on the spot:** a706141's keep-recent margin sent
+  `mlb_pitch_events` into prune_corpus's floor-publishing branch, which assumed
+  `captured_at` and failed the 2026-09-15 scheduled prune (nothing deleted).
+  `706a874`.
 - **5b premise corrections.** `player_game_history` has no position anywhere
   (checked every sport's stat keys), so positions got their own table. ESPN's
   NBA roster ignores `?season=`; past NBA players come from the athlete
@@ -1082,6 +1123,9 @@ rebuilt pages use.
 | R5-F1 MLB and tennis `player_game_history` stopped 2026-08-28 (hand backfill, never scheduled); MLB board projected without those games | `genericPlayerHistoryFreshnessJob` | **resolved** `3867f60`, deployed `dep-dakbn4tg1s2s73bor350` |
 | R5-F2 pitch corpus duplicating: prune froze pitches inside the 3-day ingest window, so they came back under new ids (13,298 duplicate rows) | `corpus_store` freeze rule, `prune_corpus` | **resolved** `a706141` (new exports); the existing duplicate rows stay in the corpus files, readers dedupe by pitch. Rewriting the files is a model track Phase 5 decision |
 | R5-F3 MLB player page pitch mix, platoon and strike zone were the last ~5 days labelled as the season | `getPitchProfile` on a pruned `mlb_pitch_events` | **resolved** in R5a (reads `mlb_statcast_player_season`); route deleted with its cards in R6 |
+| R5-F4 scheduled `mlb_pitch_events` prune crashed on `captured_at` after R5-F2's margin | `prune_corpus` floor publish | **resolved** `706a874` |
+| R5-F5 worker OOM-killed 4-9 times an hour since 2026-09-11 ~22:00 UTC | Render worker, 512 MB | **model track Phase 5** (worker RAM), `docs/CURRENT.md` |
+| R5 NBA misses all stored as twos; NHL shots mixed preseason and playoffs | shot ingest | **resolved** in R5c (ingest and stored rows) |
 
 ## Appendix B — Reference fixtures (G2 datasets)
 
