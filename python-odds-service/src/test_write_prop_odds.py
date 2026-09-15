@@ -88,6 +88,41 @@ async def main():
         check("prop_odds updated to new price", row["american_odds"] if row else None, -135)
         check("history incremented (real price movement)", await history_count(), 2)
 
+        print("\n=== R5e: a rung a complete fetch did not return is removed ===")
+        pool = await get_pool()
+
+        def rung(line, side="over", book="draftkings", market="hits", odds=-110):
+            r = make_row(odds)
+            r.line, r.side, r.bookmaker, r.market_key = line, side, book, market
+            return r
+
+        async def rungs(market="hits"):
+            rows = await pool.fetch(
+                "SELECT line, side, bookmaker FROM prop_odds WHERE provider_id = $1 AND market_key = $2 "
+                "ORDER BY line NULLS FIRST, side, bookmaker",
+                TEST_PROVIDER, market)
+            return [(r["line"], r["side"], r["bookmaker"]) for r in rows]
+
+        await write_prop_odds([rung(0.5), rung(1.5), rung(2.5), rung(2.5, "under"), rung(0.5, market="runs")])
+        await write_prop_odds([rung(1.5), rung(2.5, "under")], complete_providers={TEST_PROVIDER})
+        check("withdrawn rungs gone, returned rungs kept", await rungs(),
+              [(1.5, "over", "draftkings"), (2.5, "under", "draftkings")])
+        check("a market the fetch did not mention is untouched", await rungs("runs"), [(0.5, "over", "draftkings")])
+
+        await write_prop_odds([rung(3.5)])
+        await write_prop_odds([rung(1.5)])
+        check("without complete_providers nothing is removed", len(await rungs()), 3)
+
+        await write_prop_odds([rung(1.5, book="fanduel")], complete_providers={"some_other_provider"})
+        check("only the named provider's rows are ever removed", len(await rungs()), 4)
+
+        await write_prop_odds([rung(None, market="to-win-a-set"), rung(None, "under", market="to-win-a-set"),
+                               rung(None, "other", market="to-win-a-set")])
+        await write_prop_odds([rung(None, market="to-win-a-set"), rung(None, "under", market="to-win-a-set")],
+                              complete_providers={TEST_PROVIDER})
+        check("a categorical market (NULL line) keeps what was returned and drops the rest",
+              await rungs("to-win-a-set"), [(None, "over", "draftkings"), (None, "under", "draftkings")])
+
         print(f"\n{'ALL PASS' if _failures == 0 else f'{_failures} FAILURE(S)'}")
     finally:
         await cleanup()

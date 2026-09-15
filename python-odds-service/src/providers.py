@@ -75,6 +75,12 @@ class FetchOutcome:
     # it — a pooled key that 429s is marked exhausted so the pool fails over —
     # and matching on warning strings is exactly how that kind of coupling rots.
     rate_limited: bool = False
+    # The fetch stopped before it had read everything it asked for (a failed or
+    # rate-limited page, a page cap). Its rows are real, but a market may be
+    # missing some rungs, so the writer must not read an absent rung as
+    # withdrawn (R5e). A provider that fails outright returns no rows for a
+    # market, which is already safe; this is for one that stops part-way.
+    partial: bool = False
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -360,6 +366,26 @@ SHARPAPI_DEFAULT_RATE_PER_MIN = 12
 SHARPAPI_DEFAULT_MAX_PAGES = 12
 
 
+def sharpapi_side(selection_type: str | None, selection: str | None) -> str | None:
+    """SharpAPI's side, with YES/NO recovered (R5e).
+
+    A yes/no prop (to win a set, anytime TD) comes as `selection_type: "other"`
+    for BOTH selections, with the choice only in `selection` ("Yes"/"No").
+    Passed through as "other", a book's two prices shared one `prop_odds` key
+    and whichever arrived last won: 35 of 118 two-book yes/no markets disagreed
+    in direction on 2026-09-15 (WTA 183796, one player to win a set: DraftKings
+    +650, FanDuel -1450). Yes is stored as `over` and No as `under`, which is
+    how the pages already read a yes/no market's two sides.
+    """
+    if selection_type == "other":
+        choice = (selection or "").strip().lower()
+        if choice == "yes":
+            return "over"
+        if choice == "no":
+            return "under"
+    return selection_type
+
+
 async def fetch_sharpapi(
     client: httpx.AsyncClient, api_key: str, games: list[Game], sport: str = "baseball",
     league: str = "mlb", yield_fn=None, max_pages: int | None = None,
@@ -421,11 +447,13 @@ async def fetch_sharpapi(
             res = await client.get(url, headers={"X-API-Key": api_key}, timeout=TIMEOUT)
         except httpx.HTTPError as e:
             out.warnings.append(f"sharpapi request failed on page {page + 1}: {e}")
+            out.partial = page > 0
             break
         out.requests += 1
         if res.status_code == 429:
             rate_limit.force_exhausted("sharpapi", rate_per_min, 60.0)
             out.rate_limited = True
+            out.partial = page > 0
             out.warnings.append(f"sharpapi HTTP 429 on page {page + 1} — backing off")
             break
         if res.status_code != 200:
@@ -435,6 +463,7 @@ async def fetch_sharpapi(
             # status code would have hidden that.
             out.warnings.append(
                 f"sharpapi HTTP {res.status_code} on page {page + 1}: {res.text[:200]}")
+            out.partial = page > 0
             break
 
         body = res.json()  # fallback materialization — see module docstring
@@ -460,7 +489,7 @@ async def fetch_sharpapi(
                 r.get("player_name"),
                 r.get("stat_category"),
                 r.get("sportsbook"),
-                r.get("selection_type"),
+                sharpapi_side(r.get("selection_type"), r.get("selection")),
                 r.get("line"),
                 r.get("odds_american"),
                 r.get("odds_decimal"),
@@ -478,11 +507,13 @@ async def fetch_sharpapi(
             # has_more with no cursor is the vendor contradicting itself. Stop
             # rather than re-request page one forever, and say so.
             out.warnings.append("sharpapi reported has_more with no next_cursor — stopping")
+            out.partial = True
             break
     else:
         truncated = True
 
     if truncated:
+        out.partial = True
         # Reported, not absorbed: the un-paginated version failed silently for
         # months precisely because truncation looked like a complete response.
         out.warnings.append(

@@ -56,8 +56,21 @@ def test_unknown_is_bucketed_not_dropped():
     print("PASS  unrecognised sides are bucketed, never dropped")
 
 
+def test_sharpapi_yes_and_no_are_two_sides():
+    """R5e. SharpAPI sends a yes/no prop's two selections both as
+    `selection_type: "other"`, with the choice only in `selection`. As one side
+    they shared a `prop_odds` key and the last price read won, so books
+    disagreed in direction (WTA 183796: DraftKings +650, FanDuel -1450)."""
+    from providers import sharpapi_side
+    check("Yes -> over", sharpapi_side("other", "Yes"), "over")
+    check("No -> under", sharpapi_side("other", " no "), "under")
+    check("a real over is untouched", sharpapi_side("over", None), "over")
+    check("an other that is not yes/no stays other", sharpapi_side("other", "Draw"), "other")
+    check("yes and no never land on one key", sharpapi_side("other", "Yes") != sharpapi_side("other", "No"), True)
+
+
 for fn in [test_valid_sides_survive_untouched, test_the_row_that_took_tennis_down,
            test_case_and_whitespace_normalised, test_nothing_can_escape_the_constraint,
-           test_unknown_is_bucketed_not_dropped]:
+           test_unknown_is_bucketed_not_dropped, test_sharpapi_yes_and_no_are_two_sides]:
     fn()
 print("\nall prop-side canonicalisation checks passed")

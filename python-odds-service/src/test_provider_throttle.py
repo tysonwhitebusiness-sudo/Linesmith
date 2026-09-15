@@ -71,7 +71,7 @@ class _Recorder:
     async def record_monthly_spend(self, pid, **kw):
         pass
 
-    async def write_prop_odds(self, rows):
+    async def write_prop_odds(self, rows, complete_providers=frozenset()):
         return len(rows)
 
     async def write_game_odds_book_lines(self, rows):

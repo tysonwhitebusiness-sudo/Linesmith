@@ -254,7 +254,11 @@ async def run_provider_specs(
             outcomes.append(result)
     all_rows = [r for o in outcomes for r in o.rows]
     all_game_line_rows = [r for o in outcomes for r in o.game_line_rows]
-    await db.write_prop_odds(all_rows)
+    # R5e: a provider whose fetch read everything it asked for has its withdrawn
+    # rungs removed on write. One that stopped part-way (or was rate-limited)
+    # keeps them until a complete cycle.
+    await db.write_prop_odds(
+        all_rows, complete_providers={o.provider_id for o in outcomes if not o.partial and not o.rate_limited})
     # Same shared, source-keyed table the-odds-api and OddsHarvester already
     # write into (see supabase/migrations/20260825150000_game_odds_book_
     # lines.sql) — a provider gets its game-lines written for free just by

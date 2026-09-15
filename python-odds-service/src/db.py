@@ -510,7 +510,7 @@ def canonical_prop_side(raw) -> str:
     return s if s in PROP_SIDE_VALID else "other"
 
 
-async def write_prop_odds(rows: list[PropOddsInput]) -> None:
+async def write_prop_odds(rows: list[PropOddsInput], complete_providers: set[str] | frozenset[str] = frozenset()) -> None:
     """Direct port of lib/db/client.ts's writePropOdds — not a simplified
     reimplementation. Per row, within one real transaction covering the
     whole batch (matching the TS version's single pgTransaction wrapping
@@ -530,6 +530,15 @@ async def write_prop_odds(rows: list[PropOddsInput]) -> None:
          via INSERT ... ON CONFLICT DO UPDATE on the same natural key.
 
     Real writes to the exact tables the live TS app reads from.
+
+      4. For each provider in `complete_providers` (R5e): delete that provider's
+         `prop_odds` rows for every (game, subject, market) this batch covers
+         whose (line, side, bookmaker) the batch did not return. The upsert
+         alone never removed anything, so a rung a book stopped quoting read as
+         current for hours (WTA 183791: a 12:19 DraftKings row beside 19:18
+         FanDuel rows). `prop_odds_history` keeps the record. Only a caller
+         that knows its fetch read everything may name a provider here; a
+         market the batch does not mention is never touched.
 
     This docstring used to end: "this is the one function in this file that
     isn't a diagnostic/breadcrumb write, which is exactly why it stays
@@ -654,6 +663,31 @@ async def write_prop_odds(rows: list[PropOddsInput]) -> None:
                     for r in batch
                 ],
             )
+
+            for provider in complete_providers:
+                mine = [r for r in batch if r.provider_id == provider]
+                if not mine:
+                    continue
+                await conn.execute(
+                    """
+                    WITH ret AS (
+                        SELECT * FROM unnest($2::text[], $3::text[], $4::text[], $5::double precision[], $6::text[], $7::text[])
+                               AS r(game_id, subject_id, market_key, line, side, bookmaker)
+                    ), markets AS (
+                        SELECT DISTINCT game_id, subject_id, market_key FROM ret
+                    )
+                    DELETE FROM prop_odds p
+                     USING markets m
+                     WHERE p.provider_id = $1
+                       AND p.game_id = m.game_id AND p.subject_id = m.subject_id AND p.market_key = m.market_key
+                       AND NOT EXISTS (
+                           SELECT 1 FROM ret r
+                            WHERE r.game_id = p.game_id AND r.subject_id = p.subject_id AND r.market_key = p.market_key
+                              AND r.line IS NOT DISTINCT FROM p.line AND r.side = p.side AND r.bookmaker = p.bookmaker)
+                    """,
+                    provider, [r.game_id for r in mine], [r.subject_id for r in mine], [r.market_key for r in mine],
+                    [r.line for r in mine], [r.side for r in mine], [r.bookmaker for r in mine],
+                )
 
 
 @dataclass
