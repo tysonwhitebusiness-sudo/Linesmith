@@ -411,3 +411,20 @@ export async function fetchBoxscore(gameId: string): Promise<NhlBoxscore | null>
   await writeSnapshotCache(cacheKey, JSON.stringify(box));
   return box;
 }
+
+// ---------------------------------------------------------------------------
+// R4 step 4 — two endpoints new to this app. Raw JSON; the pure parsers are in
+// `apiWebParsers.ts`. Uncached here: routes that serve them cache the PARSED
+// result (a season line changes nightly; a live game's play-by-play changes
+// every event), the same split as the MLB live feed.
+// ---------------------------------------------------------------------------
+
+/** Official season and career totals for one skater or goalie (`parsePlayerLanding`). */
+export async function fetchPlayerLanding(playerId: string | number): Promise<unknown | null> {
+  return fetchJson<unknown>(`${BASE}/player/${encodeURIComponent(String(playerId))}/landing`);
+}
+
+/** Every event with rink coordinates, shooter, goalie and situation (`parsePlayByPlay`). */
+export async function fetchPlayByPlay(gameId: string | number): Promise<unknown | null> {
+  return fetchJson<unknown>(`${BASE}/gamecenter/${encodeURIComponent(String(gameId))}/play-by-play`);
+}
