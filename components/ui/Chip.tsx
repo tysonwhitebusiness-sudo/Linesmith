@@ -87,10 +87,15 @@ export function Chip({ children, tone = 'neutral', size = 'sm', shape = 'pill', 
   );
 }
 
-/** A dashed-outline status: "No line posted", "Not held", "Offseason". R3 3b `StatusPill`. */
+/**
+ * A dashed-outline status: "No line posted", "Not held", "Offseason". R3 3b `StatusPill`.
+ *
+ * WRAPS, unlike a chip: a status can be a sentence, and a nowrap pill carrying
+ * one pushed the tennis player page 60px past a 400px screen.
+ */
 export function StatusPill({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <span className={cx('inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-dashed border-line bg-card-sunk px-2 py-[3px] text-overline text-ink-muted', className)}>
+    <span className={cx('inline-flex max-w-full items-center gap-1.5 rounded-[10px] border border-dashed border-line bg-card-sunk px-2 py-[3px] text-overline text-ink-muted', className)}>
       {children}
     </span>
   );

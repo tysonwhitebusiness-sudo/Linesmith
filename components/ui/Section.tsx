@@ -24,7 +24,24 @@ export function Section({ id, title, sub, children, className }: { id: string; t
   );
 }
 
-export function SectionNav({ items, top = 0, label = 'Sections', className }: { items: Array<{ id: string; label: string }>; top?: number; label?: string; className?: string }) {
+export function SectionNav({
+  items,
+  top = 0,
+  label = 'Sections',
+  bleed,
+  className,
+}: {
+  items: Array<{ id: string; label: string }>;
+  top?: number;
+  label?: string;
+  /**
+   * Stretch the bar's background into a 16px (24px from md) page gutter, as the
+   * G2 pages do. OFF by default: on a page with a different gutter the negative
+   * margin overflows the screen (found at 400px on the NFL game page, 12px gutter).
+   */
+  bleed?: boolean;
+  className?: string;
+}) {
   const [active, setActive] = useState<string | null>(items[0]?.id ?? null);
   const barRef = useRef<HTMLDivElement | null>(null);
   const clickedAt = useRef(0);
@@ -67,7 +84,7 @@ export function SectionNav({ items, top = 0, label = 'Sections', className }: { 
   };
 
   return (
-    <nav aria-label={label} style={{ top }} className={cx('sticky z-20 -mx-4 border-b border-line bg-paper/90 px-4 backdrop-blur md:-mx-6 md:px-6', className)}>
+    <nav aria-label={label} style={{ top }} className={cx('sticky z-20 border-b border-line bg-paper/90 backdrop-blur', bleed && '-mx-4 px-4 md:-mx-6 md:px-6', className)}>
       <div ref={barRef} className="flex gap-4 overflow-x-auto lb-scroll-x">
         {items.map((it) => {
           const on = it.id === active;

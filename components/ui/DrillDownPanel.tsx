@@ -73,6 +73,9 @@ export function DrillDownPanel({ open, onClose, title, subtitle, children, width
         role="dialog"
         aria-modal="true"
         aria-hidden={!open}
+        // Closed, the panel sits off-screen but would still be reachable by Tab;
+        // `inert` takes it out of focus order and the accessibility tree.
+        inert={!open}
         aria-label={typeof title === 'string' ? title : undefined}
         style={{ width: `min(${width}px, 100vw)` }}
         className={cx(

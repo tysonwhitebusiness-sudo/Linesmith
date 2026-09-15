@@ -126,7 +126,10 @@ export function RankRow({ label, valueText, percentile, direction, rank, info }:
         </>
       }
     >
-      <div className="grid grid-cols-[minmax(84px,140px)_1fr_76px] items-center gap-3 rounded-md px-1 py-1.5 hover:bg-card-sunk">
+      {/* The track keeps a 48px floor and the value column is only as wide as its text:
+          in a half-width column (the NFL matchup card) fixed label + value columns
+          squeezed the track to ~6px and the dot sat on the label. */}
+      <div className="grid grid-cols-[minmax(64px,140px)_minmax(48px,1fr)_auto] items-center gap-x-3 rounded-md px-1 py-1.5 hover:bg-card-sunk">
         <div className="truncate text-body-sm text-ink-secondary">{label}</div>
         <div className="relative h-2 rounded-full border border-line-soft bg-card-sunk" aria-hidden>
           <div className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-data ease-emphasized" style={{ width: `${p}%`, background: `color-mix(in oklch, ${color} 35%, transparent)` }} />
@@ -137,7 +140,7 @@ export function RankRow({ label, valueText, percentile, direction, rank, info }:
             {p}
           </div>
         </div>
-        <div className="text-right text-body-sm font-semibold tabular-nums text-ink">{valueText}</div>
+        <div className="min-w-[3ch] text-right text-body-sm font-semibold tabular-nums text-ink">{valueText}</div>
       </div>
     </Tooltip>
   );
