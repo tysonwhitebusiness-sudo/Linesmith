@@ -1,13 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Chip, EmptyState, Section, SectionNav, SkeletonLines, StatusPill, Tabs } from './ui';
+import { Card, Chip, EmptyState, Section, SectionNav, SkeletonLines, StatusPill, Tabs } from './ui';
+import { GameStateCard } from './GameStateCard';
+import { PlayerOddsSection } from './PlayerOddsSection';
+import { playerPriceRows } from '@/lib/odds/props/playerPrices';
 import { usePlayerBio, usePlayerHistory } from './usePlayerResearch';
 import { GameLogCard, PlayerHero, ResearchSectionBody, SeasonsCard, SourcesCard, SplitsCard, TrendsCard, asOfText } from './PlayerResearchSections';
 import { athleteIdOf, historySportFor, type PlayerBio, type PlayerHistory, type PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
 import { entryValue, isOk, type WindowedStat } from '@/lib/core/windowedStat';
-import { compareInk, gradientCardStyle, deltaGradientStyle, heatFill, toneFill } from '@/lib/ui/heat';
+import { compareInk, gradientCardStyle, deltaGradientStyle } from '@/lib/ui/heat';
 import { markFor, TONE_CLASS } from '@/lib/ui/marks';
 import { useLiveGame } from './useLiveGame';
 import { useTeamStatcast } from './useTeamStatcast';
@@ -24,8 +27,8 @@ import { LineMovementCard } from './LineMovementCard';
 import { StatRankRow } from './StatRankRow';
 import { PlayerRoleMainSections, PlayerRoleRailSections } from './PlayerRoleSections';
 import type { UnifiedLinesResult } from '@/lib/odds/types';
-import { SubjectAvatar, TeamLogo, mlbHeadshotUrl } from './SubjectAvatar';
-import { marketText, directionMark } from './MarketLabel';
+import { SubjectAvatar, TeamLogo } from './SubjectAvatar';
+import { marketText } from './MarketLabel';
 import { InsufficientMark, formatRate } from './StatCells';
 import { OddsChip, GetOddsButton, EdgeBadge } from './OddsChip';
 import { BookLogo } from './BookLogo';
@@ -55,28 +58,6 @@ import { toPlayerDetailData as toTennisPlayerDetailData, toPlayerResearchData as
 import { useReadyGate } from './useReadyGate';
 
 /**
- * A React key that is unique per candidate ROW, not per market.
- *
- * `${dimension}-${category}` WAS NOT UNIQUE AND IT DROPPED A REAL FIXTURE.
- * Measured on the live EPL snapshot: 53 groups of candidates share a
- * (subject, dimension, category) triple, because a player with two upcoming
- * matches gets one anytime-goalscorer candidate per FIXTURE. Ross Barkley's
- * two read identically on those three fields and differ on everything that
- * matters -- home vs Arsenal at +790, away at Hull at +360.
- *
- * React's own warning is explicit that non-unique keys mean children "may be
- * duplicated and/or omitted", so the market selector was rendering one button
- * where there should have been two and the second fixture was unreachable.
- * Zero collisions on MLB, NFL, tennis and golf; adding the game discriminator
- * changes nothing on those four and fixes all 53 on soccer.
- */
-function candidateRowKey(c: PickCandidate): string {
-  const meta = (c.subjectMeta ?? {}) as Record<string, unknown>;
-  const game = meta.gamePk ?? meta.opponent ?? '';
-  return `${c.dimension}-${c.category}-${String(game)}-${c.line ?? ''}`;
-}
-
-/**
  * Everything known about one player's one market — sport-agnostic. Reads a
  * `PlayerDetailData` built by the active candidate's own sport adapter
  * (`lib/sports/{mlb,golf,nfl}/adapters/playerDetailAdapter.ts`); adding a new
@@ -96,16 +77,6 @@ function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown>
 
 function mlbLogoUrl(teamId: number): string {
   return `https://www.mlbstatic.com/team-logos/${teamId}.svg`;
-}
-
-/** Minimal stroke icons, matching TopBar's icon language (16px viewBox, currentColor). */
-function TicketIcon({ className = '' }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 16 16" width={13} height={13} fill="none" stroke="currentColor" strokeWidth="1.4" className={className} aria-hidden>
-      <path d="M1.5 6.5a1.5 1.5 0 0 0 0-3V2.5a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1V3.5a1.5 1.5 0 0 0 0 3v.5a1.5 1.5 0 0 0 0 3v1a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-1a1.5 1.5 0 0 0 0-3v-.5Z" strokeLinejoin="round" />
-      <path d="M6 2v11" strokeDasharray="1.4 1.4" strokeLinecap="round" />
-    </svg>
-  );
 }
 
 function PulseIcon({ className = '' }: { className?: string }) {
@@ -286,85 +257,6 @@ export function DistributionChart({
 // ---------------------------------------------------------------------------
 // Gamelog — summary strip + per-game cards
 // ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Live game — baserunners, count, line tracker
-// ---------------------------------------------------------------------------
-
-/** Occupied-base diamond — home at bottom (implied, not drawn as a base), 2nd/1st/3rd around it. Filled masters-green when occupied, outline otherwise; stroke-only, matching the app's icon language rather than a filled colored graphic. */
-function BaseDiamond({ first, second, third }: { first: boolean; second: boolean; third: boolean }) {
-  const base = (cx: number, cy: number, occupied: boolean) => (
-    <rect
-      x={cx - 4}
-      y={cy - 4}
-      width={8}
-      height={8}
-      transform={`rotate(45 ${cx} ${cy})`}
-      fill={occupied ? '#141619' : '#ffffff'}
-      stroke={occupied ? '#141619' : '#b6b7ba'}
-      strokeWidth={1.5}
-    />
-  );
-  return (
-    <svg viewBox="0 0 40 40" width={30} height={30} aria-hidden>
-      <path d="M20 10 L30 20 L20 30 L10 20 Z" fill="none" stroke="#d3d4d7" strokeWidth={1} />
-      {base(20, 10, second)}
-      {base(30, 20, first)}
-      {base(10, 20, third)}
-    </svg>
-  );
-}
-
-/** Ball/strike/out lights — the same dot-row convention every broadcast score bug uses. */
-function CountDots({ label, filled, total, color }: { label: string; filled: number; total: number; color: string }) {
-  return (
-    <span className="flex items-center gap-1">
-      <span className="text-[8px] font-semibold uppercase tracking-wide text-ink-muted">{label}</span>
-      <span className="flex gap-0.5">
-        {Array.from({ length: total }).map((_, i) => (
-          <span key={i} className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: i < filled ? color : '#d3d4d7' }} />
-        ))}
-      </span>
-    </span>
-  );
-}
-
-/** One tracked market's live progress toward its line — cleared (green, checkmark) or a fill bar toward it. `liveValue` absent (vs-LHP/vs-RHP, no live mapping) renders nothing rather than a fabricated status. */
-function LineTrackerRow({ candidate, liveValue }: { candidate: PickCandidate; liveValue: number | undefined }) {
-  const dir = directionMark(candidate.category);
-  if (liveValue == null || dir === null) return null;
-  const line = candidate.line ?? 0.5;
-  const cleared = dir === 'O' ? liveValue > line : liveValue <= line;
-  const pct = dir === 'O' ? Math.min(1, line > 0 ? liveValue / line : liveValue) : 1 - Math.min(1, liveValue / (line + 1));
-
-  return (
-    <div
-      className="flex items-center gap-2 border-b border-line-hair px-1.5 py-1 last:border-0"
-      style={{ backgroundColor: cleared ? toneFill('good', 0.08) : undefined }}
-    >
-      <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-ink">
-        {marketText(candidate.sport, candidate.dimension, 'full')} {dir === 'O' ? 'O' : 'U'} {line}
-      </span>
-      {candidate.odds ? (
-        <span className="flex shrink-0 items-center gap-1">
-          <BookLogo bookId={candidate.odds.source} size={10} />
-          <OddsChip price={candidate.odds.americanOdds} source={candidate.odds.source} capturedAt={candidate.odds.capturedAt} />
-        </span>
-      ) : null}
-      {!cleared ? (
-        <span className="h-1 w-10 shrink-0 rounded-full bg-line-hair">
-          <span
-            className="block h-1 rounded-full transition-[width] duration-500 ease-out"
-            style={{ width: `${Math.round(pct * 100)}%`, backgroundColor: heatFill(pct) }}
-          />
-        </span>
-      ) : null}
-      <span className="shrink-0 text-[11px] font-bold tabular-nums" style={{ color: cleared ? '#0f7a4f' : undefined }}>
-        {cleared ? '✓' : liveValue}
-      </span>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Window summary boxes
@@ -978,7 +870,6 @@ export function PlayerDetail({
   const [opponentOnly, setOpponentOnly] = useState(false);
   const [venue, setVenue] = useState<'all' | 'home' | 'away'>('all');
   const [lastN, setLastN] = useState<number | 'all'>('all');
-  const [showAllAtBats, setShowAllAtBats] = useState(false);
   const [selectedRound, setSelectedRound] = useState<number | null>(null);
 
   // A different subject entirely (not just a market tab within the same
@@ -1011,11 +902,22 @@ export function PlayerDetail({
   // fetch when the active subject doesn't need it; the hook itself always
   // runs (rules of hooks).
   const gamePk = typeof meta.gamePk === 'number' ? meta.gamePk : undefined;
+  const gamePkStr = typeof meta.gamePk === 'number' || typeof meta.gamePk === 'string' ? String(meta.gamePk) : undefined;
   const opponentId = typeof meta.opponentId === 'number' ? meta.opponentId : undefined;
   const isPitcherSubject = typeof meta.pitchHand === 'string';
-  // Cheap enough to recompute here just to gate the live poll's interval —
-  // the adapter recomputes the authoritative version for `data.liveGame`.
-  const gameIsInProgressHint = active?.sport === 'mlb' && typeof meta.gamePk === 'number';
+  // The game's start, from the slate: every sport's snapshot lists its games
+  // with `gamePk` and `firstPitch`. Once it has passed, the page's prices are
+  // the ones that stood at the start (R6.1d, R2-F6).
+  const startIso = (() => {
+    const slateGames = ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as Array<{ gamePk?: unknown; firstPitch?: unknown }>;
+    const g = gamePkStr ? slateGames.find((x) => String(x.gamePk) === gamePkStr) : undefined;
+    return typeof g?.firstPitch === 'string' && g.firstPitch.includes('T') ? g.firstPitch : null;
+  })();
+  const started = startIso != null && Date.now() >= Date.parse(startIso);
+  // Gates the live poll only; the adapter decides from the slate whether the
+  // game is in progress (`data.gameState`). Before the start the route answers
+  // 404, so there is nothing to poll for.
+  const gameIsInProgressHint = active?.sport === 'mlb' && typeof meta.gamePk === 'number' && started;
   const playerLive = useLiveGame(gamePk, gameIsInProgressHint, 15_000, active?.subjectId);
   const opponentTeamStatcast = useTeamStatcast(isPitcherSubject ? opponentId : undefined);
 
@@ -1059,17 +961,6 @@ export function PlayerDetail({
   const pitchProfile = profileOf(statcastNow, isPitcherSubject ? 'pitcher' : 'batter', mlbPlayerId);
   const opposingPitchProfile = profileOf(opposingStatcast, 'pitcher', opposingStarterId);
 
-  // Price movement for the active prop (6.16). Sport-agnostic — every sport
-  // writes `prop_odds_history` through the same Python jobs — and gated by the
-  // arguments going undefined rather than by a branch on the hook call.
-  //
-  // `active.dimension` IS NOT THE MARKET KEY. The candidate dimension is this
-  // app's own vocabulary and `prop_odds_history.market_key` is the canonical
-  // provider one; most coincide, but MLB's `hit-in-game` is stored as `hits`,
-  // and passing the dimension straight through returned an empty series for
-  // every hits prop while looking entirely healthy. `candidateDimensionToMarketKey`
-  // and `candidateCategoryToSide` are the existing translators — the same pair
-  // the MLB adapter already uses to find a candidate's real prices.
   // NHL's shot map (6.7). `nhl_shot_events.shooter_id` stores the bare NHL
   // player id, so any `sport:kind:` prefix is stripped before parsing. Left
   // undefined for the other seven sports, so the hook never fires for them.
@@ -1123,15 +1014,6 @@ export function PlayerDetail({
     active?.sport === 'golf' ? active.subjectName : undefined,
   );
 
-  const lineHistoryMarketKey = active ? (candidateDimensionToMarketKey(active.dimension) ?? undefined) : undefined;
-  const lineHistorySide = active ? (candidateCategoryToSide(active.category ?? '') ?? 'over') : 'over';
-  const lineHistory = useLineHistory(
-    typeof meta.gamePk === 'number' || typeof meta.gamePk === 'string' ? String(meta.gamePk) : undefined,
-    active?.subjectId,
-    lineHistoryMarketKey,
-    lineHistorySide,
-  );
-
   // Universal matchup card's league-wide defense-allowed leaderboards — one
   // fetch per sport, shared across every subject on the page (see
   // docs/matchup-card-rebuild-gameplan-2026-08-23.md §4.2/§8). `enabled`
@@ -1140,58 +1022,10 @@ export function PlayerDetail({
   const nbaTeamDefense = useTeamDefenseAllowed<import('@/lib/sports/nba/teamDefenseAllowed').NbaTeamDefenseAllowed>('/api/nba/team-defense-allowed', active?.sport === 'nba');
   const nhlTeamDefense = useTeamDefenseAllowed<import('@/lib/sports/nhl/teamDefenseAllowed').NhlTeamDefenseAllowed>('/api/nhl/team-defense-allowed', active?.sport === 'nhl');
 
-  const gamePkStr = typeof meta.gamePk === 'number' || typeof meta.gamePk === 'string' ? String(meta.gamePk) : undefined;
-  const propOddsFetched = usePropOdds(gamePkStr, snapshot?.fetchedAt, !sharedPropOdds);
+  const propOddsFetched = usePropOdds(gamePkStr, snapshot?.fetchedAt, !sharedPropOdds, startIso);
   const propOdds = sharedPropOdds ?? propOddsFetched;
   const calibrationFetched = useMarketCalibration(!sharedCalibration, active?.sport ?? 'mlb');
   const calibration = sharedCalibration ?? calibrationFetched;
-
-  // Combined readiness for `onReadyChange` — every hook on this page that
-  // OWNS A VISIBLE CARD, not just the two that happen to drive an `lb-skel`
-  // shimmer.
-  //
-  // MEASURED, 2026-08-31: the previous gate was `!playerLive.loading &&
-  // !opponentTeamStatcast.loading`. Both are MLB-only — `useTeamStatcast` is
-  // called with an id solely for an MLB pitcher subject — so on a warm
-  // waterfall the loader released at 4.65s against a page that finished at
-  // 6.47s, and PITCH MIX, STRIKE ZONE, PLATOON SPLIT, Line movement and the
-  // 11-row All-books card all painted in after it. For a subject with no
-  // live game and no opponent Statcast, BOTH gating hooks idle, the gate was
-  // `true` from the start, and the loader covered none of a 6.3s load at all.
-  //
-  // Every hook below idles safely: each sets `loading = false` and returns
-  // when its id argument is undefined, so a sport that never fires one is
-  // never blocked by it. That is what makes listing all of them correct
-  // rather than merely thorough — see each hook's own early return.
-  //
-  // `calibration` STAYS EXCLUDED, and this is the one real exception:
-  // `/api/props/calibration` was measured taking 60+ seconds on a cold cache
-  // in this codebase, and it drives a badge, not a card. Blocking the page on
-  // it would trade a small pop-in for a minute of spinner. It renders through
-  // a neutral default instead.
-  const detailPending =
-    playerLive.loading ||
-    opponentTeamStatcast.loading ||
-    statcastNow.loading ||
-    opposingStatcast.loading ||
-    nhlShotProfile.loading ||
-    nbaShotProfile.loading ||
-    nflTargetMap.loading ||
-    golfShotProfile.loading ||
-    lineHistory.loading ||
-    cfbTeamDefense.loading ||
-    nbaTeamDefense.loading ||
-    nhlTeamDefense.loading ||
-    propOdds.loading;
-
-  // The latch, the first-frame guard, the timeout and the anti-strobe floor
-  // all live in the shared gate — see `useReadyGate` for why each is needed.
-  const internalReady = useReadyGate(detailPending, {
-    resetKey: `${active?.sport ?? 'none'}:${active?.subjectId ?? 'none'}:${active?.dimension ?? 'none'}`,
-  });
-  useEffect(() => {
-    onReadyChange?.(internalReady);
-  }, [internalReady, onReadyChange]);
 
   // R6.1a — the player, independent of any market. The embedded game-page host
   // passes no subject and keeps the prop block alone; every other host gets the
@@ -1236,6 +1070,7 @@ export function PlayerDetail({
             { id: 'log', label: 'Game log' },
           ]
         : []),
+      { id: 'odds', label: 'Odds' },
       { id: 'sources', label: 'Sources' },
     ],
     [historySport, sectionNav],
@@ -1319,6 +1154,80 @@ export function PlayerDetail({
             opposingPitchProfile,
           });
 
+  // Price movement for the active prop (6.16). Sport-agnostic — every sport
+  // writes `prop_odds_history` through the same Python jobs — and gated by the
+  // arguments going undefined rather than by a branch on the hook call.
+  //
+  // `active.dimension` IS NOT THE MARKET KEY. The candidate dimension is this
+  // app's own vocabulary and `prop_odds_history.market_key` is the canonical
+  // provider one; most coincide, but MLB's `hit-in-game` is stored as `hits`,
+  // and passing the dimension straight through returned an empty series for
+  // every hits prop while looking entirely healthy. `candidateDimensionToMarketKey`
+  // and `candidateCategoryToSide` are the existing translators — the same pair
+  // the MLB adapter already uses to find a candidate's real prices.
+  //
+  // PINNED TO THE LINE ON SCREEN (R2-F5, R6.1d): the stepper's opening line is
+  // R2's main line, and the chart names the same line rather than the
+  // most-observed rung. Cut at the start for a started game, like every other
+  // price on the page. After `data`, because the line is the adapter's.
+  const lineHistoryMarketKey = active ? (candidateDimensionToMarketKey(active.dimension) ?? undefined) : undefined;
+  const lineHistorySide = active ? (candidateCategoryToSide(active.category ?? '') ?? 'over') : 'over';
+  const lineHistory = useLineHistory(
+    gamePkStr,
+    active?.subjectId,
+    lineHistoryMarketKey,
+    lineHistorySide,
+    data?.priceCandidate?.line ?? active?.line ?? null,
+    started ? startIso : null,
+  );
+
+  // Combined readiness for `onReadyChange` — every hook on this page that
+  // OWNS A VISIBLE CARD, not just the two that happen to drive an `lb-skel`
+  // shimmer.
+  //
+  // MEASURED, 2026-08-31: the previous gate was `!playerLive.loading &&
+  // !opponentTeamStatcast.loading`. Both are MLB-only — `useTeamStatcast` is
+  // called with an id solely for an MLB pitcher subject — so on a warm
+  // waterfall the loader released at 4.65s against a page that finished at
+  // 6.47s, and PITCH MIX, STRIKE ZONE, PLATOON SPLIT, Line movement and the
+  // 11-row All-books card all painted in after it. For a subject with no
+  // live game and no opponent Statcast, BOTH gating hooks idle, the gate was
+  // `true` from the start, and the loader covered none of a 6.3s load at all.
+  //
+  // Every hook below idles safely: each sets `loading = false` and returns
+  // when its id argument is undefined, so a sport that never fires one is
+  // never blocked by it. That is what makes listing all of them correct
+  // rather than merely thorough — see each hook's own early return.
+  //
+  // `calibration` STAYS EXCLUDED, and this is the one real exception:
+  // `/api/props/calibration` was measured taking 60+ seconds on a cold cache
+  // in this codebase, and it drives a badge, not a card. Blocking the page on
+  // it would trade a small pop-in for a minute of spinner. It renders through
+  // a neutral default instead.
+  const detailPending =
+    playerLive.loading ||
+    opponentTeamStatcast.loading ||
+    statcastNow.loading ||
+    opposingStatcast.loading ||
+    nhlShotProfile.loading ||
+    nbaShotProfile.loading ||
+    nflTargetMap.loading ||
+    golfShotProfile.loading ||
+    lineHistory.loading ||
+    cfbTeamDefense.loading ||
+    nbaTeamDefense.loading ||
+    nhlTeamDefense.loading ||
+    propOdds.loading;
+
+  // The latch, the first-frame guard, the timeout and the anti-strobe floor
+  // all live in the shared gate — see `useReadyGate` for why each is needed.
+  const internalReady = useReadyGate(detailPending, {
+    resetKey: `${active?.sport ?? 'none'}:${active?.subjectId ?? 'none'}:${active?.dimension ?? 'none'}`,
+  });
+  useEffect(() => {
+    onReadyChange?.(internalReady);
+  }, [internalReady, onReadyChange]);
+
   const sourceItems = [
     ...(bioState.data ? [{ label: 'Profile', detail: `${bioState.data.source}, ${asOfText(bioState.data.fetchedAt)}` }] : []),
     ...(historyState.data
@@ -1334,9 +1243,66 @@ export function PlayerDetail({
     ...(snapshot ? [{ label: 'Markets and prop analysis', detail: `today's ${researchSport ?? active?.sport ?? ''} slate snapshot, ${asOfText(snapshot.fetchedAt)}` }] : []),
   ];
 
-  /** The page around the prop block: hero, section nav, research sections, sources. The embedded game-page host gets the block alone. */
-  const renderPage = (propBlock: React.ReactNode, propSub: React.ReactNode, nextGame: React.ReactNode) => {
-    if (!subject || embedded) return propBlock;
+  // "Odds & prices" (R6.1d): every market this player is priced on, at R2's
+  // main line, from the same rows the prop block reads. Markets the page has a
+  // candidate for come first, in the tabs' order.
+  const activeMarketKey = active ? candidateDimensionToMarketKey(active.dimension) : null;
+  const marketDimension = (key: string) => candidates.find((c) => candidateDimensionToMarketKey(c.dimension) === key)?.dimension ?? null;
+  const oddsSport = (active?.sport ?? subject?.sport ?? 'mlb') as PickCandidate['sport'];
+  const marketLabel = (key: string) => marketText(oddsSport, marketDimension(key) ?? key, 'full');
+  const priceSubjectId = active?.subjectId ?? null;
+  const prices = useMemo(
+    () =>
+      priceSubjectId
+        ? playerPriceRows(propOdds.rows, priceSubjectId, startIso, Date.now(), (key) => {
+            const i = candidates.findIndex((c) => candidateDimensionToMarketKey(c.dimension) === key);
+            return i < 0 ? candidates.length : i;
+          })
+        : [],
+    [propOdds.rows, priceSubjectId, startIso, candidates],
+  );
+
+  /**
+   * The page around the prop block: hero, section nav, research sections, odds,
+   * sources. The embedded game-page host gets the prop block and the odds.
+   */
+  const renderPage = (
+    propBlock: React.ReactNode,
+    propSub: React.ReactNode,
+    nextGame: React.ReactNode,
+    oddsCards: { movement: React.ReactNode; books: React.ReactNode; gameLine: React.ReactNode } | null,
+  ) => {
+    const odds = (
+      <PlayerOddsSection
+        prices={prices}
+        loading={marketsLoading || (Boolean(gamePkStr) && propOdds.loading && prices.length === 0)}
+        started={started}
+        activeMarketKey={activeMarketKey}
+        marketLabel={marketLabel}
+        onPickMarket={
+          onMarketChange
+            ? (key) => {
+                const dimension = marketDimension(key);
+                if (!dimension) return;
+                setLineOffset(0);
+                onMarketChange(dimension);
+                document.getElementById('sec-props')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }
+            : null
+        }
+        movement={oddsCards?.movement ?? null}
+        books={oddsCards?.books ?? null}
+        gameLine={oddsCards?.gameLine ?? null}
+      />
+    );
+    if (!subject || embedded) {
+      return (
+        <div className="space-y-3">
+          {propBlock}
+          {odds}
+        </div>
+      );
+    }
     return (
       <div className="space-y-4">
         <PlayerHero
@@ -1373,6 +1339,9 @@ export function PlayerDetail({
             </Section>
           </>
         ) : null}
+        <Section id="odds" title="Odds & prices" sub={started ? 'as they stood at the start' : 'main line, pre-game'}>
+          {odds}
+        </Section>
         <Section id="sources" title="Sources">
           <SourcesCard items={sourceItems} />
         </Section>
@@ -1386,6 +1355,7 @@ export function PlayerDetail({
         <div className="rounded-card border border-line-soft bg-card p-4 shadow-card" aria-busy>
           <SkeletonLines lines={5} />
         </div>,
+        null,
         null,
         null,
       );
@@ -1402,6 +1372,7 @@ export function PlayerDetail({
         </div>,
         null,
         null,
+        null,
       );
     }
     return <div className="lb-card p-8 text-center text-sm text-ink-muted">No tracked markets for this player.</div>;
@@ -1410,11 +1381,15 @@ export function PlayerDetail({
   // Prop Score v1 — this player-page prop never had its own edge/score
   // resolution before (only the game-level moneyline/total edge below did);
   // same resolution ScanTable/ScanCard already use. Also reused for
-  // "Add to slip" below — the resolved price is only valid for `active`'s
-  // own base line, so it's only attached when `lineOffset === 0` (same gate
-  // the OddsChip display beside it already uses).
-  const activeTrustTier = calibration.trustTiers.get(active.dimension) ?? null;
-  const activeEdgeInfo = resolveCandidateEdge(active, propOdds.rows, propOdds.userSportsbook);
+  // "Add to slip" below — the resolved price is only valid for the opening
+  // line, so it's only attached when `lineOffset === 0` (same gate the
+  // OddsChip display beside it already uses).
+  //
+  // `priced` (R6.1d) is the candidate at the line the stepper opens on: MLB's
+  // candidates carry the board line, and the adapter re-prices one at the
+  // main line. Every other sport's candidate already is that line.
+  const priced = data.priceCandidate ?? active;
+  const activeEdgeInfo = resolveCandidateEdge(priced, propOdds.rows, propOdds.userSportsbook);
   const addOdds =
     lineOffset === 0 && activeEdgeInfo.price != null
       ? { americanOdds: String(activeEdgeInfo.price), source: activeEdgeInfo.priceSource ?? 'odds-api', bookmaker: activeEdgeInfo.bookmaker }
@@ -1424,6 +1399,12 @@ export function PlayerDetail({
   const previewingOtherGolfCategory = data.lineControl?.kind === 'category' && active.sport === 'golf' && effectiveGolfCategory !== active.category;
   const lineText = data.lineControl?.kind === 'stepper' ? `${data.lineControl.wantOver ? 'O' : 'U'} ${data.lineControl.line}` : null;
   const baseLine = data.lineControl?.kind === 'stepper' ? data.lineControl.baseLine : active.line ?? 0.5;
+  // The model's probability, named with its own line when that is not the line
+  // on screen (operator decision 2026-09-15): MLB's model runs on board lines.
+  const modelControl = data.lineControl?.kind === 'stepper' ? data.lineControl : null;
+  const modelText = modelControl?.model
+    ? `Model ${Math.round(modelControl.model.prob * 100)}%${modelControl.model.line === modelControl.line ? '' : ` at ${modelControl.wantOver ? 'O' : 'U'} ${modelControl.model.line}`}`
+    : null;
 
   function isChipActive(key: string): boolean {
     if (key.startsWith('venue:')) return venue === key.slice('venue:'.length);
@@ -1465,8 +1446,90 @@ export function PlayerDetail({
     </>
   );
 
+  const todays = data.model?.todaysLine ?? null;
+  const oddsCards = {
+    movement: (
+      <LineMovementCard
+        data={lineHistory.data}
+        loading={lineHistory.loading}
+        userSportsbook={propOdds.userSportsbook}
+        marketLabel={activeMarketKey ? marketLabel(activeMarketKey) : marketText(active.sport, active.dimension, 'full')}
+      />
+    ),
+    books: (
+      <Card
+        title="All books"
+        scope={data.propOddsBoard ? [marketLabel(data.propOddsBoard.marketKey), data.propOddsBoard.line].filter((x) => x != null).join(' ') : undefined}
+        info="Every book's price at the line in view. Your book is starred."
+        dense
+        state={data.propOddsBoard ? { kind: 'ready' } : { kind: 'empty', title: 'No prices for this market', reason: 'This market has no book prices to compare.' }}
+      >
+        {data.propOddsBoard ? (
+          <PropOddsBoard
+            allRows={data.propOddsBoard.allRows}
+            subjectId={data.propOddsBoard.subjectId}
+            marketKey={data.propOddsBoard.marketKey}
+            line={data.propOddsBoard.line}
+            userSportsbook={data.propOddsBoard.userSportsbook}
+          />
+        ) : null}
+      </Card>
+    ),
+    gameLine: (
+      <Card
+        title="Game line"
+        scope={todays?.liveScore ? `${todays.liveScore.away}–${todays.liveScore.home} ${todays.livePeriod ?? ''}`.trim() : undefined}
+        dense
+        state={todays?.moneyline ? { kind: 'ready' } : { kind: 'empty', title: 'No game line yet', reason: 'No book has priced this matchup.' }}
+      >
+        {todays?.moneyline ? (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="rounded-ctl border border-line-soft p-2">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-overline text-ink-muted">Moneyline</span>
+                <BookLogo bookId={todays.moneyline.book} size={13} withLabel />
+              </div>
+              <div className="flex gap-1.5">
+                <OddsChip price={todays.moneyline.away} source={todays.moneyline.source} side={data.subject.opponentAbbr} size="md" className="flex-1 justify-center" />
+                <OddsChip price={todays.moneyline.home} source={todays.moneyline.source} side={data.subject.teamAbbr} size="md" className="flex-1 justify-center" />
+              </div>
+              {todays.moneylineEdge ? (
+                <div className="mt-1 flex gap-1.5">
+                  <EdgeBadge edge={todays.moneylineEdge.away} modelProb={todays.moneylineEdge.awayModelProb} marketProb={todays.moneylineEdge.awayMarketProb} label={data.subject.opponentAbbr ?? 'Away'} />
+                  <EdgeBadge edge={todays.moneylineEdge.home} modelProb={todays.moneylineEdge.homeModelProb} marketProb={todays.moneylineEdge.homeMarketProb} label={data.subject.teamAbbr ?? 'Home'} />
+                </div>
+              ) : null}
+            </div>
+            {todays.total ? (
+              <div className="rounded-ctl border border-line-soft p-2">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-overline text-ink-muted">Total {todays.total.point}</span>
+                  <BookLogo bookId={todays.total.book} size={13} withLabel />
+                </div>
+                <div className="flex gap-1.5">
+                  <OddsChip price={todays.total.overPrice} source={todays.total.source} side={`O${todays.total.point}`} size="md" className="flex-1 justify-center" />
+                  <OddsChip price={todays.total.underPrice} source={todays.total.source} side={`U${todays.total.point}`} size="md" className="flex-1 justify-center" />
+                </div>
+                {todays.totalEdge ? (
+                  <div className="mt-1 flex gap-1.5">
+                    <EdgeBadge edge={todays.totalEdge.over} modelProb={todays.totalEdge.overModelProb} marketProb={todays.totalEdge.overMarketProb} label="Over" />
+                    <EdgeBadge edge={todays.totalEdge.under} modelProb={todays.totalEdge.underModelProb} marketProb={todays.totalEdge.underMarketProb} label="Under" />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Card>
+    ),
+  };
+
   return renderPage(
     <div className="space-y-3">
+      {/* C4 — the game in progress, first (R6.1d). Every sport's adapter fills
+          or nulls `gameState`; the card has no sport check. */}
+      {data.gameState ? <GameStateCard state={data.gameState} subjectName={active.subjectName} /> : null}
+
       {/* Market tabs — re-scope everything below without a reload. */}
       {candidates.length > 1 ? (
         // R3: real tabs (role="tab", arrow keys) instead of buttons styled as tabs.
@@ -1521,23 +1584,30 @@ export function PlayerDetail({
               built (the auto-picked category) — same "not the real line"
               honesty golf borrows from the MLB lineOffset stepper, just keyed
               off the category picker instead of a numeric offset. */}
-          {lineOffset === 0 && !previewingOtherGolfCategory && (activeEdgeInfo.price != null || active.odds) ? (
-            <OddsChip
-              price={activeEdgeInfo.price ?? active.odds!.americanOdds}
-              source={activeEdgeInfo.price != null ? activeEdgeInfo.priceSource : active.odds!.source}
-              capturedAt={activeEdgeInfo.price != null ? activeEdgeInfo.priceCapturedAt : active.odds!.capturedAt}
-              size="md"
-            />
+          {lineOffset === 0 && !previewingOtherGolfCategory && priced.lineStatus !== 'alternates-only' && (activeEdgeInfo.price != null || priced.odds) ? (
+            <>
+              <OddsChip
+                price={activeEdgeInfo.price ?? priced.odds!.americanOdds}
+                source={activeEdgeInfo.price != null ? activeEdgeInfo.priceSource : priced.odds!.source}
+                capturedAt={activeEdgeInfo.price != null ? activeEdgeInfo.priceCapturedAt : priced.odds!.capturedAt}
+                size="md"
+              />
+              {/* R2-F6: after the start the rows are the pre-game ones, and say so. */}
+              {started ? <span className="text-label text-ink-muted">price at the start</span> : null}
+            </>
           ) : lineOffset !== 0 ? (
             <span className="text-[11px] text-ink-muted">No price recorded at this alternate line.</span>
           ) : previewingOtherGolfCategory ? (
             <span className="text-[11px] text-ink-muted">
               Previewing {golfCategoryLabel(active.dimension, effectiveGolfCategory)} — this golfer&apos;s tracked pattern is {active.categoryLabel}.
             </span>
-          ) : active.lineStatus === 'alternates-only' ? (
+          ) : priced.lineStatus === 'alternates-only' ? (
             <StatusPill>Alternate lines only — no book quoted both sides, so this is not a market line</StatusPill>
           ) : onAdd ? (
-            <GetOddsButton onClick={() => onAdd(active)} label="Add to slip to record a price" />
+            <GetOddsButton onClick={() => onAdd(priced)} label="Add to slip to record a price" />
+          ) : null}
+          {modelText ? (
+            <Chip title="The model's probability for this side. MLB's model is computed at fixed lines, so it names its own line when that is not the line in view.">{modelText}</Chip>
           ) : null}
 
 
@@ -1565,7 +1635,7 @@ export function PlayerDetail({
             <span className="hidden h-[26px] w-px shrink-0 bg-line-soft sm:block" />
             <button
               type="button"
-              onClick={() => onAdd(active, addOdds)}
+              onClick={() => onAdd(priced, addOdds)}
               className="lb-btn-primary ml-auto rounded-lg bg-masters px-3 py-1.5 text-[12px] font-semibold text-white"
               title={previewingOtherGolfCategory ? `Adds this golfer's tracked pattern (${active.categoryLabel}), not the ${golfCategoryLabel(active.dimension, effectiveGolfCategory)} preview.` : undefined}
             >
@@ -1612,192 +1682,6 @@ export function PlayerDetail({
       {/* Main content (left) + persistent context rail (right, sticky at lg+) */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_260px] lg:items-start">
         <div className="min-w-0 space-y-3">
-          {/* Live stats — sits under the window boxes, above the Contact
-              quality matchup card; only ever shown while the game is
-              actually in progress and disappears once it isn't. Two
-              columns: game context (score, count, bases, who's up/on the
-              mound) on the left, and whether each of this player's tracked
-              lines has hit yet on the right — the same
-              STAT_MARKET_BY_DIMENSION table grading.ts uses to settle
-              picks, just run mid-game via liveMarketValues. MLB only —
-              `data.liveGame` is always null for golf/NFL. */}
-          {data.liveGame?.gameIsInProgress && data.liveGame.loading && !data.liveGame.live ? (
-            <div className="lb-card overflow-hidden">
-              <div className="lb-skel h-7 w-full" />
-              <div className="p-3">
-                <div className="lb-skel h-24 w-full rounded" />
-              </div>
-            </div>
-          ) : null}
-          {data.liveGame?.live?.player ? (
-            (() => {
-              const live = data.liveGame!.live!;
-              // `live.currentPitcher` — not derived from inning half, which
-              // can point at whoever started the inning rather than whoever
-              // is actually on the mound after a mid-inning pitching change.
-              const currentPitcher = live.currentPitcher;
-              const { awayTeamId, homeTeamId, awayAbbrev, homeAbbrev, trackableCandidates } = data.liveGame!;
-              return (
-                <section className="lb-card overflow-hidden">
-                  <h3 className="flex items-center gap-1.5 bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
-                    <span className="inline-block h-1.5 w-1.5 animate-lb-pulse rounded-full bg-good" />
-                    Live today
-                  </h3>
-                  <div className="grid grid-cols-1 gap-3 p-3 lg:grid-cols-[220px_1fr]">
-                    {/* Left — game context */}
-                    <div className="space-y-2.5">
-                      <div className="rounded-lg bg-masters px-3 py-2.5 text-white">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-1.5 text-[12px] font-semibold">
-                            {awayTeamId != null ? <TeamLogo logoUrl={mlbLogoUrl(awayTeamId)} size={16} /> : null} {awayAbbrev}
-                          </span>
-                          <span className="text-[28px] font-bold leading-none tabular-nums">{live.score.away}</span>
-                        </div>
-                        <div className="mt-1 flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-1.5 text-[12px] font-semibold">
-                            {homeTeamId != null ? <TeamLogo logoUrl={mlbLogoUrl(homeTeamId)} size={16} /> : null} {homeAbbrev}
-                          </span>
-                          <span className="text-[28px] font-bold leading-none tabular-nums">{live.score.home}</span>
-                        </div>
-                        <div className="mt-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-white/80">
-                          {live.inning.half === 'top' ? 'Top' : 'Bot'} {live.inning.ordinal}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 rounded-lg border border-line px-2.5 py-2">
-                        <div className="space-y-1">
-                          <CountDots label="B" filled={live.count.balls} total={3} color="#0f7a4f" />
-                          <CountDots label="S" filled={live.count.strikes} total={2} color="#c98a1f" />
-                          <CountDots label="O" filled={live.outs} total={2} color="#c23b2c" />
-                        </div>
-                        <BaseDiamond first={live.bases.first} second={live.bases.second} third={live.bases.third} />
-                      </div>
-
-                      {/* Who's up and who's on the mound right now — shown
-                          regardless of the subject's own role, since that's
-                          useful game context either way. Stacked, not
-                          side-by-side: the 220px rail is too narrow to also
-                          fit a headshot + name + stat line in half that
-                          width without cutting the one thing this card
-                          exists to show. */}
-                      <div className="space-y-2">
-                        {live.batter ? (
-                          <div className="flex items-center gap-2 rounded-lg border border-line px-2.5 py-2 text-[11px]">
-                            <SubjectAvatar name={live.batter.name} headshotUrl={mlbHeadshotUrl(live.batter.id)} size={32} />
-                            <div className="min-w-0 flex-1">
-                              <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">At the plate</div>
-                              <div className="truncate font-semibold text-ink">{live.batter.name}</div>
-                              <div className="text-ink-muted">{live.batter.todayLine}</div>
-                            </div>
-                          </div>
-                        ) : null}
-                        {currentPitcher ? (
-                          <div className="flex items-center gap-2 rounded-lg border border-line px-2.5 py-2 text-[11px]">
-                            <SubjectAvatar name={currentPitcher.name} headshotUrl={mlbHeadshotUrl(currentPitcher.id)} size={32} />
-                            <div className="min-w-0 flex-1">
-                              <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">On the mound</div>
-                              <div className="truncate font-semibold text-ink">{currentPitcher.name}</div>
-                              <div className="text-ink-muted tabular-nums">
-                                {currentPitcher.ip} IP · {currentPitcher.h} H · {currentPitcher.k} K
-                              </div>
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {/* The live boxscore stubs a zeroed batting line for every
-                          player, DH era or not — key off this subject's own known
-                          role (pitchHand only ever set on pitcher candidates) rather
-                          than presence, so a pitcher doesn't also show "0-for-0". */}
-                      {live.player!.batting && !isPitcherSubject ? (
-                        <div className="rounded-lg border border-line p-2.5">
-                          <div className="flex items-center gap-2">
-                            <SubjectAvatar
-                              name={active.subjectName}
-                              headshotUrl={data.subject.headshotUrl}
-                              size={36}
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-[12px] font-semibold text-ink">{active.subjectName}</div>
-                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] tabular-nums text-ink-muted">
-                                <span className="font-semibold text-ink">
-                                  {live.player!.batting.hits}-for-{live.player!.batting.atBats}
-                                </span>
-                                <span>{live.player!.batting.runs} R</span>
-                                <span>{live.player!.batting.rbi} RBI</span>
-                                <span>{live.player!.batting.walks} BB</span>
-                                <span>{live.player!.batting.strikeOuts} K</span>
-                                {live.player!.isCurrentBatter ? <span className="font-semibold text-masters">At bat</span> : null}
-                              </div>
-                            </div>
-                          </div>
-                          {live.subjectPlays && live.subjectPlays.length > 0 ? (
-                            <>
-                              <ul className="mt-2 space-y-1 border-t border-line-hair pt-2">
-                                {(() => {
-                                  const plays = live.subjectPlays!;
-                                  const startIndex = showAllAtBats ? 0 : Math.max(0, plays.length - 2);
-                                  return plays.slice(startIndex).map((p, j) => {
-                                    const i = startIndex + j;
-                                    return (
-                                      <li key={i} className="flex items-baseline gap-1.5 text-[11px]">
-                                        <span className="shrink-0 font-semibold text-ink">AB{i + 1}</span>
-                                        <span className="min-w-0 flex-1 text-ink-muted">
-                                          {p.event}
-                                          {p.description ? ` — ${p.description}` : ''}
-                                        </span>
-                                        {p.rbi > 0 ? <span className="shrink-0 font-semibold text-masters">{p.rbi} RBI</span> : null}
-                                      </li>
-                                    );
-                                  });
-                                })()}
-                              </ul>
-                              {live.subjectPlays.length > 2 ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setShowAllAtBats((v) => !v)}
-                                  className="mt-1.5 text-[10.5px] font-semibold text-masters hover:underline"
-                                >
-                                  {showAllAtBats ? 'Show fewer' : `Show all ${live.subjectPlays.length} at-bats`}
-                                </button>
-                              ) : null}
-                            </>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] tabular-nums">
-                        {live.player!.pitching ? (
-                          <>
-                            <span className="font-semibold">{live.player!.pitching.inningsPitched} IP</span>
-                            <span>{live.player!.pitching.hits} H</span>
-                            <span>{live.player!.pitching.runs} R</span>
-                            <span>{live.player!.pitching.earnedRuns} ER</span>
-                            <span>{live.player!.pitching.walks} BB</span>
-                            <span>{live.player!.pitching.strikeOuts} K</span>
-                            <span className="text-ink-muted">{live.player!.pitching.pitches} pitches</span>
-                            {live.player!.isCurrentPitcher ? <span className="text-[11px] font-semibold text-masters">On the mound</span> : null}
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {/* Right — line tracker */}
-                    <div className="space-y-1.5">
-                      <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Today&apos;s lines</div>
-                      {trackableCandidates.length === 0 ? (
-                        <p className="text-[11px] text-ink-muted">No live-trackable lines for this player&apos;s markets.</p>
-                      ) : (
-                        trackableCandidates.map((c) => (
-                          <LineTrackerRow key={candidateRowKey(c)} candidate={c} liveValue={live.liveValues?.[c.dimension]} />
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </section>
-              );
-            })()
-          ) : null}
-
           {/* Chart — golf gets the 18-hole scorecard for the selected round
               instead of DistributionChart, which measures one hole across
               rounds rather than every hole within one. */}
@@ -1871,34 +1755,6 @@ export function PlayerDetail({
               null-with-reason comment). */}
           {data.liveLineTracker ? <LiveLineTrackerCard data={data.liveLineTracker} subjectName={data.subject.name} /> : null}
 
-          {/* All books, at the line as posted (not the stepped alternate) — every
-              book's price for the exact market this candidate tracks, Fanatics
-              shown first per update-09 § 5. */}
-          {data.propOddsBoard ? (
-            <section className="lb-card overflow-hidden">
-              {/* The "Scan" button lived here — a user-triggered Tier 1
-                  refresh of this player's game. Deleted with the other two
-                  provider buttons in task 2.5 (standing decision Q12): the
-                  Python worker is a background worker with no HTTP surface,
-                  so there was nothing to port these to, and the feature was
-                  removed rather than rebuilt behind a job queue. Prices here
-                  now come solely from the worker's own ~2.5-minute
-                  refreshTier1 cycle. */}
-              <div className="flex items-center justify-between gap-2 bg-accent-soft px-3 py-1.5">
-                <h2 className="text-[12px] font-semibold text-masters">All books</h2>
-              </div>
-              <div className="p-2.5">
-                <PropOddsBoard
-                  allRows={data.propOddsBoard.allRows}
-                  subjectId={data.propOddsBoard.subjectId}
-                  marketKey={data.propOddsBoard.marketKey}
-                  line={data.propOddsBoard.line}
-                  userSportsbook={data.propOddsBoard.userSportsbook}
-                />
-              </div>
-            </section>
-          ) : null}
-
           {data.seasonStatsCard ? (
             <GolfPlayerStatsCard
               name={active.subjectName}
@@ -1931,61 +1787,6 @@ export function PlayerDetail({
               careerH2H: data.careerH2H,
             }}
           />
-          <section className="lb-card overflow-hidden">
-            <h3 className="flex items-center gap-1.5 bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
-              <TicketIcon />
-              Today&apos;s line
-            </h3>
-            <div className="p-3">
-              {data.model?.todaysLine?.liveScore ? (
-                <p className="mb-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-good">
-                  <span className="inline-block h-1.5 w-1.5 animate-lb-pulse rounded-full bg-good" />
-                  {data.model.todaysLine.liveScore.away}–{data.model.todaysLine.liveScore.home} {data.model.todaysLine.livePeriod ?? ''}
-                </p>
-              ) : null}
-              {data.model?.todaysLine?.moneyline ? (
-                <div className="space-y-1.5">
-                  <div className="rounded-lg border border-line bg-card p-2">
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-ink-muted">Moneyline</span>
-                      <BookLogo bookId={data.model.todaysLine.moneyline.book} size={13} withLabel />
-                    </div>
-                    <div className="flex gap-1.5">
-                      <OddsChip price={data.model.todaysLine.moneyline.away} source={data.model.todaysLine.moneyline.source} side={data.subject.opponentAbbr} size="md" className="flex-1 justify-center" />
-                      <OddsChip price={data.model.todaysLine.moneyline.home} source={data.model.todaysLine.moneyline.source} side={data.subject.teamAbbr} size="md" className="flex-1 justify-center" />
-                    </div>
-                    {data.model.todaysLine.moneylineEdge ? (
-                      <div className="mt-1 flex gap-1.5">
-                        <EdgeBadge edge={data.model.todaysLine.moneylineEdge.away} modelProb={data.model.todaysLine.moneylineEdge.awayModelProb} marketProb={data.model.todaysLine.moneylineEdge.awayMarketProb} label={data.subject.opponentAbbr ?? 'Away'} />
-                        <EdgeBadge edge={data.model.todaysLine.moneylineEdge.home} modelProb={data.model.todaysLine.moneylineEdge.homeModelProb} marketProb={data.model.todaysLine.moneylineEdge.homeMarketProb} label={data.subject.teamAbbr ?? 'Home'} />
-                      </div>
-                    ) : null}
-                  </div>
-                  {data.model.todaysLine.total ? (
-                    <div className="rounded-lg border border-line bg-card p-2">
-                      <div className="mb-1 flex items-center justify-between">
-                        <span className="text-[10px] font-medium uppercase tracking-wide text-ink-muted">Total {data.model.todaysLine.total.point}</span>
-                        <BookLogo bookId={data.model.todaysLine.total.book} size={13} withLabel />
-                      </div>
-                      <div className="flex gap-1.5">
-                        <OddsChip price={data.model.todaysLine.total.overPrice} source={data.model.todaysLine.total.source} side={`O${data.model.todaysLine.total.point}`} size="md" className="flex-1 justify-center" />
-                        <OddsChip price={data.model.todaysLine.total.underPrice} source={data.model.todaysLine.total.source} side={`U${data.model.todaysLine.total.point}`} size="md" className="flex-1 justify-center" />
-                      </div>
-                      {data.model.todaysLine.totalEdge ? (
-                        <div className="mt-1 flex gap-1.5">
-                          <EdgeBadge edge={data.model.todaysLine.totalEdge.over} modelProb={data.model.todaysLine.totalEdge.overModelProb} marketProb={data.model.todaysLine.totalEdge.overMarketProb} label="Over" />
-                          <EdgeBadge edge={data.model.todaysLine.totalEdge.under} modelProb={data.model.todaysLine.totalEdge.underModelProb} marketProb={data.model.todaysLine.totalEdge.underMarketProb} label="Under" />
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="text-[12px] text-ink-muted">No game line for this matchup yet.</p>
-              )}
-            </div>
-          </section>
-
           {/* Golf keeps its own genuinely different context-rail card
               (§3 of the matchup-card rebuild gameplan). Every other sport's
               equivalent content now lives in the universal
@@ -2062,57 +1863,14 @@ export function PlayerDetail({
             </section>
           )}
 
-          {/*
-            6.16 — THIS CARD USED TO TELL EVERY USER THE OPPOSITE OF THE TRUTH.
-            It read "Movement history isn't tracked", above a comment asserting
-            "no history is retained anywhere in the odds layer — there are no
-            price snapshots to draw a series from". That was true when it was
-            written and stopped being true on 2026-08-11, when the Python
-            worker's jobs began writing `prop_odds_history`; by the time this
-            replaced it the table held 670,478 observations across 2,294
-            subjects and 26 books. A stale claim in prose is invisible to `tsc`
-            and to every test, and it had been telling users a feature was
-            impossible while its data accumulated behind them.
-
-            `LineMovementCard` renders nothing when no book has two observations
-            for this prop — genuinely the case early in a game's life, since
-            history accrues through the day (~60% of series eventually span
-            more than an hour). The current recorded price below still shows in
-            that case, which is what the old card was actually useful for.
-          */}
-          <LineMovementCard
-            data={lineHistory.data}
-            loading={lineHistory.loading}
-            userSportsbook={data.propOddsBoard?.userSportsbook ?? ''}
-            marketLabel={data.propOddsBoard?.marketKey ?? active.dimension}
-          />
-
-          <section className="lb-card overflow-hidden">
-            <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Recorded price</h3>
-            <div className="p-3">
-              {!active.odds ? (
-                <p className="text-[12px] text-ink-muted">No price recorded for this market yet.</p>
-              ) : null}
-              {active.odds ? (
-                <div className="mt-2 flex items-center gap-2">
-                  <OddsChip price={active.odds.americanOdds} source={active.odds.source} capturedAt={active.odds.capturedAt} />
-                  <span className="text-[10px] text-ink-muted">
-                    recorded {new Date(active.odds.capturedAt).toLocaleString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                </div>
-              ) : null}
-            </div>
-          </section>
+          {/* Line movement, the recorded price, all books and the game line are
+              the "Odds & prices" section now (R6.1d). */}
         </div>
       </div>
     </div>,
     propSub,
     nextGame,
+    oddsCards,
   );
 }
 

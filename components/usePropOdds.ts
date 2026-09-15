@@ -36,7 +36,14 @@ export { rowsFor, bestPrice, userBookPrice, resolveCandidateEdge, type PropOddsR
  * `runScan` ever had UI. Prop prices are now refreshed solely by the Python
  * worker's own schedule, so this hook is a pure read.
  */
-export function usePropOdds(gameId: string | undefined, refreshKey?: string | null, enabled = true) {
+/**
+ * `startIso` (R6.1d): once a game has started, `prop_odds` holds in-play prices
+ * (the writer upserts over the pre-game row), so a page showing a pre-game line
+ * beside them mixes two markets (R2-F6). With a start the route serves the rows
+ * as they stood at the start (`readPreGamePropOddsForGame`); before the start
+ * that is the current rows anyway.
+ */
+export function usePropOdds(gameId: string | undefined, refreshKey?: string | null, enabled = true, startIso?: string | null) {
   const [rows, setRows] = useState<PropOddsRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [userSportsbook, setUserSportsbook] = useState<string>('fanatics');
@@ -49,12 +56,14 @@ export function usePropOdds(gameId: string | undefined, refreshKey?: string | nu
     }
     setLoading(true);
     try {
-      const res = await fetch(`/api/props/lines?gameId=${gameId}`, { cache: 'no-store' });
+      const params = new URLSearchParams({ gameId });
+      if (startIso) params.set('start', startIso);
+      const res = await fetch(`/api/props/lines?${params}`, { cache: 'no-store' });
       if (res.ok) setRows((await res.json()).rows ?? []);
     } finally {
       setLoading(false);
     }
-  }, [gameId]);
+  }, [gameId, startIso]);
 
   useEffect(() => {
     if (!enabled) {

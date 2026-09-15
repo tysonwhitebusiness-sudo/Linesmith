@@ -26,6 +26,10 @@ export function useLineHistory(
   subjectId: string | undefined,
   marketKey: string | undefined,
   side: 'over' | 'under' = 'over',
+  /** The line the page shows (R2's main line). Omitted, the route falls back to the most-quoted line. */
+  line?: number | null,
+  /** ISO start of a game that has begun: the series stops at the start, like every other price on the page. */
+  before?: string | null,
   hours = 48,
 ): LineHistoryState {
   const [data, setData] = useState<LineHistoryResult | null>(null);
@@ -47,6 +51,8 @@ export function useLineHistory(
     void (async () => {
       try {
         const params = new URLSearchParams({ gameId, subjectId, marketKey, side, hours: String(hours) });
+        if (line != null) params.set('line', String(line));
+        if (before) params.set('before', before);
         const res = await fetch(`/api/props/line-history?${params}`, { signal: controller.signal });
         if (res.ok) setData((await res.json()) as LineHistoryResult);
       } catch {
@@ -57,7 +63,7 @@ export function useLineHistory(
     })();
 
     return () => controller.abort();
-  }, [gameId, subjectId, marketKey, side, hours]);
+  }, [gameId, subjectId, marketKey, side, line, before, hours]);
 
   return { data, loading };
 }

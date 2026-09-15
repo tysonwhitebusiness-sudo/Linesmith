@@ -1,5 +1,5 @@
 /**
- * GET /api/props/line-history?gameId=X&subjectId=Y&marketKey=Z[&side=over][&hours=48][&line=5.5]
+ * GET /api/props/line-history?gameId=X&subjectId=Y&marketKey=Z[&side=over][&hours=48][&line=5.5][&before=ISO]
  *
  * Line movement for one prop, one series per bookmaker. Phase 6.16.
  *
@@ -80,6 +80,20 @@ export async function GET(request: Request) {
     line = parsed;
   }
 
+  // Optional: the game's start. Observations after it are in-play prices, and
+  // the player page's odds are the prices as they stood at the start (R6.1d),
+  // so the series stops there. A value that does not parse is a 400, not a
+  // silently uncut series.
+  const rawBefore = url.searchParams.get('before');
+  let before: string | undefined;
+  if (rawBefore != null) {
+    const t = Date.parse(rawBefore);
+    if (!rawBefore.includes('T') || !Number.isFinite(t)) {
+      return NextResponse.json({ error: 'before must be an ISO timestamp' }, { status: 400 });
+    }
+    before = new Date(t).toISOString();
+  }
+
   try {
     // CLAMP TO WHAT POSTGRES STILL HOLDS, and SAY SO rather than quietly
     // returning a shorter series. Since 5.S.8 the older ticks live in the
@@ -90,7 +104,7 @@ export async function GET(request: Request) {
     const retained = await retainedHours();
     const effectiveHours = retained == null ? hours : Math.min(hours, retained);
     const body = await readLineHistory({
-      gameId, subjectId, marketKey, side, hours: effectiveHours, line,
+      gameId, subjectId, marketKey, side, hours: effectiveHours, line, before,
     });
     return NextResponse.json(
       effectiveHours < hours

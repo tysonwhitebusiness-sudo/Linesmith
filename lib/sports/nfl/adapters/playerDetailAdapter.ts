@@ -420,7 +420,7 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     model: null,
     formWindows,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
-    liveGame: null,
+    gameState: null,
     liveMatchup: null,
     matchupExplorer,
     seasonStatsCard: null,

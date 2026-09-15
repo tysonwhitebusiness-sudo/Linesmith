@@ -46,6 +46,7 @@ import {
   type WindowedStat,
 } from '@/lib/core/windowedStat';
 import { directionMark, marketText } from '@/components/MarketLabel';
+import { mlbHeadshotUrl } from '@/components/SubjectAvatar';
 import {
   toRoleStat,
   type ConditionsRole,
@@ -64,6 +65,7 @@ import { buildSlate, liveFor, type SlateGame } from '@/lib/odds/matching';
 import { projectLine } from '@/lib/odds/display';
 import { computeMoneylineEdge, computeTotalEdge, type MoneylineEdge, type TotalEdge } from '@/lib/odds/gameEdge';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
+import { repriceAtMainLine } from '@/lib/odds/props/mainLine';
 import type { PropOddsRow } from '@/lib/db/client';
 import { teamSeasonStatRows } from './statRowAdapter';
 import { teamPrimaryColor } from '@/lib/sports/mlb/teamColors';
@@ -138,24 +140,42 @@ export interface TodaysLineData {
   totalEdge?: TotalEdge | null;
 }
 
-/** MLB-only live-game slot data (`renderLiveGame?` in the design doc) — everything `PlayerDetail.tsx:1487-1674`'s live section needs, already resolved from `useLiveGame`. `null` whenever the game isn't in progress (or hasn't loaded yet); `loading` distinguishes "not live" from "loading the live poll". */
-export interface LiveGameSlotData {
-  gameIsInProgress: boolean;
-  loading: boolean;
-  live: import('@/lib/sports/mlb/liveGame').LiveGameDetail | null;
-  /** Candidates with a live-trackable value for this game — same filter as `PlayerDetail.tsx:1512-1514`. */
-  trackableCandidates: PickCandidate[];
-  /**
-   * PHASE 2 ADDITION — team identity for the score panel's two team rows
-   * (`PlayerDetail.tsx:1510-1533`). `LiveGameDetail` itself (the live-feed
-   * poll result) carries no team id/abbreviation, only the slate's own
-   * `todaysGame` lookup does — pulled out here so the live section never
-   * reads that slate lookup directly.
-   */
-  awayTeamId?: number;
-  homeTeamId?: number;
-  awayAbbrev?: string;
-  homeAbbrev?: string;
+/**
+ * C4 — the game in progress, as one sport-neutral slot (R6.1d).
+ *
+ * Every sport fills the same score, period and "your lines so far"; a sport's
+ * own situation is a named, presence-checked field beside them (`baseball`:
+ * count, outs, bases, who is up and who is pitching), the rule-4 shape. MLB
+ * fills it in R6.1d; each other sport fills its own in its sub-phase (soccer
+ * and tennis get score and state only). `null` when no game is in progress.
+ */
+export interface GameStateSlot {
+  /** `loading` while the first live poll for a started game runs. */
+  status: 'live' | 'loading';
+  away: { abbr: string; logoUrl?: string; score: number | null };
+  home: { abbr: string; logoUrl?: string; score: number | null };
+  /** "Top 5th", "Q3 4:12", "72'". */
+  periodLabel: string | null;
+  /** The subject's own game so far. `null` before the player appears in the box score. */
+  subjectLine: {
+    /** "2-for-3", "5.1 IP". */
+    headline: string;
+    facts: string[];
+    /** "At bat", "Pitching". */
+    now: string | null;
+    plays: Array<{ label: string; text: string; note: string | null }>;
+  } | null;
+  /** Today's markets with a live value, each against its main line. */
+  lines: Array<{ key: string; label: string; direction: 'O' | 'U'; line: number; value: number }>;
+  /** Baseball's situation. Absent for every other sport. */
+  baseball?: {
+    balls: number;
+    strikes: number;
+    outs: number;
+    bases: { first: boolean; second: boolean; third: boolean };
+    batter: { name: string; headshotUrl?: string; line: string } | null;
+    pitcher: { name: string; headshotUrl?: string; line: string } | null;
+  } | null;
 }
 
 /**
@@ -272,10 +292,28 @@ export interface PlayerDetailData {
   // ---- Sport-specific slot data (plain data, not renderers — see the file
   // header's deviation note). All optional; every one is `null`/omitted for
   // a sport that doesn't have the section. ----
-  /** Default numeric O/U stepper (MLB/NFL). Golf supplies its own `GolfCategoryPicker` control data instead — see the golf adapter's `lineControl`. */
-  lineControl?: { kind: 'stepper'; line: number; baseLine: number; wantOver: boolean } | { kind: 'category'; dimension: string; value: string; categories: string[] };
-  /** MLB only. */
-  liveGame?: LiveGameSlotData | null;
+  /**
+   * Default numeric O/U stepper (MLB/NFL). Golf supplies its own `GolfCategoryPicker` control data instead — see the golf adapter's `lineControl`.
+   *
+   * `model` (R6.1d) is the model's probability and the line it was computed
+   * at. MLB's model runs on fixed board lines (`BOARD_LINES`) while the stepper
+   * opens on the main line books posted, so the component names the model's
+   * line whenever the two differ rather than printing a probability for a line
+   * it was not computed at. Omitted by sports that show no model here.
+   */
+  lineControl?:
+    | { kind: 'stepper'; line: number; baseLine: number; wantOver: boolean; model?: { prob: number; line: number } | null }
+    | { kind: 'category'; dimension: string; value: string; categories: string[] };
+  /**
+   * The active candidate as priced at the line the stepper opens on (R6.1d).
+   * MLB's candidates carry the board line; this one carries the main line and
+   * that line's price, and drops the model fields that belong to the board
+   * line. The price chip, the edge and "Add to slip" read it. Omitted when the
+   * active candidate is already at its market line (every other sport).
+   */
+  priceCandidate?: PickCandidate | null;
+  /** C4 — see `GameStateSlot`. */
+  gameState?: GameStateSlot | null;
   /** Golf only — the round-in-progress hole-by-hole scorecard vs. a tee-time groupmate. */
   liveMatchup?: import('@/lib/sports/golf/adapter').LiveRoundMatchup | null;
   /**
@@ -444,18 +482,43 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   const isHome = meta.isHome === true;
   const isPitcherSubject = typeof meta.pitchHand === 'string';
 
-  const baseLine = active.line ?? 0.5;
-  const line = Math.max(0.5, baseLine + scope.lineOffset);
-  const wantOver = directionMark(active.category ?? '') !== 'U';
-
-  const activeHistory = active.history;
-
   const games: SlateGame[] = ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as SlateGame[];
   const statKeys: StatKeyDef[] = ((snapshot?.context?.other as Record<string, unknown> | undefined)?.statKeys ?? []) as StatKeyDef[];
   const slate = buildSlate(games, odds?.lines ?? []);
   const todaysGame = teamAbbr ? slate.byAbbrev.get(teamAbbr.toUpperCase()) : undefined;
   const liveScoreInfo = todaysGame ? liveFor(todaysGame) : {};
   const gameIsInProgress = /in progress/i.test(todaysGame?.game?.state ?? '');
+
+  // ---- The line (R2-F4, operator decision 2026-09-15) ----
+  // MLB's candidates sit on fixed board lines (`BOARD_LINES`: pitcher
+  // strikeouts 4.5, total bases 1.5), the lines the Python model, its
+  // calibration and grading use, and Scan keeps them. The player page opens on
+  // the line books actually posted — R2's main line, the rule every other
+  // sport's candidates already carry — so the hit rates and the price are for a
+  // bet that exists. Measured 2026-09-15 over 63 games: the main line equalled
+  // the board line for 8 of 31 pitcher strikeout markets, 3 of 30 pitcher
+  // outs, and 119 of 253 total bases. A market with only one-sided rungs
+  // (triples, batter strikeouts) has no main line and keeps the board line.
+  const startIso = todaysGame?.game?.firstPitch ?? null;
+  // The slate's first pitch is an ISO instant; the matchup line and the
+  // conditions card printed it raw ("2026-09-15T22:40:00Z"), found rendering R6.1d.
+  const firstPitchText = startIso && Number.isFinite(Date.parse(startIso))
+    ? new Date(startIso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : null;
+  // `repriceAtMainLine` is the shared rule; the model keeps its own line.
+  const repriced = (c: PickCandidate) => {
+    const key = candidateDimensionToMarketKey(c.dimension);
+    const rows = key && propOdds ? propOdds.rows.filter((r) => r.subjectId === c.subjectId && r.marketKey === key) : [];
+    return repriceAtMainLine(c, rows, startIso);
+  };
+  const { marketLine, priced: priceCandidate } = repriced(active);
+  const baseLine = marketLine ?? active.line ?? 0.5;
+  const line = Math.max(0.5, baseLine + scope.lineOffset);
+  const wantOver = directionMark(active.category ?? '') !== 'U';
+  const modelProb = typeof meta.modelProb === 'number' ? meta.modelProb : null;
+  const model = modelProb != null && active.line != null ? { prob: modelProb, line: active.line } : null;
+
+  const activeHistory = active.history;
 
   // ---- Scope filters (PlayerDetail.tsx:1063-1076) ----
   let scoped = activeHistory;
@@ -523,7 +586,7 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
   const propOddsBoard: PropOddsBoardProps | null =
     activeMarketKey && propOdds
-      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: active.line ?? null, userSportsbook: propOdds.userSportsbook }
+      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: marketLine ?? active.line ?? null, userSportsbook: propOdds.userSportsbook }
       : null;
 
   // ---- Today's line model (PlayerDetail.tsx:1196-1203, 1998-2043) ----
@@ -551,20 +614,65 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   // ---- Form (context rail; corrected per the type doc comment above) ----
   const formWindows: SplitEvidence[] | null = active.supportingSplits ?? null;
 
-  // ---- Live game slot, MLB-only (PlayerDetail.tsx:1487-1674) ----
-  const liveGame: LiveGameSlotData | null =
-    gameIsInProgress || live
-      ? {
-          gameIsInProgress,
-          loading: live?.loading ?? false,
-          live: live?.data ?? null,
-          trackableCandidates: candidates.filter((c) => live?.data?.liveValues?.[c.dimension] != null && directionMark(c.category) !== null),
-          awayTeamId: todaysGame?.game?.awayTeamId,
-          homeTeamId: todaysGame?.game?.homeTeamId,
-          awayAbbrev: todaysGame?.awayAbbrev,
-          homeAbbrev: todaysGame?.homeAbbrev,
-        }
-      : null;
+  // ---- C4 game state (R6.1d) ----
+  // Only while the slate says the game is in progress: the live route answers
+  // 404 once a game is final, and the last good poll must not keep a finished
+  // game on screen as live.
+  const liveData = live?.data && !live.error ? live.data : null;
+  const logo = (id: number | undefined) => (id != null ? mlbLogoUrl(id) : undefined);
+  const teams = (withScore: boolean) => ({
+    away: { abbr: todaysGame?.awayAbbrev ?? 'Away', logoUrl: logo(todaysGame?.game?.awayTeamId), score: withScore && liveData ? liveData.score.away : null },
+    home: { abbr: todaysGame?.homeAbbrev ?? 'Home', logoUrl: logo(todaysGame?.game?.homeTeamId), score: withScore && liveData ? liveData.score.home : null },
+  });
+  let gameState: GameStateSlot | null = null;
+  if (gameIsInProgress && liveData) {
+    const p = liveData.player;
+    // The live box score stubs a zeroed batting line for every player, so a
+    // pitcher's batting line is skipped by his known role, not by presence.
+    const bat = p?.batting && !isPitcherSubject ? p.batting : null;
+    const pit = p?.pitching ?? null;
+    const current = liveData.currentPitcher;
+    gameState = {
+      status: 'live',
+      ...teams(true),
+      periodLabel: `${liveData.inning.half === 'top' ? 'Top' : 'Bot'} ${liveData.inning.ordinal}`,
+      subjectLine: bat
+        ? {
+            headline: `${bat.hits}-for-${bat.atBats}`,
+            facts: [`${bat.runs} R`, `${bat.rbi} RBI`, `${bat.walks} BB`, `${bat.strikeOuts} K`],
+            now: p?.isCurrentBatter ? 'At bat' : null,
+            plays: (liveData.subjectPlays ?? []).map((pl, i) => ({ label: `PA ${i + 1}`, text: pl.description ? `${pl.event}: ${pl.description}` : pl.event, note: pl.rbi > 0 ? `${pl.rbi} RBI` : null })),
+          }
+        : pit
+          ? {
+              headline: `${pit.inningsPitched} IP`,
+              facts: [`${pit.hits} H`, `${pit.runs} R`, `${pit.earnedRuns} ER`, `${pit.walks} BB`, `${pit.strikeOuts} K`, `${pit.pitches} pitches`],
+              now: p?.isCurrentPitcher ? 'Pitching' : null,
+              plays: [],
+            }
+          : null,
+      lines: candidates.flatMap((c) => {
+        const value = liveData.liveValues?.[c.dimension];
+        const dir = directionMark(c.category);
+        const at = repriced(c).marketLine ?? c.line;
+        return value != null && dir !== null && at != null
+          ? [{ key: `${c.dimension}:${c.category}`, label: marketText('mlb', c.dimension, 'full'), direction: dir, line: at, value }]
+          : [];
+      }),
+      baseball: {
+        balls: liveData.count.balls,
+        strikes: liveData.count.strikes,
+        outs: liveData.outs,
+        bases: liveData.bases,
+        batter: liveData.batter ? { name: liveData.batter.name, headshotUrl: mlbHeadshotUrl(liveData.batter.id), line: liveData.batter.todayLine } : null,
+        // `currentPitcher`, not the inning half: after a mid-inning change the
+        // half still points at whoever started it.
+        pitcher: current ? { name: current.name, headshotUrl: mlbHeadshotUrl(current.id), line: `${current.ip} IP · ${current.h} H · ${current.k} K` } : null,
+      },
+    };
+  } else if (gameIsInProgress && live?.loading) {
+    gameState = { status: 'loading', ...teams(false), periodLabel: null, subjectLine: null, lines: [], baseball: null };
+  }
 
   // ---- Universal matchup card (replaces PlayerDetail.tsx:1722-1779's
   // BatterPitcherMatchupCard mapping + :2047-2112's context-rail card —
@@ -583,7 +691,7 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     const opponentId2 = 'today';
     const weather = active.context?.weather ?? null;
     const contextParts = [
-      todaysGame?.game?.firstPitch ? `First pitch ${todaysGame.game.firstPitch}` : null,
+      firstPitchText ? `First pitch ${firstPitchText}` : null,
       typeof meta.opposingHand === 'string' ? `${meta.opposingHand}HP` : null,
       weather ? `${weather.tempF != null ? `${weather.tempF}°F · ` : ''}Wind ${weather.windMph} mph ${weather.windDir}`.trim() : null,
     ].filter((s): s is string => !!s && s.trim().length > 0);
@@ -639,7 +747,7 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
       opponentStatsByGroup: {
         [opponentId2]: { _default: [...opponentTeamStatcast.hitting, ...teamSeasonStatRows(opponentGameSide, statKeys)].map(toMatchupStatRow) },
       },
-      contextLine: todaysGame?.game?.firstPitch ? `First pitch ${todaysGame.game.firstPitch}` : null,
+      contextLine: firstPitchText ? `First pitch ${firstPitchText}` : null,
     };
   }
 
@@ -706,8 +814,8 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   // in as an extra fact rather than as a branch inside the builder.
   const conditions: ConditionsRole | null = toConditionsRole({
     weather: active.context?.weather ?? null,
-    extraFacts: todaysGame?.game?.firstPitch
-      ? [{ key: 'firstPitch', label: 'First pitch', value: String(todaysGame.game.firstPitch) }]
+    extraFacts: firstPitchText
+      ? [{ key: 'firstPitch', label: 'First pitch', value: firstPitchText }]
       : [],
   });
 
@@ -759,8 +867,9 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     propOddsBoard,
     model: { todaysLine },
     formWindows,
-    lineControl: { kind: 'stepper', line, baseLine, wantOver },
-    liveGame,
+    lineControl: { kind: 'stepper', line, baseLine, wantOver, model },
+    priceCandidate,
+    gameState,
     liveMatchup: null,
     matchupExplorer,
     seasonStatsCard: null,

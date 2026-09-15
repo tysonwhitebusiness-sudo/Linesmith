@@ -229,6 +229,40 @@ export function candidateLine(
   return { line: undefined, odds: undefined };
 }
 
+/** Model fields computed for a candidate's own line; they do not describe another line. */
+const MODEL_FIELDS = ['modelProb', 'modelStdDev', 'modelSampleSize', 'modelVersion'];
+
+/**
+ * A candidate re-priced at the main line its rows show now (R6.1d). `rows` are
+ * one subject's rows for the candidate's market.
+ *
+ * Two reasons a candidate's own line is not the page's line: MLB builds its
+ * candidates on fixed board lines, and every other sport computes the main line
+ * when the slate snapshot is built, which can be hours older than the rows the
+ * page holds (measured 2026-09-15: Josh Allen's passing yards candidate at 249.5
+ * while FanDuel's current main line was 248.5).
+ *
+ * `marketLine` is the line to open the stepper on (`null`: none, keep the
+ * candidate's own). `priced` is the candidate to price, chart and slip at that
+ * line, `null` when the candidate already is it; re-lined, it drops the model
+ * fields, which were computed at the old line. An alternates-only market keeps
+ * the candidate's line with the status and no price.
+ */
+export function repriceAtMainLine(
+  candidate: PickCandidate,
+  rows: PropOddsRow[],
+  startIso: string | null | undefined,
+  now: number = Date.now(),
+): { marketLine: number | null; priced: PickCandidate | null } {
+  if (rows.length === 0) return { marketLine: null, priced: null };
+  const posted = candidateLine(rows, startIso, 'threshold', now);
+  if (posted.lineStatus === 'alternates-only') return { marketLine: null, priced: { ...candidate, odds: undefined, lineStatus: 'alternates-only' } };
+  if (posted.line == null || posted.line === candidate.line) return { marketLine: posted.line ?? null, priced: null };
+  const meta = { ...(candidate.subjectMeta ?? {}) };
+  for (const k of MODEL_FIELDS) delete meta[k];
+  return { marketLine: posted.line, priced: { ...candidate, line: posted.line, odds: posted.odds, lineStatus: undefined, subjectMeta: meta } };
+}
+
 /** A line from a player's own history: the average, rounded to the half, never below 0.5. `undefined` with no history. */
 export function historyAverageLine(values: number[]): number | undefined {
   if (values.length === 0) return undefined;

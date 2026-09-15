@@ -238,7 +238,7 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
     model: null,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
-    liveGame: null,
+    gameState: null,
     liveMatchup: null,
     // No matchup card yet — tennis is a player-vs-player sport (no team
     // position groups), and no ranked-player list exists in this codebase

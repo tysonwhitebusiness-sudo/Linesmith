@@ -331,7 +331,7 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
     model: null,
     formWindows: null,
     lineControl: { kind: 'category', dimension: active.dimension, value: effectiveGolfCategory, categories: ['birdie', 'par', 'bogey'] },
-    liveGame: null,
+    gameState: null,
     liveMatchup,
     matchupExplorer: null,
     seasonStatsCard: golfStats

@@ -1,5 +1,5 @@
 /**
- * GET /api/props/lines[?gameId=X]
+ * GET /api/props/lines[?gameId=X[&start=ISO]]
  *
  * Pure read from `prop_odds` — no implicit refresh trigger. Before the Step
  * 5 cutover (docs/phase2-hardening-gameplan-2026-08-20.md), this route
@@ -23,7 +23,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { readPropOddsForGame, readPropOddsForSubject } from '@/lib/db/client';
+import { readPreGamePropOddsForGame, readPropOddsForGame, readPropOddsForSubject } from '@/lib/db/client';
 import { loadAllGameContexts } from '@/lib/odds/props/gameContext';
 import { loadGameContextsForSport } from '@/lib/odds/props/multiSportGameContext';
 import type { SportKey } from '@/lib/odds/props/types';
@@ -40,6 +40,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ rows: await readPropOddsForSubject(gameId, subjectId) });
   }
   if (gameId) {
+    // `start` (R6.1d): the rows as they stood at the game's start, so a started
+    // game's page shows pre-game prices rather than in-play ones beside a
+    // pre-game line (R2-F6). Before the start it reads the current rows.
+    const start = url.searchParams.get('start');
+    if (start && start.includes('T') && Number.isFinite(Date.parse(start))) {
+      return NextResponse.json({ rows: await readPreGamePropOddsForGame(gameId, start) });
+    }
     return NextResponse.json({ rows: await readPropOddsForGame(gameId) });
   }
 

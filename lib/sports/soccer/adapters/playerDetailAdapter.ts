@@ -398,7 +398,7 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     model: null,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
-    liveGame: null,
+    gameState: null,
     liveMatchup: null,
     matchupExplorer,
     seasonStatsCard: null,

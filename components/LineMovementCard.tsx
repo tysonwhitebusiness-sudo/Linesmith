@@ -181,7 +181,7 @@ export function LineMovementCard({
         }
         caption={
           drawable && data && (data.availableLines?.length ?? 0) > 1
-            ? `${data.availableLines!.length} lines quoted (${data.availableLines![0]}–${data.availableLines![data.availableLines!.length - 1]}); showing the most-quoted.`
+            ? `${data.availableLines!.length} lines quoted (${data.availableLines![0]}–${data.availableLines![data.availableLines!.length - 1]}); showing ${data.resolvedLine ?? 'the most-quoted'}.`
             : undefined
         }
       >

@@ -164,8 +164,13 @@ export function bucketSecondsFor(hours: number): number {
  *
  * `rows` must be ordered by observation count DESCENDING, which is what makes
  * the first non-null entry the modal line. The modal, not the mean or the
- * midpoint: the most-quoted line is the market's de-facto main one, whereas a
- * mean of alternates is a line no book ever posted.
+ * midpoint: a mean of alternates is a line no book ever posted.
+ *
+ * THE MODAL IS ONLY THE FALLBACK (R2-F5, R6.1d). On a ladder the most-observed
+ * rung is not the main line: a book that reprices its alternates every cycle
+ * logs more changes on them than on the line everyone quotes. The player page
+ * passes R2's main line (`mainLine.ts`, the same line its stepper shows) as
+ * `requested`, so the chart and the prop block name one line.
  *
  * An explicitly requested line is honoured only if it was actually offered.
  * Silently returning an empty series for a line nobody quoted would look
@@ -198,8 +203,10 @@ export interface LineHistoryQuery {
   marketKey: string;
   side: string;
   hours: number;
-  /** Pin a specific alternate. Omitted picks the most-observed line in the window. */
+  /** Pin a line — the player page passes the main line. Omitted picks the most-observed line in the window. */
   line?: number;
+  /** ISO start of the game: observations after it are in-play and left out. */
+  before?: string;
 }
 
 export async function readLineHistory(q: LineHistoryQuery): Promise<LineHistoryResult> {
@@ -222,9 +229,10 @@ export async function readLineHistory(q: LineHistoryQuery): Promise<LineHistoryR
        FROM prop_odds_history
       WHERE game_id = ? AND subject_id = ? AND market_key = ? AND side = ?
         AND observed_at >= now() - interval '${hours} hours'
+        AND (?::timestamptz IS NULL OR observed_at <= ?::timestamptz)
       GROUP BY line
       ORDER BY count(*) DESC`,
-    [q.gameId, q.subjectId, q.marketKey, q.side],
+    [q.gameId, q.subjectId, q.marketKey, q.side, q.before ?? null, q.before ?? null],
   );
 
   const { availableLines, resolvedLine } = pinLine(lineRows, q.line);
@@ -243,6 +251,7 @@ export async function readLineHistory(q: LineHistoryQuery): Promise<LineHistoryR
        FROM prop_odds_history
       WHERE game_id = ? AND subject_id = ? AND market_key = ? AND side = ?
         AND observed_at >= now() - interval '${hours} hours'
+        AND (?::timestamptz IS NULL OR observed_at <= ?::timestamptz)
         -- IS NOT DISTINCT FROM, not '=': it matches NULL to NULL, which is what
         -- pins a genuinely line-less market to its own rows instead of
         -- returning nothing. With a real line it also excludes the null-line
@@ -251,7 +260,7 @@ export async function readLineHistory(q: LineHistoryQuery): Promise<LineHistoryR
       -- DESC on observed_at is what makes DISTINCT ON take the LAST real
       -- observation in each bucket rather than the first. See the header.
       ORDER BY bookmaker, bucket, observed_at DESC`,
-    [q.gameId, q.subjectId, q.marketKey, q.side, resolvedLine],
+    [q.gameId, q.subjectId, q.marketKey, q.side, q.before ?? null, q.before ?? null, resolvedLine],
   );
 
   const byBook = new Map<string, LineHistoryPoint[]>();
