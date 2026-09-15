@@ -4,7 +4,7 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages: R1 signed off; R2 COMPLETE 2026-09-14, awaiting sign-off (second track, below).**
+Research pages: R1-R2 done; R3 COMPLETE 2026-09-14, awaiting sign-off (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -34,51 +34,28 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R1 signed off and deployed; R2 COMPLETE, awaiting sign-off
+## Research pages track — R3 COMPLETE 2026-09-14, awaiting sign-off
 
-R1 commits `f89d704`, `69cf490`, `770f6c9`, `3f61ee6`, `16e8227` (pushed).
-Everything in R1 is done or measured except the owed items below. Full record in the master plan's status block; the
-thread's own baton is `docs/audit-2026-09-13/RESUME-PROMPT.md`.
+R1 signed off and deployed; R2 done; **R3 (design system foundations) complete
+and stopped for sign-off**, per the operator's "complete R3 only" instruction.
+Next after sign-off: **R4**. Full record, caveats and routed findings:
+`docs/audit-2026-09-13/RESUME-PROMPT.md`.
 
-**R1d is DEPLOYED** — Render `dep-dak36up42hec73bri7hg` on `46a2def`, live
-2026-09-14 17:50 UTC. Verified in prod: `refreshNflJob games=33`,
-`refreshCfbJob games=146`, the same counts the frontend routes return.
+- **R3:** tokens (`7adb8c4`), `components/ui/` primitives (`a477d60`), charts at
+  real width with a tooltip on every mark and sport surfaces for D4
+  (`a2ba642`), primitives adopted on real cards (`f7dbd4f`), verify fixes
+  (`9fbb74e`). 460/460 tests. 0 AA failures inside the primitives; whole pages
+  still carry legacy failures and sizes that R6-R8 replace.
+- **Worker deployed this run (approved):** `dep-dak6nkad0e5s73b736u0` on
+  `2228a3d` — a provider throttle clock per sport. NFL Propline prices had been
+  32h stale because MLB's 150s job took every shared window. Verified in prod.
+- `python-odds-service/src/season.py` is still not deployed on its own merits
+  (nothing imports it); the deploy above shipped it along with everything else
+  on `main`, which is harmless.
 
-**Owed:**
-- **R1f 2b, Saturday 2026-09-19:** read `refreshCfbJob`'s run log during the
-  live CFB window before touching `gameday.py`.
-- **F-B4** (MLB pitcher game log): today's slate has no MLB pitcher markets, so
-  no pitcher page renders a game log. Retry on a slate that has them.
-- **MLB regular season ends late September:** the R8 MLB live state must be
-  verified before then or on postseason games.
-
-**R2 COMPLETE 2026-09-14 — awaiting operator sign-off.** All 9 rules plus the
-folded-in `cachedRoute` ceiling, pushed through `fcaef2c`; tsc clean, 448/448
-tests. Per-rule commits and notes are in `RESUME-PROMPT.md`. Headlines:
-- **Prop main line** (`b8f80d8`): six adapters picked the top ladder rung
-  (NFL passing yards 149.5 at +2000); one shared rule now picks 223.5.
-- **Pre-start odds filter** (`3a421b6`): game line history splits at the
-  start; KC @ BOS's in-game prices no longer read as pre-game movement.
-- Innings pitched, NBA shots (rim y=1, miss value from the arc), and three
-  source quirks. Two of those premises were wrong on re-check.
-- **Found in the sign-off pass and fixed:** the top bar overflowed a 400px
-  screen on every page (`fcaef2c`).
-- **Cfb/soccer/MLS were serving last season's ranks silently** — fixed
-  earlier in R2 (`4509175`); blocks now say which season they rank.
-
-Non-breaking finds are routed into the phases that fix them (plan Appendix A,
-R2-F1..F11; the rule is now in plan §2). **Next after
-sign-off: R3, design system foundations.**
-
-`python-odds-service/src/season.py` is committed and **not deployed** — no job
-imports it yet, so a deploy would restart the worker queue for nothing.
-Operator has pre-approved the deploy for when one does.
-
-**The ceiling immediately found two real problems nobody had seen:**
-`/api/mlb/team/110` serving a **28-day-old** payload silently, and
-`soccer:snapshot:epl` unable to write its cache at all (statement timeout), so
-it rebuilds on every request and discards the result. Neither is fixed.
-F-B2 and F-B12 were closed by R2; R7 inherits F-B3.
+**Owed:** F-B4 on a slate with pitcher props; MLB live state (R8) before the
+regular season ends late September; a look at `refreshCfbJob` on Saturday
+2026-09-19.
 
 Each R-phase ends with a stop for sign-off (plan §2).
 

@@ -1,8 +1,25 @@
 # Research pages — master plan (Phase H)
 
 **Status: APPROVED by the operator 2026-09-14, as written (including picks G1–G7
-as taken in §3). R0 done. R1 signed off and deployed. R2 COMPLETE 2026-09-14,
-awaiting sign-off (below). Next: R3.**
+as taken in §3). R0 done. R1 signed off and deployed. R2 done (signed off by
+the operator's instruction to proceed). R3 COMPLETE 2026-09-14, awaiting
+sign-off (below). Next after sign-off: R4.**
+
+**R3 COMPLETE 2026-09-14, awaiting sign-off.** Commits `7adb8c4` (3a tokens),
+`a477d60` (3b primitives), `a2ba642` (3c charts and surfaces), `f7dbd4f`
+(primitives adopted on real cards, 3d), `9fbb74e` (fixes from the verify
+pass). Record and caveats in `docs/audit-2026-09-13/RESUME-PROMPT.md`.
+What re-checking the premises changed:
+- The old Tailwind type scale already used the names `label`, `body` and
+  `title` at different sizes; its 266 uses were codemodded by F2's mapping
+  rather than silently resized.
+- `ChartFrame` and every standalone chart scaled through `viewBox`, so "real
+  pixel width" was a change to the frame and five primitives, not a new chart.
+- Golf's spatial grid is proximity by lie, not a place: it takes the `matrix`
+  surface; a green view waits for shot coordinates.
+- Before R1f 2b's NFL check: the "19h ago" prices were two bugs, not the game-day
+  tier — stale prop rungs (`4b4c5c5`) and one Propline throttle clock shared by
+  six sports (`2228a3d`, deployed `dep-dak6nkad0e5s73b736u0`). R2-F1 resolved.
 
 **R2 COMPLETE 2026-09-14, awaiting sign-off.** All 9 rules (`33ce1f2`,
 `8aedacf`, `4509175`, `6ebf081`, `b8f80d8`, `3a421b6`, `94b0f53`, `287d15f`,
@@ -276,7 +293,10 @@ the rebuild.
 - **2b, Saturday 2026-09-19:** during the live window, read `refreshCfbJob`'s
   run log, tier and `prop_odds` rows. Change `gameday.py` only if the tier is
   still cold with kickoffs inside 6h (asks before deploy).
-  - **Routed from R2 (2026-09-14): check NFL in the same pass, on Sunday
+  - **RESOLVED before the check (2026-09-14):** the NFL symptom below was
+    stale prop rungs and a shared Propline throttle clock, fixed in `4b4c5c5`
+    and `2228a3d` (deployed). Kept for the record:
+    **Routed from R2 (2026-09-14): check NFL in the same pass, on Sunday
     2026-09-20.** DEN @ KC's prop prices read "19h ago" at 19:26 UTC with
     kickoff ~4h away, which is the same symptom: a game-day tier that is not
     refreshing. Read `refreshNflJob`'s run log and tier; one `gameday.py` fix
@@ -953,7 +973,9 @@ rebuilt pages use.
 | G2 NBA rim origin and miss value | `nba_shot_events` | R2, R5c |
 | G2 IP summed as decimals | MLB | R2 |
 | G2 ESPN ranks unusable | team ranks | R2 |
-| R2-F1 NFL prop prices 19h old on game day | worker game-day tier | R1f 2b (NFL, Sun 2026-09-20) |
+| R2-F1 NFL prop prices 19h old on game day | worker game-day tier | **resolved** `4b4c5c5` (stale rungs on read) + `2228a3d` (per-sport provider clock, deployed) |
+| R3-F1 NFL matchup "17th of 32" overlapping its label | `StatRankRow` | **resolved** `f7dbd4f`/`9fbb74e` (renders `RankRow`) |
+| R3-F2 801 hand-typed `text-[Npx]` sizes, whole-page AA failures (1.8-12%) and 12-38 text colors per page | legacy cards | R6-R8 (each card rebuilt on the primitives) |
 | R2-F2 yes/no `other` direction disagrees across books | `prop_odds` writer | R5e |
 | R2-F3 stale rungs never removed | `prop_odds` writer | R5e |
 | R2-F4 MLB props on fixed lines, not the main line | MLB adapter | R6 |

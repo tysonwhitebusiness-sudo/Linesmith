@@ -1,4 +1,4 @@
-# Resume prompt — research pages build (2026-09-14, R2 COMPLETE — awaiting sign-off)
+# Resume prompt — research pages build (2026-09-14, R3 COMPLETE — awaiting sign-off)
 
 Paste everything below the line into a fresh session on any account.
 
@@ -7,94 +7,82 @@ Paste everything below the line into a fresh session on any account.
 I'm resuming the research-pages build in this repo. Read these first, **before doing anything**:
 1. `CLAUDE.md`
 2. `docs/CURRENT.md` (the project baton; the research pages track is in "START HERE")
-3. `docs/audit-2026-09-13/research-pages-master-plan.md` (**approved as written 2026-09-14**, the build order). Its status block records what R1 and R2 actually did.
-
-## IN FLIGHT — R3 underway (autonomous run, operator away). Read first.
-
-Operator instruction 2026-09-14: finish the throttle fix, then complete R3
-ONLY, and stop when R3 is done. R2 is treated as signed off by that.
-
-- **Throttle fix DONE + DEPLOYED** (`4b4c5c5` read-side stale rungs; `2228a3d`
-  per-sport provider clock, deploy `dep-dak6nkad0e5s73b736u0` live 21:50 UTC).
-  Verified in prod: `provider-throttle:propline:nfl` stamped 21:53; DEN @ KC
-  Propline rows fresh at 21:53 (were 32h old). R2-F1 is resolved by these.
-- **R3 3a DONE** `7adb8c4` — tokens: F2 type ramp (266 old token uses
-  codemodded by F2's mapping), elevation flipped (paper 94.5 under card 98.5),
-  502 `text-ink-faint/soft` -> `text-ink-muted`, motion tokens, focus ring,
-  Plex Mono dropped. 10 pages x 400/1440: no overflow.
-- **R3 3b primitives DONE** `a477d60` — `components/ui/` (Card, Section +
-  SectionNav, SegmentedToggle, Tabs, SelectBox, Chip + StatusPill, Tooltip,
-  StatValue/StatGrid, RankRow, FactList, VizLegend, DataTable, Avatar,
-  DrillDownPanel, Skeleton/EmptyState/ErrorState, BackLink, useUrlState).
-  Palette now in CSS vars (globals.css :root). Chip.tsx re-exports the
-  primitive; SubjectAvatar renders Avatar (no initials). Rules test:
-  `tests/ui-primitives.test.ts`.
-- **NEXT:** 3b adoption — each primitive on one real card on an existing page
-  (plan's Verify); 3c charts (ResizeObserver real width, hover on every mark,
-  column clamp, dashed ref line, zero line, sport surfaces by adapter field,
-  HeatGrid `aspect` removal); 3d (Links on names/photos, URL state, BackLink,
-  breakpoints); then the R3 verify pass (contrast, focus, 400px, beside G2
-  kit), plan status + batons, STOP.
-- **Routed find (not R3's):** NFL game matchup card's "17th of 32" column
-  overlaps its label at 1440 (hand-typed 9px grid) — pre-existing, goes to R8.
+3. `docs/audit-2026-09-13/research-pages-master-plan.md` (approved 2026-09-14, the build order). Its status block records R1-R3.
 
 ## Where the work is
 
-- **Done:** card audit (A–D), design audit (E, F, F2, G, G2), Phase H (the master plan), R0.
-- **R1 DONE, signed off and deployed** (`dep-dak36up42hec73bri7hg` on `46a2def`).
-- **R2 COMPLETE 2026-09-14: all 9 rules, plus the folded-in `cachedRoute`
-  ceiling, plus a phone-width top-bar fix found in the sign-off pass.
-  AWAITING OPERATOR SIGN-OFF.** Next after sign-off: **R3, design system
-  foundations** (plan §R3).
-- Everything committed and pushed through `fcaef2c`. tsc clean, 448/448 tests.
+- **R1** signed off and deployed. **R2** done (the operator's instruction to
+  proceed to R3 stands as its sign-off).
+- **R3 COMPLETE 2026-09-14, AWAITING OPERATOR SIGN-OFF.** Run autonomously on
+  the instruction "complete R3 only, then stop". Next after sign-off: **R4**
+  (parsers for feeds already fetched, plus two new endpoints).
+- Everything committed and pushed. tsc clean, 460/460 tests.
+- **Worker deployed this run** (operator-approved): `dep-dak6nkad0e5s73b736u0`
+  on `2228a3d`, live 21:50 UTC.
 
-## R2 — what each rule did (commit, and what re-checking the premise changed)
+## What was done before R3 (the operator folded it in first)
 
-| rule | commit | note |
+The NFL "19h ago" find was fixed, not checked on Saturday:
+- `4b4c5c5` — a prop rung its book stopped quoting no longer counts in the
+  main line (Mahomes 223.5 was a dead 00:05 DraftKings quote). Read side only,
+  before the start; the writer-side delete stays in R5e.
+- `2228a3d` — provider throttle gets a clock per sport, and each sport's paced
+  interval is multiplied by the number of sports sharing the budget. One
+  `provider-throttle:propline` clock let refreshTier1 (150s) take every window;
+  NFL's Propline rows were 32h old. Verified in prod: `provider-throttle:propline:nfl`
+  stamped, DEN @ KC Propline rows fresh.
+
+## R3 — what landed
+
+| part | commit | what |
 |---|---|---|
-| `game_result` read module | `33ce1f2` | Raiders 71 raw rows -> 54 games |
-| `cachedRoute` staleness ceiling | `33ce1f2` | `x-cache: expired`, age header, logged event |
-| Season convention | `8aedacf` | TS + `season.py`, drift-tested; `season.py` NOT deployed (nothing imports it; deploy pre-approved for when a job does) |
-| Ranks + early-season fallback | `4509175`, `6ebf081` | season-labelled blocks; `neutral` stat direction |
-| **Prop main line** | `b8f80d8` | `lib/odds/props/mainLine.ts`; six adapters' "highest over price across every line" picked the ladder's top rung (Mahomes 149.5 @ +2000 -> 223.5 @ -112). `prop_odds` is an upsert, so a started game reads pre-game prices from `prop_odds_history`. SharpAPI's yes side is `other`. **MLB does not pick a line from `prop_odds` (fixed lines) and was left alone.** |
-| **Pre-start odds filter** | `3a421b6` | `readGameLineHistory` takes `startsAt`; pre-game = `hours` ending at the start, `inGame` separate (8h cap). `GameDetailData.hero.startsAt` in all 7 adapters via `lib/sports/shared/startsAt.ts`. KC @ BOS 824711: pre ends 22:30, first pitch 23:10, 264 in-game points split out |
-| **Innings pitched** | `94b0f53` | Premise wrong: no TS path summed IP as decimals. Three parsers folded into `lib/sports/mlb/innings.ts` (outs; format at render). Python rollup stays R5 |
-| **NBA shots** | `287d15f` | Premise half-wrong: the code had the rim at y=0, not 5.25 (5.25 is G2's shifted frame). Rim -> y=1; a miss's value from the fitted arc. Curry 2024-25: 62.5% of attempts from three at 39.8% (real ~60%, 39.7%) |
-| **Source quirks** | `3e83af2` | ESPN soccer team schedule needs `fixture=true` (EPL 382: 4 played + 34 fixtures = 38); Understat sorted oldest-first at source; TennisMyLife ordered by round within an event |
-| Top bar at 400px | `fcaef2c` | every page was 31-71px wider than a phone; fixed below `sm` only |
+| 3a tokens | `7adb8c4` | F2 type ramp (display 32 · heading 22 · title 17 · card-title 14 · body 14 · body-sm 13 · label 12 · overline 11; `tick` 10 for charts). The old scale's 266 uses codemodded by F2's mapping. Elevation flipped (paper 94.5% under card 98.5%). 502 `text-ink-faint/soft` -> `text-ink-muted`. Motion tokens and easings, reduced-motion fades, one 2px focus ring, radius 12/16/8, Plex Mono dropped. |
+| 3b primitives | `a477d60` | `components/ui/`: Card, Section + SectionNav, SegmentedToggle, Tabs, SelectBox, Chip + StatusPill, Tooltip, StatValue/StatGrid, RankRow, FactList, VizLegend, DataTable, Avatar, DrillDownPanel, Skeleton/EmptyState/ErrorState, BackLink, useUrlState. Palette in CSS variables (`globals.css` :root); Tailwind points at them. `Chip.tsx` re-exports the primitive; `SubjectAvatar` renders `Avatar` (initials gone app-wide). Rules test `tests/ui-primitives.test.ts`. |
+| 3c charts | `a2ba642` | `useChartWidth`: charts draw at real pixel width (ChartFrame + 5 primitives). `MarkTip` replaces every SVG `<title>` (hover, focus, tap). Column chart clamp, dashed prop line, zero lines, shared crosshair. **Sport surfaces (D4):** `SpatialGridRole.surface` + `measure`, set by each adapter; `SpatialSurface` draws zone / field / halfCourt / rink / pitch / matrix with each sport's real banding; share data on a single-hue ramp. |
+| adoption, 3d | `f7dbd4f` | LineMovementCard on Card + VizLegend + DrillDownPanel (sortable DataTable); PlayerDetail market Tabs, window Chips, gamelog SegmentedToggle, StatusPill; AnalyticsCard -> Card; Game context -> FactList; StatRankRow -> RankRow; weather -> StatGrid; SelectBox in the NFL matchup picker; GameDetail SectionNav + `?records=` via useUrlState; NFL player page BackLink ("DEN @ KC") + ErrorState. Breakpoints xs 400 / wide 1440. |
+| verify fixes | `9fbb74e` | SectionNav bleed opt-in (overflowed at 400); closed DrillDownPanel `inert` (was Tab-reachable); StatusPill wraps (tennis page 60px over at 400); RankRow track 48px floor (dot sat on labels in half-width columns). |
 
-**Sign-off render pass (done):** 11 pages (MLB/NFL/CFB/EPL/tennis player and
-game pages, NFL and NBA team pages) at 1440 and 400px — no 404s, no NaN or
-undefined text, no horizontal overflow after `fcaef2c`. NBA/NHL player pages
-show "No tracked markets" (off-season, expected).
+**Verify pass (done):** 6 pages x 400/1440, no overflow, no page errors.
+Keyboard focus shows the ring and opens tooltips; SectionNav writes the hash;
+Records scope writes `?records=`; market tabs follow arrow keys and `?market=`;
+drill-down opens a sortable table, closes on Escape, returns focus. Contrast:
+**0 AA failures inside the primitives** on 5 pages. Screenshots in
+`.playwright-mcp/r3v-*.png`, the kit's in `r3v-g2-game-1440.png`.
 
-## Correction to the previous handoff
+## R3 caveats — honest, and where each goes
 
-The "tennis/soccer nested pages 404" logged under the prop main line was **a
-broken dev-server state, not a code bug**. A fresh `next dev` serves every one
-of those routes. If a page 404s in dev, restart the server before debugging.
+- **Whole pages are not yet at F2's targets.** AA failures per page: NFL game
+  18/1018, NFL player 24/457, NBA team 86/716 (F2 measured 43% before R3). Text
+  colors per page 12-38 against a target of 8. 801 hand-typed `text-[Npx]`
+  sizes remain. All of it is legacy card code: **R6-R8 rebuild those cards on
+  the primitives** (ledger R3-F2).
+- **Adopted once, not everywhere,** per R3's own verify step. `Section` (the
+  wrapper) is built but the GameDetail adoption used plain `id` wrappers under
+  `SectionNav`; R6 uses `Section` for the rebuilt pages.
+- **3d "every name, photo and logo is a Link"**: `Avatar href` and `BackLink`
+  exist and the hero already linked teams; linking every name app-wide happens
+  as pages rebuild (R6-R8). Game state and compare target in the URL are R8/R9.
+- **Not rendered in their triggering state:** the NFL player page ErrorState
+  (needs a failing fetch) and the LiveLineTrackerCard SelectBox (behind login).
+- **NBA and NHL surfaces** were checked by static render (off-season pages are
+  empty); golf is `matrix` until shot coordinates and a live tournament.
 
-## Findings from R2 — routed to the phase that fixes them
+## Findings routed (R2-F1..F11, R3-F1..F2)
 
-None breaks the app. Each is written into its receiving phase's section of the
-master plan and has a row (R2-F1..F11) in its Appendix A ledger:
-
-| find | goes to |
-|---|---|
-| NFL prop prices 19h old on game day | **R1f 2b** — check NFL on Sun 2026-09-20 alongside CFB |
-| Yes/no `other` direction disagrees across books; stale rungs never removed | **R5e** (prop odds writer) |
-| MLB props on fixed lines; line movement pinned to the modal line; in-play price chip; EPL snapshot cache cannot write | **R6** |
-| MLB hooks fire on other sports' team pages; `/api/mlb/team/110` 28-day-old payload | **R7** |
-| Scan pages overflow at 400px | no R-phase (Scan out of scope) — parked in `CURRENT.md` |
-| Huge old `snapshot_cache` rows | model track Phase 5, `CURRENT.md` |
+R2-F1 and R3-F1 are **resolved**. The rest stand as routed in the plan's
+Appendix A: R5e (yes/no `other` direction; the writer deleting stale rungs —
+the read-side guard is in), R6 (MLB fixed prop lines; line-movement pinned to
+the modal line; in-play price chip; EPL snapshot cache), R7 (MLB hooks on other
+sports' team pages; `/api/mlb/team/110` stale payload), parked (Scan at 400px),
+model track Phase 5 (huge `snapshot_cache` rows), R6-R8 (R3-F2 above).
 
 ## Still owed from R1
 
-- **R1f 2b is Saturday 2026-09-19** (live CFB window): read `refreshCfbJob`'s
-  run log before touching `gameday.py`.
 - **F-B4 (MLB pitcher game log)**: retry on a slate with pitcher props.
 - **MLB has no `/api/mlb/game/{id}`** for past games — R8.
 - **MLB regular season ends late September**: R8's MLB live state before then.
+- R1f 2b's CFB check (Saturday 2026-09-19) is still worth a look at
+  `refreshCfbJob`'s log; its NFL half was resolved above.
 
 ## First reply
 
