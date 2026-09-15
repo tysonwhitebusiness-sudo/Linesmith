@@ -1,3 +1,4 @@
+import { fetchEspnSummary } from '@/lib/sports/espn/summary';
 /**
  * Football (NFL + CFB) live in-game detail — shared parser, same
  * "one ESPN shape, two leagues" principle as `teamSportEspn.ts`'s own
@@ -181,17 +182,9 @@ function topPasserFor(playerGroups: RawPlayerGroup[] | undefined, teamId: string
 }
 
 export async function fetchFootballLiveGame(espnLeague: 'nfl' | 'college-football', eventId: string): Promise<FootballLiveGameDetail | null> {
-  let res: Response;
-  try {
-    res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/football/${espnLeague}/summary?event=${eventId}`, {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch {
-    return null;
-  }
-  if (!res.ok) return null;
-  const json = (await res.json()) as RawSummary;
+  // R4: the one shared summary fetch (lib/sports/espn/summary.ts).
+  const json = await fetchEspnSummary<RawSummary>(`football/${espnLeague}`, eventId);
+  if (!json) return null;
 
   const comp = json.header?.competitions?.[0];
   const away = comp?.competitors?.find((c) => c.homeAway === 'away');

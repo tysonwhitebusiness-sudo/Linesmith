@@ -1,3 +1,4 @@
+import { fetchEspnSummary } from '@/lib/sports/espn/summary';
 /**
  * Real live game state for NFL's Game Detail hero card — the football-shaped
  * equivalent of MLB's `BasesDiamond`/`InningStrip` (down & distance, field
@@ -66,10 +67,9 @@ interface EspnSummaryResponse {
  * football-shaped live strip.
  */
 export async function getNflLiveGameState(espnEventId: string): Promise<GameSituationStrip | null> {
-  const res = await fetch(`${BASE}/summary?event=${espnEventId}`, { cache: 'no-store' });
-  if (!res.ok) return null;
-
-  const json = (await res.json()) as EspnSummaryResponse;
+  // R4: the one shared summary fetch (lib/sports/espn/summary.ts).
+  const json = await fetchEspnSummary<EspnSummaryResponse>('football/nfl', espnEventId);
+  if (!json) return null;
   const competition = json.header?.competitions?.[0];
   if (!competition) return null;
 

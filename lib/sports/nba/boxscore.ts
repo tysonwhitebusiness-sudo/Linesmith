@@ -25,6 +25,7 @@
  */
 
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
+import { fetchEspnSummary } from '@/lib/sports/espn/summary';
 
 export { nbaPositionGroup, type NbaPositionGroup } from './positionGroup';
 
@@ -96,20 +97,9 @@ export async function fetchNbaBoxscore(gameId: string): Promise<NbaBoxscore | nu
     return JSON.parse(cached.payload) as NbaBoxscore;
   }
 
-  let res: Response;
-  try {
-    res = await fetch(`${ESPN_BASE}/summary?event=${gameId}`, { cache: 'no-store', signal: AbortSignal.timeout(15_000) });
-  } catch {
-    return cached ? (JSON.parse(cached.payload) as NbaBoxscore) : null;
-  }
-  if (!res.ok) return cached ? (JSON.parse(cached.payload) as NbaBoxscore) : null;
-
-  let json: RawSummaryResponse;
-  try {
-    json = (await res.json()) as RawSummaryResponse;
-  } catch {
-    return cached ? (JSON.parse(cached.payload) as NbaBoxscore) : null;
-  }
+  // R4: the one shared summary fetch (lib/sports/espn/summary.ts).
+  const json = await fetchEspnSummary<RawSummaryResponse>('basketball/nba', gameId);
+  if (!json) return cached ? (JSON.parse(cached.payload) as NbaBoxscore) : null;
 
   const teamGroups = json.boxscore?.players ?? [];
   if (teamGroups.length === 0) return cached ? (JSON.parse(cached.payload) as NbaBoxscore) : null;

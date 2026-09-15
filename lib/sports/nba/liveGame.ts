@@ -1,3 +1,4 @@
+import { fetchEspnSummary } from '@/lib/sports/espn/summary';
 /**
  * NBA live in-game detail — hero card's Live tab data source, built on
  * ESPN's public summary endpoint (`nba/espn.ts`'s `fetchGameSummary` already
@@ -113,14 +114,9 @@ function statValue(names: string[], stats: string[], label: string): number {
 }
 
 export async function fetchNbaLiveGame(eventId: string): Promise<NbaLiveGameDetail | null> {
-  let res: Response;
-  try {
-    res = await fetch(`${ESPN_BASE}/summary?event=${eventId}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
-  } catch {
-    return null;
-  }
-  if (!res.ok) return null;
-  const json = (await res.json()) as RawSummary;
+  // R4: the one shared summary fetch (lib/sports/espn/summary.ts).
+  const json = await fetchEspnSummary<RawSummary>('basketball/nba', eventId);
+  if (!json) return null;
 
   const comp = json.header?.competitions?.[0];
   const away = comp?.competitors?.find((c) => c.homeAway === 'away');

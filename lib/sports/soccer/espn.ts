@@ -9,6 +9,7 @@
 import type { SoccerLeague } from '@/lib/core/types';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import { normalizeName } from '@/lib/odds/screenshotImport';
+import { fetchEspnSummary } from '@/lib/sports/espn/summary';
 
 export const ESPN_LEAGUE_SLUG: Record<SoccerLeague, string> = { epl: 'eng.1', mls: 'usa.1' };
 
@@ -271,18 +272,9 @@ interface RawSummaryResponse {
 export async function fetchGameSummary(league: SoccerLeague, eventId: string): Promise<SoccerGameSummary> {
   const slug = ESPN_LEAGUE_SLUG[league];
   const empty: SoccerGameSummary = { game: null, pregameLine: null, keyEvents: [], playerStatsByAthleteId: {} };
-  let res: Response;
-  try {
-    res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}/summary?event=${eventId}`, {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch {
-    return empty;
-  }
-  if (!res.ok) return empty;
-
-  const json = (await res.json()) as RawSummaryResponse;
+  // R4: the one shared summary fetch (lib/sports/espn/summary.ts).
+  const json = await fetchEspnSummary<RawSummaryResponse>(`soccer/${slug}`, eventId);
+  if (!json) return empty;
 
   const comp = json.header?.competitions?.[0];
   const homeC = comp?.competitors?.find((c) => c.homeAway === 'home');

@@ -16,6 +16,7 @@
 
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import { fetchFbsTeamNames, matchCfbdTeamName } from './cfbd';
+import { fetchEspnSummary } from '@/lib/sports/espn/summary';
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/football/college-football';
 
@@ -215,15 +216,9 @@ interface RawSummaryResponse {
 
 export async function fetchGameSummary(eventId: string): Promise<CfbGameSummary> {
   const empty: CfbGameSummary = { game: null, pregameLine: null };
-  let res: Response;
-  try {
-    res = await fetch(`${ESPN_BASE}/summary?event=${eventId}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
-  } catch {
-    return empty;
-  }
-  if (!res.ok) return empty;
-
-  const json = (await res.json()) as RawSummaryResponse;
+  // R4: the one shared summary fetch (lib/sports/espn/summary.ts).
+  const json = await fetchEspnSummary<RawSummaryResponse>('football/college-football', eventId);
+  if (!json) return empty;
   const comp = json.header?.competitions?.[0];
   const homeC = comp?.competitors?.find((c) => c.homeAway === 'home');
   const awayC = comp?.competitors?.find((c) => c.homeAway === 'away');

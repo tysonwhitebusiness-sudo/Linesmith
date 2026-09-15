@@ -1,3 +1,6 @@
+import { fetchEspnSummary } from '@/lib/sports/espn/summary';
+import { ESPN_LEAGUE_SLUG } from './espn';
+import type { SoccerLeague } from '@/lib/core/types';
 /**
  * Soccer live in-game detail — hero card's Live tab data source, built on
  * ESPN's public summary endpoint (the same family `soccer/espn.ts` already
@@ -70,14 +73,14 @@ interface RawSummary {
 }
 
 export async function fetchSoccerLiveGame(league: string, eventId: string): Promise<SoccerLiveGameDetail | null> {
-  let res: Response;
-  try {
-    res = await fetch(`${ESPN_BASE}/${league}/summary?event=${eventId}`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
-  } catch {
-    return null;
-  }
-  if (!res.ok) return null;
-  const json = (await res.json()) as RawSummary;
+  // The route hands over the APP's league key ('epl', 'mls'); ESPN's path wants
+  // its own slug ('eng.1', 'usa.1'). Passing 'epl' straight through 404'd at
+  // ESPN on every call, so the soccer live tab never loaded (found in R4).
+  // An ESPN slug passed directly is still accepted.
+  const slug = ESPN_LEAGUE_SLUG[league as SoccerLeague] ?? league;
+  // R4: the one shared summary fetch (lib/sports/espn/summary.ts).
+  const json = await fetchEspnSummary<RawSummary>(`soccer/${slug}`, eventId);
+  if (!json) return null;
 
   const comp = json.header?.competitions?.[0];
   const away = comp?.competitors?.find((c) => c.homeAway === 'away');
