@@ -2,7 +2,7 @@
  * Player bios from each league's own athlete endpoint — R6.1a.
  *
  * Pure functions of the raw JSON, tested on saved payloads
- * (`tests/player-bio.test.ts`). The fetches are in `playerBioServer.ts`. The
+ * (`tests/player-research.test.ts`). The fetches are in `playerBioServer.ts`. The
  * three sources are the ones the G2 datasets were built from
  * (`docs/design/phase-g2/tools/build_player_data.py`), so the hero shows the
  * same identity the mockup does:
@@ -64,7 +64,11 @@ export function parseMlbPerson(json: J | null, fetchedAt: string): PlayerBio | n
   const rehab = entries.find((e) => e.isActive && e.team?.parentOrgId != null && /rehab/i.test(e.status?.description ?? ''));
   const statusCode = str(club?.status?.code);
   const injured = statusCode != null && /^D\d+$/.test(statusCode);
-  const teamId = num(p.currentTeam?.id);
+  // `currentTeam` is where he is playing today, which for a rehab assignment is
+  // the affiliate (Clarke Schmidt came back as the Somerset Patriots). The
+  // page is about his club, so the MLB-level roster row wins.
+  const teamId = num(club?.team?.id) ?? num(p.currentTeam?.id);
+  const teamName = club?.team ? str(club.team.name) : str(p.currentTeam?.name);
   const bats = str(p.batSide?.code);
   const throws = str(p.pitchHand?.code);
   return {
@@ -74,7 +78,7 @@ export function parseMlbPerson(json: J | null, fetchedAt: string): PlayerBio | n
     position: str(p.primaryPosition?.name),
     positionAbbr: str(club?.position?.abbreviation) ?? str(p.primaryPosition?.abbreviation),
     team: teamId != null
-      ? { id: String(teamId), name: str(p.currentTeam?.name), abbr: club?.team?.id === teamId ? str(club.team.abbreviation) : null, logoUrl: `https://www.mlbstatic.com/team-logos/${teamId}.svg` }
+      ? { id: String(teamId), name: teamName, abbr: club?.team?.id === teamId ? str(club.team.abbreviation) : null, logoUrl: `https://www.mlbstatic.com/team-logos/${teamId}.svg` }
       : null,
     headshotUrl: `https://img.mlbstatic.com/mlb-photos/image/upload/w_213,q_auto:best/v1/people/${p.id}/headshot/67/current`,
     age: num(p.currentAge),

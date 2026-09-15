@@ -27,14 +27,15 @@
  * every component that reads `candidate.history` keeps working exactly as
  * it always did; none of them needed to change.
  *
- * The full, untrimmed version is still recoverable on demand beyond the
- * recent window — see app/api/mlb/player-gamelog/route.ts, which reads the
- * untrimmed copy the caller persists before any of this runs.
+ * Older games keep only `opponentId`/`isHome`, which is all the prop block's
+ * scope chips need. The full box score of every game now comes from
+ * `player_game_history` through `/api/player-history` (R6.1a), which retired
+ * the untrimmed `mlb:full-raw:<date>` copy and the route that read it.
  */
 
 import type { PickCandidate, HistoryEntry } from '../../core/types';
 
-/** Matches PlayerDetail.tsx's default (untoggled) "last 15 games" view, plus a small buffer. */
+/** Recent games keep their full box score for the prop block's chart; older ones need only opponent and venue. */
 const RECENT_RAW_WINDOW = 20;
 
 export interface SharedGamelogEntry {
@@ -57,9 +58,7 @@ function trimmedRaw(raw: unknown, keepFull: boolean): unknown {
  * gamelog (first candidate seen per subject wins — raw/periodLabel don't
  * vary by dimension for the same game) and returns candidates reduced to
  * their dimension-specific fields only. Must run on the FULL, untrimmed
- * candidates (i.e. before this module existed) — the caller should persist
- * that untrimmed copy first if app/api/mlb/player-gamelog's recovery path
- * needs it.
+ * candidates (i.e. before this module existed).
  */
 export function dedupeHistoryForList(candidates: PickCandidate[]): { candidates: PickCandidate[]; playerGamelogs: PlayerGamelogs } {
   const playerGamelogs: PlayerGamelogs = {};

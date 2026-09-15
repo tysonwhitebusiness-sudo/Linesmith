@@ -18,12 +18,10 @@ import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { tennisResearchSpec } from './playerResearchSpec';
 import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
-import { buildAnalyticsRoles } from '@/lib/sports/shared/analyticsRoles';
-import { directionMark } from '@/components/MarketLabel';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import type { PropOddsRow } from '@/lib/db/client';
-import type { ChipDef, GamelogRow, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toPredicateBinarySplit } from '@/lib/sports/shared/predicateSplit';
 import type { OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
@@ -32,18 +30,10 @@ function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown>
   return (entry.raw ?? {}) as Record<string, unknown>;
 }
 
-const GAMELOG_COLUMNS = [
-  { key: 'aces', label: 'Aces' },
-  { key: 'gamesWon', label: 'Gms W' },
-  { key: 'gamesLost', label: 'Gms L' },
-];
-
 export interface TennisPlayerDetailScope {
   lineOffset: number;
   opponentOnly: boolean;
   lastN: number | 'all';
-  showAllGames: boolean;
-  kpiScope: 'season' | 'l15';
 }
 
 export interface TennisPlayerDetailInput {
@@ -213,24 +203,6 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
           wantOver,
         };
 
-  const columns = GAMELOG_COLUMNS.filter((c) => scoped.some((e) => rawOf(e)[c.key] != null));
-  const gamelogSource = [...scoped].reverse().slice(0, scope.showAllGames ? undefined : 15);
-  const rows: GamelogRow[] = gamelogSource.map((entry, index) => {
-    const raw = rawOf(entry);
-    const opponent = raw.opponentName as string | undefined;
-    const values: Record<string, number | string | null | undefined> = {};
-    for (const col of columns) {
-      const v = raw[col.key];
-      values[col.key] = v == null ? null : (v as number);
-    }
-    return {
-      key: `${entry.period}-${index}`,
-      periodLabel: entry.periodLabel ?? `Match #${entry.period}`,
-      opponentLabel: opponent ? `vs ${opponent}` : 'Opponent unknown',
-      values,
-    };
-  });
-
   const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
   const propOddsBoard: PropOddsBoardProps | null =
     activeMarketKey && propOdds
@@ -238,29 +210,8 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
       : null;
 
 
-  // ---- Phase 6.16: the four analytics cards ----
-  //
-  // ONE CALL FOR ALL FOUR, identical in every sport's adapter, because every
-  // one is a function of this candidate's own history and line. See
-  // `analyticsRoles.ts` for why they are shared rather than per-sport.
-  //
-  // `peers` COMES FROM `snapshot.candidates`, NOT the `candidates` argument.
-  // The argument is already scoped to this subject, so using it would compare
-  // the player against himself and the pool would be one. That exact mistake
-  // was made once on tennis's `opponentUnit` and caught only by opening the
-  // page -- same shape, same fix.
-  const analyticsRoles = buildAnalyticsRoles({
-    history: active.history,
-    line: active.line,
-    wantOver: directionMark(active.category) !== 'U',
-    statLabel: active.dimensionLabel ?? active.dimension,
-    peers: (snapshot?.candidates ?? [])
-      .filter((c) => c.dimension === active.dimension && c.subjectId !== active.subjectId)
-      .map((c) => ({ history: c.history })),
-  });
 
   return {
-    ...analyticsRoles,
     opponentUnit,
     binarySplit,
     careerH2H,
@@ -283,7 +234,6 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
     windows,
     roundScores: null,
     chart,
-    gamelog: scoped.length > 0 || active.history.length > 0 ? { columns, rows, cardBadges: columns } : null,
     propOddsBoard,
     model: null,
     hitterStats: null,

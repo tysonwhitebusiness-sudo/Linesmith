@@ -31,16 +31,15 @@ import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { soccerResearchSpec } from './playerResearchSpec';
 import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
-import { buildAnalyticsRoles } from '@/lib/sports/shared/analyticsRoles';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import type { PropOddsRow } from '@/lib/db/client';
-import { marketText, directionMark } from '@/components/MarketLabel';
+import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
 import { MIDDOT, fmt } from '@/components/charts/tokens';
 import { toRoleStat, type OpponentUnitRole, type SpatialGridRole, type UsageMixRole } from '@/lib/sports/shared/playerRoles';
 import type { ShotGrid } from '@/lib/sports/soccer/understatShots';
-import type { ChipDef, GamelogRow, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, SummaryStat, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { isTeamNameMatch } from '@/lib/sports/shared/teamNameMatch';
 
@@ -72,18 +71,10 @@ function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown>
   return (entry.raw ?? {}) as Record<string, unknown>;
 }
 
-const GAMELOG_COLUMNS = [
-  { key: 'goals', label: 'G' },
-  { key: 'shots', label: 'Sh' },
-  { key: 'assists', label: 'A' },
-];
-
 export interface SoccerPlayerDetailScope {
   lineOffset: number;
   opponentOnly: boolean;
   lastN: number | 'all';
-  showAllGames: boolean;
-  kpiScope: 'season' | 'l15';
 }
 
 export interface SoccerPlayerDetailInput {
@@ -280,37 +271,6 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
           logoFor,
         };
 
-  // ---- Gamelog: real goals/shots/assists per match (whichever were captured on `raw`) ----
-  const columns = GAMELOG_COLUMNS.filter((c) => scoped.some((e) => rawOf(e)[c.key] != null));
-  const gamelogSource = [...scoped].reverse().slice(0, scope.showAllGames ? undefined : 15);
-  const rows: GamelogRow[] = gamelogSource.map((entry, index) => {
-    const raw = rawOf(entry);
-    const oppAbbr = raw.opponentAbbr as string | undefined;
-    const isHome = raw.isHome === true;
-    const values: Record<string, number | string | null | undefined> = {};
-    for (const col of columns) {
-      const v = raw[col.key];
-      values[col.key] = v == null ? null : (v as number);
-    }
-    return {
-      key: `${entry.period}-${index}`,
-      periodLabel: entry.periodLabel ?? `Game #${entry.period}`,
-      opponentLogoUrl: raw.opponentLogoUrl as string | undefined,
-      opponentLabel: oppAbbr ? `${isHome ? 'vs' : '@'} ${oppAbbr}` : 'Opponent unknown',
-      values,
-    };
-  });
-
-  // Real summary strip (2026-08-24) — top-of-card headline stats, scoped by
-  // the existing KPI-scope toggle.
-  const kpiSource = scope.kpiScope === 'l15' ? scoped.slice(-15) : scoped;
-  const summaryStrip: SummaryStat[] | undefined =
-    kpiSource.length > 0 && columns.length > 0
-      ? columns.slice(0, 4).map((col) => ({
-          label: col.label,
-          display: String(kpiSource.reduce((s, e) => s + (Number(rawOf(e)[col.key]) || 0), 0)),
-        }))
-      : undefined;
 
   const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
   const propOddsBoard: PropOddsBoardProps | null =
@@ -407,29 +367,8 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
       : null;
 
 
-  // ---- Phase 6.16: the four analytics cards ----
-  //
-  // ONE CALL FOR ALL FOUR, identical in every sport's adapter, because every
-  // one is a function of this candidate's own history and line. See
-  // `analyticsRoles.ts` for why they are shared rather than per-sport.
-  //
-  // `peers` COMES FROM `snapshot.candidates`, NOT the `candidates` argument.
-  // The argument is already scoped to this subject, so using it would compare
-  // the player against himself and the pool would be one. That exact mistake
-  // was made once on tennis's `opponentUnit` and caught only by opening the
-  // page -- same shape, same fix.
-  const analyticsRoles = buildAnalyticsRoles({
-    history: active.history,
-    line: active.line,
-    wantOver: directionMark(active.category) !== 'U',
-    statLabel: active.dimensionLabel ?? active.dimension,
-    peers: (snapshot?.candidates ?? [])
-      .filter((c) => c.dimension === active.dimension && c.subjectId !== active.subjectId)
-      .map((c) => ({ history: c.history })),
-  });
 
   return {
-    ...analyticsRoles,
     opponentUnit,
     usageMix,
     careerH2H,
@@ -455,7 +394,6 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     windows,
     roundScores: null,
     chart,
-    gamelog: scoped.length > 0 || active.history.length > 0 ? { columns, rows, summaryStrip, cardBadges: columns } : null,
     propOddsBoard,
     model: null,
     hitterStats: null,

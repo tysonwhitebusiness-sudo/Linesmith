@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useSnapshot } from '@/components/useSnapshot';
 import { useSlip } from '@/components/useSlip';
@@ -9,9 +9,9 @@ import { usePickHistoryModelData, needsModelDataMerge, mergeModelData } from '@/
 import { TopBar } from '@/components/TopBar';
 import { GamesStrip } from '@/components/GamesStrip';
 import { PlayerDetail } from '@/components/PlayerDetail';
+import { sameSubject } from '@/lib/sports/shared/playerResearchShapes';
 import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import SlipModal from '@/components/SlipModal';
-import { BrandedLoader } from '@/components/BrandedLoader';
 import type { SlateGame } from '@/lib/odds/matching';
 import { BackLink, ErrorState } from '@/components/ui';
 
@@ -42,10 +42,6 @@ export default function NflPlayerDetailPage() {
   const modelData = usePickHistoryModelData(sport, snapshot?.fetchedAt ?? null, shouldMergeModelData);
 
   // See the MLB player page's identical block for why this exists.
-  const [detailReady, setDetailReady] = useState(false);
-  useEffect(() => {
-    setDetailReady(false);
-  }, [playerId]);
 
   const games: SlateGame[] = useMemo(
     () => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as SlateGame[],
@@ -60,7 +56,7 @@ export default function NflPlayerDetailPage() {
   // two games' dimensions under the same market tabs (which produced
   // duplicate-key market tabs before this scoping existed).
   const mine = useMemo(() => {
-    let all = (snapshot?.candidates ?? []).filter((c) => c.subjectId === playerId);
+    let all = (snapshot?.candidates ?? []).filter((c) => sameSubject(c.subjectId, playerId));
     if (all.length === 0) return all;
     if (shouldMergeModelData) all = mergeModelData(all, modelData.rowsByKey);
     const kickoffByGamePk = new Map(games.map((g) => [String(g.gamePk), g.firstPitch]));
@@ -119,36 +115,24 @@ export default function NflPlayerDetailPage() {
 
       <main className="px-3 py-3">
         {error ? (
-          // R3: human text and a retry, never the raw error string (D5). Whatever
-          // the page already had stays on screen below it.
-          <ErrorState className="mb-3" message="We couldn't refresh this player's data." onRetry={refresh} />
+          // R3: human text and a retry, never the raw error string (D5).
+          <ErrorState className="mb-3" message="We couldn't refresh today's markets for this player." onRetry={refresh} />
         ) : null}
-
-        {loading && mine.length === 0 ? (
-          <BrandedLoader size="page" />
-        ) : mine.length === 0 ? (
-          <div className="lb-card p-8 text-center text-sm text-ink-muted">
-            No tracked markets for this player on today&apos;s slate.
-          </div>
-        ) : (
-          <>
-            {!detailReady && <BrandedLoader size="page" />}
-            <div style={{ display: detailReady ? 'block' : 'none' }}>
-              <PlayerDetail
-                candidates={mine}
-                snapshot={snapshot}
-                odds={odds.result}
-                market={market}
-                onMarketChange={(next) =>
-                  router.replace(`/nfl/player/${encodeURIComponent(playerId)}?market=${encodeURIComponent(next)}`)
-                }
-                onAdd={(candidate, odds) => slip.addPick(candidate, eventContext, odds)}
-                addedKeys={slip.pickedKeys}
-                onReadyChange={setDetailReady}
-              />
-            </div>
-          </>
-        )}
+        {/* R6.1a: the player is the page. It renders with or without a market;
+            the prop block is one section of it and says why it is empty. */}
+        <PlayerDetail
+          candidates={mine}
+          snapshot={snapshot}
+          odds={odds.result}
+          market={market}
+          onMarketChange={(next) =>
+            router.replace(`/nfl/player/${encodeURIComponent(playerId)}?market=${encodeURIComponent(next)}`)
+          }
+          onAdd={(candidate, odds) => slip.addPick(candidate, eventContext, odds)}
+          addedKeys={slip.pickedKeys}
+          subject={{ sport, id: playerId, name: mine[0]?.subjectName ?? null }}
+          marketsLoading={loading && mine.length === 0}
+        />
       </main>
 
       <SlipModal

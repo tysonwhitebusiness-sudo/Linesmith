@@ -90,6 +90,8 @@ export interface PlayerHistory {
   games: PlayerGame[];
   /** The newest `fetched_at` among the rows: when the history was last written. */
   asOf: string | null;
+  /** Where the results and scores came from, for the Sources section. */
+  resultsSource: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,4 +196,9 @@ export interface PlayerResearchData {
   gameLog: { columns: ResearchColumn[]; rows: ResearchLogRow[] };
   /** Seasons in the history, labelled per the sport's convention, newest first. */
   seasonLabels: Array<{ season: number; label: string }>;
+}
+
+/** A page URL may carry the namespaced subject id or the bare athlete id; both name the same player. */
+export function sameSubject(subjectId: string, urlId: string): boolean {
+  return subjectId === urlId || athleteIdOf(subjectId) === athleteIdOf(urlId);
 }

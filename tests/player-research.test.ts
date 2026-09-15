@@ -37,6 +37,7 @@ test('MLB bio: the injured list is a roster status, and a rehab assignment is na
   const schmidt = parseMlbPerson(read('tests/fixtures/bio/mlb-injured.json'), AT)!;
   assert.equal(schmidt.name, 'Clarke Schmidt');
   assert.equal(schmidt.injury?.status, 'Injured 60-Day');
+  assert.equal(schmidt.team?.name, 'New York Yankees', 'his club, not the rehab affiliate StatsAPI calls his current team');
   assert.match(schmidt.injury?.detail ?? '', /Rehab assignment with Somerset Patriots/);
 });
 
@@ -117,7 +118,7 @@ function historyFrom(slug: string, sport: PlayerHistory['sport']): PlayerHistory
     eventId: String(g.event), date: g.date, season: g.season, teamId: g.team, opponentId: g.opp, isHome: g.home, stats: g.stats,
     result: g.result ?? null, teamScore: g.pf ?? null, opponentScore: g.pa ?? null, opponent: { name: null, abbr: g.oppAbbr ?? null, logoUrl: null },
   }));
-  return { sport, athleteId: slug, games, asOf: null };
+  return { sport, athleteId: slug, games, asOf: null, resultsSource: 'test' };
 }
 
 test('builder: a pitcher opens as a pitcher, innings sum as outs and print as thirds', () => {
@@ -134,7 +135,7 @@ test('builder: a pitcher opens as a pitcher, innings sum as outs and print as th
   assert.equal(data.seasons.rows.at(-1)?.label, 'All held');
   assert.deepEqual(data.seasons.rows.slice(0, -1).map((r) => r.games), [2026, 2025, 2024].map((s) => h.games.filter((g) => g.season === s).length));
   assert.equal(data.gameLog.rows[0].date >= data.gameLog.rows.at(-1)!.date, true, 'log is newest first');
-  assert.equal(data.gameLog.rows[0].href, `/mlb/game/${data.gameLog.rows[0].eventId}`);
+  assert.equal(data.gameLog.rows[0].href, null, 'MLB has no past-game page until R8, so no dead link');
 });
 
 test('builder: one NFL game into a season opens on last season, and says why', () => {

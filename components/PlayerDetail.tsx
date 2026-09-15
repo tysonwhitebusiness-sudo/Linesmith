@@ -1,13 +1,14 @@
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
-import { Chip, SegmentedToggle as ToggleGroup, StatusPill, Tabs } from './ui';
-import Link from 'next/link';
-import type { PickCandidate, SportSnapshot, HistoryEntry } from '@/lib/core/types';
+import { useEffect, useMemo, useState } from 'react';
+import { Chip, EmptyState, Section, SectionNav, SkeletonLines, StatusPill, Tabs } from './ui';
+import { usePlayerBio, usePlayerHistory } from './usePlayerResearch';
+import { GameLogCard, PlayerHero, SeasonsCard, SourcesCard, SplitsCard, TrendsCard, asOfText } from './PlayerResearchSections';
+import { athleteIdOf, historySportFor, type PlayerBio, type PlayerHistory, type PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
+import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
 import { entryValue, isOk, type WindowedStat } from '@/lib/core/windowedStat';
 import { compareInk, gradientCardStyle, deltaGradientStyle, heatFill, toneFill } from '@/lib/ui/heat';
 import { markFor, TONE_CLASS } from '@/lib/ui/marks';
-import { withAlpha } from '@/lib/sports/mlb/teamColors';
 import { useLiveGame } from './useLiveGame';
 import { useTeamStatcast } from './useTeamStatcast';
 import { useMlbPitchProfile } from './useMlbPitchProfile';
@@ -21,7 +22,6 @@ import { candidateCategoryToSide, candidateDimensionToMarketKey } from '@/lib/od
 import { LineMovementCard } from './LineMovementCard';
 import { StatRankRow } from './StatRankRow';
 import { PlayerRoleMainSections, PlayerRoleRailSections } from './PlayerRoleSections';
-import { PlayerAnalyticsMainSections, PlayerAnalyticsRailSections } from './PlayerAnalyticsSections';
 import type { UnifiedLinesResult } from '@/lib/odds/types';
 import { SubjectAvatar, TeamLogo, mlbHeadshotUrl } from './SubjectAvatar';
 import { marketText, directionMark } from './MarketLabel';
@@ -41,17 +41,16 @@ import type { PlayerSeasonLog } from '@/lib/sports/golf/playerSeason';
 import type { GolfCategory } from '@/lib/sports/golf/adapter';
 import {
   toPlayerDetailData as toMlbPlayerDetailData,
-  type GamelogColumnDef,
-  type GamelogRow,
+  toPlayerResearchData as toMlbPlayerResearchData,
   type PlayerDetailData,
 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
-import { toPlayerDetailData as toGolfPlayerDetailData } from '@/lib/sports/golf/adapters/playerDetailAdapter';
-import { toPlayerDetailData as toNflPlayerDetailData } from '@/lib/sports/nfl/adapters/playerDetailAdapter';
-import { toPlayerDetailData as toSoccerPlayerDetailData } from '@/lib/sports/soccer/adapters/playerDetailAdapter';
-import { toPlayerDetailData as toCfbPlayerDetailData } from '@/lib/sports/cfb/adapters/playerDetailAdapter';
-import { toPlayerDetailData as toNbaPlayerDetailData } from '@/lib/sports/nba/adapters/playerDetailAdapter';
-import { toPlayerDetailData as toNhlPlayerDetailData } from '@/lib/sports/nhl/adapters/playerDetailAdapter';
-import { toPlayerDetailData as toTennisPlayerDetailData } from '@/lib/sports/tennis/adapters/playerDetailAdapter';
+import { toPlayerDetailData as toGolfPlayerDetailData, toPlayerResearchData as toGolfPlayerResearchData } from '@/lib/sports/golf/adapters/playerDetailAdapter';
+import { toPlayerDetailData as toNflPlayerDetailData, toPlayerResearchData as toNflPlayerResearchData } from '@/lib/sports/nfl/adapters/playerDetailAdapter';
+import { toPlayerDetailData as toSoccerPlayerDetailData, toPlayerResearchData as toSoccerPlayerResearchData } from '@/lib/sports/soccer/adapters/playerDetailAdapter';
+import { toPlayerDetailData as toCfbPlayerDetailData, toPlayerResearchData as toCfbPlayerResearchData } from '@/lib/sports/cfb/adapters/playerDetailAdapter';
+import { toPlayerDetailData as toNbaPlayerDetailData, toPlayerResearchData as toNbaPlayerResearchData } from '@/lib/sports/nba/adapters/playerDetailAdapter';
+import { toPlayerDetailData as toNhlPlayerDetailData, toPlayerResearchData as toNhlPlayerResearchData } from '@/lib/sports/nhl/adapters/playerDetailAdapter';
+import { toPlayerDetailData as toTennisPlayerDetailData, toPlayerResearchData as toTennisPlayerResearchData } from '@/lib/sports/tennis/adapters/playerDetailAdapter';
 import { useReadyGate } from './useReadyGate';
 
 /**
@@ -89,8 +88,6 @@ function candidateRowKey(c: PickCandidate): string {
  * threshold re-reads the same games and asks a different question of them, so
  * every window, the chart and its baseline recompute together off one number.
  */
-
-const HERO_FALLBACK_COLOR = '#616366';
 
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
   return (entry.raw ?? {}) as Record<string, unknown>;
@@ -288,50 +285,6 @@ export function DistributionChart({
 // ---------------------------------------------------------------------------
 // Gamelog — summary strip + per-game cards
 // ---------------------------------------------------------------------------
-
-/** One game, card form — the alternative to a gamelog table row. Same fields (team, date/opponent, per-game stats), read as a scannable list instead of a dense grid. Reads an already-resolved `GamelogRow` (adapter output) — never `entry.raw` — so it works the same for MLB and NFL. */
-function GamelogCard({ row, columns, badges }: { row: GamelogRow; columns: GamelogColumnDef[]; badges: GamelogColumnDef[] }) {
-  const hits = Number(row.values.hits) || 0;
-  const atBats = Number(row.values.atBats) || 0;
-  const runs = Number(row.values.runs) || 0;
-  // "0-4" is the standard box-score AB line; only meaningful when this
-  // gamelog actually carries batting fields at all (NFL's won't).
-  const hasBattingLine = columns.some((c) => c.key === 'hits') && columns.some((c) => c.key === 'atBats');
-  const usedBadges = badges.filter((d) => columns.some((c) => c.key === d.key));
-
-  return (
-    <div
-      className="flex items-center gap-3 border-l-[3px] px-3 py-2.5 transition-colors hover:bg-surface-subtle"
-      style={{ borderLeftColor: row.accentColor ?? 'transparent' }}
-    >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line bg-card">
-        {row.opponentLogoUrl ? <TeamLogo logoUrl={row.opponentLogoUrl} size={18} /> : null}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-1.5">
-          <span className="truncate text-[12px] font-semibold text-ink">{row.periodLabel}</span>
-          {hasBattingLine ? (
-            <span className="shrink-0 text-[11px] tabular-nums text-ink-muted">
-              {hits}-{atBats}
-              {runs > 0 ? `, ${runs} R` : ''}
-            </span>
-          ) : null}
-        </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-          {usedBadges.map((badge) => {
-            const value = row.values[badge.key];
-            return (
-              <span key={badge.key} className="flex items-center gap-1 text-[11px]">
-                <span className="font-semibold uppercase tracking-wide text-masters">{badge.label}</span>
-                <span className="font-semibold tabular-nums text-ink">{value == null || value === '' ? '–' : String(value)}</span>
-              </span>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Live game — baserunners, count, line tracker
@@ -883,6 +836,55 @@ function ScopeChips({
 // The detail view
 // ---------------------------------------------------------------------------
 
+/**
+ * Each sport's research adapter, picked by the page's sport — the same
+ * selection `data` makes below for the market adapters, but keyed on the
+ * SUBJECT's sport so it works with no candidate at all (R6.1a).
+ */
+function toResearchData(sport: string, history: PlayerHistory, bio: PlayerBio | null): PlayerResearchData | null {
+  const input = { history, bio };
+  switch (sport) {
+    case 'mlb':
+      return toMlbPlayerResearchData(input);
+    case 'nfl':
+      return toNflPlayerResearchData(input);
+    case 'cfb':
+      return toCfbPlayerResearchData(input);
+    case 'nba':
+      return toNbaPlayerResearchData(input);
+    case 'nhl':
+      return toNhlPlayerResearchData(input);
+    case 'soccer':
+      return toSoccerPlayerResearchData(input);
+    case 'tennis':
+      return toTennisPlayerResearchData(input);
+    default:
+      return toGolfPlayerResearchData();
+  }
+}
+
+/** A team page link where the sport has team pages keyed by the bio's team id. */
+function teamHrefFor(sport: string, league: string | null, teamId: string): string | null {
+  if (sport === 'soccer') return league ? `/soccer/${league}/team/${encodeURIComponent(teamId)}` : null;
+  return ['mlb', 'nfl', 'cfb', 'nba', 'nhl'].includes(sport) ? `/${sport}/team/${encodeURIComponent(teamId)}` : null;
+}
+
+/** The page's own sticky header, so the section nav pins directly beneath it on every host. */
+function useStickyHeaderHeight(enabled: boolean): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    const header = document.querySelector<HTMLElement>('header.sticky');
+    if (!header) return;
+    const measure = () => setHeight(header.offsetHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(header);
+    return () => ro.disconnect();
+  }, [enabled]);
+  return height;
+}
+
 export interface PlayerDetailProps {
   /** Every candidate for this player, across markets. */
   candidates: PickCandidate[];
@@ -927,18 +929,15 @@ export interface PlayerDetailProps {
    */
   onReadyChange?: (ready: boolean) => void;
   /**
-   * The subject being viewed even when `candidates` is empty — set by
-   * `PlayerDetailPanel` (the embedded Players-tab picker) so a real roster
-   * player with zero active props still gets an honest identity card
-   * instead of a bare "No tracked markets" dead end. Looked up against
-   * `snapshot.subjects` (which now includes every real roster player, not
-   * just ones with candidates — see the sport adapters' `attachFullRosterSubjects`/
-   * roster-loop fixes). The standalone `/{sport}/player/[playerId]` pages
-   * already have their own richer identity fallback (real team/position
-   * carried via the roster link's own URL query params) and don't need
-   * this — they never reach this component when `candidates` is empty.
+   * R6.1a — the player the page is about, independent of any market. With it
+   * the page renders the player's hero and research sections whether or not a
+   * candidate exists; the prop block becomes one section that can be empty.
+   * `league` is soccer's league or tennis's tour. Omitted by the embedded
+   * game-page host, which shows only the prop block.
    */
-  fallbackSubjectId?: string;
+  subject?: { sport: string; id: string; league?: string | null; name?: string | null };
+  /** The host's slate is still loading: the prop section shows a skeleton rather than claiming no line was posted. */
+  marketsLoading?: boolean;
 }
 
 export function PlayerDetail({
@@ -954,7 +953,8 @@ export function PlayerDetail({
   sharedPropOdds,
   sharedCalibration,
   onReadyChange,
-  fallbackSubjectId,
+  subject,
+  marketsLoading = false,
 }: PlayerDetailProps) {
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
 
@@ -977,9 +977,6 @@ export function PlayerDetail({
   const [opponentOnly, setOpponentOnly] = useState(false);
   const [venue, setVenue] = useState<'all' | 'home' | 'away'>('all');
   const [lastN, setLastN] = useState<number | 'all'>('all');
-  const [showAllGames, setShowAllGames] = useState(false);
-  const [gamelogView, setGamelogView] = useState<'cards' | 'table'>('cards');
-  const [kpiScope, setKpiScope] = useState<'season' | 'l15'>('season');
   const [showAllAtBats, setShowAllAtBats] = useState(false);
   const [selectedRound, setSelectedRound] = useState<number | null>(null);
 
@@ -992,31 +989,9 @@ export function PlayerDetail({
     setOpponentOnly(false);
     setVenue('all');
     setLastN('all');
-    setShowAllGames(false);
     setSelectedRound(null);
   }, [active?.subjectId]);
 
-  // /api/mlb only sends full box-score detail for each candidate's most
-  // recent ~20 games (see historyTrim.ts) — older entries still carry
-  // opponentId/isHome (so H2H/venue stats above are always correct for the
-  // full season) but not the runs/hits/etc. the gamelog table shows. Only
-  // fetch the rest when someone actually asks to see it.
-  const [fullHistoryCache, setFullHistoryCache] = useState<Record<string, HistoryEntry[]>>({});
-  useEffect(() => {
-    if (!showAllGames || !active || active.sport !== 'mlb') return;
-    const key = `${active.subjectId}:${active.dimension}`;
-    if (fullHistoryCache[key]) return;
-    let cancelled = false;
-    fetch(`/api/mlb/player-gamelog?subjectId=${encodeURIComponent(active.subjectId)}&dimension=${encodeURIComponent(active.dimension)}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { history?: HistoryEntry[] } | null) => {
-        if (!cancelled && data?.history) setFullHistoryCache((prev) => ({ ...prev, [key]: data.history! }));
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [showAllGames, active, fullHistoryCache]);
 
   const meta = (active?.subjectMeta ?? {}) as Record<string, unknown>;
 
@@ -1213,6 +1188,37 @@ export function PlayerDetail({
     onReadyChange?.(internalReady);
   }, [internalReady, onReadyChange]);
 
+  // R6.1a — the player, independent of any market. The embedded game-page host
+  // passes no subject and keeps the prop block alone; every other host gets the
+  // hero and the research sections, which load on their own and never gate the
+  // page's loader (each renders its own skeleton).
+  const researchSport = subject?.sport ?? null;
+  const researchLeague = subject?.league ?? null;
+  const researchAthleteId = subject ? athleteIdOf(subject.id) : null;
+  const historySport = researchSport ? historySportFor(researchSport, researchLeague) : null;
+  const bioState = usePlayerBio(researchSport === 'golf' ? 'golf' : historySport, researchAthleteId);
+  const historyState = usePlayerHistory(historySport, researchAthleteId);
+  const research = useMemo(
+    () => (researchSport && historyState.data ? toResearchData(researchSport, historyState.data, bioState.data) : null),
+    [researchSport, historyState.data, bioState.data],
+  );
+  const stickyTop = useStickyHeaderHeight(Boolean(subject) && !embedded);
+  const navItems = useMemo(
+    () => [
+      { id: 'props', label: 'Prop analysis' },
+      ...(historySport
+        ? [
+            { id: 'seasons', label: 'Seasons' },
+            { id: 'trends', label: 'Trends' },
+            { id: 'splits', label: 'Splits' },
+            { id: 'log', label: 'Game log' },
+          ]
+        : []),
+      { id: 'sources', label: 'Sources' },
+    ],
+    [historySport],
+  );
+
   const data: PlayerDetailData | null = !active
     ? null
     : active.sport === 'golf'
@@ -1230,7 +1236,7 @@ export function PlayerDetail({
             candidates,
             market: active.dimension,
             snapshot,
-            scope: { lineOffset, opponentOnly, lastN, showAllGames, kpiScope },
+            scope: { lineOffset, opponentOnly, lastN },
             propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
             targetMap: nflTargetMap,
           })
@@ -1239,7 +1245,7 @@ export function PlayerDetail({
               candidates,
               market: active.dimension,
               snapshot,
-              scope: { lineOffset, opponentOnly, lastN, showAllGames, kpiScope },
+              scope: { lineOffset, opponentOnly, lastN },
               propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
             })
           : active.sport === 'cfb'
@@ -1247,7 +1253,7 @@ export function PlayerDetail({
                 candidates,
                 market: active.dimension,
                 snapshot,
-                scope: { lineOffset, opponentOnly, lastN, showAllGames, kpiScope },
+                scope: { lineOffset, opponentOnly, lastN },
                 propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
                 teamDefenseAllowed: cfbTeamDefense.teams,
               })
@@ -1256,7 +1262,7 @@ export function PlayerDetail({
                   candidates,
                   market: active.dimension,
                   snapshot,
-                  scope: { lineOffset, opponentOnly, lastN, showAllGames, kpiScope },
+                  scope: { lineOffset, opponentOnly, lastN },
                   propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
                   teamDefenseAllowed: nbaTeamDefense.teams,
                 })
@@ -1265,7 +1271,7 @@ export function PlayerDetail({
                     candidates,
                     market: active.dimension,
                     snapshot,
-                    scope: { lineOffset, opponentOnly, lastN, showAllGames, kpiScope },
+                    scope: { lineOffset, opponentOnly, lastN },
                     propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
                     teamDefenseAllowed: nhlTeamDefense.teams,
                     shotProfile: nhlShotProfile,
@@ -1275,7 +1281,7 @@ export function PlayerDetail({
                       candidates,
                       market: active.dimension,
                       snapshot,
-                      scope: { lineOffset, opponentOnly, lastN, showAllGames, kpiScope },
+                      scope: { lineOffset, opponentOnly, lastN },
                       propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
                     })
           : toMlbPlayerDetailData({
@@ -1283,8 +1289,7 @@ export function PlayerDetail({
             market: active.dimension,
             snapshot,
             odds,
-            scope: { lineOffset, opponentOnly, venue, lastN, showAllGames, kpiScope },
-            fullHistoryOverride: fullHistoryCache[`${active.subjectId}:${active.dimension}`],
+            scope: { lineOffset, opponentOnly, venue, lastN },
             propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
             opponentTeamStatcast,
             live: playerLive,
@@ -1292,41 +1297,83 @@ export function PlayerDetail({
             opposingPitchProfile,
           });
 
+  const sourceItems = [
+    ...(bioState.data ? [{ label: 'Profile', detail: `${bioState.data.source}, ${asOfText(bioState.data.fetchedAt)}` }] : []),
+    ...(historyState.data
+      ? [
+          {
+            label: 'Game history',
+            detail: `player_game_history, ${historyState.data.games.length} games${research ? ` (${research.seasonLabels.at(-1)?.label}–${research.seasonLabels[0]?.label})` : ''}, last written ${asOfText(historyState.data.asOf)}`,
+          },
+          { label: 'Results', detail: historyState.data.resultsSource },
+        ]
+      : []),
+    ...(snapshot ? [{ label: 'Markets and prop analysis', detail: `today's ${researchSport ?? active?.sport ?? ''} slate snapshot, ${asOfText(snapshot.fetchedAt)}` }] : []),
+  ];
+
+  /** The page around the prop block: hero, section nav, research sections, sources. The embedded game-page host gets the block alone. */
+  const renderPage = (propBlock: React.ReactNode, propSub: React.ReactNode, nextGame: React.ReactNode) => {
+    if (!subject || embedded) return propBlock;
+    return (
+      <div className="space-y-4">
+        <PlayerHero
+          bio={bioState.data}
+          bioState={bioState}
+          research={research}
+          researchState={historyState}
+          fallbackName={subject.name ?? active?.subjectName ?? null}
+          teamHref={bioState.data?.team?.id ? teamHrefFor(subject.sport, subject.league ?? null, bioState.data.team.id) : null}
+          nextGame={nextGame}
+        />
+        <SectionNav items={navItems} top={stickyTop} label="Player sections" />
+        <Section id="props" title="Prop analysis" sub={propSub}>
+          {propBlock}
+        </Section>
+        {historySport ? (
+          <>
+            <Section id="seasons" title="Season by season" sub="totals and per-game rates from every game held">
+              <SeasonsCard research={research} state={historyState} />
+            </Section>
+            <Section id="trends" title="Trends">
+              <TrendsCard research={research} state={historyState} />
+            </Section>
+            <Section id="splits" title="Splits" sub="per-game averages">
+              <SplitsCard research={research} state={historyState} />
+            </Section>
+            <Section id="log" title="Game log">
+              <GameLogCard research={research} state={historyState} />
+            </Section>
+          </>
+        ) : null}
+        <Section id="sources" title="Sources">
+          <SourcesCard items={sourceItems} />
+        </Section>
+      </div>
+    );
+  };
+
   if (!active || !data) {
-    const fallbackSubject = fallbackSubjectId ? (snapshot?.subjects ?? []).find((s) => s.subjectId === fallbackSubjectId) : undefined;
-    if (fallbackSubject) {
-      const meta = (fallbackSubject.meta ?? {}) as Record<string, unknown>;
-      const headshotUrl = typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined;
-      const teamLogoUrl = typeof meta.teamLogoUrl === 'string' ? meta.teamLogoUrl : undefined;
-      const team = typeof meta.team === 'string' ? meta.team : undefined;
-      const position = typeof meta.position === 'string' ? meta.position : undefined;
+    if (subject && !embedded && marketsLoading) {
+      return renderPage(
+        <div className="rounded-card border border-line-soft bg-card p-4 shadow-card" aria-busy>
+          <SkeletonLines lines={5} />
+        </div>,
+        null,
+        null,
+      );
+    }
+    if (subject && !embedded) {
       const seasonStatus = snapshot?.seasonStatus;
-      return (
-        <div className="lb-card p-6">
-          <div className="flex items-center gap-3">
-            <SubjectAvatar name={fallbackSubject.subjectName} headshotUrl={headshotUrl} size={56} />
-            <div className="min-w-0">
-              <p className="truncate text-[16px] font-semibold text-ink">{fallbackSubject.subjectName}</p>
-              {team || position ? (
-                <p className="flex items-center gap-1.5 text-[13px] text-ink-muted">
-                  {team && teamLogoUrl ? <TeamLogo logoUrl={teamLogoUrl} size={16} /> : null}
-                  {team}
-                  {team && position ? ' · ' : ''}
-                  {position}
-                </p>
-              ) : null}
-            </div>
-          </div>
-          <p className="mt-4 text-[13px] text-ink-muted">
-            No tracked props for this player right now — that&apos;s real, not missing data. A player only gets a
-            tracked market once a sportsbook posts a real line for their next game.
-            {seasonStatus && !seasonStatus.started
-              ? seasonStatus.nextGameDate
-                ? ` ${seasonStatus.label ?? 'The season hasn’t started yet'} — first real games are ${new Date(seasonStatus.nextGameDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}.`
-                : ` ${seasonStatus.label ?? 'The season hasn’t started yet'}.`
-              : ''}
-          </p>
-        </div>
+      const reason =
+        seasonStatus && !seasonStatus.started
+          ? `${seasonStatus.label ?? 'The season has not started'}${seasonStatus.nextGameDate ? ` — first games ${new Date(seasonStatus.nextGameDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}` : ''}. The research below is the player's own record and needs no line.`
+          : "No book has posted a line for this player's next game, so there is nothing to measure the games against yet. The research below is the player's own record and needs no line.";
+      return renderPage(
+        <div className="rounded-card border border-line-soft bg-card shadow-card">
+          <EmptyState title="No line posted for this player today" reason={reason} />
+        </div>,
+        null,
+        null,
       );
     }
     return <div className="lb-card p-8 text-center text-sm text-ink-muted">No tracked markets for this player.</div>;
@@ -1373,76 +1420,25 @@ export function PlayerDetail({
     }
   }
 
-  return (
+  // Today's game and the market in view, now that the hero is the player's (R6.1a).
+  const nextGame = data.subject.opponentAbbr ? (
+    <span className="inline-flex items-center gap-1.5">
+      <span>{meta.isHome === true ? 'vs' : '@'}</span>
+      <TeamLogo logoUrl={data.subject.opponentLogoUrl} abbreviation={data.subject.opponentAbbr} size={14} />
+      <span>{data.subject.opponentAbbr}</span>
+      {data.subject.gameStartTime ? <span>· {new Date(data.subject.gameStartTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span> : null}
+      {data.subject.gameStatus ? <span>· {data.subject.gameStatus}</span> : null}
+    </span>
+  ) : null;
+  const propSub = (
+    <>
+      {marketText(active.sport, active.dimension, 'full')} · {data.lineControl?.kind === 'category' ? golfCategoryLabel(active.dimension, effectiveGolfCategory) : lineText}
+      {data.subject.rankDetail ? ` · ${data.subject.rankDetail}` : ''}
+    </>
+  );
+
+  return renderPage(
     <div className="space-y-3">
-      {!embedded ? (
-        <section
-          className="lb-card-hero overflow-hidden"
-          style={{
-            background: `linear-gradient(135deg, ${withAlpha(data.subject.accentColor ?? HERO_FALLBACK_COLOR, '26')} 0%, #ffffff 62%)`,
-            borderTop: '3px solid #141619',
-          }}
-        >
-          <div className="flex flex-wrap items-center gap-4 px-4 py-4">
-            <div className="relative h-[76px] w-[76px] shrink-0">
-              <SubjectAvatar
-                name={data.subject.name}
-                headshotUrl={data.subject.headshotUrl}
-                fallbackUrl={data.subject.teamLogoUrl}
-                size={76}
-                shape="rounded"
-              />
-              <span className="absolute -bottom-1.5 -right-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-white shadow-sm">
-                <TeamLogo logoUrl={data.subject.teamLogoUrl} size={18} />
-              </span>
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-[24px] font-bold leading-tight text-ink">
-                {data.subject.rankPrefix ? <span className="text-ink-muted">{data.subject.rankPrefix}</span> : null}
-                {data.subject.name}
-              </h1>
-              <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-ink-muted">
-                {data.subject.position ? <span>{data.subject.position}</span> : null}
-                <TeamLogo logoUrl={data.subject.teamLogoUrl} abbreviation={data.subject.teamAbbr} size={14} />
-                {data.subject.opponentAbbr ? (
-                  <>
-                    <span>{meta.isHome === true ? 'vs' : '@'}</span>
-                    <TeamLogo logoUrl={data.subject.opponentLogoUrl} abbreviation={data.subject.opponentAbbr} size={14} />
-                  </>
-                ) : null}
-                {data.subject.gameStartTime ? (
-                  <span className="text-ink-muted">
-                    {new Date(data.subject.gameStartTime).toLocaleTimeString('en-US', {
-                      hour: 'numeric',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                ) : null}
-                {data.subject.gameStatus ? <span className="text-ink-muted">· {data.subject.gameStatus}</span> : null}
-              </p>
-              {data.subject.rankDetail ? <p className="mt-0.5 text-[10.5px] text-ink-muted">{data.subject.rankDetail}</p> : null}
-            </div>
-
-            <span className="hidden h-11 w-px shrink-0 bg-masters/20 sm:block" />
-
-            <div className="shrink-0 text-right">
-              <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">
-                {marketText(active.sport, active.dimension, 'full')}
-              </div>
-              {/* Golf's hole/round-score markets are a 3-way pick (birdie-or-better
-                  / par / bogey-or-worse), not a numeric threshold — there's no
-                  line to show, only which category is currently selected
-                  (the picker below the market tabs). */}
-              <div className="mt-0.5 text-[16px] font-bold text-ink">
-                {data.lineControl?.kind === 'category' ? golfCategoryLabel(active.dimension, effectiveGolfCategory) : lineText}
-              </div>
-            </div>
-
-          </div>
-        </section>
-      ) : null}
-
       {/* Market tabs — re-scope everything below without a reload. */}
       {candidates.length > 1 ? (
         // R3: real tabs (role="tab", arrow keys) instead of buttons styled as tabs.
@@ -1453,8 +1449,7 @@ export function PlayerDetail({
           items={[...new Map(candidates.map((c) => [c.dimension, c])).values()].map((c) => ({ value: c.dimension, label: marketText(c.sport, c.dimension, 'full') }))}
           onChange={(dimension) => {
             setLineOffset(0);
-            setShowAllGames(false);
-            onMarketChange?.(dimension);
+                    onMarketChange?.(dimension);
           }}
         />
       ) : null}
@@ -1842,15 +1837,6 @@ export function PlayerDetail({
             }}
           />
 
-          <PlayerAnalyticsMainSections
-            roles={{
-              rollingForm: data.rollingForm,
-              situationalSplits: data.situationalSplits,
-              whereThisSits: data.whereThisSits,
-              gameContext: data.gameContext,
-            }}
-          />
-
           {/* Live line tracker — docs/live-matchup-and-line-tracker-gameplan-
               2026-08-23.md, Part 2. null for golf/soccer/tennis (no
               per-player live data source yet, see each adapter's own
@@ -1885,166 +1871,6 @@ export function PlayerDetail({
             </section>
           ) : null}
 
-          {/* Gamelog — MLB and NFL both have a real box-score history; golf's
-              hole-by-hole tabs above cover that ground on their own terms
-              instead (golf's `data.gamelog` is always null). */}
-          {data.gamelog ? (
-            <section className="lb-card overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-2 bg-accent-soft px-2.5 py-1.5">
-                <h2 className="text-[12px] font-semibold text-masters">
-                  {showAllGames ? `All ${data.gamelog.rows.length} games` : `Last ${Math.min(data.gamelog.rows.length, 15)} games`}
-                </h2>
-                <div className="flex items-center gap-2">
-                  {(() => {
-                    // `data.gamelog.rows` is already capped at 15 unless
-                    // `showAllGames` — so the "show all" affordance itself has
-                    // to key off whether the scoped set (not the capped rows)
-                    // has more than 15. Since the adapter doesn't return the
-                    // pre-cap count separately, cross-check against the chart's
-                    // own (uncapped) scope size for a distribution chart; golf
-                    // never reaches this branch.
-                    const scopedCount = data.chart.kind === 'distribution' ? data.chart.data.length : data.gamelog.rows.length;
-                    return scopedCount > 15 ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowAllGames((v) => !v)}
-                        className="text-[11px] font-medium text-masters hover:underline"
-                      >
-                        {showAllGames ? 'Show last 15' : `Show all ${scopedCount}`}
-                      </button>
-                    ) : null;
-                  })()}
-                  <ToggleGroup
-                    label="Gamelog view"
-                    size="sm"
-                    value={gamelogView}
-                    onChange={setGamelogView}
-                    options={[
-                      { value: 'cards', label: 'Cards' },
-                      { value: 'table', label: 'Table' },
-                    ]}
-                  />
-                </div>
-              </div>
-
-              {data.gamelog.rows.length === 0 ? (
-                <p className="p-6 text-center text-sm text-ink-muted">No games match this scope.</p>
-              ) : (
-                <>
-                  {/* Summary strip — headline totals. Golf has no gamelog at all
-                      (data.gamelog is always null there); every sport with a
-                      real gamelog populates this the same way MLB's adapter
-                      does, so it renders generically off whatever the active
-                      sport's adapter returns. */}
-                  {data.gamelog.summaryStrip ? (
-                    <div className="border-b border-line-soft px-3 py-2.5">
-                      <div className="mb-2 flex items-center justify-between gap-2">
-                        {/* "Totals", not "Season stats". Two problems with the
-                            old label: the rail card below is ALSO headed
-                            "Season stats" (`data.nflSeasonStats`), so one page
-                            showed two differently-scoped cards under one name;
-                            and the toggle beside this one switches to L15, at
-                            which point "Season" was simply untrue. */}
-                        <h3 className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Totals</h3>
-                        <SegmentedToggle
-                          value={kpiScope}
-                          onChange={setKpiScope}
-                          className="rounded-lg border border-line bg-card p-0.5"
-                          buttonClassName="rounded-md px-2 py-0.5 text-[10px]"
-                          gliderClassName="rounded-md"
-                          options={[
-                            { key: 'season', label: 'Season' },
-                            { key: 'l15', label: 'L15' },
-                          ]}
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-4">
-                        {data.gamelog.summaryStrip.map((stat) => (
-                          <div key={stat.label} className="min-w-0">
-                            <div className="truncate text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{stat.label}</div>
-                            <div className="mt-0.5 text-[16px] font-bold leading-none tabular-nums text-ink">{stat.display}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {gamelogView === 'cards' ? (
-                    <div className="divide-y divide-line-soft">
-                      {data.gamelog.rows.map((row) => (
-                        <GamelogCard key={row.key} row={row} columns={data.gamelog!.columns} badges={data.gamelog!.cardBadges ?? []} />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="lb-scroll-x overflow-auto">
-                      <table className="w-full border-collapse text-[11px]">
-                        <thead>
-                          <tr>
-                            <th className="sticky left-0 top-0 z-30 border-b border-line bg-paper px-2 py-1 text-left font-semibold text-ink-muted">
-                              Game
-                            </th>
-                            {data.gamelog.columns.map((column) => (
-                              <th
-                                key={column.key}
-                                className="sticky top-0 z-20 whitespace-nowrap border-b border-line bg-paper px-2 py-1 text-right font-semibold text-ink-muted"
-                              >
-                                {column.label}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(() => {
-                            let lastOpponentLabel: string | null = null;
-                            return data.gamelog.rows.map((row) => {
-                              const startsNewGroup = row.opponentLabel !== lastOpponentLabel;
-                              lastOpponentLabel = row.opponentLabel;
-                              return (
-                                <Fragment key={row.key}>
-                                  {startsNewGroup ? (
-                                    <tr>
-                                      <td colSpan={data.gamelog!.columns.length + 1} className="border-b border-line-soft bg-surface-subtle px-2 py-1.5">
-                                        <span className="flex items-center gap-1.5 text-[11px] font-semibold text-ink">
-                                          {row.opponentLogoUrl ? <TeamLogo logoUrl={row.opponentLogoUrl} size={14} /> : null}
-                                          {row.opponentLabel}
-                                        </span>
-                                      </td>
-                                    </tr>
-                                  ) : null}
-                                  <tr className="group border-b border-line/60 transition-colors last:border-0 hover:bg-surface-subtle hover:shadow-[inset_0_0_0_1px_rgba(0,0,0,0.1)]">
-                                    {/* Date and opponent travel together as one pinned group. No
-                                        transform on hover here — this row has a sticky first
-                                        column, and a transformed ancestor can break a sticky
-                                        descendant's positioning across browsers. */}
-                                    <td className="sticky left-0 z-10 whitespace-nowrap bg-card px-2 py-1 font-medium transition-colors group-hover:bg-surface-subtle">
-                                      {row.periodLabel}
-                                    </td>
-                                    {data.gamelog!.columns.map((column) => {
-                                      const value = row.values[column.key];
-                                      return (
-                                        <td key={column.key} className="px-2 py-1 text-right tabular-nums">
-                                          {value == null || value === '' ? (
-                                            <span className="text-ink-muted">–</span>
-                                          ) : (
-                                            String(value)
-                                          )}
-                                        </td>
-                                      );
-                                    })}
-                                  </tr>
-                                </Fragment>
-                              );
-                            });
-                          })()}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </>
-              )}
-            </section>
-          ) : null}
-
           {data.seasonStatsCard ? (
             <GolfPlayerStatsCard
               name={active.subjectName}
@@ -2075,14 +1901,6 @@ export function PlayerDetail({
               binarySplit: data.binarySplit,
               conditions: data.conditions,
               careerH2H: data.careerH2H,
-            }}
-          />
-          <PlayerAnalyticsRailSections
-            roles={{
-              rollingForm: data.rollingForm,
-              situationalSplits: data.situationalSplits,
-              whereThisSits: data.whereThisSits,
-              gameContext: data.gameContext,
             }}
           />
           <section className="lb-card overflow-hidden">
@@ -2299,7 +2117,9 @@ export function PlayerDetail({
           </section>
         </div>
       </div>
-    </div>
+    </div>,
+    propSub,
+    nextGame,
   );
 }
 

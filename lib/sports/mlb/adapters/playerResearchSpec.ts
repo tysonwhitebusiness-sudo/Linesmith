@@ -23,6 +23,13 @@ const AB = total('bat_atBats');
 const H = total('bat_hits');
 const PA = total('bat_plateAppearances');
 const onBase: Agg = (gs) => sumOf(gs, (g) => (stat(g, 'bat_hits') ?? 0) + (stat(g, 'bat_baseOnBalls') ?? 0) + (stat(g, 'bat_hitByPitch') ?? 0));
+/**
+ * The history stores plate appearances but not sacrifice flies, bunts or
+ * catcher's interference, so OBP divides by PA rather than AB + BB + HBP + SF.
+ * Where a hitter has sacrifices it reads a few points below the official
+ * number. G2 used the same formula. Routed in the plan as R6-F4.
+ */
+const OBP_NOTE = 'On-base over plate appearances: sacrifice flies are not stored per game, so this can read a few points below the official OBP.';
 const AVG = ratio(H, AB);
 const OBP = ratio(onBase, PA);
 const SLG = ratio(total('bat_totalBases'), AB);
@@ -32,7 +39,12 @@ const OPS: Agg = (gs) => {
   return o == null || s == null ? null : o + s;
 };
 
-const gameHref = (g: PlayerGame) => `/mlb/game/${encodeURIComponent(g.eventId)}`;
+/**
+ * No game links yet: `/mlb/game/[gameId]` renders only today's slate ("This game
+ * isn't on today's slate"), so every past row would open a dead end — design
+ * finding B5. R8 builds past-game pages and turns these on.
+ */
+const gameHref = (_g: PlayerGame): string | null => null;
 
 export const MLB_HITTER_SPEC: ResearchSpec = {
   kind: 'hitter',
@@ -42,9 +54,9 @@ export const MLB_HITTER_SPEC: ResearchSpec = {
   tiles: [
     col('g', 'G', games()),
     col('avg', 'AVG', AVG, 3, { format: 'rate3' }),
-    col('obp', 'OBP', OBP, 3, { format: 'rate3' }),
+    col('obp', 'OBP', OBP, 3, { format: 'rate3', info: OBP_NOTE }),
     col('slg', 'SLG', SLG, 3, { format: 'rate3' }),
-    col('ops', 'OPS', OPS, 3, { format: 'rate3' }),
+    col('ops', 'OPS', OPS, 3, { format: 'rate3', info: OBP_NOTE }),
     col('hr', 'HR', total('bat_homeRuns')),
     col('rbi', 'RBI', total('bat_rbi')),
     col('r', 'R', total('bat_runs')),

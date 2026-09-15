@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams, notFound } from 'next/navigation';
 import type { SoccerLeague } from '@/lib/core/types';
 import { SOCCER_LEAGUES } from '@/lib/core/types';
@@ -8,9 +8,9 @@ import { useSnapshot } from '@/components/useSnapshot';
 import { useSlip } from '@/components/useSlip';
 import { TopBar } from '@/components/TopBar';
 import { PlayerDetail } from '@/components/PlayerDetail';
+import { ErrorState } from '@/components/ui';
+import { sameSubject } from '@/lib/sports/shared/playerResearchShapes';
 import SlipModal from '@/components/SlipModal';
-import { BrandedLoader } from '@/components/BrandedLoader';
-import { SubjectAvatar, TeamLogo } from '@/components/SubjectAvatar';
 import { useSyntheticPlayerCandidates } from '@/components/useSyntheticPlayerCandidates';
 import { usePickHistoryModelData, needsModelDataMerge, mergeModelData } from '@/components/usePickHistoryModelData';
 
@@ -35,11 +35,6 @@ export default function SoccerPlayerDetailPage() {
   const slip = useSlip(sport);
   const [slipOpen, setSlipOpen] = useState(false);
 
-  const [detailReady, setDetailReady] = useState(false);
-  useEffect(() => {
-    setDetailReady(false);
-  }, [playerId]);
-
   // PlayerDetail Score/Edge fix (Phase 1 of docs/scan-playerdetail-parity-
   // gameplan-2026-08-27.md) — same real merge Scan's AppShell.tsx uses,
   // applied here since this page fetches its own candidate list
@@ -48,7 +43,7 @@ export default function SoccerPlayerDetailPage() {
   const modelData = usePickHistoryModelData(sport, snapshot?.fetchedAt ?? null, shouldMergeModelData);
 
   const mine = useMemo(() => {
-    const all = (snapshot?.candidates ?? []).filter((c) => c.subjectId === playerId);
+    const all = (snapshot?.candidates ?? []).filter((c) => sameSubject(c.subjectId, playerId));
     return shouldMergeModelData ? mergeModelData(all, modelData.rowsByKey) : all;
   }, [snapshot, playerId, shouldMergeModelData, modelData.rowsByKey]);
 
@@ -107,52 +102,24 @@ export default function SoccerPlayerDetailPage() {
 
       <main className="px-3 py-3">
         {error ? (
-          <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad">{error}</div>
+          // R3: human text and a retry, never the raw error string (D5).
+          <ErrorState className="mb-3" message="We couldn't refresh today's markets for this player." onRetry={refresh} />
         ) : null}
-
-        {(loading && mine.length === 0 && !hasIdentity) || waitingOnSynthetic ? (
-          <BrandedLoader size="page" />
-        ) : effectiveCandidates.length === 0 && hasIdentity ? (
-          <div className="lb-card p-6">
-            <div className="flex items-center gap-3">
-              <SubjectAvatar name={identity.name ?? ''} headshotUrl={identity.headshot ?? undefined} size={56} />
-              <div className="min-w-0">
-                <p className="truncate text-[16px] font-semibold text-ink">{identity.name}</p>
-                <p className="flex items-center gap-1.5 text-[13px] text-ink-muted">
-                  <TeamLogo logoUrl={identity.teamLogoUrl ?? undefined} abbreviation={identity.team ?? undefined} size={16} />
-                  {identity.teamName ?? identity.team}
-                  {identity.pos ? ` · ${identity.pos}` : ''}
-                </p>
-              </div>
-            </div>
-            <p className="mt-4 text-[13px] text-ink-muted">
-              No real match history found for this player yet — no props tracked, and this player&apos;s name
-              couldn&apos;t be matched to their real {league === 'epl' ? 'Understat' : 'ASA'} match log.
-            </p>
-          </div>
-        ) : effectiveCandidates.length === 0 ? (
-          <div className="lb-card p-8 text-center text-sm text-ink-muted">
-            No tracked markets for this player on today&apos;s slate.
-          </div>
-        ) : (
-          <>
-            {!detailReady && <BrandedLoader size="page" />}
-            <div style={{ display: detailReady ? 'block' : 'none' }}>
-              <PlayerDetail
-                candidates={effectiveCandidates}
-                snapshot={snapshot}
-                odds={null}
-                market={market}
-                onMarketChange={(next) =>
-                  router.replace(`/soccer/${league}/player/${encodeURIComponent(playerId)}?market=${encodeURIComponent(next)}`)
-                }
-                onAdd={(candidate, oddsInfo) => slip.addPick(candidate, null, oddsInfo)}
-                addedKeys={slip.pickedKeys}
-                onReadyChange={setDetailReady}
-              />
-            </div>
-          </>
-        )}
+        {/* R6.1a: the player is the page. It renders with or without a market;
+            the prop block is one section of it and says why it is empty. */}
+        <PlayerDetail
+          candidates={effectiveCandidates}
+          snapshot={snapshot}
+          odds={null}
+          market={market}
+          onMarketChange={(next) =>
+            router.replace(`/soccer/${league}/player/${encodeURIComponent(playerId)}?market=${encodeURIComponent(next)}`)
+          }
+          onAdd={(candidate, oddsInfo) => slip.addPick(candidate, null, oddsInfo)}
+          addedKeys={slip.pickedKeys}
+          subject={{ sport, id: playerId, league: league, name: identity.name ?? mine[0]?.subjectName ?? null }}
+          marketsLoading={(loading && mine.length === 0) || waitingOnSynthetic}
+        />
       </main>
 
       <SlipModal

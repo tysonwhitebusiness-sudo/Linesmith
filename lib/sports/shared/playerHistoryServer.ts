@@ -34,6 +34,18 @@ import { pgAll } from '@/lib/db/pgClient';
 import { dedupeGameResults, type GameResultRow } from '@/lib/history/gameResults';
 import type { HistorySport, PlayerGame, PlayerHistory, RawStat } from './playerResearchShapes';
 
+const RESULTS_SOURCE: Record<HistorySport, string> = {
+  mlb: 'MLB Stats API team schedules, by game pk',
+  nfl: 'game_result, joined on the ESPN event id',
+  cfb: 'game_result, joined on the ESPN event id',
+  nba: 'game_result, joined on the ESPN event id',
+  nhl: 'game_result, joined on the team pair and date',
+  soccer_epl: 'game_result, joined on the ESPN event id',
+  soccer_mls: 'game_result, joined on the ESPN event id',
+  tennis_atp: 'the match row itself (sets won and lost)',
+  tennis_wta: 'the match row itself (sets won and lost)',
+};
+
 interface TeamEntry {
   name: string | null;
   abbr: string | null;
@@ -146,7 +158,7 @@ export async function readPlayerHistory(sport: HistorySport, athleteId: string):
       ORDER BY game_date, event_id`,
     [sport, athleteId],
   );
-  if (rows.length === 0) return { sport, athleteId, games: [], asOf: null };
+  if (rows.length === 0) return { sport, athleteId, games: [], asOf: null, resultsSource: RESULTS_SOURCE[sport] };
 
   const isTennis = sport === 'tennis_atp' || sport === 'tennis_wta';
   const first = isoDate(rows[0].game_date);
@@ -276,5 +288,5 @@ export async function readPlayerHistory(sport: HistorySport, athleteId: string):
     };
   });
 
-  return { sport, athleteId, games, asOf };
+  return { sport, athleteId, games, asOf, resultsSource: RESULTS_SOURCE[sport] };
 }

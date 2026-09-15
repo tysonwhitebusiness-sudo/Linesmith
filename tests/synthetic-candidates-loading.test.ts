@@ -38,10 +38,16 @@ test('the loading flag is seeded from `enabled`, not hardcoded false', () => {
   );
 });
 
-test('the panel still gates the real card behind that flag', () => {
-  // The seed only helps if something reads it. Both halves have to hold.
-  assert.ok(/waitingOnSynthetic\s*\?\s*\(?\s*<PlayerSkeleton/.test(PANEL.replace(/\s+/g, ' ')),
-    'the skeleton branch is what the seeded flag buys; without it the fix is inert');
+test('the panel still gates the empty prop state behind that flag', () => {
+  // The seed only helps if something reads it. R6.1a moved the gate inside the
+  // page: the player renders at once, and only the prop section waits — it
+  // shows a skeleton while `marketsLoading`, and the "no line posted" empty
+  // state only after. Both halves have to hold.
+  assert.ok(/marketsLoading=\{waitingOnSynthetic\}/.test(PANEL), 'the panel must pass the flag to PlayerDetail');
+  const DETAIL = readFileSync('components/PlayerDetail.tsx', 'utf8');
+  const skeletonAt = DETAIL.search(/if \(subject && !embedded && marketsLoading\)/);
+  const emptyAt = DETAIL.indexOf('No line posted for this player today');
+  assert.ok(skeletonAt > 0 && emptyAt > skeletonAt, 'the loading branch must come before the empty state, or the fix is inert');
   assert.ok(
     /synthetic\.loading/.test(PANEL),
     'the panel must read the hook loading flag it depends on',

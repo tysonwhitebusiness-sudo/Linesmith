@@ -976,6 +976,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
             <TournamentNotStartedNotice eventName={snapshot?.eventName} />
           ) : snapshot ? (
             <PlayerDetailPanel
+              league={league}
               sport={sport}
               snapshot={snapshot}
               candidates={candidates}

@@ -51,6 +51,12 @@ export interface SeriesChartProps {
   unit?: string;
   /** A threshold drawn as a DASHED reference line (R3 3c) — a prop line, league average. */
   reference?: { value: number; label?: string };
+  /**
+   * The hover rows for one point, when one value and an x label are not enough
+   * (R6.1a Trends: the game's own value, the rolling average, the opponent).
+   * Defaults to the emphasised value over its x label.
+   */
+  tooltipRows?: (index: number) => Array<{ value: string; label?: string; color?: string }>;
   width?: number;
   height?: number;
   tickCount?: number;
@@ -71,6 +77,7 @@ export function SeriesChart({
   crosshair = NO_CROSSHAIR,
   unit,
   reference,
+  tooltipRows,
   width = 640,
   height = 132,
   tickCount = 3,
@@ -113,7 +120,7 @@ export function SeriesChart({
         if (v == null || !Number.isFinite(v)) return null;
         const x = xScale(values.length, plot.left, plot.width);
         const y = yScale(domain, plot.top, plot.height);
-        return { x: x(hovered), y: y(v), rows: [{ value: format(v), label: xLabels?.[hovered] ?? unit }] };
+        return { x: x(hovered), y: y(v), rows: tooltipRows ? tooltipRows(hovered) : [{ value: format(v), label: xLabels?.[hovered] ?? unit }] };
       }}
       onPointerMove={(e, plot) => {
         // Real pixel width (R3 3c): a client pixel is a plot unit.

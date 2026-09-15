@@ -23,7 +23,15 @@ const maxOf = (key: string): Agg => (gs) => {
   return vals.length ? Math.max(...vals) : null;
 };
 
-const href = (sport: Football) => (g: PlayerGame) => `/${sport}/game/${encodeURIComponent(g.eventId)}`;
+/** ESPN leaves the fumbles category out of a box score with no fumble, so a missing key is a zero, not an unknown. */
+const fumblesLost: Agg = (gs) => (gs.length ? gs.reduce((n, g) => n + (stat(g, 'fumbles.fumblesLost') ?? 0), 0) : null);
+
+/**
+ * CFB's game page renders a past game; NFL's does not yet ("No NFL game with id
+ * …" for last week's game, checked 2026-09-15), so NFL rows stay unlinked until
+ * R8 builds past-game pages rather than opening a dead end (B5).
+ */
+const href = (sport: Football) => (g: PlayerGame): string | null => (sport === 'cfb' ? `/cfb/game/${encodeURIComponent(g.eventId)}` : null);
 
 function quarterback(sport: Football): ResearchSpec {
   const nfl = sport === 'nfl';
@@ -115,7 +123,7 @@ function receiver(sport: Football): ResearchSpec {
       col('tpg', 'Tgt/G', perGame('receiving.receivingTargets'), 1),
       col('ypg', 'Yds/G', perGame('receiving.receivingYards'), 1),
       col('long', 'Long', maxOf('receiving.longReception')),
-      col('fum', 'Fum lost', total('fumbles.fumblesLost')),
+      col('fum', 'Fum lost', fumblesLost),
     ],
     splitColumns: [
       col('tpg', 'Tgt/G', perGame('receiving.receivingTargets'), 1),
@@ -168,7 +176,7 @@ function rusher(sport: Football): ResearchSpec {
       col('rec', 'Rec', total('receiving.receptions')),
       col('recy', 'Rec yds', total('receiving.receivingYards')),
       col('rectd', 'Rec TD', total('receiving.receivingTouchdowns')),
-      col('fum', 'Fum lost', total('fumbles.fumblesLost')),
+      col('fum', 'Fum lost', fumblesLost),
     ],
     splitColumns: [
       col('cpg', 'Car/G', perGame('rushing.rushingAttempts'), 1),

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useSnapshot } from '@/components/useSnapshot';
 import { useSlip } from '@/components/useSlip';
@@ -8,8 +8,9 @@ import { useGolfPlayerStats } from '@/components/useGolfPlayerStats';
 import { TopBar } from '@/components/TopBar';
 import { GolferStrip } from '@/components/GolferStrip';
 import { PlayerDetail } from '@/components/PlayerDetail';
+import { ErrorState } from '@/components/ui';
+import { sameSubject } from '@/lib/sports/shared/playerResearchShapes';
 import SlipModal from '@/components/SlipModal';
-import { BrandedLoader } from '@/components/BrandedLoader';
 
 /**
  * One golfer, one market — `/golf/player/[playerId]?market=[dimension]` —
@@ -33,16 +34,9 @@ export default function GolfPlayerDetailPage() {
   const [slipOpen, setSlipOpen] = useState(false);
 
   // See the MLB player page's identical block for why this exists.
-  // `playerStats` is fetched at this page level (not inside PlayerDetail),
-  // so it's folded into `fullyReady` directly rather than via the callback.
-  const [detailReady, setDetailReady] = useState(false);
-  useEffect(() => {
-    setDetailReady(false);
-  }, [playerId]);
-  const fullyReady = detailReady && !playerStats.loading;
 
   const mine = useMemo(
-    () => (snapshot?.candidates ?? []).filter((c) => c.subjectId === playerId),
+    () => (snapshot?.candidates ?? []).filter((c) => sameSubject(c.subjectId, playerId)),
     [snapshot, playerId],
   );
 
@@ -78,40 +72,30 @@ export default function GolfPlayerDetailPage() {
 
       <main className="space-y-3 px-3 py-3">
         {error ? (
-          <div className="lb-card border-bad/30 bg-bad/5 p-3 text-sm text-bad">{error}</div>
+          // R3: human text and a retry, never the raw error string (D5).
+          <ErrorState className="mb-3" message="We couldn't refresh today's markets for this player." onRetry={refresh} />
         ) : null}
-
-        {loading && mine.length === 0 ? (
-          <BrandedLoader size="page" />
-        ) : mine.length === 0 ? (
-          <div className="lb-card p-8 text-center text-sm text-ink-muted">
-            No tracked markets for this golfer on today&apos;s event.
-          </div>
-        ) : (
-          <>
-            {!fullyReady && <BrandedLoader size="page" />}
-            <div style={{ display: fullyReady ? 'block' : 'none' }}>
-              <PlayerDetail
-                candidates={mine}
-                snapshot={snapshot}
-                odds={null}
-                market={market}
-                onMarketChange={(next) =>
-                  router.replace(`/golf/player/${encodeURIComponent(playerId)}?market=${encodeURIComponent(next)}`)
-                }
-                onAdd={(candidate) => slip.addPick(candidate, eventContext)}
-                addedKeys={slip.pickedKeys}
-                golfStats={{
-                  strokesGained: playerStats.result?.strokesGained ?? null,
-                  seasonLog: playerStats.result?.seasonLog ?? null,
-                  advancedStats: playerStats.result?.advancedStats ?? [],
-                  loading: playerStats.loading,
-                }}
-                onReadyChange={setDetailReady}
-              />
-            </div>
-          </>
-        )}
+        {/* R6.1a: the player is the page. It renders with or without a market;
+            the prop block is one section of it and says why it is empty. */}
+        <PlayerDetail
+          candidates={mine}
+          snapshot={snapshot}
+          odds={null}
+          market={market}
+          onMarketChange={(next) =>
+            router.replace(`/golf/player/${encodeURIComponent(playerId)}?market=${encodeURIComponent(next)}`)
+          }
+          onAdd={(candidate) => slip.addPick(candidate, eventContext)}
+          addedKeys={slip.pickedKeys}
+          golfStats={{
+            strokesGained: playerStats.result?.strokesGained ?? null,
+            seasonLog: playerStats.result?.seasonLog ?? null,
+            advancedStats: playerStats.result?.advancedStats ?? [],
+            loading: playerStats.loading,
+          }}
+          subject={{ sport, id: playerId, name: mine[0]?.subjectName ?? null }}
+          marketsLoading={loading && mine.length === 0}
+        />
       </main>
 
       <SlipModal

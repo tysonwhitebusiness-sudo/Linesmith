@@ -31,8 +31,7 @@
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { mlbResearchSpec } from './playerResearchSpec';
-import type { HistoryEntry, PickCandidate, SplitEvidence, Sport, SportSnapshot, WeatherContext } from '@/lib/core/types';
-import { buildAnalyticsRoles } from '@/lib/sports/shared/analyticsRoles';
+import type { PickCandidate, SplitEvidence, Sport, SportSnapshot, WeatherContext } from '@/lib/core/types';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import {
   categoriseByLine,
@@ -66,7 +65,6 @@ import { computeMoneylineEdge, computeTotalEdge, type MoneylineEdge, type TotalE
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import type { PropOddsRow } from '@/lib/db/client';
 import { teamSeasonStatRows } from './statRowAdapter';
-import { teamNameFor } from '@/lib/sports/mlb/teamAliases';
 import { teamPrimaryColor } from '@/lib/sports/mlb/teamColors';
 
 // ---------------------------------------------------------------------------
@@ -98,44 +96,6 @@ export interface RoundScoreEntry {
   format: 'relative' | 'average';
   /** Set only on real round entries, graded against the currently-selected golf category; omitted on the average entry, where hit/miss doesn't apply. */
   hit?: boolean | null;
-}
-
-export interface GamelogColumnDef {
-  key: string;
-  label: string;
-}
-
-/**
- * One gamelog row, already resolved to the columns the adapter decided are
- * in use — Phase 2 never reads `entry.raw` itself.
- *
- * PHASE 2 CORRECTION: the Phase 1 version of this type carried a bare
- * `opponentId?: number` for the table's group header + card's left-border
- * tint, resolved via MLB's own `mlbLogoUrl(id)`/`teamPrimaryColor(id)`/
- * `teamNameFor(id)` inside `PlayerDetail.tsx` itself. That's MLB's own team-id
- * resolution mechanism leaking into a supposedly sport-agnostic row shape —
- * NFL identifies an opponent by abbreviation, not a numeric id, and has its
- * own logo/color lookups. Corrected to carry the already-resolved display
- * values instead, so `PlayerDetail.tsx` never needs a sport check to render a
- * gamelog row.
- */
-export interface GamelogRow {
-  /** Stable React key. */
-  key: string;
-  periodLabel: string;
-  /** Pre-resolved opponent logo URL (MLB: `mlbLogoUrl(opponentId)`; NFL: `nflTeamLogoUrl(opponentAbbr)`). */
-  opponentLogoUrl?: string;
-  /** Pre-resolved "vs/@ Team Name" (or "Opponent unknown") — drives both the table's group header and the card's inline opponent line. */
-  opponentLabel: string;
-  /** Left-border tint for the card view (MLB: `teamPrimaryColor(opponentId)`; NFL: its own `teamColors.ts`). Omitted renders a transparent border, same as no opponent. */
-  accentColor?: string;
-  /** column key → display-ready value; `null`/`undefined` renders as a dash. */
-  values: Record<string, number | string | null | undefined>;
-}
-
-export interface SummaryStat {
-  label: string;
-  display: string;
 }
 
 export type PlayerDetailChart =
@@ -291,13 +251,6 @@ export interface PlayerDetailData {
   windows?: WindowedStat5 | null;
   roundScores?: RoundScoreEntry[] | null;
   chart: PlayerDetailChart;
-  gamelog?: {
-    columns: GamelogColumnDef[];
-    rows: GamelogRow[];
-    summaryStrip?: SummaryStat[];
-    /** PHASE 2 ADDITION — the card view's headline stat badges (`STAT_BADGE_DEFS`, `PlayerDetail.tsx:177-183`), moved here so the shared `GamelogCard` never hardcodes a sport's stat keys. A badge only actually renders when its key is also in `columns` (same "used column" gate as before). */
-    cardBadges?: GamelogColumnDef[];
-  } | null;
   propOddsBoard: PropOddsBoardProps | null;
   model?: { todaysLine?: TodaysLineData | null } | null;
   /**
@@ -401,23 +354,6 @@ export interface PlayerDetailData {
    * Spread rather than nested so a role reads as `data.binarySplit`, matching
    * every other slot on this interface.
    */
-  /**
-   * PHASE 6.16 -- the four analytics cards.
-   *
-   * `rollingForm`, `situationalSplits`, `whereThisSits` and `gameContext`.
-   * Every one is a function of this candidate's own history and line, so all
-   * four are built by ONE shared call (`buildAnalyticsRoles`) that every
-   * sport's adapter makes -- see `lib/sports/shared/analyticsRoles.ts` for why
-   * they are not per-sport.
-   *
-   * They exist because the board-vs-build audit found Player Detail rendering
-   * 13 of the design board's 20 cards, and these four needed no new sourcing
-   * at all: the primitives were already written and had never been rendered.
-   */
-  rollingForm?: import('@/lib/sports/shared/analyticsRoles').RollingFormRole | null;
-  situationalSplits?: import('@/lib/sports/shared/analyticsRoles').SituationalSplitsRole | null;
-  whereThisSits?: import('@/lib/sports/shared/analyticsRoles').WhereThisSitsRole | null;
-  gameContext?: import('@/lib/sports/shared/analyticsRoles').GameContextRole | null;
 
   opponentUnit?: import('@/lib/sports/shared/playerRoles').OpponentUnitRole | null;
   usageMix?: import('@/lib/sports/shared/playerRoles').UsageMixRole | null;
@@ -431,61 +367,8 @@ export interface PlayerDetailData {
 // MLB-specific: gamelog columns
 // ---------------------------------------------------------------------------
 
-/**
- * Kept byte-for-byte in step with the module-private `GAMELOG_COLUMNS` in
- * `components/PlayerDetail.tsx:69-85` — duplicated locally rather than
- * imported because that array isn't exported (same small-duplication
- * convention the file already uses for `golfScoreHeat`/`relDisplay` etc.).
- * Phase 2 should either export the original and drop this copy, or delete
- * the original once `PlayerDetail.tsx` reads gamelog columns from here.
- */
-const GAMELOG_COLUMNS: GamelogColumnDef[] = [
-  { key: 'plateAppearances', label: 'PA' },
-  { key: 'atBats', label: 'AB' },
-  { key: 'hits', label: 'H' },
-  { key: 'runs', label: 'R' },
-  { key: 'rbi', label: 'RBI' },
-  { key: 'totalBases', label: 'TB' },
-  { key: 'doubles', label: '2B' },
-  { key: 'triples', label: '3B' },
-  { key: 'homeRuns', label: 'HR' },
-  { key: 'baseOnBalls', label: 'BB' },
-  { key: 'strikeOuts', label: 'SO' },
-  { key: 'stolenBases', label: 'SB' },
-  { key: 'hitByPitch', label: 'HBP' },
-  { key: 'earnedRuns', label: 'ER' },
-  { key: 'inningsPitched', label: 'IP' },
-];
-
-/** The 5 headline stats shown as label+value pairs on a gamelog card — a subset of `GAMELOG_COLUMNS`. Ported from `PlayerDetail.tsx:177-183`. */
-const STAT_BADGE_DEFS: GamelogColumnDef[] = [
-  { key: 'hits', label: 'H' },
-  { key: 'runs', label: 'R' },
-  { key: 'rbi', label: 'RBI' },
-  { key: 'baseOnBalls', label: 'BB' },
-  { key: 'strikeOuts', label: 'SO' },
-];
-
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
   return (entry.raw ?? {}) as Record<string, unknown>;
-}
-
-function usedColumns(history: PickCandidate['history']): GamelogColumnDef[] {
-  return GAMELOG_COLUMNS.filter(({ key }) =>
-    history.some((entry) => {
-      const value = rawOf(entry)[key];
-      return value != null && value !== '' && Number(value) !== 0;
-    }),
-  );
-}
-
-function fieldSum(history: PickCandidate['history'], key: string): number {
-  return history.reduce((sum, entry) => sum + (Number(rawOf(entry)[key]) || 0), 0);
-}
-
-/** Baseball convention drops the leading zero — ".179", never "0.179". Ported from `PlayerDetail.tsx:194-196`. */
-function formatAvg(rate: number): string {
-  return rate.toFixed(3).replace(/^0\./, '.');
 }
 
 function mlbLogoUrl(teamId: number): string {
@@ -513,8 +396,6 @@ export interface MlbPlayerDetailScope {
   opponentOnly: boolean;
   venue: 'all' | 'home' | 'away';
   lastN: number | 'all';
-  showAllGames: boolean;
-  kpiScope: 'season' | 'l15';
 }
 
 export interface MlbPlayerDetailInput {
@@ -524,8 +405,6 @@ export interface MlbPlayerDetailInput {
   snapshot: SportSnapshot | null;
   odds: UnifiedLinesResult | null;
   scope: MlbPlayerDetailScope;
-  /** Full box-score history for the active candidate, once fetched — mirrors `fullHistoryCache[subjectId:dimension]` (`PlayerDetail.tsx:991-1007`). The component still owns the fetch/cache; this is just that cache's current entry for the active candidate. */
-  fullHistoryOverride?: HistoryEntry[];
   /** `usePropOdds()`'s resolved rows/sportsbook — a hook result, so the component still calls the hook; the adapter only repackages it into `PropOddsBoardProps`. */
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
   /** `useTeamStatcast(opponentId)`'s result — only meaningful when the active subject is a pitcher. */
@@ -570,7 +449,7 @@ export interface MlbPlayerDetailInput {
  * fabricated to satisfy the type.
  */
 export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, snapshot, odds, scope, fullHistoryOverride, propOdds, opponentTeamStatcast, live, pitchProfile, opposingPitchProfile } = input;
+  const { candidates, market, snapshot, odds, scope, propOdds, opponentTeamStatcast, live, pitchProfile, opposingPitchProfile } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -588,7 +467,7 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   const line = Math.max(0.5, baseLine + scope.lineOffset);
   const wantOver = directionMark(active.category ?? '') !== 'U';
 
-  const activeHistory = fullHistoryOverride ?? active.history;
+  const activeHistory = active.history;
 
   const games: SlateGame[] = ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as SlateGame[];
   const statKeys: StatKeyDef[] = ((snapshot?.context?.other as Record<string, unknown> | undefined)?.statKeys ?? []) as StatKeyDef[];
@@ -658,44 +537,6 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     wantOver,
   };
 
-  // ---- Gamelog (MLB-only; PlayerDetail.tsx:1819-1976) ----
-  const columns = usedColumns(scoped);
-  const gamelogSource = [...scoped].reverse().slice(0, scope.showAllGames ? undefined : 15);
-  const rows: GamelogRow[] = gamelogSource.map((entry, index) => {
-    const raw = rawOf(entry);
-    const values: Record<string, number | string | null | undefined> = {};
-    for (const col of columns) {
-      const v = raw[col.key];
-      values[col.key] = v == null || v === '' ? null : (v as number | string);
-    }
-    const rowOpponentId = raw.opponentId as number | undefined;
-    const rowIsHome = raw.isHome === true;
-    return {
-      key: `${entry.period}-${index}`,
-      periodLabel: entry.periodLabel ?? `Game #${entry.period}`,
-      opponentLogoUrl: rowOpponentId != null ? mlbLogoUrl(rowOpponentId) : undefined,
-      opponentLabel: rowOpponentId != null ? `${rowIsHome ? 'vs' : '@'} ${teamNameFor(rowOpponentId)}` : 'Opponent unknown',
-      accentColor: rowOpponentId != null ? teamPrimaryColor(rowOpponentId) : undefined,
-      values,
-    };
-  });
-  const kpiSource = scope.kpiScope === 'l15' ? scoped.slice(-15) : scoped;
-  const summaryStrip: SummaryStat[] = isPitcherSubject
-    ? [
-        { label: 'Strikeouts', display: String(fieldSum(kpiSource, 'strikeOuts')) },
-        { label: 'Walks', display: String(fieldSum(kpiSource, 'baseOnBalls')) },
-        { label: 'Hits allowed', display: String(fieldSum(kpiSource, 'hits')) },
-        { label: 'Earned runs', display: String(fieldSum(kpiSource, 'earnedRuns')) },
-      ]
-    : [
-        {
-          label: 'Batting avg',
-          display: formatAvg(fieldSum(kpiSource, 'atBats') > 0 ? fieldSum(kpiSource, 'hits') / fieldSum(kpiSource, 'atBats') : 0),
-        },
-        { label: 'Strikeouts', display: String(fieldSum(kpiSource, 'strikeOuts')) },
-        { label: 'Walks', display: String(fieldSum(kpiSource, 'baseOnBalls')) },
-        { label: 'Stolen bases', display: String(fieldSum(kpiSource, 'stolenBases')) },
-      ];
 
   // ---- Prop odds board (PlayerDetail.tsx:1784-1817; universal, no branch) ----
   const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
@@ -930,29 +771,8 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   const spatialGrid = toSpatialGridRole(profile);
 
 
-  // ---- Phase 6.16: the four analytics cards ----
-  //
-  // ONE CALL FOR ALL FOUR, identical in every sport's adapter, because every
-  // one is a function of this candidate's own history and line. See
-  // `analyticsRoles.ts` for why they are shared rather than per-sport.
-  //
-  // `peers` COMES FROM `snapshot.candidates`, NOT the `candidates` argument.
-  // The argument is already scoped to this subject, so using it would compare
-  // the player against himself and the pool would be one. That exact mistake
-  // was made once on tennis's `opponentUnit` and caught only by opening the
-  // page -- same shape, same fix.
-  const analyticsRoles = buildAnalyticsRoles({
-    history: active.history,
-    line: active.line,
-    wantOver: directionMark(active.category) !== 'U',
-    statLabel: active.dimensionLabel ?? active.dimension,
-    peers: (snapshot?.candidates ?? [])
-      .filter((c) => c.dimension === active.dimension && c.subjectId !== active.subjectId)
-      .map((c) => ({ history: c.history })),
-  });
 
   return {
-    ...analyticsRoles,
     subject: {
       subjectId: active.subjectId,
       name: active.subjectName,
@@ -973,7 +793,6 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     windows,
     roundScores: null,
     chart,
-    gamelog: { columns, rows, summaryStrip, cardBadges: STAT_BADGE_DEFS },
     propOddsBoard,
     model: { todaysLine },
     hitterStats,

@@ -21,7 +21,6 @@ import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { footballResearchSpec } from './playerResearchSpec';
 import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
-import { buildAnalyticsRoles } from '@/lib/sports/shared/analyticsRoles';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
 import {
@@ -46,13 +45,10 @@ import { MATCHUP_GROUP_BY_POSITION, playerMatchupRows } from '@/components/NflPl
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import type {
   ChipDef,
-  GamelogColumnDef,
-  GamelogRow,
   MatchupExplorerData,
   PlayerDetailChart,
   PlayerDetailData,
   PropOddsBoardProps,
-  SummaryStat,
   WindowedStat5,
 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 
@@ -92,43 +88,6 @@ function ordinal(rank: number): string {
   const suffix = rank % 100 >= 11 && rank % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][rank % 10] ?? 'th');
   return `${rank}${suffix}`;
 }
-
-const GAMELOG_COLUMNS_BY_POSITION: Record<string, GamelogColumnDef[]> = {
-  QB: [
-    { key: 'completions', label: 'Cmp' },
-    { key: 'attempts', label: 'Att' },
-    { key: 'passingYards', label: 'Pass Yds' },
-    { key: 'passingTds', label: 'Pass TD' },
-    { key: 'interceptions', label: 'INT' },
-    { key: 'rushingYards', label: 'Rush Yds' },
-  ],
-  RB: [
-    { key: 'carries', label: 'Car' },
-    { key: 'rushingYards', label: 'Rush Yds' },
-    { key: 'rushingTds', label: 'Rush TD' },
-    { key: 'receptions', label: 'Rec' },
-    { key: 'receivingYards', label: 'Rec Yds' },
-  ],
-  FB: [
-    { key: 'carries', label: 'Car' },
-    { key: 'rushingYards', label: 'Rush Yds' },
-    { key: 'rushingTds', label: 'Rush TD' },
-    { key: 'receptions', label: 'Rec' },
-    { key: 'receivingYards', label: 'Rec Yds' },
-  ],
-  WR: [
-    { key: 'targets', label: 'Tgt' },
-    { key: 'receptions', label: 'Rec' },
-    { key: 'receivingYards', label: 'Rec Yds' },
-    { key: 'receivingTds', label: 'Rec TD' },
-  ],
-  TE: [
-    { key: 'targets', label: 'Tgt' },
-    { key: 'receptions', label: 'Rec' },
-    { key: 'receivingYards', label: 'Rec Yds' },
-    { key: 'receivingTds', label: 'Rec TD' },
-  ],
-};
 
 type SeasonRankMap = Partial<Record<'passingYards' | 'passingTds' | 'rushingYards' | 'rushingTds' | 'receptions' | 'receivingYards' | 'receivingTds', PlayerSeasonRank>>;
 
@@ -177,8 +136,6 @@ export interface NflPlayerDetailScope {
   lineOffset: number;
   opponentOnly: boolean;
   lastN: number | 'all';
-  showAllGames: boolean;
-  kpiScope: 'season' | 'l15';
 }
 
 export interface NflPlayerDetailInput {
@@ -223,7 +180,6 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   const positionPoolSize = typeof richMeta.positionPoolSize === 'number' ? richMeta.positionPoolSize : null;
   const sideOfBallRank = typeof richMeta.sideOfBallRank === 'number' ? richMeta.sideOfBallRank : null;
   const sideOfBallPoolSize = typeof richMeta.sideOfBallPoolSize === 'number' ? richMeta.sideOfBallPoolSize : null;
-  const weeklyBoxScores = (richMeta.weeklyBoxScores as Record<string, Record<string, unknown>> | undefined) ?? {};
   const rankPrefix = positionRank != null ? `#${positionRank} ` : '';
   const rankDetail =
     positionRank != null && positionPoolSize != null
@@ -347,55 +303,6 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     logoFor: (entry) => nflTeamLogoUrl(rawOf(entry).opponentAbbr as string | undefined),
   };
 
-  // ---- Gamelog (NflPlayerDetail.tsx:238-253, 445-467) ----
-  const gamelogColumns = position ? GAMELOG_COLUMNS_BY_POSITION[position] ?? [] : [];
-  const columns = gamelogColumns.filter((c) =>
-    scoped.some((e) => {
-      const week = rawOf(e).week as string | undefined;
-      const box = week != null ? weeklyBoxScores[week] : undefined;
-      return Number(box?.[c.key]) > 0;
-    }),
-  );
-  const gamelogSource = [...scoped].reverse().slice(0, scope.showAllGames ? undefined : 15);
-  const rows: GamelogRow[] = gamelogSource.map((entry, index) => {
-    const raw = rawOf(entry);
-    const oppAbbr = raw.opponentAbbr as string | undefined;
-    const season = raw.season as string | undefined;
-    const week = raw.week as string | undefined;
-    const box = week != null ? weeklyBoxScores[week] : undefined;
-    const values: Record<string, number | string | null | undefined> = {};
-    for (const col of columns) {
-      const v = box?.[col.key];
-      values[col.key] = v == null || v === '' ? null : (v as number | string);
-    }
-    return {
-      key: `${entry.period}-${index}`,
-      periodLabel: season && week ? `${season} Week ${week}` : entry.periodLabel ?? `Game #${entry.period}`,
-      opponentLogoUrl: nflTeamLogoUrl(oppAbbr),
-      opponentLabel: oppAbbr ?? 'Opponent unknown',
-      accentColor: oppAbbr ? teamPrimaryColor(oppAbbr) : undefined,
-      values,
-    };
-  });
-
-  // Real summary strip (2026-08-24) — top-of-card headline stats, scoped by
-  // the existing KPI-scope toggle, built generically from this player's
-  // real position-filtered columns (`GAMELOG_COLUMNS_BY_POSITION`) the same
-  // way CFB's/soccer's now do.
-  const kpiSource = scope.kpiScope === 'l15' ? scoped.slice(-15) : scoped;
-  const summaryStrip: SummaryStat[] | undefined =
-    kpiSource.length > 0 && columns.length > 0
-      ? columns.slice(0, 4).map((col) => ({
-          label: col.label,
-          display: String(
-            kpiSource.reduce((s, e) => {
-              const week = (rawOf(e).week as string | undefined) ?? undefined;
-              const box = week != null ? weeklyBoxScores[week] : undefined;
-              return s + (Number(box?.[col.key]) || 0);
-            }, 0),
-          ),
-        }))
-      : undefined;
 
   // ---- Prop odds board (universal, no branch) ----
   const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
@@ -475,29 +382,8 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
       : null;
 
 
-  // ---- Phase 6.16: the four analytics cards ----
-  //
-  // ONE CALL FOR ALL FOUR, identical in every sport's adapter, because every
-  // one is a function of this candidate's own history and line. See
-  // `analyticsRoles.ts` for why they are shared rather than per-sport.
-  //
-  // `peers` COMES FROM `snapshot.candidates`, NOT the `candidates` argument.
-  // The argument is already scoped to this subject, so using it would compare
-  // the player against himself and the pool would be one. That exact mistake
-  // was made once on tennis's `opponentUnit` and caught only by opening the
-  // page -- same shape, same fix.
-  const analyticsRoles = buildAnalyticsRoles({
-    history: active.history,
-    line: active.line,
-    wantOver: directionMark(active.category) !== 'U',
-    statLabel: active.dimensionLabel ?? active.dimension,
-    peers: (snapshot?.candidates ?? [])
-      .filter((c) => c.dimension === active.dimension && c.subjectId !== active.subjectId)
-      .map((c) => ({ history: c.history })),
-  });
 
   return {
-    ...analyticsRoles,
     opponentUnit,
     conditions,
     spatialGrid,
@@ -530,7 +416,6 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     windows,
     roundScores: null,
     chart,
-    gamelog: { columns, rows, summaryStrip, cardBadges: columns.slice(0, 4) },
     propOddsBoard,
     model: null,
     hitterStats: null,

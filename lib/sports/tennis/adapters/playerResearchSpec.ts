@@ -6,6 +6,10 @@
  *
  * No venue split: a tennis match has no home side, and the stored `is_home`
  * is only which slot ESPN listed the player in.
+ *
+ * No majors: `is_major` is 0 on every tennis row (the backfill looks for "grand
+ * slam" in names like "Australian Open"; measured 2026-08-30, see
+ * `seasonAggregateSpecs.ts`). Tournament level comes from TennisMyLife in R6.4.
  */
 
 import type { PlayerGame } from '@/lib/sports/shared/playerResearchShapes';
@@ -14,7 +18,6 @@ import { col, count, games, logCol, one, perGame, ratio, stat, total, type Agg, 
 const won = (g: PlayerGame) => g.result === 'W';
 const wins: Agg = count(won);
 const losses: Agg = count((g) => g.result === 'L');
-const majors = (g: PlayerGame) => stat(g, 'is_major') === 1;
 
 export function tennisResearchSpec(tour: 'atp' | 'wta'): ResearchSpec {
   return {
@@ -29,8 +32,7 @@ export function tennisResearchSpec(tour: 'atp' | 'wta'): ResearchSpec {
       col('wp', 'Win %', ratio(wins, games(), 100), 0, { format: 'percent' }),
       col('sets', 'Sets won %', ratio(total('sets_won'), (gs) => (total('sets_won')(gs) ?? 0) + (total('sets_lost')(gs) ?? 0), 100), 1, { format: 'percent' }),
       col('gms', 'Games won %', ratio(total('games_won'), (gs) => (total('games_won')(gs) ?? 0) + (total('games_lost')(gs) ?? 0), 100), 1, { format: 'percent' }),
-      col('tb', 'Tiebreaks / match', perGame('tiebreaks_played'), 2),
-      col('mw', 'Major wins', count((g) => majors(g) && won(g))),
+      col('tb', 'TB / match', perGame('tiebreaks_played'), 2, { info: 'Tiebreaks played per match' }),
     ],
     seasonColumns: [
       col('w', 'W', wins),
@@ -42,7 +44,6 @@ export function tennisResearchSpec(tour: 'atp' | 'wta'): ResearchSpec {
       col('gl', 'Games L', total('games_lost')),
       col('gwp', 'Games won %', ratio(total('games_won'), (gs) => (total('games_won')(gs) ?? 0) + (total('games_lost')(gs) ?? 0), 100), 1),
       col('tb', 'Tiebreaks', total('tiebreaks_played')),
-      col('mj', 'Major matches', count(majors), 0, { info: 'Matches at a Grand Slam' }),
     ],
     splitColumns: [
       col('wp', 'Win %', ratio(wins, games(), 100), 0),
@@ -60,7 +61,6 @@ export function tennisResearchSpec(tour: 'atp' | 'wta'): ResearchSpec {
       logCol('sets', 'Sets', (g) => (g.stats.sets_won == null ? null : `${stat(g, 'sets_won') ?? 0}-${stat(g, 'sets_lost') ?? 0}`)),
       logCol('games', 'Games', (g) => (g.stats.games_won == null ? null : `${stat(g, 'games_won') ?? 0}-${stat(g, 'games_lost') ?? 0}`)),
       logCol('tb', 'Tiebreaks', one('tiebreaks_played')),
-      logCol('major', 'Major', (g) => (majors(g) ? 'Yes' : null)),
     ],
   };
 }

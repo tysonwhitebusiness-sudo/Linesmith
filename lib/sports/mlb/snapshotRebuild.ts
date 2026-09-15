@@ -9,7 +9,6 @@
 import { getMlbSnapshot } from './adapter';
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import { dedupeHistoryForList } from './historyTrim';
-import { fullRawCacheKey } from './playerGamelogCache';
 import type { SportSnapshot } from '@/lib/core/types';
 
 export const TODAY_CACHE_KEY = 'mlb:snapshot';
@@ -28,16 +27,6 @@ export const FUTURE_DATE_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
  */
 export async function rebuildMlbSnapshot(date: string, cacheKey: string, isToday: boolean): Promise<SportSnapshot> {
   const snapshot = await getMlbSnapshot(new Date(`${date}T12:00:00Z`));
-
-  // Stash the untrimmed candidates server-side before trimming, so a
-  // player-detail "show all games" click can still recover full box-score
-  // history for older games — see player-gamelog/route.ts. Never sent to a
-  // browser in bulk, so its size doesn't matter the way the main response's does.
-  try {
-    await writeSnapshotCache(fullRawCacheKey(date), JSON.stringify(snapshot.candidates));
-  } catch {
-    // Non-critical — "show all games" on an older date just won't find extra detail
-  }
 
   // Dedupe + trim before this snapshot is cached or sent anywhere — see
   // historyTrim.ts: strips each candidate's history down to

@@ -34,9 +34,11 @@ export interface PlayerDetailPanelProps {
   onAdd: (candidate: PickCandidate, odds?: { americanOdds: string; source: string; bookmaker?: string }) => void;
   addedKeys: Set<string>;
   loading?: boolean;
+  /** Soccer's league or tennis's tour, so the player's history is read from the right competition. */
+  league?: string;
 }
 
-export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, addedKeys, loading = false }: PlayerDetailPanelProps) {
+export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, addedKeys, loading = false, league }: PlayerDetailPanelProps) {
   const [search, setSearch] = useState('');
   const [positionFilter, setPositionFilter] = useState<string | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
@@ -201,8 +203,6 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
       <div className="min-w-0 space-y-3">
         {!activeSubjectId ? (
           <div className="lb-card p-8 text-center text-sm text-ink-muted">No players on today&apos;s slate.</div>
-        ) : waitingOnSynthetic ? (
-          <PlayerSkeleton />
         ) : (
           <PlayerDetail
             candidates={effectiveCandidates}
@@ -212,7 +212,8 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
             onMarketChange={setMarket}
             onAdd={onAdd}
             addedKeys={addedKeys}
-            fallbackSubjectId={activeSubjectId}
+            subject={{ sport, id: activeSubjectId, league: league ?? null, name: activeSubject?.subjectName ?? null }}
+            marketsLoading={waitingOnSynthetic}
             golfStats={
               sport === 'golf'
                 ? {
