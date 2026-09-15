@@ -211,6 +211,12 @@ export interface SpatialGridRole {
   measure: 'share' | 'judged';
   /** Row-major. Every row the same length. */
   cells: Array<Array<{ key: string; value: number | null; sampleSize?: number | null }>>;
+  /**
+   * `zone` only: the four chase zones outside the strike zone, in Savant's
+   * order 11 (up and in to a righty's glove side), 12, 13, 14 — top-left,
+   * top-right, bottom-left, bottom-right from the catcher (R6.1b, G2's zone map).
+   */
+  outside?: Array<{ key: string; value: number | null; sampleSize?: number | null }>;
   rowLabels?: string[];
   columnLabels?: string[];
   /** Explicit, so several grids can share a scale. Omit to fit the data. */

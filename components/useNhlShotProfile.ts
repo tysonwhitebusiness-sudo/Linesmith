@@ -11,7 +11,7 @@ export interface NhlShotProfileState {
 /**
  * One NHL shooter's shot map — the client half of Phase 6.7.
  *
- * Same shape as `useMlbPitchProfile`: an `AbortController`, and an `enabled`
+ * Same shape as `useMlbStatcast`: an `AbortController`, and an `enabled`
  * gate expressed as an undefined argument rather than a branch on the hook call
  * itself, since the rules of hooks mean this runs for every sport and simply
  * does not fetch for the seven that have no shots.

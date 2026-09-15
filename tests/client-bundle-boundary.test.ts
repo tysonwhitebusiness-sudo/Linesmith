@@ -40,7 +40,6 @@ const DB_MODULES = [
   '@/lib/sports/shared/venueFactor',
   '@/lib/db/client',
   '@/lib/sports/shared/seasonAggregates',
-  '@/lib/sports/mlb/pitchProfile',
   // R5a: the Statcast rollup reads. Types live in `statcastRollupShapes.ts`.
   '@/lib/sports/mlb/statcastRollups',
   // R5b: strength rollup reads. Types live in `teamProductionShapes.ts`.

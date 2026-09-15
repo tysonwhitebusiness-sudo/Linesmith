@@ -337,7 +337,6 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
     chart,
     propOddsBoard,
     model: null,
-    hitterStats: null,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     liveGame: null,

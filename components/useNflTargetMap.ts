@@ -11,7 +11,7 @@ export interface NflTargetMapState {
 /**
  * One NFL receiver's target map — the client half of Phase 6.8.
  *
- * Same shape as `useMlbPitchProfile` and the two shot-profile hooks: an
+ * Same shape as `useMlbStatcast` and the two shot-profile hooks: an
  * `AbortController`, and an `enabled` gate expressed as an undefined argument
  * rather than a branch on the hook call itself.
  */

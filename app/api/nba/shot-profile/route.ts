@@ -11,7 +11,7 @@
  * TTL is 30 minutes, grounded in the writer: `ingestNbaShotsJob` runs hourly,
  * so anything shorter recomputes an identical answer and anything much longer
  * would sit behind a fresh ingest for no reason. Same reasoning, same number as
- * `/api/mlb/pitch-profile`.
+ * the retired `/api/mlb/pitch-profile` (deleted in R6.1b).
  *
  * CACHE KEY: `nba:shot-profile:{shooterId}:{season}` — grepped before choosing,
  * per the warning about `snapshot_cache` being one flat namespace. Nothing else

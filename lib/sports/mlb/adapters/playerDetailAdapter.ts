@@ -31,6 +31,7 @@
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { mlbResearchSpec } from './playerResearchSpec';
+import { mlbHitterSection, type MlbStatcastInput } from './playerResearchSections';
 import type { PickCandidate, SplitEvidence, Sport, SportSnapshot, WeatherContext } from '@/lib/core/types';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import {
@@ -254,20 +255,6 @@ export interface PlayerDetailData {
   propOddsBoard: PropOddsBoardProps | null;
   model?: { todaysLine?: TodaysLineData | null } | null;
   /**
-   * MLB-only "Quality of Contact" card (`PlayerDetail.tsx:2114-2152`).
-   *
-   * PHASE 2 CORRECTION: Phase 1 typed this as a bare `OpposingStarterStat[]`
-   * (just `meta.ownStatcast`), but the real card also shows a "Season
-   * averages" sub-block (`meta.ownBattingStats`) and a composite-rank summary
-   * line above the stat rows (`meta.ownStatcastSummary`) — both missed in the
-   * original sketch. Widened to carry all three.
-   */
-  hitterStats?: {
-    own: OpposingStarterStat[];
-    seasonAverages?: OpposingStarterStat[] | null;
-    summaryLine?: string | null;
-  } | null;
-  /**
    * MLB/NFL "Form" context-rail card.
    *
    * DESIGN DOC CORRECTION (see Phase 1 report): docs/sport-adapter-design.md
@@ -380,12 +367,6 @@ function rankPrefix(rank: number | null | undefined): string {
   return rank != null ? `#${rank} ` : '';
 }
 
-/** "1st"/"2nd"/"3rd"/"Nth" — a local copy of `PlayerDetail.tsx`'s own exported `ordinal`, duplicated rather than imported to avoid a circular value-import between this adapter and the component that consumes it (same small-duplication convention this file already uses for `usedColumns`/`formatAvg`/etc.). */
-function ordinal(rank: number): string {
-  const suffix = rank % 100 >= 11 && rank % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][rank % 10] ?? 'th');
-  return `${rank}${suffix}`;
-}
-
 // ---------------------------------------------------------------------------
 // Input shape
 // ---------------------------------------------------------------------------
@@ -412,7 +393,7 @@ export interface MlbPlayerDetailInput {
   /** `useLiveGame(...)`'s result — only meaningful while the subject's game is in progress. */
   live?: LiveGameState;
   /**
-   * `useMlbPitchProfile(...)`'s result — the pitch-level Statcast rollup that
+   * the Statcast rollup row's `profile` block (`useMlbStatcast`, R6.1b) — the pitch-level Statcast rollup that
    * fills `usageMix` and `spatialGrid`. Structural, not an import of the hook's
    * own type, so this file stays a pure transform with no dependency on a
    * component.
@@ -424,7 +405,7 @@ export interface MlbPlayerDetailInput {
    */
   pitchProfile?: { profile: PitchProfile | null; loading: boolean };
   /**
-   * Tonight's opposing STARTER's own pitch profile — `useMlbPitchProfile('pitcher', ...)`
+   * Tonight's opposing STARTER's own pitch profile — `useMlbStatcast` for the starter
    * a second time, for a different subject.
    *
    * Fills `usageMix.compare`, so the batter's pitch-mix card can answer the
@@ -567,28 +548,6 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
       }
     : null;
 
-  // ---- Hitter stats — Quality of Contact, MLB-only (PlayerDetail.tsx:2114-2152) ----
-  const ownStatcastSummaryFull = meta.ownStatcastSummary as
-    | { overallRank: number | null; poolSize: number; position: string; positionRank: number | null; positionPoolSize: number }
-    | undefined;
-  const hitterStats: PlayerDetailData['hitterStats'] =
-    Array.isArray(meta.ownStatcast) && meta.ownStatcast.length > 0
-      ? {
-          own: meta.ownStatcast as OpposingStarterStat[],
-          seasonAverages: Array.isArray(meta.ownBattingStats) && meta.ownBattingStats.length > 0 ? (meta.ownBattingStats as OpposingStarterStat[]) : null,
-          summaryLine: ownStatcastSummaryFull
-            ? [
-                ownStatcastSummaryFull.overallRank != null ? `${ordinal(ownStatcastSummaryFull.overallRank)} of ${ownStatcastSummaryFull.poolSize} overall` : null,
-                ownStatcastSummaryFull.positionRank != null
-                  ? `${ordinal(ownStatcastSummaryFull.positionRank)} of ${ownStatcastSummaryFull.positionPoolSize} at ${ownStatcastSummaryFull.position}`
-                  : null,
-              ]
-                .filter((s): s is string => s != null)
-                .join(' · ') || null
-            : null,
-        }
-      : null;
-
   // ---- Form (context rail; corrected per the type doc comment above) ----
   const formWindows: SplitEvidence[] | null = active.supportingSplits ?? null;
 
@@ -685,7 +644,7 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   }
 
   // ---- Hero rank prefix (PlayerDetail.tsx:143-145, 1259-1264) ----
-  const ownStatcastSummary = ownStatcastSummaryFull;
+  const ownStatcastSummary = meta.ownStatcastSummary as { overallRank: number | null } | undefined;
 
   // ---- Phase 6.3: the six universal roles, MLB's instances ----
   // Two are filled from data this adapter already has; the other four need
@@ -768,7 +727,9 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
       : null,
     active.subjectName,
   );
-  const spatialGrid = toSpatialGridRole(profile);
+  // A hitter's strike zone and platoon split live in "Contact quality &
+  // approach" now (R6.1b), from the same rollup; the pitcher's move in R6.1c.
+  const spatialGrid = isPitcherSubject ? toSpatialGridRole(profile) : null;
 
 
 
@@ -795,7 +756,6 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     chart,
     propOddsBoard,
     model: { todaysLine },
-    hitterStats,
     formWindows,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     liveGame,
@@ -815,7 +775,7 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     // `mlb_pitch_events` carries `p_throws` and `stand` on every one of its
     // 2,140,525 rows. Left as a worked example of why a null justified in prose
     // needs re-reading whenever its sourcing task lands.
-    binarySplit: toPlatoonBinarySplit(profile),
+    binarySplit: isPitcherSubject ? toPlatoonBinarySplit(profile) : null,
     careerH2H,
     liveLineTracker: {
       subjectId: active.subjectId,
@@ -859,6 +819,13 @@ export { isOk };
  * The columns are this sport's `playerResearchSpec.ts`; the work is
  * `buildPlayerResearch`, shared by every sport.
  */
-export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date }): PlayerResearchData | null {
-  return buildPlayerResearch({ sport: 'mlb', history: input.history, spec: mlbResearchSpec(input.bio, input.history.games), now: input.now });
+export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date; statcast?: MlbStatcastInput }): PlayerResearchData | null {
+  const spec = mlbResearchSpec(input.bio, input.history.games);
+  const research = buildPlayerResearch({ sport: 'mlb', history: input.history, spec, now: input.now });
+  if (!research || !input.statcast) return research;
+  // MLB's own sections (R6.1b hitter; the pitcher's arsenal is R6.1c).
+  const seasonPA = input.history.games
+    .filter((g) => g.season === input.statcast!.season)
+    .reduce((n, g) => n + (typeof g.stats.bat_plateAppearances === 'number' ? g.stats.bat_plateAppearances : 0), 0);
+  return { ...research, sections: spec.kind === 'hitter' ? [mlbHitterSection(input.statcast, seasonPA || null)] : [] };
 }

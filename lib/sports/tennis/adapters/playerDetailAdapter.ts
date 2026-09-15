@@ -236,7 +236,6 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
     chart,
     propOddsBoard,
     model: null,
-    hitterStats: null,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     liveGame: null,

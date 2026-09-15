@@ -329,7 +329,6 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
     // this field for MLB/NFL structurally never resolves for golf. Modeled
     // as `null` rather than reproducing a lookup that can never succeed.
     model: null,
-    hitterStats: null,
     formWindows: null,
     lineControl: { kind: 'category', dimension: active.dimension, value: effectiveGolfCategory, categories: ['birdie', 'par', 'bogey'] },
     liveGame: null,

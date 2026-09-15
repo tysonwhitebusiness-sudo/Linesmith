@@ -308,6 +308,7 @@ export function buildPlayerResearch(input: { sport: HistorySport; history: Playe
     splits: { columns: spec.splitColumns.map(strip), seasons: seasons.length > 1 ? [...seasons, 0] : seasons, defaultSeason: scopeSeason, rowsBySeason },
     gameLog: { columns: spec.logColumns.map(strip), rows: logRows },
     seasonLabels: seasons.map((s) => ({ season: s, label: seasonLabel(sport, s) })),
+    sections: [],
   };
 }
 

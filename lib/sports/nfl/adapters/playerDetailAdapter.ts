@@ -418,7 +418,6 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     chart,
     propOddsBoard,
     model: null,
-    hitterStats: null,
     formWindows,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     liveGame: null,

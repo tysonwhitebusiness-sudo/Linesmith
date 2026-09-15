@@ -2,14 +2,17 @@
 
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
-import { Avatar, Card, DataTable, ErrorState, FactList, SegmentedToggle, SelectBox, Skeleton, StatGrid, StatValue, StatusPill, type CardState, type Column } from './ui';
-import { SeriesChart } from './charts';
+import { Avatar, Card, DataTable, EmptyState, ErrorState, FactList, RankRow, SegmentedToggle, SelectBox, Skeleton, StatGrid, StatValue, StatusPill, VizLegend, type CardState, type Column } from './ui';
+import { Histogram, SeriesChart } from './charts';
+import { SpatialSurface } from './charts/SpatialSurface';
 import {
   formatResearchValue,
   type PlayerBio,
   type PlayerResearchData,
+  type ResearchCard,
   type ResearchColumn,
   type ResearchLogRow,
+  type ResearchSection,
   type ResearchSeasonRow,
   type ResearchSplitRow,
 } from '@/lib/sports/shared/playerResearchShapes';
@@ -385,4 +388,147 @@ export function asOfText(iso: string | null | undefined): string {
   const hours = (Date.now() - t) / 3_600_000;
   const when = new Date(t).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   return hours < 1 ? `as of ${when} (under an hour ago)` : hours < 48 ? `as of ${when} (${Math.round(hours)}h ago)` : `as of ${when} (${Math.round(hours / 24)} days ago)`;
+}
+
+// ---------------------------------------------------------------------------
+// A sport's own sections (R6.1b)
+// ---------------------------------------------------------------------------
+
+type TableRow = Extract<ResearchCard, { kind: 'table' }>['rows'][number];
+
+function SurfaceCard({ card }: { card: Extract<ResearchCard, { kind: 'surface' }> }) {
+  const [view, setView] = useState(card.views[0]?.key);
+  const active = card.views.find((v) => v.key === view) ?? card.views[0];
+  return (
+    <Card title={card.title} scope={card.scope}>
+      {card.views.length > 1 ? (
+        <SegmentedToggle label={`${card.title} view`} size="sm" value={active.key} onChange={setView} options={card.views.map((v) => ({ value: v.key, label: v.label }))} className="mb-3" />
+      ) : null}
+      {active ? <SpatialSurface role={active.role} /> : null}
+    </Card>
+  );
+}
+
+/** One card of a sport section, by kind. Knows nothing about which sport built it. */
+export function ResearchCardView({ card }: { card: ResearchCard }) {
+  switch (card.kind) {
+    case 'percentiles':
+      return (
+        <Card title={card.title} scope={card.scope} info={card.info} caption={card.caption}>
+          <div className="space-y-0.5">
+            {card.rows.map((r) =>
+              r.percentile != null ? (
+                <RankRow key={r.key} label={r.label} valueText={r.valueText} percentile={r.percentile} direction={r.direction} info={r.info} />
+              ) : (
+                <div key={r.key} className="grid grid-cols-[minmax(64px,140px)_1fr_auto] items-center gap-x-3 px-1 py-1.5">
+                  <span className="truncate text-body-sm text-ink-secondary">{r.label}</span>
+                  <span />
+                  <span className="text-body-sm font-semibold tabular-nums text-ink">{r.valueText}</span>
+                </div>
+              ),
+            )}
+          </div>
+        </Card>
+      );
+    case 'histogram':
+      return (
+        <Card title={card.title} scope={card.scope} caption={card.caption}>
+          <Histogram bins={card.bars} label={card.title} />
+          {card.highlightLabel ? <VizLegend items={[{ label: card.highlightLabel, color: 'oklch(18% 0.005 260)' }]} /> : null}
+        </Card>
+      );
+    case 'series':
+      return (
+        <Card title={card.title} scope={card.scope} caption={card.caption}>
+          <SeriesChart
+            label={card.title}
+            values={card.values}
+            context={card.context ? [card.context] : undefined}
+            xLabels={card.xLabels}
+            reference={card.reference}
+            zeroBased={card.zeroBased}
+            min={card.min}
+            max={card.max}
+            height={220}
+            tickCount={4}
+            format={(v) => formatResearchValue(v, { decimals: card.decimals })}
+            tooltipRows={(i) => (card.tips[i] ?? []).map((t) => ({ value: t }))}
+          />
+          {card.legend ? <VizLegend items={card.legend.map((l) => ({ label: l.label, color: l.dark ? 'oklch(18% 0.005 260)' : 'oklch(80% 0.004 260)' }))} /> : null}
+        </Card>
+      );
+    case 'table': {
+      const columns: Column<TableRow>[] = [
+        { key: 'label', label: card.labelHeader, sortable: false },
+        ...card.columns.map((c) => ({
+          key: c.key,
+          label: c.label,
+          numeric: true,
+          title: c.info,
+          render: (r: TableRow) => formatResearchValue(r.values[c.key], c),
+          sortValue: (r: TableRow) => {
+            const v = r.values[c.key];
+            return typeof v === 'number' ? v : typeof v === 'string' ? v : null;
+          },
+        })),
+      ];
+      return (
+        <Card title={card.title} scope={card.scope} info={card.info} caption={card.caption} dense state={card.rows.length ? { kind: 'ready' } : { kind: 'empty', title: card.emptyText ?? 'Nothing to list', reason: 'The source has no rows for this season.' }}>
+          <DataTable caption={card.title} columns={columns} rows={card.rows} rowKey={(r) => r.key} dense maxHeight={420} />
+        </Card>
+      );
+    }
+    case 'surface':
+      return <SurfaceCard card={card} />;
+    case 'status':
+      return (
+        <Card title={card.title}>
+          <EmptyState title={card.headline} reason={card.reason} />
+        </Card>
+      );
+  }
+}
+
+/** A sport section's body: its season control, its state, and its cards in rows of one or two. */
+export function ResearchSectionBody({ section, onSeason }: { section: ResearchSection; onSeason: (season: number) => void }) {
+  const control =
+    section.season && section.season.options.length > 1 ? (
+      <SegmentedToggle label={`${section.title} season`} size="sm" value={section.season.value} onChange={onSeason} options={section.season.options} />
+    ) : null;
+  let body: ReactNode;
+  if (section.state.kind === 'loading') {
+    body = (
+      <div className="grid gap-3 lg:grid-cols-2">
+        <Card title="Loading" state={{ kind: 'loading', lines: 6 }} />
+        <Card title="Loading" state={{ kind: 'loading', lines: 6 }} />
+      </div>
+    );
+  } else if (section.state.kind === 'error') {
+    body = <ErrorState message={section.state.message} />;
+  } else if (section.state.kind === 'empty') {
+    body = (
+      <div className="rounded-card border border-line-soft bg-card shadow-card">
+        <EmptyState title={section.state.title} reason={section.state.reason} />
+      </div>
+    );
+  } else {
+    body = section.rows.map((row, i) => (
+      <div key={i} className={row.length > 1 ? 'grid gap-3 lg:grid-cols-2' : ''}>
+        {row.map((card) => (
+          <ResearchCardView key={card.key} card={card} />
+        ))}
+      </div>
+    ));
+  }
+  return (
+    <>
+      {control || section.note ? (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          {control}
+          {section.note && section.state.kind === 'ready' ? <p className="max-w-3xl text-label text-ink-secondary">{section.note}</p> : null}
+        </div>
+      ) : null}
+      {body}
+    </>
+  );
 }

@@ -66,7 +66,10 @@ test('MLB returns every role key, filling only the ones it has data for', () => 
   assert.match(MLB_ADAPTER, /const opponentUnit: OpponentUnitRole \| null =/, 'MLB stopped building opponentUnit');
   assert.match(MLB_ADAPTER, /const conditions: ConditionsRole \| null =/, 'MLB stopped building conditions');
   assert.match(MLB_ADAPTER, /const usageMix = toUsageMixRole\(/, 'MLB stopped building usageMix');
-  assert.match(MLB_ADAPTER, /const spatialGrid = toSpatialGridRole\(/, 'MLB stopped building spatialGrid');
+  // R6.1b: a HITTER's strike zone and platoon split moved to the page's
+  // "Contact quality & approach" section (same Statcast rollup, richer cards),
+  // so the prop block builds these two roles for a pitcher only until R6.1c.
+  assert.match(MLB_ADAPTER, /const spatialGrid = isPitcherSubject \? toSpatialGridRole\(/, 'MLB stopped building spatialGrid');
   // `careerH2H` joined them in 6.13 — built from the SAME opponent predicate
   // `windows.h2h` already uses, and earning its place by adding the
   // per-meeting history a single rate cannot express. Behaviour is tested in
@@ -81,7 +84,7 @@ test('MLB returns every role key, filling only the ones it has data for', () => 
   // exactly one null, it was that a role must be REAL or absent, never a
   // placeholder. `toPlatoonBinarySplit` returns null unless both hands have a
   // real sample, which is what makes filling it honest.
-  assert.match(MLB_ADAPTER, /binarySplit: toPlatoonBinarySplit\(/, 'MLB stopped building its platoon split');
+  assert.match(MLB_ADAPTER, /binarySplit: isPitcherSubject \? toPlatoonBinarySplit\(/, 'MLB stopped building its platoon split');
   assert.doesNotMatch(
     MLB_ADAPTER,
     /binarySplit: null/,

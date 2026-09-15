@@ -125,7 +125,7 @@ export function toUsageMixRole(
   profile: PitchProfile | null,
   /**
    * Tonight's opposing pitcher, when the subject is a batter and the starter
-   * is known. Same `PitchProfile` shape from the same `getPitchProfile` call --
+   * is known. Same `PitchProfile` shape from the same Statcast rollup row --
    * a pitcher's `pitchTypes[].xwoba` is what he ALLOWS on that pitch, exactly
    * as a batter's is what he HITS on it, so the two sides are directly
    * comparable without any per-role special casing.

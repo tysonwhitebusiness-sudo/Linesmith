@@ -11,7 +11,7 @@ export interface LineHistoryState {
 /**
  * Price movement for one prop — the client half of Phase 6.16.
  *
- * Same shape as `useTeamStatcast` and `useMlbPitchProfile`: an `AbortController`
+ * Same shape as `useTeamStatcast` and `useMlbStatcast`: an `AbortController`
  * and an `enabled` gate expressed as an undefined argument rather than a branch
  * on the hook call itself, since the rules of hooks mean this runs on every
  * render for every sport and simply does not fetch when it has nothing to ask

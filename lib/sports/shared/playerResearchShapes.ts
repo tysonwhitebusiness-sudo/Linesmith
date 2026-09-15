@@ -196,9 +196,105 @@ export interface PlayerResearchData {
   gameLog: { columns: ResearchColumn[]; rows: ResearchLogRow[] };
   /** Seasons in the history, labelled per the sport's convention, newest first. */
   seasonLabels: Array<{ season: number; label: string }>;
+  /** The sport's own sections, in page order (MLB's "Contact quality & approach"…). Empty for a sport not yet rebuilt. */
+  sections: ResearchSection[];
 }
 
 /** A page URL may carry the namespaced subject id or the bare athlete id; both name the same player. */
 export function sameSubject(subjectId: string, urlId: string): boolean {
   return subjectId === urlId || athleteIdOf(subjectId) === athleteIdOf(urlId);
+}
+
+// ---------------------------------------------------------------------------
+// A sport's own sections (R6.1b onwards)
+// ---------------------------------------------------------------------------
+
+/**
+ * One card of a sport's own section, as DATA. The page draws each kind the same
+ * way for every sport — a percentile list, a histogram, a line over games, a
+ * table, a place on the sport's surface, or a status for data that is not held
+ * — so MLB's "Contact quality" and NFL's "Usage & depth" are two lists of these
+ * built by two adapters, and the component never learns either sport.
+ *
+ * Formatters and surface roles may carry functions (as `SpatialGridRole`
+ * already does); nothing here carries JSX.
+ */
+export type ResearchCard =
+  | {
+      kind: 'percentiles';
+      key: string;
+      title: string;
+      scope?: string;
+      info?: string;
+      caption?: string;
+      /** A row without a percentile (a hitter below the qualifier) prints its value only. */
+      rows: Array<{ key: string; label: string; valueText: string; percentile: number | null; direction: 'higher' | 'lower' | 'neutral'; info?: string }>;
+    }
+  | {
+      kind: 'histogram';
+      key: string;
+      title: string;
+      scope?: string;
+      caption?: string;
+      bars: Array<{ key: string; axisLabel: string; value: number; highlight: boolean; tip: string }>;
+      /** Legend text for the highlighted bars ("hard-hit, 95+ mph"). */
+      highlightLabel?: string;
+    }
+  | {
+      kind: 'series';
+      key: string;
+      title: string;
+      scope?: string;
+      caption?: string;
+      /** The dark line. */
+      values: number[];
+      /** The grey line behind it. */
+      context?: number[];
+      xLabels: string[];
+      reference?: { value: number; label: string };
+      zeroBased: boolean;
+      min?: number;
+      max?: number;
+      decimals: number;
+      unit: string;
+      tips: string[][];
+      legend?: Array<{ label: string; dark: boolean }>;
+    }
+  | {
+      kind: 'table';
+      key: string;
+      title: string;
+      scope?: string;
+      info?: string;
+      caption?: string;
+      labelHeader: string;
+      columns: ResearchColumn[];
+      rows: Array<{ key: string; label: string; values: Record<string, number | string | null> }>;
+      emptyText?: string;
+    }
+  | {
+      kind: 'surface';
+      key: string;
+      title: string;
+      scope?: string;
+      caption?: string;
+      /** One or more views of the same place; the card switches between them. */
+      views: Array<{ key: string; label: string; role: import('./playerRoles').SpatialGridRole }>;
+    }
+  | { kind: 'status'; key: string; title: string; headline: string; reason: string };
+
+export interface ResearchSection {
+  id: string;
+  navLabel: string;
+  title: string;
+  sub?: string;
+  /** Rows of one or two cards; two share a row at desktop width and stack on a phone. */
+  rows: ResearchCard[][];
+  state: { kind: 'ready' } | { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'empty'; title: string; reason: string };
+  /** The section's season control, when its source is per season. */
+  season?: { value: number; options: Array<{ value: number; label: string }> };
+  /** A sentence about how complete the source is, shown above the cards ("Statcast holds 261 of 283 plate appearances"). */
+  note?: string;
+  /** For the Sources section. */
+  source?: { label: string; detail: string; asOf: string | null };
 }

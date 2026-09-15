@@ -73,7 +73,7 @@ function SurfaceBody({ role, className }: { role: SpatialGridRole; className?: s
   const [hostRef, measured] = useChartWidth(320);
   // Regions are clipped to the surface: the NBA 15 ft paint ring reaches past the baseline.
   const clipId = `surface-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
-  const values = role.cells.flat().map((c) => c.value).filter((v): v is number => v != null && Number.isFinite(v));
+  const values = [...role.cells.flat(), ...(role.outside ?? [])].map((c) => c.value).filter((v): v is number => v != null && Number.isFinite(v));
   if (values.length === 0) {
     return (
       <div className={`flex items-center justify-center rounded-ctl border border-dashed border-line-soft px-4 py-6 ${className ?? ''}`} role="img" aria-label={`${role.title}: no data`}>
@@ -110,6 +110,19 @@ function SurfaceBody({ role, className }: { role: SpatialGridRole; className?: s
           </clipPath>
         </defs>
         {geo.background}
+        {geo.outside && role.outside
+          ? geo.outside.map((o, i) => {
+              const cell = role.outside![i];
+              if (!cell) return null;
+              const { fill } = fillFor(cell.value);
+              const valueText = cell.value == null ? 'no data' : `${role.format(cell.value)}${role.unit ? ` ${role.unit}` : ''}`;
+              return (
+                <MarkTip key={`out-${cell.key}`} tip={`Chase zone ${cell.key} ${MIDDOT} ${valueText}${cell.sampleSize != null ? ` ${MIDDOT} ${cell.sampleSize} pitches` : ''}`}>
+                  <path d={o.d} fill={cell.value == null ? 'oklch(var(--card-sunk))' : fill} opacity={0.6} stroke="oklch(var(--card))" strokeWidth={3} />
+                </MarkTip>
+              );
+            })
+          : null}
         <g clipPath={`url(#${clipId})`}>
         {geo.regions.map((r) => {
           const cell = role.cells[r.row]?.[r.col];
@@ -127,6 +140,17 @@ function SurfaceBody({ role, className }: { role: SpatialGridRole; className?: s
         {geo.foreground}
         {/* Labels and values LAST, so a court or box line never crosses a number. */}
         <g style={{ pointerEvents: 'none' }}>
+          {geo.outside && role.outside
+            ? geo.outside.map((o, i) => {
+                const cell = role.outside![i];
+                if (!cell || cell.value == null) return null;
+                return (
+                  <text key={`out-label-${cell.key}`} x={o.cx} y={o.cy + 4} fill={INK1} fontSize={SIZE.value} fontWeight={600} textAnchor="middle" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {role.format(cell.value)}
+                  </text>
+                );
+              })
+            : null}
           {geo.regions.map((r) => {
             const cell = role.cells[r.row]?.[r.col];
             if (!cell) return null;
@@ -154,7 +178,7 @@ function SurfaceBody({ role, className }: { role: SpatialGridRole; className?: s
   );
 }
 
-type Geometry = { height: number; regions: Region[]; background: ReactNode; foreground?: ReactNode };
+type Geometry = { height: number; regions: Region[]; background: ReactNode; foreground?: ReactNode; outside?: Array<{ d: string; cx: number; cy: number }> };
 
 const rect = (x: number, y: number, w: number, h: number) => `M${x},${y}h${w}v${h}h${-w}Z`;
 const circle = (cx: number, cy: number, r: number) => `M${cx - r},${cy}a${r},${r} 0 1,0 ${2 * r},0a${r},${r} 0 1,0 ${-2 * r},0Z`;
@@ -165,14 +189,29 @@ const GEOMETRY: Record<Exclude<SpatialGridRole['surface'], 'matrix'>, (W: number
     const S = Math.min(W, 300);
     const inner = S * 0.62;
     const x0 = (W - inner) / 2;
-    const y0 = 8;
     const cell = inner / 3;
+    // Room above the box for the chase zones.
+    const y0 = 8 + cell * 0.9;
     const regions: Region[] = [];
     for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) regions.push({ row: r, col: c, d: rect(x0 + c * cell, y0 + r * cell, cell, cell), cx: x0 + c * cell + cell / 2, cy: y0 + r * cell + cell / 2 });
     const plateY = y0 + inner + 16;
     const pw = inner * 0.62;
     const px = (W - pw) / 2;
+    // Chase zones: four quadrants around the box, each a corner of the square
+    // the box sits in (Savant 11-14). Drawn under the box, values at the corners.
+    const pad = cell * 0.9;
+    const ox = x0 - pad;
+    const oy = y0 - pad;
+    const os = inner + 2 * pad;
+    const half = os / 2;
+    const outside = [
+      { d: rect(ox, oy, half, half), cx: ox + pad / 2, cy: oy + pad / 2 },
+      { d: rect(ox + half, oy, half, half), cx: ox + os - pad / 2, cy: oy + pad / 2 },
+      { d: rect(ox, oy + half, half, half), cx: ox + pad / 2, cy: oy + os - pad / 2 },
+      { d: rect(ox + half, oy + half, half, half), cx: ox + os - pad / 2, cy: oy + os - pad / 2 },
+    ];
     return {
+      outside,
       height: plateY + 34,
       regions,
       background: <rect x={x0 - 3} y={y0 - 3} width={inner + 6} height={inner + 6} rx={6} fill="oklch(var(--card-sunk))" />,

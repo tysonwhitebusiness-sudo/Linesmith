@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Chip, EmptyState, Section, SectionNav, SkeletonLines, StatusPill, Tabs } from './ui';
 import { usePlayerBio, usePlayerHistory } from './usePlayerResearch';
-import { GameLogCard, PlayerHero, SeasonsCard, SourcesCard, SplitsCard, TrendsCard, asOfText } from './PlayerResearchSections';
+import { GameLogCard, PlayerHero, ResearchSectionBody, SeasonsCard, SourcesCard, SplitsCard, TrendsCard, asOfText } from './PlayerResearchSections';
 import { athleteIdOf, historySportFor, type PlayerBio, type PlayerHistory, type PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
 import { entryValue, isOk, type WindowedStat } from '@/lib/core/windowedStat';
@@ -11,7 +11,8 @@ import { compareInk, gradientCardStyle, deltaGradientStyle, heatFill, toneFill }
 import { markFor, TONE_CLASS } from '@/lib/ui/marks';
 import { useLiveGame } from './useLiveGame';
 import { useTeamStatcast } from './useTeamStatcast';
-import { useMlbPitchProfile } from './useMlbPitchProfile';
+import { useMlbStatcast } from './useMlbStatcast';
+import type { MlbStatcastInput } from '@/lib/sports/mlb/adapters/playerResearchSections';
 import { useNhlShotProfile } from './useNhlShotProfile';
 import { useNbaShotProfile } from './useNbaShotProfile';
 import { useNflTargetMap } from './useNflTargetMap';
@@ -841,11 +842,11 @@ function ScopeChips({
  * selection `data` makes below for the market adapters, but keyed on the
  * SUBJECT's sport so it works with no candidate at all (R6.1a).
  */
-function toResearchData(sport: string, history: PlayerHistory, bio: PlayerBio | null): PlayerResearchData | null {
+function toResearchData(sport: string, history: PlayerHistory, bio: PlayerBio | null, extras: { mlbStatcast?: MlbStatcastInput }): PlayerResearchData | null {
   const input = { history, bio };
   switch (sport) {
     case 'mlb':
-      return toMlbPlayerResearchData(input);
+      return toMlbPlayerResearchData({ ...input, statcast: extras.mlbStatcast });
     case 'nfl':
       return toNflPlayerResearchData(input);
     case 'cfb':
@@ -1018,41 +1019,45 @@ export function PlayerDetail({
   const playerLive = useLiveGame(gamePk, gameIsInProgressHint, 15_000, active?.subjectId);
   const opponentTeamStatcast = useTeamStatcast(isPitcherSubject ? opponentId : undefined);
 
-  // Pitch-level Statcast (6.6) — fills MLB's `usageMix` and `spatialGrid`
-  // roles. The subject is a pitcher or a batter, and that decides which side of
-  // `mlb_pitch_events` to aggregate; nothing else about the query differs.
-  //
-  // SEASON: the current UTC year. `mlb_pitch_events` starts at 2024 by operator
-  // decision and the route rejects anything earlier, so an out-of-season
-  // request returns an empty profile and both roles render nothing — which is
-  // the honest answer, not a hidden failure.
-  // `subjectId` is a string on every sport (`lib/core/types.ts:192`); MLB's
-  // happens to be the numeric MLBAM id. Parsed and integer-checked here rather
-  // than handed to the route as text, which would 400 — and left `undefined`
-  // for the other seven sports, so the hook never fires for them.
-  const mlbSubjectNumeric = active?.sport === 'mlb' ? Number(active.subjectId) : NaN;
-  const pitchProfileSubjectId =
-    Number.isInteger(mlbSubjectNumeric) && mlbSubjectNumeric > 0 ? mlbSubjectNumeric : undefined;
-  const pitchProfile = useMlbPitchProfile(
-    isPitcherSubject ? 'pitcher' : 'batter',
-    pitchProfileSubjectId,
-    new Date().getUTCFullYear(),
+  // MLB Statcast, from the R5a rollup (R6.1b). One route serves three readers:
+  // the player's own season (the "Contact quality" section, and the prop
+  // block's usage-mix and strike-zone roles through the row's `profile`
+  // block), and tonight's opposing starter (the matchup's pitch mix). The id
+  // comes from the page's SUBJECT, so a player with no market still gets his
+  // sections; it is left undefined for every other sport and the hooks idle.
+  const mlbSubjectNumeric =
+    subject?.sport === 'mlb' ? Number(athleteIdOf(subject.id)) : active?.sport === 'mlb' ? Number(active.subjectId) : NaN;
+  const mlbPlayerId = Number.isInteger(mlbSubjectNumeric) && mlbSubjectNumeric > 0 ? mlbSubjectNumeric : undefined;
+  const statcastNowSeason = new Date().getUTCFullYear();
+  // The sport section's season control. `null` opens on the current season.
+  const [sportSectionSeason, setSportSectionSeason] = useState<number | null>(null);
+  useEffect(() => setSportSectionSeason(null), [mlbPlayerId]);
+  const statcastNow = useMlbStatcast(mlbPlayerId, statcastNowSeason);
+  const statcastPicked = useMlbStatcast(
+    sportSectionSeason != null && sportSectionSeason !== statcastNowSeason ? mlbPlayerId : undefined,
+    sportSectionSeason ?? undefined,
   );
+  const statcastForSection = sportSectionSeason == null || sportSectionSeason === statcastNowSeason ? statcastNow : statcastPicked;
 
-  // TONIGHT'S OPPOSING STARTER, as a second profile. Same hook, same route,
-  // different subject — a pitcher's `pitchTypes[].xwoba` is what he ALLOWS on
-  // that pitch, exactly as a batter's is what he HITS on it, so one function
-  // serves both sides of the comparison.
-  //
-  // Called unconditionally with an `undefined` subject for a pitcher's page and
-  // for every other sport, so the hook idles rather than the call being
-  // branched (rules of hooks).
+  // TONIGHT'S OPPOSING STARTER. A pitcher's `pitchTypes[].xwoba` is what he
+  // ALLOWS on that pitch, exactly as a batter's is what he HITS on it, so one
+  // shape serves both sides of the comparison. Undefined for a pitcher's page
+  // and every other sport, so the hook idles (rules of hooks).
   const opposingStarterId = (() => {
     if (isPitcherSubject || active?.sport !== 'mlb') return undefined;
     const raw = (active.subjectMeta as Record<string, unknown> | undefined)?.opposingStarterId;
     return typeof raw === 'number' && Number.isInteger(raw) && raw > 0 ? raw : undefined;
   })();
-  const opposingPitchProfile = useMlbPitchProfile('pitcher', opposingStarterId, new Date().getUTCFullYear());
+  const opposingStatcast = useMlbStatcast(opposingStarterId, statcastNowSeason);
+
+  /** The rollup row's legacy pitch-profile block, in the shape the matchup roles read. */
+  const profileOf = (state: ReturnType<typeof useMlbStatcast>, role: 'pitcher' | 'batter', id: number | undefined) => {
+    const row = role === 'pitcher' ? state.data?.pitching : state.data?.batting;
+    const block = row?.payload.profile;
+    return { profile: block && id != null ? { ...block, season: row!.season, role, subjectId: id } : null, loading: state.loading };
+  };
+  const pitchProfile = profileOf(statcastNow, isPitcherSubject ? 'pitcher' : 'batter', mlbPlayerId);
+  const opposingPitchProfile = profileOf(opposingStatcast, 'pitcher', opposingStarterId);
 
   // Price movement for the active prop (6.16). Sport-agnostic — every sport
   // writes `prop_odds_history` through the same Python jobs — and gated by the
@@ -1167,8 +1172,8 @@ export function PlayerDetail({
   const detailPending =
     playerLive.loading ||
     opponentTeamStatcast.loading ||
-    pitchProfile.loading ||
-    opposingPitchProfile.loading ||
+    statcastNow.loading ||
+    opposingStatcast.loading ||
     nhlShotProfile.loading ||
     nbaShotProfile.loading ||
     nflTargetMap.loading ||
@@ -1198,11 +1203,27 @@ export function PlayerDetail({
   const historySport = researchSport ? historySportFor(researchSport, researchLeague) : null;
   const bioState = usePlayerBio(researchSport === 'golf' ? 'golf' : historySport, researchAthleteId);
   const historyState = usePlayerHistory(historySport, researchAthleteId);
+  // The Statcast rollup holds 2025 on; offer the seasons this player has games in.
+  const mlbStatcastInput = useMemo<MlbStatcastInput | undefined>(() => {
+    if (researchSport !== 'mlb') return undefined;
+    const held = new Set((historyState.data?.games ?? []).map((g) => g.season));
+    const seasons = Array.from({ length: statcastNowSeason - 2024 }, (_, i) => statcastNowSeason - i).filter((y) => held.size === 0 || held.has(y));
+    return {
+      season: sportSectionSeason ?? statcastNowSeason,
+      seasons: seasons.length ? seasons : [statcastNowSeason],
+      batting: statcastForSection.data?.batting ?? null,
+      pitching: statcastForSection.data?.pitching ?? null,
+      loading: statcastForSection.loading || (!statcastForSection.settled && mlbPlayerId != null),
+      error: statcastForSection.error,
+    };
+  }, [researchSport, historyState.data, statcastNowSeason, sportSectionSeason, statcastForSection, mlbPlayerId]);
   const research = useMemo(
-    () => (researchSport && historyState.data ? toResearchData(researchSport, historyState.data, bioState.data) : null),
-    [researchSport, historyState.data, bioState.data],
+    () => (researchSport && historyState.data ? toResearchData(researchSport, historyState.data, bioState.data, { mlbStatcast: mlbStatcastInput }) : null),
+    [researchSport, historyState.data, bioState.data, mlbStatcastInput],
   );
   const stickyTop = useStickyHeaderHeight(Boolean(subject) && !embedded);
+  const sectionIds = (research?.sections ?? []).map((x) => `${x.id}:${x.navLabel}`).join('|');
+  const sectionNav = useMemo(() => (sectionIds ? sectionIds.split('|').map((x) => ({ id: x.split(':')[0], label: x.split(':')[1] })) : []), [sectionIds]);
   const navItems = useMemo(
     () => [
       { id: 'props', label: 'Prop analysis' },
@@ -1211,12 +1232,13 @@ export function PlayerDetail({
             { id: 'seasons', label: 'Seasons' },
             { id: 'trends', label: 'Trends' },
             { id: 'splits', label: 'Splits' },
+            ...sectionNav,
             { id: 'log', label: 'Game log' },
           ]
         : []),
       { id: 'sources', label: 'Sources' },
     ],
-    [historySport],
+    [historySport, sectionNav],
   );
 
   const data: PlayerDetailData | null = !active
@@ -1308,6 +1330,7 @@ export function PlayerDetail({
           { label: 'Results', detail: historyState.data.resultsSource },
         ]
       : []),
+    ...(research?.sections ?? []).flatMap((sec) => (sec.source ? [{ label: sec.source.label, detail: `${sec.source.detail}, ${asOfText(sec.source.asOf)}` }] : [])),
     ...(snapshot ? [{ label: 'Markets and prop analysis', detail: `today's ${researchSport ?? active?.sport ?? ''} slate snapshot, ${asOfText(snapshot.fetchedAt)}` }] : []),
   ];
 
@@ -1340,6 +1363,11 @@ export function PlayerDetail({
             <Section id="splits" title="Splits" sub="per-game averages">
               <SplitsCard research={research} state={historyState} />
             </Section>
+            {(research?.sections ?? []).map((sec) => (
+              <Section key={sec.id} id={sec.id} title={sec.title} sub={sec.sub}>
+                <ResearchSectionBody section={sec} onSeason={setSportSectionSeason} />
+              </Section>
+            ))}
             <Section id="log" title="Game log">
               <GameLogCard research={research} state={historyState} />
             </Section>
@@ -1967,43 +1995,8 @@ export function PlayerDetail({
               duplicated here. */}
           {active.sport === 'golf' ? <PastRoundMatchupsCard active={active} meta={meta} /> : null}
 
-          {data.hitterStats ? (
-            <section className="lb-card overflow-hidden">
-              <h3 className="bg-accent-soft px-3 py-1.5 text-[9.5px] font-bold uppercase tracking-wide text-masters">Hitter stats</h3>
-              <div className="p-3">
-                {/* Season averages — same row-bar style as Quality of Contact
-                    below, now that these carry a real league-wide rank
-                    (ownBattingStats, adapter.ts) instead of being plain
-                    unranked tiles. */}
-                {data.hitterStats.seasonAverages && data.hitterStats.seasonAverages.length > 0 ? (
-                  <div className="mb-3">
-                    <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Season averages</div>
-                    <div className="space-y-1.5">
-                      {data.hitterStats.seasonAverages.map((s) => (
-                        <StatRankRow key={s.key} stat={s} />
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Quality of contact</div>
-                {data.hitterStats.summaryLine ? (
-                  <p className="mb-2 text-[9px] text-ink-muted">{data.hitterStats.summaryLine}</p>
-                ) : null}
-                <div className="space-y-1.5">
-                  {data.hitterStats.own.map((s) => (
-                    <StatRankRow key={s.key} stat={s} />
-                  ))}
-                </div>
-              </div>
-            </section>
-          ) : null}
-
-          {/* Season stats — NFL only. Same context-rail slot MLB's "Hitter
-              stats" card occupies above (they're mutually exclusive by
-              sport) — originally sat in the main column, moved here to
-              match MLB's placement now that both are the same generic
-              component. */}
+          {/* Season stats — NFL, CFB, soccer and the others' ranked season
+              card, in the context rail until each sport's own sub-phase. */}
           {data.nflSeasonStats ? (
             <section className="lb-card overflow-hidden">
               <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
