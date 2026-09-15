@@ -615,17 +615,20 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
   const formWindows: SplitEvidence[] | null = active.supportingSplits ?? null;
 
   // ---- C4 game state (R6.1d) ----
-  // Only while the slate says the game is in progress: the live route answers
-  // 404 once a game is final, and the last good poll must not keep a finished
-  // game on screen as live.
-  const liveData = live?.data && !live.error ? live.data : null;
+  // The live route answers 404 unless the game is live, so a poll that
+  // succeeded is the proof; the slate's own state lags (measured 2026-09-15:
+  // "Warmup" in the snapshot three minutes after StatsAPI said In Progress).
+  // A failed poll or a slate that says final clears it, so the last good poll
+  // never keeps a finished game on screen.
+  const slateFinal = /final|game over|completed/i.test(todaysGame?.game?.state ?? '');
+  const liveData = live?.data && !live.error && !slateFinal ? live.data : null;
   const logo = (id: number | undefined) => (id != null ? mlbLogoUrl(id) : undefined);
   const teams = (withScore: boolean) => ({
     away: { abbr: todaysGame?.awayAbbrev ?? 'Away', logoUrl: logo(todaysGame?.game?.awayTeamId), score: withScore && liveData ? liveData.score.away : null },
     home: { abbr: todaysGame?.homeAbbrev ?? 'Home', logoUrl: logo(todaysGame?.game?.homeTeamId), score: withScore && liveData ? liveData.score.home : null },
   });
   let gameState: GameStateSlot | null = null;
-  if (gameIsInProgress && liveData) {
+  if (liveData) {
     const p = liveData.player;
     // The live box score stubs a zeroed batting line for every player, so a
     // pitcher's batting line is skipped by his known role, not by presence.
@@ -647,7 +650,10 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
           ? {
               headline: `${pit.inningsPitched} IP`,
               facts: [`${pit.hits} H`, `${pit.runs} R`, `${pit.earnedRuns} ER`, `${pit.walks} BB`, `${pit.strikeOuts} K`, `${pit.pitches} pitches`],
-              now: p?.isCurrentPitcher ? 'Pitching' : null,
+              // The route's `isCurrentPitcher` is true for a starter whose team
+              // is batting (measured 2026-09-15, top 1st: Chris Murphy "pitching"
+              // with Foster Griffin on the mound); the defense's pitcher decides.
+              now: p?.isCurrentPitcher && current?.id === p.id ? 'Pitching' : null,
               plays: [],
             }
           : null,

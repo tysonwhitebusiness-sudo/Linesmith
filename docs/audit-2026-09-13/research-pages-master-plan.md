@@ -4,8 +4,67 @@
 as taken in §3). R0 done. R1 signed off and deployed. R2 done (signed off by
 the operator's instruction to proceed). R3 and R4 signed off 2026-09-14. R5
 signed off 2026-09-15. R6 STARTED 2026-09-15: Step 0 done, corrections and
-decisions recorded in the R6 section. R6.1a and R6.1b SIGNED OFF 2026-09-15.
-R6.1c (MLB pitcher) COMPLETE 2026-09-15; R6.1d (MLB odds and live) next.**
+decisions recorded in the R6 section. R6.1a, R6.1b and R6.1c SIGNED OFF
+2026-09-15. R6.1d (MLB odds and live) COMPLETE 2026-09-15: R6.1 awaits
+sign-off.**
+
+**R6.1d COMPLETE 2026-09-15.** One line on the page, Odds & prices, game state.
+Commits `4da5684` and the cleanup/docs commits after it.
+- **Built:**
+  - *The line (R2-F4).* `repriceAtMainLine` (`mainLine.ts`, shared) re-prices
+    a candidate at the main line its current rows show. MLB's prop block opens
+    there: stepper, hit rates, chart, price chip, "Add to slip" and All books
+    (`PlayerDetailData.priceCandidate`). The model percentage is a chip that
+    names its own board line when it differs ("Model 68% at O 0.5"); the
+    re-lined candidate drops the model fields. Scan and the Python model keep
+    `BOARD_LINES`. Measured over 63 games on 2026-09-15: main equalled board
+    for 8 of 31 pitcher strikeout markets, 3 of 30 pitcher outs, 123 of 270
+    total bases; triples (258) and batter strikeouts are alternates-only and
+    keep the board line with the status.
+  - *Prices at the start (R2-F6).* `/api/props/lines?gameId&start` serves
+    `readPreGamePropOddsForGame`; the player page passes the slate's start
+    (`usePropOdds(..., startIso)`), labels the chip "price at the start", and
+    the live poll no longer runs before the start.
+  - *Line movement (R2-F5).* Pinned to the line on screen (`useLineHistory`
+    `line`), cut at the start (`before`, both queries); the modal is only the
+    fallback.
+  - *Odds & prices section* (`PlayerOddsSection`, after Game log, every sport):
+    every market this player is priced on at its main line
+    (`playerPriceRows`: best over/under with book, books, updated; yes/no and
+    alternates-only rows say so; a row switches the prop block to that market),
+    then Line movement, All books and Game line cards. The rail's "Today's
+    line", "Line movement" and "Recorded price" cards and the main column's
+    "All books" are deleted. The embedded game-page player gets the same cards
+    below its prop block.
+  - *C4 game-state slot* (`GameStateSlot`, `GameStateCard`, top of the prop
+    section): score, period, the player's own line and plays, today's lines
+    against their main line; `baseball` (count, outs, bases, batter, pitcher)
+    presence-checked. Only while the slate says in progress and the last poll
+    succeeded. MLB fills it; `liveGame`/`LiveGameSlotData`, the MLB-only
+    "Live today" block and its helpers are deleted, which also removes the
+    stale comment above `data.liveGame`.
+  - Fixed in passing: first pitch printed as a raw ISO timestamp in the
+    matchup line and the conditions card; the player page's
+    `useMarketCalibration` fetch, unread since R3, removed.
+- **Verified:** 1440 and 400 on De La Cruz (total bases main 0.5), Freeman
+  (hits main 1.5, "Model 68% at O 0.5", movement and All books at 1.5),
+  Yamamoto, Lowder, Schmidt (no market: "No prices posted"), Allen (NFL);
+  the embedded game page (Freeman on 824466). No page overflow at 400.
+  **Live, CWS @ CLE (824384) at first pitch:** Chris Murphy and Chase
+  Meidroth at 1440 and 400. Score, period, count, bases, batter and pitcher,
+  the player's line and plate appearances, lines so far against the main line;
+  the price chip reads "price at the start" and the section "as they stood at
+  the start". Two fixes from that render: the card waited for the slate to say
+  "In Progress" (it still said "Warmup"), so a successful live poll is now the
+  proof; and the route's `isCurrentPitcher` marked a starter "Pitching" while
+  his team batted, so the defense's pitcher decides. tsc clean, 508/508 tests
+  (`tests/player-odds-r61d.test.ts`; the adapter tests fail with the adapter
+  reverted), build passes. `scripts/measure-mlb-main-line.ts` is the
+  measurement.
+- **Found and routed:** R6-F8 (ParlayAPI files pitcher strikeouts and walks
+  under the batter markets), R6-F9 (a snapshot's baked line goes stale for
+  the other sports), R6-F10 (the game page's shared prop rows are current,
+  not pre-game, after the start).
 
 **R6.1c COMPLETE 2026-09-15.** MLB pitcher "Arsenal & command".
 - **Built:** `mlbPitcherSection` (`playerResearchSections.ts`): arsenal table
@@ -1257,7 +1316,7 @@ rebuilt pages use.
 | C9 biggest edge without a floor | `MatchupExplorerCard` | R1h, deleted R9 |
 | C8 soccer default market | soccer adapter | R6 |
 | C7 tennis surface | tennis adapter | R6 |
-| C4 live card MLB-only | `PlayerDetail` | R6 |
+| C4 live card MLB-only | `PlayerDetail` | slot built and MLB filled in R6.1d (`GameStateSlot`); each other sport fills `gameState` in its sub-phase (R6.2-R6.5) |
 | D1 duplicate score, broken logos, initials, streak across seasons | NFL game | R3 `Avatar`, R2 read, R8 |
 | D2 "Game context" | `analyticsRoles.ts:359` | R6 (removed) |
 | D3 "Where this sits" | `analyticsRoles.ts:313` | R6 (removed) |
@@ -1285,9 +1344,9 @@ rebuilt pages use.
 | R3-F2 801 hand-typed `text-[Npx]` sizes, whole-page AA failures (1.8-12%) and 12-38 text colors per page | legacy cards | R6-R8 (each card rebuilt on the primitives) |
 | R2-F2 yes/no `other` direction disagrees across books | `prop_odds` writer | R5e |
 | R2-F3 stale rungs never removed | `prop_odds` writer | R5e |
-| R2-F4 MLB props on fixed lines, not the main line | MLB adapter | R6 |
-| R2-F5 line movement pinned to modal, not main line | `lineHistory.ts` | R6 |
-| R2-F6 in-play price beside pre-game line | `liveEdge.ts` | R6 |
+| R2-F4 MLB props on fixed lines, not the main line | MLB adapter | **resolved** R6.1d on the player page (`repriceAtMainLine`); Scan and the model keep board lines by decision |
+| R2-F5 line movement pinned to modal, not main line | `lineHistory.ts` | **resolved** R6.1d (pinned to the line on screen) |
+| R2-F6 in-play price beside pre-game line | `liveEdge.ts` | **resolved** R6.1d on the player page (pre-game rows after the start); game page is R6-F10 |
 | R2-F7 MLB hooks fire on other sports' team pages | `TeamDetail` | R7 |
 | R2-F8 `/api/mlb/team/110` 28-day-old payload | MLB team route | R7 |
 | R2-F9 `soccer:snapshot:epl` 22 MB cannot write its cache | soccer snapshot | R6 (per-section loading) |
@@ -1307,6 +1366,9 @@ rebuilt pages use.
 | R6-F5 MLB `game_result` has no game pk before 2026-08, UTC-dated night games, missing games | `game_result` (mlb) | R6.1a reads StatsAPI finals; R7/R8 MLB records must not join by date; source fix is model track |
 | R6-F6 MLB and NFL past-game pages missing, so player game-log links would dead-end | `/mlb/game/[id]`, `/nfl/game/[id]` | R8 (links held off until then) |
 | R6-F7 pitch corpus holds 281 of 2,229 regular-season 2026 games only in part (<3 pitches per PA); Statcast rollups cover 91-94% of a hitter's PA | `corpus/mlb_pitch_events`, pitch ingest | coverage stated on the page (R6.1b); the ingest gap is model track Phase 5 |
+| R6-F8 ParlayAPI files a pitcher's strikeouts under `batter-strikeouts` (29 pitchers) and walks allowed under `walks` (9) on 2026-09-15; the page shows "Batter Strikeouts 7.5" for Yamamoto, and the pitcher markets miss those books | ParlayAPI market mapping, Python writer | model track (R5e writer work); the page shows the rows as stored |
+| R6-F9 non-MLB candidates carry the main line from snapshot build time, which goes stale between rebuilds (Allen passing yards 249.5 in the stepper against a current 248.5) | NFL/CFB/NBA/NHL/soccer/tennis player adapters | each sport's sub-phase adopts `repriceAtMainLine` (R6.2-R6.5) |
+| R6-F10 the game page's `usePropOdds` reads current rows, so after the start its prices (and the embedded player's) are in-play and the main line finds no pre-game quote | `GameDetail` | R8 (pass the start, as the player page does) |
 
 ## Appendix B — Reference fixtures (G2 datasets)
 

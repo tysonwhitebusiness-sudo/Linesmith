@@ -1,4 +1,4 @@
-# Resume prompt — research pages build (2026-09-15, R6.1c COMPLETE — R6.1d next)
+# Resume prompt — research pages build (2026-09-15, R6.1d COMPLETE — R6.1 awaiting sign-off)
 
 Paste everything below the line into a fresh session on any account.
 
@@ -8,23 +8,23 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 1. `CLAUDE.md` (the sport-adapter rule 2 now names `toPlayerResearchData`)
 2. `docs/CURRENT.md` (the research pages track is in "START HERE")
 3. `docs/audit-2026-09-13/research-pages-master-plan.md` — the status block
-   (R6.1a-c records), the R6 section in full including "R6 Step 0
+   (R6.1a-d records), the R6 section in full including "R6 Step 0
    premise audit", "Also in R6.4", §1, §2, "Also in R8", and Appendix A rows
-   R2-F4..F6 and R6-F1..F7.
+   C4, R2-F4..F6 and R6-F1..F10.
 4. The G2 player spec: `docs/design/phase-g2/src/player.html`,
    `src/sports/common.js`, `mlb.js`, `src/kit2.js`; datasets in
    `docs/design/phase-g2/data/player-*.json`.
 
 ## Where the work is
 
-- **R1-R5, R6.1a and R6.1b signed off. R6.1c (MLB pitcher Arsenal & command)
-  complete 2026-09-15.** Next is R6.1d; confirm with the operator before
-  starting it. Stop for sign-off after R6.1d.
-- Commits: `512b42a` (Step 0), `0169de1` and `5c46b29` (R6.1a), `48abdc5`
-  (R6.1a docs), `7893e82` and `478e196` (R6.1b), then the R6.1c commits.
-  Pushed only if the operator asked. Nothing deployed: R6.1a-c changed no
-  Python.
-- tsc clean, 497/497 TS tests, `npm run build` passes (build with
+- **R1-R5 and R6.1a-c signed off. R6.1d (MLB odds and live) complete
+  2026-09-15, so all of R6.1 (MLB) awaits the operator's sign-off.** Then
+  R6.2 (NFL and CFB); confirm before starting it.
+- Commits: `512b42a` (Step 0), `0169de1`/`5c46b29`/`48abdc5` (R6.1a),
+  `7893e82`/`478e196` (R6.1b), `007ced4`/`16051a7` (R6.1c), `4da5684` and the
+  commits after it (R6.1d). Pushed only if the operator asked. Nothing
+  deployed: R6.1 changed no Python.
+- tsc clean, 508/508 TS tests, `npm run build` passes (build with
   `LB_DIST_DIR=.next-verify` while a dev server holds `.next`; delete stale
   `.next*/types` first if a validator names a deleted route).
 
@@ -38,75 +38,50 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
   equals the line on screen, otherwise it is labelled "model at 1.5". Scan and
   the Python model keep `BOARD_LINES`. (Built in R6.1d.)
 
-## What R6.1a built (read these before R6.1b)
+## What R6.1 built (read before R6.2)
 
 | piece | file |
 |---|---|
-| types, `historySportFor`, `athleteIdOf`, `sameSubject`, `formatResearchValue` | `lib/sports/shared/playerResearchShapes.ts` |
-| shared builder + stat helpers (`total`, `ratio`, `perGame`, `col`…) | `lib/sports/shared/playerResearch.ts` |
+| types, `historySportFor`, `athleteIdOf`, sections as data (`ResearchSection`/`ResearchCard`) | `lib/sports/shared/playerResearchShapes.ts` |
+| shared builder + stat helpers | `lib/sports/shared/playerResearch.ts` |
 | per-sport columns | `lib/sports/{mlb,nfl,nba,nhl,soccer,tennis}/adapters/playerResearchSpec.ts` (CFB uses NFL's) |
-| history read + results join | `lib/sports/shared/playerHistoryServer.ts` → `/api/player-history` |
-| bio parsers / fetch | `lib/sports/shared/playerBio.ts`, `playerBioServer.ts` → `/api/player-bio` |
-| MLB finals by game pk | `getTeamSeasonFinals` in `lib/sports/mlb/statsapi.ts` |
-| sections UI | `components/PlayerResearchSections.tsx`, hooks `components/usePlayerResearch.ts` |
-| page frame | `components/PlayerDetail.tsx` (`subject`, `marketsLoading`, `renderPage`) |
-| verification | `scripts/verify-player-history.ts` (DB + leagues), `scripts/verify-player-research-g2.ts` (no DB) |
+| history + bio | `playerHistoryServer.ts` → `/api/player-history`; `playerBio.ts`/`playerBioServer.ts` → `/api/player-bio` |
+| sections UI | `components/PlayerResearchSections.tsx` (`ResearchSectionBody` draws any sport's section) |
+| MLB sections | `lib/sports/mlb/adapters/playerResearchSections.ts` (hitter contact, pitcher arsenal) |
+| charts added | `Histogram`, `ZoneScatter`, `SpatialSurface` chase zones, `CATEGORICAL` |
+| one line on the page | `repriceAtMainLine` in `lib/odds/props/mainLine.ts`; `PlayerDetailData.priceCandidate`; stepper `model` |
+| odds section | `lib/odds/props/playerPrices.ts` (`playerPriceRows`), `components/PlayerOddsSection.tsx` |
+| prices at the start | `/api/props/lines?start`, `usePropOdds(..., startIso)`, `useLineHistory(line, before)` |
+| C4 game state | `GameStateSlot` (MLB adapter file), `components/GameStateCard.tsx` |
+| page frame | `components/PlayerDetail.tsx` (`renderPage(propBlock, propSub, nextGame, oddsCards)`) |
+| verification | `scripts/verify-player-history.ts`, `scripts/verify-player-research-g2.ts`, `scripts/measure-mlb-main-line.ts` |
 
-The old prop block (market tabs, stepper, chips, windows, bars, matchup explorer,
-role cards, rail) sits inside the "Prop analysis" section. R6.1b removed its
-"Hitter stats" card and a hitter's strike zone and platoon split; the rail still
-carries "Today's line", "Form", "Line movement", "Recorded price" and "All
-books" — R6.1d replaces the odds cards.
+The prop block keeps market tabs, stepper, chips, windows, bars, matchup
+explorer and role cards; its rail holds the role cards and Form. Every odds
+card lives in "Odds & prices".
 
-## What R6.1b added (read before R6.1c)
+## Next: R6.2 NFL and CFB (after R6.1 sign-off)
 
-- **Sport sections are data:** `ResearchSection` / `ResearchCard` (kinds
-  `percentiles`, `histogram`, `series`, `table`, `surface`, `status`) in
-  `playerResearchShapes.ts`, drawn by `ResearchSectionBody` /
-  `ResearchCardView` in `components/PlayerResearchSections.tsx`. A sport adds a
-  section by returning it from `toPlayerResearchData`; the component has no
-  sport check. Sections sit between Splits and Game log in the nav.
-- MLB's builder: `lib/sports/mlb/adapters/playerResearchSections.ts`
-  (`mlbHitterSection`; `zoneViews(zones, 'pitcher')` is already written for
-  R6.1c; `coverageNote`). Data from `components/useMlbStatcast.ts`.
-- Primitives: `components/charts/Histogram.tsx`; `SpatialGridRole.outside`
-  (chase zones) drawn by `SpatialSurface`'s zone geometry.
-- Tests: `tests/mlb-research-sections.test.ts`.
-- **R6-F7:** Statcast rollups cover 91-94% of plate appearances (partly
-  ingested games); sections state coverage under 99%.
+Per the plan's sport table: NFL WR/TE/RB "Usage & depth" (target chart on a
+half-field, depth by season, `nfl_target_events` via `/api/nfl/target-map`),
+NFL QB "Where he throws", CFB QB efficiency as **Not held**. Also in R6.2:
+- **R6-F9:** re-price the active candidate with `repriceAtMainLine` in the NFL
+  and CFB adapters (return `priceCandidate`, open `baseLine` on `marketLine`),
+  as MLB does; the stepper and the table must name one line.
+- **C4:** fill `gameState` for NFL/CFB from their live routes (score, period,
+  the player's own line, "lines so far"); no sport check in the card.
+- Move NFL's rail "Season stats" card into the sport's section or delete it if
+  Seasons covers it; remove the target map from the prop block once the
+  section draws it.
+- CFB after `refreshCfbJob` is checked on Saturday 2026-09-19 (R1f 2b).
 
-## What R6.1c added
+**Verify (each sub-phase):** the G2 subjects (Chase 4362628, Allen 3918298,
+Manning 4870906), one no-market player, one injured player, one early-season
+player; 1440 and 400 (`scratchpad` Python Playwright script pattern); a live
+game where one exists; re-render the other sports' pages; tsc, `npm test`,
+`npm run build`. **Stop for sign-off after each sport.**
 
-- `mlbPitcherSection` in `playerResearchSections.ts` (arsenal, pitch locations,
-  zone map, fastball velocity by start, vs LHH/RHH; coverage against batters
-  faced). New card kind `scatter`, drawn by `ScatterCard` with the new
-  `components/charts/ZoneScatter.tsx`; `CATEGORICAL` palette in chart tokens.
-- MLB's prop block no longer has a strike zone or platoon split for anyone:
-  `spatialGrid`/`binarySplit` are null for MLB; `toSpatialGridRole` and
-  `toPlatoonBinarySplit` are deleted. The pitch mix and opposing starter stay.
-- F-B4 resolved (Yamamoto rendered with a market; IP per start).
-
-## Next: R6.1d (MLB), then stop
-
-**R6.1d — routed items:** the MLB line decision above; line movement pinned to
-R2's main line (`lineHistory.ts` `pinLine` is modal); the price chip on a
-started game labelled or held (`liveEdge.resolveCandidateEdge` reads current
-`prop_odds`, and `/api/props/lines` does not cut at the start); an "Odds &
-prices" section (best price, books, movement) replacing the rail's odds cards;
-the C4 game-state slot (MLB count/bases/batter/pitcher as a presence-checked
-field; `LiveLineTrackerCard` already covers tracked lines for five sports).
-Delete the cards replaced; fix the stale comment above
-`data.liveGame` in `PlayerDetail.tsx` ("MLB only — ... above the Contact
-quality matchup card").
-
-**Verify (each sub-phase):** Judge 592450, Witt 677951, Skubal 669373, one
-no-market player, injured Clarke Schmidt 657376, one early-season player; 1440
-and 400 (`scratchpad` Python Playwright script pattern — Playwright MCP and the
-Browser pane screenshots were unavailable this session); re-render the other
-sports' pages to prove nothing regressed; contrast inside rebuilt cards (R3-F2);
-tsc, `npm test`, `npm run build`. **Stop for sign-off after R6.1d.**
-
-Then R6.2-R6.6 as written in the plan (NFL/CFB, soccer, tennis, NBA/NHL, golf).
+Then R6.3-R6.6 as written in the plan (soccer, tennis, NBA/NHL, golf).
 
 ## Lessons from R6.1a
 
@@ -125,9 +100,11 @@ Then R6.2-R6.6 as written in the plan (NFL/CFB, soccer, tennis, NBA/NHL, golf).
 ## Open items that are not R6's
 
 - **R5-F5, model track:** the worker OOM loop. Don't chase it in R6.
-- **Model track, from R6.1a-b:** R6-F3 (`is_major`), R6-F4 (no sacrifice flies
+- **Model track, from R6.1:** R6-F3 (`is_major`), R6-F4 (no sacrifice flies
   in MLB history), R6-F5 (MLB `game_result` not joinable to game pks), R6-F7
-  (the pitch corpus holds about 12% of games only in part).
+  (the pitch corpus holds about 12% of games only in part), R6-F8 (ParlayAPI
+  files pitcher strikeouts and walks under the batter markets).
+- **R8:** R6-F10, the game page's prop rows after the start.
 - **Operator machine:** `build_statcast_rollups.py` runs after each corpus
   refresh; if the PC is off, Statcast rows show an older `as_of`.
 - **MLB regular season ends late September:** R8's MLB live state must be

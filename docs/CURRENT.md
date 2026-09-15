@@ -4,7 +4,7 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages: R1-R5, R6.1a and R6.1b signed off; R6.1c complete, R6.1d next (second track, below).**
+Research pages: R1-R5 and R6.1a-c signed off; R6.1d complete, all of R6.1 (MLB) awaits sign-off (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -34,13 +34,18 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R6.1a-b signed off; R6.1c COMPLETE 2026-09-15; R6.1d next
+## Research pages track — R6.1a-c signed off; R6.1d COMPLETE 2026-09-15; R6.1 awaits sign-off
 
-R1-R5, R6.1a and R6.1b signed off. **R6.1c (MLB pitcher Arsenal & command) is
-done; R6.1d (MLB main line, odds section, game state) is next, then a stop for
-sign-off.** The handoff is `docs/audit-2026-09-13/RESUME-PROMPT.md`; the record
-is the plan's status block.
+R1-R5 and R6.1a-c signed off. **R6.1d (MLB odds and live) is done, so the MLB
+player page (R6.1) awaits the operator's sign-off; R6.2 (NFL and CFB) is
+next.** The handoff is `docs/audit-2026-09-13/RESUME-PROMPT.md`; the record is
+the plan's status block.
 
+- **R6.1d:** the player page names one line (R2's main line, re-priced from
+  current rows; MLB's model chip names its own board line), a started game's
+  prices are the ones at the start, line movement is pinned to that line, all
+  odds sit in an "Odds & prices" section, and a sport-neutral game-state card
+  replaces the MLB-only live block.
 - **R6.1a:** the player is the page for every sport — hero from the league bio,
   Seasons / Trends / Splits / Game log from every season of
   `player_game_history`, the prop block as one section. Nothing deployed (no
@@ -55,6 +60,9 @@ is the plan's status block.
   - R6-F3: `is_major` is 0 on every tennis row (`backfill_player_game_history.py:854`
     looks for "grand slam" in slam names).
   - R6-F4: MLB history stores no sacrifice flies, so OBP from it is over PA.
+  - **R6-F8: ParlayAPI files a pitcher's strikeouts under `batter-strikeouts`
+    (29 pitchers on 2026-09-15) and walks allowed under `walks` (9).** Pitcher
+    markets miss those books; a market-mapping fix in the Python writer.
   - **R6-F7: the pitch corpus holds some games only in part.** 281 of 2,229
     regular-season 2026 games in `corpus/mlb_pitch_events` have under three
     pitch rows per plate appearance, every month, 2025 too; Statcast rollups

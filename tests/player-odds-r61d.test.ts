@@ -186,12 +186,16 @@ test('the game state is the live game, measured against the main line, with base
   assert.deepEqual([g.away.abbr, g.away.score, g.home.abbr, g.home.score, g.periodLabel], ['DET', 2, 'TOR', 3, 'Bot 5th']);
   assert.equal(g.subjectLine?.headline, '4.1 IP', "a pitcher's zeroed batting stub is not his line");
   assert.equal(g.subjectLine?.now, 'Pitching');
+  const batting = detail(rows, { snapshot: snapshot('In Progress'), live: { data: { ...liveData, currentPitcher: { ...liveData.currentPitcher, id: 999, name: 'Other starter' } } as never, loading: false, error: null } });
+  assert.equal(batting.gameState?.subjectLine?.now, null, 'his team is batting: someone else is on the mound');
   assert.deepEqual(g.lines, [{ key: 'pitcher-strikeouts:over', label: 'Pitcher Strikeouts', direction: 'O', line: 6.5, value: 7 }]);
   assert.deepEqual([g.baseball?.balls, g.baseball?.strikes, g.baseball?.outs, g.baseball?.bases.third], [2, 1, 1, true]);
 });
 
-test('no game state before the start, after a failed poll, or once the slate stops saying in progress', () => {
-  assert.equal(detail([], { live: { data: liveData as never, loading: false, error: null } }).gameState, null);
+test('no game state without a successful poll, after a failed one, or once the slate says final', () => {
+  assert.equal(detail([], { live: { data: null, loading: false, error: 'HTTP 404' } }).gameState, null);
+  // The slate lags StatsAPI ("Warmup" minutes into the game): a successful poll is the proof.
+  assert.equal(detail([], { snapshot: snapshot('Warmup'), live: { data: liveData as never, loading: false, error: null } }).gameState?.status, 'live');
   assert.equal(detail([], { snapshot: snapshot('In Progress'), live: { data: liveData as never, loading: false, error: 'HTTP 404' } }).gameState, null);
   assert.equal(detail([], { snapshot: snapshot('Final'), live: { data: liveData as never, loading: false, error: null } }).gameState, null);
   assert.equal(detail([], { snapshot: snapshot('In Progress'), live: { data: null, loading: true, error: null } }).gameState?.status, 'loading');
