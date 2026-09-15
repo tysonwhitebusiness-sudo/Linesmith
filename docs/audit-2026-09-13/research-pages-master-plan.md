@@ -2,8 +2,26 @@
 
 **Status: APPROVED by the operator 2026-09-14, as written (including picks G1–G7
 as taken in §3). R0 done. R1 signed off and deployed. R2 done (signed off by
-the operator's instruction to proceed). R3 signed off 2026-09-14. R4 COMPLETE
-2026-09-14, awaiting sign-off (below). Next after sign-off: R5.**
+the operator's instruction to proceed). R3 and R4 signed off 2026-09-14. R5 IN
+PROGRESS (below).**
+
+**R5 in progress (started 2026-09-14).** Decisions and findings so far:
+- **5a's rollups run on the operator's machine** (operator, 2026-09-14), chained
+  after the corpus refresh in `run-corpus-refresh.bat`. The Render worker has
+  no corpus credentials, and the corpus docs measured ~280-312 MB per partition
+  read against its 512 MB. Rollups write small Postgres tables and a job-run
+  breadcrumb; if the machine is off, cards show their as-of date.
+- **R5-F1, fixed and deployed:** MLB and tennis `player_game_history` had
+  stopped on 2026-08-28 (task 4.7's hand backfill, never scheduled), so the MLB
+  board projected without two weeks of games. `3867f60`, deployed
+  `dep-dakbn4tg1s2s73bor350`.
+- **The "79%" team join was spring training plus that gap**, not a join
+  problem: the corpus holds Savant's `S` game type (173k pitches, never in
+  `player_game_history`). Regular season matched 94.2% before the fix, every
+  miss a game after 2026-08-28. Rollups filter to regular season by the
+  StatsAPI schedule's game type.
+- **Skenes has no Statcast block in G2**; Skubal's dataset is the pitcher
+  reference for the arsenal check.
 
 **R4 COMPLETE 2026-09-14, awaiting sign-off.** Commits `f7c341d` (one shared
 ESPN summary fetch), `aebd6a3` (ESPN summary parsers), `c649234` (MLB pitches,
@@ -1014,6 +1032,7 @@ rebuilt pages use.
 | R2-F10 Scan pages overflow at 400px | Scan | **no R-phase** — Scan is out of scope; parked in `docs/CURRENT.md` |
 | R2-F11 huge old `snapshot_cache` rows | database | **model track Phase 5** (database growth), `docs/CURRENT.md` |
 | R4-F1 TennisMyLife archive lags ~2 weeks (no US Open on 2026-09-14) | tennis history | R6 tennis (show the archive's last date; ESPN results after it) |
+| R5-F1 MLB and tennis `player_game_history` stopped 2026-08-28 (hand backfill, never scheduled); MLB board projected without those games | `genericPlayerHistoryFreshnessJob` | **resolved** `3867f60`, deployed `dep-dakbn4tg1s2s73bor350` |
 
 ## Appendix B — Reference fixtures (G2 datasets)
 

@@ -4,7 +4,7 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages: R1-R3 done; R4 COMPLETE 2026-09-14, awaiting sign-off (second track, below).**
+Research pages: R1-R4 done; R5 in progress (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -34,22 +34,20 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R4 COMPLETE 2026-09-14, awaiting sign-off
+## Research pages track — R5 IN PROGRESS (started 2026-09-14)
 
-R1 signed off and deployed; R2 done; R3 signed off; **R4 (parsers for feeds
-already fetched, two new endpoints) complete and stopped for sign-off.** Next
-after sign-off: **R5** (Python rollups and ingest; asks before Render deploys).
-Full record, caveats and routed findings: `docs/audit-2026-09-13/RESUME-PROMPT.md`.
+R1-R4 signed off. **R5 (Python rollups and ingest)** is being built; the plan's
+status block holds its decisions and findings. Full R4 record:
+`docs/audit-2026-09-13/RESUME-PROMPT.md`.
 
-- **R4:** one shared ESPN summary fetch (`f7c341d`, which also fixed soccer's
-  live tab never loading), ESPN summary parsers (`aebd6a3`), MLB pitches,
-  batted balls and win probability (`c649234`), NHL landing and play-by-play
-  (`cbce19e`), TennisMyLife serve/return/ranks and CFB poll ranks (`e1e11d9`).
-  All checked field by field against the G2 datasets. 485/485 tests. No card
-  reads them yet; R6-R8 do.
-- **R4-F1** (TennisMyLife lags ~2 weeks) routed to R6 tennis.
-- Worker last deployed `dep-dak6nkad0e5s73b736u0` on `2228a3d` (per-sport
-  provider throttle clock). R4 was TypeScript only.
+- **Affects the model track: R5-F1, fixed and deployed.** MLB and tennis
+  `player_game_history` had stopped on 2026-08-28 (task 4.7's hand backfill was
+  never scheduled), so `mlbHistorySummaryJob` fed `mlbProjectionsJob` two weeks
+  stale. `genericPlayerHistoryFreshnessJob` now covers both (`3867f60`);
+  catch-up run from the operator machine (226 MLB games); worker deployed
+  `dep-dakbn4tg1s2s73bor350`, live 03:31 UTC 2026-09-15.
+- **5a runs on the operator machine** (operator decision): Statcast rollups
+  chained after the corpus refresh, never on the worker.
 
 **Owed:** F-B4 on a slate with pitcher props; MLB live state (R8) before the
 regular season ends late September; a look at `refreshCfbJob` on Saturday
