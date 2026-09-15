@@ -3,8 +3,8 @@
 **Status: APPROVED by the operator 2026-09-14, as written (including picks G1–G7
 as taken in §3). R0 done. R1 signed off and deployed. R2 done (signed off by
 the operator's instruction to proceed). R3 and R4 signed off 2026-09-14. R5
-signed off 2026-09-15. R6 NEXT: gameplan in `RESUME-PROMPT.md`, to be confirmed
-with the operator before building.**
+signed off 2026-09-15. R6 STARTED 2026-09-15: Step 0 done, corrections and
+decisions recorded in the R6 section; building R6.1a.**
 
 **R5 SIGNED OFF 2026-09-15.** Decisions, findings and numbers:
 - **5a's rollups run on the operator's machine** (operator, 2026-09-14), chained
@@ -807,6 +807,53 @@ Spec: `docs/design/phase-g2/src/player.html`, `src/sports/common.js` (skeleton),
   beside those tiles, and fill matches after it from ESPN results where the
   card needs them.
 
+**R6 Step 0 premise audit (2026-09-15) — corrections, and two operator decisions:**
+- **The player is the page, not the market (operator, 2026-09-15).** All eight
+  player routes (`app/*/player/[playerId]/page.tsx`) rendered only "No tracked
+  markets for this player on today's slate" without a candidate: on
+  2026-09-15 that blanked 8 of the 10 G2 subjects at both widths (Skubal,
+  Chase, Allen, Manning, SGA, MacKinnon, Cunha, Alcaraz). R6.1a makes every
+  route start from the player: `PlayerDetail` takes zero candidates, a bio
+  source per sport, and the shared sections render for **every sport** in
+  R6.1a, not one sport per sub-phase. The sport sections stay per sub-phase.
+- **No route read a player's history across seasons.** R6.1a adds a direct
+  read of `player_game_history`. Id spaces differ by sport (NHL uses NHL ids).
+  MLB's "show all games" read `mlb:full-raw:<date>` blobs (79/78/52 MB, the
+  Phase 5 growth rows) through `/api/mlb/player-gamelog`; once the game log
+  reads the table, that route and the full-raw stash are deleted (R6.1d).
+- **MLB fixed lines are load-bearing (operator decision, 2026-09-15).**
+  `predict/mlb_board_lines.py`'s `BOARD_LINES` is the line the served model
+  probability, its calibration and grading all use, and `adapter.ts` builds
+  the one snapshot Scan also reads. So the player page's prop block takes
+  `candidateLine()` for its line, hit rates and price; the model percentage
+  shows only when the cached row's line equals the line on screen, otherwise
+  it is labelled with its own line ("model at 1.5"). Scan and the model keep
+  the board lines. The table is `prop_model_cache` (renamed from
+  `mlb_prop_model_cache`); the line is a column, not part of the key.
+- **D2/D3 are shared.** `toGameContext`/`toWhereThisSits` are built by
+  `buildAnalyticsRoles` for all eight player adapters AND rendered by
+  `TeamDetail` (`teamRoles.ts`) and `GameDetail` (`gameTeamForm.ts`). R6 drops
+  them from each sport's player page; deleting the functions and
+  `DensityCurve` moves to R7/R8.
+- **Pitch profile has two callers on the page:** the player and tonight's
+  opposing starter (matchup card). Both move to
+  `/api/mlb/statcast/player/[playerId]` before the route goes. Keep
+  `pitchProfileShapes.ts` (imported by `statcastRollupShapes.ts` and
+  `pitchRoles.ts`).
+- **`soccer:snapshot:epl` writes intermittently, not never:** 23.1 MB raw,
+  3.7 MB stored, last written 00:08 UTC 2026-09-15. R6.3's check is "writes on
+  every rebuild over a day".
+- **C4 is half there:** `LiveLineTrackerCard` (tracked lines with live values)
+  already runs for MLB, NFL, CFB, NBA and NHL. What is MLB-only is the game
+  state (score, count, bases). C4 is a sport-neutral game-state slot.
+- **Fixtures:** G2 holds Statcast only for Witt and Skubal, Understat only for
+  Haaland. Contact/arsenal parity checks use Witt and Skubal, chances and
+  finishing uses Haaland; Judge and Cunha verify the shared sections.
+  `mlb_statcast_player_season` holds 2025 and 2026.
+- **Order inside R6.1:** 6.1a shared (player-first entry, history route,
+  skeleton, Seasons/Trends/Splits/Game log for every sport) · 6.1b MLB hitter ·
+  6.1c MLB pitcher · 6.1d routed items and deletions.
+
 **Verify, per sport:**
 - Render the G2 subjects: Judge 592450, Skenes 694973, Chase 4362628, Allen
   3918298, Manning 4870906, SGA 4278073, Wembanyama 5104157, MacKinnon 8477492,
@@ -1127,6 +1174,8 @@ rebuilt pages use.
 | R5-F4 scheduled `mlb_pitch_events` prune crashed on `captured_at` after R5-F2's margin | `prune_corpus` floor publish | **resolved** `706a874` |
 | R5-F5 worker OOM-killed 4-9 times an hour since 2026-09-11 ~22:00 UTC | Render worker, 512 MB | **model track Phase 5** (worker RAM), `docs/CURRENT.md` |
 | R5 NBA misses all stored as twos; NHL shots mixed preseason and playoffs | shot ingest | **resolved** in R5c (ingest and stored rows) |
+| R6-F1 every player page blank without a market today (8 of 10 G2 subjects on 2026-09-15) | all eight player routes | R6.1a (player-first entry) |
+| R6-F2 MLB "all games" reads 79 MB `mlb:full-raw:*` blobs | `/api/mlb/player-gamelog` | R6.1d (game log reads `player_game_history`; route and stash deleted) |
 
 ## Appendix B — Reference fixtures (G2 datasets)
 
