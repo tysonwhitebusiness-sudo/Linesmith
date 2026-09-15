@@ -9,7 +9,15 @@
  */
 
 import { pgAll } from '@/lib/db/pgClient';
-import type { KeyPlayer, LeagueProduction, TeamProductionSport, TeamTotals } from './teamProductionShapes';
+import type {
+  KeyPlayer,
+  LeagueProduction,
+  ShotCell,
+  TeamProductionSport,
+  TeamShotProfile,
+  TeamShotSide,
+  TeamTotals,
+} from './teamProductionShapes';
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -96,4 +104,36 @@ export async function readKeyPlayers(
     stats: (typeof r.stats === 'string' ? JSON.parse(r.stats) : r.stats) as Record<string, number>,
     lastGameDate: r.last_game_date instanceof Date ? r.last_game_date.toISOString().slice(0, 10) : String(r.last_game_date).slice(0, 10),
   }));
+}
+
+/** League views compare teams with at least this many games (G2). */
+export const SHOT_VIEW_MIN_GAMES = 40;
+
+export async function readTeamShotProfile(sport: 'nba' | 'nhl', season: number, teamId: string): Promise<TeamShotProfile | null> {
+  const own = await pgAll<{ side: 'for' | 'allowed'; pos_group: string; games: number; payload: unknown }>(
+    `SELECT side, pos_group, games, payload FROM team_shot_profile WHERE sport = ? AND season = ? AND team_id = ?`,
+    [sport, season, teamId],
+  );
+  if (!own.length) return null;
+  const league = await pgAll<{ team_id: string; games: number; zones: unknown; attempts: number | null }>(
+    `SELECT team_id, games, payload->'zones' AS zones, (payload->>'attempts')::int AS attempts
+       FROM team_shot_profile
+      WHERE sport = ? AND season = ? AND side = 'for' AND pos_group = 'all' AND games >= ?`,
+    [sport, season, SHOT_VIEW_MIN_GAMES],
+  );
+  const parse = <T>(raw: unknown): T => (typeof raw === 'string' ? JSON.parse(raw) : raw) as T;
+  const out: TeamShotProfile = { sport, season, teamId, for: null, allowed: null, allowedPos: {}, league: {} };
+  for (const r of own) {
+    const side: TeamShotSide = { games: Number(r.games), ...parse<Omit<TeamShotSide, 'games'>>(r.payload) };
+    if (r.pos_group === 'all') out[r.side] = side;
+    else out.allowedPos[r.pos_group] = side;
+  }
+  for (const r of league) {
+    out.league[r.team_id] = {
+      games: Number(r.games),
+      ...(r.zones != null ? { zones: parse<Record<string, ShotCell>>(r.zones) } : {}),
+      ...(r.attempts != null ? { attempts: Number(r.attempts) } : {}),
+    };
+  }
+  return out;
 }

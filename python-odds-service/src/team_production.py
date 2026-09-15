@@ -190,23 +190,34 @@ async def _upsert_positions(conn, sport: str, rows: list[tuple[str, str | None, 
     return len(rows)
 
 
-async def nfl_positions(client: httpx.AsyncClient) -> list[tuple[str, str | None, str | None]]:
-    """Streamed line by line: only (espn_id, position) is kept, so the 7 MB file
-    never sits in the worker's memory whole."""
-    out = []
+# `nfl_target_events` names receivers by nflverse GSIS id ("00-0035228"), not
+# ESPN's, so NFL positions are stored twice: under 'nfl' by ESPN id (what
+# player_game_history uses) and under this key by GSIS id.
+NFL_GSIS = "nfl_gsis"
+
+
+async def nfl_positions(client: httpx.AsyncClient) -> tuple[list[tuple], list[tuple]]:
+    """(by ESPN id, by GSIS id). Streamed line by line: only the ids and the
+    position are kept, so the 7 MB file never sits in the worker's memory whole."""
+    by_espn, by_gsis = [], []
     async with client.stream("GET", NFLVERSE_PLAYERS, follow_redirects=True, timeout=120) as res:
         res.raise_for_status()
         lines = res.aiter_lines()
         header = next(csv.reader([await lines.__anext__()]))
-        i_espn, i_pos = header.index("espn_id"), header.index("position")
+        i_espn, i_gsis, i_pos = header.index("espn_id"), header.index("gsis_id"), header.index("position")
+        width = max(i_espn, i_gsis, i_pos)
         async for line in lines:
             if not line:
                 continue
             row = next(csv.reader([line]))
-            if len(row) > max(i_espn, i_pos) and row[i_espn]:
-                pos = row[i_pos] or None
-                out.append((row[i_espn], pos, nfl_group(pos)))
-    return out
+            if len(row) <= width:
+                continue
+            pos = row[i_pos] or None
+            if row[i_espn]:
+                by_espn.append((row[i_espn], pos, nfl_group(pos)))
+            if row[i_gsis]:
+                by_gsis.append((row[i_gsis], pos, nfl_group(pos)))
+    return by_espn, by_gsis
 
 
 async def espn_roster_positions(client, league_path: str, team_ids: list[str], season: int | None, group) -> list[tuple]:
@@ -274,7 +285,9 @@ ATHLETE_LOOKUPS_PER_RUN = 150
 async def refresh_positions(conn, client, sport: str, seasons: list[int]) -> dict:
     """Fill `athlete_positions` for the athletes in these seasons' history."""
     if sport == "nfl":
-        return {"nflverse": await _upsert_positions(conn, sport, await nfl_positions(client), "nflverse players.csv")}
+        by_espn, by_gsis = await nfl_positions(client)
+        return {"nflverse": await _upsert_positions(conn, sport, by_espn, "nflverse players.csv"),
+                "nflverse_gsis": await _upsert_positions(conn, NFL_GSIS, by_gsis, "nflverse players.csv")}
     if sport == "nhl":
         n = 0
         for season in sorted(seasons):  # oldest first, so the latest roster wins
@@ -318,5 +331,186 @@ async def run(conn, client, sports=tuple(ROLL_KEYS)) -> dict:
                 entry["positions_error"] = f"{type(exc).__name__}: {exc}"
         entry["team_rows"] = {s: await rebuild_team_game_production(conn, sport, s) for s in seasons}
         entry["player_rows"] = {s: await rebuild_player_production(conn, sport, s) for s in seasons}
+        if sport in ("nba", "nhl"):
+            entry["shot_rows"] = {s: await rebuild_team_shot_profiles(conn, sport, s) for s in seasons}
+        if sport == "nfl":
+            teams = await espn_nfl_team_ids(client)
+            entry["target_rows"] = {s: await rebuild_team_target_profiles(conn, s, teams) for s in seasons}
         out[sport] = entry
     return out
+
+
+# ---------------------------------------------------------------------------
+# team shot views (R5c)
+# ---------------------------------------------------------------------------
+#
+# G2's `build_team_data.nba_shots` / `nhl_shots` computed these on read from a
+# season of shots (~220k rows for NBA). Same cells here, once a day, in SQL.
+#
+# NBA: rim at (25, 1), the fitted origin (`nba_shots.RIM_Y`); G2 wrote the same
+# lines shifted by 4.25 feet. `point_value` is right for misses since R5c, so a
+# zone is chosen from it directly. Heaves past 43 feet are left out, as in G2.
+# NHL: every attempt folded to one attacking end (x = |x|, y mirrored with it),
+# 5-ft bins; goals are `event_type = 'goal'`.
+
+_NBA_SHOT_SQL = """
+WITH s AS (
+    SELECT game_id, team_id::text AS team, shooter_id, x_coord AS x, y_coord AS y, made, point_value AS pv
+      FROM nba_shot_events
+     WHERE season = $1 AND x_coord IS NOT NULL AND y_coord IS NOT NULL AND y_coord <= 43
+), gt AS (
+    SELECT game_id, array_agg(DISTINCT team) AS teams FROM s GROUP BY game_id
+), t AS (
+    SELECT s.game_id, s.team, s.made, s.pv,
+           (SELECT o FROM unnest(gt.teams) o WHERE o <> s.team LIMIT 1) AS opp,
+           CASE WHEN s.pv = 3 THEN CASE WHEN s.y < 9.75 THEN 'Corner 3' ELSE 'Above-break 3' END
+                WHEN sqrt(power(s.x - 25, 2) + power(s.y - 1, 2)) <= 4 THEN 'Restricted area'
+                WHEN abs(s.x - 25) <= 8 AND s.y <= 14.75 THEN 'Paint (non-RA)'
+                ELSE 'Mid-range' END AS cell,
+           floor(s.x / 3)::int || '|' || floor((s.y + 4.25) / 3)::int AS bin,
+           CASE WHEN ap.athlete_id IS NULL THEN 'unknown' WHEN ap.position_group IS NULL THEN 'other'
+                ELSE ap.position_group END AS grp
+      FROM s JOIN gt USING (game_id)
+      LEFT JOIN athlete_positions ap ON ap.sport = 'nba' AND ap.athlete_id = s.shooter_id::text
+), sides AS (
+    SELECT 'for' AS side, team AS tid, 'all' AS pg, game_id, cell, bin, made, pv FROM t
+    UNION ALL SELECT 'allowed', opp, 'all', game_id, cell, bin, made, pv FROM t WHERE opp IS NOT NULL
+    UNION ALL SELECT 'allowed', opp, grp, game_id, cell, NULL, made, pv FROM t WHERE opp IS NOT NULL
+), games AS (
+    SELECT side, tid, count(DISTINCT game_id) AS g FROM sides WHERE pg = 'all' GROUP BY side, tid
+), zones AS (
+    SELECT side, tid, pg, jsonb_object_agg(cell, jsonb_build_array(att, mk, pts)) AS z
+      FROM (SELECT side, tid, pg, cell, count(*) att, count(*) FILTER (WHERE made) mk,
+                   sum(CASE WHEN made THEN pv ELSE 0 END) pts
+              FROM sides GROUP BY side, tid, pg, cell) x
+     GROUP BY side, tid, pg
+), bins AS (
+    SELECT side, tid, jsonb_object_agg(bin, jsonb_build_array(att, mk)) AS b
+      FROM (SELECT side, tid, bin, count(*) att, count(*) FILTER (WHERE made) mk
+              FROM sides WHERE pg = 'all' GROUP BY side, tid, bin) x
+     GROUP BY side, tid
+)
+INSERT INTO team_shot_profile (sport, season, team_id, side, pos_group, games, payload)
+SELECT 'nba', $1, z.tid, z.side, z.pg, games.g,
+       jsonb_build_object('zones', z.z, 'bins', coalesce(bins.b, '{}'::jsonb))
+  FROM zones z JOIN games USING (side, tid)
+  LEFT JOIN bins ON bins.side = z.side AND bins.tid = z.tid AND z.pg = 'all'
+"""
+
+_NHL_SHOT_SQL = """
+WITH s AS (
+    SELECT game_id, team_id::text AS team, event_type, coalesce(shot_type, 'unknown') AS shot_type,
+           abs(x_coord) AS x, CASE WHEN x_coord >= 0 THEN y_coord ELSE -y_coord END AS y
+      FROM nhl_shot_events
+     WHERE season = $2 AND x_coord IS NOT NULL AND y_coord IS NOT NULL
+), gt AS (
+    SELECT game_id, array_agg(DISTINCT team) AS teams FROM s GROUP BY game_id
+), t AS (
+    SELECT s.*, (SELECT o FROM unnest(gt.teams) o WHERE o <> s.team LIMIT 1) AS opp,
+           floor(x / 5)::int || '|' || floor((y + 42.5) / 5)::int AS bin
+      FROM s JOIN gt USING (game_id)
+), sides AS (
+    SELECT 'for' AS side, team AS tid, game_id, bin, shot_type, event_type FROM t
+    UNION ALL SELECT 'allowed', opp, game_id, bin, shot_type, event_type FROM t WHERE opp IS NOT NULL
+), games AS (
+    SELECT side, tid, count(DISTINCT game_id) AS g, count(*) AS attempts FROM sides GROUP BY side, tid
+), bins AS (
+    SELECT side, tid, jsonb_object_agg(bin, jsonb_build_array(att, goals)) AS b
+      FROM (SELECT side, tid, bin, count(*) att, count(*) FILTER (WHERE event_type = 'goal') goals
+              FROM sides GROUP BY side, tid, bin) x
+     GROUP BY side, tid
+), types AS (
+    SELECT side, tid, jsonb_object_agg(shot_type, n) AS ty
+      FROM (SELECT side, tid, shot_type, count(*) n FROM sides GROUP BY side, tid, shot_type) x
+     GROUP BY side, tid
+)
+INSERT INTO team_shot_profile (sport, season, team_id, side, pos_group, games, payload)
+SELECT 'nhl', $1, games.tid, games.side, 'all', games.g,
+       jsonb_build_object('bins', bins.b, 'types', types.ty, 'attempts', games.attempts)
+  FROM games JOIN bins USING (side, tid) JOIN types USING (side, tid)
+"""
+
+
+async def rebuild_team_shot_profiles(conn, sport: str, season: int) -> int:
+    """NBA `season` is ESPN's end year (2026 = 2025-26); NHL's is the start year,
+    stored in `nhl_shot_events` as '20252026'."""
+    async with conn.transaction():
+        await conn.execute("SET LOCAL statement_timeout = '180s'")
+        await conn.execute("DELETE FROM team_shot_profile WHERE sport = $1 AND season = $2", sport, season)
+        if sport == "nba":
+            status = await conn.execute(_NBA_SHOT_SQL, season)
+        else:
+            status = await conn.execute(_NHL_SHOT_SQL, season, f"{season}{season + 1}")
+    return int(status.split()[-1])
+
+
+# ---------------------------------------------------------------------------
+# NFL target maps, offense and defense (R5d)
+# ---------------------------------------------------------------------------
+#
+# G2's `build_matchup_data.nfl_extras`, in SQL. nflverse spells four teams
+# differently from ESPN (LA, WAS, and the relocated OAK/SD/STL), the same map
+# `lib/sports/nfl/nflverse.ts` applies; ESPN's team ids come from ESPN's own
+# team list each run rather than a constant.
+
+NFLVERSE_TO_ESPN_ABBR = {"LA": "LAR", "WAS": "WSH", "OAK": "LV", "SD": "LAC", "STL": "LAR"}
+
+
+async def espn_nfl_team_ids(client) -> dict[str, str]:
+    """ESPN abbreviation -> ESPN team id, plus nflverse's own spellings."""
+    res = await client.get(f"{ESPN}/football/nfl/teams", params={"limit": 40}, timeout=30)
+    res.raise_for_status()
+    out = {}
+    for league in res.json().get("sports", [{}])[0].get("leagues", []):
+        for t in league.get("teams", []):
+            team = t.get("team") or {}
+            if team.get("abbreviation") and team.get("id"):
+                out[team["abbreviation"]] = str(team["id"])
+    for nflverse, espn in NFLVERSE_TO_ESPN_ABBR.items():
+        if espn in out:
+            out[nflverse] = out[espn]
+    return out
+
+
+_TARGET_SQL = """
+WITH m AS (
+    SELECT * FROM unnest($2::text[], $3::text[]) AS m(abbr, team_id)
+), e AS (
+    SELECT game_id, team, receiver_id, pass_length || '|' || pass_location AS cell,
+           coalesce(complete_pass, false) AS complete, coalesce(air_yards, 0) AS air,
+           split_part(game_id, '_', 3) AS away, split_part(game_id, '_', 4) AS home
+      FROM nfl_target_events
+     WHERE season = $1 AND pass_length IS NOT NULL AND pass_location IS NOT NULL AND team IS NOT NULL
+), t AS (
+    SELECT e.game_id, e.cell, e.complete, e.air, off.team_id AS off_id, def.team_id AS def_id,
+           CASE ap.position_group WHEN 'WR' THEN 'WR' WHEN 'TE' THEN 'TE' WHEN 'RB' THEN 'RB' END AS grp
+      FROM e
+      JOIN m off ON off.abbr = e.team
+      JOIN m def ON def.abbr = CASE WHEN e.team = e.away THEN e.home ELSE e.away END
+      LEFT JOIN athlete_positions ap ON ap.sport = 'nfl_gsis' AND ap.athlete_id = e.receiver_id
+), sides AS (
+    SELECT 'offense' AS side, off_id AS tid, 'all' AS pg, game_id, cell, complete, air FROM t
+    UNION ALL SELECT 'defense', def_id, 'all', game_id, cell, complete, air FROM t
+    UNION ALL SELECT 'defense', def_id, grp, game_id, cell, complete, air FROM t WHERE grp IS NOT NULL
+    UNION ALL SELECT 'offense', 'league', 'all', game_id, cell, complete, air FROM t
+), games AS (
+    SELECT side, tid, count(DISTINCT game_id) AS g FROM sides WHERE pg = 'all' GROUP BY side, tid
+), cells AS (
+    SELECT side, tid, pg, jsonb_object_agg(cell, jsonb_build_array(n, c, air)) AS cells
+      FROM (SELECT side, tid, pg, cell, count(*) n, count(*) FILTER (WHERE complete) c, round(sum(air)::numeric, 1) air
+              FROM sides GROUP BY side, tid, pg, cell) x
+     GROUP BY side, tid, pg
+)
+INSERT INTO team_target_profile (season, team_id, side, pos_group, games, payload)
+SELECT $1, cells.tid, cells.side, cells.pg, games.g, jsonb_build_object('cells', cells.cells)
+  FROM cells JOIN games USING (side, tid)
+"""
+
+
+async def rebuild_team_target_profiles(conn, season: int, team_ids: dict[str, str]) -> int:
+    abbrs = list(team_ids)
+    async with conn.transaction():
+        await conn.execute("SET LOCAL statement_timeout = '180s'")
+        await conn.execute("DELETE FROM team_target_profile WHERE season = $1", season)
+        status = await conn.execute(_TARGET_SQL, season, abbrs, [team_ids[a] for a in abbrs])
+    return int(status.split()[-1])

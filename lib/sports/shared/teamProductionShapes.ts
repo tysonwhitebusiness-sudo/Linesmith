@@ -52,3 +52,36 @@ export interface KeyPlayer {
   stats: Record<string, number>;
   lastGameDate: string;
 }
+
+/** [attempts, made (NHL: goals), points] per cell. NHL cells carry two values. */
+export type ShotCell = [number, number, number?];
+
+/**
+ * One team's shot view (R5c), from `team_shot_profile`. NBA cells are G2's zones
+ * ("Restricted area", "Paint (non-RA)", "Mid-range", "Corner 3", "Above-break 3")
+ * and 3-ft bins keyed "x|y"; NHL cells are 5-ft bins folded to one attacking end.
+ */
+export interface TeamShotSide {
+  games: number;
+  zones?: Record<string, ShotCell>;
+  bins?: Record<string, ShotCell>;
+  /** NHL: attempts by shot type. */
+  types?: Record<string, number>;
+  attempts?: number;
+}
+
+export interface TeamShotProfile {
+  sport: 'nba' | 'nhl';
+  season: number;
+  teamId: string;
+  for: TeamShotSide | null;
+  allowed: TeamShotSide | null;
+  /** NBA only: allowed zones by the shooter's position group (G/F/C, other, unknown). */
+  allowedPos: Record<string, TeamShotSide>;
+  /**
+   * Every team with 40+ games, for league distributions (G2's rule: exhibition
+   * and All-Star "teams" have a handful). NBA: each team's own zones. NHL: its
+   * attempts. Games are regular season only.
+   */
+  league: Record<string, { games: number; zones?: Record<string, ShotCell>; attempts?: number }>;
+}

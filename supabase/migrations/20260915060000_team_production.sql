@@ -79,3 +79,46 @@ CREATE POLICY team_game_production_read ON team_game_production FOR SELECT USING
 ALTER TABLE player_season_production ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS player_season_production_read ON player_season_production;
 CREATE POLICY player_season_production_read ON player_season_production FOR SELECT USING (true);
+
+-- R5c: team shot views, from nba_shot_events and nhl_shot_events (regular
+-- season only since R5c). One row per team, side ('for' = its own shots,
+-- 'allowed' = its opponents'), and position group (NBA 'allowed' only), so a
+-- team page reads a few rows instead of a season of shots. `payload` holds
+-- G2's cells: NBA zones and 3-ft bins, NHL 5-ft bins and shot types, each as
+-- [attempts, made or goals, points].
+CREATE TABLE IF NOT EXISTS team_shot_profile (
+    sport           text        NOT NULL,   -- 'nba' | 'nhl'
+    season          integer     NOT NULL,   -- player_game_history's label (NBA end year, NHL start year)
+    team_id         text        NOT NULL,
+    side            text        NOT NULL CHECK (side IN ('for', 'allowed')),
+    pos_group       text        NOT NULL,
+    games           integer     NOT NULL,   -- views compare teams with 40+ games only
+    payload         jsonb       NOT NULL,
+    computed_at     timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (sport, season, team_id, side, pos_group)
+);
+
+ALTER TABLE team_shot_profile ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS team_shot_profile_read ON team_shot_profile;
+CREATE POLICY team_shot_profile_read ON team_shot_profile FOR SELECT USING (true);
+
+-- R5d: where each NFL offense throws and where each defense is thrown at, from
+-- nfl_target_events. The event names the offense only; the defense is the
+-- other team in the game id ("2025_01_DAL_PHI"). One row per team, side and
+-- receiver group ('all', WR/TE/RB on the defense side); `payload.cells` is
+-- {"short|left": [targets, completions, air yards]} as in G2. The league total
+-- is stored as team_id 'league'. Team ids are ESPN's.
+CREATE TABLE IF NOT EXISTS team_target_profile (
+    season          integer     NOT NULL,
+    team_id         text        NOT NULL,
+    side            text        NOT NULL CHECK (side IN ('offense', 'defense')),
+    pos_group       text        NOT NULL,
+    games           integer     NOT NULL,
+    payload         jsonb       NOT NULL,
+    computed_at     timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (season, team_id, side, pos_group)
+);
+
+ALTER TABLE team_target_profile ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS team_target_profile_read ON team_target_profile;
+CREATE POLICY team_target_profile_read ON team_target_profile FOR SELECT USING (true);

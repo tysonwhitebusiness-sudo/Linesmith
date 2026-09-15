@@ -24,9 +24,13 @@
  *  1. **The rim is at y ≈ 1, not 0.** Fitted in G2 with the arc below: 99.8%
  *     of MADE shots classify to their stored `point_value` with the rim at
  *     (25, 1). The 6.7 averages above could not separate one foot.
- *  2. **Every MISS is stored with `point_value` 2.** A missed three is
+ *  2. **Every MISS was stored with `point_value` 2.** A missed three was
  *     indistinguishable from a missed two in the column, so a miss's value
- *     comes from the arc; a make keeps its stored value. The three-point band
+ *     comes from the arc; a make keeps its stored value. R5c fixed the column
+ *     at ingest with this same arc and corrected the stored 2024-25 rows
+ *     (59,235 missed threes), so for a placed shot the stored value and this
+ *     derivation now agree; the derivation stays so the chart does not depend
+ *     on every writer having been right. The three-point band
  *     is now "worth three", not "farther than 22 feet": an above-the-break
  *     long two at 22.5 feet is a two, and it used to be counted as a three.
  *

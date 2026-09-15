@@ -127,6 +127,42 @@ def test_season_boundary() -> None:
     check("april is the same season", ns.season_for(date(2025, 4, 13)) == 2025)
 
 
+def test_misses_are_worth_what_they_were_worth_on_a_real_game() -> None:
+    """R5c. Every miss used to be stored as a two. On a real saved game (OKC vs
+    LAL, tests/fixtures/espn/summary-nba.json), makes keep ESPN's value and
+    misses beyond the arc (rim at 25, 1) are threes."""
+    import json
+    import os
+
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "tests", "fixtures", "espn", "summary-nba.json")
+    payload = json.load(open(path, encoding="utf-8"))
+    rows = ns.parse_summary(payload, 1, 2026, "2026-01-01")
+    by_idx = {r.event_idx: r for r in rows}
+    makes_ok = misses = missed_threes = 0
+    for play in payload["plays"]:
+        r = by_idx.get(ns._as_int(play.get("sequenceNumber")))
+        if r is None:
+            continue
+        if r.made:
+            makes_ok += r.point_value == play.get("scoreValue")
+        else:
+            misses += 1
+            missed_threes += r.point_value == 3
+    check("every make keeps ESPN's value", makes_ok == sum(1 for r in rows if r.made), f"{makes_ok}")
+    check("some misses are threes (it used to be none)", 0 < missed_threes < misses, f"{missed_threes} of {misses}")
+    check("the stored value agrees with the arc on every placed miss",
+          all(r.point_value == (3 if ns.beyond_arc(r.x_coord, r.y_coord) else 2) for r in rows if not r.made and r.x_coord is not None))
+
+
+def test_an_unplaced_miss_reads_its_text() -> None:
+    check("'three point' in the text", ns.shot_value(False, 0, None, None, "X misses 26-foot three point jumper Jump Shot") == 3)
+    check("a 25-foot shot is a three", ns.shot_value(False, 0, None, None, "X misses 25-foot pullup jump shot") == 3)
+    check("a 16-foot shot is a two", ns.shot_value(False, 0, None, None, "X misses 16-foot jumper") == 2)
+    check("a make keeps scoreValue", ns.shot_value(True, 3, 25.0, 5.0, "") == 3)
+    check("the corner three is a three", ns.beyond_arc(3.0, 5.0) is True)
+    check("a long two at the top is a two", ns.beyond_arc(25.0, 23.5) is False)
+
+
 if __name__ == "__main__":
     for fn in [
         test_free_throws_are_not_field_goals,
@@ -136,6 +172,8 @@ if __name__ == "__main__":
         test_event_idx_is_distinct,
         test_court_bounds_reject_garbage_but_keep_real_shots,
         test_season_boundary,
+        test_misses_are_worth_what_they_were_worth_on_a_real_game,
+        test_an_unplaced_miss_reads_its_text,
     ]:
         print(f"\n{fn.__name__}")
         fn()

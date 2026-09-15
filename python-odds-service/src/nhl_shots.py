@@ -194,6 +194,10 @@ async def season_game_ids(client: httpx.AsyncClient, season: str) -> list[tuple[
             # the resume set keys on "has any row".
             if game.get("gameState") not in {"OFF", "FINAL"}:
                 continue
+            # Regular season only (R5c). The 2024-25 table had 105 preseason and
+            # 86 playoff games mixed into the season's shot maps.
+            if game.get("gameType") != 2:
+                continue
             gid = _as_int(game.get("id"))
             if gid is not None:
                 seen[gid] = str(game.get("gameDate") or "")

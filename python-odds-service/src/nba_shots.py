@@ -39,6 +39,7 @@ a free public endpoint we do not own, not a measured ceiling.
 from __future__ import annotations
 
 import asyncio
+import math
 import re
 import time
 from dataclasses import dataclass
@@ -59,6 +60,45 @@ _Y_MIN, _Y_MAX = -10.0, 100.0
 
 _FREE_THROW = re.compile(r"free\s*throw", re.I)
 _THREE = re.compile(r"three\s*point", re.I)
+_FEET = re.compile(r"(\d+)-foot", re.I)
+
+# ======================= WHAT A SHOT WAS WORTH (R5c) =========================
+# Until R5 every MISS was stored as a two: a miss's `scoreValue` is 0, and the
+# check for a three read ESPN's play TYPE ("Jump Shot"), which never says
+# "three point". R2 found it (a missed three indistinguishable from a missed
+# two) and corrected it on read; this corrects it at ingest, with the same
+# geometry `lib/sports/nba/shotProfileShapes.ts` uses:
+#
+#   - a make keeps ESPN's `scoreValue`;
+#   - a placed miss is a three when it is beyond the arc, with the RIM AT
+#     (25, 1) — fitted in G2, 99.8% of makes classify to their stored value;
+#   - an unplaced miss falls back to the play's own text ("misses 26-foot three
+#     point jumper").
+#
+# The text is not the first choice even when present. Measured on a real game
+# (tests/fixtures/espn/summary-nba.json): it disagrees with `scoreValue` on 2 of
+# 77 makes and with the arc on 4 of 86 misses, every one a deep shot the text
+# calls a "heave" or a "28-foot running jump shot" without saying three.
+# ============================================================================
+RIM_X, RIM_Y = 25.0, 1.0
+_ARC_FEET = 23.25
+_CORNER_OFF_CENTRE_FEET = 21.5
+_CORNER_MAX_Y = RIM_Y + 8.75
+
+
+def beyond_arc(x: float, y: float) -> bool:
+    return math.hypot(x - RIM_X, y - RIM_Y) >= _ARC_FEET or (abs(x - RIM_X) >= _CORNER_OFF_CENTRE_FEET and y <= _CORNER_MAX_Y)
+
+
+def shot_value(made: bool, score_value: int | None, x: float | None, y: float | None, text: str) -> int:
+    if made and score_value in (2, 3):
+        return score_value
+    if x is not None and y is not None:
+        return 3 if beyond_arc(x, y) else 2
+    if _THREE.search(text):
+        return 3
+    feet = _FEET.search(text)
+    return 3 if feet and int(feet.group(1)) >= 24 else 2
 
 _last_request_at = 0.0
 
@@ -135,10 +175,10 @@ def parse_summary(payload: dict, game_id: int, season: int, game_date: str) -> l
         if participants:
             shooter = ((participants[0].get("athlete") or {}).get("id"))
 
-        score_value = _as_int(play.get("scoreValue"))
-        # `scoreValue` is 0 on a MISS, so it cannot be the source of truth for
-        # whether a shot was a three. The type text is.
-        point_value = 3 if _THREE.search(type_text) else (score_value if score_value in (2, 3) else 2)
+        made = bool(play.get("scoringPlay"))
+        x = _court_coord(coord.get("x"), _X_MIN, _X_MAX)
+        y = _court_coord(coord.get("y"), _Y_MIN, _Y_MAX)
+        point_value = shot_value(made, _as_int(play.get("scoreValue")), x, y, f"{play.get('text') or ''} {type_text}")
 
         out.append(
             NbaShotEvent(
@@ -150,10 +190,10 @@ def parse_summary(payload: dict, game_id: int, season: int, game_date: str) -> l
                 team_id=_as_int((play.get("team") or {}).get("id")),
                 shot_type=type_text or None,
                 point_value=point_value,
-                made=bool(play.get("scoringPlay")),
+                made=made,
                 period=_as_int((play.get("period") or {}).get("number")),
-                x_coord=_court_coord(coord.get("x"), _X_MIN, _X_MAX),
-                y_coord=_court_coord(coord.get("y"), _Y_MIN, _Y_MAX),
+                x_coord=x,
+                y_coord=y,
             )
         )
     return out
@@ -182,6 +222,11 @@ async def games_on(client: httpx.AsyncClient, day: date) -> list[tuple[int, str]
         # would be ingested partially and never revisited, since the resume set
         # keys on "has any row".
         if ((ev.get("status") or {}).get("type") or {}).get("state") != "post":
+            continue
+        # Regular season only (R5c): preseason, All-Star and playoff games are
+        # not part of a season's shot profile, and exhibition "teams" with one
+        # game polluted every league-wide view.
+        if (ev.get("season") or {}).get("type") != 2:
             continue
         gid = _as_int(ev.get("id"))
         if gid is not None:

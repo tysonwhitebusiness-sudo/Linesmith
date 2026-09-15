@@ -45,6 +45,8 @@ const DB_MODULES = [
   '@/lib/sports/mlb/statcastRollups',
   // R5b: strength rollup reads. Types live in `teamProductionShapes.ts`.
   '@/lib/sports/shared/teamProduction',
+  // R5d: NFL team target map read. Types live in `teamTargetShapes.ts`.
+  '@/lib/sports/nfl/teamTargets',
   // 6.7: `components/useNhlShotProfile.ts` takes its type from the SHAPES file;
   // this one value-imports `pgAll`.
   '@/lib/sports/nhl/shotProfile',
