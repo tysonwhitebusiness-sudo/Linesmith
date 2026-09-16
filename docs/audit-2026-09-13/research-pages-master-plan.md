@@ -1506,6 +1506,15 @@ game's price movement stays dropped.
 
 **R7.3 SIGNED OFF 2026-09-16** (operator: "Start R7.4").
 
+**R7 close-out, 2026-09-16: tennis and golf team routes** (the plan's "no team
+page; the route explains why", missed in R7.4). `/golf/teams`,
+`/golf/team/[id]`, `/tennis/[tour]/teams` and `/tennis/[tour]/team/[id]` render
+`NoTeamPage`: why the sport has no teams and links to its Players and Schedule
+tabs. Nothing links there — `TopBar` already shows Schedule in place of Teams
+for both sports, and that tab is unchanged — so these only catch a typed or
+shared URL, which 404'd. Rendered at 1440 and 400; every link lands; an unknown
+tour still 404s.
+
 **R7.4 COMPLETE 2026-09-16 — soccer, and the old team page deleted. R7 is done.**
 - **Read** (`lib/sports/soccer/teamResearch.ts`, EPL and MLS apart): ESPN's
   team schedule, W-D-L throughout; ESPN standings (the Premier League table,
