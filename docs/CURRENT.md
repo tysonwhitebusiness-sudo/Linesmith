@@ -4,7 +4,7 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages: R1-R5 and R6.1a-c signed off; R6.1d complete, all of R6.1 (MLB) awaits sign-off (second track, below).**
+Research pages: R1-R5 and R6.1 (MLB) signed off; R6.2 (NFL/CFB) complete with two renders owed Thursday; R6.3 (soccer) next (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -34,12 +34,20 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R6.1a-c signed off; R6.1d COMPLETE 2026-09-15; R6.1 awaits sign-off
+## Research pages track — R6.1 (MLB) signed off; R6.2 (NFL/CFB) COMPLETE 2026-09-15; R6.3 next
 
-R1-R5 and R6.1a-c signed off. **R6.1d (MLB odds and live) is done, so the MLB
-player page (R6.1) awaits the operator's sign-off; R6.2 (NFL and CFB) is
+R1-R5 and R6.1 signed off. **R6.2 (NFL and CFB) is done; R6.3 (soccer) is
 next.** The handoff is `docs/audit-2026-09-13/RESUME-PROMPT.md`; the record is
 the plan's status block.
+
+- **R6.2:** a receiver's "Usage & depth" and a quarterback's "Where he throws"
+  draw every located pass at its own air yards (new `/api/nfl/targets`, keyed
+  by the page's own ESPN id); CFB says what is not held; NFL and CFB re-price
+  on the current main line and fill the game-state card. The old target-map
+  route, grid, hook and the rail's NFL season card are deleted.
+- **OWED Thursday 2026-09-18:** NFL's game-state card and its prop block on a
+  player with a market — no live game or priced NFL player was on the slate
+  when they landed. CFB's, Saturday 2026-09-19.
 
 - **R6.1d:** the player page names one line (R2's main line, re-priced from
   current rows; MLB's model chip names its own board line), a started game's
@@ -60,6 +68,9 @@ the plan's status block.
   - R6-F3: `is_major` is 0 on every tennis row (`backfill_player_game_history.py:854`
     looks for "grand slam" in slam names).
   - R6-F4: MLB history stores no sacrifice flies, so OBP from it is over PA.
+  - **R6-F11: `nfl_target_events.interception` is false on all 36,375 rows**
+    (the writer never sets it), so the NFL sections state that interceptions
+    are not held rather than showing an all-zero column.
   - **R6-F8: ParlayAPI files a pitcher's strikeouts under `batter-strikeouts`
     (29 pitchers on 2026-09-15) and walks allowed under `walks` (9).** Pitcher
     markets miss those books; a market-mapping fix in the Python writer.

@@ -4,9 +4,50 @@
 as taken in §3). R0 done. R1 signed off and deployed. R2 done (signed off by
 the operator's instruction to proceed). R3 and R4 signed off 2026-09-14. R5
 signed off 2026-09-15. R6 STARTED 2026-09-15: Step 0 done, corrections and
-decisions recorded in the R6 section. R6.1a, R6.1b and R6.1c SIGNED OFF
-2026-09-15. R6.1d (MLB odds and live) COMPLETE 2026-09-15: R6.1 awaits
-sign-off.**
+decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15.
+R6.2 (NFL and CFB) COMPLETE 2026-09-15, with two checks owed on Thursday's
+NFL slate; R6.3 (soccer) next.**
+
+**R6.2 COMPLETE 2026-09-15.** NFL "Usage & depth" / "Where he throws", CFB's
+not-held state, and football on one line. Commit `1438855`.
+- **Step 0 audit:** `nfl_target_events` holds season, week, air yards, side,
+  depth band, YAC, completion and touchdown per located pass — 17,848 rows
+  (2024), 17,582 (2025), 945 so far (2026), 497-509 receivers and ~100 passers
+  a season. `passer_id` is populated, so a quarterback's chart is real. The
+  `interception` column exists and is false on all 36,375 rows (R6-F11).
+- **Built:** `nflTargetsSection` (`lib/sports/nfl/targetShapes.ts`) — the
+  target/pass chart (every located pass at its own air yards on the new
+  `FieldScatter`, coloured caught / incomplete / touchdown, `surface: 'field'`
+  on the shared scatter card), the six-zone table (share, catch %, air yards,
+  YAC per catch, TD) and the per-season depth profile (targets, aDOT, deep %,
+  catch %, YAC, TD). It opens on the newest season unless that season has
+  under 20 passes, where the fuller one before it opens (G2's rule).
+  `/api/nfl/targets` (cachedRoute, 6h, keyed by the page's own ESPN id, which
+  it crosswalks to nflverse's GSIS id) and `useNflTargets` feed it; every held
+  season comes back in one response, so the season control refetches nothing.
+  CFB quarterbacks get `cfbEfficiencySection`: what CFBD publishes and this app
+  does not ingest.
+- **Also built:** R6-F9 — NFL and CFB re-price the active candidate at the
+  current main line through the shared `repriceAtMainLine`, so the stepper, the
+  price and the "Odds & prices" table name one line. C4 — both leagues fill
+  `gameState` from ESPN's summary through one shared builder
+  (`lib/sports/multiSport/footballGameState.ts`), with the lines so far
+  measured against that same main line.
+- **Removed:** `/api/nfl/target-map`, `lib/sports/nfl/targetMap.ts`,
+  `targetMapShapes.ts`, `components/useNflTargetMap.ts`, the prop block's 2x3
+  target grid (`spatialGrid` is null for NFL) and NFL's rail "Season stats"
+  card — "Season by season" reads every season of the same totals, and its
+  extra was a rank, which left the player page with D3 in R6. NBA, NHL and CFB
+  still fill that slot until their sub-phases.
+- **Verified:** 1440 and 400 on Lamb (WR), Prescott and Allen (QB), Hill (WR,
+  no market), Sayin (CFB QB) and Witt (MLB, unchanged). The route's rows equal
+  G2's own Lamb dataset row for row. Lamb opens on 2025 (117 targets) with
+  2026 at 8; Allen's note says 1 of 29 passes carries no location. No page
+  overflows at 400. tsc clean, 507/507 tests, build passes.
+- **OWED, Thursday 2026-09-18 (NFL slate):** the game-state card and the prop
+  block for a player with a market — today's NFL slate had no live game and no
+  priced player by the time the sections landed, so both are built and unit
+  tested but not yet seen on a page. CFB's equivalent: Saturday 2026-09-19.
 
 **R6.1d COMPLETE 2026-09-15.** One line on the page, Odds & prices, game state.
 Commits `4da5684` and the cleanup/docs commits after it.
@@ -1316,7 +1357,7 @@ rebuilt pages use.
 | C9 biggest edge without a floor | `MatchupExplorerCard` | R1h, deleted R9 |
 | C8 soccer default market | soccer adapter | R6 |
 | C7 tennis surface | tennis adapter | R6 |
-| C4 live card MLB-only | `PlayerDetail` | slot built and MLB filled in R6.1d (`GameStateSlot`); each other sport fills `gameState` in its sub-phase (R6.2-R6.5) |
+| C4 live card MLB-only | `PlayerDetail` | slot built and MLB filled in R6.1d (`GameStateSlot`); NFL and CFB filled in R6.2 (`footballGameState.ts`, render owed Thursday); soccer, tennis, NBA and NHL in their sub-phases |
 | D1 duplicate score, broken logos, initials, streak across seasons | NFL game | R3 `Avatar`, R2 read, R8 |
 | D2 "Game context" | `analyticsRoles.ts:359` | R6 (removed) |
 | D3 "Where this sits" | `analyticsRoles.ts:313` | R6 (removed) |
@@ -1367,8 +1408,9 @@ rebuilt pages use.
 | R6-F6 MLB and NFL past-game pages missing, so player game-log links would dead-end | `/mlb/game/[id]`, `/nfl/game/[id]` | R8 (links held off until then) |
 | R6-F7 pitch corpus holds 281 of 2,229 regular-season 2026 games only in part (<3 pitches per PA); Statcast rollups cover 91-94% of a hitter's PA | `corpus/mlb_pitch_events`, pitch ingest | coverage stated on the page (R6.1b); the ingest gap is model track Phase 5 |
 | R6-F8 ParlayAPI files a pitcher's strikeouts under `batter-strikeouts` (29 pitchers) and walks allowed under `walks` (9) on 2026-09-15; the page shows "Batter Strikeouts 7.5" for Yamamoto, and the pitcher markets miss those books | ParlayAPI market mapping, Python writer | model track (R5e writer work); the page shows the rows as stored |
-| R6-F9 non-MLB candidates carry the main line from snapshot build time, which goes stale between rebuilds (Allen passing yards 249.5 in the stepper against a current 248.5) | NFL/CFB/NBA/NHL/soccer/tennis player adapters | each sport's sub-phase adopts `repriceAtMainLine` (R6.2-R6.5) |
+| R6-F9 non-MLB candidates carry the main line from snapshot build time, which goes stale between rebuilds (Allen passing yards 249.5 in the stepper against a current 248.5) | NFL/CFB/NBA/NHL/soccer/tennis player adapters | **resolved for NFL and CFB** in R6.2 (`repriceAtMainLine`); soccer, tennis, NBA and NHL in their sub-phases |
 | R6-F10 the game page's `usePropOdds` reads current rows, so after the start its prices (and the embedded player's) are in-play and the main line finds no pre-game quote | `GameDetail` | R8 (pass the start, as the player page does) |
+| R6-F11 `nfl_target_events.interception` is false on all 36,375 rows: `write_nfl_target_events` writes 13 columns and that is not one of them, so G2's INT column and its red-ringed dot cannot be built | `python-odds-service/src/db.py` `write_nfl_target_events`, `nfl_pbp.parse_row` | model track (a column and a re-ingest); the section states it is not held |
 
 ## Appendix B — Reference fixtures (G2 datasets)
 
