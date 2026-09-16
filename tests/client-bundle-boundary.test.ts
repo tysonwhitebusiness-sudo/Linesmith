@@ -80,6 +80,8 @@ const DB_MODULES = [
   // R7.1: the team page's reads. Types live in `teamResearchShapes.ts`.
   '@/lib/sports/mlb/teamResearch',
   '@/lib/sports/shared/teamRosterServer',
+  // R7.2: the football team page read. Types only reach the adapters.
+  '@/lib/sports/multiSport/footballTeamResearch',
 ];
 
 /**

@@ -157,3 +157,19 @@ test('the roster lists each group with its players, innings as outs', () => {
   assert.equal(pit.rows[0].values.ip, 562, 'IP is carried as outs and printed 187.1 by the ip format');
   assert.equal(Number(pit.rows[0].values.era).toFixed(2), '2.88');
 });
+
+test('a neutral-site game counts in neither the home nor the away record', () => {
+  const gs = [
+    game('2025-09-06', 30, 10, { home: true }),
+    game('2025-09-13', 20, 17, { home: false }),
+    game('2025-12-06', 13, 28, { home: false, neutral: true, label: 'SEC Championship' }),
+    ...Array.from({ length: 5 }, (_, i) => game(`2025-10-${String(i + 1).padStart(2, '0')}`, 21, 14, { home: true })),
+  ];
+  const data = buildTeamResearch({ payload: payload([season(2025, gs)], 2025), spec: { ...MLB_TEAM_SPEC, seasonSport: 'cfb' }, season: 2025, teamHref: href, now: new Date('2025-12-10T12:00:00Z') });
+  const tile = (label: string) => data.hero.tiles.find((t) => t.label === label)?.value;
+  assert.equal(tile('Home'), '6-0');
+  assert.equal(tile('Away'), '1-0', 'the title game at a neutral site is not a road loss');
+  const splits = data.sections.find((s) => s.id === 'results')!.rows.flat().find((c) => c.key === 'splits');
+  assert.ok(splits && splits.kind === 'table');
+  assert.equal(splits.rows.find((r) => r.key === 'neutral')?.values.rec, '0-1');
+});

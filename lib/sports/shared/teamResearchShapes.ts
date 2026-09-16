@@ -30,7 +30,14 @@ export interface TeamGame {
   start: string;
   /** The league's own date for the game (a night game is not dated by UTC). */
   date: string;
+  /** False for a neutral-site game as well as an away one; `neutral` tells them apart. */
   home: boolean;
+  /**
+   * A bowl, a conference title game, an international game: nobody's park.
+   * Counted in neither Home nor Away (R7.2: Alabama's SEC title game made its
+   * 2025 road record 4-2 where ESPN has 4-1).
+   */
+  neutral?: boolean;
   opponent: TeamRef;
   us: number | null;
   them: number | null;

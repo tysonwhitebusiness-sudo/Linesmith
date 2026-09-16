@@ -54,6 +54,7 @@ function TeamListShell({
   activeTeamId,
   onSelect,
   onRetry,
+  listOnPhone,
   children,
 }: {
   sortedTeams: TeamStandingRow[];
@@ -65,6 +66,13 @@ function TeamListShell({
   onSelect: (teamId: number) => void;
   /** Re-runs the teams fetch. Absent where the sport's hook exposes no refresh. */
   onRetry?: () => void;
+  /**
+   * Whether the team list shows below the desktop breakpoint. Off on a team's
+   * own URL (operator, 2026-09-16): on a phone the list stacked above the page
+   * and a reader scrolled past every club to reach the team they opened. The
+   * Teams tab's landing, which has no team in its URL, keeps it.
+   */
+  listOnPhone: boolean;
   children: ReactNode;
 }) {
   const filtered = useMemo(() => {
@@ -76,7 +84,7 @@ function TeamListShell({
 
   return (
     <div className="grid gap-3 lg:grid-cols-[260px_1fr] lg:items-start">
-      <div className="lb-card overflow-hidden lg:sticky lg:top-4">
+      <div className={`lb-card overflow-hidden lg:sticky lg:top-4 ${listOnPhone ? '' : 'hidden lg:block'}`}>
         <div className="border-b border-line p-2.5">
           <input
             type="search"
@@ -171,6 +179,7 @@ function MlbTeamDetailPanel({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport
   return (
     <TeamListShell
       sortedTeams={sortedTeams}
+      listOnPhone={initialTeamId == null}
       loading={loading}
       error={error}
       search={search}
@@ -188,7 +197,7 @@ function MlbTeamDetailPanel({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport
   );
 }
 
-function NflTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys }: Omit<TeamDetailPanelProps, 'sport' | 'snapshot' | 'odds'>) {
+function NflTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport' | 'snapshot' | 'odds'>) {
   const [search, setSearch] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const { teams, loading, error } = useAllNflTeams();
@@ -205,6 +214,7 @@ function NflTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys }: Omit<TeamDe
   return (
     <TeamListShell
       sortedTeams={sortedTeams}
+      listOnPhone={initialTeamId == null}
       loading={loading}
       error={error}
       search={search}
@@ -214,15 +224,8 @@ function NflTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys }: Omit<TeamDe
     >
       {!detailReady && <BrandedLoader size="page" />}
       <div style={{ display: detailReady ? 'block' : 'none' }}>
-        <TeamDetail
-          sport="nfl"
-          teamId={activeTeamId}
-          standingsTeams={teams}
-          standingsLoading={loading}
-          onAdd={onAdd}
-          addedKeys={addedKeys}
-          onReadyChange={setDetailReady}
-        />
+        {/* R7.2: football team pages are the rebuilt research page. */}
+        <TeamResearchPage sport="nfl" teamId={activeTeamId} onReadyChange={setDetailReady} />
       </div>
     </TeamListShell>
   );
@@ -250,6 +253,7 @@ function SoccerTeamDetailPanelBody({ league, initialTeamId, onAdd, addedKeys, sn
   return (
     <TeamListShell
       sortedTeams={sortedTeams}
+      listOnPhone={initialTeamId == null}
       loading={loading}
       error={error}
       search={search}
@@ -275,7 +279,7 @@ function SoccerTeamDetailPanelBody({ league, initialTeamId, onAdd, addedKeys, sn
   );
 }
 
-function CfbTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys, snapshot }: Omit<TeamDetailPanelProps, 'sport' | 'odds'>) {
+function CfbTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport' | 'odds'>) {
   const [search, setSearch] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const { teams, loading, error } = useAllCfbTeams();
@@ -292,6 +296,7 @@ function CfbTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys, snapshot }: O
   return (
     <TeamListShell
       sortedTeams={sortedTeams}
+      listOnPhone={initialTeamId == null}
       loading={loading}
       error={error}
       search={search}
@@ -301,16 +306,8 @@ function CfbTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys, snapshot }: O
     >
       {!detailReady && <BrandedLoader size="page" />}
       <div style={{ display: detailReady ? 'block' : 'none' }}>
-        <TeamDetail
-          sport="cfb"
-          teamId={activeTeamId}
-          snapshot={snapshot}
-          standingsTeams={teams}
-          standingsLoading={loading}
-          onAdd={onAdd}
-          addedKeys={addedKeys}
-          onReadyChange={setDetailReady}
-        />
+        {/* R7.2: football team pages are the rebuilt research page. */}
+        <TeamResearchPage sport="cfb" teamId={activeTeamId} onReadyChange={setDetailReady} />
       </div>
     </TeamListShell>
   );
@@ -333,6 +330,7 @@ function NbaTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys, snapshot }: O
   return (
     <TeamListShell
       sortedTeams={sortedTeams}
+      listOnPhone={initialTeamId == null}
       loading={loading}
       error={error}
       search={search}
@@ -373,6 +371,7 @@ function NhlTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys, snapshot }: O
   return (
     <TeamListShell
       sortedTeams={sortedTeams}
+      listOnPhone={initialTeamId == null}
       loading={loading}
       error={error}
       search={search}

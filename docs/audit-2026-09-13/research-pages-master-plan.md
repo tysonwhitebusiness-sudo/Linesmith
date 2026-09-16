@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; R7.1 (skeleton on MLB) COMPLETE, awaiting sign-off; R7.2 football next.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; R7.1 (MLB) signed off; R7.2 (NFL, CFB) COMPLETE, awaiting sign-off; R7.3 NBA/NHL next.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1416,6 +1416,51 @@ and ESPN, not G2).
   existing `TeamListShell`), and the page drops the next game's price
   movement, which the plan's skeleton does not name.
 - 9 new tests; 537 pass; tsc and build clean.
+
+**R7.1 SIGNED OFF 2026-09-16** with two operator decisions: the team list is
+hidden on phones on a team's own URL (the Teams landing keeps it), and the next
+game's price movement stays dropped.
+
+**R7.2 COMPLETE 2026-09-16 — NFL and CFB.**
+- **Read** (`lib/sports/multiSport/footballTeamResearch.ts`, both leagues):
+  ESPN's team schedule with `seasontype=2` and `3` fetched apart
+  (`fetchTeamSeasonGames`, reusable by NBA and soccer), ESPN standings
+  (`fetchStandingsGroups`: NFL division then conference, a division ordered by
+  conference seed; CFB the conference as published), team stats from the R5b
+  rollup `team_game_production` for AND allowed with points from the
+  standings, ranked across the standings' own real teams (FBS only for CFB,
+  135 teams in 2025), roster production named from ESPN
+  (`espnAthleteNames`: current roster, then the athlete endpoint).
+- **Sections:** NFL's Passing game — a throw map on the field (offense,
+  defense, league views), shares and completion % by area against the league,
+  and target share from the box scores; CFB's Ranked opponents (AP rank at
+  kickoff, bowls and playoff included and labelled).
+- **Measured before building, and three premises corrected:**
+  1. No table names football players (`athlete_crosswalk` names 29 of the
+     Raiders' 59 of 2025) and ESPN's roster ignores `?season=` (0 athletes),
+     so names come from ESPN per athlete, cached in process. The nflverse
+     players file was not used: it lives in `snapshot_cache` as a large blob,
+     the egress cost Phase 5 fought.
+  2. CFB box scores carry no targets, QB hits or sacks taken; those columns
+     and stats are NFL-only rather than zeros.
+  3. ESPN's CFB standings have `wins` but no `losses`: games are read from the
+     `overall` record. Caught refereeing — Ohio State's points per game read
+     39.0 on wins alone, 33.4 is right.
+- **Refereed against ESPN and nflverse:** Raiders 2025 3-14, 241-432, 4th in
+  the AFC West behind Denver 14-3; Chiefs 6-11, 362-328, home 5-4, road 1-7;
+  Ohio State 2025 12-1 and 454-106 in the regular season, plus the CFP
+  quarterfinal 14-24, which together are ESPN's 12-2 and 468-130; Alabama's 15
+  games 443-288 equal ESPN's 11-4.
+- **Render caught, fixed:** a neutral-site game counted as an away one
+  (Alabama's SEC title game made its road record 4-2 against ESPN's 4-1;
+  `TeamGame.neutral`, a Neutral site split row, a test); the conference table
+  printed its seed twice; long stat labels truncated at 1440.
+- Rendered Raiders, Chiefs, Ohio State, Alabama at 1440 and 400: no bad text,
+  no overflow, only the signed-out 401s. All four open on 2025-26 and say
+  why (NFL 1 game, CFB 2); picking 2026-27 shows the Raiders 1-0, 2nd in the
+  AFC West. Unknown id: 404, not cached. 1 new test; 538 pass; build clean.
+- **Owed Saturday 2026-09-19 / Thursday 2026-09-18:** a live game on a
+  football team page (the hero's "Live" next game).
 
 **Sub-phases, stop after each:** R7.1 the shared team research skeleton
 (hero, season switch, results & schedule, standings, team stats, roster

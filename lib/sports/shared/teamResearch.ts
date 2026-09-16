@@ -142,7 +142,7 @@ export function buildTeamResearch(input: BuildTeamResearchInput): TeamResearchDa
     .sort((a, b) => a.start.localeCompare(b.start))[0];
   const diff = finals.reduce((a, g) => a + (g.us! - g.them!), 0);
   const home = finals.filter((g) => g.home);
-  const away = finals.filter((g) => !g.home);
+  const away = finals.filter((g) => !g.home && !g.neutral);
   const tiles: ResearchTile[] = [
     { label: 'Record', value: finals.length ? formatRecord(finals, spec) : '—', info: RECORD_SHAPE[spec.record] },
     { label: 'Home', value: home.length ? formatRecord(home, spec) : '—' },
@@ -276,7 +276,8 @@ function resultsSection(spec: TeamResearchSpec, season: number, games: TeamGame[
   const splitRows = [
     split('all', 'All games', finals),
     split('home', 'Home', finals.filter((g) => g.home)),
-    split('away', 'Away', finals.filter((g) => !g.home)),
+    split('away', 'Away', finals.filter((g) => !g.home && !g.neutral)),
+    split('neutral', 'Neutral site', finals.filter((g) => g.neutral)),
     split('close', `Decided by ${spec.closeMargin} or fewer`, finals.filter(close)),
     split('wide', `Decided by more than ${spec.closeMargin}`, finals.filter((g) => !close(g))),
     ...(months.length > 2 ? months.map((m) => split(`m-${m}`, m, finals.filter((g) => monthOf(g.date) === m))) : []),
@@ -292,7 +293,7 @@ function resultsSection(spec: TeamResearchSpec, season: number, games: TeamGame[
     return {
       key: `${g.id}-${i}`,
       label: g.opponent.name,
-      labelNote: g.home ? 'vs' : '@',
+      labelNote: g.home || g.neutral ? 'vs' : '@',
       imageUrl: g.opponent.logoUrl,
       href: teamHref(g.opponent.id),
       values: {

@@ -22,17 +22,26 @@
  */
 
 import { NextResponse } from 'next/server';
-import { BadRequest, knownId } from '@/lib/apiValidation';
+import { BadRequest, entityIdNum, knownId } from '@/lib/apiValidation';
 import { cachedRoute } from '@/lib/cachedRoute';
 import { MLB_TEAM_IDS } from '@/lib/sports/mlb/teamAliases';
 import { readMlbTeamResearch } from '@/lib/sports/mlb/teamResearch';
+import { readFootballTeamResearch } from '@/lib/sports/multiSport/footballTeamResearch';
 
 export const dynamic = 'force-dynamic';
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
-const READERS: Record<string, { ids: ReadonlySet<number>; read: (teamId: number) => Promise<unknown | null> }> = {
+/**
+ * `ids` where the sport has a fixed, known list (MLB's 30). ESPN's leagues are
+ * checked by shape instead (a positive integer of bounded length), and a
+ * reader returns `null` for a team it cannot find, which `cachedRoute` answers
+ * with a 404 and does not cache, so a made-up id mints no row (task 3.5).
+ */
+const READERS: Record<string, { ids?: ReadonlySet<number>; read: (teamId: number) => Promise<unknown | null> }> = {
   mlb: { ids: MLB_TEAM_IDS, read: readMlbTeamResearch },
+  nfl: { read: (id) => readFootballTeamResearch('nfl', id) },
+  cfb: { read: (id) => readFootballTeamResearch('cfb', id) },
 };
 
 export async function GET(request: Request) {
@@ -44,7 +53,8 @@ export async function GET(request: Request) {
   }
   let teamId: number;
   try {
-    teamId = knownId(url.searchParams.get('teamId'), reader.ids, 'teamId');
+    const raw = url.searchParams.get('teamId');
+    teamId = reader.ids ? knownId(raw, reader.ids, 'teamId') : entityIdNum(raw, 'teamId');
   } catch (error) {
     if (error instanceof BadRequest) return NextResponse.json({ error: error.message }, { status: 400 });
     throw error;

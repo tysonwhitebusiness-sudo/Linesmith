@@ -43,9 +43,9 @@ R1-R5 and R6.1 signed off; R6.2-R6.6 done. **R7 (team page rebuild) STARTED
 section. R7-C1: results & schedule read each league's schedule, not
 `game_result` (preseason, postseason, no OTL, MLB gaps). Sub-phases R7.1
 (skeleton on MLB) → R7.2 football → R7.3 NBA/NHL → R7.4 soccer, stop after each.
-**R7.1 COMPLETE 2026-09-16, awaiting sign-off:** `/api/team-research` +
-`buildTeamResearch` + `TeamResearchPage`; MLB team pages use it, the other
-sports still render the old `TeamDetail` until their sub-phase. Record in the
+**R7.1 SIGNED OFF; R7.2 (NFL, CFB) COMPLETE 2026-09-16, awaiting sign-off.** R7.1: `/api/team-research` +
+`buildTeamResearch` + `TeamResearchPage`; MLB, NFL and CFB team pages use it; NBA, NHL and soccer
+still render the old `TeamDetail` until R7.3/R7.4. Record in the
 plan's R7 section. R2-F7 fixed.** The handoff is
 `docs/audit-2026-09-13/RESUME-PROMPT.md`; the record is the plan's status block.
 

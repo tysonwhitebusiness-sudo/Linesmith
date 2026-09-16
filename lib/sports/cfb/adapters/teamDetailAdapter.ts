@@ -20,6 +20,11 @@
 import { categoriseByLine, entryValue, fixedWindow, openWindow, subsetWindow, OVER, UNDER, type WindowedStat } from '@/lib/core/windowedStat';
 import { directionMark } from '@/components/MarketLabel';
 import type { PickCandidate } from '@/lib/core/types';
+import type { FootballTeamResearchPayload } from '@/lib/sports/multiSport/footballTeamResearch';
+import { footballTeamSpec } from '@/lib/sports/nfl/adapters/teamResearchSpec';
+import { buildTeamResearch, formatRecord, gameResult } from '@/lib/sports/shared/teamResearch';
+import type { ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
+import type { TeamGame, TeamResearchData, TeamResearchSpec } from '@/lib/sports/shared/teamResearchShapes';
 import type { TeamStandingRow } from '@/components/useAllTeams';
 import type { GameRow, RecentResultRow, RosterPlayer, TeamDetailData, TeamDistributionChartData, TeamMatchupData, TeamNextGame, TeamWindowedForm } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
@@ -382,5 +387,79 @@ export function toTeamDetailData(input: CfbTeamDetailInput): TeamDetailData {
     advancedStats: null,
     form: windows,
     recentResults: toCfbRecentResultRows(recentGames, team.teamId),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// R7.2 — the team research page
+// ---------------------------------------------------------------------------
+
+/**
+ * CFB's team page: the shared team research read through the football spec
+ * (NFL's, as CFB's player page uses), plus CFB's own section, "Ranked
+ * opponents" — every game against a team in the AP poll at kickoff (R4's
+ * `curatedRank`).
+ */
+export function toTeamResearchData(input: { payload: FootballTeamResearchPayload; season: number | null; now?: Date }): TeamResearchData {
+  const spec = footballTeamSpec('cfb');
+  const data = buildTeamResearch({
+    payload: input.payload,
+    spec,
+    season: input.season,
+    teamHref: (id) => `/cfb/team/${encodeURIComponent(id)}`,
+    now: input.now,
+  });
+  const season = data.scope.season;
+  const games = input.payload.seasons.find((s) => s.season === season)?.games ?? [];
+  return { ...data, sections: [...data.sections, rankedOpponentsSection(games, season, spec)] };
+}
+
+function rankedOpponentsSection(games: TeamGame[], season: number, spec: TeamResearchSpec): ResearchSection {
+  const base = { id: 'ranked', navLabel: 'Ranked opponents', title: 'Ranked opponents', sub: `${season} · AP poll rank at kickoff` };
+  const ranked = games.filter((g) => g.opponentRank != null).sort((a, b) => a.start.localeCompare(b.start));
+  if (!ranked.length) {
+    return { ...base, rows: [], state: { kind: 'empty', title: 'No ranked opponents on the schedule', reason: `No opponent was in the AP poll at kickoff in ${season}.` } };
+  }
+  const played = ranked.filter((g) => g.state === 'final' && g.us != null && g.them != null);
+  return {
+    ...base,
+    rows: [
+      [
+        {
+          kind: 'table',
+          key: 'ranked',
+          title: played.length ? `${formatRecord(played, spec)} against ranked teams` : 'Ranked teams still to play',
+          scope: `${ranked.length} ${ranked.length === 1 ? 'game' : 'games'}`,
+          labelHeader: 'Opponent',
+          fixedOrder: true,
+          columns: [
+            { key: 'rank', label: 'Rank', decimals: 0 },
+            { key: 'date', label: 'Date', decimals: 0 },
+            { key: 'result', label: 'Result', decimals: 0 },
+            { key: 'note', label: 'Game', decimals: 0 },
+          ],
+          rows: ranked.map((g) => {
+            const final = g.state === 'final' && g.us != null && g.them != null;
+            const r = final ? gameResult(g, spec) : null;
+            return {
+              key: g.id,
+              label: g.opponent.name,
+              labelNote: g.home || g.neutral ? 'vs' : '@',
+              imageUrl: g.opponent.logoUrl,
+              href: `/cfb/team/${g.opponent.id}`,
+              values: {
+                rank: `No. ${g.opponentRank}`,
+                date: new Date(`${g.date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+                result: final ? `${r} ${g.us}-${g.them}` : g.state === 'postponed' ? 'Postponed' : 'To play',
+                note: g.label,
+              },
+              ...(r === 'W' ? { tones: { result: 'good' as const } } : r === 'L' ? { tones: { result: 'bad' as const } } : {}),
+            };
+          }),
+          caption: 'Advanced team stats (success rate, EPA) are not held for college football.',
+        },
+      ],
+    ],
+    state: { kind: 'ready' },
   };
 }

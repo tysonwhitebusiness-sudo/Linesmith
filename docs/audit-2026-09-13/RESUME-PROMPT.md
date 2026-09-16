@@ -87,12 +87,14 @@ A sport's section is one function returning a `ResearchSection`; the component
 has no sport check. The prop block keeps market tabs, stepper, chips, windows,
 bars, matchup explorer and role cards; every odds card lives in "Odds & prices".
 
-## Next: R7 team page (STARTED 2026-09-16 — Step 0 and R7.1 (MLB) done, see the plan's R7 section; R7.2 football after sign-off)
+## Next: R7 team page (STARTED 2026-09-16 — Step 0, R7.1 (MLB) and R7.2 (NFL, CFB) done, see the plan's R7 section; R7.3 NBA/NHL after sign-off)
 
-R7.2 adds an NFL/CFB reader to `READERS` in `app/api/team-research/route.ts`, a spec and
+Each sub-phase adds a reader to `READERS` in `app/api/team-research/route.ts`, a spec and
 `toTeamResearchData` in each sport's team adapter, a case in `teamResearchFor`
 (`components/TeamResearchPage.tsx`), and switches that sport's panel in
-`TeamDetailPanel.tsx`. Results come from ESPN's team schedule by seasontype (R7-C1).
+`TeamDetailPanel.tsx`. Results come from each league's schedule (R7-C1): NBA via `fetchTeamSeasonGames`
+(ESPN, seasontype 2/3), NHL via api-web `club-schedule-season` (gameType 2/3,
+`lastPeriodType` for OT/SO). Standings for NBA can use `fetchStandingsGroups`.
 
 Read the plan's R7 section in full: a hero with record and standing, one season
 switch scoping the page (last season when the current one is under MIN_GAMES,

@@ -187,7 +187,8 @@ export function LeagueStripRow({
         </>
       }
     >
-      <div className="grid grid-cols-[minmax(64px,160px)_minmax(48px,1fr)_auto] items-center gap-x-3 rounded-md px-1 py-1.5 hover:bg-card-sunk">
+      {/* 200px holds "Passing yards allowed / game" at 1440 (R7.2 render); a phone still truncates, with the tooltip carrying the label. */}
+      <div className="grid grid-cols-[minmax(64px,200px)_minmax(48px,1fr)_auto] items-center gap-x-3 rounded-md px-1 py-1.5 hover:bg-card-sunk">
         <div className="truncate text-body-sm text-ink-secondary">{label}</div>
         <div className="relative h-4" aria-hidden>
           <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-line" />
