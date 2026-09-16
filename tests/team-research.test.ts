@@ -49,6 +49,10 @@ test('a hockey loss past regulation is an OTL, and the record reads W-L-OTL', ()
   const gs = [game('2026-01-01', 3, 2), game('2026-01-02', 2, 3, { extra: 'OT' }), game('2026-01-03', 1, 2, { extra: 'SO' }), game('2026-01-04', 0, 4)];
   assert.deepEqual(gs.map((g) => gameResult(g, hockey)), ['W', 'OTL', 'OTL', 'L']);
   assert.equal(formatRecord(gs, hockey), '1-1-2');
+  // A playoff game is played to a winner: no OTL, and the record is W-L.
+  const playoffs = [game('2026-04-20', 2, 3, { extra: 'OT', postseason: true }), game('2026-04-22', 4, 1, { postseason: true })];
+  assert.equal(gameResult(playoffs[0], hockey), 'L');
+  assert.equal(formatRecord(playoffs, hockey), '1-1');
   // Baseball's extra innings are not an OTL.
   assert.equal(gameResult(game('2026-06-01', 3, 4, { extra: 'F/10' }), { record: 'WL' }), 'L');
   assert.equal(formatRecord([game('2026-01-01', 1, 1), game('2026-01-02', 2, 0)], { record: 'WDL' }), '1-1-0');

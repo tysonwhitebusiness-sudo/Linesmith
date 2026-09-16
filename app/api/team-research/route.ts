@@ -27,6 +27,7 @@ import { cachedRoute } from '@/lib/cachedRoute';
 import { MLB_TEAM_IDS } from '@/lib/sports/mlb/teamAliases';
 import { readMlbTeamResearch } from '@/lib/sports/mlb/teamResearch';
 import { readFootballTeamResearch } from '@/lib/sports/multiSport/footballTeamResearch';
+import { readNbaTeamResearch, readNhlTeamResearch } from '@/lib/sports/multiSport/hoopsHockeyTeamResearch';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +43,8 @@ const READERS: Record<string, { ids?: ReadonlySet<number>; read: (teamId: number
   mlb: { ids: MLB_TEAM_IDS, read: readMlbTeamResearch },
   nfl: { read: (id) => readFootballTeamResearch('nfl', id) },
   cfb: { read: (id) => readFootballTeamResearch('cfb', id) },
+  nba: { read: readNbaTeamResearch },
+  nhl: { read: readNhlTeamResearch },
 };
 
 export async function GET(request: Request) {

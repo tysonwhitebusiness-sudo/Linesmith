@@ -26,6 +26,7 @@ import { easternDate } from '@/lib/sports/mlb/statsapi';
 import type { NflTeamTargets } from '@/lib/sports/nfl/teamTargetShapes';
 import type { ResearchColumn } from '@/lib/sports/shared/playerResearchShapes';
 import type { TeamGame, TeamResearchPayload, TeamSeasonData, TeamStandingsTable, TeamStatValue } from '@/lib/sports/shared/teamResearchShapes';
+import { rankTeamStats, type TeamStatDef } from '@/lib/sports/shared/teamResearch';
 
 export interface FootballTeamResearchPayload extends TeamResearchPayload {
   /** NFL only: where the offense throws and the defense is thrown at, per season. Empty for CFB. */
@@ -103,7 +104,7 @@ function standingsTables(groups: EspnStandingsGroup[], teamId: string, league: '
   ];
 }
 
-type StatDef = Omit<TeamStatValue, 'value' | 'league' | 'group'> & { group: 'Offense' | 'Defense'; of: (t: TeamNumbers) => number | null };
+type StatDef = TeamStatDef<TeamNumbers> & { group: 'Offense' | 'Defense' };
 
 interface TeamNumbers {
   games: number;
@@ -159,19 +160,12 @@ async function rankedStats(league: 'nfl' | 'cfb', season: number, teamId: string
   }
   // The rank pool is the standings' own teams that really played (R2's 30% rule).
   const pool = new Set(realTeams([...numbers].map(([id, n]) => ({ teamId: id, games: n.games }))).map((r) => r.teamId));
-  const mine = numbers.get(teamId);
-  if (!mine || !pool.has(teamId)) return [];
   const heldKeys = new Set(Object.values(production.for).flatMap((x) => Object.keys(x.s)));
-  const out: TeamStatValue[] = [];
-  for (const { of, ...d } of FOOTBALL_STATS) {
+  const defs = FOOTBALL_STATS.filter((d) => {
     const needs = ROLLUP_KEYS_NEEDED[d.key];
-    if (needs && !heldKeys.has(needs)) continue;
-    const value = of(mine);
-    const leagueValues = [...pool].map((id) => of(numbers.get(id)!)).filter((v): v is number => v != null && Number.isFinite(v));
-    if (value == null || leagueValues.length < 2) continue;
-    out.push({ ...d, value, league: leagueValues });
-  }
-  return out;
+    return !needs || heldKeys.has(needs);
+  });
+  return rankTeamStats(defs, numbers, pool, teamId);
 }
 
 const headshot = (league: 'nfl' | 'cfb', id: string) => `https://a.espncdn.com/i/headshots/${league === 'nfl' ? 'nfl' : 'college-football'}/players/full/${id}.png`;

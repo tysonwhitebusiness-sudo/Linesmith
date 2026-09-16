@@ -82,6 +82,8 @@ const DB_MODULES = [
   '@/lib/sports/shared/teamRosterServer',
   // R7.2: the football team page read. Types only reach the adapters.
   '@/lib/sports/multiSport/footballTeamResearch',
+  // R7.3: the NBA and NHL team page read.
+  '@/lib/sports/multiSport/hoopsHockeyTeamResearch',
 ];
 
 /**

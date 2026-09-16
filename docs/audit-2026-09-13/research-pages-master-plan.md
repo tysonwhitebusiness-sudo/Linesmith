@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; R7.1 (MLB) signed off; R7.2 (NFL, CFB) COMPLETE, awaiting sign-off; R7.3 NBA/NHL next.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; R7.1 (MLB) and R7.2 (NFL, CFB) signed off; R7.3 (NBA, NHL) COMPLETE, awaiting sign-off; R7.4 soccer next.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1461,6 +1461,48 @@ game's price movement stays dropped.
   AFC West. Unknown id: 404, not cached. 1 new test; 538 pass; build clean.
 - **Owed Saturday 2026-09-19 / Thursday 2026-09-18:** a live game on a
   football team page (the hero's "Live" next game).
+
+**R7.2 SIGNED OFF 2026-09-16** (operator: "Start R7.3").
+
+**R7.3 COMPLETE 2026-09-16 — NBA and NHL.**
+- **Read** (`lib/sports/multiSport/hoopsHockeyTeamResearch.ts`): NBA from
+  ESPN's team schedule (the play-in is season type 5 and counts as
+  postseason — measured on Golden State's two), ESPN standings (division and
+  conference by seed); NHL from api-web — `fetchClubSeasonGames` (game types
+  2/3, preseason dropped, `lastPeriodType` for OT/SO),
+  `fetchNhlSeasonStandings` (a finished season at its own `standingsEnd`,
+  since `standings/now` only answers the current table; nothing for a season
+  not yet started), `nhlPlayerNames` (the season roster, then player
+  landings: Toronto's 2025-26 roster lists 18 of the 38 who played). Team
+  stats from `team_game_production` for and allowed, with NHL goals from the
+  standings; hits, blocked shots and PIM are not ranked (no better direction).
+  The stat-ranking loop is now one shared `rankTeamStats` for all four sports.
+- **Sections:** NBA's Shot profile (the court by zone for the team, its
+  opponents and the league average; a by-zone table with ranks; FG% by zone as
+  league strips); NHL's Shot map (the rink's nine areas for and against, a
+  by-area table of goals per attempt, attempts per game against the league,
+  shot types).
+- **App-breaking bug found and fixed in passing:** the NHL team-id map sent
+  the Utah Mammoth to id 59 (the old Utah Hockey Club), while every 2025-26
+  table stores it as 68 — the team list linked a page that read the wrong
+  franchise, and the Mammoth dropped out of every league pool (31 teams).
+  Newest id wins per tricode; the cached map moved to `nhl:team-ids:v2`.
+  2024-25 rows remain under 59 (a franchise id change the tables carry).
+- **Render caught, fixed:** Utah's playoff record read "2-2-2" — a playoff
+  overtime loss is an L, not an OTL (`gameResult`, test).
+- **Refereed against the leagues:** Maple Leafs 2025-26 32-36-14, 253-299,
+  8th in the Atlantic; Utah 43-33-6, 268-240, home 22-16-3, 4th in the
+  Central, playoffs 2-4; Thunder 64-18, 9760-8846, home 34-7; Lakers 53-29,
+  home 28-13, playoffs 4-6 — their points allowed read 9,396 from the games
+  against ESPN standings' 9,395, a one-point disagreement inside ESPN's own
+  feeds, left as it is.
+- **Premise note:** 2026-27 is an 84-game NHL season (api-web lists 84 regular
+  season games for Toronto, from 2026-09-29); nothing assumes 82.
+- Rendered Lakers, Thunder, Maple Leafs, Utah at 1440 and 400: no bad text,
+  no overflow, only the signed-out 401s. The Leafs and Utah open on 2025-26
+  and say why (2026-27 has 0 games). The NBA opens on 2025-26 as its current
+  season until October 1, then falls back the same way. 538 tests; build
+  clean. **Owed in October:** a live NBA and NHL game on a team page.
 
 **Sub-phases, stop after each:** R7.1 the shared team research skeleton
 (hero, season switch, results & schedule, standings, team stats, roster

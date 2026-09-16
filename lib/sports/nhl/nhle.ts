@@ -60,7 +60,8 @@ interface RawStatsTeam {
 }
 
 async function fetchTeamIdMap(): Promise<Map<string, number>> {
-  const cacheKey = 'nhl:team-ids';
+  // v2 (R7.3): the v1 map sent Utah to its old id, so the stored map is not reused.
+  const cacheKey = 'nhl:team-ids:v2';
   const cached = await readSnapshotCache(cacheKey);
   if (cached && Date.now() - Date.parse(cached.fetchedAt) < 24 * 60 * 60_000) {
     return new Map(JSON.parse(cached.payload) as Array<[string, number]>);
@@ -70,7 +71,12 @@ async function fetchTeamIdMap(): Promise<Map<string, number>> {
   if (rows.length === 0) {
     return cached ? new Map(JSON.parse(cached.payload) as Array<[string, number]>) : new Map();
   }
-  const map = new Map(rows.map((t) => [t.triCode, t.id] as [string, number]));
+  // A tricode can name two franchises: `UTA` is 59 (Utah Hockey Club, 2024-25)
+  // and 68 (Utah Mammoth, 2025-26 on). Whichever the API listed last used to
+  // win, and it was 59 — while every 2025-26 table (`player_game_history`,
+  // `team_game_production`) stores the Mammoth as 68, so its team page read
+  // the wrong franchise (R7.3). The newest id is the current club.
+  const map = new Map([...rows].sort((a, b) => a.id - b.id).map((t) => [t.triCode, t.id] as [string, number]));
   await writeSnapshotCache(cacheKey, JSON.stringify([...map.entries()]));
   return map;
 }
@@ -424,4 +430,190 @@ export async function fetchPlayerLanding(playerId: string | number): Promise<unk
 /** Every event with rink coordinates, shooter, goalie and situation (`parsePlayByPlay`). */
 export async function fetchPlayByPlay(gameId: string | number): Promise<unknown | null> {
   return fetchJson<unknown>(`${BASE}/gamecenter/${encodeURIComponent(String(gameId))}/play-by-play`);
+}
+
+// ---------------------------------------------------------------------------
+// Team page (R7.3)
+// ---------------------------------------------------------------------------
+
+export interface NhlClubGame {
+  id: string;
+  start: string;
+  /** api-web's own date for the game (Eastern), never the UTC one. */
+  date: string;
+  postseason: boolean;
+  home: { id: string; abbr: string; name: string; logoUrl: string | null; score: number | null };
+  away: { id: string; abbr: string; name: string; logoUrl: string | null; score: number | null };
+  state: 'final' | 'live' | 'scheduled' | 'postponed';
+  /** "OT" or "SO" from `gameOutcome.lastPeriodType`; null in regulation. */
+  extra: string | null;
+  label: string | null;
+  venue: string | null;
+  neutral: boolean;
+}
+
+type RawClubTeam = { id: number; abbrev: string; commonName?: { default: string }; placeName?: { default: string }; logo?: string; score?: number };
+type RawClubGame = {
+  id: number;
+  gameDate: string;
+  gameType: number;
+  gameState: string;
+  gameScheduleState?: string;
+  startTimeUTC: string;
+  neutralSite?: boolean;
+  venue?: { default?: string };
+  gameOutcome?: { lastPeriodType?: string };
+  seriesStatus?: { round?: number; seriesTitle?: string; gameNumberOfSeries?: number };
+  awayTeam: RawClubTeam;
+  homeTeam: RawClubTeam;
+};
+
+const clubSeasonCache = new Map<string, { at: number; games: NhlClubGame[] }>();
+
+/**
+ * One club's season from api-web's `club-schedule-season`, regular season
+ * (`gameType` 2) and playoffs (3) kept apart and preseason (1) dropped —
+ * R7-C1. A loss past regulation carries `lastPeriodType` OT or SO, which is
+ * what makes a record W-L-OTL: the Maple Leafs' 2025-26 is 59 regulation, 18
+ * overtime and 5 shootout games, 32-36-14 (measured 2026-09-16), where
+ * `game_result` read 84 games and 32-52.
+ *
+ * `fetchTeamSeasonSchedule` above keeps its own shape for its existing callers.
+ */
+export async function fetchClubSeasonGames(abbrev: string, seasonKey: string, finished: boolean): Promise<NhlClubGame[]> {
+  const key = `${abbrev}:${seasonKey}`;
+  const hit = clubSeasonCache.get(key);
+  if (hit && Date.now() - hit.at < (finished ? 7 * 24 * 60 * 60_000 : 30 * 60_000)) return hit.games;
+  const data = await fetchJson<{ games: RawClubGame[] }>(`${BASE}/club-schedule-season/${abbrev}/${seasonKey}`);
+  if (!data) return hit?.games ?? [];
+  const side = (t: RawClubTeam) => ({ id: String(t.id), abbr: t.abbrev, name: teamDisplayName(t), logoUrl: t.logo ?? null, score: t.score ?? null });
+  const games = data.games
+    .filter((g) => g.gameType === 2 || g.gameType === 3)
+    .map((g): NhlClubGame => {
+      const st = g.gameState;
+      const state: NhlClubGame['state'] = /PPD|CNCL|SUSP/.test(g.gameScheduleState ?? '') ? 'postponed' : st === 'OFF' || st === 'FINAL' ? 'final' : st === 'LIVE' || st === 'CRIT' ? 'live' : 'scheduled';
+      const period = g.gameOutcome?.lastPeriodType;
+      return {
+        id: String(g.id),
+        start: g.startTimeUTC,
+        date: g.gameDate,
+        postseason: g.gameType === 3,
+        home: side(g.homeTeam),
+        away: side(g.awayTeam),
+        state,
+        extra: state === 'final' && (period === 'OT' || period === 'SO') ? period : null,
+        label: g.gameType === 3 ? (g.seriesStatus?.round ? `Round ${g.seriesStatus.round}${g.seriesStatus.gameNumberOfSeries ? ` G${g.seriesStatus.gameNumberOfSeries}` : ''}` : 'Playoffs') : null,
+        venue: g.venue?.default ?? null,
+        neutral: g.neutralSite === true,
+      };
+    })
+    .sort((a, b) => a.start.localeCompare(b.start));
+  clubSeasonCache.set(key, { at: Date.now(), games });
+  return games;
+}
+
+export interface NhlStandingRow {
+  teamId: string;
+  abbr: string;
+  name: string;
+  logoUrl: string | null;
+  division: string;
+  conference: string;
+  divisionSequence: number;
+  conferenceSequence: number;
+  gp: number;
+  w: number;
+  l: number;
+  otl: number;
+  pts: number;
+  pointPctg: number;
+  rw: number;
+  gf: number;
+  ga: number;
+  home: string;
+  road: string;
+  l10: string;
+  streak: string;
+}
+
+const nhlStandingsCache = new Map<string, { at: number; rows: NhlStandingRow[] }>();
+
+/**
+ * A season's standings. api-web's `standings/now` only ever answers the
+ * current table, so a finished season is read at its own `standingsEnd`
+ * (from `standings-season`: 2026-04-17 for 2025-26). A season that has not
+ * started returns nothing rather than last season's table under its name.
+ */
+export async function fetchNhlSeasonStandings(seasonKey: string): Promise<NhlStandingRow[]> {
+  const hit = nhlStandingsCache.get(seasonKey);
+  if (hit && Date.now() - hit.at < 30 * 60_000) return hit.rows;
+  const seasons = await fetchJson<{ seasons: Array<{ id: number; standingsStart: string; standingsEnd: string }> }>(`${BASE}/standings-season`);
+  const s = seasons?.seasons.find((x) => String(x.id) === seasonKey);
+  if (!s) return hit?.rows ?? [];
+  const today = new Date().toISOString().slice(0, 10);
+  if (today < s.standingsStart) return [];
+  const date = today > s.standingsEnd ? s.standingsEnd : 'now';
+  const [data, idMap] = await Promise.all([
+    fetchJson<{ standings: Array<Record<string, unknown> & { teamAbbrev: { default: string }; teamName: { default: string } }> }>(`${BASE}/standings/${date}`),
+    fetchTeamIdMap(),
+  ]);
+  if (!data) return hit?.rows ?? [];
+  const n = (v: unknown) => (typeof v === 'number' ? v : Number(v ?? 0));
+  const rows = data.standings.map((t) => ({
+    teamId: String(idMap.get(t.teamAbbrev.default) ?? t.teamAbbrev.default),
+    abbr: t.teamAbbrev.default,
+    name: t.teamName.default,
+    logoUrl: (t.teamLogo as string) ?? null,
+    division: String(t.divisionName ?? ''),
+    conference: String(t.conferenceName ?? ''),
+    divisionSequence: n(t.divisionSequence),
+    conferenceSequence: n(t.conferenceSequence),
+    gp: n(t.gamesPlayed),
+    w: n(t.wins),
+    l: n(t.losses),
+    otl: n(t.otLosses),
+    pts: n(t.points),
+    pointPctg: n(t.pointPctg),
+    rw: n(t.regulationWins),
+    gf: n(t.goalFor),
+    ga: n(t.goalAgainst),
+    home: `${n(t.homeWins)}-${n(t.homeLosses)}-${n(t.homeOtLosses)}`,
+    road: `${n(t.roadWins)}-${n(t.roadLosses)}-${n(t.roadOtLosses)}`,
+    l10: `${n(t.l10Wins)}-${n(t.l10Losses)}-${n(t.l10OtLosses)}`,
+    streak: `${String(t.streakCode ?? '')}${t.streakCount ?? ''}`,
+  }));
+  nhlStandingsCache.set(seasonKey, { at: Date.now(), rows });
+  return rows;
+}
+
+const nhlNameCache = new Map<string, { name: string; position: string | null; headshotUrl: string | null }>();
+
+/**
+ * Names, positions and headshots for NHL player ids: the club's roster for
+ * that season first, then each player's landing for anyone it lacks. A
+ * season roster is the end-of-season one — the Maple Leafs' 2025-26 lists 18
+ * of the 38 players who appear in its game logs (measured 2026-09-16).
+ */
+export async function nhlPlayerNames(abbrev: string, seasonKey: string, ids: string[]): Promise<Map<string, { name: string; position: string | null; headshotUrl: string | null }>> {
+  if (ids.some((id) => !nhlNameCache.has(id))) {
+    const roster = await fetchJson<{ forwards?: RawRosterPlayer[]; defensemen?: RawRosterPlayer[]; goalies?: RawRosterPlayer[] }>(`${BASE}/roster/${abbrev}/${seasonKey}`);
+    for (const p of [...(roster?.forwards ?? []), ...(roster?.defensemen ?? []), ...(roster?.goalies ?? [])]) {
+      nhlNameCache.set(String(p.id), { name: `${p.firstName.default} ${p.lastName.default}`, position: p.positionCode ?? null, headshotUrl: p.headshot ?? null });
+    }
+  }
+  const missing = ids.filter((id) => !nhlNameCache.has(id));
+  for (let i = 0; i < missing.length; i += 8) {
+    await Promise.all(
+      missing.slice(i, i + 8).map(async (id) => {
+        const l = (await fetchPlayerLanding(id)) as { firstName?: { default?: string }; lastName?: { default?: string }; position?: string; headshot?: string } | null;
+        if (l?.firstName?.default) nhlNameCache.set(id, { name: `${l.firstName.default} ${l.lastName?.default ?? ''}`.trim(), position: l.position ?? null, headshotUrl: l.headshot ?? null });
+      }),
+    );
+  }
+  const out = new Map<string, { name: string; position: string | null; headshotUrl: string | null }>();
+  for (const id of ids) {
+    const v = nhlNameCache.get(id);
+    if (v) out.set(id, v);
+  }
+  return out;
 }

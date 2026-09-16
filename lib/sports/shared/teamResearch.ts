@@ -22,13 +22,17 @@ export function ordinal(n: number): string {
 
 const isFinal = (g: TeamGame) => g.state === 'final' && g.us != null && g.them != null;
 
-/** A final game's result. A hockey loss past regulation is an OTL, never an L (F-B11). */
+/**
+ * A final game's result. A hockey loss past regulation is an OTL, never an L
+ * (F-B11) — in the regular season only: a playoff game is played to a winner
+ * and its record is W-L (R7.3: Utah's 2026 playoffs read "2-2-2").
+ */
 export function gameResult(g: TeamGame, spec: Pick<TeamResearchSpec, 'record'>): Result {
   const us = g.us ?? 0;
   const them = g.them ?? 0;
   if (us > them) return 'W';
   if (us === them) return 'D';
-  return spec.record === 'WLOTL' && (g.extra === 'OT' || g.extra === 'SO') ? 'OTL' : 'L';
+  return spec.record === 'WLOTL' && !g.postseason && (g.extra === 'OT' || g.extra === 'SO') ? 'OTL' : 'L';
 }
 
 export function formatRecord(games: TeamGame[], spec: Pick<TeamResearchSpec, 'record'>): string {
@@ -44,7 +48,7 @@ export function formatRecord(games: TeamGame[], spec: Pick<TeamResearchSpec, 're
     else otl++;
   }
   if (spec.record === 'WDL') return `${w}-${d}-${l}`;
-  if (spec.record === 'WLOTL') return `${w}-${l}-${otl}`;
+  if (spec.record === 'WLOTL' && !games.every((g) => g.postseason)) return `${w}-${l}-${otl}`;
   // A tie in a two-way sport is rare enough (an NFL tie) to append rather than to reshape every record.
   return d ? `${w}-${l}-${d}` : `${w}-${l}`;
 }
@@ -95,6 +99,29 @@ function startText(g: TeamGame): string {
 export function leagueRank(stat: Pick<TeamStatValue, 'value' | 'league' | 'direction'>): { rank: number; of: number } {
   const better = stat.league.filter((v) => (stat.direction === 'higher' ? v > stat.value : v < stat.value)).length;
   return { rank: better + 1, of: stat.league.length };
+}
+
+/** A team stat declared by a reader: how to read it off that sport's per-team numbers. */
+export type TeamStatDef<N> = Omit<TeamStatValue, 'value' | 'league'> & { of: (n: N) => number | null };
+
+/**
+ * Every declared stat for one team, with the league's values beside it — the
+ * one place a reader's per-team numbers become `TeamStatValue`s (R7.3; NFL, CFB,
+ * NBA and NHL each did this loop). The pool is decided by the reader (the
+ * standings' own teams, R2's 30% rule); a stat the team or fewer than two
+ * teams have is left out rather than ranked on a blank.
+ */
+export function rankTeamStats<N>(defs: ReadonlyArray<TeamStatDef<N>>, numbers: ReadonlyMap<string, N>, pool: ReadonlySet<string>, teamId: string): TeamStatValue[] {
+  const mine = numbers.get(teamId);
+  if (mine == null || !pool.has(teamId)) return [];
+  const out: TeamStatValue[] = [];
+  for (const { of, ...d } of defs) {
+    const value = of(mine);
+    const league = [...pool].map((id) => numbers.get(id)).filter((n): n is N => n != null).map(of).filter((v): v is number => v != null && Number.isFinite(v));
+    if (value == null || !Number.isFinite(value) || league.length < 2) continue;
+    out.push({ ...d, value, league });
+  }
+  return out;
 }
 
 export interface BuildTeamResearchInput {

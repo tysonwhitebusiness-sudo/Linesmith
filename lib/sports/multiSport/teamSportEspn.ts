@@ -468,7 +468,12 @@ export async function fetchTeamSeasonGames(espnSport: string, espnLeague: string
 
   const base = `${BASE}/${espnSport}/${espnLeague}/teams/${teamId}/schedule?season=${season}`;
   // Soccer has no postseason type and splits played from unplayed instead (R2 source quirk).
-  const urls = espnSport === 'soccer' ? [base, `${base}&fixture=true`] : [`${base}&seasontype=2`, `${base}&seasontype=3`];
+  // Basketball's play-in is ESPN season type 5 (measured: Golden State 2025-26,
+  // two games). It is not in the regular-season standings, so it is postseason.
+  const urls =
+    espnSport === 'soccer'
+      ? [base, `${base}&fixture=true`]
+      : [`${base}&seasontype=2`, `${base}&seasontype=3`, ...(espnSport === 'basketball' ? [`${base}&seasontype=5`] : [])];
   const responses = await Promise.all(
     urls.map(async (u) => {
       try {
@@ -507,7 +512,7 @@ export async function fetchTeamSeasonGames(espnSport: string, espnLeague: string
         : st?.state === 'in'
           ? 'live'
           : 'scheduled';
-    const postseason = ev.seasonType?.type === 3;
+    const postseason = ev.seasonType?.type === 3 || ev.seasonType?.type === 5;
     byId.set(String(ev.id), {
       id: String(ev.id),
       start: ev.date,
@@ -516,7 +521,7 @@ export async function fetchTeamSeasonGames(espnSport: string, espnLeague: string
       away: side(a),
       state,
       extra: state === 'final' ? ((st?.shortDetail ?? '').match(/\/(\d?OT|SO)\b/)?.[1] ?? null) : null,
-      label: postseason ? (comp.notes?.[0]?.headline ?? ev.week?.text ?? null) : (ev.week?.text ?? null),
+      label: ev.seasonType?.type === 5 ? 'Play-In' : postseason ? (comp.notes?.[0]?.headline ?? ev.week?.text ?? null) : (ev.week?.text ?? null),
       venue: comp.venue?.fullName ?? null,
       neutral: comp.neutralSite === true,
     });

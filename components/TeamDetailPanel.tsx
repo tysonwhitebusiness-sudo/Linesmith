@@ -313,7 +313,7 @@ function CfbTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 's
   );
 }
 
-function NbaTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys, snapshot }: Omit<TeamDetailPanelProps, 'sport' | 'odds'>) {
+function NbaTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport' | 'odds'>) {
   const [search, setSearch] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const { teams, loading, error } = useAllNbaTeams();
@@ -340,22 +340,14 @@ function NbaTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys, snapshot }: O
     >
       {!detailReady && <BrandedLoader size="page" />}
       <div style={{ display: detailReady ? 'block' : 'none' }}>
-        <TeamDetail
-          sport="nba"
-          teamId={activeTeamId}
-          snapshot={snapshot}
-          standingsTeams={teams}
-          standingsLoading={loading}
-          onAdd={onAdd}
-          addedKeys={addedKeys}
-          onReadyChange={setDetailReady}
-        />
+        {/* R7.3: basketball and hockey team pages are the rebuilt research page. */}
+        <TeamResearchPage sport="nba" teamId={activeTeamId} onReadyChange={setDetailReady} />
       </div>
     </TeamListShell>
   );
 }
 
-function NhlTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys, snapshot }: Omit<TeamDetailPanelProps, 'sport' | 'odds'>) {
+function NhlTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport' | 'odds'>) {
   const [search, setSearch] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const { teams, loading, error } = useAllNhlTeams();
@@ -381,16 +373,8 @@ function NhlTeamDetailPanelBody({ initialTeamId, onAdd, addedKeys, snapshot }: O
     >
       {!detailReady && <BrandedLoader size="page" />}
       <div style={{ display: detailReady ? 'block' : 'none' }}>
-        <TeamDetail
-          sport="nhl"
-          teamId={activeTeamId}
-          snapshot={snapshot}
-          standingsTeams={teams}
-          standingsLoading={loading}
-          onAdd={onAdd}
-          addedKeys={addedKeys}
-          onReadyChange={setDetailReady}
-        />
+        {/* R7.3: basketball and hockey team pages are the rebuilt research page. */}
+        <TeamResearchPage sport="nhl" teamId={activeTeamId} onReadyChange={setDetailReady} />
       </div>
     </TeamListShell>
   );
