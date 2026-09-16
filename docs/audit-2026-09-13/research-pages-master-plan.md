@@ -7,7 +7,55 @@ signed off 2026-09-15. R6 STARTED 2026-09-15: Step 0 done, corrections and
 decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
-2026-09-15; R6.6 (golf) next.**
+2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
+renders owed per sport. R7 (team page) next.**
+
+**R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
+Shot profile, built from the golf tables. Commit `5ff166b`.
+- **Step 0 audit — golf had no research at all.** Golf has no
+  `player_game_history` rows, so the hero had no numbers and the page had no
+  research sections. Its record is four tables (`scripts/measure-golf.ts`):
+  `golf_tournaments` (4 events, `start_date` null on all), `golf_round_scores`
+  (586 rounds, ESPN id), `golf_hole_scores` (10,604 holes, summing to the round
+  on every row) and `golf_shot_events` (1,033,752 shots, PGA TOUR id and name).
+- **Three premises corrected:**
+  1. The round and hole tables cover **three events**, the 2026 FedEx Cup
+     playoffs, at most 12 rounds a golfer; Biltmore has a tournament row and no
+     rounds. The hero counts rounds under "Recent events" and no card claims a
+     season.
+  2. The shot seed is **2020-2022** (234,454 / 694,115 / 105,183 shots), not
+     2020-2023 as 6.13's comment said. The section names the seasons it draws on
+     every time.
+  3. **`tournament_id` repeats every year**: no shot key repeats within a
+     season, 137,396 repeat across seasons. G2's grouping left the season out
+     and merged two years of an event into one hole — Scheffler's putts per hole
+     read 1.78; keyed on season it is 1.59.
+- **Two more corrections against G2:** a putt's `distance_yds` is how far the
+  ball rolled, so first-putt distance reads the previous shot's `left_yds`; and
+  `golf_hole_scores.category` files eagles as birdies and doubles as bogeys
+  (R6-F12), so scoring by par counts from `relative_to_par`.
+- **Built:** `toGolfResearch` and `summariseGolfShots`
+  (`lib/sports/golf/playerResearchShapes.ts`), read by `playerResearch.ts`
+  through `/api/golf/player-research` (cachedRoute, 30 min) and
+  `useGolfResearch`. The shot seed is summarised server-side, so ~4,000 rows
+  per golfer never cross the wire. Scoring: rounds (with the forecast wind and
+  temperature where recorded, 465 of 586) and scoring by par (eagle-, birdie,
+  par, bogey, double+). Shot profile: driving distance, distance left before the
+  first putt, putting, make % by first-putt distance, and the lie breakdown
+  carried over from the deleted grid.
+- **Shared changes:** the hero takes an optional `unit` ("rounds") and a
+  per-chip `mark` and `tone` (a round's score to par), so golf shows neither
+  "games" nor an invented W/L; a sport's own sections no longer need a per-game
+  history to render, while Seasons, Trends, Splits and the log still do.
+- **Deleted:** the golf lie mix and proximity grid from the prop block, with
+  `/api/golf/shot-profile`, `useGolfShotProfile`, `shotProfile.ts`,
+  `shotProfileShapes.ts` and their test. They only showed while a tournament
+  was priced; this page was their only caller.
+- **Verified** at 1440 and 400 on Scheffler (rounds and seed), Åberg (rounds,
+  not in the seed — the section says why) and Woods (seed, no recent rounds).
+  11 new tests; 525 pass; build clean. **Golf's prop block and live view are
+  still held for a tournament.**
+
 
 **R6.5 COMPLETE 2026-09-15.** NBA's shot chart, NHL's shot map and the league's
 own season totals, one line and game state for both.
@@ -1151,7 +1199,7 @@ Spec: `docs/design/phase-g2/src/player.html`, `src/sports/common.js` (skeleton),
 | Soccer FW/MID | Chances & finishing: Shot map · Goals vs xG · Per 90 by season | Understat per player (cached in `snapshot_cache`); `player_game_history` | Read |
 | Soccer GK | Shot-stopping: Beyond saves | `player_game_history` | Read |
 | Tennis | Surface & serve: By surface (today's surface marked, C7) · Ranking · Serve and return by match | TennisMyLife (R4); current event's surface from `tennis/schedule.ts`, never the last match's | R4 |
-| Golf | Scoring: Rounds · Scoring by par. Shot profile: Driving distance · Approach proximity · Putting · Make % by first-putt distance | `golf_round_scores`, `golf_hole_scores`, `golf_shot_events`, `golf_tournaments` (names); `/api/golf/shot-profile` | Read; verification held until a tournament |
+| Golf | Scoring: Rounds · Scoring by par. Shot profile: Driving distance · Approach proximity · Putting · Make % by first-putt distance · By lie | `golf_round_scores`, `golf_hole_scores` (ESPN id), `golf_shot_events` (2020-2022 seed, by name), `golf_tournaments`; `/api/golf/player-research` | R6.6; prop block and live view held until a tournament |
 
 **Also in R6:**
 - **C8** soccer default market by position (decision 4). Order both priced and
@@ -1609,6 +1657,7 @@ rebuilt pages use.
 | R6-F8 ParlayAPI files a pitcher's strikeouts under `batter-strikeouts` (29 pitchers) and walks allowed under `walks` (9) on 2026-09-15; the page shows "Batter Strikeouts 7.5" for Yamamoto, and the pitcher markets miss those books | ParlayAPI market mapping, Python writer | model track (R5e writer work); the page shows the rows as stored |
 | R6-F9 non-MLB candidates carry the main line from snapshot build time, which goes stale between rebuilds (Allen passing yards 249.5 in the stepper against a current 248.5) | NFL/CFB/NBA/NHL/soccer/tennis player adapters | **RESOLVED for every sport** (R6.2, R6.3, R6.4, R6.5) |
 | R6-F10 the game page's `usePropOdds` reads current rows, so after the start its prices (and the embedded player's) are in-play and the main line finds no pre-game quote | `GameDetail` | R8 (pass the start, as the player page does) |
+| R6-F12 `golf_hole_scores.category` holds only birdie/par/bogey: 47 eagles are filed as birdies and 178 doubles and triples as bogeys | the golf hole-score writer | R6.6 counts from `relative_to_par`; the column fix is model track |
 | R6-F11 `nfl_target_events.interception` is false on all 36,375 rows: `write_nfl_target_events` writes 13 columns and that is not one of them, so G2's INT column and its red-ringed dot cannot be built | `python-odds-service/src/db.py` `write_nfl_target_events`, `nfl_pbp.parse_row` | model track (a column and a re-ingest); the section states it is not held |
 
 ## Appendix B — Reference fixtures (G2 datasets)

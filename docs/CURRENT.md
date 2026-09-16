@@ -5,8 +5,8 @@ measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
 Research pages: R1-R5 and R6.1 (MLB) signed off; R6.2 (NFL/CFB), R6.3 (soccer),
-R6.4 (tennis) and R6.5 (NBA/NHL) complete with renders owed on the next slates;
-R6.6 (golf) next (second track, below).**
+R6.4 (tennis), R6.5 (NBA/NHL) and R6.6 (golf) complete — **R6 done** — with
+live renders owed on the next slates; R7 (team page) next (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -36,12 +36,20 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R6.1 (MLB) signed off; R6.2-R6.5 COMPLETE 2026-09-15; R6.6 next
+## Research pages track — R6 COMPLETE 2026-09-16 (every sport); R7 next
 
-R1-R5 and R6.1 signed off. **R6.2 (NFL and CFB), R6.3 (soccer), R6.4 (tennis)
-and R6.5 (NBA and NHL) are done; R6.6 (golf) is next — built now, verified at
-the next tournament.** The handoff is
+R1-R5 and R6.1 signed off; R6.2-R6.6 done. **R7 (team page rebuild) is next —
+confirm before starting it.** The handoff is
 `docs/audit-2026-09-13/RESUME-PROMPT.md`; the record is the plan's status block.
+
+- **R6.6:** golf had no research at all (no `player_game_history`); it now
+  reads its own tables through `/api/golf/player-research` — Scoring (recent
+  rounds, scoring by par) and Shot profile (the 2020-2022 seed: driving,
+  first-putt distance, putting, make % by distance, by lie). Measured first:
+  the round tables hold only the three 2026 playoff events; the seed's
+  `tournament_id` repeats every year, so a hole needs the season (G2 merged
+  them); a putt's distance is its roll, not its start; and the hole `category`
+  column misfiles eagles and doubles (R6-F12). The old lie grid chain is deleted.
 
 - **R6.5:** NBA's shot chart on a real half court and NHL's rink map, both from
   every located attempt (new `/api/nba/shots`, `/api/nhl/shots`), with a zone
@@ -100,6 +108,8 @@ the next tournament.** The handoff is
 - **OWED the next tennis match day:** tennis's game-state card (set scores) and
   its re-priced line. Nothing was on the ATP or WTA slate on 2026-09-15, so all
   three verified players rendered the no-market path.
+- **OWED at the next tournament:** golf's prop block and live view, which have
+  always been held for one.
 - **OWED in October:** NBA's and NHL's game-state cards and their re-priced
   lines. Neither league is in season, so both sub-phases rendered the no-market
   path; the plan always marked these two unverified until October.
