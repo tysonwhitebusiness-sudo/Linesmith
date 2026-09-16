@@ -179,6 +179,27 @@ and the chart card inside `PlayerDetail.tsx`.
 
 ---
 
+## BUILT 2026-09-15 (commit `35d6be5`)
+
+Approved variants: hero **C5** (headshot with the name, facts full width
+beneath), live card as its own section, per-sport event feed, in-repo mockups.
+Operator's two corrections on the mockups are in: the headshot stays its
+current size, and a cleared line tints its whole row with the book shown
+beside the market rather than drawing a progress bar.
+
+Built for every sport (the hero and the chrome are shared) with the live card
+filled for MLB, NFL and CFB; the other sports fill `gameState` in their own
+sub-phases. Rendered at 1440 and 400 against two live MLB games (Witt,
+Meidroth), Lamb and Alcaraz: hero 338px against 332 before but carrying the
+record, the last five and two more facts; no legacy card headers left on the
+page; no overflow at 400. 510 tests, build clean.
+
+Found while rendering and fixed in the same commit: the live card's price was
+picking a pick'em payout (prizepicks +100 for Witt's hits) because the new
+lookup did not apply R2's pick'em rule; the hero printed a failed team logo's
+abbreviation twice ("@ HOU HOU"); and ESPN's day-first birth date ("21/5/1996")
+sat beside MLB's "Jan 11, 2002".
+
 ## Sequence
 
 1. **Gameplan approved** (this file).

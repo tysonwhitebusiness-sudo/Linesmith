@@ -45,6 +45,11 @@ the plan's status block.
   by the page's own ESPN id); CFB says what is not held; NFL and CFB re-price
   on the current main line and fill the game-state card. The old target-map
   route, grid, hook and the rail's NFL season card are deleted.
+- **Hero and live card reworked 2026-09-15** (operator pivot, `35d6be5`): the
+  hero is dense rather than two thin columns with a gap, the live card is its
+  own section under the hero with the sport's situation and a lines table that
+  tints a cleared line, and the player page has one card header instead of two.
+  Plan and mockups: `docs/design/hero-live-rework.md`, `docs/design/hero-live/`.
 - **OWED Thursday 2026-09-18:** NFL's game-state card and its prop block on a
   player with a market — no live game or priced NFL player was on the slate
   when they landed. CFB's, Saturday 2026-09-19.

@@ -8,6 +8,21 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15.
 R6.2 (NFL and CFB) COMPLETE 2026-09-15, with two checks owed on Thursday's
 NFL slate; R6.3 (soccer) next.**
 
+**HERO AND LIVE-CARD REWORK COMPLETE 2026-09-15** (operator pivot after R6.2,
+commit `35d6be5`; plan and mockups in `docs/design/hero-live-rework.md` and
+`docs/design/hero-live/index.html`). The hero was 1416x332 with ~700px of dead
+middle and a tile row that orphaned at ~1100; it is now the headshot with the
+name, the facts full width beneath as label-above-value cells, a season panel
+with the record and the last five games, and tiles on a fixed 6/4/3 grid. The
+live card left "Prop analysis" for its own section under the hero, rebuilt as
+bands with the sport's situation beside the scoreboard (MLB count and bases,
+football down and distance — the summary parser now reads `situation` for CFB
+too) and a lines table where a cleared line tints its row and names the book
+behind its price. The eight legacy green-header cards on the player page now
+use the shared `Card`, so one page no longer shows three heading styles.
+Fixed in passing: a pick'em payout being taken as the live price, a duplicated
+team abbreviation in the hero, and ESPN's day-first birth dates.
+
 **R6.2 COMPLETE 2026-09-15.** NFL "Usage & depth" / "Where he throws", CFB's
 not-held state, and football on one line. Commit `1438855`.
 - **Step 0 audit:** `nfl_target_events` holds season, week, air yards, side,
