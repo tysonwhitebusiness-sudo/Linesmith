@@ -67,3 +67,4 @@ export { FieldScatter } from './FieldScatter';
 export { PitchScatter } from './PitchScatter';
 export { CourtScatter } from './CourtScatter';
 export { RinkScatter } from './RinkScatter';
+export { SprayScatter } from './SprayScatter';

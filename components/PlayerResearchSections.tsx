@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Avatar, Card, Chip, cx, DataTable, EmptyState, ErrorState, LeagueStripRow, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column } from './ui';
-import { CATEGORICAL, CourtScatter, FieldScatter, Histogram, PitchScatter, RinkScatter, SeriesChart, ZoneScatter } from './charts';
+import { CATEGORICAL, CourtScatter, FieldScatter, Histogram, PitchScatter, RinkScatter, SeriesChart, SprayScatter, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import {
   formatResearchValue,
@@ -498,8 +498,10 @@ function ScatterCard({ card }: { card: Extract<ResearchCard, { kind: 'scatter' }
         <RinkScatter points={card.points} emphasis={card.emphasis} tips={card.tips} groups={card.groups} visible={visible} label={card.title} />
       ) : card.surface === 'field' ? (
         <FieldScatter points={card.points} groups={card.groups} visible={visible} label={card.title} />
+      ) : card.surface === 'spray' ? (
+        <SprayScatter points={card.points} weights={card.weights} emphasis={card.emphasis} tips={card.tips} groups={card.groups} visible={visible} label={card.title} />
       ) : (
-        <ZoneScatter points={card.points} groups={card.groups} visible={visible} label={card.title} />
+        <ZoneScatter points={card.points} labels={card.labels} tips={card.tips} groups={card.groups} visible={visible} label={card.title} />
       )}
       {card.legend ? (
         <VizLegend items={card.legend.map((l) => ({ label: l.label, color: l.dark ? 'oklch(var(--ink-muted))' : 'rgb(var(--good))' }))} />
@@ -535,13 +537,14 @@ function TableCard({ card }: { card: Extract<ResearchCard, { kind: 'table' }> })
     ...view.columns.map((c) => ({
       key: c.key,
       label: c.label,
-      numeric: true,
+      numeric: !c.text,
       sortable,
       title: c.info,
       render: (r: TableRow) => {
         const tone = r.tones?.[c.key];
         const text = formatResearchValue(r.values[c.key], c);
-        return tone ? <span className={cx('font-semibold', tone === 'good' ? 'text-good' : 'text-bad')}>{text}</span> : text;
+        if (tone) return <span className={cx('font-semibold', tone === 'good' ? 'text-good' : 'text-bad')}>{text}</span>;
+        return c.text ? <span className="block min-w-[8rem] whitespace-normal">{text}</span> : text;
       },
       sortValue: (r: TableRow) => {
         const v = r.values[c.key];
@@ -648,7 +651,56 @@ export function ResearchCardView({ card }: { card: ResearchCard }) {
           <EmptyState title={card.headline} reason={card.reason} />
         </Card>
       );
+    case 'drilldown':
+      return <DrilldownCard card={card} />;
   }
+}
+
+function DrilldownCard({ card }: { card: Extract<ResearchCard, { kind: 'drilldown' }> }) {
+  const [picked, setPicked] = useState(card.defaultKey ?? card.items[0]?.key);
+  const item = card.items.find((i) => i.key === picked) ?? card.items[0];
+  const groups = [...new Set(card.items.map((i) => i.group))];
+  if (!item) return <Card title={card.title} state={{ kind: 'empty', title: 'Nothing to list', reason: 'The source has no items for this game.' }} />;
+  return (
+    <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+      <Card title={card.title} scope={card.scope} dense>
+        <div className="max-h-[560px] overflow-y-auto pr-1" role="listbox" aria-label={card.title}>
+          {groups.map((g) => (
+            <div key={g}>
+              <div className="sticky top-0 bg-card px-1 pb-1 pt-2 text-overline uppercase text-ink-muted">{g}</div>
+              {card.items
+                .filter((i) => i.group === g)
+                .map((i) => (
+                  <button
+                    key={i.key}
+                    type="button"
+                    role="option"
+                    aria-selected={i.key === item.key}
+                    onClick={() => setPicked(i.key)}
+                    className={cx(
+                      'flex w-full items-center gap-2 rounded-ctl px-2 py-1.5 text-left transition-colors duration-instant',
+                      i.key === item.key ? 'bg-accent-soft' : 'hover:bg-card-sunk',
+                    )}
+                  >
+                    {i.imageUrl ? <Avatar kind="player" label={i.label} src={i.imageUrl} size={26} decorative /> : null}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-body-sm font-semibold text-ink">{i.label}</span>
+                      {i.sub ? <span className="block truncate text-label text-ink-muted">{i.sub}</span> : null}
+                    </span>
+                    {i.badge ? <span className="shrink-0 text-label tabular-nums text-ink-secondary">{i.badge}</span> : null}
+                  </button>
+                ))}
+            </div>
+          ))}
+        </div>
+      </Card>
+      <div className="min-w-0 space-y-3">
+        {item.cards.map((c) => (
+          <ResearchCardView key={`${item.key}-${c.key}`} card={c} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /** A sport section's body: its season control, its state, and its cards in rows of one or two. */

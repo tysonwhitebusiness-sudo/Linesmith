@@ -1,4 +1,9 @@
 import type { GameDetailGame, PicksPanelGame, RecordsSectionTeam, LastFiveGamesTeam, StatKeyDef, RankableTeamStats } from '@/components/GameDetail';
+import type { MlbGameResearchPayload } from '@/lib/sports/mlb/gameResearch';
+import { pitchMix, type AtBat, type MlbWinProbabilityPoint } from '@/lib/sports/mlb/liveFeedParsers';
+import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports/shared/gameResearch';
+import type { GameResearchData, GameState } from '@/lib/sports/shared/gameResearchShapes';
+import type { ResearchCard, ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
 import { toStartsAt } from '@/lib/sports/shared/startsAt';
 import type { RecentGameResult, InjuryEntry } from '@/lib/sports/mlb/statsapi';
 import type { GameHeroTeamPanelData, GameHeroModel, VenueForecastData } from '@/components/GameHeroCard';
@@ -593,4 +598,465 @@ export function toGameDetailData(input: MlbGameDetailInput): GameDetailData {
     picksPanelGame: toPicksPanelGame(game),
     leftRail: { candidates, goodBetsGated: true, nflTeamScope: null },
   };
+}
+
+// ---------------------------------------------------------------------------
+// R8.1 — the game research page
+// ---------------------------------------------------------------------------
+
+const MLB_MARKET_LABELS: Record<string, string> = {
+  hits: 'Hits',
+  'total-bases': 'Total bases',
+  'home-runs': 'Home runs',
+  rbis: 'RBIs',
+  runs: 'Runs',
+  walks: 'Walks',
+  'batter-strikeouts': 'Strikeouts (batter)',
+  doubles: 'Doubles',
+  triples: 'Triples',
+  'stolen-bases': 'Stolen bases',
+  singles: 'Singles',
+  'hits-runs-rbis': 'Hits + runs + RBIs',
+  'pitcher-strikeouts': 'Strikeouts (pitcher)',
+  'pitcher-outs': 'Outs recorded',
+  'earned-runs': 'Earned runs',
+  'pitcher-hits-allowed': 'Hits allowed',
+  'pitcher-walks': 'Walks allowed',
+};
+
+const HIT_EVENTS = new Set(['single', 'double', 'triple', 'home_run']);
+const am = (v: number | null | undefined) => (v == null ? '—' : v > 0 ? `+${v}` : String(v));
+const halfLabel = (ab: AtBat) => `${ab.half === 'top' ? 'Top' : 'Bot'} ${ab.inning ?? ''}`.trim();
+const mlbHeadshot = (id: number | string) => `https://img.mlbstatic.com/mlb-photos/image/upload/w_80,q_auto:best/v1/people/${id}/headshot/67/current`;
+
+/**
+ * MLB's game page for one state — R8.1. `requestedState` is the `?state=`
+ * review override; the payload's own state is used unless the game can show
+ * the one asked for (`resolveState`).
+ */
+export function toGameResearchData(input: { payload: MlbGameResearchPayload; requestedState?: string | null }): GameResearchData {
+  const { payload } = input;
+  const state = resolveState(payload, input.requestedState);
+  const chips = mlbLineChips(payload, state);
+  const sections: ResearchSection[] =
+    state === 'pre' || state === 'postponed'
+      ? mlbPreSections(payload, state)
+      : [
+          mlbFlowSection(payload),
+          mlbContactSection(payload),
+          mlbAtBatSection(payload),
+          mlbPitchingSection(payload),
+          mlbBoxSection(payload),
+          mlbLinesSection(payload, state),
+          mlbPlaysSection(payload),
+        ].filter((s): s is ResearchSection => s !== null);
+  return {
+    state,
+    states: gameStates(payload.state),
+    hero: buildGameHero(payload, state, chips),
+    stateNote: stateNote(state, payload.state),
+    sections,
+    sources: payload.sources,
+  };
+}
+
+function closeOf(payload: MlbGameResearchPayload, market: 'moneyline' | 'spread' | 'total') {
+  return payload.mlb.lines.find((l) => l.market === market)?.close ?? null;
+}
+
+/** Closing lines, and once final what the game did against them: "KC +1.5 covered", "Total 8.5 · under". */
+export function mlbLineChips(payload: MlbGameResearchPayload, state: GameState): GameResearchData['hero']['chips'] {
+  const out: GameResearchData['hero']['chips'] = [];
+  const final = state === 'final' && payload.away.score != null && payload.home.score != null;
+  const a = payload.away.score ?? 0;
+  const h = payload.home.score ?? 0;
+  const ml = closeOf(payload, 'moneyline');
+  if (ml) {
+    const pa = ml.sides.find((s) => s.side === 'away')?.americanOdds;
+    const ph = ml.sides.find((s) => s.side === 'home')?.americanOdds;
+    out.push({ label: `ML ${payload.away.abbr} ${am(pa)} · ${payload.home.abbr} ${am(ph)}` });
+  }
+  const rl = closeOf(payload, 'spread');
+  const awayRl = rl?.sides.find((s) => s.side === 'away');
+  if (awayRl?.point != null) {
+    const margin = a - h + awayRl.point;
+    const who = `${payload.away.abbr} ${awayRl.point > 0 ? '+' : ''}${awayRl.point}`;
+    out.push({ label: final ? `${who} ${margin > 0 ? 'covered' : margin < 0 ? 'did not cover' : 'push'}` : who });
+  }
+  const tot = closeOf(payload, 'total');
+  const point = tot?.sides[0]?.point;
+  if (point != null) {
+    const sum = a + h;
+    out.push({ label: final ? `Total ${point} · ${sum > point ? 'over' : sum < point ? 'under' : 'push'} (${sum})` : `Total ${point}` });
+  }
+  return out;
+}
+
+function mlbFlowSection(payload: MlbGameResearchPayload): ResearchSection | null {
+  const m = payload.mlb;
+  const byIndex = new Map(m.atBats.map((ab) => [ab.index, ab]));
+  const points = m.winProbability.map((w) => ({ w, ab: byIndex.get(w.atBatIndex) })).filter((x): x is { w: MlbWinProbabilityPoint; ab: AtBat } => x.ab != null);
+  const base = { id: 'flow', navLabel: 'Game flow', title: 'Game flow', sub: 'win probability after every plate appearance' };
+  if (points.length < 2) {
+    return { ...base, rows: [], state: { kind: 'empty', title: 'No win probability for this game', reason: 'MLB Stats API publishes it once the game has plate appearances.' } };
+  }
+  const xLabels = points.map(({ ab }, i) => (i === 0 || ab.inning !== points[i - 1].ab.inning ? String(ab.inning ?? '') : ''));
+  const card: ResearchCard = {
+    kind: 'series',
+    key: 'wp',
+    title: `${payload.home.abbr} win probability`,
+    scope: `${points.length} plate appearances · x-axis is innings`,
+    values: points.map(({ w }) => Math.round(w.home * 1000) / 10),
+    xLabels,
+    reference: { value: 50, label: 'even' },
+    zeroBased: true,
+    min: 0,
+    max: 100,
+    decimals: 0,
+    unit: '%',
+    tips: points.map(({ w, ab }) => [
+      `${payload.home.abbr} ${(w.home * 100).toFixed(0)}%`,
+      `${halfLabel(ab)} · ${payload.away.abbr} ${ab.awayScore ?? '—'}–${ab.homeScore ?? '—'} ${payload.home.abbr}`,
+      `${ab.batter ?? ''}: ${ab.description ?? ab.event ?? ''}`,
+    ]),
+    caption: `Above 50 favours ${payload.home.name}, below it ${payload.away.name}. MLB Stats API win probability.`,
+  };
+  return { ...base, rows: [[card]], state: { kind: 'ready' } };
+}
+
+function battedBalls(payload: MlbGameResearchPayload) {
+  return payload.mlb.atBats
+    .filter((ab) => ab.battedBall?.coordX != null && ab.battedBall?.coordY != null)
+    .map((ab) => ({
+      ab,
+      team: ab.half === 'top' ? payload.away.abbr : payload.home.abbr,
+      x: (ab.battedBall!.coordX! - 125.42) * 2.5,
+      y: (198.27 - ab.battedBall!.coordY!) * 2.5,
+      hit: HIT_EVENTS.has(ab.eventType ?? ''),
+    }));
+}
+
+function mlbContactSection(payload: MlbGameResearchPayload): ResearchSection | null {
+  const balls = battedBalls(payload);
+  const base = { id: 'contact', navLabel: 'Batted balls', title: 'Batted balls', sub: 'every ball in play, with exit velocity and distance' };
+  if (!balls.length) return { ...base, rows: [], state: { kind: 'empty', title: 'No batted balls located yet', reason: 'The live feed places a ball in play once it is recorded.' } };
+  const spray: ResearchCard = {
+    kind: 'scatter',
+    key: 'spray',
+    title: 'Spray chart',
+    scope: 'filled = hit · ring = out · size = exit velocity',
+    surface: 'spray',
+    points: balls.map((b) => [b.team, b.x, b.y]),
+    weights: balls.map((b) => b.ab.battedBall?.exitVelocity ?? 70),
+    emphasis: balls.map((b) => b.hit),
+    tips: balls.map((b) => [
+      `${b.ab.event ?? ''} · ${b.ab.batter ?? ''}`,
+      halfLabel(b.ab),
+      `${b.ab.battedBall?.exitVelocity ?? '—'} mph · ${b.ab.battedBall?.launchAngle ?? '—'}° · ${b.ab.battedBall?.distance ?? '—'} ft`,
+      `off ${b.ab.pitcher ?? ''}`,
+    ]),
+    groups: [payload.away.abbr, payload.home.abbr].map((t) => ({ key: t, label: t, count: balls.filter((b) => b.team === t).length })),
+    defaultVisible: [payload.away.abbr, payload.home.abbr],
+    caption: 'A generic park outline, not this park’s walls.',
+  };
+  const longest: ResearchCard = {
+    kind: 'table',
+    key: 'longest',
+    title: 'Longest batted balls',
+    scope: 'projected distance',
+    labelHeader: 'Batter',
+    sortKey: 'dist',
+    columns: [
+      { key: 'result', label: 'Result', decimals: 0 },
+      { key: 'dist', label: 'Ft', decimals: 0 },
+      { key: 'ev', label: 'EV', decimals: 1 },
+      { key: 'la', label: 'LA', decimals: 0 },
+    ],
+    rows: balls
+      .filter((b) => b.ab.battedBall?.distance != null)
+      .sort((x, y) => (y.ab.battedBall!.distance ?? 0) - (x.ab.battedBall!.distance ?? 0))
+      .slice(0, 12)
+      .map((b) => ({
+        key: String(b.ab.index),
+        label: b.ab.batter ?? '',
+        labelNote: b.team,
+        href: b.ab.batterId ? `/mlb/player/${b.ab.batterId}` : null,
+        values: { result: b.ab.event, dist: b.ab.battedBall!.distance, ev: b.ab.battedBall!.exitVelocity, la: b.ab.battedBall!.launchAngle },
+      })),
+  };
+  return { ...base, rows: [[spray, longest]], state: { kind: 'ready' } };
+}
+
+function mlbAtBatSection(payload: MlbGameResearchPayload): ResearchSection | null {
+  const abs = payload.mlb.atBats.filter((ab) => ab.batter);
+  const base = { id: 'atbats', navLabel: 'At-bats', title: 'At-bat explorer', sub: 'every pitch, located' };
+  if (!abs.length) return { ...base, rows: [], state: { kind: 'empty', title: 'No plate appearances yet', reason: 'The feed lists each plate appearance as it happens.' } };
+  const opening = abs.find((ab) => ab.eventType === 'home_run') ?? abs.find((ab) => ab.scoring) ?? abs[0];
+  const drill: ResearchCard = {
+    kind: 'drilldown',
+    key: 'explorer',
+    title: 'Plate appearances',
+    scope: `${abs.length} · pick one`,
+    defaultKey: String(opening.index),
+    items: abs.map((ab) => {
+      const types = [...new Set(ab.pitches.map((p) => p.type ?? 'unknown'))];
+      const bb = ab.battedBall;
+      const located = ab.pitches.map((p, i) => ({ p, i })).filter(({ p }) => p.pX != null && p.pZ != null);
+      const plot: ResearchCard = {
+        kind: 'scatter',
+        key: 'zone',
+        title: `${ab.batter} vs ${ab.pitcher}`,
+        scope: `${halfLabel(ab)} · ${ab.outs ?? 0} out · bats ${ab.bats ?? '—'} / throws ${ab.throws ?? '—'}`,
+        surface: 'zone',
+        points: located.map(({ p }) => [p.type ?? 'unknown', p.pX!, p.pZ!]),
+        labels: located.map(({ i }) => String(i + 1)),
+        tips: located.map(({ p, i }) => [`${i + 1}. ${p.typeName ?? p.type ?? 'Pitch'} ${p.speed ?? '—'} mph`, `${p.call ?? ''} · count ${p.balls ?? 0}-${p.strikes ?? 0}`]),
+        groups: types.map((t) => ({ key: t, label: ab.pitches.find((p) => (p.type ?? 'unknown') === t)?.typeName ?? t, count: ab.pitches.filter((p) => (p.type ?? 'unknown') === t).length })),
+        defaultVisible: types,
+        caption: `${ab.event ?? ''} — ${ab.description ?? ''}`,
+      };
+      const table: ResearchCard = {
+        kind: 'table',
+        key: 'pitches',
+        title: 'Pitches',
+        scope: bb ? `${bb.exitVelocity ?? '—'} mph · ${bb.launchAngle ?? '—'}° · ${bb.distance ?? '—'} ft` : undefined,
+        labelHeader: '#',
+        fixedOrder: true,
+        columns: [
+          { key: 'type', label: 'Pitch', decimals: 0 },
+          { key: 'mph', label: 'mph', decimals: 1 },
+          { key: 'call', label: 'Result', decimals: 0 },
+          { key: 'count', label: 'Count', decimals: 0 },
+        ],
+        rows: ab.pitches.map((p, i) => ({ key: String(i), label: String(i + 1), values: { type: p.typeName ?? p.type, mph: p.speed, call: p.call, count: `${p.balls ?? 0}-${p.strikes ?? 0}` } })),
+      };
+      return {
+        key: String(ab.index),
+        group: halfLabel(ab),
+        label: ab.batter ?? '',
+        sub: `${ab.event ?? '…'} · vs ${ab.pitcher ?? ''}`,
+        badge: ab.scoring ? `${ab.awayScore}–${ab.homeScore}` : `${ab.pitches.length}p`,
+        imageUrl: ab.batterId ? mlbHeadshot(ab.batterId) : null,
+        cards: [plot, table],
+      };
+    }),
+  };
+  return { ...base, rows: [[drill]], state: { kind: 'ready' } };
+}
+
+function mlbPitchingSection(payload: MlbGameResearchPayload): ResearchSection | null {
+  const box = payload.mlb.box;
+  const base = { id: 'pitching', navLabel: 'Pitching', title: 'Pitching' };
+  if (!box) return null;
+  const all = [
+    ...box.away.pitching.map((p) => ({ p, team: payload.away.abbr })),
+    ...box.home.pitching.map((p) => ({ p, team: payload.home.abbr })),
+  ];
+  const lines: ResearchCard = {
+    kind: 'table',
+    key: 'lines',
+    title: 'Pitching lines',
+    scope: 'in the order they pitched',
+    labelHeader: 'Pitcher',
+    fixedOrder: true,
+    columns: [
+      { key: 'ip', label: 'IP', decimals: 0 },
+      { key: 'h', label: 'H', decimals: 0 },
+      { key: 'er', label: 'ER', decimals: 0 },
+      { key: 'bb', label: 'BB', decimals: 0 },
+      { key: 'k', label: 'K', decimals: 0 },
+      { key: 'hr', label: 'HR', decimals: 0 },
+      { key: 'ps', label: 'P-S', decimals: 0 },
+      { key: 'era', label: 'ERA', decimals: 0, info: 'Season ERA through this game' },
+    ],
+    rows: all.map(({ p, team }) => ({
+      key: `${team}-${p.id}`,
+      label: p.name,
+      labelNote: [team, p.note].filter(Boolean).join(' '),
+      href: `/mlb/player/${p.id}`,
+      imageUrl: mlbHeadshot(p.id),
+      imageKind: 'player' as const,
+      values: { ip: p.s.ip, h: p.s.h, er: p.s.er, bb: p.s.bb, k: p.s.k, hr: p.s.hr, ps: `${p.s.pitches}-${p.s.strikes}`, era: p.season.era },
+    })),
+  };
+  const mixViews = all
+    .map(({ p, team }) => ({ p, team, mix: pitchMix(payload.mlb.atBats, p.id) }))
+    .filter((v) => v.mix.length)
+    .map(({ p, team, mix }) => ({
+      key: String(p.id),
+      label: `${team} · ${p.name.split(' ').slice(-1)[0]}`,
+      labelHeader: 'Pitch',
+      columns: [
+        { key: 'n', label: 'Thrown', decimals: 0 },
+        { key: 'share', label: 'Share', decimals: 0, format: 'percent' as const },
+        { key: 'mph', label: 'Avg mph', decimals: 1 },
+        { key: 'strike', label: 'Strike %', decimals: 0, format: 'percent' as const, info: 'Called, swinging and foul strikes and balls in play, over pitches' },
+      ],
+      rows: mix.map((r) => ({ key: r.type, label: r.typeName ?? r.type, values: { n: r.count, share: r.share, mph: r.avgSpeed, strike: 100 * r.strikeRate } })),
+    }));
+  const rows: ResearchCard[][] = [[lines]];
+  if (mixViews.length) {
+    rows.push([
+      {
+        kind: 'table',
+        key: 'mix',
+        title: 'Pitch mix',
+        scope: 'this game, from the pitch feed',
+        labelHeader: mixViews[0].labelHeader,
+        columns: mixViews[0].columns,
+        rows: mixViews[0].rows,
+        views: mixViews,
+        fixedOrder: true,
+      },
+    ]);
+  }
+  return { ...base, rows, state: { kind: 'ready' } };
+}
+
+function mlbBoxSection(payload: MlbGameResearchPayload): ResearchSection | null {
+  const box = payload.mlb.box;
+  if (!box) return null;
+  const maxEv = new Map<number, number>();
+  for (const ab of payload.mlb.atBats) {
+    const ev = ab.battedBall?.exitVelocity;
+    if (ab.batterId != null && ev != null) maxEv.set(ab.batterId, Math.max(maxEv.get(ab.batterId) ?? 0, ev));
+  }
+  const view = (team: typeof box.away, abbr: string) => ({
+    key: abbr,
+    label: abbr,
+    labelHeader: 'Batter',
+    columns: [
+      { key: 'ab', label: 'AB', decimals: 0 },
+      { key: 'r', label: 'R', decimals: 0 },
+      { key: 'h', label: 'H', decimals: 0 },
+      { key: 'rbi', label: 'RBI', decimals: 0 },
+      { key: 'hr', label: 'HR', decimals: 0 },
+      { key: 'bb', label: 'BB', decimals: 0 },
+      { key: 'k', label: 'K', decimals: 0 },
+      { key: 'lob', label: 'LOB', decimals: 0 },
+      { key: 'avg', label: 'AVG', decimals: 0, info: 'Season, through this game' },
+      { key: 'ops', label: 'OPS', decimals: 0, info: 'Season, through this game' },
+      { key: 'ev', label: 'Max EV', decimals: 1 },
+    ],
+    rows: team.batting.map((b) => ({
+      key: String(b.id),
+      label: b.name,
+      labelNote: `${b.sub ? '↳ ' : ''}${b.pos ?? ''}`,
+      href: `/mlb/player/${b.id}`,
+      values: { ab: b.s.ab, r: b.s.r, h: b.s.h, rbi: b.s.rbi, hr: b.s.hr, bb: b.s.bb, k: b.s.k, lob: b.s.lob, avg: b.season.avg, ops: b.season.ops, ev: maxEv.get(b.id) ?? null },
+    })),
+  });
+  const views = [view(box.away, payload.away.abbr), view(box.home, payload.home.abbr)];
+  return {
+    id: 'box',
+    navLabel: 'Box score',
+    title: 'Box score',
+    rows: [[{ kind: 'table', key: 'batting', title: 'Batting', scope: '↳ entered as a substitute', labelHeader: 'Batter', columns: views[0].columns, rows: views[0].rows, views, fixedOrder: true }]],
+    state: { kind: 'ready' },
+  };
+}
+
+function mlbLinesSection(payload: MlbGameResearchPayload, state: GameState): ResearchSection {
+  const final = state === 'final';
+  const quote = (market: string, s: { point: number | null; americanOdds: number | null } | undefined) =>
+    s ? `${s.point != null ? `${market === 'spread' && s.point > 0 ? '+' : ''}${s.point} ` : ''}${am(s.americanOdds)}` : '—';
+  const label = (market: string, side: string) =>
+    market === 'moneyline' ? `Moneyline · ${side === 'away' ? payload.away.abbr : payload.home.abbr}` : market === 'spread' ? `Run line · ${side === 'away' ? payload.away.abbr : payload.home.abbr}` : `Total · ${side}`;
+  const lineRows = payload.mlb.lines.flatMap((l) =>
+    (l.close ?? l.open)!.sides.map((s) => ({
+      key: `${l.market}-${s.side}`,
+      label: label(l.market, s.side),
+      values: { open: quote(l.market, l.open?.sides.find((x) => x.side === s.side)), close: quote(l.market, l.close?.sides.find((x) => x.side === s.side)), books: l.close?.books ?? l.open?.books ?? null },
+    })),
+  );
+  const lines: ResearchCard = {
+    kind: 'table',
+    key: 'game-lines',
+    title: 'Game lines',
+    scope: 'open to the last quote before the start',
+    labelHeader: 'Market',
+    fixedOrder: true,
+    emptyText: 'No game lines held for this game',
+    columns: [
+      { key: 'open', label: 'Open', decimals: 0 },
+      { key: 'close', label: 'Close', decimals: 0 },
+      { key: 'books', label: 'Books', decimals: 0 },
+    ],
+    rows: lineRows,
+    caption: 'The main line: nearest even for a total, the most books for the run line, the median price across books.',
+  };
+  // One book quoting both sides is a price, not a market (+4000 / -20000 on a triple).
+  const props = payload.mlb.props.filter((p) => p.books >= 2 && (!final || p.result != null));
+  const propsCard: ResearchCard = {
+    kind: 'table',
+    key: 'props',
+    title: final ? 'Props against results' : 'Player props',
+    scope: final ? 'main line at the start against the box score' : 'main line, both sides quoted',
+    labelHeader: 'Player',
+    emptyText: 'No player props held for this game',
+    sortKey: final ? undefined : 'books',
+    columns: [
+      { key: 'market', label: 'Market', decimals: 0, text: true },
+      { key: 'line', label: 'Line', decimals: 1 },
+      { key: 'over', label: 'Best over', decimals: 0 },
+      { key: 'under', label: 'Best under', decimals: 0 },
+      { key: 'books', label: 'Books', decimals: 0 },
+      ...(final ? [{ key: 'result', label: 'Result', decimals: 0 }, { key: 'side', label: 'Went', decimals: 0 }] : []),
+    ],
+    rows: props.map((p) => ({
+      key: `${p.playerId}-${p.market}`,
+      label: p.name,
+      labelNote: p.side === 'away' ? payload.away.abbr : p.side === 'home' ? payload.home.abbr : null,
+      href: `/mlb/player/${p.playerId}`,
+      values: {
+        market: MLB_MARKET_LABELS[p.market] ?? p.market,
+        line: p.line,
+        over: p.over ? `${am(p.over.price)} ${p.over.book}` : '—',
+        under: p.under ? `${am(p.under.price)} ${p.under.book}` : '—',
+        books: p.books,
+        result: p.result,
+        side: p.result == null ? null : p.result > p.line ? 'Over' : p.result < p.line ? 'Under' : 'Push',
+      },
+    })),
+    caption: [
+      payload.mlb.propsAltOnly ? `${payload.mlb.propsAltOnly} markets had only alternate lines quoted` : null,
+      'markets with one book quoting both sides',
+    ]
+      .filter(Boolean)
+      .join(' and ')
+      .replace(/^./, (c) => c.toUpperCase()) + ' are left out.',
+  };
+  return { id: 'lines', navLabel: final ? 'Lines & props' : 'Lines', title: final ? 'Lines & props' : 'Lines', rows: [[lines], [propsCard]], state: { kind: 'ready' } };
+}
+
+function mlbPlaysSection(payload: MlbGameResearchPayload): ResearchSection | null {
+  const abs = payload.mlb.atBats.filter((ab) => ab.event);
+  if (!abs.length) return null;
+  const row = (ab: AtBat) => ({
+    key: String(ab.index),
+    label: ab.batter ?? '',
+    labelNote: halfLabel(ab),
+    values: { event: ab.event, detail: ab.description, score: `${ab.awayScore ?? '—'}–${ab.homeScore ?? '—'}` },
+  });
+  const columns = [
+    { key: 'event', label: 'Result', decimals: 0, text: true },
+    { key: 'detail', label: 'Play', decimals: 0, text: true },
+    { key: 'score', label: `${payload.away.abbr}–${payload.home.abbr}`, decimals: 0 },
+  ];
+  const views = [
+    { key: 'all', label: `Every plate appearance · ${abs.length}`, labelHeader: 'Batter', columns, rows: abs.map(row) },
+    { key: 'scoring', label: `Scoring · ${abs.filter((a) => a.scoring).length}`, labelHeader: 'Batter', columns, rows: abs.filter((a) => a.scoring).map(row) },
+  ];
+  return {
+    id: 'plays',
+    navLabel: 'Play-by-play',
+    title: 'Play-by-play',
+    rows: [[{ kind: 'table', key: 'plays', title: 'Plays', labelHeader: 'Batter', columns, rows: views[0].rows, views, fixedOrder: true }]],
+    state: { kind: 'ready' },
+  };
+}
+
+/** Before the start (R8.1b builds the research; until then, the lines and props). */
+function mlbPreSections(payload: MlbGameResearchPayload, state: GameState): ResearchSection[] {
+  return [mlbLinesSection(payload, state)];
 }

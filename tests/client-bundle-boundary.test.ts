@@ -83,6 +83,8 @@ const DB_MODULES = [
   '@/lib/sports/multiSport/hoopsHockeyTeamResearch',
   // R7.4: the soccer team page read.
   '@/lib/sports/soccer/teamResearch',
+  // R8.1: MLB's game page read. Types reach the adapter with `import type`.
+  '@/lib/sports/mlb/gameResearch',
 ];
 
 /**

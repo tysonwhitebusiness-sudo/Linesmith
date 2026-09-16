@@ -1,73 +1,34 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import type { PickCandidate } from '@/lib/core/types';
 import { useSnapshot } from '@/components/useSnapshot';
 import { useSlip } from '@/components/useSlip';
-import { useGameLines } from '@/components/useGameLines';
 import { GamesStrip } from '@/components/GamesStrip';
 import { TopBar } from '@/components/TopBar';
-import { GameDetail, type GameDetailGame } from '@/components/GameDetail';
+import type { GameDetailGame } from '@/components/GameDetail';
 import SlipModal from '@/components/SlipModal';
-import { BrandedLoader } from '@/components/BrandedLoader';
-import { useFilters, applyFilters } from '@/components/useFilters';
+import { GameResearchPage } from '@/components/GameResearchPage';
 
 /**
- * `/mlb/game/[gameId]` — Linemate-equivalent game summary, replacing the old
- * flat matchup-header + candidate-list page. Candidate selection lives in the
- * query string (`?player=&market=`) so the swap to `PlayerDetail` is a real
- * URL, not just local state — reload the page mid-swap and you land back on
- * the same candidate's detail.
+ * `/mlb/game/[gameId]` — the game page for any MLB game by pk (R8.1): before
+ * the start, live, or final. The page is `GameResearchPage`, which reads the
+ * game from `/api/game-research` rather than from today's slate, so a past
+ * game resolves (R6-F6, B5). The games strip still shows today's slate.
  */
 export default function GameDetailPage() {
   const params = useParams<{ gameId: string }>();
   const router = useRouter();
-  const search = useSearchParams();
-  const gameId = Number(params?.gameId);
+  const gameId = String(params?.gameId ?? '');
   const sport = 'mlb' as const;
 
-  const { snapshot, loading, error, lastFetched, refresh } = useSnapshot(sport);
+  const { snapshot, loading, lastFetched, refresh } = useSnapshot(sport);
   const slip = useSlip(sport);
-  const odds = useGameLines(sport, snapshot?.fetchedAt ?? null);
-  const { filters } = useFilters();
   const [slipOpen, setSlipOpen] = useState(false);
 
-  // See the MLB player page's identical block for why this exists.
-  const [detailReady, setDetailReady] = useState(false);
-  useEffect(() => {
-    setDetailReady(false);
-  }, [gameId]);
-
-  const selectedPlayerId = search.get('player') ?? undefined;
-  const selectedMarket = search.get('market') ?? undefined;
-
-  const games = useMemo(
-    () => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as GameDetailGame[],
-    [snapshot],
-  );
-
-  const selectedGame = useMemo(() => games.find((g) => Number(g.gamePk) === gameId), [games, gameId]);
-
-  const gameCandidates = useMemo(() => {
-    const all = snapshot?.candidates ?? [];
-    return all.filter((c) => (c.subjectMeta as Record<string, unknown> | undefined)?.gamePk === gameId);
-  }, [snapshot, gameId]);
-
-  const filtered = useMemo(() => applyFilters(gameCandidates, filters), [gameCandidates, filters]);
-
+  const games = useMemo(() => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as GameDetailGame[], [snapshot]);
   const eventContext = snapshot ? [snapshot.eventName, snapshot.eventDetail].filter(Boolean).join(' · ') : null;
-
-  const onSelectCandidate = (subjectId: string | null, dimension?: string) => {
-    const qs = new URLSearchParams();
-    if (subjectId) {
-      qs.set('player', subjectId);
-      if (dimension) qs.set('market', dimension);
-    }
-    const suffix = qs.toString();
-    router.replace(`/mlb/game/${gameId}${suffix ? `?${suffix}` : ''}`);
-  };
-
   const onAdd = (candidate: PickCandidate, oddsInfo?: { americanOdds: string; source: string }) => {
     void slip.addPick(candidate, eventContext, oddsInfo);
   };
@@ -78,11 +39,7 @@ export default function GameDetailPage() {
         <TopBar
           sport={sport}
           leading={
-            <button
-              type="button"
-              onClick={() => router.push('/mlb')}
-              className="whitespace-nowrap px-2 py-3 text-[13px] font-medium text-masters"
-            >
+            <button type="button" onClick={() => router.push('/mlb')} className="whitespace-nowrap px-2 py-3 text-[13px] font-medium text-masters">
               ← Scan
             </button>
           }
@@ -94,55 +51,16 @@ export default function GameDetailPage() {
         />
         <GamesStrip
           games={games}
-          selectedGamePk={gameId}
+          selectedGamePk={Number(gameId)}
           onSelectGame={(pk) => router.push(pk === null ? '/mlb' : `/mlb/game/${pk}`)}
           onNavigateToGame={(pk) => {
-            if (pk !== gameId) router.push(`/mlb/game/${pk}`);
+            if (String(pk) !== gameId) router.push(`/mlb/game/${pk}`);
           }}
         />
       </header>
 
-      <main className="px-3 py-3">
-        {error ? (
-          <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad">{error}</div>
-        ) : null}
-
-        {loading && !selectedGame ? (
-          <BrandedLoader size="page" />
-        ) : !selectedGame ? (
-          /* B5. MLB's GameDetail reads the game out of the slate snapshot, and
-             unlike every other sport there is no `/api/mlb/game/{id}` route to
-             fall back to — only `.../live` exists (audit B8, believed
-             deliberate). So a past game genuinely cannot be resolved here yet;
-             the fix is a per-game read, which belongs with R8's game-page
-             rebuild. Until then the page says what is actually true instead of
-             claiming the game does not exist. */
-          <div className="lb-card p-6 text-center text-sm text-ink-muted">
-            This game isn’t on today’s slate. MLB game pages currently only cover today’s games.
-          </div>
-        ) : (
-          <>
-            {!detailReady && <BrandedLoader size="page" />}
-            <div style={{ display: detailReady ? 'block' : 'none' }}>
-              <GameDetail
-                sport={sport}
-                gameId={String(gameId)}
-                candidates={filtered}
-                snapshot={snapshot}
-                odds={odds.result}
-                picks={slip.picks}
-                pickedKeys={slip.pickedKeys}
-                onAdd={onAdd}
-                onRemovePick={slip.removePick}
-                selectedPlayerId={selectedPlayerId}
-                selectedMarket={selectedMarket}
-                onSelectCandidate={onSelectCandidate}
-                eventContext={eventContext}
-                onReadyChange={setDetailReady}
-              />
-            </div>
-          </>
-        )}
+      <main className="mx-auto max-w-[1280px] px-3 py-3 md:px-6">
+        <GameResearchPage sport={sport} gameId={gameId} />
       </main>
 
       <SlipModal

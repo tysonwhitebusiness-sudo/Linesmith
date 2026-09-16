@@ -119,6 +119,8 @@ export interface ResearchColumn {
    * ("187.1"), never as a decimal (R2).
    */
   format?: 'rate3' | 'percent' | 'ip';
+  /** A text column (a play's description, a market name): left-aligned and allowed to wrap, never sorted as a number (R8.1). */
+  text?: boolean;
 }
 
 export interface ResearchTile {
@@ -354,7 +356,7 @@ export type ResearchCard =
        * rotated so every shot attacks the same end: x is feet from the goal
        * line and y is feet across the ice.
        */
-      surface: 'zone' | 'field' | 'pitch' | 'court' | 'rink';
+      surface: 'zone' | 'field' | 'pitch' | 'court' | 'rink' | 'spray';
       points: Array<[string | null, number, number]>;
       /** Per point, same order: how big to draw it (a shot's xG). */
       weights?: number[];
@@ -362,13 +364,29 @@ export type ResearchCard =
       emphasis?: boolean[];
       /** Per point, same order: the lines of its tooltip. */
       tips?: string[][];
+      /** Per point, same order: a short mark drawn in the dot (a pitch's number in an at-bat). `zone` only. */
+      labels?: Array<string | null>;
       /** Shown under the chart when `emphasis` carries the meaning colour usually would. */
       legend?: Array<{ label: string; dark: boolean }>;
       /** Most common first; colour follows this order. The reader toggles groups on and off. */
       groups: Array<{ key: string; label: string; count: number }>;
       defaultVisible: string[];
     }
-  | { kind: 'status'; key: string; title: string; headline: string; reason: string };
+  | { kind: 'status'; key: string; title: string; headline: string; reason: string }
+  | {
+      /**
+       * A list beside the detail of the item picked from it — R8.1's at-bat
+       * explorer: plate appearances grouped by inning, and each one's pitch
+       * plot and pitch table. The detail is ordinary cards.
+       */
+      kind: 'drilldown';
+      key: string;
+      title: string;
+      scope?: string;
+      items: Array<{ key: string; group: string; label: string; sub?: string; badge?: string | null; imageUrl?: string | null; cards: ResearchCard[] }>;
+      /** Opens on this item; the first when unset. */
+      defaultKey?: string;
+    };
 
 /**
  * The season a sport's own section opens on: the reader's pick, else the

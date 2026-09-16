@@ -189,3 +189,131 @@ export function parseMlbWinProbability(json: unknown): MlbWinProbabilityPoint[] 
       leverage: num(w.leverageIndex),
     }));
 }
+
+// ---------------------------------------------------------------------------
+// Box score (R8)
+// ---------------------------------------------------------------------------
+
+export interface MlbBoxBatter {
+  id: number;
+  name: string;
+  pos: string | null;
+  /** 1-9; a substitute carries the slot he entered. */
+  order: number | null;
+  sub: boolean;
+  s: { pa: number; ab: number; r: number; h: number; doubles: number; triples: number; hr: number; rbi: number; bb: number; k: number; sb: number; tb: number; lob: number; hbp: number };
+  /** Season AVG and OPS through this game, as StatsAPI strings (".231"). */
+  season: { avg: string | null; ops: string | null };
+}
+
+export interface MlbBoxPitcher {
+  id: number;
+  name: string;
+  s: { ip: string; outs: number; h: number; r: number; er: number; bb: number; k: number; hr: number; pitches: number; strikes: number };
+  note: string | null;
+  season: { era: string | null };
+}
+
+export interface MlbBoxTeam {
+  batting: MlbBoxBatter[];
+  /** In the order they pitched. */
+  pitching: MlbBoxPitcher[];
+  totals: { r: number; h: number; e: number; lob: number };
+}
+
+const n0 = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+
+/** One side of `liveData.boxscore` with the linescore totals, parsed for the game page's box, pitching and props cards. */
+export function parseMlbBox(feed: J | null, side: 'away' | 'home'): MlbBoxTeam {
+  const team = feed?.liveData?.boxscore?.teams?.[side] ?? {};
+  const players: J = team.players ?? {};
+  const line = feed?.liveData?.linescore?.teams?.[side] ?? {};
+  const batting = arr(team.batters)
+    .map((idRaw) => {
+      const p = players[`ID${idRaw}`];
+      const b = p?.stats?.batting;
+      if (!p || !b || (b.plateAppearances == null && b.atBats == null)) return null;
+      const orderRaw = Number(p.battingOrder);
+      return {
+        id: Number(idRaw),
+        name: str(p.person?.fullName) ?? String(idRaw),
+        pos: str(p.position?.abbreviation),
+        order: Number.isFinite(orderRaw) && orderRaw > 0 ? Math.floor(orderRaw / 100) : null,
+        sub: Number.isFinite(orderRaw) && orderRaw % 100 !== 0,
+        s: {
+          pa: n0(b.plateAppearances),
+          ab: n0(b.atBats),
+          r: n0(b.runs),
+          h: n0(b.hits),
+          doubles: n0(b.doubles),
+          triples: n0(b.triples),
+          hr: n0(b.homeRuns),
+          rbi: n0(b.rbi),
+          bb: n0(b.baseOnBalls),
+          k: n0(b.strikeOuts),
+          sb: n0(b.stolenBases),
+          tb: n0(b.totalBases),
+          lob: n0(b.leftOnBase),
+          hbp: n0(b.hitByPitch),
+        },
+        season: { avg: str(p.seasonStats?.batting?.avg), ops: str(p.seasonStats?.batting?.ops) },
+      } satisfies MlbBoxBatter;
+    })
+    .filter((x): x is MlbBoxBatter => x !== null);
+  const pitching = arr(team.pitchers)
+    .map((idRaw) => {
+      const p = players[`ID${idRaw}`];
+      const s = p?.stats?.pitching;
+      if (!p || !s) return null;
+      return {
+        id: Number(idRaw),
+        name: str(p.person?.fullName) ?? String(idRaw),
+        s: {
+          ip: str(s.inningsPitched) ?? '0.0',
+          outs: n0(s.outs),
+          h: n0(s.hits),
+          r: n0(s.runs),
+          er: n0(s.earnedRuns),
+          bb: n0(s.baseOnBalls),
+          k: n0(s.strikeOuts),
+          hr: n0(s.homeRuns),
+          pitches: n0(s.numberOfPitches ?? s.pitchesThrown),
+          strikes: n0(s.strikes),
+        },
+        note: str(s.note),
+        season: { era: str(p.seasonStats?.pitching?.era) },
+      } satisfies MlbBoxPitcher;
+    })
+    .filter((x): x is MlbBoxPitcher => x !== null);
+  return { batting, pitching, totals: { r: n0(line.runs), h: n0(line.hits), e: n0(line.errors), lob: n0(line.leftOnBase) } };
+}
+
+/**
+ * A player's number in one prop market from this game's box, or `null` where
+ * the box has no such stat for him (a batter in a pitcher market). The keys are
+ * `prop_odds.market_key`'s (R8: props against results).
+ */
+export function mlbMarketResult(market: string, batter: MlbBoxBatter | undefined, pitcher: MlbBoxPitcher | undefined): number | null {
+  const b = batter?.s;
+  const p = pitcher?.s;
+  switch (market) {
+    case 'hits': return b ? b.h : null;
+    case 'total-bases': return b ? b.tb : null;
+    case 'home-runs': return b ? b.hr : null;
+    case 'rbis': return b ? b.rbi : null;
+    case 'runs': return b ? b.r : null;
+    case 'walks': return b ? b.bb : null;
+    case 'batter-strikeouts': return b ? b.k : null;
+    case 'doubles': return b ? b.doubles : null;
+    case 'triples': return b ? b.triples : null;
+    case 'stolen-bases': return b ? b.sb : null;
+    case 'singles': return b ? b.h - b.doubles - b.triples - b.hr : null;
+    case 'hits-runs-rbis': return b ? b.h + b.r + b.rbi : null;
+    case 'pitcher-strikeouts': return p ? p.k : null;
+    case 'pitcher-outs': return p ? p.outs : null;
+    case 'earned-runs': return p ? p.er : null;
+    case 'pitcher-hits-allowed': return p ? p.h : null;
+    case 'pitcher-walks': return p ? p.bb : null;
+    default: return null;
+  }
+}

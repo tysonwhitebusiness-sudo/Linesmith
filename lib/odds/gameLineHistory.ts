@@ -203,3 +203,151 @@ export async function readGameLineHistory(q: GameLineHistoryQuery): Promise<Game
     ...pre.block,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Open and close (R8)
+// ---------------------------------------------------------------------------
+
+export interface GameQuote {
+  market: string;
+  side: string;
+  bookmaker: string;
+  point: number | null;
+  americanOdds: number;
+  observedAt: string;
+}
+
+export interface MainGameLine {
+  market: GameHistoryMarket;
+  /** Per side: the point (a spread's sign is the side's own) and the median price there. */
+  sides: Array<{ side: string; point: number | null; americanOdds: number | null }>;
+  /** Books quoting both sides at the main line. */
+  books: number;
+}
+
+export interface GameLineOpenClose {
+  market: GameHistoryMarket;
+  open: MainGameLine | null;
+  close: MainGameLine | null;
+}
+
+const implied = (american: number) => (american > 0 ? 100 / (american + 100) : -american / (-american + 100));
+const median = (xs: number[]) => {
+  const v = [...xs].sort((a, b) => a - b);
+  return v.length ? v[Math.floor((v.length - 1) / 2)] : null;
+};
+/** How far from the nearest-even line another line may sit and still count as main (implied probability). */
+export const MAIN_LINE_EVEN_TOLERANCE = 0.03;
+
+const PAIRS: Record<GameHistoryMarket, [string, string]> = { moneyline: ['away', 'home'], spread: ['away', 'home'], total: ['over', 'under'] };
+
+/**
+ * The main game line from a set of quotes (one per book, side and point) — R8,
+ * the prop rule of R2 applied to game markets.
+ *
+ * NEAREST EVEN, NOT MOST BOOKS. Measured on SF @ STL (pk 823004): eight books
+ * closed the total at 8 (-115/-105), and thirteen exchanges and offshore books
+ * carried 9.5 at +150 to +170 over -175 to -215 under — an alternate line.
+ * "Most books quoting both sides" picked 9.5. The main line is the point whose
+ * two sides are nearest a coin flip, among points at least two books quote on
+ * both sides.
+ *
+ * SUPERSEDED QUOTES ARE DROPPED first: `game_odds_history` keeps every point a
+ * book ever hung, so DraftKings' 8.5 from 05:39 sat beside its 8 from 16:00. A
+ * quote older than its book's newest in the market by more than 30 minutes does
+ * not count (`SUPERSEDED_AFTER_MS`'s reasoning for props). Pass `dropSuperseded:
+ * false` for opening quotes, which are old by definition.
+ *
+ * A spread's two sides carry opposite signs, so points are paired on |point|.
+ */
+export function mainGameLine(market: GameHistoryMarket, quotes: GameQuote[], options: { dropSuperseded: boolean }): MainGameLine | null {
+  let qs = quotes.filter((q) => q.market === market && Number.isFinite(q.americanOdds));
+  if (options.dropSuperseded) {
+    const newest = new Map<string, number>();
+    for (const q of qs) newest.set(q.bookmaker, Math.max(newest.get(q.bookmaker) ?? 0, Date.parse(q.observedAt)));
+    qs = qs.filter((q) => Date.parse(q.observedAt) >= newest.get(q.bookmaker)! - 30 * 60_000);
+  }
+  const [aSide, bSide] = PAIRS[market];
+  const key = (q: GameQuote) => (q.point == null ? 'null' : String(Math.abs(q.point)));
+  const byPoint = new Map<string, { a: Map<string, GameQuote>; b: Map<string, GameQuote> }>();
+  for (const q of qs) {
+    if (q.side !== aSide && q.side !== bSide) continue;
+    const g = byPoint.get(key(q)) ?? { a: new Map(), b: new Map() };
+    (q.side === aSide ? g.a : g.b).set(q.bookmaker, q);
+    byPoint.set(key(q), g);
+  }
+  const candidates: Array<{ k: string; books: string[]; imbalance: number }> = [];
+  for (const [k, g] of byPoint) {
+    const books = [...g.a.keys()].filter((b) => g.b.has(b));
+    if (books.length < 2) continue;
+    const imbalance = books.reduce((sum, b) => sum + Math.abs(implied(g.a.get(b)!.americanOdds) - implied(g.b.get(b)!.americanOdds)), 0) / books.length;
+    candidates.push({ k, books, imbalance });
+  }
+  if (!candidates.length) return null;
+  // Among the lines within 3 points of the nearest-even one, the one most books
+  // quote: KC @ BOS closed 8.5 at -105/-115 across 11 books and 8 at -125/-115
+  // across 2, and 8 sat 0.002 nearer even. Nearest even rules out an alternate;
+  // book count then picks between genuinely near-even lines.
+  //
+  // A SPREAD IS NOT PRICED NEAR EVEN: MLB's run line is +-1.5 at around
+  // -160/+140, and 824382 opened with two books at +-1 near -110 each, an
+  // alternate that nearest-even would pick. For spreads, most books wins.
+  const nearest = Math.min(...candidates.map((c) => c.imbalance));
+  const best =
+    market === 'spread'
+      ? [...candidates].sort((x, y) => y.books.length - x.books.length || x.imbalance - y.imbalance)[0]
+      : candidates.filter((c) => c.imbalance <= nearest + MAIN_LINE_EVEN_TOLERANCE).sort((x, y) => y.books.length - x.books.length || x.imbalance - y.imbalance)[0];
+  const g = byPoint.get(best.k)!;
+  const sideOf = (m: Map<string, GameQuote>, side: string) => {
+    const at = best.books.map((b) => m.get(b)!);
+    return { side, point: at[0].point, americanOdds: median(at.map((q) => q.americanOdds)) };
+  };
+  return { market, sides: [sideOf(g.a, aSide), sideOf(g.b, bSide)], books: best.books.length };
+}
+
+/**
+ * Where each game market opened and closed BEFORE the start (R2's split), at
+ * its main line (`mainGameLine`). The game page's lines card and result-vs-line
+ * chips read this (R8). A start in the future means the game has not begun, and
+ * "close" is the latest so far.
+ */
+export async function readPreGameOpenClose(eventId: string, startsAt: string): Promise<GameLineOpenClose[]> {
+  const start = new Date(startsAt);
+  const to = Number.isFinite(start.getTime()) && start < new Date() ? start : new Date();
+  const rows = await pgAll<{ which: 'open' | 'close'; market: string; side: string; bookmaker: string; point: number | null; american_odds: number; observed_at: Date | string }>(
+    `SELECT * FROM (
+       SELECT DISTINCT ON (market, side, bookmaker, point) 'open' AS which, market, side, bookmaker, point, american_odds, observed_at
+         FROM game_odds_history WHERE event_id = ? AND observed_at <= ? AND american_odds IS NOT NULL
+        ORDER BY market, side, bookmaker, point, observed_at ASC
+     ) o
+     UNION ALL
+     SELECT * FROM (
+       SELECT DISTINCT ON (market, side, bookmaker, point) 'close' AS which, market, side, bookmaker, point, american_odds, observed_at
+         FROM game_odds_history WHERE event_id = ? AND observed_at <= ? AND american_odds IS NOT NULL
+        ORDER BY market, side, bookmaker, point, observed_at DESC
+     ) c`,
+    [eventId, to.toISOString(), eventId, to.toISOString()],
+  );
+  const toQuote = (r: (typeof rows)[number]): GameQuote => ({
+    market: r.market,
+    side: r.side,
+    bookmaker: r.bookmaker,
+    point: r.point == null ? null : Number(r.point),
+    americanOdds: Number(r.american_odds),
+    observedAt: (r.observed_at instanceof Date ? r.observed_at : new Date(r.observed_at)).toISOString(),
+  });
+  const open = rows.filter((r) => r.which === 'open').map(toQuote);
+  const close = rows.filter((r) => r.which === 'close').map(toQuote);
+  // Opening quotes: each book's FIRST quote at a point. The earliest of those per
+  // book is its opening board; later points it added are moves, not the open.
+  const firstPerBook = (() => {
+    const earliest = new Map<string, number>();
+    for (const q of open) earliest.set(`${q.market}|${q.bookmaker}`, Math.min(earliest.get(`${q.market}|${q.bookmaker}`) ?? Infinity, Date.parse(q.observedAt)));
+    return open.filter((q) => Date.parse(q.observedAt) <= earliest.get(`${q.market}|${q.bookmaker}`)! + 30 * 60_000);
+  })();
+  return GAME_HISTORY_MARKETS.map((market) => ({
+    market,
+    open: mainGameLine(market, firstPerBook, { dropSuperseded: false }),
+    close: mainGameLine(market, close, { dropSuperseded: true }),
+  })).filter((x) => x.open || x.close);
+}

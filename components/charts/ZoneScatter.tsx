@@ -24,9 +24,17 @@ export function ZoneScatter({
   groups,
   visible,
   label,
+  labels,
+  tips,
   className,
 }: {
   points: ReadonlyArray<readonly [string | null, number, number]>;
+  /**
+   * Per point, a short mark drawn inside a larger dot — the pitch number in an
+   * at-bat (R8.1). Without labels the plot is a cloud of small dots.
+   */
+  labels?: ReadonlyArray<string | null>;
+  tips?: ReadonlyArray<readonly string[]>;
   groups: readonly ZoneScatterGroup[];
   visible: ReadonlySet<string>;
   label: string;
@@ -58,9 +66,20 @@ export function ZoneScatter({
         {points.map((p, i) => {
           const [group, x, z] = p;
           if (!group || !visible.has(group)) return null;
+          const tip = tips?.[i]?.join(' · ') ?? `${nameOf.get(group) ?? group} · ${x.toFixed(2)} ft across · ${z.toFixed(2)} ft up`;
+          const mark = labels?.[i];
           return (
-            <MarkTip key={i} tip={`${nameOf.get(group) ?? group} · ${x.toFixed(2)} ft across · ${z.toFixed(2)} ft up`}>
-              <circle cx={X(x)} cy={Y(z)} r={3.4} fill={colorOf.get(group) ?? INK3} fillOpacity={0.55} />
+            <MarkTip key={i} tip={tip}>
+              {mark != null ? (
+                <g>
+                  <circle cx={X(x)} cy={Y(z)} r={10} fill={colorOf.get(group) ?? INK3} stroke="oklch(var(--card))" strokeWidth={2} />
+                  <text x={X(x)} y={Y(z) + 3.5} fill="#fff" fontSize={10} fontWeight={700} textAnchor="middle">
+                    {mark}
+                  </text>
+                </g>
+              ) : (
+                <circle cx={X(x)} cy={Y(z)} r={3.4} fill={colorOf.get(group) ?? INK3} fillOpacity={0.55} />
+              )}
             </MarkTip>
           );
         })}

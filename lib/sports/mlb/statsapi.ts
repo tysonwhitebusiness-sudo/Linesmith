@@ -222,6 +222,8 @@ export interface MlbLiveFeed {
   boxscore: any;
   gameData: any;
   plays: any;
+  /** Winning, losing and saving pitchers once the game is final (R8). */
+  decisions?: any;
 }
 
 export async function getLiveFeed(gamePk: number): Promise<MlbLiveFeed | null> {
@@ -234,7 +236,29 @@ export async function getLiveFeed(gamePk: number): Promise<MlbLiveFeed | null> {
     boxscore: json.liveData?.boxscore ?? {},
     gameData: json.gameData ?? {},
     plays: json.liveData?.plays ?? {},
+    decisions: json.liveData?.decisions ?? null,
   };
+}
+
+export interface MlbGameStatus {
+  gamePk: number;
+  /** "Preview", "Live" or "Final" (StatsAPI's abstract state). */
+  abstractState: string;
+  /** "Scheduled", "In Progress", "Postponed", "Final"… */
+  detailedState: string;
+  gameDate: string;
+}
+
+/**
+ * One game's status by pk, cached 20 seconds in process — cheap enough to ask
+ * before deciding how long a game page may be cached (R8: a final game for a
+ * day, a live one for seconds).
+ */
+export async function getGameStatus(gamePk: number): Promise<MlbGameStatus | null> {
+  const json = await cachedJson(`game-status:${gamePk}`, `${BASE}/v1/schedule?sportId=1&gamePk=${gamePk}`, 20_000);
+  const g = json?.dates?.[0]?.games?.[0];
+  if (!g?.gamePk) return null;
+  return { gamePk: g.gamePk, abstractState: g.status?.abstractGameState ?? '', detailedState: g.status?.detailedState ?? '', gameDate: g.gameDate ?? '' };
 }
 
 /**
