@@ -17,7 +17,8 @@ import { getLiveFeed, getWinProbability, type MlbLiveFeed } from './statsapi';
 import { mlbMarketResult, parseAtBats, parseMlbBox, parseMlbWinProbability, type AtBat, type MlbBoxTeam, type MlbWinProbabilityPoint } from './liveFeedParsers';
 import { readPreGamePropOddsForGame, type PropOddsRow } from '@/lib/db/client';
 import { pickMainLine } from '@/lib/odds/props/mainLine';
-import { readPreGameOpenClose, type GameLineOpenClose } from '@/lib/odds/gameLineHistory';
+import { readInGameLines, readPreGameOpenClose, type GameLineOpenClose, type InGameLines } from '@/lib/odds/gameLineHistory';
+import { buildLiveGameDetail, type LiveBatter, type LivePitcherLine } from './liveGame';
 import type { GameResearchPayload, GameSide, GameState } from '@/lib/sports/shared/gameResearchShapes';
 import { readMlbPregame, type MlbPregame } from './gamePregame';
 import { easternDate } from './statsapi';
@@ -49,7 +50,20 @@ export interface MlbGameResearchPayload extends GameResearchPayload {
     pitchDataHeld: boolean;
     /** The research as of the start (R8.1b). */
     pregame: MlbPregame;
+    /** While the game is on (R8.1c): where it stands and what the books say now. `null` otherwise. */
+    live: MlbLiveNow | null;
   };
+}
+
+export interface MlbLiveNow {
+  inning: { number: number; half: 'top' | 'bottom'; ordinal: string };
+  outs: number;
+  count: { balls: number; strikes: number };
+  bases: { first: boolean; second: boolean; third: boolean };
+  batter: LiveBatter | null;
+  onDeck: LiveBatter | null;
+  pitcher: LivePitcherLine | null;
+  inGame: InGameLines;
 }
 
 const logo = (id: number | string) => `https://www.mlbstatic.com/team-logos/${id}.svg`;
@@ -77,6 +91,12 @@ function side(feed: MlbLiveFeed, which: 'away' | 'home', state: GameState): Game
     score: state === 'pre' || runs == null ? null : Number(runs),
     record: rec && rec.wins != null ? `${rec.wins}-${rec.losses}` : null,
   };
+}
+
+function liveNow(feed: MlbLiveFeed, inGame: InGameLines): MlbLiveNow | null {
+  const d = buildLiveGameDetail(feed);
+  if (!d) return null;
+  return { inning: d.inning, outs: d.outs, count: d.count, bases: d.bases, batter: d.batter, onDeck: d.onDeck, pitcher: d.currentPitcher, inGame };
 }
 
 function statusText(feed: MlbLiveFeed, state: GameState): string {
@@ -130,10 +150,11 @@ export async function readMlbGameResearch(gamePk: number, now: Date = new Date()
   const start: string = feed.gameData?.datetime?.dateTime ?? '';
   const started = state === 'live' || state === 'final';
 
-  const [wpRaw, lines, propRows] = await Promise.all([
+  const [wpRaw, lines, propRows, inGame] = await Promise.all([
     started ? getWinProbability(gamePk).catch(() => null) : Promise.resolve(null),
     readPreGameOpenClose(String(gamePk), start).catch(() => []),
     readPreGamePropOddsForGame(String(gamePk), start).catch(() => [] as PropOddsRow[]),
+    state === 'live' ? readInGameLines(String(gamePk), start, now).catch((): InGameLines => ({ now: [], moneyline: [] })) : Promise.resolve(null),
   ]);
   const r = raw(feed);
   const atBats = started ? parseAtBats(r) : [];
@@ -141,6 +162,8 @@ export async function readMlbGameResearch(gamePk: number, now: Date = new Date()
   const { props, altOnly } = propResults(propRows, start, box);
   const gameDate = feed.gameData?.datetime?.officialDate ?? easternDate(new Date(start || now));
   const pregame = await readMlbPregame({
+    // Once the game is on, nothing in the research can change; a live page polls every 15 seconds.
+    memoize: started,
     gamePk,
     date: gameDate,
     season: Number(String(feed.gameData?.game?.season ?? gameDate.slice(0, 4))),
@@ -197,11 +220,13 @@ export async function readMlbGameResearch(gamePk: number, now: Date = new Date()
       propsAltOnly: altOnly,
       pitchDataHeld: atBats.some((a) => a.pitches.some((p) => p.pX != null)),
       pregame,
+      live: state === 'live' && inGame ? liveNow(feed, inGame) : null,
     },
     sources: [
       { label: 'Game, box score and every pitch', detail: 'MLB Stats API live feed by game pk', asOf: fetchedAt },
       ...(started ? [{ label: 'Win probability', detail: 'MLB Stats API win probability after each plate appearance', asOf: fetchedAt }] : []),
       { label: 'Game lines', detail: 'game_odds_history: each book’s first and last quote before the start, median across books', asOf: fetchedAt },
+      ...(state === 'live' ? [{ label: 'In-game odds', detail: 'game_odds_history after the first pitch: the main line from the latest capture, and the moneyline with the vig removed per book', asOf: inGame?.now[0]?.asOf ?? null }] : []),
       { label: 'Player props', detail: 'prop_odds as they stood at the start: the main line quoted on both sides by the most books', asOf: fetchedAt },
       { label: 'Strength vs strength', detail: 'team_game_production before this game’s date, ranked across the league', asOf: fetchedAt },
       { label: 'Form and head-to-head', detail: 'MLB Stats API team schedules, regular season, games before this one', asOf: fetchedAt },

@@ -147,7 +147,7 @@ test('builder: a pitcher opens as a pitcher, innings sum as outs and print as th
   assert.equal(data.seasons.rows.at(-1)?.label, 'All held');
   assert.deepEqual(data.seasons.rows.slice(0, -1).map((r) => r.games), [2026, 2025, 2024].map((s) => h.games.filter((g) => g.season === s).length));
   assert.equal(data.gameLog.rows[0].date >= data.gameLog.rows.at(-1)!.date, true, 'log is newest first');
-  assert.equal(data.gameLog.rows[0].href, null, 'MLB has no past-game page until R8, so no dead link');
+  assert.match(data.gameLog.rows[0].href ?? '', /^\/mlb\/game\/\d+$/, 'each row links to its game: past MLB games resolve since R8.1');
 });
 
 test('builder: one NFL game into a season opens on last season, and says why', () => {

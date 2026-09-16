@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a (shell + final recap) and 8.1b (before-start research) done; 8.1c (live) next.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football) next.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1709,8 +1709,35 @@ seven G2 fixture games and a live MLB game; route and parser inventory).
     `?state=pre`).
   - Rutschman and Monasterio showing as Boston hitters is right: both are on
     Boston's roster (StatsAPI `currentTeam`).
-- **8.1c — live: next.** "Right now", props tracker, in-game odds; verify on
-  live MLB games before 2026-09-27. Then stop for MLB sign-off.
+- **8.1c — live, 2026-09-16/17.** "Right now" leads a live page: the game now
+  (inning, outs, count, runners, batter and pitcher lines, win probability),
+  the at-bat under way on the zone plot, a props tracker (main line at the
+  start against the box so far; only an over is marked, `liveLineHit`), and
+  in-game odds (`readInGameLines`: lines now and the home moneyline chance,
+  vig removed). Then flow, batted balls, at-bats, pitching, box and plays, and
+  the research as it stood at the start; Lines & props waits for the final.
+  The research is memoized per game once it has started (the page polls every
+  15 s). Verified on two live games, NYY @ MIN 823655 (extra innings) and
+  DET @ TOR 822763, at 1440 and 400, state and count against the StatsAPI feed.
+  - **In-game prices are sparse:** 494 quotes from 16-21 books over 13 capture
+    minutes in three hours on 823655, about one capture every fifteen minutes.
+  - **"Now" is the latest capture only.** A 30-minute window paired
+    DraftKings' 4:25 moneyline (NYY -148, after the tie) with FanDuel's 4:15
+    (MIN -1600), printing -148 / -1600. One book in the latest capture is
+    shown as one book; a line two books share beats a nearer-even one-book
+    line. The card says how many runs have scored since the capture (DET @ TOR
+    showed a 4:20 price with Toronto five runs further on), timing an at-bat's
+    runs by the next at-bat's start, since the feed stamps starts only.
+  - **Run lines keep each team's sign** (`mainGameLine` keys spreads on the
+    away handicap): in play, BetMGM had DET +1.5 and BetRivers DET -1.5 in one
+    capture, and |point| pooled them. Pre-game books agree, so no close moves.
+- **R6-F6 for MLB: game-log rows link to their game.** Every MLB
+  `player_game_history.event_id` is a game pk (139,121 of 139,121 since 2025);
+  links from Rutschman's log open BOS @ TEX 822849 in full. NFL stays unlinked
+  until its group.
+- **MLB group (R8.1) closed 2026-09-17; operator moved on to R8.2.** Owed: the
+  live state again on a normal nine-inning game before 2026-09-27, and a
+  postponed game when one occurs.
 
 
 Spec: `docs/design/phase-g2/src/game.html`, `common-game.js`,

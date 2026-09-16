@@ -40,11 +40,12 @@ const OPS: Agg = (gs) => {
 };
 
 /**
- * No game links yet: `/mlb/game/[gameId]` renders only today's slate ("This game
- * isn't on today's slate"), so every past row would open a dead end — design
- * finding B5. R8 builds past-game pages and turns these on.
+ * Each game-log row links to its game (R8.1, R6-F6): `/mlb/game/[gameId]` reads
+ * any game by pk since R8.1, not only today's slate (design finding B5). Every
+ * MLB `player_game_history.event_id` is a StatsAPI game pk (measured 2026-09-17:
+ * 139,121 of 139,121 rows since 2025).
  */
-const gameHref = (_g: PlayerGame): string | null => null;
+const gameHref = (g: PlayerGame): string | null => (/^\d+$/.test(g.eventId) ? `/mlb/game/${g.eventId}` : null);
 
 export const MLB_HITTER_SPEC: ResearchSpec = {
   kind: 'hitter',

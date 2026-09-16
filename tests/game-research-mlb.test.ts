@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { mainGameLine, type GameQuote } from '../lib/odds/gameLineHistory';
+import { inGameLinesFrom, mainGameLine, type GameQuote } from '../lib/odds/gameLineHistory';
 import { mlbMarketResult, parseMlbBox } from '../lib/sports/mlb/liveFeedParsers';
 import { mlbGameState } from '../lib/sports/mlb/gameResearch';
 import { gameStates, resolveState } from '../lib/sports/shared/gameResearch';
@@ -228,4 +228,90 @@ test('a final game keeps the research below the recap without injuries, and a ga
   old.mlb.pregame.starters = null;
   const starters = toGameResearchData({ payload: old }).sections.find((s) => s.id === 'starters');
   assert.equal(starters?.state.kind, 'empty');
+});
+
+// ---------------------------------------------------------------------------
+// R8.1c — while the game is on
+// ---------------------------------------------------------------------------
+
+test('in-game "now" is the latest capture only: NYY @ MIN, 823655, after the Yankees tied it', () => {
+  const ml = (bookmaker: string, away: number, home: number, at: string) => [q(bookmaker, 'away', null, away, at, 'moneyline'), q(bookmaker, 'home', null, home, at, 'moneyline')];
+  const quotes = [
+    ...ml('draftkings', 680, -1440, '2026-09-16T20:15:00Z'),
+    ...ml('fanduel', 750, -1600, '2026-09-16T20:15:00Z'),
+    ...ml('draftkings', -148, 108, '2026-09-16T20:25:57Z'),
+  ];
+  const { now, moneyline } = inGameLinesFrom(quotes);
+  const line = now.find((n) => n.market === 'moneyline')!;
+  assert.deepEqual(line.line?.sides.map((s) => s.americanOdds), [-148, 108], 'FanDuel from ten minutes earlier is not blended in (it printed -148 / -1600)');
+  assert.equal(line.line?.books, 1);
+  assert.equal(line.asOf, '2026-09-16T20:25:57.000Z');
+  assert.equal(moneyline.length, 2);
+  assert.ok(moneyline[0].homePct > 85 && moneyline[1].homePct < 50, 'the trend turns at the tie');
+});
+
+test('in a capture, a line two books share beats a nearer-even line from one book', () => {
+  const at = '2026-09-16T19:48:37Z';
+  const quotes = [q('pinnacle', 'over', 6, 260, at), q('pinnacle', 'under', 6, -367, at), q('draftkings', 'over', 6.5, 450, at), q('draftkings', 'under', 6.5, -725, at), q('fanduel', 'over', 6.5, 410, at), q('fanduel', 'under', 6.5, -700, at)];
+  const total = inGameLinesFrom(quotes).now.find((n) => n.market === 'total')!;
+  assert.equal(total.line?.sides[0].point, 6.5);
+  assert.equal(total.line?.books, 2);
+});
+
+test('an in-game run line keeps each team on its own sign (DET @ TOR, 822763)', () => {
+  const at = '2026-09-16T19:48:37Z';
+  const rl = (bookmaker: string, away: number, awayPrice: number, homePrice: number) => [q(bookmaker, 'away', away, awayPrice, at, 'spread'), q(bookmaker, 'home', -away, homePrice, at, 'spread')];
+  const quotes = [...rl('betmgm', 1.5, -300, 225), ...rl('matchbook', 1.5, -333, 192), ...rl('betrivers', -1.5, 130, -190), ...rl('fanduel', -1.5, 132, -178), ...rl('unibet', -1.5, 135, -177)];
+  const main = mainGameLine('spread', quotes, { dropSuperseded: false });
+  assert.deepEqual(main?.sides.map((s) => [s.point, s.americanOdds]), [[-1.5, 132], [1.5, -178]], 'DET -1.5 from three books, not pooled with DET +1.5');
+  assert.equal(main?.books, 3);
+});
+
+test('while live: Right now leads, the tracker marks only an over, and Lines & props waits for the final', () => {
+  const payload = pregamePayload('final');
+  payload.state = 'live';
+  payload.mlb.props = [
+    { playerId: '9', name: 'Hitter', side: 'home', market: 'hits', line: 0.5, over: null, under: null, books: 5, result: 2 },
+    { playerId: '9', name: 'Hitter', side: 'home', market: 'total-bases', line: 3.5, over: null, under: null, books: 5, result: 2 },
+    { playerId: '8', name: 'Bench', side: null, market: 'hits', line: 0.5, over: null, under: null, books: 5, result: null },
+  ];
+  payload.mlb.live = {
+    inning: { number: 7, half: 'top', ordinal: '7th' },
+    outs: 1,
+    count: { balls: 2, strikes: 1 },
+    bases: { first: true, second: false, third: true },
+    batter: { id: 1, name: 'Batter', todayLine: '1-for-3' },
+    onDeck: null,
+    pitcher: { id: 2, name: 'Pitcher', ip: '6.0', h: 4, r: 2, k: 7, pitches: 91 },
+    inGame: { now: [{ market: 'moneyline', line: { market: 'moneyline', sides: [{ side: 'away', point: null, americanOdds: -118 }, { side: 'home', point: null, americanOdds: -108 }], books: 1 }, asOf: '2026-09-16T20:15:00Z' }], moneyline: [] },
+  };
+  // KC 1-0 when the price was captured at 20:15; 3-2 now. The home run's at-bat began at 20:14 and ended
+  // when the next one began at 20:21, after the capture, so its runs came after the price.
+  payload.mlb.atBats = [
+    { index: 0, startTime: '2026-09-16T19:12:00Z', awayScore: 1, homeScore: 0, pitches: [], event: 'Single' },
+    { index: 1, startTime: '2026-09-16T20:14:00Z', awayScore: 1, homeScore: 2, pitches: [], event: 'Home Run' },
+    { index: 2, startTime: '2026-09-16T20:21:00Z', awayScore: 1, homeScore: 2, pitches: [], event: 'Flyout' },
+  ] as unknown as typeof payload.mlb.atBats;
+  const data = toGameResearchData({ payload });
+  const ids = data.sections.map((s) => s.id);
+  assert.equal(ids[0], 'now');
+  assert.ok(!ids.includes('lines'));
+  assert.ok(!ids.includes('injuries'));
+  const now = data.sections[0];
+  const situation = now.rows[0][0];
+  assert.ok(situation.kind === 'table');
+  assert.equal(situation.rows.find((r) => r.key === 'bases')?.values.value, 'Runners on 1st and 3rd');
+  const tracker = now.rows[1][0];
+  assert.ok(tracker.kind === 'table');
+  assert.equal(tracker.scope, '2 of 3 markets have played');
+  assert.deepEqual(
+    tracker.rows.map((r) => [r.values.market, r.values.status, r.tones?.status ?? null]),
+    [
+      ['Hits', 'Over already', 'good'],
+      ['Total bases', '2 more to go over', null],
+    ],
+  );
+  const linesNow = now.rows[2][0];
+  assert.ok(linesNow.kind === 'table');
+  assert.match(linesNow.scope ?? '', /4 runs have scored since$/, 'a fifteen-minute-old price says the game has moved on');
 });

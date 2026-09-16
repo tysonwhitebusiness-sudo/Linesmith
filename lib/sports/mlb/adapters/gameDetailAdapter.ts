@@ -29,6 +29,7 @@ import type { PregameStarter } from '@/lib/sports/mlb/statcastRollupShapes';
 import { pitchTypeLabel } from '@/lib/sports/mlb/pitchProfileShapes';
 import { TEAM_ABBR_BY_ID } from '@/lib/sports/mlb/teamAliases';
 import { ordinal } from '@/lib/sports/shared/teamResearch';
+import { liveLineHit } from '@/lib/sports/shared/liveLine';
 
 /**
  * MLB → generic transforms for the `GameDetail.tsx` component family
@@ -643,9 +644,23 @@ export function toGameResearchData(input: { payload: MlbGameResearchPayload; req
   const { payload } = input;
   const state = resolveState(payload, input.requestedState);
   const chips = mlbLineChips(payload, state);
+  const wpNow = payload.mlb.winProbability[payload.mlb.winProbability.length - 1];
+  if (state === 'live' && wpNow) chips.unshift({ label: `Win probability ${payload.home.abbr} ${Math.round(wpNow.home * 100)}%` });
   const sections: ResearchSection[] =
     state === 'pre' || state === 'postponed'
       ? mlbPreSections(payload, state)
+      : state === 'live'
+        ? [
+            mlbNowSection(payload),
+            mlbFlowSection(payload),
+            mlbContactSection(payload),
+            mlbAtBatSection(payload),
+            mlbPitchingSection(payload),
+            mlbBoxSection(payload),
+            mlbPlaysSection(payload),
+            // Lines & props waits for the final: in play, the props tracker and in-game odds say it.
+            ...mlbComingInSections(payload, state),
+          ].filter((s): s is ResearchSection => s !== null)
       : [
           mlbFlowSection(payload),
           mlbContactSection(payload),
@@ -1431,4 +1446,181 @@ function mlbInjuriesSection(payload: MlbGameResearchPayload): ResearchSection | 
     rows: [[{ kind: 'table', key: 'injuries', title: 'Injured list and day-to-day', scope: 'as the rosters read now', labelHeader: 'Player', columns: views[0].columns, rows: views[0].rows, views, fixedOrder: true }]],
     state: { kind: 'ready' },
   };
+}
+
+// ---------------------------------------------------------------------------
+// R8.1c — while the game is on
+// ---------------------------------------------------------------------------
+
+const etTime = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
+
+function runners(b: { first: boolean; second: boolean; third: boolean }): string {
+  const on = [b.first && '1st', b.second && '2nd', b.third && '3rd'].filter(Boolean) as string[];
+  if (!on.length) return 'Bases empty';
+  if (on.length === 3) return 'Bases loaded';
+  return `${on.length === 1 ? 'Runner' : 'Runners'} on ${on.join(' and ')}`;
+}
+
+/** Where the game stands, the at-bat under way, each prop so far, and the books now. */
+function mlbNowSection(payload: MlbGameResearchPayload): ResearchSection {
+  const m = payload.mlb;
+  const live = m.live;
+  const rows: ResearchCard[][] = [];
+
+  if (live) {
+    const wp = m.winProbability[m.winProbability.length - 1];
+    const text = (key: string, label: string, value: string, href?: string | null) => ({ key, label, href: href ?? null, values: { value } });
+    const situation: ResearchCard = {
+      kind: 'table',
+      key: 'situation',
+      title: 'The game now',
+      scope: `${live.inning.half === 'top' ? 'Top' : 'Bottom'} of the ${live.inning.ordinal}`,
+      labelHeader: '',
+      fixedOrder: true,
+      columns: [{ key: 'value', label: '', decimals: 0, text: true }],
+      rows: [
+        text('outs', 'Outs', String(live.outs)),
+        text('count', 'Count', `${live.count.balls}-${live.count.strikes}`),
+        text('bases', 'On base', runners(live.bases)),
+        ...(live.batter ? [text('batter', 'At bat', `${live.batter.name} · ${live.batter.todayLine}`, `/mlb/player/${live.batter.id}`)] : []),
+        ...(live.pitcher
+          ? [text('pitcher', 'Pitching', `${live.pitcher.name} · ${live.pitcher.ip} IP, ${live.pitcher.h} H, ${live.pitcher.r} R, ${live.pitcher.k} K, ${live.pitcher.pitches} pitches`, `/mlb/player/${live.pitcher.id}`)]
+          : []),
+        ...(live.onDeck ? [text('deck', 'On deck', `${live.onDeck.name} · ${live.onDeck.todayLine}`, `/mlb/player/${live.onDeck.id}`)] : []),
+        ...(wp ? [text('wp', 'Win probability', `${payload.home.abbr} ${(wp.home * 100).toFixed(1)}% · ${payload.away.abbr} ${(100 - wp.home * 100).toFixed(1)}%`)] : []),
+      ],
+    };
+    // The plate appearance under way is the feed's last; between batters it is the one just finished.
+    const ab = m.atBats[m.atBats.length - 1];
+    const located = ab ? ab.pitches.map((p, i) => ({ p, i })).filter(({ p }) => p.pX != null && p.pZ != null) : [];
+    const types = ab ? [...new Set(ab.pitches.map((p) => p.type ?? 'unknown'))] : [];
+    const last = ab?.pitches[ab.pitches.length - 1];
+    const atBat: ResearchCard | null =
+      ab && located.length
+        ? {
+            kind: 'scatter',
+            key: 'at-bat',
+            title: `${ab.event ? 'Last' : 'Now'}: ${ab.batter} vs ${ab.pitcher}`,
+            scope: last ? `last pitch ${last.typeName ?? last.type ?? ''} ${last.speed ?? '—'} mph, ${(last.call ?? '').toLowerCase()}` : undefined,
+            surface: 'zone',
+            points: located.map(({ p }) => [p.type ?? 'unknown', p.pX!, p.pZ!]),
+            labels: located.map(({ i }) => String(i + 1)),
+            tips: located.map(({ p, i }) => [`${i + 1}. ${p.typeName ?? p.type ?? 'Pitch'} ${p.speed ?? '—'} mph`, `${p.call ?? ''} · count ${p.balls ?? 0}-${p.strikes ?? 0}`]),
+            groups: types.map((t) => ({ key: t, label: ab.pitches.find((p) => (p.type ?? 'unknown') === t)?.typeName ?? t, count: ab.pitches.filter((p) => (p.type ?? 'unknown') === t).length })),
+            defaultVisible: types,
+            caption: ab.event ? `${ab.event}: ${ab.description ?? ''}` : 'Catcher’s view. Numbers are the pitch order.',
+          }
+        : null;
+    rows.push(atBat ? [situation, atBat] : [situation]);
+  }
+
+  // Props tracker: each main line at the start against the player's number so far.
+  const held = m.props.filter((p) => p.books >= 2);
+  const tracked = held
+    .filter((p) => p.result != null)
+    .map((p) => ({ p, so: p.result!, share: p.result! / Math.max(p.line, 0.5) }))
+    .sort((a, b) => b.share - a.share || a.p.name.localeCompare(b.p.name));
+  rows.push([
+    {
+      kind: 'table',
+      key: 'props-tracker',
+      title: 'Props tracker',
+      scope: held.length ? `${tracked.length} of ${held.length} markets have played` : undefined,
+      info: 'The main line at the start against the box score so far. An over is marked once the number passes the line; an under cannot be settled until the game ends.',
+      labelHeader: 'Player',
+      fixedOrder: true,
+      emptyText: held.length ? 'No player with a prop has appeared yet' : 'No player props held for this game',
+      columns: [
+        { key: 'market', label: 'Market', decimals: 0, text: true },
+        { key: 'line', label: 'Line', decimals: 1 },
+        { key: 'so', label: 'So far', decimals: 0 },
+        { key: 'status', label: 'Status', decimals: 0, text: true },
+      ],
+      rows: tracked.map(({ p, so }) => {
+        const over = liveLineHit('O', so, p.line);
+        const row: ResearchTableRow = {
+          key: `${p.playerId}-${p.market}`,
+          label: p.name,
+          labelNote: p.side ? payload[p.side].abbr : null,
+          href: `/mlb/player/${p.playerId}`,
+          values: { market: MLB_MARKET_LABELS[p.market] ?? p.market, line: p.line, so, status: over ? 'Over already' : `${Math.floor(p.line - so) + 1} more to go over` },
+        };
+        if (over) row.tones = { status: 'good' };
+        return row;
+      }),
+    },
+  ]);
+
+  // In-game odds.
+  const inGame = live?.inGame;
+  if (inGame) {
+    const close = (market: string) => m.lines.find((l) => l.market === market)?.close ?? null;
+    const quote = (market: string, s: { point: number | null; americanOdds: number | null } | undefined) =>
+      s ? `${s.point != null ? `${market === 'spread' && s.point > 0 ? '+' : ''}${s.point} ` : ''}${am(s.americanOdds)}` : '—';
+    const sideLabel = (market: string, side: string) =>
+      market === 'moneyline' ? `Moneyline · ${payload[side as 'away' | 'home'].abbr}` : market === 'spread' ? `Run line · ${payload[side as 'away' | 'home'].abbr}` : `Total · ${side}`;
+    const lineRows = inGame.now.flatMap((n) =>
+      (n.line?.sides ?? []).map((s) => ({
+        key: `${n.market}-${s.side}`,
+        label: sideLabel(n.market, s.side),
+        values: { close: quote(n.market, close(n.market)?.sides.find((x) => x.side === s.side)), now: quote(n.market, s), books: n.line?.books ?? null, at: etTime(n.asOf) },
+      })),
+    );
+    const asOf = inGame.now.map((n) => n.asOf).sort().pop();
+    // Captures land about every fifteen minutes; say how much of the game has happened since.
+    // A plate appearance's score counts once the next one has begun: the feed stamps starts, not ends, and
+    // 822763's run at 4:21 came in an at-bat that began before the 4:20 capture.
+    let scoreThen = 0;
+    m.atBats.forEach((ab, i) => {
+      const ended = m.atBats[i + 1]?.startTime;
+      if (asOf && ended && ended <= asOf && ab.awayScore != null && ab.homeScore != null) scoreThen = ab.awayScore + ab.homeScore;
+    });
+    const runsSince = asOf ? (payload.away.score ?? 0) + (payload.home.score ?? 0) - scoreThen : 0;
+    const linesNow: ResearchCard = {
+      kind: 'table',
+      key: 'lines-now',
+      title: 'Lines now',
+      scope: asOf ? `latest capture ${etTime(asOf)} ET${runsSince > 0 ? ` · ${runsSince} ${runsSince === 1 ? 'run has' : 'runs have'} scored since` : ''}` : 'since the first pitch',
+      labelHeader: 'Market',
+      fixedOrder: true,
+      emptyText: 'No prices captured since the first pitch',
+      columns: [
+        { key: 'close', label: 'At the start', decimals: 0 },
+        { key: 'now', label: 'Now', decimals: 0 },
+        { key: 'books', label: 'Books', decimals: 0 },
+        { key: 'at', label: 'Captured', decimals: 0 },
+      ],
+      rows: lineRows,
+      caption: 'Each market from its latest capture only, however few books it holds: prices are captured about every fifteen minutes during a game, not pitch by pitch, and an older price from another book is not current.',
+    };
+    const ml = inGame.moneyline;
+    const trend: ResearchCard =
+      ml.length >= 2
+        ? {
+            kind: 'series',
+            key: 'ml-trend',
+            title: `${payload.home.abbr} moneyline chance`,
+            scope: `${ml.length} captures since the first pitch`,
+            values: ml.map((x) => Math.round(x.homePct * 10) / 10),
+            xLabels: ml.map((x, i) => (i === 0 || i === ml.length - 1 ? etTime(x.t) : '')),
+            reference: { value: 50, label: 'even' },
+            zeroBased: true,
+            min: 0,
+            max: 100,
+            decimals: 0,
+            unit: '%',
+            tips: ml.map((x) => [`${payload.home.abbr} ${x.homePct.toFixed(1)}%`, `${etTime(x.t)} ET · ${x.books === 1 ? 'one book' : `${x.books} books, median`}, vig removed`]),
+            caption: 'Each book’s two moneyline prices with the vig taken out, then the median across books.',
+          }
+        : {
+            kind: 'status',
+            key: 'ml-trend',
+            title: `${payload.home.abbr} moneyline chance`,
+            headline: ml.length ? 'One capture so far' : 'No captures yet',
+            reason: 'Prices are captured about every fifteen minutes; the trend draws from the second capture.',
+          };
+    rows.push([linesNow, trend]);
+  }
+
+  return { id: 'now', navLabel: 'Right now', title: 'Right now', sub: 'refreshed every 15 seconds', rows, state: { kind: 'ready' } };
 }

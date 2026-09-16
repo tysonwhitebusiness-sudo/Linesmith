@@ -258,9 +258,14 @@ const PAIRS: Record<GameHistoryMarket, [string, string]> = { moneyline: ['away',
  * not count (`SUPERSEDED_AFTER_MS`'s reasoning for props). Pass `dropSuperseded:
  * false` for opening quotes, which are old by definition.
  *
- * A spread's two sides carry opposite signs, so points are paired on |point|.
+ * A spread's two sides carry opposite signs, so a side is keyed on the AWAY
+ * team's handicap (the home side's point negated). Pairing on |point| pooled
+ * DET +1.5 (BetMGM) with DET -1.5 (BetRivers) in one in-game capture on
+ * 822763, once the game had made Detroit the underdog at some books and not
+ * others; before the start every book agrees on the favourite, so nothing
+ * pre-game changes.
  */
-export function mainGameLine(market: GameHistoryMarket, quotes: GameQuote[], options: { dropSuperseded: boolean }): MainGameLine | null {
+export function mainGameLine(market: GameHistoryMarket, quotes: GameQuote[], options: { dropSuperseded: boolean; minBooks?: number }): MainGameLine | null {
   let qs = quotes.filter((q) => q.market === market && Number.isFinite(q.americanOdds));
   if (options.dropSuperseded) {
     const newest = new Map<string, number>();
@@ -268,7 +273,7 @@ export function mainGameLine(market: GameHistoryMarket, quotes: GameQuote[], opt
     qs = qs.filter((q) => Date.parse(q.observedAt) >= newest.get(q.bookmaker)! - 30 * 60_000);
   }
   const [aSide, bSide] = PAIRS[market];
-  const key = (q: GameQuote) => (q.point == null ? 'null' : String(Math.abs(q.point)));
+  const key = (q: GameQuote) => (q.point == null ? 'null' : market === 'spread' ? String(q.side === aSide ? q.point : -q.point) : String(Math.abs(q.point)));
   const byPoint = new Map<string, { a: Map<string, GameQuote>; b: Map<string, GameQuote> }>();
   for (const q of qs) {
     if (q.side !== aSide && q.side !== bSide) continue;
@@ -279,7 +284,7 @@ export function mainGameLine(market: GameHistoryMarket, quotes: GameQuote[], opt
   const candidates: Array<{ k: string; books: string[]; imbalance: number }> = [];
   for (const [k, g] of byPoint) {
     const books = [...g.a.keys()].filter((b) => g.b.has(b));
-    if (books.length < 2) continue;
+    if (books.length < (options.minBooks ?? 2)) continue;
     const imbalance = books.reduce((sum, b) => sum + Math.abs(implied(g.a.get(b)!.americanOdds) - implied(g.b.get(b)!.americanOdds)), 0) / books.length;
     candidates.push({ k, books, imbalance });
   }
@@ -350,4 +355,88 @@ export async function readPreGameOpenClose(eventId: string, startsAt: string): P
     open: mainGameLine(market, firstPerBook, { dropSuperseded: false }),
     close: mainGameLine(market, close, { dropSuperseded: true }),
   })).filter((x) => x.open || x.close);
+}
+
+export interface InGameLines {
+  /** Each market's main line from its latest capture after the start; `asOf` is that capture's time. */
+  now: Array<{ market: GameHistoryMarket; line: MainGameLine | null; asOf: string }>;
+  /** The home side's moneyline chance, vig removed per book, median across books, one point per 5-minute capture. */
+  moneyline: Array<{ t: string; homePct: number; books: number }>;
+}
+
+const IN_GAME_BUCKET_MS = 5 * 60_000;
+/** Quotes this close to a market's newest in-game quote belong to the same capture. */
+const CAPTURE_MS = 2 * 60_000;
+
+/**
+ * Prices AFTER the start, up to now (R2's in-game block) — R8.1c's in-game odds
+ * card. Measured 2026-09-16 on NYY @ MIN (823655): 494 quotes from 16-21 books
+ * over 13 capture minutes in three hours, so a capture lands about every
+ * fifteen minutes; the card says what it has rather than drawing a tick chart.
+ *
+ * "NOW" IS THE LATEST CAPTURE ONLY. A 30-minute window was tried first and
+ * paired DraftKings' 20:25 moneyline (NYY -148, after the Yankees tied it)
+ * with FanDuel's 20:15 (MIN -1600, before), printing -148 / -1600. In play a
+ * price is only as current as its capture, so older books are not blended in,
+ * and a capture from one book is shown as one book (`books: 1`) rather than
+ * replaced by an older market.
+ */
+export async function readInGameLines(eventId: string, startsAt: string, now: Date = new Date()): Promise<InGameLines> {
+  const windows = historyWindows(startsAt, 1, now);
+  if (!windows.inGame) return { now: [], moneyline: [] };
+  const rows = await pgAll<{ market: string; side: string; bookmaker: string; point: number | null; american_odds: number; observed_at: Date | string }>(
+    `SELECT market, side, bookmaker, point, american_odds, observed_at
+       FROM game_odds_history
+      WHERE event_id = ? AND observed_at > ? AND observed_at <= ? AND american_odds IS NOT NULL
+      ORDER BY observed_at`,
+    [eventId, windows.inGame.from.toISOString(), windows.inGame.to.toISOString()],
+  );
+  const quotes: GameQuote[] = rows.map((r) => ({
+    market: r.market,
+    side: r.side,
+    bookmaker: r.bookmaker,
+    point: r.point == null ? null : Number(r.point),
+    americanOdds: Number(r.american_odds),
+    observedAt: (r.observed_at instanceof Date ? r.observed_at : new Date(r.observed_at)).toISOString(),
+  }));
+  return inGameLinesFrom(quotes);
+}
+
+const trueMedian = (xs: number[]) => {
+  const v = [...xs].sort((a, b) => a - b);
+  const mid = Math.floor(v.length / 2);
+  return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
+};
+
+/** The pure half of `readInGameLines`, so the rule is tested without a database. Quotes oldest first. */
+export function inGameLinesFrom(quotes: GameQuote[]): InGameLines {
+  const nowLines = GAME_HISTORY_MARKETS.flatMap((market) => {
+    const qs = quotes.filter((q) => q.market === market);
+    if (!qs.length) return [];
+    const newest = Math.max(...qs.map((q) => Date.parse(q.observedAt)));
+    const capture = new Map<string, GameQuote>();
+    for (const q of qs) if (Date.parse(q.observedAt) >= newest - CAPTURE_MS) capture.set(`${q.bookmaker}|${q.side}|${q.point}`, q);
+    const inCapture = [...capture.values()];
+    // A line two books share is the market; one book's line stands in only when the capture has nothing more.
+    const line = mainGameLine(market, inCapture, { dropSuperseded: false }) ?? mainGameLine(market, inCapture, { dropSuperseded: false, minBooks: 1 });
+    return [{ market, line, asOf: new Date(newest).toISOString() }];
+  });
+
+  const buckets = new Map<number, Map<string, { home?: number; away?: number }>>();
+  for (const q of quotes) {
+    if (q.market !== 'moneyline' || (q.side !== 'home' && q.side !== 'away')) continue;
+    const t = Math.floor(Date.parse(q.observedAt) / IN_GAME_BUCKET_MS) * IN_GAME_BUCKET_MS;
+    const books = buckets.get(t) ?? new Map();
+    const b = books.get(q.bookmaker) ?? {};
+    b[q.side] = q.americanOdds; // oldest first, so the last quote in the bucket wins
+    books.set(q.bookmaker, b);
+    buckets.set(t, books);
+  }
+  const moneyline = [...buckets.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .flatMap(([t, books]) => {
+      const pcts = [...books.values()].filter((b) => b.home != null && b.away != null).map((b) => implied(b.home!) / (implied(b.home!) + implied(b.away!)));
+      return pcts.length ? [{ t: new Date(t).toISOString(), homePct: 100 * trueMedian(pcts), books: pcts.length }] : [];
+    });
+  return { now: nowLines, moneyline };
 }

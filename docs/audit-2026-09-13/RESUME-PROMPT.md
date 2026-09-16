@@ -17,12 +17,12 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 
 ## Where the work is
 
-- **Now: R8, the game page, MLB first (operator).** 8.1a (shared shell +
-  final recap, `7caba8d`) and 8.1b (before-start research) are committed; next
-  is **8.1c, the live state** ("Right now", props tracker, in-game odds),
-  verified on live MLB games before the regular season ends 2026-09-27. Then
-  stop for MLB sign-off. Read the plan's R8 section and its "R8.1 (MLB)
-  progress" record first.
+- **Now: R8, the game page.** The MLB group (R8.1: shell, recap, before-start
+  research, live) is done and closed 2026-09-17 (`7caba8d`, `2528708`, and the
+  8.1c commit). Next is **R8.2, football (NFL and CFB)** on the shared
+  `GameResearchPage` shell, with a premise check first; stop for sign-off
+  after it. Read the plan's R8 section and its "R8.1 (MLB) progress" record.
+  Owed from MLB: live again on a nine-inning game before 2026-09-27.
 - R1-R5 signed off; R6 complete for every sport (live renders owed, below);
   R7 (team page) signed off 2026-09-16.
 - Commits: `512b42a` (Step 0), `0169de1`/`5c46b29`/`48abdc5` (R6.1a),

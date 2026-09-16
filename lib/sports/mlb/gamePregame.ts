@@ -179,7 +179,27 @@ async function propHistory(props: Array<{ playerId: string; market: string }>, s
   return out;
 }
 
-export async function readMlbPregame(input: { gamePk: number; date: string; season: number; awayId: number; homeId: number; props: Array<{ playerId: string; market: string }> }): Promise<MlbPregame> {
+const MEMO_MS = 30 * 60_000;
+const memo = new Map<number, { value: MlbPregame; expiresAt: number }>();
+
+type PregameInput = { gamePk: number; date: string; season: number; awayId: number; homeId: number; props: Array<{ playerId: string; market: string }>; memoize?: boolean };
+
+/**
+ * `memoize` is for a game already under way: every read is cut before it, so
+ * the answer cannot change, and the live page's 15-second refresh should not
+ * re-sum a league's production each time. Process memory, like the StatsAPI
+ * reads it sits beside; a restart reads it again.
+ */
+export async function readMlbPregame(input: PregameInput): Promise<MlbPregame> {
+  if (!input.memoize) return readPregame(input);
+  const hit = memo.get(input.gamePk);
+  if (hit && hit.expiresAt > Date.now()) return hit.value;
+  const value = await readPregame(input);
+  memo.set(input.gamePk, { value, expiresAt: Date.now() + MEMO_MS });
+  return value;
+}
+
+async function readPregame(input: PregameInput): Promise<MlbPregame> {
   const { gamePk, date, season, awayId, homeId } = input;
   const [str, awaySched, homeSched, awayLast, starters, history, awayInj, homeInj] = await Promise.all([
     strength(season, date, [String(awayId), String(homeId)]).catch(() => ({ season, note: null, rows: [] })),
