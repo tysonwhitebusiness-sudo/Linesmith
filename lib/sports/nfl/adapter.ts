@@ -170,7 +170,7 @@ const DEFAULT_LINES: Record<string, number> = {
 };
 
 /** Which markets are even sensible for a position — a lineman never gets a passing-yards candidate. */
-/** Exported so `tests/nfl-target-map` can check the 6.8 position gate against it. */
+/** Exported so `tests/nfl-targets` can check the section's role gate against it. */
 export const MARKETS_BY_POSITION: Record<string, string[]> = {
   QB: ['passing-yards', 'passing-tds', 'interceptions-thrown', 'rushing-yards', 'rushing-tds'],
   RB: ['rushing-yards', 'rushing-tds', 'receiving-yards', 'receptions', 'receiving-tds'],

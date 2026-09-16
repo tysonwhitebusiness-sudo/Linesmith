@@ -13,14 +13,15 @@ import { entryValue, isOk, type WindowedStat } from '@/lib/core/windowedStat';
 import { compareInk, gradientCardStyle, deltaGradientStyle } from '@/lib/ui/heat';
 import { markFor, TONE_CLASS } from '@/lib/ui/marks';
 import { useLiveGame } from './useLiveGame';
+import { useFootballLiveGame } from './useFootballLiveGame';
 import { useTeamStatcast } from './useTeamStatcast';
 import { useMlbStatcast } from './useMlbStatcast';
 import type { MlbStatcastInput } from '@/lib/sports/mlb/adapters/playerResearchSections';
 import { useNhlShotProfile } from './useNhlShotProfile';
 import { useNbaShotProfile } from './useNbaShotProfile';
-import { useNflTargetMap } from './useNflTargetMap';
+import { useNflTargets } from './useNflTargets';
 import { useGolfShotProfile } from './useGolfShotProfile';
-import { TARGET_MAP_POSITIONS } from '@/lib/sports/nfl/targetMapShapes';
+import { nflTargetRole, type NflTargetsInput } from '@/lib/sports/nfl/targetShapes';
 import { useLineHistory } from './useLineHistory';
 import { candidateCategoryToSide, candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import { LineMovementCard } from './LineMovementCard';
@@ -733,13 +734,13 @@ function ScopeChips({
  * selection `data` makes below for the market adapters, but keyed on the
  * SUBJECT's sport so it works with no candidate at all (R6.1a).
  */
-function toResearchData(sport: string, history: PlayerHistory, bio: PlayerBio | null, extras: { mlbStatcast?: MlbStatcastInput }): PlayerResearchData | null {
+function toResearchData(sport: string, history: PlayerHistory, bio: PlayerBio | null, extras: { mlbStatcast?: MlbStatcastInput; nflTargets?: NflTargetsInput }): PlayerResearchData | null {
   const input = { history, bio };
   switch (sport) {
     case 'mlb':
       return toMlbPlayerResearchData({ ...input, statcast: extras.mlbStatcast });
     case 'nfl':
-      return toNflPlayerResearchData(input);
+      return toNflPlayerResearchData({ ...input, targets: extras.nflTargets });
     case 'cfb':
       return toCfbPlayerResearchData(input);
     case 'nba':
@@ -915,6 +916,10 @@ export function PlayerDetail({
   // 404, so there is nothing to poll for.
   const gameIsInProgressHint = active?.sport === 'mlb' && typeof meta.gamePk === 'number' && started;
   const playerLive = useLiveGame(gamePk, gameIsInProgressHint, 15_000, active?.subjectId);
+  // C4 for football (R6.2). ESPN's summary answers for both leagues, so one
+  // hook serves NFL and CFB; it idles until the scheduled start has passed.
+  const isFootball = active?.sport === 'nfl' || active?.sport === 'cfb';
+  const footballLive = useFootballLiveGame(active?.sport === 'cfb' ? 'cfb' : 'nfl', isFootball ? gamePkStr : undefined, isFootball && started, 15_000);
   const opponentTeamStatcast = useTeamStatcast(isPitcherSubject ? opponentId : undefined);
 
   // MLB Statcast, from the R5a rollup (R6.1b). One route serves three readers:
@@ -982,25 +987,6 @@ export function PlayerDetail({
     })(),
   );
 
-  // NFL's target map (6.8). Unlike NBA/NHL, the id CANNOT be parsed out of
-  // `subjectId` — that is `espn:nfl:{athleteId}` while `nfl_target_events`
-  // is keyed by GSIS id, and the crosswalk between them reads the DB. The
-  // server adapter resolves it once and carries it on `subjectMeta.gsisId`.
-  //
-  // POSITION-GATED, and not merely to save a fetch — see
-  // `TARGET_MAP_POSITIONS` for the quarterback case that makes it necessary.
-  const nflGsisId = typeof meta.gsisId === 'string' ? meta.gsisId : undefined;
-  const nflIsPassCatcher =
-    typeof meta.position === 'string' && (TARGET_MAP_POSITIONS as readonly string[]).includes(meta.position);
-  // The season comes from this player's OWN history rather than the clock:
-  // `raw.season` is the season those weekly box scores were pulled for, so the
-  // map always describes the same season the windows and gamelog above it do.
-  const nflHistorySeason = Number((active?.history?.at(-1)?.raw as Record<string, unknown> | undefined)?.season);
-  const nflTargetMap = useNflTargetMap(
-    active?.sport === 'nfl' && nflIsPassCatcher ? nflGsisId : undefined,
-    Number.isInteger(nflHistorySeason) && nflHistorySeason > 1998 ? nflHistorySeason : undefined,
-  );
-
   // Golf's shot-by-shot profile (6.13). BY NAME, not by id: the seed stores
   // PGA Tour's player id and `subjectId` is ESPN's, and both are five-digit
   // numbers -- so an id lookup returns nothing and looks like a golfer with no
@@ -1034,6 +1020,24 @@ export function PlayerDetail({
   const historySport = researchSport ? historySportFor(researchSport, researchLeague) : null;
   const bioState = usePlayerBio(researchSport === 'golf' ? 'golf' : historySport, researchAthleteId);
   const historyState = usePlayerHistory(historySport, researchAthleteId);
+  // NFL's located passes (R6.2) — the page's own subject and the role his
+  // position implies, so a player with no market still gets his section. The
+  // route resolves the nflverse id; idle for every other sport.
+  const nflRole = researchSport === 'nfl' ? nflTargetRole(bioState.data?.positionAbbr) : null;
+  const nflTargets = useNflTargets(researchSport === 'nfl' && nflRole ? researchAthleteId ?? undefined : undefined, nflRole ?? undefined);
+  const nflTargetsInput = useMemo<NflTargetsInput | undefined>(
+    () =>
+      researchSport !== 'nfl' || !nflRole
+        ? undefined
+        : {
+            season: sportSectionSeason,
+            data: nflTargets.data,
+            loading: nflTargets.loading || (bioState.loading && !bioState.data),
+            error: nflTargets.error,
+            emptyReason: 'The play-by-play the app stores holds 2024 onwards; this player has no located pass in it.',
+          },
+    [researchSport, nflRole, sportSectionSeason, nflTargets, bioState.loading, bioState.data],
+  );
   // The Statcast rollup holds 2025 on; offer the seasons this player has games in.
   const mlbStatcastInput = useMemo<MlbStatcastInput | undefined>(() => {
     if (researchSport !== 'mlb') return undefined;
@@ -1049,8 +1053,8 @@ export function PlayerDetail({
     };
   }, [researchSport, historyState.data, statcastNowSeason, sportSectionSeason, statcastForSection, mlbPlayerId]);
   const research = useMemo(
-    () => (researchSport && historyState.data ? toResearchData(researchSport, historyState.data, bioState.data, { mlbStatcast: mlbStatcastInput }) : null),
-    [researchSport, historyState.data, bioState.data, mlbStatcastInput],
+    () => (researchSport && historyState.data ? toResearchData(researchSport, historyState.data, bioState.data, { mlbStatcast: mlbStatcastInput, nflTargets: nflTargetsInput }) : null),
+    [researchSport, historyState.data, bioState.data, mlbStatcastInput, nflTargetsInput],
   );
   const stickyTop = useStickyHeaderHeight(Boolean(subject) && !embedded);
   const sectionIds = (research?.sections ?? []).map((x) => `${x.id}:${x.navLabel}`).join('|');
@@ -1092,7 +1096,7 @@ export function PlayerDetail({
             snapshot,
             scope: { lineOffset, opponentOnly, lastN },
             propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
-            targetMap: nflTargetMap,
+            live: footballLive,
           })
         : active.sport === 'soccer'
           ? toSoccerPlayerDetailData({
@@ -1110,6 +1114,7 @@ export function PlayerDetail({
                 scope: { lineOffset, opponentOnly, lastN },
                 propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
                 teamDefenseAllowed: cfbTeamDefense.teams,
+                live: footballLive,
               })
             : active.sport === 'nba'
               ? toNbaPlayerDetailData({
@@ -1202,7 +1207,8 @@ export function PlayerDetail({
     opposingStatcast.loading ||
     nhlShotProfile.loading ||
     nbaShotProfile.loading ||
-    nflTargetMap.loading ||
+    nflTargets.loading ||
+    footballLive.loading ||
     golfShotProfile.loading ||
     lineHistory.loading ||
     cfbTeamDefense.loading ||

@@ -63,3 +63,4 @@ export { StreakStrip, type StreakStripProps } from './StreakStrip';
 export { SplitDumbbell, type SplitDumbbellProps, type SplitDumbbellRow } from './SplitDumbbell';
 export { Histogram, type HistogramBin } from './Histogram';
 export { ZoneScatter, type ZoneScatterGroup } from './ZoneScatter';
+export { FieldScatter } from './FieldScatter';

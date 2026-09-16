@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Avatar, Card, Chip, DataTable, EmptyState, ErrorState, FactList, RankRow, SegmentedToggle, SelectBox, Skeleton, StatGrid, StatValue, StatusPill, VizLegend, type CardState, type Column } from './ui';
-import { CATEGORICAL, Histogram, SeriesChart, ZoneScatter } from './charts';
+import { CATEGORICAL, FieldScatter, Histogram, SeriesChart, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import {
   formatResearchValue,
@@ -428,7 +428,11 @@ function ScatterCard({ card }: { card: Extract<ResearchCard, { kind: 'scatter' }
           </Chip>
         ))}
       </div>
-      <ZoneScatter points={card.points} groups={card.groups} visible={visible} label={card.title} />
+      {card.surface === 'field' ? (
+        <FieldScatter points={card.points} groups={card.groups} visible={visible} label={card.title} />
+      ) : (
+        <ZoneScatter points={card.points} groups={card.groups} visible={visible} label={card.title} />
+      )}
     </Card>
   );
 }

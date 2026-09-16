@@ -287,8 +287,12 @@ export type ResearchCard =
       title: string;
       scope?: string;
       caption?: string;
-      /** Where the points are drawn. `zone` is the strike zone, catcher's view, feet. */
-      surface: 'zone';
+      /**
+       * Where the points are drawn. `zone` is the strike zone, catcher's view,
+       * in feet (x across, y up). `field` is a football field from behind the
+       * quarterback: x is the lateral position in [-1, 1], y is air yards.
+       */
+      surface: 'zone' | 'field';
       points: Array<[string | null, number, number]>;
       /** Most common first; colour follows this order. The reader toggles groups on and off. */
       groups: Array<{ key: string; label: string; count: number }>;

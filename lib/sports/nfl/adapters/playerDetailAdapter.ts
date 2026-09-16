@@ -36,11 +36,13 @@ import { directionMark, marketText } from '@/components/MarketLabel';
 import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import { teamPrimaryColor } from '@/lib/sports/nfl/teamColors';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
+import { repriceAtMainLine } from '@/lib/odds/props/mainLine';
+import { toFootballGameState } from '@/lib/sports/multiSport/footballGameState';
 import type { PropOddsRow } from '@/lib/db/client';
 import { toRoleStat, type OpponentUnitRole, type SpatialGridRole } from '@/lib/sports/shared/playerRoles';
-import type { NflTargetMap } from '@/lib/sports/nfl/targetMapShapes';
+import { nflTargetsSection, type NflTargetsInput } from '@/lib/sports/nfl/targetShapes';
 import { MIDDOT, fmt } from '@/components/charts/tokens';
-import type { PlayerSeasonRank, PlayerSeasonStats } from '@/lib/sports/nfl/nflverse';
+import type { PlayerSeasonStats } from '@/lib/sports/nfl/nflverse';
 import { MATCHUP_GROUP_BY_POSITION, playerMatchupRows } from '@/components/NflPlayerVsDefenseCard';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import type {
@@ -89,43 +91,6 @@ function ordinal(rank: number): string {
   return `${rank}${suffix}`;
 }
 
-type SeasonRankMap = Partial<Record<'passingYards' | 'passingTds' | 'rushingYards' | 'rushingTds' | 'receptions' | 'receivingYards' | 'receivingTds', PlayerSeasonRank>>;
-
-interface SeasonStatRow { key: string; label: string; value: number; rank?: PlayerSeasonRank }
-
-function seasonTotalsRows(seasonStats: PlayerSeasonStats | undefined, position: string | undefined, seasonRanks: SeasonRankMap | undefined): SeasonStatRow[] {
-  if (!seasonStats) return [];
-  const r = (key: keyof SeasonRankMap, label: string, value: number): SeasonStatRow => ({ key, label, value, rank: seasonRanks?.[key] });
-  switch (position) {
-    case 'QB':
-      return [
-        { key: 'games', label: 'Games', value: seasonStats.games },
-        r('passingYards', 'Pass Yds', seasonStats.passingYards),
-        r('passingTds', 'Pass TD', seasonStats.passingTds),
-        r('rushingYards', 'Rush Yds', seasonStats.rushingYards),
-        r('rushingTds', 'Rush TD', seasonStats.rushingTds),
-      ];
-    case 'RB':
-    case 'FB':
-      return [
-        { key: 'games', label: 'Games', value: seasonStats.games },
-        r('rushingYards', 'Rush Yds', seasonStats.rushingYards),
-        r('rushingTds', 'Rush TD', seasonStats.rushingTds),
-        r('receptions', 'Receptions', seasonStats.receptions),
-        r('receivingYards', 'Rec Yds', seasonStats.receivingYards),
-      ];
-    case 'WR':
-    case 'TE':
-      return [
-        { key: 'games', label: 'Games', value: seasonStats.games },
-        r('receptions', 'Receptions', seasonStats.receptions),
-        r('receivingYards', 'Rec Yds', seasonStats.receivingYards),
-        r('receivingTds', 'Rec TD', seasonStats.receivingTds),
-      ];
-    default:
-      return [{ key: 'games', label: 'Games', value: seasonStats.games }];
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Input shape
@@ -139,13 +104,16 @@ export interface NflPlayerDetailScope {
 }
 
 export interface NflPlayerDetailInput {
+  /**
+   * `useFootballLiveGame(...)`'s result — C4's game state (R6.2). Structural,
+   * not an import of the hook's type, so this file stays a pure transform.
+   */
+  live?: { data: import('@/lib/sports/multiSport/footballLiveGame').FootballLiveGameDetail | null; loading: boolean };
   candidates: PickCandidate[];
   market?: string;
   snapshot: SportSnapshot | null;
   scope: NflPlayerDetailScope;
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
-  /** `useNflTargetMap(...)`'s result — the target map (6.8). Structural, not an import of the hook's type. */
-  targetMap?: { map: NflTargetMap | null; loading: boolean };
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +127,7 @@ export interface NflPlayerDetailInput {
  * MLB/golf adapters.
  */
 export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, snapshot, scope, propOdds, targetMap: targetMapState } = input;
+  const { candidates, market, snapshot, scope, propOdds } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -174,7 +142,6 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
 
   const richMeta = (snapshot?.subjects.find((s) => s.subjectId === active.subjectId)?.meta ?? {}) as Record<string, unknown>;
   const seasonStats = richMeta.seasonStats as PlayerSeasonStats | undefined;
-  const seasonRanks = richMeta.seasonRanks as SeasonRankMap | undefined;
   const opponentDefenseAllowed = (richMeta.opponentDefenseAllowed as NflvStatLine[] | undefined) ?? [];
   const positionRank = typeof richMeta.positionRank === 'number' ? richMeta.positionRank : null;
   const positionPoolSize = typeof richMeta.positionPoolSize === 'number' ? richMeta.positionPoolSize : null;
@@ -190,12 +157,26 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
         }`
       : undefined;
 
-  const baseLine = active.line ?? 0.5;
-  const line = Math.max(0, baseLine + scope.lineOffset);
+  const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
+
   const wantOver = directionMark(active.category ?? '') !== 'U';
 
   const games = ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as Array<{ gamePk: string; firstPitch?: string }>;
   const todaysGame = games.find((g) => String(g.gamePk) === String(meta.gamePk));
+
+  // ---- The line (R6-F9) ----
+  // The candidate carries the main line as it stood when the slate snapshot was
+  // built, which can be hours old: measured 2026-09-15, Josh Allen's passing
+  // yards candidate read 249.5 while the books' current main line was 248.5.
+  // `repriceAtMainLine` is the same rule MLB uses, run against the rows the
+  // page holds now, so the stepper, the price, the movement chart and the
+  // "Odds & prices" table all name one line.
+  const startIso = todaysGame?.firstPitch ?? null;
+  const activeRows =
+    activeMarketKey && propOdds ? propOdds.rows.filter((r) => r.subjectId === active.subjectId && r.marketKey === activeMarketKey) : [];
+  const { marketLine, priced: priceCandidate } = repriceAtMainLine(active, activeRows, startIso);
+  const baseLine = marketLine ?? active.line ?? 0.5;
+  const line = Math.max(0, baseLine + scope.lineOffset);
 
   // ---- Scope filters (NflPlayerDetail.tsx:202-210 — no venue filter for NFL) ----
   let scoped = active.history;
@@ -214,49 +195,11 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   // MLB's: a temperature is a temperature.
   const conditions = toConditionsRole({ weather: active.context?.weather ?? null });
 
-  // ---- Role 3 | spatialGrid: the target map (6.8).
-  // Fed by `useNflTargetMap` -> `/api/nfl/target-map` -> `nfl_target_events`,
-  // which Python's `ingestNflPbpJob` writes from nflverse play-by-play. The
-  // grid is depth x field side because nflverse gives `pass_length` and
-  // `pass_location` directly -- it is the source's own split, not a threshold
-  // chosen here. See `targetMapShapes.ts` for why the rows read deep-first.
-  //
-  // The HEAT is share of targets (where the ball goes), and `catchPct` rides
-  // along in the caption rather than as a second grid: two grids of the same
-  // six cells invite reading one as the other, and share is the thing a
-  // receiving prop actually turns on.
-  const nflTargets = targetMapState?.map ?? null;
-  const spatialGrid: SpatialGridRole | null = nflTargets
-    ? {
-        title: 'Target map',
-        surface: 'field',
-        measure: 'share',
-        cells: nflTargets.cells.map((row) =>
-          row.map((c) => ({ key: c.key, value: c.targets > 0 ? c.share : null, sampleSize: c.targets })),
-        ),
-        rowLabels: nflTargets.rowLabels,
-        columnLabels: nflTargets.columnLabels,
-        format: fmt.pct0,
-        unit: 'of targets',
-        caption: [
-          `${nflTargets.totalTargets.toLocaleString()} located targets`,
-          `${Math.round((nflTargets.totalCompletions / Math.max(1, nflTargets.totalTargets)) * 100)}% caught`,
-          // Mean air yards is over every target that CARRIED an air-yard
-          // reading, which is a different denominator from the located count
-          // beside it -- an unlocated target still has a depth. Hence
-          // "located targets" rather than "targets": the grid's own total
-          // must never read as the player's full workload.
-          // A screen's air yards are negative and real, and nothing clamps them.
-          nflTargets.meanAirYards != null ? `${fmt.one(nflTargets.meanAirYards)} avg air yds` : null,
-          // A target nflverse did not locate is a real target with no position.
-          // Saying so beats letting the shares imply full coverage.
-          nflTargets.unplaced > 0 ? `${nflTargets.unplaced} unplaced` : null,
-        ]
-          .filter(Boolean)
-          .join(` ${MIDDOT} `),
-        emptyMessage: 'No located targets on record.',
-      }
-    : null;
+  // Role 3 | spatialGrid: NFL's target map was a 2x3 share grid here until
+  // R6.2. The same rows now draw every located pass at its own air yards in
+  // "Usage & depth" / "Where he throws" (`targetShapes.ts`), which the grid
+  // could not show, so the prop block no longer repeats them.
+  const spatialGrid = null;
 
   const windows: WindowedStat5 = {
     l5: fixedWindow(measured, wanted, 5),
@@ -305,10 +248,9 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
 
 
   // ---- Prop odds board (universal, no branch) ----
-  const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
   const propOddsBoard: PropOddsBoardProps | null =
     activeMarketKey && propOdds
-      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: active.line ?? null, userSportsbook: propOdds.userSportsbook }
+      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: marketLine ?? active.line ?? null, userSportsbook: propOdds.userSportsbook }
       : null;
 
   // ---- Form (NflPlayerDetail.tsx:559-571 — same `active.supportingSplits`, already sport-agnostic) ----
@@ -371,17 +313,33 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
         }
       : null;
 
-  // ---- Season stats card (NflPlayerDetail.tsx:474-492) ----
-  const seasonRows = seasonTotalsRows(seasonStats, position, seasonRanks);
-  const nflSeasonStats =
-    seasonRows.length > 0
-      ? {
-          rows: seasonRows.map((r) => ({ key: r.key, label: r.label, value: r.value, decimals: 0, rank: r.rank })),
-          rankedAmongLabel: seasonRanks ? position : undefined,
-        }
-      : null;
+  // ---- Season stats card: GONE for NFL (R6.2) ----
+  // "Season by season" reads every season of `player_game_history` and shows
+  // the same totals with more of them, so the rail card repeated one season of
+  // it. Its extra was a rank per stat, and ranks left the player page with D3
+  // ("Where this sits") in R6 by decision. NBA, NHL and CFB still fill this
+  // slot until their own sub-phases.
+  const nflSeasonStats = null;
 
 
+
+  // ---- C4 game state (R6.2) ----
+  // The live route is ESPN's summary for both football leagues, so one builder
+  // fills the slot (`footballGameState.ts`); the lines so far are measured
+  // against the same main line the stepper shows.
+  const gameState = toFootballGameState({
+    sport: 'nfl',
+    live: input.live ?? { data: null, loading: false },
+    subjectName: active.subjectName,
+    candidates,
+    lineFor: (c) => {
+      const key = candidateDimensionToMarketKey(c.dimension);
+      const rows = key && propOdds ? propOdds.rows.filter((r) => r.subjectId === c.subjectId && r.marketKey === key) : [];
+      return repriceAtMainLine(c, rows, startIso).marketLine ?? c.line ?? null;
+    },
+    teams: { abbr: teamAbbr, logoUrl: teamLogoUrl, opponentAbbr, opponentLogoUrl },
+    started: startIso != null && Date.now() >= Date.parse(startIso),
+  });
 
   return {
     opponentUnit,
@@ -420,7 +378,8 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     model: null,
     formWindows,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
-    gameState: null,
+    priceCandidate,
+    gameState,
     liveMatchup: null,
     matchupExplorer,
     seasonStatsCard: null,
@@ -452,6 +411,10 @@ const FOOTBALL_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
  * The columns are this sport's `playerResearchSpec.ts`; the work is
  * `buildPlayerResearch`, shared by every sport.
  */
-export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date }): PlayerResearchData | null {
-  return buildPlayerResearch({ sport: 'nfl', history: input.history, spec: footballResearchSpec('nfl', input.bio, input.history.games), now: input.now });
+export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date; targets?: NflTargetsInput }): PlayerResearchData | null {
+  const research = buildPlayerResearch({ sport: 'nfl', history: input.history, spec: footballResearchSpec('nfl', input.bio, input.history.games), now: input.now });
+  // NFL's own section (R6.2). The role is the player's, not the market's: a
+  // quarterback's chart is what he threw and a receiver's what was thrown to
+  // him, and the page renders either without a line.
+  return research && input.targets ? { ...research, sections: [nflTargetsSection(input.targets)] } : research;
 }

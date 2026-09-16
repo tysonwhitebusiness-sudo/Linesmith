@@ -54,7 +54,7 @@ const DB_MODULES = [
   // this one value-imports `pgAll`.
   '@/lib/sports/nhl/shotProfile',
   '@/lib/sports/nba/shotProfile',
-  '@/lib/sports/nfl/targetMap',
+  '@/lib/sports/nfl/targets',
   // 6.13: `components/useGolfShotProfile.ts` and golf's adapter take their type
   // from the SHAPES file; this one value-imports `pgAll`.
   '@/lib/sports/golf/shotProfile',

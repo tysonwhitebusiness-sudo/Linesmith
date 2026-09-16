@@ -17,10 +17,13 @@
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { footballResearchSpec } from '@/lib/sports/nfl/adapters/playerResearchSpec';
+import { cfbEfficiencySection } from '@/lib/sports/nfl/targetShapes';
 import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
+import { repriceAtMainLine } from '@/lib/odds/props/mainLine';
+import { toFootballGameState } from '@/lib/sports/multiSport/footballGameState';
 import type { PropOddsRow } from '@/lib/db/client';
 import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
@@ -97,6 +100,11 @@ export interface CfbPlayerDetailScope {
 }
 
 export interface CfbPlayerDetailInput {
+  /**
+   * `useFootballLiveGame(...)`'s result — C4's game state (R6.2). Structural,
+   * not an import of the hook's type, so this file stays a pure transform.
+   */
+  live?: { data: import('@/lib/sports/multiSport/footballLiveGame').FootballLiveGameDetail | null; loading: boolean };
   candidates: PickCandidate[];
   market?: string;
   snapshot: SportSnapshot | null;
@@ -126,7 +134,20 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
   }>;
   const todaysGame = games.find((g) => String(g.gamePk) === String(meta.gamePk));
 
-  const baseLine = active.line ?? 0.5;
+  const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
+
+  // ---- The line (R6-F9) ----
+  // The candidate carries the main line as it stood when the slate snapshot was
+  // built, which can be hours old: measured 2026-09-15, Josh Allen's passing
+  // yards candidate read 249.5 while the books' current main line was 248.5.
+  // `repriceAtMainLine` is the same rule MLB uses, run against the rows the
+  // page holds now, so the stepper, the price, the movement chart and the
+  // "Odds & prices" table all name one line.
+  const startIso = todaysGame?.firstPitch ?? null;
+  const activeRows =
+    activeMarketKey && propOdds ? propOdds.rows.filter((r) => r.subjectId === active.subjectId && r.marketKey === activeMarketKey) : [];
+  const { marketLine, priced: priceCandidate } = repriceAtMainLine(active, activeRows, startIso);
+  const baseLine = marketLine ?? active.line ?? 0.5;
   const line = Math.max(0, baseLine + scope.lineOffset);
   const wantOver = true; // every CFB market here is a counting-stat over/under, not a two-sided pick.
 
@@ -252,10 +273,9 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
         };
 
 
-  const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
   const propOddsBoard: PropOddsBoardProps | null =
     activeMarketKey && propOdds
-      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: active.line ?? null, userSportsbook: propOdds.userSportsbook }
+      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: marketLine ?? active.line ?? null, userSportsbook: propOdds.userSportsbook }
       : null;
 
   // ---- Real season totals (CollegeFootballData.com, summed across every real game — adapter.ts) ----
@@ -311,6 +331,24 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
 
 
 
+  // ---- C4 game state (R6.2) ----
+  // The live route is ESPN's summary for both football leagues, so one builder
+  // fills the slot (`footballGameState.ts`); the lines so far are measured
+  // against the same main line the stepper shows.
+  const gameState = toFootballGameState({
+    sport: 'cfb',
+    live: input.live ?? { data: null, loading: false },
+    subjectName: active.subjectName,
+    candidates,
+    lineFor: (c) => {
+      const key = candidateDimensionToMarketKey(c.dimension);
+      const rows = key && propOdds ? propOdds.rows.filter((r) => r.subjectId === c.subjectId && r.marketKey === key) : [];
+      return repriceAtMainLine(c, rows, startIso).marketLine ?? c.line ?? null;
+    },
+    teams: { abbr: teamAbbr, logoUrl: teamLogoUrl, opponentAbbr, opponentLogoUrl },
+    started: startIso != null && Date.now() >= Date.parse(startIso),
+  });
+
   return {
     opponentUnit,
     careerH2H,
@@ -339,7 +377,8 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
     model: null,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
-    gameState: null,
+    priceCandidate,
+    gameState,
     liveMatchup: null,
     matchupExplorer,
     seasonStatsCard: null,
@@ -372,5 +411,9 @@ const FOOTBALL_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
  * `buildPlayerResearch`, shared by every sport.
  */
 export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date }): PlayerResearchData | null {
-  return buildPlayerResearch({ sport: 'cfb', history: input.history, spec: footballResearchSpec('cfb', input.bio, input.history.games), now: input.now });
+  const spec = footballResearchSpec('cfb', input.bio, input.history.games);
+  const research = buildPlayerResearch({ sport: 'cfb', history: input.history, spec, now: input.now });
+  // College play-by-play is not ingested, so a quarterback's efficiency
+  // section says so rather than being absent (R6.2, G2's own CFB state).
+  return research && spec.kind === 'quarterback' ? { ...research, sections: [cfbEfficiencySection()] } : research;
 }
