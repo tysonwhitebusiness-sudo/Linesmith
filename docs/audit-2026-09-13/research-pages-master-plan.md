@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) next.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; R7.1 next.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1327,6 +1327,60 @@ Spec: `docs/design/phase-g2/src/player.html`, `src/sports/common.js` (skeleton),
 ---
 
 ## R7 — Team page rebuild ◆ medium–large
+
+**R7 STARTED 2026-09-16 — Step 0 audit done** (`scripts/measure-team-page.ts`,
+`scripts/measure-team-records.ts`; records refereed against StatsAPI, api-web
+and ESPN, not G2).
+
+- **R7-C1, the one that changes the build: `game_result` cannot be a team
+  page's results source.** It has no season-type column and no overtime flag,
+  and its sources mix preseason and postseason into the season:
+  | team | `readGameResults` | the league |
+  |---|---|---|
+  | Maple Leafs 2025-26 | 84 games, 32-52 (from 2025-10-02, preseason) | 82, **32-36-14** (api-web) |
+  | Maple Leafs 2024-25 | 97 games | 82 + 13 playoff |
+  | Lakers 2025-26 | 92 games, 57-35 | 82, 53-29 + playoffs 4-6 (ESPN) |
+  | Ohio State 2025 | 14 games, 12-2 | 13, 12-1 + CFP 0-1 |
+  | Royals 2026 | 148 games, 65-83, 628-724 | **151, 66-85, 636-732** (StatsAPI) |
+  | Royals 2025 | 163 games, 82-81 | 162, 82-80 |
+
+  The MLB gap is R6-F5 again. **Results & schedule read each league's own
+  schedule instead**, regular season, postseason kept apart: StatsAPI
+  `gameType=R` for MLB (`statsapi.ts:1044` already calls it), api-web
+  `club-schedule-season` for NHL (`gameType` 2/3, `lastPeriodType` gives OTL;
+  `nhle.ts:228`), ESPN's team schedule by `seasontype` for NFL, CFB, NBA and
+  soccer (`teamSportEspn.ts:223`). ESPN matched the league on every G2 team
+  checked (LAL 53-29, LV 3-14, OSU 12-1, MCI 23-6-9). This is the R6.1a
+  decision for the player page applied to teams, and it also gives the
+  upcoming schedule, which `game_result` cannot. `game_result` stays for R11.
+- **Ids agree within a sport, and G2's do not.** Route id = `game_result` =
+  `player_game_history` = `team_game_production` = `player_season_production`
+  = the shot tables: StatsAPI ids for MLB, api-web ids for NHL, ESPN for the
+  rest. G2's datasets use ESPN ids for MLB (Royals 7, app 118) and NHL (Leafs
+  21, app 10), and label NHL seasons by END year (G2 "2026" = app 2025).
+  `nfl_target_events` keys the team by abbreviation.
+- **Early-season today:** NFL (1 game), CFB (2), EPL (4) and NHL (0) open on
+  last season; MLB and MLS do not. NBA's current season is 2025-26 until
+  October 1, then falls back the same way.
+- **R5 tables hold every sport's last two seasons** (`team_game_production`
+  through 2026-09-15 for the in-season sports, `player_season_production`
+  686-12,401 rows a sport-season, both shot tables both seasons).
+- **Team stats sources:** `/api/season-ranks` covers NBA, NHL, CFB and soccer
+  only. MLB reads StatsAPI `teams/stats` (`statsapi.ts:486`), NFL nflverse
+  `stats_team` (`nflverse.ts`) — both already fetched, as the plan says.
+- **R2-F7 confirmed on all five other sports:** `/nfl/team/13` and the rest
+  call `/api/mlb/team-form` and `/api/mlb/team` (400) and
+  `/api/mlb/team-statcast`, `/api/mlb/team-batter-ranks` (200, wrong sport).
+- **R2-F8 does not reproduce:** `/api/mlb/team/110` rebuilt on request
+  (74-78, fetched 2026-09-16) and 118 reads 66-85, equal to StatsAPI. The
+  28-day payload was an unvisited key; nothing to fix.
+
+**Sub-phases, stop after each:** R7.1 the shared team research skeleton
+(hero, season switch, results & schedule, standings, team stats, roster
+production, sources) built on MLB; R7.2 NFL and CFB; R7.3 NBA and NHL (live
+verification in October); R7.4 soccer; tennis and golf routes explain why there
+is no team page.
+
 
 Spec: `docs/design/phase-g2/src/team.html`, `src/sports/team-common.js`,
 `team-sports.js`.

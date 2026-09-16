@@ -87,7 +87,7 @@ A sport's section is one function returning a `ResearchSection`; the component
 has no sport check. The prop block keeps market tabs, stepper, chips, windows,
 bars, matchup explorer and role cards; every odds card lives in "Odds & prices".
 
-## Next: R7 team page (after the go-ahead)
+## Next: R7 team page (STARTED 2026-09-16 — Step 0 done, see the plan's R7 section; R7.1 next)
 
 Read the plan's R7 section in full: a hero with record and standing, one season
 switch scoping the page (last season when the current one is under MIN_GAMES,
