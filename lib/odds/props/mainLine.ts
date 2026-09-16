@@ -31,6 +31,7 @@
 
 import type { OddsInfo, PickCandidate } from '@/lib/core/types';
 import type { PropOddsRow } from '@/lib/db/client';
+import { candidateCategoryToSide } from './entityResolution';
 
 /**
  * Pick'em / DFS operators. Their "price" is a fixed payout multiplier, not odds
@@ -260,7 +261,20 @@ export function repriceAtMainLine(
   if (posted.line == null || posted.line === candidate.line) return { marketLine: posted.line ?? null, priced: null };
   const meta = { ...(candidate.subjectMeta ?? {}) };
   for (const k of MODEL_FIELDS) delete meta[k];
-  return { marketLine: posted.line, priced: { ...candidate, line: posted.line, odds: posted.odds, lineStatus: undefined, subjectMeta: meta } };
+  // THE CANDIDATE'S OWN SIDE. `candidateLine` prices the over, which is right
+  // for the snapshot builders that call it (every candidate they make is an
+  // over) but not here: MLB re-prices every candidate, and MLB makes unders,
+  // no-hits and no-runs. Found in the R6 audit — an under re-lined from 4.5 to
+  // 6.5 carried the best over price (-120) instead of the best under (+105).
+  const main = pickMainLine(rows, startIso, { now });
+  const underSide = candidateCategoryToSide(candidate.category) === 'under';
+  const sideRow = main.kind === 'main' ? (underSide ? main.under : main.over) : null;
+  const odds: OddsInfo | undefined = sideRow
+    ? { americanOdds: String(sideRow.americanOdds), source: 'odds-api', capturedAt: sideRow.fetchedAt }
+    : underSide
+      ? undefined
+      : posted.odds;
+  return { marketLine: posted.line, priced: { ...candidate, line: posted.line, odds, lineStatus: undefined, subjectMeta: meta } };
 }
 
 /** A line from a player's own history: the average, rounded to the half, never below 0.5. `undefined` with no history. */

@@ -67,7 +67,7 @@ _FEET = re.compile(r"(\d+)-foot", re.I)
 # check for a three read ESPN's play TYPE ("Jump Shot"), which never says
 # "three point". R2 found it (a missed three indistinguishable from a missed
 # two) and corrected it on read; this corrects it at ingest, with the same
-# geometry `lib/sports/nba/shotProfileShapes.ts` uses:
+# geometry `lib/sports/nba/playerShotShapes.ts` uses (it replaced shotProfileShapes.ts in R6.5):
 #
 #   - a make keeps ESPN's `scoreValue`;
 #   - a placed miss is a three when it is beyond the arc, with the RIM AT

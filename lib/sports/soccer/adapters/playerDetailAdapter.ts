@@ -445,5 +445,5 @@ export function toPlayerResearchData(input: {
   // A keeper's shot list is his own goals and deflections, not his work
   // (Pickford: one shot, an own goal), so he gets the state G2 gives him.
   if (spec.kind === 'goalkeeper') return { ...research, sections: [soccerKeeperSection()] };
-  return input.understat ? { ...research, sections: [soccerChancesSection(input.understat)] } : research;
+  return input.understat ? { ...research, sections: [soccerChancesSection({ ...input.understat, scopeSeason: research.splits.defaultSeason })] } : research;
 }

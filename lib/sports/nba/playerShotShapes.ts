@@ -31,7 +31,7 @@
  * =========================================================================
  */
 
-import type { ResearchCard, ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
+import { sectionOpeningSeason, type ResearchCard, type ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
 
 /** One field-goal attempt as the table stores it. */
 export interface NbaShot {
@@ -56,6 +56,8 @@ export interface NbaShotsPayload {
 }
 
 export interface NbaShotsInput {
+  /** The page's scope season (`research.splits.defaultSeason`); opens here when the source holds it. Set by the adapter. */
+  scopeSeason?: number | null;
   season: number | null;
   data: NbaShotsPayload | null;
   loading: boolean;
@@ -133,7 +135,7 @@ export function nbaShotSection(input: NbaShotsInput): ResearchSection {
     title: 'Shot profile',
     sub: 'every field-goal attempt',
     ...(seasons.length
-      ? { season: { value: input.season ?? seasons[seasons.length - 1], options: [...seasons].reverse().map((s) => ({ value: s, label: `${s - 1}-${String(s).slice(2)}` })) } }
+      ? { season: { value: sectionOpeningSeason(seasons, input.season, input.scopeSeason), options: [...seasons].reverse().map((s) => ({ value: s, label: `${s - 1}-${String(s).slice(2)}` })) } }
       : {}),
   };
   if (input.loading) return { ...base, rows: [], state: { kind: 'loading' } };
@@ -146,7 +148,7 @@ export function nbaShotSection(input: NbaShotsInput): ResearchSection {
     };
   }
 
-  const season = input.season ?? seasons[seasons.length - 1];
+  const season = sectionOpeningSeason(seasons, input.season, input.scopeSeason);
   const all = input.data.shots.filter((s) => s.season === season);
   const located = all.filter((s) => s.x != null && s.y != null);
 

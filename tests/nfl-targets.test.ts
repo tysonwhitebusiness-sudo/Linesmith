@@ -36,15 +36,15 @@ test('a receiver gets the chart, the zone table and the season profile, in G2s o
   assert.deepEqual(sec.season?.options.map((o) => o.value), [...SEASONS].reverse());
 });
 
-test('it opens on the newest season, unless that season has barely started', () => {
+test('it opens on the page scope season, which falls back while the newest has barely started', () => {
   const newest = SEASONS[SEASONS.length - 1];
   const full = nflTargetsSection(input());
-  assert.equal(full.season?.value, newest, 'Lamb has a full season of rows in the newest year G2 holds');
-  // Two weeks in, eight targets say nothing: the fuller season before it opens.
-  const early = TARGETS.filter((t) => t[0] !== newest).concat(TARGETS.filter((t) => t[0] === newest).slice(0, 8));
-  const sec = nflTargetsSection(input({ data: payload({ targets: early }) }));
-  assert.equal(sec.season?.value, SEASONS[SEASONS.length - 2]);
-  assert.equal(nflTargetsSection(input({ season: newest, data: payload({ targets: early }) })).season?.value, newest, 'a chosen season wins');
+  assert.equal(full.season?.value, newest, 'with no scope it opens on the newest season held');
+  // Two weeks in, the hero scopes the page to last season (SEASON_MIN_GAMES);
+  // the section follows it rather than counting its own rows (R6 audit).
+  const previous = SEASONS[SEASONS.length - 2];
+  assert.equal(nflTargetsSection(input({ scopeSeason: previous })).season?.value, previous);
+  assert.equal(nflTargetsSection(input({ scopeSeason: previous, season: newest })).season?.value, newest, 'a chosen season wins');
 });
 
 test('every located target of the chosen season is a dot, grouped by what happened', () => {

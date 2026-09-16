@@ -41,7 +41,7 @@
  */
 
 import type { NhlSeasonLine } from '@/lib/sports/nhl/apiWebParsers';
-import type { ResearchCard, ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
+import { sectionOpeningSeason, type ResearchCard, type ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
 
 /** One attempt as the table stores it, before normalisation. */
 export interface NhlShot {
@@ -68,6 +68,8 @@ export interface NhlShotsPayload {
 }
 
 export interface NhlShotMapInput {
+  /** The page's scope season (`research.splits.defaultSeason`); opens here when the source holds it. Set by the adapter. */
+  scopeSeason?: number | null;
   /** The history's season label (2025), not the table's (20252026). */
   season: number | null;
   data: NhlShotsPayload | null;
@@ -171,7 +173,7 @@ export function nhlShotMapSection(input: NhlShotMapInput): ResearchSection {
     title: goalie ? 'Shots faced & official totals' : 'Shot map & official totals',
     sub: goalie ? 'every attempt against' : 'every attempt',
     ...(seasons.length
-      ? { season: { value: input.season ?? seasons[seasons.length - 1], options: [...seasons].reverse().map((s) => ({ value: s, label: `${s}-${String(s + 1).slice(2)}` })) } }
+      ? { season: { value: sectionOpeningSeason(seasons, input.season, input.scopeSeason), options: [...seasons].reverse().map((s) => ({ value: s, label: `${s}-${String(s + 1).slice(2)}` })) } }
       : {}),
   };
   if (input.loading) return { ...base, rows: [], state: { kind: 'loading' } };
@@ -193,7 +195,7 @@ export function nhlShotMapSection(input: NhlShotMapInput): ResearchSection {
     return { ...base, rows: [], state: { kind: 'empty', title: 'No shots held', reason: input.emptyReason ?? 'The shot feed holds no attempts for this player.' } };
   }
 
-  const season = input.season ?? seasons[seasons.length - 1];
+  const season = sectionOpeningSeason(seasons, input.season, input.scopeSeason);
   const key = shotSeasonKey(season);
   const all = input.data.shots.filter((s) => s.season === key);
   const placed = all.map((s) => ({ s, at: rotateToAttackingEnd(s) })).filter((p): p is { s: NhlShot; at: { x: number; y: number } } => p.at != null);

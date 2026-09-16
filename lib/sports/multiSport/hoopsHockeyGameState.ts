@@ -20,6 +20,7 @@
  * the two sports that only publish a name.
  */
 
+import { liveLineHit } from '@/lib/sports/shared/liveLine';
 import type { NbaLiveGameDetail } from '@/lib/sports/nba/liveGame';
 import type { NhlLiveGameDetail } from '@/lib/sports/nhl/liveGame';
 import { isNhlGameLive } from '@/lib/sports/nhl/gameStates';
@@ -110,7 +111,7 @@ export function toNbaGameState(input: Common & { live: { data: NbaLiveGameDetail
               direction: dir,
               line: at,
               value,
-              cleared: dir === 'O' ? value > at : value <= at,
+              cleared: liveLineHit(dir, value, at),
               price: input.priceFor(c, at),
             },
           ];
@@ -194,7 +195,7 @@ export function toNhlGameState(
                 direction: dir,
                 line: at,
                 value,
-                cleared: dir === 'O' ? value > at : value <= at,
+                cleared: liveLineHit(dir, value, at),
                 price: input.priceFor(c, at),
               },
             ];

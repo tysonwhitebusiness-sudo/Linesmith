@@ -8,6 +8,7 @@
  * NHL yet. `propOddsBoard` is real and independent of history.
  */
 
+import { liveLinePricing } from '@/lib/sports/shared/liveLine';
 import { athleteIdOf, type PlayerBio, type PlayerHistory, type PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { nhlResearchSpec } from './playerResearchSpec';
@@ -284,8 +285,7 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
     playerId: athleteIdOf(active.subjectId),
     subjectName: active.subjectName,
     candidates,
-    lineFor: (c) => (c === active ? baseLine : c.line ?? null),
-    priceFor: () => null,
+    ...liveLinePricing(propOdds, startIso),
     gameHref: todaysGame?.gamePk ? `/nhl/game/${todaysGame.gamePk}` : null,
     teams: { abbr: teamAbbr, logoUrl: teamLogoUrl, opponentAbbr, opponentLogoUrl },
     started: startIso != null && Date.now() >= Date.parse(startIso),
@@ -363,5 +363,5 @@ export function toPlayerResearchData(input: {
   const research = buildPlayerResearch({ sport: 'nhl', history: input.history, spec: nhlResearchSpec(input.bio, input.history.games), now: input.now });
   if (!research || !input.shots) return research;
   // The official totals come off the same landing the bio already fetched.
-  return { ...research, sections: [nhlShotMapSection({ ...input.shots, officialSeasons: input.bio?.nhlSeasons ?? null })] };
+  return { ...research, sections: [nhlShotMapSection({ ...input.shots, scopeSeason: research.splits.defaultSeason, officialSeasons: input.bio?.nhlSeasons ?? null })] };
 }

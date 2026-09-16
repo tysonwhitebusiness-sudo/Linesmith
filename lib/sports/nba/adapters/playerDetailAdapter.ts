@@ -8,6 +8,7 @@
  * for NBA yet. `propOddsBoard` is real and independent of history.
  */
 
+import { liveLinePricing } from '@/lib/sports/shared/liveLine';
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { NBA_SPEC } from './playerResearchSpec';
@@ -293,8 +294,7 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
     live: input.live ?? { data: null, loading: false },
     subjectName: active.subjectName,
     candidates,
-    lineFor: (c) => (c === active ? baseLine : c.line ?? null),
-    priceFor: () => null,
+    ...liveLinePricing(propOdds, startIso),
     gameHref: todaysGame?.gamePk ? `/nba/game/${todaysGame.gamePk}` : null,
     teams: { abbr: teamAbbr, logoUrl: teamLogoUrl, opponentAbbr, opponentLogoUrl },
     started: startIso != null && Date.now() >= Date.parse(startIso),
@@ -371,5 +371,5 @@ export function toPlayerResearchData(input: {
 }): PlayerResearchData | null {
   const research = buildPlayerResearch({ sport: 'nba', history: input.history, spec: NBA_SPEC, now: input.now });
   if (!research || !input.shots) return research;
-  return { ...research, sections: [nbaShotSection(input.shots)] };
+  return { ...research, sections: [nbaShotSection({ ...input.shots, scopeSeason: research.splits.defaultSeason })] };
 }

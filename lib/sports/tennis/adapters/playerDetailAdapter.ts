@@ -324,5 +324,5 @@ export function toPlayerResearchData(input: {
       r.opponentLabel && r.opponentLabel !== '—' ? r : { ...r, opponentLabel: named.get(r.date.slice(0, 10)) ?? r.opponentLabel },
     ),
   };
-  return { ...research, gameLog: log, sections: [tennisSurfaceSection(input.archive)] };
+  return { ...research, gameLog: log, sections: [tennisSurfaceSection({ ...input.archive, scopeSeason: research.splits.defaultSeason })] };
 }

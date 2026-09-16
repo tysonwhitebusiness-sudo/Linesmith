@@ -26,7 +26,7 @@
  * ==========================================================================
  */
 
-import type { ResearchCard, ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
+import { sectionOpeningSeason, type ResearchCard, type ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
 
 /** One shot, trimmed to what the page draws: season, minute, x, y, xG, result, situation, body part. */
 export type UnderstatShotRow = [number, number, number, number, number, string, string, string];
@@ -57,7 +57,9 @@ export interface SoccerUnderstatPayload {
 }
 
 export interface SoccerChancesInput {
-  /** The season the section shows; `null` opens on every season held. */
+  /** The page's scope season (`research.splits.defaultSeason`); opens here when the source holds it. Set by the adapter. */
+  scopeSeason?: number | null;
+  /** The season the section shows; `null` opens on the page's scope season, else the latest held. */
   season: number | null;
   data: SoccerUnderstatPayload | null;
   loading: boolean;
@@ -93,7 +95,7 @@ export function soccerChancesSection(input: SoccerChancesInput): ResearchSection
     ...(seasons.length
       ? {
           season: {
-            value: input.season ?? seasons[seasons.length - 1],
+            value: sectionOpeningSeason(seasons, input.season, input.scopeSeason),
             options: [...seasons].reverse().map((s) => ({ value: s, label: seasonLabel(s) })),
           },
         }
@@ -113,7 +115,7 @@ export function soccerChancesSection(input: SoccerChancesInput): ResearchSection
     };
   }
 
-  const season = input.season ?? seasons[seasons.length - 1];
+  const season = sectionOpeningSeason(seasons, input.season, input.scopeSeason);
   const all = input.data.shots;
   const shots = all.filter((s) => s[0] === season);
   const goals = shots.filter((s) => s[5] === 'Goal');

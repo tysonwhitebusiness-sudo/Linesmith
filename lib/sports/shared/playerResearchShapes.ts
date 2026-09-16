@@ -351,6 +351,28 @@ export type ResearchCard =
     }
   | { kind: 'status'; key: string; title: string; headline: string; reason: string };
 
+/**
+ * The season a sport's own section opens on: the reader's pick, else the
+ * page's scope season (the hero's, which falls back to last season while the
+ * current one is under `SEASON_MIN_GAMES`), else the newest the source holds.
+ *
+ * R6 AUDIT, 2026-09-16: only NFL's section followed the early-season rule, by
+ * its own row count; NBA, NHL, soccer and tennis opened on the newest season
+ * whatever it held, so a young EPL season showed three matches under a hero
+ * that said it was showing last season. The scope is only used when the source
+ * holds it — a shot table that holds only the current season opens on that.
+ * Every section's season numbering was checked against the history's first
+ * (NBA end year, NHL/NFL/EPL start year, tennis calendar).
+ *
+ * Typed like the `seasons[seasons.length - 1]` it replaced: every caller
+ * guards on a non-empty list first.
+ */
+export function sectionOpeningSeason(seasons: number[], picked: number | null | undefined, scope: number | null | undefined): number {
+  if (picked != null) return picked;
+  if (scope != null && seasons.includes(scope)) return scope;
+  return seasons[seasons.length - 1];
+}
+
 export interface ResearchSection {
   id: string;
   navLabel: string;

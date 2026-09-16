@@ -25,7 +25,7 @@
  * =========================================================================
  */
 
-import type { ResearchCard, ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
+import { sectionOpeningSeason, type ResearchCard, type ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
 
 /** One archived match, trimmed to what the section draws. */
 export interface TennisArchiveMatch {
@@ -58,6 +58,8 @@ export interface TennisArchivePayload {
 }
 
 export interface TennisSurfaceInput {
+  /** The page's scope season (`research.splits.defaultSeason`); opens here when the source holds it. Set by the adapter. */
+  scopeSeason?: number | null;
   season: number | null;
   data: TennisArchivePayload | null;
   loading: boolean;
@@ -125,7 +127,7 @@ export function tennisSurfaceSection(input: TennisSurfaceInput): ResearchSection
     title: 'Surface & serve',
     sub: 'TennisMyLife archive',
     ...(seasons.length
-      ? { season: { value: input.season ?? seasons[seasons.length - 1], options: [...seasons].reverse().map((s) => ({ value: s, label: String(s) })) } }
+      ? { season: { value: sectionOpeningSeason(seasons, input.season, input.scopeSeason), options: [...seasons].reverse().map((s) => ({ value: s, label: String(s) })) } }
       : {}),
   };
   if (input.loading) return { ...base, rows: [], state: { kind: 'loading' } };
@@ -142,7 +144,7 @@ export function tennisSurfaceSection(input: TennisSurfaceInput): ResearchSection
     };
   }
 
-  const season = input.season ?? seasons[seasons.length - 1];
+  const season = sectionOpeningSeason(seasons, input.season, input.scopeSeason);
   const all = input.data.matches;
   const inSeason = all.filter((m) => m.season === season);
   const today = (input.todaySurface ?? '').toLowerCase();

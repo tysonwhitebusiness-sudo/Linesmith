@@ -123,3 +123,13 @@ The Python odds-refresh worker (Render background worker, replacing the TS proac
 **Adding a new sport or provider**: (a) a games loader in `python-odds-service/src/game_context.py` if one doesn't already cover the sport, (b) a `fetch_*` function in `python-odds-service/src/providers.py` for any genuinely new provider (reuse an existing one where possible — `fetch_sportsgameodds` already spans MLB/NFL/CFB/Soccer with no sport param, it infers from the `Game` objects passed in), (c) a `list[ProviderSpec]` for that sport declared in `python-odds-service/src/jobs.py`, (d) one line in `JOB_REGISTRY`. Nothing in `job_runner.py`, `db.py`'s rate/budget functions, or `health_check.py` (all under `python-odds-service/src/`) needs to change for any of that — verified by construction, not by inspection: `measure_memory.py` and a real end-to-end run against Postgres were used to confirm this shape before it was considered done, not just that it type-checked.
 
 **Why this matters**: the same lesson as the frontend adapter pattern, from the other direction — before this, every new provider meant re-deciding, per job function, whether to add cap-checking at all. Two of four jobs got it wrong. Centralizing the sequence in one runner means a provider gets rate limiting, budget tracking, and write-path correctness for free just by being declared, and `health_check.py`'s monitoring automatically covers it — there's no longer a per-job place for any of that to be forgotten.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

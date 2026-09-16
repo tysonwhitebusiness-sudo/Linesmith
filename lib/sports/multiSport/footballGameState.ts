@@ -13,6 +13,7 @@
  * player who has not touched the ball.
  */
 
+import { liveLineHit } from '@/lib/sports/shared/liveLine';
 import type { FootballLiveGameDetail, FootballPlayerLine } from './footballLiveGame';
 import type { GameStateSlot } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import type { PickCandidate } from '@/lib/core/types';
@@ -113,7 +114,7 @@ export function toFootballGameState(input: FootballGameStateInput): GameStateSlo
               direction: dir,
               line: at,
               value,
-              cleared: dir === 'O' ? value > at : value <= at,
+              cleared: liveLineHit(dir, value, at),
               price: input.priceFor(c, at),
             },
           ];

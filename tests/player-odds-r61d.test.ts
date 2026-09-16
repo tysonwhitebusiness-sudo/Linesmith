@@ -206,7 +206,7 @@ test('the game state is the live game, measured against the main line, with base
   assert.deepEqual([g.baseball?.balls, g.baseball?.strikes, g.baseball?.outs, g.baseball?.bases.third], [2, 1, 1, true]);
 });
 
-test('an under is cleared while it is still under, and the feed reads newest first', () => {
+test('an under is never marked as hit while the game is on, and the feed reads newest first', () => {
   const rows = [...twoSided('fanduel', 6.5, -115, -105), ...twoSided('draftkings', 6.5, -110, -110)];
   const under = candidate({ category: 'under', categoryLabel: 'Under' });
   const withPlays = {
@@ -263,4 +263,24 @@ test('the lines route serves pre-game rows for a started game, and line history 
   assert.match(readFileSync('app/api/props/lines/route.ts', 'utf8'), /readPreGamePropOddsForGame\(gameId, start\)/);
   const lh = readFileSync('lib/odds/props/lineHistory.ts', 'utf8');
   assert.equal((lh.match(/observed_at <= \?::timestamptz/g) ?? []).length, 2, 'both the line count and the series stop at the start');
+});
+
+test('an over hits once it passes the line; an under below its line has not hit yet (R6 audit)', async () => {
+  const { liveLineHit } = await import('../lib/sports/shared/liveLine');
+  assert.equal(liveLineHit('O', 7, 6.5), true);
+  assert.equal(liveLineHit('O', 6, 6.5), false);
+  // Three strikeouts in the fourth, under 6.5: still live, not won.
+  assert.equal(liveLineHit('U', 3, 6.5), false);
+  assert.equal(liveLineHit('U', 7, 6.5), false);
+});
+
+test('re-lining an under prices the under, not the over (R6 audit)', () => {
+  const rows = [...twoSided('fanduel', 6.5, -125, 105), ...twoSided('draftkings', 6.5, -120, 100)];
+  const under = candidate({ category: 'under', categoryLabel: 'Under', line: 4.5 });
+  const { marketLine, priced } = repriceAtMainLine(under, rows, '2026-09-15T22:40:00Z', NOW);
+  assert.equal(marketLine, 6.5);
+  assert.equal(priced?.odds?.americanOdds, '105', 'the best UNDER price at 6.5, not the over');
+  // An over re-lined at the same rows still gets the best over price.
+  const over = repriceAtMainLine(candidate({ line: 4.5 }), rows, '2026-09-15T22:40:00Z', NOW);
+  assert.equal(over.priced?.odds?.americanOdds, '-120');
 });

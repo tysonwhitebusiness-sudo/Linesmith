@@ -26,7 +26,7 @@
  * R6-F11.
  */
 
-import type { ResearchCard, ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
+import { sectionOpeningSeason, type ResearchCard, type ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
 
 /** One located pass: season, week, air yards, side, depth band, YAC, caught, touchdown. */
 export type NflTarget = [number, number, number | null, string | null, string | null, number | null, boolean, boolean];
@@ -41,6 +41,8 @@ export interface NflTargetsPayload {
 }
 
 export interface NflTargetsInput {
+  /** The page's scope season (`research.splits.defaultSeason`); opens here when the source holds it. Set by the adapter. */
+  scopeSeason?: number | null;
   /** The season the section shows; `null` opens on the latest held. */
   season: number | null;
   data: NflTargetsPayload | null;
@@ -96,32 +98,17 @@ export function nflTargetRoleFromKind(kind: string): 'receiver' | 'passer' | nul
   return kind === 'receiver' || kind === 'running back' ? 'receiver' : null;
 }
 
-/**
- * Which season to open on: the newest, unless it has barely started, where the
- * one before it is the fuller picture (G2's own rule, and the same reading the
- * hero's season tiles make). Two weeks into a season a chart of eight targets
- * says nothing about a receiver.
- */
-const EARLY_SEASON_ROWS = 20;
-
-function defaultSeason(seasons: number[], targets: NflTarget[]): number | null {
-  const newest = seasons[seasons.length - 1];
-  if (newest == null) return null;
-  const rows = targets.filter((t) => t[0] === newest).length;
-  return rows < EARLY_SEASON_ROWS && seasons.length > 1 ? seasons[seasons.length - 2] : newest;
-}
-
 export function nflTargetsSection(input: NflTargetsInput): ResearchSection {
   const role = input.data?.role ?? 'receiver';
   const receiver = role === 'receiver';
   const seasons = input.data?.seasons ?? [];
-  const season = input.season ?? defaultSeason(seasons, input.data?.targets ?? []);
+  const season = seasons.length ? sectionOpeningSeason(seasons, input.season, input.scopeSeason) : (input.season ?? null);
   const base = {
     id: receiver ? 'usage' : 'depth',
     navLabel: receiver ? 'Usage' : 'Where he throws',
     title: receiver ? 'Usage & depth' : 'Where he throws',
     sub: 'every located pass, nflverse play-by-play',
-    ...(seasons.length ? { season: { value: season ?? defaultSeason(seasons, input.data?.targets ?? []) ?? seasons[seasons.length - 1], options: [...seasons].reverse().map((s) => ({ value: s, label: String(s) })) } } : {}),
+    ...(seasons.length ? { season: { value: season ?? seasons[seasons.length - 1], options: [...seasons].reverse().map((s) => ({ value: s, label: String(s) })) } } : {}),
   };
   if (input.loading) return { ...base, rows: [], state: { kind: 'loading' } };
   if (input.error) return { ...base, rows: [], state: { kind: 'error', message: input.error } };

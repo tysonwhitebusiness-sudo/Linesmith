@@ -17,6 +17,7 @@
  * already take.
  */
 
+import { liveLinePricing } from '@/lib/sports/shared/liveLine';
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { footballResearchSpec } from './playerResearchSpec';
@@ -36,7 +37,7 @@ import { directionMark, marketText } from '@/components/MarketLabel';
 import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import { teamPrimaryColor } from '@/lib/sports/nfl/teamColors';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
-import { isPickemBook, repriceAtMainLine } from '@/lib/odds/props/mainLine';
+import { repriceAtMainLine } from '@/lib/odds/props/mainLine';
 import { toFootballGameState } from '@/lib/sports/multiSport/footballGameState';
 import type { PropOddsRow } from '@/lib/db/client';
 import { toRoleStat, type OpponentUnitRole, type SpatialGridRole } from '@/lib/sports/shared/playerRoles';
@@ -332,19 +333,7 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     live: input.live ?? { data: null, loading: false },
     subjectName: active.subjectName,
     candidates,
-    lineFor: (c) => {
-      const key = candidateDimensionToMarketKey(c.dimension);
-      const rows = key && propOdds ? propOdds.rows.filter((r) => r.subjectId === c.subjectId && r.marketKey === key) : [];
-      return repriceAtMainLine(c, rows, startIso).marketLine ?? c.line ?? null;
-    },
-    priceFor: (c, at) => {
-      const key = candidateDimensionToMarketKey(c.dimension);
-      if (!key || !propOdds) return null;
-      const side = directionMark(c.category) === 'U' ? 'under' : 'over';
-      const rows = propOdds.rows.filter((r) => r.subjectId === c.subjectId && r.marketKey === key && r.line === at && r.side === side && !isPickemBook(r.bookmaker));
-      const best = rows.length ? rows.reduce((a, b) => (b.americanOdds > a.americanOdds ? b : a)) : null;
-      return best ? { americanOdds: best.americanOdds, bookmaker: best.bookmaker } : null;
-    },
+    ...liveLinePricing(propOdds, startIso),
     gameHref: todaysGame?.gamePk ? `/nfl/game/${todaysGame.gamePk}` : null,
     teams: { abbr: teamAbbr, logoUrl: teamLogoUrl, opponentAbbr, opponentLogoUrl },
     started: startIso != null && Date.now() >= Date.parse(startIso),
@@ -425,5 +414,5 @@ export function toPlayerResearchData(input: { history: PlayerHistory; bio: Playe
   // NFL's own section (R6.2). The role is the player's, not the market's: a
   // quarterback's chart is what he threw and a receiver's what was thrown to
   // him, and the page renders either without a line.
-  return research && input.targets ? { ...research, sections: [nflTargetsSection(input.targets)] } : research;
+  return research && input.targets ? { ...research, sections: [nflTargetsSection({ ...input.targets, scopeSeason: research.splits.defaultSeason })] } : research;
 }

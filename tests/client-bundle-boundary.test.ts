@@ -50,10 +50,8 @@ const DB_MODULES = [
   // builders live in `playerResearchShapes.ts`, `playerResearch.ts`, `playerBio.ts`.
   '@/lib/sports/shared/playerHistoryServer',
   '@/lib/sports/shared/playerBioServer',
-  // 6.7: `components/useNhlShotProfile.ts` takes its type from the SHAPES file;
-  // this one value-imports `pgAll`.
-  '@/lib/sports/nhl/shotProfile',
-  '@/lib/sports/nba/shotProfile',
+  // (6.7's `nhl/shotProfile` and `nba/shotProfile` were deleted in R6.5; their
+  // replacements are listed below.)
   '@/lib/sports/nfl/targets',
   // R6.6: golf's player research read. Types and the shot summary live in
   // `playerResearchShapes.ts`, which the hook and the adapter import.
@@ -71,6 +69,14 @@ const DB_MODULES = [
   // `isNhlGameLive` from here instead passed `tsc` and all 504 tests, and
   // returned 500 on every route in the dev server.
   '@/lib/sports/nhl/nhle',
+  // R6 audit: the sport-section reads R6.3-R6.5 added. Each was imported only by
+  // its API route when checked, but none was listed, so a client import would
+  // have passed this test the way `nhle.ts` did. Their types and section
+  // builders live in the matching `*Shapes.ts` file.
+  '@/lib/sports/soccer/playerUnderstat',
+  '@/lib/sports/tennis/playerArchive',
+  '@/lib/sports/nba/playerShots',
+  '@/lib/sports/nhl/playerShotMap',
 ];
 
 /**

@@ -145,3 +145,13 @@ test('a soccer page opens on the market the position plays for', () => {
   assert.equal(preferredSoccerMarket(null, all), undefined);
   assert.equal(preferredSoccerMarket('D', ['passes-attempted']), undefined);
 });
+
+test('the section opens on the page scope season when it holds it, and the reader pick still wins (R6 audit)', () => {
+  const newest = SEASONS[SEASONS.length - 1];
+  const previous = SEASONS[SEASONS.length - 2];
+  // A young EPL season: the hero falls back to last season, so the section must too.
+  assert.equal(soccerChancesSection(input({ scopeSeason: previous })).season?.value, previous);
+  // A scope the source does not hold opens on the newest it does.
+  assert.equal(soccerChancesSection(input({ scopeSeason: 1990 })).season?.value, newest);
+  assert.equal(soccerChancesSection(input({ scopeSeason: previous, season: newest })).season?.value, newest);
+});

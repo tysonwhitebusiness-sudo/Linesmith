@@ -42,6 +42,25 @@ R1-R5 and R6.1 signed off; R6.2-R6.6 done. **R7 (team page rebuild) is next —
 confirm before starting it.** The handoff is
 `docs/audit-2026-09-13/RESUME-PROMPT.md`; the record is the plan's status block.
 
+- **R6 audit, 2026-09-16** (after R6.6, before R7): four cross-sport defects,
+  all fixed in one commit. (1) The live card marked an under still below its
+  line as HIT (green check) in every builder; an under cannot hit while the game
+  is on — one rule, `liveLineHit` in `lib/sports/shared/liveLine.ts`.
+  (2) `repriceAtMainLine` attached the OVER's price to a re-lined MLB under /
+  no-hit / no-run. (3) NFL and CFB each carried a copy of live-card pricing and
+  NBA/NHL had none (stale line, no price) — one `liveLinePricing`, four callers.
+  (4) Only NFL's section followed the early-season rule; NBA, NHL, soccer and
+  tennis opened on the newest season under a hero saying it showed last season.
+  Every section now opens on the page's scope season (`sectionOpeningSeason`),
+  numbering checked per sport. Also: `soccer/understat` cache key namespaced
+  `route:`, four server reads added to the bundle-boundary test. Rendered
+  Haaland, Cunha, MLS, Lamb, SGA, MacKinnon, Alcaraz, Sabalenka; 528 tests,
+  tsc and build clean.
+  - **The dev server's render workers died mid-check** ("Jest worker
+    encountered 2 child process exceptions"): every route 500'd, including
+    pages that had rendered a minute earlier. A restart fixed it. If a whole
+    sweep 500s at once, restart before debugging.
+
 - **R6.6:** golf had no research at all (no `player_game_history`); it now
   reads its own tables through `/api/golf/player-research` — Scoring (recent
   rounds, scoring by par) and Shot profile (the 2020-2022 seed: driving,

@@ -10,10 +10,15 @@
  * publishes after matches, and the two fetchers behind this already cache their
  * own payloads, so the TTL only governs the reshaping.
  *
- * CACHE KEY: `soccer:understat:{name}` — grepped before choosing; nothing else
- * uses a `soccer:understat:` prefix. The name is bounded in shape and length
- * before it reaches the key (task 3.5: an unbounded id mints a permanent
- * `snapshot_cache` row per value).
+ * CACHE KEY: `soccer:understat:route:{name}`. The first version of this
+ * comment said nothing else used a `soccer:understat:` prefix; the R6 audit
+ * found `understat.ts` already writes `soccer:understat:league:{season}` and
+ * `soccer:understat:player:v3:{id}` under it. The name check below forbids `:`,
+ * so no name could actually reach those keys, but a route key that is only
+ * safe because of an unrelated regex is the collision CLAUDE.md warns about —
+ * hence the `route:` segment. The name is bounded in shape and length before it
+ * reaches the key (task 3.5: an unbounded id mints a permanent `snapshot_cache`
+ * row per value).
  */
 
 import { NextResponse } from 'next/server';
@@ -35,7 +40,7 @@ export async function GET(request: Request) {
   }
 
   return cachedRoute({
-    cacheKey: `soccer:understat:${name.toLowerCase()}`,
+    cacheKey: `soccer:understat:route:${name.toLowerCase()}`,
     ttlMs: CACHE_TTL_MS,
     routeName: 'soccer/understat',
     build: () => getSoccerUnderstat(name),

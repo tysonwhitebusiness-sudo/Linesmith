@@ -28,6 +28,7 @@
  * JSX inside `PlayerDetail.tsx`.
  */
 
+import { liveLineHit } from '@/lib/sports/shared/liveLine';
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { mlbResearchSpec } from './playerResearchSpec';
@@ -709,9 +710,7 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
             direction: dir,
             line: at,
             value,
-            // An over clears by passing the line; an under is only settled at
-            // the end, so "cleared" for it means still under with the game on.
-            cleared: dir === 'O' ? value > at : value <= at,
+            cleared: liveLineHit(dir, value, at),
             price: priceFor(c, at),
           },
         ];
