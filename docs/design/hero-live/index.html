@@ -31,6 +31,10 @@
   .shot { width: 76px; height: 76px; border-radius: 14px; background: oklch(var(--card-sunk)); flex: none;
     display: grid; place-items: center; color: oklch(var(--ink-faint)); font-size: 11px; overflow: hidden; }
   .shot img { width: 100%; height: 100%; object-fit: cover; }
+  .shot--lg { width: 104px; height: 104px; border-radius: 16px; align-self: center; }
+  .shot--tall { width: 104px; height: auto; align-self: stretch; border-radius: 14px;
+    background: linear-gradient(180deg, rgba(198,26,50,.14), rgba(198,26,50,.04)); }
+  .shot--tall img { object-position: top center; }
   .name { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   .name h3 { font-size: 22px; font-weight: 600; letter-spacing: -.005em; margin: 0; }
   .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid oklch(var(--line));
@@ -109,9 +113,15 @@
     color: oklch(var(--ink-3)); padding: 0 8px 6px 0; }
   .lines td { padding: 6px 8px 6px 0; border-top: 1px solid oklch(var(--line-soft)); font-variant-numeric: tabular-nums; }
   .lines td.num, .lines th.num { text-align: right; }
-  .bar { display: block; position: relative; height: 6px; border-radius: 999px; background: oklch(var(--line-soft)); min-width: 90px; }
-  .bar i { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: oklch(var(--ink-faint)); }
-  .bar i.done { background: rgb(var(--good)); }
+  .mk { display: inline-flex; align-items: center; gap: 8px; }
+  .mk img { width: 16px; height: 16px; border-radius: 4px; flex: none; }
+  .mk .txt { font-size: 10px; font-weight: 600; color: oklch(var(--ink-3)); border: 1px solid oklch(var(--line));
+    border-radius: 4px; padding: 0 3px; }
+  .lines tr.hit td { background: rgb(var(--good) / .09); }
+  .lines tr.hit td:first-child { border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
+  .lines tr.hit td:last-child { border-top-right-radius: 8px; border-bottom-right-radius: 8px; }
+  .lines tr.hit .now { color: rgb(var(--good)); font-weight: 600; }
+  .tick { font-weight: 700; color: rgb(var(--good)); margin-left: 4px; }
   .feed { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: oklch(var(--ink-2)); }
   .feed span b { color: oklch(var(--ink)); font-weight: 600; }
   .muted { color: oklch(var(--ink-3)); font-size: 13px; }
@@ -245,13 +255,93 @@
     </dl>
   </section>
 
-  <h2>3b. Hero C — two zones, facts under the name</h2>
+  <h2>3b. Hero C1 — 76px headshot, top aligned (as first drawn)</h2>
   <p class="note">A and B keep three columns, which leaves the identity column half empty under the name. C gives the
     left block the facts directly beneath the name and keeps one right panel, so nothing is stranded. Same details.</p>
   <section class="card hero">
     <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:24px;align-items:start">
       <div class="idy">
         <div class="shot"><img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:67:current.png,q_auto:best,f_auto/v1/people/682829/headshot/67/current" alt="" /></div>
+        <div style="min-width:0;flex:1">
+          <div class="name"><h3>Elly De La Cruz</h3><span class="chip">#44</span><span class="chip">SS</span><span class="chip">Switch hitter</span></div>
+          <div class="teamline"><img src="https://www.mlbstatic.com/team-logos/113.svg" alt="" /><a href="#">Cincinnati Reds</a>
+            <span class="chip chip--live">&#9679; LIVE &middot; LAD 4 &ndash; CIN 0 &middot; Top 9th</span></div>
+          <dl class="facts" style="margin-top:12px;grid-template-columns:repeat(4,minmax(0,1fr))">
+            <div class="fact"><dt>Age</dt><dd>24</dd></div>
+            <div class="fact"><dt>Bats / throws</dt><dd>S / R</dd></div>
+            <div class="fact"><dt>Height / weight</dt><dd>6&#39; 6&quot;, 200 lbs</dd></div>
+            <div class="fact"><dt>MLB debut</dt><dd>Jun 6, 2023</dd></div>
+            <div class="fact"><dt>Seasons held</dt><dd>2023 &ndash; 2026</dd></div>
+            <div class="fact"><dt>Games held</dt><dd>449</dd></div>
+            <div class="fact fact--wide"><dt>Born</dt><dd>Jan 11, 2002 &middot; Sabana Grande de Boya, Dominican Republic</dd></div>
+          </dl>
+        </div>
+      </div>
+      <div class="season">
+        <div class="k">2026 season</div>
+        <div class="v">131 games</div>
+        <div class="s">Reds 63-68 in games he played</div>
+        <div class="k" style="margin-top:12px">Last 5</div>
+        <div class="form"><span class="w">W</span><span class="l">L</span><span class="l">L</span><span class="w">W</span><span class="w">W</span></div>
+        <div class="s" style="margin-top:8px">Hits in 4 of 5 &middot; 2 HR</div>
+      </div>
+    </div>
+    <dl class="tiles">
+      <div class="tile"><dt>G</dt><dd>131</dd></div><div class="tile"><dt>AVG</dt><dd>.284</dd></div>
+      <div class="tile"><dt>OBP</dt><dd>.361</dd></div><div class="tile"><dt>SLG</dt><dd>.514</dd></div>
+      <div class="tile"><dt>OPS</dt><dd>.874</dd></div><div class="tile"><dt>HR</dt><dd>27</dd></div>
+      <div class="tile"><dt>RBI</dt><dd>72</dd></div><div class="tile"><dt>R</dt><dd>92</dd></div>
+      <div class="tile"><dt>SB</dt><dd>25</dd></div><div class="tile"><dt>K %</dt><dd>27.7</dd></div>
+      <div class="tile"><dt>BB %</dt><dd>10.6</dd></div><div class="tile"><dt>XBH</dt><dd>58</dd></div>
+    </dl>
+  </section>
+
+  <h2>3c. Hero C2 — larger headshot, aligned with the whole block</h2>
+  <p class="note">The headshot grows to 104px and the block centres on it, so the image reads as part of the identity rather than a stamp in the corner.</p>
+  <section class="card hero">
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:24px;align-items:start">
+      <div class="idy">
+        <div class="shot shot--lg"><img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:67:current.png,q_auto:best,f_auto/v1/people/682829/headshot/67/current" alt="" /></div>
+        <div style="min-width:0;flex:1">
+          <div class="name"><h3>Elly De La Cruz</h3><span class="chip">#44</span><span class="chip">SS</span><span class="chip">Switch hitter</span></div>
+          <div class="teamline"><img src="https://www.mlbstatic.com/team-logos/113.svg" alt="" /><a href="#">Cincinnati Reds</a>
+            <span class="chip chip--live">&#9679; LIVE &middot; LAD 4 &ndash; CIN 0 &middot; Top 9th</span></div>
+          <dl class="facts" style="margin-top:12px;grid-template-columns:repeat(4,minmax(0,1fr))">
+            <div class="fact"><dt>Age</dt><dd>24</dd></div>
+            <div class="fact"><dt>Bats / throws</dt><dd>S / R</dd></div>
+            <div class="fact"><dt>Height / weight</dt><dd>6&#39; 6&quot;, 200 lbs</dd></div>
+            <div class="fact"><dt>MLB debut</dt><dd>Jun 6, 2023</dd></div>
+            <div class="fact"><dt>Seasons held</dt><dd>2023 &ndash; 2026</dd></div>
+            <div class="fact"><dt>Games held</dt><dd>449</dd></div>
+            <div class="fact fact--wide"><dt>Born</dt><dd>Jan 11, 2002 &middot; Sabana Grande de Boya, Dominican Republic</dd></div>
+          </dl>
+        </div>
+      </div>
+      <div class="season">
+        <div class="k">2026 season</div>
+        <div class="v">131 games</div>
+        <div class="s">Reds 63-68 in games he played</div>
+        <div class="k" style="margin-top:12px">Last 5</div>
+        <div class="form"><span class="w">W</span><span class="l">L</span><span class="l">L</span><span class="w">W</span><span class="w">W</span></div>
+        <div class="s" style="margin-top:8px">Hits in 4 of 5 &middot; 2 HR</div>
+      </div>
+    </div>
+    <dl class="tiles">
+      <div class="tile"><dt>G</dt><dd>131</dd></div><div class="tile"><dt>AVG</dt><dd>.284</dd></div>
+      <div class="tile"><dt>OBP</dt><dd>.361</dd></div><div class="tile"><dt>SLG</dt><dd>.514</dd></div>
+      <div class="tile"><dt>OPS</dt><dd>.874</dd></div><div class="tile"><dt>HR</dt><dd>27</dd></div>
+      <div class="tile"><dt>RBI</dt><dd>72</dd></div><div class="tile"><dt>R</dt><dd>92</dd></div>
+      <div class="tile"><dt>SB</dt><dd>25</dd></div><div class="tile"><dt>K %</dt><dd>27.7</dd></div>
+      <div class="tile"><dt>BB %</dt><dd>10.6</dd></div><div class="tile"><dt>XBH</dt><dd>58</dd></div>
+    </dl>
+  </section>
+
+  <h2>3d. Hero C3 — headshot as a full-height tile</h2>
+  <p class="note">The headshot fills the height of the identity block, on the team colour, so the left edge of the card is one shape rather than a small square above white space.</p>
+  <section class="card hero">
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:24px;align-items:start">
+      <div class="idy">
+        <div class="shot shot--tall"><img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:67:current.png,q_auto:best,f_auto/v1/people/682829/headshot/67/current" alt="" /></div>
         <div style="min-width:0;flex:1">
           <div class="name"><h3>Elly De La Cruz</h3><span class="chip">#44</span><span class="chip">SS</span><span class="chip">Switch hitter</span></div>
           <div class="teamline"><img src="https://www.mlbstatic.com/team-logos/113.svg" alt="" /><a href="#">Cincinnati Reds</a>
@@ -533,18 +623,7 @@
     </div>
     <div class="band">
       <div class="sub">Lines so far</div>
-      <table class="lines">
-        <thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th style="width:130px">Progress</th><th class="num">Price</th></tr></thead>
-        <tbody>
-          <tr><td>Hits</td><td>O 0.5</td><td class="num">1</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">−185</td></tr>
-          <tr><td>Total bases</td><td>O 0.5</td><td class="num">2</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">−165</td></tr>
-          <tr><td>Walks</td><td>O 0.5</td><td class="num">1</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">+162</td></tr>
-          <tr><td>Stolen bases</td><td>O 0.5</td><td class="num">1</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">+456</td></tr>
-          <tr><td>Home runs</td><td>O 0.5</td><td class="num">0</td><td><span class="bar"><i style="width:6%"></i></span></td><td class="num">+500</td></tr>
-          <tr><td>RBIs</td><td>O 0.5</td><td class="num">0</td><td><span class="bar"><i style="width:6%"></i></span></td><td class="num">+257</td></tr>
-          <tr><td>H+R+RBI</td><td>O 1.5</td><td class="num">1</td><td><span class="bar"><i style="width:66%"></i></span></td><td class="num">+113</td></tr>
-        </tbody>
-      </table>
+      <table class="lines"><thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th class="num">Price</th></tr></thead><tbody><tr class="hit"><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=sportsbook.fanatics.com&sz=32" alt="" title="fanatics" />Hits</span></td><td>O 0.5</td><td class="num now">1<span class="tick">&#10003;</span></td><td class="num">&minus;185</td></tr><tr class="hit"><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=sportsbook.fanatics.com&sz=32" alt="" title="fanatics" />Total bases</span></td><td>O 0.5</td><td class="num now">2<span class="tick">&#10003;</span></td><td class="num">&minus;165</td></tr><tr class="hit"><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=draftkings.com&sz=32" alt="" title="draftkings" />Walks</span></td><td>O 0.5</td><td class="num now">1<span class="tick">&#10003;</span></td><td class="num">+162</td></tr><tr class="hit"><td><span class="mk"><span class="txt">novig</span>Stolen bases</span></td><td>O 0.5</td><td class="num now">1<span class="tick">&#10003;</span></td><td class="num">+456</td></tr><tr><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=betmgm.com&sz=32" alt="" title="betmgm" />Home runs</span></td><td>O 0.5</td><td class="num now">0</td><td class="num">+500</td></tr><tr><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=fanduel.com&sz=32" alt="" title="fanduel" />RBIs</span></td><td>O 0.5</td><td class="num now">0</td><td class="num">+257</td></tr><tr><td><span class="mk"><span class="txt">prophetx</span>H+R+RBI</span></td><td>O 1.5</td><td class="num now">1</td><td class="num">+113</td></tr></tbody></table>
     </div>
     <div class="band feed">
       <span><b>T9</b> Tommy Edman groundout</span><span><b>B8</b> Matt McLain strikeout</span>
@@ -577,14 +656,7 @@
     </div>
     <div class="band">
       <div class="sub">Lines so far</div>
-      <table class="lines">
-        <thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th style="width:130px">Progress</th><th class="num">Price</th></tr></thead>
-        <tbody>
-          <tr><td>Passing yards</td><td>O 248.5</td><td class="num">214</td><td><span class="bar"><i style="width:86%"></i></span></td><td class="num">−114</td></tr>
-          <tr><td>Passing TDs</td><td>O 1.5</td><td class="num">2</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">+105</td></tr>
-          <tr><td>Rushing yards</td><td>O 29.5</td><td class="num">41</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">−114</td></tr>
-        </tbody>
-      </table>
+      <table class="lines"><thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th class="num">Price</th></tr></thead><tbody><tr><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=fanduel.com&sz=32" alt="" title="fanduel" />Passing yards</span></td><td>O 248.5</td><td class="num now">214</td><td class="num">&minus;114</td></tr><tr class="hit"><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=draftkings.com&sz=32" alt="" title="draftkings" />Passing TDs</span></td><td>O 1.5</td><td class="num now">2<span class="tick">&#10003;</span></td><td class="num">+105</td></tr><tr class="hit"><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=sportsbook.fanatics.com&sz=32" alt="" title="fanatics" />Rushing yards</span></td><td>O 29.5</td><td class="num now">41<span class="tick">&#10003;</span></td><td class="num">&minus;114</td></tr></tbody></table>
     </div>
     <div class="band feed">
       <span><b>Q3 6:02</b> Allen 14-yd TD pass to Kincaid</span><span><b>Q2 0:41</b> Bass 48-yd FG</span>
@@ -611,14 +683,7 @@
     </div>
     <div class="band">
       <div class="sub">Lines so far</div>
-      <table class="lines">
-        <thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th style="width:130px">Progress</th><th class="num">Price</th></tr></thead>
-        <tbody>
-          <tr><td>Points</td><td>O 31.5</td><td class="num">18</td><td><span class="bar"><i style="width:57%"></i></span></td><td class="num">−110</td></tr>
-          <tr><td>Assists</td><td>O 5.5</td><td class="num">4</td><td><span class="bar"><i style="width:72%"></i></span></td><td class="num">−120</td></tr>
-          <tr><td>Pts+Reb+Ast</td><td>O 41.5</td><td class="num">25</td><td><span class="bar"><i style="width:60%"></i></span></td><td class="num">−115</td></tr>
-        </tbody>
-      </table>
+      <table class="lines"><thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th class="num">Price</th></tr></thead><tbody><tr><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=draftkings.com&sz=32" alt="" title="draftkings" />Points</span></td><td>O 31.5</td><td class="num now">18</td><td class="num">&minus;110</td></tr><tr><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=fanduel.com&sz=32" alt="" title="fanduel" />Assists</span></td><td>O 5.5</td><td class="num now">4</td><td class="num">&minus;120</td></tr><tr><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=betmgm.com&sz=32" alt="" title="betmgm" />Pts+Reb+Ast</span></td><td>O 41.5</td><td class="num now">25</td><td class="num">&minus;115</td></tr></tbody></table>
     </div>
     <div class="band"><span class="muted">Play-by-play is not held for the NBA live feed; the quarter scores above are what it carries.</span></div>
   </section>
@@ -642,13 +707,7 @@
     </div>
     <div class="band">
       <div class="sub">Lines so far</div>
-      <table class="lines">
-        <thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th style="width:130px">Progress</th><th class="num">Price</th></tr></thead>
-        <tbody>
-          <tr><td>Points</td><td>O 1.5</td><td class="num">2</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">+135</td></tr>
-          <tr><td>Shots on goal</td><td>O 4.5</td><td class="num">5</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">−130</td></tr>
-        </tbody>
-      </table>
+      <table class="lines"><thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th class="num">Price</th></tr></thead><tbody><tr class="hit"><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=sportsbook.fanatics.com&sz=32" alt="" title="fanatics" />Points</span></td><td>O 1.5</td><td class="num now">2<span class="tick">&#10003;</span></td><td class="num">+135</td></tr><tr class="hit"><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=draftkings.com&sz=32" alt="" title="draftkings" />Shots on goal</span></td><td>O 4.5</td><td class="num now">5<span class="tick">&#10003;</span></td><td class="num">&minus;130</td></tr></tbody></table>
     </div>
     <div class="band feed">
       <span><b>P2 14:02</b> MacKinnon goal (PP)</span><span><b>P1 06:38</b> Eichel goal (EV)</span>
@@ -676,12 +735,7 @@
     </div>
     <div class="band">
       <div class="sub">Lines so far</div>
-      <table class="lines">
-        <thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th style="width:130px">Progress</th><th class="num">Price</th></tr></thead>
-        <tbody>
-          <tr><td>Anytime goalscorer</td><td>Yes</td><td class="num">1</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">+180</td></tr>
-        </tbody>
-      </table>
+      <table class="lines"><thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th class="num">Price</th></tr></thead><tbody><tr class="hit"><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=fanduel.com&sz=32" alt="" title="fanduel" />Anytime goalscorer</span></td><td>Yes</td><td class="num now">1<span class="tick">&#10003;</span></td><td class="num">+180</td></tr></tbody></table>
       <div class="muted" style="margin-top:6px">From the event feed, not a box score: a goal is the only player fact the feed names.</div>
     </div>
     <div class="band feed">
@@ -709,13 +763,7 @@
     </div>
     <div class="band">
       <div class="sub">Lines so far</div>
-      <table class="lines">
-        <thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th style="width:130px">Progress</th><th class="num">Price</th></tr></thead>
-        <tbody>
-          <tr><td>Total games</td><td>O 22.5</td><td class="num">15</td><td><span class="bar"><i style="width:67%"></i></span></td><td class="num">−105</td></tr>
-          <tr><td>Match winner</td><td>Alcaraz</td><td class="num">—</td><td><span class="bar"><i style="width:50%"></i></span></td><td class="num">−450</td></tr>
-        </tbody>
-      </table>
+      <table class="lines"><thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th class="num">Price</th></tr></thead><tbody><tr><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=pointsbet.com&sz=32" alt="" title="pointsbet" />Total games</span></td><td>O 22.5</td><td class="num now">15</td><td class="num">&minus;105</td></tr><tr><td><span class="mk"><img src="https://www.google.com/s2/favicons?domain=betmgm.com&sz=32" alt="" title="betmgm" />Match winner</span></td><td>Alcaraz</td><td class="num now">&mdash;</td><td class="num">&minus;450</td></tr></tbody></table>
     </div>
   </section>
 </div>
