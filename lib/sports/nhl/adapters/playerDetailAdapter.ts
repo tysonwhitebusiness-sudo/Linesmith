@@ -8,12 +8,16 @@
  * NHL yet. `propOddsBoard` is real and independent of history.
  */
 
-import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
+import { athleteIdOf, type PlayerBio, type PlayerHistory, type PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { nhlResearchSpec } from './playerResearchSpec';
 import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
+import { repriceAtMainLine } from '@/lib/odds/props/mainLine';
+import { nhlShotMapSection, type NhlShotMapInput } from '@/lib/sports/nhl/playerShotMapShapes';
+import { toNhlGameState } from '@/lib/sports/multiSport/hoopsHockeyGameState';
+import type { NhlLiveGameDetail } from '@/lib/sports/nhl/liveGame';
 import type { PropOddsRow } from '@/lib/db/client';
 import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
@@ -21,7 +25,6 @@ import type { ChipDef, MatchupExplorerData, PlayerDetailChart, PlayerDetailData,
 import type { NhlTeamDefenseAllowed } from '@/lib/sports/nhl/teamDefenseAllowed';
 import { MIDDOT, fmt } from '@/components/charts/tokens';
 import { toRoleStat, type OpponentUnitRole, type SpatialGridRole, type UsageMixRole } from '@/lib/sports/shared/playerRoles';
-import type { NhlShotProfile } from '@/lib/sports/nhl/shotProfileShapes';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toRestConditions } from '@/lib/sports/shared/restConditions';
 
@@ -46,6 +49,8 @@ export interface NhlPlayerDetailScope {
 }
 
 export interface NhlPlayerDetailInput {
+  /** `useNhlLiveGame(...)`'s result — C4's game state (R6.5). Structural, not an import of the hook's type. */
+  live?: { data: NhlLiveGameDetail | null; loading: boolean };
   candidates: PickCandidate[];
   market?: string;
   snapshot: SportSnapshot | null;
@@ -53,16 +58,10 @@ export interface NhlPlayerDetailInput {
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
   /** League-wide defense-allowed leaderboard, see the identical field on `CfbPlayerDetailInput` for the full reasoning. */
   teamDefenseAllowed?: NhlTeamDefenseAllowed[];
-  /**
-   * `useNhlShotProfile(...)`'s result — the shot map (6.7). Structural rather
-   * than an import of the hook's own type, so this file stays a pure transform
-   * with no dependency on a component.
-   */
-  shotProfile?: { profile: NhlShotProfile | null; loading: boolean };
 }
 
 export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, snapshot, scope, propOdds, teamDefenseAllowed = [] , shotProfile: shotProfileState } = input;
+  const { candidates, market, snapshot, scope, propOdds, teamDefenseAllowed = [] } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -80,7 +79,15 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
   }>;
   const todaysGame = games.find((g) => String(g.gamePk) === String(meta.gamePk));
 
-  const baseLine = active.line ?? 0.5;
+  // ---- The line (R6-F9) ----
+  // The candidate carries the main line as the snapshot found it, which goes
+  // stale between rebuilds; this is the rule every other sport now runs.
+  const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
+  const startIso = todaysGame?.firstPitch ?? null;
+  const activeRows =
+    activeMarketKey && propOdds ? propOdds.rows.filter((r) => r.subjectId === active.subjectId && r.marketKey === activeMarketKey) : [];
+  const { marketLine, priced: priceCandidate } = repriceAtMainLine(active, activeRows, startIso);
+  const baseLine = marketLine ?? active.line ?? 0.5;
   const line = Math.max(0, baseLine + scope.lineOffset);
   const wantOver = true;
 
@@ -93,60 +100,17 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
   const measured = categoriseByLine(scoped, line);
   const wanted = wantOver ? OVER : UNDER;
 
-  // ---- Role 3 | spatialGrid: the shot map (6.7).
-  // Fed by `useNhlShotProfile` -> `/api/nhl/shot-profile` -> `nhl_shot_events`,
-  // which Python's `ingestNhlShotsJob` writes. Absent out of season and for a
-  // player with no shots on record, and no card renders then.
-  //
-  // Cells show SHOT SHARE. The coordinates arrive already folded onto one
-  // attacking end by `toNhlShotProfile` — see `shotProfileShapes.ts` for why
-  // that fold is a 180-degree rotation and not `abs(x)`.
-  const shotProfile = shotProfileState?.profile ?? null;
-
-  // ---- Role 2 | usageMix: the shot-type mix.
-  // The NHL API's own vocabulary (wrist, snap, slap, tip-in, backhand,
-  // deflected) -- six or seven values, so unlike NBA there is no long tail to
-  // bucket and every type is shown.
-  //
-  // The denominator is every shot including unplaced ones, a different total
-  // from the grid below; `sampleSize` states it so the two cards are not read
-  // as disagreeing about a number they are not both measuring.
-  const nhlTypeTotal = shotProfile ? shotProfile.shotTypes.reduce((s, t) => s + t.shots, 0) : 0;
-  const usageMix: UsageMixRole | null =
-    shotProfile && nhlTypeTotal > 0
-      ? {
-          title: 'Shot types',
-          slices: shotProfile.shotTypes.map((t) => ({
-            key: t.type,
-            label: t.type.charAt(0).toUpperCase() + t.type.slice(1),
-            share: (t.shots / nhlTypeTotal) * 100,
-            value: t.shots > 0 ? (t.goals / t.shots) * 100 : undefined,
-            valueLabel: 'Goal%',
-            decimals: 1,
-            valueSample: t.shots,
-          })),
-          valueFormat: fmt.pct1,
-          sampleSize: nhlTypeTotal,
-          emptyMessage: 'No shot types on record.',
-        }
-      : null;
-
-  const spatialGrid: SpatialGridRole | null = shotProfile
-    ? {
-        title: 'Shot location',
-        surface: 'rink',
-        measure: 'share',
-        cells: shotProfile.cells.map((row) =>
-          row.map((c) => ({ key: c.key, value: c.shots > 0 ? c.share : null, sampleSize: c.shots })),
-        ),
-        rowLabels: shotProfile.rowLabels,
-        columnLabels: shotProfile.columnLabels,
-        format: fmt.pct0,
-        unit: 'of attempts',
-        caption: `${shotProfile.totalShots.toLocaleString()} attempts ${MIDDOT} ${shotProfile.onGoal} on goal ${MIDDOT} ${shotProfile.totalGoals} scored`,
-        emptyMessage: 'No shot locations on record.',
-      }
-    : null;
+  // ---- The 3x3 shot grid and the shot-type donut are GONE (R6.5). ----
+  // They were a 9-cell summary of `nhl_shot_events` standing in for the shot
+  // map G2 asks for. The "Shot map" section now draws every located attempt
+  // on a real rink (`playerShotMapShapes.ts`), which does the same
+  // 180-degree rotation for the same reason, with its own type table beside
+  // it. The whole chain behind it — `/api/nhl/shot-profile`,
+  // `useNhlShotProfile`, `shotProfile.ts` and `shotProfileShapes.ts` — is
+  // deleted with it: grepped 2026-09-15, this page was its only caller. The
+  // rotation and blocked-shot measurements moved to `playerShotMapShapes.ts`.
+  const usageMix: UsageMixRole | null = null;
+  const spatialGrid: SpatialGridRole | null = null;
 
   // ---- Role 4 | binarySplit: home/away, off the `raw.isHome` this sport's
   // history already carries but exposes through no filter chip.
@@ -247,10 +211,9 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
         };
 
 
-  const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
   const propOddsBoard: PropOddsBoardProps | null =
     activeMarketKey && propOdds
-      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: active.line ?? null, userSportsbook: propOdds.userSportsbook }
+      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: marketLine ?? active.line ?? null, userSportsbook: propOdds.userSportsbook }
       : null;
 
   // ---- Real season totals (nhle.ts, summed across every real game — adapter.ts) ----
@@ -312,6 +275,22 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
 
 
 
+  // ---- C4 game state (R6.5) ----
+  // "Your lines so far" from the live box score, which the plan asks for by
+  // name for NHL; the builder is shared with NBA and matches on the player id,
+  // which api-web publishes.
+  const gameState = toNhlGameState({
+    live: input.live ?? { data: null, loading: false },
+    playerId: athleteIdOf(active.subjectId),
+    subjectName: active.subjectName,
+    candidates,
+    lineFor: (c) => (c === active ? baseLine : c.line ?? null),
+    priceFor: () => null,
+    gameHref: todaysGame?.gamePk ? `/nhl/game/${todaysGame.gamePk}` : null,
+    teams: { abbr: teamAbbr, logoUrl: teamLogoUrl, opponentAbbr, opponentLogoUrl },
+    started: startIso != null && Date.now() >= Date.parse(startIso),
+  });
+
   return {
     usageMix,
     conditions,
@@ -343,7 +322,8 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
     model: null,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
-    gameState: null,
+    priceCandidate,
+    gameState,
     liveMatchup: null,
     matchupExplorer,
     seasonStatsCard: null,
@@ -374,6 +354,14 @@ const NHL_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
  * The columns are this sport's `playerResearchSpec.ts`; the work is
  * `buildPlayerResearch`, shared by every sport.
  */
-export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date }): PlayerResearchData | null {
-  return buildPlayerResearch({ sport: 'nhl', history: input.history, spec: nhlResearchSpec(input.bio, input.history.games), now: input.now });
+export function toPlayerResearchData(input: {
+  history: PlayerHistory;
+  bio: PlayerBio | null;
+  now?: Date;
+  shots?: NhlShotMapInput;
+}): PlayerResearchData | null {
+  const research = buildPlayerResearch({ sport: 'nhl', history: input.history, spec: nhlResearchSpec(input.bio, input.history.games), now: input.now });
+  if (!research || !input.shots) return research;
+  // The official totals come off the same landing the bio already fetched.
+  return { ...research, sections: [nhlShotMapSection({ ...input.shots, officialSeasons: input.bio?.nhlSeasons ?? null })] };
 }

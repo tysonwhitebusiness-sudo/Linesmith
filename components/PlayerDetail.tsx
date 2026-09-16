@@ -17,15 +17,20 @@ import { useFootballLiveGame } from './useFootballLiveGame';
 import { useSoccerLiveGame } from './useSoccerLiveGame';
 import { useSoccerUnderstat } from './useSoccerUnderstat';
 import { useTennisLiveGame } from './useTennisLiveGame';
+import { isNhlGameLive } from '@/lib/sports/nhl/gameStates';
 import { useTennisArchive } from './useTennisArchive';
+import type { NbaShotsInput } from '@/lib/sports/nba/playerShotShapes';
+import type { NhlShotMapInput } from '@/lib/sports/nhl/playerShotMapShapes';
 import type { TennisSurfaceInput } from '@/lib/sports/tennis/playerArchiveShapes';
 import { tournamentSurface } from '@/lib/sports/tennis/surfaces';
 import type { SoccerChancesInput } from '@/lib/sports/soccer/playerUnderstatShapes';
 import { useTeamStatcast } from './useTeamStatcast';
 import { useMlbStatcast } from './useMlbStatcast';
 import type { MlbStatcastInput } from '@/lib/sports/mlb/adapters/playerResearchSections';
-import { useNhlShotProfile } from './useNhlShotProfile';
-import { useNbaShotProfile } from './useNbaShotProfile';
+import { useNbaShots } from './useNbaShots';
+import { useNhlShots } from './useNhlShots';
+import { useNbaLiveGame } from './useNbaLiveGame';
+import { useNhlLiveGame } from './useNhlLiveGame';
 import { useNflTargets } from './useNflTargets';
 import { useGolfShotProfile } from './useGolfShotProfile';
 import { nflTargetRole, nflTargetRoleFromKind, type NflTargetsInput } from '@/lib/sports/nfl/targetShapes';
@@ -746,7 +751,14 @@ function toResearchData(
   sport: string,
   history: PlayerHistory,
   bio: PlayerBio | null,
-  extras: { mlbStatcast?: MlbStatcastInput; nflTargets?: NflTargetsInput; soccerChances?: SoccerChancesInput; tennisSurface?: TennisSurfaceInput },
+  extras: {
+    mlbStatcast?: MlbStatcastInput;
+    nflTargets?: NflTargetsInput;
+    soccerChances?: SoccerChancesInput;
+    tennisSurface?: TennisSurfaceInput;
+    nbaShots?: NbaShotsInput;
+    nhlShots?: NhlShotMapInput;
+  },
 ): PlayerResearchData | null {
   const input = { history, bio };
   switch (sport) {
@@ -757,9 +769,9 @@ function toResearchData(
     case 'cfb':
       return toCfbPlayerResearchData(input);
     case 'nba':
-      return toNbaPlayerResearchData(input);
+      return toNbaPlayerResearchData({ ...input, shots: extras.nbaShots });
     case 'nhl':
-      return toNhlPlayerResearchData(input);
+      return toNhlPlayerResearchData({ ...input, shots: extras.nhlShots });
     case 'soccer':
       return toSoccerPlayerResearchData({ ...input, understat: extras.soccerChances });
     case 'tennis':
@@ -982,29 +994,10 @@ export function PlayerDetail({
   const opposingPitchProfile = profileOf(opposingStatcast, 'pitcher', opposingStarterId);
 
   // NHL's shot map (6.7). `nhl_shot_events.shooter_id` stores the bare NHL
-  // player id, so any `sport:kind:` prefix is stripped before parsing. Left
-  // undefined for the other seven sports, so the hook never fires for them.
-  const nhlShooterNumeric = active?.sport === 'nhl' ? Number(String(active.subjectId).replace(/^.*:/, '')) : NaN;
-  const nhlShotProfile = useNhlShotProfile(
-    Number.isInteger(nhlShooterNumeric) && nhlShooterNumeric > 0 ? nhlShooterNumeric : undefined,
-    // NHL seasons run Oct-Jun and are written '20242025'.
-    (() => {
-      const now = new Date();
-      const start = now.getUTCMonth() >= 8 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
-      return `${start}${start + 1}`;
-    })(),
-  );
-
-  // NBA's shot chart (6.7). ESPN athlete ids, same `sport:kind:` prefix strip
-  // as NHL. ESPN calls the 2024-25 season 2025, and it starts in October.
-  const nbaShooterNumeric = active?.sport === 'nba' ? Number(String(active.subjectId).replace(/^.*:/, '')) : NaN;
-  const nbaShotProfile = useNbaShotProfile(
-    Number.isInteger(nbaShooterNumeric) && nbaShooterNumeric > 0 ? nbaShooterNumeric : undefined,
-    (() => {
-      const now = new Date();
-      return now.getUTCMonth() >= 9 ? now.getUTCFullYear() + 1 : now.getUTCFullYear();
-    })(),
-  );
+  // C4 for both (R6.5). Live hooks run unconditionally and idle for the other
+  // sports, as every other sport's already do.
+  const nbaLive = useNbaLiveGame(active?.sport === 'nba' ? gamePkStr : undefined, active?.sport === 'nba' && started, 25_000);
+  const nhlLive = useNhlLiveGame(active?.sport === 'nhl' ? gamePkStr : undefined, active?.sport === 'nhl' && started, 25_000);
 
   // Golf's shot-by-shot profile (6.13). BY NAME, not by id: the seed stores
   // PGA Tour's player id and `subjectId` is ESPN's, and both are five-digit
@@ -1074,6 +1067,13 @@ export function PlayerDetail({
   // none of which `player_game_history` stores for tennis.
   const tennisHistoryTour = historySport === 'tennis_wta' ? 'wta' : historySport === 'tennis_atp' ? 'atp' : undefined;
   const tennisArchive = useTennisArchive(tennisHistoryTour, tennisHistoryTour ? bioState.data?.name ?? subject?.name ?? undefined : undefined);
+
+  // NBA's and NHL's shot sections (R6.5): every located attempt, not the 3x3
+  // grid that stood in for them (deleted with their routes and hooks). Both key
+  // on the athlete id the page already has -- `shooter_id` for a shooter, and
+  // `goalie_id` when that id finds no shots of its own.
+  const nbaShots = useNbaShots(historySport === 'nba' ? researchAthleteId ?? undefined : undefined);
+  const nhlShots = useNhlShots(historySport === 'nhl' ? researchAthleteId ?? undefined : undefined);
   const tennisSurface = useMemo<TennisSurfaceInput | undefined>(
     () =>
       !tennisHistoryTour
@@ -1088,6 +1088,32 @@ export function PlayerDetail({
             emptyReason: 'The TennisMyLife archive is keyed by name and holds no matches under this one.',
           },
     [tennisHistoryTour, sportSectionSeason, tennisArchive, bioState.loading, bioState.data, meta.tournamentName],
+  );
+  const nbaShotsInput = useMemo<NbaShotsInput | undefined>(
+    () =>
+      historySport !== 'nba'
+        ? undefined
+        : {
+            season: sportSectionSeason,
+            data: nbaShots.data,
+            loading: nbaShots.loading,
+            error: nbaShots.error,
+            emptyReason: 'The shot feed holds no attempts for this player.',
+          },
+    [historySport, sportSectionSeason, nbaShots],
+  );
+  const nhlShotsInput = useMemo<NhlShotMapInput | undefined>(
+    () =>
+      historySport !== 'nhl'
+        ? undefined
+        : {
+            season: sportSectionSeason,
+            data: nhlShots.data,
+            loading: nhlShots.loading,
+            error: nhlShots.error,
+            emptyReason: 'The shot feed holds no attempts for this player.',
+          },
+    [historySport, sportSectionSeason, nhlShots],
   );
   const nflRole =
     researchSport !== 'nfl'
@@ -1125,9 +1151,16 @@ export function PlayerDetail({
   const research = useMemo(
     () =>
       researchSport && historyState.data
-        ? toResearchData(researchSport, historyState.data, bioState.data, { mlbStatcast: mlbStatcastInput, nflTargets: nflTargetsInput, soccerChances, tennisSurface })
+        ? toResearchData(researchSport, historyState.data, bioState.data, {
+            mlbStatcast: mlbStatcastInput,
+            nflTargets: nflTargetsInput,
+            soccerChances,
+            tennisSurface,
+            nbaShots: nbaShotsInput,
+            nhlShots: nhlShotsInput,
+          })
         : null,
-    [researchSport, historyState.data, bioState.data, mlbStatcastInput, nflTargetsInput, soccerChances, tennisSurface],
+    [researchSport, historyState.data, bioState.data, mlbStatcastInput, nflTargetsInput, soccerChances, tennisSurface, nbaShotsInput, nhlShotsInput],
   );
   const stickyTop = useStickyHeaderHeight(Boolean(subject) && !embedded);
   const sectionIds = (research?.sections ?? []).map((x) => `${x.id}:${x.navLabel}`).join('|');
@@ -1139,7 +1172,9 @@ export function PlayerDetail({
     (playerLive.data && !playerLive.error) ||
       (footballLive.data && footballLive.data.state === 'in') ||
       (soccerLive.data && soccerLive.data.state === 'in') ||
-      (tennisLive.data && tennisLive.data.state === 'in'),
+      (tennisLive.data && tennisLive.data.state === 'in') ||
+      (nbaLive.data && nbaLive.data.state === 'in') ||
+      (nhlLive.data && isNhlGameLive(nhlLive.data.gameState)),
   );
   const navItems = useMemo(
     () => [
@@ -1202,6 +1237,7 @@ export function PlayerDetail({
               })
             : active.sport === 'nba'
               ? toNbaPlayerDetailData({
+                  live: nbaLive,
                   candidates,
                   market: active.dimension,
                   snapshot,
@@ -1211,13 +1247,13 @@ export function PlayerDetail({
                 })
               : active.sport === 'nhl'
                 ? toNhlPlayerDetailData({
+                    live: nhlLive,
                     candidates,
                     market: active.dimension,
                     snapshot,
                     scope: { lineOffset, opponentOnly, lastN },
                     propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
                     teamDefenseAllowed: nhlTeamDefense.teams,
-                    shotProfile: nhlShotProfile,
                   })
                 : active.sport === 'tennis'
                   ? toTennisPlayerDetailData({
@@ -1290,14 +1326,16 @@ export function PlayerDetail({
     opponentTeamStatcast.loading ||
     statcastNow.loading ||
     opposingStatcast.loading ||
-    nhlShotProfile.loading ||
-    nbaShotProfile.loading ||
     nflTargets.loading ||
     footballLive.loading ||
     soccerLive.loading ||
     soccerUnderstat.loading ||
     tennisLive.loading ||
     tennisArchive.loading ||
+    nbaLive.loading ||
+    nhlLive.loading ||
+    nbaShots.loading ||
+    nhlShots.loading ||
     golfShotProfile.loading ||
     lineHistory.loading ||
     cfbTeamDefense.loading ||

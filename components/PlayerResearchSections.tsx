@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Avatar, Card, Chip, cx, DataTable, EmptyState, ErrorState, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column } from './ui';
-import { CATEGORICAL, FieldScatter, Histogram, PitchScatter, SeriesChart, ZoneScatter } from './charts';
+import { CATEGORICAL, CourtScatter, FieldScatter, Histogram, PitchScatter, RinkScatter, SeriesChart, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import {
   formatResearchValue,
@@ -487,6 +487,10 @@ function ScatterCard({ card }: { card: Extract<ResearchCard, { kind: 'scatter' }
       </div>
       {card.surface === 'pitch' ? (
         <PitchScatter points={card.points} weights={card.weights} emphasis={card.emphasis} tips={card.tips} groups={card.groups} visible={visible} label={card.title} />
+      ) : card.surface === 'court' ? (
+        <CourtScatter points={card.points} emphasis={card.emphasis} tips={card.tips} groups={card.groups} visible={visible} label={card.title} />
+      ) : card.surface === 'rink' ? (
+        <RinkScatter points={card.points} emphasis={card.emphasis} tips={card.tips} groups={card.groups} visible={visible} label={card.title} />
       ) : card.surface === 'field' ? (
         <FieldScatter points={card.points} groups={card.groups} visible={visible} label={card.title} />
       ) : (

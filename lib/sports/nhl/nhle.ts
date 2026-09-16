@@ -287,12 +287,9 @@ export async function fetchWeekSchedule(fromDate?: string): Promise<NhlGame[]> {
   return games;
 }
 
-export function isNhlGameCompleted(gameState: string): boolean {
-  return gameState === 'OFF' || gameState === 'FINAL';
-}
-export function isNhlGameLive(gameState: string): boolean {
-  return gameState === 'LIVE' || gameState === 'CRIT';
-}
+// Declared in `gameStates.ts` so client-reachable code can ask the same
+// question without pulling this module's `pg` into the browser bundle (R6.5).
+export { isNhlGameCompleted, isNhlGameLive } from './gameStates';
 
 // ---------------------------------------------------------------------------
 // Boxscore — real per-player game stats

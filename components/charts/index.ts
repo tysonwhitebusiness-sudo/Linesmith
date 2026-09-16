@@ -65,3 +65,5 @@ export { Histogram, type HistogramBin } from './Histogram';
 export { ZoneScatter, type ZoneScatterGroup } from './ZoneScatter';
 export { FieldScatter } from './FieldScatter';
 export { PitchScatter } from './PitchScatter';
+export { CourtScatter } from './CourtScatter';
+export { RinkScatter } from './RinkScatter';

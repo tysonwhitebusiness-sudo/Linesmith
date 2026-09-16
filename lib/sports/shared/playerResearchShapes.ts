@@ -59,6 +59,15 @@ export interface PlayerBio {
   facts: Array<{ label: string; value: string }>;
   /** `null` means the source reports no injury, not that we did not look. */
   injury: { status: string; detail: string | null; date: string | null; returnDate: string | null } | null;
+  /**
+   * The league's OWN season totals, where the league publishes them and the
+   * bio's fetch already carries them. Only NHL does: `parsePlayerLanding`
+   * reads `seasonTotals` off the same api-web landing the bio comes from, so
+   * R6.5's "Official NHL season totals" card costs no extra call. A named,
+   * presence-checked field rather than a `sport === 'nhl'` branch (CLAUDE.md
+   * §4); every other sport leaves it undefined.
+   */
+  nhlSeasons?: import('@/lib/sports/nhl/apiWebParsers').NhlSeasonLine[];
   /** Human name of the source, for the page's Sources section. */
   source: string;
   fetchedAt: string;
@@ -308,8 +317,12 @@ export type ResearchCard =
        * quarterback: x is the lateral position in [-1, 1], y is air yards.
        * `pitch` is soccer's attacking half seen from behind the goal being
        * attacked: x is across the pitch and y is Understat's own 0.5-1 depth.
+       * `court` is an NBA half court with the RIM as the origin: x is 0-50
+       * across and y is feet out from the rim. `rink` is NHL's offensive zone,
+       * rotated so every shot attacks the same end: x is feet from the goal
+       * line and y is feet across the ice.
        */
-      surface: 'zone' | 'field' | 'pitch';
+      surface: 'zone' | 'field' | 'pitch' | 'court' | 'rink';
       points: Array<[string | null, number, number]>;
       /** Per point, same order: how big to draw it (a shot's xG). */
       weights?: number[];

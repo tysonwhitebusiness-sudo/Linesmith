@@ -14,6 +14,10 @@ import { NBA_SPEC } from './playerResearchSpec';
 import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
+import { repriceAtMainLine } from '@/lib/odds/props/mainLine';
+import { nbaShotSection, type NbaShotsInput } from '@/lib/sports/nba/playerShotShapes';
+import { toNbaGameState } from '@/lib/sports/multiSport/hoopsHockeyGameState';
+import type { NbaLiveGameDetail } from '@/lib/sports/nba/liveGame';
 import type { PropOddsRow } from '@/lib/db/client';
 import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
@@ -21,7 +25,6 @@ import type { ChipDef, MatchupExplorerData, PlayerDetailChart, PlayerDetailData,
 import type { NbaTeamDefenseAllowed } from '@/lib/sports/nba/teamDefenseAllowed';
 import { MIDDOT, fmt } from '@/components/charts/tokens';
 import { toRoleStat, type OpponentUnitRole, type SpatialGridRole, type UsageMixRole } from '@/lib/sports/shared/playerRoles';
-import type { NbaShotProfile } from '@/lib/sports/nba/shotProfileShapes';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toRestConditions } from '@/lib/sports/shared/restConditions';
 
@@ -58,6 +61,8 @@ export interface NbaPlayerDetailScope {
 }
 
 export interface NbaPlayerDetailInput {
+  /** `useNbaLiveGame(...)`'s result — C4's game state (R6.5). Structural, not an import of the hook's type. */
+  live?: { data: NbaLiveGameDetail | null; loading: boolean };
   candidates: PickCandidate[];
   market?: string;
   snapshot: SportSnapshot | null;
@@ -65,12 +70,10 @@ export interface NbaPlayerDetailInput {
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
   /** League-wide defense-allowed leaderboard, see the identical field on `CfbPlayerDetailInput` for the full reasoning. */
   teamDefenseAllowed?: NbaTeamDefenseAllowed[];
-  /** `useNbaShotProfile(...)`'s result — the shot chart (6.7). Structural, not an import of the hook's type. */
-  shotProfile?: { profile: NbaShotProfile | null; loading: boolean };
 }
 
 export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, snapshot, scope, propOdds, teamDefenseAllowed = [] , shotProfile: shotProfileState } = input;
+  const { candidates, market, snapshot, scope, propOdds, teamDefenseAllowed = [] } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -88,7 +91,15 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
   }>;
   const todaysGame = games.find((g) => String(g.gamePk) === String(meta.gamePk));
 
-  const baseLine = active.line ?? 0.5;
+  // ---- The line (R6-F9) ----
+  // The candidate carries the main line as the snapshot found it, which goes
+  // stale between rebuilds; this is the rule every other sport now runs.
+  const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
+  const startIso = todaysGame?.firstPitch ?? null;
+  const activeRows =
+    activeMarketKey && propOdds ? propOdds.rows.filter((r) => r.subjectId === active.subjectId && r.marketKey === activeMarketKey) : [];
+  const { marketLine, priced: priceCandidate } = repriceAtMainLine(active, activeRows, startIso);
+  const baseLine = marketLine ?? active.line ?? 0.5;
   const line = Math.max(0, baseLine + scope.lineOffset);
   const wantOver = true;
 
@@ -101,88 +112,17 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
   const measured = categoriseByLine(scoped, line);
   const wanted = wantOver ? OVER : UNDER;
 
-  // ---- Role 3 | spatialGrid: the shot chart (6.7).
-  // Fed by `useNbaShotProfile` -> `/api/nba/shot-profile` -> `nba_shot_events`,
-  // which Python's `ingestNbaShotsJob` writes. Distance BANDS rather than a
-  // court grid: basketball is described by distance (at the rim, the paint,
-  // mid-range, beyond the arc), and the bands are anchored on the basket at
-  // (25, 0) in feet -- an origin confirmed against the three-point line, not
-  // assumed. See `shotProfileShapes.ts`.
-  const nbaShots = shotProfileState?.profile ?? null;
-
-  // ---- Role 2 | usageMix: the shot-type mix.
-  // ESPN's own descriptions ("Jump Shot", "Pullup Jump Shot", "Driving Layup
-  // Shot"). There are dozens of them across a season, so the long tail is
-  // bucketed into "Other" rather than rendered as thirty one-percent slices --
-  // a mix nobody can read is not a mix. The cut is by SHARE, so a player with
-  // an unusual signature keeps it instead of being flattened to a league norm.
-  //
-  // The denominator is every attempt including unlocated ones, which is a
-  // different total from the grid above; `sampleSize` states it so the two
-  // cards are not read as disagreeing.
-  const nbaTypeTotal = nbaShots ? nbaShots.shotTypes.reduce((s, t) => s + t.attempts, 0) : 0;
-  const usageMix: UsageMixRole | null =
-    nbaShots && nbaTypeTotal > 0
-      ? (() => {
-          const withShare = nbaShots.shotTypes.map((t) => ({ ...t, share: (t.attempts / nbaTypeTotal) * 100 }));
-          const major = withShare.filter((t) => t.share >= 4);
-          const rest = withShare.filter((t) => t.share < 4);
-          const restAttempts = rest.reduce((s, t) => s + t.attempts, 0);
-          const restMade = rest.reduce((s, t) => s + t.made, 0);
-          const slices = major.map((t) => ({
-            key: t.type,
-            label: t.type.replace(/ Shot$/, ''),
-            share: t.share,
-            value: t.attempts > 0 ? (t.made / t.attempts) * 100 : undefined,
-            valueLabel: 'FG%',
-            decimals: 0,
-            valueSample: t.attempts,
-          }));
-          if (restAttempts > 0) {
-            slices.push({
-              key: 'Other',
-              label: `Other (${rest.length})`,
-              share: (restAttempts / nbaTypeTotal) * 100,
-              value: (restMade / restAttempts) * 100,
-              valueLabel: 'FG%',
-              decimals: 0,
-              valueSample: restAttempts,
-            });
-          }
-          return {
-            title: 'Shot types',
-            slices,
-            valueFormat: fmt.pct0,
-            sampleSize: nbaTypeTotal,
-            emptyMessage: 'No shot types on record.',
-          };
-        })()
-      : null;
-
-  const spatialGrid: SpatialGridRole | null = nbaShots
-    ? {
-        title: 'Shot profile',
-        surface: 'halfCourt',
-        measure: 'share',
-        cells: nbaShots.cells.map((row) =>
-          row.map((c) => ({ key: c.key, value: c.attempts > 0 ? c.share : null, sampleSize: c.attempts })),
-        ),
-        rowLabels: nbaShots.rowLabels,
-        columnLabels: nbaShots.columnLabels,
-        format: fmt.pct0,
-        unit: 'of attempts',
-        caption: [
-          `${nbaShots.totalAttempts.toLocaleString()} located attempts`,
-          `${Math.round((nbaShots.totalMade / Math.max(1, nbaShots.totalAttempts)) * 100)}% made`,
-          // An unlocated attempt is a real shot whose position ESPN did not
-          // record. Saying so beats letting the shares imply full coverage.
-          nbaShots.unlocated > 0 ? `${nbaShots.unlocated} unlocated` : null,
-        ]
-          .filter(Boolean)
-          .join(` ${MIDDOT} `),
-        emptyMessage: 'No shot locations on record.',
-      }
-    : null;
+  // ---- The 3x3 shot grid and the shot-type donut are GONE (R6.5). ----
+  // They were a 9-cell summary of `nba_shot_events` standing in for the shot
+  // chart G2 asks for. The "Shot profile" section now draws every located
+  // attempt on a real half court (`playerShotShapes.ts`) with its own zone and
+  // type tables, so keeping a coarser view of the same rows beside it would
+  // only invite the two to disagree. The whole chain behind it —
+  // `/api/nba/shot-profile`, `useNbaShotProfile`, `shotProfile.ts` and
+  // `shotProfileShapes.ts` — is deleted with it: grepped 2026-09-15, this page
+  // was its only caller.
+  const usageMix: UsageMixRole | null = null;
+  const spatialGrid: SpatialGridRole | null = null;
 
   // ---- Role 4 | binarySplit: home/away, off the `raw.isHome` this sport's
   // history already carries but exposes through no filter chip.
@@ -291,10 +231,9 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
         };
 
 
-  const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
   const propOddsBoard: PropOddsBoardProps | null =
     activeMarketKey && propOdds
-      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: active.line ?? null, userSportsbook: propOdds.userSportsbook }
+      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: marketLine ?? active.line ?? null, userSportsbook: propOdds.userSportsbook }
       : null;
 
   // ---- Real season totals (sportsdataverse.ts, summed across every real game — adapter.ts) ----
@@ -347,6 +286,20 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
 
 
 
+  // ---- C4 game state (R6.5) ----
+  // "Your lines so far" from the live box score, which the plan asks for by
+  // name for NBA; the builder is shared with NHL.
+  const gameState = toNbaGameState({
+    live: input.live ?? { data: null, loading: false },
+    subjectName: active.subjectName,
+    candidates,
+    lineFor: (c) => (c === active ? baseLine : c.line ?? null),
+    priceFor: () => null,
+    gameHref: todaysGame?.gamePk ? `/nba/game/${todaysGame.gamePk}` : null,
+    teams: { abbr: teamAbbr, logoUrl: teamLogoUrl, opponentAbbr, opponentLogoUrl },
+    started: startIso != null && Date.now() >= Date.parse(startIso),
+  });
+
   return {
     usageMix,
     conditions,
@@ -378,7 +331,8 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
     model: null,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
-    gameState: null,
+    priceCandidate,
+    gameState,
     liveMatchup: null,
     matchupExplorer,
     seasonStatsCard: null,
@@ -409,6 +363,13 @@ const NBA_TRACKABLE_STATS: Array<{ key: string; label: string }> = [
  * The columns are this sport's `playerResearchSpec.ts`; the work is
  * `buildPlayerResearch`, shared by every sport.
  */
-export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date }): PlayerResearchData | null {
-  return buildPlayerResearch({ sport: 'nba', history: input.history, spec: NBA_SPEC, now: input.now });
+export function toPlayerResearchData(input: {
+  history: PlayerHistory;
+  bio: PlayerBio | null;
+  now?: Date;
+  shots?: NbaShotsInput;
+}): PlayerResearchData | null {
+  const research = buildPlayerResearch({ sport: 'nba', history: input.history, spec: NBA_SPEC, now: input.now });
+  if (!research || !input.shots) return research;
+  return { ...research, sections: [nbaShotSection(input.shots)] };
 }

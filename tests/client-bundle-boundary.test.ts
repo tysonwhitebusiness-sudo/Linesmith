@@ -65,6 +65,12 @@ const DB_MODULES = [
   // 6.14: `components/useTeamRatingHistory.ts` and the six team adapters take
   // their types from `teamRatingShapes.ts`; this one value-imports `pgAll`.
   '@/lib/sports/shared/teamRatingHistory',
+  // R6.5: NHL's api-web builder value-imports `writeSnapshotCache`. Its two
+  // pure game-state predicates live in `gameStates.ts`, which is what the
+  // player page's live gate and `hoopsHockeyGameState.ts` import. Importing
+  // `isNhlGameLive` from here instead passed `tsc` and all 504 tests, and
+  // returned 500 on every route in the dev server.
+  '@/lib/sports/nhl/nhle',
 ];
 
 /**

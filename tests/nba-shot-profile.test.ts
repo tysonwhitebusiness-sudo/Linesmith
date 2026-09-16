@@ -1,81 +1,130 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isBeyondArc, shotDistance, shotValue, toNbaShotProfile } from '../lib/sports/nba/shotProfileShapes';
+import { nbaShotSection, shotDistance, shotFamily, shotZone, type NbaShot, type NbaShotsPayload } from '../lib/sports/nba/playerShotShapes';
 
 /**
- * Phase 6.7 — NBA's shot chart.
- *
- * THE GEOMETRY WAS MEASURED, NOT ASSUMED. On one real game's 195 attempts,
- * three-pointers averaged 26.6 feet from (25, 0) and two-pointers 12.9, against
- * a real three-point line of 22 feet in the corners and 23.75 at the top. An
- * origin or scale that was wrong would not produce those two numbers.
+ * R6.5 — NBA's "Shot profile". The fixtures are built to the geometry measured
+ * on the real table (`scripts/measure-hoops-hockey.ts`): x 0-50 across, y in
+ * feet OUT FROM THE RIM, `point_value` only ever 2 or 3.
  */
-
-const shot = (x: number | null, y: number | null, made = false, pointValue = 2) => ({
-  xCoord: x,
-  yCoord: y,
-  made,
-  pointValue,
+const shot = (over: Partial<NbaShot> = {}): NbaShot => ({
+  date: '2026-01-15',
+  season: 2026,
+  x: 25,
+  y: 3,
+  pointValue: 2,
+  made: true,
+  shotType: 'Driving Layup Shot',
+  opponent: null,
+  ...over,
+});
+const payload = (shots: NbaShot[]): NbaShotsPayload => ({
+  shooterId: 4278073,
+  seasons: [...new Set(shots.map((s) => s.season))].sort((a, b) => a - b),
+  shots,
+  asOf: '2026-09-15T06:00:00Z',
+});
+const input = (shots: NbaShot[], over: Partial<Parameters<typeof nbaShotSection>[0]> = {}) => ({
+  season: null,
+  data: payload(shots),
+  loading: false,
+  error: null,
+  ...over,
 });
 
-test('the basket is at (25, 1) and the units are feet', () => {
-  // R2: fitted in G2, 99.8% of makes classify to their stored value with this origin.
-  assert.equal(shotDistance(25, 1), 0, 'a shot at the rim is zero feet from it');
-  assert.equal(shotDistance(25, 11), 10);
-  assert.ok(Math.abs(shotDistance(3, 1) - 22) < 1e-9, 'a corner three is 22 feet along the baseline');
+test('the rim is the origin, so distance is measured from it', () => {
+  assert.equal(shotDistance({ x: 25, y: 0 }), 0);
+  // A corner three sits 22 ft from the rim by rule; x = 3 is the corner line.
+  assert.equal(Math.round(shotDistance({ x: 3, y: 0 }) as number), 22);
+  assert.equal(shotDistance({ x: null, y: 4 }), null);
 });
 
-test("a miss's value comes from the arc, because every miss is stored as 2", () => {
-  assert.equal(shotValue({ xCoord: 25, yCoord: 26, made: false, pointValue: 2 }), 3, 'a missed three at the top');
-  assert.equal(shotValue({ xCoord: 3, yCoord: 2, made: false, pointValue: 2 }), 3, 'a missed corner three');
-  assert.equal(shotValue({ xCoord: 25, yCoord: 15, made: false, pointValue: 2 }), 2);
-  assert.equal(shotValue({ xCoord: 25, yCoord: 24.5, made: true, pointValue: 2 }), 2, 'a make keeps its stored value');
+test('zones tell a corner three from an above-the-break three by where it is', () => {
+  assert.equal(shotZone(shot({ x: 25, y: 2, pointValue: 2 })), 'restricted');
+  assert.equal(shotZone(shot({ x: 28, y: 10, pointValue: 2 })), 'paint');
+  assert.equal(shotZone(shot({ x: 38, y: 12, pointValue: 2 })), 'mid');
+  // Same point value, same shooter: only the position separates these two.
+  assert.equal(shotZone(shot({ x: 3, y: 2, pointValue: 3 })), 'corner3');
+  assert.equal(shotZone(shot({ x: 25, y: 24, pointValue: 3 })), 'break3');
+  assert.equal(shotZone(shot({ x: null, y: null })), null);
 });
 
-test('an above-the-break long two is a two, not a three', () => {
-  // 22.5 feet out at the top: inside the 23.25 arc. The old band was ">22 feet".
-  assert.equal(isBeyondArc(25, 23.5), false);
-  const profile = toNbaShotProfile([shot(25, 23.5)])!;
-  assert.equal(profile.cells[3][0].attempts, 0);
-  assert.equal(profile.cells[2][0].attempts, 1);
+test('the league tagging a shot 3 outweighs the geometry', () => {
+  // A shot the feed placed slightly short of the arc but scored as a three is
+  // a three: the point value is what actually happened.
+  assert.equal(shotZone(shot({ x: 25, y: 21, pointValue: 3 })), 'break3');
 });
 
-test('bands are anchored on real basketball distances', () => {
-  const profile = toNbaShotProfile([
-    shot(25, 2), // 2ft  -> at the rim
-    shot(25, 10), // 10ft -> paint
-    shot(25, 18), // 18ft -> mid-range
-    shot(25, 25), // 25ft -> three
-  ])!;
-  assert.deepEqual(profile.rowLabels, ['At the rim', 'Paint', 'Mid-range', 'Three-point']);
-  assert.deepEqual(profile.cells.map((r) => r[0].attempts), [1, 1, 1, 1]);
+test('shot types roll into families, and an unnamed type says so', () => {
+  assert.equal(shotFamily('Pullup Jump Shot').key, 'pullup');
+  assert.equal(shotFamily('Driving Finger Roll Layup').key, 'layup');
+  assert.equal(shotFamily('Step Back Jump Shot').key, 'stepback');
+  assert.equal(shotFamily('Running Dunk Shot').key, 'dunk');
+  assert.equal(shotFamily(null).label, 'Unspecified');
 });
 
-test('an unlocated attempt is counted but never placed at the rim', () => {
-  // ESPN's missing-coordinate sentinel is rejected at ingest, so these arrive
-  // NULL. Defaulting them to (25,0) would credit a player with rim attempts
-  // they never took — and the rim band is the one that most changes a read.
-  const profile = toNbaShotProfile([shot(25, 2, true), shot(null, null), shot(null, null)])!;
-  assert.equal(profile.totalAttempts, 1, 'only placed attempts are in the bands');
-  assert.equal(profile.unlocated, 2, 'but the real attempts are still reported');
-  assert.equal(profile.cells[0][0].attempts, 1, 'the rim band must not absorb them');
-  assert.equal(profile.cells[0][0].share, 100);
+test('the section is the chart beside the zone table, then the type table', () => {
+  const sec = nbaShotSection(input([shot(), shot({ made: false })]));
+  assert.equal(sec.state.kind, 'ready');
+  assert.deepEqual([sec.id, sec.title], ['shots', 'Shot profile']);
+  assert.deepEqual(sec.rows.map((r) => r.map((c) => c.key)), [['chart', 'zones'], ['types']]);
 });
 
-test('field-goal percentage is per band and null where empty', () => {
-  const profile = toNbaShotProfile([shot(25, 2, true), shot(25, 2, false), shot(25, 26, true, 3)])!;
-  assert.equal(profile.cells[0][0].fgPct, 50);
-  assert.equal(profile.cells[1][0].fgPct, null, 'an empty band has no percentage, not zero');
-  assert.equal(profile.cells[3][0].fgPct, 100);
-  assert.equal(profile.totalMade, 2);
+test('by zone reports points per shot, which is the point of the card', () => {
+  const shots = [
+    ...Array.from({ length: 10 }, () => shot({ x: 25, y: 24, pointValue: 3, made: false, shotType: 'Jump Shot' })),
+    ...Array.from({ length: 4 }, () => shot({ x: 25, y: 24, pointValue: 3, made: true, shotType: 'Jump Shot' })),
+    ...Array.from({ length: 10 }, () => shot({ x: 30, y: 15, pointValue: 2, made: true, shotType: 'Jump Shot' })),
+  ];
+  const card = nbaShotSection(input(shots)).rows[0][1];
+  assert.ok(card.kind === 'table');
+  const three = card.rows.find((r) => r.key === 'break3')!;
+  assert.equal(three.values.n, 14);
+  assert.equal(three.values.m, 4);
+  // 4 makes worth 3 over 14 attempts = 0.857 — better than a 100% long two would
+  // have to work for, which is the comparison the column exists to enable.
+  assert.equal(Math.round((three.values.pps as number) * 100), 86);
+  const mid = card.rows.find((r) => r.key === 'mid')!;
+  assert.equal(mid.values.pps, 2);
+  // A zone with no attempts is not a row of zeroes.
+  assert.ok(card.rows.every((r) => (r.values.n as number) > 0));
 });
 
-test('shares are of placed attempts and sum to 100', () => {
-  const profile = toNbaShotProfile([shot(25, 2), shot(25, 25), shot(null, null)])!;
-  assert.ok(Math.abs(profile.cells.flat().reduce((s, c) => s + c.share, 0) - 100) < 1e-9);
+test('an unplaced attempt is counted by type and stated, never silently dropped', () => {
+  const shots = [shot(), shot({ x: null, y: null, shotType: 'Jump Shot' })];
+  const sec = nbaShotSection(input(shots));
+  const chart = sec.rows[0][0];
+  const types = sec.rows[1][0];
+  assert.ok(chart.kind === 'scatter' && types.kind === 'table');
+  assert.equal(chart.points.length, 1, 'the chart can only draw what was placed');
+  assert.equal(
+    types.rows.reduce((a, r) => a + (r.values.n as number), 0),
+    2,
+    'the type table counts both',
+  );
+  assert.match(sec.note ?? '', /1 of 2 attempts carry a location/);
 });
 
-test('nothing placeable means no card', () => {
-  assert.equal(toNbaShotProfile([]), null);
-  assert.equal(toNbaShotProfile([shot(null, null)]), null, 'unlocated attempts alone cannot draw a chart');
+test('the season control lists every season held, and filters to one', () => {
+  const sec = nbaShotSection(input([shot({ season: 2025 }), shot({ season: 2026 }), shot({ season: 2026 })], { season: 2026 }));
+  assert.deepEqual(sec.season?.options.map((o) => o.label), ['2025-26', '2024-25']);
+  const chart = sec.rows[0][0];
+  assert.ok(chart.kind === 'scatter' && chart.points.length === 2);
+});
+
+test('colour is the outcome: a make is emphasised, and the groups stay the families', () => {
+  const sec = nbaShotSection(input([shot({ made: true }), shot({ made: false, shotType: 'Jump Shot' })]));
+  const chart = sec.rows[0][0];
+  assert.ok(chart.kind === 'scatter');
+  assert.equal(chart.surface, 'court');
+  assert.deepEqual(chart.emphasis, [true, false]);
+  assert.deepEqual(chart.legend?.map((l) => l.label), ['Made', 'Missed']);
+  assert.deepEqual(chart.groups.map((g) => g.key).sort(), ['jumper', 'layup']);
+});
+
+test('loading, error and a player with no shots each say which they are', () => {
+  assert.equal(nbaShotSection(input([], { loading: true })).state.kind, 'loading');
+  assert.equal(nbaShotSection(input([], { error: 'nope' })).state.kind, 'error');
+  const none = nbaShotSection(input([], { data: null, emptyReason: 'no rows' }));
+  assert.equal(none.state.kind === 'empty' ? none.state.reason : '', 'no rows');
 });

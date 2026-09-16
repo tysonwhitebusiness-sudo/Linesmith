@@ -195,6 +195,8 @@ export function bioFromNhlLanding(p: NhlPlayerLanding | null, now: Date, fetched
       ['Draft', d && d.year != null ? `${d.year} · round ${d.round}, pick ${d.pickInRound} (${d.overallPick} overall) · ${d.teamAbbrev ?? ''}`.trim() : null],
     ]),
     injury: null,
+    // R6.5: the league's own totals, off the landing this bio already fetched.
+    nhlSeasons: p.seasons,
     source: 'NHL api-web player landing',
     fetchedAt,
   };
