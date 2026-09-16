@@ -4,7 +4,9 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages: R1-R5 and R6.1 (MLB) signed off; R6.2 (NFL/CFB) and R6.3 (soccer) complete with renders owed on the next slates; R6.4 (tennis) next (second track, below).**
+Research pages: R1-R5 and R6.1 (MLB) signed off; R6.2 (NFL/CFB), R6.3 (soccer)
+and R6.4 (tennis) complete with renders owed on the next slates; R6.5 (NBA and
+NHL) next (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -34,11 +36,25 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R6.1 (MLB) signed off; R6.2 and R6.3 COMPLETE 2026-09-15; R6.4 next
+## Research pages track — R6.1 (MLB) signed off; R6.2, R6.3 and R6.4 COMPLETE 2026-09-15; R6.5 next
 
-R1-R5 and R6.1 signed off. **R6.2 (NFL and CFB) and R6.3 (soccer) are done;
-R6.4 (tennis) is next.** The handoff is
-`docs/audit-2026-09-13/RESUME-PROMPT.md`; the record is the plan's status block.
+R1-R5 and R6.1 signed off. **R6.2 (NFL and CFB), R6.3 (soccer) and R6.4
+(tennis) are done; R6.5 (NBA and NHL) is next — built now, render-verified in
+October.** The handoff is `docs/audit-2026-09-13/RESUME-PROMPT.md`; the record
+is the plan's status block.
+
+- **R6.4:** "Surface & serve" from the TennisMyLife archive (new
+  `/api/tennis/archive`, resolved by name) — by surface with today's court
+  marked, **by level** (slam / Masters 1000 / 500 / 250, with the deepest round
+  reached, which is R6-F3 answered on the page), ranking at each match, and
+  serve against return as a 10-match rolling pair. The section states how far
+  the archive reaches, because it lags: the ATP file ends 2026-08-30 with the US
+  Open missing. Tennis also re-prices on the current main line (R6-F9 closed for
+  it), fills the game-state card with set scores and says point-by-point is not
+  held, and fills the game log's unnamed opponents from the archive.
+  Rendering caught three defects, all fixed: a ranking axis that printed the
+  same rank twice, copy that said "he" on a WTA page, and an "@ / vs" prefix
+  plus a Home/Away split on a sport with no home side.
 
 - **R6.3:** an outfield player's "Chances & finishing" draws every Understat
   shot on the attacking half (new `/api/soccer/understat`, resolved by name),
@@ -63,6 +79,9 @@ R6.4 (tennis) is next.** The handoff is
 - **OWED next EPL match day:** soccer's live card, and R2-F9 — the
   `soccer:snapshot:epl` row does write, but today's slate was empty (~0 MB), so
   the 22 MB write is still unproven.
+- **OWED the next tennis match day:** tennis's game-state card (set scores) and
+  its re-priced line. Nothing was on the ATP or WTA slate on 2026-09-15, so all
+  three verified players rendered the no-market path.
 
 - **R6.1d:** the player page names one line (R2's main line, re-priced from
   current rows; MLB's model chip names its own board line), a started game's
@@ -80,7 +99,8 @@ R6.4 (tennis) is next.** The handoff is
     MLB games by date (25 of Witt's 449 took a neighbour's score). The player
     page reads StatsAPI finals instead. Anything else joining MLB results by
     date inherits the error.
-  - R6-F3: `is_major` is 0 on every tennis row (`backfill_player_game_history.py:854`
+  - R6-F3 (**answered on the page in R6.4** — By level reads TennisMyLife's own
+    `level` column): `is_major` is 0 on every tennis row (`backfill_player_game_history.py:854`
     looks for "grand slam" in slam names).
   - R6-F4: MLB history stores no sacrifice flies, so OBP from it is over PA.
   - **R6-F11: `nfl_target_events.interception` is false on all 36,375 rows**

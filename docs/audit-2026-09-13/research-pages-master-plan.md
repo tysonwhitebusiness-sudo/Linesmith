@@ -6,7 +6,69 @@ the operator's instruction to proceed). R3 and R4 signed off 2026-09-14. R5
 signed off 2026-09-15. R6 STARTED 2026-09-15: Step 0 done, corrections and
 decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
-owed on the next slate; R6.4 (tennis) next.**
+owed on the next slate. R6.4 (tennis) COMPLETE 2026-09-15; R6.5 (NBA and NHL)
+next.**
+
+**R6.4 COMPLETE 2026-09-15.** Tennis's "Surface & serve", the level split that
+R6-F3 asked for, one line, game state, and the opponent names the history could
+not give.
+- **Step 0 audit — the page's own history cannot build this section.**
+  `player_game_history` stores **eight keys** for tennis and no more, measured
+  over 100,468 rows: games won/lost, sets won/lost, tiebreaks played,
+  match_won, is_qualifying, is_major. No surface, no aces, no serve or return
+  points, no round, no ranking, no tournament. So Seasons, Trends, Splits and
+  the game log stay on those rows and the new section comes from the
+  TennisMyLife archive instead, which carries all of it (serve and return
+  columns on 9,738 of 10,080 ATP matches).
+- **And the archive lags, so the section says so (R4-F1).** Measured
+  2026-09-15: the ATP file ends at Winston-Salem, 2026-08-30 — the US Open,
+  finished a week earlier, is not in it at all — and Alcaraz's own last row is
+  2026-04-14. The note states both the archive's last date and, when the player
+  stops earlier inside it, that player's own last match.
+- **Built:** `tennisSurfaceSection`
+  (`lib/sports/tennis/playerArchiveShapes.ts`) — By surface (W/L, win %, aces
+  per match, first-serve points won, return points won, with today's court
+  marked, C7), **By level** (slam / Masters 1000 / 500 / 250 / tour finals /
+  other, with the deepest round reached), Ranking at each match, and serve
+  against return as a 10-match rolling pair. `/api/tennis/archive` (cachedRoute,
+  6h, name-keyed and shape-bounded) with `useTennisArchive`;
+  `getTennisArchive` loads the newest season context and the one two years back
+  and resolves the player through the same `matchTennisIndex` the snapshot uses.
+- **R6-F3 is resolved on the page.** The level split reads TennisMyLife's own
+  `level` column, so a slam is a slam without `is_major` — which is still 0 on
+  every row. Measured across three players' files: the ATP archive writes `M`
+  for a Masters and the WTA one writes `1000`, so one row covers both spellings;
+  both also use G, 500, 250, F, D (Davis / BJK Cup), O (Olympics) and A.
+  Fixing the column itself stays model track.
+- **R6-F9 is resolved for tennis.** The adapter re-prices through the shared
+  `repriceAtMainLine`, as NFL, CFB and soccer already do.
+- **Game state (C4):** tennis holds set scores and nothing else live — there is
+  no point-by-point source (R4) — so the card shows the players, the sets, and
+  states what is not held rather than leaving a band empty.
+- **Opponent names:** the archive names every opponent, `athlete_crosswalk`
+  names 66,134 of 100,468 rows, and the adapter fills the game log's "—" from
+  the archive by date. Alcaraz drops from 13-17 unnamed to 1 in the visible
+  6 rows; the remainder are dates the archive does not cover either.
+- **Three defects found by rendering, all fixed:**
+  - The ranking axis printed **"No. 2, No. 2, No. 3, No. 3"** — five ticks over
+    a three-rank span, rounded. The axis now spans a whole number of ranks over
+    four gaps, and never pads past No. 1 into a rank that cannot exist. The
+    negated series needed a new `axisFormat` on the shared series card so the
+    axis can read back the real rank.
+  - The section's own copy said **"he"** on a WTA page ("the ranking he carried
+    into each match", "his own serve"). Reworded; the same sweep caught the
+    column tooltip.
+  - Tennis has **no home side**, but the history stores `is_home` anyway —
+    false on every one of Alcaraz's rows, unset on Sabalenka's — so the game log
+    printed "@ Shelton B." and Splits offered a Home/Away split on neutral
+    courts. The adapter drops it, which empties both venue groups, so the split
+    is no longer offered.
+- **Verified** at 1440 and 400 on Alcaraz (ATP, archive stops in April),
+  Sabalenka and Andreeva (WTA, and no ESPN headshot — the hero falls back to a
+  placeholder). No tennis is on the slate on 2026-09-15, so all three render
+  the no-market path; **the live card and the re-priced line are owed on the
+  next tennis match day.** `tests/tennis-surface.test.ts` (8 tests) runs against
+  G2's own Alcaraz archive block. 519 tests pass; build clean.
 
 **R6.3 COMPLETE 2026-09-15.** Soccer's "Chances & finishing", the keeper's
 state, one line, game state and the default market. Commit `093923a`.
@@ -1072,12 +1134,14 @@ Spec: `docs/design/phase-g2/src/player.html`, `src/sports/common.js` (skeleton),
   Delete the route, `useMlbPitchProfile` and `pitchProfile.ts` when the old
   pitch-mix/zone roles are replaced.
 
-**Also in R6.4 (routed from R6.1a, 2026-09-15):**
-- **Tournament level (majors) from TennisMyLife, not `is_major`** (R6-F3).
-  Fixing `is_major` itself is a Python change to
-  `backfill_player_game_history.py:854` plus a re-run, for the model track.
-- **Tennis opponent names:** 13-17 of Alcaraz's and Zverev's opponents have no
-  `athlete_crosswalk` name and show "—" in the game log.
+**Also in R6.4 (routed from R6.1a, 2026-09-15) — both DONE 2026-09-15:**
+- ~~**Tournament level (majors) from TennisMyLife, not `is_major`** (R6-F3).~~
+  Done: the By level card reads the archive's `level`. Fixing `is_major` itself
+  is still a Python change to `backfill_player_game_history.py:854` plus a
+  re-run, for the model track.
+- ~~**Tennis opponent names:** 13-17 of Alcaraz's and Zverev's opponents have no
+  `athlete_crosswalk` name and show "—" in the game log.~~ Done: filled from the
+  archive by date.
 
 **Also in R6 (routed from R4, 2026-09-14):**
 - **Tennis history says how current it is.** TennisMyLife's 2026 ATP archive
@@ -1469,13 +1533,13 @@ rebuilt pages use.
 | R5 NBA misses all stored as twos; NHL shots mixed preseason and playoffs | shot ingest | **resolved** in R5c (ingest and stored rows) |
 | R6-F1 every player page blank without a market today (8 of 10 G2 subjects on 2026-09-15) | all eight player routes | R6.1a (player-first entry) |
 | R6-F2 MLB "all games" reads 79 MB `mlb:full-raw:*` blobs | `/api/mlb/player-gamelog` | **resolved** R6.1a (game log reads `player_game_history`; route and stash deleted; Python prunes the old rows) |
-| R6-F3 `is_major` 0 on every tennis row ("grand slam" never appears in slam names) | `backfill_player_game_history.py:854` | R6.4 reads level from TennisMyLife; the column fix is model track |
+| R6-F3 `is_major` 0 on every tennis row ("grand slam" never appears in slam names) | `backfill_player_game_history.py:854` | **resolved on the page** (R6.4): By level reads TennisMyLife's `level`, ATP `M` and WTA `1000` both counted; the column fix is model track |
 | R6-F4 MLB OBP over PA: no sacrifice flies stored per game | `player_game_history` MLB batting keys | labelled in R6.1a; adding `sacFlies` to the ingest is model track |
 | R6-F5 MLB `game_result` has no game pk before 2026-08, UTC-dated night games, missing games | `game_result` (mlb) | R6.1a reads StatsAPI finals; R7/R8 MLB records must not join by date; source fix is model track |
 | R6-F6 MLB and NFL past-game pages missing, so player game-log links would dead-end | `/mlb/game/[id]`, `/nfl/game/[id]` | R8 (links held off until then) |
 | R6-F7 pitch corpus holds 281 of 2,229 regular-season 2026 games only in part (<3 pitches per PA); Statcast rollups cover 91-94% of a hitter's PA | `corpus/mlb_pitch_events`, pitch ingest | coverage stated on the page (R6.1b); the ingest gap is model track Phase 5 |
 | R6-F8 ParlayAPI files a pitcher's strikeouts under `batter-strikeouts` (29 pitchers) and walks allowed under `walks` (9) on 2026-09-15; the page shows "Batter Strikeouts 7.5" for Yamamoto, and the pitcher markets miss those books | ParlayAPI market mapping, Python writer | model track (R5e writer work); the page shows the rows as stored |
-| R6-F9 non-MLB candidates carry the main line from snapshot build time, which goes stale between rebuilds (Allen passing yards 249.5 in the stepper against a current 248.5) | NFL/CFB/NBA/NHL/soccer/tennis player adapters | **resolved for NFL, CFB and soccer** (R6.2, R6.3); tennis, NBA and NHL in their sub-phases |
+| R6-F9 non-MLB candidates carry the main line from snapshot build time, which goes stale between rebuilds (Allen passing yards 249.5 in the stepper against a current 248.5) | NFL/CFB/NBA/NHL/soccer/tennis player adapters | **resolved for NFL, CFB, soccer and tennis** (R6.2, R6.3, R6.4); NBA and NHL in R6.5 |
 | R6-F10 the game page's `usePropOdds` reads current rows, so after the start its prices (and the embedded player's) are in-play and the main line finds no pre-game quote | `GameDetail` | R8 (pass the start, as the player page does) |
 | R6-F11 `nfl_target_events.interception` is false on all 36,375 rows: `write_nfl_target_events` writes 13 columns and that is not one of them, so G2's INT column and its red-ringed dot cannot be built | `python-odds-service/src/db.py` `write_nfl_target_events`, `nfl_pbp.parse_row` | model track (a column and a re-ingest); the section states it is not held |
 

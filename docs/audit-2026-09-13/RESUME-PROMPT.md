@@ -1,4 +1,4 @@
-# Resume prompt — research pages build (2026-09-15, R6.2 COMPLETE — R6.3 next)
+# Resume prompt — research pages build (2026-09-15, R6.4 COMPLETE — R6.5 next)
 
 Paste everything below the line into a fresh session on any account.
 
@@ -8,8 +8,8 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 1. `CLAUDE.md` (the sport-adapter rule 2 now names `toPlayerResearchData`)
 2. `docs/CURRENT.md` (the research pages track is in "START HERE")
 3. `docs/audit-2026-09-13/research-pages-master-plan.md` — the status block
-   (R6.1 and R6.2 records), the R6 section in full including "R6 Step 0
-   premise audit", "Also in R6.4", §1, §2, "Also in R8", and Appendix A rows
+   (the R6.1 through R6.4 records), the R6 section in full including "R6 Step 0
+   premise audit", §1, §2, "Also in R8", and Appendix A rows
    C4, R2-F4..F6 and R6-F1..F11.
 4. The G2 player spec: `docs/design/phase-g2/src/player.html`,
    `src/sports/common.js`, `mlb.js`, `src/kit2.js`; datasets in
@@ -17,25 +17,34 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 
 ## Where the work is
 
-- **R1-R5 and R6.1 (MLB) signed off. R6.2 (NFL and CFB) complete
-  2026-09-15**, with two renders owed on Thursday's NFL slate (below). Next is
-  R6.3 (soccer); confirm before starting it.
+- **R1-R5 and R6.1 (MLB) signed off. R6.2 (NFL and CFB), R6.3 (soccer) and
+  R6.4 (tennis) complete 2026-09-15**, each with a render owed on its next
+  slate (below). Next is **R6.5 (NBA and NHL)** — built now, render-verified in
+  October; confirm before starting it.
 - Commits: `512b42a` (Step 0), `0169de1`/`5c46b29`/`48abdc5` (R6.1a),
   `7893e82`/`478e196` (R6.1b), `007ced4`/`16051a7` (R6.1c),
-  `4da5684`/`d6ffd09`/`6d2139e` (R6.1d), `1438855` (R6.2). Pushed only if the
-  operator asked. Nothing deployed: R6 has changed no Python.
-- tsc clean, 507/507 TS tests, `npm run build` passes (build with
+  `4da5684`/`d6ffd09`/`6d2139e` (R6.1d), `1438855` (R6.2),
+  `35d6be5`/`b2b0e98` (hero and live-card rework),
+  `093923a`/`efdaa04`/`15f1b06` (R6.3). Pushed only if the operator asked.
+  Nothing deployed: R6 has changed no Python.
+- tsc clean, 519/519 TS tests, `npm run build` passes (build with
   `LB_DIST_DIR=.next-verify` while a dev server holds `.next`; delete stale
   `.next*/types` first if a validator names a deleted route).
 
-## OWED before R6.2 is closed
+## OWED — renders that no slate allowed yet
 
-- **Thursday 2026-09-18, NFL slate:** render a player with a market and a live
-  game. Two things landed after today's NFL markets rolled off, so they are
-  unit-tested but unseen: the C4 game-state card for football, and the prop
-  block without its target grid and rail season card.
+Each sub-phase's live card and re-priced line are unit-tested but unseen,
+because nothing of that sport was playable when the code landed.
+
+- **Thursday 2026-09-18, NFL slate:** a player with a market and a live game —
+  the C4 game-state card for football, and the prop block without its target
+  grid and rail season card.
 - **Saturday 2026-09-19, CFB slate:** the same two for CFB, alongside the
   `refreshCfbJob` check already owed from R1f.
+- **Next EPL match day:** soccer's live card, and R2-F9 (the
+  `soccer:snapshot:epl` 22 MB write, still unproven — today's slate was empty).
+- **Next tennis match day:** tennis's game-state card (set scores) and its
+  re-priced line. Nothing was on the ATP or WTA slate on 2026-09-15.
 
 ## Operator decisions (2026-09-15) — don't reopen
 
@@ -47,7 +56,7 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
   equals the line on screen, otherwise it is labelled "model at 1.5". Scan and
   the Python model keep `BOARD_LINES`. (Built in R6.1d.)
 
-## What R6.1 and R6.2 built (read before R6.3)
+## What R6.1-R6.4 built (read before R6.5)
 
 | piece | file |
 |---|---|
@@ -58,45 +67,41 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 | sections UI | `components/PlayerResearchSections.tsx` (`ResearchSectionBody` draws any sport's section) |
 | MLB sections | `lib/sports/mlb/adapters/playerResearchSections.ts` (hitter contact, pitcher arsenal) |
 | NFL/CFB sections | `lib/sports/nfl/targetShapes.ts` (`nflTargetsSection`, `cfbEfficiencySection`), read `lib/sports/nfl/targets.ts` → `/api/nfl/targets`, hook `components/useNflTargets.ts` |
-| charts added | `Histogram`, `ZoneScatter`, `FieldScatter`, `SpatialSurface` chase zones, `CATEGORICAL` |
-| one line on the page | `repriceAtMainLine` in `lib/odds/props/mainLine.ts`; `PlayerDetailData.priceCandidate`; stepper `model` (MLB, NFL, CFB so far) |
+| soccer sections | `lib/sports/soccer/playerUnderstatShapes.ts` (`soccerChancesSection`, `soccerKeeperSection`), read `playerUnderstat.ts` → `/api/soccer/understat`, hook `components/useSoccerUnderstat.ts` |
+| tennis section | `lib/sports/tennis/playerArchiveShapes.ts` (`tennisSurfaceSection`), read `playerArchive.ts` → `/api/tennis/archive`, hook `components/useTennisArchive.ts` |
+| charts added | `Histogram`, `ZoneScatter`, `FieldScatter`, `PitchScatter`, `SpatialSurface` chase zones, `CATEGORICAL`; a series card can carry `axisFormat` when its stored values are not what the axis should read |
+| one line on the page | `repriceAtMainLine` in `lib/odds/props/mainLine.ts`; `PlayerDetailData.priceCandidate`; done for MLB, NFL, CFB, soccer and tennis — NBA and NHL are R6.5 |
 | odds section | `lib/odds/props/playerPrices.ts`, `components/PlayerOddsSection.tsx` |
 | prices at the start | `/api/props/lines?start`, `usePropOdds(..., startIso)`, `useLineHistory(line, before)` |
 | C4 game state | `GameStateSlot` (MLB adapter file), `components/GameStateCard.tsx`, football's builder `lib/sports/multiSport/footballGameState.ts` |
-| page frame | `components/PlayerDetail.tsx` (`renderPage(propBlock, propSub, nextGame, oddsCards)`) |
-| verification | `scripts/verify-player-history.ts`, `verify-player-research-g2.ts`, `measure-mlb-main-line.ts`, `measure-nfl-targets.ts` |
+| page frame | `components/PlayerDetail.tsx` (`renderPage(propBlock, propSub, nextGame, oddsCards, live)`); the hero and the live section are `docs/design/hero-live-rework.md` |
+| verification | `scripts/verify-player-history.ts`, `verify-player-research-g2.ts`, `measure-mlb-main-line.ts`, `measure-nfl-targets.ts`, `measure-understat.ts`, `measure-soccer-snapshot.ts`, `measure-tennis.ts` |
 
 A sport's section is one function returning a `ResearchSection`; the component
 has no sport check. The prop block keeps market tabs, stepper, chips, windows,
 bars, matchup explorer and role cards; every odds card lives in "Odds & prices".
 
-## Next: R6.3 soccer (after the go-ahead)
+## Next: R6.5 NBA and NHL (after the go-ahead)
 
-Per the plan's sport table: **FW/MID "Chances & finishing"** (shot map, goals vs
-xG, per 90 by season) from Understat per player, cached in `snapshot_cache`,
-plus `player_game_history`; **GK "Shot-stopping: beyond saves"** from
-`player_game_history`. Also in R6.3:
-- **R6-F9:** soccer's adapter re-prices on the current main line
-  (`repriceAtMainLine`), as MLB, NFL and CFB now do.
-- **C4:** soccer's game state is score and match state only (decision 5); the
-  live hook is `lib/sports/soccer/liveGame.ts`.
-- **C8:** soccer's default market by position — order both priced and synthetic
-  candidates by `subjectMeta.position`.
-- **R2-F9:** confirm `soccer:snapshot:epl` writes its cache on every rebuild
-  over a day once the page is per-section (22 MB payload against a 2-minute
-  statement timeout).
-- Check what Understat actually holds before building: the plan's own premise
-  audit rule.
+Per the plan's sport table, and built now against last season's rows because
+neither league is playing — the render check is October. Also in R6.5:
+- **R6-F9:** the NBA and NHL adapters re-price on the current main line
+  (`repriceAtMainLine`), the last two sports that don't.
+- **C4:** their game state, through whichever live hook each sport already has.
+- **Measure before building**, the plan's own premise audit rule: what
+  `player_game_history` actually stores for each league, and what the X-signal
+  work already wired (see the memory note on NBA/NHL X signal), before
+  designing a card on a column that may not exist — tennis's eight keys and
+  NFL's never-written `interception` were both found this way.
 
-**Verify (each sub-phase):** the G2 subjects (Cunha 259902, Lammens 301425),
-one no-market player, one injured player, one early-season player; 1440 and 400
-(`scratchpad` Python Playwright script pattern); a live match where one exists;
-re-render the other sports' pages; tsc, `npm test`, `npm run build`.
-**Stop for sign-off after each sport.**
+**Verify (each sub-phase):** the G2 subjects, one no-market player, one injured
+player, one early-season player; 1440 and 400 (`scratchpad` Python Playwright
+script pattern); a live game where one exists; re-render the other sports'
+pages; tsc, `npm test`, `npm run build`. **Stop for sign-off after each sport.**
 
-Then R6.4-R6.6 as written in the plan (tennis, NBA/NHL, golf).
+Then R6.6 (golf), built and verified at the next tournament.
 
-## Lessons from R6.1a
+## Lessons from R6.1a-R6.4
 
 - **G2's results are wrong on back-to-backs and series.** Referee scores
   against StatsAPI / api-web, never against a G2 `result`/`pf`/`pa`.
@@ -109,11 +114,20 @@ Then R6.4-R6.6 as written in the plan (tennis, NBA/NHL, golf).
   break `tsc`. Deleting the generated `types` folder fixes it.
 - **The Browser pane can't screenshot while the window is hidden**; the venv's
   Python Playwright (`python-odds-service/.venv`) against the dev server works.
+- **Render every sport's own page, not one representative.** R6.4's three
+  defects were all invisible in the data and the tests: an axis that printed
+  the same rank twice, copy that said "he" on a WTA page, and an "@ / vs"
+  prefix on a sport with no home side. A women's-tour page and a men's-tour
+  page are not the same check.
+- **A stored column is not a true one.** Tennis rows carry `is_home` and
+  `is_major`; neither means anything for tennis. Look at the values, per
+  sport, before rendering a column.
 
 ## Open items that are not R6's
 
 - **R5-F5, model track:** the worker OOM loop. Don't chase it in R6.
-- **Model track, from R6:** R6-F3 (`is_major`), R6-F4 (no sacrifice flies in
+- **Model track, from R6:** R6-F3 (`is_major`, now answered on the page by
+  R6.4's By level card, but the column is still 0), R6-F4 (no sacrifice flies in
   MLB history), R6-F5 (MLB `game_result` not joinable to game pks), R6-F7 (the
   pitch corpus holds about 12% of games only in part), R6-F8 (ParlayAPI files
   pitcher strikeouts and walks under the batter markets), R6-F11
