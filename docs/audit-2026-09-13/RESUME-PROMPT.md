@@ -1,4 +1,4 @@
-# Resume prompt — research pages build (2026-09-15, R6.4 COMPLETE — R6.5 next)
+# Resume prompt — research pages build (2026-09-15, R6.5 COMPLETE — R6.6 next)
 
 Paste everything below the line into a fresh session on any account.
 
@@ -17,17 +17,18 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 
 ## Where the work is
 
-- **R1-R5 and R6.1 (MLB) signed off. R6.2 (NFL and CFB), R6.3 (soccer) and
-  R6.4 (tennis) complete 2026-09-15**, each with a render owed on its next
-  slate (below). Next is **R6.5 (NBA and NHL)** — built now, render-verified in
-  October; confirm before starting it.
+- **R1-R5 and R6.1 (MLB) signed off. R6.2 (NFL and CFB), R6.3 (soccer),
+  R6.4 (tennis) and R6.5 (NBA and NHL) complete 2026-09-15**, each with a render
+  owed on its next live slate (below). Next is **R6.6 (golf)** — built now,
+  verified at the next tournament; confirm before starting it.
 - Commits: `512b42a` (Step 0), `0169de1`/`5c46b29`/`48abdc5` (R6.1a),
   `7893e82`/`478e196` (R6.1b), `007ced4`/`16051a7` (R6.1c),
   `4da5684`/`d6ffd09`/`6d2139e` (R6.1d), `1438855` (R6.2),
   `35d6be5`/`b2b0e98` (hero and live-card rework),
-  `093923a`/`efdaa04`/`15f1b06` (R6.3). Pushed only if the operator asked.
+  `093923a`/`efdaa04`/`15f1b06` (R6.3), `4afd6e3`/`18e600b` (R6.4),
+  `6d52caf` (R6.5). Pushed only if the operator asked.
   Nothing deployed: R6 has changed no Python.
-- tsc clean, 519/519 TS tests, `npm run build` passes (build with
+- tsc clean, 525/525 TS tests, `npm run build` passes (build with
   `LB_DIST_DIR=.next-verify` while a dev server holds `.next`; delete stale
   `.next*/types` first if a validator names a deleted route).
 
@@ -45,6 +46,8 @@ because nothing of that sport was playable when the code landed.
   `soccer:snapshot:epl` 22 MB write, still unproven — today's slate was empty).
 - **Next tennis match day:** tennis's game-state card (set scores) and its
   re-priced line. Nothing was on the ATP or WTA slate on 2026-09-15.
+- **October, when the seasons start:** NBA's and NHL's game-state cards and
+  their re-priced lines. The plan always marked these two unverified until then.
 
 ## Operator decisions (2026-09-15) — don't reopen
 
@@ -56,7 +59,7 @@ because nothing of that sport was playable when the code landed.
   equals the line on screen, otherwise it is labelled "model at 1.5". Scan and
   the Python model keep `BOARD_LINES`. (Built in R6.1d.)
 
-## What R6.1-R6.4 built (read before R6.5)
+## What R6.1-R6.5 built (read before R6.6)
 
 | piece | file |
 |---|---|
@@ -69,39 +72,48 @@ because nothing of that sport was playable when the code landed.
 | NFL/CFB sections | `lib/sports/nfl/targetShapes.ts` (`nflTargetsSection`, `cfbEfficiencySection`), read `lib/sports/nfl/targets.ts` → `/api/nfl/targets`, hook `components/useNflTargets.ts` |
 | soccer sections | `lib/sports/soccer/playerUnderstatShapes.ts` (`soccerChancesSection`, `soccerKeeperSection`), read `playerUnderstat.ts` → `/api/soccer/understat`, hook `components/useSoccerUnderstat.ts` |
 | tennis section | `lib/sports/tennis/playerArchiveShapes.ts` (`tennisSurfaceSection`), read `playerArchive.ts` → `/api/tennis/archive`, hook `components/useTennisArchive.ts` |
-| charts added | `Histogram`, `ZoneScatter`, `FieldScatter`, `PitchScatter`, `SpatialSurface` chase zones, `CATEGORICAL`; a series card can carry `axisFormat` when its stored values are not what the axis should read |
-| one line on the page | `repriceAtMainLine` in `lib/odds/props/mainLine.ts`; `PlayerDetailData.priceCandidate`; done for MLB, NFL, CFB, soccer and tennis — NBA and NHL are R6.5 |
+| NBA / NHL sections | `lib/sports/nba/playerShotShapes.ts` (`nbaShotSection`), `lib/sports/nhl/playerShotMapShapes.ts` (`nhlShotMapSection`), reads `playerShots.ts` / `playerShotMap.ts` → `/api/nba/shots`, `/api/nhl/shots`, hooks `useNbaShots.ts` / `useNhlShots.ts` |
+| charts added | `Histogram`, `ZoneScatter`, `FieldScatter`, `PitchScatter`, `CourtScatter`, `RinkScatter`, `SpatialSurface` chase zones, `CATEGORICAL`; a series card can carry `axisFormat` when its stored values are not what the axis should read |
+| one line on the page | `repriceAtMainLine` in `lib/odds/props/mainLine.ts`; `PlayerDetailData.priceCandidate` — **done for every sport** (R6-F9 closed) |
 | odds section | `lib/odds/props/playerPrices.ts`, `components/PlayerOddsSection.tsx` |
 | prices at the start | `/api/props/lines?start`, `usePropOdds(..., startIso)`, `useLineHistory(line, before)` |
-| C4 game state | `GameStateSlot` (MLB adapter file), `components/GameStateCard.tsx`, football's builder `lib/sports/multiSport/footballGameState.ts` |
+| C4 game state | `GameStateSlot` (MLB adapter file), `components/GameStateCard.tsx`, builders `lib/sports/multiSport/footballGameState.ts` and `hoopsHockeyGameState.ts`; soccer's and tennis's live in their own adapters — **filled for every sport** |
 | page frame | `components/PlayerDetail.tsx` (`renderPage(propBlock, propSub, nextGame, oddsCards, live)`); the hero and the live section are `docs/design/hero-live-rework.md` |
-| verification | `scripts/verify-player-history.ts`, `verify-player-research-g2.ts`, `measure-mlb-main-line.ts`, `measure-nfl-targets.ts`, `measure-understat.ts`, `measure-soccer-snapshot.ts`, `measure-tennis.ts` |
+| verification | `scripts/verify-player-history.ts`, `verify-player-research-g2.ts`, `measure-mlb-main-line.ts`, `measure-nfl-targets.ts`, `measure-understat.ts`, `measure-soccer-snapshot.ts`, `measure-tennis.ts`, `measure-hoops-hockey.ts` |
 
 A sport's section is one function returning a `ResearchSection`; the component
 has no sport check. The prop block keeps market tabs, stepper, chips, windows,
 bars, matchup explorer and role cards; every odds card lives in "Odds & prices".
 
-## Next: R6.5 NBA and NHL (after the go-ahead)
+## Next: R6.6 golf (after the go-ahead)
 
-Per the plan's sport table, and built now against last season's rows because
-neither league is playing — the render check is October. Also in R6.5:
-- **R6-F9:** the NBA and NHL adapters re-price on the current main line
-  (`repriceAtMainLine`), the last two sports that don't.
-- **C4:** their game state, through whichever live hook each sport already has.
-- **Measure before building**, the plan's own premise audit rule: what
-  `player_game_history` actually stores for each league, and what the X-signal
-  work already wired (see the memory note on NBA/NHL X signal), before
-  designing a card on a column that may not exist — tennis's eight keys and
-  NFL's never-written `interception` were both found this way.
+The last sub-phase, and the only one whose verification has always been held
+for a tournament. Per the plan's sport table: **Scoring** (rounds, scoring by
+par) and **Shot profile** (driving distance, approach proximity, putting, make
+% by first-putt distance) from `golf_round_scores`, `golf_hole_scores`,
+`golf_shot_events` and `golf_tournaments`, through the existing
+`/api/golf/shot-profile`.
 
-**Verify (each sub-phase):** the G2 subjects, one no-market player, one injured
-player, one early-season player; 1440 and 400 (`scratchpad` Python Playwright
-script pattern); a live game where one exists; re-render the other sports'
-pages; tsc, `npm test`, `npm run build`. **Stop for sign-off after each sport.**
+Golf is the one sport with **no `player_game_history` rows at all**
+(`historySportFor` returns null for it) and no team concept, so check what the
+shared sections actually render for a golfer before assuming R6.1a's hero,
+Seasons, Trends and Splits behave as they do elsewhere.
 
-Then R6.6 (golf), built and verified at the next tournament.
+Also note `useGolfShotProfile` resolves **by name, not by id** — measured at the
+time as 0 of 30 matching by id and 21 of 30 by name, because the seed stores
+PGA Tour's player id while `subjectId` is ESPN's. Don't "fix" that to an id
+lookup.
 
-## Lessons from R6.1a-R6.4
+**Measure before building**, the plan's own premise-audit rule: it has now
+corrected a premise in four of five sub-phases — tennis's eight stat keys,
+NFL's never-written `interception`, and in R6.5 both "NBA/NHL shots 2024-25
+only" and G2's "NHL totals not parsed today".
+
+**Verify:** the G2 subjects, one no-market player, one early-season player;
+1440 and 400 (`scratchpad` Python Playwright script pattern); tsc, `npm test`,
+`npm run build`. **Stop for sign-off.**
+
+## Lessons from R6.1a-R6.5
 
 - **G2's results are wrong on back-to-backs and series.** Referee scores
   against StatsAPI / api-web, never against a G2 `result`/`pf`/`pa`.
@@ -122,6 +134,17 @@ Then R6.6 (golf), built and verified at the next tournament.
 - **A stored column is not a true one.** Tennis rows carry `is_home` and
   `is_major`; neither means anything for tennis. Look at the values, per
   sport, before rendering a column.
+- **Derive a coordinate origin from something the rules fix.** NBA's y is
+  measured from the RIM, not the baseline; the proof was that a corner three is
+  22 ft by rule, so only one candidate origin left zero impossible threes.
+  Charts fail silently when the origin is wrong — the picture still looks like a
+  shot chart.
+- **The client-bundle boundary broke a third time** (R6.5), and again `tsc` and
+  every test passed while the dev server returned 500 on every route. If a
+  page-reachable file needs one predicate from a server module, move the
+  predicate to a client-safe file and ADD THE SERVER MODULE to
+  `tests/client-bundle-boundary.test.ts` — the list is the only thing that makes
+  the next one fail a test instead of a page.
 
 ## Open items that are not R6's
 

@@ -6,8 +6,76 @@ the operator's instruction to proceed). R3 and R4 signed off 2026-09-14. R5
 signed off 2026-09-15. R6 STARTED 2026-09-15: Step 0 done, corrections and
 decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
-owed on the next slate. R6.4 (tennis) COMPLETE 2026-09-15; R6.5 (NBA and NHL)
-next.**
+owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
+2026-09-15; R6.6 (golf) next.**
+
+**R6.5 COMPLETE 2026-09-15.** NBA's shot chart, NHL's shot map and the league's
+own season totals, one line and game state for both.
+- **Step 0 audit — two of this plan's own premises were out of date.**
+  1. "NBA/NHL shots 2024-25 only (until R5)" is wrong now: measured 2026-09-15,
+     `nba_shot_events` holds 219,873 rows for 2025 and **220,723 for 2026**, and
+     `nhl_shot_events` 156,622 for 20242025 and **153,754 for 20252026**. Every
+     row is placed. Both sections open on the current season.
+  2. G2's "Official NHL season totals — not parsed by the app today" is also
+     out of date: `parsePlayerLanding` has parsed `seasonTotals` since R6.1a and
+     the bio already fetches that landing, so the card costs no extra call.
+- **Where the hoop is, measured rather than assumed.** `nba_shot_events` gives
+  x 0-50 across and y **from the RIM**, not from the baseline. Proved by asking
+  where a corner three lands — 22 ft from the rim by rule, so the right origin
+  is the one where no three is closer:
+
+  | assumed hoop | closest 3pt | threes inside 21 ft |
+  |---|---|---|
+  | (25, 5.25) | 18.8 ft | 11,516 — impossible |
+  | (25, 4.00) | 20.0 ft | 516 — impossible |
+  | **(25, 0.00)** | **22.0 ft** | **0 — exact** |
+
+  Confirmed twice over: the made rate by 5 ft band then reads 60 / 54 / 43 / 38
+  / 36 / 32%, which is the NBA shooting curve. Phase 6.7's own grid had reached
+  the same origin; this re-derived it before drawing an arc on it.
+- **Built:** `nbaShotSection` (`lib/sports/nba/playerShotShapes.ts`) — every
+  located attempt on a real half court (new `CourtScatter`: paint, restricted
+  arc, free-throw circle, corner lines at x = 3 and 47 meeting the 23.75 arc at
+  y = 8.94), a zone table whose last column is **points per shot** (a 35% three
+  is 1.05 and beats a 45% long two at 0.90), and a type table over every attempt
+  including the unplaced. `nhlShotMapSection`
+  (`lib/sports/nhl/playerShotMapShapes.ts`) — the rink map (new `RinkScatter`),
+  a type table, and the official totals. New `/api/nba/shots` and
+  `/api/nhl/shots` (cachedRoute, 30 min, id-bounded) with `useNbaShots` and
+  `useNhlShots`.
+- **The rotation is a rotation, not `abs(x)`.** Switching ends mirrors BOTH
+  axes, so negating x alone would move a right-wing shot to the left wing. The
+  measurement that established this (mean x by period -12, -10, +16, -3, -32
+  against a steady mean |x| of 53-70) moved from the deleted
+  `shotProfileShapes.ts` into the file that now owns it.
+- **A goalie takes no shots** — Hellebuyck has 0 rows as `shooter_id`,
+  Vasilevskiy 1 — so the read falls back to `goalie_id` (filled on 111,896 of
+  153,754 rows) and the section becomes "Shots faced & official totals". Which
+  column to key on is decided by the data, not by a position string.
+- **R6-F9 is now closed for every sport**: NBA and NHL re-price through the
+  shared `repriceAtMainLine`.
+- **C4 for both** (`lib/sports/multiSport/hoopsHockeyGameState.ts`, one builder
+  for two sports as football's is). NHL matches the box score on the **player
+  id** api-web publishes; NBA has only a display name, the same match football
+  makes.
+- **Deleted, per the plan's own rule:** the 3x3 grid and shot-type donut for
+  both sports, with their whole chain — `/api/nba/shot-profile`,
+  `/api/nhl/shot-profile`, `useNbaShotProfile`, `useNhlShotProfile`, both
+  `shotProfile.ts`, both `shotProfileShapes.ts` and their two test files.
+  Grepped first: this page was their only caller.
+- **One app-breaking bug, fixed in the same commit.** Gating the live nav on
+  `isNhlGameLive` imported from `nhle.ts` pulled `pg` into the client bundle:
+  `tsc` passed, 504 tests passed, and the dev server returned **500 on every
+  route** — the third time Phase 6's own boundary bug has appeared. The
+  predicates now live in a client-safe `gameStates.ts`, and
+  `tests/client-bundle-boundary.test.ts` lists `nhle.ts` so the next one fails a
+  test instead of a page.
+- **Verified** at 1440 and 400 on SGA and Wembanyama (NBA) and MacKinnon and
+  Hellebuyck (NHL), with 21 new unit tests. Rendering also caught two layout
+  defects, both fixed: the court drew to the half-court line and the rink past
+  the blue line, leaving a quarter of each card empty, and the chart sat alone
+  in a full-width row with a 460px picture in it. **Neither league is in
+  season, so the live card and the re-priced line are owed in October.**
 
 **R6.4 COMPLETE 2026-09-15.** Tennis's "Surface & serve", the level split that
 R6-F3 asked for, one line, game state, and the opponent names the history could
@@ -573,7 +641,7 @@ that.
 | 5 | Compare peers are a fixed list of 12 | A player picker filtered to the same position | Needs every player, not a sample |
 | 6 | Typeface and elevation switchers, sport tabs | One typeface and one elevation ship. Sport comes from the route | The switchers were for choosing |
 | 7 | "Before the game" injuries on a final page show the report fetched at build time | Labeled as the current report, with its fetch time | ESPN keeps no pre-kickoff snapshot. Capturing one is deferred |
-| 8 | Cards whose data isn't held show a status | Same statuses, until the data lands | NBA/NHL shots 2024-25 only (until R5), no NHL or soccer win probability, no tennis point-by-point, no CFB advanced passing, no soccer/CFB injuries |
+| 8 | Cards whose data isn't held show a status | Same statuses, until the data lands | ~~NBA/NHL shots 2024-25 only~~ (both hold the current season, measured R6.5), no NHL or soccer win probability, no tennis point-by-point, no CFB advanced passing, no soccer/CFB injuries |
 | 9 | Seven games and 13 subjects, all well covered | Every game: no odds, postponed, doubleheaders, neutral sites, OT and shootouts, extra innings, retirements and walkovers | Each gets an empty or status state, checked in R6–R8 |
 
 **Calendar limits on verification:**
@@ -1077,9 +1145,9 @@ Spec: `docs/design/phase-g2/src/player.html`, `src/sports/common.js` (skeleton),
 | NFL WR/TE/RB | Usage & depth: Target chart on a half-field · depth by season | `nfl_target_events` via `/api/nfl/target-map` | Read |
 | NFL QB | Where he throws: Pass chart | `nfl_target_events` | Read |
 | CFB QB | Efficiency: Advanced passing, shown as **Not held** | — | status |
-| NBA | Shot profile: Shot chart by zone | `nba_shot_events` via `/api/nba/shot-profile` (R2 correction; 2025-26 after 5c) | R2, R5 |
-| NHL skater | Shot map & official totals | `nhl_shot_events`; NHL player landing | R4, R5 |
-| NHL goalie | Shots faced map & official totals | same | R4, R5 |
+| NBA | Shot profile: Shot chart · By zone · By shot type | `nba_shot_events` via `/api/nba/shots` (holds 2024-25 AND 2025-26, measured R6.5) | R6.5 |
+| NHL skater | Shot map & official totals | `nhl_shot_events` via `/api/nhl/shots`; totals off the player landing the bio already fetches | R6.5 |
+| NHL goalie | Shots faced map & official totals | same, keyed on `goalie_id` | R6.5 |
 | Soccer FW/MID | Chances & finishing: Shot map · Goals vs xG · Per 90 by season | Understat per player (cached in `snapshot_cache`); `player_game_history` | Read |
 | Soccer GK | Shot-stopping: Beyond saves | `player_game_history` | Read |
 | Tennis | Surface & serve: By surface (today's surface marked, C7) · Ranking · Serve and return by match | TennisMyLife (R4); current event's surface from `tennis/schedule.ts`, never the last match's | R4 |
@@ -1488,7 +1556,7 @@ rebuilt pages use.
 | C9 biggest edge without a floor | `MatchupExplorerCard` | R1h, deleted R9 |
 | C8 soccer default market | soccer adapter | **resolved** R6.3 (`preferredSoccerMarket`) |
 | C7 tennis surface | tennis adapter | R6 |
-| C4 live card MLB-only | `PlayerDetail` | slot built and MLB filled in R6.1d (`GameStateSlot`); NFL and CFB filled in R6.2 (`footballGameState.ts`, render owed Thursday); soccer, tennis, NBA and NHL in their sub-phases |
+| C4 live card MLB-only | `PlayerDetail` | **filled for every sport**: MLB (R6.1d), NFL and CFB (R6.2), soccer (R6.3), tennis (R6.4), NBA and NHL (R6.5, `hoopsHockeyGameState.ts`). Four renders owed on live slates |
 | D1 duplicate score, broken logos, initials, streak across seasons | NFL game | R3 `Avatar`, R2 read, R8 |
 | D2 "Game context" | `analyticsRoles.ts:359` | R6 (removed) |
 | D3 "Where this sits" | `analyticsRoles.ts:313` | R6 (removed) |
@@ -1539,7 +1607,7 @@ rebuilt pages use.
 | R6-F6 MLB and NFL past-game pages missing, so player game-log links would dead-end | `/mlb/game/[id]`, `/nfl/game/[id]` | R8 (links held off until then) |
 | R6-F7 pitch corpus holds 281 of 2,229 regular-season 2026 games only in part (<3 pitches per PA); Statcast rollups cover 91-94% of a hitter's PA | `corpus/mlb_pitch_events`, pitch ingest | coverage stated on the page (R6.1b); the ingest gap is model track Phase 5 |
 | R6-F8 ParlayAPI files a pitcher's strikeouts under `batter-strikeouts` (29 pitchers) and walks allowed under `walks` (9) on 2026-09-15; the page shows "Batter Strikeouts 7.5" for Yamamoto, and the pitcher markets miss those books | ParlayAPI market mapping, Python writer | model track (R5e writer work); the page shows the rows as stored |
-| R6-F9 non-MLB candidates carry the main line from snapshot build time, which goes stale between rebuilds (Allen passing yards 249.5 in the stepper against a current 248.5) | NFL/CFB/NBA/NHL/soccer/tennis player adapters | **resolved for NFL, CFB, soccer and tennis** (R6.2, R6.3, R6.4); NBA and NHL in R6.5 |
+| R6-F9 non-MLB candidates carry the main line from snapshot build time, which goes stale between rebuilds (Allen passing yards 249.5 in the stepper against a current 248.5) | NFL/CFB/NBA/NHL/soccer/tennis player adapters | **RESOLVED for every sport** (R6.2, R6.3, R6.4, R6.5) |
 | R6-F10 the game page's `usePropOdds` reads current rows, so after the start its prices (and the embedded player's) are in-play and the main line finds no pre-game quote | `GameDetail` | R8 (pass the start, as the player page does) |
 | R6-F11 `nfl_target_events.interception` is false on all 36,375 rows: `write_nfl_target_events` writes 13 columns and that is not one of them, so G2's INT column and its red-ringed dot cannot be built | `python-odds-service/src/db.py` `write_nfl_target_events`, `nfl_pbp.parse_row` | model track (a column and a re-ingest); the section states it is not held |
 

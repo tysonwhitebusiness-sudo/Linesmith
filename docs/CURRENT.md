@@ -4,9 +4,9 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages: R1-R5 and R6.1 (MLB) signed off; R6.2 (NFL/CFB), R6.3 (soccer)
-and R6.4 (tennis) complete with renders owed on the next slates; R6.5 (NBA and
-NHL) next (second track, below).**
+Research pages: R1-R5 and R6.1 (MLB) signed off; R6.2 (NFL/CFB), R6.3 (soccer),
+R6.4 (tennis) and R6.5 (NBA/NHL) complete with renders owed on the next slates;
+R6.6 (golf) next (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -36,12 +36,30 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R6.1 (MLB) signed off; R6.2, R6.3 and R6.4 COMPLETE 2026-09-15; R6.5 next
+## Research pages track — R6.1 (MLB) signed off; R6.2-R6.5 COMPLETE 2026-09-15; R6.6 next
 
-R1-R5 and R6.1 signed off. **R6.2 (NFL and CFB), R6.3 (soccer) and R6.4
-(tennis) are done; R6.5 (NBA and NHL) is next — built now, render-verified in
-October.** The handoff is `docs/audit-2026-09-13/RESUME-PROMPT.md`; the record
-is the plan's status block.
+R1-R5 and R6.1 signed off. **R6.2 (NFL and CFB), R6.3 (soccer), R6.4 (tennis)
+and R6.5 (NBA and NHL) are done; R6.6 (golf) is next — built now, verified at
+the next tournament.** The handoff is
+`docs/audit-2026-09-13/RESUME-PROMPT.md`; the record is the plan's status block.
+
+- **R6.5:** NBA's shot chart on a real half court and NHL's rink map, both from
+  every located attempt (new `/api/nba/shots`, `/api/nhl/shots`), with a zone
+  table whose last column is points per shot, a shot-type table, and — for NHL —
+  **the league's own season totals**, off the landing the bio already fetches,
+  reaching back to 2015-16 where this app's history starts in 2023. A goalie
+  takes no shots, so that read falls back to `goalie_id` and the card becomes
+  "Shots faced". Two of the plan's premises turned out stale and are corrected
+  there: both shot tables hold the CURRENT season, and the NHL totals were
+  already parsed. **R6-F9 and C4 are now done for every sport.** The 3x3 grid
+  both pages used is deleted with its whole chain (two routes, two hooks, two
+  reads, two shapes files, two test files) after grepping showed this page was
+  its only caller.
+  - **One app-breaking bug, fixed in the same commit:** importing
+    `isNhlGameLive` from `nhle.ts` pulled `pg` into the client bundle — `tsc`
+    and 504 tests passed, the dev server returned 500 on every route. The
+    predicates moved to a client-safe `gameStates.ts` and the boundary test now
+    lists `nhle.ts`.
 
 - **R6.4:** "Surface & serve" from the TennisMyLife archive (new
   `/api/tennis/archive`, resolved by name) — by surface with today's court
@@ -82,6 +100,9 @@ is the plan's status block.
 - **OWED the next tennis match day:** tennis's game-state card (set scores) and
   its re-priced line. Nothing was on the ATP or WTA slate on 2026-09-15, so all
   three verified players rendered the no-market path.
+- **OWED in October:** NBA's and NHL's game-state cards and their re-priced
+  lines. Neither league is in season, so both sub-phases rendered the no-market
+  path; the plan always marked these two unverified until October.
 
 - **R6.1d:** the player page names one line (R2's main line, re-priced from
   current rows; MLB's model chip names its own board line), a started game's
