@@ -60,9 +60,6 @@ const DB_MODULES = [
   // is an `import type` and erased — a VALUE import would bundle `pg`.
   '@/lib/odds/props/lineHistory',
   '@/lib/sports/nfl/nflTeamGrades',
-  // 6.14: `components/useTeamRatingHistory.ts` and the six team adapters take
-  // their types from `teamRatingShapes.ts`; this one value-imports `pgAll`.
-  '@/lib/sports/shared/teamRatingHistory',
   // R6.5: NHL's api-web builder value-imports `writeSnapshotCache`. Its two
   // pure game-state predicates live in `gameStates.ts`, which is what the
   // player page's live gate and `hoopsHockeyGameState.ts` import. Importing
@@ -84,6 +81,8 @@ const DB_MODULES = [
   '@/lib/sports/multiSport/footballTeamResearch',
   // R7.3: the NBA and NHL team page read.
   '@/lib/sports/multiSport/hoopsHockeyTeamResearch',
+  // R7.4: the soccer team page read.
+  '@/lib/sports/soccer/teamResearch',
 ];
 
 /**
@@ -124,7 +123,6 @@ function isClientReachable(file: string): boolean {
  */
 const SELF = [
   'lib/sports/shared/seasonAggregates.ts',
-  'lib/sports/shared/teamRatingHistory.ts',
   // 6.10: one `venue_factors` table across six sports, so there is no
   // `lib/sports/{sport}/` to put it in — the same reason the two above live here.
   'lib/sports/shared/venueFactor.ts',

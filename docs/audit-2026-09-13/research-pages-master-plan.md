@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; R7.1 (MLB) and R7.2 (NFL, CFB) signed off; R7.3 (NBA, NHL) COMPLETE, awaiting sign-off; R7.4 soccer next.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; R7.1-R7.3 signed off; R7.4 (soccer, old page deleted) COMPLETE 2026-09-16 — **R7 is done**, awaiting sign-off; R8 (game page) next.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1504,6 +1504,67 @@ game's price movement stays dropped.
   season until October 1, then falls back the same way. 538 tests; build
   clean. **Owed in October:** a live NBA and NHL game on a team page.
 
+**R7.3 SIGNED OFF 2026-09-16** (operator: "Start R7.4").
+
+**R7.4 COMPLETE 2026-09-16 — soccer, and the old team page deleted. R7 is done.**
+- **Read** (`lib/sports/soccer/teamResearch.ts`, EPL and MLS apart): ESPN's
+  team schedule, W-D-L throughout; ESPN standings (the Premier League table,
+  or the club's MLS conference) by ESPN's rank; team stats from
+  `team_game_production` for and allowed with goals and points from the
+  standings (fouls, offsides, cards and saves not ranked); roster production
+  named from ESPN. Soccer adds no section of its own: the plan's soccer card is
+  its ranked club totals, which Team stats already is.
+- **Measured first, three premises corrected:**
+  1. ESPN's soccer `fixture=true` IGNORES `season`: asked for EPL or MLS 2025
+     it returns 2026's unplayed fixtures. `fetchTeamSeasonGames` now keeps only
+     events whose `season.year` is the season asked for. (The older
+     `fetchTeamSchedule` has the same leak; no soccer caller uses it.)
+  2. MLS playoffs are not a season type number: they are named season types
+     ("Eastern Conference Playoffs - Round One", "MLS Cup") in the same
+     response as "Regular Season", and are kept apart by name.
+  3. **R7-F1: MLS 2026 game logs start on 2026-08-15.** `player_game_history`
+     holds 59 MLS 2026 events (August and September only) against about 25
+     games a club, so the rollup and roster production cover 4-5 of a club's
+     games (Atlanta 5 of 25, Miami 4 of 25). MLS 2025 is complete (510 events).
+     EPL 2026 holds 31 events after four matchdays (Man City 3 of 4). A Python
+     backfill, routed to the model track. **Every sport's page now states it**:
+     `TeamSeasonData.loggedGames`, and Team stats and Roster production say
+     "Summed from the N of this team's M games that the app holds box scores
+     for" whenever the logs are short.
+- **Refereed against ESPN:** Man City 2025-26 23-9-6, 77-35, 2nd behind
+  Arsenal; Inter Miami 2025 19-8-7, 81-55, with six playoff games through the
+  MLS Cup kept out of the record; Inter Miami 2026 12-9-4, 61-46, 2nd in the
+  East; Atlanta 2026 6-5-14, 29-43, 14th.
+- **Deleted:** `components/TeamDetail.tsx` and every sport's
+  `toTeamDetailData` with the `TeamDetailData` family (2,700+ lines, with the
+  unused helpers and imports it left, pruned to a clean `--noUnusedLocals`);
+  the modules only it used — `StandingsTables`, `useCfbTeamDetail`,
+  `useNbaTeamDetail`, `useNhlTeamDetail`, `useSoccerTeamDetail`,
+  `useTeamBatterRanks`, `useTeamForm`, `useTeamRatingHistory`,
+  `useTeamRoster`, `useUserSportsbook`, five sports' `teamFormCandidates.ts`,
+  `lib/sports/shared/teamRatingHistory.ts`; and the four routes only those
+  hooks called: `/api/mlb/team-form`, `/api/mlb/team-batter-ranks`,
+  `/api/mlb/team/[teamId]`, `/api/team-rating-history`. Checked by an import
+  graph before and after: nothing new is left unimported. Kept: the
+  `/api/{cfb,nba,nhl,soccer}/team/[teamId]` and `/api/nfl/team/[teamId]`
+  routes and their `*TeamDetailApiResponse` types, which the game pages still
+  read (R8). The line picker, win bars, unit grades and team rating chart went
+  with the page (plan R7 delete list). `TeamDetailPanel` lost its dead
+  `snapshot`/`odds`/`onAdd`/`addedKeys` props, and the MLB team pages stopped
+  fetching game lines for them.
+- **CLAUDE.md** pointed at two deleted routes as its `cachedRoute` examples
+  and at `TeamDetail.tsx`/`TeamDetailData` in the sport-adapter section; both
+  now point at live code. Six tests that read the deleted page were retargeted
+  (the team page must not grow unit grades back; NBA/NHL team stats go
+  through `rankTeamStats`; MLB's team Statcast section reads the rollup).
+- **Sweep fixes:** the Teams landing requested `teamId=0` before its list
+  loaded (the hook now idles); an api-web failure on NHL showed "team not
+  found" (now an error with retry); roster sources printed "time unknown" in
+  every offseason (the as-of now comes from the newest season that has one).
+- Rendered every sport's team page and Teams landing at 1440 and 400: no bad
+  text, no overflow, lists hidden on phones only on a team's URL, a made-up id
+  shows not found. 538 tests; tsc and build clean.
+
 **Sub-phases, stop after each:** R7.1 the shared team research skeleton
 (hero, season switch, results & schedule, standings, team stats, roster
 production, sources) built on MLB; R7.2 NFL and CFB; R7.3 NBA and NHL (live
@@ -1840,6 +1901,7 @@ rebuilt pages use.
 | R6-F8 ParlayAPI files a pitcher's strikeouts under `batter-strikeouts` (29 pitchers) and walks allowed under `walks` (9) on 2026-09-15; the page shows "Batter Strikeouts 7.5" for Yamamoto, and the pitcher markets miss those books | ParlayAPI market mapping, Python writer | model track (R5e writer work); the page shows the rows as stored |
 | R6-F9 non-MLB candidates carry the main line from snapshot build time, which goes stale between rebuilds (Allen passing yards 249.5 in the stepper against a current 248.5) | NFL/CFB/NBA/NHL/soccer/tennis player adapters | **RESOLVED for every sport** (R6.2, R6.3, R6.4, R6.5) |
 | R6-F10 the game page's `usePropOdds` reads current rows, so after the start its prices (and the embedded player's) are in-play and the main line finds no pre-game quote | `GameDetail` | R8 (pass the start, as the player page does) |
+| R7-F1 MLS 2026 `player_game_history` starts 2026-08-15 (59 events; about 25 games a club played) | the soccer history writer | R7.4 pages state the logged share (`loggedGames`); the backfill is model track |
 | R6-F12 `golf_hole_scores.category` holds only birdie/par/bogey: 47 eagles are filed as birdies and 178 doubles and triples as bogeys | the golf hole-score writer | R6.6 counts from `relative_to_par`; the column fix is model track |
 | R6-F11 `nfl_target_events.interception` is false on all 36,375 rows: `write_nfl_target_events` writes 13 columns and that is not one of them, so G2's INT column and its red-ringed dot cannot be built | `python-odds-service/src/db.py` `write_nfl_target_events`, `nfl_pbp.parse_row` | model track (a column and a re-ingest); the section states it is not held |
 

@@ -47,7 +47,7 @@ export default function SoccerTeamPage() {
       </header>
 
       <main className="px-3 py-3">
-        <TeamDetailPanel sport={sport} league={league} initialTeamId={teamId} snapshot={null} onAdd={onAdd} addedKeys={slip.pickedKeys} />
+        <TeamDetailPanel sport={sport} league={league} initialTeamId={teamId} />
       </main>
 
       <SlipModal

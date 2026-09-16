@@ -43,9 +43,8 @@ R1-R5 and R6.1 signed off; R6.2-R6.6 done. **R7 (team page rebuild) STARTED
 section. R7-C1: results & schedule read each league's schedule, not
 `game_result` (preseason, postseason, no OTL, MLB gaps). Sub-phases R7.1
 (skeleton on MLB) → R7.2 football → R7.3 NBA/NHL → R7.4 soccer, stop after each.
-**R7.1 and R7.2 SIGNED OFF; R7.3 (NBA, NHL) COMPLETE 2026-09-16, awaiting sign-off.** Also fixed: the NHL team-id map sent Utah to its old id (59, not 68). R7.1: `/api/team-research` +
-`buildTeamResearch` + `TeamResearchPage`; MLB, NFL, CFB, NBA and NHL team pages use it; soccer still
-renders the old `TeamDetail` until R7.4, which then deletes it. Record in the
+**R7 COMPLETE 2026-09-16 (R7.1-R7.3 signed off, R7.4 awaiting sign-off): every team sport is on `TeamResearchPage`; `TeamDetail.tsx` and its hooks, adapters and four routes are deleted. R8 (game page) next — confirm first.** R7-F1 routed to the model track: MLS 2026 game logs start 2026-08-15, so MLS team stats and rosters cover 4-5 of ~25 games (the page says so). Also fixed: the NHL team-id map sent Utah to its old id (59, not 68). R7.1: `/api/team-research` +
+`buildTeamResearch` + `TeamResearchPage`; every team sport uses it. Record in the
 plan's R7 section. R2-F7 fixed.** The handoff is
 `docs/audit-2026-09-13/RESUME-PROMPT.md`; the record is the plan's status block.
 

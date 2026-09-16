@@ -23,7 +23,8 @@ export function useTeamResearch<P extends TeamResearchPayload = TeamResearchPayl
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
   useEffect(() => {
-    if (!sport || teamId == null || teamId === '') {
+    // 0 is the Teams landing's placeholder before its list loads, not a team.
+    if (!sport || teamId == null || teamId === '' || teamId === 0 || teamId === '0') {
       setState({ data: null, loading: false, error: null });
       return;
     }

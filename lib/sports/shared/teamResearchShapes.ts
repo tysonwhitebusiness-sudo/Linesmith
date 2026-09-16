@@ -104,6 +104,14 @@ export interface TeamSeasonData {
   standings: TeamStandingsTable[];
   stats: TeamStatValue[];
   roster: TeamRosterEntry[];
+  /**
+   * How many of this team's games the app's own game logs hold for the season
+   * (the R5b rollup's count), where a section is summed from them. The page
+   * says so when it is short of the games played: R7.4 found MLS 2026 logs
+   * starting in August, 5 of about 25 games a club. `undefined` where no
+   * section depends on the logs' completeness.
+   */
+  loggedGames?: number;
 }
 
 export interface TeamResearchSource {

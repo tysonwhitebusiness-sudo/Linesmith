@@ -87,7 +87,7 @@ A sport's section is one function returning a `ResearchSection`; the component
 has no sport check. The prop block keeps market tabs, stepper, chips, windows,
 bars, matchup explorer and role cards; every odds card lives in "Odds & prices".
 
-## Next: R7 team page (STARTED 2026-09-16 — Step 0 and R7.1-R7.3 (MLB, NFL, CFB, NBA, NHL) done, see the plan's R7 section; R7.4 soccer after sign-off, then delete the old `TeamDetail` and every sport's `toTeamDetailData`)
+## Next: R7 team page (STARTED 2026-09-16 — COMPLETE 2026-09-16: every sport on `TeamResearchPage`, old page deleted; see the plan's R7 section. Next is R8, the game page, after sign-off — start with a Step 0 audit; the game hooks still read `/api/{sport}/team/[teamId]`)
 
 Each sub-phase adds a reader to `READERS` in `app/api/team-research/route.ts`, a spec and
 `toTeamResearchData` in each sport's team adapter, a case in `teamResearchFor`

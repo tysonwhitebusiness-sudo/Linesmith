@@ -143,7 +143,7 @@ const FOOTBALL_STATS: StatDef[] = [
 /** Keys a sport's rollup holds at all; a stat built on an absent key is dropped, not ranked at zero. */
 const ROLLUP_KEYS_NEEDED: Partial<Record<string, string>> = { sacked: 'passing.sacks', fumLost: 'fumbles.fumblesLost', tfl: 'defensive.tacklesForLoss' };
 
-async function rankedStats(league: 'nfl' | 'cfb', season: number, teamId: string, groups: EspnStandingsGroup[]): Promise<TeamStatValue[]> {
+async function rankedStats(league: 'nfl' | 'cfb', season: number, teamId: string, groups: EspnStandingsGroup[]): Promise<{ stats: TeamStatValue[]; logged: number | undefined }> {
   const production = await readLeagueProduction(league, season, null);
   const entries = groups.flatMap((g) => g.entries);
   const numbers = new Map<string, TeamNumbers>();
@@ -165,7 +165,7 @@ async function rankedStats(league: 'nfl' | 'cfb', season: number, teamId: string
     const needs = ROLLUP_KEYS_NEEDED[d.key];
     return !needs || heldKeys.has(needs);
   });
-  return rankTeamStats(defs, numbers, pool, teamId);
+  return { stats: rankTeamStats(defs, numbers, pool, teamId), logged: production.for[teamId]?.g };
 }
 
 const headshot = (league: 'nfl' | 'cfb', id: string) => `https://a.espncdn.com/i/headshots/${league === 'nfl' ? 'nfl' : 'college-football'}/players/full/${id}.png`;
@@ -182,7 +182,7 @@ async function seasonData(league: 'nfl' | 'cfb', teamId: string, season: number,
     league === 'nfl' ? readNflTeamTargets(season, teamId).catch(() => null) : Promise.resolve(null),
   ]);
   const shown = roster.rows.filter((r) => PRODUCED.some((k) => (r.stats[k] ?? 0) > 0));
-  const [names, stats] = await Promise.all([espnAthleteNames('football', espnLeague, teamId, shown.map((r) => r.athleteId)), rankedStats(league, season, teamId, groups)]);
+  const [names, ranked] = await Promise.all([espnAthleteNames('football', espnLeague, teamId, shown.map((r) => r.athleteId)), rankedStats(league, season, teamId, groups)]);
   return {
     rosterAsOf: roster.computedAt,
     targets,
@@ -190,7 +190,8 @@ async function seasonData(league: 'nfl' | 'cfb', teamId: string, season: number,
       season,
       games: games.map((g) => toTeamGame(g, teamId, league, today)),
       standings: standingsTables(groups, teamId, league),
-      stats,
+      stats: ranked.stats,
+      loggedGames: ranked.logged,
       roster: shown.map((r) => {
         const n = names.get(r.athleteId);
         return {
@@ -238,10 +239,10 @@ export async function readFootballTeamResearch(league: 'nfl' | 'cfb', teamId: nu
       {
         label: 'Team stats',
         detail: `team_game_production (players’ box scores summed per team and per opponent) with points from ESPN standings, ranked across ${league === 'cfb' ? 'FBS' : 'NFL'} teams here`,
-        asOf: built[0].rosterAsOf,
+        asOf: built.map((b) => b.rosterAsOf).find(Boolean) ?? null,
       },
-      { label: 'Roster production', detail: 'player_game_history summed per player; ordered by the production score in player_season_production; names from ESPN', asOf: built[0].rosterAsOf },
-      ...(league === 'nfl' ? [{ label: 'Passing game', detail: 'team_target_profile, from nflverse play-by-play', asOf: built[0].rosterAsOf }] : []),
+      { label: 'Roster production', detail: 'player_game_history summed per player; ordered by the production score in player_season_production; names from ESPN', asOf: built.map((b) => b.rosterAsOf).find(Boolean) ?? null },
+      ...(league === 'nfl' ? [{ label: 'Passing game', detail: 'team_target_profile, from nflverse play-by-play', asOf: built.map((b) => b.rosterAsOf).find(Boolean) ?? null }] : []),
     ],
     fetchedAt,
   };

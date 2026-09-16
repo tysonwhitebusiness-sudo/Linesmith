@@ -17,30 +17,16 @@
  * single-book pregame line, real record/rank from standings.
  */
 
-import { categoriseByLine, entryValue, fixedWindow, openWindow, subsetWindow, OVER, UNDER, type WindowedStat } from '@/lib/core/windowedStat';
-import { directionMark } from '@/components/MarketLabel';
-import type { PickCandidate } from '@/lib/core/types';
 import type { FootballTeamResearchPayload } from '@/lib/sports/multiSport/footballTeamResearch';
 import { footballTeamSpec } from '@/lib/sports/nfl/adapters/teamResearchSpec';
 import { buildTeamResearch, formatRecord, gameResult } from '@/lib/sports/shared/teamResearch';
 import type { ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
 import type { TeamGame, TeamResearchData, TeamResearchSpec } from '@/lib/sports/shared/teamResearchShapes';
-import type { TeamStandingRow } from '@/components/useAllTeams';
-import type { GameRow, RecentResultRow, RosterPlayer, TeamDetailData, TeamDistributionChartData, TeamMatchupData, TeamNextGame, TeamWindowedForm } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
-import type { OpposingStarterStat } from '@/components/PlayerDetail';
-import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
-import { groupStats } from '@/lib/sports/shared/seasonAggregateShapes';
-import { CFB_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
+import type { RecentResultRow } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import type { CfbTeam, CfbPregameLine } from '@/lib/sports/cfb/espn';
 import type { EspnTeamSportGame } from '@/lib/sports/multiSport/teamSportEspn';
 import type { CfbTeamDefenseAllowed } from '@/lib/sports/cfb/teamDefenseAllowed';
 import type { EspnInjuryRow } from '@/lib/sports/multiSport/teamSportEspn';
-import { buildCfbMoneylineCandidate, buildCfbGameTotalCandidate, buildCfbPointsForCandidate } from '@/lib/sports/cfb/teamFormCandidates';
-import { standingPhrase } from '@/lib/sports/shared/teamRecord';
-import { toRatingHistoryRole } from '@/lib/sports/shared/ratingHistoryRole';
-import type { TeamRatingHistory } from '@/lib/sports/shared/teamRatingShapes';
-import { buildTeamRoles } from '@/lib/sports/shared/teamRoles';
-
 interface CfbRosterSeasonStats {
   games: number;
   passingYards: number;
@@ -49,64 +35,11 @@ interface CfbRosterSeasonStats {
   receptions: number;
 }
 
-function seasonLineText(p: { position: string | null; seasonStats: CfbRosterSeasonStats | null }): string {
-  const s = p.seasonStats;
-  if (!s || s.games === 0) return 'No stats yet this season';
-  switch (p.position) {
-    case 'QB':
-      return `${s.passingYards} pass yds`;
-    case 'RB':
-    case 'FB':
-      return `${s.rushingYards} rush yds`;
-    case 'WR':
-    case 'TE':
-      return `${s.receptions} rec · ${s.receivingYards} rec yds`;
-    default:
-      return `${s.games} games played`;
-  }
-}
 
 
-/**
- * The pool a CFB rank is against, taken from the index that produced the rank.
- *
- * IT WAS A HARDCODED 134, AND THAT PUT A WRONG NUMBER ON THE PAGE.
- * `teamDefenseAllowed.ts` ranks whatever teams its index actually holds and
- * reports the real size as `poolSize` -- measured 2026-08-30 against the live
- * route, that is **138**. So the card printed "100th of 134" for a rank
- * computed against 138.
- *
- * Found by noticing the same stat read "of 134" in the matchup card and "of
- * 138" in the season-rollup block beside it. The two blocks never disagreed
- * about the pool: one was asserting the nominal FBS team count instead of the
- * pool it had ranked against.
- */
-function toStatRow(key: string, label: string, value: number, rank: number, poolSize: number): OpposingStarterStat {
-  return { key, label, value, decimals: 0, rank, poolSize };
-}
 
-function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
-  return (entry.raw ?? {}) as Record<string, unknown>;
-}
 
-/** Local copy of `screenshotImport.ts`'s `normalizeName` — that module also pulls in the Anthropic SDK (server-only), which breaks the client bundle when imported from a client-rendered adapter (`TeamDetail.tsx`). Same normalization, no SDK import. */
-function normalizeTeamName(name: string): string {
-  return name
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[.'`'-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
-/** Same substring match `playerDetailAdapter.ts`'s H2H split uses — real names, differently conventioned between ESPN/CFBD. */
-function isOpponentMatch(rawOpponent: string | undefined, opponentAbbr: string | undefined): boolean {
-  if (!rawOpponent || !opponentAbbr) return false;
-  const a = normalizeTeamName(rawOpponent);
-  const b = normalizeTeamName(opponentAbbr);
-  return a !== '' && b !== '' && (a === b || a.includes(b) || b.includes(a));
-}
 
 export interface CfbTeamDetailApiResponse {
   team: CfbTeam;
@@ -144,250 +77,6 @@ export function toCfbRecentResultRows(games: EspnTeamSportGame[], teamId: string
       scoreAgainst: scoreAgainst ?? 0,
     };
   });
-}
-
-export interface CfbTeamDetailScope {
-  market: string | undefined;
-  lineOffset: number;
-  opponentOnly: boolean;
-  venue: 'all' | 'home' | 'away';
-  lastN: number | 'all';
-}
-
-export interface CfbTeamDetailInput {
-  /**
-   * `useTeamRatingHistory(...)`'s result — the rating block (6.14). Structural,
-   * not an import of the hook's type. Every team sport takes the identical
-   * field; the shared builder does the rest.
-   */
-  ratingHistory?: { history: TeamRatingHistory | null; loading: boolean };
-  data: CfbTeamDetailApiResponse;
-  scope: CfbTeamDetailScope;
-  standingsTeams: TeamStandingRow[];
-  /**
-   * League-wide season aggregates and ranks (`useSeasonRanks`), Phase 6.15.
-   * Fills `statGroups` and `unitGrades`, neither of which this sport had a
-   * league-wide ranked aggregate to build from before. `null` while loading.
-   */
-  seasonRanks: SeasonAggregateResult | null;
-  /**
-   * The sport snapshot's season state (B6). Out of season the standings feed
-   * still serves the last completed season, so the header needs to know both
-   * that the new season hasn't started and what to say instead of `0-0`.
-   */
-  seasonStatus?: { started: boolean; nextGameDate: string | null; label?: string } | null;
-}
-
-export function toTeamDetailData(input: CfbTeamDetailInput): TeamDetailData {
-  const { data, scope, standingsTeams, seasonRanks } = input;
-  const { team, roster, nextGame, nextGameLine, recentGames, teamOffense, opponentDefenseAllowed, opponentAbbr: nextOpponentAbbr, opponentName, opponentLogoUrl, logoByAbbr } = data;
-
-  const rosterPlayers: RosterPlayer[] = roster.map((p) => {
-    // Real identity carried in the URL, not fetched again — lets the player
-    // page render honestly even for a player with zero active props right
-    // now (every FBS roster player is real; not every one has a tracked
-    // market). See app/cfb/player/[playerId]/page.tsx's own fallback.
-    const identityParams = new URLSearchParams({
-      name: p.fullName,
-      team: team.abbreviation,
-      teamName: team.name,
-      teamLogoUrl: team.logoUrl ?? '',
-      ...(p.position ? { pos: p.position } : {}),
-      ...(p.headshotUrl ? { headshot: p.headshotUrl } : {}),
-    });
-    return {
-      subjectId: p.subjectId,
-      name: p.fullName,
-      position: p.position ?? '',
-      teamAbbr: team.abbreviation,
-      headshotUrl: p.headshotUrl ?? undefined,
-      seasonLineText: seasonLineText(p),
-      hasStats: p.seasonStats != null && p.seasonStats.games > 0,
-      href: `/cfb/player/${encodeURIComponent(p.subjectId)}?${identityParams.toString()}`,
-    };
-  });
-
-  // F-B9. This flag tested whether THIS team is the home team while being
-  // named for the opponent, and was then negated — so a team's own home
-  // fixture was reported as away. The prices were never wrong; the labels
-  // beside them were, which is why a real page read "Man City ML 800" at
-  // "Sunderland ML -340" for a match Manchester City hosted as a -340
-  // favourite (measured: homeTeamId 382 = MNC, moneylineHome -340,
-  // moneylineAway 800).
-  const subjectIsHome = nextGame ? nextGame.homeTeamId === team.teamId : false;
-  const opponentAbbr = nextGame ? (subjectIsHome ? nextGame.awayAbbr : nextGame.homeAbbr) : undefined;
-  const nextGameData: TeamNextGame | null = nextGame
-    ? {
-        opponentAbbr: opponentAbbr ?? '',
-        opponentTeamId: null,
-        opponentLogoUrl: undefined,
-        isHome: subjectIsHome,
-        startTime: nextGame.date,
-        moneyline: nextGameLine ? { away: nextGameLine.moneylineAway, home: nextGameLine.moneylineHome } : null,
-        total: nextGameLine?.overUnder != null ? { point: nextGameLine.overUnder, overPrice: nextGameLine.overOdds } : null,
-        gameHref: `/cfb/game/${nextGame.gameId}`,
-      }
-    : null;
-
-  const ownStanding = standingsTeams.find((s) => s.teamId === Number(team.teamId));
-
-  // ---- Real team-level candidates from this team's own recent results ----
-  const today = nextGame && opponentAbbr ? { opponentAbbr, isHome: subjectIsHome, gamePk: nextGame.gameId } : null;
-  const moneyline = buildCfbMoneylineCandidate({ teamId: team.teamId, teamName: team.name, teamAbbr: team.abbreviation, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr });
-  const total = buildCfbGameTotalCandidate({ teamId: team.teamId, teamName: team.name, teamAbbr: team.abbreviation, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr }, nextGameLine?.overUnder ?? null);
-  const pointsFor = buildCfbPointsForCandidate({ teamId: team.teamId, teamName: team.name, teamAbbr: team.abbreviation, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr });
-  const candidates = [moneyline, total, pointsFor].filter((c): c is PickCandidate => c != null);
-
-  const active = candidates.find((c) => c.dimension === scope.market) ?? candidates[0] ?? null;
-  const wantOver = active ? directionMark(active.category) !== 'U' : true;
-  const baseLine = active?.line ?? 0.5;
-  const line = Math.max(0, baseLine + scope.lineOffset);
-  const isMoneylineMarket = active?.dimension === 'moneyline';
-
-  const scoped: PickCandidate['history'] = (() => {
-    if (!active) return [];
-    let list = active.history;
-    if (scope.opponentOnly && opponentAbbr) {
-      list = list.filter((e) => isOpponentMatch(rawOf(e).opponentAbbr as string | undefined, opponentAbbr));
-    }
-    if (scope.venue !== 'all') list = list.filter((e) => rawOf(e).isHome === (scope.venue === 'home'));
-    if (scope.lastN !== 'all') list = list.slice(-scope.lastN);
-    return list;
-  })();
-
-  const measured = categoriseByLine(scoped, line);
-  const wanted = wantOver ? OVER : UNDER;
-
-  const windows: TeamWindowedForm | null = active
-    ? {
-        l5: fixedWindow(measured, wanted, 5),
-        l10: fixedWindow(measured, wanted, 10),
-        l15: fixedWindow(measured, wanted, 15),
-        szn: openWindow(measured, wanted, { minimum: 1 }),
-        h2h:
-          !opponentAbbr
-            ? ({ status: 'insufficient', available: 0, required: 1 } as WindowedStat)
-            : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => isOpponentMatch(rawOf(e).opponentAbbr as string | undefined, opponentAbbr), { minimum: 1 }),
-      }
-    : null;
-
-  const gameRows: GameRow[] = scoped.map((entry, index) => {
-    const value = entryValue(entry);
-    const cleared = value == null ? null : wantOver ? value > line : value <= line;
-    const resultText = isMoneylineMarket ? (value === 1 ? 'W' : value === 0 ? 'L' : '—') : value != null ? String(value) : '—';
-    return { key: `${entry.period}-${index}`, periodLabel: entry.periodLabel ?? '', opponentTeamId: null, opponentLogoUrl: rawOf(entry).opponentLogoUrl as string | undefined, value, resultText, cleared };
-  });
-
-  // Real opponent logo (2026-08-24) — `teamFormCandidates.ts` now embeds
-  // `opponentLogoUrl` on every real history entry via `logoByAbbr`; this
-  // just reads it, same as the player-level chart's own `logoFor`.
-  const distributionLogoFor = (entry: PickCandidate['history'][number]) => rawOf(entry).opponentLogoUrl as string | undefined;
-
-  const distribution: TeamDistributionChartData | null = active
-    ? {
-        history: scoped,
-        line,
-        wantOver,
-        refreshKey: `${active.dimension}|${line}|${scope.opponentOnly}|${scope.venue}|${scope.lastN}|${team.teamId}`,
-        logoFor: distributionLogoFor,
-      }
-    : null;
-
-  // ---- Season stat groups and unit grades -- Phase 6.15 ----
-  //
-  // REPLACES the three produced-yardage rows this block used to carry. Those
-  // came from `teamDefenseAllowed.ts`'s index, which is still what the matchup
-  // card below reads (it needs an ALLOWED side that no rollup over
-  // `player_game_history` can express). For a plain season-stats table the
-  // rollup is simply more: ten ranked stats across Offence, Defence and Ball
-  // security, against three. Keeping both would have shown pass yards twice,
-  // ranked against two different pools, with nothing on screen saying why.
-  const ownAggregate = seasonRanks?.byEntity[String(team.teamId)] ?? null;
-  const statGroups: { label: string; stats: OpposingStarterStat[] }[] =
-    ownAggregate ? groupStats(CFB_SEASON_SPEC, ownAggregate.stats) : [];
-  const ownUnitGrades = ownAggregate && ownAggregate.units.length > 0 ? ownAggregate.units : null;
-
-  // ---- Real team-vs-opponent matchup, from CFBD's own box scores (teamDefenseAllowed.ts) ----
-
-  const teamMatchup =
-    nextOpponentAbbr && teamOffense && opponentDefenseAllowed
-      ? {
-          subjectName: team.name,
-          subjectHeadshotUrl: team.logoUrl ?? undefined,
-          subjectTeamAbbr: team.abbreviation,
-          subjectTeamLogoUrl: team.logoUrl ?? undefined,
-          subjectStats: [
-            toStatRow('passingYdsProduced', 'Pass Yds/Gm', teamOffense.passingYdsProducedPerGame, teamOffense.passingProducedRank, teamOffense.poolSize),
-            toStatRow('rushingYdsProduced', 'Rush Yds/Gm', teamOffense.rushingYdsProducedPerGame, teamOffense.rushingProducedRank, teamOffense.poolSize),
-            toStatRow('receivingYdsProduced', 'Rec Yds/Gm', teamOffense.receivingYdsProducedPerGame, teamOffense.receivingProducedRank, teamOffense.poolSize),
-          ],
-          subjectRoleLabel: 'Produces',
-          opponentName: `${opponentName ?? nextOpponentAbbr} defense`,
-          opponentHeadshotUrl: opponentLogoUrl ?? undefined,
-          opponentTeamAbbr: nextOpponentAbbr,
-          opponentTeamLogoUrl: opponentLogoUrl ?? undefined,
-          opponentStats: [
-            toStatRow('passingYdsAllowed', 'Pass Yds/Gm', opponentDefenseAllowed.passingYdsAllowedPerGame, opponentDefenseAllowed.passingRank, opponentDefenseAllowed.poolSize),
-            toStatRow('rushingYdsAllowed', 'Rush Yds/Gm', opponentDefenseAllowed.rushingYdsAllowedPerGame, opponentDefenseAllowed.rushingRank, opponentDefenseAllowed.poolSize),
-            toStatRow('receivingYdsAllowed', 'Rec Yds/Gm', opponentDefenseAllowed.receivingYdsAllowedPerGame, opponentDefenseAllowed.receivingRank, opponentDefenseAllowed.poolSize),
-          ],
-          opponentRoleLabel: 'Allows',
-        }
-      : null;
-
-  const matchup: TeamMatchupData | null = teamMatchup
-    ? { tabs: [{ key: 'team', label: 'Team matchup' }], team: teamMatchup }
-    : null;
-
-
-  // ---- Phase 6.19: the shared Team Detail roles ----
-  // One call for all five, identical in every sport's adapter. Which ones fill
-  // depends on what this sport's team history carries -- `teamRoles.ts` has
-  // the measurement.
-  const teamRoles = buildTeamRoles({
-    active,
-    line,
-    wantOver,
-    statLabel: active?.dimensionLabel ?? active?.dimension ?? 'Market',
-    opponentAbbr: nextGameData?.opponentAbbr ?? null,
-  });
-
-  return {
-    teamRoles,
-    ratingHistory: toRatingHistoryRole({ state: input.ratingHistory }),
-    team: { teamId: Number(team.teamId), name: team.name, abbr: team.abbreviation, logoUrl: team.logoUrl ?? '' },
-    record: ownStanding
-      ? {
-          wins: ownStanding.wins,
-          losses: ownStanding.losses,
-          standing: standingPhrase(ownStanding.divisionRank, ownStanding.divisionName),
-        }
-      : null,
-    // Phase 6.1 — `grades` (nine hardcoded NFL unit names) became `unitGrades`.
-    // Phase 6.15 fills it: the same rollup behind `statGroups` above, so a
-    // team's rank in a stat row and the ranks behind its unit grade cannot
-    // disagree.
-    seasonStatus: input.seasonStatus ?? null,
-    // Out of season every source still returns last season's standings. The
-    // page has no season helper yet (that is R2's season-convention rule), but
-    // "not the current one" is exactly what `started: false` means.
-    recordSeasonLabel: input.seasonStatus && !input.seasonStatus.started ? 'Last season' : null,
-    unitGrades: ownUnitGrades,
-    candidates,
-    games: gameRows,
-    windows,
-    distribution,
-    matchup,
-    statGroups,
-    roster: rosterPlayers,
-    rosterSortByStats: false,
-    rosterPageSize: 24,
-    standingsTeams,
-    nextGame: nextGameData,
-    advancedStats: null,
-    form: windows,
-    recentResults: toCfbRecentResultRows(recentGames, team.teamId),
-  };
 }
 
 // ---------------------------------------------------------------------------

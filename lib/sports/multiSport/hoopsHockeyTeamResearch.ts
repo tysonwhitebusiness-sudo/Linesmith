@@ -29,7 +29,7 @@ import { realTeams, seasonForDate } from '@/lib/sports/shared/season';
 import { easternDate } from '@/lib/sports/mlb/statsapi';
 import type { TeamShotProfile, TeamTotals } from '@/lib/sports/shared/teamProductionShapes';
 import type { ResearchColumn } from '@/lib/sports/shared/playerResearchShapes';
-import type { TeamGame, TeamResearchPayload, TeamSeasonData, TeamStandingsTable, TeamStatValue } from '@/lib/sports/shared/teamResearchShapes';
+import type { TeamGame, TeamResearchPayload, TeamSeasonData, TeamStandingsTable } from '@/lib/sports/shared/teamResearchShapes';
 
 export interface HoopsHockeyTeamResearchPayload extends TeamResearchPayload {
   /** The team's shot profile per season; `null` where the rollup holds none. */
@@ -149,6 +149,7 @@ async function nbaSeason(teamId: string, season: number, current: number, today:
     games: games.map((g) => espnGame(g, teamId, 'nba', today)),
     standings: espnDivisionAndConference(groups, teamId, 'nba', divCols, confCols, keys),
     stats: rankTeamStats(NBA_STATS, numbers, pool, teamId),
+    loggedGames: production.for[teamId]?.g,
     roster: roster.rows.map((r) => {
       const n = names.get(r.athleteId);
       return {
@@ -188,9 +189,9 @@ export async function readNbaTeamResearch(teamId: number, now: Date = new Date()
     sources: [
       { label: 'Schedule and results', detail: 'ESPN team schedule; regular season, playoffs and the play-in fetched apart', asOf: fetchedAt },
       { label: 'Standings', detail: 'ESPN standings, divisions and conferences by seed', asOf: fetchedAt },
-      { label: 'Team stats', detail: 'team_game_production (box scores summed per team and per opponent), ranked across the NBA’s 30 teams here', asOf: built[0].rosterAsOf },
-      { label: 'Roster production', detail: 'player_game_history summed per player; ordered by the production score in player_season_production; names from ESPN', asOf: built[0].rosterAsOf },
-      { label: 'Shot profile', detail: 'team_shot_profile from nba_shot_events, regular season, league over teams with 40+ games', asOf: built[0].rosterAsOf },
+      { label: 'Team stats', detail: 'team_game_production (box scores summed per team and per opponent), ranked across the NBA’s 30 teams here', asOf: built.map((b) => b.rosterAsOf).find(Boolean) ?? null },
+      { label: 'Roster production', detail: 'player_game_history summed per player; ordered by the production score in player_season_production; names from ESPN', asOf: built.map((b) => b.rosterAsOf).find(Boolean) ?? null },
+      { label: 'Shot profile', detail: 'team_shot_profile from nba_shot_events, regular season, league over teams with 40+ games', asOf: built.map((b) => b.rosterAsOf).find(Boolean) ?? null },
     ],
     fetchedAt,
   };
@@ -281,6 +282,7 @@ async function nhlSeason(teamId: string, abbrev: string, season: number, current
     games: games.map((g) => nhlGame(g, teamId)),
     standings: nhlStandingsTables(standings, teamId),
     stats: rankTeamStats(NHL_STATS, numbers, base.pool, teamId),
+    loggedGames: production.for[teamId]?.g,
     roster: roster.rows.map((r) => {
       const n = names.get(r.athleteId);
       return {
@@ -308,7 +310,10 @@ export async function readNhlTeamResearch(teamId: number, now: Date = new Date()
   const seasons = built.map((b) => b.data).filter((d) => d.games.length || d.roster.length);
   const raw = (await Promise.all(wanted.map((s) => fetchClubSeasonGames(abbrev, nhlSeasonKey(s), s < current)))).flat();
   const me = raw.map((g) => (g.home.id === id ? g.home : g.away.id === id ? g.away : null)).find(Boolean);
-  if (!me || !seasons.length) return null;
+  // The club exists (its abbreviation resolved), so no games means api-web did
+  // not answer, not that the team is unknown: an error, so the page says it
+  // could not load rather than "not found" (R7.4 sweep, Anaheim on a slow call).
+  if (!me || !seasons.length) throw new Error(`NHL schedule unavailable for ${abbrev}`);
   const fetchedAt = now.toISOString();
   const shots: HoopsHockeyTeamResearchPayload['shots'] = {};
   wanted.forEach((s, i) => (shots[String(s)] = built[i].shots));
@@ -321,9 +326,9 @@ export async function readNhlTeamResearch(teamId: number, now: Date = new Date()
     sources: [
       { label: 'Schedule and results', detail: 'NHL api-web club schedule; regular season and playoffs apart, overtime and shootout from each game’s last period', asOf: fetchedAt },
       { label: 'Standings', detail: 'NHL api-web standings; a finished season at its final date', asOf: fetchedAt },
-      { label: 'Team stats', detail: 'team_game_production (box scores summed per team and per opponent) with goals from the standings, ranked across the NHL’s 32 teams here', asOf: built[0].rosterAsOf },
-      { label: 'Roster production', detail: 'player_game_history summed per player; ordered by the production score in player_season_production; names from the NHL', asOf: built[0].rosterAsOf },
-      { label: 'Shot map', detail: 'team_shot_profile from nhl_shot_events, regular season, 5-ft bins', asOf: built[0].rosterAsOf },
+      { label: 'Team stats', detail: 'team_game_production (box scores summed per team and per opponent) with goals from the standings, ranked across the NHL’s 32 teams here', asOf: built.map((b) => b.rosterAsOf).find(Boolean) ?? null },
+      { label: 'Roster production', detail: 'player_game_history summed per player; ordered by the production score in player_season_production; names from the NHL', asOf: built.map((b) => b.rosterAsOf).find(Boolean) ?? null },
+      { label: 'Shot map', detail: 'team_shot_profile from nhl_shot_events, regular season, 5-ft bins', asOf: built.map((b) => b.rosterAsOf).find(Boolean) ?? null },
     ],
     fetchedAt,
   };

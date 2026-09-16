@@ -309,15 +309,12 @@ test('the sports that had no ranks now consume the season rollup', () => {
       `${sport}'s game adapter hardcodes statComparison back to null.`,
     );
   }
-  for (const sport of ['nba', 'nhl'] as const) {
-    const src = readFileSync(`lib/sports/${sport}/adapters/teamDetailAdapter.ts`, 'utf8');
-    assert.match(src, /groupStats\(/, `${sport}'s team adapter no longer builds statGroups from the rollup`);
-    assert.doesNotMatch(
-      src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''),
-      /statGroups: \[\]/,
-      `${sport}'s team adapter emits an empty statGroups again — this is what made its team page the thinnest in the app.`,
-    );
-  }
+  // The team page (R7.3) ranks NBA and NHL team stats itself, through the
+  // shared `rankTeamStats`, instead of the old adapters' `groupStats` — which
+  // is what made those two team pages the thinnest in the app before 6.1b.
+  const teamRead = readFileSync('lib/sports/multiSport/hoopsHockeyTeamResearch.ts', 'utf8');
+  assert.match(teamRead, /rankTeamStats\(NBA_STATS/, "NBA's team page no longer ranks its team stats");
+  assert.match(teamRead, /rankTeamStats\(NHL_STATS/, "NHL's team page no longer ranks its team stats");
 });
 
 test('tennis strips the espn prefix before looking an athlete up', () => {
@@ -328,10 +325,12 @@ test('tennis strips the espn prefix before looking an athlete up', () => {
   assert.match(src, /replace\(\/\^espn:tennis:\/, ''\)/, 'tennis no longer strips the espn:tennis: prefix before the aggregate lookup');
 });
 
-test('both shared components fetch season ranks unconditionally', () => {
+test('the shared game component fetches season ranks unconditionally', () => {
   // Rules of hooks, and CLAUDE.md's sport-adapter section 3: every sport's
   // hooks run on every render; the adapter receives their results as data.
-  for (const file of ['components/GameDetail.tsx', 'components/TeamDetail.tsx']) {
+  // (`TeamDetail.tsx` was the other caller; R7.4 deleted it. The team page
+  // takes its ranks from `/api/team-research` and calls no rank hook.)
+  for (const file of ['components/GameDetail.tsx']) {
     const src = readFileSync(file, 'utf8');
     assert.match(src, /useSeasonRanks\(seasonRankSport\(/, `${file} does not call useSeasonRanks`);
     assert.doesNotMatch(

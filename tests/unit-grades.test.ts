@@ -221,29 +221,27 @@ test('toNflUnitGrades drops units NFL computed as null, and returns null for non
 
 const TEAM_DETAIL_ADAPTERS = ['mlb', 'nfl', 'cfb', 'nba', 'nhl', 'soccer'] as const;
 
-test('every team adapter returns unitGrades, and none returns the old grades field', () => {
+/**
+ * R7.4 removed unit grades from the team page (the plan's delete list: "Unit
+ * grades where Phase F said remove"), together with `TeamDetail.tsx` and every
+ * sport's `toTeamDetailData`. The game page still renders them, so the rules
+ * below keep guarding `GameDetail.tsx` and the game adapter; the rebuilt team
+ * page must not grow them back.
+ */
+test('the team page does not bring unit grades back', () => {
   for (const sport of TEAM_DETAIL_ADAPTERS) {
     const src = readFileSync(`lib/sports/${sport}/adapters/teamDetailAdapter.ts`, 'utf8');
-    assert.match(
-      src,
-      /\n\s*unitGrades:/,
-      `${sport}'s teamDetailAdapter does not return \`unitGrades\`. Every sport must, ` +
-        `even as null — an omitted field means the sport silently lost its grade section.`,
-    );
-    assert.doesNotMatch(
-      src,
-      /\n\s*grades: (null|grades|TeamGrades)/,
-      `${sport}'s teamDetailAdapter still returns the pre-6.1 \`grades\` field, whose ` +
-        `nine hardcoded NFL unit names no other sport can fill.`,
-    );
+    assert.doesNotMatch(src, /\n\s*unitGrades:/, `${sport}'s team adapter returns unitGrades again`);
+    assert.doesNotMatch(src, /\n\s*grades: (null|grades|TeamGrades)/, `${sport}'s team adapter returns the pre-6.1 grades field`);
   }
+  assert.doesNotMatch(readFileSync('components/TeamResearchPage.tsx', 'utf8'), /GradeChip|unitGrades/, 'TeamResearchPage renders unit grades again');
 });
 
 test('the shared components hold no fixed list of NFL unit names', () => {
   // `GRADE_ROWS` was a hardcoded nine-entry array typed `keyof TeamGrades`, and
   // `TeamDetail.tsx` hardcoded three `<GradeChip label="OFF"|"DEF"|"ST">`
   // calls. Both are the same bug: a shared component naming one sport's units.
-  for (const file of ['components/GameDetail.tsx', 'components/TeamDetail.tsx', 'components/GradeChip.tsx']) {
+  for (const file of ['components/GameDetail.tsx', 'components/TeamResearchPage.tsx', 'components/GradeChip.tsx']) {
     const src = readFileSync(file, 'utf8')
       // Comments legitimately describe what was removed and why.
       .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -274,20 +272,19 @@ test('the shared data interfaces do not import the NFL grade struct', () => {
       src,
       /^import .*\bTeamGrades?\b.*from '@\/lib\/sports\/nfl\/nflTeamGrades'/m,
       `${file} imports NFL's grade struct. These files declare the SHARED ` +
-        `TeamDetailData/GameDetailData interfaces every sport fills; importing one ` +
+        `GameDetailData interface every sport fills; importing one ` +
         `sport's struct into them is exactly what 6.1 removed.`,
     );
   }
 });
 
-test('MLB grades its units from ranked Statcast rather than declaring it has no model', () => {
+test("MLB's team page ranks its team Statcast rather than declaring it has no data", () => {
+  // Was: MLB graded Hitting and Pitching units from ranked Statcast (6.1). The
+  // rebuilt team page (R7.1) shows the same ranked Statcast directly, as
+  // league percentiles, in "Contact & pitch quality".
   const src = readFileSync('lib/sports/mlb/adapters/teamDetailAdapter.ts', 'utf8');
-  assert.match(
-    src,
-    /unitGradeFromRanked\(/,
-    'MLB no longer builds unit grades. Its ranked team Statcast tiles are the input; ' +
-      'reverting to a hardcoded null restores the "MLB has no grading model" claim 6.1 disproved.',
-  );
+  assert.match(src, /function mlbTeamStatcastSection\(/, "MLB's team page lost its Statcast section");
+  assert.match(src, /percentiles\[metric\]/, "MLB's Statcast section no longer reads the rollup's percentiles");
 });
 
 // ---------------------------------------------------------------------------
@@ -313,12 +310,13 @@ test('CLAUDE.md section 4 only cites fields that still exist', () => {
   assert.ok(section.length > 0, 'section 4 not found — was CLAUDE.md restructured?');
 
   const gameAdapter = readFileSync('lib/sports/mlb/adapters/gameDetailAdapter.ts', 'utf8');
-  const teamAdapter = readFileSync('lib/sports/mlb/adapters/teamDetailAdapter.ts', 'utf8');
   const playerAdapter = readFileSync('lib/sports/mlb/adapters/playerDetailAdapter.ts', 'utf8');
 
-  // The two surviving examples must be real fields on the interfaces they name.
+  // The surviving example must be a real field on the interface it names.
+  // (`TeamDetailData.matchup.pitching` was the second; R7.4 deleted that
+  // interface, and the example with it.)
   assert.match(gameAdapter, /draw\?: number \| null/, 'section 4 cites pregameLines.moneyline.draw, which no longer exists');
-  assert.match(teamAdapter, /pitching\?: \{/, 'section 4 cites TeamDetailData.matchup.pitching, which no longer exists');
+  assert.doesNotMatch(section, /TeamDetailData/, 'section 4 cites TeamDetailData, which R7.4 deleted');
 
   // The two corrected ones must stay gone from the rule's own example list.
   const ruleParagraph = section.slice(0, section.indexOf('**Two of this rule'));

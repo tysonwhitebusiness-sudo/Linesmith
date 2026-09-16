@@ -28,6 +28,7 @@ import { MLB_TEAM_IDS } from '@/lib/sports/mlb/teamAliases';
 import { readMlbTeamResearch } from '@/lib/sports/mlb/teamResearch';
 import { readFootballTeamResearch } from '@/lib/sports/multiSport/footballTeamResearch';
 import { readNbaTeamResearch, readNhlTeamResearch } from '@/lib/sports/multiSport/hoopsHockeyTeamResearch';
+import { readSoccerTeamResearch } from '@/lib/sports/soccer/teamResearch';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +46,8 @@ const READERS: Record<string, { ids?: ReadonlySet<number>; read: (teamId: number
   cfb: { read: (id) => readFootballTeamResearch('cfb', id) },
   nba: { read: readNbaTeamResearch },
   nhl: { read: readNhlTeamResearch },
+  soccer_epl: { read: (id) => readSoccerTeamResearch('soccer_epl', id) },
+  soccer_mls: { read: (id) => readSoccerTeamResearch('soccer_mls', id) },
 };
 
 export async function GET(request: Request) {

@@ -42,7 +42,7 @@ export default function CfbTeamPage() {
 
       <main className="px-3 py-3">
         {error ? <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad">{error}</div> : null}
-        <TeamDetailPanel sport={sport} initialTeamId={teamId} snapshot={snapshot} onAdd={onAdd} addedKeys={slip.pickedKeys} />
+        <TeamDetailPanel sport={sport} initialTeamId={teamId} />
       </main>
 
       <SlipModal

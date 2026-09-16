@@ -437,7 +437,8 @@ type RawSeasonCompetitor = {
 type RawSeasonEvent = {
   id: string;
   date: string;
-  seasonType?: { type?: number };
+  season?: { year?: number };
+  seasonType?: { type?: number; name?: string };
   week?: { text?: string };
   competitions?: Array<{
     neutralSite?: boolean;
@@ -500,6 +501,10 @@ export async function fetchTeamSeasonGames(espnSport: string, espnLeague: string
   };
   const byId = new Map<string, EspnSeasonGame>();
   for (const ev of responses.flatMap((r) => r ?? [])) {
+    // ESPN's soccer `fixture=true` ignores `season`: asked for EPL or MLS 2025
+    // it returns 2026's unplayed fixtures (measured 2026-09-16, both leagues),
+    // which would file next season's games under last season's schedule.
+    if (ev.season?.year != null && ev.season.year !== season) continue;
     const comp = ev.competitions?.[0];
     const h = comp?.competitors?.find((c) => c.homeAway === 'home');
     const a = comp?.competitors?.find((c) => c.homeAway === 'away');
@@ -512,7 +517,11 @@ export async function fetchTeamSeasonGames(espnSport: string, espnLeague: string
         : st?.state === 'in'
           ? 'live'
           : 'scheduled';
-    const postseason = ev.seasonType?.type === 3 || ev.seasonType?.type === 5;
+    // Soccer has no season-type numbers to go by: MLS names its playoff rounds
+    // ("Eastern Conference Playoffs - Round One", "MLS Cup") beside "Regular
+    // Season" in one response; the EPL has only its league season.
+    const soccerPost = espnSport === 'soccer' && /playoff|mls cup/i.test(ev.seasonType?.name ?? '');
+    const postseason = ev.seasonType?.type === 3 || ev.seasonType?.type === 5 || soccerPost;
     byId.set(String(ev.id), {
       id: String(ev.id),
       start: ev.date,
@@ -520,8 +529,23 @@ export async function fetchTeamSeasonGames(espnSport: string, espnLeague: string
       home: side(h),
       away: side(a),
       state,
-      extra: state === 'final' ? ((st?.shortDetail ?? '').match(/\/(\d?OT|SO)\b/)?.[1] ?? null) : null,
-      label: ev.seasonType?.type === 5 ? 'Play-In' : postseason ? (comp.notes?.[0]?.headline ?? ev.week?.text ?? null) : (ev.week?.text ?? null),
+      extra:
+        state !== 'final'
+          ? null
+          : espnSport === 'soccer'
+            ? /pen/i.test(st?.shortDetail ?? '')
+              ? 'pens'
+              : /AET/i.test(st?.shortDetail ?? '')
+                ? 'AET'
+                : null
+            : ((st?.shortDetail ?? '').match(/\/(\d?OT|SO)\b/)?.[1] ?? null),
+      label: soccerPost
+        ? (ev.seasonType?.name ?? null)
+        : ev.seasonType?.type === 5
+          ? 'Play-In'
+          : postseason
+            ? (comp.notes?.[0]?.headline ?? ev.week?.text ?? null)
+            : (ev.week?.text ?? null),
       venue: comp.venue?.fullName ?? null,
       neutral: comp.neutralSite === true,
     });

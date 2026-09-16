@@ -199,11 +199,19 @@ export function buildTeamResearch(input: BuildTeamResearchInput): TeamResearchDa
     tiles,
   };
 
+  // Sections summed from the app's own game logs say so when the logs hold
+  // fewer games than the team has played (R7-F1: MLS 2026 logs begin in August).
+  const logged = data?.loggedGames;
+  const shortNote =
+    logged != null && logged < allFinals.length
+      ? `Summed from the ${logged} of this team's ${allFinals.length} games that the app holds box scores for; the rest are not in these numbers.`
+      : undefined;
+  const withNote = (sec: ResearchSection): ResearchSection => (shortNote && sec.state.kind === 'ready' ? { ...sec, note: [shortNote, sec.note].filter(Boolean).join(' ') } : sec);
   const sections: ResearchSection[] = [
     resultsSection(spec, season, games, teamHref),
     ...(data?.standings.length ? [standingsSection(payload, data, season, sport, teamHref)] : []),
-    statsSection(spec, data, season, sport),
-    rosterSection(spec, data, season, sport),
+    withNote(statsSection(spec, data, season, sport)),
+    withNote(rosterSection(spec, data, season, sport)),
   ];
 
   const played = (s: number) => regularFinals(byseason.get(s)).length;

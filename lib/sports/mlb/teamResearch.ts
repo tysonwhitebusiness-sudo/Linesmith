@@ -210,7 +210,7 @@ export async function readMlbTeamResearch(teamId: number, now: Date = new Date()
       { label: 'Schedule and results', detail: 'MLB Stats API team schedule, regular season and postseason apart', asOf: fetchedAt },
       { label: 'Standings', detail: 'MLB Stats API standings', asOf: fetchedAt },
       { label: 'Team stats', detail: 'MLB Stats API team season stats for all 30 clubs, ranked here', asOf: fetchedAt },
-      { label: 'Roster production', detail: "player_game_history summed per player; ordered by the production score in player_season_production", asOf: built[0].rosterAsOf },
+      { label: 'Roster production', detail: "player_game_history summed per player; ordered by the production score in player_season_production", asOf: built.map((b) => b.rosterAsOf).find(Boolean) ?? null },
       { label: 'Contact & pitch quality', detail: 'Statcast corpus team rollup (mlb_statcast_team_season), regular season, pitch-weighted', asOf: statcastAsOf },
     ],
     fetchedAt,

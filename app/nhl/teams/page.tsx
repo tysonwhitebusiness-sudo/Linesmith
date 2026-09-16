@@ -40,7 +40,7 @@ export default function NhlTeamsIndexPage() {
 
       <main className="px-3 py-3">
         {error ? <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad">{error}</div> : null}
-        <TeamDetailPanel sport={sport} snapshot={snapshot} onAdd={onAdd} addedKeys={slip.pickedKeys} />
+        <TeamDetailPanel sport={sport} />
       </main>
 
       <SlipModal

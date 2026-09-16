@@ -15,6 +15,7 @@ import type { FootballTeamResearchPayload } from '@/lib/sports/multiSport/footba
 import { toTeamResearchData as toNbaTeamResearchData } from '@/lib/sports/nba/adapters/teamDetailAdapter';
 import { toTeamResearchData as toNhlTeamResearchData } from '@/lib/sports/nhl/adapters/teamDetailAdapter';
 import type { HoopsHockeyTeamResearchPayload } from '@/lib/sports/multiSport/hoopsHockeyTeamResearch';
+import { toTeamResearchData as toSoccerTeamResearchData } from '@/lib/sports/soccer/adapters/teamDetailAdapter';
 
 /**
  * The team page — R7. One component for every sport: a hero with the record
@@ -27,7 +28,7 @@ import type { HoopsHockeyTeamResearchPayload } from '@/lib/sports/multiSport/hoo
  * knows the sport.
  */
 
-export const TEAM_RESEARCH_SPORTS = ['mlb', 'nfl', 'cfb', 'nba', 'nhl'] as const;
+export const TEAM_RESEARCH_SPORTS = ['mlb', 'nfl', 'cfb', 'nba', 'nhl', 'soccer_epl', 'soccer_mls'] as const;
 
 function teamResearchFor(sport: string, payload: TeamResearchPayload, season: number | null): TeamResearchData | null {
   switch (sport) {
@@ -41,6 +42,9 @@ function teamResearchFor(sport: string, payload: TeamResearchPayload, season: nu
       return toNbaTeamResearchData({ payload: payload as HoopsHockeyTeamResearchPayload, season });
     case 'nhl':
       return toNhlTeamResearchData({ payload: payload as HoopsHockeyTeamResearchPayload, season });
+    case 'soccer_epl':
+    case 'soccer_mls':
+      return toSoccerTeamResearchData({ payload, season });
     default:
       return null;
   }

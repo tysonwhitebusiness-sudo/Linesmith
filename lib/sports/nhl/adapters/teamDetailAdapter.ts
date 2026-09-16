@@ -14,9 +14,6 @@
  * standings.
  */
 
-import { categoriseByLine, entryValue, fixedWindow, openWindow, subsetWindow, OVER, UNDER, type WindowedStat } from '@/lib/core/windowedStat';
-import { directionMark } from '@/components/MarketLabel';
-import type { PickCandidate } from '@/lib/core/types';
 import type { HoopsHockeyTeamResearchPayload } from '@/lib/sports/multiSport/hoopsHockeyTeamResearch';
 import type { ShotCell, TeamShotProfile } from '@/lib/sports/shared/teamProductionShapes';
 import { buildTeamResearch, leagueRank } from '@/lib/sports/shared/teamResearch';
@@ -24,23 +21,9 @@ import { seasonLabel } from '@/lib/sports/shared/season';
 import type { ResearchCard, ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
 import type { TeamResearchData } from '@/lib/sports/shared/teamResearchShapes';
 import { NHL_TEAM_SPEC } from './teamResearchSpec';
-import type { TeamStandingRow } from '@/components/useAllTeams';
-import type { SeasonAggregateResult } from '@/lib/sports/shared/seasonAggregateShapes';
-import { groupStats } from '@/lib/sports/shared/seasonAggregateShapes';
-import { NHL_SEASON_SPEC } from '@/lib/sports/shared/seasonAggregateSpecs';
-import type { GameRow, RecentResultRow, RosterPlayer, TeamDetailData, TeamDistributionChartData, TeamNextGame, TeamWindowedForm } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
+import type { RecentResultRow } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import type { NhlTeam, NhlGame } from '@/lib/sports/nhl/nhle';
-import { buildNhlMoneylineCandidate, buildNhlGameTotalCandidate, buildNhlGoalsForCandidate } from '@/lib/sports/nhl/teamFormCandidates';
 import type { EspnInjuryRow } from '@/lib/sports/multiSport/teamSportEspn';
-import { standingPhrase } from '@/lib/sports/shared/teamRecord';
-import { toRatingHistoryRole } from '@/lib/sports/shared/ratingHistoryRole';
-import type { TeamRatingHistory } from '@/lib/sports/shared/teamRatingShapes';
-import { buildTeamRoles } from '@/lib/sports/shared/teamRoles';
-
-function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
-  return (entry.raw ?? {}) as Record<string, unknown>;
-}
-
 interface NhlRosterSeasonStats {
   games: number;
   goals: number;
@@ -48,10 +31,6 @@ interface NhlRosterSeasonStats {
   points: number;
 }
 
-function seasonLineText(s: NhlRosterSeasonStats | null): string {
-  if (!s || s.games === 0) return 'No stats yet this season';
-  return `${s.goals} G · ${s.assists} A · ${s.points} P`;
-}
 
 export interface NhlTeamDetailApiResponse {
   team: NhlTeam;
@@ -81,210 +60,6 @@ export function toNhlRecentResultRows(games: NhlGame[], teamAbbr: string): Recen
       scoreAgainst: scoreAgainst ?? 0,
     };
   });
-}
-
-export interface NhlTeamDetailScope {
-  market: string | undefined;
-  lineOffset: number;
-  opponentOnly: boolean;
-  venue: 'all' | 'home' | 'away';
-  lastN: number | 'all';
-}
-
-export interface NhlTeamDetailInput {
-  /**
-   * `useTeamRatingHistory(...)`'s result — the rating block (6.14). Structural,
-   * not an import of the hook's type. Every team sport takes the identical
-   * field; the shared builder does the rest.
-   */
-  ratingHistory?: { history: TeamRatingHistory | null; loading: boolean };
-  data: NhlTeamDetailApiResponse;
-  scope: NhlTeamDetailScope;
-  standingsTeams: TeamStandingRow[];
-  /**
-   * League-wide season aggregates and ranks (`useSeasonRanks`), Phase 6.1b.
-   * Fills `statGroups` (this adapter emitted `[]`, making NHL's team page
-   * the thinnest in the app) and `unitGrades`. `null` while loading — both
-   * fall back to their empty states.
-   */
-  seasonRanks: SeasonAggregateResult | null;
-  /**
-   * The sport snapshot's season state (B6). Out of season the standings feed
-   * still serves the last completed season, so the header needs to know both
-   * that the new season hasn't started and what to say instead of `0-0`.
-   */
-  seasonStatus?: { started: boolean; nextGameDate: string | null; label?: string } | null;
-}
-
-export function toTeamDetailData(input: NhlTeamDetailInput): TeamDetailData {
-  const { data, scope, standingsTeams, seasonRanks } = input;
-  const { team, roster, nextGame, recentGames, logoByAbbr } = data;
-
-  const rosterPlayers: RosterPlayer[] = roster.map((p) => {
-    const identityParams = new URLSearchParams({
-      name: p.fullName,
-      team: team.abbreviation,
-      teamName: team.name,
-      teamLogoUrl: team.logoUrl ?? '',
-      ...(p.position ? { pos: p.position } : {}),
-      ...(p.headshotUrl ? { headshot: p.headshotUrl } : {}),
-    });
-    return {
-      subjectId: p.subjectId,
-      name: p.fullName,
-      position: p.position ?? '',
-      teamAbbr: team.abbreviation,
-      headshotUrl: p.headshotUrl ?? undefined,
-      seasonLineText: seasonLineText(p.seasonStats),
-      hasStats: p.seasonStats != null && p.seasonStats.games > 0,
-      href: `/nhl/player/${encodeURIComponent(p.subjectId)}?${identityParams.toString()}`,
-    };
-  });
-
-  // F-B9. This flag tested whether THIS team is the home team while being
-  // named for the opponent, and was then negated — so a team's own home
-  // fixture was reported as away. The prices were never wrong; the labels
-  // beside them were, which is why a real page read "Man City ML 800" at
-  // "Sunderland ML -340" for a match Manchester City hosted as a -340
-  // favourite (measured: homeTeamId 382 = MNC, moneylineHome -340,
-  // moneylineAway 800).
-  const subjectIsHome = nextGame ? nextGame.homeAbbr === team.abbreviation : false;
-  const opponentAbbr = nextGame ? (subjectIsHome ? nextGame.awayAbbr : nextGame.homeAbbr) : undefined;
-  const nextGameData: TeamNextGame | null = nextGame
-    ? {
-        opponentAbbr: opponentAbbr ?? '',
-        opponentTeamId: null,
-        opponentLogoUrl: undefined,
-        isHome: subjectIsHome,
-        startTime: nextGame.date,
-        moneyline: null,
-        total: null,
-        gameHref: `/nhl/game/${nextGame.gameId}`,
-      }
-    : null;
-
-  const ownStanding = standingsTeams.find((s) => s.teamId === Number(team.teamId));
-
-  // ---- Real team-level candidates from this team's own recent results ----
-  const today = nextGame && opponentAbbr ? { opponentAbbr, isHome: subjectIsHome, gamePk: nextGame.gameId } : null;
-  const moneyline = buildNhlMoneylineCandidate({ teamAbbr: team.abbreviation, teamName: team.name, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr });
-  const total = buildNhlGameTotalCandidate({ teamAbbr: team.abbreviation, teamName: team.name, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr });
-  const goalsFor = buildNhlGoalsForCandidate({ teamAbbr: team.abbreviation, teamName: team.name, teamLogoUrl: team.logoUrl ?? undefined, games: recentGames, today, logoByAbbr });
-  const candidates = [moneyline, total, goalsFor].filter((c): c is PickCandidate => c != null);
-
-  const active = candidates.find((c) => c.dimension === scope.market) ?? candidates[0] ?? null;
-  const wantOver = active ? directionMark(active.category) !== 'U' : true;
-  const baseLine = active?.line ?? 0.5;
-  const line = Math.max(0, baseLine + scope.lineOffset);
-  const isMoneylineMarket = active?.dimension === 'moneyline';
-
-  const scoped: PickCandidate['history'] = (() => {
-    if (!active) return [];
-    let list = active.history;
-    if (scope.opponentOnly && opponentAbbr) {
-      list = list.filter((e) => (rawOf(e).opponentAbbr as string | undefined) === opponentAbbr);
-    }
-    if (scope.venue !== 'all') list = list.filter((e) => rawOf(e).isHome === (scope.venue === 'home'));
-    if (scope.lastN !== 'all') list = list.slice(-scope.lastN);
-    return list;
-  })();
-
-  const measured = categoriseByLine(scoped, line);
-  const wanted = wantOver ? OVER : UNDER;
-
-  const windows: TeamWindowedForm | null = active
-    ? {
-        l5: fixedWindow(measured, wanted, 5),
-        l10: fixedWindow(measured, wanted, 10),
-        l15: fixedWindow(measured, wanted, 15),
-        szn: openWindow(measured, wanted, { minimum: 1 }),
-        h2h:
-          !opponentAbbr
-            ? ({ status: 'insufficient', available: 0, required: 1 } as WindowedStat)
-            : subsetWindow(categoriseByLine(active.history, line), wanted, (e) => (rawOf(e).opponentAbbr as string | undefined) === opponentAbbr, { minimum: 1 }),
-      }
-    : null;
-
-  const gameRows: GameRow[] = scoped.map((entry, index) => {
-    const value = entryValue(entry);
-    const cleared = value == null ? null : wantOver ? value > line : value <= line;
-    const resultText = isMoneylineMarket ? (value === 1 ? 'W' : value === 0 ? 'L' : '—') : value != null ? String(value) : '—';
-    return { key: `${entry.period}-${index}`, periodLabel: entry.periodLabel ?? '', opponentTeamId: null, opponentLogoUrl: rawOf(entry).opponentLogoUrl as string | undefined, value, resultText, cleared };
-  });
-
-  // Real opponent logo (2026-08-24) — `teamFormCandidates.ts` now embeds
-  // `opponentLogoUrl` on every real history entry via `logoByAbbr`.
-  const distributionLogoFor = (entry: PickCandidate['history'][number]) => rawOf(entry).opponentLogoUrl as string | undefined;
-
-  const distribution: TeamDistributionChartData | null = active
-    ? { history: scoped, line, wantOver, refreshKey: `${active.dimension}|${line}|${scope.opponentOnly}|${scope.venue}|${scope.lastN}|${team.teamId}`, logoFor: distributionLogoFor }
-    : null;
-
-  // Season stat groups and unit grades — Phase 6.1b. Both were empty here:
-  // `statGroups: []` and `unitGrades: null`, because NHL had no league-wide
-  // ranked season aggregate to build them from. One rollup now serves both, so
-  // the ranks behind a stat row and the ranks behind a unit's grade cannot
-  // disagree.
-  const ownAggregate = seasonRanks?.byEntity[String(team.teamId)] ?? null;
-  const seasonStatGroups = ownAggregate ? groupStats(NHL_SEASON_SPEC, ownAggregate.stats) : [];
-  const ownUnitGrades = ownAggregate && ownAggregate.units.length > 0 ? ownAggregate.units : null;
-
-
-  // ---- Phase 6.19: the shared Team Detail roles ----
-  // One call for all five, identical in every sport's adapter. Which ones fill
-  // depends on what this sport's team history carries -- `teamRoles.ts` has
-  // the measurement.
-  const teamRoles = buildTeamRoles({
-    active,
-    line,
-    wantOver,
-    statLabel: active?.dimensionLabel ?? active?.dimension ?? 'Market',
-    opponentAbbr: nextGameData?.opponentAbbr ?? null,
-  });
-
-  return {
-    teamRoles,
-    ratingHistory: toRatingHistoryRole({ state: input.ratingHistory }),
-    team: { teamId: Number(team.teamId), name: team.name, abbr: team.abbreviation, logoUrl: team.logoUrl ?? '' },
-    record: ownStanding
-      ? {
-          wins: ownStanding.wins,
-          losses: ownStanding.losses,
-          // F-B11: an overtime loss is neither a win nor a regulation loss,
-          // and folding it into `losses` misstated every NHL record.
-          otLosses: ownStanding.otLosses ?? 0,
-          // NHL's standings feed publishes points and conference but no rank
-          // (`/api/nhl/teams` sends `divisionRank: ''`). A conference name on
-          // its own is not a standing — it was rendering as "Eastern in
-          // division" — so there is nothing honest to show until R7's hero
-          // computes a real one.
-          standing: standingPhrase(ownStanding.divisionRank, ownStanding.divisionName),
-        }
-      : null,
-    // Phase 6.1 — `grades` (nine hardcoded NFL unit names) became `unitGrades`.
-    // Still null here: this sport has no league-wide ranked team aggregate to
-    // grade from yet. 6.1b adds one for NBA and NHL; see this file's header.
-    seasonStatus: input.seasonStatus ?? null,
-    // Out of season every source still returns last season's standings. The
-    // page has no season helper yet (that is R2's season-convention rule), but
-    // "not the current one" is exactly what `started: false` means.
-    recordSeasonLabel: input.seasonStatus && !input.seasonStatus.started ? 'Last season' : null,
-    unitGrades: ownUnitGrades,
-    candidates,
-    games: gameRows,
-    windows,
-    distribution,
-    matchup: null,
-    statGroups: seasonStatGroups,
-    roster: rosterPlayers,
-    rosterSortByStats: false,
-    rosterPageSize: 24,
-    standingsTeams,
-    nextGame: nextGameData,
-    advancedStats: null,
-    form: windows,
-    recentResults: toNhlRecentResultRows(recentGames, team.abbreviation),
-  };
 }
 
 // ---------------------------------------------------------------------------

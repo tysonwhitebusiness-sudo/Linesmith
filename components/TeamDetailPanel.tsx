@@ -1,10 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { PickCandidate, Sport, SoccerLeague, SportSnapshot } from '@/lib/core/types';
-import type { UnifiedLinesResult } from '@/lib/odds/types';
+import type { Sport, SoccerLeague } from '@/lib/core/types';
 import { TeamLogo } from './SubjectAvatar';
-import { TeamDetail } from './TeamDetail';
 import { TeamResearchPage } from './TeamResearchPage';
 import { BrandedLoader } from './BrandedLoader';
 import { useAllTeams, type TeamStandingRow } from './useAllTeams';
@@ -38,11 +36,6 @@ export interface TeamDetailPanelProps {
   league?: SoccerLeague;
   /** Omit to auto-load the first team (alphabetically) once the list loads — the Teams tab's landing behaviour. */
   initialTeamId?: number;
-  snapshot: SportSnapshot | null;
-  /** MLB-only today (drives `TeamDetail`'s line stepper/edge badge) — NFL's branch doesn't read this. */
-  odds?: UnifiedLinesResult | null;
-  onAdd?: (candidate: PickCandidate, oddsInfo?: { americanOdds: string; source: string }) => void;
-  addedKeys?: Set<string>;
 }
 
 function TeamListShell({
@@ -197,7 +190,7 @@ function MlbTeamDetailPanel({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport
   );
 }
 
-function NflTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport' | 'snapshot' | 'odds'>) {
+function NflTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport'>) {
   const [search, setSearch] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const { teams, loading, error } = useAllNflTeams();
@@ -231,7 +224,7 @@ function NflTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 's
   );
 }
 
-function SoccerTeamDetailPanelBody({ league, initialTeamId, onAdd, addedKeys, snapshot }: { league: SoccerLeague } & Omit<TeamDetailPanelProps, 'sport' | 'odds' | 'league'>) {
+function SoccerTeamDetailPanelBody({ league, initialTeamId }: { league: SoccerLeague } & Omit<TeamDetailPanelProps, 'sport' | 'league'>) {
   const [search, setSearch] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const { teams, loading, error } = useAllSoccerTeams(league);
@@ -263,23 +256,14 @@ function SoccerTeamDetailPanelBody({ league, initialTeamId, onAdd, addedKeys, sn
     >
       {!detailReady && <BrandedLoader size="page" />}
       <div style={{ display: detailReady ? 'block' : 'none' }}>
-        <TeamDetail
-          sport="soccer"
-          league={league}
-          teamId={activeTeamId}
-          snapshot={snapshot}
-          standingsTeams={teams}
-          standingsLoading={loading}
-          onAdd={onAdd}
-          addedKeys={addedKeys}
-          onReadyChange={setDetailReady}
-        />
+        {/* R7.4: soccer team pages are the rebuilt research page. */}
+        <TeamResearchPage sport={`soccer_${league}`} teamId={activeTeamId} onReadyChange={setDetailReady} />
       </div>
     </TeamListShell>
   );
 }
 
-function CfbTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport' | 'odds'>) {
+function CfbTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport'>) {
   const [search, setSearch] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const { teams, loading, error } = useAllCfbTeams();
@@ -313,7 +297,7 @@ function CfbTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 's
   );
 }
 
-function NbaTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport' | 'odds'>) {
+function NbaTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport'>) {
   const [search, setSearch] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const { teams, loading, error } = useAllNbaTeams();
@@ -347,7 +331,7 @@ function NbaTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 's
   );
 }
 
-function NhlTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport' | 'odds'>) {
+function NhlTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport'>) {
   const [search, setSearch] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const { teams, loading, error } = useAllNhlTeams();
@@ -380,19 +364,19 @@ function NhlTeamDetailPanelBody({ initialTeamId }: Omit<TeamDetailPanelProps, 's
   );
 }
 
-export function TeamDetailPanel({ sport, league, initialTeamId, snapshot, odds, onAdd, addedKeys }: TeamDetailPanelProps) {
+export function TeamDetailPanel({ sport, league, initialTeamId }: TeamDetailPanelProps) {
   return sport === 'nfl' ? (
-    <NflTeamDetailPanelBody initialTeamId={initialTeamId} onAdd={onAdd} addedKeys={addedKeys} />
+    <NflTeamDetailPanelBody initialTeamId={initialTeamId} />
   ) : sport === 'cfb' ? (
-    <CfbTeamDetailPanelBody initialTeamId={initialTeamId} onAdd={onAdd} addedKeys={addedKeys} snapshot={snapshot} />
+    <CfbTeamDetailPanelBody initialTeamId={initialTeamId} />
   ) : sport === 'nba' ? (
-    <NbaTeamDetailPanelBody initialTeamId={initialTeamId} onAdd={onAdd} addedKeys={addedKeys} snapshot={snapshot} />
+    <NbaTeamDetailPanelBody initialTeamId={initialTeamId} />
   ) : sport === 'nhl' ? (
-    <NhlTeamDetailPanelBody initialTeamId={initialTeamId} onAdd={onAdd} addedKeys={addedKeys} snapshot={snapshot} />
+    <NhlTeamDetailPanelBody initialTeamId={initialTeamId} />
   ) : sport === 'soccer' && league ? (
-    <SoccerTeamDetailPanelBody league={league} initialTeamId={initialTeamId} onAdd={onAdd} addedKeys={addedKeys} snapshot={snapshot} />
+    <SoccerTeamDetailPanelBody league={league} initialTeamId={initialTeamId} />
   ) : (
-    <MlbTeamDetailPanel initialTeamId={initialTeamId} snapshot={snapshot} odds={odds} onAdd={onAdd} addedKeys={addedKeys} />
+    <MlbTeamDetailPanel initialTeamId={initialTeamId} />
   );
 }
 
