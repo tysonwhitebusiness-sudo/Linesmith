@@ -1,4 +1,4 @@
-# Resume prompt — research pages build (2026-09-16, R6 COMPLETE — R7 next)
+# Resume prompt — research pages build (2026-09-16, R7 SIGNED OFF — R8 MLB in progress)
 
 Paste everything below the line into a fresh session on any account.
 
@@ -17,10 +17,14 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 
 ## Where the work is
 
-- **R1-R5 and R6.1 (MLB) signed off. R6.2 (NFL and CFB), R6.3 (soccer),
-  R6.4 (tennis), R6.5 (NBA and NHL) and R6.6 (golf) complete** — R6 is done for
-  every sport, with live renders owed (below). Next is **R7, the team page
-  rebuild** (plan §R7); confirm before starting it.
+- **Now: R8, the game page, MLB first (operator).** 8.1a (shared shell +
+  final recap, `7caba8d`) and 8.1b (before-start research) are committed; next
+  is **8.1c, the live state** ("Right now", props tracker, in-game odds),
+  verified on live MLB games before the regular season ends 2026-09-27. Then
+  stop for MLB sign-off. Read the plan's R8 section and its "R8.1 (MLB)
+  progress" record first.
+- R1-R5 signed off; R6 complete for every sport (live renders owed, below);
+  R7 (team page) signed off 2026-09-16.
 - Commits: `512b42a` (Step 0), `0169de1`/`5c46b29`/`48abdc5` (R6.1a),
   `7893e82`/`478e196` (R6.1b), `007ced4`/`16051a7` (R6.1c),
   `4da5684`/`d6ffd09`/`6d2139e` (R6.1d), `1438855` (R6.2),

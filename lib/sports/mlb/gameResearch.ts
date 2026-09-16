@@ -19,6 +19,8 @@ import { readPreGamePropOddsForGame, type PropOddsRow } from '@/lib/db/client';
 import { pickMainLine } from '@/lib/odds/props/mainLine';
 import { readPreGameOpenClose, type GameLineOpenClose } from '@/lib/odds/gameLineHistory';
 import type { GameResearchPayload, GameSide, GameState } from '@/lib/sports/shared/gameResearchShapes';
+import { readMlbPregame, type MlbPregame } from './gamePregame';
+import { easternDate } from './statsapi';
 
 export interface MlbPropResult {
   playerId: string;
@@ -45,6 +47,8 @@ export interface MlbGameResearchPayload extends GameResearchPayload {
     propsAltOnly: number;
     /** Whether the pitch-level feed reached this game (every pitch located). */
     pitchDataHeld: boolean;
+    /** The research as of the start (R8.1b). */
+    pregame: MlbPregame;
   };
 }
 
@@ -135,6 +139,15 @@ export async function readMlbGameResearch(gamePk: number, now: Date = new Date()
   const atBats = started ? parseAtBats(r) : [];
   const box = started ? { away: parseMlbBox(r, 'away'), home: parseMlbBox(r, 'home') } : null;
   const { props, altOnly } = propResults(propRows, start, box);
+  const gameDate = feed.gameData?.datetime?.officialDate ?? easternDate(new Date(start || now));
+  const pregame = await readMlbPregame({
+    gamePk,
+    date: gameDate,
+    season: Number(String(feed.gameData?.game?.season ?? gameDate.slice(0, 4))),
+    awayId: Number(feed.gameData?.teams?.away?.id),
+    homeId: Number(feed.gameData?.teams?.home?.id),
+    props: props.filter((p) => p.books >= 2).map((p) => ({ playerId: p.playerId, market: p.market })),
+  });
 
   const away = side(feed, 'away', state);
   const home = side(feed, 'home', state);
@@ -183,12 +196,19 @@ export async function readMlbGameResearch(gamePk: number, now: Date = new Date()
       props,
       propsAltOnly: altOnly,
       pitchDataHeld: atBats.some((a) => a.pitches.some((p) => p.pX != null)),
+      pregame,
     },
     sources: [
       { label: 'Game, box score and every pitch', detail: 'MLB Stats API live feed by game pk', asOf: fetchedAt },
       ...(started ? [{ label: 'Win probability', detail: 'MLB Stats API win probability after each plate appearance', asOf: fetchedAt }] : []),
       { label: 'Game lines', detail: 'game_odds_history: each book’s first and last quote before the start, median across books', asOf: fetchedAt },
       { label: 'Player props', detail: 'prop_odds as they stood at the start: the main line quoted on both sides by the most books', asOf: fetchedAt },
+      { label: 'Strength vs strength', detail: 'team_game_production before this game’s date, ranked across the league', asOf: fetchedAt },
+      { label: 'Form and head-to-head', detail: 'MLB Stats API team schedules, regular season, games before this one', asOf: fetchedAt },
+      { label: 'Starters and lineups', detail: 'mlb_statcast_game_pregame: the Statcast corpus through the day before, kept from the morning of the game (from 2026-09-11, with days missing)', asOf: pregame.starters?.computedAt ?? null },
+      { label: 'Prop history', detail: 'player_game_history, this season and last, games before this one', asOf: fetchedAt },
+      // Rosters as they read now: shown before the start only.
+      ...(state === 'pre' || state === 'postponed' ? [{ label: 'Injuries', detail: 'MLB Stats API rosters: players on the injured list or day-to-day, as the roster reads now', asOf: fetchedAt }] : []),
     ],
     fetchedAt,
   };

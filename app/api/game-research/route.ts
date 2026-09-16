@@ -15,7 +15,7 @@
  * A game that turns live mid-TTL is caught by the status lookup: the key carries
  * the state, so a new state is a new entry rather than a stale one.
  *
- * CACHE KEY — `game-research:route:{sport}:{gameId}:{state}`, grepped before it
+ * CACHE KEY — `game-research:route:v2:{sport}:{gameId}:{state}` (v2: R8.1b added the before-start research), grepped before it
  * was chosen: nothing in `lib/`, `app/` or `components/` used a `game-research`
  * prefix. The game id is bounded in shape before it reaches the key (task 3.5),
  * and a reader returns `null` for an id the source does not know, which
@@ -65,7 +65,7 @@ export async function GET(request: Request) {
   const state = await reader.state(gameId).catch(() => null);
   if (!state) return NextResponse.json({ error: `No ${sport} game ${gameId}` }, { status: 404 });
   return cachedRoute({
-    cacheKey: `game-research:route:${sport}:${gameId}:${state}`,
+    cacheKey: `game-research:route:v2:${sport}:${gameId}:${state}`,
     ttlMs: TTL[state],
     routeName: 'game-research',
     build: () => reader.read(gameId),

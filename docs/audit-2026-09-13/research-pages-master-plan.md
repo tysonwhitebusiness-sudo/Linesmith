@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a (shell + final recap) and 8.1b (before-start research) done; 8.1c (live) next.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1678,7 +1678,39 @@ seven G2 fixture games and a live MLB game; route and parser inventory).
   during this audit, while football's live checks recur every week through
   January. Step 0 proposes MLB first, with a shared shell (state from the
   game's real status, one hero, section nav, before/live/final frames) built on
-  it the way R7.1 built the team page on MLB.
+  it the way R7.1 built the team page on MLB. **Operator: MLB first.**
+
+**R8.1 (MLB) progress:**
+- **8.1a — shell and final recap, committed `7caba8d`.** `/api/game-research`
+  (cache `game-research:route:v2:{sport}:{gameId}:{state}`; TTL by state),
+  `GameResearchPage` with the state bar, `readMlbGameResearch(pk)` for any pk.
+  Final: game flow (WP), batted balls, at-bat explorer, pitching, box, lines &
+  props against results, play-by-play. Refereed on 824711 (77 PA, 289 pitches,
+  every pitching line, R/H/E/LOB). `mainGameLine`: nearest even for totals
+  (0.03), most books for run lines, superseded quotes dropped.
+- **8.1b — before-start research, 2026-09-16.** `lib/sports/mlb/gamePregame.ts`,
+  every read cut at the game date: strength vs strength (7 rows from
+  `team_game_production`, league ranks, last season below `SEASON_MIN_GAMES`);
+  form (last 10) and head to head since last season from StatsAPI schedules by
+  pk; starters, recent starts, pitch mix and roster hitters against the starter
+  from `mlb_statcast_game_pregame`; each prop's main line against the player's
+  last 10 and games against this opponent (`player_game_history`); injuries.
+  A final game keeps matchup, starters and players below the recap as
+  "· at the start". Refereed: BOS 652/570 and KC 629/717 runs over 147 games
+  before 824711 equal StatsAPI standings on 2026-09-10; the early-season
+  fallback on 824136 (4 games) equals 2025's standings; KC-BOS head to head
+  23-45 runs. Rendered at 1440 and 400 on LAD @ CIN (pre), KC @ BOS (final)
+  and MIN @ KC 2026-04-01 (no starter card, 2025 strength).
+  - **Premise corrected:** the pregame rollup began with games on
+    **2026-09-11**, not 09-15, and holds 4 game days of 7 since (54 games). The
+    empty state says so rather than naming a start date that was wrong.
+  - Injuries read the roster as it stands now, so they show only while the
+    game is still to come, never on a finished game (even reviewed as
+    `?state=pre`).
+  - Rutschman and Monasterio showing as Boston hitters is right: both are on
+    Boston's roster (StatsAPI `currentTeam`).
+- **8.1c — live: next.** "Right now", props tracker, in-game odds; verify on
+  live MLB games before 2026-09-27. Then stop for MLB sign-off.
 
 
 Spec: `docs/design/phase-g2/src/game.html`, `common-game.js`,

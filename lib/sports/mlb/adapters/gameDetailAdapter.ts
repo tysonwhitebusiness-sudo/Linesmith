@@ -3,7 +3,7 @@ import type { MlbGameResearchPayload } from '@/lib/sports/mlb/gameResearch';
 import { pitchMix, type AtBat, type MlbWinProbabilityPoint } from '@/lib/sports/mlb/liveFeedParsers';
 import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports/shared/gameResearch';
 import type { GameResearchData, GameState } from '@/lib/sports/shared/gameResearchShapes';
-import type { ResearchCard, ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
+import type { ResearchCard, ResearchColumn, ResearchSection, ResearchTableRow } from '@/lib/sports/shared/playerResearchShapes';
 import { toStartsAt } from '@/lib/sports/shared/startsAt';
 import type { RecentGameResult, InjuryEntry } from '@/lib/sports/mlb/statsapi';
 import type { GameHeroTeamPanelData, GameHeroModel, VenueForecastData } from '@/components/GameHeroCard';
@@ -24,6 +24,11 @@ import { unitGradeFromRanked } from '@/lib/sports/shared/unitGrades';
 import type { TeamStatcastState } from '@/components/useTeamStatcast';
 import { toPriceRange } from '@/lib/sports/shared/priceRange';
 import { toGameTeamForm } from '@/lib/sports/shared/gameTeamForm';
+import type { FormGame } from '@/lib/sports/mlb/gamePregame';
+import type { PregameStarter } from '@/lib/sports/mlb/statcastRollupShapes';
+import { pitchTypeLabel } from '@/lib/sports/mlb/pitchProfileShapes';
+import { TEAM_ABBR_BY_ID } from '@/lib/sports/mlb/teamAliases';
+import { ordinal } from '@/lib/sports/shared/teamResearch';
 
 /**
  * MLB → generic transforms for the `GameDetail.tsx` component family
@@ -649,6 +654,8 @@ export function toGameResearchData(input: { payload: MlbGameResearchPayload; req
           mlbBoxSection(payload),
           mlbLinesSection(payload, state),
           mlbPlaysSection(payload),
+          // The research as it read at the start stays below the recap.
+          ...mlbComingInSections(payload, state),
         ].filter((s): s is ResearchSection => s !== null);
   return {
     state,
@@ -1056,7 +1063,372 @@ function mlbPlaysSection(payload: MlbGameResearchPayload): ResearchSection | nul
   };
 }
 
-/** Before the start (R8.1b builds the research; until then, the lines and props). */
+// ---------------------------------------------------------------------------
+// R8.1b — the research as of the start
+// ---------------------------------------------------------------------------
+
+// StatsAPI has called the Athletics ATH since 2025; the shared alias map keeps OAK for older odds feeds.
+const teamAbbr = (id: string | number) => (Number(id) === 133 ? 'ATH' : TEAM_ABBR_BY_ID[Number(id)] ?? String(id));
+const shortDay = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
+const lastName = (name: string | null, id: number) => (name ?? '').split(' ').slice(-1)[0] || String(id);
+
+function formRecord(games: FormGame[]) {
+  const w = games.filter((g) => g.us > g.them).length;
+  return { w, l: games.length - w, diff: games.reduce((a, g) => a + g.us - g.them, 0) };
+}
+
+/** Before the start: the matchup, the starters, the players, injuries, the lines. */
 function mlbPreSections(payload: MlbGameResearchPayload, state: GameState): ResearchSection[] {
-  return [mlbLinesSection(payload, state)];
+  return [mlbMatchupSection(payload, state), mlbStartersSection(payload), mlbPlayersSection(payload, state), payload.state === 'pre' || payload.state === 'postponed' ? mlbInjuriesSection(payload) : null, mlbLinesSection(payload, state)].filter(
+    (s): s is ResearchSection => s !== null,
+  );
+}
+
+/** Below a live or final game: the same research as it read at the start, under its own ids. Injuries read as rosters stand now, so they stay off. */
+function mlbComingInSections(payload: MlbGameResearchPayload, state: GameState): ResearchSection[] {
+  return [mlbMatchupSection(payload, state), mlbStartersSection(payload), mlbPlayersSection(payload, state)]
+    .filter((s): s is ResearchSection => s !== null)
+    .map((s) => ({ ...s, id: `pre-${s.id}`, title: `${s.title} · at the start` }));
+}
+
+type Side = MlbGameResearchPayload['away'];
+
+function mlbMatchupSection(payload: MlbGameResearchPayload, state: GameState): ResearchSection {
+  const pre = payload.mlb.pregame;
+  const { away, home } = payload;
+  const rows: ResearchCard[][] = [];
+
+  if (pre.strength.length) {
+    const tone = (r: { rank: number; of: number } | null): 'good' | 'bad' | undefined => (!r ? undefined : r.rank <= 10 ? 'good' : r.rank > r.of - 10 ? 'bad' : undefined);
+    const view = (bat: Side, arm: Side) => ({
+      key: `${bat.abbr}-bats`,
+      label: `${bat.abbr} bats vs ${arm.abbr} arms`,
+      labelHeader: 'Per game',
+      columns: [
+        { key: 'prod', label: `${bat.abbr} produce`, decimals: 0 },
+        { key: 'prodRank', label: 'Rank', decimals: 0 },
+        { key: 'allow', label: `${arm.abbr} allow`, decimals: 0 },
+        { key: 'allowRank', label: 'Rank', decimals: 0 },
+      ],
+      rows: pre.strength.map((r) => {
+        const p = r.teams[bat.id]?.produced ?? null;
+        const a = r.teams[arm.id]?.allowed ?? null;
+        const fmt = (v: number | undefined) => (v == null ? null : `${v.toFixed(r.decimals)}${r.percent ? '%' : ''}`);
+        const tones: Record<string, 'good' | 'bad'> = {};
+        const pt = tone(p);
+        const at = tone(a);
+        if (pt) tones.prodRank = pt;
+        if (at) tones.allowRank = at;
+        return { key: r.key, label: r.label, values: { prod: fmt(p?.value), prodRank: p ? ordinal(p.rank) : null, allow: fmt(a?.value), allowRank: a ? ordinal(a.rank) : null }, tones };
+      }),
+    });
+    const views = [view(away, home), view(home, away)];
+    rows.push([
+      {
+        kind: 'table',
+        key: 'strength',
+        title: 'Strength vs strength',
+        scope: pre.strengthNote ? `${pre.strengthSeason} season` : `${pre.strengthSeason} season, ${state === 'pre' ? 'before today' : 'before this game'}`,
+        info: 'Each offense against the pitching and defense it faces. Ranks are across all 30 teams, 1st best for that side: most produced, fewest allowed. Top ten and bottom ten are coloured.',
+        caption: pre.strengthNote ?? undefined,
+        labelHeader: views[0].labelHeader,
+        columns: views[0].columns,
+        rows: views[0].rows,
+        views,
+        fixedOrder: true,
+      },
+    ]);
+  }
+
+  const formCard = (team: Side): ResearchCard => {
+    const last = (pre.form[team.id]?.games ?? []).slice(-10);
+    const r = formRecord(last);
+    return {
+      kind: 'histogram',
+      key: `form-${team.abbr}`,
+      title: `${team.abbr} coming in`,
+      scope: last.length ? `last ${last.length}: ${r.w}-${r.l}, run differential ${signed(r.diff)}` : 'no games yet this season',
+      bars: last.map((g) => ({
+        key: String(g.pk),
+        axisLabel: `${g.home ? '' : '@'}${g.opponentAbbr}`,
+        value: Math.abs(g.us - g.them) || 0.25,
+        highlight: false,
+        tone: g.us > g.them ? 'good' : 'bad',
+        tip: `${g.us > g.them ? 'W' : 'L'} ${g.us}-${g.them} ${g.home ? 'vs' : '@'} ${g.opponentAbbr} · ${shortDay(g.date)}`,
+      })),
+      toneLegend: { good: 'won', bad: 'lost' },
+      caption: 'Bar height is the margin, oldest on the left.',
+    };
+  };
+  rows.push([formCard(away), formCard(home)]);
+
+  const h = formRecord(pre.h2h);
+  rows.push([
+    {
+      kind: 'table',
+      key: 'h2h',
+      title: 'Head to head',
+      scope: pre.h2h.length ? `${away.abbr} ${h.w}-${h.l} against ${home.abbr} since last season, runs ${signed(h.diff)}` : 'since last season',
+      labelHeader: 'Date',
+      fixedOrder: true,
+      emptyText: `${away.abbr} and ${home.abbr} have not met since last season`,
+      columns: [
+        { key: 'park', label: 'At', decimals: 0 },
+        { key: 'score', label: `${away.abbr}–${home.abbr}`, decimals: 0 },
+        { key: 'won', label: 'Won', decimals: 0 },
+      ],
+      rows: [...pre.h2h].reverse().map((g) => ({
+        key: String(g.pk),
+        label: new Date(`${g.date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
+        href: `/mlb/game/${g.pk}`,
+        values: { park: g.home ? away.abbr : home.abbr, score: `${g.us}–${g.them}`, won: g.us > g.them ? away.abbr : home.abbr },
+      })),
+      caption: 'Regular season, newest first.',
+    },
+  ]);
+
+  return { id: 'matchup', navLabel: 'Matchup', title: 'Matchup', sub: 'strength, form and head to head', rows, state: { kind: 'ready' } };
+}
+
+function mlbStartersSection(payload: MlbGameResearchPayload): ResearchSection {
+  const base = { id: 'starters', navLabel: 'Starters', title: 'Starters & lineups' };
+  const held = payload.mlb.pregame.starters;
+  if (!held) {
+    return {
+      ...base,
+      rows: [],
+      state: {
+        kind: 'empty',
+        title: 'No starter research kept for this game',
+        reason: 'The Statcast starters card is kept on the morning of a game. It began with games on 2026-09-11 and some days since are missing; this game has none, so its starters and their matchups are not shown.',
+      },
+    };
+  }
+  const sides = (['away', 'home'] as const).flatMap((side) => {
+    const sp = held.payload.starters[side];
+    return sp ? [{ team: payload[side], opp: payload[side === 'away' ? 'home' : 'away'], sp }] : [];
+  });
+  if (!sides.length) {
+    return { ...base, rows: [], state: { kind: 'empty', title: 'No probable starters listed', reason: `Neither team had named a starter when the research was kept (Statcast through ${shortDay(held.asOf)}).` } };
+  }
+  const asOf = `Statcast through ${shortDay(held.asOf)}`;
+  const who = (team: Side, sp: PregameStarter) => `${team.abbr} · ${lastName(sp.name, sp.id)}`;
+  const withViews = (card: { key: string; title: string; scope: string; emptyText: string }, views: Array<{ key: string; label: string; labelHeader: string; columns: ResearchColumn[]; rows: ResearchTableRow[]; sortKey?: string }>, fixedOrder = true): ResearchCard => ({
+    kind: 'table',
+    ...card,
+    labelHeader: views[0].labelHeader,
+    columns: views[0].columns,
+    rows: views[0].rows,
+    sortKey: views[0].sortKey,
+    views,
+    fixedOrder,
+  });
+
+  const lineCard: ResearchCard = {
+    kind: 'table',
+    key: 'starters',
+    title: 'Probable starters',
+    scope: `${held.season} season · ${asOf}`,
+    labelHeader: 'Pitcher',
+    fixedOrder: true,
+    columns: [
+      { key: 'gs', label: 'GS', decimals: 0 },
+      { key: 'ip', label: 'IP', decimals: 0 },
+      { key: 'era', label: 'ERA', decimals: 2 },
+      { key: 'whip', label: 'WHIP', decimals: 2 },
+      { key: 'k', label: 'K', decimals: 0 },
+      { key: 'bb', label: 'BB', decimals: 0 },
+      { key: 'hr', label: 'HR', decimals: 0 },
+      { key: 'kbb', label: 'K/BB', decimals: 2 },
+    ],
+    rows: sides.map(({ team, sp }) => ({
+      key: String(sp.id),
+      label: sp.name ?? String(sp.id),
+      labelNote: [team.abbr, sp.hand ? `${sp.hand}HP` : null].filter(Boolean).join(' · '),
+      href: `/mlb/player/${sp.id}`,
+      imageUrl: mlbHeadshot(sp.id),
+      imageKind: 'player' as const,
+      values: { gs: sp.season.gs, ip: sp.season.ip, era: sp.season.era, whip: sp.season.whip, k: sp.season.k, bb: sp.season.bb, hr: sp.season.hr, kbb: sp.season.bb ? sp.season.k / sp.season.bb : null },
+    })),
+  };
+
+  const logViews = sides.map(({ team, sp }) => ({
+    key: String(sp.id),
+    label: who(team, sp),
+    labelHeader: 'Date',
+    columns: [
+      { key: 'opp', label: 'Opp', decimals: 0 },
+      { key: 'ip', label: 'IP', decimals: 0 },
+      { key: 'h', label: 'H', decimals: 0 },
+      { key: 'er', label: 'ER', decimals: 0 },
+      { key: 'bb', label: 'BB', decimals: 0 },
+      { key: 'k', label: 'K', decimals: 0 },
+    ],
+    rows: [...sp.log].reverse().map(([date, opp, ip, hits, er, bb, k]) => ({ key: date, label: shortDay(date), values: { opp: teamAbbr(opp), ip: ip.toFixed(1), h: hits, er, bb, k } })),
+  }));
+  const mixViews = sides.map(({ team, sp }) => ({
+    key: String(sp.id),
+    label: who(team, sp),
+    labelHeader: 'Pitch',
+    columns: [
+      { key: 'share', label: 'Share', decimals: 1, format: 'percent' as const },
+      { key: 'velo', label: 'Avg mph', decimals: 1 },
+      { key: 'whiff', label: 'Whiff', decimals: 1, format: 'percent' as const, info: 'Swinging strikes over swings' },
+      { key: 'n', label: 'Thrown', decimals: 0 },
+    ],
+    // A pitch the feed left unclassified has no type code; it is not a pitch in the mix.
+    rows: sp.mix.filter((x) => x.type && x.type !== '?').map((x) => ({ key: x.type, label: pitchTypeLabel(x.type), values: { share: x.share, velo: x.velo, whiff: x.whiff, n: x.n } })),
+  }));
+  const vsViews = sides.map(({ opp, sp }) => {
+    const hand = sp.hand === 'L' ? 'left' : 'right';
+    return {
+      key: String(sp.id),
+      label: `${opp.abbr} hitters vs ${lastName(sp.name, sp.id)}`,
+      labelHeader: 'Hitter',
+      sortKey: 'pa',
+      columns: [
+        { key: 'pa', label: 'PA', decimals: 0, info: 'Season plate appearances' },
+        { key: 'avg', label: 'AVG', decimals: 3, format: 'rate3' as const },
+        { key: 'obp', label: 'OBP', decimals: 3, format: 'rate3' as const },
+        { key: 'slg', label: 'SLG', decimals: 3, format: 'rate3' as const },
+        { key: 'hr', label: 'HR', decimals: 0 },
+        { key: 'handAvg', label: `AVG v ${sp.hand ?? ''}HP`, decimals: 3, format: 'rate3' as const, info: `Season, against ${hand}-handed pitching` },
+        { key: 'handK', label: `K% v ${sp.hand ?? ''}HP`, decimals: 1, format: 'percent' as const, info: `Season strikeout rate against ${hand}-handed pitching` },
+        { key: 'xwobacon', label: 'xwOBAcon', decimals: 3, format: 'rate3' as const, info: `Expected wOBA on contact against ${hand}-handers` },
+        { key: 'vsSp', label: 'vs him', decimals: 0, info: 'Against this pitcher in the Statcast corpus: hits-at-bats, then home runs and strikeouts' },
+      ],
+      rows: sp.vsLineup.map((x) => ({
+        key: String(x.id),
+        label: x.name ?? String(x.id),
+        labelNote: [x.pos, x.bats ? `bats ${x.bats}` : null].filter(Boolean).join(' · '),
+        href: `/mlb/player/${x.id}`,
+        values: {
+          pa: x.season.pa,
+          avg: x.season.avg,
+          obp: x.season.obp,
+          slg: x.season.slg,
+          hr: x.season.hr,
+          handAvg: x.vsHand.pa ? x.vsHand.avg : null,
+          handK: x.vsHand.pa ? x.vsHand.k : null,
+          xwobacon: x.vsHand.xwobacon,
+          vsSp: x.vsPitcher.pa ? [`${x.vsPitcher.h}-${x.vsPitcher.ab}`, x.vsPitcher.hr ? `${x.vsPitcher.hr} HR` : null, x.vsPitcher.k ? `${x.vsPitcher.k} K` : null].filter(Boolean).join(', ') : '—',
+        },
+      })),
+    };
+  });
+
+  return {
+    ...base,
+    rows: [
+      [lineCard],
+      [
+        withViews({ key: 'log', title: 'Recent starts', scope: 'last six appearances, newest first', emptyText: 'No appearances this season' }, logViews),
+        withViews({ key: 'mix', title: 'Pitch mix', scope: `season · ${asOf}`, emptyText: 'No pitches in the Statcast corpus' }, mixViews),
+      ],
+      [withViews({ key: 'vs', title: 'Hitters against the starter', scope: 'the active roster, not the posted lineup', emptyText: 'No hitters on record' }, vsViews, false)],
+    ],
+    note: sides.length < 2 ? `Only ${sides[0].team.abbr} had named a starter when the research was kept.` : undefined,
+    state: { kind: 'ready' },
+  };
+}
+
+function mlbPlayersSection(payload: MlbGameResearchPayload, state: GameState): ResearchSection | null {
+  const m = payload.mlb;
+  // One book quoting both sides is a price, not a market (as in Lines & props).
+  const props = m.props.filter((p) => p.books >= 2);
+  if (!props.length) return null;
+  // A player's team: the box once there is one, else the starters card's rosters.
+  const sideById = new Map<string, 'away' | 'home'>();
+  const probable = m.pregame.starters?.payload.starters;
+  for (const side of ['away', 'home'] as const) {
+    const sp = probable?.[side];
+    if (!sp) continue;
+    sideById.set(String(sp.id), side);
+    for (const x of sp.vsLineup) sideById.set(String(x.id), side === 'away' ? 'home' : 'away');
+  }
+  const avg = (gs: Array<[string, number, string]>) => (gs.length ? gs.reduce((a, g) => a + g[1], 0) / gs.length : null);
+  const rows: ResearchTableRow[] = props.map((p) => {
+    const side = p.side ?? sideById.get(p.playerId) ?? null;
+    const opp = side ? payload[side === 'away' ? 'home' : 'away'] : null;
+    const games = m.pregame.propHistory[`${p.playerId}|${p.market}`] ?? [];
+    const last10 = games.slice(-10);
+    const vs = opp ? games.filter((g) => g[2] === opp.id) : [];
+    const over = (gs: typeof games) => `${gs.filter((g) => g[1] > p.line).length} of ${gs.length}`;
+    return {
+      key: `${p.playerId}-${p.market}`,
+      label: p.name,
+      labelNote: side ? payload[side].abbr : null,
+      href: `/mlb/player/${p.playerId}`,
+      values: {
+        market: MLB_MARKET_LABELS[p.market] ?? p.market,
+        line: p.line,
+        l10: avg(last10),
+        l10Over: last10.length ? over(last10) : '—',
+        recent: last10.length ? last10.slice(-5).map((g) => g[1]).join(' ') : '—',
+        vs: vs.length ? over(vs) : '—',
+        vsAvg: avg(vs),
+        books: p.books,
+      },
+    };
+  });
+  return {
+    id: 'players',
+    navLabel: 'Players',
+    title: 'Players',
+    sub: 'each prop’s main line against the player’s own games',
+    rows: [
+      [
+        {
+          kind: 'table',
+          key: 'prop-history',
+          title: 'Prop lines and history',
+          scope: state === 'pre' ? 'games before today' : 'the line at the start, games before this one',
+          info: 'Over means above the line. Games are this season and last; the last five read oldest to newest. Against the opponent counts games against the other team here.',
+          labelHeader: 'Player',
+          sortKey: 'books',
+          columns: [
+            { key: 'market', label: 'Market', decimals: 0, text: true },
+            { key: 'line', label: 'Line', decimals: 1 },
+            { key: 'l10', label: 'L10 avg', decimals: 2 },
+            { key: 'l10Over', label: 'L10 over', decimals: 0 },
+            { key: 'recent', label: 'Last 5', decimals: 0 },
+            { key: 'vs', label: 'Over vs opp', decimals: 0 },
+            { key: 'vsAvg', label: 'Avg vs opp', decimals: 2 },
+            { key: 'books', label: 'Books', decimals: 0 },
+          ],
+          rows,
+          caption: 'Markets with one book quoting both sides are left out.',
+        },
+      ],
+    ],
+    state: { kind: 'ready' },
+  };
+}
+
+/** Injuries read as the rosters stand now, so they show only while the game is still to come — not on a finished game reviewed as ?state=pre. */
+function mlbInjuriesSection(payload: MlbGameResearchPayload): ResearchSection | null {
+  const inj = payload.mlb.pregame.injuries;
+  // StatsAPI's rosters name the list, rarely the injury; the column shows only when one does.
+  const described = Object.values(inj).some((list) => list.some((e) => e.injury));
+  const view = (team: Side) => ({
+    key: team.abbr,
+    label: `${team.abbr} · ${(inj[team.id] ?? []).length}`,
+    labelHeader: 'Player',
+    columns: [
+      { key: 'pos', label: 'Pos', decimals: 0 },
+      { key: 'status', label: 'Status', decimals: 0, text: true },
+      ...(described ? [{ key: 'injury', label: 'Injury', decimals: 0, text: true }] : []),
+    ],
+    rows: (inj[team.id] ?? []).map((e) => ({ key: String(e.playerId), label: e.playerName, href: `/mlb/player/${e.playerId}`, values: { pos: e.position, status: e.status, injury: e.injury ?? '—' } })),
+  });
+  const views = [view(payload.away), view(payload.home)];
+  if (!views.some((v) => v.rows.length)) return null;
+  return {
+    id: 'injuries',
+    navLabel: 'Injuries',
+    title: 'Injuries',
+    rows: [[{ kind: 'table', key: 'injuries', title: 'Injured list and day-to-day', scope: 'as the rosters read now', labelHeader: 'Player', columns: views[0].columns, rows: views[0].rows, views, fixedOrder: true }]],
+    state: { kind: 'ready' },
+  };
 }

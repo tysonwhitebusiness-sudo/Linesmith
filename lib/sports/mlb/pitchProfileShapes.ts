@@ -108,6 +108,7 @@ export const PITCH_TYPE_LABELS: Record<string, string> = {
   ST: 'Sweeper',
   SV: 'Slurve',
   CU: 'Curveball',
+  CS: 'Slow curve',
   KC: 'Knuckle curve',
   CH: 'Changeup',
   FS: 'Splitter',
