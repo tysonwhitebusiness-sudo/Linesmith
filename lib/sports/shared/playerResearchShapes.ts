@@ -266,6 +266,12 @@ export type ResearchCard =
       max?: number;
       decimals: number;
       unit: string;
+      /**
+       * For a series whose stored values are not what the axis should read —
+       * tennis's ranking is held negated so "up is better" holds, but the axis
+       * has to say No. 1, not -1.
+       */
+      axisFormat?: { negate?: boolean; prefix?: string };
       tips: string[][];
       legend?: Array<{ label: string; dark: boolean }>;
     }

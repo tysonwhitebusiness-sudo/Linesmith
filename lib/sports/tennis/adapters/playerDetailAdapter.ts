@@ -20,8 +20,10 @@ import { tennisResearchSpec } from './playerResearchSpec';
 import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
+import { repriceAtMainLine } from '@/lib/odds/props/mainLine';
+import { tennisSurfaceSection, type TennisSurfaceInput } from '@/lib/sports/tennis/playerArchiveShapes';
 import type { PropOddsRow } from '@/lib/db/client';
-import type { ChipDef, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, GameStateSlot, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toPredicateBinarySplit } from '@/lib/sports/shared/predicateSplit';
 import type { OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
@@ -37,6 +39,8 @@ export interface TennisPlayerDetailScope {
 }
 
 export interface TennisPlayerDetailInput {
+  /** `useTennisLiveGame(...)`'s result — C4's game state (R6.4). Structural, not an import of the hook's type. */
+  live?: { data: import('@/lib/sports/tennis/liveGame').TennisLiveGameDetail | null; loading: boolean };
   candidates: PickCandidate[];
   market?: string;
   snapshot: SportSnapshot | null;
@@ -64,7 +68,15 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
   // way MLB/NFL's history-derived direction can, so this is always "over"/
   // "did happen", same as soccer's adapter.
   const wantOver = true;
-  const baseLine = active.line ?? 0.5;
+  // ---- The line (R6-F9) ----
+  // The candidate carries the main line as the snapshot found it; this is the
+  // rule the other sports now run against the rows the page holds.
+  const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
+  const startIso = todaysGame?.firstPitch ?? null;
+  const activeRows =
+    activeMarketKey && propOdds ? propOdds.rows.filter((r) => r.subjectId === active.subjectId && r.marketKey === activeMarketKey) : [];
+  const { marketLine, priced: priceCandidate } = repriceAtMainLine(active, activeRows, startIso);
+  const baseLine = marketLine ?? active.line ?? 0.5;
   const line = Math.max(0, baseLine + scope.lineOffset);
 
   let scoped = active.history;
@@ -203,10 +215,33 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
           wantOver,
         };
 
-  const activeMarketKey = candidateDimensionToMarketKey(active.dimension);
+  // ---- C4 game state (R6.4) ----
+  // Tennis holds set scores and nothing else live: there is no point-by-point
+  // source (R4), so the card shows the two players, the sets, and says what is
+  // not held rather than leaving a band empty.
+  const liveMatch = input.live?.data ?? null;
+  const setLine = (p: { sets: Array<{ value: number; tiebreak?: number }> } | undefined) =>
+    (p?.sets ?? []).map((x) => `${x.value}${x.tiebreak != null ? `(${x.tiebreak})` : ''}`).join(' ');
+  const gameState: GameStateSlot | null =
+    liveMatch && liveMatch.state === 'in'
+      ? {
+          status: 'live',
+          away: { abbr: liveMatch.away.name, score: liveMatch.away.sets.filter((x) => x.winner).length },
+          home: { abbr: liveMatch.home.name, score: liveMatch.home.sets.filter((x) => x.winner).length },
+          periodLabel: liveMatch.statusDetail,
+          subjectLine: null,
+          notHeld: `Point-by-point is not held for tennis; the set scores are the live picture (${setLine(liveMatch.away)} vs ${setLine(liveMatch.home)}).`,
+          lines: [],
+          events: [],
+          gameHref: todaysGame?.gamePk && typeof meta.tour === 'string' ? `/tennis/${meta.tour}/game/${todaysGame.gamePk}` : null,
+        }
+      : input.live?.loading && startIso != null && Date.now() >= Date.parse(startIso)
+        ? { status: 'loading', away: { abbr: 'Player', score: null }, home: { abbr: 'Opponent', score: null }, periodLabel: null, subjectLine: null, lines: [], events: [], gameHref: null }
+        : null;
+
   const propOddsBoard: PropOddsBoardProps | null =
     activeMarketKey && propOdds
-      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: active.line ?? null, userSportsbook: propOdds.userSportsbook }
+      ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: marketLine ?? active.line ?? null, userSportsbook: propOdds.userSportsbook }
       : null;
 
 
@@ -238,7 +273,8 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
     model: null,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
-    gameState: null,
+    priceCandidate,
+    gameState,
     liveMatchup: null,
     // No matchup card yet — tennis is a player-vs-player sport (no team
     // position groups), and no ranked-player list exists in this codebase
@@ -263,7 +299,30 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
  * The columns are this sport's `playerResearchSpec.ts`; the work is
  * `buildPlayerResearch`, shared by every sport.
  */
-export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date }): PlayerResearchData | null {
+export function toPlayerResearchData(input: {
+  history: PlayerHistory;
+  bio: PlayerBio | null;
+  now?: Date;
+  archive?: TennisSurfaceInput;
+}): PlayerResearchData | null {
   const tour = input.history.sport === 'tennis_wta' ? 'wta' : 'atp';
-  return buildPlayerResearch({ sport: input.history.sport, history: input.history, spec: tennisResearchSpec(tour), now: input.now });
+  // Tennis has no home side. The history stores `is_home` anyway — false on
+  // every one of Alcaraz's rows, unset on Sabalenka's — which printed a
+  // meaningless "@ Shelton B." in the game log and offered a Home/Away split
+  // that means nothing on a neutral court. Dropping it empties both venue
+  // groups, so the split stops being offered at all.
+  const history: PlayerHistory = { ...input.history, games: input.history.games.map((g) => ({ ...g, isHome: null })) };
+  const research = buildPlayerResearch({ sport: history.sport, history, spec: tennisResearchSpec(tour), now: input.now });
+  if (!research || !input.archive) return research;
+  // The archive names every opponent; `player_game_history` can name only
+  // 66% of them through `athlete_crosswalk` (66,134 of 100,468 rows, measured
+  // 2026-09-15), and the rest showed as "—" in the game log.
+  const named = new Map((input.archive.data?.matches ?? []).map((m) => [m.date.slice(0, 10), m.opponent]));
+  const log = {
+    ...research.gameLog,
+    rows: research.gameLog.rows.map((r) =>
+      r.opponentLabel && r.opponentLabel !== '—' ? r : { ...r, opponentLabel: named.get(r.date.slice(0, 10)) ?? r.opponentLabel },
+    ),
+  };
+  return { ...research, gameLog: log, sections: [tennisSurfaceSection(input.archive)] };
 }

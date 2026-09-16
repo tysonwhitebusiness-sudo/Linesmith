@@ -16,6 +16,10 @@ import { useLiveGame } from './useLiveGame';
 import { useFootballLiveGame } from './useFootballLiveGame';
 import { useSoccerLiveGame } from './useSoccerLiveGame';
 import { useSoccerUnderstat } from './useSoccerUnderstat';
+import { useTennisLiveGame } from './useTennisLiveGame';
+import { useTennisArchive } from './useTennisArchive';
+import type { TennisSurfaceInput } from '@/lib/sports/tennis/playerArchiveShapes';
+import { tournamentSurface } from '@/lib/sports/tennis/surfaces';
 import type { SoccerChancesInput } from '@/lib/sports/soccer/playerUnderstatShapes';
 import { useTeamStatcast } from './useTeamStatcast';
 import { useMlbStatcast } from './useMlbStatcast';
@@ -742,7 +746,7 @@ function toResearchData(
   sport: string,
   history: PlayerHistory,
   bio: PlayerBio | null,
-  extras: { mlbStatcast?: MlbStatcastInput; nflTargets?: NflTargetsInput; soccerChances?: SoccerChancesInput },
+  extras: { mlbStatcast?: MlbStatcastInput; nflTargets?: NflTargetsInput; soccerChances?: SoccerChancesInput; tennisSurface?: TennisSurfaceInput },
 ): PlayerResearchData | null {
   const input = { history, bio };
   switch (sport) {
@@ -759,7 +763,7 @@ function toResearchData(
     case 'soccer':
       return toSoccerPlayerResearchData({ ...input, understat: extras.soccerChances });
     case 'tennis':
-      return toTennisPlayerResearchData(input);
+      return toTennisPlayerResearchData({ ...input, archive: extras.tennisSurface });
     default:
       return toGolfPlayerResearchData();
   }
@@ -932,6 +936,9 @@ export function PlayerDetail({
   // Soccer's own live feed: score, clock and key events (decision 5).
   const soccerLeague = typeof meta.league === 'string' ? meta.league : subject?.league ?? undefined;
   const soccerLive = useSoccerLiveGame(soccerLeague, active?.sport === 'soccer' ? gamePkStr : undefined, active?.sport === 'soccer' && started, 25_000);
+  // Tennis: set scores are the whole live picture (R4 — no point-by-point source).
+  const tennisTour = typeof meta.tour === 'string' ? (meta.tour as 'atp' | 'wta') : subject?.league === 'wta' ? 'wta' : 'atp';
+  const tennisLive = useTennisLiveGame(tennisTour, active?.sport === 'tennis' ? gamePkStr : undefined, active?.sport === 'tennis' && started, 25_000);
   const opponentTeamStatcast = useTeamStatcast(isPitcherSubject ? opponentId : undefined);
 
   // MLB Statcast, from the R5a rollup (R6.1b). One route serves three readers:
@@ -1063,6 +1070,25 @@ export function PlayerDetail({
           },
     [historySport, sportSectionSeason, soccerUnderstat, bioState.loading, bioState.data],
   );
+  // The TennisMyLife archive for this player (R6.4): surface, serve and rank,
+  // none of which `player_game_history` stores for tennis.
+  const tennisHistoryTour = historySport === 'tennis_wta' ? 'wta' : historySport === 'tennis_atp' ? 'atp' : undefined;
+  const tennisArchive = useTennisArchive(tennisHistoryTour, tennisHistoryTour ? bioState.data?.name ?? subject?.name ?? undefined : undefined);
+  const tennisSurface = useMemo<TennisSurfaceInput | undefined>(
+    () =>
+      !tennisHistoryTour
+        ? undefined
+        : {
+            season: sportSectionSeason,
+            data: tennisArchive.data,
+            loading: tennisArchive.loading || (bioState.loading && !bioState.data),
+            error: tennisArchive.error,
+            // C7: the court today's match is on, from the event's own name.
+            todaySurface: typeof meta.tournamentName === 'string' ? tournamentSurface(meta.tournamentName) : null,
+            emptyReason: 'The TennisMyLife archive is keyed by name and holds no matches under this one.',
+          },
+    [tennisHistoryTour, sportSectionSeason, tennisArchive, bioState.loading, bioState.data, meta.tournamentName],
+  );
   const nflRole =
     researchSport !== 'nfl'
       ? null
@@ -1099,9 +1125,9 @@ export function PlayerDetail({
   const research = useMemo(
     () =>
       researchSport && historyState.data
-        ? toResearchData(researchSport, historyState.data, bioState.data, { mlbStatcast: mlbStatcastInput, nflTargets: nflTargetsInput, soccerChances })
+        ? toResearchData(researchSport, historyState.data, bioState.data, { mlbStatcast: mlbStatcastInput, nflTargets: nflTargetsInput, soccerChances, tennisSurface })
         : null,
-    [researchSport, historyState.data, bioState.data, mlbStatcastInput, nflTargetsInput, soccerChances],
+    [researchSport, historyState.data, bioState.data, mlbStatcastInput, nflTargetsInput, soccerChances, tennisSurface],
   );
   const stickyTop = useStickyHeaderHeight(Boolean(subject) && !embedded);
   const sectionIds = (research?.sections ?? []).map((x) => `${x.id}:${x.navLabel}`).join('|');
@@ -1112,7 +1138,8 @@ export function PlayerDetail({
   const liveNow = Boolean(
     (playerLive.data && !playerLive.error) ||
       (footballLive.data && footballLive.data.state === 'in') ||
-      (soccerLive.data && soccerLive.data.state === 'in'),
+      (soccerLive.data && soccerLive.data.state === 'in') ||
+      (tennisLive.data && tennisLive.data.state === 'in'),
   );
   const navItems = useMemo(
     () => [
@@ -1194,6 +1221,7 @@ export function PlayerDetail({
                   })
                 : active.sport === 'tennis'
                   ? toTennisPlayerDetailData({
+                      live: tennisLive,
                       candidates,
                       market: active.dimension,
                       snapshot,
@@ -1268,6 +1296,8 @@ export function PlayerDetail({
     footballLive.loading ||
     soccerLive.loading ||
     soccerUnderstat.loading ||
+    tennisLive.loading ||
+    tennisArchive.loading ||
     golfShotProfile.loading ||
     lineHistory.loading ||
     cfbTeamDefense.loading ||

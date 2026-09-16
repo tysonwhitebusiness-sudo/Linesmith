@@ -541,7 +541,9 @@ export function ResearchCardView({ card }: { card: ResearchCard }) {
             max={card.max}
             height={220}
             tickCount={4}
-            format={(v) => formatResearchValue(v, { decimals: card.decimals })}
+            format={(v) =>
+              `${card.axisFormat?.prefix ?? ''}${formatResearchValue(card.axisFormat?.negate ? -v : v, { decimals: card.decimals })}`
+            }
             tooltipRows={(i) => (card.tips[i] ?? []).map((t) => ({ value: t }))}
           />
           {card.legend ? <VizLegend items={card.legend.map((l) => ({ label: l.label, color: l.dark ? 'oklch(18% 0.005 260)' : 'oklch(80% 0.004 260)' }))} /> : null}
