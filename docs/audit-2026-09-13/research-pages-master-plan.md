@@ -33,10 +33,21 @@ state, one line, game state and the default market. Commit `093923a`.
   stating that per-player live stats are not held — decision 5); C8 (a soccer
   page opens on the market the position plays for: saves, tackles, shots on
   target, anytime goalscorer, falling back to what the books priced).
+- **Removed:** the prop block's 3x3 shot grid and its shot-type mix
+  (`spatialGrid`/`usageMix` are null for soccer), the per-subject shot fetch in
+  the snapshot build that fed them, `toShotGrid` and its test — the same rows
+  are the section's shot map and finishing table now, drawn in full.
 - **Verified:** 1440 and 400 on Cunha (chances section, shot map, the
-  name-match note), Lammens (keeper state) and Yoshida (MLS). The route's rows
+  name-match note), Lammens (keeper state), Yoshida (MLS, the not-covered
+  state) and Haaland; the route's own numbers equal G2's stored block season
+  for season (2024-25: 109 shots, 22 goals, 23.95 xG, 31 matches, 2,749
+  minutes on both sides). MLB and NFL re-rendered unchanged, with the rebuilt
+  card headers. The route's rows
   equal G2's own Haaland block field for field in the tests. tsc clean,
   519/519 tests, build passes.
+- **NOT rendered:** an injured soccer player — ESPN's EPL injuries feed was
+  empty on 2026-09-15 and the players sampled were fit. The hero's injury pill
+  is shared code and was rendered this session on Tua (NFL) and Schmidt (MLB).
 - **OWED, next EPL match day:** the live card for soccer, and **R2-F9** — the
   `soccer:snapshot:epl` row wrote 5 minutes before the check but at ~0 MB,
   because today's EPL slate is empty, so the 22 MB write is still unproven.

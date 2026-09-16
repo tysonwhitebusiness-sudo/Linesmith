@@ -38,9 +38,7 @@ import { soccerChancesSection, soccerKeeperSection, type SoccerChancesInput } fr
 import type { PropOddsRow } from '@/lib/db/client';
 import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
-import { MIDDOT, fmt } from '@/components/charts/tokens';
-import { toRoleStat, type OpponentUnitRole, type SpatialGridRole, type UsageMixRole } from '@/lib/sports/shared/playerRoles';
-import type { ShotGrid } from '@/lib/sports/soccer/understatShots';
+import { toRoleStat, type OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
 import type { ChipDef, GameStateSlot, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { isTeamNameMatch } from '@/lib/sports/shared/teamNameMatch';
@@ -178,81 +176,16 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
   const measured = categoriseByLine(scoped, line);
   const wanted = wantOver ? OVER : UNDER;
 
-  // ---- Role 3 | spatialGrid: the shot map (6.9).
-  // EPL only. Understat covers the big five leagues; MLS is sourced from
-  // American Soccer Analysis, which carries no shot coordinates, so
-  // `meta.shotGrid` is simply absent there and no card renders — the same
-  // rule working, not a gap being hidden.
-  //
-  // The cells show SHOT SHARE, not xG: mean xG per cell is very nearly a
-  // function of the cell itself, so it reads the same for every player.
-  // Where someone actually shoots from is specific to them. The xG and the
-  // conversion travel in the caption.
-  const shotGrid = (meta.shotGrid ?? null) as ShotGrid | null;
-  // ---- Role 2 | usageMix: the shot-type mix.
-  // Same shots the grid places, counted by Understat's own vocabulary
-  // (Head / LeftFoot / RightFoot / OtherBodyPart) INSIDE the placed-shot
-  // branch, so the mix and the grid can never describe different sets.
-  //
-  // xG is the per-slice outcome and carries `valueSample` -- not every shot
-  // has a finite xG, so the n beside it is its own count, never the shot
-  // count. Same trap MLB's mix documents at length; different sport, identical
-  // shape.
-  const shotTypeLabel = (t: string) =>
-    ({ Head: 'Header', LeftFoot: 'Left foot', RightFoot: 'Right foot', OtherBodyPart: 'Other' } as Record<string, string>)[t] ?? t;
-  const usageMix: UsageMixRole | null =
-    shotGrid && shotGrid.shotTypes && shotGrid.shotTypes.length > 0
-      ? {
-          title: 'Shot types',
-          slices: shotGrid.shotTypes.map((t) => ({
-            key: t.type,
-            label: shotTypeLabel(t.type),
-            share: (t.shots / Math.max(1, shotGrid.totalShots)) * 100,
-            value: t.xgCount > 0 ? t.xgSum / t.xgCount : undefined,
-            valueLabel: 'xG per shot',
-            decimals: 2,
-            valueSample: t.xgCount,
-          })),
-          valueFormat: fmt.two,
-          sampleSize: shotGrid.totalShots,
-          emptyMessage: 'No shots on record for this player yet.',
-        }
-      : null;
+  // Role 2 and 3 | the shot-type mix and the 3x3 shot grid: GONE for soccer
+  // (R6.3). Both were built from the same Understat shots "Chances &
+  // finishing" now draws in full — every shot at its own place, sized by the
+  // chance it was worth, with the body parts as a table beside it. A nine-cell
+  // share grid and a slice list said less about the same rows, and the prop
+  // block no longer repeats them (the same removal NFL's target grid got in
+  // R6.2).
+  const usageMix = null;
+  const spatialGrid = null;
 
-  const spatialGrid: SpatialGridRole | null = shotGrid
-    ? {
-        title: 'Shot location',
-        surface: 'pitch',
-        measure: 'share',
-        cells: shotGrid.cells.map((row) =>
-          row.map((c) => ({ key: c.key, value: c.shots > 0 ? c.share : null, sampleSize: c.shots })),
-        ),
-        rowLabels: shotGrid.rowLabels,
-        columnLabels: shotGrid.columnLabels,
-        format: fmt.pct0,
-        unit: 'of shots',
-        caption: [
-          `${shotGrid.totalShots.toLocaleString()} shots`,
-          `${shotGrid.totalGoals} scored`,
-          shotGrid.meanXg != null ? `${shotGrid.meanXg.toFixed(2)} xG per shot` : null,
-          shotGrid.seasons.length > 0
-            ? shotGrid.seasons.length === 1
-              ? shotGrid.seasons[0]
-              : `${shotGrid.seasons[0]}-${shotGrid.seasons[shotGrid.seasons.length - 1]}`
-            : null,
-        ]
-          .filter(Boolean)
-          .join(` ${MIDDOT} `),
-        emptyMessage: 'No shot locations on record.',
-      }
-    : null;
-
-  // ---- Role 4 | binarySplit: home/away, off the `raw.isHome` this sport's
-  // history already carries but exposes through no filter chip.
-  // Over the FULL history, not `scoped` - this is a season-level fact, the
-  // same reason `windows.h2h` reads `active.history` rather than `measured`.
-  // Null unless BOTH venues have a real sample; see `venueSplit.ts` for the
-  // resolution defect that guard contains.
   const binarySplit = toVenueBinarySplit({
     measured: categoriseByLine(active.history, line),
     wanted,

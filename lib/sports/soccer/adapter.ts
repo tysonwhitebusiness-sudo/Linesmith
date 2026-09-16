@@ -24,8 +24,6 @@ import { candidateLine, historyAverageLine } from '@/lib/odds/props/mainLine';
 import { soccerTeamLogoByAbbr, soccerTeamLogoByName, matchSoccerTeamLogo, ESPN_LEAGUE_SLUG } from './espn';
 import { fetchSeasonStatus } from '@/lib/sports/multiSport/teamSportEspn';
 import { currentUnderstatSeason, buildUnderstatNameIndex, matchUnderstatIndex, fetchUnderstatPlayerMatches, buildUnderstatTeamDefenseIndex, matchUnderstatTeamName, type UnderstatMatch, type UnderstatSeasonStats, type UnderstatTeamDefense } from './understat';
-import { fetchUnderstatPlayerShots } from './understat';
-import { toShotGrid } from './understatShots';
 import { normalizeName } from '@/lib/odds/screenshotImport';
 import { currentAsaSeason, loadAsaSeasonContext, matchAsaIndex, asaPlayerMatches, type AsaMatchStat } from './americanSocceranalysis';
 import { favorableFromRank } from '@/lib/odds/props/matchupFavorable';
@@ -222,20 +220,16 @@ async function attachRealHistory(candidates: PickCandidate[], league: SoccerLeag
     const subjectName = subjectCandidates[0].subjectName;
     let matches: NormalizedMatch[] = [];
     let seasonStats: (UnderstatSeasonStats & { name: string }) | null = null;
-    // Stays null for MLS: American Soccer Analysis carries no shot coordinates,
-    // so the shot map is EPL-only and the MLS tab renders no grid at all.
-    let shotGrid: ReturnType<typeof toShotGrid> = null;
     try {
       if (league === 'epl' && understatIndex) {
         const resolved = matchUnderstatIndex(understatIndex, subjectName);
         if (resolved) {
           seasonStats = resolved;
           const raw = await fetchUnderstatPlayerMatches(resolved.understatId, resolved.teamTitle);
-          // 6.9 — the shots came back in the SAME cached payload as the
-          // matches, so this costs no extra request. Aggregated to nine cells
-          // HERE rather than shipped raw: one player carries ~1,300 shots and
-          // the snapshot is sent to every client.
-          shotGrid = toShotGrid(await fetchUnderstatPlayerShots(resolved.understatId, resolved.teamTitle));
+          // The shots themselves are no longer aggregated into the snapshot:
+          // the player page reads them per player through
+          // `/api/soccer/understat` and draws every one (R6.3), so shipping a
+          // nine-cell summary to every client bought nothing.
           matches = raw.map((m: UnderstatMatch) => ({
             matchId: m.matchId,
             date: m.date,
@@ -278,7 +272,6 @@ async function attachRealHistory(candidates: PickCandidate[], league: SoccerLeag
         const posRank = positionRanks?.get(normalizeName(seasonStats.name));
         if (posRank) meta.seasonRank = posRank;
       }
-      if (shotGrid) meta.shotGrid = shotGrid;
       const opponentName = typeof meta.opponentName === 'string' ? meta.opponentName : undefined;
       if (opponentName && teamDefenseIndex) {
         const defense = matchUnderstatTeamName(teamDefenseIndex, opponentName);
