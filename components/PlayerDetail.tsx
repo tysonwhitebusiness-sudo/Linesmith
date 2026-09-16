@@ -14,6 +14,9 @@ import { compareInk, gradientCardStyle, deltaGradientStyle } from '@/lib/ui/heat
 import { markFor, TONE_CLASS } from '@/lib/ui/marks';
 import { useLiveGame } from './useLiveGame';
 import { useFootballLiveGame } from './useFootballLiveGame';
+import { useSoccerLiveGame } from './useSoccerLiveGame';
+import { useSoccerUnderstat } from './useSoccerUnderstat';
+import type { SoccerChancesInput } from '@/lib/sports/soccer/playerUnderstatShapes';
 import { useTeamStatcast } from './useTeamStatcast';
 import { useMlbStatcast } from './useMlbStatcast';
 import type { MlbStatcastInput } from '@/lib/sports/mlb/adapters/playerResearchSections';
@@ -735,7 +738,12 @@ function ScopeChips({
  * selection `data` makes below for the market adapters, but keyed on the
  * SUBJECT's sport so it works with no candidate at all (R6.1a).
  */
-function toResearchData(sport: string, history: PlayerHistory, bio: PlayerBio | null, extras: { mlbStatcast?: MlbStatcastInput; nflTargets?: NflTargetsInput }): PlayerResearchData | null {
+function toResearchData(
+  sport: string,
+  history: PlayerHistory,
+  bio: PlayerBio | null,
+  extras: { mlbStatcast?: MlbStatcastInput; nflTargets?: NflTargetsInput; soccerChances?: SoccerChancesInput },
+): PlayerResearchData | null {
   const input = { history, bio };
   switch (sport) {
     case 'mlb':
@@ -749,7 +757,7 @@ function toResearchData(sport: string, history: PlayerHistory, bio: PlayerBio | 
     case 'nhl':
       return toNhlPlayerResearchData(input);
     case 'soccer':
-      return toSoccerPlayerResearchData(input);
+      return toSoccerPlayerResearchData({ ...input, understat: extras.soccerChances });
     case 'tennis':
       return toTennisPlayerResearchData(input);
     default:
@@ -921,6 +929,9 @@ export function PlayerDetail({
   // hook serves NFL and CFB; it idles until the scheduled start has passed.
   const isFootball = active?.sport === 'nfl' || active?.sport === 'cfb';
   const footballLive = useFootballLiveGame(active?.sport === 'cfb' ? 'cfb' : 'nfl', isFootball ? gamePkStr : undefined, isFootball && started, 15_000);
+  // Soccer's own live feed: score, clock and key events (decision 5).
+  const soccerLeague = typeof meta.league === 'string' ? meta.league : subject?.league ?? undefined;
+  const soccerLive = useSoccerLiveGame(soccerLeague, active?.sport === 'soccer' ? gamePkStr : undefined, active?.sport === 'soccer' && started, 25_000);
   const opponentTeamStatcast = useTeamStatcast(isPitcherSubject ? opponentId : undefined);
 
   // MLB Statcast, from the R5a rollup (R6.1b). One route serves three readers:
@@ -1024,6 +1035,34 @@ export function PlayerDetail({
   // NFL's located passes (R6.2) — the page's own subject and the role his
   // position implies, so a player with no market still gets his section. The
   // route resolves the nflverse id; idle for every other sport.
+  // Understat's shots and matches for an EPL player (R6.3), by his own name —
+  // Understat publishes no id this app can join on, and covers no MLS.
+  const understatName = historySport === 'soccer_epl' ? bioState.data?.name ?? subject?.name ?? undefined : undefined;
+  const soccerUnderstat = useSoccerUnderstat(understatName);
+  const soccerChances = useMemo<SoccerChancesInput | undefined>(
+    () =>
+      historySport !== 'soccer_epl' && historySport !== 'soccer_mls'
+        ? undefined
+        : historySport === 'soccer_mls'
+          ? {
+              // MLS is fetched from American Soccer Analysis, which carries no
+              // shot coordinates at all, so the section says so rather than
+              // being absent (the same rule CFB's efficiency card follows).
+              season: null,
+              data: null,
+              loading: false,
+              error: null,
+              emptyReason: 'Understat covers the big five European leagues, not MLS; the app reads MLS from American Soccer Analysis, which publishes no shot locations.',
+            }
+          : {
+            season: sportSectionSeason,
+            data: soccerUnderstat.data,
+            loading: soccerUnderstat.loading || (bioState.loading && !bioState.data),
+            error: soccerUnderstat.error,
+            emptyReason: 'Understat covers the big five leagues and this app fetches it per player by name; it holds no shots under this name.',
+          },
+    [historySport, sportSectionSeason, soccerUnderstat, bioState.loading, bioState.data],
+  );
   const nflRole =
     researchSport !== 'nfl'
       ? null
@@ -1058,8 +1097,11 @@ export function PlayerDetail({
     };
   }, [researchSport, historyState.data, statcastNowSeason, sportSectionSeason, statcastForSection, mlbPlayerId]);
   const research = useMemo(
-    () => (researchSport && historyState.data ? toResearchData(researchSport, historyState.data, bioState.data, { mlbStatcast: mlbStatcastInput, nflTargets: nflTargetsInput }) : null),
-    [researchSport, historyState.data, bioState.data, mlbStatcastInput, nflTargetsInput],
+    () =>
+      researchSport && historyState.data
+        ? toResearchData(researchSport, historyState.data, bioState.data, { mlbStatcast: mlbStatcastInput, nflTargets: nflTargetsInput, soccerChances })
+        : null,
+    [researchSport, historyState.data, bioState.data, mlbStatcastInput, nflTargetsInput, soccerChances],
   );
   const stickyTop = useStickyHeaderHeight(Boolean(subject) && !embedded);
   const sectionIds = (research?.sections ?? []).map((x) => `${x.id}:${x.navLabel}`).join('|');
@@ -1067,7 +1109,11 @@ export function PlayerDetail({
   // Whether the live section exists at all, for the nav — the card itself comes
   // from the adapter below. A successful live poll is the proof (the routes 404
   // unless a game is live), which is what the MLB adapter checks too.
-  const liveNow = Boolean((playerLive.data && !playerLive.error) || (footballLive.data && footballLive.data.state === 'in'));
+  const liveNow = Boolean(
+    (playerLive.data && !playerLive.error) ||
+      (footballLive.data && footballLive.data.state === 'in') ||
+      (soccerLive.data && soccerLive.data.state === 'in'),
+  );
   const navItems = useMemo(
     () => [
       ...(liveNow ? [{ id: 'live', label: 'Live' }] : []),
@@ -1110,6 +1156,7 @@ export function PlayerDetail({
           })
         : active.sport === 'soccer'
           ? toSoccerPlayerDetailData({
+              live: soccerLive,
               candidates,
               market: active.dimension,
               snapshot,
@@ -1219,6 +1266,8 @@ export function PlayerDetail({
     nbaShotProfile.loading ||
     nflTargets.loading ||
     footballLive.loading ||
+    soccerLive.loading ||
+    soccerUnderstat.loading ||
     golfShotProfile.loading ||
     lineHistory.loading ||
     cfbTeamDefense.loading ||

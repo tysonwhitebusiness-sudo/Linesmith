@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Avatar, Card, Chip, cx, DataTable, EmptyState, ErrorState, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column } from './ui';
-import { CATEGORICAL, FieldScatter, Histogram, SeriesChart, ZoneScatter } from './charts';
+import { CATEGORICAL, FieldScatter, Histogram, PitchScatter, SeriesChart, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import {
   formatResearchValue,
@@ -476,16 +476,25 @@ function ScatterCard({ card }: { card: Extract<ResearchCard, { kind: 'scatter' }
       <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label={`${card.title}: groups shown`}>
         {card.groups.map((g, i) => (
           <Chip key={g.key} size="md" selected={visible.has(g.key)} onClick={() => toggle(g.key)}>
-            <span aria-hidden className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full" style={{ background: CATEGORICAL[i % CATEGORICAL.length] }} />
+            {/* With `emphasis` the outcome carries the colour (a goal), so a
+                group dot here would claim a meaning the chart does not use. */}
+            {card.emphasis ? null : (
+              <span aria-hidden className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full" style={{ background: CATEGORICAL[i % CATEGORICAL.length] }} />
+            )}
             {g.label} · {g.count}
           </Chip>
         ))}
       </div>
-      {card.surface === 'field' ? (
+      {card.surface === 'pitch' ? (
+        <PitchScatter points={card.points} weights={card.weights} emphasis={card.emphasis} tips={card.tips} groups={card.groups} visible={visible} label={card.title} />
+      ) : card.surface === 'field' ? (
         <FieldScatter points={card.points} groups={card.groups} visible={visible} label={card.title} />
       ) : (
         <ZoneScatter points={card.points} groups={card.groups} visible={visible} label={card.title} />
       )}
+      {card.legend ? (
+        <VizLegend items={card.legend.map((l) => ({ label: l.label, color: l.dark ? 'oklch(var(--ink-muted))' : 'rgb(var(--good))' }))} />
+      ) : null}
     </Card>
   );
 }

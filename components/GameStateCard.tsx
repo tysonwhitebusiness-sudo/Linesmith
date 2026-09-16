@@ -146,7 +146,7 @@ export function GameStateCard({ state, subjectName }: { state: GameStateSlot; su
             ) : null}
           </>
         ) : (
-          <p className="mt-1 text-body-sm text-ink-muted">Not in the box score yet.</p>
+          <p className="mt-1 text-body-sm text-ink-muted">{state.notHeld ?? 'Not in the box score yet.'}</p>
         )}
       </div>
 

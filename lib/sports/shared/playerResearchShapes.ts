@@ -300,9 +300,19 @@ export type ResearchCard =
        * Where the points are drawn. `zone` is the strike zone, catcher's view,
        * in feet (x across, y up). `field` is a football field from behind the
        * quarterback: x is the lateral position in [-1, 1], y is air yards.
+       * `pitch` is soccer's attacking half seen from behind the goal being
+       * attacked: x is across the pitch and y is Understat's own 0.5-1 depth.
        */
-      surface: 'zone' | 'field';
+      surface: 'zone' | 'field' | 'pitch';
       points: Array<[string | null, number, number]>;
+      /** Per point, same order: how big to draw it (a shot's xG). */
+      weights?: number[];
+      /** Per point, same order: the one outcome worth picking out (a goal). */
+      emphasis?: boolean[];
+      /** Per point, same order: the lines of its tooltip. */
+      tips?: string[][];
+      /** Shown under the chart when `emphasis` carries the meaning colour usually would. */
+      legend?: Array<{ label: string; dark: boolean }>;
       /** Most common first; colour follows this order. The reader toggles groups on and off. */
       groups: Array<{ key: string; label: string; count: number }>;
       defaultVisible: string[];

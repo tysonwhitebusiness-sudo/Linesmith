@@ -156,6 +156,12 @@ export interface GameStateSlot {
   home: { abbr: string; logoUrl?: string; score: number | null };
   /** "Top 5th", "Q3 4:12", "72'". */
   periodLabel: string | null;
+  /**
+   * Why there is no line for this player, where the sport holds none at all
+   * (soccer's feed carries the score and the events, not a box score; tennis
+   * carries set scores). Said in the card rather than leaving the band empty.
+   */
+  notHeld?: string;
   /** The subject's own game so far. `null` before the player appears in the box score. */
   subjectLine: {
     /** "2-for-3", "5.1 IP". */

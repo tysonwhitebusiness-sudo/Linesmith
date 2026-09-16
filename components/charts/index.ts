@@ -64,3 +64,4 @@ export { SplitDumbbell, type SplitDumbbellProps, type SplitDumbbellRow } from '.
 export { Histogram, type HistogramBin } from './Histogram';
 export { ZoneScatter, type ZoneScatterGroup } from './ZoneScatter';
 export { FieldScatter } from './FieldScatter';
+export { PitchScatter } from './PitchScatter';
