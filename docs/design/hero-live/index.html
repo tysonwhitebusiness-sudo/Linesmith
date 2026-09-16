@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hero and live card — rework mockups</title>
+<style>
+  :root {
+    --paper: 94.5% 0.003 260; --card: 98.5% 0.002 260; --card-sunk: 96.5% 0.002 260;
+    --line: 89% 0.004 260; --line-soft: 92.5% 0.003 260;
+    --ink: 18% 0.005 260; --ink-2: 34% 0.005 260; --ink-3: 47% 0.005 260; --ink-faint: 72% 0.004 260;
+    --good: 15 122 79; --bad: 194 59 44; --warn: 183 121 31;
+    --shadow: 0 1px 2px rgba(16,18,22,.04), 0 6px 16px -8px rgba(16,18,22,.14);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: oklch(var(--paper)); color: oklch(var(--ink));
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .page { max-width: 1440px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: -.005em; margin: 0 0 4px; }
+  h2 { font-size: 17px; font-weight: 600; margin: 32px 0 10px; }
+  .note { color: oklch(var(--ink-3)); font-size: 13px; margin: 0 0 4px; max-width: 78ch; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    color: oklch(var(--ink-3)); margin: 18px 0 6px; }
+  .card { background: oklch(var(--card)); border: 1px solid oklch(var(--line-soft)); border-radius: 16px; box-shadow: var(--shadow); }
+  .card--sm { border-radius: 12px; }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 16px 20px; }
+  .hero-top { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,1fr) 250px; gap: 20px; align-items: start; }
+  .idy { display: flex; gap: 14px; min-width: 0; }
+  .shot { width: 76px; height: 76px; border-radius: 14px; background: oklch(var(--card-sunk)); flex: none;
+    display: grid; place-items: center; color: oklch(var(--ink-faint)); font-size: 11px; overflow: hidden; }
+  .shot img { width: 100%; height: 100%; object-fit: cover; }
+  .name { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .name h3 { font-size: 22px; font-weight: 600; letter-spacing: -.005em; margin: 0; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid oklch(var(--line));
+    background: oklch(var(--card-sunk)); color: oklch(var(--ink-2)); border-radius: 999px; padding: 2px 9px;
+    font-size: 11px; font-weight: 600; }
+  .chip--live { border-color: rgb(var(--good) / .3); background: rgb(var(--good) / .1); color: rgb(var(--good)); }
+  .chip--bad { border-color: rgb(var(--bad) / .3); background: rgb(var(--bad) / .08); color: rgb(var(--bad)); }
+  .teamline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 7px; font-size: 13px; color: oklch(var(--ink-2)); }
+  .teamline img { width: 20px; height: 20px; border-radius: 6px; }
+  .teamline a { color: oklch(var(--ink)); font-weight: 500; text-decoration: none; border-bottom: 1px solid oklch(var(--line)); }
+  .facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 18px; }
+  .facts--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fact { min-width: 0; }
+  .fact dt { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: oklch(var(--ink-3)); }
+  .fact dd { margin: 2px 0 0; font-size: 13px; color: oklch(var(--ink)); font-variant-numeric: tabular-nums; }
+  .fact--wide { grid-column: span 2; }
+  .season { border-left: 1px solid oklch(var(--line-soft)); padding-left: 18px; }
+  .season .k { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: oklch(var(--ink-3)); }
+  .season .v { font-size: 17px; font-weight: 600; margin-top: 2px; }
+  .season .s { font-size: 12px; color: oklch(var(--ink-3)); margin-top: 2px; }
+  .form { display: flex; gap: 4px; margin-top: 10px; }
+  .form span { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center;
+    font-size: 11px; font-weight: 600; background: oklch(var(--card-sunk)); color: oklch(var(--ink-2)); }
+  .form .w { background: rgb(var(--good) / .12); color: rgb(var(--good)); }
+  .form .l { background: rgb(var(--bad) / .10); color: rgb(var(--bad)); }
+  .tiles { margin-top: 14px; border-top: 1px solid oklch(var(--line-soft)); padding-top: 12px;
+    display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 10px 14px; }
+  .tiles--7 { grid-template-columns: repeat(7, minmax(0,1fr)); }
+  .tile dt { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: oklch(var(--ink-3)); }
+  .tile dd { margin: 1px 0 0; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .injury { margin-top: 9px; display: inline-flex; gap: 8px; align-items: center; border: 1px solid rgb(var(--bad) / .25);
+    background: rgb(var(--bad) / .05); border-radius: 8px; padding: 4px 10px; font-size: 13px; }
+  .injury b { color: rgb(var(--bad)); }
+
+  /* current-state reproduction, for comparison only */
+  .old-facts { max-width: 448px; }
+  .old-facts div { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; font-size: 13px; }
+  .old-facts dt { color: oklch(var(--ink-3)); } .old-facts dd { margin: 0; text-align: right; }
+  .old-tiles { display: grid; grid-template-columns: repeat(11, minmax(0,1fr)); gap: 10px; margin-top: 16px;
+    border-top: 1px solid oklch(var(--line-soft)); padding-top: 16px; }
+
+  /* ---------- live card ---------- */
+  .live { overflow: hidden; }
+  .live-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: space-between;
+    padding: 10px 16px; border-bottom: 1px solid oklch(var(--line-soft)); }
+  .live-head .who { font-size: 14px; font-weight: 600; }
+  .live-head .lnk { font-size: 12px; color: oklch(var(--ink-2)); text-decoration: none; border-bottom: 1px solid oklch(var(--line)); }
+  .band { padding: 14px 16px; border-bottom: 1px solid oklch(var(--line-soft)); }
+  .band:last-child { border-bottom: 0; }
+  .score-band { display: grid; grid-template-columns: minmax(210px, 260px) 1fr; gap: 20px; align-items: center; }
+  .score { display: grid; gap: 6px; }
+  .score-row { display: flex; align-items: center; gap: 10px; }
+  .score-row .t { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; flex: 1; }
+  .score-row .t img { width: 22px; height: 22px; }
+  .score-row .n { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .score-row.dim .t, .score-row.dim .n { color: oklch(var(--ink-3)); }
+  .sit { display: flex; flex-wrap: wrap; gap: 22px; align-items: center; }
+  .sit .k { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: oklch(var(--ink-3)); }
+  .sit .v { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .dots { display: flex; gap: 4px; margin-top: 4px; }
+  .dots i { width: 9px; height: 9px; border-radius: 999px; background: oklch(var(--line)); display: block; }
+  .dots i.on { background: oklch(var(--ink)); }
+  .who-row { display: flex; align-items: center; gap: 9px; }
+  .who-row .av { width: 30px; height: 30px; border-radius: 999px; overflow: hidden; background: oklch(var(--card-sunk)); flex: none; }
+  .who-row .av img { width: 100%; height: 100%; object-fit: cover; }
+  .who-row .nm { font-size: 13px; font-weight: 600; }
+  .who-row .ln { font-size: 12px; color: oklch(var(--ink-3)); font-variant-numeric: tabular-nums; }
+  .today { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: baseline; }
+  .today .hl { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .today .f { font-size: 13px; color: oklch(var(--ink-2)); font-variant-numeric: tabular-nums; }
+  .plays { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+  .plays li { display: flex; gap: 10px; font-size: 13px; color: oklch(var(--ink-2)); }
+  .plays b { color: oklch(var(--ink)); font-weight: 600; flex: none; }
+  .lines { width: 100%; max-width: 840px; border-collapse: collapse; font-size: 13px; }
+  .lines th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    color: oklch(var(--ink-3)); padding: 0 8px 6px 0; }
+  .lines td { padding: 6px 8px 6px 0; border-top: 1px solid oklch(var(--line-soft)); font-variant-numeric: tabular-nums; }
+  .lines td.num, .lines th.num { text-align: right; }
+  .bar { display: block; position: relative; height: 6px; border-radius: 999px; background: oklch(var(--line-soft)); min-width: 90px; }
+  .bar i { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: oklch(var(--ink-faint)); }
+  .bar i.done { background: rgb(var(--good)); }
+  .feed { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: oklch(var(--ink-2)); }
+  .feed span b { color: oklch(var(--ink)); font-weight: 600; }
+  .muted { color: oklch(var(--ink-3)); font-size: 13px; }
+  .sub { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: oklch(var(--ink-3)); margin-bottom: 6px; }
+
+  @media (max-width: 900px) {
+    .hero-top { grid-template-columns: 1fr; gap: 14px; }
+    .season { border-left: 0; border-top: 1px solid oklch(var(--line-soft)); padding: 12px 0 0; }
+    .facts { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .tiles, .tiles--7 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .score-band { grid-template-columns: 1fr; gap: 14px; }
+    .old-tiles { grid-template-columns: repeat(4, minmax(0,1fr)); }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Player hero and live card — rework mockups</h1>
+  <p class="note">Real data, pulled from the app on 2026-09-15: bios from <code>/api/player-bio</code>, tiles from each
+    sport's <code>playerResearchSpec.ts</code>, and the MLB live card from the Dodgers–Reds game in progress
+    (<code>/api/mlb/game/824466/live</code>). Sample values are marked. Plan: <code>docs/design/hero-live-rework.md</code>.</p>
+
+  <h2>1. Hero — what it does today (for comparison)</h2>
+  <p class="note">1416 × 332 at 1440: a 448px fact list at the left, a 220px season block at the right, ~700px of nothing
+    between them, and 11 tiles that wrap to 10 + 1 at the width the operator actually uses.</p>
+  <section class="card hero">
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:24px;align-items:start">
+      <div class="idy">
+        <div class="shot"><img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:67:current.png,q_auto:best,f_auto/v1/people/682829/headshot/67/current" alt="" /></div>
+        <div style="min-width:0">
+          <div class="name"><h3>Elly De La Cruz</h3><span class="chip">#44</span><span class="chip">Shortstop</span></div>
+          <div class="teamline"><img src="https://www.mlbstatic.com/team-logos/113.svg" alt="" /><a href="#">Cincinnati Reds</a>
+            <span style="color:oklch(var(--ink-3))">vs LAD · 5:40 PM · In Progress</span></div>
+          <dl class="old-facts" style="margin-top:14px">
+            <div><dt>Age</dt><dd>24</dd></div>
+            <div><dt>Bats / throws</dt><dd>S / R</dd></div>
+            <div><dt>Height / weight</dt><dd>6' 6", 200 lbs</dd></div>
+            <div><dt>Born</dt><dd>Jan 11, 2002 · Sabana Grande de Boya, Dominican Republic</dd></div>
+            <div><dt>MLB debut</dt><dd>Jun 6, 2023</dd></div>
+          </dl>
+        </div>
+      </div>
+      <div><div class="k" style="font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:oklch(var(--ink-3))">2026 season</div>
+        <div style="font-size:12px;color:oklch(var(--ink-2));margin-top:3px">63-68 in games played</div></div>
+    </div>
+    <dl class="old-tiles">
+      <div class="tile"><dt>G</dt><dd>131</dd></div><div class="tile"><dt>AVG</dt><dd>.284</dd></div>
+      <div class="tile"><dt>OBP</dt><dd>.361</dd></div><div class="tile"><dt>SLG</dt><dd>.514</dd></div>
+      <div class="tile"><dt>OPS</dt><dd>.874</dd></div><div class="tile"><dt>HR</dt><dd>27</dd></div>
+      <div class="tile"><dt>RBI</dt><dd>72</dd></div><div class="tile"><dt>R</dt><dd>92</dd></div>
+      <div class="tile"><dt>SB</dt><dd>25</dd></div><div class="tile"><dt>K %</dt><dd>27.7</dd></div>
+      <div class="tile"><dt>BB %</dt><dd>10.6</dd></div>
+    </dl>
+  </section>
+
+  <h2>2. Hero A — condensed</h2>
+  <p class="note">Same details, no gaps: facts as label-above-value cells in three columns, the season block becomes a
+    right panel, tiles on a six-wide grid so a row is never orphaned. Roughly 210px tall against today's 332.</p>
+  <section class="card hero">
+    <div class="hero-top">
+      <div class="idy">
+        <div class="shot"><img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:67:current.png,q_auto:best,f_auto/v1/people/682829/headshot/67/current" alt="" /></div>
+        <div style="min-width:0">
+          <div class="name"><h3>Elly De La Cruz</h3><span class="chip">#44</span><span class="chip">SS</span></div>
+          <div class="teamline"><img src="https://www.mlbstatic.com/team-logos/113.svg" alt="" /><a href="#">Cincinnati Reds</a>
+            <span class="chip chip--live">● LIVE · LAD 4 – CIN 0 · Top 9th</span></div>
+        </div>
+      </div>
+      <dl class="facts">
+        <div class="fact"><dt>Age</dt><dd>24</dd></div>
+        <div class="fact"><dt>Bats / throws</dt><dd>S / R</dd></div>
+        <div class="fact"><dt>Height / weight</dt><dd>6' 6", 200 lbs</dd></div>
+        <div class="fact"><dt>MLB debut</dt><dd>Jun 6, 2023</dd></div>
+        <div class="fact fact--wide"><dt>Born</dt><dd>Jan 11, 2002 · Sabana Grande de Boya, DR</dd></div>
+      </dl>
+      <div class="season">
+        <div class="k">2026 season</div>
+        <div class="v">131 games</div>
+        <div class="s">Reds 63-68 in games he played</div>
+      </div>
+    </div>
+    <dl class="tiles">
+      <div class="tile"><dt>G</dt><dd>131</dd></div><div class="tile"><dt>AVG</dt><dd>.284</dd></div>
+      <div class="tile"><dt>OBP</dt><dd>.361</dd></div><div class="tile"><dt>SLG</dt><dd>.514</dd></div>
+      <div class="tile"><dt>OPS</dt><dd>.874</dd></div><div class="tile"><dt>HR</dt><dd>27</dd></div>
+      <div class="tile"><dt>RBI</dt><dd>72</dd></div><div class="tile"><dt>R</dt><dd>92</dd></div>
+      <div class="tile"><dt>SB</dt><dd>25</dd></div><div class="tile"><dt>K %</dt><dd>27.7</dd></div>
+      <div class="tile"><dt>BB %</dt><dd>10.6</dd></div><div class="tile"><dt>XBH</dt><dd>58</dd></div>
+    </dl>
+  </section>
+
+  <h2>3. Hero B — enriched</h2>
+  <p class="note">The same width, spent instead of saved: the season panel gains the last five games and the next game,
+    and a second fact column carries what the page already holds. Nothing here needs a new source.</p>
+  <section class="card hero">
+    <div class="hero-top">
+      <div class="idy">
+        <div class="shot"><img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:67:current.png,q_auto:best,f_auto/v1/people/682829/headshot/67/current" alt="" /></div>
+        <div style="min-width:0">
+          <div class="name"><h3>Elly De La Cruz</h3><span class="chip">#44</span><span class="chip">SS</span><span class="chip">Switch hitter</span></div>
+          <div class="teamline"><img src="https://www.mlbstatic.com/team-logos/113.svg" alt="" /><a href="#">Cincinnati Reds</a>
+            <span class="chip chip--live">● LIVE · LAD 4 – CIN 0 · Top 9th</span></div>
+          <div class="injury"><b>Day to day</b><span>Left wrist soreness</span><span class="muted">· sample</span></div>
+        </div>
+      </div>
+      <dl class="facts">
+        <div class="fact"><dt>Age</dt><dd>24</dd></div>
+        <div class="fact"><dt>Bats / throws</dt><dd>S / R</dd></div>
+        <div class="fact"><dt>Height / weight</dt><dd>6' 6", 200 lbs</dd></div>
+        <div class="fact"><dt>MLB debut</dt><dd>Jun 6, 2023</dd></div>
+        <div class="fact"><dt>Seasons held</dt><dd>2023 – 2026</dd></div>
+        <div class="fact"><dt>Games held</dt><dd>449</dd></div>
+        <div class="fact fact--wide"><dt>Born</dt><dd>Jan 11, 2002 · Sabana Grande de Boya, Dominican Republic</dd></div>
+      </dl>
+      <div class="season">
+        <div class="k">2026 season</div>
+        <div class="v">131 games</div>
+        <div class="s">Reds 63-68 in games he played</div>
+        <div class="k" style="margin-top:12px">Last 5</div>
+        <div class="form"><span class="w">W</span><span class="l">L</span><span class="l">L</span><span class="w">W</span><span class="w">W</span></div>
+        <div class="s" style="margin-top:8px">Hits in 4 of 5 · 2 HR</div>
+      </div>
+    </div>
+    <dl class="tiles">
+      <div class="tile"><dt>G</dt><dd>131</dd></div><div class="tile"><dt>AVG</dt><dd>.284</dd></div>
+      <div class="tile"><dt>OBP</dt><dd>.361</dd></div><div class="tile"><dt>SLG</dt><dd>.514</dd></div>
+      <div class="tile"><dt>OPS</dt><dd>.874</dd></div><div class="tile"><dt>HR</dt><dd>27</dd></div>
+      <div class="tile"><dt>RBI</dt><dd>72</dd></div><div class="tile"><dt>R</dt><dd>92</dd></div>
+      <div class="tile"><dt>SB</dt><dd>25</dd></div><div class="tile"><dt>K %</dt><dd>27.7</dd></div>
+      <div class="tile"><dt>BB %</dt><dd>10.6</dd></div><div class="tile"><dt>XBH</dt><dd>58</dd></div>
+    </dl>
+  </section>
+
+  <h2>3b. Hero C — two zones, facts under the name</h2>
+  <p class="note">A and B keep three columns, which leaves the identity column half empty under the name. C gives the
+    left block the facts directly beneath the name and keeps one right panel, so nothing is stranded. Same details.</p>
+  <section class="card hero">
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:24px;align-items:start">
+      <div class="idy">
+        <div class="shot"><img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:67:current.png,q_auto:best,f_auto/v1/people/682829/headshot/67/current" alt="" /></div>
+        <div style="min-width:0;flex:1">
+          <div class="name"><h3>Elly De La Cruz</h3><span class="chip">#44</span><span class="chip">SS</span><span class="chip">Switch hitter</span></div>
+          <div class="teamline"><img src="https://www.mlbstatic.com/team-logos/113.svg" alt="" /><a href="#">Cincinnati Reds</a>
+            <span class="chip chip--live">&#9679; LIVE &middot; LAD 4 &ndash; CIN 0 &middot; Top 9th</span></div>
+          <dl class="facts" style="margin-top:12px;grid-template-columns:repeat(4,minmax(0,1fr))">
+            <div class="fact"><dt>Age</dt><dd>24</dd></div>
+            <div class="fact"><dt>Bats / throws</dt><dd>S / R</dd></div>
+            <div class="fact"><dt>Height / weight</dt><dd>6&#39; 6&quot;, 200 lbs</dd></div>
+            <div class="fact"><dt>MLB debut</dt><dd>Jun 6, 2023</dd></div>
+            <div class="fact"><dt>Seasons held</dt><dd>2023 &ndash; 2026</dd></div>
+            <div class="fact"><dt>Games held</dt><dd>449</dd></div>
+            <div class="fact fact--wide"><dt>Born</dt><dd>Jan 11, 2002 &middot; Sabana Grande de Boya, Dominican Republic</dd></div>
+          </dl>
+        </div>
+      </div>
+      <div class="season">
+        <div class="k">2026 season</div>
+        <div class="v">131 games</div>
+        <div class="s">Reds 63-68 in games he played</div>
+        <div class="k" style="margin-top:12px">Last 5</div>
+        <div class="form"><span class="w">W</span><span class="l">L</span><span class="l">L</span><span class="w">W</span><span class="w">W</span></div>
+        <div class="s" style="margin-top:8px">Hits in 4 of 5 &middot; 2 HR</div>
+      </div>
+    </div>
+    <dl class="tiles">
+      <div class="tile"><dt>G</dt><dd>131</dd></div><div class="tile"><dt>AVG</dt><dd>.284</dd></div>
+      <div class="tile"><dt>OBP</dt><dd>.361</dd></div><div class="tile"><dt>SLG</dt><dd>.514</dd></div>
+      <div class="tile"><dt>OPS</dt><dd>.874</dd></div><div class="tile"><dt>HR</dt><dd>27</dd></div>
+      <div class="tile"><dt>RBI</dt><dd>72</dd></div><div class="tile"><dt>R</dt><dd>92</dd></div>
+      <div class="tile"><dt>SB</dt><dd>25</dd></div><div class="tile"><dt>K %</dt><dd>27.7</dd></div>
+      <div class="tile"><dt>BB %</dt><dd>10.6</dd></div><div class="tile"><dt>XBH</dt><dd>58</dd></div>
+    </dl>
+  </section>
+
+  <h2>4. The same hero, other sports</h2>
+  <p class="note">Structure identical; facts and tiles are each sport's own. Tennis and golf have no team, jersey or
+    position, and the layout has to hold without them — shown last.</p>
+
+  <span class="tag">MLB pitcher · Tarik Skubal · 9 tiles</span>
+  <section class="card hero">
+    <div class="hero-top">
+      <div class="idy">
+        <div class="shot"><img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_213,d_people:generic:headshot:67:current.png,q_auto:best,f_auto/v1/people/669373/headshot/67/current" alt="" /></div>
+        <div style="min-width:0">
+          <div class="name"><h3>Tarik Skubal</h3><span class="chip">#29</span><span class="chip">LHP</span></div>
+          <div class="teamline"><img src="https://www.mlbstatic.com/team-logos/119.svg" alt="" /><a href="#">Los Angeles Dodgers</a>
+            <span style="color:oklch(var(--ink-3))">@ CIN · Thu 6:40 PM</span></div>
+        </div>
+      </div>
+      <dl class="facts">
+        <div class="fact"><dt>Age</dt><dd>29</dd></div>
+        <div class="fact"><dt>Bats / throws</dt><dd>R / L</dd></div>
+        <div class="fact"><dt>Height / weight</dt><dd>6' 3", 240 lbs</dd></div>
+        <div class="fact"><dt>MLB debut</dt><dd>Aug 18, 2020</dd></div>
+        <div class="fact"><dt>Draft</dt><dd>2018</dd></div>
+        <div class="fact"><dt>Born</dt><dd>Nov 20, 1996 · Hayward, CA</dd></div>
+      </dl>
+      <div class="season">
+        <div class="k">2026 season</div><div class="v">28 starts</div>
+        <div class="s">Team 17-11 in his starts <span class="muted">· sample</span></div>
+        <div class="k" style="margin-top:12px">Last 5 starts</div>
+        <div class="form"><span class="w">W</span><span class="w">W</span><span>ND</span><span class="l">L</span><span class="w">W</span></div>
+      </div>
+    </div>
+    <dl class="tiles">
+      <div class="tile"><dt>GS</dt><dd>28</dd></div><div class="tile"><dt>IP</dt><dd>176.1</dd></div>
+      <div class="tile"><dt>ERA</dt><dd>2.41</dd></div><div class="tile"><dt>WHIP</dt><dd>0.92</dd></div>
+      <div class="tile"><dt>K</dt><dd>221</dd></div><div class="tile"><dt>BB</dt><dd>38</dd></div>
+      <div class="tile"><dt>K/9</dt><dd>11.3</dd></div><div class="tile"><dt>HR</dt><dd>14</dd></div>
+      <div class="tile"><dt>IP/start</dt><dd>6.3</dd></div>
+    </dl>
+  </section>
+
+  <span class="tag">NFL quarterback · Josh Allen · 12 tiles</span>
+  <section class="card hero">
+    <div class="hero-top">
+      <div class="idy">
+        <div class="shot"><img src="https://a.espncdn.com/i/headshots/nfl/players/full/3918298.png" alt="" /></div>
+        <div style="min-width:0">
+          <div class="name"><h3>Josh Allen</h3><span class="chip">#17</span><span class="chip">QB</span></div>
+          <div class="teamline"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/buf.png" alt="" /><a href="#">Buffalo Bills</a>
+            <span style="color:oklch(var(--ink-3))">vs DET · Thu 8:15 PM</span></div>
+        </div>
+      </div>
+      <dl class="facts">
+        <div class="fact"><dt>Age</dt><dd>30</dd></div>
+        <div class="fact"><dt>Height / weight</dt><dd>6' 5", 237 lbs</dd></div>
+        <div class="fact"><dt>Experience</dt><dd>9th season</dd></div>
+        <div class="fact"><dt>College</dt><dd>Wyoming</dd></div>
+        <div class="fact"><dt>Draft</dt><dd>2018 · Rd 1, Pk 7 (BUF)</dd></div>
+        <div class="fact"><dt>Born</dt><dd>May 21, 1996 · Firebaugh, CA</dd></div>
+      </dl>
+      <div class="season">
+        <div class="k">2025-26 season</div><div class="v">16 games</div>
+        <div class="s">Bills 11-5 in games he played</div>
+        <div class="k" style="margin-top:12px">Last 5</div>
+        <div class="form"><span class="w">W</span><span class="w">W</span><span class="l">L</span><span class="w">W</span><span class="w">W</span></div>
+      </div>
+    </div>
+    <dl class="tiles">
+      <div class="tile"><dt>G</dt><dd>16</dd></div><div class="tile"><dt>Cmp</dt><dd>319</dd></div>
+      <div class="tile"><dt>Att</dt><dd>460</dd></div><div class="tile"><dt>Cmp %</dt><dd>69.3</dd></div>
+      <div class="tile"><dt>Pass yds</dt><dd>3,668</dd></div><div class="tile"><dt>Pass TD</dt><dd>25</dd></div>
+      <div class="tile"><dt>INT</dt><dd>10</dd></div><div class="tile"><dt>Y / A</dt><dd>8.0</dd></div>
+      <div class="tile"><dt>Rating</dt><dd>101.2</dd></div><div class="tile"><dt>Sacks</dt><dd>40</dd></div>
+      <div class="tile"><dt>Rush yds</dt><dd>579</dd></div><div class="tile"><dt>Rush TD</dt><dd>14</dd></div>
+    </dl>
+  </section>
+
+  <span class="tag">NBA · Shai Gilgeous-Alexander · 14 tiles, the worst case for a ragged row</span>
+  <section class="card hero">
+    <div class="hero-top">
+      <div class="idy">
+        <div class="shot"><img src="https://a.espncdn.com/i/headshots/nba/players/full/4278073.png" alt="" /></div>
+        <div style="min-width:0">
+          <div class="name"><h3>Shai Gilgeous-Alexander</h3><span class="chip">#2</span><span class="chip">G</span></div>
+          <div class="teamline"><img src="https://a.espncdn.com/i/teamlogos/nba/500/okc.png" alt="" /><a href="#">Oklahoma City Thunder</a>
+            <span style="color:oklch(var(--ink-3))">season starts Oct 21</span></div>
+        </div>
+      </div>
+      <dl class="facts">
+        <div class="fact"><dt>Age</dt><dd>28</dd></div>
+        <div class="fact"><dt>Height / weight</dt><dd>6' 6", 195 lbs</dd></div>
+        <div class="fact"><dt>Plays</dt><dd>Right</dd></div>
+        <div class="fact"><dt>Experience</dt><dd>8th season</dd></div>
+        <div class="fact"><dt>College</dt><dd>Kentucky</dd></div>
+        <div class="fact"><dt>Draft</dt><dd>2018 · Rd 1, Pk 11 (CHA)</dd></div>
+        <div class="fact fact--wide"><dt>Born</dt><dd>Jul 12, 1998 · Toronto, ON</dd></div>
+      </dl>
+      <div class="season">
+        <div class="k">2025-26 season</div><div class="v">76 games</div>
+        <div class="s">Thunder 58-18 in games he played <span class="muted">· sample</span></div>
+      </div>
+    </div>
+    <dl class="tiles tiles--7">
+      <div class="tile"><dt>G</dt><dd>76</dd></div><div class="tile"><dt>MIN</dt><dd>34.2</dd></div>
+      <div class="tile"><dt>PTS</dt><dd>32.7</dd></div><div class="tile"><dt>REB</dt><dd>5.1</dd></div>
+      <div class="tile"><dt>AST</dt><dd>6.4</dd></div><div class="tile"><dt>3PM</dt><dd>2.1</dd></div>
+      <div class="tile"><dt>FG %</dt><dd>51.9</dd></div><div class="tile"><dt>3P %</dt><dd>37.5</dd></div>
+      <div class="tile"><dt>FT %</dt><dd>89.8</dd></div><div class="tile"><dt>TS %</dt><dd>63.7</dd></div>
+      <div class="tile"><dt>STL</dt><dd>1.7</dd></div><div class="tile"><dt>BLK</dt><dd>1.0</dd></div>
+      <div class="tile"><dt>TOV</dt><dd>2.4</dd></div><div class="tile"><dt>+/-</dt><dd>+9.8</dd></div>
+    </dl>
+  </section>
+
+  <span class="tag">NHL · Nathan MacKinnon · 12 tiles</span>
+  <section class="card hero">
+    <div class="hero-top">
+      <div class="idy">
+        <div class="shot"><img src="https://assets.nhle.com/mugs/nhl/20242025/COL/8477492.png" alt="" /></div>
+        <div style="min-width:0">
+          <div class="name"><h3>Nathan MacKinnon</h3><span class="chip">#29</span><span class="chip">C</span></div>
+          <div class="teamline"><img src="https://assets.nhle.com/logos/nhl/svg/COL_light.svg" alt="" /><a href="#">Colorado Avalanche</a>
+            <span style="color:oklch(var(--ink-3))">season starts Oct 7</span></div>
+        </div>
+      </div>
+      <dl class="facts">
+        <div class="fact"><dt>Age</dt><dd>31</dd></div>
+        <div class="fact"><dt>Shoots</dt><dd>R</dd></div>
+        <div class="fact"><dt>Height / weight</dt><dd>6' 0", 200 lbs</dd></div>
+        <div class="fact fact--wide"><dt>Draft</dt><dd>2013 · Rd 1, Pk 1 (1 overall) · COL</dd></div>
+        <div class="fact fact--wide"><dt>Born</dt><dd>Sep 1, 1995 · Halifax, Nova Scotia, CAN</dd></div>
+      </dl>
+      <div class="season">
+        <div class="k">2025-26 season</div><div class="v">79 games</div>
+        <div class="s">Avalanche 49-30 in games he played <span class="muted">· sample</span></div>
+      </div>
+    </div>
+    <dl class="tiles">
+      <div class="tile"><dt>GP</dt><dd>79</dd></div><div class="tile"><dt>G</dt><dd>32</dd></div>
+      <div class="tile"><dt>A</dt><dd>84</dd></div><div class="tile"><dt>PTS</dt><dd>116</dd></div>
+      <div class="tile"><dt>SOG</dt><dd>321</dd></div><div class="tile"><dt>SH %</dt><dd>10.0</dd></div>
+      <div class="tile"><dt>TOI / GP</dt><dd>22.1</dd></div><div class="tile"><dt>PPG</dt><dd>11</dd></div>
+      <div class="tile"><dt>+/-</dt><dd>+18</dd></div><div class="tile"><dt>Hits</dt><dd>63</dd></div>
+      <div class="tile"><dt>Blocks</dt><dd>41</dd></div><div class="tile"><dt>FO %</dt><dd>46.2</dd></div>
+    </dl>
+  </section>
+
+  <span class="tag">Soccer · Matheus Cunha · three facts only, and it still has to look deliberate</span>
+  <section class="card hero">
+    <div class="hero-top">
+      <div class="idy">
+        <div class="shot"><img src="https://a.espncdn.com/i/headshots/soccer/players/full/259902.png" alt="" /></div>
+        <div style="min-width:0">
+          <div class="name"><h3>Matheus Cunha</h3><span class="chip">#10</span><span class="chip">Forward</span></div>
+          <div class="teamline"><img src="https://a.espncdn.com/i/teamlogos/soccer/500/360.png" alt="" /><a href="#">Manchester United</a>
+            <span style="color:oklch(var(--ink-3))">vs CHE · Sat 12:30 PM</span></div>
+        </div>
+      </div>
+      <dl class="facts">
+        <div class="fact"><dt>Age</dt><dd>27</dd></div>
+        <div class="fact"><dt>Height / weight</dt><dd>6' 0", 168 lbs</dd></div>
+        <div class="fact"><dt>Citizenship</dt><dd>Brazil</dd></div>
+        <div class="fact"><dt>Born</dt><dd>May 27, 1999</dd></div>
+      </dl>
+      <div class="season">
+        <div class="k">2026-27 season</div><div class="v">4 appearances</div>
+        <div class="s">4 games old, so the tiles show 2025-26</div>
+      </div>
+    </div>
+    <dl class="tiles">
+      <div class="tile"><dt>Apps</dt><dd>33</dd></div><div class="tile"><dt>Starts</dt><dd>29</dd></div>
+      <div class="tile"><dt>Goals</dt><dd>15</dd></div><div class="tile"><dt>Assists</dt><dd>6</dd></div>
+      <div class="tile"><dt>Shots</dt><dd>98</dd></div><div class="tile"><dt>On target</dt><dd>41</dd></div>
+      <div class="tile"><dt>On target %</dt><dd>41.8</dd></div><div class="tile"><dt>Conversion %</dt><dd>15.3</dd></div>
+    </dl>
+  </section>
+
+  <span class="tag">Tennis · Carlos Alcaraz · no team, no jersey, no position</span>
+  <section class="card hero">
+    <div class="hero-top">
+      <div class="idy">
+        <div class="shot"><img src="https://a.espncdn.com/i/headshots/tennis/players/full/3782.png" alt="" /></div>
+        <div style="min-width:0">
+          <div class="name"><h3>Carlos Alcaraz</h3><span class="chip">ATP</span><span class="chip">No. 1</span></div>
+          <div class="teamline"><span style="color:oklch(var(--ink-3))">Laver Cup · Fri · vs Zverev</span></div>
+        </div>
+      </div>
+      <dl class="facts">
+        <div class="fact"><dt>Age</dt><dd>23</dd></div>
+        <div class="fact"><dt>Plays</dt><dd>Right</dd></div>
+        <div class="fact"><dt>Height / weight</dt><dd>6' 0", 163 lbs</dd></div>
+        <div class="fact"><dt>Experience</dt><dd>8th season</dd></div>
+        <div class="fact"><dt>Born</dt><dd>May 5, 2003</dd></div>
+      </dl>
+      <div class="season">
+        <div class="k">2026 season</div><div class="v">61 matches</div>
+        <div class="s">Archive last updated Sep 14 <span class="muted">· R4-F1</span></div>
+      </div>
+    </div>
+    <dl class="tiles">
+      <div class="tile"><dt>Matches</dt><dd>61</dd></div><div class="tile"><dt>Won</dt><dd>48</dd></div>
+      <div class="tile"><dt>Win %</dt><dd>78.7</dd></div><div class="tile"><dt>Sets won %</dt><dd>71.2</dd></div>
+      <div class="tile"><dt>Games won %</dt><dd>55.1</dd></div><div class="tile"><dt>TB / match</dt><dd>0.6</dd></div>
+    </dl>
+  </section>
+
+  <h2>5. Live card — MLB (real, Dodgers–Reds, top 9th)</h2>
+  <p class="note">Its own section under the hero, only while the game is live. Bands: the game, the scoreboard beside the
+    sport's situation, the player's own game, his lines against the same main line the prop block shows, then what just
+    happened.</p>
+  <section class="card card--sm live">
+    <div class="live-head">
+      <span class="who"><span class="chip chip--live">● Live</span> &nbsp;LAD @ CIN · Top 9th</span>
+      <a class="lnk" href="#">Game page →</a>
+    </div>
+    <div class="band score-band">
+      <div class="score">
+        <div class="score-row"><span class="t"><img src="https://www.mlbstatic.com/team-logos/119.svg" alt="" />LAD</span><span class="n">4</span></div>
+        <div class="score-row dim"><span class="t"><img src="https://www.mlbstatic.com/team-logos/113.svg" alt="" />CIN</span><span class="n">0</span></div>
+      </div>
+      <div class="sit">
+        <div><div class="k">Count</div><div class="v">2–2</div>
+          <div class="dots"><i class="on"></i><i class="on"></i><i></i></div>
+          <div class="dots"><i class="on"></i><i class="on"></i></div></div>
+        <div><div class="k">Outs</div><div class="v">1</div><div class="dots"><i class="on"></i><i></i></div></div>
+        <div><div class="k">Bases</div>
+          <svg width="52" height="46" viewBox="0 0 52 46" aria-label="Bases empty" style="margin-top:2px">
+            <rect x="21" y="7" width="12" height="12" transform="rotate(45 27 13)" fill="none" stroke="oklch(var(--line))" stroke-width="1.5"/>
+            <rect x="33" y="19" width="12" height="12" transform="rotate(45 39 25)" fill="none" stroke="oklch(var(--line))" stroke-width="1.5"/>
+            <rect x="9" y="19" width="12" height="12" transform="rotate(45 15 25)" fill="none" stroke="oklch(var(--line))" stroke-width="1.5"/>
+          </svg></div>
+        <div style="display:grid;gap:8px">
+          <div class="who-row"><span class="av"><img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_120,q_auto:best/v1/people/676439/headshot/67/current" alt=""/></span>
+            <span><span class="k">At the plate</span><div class="nm">Hunter Feduccia</div><div class="ln">1-for-2, groundout</div></span></div>
+          <div class="who-row"><span class="av"><img src="https://img.mlbstatic.com/mlb-photos/image/upload/w_120,q_auto:best/v1/people/622088/headshot/67/current" alt=""/></span>
+            <span><span class="k">On the mound</span><div class="nm">Tejay Antone</div><div class="ln">0.1 IP · 0 H · 0 K · 5 pitches</div></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="band">
+      <div class="sub">Elly De La Cruz today</div>
+      <div class="today"><span class="hl">1-for-2</span><span class="f">0 R</span><span class="f">0 RBI</span><span class="f">1 BB</span><span class="f">0 K</span><span class="f">1 SB</span></div>
+      <ul class="plays">
+        <li><b>PA 1</b><span>Walk — Carlos Jorge to 2nd (1st)</span></li>
+        <li><b>PA 2</b><span>Double (29) on a line drive to left fielder Teoscar Hernández (3rd)</span></li>
+        <li><b>PA 3</b><span>Groundout to catcher Hunter Feduccia (6th)</span></li>
+      </ul>
+    </div>
+    <div class="band">
+      <div class="sub">Lines so far</div>
+      <table class="lines">
+        <thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th style="width:130px">Progress</th><th class="num">Price</th></tr></thead>
+        <tbody>
+          <tr><td>Hits</td><td>O 0.5</td><td class="num">1</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">−185</td></tr>
+          <tr><td>Total bases</td><td>O 0.5</td><td class="num">2</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">−165</td></tr>
+          <tr><td>Walks</td><td>O 0.5</td><td class="num">1</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">+162</td></tr>
+          <tr><td>Stolen bases</td><td>O 0.5</td><td class="num">1</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">+456</td></tr>
+          <tr><td>Home runs</td><td>O 0.5</td><td class="num">0</td><td><span class="bar"><i style="width:6%"></i></span></td><td class="num">+500</td></tr>
+          <tr><td>RBIs</td><td>O 0.5</td><td class="num">0</td><td><span class="bar"><i style="width:6%"></i></span></td><td class="num">+257</td></tr>
+          <tr><td>H+R+RBI</td><td>O 1.5</td><td class="num">1</td><td><span class="bar"><i style="width:66%"></i></span></td><td class="num">+113</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="band feed">
+      <span><b>T9</b> Tommy Edman groundout</span><span><b>B8</b> Matt McLain strikeout</span>
+      <span><b>B8</b> Juan Brito single</span><span><b>B8</b> Tyler Stephenson into double play</span>
+    </div>
+  </section>
+
+  <h2>6. Live card — the other sports</h2>
+  <p class="note">Same five bands; only the situation, the player's line and the feed differ, and each is what that
+    sport's live module actually holds. Values below are samples in a real shape.</p>
+
+  <span class="tag">NFL and CFB — quarter, clock, possession, down and distance, red zone</span>
+  <section class="card card--sm live">
+    <div class="live-head"><span class="who"><span class="chip chip--live">● Live</span> &nbsp;DET @ BUF · Q3 4:12</span><a class="lnk" href="#">Game page →</a></div>
+    <div class="band score-band">
+      <div class="score">
+        <div class="score-row dim"><span class="t"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/det.png" alt="" />DET</span><span class="n">17</span></div>
+        <div class="score-row"><span class="t"><img src="https://a.espncdn.com/i/teamlogos/nfl/500/buf.png" alt="" />BUF</span><span class="n">20</span></div>
+      </div>
+      <div class="sit">
+        <div><div class="k">Possession</div><div class="v">BUF</div></div>
+        <div><div class="k">Down</div><div class="v">2nd &amp; 7</div></div>
+        <div><div class="k">Ball on</div><div class="v">DET 34</div></div>
+        <div><span class="chip chip--bad">Red zone</span></div>
+      </div>
+    </div>
+    <div class="band">
+      <div class="sub">Josh Allen today</div>
+      <div class="today"><span class="hl">18-of-27, 214 yds</span><span class="f">2 TD</span><span class="f">0 INT</span><span class="f">6 car, 41 rush yds</span></div>
+    </div>
+    <div class="band">
+      <div class="sub">Lines so far</div>
+      <table class="lines">
+        <thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th style="width:130px">Progress</th><th class="num">Price</th></tr></thead>
+        <tbody>
+          <tr><td>Passing yards</td><td>O 248.5</td><td class="num">214</td><td><span class="bar"><i style="width:86%"></i></span></td><td class="num">−114</td></tr>
+          <tr><td>Passing TDs</td><td>O 1.5</td><td class="num">2</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">+105</td></tr>
+          <tr><td>Rushing yards</td><td>O 29.5</td><td class="num">41</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">−114</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="band feed">
+      <span><b>Q3 6:02</b> Allen 14-yd TD pass to Kincaid</span><span><b>Q2 0:41</b> Bass 48-yd FG</span>
+      <span><b>Q2 8:15</b> Gibbs 3-yd TD run</span>
+    </div>
+  </section>
+
+  <span class="tag">NBA — quarter, clock, quarter-by-quarter; no play feed is held</span>
+  <section class="card card--sm live">
+    <div class="live-head"><span class="who"><span class="chip chip--live">● Live</span> &nbsp;DAL @ OKC · Q2 7:48</span><a class="lnk" href="#">Game page →</a></div>
+    <div class="band score-band">
+      <div class="score">
+        <div class="score-row dim"><span class="t"><img src="https://a.espncdn.com/i/teamlogos/nba/500/dal.png" alt="" />DAL</span><span class="n">41</span></div>
+        <div class="score-row"><span class="t"><img src="https://a.espncdn.com/i/teamlogos/nba/500/okc.png" alt="" />OKC</span><span class="n">48</span></div>
+      </div>
+      <div class="sit">
+        <div><div class="k">By quarter</div><div class="v">28-24 · 13-24</div></div>
+        <div><div class="k">Clock</div><div class="v">Q2 7:48</div></div>
+      </div>
+    </div>
+    <div class="band">
+      <div class="sub">Shai Gilgeous-Alexander today</div>
+      <div class="today"><span class="hl">18 pts</span><span class="f">14:32 min</span><span class="f">3 reb</span><span class="f">4 ast</span><span class="f">1 stl</span><span class="f">2 TO</span></div>
+    </div>
+    <div class="band">
+      <div class="sub">Lines so far</div>
+      <table class="lines">
+        <thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th style="width:130px">Progress</th><th class="num">Price</th></tr></thead>
+        <tbody>
+          <tr><td>Points</td><td>O 31.5</td><td class="num">18</td><td><span class="bar"><i style="width:57%"></i></span></td><td class="num">−110</td></tr>
+          <tr><td>Assists</td><td>O 5.5</td><td class="num">4</td><td><span class="bar"><i style="width:72%"></i></span></td><td class="num">−120</td></tr>
+          <tr><td>Pts+Reb+Ast</td><td>O 41.5</td><td class="num">25</td><td><span class="bar"><i style="width:60%"></i></span></td><td class="num">−115</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="band"><span class="muted">Play-by-play is not held for the NBA live feed; the quarter scores above are what it carries.</span></div>
+  </section>
+
+  <span class="tag">NHL — period, clock, shots on goal; goals and penalties as the feed</span>
+  <section class="card card--sm live">
+    <div class="live-head"><span class="who"><span class="chip chip--live">● Live</span> &nbsp;VGK @ COL · 2nd 11:26</span><a class="lnk" href="#">Game page →</a></div>
+    <div class="band score-band">
+      <div class="score">
+        <div class="score-row dim"><span class="t"><img src="https://assets.nhle.com/logos/nhl/svg/VGK_light.svg" alt="" />VGK</span><span class="n">1</span></div>
+        <div class="score-row"><span class="t"><img src="https://assets.nhle.com/logos/nhl/svg/COL_light.svg" alt="" />COL</span><span class="n">3</span></div>
+      </div>
+      <div class="sit">
+        <div><div class="k">Shots</div><div class="v">14 – 21</div></div>
+        <div><div class="k">Period</div><div class="v">2nd · 11:26</div></div>
+      </div>
+    </div>
+    <div class="band">
+      <div class="sub">Nathan MacKinnon today</div>
+      <div class="today"><span class="hl">1 G, 1 A</span><span class="f">2 pts</span><span class="f">5 SOG</span><span class="f">2 hits</span><span class="f">13:04 TOI</span></div>
+    </div>
+    <div class="band">
+      <div class="sub">Lines so far</div>
+      <table class="lines">
+        <thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th style="width:130px">Progress</th><th class="num">Price</th></tr></thead>
+        <tbody>
+          <tr><td>Points</td><td>O 1.5</td><td class="num">2</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">+135</td></tr>
+          <tr><td>Shots on goal</td><td>O 4.5</td><td class="num">5</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">−130</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="band feed">
+      <span><b>P2 14:02</b> MacKinnon goal (PP)</span><span><b>P1 06:38</b> Eichel goal (EV)</span>
+      <span><b>P1 02:11</b> Makar · tripping</span>
+    </div>
+  </section>
+
+  <span class="tag">Soccer — minute and score; per-player live stats are not held (decision 5)</span>
+  <section class="card card--sm live">
+    <div class="live-head"><span class="who"><span class="chip chip--live">● Live</span> &nbsp;MUN vs CHE · 63'</span><a class="lnk" href="#">Game page →</a></div>
+    <div class="band score-band">
+      <div class="score">
+        <div class="score-row"><span class="t"><img src="https://a.espncdn.com/i/teamlogos/soccer/500/360.png" alt="" />MUN</span><span class="n">2</span></div>
+        <div class="score-row dim"><span class="t"><img src="https://a.espncdn.com/i/teamlogos/soccer/500/363.png" alt="" />CHE</span><span class="n">1</span></div>
+      </div>
+      <div class="sit">
+        <div><div class="k">Half</div><div class="v">2nd · 63'</div></div>
+        <div><div class="k">Half-time</div><div class="v">1 – 1</div></div>
+      </div>
+    </div>
+    <div class="band">
+      <div class="sub">Matheus Cunha today</div>
+      <span class="muted">Per-player live stats are not held for soccer — the feed carries goals, cards and the clock only.
+        His goals and cards appear below as they happen.</span>
+    </div>
+    <div class="band">
+      <div class="sub">Lines so far</div>
+      <table class="lines">
+        <thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th style="width:130px">Progress</th><th class="num">Price</th></tr></thead>
+        <tbody>
+          <tr><td>Anytime goalscorer</td><td>Yes</td><td class="num">1</td><td><span class="bar"><i class="done" style="width:100%"></i></span></td><td class="num">+180</td></tr>
+        </tbody>
+      </table>
+      <div class="muted" style="margin-top:6px">From the event feed, not a box score: a goal is the only player fact the feed names.</div>
+    </div>
+    <div class="band feed">
+      <span><b>58'</b> Cunha goal</span><span><b>44'</b> Palmer goal</span><span><b>31'</b> Mount · yellow card</span>
+    </div>
+  </section>
+
+  <span class="tag">Tennis — set scores only; no point-by-point (R4)</span>
+  <section class="card card--sm live">
+    <div class="live-head"><span class="who"><span class="chip chip--live">● Live</span> &nbsp;Alcaraz vs Zverev · 2nd set</span><a class="lnk" href="#">Match page →</a></div>
+    <div class="band score-band">
+      <div class="score">
+        <div class="score-row"><span class="t">Alcaraz</span><span class="n">6 &nbsp;3</span></div>
+        <div class="score-row dim"><span class="t">Zverev</span><span class="n">4 &nbsp;2</span></div>
+      </div>
+      <div class="sit">
+        <div><div class="k">Status</div><div class="v">2nd set · on serve</div></div>
+        <div><div class="k">Sets</div><div class="v">1 – 0</div></div>
+      </div>
+    </div>
+    <div class="band">
+      <div class="sub">Carlos Alcaraz today</div>
+      <span class="muted">Aces, serve and return are not held live — the archive updates after the match (R4-F1).
+        The set scores above are the whole live picture for tennis.</span>
+    </div>
+    <div class="band">
+      <div class="sub">Lines so far</div>
+      <table class="lines">
+        <thead><tr><th>Market</th><th>Line</th><th class="num">Now</th><th style="width:130px">Progress</th><th class="num">Price</th></tr></thead>
+        <tbody>
+          <tr><td>Total games</td><td>O 22.5</td><td class="num">15</td><td><span class="bar"><i style="width:67%"></i></span></td><td class="num">−105</td></tr>
+          <tr><td>Match winner</td><td>Alcaraz</td><td class="num">—</td><td><span class="bar"><i style="width:50%"></i></span></td><td class="num">−450</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+</body>
+</html>
