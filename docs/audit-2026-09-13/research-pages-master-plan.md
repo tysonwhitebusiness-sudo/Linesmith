@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; R7.1-R7.3 signed off; R7.4 (soccer, old page deleted) COMPLETE 2026-09-16 — **R7 is done**, awaiting sign-off; R8 (game page) next.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1642,6 +1642,44 @@ Spec: `docs/design/phase-g2/src/team.html`, `src/sports/team-common.js`,
 ---
 
 ## R8 — Game page rebuild with three states ◆ large
+
+**R8 STARTED 2026-09-16 — Step 0 audit done** (`scratchpad` probes against the
+seven G2 fixture games and a live MLB game; route and parser inventory).
+
+- **What the seven game pages render today:** the old betting-first layout on
+  every sport ("Candidates", "Good Bets", "My picks", "Line shopping", unit
+  grades), no state switch, no live or recap sections. None of the G2 cards.
+- **Past games (R1d, R6-F6), measured by fixture:**
+  | sport | route loads by | fixture | today |
+  |---|---|---|---|
+  | MLB | today's snapshot | KC @ BOS 824711 | "isn't on today's slate" |
+  | NFL | today's snapshot + `/api/nfl/game` | DAL @ NYG 401872930 | 404 |
+  | CFB, NBA, soccer | their own `/api/{sport}/game/{id}` | all three | load |
+  | NHL | `/api/nhl/game/{id}`, **NHL ids** | FLA @ TOR 2025021270 | loads (the ESPN id 401803621 404s; the player and team pages already link NHL ids) |
+  | tennis | `/api/tennis/{tour}/game/{id}` | Paul v Zverev has no id in G2 | checked in its sub-phase |
+  Both fixes are reads that already exist: StatsAPI's live feed by pk works
+  for any MLB game (`getLiveFeed`, R4's fixture is 824711) and the shared ESPN
+  summary fetch takes any NFL event id (`fetchEspnSummary`).
+- **R4 built every flow and detail parser the Final table names** and no card
+  reads them: ESPN win probability and biggest swings, drives, court plays,
+  lead tracker and scoring runs, lines open/close with result vs line, season
+  series, injuries with a report time, soccer lineups, commentary and last
+  five; MLB at-bats (every pitch and batted ball), pitch mix and win
+  probability; NHL play-by-play with shooter, goalie and strength. The
+  pre/post-start odds split (`gameLineHistory.ts`) and `usePropOdds(…, start)`
+  (R6-F10's fix, on the player page) exist too.
+- **Premise to carry into the MLB group:** the pregame Statcast rollup
+  (`mlb_statcast_game_pregame`, R5a) holds today's and tomorrow's games kept
+  from kickoff, and began 2026-09-15. The "Starters" card will be empty for an
+  MLB game before that date, including the G2 fixture, and must say so.
+- **Order (operator decision asked):** the plan's groups run football → MLB →
+  soccer/tennis → NBA/NHL, but its own verify rule needs MLB live "before the
+  regular season ends" (last games 2026-09-27) and three MLB games were live
+  during this audit, while football's live checks recur every week through
+  January. Step 0 proposes MLB first, with a shared shell (state from the
+  game's real status, one hero, section nav, before/live/final frames) built on
+  it the way R7.1 built the team page on MLB.
+
 
 Spec: `docs/design/phase-g2/src/game.html`, `common-game.js`,
 `game-football.js`, `game-hoops-hockey.js`, `game-mlb.js`,
