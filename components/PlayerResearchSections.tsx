@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
-import { Avatar, Card, Chip, cx, DataTable, EmptyState, ErrorState, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column } from './ui';
+import { Avatar, Card, Chip, cx, DataTable, EmptyState, ErrorState, LeagueStripRow, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column } from './ui';
 import { CATEGORICAL, CourtScatter, FieldScatter, Histogram, PitchScatter, RinkScatter, SeriesChart, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import {
@@ -508,6 +508,74 @@ function ScatterCard({ card }: { card: Extract<ResearchCard, { kind: 'scatter' }
   );
 }
 
+function TableCard({ card }: { card: Extract<ResearchCard, { kind: 'table' }> }) {
+  const views = card.views ?? [{ key: 'main', label: card.title, labelHeader: card.labelHeader, columns: card.columns, rows: card.rows, sortKey: card.sortKey }];
+  const [viewKey, setViewKey] = useState(views[0]?.key);
+  const view = views.find((v) => v.key === viewKey) ?? views[0];
+  const sortable = !card.fixedOrder;
+  const columns: Column<TableRow>[] = [
+    {
+      key: 'label',
+      label: view.labelHeader,
+      sortable: false,
+      render: (r: TableRow) => (
+        <span className="flex min-w-0 items-center gap-2">
+          {r.imageUrl ? <Avatar kind={r.imageKind ?? 'logo'} label={r.label} src={r.imageUrl} size={r.imageKind === 'player' ? 26 : 20} decorative /> : null}
+          {r.href ? (
+            <Link href={r.href} className={cx('truncate underline-offset-2 hover:underline', r.highlight ? 'font-semibold text-ink' : 'text-ink')}>
+              {r.label}
+            </Link>
+          ) : (
+            <span className={cx('truncate', r.highlight && 'font-semibold')}>{r.label}</span>
+          )}
+          {r.labelNote ? <span className="shrink-0 text-label text-ink-muted">{r.labelNote}</span> : null}
+        </span>
+      ),
+    },
+    ...view.columns.map((c) => ({
+      key: c.key,
+      label: c.label,
+      numeric: true,
+      sortable,
+      title: c.info,
+      render: (r: TableRow) => {
+        const tone = r.tones?.[c.key];
+        const text = formatResearchValue(r.values[c.key], c);
+        return tone ? <span className={cx('font-semibold', tone === 'good' ? 'text-good' : 'text-bad')}>{text}</span> : text;
+      },
+      sortValue: (r: TableRow) => {
+        const v = r.values[c.key];
+        return typeof v === 'number' ? v : typeof v === 'string' ? v : null;
+      },
+    })),
+  ];
+  return (
+    <Card
+      title={card.title}
+      scope={card.scope}
+      info={card.info}
+      caption={card.caption}
+      dense
+      state={view.rows.length ? { kind: 'ready' } : { kind: 'empty', title: card.emptyText ?? 'Nothing to list', reason: 'The source has no rows for this season.' }}
+    >
+      {views.length > 1 ? (
+        <SegmentedToggle label={`${card.title} view`} size="sm" value={view.key} onChange={setViewKey} options={views.map((v) => ({ value: v.key, label: v.label }))} className="mb-2" />
+      ) : null}
+      <DataTable
+        key={view.key}
+        caption={`${card.title}${views.length > 1 ? `: ${view.label}` : ''}`}
+        columns={columns}
+        rows={view.rows}
+        rowKey={(r) => r.key}
+        dense
+        maxHeight={card.views ? 560 : 420}
+        initialSort={view.sortKey ? { key: view.sortKey, desc: true } : undefined}
+        rowClassName={(r) => (r.highlight ? 'bg-card-sunk' : undefined)}
+      />
+    </Card>
+  );
+}
+
 /** One card of a sport section, by kind. Knows nothing about which sport built it. */
 export function ResearchCardView({ card }: { card: ResearchCard }) {
   switch (card.kind) {
@@ -516,7 +584,9 @@ export function ResearchCardView({ card }: { card: ResearchCard }) {
         <Card title={card.title} scope={card.scope} info={card.info} caption={card.caption}>
           <div className="space-y-0.5">
             {card.rows.map((r) =>
-              r.percentile != null ? (
+              r.strip && r.rank ? (
+                <LeagueStripRow key={r.key} label={r.label} valueText={r.valueText} league={r.strip.league} value={r.strip.value} rank={r.rank} direction={r.direction} info={r.info} />
+              ) : r.percentile != null ? (
                 <RankRow key={r.key} label={r.label} valueText={r.valueText} percentile={r.percentile} direction={r.direction} info={r.info} />
               ) : (
                 <div key={r.key} className="grid grid-cols-[minmax(64px,140px)_1fr_auto] items-center gap-x-3 px-1 py-1.5">
@@ -534,6 +604,14 @@ export function ResearchCardView({ card }: { card: ResearchCard }) {
         <Card title={card.title} scope={card.scope} caption={card.caption}>
           <Histogram bins={card.bars} label={card.title} />
           {card.highlightLabel ? <VizLegend items={[{ label: card.highlightLabel, color: 'oklch(18% 0.005 260)' }]} /> : null}
+          {card.toneLegend ? (
+            <VizLegend
+              items={[
+                { label: card.toneLegend.good, color: 'rgb(var(--good))' },
+                { label: card.toneLegend.bad, color: 'rgb(var(--bad))' },
+              ]}
+            />
+          ) : null}
         </Card>
       );
     case 'series':
@@ -558,27 +636,8 @@ export function ResearchCardView({ card }: { card: ResearchCard }) {
           {card.legend ? <VizLegend items={card.legend.map((l) => ({ label: l.label, color: l.dark ? 'oklch(18% 0.005 260)' : 'oklch(80% 0.004 260)' }))} /> : null}
         </Card>
       );
-    case 'table': {
-      const columns: Column<TableRow>[] = [
-        { key: 'label', label: card.labelHeader, sortable: false },
-        ...card.columns.map((c) => ({
-          key: c.key,
-          label: c.label,
-          numeric: true,
-          title: c.info,
-          render: (r: TableRow) => formatResearchValue(r.values[c.key], c),
-          sortValue: (r: TableRow) => {
-            const v = r.values[c.key];
-            return typeof v === 'number' ? v : typeof v === 'string' ? v : null;
-          },
-        })),
-      ];
-      return (
-        <Card title={card.title} scope={card.scope} info={card.info} caption={card.caption} dense state={card.rows.length ? { kind: 'ready' } : { kind: 'empty', title: card.emptyText ?? 'Nothing to list', reason: 'The source has no rows for this season.' }}>
-          <DataTable caption={card.title} columns={columns} rows={card.rows} rowKey={(r) => r.key} dense maxHeight={420} />
-        </Card>
-      );
-    }
+    case 'table':
+      return <TableCard card={card} />;
     case 'surface':
       return <SurfaceCard card={card} />;
     case 'scatter':

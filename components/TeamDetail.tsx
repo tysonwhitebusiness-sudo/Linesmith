@@ -82,10 +82,14 @@ export function TeamDetail({ sport, teamId, league, snapshot, odds, onAdd, added
   // half's queries simply go nowhere (`useNflTeamDetail` no-ops for
   // `teamId undefined`; MLB's hooks return their own "no data" state when
   // `sport !== 'mlb'` never reads it downstream).
-  const roster = useTeamRoster(teamId);
-  const form = useTeamForm(teamId);
-  const teamStatcast = useTeamStatcast(teamId);
-  const batterRanks = useTeamBatterRanks(teamId);
+  // R2-F7: MLB's hooks idle for every other sport. They were passed the page's
+  // id whatever the sport, so `/nfl/team/13` asked `/api/mlb/team/13` (400)
+  // and `/api/mlb/team-statcast?teamId=13` for a baseball team that is not it.
+  const mlbTeamId = sport === 'mlb' ? teamId : undefined;
+  const roster = useTeamRoster(mlbTeamId);
+  const form = useTeamForm(mlbTeamId);
+  const teamStatcast = useTeamStatcast(mlbTeamId);
+  const batterRanks = useTeamBatterRanks(mlbTeamId);
   const nflTeam = useNflTeamDetail(sport === 'nfl' ? teamId : undefined);
   const soccerTeam = useSoccerTeamDetail(sport === 'soccer' ? teamId : undefined, sport === 'soccer' ? league : undefined);
   const cfbTeam = useCfbTeamDetail(sport === 'cfb' ? teamId : undefined);

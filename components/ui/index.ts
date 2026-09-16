@@ -13,7 +13,7 @@ export { Card, type CardProps, type CardState } from './Card';
 export { SegmentedToggle, Tabs, SelectBox, type Option } from './Controls';
 export { Chip, StatusPill, type ChipProps, type ChipTone, type ChipSize, type ChipShape } from './Chip';
 export { Avatar, type AvatarProps } from './Avatar';
-export { StatValue, StatGrid, RankRow, FactList, VizLegend, goodness, percentileColor, ordinal, type StatDirection, type StatValueProps, type RankRowProps } from './Stats';
+export { StatValue, StatGrid, RankRow, LeagueStripRow, FactList, VizLegend, goodness, percentileColor, ordinal, type StatDirection, type StatValueProps, type RankRowProps } from './Stats';
 export { DataTable, type Column, type DataTableProps } from './DataTable';
 export { DrillDownPanel, type DrillDownPanelProps } from './DrillDownPanel';
 export { Section, SectionNav } from './Section';

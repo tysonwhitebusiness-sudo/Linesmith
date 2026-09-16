@@ -146,6 +146,68 @@ export function RankRow({ label, valueText, percentile, direction, rank, info }:
   );
 }
 
+/**
+ * A league rank drawn as every team's value on one line, this team's dot
+ * large — R7's team stats (G2 `rankRow` with a league). Position along the
+ * line is the value; colour repeats whether the rank is in the better half,
+ * never on its own (the rank is printed beside the value).
+ */
+export function LeagueStripRow({
+  label,
+  valueText,
+  league,
+  value,
+  rank,
+  direction,
+  info,
+}: {
+  label: ReactNode;
+  valueText: ReactNode;
+  league: readonly number[];
+  value: number;
+  rank: { rank: number; of: number };
+  direction: StatDirection;
+  info?: ReactNode;
+}) {
+  const lo = Math.min(...league, value);
+  const hi = Math.max(...league, value);
+  const at = (v: number) => (hi === lo ? 50 : 3 + ((v - lo) / (hi - lo)) * 94);
+  const goodHalf = rank.of > 1 ? rank.rank <= Math.ceil(rank.of / 2) : true;
+  const color = direction === 'neutral' ? 'oklch(var(--ink-muted))' : goodHalf ? 'rgb(var(--good))' : 'rgb(var(--bad))';
+  return (
+    <Tooltip
+      content={
+        <>
+          <TipRow value={valueText} label={label} />
+          <div className="mt-0.5 text-white/70">
+            {ordinal(rank.rank)} of {rank.of}
+            {direction === 'lower' ? ' · lower is better' : ''}
+            {info ? <> · {info}</> : null}
+          </div>
+        </>
+      }
+    >
+      <div className="grid grid-cols-[minmax(64px,160px)_minmax(48px,1fr)_auto] items-center gap-x-3 rounded-md px-1 py-1.5 hover:bg-card-sunk">
+        <div className="truncate text-body-sm text-ink-secondary">{label}</div>
+        <div className="relative h-4" aria-hidden>
+          <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-line" />
+          {league.map((v, i) => (
+            <span key={i} className="absolute top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink-faint" style={{ left: `${at(v)}%` }} />
+          ))}
+          <span
+            className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full shadow-[0_0_0_2px_oklch(var(--card))]"
+            style={{ left: `${at(value)}%`, background: color }}
+          />
+        </div>
+        <div className="text-right text-body-sm tabular-nums text-ink">
+          <span className="font-semibold">{valueText}</span>
+          <span className="text-label text-ink-muted"> · {ordinal(rank.rank)}</span>
+        </div>
+      </div>
+    </Tooltip>
+  );
+}
+
 /** Label/value pairs. Entries with no value are dropped rather than shown as blanks. */
 export function FactList({ items, className }: { items: Array<[ReactNode, ReactNode]>; className?: string }) {
   const shown = items.filter(([, v]) => v != null && v !== '');

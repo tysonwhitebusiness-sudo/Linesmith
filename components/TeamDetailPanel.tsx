@@ -5,6 +5,7 @@ import type { PickCandidate, Sport, SoccerLeague, SportSnapshot } from '@/lib/co
 import type { UnifiedLinesResult } from '@/lib/odds/types';
 import { TeamLogo } from './SubjectAvatar';
 import { TeamDetail } from './TeamDetail';
+import { TeamResearchPage } from './TeamResearchPage';
 import { BrandedLoader } from './BrandedLoader';
 import { useAllTeams, type TeamStandingRow } from './useAllTeams';
 import { useAllNflTeams } from './useAllNflTeams';
@@ -150,7 +151,7 @@ function TeamListShell({
   );
 }
 
-function MlbTeamDetailPanel({ initialTeamId, snapshot, odds, onAdd, addedKeys }: Omit<TeamDetailPanelProps, 'sport'>) {
+function MlbTeamDetailPanel({ initialTeamId }: Omit<TeamDetailPanelProps, 'sport'>) {
   const [search, setSearch] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const { teams, loading, error } = useAllTeams();
@@ -179,17 +180,9 @@ function MlbTeamDetailPanel({ initialTeamId, snapshot, odds, onAdd, addedKeys }:
     >
       {!detailReady && <BrandedLoader size="page" />}
       <div style={{ display: detailReady ? 'block' : 'none' }}>
-        <TeamDetail
-          sport="mlb"
-          teamId={activeTeamId}
-          snapshot={snapshot}
-          odds={odds ?? null}
-          onAdd={onAdd}
-          addedKeys={addedKeys}
-          standingsTeams={teams}
-          standingsLoading={loading}
-          onReadyChange={setDetailReady}
-        />
+        {/* R7.1: MLB's team page is the rebuilt research page. The other sports
+            move to it in R7.2-R7.4 and keep `TeamDetail` until then. */}
+        <TeamResearchPage sport="mlb" teamId={activeTeamId} onReadyChange={setDetailReady} />
       </div>
     </TeamListShell>
   );

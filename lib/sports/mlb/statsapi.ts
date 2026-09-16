@@ -1238,3 +1238,174 @@ export async function getHandedness(ids: number[]): Promise<Map<number, { pitchH
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Team page (R7)
+// ---------------------------------------------------------------------------
+
+export interface MlbTeamScheduleGame {
+  gamePk: number;
+  gameDate: string;
+  officialDate: string;
+  gameType: string;
+  state: 'final' | 'live' | 'scheduled' | 'postponed';
+  homeId: number;
+  awayId: number;
+  homeName: string;
+  awayName: string;
+  homeAbbr: string;
+  awayAbbr: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  innings: number | null;
+  scheduledInnings: number;
+  doubleHeader: string;
+  gameNumber: number;
+  seriesDescription: string | null;
+  seriesGameNumber: number | null;
+  venue: string | null;
+}
+
+/**
+ * One team's whole season from the league's schedule — regular season plus
+ * postseason (`F` wild card, `D` division, `L` league, `W` World Series), with
+ * game type kept so the page never folds October into the record.
+ *
+ * R7-C1: the team page reads this, not `game_result`, which missed three of
+ * the Royals' 151 games in 2026 and double-counted one in 2025.
+ *
+ * A suspended game is listed twice under one pk; the final entry is kept. A
+ * postponed game that was made up is listed on its new date as well; the
+ * postponed entry is dropped when the pk also appears as played.
+ */
+export async function getTeamSeasonSchedule(teamId: number, season: number): Promise<MlbTeamScheduleGame[]> {
+  const current = season >= Number(easternDate().slice(0, 4));
+  const url = `${BASE}/v1/schedule?sportId=1&teamId=${teamId}&season=${season}&gameType=R,F,D,L,W&hydrate=team,venue,linescore`;
+  const json = await cachedJson(`team-schedule:${teamId}:${season}`, url, current ? 30 * 60_000 : 7 * 24 * 60 * 60_000);
+  const byPk = new Map<number, MlbTeamScheduleGame>();
+  const rank = { final: 3, live: 2, scheduled: 1, postponed: 0 } as const;
+  for (const d of json?.dates ?? []) {
+    for (const g of d.games ?? []) {
+      const detailed: string = g.status?.detailedState ?? '';
+      const abstract: string = g.status?.abstractGameState ?? '';
+      const state: MlbTeamScheduleGame['state'] =
+        /postponed|cancel/i.test(detailed) ? 'postponed' : abstract === 'Final' ? 'final' : abstract === 'Live' ? 'live' : 'scheduled';
+      const home = g.teams?.home;
+      const away = g.teams?.away;
+      if (!home?.team?.id || !away?.team?.id) continue;
+      const row: MlbTeamScheduleGame = {
+        gamePk: g.gamePk,
+        gameDate: g.gameDate,
+        officialDate: g.officialDate ?? String(g.gameDate).slice(0, 10),
+        gameType: g.gameType,
+        // A suspended game's first entry is "Final" with no score on one side.
+        state: state === 'final' && (home.score == null || away.score == null) ? 'scheduled' : state,
+        homeId: home.team.id,
+        awayId: away.team.id,
+        homeName: home.team.name ?? '',
+        awayName: away.team.name ?? '',
+        homeAbbr: home.team.abbreviation ?? '',
+        awayAbbr: away.team.abbreviation ?? '',
+        homeScore: home.score ?? null,
+        awayScore: away.score ?? null,
+        innings: g.linescore?.currentInning ?? null,
+        scheduledInnings: g.scheduledInnings ?? 9,
+        doubleHeader: g.doubleHeader ?? 'N',
+        gameNumber: g.gameNumber ?? 1,
+        seriesDescription: g.seriesDescription ?? null,
+        seriesGameNumber: g.seriesGameNumber ?? null,
+        venue: g.venue?.name ?? null,
+      };
+      const prev = byPk.get(row.gamePk);
+      if (!prev || rank[row.state] > rank[prev.state] || (rank[row.state] === rank[prev.state] && row.gameDate > prev.gameDate)) byPk.set(row.gamePk, row);
+    }
+  }
+  return [...byPk.values()].sort((a, b) => a.gameDate.localeCompare(b.gameDate));
+}
+
+export interface MlbStandingRow {
+  teamId: number;
+  name: string;
+  abbr: string;
+  divisionId: number;
+  divisionName: string;
+  leagueId: number;
+  leagueName: string;
+  divisionRank: number;
+  wins: number;
+  losses: number;
+  pct: string;
+  gamesBack: string;
+  wildCardGamesBack: string;
+  runDifferential: number;
+  streak: string | null;
+  home: string | null;
+  away: string | null;
+  lastTen: string | null;
+}
+
+/** Every team's regular-season standing, as published, with the splits a standings table shows. */
+export async function getStandingsRows(season: number): Promise<MlbStandingRow[]> {
+  const url = `${BASE}/v1/standings?leagueId=103,104&season=${season}&standingsTypes=regularSeason&hydrate=team,division,league`;
+  const json = await cachedJson(`standings-rows:${season}`, url, 30 * 60_000);
+  const out: MlbStandingRow[] = [];
+  for (const record of json?.records ?? []) {
+    for (const t of record?.teamRecords ?? []) {
+      const split = (type: string) => {
+        const s = (t.records?.splitRecords ?? []).find((x: { type: string }) => x.type === type);
+        return s ? `${s.wins}-${s.losses}` : null;
+      };
+      out.push({
+        teamId: t.team?.id,
+        name: t.team?.name ?? '',
+        abbr: t.team?.abbreviation ?? '',
+        divisionId: record.division?.id,
+        divisionName: record.division?.name ?? '',
+        leagueId: record.league?.id,
+        leagueName: record.league?.name ?? '',
+        divisionRank: Number(t.divisionRank ?? 0),
+        wins: Number(t.wins ?? 0),
+        losses: Number(t.losses ?? 0),
+        pct: String(t.winningPercentage ?? ''),
+        gamesBack: String(t.gamesBack ?? ''),
+        wildCardGamesBack: String(t.wildCardGamesBack ?? ''),
+        runDifferential: Number(t.runDifferential ?? 0),
+        streak: t.streak?.streakCode ?? null,
+        home: split('home'),
+        away: split('away'),
+        lastTen: split('lastTen'),
+      });
+    }
+  }
+  return out;
+}
+
+/** Every team's raw season stat object for one group, keyed by team id. Numbers arrive as strings (".245"). */
+export async function getTeamSeasonStatObjects(season: number, group: 'hitting' | 'pitching'): Promise<Map<number, Record<string, number>>> {
+  const url = `${BASE}/v1/teams/stats?season=${season}&stats=season&group=${group}&sportIds=1&gameType=R`;
+  const json = await cachedJson(`teamstats-raw:${group}:${season}`, url, 60 * 60_000);
+  const out = new Map<number, Record<string, number>>();
+  for (const split of json?.stats?.[0]?.splits ?? []) {
+    const id = split?.team?.id;
+    if (!id) continue;
+    const stat: Record<string, number> = {};
+    for (const [k, v] of Object.entries(split.stat ?? {})) {
+      const n = Number(v);
+      if (typeof v !== 'object' && v !== '' && Number.isFinite(n)) stat[k] = n;
+    }
+    out.set(id, stat);
+  }
+  return out;
+}
+
+/** Names and positions for a batch of player ids. */
+export async function getPeople(ids: number[]): Promise<Map<number, { name: string; position: string | null }>> {
+  const out = new Map<number, { name: string; position: string | null }>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const url = `${BASE}/v1/people?personIds=${chunk.join(',')}`;
+    const json = await cachedJson(`people:${chunk.join(',')}`, url, 12 * 60 * 60_000);
+    for (const p of json?.people ?? []) out.set(p.id, { name: p.fullName ?? '', position: p.primaryPosition?.abbreviation ?? null });
+  }
+  return out;
+}

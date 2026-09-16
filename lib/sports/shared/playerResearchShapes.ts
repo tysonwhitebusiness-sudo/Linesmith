@@ -259,7 +259,18 @@ export type ResearchCard =
       info?: string;
       caption?: string;
       /** A row without a percentile (a hitter below the qualifier) prints its value only. */
-      rows: Array<{ key: string; label: string; valueText: string; percentile: number | null; direction: 'higher' | 'lower' | 'neutral'; info?: string }>;
+      rows: Array<{
+        key: string;
+        label: string;
+        valueText: string;
+        percentile: number | null;
+        direction: 'higher' | 'lower' | 'neutral';
+        info?: string;
+        /** "4th of 30", where the row is a league rank rather than a qualified-pool percentile (R7). */
+        rank?: { rank: number; of: number };
+        /** Every team's value with this one's, drawn as a dot strip instead of the bar (R7). */
+        strip?: { league: number[]; value: number };
+      }>;
     }
   | {
       kind: 'histogram';
@@ -267,7 +278,9 @@ export type ResearchCard =
       title: string;
       scope?: string;
       caption?: string;
-      bars: Array<{ key: string; axisLabel: string; value: number; highlight: boolean; tip: string }>;
+      bars: Array<{ key: string; axisLabel: string; value: number; highlight: boolean; tip: string; tone?: 'good' | 'bad' }>;
+      /** Legend for toned bars ("won", "lost") — R7's margin by game. */
+      toneLegend?: { good: string; bad: string };
       /** Legend text for the highlighted bars ("hard-hit, 95+ mph"). */
       highlightLabel?: string;
     }
@@ -306,8 +319,14 @@ export type ResearchCard =
       caption?: string;
       labelHeader: string;
       columns: ResearchColumn[];
-      rows: Array<{ key: string; label: string; values: Record<string, number | string | null> }>;
+      rows: ResearchTableRow[];
       emptyText?: string;
+      /** Opens sorted on this column, descending. Unset keeps the rows' own order. */
+      sortKey?: string;
+      /** Other tables on the same card, behind a switch (a roster's hitters and pitchers). The top-level table is the first view. */
+      views?: Array<{ key: string; label: string; labelHeader: string; columns: ResearchColumn[]; rows: ResearchTableRow[]; sortKey?: string }>;
+      /** Rows are not sortable where their order is the content (a schedule, a standings table). */
+      fixedOrder?: boolean;
     }
   | {
       kind: 'surface';
@@ -371,6 +390,24 @@ export function sectionOpeningSeason(seasons: number[], picked: number | null | 
   if (picked != null) return picked;
   if (scope != null && seasons.includes(scope)) return scope;
   return seasons[seasons.length - 1];
+}
+
+export interface ResearchTableRow {
+  key: string;
+  label: string;
+  values: Record<string, number | string | null>;
+  /** The label links here (a team, a player). */
+  href?: string | null;
+  /** A logo or headshot beside the label. */
+  imageUrl?: string | null;
+  /** Headshots draw larger and round; logos small and square. Default logo. */
+  imageKind?: 'logo' | 'player';
+  /** Small text after the label ("SS", "No. 4"). */
+  labelNote?: string | null;
+  /** This page's own row in a league table. Marked in text too, never colour alone. */
+  highlight?: boolean;
+  /** Colour for a cell whose text already says the outcome ("W 5-3"). */
+  tones?: Record<string, 'good' | 'bad'>;
 }
 
 export interface ResearchSection {

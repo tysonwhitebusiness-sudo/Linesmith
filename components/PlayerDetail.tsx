@@ -1,5 +1,6 @@
 'use client';
 
+import { useStickyHeaderHeight } from './useStickyHeaderHeight';
 import { useEffect, useMemo, useState } from 'react';
 import { Card, Chip, EmptyState, Section, SectionNav, SkeletonLines, StatusPill, Tabs } from './ui';
 import { GameStateCard } from './GameStateCard';
@@ -790,22 +791,6 @@ function toResearchData(
 function teamHrefFor(sport: string, league: string | null, teamId: string): string | null {
   if (sport === 'soccer') return league ? `/soccer/${league}/team/${encodeURIComponent(teamId)}` : null;
   return ['mlb', 'nfl', 'cfb', 'nba', 'nhl'].includes(sport) ? `/${sport}/team/${encodeURIComponent(teamId)}` : null;
-}
-
-/** The page's own sticky header, so the section nav pins directly beneath it on every host. */
-function useStickyHeaderHeight(enabled: boolean): number {
-  const [height, setHeight] = useState(0);
-  useEffect(() => {
-    if (!enabled) return;
-    const header = document.querySelector<HTMLElement>('header.sticky');
-    if (!header) return;
-    const measure = () => setHeight(header.offsetHeight);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(header);
-    return () => ro.disconnect();
-  }, [enabled]);
-  return height;
 }
 
 export interface PlayerDetailProps {

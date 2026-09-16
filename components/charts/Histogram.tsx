@@ -4,6 +4,7 @@ import { ChartFrame, type PlotArea } from './ChartFrame';
 import { MarkTip } from './MarkTip';
 import { EMPHASIS, INK3, INK4, SIZE, fmt as fmts } from './tokens';
 import { niceDomain, yScale } from './scale';
+import { toneFill } from '@/lib/ui/heat';
 
 /**
  * A plain histogram: counts per bin, some bins highlighted — R6.1b (exit
@@ -18,6 +19,8 @@ export interface HistogramBin {
   axisLabel: string;
   highlight: boolean;
   tip: string;
+  /** A bar whose outcome is its colour's meaning (a win or a loss, R7). The tip says it too. */
+  tone?: 'good' | 'bad';
 }
 
 export function Histogram({ bins, height = 180, width = 420, label, className }: { bins: readonly HistogramBin[]; height?: number; width?: number; label: string; className?: string }) {
@@ -48,7 +51,7 @@ export function Histogram({ bins, height = 180, width = 420, label, className }:
               return (
                 <MarkTip key={b.key} tip={b.tip}>
                   <rect x={plot.left + band * i} y={plot.top} width={band} height={plot.height} fill="transparent" />
-                  <rect x={x} y={top} width={barW} height={Math.max(0, base - top)} rx={1} fill={b.highlight ? EMPHASIS : INK4} />
+                  <rect x={x} y={top} width={barW} height={Math.max(0, base - top)} rx={1} fill={b.tone ? toneFill(b.tone, 0.75) : b.highlight ? EMPHASIS : INK4} />
                 </MarkTip>
               );
             })}

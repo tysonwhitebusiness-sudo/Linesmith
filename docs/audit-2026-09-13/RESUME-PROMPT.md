@@ -87,7 +87,12 @@ A sport's section is one function returning a `ResearchSection`; the component
 has no sport check. The prop block keeps market tabs, stepper, chips, windows,
 bars, matchup explorer and role cards; every odds card lives in "Odds & prices".
 
-## Next: R7 team page (STARTED 2026-09-16 — Step 0 done, see the plan's R7 section; R7.1 next)
+## Next: R7 team page (STARTED 2026-09-16 — Step 0 and R7.1 (MLB) done, see the plan's R7 section; R7.2 football after sign-off)
+
+R7.2 adds an NFL/CFB reader to `READERS` in `app/api/team-research/route.ts`, a spec and
+`toTeamResearchData` in each sport's team adapter, a case in `teamResearchFor`
+(`components/TeamResearchPage.tsx`), and switches that sport's panel in
+`TeamDetailPanel.tsx`. Results come from ESPN's team schedule by seasontype (R7-C1).
 
 Read the plan's R7 section in full: a hero with record and standing, one season
 switch scoping the page (last season when the current one is under MIN_GAMES,

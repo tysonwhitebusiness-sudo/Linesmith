@@ -77,6 +77,9 @@ const DB_MODULES = [
   '@/lib/sports/tennis/playerArchive',
   '@/lib/sports/nba/playerShots',
   '@/lib/sports/nhl/playerShotMap',
+  // R7.1: the team page's reads. Types live in `teamResearchShapes.ts`.
+  '@/lib/sports/mlb/teamResearch',
+  '@/lib/sports/shared/teamRosterServer',
 ];
 
 /**
@@ -127,6 +130,8 @@ const SELF = [
   // league bio endpoints — the same reason again.
   'lib/sports/shared/playerHistoryServer.ts',
   'lib/sports/shared/playerBioServer.ts',
+  // R7.1: roster production spans every team sport, the same reason again.
+  'lib/sports/shared/teamRosterServer.ts',
 ];
 
 function walk(dir: string): string[] {

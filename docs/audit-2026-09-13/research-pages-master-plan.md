@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; R7.1 next.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; R7.1 (skeleton on MLB) COMPLETE, awaiting sign-off; R7.2 football next.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1374,6 +1374,48 @@ and ESPN, not G2).
 - **R2-F8 does not reproduce:** `/api/mlb/team/110` rebuilt on request
   (74-78, fetched 2026-09-16) and 118 reads 66-85, equal to StatsAPI. The
   28-day payload was an unvisited key; nothing to fix.
+
+**R7.1 COMPLETE 2026-09-16 — the shared team page, on MLB.**
+- **Built:** `/api/team-research?sport&teamId` (cachedRoute, 30 min, key
+  `team-research:route:{sport}:{teamId}`) with a reader per sport
+  (`lib/sports/mlb/teamResearch.ts`); the shared builder `buildTeamResearch`
+  (`lib/sports/shared/teamResearch.ts`, shapes in `teamResearchShapes.ts`);
+  MLB's spec (`adapters/teamResearchSpec.ts`) and `toTeamResearchData` in
+  MLB's team adapter; `TeamResearchPage` with its hook. Hero (record, standing
+  current season only and "Finished Nth" for a past one, last ten, next game,
+  tiles), ONE season switch scoping every section, Results & schedule (margin
+  by game, running differential, splits, schedule), Standings (division and
+  league), Team stats (ranked across all 30 clubs with a direction per stat
+  and a league dot strip, per game or per PA throughout), Roster production
+  (hitters and pitchers, headshots, links, innings as outs), MLB's "Contact &
+  pitch quality" from the R5a rollup, Sources.
+- **Shared pieces added for every sport:** roster production read
+  (`teamRosterServer.ts`: score and games from `player_season_production`,
+  totals summed from `player_game_history` for those athletes, because the
+  rollup's `stats` hold no RBI, GS or HBP); research table cards gained view
+  switching, linked/logo rows, an own-row mark and toned cells; percentile
+  rows a league dot strip (`LeagueStripRow`); histogram bars a win/loss tone.
+  `useStickyHeaderHeight` moved to its own file.
+- **Refereed against StatsAPI, not G2:** Royals 2026 66-85, 636-732, home
+  39-36, away 27-49, L3; 2025 162 games 82-80, +14, finished 3rd; Witt's
+  roster row 132 G / 585 PA / 144 H / 18 HR equal to his StatsAPI line;
+  Dodgers 92-59, +177, 1st. Rendered at 1440 and 400: no bad text, no
+  horizontal overflow; the only console errors are the signed-out 401s.
+- **Render caught three defects, fixed:** "Mar" printed over "Apr" (a month
+  too short for its label now gives way), the schedule's venue column was
+  clipped in a half-width card (dropped: vs/@ says whose park), and the
+  Statcast join note described a league total as this team's.
+- **R2-F7 fixed:** the old `TeamDetail`, still used by the other five sports,
+  passes MLB's four hooks `undefined` outside MLB; `/nfl/team/13` now makes no
+  `/api/mlb/` request (checked in the browser's network log).
+- **Not rendered any more for MLB, deleted with `TeamDetail` in R7.4:** the
+  line picker and win bars (F-B3), unit grades, the duplicate next-game card,
+  and the next game's line-movement card. The MLB branch of `TeamDetail` and
+  `toTeamDetailData` for MLB are now unreachable and go with it.
+- **For sign-off:** the team list still sits above the page on a phone (the
+  existing `TeamListShell`), and the page drops the next game's price
+  movement, which the plan's skeleton does not name.
+- 9 new tests; 537 pass; tsc and build clean.
 
 **Sub-phases, stop after each:** R7.1 the shared team research skeleton
 (hero, season switch, results & schedule, standings, team stats, roster
