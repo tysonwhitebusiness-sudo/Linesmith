@@ -4,7 +4,7 @@
 measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
 built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
 decisions done and deployed; three checks owed before closing it.
-Research pages: R1-R5 and R6.1 (MLB) signed off; R6.2 (NFL/CFB) complete with two renders owed Thursday; R6.3 (soccer) next (second track, below).**
+Research pages: R1-R5 and R6.1 (MLB) signed off; R6.2 (NFL/CFB) and R6.3 (soccer) complete with renders owed on the next slates; R6.4 (tennis) next (second track, below).**
 
 `docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
 the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
@@ -34,11 +34,18 @@ untestable, instead of a false positive.
 
 # START HERE — the exact next action
 
-## Research pages track — R6.1 (MLB) signed off; R6.2 (NFL/CFB) COMPLETE 2026-09-15; R6.3 next
+## Research pages track — R6.1 (MLB) signed off; R6.2 and R6.3 COMPLETE 2026-09-15; R6.4 next
 
-R1-R5 and R6.1 signed off. **R6.2 (NFL and CFB) is done; R6.3 (soccer) is
-next.** The handoff is `docs/audit-2026-09-13/RESUME-PROMPT.md`; the record is
-the plan's status block.
+R1-R5 and R6.1 signed off. **R6.2 (NFL and CFB) and R6.3 (soccer) are done;
+R6.4 (tennis) is next.** The handoff is
+`docs/audit-2026-09-13/RESUME-PROMPT.md`; the record is the plan's status block.
+
+- **R6.3:** an outfield player's "Chances & finishing" draws every Understat
+  shot on the attacking half (new `/api/soccer/understat`, resolved by name),
+  with finishing by body part, goals against xG and per 90 by season; a keeper
+  gets the not-held state; MLS says Understat does not cover it. Soccer also
+  re-prices on the current main line, fills the live card (score, clock and
+  events only) and opens on the market its position plays for.
 
 - **R6.2:** a receiver's "Usage & depth" and a quarterback's "Where he throws"
   draw every located pass at its own air yards (new `/api/nfl/targets`, keyed
@@ -53,6 +60,9 @@ the plan's status block.
 - **OWED Thursday 2026-09-18:** NFL's game-state card and its prop block on a
   player with a market — no live game or priced NFL player was on the slate
   when they landed. CFB's, Saturday 2026-09-19.
+- **OWED next EPL match day:** soccer's live card, and R2-F9 — the
+  `soccer:snapshot:epl` row does write, but today's slate was empty (~0 MB), so
+  the 22 MB write is still unproven.
 
 - **R6.1d:** the player page names one line (R2's main line, re-priced from
   current rows; MLB's model chip names its own board line), a started game's

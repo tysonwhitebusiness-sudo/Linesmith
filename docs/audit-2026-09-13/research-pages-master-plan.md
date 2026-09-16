@@ -4,9 +4,42 @@
 as taken in §3). R0 done. R1 signed off and deployed. R2 done (signed off by
 the operator's instruction to proceed). R3 and R4 signed off 2026-09-14. R5
 signed off 2026-09-15. R6 STARTED 2026-09-15: Step 0 done, corrections and
-decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15.
-R6.2 (NFL and CFB) COMPLETE 2026-09-15, with two checks owed on Thursday's
-NFL slate; R6.3 (soccer) next.**
+decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
+(NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
+owed on the next slate; R6.4 (tennis) next.**
+
+**R6.3 COMPLETE 2026-09-15.** Soccer's "Chances & finishing", the keeper's
+state, one line, game state and the default market. Commit `093923a`.
+- **Step 0 audit:** Understat's `/getPlayerData` carries every shot with `X`,
+  `Y`, `xG`, `result`, `situation` and body part, plus every match with
+  minutes, goals, xG, assists, xA and key passes — measured live: Haaland 700
+  shots over eight seasons, Cunha 515, Salah 1,296, all placed, out of a
+  654-player 2026 index. Resolution is BY NAME (Understat publishes no id this
+  app can join on) and every subject tried resolved. A keeper resolves too and
+  comes back with nonsense for this card: Pickford's whole shot list is one own
+  goal in 2023.
+- **Built:** `soccerChancesSection` (`lib/sports/soccer/playerUnderstatShapes.ts`)
+  — the shot map on a new `PitchScatter` (Understat's own coordinates, the
+  penalty area and six-yard box at real geometry, dot area proportional to xG,
+  a goal filled green, situation chips), finishing by body part with the
+  totals in the caption, goals against xG as a 10-match rolling average over
+  the last 60 matches, and per 90 by season. `/api/soccer/understat`
+  (cachedRoute, 6h, name-keyed and shape-bounded) with `useSoccerUnderstat`;
+  the two fetchers behind it already cache their own payloads.
+  `soccerKeeperSection` is G2's own not-held state, and MLS says Understat
+  does not cover it rather than rendering nothing.
+- **Also built:** R6-F9 (soccer re-prices on the current main line); C4
+  (soccer's game state is the score, clock and key events, with the card
+  stating that per-player live stats are not held — decision 5); C8 (a soccer
+  page opens on the market the position plays for: saves, tackles, shots on
+  target, anytime goalscorer, falling back to what the books priced).
+- **Verified:** 1440 and 400 on Cunha (chances section, shot map, the
+  name-match note), Lammens (keeper state) and Yoshida (MLS). The route's rows
+  equal G2's own Haaland block field for field in the tests. tsc clean,
+  519/519 tests, build passes.
+- **OWED, next EPL match day:** the live card for soccer, and **R2-F9** — the
+  `soccer:snapshot:epl` row wrote 5 minutes before the check but at ~0 MB,
+  because today's EPL slate is empty, so the 22 MB write is still unproven.
 
 **HERO AND LIVE-CARD REWORK COMPLETE 2026-09-15** (operator pivot after R6.2,
 commit `35d6be5`; plan and mockups in `docs/design/hero-live-rework.md` and
@@ -1378,7 +1411,7 @@ rebuilt pages use.
 | D5 shared 60/min bucket, raw API text | `proxy.ts` | R1e, R3 `ErrorState` |
 | B1 CFB blank player pages | CFB | R1f |
 | C9 biggest edge without a floor | `MatchupExplorerCard` | R1h, deleted R9 |
-| C8 soccer default market | soccer adapter | R6 |
+| C8 soccer default market | soccer adapter | **resolved** R6.3 (`preferredSoccerMarket`) |
 | C7 tennis surface | tennis adapter | R6 |
 | C4 live card MLB-only | `PlayerDetail` | slot built and MLB filled in R6.1d (`GameStateSlot`); NFL and CFB filled in R6.2 (`footballGameState.ts`, render owed Thursday); soccer, tennis, NBA and NHL in their sub-phases |
 | D1 duplicate score, broken logos, initials, streak across seasons | NFL game | R3 `Avatar`, R2 read, R8 |
@@ -1431,7 +1464,7 @@ rebuilt pages use.
 | R6-F6 MLB and NFL past-game pages missing, so player game-log links would dead-end | `/mlb/game/[id]`, `/nfl/game/[id]` | R8 (links held off until then) |
 | R6-F7 pitch corpus holds 281 of 2,229 regular-season 2026 games only in part (<3 pitches per PA); Statcast rollups cover 91-94% of a hitter's PA | `corpus/mlb_pitch_events`, pitch ingest | coverage stated on the page (R6.1b); the ingest gap is model track Phase 5 |
 | R6-F8 ParlayAPI files a pitcher's strikeouts under `batter-strikeouts` (29 pitchers) and walks allowed under `walks` (9) on 2026-09-15; the page shows "Batter Strikeouts 7.5" for Yamamoto, and the pitcher markets miss those books | ParlayAPI market mapping, Python writer | model track (R5e writer work); the page shows the rows as stored |
-| R6-F9 non-MLB candidates carry the main line from snapshot build time, which goes stale between rebuilds (Allen passing yards 249.5 in the stepper against a current 248.5) | NFL/CFB/NBA/NHL/soccer/tennis player adapters | **resolved for NFL and CFB** in R6.2 (`repriceAtMainLine`); soccer, tennis, NBA and NHL in their sub-phases |
+| R6-F9 non-MLB candidates carry the main line from snapshot build time, which goes stale between rebuilds (Allen passing yards 249.5 in the stepper against a current 248.5) | NFL/CFB/NBA/NHL/soccer/tennis player adapters | **resolved for NFL, CFB and soccer** (R6.2, R6.3); tennis, NBA and NHL in their sub-phases |
 | R6-F10 the game page's `usePropOdds` reads current rows, so after the start its prices (and the embedded player's) are in-play and the main line finds no pre-game quote | `GameDetail` | R8 (pass the start, as the player page does) |
 | R6-F11 `nfl_target_events.interception` is false on all 36,375 rows: `write_nfl_target_events` writes 13 columns and that is not one of them, so G2's INT column and its red-ringed dot cannot be built | `python-odds-service/src/db.py` `write_nfl_target_events`, `nfl_pbp.parse_row` | model track (a column and a re-ingest); the section states it is not held |
 
