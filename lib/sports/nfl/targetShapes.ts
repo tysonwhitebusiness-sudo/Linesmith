@@ -80,7 +80,20 @@ function lateral(side: string | null, i: number): number | null {
 export function nflTargetRole(positionAbbr: string | null | undefined): 'receiver' | 'passer' | null {
   const pos = (positionAbbr ?? '').toUpperCase();
   if (pos === 'QB') return 'passer';
-  return (['WR', 'TE', 'RB', 'FB'] as string[]).includes(pos) ? 'receiver' : null;
+  return (['WR', 'TE', 'RB', 'FB', 'HB'] as string[]).includes(pos) ? 'receiver' : null;
+}
+
+/**
+ * The same fallback the page's columns already make when a bio carries no
+ * position: `footballResearchSpec` reads the box scores instead
+ * ("quarterback", "receiver", "running back", "defender"). Without this a
+ * player whose ESPN bio omits a position got the quarterback's own columns and
+ * no section at all, which reads as "nothing to show" rather than "no
+ * position".
+ */
+export function nflTargetRoleFromKind(kind: string): 'receiver' | 'passer' | null {
+  if (kind === 'quarterback') return 'passer';
+  return kind === 'receiver' || kind === 'running back' ? 'receiver' : null;
 }
 
 /**

@@ -40,10 +40,18 @@ not-held state, and football on one line. Commit `1438855`.
   extra was a rank, which left the player page with D3 in R6. NBA, NHL and CFB
   still fill that slot until their sub-phases.
 - **Verified:** 1440 and 400 on Lamb (WR), Prescott and Allen (QB), Hill (WR,
-  no market), Sayin (CFB QB) and Witt (MLB, unchanged). The route's rows equal
+  no market), Sayin (CFB QB) and Witt (MLB, unchanged); then the plan's own
+  remaining subjects and regression set at 1440: Chase (185 targets, 2025),
+  Manning (CFB, the not-held state), Tua (injured, 372 passes with 3
+  unlocated), and one page each for soccer (Cunha), tennis (Alcaraz), NBA
+  (SGA), NHL (MacKinnon) and golf (Scheffler) — all unchanged, no overflow. The route's rows equal
   G2's own Lamb dataset row for row. Lamb opens on 2025 (117 targets) with
   2026 at 8; Allen's note says 1 of 29 passes carries no location. No page
   overflows at 400. tsc clean, 507/507 tests, build passes.
+- **Found rendering the regression set:** a player whose ESPN bio carries no
+  position got no section at all, because the role read the bio only. It now
+  falls back to `footballResearchSpec`'s own box-score answer, the same
+  fallback the page's columns already make.
 - **OWED, Thursday 2026-09-18 (NFL slate):** the game-state card and the prop
   block for a player with a market — today's NFL slate had no live game and no
   priced player by the time the sections landed, so both are built and unit

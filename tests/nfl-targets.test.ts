@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { cfbEfficiencySection, nflTargetRole, nflTargetsSection, type NflTarget, type NflTargetsPayload } from '../lib/sports/nfl/targetShapes';
+import { cfbEfficiencySection, nflTargetRole, nflTargetRoleFromKind, nflTargetsSection, type NflTarget, type NflTargetsPayload } from '../lib/sports/nfl/targetShapes';
 import { MARKETS_BY_POSITION } from '../lib/sports/nfl/adapter';
 
 /**
@@ -104,6 +104,16 @@ test('a quarterback gets his own section, wording and role, and never the target
   assert.deepEqual([nflTargetRole('WR'), nflTargetRole('TE'), nflTargetRole('RB')], ['receiver', 'receiver', 'receiver']);
   assert.equal(nflTargetRole('CB'), null, 'a defender has no chart');
   assert.equal(nflTargetRole(null), null, 'no position, no guess');
+});
+
+test('a bio with no position falls back to the box scores, like the page does elsewhere', () => {
+  // `footballResearchSpec` already reads the box scores when a bio carries no
+  // position; the section follows the same answer instead of showing nothing.
+  assert.equal(nflTargetRoleFromKind('quarterback'), 'passer');
+  assert.deepEqual([nflTargetRoleFromKind('receiver'), nflTargetRoleFromKind('running back')], ['receiver', 'receiver']);
+  assert.equal(nflTargetRoleFromKind('defender'), null);
+  assert.equal(nflTargetRoleFromKind('player'), null, 'a generic spec has no chart to show');
+  assert.equal(nflTargetRole('HB'), 'receiver', 'the spec counts HB as a back, so the role must too');
 });
 
 test('the role gate matches the markets a position gets at all', () => {

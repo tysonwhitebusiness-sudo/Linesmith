@@ -21,7 +21,8 @@ import { useNhlShotProfile } from './useNhlShotProfile';
 import { useNbaShotProfile } from './useNbaShotProfile';
 import { useNflTargets } from './useNflTargets';
 import { useGolfShotProfile } from './useGolfShotProfile';
-import { nflTargetRole, type NflTargetsInput } from '@/lib/sports/nfl/targetShapes';
+import { nflTargetRole, nflTargetRoleFromKind, type NflTargetsInput } from '@/lib/sports/nfl/targetShapes';
+import { footballResearchSpec } from '@/lib/sports/nfl/adapters/playerResearchSpec';
 import { useLineHistory } from './useLineHistory';
 import { candidateCategoryToSide, candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import { LineMovementCard } from './LineMovementCard';
@@ -1023,7 +1024,11 @@ export function PlayerDetail({
   // NFL's located passes (R6.2) — the page's own subject and the role his
   // position implies, so a player with no market still gets his section. The
   // route resolves the nflverse id; idle for every other sport.
-  const nflRole = researchSport === 'nfl' ? nflTargetRole(bioState.data?.positionAbbr) : null;
+  const nflRole =
+    researchSport !== 'nfl'
+      ? null
+      : (nflTargetRole(bioState.data?.positionAbbr) ??
+        (historyState.data ? nflTargetRoleFromKind(footballResearchSpec('nfl', bioState.data, historyState.data.games).kind) : null));
   const nflTargets = useNflTargets(researchSport === 'nfl' && nflRole ? researchAthleteId ?? undefined : undefined, nflRole ?? undefined);
   const nflTargetsInput = useMemo<NflTargetsInput | undefined>(
     () =>
