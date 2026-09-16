@@ -32,11 +32,16 @@ export interface DataTableProps<Row> {
   dense?: boolean;
   /** Required: names the table for assistive tech. */
   caption: string;
+  /**
+   * A class for one row — the live card tints a line that has cleared (R6.3).
+   * Row state must never be colour alone: the caller marks the cell too.
+   */
+  rowClassName?: (row: Row) => string | undefined;
   className?: string;
   maxHeight?: number;
 }
 
-export function DataTable<Row>({ columns, rows, rowKey, initialSort, onRowClick, dense, caption, className, maxHeight }: DataTableProps<Row>) {
+export function DataTable<Row>({ columns, rows, rowKey, initialSort, onRowClick, dense, caption, className, maxHeight, rowClassName }: DataTableProps<Row>) {
   const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(initialSort ?? null);
 
   const sorted = useMemo(() => {
@@ -108,7 +113,7 @@ export function DataTable<Row>({ columns, rows, rowKey, initialSort, onRowClick,
               tabIndex={onRowClick ? 0 : undefined}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
               onKeyDown={onRowClick ? (e) => e.key === 'Enter' && onRowClick(row) : undefined}
-              className={cx('group transition-colors duration-instant hover:bg-card-sunk', onRowClick && 'cursor-pointer')}
+              className={cx('group transition-colors duration-instant hover:bg-card-sunk', onRowClick && 'cursor-pointer', rowClassName?.(row))}
             >
               {columns.map((c, i) => {
                 const v = c.render ? c.render(row) : ((row as Record<string, unknown>)[c.key] as ReactNode);

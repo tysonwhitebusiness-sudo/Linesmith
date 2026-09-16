@@ -2,10 +2,9 @@
  * C4 for football — NFL and CFB fill the shared `GameStateSlot` from the same
  * ESPN summary (`footballLiveGame.ts`), so one builder serves both (R6.2).
  *
- * MLB's `baseball` block has no football equivalent worth inventing: down and
- * distance live in `nfl/liveGameState.ts` for the hero strip and are not in
- * this response's parsed shape, so football fills score, period and the
- * player's own line, and leaves the situation field absent.
+ * Football's own situation — possession, down and distance, the red zone — is
+ * `footballLiveGame.ts`'s `situation`, parsed from the same summary for both
+ * leagues (R6.3). ESPN sends it only while a game has live plays.
  *
  * THE BOX SCORE NAMES PLAYERS, IT DOES NOT ID THEM. ESPN's football summary
  * carries `athlete.displayName` only, so the subject's row is matched by name —
@@ -32,6 +31,10 @@ export function footballLiveValue(line: FootballPlayerLine, dimension: string): 
     receptions: line.receptions,
   };
   return map[dimension] ?? null;
+}
+
+function ordinalDown(down: number): string {
+  return ['1st', '2nd', '3rd', '4th'][down - 1] ?? `${down}th`;
 }
 
 /** "3-of-7, 41 yards" for a passer, "2 catches" for a receiver, "6 carries" for a back — whichever the row actually carries. */
@@ -68,6 +71,10 @@ export interface FootballGameStateInput {
   candidates: PickCandidate[];
   /** The line each candidate is shown at — the main line, not the snapshot's. */
   lineFor: (c: PickCandidate) => number | null;
+  /** The best price on the side shown, at that line. */
+  priceFor: (c: PickCandidate, line: number) => { americanOdds: number; bookmaker: string } | null;
+  /** The game page for this event. */
+  gameHref: string | null;
   /** The page's own team identity, for the score panel's logos. */
   teams: { abbr?: string; logoUrl?: string; opponentAbbr?: string; opponentLogoUrl?: string };
   /** True once the scheduled start has passed; before it there is nothing to poll. */
@@ -77,7 +84,9 @@ export interface FootballGameStateInput {
 export function toFootballGameState(input: FootballGameStateInput): GameStateSlot | null {
   const live = input.live.data;
   if (!live || live.state !== 'in') {
-    return input.started && input.live.loading ? { status: 'loading', away: { abbr: 'Away', score: null }, home: { abbr: 'Home', score: null }, periodLabel: null, subjectLine: null, lines: [] } : null;
+    return input.started && input.live.loading
+      ? { status: 'loading', away: { abbr: 'Away', score: null }, home: { abbr: 'Home', score: null }, periodLabel: null, subjectLine: null, lines: [], events: [], gameHref: input.gameHref }
+      : null;
   }
   const logoFor = (abbr: string) =>
     abbr === input.teams.abbr ? input.teams.logoUrl : abbr === input.teams.opponentAbbr ? input.teams.opponentLogoUrl : undefined;
@@ -96,10 +105,33 @@ export function toFootballGameState(input: FootballGameStateInput): GameStateSlo
           const value = footballLiveValue(row, c.dimension);
           const dir = directionMark(c.category);
           const at = input.lineFor(c);
-          return value != null && dir !== null && at != null
-            ? [{ key: `${c.dimension}:${c.category}`, label: marketText(input.sport, c.dimension, 'full'), direction: dir, line: at, value }]
-            : [];
+          if (value == null || dir === null || at == null) return [];
+          return [
+            {
+              key: `${c.dimension}:${c.category}`,
+              label: marketText(input.sport, c.dimension, 'full'),
+              direction: dir,
+              line: at,
+              value,
+              cleared: dir === 'O' ? value > at : value <= at,
+              price: input.priceFor(c, at),
+            },
+          ];
         })
       : [],
+    // Newest first; ESPN lists scoring plays oldest first.
+    events: [...(live.scoringPlays ?? [])]
+      .slice(-4)
+      .reverse()
+      .map((s) => ({ clock: `Q${s.period} ${s.clockDisplay}`, text: s.description || s.typeText })),
+    gameHref: input.gameHref,
+    football: live.situation
+      ? {
+          possession: live.situation.possessionTeamId === live.homeTeamId ? live.homeAbbr : live.situation.possessionTeamId === live.awayTeamId ? live.awayAbbr : null,
+          downAndDistance: live.situation.down != null && live.situation.distance != null ? `${ordinalDown(live.situation.down)} & ${live.situation.distance}` : null,
+          ballOn: live.situation.yardLine != null ? String(live.situation.yardLine) : null,
+          redZone: live.situation.isRedZone,
+        }
+      : null,
   };
 }

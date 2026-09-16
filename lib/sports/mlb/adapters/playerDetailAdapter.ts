@@ -65,7 +65,7 @@ import { buildSlate, liveFor, type SlateGame } from '@/lib/odds/matching';
 import { projectLine } from '@/lib/odds/display';
 import { computeMoneylineEdge, computeTotalEdge, type MoneylineEdge, type TotalEdge } from '@/lib/odds/gameEdge';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
-import { repriceAtMainLine } from '@/lib/odds/props/mainLine';
+import { isPickemBook, repriceAtMainLine } from '@/lib/odds/props/mainLine';
 import type { PropOddsRow } from '@/lib/db/client';
 import { teamSeasonStatRows } from './statRowAdapter';
 import { teamPrimaryColor } from '@/lib/sports/mlb/teamColors';
@@ -165,8 +165,24 @@ export interface GameStateSlot {
     now: string | null;
     plays: Array<{ label: string; text: string; note: string | null }>;
   } | null;
-  /** Today's markets with a live value, each against its main line. */
-  lines: Array<{ key: string; label: string; direction: 'O' | 'U'; line: number; value: number }>;
+  /**
+   * Today's markets with a live value, each against its main line and the price
+   * the page resolved for it. A line that has cleared is marked here rather
+   * than by colour alone in the card (R6.3).
+   */
+  lines: Array<{
+    key: string;
+    label: string;
+    direction: 'O' | 'U';
+    line: number;
+    value: number;
+    cleared: boolean;
+    price?: { americanOdds: number; bookmaker: string } | null;
+  }>;
+  /** What just happened, newest first — MLB plays, football scoring, NHL goals and penalties, soccer cards. */
+  events: Array<{ clock: string; text: string }>;
+  /** The game page, when the sport has one for this game (R8 fills the rest). */
+  gameHref: string | null;
   /** Baseball's situation. Absent for every other sport. */
   baseball?: {
     balls: number;
@@ -175,6 +191,13 @@ export interface GameStateSlot {
     bases: { first: boolean; second: boolean; third: boolean };
     batter: { name: string; headshotUrl?: string; line: string } | null;
     pitcher: { name: string; headshotUrl?: string; line: string } | null;
+  } | null;
+  /** Football's situation: possession, down and distance, the red zone. */
+  football?: {
+    possession: string | null;
+    downAndDistance: string | null;
+    ballOn: string | null;
+    redZone: boolean;
   } | null;
 }
 
@@ -511,6 +534,17 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     const rows = key && propOdds ? propOdds.rows.filter((r) => r.subjectId === c.subjectId && r.marketKey === key) : [];
     return repriceAtMainLine(c, rows, startIso);
   };
+  /** The best price on the side the card shows, at the line it shows. */
+  const priceFor = (c: PickCandidate, line: number) => {
+    const key = candidateDimensionToMarketKey(c.dimension);
+    if (!key || !propOdds) return null;
+    const side = directionMark(c.category) === 'U' ? 'under' : 'over';
+    // A pick'em app's fixed payout is not a price (R2, `mainLine.ts`): it won
+    // this comparison on every market until the live card showed "prizepicks +100".
+    const rows = propOdds.rows.filter((r) => r.subjectId === c.subjectId && r.marketKey === key && r.line === line && r.side === side && !isPickemBook(r.bookmaker));
+    const best = rows.length ? rows.reduce((a, b) => (b.americanOdds > a.americanOdds ? b : a)) : null;
+    return best ? { americanOdds: best.americanOdds, bookmaker: best.bookmaker } : null;
+  };
   const { marketLine, priced: priceCandidate } = repriced(active);
   const baseLine = marketLine ?? active.line ?? 0.5;
   const line = Math.max(0.5, baseLine + scope.lineOffset);
@@ -661,10 +695,27 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
         const value = liveData.liveValues?.[c.dimension];
         const dir = directionMark(c.category);
         const at = repriced(c).marketLine ?? c.line;
-        return value != null && dir !== null && at != null
-          ? [{ key: `${c.dimension}:${c.category}`, label: marketText('mlb', c.dimension, 'full'), direction: dir, line: at, value }]
-          : [];
+        if (value == null || dir === null || at == null) return [];
+        return [
+          {
+            key: `${c.dimension}:${c.category}`,
+            label: marketText('mlb', c.dimension, 'full'),
+            direction: dir,
+            line: at,
+            value,
+            // An over clears by passing the line; an under is only settled at
+            // the end, so "cleared" for it means still under with the game on.
+            cleared: dir === 'O' ? value > at : value <= at,
+            price: priceFor(c, at),
+          },
+        ];
       }),
+      // Newest first, the way a reader scans a feed.
+      events: [...(liveData.plays ?? [])]
+        .slice(-4)
+        .reverse()
+        .map((pl) => ({ clock: `${pl.half === 'top' ? 'T' : 'B'}${pl.inning}`, text: `${pl.batter} ${pl.event.toLowerCase()}` })),
+      gameHref: todaysGame?.game?.gamePk != null ? `/mlb/game/${todaysGame.game.gamePk}` : null,
       baseball: {
         balls: liveData.count.balls,
         strikes: liveData.count.strikes,
@@ -677,7 +728,7 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
       },
     };
   } else if (gameIsInProgress && live?.loading) {
-    gameState = { status: 'loading', ...teams(false), periodLabel: null, subjectLine: null, lines: [], baseball: null };
+    gameState = { status: 'loading', ...teams(false), periodLabel: null, subjectLine: null, lines: [], events: [], gameHref: null, baseball: null };
   }
 
   // ---- Universal matchup card (replaces PlayerDetail.tsx:1722-1779's

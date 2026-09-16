@@ -22,10 +22,10 @@ import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
 import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
-import { repriceAtMainLine } from '@/lib/odds/props/mainLine';
+import { isPickemBook, repriceAtMainLine } from '@/lib/odds/props/mainLine';
 import { toFootballGameState } from '@/lib/sports/multiSport/footballGameState';
 import type { PropOddsRow } from '@/lib/db/client';
-import { marketText } from '@/components/MarketLabel';
+import { directionMark, marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
 import type { ChipDef, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 // Type-only import — `teamDefenseAllowed.ts` itself pulls in `lib/db/client`
@@ -345,6 +345,15 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
       const rows = key && propOdds ? propOdds.rows.filter((r) => r.subjectId === c.subjectId && r.marketKey === key) : [];
       return repriceAtMainLine(c, rows, startIso).marketLine ?? c.line ?? null;
     },
+    priceFor: (c, at) => {
+      const key = candidateDimensionToMarketKey(c.dimension);
+      if (!key || !propOdds) return null;
+      const side = directionMark(c.category) === 'U' ? 'under' : 'over';
+      const rows = propOdds.rows.filter((r) => r.subjectId === c.subjectId && r.marketKey === key && r.line === at && r.side === side && !isPickemBook(r.bookmaker));
+      const best = rows.length ? rows.reduce((a, b) => (b.americanOdds > a.americanOdds ? b : a)) : null;
+      return best ? { americanOdds: best.americanOdds, bookmaker: best.bookmaker } : null;
+    },
+    gameHref: todaysGame?.gamePk ? `/cfb/game/${todaysGame.gamePk}` : null,
     teams: { abbr: teamAbbr, logoUrl: teamLogoUrl, opponentAbbr, opponentLogoUrl },
     started: startIso != null && Date.now() >= Date.parse(startIso),
   });

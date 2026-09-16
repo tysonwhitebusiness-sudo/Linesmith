@@ -1064,8 +1064,13 @@ export function PlayerDetail({
   const stickyTop = useStickyHeaderHeight(Boolean(subject) && !embedded);
   const sectionIds = (research?.sections ?? []).map((x) => `${x.id}:${x.navLabel}`).join('|');
   const sectionNav = useMemo(() => (sectionIds ? sectionIds.split('|').map((x) => ({ id: x.split(':')[0], label: x.split(':')[1] })) : []), [sectionIds]);
+  // Whether the live section exists at all, for the nav — the card itself comes
+  // from the adapter below. A successful live poll is the proof (the routes 404
+  // unless a game is live), which is what the MLB adapter checks too.
+  const liveNow = Boolean((playerLive.data && !playerLive.error) || (footballLive.data && footballLive.data.state === 'in'));
   const navItems = useMemo(
     () => [
+      ...(liveNow ? [{ id: 'live', label: 'Live' }] : []),
       { id: 'props', label: 'Prop analysis' },
       ...(historySport
         ? [
@@ -1079,7 +1084,7 @@ export function PlayerDetail({
       { id: 'odds', label: 'Odds' },
       { id: 'sources', label: 'Sources' },
     ],
-    [historySport, sectionNav],
+    [historySport, sectionNav, liveNow],
   );
 
   const data: PlayerDetailData | null = !active
@@ -1273,6 +1278,7 @@ export function PlayerDetail({
     propSub: React.ReactNode,
     nextGame: React.ReactNode,
     oddsCards: { movement: React.ReactNode; books: React.ReactNode; gameLine: React.ReactNode } | null,
+    live: React.ReactNode,
   ) => {
     const odds = (
       <PlayerOddsSection
@@ -1317,6 +1323,14 @@ export function PlayerDetail({
           nextGame={nextGame}
         />
         <SectionNav items={navItems} top={stickyTop} label="Player sections" />
+        {/* C4 sits between the hero and the prop block, and only while a game
+            is live (R6.3): inside "Prop analysis" it came between that heading
+            and the block it introduces. */}
+        {live ? (
+          <Section id="live" title="Live now" sub="this game, as it happens">
+            {live}
+          </Section>
+        ) : null}
         <Section id="props" title="Prop analysis" sub={propSub}>
           {propBlock}
         </Section>
@@ -1360,6 +1374,7 @@ export function PlayerDetail({
         null,
         null,
         null,
+        null,
       );
     }
     if (subject && !embedded) {
@@ -1372,6 +1387,7 @@ export function PlayerDetail({
         <div className="rounded-card border border-line-soft bg-card shadow-card">
           <EmptyState title="No line posted for this player today" reason={reason} />
         </div>,
+        null,
         null,
         null,
         null,
@@ -1432,13 +1448,27 @@ export function PlayerDetail({
   }
 
   // Today's game and the market in view, now that the hero is the player's (R6.1a).
+  const live = data.gameState?.status === 'live' ? data.gameState : null;
   const nextGame = data.subject.opponentAbbr ? (
     <span className="inline-flex items-center gap-1.5">
       <span>{meta.isHome === true ? 'vs' : '@'}</span>
-      <TeamLogo logoUrl={data.subject.opponentLogoUrl} abbreviation={data.subject.opponentAbbr} size={14} />
+      {/* No `abbreviation`: the text beside it is the abbreviation, and a failed
+          logo printed it twice ("@ HOU HOU", found rendering R6.3). */}
+      <TeamLogo logoUrl={data.subject.opponentLogoUrl} size={14} />
       <span>{data.subject.opponentAbbr}</span>
-      {data.subject.gameStartTime ? <span>· {new Date(data.subject.gameStartTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span> : null}
-      {data.subject.gameStatus ? <span>· {data.subject.gameStatus}</span> : null}
+      {live ? (
+        // While the game is on, the hero shows the score rather than a start
+        // time, and the live section below carries the detail.
+        <Chip tone="live">
+          {live.away.abbr} {live.away.score ?? '—'} – {live.home.abbr} {live.home.score ?? '—'}
+          {live.periodLabel ? ` · ${live.periodLabel}` : ''}
+        </Chip>
+      ) : (
+        <>
+          {data.subject.gameStartTime ? <span>· {new Date(data.subject.gameStartTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span> : null}
+          {data.subject.gameStatus ? <span>· {data.subject.gameStatus}</span> : null}
+        </>
+      )}
     </span>
   ) : null;
   const propSub = (
@@ -1528,10 +1558,6 @@ export function PlayerDetail({
 
   return renderPage(
     <div className="space-y-3">
-      {/* C4 — the game in progress, first (R6.1d). Every sport's adapter fills
-          or nulls `gameState`; the card has no sport check. */}
-      {data.gameState ? <GameStateCard state={data.gameState} subjectName={active.subjectName} /> : null}
-
       {/* Market tabs — re-scope everything below without a reload. */}
       {candidates.length > 1 ? (
         // R3: real tabs (role="tab", arrow keys) instead of buttons styled as tabs.
@@ -1688,22 +1714,12 @@ export function PlayerDetail({
               instead of DistributionChart, which measures one hole across
               rounds rather than every hole within one. */}
           {data.chart.kind === 'scorecard' ? (
-            <section className="lb-card lb-card-interactive overflow-hidden">
-              <div className="flex items-baseline justify-between gap-2 bg-accent-soft px-3 py-1.5">
-                <h2 className="text-[12px] font-semibold text-masters">{data.chart.title}</h2>
-                <span className="text-[10px] text-masters/70">{data.chart.subtitle}</span>
-              </div>
-              <div className="p-2.5">
-                <ScorecardChart holes={data.chart.data} />
-              </div>
-            </section>
+            <Card title={data.chart.title} scope={data.chart.subtitle} dense>
+              <ScorecardChart holes={data.chart.data} />
+            </Card>
           ) : (
-            <section className="lb-card overflow-hidden">
-              <div className="flex items-baseline justify-between gap-2 bg-accent-soft px-3 py-1.5">
-                <h2 className="text-[12px] font-semibold text-masters">{data.chart.title}</h2>
-                <span className="text-[10px] text-masters/70">{data.chart.subtitle}</span>
-              </div>
-              <div className="p-2.5">
+            <Card title={data.chart.title} scope={data.chart.subtitle} dense>
+              <div>
                 <DistributionChart
                   history={data.chart.data}
                   line={data.chart.line}
@@ -1712,7 +1728,7 @@ export function PlayerDetail({
                   logoFor={data.chart.logoFor}
                 />
               </div>
-            </section>
+            </Card>
           )}
 
           {/* Live matchup — golf only, the middle-column counterpart to the
@@ -1830,12 +1846,8 @@ export function PlayerDetail({
           {active.sport === 'golf' ? (
             <ConsistentHolesForm holes={data.golfFormHoles ?? []} />
           ) : (
-            <section className="lb-card overflow-hidden">
-              <h3 className="flex items-center gap-1.5 bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
-                <PulseIcon />
-                Form
-              </h3>
-              <ul className="space-y-2 p-3">
+            <Card title="Form" dense>
+              <ul className="space-y-2">
                 {(data.formWindows ?? []).slice(0, 4).map((split) => (
                   <li key={`${split.kind}-${split.label}`}>
                     <div className="flex items-baseline justify-between gap-2 text-[12px]">
@@ -1859,10 +1871,10 @@ export function PlayerDetail({
                   </li>
                 ))}
                 {(data.formWindows ?? []).length === 0 ? (
-                  <li className="text-[12px] text-ink-muted">No corroborating splits yet.</li>
+                  <li className="text-body-sm text-ink-muted">No corroborating splits yet.</li>
                 ) : null}
               </ul>
-            </section>
+            </Card>
           )}
 
           {/* Line movement, the recorded price, all books and the game line are
@@ -1873,6 +1885,7 @@ export function PlayerDetail({
     propSub,
     nextGame,
     oddsCards,
+    data.gameState ? <GameStateCard state={data.gameState} subjectName={active.subjectName} /> : null,
   );
 }
 

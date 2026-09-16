@@ -1,5 +1,7 @@
 'use client';
 
+import { Card } from './ui';
+
 import { SpatialSurface } from './charts/SpatialSurface';
 import { SplitDumbbell } from './charts/SplitDumbbell';
 import { StatTable } from './charts/StatTable';
@@ -87,15 +89,16 @@ export function PlayerRoleRailSections({ roles }: { roles: PlayerRoles }) {
   );
 }
 
+/**
+ * R6.3: the shared `Card`, not a green bar. The player page carried two card
+ * headers — this one and R3's — which is why one page showed three heading
+ * styles at once (operator, 2026-09-15). Same content, one chrome.
+ */
 function RoleCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <section className="lb-card overflow-hidden">
-      <div className="flex items-baseline justify-between gap-2 bg-accent-soft px-3 py-1.5">
-        <h2 className="text-[10.5px] font-bold uppercase tracking-wide text-masters">{title}</h2>
-        {subtitle ? <span className="truncate text-[9.5px] text-ink-muted">{subtitle}</span> : null}
-      </div>
-      <div className="p-3">{children}</div>
-    </section>
+    <Card title={title} scope={subtitle} dense>
+      {children}
+    </Card>
   );
 }
 

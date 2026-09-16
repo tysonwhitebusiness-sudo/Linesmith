@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useTrackedLines } from './useTrackedLines';
 import { useLiveLineValues } from './useLiveLineValues';
 import { heatFill, heatInk } from '@/lib/ui/heat';
-import { SelectBox } from './ui';
+import { Card, SelectBox } from './ui';
 
 export interface LiveLineTrackerData {
   subjectId: string;
@@ -142,15 +142,18 @@ export function LiveLineTrackerCard({ data, subjectName }: { data: LiveLineTrack
   const { values, loading: valuesLoading } = useLiveLineValues(data.sport, data.gameId, data.subjectId, subjectName, statKeys, statKeys.length > 0);
 
   return (
-    <section className="lb-card overflow-hidden">
-      <div className="flex items-center justify-between gap-2 bg-accent-soft px-3 py-1.5">
-        <h2 className="text-[12px] font-semibold text-masters">Live line tracker</h2>
-        {!adding && data.availableStats.length > 0 ? (
-          <button type="button" onClick={() => setAdding(true)} className="text-[11px] font-medium text-masters">
+    <Card
+      title="Live line tracker"
+      dense
+      bodyClassName="p-0"
+      scope={
+        !adding && data.availableStats.length > 0 ? (
+          <button type="button" onClick={() => setAdding(true)} className="text-label font-semibold text-ink-secondary underline-offset-2 hover:underline">
             + Track a line
           </button>
-        ) : null}
-      </div>
+        ) : undefined
+      }
+    >
 
       {loading && lines.length === 0 ? (
         <div className="p-3 text-label text-ink-muted">Loading…</div>
@@ -175,7 +178,7 @@ export function LiveLineTrackerCard({ data, subjectName }: { data: LiveLineTrack
       {adding ? (
         <AddLineForm availableStats={data.availableStats} onAdd={add} onCancel={() => setAdding(false)} />
       ) : null}
-    </section>
+    </Card>
   );
 }
 

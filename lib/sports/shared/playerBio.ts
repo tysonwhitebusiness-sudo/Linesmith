@@ -45,6 +45,24 @@ export function ageOn(birthDate: string | null, now: Date): number | null {
   return age;
 }
 
+/**
+ * ESPN's athlete payload gives a birth date only as `displayDOB`, day-first and
+ * unpunctuated by locale: "21/5/1996" for Josh Allen, born 21 May 1996. Every
+ * other bio on this page prints "May 21, 1996" (MLB's StatsAPI and the NHL's
+ * api-web both carry an ISO date), so the player page showed two date formats
+ * side by side until the hero rework (R6.3). There is no ISO field to fall back
+ * on — `dateOfBirth` is null on the same response — so this parses what there
+ * is, and returns the original string if it is not the expected shape.
+ */
+function espnDob(display: string | null): string | null {
+  if (!display) return null;
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(display.trim());
+  if (!m) return display;
+  const [, day, month, year] = m;
+  const iso = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  return longDate(iso) ?? display;
+}
+
 function longDate(iso: string | null): string | null {
   if (!iso) return null;
   const t = Date.parse(`${iso.slice(0, 10)}T12:00:00Z`);
@@ -132,7 +150,7 @@ export function parseEspnAthlete(json: J | null, espnPath: string, fetchedAt: st
     facts: facts([
       ['Plays', str(a.hand?.displayValue)],
       ['Height / weight', heightWeight],
-      ['Born', [str(a.displayDOB), str(a.displayBirthPlace)].filter(Boolean).join(' · ') || null],
+      ['Born', [espnDob(str(a.displayDOB)), str(a.displayBirthPlace)].filter(Boolean).join(' · ') || null],
       ['Citizenship', str(a.citizenship)],
       ['Experience', str(a.displayExperience)],
       ['College', str(a.college?.name)],

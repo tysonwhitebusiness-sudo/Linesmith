@@ -1,5 +1,7 @@
 'use client';
 
+import { Card } from './ui';
+
 /**
  * The universal matchup card — one component, every sport, replacing
  * `BatterPitcherMatchupCard`/`NflPlayerVsDefenseCard`/MLB's old context-rail
@@ -342,13 +344,8 @@ export function MatchupExplorerCard({ data }: { data: MatchupExplorerData }) {
   }, [subjectRows, opponentRows]);
 
   return (
-    <section className="lb-card overflow-hidden">
-      <div className="flex items-center justify-between bg-accent-soft px-3 py-1.5">
-        <h2 className="text-[10.5px] font-bold uppercase tracking-wide text-masters">Matchup</h2>
-        <OpponentPicker data={data} selectedId={opponentId} onSelect={setOpponentId} />
-      </div>
-
-      <div className="p-3">
+    <Card title="Matchup" scope={<OpponentPicker data={data} selectedId={opponentId} onSelect={setOpponentId} />} dense bodyClassName="p-3">
+      <div>
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2.5 text-left">
             <SubjectAvatar name={data.subjectName} headshotUrl={data.subjectHeadshotUrl ?? undefined} fallbackUrl={data.subjectFallbackUrl ?? undefined} size={40} />
@@ -432,7 +429,7 @@ export function MatchupExplorerCard({ data }: { data: MatchupExplorerData }) {
           </motion.div>
         </AnimatePresence>
       </div>
-    </section>
+    </Card>
   );
 }
 

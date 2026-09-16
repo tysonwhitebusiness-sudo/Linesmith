@@ -188,8 +188,46 @@ test('the game state is the live game, measured against the main line, with base
   assert.equal(g.subjectLine?.now, 'Pitching');
   const batting = detail(rows, { snapshot: snapshot('In Progress'), live: { data: { ...liveData, currentPitcher: { ...liveData.currentPitcher, id: 999, name: 'Other starter' } } as never, loading: false, error: null } });
   assert.equal(batting.gameState?.subjectLine?.now, null, 'his team is batting: someone else is on the mound');
-  assert.deepEqual(g.lines, [{ key: 'pitcher-strikeouts:over', label: 'Pitcher Strikeouts', direction: 'O', line: 6.5, value: 7 }]);
+  // The line carries what the card shows: the main line, the live value, whether
+  // it has cleared, and the best price on that side at that line (R6.3).
+  assert.deepEqual(g.lines, [
+    {
+      key: 'pitcher-strikeouts:over',
+      label: 'Pitcher Strikeouts',
+      direction: 'O',
+      line: 6.5,
+      value: 7,
+      cleared: true,
+      price: { americanOdds: -110, bookmaker: 'draftkings' },
+    },
+  ]);
+  assert.deepEqual(g.events.map((e) => e.clock), [], 'this feed carries no plays');
+  assert.equal(g.gameHref, '/mlb/game/776001');
   assert.deepEqual([g.baseball?.balls, g.baseball?.strikes, g.baseball?.outs, g.baseball?.bases.third], [2, 1, 1, true]);
+});
+
+test('an under is cleared while it is still under, and the feed reads newest first', () => {
+  const rows = [...twoSided('fanduel', 6.5, -115, -105), ...twoSided('draftkings', 6.5, -110, -110)];
+  const under = candidate({ category: 'under', categoryLabel: 'Under' });
+  const withPlays = {
+    ...liveData,
+    plays: [
+      { inning: 4, half: 'top', battingSide: 'away', batter: 'Riley Greene', event: 'Single', description: 'singles', rbi: 0 },
+      { inning: 5, half: 'bottom', battingSide: 'home', batter: 'Bo Bichette', event: 'Home Run', description: 'homers', rbi: 2 },
+    ],
+  };
+  const d = toPlayerDetailData({
+    candidates: [under],
+    snapshot: snapshot('In Progress'),
+    odds: null,
+    scope: { lineOffset: 0, opponentOnly: false, venue: 'all', lastN: 'all' },
+    propOdds: { rows, userSportsbook: 'fanatics' },
+    live: { data: withPlays as never, loading: false, error: null },
+  })!;
+  const line = d.gameState!.lines[0];
+  assert.equal(line.direction, 'U');
+  assert.equal(line.cleared, false, '7 strikeouts is already past an under 6.5');
+  assert.deepEqual(d.gameState!.events.map((e) => `${e.clock} ${e.text}`), ['B5 Bo Bichette home run', 'T4 Riley Greene single']);
 });
 
 test('no game state without a successful poll, after a failed one, or once the slate says final', () => {

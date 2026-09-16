@@ -182,6 +182,15 @@ export interface PlayerResearchData {
     scopeReason: string | null;
     /** "72-51 in games played". `null` where results do not join. */
     record: string | null;
+    /** Games in the scope season — the hero's headline number. */
+    games: number;
+    /**
+     * The last five games played, oldest first, for the hero's form strip.
+     * `result` is null where a sport's results do not join (tennis reads
+     * `match_won`), and the strip then shows the dates alone rather than
+     * inventing a W.
+     */
+    lastFive: Array<{ date: string; opponent: string; result: 'W' | 'L' | 'D' | null }>;
     tiles: ResearchTile[];
   };
   seasons: { columns: ResearchColumn[]; rows: ResearchSeasonRow[]; caption: string | null };

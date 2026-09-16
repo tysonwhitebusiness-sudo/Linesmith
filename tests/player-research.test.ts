@@ -50,6 +50,18 @@ test('ESPN bio: team, jersey, headshot, and no injury key means no injury', () =
   assert.equal(chase.injury, null);
 });
 
+test('ESPN bio: the day-first birth date is printed the way every other bio is (R6.3)', () => {
+  // ESPN gives "1/3/2000" for Ja'Marr Chase, born 1 March 2000, and carries no
+  // ISO date to fall back on; MLB and the NHL print "Mar 1, 2000", so the hero
+  // showed two date formats side by side until this.
+  const chase = parseEspnAthlete(read('tests/fixtures/bio/espn-nfl-chase.json'), 'football/nfl', AT)!;
+  assert.ok(chase.facts.some((f) => f.label === 'Born' && f.value.startsWith('Mar 1, 2000')), chase.facts.find((f) => f.label === 'Born')?.value);
+  const sga = parseEspnAthlete(read('tests/fixtures/bio/espn-nba-sga.json'), 'basketball/nba', AT)!;
+  assert.ok(sga.facts.some((f) => f.label === 'Born' && f.value.startsWith('Jul 12, 1998')), sga.facts.find((f) => f.label === 'Born')?.value);
+  const alcaraz = parseEspnAthlete(read('tests/fixtures/bio/espn-tennis-alcaraz.json'), 'tennis/atp', AT)!;
+  assert.ok(alcaraz.facts.some((f) => f.label === 'Born' && f.value.startsWith('May 5, 2003')), alcaraz.facts.find((f) => f.label === 'Born')?.value);
+});
+
 test('ESPN bio: an injury carries status, body part and return date', () => {
   const bio = parseEspnAthlete(read('tests/fixtures/bio/espn-nfl-injured.json'), 'football/nfl', AT)!;
   assert.equal(bio.injury?.status, 'Questionable');

@@ -293,6 +293,8 @@ export function buildPlayerResearch(input: { sport: HistorySport; history: Playe
       scopeLabel,
       scopeReason,
       record: recordOf(scoped),
+      games: scoped.length,
+      lastFive: scoped.slice(-5).map((g) => ({ date: g.date, opponent: `${g.isHome === false ? '@' : 'vs'} ${opponentLabel(g)}`, result: g.result })),
       tiles: spec.tiles.map((c) => ({ label: c.label, value: formatResearchValue(scoped.length ? c.of(scoped) : null, c), ...(c.info ? { info: c.info } : {}) })),
     },
     seasons: { columns: spec.seasonColumns.map(strip), rows: seasonRows, caption: null },

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
-import { Avatar, Card, Chip, DataTable, EmptyState, ErrorState, FactList, RankRow, SegmentedToggle, SelectBox, Skeleton, StatGrid, StatValue, StatusPill, VizLegend, type CardState, type Column } from './ui';
+import { Avatar, Card, Chip, cx, DataTable, EmptyState, ErrorState, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column } from './ui';
 import { CATEGORICAL, FieldScatter, Histogram, SeriesChart, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import {
@@ -71,74 +71,127 @@ export interface PlayerHeroProps {
   nextGame: ReactNode;
 }
 
+/**
+ * The hero — R6.3 rework (mockup `docs/design/hero-live/index.html`, variant C5).
+ *
+ * WHAT WAS WRONG, MEASURED at 1440 on 2026-09-15: the card was 1416 x 332 with a
+ * 448px fact list at one edge, a 220px season block at the other and ~700px of
+ * nothing between them, because the facts were a label-left / value-right list
+ * inside a narrow column. The tile strip then ran 11 wide and wrapped to 10 + 1
+ * at the width the operator actually uses.
+ *
+ * So: the headshot sits with the name and team, the facts run the FULL width of
+ * the left block beneath them as label-above-value cells, and the season panel
+ * is a real right-hand column with the record and the last five games. The tiles
+ * sit on a fixed grid (6 / 4 / 3) so a row is never left with one orphan.
+ */
 export function PlayerHero({ bio, bioState, research, researchState, fallbackName, teamHref, nextGame }: PlayerHeroProps) {
   const name = bio?.name ?? fallbackName;
-  const facts: Array<[ReactNode, ReactNode]> = [
-    ...(bio?.age != null ? [['Age', String(bio.age)] as [ReactNode, ReactNode]] : []),
-    ...(bio?.facts ?? []).map((f) => [f.label, f.value] as [ReactNode, ReactNode]),
+  const facts: Array<[string, string]> = [
+    ...(bio?.age != null ? [['Age', String(bio.age)] as [string, string]] : []),
+    ...(bio?.facts ?? []).map((f) => [f.label, f.value] as [string, string]),
   ];
+  const hero = research?.hero;
   return (
-    <section aria-label={name ?? 'Player'} className="rounded-card-hero border border-line-soft bg-card p-6 shadow-card">
-      <div className="flex flex-wrap items-start gap-x-6 gap-y-4">
-        <div className="flex min-w-0 flex-1 basis-[320px] items-start gap-4">
-          {bioState.loading && !bio ? (
-            <Skeleton w={72} h={72} round="rounded-xl" />
-          ) : (
-            <Avatar label={name ?? 'Player'} src={bio?.headshotUrl ?? undefined} fallbackSrc={bio?.team?.logoUrl ?? undefined} size={72} rounded />
-          )}
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-heading text-ink">{name ?? (bioState.loading ? <Skeleton w={180} h={22} /> : 'Unknown player')}</h1>
-              {bio?.jersey ? <StatusPill>#{bio.jersey}</StatusPill> : null}
-              {bio?.positionAbbr || bio?.position ? <StatusPill>{bio.position ?? bio.positionAbbr}</StatusPill> : null}
+    <section aria-label={name ?? 'Player'} className="rounded-card-hero border border-line-soft bg-card p-5 shadow-card">
+      <div className="grid grid-cols-1 gap-x-6 gap-y-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="min-w-0">
+          <div className="flex items-start gap-4">
+            {bioState.loading && !bio ? (
+              <Skeleton w={76} h={76} round="rounded-xl" />
+            ) : (
+              <Avatar label={name ?? 'Player'} src={bio?.headshotUrl ?? undefined} fallbackSrc={bio?.team?.logoUrl ?? undefined} size={76} rounded />
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-heading text-ink">{name ?? (bioState.loading ? <Skeleton w={180} h={22} /> : 'Unknown player')}</h1>
+                {bio?.jersey ? <Chip>#{bio.jersey}</Chip> : null}
+                {bio?.positionAbbr || bio?.position ? <Chip>{bio.positionAbbr ?? bio.position}</Chip> : null}
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm text-ink-secondary">
+                {bio?.team ? (
+                  <>
+                    {bio.team.logoUrl ? <Avatar kind="logo" label={bio.team.name ?? 'Team'} src={bio.team.logoUrl} size={22} decorative /> : null}
+                    {teamHref ? (
+                      <Link href={teamHref} className="font-medium text-ink underline-offset-2 hover:underline">
+                        {bio.team.name}
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-ink">{bio.team.name}</span>
+                    )}
+                  </>
+                ) : null}
+                {nextGame}
+              </div>
+              {bio?.injury ? (
+                <div role="status" className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-ctl border border-bad/25 bg-bad/5 px-2.5 py-1 text-body-sm text-ink">
+                  <span className="font-semibold text-bad">{bio.injury.status}</span>
+                  {bio.injury.detail ? <span>{bio.injury.detail}</span> : null}
+                  {bio.injury.returnDate ? <span className="text-ink-muted">· expected back {shortDate(bio.injury.returnDate)}</span> : null}
+                  {bio.injury.date ? <span className="text-ink-muted">· reported {shortDate(bio.injury.date)}</span> : null}
+                </div>
+              ) : null}
             </div>
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm text-ink-secondary">
-              {bio?.team ? (
+          </div>
+          {facts.length ? (
+            <dl className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
+              {facts.map(([label, value]) => (
+                // A long value (a birthplace) takes two cells rather than
+                // wrapping its own row and dragging the grid taller.
+                <div key={label} className={value.length > 34 ? 'col-span-2' : undefined}>
+                  <dt className="text-overline uppercase text-ink-muted">{label}</dt>
+                  <dd className="mt-0.5 text-body-sm tabular-nums text-ink">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+          {bioState.error && !bio ? <ErrorState className="mt-3" message={bioState.error} onRetry={bioState.reload} /> : null}
+        </div>
+
+        <div className="lg:border-l lg:border-line-soft lg:pl-5">
+          {hero ? (
+            <>
+              <div className="text-overline uppercase text-ink-muted">{hero.scopeLabel}</div>
+              <div className="mt-0.5 text-title text-ink">
+                {hero.games} {hero.games === 1 ? 'game' : 'games'}
+              </div>
+              {hero.record ? <div className="text-label text-ink-secondary">{hero.record} in games played</div> : null}
+              {hero.scopeReason ? <div className="mt-0.5 text-label text-ink-muted">{hero.scopeReason}</div> : null}
+              {hero.lastFive.length ? (
                 <>
-                  {bio.team.logoUrl ? <Avatar kind="logo" label={bio.team.name ?? 'Team'} src={bio.team.logoUrl} size={22} decorative /> : null}
-                  {teamHref ? (
-                    <Link href={teamHref} className="font-medium text-ink underline-offset-2 hover:underline">
-                      {bio.team.name}
-                    </Link>
-                  ) : (
-                    <span className="font-medium text-ink">{bio.team.name}</span>
-                  )}
+                  <div className="mt-3 text-overline uppercase text-ink-muted">Last {hero.lastFive.length}</div>
+                  <div className="mt-1 flex gap-1">
+                    {hero.lastFive.map((g) => (
+                      <span
+                        key={g.date + g.opponent}
+                        title={`${shortDate(g.date)} ${g.opponent}${g.result ? ` · ${g.result}` : ''}`}
+                        className={cx(
+                          'grid h-6 w-6 place-items-center rounded-ctl text-label font-semibold',
+                          g.result === 'W' ? 'bg-good/12 text-good' : g.result === 'L' ? 'bg-bad/10 text-bad' : 'bg-card-sunk text-ink-secondary',
+                        )}
+                      >
+                        {g.result ?? '·'}
+                      </span>
+                    ))}
+                  </div>
                 </>
               ) : null}
-              {nextGame ? <span className="text-ink-muted">{nextGame}</span> : null}
-            </div>
-            {bio?.injury ? (
-              <div role="status" className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-ctl border border-bad/25 bg-bad/5 px-2.5 py-1 text-body-sm text-ink">
-                <span className="font-semibold text-bad">{bio.injury.status}</span>
-                {bio.injury.detail ? <span>{bio.injury.detail}</span> : null}
-                {bio.injury.returnDate ? <span className="text-ink-muted">· expected back {shortDate(bio.injury.returnDate)}</span> : null}
-                {bio.injury.date ? <span className="text-ink-muted">· reported {shortDate(bio.injury.date)}</span> : null}
-              </div>
-            ) : null}
-            {facts.length ? <FactList className="mt-3 max-w-md" items={facts} /> : null}
-            {bioState.error && !bio ? <ErrorState className="mt-3" message={bioState.error} onRetry={bioState.reload} /> : null}
-          </div>
-        </div>
-        <div className="min-w-[220px] space-y-1">
-          {research ? (
-            <>
-              <div className="text-overline uppercase text-ink-muted">{research.hero.scopeLabel}</div>
-              {research.hero.record ? <div className="text-label text-ink-secondary">{research.hero.record} in games played</div> : null}
-              {research.hero.scopeReason ? <div className="max-w-[260px] text-label text-ink-muted">{research.hero.scopeReason}</div> : null}
             </>
           ) : researchState.loading ? (
             <Skeleton w={160} h={14} />
           ) : null}
         </div>
       </div>
-      {research && research.hero.tiles.length ? (
-        <div className="mt-4 border-t border-line-soft pt-4">
-          <StatGrid min={96}>
-            {research.hero.tiles.map((t) => (
-              <StatValue key={t.label} label={t.label} value={t.value} size="compact" info={t.info} />
-            ))}
-          </StatGrid>
-        </div>
+
+      {hero && hero.tiles.length ? (
+        <dl className="mt-4 grid grid-cols-3 gap-x-4 gap-y-3 border-t border-line-soft pt-4 sm:grid-cols-4 lg:grid-cols-6">
+          {hero.tiles.map((t) => (
+            <div key={t.label} title={t.info}>
+              <dt className="text-overline uppercase text-ink-muted">{t.label}</dt>
+              <dd className="mt-0.5 text-title tabular-nums text-ink">{t.value}</dd>
+            </div>
+          ))}
+        </dl>
       ) : researchState.loading ? (
         <div className="mt-4 border-t border-line-soft pt-4">
           <Skeleton h={40} />

@@ -66,6 +66,20 @@ export interface FootballLiveGameDetail {
   homeAbbr: string;
   homeScore: number;
   homeLinescores: number[];
+  /**
+   * Down, distance and possession, from the same summary's
+   * `competitions[0].situation` — the shape `nfl/liveGameState.ts` already
+   * reads for the hero strip, parsed here so CFB gets it too (R6.3's live
+   * card). ESPN only sends it once a game has live plays, so every field is
+   * null before kickoff and after the final whistle.
+   */
+  situation: {
+    down: number | null;
+    distance: number | null;
+    yardLine: number | null;
+    possessionTeamId: string | null;
+    isRedZone: boolean;
+  } | null;
   awayTopPasser: FootballLeaderLine | null;
   homeTopPasser: FootballLeaderLine | null;
   scoringPlays: FootballScoringPlay[];
@@ -90,6 +104,7 @@ interface RawSummary {
   header?: {
     competitions?: Array<{
       status?: { type?: { state?: 'pre' | 'in' | 'post'; shortDetail?: string; detail?: string }; period?: number; displayClock?: string };
+      situation?: { down?: number; distance?: number; yardLine?: number; possession?: string; isRedZone?: boolean };
       competitors?: Array<{
         id: string;
         homeAway: 'home' | 'away';
@@ -212,6 +227,15 @@ export async function fetchFootballLiveGame(espnLeague: 'nfl' | 'college-footbal
     statusDetail: comp.status?.type?.shortDetail ?? comp.status?.type?.detail ?? '',
     period: comp.status?.period ?? null,
     displayClock: comp.status?.displayClock ?? null,
+    situation: comp.situation
+      ? {
+          down: comp.situation.down ?? null,
+          distance: comp.situation.distance ?? null,
+          yardLine: comp.situation.yardLine ?? null,
+          possessionTeamId: comp.situation.possession ?? null,
+          isRedZone: comp.situation.isRedZone === true,
+        }
+      : null,
     awayTeamId: away.team.id,
     awayAbbr: away.team.abbreviation,
     awayScore: away.score != null ? Number(away.score) : 0,
