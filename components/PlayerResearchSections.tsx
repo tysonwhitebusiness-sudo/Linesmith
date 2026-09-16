@@ -153,7 +153,7 @@ export function PlayerHero({ bio, bioState, research, researchState, fallbackNam
             <>
               <div className="text-overline uppercase text-ink-muted">{hero.scopeLabel}</div>
               <div className="mt-0.5 text-title text-ink">
-                {hero.games} {hero.games === 1 ? 'game' : 'games'}
+                {hero.games} {hero.games === 1 ? (hero.unit?.one ?? 'game') : (hero.unit?.many ?? 'games')}
               </div>
               {hero.record ? <div className="text-label text-ink-secondary">{hero.record} in games played</div> : null}
               {hero.scopeReason ? <div className="mt-0.5 text-label text-ink-muted">{hero.scopeReason}</div> : null}
@@ -163,14 +163,19 @@ export function PlayerHero({ bio, bioState, research, researchState, fallbackNam
                   <div className="mt-1 flex gap-1">
                     {hero.lastFive.map((g) => (
                       <span
-                        key={g.date + g.opponent}
-                        title={`${shortDate(g.date)} ${g.opponent}${g.result ? ` · ${g.result}` : ''}`}
+                        key={(g.date ?? '') + g.opponent}
+                        title={`${g.date ? `${shortDate(g.date)} ` : ''}${g.opponent}${g.result ? ` · ${g.result}` : g.mark ? ` · ${g.mark}` : ''}`}
                         className={cx(
-                          'grid h-6 w-6 place-items-center rounded-ctl text-label font-semibold',
-                          g.result === 'W' ? 'bg-good/12 text-good' : g.result === 'L' ? 'bg-bad/10 text-bad' : 'bg-card-sunk text-ink-secondary',
+                          // A mark ("-4") can be two characters, so the chip grows rather than clips.
+                          'grid h-6 min-w-6 place-items-center rounded-ctl px-1 text-label font-semibold tabular-nums',
+                          g.result === 'W' || g.tone === 'good'
+                            ? 'bg-good/12 text-good'
+                            : g.result === 'L' || g.tone === 'bad'
+                              ? 'bg-bad/10 text-bad'
+                              : 'bg-card-sunk text-ink-secondary',
                         )}
                       >
-                        {g.result ?? '·'}
+                        {g.result ?? g.mark ?? '·'}
                       </span>
                     ))}
                   </div>

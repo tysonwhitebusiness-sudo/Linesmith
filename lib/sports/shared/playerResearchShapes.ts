@@ -194,12 +194,25 @@ export interface PlayerResearchData {
     /** Games in the scope season — the hero's headline number. */
     games: number;
     /**
+     * What `games` counts, where a sport does not play games: golf counts
+     * rounds (R6.6). Omitted means games.
+     */
+    unit?: { one: string; many: string };
+    /**
      * The last five games played, oldest first, for the hero's form strip.
      * `result` is null where a sport's results do not join (tennis reads
      * `match_won`), and the strip then shows the dates alone rather than
      * inventing a W.
      */
-    lastFive: Array<{ date: string; opponent: string; result: 'W' | 'L' | 'D' | null }>;
+    lastFive: Array<{
+      /** Null where the source dates nothing: golf's events carry no start date (R6.6). */
+      date: string | null;
+      opponent: string;
+      result: 'W' | 'L' | 'D' | null;
+      /** Printed instead of the result where a sport has none — golf's round to par ("-4"). */
+      mark?: string;
+      tone?: 'good' | 'bad' | null;
+    }>;
     tiles: ResearchTile[];
   };
   seasons: { columns: ResearchColumn[]; rows: ResearchSeasonRow[]; caption: string | null };

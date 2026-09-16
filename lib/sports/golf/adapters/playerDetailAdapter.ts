@@ -24,7 +24,8 @@ import type { PlayerSeasonLog } from '@/lib/sports/golf/playerSeason';
 import type { GolfCategory, LiveRoundMatchup } from '@/lib/sports/golf/adapter';
 import type { ChipDef, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, RoundScoreEntry } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import type { BinarySplitRole } from '@/lib/sports/shared/playerRoles';
-import { toGolfProximityGrid, toGolfUsageMix, type GolfShotRow } from '@/lib/sports/golf/shotProfileShapes';
+import { toGolfResearch, type GolfResearchInput } from '@/lib/sports/golf/playerResearchShapes';
+import type { PlayerBio } from '@/lib/sports/shared/playerResearchShapes';
 import type { ConditionsRole, OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
 
 // ---------------------------------------------------------------------------
@@ -64,8 +65,6 @@ export interface GolfPlayerDetailInput {
   /** `usePropOdds()`'s resolved rows/sportsbook. */
   propOdds?: { rows: PropOddsRow[]; userSportsbook: string };
   /** Golf's season/advanced-stats card data — passed straight through from `PlayerDetailProps.golfStats` (`components/PlayerDetail.tsx:922-930`); this adapter does no fetching of its own, same as the MLB half. */
-  /** `useGolfShotProfile(...)`'s result -- the two shot-based roles (6.13). Structural, not an import of the hook's type. */
-  shotProfile?: { shots: GolfShotRow[]; loading: boolean };
   golfStats?: {
     strokesGained: GolferStrokesGained | null;
     seasonLog: PlayerSeasonLog | null;
@@ -85,7 +84,7 @@ export interface GolfPlayerDetailInput {
  * as the MLB adapter.
  */
 export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailData | null {
-  const { candidates, market, scope, propOdds, golfStats, shotProfile, snapshot } = input;
+  const { candidates, market, scope, propOdds, golfStats, snapshot } = input;
 
   const active = candidates.find((c) => c.dimension === market) ?? candidates[0];
   if (!active) return null;
@@ -204,18 +203,14 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
         }
       : null;
 
-  // ---- Roles 2 and 3 | usageMix + spatialGrid, from PGA shot-by-shot data.
-  // Both read the same rows and split differently: the mix counts every shot
-  // by lie (putts included -- roughly 40% of a round), the grid asks where
-  // approach shots finish (putts excluded, since a putt's proximity is feet
-  // against an approach's tens of yards). Each card says which it counts.
-  //
-  // A STATIC 2020-2023 SEED, so most golfers on a live leaderboard are simply
-  // absent and both roles render nothing. That is the honest state, not a
-  // failure -- golfR's scraper reads a host that no longer resolves.
-  const golfShots = shotProfile?.shots ?? [];
-  const usageMix = toGolfUsageMix(golfShots);
-  const spatialGrid = toGolfProximityGrid(golfShots);
+  // ---- The lie mix and proximity grid are GONE (R6.6). ----
+  // They summarised the 2020-2022 shot seed inside the prop block, which only
+  // exists while a tournament is priced. The "Shot profile" section now draws
+  // that seed for every golfer, with the lie table carried into it
+  // (`playerResearchShapes.ts`), so the page shows it whether or not a market
+  // exists. Their route, hook, read and shapes are deleted with them.
+  const usageMix = null;
+  const spatialGrid = null;
 
   // ---- Roles 1 and 5 | opponentUnit + conditions, from the snapshot.
   // NO NEW FETCH. `snapshot.context.other` already carries the course, its par
@@ -352,10 +347,11 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
 }
 
 /**
- * Golf has no per-game history table: rounds and holes are their own tables,
- * and golf's research sections are R6.6's, held until a live tournament. So
- * the shared sections stay empty for golf rather than being faked from rounds.
+ * Golf's research (R6.6). Golf has no `player_game_history` rows, so Seasons,
+ * Trends, Splits and the game log stay empty rather than being faked from
+ * rounds; the hero and golf's own "Scoring" and "Shot profile" come from the
+ * golf tables (`playerResearchShapes.ts` has the measurements behind them).
  */
-export function toPlayerResearchData(): PlayerResearchData | null {
-  return null;
+export function toPlayerResearchData(input: { bio: PlayerBio | null; golf: GolfResearchInput }): PlayerResearchData | null {
+  return toGolfResearch(input);
 }

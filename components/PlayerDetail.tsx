@@ -32,7 +32,8 @@ import { useNhlShots } from './useNhlShots';
 import { useNbaLiveGame } from './useNbaLiveGame';
 import { useNhlLiveGame } from './useNhlLiveGame';
 import { useNflTargets } from './useNflTargets';
-import { useGolfShotProfile } from './useGolfShotProfile';
+import { useGolfResearch } from './useGolfResearch';
+import type { GolfResearchInput } from '@/lib/sports/golf/playerResearchShapes';
 import { nflTargetRole, nflTargetRoleFromKind, type NflTargetsInput } from '@/lib/sports/nfl/targetShapes';
 import { footballResearchSpec } from '@/lib/sports/nfl/adapters/playerResearchSpec';
 import { useLineHistory } from './useLineHistory';
@@ -749,9 +750,10 @@ function ScopeChips({
  */
 function toResearchData(
   sport: string,
-  history: PlayerHistory,
+  history: PlayerHistory | null,
   bio: PlayerBio | null,
   extras: {
+    golf?: GolfResearchInput;
     mlbStatcast?: MlbStatcastInput;
     nflTargets?: NflTargetsInput;
     soccerChances?: SoccerChancesInput;
@@ -760,6 +762,9 @@ function toResearchData(
     nhlShots?: NhlShotMapInput;
   },
 ): PlayerResearchData | null {
+  // Golf reads its own tables (R6.6); every other sport needs its history.
+  if (sport === 'golf') return extras.golf ? toGolfPlayerResearchData({ bio, golf: extras.golf }) : null;
+  if (!history) return null;
   const input = { history, bio };
   switch (sport) {
     case 'mlb':
@@ -777,7 +782,7 @@ function toResearchData(
     case 'tennis':
       return toTennisPlayerResearchData({ ...input, archive: extras.tennisSurface });
     default:
-      return toGolfPlayerResearchData();
+      return null;
   }
 }
 
@@ -999,15 +1004,6 @@ export function PlayerDetail({
   const nbaLive = useNbaLiveGame(active?.sport === 'nba' ? gamePkStr : undefined, active?.sport === 'nba' && started, 25_000);
   const nhlLive = useNhlLiveGame(active?.sport === 'nhl' ? gamePkStr : undefined, active?.sport === 'nhl' && started, 25_000);
 
-  // Golf's shot-by-shot profile (6.13). BY NAME, not by id: the seed stores
-  // PGA Tour's player id and `subjectId` is ESPN's, and both are five-digit
-  // numbers -- so an id lookup returns nothing and looks like a golfer with no
-  // data. Measured on the live slate: 0 of 30 matched by id, 21 of 30 by name.
-  // Left undefined for the other seven sports, so the hook never fires there.
-  const golfShotProfile = useGolfShotProfile(
-    active?.sport === 'golf' ? active.subjectName : undefined,
-  );
-
   // Universal matchup card's league-wide defense-allowed leaderboards — one
   // fetch per sport, shared across every subject on the page (see
   // docs/matchup-card-rebuild-gameplan-2026-08-23.md §4.2/§8). `enabled`
@@ -1066,6 +1062,20 @@ export function PlayerDetail({
   // The TennisMyLife archive for this player (R6.4): surface, serve and rank,
   // none of which `player_game_history` stores for tennis.
   const tennisHistoryTour = historySport === 'tennis_wta' ? 'wta' : historySport === 'tennis_atp' ? 'atp' : undefined;
+  // Golf's rounds, holes and shot seed (R6.6). Golf has no per-game history,
+  // so this is its research source. The rounds key on the page's ESPN id; the
+  // shots on the name, which waits for the bio (the seed keys on PGA's id).
+  const golfResearch = useGolfResearch(
+    researchSport === 'golf' ? researchAthleteId ?? undefined : undefined,
+    researchSport === 'golf' ? bioState.data?.name ?? undefined : undefined,
+  );
+  const golfInput = useMemo<GolfResearchInput | undefined>(
+    () =>
+      researchSport !== 'golf'
+        ? undefined
+        : { data: golfResearch.data, loading: golfResearch.loading || (bioState.loading && !bioState.data), error: golfResearch.error },
+    [researchSport, golfResearch, bioState.loading, bioState.data],
+  );
   const tennisArchive = useTennisArchive(tennisHistoryTour, tennisHistoryTour ? bioState.data?.name ?? subject?.name ?? undefined : undefined);
 
   // NBA's and NHL's shot sections (R6.5): every located attempt, not the 3x3
@@ -1150,8 +1160,9 @@ export function PlayerDetail({
   }, [researchSport, historyState.data, statcastNowSeason, sportSectionSeason, statcastForSection, mlbPlayerId]);
   const research = useMemo(
     () =>
-      researchSport && historyState.data
+      researchSport && (historyState.data || golfInput)
         ? toResearchData(researchSport, historyState.data, bioState.data, {
+            golf: golfInput,
             mlbStatcast: mlbStatcastInput,
             nflTargets: nflTargetsInput,
             soccerChances,
@@ -1160,7 +1171,7 @@ export function PlayerDetail({
             nhlShots: nhlShotsInput,
           })
         : null,
-    [researchSport, historyState.data, bioState.data, mlbStatcastInput, nflTargetsInput, soccerChances, tennisSurface, nbaShotsInput, nhlShotsInput],
+    [researchSport, historyState.data, bioState.data, golfInput, mlbStatcastInput, nflTargetsInput, soccerChances, tennisSurface, nbaShotsInput, nhlShotsInput],
   );
   const stickyTop = useStickyHeaderHeight(Boolean(subject) && !embedded);
   const sectionIds = (research?.sections ?? []).map((x) => `${x.id}:${x.navLabel}`).join('|');
@@ -1185,10 +1196,10 @@ export function PlayerDetail({
             { id: 'seasons', label: 'Seasons' },
             { id: 'trends', label: 'Trends' },
             { id: 'splits', label: 'Splits' },
-            ...sectionNav,
-            { id: 'log', label: 'Game log' },
           ]
         : []),
+      ...sectionNav,
+      ...(historySport ? [{ id: 'log', label: 'Game log' }] : []),
       { id: 'odds', label: 'Odds' },
       { id: 'sources', label: 'Sources' },
     ],
@@ -1205,7 +1216,6 @@ export function PlayerDetail({
           scope: { selectedRound, selectedCategory: selectedGolfCategory },
           propOdds: { rows: propOdds.rows, userSportsbook: propOdds.userSportsbook },
           golfStats,
-          shotProfile: golfShotProfile,
         })
       : active.sport === 'nfl'
         ? toNflPlayerDetailData({
@@ -1336,7 +1346,7 @@ export function PlayerDetail({
     nhlLive.loading ||
     nbaShots.loading ||
     nhlShots.loading ||
-    golfShotProfile.loading ||
+    golfResearch.loading ||
     lineHistory.loading ||
     cfbTeamDefense.loading ||
     nbaTeamDefense.loading ||
@@ -1462,15 +1472,18 @@ export function PlayerDetail({
             <Section id="splits" title="Splits" sub="per-game averages">
               <SplitsCard research={research} state={historyState} />
             </Section>
-            {(research?.sections ?? []).map((sec) => (
-              <Section key={sec.id} id={sec.id} title={sec.title} sub={sec.sub}>
-                <ResearchSectionBody section={sec} onSeason={setSportSectionSeason} />
-              </Section>
-            ))}
-            <Section id="log" title="Game log">
-              <GameLogCard research={research} state={historyState} />
-            </Section>
           </>
+        ) : null}
+        {/* A sport's own sections need no per-game history: golf has none (R6.6). */}
+        {(research?.sections ?? []).map((sec) => (
+          <Section key={sec.id} id={sec.id} title={sec.title} sub={sec.sub}>
+            <ResearchSectionBody section={sec} onSeason={setSportSectionSeason} />
+          </Section>
+        ))}
+        {historySport ? (
+          <Section id="log" title="Game log">
+            <GameLogCard research={research} state={historyState} />
+          </Section>
         ) : null}
         <Section id="odds" title="Odds & prices" sub={started ? 'as they stood at the start' : 'main line, pre-game'}>
           {odds}

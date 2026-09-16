@@ -55,9 +55,9 @@ const DB_MODULES = [
   '@/lib/sports/nhl/shotProfile',
   '@/lib/sports/nba/shotProfile',
   '@/lib/sports/nfl/targets',
-  // 6.13: `components/useGolfShotProfile.ts` and golf's adapter take their type
-  // from the SHAPES file; this one value-imports `pgAll`.
-  '@/lib/sports/golf/shotProfile',
+  // R6.6: golf's player research read. Types and the shot summary live in
+  // `playerResearchShapes.ts`, which the hook and the adapter import.
+  '@/lib/sports/golf/playerResearch',
   // 6.16: `components/useLineHistory.ts` takes its result type from here. That
   // is an `import type` and erased — a VALUE import would bundle `pg`.
   '@/lib/odds/props/lineHistory',
