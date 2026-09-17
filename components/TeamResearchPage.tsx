@@ -5,6 +5,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Avatar, cx, ErrorState, Section, SectionNav, SegmentedToggle, Skeleton } from './ui';
 import { asOfText, ResearchSectionBody, SourcesCard } from './PlayerResearchSections';
 import { useTeamResearch } from './useTeamResearch';
+import { TeamCompareSection } from './TeamCompareSection';
+import { useCompareTeams } from './usePlayerCompare';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useStickyHeaderHeight } from './useStickyHeaderHeight';
 import type { TeamResearchData, TeamResearchPayload } from '@/lib/sports/shared/teamResearchShapes';
 import { toTeamResearchData as toMlbTeamResearchData } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
@@ -61,13 +64,34 @@ export function TeamResearchPage({ sport, teamId, onReadyChange }: TeamResearchP
   const research = useTeamResearch(sport, teamId);
   const [season, setSeason] = useState<number | null>(null);
   useEffect(() => setSeason(null), [sport, teamId]);
+  /**
+   * Compare (R10.3) — the other team in the URL, and its payload from the same
+   * route this page already uses. The hook idles on `null`, so it costs nothing
+   * until a team is picked.
+   */
+  const comparePath = usePathname();
+  const compareRouter = useRouter();
+  const compareSearch = useSearchParams();
+  const vsTeamId = compareSearch?.get('vs') ?? null;
+  const otherResearch = useTeamResearch(sport, vsTeamId ?? undefined);
+  const compareTeams = useCompareTeams(sport);
+  const setCompareTeam = (next: string | null) => {
+    const params = new URLSearchParams(compareSearch?.toString() ?? '');
+    if (next) params.set('vs', next);
+    else params.delete('vs');
+    const q = params.toString();
+    compareRouter.replace(`${comparePath}${q ? `?${q}` : ''}`, { scroll: false });
+  };
   const stickyTop = useStickyHeaderHeight(true);
 
   const data = useMemo(() => (research.data ? teamResearchFor(sport, research.data, season) : null), [sport, research.data, season]);
   const ready = !research.loading;
   useEffect(() => onReadyChange?.(ready), [ready, onReadyChange]);
 
-  const navItems = useMemo(() => [...(data?.sections ?? []).map((s) => ({ id: s.id, label: s.navLabel })), { id: 'sources', label: 'Sources' }], [data]);
+  const navItems = useMemo(
+    () => [{ id: 'compare', label: 'Compare' }, ...(data?.sections ?? []).map((s) => ({ id: s.id, label: s.navLabel })), { id: 'sources', label: 'Sources' }],
+    [data],
+  );
 
   if (research.error && !research.data) {
     return <ErrorState message={research.error} onRetry={research.reload} />;
@@ -102,6 +126,20 @@ export function TeamResearchPage({ sport, teamId, onReadyChange }: TeamResearchP
         </span>
       </div>
       <SectionNav items={navItems} top={stickyTop} label="Team sections" />
+      {/* Compare sits FIRST on a team page, where the G2 spec puts it. */}
+      {research.data ? (
+        <Section id="compare" title="Compare" sub="this team against another">
+          <TeamCompareSection
+            payload={research.data}
+            allTeams={compareTeams}
+            season={data.scope.season}
+            other={otherResearch.data}
+            otherLoading={otherResearch.loading}
+            vsTeamId={vsTeamId}
+            onTeam={setCompareTeam}
+          />
+        </Section>
+      ) : null}
       {data.sections.map((sec) => (
         <Section key={sec.id} id={sec.id} title={sec.title} sub={sec.sub}>
           <ResearchSectionBody section={sec} onSeason={setSeason} />

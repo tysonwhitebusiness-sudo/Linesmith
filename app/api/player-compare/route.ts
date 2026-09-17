@@ -42,18 +42,20 @@ export async function GET(req: Request) {
       // player-against-player, not this route.
       throw new BadRequest(`sport must be one of the rollup sports, not ${JSON.stringify(sport)}`);
     }
-    const athlete = entityId(athleteId);
+    // The team page asks for the picker's teams alone (R10.3), so the athlete is
+    // optional: without one there is no group and no allowed card to build.
+    const athlete = athleteId ? entityId(athleteId) : null;
     const teamId = teamParam ? entityId(teamParam) : null;
 
     return await cachedRoute<PlayerComparePayload>({
-      cacheKey: `player-compare:route:v1:${sport}:${athlete}:${teamId ?? 'none'}`,
+      cacheKey: `player-compare:route:v1:${sport}:${athlete ?? 'teams'}:${teamId ?? 'none'}`,
       ttlMs: CACHE_TTL_MS,
       build: async () => {
-        const [teams, group] = await Promise.all([readCompareTeams(sport), playerGroup(sport, athlete)]);
-        const allow = teamId ? await readAllowCard(sport, group, teamId) : null;
+        const [teams, group] = await Promise.all([readCompareTeams(sport), athlete ? playerGroup(sport, athlete) : null]);
+        const allow = teamId && athlete ? await readAllowCard(sport, group, teamId) : null;
         return {
           sport,
-          athleteId: athlete,
+          athleteId: athlete ?? '',
           teams,
           // The page knows the next opponent from its own slate; the server
           // offers the last team played, which needs no schedule.

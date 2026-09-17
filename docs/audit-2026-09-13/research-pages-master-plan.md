@@ -2312,6 +2312,24 @@ games against Chicago and what Chicago gives up to guards.
 
 - **Player picker:** replaces the fixed peer list, filtered to position, with
   search.
+**R10.3 BUILT 2026-09-17 — team against team, first on the team page.** `?vs=`
+again, and **no new server work**: the page's own payload already carries this
+team's per-game stats (with every team's value behind them), its schedule and
+its roster, and the other team's comes from the same `/api/team-research` the
+page itself uses. Three cards: both sides' stats as a line each, the meetings
+from this team's own schedule, and each side's top producers.
+
+- **The picker cannot come from the standings**, which a payload holds only for
+  the team's OWN league — 15 of MLB's 30, so a Dodgers page could not reach the
+  Yankees. It reads the rollup's team list instead (`/api/player-compare` with
+  no athlete, which now answers with teams alone); the standings remain the
+  fallback if that call fails.
+
+**Verified** at 1440: LAD vs NYY across leagues — 4.96 runs a game against
+4.59, .255 against .235, ERA 3.64 against 3.79 — with the three July meetings
+and both top-producer lists. SF's 4.24 runs a game matches the StatsAPI figure
+refereed in R10.1.
+
 - **Delete:** `MatchupExplorerCard` and the `matchupExplorer` field (R1h's floor
   goes with it).
 

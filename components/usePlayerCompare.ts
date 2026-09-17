@@ -88,3 +88,32 @@ export function usePlayerPeers(sport: string | null, athleteId: string | null) {
 
   return { data, loading, error };
 }
+
+/**
+ * Every team in a sport's rollup — the team page's compare picker (R10.3). The
+ * standings a team payload carries cover only that team's own league (15 of
+ * MLB's 30), so the picker reads this instead.
+ */
+export function useCompareTeams(sport: string | null) {
+  const [teams, setTeams] = useState<PlayerComparePayload['teams']>([]);
+  const active = !!sport && isTeamProductionSport(sport);
+  useEffect(() => {
+    if (!active) {
+      setTeams([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/player-compare?sport=${encodeURIComponent(String(sport))}`)
+      .then(async (res) => (res.ok ? ((await res.json()) as PlayerComparePayload) : null))
+      .then((payload) => {
+        if (!cancelled && payload) setTeams(payload.teams);
+      })
+      .catch(() => {
+        // The standings fallback still fills the picker.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, sport]);
+  return teams;
+}
