@@ -11,6 +11,8 @@ import { GameLogCard, PlayerHero, ResearchSectionBody, SeasonsCard, SourcesCard,
 import { CompareSection } from './CompareSection';
 import { usePlayerCompare, usePlayerPeers } from './usePlayerCompare';
 import { useTeamShotProfile } from './useTeamShotProfile';
+import { useNflTeamTargets } from './useNflTeamTargets';
+import { nflTargetCompareCard } from '@/lib/sports/nfl/adapters/compareCards';
 import { nbaZoneCompareCard } from '@/lib/sports/nba/adapters/compareCards';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { athleteIdOf, historySportFor, type PlayerBio, type PlayerHistory, type PlayerResearchData, type ResearchCard } from '@/lib/sports/shared/playerResearchShapes';
@@ -1195,14 +1197,35 @@ export function PlayerDetail({
     historySport === 'nba' ? sportSectionSeason ?? research?.splits.defaultSeason ?? null : null,
     compareTeamId,
   );
+  const compareTargets = useNflTeamTargets(
+    historySport === 'nfl' ? sportSectionSeason ?? research?.splits.defaultSeason ?? null : null,
+    compareTeamId,
+  );
   const compareExtras = useMemo<ResearchCard[]>(() => {
+    const abbrOfCompared = compareState.data?.teams.find((t) => t.id === compareTeamId)?.abbr ?? 'them';
+    if (historySport === 'nfl') {
+      // The rollup splits the defence by the TARGETED receiver's position where
+      // it has it; the whole defence is the honest fallback, not a guess.
+      const position = bioState.data?.positionAbbr ?? bioState.data?.position ?? null;
+      const byPos = position ? compareTargets.data?.defenseByPosition?.[position] ?? null : null;
+      const card =
+        nflTargets.data && compareTargets.data
+          ? nflTargetCompareCard({
+              targets: nflTargets.data.targets,
+              defense: byPos ?? compareTargets.data.defense,
+              teamAbbr: abbrOfCompared,
+              positionLabel: byPos ? position : null,
+            })
+          : null;
+      return card ? [card] : [];
+    }
     if (historySport !== 'nba' || !nbaShots.data || !compareShotProfile.data || !compareState.data?.group) return [];
     const allowed = compareShotProfile.data.allowedPos[compareState.data.group] ?? null;
     const abbr = compareState.data.teams.find((t) => t.id === compareTeamId)?.abbr ?? 'them';
     const groupLabel = { G: 'guards', F: 'forwards', C: 'centers' }[compareState.data.group] ?? 'his position';
     const card = nbaZoneCompareCard({ shots: nbaShots.data.shots, allowed, teamAbbr: abbr, groupLabel });
     return card ? [card] : [];
-  }, [historySport, nbaShots.data, compareShotProfile.data, compareState.data, compareTeamId]);
+  }, [historySport, nbaShots.data, compareShotProfile.data, compareState.data, compareTeamId, compareTargets.data, nflTargets.data, bioState.data]);
   // The peer's page data, built by the same adapter with no sport extras: the
   // compare lines up seasons and a trend, which every sport's history carries.
   const peerResearch = useMemo(

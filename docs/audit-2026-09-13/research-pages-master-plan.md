@@ -2348,6 +2348,21 @@ section.
 71.4%, against 27% allowed at 62.0%; 1% from the corner against 12% allowed.
 Both share columns add to 100.
 
+**R10.4b BUILT 2026-09-17 — football's compare card.** "Where he is thrown to,
+against where they are thrown at": his target share and catch rate by depth and
+side, beside the defence's. Same shape as NBA's and the same reason it was
+cheap — `/api/nfl/team-targets` has named this caller since R5d. The defence is
+taken BY the targeted receiver's position where the rollup has it, and the whole
+defence otherwise.
+
+- **Share, not volume**, is what lines up: a season of his targets against a
+  season of a defence's is not a comparison. Both columns add to 100 of their
+  own side, and the caption says so.
+
+**Verified** at 1440, George Pickens against the Giants (251 located targets):
+38% of his targets short left at 74% caught, against 22% of what NYG face there
+at 67% allowed. Both share columns total exactly 100.
+
 - **Delete:** `MatchupExplorerCard` and the `matchupExplorer` field (R1h's floor
   goes with it). **NOT DONE — deliberately left for the operator's return:** it
   spans eight sport adapters, `playerRoles.ts` and the old prop block, and it is
