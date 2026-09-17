@@ -785,7 +785,7 @@ swapped before R3 without changing any other phase.
 | R6 | Player page rebuild | large, per sport | R2–R5 | NBA/NHL verify Oct |
 | R7 | Team page rebuild | medium–large | R2, R3, R5 | NBA/NHL verify Oct |
 | R8 | Game page rebuild with three states | large | R2–R5 | MLB live before season end; NBA/NHL Oct |
-| R9 | Visual density: identity, charts, emphasis | medium | R6, R7, R8 | — |
+| R9 | Visual density: identity, charts, emphasis | done 2026-09-17 | R6, R7, R8 | — |
 | R10 | Compare control | medium | R5–R8 | — |
 | R11 | Port-artifact cleanup | small–medium | R6–R10 | — |
 | R12 | Deep history on team and game pages | large, design first | R2, R11 | — |
@@ -1887,6 +1887,17 @@ which share almost nothing.
     fresh filtered sweep of 2024-26: of 100,516 rows, 46,356 belong to no match
     of their tour's singles draw (21,170 doubles, 25,186 the other tour's
     singles, 0 unexplained); the two tours' kept sets share no match.
+    **CLEANED 2026-09-17, after the worker carried the fix** (deploy
+    dep-daltnt0u01pc73e0f2dg, so the daily pass could not write them back):
+    exactly 46,356 rows deleted in one transaction that would have rolled back
+    on any other number, then the backfill re-ran 2024-26 and recovered 652
+    singles rows the old sweep had skipped. After: 0 doubles rows, 0
+    (event, athlete) pairs shared across tours, 0 matches filed under both.
+    Event 181891 is ATP only, Paul over Zverev 2 sets to 1. Distinct 2026
+    athletes fall to ATP 473 / WTA 747, from 1,675 / 2,358. **ESPN's WTA
+    scoreboard genuinely covers more events than its ATP one** (5,076 matches
+    against 3,229 in 2026, 125s and smaller draws included) — that gap is the
+    source's, not a leftover of this bug.
   - Odds: moneylines (76 matches in book lines, 17 in history); props on aces,
     games won and to win a set. Opponent names come from ESPN's athlete endpoint.
 - **8.3b — tennis page, 2026-09-17:** `readTennisGameResearch` (ATP and WTA,
@@ -2048,7 +2059,7 @@ summary `pickcenter` parse.
 
 ---
 
-## R9 — Visual density on the three research pages ◆ medium
+## R9 — Visual density on the three research pages ◆ SIGNED OFF 2026-09-17
 
 **Why.** Operator review 2026-09-17, on the rebuilt pages: "some parts are very
 strong including icons, player images, team logos, while a good portion of the
