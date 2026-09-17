@@ -5,7 +5,7 @@
  * GET /api/team-shot-profile?sport=nba&season=2025&teamId=13
  * GET /api/team-shot-profile?sport=nhl&season=2024&teamId=10
  *
- * Feeds R7's team shot cards and R9's "player's zones vs zones allowed to the
+ * Feeds R7's team shot cards and R10's "player's zones vs zones allowed to the
  * position". Regular season only; league views use teams with 40+ games.
  * `season` is `player_game_history`'s label (NBA end year, NHL start year);
  * NHL team ids are the NHL API's. Shape: `lib/sports/shared/teamProductionShapes.ts`.

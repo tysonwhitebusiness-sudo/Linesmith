@@ -14,7 +14,7 @@ and the reopen conditions. Don't duplicate them here.
 
 **Second track, APPROVED 2026-09-14: research pages.**
 `docs/audit-2026-09-13/research-pages-master-plan.md` rebuilds the player, team
-and game pages to the G2 mockups (`docs/design/phase-g2/`), phases R0–R11. It
+and game pages to the G2 mockups (`docs/design/phase-g2/`), phases R0–R12. It
 covers only those pages and adds no new surface; the model and product order
 above is unchanged. That thread's own baton is
 `docs/audit-2026-09-13/RESUME-PROMPT.md`; read it before any R-phase work.

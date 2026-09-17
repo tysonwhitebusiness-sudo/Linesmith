@@ -80,7 +80,7 @@ const config: Config = {
           soft: 'oklch(var(--line-soft) / <alpha-value>)',
           hair: 'oklch(var(--line-hair) / <alpha-value>)',
         },
-        // Compare slots (R9). Validated: worst colorblind deltaE 22.2.
+        // Compare slots (R10). Validated: worst colorblind deltaE 22.2.
         cmp: {
           a: 'rgb(var(--cmp-a) / <alpha-value>)',
           b: 'rgb(var(--cmp-b) / <alpha-value>)',

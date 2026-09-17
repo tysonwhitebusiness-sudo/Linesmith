@@ -675,7 +675,7 @@ form, sport-native surface, scope control, tooltip, drill-down, game state and
 compare view in G2 is drawn from data the app already stores or fetches
 (`BUILDABILITY.md`). The type ramp, colors, spacing and phone layout are the F2
 system, which the build adopts as tokens. For the same player, team or game, the
-app should show the same numbers as the mockup dataset. R6–R9 verify exactly
+app should show the same numbers as the mockup dataset. R6–R10 verify exactly
 that.
 
 **Where the app will differ, and why:**
@@ -785,16 +785,16 @@ swapped before R3 without changing any other phase.
 | R6 | Player page rebuild | large, per sport | R2–R5 | NBA/NHL verify Oct |
 | R7 | Team page rebuild | medium–large | R2, R3, R5 | NBA/NHL verify Oct |
 | R8 | Game page rebuild with three states | large | R2–R5 | MLB live before season end; NBA/NHL Oct |
-| R9 | Compare control | medium | R5–R8 | — |
-| R10 | Port-artifact cleanup | small–medium | R6–R9 | — |
-| R11 | Deep history on team and game pages | large, design first | R2, R10 | — |
-| R12 | Visual density: identity, charts, emphasis | medium | R6, R7, R8 | — |
+| R9 | Visual density: identity, charts, emphasis | medium | R6, R7, R8 | — |
+| R10 | Compare control | medium | R5–R8 | — |
+| R11 | Port-artifact cleanup | small–medium | R6–R10 | — |
+| R12 | Deep history on team and game pages | large, design first | R2, R11 | — |
 
 Order follows the design audit's sequencing rules:
 - identity and interaction (R3) before any card;
 - data rules (R2) before any page reads them;
-- card changes before the field-rename cleanup (R10);
-- scope before deep history (R11).
+- card changes before the field-rename cleanup (R11);
+- scope before deep history (R12).
 
 R1, R2 and R3 don't depend on each other and can run in any order.
 
@@ -898,7 +898,7 @@ the rebuild.
 **1h. Matchup "biggest edge" floor (C9).** `MatchupExplorerCard.tsx:298`.
 - Below the 70th percentile, say "No clear edge against this opponent".
 - Check first that a high `pctOf` means "allows more".
-- The card is shared, so render one page per sport. It is deleted in R9.
+- The card is shared, so render one page per sport. It is deleted in R10.
 
 **Done when:** each item has a before/after render and is committed. The Python
 fix waits on deploy approval. **Stop.**
@@ -1174,8 +1174,8 @@ Spec: `docs/design/phase-g2/src/player.html`, `src/sports/common.js` (skeleton),
    (7 of 22 captured pages were blank).
 2. **Prop analysis:** the kept block, reading R2's main line. The season in
    scope is labeled, tiles without a sample are hidden, and it opens on recent
-   games. Its "vs" chip opens on the compared team when one is set (R9).
-3. *(R9: compare sections insert here.)*
+   games. Its "vs" chip opens on the compared team when one is set (R10).
+3. *(R10: compare sections insert here.)*
 4. **Season by season:** multi-season `player_game_history` (Gap 1: the table
    holds 2–4 seasons, pages read one), with the R2 season helper.
 5. **Trends:** any stat over time, rolling average, scope toggles, crosshair.
@@ -1353,7 +1353,7 @@ and ESPN, not G2).
   soccer (`teamSportEspn.ts:223`). ESPN matched the league on every G2 team
   checked (LAL 53-29, LV 3-14, OSU 12-1, MCI 23-6-9). This is the R6.1a
   decision for the player page applied to teams, and it also gives the
-  upcoming schedule, which `game_result` cannot. `game_result` stays for R11.
+  upcoming schedule, which `game_result` cannot. `game_result` stays for R12.
 - **Ids agree within a sport, and G2's do not.** Route id = `game_result` =
   `player_game_history` = `team_game_production` = `player_season_production`
   = the shot tables: StatsAPI ids for MLB, api-web ids for NHL, ESPN for the
@@ -2048,77 +2048,7 @@ summary `pickcenter` parse.
 
 ---
 
-## R9 — Compare control ◆ medium
-
-Spec: `docs/design/phase-g2/src/sports/compare.js` and the compare bars in
-`player.html` / `team.html`. State in the URL (`vs`, `peer`). Compare sections
-sit right after the prop analysis block on the player page and first on the team
-page.
-
-| compare | cards | source | built in |
-|---|---|---|---|
-| Player vs a team (defaults to the next opponent if in the league's team list, else the last opponent) | Games against them; averages vs season (with season fallback); **what this team allows to the position** (per game, league rank); the prop block's vs chip opens on that team | `player_game_history`; positions (5b) | R5 |
-| — NFL | Defense thrown-at map vs the player's targets | `nfl_target_events` (5d), nflverse positions | R5 |
-| — NBA | Player's zones vs zones allowed to the position | `nba_shot_events` + roster positions | R5 |
-| — MLB | Opponent staff vs the hitter's hand; lineup vs the pitcher's hand | corpus (5a) | R5 |
-| Player vs a same-position player | Season side by side; trend overlay in compare colors | `player_game_history` | Read |
-| Tennis vs any player | Serve/return profiles; head-to-head | TennisMyLife | R4 |
-| Golf vs the field | Round by round | golf tables | Read |
-| Team vs team | Strength vs strength, head-to-head, form, key players; MLB hand cards | 5b rollups, `game_result` (R2), corpus | R5 |
-
-- **Player picker:** replaces the fixed peer list, filtered to position, with
-  search.
-- **Delete:** `MatchupExplorerCard` and the `matchupExplorer` field (R1h's floor
-  goes with it).
-
-**Verify:** the G2 compare URLs (default opponent, a chosen team, a peer) for
-each sport, against `data/matchup-<sport>.json`. **Stop.**
-
----
-
-## R10 — Port-artifact cleanup ◆ small–medium
-
-After R6–R9, so nothing is renamed twice. Fields the rebuilds already deleted
-drop out of this list.
-
-- **C1:** `hitterStats` + `nflSeasonStats` → `seasonStats`, if either survives.
-- **C2:** optional fields instead of explicit `null` lines on `PlayerDetailData`.
-- **C6:** MLB hero `pregameLines`. Check whether leaving it undefined is
-  deliberate; close as *fits* if so.
-- **B3:** games strip `firstPitch` → `startTime`, every sport.
-- **Docs:**
-  - `CLAUDE.md` §4 examples: use the surface field and C1 as worked examples.
-  - `seasonAggregates.ts`'s "2.75M rows" → ~0.77M.
-
-**Verify:** `tsc`, then render one player, team and game page per sport. A
-rename that type-checks can still drop a card. **Stop.**
-
----
-
-## R11 — Deep history on team and game pages ◆ large, design first
-
-Builds on R2's `game_result` read, which covers the recent seasons the
-rebuilt pages use.
-
-1. **Measure:**
-   - team-id fill rate per sport and decade (old raw names like "St. Louis
-     Rams");
-   - duplicates across sources;
-   - rows per team;
-   - what `team_elo_history` already gives.
-2. **Design doc for approval:**
-   - all-time and last-N records;
-   - head-to-head across decades;
-   - venue splits;
-   - identity through entity resolution;
-   - `(sport, home_team_id)` / `(sport, away_team_id)` indexes: a migration on
-     a Python-owned table, with its `table-ownership.md` reasoning;
-   - `cachedRoute()` with a day TTL.
-3. **Build** in the design's sub-phases. **Stop** between them.
-
----
-
-## R12 — Visual density on the three research pages ◆ medium
+## R9 — Visual density on the three research pages ◆ medium
 
 **Why.** Operator review 2026-09-17, on the rebuilt pages: "some parts are very
 strong including icons, player images, team logos, while a good portion of the
@@ -2182,6 +2112,76 @@ lifts every table at once; d is the largest and is done per page after.
 
 ---
 
+## R10 — Compare control ◆ medium
+
+Spec: `docs/design/phase-g2/src/sports/compare.js` and the compare bars in
+`player.html` / `team.html`. State in the URL (`vs`, `peer`). Compare sections
+sit right after the prop analysis block on the player page and first on the team
+page.
+
+| compare | cards | source | built in |
+|---|---|---|---|
+| Player vs a team (defaults to the next opponent if in the league's team list, else the last opponent) | Games against them; averages vs season (with season fallback); **what this team allows to the position** (per game, league rank); the prop block's vs chip opens on that team | `player_game_history`; positions (5b) | R5 |
+| — NFL | Defense thrown-at map vs the player's targets | `nfl_target_events` (5d), nflverse positions | R5 |
+| — NBA | Player's zones vs zones allowed to the position | `nba_shot_events` + roster positions | R5 |
+| — MLB | Opponent staff vs the hitter's hand; lineup vs the pitcher's hand | corpus (5a) | R5 |
+| Player vs a same-position player | Season side by side; trend overlay in compare colors | `player_game_history` | Read |
+| Tennis vs any player | Serve/return profiles; head-to-head | TennisMyLife | R4 |
+| Golf vs the field | Round by round | golf tables | Read |
+| Team vs team | Strength vs strength, head-to-head, form, key players; MLB hand cards | 5b rollups, `game_result` (R2), corpus | R5 |
+
+- **Player picker:** replaces the fixed peer list, filtered to position, with
+  search.
+- **Delete:** `MatchupExplorerCard` and the `matchupExplorer` field (R1h's floor
+  goes with it).
+
+**Verify:** the G2 compare URLs (default opponent, a chosen team, a peer) for
+each sport, against `data/matchup-<sport>.json`. **Stop.**
+
+---
+
+## R11 — Port-artifact cleanup ◆ small–medium
+
+After R6–R10, so nothing is renamed twice. Fields the rebuilds already deleted
+drop out of this list.
+
+- **C1:** `hitterStats` + `nflSeasonStats` → `seasonStats`, if either survives.
+- **C2:** optional fields instead of explicit `null` lines on `PlayerDetailData`.
+- **C6:** MLB hero `pregameLines`. Check whether leaving it undefined is
+  deliberate; close as *fits* if so.
+- **B3:** games strip `firstPitch` → `startTime`, every sport.
+- **Docs:**
+  - `CLAUDE.md` §4 examples: use the surface field and C1 as worked examples.
+  - `seasonAggregates.ts`'s "2.75M rows" → ~0.77M.
+
+**Verify:** `tsc`, then render one player, team and game page per sport. A
+rename that type-checks can still drop a card. **Stop.**
+
+---
+
+## R12 — Deep history on team and game pages ◆ large, design first
+
+Builds on R2's `game_result` read, which covers the recent seasons the
+rebuilt pages use.
+
+1. **Measure:**
+   - team-id fill rate per sport and decade (old raw names like "St. Louis
+     Rams");
+   - duplicates across sources;
+   - rows per team;
+   - what `team_elo_history` already gives.
+2. **Design doc for approval:**
+   - all-time and last-N records;
+   - head-to-head across decades;
+   - venue splits;
+   - identity through entity resolution;
+   - `(sport, home_team_id)` / `(sport, away_team_id)` indexes: a migration on
+     a Python-owned table, with its `table-ownership.md` reasoning;
+   - `cachedRoute()` with a day TTL.
+3. **Build** in the design's sub-phases. **Stop** between them.
+
+---
+
 ## R-deferred — not in this build
 
 | item | unblocks when |
@@ -2241,7 +2241,7 @@ lifts every table at once; d is the largest and is done per page after.
 | B5 dead game links; past-game pages; Python UTC | NFL/MLB game pages, worker | R1d (TS part fixed 2026-09-14) |
 | D5 shared 60/min bucket, raw API text | `proxy.ts` | R1e, R3 `ErrorState` |
 | B1 CFB blank player pages | CFB | R1f |
-| C9 biggest edge without a floor | `MatchupExplorerCard` | R1h, deleted R9 |
+| C9 biggest edge without a floor | `MatchupExplorerCard` | R1h, deleted R10 |
 | C8 soccer default market | soccer adapter | **resolved** R6.3 (`preferredSoccerMarket`) |
 | C7 tennis surface | tennis adapter | R6 |
 | C4 live card MLB-only | `PlayerDetail` | **filled for every sport**: MLB (R6.1d), NFL and CFB (R6.2), soccer (R6.3), tennis (R6.4), NBA and NHL (R6.5, `hoopsHockeyGameState.ts`). Four renders owed on live slates |
@@ -2325,8 +2325,8 @@ from the repo root: `tools/build_player_data.py`, `build_game_data.py`,
 | 3 (tennis surface) | R6 tennis |
 | 4 (live card) | R6 |
 | 5a (edge floor), 5b (soccer market) | R1h, R6 |
-| 6 (field collapse, B3) | R10 |
-| 7 (deep history, Gap 1) | R11; Gap 1 → R6 seasons |
+| 6 (field collapse, B3) | R11 |
+| 7 (deep history, Gap 1) | R12; Gap 1 → R6 seasons |
 | Decisions 1–5 | §3 |
 | Deferred list | R-deferred |
 | Follow-ups B4, B8 | B4 → R7 team stats; B8 → R8 (CFB lines) and R-deferred (NFL id mapping) |
