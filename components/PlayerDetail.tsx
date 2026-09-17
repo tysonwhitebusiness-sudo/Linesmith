@@ -9,7 +9,7 @@ import { playerPriceRows } from '@/lib/odds/props/playerPrices';
 import { usePlayerBio, usePlayerHistory } from './usePlayerResearch';
 import { GameLogCard, PlayerHero, ResearchSectionBody, SeasonsCard, SourcesCard, SplitsCard, TrendsCard, asOfText } from './PlayerResearchSections';
 import { CompareSection } from './CompareSection';
-import { usePlayerCompare } from './usePlayerCompare';
+import { usePlayerCompare, usePlayerPeers } from './usePlayerCompare';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { athleteIdOf, historySportFor, type PlayerBio, type PlayerHistory, type PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { isTeamProductionSport } from '@/lib/sports/shared/teamProductionShapes';
@@ -1029,6 +1029,11 @@ export function PlayerDetail({
   const compareRouter = useRouter();
   const compareSearch = useSearchParams();
   const vsParam = compareSearch?.get('vs') ?? null;
+  // R10.2: the compared peer, also in the URL. His numbers come from the same
+  // history endpoint and the same adapter as the subject's — a peer is just
+  // another player, so nothing new computes his seasons.
+  const peerParam = compareSearch?.get('peer') ?? null;
+  const peerHistory = usePlayerHistory(historySport, peerParam);
   // NFL's located passes (R6.2) — the page's own subject and the role his
   // position implies, so a player with no market still gets his section. The
   // route resolves the nflverse id; idle for every other sport.
@@ -1180,13 +1185,22 @@ export function PlayerDetail({
   const lastOpponentId = research?.gameLog.rows.length ? research.gameLog.rows[research.gameLog.rows.length - 1].opponentId : null;
   const compareTeamId = vsParam ?? (opponentId != null ? String(opponentId) : lastOpponentId) ?? null;
   const compareState = usePlayerCompare(historySport, researchAthleteId, compareTeamId);
-  const setCompareTeam = (next: string | null) => {
+  const peersState = usePlayerPeers(historySport, researchAthleteId);
+  // The peer's page data, built by the same adapter with no sport extras: the
+  // compare lines up seasons and a trend, which every sport's history carries.
+  const peerResearch = useMemo(
+    () => (researchSport && peerHistory.data ? toResearchData(researchSport, peerHistory.data, null, {}) : null),
+    [researchSport, peerHistory.data],
+  );
+  const setCompareParam = (key: 'vs' | 'peer', next: string | null) => {
     const params = new URLSearchParams(compareSearch?.toString() ?? '');
-    if (next) params.set('vs', next);
-    else params.delete('vs');
+    if (next) params.set(key, next);
+    else params.delete(key);
     const q = params.toString();
     compareRouter.replace(`${comparePath}${q ? `?${q}` : ''}`, { scroll: false });
   };
+  const setCompareTeam = (next: string | null) => setCompareParam('vs', next);
+  const setComparePeer = (next: string | null) => setCompareParam('peer', next);
 
   const stickyTop = useStickyHeaderHeight(Boolean(subject) && !embedded);
   const sectionIds = (research?.sections ?? []).map((x) => `${x.id}:${x.navLabel}`).join('|');
@@ -1486,6 +1500,13 @@ export function PlayerDetail({
               error={compareState.error}
               teamId={compareTeamId}
               onTeam={setCompareTeam}
+              subjectId={researchAthleteId}
+              subjectName={bioState.data?.name ?? subject?.name ?? 'This player'}
+              peers={peersState.data?.peers ?? []}
+              peerId={peerParam}
+              onPeer={setComparePeer}
+              peerResearch={peerResearch}
+              peerLoading={peerHistory.loading}
             />
           </Section>
         ) : null}

@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { Avatar, Card, DataTable, EmptyState, LeagueStripRow, SelectBox, Skeleton, type Column } from './ui';
 import { SplitDumbbell } from './charts';
 import { formatResearchValue, type PlayerResearchData, type ResearchLogRow } from '@/lib/sports/shared/playerResearchShapes';
-import type { PlayerComparePayload } from '@/lib/sports/shared/compareShapes';
+import type { ComparePeer, PlayerComparePayload } from '@/lib/sports/shared/compareShapes';
 
 /**
  * Compare — R10. The page answers "how has he done"; this answers "against THIS
@@ -33,12 +33,34 @@ export interface CompareSectionProps {
   error: string | null;
   teamId: string | null;
   onTeam: (teamId: string | null) => void;
+  /** R10.2 — the peer half. */
+  subjectId: string | null;
+  subjectName: string;
+  peers: ComparePeer[];
+  peerId: string | null;
+  onPeer: (athleteId: string | null) => void;
+  peerResearch: PlayerResearchData | null;
+  peerLoading: boolean;
 }
 
 /** The stats compare lines up: the game log's own numeric columns, at most six. */
 const MAX_STATS = 6;
 
-export function CompareSection({ research, compare, loading, error, teamId, onTeam }: CompareSectionProps) {
+export function CompareSection({
+  research,
+  compare,
+  loading,
+  error,
+  teamId,
+  onTeam,
+  subjectId,
+  subjectName,
+  peers,
+  peerId,
+  onPeer,
+  peerResearch,
+  peerLoading,
+}: CompareSectionProps) {
   const teams = compare?.teams ?? [];
   const team = teams.find((t) => t.id === teamId) ?? null;
   const rows = research?.gameLog.rows ?? [];
@@ -150,6 +172,112 @@ export function CompareSection({ research, compare, loading, error, teamId, onTe
           <AllowCardView compare={compare} loading={loading} teamAbbr={team?.abbr ?? null} />
         </div>
       )}
+      <PeerCompare
+        research={research}
+        subjectId={subjectId}
+        subjectName={subjectName}
+        peers={peers}
+        peerId={peerId}
+        onPeer={onPeer}
+        peerResearch={peerResearch}
+        peerLoading={peerLoading}
+      />
+    </div>
+  );
+}
+
+/**
+ * The player against one of his own kind — R10.2. Seasons side by side, then
+ * both careers on one axis.
+ *
+ * THE PEER LIST IS THE LEAGUE'S PRODUCERS IN HIS POSITION GROUP, named by the
+ * server because the history table holds no names. A peer the app cannot name
+ * is not offered at all, which is why the list can be shorter than the rollup.
+ */
+function PeerCompare({
+  research,
+  subjectId,
+  subjectName,
+  peers,
+  peerId,
+  onPeer,
+  peerResearch,
+  peerLoading,
+}: {
+  research: PlayerResearchData | null;
+  subjectId: string | null;
+  subjectName: string;
+  peers: ComparePeer[];
+  peerId: string | null;
+  onPeer: (id: string | null) => void;
+  peerResearch: PlayerResearchData | null;
+  peerLoading: boolean;
+}) {
+  // The list is cached per position group, so it is shared by every guard in
+  // the league — including this one, who is filtered out here rather than in
+  // the cached answer.
+  const others = useMemo(() => peers.filter((p) => p.athleteId !== subjectId), [peers, subjectId]);
+  const peer = others.find((p) => p.athleteId === peerId) ?? null;
+  const mineSeasons = research?.seasons.rows ?? [];
+  const theirs = peerResearch?.seasons.rows ?? [];
+  const columns = (research?.seasons.columns ?? []).filter((c) => !c.text).slice(0, MAX_STATS);
+
+  // The newest season both players have, which is the only one worth lining up.
+  const shared = useMemo(() => {
+    const theirSeasons = new Set(theirs.map((r) => r.season));
+    return mineSeasons.filter((r) => theirSeasons.has(r.season)).sort((a, b) => b.season - a.season)[0] ?? null;
+  }, [mineSeasons, theirs]);
+  const theirRow = shared ? theirs.find((r) => r.season === shared.season) ?? null : null;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <SelectBox
+          label="Compare with"
+          value={peerId ?? ''}
+          onChange={(v) => onPeer(v || null)}
+          options={[
+            { value: '', label: others.length ? 'Pick a player' : 'No comparable players held' },
+            ...others.map((p) => ({ value: p.athleteId, label: `${p.name}${p.position ? ` · ${p.position}` : ''}` })),
+          ]}
+        />
+        {peer ? <span className="text-body-sm text-ink-secondary">{peer.games} games held this season</span> : null}
+      </div>
+      {peerId ? (
+        <Card
+          title={`${subjectName} vs ${peer?.name ?? 'peer'}`}
+          scope={shared ? `${shared.label} · per game` : undefined}
+          caption={shared ? 'Each line runs from this player’s number to the compared player’s.' : undefined}
+          state={
+            peerLoading && !peerResearch
+              ? { kind: 'loading', lines: 4 }
+              : theirRow && shared
+                ? { kind: 'ready' }
+                : {
+                    kind: 'empty',
+                    title: 'No season both players have',
+                    reason: 'The app holds no season where both of these players played, so there is nothing to line up.',
+                  }
+          }
+        >
+          {theirRow && shared ? (
+            <SplitDumbbell
+              rows={columns.map((c) => ({
+                key: c.key,
+                label: c.label,
+                a: typeof shared.values[c.key] === 'number' ? (shared.values[c.key] as number) : null,
+                b: typeof theirRow.values[c.key] === 'number' ? (theirRow.values[c.key] as number) : null,
+                aSample: shared.games,
+                bSample: theirRow.games,
+                format: (v: number) => formatResearchValue(v, c),
+              }))}
+              aLabel={subjectName}
+              bLabel={peer?.name ?? 'Peer'}
+              label="Season side by side"
+            />
+          ) : null}
+        </Card>
+      ) : null}
     </div>
   );
 }

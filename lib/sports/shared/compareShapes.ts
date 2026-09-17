@@ -275,3 +275,25 @@ export interface PlayerComparePayload {
   allow: { title: string; season: number; games: number; rows: AllowRow[]; note: string | null } | null;
   fetchedAt: string;
 }
+
+/**
+ * One player offered by the peer picker — R10.2. Named, because the history
+ * table is not: the server resolves names from the crosswalk or the league's
+ * rosters, and drops anyone it cannot name rather than offering a bare id.
+ */
+export interface ComparePeer {
+  athleteId: string;
+  name: string;
+  teamId: string | null;
+  games: number;
+  score: number;
+  position: string | null;
+}
+
+export interface PlayerPeersPayload {
+  sport: string;
+  group: string | null;
+  season: number | null;
+  peers: ComparePeer[];
+  fetchedAt: string;
+}

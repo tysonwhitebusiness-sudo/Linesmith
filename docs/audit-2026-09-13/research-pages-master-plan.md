@@ -2286,6 +2286,30 @@ game to guards (12th), 17.7 assists (2nd).
   and not the hitter's. Correct for the card that exists; a two-way page wanting
   both is R10.4's business.
 
+**R10.2 BUILT 2026-09-17 — the player against a peer.** `?peer=` in the URL, a
+picker of the league's producers in his own position group, and the two seasons
+lined up stat by stat (the dumbbell again). The peer's numbers cost no new
+machinery: his history comes from the same `/api/player-history` and his page
+data from the same adapter, because a peer is just another player.
+
+- **What made this a server read at all: names.** `player_game_history` holds
+  none. Measured 2026-09-17: `athlete_crosswalk` names 1,629 of MLB's 1,657
+  season producers and 947 of the NHL's 1,123, and **nothing** for NBA, NFL,
+  CFB or soccer, whose ids are ESPN's — the crosswalk's `espn_athlete_id` joins
+  nothing at all. So `/api/player-peers` names from the crosswalk where it can
+  and from each league's team rosters otherwise (one call per team, not per
+  player), and drops anyone it cannot name rather than offering a bare id.
+- The list is cached per POSITION GROUP, not per player, so one guard's page
+  warms it for every other guard; the subject is filtered out on the page.
+- **R10-F2:** MLB's production score mixes batting and pitching, so a two-way
+  player tops the PITCHER list on his hitting (Ohtani, 134 games). The list is
+  honestly "players who pitched, by production score"; splitting the score by
+  role is model work, not page work.
+
+**Verified** at 1440: SGA vs Luka Doncic, 2025-26 per game — 33.3 against 35.4
+minutes, 31.1 against 33.0 points, 4.3 against 7.6 rebounds — beside SGA's five
+games against Chicago and what Chicago gives up to guards.
+
 - **Player picker:** replaces the fixed peer list, filtered to position, with
   search.
 - **Delete:** `MatchupExplorerCard` and the `matchupExplorer` field (R1h's floor

@@ -19,7 +19,7 @@
 import { pgAll } from '@/lib/db/pgClient';
 import { readLeagueProduction } from './teamProduction';
 import type { LeagueProduction, TeamProductionSport, TeamTotals } from './teamProductionShapes';
-import { allowSpecFor, type AllowRow, type AllowSide, type CompareTeam } from './compareShapes';
+import { allowSpecFor, type AllowRow, type AllowSide, type ComparePeer, type CompareTeam } from './compareShapes';
 import { loadTeamDirectory } from './playerHistoryServer';
 
 /** Below this a team's rollup season is too thin to rank. */
@@ -128,6 +128,92 @@ export async function readAllowCard(
     };
   }
   return null;
+}
+
+/**
+ * A peer for the player-against-player compare — R10.2.
+ *
+ * NAMES ARE THE HARD PART, and the reason this is a server read at all. The
+ * rollup knows who produced what, but `player_game_history` holds no names:
+ * measured 2026-09-17, `athlete_crosswalk` names 1,629 of MLB's 1,657 producers
+ * and 947 of the NHL's 1,123, and **nothing at all** for NBA, NFL, CFB or
+ * soccer, whose ids are ESPN's. So the crosswalk answers where it can, and the
+ * rest are named from each league's own team rosters — the same call the team
+ * page already makes, one per team rather than one per player.
+ */
+/** ESPN's sport/league path per rollup sport, for the roster name lookup. */
+const ESPN_PATH: Partial<Record<TeamProductionSport, [string, string]>> = {
+  nfl: ['football', 'nfl'],
+  cfb: ['football', 'college-football'],
+  nba: ['basketball', 'nba'],
+  nhl: ['hockey', 'nhl'],
+  soccer_epl: ['soccer', 'eng.1'],
+  soccer_mls: ['soccer', 'usa.1'],
+};
+
+/** How many peers a picker offers. Beyond this the list is a scroll, not a choice. */
+const PEER_LIMIT = 120;
+
+export async function readPeers(sport: TeamProductionSport, group: string | null, season: number): Promise<ComparePeer[]> {
+  // MLB has no position rows, so its two kinds are told apart by whether the
+  // player has pitched — the same rule `playerGroup` uses.
+  const mlbRole = sport === 'mlb' ? (group === 'pitcher' ? 'pitcher' : 'hitter') : null;
+  const rows = await pgAll<{ athlete_id: string; team_id: string | null; games: number; score: number; position: string | null }>(
+    sport === 'mlb'
+      ? `SELECT p.athlete_id, p.team_id, p.games, p.score, p.position
+           FROM player_season_production p
+          WHERE p.sport = 'mlb' AND p.season = ? AND p.games >= 5
+            AND (EXISTS (SELECT 1 FROM player_game_history h
+                          WHERE h.sport = 'mlb' AND h.athlete_id = p.athlete_id AND h.season = p.season
+                            AND (h.stats->>'pit_inningsPitched') IS NOT NULL)) = ?
+          ORDER BY p.score DESC LIMIT ${PEER_LIMIT}`
+      : `SELECT athlete_id, team_id, games, score, position
+           FROM player_season_production
+          WHERE sport = ? AND season = ? AND games >= 3 AND position_group = ?
+          ORDER BY score DESC LIMIT ${PEER_LIMIT}`,
+    sport === 'mlb' ? [season, mlbRole === 'pitcher'] : [sport, season, group ?? ''],
+  );
+  if (!rows.length) return [];
+
+  const named = new Map<string, string>();
+  const ids = rows.map((r) => String(r.athlete_id));
+  for (const r of await pgAll<{ athlete_id: string; athlete_name: string }>(
+    `SELECT athlete_id, athlete_name FROM athlete_crosswalk WHERE sport = ? AND athlete_id = ANY(?) AND athlete_name IS NOT NULL`,
+    [sport, ids],
+  )) {
+    named.set(String(r.athlete_id), r.athlete_name);
+  }
+
+  const path = ESPN_PATH[sport];
+  const missingTeams = [...new Set(rows.filter((r) => !named.has(String(r.athlete_id)) && r.team_id).map((r) => String(r.team_id)))];
+  if (path && missingTeams.length) {
+    const { espnAthleteNames } = await import('@/lib/sports/multiSport/teamSportEspn');
+    // One roster call per team, and only for teams with someone still unnamed.
+    // The helper caches per athlete, so a second sport-season costs nothing.
+    const perTeam = await Promise.all(
+      missingTeams.map(async (teamId) => {
+        const wanted = rows.filter((r) => String(r.team_id) === teamId).map((r) => String(r.athlete_id));
+        try {
+          return await espnAthleteNames(path[0], path[1], teamId, wanted);
+        } catch {
+          return new Map<string, { name: string; position: string | null }>();
+        }
+      }),
+    );
+    for (const map of perTeam) for (const [id, v] of map) if (!named.has(id)) named.set(id, v.name);
+  }
+
+  return rows
+    .map((r) => ({
+      athleteId: String(r.athlete_id),
+      name: named.get(String(r.athlete_id)) ?? '',
+      teamId: r.team_id ? String(r.team_id) : null,
+      games: Number(r.games),
+      score: Number(r.score),
+      position: r.position,
+    }))
+    // A peer nobody can name is a row of ids: left out rather than shown.
+    .filter((p) => p.name);
 }
 
 /**
