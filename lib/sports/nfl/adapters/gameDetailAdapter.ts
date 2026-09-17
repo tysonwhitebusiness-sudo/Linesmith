@@ -385,3 +385,5 @@ export function toGameDetailData(input: NflGameDetailInput): GameDetailData {
   };
 }
 
+/** The game page (R8.2): one builder for NFL and CFB, in `footballGameResearch.ts`. */
+export { toGameResearchData } from './footballGameResearch';

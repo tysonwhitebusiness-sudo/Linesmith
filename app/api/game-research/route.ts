@@ -1,5 +1,5 @@
 /**
- * GET /api/game-research?sport=mlb&gameId=824711
+ * GET /api/game-research?sport=mlb&gameId=824711 (also nfl, cfb: ESPN event ids)
  *
  * A game page's payload — R8. One route with the sport as a query param, for
  * the reason `/api/team-research` and `/api/season-ranks` give. Each sport's
@@ -27,6 +27,7 @@ import { BadRequest, entityIdNum } from '@/lib/apiValidation';
 import { cachedRoute } from '@/lib/cachedRoute';
 import { getGameStatus } from '@/lib/sports/mlb/statsapi';
 import { mlbGameState, readMlbGameResearch } from '@/lib/sports/mlb/gameResearch';
+import { footballStateOf, readFootballGameResearch } from '@/lib/sports/multiSport/footballGameResearch';
 import type { GameState } from '@/lib/sports/shared/gameResearchShapes';
 
 export const dynamic = 'force-dynamic';
@@ -46,6 +47,10 @@ const READERS: Record<string, { state: (gameId: number) => Promise<GameState | n
     },
     read: readMlbGameResearch,
   },
+  // R8.2: ESPN event ids. The state lookup reads the summary through its own
+  // 5-second (10 minutes once final) cache, which the build then reuses.
+  nfl: { state: (id) => footballStateOf('nfl', String(id)), read: (id) => readFootballGameResearch('nfl', String(id)) },
+  cfb: { state: (id) => footballStateOf('cfb', String(id)), read: (id) => readFootballGameResearch('cfb', String(id)) },
 };
 
 export async function GET(request: Request) {

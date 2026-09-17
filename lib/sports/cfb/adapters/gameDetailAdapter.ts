@@ -349,3 +349,6 @@ export function toGameDetailData(input: CfbGameDetailInput): GameDetailData {
     leftRail: { candidates, goodBetsGated: false },
   };
 }
+
+/** The game page (R8.2): one builder for NFL and CFB, in `footballGameResearch.ts`. */
+export { toGameResearchData } from '@/lib/sports/nfl/adapters/footballGameResearch';

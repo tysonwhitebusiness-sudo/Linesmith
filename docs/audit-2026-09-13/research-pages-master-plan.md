@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football) next.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football) in progress: 8.2a (shell + final recap) done, 8.2b (before-start research) next.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1738,6 +1738,43 @@ seven G2 fixture games and a live MLB game; route and parser inventory).
 - **MLB group (R8.1) closed 2026-09-17; operator moved on to R8.2.** Owed: the
   live state again on a normal nine-inning game before 2026-09-27, and a
   postponed game when one occurs.
+
+**R8.2 (football) progress:**
+- **Step 0, 2026-09-17** (probes against DAL @ NYG 401872930 and OSU @ TEX
+  401856682):
+  - ESPN's summary serves any past football game: drives with every play
+    (14/174 and 22/189), win probability (175 and 185 points), box score,
+    team stats, scoring plays, injuries (NFL only) and pickcenter. No
+    `lastFiveGames` or `seasonseries`, so form and head to head need schedules.
+  - **Football game lines are moneyline-only in `game_odds_history`**
+    (oddsharvester: 4 books on DAL @ NYG, 3 on OSU @ TEX); `game_odds_book_lines`
+    keeps only the current board. Spread and total open/close come from
+    pickcenter (DraftKings) alone, and the page says so.
+  - Prop subjects are `espn:football:{athleteId}`; `prop_odds.game_id` and
+    every football `player_game_history.event_id` are ESPN event ids, so
+    game-log links can turn on for NFL.
+  - `team_game_production` holds NFL 2026 week 1 only (32 rows), so strength
+    falls back to 2025 until four games; CFB 2026 has 370 rows.
+  - **A drive's `yardLine` counts from the HOME goal line**, not the offense's
+    (DAL's drive from "DAL 28" is 72); the parser comment said otherwise and
+    is corrected.
+  - **DraftKings' "tackles" is SOLO tackles**: every line sits at 2.5-4.5,
+    linebackers included (Overshown 4.5, Edmunds 3.5, who made 7 and 8 total).
+    G2's mock settled it on total tackles, which would clear nearly every over.
+- **8.2a — shell and final recap, 2026-09-17.** `readFootballGameResearch`
+  (one reader for both leagues), `toGameResearchData` in
+  `nfl/adapters/footballGameResearch.ts` exported from both leagues' game
+  adapters, `/api/game-research?sport=nfl|cfb`, and both game routes on
+  `GameResearchPage`. Final: game flow (win probability, a new `field` card
+  kind for the drive chart, and a drive explorer with each drive's plays on
+  the field), scoring & leaders, team stats, box score, lines & props
+  (pickcenter open/close plus the stored moneyline median; props against the
+  box by athlete id), play-by-play. `gameMainLines` is now the one main-line
+  props helper for MLB and football. NFL game-log rows link to their game.
+  Rendered DAL @ NYG and OSU @ TEX at 1440 and 400; chips refereed (DAL -3 lost
+  by 8, 48 over 47.5; OSU +2.5 lost by 1, 47 under 50.5).
+- **8.2b — before-start research: next.** Then **8.2c — live** on TNF
+  DET @ BUF (401872932, 2026-09-18 00:15 UTC) or Sunday's slate.
 
 
 Spec: `docs/design/phase-g2/src/game.html`, `common-game.js`,

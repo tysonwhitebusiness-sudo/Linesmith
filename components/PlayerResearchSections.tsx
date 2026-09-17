@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Avatar, Card, Chip, cx, DataTable, EmptyState, ErrorState, LeagueStripRow, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column } from './ui';
-import { CATEGORICAL, CourtScatter, FieldScatter, Histogram, PitchScatter, RinkScatter, SeriesChart, SprayScatter, ZoneScatter } from './charts';
+import { CATEGORICAL, CourtScatter, FieldLanes, FieldScatter, Histogram, PitchScatter, RinkScatter, SeriesChart, SIDE_COLOR, SprayScatter, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import {
   formatResearchValue,
@@ -653,6 +653,20 @@ export function ResearchCardView({ card }: { card: ResearchCard }) {
       );
     case 'drilldown':
       return <DrilldownCard card={card} />;
+    case 'field':
+      return (
+        <Card title={card.title} scope={card.scope} caption={card.caption}>
+          <FieldLanes rows={card.rows} ends={card.ends} label={card.title} />
+          {card.legend ? (
+            <VizLegend
+              items={card.legend.map((l) => ({
+                label: l.label,
+                color: l.mark === 'turnover' ? 'rgb(var(--bad))' : l.mark === 'penalty' ? 'oklch(72% 0.004 260)' : SIDE_COLOR[l.side ?? 'away'],
+              }))}
+            />
+          ) : null}
+        </Card>
+      );
   }
 }
 

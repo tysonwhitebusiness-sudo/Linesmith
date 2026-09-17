@@ -142,7 +142,11 @@ export interface Drive {
   timeElapsed: string | null;
   period: number | null;
   clock: string | null;
-  /** 0-100 from the offense's own goal line, as ESPN reports `yardLine`. */
+  /**
+   * 0-100 from the HOME team's goal line, as ESPN reports `yardLine` — not the
+   * offense's (R8.2, measured on DAL @ NYG: DAL's drive from "DAL 28" is 72,
+   * NYG's from "NYG 17" is 17).
+   */
   startYardLine: number | null;
   startText: string | null;
   endYardLine: number | null;

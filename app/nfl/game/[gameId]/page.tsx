@@ -1,17 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import type { PickCandidate } from '@/lib/core/types';
 import { useSnapshot } from '@/components/useSnapshot';
 import { useSlip } from '@/components/useSlip';
-import { useGameLines } from '@/components/useGameLines';
 import { GamesStrip } from '@/components/GamesStrip';
 import { TopBar } from '@/components/TopBar';
-import { GameDetail } from '@/components/GameDetail';
 import { nflTeamLogoUrl } from '@/components/SubjectAvatar';
 import SlipModal from '@/components/SlipModal';
-import { BrandedLoader } from '@/components/BrandedLoader';
+import { GameResearchPage } from '@/components/GameResearchPage';
 
 interface NflGamesStripGame {
   gamePk: string | number;
@@ -21,52 +19,24 @@ interface NflGamesStripGame {
   firstPitch?: string;
 }
 
-/** `/nfl/game/[gameId]` — the NFL equivalent of `/mlb/game/[gameId]`. */
+/**
+ * `/nfl/game/[gameId]` — the game page for any NFL game by ESPN event id
+ * (R8.2): before kickoff, live, or final. The page is `GameResearchPage`, which
+ * reads the game from `/api/game-research` rather than this week's slate, so a
+ * past game resolves (R6-F6, B5). The games strip still shows the slate.
+ */
 export default function NflGameDetailPage() {
   const params = useParams<{ gameId: string }>();
   const router = useRouter();
-  const search = useSearchParams();
   const sport = 'nfl' as const;
   const gameId = String(params?.gameId ?? '');
 
-  const { snapshot, loading, error, lastFetched, refresh } = useSnapshot(sport);
+  const { snapshot, loading, lastFetched, refresh } = useSnapshot(sport);
   const slip = useSlip(sport);
-  const odds = useGameLines(sport, snapshot?.fetchedAt ?? null);
   const [slipOpen, setSlipOpen] = useState(false);
 
-  // See the MLB player page's identical block for why this exists.
-  const [detailReady, setDetailReady] = useState(false);
-  useEffect(() => {
-    setDetailReady(false);
-  }, [gameId]);
-
-  const selectedPlayerId = search.get('player') ?? undefined;
-  const selectedMarket = search.get('market') ?? undefined;
-
-  const onSelectCandidate = (subjectId: string | null, dimension?: string) => {
-    const qs = new URLSearchParams();
-    if (subjectId) {
-      qs.set('player', subjectId);
-      if (dimension) qs.set('market', dimension);
-    }
-    const suffix = qs.toString();
-    router.replace(`/nfl/game/${gameId}${suffix ? `?${suffix}` : ''}`);
-  };
-
-  const games = useMemo(
-    () => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as NflGamesStripGame[],
-    [snapshot],
-  );
-
-  const selectedGame = useMemo(() => games.find((g) => String(g.gamePk) === gameId), [games, gameId]);
-
-  const gameCandidates = useMemo(() => {
-    const all = snapshot?.candidates ?? [];
-    return all.filter((c) => String((c.subjectMeta as Record<string, unknown> | undefined)?.gamePk) === gameId);
-  }, [snapshot, gameId]);
-
+  const games = useMemo(() => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as NflGamesStripGame[], [snapshot]);
   const eventContext = snapshot ? [snapshot.eventName, snapshot.eventDetail].filter(Boolean).join(' · ') : null;
-
   const onAdd = (candidate: PickCandidate, oddsInfo?: { americanOdds: string; source: string }) => {
     void slip.addPick(candidate, eventContext, oddsInfo);
   };
@@ -77,11 +47,7 @@ export default function NflGameDetailPage() {
         <TopBar
           sport={sport}
           leading={
-            <button
-              type="button"
-              onClick={() => router.push('/nfl')}
-              className="whitespace-nowrap px-2 py-3 text-[13px] font-medium text-masters"
-            >
+            <button type="button" onClick={() => router.push('/nfl')} className="whitespace-nowrap px-2 py-3 text-[13px] font-medium text-masters">
               ← Scan
             </button>
           }
@@ -102,43 +68,8 @@ export default function NflGameDetailPage() {
         />
       </header>
 
-      <main className="px-3 py-3">
-        {error ? <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad">{error}</div> : null}
-
-        {/* B5. This used to render "Game not found." for any game missing from
-            TODAY'S strip, which is every past game — so every link out of a
-            game log, a results list or a schedule was dead. `GameDetail`
-            fetches NFL by id through `useNflGameDetail`, so it does not need
-            the strip at all; CFB, soccer, NBA, NHL and tennis already render
-            it unconditionally for exactly that reason. The strip stays as
-            navigation; it is no longer a gate. */}
-        {loading && !selectedGame && games.length === 0 ? (
-          <div className="lb-card p-4">
-            <div className="h-20 animate-pulse rounded-lg bg-line/30" />
-          </div>
-        ) : (
-          <>
-            {!detailReady && <BrandedLoader size="page" />}
-            <div style={{ display: detailReady ? 'block' : 'none' }}>
-              <GameDetail
-                sport={sport}
-                gameId={gameId}
-                candidates={gameCandidates}
-                picks={slip.picks}
-                pickedKeys={slip.pickedKeys}
-                onAdd={onAdd}
-                onRemovePick={slip.removePick}
-                odds={odds.result}
-                snapshot={snapshot}
-                selectedPlayerId={selectedPlayerId}
-                selectedMarket={selectedMarket}
-                onSelectCandidate={onSelectCandidate}
-                eventContext={eventContext}
-                onReadyChange={setDetailReady}
-              />
-            </div>
-          </>
-        )}
+      <main className="mx-auto max-w-[1280px] px-3 py-3 md:px-6">
+        <GameResearchPage sport={sport} gameId={gameId} />
       </main>
 
       <SlipModal

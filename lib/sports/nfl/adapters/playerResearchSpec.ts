@@ -31,7 +31,10 @@ const fumblesLost: Agg = (gs) => (gs.length ? gs.reduce((n, g) => n + (stat(g, '
  * …" for last week's game, checked 2026-09-15), so NFL rows stay unlinked until
  * R8 builds past-game pages rather than opening a dead end (B5).
  */
-const href = (sport: Football) => (g: PlayerGame): string | null => (sport === 'cfb' ? `/cfb/game/${encodeURIComponent(g.eventId)}` : null);
+// Every row links to its game: NFL past games resolve since R8.2 (R6-F6), and
+// every football `player_game_history.event_id` is an ESPN event id (measured
+// 2026-09-17: 18,584 of 18,584 NFL rows and 74,186 of 74,186 CFB rows since 2025).
+const href = (sport: Football) => (g: PlayerGame): string | null => `/${sport}/game/${encodeURIComponent(g.eventId)}`;
 
 function quarterback(sport: Football): ResearchSpec {
   const nfl = sport === 'nfl';

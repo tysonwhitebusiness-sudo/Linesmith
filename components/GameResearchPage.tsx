@@ -10,6 +10,9 @@ import { useStickyHeaderHeight } from './useStickyHeaderHeight';
 import type { GameResearchData, GameResearchPayload, GameSide, GameState } from '@/lib/sports/shared/gameResearchShapes';
 import { toGameResearchData as toMlbGameResearchData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
 import type { MlbGameResearchPayload } from '@/lib/sports/mlb/gameResearch';
+import { toGameResearchData as toNflGameResearchData } from '@/lib/sports/nfl/adapters/gameDetailAdapter';
+import { toGameResearchData as toCfbGameResearchData } from '@/lib/sports/cfb/adapters/gameDetailAdapter';
+import type { FootballGameResearchPayload } from '@/lib/sports/multiSport/footballGameResearch';
 
 /**
  * The game page — R8. One component for every sport: a hero with the score,
@@ -21,12 +24,16 @@ import type { MlbGameResearchPayload } from '@/lib/sports/mlb/gameResearch';
  * knows the sport.
  */
 
-export const GAME_RESEARCH_SPORTS = ['mlb'] as const;
+export const GAME_RESEARCH_SPORTS = ['mlb', 'nfl', 'cfb'] as const;
 
 function gameResearchFor(sport: string, payload: GameResearchPayload, requestedState: string | null): GameResearchData | null {
   switch (sport) {
     case 'mlb':
       return toMlbGameResearchData({ payload: payload as MlbGameResearchPayload, requestedState });
+    case 'nfl':
+      return toNflGameResearchData({ payload: payload as FootballGameResearchPayload, requestedState });
+    case 'cfb':
+      return toCfbGameResearchData({ payload: payload as FootballGameResearchPayload, requestedState });
     default:
       return null;
   }

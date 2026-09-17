@@ -87,6 +87,8 @@ const DB_MODULES = [
   '@/lib/sports/mlb/gameResearch',
   // R8.1b: MLB's before-start research read.
   '@/lib/sports/mlb/gamePregame',
+  // R8.2: the NFL and CFB game page read. Types reach the adapter with `import type`.
+  '@/lib/sports/multiSport/footballGameResearch',
 ];
 
 /**

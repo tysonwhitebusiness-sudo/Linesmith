@@ -16,7 +16,7 @@
 import { getLiveFeed, getWinProbability, type MlbLiveFeed } from './statsapi';
 import { mlbMarketResult, parseAtBats, parseMlbBox, parseMlbWinProbability, type AtBat, type MlbBoxTeam, type MlbWinProbabilityPoint } from './liveFeedParsers';
 import { readPreGamePropOddsForGame, type PropOddsRow } from '@/lib/db/client';
-import { pickMainLine } from '@/lib/odds/props/mainLine';
+import { gameMainLines } from '@/lib/odds/props/gameProps';
 import { readInGameLines, readPreGameOpenClose, type GameLineOpenClose, type InGameLines } from '@/lib/odds/gameLineHistory';
 import { buildLiveGameDetail, type LiveBatter, type LivePitcherLine } from './liveGame';
 import type { GameResearchPayload, GameSide, GameState } from '@/lib/sports/shared/gameResearchShapes';
@@ -108,38 +108,15 @@ function statusText(feed: MlbLiveFeed, state: GameState): string {
 }
 
 function propResults(rows: PropOddsRow[], start: string, box: MlbGameResearchPayload['mlb']['box']): { props: MlbPropResult[]; altOnly: number } {
-  const groups = new Map<string, PropOddsRow[]>();
-  for (const r of rows) {
-    const k = `${r.subjectId}|${r.marketKey}`;
-    const g = groups.get(k);
-    if (g) g.push(r);
-    else groups.set(k, [r]);
-  }
   const findBatter = (id: number) => box && (box.away.batting.find((b) => b.id === id) ?? box.home.batting.find((b) => b.id === id));
   const findPitcher = (id: number) => box && (box.away.pitching.find((p) => p.id === id) ?? box.home.pitching.find((p) => p.id === id));
   const sideOf = (id: number): 'away' | 'home' | null =>
     !box ? null : box.away.batting.some((b) => b.id === id) || box.away.pitching.some((p) => p.id === id) ? 'away' : box.home.batting.some((b) => b.id === id) || box.home.pitching.some((p) => p.id === id) ? 'home' : null;
-  const props: MlbPropResult[] = [];
-  let altOnly = 0;
-  for (const [key, g] of groups) {
-    const main = pickMainLine(g, start, { now: Date.now() });
-    if (main.kind === 'alternates-only') altOnly++;
-    if (main.kind !== 'main') continue;
-    const id = Number(key.split('|')[0]);
-    const market = key.split('|')[1];
-    props.push({
-      playerId: String(id),
-      name: g[0].subjectName,
-      side: sideOf(id),
-      market,
-      line: main.line,
-      over: { price: main.over.americanOdds, book: main.over.bookmaker },
-      under: main.under ? { price: main.under.americanOdds, book: main.under.bookmaker } : null,
-      books: main.twoSidedBooks,
-      result: box ? mlbMarketResult(market, findBatter(id) ?? undefined, findPitcher(id) ?? undefined) : null,
-    });
-  }
-  props.sort((a, b) => a.name.localeCompare(b.name) || a.market.localeCompare(b.market));
+  const { lines, altOnly } = gameMainLines(rows, start);
+  const props = lines.map((l): MlbPropResult => {
+    const id = Number(l.playerId);
+    return { ...l, side: sideOf(id), result: box ? mlbMarketResult(l.market, findBatter(id) ?? undefined, findPitcher(id) ?? undefined) : null };
+  });
   return { props, altOnly };
 }
 

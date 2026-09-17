@@ -375,6 +375,34 @@ export type ResearchCard =
   | { kind: 'status'; key: string; title: string; headline: string; reason: string }
   | {
       /**
+       * Movement on a football field, one lane per row — R8.2's drive chart
+       * (every drive of a game) and a drive's plays. `from` and `to` are yards
+       * from the LEFT goal line, 0-100; the away team defends the left end
+       * zone and drives right, the home team the reverse (G2 `game-football.js`).
+       * `side` colours the lane by team; `strong` is a scoring drive.
+       */
+      kind: 'field';
+      key: string;
+      title: string;
+      scope?: string;
+      caption?: string;
+      ends: { left: string; right: string };
+      rows: Array<{
+        key: string;
+        side: 'away' | 'home';
+        from: number;
+        to: number;
+        label: string | null;
+        strong: boolean;
+        /** A pass, drawn dashed. */
+        dashed?: boolean;
+        mark?: 'turnover' | 'penalty' | null;
+        tip: string[];
+      }>;
+      legend?: Array<{ label: string; side?: 'away' | 'home'; dashed?: boolean; mark?: 'turnover' | 'penalty' }>;
+    }
+  | {
+      /**
        * A list beside the detail of the item picked from it — R8.1's at-bat
        * explorer: plate appearances grouped by inning, and each one's pitch
        * plot and pitch table. The detail is ordinary cards.

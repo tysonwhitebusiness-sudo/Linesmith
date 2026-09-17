@@ -68,3 +68,4 @@ export { PitchScatter } from './PitchScatter';
 export { CourtScatter } from './CourtScatter';
 export { RinkScatter } from './RinkScatter';
 export { SprayScatter } from './SprayScatter';
+export { FieldLanes, SIDE_COLOR, type FieldLane } from './FieldLanes';
