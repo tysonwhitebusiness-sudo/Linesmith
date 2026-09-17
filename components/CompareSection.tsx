@@ -3,7 +3,8 @@
 import { useMemo } from 'react';
 import { Avatar, Card, DataTable, EmptyState, LeagueStripRow, SelectBox, Skeleton, type Column } from './ui';
 import { SplitDumbbell } from './charts';
-import { formatResearchValue, type PlayerResearchData, type ResearchLogRow } from '@/lib/sports/shared/playerResearchShapes';
+import { formatResearchValue, type PlayerResearchData, type ResearchCard, type ResearchLogRow } from '@/lib/sports/shared/playerResearchShapes';
+import { ResearchCardView } from './PlayerResearchSections';
 import type { ComparePeer, PlayerComparePayload } from '@/lib/sports/shared/compareShapes';
 
 /**
@@ -41,6 +42,11 @@ export interface CompareSectionProps {
   onPeer: (athleteId: string | null) => void;
   peerResearch: PlayerResearchData | null;
   peerLoading: boolean;
+  /**
+   * The sport's own compare cards, built by the page from the hooks it already
+   * runs (R10.4). A named slot rather than a `sport === 'nba'` branch in here.
+   */
+  extras?: ResearchCard[];
 }
 
 /** The stats compare lines up: the game log's own numeric columns, at most six. */
@@ -60,6 +66,7 @@ export function CompareSection({
   onPeer,
   peerResearch,
   peerLoading,
+  extras = [],
 }: CompareSectionProps) {
   const teams = compare?.teams ?? [];
   const team = teams.find((t) => t.id === teamId) ?? null;
@@ -172,6 +179,13 @@ export function CompareSection({
           <AllowCardView compare={compare} loading={loading} teamAbbr={team?.abbr ?? null} />
         </div>
       )}
+      {teamId && extras.length ? (
+        <div className="grid gap-3">
+          {extras.map((card) => (
+            <ResearchCardView key={card.key} card={card} />
+          ))}
+        </div>
+      ) : null}
       <PeerCompare
         research={research}
         subjectId={subjectId}

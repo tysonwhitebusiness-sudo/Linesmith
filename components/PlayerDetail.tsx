@@ -10,8 +10,10 @@ import { usePlayerBio, usePlayerHistory } from './usePlayerResearch';
 import { GameLogCard, PlayerHero, ResearchSectionBody, SeasonsCard, SourcesCard, SplitsCard, TrendsCard, asOfText } from './PlayerResearchSections';
 import { CompareSection } from './CompareSection';
 import { usePlayerCompare, usePlayerPeers } from './usePlayerCompare';
+import { useTeamShotProfile } from './useTeamShotProfile';
+import { nbaZoneCompareCard } from '@/lib/sports/nba/adapters/compareCards';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { athleteIdOf, historySportFor, type PlayerBio, type PlayerHistory, type PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
+import { athleteIdOf, historySportFor, type PlayerBio, type PlayerHistory, type PlayerResearchData, type ResearchCard } from '@/lib/sports/shared/playerResearchShapes';
 import { isTeamProductionSport } from '@/lib/sports/shared/teamProductionShapes';
 import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
 import { entryValue, isOk, type WindowedStat } from '@/lib/core/windowedStat';
@@ -1186,6 +1188,21 @@ export function PlayerDetail({
   const compareTeamId = vsParam ?? (opponentId != null ? String(opponentId) : lastOpponentId) ?? null;
   const compareState = usePlayerCompare(historySport, researchAthleteId, compareTeamId);
   const peersState = usePlayerPeers(historySport, researchAthleteId);
+  // R10.4 — the sport's own compare card. NBA's needs the opponent's allowed
+  // zones, which is the one extra read compare makes beyond its two cards.
+  const compareShotProfile = useTeamShotProfile(
+    historySport === 'nba' ? 'nba' : null,
+    historySport === 'nba' ? sportSectionSeason ?? research?.splits.defaultSeason ?? null : null,
+    compareTeamId,
+  );
+  const compareExtras = useMemo<ResearchCard[]>(() => {
+    if (historySport !== 'nba' || !nbaShots.data || !compareShotProfile.data || !compareState.data?.group) return [];
+    const allowed = compareShotProfile.data.allowedPos[compareState.data.group] ?? null;
+    const abbr = compareState.data.teams.find((t) => t.id === compareTeamId)?.abbr ?? 'them';
+    const groupLabel = { G: 'guards', F: 'forwards', C: 'centers' }[compareState.data.group] ?? 'his position';
+    const card = nbaZoneCompareCard({ shots: nbaShots.data.shots, allowed, teamAbbr: abbr, groupLabel });
+    return card ? [card] : [];
+  }, [historySport, nbaShots.data, compareShotProfile.data, compareState.data, compareTeamId]);
   // The peer's page data, built by the same adapter with no sport extras: the
   // compare lines up seasons and a trend, which every sport's history carries.
   const peerResearch = useMemo(
@@ -1507,6 +1524,7 @@ export function PlayerDetail({
               onPeer={setComparePeer}
               peerResearch={peerResearch}
               peerLoading={peerHistory.loading}
+              extras={compareExtras}
             />
           </Section>
         ) : null}

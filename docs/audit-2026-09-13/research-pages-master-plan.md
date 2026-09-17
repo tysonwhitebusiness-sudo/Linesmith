@@ -2330,8 +2330,29 @@ from this team's own schedule, and each side's top producers.
 and both top-producer lists. SF's 4.24 runs a game matches the StatsAPI figure
 refereed in R10.1.
 
+**R10.4a BUILT 2026-09-17 — NBA's own compare card.** "Where he shoots, against
+what they allow": his share and FG% by zone beside what that team gives up to
+his position group. Both sides already existed — his attempts from
+`/api/nba/shots` (the page's own shot chart) and the opponent's from
+`team_shot_profile.allowedPos`, whose route header had named this card since R5c
+— so the work was a join, not a source. A sport's compare card is a named
+`extras` slot the page fills, never a `sport === 'nba'` branch inside the shared
+section.
+
+- **R10-F3, and the reason to measure rather than assume:** the rollup writes
+  the zone as **`Above-break 3`** while the player page's own card calls it
+  "Above the break 3". Matching on the display name silently dropped that row
+  until the real keys were read back from the API.
+
+**Verified** at 1440, SGA against Chicago: 25% of his attempts at the rim at
+71.4%, against 27% allowed at 62.0%; 1% from the corner against 12% allowed.
+Both share columns add to 100.
+
 - **Delete:** `MatchupExplorerCard` and the `matchupExplorer` field (R1h's floor
-  goes with it).
+  goes with it). **NOT DONE — deliberately left for the operator's return:** it
+  spans eight sport adapters, `playerRoles.ts` and the old prop block, and it is
+  the one part of R10 that removes something a person may still be looking at.
+  Compare now covers what it did for player-against-team.
 
 **Verify:** the G2 compare URLs (default opponent, a chosen team, a peer) for
 each sport, against `data/matchup-<sport>.json`. **Stop.**
