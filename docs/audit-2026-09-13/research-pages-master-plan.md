@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football) in progress: 8.2a (shell + final recap) and 8.2b (before-start research) done, 8.2c (live) next.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football): 8.2a-c built; the live state's render is owed on TNF DET @ BUF 2026-09-17, then sign-off.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1796,8 +1796,24 @@ seven G2 fixture games and a live MLB game; route and parser inventory).
   - A prop player's side before kickoff comes from his latest game-log team
     (no box yet), which is what fills "vs opp".
   - Form reaches into last season: week 2 has one game per team.
-- **8.2c — live: next,** on TNF DET @ BUF (401872932, 2026-09-18 00:15 UTC)
-  or Sunday's slate.
+- **8.2c — live, BUILT 2026-09-17; LIVE RENDER OWED** on TNF DET @ BUF
+  (401872932, Thu 2026-09-17 8:15 PM ET) and Saturday's CFB slate. "Right now"
+  leads: the game now (quarter and clock, ball, next snap, last play, win
+  probability), the drive on the field, the props tracker, lines now and the
+  home moneyline trend; then flow, scoring, team stats, box, plays, and the
+  kickoff research. The props tracker and in-game odds cards are now SHARED
+  with MLB (`propsTrackerCard`, `inGameOddsCards`); MLB's live page re-rendered
+  on LAD @ CIN (bottom 6th) after the move, which also covers MLB's owed
+  nine-inning live check.
+  - The situation comes from the header's `situation` when ESPN sends it, else
+    the last play's own after-the-snap record (`nextDownText`, added to the
+    play parser with `wallclock`), since `footballLiveGame.ts` marks the
+    header field unverified.
+  - Football's stored in-game prices are moneylines only (Step 0), so "Lines
+    now" is a moneyline against pickcenter's close; points scored since the
+    capture use play wall-clock times.
+  - Unit-tested on the DAL @ NYG fixture as if in progress; nothing on screen
+    until a live game.
 
 
 Spec: `docs/design/phase-g2/src/game.html`, `common-game.js`,

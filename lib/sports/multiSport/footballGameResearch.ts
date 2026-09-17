@@ -22,7 +22,7 @@
 import { fetchEspnSummary, type EspnLeaguePath } from '@/lib/sports/espn/summary';
 import { parseDrives, parseGameLines, parseInjuries, parseWinProbability, type Drive, type GameLines, type InjuryReport, type WinProbabilityPoint } from '@/lib/sports/espn/summaryParsers';
 import { readPreGamePropOddsForGame, type PropOddsRow } from '@/lib/db/client';
-import { readPreGameOpenClose, type GameLineOpenClose } from '@/lib/odds/gameLineHistory';
+import { readInGameLines, readPreGameOpenClose, type GameLineOpenClose, type InGameLines } from '@/lib/odds/gameLineHistory';
 import { gameMainLines, type GameMainLine } from '@/lib/odds/props/gameProps';
 import type { GameResearchPayload, GameSide, GameState } from '@/lib/sports/shared/gameResearchShapes';
 import { readFootballPregame, type FootballPregame } from './footballPregame';
@@ -88,6 +88,40 @@ export interface FootballGameResearchPayload extends GameResearchPayload {
     injuries: InjuryReport;
     /** The research as of kickoff (R8.2b). */
     pregame: FootballPregame;
+    /** While the game is on (R8.2c); `null` otherwise. */
+    live: FootballLiveNow | null;
+  };
+}
+
+export interface FootballLiveNow {
+  period: number | null;
+  clock: string | null;
+  /** The team with the ball and the next snap: "2nd & 5 at NYG 22". `null` between possessions. */
+  possessionTeamId: string | null;
+  downText: string | null;
+  redZone: boolean;
+  lastPlay: string | null;
+  inGame: InGameLines;
+}
+
+/**
+ * Where a live game stands. ESPN's header `situation` is used when it is there
+ * (`footballLiveGame.ts` notes it as seen but unverified); otherwise the last
+ * play's own after-the-snap record, which every play carries.
+ */
+export function footballLiveNow(summary: J, drives: Drive[], inGame: InGameLines): FootballLiveNow {
+  const comp = summary?.header?.competitions?.[0];
+  const sit = comp?.situation ?? summary?.situation ?? null;
+  const drive = drives.find((d) => d.current) ?? drives[drives.length - 1];
+  const last = drive?.plays[drive.plays.length - 1];
+  return {
+    period: num(comp?.status?.period),
+    clock: comp?.status?.displayClock ?? null,
+    possessionTeamId: sit?.possession != null ? String(sit.possession) : drive?.current ? drive.teamId : null,
+    downText: sit?.downDistanceText ?? last?.nextDownText ?? null,
+    redZone: sit?.isRedZone === true,
+    lastPlay: sit?.lastPlay?.text ?? last?.text ?? null,
+    inGame,
   };
 }
 
@@ -222,9 +256,10 @@ export async function readFootballGameResearch(league: FootballLeague, eventId: 
   const started = state === 'live' || state === 'final';
   const fetchedAt = now.toISOString();
 
-  const [storedLines, propRows] = await Promise.all([
+  const [storedLines, propRows, inGame] = await Promise.all([
     readPreGameOpenClose(eventId, start).catch((): GameLineOpenClose[] => []),
     readPreGamePropOddsForGame(eventId, start).catch((): PropOddsRow[] => []),
+    state === 'live' ? readInGameLines(eventId, start, now).catch((): InGameLines => ({ now: [], moneyline: [] })) : Promise.resolve(null),
   ]);
   const box = started ? parseFootballBox(summary) : [];
   const { lines: mainLines, altOnly } = gameMainLines(propRows, start, now.getTime());
@@ -251,6 +286,8 @@ export async function readFootballGameResearch(league: FootballLeague, eventId: 
     p.side = teamId === away.id ? 'away' : teamId === home.id ? 'home' : null;
   }
 
+  const drives = started ? parseDrives(summary) : [];
+
   const periods = Math.max(awayComp?.linescores?.length ?? 0, homeComp?.linescores?.length ?? 0, started ? 4 : 0);
   const scoreRow = (c: J) => [...Array.from({ length: periods }, (_, i) => num(c?.linescores?.[i]?.displayValue)), num(c?.score)];
   const lineScore = started ? { periods: Array.from({ length: periods }, (_, i) => PERIOD(i)), totals: ['T'], away: scoreRow(awayComp), home: scoreRow(homeComp) } : null;
@@ -275,7 +312,7 @@ export async function readFootballGameResearch(league: FootballLeague, eventId: 
     notes: [],
     football: {
       league,
-      drives: started ? parseDrives(summary) : [],
+      drives,
       winProbability: started ? parseWinProbability(summary) : [],
       box,
       teamStats: started ? teamStats(summary, away.id, home.id) : [],
@@ -295,11 +332,13 @@ export async function readFootballGameResearch(league: FootballLeague, eventId: 
       propsAltOnly: altOnly,
       injuries: parseInjuries(summary, fetchedAt),
       pregame,
+      live: state === 'live' && inGame ? footballLiveNow(summary, drives, inGame) : null,
     },
     sources: [
       { label: 'Game, drives, box score and win probability', detail: `ESPN ${league === 'nfl' ? 'NFL' : 'college football'} summary, event ${eventId}`, asOf: fetchedAt },
       { label: 'Game lines', detail: `ESPN pickcenter (${lines?.provider ?? 'DraftKings'}): open and close for the moneyline, spread and total${storedLines.length ? '; game_odds_history moneyline, median across books' : ''}`, asOf: fetchedAt },
       { label: 'Player props', detail: 'prop_odds as they stood at the start: the main line quoted on both sides by the most books', asOf: fetchedAt },
+      ...(state === 'live' ? [{ label: 'In-game odds', detail: 'game_odds_history after kickoff: the main line from the latest capture (football holds moneylines only), and the moneyline with the vig removed per book', asOf: inGame?.now[0]?.asOf ?? null }] : []),
       { label: 'Strength vs strength', detail: 'team_game_production before this game’s date, ranked across the league', asOf: fetchedAt },
       { label: 'Form and head-to-head', detail: 'ESPN team schedules, regular season and postseason, games before this one', asOf: fetchedAt },
       ...(pregame.passing ? [{ label: 'Passing matchup', detail: 'team_target_profile (nflverse targets): each offense’s throws and each defense’s throws against, by depth and side, for the whole season as held', asOf: fetchedAt }] : []),

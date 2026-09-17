@@ -14,7 +14,7 @@ import type { Drive, FootballPlay } from '@/lib/sports/espn/summaryParsers';
 import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports/shared/gameResearch';
 import type { GameResearchData, GameState } from '@/lib/sports/shared/gameResearchShapes';
 import type { ResearchCard, ResearchColumn, ResearchSection, ResearchTableRow } from '@/lib/sports/shared/playerResearchShapes';
-import { matchupSection, propHistorySection } from '@/lib/sports/shared/gameResearchSections';
+import { inGameOddsCards, matchupSection, propHistorySection, propsTrackerCard } from '@/lib/sports/shared/gameResearchSections';
 import type { TargetCell } from '@/lib/sports/nfl/teamTargetShapes';
 
 type Payload = FootballGameResearchPayload;
@@ -51,7 +51,20 @@ export function toGameResearchData(input: { payload: Payload; requestedState?: s
   const wpNow = payload.football.winProbability[payload.football.winProbability.length - 1];
   if (state === 'live' && wpNow) chips.unshift({ label: `Win probability ${payload.home.abbr} ${Math.round(wpNow.home * 100)}%` });
   const sections: ResearchSection[] =
-    state === 'pre' || state === 'postponed'
+    state === 'live'
+      ? [
+          footballNowSection(payload),
+          footballFlowSection(payload),
+          footballScoringSection(payload),
+          footballTeamStatsSection(payload),
+          footballBoxSection(payload),
+          footballPlaysSection(payload),
+          // Lines & props waits for the final: in play, the props tracker and in-game odds say it.
+          ...[footballMatchupSection(payload, state), footballPlayersSection(payload, state)]
+            .filter((s): s is ResearchSection => s !== null)
+            .map((s) => ({ ...s, id: `pre-${s.id}`, title: `${s.title} · at kickoff` })),
+        ].filter((s): s is ResearchSection => s !== null)
+      : state === 'pre' || state === 'postponed'
       ? [
           footballMatchupSection(payload, state),
           footballPlayersSection(payload, state),
@@ -615,4 +628,97 @@ function footballInjuriesSection(payload: Payload): ResearchSection | null {
     rows: [[{ kind: 'table', key: 'injuries', title: 'Injury report', scope: `report as of ${at} ET`, labelHeader: 'Player', columns: views[0].columns, rows: views[0].rows, views, fixedOrder: true }]],
     state: { kind: 'ready' },
   };
+}
+
+// ---------------------------------------------------------------------------
+// R8.2c — while the game is on
+// ---------------------------------------------------------------------------
+
+function footballNowSection(payload: Payload): ResearchSection {
+  const f = payload.football;
+  const live = f.live;
+  const rows: ResearchCard[][] = [];
+  if (live) {
+    const wp = f.winProbability[f.winProbability.length - 1];
+    const text = (key: string, label: string, value: string) => ({ key, label, values: { value } });
+    const holder = live.possessionTeamId ? abbrOf(payload, live.possessionTeamId) : null;
+    const situation: ResearchCard = {
+      kind: 'table',
+      key: 'situation',
+      title: 'The game now',
+      scope: [quarterName(live.period), live.clock].filter(Boolean).join(' '),
+      labelHeader: '',
+      fixedOrder: true,
+      columns: [{ key: 'value', label: '', decimals: 0, text: true }],
+      rows: [
+        text('score', 'Score', `${payload.away.abbr} ${payload.away.score ?? 0} · ${payload.home.abbr} ${payload.home.score ?? 0}`),
+        ...(holder ? [text('ball', 'Ball', `${holder}${live.redZone ? ' · in the red zone' : ''}`)] : []),
+        ...(live.downText ? [text('down', 'Next snap', live.downText)] : []),
+        ...(live.lastPlay ? [text('last', 'Last play', live.lastPlay)] : []),
+        ...(wp ? [text('wp', 'Win probability', `${payload.home.abbr} ${(wp.home * 100).toFixed(1)}% · ${payload.away.abbr} ${(100 - wp.home * 100).toFixed(1)}%`)] : []),
+      ],
+    };
+    // The drive on the field now, or the one just finished between possessions.
+    const drive = f.drives.find((d) => d.current) ?? f.drives[f.drives.length - 1];
+    const side = drive ? sideOfTeam(payload, drive.teamId) : 'away';
+    const moving = drive ? drive.plays.filter((p) => p.startYardsToEndzone != null && p.endYardsToEndzone != null && !NOT_MOVEMENT.test(`${p.type ?? ''} ${p.text ?? ''}`)) : [];
+    const field: ResearchCard | null =
+      drive && moving.length
+        ? {
+            kind: 'field',
+            key: 'drive-now',
+            title: `${drive.current ? 'This drive' : 'Last drive'} · ${abbrOf(payload, drive.teamId)}`,
+            scope: `${drive.offensivePlays ?? moving.length} plays, ${drive.yards ?? 0} yds${drive.result ? ` · ${drive.result}` : ''}`,
+            ends: { left: payload.away.abbr, right: payload.home.abbr },
+            rows: moving.map((p) => playLane(side, p)),
+            legend: [{ label: 'Run', side }, { label: 'Pass (dashed)', side }, { label: 'Turnover', mark: 'turnover' }, { label: 'Penalty', mark: 'penalty' }],
+          }
+        : null;
+    rows.push(field ? [situation, field] : [situation]);
+  }
+
+  rows.push([
+    propsTrackerCard(
+      f.props.map((p) => ({
+        key: `${p.athleteId}-${p.market}`,
+        name: p.name,
+        href: `/${f.league}/player/${p.athleteId}`,
+        sideAbbr: p.side ? payload[p.side].abbr : null,
+        marketLabel: FOOTBALL_MARKET_LABELS[p.market] ?? p.market,
+        line: p.line,
+        books: p.books,
+        result: p.result,
+      })),
+    ),
+  ]);
+
+  if (live) {
+    const l = f.lines;
+    const plays = f.drives.flatMap((d) => d.plays);
+    rows.push(
+      inGameOddsCards({
+        away: payload.away,
+        home: payload.home,
+        inGame: live.inGame,
+        // Football's stored in-game prices are moneylines; the start is pickcenter's close.
+        close: (market) =>
+          l && market === 'moneyline'
+            ? { sides: [{ side: 'away', point: null, americanOdds: l.moneyline.away.close }, { side: 'home', point: null, americanOdds: l.moneyline.home.close }] }
+            : l && market === 'spread'
+              ? { sides: [{ side: 'away', point: l.spread.away.line.close, americanOdds: l.spread.away.odds.close }, { side: 'home', point: l.spread.home.line.close, americanOdds: l.spread.home.odds.close }] }
+              : l && market === 'total'
+                ? { sides: [{ side: 'over', point: l.total.over.line.close, americanOdds: l.total.over.odds.close }, { side: 'under', point: l.total.under.line.close, americanOdds: l.total.under.odds.close }] }
+                : null,
+        spreadLabel: 'Spread',
+        startWord: 'kickoff',
+        scoredSince: (asOf) => {
+          let then = 0;
+          for (const p of plays) if (p.wallclock && p.wallclock <= asOf && p.awayScore != null && p.homeScore != null) then = p.awayScore + p.homeScore;
+          return { count: (payload.away.score ?? 0) + (payload.home.score ?? 0) - then, unit: 'point' };
+        },
+      }),
+    );
+  }
+
+  return { id: 'now', navLabel: 'Right now', title: 'Right now', sub: 'refreshed every 15 seconds', rows, state: { kind: 'ready' } };
 }

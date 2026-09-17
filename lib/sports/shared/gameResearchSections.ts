@@ -11,6 +11,8 @@
 import type { FormGame, GamePregameCommon, GameSide, GameState } from './gameResearchShapes';
 import type { ResearchCard, ResearchSection, ResearchTableRow } from './playerResearchShapes';
 import { ordinal } from './teamResearch';
+import { liveLineHit } from './liveLine';
+import type { InGameLines } from '@/lib/odds/gameLineHistory';
 
 const shortDay = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 const signed = (n: number) => (n > 0 ? `+${n}` : String(n));
@@ -43,7 +45,7 @@ export function matchupSection(input: { away: GameSide; home: GameSide; state: G
   if (pre.strength.length) {
     const tone = (r: { rank: number; of: number } | null): 'good' | 'bad' | undefined => {
       if (!r) return undefined;
-      // A tenth of the league at each end is marked: ten of 30 MLB teams, 13 of 130+ in college.
+      // A third of the league at each end is marked: ten of 30 MLB teams, eleven of 32 NFL teams, 46 of 138 in college.
       const band = Math.max(3, Math.round(r.of / 3));
       return r.rank <= band ? 'good' : r.rank > r.of - band ? 'bad' : undefined;
     };
@@ -207,4 +209,136 @@ export function propHistorySection(input: { away: GameSide; home: GameSide; stat
     ],
     state: { kind: 'ready' },
   };
+}
+
+// ---------------------------------------------------------------------------
+// While the game is on — R8.1c built these for MLB, R8.2c shares them
+// ---------------------------------------------------------------------------
+
+const etTime = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
+const am = (v: number | null | undefined) => (v == null ? '—' : v > 0 ? `+${v}` : String(v));
+
+export interface TrackedProp {
+  key: string;
+  name: string;
+  href: string | null;
+  sideAbbr: string | null;
+  marketLabel: string;
+  line: number;
+  books: number;
+  /** The player's number so far; `null` before he has appeared. */
+  result: number | null;
+}
+
+/** Each main line at the start against the player's number so far. Only an over is ever marked: an under cannot be settled while the game is on (`liveLineHit`). */
+export function propsTrackerCard(props: TrackedProp[]): ResearchCard {
+  // One book quoting both sides is a price, not a market.
+  const held = props.filter((p) => p.books >= 2);
+  const tracked = held
+    .filter((p) => p.result != null)
+    .map((p) => ({ p, so: p.result!, share: p.result! / Math.max(p.line, 0.5) }))
+    .sort((a, b) => b.share - a.share || a.p.name.localeCompare(b.p.name));
+  return {
+    kind: 'table',
+    key: 'props-tracker',
+    title: 'Props tracker',
+    scope: held.length ? `${tracked.length} of ${held.length} markets have played` : undefined,
+    info: 'The main line at the start against the box score so far. An over is marked once the number passes the line; an under cannot be settled until the game ends.',
+    labelHeader: 'Player',
+    fixedOrder: true,
+    emptyText: held.length ? 'No player with a prop has appeared yet' : 'No player props held for this game',
+    columns: [
+      { key: 'market', label: 'Market', decimals: 0, text: true },
+      { key: 'line', label: 'Line', decimals: 1 },
+      { key: 'so', label: 'So far', decimals: 0 },
+      { key: 'status', label: 'Status', decimals: 0, text: true },
+    ],
+    rows: tracked.map(({ p, so }) => {
+      const over = liveLineHit('O', so, p.line);
+      const row: ResearchTableRow = {
+        key: p.key,
+        label: p.name,
+        labelNote: p.sideAbbr,
+        href: p.href,
+        values: { market: p.marketLabel, line: p.line, so, status: over ? 'Over already' : `${Math.floor(p.line - so) + 1} more to go over` },
+      };
+      if (over) row.tones = { status: 'good' };
+      return row;
+    }),
+  };
+}
+
+type Quote = { point: number | null; americanOdds: number | null };
+
+/**
+ * Lines now and the home moneyline trend (`readInGameLines`). `close` is each
+ * market's line at the start; `scoredSince` says how much of the game has
+ * happened since the latest capture, which lands about every fifteen minutes.
+ */
+export function inGameOddsCards(input: {
+  away: GameSide;
+  home: GameSide;
+  inGame: InGameLines;
+  close: (market: string) => { sides: Array<{ side: string } & Quote> } | null;
+  spreadLabel: string;
+  startWord: string;
+  scoredSince: (asOf: string) => { count: number; unit: string } | null;
+}): [ResearchCard, ResearchCard] {
+  const { away, home, inGame } = input;
+  const quote = (market: string, s: Quote | undefined) => (s ? `${s.point != null ? `${market === 'spread' && s.point > 0 ? '+' : ''}${s.point} ` : ''}${am(s.americanOdds)}` : '—');
+  const sideLabel = (market: string, side: string) =>
+    market === 'moneyline' ? `Moneyline · ${(side === 'home' ? home : away).abbr}` : market === 'spread' ? `${input.spreadLabel} · ${(side === 'home' ? home : away).abbr}` : `Total · ${side}`;
+  const rows = inGame.now.flatMap((n) =>
+    (n.line?.sides ?? []).map((s) => ({
+      key: `${n.market}-${s.side}`,
+      label: sideLabel(n.market, s.side),
+      values: { close: quote(n.market, input.close(n.market)?.sides.find((x) => x.side === s.side)), now: quote(n.market, s), books: n.line?.books ?? null, at: etTime(n.asOf) },
+    })),
+  );
+  const asOf = inGame.now.map((n) => n.asOf).sort().pop();
+  const since = asOf ? input.scoredSince(asOf) : null;
+  const linesNow: ResearchCard = {
+    kind: 'table',
+    key: 'lines-now',
+    title: 'Lines now',
+    scope: asOf ? `latest capture ${etTime(asOf)} ET${since && since.count > 0 ? ` · ${since.count} ${since.unit}${since.count === 1 ? ' has' : 's have'} scored since` : ''}` : `since ${input.startWord}`,
+    labelHeader: 'Market',
+    fixedOrder: true,
+    emptyText: `No prices captured since ${input.startWord}`,
+    columns: [
+      { key: 'close', label: 'At the start', decimals: 0 },
+      { key: 'now', label: 'Now', decimals: 0 },
+      { key: 'books', label: 'Books', decimals: 0 },
+      { key: 'at', label: 'Captured', decimals: 0 },
+    ],
+    rows,
+    caption: 'Each market from its latest capture only, however few books it holds: prices are captured about every fifteen minutes during a game, not play by play, and an older price from another book is not current.',
+  };
+  const ml = inGame.moneyline;
+  const trend: ResearchCard =
+    ml.length >= 2
+      ? {
+          kind: 'series',
+          key: 'ml-trend',
+          title: `${home.abbr} moneyline chance`,
+          scope: `${ml.length} captures since ${input.startWord}`,
+          values: ml.map((x) => Math.round(x.homePct * 10) / 10),
+          xLabels: ml.map((x, i) => (i === 0 || i === ml.length - 1 ? etTime(x.t) : '')),
+          reference: { value: 50, label: 'even' },
+          zeroBased: true,
+          min: 0,
+          max: 100,
+          decimals: 0,
+          unit: '%',
+          tips: ml.map((x) => [`${home.abbr} ${x.homePct.toFixed(1)}%`, `${etTime(x.t)} ET · ${x.books === 1 ? 'one book' : `${x.books} books, median`}, vig removed`]),
+          caption: 'Each book’s two moneyline prices with the vig taken out, then the median across books.',
+        }
+      : {
+          kind: 'status',
+          key: 'ml-trend',
+          title: `${home.abbr} moneyline chance`,
+          headline: ml.length ? 'One capture so far' : 'No captures yet',
+          reason: 'Prices are captured about every fifteen minutes; the trend draws from the second capture.',
+        };
+  return [linesNow, trend];
 }

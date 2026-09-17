@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { boxStat, footballGameState, footballMarketResult, parseFootballBox, type FootballGameResearchPayload } from '../lib/sports/multiSport/footballGameResearch';
+import { boxStat, footballGameState, footballLiveNow, footballMarketResult, parseFootballBox, type FootballGameResearchPayload } from '../lib/sports/multiSport/footballGameResearch';
 import { parseDrives, parseGameLines } from '../lib/sports/espn/summaryParsers';
 import { driveX, footballLineChips, playX, toGameResearchData } from '../lib/sports/nfl/adapters/footballGameResearch';
 import { easternDate, footballLogValue, formGameFrom } from '../lib/sports/multiSport/footballPregame';
@@ -84,6 +84,7 @@ function payload(state: 'final' | 'pre'): FootballGameResearchPayload {
       propsAltOnly: 0,
       injuries: { teams: [], fetchedAt: '2026-09-17T00:00:00Z' },
       pregame: { strengthSeason: 2025, strengthNote: null, strength: [], form: {}, h2h: [], propHistory: {}, passing: null, teamOf: {} },
+      live: null,
     },
   };
 }
@@ -169,4 +170,52 @@ test('before kickoff: matchup with the passing matchup, players, injuries only f
   const reviewed = payload('final');
   const asPre = toGameResearchData({ payload: { ...reviewed, football: { ...reviewed.football, injuries: p.football.injuries } }, requestedState: 'pre' });
   assert.ok(!asPre.sections.some((s) => s.id === 'injuries'), "today's report says nothing about a finished game");
+});
+
+// ---------------------------------------------------------------------------
+// R8.2c — while the game is on
+// ---------------------------------------------------------------------------
+
+test('the live situation reads the last play when the header has no situation', () => {
+  const drives = parseDrives(summary);
+  const now = footballLiveNow({ header: { competitions: [{ status: { period: 1, displayClock: '6:40' } }] } }, drives, { now: [], moneyline: [] });
+  const last = drives[1].plays.at(-1)!;
+  assert.equal(now.period, 1);
+  assert.equal(now.downText, last.nextDownText);
+  assert.equal(now.lastPlay, last.text);
+  assert.equal(now.possessionTeamId, null, 'no drive is flagged current: between possessions nobody has the ball');
+  const withSituation = footballLiveNow({ header: { competitions: [{ status: {}, situation: { possession: '19', downDistanceText: '3rd & 2 at DAL 8', isRedZone: true } }] } }, drives, { now: [], moneyline: [] });
+  assert.deepEqual([withSituation.possessionTeamId, withSituation.downText, withSituation.redZone], ['19', '3rd & 2 at DAL 8', true]);
+});
+
+test('while live: Right now leads with the drive on the field, the tracker and in-game odds, and counts points since the price', () => {
+  const p = payload('final');
+  p.state = 'live';
+  p.away.score = 7;
+  p.home.score = 14;
+  const drives = parseDrives(summary);
+  p.football.props = [{ playerId: 'espn:football:1', athleteId: '1', name: 'Receiver', market: 'receptions', line: 4.5, over: { price: 100, book: 'a' }, under: null, books: 4, side: 'home', result: 5 }];
+  // The price was captured just after the Giants' first touchdown drive began (their second play).
+  const asOf = drives[1].plays[1].wallclock!;
+  p.football.live = {
+    period: 2,
+    clock: '5:44',
+    possessionTeamId: '6',
+    downText: '1st & 10 at DAL 25',
+    redZone: false,
+    lastPlay: 'Kickoff',
+    inGame: { now: [{ market: 'moneyline', line: { market: 'moneyline', sides: [{ side: 'away', point: null, americanOdds: 250 }, { side: 'home', point: null, americanOdds: -300 }], books: 2 }, asOf }], moneyline: [] },
+  };
+  const data = toGameResearchData({ payload: p });
+  assert.deepEqual(data.sections.map((s) => s.id).slice(0, 2), ['now', 'flow']);
+  assert.ok(!data.sections.some((s) => s.id === 'lines'), 'Lines & props waits for the final');
+  const now = data.sections[0];
+  assert.equal(now.rows[0][1].kind, 'field', 'the last drive on the field');
+  const tracker = now.rows[1][0];
+  assert.ok(tracker.kind === 'table');
+  assert.equal(tracker.rows[0].values.status, 'Over already');
+  const lines = now.rows[2][0];
+  assert.ok(lines.kind === 'table');
+  assert.deepEqual(lines.rows.map((r) => [r.label, r.values.close, r.values.now]), [['Moneyline · DAL', '-166', '+250'], ['Moneyline · NYG', '+140', '-300']]);
+  assert.match(lines.scope ?? '', /21 points have scored since$/, 'nothing had scored at the capture; 21 have now');
 });

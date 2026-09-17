@@ -128,6 +128,10 @@ export interface FootballPlay {
   penalty: boolean;
   homeScore: number | null;
   awayScore: number | null;
+  /** When the play happened (R8.2c: how much of a live game has passed since a price was captured). */
+  wallclock: string | null;
+  /** The situation after the play, for the next snap: "2nd & 5 at NYG 22". */
+  nextDownText: string | null;
 }
 
 export interface Drive {
@@ -197,6 +201,8 @@ function toDrive(d: J, current: boolean): Drive {
       penalty: p.isPenalty === true,
       homeScore: num(p.homeScore),
       awayScore: num(p.awayScore),
+      wallclock: str(p.wallclock),
+      nextDownText: str(p.end?.downDistanceText),
     })),
   };
 }

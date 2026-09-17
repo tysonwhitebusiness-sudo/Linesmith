@@ -27,8 +27,7 @@ import { toGameTeamForm } from '@/lib/sports/shared/gameTeamForm';
 import type { PregameStarter } from '@/lib/sports/mlb/statcastRollupShapes';
 import { pitchTypeLabel } from '@/lib/sports/mlb/pitchProfileShapes';
 import { TEAM_ABBR_BY_ID } from '@/lib/sports/mlb/teamAliases';
-import { matchupSection, propHistorySection } from '@/lib/sports/shared/gameResearchSections';
-import { liveLineHit } from '@/lib/sports/shared/liveLine';
+import { inGameOddsCards, matchupSection, propHistorySection, propsTrackerCard } from '@/lib/sports/shared/gameResearchSections';
 
 /**
  * MLB → generic transforms for the `GameDetail.tsx` component family
@@ -1316,7 +1315,6 @@ function mlbInjuriesSection(payload: MlbGameResearchPayload): ResearchSection | 
 // R8.1c — while the game is on
 // ---------------------------------------------------------------------------
 
-const etTime = (iso: string) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
 
 function runners(b: { first: boolean; second: boolean; third: boolean }): string {
   const on = [b.first && '1st', b.second && '2nd', b.third && '3rd'].filter(Boolean) as string[];
@@ -1378,112 +1376,43 @@ function mlbNowSection(payload: MlbGameResearchPayload): ResearchSection {
     rows.push(atBat ? [situation, atBat] : [situation]);
   }
 
-  // Props tracker: each main line at the start against the player's number so far.
-  const held = m.props.filter((p) => p.books >= 2);
-  const tracked = held
-    .filter((p) => p.result != null)
-    .map((p) => ({ p, so: p.result!, share: p.result! / Math.max(p.line, 0.5) }))
-    .sort((a, b) => b.share - a.share || a.p.name.localeCompare(b.p.name));
   rows.push([
-    {
-      kind: 'table',
-      key: 'props-tracker',
-      title: 'Props tracker',
-      scope: held.length ? `${tracked.length} of ${held.length} markets have played` : undefined,
-      info: 'The main line at the start against the box score so far. An over is marked once the number passes the line; an under cannot be settled until the game ends.',
-      labelHeader: 'Player',
-      fixedOrder: true,
-      emptyText: held.length ? 'No player with a prop has appeared yet' : 'No player props held for this game',
-      columns: [
-        { key: 'market', label: 'Market', decimals: 0, text: true },
-        { key: 'line', label: 'Line', decimals: 1 },
-        { key: 'so', label: 'So far', decimals: 0 },
-        { key: 'status', label: 'Status', decimals: 0, text: true },
-      ],
-      rows: tracked.map(({ p, so }) => {
-        const over = liveLineHit('O', so, p.line);
-        const row: ResearchTableRow = {
-          key: `${p.playerId}-${p.market}`,
-          label: p.name,
-          labelNote: p.side ? payload[p.side].abbr : null,
-          href: `/mlb/player/${p.playerId}`,
-          values: { market: MLB_MARKET_LABELS[p.market] ?? p.market, line: p.line, so, status: over ? 'Over already' : `${Math.floor(p.line - so) + 1} more to go over` },
-        };
-        if (over) row.tones = { status: 'good' };
-        return row;
-      }),
-    },
+    propsTrackerCard(
+      m.props.map((p) => ({
+        key: `${p.playerId}-${p.market}`,
+        name: p.name,
+        href: `/mlb/player/${p.playerId}`,
+        sideAbbr: p.side ? payload[p.side].abbr : null,
+        marketLabel: MLB_MARKET_LABELS[p.market] ?? p.market,
+        line: p.line,
+        books: p.books,
+        result: p.result,
+      })),
+    ),
   ]);
 
-  // In-game odds.
   const inGame = live?.inGame;
   if (inGame) {
-    const close = (market: string) => m.lines.find((l) => l.market === market)?.close ?? null;
-    const quote = (market: string, s: { point: number | null; americanOdds: number | null } | undefined) =>
-      s ? `${s.point != null ? `${market === 'spread' && s.point > 0 ? '+' : ''}${s.point} ` : ''}${am(s.americanOdds)}` : '—';
-    const sideLabel = (market: string, side: string) =>
-      market === 'moneyline' ? `Moneyline · ${payload[side as 'away' | 'home'].abbr}` : market === 'spread' ? `Run line · ${payload[side as 'away' | 'home'].abbr}` : `Total · ${side}`;
-    const lineRows = inGame.now.flatMap((n) =>
-      (n.line?.sides ?? []).map((s) => ({
-        key: `${n.market}-${s.side}`,
-        label: sideLabel(n.market, s.side),
-        values: { close: quote(n.market, close(n.market)?.sides.find((x) => x.side === s.side)), now: quote(n.market, s), books: n.line?.books ?? null, at: etTime(n.asOf) },
-      })),
+    rows.push(
+      inGameOddsCards({
+        away: payload.away,
+        home: payload.home,
+        inGame,
+        close: (market) => m.lines.find((l) => l.market === market)?.close ?? null,
+        spreadLabel: 'Run line',
+        startWord: 'the first pitch',
+        // A plate appearance's score counts once the next one has begun: the feed stamps starts, not ends, and
+        // 822763's run at 4:21 came in an at-bat that began before the 4:20 capture.
+        scoredSince: (asOf) => {
+          let scoreThen = 0;
+          m.atBats.forEach((ab, i) => {
+            const ended = m.atBats[i + 1]?.startTime;
+            if (ended && ended <= asOf && ab.awayScore != null && ab.homeScore != null) scoreThen = ab.awayScore + ab.homeScore;
+          });
+          return { count: (payload.away.score ?? 0) + (payload.home.score ?? 0) - scoreThen, unit: 'run' };
+        },
+      }),
     );
-    const asOf = inGame.now.map((n) => n.asOf).sort().pop();
-    // Captures land about every fifteen minutes; say how much of the game has happened since.
-    // A plate appearance's score counts once the next one has begun: the feed stamps starts, not ends, and
-    // 822763's run at 4:21 came in an at-bat that began before the 4:20 capture.
-    let scoreThen = 0;
-    m.atBats.forEach((ab, i) => {
-      const ended = m.atBats[i + 1]?.startTime;
-      if (asOf && ended && ended <= asOf && ab.awayScore != null && ab.homeScore != null) scoreThen = ab.awayScore + ab.homeScore;
-    });
-    const runsSince = asOf ? (payload.away.score ?? 0) + (payload.home.score ?? 0) - scoreThen : 0;
-    const linesNow: ResearchCard = {
-      kind: 'table',
-      key: 'lines-now',
-      title: 'Lines now',
-      scope: asOf ? `latest capture ${etTime(asOf)} ET${runsSince > 0 ? ` · ${runsSince} ${runsSince === 1 ? 'run has' : 'runs have'} scored since` : ''}` : 'since the first pitch',
-      labelHeader: 'Market',
-      fixedOrder: true,
-      emptyText: 'No prices captured since the first pitch',
-      columns: [
-        { key: 'close', label: 'At the start', decimals: 0 },
-        { key: 'now', label: 'Now', decimals: 0 },
-        { key: 'books', label: 'Books', decimals: 0 },
-        { key: 'at', label: 'Captured', decimals: 0 },
-      ],
-      rows: lineRows,
-      caption: 'Each market from its latest capture only, however few books it holds: prices are captured about every fifteen minutes during a game, not pitch by pitch, and an older price from another book is not current.',
-    };
-    const ml = inGame.moneyline;
-    const trend: ResearchCard =
-      ml.length >= 2
-        ? {
-            kind: 'series',
-            key: 'ml-trend',
-            title: `${payload.home.abbr} moneyline chance`,
-            scope: `${ml.length} captures since the first pitch`,
-            values: ml.map((x) => Math.round(x.homePct * 10) / 10),
-            xLabels: ml.map((x, i) => (i === 0 || i === ml.length - 1 ? etTime(x.t) : '')),
-            reference: { value: 50, label: 'even' },
-            zeroBased: true,
-            min: 0,
-            max: 100,
-            decimals: 0,
-            unit: '%',
-            tips: ml.map((x) => [`${payload.home.abbr} ${x.homePct.toFixed(1)}%`, `${etTime(x.t)} ET · ${x.books === 1 ? 'one book' : `${x.books} books, median`}, vig removed`]),
-            caption: 'Each book’s two moneyline prices with the vig taken out, then the median across books.',
-          }
-        : {
-            kind: 'status',
-            key: 'ml-trend',
-            title: `${payload.home.abbr} moneyline chance`,
-            headline: ml.length ? 'One capture so far' : 'No captures yet',
-            reason: 'Prices are captured about every fifteen minutes; the trend draws from the second capture.',
-          };
-    rows.push([linesNow, trend]);
   }
 
   return { id: 'now', navLabel: 'Right now', title: 'Right now', sub: 'refreshed every 15 seconds', rows, state: { kind: 'ready' } };
