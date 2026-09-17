@@ -788,6 +788,7 @@ swapped before R3 without changing any other phase.
 | R9 | Compare control | medium | R5–R8 | — |
 | R10 | Port-artifact cleanup | small–medium | R6–R9 | — |
 | R11 | Deep history on team and game pages | large, design first | R2, R10 | — |
+| R12 | Visual density: identity, charts, emphasis | medium | R6, R7, R8 | — |
 
 Order follows the design audit's sequencing rules:
 - identity and interaction (R3) before any card;
@@ -2114,6 +2115,70 @@ rebuilt pages use.
      a Python-owned table, with its `table-ownership.md` reasoning;
    - `cachedRoute()` with a day TTL.
 3. **Build** in the design's sub-phases. **Stop** between them.
+
+---
+
+## R12 — Visual density on the three research pages ◆ medium
+
+**Why.** Operator review 2026-09-17, on the rebuilt pages: "some parts are very
+strong including icons, player images, team logos, while a good portion of the
+section look like plain text tables... no boldness, very bland." Named: margin
+by game unreadable and its opponent logos gone.
+
+**What the audit measured (same day, whole repo):**
+
+| finding | number |
+|---|---|
+| Table cards built across every sport | 99 |
+| Every other card kind together (series, scatter, histogram, percentiles, field, timeline) | 50 |
+| Rows that set `imageUrl` — the avatar slot `TableCard` already renders | 11, in 6 files |
+| Chart primitives built in R3 and used only by the OLD components | 5 (`StreakStrip`, `SplitDumbbell`, `RangeBar`, `ContributionBars`, `PercentileRail`) |
+
+Three causes, in order of what they cost the page:
+
+1. **Identity is supported and not passed.** `TableRow.imageUrl`/`imageKind`
+   render an `Avatar` in the label cell. Only MLB's game page (batters,
+   starters) and the team page (opponent, standings, roster) set it. Head to
+   head, prop lines, splits, team stats and every NBA/NHL/soccer/tennis game
+   table pass text.
+2. **The renderer's vocabulary is table-shaped.** `ResearchCardView` handles
+   nine kinds; the five richest R3 primitives are not among them, so a rebuild
+   that wanted a strip or a dumbbell had a table as its only option.
+3. **A fixed-size chart.** `Histogram` is `width=420 height=180` with the band
+   split across every bar: 153 games gives a bar under 3px, which is the
+   operator's unreadable margin chart, and leaves no room for a logo tick.
+
+### R12a — identity everywhere (A + E)
+
+Set `imageUrl` on every table row naming a team or player, and put the side's
+crest in headers that name one (`SD produce` / `COL allow`). No new component:
+it is threading a field the type already has. Sports own their URL helper
+(`mlbHeadshot` and the like) — the pass is per adapter, not per component.
+
+### R12b — charts that fit their data (D)
+
+`Histogram` responsive with a minimum bar width, horizontal scroll past ~60
+bars, taller (240-280), and an optional logo tick per bar where one fits.
+Fixes margin by game and both "coming in" cards.
+
+### R12c — emphasis inside tables (C)
+
+In `DataTable`: an optional in-cell magnitude bar behind a number, the leader
+per column in bold, and a heavier key column. One change, all 99 tables.
+
+### R12d — restore the lost primitives (B)
+
+Add `streak`, `dumbbell`, `range` and `contribution` card kinds to
+`ResearchCardView`, then convert the tables that are really one of those. First
+and smallest: the prop tracker's `Last 5`, today `values.join(' ')` — the digits
+`0 1 1 0 1` in the operator's screenshot — becomes a `StreakStrip`.
+
+**Order:** R12a, R12b, R12c, R12d. a and b answer the two named complaints; c
+lifts every table at once; d is the largest and is done per page after.
+
+**Verify:** render each sub-phase at 1440 and 400 on one page per sport
+(`scratchpad/g2render.py`), against the same games the R6-R8 records name.
+**Stop after each sub-phase.**
 
 ---
 
