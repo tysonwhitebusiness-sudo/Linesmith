@@ -15,6 +15,8 @@ import { toGameResearchData as toCfbGameResearchData } from '@/lib/sports/cfb/ad
 import type { FootballGameResearchPayload } from '@/lib/sports/multiSport/footballGameResearch';
 import { toGameResearchData as toSoccerGameResearchData } from '@/lib/sports/soccer/adapters/gameDetailAdapter';
 import type { SoccerGameResearchPayload } from '@/lib/sports/soccer/gameResearch';
+import { toGameResearchData as toTennisGameResearchData } from '@/lib/sports/tennis/adapters/gameDetailAdapter';
+import type { TennisGameResearchPayload } from '@/lib/sports/tennis/gameResearch';
 
 /**
  * The game page — R8. One component for every sport: a hero with the score,
@@ -26,7 +28,7 @@ import type { SoccerGameResearchPayload } from '@/lib/sports/soccer/gameResearch
  * knows the sport.
  */
 
-export const GAME_RESEARCH_SPORTS = ['mlb', 'nfl', 'cfb', 'soccer_epl', 'soccer_mls'] as const;
+export const GAME_RESEARCH_SPORTS = ['mlb', 'nfl', 'cfb', 'soccer_epl', 'soccer_mls', 'tennis_atp', 'tennis_wta'] as const;
 
 function gameResearchFor(sport: string, payload: GameResearchPayload, requestedState: string | null): GameResearchData | null {
   switch (sport) {
@@ -39,6 +41,9 @@ function gameResearchFor(sport: string, payload: GameResearchPayload, requestedS
     case 'soccer_epl':
     case 'soccer_mls':
       return toSoccerGameResearchData({ payload: payload as SoccerGameResearchPayload, requestedState });
+    case 'tennis_atp':
+    case 'tennis_wta':
+      return toTennisGameResearchData({ payload: payload as TennisGameResearchPayload, requestedState });
     default:
       return null;
   }
@@ -125,7 +130,7 @@ function TeamSide({ side, home }: { side: GameSide; home?: boolean }) {
       <div className="min-w-0">
         <div className="truncate">{name}</div>
         <div className="text-label text-ink-muted">
-          {[side.record, home ? 'Home' : 'Away'].filter(Boolean).join(' · ')}
+          {[side.record, side.sideLabel === undefined ? (home ? 'Home' : 'Away') : side.sideLabel].filter(Boolean).join(' · ')}
         </div>
       </div>
       {side.score != null ? <div className="px-2 text-display tabular-nums text-ink">{side.score}</div> : null}

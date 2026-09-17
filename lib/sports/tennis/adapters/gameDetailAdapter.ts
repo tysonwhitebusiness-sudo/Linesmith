@@ -267,3 +267,6 @@ export function toGameDetailData(input: TennisGameDetailInput): GameDetailData {
     leftRail: { candidates, goodBetsGated: false },
   };
 }
+
+/** The match page (R8.3b): `tennisGameResearch.ts`. */
+export { toGameResearchData } from './tennisGameResearch';

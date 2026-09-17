@@ -95,6 +95,8 @@ const DB_MODULES = [
   // R8.3a: the soccer game page read, and the ESPN form read football shares.
   '@/lib/sports/soccer/gameResearch',
   '@/lib/sports/multiSport/gameFormEspn',
+  // R8.3b: the tennis match page read.
+  '@/lib/sports/tennis/gameResearch',
 ];
 
 /**

@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football): 8.2a-c built; live renders scheduled (TNF, Saturday CFB), then sign-off. R8.3a (soccer) built; 8.3b (tennis) next.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football): 8.2a-c built; live renders scheduled (TNF, Saturday CFB), then sign-off. R8.3a (soccer) and R8.3b (tennis) built: soccer's live render is scheduled, tennis's live state was verified; then sign-off.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1859,7 +1859,41 @@ which share almost nothing.
   card at 22:23 sits in the 23rd minute; the goal is mirrored to City's
   left-hand goal. Rendered MUN v MCI (final), ARS @ BHA (EPL, pre) and SD @ MIA
   (MLS, pre) at 1440 and 400. **Live soccer render owed** on the next matchday.
-- **8.3b — tennis: next.**
+- **Step 0 (tennis), 2026-09-17:**
+  - **ESPN has no tennis match summary** (every `summary?event=` form returns
+    400); the match is read off the scoreboard. **The scoreboard returns nothing
+    for a short past date RANGE** (`20260817-20260821`: 0 events) but 131
+    singles matches for either single day inside it, so single days are read,
+    with the match date from `player_game_history`. The old tennis game route's
+    21-day range read (`fetchTennisMatchDetail`) is subject to the same gap; it
+    is superseded by this page and goes with the old GameDetail deletion.
+  - Serve and return stats exist only in the TennisMyLife archive, which ends
+    2026-08-30 for both tours; game logs hold sets and games only. The archive
+    dates a match differently from ESPN (Paul v Zverev: ESPN 08-19 18:00 UTC,
+    archive 08-20), so the nearest meeting within a fortnight is matched.
+  - **R8.3b-F1 (model track):** about 10,500 ATP game-log rows a season (2024-26)
+    are ALSO stored as `tennis_wta` with the same event and athlete ids, written
+    by the 2026-08-29 backfill (e.g. 181891 under both). Pages keyed by athlete
+    id are unaffected; anything counting a tour's rows is inflated.
+  - Odds: moneylines (76 matches in book lines, 17 in history); props on aces,
+    games won and to win a set. Opponent names come from ESPN's athlete endpoint.
+- **8.3b — tennis page, 2026-09-17:** `readTennisGameResearch` (ATP and WTA,
+  `/api/game-research?sport=tennis_atp|tennis_wta`), the tennis route on
+  `GameResearchPage`. Final: set by set with tiebreak points and the match facts,
+  match stats from the archive (or "not in the archive yet" with its end date),
+  form (last ten each, and surface record and serve numbers against this
+  match), head to head, match odds and props against results. Pre: form, head
+  to head, players (games won and to-win-a-set history; aces have none), lines.
+  Live: Right now (sets and games, props tracker, in-game moneylines). The hero
+  shows rank and seed where a team sport says Away/Home (`GameSide.sideLabel`).
+  Refereed: Paul v Zverev's archive row equals G2's fixture stat for stat, and
+  the page's derived rates (66%/69% first serves in, 32%/30% return points,
+  100-98 total points) check by hand. **Live, verified on WTA Guadalajara
+  Samsonova v Day (183799) mid-second-set:** the page first showed 1-1 in sets
+  and settled Day's "to win a set" as Yes while she led the second set 1-0;
+  sets now count only on ESPN's `winner` flag, and the page matches ESPN (1-0,
+  second set 0-1). Rendered final, live and pre (Bejlek v Bucsa) at 1440 and
+  400.
 
 
 Spec: `docs/design/phase-g2/src/game.html`, `common-game.js`,

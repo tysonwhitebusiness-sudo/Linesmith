@@ -26,6 +26,12 @@ export interface GameSide {
   score: number | null;
   /** "66-85", as entering this game where the source says so. */
   record: string | null;
+  /**
+   * The words under the name after the record. Unset is "Away" or "Home";
+   * `null` shows nothing; a string replaces it (R8.3b: tennis has no home side,
+   * so a player shows "No. 24 · seed 18").
+   */
+  sideLabel?: string | null;
 }
 
 export interface GameHeaderPeriodTable {
