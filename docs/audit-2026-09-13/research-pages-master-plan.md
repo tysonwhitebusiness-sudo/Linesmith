@@ -2251,6 +2251,18 @@ page.
 | Golf vs the field | Round by round | golf tables | Read |
 | Team vs team | Strength vs strength, head-to-head, form, key players; MLB hand cards | 5b rollups, `game_result` (R2), corpus | R5 |
 
+**Step 0 — premises audited 2026-09-17, before building.** Three of the brief's
+claims needed correcting, and the rest hold:
+
+| premise | measured |
+|---|---|
+| "what this team allows to the position" for every sport | **Partly.** `team_game_production` carries position groups for nfl (QB/RB/TE/WR), nba (G/F/C), nhl (F/D/G) and soccer (GK/DEF/MID/FWD) — but mlb and cfb hold `all` ONLY, by design (`team_production.py`: MLB splits by stat group already, and the plan names no CFB source). G2's own ALLOW map already uses the whole-team `allowed`/`for` side for those two, so the cards match; the phrase "by position" does not apply to them. |
+| Tennis serve/return profiles from TennisMyLife | **Holds, but not from a table.** There is no tennis table in Postgres; the stats come from `tennismylife.ts`'s fetched archive (`ServeStats`: aces, double faults, first in/won, break points). Looking for a DB table would have concluded this compare was impossible. |
+| `nfl_target_events`, `nba_shot_events` | Hold: 36,375 and 440,596 rows. `nhl_shot_events` has 310,376 as well. |
+| The shot-profile rollup | Table is **`team_shot_profile`**, singular, not `team_shot_profiles`. |
+| A league team directory for the picker | Already exists: `playerHistoryServer.loadDirectory` resolves id → name, abbr, crest per sport from each league's own source. Not exported yet. |
+| `player_game_history.opponent_id` for "games against them" | 732,014 rows, opponent non-null throughout — and the player page ALREADY holds the player's full history client-side, so the games-against-them cards need no new fetch. |
+
 - **Player picker:** replaces the fixed peer list, filtered to position, with
   search.
 - **Delete:** `MatchupExplorerCard` and the `matchupExplorer` field (R1h's floor
