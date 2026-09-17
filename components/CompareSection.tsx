@@ -47,6 +47,14 @@ export interface CompareSectionProps {
    * runs (R10.4). A named slot rather than a `sport === 'nba'` branch in here.
    */
   extras?: ResearchCard[];
+  /**
+   * False for a sport with no teams and no rollups (tennis): the team half is
+   * hidden, the picker lists named opponents, and the sport's own cards carry
+   * the comparison (R10.4d).
+   */
+  teamCompare?: boolean;
+  /** What the peer picker is choosing ("Compare with", "Opponent faced"). */
+  peerLabel?: string;
 }
 
 /** The stats compare lines up: the game log's own numeric columns, at most six. */
@@ -67,6 +75,8 @@ export function CompareSection({
   peerResearch,
   peerLoading,
   extras = [],
+  teamCompare = true,
+  peerLabel = 'Compare with',
 }: CompareSectionProps) {
   const teams = compare?.teams ?? [];
   const team = teams.find((t) => t.id === teamId) ?? null;
@@ -150,8 +160,8 @@ export function CompareSection({
 
   return (
     <div className="space-y-3">
-      {picker}
-      {!teamId ? (
+      {teamCompare ? picker : null}
+      {!teamCompare ? null : !teamId ? (
         <Card title="Compare" >
           <EmptyState title="Pick an opponent" reason="Choose a team to see this player's games against them and what that team gives up to players in his position." />
         </Card>
@@ -179,7 +189,7 @@ export function CompareSection({
           <AllowCardView compare={compare} loading={loading} teamAbbr={team?.abbr ?? null} />
         </div>
       )}
-      {teamId && extras.length ? (
+      {(teamId || !teamCompare) && extras.length ? (
         <div className="grid gap-3">
           {extras.map((card) => (
             <ResearchCardView key={card.key} card={card} />
@@ -195,6 +205,8 @@ export function CompareSection({
         onPeer={onPeer}
         peerResearch={peerResearch}
         peerLoading={peerLoading}
+        seasonsCard={teamCompare}
+        label={peerLabel}
       />
     </div>
   );
@@ -217,6 +229,8 @@ function PeerCompare({
   onPeer,
   peerResearch,
   peerLoading,
+  seasonsCard,
+  label,
 }: {
   research: PlayerResearchData | null;
   subjectId: string | null;
@@ -226,6 +240,9 @@ function PeerCompare({
   onPeer: (id: string | null) => void;
   peerResearch: PlayerResearchData | null;
   peerLoading: boolean;
+  /** Tennis compares from its own archive cards, not the shared season rows. */
+  seasonsCard: boolean;
+  label: string;
 }) {
   // The list is cached per position group, so it is shared by every guard in
   // the league — including this one, who is filtered out here rather than in
@@ -247,7 +264,7 @@ function PeerCompare({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <SelectBox
-          label="Compare with"
+          label={label}
           value={peerId ?? ''}
           onChange={(v) => onPeer(v || null)}
           options={[
@@ -257,7 +274,7 @@ function PeerCompare({
         />
         {peer ? <span className="text-body-sm text-ink-secondary">{peer.games} games held this season</span> : null}
       </div>
-      {peerId ? (
+      {peerId && seasonsCard ? (
         <Card
           title={`${subjectName} vs ${peer?.name ?? 'peer'}`}
           scope={shared ? `${shared.label} · per game` : undefined}

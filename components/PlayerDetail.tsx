@@ -14,6 +14,7 @@ import { useTeamShotProfile } from './useTeamShotProfile';
 import { useNflTeamTargets } from './useNflTeamTargets';
 import { useMlbTeamStatcastSeason } from './useMlbTeamStatcastSeason';
 import { mlbHandCompareCard } from '@/lib/sports/mlb/adapters/compareCards';
+import { tennisCompareCards } from '@/lib/sports/tennis/adapters/compareCards';
 import { nflTargetCompareCard } from '@/lib/sports/nfl/adapters/compareCards';
 import { nbaZoneCompareCard } from '@/lib/sports/nba/adapters/compareCards';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -1203,6 +1204,19 @@ export function PlayerDetail({
     historySport === 'nfl' ? sportSectionSeason ?? research?.splits.defaultSeason ?? null : null,
     compareTeamId,
   );
+  // Tennis has no teams and no rollups, so its compare is player against player
+  // from the archive the page already loads (R10.4d). The peer is a NAME, and
+  // the list is the opponents he has actually met — which also guarantees the
+  // head-to-head card has rows.
+  const tennisPeerArchive = useTennisArchive(tennisHistoryTour, tennisHistoryTour ? peerParam ?? undefined : undefined);
+  const tennisPeers = useMemo(() => {
+    const met = new Map<string, number>();
+    for (const m of tennisArchive.data?.matches ?? []) met.set(m.opponent, (met.get(m.opponent) ?? 0) + 1);
+    return [...met.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([name, games]) => ({ athleteId: name, name, teamId: null, games, score: games, position: null }));
+  }, [tennisArchive.data]);
+
   const compareStatcast = useMlbTeamStatcastSeason(
     historySport === 'mlb' ? compareTeamId : null,
     historySport === 'mlb' ? sportSectionSeason ?? research?.splits.defaultSeason ?? null : null,
@@ -1225,6 +1239,14 @@ export function PlayerDetail({
           : null;
       return card ? [card] : [];
     }
+    if (historySport === 'tennis_atp' || historySport === 'tennis_wta') {
+      return tennisCompareCards({
+        subjectName: bioState.data?.name ?? subject?.name ?? 'This player',
+        subjectMatches: tennisArchive.data?.matches ?? [],
+        peerName: peerParam,
+        peerMatches: tennisPeerArchive.data?.matches ?? null,
+      });
+    }
     if (historySport === 'mlb') {
       const card = compareStatcast
         ? mlbHandCompareCard({
@@ -1244,7 +1266,7 @@ export function PlayerDetail({
     const groupLabel = { G: 'guards', F: 'forwards', C: 'centers' }[compareState.data.group] ?? 'his position';
     const card = nbaZoneCompareCard({ shots: nbaShots.data.shots, allowed, teamAbbr: abbr, groupLabel });
     return card ? [card] : [];
-  }, [historySport, nbaShots.data, compareShotProfile.data, compareState.data, compareTeamId, compareTargets.data, nflTargets.data, bioState.data, compareStatcast]);
+  }, [historySport, nbaShots.data, compareShotProfile.data, compareState.data, compareTeamId, compareTargets.data, nflTargets.data, bioState.data, compareStatcast, tennisArchive.data, tennisPeerArchive.data, peerParam, subject?.name]);
   // The peer's page data, built by the same adapter with no sport extras: the
   // compare lines up seasons and a trend, which every sport's history carries.
   const peerResearch = useMemo(
@@ -1279,7 +1301,7 @@ export function PlayerDetail({
     () => [
       ...(liveNow ? [{ id: 'live', label: 'Live' }] : []),
       { id: 'props', label: 'Prop analysis' },
-      ...(historySport && isTeamProductionSport(historySport) ? [{ id: 'compare', label: 'Compare' }] : []),
+      ...(historySport && (isTeamProductionSport(historySport) || historySport.startsWith('tennis')) ? [{ id: 'compare', label: 'Compare' }] : []),
       ...(historySport
         ? [
             { id: 'seasons', label: 'Seasons' },
@@ -1550,8 +1572,8 @@ export function PlayerDetail({
         <Section id="props" title="Prop analysis" sub={propSub}>
           {propBlock}
         </Section>
-        {historySport && isTeamProductionSport(historySport) ? (
-          <Section id="compare" title="Compare" sub="this player against one opponent">
+        {historySport && (isTeamProductionSport(historySport) || historySport.startsWith('tennis')) ? (
+          <Section id="compare" title="Compare" sub={historySport.startsWith('tennis') ? 'this player against one he has met' : 'this player against one opponent'}>
             <CompareSection
               research={research}
               compare={compareState.data}
@@ -1561,12 +1583,14 @@ export function PlayerDetail({
               onTeam={setCompareTeam}
               subjectId={researchAthleteId}
               subjectName={bioState.data?.name ?? subject?.name ?? 'This player'}
-              peers={peersState.data?.peers ?? []}
+              peers={historySport.startsWith('tennis') ? tennisPeers : peersState.data?.peers ?? []}
               peerId={peerParam}
               onPeer={setComparePeer}
               peerResearch={peerResearch}
               peerLoading={peerHistory.loading}
               extras={compareExtras}
+              teamCompare={!historySport.startsWith('tennis')}
+              peerLabel={historySport.startsWith('tennis') ? 'Opponent' : 'Compare with'}
             />
           </Section>
         ) : null}

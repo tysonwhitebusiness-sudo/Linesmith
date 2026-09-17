@@ -2381,6 +2381,26 @@ the card is left out rather than picking a side.
 SF's lineup hits right-handed pitching" — 3,852 plate appearances, .254, 20.2%
 strikeouts — matching the API exactly.
 
+**R10.4d BUILT 2026-09-17 — tennis compare, from the archive.** Tennis has no
+team rollups, so its compare is player against player: serve and return side by
+side (each rate over its OWN denominator — first-serve points won is of first
+serves in, and the return number is the server's loss turned around), plus head
+to head from the subject's own archive rows, which name their opponent. The
+picker lists the players he has actually met, so a chosen peer always has a
+meeting to show.
+
+- **R10-F4, and it blocks the render check:** a tennis PLAYER page loaded by URL
+  makes **no client fetches at all** — no bio, no history, no snapshot — and
+  shows skeletons forever. Verified pre-existing by stashing R10.4d, rebuilding
+  and loading the same page: identical. The tennis LANDING page is fine and
+  fires its calls normally, so this is that route, not the app. Tennis identity
+  also resolves through the day's snapshot (`snapshot.subjects`), so a player
+  with no match today could not render even once that is fixed. **Routed to
+  R11** (port-artifact cleanup), which is where the page's own wiring is due.
+- So R10.4d is **verified by test** (`tests/compare-tennis.test.ts`, four cases
+  covering the denominators, a match with no serve row, and the empty cases)
+  rather than by render, and the render check is owed.
+
 - **Delete:** `MatchupExplorerCard` and the `matchupExplorer` field (R1h's floor
   goes with it). **NOT DONE — deliberately left for the operator's return:** it
   spans eight sport adapters, `playerRoles.ts` and the old prop block, and it is
