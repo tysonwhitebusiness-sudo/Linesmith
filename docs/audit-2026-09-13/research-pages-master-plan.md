@@ -2078,32 +2078,53 @@ Three causes, in order of what they cost the page:
    split across every bar: 153 games gives a bar under 3px, which is the
    operator's unreadable margin chart, and leaves no room for a logo tick.
 
-### R12a — identity everywhere (A + E)
+### R9a — identity everywhere (A + E)
 
 Set `imageUrl` on every table row naming a team or player, and put the side's
 crest in headers that name one (`SD produce` / `COL allow`). No new component:
 it is threading a field the type already has. Sports own their URL helper
 (`mlbHeadshot` and the like) — the pass is per adapter, not per component.
 
-### R12b — charts that fit their data (D)
+**BUILT 2026-09-17.** `lib/sports/shared/identity.ts` holds every URL builder
+(four copies of the ESPN headshot path existed before it), and
+`ResearchColumn.imageUrl` puts a crest in a one-sided header. Filled: MLB
+(batters, plays, longest balls, props, injuries), football (leaders, box, props,
+injuries, scoring rows, drives, team-stat headers), NBA, NHL (mugshots, which
+need season AND team as well as the player), tennis (archive opponents, the
+per-side columns, each side's own flag), the shared strength headers, head to
+head (the winner's crest) and both prop tables, plus the player page's opponent
+splits.
+
+- **R9a-F1, measured before shipping it:** ESPN's headshot path is not stocked
+  for soccer — 1 of 12 for the United and City XI, and the summary carries no
+  `headshot` href to fall back on. NBA 3/3, tennis 2/3, NFL, MLB and the NHL
+  mugshots all resolve. So soccer keeps its crests and shows no faces: twelve
+  identical grey silhouettes are noise, not identity. Recorded in `identity.ts`
+  so the next person does not re-add them.
+
+**Verified** at 1440 on DAL @ NYG (401872930): crests in the team-stats headers
+and on every scoring row, faces on the leaders and the box; MUN v MCI squads
+clean; Ohtani's opponent splits carry the opposing crest.
+
+### R9b — charts that fit their data (D)
 
 `Histogram` responsive with a minimum bar width, horizontal scroll past ~60
 bars, taller (240-280), and an optional logo tick per bar where one fits.
 Fixes margin by game and both "coming in" cards.
 
-### R12c — emphasis inside tables (C)
+### R9c — emphasis inside tables (C)
 
 In `DataTable`: an optional in-cell magnitude bar behind a number, the leader
 per column in bold, and a heavier key column. One change, all 99 tables.
 
-### R12d — restore the lost primitives (B)
+### R9d — restore the lost primitives (B)
 
 Add `streak`, `dumbbell`, `range` and `contribution` card kinds to
 `ResearchCardView`, then convert the tables that are really one of those. First
 and smallest: the prop tracker's `Last 5`, today `values.join(' ')` — the digits
 `0 1 1 0 1` in the operator's screenshot — becomes a `StreakStrip`.
 
-**Order:** R12a, R12b, R12c, R12d. a and b answer the two named complaints; c
+**Order:** R9a, R9b, R9c, R9d. a and b answer the two named complaints; c
 lifts every table at once; d is the largest and is done per page after.
 
 **Verify:** render each sub-phase at 1440 and 400 on one page per sport

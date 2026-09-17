@@ -121,6 +121,12 @@ export interface ResearchColumn {
   format?: 'rate3' | 'percent' | 'ip';
   /** A text column (a play's description, a market name): left-aligned and allowed to wrap, never sorted as a number (R8.1). */
   text?: boolean;
+  /**
+   * A crest or face beside the header, where the whole column belongs to one
+   * side ("SD produce", "COL allow") — R9a. The label still says whose it is,
+   * so this adds recognition, never the only clue.
+   */
+  imageUrl?: string | null;
 }
 
 export interface ResearchTile {
@@ -167,6 +173,8 @@ export interface ResearchSplitRow {
   label: string;
   games: number;
   values: Record<string, number | null>;
+  /** The opponent's crest on an "Opponent" row (R9a); absent on the rest. */
+  imageUrl?: string | null;
 }
 
 export interface ResearchLogRow {

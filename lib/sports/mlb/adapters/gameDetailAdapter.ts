@@ -3,6 +3,7 @@ import type { MlbGameResearchPayload } from '@/lib/sports/mlb/gameResearch';
 import { pitchMix, type AtBat, type MlbWinProbabilityPoint } from '@/lib/sports/mlb/liveFeedParsers';
 import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports/shared/gameResearch';
 import type { GameResearchData, GameState } from '@/lib/sports/shared/gameResearchShapes';
+import { mlbHeadshot } from '@/lib/sports/shared/identity';
 import type { ResearchCard, ResearchColumn, ResearchSection, ResearchTableRow } from '@/lib/sports/shared/playerResearchShapes';
 import { toStartsAt } from '@/lib/sports/shared/startsAt';
 import type { RecentGameResult, InjuryEntry } from '@/lib/sports/mlb/statsapi';
@@ -631,7 +632,6 @@ const MLB_MARKET_LABELS: Record<string, string> = {
 const HIT_EVENTS = new Set(['single', 'double', 'triple', 'home_run']);
 const am = (v: number | null | undefined) => (v == null ? '—' : v > 0 ? `+${v}` : String(v));
 const halfLabel = (ab: AtBat) => `${ab.half === 'top' ? 'Top' : 'Bot'} ${ab.inning ?? ''}`.trim();
-const mlbHeadshot = (id: number | string) => `https://img.mlbstatic.com/mlb-photos/image/upload/w_80,q_auto:best/v1/people/${id}/headshot/67/current`;
 
 /**
  * MLB's game page for one state — R8.1. `requestedState` is the `?state=`
@@ -801,6 +801,8 @@ function mlbContactSection(payload: MlbGameResearchPayload): ResearchSection | n
         label: b.ab.batter ?? '',
         labelNote: b.team,
         href: b.ab.batterId ? `/mlb/player/${b.ab.batterId}` : null,
+        imageUrl: mlbHeadshot(b.ab.batterId),
+        imageKind: 'player' as const,
         values: { result: b.ab.event, dist: b.ab.battedBall!.distance, ev: b.ab.battedBall!.exitVelocity, la: b.ab.battedBall!.launchAngle },
       })),
   };
@@ -856,7 +858,7 @@ function mlbAtBatSection(payload: MlbGameResearchPayload): ResearchSection | nul
         label: ab.batter ?? '',
         sub: `${ab.event ?? '…'} · vs ${ab.pitcher ?? ''}`,
         badge: ab.scoring ? `${ab.awayScore}–${ab.homeScore}` : `${ab.pitches.length}p`,
-        imageUrl: ab.batterId ? mlbHeadshot(ab.batterId) : null,
+        imageUrl: mlbHeadshot(ab.batterId),
         cards: [plot, table],
       };
     }),
@@ -963,6 +965,8 @@ function mlbBoxSection(payload: MlbGameResearchPayload): ResearchSection | null 
       label: b.name,
       labelNote: `${b.sub ? '↳ ' : ''}${b.pos ?? ''}`,
       href: `/mlb/player/${b.id}`,
+      imageUrl: mlbHeadshot(b.id),
+      imageKind: 'player' as const,
       values: { ab: b.s.ab, r: b.s.r, h: b.s.h, rbi: b.s.rbi, hr: b.s.hr, bb: b.s.bb, k: b.s.k, lob: b.s.lob, avg: b.season.avg, ops: b.season.ops, ev: maxEv.get(b.id) ?? null },
     })),
   });
@@ -1028,6 +1032,8 @@ function mlbLinesSection(payload: MlbGameResearchPayload, state: GameState): Res
       label: p.name,
       labelNote: p.side === 'away' ? payload.away.abbr : p.side === 'home' ? payload.home.abbr : null,
       href: `/mlb/player/${p.playerId}`,
+      imageUrl: mlbHeadshot(p.playerId),
+      imageKind: 'player' as const,
       values: {
         market: MLB_MARKET_LABELS[p.market] ?? p.market,
         line: p.line,
@@ -1056,6 +1062,8 @@ function mlbPlaysSection(payload: MlbGameResearchPayload): ResearchSection | nul
     key: String(ab.index),
     label: ab.batter ?? '',
     labelNote: halfLabel(ab),
+    imageUrl: mlbHeadshot(ab.batterId),
+    imageKind: 'player' as const,
     values: { event: ab.event, detail: ab.description, score: `${ab.awayScore ?? '—'}–${ab.homeScore ?? '—'}` },
   });
   const columns = [
@@ -1275,6 +1283,7 @@ function mlbPlayersSection(payload: MlbGameResearchPayload, state: GameState): R
         key: `${p.playerId}-${p.market}`,
         name: p.name,
         href: `/mlb/player/${p.playerId}`,
+        imageUrl: mlbHeadshot(p.playerId),
         side: p.side ?? sideById.get(p.playerId) ?? null,
         marketLabel: MLB_MARKET_LABELS[p.market] ?? p.market,
         line: p.line,
@@ -1298,7 +1307,14 @@ function mlbInjuriesSection(payload: MlbGameResearchPayload): ResearchSection | 
       { key: 'status', label: 'Status', decimals: 0, text: true },
       ...(described ? [{ key: 'injury', label: 'Injury', decimals: 0, text: true }] : []),
     ],
-    rows: (inj[team.id] ?? []).map((e) => ({ key: String(e.playerId), label: e.playerName, href: `/mlb/player/${e.playerId}`, values: { pos: e.position, status: e.status, injury: e.injury ?? '—' } })),
+    rows: (inj[team.id] ?? []).map((e) => ({
+      key: String(e.playerId),
+      label: e.playerName,
+      href: `/mlb/player/${e.playerId}`,
+      imageUrl: mlbHeadshot(e.playerId),
+      imageKind: 'player' as const,
+      values: { pos: e.position, status: e.status, injury: e.injury ?? '—' },
+    })),
   });
   const views = [view(payload.away), view(payload.home)];
   if (!views.some((v) => v.rows.length)) return null;

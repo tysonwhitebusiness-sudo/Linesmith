@@ -14,6 +14,7 @@ import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports
 import type { GameResearchData, GameState } from '@/lib/sports/shared/gameResearchShapes';
 import type { ResearchCard, ResearchColumn, ResearchSection, ResearchTableRow } from '@/lib/sports/shared/playerResearchShapes';
 import { inGameOddsCards, propHistorySection, propsTrackerCard } from '@/lib/sports/shared/gameResearchSections';
+import { espnHeadshot } from '@/lib/sports/shared/identity';
 
 type Payload = TennisGameResearchPayload;
 type Side = 'away' | 'home';
@@ -79,8 +80,8 @@ function tennisScoreSection(payload: Payload): ResearchSection | null {
     labelHeader: 'Set',
     fixedOrder: true,
     columns: [
-      { key: 'away', label: payload.away.abbr, decimals: 0 },
-      { key: 'home', label: payload.home.abbr, decimals: 0 },
+      { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl },
+      { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl },
     ],
     rows: t.sets.map((s, i) => {
       const awayWon = s.winner === 'away';
@@ -168,8 +169,8 @@ function tennisStatsSection(payload: Payload): ResearchSection {
           labelHeader: 'Stat',
           fixedOrder: true,
           columns: [
-            { key: 'away', label: payload.away.abbr, decimals: 0 },
-            { key: 'home', label: payload.home.abbr, decimals: 0 },
+            { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl },
+            { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl },
           ],
           rows,
           caption: 'The better side of each stat is marked. From the TennisMyLife archive.',
@@ -201,6 +202,8 @@ function formTable(payload: Payload, side: Side): ResearchCard {
       key: r.eventId,
       label: new Date(`${r.date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
       href: `/tennis/${t.tour}/game/${r.eventId}`,
+      imageUrl: espnHeadshot('tennis', r.opponentId),
+      imageKind: 'player' as const,
       values: { opp: r.opponentName ?? '—', result: `${r.won ? 'W' : 'L'} ${r.setsWon}-${r.setsLost}`, games: `${r.gamesWon}-${r.gamesLost}` },
       tones: { result: r.won ? 'good' : 'bad' },
     })),
@@ -216,8 +219,8 @@ function tennisFormSection(payload: Payload, state: GameState): ResearchSection 
     const S = t.archive && state === 'final' ? { away: t.archive.away.serve, home: t.archive.home.serve } : null;
     const f = (v: number | null | undefined) => (v == null ? null : Number(v.toFixed(1)));
     const col = (side: Side): ResearchColumn[] => [
-      { key: `${side}Season`, label: `${payload[side].abbr} ${name.toLowerCase()} avg`, decimals: 1 },
-      ...(S ? [{ key: `${side}Match`, label: `${payload[side].abbr} here`, decimals: 1 }] : []),
+      { key: `${side}Season`, label: `${payload[side].abbr} ${name.toLowerCase()} avg`, decimals: 1, imageUrl: payload[side].logoUrl },
+      ...(S ? [{ key: `${side}Match`, label: `${payload[side].abbr} here`, decimals: 1, imageUrl: payload[side].logoUrl }] : []),
     ];
     const here = (side: Side, v: (s: NonNullable<typeof S>['away']) => number | null) => (S && S[side] ? f(v(S[side])) : null);
     rows.push([
@@ -351,6 +354,7 @@ function tennisPlayersSection(payload: Payload, state: GameState): ResearchSecti
         key: `${p.athleteId}-${p.market}`,
         name: p.name,
         href: `/tennis/${t.tour}/player/${encodeURIComponent(`espn:tennis:${p.athleteId}`)}`,
+        imageUrl: espnHeadshot('tennis', p.athleteId),
         side: p.side,
         marketLabel: TENNIS_MARKET_LABELS[p.market] ?? p.market,
         line: lineOf(p),

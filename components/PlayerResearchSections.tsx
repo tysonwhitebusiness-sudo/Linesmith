@@ -321,7 +321,8 @@ export function SplitsCard({ research, state }: { research: PlayerResearchData |
       label: 'Split',
       sortable: false,
       render: (r) => (
-        <span className="flex items-baseline gap-2">
+        <span className="flex items-center gap-2">
+          {r.imageUrl ? <Avatar kind="logo" label={r.label} src={r.imageUrl} size={18} decorative /> : null}
           <span>{r.label}</span>
           {rows.find((x) => x.group === r.group) === r && r.group !== 'Overall' ? <span className="text-label text-ink-muted">{r.group}</span> : null}
         </span>
@@ -540,10 +541,17 @@ function TableCard({ card }: { card: Extract<ResearchCard, { kind: 'table' }> })
     },
     ...view.columns.map((c) => ({
       key: c.key,
-      label: c.label,
+      label: c.imageUrl ? (
+        <span className={cx('flex items-center gap-1.5', !c.text && 'justify-end')}>
+          <Avatar kind="logo" label={c.label} src={c.imageUrl} size={16} decorative />
+          {c.label}
+        </span>
+      ) : (
+        c.label
+      ),
+      title: c.info ?? (c.imageUrl ? c.label : undefined),
       numeric: !c.text,
       sortable,
-      title: c.info,
       render: (r: TableRow) => {
         const tone = r.tones?.[c.key];
         const text = formatResearchValue(r.values[c.key], c);

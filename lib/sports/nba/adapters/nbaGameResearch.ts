@@ -15,6 +15,7 @@ import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports
 import type { GameResearchData, GameState } from '@/lib/sports/shared/gameResearchShapes';
 import type { ResearchCard, ResearchColumn, ResearchSection, ResearchTableRow } from '@/lib/sports/shared/playerResearchShapes';
 import { inGameOddsCards, matchupSection, propHistorySection, propsTrackerCard } from '@/lib/sports/shared/gameResearchSections';
+import { espnHeadshot } from '@/lib/sports/shared/identity';
 
 type Payload = NbaGameResearchPayload;
 type Side = 'away' | 'home';
@@ -185,8 +186,8 @@ function nbaShotsSection(payload: Payload): ResearchSection | null {
     labelHeader: '',
     fixedOrder: true,
     columns: [
-      { key: 'away', label: payload.away.abbr, decimals: 0 },
-      { key: 'home', label: payload.home.abbr, decimals: 0 },
+      { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl },
+      { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl },
     ],
     rows: [
       { key: 'all', label: 'All located', values: { away: a.all, home: h.all } },
@@ -201,8 +202,8 @@ function nbaTeamStatsSection(payload: Payload): ResearchSection | null {
   const stats = payload.nba.teamStats.filter((r) => !/technical|flagrant|teamTurnovers|leadPercentage/i.test(r.key));
   if (!stats.length) return null;
   const columns: ResearchColumn[] = [
-    { key: 'away', label: payload.away.abbr, decimals: 0 },
-    { key: 'home', label: payload.home.abbr, decimals: 0 },
+    { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl },
+    { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl },
   ];
   return {
     id: 'teams',
@@ -222,7 +223,7 @@ function nbaBoxSection(payload: Payload): ResearchSection | null {
     const columns: ResearchColumn[] = g.labels.map((l, i) => ({ key: `c${i}`, label: l, decimals: 0 }));
     const rows: ResearchTableRow[] = g.athletes
       .filter((a) => a.stats.length)
-      .map((a) => ({ key: `${side}-${a.id}`, label: a.name, href: `/nba/player/${a.id}`, values: Object.fromEntries(a.stats.map((v, i) => [`c${i}`, v])) }));
+      .map((a) => ({ key: `${side}-${a.id}`, label: a.name, href: `/nba/player/${a.id}`, imageUrl: espnHeadshot('nba', a.id), imageKind: 'player' as const, values: Object.fromEntries(a.stats.map((v, i) => [`c${i}`, v])) }));
     return [{ key: side, label: payload[side].abbr, labelHeader: 'Player', columns, rows }];
   });
   if (!views.length) return null;
@@ -306,6 +307,8 @@ function nbaLinesSection(payload: Payload, state: GameState): ResearchSection {
     rows: props.map((p) => ({
       key: `${p.athleteId}-${p.market}`,
       label: p.name,
+      imageUrl: espnHeadshot('nba', p.athleteId),
+      imageKind: 'player' as const,
       labelNote: p.side ? payload[p.side].abbr : null,
       href: `/nba/player/${p.athleteId}`,
       values: {
@@ -358,7 +361,7 @@ function nbaPlayersSection(payload: Payload, state: GameState): ResearchSection 
     state,
     props: n.props
       .filter((p) => p.books >= 2)
-      .map((p) => ({ key: `${p.athleteId}-${p.market}`, name: p.name, href: `/nba/player/${p.athleteId}`, side: p.side, marketLabel: NBA_MARKET_LABELS[p.market] ?? p.market, line: lineOf(p), books: p.books, history: n.pregame.propHistory[`${p.athleteId}|${p.market}`] ?? [] })),
+      .map((p) => ({ key: `${p.athleteId}-${p.market}`, name: p.name, href: `/nba/player/${p.athleteId}`, imageUrl: espnHeadshot('nba', p.athleteId), side: p.side, marketLabel: NBA_MARKET_LABELS[p.market] ?? p.market, line: lineOf(p), books: p.books, history: n.pregame.propHistory[`${p.athleteId}|${p.market}`] ?? [] })),
   });
 }
 
@@ -376,7 +379,7 @@ function nbaInjuriesSection(payload: Payload): ResearchSection | null {
         { key: 'status', label: 'Status', decimals: 0, text: true },
         ...(described ? [{ key: 'detail', label: 'Injury', decimals: 0, text: true }] : []),
       ] as ResearchColumn[],
-      rows: (team?.items ?? []).map((i, k) => ({ key: i.athleteId ?? `${side}-${k}`, label: i.name ?? '—', href: i.athleteId ? `/nba/player/${i.athleteId}` : null, values: { pos: i.position, status: i.status, detail: [i.type, i.detail].filter(Boolean).join(' · ') || '—' } })),
+      rows: (team?.items ?? []).map((i, k) => ({ key: i.athleteId ?? `${side}-${k}`, label: i.name ?? '—', href: i.athleteId ? `/nba/player/${i.athleteId}` : null, imageUrl: espnHeadshot('nba', i.athleteId), imageKind: 'player' as const, values: { pos: i.position, status: i.status, detail: [i.type, i.detail].filter(Boolean).join(' · ') || '—' } })),
     };
   };
   const views = [view('away'), view('home')];
@@ -407,7 +410,7 @@ function nbaNowSection(payload: Payload): ResearchSection {
     ],
     [
       propsTrackerCard(
-        n.props.map((p) => ({ key: `${p.athleteId}-${p.market}`, name: p.name, href: `/nba/player/${p.athleteId}`, sideAbbr: p.side ? payload[p.side].abbr : null, marketLabel: NBA_MARKET_LABELS[p.market] ?? p.market, line: lineOf(p), books: p.books, result: p.result })),
+        n.props.map((p) => ({ key: `${p.athleteId}-${p.market}`, name: p.name, href: `/nba/player/${p.athleteId}`, imageUrl: espnHeadshot('nba', p.athleteId), sideAbbr: p.side ? payload[p.side].abbr : null, marketLabel: NBA_MARKET_LABELS[p.market] ?? p.market, line: lineOf(p), books: p.books, result: p.result })),
       ),
     ],
   ];

@@ -16,6 +16,7 @@ import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports
 import type { GameResearchData, GameState } from '@/lib/sports/shared/gameResearchShapes';
 import type { ResearchCard, ResearchColumn, ResearchSection, ResearchTableRow } from '@/lib/sports/shared/playerResearchShapes';
 import { inGameOddsCards, matchupSection, propHistorySection, propsTrackerCard } from '@/lib/sports/shared/gameResearchSections';
+import { nhlHeadshot } from '@/lib/sports/shared/identity';
 
 type Payload = NhlGameResearchPayload;
 type Side = 'away' | 'home';
@@ -39,6 +40,14 @@ const signedLine = (v: number | null | undefined) => (v == null ? '—' : v > 0 
 const lineOf = (p: NhlPropResult) => p.line ?? 0.5;
 export const periodLabel = (e: Pick<NhlEvent, 'period' | 'periodType'>) => (e.periodType === 'SO' ? 'SO' : e.periodType === 'OT' || (e.period ?? 0) > 3 ? ((e.period ?? 4) === 4 ? 'OT' : `${(e.period ?? 4) - 3}OT`) : `P${e.period ?? ''}`);
 const sideOf = (e: NhlEvent): Side | null => (e.isHome == null ? null : e.isHome ? 'home' : 'away');
+
+/**
+ * The NHL mugshot, which is keyed by season AND team as well as the player
+ * (R9a). The season is the game id's first four digits — 2025021270 is a
+ * 2025-26 game — and the team comes from the side the player dressed for.
+ */
+const faceOf = (gameId: string, teamAbbr: string | null | undefined, playerId: number | string | null | undefined) =>
+  nhlHeadshot(Number(gameId.slice(0, 4)) || null, teamAbbr, playerId);
 /** Seconds into the game, 20-minute periods (a regular-season overtime is shorter, but only ordering matters here). */
 export const gameSeconds = (e: Pick<NhlEvent, 'period' | 'timeInPeriod'>) => {
   const [m, s] = String(e.timeInPeriod ?? '0:00').split(':').map(Number);
@@ -217,8 +226,8 @@ function nhlRinkSection(payload: Payload): ResearchSection | null {
     labelHeader: '',
     fixedOrder: true,
     columns: [
-      { key: 'away', label: payload.away.abbr, decimals: 0 },
-      { key: 'home', label: payload.home.abbr, decimals: 0 },
+      { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl },
+      { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl },
     ],
     rows: SHOT_TYPES.map((t) => ({ key: t, label: SHOT_LABEL[t], values: { away: tally(t, 'away'), home: tally(t, 'home') } })),
     caption: 'Blocked shots are credited to the shooting team here, where the box score credits the blocker.',
@@ -256,8 +265,8 @@ function nhlTeamStatsSection(payload: Payload): ResearchSection | null {
           labelHeader: 'Stat',
           fixedOrder: true,
           columns: [
-            { key: 'away', label: payload.away.abbr, decimals: 0 },
-            { key: 'home', label: payload.home.abbr, decimals: 0 },
+            { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl },
+            { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl },
           ],
           rows: stats.map((s) => ({ key: s.key, label: TEAM_STAT_LABEL[s.key] ?? s.key, values: { away: show(s.key, s.away), home: show(s.key, s.home) } })),
         },
@@ -287,7 +296,7 @@ function nhlBoxSection(payload: Payload): ResearchSection | null {
     labelHeader: 'Skater',
     columns: skaterColumns,
     sortKey: 'p',
-    rows: (box.skatersByTeam[abbrFor(side)] ?? []).map((s) => ({ key: `${side}-${s.playerId}`, label: n.roster[String(s.playerId)]?.name ?? s.name, href: `/nhl/player/${s.playerId}`, values: { pos: s.position, g: s.goals, a: s.assists, p: s.points, sog: s.shots, hit: s.hits, blk: s.blockedShots } })),
+    rows: (box.skatersByTeam[abbrFor(side)] ?? []).map((s) => ({ key: `${side}-${s.playerId}`, label: n.roster[String(s.playerId)]?.name ?? s.name, href: `/nhl/player/${s.playerId}`, imageUrl: faceOf(payload.gameId, abbrFor(side), s.playerId), imageKind: 'player' as const, values: { pos: s.position, g: s.goals, a: s.assists, p: s.points, sog: s.shots, hit: s.hits, blk: s.blockedShots } })),
   }));
   const skaters: ResearchCard = { kind: 'table', key: 'skaters', title: 'Skaters', labelHeader: 'Skater', columns: skaterColumns, rows: views[0].rows, views, sortKey: 'p' };
   const goalies: ResearchCard = {
@@ -306,7 +315,7 @@ function nhlBoxSection(payload: Payload): ResearchSection | null {
     rows: (['away', 'home'] as const).flatMap((side) =>
       (box.goaliesByTeam[abbrFor(side)] ?? [])
         .filter((g) => g.saves + g.goalsAgainst > 0)
-        .map((g) => ({ key: `${side}-${g.playerId}`, label: n.roster[String(g.playerId)]?.name ?? g.name, href: `/nhl/player/${g.playerId}`, values: { team: payload[side].abbr, sa: g.saves + g.goalsAgainst, sv: g.saves, ga: g.goalsAgainst, pct: g.saves + g.goalsAgainst ? g.saves / (g.saves + g.goalsAgainst) : null } })),
+        .map((g) => ({ key: `${side}-${g.playerId}`, label: n.roster[String(g.playerId)]?.name ?? g.name, href: `/nhl/player/${g.playerId}`, imageUrl: faceOf(payload.gameId, abbrFor(side), g.playerId), imageKind: 'player' as const, values: { team: payload[side].abbr, sa: g.saves + g.goalsAgainst, sv: g.saves, ga: g.goalsAgainst, pct: g.saves + g.goalsAgainst ? g.saves / (g.saves + g.goalsAgainst) : null } })),
     ),
     caption: 'Goalies who faced a shot. Empty-net goals count against no goalie.',
   };
@@ -455,7 +464,7 @@ function nhlPlayersSection(payload: Payload, state: GameState): ResearchSection 
     away: payload.away,
     home: payload.home,
     state,
-    props: n.props.filter((p) => p.books >= 2).map((p) => ({ key: `${p.playerId}-${p.market}`, name: p.name, href: `/nhl/player/${p.playerId}`, side: p.side, marketLabel: NHL_MARKET_LABELS[p.market] ?? p.market, line: lineOf(p), books: p.books, history: n.pregame.propHistory[`${p.playerId}|${p.market}`] ?? [] })),
+    props: n.props.filter((p) => p.books >= 2).map((p) => ({ key: `${p.playerId}-${p.market}`, name: p.name, href: `/nhl/player/${p.playerId}`, imageUrl: faceOf(payload.gameId, p.side ? payload[p.side].abbr : null, p.playerId), side: p.side, marketLabel: NHL_MARKET_LABELS[p.market] ?? p.market, line: lineOf(p), books: p.books, history: n.pregame.propHistory[`${p.playerId}|${p.market}`] ?? [] })),
   });
 }
 
@@ -503,7 +512,7 @@ function nhlNowSection(payload: Payload): ResearchSection {
         ],
       },
     ],
-    [propsTrackerCard(n.props.map((p) => ({ key: `${p.playerId}-${p.market}`, name: p.name, href: `/nhl/player/${p.playerId}`, sideAbbr: p.side ? payload[p.side].abbr : null, marketLabel: NHL_MARKET_LABELS[p.market] ?? p.market, line: lineOf(p), books: p.books, result: p.result })))],
+    [propsTrackerCard(n.props.map((p) => ({ key: `${p.playerId}-${p.market}`, name: p.name, href: `/nhl/player/${p.playerId}`, imageUrl: faceOf(payload.gameId, p.side ? payload[p.side].abbr : null, p.playerId), sideAbbr: p.side ? payload[p.side].abbr : null, marketLabel: NHL_MARKET_LABELS[p.market] ?? p.market, line: lineOf(p), books: p.books, result: p.result })))],
   ];
   if (n.live) {
     const l = n.lines;

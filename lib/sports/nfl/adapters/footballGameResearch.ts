@@ -16,6 +16,10 @@ import type { GameResearchData, GameState } from '@/lib/sports/shared/gameResear
 import type { ResearchCard, ResearchColumn, ResearchSection, ResearchTableRow } from '@/lib/sports/shared/playerResearchShapes';
 import { inGameOddsCards, matchupSection, propHistorySection, propsTrackerCard } from '@/lib/sports/shared/gameResearchSections';
 import type { TargetCell } from '@/lib/sports/nfl/teamTargetShapes';
+import { espnHeadshot } from '@/lib/sports/shared/identity';
+
+/** ESPN's headshot path per league (R9a): college football has its own. */
+const faceOf = (league: string, id: string | null | undefined) => espnHeadshot(league === 'cfb' ? 'college-football' : 'nfl', id);
 
 type Payload = FootballGameResearchPayload;
 type Side = 'away' | 'home';
@@ -96,6 +100,9 @@ export function toGameResearchData(input: { payload: Payload; requestedState?: s
 
 const sideOfTeam = (payload: Payload, teamId: string | null): Side => (teamId === payload.home.id ? 'home' : 'away');
 const abbrOf = (payload: Payload, teamId: string | null) => (teamId === payload.home.id ? payload.home.abbr : teamId === payload.away.id ? payload.away.abbr : '');
+/** That side's crest, for a row or a drive that belongs to one team (R9a). */
+const crestOf = (payload: Payload, teamId: string | null) =>
+  teamId === payload.home.id ? payload.home.logoUrl : teamId === payload.away.id ? payload.away.logoUrl : null;
 
 /** Closing lines from pickcenter, and once final what the game did against them: "DAL -3 did not cover", "Total 47.5 · over (48)". */
 export function footballLineChips(payload: Payload, state: GameState): GameResearchData['hero']['chips'] {
@@ -228,7 +235,7 @@ function footballFlowSection(payload: Payload): ResearchSection | null {
             label: `${abbrOf(payload, d.teamId)} · ${d.result ?? ''}`,
             sub: `${d.offensivePlays ?? 0} plays, ${d.yards ?? 0} yds · from ${d.startText ?? '—'}`,
             badge: d.isScore && last ? `${last.awayScore ?? ''}–${last.homeScore ?? ''}` : null,
-            imageUrl: null,
+            imageUrl: crestOf(payload, d.teamId),
             cards,
           };
         }),
@@ -280,7 +287,12 @@ function footballScoringSection(payload: Payload): ResearchSection | null {
       { key: 'play', label: 'Play', decimals: 0, text: true },
       { key: 'score', label: `${payload.away.abbr}–${payload.home.abbr}`, decimals: 0 },
     ],
-    rows: f.scoring.map((p) => ({ key: p.id, label: `${quarterName(p.period)} ${p.clock ?? ''}`, values: { team: abbrOf(payload, p.teamId), play: p.text, score: `${p.awayScore ?? '—'}–${p.homeScore ?? '—'}` } })),
+    rows: f.scoring.map((p) => ({
+      key: p.id,
+      label: `${quarterName(p.period)} ${p.clock ?? ''}`,
+      imageUrl: crestOf(payload, p.teamId),
+      values: { team: abbrOf(payload, p.teamId), play: p.text, score: `${p.awayScore ?? '—'}–${p.homeScore ?? '—'}` },
+    })),
   };
   const n = (v: string | undefined) => (v == null || !Number.isFinite(Number(v)) ? 0 : Number(v));
   const leaders: ResearchTableRow[] = [];
@@ -293,7 +305,7 @@ function footballScoringSection(payload: Payload): ResearchSection | null {
     for (const side of ['away', 'home'] as const) {
       const top = athletesIn(f.box, payload[side].id, group).sort((x, y) => n(y.stat(yardsKey)) - n(x.stat(yardsKey)))[0];
       if (!top) continue;
-      leaders.push({ key: `${cat}-${side}`, label: top.a.name, labelNote: payload[side].abbr, href: player(f.league, top.a.id), values: { cat, line: line(top.stat) } });
+      leaders.push({ key: `${cat}-${side}`, label: top.a.name, labelNote: payload[side].abbr, href: player(f.league, top.a.id), imageUrl: faceOf(f.league, top.a.id), imageKind: 'player', values: { cat, line: line(top.stat) } });
     }
   }
   const leadersCard: ResearchCard = {
@@ -319,8 +331,8 @@ function footballTeamStatsSection(payload: Payload): ResearchSection | null {
   const eff = stats.filter((r) => /Eff|redZone|possession/i.test(r.key));
   const volume = stats.filter((r) => !eff.includes(r));
   const columns: ResearchColumn[] = [
-    { key: 'away', label: payload.away.abbr, decimals: 0 },
-    { key: 'home', label: payload.home.abbr, decimals: 0 },
+    { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl },
+    { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl },
   ];
   const rowsOf = (rs: typeof stats) => rs.map((r) => ({ key: r.key, label: r.label, values: { away: r.away, home: r.home } }));
   const views = [
@@ -361,6 +373,8 @@ function footballBoxSection(payload: Payload): ResearchSection | null {
         label: a.name,
         labelNote: payload[side].abbr,
         href: `/${f.league}/player/${a.id}`,
+        imageUrl: faceOf(f.league, a.id),
+        imageKind: 'player' as const,
         values: Object.fromEntries(a.stats.map((v, i) => [`c${i}`, v])),
       })),
     );
@@ -439,6 +453,8 @@ function footballLinesSection(payload: Payload, state: GameState): ResearchSecti
       label: p.name,
       labelNote: p.side ? payload[p.side].abbr : null,
       href: `/${f.league}/player/${p.athleteId}`,
+      imageUrl: faceOf(f.league, p.athleteId),
+      imageKind: 'player' as const,
       values: {
         market: FOOTBALL_MARKET_LABELS[p.market] ?? p.market,
         line: p.line,
@@ -587,6 +603,7 @@ function footballPlayersSection(payload: Payload, state: GameState): ResearchSec
         key: `${p.athleteId}-${p.market}`,
         name: p.name,
         href: `/${f.league}/player/${p.athleteId}`,
+        imageUrl: faceOf(f.league, p.athleteId),
         side: p.side,
         marketLabel: FOOTBALL_MARKET_LABELS[p.market] ?? p.market,
         line: p.line,
@@ -614,6 +631,8 @@ function footballInjuriesSection(payload: Payload): ResearchSection | null {
         key: i.athleteId ?? `${side}-${n}`,
         label: i.name ?? '—',
         href: i.athleteId ? `/${payload.football.league}/player/${i.athleteId}` : null,
+        imageUrl: faceOf(payload.football.league, i.athleteId),
+        imageKind: 'player' as const,
         values: { pos: i.position, status: i.status, detail: [i.type, i.detail].filter(Boolean).join(' · ') || '—' },
       })),
     };

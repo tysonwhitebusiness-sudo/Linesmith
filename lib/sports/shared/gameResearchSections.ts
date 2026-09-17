@@ -54,9 +54,9 @@ export function matchupSection(input: { away: GameSide; home: GameSide; state: G
       label: `${att.abbr} ${words.attack} vs ${def.abbr} ${words.defend}`,
       labelHeader: 'Per game',
       columns: [
-        { key: 'prod', label: `${att.abbr} produce`, decimals: 0 },
+        { key: 'prod', label: `${att.abbr} produce`, decimals: 0, imageUrl: att.logoUrl },
         { key: 'prodRank', label: 'Rank', decimals: 0 },
-        { key: 'allow', label: `${def.abbr} allow`, decimals: 0 },
+        { key: 'allow', label: `${def.abbr} allow`, decimals: 0, imageUrl: def.logoUrl },
         { key: 'allowRank', label: 'Rank', decimals: 0 },
       ],
       rows: pre.strength.map((r) => {
@@ -131,6 +131,9 @@ export function matchupSection(input: { away: GameSide; home: GameSide; state: G
         key: String(g.pk),
         label: new Date(`${g.date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
         href: words.gameHref(g.pk),
+        // The winner's crest, which the "Won" column names in text as well. A
+        // draw gets none rather than an arbitrary side's.
+        imageUrl: g.us > g.them ? away.logoUrl : g.us < g.them ? home.logoUrl : null,
         values: { park: g.home ? away.abbr : home.abbr, score: `${g.us}–${g.them}`, won: g.us > g.them ? away.abbr : g.us < g.them ? home.abbr : 'Tie' },
       })),
       caption: words.h2hCaption,
@@ -144,6 +147,8 @@ export interface PropHistoryInput {
   key: string;
   name: string;
   href: string | null;
+  /** The player's face (R9a); `null` where the sport has no id for him. */
+  imageUrl?: string | null;
   side: 'away' | 'home' | null;
   marketLabel: string;
   line: number;
@@ -165,6 +170,8 @@ export function propHistorySection(input: { away: GameSide; home: GameSide; stat
       label: p.name,
       labelNote: p.side ? input[p.side].abbr : null,
       href: p.href,
+      imageUrl: p.imageUrl ?? null,
+      imageKind: 'player' as const,
       values: {
         market: p.marketLabel,
         line: p.line,
@@ -228,6 +235,8 @@ export interface TrackedProp {
   books: number;
   /** The player's number so far; `null` before he has appeared. */
   result: number | null;
+  /** The player's face (R9a); `null` where the sport has no id for him. */
+  imageUrl?: string | null;
 }
 
 /** Each main line at the start against the player's number so far. Only an over is ever marked: an under cannot be settled while the game is on (`liveLineHit`). */
@@ -260,6 +269,8 @@ export function propsTrackerCard(props: TrackedProp[]): ResearchCard {
         label: p.name,
         labelNote: p.sideAbbr,
         href: p.href,
+        imageUrl: p.imageUrl ?? null,
+        imageKind: 'player',
         values: { market: p.marketLabel, line: p.line, so, status: over ? 'Over already' : `${Math.floor(p.line - so) + 1} more to go over` },
       };
       if (over) row.tones = { status: 'good' };

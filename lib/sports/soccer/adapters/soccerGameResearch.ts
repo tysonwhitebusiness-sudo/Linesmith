@@ -181,8 +181,8 @@ function soccerShotsSection(payload: Payload): ResearchSection | null {
     labelHeader: '',
     fixedOrder: true,
     columns: [
-      { key: 'away', label: payload.away.abbr, decimals: 0 },
-      { key: 'home', label: payload.home.abbr, decimals: 0 },
+      { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl },
+      { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl },
     ],
     rows: [
       { key: 'located', label: 'Located shots', values: { away: a.located, home: h.located } },
@@ -231,8 +231,8 @@ function soccerTeamStatsSection(payload: Payload): ResearchSection | null {
   const stats = payload.soccer.teamStats;
   if (!stats.length) return null;
   const columns: ResearchColumn[] = [
-    { key: 'home', label: payload.home.abbr, decimals: 0 },
-    { key: 'away', label: payload.away.abbr, decimals: 0 },
+    { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl },
+    { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl },
   ];
   const rows = stats.map((r) => ({ key: r.key, label: r.label, values: { home: r.home, away: r.away } }));
   return {

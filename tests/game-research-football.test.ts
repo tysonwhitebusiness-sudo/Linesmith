@@ -114,6 +114,26 @@ test('a final page: flow with the drive chart, leaders from the box, props only 
   assert.deepEqual(props.rows.map((r) => [r.label, r.values.side]), [['Played', 'Over']]);
 });
 
+test('R9a — a row naming a player or a team carries its face or crest, and a one-sided column its header', () => {
+  const p = payload('final');
+  p.football.props = [{ playerId: 'espn:football:1', athleteId: '1', name: 'Played', market: 'receptions', line: 2.5, over: { price: 100, book: 'a' }, under: null, books: 3, side: 'home', result: 3 }];
+  const data = toGameResearchData({ payload: p });
+  const leaders = data.sections[1].rows[0][1];
+  assert.ok(leaders.kind === 'table');
+  const away = leaders.rows.find((r) => r.key === 'Passing-away')!;
+  assert.match(away.imageUrl ?? '', /headshots\/nfl\/players\/full\/\d+\.png$/, 'ESPN’s headshot, the NFL path');
+  assert.equal(away.imageKind, 'player');
+  const scoring = data.sections[1].rows[0][0];
+  assert.ok(scoring.kind === 'table');
+  for (const r of scoring.rows) assert.ok(r.imageUrl === p.away.logoUrl || r.imageUrl === p.home.logoUrl, 'the scoring side’s crest');
+  const teams = data.sections.find((s) => s.id === 'teams');
+  if (teams) {
+    const stats = teams.rows[0][0];
+    assert.ok(stats.kind === 'table');
+    assert.deepEqual(stats.columns.map((c) => c.imageUrl), [p.away.logoUrl, p.home.logoUrl]);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // R8.2b — the research as of kickoff
 // ---------------------------------------------------------------------------

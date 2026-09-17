@@ -187,9 +187,9 @@ function opponentLabel(g: PlayerGame): string {
 
 function splitRows(spec: ResearchSpec, scoped: readonly PlayerGame[], scopeLabel: string, restBefore: Map<string, number | null>): ResearchSplitRow[] {
   const rows: ResearchSplitRow[] = [];
-  const add = (group: string, key: string, label: string, gs: readonly PlayerGame[]) => {
+  const add = (group: string, key: string, label: string, gs: readonly PlayerGame[], imageUrl?: string | null) => {
     if (gs.length === 0) return;
-    rows.push({ key: `${group}:${key}`, group, label, games: gs.length, values: values(spec.splitColumns, gs) });
+    rows.push({ key: `${group}:${key}`, group, label, games: gs.length, values: values(spec.splitColumns, gs), imageUrl });
   };
   add('Overall', 'all', scopeLabel, scoped);
   if (spec.venueSplits !== false) {
@@ -229,7 +229,7 @@ function splitRows(spec: ResearchSpec, scoped: readonly PlayerGame[], scopeLabel
   }
   [...byOpp.entries()]
     .sort((a, b) => b[1].length - a[1].length || opponentLabel(a[1][0]).localeCompare(opponentLabel(b[1][0])))
-    .forEach(([id, gs]) => add('Opponent', id, `vs ${opponentLabel(gs[0])}`, gs));
+    .forEach(([id, gs]) => add('Opponent', id, `vs ${opponentLabel(gs[0])}`, gs, gs[0].opponent.logoUrl));
   return rows;
 }
 
