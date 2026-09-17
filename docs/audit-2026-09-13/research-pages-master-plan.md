@@ -2363,6 +2363,24 @@ defence otherwise.
 38% of his targets short left at 74% caught, against 22% of what NYG face there
 at 67% allowed. Both share columns total exactly 100.
 
+**R10.4c BUILT 2026-09-17 — MLB's hand card.** What the chosen opponent has done
+against players who bat or throw as this one does, from the stored Statcast
+rollup's `vsHand` split. **Which side answers depends on what he is**, and
+getting it backwards would be the card's one real error: a hitter faces their
+STAFF (`pit.vsHand[his bat hand]`), a pitcher faces their LINEUP
+(`bat.vsHand[his throwing hand]`). A switch hitter ("S") is neither column, so
+the card is left out rather than picking a side.
+
+- `/api/mlb/team-statcast-season` is new and deliberately NOT the existing
+  `/api/mlb/team-statcast`, which serves the older league-wide contact tiles and
+  carries no hand splits. Pattern 2, a direct read of `mlb_team_statcast`.
+- The rows do not share a unit (.254, 20.2%, 87.7 mph) and a column formats
+  every cell the same way, so each row prints its own number.
+
+**Verified** at 1440: Ohtani (throws right) against San Francisco shows "How
+SF's lineup hits right-handed pitching" — 3,852 plate appearances, .254, 20.2%
+strikeouts — matching the API exactly.
+
 - **Delete:** `MatchupExplorerCard` and the `matchupExplorer` field (R1h's floor
   goes with it). **NOT DONE — deliberately left for the operator's return:** it
   spans eight sport adapters, `playerRoles.ts` and the old prop block, and it is
