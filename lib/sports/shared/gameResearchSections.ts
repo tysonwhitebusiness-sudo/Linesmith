@@ -93,21 +93,28 @@ export function matchupSection(input: { away: GameSide; home: GameSide; state: G
   const formCard = (team: GameSide): ResearchCard => {
     const last = (pre.form[team.id]?.games ?? []).slice(-10);
     const r = formRecord(last);
+    // Not every sport's form reader carries a crest (MLB's comes from StatsAPI),
+    // and a caption must not promise one that is not drawn.
+    const crests = last.some((g) => g.opponentLogoUrl);
     return {
       kind: 'histogram',
       key: `form-${team.abbr}`,
       title: `${team.abbr} coming in`,
       scope: last.length ? `last ${last.length}: ${r.w}-${r.l}${r.d ? `-${r.d}` : ''}, ${words.unit} differential ${signed(r.diff)}` : 'no games yet this season',
+      // Ten games in a half-width card: every band clears the crest threshold.
+      minBand: 20,
+      height: 210,
       bars: last.map((g) => ({
         key: String(g.pk),
         axisLabel: `${g.home ? '' : '@'}${g.opponentAbbr}`,
+        imageUrl: g.opponentLogoUrl ?? null,
         value: Math.abs(g.us - g.them) || 0.25,
         highlight: false,
         tone: g.us > g.them ? ('good' as const) : g.us < g.them ? ('bad' as const) : undefined,
         tip: `${g.us > g.them ? 'W' : g.us < g.them ? 'L' : 'T'} ${g.us}-${g.them} ${g.home ? 'vs' : '@'} ${g.opponentAbbr} · ${shortDay(g.date)}${g.postseason ? ' · postseason' : ''}`,
       })),
       toneLegend: { good: 'won', bad: 'lost' },
-      caption: 'Bar height is the margin, oldest on the left.',
+      caption: `Bar height is the margin, oldest on the left${crests ? '; the crest is the opponent' : ''}.`,
     };
   };
   rows.push([formCard(away), formCard(home)]);

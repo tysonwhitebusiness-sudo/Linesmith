@@ -256,11 +256,17 @@ function resultsSection(spec: TeamResearchSpec, season: number, games: TeamGame[
     key: 'margin',
     title: 'Margin by game',
     scope: 'regular season · bar height is the margin',
+    // R9b: a season's bars need room. 20px a game keeps each one readable and
+    // wide enough for the opponent's crest, and the card scrolls rather than
+    // drawing 153 games as 3px slivers (the operator could not read it).
+    minBand: 20,
+    height: 260,
     bars: finals.map((g, i) => {
       const r = gameResult(g, spec);
       return {
         key: `${g.id}-${i}`,
         axisLabel: monthTicks(finals)[i],
+        imageUrl: g.opponent.logoUrl,
         value: Math.abs(g.us! - g.them!) || 0.25,
         highlight: false,
         tone: r === 'W' ? 'good' : r === 'D' ? undefined : 'bad',
@@ -268,6 +274,7 @@ function resultsSection(spec: TeamResearchSpec, season: number, games: TeamGame[
       };
     }),
     toneLegend: { good: 'won', bad: spec.record === 'WLOTL' ? 'lost (any)' : 'lost' },
+    caption: `One bar a game, oldest on the left${finals.some((g) => g.opponent.logoUrl) ? '; the crest is the opponent' : ''}. Scrolls sideways across a season.`,
   };
   let run = 0;
   const cumulative = finals.map((g) => (run += g.us! - g.them!));

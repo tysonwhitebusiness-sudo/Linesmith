@@ -2112,6 +2112,27 @@ clean; Ohtani's opponent splits carry the opposing crest.
 bars, taller (240-280), and an optional logo tick per bar where one fits.
 Fixes margin by game and both "coming in" cards.
 
+**BUILT 2026-09-17 (R9b).** `Histogram` takes `minBand`, the width one bar is
+entitled to: past it the chart draws wider than its host and the host scrolls
+(`ChartFrame.minContentWidth`) instead of shrinking the bars. A bar also carries
+`imageUrl`, drawn as the opponent's crest once the band clears 17px, with the
+"@" kept beside it so an away game still reads as one. Margin by game: 20px a
+bar, 260 tall, 153 games = 3,106px of scroller. The two "coming in" cards: same
+band, 210 tall, crests from the ESPN schedule (which does carry them —
+`FormGame.opponentLogoUrl` now threads them through, and MLB and the NHL fill it
+from their own sources).
+
+- Fixed in passing: the axis label sat at the START of its band while anchored
+  middle, so every label was half a bar to the left of the bar it named.
+- **Trap, cost one render cycle:** the SVG kept `max-width: 100%`, so the
+  browser scaled the 3,106px chart straight back down to the card and the bars
+  were thin again. It is now `none` whenever the chart scrolls.
+- The payload grew a field, so the game-research cache key is **v9**.
+
+**Verified** at 1440 and 400 on the Dodgers (153 games: readable bars, crests,
+card scrolls, page does not) and DAL @ NYG before kickoff (both form charts
+carry crests and the away "@").
+
 ### R9c — emphasis inside tables (C)
 
 In `DataTable`: an optional in-cell magnitude bar behind a number, the leader

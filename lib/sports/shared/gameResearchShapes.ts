@@ -88,6 +88,8 @@ export interface FormGame {
   home: boolean;
   opponentId: string;
   opponentAbbr: string;
+  /** The opponent's crest, for the form chart's axis (R9b); null where the source has none. */
+  opponentLogoUrl?: string | null;
   us: number;
   them: number;
   postseason?: boolean;

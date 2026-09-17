@@ -288,7 +288,15 @@ export type ResearchCard =
       title: string;
       scope?: string;
       caption?: string;
-      bars: Array<{ key: string; axisLabel: string; value: number; highlight: boolean; tip: string; tone?: 'good' | 'bad' }>;
+      bars: Array<{ key: string; axisLabel: string; value: number; highlight: boolean; tip: string; tone?: 'good' | 'bad'; imageUrl?: string | null }>;
+      /**
+       * Least width one bar may have, in pixels, before the chart scrolls
+       * instead of shrinking (R9b). A season of games needs it; a dozen bins
+       * across a card do not.
+       */
+      minBand?: number;
+      /** Taller than the 180 default, for a chart carrying a season (R9b). */
+      height?: number;
       /** Legend for toned bars ("won", "lost") — R7's margin by game. */
       toneLegend?: { good: string; bad: string };
       /** Legend text for the highlighted bars ("hard-hit, 95+ mph"). */

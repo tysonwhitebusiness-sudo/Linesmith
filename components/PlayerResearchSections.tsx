@@ -617,7 +617,7 @@ export function ResearchCardView({ card }: { card: ResearchCard }) {
     case 'histogram':
       return (
         <Card title={card.title} scope={card.scope} caption={card.caption}>
-          <Histogram bins={card.bars} label={card.title} />
+          <Histogram bins={card.bars} label={card.title} minBand={card.minBand} height={card.height} />
           {card.highlightLabel ? <VizLegend items={[{ label: card.highlightLabel, color: 'oklch(18% 0.005 260)' }]} /> : null}
           {card.toneLegend ? (
             <VizLegend

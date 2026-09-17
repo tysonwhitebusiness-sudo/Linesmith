@@ -22,6 +22,7 @@ import { readGamePregameStatcast } from './statcastRollups';
 import type { GamePregameStatcast } from './statcastRollupShapes';
 import { readGameStrength, readPropHistory, type StrengthDef } from '@/lib/sports/shared/gamePregameServer';
 import type { FormGame, GamePregameCommon } from '@/lib/sports/shared/gameResearchShapes';
+import { mlbTeamLogo } from '@/lib/sports/shared/identity';
 
 export { rankOf } from '@/lib/sports/shared/gamePregameServer';
 export type { FormGame, StrengthRow } from '@/lib/sports/shared/gameResearchShapes';
@@ -51,6 +52,7 @@ function asForm(teamId: number, g: MlbTeamScheduleGame): FormGame {
     home,
     opponentId: String(home ? g.awayId : g.homeId),
     opponentAbbr: home ? g.awayAbbr : g.homeAbbr,
+    opponentLogoUrl: mlbTeamLogo(home ? g.awayId : g.homeId),
     us: (home ? g.homeScore : g.awayScore) ?? 0,
     them: (home ? g.awayScore : g.homeScore) ?? 0,
   };

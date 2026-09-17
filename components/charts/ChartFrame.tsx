@@ -48,6 +48,14 @@ export interface ChartFrameProps {
   tickCount?: number;
   /** How a tick value prints. Required with a `domain` — see this file's note on `zoneGrid`. */
   tickFormat?: Formatter;
+  /**
+   * Draw at least this wide, scrolling the host horizontally when it is wider
+   * than the measured width (R9b). For a chart whose marks have a legible
+   * minimum — 153 game bars in a half-width card — shrinking is the wrong
+   * answer; the reader scrolls instead. 0 or undefined keeps the old
+   * fit-the-host behaviour.
+   */
+  minContentWidth?: number;
   /** Renders the empty state instead of children. */
   isEmpty?: boolean;
   /** Shown when `isEmpty`. Say what is actually missing and why, not "no data". */
@@ -106,6 +114,7 @@ export function ChartFrame({
   domain,
   tickCount = 3,
   tickFormat,
+  minContentWidth = 0,
   isEmpty,
   emptyMessage = 'Not available for this matchup yet.',
   isLoading,
@@ -117,7 +126,9 @@ export function ChartFrame({
   className,
 }: ChartFrameProps) {
   const [hostRef, measured] = useChartWidth(width);
-  const frameWidth = measured || width;
+  const hostWidth = measured || width;
+  const frameWidth = Math.max(hostWidth, minContentWidth);
+  const scrolls = frameWidth > hostWidth;
 
   const pad = { ...DEFAULT_PADDING, ...padding };
   const plotWidth = Math.max(0, frameWidth - pad.left - pad.right);
@@ -159,16 +170,22 @@ export function ChartFrame({
 
   const resolvedTooltip = typeof tooltip === 'function' ? tooltip(plot) : tooltip;
 
-  return (
-    <div ref={hostRef} className={`relative min-w-0 ${className ?? ''}`}>
+  // The measured element must stay the host's own width, so the scroller is a
+  // child of it: measuring the scrolling element would feed its content width
+  // back in and grow the chart on every pass.
+  const body = (
+    <>
       <svg
         viewBox={`0 0 ${frameWidth} ${height}`}
         width={frameWidth}
         height={height}
         role="img"
         aria-label={label}
-        // maxWidth only matters before the first measure, when `frameWidth` is still the fallback.
-        style={{ display: 'block', overflow: 'visible', maxWidth: '100%', fontFamily: FONT_STACK }}
+        // maxWidth only matters before the first measure, when `frameWidth` is
+        // still the fallback. It must NOT apply while scrolling, or the browser
+        // shrinks the wide content back to the host and the bars are thin again
+        // — which is exactly what R9b set out to stop.
+        style={{ display: 'block', overflow: 'visible', maxWidth: scrolls ? 'none' : '100%', fontFamily: FONT_STACK }}
         onPointerMove={onPointerMove ? (e) => onPointerMove(e, plot) : undefined}
         onPointerLeave={onPointerLeave}
       >
@@ -195,6 +212,18 @@ export function ChartFrame({
         {children(plot)}
       </svg>
       {resolvedTooltip ? <ChartTooltip content={resolvedTooltip} hostWidth={frameWidth} /> : null}
+    </>
+  );
+
+  return (
+    <div ref={hostRef} className={`relative min-w-0 ${className ?? ''}`}>
+      {scrolls ? (
+        <div className="relative overflow-x-auto pb-1" style={{ maxWidth: '100%' }}>
+          {body}
+        </div>
+      ) : (
+        body
+      )}
     </div>
   );
 }

@@ -159,7 +159,7 @@ function formFrom(teamId: string, g: NhlClubGame): FormGame | null {
   const us = home ? g.home : g.away;
   const them = home ? g.away : g.home;
   if (us.score == null || them.score == null) return null;
-  return { pk: g.id, date: g.date, home, opponentId: them.id, opponentAbbr: them.abbr, us: us.score, them: them.score, postseason: g.postseason };
+  return { pk: g.id, date: g.date, home, opponentId: them.id, opponentAbbr: them.abbr, opponentLogoUrl: them.logoUrl, us: us.score, them: them.score, postseason: g.postseason };
 }
 
 const memo = new Map<string, { value: NhlPregame; expiresAt: number }>();

@@ -162,7 +162,7 @@ test('form reads a schedule game from either side, dated in US Eastern time', ()
     neutral: false,
   };
   assert.equal(easternDate(g.start), '2026-09-13', 'Sunday night, not Monday UTC');
-  assert.deepEqual(formGameFrom('6', g), { pk: '401872930', date: '2026-09-13', home: false, opponentId: '19', opponentAbbr: 'NYG', us: 20, them: 28, postseason: false });
+  assert.deepEqual(formGameFrom('6', g), { pk: '401872930', date: '2026-09-13', home: false, opponentId: '19', opponentAbbr: 'NYG', opponentLogoUrl: null, us: 20, them: 28, postseason: false });
   assert.equal(formGameFrom('19', g)?.us, 28);
 });
 
