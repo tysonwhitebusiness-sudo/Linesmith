@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Avatar, Card, Chip, cx, DataTable, EmptyState, ErrorState, LeagueStripRow, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column } from './ui';
-import { CATEGORICAL, CourtScatter, FieldLanes, FieldScatter, Histogram, PitchScatter, RinkScatter, SeriesChart, SIDE_COLOR, SprayScatter, ZoneScatter } from './charts';
+import { CATEGORICAL, CourtScatter, FieldLanes, FieldScatter, FullPitchScatter, Histogram, MatchTimeline, PitchScatter, RinkScatter, SeriesChart, SIDE_COLOR, SprayScatter, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import {
   formatResearchValue,
@@ -483,14 +483,18 @@ function ScatterCard({ card }: { card: Extract<ResearchCard, { kind: 'scatter' }
           <Chip key={g.key} size="md" selected={visible.has(g.key)} onClick={() => toggle(g.key)}>
             {/* With `emphasis` the outcome carries the colour (a goal), so a
                 group dot here would claim a meaning the chart does not use. */}
-            {card.emphasis ? null : (
+            {g.key === 'away' || g.key === 'home' ? (
+              <span aria-hidden className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full" style={{ background: SIDE_COLOR[g.key] }} />
+            ) : card.emphasis ? null : (
               <span aria-hidden className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full" style={{ background: CATEGORICAL[i % CATEGORICAL.length] }} />
             )}
             {g.label} · {g.count}
           </Chip>
         ))}
       </div>
-      {card.surface === 'pitch' ? (
+      {card.surface === 'fullpitch' ? (
+        <FullPitchScatter points={card.points} emphasis={card.emphasis} filled={card.filled} tips={card.tips} groups={card.groups} visible={visible} ends={card.ends} label={card.title} />
+      ) : card.surface === 'pitch' ? (
         <PitchScatter points={card.points} weights={card.weights} emphasis={card.emphasis} tips={card.tips} groups={card.groups} visible={visible} label={card.title} />
       ) : card.surface === 'court' ? (
         <CourtScatter points={card.points} emphasis={card.emphasis} tips={card.tips} groups={card.groups} visible={visible} label={card.title} />
@@ -653,6 +657,12 @@ export function ResearchCardView({ card }: { card: ResearchCard }) {
       );
     case 'drilldown':
       return <DrilldownCard card={card} />;
+    case 'timeline':
+      return (
+        <Card title={card.title} scope={card.scope} caption={card.caption}>
+          <MatchTimeline events={card.events} teams={card.teams} label={card.title} />
+        </Card>
+      );
     case 'field':
       return (
         <Card title={card.title} scope={card.scope} caption={card.caption}>

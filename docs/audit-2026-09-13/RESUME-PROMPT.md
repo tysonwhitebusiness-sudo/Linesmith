@@ -22,7 +22,9 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
   8.1c commit). **R8.2, football (NFL and CFB)** is in progress: Step 0 and 8.2a-c
   (shell + recap, before-start research, live) are committed; the live render
   is owed on TNF DET @ BUF (401872932, Thu 2026-09-17 8:15 PM ET) and a Saturday
-  CFB game; stop for sign-off after it. Read the plan's R8 section and its "R8.1 (MLB) progress" record.
+  CFB game (both scheduled as Claude app tasks). **R8.3a (soccer)** is committed;
+  next **R8.3b (tennis)**, with its own premise check; soccer's live render is
+  owed on the next matchday; stop for sign-off after it. Read the plan's R8 section and its "R8.1 (MLB) progress" record.
   Owed from MLB: live again on a nine-inning game before 2026-09-27.
 - R1-R5 signed off; R6 complete for every sport (live renders owed, below);
   R7 (team page) signed off 2026-09-16.

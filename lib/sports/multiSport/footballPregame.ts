@@ -17,11 +17,11 @@
  * Server-only: reads Postgres.
  */
 
-import { fetchTeamSeasonGames, type EspnSeasonGame } from './teamSportEspn';
+import { easternDate, readEspnForm } from './gameFormEspn';
 import { readGameStrength, readLatestTeams, readPropHistory, type StrengthDef } from '@/lib/sports/shared/gamePregameServer';
 import { readNflTeamTargets } from '@/lib/sports/nfl/teamTargets';
 import type { NflTeamTargets } from '@/lib/sports/nfl/teamTargetShapes';
-import type { FormGame, GamePregameCommon } from '@/lib/sports/shared/gameResearchShapes';
+import type { GamePregameCommon } from '@/lib/sports/shared/gameResearchShapes';
 import { SEASON_MIN_GAMES } from '@/lib/sports/shared/season';
 import type { FootballLeague } from './footballGameResearch';
 
@@ -79,16 +79,7 @@ export function footballLogValue(market: string, s: Record<string, unknown>): nu
   }
 }
 
-/** The US Eastern date of a start, which `player_game_history.game_date` and the rollups use. */
-export const easternDate = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-
-export function formGameFrom(teamId: string, g: EspnSeasonGame): FormGame | null {
-  const home = g.home.id === teamId;
-  const us = home ? g.home : g.away;
-  const them = home ? g.away : g.home;
-  if (us.score == null || them.score == null) return null;
-  return { pk: g.id, date: easternDate(g.start), home, opponentId: them.id, opponentAbbr: them.abbr, us: us.score, them: them.score, postseason: g.postseason };
-}
+export { easternDate, formGameFrom } from './gameFormEspn';
 
 const MEMO_MS = 30 * 60_000;
 const memo = new Map<string, { value: FootballPregame; expiresAt: number }>();
@@ -123,20 +114,12 @@ async function read(input: FootballPregameInput): Promise<FootballPregame> {
   const { league, eventId, start, season, awayId, homeId } = input;
   const date = easternDate(start);
   const teamIds = [awayId, homeId];
-  const current = new Date().getUTCFullYear();
-  const schedule = (teamId: string, s: number) => fetchTeamSeasonGames('football', ESPN_LEAGUE[league], teamId, s, s < current).catch((): EspnSeasonGame[] => []);
-  const [str, awaySched, homeSched, awayLast, homeLast, history, teamOf] = await Promise.all([
+  const [str, form, history, teamOf] = await Promise.all([
     readGameStrength(league, season, date, teamIds, FOOTBALL_STRENGTH).catch(() => ({ season, note: null, rows: [] })),
-    schedule(awayId, season),
-    schedule(homeId, season),
-    schedule(awayId, season - 1),
-    schedule(homeId, season - 1),
+    readEspnForm({ espnSport: 'football', espnLeague: ESPN_LEAGUE[league], eventId, start, season, currentSeason: new Date().getUTCFullYear(), awayId, homeId }),
     readPropHistory(league, input.props.map((p) => ({ key: `${p.athleteId}|${p.market}`, athleteId: p.athleteId, market: p.market })), [season - 1, season], date, teamIds, footballLogValue).catch(() => ({})),
     readLatestTeams(league, [...new Set(input.props.map((p) => p.athleteId))], date).catch(() => ({})),
   ]);
-  const before = (g: EspnSeasonGame) => g.state === 'final' && g.id !== eventId && Date.parse(g.start) < Date.parse(start);
-  const formOf = (teamId: string, games: EspnSeasonGame[]) => games.filter(before).map((g) => formGameFrom(teamId, g)).filter((g): g is FormGame => g != null);
-  const h2h = formOf(awayId, [...awayLast, ...awaySched].filter((g) => g.home.id === homeId || g.away.id === homeId));
 
   let passing: FootballPregame['passing'] = null;
   if (league === 'nfl') {
@@ -154,8 +137,8 @@ async function read(input: FootballPregameInput): Promise<FootballPregame> {
     strengthSeason: str.season,
     strengthNote: str.note,
     strength: str.rows,
-    form: { [awayId]: { games: formOf(awayId, [...awayLast, ...awaySched]) }, [homeId]: { games: formOf(homeId, [...homeLast, ...homeSched]) } },
-    h2h,
+    form: form.form,
+    h2h: form.h2h,
     propHistory: history,
     passing,
     teamOf,

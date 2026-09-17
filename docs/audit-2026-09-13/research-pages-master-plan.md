@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football): 8.2a-c built; the live state's render is owed on TNF DET @ BUF 2026-09-17, then sign-off.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football): 8.2a-c built; live renders scheduled (TNF, Saturday CFB), then sign-off. R8.3a (soccer) built; 8.3b (tennis) next.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1814,6 +1814,52 @@ seven G2 fixture games and a live MLB game; route and parser inventory).
     capture use play wall-clock times.
   - Unit-tested on the DAL @ NYG fixture as if in progress; nothing on screen
     until a live game.
+  - Scheduled checks (Claude app tasks): TNF DET @ BUF Thu 2026-09-17 7:43 PM
+    CDT, CFB UGA @ ARK Sat 2026-09-19 11:37 AM CDT. Each records its result
+    here.
+
+**R8.3 (soccer and tennis) progress:** split into R8.3a soccer and R8.3b tennis,
+which share almost nothing.
+- **Step 0 (soccer), 2026-09-17,** probes on MUN v MCI (401879278, 0-1):
+  - ESPN's summary serves the match: 27 key events (with team and player ids),
+    116 commentary entries with 91 located on the pitch, lineups with
+    formations, last five, team stats, per-player match stats in `rosters`,
+    three-way pickcenter. No win probability for soccer.
+  - **Commentary positions are normalised to the team in possession attacking
+    x = 100** (both sides' shots at x 72-86, Haaland's goal at 97.5), so a
+    full-pitch map mirrors the away side. **Commentary carries no team id,**
+    only `team.displayName`; sides are matched on the full name.
+  - **`game_odds_history` holds soccer moneylines only and no draw side** (4
+    books); the draw, handicap and total come from pickcenter.
+  - Props are mostly yes/no (anytime scorer 47 players, first scorer 43, 2+
+    goals 45) beside goals, assists and shots; `gameMainLines` skipped yes/no
+    markets and now returns them.
+  - `prop_odds` subjects `espn:soccer:{id}`; `player_game_history` and
+    `team_game_production` (`soccer_epl`, `soccer_mls`) key ESPN ids; season is
+    `header.season.year` (2026 for 2026-27).
+  - **R8.3-F1 (model track):** `team_game_production` credits goals to scorers,
+    so own goals belong to nobody: EPL 2025-26 City 74 against ESPN's 77,
+    United 66 against 69, United conceding 48 against 50 (City's 35 conceded,
+    no own goals, matches). The page labels the row "Goals by players"; the
+    fix is the Python writer adding own goals.
+  - MLS 2026 logs start 2026-08-15 (R7-F1), so strength falls back to 2025 for
+    sides 25 games in; the shared note now says what the app HOLDS, not what
+    the season had.
+- **8.3a — soccer page, 2026-09-17:** `readSoccerGameResearch` (EPL and MLS,
+  `/api/game-research?sport=soccer_epl|soccer_mls`), the soccer route on
+  `GameResearchPage`, two new graphics (`MatchTimeline` as a `timeline` card,
+  `FullPitchScatter` as the `fullpitch` scatter surface). Final: match flow,
+  shot map with located-shot counts, lineups, team stats, lines with the draw
+  and props against results (yes/no settled Yes/No), commentary, and the
+  kickoff research. Pre: Matchup, lineups once announced, Players, injuries,
+  lines. Live: Right now (score, last event, props tracker, in-game
+  moneylines), then flow, shots, stats, lineups, commentary. Form and head to
+  head now come from one shared `readEspnForm` (football moved onto it).
+  Refereed: located shots 16 and 6 equal ESPN's team shot totals; City's red
+  card at 22:23 sits in the 23rd minute; the goal is mirrored to City's
+  left-hand goal. Rendered MUN v MCI (final), ARS @ BHA (EPL, pre) and SD @ MIA
+  (MLS, pre) at 1440 and 400. **Live soccer render owed** on the next matchday.
+- **8.3b — tennis: next.**
 
 
 Spec: `docs/design/phase-g2/src/game.html`, `common-game.js`,

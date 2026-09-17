@@ -1,62 +1,42 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import type { PickCandidate } from '@/lib/core/types';
-import type { SoccerLeague } from '@/lib/core/types';
+import { useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import type { PickCandidate, SoccerLeague } from '@/lib/core/types';
 import { SOCCER_LEAGUES } from '@/lib/core/types';
 import { useSnapshot } from '@/components/useSnapshot';
 import { useSlip } from '@/components/useSlip';
 import { TopBar } from '@/components/TopBar';
-import { GameDetail } from '@/components/GameDetail';
 import SlipModal from '@/components/SlipModal';
-import { BrandedLoader } from '@/components/BrandedLoader';
+import { GameResearchPage } from '@/components/GameResearchPage';
 
 function isSoccerLeague(v: string): v is SoccerLeague {
   return (SOCCER_LEAGUES as string[]).includes(v);
 }
 
-/** `/soccer/[league]/game/[gameId]` — the soccer equivalent of `/nfl/game/[gameId]`. */
+/**
+ * `/soccer/[league]/game/[gameId]` — the game page for any EPL or MLS match by
+ * ESPN event id (R8.3a): before kickoff, live, or final, on `GameResearchPage`.
+ * The research route names the league as its sport (`soccer_epl`, `soccer_mls`),
+ * the way `player_game_history` spells it.
+ */
 export default function SoccerGameDetailPage() {
   const params = useParams<{ league: string; gameId: string }>();
-  const router = useRouter();
-  const search = useSearchParams();
-  const sport = 'soccer' as const;
   const league = params?.league ?? '';
   if (!isSoccerLeague(league)) {
     return <div className="lb-card m-3 p-6 text-center text-sm text-ink-muted">Unknown league.</div>;
   }
-  const gameId = String(params?.gameId ?? '');
+  return <SoccerGamePage league={league} gameId={String(params?.gameId ?? '')} />;
+}
 
-  const { snapshot, loading, error, lastFetched, refresh } = useSnapshot(sport, undefined, league);
+function SoccerGamePage({ league, gameId }: { league: SoccerLeague; gameId: string }) {
+  const router = useRouter();
+  const sport = 'soccer' as const;
+  const { snapshot, loading, lastFetched, refresh } = useSnapshot(sport, undefined, league);
   const slip = useSlip(sport);
   const [slipOpen, setSlipOpen] = useState(false);
 
-  const [detailReady, setDetailReady] = useState(false);
-  useEffect(() => {
-    setDetailReady(false);
-  }, [gameId]);
-
-  const selectedPlayerId = search.get('player') ?? undefined;
-  const selectedMarket = search.get('market') ?? undefined;
-
-  const onSelectCandidate = (subjectId: string | null, dimension?: string) => {
-    const qs = new URLSearchParams();
-    if (subjectId) {
-      qs.set('player', subjectId);
-      if (dimension) qs.set('market', dimension);
-    }
-    const suffix = qs.toString();
-    router.replace(`/soccer/${league}/game/${gameId}${suffix ? `?${suffix}` : ''}`);
-  };
-
-  const gameCandidates = useMemo(() => {
-    const all = snapshot?.candidates ?? [];
-    return all.filter((c) => String((c.subjectMeta as Record<string, unknown> | undefined)?.gamePk) === gameId);
-  }, [snapshot, gameId]);
-
   const eventContext = snapshot ? [snapshot.eventName, snapshot.eventDetail].filter(Boolean).join(' · ') : null;
-
   const onAdd = (candidate: PickCandidate, oddsInfo?: { americanOdds: string; source: string }) => {
     void slip.addPick(candidate, eventContext, oddsInfo);
   };
@@ -69,11 +49,7 @@ export default function SoccerGameDetailPage() {
           league={league}
           onLeagueChange={(next) => router.push(`/soccer/${next}`)}
           leading={
-            <button
-              type="button"
-              onClick={() => router.push(`/soccer/${league}`)}
-              className="whitespace-nowrap px-2 py-3 text-[13px] font-medium text-masters"
-            >
+            <button type="button" onClick={() => router.push(`/soccer/${league}`)} className="whitespace-nowrap px-2 py-3 text-[13px] font-medium text-masters">
               ← Scan
             </button>
           }
@@ -85,31 +61,8 @@ export default function SoccerGameDetailPage() {
         />
       </header>
 
-      <main className="px-3 py-3">
-        {error ? <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad">{error}</div> : null}
-
-        <>
-          {!detailReady && <BrandedLoader size="page" />}
-          <div style={{ display: detailReady ? 'block' : 'none' }}>
-            <GameDetail
-              sport={sport}
-              league={league}
-              gameId={gameId}
-              candidates={gameCandidates}
-              picks={slip.picks}
-              pickedKeys={slip.pickedKeys}
-              onAdd={onAdd}
-              onRemovePick={slip.removePick}
-              odds={null}
-              snapshot={snapshot}
-              selectedPlayerId={selectedPlayerId}
-              selectedMarket={selectedMarket}
-              onSelectCandidate={onSelectCandidate}
-              eventContext={eventContext}
-              onReadyChange={setDetailReady}
-            />
-          </div>
-        </>
+      <main className="mx-auto max-w-[1280px] px-3 py-3 md:px-6">
+        <GameResearchPage sport={league === 'mls' ? 'soccer_mls' : 'soccer_epl'} gameId={gameId} />
       </main>
 
       <SlipModal

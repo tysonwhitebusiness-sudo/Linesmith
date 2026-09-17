@@ -47,7 +47,8 @@ export async function readGameStrength(
   if (played < (SEASON_MIN_GAMES[sport] ?? 0)) {
     used = season - 1;
     prod = await readLeagueProduction(sport, used, null);
-    note = `${season} had ${played} ${played === 1 ? 'game' : 'games'} before this one for at least one side, so these are ${used}'s numbers.`;
+    // "Holds", not "had": MLS 2026 logs start 2026-08-15 (R7-F1), so a side 25 games in can show four here.
+    note = `This app holds ${played} ${played === 1 ? 'game' : 'games'} of ${season} before this one for at least one side, so these are ${used}'s numbers.`;
   }
   const pool = realTeams(Object.entries(prod.for).map(([teamId, t]) => ({ teamId, games: t.g }))).map((t) => t.teamId);
   const rows = defs.map((def) => {

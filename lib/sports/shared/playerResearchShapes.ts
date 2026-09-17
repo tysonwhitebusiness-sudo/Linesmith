@@ -354,14 +354,20 @@ export type ResearchCard =
        * `court` is an NBA half court with the RIM as the origin: x is 0-50
        * across and y is feet out from the rim. `rink` is NHL's offensive zone,
        * rotated so every shot attacks the same end: x is feet from the goal
-       * line and y is feet across the ice.
+       * line and y is feet across the ice. `fullpitch` is a whole soccer pitch,
+       * 0-100 each way from the left goal line, the away team attacking left
+       * (R8.3).
        */
-      surface: 'zone' | 'field' | 'pitch' | 'court' | 'rink' | 'spray';
+      surface: 'zone' | 'field' | 'pitch' | 'court' | 'rink' | 'spray' | 'fullpitch';
       points: Array<[string | null, number, number]>;
       /** Per point, same order: how big to draw it (a shot's xG). */
       weights?: number[];
       /** Per point, same order: the one outcome worth picking out (a goal). */
       emphasis?: boolean[];
+      /** Per point, same order: drawn filled (a shot on target). `fullpitch` only. */
+      filled?: boolean[];
+      /** Labels over each half of a two-ended surface: who attacks which way. `fullpitch` only. */
+      ends?: { left: string; right: string };
       /** Per point, same order: the lines of its tooltip. */
       tips?: string[][];
       /** Per point, same order: a short mark drawn in the dot (a pitch's number in an at-bat). `zone` only. */
@@ -373,6 +379,16 @@ export type ResearchCard =
       defaultVisible: string[];
     }
   | { kind: 'status'; key: string; title: string; headline: string; reason: string }
+  | {
+      /** A match on one axis of minutes, one lane per team: goals, cards, substitutions and shots (R8.3, soccer). */
+      kind: 'timeline';
+      key: string;
+      title: string;
+      scope?: string;
+      caption?: string;
+      teams: { away: string; home: string };
+      events: Array<{ key: string; side: 'away' | 'home'; minute: number; kind: 'goal' | 'red' | 'yellow' | 'sub' | 'shot' | 'shot-on'; tip: string[] }>;
+    }
   | {
       /**
        * Movement on a football field, one lane per row — R8.2's drive chart

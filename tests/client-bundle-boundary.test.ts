@@ -92,6 +92,9 @@ const DB_MODULES = [
   // R8.2b: the before-start reads shared by every team sport, and football's.
   '@/lib/sports/shared/gamePregameServer',
   '@/lib/sports/multiSport/footballPregame',
+  // R8.3a: the soccer game page read, and the ESPN form read football shares.
+  '@/lib/sports/soccer/gameResearch',
+  '@/lib/sports/multiSport/gameFormEspn',
 ];
 
 /**

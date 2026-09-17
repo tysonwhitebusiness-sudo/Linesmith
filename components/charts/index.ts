@@ -69,3 +69,5 @@ export { CourtScatter } from './CourtScatter';
 export { RinkScatter } from './RinkScatter';
 export { SprayScatter } from './SprayScatter';
 export { FieldLanes, SIDE_COLOR, type FieldLane } from './FieldLanes';
+export { FullPitchScatter } from './FullPitchScatter';
+export { MatchTimeline, type TimelineEvent } from './MatchTimeline';

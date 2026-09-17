@@ -324,3 +324,5 @@ export function toGameDetailData(input: SoccerGameDetailInput): GameDetailData {
   };
 }
 
+/** The game page (R8.3a): `soccerGameResearch.ts`. */
+export { toGameResearchData } from './soccerGameResearch';

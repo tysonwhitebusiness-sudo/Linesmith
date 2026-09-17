@@ -1,5 +1,5 @@
 /**
- * GET /api/game-research?sport=mlb&gameId=824711 (also nfl, cfb: ESPN event ids)
+ * GET /api/game-research?sport=mlb&gameId=824711 (also nfl, cfb, soccer_epl, soccer_mls: ESPN event ids)
  *
  * A game page's payload — R8. One route with the sport as a query param, for
  * the reason `/api/team-research` and `/api/season-ranks` give. Each sport's
@@ -15,7 +15,7 @@
  * A game that turns live mid-TTL is caught by the status lookup: the key carries
  * the state, so a new state is a new entry rather than a stale one.
  *
- * CACHE KEY — `game-research:route:v4:{sport}:{gameId}:{state}` (v4: R8.2b added football's before-start research), grepped before it
+ * CACHE KEY — `game-research:route:v5:{sport}:{gameId}:{state}` (v5: R8.3a added soccer and commentary team ids), grepped before it
  * was chosen: nothing in `lib/`, `app/` or `components/` used a `game-research`
  * prefix. The game id is bounded in shape before it reaches the key (task 3.5),
  * and a reader returns `null` for an id the source does not know, which
@@ -28,6 +28,7 @@ import { cachedRoute } from '@/lib/cachedRoute';
 import { getGameStatus } from '@/lib/sports/mlb/statsapi';
 import { mlbGameState, readMlbGameResearch } from '@/lib/sports/mlb/gameResearch';
 import { footballStateOf, readFootballGameResearch } from '@/lib/sports/multiSport/footballGameResearch';
+import { readSoccerGameResearch, soccerStateOf } from '@/lib/sports/soccer/gameResearch';
 import type { GameState } from '@/lib/sports/shared/gameResearchShapes';
 
 export const dynamic = 'force-dynamic';
@@ -51,6 +52,9 @@ const READERS: Record<string, { state: (gameId: number) => Promise<GameState | n
   // 5-second (10 minutes once final) cache, which the build then reuses.
   nfl: { state: (id) => footballStateOf('nfl', String(id)), read: (id) => readFootballGameResearch('nfl', String(id)) },
   cfb: { state: (id) => footballStateOf('cfb', String(id)), read: (id) => readFootballGameResearch('cfb', String(id)) },
+  // R8.3a: ESPN event ids, one reader per league.
+  soccer_epl: { state: (id) => soccerStateOf('soccer_epl', String(id)), read: (id) => readSoccerGameResearch('soccer_epl', String(id)) },
+  soccer_mls: { state: (id) => soccerStateOf('soccer_mls', String(id)), read: (id) => readSoccerGameResearch('soccer_mls', String(id)) },
 };
 
 export async function GET(request: Request) {
@@ -70,7 +74,7 @@ export async function GET(request: Request) {
   const state = await reader.state(gameId).catch(() => null);
   if (!state) return NextResponse.json({ error: `No ${sport} game ${gameId}` }, { status: 404 });
   return cachedRoute({
-    cacheKey: `game-research:route:v4:${sport}:${gameId}:${state}`,
+    cacheKey: `game-research:route:v5:${sport}:${gameId}:${state}`,
     ttlMs: TTL[state],
     routeName: 'game-research',
     build: () => reader.read(gameId),

@@ -13,6 +13,8 @@ import type { MlbGameResearchPayload } from '@/lib/sports/mlb/gameResearch';
 import { toGameResearchData as toNflGameResearchData } from '@/lib/sports/nfl/adapters/gameDetailAdapter';
 import { toGameResearchData as toCfbGameResearchData } from '@/lib/sports/cfb/adapters/gameDetailAdapter';
 import type { FootballGameResearchPayload } from '@/lib/sports/multiSport/footballGameResearch';
+import { toGameResearchData as toSoccerGameResearchData } from '@/lib/sports/soccer/adapters/gameDetailAdapter';
+import type { SoccerGameResearchPayload } from '@/lib/sports/soccer/gameResearch';
 
 /**
  * The game page — R8. One component for every sport: a hero with the score,
@@ -24,7 +26,7 @@ import type { FootballGameResearchPayload } from '@/lib/sports/multiSport/footba
  * knows the sport.
  */
 
-export const GAME_RESEARCH_SPORTS = ['mlb', 'nfl', 'cfb'] as const;
+export const GAME_RESEARCH_SPORTS = ['mlb', 'nfl', 'cfb', 'soccer_epl', 'soccer_mls'] as const;
 
 function gameResearchFor(sport: string, payload: GameResearchPayload, requestedState: string | null): GameResearchData | null {
   switch (sport) {
@@ -34,6 +36,9 @@ function gameResearchFor(sport: string, payload: GameResearchPayload, requestedS
       return toNflGameResearchData({ payload: payload as FootballGameResearchPayload, requestedState });
     case 'cfb':
       return toCfbGameResearchData({ payload: payload as FootballGameResearchPayload, requestedState });
+    case 'soccer_epl':
+    case 'soccer_mls':
+      return toSoccerGameResearchData({ payload: payload as SoccerGameResearchPayload, requestedState });
     default:
       return null;
   }

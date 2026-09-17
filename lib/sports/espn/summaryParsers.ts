@@ -510,6 +510,12 @@ export interface CommentaryEvent {
   text: string | null;
   type: string | null;
   teamName: string | null;
+  /**
+   * The team's id where the feed carries one. MEASURED 2026-09-17 on MUN v MCI:
+   * soccer commentary sends `team: { displayName }` only, so this is null there
+   * and the page matches the full display name instead.
+   */
+  teamId: string | null;
   athletes: string[];
   /**
    * Pitch position, 0-100, as ESPN's commentary feed carries it for some events
@@ -532,6 +538,7 @@ export function parseCommentary(json: J | null): CommentaryEvent[] {
       text: str(c.text),
       type: str(p.type?.text),
       teamName: str(p.team?.displayName),
+      teamId: p.team?.id != null ? String(p.team.id) : null,
       athletes: arr(p.participants).map((q) => str(q.athlete?.displayName)).filter((n): n is string => n != null),
       x: num(p.fieldPositionX),
       y: num(p.fieldPositionY),
