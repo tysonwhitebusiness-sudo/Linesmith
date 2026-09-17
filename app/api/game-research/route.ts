@@ -1,5 +1,5 @@
 /**
- * GET /api/game-research?sport=mlb&gameId=824711 (also nfl, cfb, soccer_epl, soccer_mls, tennis_atp, tennis_wta: ESPN ids)
+ * GET /api/game-research?sport=mlb&gameId=824711 (also nfl, cfb, soccer_epl, soccer_mls, tennis_atp, tennis_wta, nba: ESPN ids)
  *
  * A game page's payload — R8. One route with the sport as a query param, for
  * the reason `/api/team-research` and `/api/season-ranks` give. Each sport's
@@ -30,6 +30,7 @@ import { mlbGameState, readMlbGameResearch } from '@/lib/sports/mlb/gameResearch
 import { footballStateOf, readFootballGameResearch } from '@/lib/sports/multiSport/footballGameResearch';
 import { readSoccerGameResearch, soccerStateOf } from '@/lib/sports/soccer/gameResearch';
 import { readTennisGameResearch, tennisStateOf } from '@/lib/sports/tennis/gameResearch';
+import { nbaStateOf, readNbaGameResearch } from '@/lib/sports/nba/gameResearch';
 import type { GameState } from '@/lib/sports/shared/gameResearchShapes';
 
 export const dynamic = 'force-dynamic';
@@ -59,6 +60,8 @@ const READERS: Record<string, { state: (gameId: number) => Promise<GameState | n
   // R8.3b: ESPN competition ids, one reader per tour.
   tennis_atp: { state: (id) => tennisStateOf('tennis_atp', String(id)), read: (id) => readTennisGameResearch('tennis_atp', String(id)) },
   tennis_wta: { state: (id) => tennisStateOf('tennis_wta', String(id)), read: (id) => readTennisGameResearch('tennis_wta', String(id)) },
+  // R8.4a: ESPN event ids.
+  nba: { state: (id) => nbaStateOf(String(id)), read: (id) => readNbaGameResearch(String(id)) },
 };
 
 export async function GET(request: Request) {

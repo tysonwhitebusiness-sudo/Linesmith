@@ -24,7 +24,8 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
   is owed on TNF DET @ BUF (401872932, Thu 2026-09-17 8:15 PM ET) and a Saturday
   CFB game (both scheduled as Claude app tasks). **R8.3a (soccer)** and **R8.3b (tennis)** are
   committed; soccer's live render is scheduled (ARS @ BHA, Saturday); tennis was
-  verified live. Next after sign-offs: R8.4 (NBA and NHL), live checks owed in
+  verified live. **R8.4a (NBA)** is committed; next **R8.4b (NHL)** (needs
+  an NHL-to-ESPN id bridge for pickcenter); NBA and NHL live checks owed in
   October; stop for sign-off after it. Read the plan's R8 section and its "R8.1 (MLB) progress" record.
   Owed from MLB: live again on a nine-inning game before 2026-09-27.
 - R1-R5 signed off; R6 complete for every sport (live renders owed, below);

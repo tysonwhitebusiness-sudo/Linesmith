@@ -280,3 +280,6 @@ export function toGameDetailData(input: NbaGameDetailInput): GameDetailData {
     leftRail: { candidates, goodBetsGated: false },
   };
 }
+
+/** The game page (R8.4a): `nbaGameResearch.ts`. */
+export { toGameResearchData } from './nbaGameResearch';

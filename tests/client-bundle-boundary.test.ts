@@ -97,6 +97,8 @@ const DB_MODULES = [
   '@/lib/sports/multiSport/gameFormEspn',
   // R8.3b: the tennis match page read.
   '@/lib/sports/tennis/gameResearch',
+  // R8.4a: the NBA game page read.
+  '@/lib/sports/nba/gameResearch',
 ];
 
 /**

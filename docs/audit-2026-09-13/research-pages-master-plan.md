@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football): 8.2a-c built; live renders scheduled (TNF, Saturday CFB), then sign-off. R8.3a (soccer) and R8.3b (tennis) built: soccer's live render is scheduled, tennis's live state was verified; then sign-off.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football): 8.2a-c built; live renders scheduled (TNF, Saturday CFB), then sign-off. R8.3a (soccer) and R8.3b (tennis) built: soccer's live render is scheduled, tennis's live state was verified; then sign-off. R8.4a (NBA) built; 8.4b (NHL) next; live for both owed in October.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1894,6 +1894,38 @@ which share almost nothing.
   sets now count only on ESPN's `winner` flag, and the page matches ESPN (1-0,
   second set 0-1). Rendered final, live and pre (Bejlek v Bucsa) at 1440 and
   400.
+
+**R8.4 (NBA and NHL) progress:** split into R8.4a NBA and R8.4b NHL. Neither
+league plays until October, so each is built and checked on last season's G2
+games; the live states are owed then.
+- **Step 0, 2026-09-17:**
+  - NBA: ESPN's summary serves OKC @ LAL (401811010) in full: 448 plays with 311
+    located, 448 win-probability points, lead tracker, 3 scoring runs of 8+,
+    the regular-season series, pickcenter, box and injuries.
+  - **ESPN's NBA shot coordinates are rim-origin feet**, the system
+    `CourtScatter` already draws: all 124 shots whose text states a distance
+    sit within 2 ft of a rim at (25, 0) (mean 0.69 ft); the closest three is
+    22.6 ft. Free throws carry the -2^31 sentinel `parseCourtPlays` drops.
+  - NHL: the page, game logs and rollups key NHL's own ids (2025021270); ESPN's
+    summary of the same game (pickcenter, season series, injuries) is a
+    different id (401803621), so the NHL page needs an id bridge. Shots,
+    goalies and penalties come from api-web play-by-play and boxscore.
+  - No `game_odds_history` and no `prop_odds` held for either league (the
+    offseason); `game_odds_book_lines` has two NHL 2026-27 games under NHL ids.
+  - Season numbering differs: NBA 2025-26 is 2026 (ESPN's year), NHL 2025-26 is
+    2025 (the rollups).
+- **8.4a — NBA page, 2026-09-17:** `readNbaGameResearch`
+  (`/api/game-research?sport=nba`), the NBA route on `GameResearchPage`. Final:
+  game flow (win probability, lead tracker, scoring runs), the shot chart on the
+  half court with shooting within 8 ft and from three, team stats, box score,
+  lines with the season series and props against results, play-by-play, and
+  the research at tip-off. Pre: Matchup, Players, injuries, lines. Live: Right
+  now. ESPN's box parser is now shared (`lib/sports/espn/boxscore.ts`) by
+  football and basketball. Refereed: OKC's located attempts 45/89 equal its box
+  line (the Lakers' play-by-play lists one attempt more than ESPN's own box);
+  OKC -17.5 covered by 36; 210 went under 221.5. Rendered final and the review
+  of pre at 1440 and 400. **Live NBA owed in October.**
+- **8.4b — NHL: next.**
 
 
 Spec: `docs/design/phase-g2/src/game.html`, `common-game.js`,

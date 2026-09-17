@@ -25,25 +25,18 @@ import { readPreGamePropOddsForGame, type PropOddsRow } from '@/lib/db/client';
 import { readInGameLines, readPreGameOpenClose, type GameLineOpenClose, type InGameLines } from '@/lib/odds/gameLineHistory';
 import { gameMainLines, type GameMainLine } from '@/lib/odds/props/gameProps';
 import type { GameResearchPayload, GameSide, GameState } from '@/lib/sports/shared/gameResearchShapes';
+import { boxStat, boxTeamOf, parseEspnBox, type EspnBoxGroup, type EspnBoxTeam } from '@/lib/sports/espn/boxscore';
+
+/** The box shapes are ESPN's, shared since R8.4 (NBA's box is the same document). Football names kept for its callers. */
+export type FootballBoxGroup = EspnBoxGroup;
+export type FootballBoxTeam = EspnBoxTeam;
+export { boxStat, boxTeamOf };
+export const parseFootballBox = parseEspnBox;
 import { readFootballPregame, type FootballPregame } from './footballPregame';
 
 export type FootballLeague = 'nfl' | 'cfb';
 
 const LEAGUE_PATH: Record<FootballLeague, EspnLeaguePath> = { nfl: 'football/nfl', cfb: 'football/college-football' };
-
-/** One stat group of one team's box score, as ESPN lays it out: `keys` name the columns, some joined ("completions/passingAttempts"). */
-export interface FootballBoxGroup {
-  name: string;
-  keys: string[];
-  labels: string[];
-  totals: string[];
-  athletes: Array<{ id: string; name: string; stats: string[] }>;
-}
-
-export interface FootballBoxTeam {
-  teamId: string;
-  groups: FootballBoxGroup[];
-}
 
 export interface FootballTeamStat {
   key: string;
@@ -140,37 +133,6 @@ export function footballGameState(summary: J): GameState | null {
 
 export async function footballStateOf(league: FootballLeague, eventId: string): Promise<GameState | null> {
   return footballGameState(await fetchEspnSummary(LEAGUE_PATH[league], eventId));
-}
-
-export function parseFootballBox(summary: J): FootballBoxTeam[] {
-  return (summary?.boxscore?.players ?? []).map((t: J) => ({
-    teamId: String(t.team?.id ?? ''),
-    groups: (t.statistics ?? []).map((g: J) => ({
-      name: String(g.name ?? ''),
-      keys: (g.keys ?? []).map(String),
-      labels: (g.labels ?? []).map(String),
-      totals: (g.totals ?? []).map(String),
-      athletes: (g.athletes ?? []).map((a: J) => ({ id: String(a.athlete?.id ?? ''), name: String(a.athlete?.displayName ?? ''), stats: (a.stats ?? []).map(String) })),
-    })),
-  }));
-}
-
-/** One stat for one athlete: a plain key, or one part of a joined key ("completions" out of "22/34"). */
-export function boxStat(box: FootballBoxTeam[], athleteId: string, group: string, key: string): number | null {
-  for (const team of box) {
-    const g = team.groups.find((x) => x.name === group);
-    const a = g?.athletes.find((x) => x.id === athleteId);
-    if (!g || !a) continue;
-    const i = g.keys.indexOf(key);
-    if (i >= 0) return num(a.stats[i]);
-    const j = g.keys.findIndex((k) => k.split(/[/-]/).includes(key));
-    if (j >= 0) return num(String(a.stats[j]).split(/[/-]/)[g.keys[j].split(/[/-]/).indexOf(key)]);
-  }
-  return null;
-}
-
-export function boxTeamOf(box: FootballBoxTeam[], athleteId: string): string | null {
-  return box.find((t) => t.groups.some((g) => g.athletes.some((a) => a.id === athleteId)))?.teamId ?? null;
 }
 
 /**

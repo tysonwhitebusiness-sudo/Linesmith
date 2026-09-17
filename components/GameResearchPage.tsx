@@ -17,6 +17,8 @@ import { toGameResearchData as toSoccerGameResearchData } from '@/lib/sports/soc
 import type { SoccerGameResearchPayload } from '@/lib/sports/soccer/gameResearch';
 import { toGameResearchData as toTennisGameResearchData } from '@/lib/sports/tennis/adapters/gameDetailAdapter';
 import type { TennisGameResearchPayload } from '@/lib/sports/tennis/gameResearch';
+import { toGameResearchData as toNbaGameResearchData } from '@/lib/sports/nba/adapters/gameDetailAdapter';
+import type { NbaGameResearchPayload } from '@/lib/sports/nba/gameResearch';
 
 /**
  * The game page — R8. One component for every sport: a hero with the score,
@@ -28,7 +30,7 @@ import type { TennisGameResearchPayload } from '@/lib/sports/tennis/gameResearch
  * knows the sport.
  */
 
-export const GAME_RESEARCH_SPORTS = ['mlb', 'nfl', 'cfb', 'soccer_epl', 'soccer_mls', 'tennis_atp', 'tennis_wta'] as const;
+export const GAME_RESEARCH_SPORTS = ['mlb', 'nfl', 'cfb', 'soccer_epl', 'soccer_mls', 'tennis_atp', 'tennis_wta', 'nba'] as const;
 
 function gameResearchFor(sport: string, payload: GameResearchPayload, requestedState: string | null): GameResearchData | null {
   switch (sport) {
@@ -44,6 +46,8 @@ function gameResearchFor(sport: string, payload: GameResearchPayload, requestedS
     case 'tennis_atp':
     case 'tennis_wta':
       return toTennisGameResearchData({ payload: payload as TennisGameResearchPayload, requestedState });
+    case 'nba':
+      return toNbaGameResearchData({ payload: payload as NbaGameResearchPayload, requestedState });
     default:
       return null;
   }
