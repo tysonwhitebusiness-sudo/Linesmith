@@ -1840,8 +1840,11 @@ which share almost nothing.
   - **R8.3-F1 (model track):** `team_game_production` credits goals to scorers,
     so own goals belong to nobody: EPL 2025-26 City 74 against ESPN's 77,
     United 66 against 69, United conceding 48 against 50 (City's 35 conceded,
-    no own goals, matches). The page labels the row "Goals by players"; the
-    fix is the Python writer adding own goals.
+    no own goals, matches). **FIXED 2026-09-17:** `team_production.py` rolls up
+    `ownGoals` and writes `goals` (players' goals + the opponent's own goals) on
+    each `all` row; equal to the opponent's `goalsConceded` in all 1,780 EPL/MLS
+    2025 team-games. Rebuilt EPL/MLS 2025-26; City 77/35, United 69/50 match
+    ESPN. The row is "Goals / match" again; cache key v8.
   - MLS 2026 logs start 2026-08-15 (R7-F1), so strength falls back to 2025 for
     sides 25 games in; the shared note now says what the app HOLDS, not what
     the season had.
@@ -1875,6 +1878,14 @@ which share almost nothing.
     are ALSO stored as `tennis_wta` with the same event and athlete ids, written
     by the 2026-08-29 backfill (e.g. 181891 under both). Pages keyed by athlete
     id are unaffected; anything counting a tour's rows is inflated.
+    **Cause, 2026-09-17:** at joint events ESPN's atp and wta scoreboards both
+    return all five draws, and neither the backfill nor the daily freshness
+    pass filtered on the grouping slug (`game_context.py` already did). So it is
+    both ways (women as ATP too) and doubles pairs were stored as athletes
+    ("3126-2946"). **Writers fixed** (singles slug per tour). Dry run against a
+    fresh filtered sweep of 2024-26: of 100,516 rows, 46,356 belong to no match
+    of their tour's singles draw (21,170 doubles, 25,186 the other tour's
+    singles, 0 unexplained); the two tours' kept sets share no match.
   - Odds: moneylines (76 matches in book lines, 17 in history); props on aces,
     games won and to win a set. Opponent names come from ESPN's athlete endpoint.
 - **8.3b — tennis page, 2026-09-17:** `readTennisGameResearch` (ATP and WTA,

@@ -217,6 +217,7 @@ async def _tennis_pass(client, limiter, cfg, start: date, end: date) -> dict:
     tournaments for a date range, so a short window still yields complete
     draws; completed matches only, by `parse_tennis_match`'s own rules."""
     tour = bph._TENNIS_TOUR[cfg.sport]
+    slug = bph._TENNIS_SINGLES_SLUG[cfg.sport]  # the tour's own singles draw (R8.3b-F1)
     url = f"{bph._ESPN_SITE}/tennis/{tour}/scoreboard"
     try:
         payload = await bph.fetch_json(client, limiter, url, params={"dates": f"{start:%Y%m%d}-{end:%Y%m%d}", "limit": 1000})
@@ -230,6 +231,8 @@ async def _tennis_pass(client, limiter, cfg, start: date, end: date) -> dict:
     for event in (payload or {}).get("events") or []:
         name = event.get("name") or ""
         for grouping in event.get("groupings") or []:
+            if (grouping.get("grouping") or {}).get("slug") != slug:
+                continue
             for comp in grouping.get("competitions") or []:
                 mid = str(comp.get("id"))
                 if mid in seen:

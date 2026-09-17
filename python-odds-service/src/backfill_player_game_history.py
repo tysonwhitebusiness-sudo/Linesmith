@@ -769,6 +769,13 @@ async def run_season_mlb(client, limiter: RateLimiter, season: int, stats: RunSt
 
 
 _TENNIS_TOUR = {"tennis_atp": "atp", "tennis_wta": "wta"}
+# R8.3b-F1. The tour endpoint is not the tour: at a joint event (every major, and
+# the combined Masters/1000s) ESPN's atp AND wta scoreboards both return all five
+# draws. Unfiltered, the 2026-08-29 fill stored each joint-event singles match
+# under both tours (~10,500 shared rows a season, men as WTA and women as ATP)
+# and each doubles pair as one "athlete" with an id like "3126-2946" (~20% of
+# rows). game_context.py filters on the same slugs, as does schedule.ts.
+_TENNIS_SINGLES_SLUG = {"tennis_atp": "mens-singles", "tennis_wta": "womens-singles"}
 
 
 def parse_tennis_match(comp: dict, sport: str, season: int, tournament_name: str) -> list[db.PlayerGameHistoryInput]:
@@ -868,6 +875,7 @@ async def run_season_tennis(client, limiter: RateLimiter, cfg: SportConfig, seas
     re-download each tournament for every day it ran. A season is 12 requests.
     """
     tour = _TENNIS_TOUR[cfg.sport]
+    slug = _TENNIS_SINGLES_SLUG[cfg.sport]
     done = await db.player_game_history_done_events(cfg.sport, season)
 
     all_rows: list[db.PlayerGameHistoryInput] = []
@@ -889,6 +897,8 @@ async def run_season_tennis(client, limiter: RateLimiter, cfg: SportConfig, seas
             tournaments += 1
             name = event.get("name") or ""
             for grouping in event.get("groupings") or []:
+                if (grouping.get("grouping") or {}).get("slug") != slug:
+                    continue
                 for comp in grouping.get("competitions") or []:
                     mid = str(comp.get("id"))
                     if mid in seen_matches or mid in done:

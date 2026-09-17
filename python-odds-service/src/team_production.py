@@ -47,7 +47,7 @@ _NFL_KEYS = ["passing.passingYards", "passing.passingAttempts", "passing.complet
              "receiving.receivingTargets", "receiving.receivingTouchdowns", "defensive.sacks",
              "defensive.tacklesForLoss", "interceptions.interceptions", "fumbles.fumblesLost"]
 _SOCCER_KEYS = ["totalGoals", "totalShots", "shotsOnTarget", "goalAssists", "foulsCommitted", "foulsSuffered",
-                "offsides", "yellowCards", "redCards", "saves"]
+                "offsides", "yellowCards", "redCards", "saves", "ownGoals"]
 ROLL_KEYS: dict[str, list[str]] = {
     "nfl": _NFL_KEYS,
     "cfb": ["passing.passingYards", "passing.passingAttempts", "passing.completions", "passing.passingTouchdowns",
@@ -147,7 +147,31 @@ async def rebuild_team_game_production(conn, sport: str, season: int) -> int:
              WHERE h.sport = $1 AND h.season = $2 AND h.team_id IS NOT NULL AND h.opponent_id IS NOT NULL
              GROUP BY h.sport, h.season, h.event_id, h.team_id, g.grp
         """, sport, season)
+        if sport in OWN_GOAL_SPORTS:
+            await _add_team_goals(conn, sport, season)
     return int(status.split()[-1])
+
+
+# R8.3-F1. ESPN credits a goal to its scorer, and an own goal to the defender
+# as `ownGoals`, so the summed `totalGoals` belongs to nobody's scoreline:
+# EPL 2025-26 City 74 against ESPN's 77. `goals` is the team's real score:
+# its players' goals plus the opponent's own goals, on the 'all' row only (an
+# own goal has no position group on the scoring side). Read by opponent it is
+# goals conceded. Measured 2026-09-17 on EPL and MLS 2025: it equals the
+# opponent's `goalsConceded` in all 1,780 team-games.
+OWN_GOAL_SPORTS = ("soccer_epl", "soccer_mls")
+
+
+async def _add_team_goals(conn, sport: str, season: int) -> None:
+    await conn.execute("""
+        UPDATE team_game_production t
+           SET stats = t.stats || jsonb_build_object('goals',
+                 coalesce((t.stats->>'totalGoals')::float, 0) + coalesce((o.stats->>'ownGoals')::float, 0))
+          FROM team_game_production o
+         WHERE t.sport = $1 AND t.season = $2 AND t.pos_group = 'all'
+           AND o.sport = t.sport AND o.season = t.season AND o.event_id = t.event_id
+           AND o.team_id = t.opponent_id AND o.pos_group = 'all'
+    """, sport, season)
 
 
 async def rebuild_player_production(conn, sport: str, season: int) -> int:

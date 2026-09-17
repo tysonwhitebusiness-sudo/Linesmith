@@ -145,15 +145,14 @@ export function soccerMarketValue(market: string, s: Record<string, unknown>, is
 }
 
 /**
- * R8.3-F1, MEASURED 2026-09-17: `team_game_production` credits goals to their
- * scorers, and an own goal has none, so a side's goals come up short of the
- * table by the own goals it was given. EPL 2025-26: City 74 against ESPN's 77,
- * United 66 against 69, United conceding 48 against 50; City's 35 conceded,
- * with no own goals, matches exactly. The rollup holds no own-goal column to add
- * back, so the row says what it counts; the fix is the Python writer's.
+ * Goals are `goals`, the team's real score, not the summed `totalGoals`: ESPN
+ * credits an own goal to the defender, so the players' sum fell short of the
+ * table (R8.3-F1: EPL 2025-26 City 74 against ESPN's 77). The Python rollup
+ * adds the opponent's own goals; City 77/35 and United 69/50 now match ESPN.
+ * Goals per shot keeps `totalGoals`, since an own goal comes from no shot.
  */
 const SOCCER_STRENGTH: StrengthDef[] = [
-  { key: 'goals', label: 'Goals by players / match', decimals: 2, higherIsBetter: true, of: (s, g) => (g ? (s.totalGoals ?? 0) / g : null) },
+  { key: 'goals', label: 'Goals / match', decimals: 2, higherIsBetter: true, of: (s, g) => (g ? (s.goals ?? 0) / g : null) },
   { key: 'shots', label: 'Shots / match', decimals: 1, higherIsBetter: true, of: (s, g) => (g ? (s.totalShots ?? 0) / g : null) },
   { key: 'sot', label: 'Shots on target / match', decimals: 1, higherIsBetter: true, of: (s, g) => (g ? (s.shotsOnTarget ?? 0) / g : null) },
   { key: 'conv', label: 'Goals per shot', decimals: 1, percent: true, higherIsBetter: true, of: (s) => (s.totalShots ? (100 * (s.totalGoals ?? 0)) / s.totalShots : null) },

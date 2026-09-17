@@ -16,10 +16,10 @@
  * - lines: `game_odds_history` moneylines (tennis has no pickcenter); props
  *   (aces, games won, to win a set) at the main line or yes price at the start.
  *
- * R8.3b-F1 (model track): about 10,500 ATP rows a season are ALSO stored under
- * `tennis_wta` with the same event and athlete ids (the 2026-08-29 backfill).
- * Every read here keys on athlete ids and the page's own tour, so the copies
- * change nothing on this page; anything counting a tour's rows is inflated.
+ * R8.3b-F1: the history writers stored joint-event matches under both tours,
+ * and doubles pairs as athletes, until 2026-09-17 (now filtered to the tour's
+ * singles draw). Every read here keys on athlete ids and the page's own tour,
+ * so the copies never changed this page.
  *
  * Server-only: reads Postgres.
  */
