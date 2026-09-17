@@ -185,9 +185,10 @@ function nbaShotsSection(payload: Payload): ResearchSection | null {
     scope: 'from the located attempts',
     labelHeader: '',
     fixedOrder: true,
+    compare: 'row',
     columns: [
-      { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl },
-      { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl },
+      { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl, bar: true },
+      { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl, bar: true },
     ],
     rows: [
       { key: 'all', label: 'All located', values: { away: a.all, home: h.all } },
@@ -202,14 +203,14 @@ function nbaTeamStatsSection(payload: Payload): ResearchSection | null {
   const stats = payload.nba.teamStats.filter((r) => !/technical|flagrant|teamTurnovers|leadPercentage/i.test(r.key));
   if (!stats.length) return null;
   const columns: ResearchColumn[] = [
-    { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl },
-    { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl },
+    { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl, bar: true },
+    { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl, bar: true },
   ];
   return {
     id: 'teams',
     navLabel: 'Team stats',
     title: 'Team stats',
-    rows: [[{ kind: 'table', key: 'team-stats', title: 'Team stats', labelHeader: 'Stat', columns, rows: stats.map((r) => ({ key: r.key, label: r.label, values: { away: r.away, home: r.home } })), fixedOrder: true }]],
+    rows: [[{ kind: 'table', key: 'team-stats', title: 'Team stats', labelHeader: 'Stat', compare: 'row' as const, columns, rows: stats.map((r) => ({ key: r.key, label: r.label, values: { away: r.away, home: r.home } })), fixedOrder: true }]],
     state: { kind: 'ready' },
   };
 }
@@ -220,7 +221,13 @@ function nbaBoxSection(payload: Payload): ResearchSection | null {
   const views = (['away', 'home'] as const).flatMap((side) => {
     const g = box.find((t) => t.teamId === payload[side].id)?.groups[0];
     if (!g) return [];
-    const columns: ResearchColumn[] = g.labels.map((l, i) => ({ key: `c${i}`, label: l, decimals: 0 }));
+    // ESPN's own labels, so the headline stat is found by name (R9c).
+    const columns: ResearchColumn[] = g.labels.map((l, i) => ({
+      key: `c${i}`,
+      label: l,
+      decimals: 0,
+      ...(l === 'PTS' ? { bar: true as const, leader: 'high' as const } : {}),
+    }));
     const rows: ResearchTableRow[] = g.athletes
       .filter((a) => a.stats.length)
       .map((a) => ({ key: `${side}-${a.id}`, label: a.name, href: `/nba/player/${a.id}`, imageUrl: espnHeadshot('nba', a.id), imageKind: 'player' as const, values: Object.fromEntries(a.stats.map((v, i) => [`c${i}`, v])) }));

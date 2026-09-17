@@ -950,7 +950,7 @@ function mlbBoxSection(payload: MlbGameResearchPayload): ResearchSection | null 
     columns: [
       { key: 'ab', label: 'AB', decimals: 0 },
       { key: 'r', label: 'R', decimals: 0 },
-      { key: 'h', label: 'H', decimals: 0 },
+      { key: 'h', label: 'H', decimals: 0, bar: true, leader: 'high' as const },
       { key: 'rbi', label: 'RBI', decimals: 0 },
       { key: 'hr', label: 'HR', decimals: 0 },
       { key: 'bb', label: 'BB', decimals: 0 },

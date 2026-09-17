@@ -10,6 +10,19 @@ import { cx } from './cx';
  *
  * Sorting is by `sortValue` when given (a date string, a rank), else by the
  * raw `row[key]`. Missing values sort last in both directions.
+ *
+ * R9c — EMPHASIS, SO A TABLE IS NOT A WALL OF GREY. Two opt-in cell signals,
+ * both computed by the caller because only it knows what a column means:
+ *
+ *   `bar`    0..1 behind the number, drawn from the cell's own edge. It says
+ *            HOW MUCH, never how good: a share of the column's largest value,
+ *            or of the row's two sides. Neutral ink, so it cannot be read as a
+ *            verdict on a stat where less is better (fumbles, interceptions).
+ *   `strong` this cell leads its column. Only a caller that has declared which
+ *            direction is better sets it, and the number stays legible on its
+ *            own — weight is the signal, not colour.
+ *
+ * The first column carries the row's identity, so it is always the heavier one.
  */
 export interface Column<Row> {
   key: string;
@@ -21,6 +34,10 @@ export interface Column<Row> {
   sortValue?: (row: Row) => number | string | null | undefined;
   /** Accessible header text when `label` is not a string. */
   title?: string;
+  /** 0..1 magnitude behind the value (R9c). Null draws none. */
+  bar?: (row: Row) => number | null;
+  /** This cell leads its column (R9c). */
+  strong?: (row: Row) => boolean;
 }
 
 export interface DataTableProps<Row> {
@@ -117,17 +134,27 @@ export function DataTable<Row>({ columns, rows, rowKey, initialSort, onRowClick,
             >
               {columns.map((c, i) => {
                 const v = c.render ? c.render(row) : ((row as Record<string, unknown>)[c.key] as ReactNode);
+                const share = c.bar?.(row) ?? null;
+                const leads = c.strong?.(row) ?? false;
                 return (
                   <td
                     key={c.key}
                     className={cx(
-                      'whitespace-nowrap border-b border-line-soft text-ink',
+                      'relative whitespace-nowrap border-b border-line-soft text-ink',
                       cell,
                       c.numeric && 'text-right tabular-nums',
-                      i === 0 && 'sticky left-0 bg-card group-hover:bg-card-sunk',
+                      leads && 'font-semibold',
+                      i === 0 && 'sticky left-0 bg-card font-medium group-hover:bg-card-sunk',
                     )}
                   >
-                    {v ?? '—'}
+                    {share != null && share > 0 ? (
+                      <span
+                        aria-hidden
+                        className={cx('pointer-events-none absolute inset-y-[3px] rounded-[2px] bg-ink/[0.08]', c.numeric ? 'right-1' : 'left-1')}
+                        style={{ width: `${Math.max(2, Math.min(100, share * 100)) * 0.92}%` }}
+                      />
+                    ) : null}
+                    <span className="relative">{v ?? '—'}</span>
                   </td>
                 );
               })}

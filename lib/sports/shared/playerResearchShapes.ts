@@ -127,6 +127,19 @@ export interface ResearchColumn {
    * so this adds recognition, never the only clue.
    */
   imageUrl?: string | null;
+  /**
+   * Draw a magnitude bar behind this column's numbers (R9c). Scaled to the
+   * column's largest value, or — on a card with `compare: 'row'` — to the row's
+   * own two sides. It reads as HOW MUCH, not how good, so it is safe on a stat
+   * where less is better.
+   */
+  bar?: boolean;
+  /**
+   * Mark the row holding this column's largest (`high`) or smallest (`low`)
+   * value. It says which is the extreme, not which is admirable — set it only
+   * where that reading is the honest one.
+   */
+  leader?: 'high' | 'low';
 }
 
 export interface ResearchTile {
@@ -336,6 +349,13 @@ export type ResearchCard =
       info?: string;
       caption?: string;
       labelHeader: string;
+      /**
+       * How a `bar` column is scaled (R9c). 'column' (the default) measures
+       * against that column's largest value, which is right when each row is an
+       * entity. 'row' measures each side against the row's own total, which is
+       * right when the columns ARE the two sides and the rows are stats.
+       */
+      compare?: 'column' | 'row';
       columns: ResearchColumn[];
       rows: ResearchTableRow[];
       emptyText?: string;

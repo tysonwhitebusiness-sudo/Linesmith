@@ -331,8 +331,8 @@ function footballTeamStatsSection(payload: Payload): ResearchSection | null {
   const eff = stats.filter((r) => /Eff|redZone|possession/i.test(r.key));
   const volume = stats.filter((r) => !eff.includes(r));
   const columns: ResearchColumn[] = [
-    { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl },
-    { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl },
+    { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl, bar: true },
+    { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl, bar: true },
   ];
   const rowsOf = (rs: typeof stats) => rs.map((r) => ({ key: r.key, label: r.label, values: { away: r.away, home: r.home } }));
   const views = [
@@ -343,7 +343,7 @@ function footballTeamStatsSection(payload: Payload): ResearchSection | null {
     id: 'teams',
     navLabel: 'Team stats',
     title: 'Team stats',
-    rows: [[{ kind: 'table', key: 'team-stats', title: 'Team stats', scope: 'third and fourth down, red zone and possession under Situational', labelHeader: 'Stat', columns, rows: views[0].rows, views, fixedOrder: true }]],
+    rows: [[{ kind: 'table', key: 'team-stats', title: 'Team stats', scope: 'third and fourth down, red zone and possession under Situational', labelHeader: 'Stat', compare: 'row' as const, columns, rows: views[0].rows, views, fixedOrder: true }]],
     state: { kind: 'ready' },
   };
 }
@@ -366,7 +366,14 @@ function footballBoxSection(payload: Payload): ResearchSection | null {
     const teams = (['away', 'home'] as const).map((side) => ({ side, g: f.box.find((t) => t.teamId === payload[side].id)?.groups.find((x) => x.name === name) }));
     const first = teams.find((t) => t.g)?.g;
     if (!first) return [];
-    const columns: ResearchColumn[] = first.labels.map((l, i) => ({ key: `c${i}`, label: l, decimals: 0 }));
+    // The box's columns are ESPN's own labels, so the headline stat is found by
+    // name: yards for every group that has them, points for kicking (R9c).
+    const columns: ResearchColumn[] = first.labels.map((l, i) => ({
+      key: `c${i}`,
+      label: l,
+      decimals: 0,
+      ...(l === 'YDS' || l === 'PTS' ? { bar: true as const, leader: 'high' as const } : {}),
+    }));
     const rows: ResearchTableRow[] = teams.flatMap(({ side, g }) =>
       (g?.athletes ?? []).map((a) => ({
         key: `${side}-${a.id}`,

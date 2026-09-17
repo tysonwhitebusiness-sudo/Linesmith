@@ -515,6 +515,57 @@ function ScatterCard({ card }: { card: Extract<ResearchCard, { kind: 'scatter' }
   );
 }
 
+/**
+ * R9c — the bar and leader marks for one column, from the rows actually shown.
+ *
+ * Only numbers count toward a scale: a cell holding "22/34" or "—" has no
+ * magnitude, and a column of them draws nothing rather than guessing. In `row`
+ * mode a side is measured against the row's own total, so two teams' bars read
+ * against each other and never against the biggest number in the table.
+ */
+function emphasis(
+  c: ResearchColumn,
+  rows: TableRow[],
+  compare: 'column' | 'row',
+): { bar?: (r: TableRow) => number | null; strong?: (r: TableRow) => boolean } {
+  // A cell is a magnitude only when the WHOLE cell is one number. ESPN's team
+  // stats arrive as strings ("21", "45.5%"), which count; "22/34", "0-0" and
+  // "—" do not, and a column of those simply draws no bars.
+  const num = (r: TableRow, key = c.key) => {
+    const v = r.values[key];
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+    if (typeof v !== 'string') return null;
+    const t = v.trim().replace(/%$/, '');
+    return /^[+-]?\d+(\.\d+)?$/.test(t) ? Number(t) : null;
+  };
+  const out: { bar?: (r: TableRow) => number | null; strong?: (r: TableRow) => boolean } = {};
+  if (c.bar) {
+    if (compare === 'row') {
+      const barKeys = rows.length ? Object.keys(rows[0].values) : [];
+      out.bar = (r) => {
+        const v = num(r);
+        if (v == null) return null;
+        const total = barKeys.reduce((a, k) => a + Math.abs(num(r, k) ?? 0), 0);
+        return total > 0 ? Math.abs(v) / total : null;
+      };
+    } else {
+      const max = Math.max(0, ...rows.map((r) => Math.abs(num(r) ?? 0)));
+      out.bar = (r) => {
+        const v = num(r);
+        return v == null || max <= 0 ? null : Math.abs(v) / max;
+      };
+    }
+  }
+  if (c.leader) {
+    const values = rows.map((r) => num(r)).filter((v): v is number => v != null);
+    if (values.length > 1) {
+      const best = c.leader === 'low' ? Math.min(...values) : Math.max(...values);
+      out.strong = (r) => num(r) === best;
+    }
+  }
+  return out;
+}
+
 function TableCard({ card }: { card: Extract<ResearchCard, { kind: 'table' }> }) {
   const views = card.views ?? [{ key: 'main', label: card.title, labelHeader: card.labelHeader, columns: card.columns, rows: card.rows, sortKey: card.sortKey }];
   const [viewKey, setViewKey] = useState(views[0]?.key);
@@ -541,6 +592,7 @@ function TableCard({ card }: { card: Extract<ResearchCard, { kind: 'table' }> })
     },
     ...view.columns.map((c) => ({
       key: c.key,
+      ...emphasis(c, view.rows, card.compare ?? 'column'),
       label: c.imageUrl ? (
         <span className={cx('flex items-center gap-1.5', !c.text && 'justify-end')}>
           <Avatar kind="logo" label={c.label} src={c.imageUrl} size={16} decorative />

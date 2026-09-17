@@ -2138,6 +2138,32 @@ carry crests and the away "@").
 In `DataTable`: an optional in-cell magnitude bar behind a number, the leader
 per column in bold, and a heavier key column. One change, all 99 tables.
 
+**BUILT 2026-09-17 (R9c).** `DataTable` takes two per-cell signals, both
+computed by the caller because only it knows what a column means: `bar` (0..1
+behind the number) and `strong` (this cell leads its column). The first column
+is always the heavier one — it carries the row's identity — which is the part
+every table gets for free.
+
+- **A bar says HOW MUCH, never how good.** Neutral ink, so it cannot be read as
+  a verdict on a stat where less is better (interceptions, fumbles). Only
+  `leader` claims an extreme, and only where the adapter says which end counts.
+- **Two table shapes need two scales**, which is the real content of this
+  sub-phase. Rows-are-entities (a box score) scales each cell against its
+  COLUMN's largest. Columns-are-the-two-sides (Team stats, shot summaries)
+  scales against the ROW's own total, so the two teams read against each other
+  and not against the biggest number in the table: `compare: 'row'`.
+- **A cell is a magnitude only when the whole cell is one number.** ESPN's team
+  stats arrive as strings, so "21" and "45.5%" count while "22/34" and "0-0"
+  draw nothing rather than being guessed at.
+- Filled: team stats and shot summaries on football, soccer, NBA and NHL (row
+  scale); MLB batting hits, NHL points, and the ESPN box's own YDS/PTS columns
+  by label (column scale, with the leader marked).
+- **Caught in review:** the hits bar first landed on MLB's PITCHING lines,
+  where "most hits" reads backwards. Moved to batting.
+
+**Verified** at 1440 on DAL @ NYG (row bars per stat; `22/34` correctly bare;
+Dart's 230 yards bold and barred) and CWS @ CLE (hits barred, leader bold).
+
 ### R9d — restore the lost primitives (B)
 
 Add `streak`, `dumbbell`, `range` and `contribution` card kinds to

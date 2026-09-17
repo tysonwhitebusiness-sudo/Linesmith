@@ -180,9 +180,10 @@ function soccerShotsSection(payload: Payload): ResearchSection | null {
     title: 'Located shots',
     labelHeader: '',
     fixedOrder: true,
+    compare: 'row',
     columns: [
-      { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl },
-      { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl },
+      { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl, bar: true },
+      { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl, bar: true },
     ],
     rows: [
       { key: 'located', label: 'Located shots', values: { away: a.located, home: h.located } },
@@ -231,15 +232,15 @@ function soccerTeamStatsSection(payload: Payload): ResearchSection | null {
   const stats = payload.soccer.teamStats;
   if (!stats.length) return null;
   const columns: ResearchColumn[] = [
-    { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl },
-    { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl },
+    { key: 'home', label: payload.home.abbr, decimals: 0, imageUrl: payload.home.logoUrl, bar: true },
+    { key: 'away', label: payload.away.abbr, decimals: 0, imageUrl: payload.away.logoUrl, bar: true },
   ];
   const rows = stats.map((r) => ({ key: r.key, label: r.label, values: { home: r.home, away: r.away } }));
   return {
     id: 'teams',
     navLabel: 'Team stats',
     title: 'Team stats',
-    rows: [[{ kind: 'table', key: 'team-stats', title: 'Team stats', labelHeader: 'Stat', columns, rows, fixedOrder: true }]],
+    rows: [[{ kind: 'table', key: 'team-stats', title: 'Team stats', labelHeader: 'Stat', compare: 'row' as const, columns, rows, fixedOrder: true }]],
     state: { kind: 'ready' },
   };
 }
