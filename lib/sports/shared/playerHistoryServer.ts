@@ -55,6 +55,11 @@ interface TeamEntry {
 const DIRECTORY_TTL_MS = 6 * 60 * 60_000;
 const directoryMemo = new Map<string, { at: number; map: Map<string, TeamEntry> }>();
 
+/** Exported for the compare picker (R10), which needs the same id → name map. */
+export async function loadTeamDirectory(sport: HistorySport): Promise<Map<string, TeamEntry>> {
+  return loadDirectory(sport);
+}
+
 async function loadDirectory(sport: HistorySport): Promise<Map<string, TeamEntry>> {
   const hit = directoryMemo.get(sport);
   if (hit && Date.now() - hit.at < DIRECTORY_TTL_MS) return hit.map;

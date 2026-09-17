@@ -8,7 +8,11 @@ import { PlayerOddsSection } from './PlayerOddsSection';
 import { playerPriceRows } from '@/lib/odds/props/playerPrices';
 import { usePlayerBio, usePlayerHistory } from './usePlayerResearch';
 import { GameLogCard, PlayerHero, ResearchSectionBody, SeasonsCard, SourcesCard, SplitsCard, TrendsCard, asOfText } from './PlayerResearchSections';
+import { CompareSection } from './CompareSection';
+import { usePlayerCompare } from './usePlayerCompare';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { athleteIdOf, historySportFor, type PlayerBio, type PlayerHistory, type PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
+import { isTeamProductionSport } from '@/lib/sports/shared/teamProductionShapes';
 import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
 import { entryValue, isOk, type WindowedStat } from '@/lib/core/windowedStat';
 import { compareInk, gradientCardStyle, deltaGradientStyle } from '@/lib/ui/heat';
@@ -1013,6 +1017,18 @@ export function PlayerDetail({
   const historySport = researchSport ? historySportFor(researchSport, researchLeague) : null;
   const bioState = usePlayerBio(researchSport === 'golf' ? 'golf' : historySport, researchAthleteId);
   const historyState = usePlayerHistory(historySport, researchAthleteId);
+
+  /**
+   * Compare (R10). The opponent lives in the URL (`?vs=`) so a compared page is
+   * a link someone can send. With nothing chosen the page opens on the team he
+   * plays next where the slate names one, else the last team he played — the
+   * fallback G2's control uses, and the only one available to a player with no
+   * game today.
+   */
+  const comparePath = usePathname();
+  const compareRouter = useRouter();
+  const compareSearch = useSearchParams();
+  const vsParam = compareSearch?.get('vs') ?? null;
   // NFL's located passes (R6.2) — the page's own subject and the role his
   // position implies, so a player with no market still gets his section. The
   // route resolves the nflverse id; idle for every other sport.
@@ -1158,6 +1174,20 @@ export function PlayerDetail({
         : null,
     [researchSport, historyState.data, bioState.data, golfInput, mlbStatcastInput, nflTargetsInput, soccerChances, tennisSurface, nbaShotsInput, nhlShotsInput],
   );
+  // The opponent compare opens on: the URL's, else today's opponent from the
+  // slate, else the last team he played. `meta.opponentId` is the slate's, so it
+  // is only there on a day he has a game.
+  const lastOpponentId = research?.gameLog.rows.length ? research.gameLog.rows[research.gameLog.rows.length - 1].opponentId : null;
+  const compareTeamId = vsParam ?? (opponentId != null ? String(opponentId) : lastOpponentId) ?? null;
+  const compareState = usePlayerCompare(historySport, researchAthleteId, compareTeamId);
+  const setCompareTeam = (next: string | null) => {
+    const params = new URLSearchParams(compareSearch?.toString() ?? '');
+    if (next) params.set('vs', next);
+    else params.delete('vs');
+    const q = params.toString();
+    compareRouter.replace(`${comparePath}${q ? `?${q}` : ''}`, { scroll: false });
+  };
+
   const stickyTop = useStickyHeaderHeight(Boolean(subject) && !embedded);
   const sectionIds = (research?.sections ?? []).map((x) => `${x.id}:${x.navLabel}`).join('|');
   const sectionNav = useMemo(() => (sectionIds ? sectionIds.split('|').map((x) => ({ id: x.split(':')[0], label: x.split(':')[1] })) : []), [sectionIds]);
@@ -1176,6 +1206,7 @@ export function PlayerDetail({
     () => [
       ...(liveNow ? [{ id: 'live', label: 'Live' }] : []),
       { id: 'props', label: 'Prop analysis' },
+      ...(historySport && isTeamProductionSport(historySport) ? [{ id: 'compare', label: 'Compare' }] : []),
       ...(historySport
         ? [
             { id: 'seasons', label: 'Seasons' },
@@ -1446,6 +1477,18 @@ export function PlayerDetail({
         <Section id="props" title="Prop analysis" sub={propSub}>
           {propBlock}
         </Section>
+        {historySport && isTeamProductionSport(historySport) ? (
+          <Section id="compare" title="Compare" sub="this player against one opponent">
+            <CompareSection
+              research={research}
+              compare={compareState.data}
+              loading={compareState.loading}
+              error={compareState.error}
+              teamId={compareTeamId}
+              onTeam={setCompareTeam}
+            />
+          </Section>
+        ) : null}
         {historySport ? (
           <>
             <Section id="seasons" title="Season by season" sub="totals and per-game rates from every game held">

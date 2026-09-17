@@ -279,6 +279,7 @@ export function buildPlayerResearch(input: { sport: HistorySport; history: Playe
       season: g.season,
       opponentLabel: opponentLabel(g),
       opponentLogoUrl: g.opponent.logoUrl,
+      opponentId: g.opponentId,
       isHome: g.isHome,
       result: g.result,
       score: g.teamScore != null && g.opponentScore != null ? `${g.teamScore}-${g.opponentScore}` : null,

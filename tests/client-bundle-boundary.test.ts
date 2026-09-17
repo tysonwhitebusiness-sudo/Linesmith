@@ -44,6 +44,9 @@ const DB_MODULES = [
   '@/lib/sports/mlb/statcastRollups',
   // R5b: strength rollup reads. Types live in `teamProductionShapes.ts`.
   '@/lib/sports/shared/teamProduction',
+  // R10: the compare control's server half. Its spec and types live in
+  // `compareShapes.ts`, which is what the section and the hook import.
+  '@/lib/sports/shared/compareServer',
   // R5d: NFL team target map read. Types live in `teamTargetShapes.ts`.
   '@/lib/sports/nfl/teamTargets',
   // R6.1a: the player page's history and bio readers. Types and the pure
@@ -154,6 +157,9 @@ const SELF = [
   'lib/sports/shared/teamRosterServer.ts',
   // R8.2b: strength and prop-history reads for every team sport's game page.
   'lib/sports/shared/gamePregameServer.ts',
+  // R10: the compare control's team list and allowed-to-position read, which
+  // span every rollup sport — the same reason again.
+  'lib/sports/shared/compareServer.ts',
 ];
 
 function walk(dir: string): string[] {

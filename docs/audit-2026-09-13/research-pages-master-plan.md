@@ -2263,6 +2263,29 @@ claims needed correcting, and the rest hold:
 | A league team directory for the picker | Already exists: `playerHistoryServer.loadDirectory` resolves id → name, abbr, crest per sport from each league's own source. Not exported yet. |
 | `player_game_history.opponent_id` for "games against them" | 732,014 rows, opponent non-null throughout — and the player page ALREADY holds the player's full history client-side, so the games-against-them cards need no new fetch. |
 
+**R10.1 BUILT 2026-09-17 — the control, and the player against a team.**
+`?vs=<teamId>` in the URL (so a compared page is a link), the picker under the
+prop block where G2 puts it, and two cards:
+
+- **Against THEM**, built from the history the page already holds — no second
+  fetch. Each stat is a line from the average against that team to the average
+  across every game held (R9d's dumbbell), with the game log beneath it. The
+  sample is printed, never hidden: "5 of 223 games held".
+- **What they give up**, from `/api/player-compare` (cachedRoute, 30 min, key
+  `player-compare:route:v1:…`), as league-ranked rails. `ResearchLogRow` gained
+  `opponentId` so the first card can filter without asking the server.
+
+**Refereed against StatsAPI**, SF's 2026 offence (the card a pitcher sees):
+runs 4.24, hits 8.42, home runs 1.14, strikeouts 8.06, walks 2.80 per game over
+153 games — every one exact. Rendered SGA vs Chicago at 1440: 5 of 223 games,
+29.0 points against them against 31.0 overall, and CHI giving up 58.8 points a
+game to guards (12th), 17.7 assists (2nd).
+
+- **R10-F1:** MLB's kind comes from whether the player has pitched, so a
+  two-way player (Ohtani) gets the pitcher's card — the lineup he will face —
+  and not the hitter's. Correct for the card that exists; a two-way page wanting
+  both is R10.4's business.
+
 - **Player picker:** replaces the fixed peer list, filtered to position, with
   search.
 - **Delete:** `MatchupExplorerCard` and the `matchupExplorer` field (R1h's floor

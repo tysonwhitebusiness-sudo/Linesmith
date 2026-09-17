@@ -1,0 +1,207 @@
+'use client';
+
+import { useMemo } from 'react';
+import { Avatar, Card, DataTable, EmptyState, LeagueStripRow, SelectBox, Skeleton, type Column } from './ui';
+import { SplitDumbbell } from './charts';
+import { formatResearchValue, type PlayerResearchData, type ResearchLogRow } from '@/lib/sports/shared/playerResearchShapes';
+import type { PlayerComparePayload } from '@/lib/sports/shared/compareShapes';
+
+/**
+ * Compare — R10. The page answers "how has he done"; this answers "against THIS
+ * opponent", and sits directly under the prop block where G2 put it.
+ *
+ * TWO CARDS, FROM TWO PLACES. His games against the chosen team come from the
+ * history the page already holds — no second fetch, because filtering a list by
+ * `opponentId` is not worth a round trip (R10 Step 0). What that team gives up
+ * to players of his kind comes from `/api/player-compare`, which is the one
+ * thing the page cannot work out for itself.
+ *
+ * THE DUMBBELL IS THE POINT OF THE FIRST CARD. "4.1 against them" means little
+ * beside nothing; "4.1 against them, 3.2 in all games" is the comparison the
+ * reader came for, so each stat is a line between the two rather than two
+ * columns to subtract (R9d built the primitive).
+ *
+ * A SMALL SAMPLE IS SAID, NOT HIDDEN. Three games against one team is three
+ * games; the card prints the count beside the averages and never suppresses the
+ * rows to make the number look sturdier than it is.
+ */
+
+export interface CompareSectionProps {
+  research: PlayerResearchData | null;
+  compare: PlayerComparePayload | null;
+  loading: boolean;
+  error: string | null;
+  teamId: string | null;
+  onTeam: (teamId: string | null) => void;
+}
+
+/** The stats compare lines up: the game log's own numeric columns, at most six. */
+const MAX_STATS = 6;
+
+export function CompareSection({ research, compare, loading, error, teamId, onTeam }: CompareSectionProps) {
+  const teams = compare?.teams ?? [];
+  const team = teams.find((t) => t.id === teamId) ?? null;
+  const rows = research?.gameLog.rows ?? [];
+
+  const vsRows = useMemo(() => (teamId ? rows.filter((r) => r.opponentId === teamId) : []), [rows, teamId]);
+
+  const columns = useMemo(() => (research?.gameLog.columns ?? []).filter((c) => !c.text).slice(0, MAX_STATS), [research]);
+
+  const dumbbell = useMemo(() => {
+    if (!vsRows.length) return [];
+    const mean = (list: ResearchLogRow[], key: string) => {
+      const nums = list.map((r) => r.values[key]).filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+      return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
+    };
+    return columns.map((c) => ({
+      key: c.key,
+      label: c.label,
+      a: mean(vsRows, c.key),
+      b: mean(rows, c.key),
+      aSample: vsRows.length,
+      bSample: rows.length,
+      format: (v: number) => formatResearchValue(v, c),
+    }));
+  }, [columns, rows, vsRows]);
+
+  const logColumns: Column<ResearchLogRow>[] = useMemo(
+    () => [
+      {
+        key: 'date',
+        label: 'Date',
+        sortValue: (r) => r.date,
+        render: (r) => new Date(`${r.date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
+      },
+      {
+        key: 'result',
+        label: 'Result',
+        sortable: false,
+        render: (r) =>
+          r.result ? (
+            <span className={r.result === 'W' ? 'font-semibold text-good' : r.result === 'L' ? 'font-semibold text-bad' : 'font-semibold text-ink-secondary'}>
+              {r.result}
+              {r.score ? ` ${r.score}` : ''}
+            </span>
+          ) : (
+            '—'
+          ),
+      },
+      ...columns.map((c) => ({
+        key: c.key,
+        label: c.label,
+        numeric: true,
+        title: c.info,
+        render: (r: ResearchLogRow) => formatResearchValue(r.values[c.key], c),
+        sortValue: (r: ResearchLogRow) => (typeof r.values[c.key] === 'number' ? (r.values[c.key] as number) : null),
+      })),
+    ],
+    [columns],
+  );
+
+  if (error) {
+    return <Card title="Compare" state={{ kind: 'error', message: error, onRetry: () => onTeam(teamId) }} />;
+  }
+
+  const picker = (
+    <div className="flex flex-wrap items-center gap-2">
+      <SelectBox
+        label="Opponent"
+        value={teamId ?? ''}
+        onChange={(v) => onTeam(v || null)}
+        options={[{ value: '', label: loading && !teams.length ? 'Loading teams…' : 'Pick an opponent' }, ...teams.map((t) => ({ value: t.id, label: t.name }))]}
+      />
+      {team ? (
+        <span className="flex items-center gap-1.5 text-body-sm text-ink-secondary">
+          {team.logoUrl ? <Avatar kind="logo" label={team.name} src={team.logoUrl} size={20} decorative /> : null}
+          {vsRows.length ? `${vsRows.length} ${vsRows.length === 1 ? 'game' : 'games'} held against them` : 'no games held against them'}
+        </span>
+      ) : null}
+    </div>
+  );
+
+  return (
+    <div className="space-y-3">
+      {picker}
+      {!teamId ? (
+        <Card title="Compare" >
+          <EmptyState title="Pick an opponent" reason="Choose a team to see this player's games against them and what that team gives up to players in his position." />
+        </Card>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Card
+            title={`Against ${team?.abbr ?? 'them'}`}
+            scope={vsRows.length ? `${vsRows.length} of ${rows.length} games held` : undefined}
+            caption={vsRows.length ? 'Each line runs from the average against this team to the average across every game held.' : undefined}
+            state={vsRows.length ? { kind: 'ready' } : { kind: 'empty', title: 'No games held against them', reason: 'The history this app holds has no game between these two.' }}
+          >
+            {dumbbell.length ? <SplitDumbbell rows={dumbbell} aLabel={`vs ${team?.abbr ?? 'them'}`} bLabel="All games" label="Against this team" /> : null}
+            {vsRows.length ? (
+              <DataTable
+                className="mt-3"
+                caption={`Games against ${team?.name ?? 'this team'}`}
+                columns={logColumns}
+                rows={[...vsRows].reverse()}
+                rowKey={(r) => r.eventId}
+                dense
+                maxHeight={320}
+              />
+            ) : null}
+          </Card>
+          <AllowCardView compare={compare} loading={loading} teamAbbr={team?.abbr ?? null} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AllowCardView({ compare, loading, teamAbbr }: { compare: PlayerComparePayload | null; loading: boolean; teamAbbr: string | null }) {
+  if (loading && !compare?.allow) {
+    return (
+      <Card title="What they give up">
+        <Skeleton w="100%" h={120} />
+      </Card>
+    );
+  }
+  const allow = compare?.allow ?? null;
+  if (!allow) {
+    return (
+      <Card
+        title="What they give up"
+        state={{
+          kind: 'empty',
+          title: 'No rollup for this player’s position',
+          // Said plainly rather than blamed on "no data": MLB and CFB hold no
+          // position groups at all (R10 Step 0), and an early season can hold
+          // too few games for a team to rank.
+          reason: compare?.group
+            ? 'The rollup holds no season with enough games for this team, in this player’s position group.'
+            : 'This app holds no position for this player, so it cannot say what a defence gives up to his kind.',
+        }}
+      />
+    );
+  }
+  return (
+    <Card
+      title={`What ${teamAbbr ?? 'they'} give up ${allow.title}`}
+      scope={`per game, league rank · ${allow.season} · ${allow.games} games`}
+      info="From this app’s own game logs, rolled up by opponent and by the scoring player’s position where the league has one."
+      caption={allow.note ?? undefined}
+    >
+      <div className="space-y-0.5">
+        {allow.rows.map((r) =>
+          r.value == null ? null : (
+            <LeagueStripRow
+              key={r.key}
+              label={`${r.label} / game`}
+              valueText={formatResearchValue(r.value, { decimals: r.value < 10 ? 2 : 1 })}
+              league={r.league}
+              value={r.value}
+              rank={{ rank: r.rank, of: r.of }}
+              direction="neutral"
+            />
+          ),
+        )}
+      </div>
+    </Card>
+  );
+}

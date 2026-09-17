@@ -202,6 +202,8 @@ export interface ResearchLogRow {
   season: number;
   opponentLabel: string;
   opponentLogoUrl: string | null;
+  /** The opponent's id, so compare can pick this player's games against one team without refetching (R10). */
+  opponentId: string | null;
   isHome: boolean | null;
   result: 'W' | 'L' | 'D' | null;
   /** "8-3" from the player's side, or the match score. */
