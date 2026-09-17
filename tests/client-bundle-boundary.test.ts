@@ -89,6 +89,9 @@ const DB_MODULES = [
   '@/lib/sports/mlb/gamePregame',
   // R8.2: the NFL and CFB game page read. Types reach the adapter with `import type`.
   '@/lib/sports/multiSport/footballGameResearch',
+  // R8.2b: the before-start reads shared by every team sport, and football's.
+  '@/lib/sports/shared/gamePregameServer',
+  '@/lib/sports/multiSport/footballPregame',
 ];
 
 /**
@@ -140,6 +143,8 @@ const SELF = [
   'lib/sports/shared/playerBioServer.ts',
   // R7.1: roster production spans every team sport, the same reason again.
   'lib/sports/shared/teamRosterServer.ts',
+  // R8.2b: strength and prop-history reads for every team sport's game page.
+  'lib/sports/shared/gamePregameServer.ts',
 ];
 
 function walk(dir: string): string[] {

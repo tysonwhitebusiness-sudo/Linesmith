@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { boxStat, footballGameState, footballMarketResult, parseFootballBox, type FootballGameResearchPayload } from '../lib/sports/multiSport/footballGameResearch';
 import { parseDrives, parseGameLines } from '../lib/sports/espn/summaryParsers';
 import { driveX, footballLineChips, playX, toGameResearchData } from '../lib/sports/nfl/adapters/footballGameResearch';
+import { easternDate, footballLogValue, formGameFrom } from '../lib/sports/multiSport/footballPregame';
 
 /**
  * R8.2 — the NFL and CFB game page. Refereed against DAL @ NYG (401872930,
@@ -82,6 +83,7 @@ function payload(state: 'final' | 'pre'): FootballGameResearchPayload {
       props: [],
       propsAltOnly: 0,
       injuries: { teams: [], fetchedAt: '2026-09-17T00:00:00Z' },
+      pregame: { strengthSeason: 2025, strengthNote: null, strength: [], form: {}, h2h: [], propHistory: {}, passing: null, teamOf: {} },
     },
   };
 }
@@ -99,7 +101,7 @@ test('a final page: flow with the drive chart, leaders from the box, props only 
     { playerId: 'espn:football:3', athleteId: '3', name: 'One book', market: 'receptions', line: 2.5, over: { price: 100, book: 'a' }, under: null, books: 1, side: 'away', result: 1 },
   ];
   const data = toGameResearchData({ payload: p });
-  assert.deepEqual(data.sections.map((s) => s.id), ['flow', 'scoring', 'box', 'lines', 'plays']);
+  assert.deepEqual(data.sections.map((s) => s.id), ['flow', 'scoring', 'box', 'lines', 'plays', 'pre-matchup', 'pre-players'], 'the kickoff research stays below the recap');
   const drives = data.sections[0].rows[0][0];
   assert.ok(drives.kind === 'field');
   assert.deepEqual([drives.rows[1].side, drives.rows[1].from, drives.rows[1].to, drives.rows[1].strong], ['home', 83, 0, true]);
@@ -109,4 +111,62 @@ test('a final page: flow with the drive chart, leaders from the box, props only 
   const props = data.sections[3].rows[1][0];
   assert.ok(props.kind === 'table');
   assert.deepEqual(props.rows.map((r) => [r.label, r.values.side]), [['Played', 'Over']]);
+});
+
+// ---------------------------------------------------------------------------
+// R8.2b — the research as of kickoff
+// ---------------------------------------------------------------------------
+
+test('a game-log row settles football markets the way the box does', () => {
+  // Prescott's row from 401872930 as player_game_history holds it: no receiving or defensive keys.
+  const row = { 'passing.completions': 22, 'passing.passingAttempts': 34, 'passing.passingYards': 175, 'rushing.rushingYards': 14 };
+  assert.equal(footballLogValue('pass-attempts', row), 34);
+  assert.equal(footballLogValue('pass-rush-yards', row), 189);
+  assert.equal(footballLogValue('receptions', row), 0, 'an absent group counts zero');
+  assert.equal(footballLogValue('tackles', { 'defensive.totalTackles': 7, 'defensive.soloTackles': 1 }), 1, 'solo, as the box settles it');
+  assert.equal(footballLogValue('field-goals', row), null);
+});
+
+test('form reads a schedule game from either side, dated in US Eastern time', () => {
+  const g = {
+    id: '401872930',
+    start: '2026-09-14T00:20Z',
+    postseason: false,
+    away: { id: '6', name: 'Dallas Cowboys', abbr: 'DAL', logoUrl: null, score: 20, rank: null },
+    home: { id: '19', name: 'New York Giants', abbr: 'NYG', logoUrl: null, score: 28, rank: null },
+    state: 'final' as const,
+    extra: null,
+    label: null,
+    venue: null,
+    neutral: false,
+  };
+  assert.equal(easternDate(g.start), '2026-09-13', 'Sunday night, not Monday UTC');
+  assert.deepEqual(formGameFrom('6', g), { pk: '401872930', date: '2026-09-13', home: false, opponentId: '19', opponentAbbr: 'NYG', us: 20, them: 28, postseason: false });
+  assert.equal(formGameFrom('19', g)?.us, 28);
+});
+
+test('before kickoff: matchup with the passing matchup, players, injuries only for a game still to come, lines', () => {
+  const p = payload('pre');
+  p.state = 'pre';
+  p.football.pregame.passing = {
+    season: 2025,
+    note: null,
+    includesLaterGames: false,
+    teams: {
+      '6': { season: 2025, teamId: '6', offense: { games: 17, cells: { 'deep|left': [30, 12, 900], 'short|middle': [70, 50, 300] } }, defense: null, defenseByPosition: {}, league: { games: 272, cells: { 'deep|left': [100, 40, 3000], 'short|middle': [300, 200, 1200] } } },
+      '19': { season: 2025, teamId: '19', offense: null, defense: { games: 17, cells: { 'deep|left': [20, 10, 600], 'short|middle': [80, 60, 320] } }, defenseByPosition: {}, league: null },
+    },
+  };
+  p.football.injuries = { fetchedAt: '2026-09-17T00:00:00Z', teams: [{ teamId: '19', abbr: 'NYG', items: [{ athleteId: '1', name: 'Player', position: 'WR', status: 'Out', type: 'Hamstring', detail: null, date: null }] }] };
+  const data = toGameResearchData({ payload: p });
+  assert.deepEqual(data.sections.map((s) => s.id), ['matchup', 'injuries', 'lines'], 'no props: no Players section');
+  const passing = data.sections[0].rows.at(-1)![0];
+  assert.ok(passing.kind === 'table');
+  assert.equal(passing.title, 'Passing matchup');
+  const deepLeft = passing.rows.find((r) => r.key === 'deep|left')!;
+  assert.deepEqual([deepLeft.values.off, deepLeft.values.def, deepLeft.values.league], [30, 20, 25]);
+
+  const reviewed = payload('final');
+  const asPre = toGameResearchData({ payload: { ...reviewed, football: { ...reviewed.football, injuries: p.football.injuries } }, requestedState: 'pre' });
+  assert.ok(!asPre.sections.some((s) => s.id === 'injuries'), "today's report says nothing about a finished game");
 });

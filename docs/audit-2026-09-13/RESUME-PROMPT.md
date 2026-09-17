@@ -19,9 +19,8 @@ I'm resuming the research-pages build in this repo. Read these first, **before d
 
 - **Now: R8, the game page.** The MLB group (R8.1: shell, recap, before-start
   research, live) is done and closed 2026-09-17 (`7caba8d`, `2528708`, and the
-  8.1c commit). **R8.2, football (NFL and CFB)** is in progress: Step 0 and 8.2a
-  (shell + final recap) are committed; next 8.2b (before-start research), then
-  8.2c (live); stop for sign-off after it. Read the plan's R8 section and its "R8.1 (MLB) progress" record.
+  8.1c commit). **R8.2, football (NFL and CFB)** is in progress: Step 0, 8.2a (shell
+  + final recap) and 8.2b (before-start research) are committed; next 8.2c (live); stop for sign-off after it. Read the plan's R8 section and its "R8.1 (MLB) progress" record.
   Owed from MLB: live again on a nine-inning game before 2026-09-27.
 - R1-R5 signed off; R6 complete for every sport (live renders owed, below);
   R7 (team page) signed off 2026-09-16.

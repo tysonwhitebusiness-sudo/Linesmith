@@ -14,6 +14,8 @@ import type { Drive, FootballPlay } from '@/lib/sports/espn/summaryParsers';
 import { buildGameHero, gameStates, resolveState, stateNote } from '@/lib/sports/shared/gameResearch';
 import type { GameResearchData, GameState } from '@/lib/sports/shared/gameResearchShapes';
 import type { ResearchCard, ResearchColumn, ResearchSection, ResearchTableRow } from '@/lib/sports/shared/playerResearchShapes';
+import { matchupSection, propHistorySection } from '@/lib/sports/shared/gameResearchSections';
+import type { TargetCell } from '@/lib/sports/nfl/teamTargetShapes';
 
 type Payload = FootballGameResearchPayload;
 type Side = 'away' | 'home';
@@ -50,7 +52,13 @@ export function toGameResearchData(input: { payload: Payload; requestedState?: s
   if (state === 'live' && wpNow) chips.unshift({ label: `Win probability ${payload.home.abbr} ${Math.round(wpNow.home * 100)}%` });
   const sections: ResearchSection[] =
     state === 'pre' || state === 'postponed'
-      ? [footballLinesSection(payload, state)]
+      ? [
+          footballMatchupSection(payload, state),
+          footballPlayersSection(payload, state),
+          // The injury report is ESPN's current one: it says nothing true about a finished game reviewed as before the start.
+          payload.state === 'pre' || payload.state === 'postponed' ? footballInjuriesSection(payload) : null,
+          footballLinesSection(payload, state),
+        ].filter((s): s is ResearchSection => s !== null)
       : [
           footballFlowSection(payload),
           footballScoringSection(payload),
@@ -58,6 +66,10 @@ export function toGameResearchData(input: { payload: Payload; requestedState?: s
           footballBoxSection(payload),
           footballLinesSection(payload, state),
           footballPlaysSection(payload),
+          // The research as it stood at kickoff stays below the recap.
+          ...[footballMatchupSection(payload, state), footballPlayersSection(payload, state)]
+            .filter((s): s is ResearchSection => s !== null)
+            .map((s) => ({ ...s, id: `pre-${s.id}`, title: `${s.title} · at kickoff` })),
         ].filter((s): s is ResearchSection => s !== null);
   return {
     state,
@@ -454,6 +466,153 @@ function footballPlaysSection(payload: Payload): ResearchSection | null {
     navLabel: 'Play-by-play',
     title: 'Play-by-play',
     rows: [[{ kind: 'table', key: 'plays', title: 'Plays', scope: 'scoring plays shaded', labelHeader: 'When', columns, rows: views[0].rows, views, fixedOrder: true }]],
+    state: { kind: 'ready' },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// R8.2b — the research as of kickoff
+// ---------------------------------------------------------------------------
+
+const CELLS: Array<[string, string]> = [
+  ['deep|left', 'Deep left'],
+  ['deep|middle', 'Deep middle'],
+  ['deep|right', 'Deep right'],
+  ['short|left', 'Short left'],
+  ['short|middle', 'Short middle'],
+  ['short|right', 'Short right'],
+];
+
+/** Share of attempts and completion rate per cell; `null` where the side has no throws held. */
+function targetShares(cells: Record<string, TargetCell> | undefined) {
+  if (!cells) return null;
+  const total = CELLS.reduce((a, [k]) => a + (cells[k]?.[0] ?? 0), 0);
+  if (!total) return null;
+  return Object.fromEntries(CELLS.map(([k]) => [k, { share: (100 * (cells[k]?.[0] ?? 0)) / total, comp: cells[k]?.[0] ? (100 * cells[k][1]) / cells[k][0] : null, att: cells[k]?.[0] ?? 0 }]));
+}
+
+function passingMatchupCard(payload: Payload): ResearchCard | null {
+  const passing = payload.football.pregame.passing;
+  if (!passing) return null;
+  const view = (off: typeof payload.away, def: typeof payload.home) => {
+    const o = targetShares(passing.teams[off.id]?.offense?.cells);
+    const d = targetShares(passing.teams[def.id]?.defense?.cells);
+    const lg = targetShares(passing.teams[off.id]?.league?.cells ?? passing.teams[def.id]?.league?.cells);
+    const rows: ResearchTableRow[] = o || d
+      ? CELLS.map(([k, label]) => ({
+          key: k,
+          label,
+          values: { off: o?.[k].share ?? null, def: d?.[k].share ?? null, league: lg?.[k].share ?? null, offComp: o?.[k].comp ?? null, defComp: d?.[k].comp ?? null },
+        }))
+      : [];
+    return {
+      key: `${off.abbr}-passing`,
+      label: `${off.abbr} passing vs ${def.abbr}`,
+      labelHeader: 'Depth and side',
+      columns: [
+        { key: 'off', label: `${off.abbr} throws`, decimals: 1, format: 'percent' as const, info: `Share of ${off.abbr}'s attempts to this part of the field` },
+        { key: 'def', label: `${def.abbr} thrown at`, decimals: 1, format: 'percent' as const, info: `Share of attempts against ${def.abbr}'s defense` },
+        { key: 'league', label: 'League', decimals: 1, format: 'percent' as const },
+        { key: 'offComp', label: `${off.abbr} comp`, decimals: 0, format: 'percent' as const },
+        { key: 'defComp', label: `${def.abbr} allows`, decimals: 0, format: 'percent' as const, info: 'Completion rate against this defense here' },
+      ],
+      rows,
+    };
+  };
+  const views = [view(payload.away, payload.home), view(payload.home, payload.away)];
+  return {
+    kind: 'table',
+    key: 'passing-matchup',
+    title: 'Passing matchup',
+    scope: `${passing.season} season · share of attempts by depth and side`,
+    labelHeader: views[0].labelHeader,
+    columns: views[0].columns,
+    rows: views[0].rows,
+    views,
+    fixedOrder: true,
+    emptyText: 'No targets held for these teams',
+    caption: [
+      passing.note,
+      passing.includesLaterGames ? 'The target maps are season totals with no game-by-game rows, so this includes games played after this one.' : null,
+      'nflverse targets: deep is 15+ air yards.',
+    ]
+      .filter(Boolean)
+      .join(' '),
+  };
+}
+
+function footballMatchupSection(payload: Payload, state: GameState): ResearchSection {
+  const league = payload.football.league;
+  const passing = passingMatchupCard(payload);
+  return matchupSection({
+    away: payload.away,
+    home: payload.home,
+    state,
+    pre: payload.football.pregame,
+    words: {
+      attack: 'offense',
+      defend: 'defense',
+      unit: 'point',
+      pool: league === 'nfl' ? 'all 32 teams' : 'every FBS team held',
+      gameHref: (id) => `/${league}/game/${id}`,
+      h2hCaption: 'Regular season and postseason, newest first.',
+    },
+    extra: passing ? [[passing]] : undefined,
+  });
+}
+
+function footballPlayersSection(payload: Payload, state: GameState): ResearchSection | null {
+  const f = payload.football;
+  return propHistorySection({
+    away: payload.away,
+    home: payload.home,
+    state,
+    // One book quoting both sides is a price, not a market.
+    props: f.props
+      .filter((p) => p.books >= 2)
+      .map((p) => ({
+        key: `${p.athleteId}-${p.market}`,
+        name: p.name,
+        href: `/${f.league}/player/${p.athleteId}`,
+        side: p.side,
+        marketLabel: FOOTBALL_MARKET_LABELS[p.market] ?? p.market,
+        line: p.line,
+        books: p.books,
+        history: f.pregame.propHistory[`${p.athleteId}|${p.market}`] ?? [],
+      })),
+  });
+}
+
+function footballInjuriesSection(payload: Payload): ResearchSection | null {
+  const report = payload.football.injuries;
+  const described = report.teams.some((t) => t.items.some((i) => i.type || i.detail));
+  const view = (side: Side) => {
+    const team = report.teams.find((t) => t.teamId === payload[side].id);
+    return {
+      key: side,
+      label: `${payload[side].abbr} · ${team?.items.length ?? 0}`,
+      labelHeader: 'Player',
+      columns: [
+        { key: 'pos', label: 'Pos', decimals: 0 },
+        { key: 'status', label: 'Status', decimals: 0, text: true },
+        ...(described ? [{ key: 'detail', label: 'Injury', decimals: 0, text: true }] : []),
+      ],
+      rows: (team?.items ?? []).map((i, n) => ({
+        key: i.athleteId ?? `${side}-${n}`,
+        label: i.name ?? '—',
+        href: i.athleteId ? `/${payload.football.league}/player/${i.athleteId}` : null,
+        values: { pos: i.position, status: i.status, detail: [i.type, i.detail].filter(Boolean).join(' · ') || '—' },
+      })),
+    };
+  };
+  const views = [view('away'), view('home')];
+  if (!views.some((v) => v.rows.length)) return null;
+  const at = new Date(report.fetchedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
+  return {
+    id: 'injuries',
+    navLabel: 'Injuries',
+    title: 'Injuries',
+    rows: [[{ kind: 'table', key: 'injuries', title: 'Injury report', scope: `report as of ${at} ET`, labelHeader: 'Player', columns: views[0].columns, rows: views[0].rows, views, fixedOrder: true }]],
     state: { kind: 'ready' },
   };
 }

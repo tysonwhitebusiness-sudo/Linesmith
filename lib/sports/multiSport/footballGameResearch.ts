@@ -25,6 +25,7 @@ import { readPreGamePropOddsForGame, type PropOddsRow } from '@/lib/db/client';
 import { readPreGameOpenClose, type GameLineOpenClose } from '@/lib/odds/gameLineHistory';
 import { gameMainLines, type GameMainLine } from '@/lib/odds/props/gameProps';
 import type { GameResearchPayload, GameSide, GameState } from '@/lib/sports/shared/gameResearchShapes';
+import { readFootballPregame, type FootballPregame } from './footballPregame';
 
 export type FootballLeague = 'nfl' | 'cfb';
 
@@ -85,6 +86,8 @@ export interface FootballGameResearchPayload extends GameResearchPayload {
     props: FootballPropResult[];
     propsAltOnly: number;
     injuries: InjuryReport;
+    /** The research as of kickoff (R8.2b). */
+    pregame: FootballPregame;
   };
 }
 
@@ -231,6 +234,23 @@ export async function readFootballGameResearch(league: FootballLeague, eventId: 
     return { ...l, athleteId, side: teamId === away.id ? 'away' : teamId === home.id ? 'home' : null, result: started ? footballMarketResult(box, athleteId, l.market) : null };
   });
 
+  const pregame = await readFootballPregame({
+    league,
+    eventId,
+    start,
+    season: Number(summary?.header?.season?.year ?? new Date(start || now).getUTCFullYear()),
+    awayId: away.id,
+    homeId: home.id,
+    props: props.filter((p) => p.books >= 2).map((p) => ({ athleteId: p.athleteId, market: p.market })),
+    memoize: started,
+    final: state === 'final',
+  });
+  for (const p of props) {
+    if (p.side) continue;
+    const teamId = pregame.teamOf[p.athleteId];
+    p.side = teamId === away.id ? 'away' : teamId === home.id ? 'home' : null;
+  }
+
   const periods = Math.max(awayComp?.linescores?.length ?? 0, homeComp?.linescores?.length ?? 0, started ? 4 : 0);
   const scoreRow = (c: J) => [...Array.from({ length: periods }, (_, i) => num(c?.linescores?.[i]?.displayValue)), num(c?.score)];
   const lineScore = started ? { periods: Array.from({ length: periods }, (_, i) => PERIOD(i)), totals: ['T'], away: scoreRow(awayComp), home: scoreRow(homeComp) } : null;
@@ -244,7 +264,8 @@ export async function readFootballGameResearch(league: FootballLeague, eventId: 
     sport: league,
     gameId: eventId,
     state,
-    statusText: String(comp.status?.type?.shortDetail ?? comp.status?.type?.description ?? ''),
+    // Before kickoff ESPN's short detail is the start time ("9/17 - 8:15 PM EDT"), which the hero already shows.
+    statusText: String((state === 'pre' ? comp.status?.type?.description : comp.status?.type?.shortDetail) ?? comp.status?.type?.description ?? ''),
     start,
     venue: venue?.fullName ?? null,
     conditions,
@@ -273,11 +294,17 @@ export async function readFootballGameResearch(league: FootballLeague, eventId: 
       props,
       propsAltOnly: altOnly,
       injuries: parseInjuries(summary, fetchedAt),
+      pregame,
     },
     sources: [
       { label: 'Game, drives, box score and win probability', detail: `ESPN ${league === 'nfl' ? 'NFL' : 'college football'} summary, event ${eventId}`, asOf: fetchedAt },
       { label: 'Game lines', detail: `ESPN pickcenter (${lines?.provider ?? 'DraftKings'}): open and close for the moneyline, spread and total${storedLines.length ? '; game_odds_history moneyline, median across books' : ''}`, asOf: fetchedAt },
       { label: 'Player props', detail: 'prop_odds as they stood at the start: the main line quoted on both sides by the most books', asOf: fetchedAt },
+      { label: 'Strength vs strength', detail: 'team_game_production before this game’s date, ranked across the league', asOf: fetchedAt },
+      { label: 'Form and head-to-head', detail: 'ESPN team schedules, regular season and postseason, games before this one', asOf: fetchedAt },
+      ...(pregame.passing ? [{ label: 'Passing matchup', detail: 'team_target_profile (nflverse targets): each offense’s throws and each defense’s throws against, by depth and side, for the whole season as held', asOf: fetchedAt }] : []),
+      { label: 'Prop history', detail: 'player_game_history, this season and last, games before this one', asOf: fetchedAt },
+      ...(state === 'pre' || state === 'postponed' ? [{ label: 'Injuries', detail: 'ESPN summary injury report, as this app fetched it', asOf: fetchedAt }] : []),
     ],
     fetchedAt,
   };

@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football) in progress: 8.2a (shell + final recap) done, 8.2b (before-start research) next.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football) in progress: 8.2a (shell + final recap) and 8.2b (before-start research) done, 8.2c (live) next.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1773,8 +1773,31 @@ seven G2 fixture games and a live MLB game; route and parser inventory).
   props helper for MLB and football. NFL game-log rows link to their game.
   Rendered DAL @ NYG and OSU @ TEX at 1440 and 400; chips refereed (DAL -3 lost
   by 8, 48 over 47.5; OSU +2.5 lost by 1, 47 under 50.5).
-- **8.2b — before-start research: next.** Then **8.2c — live** on TNF
-  DET @ BUF (401872932, 2026-09-18 00:15 UTC) or Sunday's slate.
+- **8.2b — before-start research, 2026-09-17.** Matchup (strength vs strength
+  across nine offense/defense rows, form coming in across last season's break,
+  head to head with postseason), the NFL passing matchup (share of attempts by
+  depth and side against the league), Players (each prop's main line against
+  the player's last ten and games against this opponent), the injury report
+  (before kickoff only) and Lines. A final keeps Matchup and Players below the
+  recap "at kickoff". The before-start reads and sections are now SHARED with
+  MLB: `lib/sports/shared/gamePregameServer.ts` (`readGameStrength`,
+  `readPropHistory`, `readLatestTeams`) and `gameResearchSections.ts`
+  (`matchupSection`, `propHistorySection`); MLB passes its words and hrefs.
+  Refereed: BUF 2025 393.82 yards and 159.65 rushing yards a game and Arkansas
+  2025 454.83 yards a game equal ESPN's season statistics. Rendered DET @ BUF
+  (NFL, pre), UGA @ ARK (CFB, pre), DAL @ NYG (final) and KC @ BOS (MLB, after
+  the refactor) at 1440 and 400.
+  - **`team_target_profile` is a season aggregate** with no per-game rows, so
+    the passing matchup cannot be cut at kickoff; on a finished game it says it
+    includes later games.
+  - **The injury parser printed the status as the injury** ("questionable ·
+    Not Specified"): ESPN's `type.description` is the status in lower case and
+    the body part is `details.type`. Fixed in `parseInjuries`.
+  - A prop player's side before kickoff comes from his latest game-log team
+    (no box yet), which is what fills "vs opp".
+  - Form reaches into last season: week 2 has one game per team.
+- **8.2c — live: next,** on TNF DET @ BUF (401872932, 2026-09-18 00:15 UTC)
+  or Sunday's slate.
 
 
 Spec: `docs/design/phase-g2/src/game.html`, `common-game.js`,

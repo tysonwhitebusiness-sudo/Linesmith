@@ -445,8 +445,11 @@ export function parseInjuries(json: J | null, fetchedAt: string): InjuryReport {
         name: str(i.athlete?.displayName),
         position: str(i.athlete?.position?.abbreviation),
         status: str(i.status),
-        type: str(i.type?.description) ?? str(i.details?.type),
-        detail: str(i.details?.detail) ?? str(i.details?.returnDate),
+        // The body part is `details.type` ("Hamstring"). `type.description` is the
+        // status again in lower case ("questionable"), which R8.2b's page printed
+        // as the injury until it was read against a live report.
+        type: str(i.details?.type) ?? null,
+        detail: [str(i.details?.side), str(i.details?.detail)].filter((v) => v && v !== 'Not Specified').join(', ') || null,
         date: str(i.date),
       })),
     })),

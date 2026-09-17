@@ -58,6 +58,49 @@ export interface GameResearchPayload {
   fetchedAt: string;
 }
 
+/**
+ * One strength stat for both teams — the before-start "Strength vs strength"
+ * table (R8.1b MLB, R8.2b football). Ranks are league-wide, 1 = best for that
+ * side: the most produced where more is better, the fewest allowed.
+ */
+export interface StrengthRow {
+  key: string;
+  label: string;
+  decimals: number;
+  percent?: boolean;
+  /** Which way is better for the side producing it (a batter's K% is better lower). */
+  higherIsBetter: boolean;
+  /** Per team id: what it produced, and what opponents produced against it. */
+  teams: Record<string, { produced: { value: number; rank: number; of: number } | null; allowed: { value: number; rank: number; of: number } | null }>;
+}
+
+/** A finished game from one team's side: form coming in, head to head. */
+export interface FormGame {
+  pk: number | string;
+  /** The league's date, YYYY-MM-DD. */
+  date: string;
+  home: boolean;
+  opponentId: string;
+  opponentAbbr: string;
+  us: number;
+  them: number;
+  postseason?: boolean;
+}
+
+/** The research every team sport's game page reads as of the start. */
+export interface GamePregameCommon {
+  /** The season the strength rows read (last season early in this one). */
+  strengthSeason: number;
+  strengthNote: string | null;
+  strength: StrengthRow[];
+  /** Per team id: finished games before this one, oldest first (MLB this season; football this season and last). */
+  form: Record<string, { games: FormGame[] }>;
+  /** Meetings this season and last, before this game, oldest first, from the away team's side. */
+  h2h: FormGame[];
+  /** `${playerId}|${market}`: the player's recent games before this one, plus every earlier game against either team here, oldest first: [date, value, opponent id]. */
+  propHistory: Record<string, Array<[string, number, string]>>;
+}
+
 export interface GameResearchData {
   state: GameState;
   /** The states this game can show, for the review switch. */
