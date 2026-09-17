@@ -140,6 +140,12 @@ export interface ResearchColumn {
    * where that reading is the honest one.
    */
   leader?: 'high' | 'low';
+  /**
+   * Draw this cell as a run of hit/miss cells rather than text (R9d), reading
+   * the row's `streaks[key]`. The digits "0 1 1 0 1" were a table pretending to
+   * be a chart.
+   */
+  streak?: boolean;
 }
 
 export interface ResearchTile {
@@ -314,6 +320,21 @@ export type ResearchCard =
       toneLegend?: { good: string; bad: string };
       /** Legend text for the highlighted bars ("hard-hit, 95+ mph"). */
       highlightLabel?: string;
+    }
+  | {
+      /**
+       * Two named sides, one row per stat, each row a line between them (R9d).
+       * For a genuine two-way split — home against away — where a table made the
+       * reader subtract the columns themselves.
+       */
+      kind: 'dumbbell';
+      key: string;
+      title: string;
+      scope?: string;
+      caption?: string;
+      aLabel: string;
+      bLabel: string;
+      rows: Array<{ key: string; label: string; a: number | null; b: number | null; aSample?: number | null; bSample?: number | null; lowerIsBetter?: boolean; decimals?: number }>;
     }
   | {
       kind: 'series';
@@ -506,6 +527,12 @@ export interface ResearchTableRow {
   highlight?: boolean;
   /** Colour for a cell whose text already says the outcome ("W 5-3"). */
   tones?: Record<string, 'good' | 'bad'>;
+  /**
+   * Per column key, the run a `streak` column draws: oldest first, `null` for a
+   * game with no answer to the question (R9d). `titles` is parallel and says
+   * what each cell was.
+   */
+  streaks?: Record<string, { outcomes: Array<boolean | null>; titles?: string[] }>;
 }
 
 export interface ResearchSection {

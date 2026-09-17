@@ -179,12 +179,20 @@ export function propHistorySection(input: { away: GameSide; home: GameSide; stat
       href: p.href,
       imageUrl: p.imageUrl ?? null,
       imageKind: 'player' as const,
+      // R9d: the last five as hit/miss against the line, oldest first. This was
+      // "0 1 1 0 1" — the numbers without the one thing the column is asking.
+      streaks: {
+        recent: {
+          outcomes: last10.slice(-5).map((g) => g[1] > p.line),
+          titles: last10.slice(-5).map((g) => `${shortDay(g[0])}: ${g[1]} ${g[1] > p.line ? 'over' : 'under'} ${p.line}`),
+        },
+      },
       values: {
         market: p.marketLabel,
         line: p.line,
         l10: avg(last10),
         l10Over: last10.length ? over(last10) : '—',
-        recent: last10.length ? last10.slice(-5).map((g) => g[1]).join(' ') : '—',
+        recent: null,
         vs: vs.length ? over(vs) : '—',
         vsAvg: avg(vs),
         books: p.books,
@@ -211,7 +219,7 @@ export function propHistorySection(input: { away: GameSide; home: GameSide; stat
             { key: 'line', label: 'Line', decimals: 1 },
             { key: 'l10', label: 'L10 avg', decimals: 2 },
             { key: 'l10Over', label: 'L10 over', decimals: 0 },
-            { key: 'recent', label: 'Last 5', decimals: 0 },
+            { key: 'recent', label: 'Last 5', decimals: 0, streak: true },
             { key: 'vs', label: 'Over vs opp', decimals: 0 },
             { key: 'vsAvg', label: 'Avg vs opp', decimals: 2 },
             { key: 'books', label: 'Books', decimals: 0 },

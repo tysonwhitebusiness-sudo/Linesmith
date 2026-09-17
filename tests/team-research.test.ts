@@ -106,12 +106,17 @@ test('postseason games never enter the record, the splits or the margin chart', 
   const margin = results.rows[0][0];
   assert.ok(margin.kind === 'histogram');
   assert.equal(margin.bars.length, 25);
-  const splits = results.rows[1][0];
+  // By key, not by position: R9d added a Home vs away card to this section.
+  const splits = results.rows.flat().find((c) => c.key === 'splits')!;
   assert.ok(splits.kind === 'table');
   assert.deepEqual(splits.rows.find((r) => r.key === 'all')?.values.gp, 25);
   assert.deepEqual(splits.rows.find((r) => r.key === 'post')?.values.rec, '0-2');
   // The last ten do include October: they are the team's form, not its record.
   assert.deepEqual(data.hero.lastTen.slice(-2).map((g) => g.result), ['L', 'L']);
+  // R9d: the split reads the regular season only, the same games the table does.
+  const homeAway = results.rows.flat().find((c) => c.key === 'home-away')!;
+  assert.ok(homeAway.kind === 'dumbbell');
+  assert.equal((homeAway.rows.find((r) => r.key === 'for')?.aSample ?? 0) + (homeAway.rows.find((r) => r.key === 'for')?.bSample ?? 0), 25);
 });
 
 test('the standing names the team place in its first table, and a past season says it finished there', () => {

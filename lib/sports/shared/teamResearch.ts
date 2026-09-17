@@ -349,8 +349,33 @@ function resultsSection(spec: TeamResearchSpec, season: number, games: TeamGame[
     };
   });
 
+  // R9d — home against away as a line per stat, not two rows a reader has to
+  // subtract. Only where BOTH sides have games: one side alone is no split.
+  const homeGames = finals.filter((g) => g.home);
+  const awayGames = finals.filter((g) => !g.home && !g.neutral);
+  const perGame = (gs: TeamGame[], of: (g: TeamGame) => number) => (gs.length ? gs.reduce((a, g) => a + of(g), 0) / gs.length : null);
+  const homeAway: ResearchCard | null =
+    homeGames.length && awayGames.length
+      ? {
+          kind: 'dumbbell',
+          key: 'home-away',
+          title: 'Home vs away',
+          scope: `per game · ${homeGames.length} home, ${awayGames.length} away`,
+          aLabel: 'Home',
+          bLabel: 'Away',
+          rows: [
+            { key: 'for', label: `${spec.unit.short} for`, a: perGame(homeGames, (g) => g.us!), b: perGame(awayGames, (g) => g.us!), aSample: homeGames.length, bSample: awayGames.length, decimals: 1 },
+            { key: 'against', label: `${spec.unit.short} against`, a: perGame(homeGames, (g) => g.them!), b: perGame(awayGames, (g) => g.them!), aSample: homeGames.length, bSample: awayGames.length, lowerIsBetter: true, decimals: 1 },
+            { key: 'diff', label: spec.diffLabel, a: perGame(homeGames, (g) => g.us! - g.them!), b: perGame(awayGames, (g) => g.us! - g.them!), aSample: homeGames.length, bSample: awayGames.length, decimals: 1 },
+            { key: 'win', label: 'Win %', a: 100 * (homeGames.filter((g) => gameResult(g, spec) === 'W').length / homeGames.length), b: 100 * (awayGames.filter((g) => gameResult(g, spec) === 'W').length / awayGames.length), aSample: homeGames.length, bSample: awayGames.length, decimals: 0 },
+          ],
+          caption: 'Each line runs from the home number to the away one.',
+        }
+      : null;
+
   const rows: ResearchCard[][] = [];
   if (finals.length) rows.push([margin, ...(finals.length > 1 ? [running] : [])]);
+  if (homeAway) rows.push([homeAway]);
   rows.push([
     ...(splitRows.length
       ? [{ kind: 'table', key: 'splits', title: 'Splits', scope: 'per game', labelHeader: 'Split', columns: cols, rows: splitRows, fixedOrder: true } as ResearchCard]

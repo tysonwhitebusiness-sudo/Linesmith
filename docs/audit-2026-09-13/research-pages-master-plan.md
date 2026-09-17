@@ -2171,6 +2171,32 @@ Add `streak`, `dumbbell`, `range` and `contribution` card kinds to
 and smallest: the prop tracker's `Last 5`, today `values.join(' ')` — the digits
 `0 1 1 0 1` in the operator's screenshot — becomes a `StreakStrip`.
 
+**BUILT 2026-09-17 (R9d).** Two of the four, and a measured reason for the
+other two.
+
+- **`streak` is a CELL, not a card** — which the plan had wrong. The operator's
+  `0 1 1 0 1` is one column of one table, so a card kind could never have
+  replaced it. `ResearchColumn.streak` reads the row's `streaks[key]` and draws
+  `StreakStrip`: the last five against the line, oldest faintest, each cell
+  titled with its date and number. It sorts by hits, not by text.
+- **`dumbbell` card kind**, used for the team page's **Home vs away**: runs for,
+  runs against, differential and win %, each a line from the home number to the
+  away one, only where both sides have games. A table made the reader subtract
+  two rows to see the split.
+- **`range` NOT BUILT, for want of data.** `RangeBar` draws each book's price
+  around a consensus; `MainGameLine` carries the MEDIAN price and a book COUNT,
+  not the per-book quotes (`gameLineHistory.ts`). Drawing a range from "best
+  over" to "best under" would be two different markets on one axis. It needs
+  per-book prices on the payload first.
+- **`contribution` NOT BUILT, for want of a model.** `ContributionBars` shows
+  what pushed a prediction; these pages carry no prediction — model work is
+  `master-plan-2026-09-06.md`'s C3, deferred. Building it here would mean
+  inventing the numbers.
+
+**Verified** at 1440: CWS @ CLE's prop table draws the strip in place of the
+digits (headshots beside each player), and the Dodgers' Home vs away reads 4.6
+→ 5.0 runs for, 63% → 59% wins.
+
 **Order:** R9a, R9b, R9c, R9d. a and b answer the two named complaints; c
 lifts every table at once; d is the largest and is done per page after.
 

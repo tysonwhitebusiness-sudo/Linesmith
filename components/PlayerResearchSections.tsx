@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Avatar, Card, Chip, cx, DataTable, EmptyState, ErrorState, LeagueStripRow, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column } from './ui';
-import { CATEGORICAL, CourtScatter, FieldLanes, FieldScatter, FullPitchScatter, Histogram, MatchTimeline, PitchScatter, RinkScatter, SeriesChart, SIDE_COLOR, SprayScatter, ZoneScatter } from './charts';
+import { CATEGORICAL, CourtScatter, FieldLanes, FieldScatter, FullPitchScatter, Histogram, MatchTimeline, PitchScatter, RinkScatter, SeriesChart, SIDE_COLOR, SplitDumbbell, SprayScatter, StreakStrip, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import {
   formatResearchValue,
@@ -605,12 +605,21 @@ function TableCard({ card }: { card: Extract<ResearchCard, { kind: 'table' }> })
       numeric: !c.text,
       sortable,
       render: (r: TableRow) => {
+        const run = c.streak ? r.streaks?.[c.key] : undefined;
+        if (run) {
+          return run.outcomes.length ? (
+            <StreakStrip outcomes={run.outcomes} titles={run.titles} label={`${r.label}: ${typeof c.label === 'string' ? c.label : c.key}`} className="inline-flex justify-end" />
+          ) : (
+            '—'
+          );
+        }
         const tone = r.tones?.[c.key];
         const text = formatResearchValue(r.values[c.key], c);
         if (tone) return <span className={cx('font-semibold', tone === 'good' ? 'text-good' : 'text-bad')}>{text}</span>;
         return c.text ? <span className="block min-w-[8rem] whitespace-normal">{text}</span> : text;
       },
       sortValue: (r: TableRow) => {
+        if (c.streak) return (r.streaks?.[c.key]?.outcomes ?? []).filter((o) => o === true).length;
         const v = r.values[c.key];
         return typeof v === 'number' ? v : typeof v === 'string' ? v : null;
       },
@@ -701,6 +710,17 @@ export function ResearchCardView({ card }: { card: ResearchCard }) {
             tooltipRows={(i) => (card.tips[i] ?? []).map((t) => ({ value: t }))}
           />
           {card.legend ? <VizLegend items={card.legend.map((l) => ({ label: l.label, color: l.dark ? 'oklch(18% 0.005 260)' : 'oklch(80% 0.004 260)' }))} /> : null}
+        </Card>
+      );
+    case 'dumbbell':
+      return (
+        <Card title={card.title} scope={card.scope} caption={card.caption}>
+          <SplitDumbbell
+            rows={card.rows.map((r) => ({ ...r, format: (v: number) => formatResearchValue(v, { decimals: r.decimals ?? 1 }) }))}
+            aLabel={card.aLabel}
+            bLabel={card.bLabel}
+            label={card.title}
+          />
         </Card>
       );
     case 'table':
