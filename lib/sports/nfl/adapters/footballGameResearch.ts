@@ -489,6 +489,7 @@ function footballPlaysSection(payload: Payload): ResearchSection | null {
     key: p.id,
     label: `${quarterName(p.period)} ${p.clock ?? ''}`,
     labelNote: p.downText,
+    imageUrl: crestOf(payload, p.teamId),
     values: { team: abbrOf(payload, p.teamId), play: p.text, score: `${p.awayScore ?? '—'}–${p.homeScore ?? '—'}` },
     ...(p.scoring ? { highlight: true } : {}),
   });
@@ -709,6 +710,7 @@ function footballNowSection(payload: Payload): ResearchSection {
         key: `${p.athleteId}-${p.market}`,
         name: p.name,
         href: `/${f.league}/player/${p.athleteId}`,
+        imageUrl: faceOf(f.league, p.athleteId),
         sideAbbr: p.side ? payload[p.side].abbr : null,
         marketLabel: FOOTBALL_MARKET_LABELS[p.market] ?? p.market,
         line: p.line,

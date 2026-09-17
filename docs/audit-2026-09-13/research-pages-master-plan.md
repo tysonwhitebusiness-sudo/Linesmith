@@ -2113,6 +2113,22 @@ splits.
   identical grey silhouettes are noise, not identity. Recorded in `identity.ts`
   so the next person does not re-add them.
 
+**R9a-F2, found by the operator 2026-09-17 on a LIVE game:** the props tracker
+had no faces, and nor did four other tables. The gap was in the VERIFICATION,
+not the idea — R9a was checked on final and before-start pages, because no game
+was live at the time, so every live-only card went unlooked-at and unfilled.
+Fixed: the live props trackers (MLB, football, tennis, soccer), the NHL and
+tennis player-prop tables, MLB's hitters-vs-the-starter table, and the football
+and NHL play-by-play rows, which now carry the side's crest. Soccer's player
+rows carry the CLUB CREST in place of the face ESPN does not have, so
+`imageKind` now follows the image rather than always saying 'player'.
+
+**The check is repeatable, and should be re-run after any card work:** grep
+every `labelHeader:` in `lib/sports`, keep the ones naming an entity (Player,
+Batter, Skater, Opponent, Team…), and look 30 lines either side for `imageUrl`.
+It flagged 15, of which 8 were real and 4 were rows built outside the window.
+After the fix the only entity tables without an image are soccer's, by design.
+
 **Verified** at 1440 on DAL @ NYG (401872930): crests in the team-stats headers
 and on every scoring row, faces on the leaders and the box; MUN v MCI squads
 clean; Ohtani's opponent splits carry the opposing crest.

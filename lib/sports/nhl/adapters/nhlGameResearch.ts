@@ -417,6 +417,8 @@ function nhlLinesSection(payload: Payload, state: GameState): ResearchSection {
     rows: props.map((p) => ({
       key: `${p.playerId}-${p.market}`,
       label: p.name,
+      imageUrl: faceOf(payload.gameId, p.side ? payload[p.side].abbr : null, p.playerId),
+      imageKind: 'player' as const,
       labelNote: p.side ? payload[p.side].abbr : null,
       href: `/nhl/player/${p.playerId}`,
       values: { market: NHL_MARKET_LABELS[p.market] ?? p.market, line: p.line == null ? 'yes/no' : p.line, over: `${am(p.over.price)} ${p.over.book}`, books: p.books, result: p.result, went: p.result == null ? null : p.result > lineOf(p) ? 'Over' : p.result < lineOf(p) ? 'Under' : 'Push' },
@@ -439,6 +441,7 @@ function nhlPlaysSection(payload: Payload): ResearchSection | null {
   const row = (e: NhlEvent, i: number): ResearchTableRow => ({
     key: `e${i}`,
     label: `${periodLabel(e)} ${e.timeInPeriod ?? ''}`,
+    imageUrl: sideOf(e) ? payload[sideOf(e)!].logoUrl : null,
     values: { team: sideOf(e) ? payload[sideOf(e)!].abbr : '', what: e.type === 'penalty' ? `Penalty: ${(e.penalty ?? '').replace(/-/g, ' ')} (${e.penaltyMinutes ?? '?'} min)` : `${SHOT_LABEL[e.type]}${name(e.shooterId) ? ` · ${name(e.shooterId)}` : ''}${e.shotType ? ` (${e.shotType})` : ''}`, score: e.type === 'goal' ? `${e.awayScore ?? '—'}–${e.homeScore ?? '—'}` : '' },
     ...(e.type === 'goal' ? { highlight: true } : {}),
   });

@@ -328,6 +328,10 @@ function soccerLinesSection(payload: Payload, state: GameState): ResearchSection
       label: p.name,
       labelNote: p.side ? payload[p.side].abbr : null,
       href: `/soccer/${s.league}/player/${p.athleteId}`,
+      // R9a-F1: ESPN holds no soccer headshot, so a player row carries his
+      // club's crest rather than a grey silhouette.
+      imageUrl: p.side ? payload[p.side].logoUrl : null,
+      imageKind: 'logo' as const,
       values: {
         market: SOCCER_MARKET_LABELS[p.market] ?? p.market,
         line: p.line == null ? 'yes/no' : p.line,
@@ -373,6 +377,8 @@ function soccerPlayersSection(payload: Payload, state: GameState): ResearchSecti
         key: `${p.athleteId}-${p.market}`,
         name: p.name,
         href: `/soccer/${s.league}/player/${p.athleteId}`,
+        imageUrl: p.side ? payload[p.side].logoUrl : null,
+        imageKind: 'logo' as const,
         side: p.side,
         marketLabel: SOCCER_MARKET_LABELS[p.market] ?? p.market,
         line: lineOf(p),
@@ -433,6 +439,8 @@ function soccerNowSection(payload: Payload): ResearchSection {
         key: `${p.athleteId}-${p.market}`,
         name: p.name,
         href: `/soccer/${s.league}/player/${p.athleteId}`,
+        imageUrl: p.side ? payload[p.side].logoUrl : null,
+        imageKind: 'logo' as const,
         sideAbbr: p.side ? payload[p.side].abbr : null,
         marketLabel: SOCCER_MARKET_LABELS[p.market] ?? p.market,
         line: lineOf(p),

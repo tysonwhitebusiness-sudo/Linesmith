@@ -156,6 +156,8 @@ export interface PropHistoryInput {
   href: string | null;
   /** The player's face (R9a); `null` where the sport has no id for him. */
   imageUrl?: string | null;
+  /** 'logo' where the image is a club crest standing in for a face (soccer, R9a-F1). */
+  imageKind?: 'logo' | 'player';
   side: 'away' | 'home' | null;
   marketLabel: string;
   line: number;
@@ -178,7 +180,7 @@ export function propHistorySection(input: { away: GameSide; home: GameSide; stat
       labelNote: p.side ? input[p.side].abbr : null,
       href: p.href,
       imageUrl: p.imageUrl ?? null,
-      imageKind: 'player' as const,
+      imageKind: p.imageKind ?? ('player' as const),
       // R9d: the last five as hit/miss against the line, oldest first. This was
       // "0 1 1 0 1" — the numbers without the one thing the column is asking.
       streaks: {
@@ -252,6 +254,8 @@ export interface TrackedProp {
   result: number | null;
   /** The player's face (R9a); `null` where the sport has no id for him. */
   imageUrl?: string | null;
+  /** 'logo' where the image is a club crest standing in for a face (soccer, R9a-F1). */
+  imageKind?: 'logo' | 'player';
 }
 
 /** Each main line at the start against the player's number so far. Only an over is ever marked: an under cannot be settled while the game is on (`liveLineHit`). */
@@ -285,7 +289,7 @@ export function propsTrackerCard(props: TrackedProp[]): ResearchCard {
         labelNote: p.sideAbbr,
         href: p.href,
         imageUrl: p.imageUrl ?? null,
-        imageKind: 'player',
+        imageKind: p.imageKind ?? 'player',
         values: { market: p.marketLabel, line: p.line, so, status: over ? 'Over already' : `${Math.floor(p.line - so) + 1} more to go over` },
       };
       if (over) row.tones = { status: 'good' };

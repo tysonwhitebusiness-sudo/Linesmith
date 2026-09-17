@@ -326,6 +326,8 @@ function tennisLinesSection(payload: Payload, state: GameState): ResearchSection
     rows: props.map((p) => ({
       key: `${p.athleteId}-${p.market}`,
       label: p.name,
+      imageUrl: espnHeadshot('tennis', p.athleteId),
+      imageKind: 'player' as const,
       href: `/tennis/${t.tour}/player/${encodeURIComponent(`espn:tennis:${p.athleteId}`)}`,
       values: {
         market: TENNIS_MARKET_LABELS[p.market] ?? p.market,
@@ -389,6 +391,7 @@ function tennisNowSection(payload: Payload): ResearchSection {
           key: `${p.athleteId}-${p.market}`,
           name: p.name,
           href: `/tennis/${t.tour}/player/${encodeURIComponent(`espn:tennis:${p.athleteId}`)}`,
+          imageUrl: espnHeadshot('tennis', p.athleteId),
           sideAbbr: p.side ? payload[p.side].abbr : null,
           marketLabel: TENNIS_MARKET_LABELS[p.market] ?? p.market,
           line: lineOf(p),

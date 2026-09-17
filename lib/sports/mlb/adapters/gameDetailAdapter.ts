@@ -1231,6 +1231,8 @@ function mlbStartersSection(payload: MlbGameResearchPayload): ResearchSection {
         label: x.name ?? String(x.id),
         labelNote: [x.pos, x.bats ? `bats ${x.bats}` : null].filter(Boolean).join(' · '),
         href: `/mlb/player/${x.id}`,
+        imageUrl: mlbHeadshot(x.id),
+        imageKind: 'player' as const,
         values: {
           pa: x.season.pa,
           avg: x.season.avg,
@@ -1398,6 +1400,7 @@ function mlbNowSection(payload: MlbGameResearchPayload): ResearchSection {
         key: `${p.playerId}-${p.market}`,
         name: p.name,
         href: `/mlb/player/${p.playerId}`,
+        imageUrl: mlbHeadshot(p.playerId),
         sideAbbr: p.side ? payload[p.side].abbr : null,
         marketLabel: MLB_MARKET_LABELS[p.market] ?? p.market,
         line: p.line,
