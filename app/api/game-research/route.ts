@@ -1,5 +1,5 @@
 /**
- * GET /api/game-research?sport=mlb&gameId=824711 (also nfl, cfb, soccer_epl, soccer_mls, tennis_atp, tennis_wta, nba: ESPN ids)
+ * GET /api/game-research?sport=mlb&gameId=824711 (also nfl, cfb, soccer_epl, soccer_mls, tennis_atp, tennis_wta, nba: ESPN ids; nhl: NHL game ids)
  *
  * A game page's payload — R8. One route with the sport as a query param, for
  * the reason `/api/team-research` and `/api/season-ranks` give. Each sport's
@@ -23,7 +23,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { BadRequest, entityIdNum } from '@/lib/apiValidation';
+import { BadRequest, entityId, nhlGameId } from '@/lib/apiValidation';
 import { cachedRoute } from '@/lib/cachedRoute';
 import { getGameStatus } from '@/lib/sports/mlb/statsapi';
 import { mlbGameState, readMlbGameResearch } from '@/lib/sports/mlb/gameResearch';
@@ -31,6 +31,7 @@ import { footballStateOf, readFootballGameResearch } from '@/lib/sports/multiSpo
 import { readSoccerGameResearch, soccerStateOf } from '@/lib/sports/soccer/gameResearch';
 import { readTennisGameResearch, tennisStateOf } from '@/lib/sports/tennis/gameResearch';
 import { nbaStateOf, readNbaGameResearch } from '@/lib/sports/nba/gameResearch';
+import { nhlStateOf, readNhlGameResearch } from '@/lib/sports/nhl/gameResearch';
 import type { GameState } from '@/lib/sports/shared/gameResearchShapes';
 
 export const dynamic = 'force-dynamic';
@@ -42,7 +43,7 @@ const TTL: Record<GameState, number> = {
   pre: 5 * 60 * 1000,
 };
 
-const READERS: Record<string, { state: (gameId: number) => Promise<GameState | null>; read: (gameId: number) => Promise<unknown | null> }> = {
+const READERS: Record<string, { state: (gameId: number) => Promise<GameState | null>; read: (gameId: number) => Promise<unknown | null>; id?: (raw: string | null) => string }> = {
   mlb: {
     state: async (pk) => {
       const s = await getGameStatus(pk);
@@ -62,6 +63,8 @@ const READERS: Record<string, { state: (gameId: number) => Promise<GameState | n
   tennis_wta: { state: (id) => tennisStateOf('tennis_wta', String(id)), read: (id) => readTennisGameResearch('tennis_wta', String(id)) },
   // R8.4a: ESPN event ids.
   nba: { state: (id) => nbaStateOf(String(id)), read: (id) => readNbaGameResearch(String(id)) },
+  // R8.4b: NHL game ids (2025021270), not ESPN's.
+  nhl: { state: (id) => nhlStateOf(String(id)), read: (id) => readNhlGameResearch(String(id)), id: (raw) => nhlGameId(raw) },
 };
 
 export async function GET(request: Request) {
@@ -73,7 +76,8 @@ export async function GET(request: Request) {
   }
   let gameId: number;
   try {
-    gameId = entityIdNum(url.searchParams.get('gameId'), 'gameId');
+    // NHL game ids run to ten digits, past the shared nine-digit bound; the reader names its own shape.
+    gameId = Number(reader.id ? reader.id(url.searchParams.get('gameId')) : entityId(url.searchParams.get('gameId'), 'gameId'));
   } catch (error) {
     if (error instanceof BadRequest) return NextResponse.json({ error: error.message }, { status: 400 });
     throw error;

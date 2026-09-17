@@ -51,6 +51,20 @@ export function entityId(raw: string | null | undefined, label = 'id'): string {
   return value;
 }
 
+/**
+ * An NHL game id, which is ten digits and so fails {@link entityId}: the
+ * season's start year, the game type (01 preseason, 02 regular season, 03
+ * playoffs, 04 all-star) and a four-digit game number, e.g. 2025021270. The
+ * fixed shape keeps the key space as bounded as the nine-digit rule does (R8.4b).
+ */
+export function nhlGameId(raw: string | null | undefined, label = 'gameId'): string {
+  const value = (raw ?? '').trim();
+  if (!/^20\d{2}0[1-4]\d{4}$/.test(value)) {
+    throw new BadRequest(`${label} must be an NHL game id: the season's start year, a two-digit game type and a four-digit game number (2025021270).`);
+  }
+  return value;
+}
+
 /** {@link entityId}, as a number. */
 export function entityIdNum(raw: string | null | undefined, label = 'id'): number {
   return Number(entityId(raw, label));

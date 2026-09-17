@@ -8,7 +8,7 @@ decisions recorded in the R6 section. R6.1 (MLB) SIGNED OFF 2026-09-15. R6.2
 (NFL and CFB) and R6.3 (soccer) COMPLETE 2026-09-15, each with render checks
 owed on the next slate. R6.4 (tennis) and R6.5 (NBA and NHL) COMPLETE
 2026-09-15. R6.6 (golf) COMPLETE 2026-09-16: **R6 is complete**, with live
-renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football): 8.2a-c built; live renders scheduled (TNF, Saturday CFB), then sign-off. R8.3a (soccer) and R8.3b (tennis) built: soccer's live render is scheduled, tennis's live state was verified; then sign-off. R8.4a (NBA) built; 8.4b (NHL) next; live for both owed in October.**
+renders owed per sport. R7 (team page) STARTED 2026-09-16: Step 0 done, R7-C1 changes the results source; **R7 SIGNED OFF 2026-09-16** (all four sub-phases and the tennis/golf team routes). R8 (game page) STARTED 2026-09-16, MLB first: 8.1a-c (shell, final recap, before-start research, live) done and the MLB group closed 2026-09-17; R8.2 (football): 8.2a-c built; live renders scheduled (TNF, Saturday CFB), then sign-off. R8.3a (soccer) and R8.3b (tennis) built: soccer's live render is scheduled, tennis's live state was verified; then sign-off. R8.4a (NBA) and R8.4b (NHL) built; live for both owed in October. Every R8 sport group is built; sign-offs and the old GameDetail deletion remain.**
 
 **R6.6 COMPLETE 2026-09-16 — R6 is done for every sport.** Golf's Scoring and
 Shot profile, built from the golf tables. Commit `5ff166b`.
@@ -1925,7 +1925,33 @@ games; the live states are owed then.
   line (the Lakers' play-by-play lists one attempt more than ESPN's own box);
   OKC -17.5 covered by 36; 210 went under 221.5. Rendered final and the review
   of pre at 1440 and 400. **Live NBA owed in October.**
-- **8.4b — NHL: next.**
+- **8.4b — NHL page, 2026-09-17:** `readNhlGameResearch`
+  (`/api/game-research?sport=nhl`, NHL game ids), the NHL route on
+  `GameResearchPage`. Final: game flow (cumulative shot attempts by minute,
+  since the NHL publishes no win probability; scoring with each goal's
+  strength; shots and attempts by period), the shot map on the rink (every
+  attempt turned to one net), team stats, the box score with goaltending and
+  penalties, lines with the season series and props, play-by-play, and the
+  research at puck drop. Pre: Matchup (form and head to head from api-web club
+  schedules), Players, injuries, lines. Live: Right now.
+  - **ESPN id bridge:** ESPN's scoreboard for the game's date, matched on both
+    teams' full names, gives the ESPN event (401803621 for 2025021270) for
+    pickcenter and injuries.
+  - **NHL game ids are ten digits** and failed the route's nine-digit id rule
+    (400 on every NHL game); `nhlGameId` validates their fixed shape (season,
+    game type 01-04, game number) and the reader names its own validator.
+  - **A goal's strength** reads api-web's four-digit situation code with a
+    pulled goalie's extra skater taken out: FLA's two late goals (code 1560)
+    first read "short-handed, empty net" and are empty-net goals at even
+    strength.
+  - Refereed on FLA @ TOR (6-2): shots on goal from the events 25 and 19 equal
+    the right rail; goals by result plus goals equal shots on goal; goalies
+    Woll 19 saves on 4, Tarasov 17 on 2; season series 2-2; FLA +1.5 covered,
+    8 over 6.5. Strength before the game (TOR 244 goals for and 280 against
+    over 79 games) is a shootout short of the NHL standings (245, 284) by
+    design: a shootout decider counts as a goal there, not in the rollup.
+  - Rendered final and the review of pre at 1440 and 400. **Live NHL owed in
+    October.**
 
 
 Spec: `docs/design/phase-g2/src/game.html`, `common-game.js`,

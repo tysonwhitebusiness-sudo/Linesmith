@@ -99,6 +99,8 @@ const DB_MODULES = [
   '@/lib/sports/tennis/gameResearch',
   // R8.4a: the NBA game page read.
   '@/lib/sports/nba/gameResearch',
+  // R8.4b: the NHL game page read.
+  '@/lib/sports/nhl/gameResearch',
 ];
 
 /**

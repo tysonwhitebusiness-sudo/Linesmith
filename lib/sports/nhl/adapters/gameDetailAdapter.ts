@@ -276,3 +276,6 @@ export function toGameDetailData(input: NhlGameDetailInput): GameDetailData {
     leftRail: { candidates, goodBetsGated: false },
   };
 }
+
+/** The game page (R8.4b): `nhlGameResearch.ts`. */
+export { toGameResearchData } from './nhlGameResearch';
