@@ -121,7 +121,8 @@ export function tennisCompareCards(input: {
       ],
       rows: meetings.map((m, i) => ({
         key: `${m.date}-${i}`,
-        label: new Date(`${m.date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
+        // `date` is a full ISO timestamp (`toIsoDate`), so take the day and pin it to noon UTC.
+        label: new Date(`${m.date.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
         values: { event: m.tournamentName, surface: m.surface, round: m.round ?? '—', result: m.isWinner ? 'Won' : 'Lost' },
         tones: { result: m.isWinner ? ('good' as const) : ('bad' as const) },
       })),

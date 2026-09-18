@@ -7,15 +7,15 @@ import type { TennisArchiveMatch } from '../lib/sports/tennis/playerArchiveShape
  * R10.4d — tennis compare, which is built from the TennisMyLife archive because
  * tennis has no team rollups at all (R10 Step 0).
  *
- * VERIFIED BY TEST RATHER THAN BY RENDER, and the reason is recorded as R10-F4:
- * a tennis player page loaded by URL makes no client fetches at all, with or
- * without this work (checked by stashing it and rebuilding), so the cards could
- * not be seen on a page today. The arithmetic below is what the render would
- * have shown.
+ * Rendered on prod 2026-09-18 (Samsonova vs Sabalenka). R10-F4, "a tennis page
+ * makes no client fetches", was the browser pane's stale-tab quirk, not the app.
+ * That render found the head-to-head dates all "Invalid Date": the fixture used
+ * a bare day where the archive carries a full ISO timestamp. The fixture now
+ * uses the real shape.
  */
 
 const match = (m: Partial<TennisArchiveMatch>): TennisArchiveMatch => ({
-  date: '2026-01-15',
+  date: '2026-01-15T00:00:00.000Z',
   season: 2026,
   tournamentName: 'Test Open',
   surface: 'Hard',
@@ -62,6 +62,7 @@ test('compare builds the serve dumbbell and the head to head, and needs both pla
   assert.ok(h2h.kind === 'table');
   assert.equal(h2h.rows.length, 1, 'only the meetings with that opponent');
   assert.equal(h2h.scope, '1-0 in the seasons held');
+  assert.equal(h2h.rows[0].label, 'Jan 15, 2026', 'the archive date is a full ISO timestamp');
   assert.deepEqual(tennisCompareCards({ subjectName: 'Subject', subjectMatches: mine, peerName: null, peerMatches: null }), []);
 });
 

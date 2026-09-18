@@ -2389,17 +2389,22 @@ to head from the subject's own archive rows, which name their opponent. The
 picker lists the players he has actually met, so a chosen peer always has a
 meeting to show.
 
-- **R10-F4, and it blocks the render check:** a tennis PLAYER page loaded by URL
-  makes **no client fetches at all** — no bio, no history, no snapshot — and
-  shows skeletons forever. Verified pre-existing by stashing R10.4d, rebuilding
-  and loading the same page: identical. The tennis LANDING page is fine and
-  fires its calls normally, so this is that route, not the app. Tennis identity
-  also resolves through the day's snapshot (`snapshot.subjects`), so a player
-  with no match today could not render even once that is fixed. **Routed to
-  R11** (port-artifact cleanup), which is where the page's own wiring is due.
-- So R10.4d is **verified by test** (`tests/compare-tennis.test.ts`, four cases
-  covering the denominators, a match with no serve row, and the empty cases)
-  rather than by render, and the render check is owed.
+- **R10-F4 WITHDRAWN 2026-09-18 — it was the browser pane, not the app.** The
+  finding said a tennis player page loaded by URL makes no client fetches and
+  shows skeletons forever. It does not: a browser-pane tab that has navigated
+  many times stops running page effects, and both the original check and the
+  "pre-existing" stash check were made in the same worn tab. In a fresh tab the
+  page loads normally. **Lesson: verify every render in a fresh tab
+  (`tabs_create`), and re-check any "nothing loads" finding in one before
+  recording it.**
+- **Rendered on prod 2026-09-18:** Samsonova (`espn:tennis:3840`) against
+  Sabalenka — serve and return over 196 and 269 matches, head to head 1-4 over
+  five meetings, 103 met opponents in the picker.
+- **R10.4d-F1, fixed on the spot:** every head-to-head date read "Invalid
+  Date". The archive's `date` is a full ISO timestamp (`toIsoDate`) and the
+  card appended `T12:00:00Z` to it; the test passed because its fixture used a
+  bare day. The card now takes the first ten characters, and the fixture uses
+  the real shape and asserts the label (`tests/compare-tennis.test.ts`).
 
 **R10.5 FIXED 2026-09-18 — the Players tab loads with no games on, every
 sport.** The operator has asked three times for players and teams to load
