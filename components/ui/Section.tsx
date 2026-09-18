@@ -12,14 +12,46 @@ import { cx } from './cx';
  * state lives in the URL) without adding history entries or re-rendering the
  * route. On a phone it is a horizontal scroller, never a wrapped block.
  */
+/**
+ * A page section, collapsible as a whole — R10.6. A research page runs to twenty
+ * cards; a reader who does not want the pitch mix should not have to scroll past
+ * it. So each section's header carries a Hide/Show control that folds away the
+ * WHOLE section (not a card inside it).
+ *
+ * DELIBERATELY NOT REMEMBERED: the state is component state, so every page load
+ * opens with everything showing, which is what the operator asked for. A stored
+ * preference would mean a reader could lose a section and not know why it was
+ * gone.
+ *
+ * The body is HIDDEN, not unmounted, so a card keeps its own toggles and nothing
+ * refetches when it is shown again. Charts measure with a ResizeObserver, so one
+ * that was hidden re-measures to its real width on the way back.
+ */
 export function Section({ id, title, sub, children, className }: { id: string; title: ReactNode; sub?: ReactNode; children: ReactNode; className?: string }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const bodyId = `sec-body-${id}`;
   return (
     <section id={`sec-${id}`} data-sec={id} className={cx('mt-8 scroll-mt-[110px] first:mt-0', className)}>
-      <div className="mb-3 flex flex-wrap items-baseline gap-3">
+      <div className={cx('flex flex-wrap items-baseline gap-3', collapsed ? 'mb-0' : 'mb-3')}>
         <h2 className="text-title text-ink">{title}</h2>
         {sub ? <span className="text-label text-ink-muted">{sub}</span> : null}
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-expanded={!collapsed}
+          aria-controls={bodyId}
+          className="ml-auto inline-flex items-center gap-1 rounded-ctl px-2 py-1 text-label text-ink-muted transition-colors hover:bg-card-sunk hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
+        >
+          <svg aria-hidden width="12" height="12" viewBox="0 0 12 12" className={cx('transition-transform', collapsed ? '-rotate-90' : '')}>
+            <path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {collapsed ? 'Show' : 'Hide'}
+          <span className="sr-only"> {typeof title === 'string' ? title : 'section'}</span>
+        </button>
       </div>
-      <div className="space-y-3">{children}</div>
+      <div id={bodyId} className="space-y-3" hidden={collapsed}>
+        {children}
+      </div>
     </section>
   );
 }

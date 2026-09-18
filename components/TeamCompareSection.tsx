@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { Avatar, Card, DataTable, EmptyState, SelectBox, Skeleton, type Column } from './ui';
-import { SplitDumbbell } from './charts';
+import { CompareView } from './CompareView';
 import { formatResearchValue } from '@/lib/sports/shared/playerResearchShapes';
 import type { TeamGame, TeamResearchPayload, TeamSeasonData, TeamStatValue } from '@/lib/sports/shared/teamResearchShapes';
 
@@ -144,10 +144,10 @@ export function TeamCompareSection({ payload, allTeams, season, other, otherLoad
           <Card
             title={`${payload.team.abbr} vs ${other?.team.abbr ?? picked?.name ?? ''}`}
             scope="per game, this season"
-            caption="Each line runs from this team's number to the other's. A stat where lower is better is coloured that way."
+            caption="Per game, this season. The team ahead on each stat is marked, counting a lower number as better where that is the stat's direction."
             state={rows.length ? { kind: 'ready' } : { kind: 'empty', title: 'No stats both teams carry', reason: 'The two pages hold no stat in common for this season.' }}
           >
-            {rows.length ? <SplitDumbbell rows={rows} aLabel={payload.team.abbr} bLabel={other?.team.abbr ?? 'Them'} label="Team stats side by side" /> : null}
+            {rows.length ? <CompareView rows={rows} aLabel={payload.team.abbr} bLabel={other?.team.abbr ?? 'Them'} label="Team stats side by side" /> : null}
           </Card>
           <div className="space-y-3">
             <Card

@@ -2,9 +2,9 @@
 
 import { useMemo } from 'react';
 import { Avatar, Card, DataTable, EmptyState, LeagueStripRow, SelectBox, Skeleton, type Column } from './ui';
-import { SplitDumbbell } from './charts';
 import { formatResearchValue, type PlayerResearchData, type ResearchCard, type ResearchLogRow } from '@/lib/sports/shared/playerResearchShapes';
 import { ResearchCardView } from './PlayerResearchSections';
+import { CompareView, type CompareViewRow } from './CompareView';
 import type { ComparePeer, PlayerComparePayload } from '@/lib/sports/shared/compareShapes';
 
 /**
@@ -17,10 +17,12 @@ import type { ComparePeer, PlayerComparePayload } from '@/lib/sports/shared/comp
  * to players of his kind comes from `/api/player-compare`, which is the one
  * thing the page cannot work out for itself.
  *
- * THE DUMBBELL IS THE POINT OF THE FIRST CARD. "4.1 against them" means little
- * beside nothing; "4.1 against them, 3.2 in all games" is the comparison the
- * reader came for, so each stat is a line between the two rather than two
- * columns to subtract (R9d built the primitive).
+ * THE COMPARISON IS THE POINT OF THE FIRST CARD. "4.1 against them" means
+ * little beside nothing; "4.1 against them, 3.2 in all games" is what the reader
+ * came for. It opens as a table with the gap, and can switch to paired bars or
+ * the dumbbell (R10.6's `CompareView`) — the dumbbell alone was hard to read.
+ * The stats are the spec's SPLIT columns (rates and per-game numbers), not the
+ * first raw counts of the game log, which mostly measured playing time.
  *
  * A SMALL SAMPLE IS SAID, NOT HIDDEN. Three games against one team is three
  * games; the card prints the count beside the averages and never suppresses the
@@ -84,24 +86,34 @@ export function CompareSection({
 
   const vsRows = useMemo(() => (teamId ? rows.filter((r) => r.opponentId === teamId) : []), [rows, teamId]);
 
+  // The game log's columns for the meetings table below the comparison.
   const columns = useMemo(() => (research?.gameLog.columns ?? []).filter((c) => !c.text).slice(0, MAX_STATS), [research]);
 
-  const dumbbell = useMemo(() => {
-    if (!vsRows.length) return [];
-    const mean = (list: ResearchLogRow[], key: string) => {
-      const nums = list.map((r) => r.values[key]).filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
-      return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
-    };
-    return columns.map((c) => ({
+  /**
+   * R10.6 — the comparison reads the SPLITS, not the game log. The splits carry
+   * the stats a sport's spec chose for comparing (rates and per-game numbers:
+   * AVG, OBP, SLG, HR/G for a hitter), where the first six game-log columns were
+   * raw counts that mostly measured playing time. The "all seasons" set (key 0)
+   * is used where the history spans more than one, so "against them" is every
+   * meeting held, not one season's.
+   */
+  const againstRows = useMemo<CompareViewRow[]>(() => {
+    if (!research || !teamId) return [];
+    const bySeason = research.splits.rowsBySeason;
+    const set = bySeason[0] ?? bySeason[research.splits.defaultSeason ?? -1] ?? Object.values(bySeason)[0] ?? [];
+    const vs = set.find((r) => r.key === `Opponent:${teamId}`);
+    const all = set.find((r) => r.group === 'Overall');
+    if (!vs || !all) return [];
+    return research.splits.columns.map((c) => ({
       key: c.key,
       label: c.label,
-      a: mean(vsRows, c.key),
-      b: mean(rows, c.key),
-      aSample: vsRows.length,
-      bSample: rows.length,
+      a: vs.values[c.key] ?? null,
+      b: all.values[c.key] ?? null,
+      aSample: vs.games,
+      bSample: all.games,
       format: (v: number) => formatResearchValue(v, c),
     }));
-  }, [columns, rows, vsRows]);
+  }, [research, teamId]);
 
   const logColumns: Column<ResearchLogRow>[] = useMemo(
     () => [
@@ -170,10 +182,10 @@ export function CompareSection({
           <Card
             title={`Against ${team?.abbr ?? 'them'}`}
             scope={vsRows.length ? `${vsRows.length} of ${rows.length} games held` : undefined}
-            caption={vsRows.length ? 'Each line runs from the average against this team to the average across every game held.' : undefined}
+            caption={vsRows.length ? 'Per game, against this team and across every game held.' : undefined}
             state={vsRows.length ? { kind: 'ready' } : { kind: 'empty', title: 'No games held against them', reason: 'The history this app holds has no game between these two.' }}
           >
-            {dumbbell.length ? <SplitDumbbell rows={dumbbell} aLabel={`vs ${team?.abbr ?? 'them'}`} bLabel="All games" label="Against this team" /> : null}
+            {againstRows.length ? <CompareView rows={againstRows} aLabel={`vs ${team?.abbr ?? 'them'}`} bLabel="All games" label="Against this team" /> : null}
             {vsRows.length ? (
               <DataTable
                 className="mt-3"
@@ -260,6 +272,25 @@ function PeerCompare({
   }, [mineSeasons, theirs]);
   const theirRow = shared ? theirs.find((r) => r.season === shared.season) ?? null : null;
 
+  // R10.6 — each player's Overall split for that season: the spec's rate and
+  // per-game columns, so two players are compared per opportunity, not on how
+  // much each happened to play.
+  const peerRows = useMemo<CompareViewRow[]>(() => {
+    if (!shared || !research || !peerResearch) return [];
+    const mine = research.splits.rowsBySeason[shared.season]?.find((r) => r.group === 'Overall');
+    const their = peerResearch.splits.rowsBySeason[shared.season]?.find((r) => r.group === 'Overall');
+    if (!mine || !their) return [];
+    return research.splits.columns.map((c) => ({
+      key: c.key,
+      label: c.label,
+      a: mine.values[c.key] ?? null,
+      b: their.values[c.key] ?? null,
+      aSample: mine.games,
+      bSample: their.games,
+      format: (v: number) => formatResearchValue(v, c),
+    }));
+  }, [shared, research, peerResearch]);
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -278,7 +309,7 @@ function PeerCompare({
         <Card
           title={`${subjectName} vs ${peer?.name ?? 'peer'}`}
           scope={shared ? `${shared.label} · per game` : undefined}
-          caption={shared ? 'Each line runs from this player’s number to the compared player’s.' : undefined}
+          caption={shared ? `${shared.games} and ${theirRow?.games ?? '—'} games · per game and rate stats, so playing time does not decide it.` : undefined}
           state={
             peerLoading && !peerResearch
               ? { kind: 'loading', lines: 4 }
@@ -291,22 +322,7 @@ function PeerCompare({
                   }
           }
         >
-          {theirRow && shared ? (
-            <SplitDumbbell
-              rows={columns.map((c) => ({
-                key: c.key,
-                label: c.label,
-                a: typeof shared.values[c.key] === 'number' ? (shared.values[c.key] as number) : null,
-                b: typeof theirRow.values[c.key] === 'number' ? (theirRow.values[c.key] as number) : null,
-                aSample: shared.games,
-                bSample: theirRow.games,
-                format: (v: number) => formatResearchValue(v, c),
-              }))}
-              aLabel={subjectName}
-              bLabel={peer?.name ?? 'Peer'}
-              label="Season side by side"
-            />
-          ) : null}
+          {peerRows.length ? <CompareView rows={peerRows} aLabel={subjectName} bLabel={peer?.name ?? 'Peer'} label="Season side by side" /> : null}
         </Card>
       ) : null}
     </div>

@@ -2426,6 +2426,35 @@ operator's screenshot, no games scheduled — lists every player with position
 chips and opens A.J. Brown's page. The one name still twice in the NBA list is
 two different Brandon Williamses.
 
+**R10.6 BUILT 2026-09-18 — compare views, the right stats, and collapsible
+sections (operator's asks).**
+
+- **The stats were wrong, and it was a truncation, not the data.** Compare took
+  the first six numeric columns of the season table; for an MLB hitter that is
+  PA, AB, H, 2B, 3B, HR — raw counts that mostly measure playing time (Jensen's
+  567 PA against Burleson's 642). The rate columns were cut off at the end. Both
+  player compares now read the spec's SPLIT columns — the per-game and rate
+  stats each sport chose for comparing (AVG, OBP, SLG, HR/G, K/G, TB/G) — the
+  "against them" card from the all-seasons split set, so it covers every
+  meeting held.
+- **`CompareView`: Table, Bars or Lines** over the same rows, opening on the
+  table (both numbers and the signed gap). The operator found the dumbbells hard
+  to read; Bars puts each stat on its OWN scale so a .300 average is not
+  flattened beside 30 home runs. The leader is bolded **only where the stat
+  declares its direction** — team stats do; a player's split column does not (a
+  hitter's K/G is better low), so there the gap is shown and nobody is crowned.
+- **Every `Section` collapses as a whole**, from its header — one change in
+  `components/ui/Section.tsx`, so the player, team and game pages all have it.
+  Component state, so each page load opens fully expanded as asked; the body is
+  hidden rather than unmounted, so cards keep their toggles and charts
+  re-measure through their ResizeObserver.
+
+**Verified** at 1440: Jensen vs Burleson reads .235 against .284 AVG, K/G 1.12
+against 0.74, nothing bolded; Bars renders each stat on its own scale; hiding
+Compare shortens the page from 9,492 to 7,846px and showing it restores all
+four cards; the Dodgers page has seven collapsible sections and marks LAD ahead
+on runs, AVG, OBP and SLG against the Yankees.
+
 - **Delete:** `MatchupExplorerCard` and the `matchupExplorer` field (R1h's floor
   goes with it). **NOT DONE — deliberately left for the operator's return:** it
   spans eight sport adapters, `playerRoles.ts` and the old prop block, and it is
