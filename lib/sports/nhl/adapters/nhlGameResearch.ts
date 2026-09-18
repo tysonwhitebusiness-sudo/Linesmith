@@ -1,6 +1,6 @@
 /**
- * The NHL game page — R8.4b, exported as `toGameResearchData` from
- * `gameDetailAdapter.ts`. Sections follow G2 `game-hoops-hockey.js`: game flow
+ * The NHL game page — R8.4b, `toGameResearchData`, imported by
+ * `GameResearchPage.tsx`. Sections follow G2 `game-hoops-hockey.js`: game flow
  * (cumulative shot attempts, since the NHL publishes no win probability, with
  * scoring and shots by period), the shot map, team stats, the box score with
  * goaltending and penalties, lines with the season series and props,

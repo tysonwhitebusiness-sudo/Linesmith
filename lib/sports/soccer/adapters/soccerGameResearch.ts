@@ -1,6 +1,6 @@
 /**
- * The soccer game page — R8.3a, exported as `toGameResearchData` from
- * `gameDetailAdapter.ts`. Sections follow G2 `game-soccer-tennis.js`: match flow
+ * The soccer game page — R8.3a, `toGameResearchData`, imported by
+ * `GameResearchPage.tsx`. Sections follow G2 `game-soccer-tennis.js`: match flow
  * (a timeline of goals, cards, substitutions and shots), the shot map, lineups,
  * team stats, lines and props with the draw, and commentary; before the start,
  * the shared Matchup and Players sections, lineups once announced, injuries and

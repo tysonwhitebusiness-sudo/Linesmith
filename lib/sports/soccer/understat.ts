@@ -266,15 +266,6 @@ export function matchUnderstatIndex(
   return bestScore >= 0.85 ? best : null;
 }
 
-/** Convenience wrapper for a one-off lookup — fetches the index itself. Prefer `buildUnderstatNameIndex` + `matchUnderstatIndex` when resolving many subjects against the same season in one request. */
-export async function resolveUnderstatPlayer(
-  espnName: string,
-  season: string,
-): Promise<(UnderstatSeasonStats & { name: string }) | null> {
-  const index = await buildUnderstatNameIndex(season);
-  return matchUnderstatIndex(index, espnName);
-}
-
 export interface UnderstatMatch {
   matchId: string;
   date: string;

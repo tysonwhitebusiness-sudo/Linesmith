@@ -22,18 +22,6 @@ import type { NbaGameResearchPayload } from '@/lib/sports/nba/gameResearch';
 import { toGameResearchData as toNhlGameResearchData } from '@/lib/sports/nhl/adapters/nhlGameResearch';
 import type { NhlGameResearchPayload } from '@/lib/sports/nhl/gameResearch';
 
-/**
- * The game page — R8. One component for every sport: a hero with the score,
- * the line score and the closing-line chips; a state bar (the game's real state,
- * with a review switch to the kickoff research once it has begun); section nav;
- * the sections the sport's adapter builds for that state; sources.
- *
- * Which adapter runs is decided once, in `gameResearchFor`; nothing below it
- * knows the sport.
- */
-
-export const GAME_RESEARCH_SPORTS = ['mlb', 'nfl', 'cfb', 'soccer_epl', 'soccer_mls', 'tennis_atp', 'tennis_wta', 'nba', 'nhl'] as const;
-
 function gameResearchFor(sport: string, payload: GameResearchPayload, requestedState: string | null): GameResearchData | null {
   switch (sport) {
     case 'mlb':

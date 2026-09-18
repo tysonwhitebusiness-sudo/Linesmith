@@ -303,24 +303,6 @@ export async function pgRun(sql: string, params?: SqlParams): Promise<PgRunResul
   return { changes: res.rowCount ?? 0, rows: res.rows };
 }
 
-/**
- * `pgRun` with the single transient-error retry, for statements the CALLER
- * asserts are safe to apply twice.
- *
- * Exists so that "this write is idempotent" is a claim made at a call site
- * that can actually justify it, rather than an assumption baked into every
- * write in the application. If you reach for this, the statement should carry
- * `ON CONFLICT` or an equivalent guard — and if it does not, the right fix is
- * to give it one, not to use this.
- */
-export async function pgRunIdempotent(sql: string, params?: SqlParams): Promise<PgRunResult> {
-  const { text, values } = compile(sql, params);
-  return withConnectionRetry(async () => {
-    const res = await getPool().query(text, values);
-    return { changes: res.rowCount ?? 0, rows: res.rows };
-  });
-}
-
 export interface PgTx {
   get<T = any>(sql: string, params?: SqlParams): Promise<T | undefined>;
   all<T = any>(sql: string, params?: SqlParams): Promise<T[]>;
@@ -440,7 +422,6 @@ export async function withJobLock<T>(jobName: string, fn: () => Promise<T>, leas
     await pgRun(`UPDATE job_locks SET locked_until = now() WHERE job_name = $1 AND holder = $2`, [jobName, LOCK_HOLDER]);
   }
 }
-
 
 // ---------------------------------------------------------------------------
 // Job locks (Postgres advisory locks)

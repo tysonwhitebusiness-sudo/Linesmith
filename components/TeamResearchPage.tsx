@@ -20,19 +20,6 @@ import { toTeamResearchData as toNhlTeamResearchData } from '@/lib/sports/nhl/ad
 import type { HoopsHockeyTeamResearchPayload } from '@/lib/sports/multiSport/hoopsHockeyTeamResearch';
 import { toTeamResearchData as toSoccerTeamResearchData } from '@/lib/sports/soccer/adapters/teamDetailAdapter';
 
-/**
- * The team page — R7. One component for every sport: a hero with the record
- * and standing, ONE season switch that scopes every section below it, then the
- * sections the sport's adapter builds (results & schedule, standings, team
- * stats, roster production, the sport's own), then sources.
- *
- * Which adapter runs is decided once, in `teamResearchFor`, the way
- * `PlayerDetail` picks a sport's `toPlayerResearchData`; nothing below it
- * knows the sport.
- */
-
-export const TEAM_RESEARCH_SPORTS = ['mlb', 'nfl', 'cfb', 'nba', 'nhl', 'soccer_epl', 'soccer_mls'] as const;
-
 function teamResearchFor(sport: string, payload: TeamResearchPayload, season: number | null): TeamResearchData | null {
   switch (sport) {
     case 'mlb':

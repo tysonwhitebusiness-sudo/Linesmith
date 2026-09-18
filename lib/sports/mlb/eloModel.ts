@@ -19,18 +19,8 @@
  * comment) rather than pure guesses, but none are fit against outcomes yet.
  */
 
-import {
-  writeEloHistory,
-  getCurrentElo as dbGetCurrentElo,
-  getLatestEloBeforeSeason,
-  getMostRecentEloGame,
-  recentPitcherGameScores,
-  teamBaselineGameScore,
-  writePitcherGameScore,
-  type EloHistoryRow,
-  type PitcherGameScoreRow,
-} from '../../db/client';
-import { getScheduleRange, easternDate, getLiveFeed } from './statsapi';
+import { writeEloHistory, getCurrentElo as dbGetCurrentElo, getLatestEloBeforeSeason, recentPitcherGameScores, teamBaselineGameScore, type EloHistoryRow } from '../../db/client';
+import { getScheduleRange, easternDate } from './statsapi';
 
 const ELO_SCALE = 400; // standard logistic Elo scale (chess convention, widely reused in sports Elo)
 const DEFAULT_K = 5; // MLB's game-to-game randomness calls for a much gentler K than chess's 32 — tunable, still not fit against outcomes
@@ -51,13 +41,6 @@ export const SEASON_REGRESSION_FACTOR = 1 / 3;
 export function regressToMean(priorRating: number, factor: number = SEASON_REGRESSION_FACTOR): number {
   return STARTING_ELO + factor * (priorRating - STARTING_ELO);
 }
-
-// ---------------------------------------------------------------------------
-// Rest (item 2)
-// ---------------------------------------------------------------------------
-
-/** FiveThirtyEight's published value: each day of rest is worth roughly 2.3 rating points, capped at 3 days. */
-export const REST_POINTS_PER_DAY = 2.3;
 export const MAX_REST_DAYS = 3;
 
 /** Days between a team's last game and this one, minus the game day itself — back-to-back games are 0 days of rest. No prior game on record (season/history start) is treated as fully rested. */
@@ -65,10 +48,6 @@ export function daysOfRest(lastGameDate: string | null, thisGameDate: string): n
   if (!lastGameDate) return MAX_REST_DAYS;
   const diffDays = Math.round((Date.parse(thisGameDate) - Date.parse(lastGameDate)) / 86_400_000);
   return Math.max(0, diffDays - 1);
-}
-
-export function restBonus(days: number): number {
-  return Math.min(MAX_REST_DAYS, Math.max(0, days)) * REST_POINTS_PER_DAY;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,14 +105,6 @@ function haversineMiles(a: { lat: number; lon: number }, b: { lat: number; lon: 
   return R * 2 * Math.asin(Math.sqrt(h));
 }
 
-/** 538 discloses a max of ~4 points but not the curve shape — linear up to a cross-country-flight-scale distance is a reasonable, disclosed approximation, not a wild guess: a max-penalty trip should look like LA-to-Boston, not a short regional hop. */
-export const MAX_TRAVEL_PENALTY = 4;
-export const MILES_FOR_MAX_TRAVEL_PENALTY = 2500;
-
-export function travelPenalty(miles: number): number {
-  return Math.min(MAX_TRAVEL_PENALTY, (Math.max(0, miles) / MILES_FOR_MAX_TRAVEL_PENALTY) * MAX_TRAVEL_PENALTY);
-}
-
 /** Distance between where a team last played and where they're playing today (today's home team's city, for both sides). */
 export function travelMiles(lastLocationTeamId: number | null, todayLocationTeamId: number): number {
   if (lastLocationTeamId == null) return 0;
@@ -162,20 +133,6 @@ export interface PitcherLineForGameScore {
   unearnedRuns: number;
   walks: number;
   strikeouts: number;
-}
-
-export function computeGameScore(line: PitcherLineForGameScore): number {
-  const outsBeyond4th = Math.max(0, line.outs - 12);
-  return (
-    50 +
-    line.outs +
-    2 * outsBeyond4th -
-    2 * line.hits -
-    4 * line.earnedRuns -
-    2 * line.unearnedRuns -
-    line.walks +
-    line.strikeouts
-  );
 }
 
 /** 538's published multiplier: a start's Game Score, compared to the team's own rolling baseline, swings that team's effective rating by roughly 4.7x the gap. */
@@ -253,13 +210,6 @@ export interface PredictionAdjustments {
   awayTravelMiles?: number;
   homePitcherAdj?: number;
   awayPitcherAdj?: number;
-}
-
-export function predictHomeWinProb(homeElo: number, awayElo: number, adj: PredictionAdjustments = {}): number {
-  const homeEffective =
-    homeElo + HOME_ELO_BONUS + restBonus(adj.homeRestDays ?? 0) - travelPenalty(adj.homeTravelMiles ?? 0) + (adj.homePitcherAdj ?? 0);
-  const awayEffective = awayElo + restBonus(adj.awayRestDays ?? 0) - travelPenalty(adj.awayTravelMiles ?? 0) + (adj.awayPitcherAdj ?? 0);
-  return 1 / (1 + Math.pow(10, -(homeEffective - awayEffective) / ELO_SCALE));
 }
 
 // ---------------------------------------------------------------------------
@@ -397,9 +347,4 @@ export function restAndTravelFromState(state: CurrentElo, gameDate: string, toda
     restDays: daysOfRest(state.lastGameDate, gameDate),
     miles: travelMiles(state.lastLocationTeamId, todayHomeTeamId),
   };
-}
-
-/** Rest + travel for one team's upcoming game — the live-path counterpart used at prediction time, sourced from Elo history so it works whether the team's last game was this season or last. */
-export async function restAndTravelFor(teamId: number, season: number, gameDate: string, todayHomeTeamId: number): Promise<{ restDays: number; miles: number }> {
-  return restAndTravelFromState(await getCurrentElo(teamId, season), gameDate, todayHomeTeamId);
 }

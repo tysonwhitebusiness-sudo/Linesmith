@@ -192,20 +192,6 @@ export function propline2Config(): ProviderConfig & { dailyLimit: number } {
   };
 }
 
-/**
- * TheRundown — game-lines/schedule/live-score enrichment ONLY. Its free tier
- * explicitly excludes player props ("No player props or alt markets" — their
- * own pricing page); Starter ($49/mo) is required for that. Deliberately not
- * a `ProviderAdapter` in the props registry — see `lib/odds/rundown.ts`,
- * which follows `oddsHarvester.ts`'s pattern (game-line enrichment) instead.
- */
-export function rundownConfig(): { enabled: boolean; key: string | null } {
-  return {
-    enabled: truthy(process.env.RUNDOWN_ENABLED, true) && !!process.env.RUNDOWN_KEY,
-    key: process.env.RUNDOWN_KEY ?? null,
-  };
-}
-
 export function userSportsbook(): string {
   return process.env.USER_SPORTSBOOK ?? 'Fanatics';
 }

@@ -20,13 +20,6 @@
 
 export type MarketTrust = 'proven' | 'weak' | 'building' | 'excluded';
 
-export const MARKET_TRUST_LABEL: Record<MarketTrust, string> = {
-  proven: 'Proven',
-  weak: 'Weak',
-  building: 'Building Track Record',
-  excluded: 'Excluded',
-};
-
 /** Below this many live-graded rows, a BSS estimate is noise, not evidence — same instinct as goodBets.ts's TRUST_MIN_GRADED_SAMPLE, tuned for this narrower live-only (non-backfill) pool. */
 export const TRUST_MIN_LIVE_SAMPLE = 50;
 /** A market whose live model shows this much real skill over its own naive baseline earns Proven. */

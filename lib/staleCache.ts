@@ -69,8 +69,3 @@ export function triggerBackgroundRebuild(key: string, task: () => Promise<unknow
 export async function awaitRebuild<T>(key: string, task: () => Promise<T>): Promise<T> {
   return getOrStart(key, task);
 }
-
-/** True while a background rebuild for `key` is in flight — lets a caller avoid redundant work (e.g. the proactive scheduler skipping a tick that a request-triggered rebuild is already covering). */
-export function isRebuildInFlight(key: string): boolean {
-  return inFlight.has(key);
-}

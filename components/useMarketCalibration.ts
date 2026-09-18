@@ -53,9 +53,8 @@ export interface MarketCalibrationState {
  * markets are currently trustworthy enough for an edge computed against them
  * to mean anything.
  *
- * `enabled` (default `true`) — set `false` when a parent has already fetched
- * this and is passing its result down instead (see `GameDetail`'s nested
- * `PlayerDetail`), same idiom as `usePropOdds`'s own `enabled` param.
+ * `enabled` (default `true`) — same idiom as `usePropOdds`'s own `enabled`
+ * param; every caller passes `true` since the old game page went (R11a).
  *
  * `sport` (default `'mlb'`, Phase 2 of docs/scan-playerdetail-parity-
  * gameplan-2026-08-27.md) — every caller before this fix implicitly got

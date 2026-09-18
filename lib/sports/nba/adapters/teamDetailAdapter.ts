@@ -13,7 +13,6 @@ import { seasonLabel } from '@/lib/sports/shared/season';
 import type { ResearchCard, ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
 import type { TeamResearchData } from '@/lib/sports/shared/teamResearchShapes';
 import { NBA_TEAM_SPEC } from './teamResearchSpec';
-import type { RecentResultRow } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import type { NbaTeam, NbaPregameLine } from '@/lib/sports/nba/espn';
 import type { EspnTeamSportGame } from '@/lib/sports/multiSport/teamSportEspn';
 import type { EspnInjuryRow } from '@/lib/sports/multiSport/teamSportEspn';
@@ -23,7 +22,6 @@ interface NbaRosterSeasonStats {
   rebounds: number;
   assists: number;
 }
-
 
 export interface NbaTeamDetailApiResponse {
   team: NbaTeam;
@@ -35,25 +33,6 @@ export interface NbaTeamDetailApiResponse {
   injuries: EspnInjuryRow[];
   /** Real logo per real NBA abbreviation (2026-08-24) — feeds the distribution chart's `logoFor`. */
   logoByAbbr: Record<string, string>;
-}
-
-/** Real final scores from ESPN's scoreboard `score`/`status` fields — no draws in basketball, so `isDraw` is always false. */
-export function toNbaRecentResultRows(games: EspnTeamSportGame[], teamId: string): RecentResultRow[] {
-  return games.map((g) => {
-    const isHome = g.homeTeamId === teamId;
-    const scoreFor = isHome ? g.homeScore : g.awayScore;
-    const scoreAgainst = isHome ? g.awayScore : g.homeScore;
-    const resolved = g.status?.completed === true && scoreFor != null && scoreAgainst != null;
-    return {
-      gameId: g.gameId,
-      date: g.date,
-      win: resolved ? scoreFor > scoreAgainst : null,
-      opponentAbbr: isHome ? g.awayAbbr : g.homeAbbr,
-      isHome,
-      scoreFor: scoreFor ?? 0,
-      scoreAgainst: scoreAgainst ?? 0,
-    };
-  });
 }
 
 // ---------------------------------------------------------------------------

@@ -9,11 +9,10 @@ import { fetchEspnSummary } from '@/lib/sports/espn/summary';
  * with its own `labels`/`athletes` — a different shape from NBA's flat
  * `names`/`athletes`, not reused from `nba/liveGame.ts`), `scoringPlays[]`
  * gives the real scoring timeline directly (type/team/period/clock/score),
- * and `competitors[].linescores[]` gives real per-quarter score. NFL's
- * `lib/sports/nfl/liveGameState.ts` already parses this same summary
- * endpoint's `situation` (down/distance/redzone) for the hero card's inline
- * live strip — this module is the deeper Live-tab read of the same
- * response, not a replacement for that file. Deliberately uncached — same
+ * and `competitors[].linescores[]` gives real per-quarter score. It also
+ * reads the summary's `situation` (down/distance/redzone), which
+ * `nfl/liveGameState.ts` parsed for the old game page's strip until R11a
+ * deleted both. Deliberately uncached — same
  * live-data contract as `app/api/mlb/game/[gameId]/live/route.ts`.
  */
 
@@ -68,8 +67,8 @@ export interface FootballLiveGameDetail {
   homeLinescores: number[];
   /**
    * Down, distance and possession, from the same summary's
-   * `competitions[0].situation` — the shape `nfl/liveGameState.ts` already
-   * reads for the hero strip, parsed here so CFB gets it too (R6.3's live
+   * `competitions[0].situation` — the shape the old `nfl/liveGameState.ts`
+   * read for the hero strip (deleted in R11a), parsed here so CFB gets it too (R6.3's live
    * card). ESPN only sends it once a game has live plays, so every field is
    * null before kickoff and after the final whistle.
    */

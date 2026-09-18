@@ -135,16 +135,6 @@ export function ordinal(rank: number): string {
   return `${rank}${suffix}`;
 }
 
-/** "#12 " to lead a pitcher's name with their overall composite rank — empty string (not "#N/A") until the rankings have been computed for the season, so a name just reads plainly instead of showing a placeholder. */
-export function pitcherRankPrefix(overallRank: { rank: number | null; poolSize: number } | undefined): string {
-  return overallRank?.rank != null ? `#${overallRank.rank} ` : '';
-}
-
-/** Baseball convention drops the leading zero — ".179", never "0.179". */
-function formatAvg(rate: number): string {
-  return rate.toFixed(3).replace(/^0\./, '.');
-}
-
 // ---------------------------------------------------------------------------
 // Distribution chart
 // ---------------------------------------------------------------------------
@@ -892,7 +882,6 @@ export function PlayerDetail({
     setLastN('all');
     setSelectedRound(null);
   }, [active?.subjectId]);
-
 
   const meta = (active?.subjectMeta ?? {}) as Record<string, unknown>;
 
@@ -1874,7 +1863,6 @@ export function PlayerDetail({
             <Chip title="The model's probability for this side. MLB's model is computed at fixed lines, so it names its own line when that is not the line in view.">{modelText}</Chip>
           ) : null}
 
-
           {lineOffset !== 0 ? (
             <button
               type="button"
@@ -1978,7 +1966,6 @@ export function PlayerDetail({
               selfHeadshotUrl={data.subject.headshotUrl}
             />
           ) : null}
-
 
           {/* THE BOARD DECIDES WHICH COLUMN, NOT THE ORDER THESE WERE WRITTEN IN.
               `docs/design/_ps-body.html` lays the page out as `1fr 288px` and

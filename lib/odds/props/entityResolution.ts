@@ -363,44 +363,6 @@ export function normalizeBookmaker(raw: string): string | null {
   return BOOKMAKER_ALIASES[key] ?? null;
 }
 
-/**
- * Regional/licence suffixes the-odds-api appends to a book's key —
- * `bet365.us`, `BetOnline.ag`, `LowVig.ag`, `MyBookie.ag`. Stripped ONLY when
- * what remains is itself a known book, which is why the exact-match lookup in
- * `canonicalBookmaker` runs first: `betus` is a real sportsbook whose name
- * ends in "us", and a blind strip would turn it into the nonexistent "bet".
- */
-const BOOKMAKER_REGION_SUFFIXES = ['us', 'ag', 'au', 'uk', 'eu', 'ca'] as const;
-
-/**
- * Collapse a bookmaker string to one canonical spelling, for the GAME-LINE
- * path. Deliberately NOT the same function as `normalizeBookmaker` above, and
- * the one difference is the point: `normalizeBookmaker` returns null for an
- * unrecognised book, and the prop path depends on that — a null is what pushes
- * the row into `odds_unresolved` so a new book gets noticed rather than
- * silently stored. Game lines have no equivalent reporting path, and dropping
- * a real price because its spelling is new would be worse than storing it
- * under its own cleaned name, so this always returns something for a non-empty
- * input.
- *
- * Port of python-odds-service/src/entity_resolution.py's
- * `canonical_bookmaker`; task 5.11's drift test asserts they agree.
- */
-export function canonicalBookmaker(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const key = raw.trim().toLowerCase().replace(/[\s._-]+/g, '');
-  if (!key) return null;
-  const mapped = BOOKMAKER_ALIASES[key];
-  if (mapped) return mapped;
-  for (const suffix of BOOKMAKER_REGION_SUFFIXES) {
-    if (key.endsWith(suffix)) {
-      const base = key.slice(0, -suffix.length);
-      if (BOOKMAKER_ALIASES[base]) return BOOKMAKER_ALIASES[base];
-    }
-  }
-  return key;
-}
-
 // ---------------------------------------------------------------------------
 // Convenience for adapters
 // ---------------------------------------------------------------------------

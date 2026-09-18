@@ -13,8 +13,6 @@
 
 import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 
-const BASE = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl';
-
 async function cachedJson<T>(cacheKey: string, url: string, ttlMs: number): Promise<T | null> {
   const cached = await readSnapshotCache(cacheKey);
   if (cached && Date.now() - Date.parse(cached.fetchedAt) < ttlMs) {
@@ -117,22 +115,4 @@ export interface NflInjuryEntry {
   playerName: string;
   teamName: string;
   status: string; // e.g. "Questionable", "Out", "Doubtful"
-}
-
-export async function getLeagueInjuries(): Promise<NflInjuryEntry[]> {
-  const json = await cachedJson<{
-    injuries?: Array<{
-      displayName: string;
-      injuries?: Array<{ athlete?: { displayName?: string }; status?: string }>;
-    }>;
-  }>('espn-nfl-injuries', 'https://site.web.api.espn.com/apis/site/v2/sports/football/nfl/injuries', 30 * 60_000);
-
-  const entries: NflInjuryEntry[] = [];
-  for (const team of json?.injuries ?? []) {
-    for (const injury of team.injuries ?? []) {
-      if (!injury.athlete?.displayName || !injury.status) continue;
-      entries.push({ playerName: injury.athlete.displayName, teamName: team.displayName, status: injury.status });
-    }
-  }
-  return entries;
 }

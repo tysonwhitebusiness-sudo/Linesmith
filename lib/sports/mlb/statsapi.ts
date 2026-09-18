@@ -1134,60 +1134,6 @@ export async function getActiveRoster(teamId: number, season: number): Promise<R
     }));
 }
 
-/**
- * Season-aggregate stat lines (not per-game logs — `getPeopleWithGameLogs`
- * already covers that for props). A Teams page roster wants "what has this
- * player done this year" as one number per stat, which the API already
- * totals server-side rather than requiring every gamelog summed client-side.
- */
-export async function getPeopleSeasonStats(
-  ids: number[],
-  group: 'hitting' | 'pitching',
-  season: number,
-  batchSize = 40,
-): Promise<Map<number, Record<string, number | undefined>>> {
-  const unique = [...new Set(ids)].filter((id) => Number.isFinite(id));
-  const out = new Map<number, Record<string, number | undefined>>();
-  if (unique.length === 0) return out;
-
-  const num = (v: unknown) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : undefined;
-  };
-
-  const batches = chunk(unique, batchSize);
-  const results = await mapLimit(batches, 3, (batch) => {
-    const key = `people-season:${group}:${season}:${batch.join(',')}`;
-    const url = `${BASE}/v1/people?personIds=${batch.join(',')}&hydrate=stats(group=${group},type=season,season=${season})`;
-    return cachedJson(key, url, 60 * 60_000);
-  });
-
-  for (const json of results) {
-    for (const person of json?.people ?? []) {
-      const split = (person.stats ?? []).find((s: any) => s?.type?.displayName === 'season')?.splits?.[0];
-      const raw = split?.stat;
-      if (!raw) continue;
-      out.set(person.id, {
-        gamesPlayed: num(raw.gamesPlayed),
-        avg: num(raw.avg),
-        obp: num(raw.obp),
-        slg: num(raw.slg),
-        ops: num(raw.ops),
-        homeRuns: num(raw.homeRuns),
-        rbi: num(raw.rbi),
-        stolenBases: num(raw.stolenBases),
-        era: num(raw.era),
-        wins: num(raw.wins),
-        losses: num(raw.losses),
-        saves: num(raw.saves),
-        strikeOuts: num(raw.strikeOuts),
-        whip: num(raw.whip),
-      });
-    }
-  }
-  return out;
-}
-
 // ---------------------------------------------------------------------------
 // Recent results / head-to-head
 // ---------------------------------------------------------------------------

@@ -22,7 +22,6 @@ import { footballTeamSpec } from '@/lib/sports/nfl/adapters/teamResearchSpec';
 import { buildTeamResearch, formatRecord, gameResult } from '@/lib/sports/shared/teamResearch';
 import type { ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
 import type { TeamGame, TeamResearchData, TeamResearchSpec } from '@/lib/sports/shared/teamResearchShapes';
-import type { RecentResultRow } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import type { CfbTeam, CfbPregameLine } from '@/lib/sports/cfb/espn';
 import type { EspnTeamSportGame } from '@/lib/sports/multiSport/teamSportEspn';
 import type { CfbTeamDefenseAllowed } from '@/lib/sports/cfb/teamDefenseAllowed';
@@ -34,12 +33,6 @@ interface CfbRosterSeasonStats {
   receivingYards: number;
   receptions: number;
 }
-
-
-
-
-
-
 
 export interface CfbTeamDetailApiResponse {
   team: CfbTeam;
@@ -58,25 +51,6 @@ export interface CfbTeamDetailApiResponse {
   injuries: EspnInjuryRow[];
   /** Real logo per real FBS abbreviation (2026-08-24) — feeds the distribution chart's `logoFor`. */
   logoByAbbr: Record<string, string>;
-}
-
-/** Real final scores from ESPN's scoreboard `score`/`status` fields — no draws in football, so `isDraw` is always false (the field exists on `RecentResultRow` for soccer; harmless/unused here). */
-export function toCfbRecentResultRows(games: EspnTeamSportGame[], teamId: string): RecentResultRow[] {
-  return games.map((g) => {
-    const isHome = g.homeTeamId === teamId;
-    const scoreFor = isHome ? g.homeScore : g.awayScore;
-    const scoreAgainst = isHome ? g.awayScore : g.homeScore;
-    const resolved = g.status?.completed === true && scoreFor != null && scoreAgainst != null;
-    return {
-      gameId: g.gameId,
-      date: g.date,
-      win: resolved ? scoreFor > scoreAgainst : null,
-      opponentAbbr: isHome ? g.awayAbbr : g.homeAbbr,
-      isHome,
-      scoreFor: scoreFor ?? 0,
-      scoreAgainst: scoreAgainst ?? 0,
-    };
-  });
 }
 
 // ---------------------------------------------------------------------------

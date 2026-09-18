@@ -6,23 +6,15 @@ import { GAME_HISTORY_MARKETS } from '../lib/odds/gameLineHistory';
 /**
  * Game-market line movement — Phase 6.22.
  *
- * The read itself is a Postgres query and is verified by running it (20 books
- * and 17 buckets on a real event, DraftKings moving -124 to -237). What is
- * asserted here is the part that can go wrong silently: the SQL-safety guards
- * on the two values this module interpolates rather than parameterises. (The
- * route and its allowlists went in R11a; the game pages call the module
- * server-side with fixed markets.)
+ * The reads are Postgres queries, verified by running them. What is asserted
+ * here is the part that can go wrong silently: caller text reaching SQL, and
+ * the pre-start/in-game window split. (The bucketed history read, its route and
+ * their allowlists went in R11a — nothing called them once the old game page
+ * was deleted. The game pages call the open/close and in-game reads
+ * server-side, with no interpolated values left.)
  */
 
 const SRC = readFileSync('lib/odds/gameLineHistory.ts', 'utf8');
-
-test('the two interpolated values are both guarded before reaching SQL', () => {
-  // `bucketSeconds` and `hours` go into a divisor and an interval literal,
-  // where a `?` placeholder cannot stand in — so the guard is the only defence.
-  assert.match(SRC, /Number\.isInteger\(bucketSeconds\)/);
-  assert.match(SRC, /Number\.isFinite\(q\.hours\)/);
-  assert.match(SRC, /Math\.round\(q\.hours\)/, 'a fractional hours would reach the interval literal unrounded');
-});
 
 test('every caller-supplied value is parameterised, never interpolated', () => {
   // eventId, market and side are all caller text. If any appears inside a
@@ -38,12 +30,6 @@ test('every caller-supplied value is parameterised, never interpolated', () => {
 test('the markets are the three the table actually holds', () => {
   // Measured 2026-08-31: moneyline 558 events, total 277, spread 68.
   assert.deepEqual([...GAME_HISTORY_MARKETS], ['moneyline', 'total', 'spread']);
-});
-
-test('the bucket takes the LAST observation in each window, not the first', () => {
-  // A bucket should read as "where the price ended up". Ascending order here
-  // would make it "where it happened to start".
-  assert.match(SRC, /ORDER BY bookmaker, bucket, observed_at DESC/);
 });
 
 // R2 — the pre-start split. On the G2 fixture (MLB KC @ BOS, pk 824711) 1,790 of

@@ -87,7 +87,3 @@ export interface UnresolvedGolfer {
   rawValue: string;
   context?: string;
 }
-
-export function unresolvedGolfer(rawValue: string, context?: string): UnresolvedGolfer {
-  return { rawValue, context };
-}

@@ -58,10 +58,6 @@ function sample(stops: Rgb[], t: number): Rgb {
   return lerp(stops[1], stops[2], (x - 0.5) / 0.5);
 }
 
-function darken(rgb: Rgb, factor: number): Rgb {
-  return { r: Math.round(rgb.r * factor), g: Math.round(rgb.g * factor), b: Math.round(rgb.b * factor) };
-}
-
 const css = ({ r, g, b }: Rgb, alpha = 1) =>
   alpha >= 1 ? `rgb(${r} ${g} ${b})` : `rgb(${r} ${g} ${b} / ${alpha})`;
 
@@ -107,14 +103,6 @@ export function compareInk(t: number): string {
   return css(sample(COMPARE_STOPS, t));
 }
 
-/**
- * How far from neutral this value sits, 0 (dead centre) → 1 (either extreme).
- * Used to fade the tint so a 52% rate doesn't shout as loudly as a 95% one.
- */
-export function heatIntensity(t: number): number {
-  return Math.abs(clamp01(t) - 0.5) * 2;
-}
-
 export interface HeatStyle {
   color: string;
   backgroundColor: string;
@@ -125,35 +113,6 @@ export interface TileStyle {
   backgroundColor: string;
   backgroundImage: string;
   color: string;
-}
-
-/** Light at the bottom fading to dark at the top, layered over the flat fill so every tile reads as a card with depth rather than a flat swatch. */
-const TILE_SHEEN = 'linear-gradient(to top, rgba(255,255,255,0.25), rgba(0,0,0,0.22))';
-
-/**
- * A solid-fill tile rather than a subtle tint — red (0) through yellow-amber
- * (0.5, the app's `warn` token) to dark green (1, the app's `good` token —
- * deliberately richer than the `masters` brand green). Continuous, not bucketed: for a dense table meant to be scanned
- * by colour first and read second, "how strong is this" should track the
- * exact value, not five discrete steps. Text is the same hue as the fill,
- * just darkened — a monochrome tile rather than white-on-colour.
- */
-export function heatTile(t: number): TileStyle {
-  const fill = sample(FILL_STOPS, t);
-  return { backgroundColor: css(fill), backgroundImage: TILE_SHEEN, color: css(darken(fill, 0.5)) };
-}
-
-/**
- * Badge treatment for a rate: coloured text on a tint whose opacity scales
- * with how far the value sits from neutral.
- */
-export function heatBadge(t: number, { maxAlpha = 0.16 } = {}): HeatStyle {
-  const strength = heatIntensity(t);
-  return {
-    color: heatInk(t),
-    backgroundColor: heatFill(t, 0.05 + strength * maxAlpha),
-    borderColor: heatFill(t, 0.12 + strength * 0.2),
-  };
 }
 
 /**
@@ -176,18 +135,6 @@ export function rankToHeat(value: number, min: number, max: number): number {
   if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max)) return 0.5;
   if (max === min) return 0.75;
   return clamp01((value - min) / (max - min));
-}
-
-/**
- * Confidence damping for tiny samples.
- *
- * A 3-for-3 and a 30-for-30 are both 100%, but only one of them earns a
- * saturated badge. Pulls `t` toward neutral until the sample is worth trusting.
- */
-export function dampenForSample(t: number, sampleSize: number, trusted = 8): number {
-  if (sampleSize >= trusted || trusted <= 0) return clamp01(t);
-  const weight = Math.max(0, sampleSize) / trusted;
-  return clamp01(0.5 + (clamp01(t) - 0.5) * weight);
 }
 
 // ---------------------------------------------------------------------------

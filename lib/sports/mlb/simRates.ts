@@ -5,7 +5,7 @@
  * later phases add per-batter, per-pitcher, and bullpen builders here.
  */
 
-import { getLeagueBatterSeasonRows, getPeopleWithGameLogs, getLeagueStartingPitcherStats, getLeaguePitcherRolePools, getActiveRoster, type GameLogSplit } from './statsapi';
+import { getLeagueBatterSeasonRows, getPeopleWithGameLogs, getActiveRoster, type GameLogSplit } from './statsapi';
 import { makeOutcomeVector, dirichletShrunkVector, type OutcomeVector } from './simEngine';
 
 function num(v: unknown): number {
@@ -156,25 +156,6 @@ export interface LineupOutcomeVectors {
   byBatter: Map<number, OutcomeVector>;
 }
 
-/**
- * Real, shrunk outcome vectors for a specific list of batters (a lineup) —
- * fetches each batter's own season game log, aggregates raw counts, and
- * shrinks toward the league rate via dirichletShrunkVector. `leagueRates` is
- * a required input rather than recomputed here so a caller building a full
- * game (both lineups) only pays for the expensive league-wide aggregation
- * once, not once per lineup.
- */
-export async function computeLineupOutcomeVectors(personIds: number[], season: number, leagueRates: OutcomeVector): Promise<LineupOutcomeVectors> {
-  const logsById = await getPeopleWithGameLogs(personIds, 'hitting', season);
-  const byBatter = new Map<number, OutcomeVector>();
-  for (const id of personIds) {
-    const person = logsById.get(id);
-    const counts = person ? batterOutcomeCounts(person.gameLog) : makeOutcomeVector({});
-    byBatter.set(id, dirichletShrunkVector(counts, leagueRates));
-  }
-  return { leagueRates, byBatter };
-}
-
 export interface RankedBatterRow {
   personId: number;
   fullName: string;
@@ -182,107 +163,10 @@ export interface RankedBatterRow {
   hrRate: number;
 }
 
-/**
- * Whole qualified-batter pool ranked by raw HR rate — Phase 2's own
- * validation tool (an elite vs. replacement-level lineup test doesn't need
- * hardcoded player IDs that go stale season to season) and a reasonable
- * general-purpose "who's actually hit for power this year" helper.
- * `minPA` guards against a 3-PA September call-up's one lucky homer looking
- * like a real 33% HR rate.
- */
-export async function rankBattersByHrRate(season: number, minPA = 200): Promise<RankedBatterRow[]> {
-  const batterPool = await getLeagueBatterSeasonRows(season);
-  const logsById = await getPeopleWithGameLogs(batterPool.map((b) => b.personId), 'hitting', season);
-  const rows: RankedBatterRow[] = [];
-  for (const b of batterPool) {
-    const person = logsById.get(b.personId);
-    if (!person) continue;
-    const counts = batterOutcomeCounts(person.gameLog);
-    const pa = Object.values(counts).reduce((s, v) => s + v, 0);
-    if (pa < minPA) continue;
-    rows.push({ personId: b.personId, fullName: b.fullName, pa, hrRate: counts.HR / pa });
-  }
-  return rows.sort((a, b) => b.hrRate - a.hrRate);
-}
-
-// ---------------------------------------------------------------------------
-// Phase 3 — per-pitcher outcome vectors (allowed rates, not achieved)
-// ---------------------------------------------------------------------------
-
-/**
- * A pitcher's own allowed-rate vector, shrunk the same way a batter's is —
- * uses pitcherOutcomeCounts (not batterOutcomeCounts), since the pitching
- * group's game log has no plateAppearances field to key off of.
- */
-export async function computePitcherOutcomeVectors(personIds: number[], season: number, leagueRates: OutcomeVector): Promise<Map<number, OutcomeVector>> {
-  const logsById = await getPeopleWithGameLogs(personIds, 'pitching', season);
-  const byPitcher = new Map<number, OutcomeVector>();
-  for (const id of personIds) {
-    const person = logsById.get(id);
-    const counts = person ? pitcherOutcomeCounts(person.gameLog) : makeOutcomeVector({});
-    byPitcher.set(id, dirichletShrunkVector(counts, leagueRates));
-  }
-  return byPitcher;
-}
-
 export interface RankedPitcherRow {
   personId: number;
   fullName: string;
   era: number;
-}
-
-/** Qualified starters ranked by ERA (lowest first) — same "don't hardcode a name that goes stale" reasoning as rankBattersByHrRate, using the same era-ranked pool getLeagueStartingPitcherStats already builds for the app's own pitcher-ranking pages. */
-export async function rankStartersByEra(season: number, minGamesStarted = 10): Promise<RankedPitcherRow[]> {
-  const stats = await getLeagueStartingPitcherStats(season);
-  return stats
-    .filter((p) => p.gamesStarted >= minGamesStarted && typeof p.values.era === 'number')
-    .map((p) => ({ personId: p.personId, fullName: p.fullName, era: p.values.era as number }))
-    .sort((a, b) => a.era - b.era);
-}
-
-// ---------------------------------------------------------------------------
-// Phase 4 — bullpen (single blended vector) + starter handoff trigger
-// ---------------------------------------------------------------------------
-
-/**
- * A team's whole bullpen (relievers + closers, role-classified the same way
- * pitcherRankings.ts already does via getLeaguePitcherRolePools) as ONE
- * pooled, shrunk outcome vector — v1's deliberate "who's actually on the
- * mound doesn't matter, just what environment the bullpen creates" scope
- * (see docs/mlb-sim-engine-plan.md §4; per-reliever modeling is a disclosed
- * v2, not attempted here). Counts are pooled across every reliever on the
- * roster before shrinking, not averaged per-pitcher-then-combined — a
- * team's 400 relief innings are one bigger, more trustworthy sample than
- * nine separate small ones.
- */
-export async function computeBullpenOutcomeVector(teamId: number, season: number, leagueRates: OutcomeVector): Promise<OutcomeVector> {
-  const pools = await getLeaguePitcherRolePools(season);
-  const relievers = [...pools.relievers, ...pools.closers].filter((p) => p.raw.teamId === teamId);
-  if (relievers.length === 0) return leagueRates;
-
-  const logsById = await getPeopleWithGameLogs(relievers.map((p) => p.raw.personId), 'pitching', season);
-  let pooled = makeOutcomeVector({});
-  for (const p of relievers) {
-    const person = logsById.get(p.raw.personId);
-    if (!person) continue;
-    const counts = pitcherOutcomeCounts(person.gameLog);
-    for (const key of Object.keys(pooled) as (keyof OutcomeVector)[]) pooled[key] += counts[key];
-  }
-  return dirichletShrunkVector(pooled, leagueRates);
-}
-
-/**
- * A starter's own average innings/start this season — the bullpen handoff
- * trigger (see simEngine.ts's makeStarterBullpenStream). Falls back to a
- * neutral 5.0 (a reasonable modern-era average) when the pitcher isn't found
- * in the role pool at all (e.g. a rookie with too few starts to classify) —
- * same graceful-default convention used throughout this codebase.
- */
-export async function getStarterInningsPerStart(personId: number, season: number): Promise<number> {
-  const pools = await getLeaguePitcherRolePools(season);
-  const starter = pools.starters.find((p) => p.raw.personId === personId);
-  if (!starter || starter.raw.gamesStarted <= 0) return 5.0;
-  return starter.raw.inningsPitched / starter.raw.gamesStarted;
 }
 
 // ---------------------------------------------------------------------------

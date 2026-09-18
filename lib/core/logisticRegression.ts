@@ -259,29 +259,6 @@ export interface ProbInterval {
   se: number;
 }
 
-/**
- * Wald confidence interval for a new prediction via the delta method: the
- * logit z = intercept + w·x is linear in the fitted parameters, so
- * Var(z) = x_aug^T Cov x_aug propagates directly from the parameter
- * covariance: no resampling or refitting needed for a single prediction.
- * zScore=1.645 is the default (90% interval); use 1.96 for 95%.
- */
-export function predictProbWithInterval(features: number[], weights: number[], intercept: number, covariance: number[][], zScore = 1.645): ProbInterval {
-  const xAug = [1, ...features];
-  let variance = 0;
-  for (let a = 0; a < xAug.length; a++) {
-    for (let b = 0; b < xAug.length; b++) variance += xAug[a] * covariance[a][b] * xAug[b];
-  }
-  const se = Math.sqrt(Math.max(variance, 0));
-  const z = intercept + features.reduce((sum, x, j) => sum + weights[j] * x, 0);
-  return {
-    prob: sigmoid(z),
-    lower: sigmoid(z - zScore * se),
-    upper: sigmoid(z + zScore * se),
-    se,
-  };
-}
-
 export function brierScore(predictions: Array<{ prob: number; actual: number }>): number {
   if (predictions.length === 0) return NaN;
   let sum = 0;

@@ -1,20 +1,8 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import type { BookmakerOdds, UnifiedGameLine, UnifiedLinesResult } from '@/lib/odds/types';
-import {
-  EXHAUSTED_CREDIT_THRESHOLD,
-  LOW_CREDIT_THRESHOLD,
-  decimalToAmerican,
-  formatAmerican,
-  formatClock,
-  formatPoint,
-  formatStamp,
-  isInPlay,
-  shortTeam,
-  sourceLabel,
-  type ProjectedLine,
-} from '@/lib/odds/display';
+import type { BookmakerOdds } from '@/lib/odds/types';
+import { decimalToAmerican, formatAmerican, formatPoint, isInPlay, shortTeam, sourceLabel, type ProjectedLine } from '@/lib/odds/display';
 
 // ---------------------------------------------------------------------------
 // Numbers as the anchor
@@ -357,129 +345,6 @@ export function GameLineBlock({
             ? ` · best price at ${line.moneyline.book}`
             : ''}{' '}
         &middot; reference only, check your book
-      </p>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Feed status — freshness, sources, credits, degraded states
-// ---------------------------------------------------------------------------
-
-export function OddsStatusPanel({ result }: { result: UnifiedLinesResult }) {
-  const credits = result.sources?.oddsApi?.requestsRemaining ?? null;
-  const exhausted = credits != null && credits <= EXHAUSTED_CREDIT_THRESHOLD;
-  const low = credits != null && credits <= LOW_CREDIT_THRESHOLD;
-
-  if (!result.enabled) {
-    return (
-      <section className="lb-card p-3">
-        <p className="text-sm text-ink-muted">Game lines are disabled.</p>
-        {result.warnings.map((w) => (
-          <p key={w} className="mt-1 text-[11px] text-warn">
-            {w}
-          </p>
-        ))}
-      </section>
-    );
-  }
-
-  const apiOn = result.sources?.oddsApi?.enabled;
-  const scraperOn = result.sources?.oddsHarvester?.enabled;
-  const liveMatches = result.sources?.oddsHarvester?.matches ?? 0;
-  const feeds = [apiOn ? 'the-odds-api' : null, scraperOn ? 'OddsPortal' : null].filter(Boolean).join(' + ');
-
-  return (
-    <section className="lb-card p-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="text-xs text-ink-muted">
-          Game lines{' '}
-          {formatStamp(result.fetchedAt) ? `as of ${formatStamp(result.fetchedAt)}` : 'unavailable'}
-          {result.fromCache ? <span className="text-ink-muted"> (cached)</span> : null}
-        </p>
-        {credits != null ? (
-          <p className={`text-[11px] font-medium tabular-nums ${low ? 'text-warn' : 'text-ink-muted'}`}>
-            {credits} credits left this month
-          </p>
-        ) : null}
-      </div>
-
-      <p className="mt-0.5 text-[10px] text-ink-muted">
-        {feeds || 'no active feed'}
-        {scraperOn ? ` · ${liveMatches} live match${liveMatches === 1 ? '' : 'es'} from OddsPortal` : ''}
-      </p>
-
-      {exhausted ? (
-        <p className="mt-1.5 text-[11px] text-warn">
-          Only {credits} credits remain — lines are no longer auto-refreshing. Showing the last fetch.
-        </p>
-      ) : result.nextRefreshAt ? (
-        <p className="mt-0.5 text-[10px] text-ink-muted">
-          Next refresh after {formatClock(result.nextRefreshAt)}. Lines move — treat these as a reference
-          point, not a live price.
-        </p>
-      ) : null}
-
-      {result.warnings.map((w) => (
-        <p key={w} className="mt-1 text-[11px] text-warn">
-          {w}
-        </p>
-      ))}
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Compact form, for the player side panel
-// ---------------------------------------------------------------------------
-
-export function TodaysLine({
-  line,
-  projected,
-  liveScore,
-  livePeriod,
-}: {
-  line: UnifiedGameLine;
-  projected: ProjectedLine;
-  liveScore?: { home: string; away: string };
-  livePeriod?: string;
-}) {
-  const away = shortTeam(line.awayTeam);
-  const home = shortTeam(line.homeTeam);
-  const score = liveScore ?? projected.liveScore;
-  const period = liveScore ? livePeriod : projected.livePeriod;
-
-  return (
-    <div>
-      {score ? (
-        <LiveScoreBar liveScore={score} livePeriod={period} awayLabel={away} homeLabel={home} />
-      ) : null}
-
-      <p className="text-[11px] font-medium text-ink-muted">
-        {away} at {home}
-      </p>
-
-      <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2">
-        {projected.moneyline ? (
-          <StatCell label={`ML · ${away} / ${home}`}>
-            <OddsValue price={projected.moneyline.away} />
-            <span className="text-sm text-ink-muted">/</span>
-            <OddsValue price={projected.moneyline.home} />
-          </StatCell>
-        ) : null}
-        {projected.total?.point != null ? (
-          <StatCell label="Total">
-            <span className="text-[19px] font-semibold leading-none tabular-nums">
-              {projected.total.point}
-            </span>
-          </StatCell>
-        ) : null}
-      </div>
-
-      <p className="mt-2 text-[10px] text-ink-muted">
-        {sourceLabel(projected.source)} · best of {projected.bookCount} book
-        {projected.bookCount === 1 ? '' : 's'}
-        {projected.moneyline?.book ? ` · ${projected.moneyline.book}` : ''}
       </p>
     </div>
   );

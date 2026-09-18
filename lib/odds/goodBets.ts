@@ -74,8 +74,7 @@
  * qualified the candidate.
  */
 
-import { subsetWindow, windowSet, type WindowedStat } from '../core/windowedStat';
-import type { PickCandidate } from '../core/types';
+import { type WindowedStat } from '../core/windowedStat';
 
 /**
  * The Good Bets *record* (the win/loss tracker, not the Scan tab) is scoped
@@ -86,27 +85,6 @@ import type { PickCandidate } from '../core/types';
  * to a future recommended-parlays/props-picks feature, not this one.
  */
 export const GAME_LEVEL_DIMENSIONS = ['moneyline', 'total'];
-
-/**
- * Task 4.9 (P3 H8) — ONE threshold used to be applied to TWO incompatible
- * quantities that shared the `edge` column:
- *
- *   model_vs_market  model_prob - devig(one book's two-sided price)
- *                    "how far our model is from a book" — a DISAGREEMENT
- *   sharp_vs_soft    sharp_devigged(side) - raw_implied(bettable book)
- *                    "how much better a sharp fair price is than what you'd
- *                    pay" — EXPECTED VALUE, in probability units
- *
- * 0.03 does not mean the same thing in both. A 3-point model disagreement is
- * commonplace and mostly says the model is opinionated; a 3-point sharp-vs-soft
- * edge is a real, rare, bettable +EV gap. Holding them to the same bar either
- * floods the list with the first or suppresses the second.
- *
- * Each therefore gets its own bar, and `GOOD_BET_MIN_EDGE` is retained as the
- * model-vs-market value so existing readers keep their current behaviour
- * unchanged rather than silently shifting under them.
- */
-export const GOOD_BET_MIN_EDGE = 0.03;
 /** Bar for the DISAGREEMENT quantity. Same 0.03 as before — unchanged behaviour. */
 export const GOOD_BET_MIN_EDGE_MODEL_VS_MARKET = 0.03;
 /**
@@ -412,35 +390,4 @@ export interface CandidateGoodBetSignals {
   streak: number;
   h2h: WindowedStat;
   matchupFavorable: boolean | null;
-}
-
-/**
- * The windowed-stat side of `GoodBetInput`, computed straight from a
- * candidate's own history — the same computation ScanTable's row-building
- * already did for its L5/L10/L15/H2H/Strk/SZN columns, extracted so every
- * `isGoodBet`/`goodBetReasons` call site reads the exact numbers the table
- * shows rather than a second, possibly-drifted copy of the same logic.
- */
-export function candidateGoodBetSignals(candidate: PickCandidate): CandidateGoodBetSignals {
-  const windows = windowSet(candidate.history, candidate.category);
-  const m = (candidate.subjectMeta ?? {}) as Record<string, unknown>;
-  const opponentId = m.opponentId;
-  const h2h = subsetWindow(
-    candidate.history,
-    candidate.category,
-    (entry) => {
-      const raw = entry.raw as { opponentId?: number } | null;
-      return raw?.opponentId != null && opponentId != null && raw.opponentId === Number(opponentId);
-    },
-    { minimum: 1 },
-  );
-  return {
-    l5: windows.l5,
-    l10: windows.l10,
-    l15: windows.l15,
-    szn: windows.szn,
-    streak: windows.streak,
-    h2h,
-    matchupFavorable: typeof m.matchupFavorable === 'boolean' ? m.matchupFavorable : null,
-  };
 }

@@ -132,7 +132,3 @@ export async function buildNhlTeamDefenseAllowedIndex(season: string = currentNh
   await writeSnapshotCache(cacheKey, JSON.stringify([...index.entries()]));
   return index;
 }
-
-export function lookupNhlTeamDefenseAllowed(index: Map<string, NhlTeamDefenseAllowed>, abbr: string): NhlTeamDefenseAllowed | null {
-  return index.get(abbr) ?? null;
-}

@@ -7,7 +7,6 @@
  */
 
 import type { BookmakerOdds, UnifiedGameLine } from './types';
-import { devigTwoWay } from './devig';
 
 /** Above this, a decimal price is a bad row, not a real long-shot line —
  * confirmed live 2026-08-27 (MLB game 822692): a single garbage `tab_au`
@@ -54,20 +53,6 @@ export function impliedFromDecimal(decimal: number | undefined | null): number |
 }
 
 /**
- * Home share of a two-way market, with the overround divided out.
- *
- * Returns `null` when only one side is priced — half a market can't be
- * normalised, and guessing the other half would invent a number.
- */
-export function homeShare(
-  homeDecimal: number | undefined,
-  awayDecimal: number | undefined,
-): number | null {
-  const devigged = devigTwoWay(homeDecimal, awayDecimal);
-  return devigged ? devigged.a : null;
-}
-
-/**
  * Is this period still in play?
  *
  * OddsPortal keeps finished games in the live feed for a while, and a pulsing
@@ -86,34 +71,6 @@ export function sourceLabel(source: OddsSourceId | undefined): string {
   if (source === 'both') return 'the-odds-api + OddsPortal';
   return 'the-odds-api';
 }
-
-/** Short timestamp used everywhere odds freshness is shown. */
-export function formatClock(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-}
-
-export function formatStamp(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
-/**
- * Credit thresholds, mirroring `lib/odds/oddsApi.ts`'s reserve (25) and its
- * warning point (2× reserve). The server's own `warnings[]` remains the
- * authority — these only decide whether the credit *count* is tinted amber.
- */
-export const LOW_CREDIT_THRESHOLD = 50;
-export const EXHAUSTED_CREDIT_THRESHOLD = 25;
 
 /**
  * Observed range of a set of prices, or `null` when there's nothing to compare.
@@ -142,12 +99,6 @@ export function shortTeam(name: string): string {
 // ---------------------------------------------------------------------------
 
 export type SourceFilter = 'all' | 'odds-api' | 'oddsharvester';
-
-export const SOURCE_FILTER_LABEL: Record<SourceFilter, string> = {
-  all: 'All sources',
-  'odds-api': 'the-odds-api',
-  oddsharvester: 'OddsPortal',
-};
 
 export interface ProjectedLine {
   /** False when the chosen source has nothing to say about this game. */

@@ -65,24 +65,6 @@ export function teamAbbrFor(teamId: number | null | undefined): string | undefin
   return teamId != null ? TEAM_ABBR_BY_ID[teamId] : undefined;
 }
 
-/** Full "City Name" team names, keyed by the same team ID — for display contexts (e.g. opponent-grouped gamelog headers) that need more than an abbreviation. */
-const TEAM_NAME_BY_ID: Record<number, string> = {
-  108: 'Los Angeles Angels', 109: 'Arizona Diamondbacks', 110: 'Baltimore Orioles', 111: 'Boston Red Sox',
-  112: 'Chicago Cubs', 113: 'Cincinnati Reds', 114: 'Cleveland Guardians', 115: 'Colorado Rockies',
-  116: 'Detroit Tigers', 117: 'Houston Astros', 118: 'Kansas City Royals', 119: 'Los Angeles Dodgers',
-  120: 'Washington Nationals', 121: 'New York Mets', 133: 'Athletics', 134: 'Pittsburgh Pirates',
-  135: 'San Diego Padres', 136: 'Seattle Mariners', 137: 'San Francisco Giants', 138: 'St. Louis Cardinals',
-  139: 'Tampa Bay Rays', 140: 'Texas Rangers', 141: 'Toronto Blue Jays', 142: 'Minnesota Twins',
-  143: 'Philadelphia Phillies', 144: 'Atlanta Braves', 145: 'Chicago White Sox', 146: 'Miami Marlins',
-  147: 'New York Yankees', 158: 'Milwaukee Brewers',
-};
-
-/** A team ID's full "City Name" — falls back to the abbreviation for an ID outside the table rather than showing nothing. */
-export function teamNameFor(teamId: number | null | undefined): string | undefined {
-  if (teamId == null) return undefined;
-  return TEAM_NAME_BY_ID[teamId] ?? TEAM_ABBR_BY_ID[teamId];
-}
-
 /**
  * The 30 real MLB team ids, derived from the map above rather than typed out a
  * second time — task 3.5.

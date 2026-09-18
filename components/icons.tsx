@@ -209,30 +209,6 @@ export function CalendarIcon(props: { size?: number; className?: string }) {
   ));
 }
 
-export function GridIcon(props: { size?: number; className?: string }) {
-  return outlineSvg(props, (
-    <>
-      <rect x="4" y="4" width="7" height="7" />
-      <rect x="13" y="4" width="7" height="7" />
-      <rect x="4" y="13" width="7" height="7" />
-      <rect x="13" y="13" width="7" height="7" />
-    </>
-  ));
-}
-
-export function ListIcon(props: { size?: number; className?: string }) {
-  return outlineSvg(props, (
-    <>
-      <line x1="8" y1="6" x2="20" y2="6" />
-      <line x1="8" y1="12" x2="20" y2="12" />
-      <line x1="8" y1="18" x2="20" y2="18" />
-      <line x1="4" y1="6" x2="4.01" y2="6" />
-      <line x1="4" y1="12" x2="4.01" y2="12" />
-      <line x1="4" y1="18" x2="4.01" y2="18" />
-    </>
-  ));
-}
-
 export function MoreIcon(props: { size?: number; className?: string }) {
   return outlineSvg(props, (
     <>

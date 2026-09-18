@@ -33,7 +33,7 @@
 
 import { getScheduleRange, getLeagueBatterSeasonRows, getPeopleWithGameLogs, easternDate, type GameLogSplit } from './statsapi';
 import { readParkFactors, writeModelWeights, type ModelWeightsRow } from '../../db/client';
-import { computeModelProbability, priorStrength } from '../../odds/props/edgeModel';
+import { computeModelProbability } from '../../odds/props/edgeModel';
 import { fitLogisticRegression, predictProb, brierScore } from '../../core/logisticRegression';
 import {
   HOME_RUN_FEATURE_NAMES,
@@ -198,15 +198,6 @@ export async function buildHomeRunSeasonRows(season: number): Promise<HomeRunTra
   }
 
   return rows;
-}
-
-/** Multi-season convenience wrapper — sequential (not Promise.all) so a rate-limited/slow season doesn't pile up concurrent multi-hundred-batter pulls against MLB's API at once. */
-export async function buildHomeRunTrainingSet(seasons: number[]): Promise<HomeRunTrainingRow[]> {
-  const all: HomeRunTrainingRow[] = [];
-  for (const season of seasons) {
-    all.push(...(await buildHomeRunSeasonRows(season)));
-  }
-  return all;
 }
 
 // ---------------------------------------------------------------------------

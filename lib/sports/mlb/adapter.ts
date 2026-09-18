@@ -2275,8 +2275,8 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
    *
    * Injuries are deliberately *not* here. They need one roster call per team,
    * which on a 15-game slate is 30 requests on the critical path of a view that
-   * never shows them — measured at roughly 25s of added cold latency. Game
-   * Detail fetches the two teams it actually needs from `/api/mlb/injuries`.
+   * never shows them — measured at roughly 25s of added cold latency. The
+   * game page reads the two teams it needs through `/api/game-research`.
    */
   const teamContext = (teamId: number) => {
     const record = standings.get(teamId);
@@ -2345,7 +2345,7 @@ export async function getMlbSnapshot(now: Date = new Date()): Promise<SportSnaps
   // validated one is the failure this whole remediation exists to end.
   //
   // The consequence is real and was accepted deliberately: the moneyline and
-  // total edge badges in GameDetail.tsx are absent for a game whose cache row
+  // total edge badges are absent for a game whose cache row
   // is missing or stale, rather than silently showing the other model's number.
 
   const anyLive = games.some((g) => g.status === 'live');

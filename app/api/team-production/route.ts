@@ -13,8 +13,7 @@
  *
  * PATTERN 2 — a direct read of `team_game_production`, rewritten daily by
  * `teamProductionJob` (CLAUDE.md). The query sums per-game rows already rolled
- * up per team, not box scores. Sport is a query param for the reason
- * `/api/season-ranks` gives: a dynamic `[sport]` segment beside `app/api/mlb/`
+ * up per team, not box scores. Sport is a query param because a dynamic `[sport]` segment beside `app/api/mlb/`
  * and the rest would swallow every unrecognised path.
  */
 

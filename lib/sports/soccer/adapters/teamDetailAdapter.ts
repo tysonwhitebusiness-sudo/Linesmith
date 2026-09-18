@@ -18,35 +18,9 @@
 import { soccerTeamSpec } from './teamResearchSpec';
 import { buildTeamResearch } from '@/lib/sports/shared/teamResearch';
 import type { TeamResearchData, TeamResearchPayload } from '@/lib/sports/shared/teamResearchShapes';
-import type { RecentResultRow } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import type { SoccerTeam, SoccerPregameLine } from '@/lib/sports/soccer/espn';
 import type { UnderstatTeamDefense } from '@/lib/sports/soccer/understat';
 import type { EspnTeamSportGame } from '@/lib/sports/multiSport/teamSportEspn';
-/**
- * Real final scores from ESPN's scoreboard `score`/`status` fields
- * (teamSportEspn.ts) mapped to one team's perspective — `win`/`isDraw` stay
- * `null`/`false` for a game ESPN hasn't posted a completed status for yet.
- * Shared by this file's own `recentResults` and `gameDetailAdapter.ts`'s
- * records/last-five sections, so both read the exact same real derivation.
- */
-export function toSoccerRecentResultRows(games: EspnTeamSportGame[], teamId: string): RecentResultRow[] {
-  return games.map((g) => {
-    const isHome = g.homeTeamId === teamId;
-    const scoreFor = isHome ? g.homeScore : g.awayScore;
-    const scoreAgainst = isHome ? g.awayScore : g.homeScore;
-    const resolved = g.status?.completed === true && scoreFor != null && scoreAgainst != null;
-    return {
-      gameId: g.gameId,
-      date: g.date,
-      win: resolved ? scoreFor > scoreAgainst : null,
-      isDraw: resolved ? scoreFor === scoreAgainst : false,
-      opponentAbbr: isHome ? g.awayAbbr : g.homeAbbr,
-      isHome,
-      scoreFor: scoreFor ?? 0,
-      scoreAgainst: scoreAgainst ?? 0,
-    };
-  });
-}
 
 interface SoccerRosterSeasonStats {
   /** null for MLS — ASA's season aggregate has no real "games played" field, only minutesPlayed. */
@@ -54,7 +28,6 @@ interface SoccerRosterSeasonStats {
   goals: number;
   assists: number;
 }
-
 
 export interface SoccerTeamDetailApiResponse {
   team: SoccerTeam;

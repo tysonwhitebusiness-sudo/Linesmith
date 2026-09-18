@@ -126,34 +126,6 @@ export interface NflverseGame {
   completed: boolean;
 }
 
-const SCHEDULE_TTL_MS = 6 * 60 * 60_000;
-
-export async function getNflverseSchedule(): Promise<NflverseGame[]> {
-  const rows = await fetchNflverseCsv('schedules', 'games.csv', 'nflverse-games', SCHEDULE_TTL_MS);
-  return rows.map((r) => ({
-    gameId: r.game_id,
-    espnGameId: r.espn,
-    season: r.season,
-    week: r.week,
-    seasonType: r.game_type,
-    gameday: r.gameday,
-    awayTeam: espnAbbr(r.away_team),
-    homeTeam: espnAbbr(r.home_team),
-    awayScore: r.away_score ? Number(r.away_score) : null,
-    homeScore: r.home_score ? Number(r.home_score) : null,
-    completed: r.away_score !== '' && r.home_score !== '',
-  }));
-}
-
-/** This team's completed games, most recent first — the real replacement for espn.ts's schedule-with-results. */
-export async function getTeamRecentResults(teamAbbr: string, limit = 15): Promise<NflverseGame[]> {
-  const games = await getNflverseSchedule();
-  return games
-    .filter((g) => g.completed && (g.awayTeam === teamAbbr || g.homeTeam === teamAbbr))
-    .sort((a, b) => (a.gameday < b.gameday ? 1 : -1))
-    .slice(0, limit);
-}
-
 // ---------------------------------------------------------------------------
 // Player ID crosswalk (replaces guessing — real espn_id -> gsis_id mapping)
 // ---------------------------------------------------------------------------
@@ -465,83 +437,6 @@ const STAT_DEFS = [
 ] as const;
 
 export type NflStatGroup = (typeof STAT_DEFS)[number]['group'];
-
-const TEAM_STATS_TTL_MS = 24 * 60 * 60_000;
-
-/** Real points for/against per team, computed from the schedule (games.csv has no per-team-stats row for scoring — it's the source of truth for scores instead). */
-export async function getPointsPerGame(season: string): Promise<Map<string, { pf: number; pa: number; games: number }>> {
-  const schedule = await getNflverseSchedule();
-  const byTeam = new Map<string, { pf: number; pa: number; games: number }>();
-  for (const g of schedule) {
-    if (g.season !== season || !g.completed) continue;
-    for (const [team, pf, pa] of [
-      [g.homeTeam, g.homeScore, g.awayScore],
-      [g.awayTeam, g.awayScore, g.homeScore],
-    ] as const) {
-      if (pf == null || pa == null) continue;
-      const entry = byTeam.get(team) ?? { pf: 0, pa: 0, games: 0 };
-      entry.pf += pf;
-      entry.pa += pa;
-      entry.games += 1;
-      byTeam.set(team, entry);
-    }
-  }
-  return byTeam;
-}
-
-export async function getNflverseTeamStatsWithRank(season: string = MOST_RECENT_STATS_SEASON): Promise<Record<string, NflverseTeamStatLine[]>> {
-  const [rows, pointsByTeam] = await Promise.all([
-    fetchNflverseCsv('stats_team', `stats_team_reg_${season}.csv`, `nflverse-stats-team-reg-${season}`, TEAM_STATS_TTL_MS),
-    getPointsPerGame(season),
-  ]);
-  const byTeam = new Map<string, Record<string, string>>();
-  for (const r of rows) byTeam.set(espnAbbr(r.team), r);
-
-  const result: Record<string, NflverseTeamStatLine[]> = {};
-  for (const [team, row] of byTeam) {
-    const games = Number(row.games) || 1;
-    const attempts = Number(row.attempts) || 1;
-    const carries = Number(row.carries) || 1;
-    const points = pointsByTeam.get(team);
-    const turnovers = ((Number(row.passing_interceptions) || 0) + (Number(row.fumbles_lost_total) || 0)) / games;
-    const values: Partial<Record<string, number>> = {
-      'points-per-game': points ? points.pf / points.games : undefined,
-      'pass-yards': (Number(row.passing_yards) || 0) / games,
-      'pass-tds': (Number(row.passing_tds) || 0) / games,
-      'pass-epa': (Number(row.passing_epa) || 0) / attempts,
-      'pass-cpoe': Number(row.passing_cpoe) || undefined,
-      'sacks-taken': (Number(row.sacks_suffered) || 0) / games,
-      'rush-yards': (Number(row.rushing_yards) || 0) / games,
-      'rush-tds': (Number(row.rushing_tds) || 0) / games,
-      'rush-epa': (Number(row.rushing_epa) || 0) / carries,
-      receptions: (Number(row.receptions) || 0) / games,
-      turnovers,
-      'def-sacks': (Number(row.def_sacks) || 0) / games,
-      'def-interceptions': (Number(row.def_interceptions) || 0) / games,
-      'def-qb-hits': (Number(row.def_qb_hits) || 0) / games,
-      penalties: (Number(row.penalties) || 0) / games,
-    };
-    result[team] = STAT_DEFS.filter((d) => values[d.key] != null && !Number.isNaN(values[d.key])).map((d) => ({
-      key: d.key,
-      label: d.label,
-      value: values[d.key]!,
-      decimals: d.decimals,
-      group: d.group,
-      rank: 0, // filled below
-    }));
-  }
-
-  // Rank each stat across all teams that have it.
-  for (const def of STAT_DEFS) {
-    const entries = [...byTeam.keys()]
-      .map((team) => ({ team, line: result[team]?.find((l) => l.key === def.key) }))
-      .filter((e): e is { team: string; line: NflverseTeamStatLine } => e.line != null);
-    const sorted = [...entries].sort((a, b) => (def.higherIsBetter ? b.line.value - a.line.value : a.line.value - b.line.value));
-    sorted.forEach((e, i) => { e.line.rank = i + 1; });
-  }
-
-  return result;
-}
 
 // ---------------------------------------------------------------------------
 // Defense allowed — the "vs. Defense" matchup card's real data. Not a column

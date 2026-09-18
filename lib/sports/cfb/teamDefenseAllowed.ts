@@ -17,7 +17,6 @@ import { readSnapshotCache, writeSnapshotCache } from '@/lib/db/client';
 import { normalizeName } from '@/lib/core/normalizeName';
 import { currentCfbdSeason, fetchFbsTeamNames, loadCfbdTeamContext } from './cfbd';
 import { cfbTeamLogoByCfbdName } from './espn';
-import { fuzzyMatchCfbTeamDefenseAllowed } from './teamDefenseAllowedMatch';
 
 export interface CfbTeamDefenseAllowed {
   teamName: string;
@@ -183,26 +182,4 @@ export async function buildCfbTeamDefenseAllowedIndex(season: string = currentCf
 
   await writeSnapshotCache(cacheKey, JSON.stringify([...index.entries()]));
   return index;
-}
-
-/** Exact lookup when the caller already has CFBD's own school-name spelling (e.g. from `matchCfbdTeamName`). */
-export function lookupCfbTeamDefenseAllowed(index: Map<string, CfbTeamDefenseAllowed>, cfbdTeamName: string): CfbTeamDefenseAllowed | null {
-  return index.get(normalizeName(cfbdTeamName)) ?? null;
-}
-
-/**
- * Fuzzy lookup for a caller that only has ESPN's own display name/abbreviation
- * for the opponent (the `playerDetailAdapter.ts` matchup card's real
- * situation — it never resolved a clean CFBD school name the way
- * `cfb/adapter.ts`'s history join already does). Exact normalized match
- * first, then substring either-direction — same fallback shape
- * `matchUnderstatTeamName` uses for soccer's identical ESPN-vs-third-party
- * naming gap.
- */
-export function fuzzyLookupCfbTeamDefenseAllowed(index: Map<string, CfbTeamDefenseAllowed>, espnName: string): CfbTeamDefenseAllowed | null {
-  const normalizedEspn = normalizeName(espnName);
-  if (!normalizedEspn) return null;
-  const exact = index.get(normalizedEspn);
-  if (exact) return exact;
-  return fuzzyMatchCfbTeamDefenseAllowed([...index.values()], espnName);
 }

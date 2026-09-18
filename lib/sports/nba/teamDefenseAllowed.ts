@@ -190,7 +190,3 @@ export async function buildNbaTeamDefenseAllowedIndex(seasonYear: number = curre
   await writeSnapshotCache(cacheKey, JSON.stringify([...index.entries()]));
   return index;
 }
-
-export function lookupNbaTeamDefenseAllowed(index: Map<string, NbaTeamDefenseAllowed>, abbr: string): NbaTeamDefenseAllowed | null {
-  return index.get(abbr) ?? null;
-}

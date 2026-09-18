@@ -37,8 +37,7 @@
  */
 
 import { pgAll } from '@/lib/db/pgClient';
-import { bucketSecondsFor } from '@/lib/odds/props/lineHistory';
-import type { LineHistoryPoint, LineHistorySeries } from '@/lib/odds/props/lineHistory';
+import type { LineHistorySeries } from '@/lib/odds/props/lineHistory';
 
 /** The three markets `game_odds_history` actually holds. Measured: moneyline 558 events, total 277, spread 68. */
 export const GAME_HISTORY_MARKETS = ['moneyline', 'total', 'spread'] as const;
@@ -110,97 +109,6 @@ export function historyWindows(startsAt: string | null | undefined, hours: numbe
   return {
     pre: { from: new Date(start.getTime() - hours * 3600_000), to: start },
     inGame: { from: start, to: inGameEnd },
-  };
-}
-
-async function readBlock(q: GameLineHistoryQuery, from: Date, to: Date, bucketSeconds: number) {
-  if (!Number.isInteger(bucketSeconds) || bucketSeconds <= 0) throw new Error('bucketSeconds must be a positive integer');
-  const rows = await pgAll<{
-    bookmaker: string;
-    bucket: Date | string;
-    point: number | null;
-    american_odds: number | null;
-  }>(
-    `SELECT DISTINCT ON (bookmaker, bucket)
-            bookmaker,
-            to_timestamp(floor(extract(epoch FROM observed_at) / ${bucketSeconds}) * ${bucketSeconds}) AS bucket,
-            point,
-            american_odds
-       FROM game_odds_history
-      WHERE event_id = ? AND market = ? AND side = ?
-        AND observed_at > ? AND observed_at <= ?
-      -- DESC on observed_at makes DISTINCT ON take the LAST real observation in
-      -- each bucket rather than the first, so a bucket reads as "where the
-      -- price ended up" rather than "where it happened to start".
-      ORDER BY bookmaker, bucket, observed_at DESC`,
-    [q.eventId, q.market, q.side, from.toISOString(), to.toISOString()],
-  );
-
-  const byBook = new Map<string, LineHistoryPoint[]>();
-  const bucketSet = new Set<string>();
-  const pointCounts = new Map<number, number>();
-  for (const r of rows) {
-    const t = (r.bucket instanceof Date ? r.bucket : new Date(r.bucket)).toISOString();
-    bucketSet.add(t);
-    const point = r.point == null ? null : Number(r.point);
-    if (point != null && Number.isFinite(point)) pointCounts.set(point, (pointCounts.get(point) ?? 0) + 1);
-    const points = byBook.get(r.bookmaker) ?? [];
-    points.push({ t, line: point, americanOdds: r.american_odds == null ? null : Number(r.american_odds) });
-    byBook.set(r.bookmaker, points);
-  }
-
-  const series: LineHistorySeries[] = [...byBook.entries()]
-    .map(([bookmaker, points]) => ({ bookmaker, points: points.sort((a, b) => a.t.localeCompare(b.t)) }))
-    // Most-observed book first: a book with two points in a week is not a
-    // movement story, and a caller showing only a few series should get the
-    // ones that have something to show.
-    .sort((a, b) => b.points.length - a.points.length || a.bookmaker.localeCompare(b.bookmaker));
-
-  return { block: { bucketSeconds, buckets: [...bucketSet].sort(), series }, pointCounts };
-}
-
-export async function readGameLineHistory(q: GameLineHistoryQuery): Promise<GameLineHistoryResult> {
-  const bucketSeconds = bucketSecondsFor(q.hours);
-
-  // `hours` sizes the window and `bucketSeconds` reaches a divisor in the SQL,
-  // so both must be numbers THIS module chose rather than caller text. The
-  // window bounds themselves are passed as parameters.
-  if (!Number.isInteger(bucketSeconds) || bucketSeconds <= 0) throw new Error('bucketSeconds must be a positive integer');
-  if (!Number.isFinite(q.hours) || q.hours <= 0) throw new Error('hours must be a positive number');
-  const hours = Math.round(q.hours);
-  const windows = historyWindows(q.startsAt, hours);
-
-  const sideRows = await pgAll<{ side: string; n: string }>(
-    `SELECT side, count(*) AS n
-       FROM game_odds_history
-      WHERE event_id = ? AND market = ?
-        AND observed_at > ? AND observed_at <= ?
-      GROUP BY side
-      ORDER BY count(*) DESC`,
-    [q.eventId, q.market, windows.pre.from.toISOString(), (windows.inGame?.to ?? windows.pre.to).toISOString()],
-  );
-  const availableSides = sideRows.map((r) => r.side);
-
-  const pre = await readBlock(q, windows.pre.from, windows.pre.to, bucketSeconds);
-  const inGame = windows.inGame ? (await readBlock(q, windows.inGame.from, windows.inGame.to, bucketSecondsFor(IN_GAME_HOURS))).block : null;
-
-  // The most-quoted handicap, for the caption. NOT a filter: unlike a prop's
-  // alternate lines, a game total genuinely MOVING from 8.5 to 9 is the story
-  // this card exists to tell, so every observation stays in the series and this
-  // only names where the market mostly sat. Pre-game only: an in-play total is
-  // a different market.
-  const resolvedPoint =
-    [...pre.pointCounts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0] ?? null;
-
-  return {
-    eventId: q.eventId,
-    market: q.market,
-    side: q.side,
-    resolvedPoint,
-    availableSides,
-    startsAt: q.startsAt ?? null,
-    inGame,
-    ...pre.block,
   };
 }
 

@@ -2,7 +2,7 @@
  * GET /api/team-research?sport=mlb&teamId=118
  *
  * A team page's whole research payload — R7. One route with the sport as a
- * query param, for the reason `/api/season-ranks` gives: a dynamic
+ * query param, because a dynamic
  * `/api/[sport]/` segment would sit beside the real static sport folders and
  * swallow every unrecognised path. Each sport's reader lives beside that
  * sport's other fetchers (`lib/sports/mlb/teamResearch.ts`); a sport without

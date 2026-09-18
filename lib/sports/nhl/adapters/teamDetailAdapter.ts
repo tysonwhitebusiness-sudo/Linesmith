@@ -21,7 +21,6 @@ import { seasonLabel } from '@/lib/sports/shared/season';
 import type { ResearchCard, ResearchSection } from '@/lib/sports/shared/playerResearchShapes';
 import type { TeamResearchData } from '@/lib/sports/shared/teamResearchShapes';
 import { NHL_TEAM_SPEC } from './teamResearchSpec';
-import type { RecentResultRow } from '@/lib/sports/mlb/adapters/teamDetailAdapter';
 import type { NhlTeam, NhlGame } from '@/lib/sports/nhl/nhle';
 import type { EspnInjuryRow } from '@/lib/sports/multiSport/teamSportEspn';
 interface NhlRosterSeasonStats {
@@ -30,7 +29,6 @@ interface NhlRosterSeasonStats {
   assists: number;
   points: number;
 }
-
 
 export interface NhlTeamDetailApiResponse {
   team: NhlTeam;
@@ -42,24 +40,6 @@ export interface NhlTeamDetailApiResponse {
   injuries: EspnInjuryRow[];
   /** Real logo per real NHL abbreviation (2026-08-24) — feeds the distribution chart's `logoFor`. */
   logoByAbbr: Record<string, string>;
-}
-
-export function toNhlRecentResultRows(games: NhlGame[], teamAbbr: string): RecentResultRow[] {
-  return games.map((g) => {
-    const isHome = g.homeAbbr === teamAbbr;
-    const scoreFor = isHome ? g.homeScore : g.awayScore;
-    const scoreAgainst = isHome ? g.awayScore : g.homeScore;
-    const resolved = scoreFor != null && scoreAgainst != null;
-    return {
-      gameId: g.gameId,
-      date: g.date,
-      win: resolved ? scoreFor > scoreAgainst : null,
-      opponentAbbr: isHome ? g.awayAbbr : g.homeAbbr,
-      isHome,
-      scoreFor: scoreFor ?? 0,
-      scoreAgainst: scoreAgainst ?? 0,
-    };
-  });
 }
 
 // ---------------------------------------------------------------------------

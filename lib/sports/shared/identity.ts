@@ -37,14 +37,6 @@ export function espnHeadshot(league: EspnLeague, id: string | number | null | un
   return id == null || id === '' ? null : `${ESPN_CDN}/headshots/${league}/players/full/${id}.png`;
 }
 
-/**
- * ESPN's team crest, by abbreviation (`buf`, `mci`). ESPN keys team logos by
- * abbreviation, not by the numeric team id the rest of its API uses.
- */
-export function espnTeamLogo(league: EspnLeague, abbr: string | null | undefined): string | null {
-  return abbr ? `${ESPN_CDN}/teamlogos/${league}/500/${abbr.toLowerCase()}.png` : null;
-}
-
 /** MLB's own photo service, keyed by MLB people id (ESPN ids do not work here). */
 export function mlbHeadshot(id: string | number | null | undefined): string | null {
   return id == null || id === ''

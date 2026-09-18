@@ -292,24 +292,6 @@ export function blendBatterPitcherVector(batterVector: OutcomeVector, pitcherVec
 /** ~4.3 batters faced per inning of work is a standard sabermetric rule of thumb (roughly 3 outs plus the extra baserunners a inning typically allows) — same role as gameModel.ts's own "~4.25 batters per inning" convention used to convert outs to innings for K Watch-style lines. */
 const BATTERS_FACED_PER_INNING = 4.3;
 
-/**
- * A stateful PA-count-based handoff — approximates "pull the starter after
- * roughly his average innings/start" without needing simulateHalfInning to
- * report real outs back to this closure (a bigger contract change this
- * phase doesn't need). `expectedInningsPerStart` × ~4.3 sets the batter
- * count the starter is expected to face before the bullpen (one single
- * blended vector, not per-reliever — see docs/mlb-sim-engine-plan.md §4)
- * takes over for the rest of the game.
- */
-export function makeStarterBullpenStream(starterVector: OutcomeVector, bullpenVector: OutcomeVector, expectedInningsPerStart: number): () => OutcomeVector {
-  const handoffAfterBatters = Math.max(1, Math.round(expectedInningsPerStart * BATTERS_FACED_PER_INNING));
-  let faced = 0;
-  return () => {
-    faced += 1;
-    return faced <= handoffAfterBatters ? starterVector : bullpenVector;
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Phase 5 — park factors
 // ---------------------------------------------------------------------------
@@ -367,23 +349,5 @@ export function precomputeLineupVsPitching(
     vsStarter: lineupVectors.map((v) => applyParkFactor(blendBatterPitcherVector(v, starterVector, leagueRates), parkFactor)),
     vsBullpen: lineupVectors.map((v) => applyParkFactor(blendBatterPitcherVector(v, bullpenVector, leagueRates), parkFactor)),
     handoffAfterBatters: Math.max(1, Math.round(expectedInningsPerStart * BATTERS_FACED_PER_INNING)),
-  };
-}
-
-/**
- * The cheap half: a fresh, independently-stateful per-game stream from an
- * already-precomputed matchup — call this once per simulated game (its
- * battersFaced/orderIndex counters must start at 0 for each new game), reuse
- * the same `PrecomputedLineupVsPitching` across all N of them.
- */
-export function makeLineupVsPitchingStream(precomputed: PrecomputedLineupVsPitching, lineupSize: number): () => OutcomeVector {
-  const { vsStarter, vsBullpen, handoffAfterBatters } = precomputed;
-  let battersFaced = 0;
-  let orderIndex = 0;
-  return () => {
-    battersFaced += 1;
-    const slot = orderIndex % lineupSize;
-    orderIndex += 1;
-    return battersFaced <= handoffAfterBatters ? vsStarter[slot] : vsBullpen[slot];
   };
 }

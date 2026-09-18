@@ -254,7 +254,7 @@ function toYyyymmdd(d: Date): string {
 
 async function fetchDrawFromEspn(tour: TennisTour, eventId: string, startDate: string, endDate: string): Promise<TournamentDraw | null> {
   // Padded a day on each side — the same safety margin
-  // `fetchTennisMatchDetail` (espnTennis.ts) already uses, in case a
+  // the old `fetchTennisMatchDetail` (deleted in R11a) used, in case a
   // tournament's first/last match falls right on the boundary in a
   // different timezone than ESPN's own date-bucketing.
   const start = toYyyymmdd(new Date(Date.parse(startDate) - 86_400_000));

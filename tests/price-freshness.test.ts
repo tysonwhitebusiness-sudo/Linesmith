@@ -110,7 +110,9 @@ test('the board actually passes a capture time to every chip', () => {
   // alone would have passed throughout.
   const src = readFileSync('components/PropOddsPanel.tsx', 'utf8');
   const chips = src.match(/<OddsChip[\s\S]*?\/>/g) ?? [];
-  assert.ok(chips.length >= 5, `expected the board's chips, found ${chips.length}`);
+  // Two since R11a: the other three sat in `PropSideOdds` and
+  // `GamePropLineShoppingRail`, which nothing rendered.
+  assert.ok(chips.length >= 2, `expected the board's chips, found ${chips.length}`);
   for (const chip of chips) {
     assert.match(chip, /capturedAt=/, `an OddsChip on the board renders no age:\n${chip}`);
   }

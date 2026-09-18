@@ -206,12 +206,6 @@ export function currentStreak(history: HistoryEntry[], category: string): number
   return matching ? run : -run;
 }
 
-// ---------------------------------------------------------------------------
-// Standard window set
-// ---------------------------------------------------------------------------
-
-export const STANDARD_WINDOWS = [5, 10, 15] as const;
-
 export interface WindowSet {
   l5: WindowedStat;
   l10: WindowedStat;

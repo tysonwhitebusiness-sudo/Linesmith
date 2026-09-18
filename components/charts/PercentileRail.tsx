@@ -85,8 +85,7 @@ export function PercentileRail({
       style={{ display: 'block', overflow: 'visible', maxWidth: '100%' }}
     >
       {usable.map((r, i) => {
-        // Percentile from rank, so a rail and a unit grade never disagree —
-        // `unitGrades.ts` uses the identical formula.
+        // Percentile from rank: rank 1 is 100, last is 0.
         const pct = 100 * (1 - (r.rank - 1) / (r.poolSize - 1));
         const t = rankToHeat(pct, 0, 100);
         const y = i * rowHeight + rowHeight / 2;

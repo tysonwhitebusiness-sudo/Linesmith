@@ -1,13 +1,12 @@
 /**
- * `TeamDetail.tsx` adapter — NFL half.
+ * The NFL team page — R7.2. `toTeamResearchData` reads the football
+ * `/api/team-research` payload through the shared `buildTeamResearch` and adds
+ * NFL's own passing-game section (`nflPassingGameSection`, the target map).
+ * CFB's team page reuses the same football reader.
  *
- * Converts the real `/api/nfl/team/[teamId]` response (fetched by
- * `useNflTeamDetail`, the extracted hook — see that file's header) plus the
- * UI-selected scope state `TeamDetail.tsx` owns into the shared
- * `TeamDetailData` interface defined in
- * `lib/sports/mlb/adapters/teamDetailAdapter.ts`. Ported field-for-field from
- * the old `NflTeamDetail.tsx` (deleted once this adapter + the generic
- * `TeamDetail.tsx` are verified) — no new behavior invented here.
+ * (This file was the old `TeamDetail.tsx` NFL adapter until R7 replaced that
+ * page; its header described the deleted `/api/nfl/team/[teamId]` read until
+ * R11a.)
  */
 
 import type { FootballTeamResearchPayload } from '@/lib/sports/multiSport/footballTeamResearch';

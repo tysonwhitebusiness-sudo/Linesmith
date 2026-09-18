@@ -23,9 +23,6 @@
  */
 
 import { pgGet, pgAll, pgRun, pgTransaction } from './pgClient';
-// Bookmaker canonicalisation for writeGameOddsBookLines (task 5.3). Pure
-// string function, no DB dependency, so this import cannot cycle back here.
-import { canonicalBookmaker } from '../odds/props/entityResolution';
 import type { BookmakerOdds, UnifiedGameLine } from '../odds/types';
 import { americanToDecimal, bestMoneylineFromBooks, bestSpreadFromBooks, bestTotalFromBooks } from '../odds/display';
 import { simulatedProfit } from '../picks/bankroll';
@@ -549,56 +546,6 @@ export interface PropOddsInput {
   delaySeconds: number | null;
 }
 
-/** Upserts every row from one provider fetch in a single transaction. */
-export async function writePropOdds(rows: PropOddsInput[]): Promise<void> {
-  if (rows.length === 0) return;
-  const fetchedAt = new Date().toISOString();
-
-  await pgTransaction(async (tx) => {
-    for (const r of rows) {
-      const params = { ...r, fetchedAt };
-      // `line IS NOT DISTINCT FROM @line`, not `line = @line` — line is
-      // nullable (categorical markets have none), and SQLite's `IS` used to
-      // do null-safe equality here for free; Postgres's `IS` doesn't, so
-      // this has to be spelled out or a null-line market would never match.
-      const prior = await tx.get<{ americanOdds: number }>(
-        `SELECT american_odds AS "americanOdds" FROM prop_odds
-         WHERE provider_id = @providerId AND game_id = @gameId AND subject_id = @subjectId
-           AND market_key = @marketKey AND line IS NOT DISTINCT FROM @line AND side = @side AND bookmaker = @bookmaker`,
-        params,
-      );
-      // No prior row (first time this exact price has been seen) or a
-      // genuinely different price — either way, worth a history point. A
-      // repeat of the same price on the next poll is not a price movement.
-      if (!prior || prior.americanOdds !== r.americanOdds) {
-        await tx.run(
-          `INSERT INTO prop_odds_history
-             (provider_id, game_id, subject_id, market_key, line, side, bookmaker,
-              american_odds, decimal_odds, observed_at, is_delayed, delay_seconds)
-           VALUES (@providerId, @gameId, @subjectId, @marketKey, @line, @side, @bookmaker,
-                   @americanOdds, @decimalOdds, @fetchedAt, @isDelayed, @delaySeconds)`,
-          params,
-        );
-      }
-      await tx.run(
-        `INSERT INTO prop_odds
-           (provider_id, game_id, subject_id, subject_name, market_key, line, side, bookmaker,
-            american_odds, decimal_odds, fetched_at, is_delayed, delay_seconds)
-         VALUES (@providerId, @gameId, @subjectId, @subjectName, @marketKey, @line, @side, @bookmaker,
-                 @americanOdds, @decimalOdds, @fetchedAt, @isDelayed, @delaySeconds)
-         ON CONFLICT (provider_id, game_id, subject_id, market_key, line, side, bookmaker) DO UPDATE SET
-           subject_name  = excluded.subject_name,
-           american_odds = excluded.american_odds,
-           decimal_odds  = excluded.decimal_odds,
-           fetched_at    = excluded.fetched_at,
-           is_delayed    = excluded.is_delayed,
-           delay_seconds = excluded.delay_seconds`,
-        params,
-      );
-    }
-  });
-}
-
 // `writeGameOddsHistory` and `GameOddsHistoryInput` were DELETED here on
 // 2026-08-29 (task 5.13, and the reason P2 L3's "misleading default" reads
 // differently than the audit assumed). Both were exported and had ZERO callers
@@ -637,53 +584,6 @@ export interface GameOddsBookLineInput {
   decimalOdds?: number | null;
 }
 
-/**
- * Current per-bookmaker game-line prices, TS-side counterpart to
- * python-odds-service/src/db.py's write_game_odds_book_lines — same shared
- * table, same upsert-on-(sport, game_id, market, side, bookmaker, source)
- * semantics. Added for ESPN's pregame lines (2026-08-26, odds-architecture
- * rebuild Phase 3): CFB/NBA/Soccer's real, single-book moneyline/spread/
- * total data recast into this shared schema instead of staying its own
- * differently-shaped pipeline, so the read side (Phase 5/6) never needs a
- * sport-specific case for "only has one book."
- */
-export async function writeGameOddsBookLines(rows: GameOddsBookLineInput[]): Promise<void> {
-  if (rows.length === 0) return;
-  const fetchedAt = new Date().toISOString();
-  await pgTransaction(async (tx) => {
-    for (const r of rows) {
-      await tx.run(
-        `INSERT INTO game_odds_book_lines
-           (sport, game_id, market, side, bookmaker, source, point, american_odds, decimal_odds, fetched_at)
-         VALUES (@sport, @gameId, @market, @side, @bookmaker, @source, @point, @americanOdds, @decimalOdds, @fetchedAt)
-         ON CONFLICT (sport, game_id, market, side, bookmaker, source) DO UPDATE SET
-           point         = excluded.point,
-           american_odds = excluded.american_odds,
-           decimal_odds  = excluded.decimal_odds,
-           fetched_at    = excluded.fetched_at`,
-        {
-          sport: r.sport,
-          gameId: r.gameId,
-          market: r.market,
-          side: r.side,
-          // Canonicalised here, at the one choke point every TS game-line
-          // writer passes through, mirroring db.py's write_game_odds_book_lines
-          // (task 5.3, P3 H9). The live TS caller is recordEspnPregameLine via
-          // the CFB/NBA/Soccer game routes; leaving it raw is how
-          // `Fanduel`/`fanduel` became two ON CONFLICT keys for one book and
-          // never merged.
-          bookmaker: canonicalBookmaker(r.bookmaker) ?? r.bookmaker,
-          source: r.source,
-          point: r.point ?? null,
-          americanOdds: r.americanOdds,
-          decimalOdds: r.decimalOdds ?? null,
-          fetchedAt,
-        },
-      );
-    }
-  });
-}
-
 interface GameOddsBookLineRow {
   market: string;
   side: string;
@@ -693,24 +593,6 @@ interface GameOddsBookLineRow {
   point: number | null;
   decimalOdds: number | null;
   fetchedAt: string;
-}
-
-/**
- * Every real source's rows for one game, read straight from
- * game_odds_book_lines — the shared table OddsHarvester, the-odds-api,
- * SportsGameOdds, SharpAPI, Propline, and ESPN all write into (odds-
- * architecture rebuild Phases 1-4). Not exported: readGameOddsBookLines/
- * getBestGameOddsLine below are the two real callers, each applying its
- * own merge policy on top of the same raw rows — keeping the raw read in
- * one place means both stay consistent about what "the data" actually is.
- */
-async function readRawGameOddsBookLines(sport: string, gameId: string): Promise<GameOddsBookLineRow[]> {
-  return pgAll<GameOddsBookLineRow>(
-    `SELECT market, side, bookmaker, source, american_odds AS "americanOdds",
-            point, decimal_odds AS "decimalOdds", fetched_at AS "fetchedAt"
-     FROM game_odds_book_lines WHERE sport = ? AND game_id = ?`,
-    [sport, gameId],
-  );
 }
 
 /**
@@ -810,11 +692,6 @@ function mergeGameOddsBookLineRows(gameId: string, rows: GameOddsBookLineRow[]):
         ? 'game-odds-book-lines'
         : ((sources.values().next().value as UnifiedGameLine['source'] | undefined) ?? 'game-odds-book-lines'),
   };
-}
-
-export async function readGameOddsBookLines(sport: string, gameId: string): Promise<UnifiedGameLine | null> {
-  const rows = await readRawGameOddsBookLines(sport, gameId);
-  return mergeGameOddsBookLineRows(gameId, rows);
 }
 
 /**
@@ -939,15 +816,6 @@ export async function readPropOddsForSubject(gameId: string, subjectId: string):
   return rows.map(mapPropOddsRow);
 }
 
-/** Most recent `fetched_at` this provider has for this game — the basis for Tier 2 cooldowns. */
-export async function lastPropFetch(providerId: string, gameId: string): Promise<string | null> {
-  const row = await pgGet<{ latest: string | null }>(
-    `SELECT MAX(fetched_at) AS latest FROM prop_odds WHERE provider_id = ? AND game_id = ?`,
-    [providerId, gameId],
-  );
-  return row?.latest ?? null;
-}
-
 // ---------------------------------------------------------------------------
 // Provider usage (budget tracking per provider, per billing period)
 // ---------------------------------------------------------------------------
@@ -1007,23 +875,6 @@ export interface UnresolvedOddsRow {
   seenAt: string;
 }
 
-export async function replaceUnresolvedForProvider(
-  providerId: string,
-  rows: Array<{ kind: string; rawValue: string; context?: string | null }>,
-): Promise<void> {
-  await pgTransaction(async (tx) => {
-    await tx.run('DELETE FROM odds_unresolved WHERE provider_id = ?', [providerId]);
-    for (const r of rows) {
-      await tx.run('INSERT INTO odds_unresolved (provider_id, kind, raw_value, context) VALUES (?, ?, ?, ?)', [
-        providerId,
-        r.kind,
-        r.rawValue,
-        r.context ?? null,
-      ]);
-    }
-  });
-}
-
 export async function listUnresolved(): Promise<UnresolvedOddsRow[]> {
   return pgAll<UnresolvedOddsRow>(
     `SELECT id, provider_id AS "providerId", kind, raw_value AS "rawValue", context, seen_at AS "seenAt"
@@ -1058,54 +909,6 @@ export interface SurfacedEntry {
   modelVersion?: number | null;
 }
 
-/**
- * One row per real-world proposition the day's scan surfaced, keyed on
- * (sport, subject, dimension, category, game) — idempotent via
- * ON CONFLICT DO NOTHING because this is called on every snapshot refresh
- * (every ~3 minutes) and a candidate surfaced at 1pm and still surfaced at
- * 1:03pm is the same proposition, not two data points to grade separately.
- */
-export async function logSurfaced(entries: SurfacedEntry[]): Promise<void> {
-  if (entries.length === 0) return;
-  await pgTransaction(async (tx) => {
-    for (const r of entries) {
-      await tx.run(
-        `INSERT INTO pick_history
-           (sport, subject_id, subject_name, dimension, category, market_key, line, game_id,
-            sample_size, distance, event_context, model_prob, market_prob, edge, price_source, bookmaker, price_captured_at,
-            prop_score, score_grade, trust_tier, model_version)
-         VALUES (@sport, @subjectId, @subjectName, @dimension, @category, @marketKey, @line, @gameId,
-                 @sampleSize, @distance, @eventContext, @modelProb, @marketProb, @edge, @priceSource, @bookmaker, @priceCapturedAt,
-                 @propScore, @scoreGrade, @trustTier, @modelVersion)
-         ON CONFLICT (sport, subject_id, dimension, category, game_id) DO NOTHING`,
-        {
-          sport: r.sport,
-          subjectId: r.subjectId,
-          subjectName: r.subjectName,
-          dimension: r.dimension,
-          category: r.category,
-          marketKey: r.marketKey,
-          line: r.line,
-          gameId: r.gameId,
-          sampleSize: r.sampleSize,
-          distance: r.distance,
-          eventContext: r.eventContext,
-          modelProb: r.modelProb ?? null,
-          marketProb: r.marketProb ?? null,
-          edge: r.edge ?? null,
-          priceSource: r.priceSource ?? null,
-          bookmaker: r.bookmaker ?? null,
-          priceCapturedAt: r.priceCapturedAt ?? null,
-          propScore: r.propScore ?? null,
-          scoreGrade: r.scoreGrade ?? null,
-          trustTier: r.trustTier ?? null,
-          modelVersion: r.modelVersion ?? null,
-        },
-      );
-    }
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Phase C.0 — grading
 // ---------------------------------------------------------------------------
@@ -1127,23 +930,6 @@ export interface UngradedRow {
   surfacedAt: string;
 }
 
-/** Every game with at least one ungraded row — the grading job's work list. */
-export async function listUngradedGameIds(): Promise<string[]> {
-  const rows = await pgAll<{ gameId: string }>(
-    `SELECT DISTINCT game_id AS "gameId" FROM pick_history WHERE outcome IS NULL AND game_id IS NOT NULL`,
-  );
-  return rows.map((r) => r.gameId);
-}
-
-export async function listUngradedForGame(gameId: string): Promise<UngradedRow[]> {
-  return pgAll<UngradedRow>(
-    `SELECT id, subject_id AS "subjectId", dimension, category, line,
-            market_key AS "marketKey", model_prob AS "modelProb", surfaced_at AS "surfacedAt"
-     FROM pick_history WHERE outcome IS NULL AND game_id = ?`,
-    [gameId],
-  );
-}
-
 export interface PropOddsHistoryPoint {
   providerId: string;
   bookmaker: string;
@@ -1153,22 +939,6 @@ export interface PropOddsHistoryPoint {
   observedAt: string;
   isDelayed: number;
   delaySeconds: number | null;
-}
-
-/** Every historical price point for one exact market+line — grading joins this against surfaced_at to find the market's side of the edge, after the fact. */
-export async function readPropOddsHistoryForKey(
-  gameId: string,
-  subjectId: string,
-  marketKey: string,
-  line: number | null,
-): Promise<PropOddsHistoryPoint[]> {
-  return pgAll<PropOddsHistoryPoint>(
-    `SELECT provider_id AS "providerId", bookmaker, side, american_odds AS "americanOdds", decimal_odds AS "decimalOdds",
-            observed_at AS "observedAt", is_delayed AS "isDelayed", delay_seconds AS "delaySeconds"
-     FROM prop_odds_history
-     WHERE game_id = ? AND subject_id = ? AND market_key = ? AND line IS NOT DISTINCT FROM ?`,
-    [gameId, subjectId, marketKey, line],
-  );
 }
 
 export interface GradeResult {
@@ -1560,7 +1330,6 @@ export async function goodBetsRecord(
 ): Promise<GoodBetsRecord> {
   if (trustedDimensions.length === 0) return { wins: 0, losses: 0, total: 0, winRate: null };
   const params: any[] = [sport, minSampleSize, maxMarketProb, ...trustedDimensions];
-  let placeholderIndex = 3;
   const placeholders = trustedDimensions.map(() => '?').join(',');
   let sinceClause = '';
   if (sinceIso) {
@@ -1725,22 +1494,6 @@ export interface GamePickIdentity {
   commenceTime: string | null;
 }
 
-/** Ensures the identity row exists, keeping commence time fresh (postponements move it). */
-export async function ensureGamePickRow(identity: GamePickIdentity): Promise<void> {
-  await pgRun(
-    `INSERT INTO game_picks (sport, game_id, home_team_id, away_team_id, home_team_name, away_team_name, matchup, commence_time)
-     VALUES (@sport, @gameId, @homeTeamId, @awayTeamId, @homeTeamName, @awayTeamName, @matchup, @commenceTime)
-     ON CONFLICT (sport, game_id) DO UPDATE SET
-       home_team_id   = excluded.home_team_id,
-       away_team_id   = excluded.away_team_id,
-       home_team_name = excluded.home_team_name,
-       away_team_name = excluded.away_team_name,
-       matchup        = excluded.matchup,
-       commence_time  = excluded.commence_time`,
-    identity,
-  );
-}
-
 export interface GamePickRow {
   id: number;
   sport: string;
@@ -1829,21 +1582,6 @@ function mapGamePickRow(row: any): GamePickRow {
   };
 }
 
-export async function getGamePick(sport: string, gameId: string): Promise<GamePickRow | null> {
-  const row = await pgGet<any>(`SELECT ${GAME_PICK_COLUMNS} FROM game_picks WHERE sport = ? AND game_id = ?`, [sport, gameId]);
-  return row ? mapGamePickRow(row) : null;
-}
-
-/** Games with at least one open slot to fill or grade — the lock engine's work list. */
-export async function listGamePicksForLockCycle(sport: string): Promise<GamePickRow[]> {
-  const rows = await pgAll<any>(
-    `SELECT ${GAME_PICK_COLUMNS} FROM game_picks
-     WHERE sport = ? AND (ml_final_captured_at IS NULL OR total_final_captured_at IS NULL OR graded_at IS NULL)`,
-    [sport],
-  );
-  return rows.map(mapGamePickRow);
-}
-
 export interface MoneylinePickCapture {
   sport: string;
   gameId: string;
@@ -1854,28 +1592,6 @@ export interface MoneylinePickCapture {
   featuresJson?: string | null;
   probLower?: number | null;
   probUpper?: number | null;
-}
-
-/** Only writes if this exact slot hasn't been captured yet — a slot, once locked, never moves. */
-export async function captureMoneylinePick(c: MoneylinePickCapture): Promise<void> {
-  const capturedAt = new Date().toISOString();
-  const col = c.slot === 'initial' ? 'ml_initial' : 'ml_final';
-  const featuresCol = c.slot === 'initial' ? 'initial_ml_features_json' : 'final_ml_features_json';
-  await pgRun(
-    `UPDATE game_picks SET ${col}_side = @side, ${col}_prob = @prob, ${col}_captured_at = @capturedAt, ${col}_late = @late, ${featuresCol} = @featuresJson, ${col}_prob_lower = @probLower, ${col}_prob_upper = @probUpper
-     WHERE sport = @sport AND game_id = @gameId AND ${col}_captured_at IS NULL`,
-    {
-      sport: c.sport,
-      gameId: c.gameId,
-      side: c.side,
-      prob: c.prob,
-      capturedAt,
-      late: c.late,
-      featuresJson: c.featuresJson ?? null,
-      probLower: c.probLower ?? null,
-      probUpper: c.probUpper ?? null,
-    },
-  );
 }
 
 export interface TotalPickCapture {
@@ -1891,64 +1607,6 @@ export interface TotalPickCapture {
   probUpper?: number | null;
 }
 
-export async function captureTotalPick(c: TotalPickCapture): Promise<void> {
-  const capturedAt = new Date().toISOString();
-  const col = c.slot === 'initial' ? 'total_initial' : 'total_final';
-  const featuresCol = c.slot === 'initial' ? 'initial_total_features_json' : 'final_total_features_json';
-  await pgRun(
-    `UPDATE game_picks SET ${col}_side = @side, ${col}_prob = @prob, ${col}_line = @line, ${col}_captured_at = @capturedAt, ${col}_late = @late, ${featuresCol} = @featuresJson, ${col}_prob_lower = @probLower, ${col}_prob_upper = @probUpper
-     WHERE sport = @sport AND game_id = @gameId AND ${col}_captured_at IS NULL`,
-    {
-      sport: c.sport,
-      gameId: c.gameId,
-      side: c.side,
-      prob: c.prob,
-      line: c.line,
-      capturedAt,
-      late: c.late,
-      featuresJson: c.featuresJson ?? null,
-      probLower: c.probLower ?? null,
-      probUpper: c.probUpper ?? null,
-    },
-  );
-}
-
-/**
- * Best-effort odds attachment — the model decides the pick, but the price
- * shown alongside it comes from the separate odds feed, which may run
- * before, after, or never relative to the pick itself. Only ever attaches to
- * a slot that's already locked and whose side matches.
- */
-export async function attachMoneylinePrice(
-  sport: string,
-  gameId: string,
-  slot: 'initial' | 'final',
-  side: 'home' | 'away',
-  americanOdds: number,
-): Promise<void> {
-  const col = slot === 'initial' ? 'ml_initial' : 'ml_final';
-  await pgRun(
-    `UPDATE game_picks SET ${col}_price = @price
-     WHERE sport = @sport AND game_id = @gameId AND ${col}_side = @side AND ${col}_price IS NULL`,
-    { sport, gameId, side, price: americanOdds },
-  );
-}
-
-export async function attachTotalPrice(
-  sport: string,
-  gameId: string,
-  slot: 'initial' | 'final',
-  side: 'over' | 'under',
-  americanOdds: number,
-): Promise<void> {
-  const col = slot === 'initial' ? 'total_initial' : 'total_final';
-  await pgRun(
-    `UPDATE game_picks SET ${col}_price = @price
-     WHERE sport = @sport AND game_id = @gameId AND ${col}_side = @side AND ${col}_price IS NULL`,
-    { sport, gameId, side, price: americanOdds },
-  );
-}
-
 export interface GamePickGrade {
   sport: string;
   gameId: string;
@@ -1956,16 +1614,6 @@ export interface GamePickGrade {
   awayScore: number;
   mlOutcome: 'win' | 'loss' | null;
   totalOutcome: 'win' | 'loss' | null;
-}
-
-export async function gradeGamePick(g: GamePickGrade): Promise<void> {
-  await pgRun(
-    `UPDATE game_picks SET
-       final_home_score = @homeScore, final_away_score = @awayScore,
-       ml_outcome = @mlOutcome, total_outcome = @totalOutcome, graded_at = @gradedAt
-     WHERE sport = @sport AND game_id = @gameId AND graded_at IS NULL`,
-    { ...g, gradedAt: new Date().toISOString() },
-  );
 }
 
 export interface GamePickRecord {
@@ -2039,36 +1687,6 @@ export async function listGamePickHistory(sport: string, limit = 200): Promise<G
     [sport, limit],
   );
   return rows.map(mapGamePickRow);
-}
-
-export async function writeGrades(results: GradeResult[]): Promise<void> {
-  if (results.length === 0) return;
-  const gradedAt = new Date().toISOString();
-  await pgTransaction(async (tx) => {
-    for (const r of results) {
-      await tx.run(
-        `UPDATE pick_history SET
-           outcome = @outcome, actual_value = @actualValue, graded_at = @gradedAt,
-           market_prob = COALESCE(@marketProb, market_prob),
-           edge = COALESCE(@edge, edge),
-           price_source = COALESCE(@priceSource, price_source),
-           bookmaker = COALESCE(@bookmaker, bookmaker),
-           price_captured_at = COALESCE(@priceCapturedAt, price_captured_at)
-         WHERE id = @id`,
-        {
-          id: r.id,
-          outcome: r.outcome,
-          actualValue: r.actualValue,
-          gradedAt,
-          marketProb: r.marketProb ?? null,
-          edge: r.edge ?? null,
-          priceSource: r.priceSource ?? null,
-          bookmaker: r.bookmaker ?? null,
-          priceCapturedAt: r.priceCapturedAt ?? null,
-        },
-      );
-    }
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2165,27 +1783,6 @@ export interface GameSimCacheRow {
   n: number;
   lineupSource: 'posted' | 'projected';
   computedAt: string;
-}
-
-export async function readGameSimCache(sport: string, gameId: string): Promise<GameSimCacheRow | null> {
-  const row = await pgGet<GameSimCacheRow>(
-    `SELECT sport, game_id AS "gameId", home_win_prob AS "homeWinProb", expected_total AS "expectedTotal",
-            n, lineup_source AS "lineupSource", computed_at AS "computedAt"
-     FROM game_sim_cache WHERE sport = ? AND game_id = ?`,
-    [sport, gameId],
-  );
-  return row ?? null;
-}
-
-export async function writeGameSimCache(row: GameSimCacheRow): Promise<void> {
-  await pgRun(
-    `INSERT INTO game_sim_cache (sport, game_id, home_win_prob, expected_total, n, lineup_source, computed_at)
-     VALUES (@sport, @gameId, @homeWinProb, @expectedTotal, @n, @lineupSource, @computedAt)
-     ON CONFLICT (sport, game_id) DO UPDATE SET
-       home_win_prob = excluded.home_win_prob, expected_total = excluded.expected_total,
-       n = excluded.n, lineup_source = excluded.lineup_source, computed_at = excluded.computed_at`,
-    row,
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -2577,17 +2174,6 @@ export async function getLatestEloBeforeSeason(teamId: number, season: number): 
   return row ? mapCurrentEloRow(row) : null;
 }
 
-/** The team's single most recent game overall (any season) — used to compute rest days and travel distance for their NEXT game. */
-export async function getMostRecentEloGame(teamId: number): Promise<CurrentEloRow | null> {
-  const row = await pgGet<any>(
-    `SELECT elo, games_played AS "gamesPlayed", game_date AS "gameDate", opponent_team_id AS "opponentTeamId", was_home AS "wasHome"
-     FROM team_elo_history WHERE team_id = ?
-     ORDER BY game_date DESC, id DESC LIMIT 1`,
-    [teamId],
-  );
-  return row ? mapCurrentEloRow(row) : null;
-}
-
 // ---------------------------------------------------------------------------
 // Pitcher Game Score history (Elo item 4 — pitcher adjustment)
 // ---------------------------------------------------------------------------
@@ -2599,23 +2185,6 @@ export interface PitcherGameScoreRow {
   gamePk: number;
   gameDate: string;
   gameScore: number;
-}
-
-export async function writePitcherGameScore(rows: PitcherGameScoreRow[]): Promise<number> {
-  if (rows.length === 0) return 0;
-  return pgTransaction(async (tx) => {
-    let written = 0;
-    for (const r of rows) {
-      const result = await tx.run(
-        `INSERT INTO pitcher_game_score_history (pitcher_id, team_id, season, game_pk, game_date, game_score)
-         VALUES (@pitcherId, @teamId, @season, @gamePk, @gameDate, @gameScore)
-         ON CONFLICT (pitcher_id, game_pk) DO NOTHING`,
-        r,
-      );
-      if (result.changes > 0) written += 1;
-    }
-    return written;
-  });
 }
 
 /** A pitcher's most recent N starts, most recent first — the rolling-trend input for the live pitcher adjustment. */

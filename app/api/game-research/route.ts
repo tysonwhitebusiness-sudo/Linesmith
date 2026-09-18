@@ -2,7 +2,7 @@
  * GET /api/game-research?sport=mlb&gameId=824711 (also nfl, cfb, soccer_epl, soccer_mls, tennis_atp, tennis_wta, nba: ESPN ids; nhl: NHL game ids)
  *
  * A game page's payload — R8. One route with the sport as a query param, for
- * the reason `/api/team-research` and `/api/season-ranks` give. Each sport's
+ * the reason `/api/team-research` gives. Each sport's
  * reader lives beside its other fetchers (`lib/sports/mlb/gameResearch.ts`).
  *
  * CACHING — pattern 1 (`cachedRoute`), with the TTL set by the game's REAL

@@ -1,7 +1,6 @@
 /**
- * The NFL and CFB game page — R8.2. One builder for both leagues, exported as
- * `toGameResearchData` from each league's `gameDetailAdapter.ts` (the sport
- * adapter rule); the reader is `lib/sports/multiSport/footballGameResearch.ts`.
+ * The NFL and CFB game page — R8.2. One builder for both leagues,
+ * `toGameResearchData`, which `GameResearchPage.tsx` imports for each; the reader is `lib/sports/multiSport/footballGameResearch.ts`.
  * Sections follow G2 `game-football.js`: game flow (win probability, every
  * drive, one drive's plays), scoring and leaders, team stats, box score, lines
  * and props, play-by-play.

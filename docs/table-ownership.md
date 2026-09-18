@@ -32,6 +32,21 @@
 > | `player_season_production` | **NEW** in R5b | Python — `teamProductionJob`; read by `/api/key-players` |
 > | `team_shot_profile` | **NEW** in R5c | Python — `teamProductionJob` (from `nba_shot_events`, `nhl_shot_events`); read by `/api/team-shot-profile` |
 > | `team_target_profile` | **NEW** in R5d | Python — `teamProductionJob` (from `nfl_target_events`); read by `/api/nfl/team-targets` |
+>
+> **What R11a changed on 2026-09-18 (the old game page's deletion).** These
+> TypeScript writers had no callers once `GameDetail` and its routes went, and
+> were deleted with them. The rows below still list them because the table
+> body is re-derived, not edited; the next derivation should find them gone.
+>
+> | table | TypeScript writer deleted | what that closes |
+> |---|---|---|
+> | `prop_odds`, `prop_odds_history` | `writePropOdds` (and `registry.ts`'s fetch path) | row 6/7's ⚠ — Python only |
+> | `odds_unresolved` | `replaceUnresolvedForProvider` | row 8's ⚠ — Python only |
+> | `game_picks` | `captureMoneylinePick`, `captureTotalPick`, `attachMoneylinePrice`, `attachTotalPrice`, `gradeGamePick`, `ensureGamePickRow` | row 11's ⚠ — Python only |
+> | `pick_history` | `logSurfaced`, `writeGrades` | most of row 12's ⚠ (`writeBackfill` not checked) |
+> | `game_odds_book_lines` | `writeGameOddsBookLines`, `recordEspnPregameLine` (`espnBookLines.ts`) — **a write on GET** from the old per-sport `game/[gameId]` routes | row 13's ⚠, and a GET-writes exception — Python only |
+> | `pitcher_game_score_history` | `writePitcherGameScore` (the "dead path" row 25 names) | row 25 — Python only |
+> | `game_sim_cache` | `writeGameSimCache` (read-only since 2.9) | row 21 — the reader went too |
 > | `odds_import_staging` | rows pruned, table kept | Python importers write; `scripts/gate/promote_odds.mjs` drains |
 > | `prop_odds_dedup_backup_20260829` | **DROPPED** | — |
 > | `team_elo_history_int_backup_20260901` | **DROPPED** | — |

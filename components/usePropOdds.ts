@@ -25,10 +25,8 @@ export { rowsFor, bestPrice, userBookPrice, resolveCandidateEdge, type PropOddsR
  * (`refreshKey`), matching `useGameLines`'s existing pattern.
  *
  * `enabled` (default `true`) — same idiom as `useSlatePropOdds`'s own
- * `enabled` param: set `false` when a parent component has already fetched
- * this exact game's prop odds and is passing the result down instead (see
- * `GameDetail`'s nested `PlayerDetail`, which shares its own `usePropOdds`
- * call rather than each having its own independent copy of the same fetch).
+ * `enabled` param. Its one sharing caller, the old game page's nested
+ * `PlayerDetail`, was deleted in R11a; every caller now passes `true`.
  *
  * This hook used to also expose three user-triggered provider actions —
  * `runMoreBooks`, `runSharpPrice` and `runScan`. All three were deleted in

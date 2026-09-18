@@ -63,12 +63,3 @@ export async function loadAllGameContexts(): Promise<GameLookupContext[]> {
   const games = ((snapshot.context?.other as Record<string, unknown> | undefined)?.games ?? []) as SlateGameLike[];
   return games.map((g) => buildContextForGame(snapshot, g)).filter((c): c is GameLookupContext => c !== null);
 }
-
-export async function loadGameContext(gameId: string): Promise<GameLookupContext | null> {
-  const snapshot = await readCachedSnapshot();
-  if (!snapshot) return null;
-  const games = ((snapshot.context?.other as Record<string, unknown> | undefined)?.games ?? []) as SlateGameLike[];
-  const game = games.find((g) => String(g.gamePk) === gameId);
-  if (!game) return null;
-  return buildContextForGame(snapshot, game);
-}

@@ -1,6 +1,6 @@
 /**
- * The tennis match page — R8.3b, exported as `toGameResearchData` from
- * `gameDetailAdapter.ts`. Sections follow G2 `game-soccer-tennis.js`: the score
+ * The tennis match page — R8.3b, `toGameResearchData`, imported by
+ * `GameResearchPage.tsx`. Sections follow G2 `game-soccer-tennis.js`: the score
  * set by set, match stats (serve and return, both players), form against each
  * player's surface numbers, head to head, and lines and props; before the first
  * serve, form, surface, head to head, players and lines; live, "Right now".

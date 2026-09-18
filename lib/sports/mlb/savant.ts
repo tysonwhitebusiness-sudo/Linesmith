@@ -360,11 +360,6 @@ export async function getSeasonStatcastBatterRates(season: number): Promise<Map<
   return ratesFromAggs(store.byBatter);
 }
 
-/** Cache-only batter rates, safe for a live request. See `getCachedStatcastPitcherRates`. */
-export async function getCachedStatcastBatterRates(season: number): Promise<Map<number, StatcastBatterRates>> {
-  return ratesFromAggs((await loadStore(season)).byBatter);
-}
-
 // ---------------------------------------------------------------------------
 // League-wide batter ranking on Statcast quality metrics alone — batters
 // don't have an ERA/FIP-style traditional line in this pipeline, so unlike

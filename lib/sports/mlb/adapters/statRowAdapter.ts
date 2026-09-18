@@ -9,7 +9,7 @@ function parseRank(s: string | null | undefined): number | null {
 
 /**
  * Converts a team's season `forStats`/`forRanks` into the shared `OpposingStarterStat[]`
- * shape `StatRankRow`/`TwoSidedStatRankRow`/`BatterPitcherMatchupCard` consume.
+ * shape `StatRankRow` consumes.
  *
  * Canonical replacement for the byte-identical duplicate functions that used to live
  * separately in `TeamDetail.tsx` and `PlayerDetail.tsx` (both hardcoded `poolSize: 30`

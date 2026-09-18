@@ -1,10 +1,6 @@
 'use client';
-
-import type { OddsInfo } from '@/lib/core/types';
 import { STALE_AFTER_MS, relativeAge } from '@/lib/odds/priceFreshness';
-import { formatAmerican, americanToDecimal } from '@/lib/odds/display';
-import { devigTwoWay } from '@/lib/odds/devig';
-import { compareInk } from '@/lib/ui/heat';
+import { formatAmerican } from '@/lib/odds/display';
 import { Chip } from './Chip';
 import { Skeleton } from './Skeleton';
 
@@ -224,39 +220,6 @@ export function OddsChip({
 }
 
 /**
- * Over and under stacked, the way every book quotes a two-sided prop.
- *
- * A side that isn't priced is left out rather than padded with a dash — half a
- * market is a real state, and a placeholder makes it look like a failure.
- */
-export function OddsPair({
-  over,
-  under,
-  source,
-  label,
-  className = '',
-}: {
-  over?: number | string | null;
-  under?: number | string | null;
-  source?: string;
-  /** Book or source name printed above the pair. */
-  label?: string;
-  className?: string;
-}) {
-  const hasOver = over != null && Number.isFinite(Number(over));
-  const hasUnder = under != null && Number.isFinite(Number(under));
-  if (!hasOver && !hasUnder) return null;
-
-  return (
-    <span className={`inline-flex flex-col items-stretch gap-0.5 ${className}`}>
-      {label ? <span className="text-[9px] uppercase tracking-wide text-ink-muted">{label}</span> : null}
-      {hasOver ? <OddsChip price={over} source={source} side="O" /> : null}
-      {hasUnder ? <OddsChip price={under} source={source} side="U" /> : null}
-    </span>
-  );
-}
-
-/**
  * Rendered instead of a real price when nothing's arrived for this row yet.
  * Two real, different situations — not one generic "no odds":
  *
@@ -294,22 +257,6 @@ export function NoOddsCell({ pending, onAdd }: { pending: boolean; onAdd?: () =>
   );
 }
 
-/** Overflow marker for rows carrying more books than fit. */
-export function MoreBooksChip({ count, onClick }: { count: number; onClick?: () => void }) {
-  if (count <= 0) return null;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      className="rounded-md border border-line px-1.5 py-0.5 text-[11px] font-medium text-ink-muted disabled:cursor-default"
-      aria-label={`${count} more source${count === 1 ? '' : 's'}`}
-    >
-      +{count}
-    </button>
-  );
-}
-
 /**
  * What a row shows when nothing has been priced yet.
  *
@@ -327,46 +274,6 @@ export function GetOddsButton({ onClick, label = 'Get odds' }: { onClick?: () =>
       {label}
     </button>
   );
-}
-
-/** Implied probability from a two-sided price, vig removed. Null if one-sided. */
-export function impliedPair(
-  over: number | null | undefined,
-  under: number | null | undefined,
-): { over: number; under: number } | null {
-  const devigged = devigTwoWay(americanToDecimal(over), americanToDecimal(under));
-  return devigged ? { over: devigged.a, under: devigged.b } : null;
-}
-
-/**
- * The IP column: over and under implied probability, stacked.
- *
- * Renders nothing at all when the market is one-sided — normalising a single
- * price would mean inventing its opposite, and the audit confirmed the
- * reference leaves this cell genuinely blank rather than dashed.
- */
-export function ImpliedProbabilityCell({
-  over,
-  under,
-}: {
-  over?: number | null;
-  under?: number | null;
-}) {
-  const implied = impliedPair(over, under);
-  if (!implied) return null;
-
-  return (
-    <span className="flex flex-col items-end leading-tight tabular-nums">
-      <span className="text-[11px] text-ink">O{(implied.over * 100).toFixed(1)}%</span>
-      <span className="text-[11px] text-ink-muted">U{(implied.under * 100).toFixed(1)}%</span>
-    </span>
-  );
-}
-
-/** The slip's stored `OddsInfo` as a chip. */
-export function StoredOddsChip({ odds, size = 'sm' }: { odds: OddsInfo | undefined; size?: 'sm' | 'md' }) {
-  if (!odds) return null;
-  return <OddsChip price={odds.americanOdds} source={odds.source} capturedAt={odds.capturedAt} size={size} />;
 }
 
 /** G6 — same de-vigged-edge visual language as Scan's Edge column, reused for the game-level model on Game Detail and Player Detail's Game Odds card. */

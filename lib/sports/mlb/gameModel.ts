@@ -1,41 +1,7 @@
-/**
- * Game-level prediction model — moneyline win probability and total-runs
- * probability, built from team season stats, starter quality, and weather
- * that are already fetched elsewhere in this app. Deliberately NOT the same
- * shape as Phase C.1's player model: a game has no "own trailing history" to
- * lean on the way a player does, so this uses established sabermetric
- * formulas instead of a Beta-Binomial posterior.
- *
- * Moneyline: Pythagorean win expectation (runs scored/allowed → implied win
- * rate) per team, each blended toward today's opposing starter's own runs
- * environment (approximated from ERA — earned runs only, a disclosed
- * simplification, not the true runs-allowed rate a full box score would
- * give), then combined into a head-to-head probability via the log5 formula
- * (Bill James) with a standard home-field adjustment layered on top.
- *
- * Totals: each team's expected runs today (same blended estimate as above)
- * summed and treated as Poisson-distributed — the standard sabermetric
- * assumption for run-scoring — to get P(combined total > line) directly.
- */
 
-import { predictProbWithInterval } from '../../core/logisticRegression';
 
 /** Empirically the standard baseball exponent (vs. 2 for most other sports) — Bill James / later refinements settled here. */
 const PYTHAGOREAN_EXPONENT = 1.83;
-
-/** MLB home teams have won ~53-54% of games historically — a well-documented, not tuned, constant. Left as the floor even now that a team-specific split edge (below) can add to it, since the flat rate is real and shouldn't be fully displaced by a small in-season sample. */
-const HOME_FIELD_EDGE = 0.04;
-
-/** Below this many decisions, a split record is too noisy to trust — its edge is treated as 0 rather than extrapolated from a handful of games. */
-const MIN_SPLIT_SAMPLE = 8;
-/** Same floor for the last-10 form signal — MLB's own standings feed always reports at most 10, so this just guards partial seasons. */
-const MIN_RECENT_SAMPLE = 6;
-/** How far a team's home/road split is allowed to move the model versus its season rate — bounded so one hot/cold home split doesn't dominate. */
-const MAX_SPLIT_EDGE = 0.08;
-/** Same bound for the recent-form nudge. */
-const MAX_RECENT_EDGE = 0.1;
-/** Recent form is real signal but noisier than a full season — down-weighted before being added in. */
-const RECENT_FORM_WEIGHT = 0.4;
 
 export function pythagoreanWinPct(runsScored: number, runsAllowed: number): number {
   const rs = Math.pow(Math.max(runsScored, 0.1), PYTHAGOREAN_EXPONENT);
@@ -142,78 +108,10 @@ export interface FittedMoneylineWeights {
   covariance: number[][] | null;
 }
 
-type FittedDiagnostics = Pick<
-  MoneylineResult['diagnostics'],
-  'rawLog5HomeWinProb' | 'homeVenueEdge' | 'awayVenueEdge' | 'rawHomeRecentEdge' | 'rawAwayRecentEdge' | 'parkFactor'
->;
-
-/**
- * Same feature order as modelFit.ts's MONEYLINE_FEATURE_NAMES — shared by the
- * point-estimate and confidence-interval paths below so they can never drift
- * apart. `simWinProb` (added for the sim engine plan, docs/mlb-sim-engine-plan.md)
- * is the real per-game simulation once the Python worker (`ensure_game_sims`, task 2.9) has one cached for
- * this matchup — see its own header for the refresh cadence (piggybacks on
- * getMlbSnapshot's rebuild cycle, not a new schedule). Falls back to 0.5
- * (neutral) for a game with no cached sim yet (see
- * app/api/odds/lines/route.ts) — a resolvable lineup/starter doesn't exist
- * for every matchup at every moment of the day. Historical training rows
- * (modelFit.ts) populate it with a real simulated value too, from the
- * simplified team-level backfill path.
- */
-function fittedFeatureVector(diag: FittedDiagnostics, eloProb: number, marketProb: number, simWinProb: number): number[] {
-  return [
-    diag.rawLog5HomeWinProb,
-    diag.homeVenueEdge - diag.awayVenueEdge,
-    diag.rawHomeRecentEdge - diag.rawAwayRecentEdge,
-    diag.parkFactor - 1,
-    eloProb,
-    marketProb - 0.5,
-    simWinProb,
-  ];
-}
-
-/**
- * Applies Phase 3's fitted stacking regression in place of the hand-coded
- * home/venue/form adjustment above — same raw ingredients (diagnostics),
- * different combination: learned coefficients instead of the guessed
- * HOME_FIELD_EDGE / MAX_SPLIT_EDGE / RECENT_FORM_WEIGHT constants. `eloProb`
- * should be 0.5 (neutral) when Elo isn't trusted yet, and `marketProb`
- * should be 0.5 (neutral, centers to 0) when no live sportsbook line is
- * available yet — both matching exactly how modelFit.ts imputed them during
- * training. Using `null`-skips-blending semantics here instead would feed
- * the fitted formula a different distribution than the one it was
- * validated against. Same convention for `simWinProb`.
- */
-export function applyFittedMoneylineWeights(diag: FittedDiagnostics, eloProb: number, marketProb: number, simWinProb: number, fitted: FittedMoneylineWeights): number {
-  const features = fittedFeatureVector(diag, eloProb, marketProb, simWinProb);
-  let z = fitted.intercept;
-  for (let i = 0; i < fitted.weights.length; i++) z += fitted.weights[i] * (features[i] ?? 0);
-  const prob = 1 / (1 + Math.exp(-z));
-  return Math.min(0.97, Math.max(0.03, prob));
-}
-
 export interface MoneylineConfidenceInterval {
   /** 90% Wald interval (delta method) for the HOME side's win probability — same clamp as applyFittedMoneylineWeights's point estimate. */
   lowerHome: number;
   upperHome: number;
-}
-
-/**
- * Statistical confidence interval for the fitted prediction, from the
- * regression's own covariance matrix (see logisticRegression.ts's
- * predictProbWithInterval) — null when `fitted` has no covariance (older
- * fit, before this existed), since there's nothing real to build an
- * interval from. Always in terms of the HOME side; callers flip to the
- * picked side themselves (lower/upper swap under 1-p).
- */
-export function computeMoneylineConfidenceInterval(diag: FittedDiagnostics, eloProb: number, marketProb: number, simWinProb: number, fitted: FittedMoneylineWeights): MoneylineConfidenceInterval | null {
-  if (!fitted.covariance) return null;
-  const features = fittedFeatureVector(diag, eloProb, marketProb, simWinProb);
-  const { lower, upper } = predictProbWithInterval(features, fitted.weights, fitted.intercept, fitted.covariance);
-  return {
-    lowerHome: Math.min(0.97, Math.max(0.03, lower)),
-    upperHome: Math.min(0.97, Math.max(0.03, upper)),
-  };
 }
 
 /** Numerically stable Poisson PMF — builds each term from the last rather than computing lambda^k or k! directly, which overflow for realistic MLB run totals. */
@@ -304,7 +202,6 @@ export interface TotalModelResult {
  * `gameModelBackfill.ts`, and are not part of the duplicated model.
  */
 
-
 /** Sum of two independent Poisson variables is itself Poisson with the combined rate — the standard simplifying assumption here. */
 export function computeTotalModel(input: TotalModelInput): TotalModelResult {
   const expectedTotal = input.homeExpectedRuns + input.awayExpectedRuns;
@@ -322,104 +219,8 @@ export interface FittedTotalWeights {
   covariance: number[][] | null;
 }
 
-/** Subset of MoneylineResult.diagnostics the totals fit reuses — same game, same raw ingredients, no need to recompute form/park separately. */
-type TotalFittedDiagnostics = Pick<MoneylineResult['diagnostics'], 'rawHomeRecentEdge' | 'rawAwayRecentEdge' | 'parkFactor'>;
-
-const NEUTRAL_BULLPEN_ERA = 4.3;
-
-/**
- * Same feature order as modelFit.ts's TOTAL_FEATURE_NAMES — shared by the
- * point-estimate and confidence-interval paths below so they can never drift
- * apart. `lineMovement` is 0 (no signal) when there's no reliable "opening"
- * reference to compare against; `homeBullpenEra`/`awayBullpenEra` fall back
- * to the neutral reference individually when unavailable — same neutral-
- * impute convention as the rest. `simOverProb` (sim engine plan) is the real
- * per-game simulation's expected total, converted to an over-probability
- * against today's actual line, once the Python worker (`ensure_game_sims`, task 2.9) has one cached for this
- * matchup — same live-wiring shape as `simWinProb`, see fittedFeatureVector's
- * comment in this same file. Falls back to rawOverProb's own value (the
- * sim contributing "no additional signal beyond the existing formula" is
- * the honest neutral point for a probability feature, unlike a flat 0.5)
- * for a game with no cached sim yet.
- */
-function fittedTotalFeatureVector(
-  rawOverProb: number,
-  diag: TotalFittedDiagnostics,
-  eloProb: number,
-  marketProb: number,
-  lineMovement: number,
-  homeBullpenEra: number | null,
-  awayBullpenEra: number | null,
-  simOverProb: number,
-): number[] {
-  const bullpenEraCentered = (homeBullpenEra ?? NEUTRAL_BULLPEN_ERA) / 2 + (awayBullpenEra ?? NEUTRAL_BULLPEN_ERA) / 2 - NEUTRAL_BULLPEN_ERA;
-  return [
-    rawOverProb,
-    diag.rawHomeRecentEdge - diag.rawAwayRecentEdge,
-    diag.parkFactor - 1,
-    eloProb,
-    marketProb - 0.5,
-    lineMovement,
-    bullpenEraCentered,
-    simOverProb,
-  ];
-}
-
-/**
- * Applies the fitted total-market stacking regression in place of the flat
- * 0.5-weight market blend the total lock cycle (now predict/odds_lines_cycle.py's run_total_lock_from_lines) otherwise falls back to — same
- * raw ingredients as the live Poisson formula (rawOverProb) plus form/park/
- * Elo/market/line-movement/bullpen signals, learned coefficients instead of
- * a guessed blend weight. `eloProb` and `marketProb` should be 0.5 (neutral)
- * when untrusted/unavailable, matching exactly how modelFit.ts imputed them
- * during training.
- */
-export function applyFittedTotalWeights(
-  rawOverProb: number,
-  diag: TotalFittedDiagnostics,
-  eloProb: number,
-  marketProb: number,
-  lineMovement: number,
-  homeBullpenEra: number | null,
-  awayBullpenEra: number | null,
-  simOverProb: number,
-  fitted: FittedTotalWeights,
-): number {
-  const features = fittedTotalFeatureVector(rawOverProb, diag, eloProb, marketProb, lineMovement, homeBullpenEra, awayBullpenEra, simOverProb);
-  let z = fitted.intercept;
-  for (let i = 0; i < fitted.weights.length; i++) z += fitted.weights[i] * (features[i] ?? 0);
-  const prob = 1 / (1 + Math.exp(-z));
-  return Math.min(0.97, Math.max(0.03, prob));
-}
-
 export interface TotalConfidenceInterval {
   /** 90% Wald interval (delta method) for the OVER probability — same clamp as applyFittedTotalWeights's point estimate. */
   lowerOver: number;
   upperOver: number;
-}
-
-/**
- * Statistical confidence interval for the fitted total prediction, from the
- * regression's own covariance matrix — null when `fitted` has no covariance.
- * Always in terms of OVER; callers flip to the picked side themselves
- * (lower/upper swap under 1-p), same convention as computeMoneylineConfidenceInterval.
- */
-export function computeTotalConfidenceInterval(
-  rawOverProb: number,
-  diag: TotalFittedDiagnostics,
-  eloProb: number,
-  marketProb: number,
-  lineMovement: number,
-  homeBullpenEra: number | null,
-  awayBullpenEra: number | null,
-  simOverProb: number,
-  fitted: FittedTotalWeights,
-): TotalConfidenceInterval | null {
-  if (!fitted.covariance) return null;
-  const features = fittedTotalFeatureVector(rawOverProb, diag, eloProb, marketProb, lineMovement, homeBullpenEra, awayBullpenEra, simOverProb);
-  const { lower, upper } = predictProbWithInterval(features, fitted.weights, fitted.intercept, fitted.covariance);
-  return {
-    lowerOver: Math.min(0.97, Math.max(0.03, lower)),
-    upperOver: Math.min(0.97, Math.max(0.03, upper)),
-  };
 }

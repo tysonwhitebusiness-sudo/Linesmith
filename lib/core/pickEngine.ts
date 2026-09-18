@@ -40,15 +40,6 @@ export function subsetSplit(
   return { kind, label, stat: subsetWindow(history, category, predicate, { minimum }) };
 }
 
-/** Season-to-date over whatever history exists. */
-export function seasonSplit(
-  history: PickCandidate['history'],
-  category: string,
-  label = 'This season',
-): SplitEvidence {
-  return { kind: 'recent-form', label, stat: openWindow(history, category, { minimum: 1 }) };
-}
-
 /**
  * The standard trailing windows.
  *
@@ -63,11 +54,6 @@ export function standardWindows(
   windows: number[] = [5, 10, 15],
 ): SplitEvidence[] {
   return windows.map((w) => windowSplit(history, category, w, `Last ${w}`));
-}
-
-/** Splits worth putting on screen: the ones that actually resolved. */
-export function usableSplits(splits: SplitEvidence[] | undefined): SplitEvidence[] {
-  return (splits ?? []).filter((s) => isOk(s.stat));
 }
 
 // ---------------------------------------------------------------------------
@@ -99,17 +85,6 @@ export function scanConsistent(
   { minSampleSize = 5 }: ConsistencyOptions = {},
 ): PickCandidate[] {
   return candidates.filter((c) => c.consistent && c.sampleSize >= minSampleSize);
-}
-
-/** Group candidates by their dimension, preserving input order within a group. */
-export function groupByDimension(candidates: PickCandidate[]): Map<string, PickCandidate[]> {
-  const out = new Map<string, PickCandidate[]>();
-  for (const c of candidates) {
-    const bucket = out.get(c.dimension);
-    if (bucket) bucket.push(c);
-    else out.set(c.dimension, [c]);
-  }
-  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,19 +144,6 @@ export interface StreakHit {
 export interface StreakOptions extends FormOptions {
   /** Minimum consecutive matching periods to qualify. */
   minStreak?: number;
-}
-
-/** Candidates riding a live streak, longest first. */
-export function scanStreaks(
-  candidates: PickCandidate[],
-  { minStreak = 3, window = 5 }: StreakOptions = {},
-): StreakHit[] {
-  const rateOf = (hit: StreakHit) => (isOk(hit.form.recent) ? hit.form.recent.rate : -1);
-
-  return candidates
-    .map((candidate) => ({ candidate, form: readForm(candidate, { window }) }))
-    .filter((hit) => hit.form.streak >= minStreak)
-    .sort((a, b) => b.form.streak - a.form.streak || rateOf(b) - rateOf(a));
 }
 
 /**
@@ -279,13 +241,4 @@ export function scanComingUp(
     return d === null || d <= maxDistance;
   });
   return sortByComingUp(pool);
-}
-
-// ---------------------------------------------------------------------------
-// Watchlist
-// ---------------------------------------------------------------------------
-
-export function scanWatchlist(candidates: PickCandidate[], watchedSubjectIds: Iterable<string>): PickCandidate[] {
-  const watched = new Set(watchedSubjectIds);
-  return sortByComingUp(candidates.filter((c) => watched.has(c.subjectId)));
 }

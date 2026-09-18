@@ -44,21 +44,6 @@ export function battersUntil(
 }
 
 /**
- * Half-innings until the subject's team bats again. Used when the subject is
- * in the field: we know the inning exactly even though the batter count isn't
- * meaningful yet.
- */
-export function halfInningsUntilTeamBats(opts: {
-  isTopInning: boolean;
-  subjectIsHome: boolean;
-}): number {
-  // Home bats in the bottom half. If the top is in progress and the subject is
-  // on the home team, their half is the very next one.
-  const teamIsBattingNow = opts.isTopInning !== opts.subjectIsHome;
-  return teamIsBattingNow ? 0 : 1;
-}
-
-/**
  * Minutes per plate appearance measured from this game's own elapsed time.
  * Returns `null` when the sample is too thin or implausible.
  */

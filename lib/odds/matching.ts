@@ -127,15 +127,3 @@ export function buildSlate(games: SlateGame[], lines: UnifiedGameLine[]): Slate 
 
   return { entries, byAbbrev };
 }
-
-/** "3–5 B7"-style condensed live score for dense rows. */
-export function abbreviateLive(entry: SlateEntry | undefined): string | null {
-  const { liveScore, livePeriod } = liveFor(entry);
-  if (!liveScore) return null;
-  const period = livePeriod ?? '';
-  // Only the common baseball form compresses safely; anything else is passed
-  // through untouched, per the "render the period verbatim" rule.
-  const inning = period.match(/^(top|bottom)\s+(\d+)/i);
-  const short = inning ? `${inning[1][0].toUpperCase()}${inning[2]}` : period;
-  return `${liveScore.away}–${liveScore.home}${short ? ` ${short}` : ''}`;
-}

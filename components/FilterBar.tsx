@@ -31,35 +31,6 @@ const FILTER_BASE = 'inline-flex shrink-0 items-center gap-2 whitespace-nowrap r
 const FILTER_INACTIVE = 'border-line bg-card text-ink-muted hover:border-masters/30';
 const FILTER_ACTIVE = 'border-masters bg-accent-soft text-masters';
 
-export function FilterButton({
-  icon,
-  label,
-  value,
-  active,
-  onClick,
-  pressed,
-}: {
-  icon: ReactNode;
-  label: string;
-  value?: string;
-  active?: boolean;
-  onClick: () => void;
-  pressed?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={pressed}
-      className={`${FILTER_BASE} ${active ? FILTER_ACTIVE : FILTER_INACTIVE}`}
-    >
-      {icon}
-      <span>{label}</span>
-      {value ? <span className="font-semibold">{value}</span> : null}
-    </button>
-  );
-}
-
 /**
  * A native select dressed as a chip. Native is the right call on a phone —
  * the OS picker handles long option lists better than anything custom.
@@ -101,31 +72,6 @@ export function FilterSelect({
           </option>
         ))}
       </select>
-    </span>
-  );
-}
-
-/** Compact pill version — used inside dropdowns/sidebar where FilterSearchBox's full width doesn't fit. */
-export function FilterSearchInput({
-  value,
-  onChange,
-  placeholder = 'Search players…',
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-}) {
-  const active = value.trim() !== '';
-  return (
-    <span className={`${FILTER_BASE} ${active ? FILTER_ACTIVE : FILTER_INACTIVE}`}>
-      <input
-        type="search"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        aria-label={placeholder}
-        className="w-28 bg-transparent text-[13px] outline-none placeholder:text-ink-muted"
-      />
     </span>
   );
 }

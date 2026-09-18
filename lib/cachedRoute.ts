@@ -1,7 +1,7 @@
 /**
  * The stale-while-revalidate pattern hand-rolled into ~9 API routes this
  * session (`/api/mlb`, `/api/nfl`, `/api/golf`, `/api/mlb/team/[teamId]`,
- * `/api/nfl/team/[teamId]`, `/api/mlb/team-form`, `/api/mlb/team-statcast`,
+ * `/api/mlb/team-form`, `/api/mlb/team-statcast`,
  * `/api/mlb/teams`, `/api/props/calibration`), extracted into one function.
  * Composes the three existing pieces — `lib/staleCache.ts`'s dedup guard,
  * `lib/db/client.ts`'s SQLite-persisted key/value cache, and

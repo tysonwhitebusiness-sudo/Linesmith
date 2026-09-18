@@ -1,6 +1,6 @@
 /**
- * The NBA game page — R8.4a, exported as `toGameResearchData` from
- * `gameDetailAdapter.ts`. Sections follow G2 `game-hoops-hockey.js`: game flow
+ * The NBA game page — R8.4a, `toGameResearchData`, imported by
+ * `GameResearchPage.tsx`. Sections follow G2 `game-hoops-hockey.js`: game flow
  * (win probability, the lead tracker, scoring runs), the shot chart, team
  * stats, box score, lines and props with the season series, play-by-play; before
  * the tip, the shared Matchup and Players sections, injuries and lines; live,

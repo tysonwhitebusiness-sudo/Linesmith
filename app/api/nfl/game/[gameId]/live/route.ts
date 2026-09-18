@@ -1,10 +1,9 @@
 /**
- * Live in-game detail for NFL's hero card Live tab — quarter score, scoring
+ * Live in-game detail for the player page's live tracker — quarter score, scoring
  * plays, top passers, team stats. Mirrors
  * `app/api/mlb/game/[gameId]/live/route.ts`'s contract: deliberately
- * uncached. Complements (doesn't replace) `lib/sports/nfl/liveGameState.ts`,
- * which feeds the hero card's inline down/distance strip — this route
- * powers the deeper, tabbed Live view.
+ * uncached. (It once complemented `nfl/liveGameState.ts`, the old game
+ * page's down/distance strip; both that and the page were deleted in R11a.)
  *
  * GET /api/nfl/game/401547417/live
  */

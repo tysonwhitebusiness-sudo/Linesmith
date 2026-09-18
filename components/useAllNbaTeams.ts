@@ -6,7 +6,7 @@ import type { TeamStandingRow, AllTeamsState } from './useAllTeams';
 /**
  * NBA's version of useAllTeams — same TeamStandingRow shape, /api/nba/teams
  * instead. `enabled` (default true, matches every existing caller's
- * behavior) lets a shared multi-sport component like `GameDetail.tsx` call
+ * behavior) lets a shared multi-sport component call
  * this unconditionally (rules of hooks) while only actually fetching when
  * NBA is the active sport — same "always called, mostly idle" convention
  * every other per-sport hook on that page already follows.
