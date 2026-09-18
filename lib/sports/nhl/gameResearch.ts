@@ -200,8 +200,18 @@ async function readNhlPregame(input: { gameId: string; start: string; date: stri
 
 export async function readNhlGameResearch(gameId: string, now: Date = new Date()): Promise<NhlGameResearchPayload | null> {
   const [raw, rail] = await Promise.all([fetchPlayByPlay(gameId) as Promise<J>, fetch(`${API}/gamecenter/${encodeURIComponent(gameId)}/right-rail`, { cache: 'no-store', signal: AbortSignal.timeout(15_000) }).then((r) => (r.ok ? r.json() : null)).catch(() => null) as Promise<J>]);
+  if (!raw) {
+    // `fetchJson` folds a 404 and a timeout into one null. Only api-web's own
+    // 404 means the game does not exist; anything else is api-web not answering,
+    // which must read "couldn't load" (an error), not "not found". Found in the
+    // R11 render: COL @ CGY said "not found" while five pages loaded at once.
+    // The team page made the same distinction in the R7.4 sweep.
+    const probe = await fetch(`${API}/gamecenter/${encodeURIComponent(gameId)}/play-by-play`, { cache: 'no-store', signal: AbortSignal.timeout(15_000) }).catch(() => null);
+    if (probe?.status === 404) return null;
+    throw new Error(`NHL play-by-play unavailable for ${gameId}`);
+  }
   const state = nhlGameState(raw);
-  if (!raw || !state) return null;
+  if (!state) return null;
   const started = state === 'live' || state === 'final';
   const side = (t: J): GameSide => ({
     id: String(t?.id ?? ''),
