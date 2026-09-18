@@ -2494,10 +2494,17 @@ table holds ids only.
   position-split numbers as a lower bound, not a target.
 
 - **Delete:** `MatchupExplorerCard` and the `matchupExplorer` field (R1h's floor
-  goes with it). **NOT DONE — deliberately left for the operator's return:** it
+  goes with it). **DONE 2026-09-18, on the operator's word after comparing the
+  two:** the component (with R1h's floor inside it), the field and its four
+  types on `PlayerDetailData`, and the builders in eight sport adapters.
+  Cut with care, not by pattern: NFL's block held the `opponentUnit` role,
+  which other code still reads, so only the builder statement went there.
+  `NflPlayerVsDefenseCard` stays — the old `GameDetail` still uses it, and R11
+  deletes that. `tests/unit-grades.test.ts` now fails if either comes back. Full
+  suite 564/564. (Previously: **NOT DONE — deliberately left for the operator's return:** it
   spans eight sport adapters, `playerRoles.ts` and the old prop block, and it is
   the one part of R10 that removes something a person may still be looking at.
-  Compare now covers what it did for player-against-team.
+  Compare now covers what it did for player-against-team.)
 
 **Verify:** the G2 compare URLs (default opponent, a chosen team, a peer) for
 each sport, against `data/matchup-<sport>.json`. **Stop.**

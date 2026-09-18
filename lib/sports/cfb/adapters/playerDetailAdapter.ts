@@ -28,7 +28,7 @@ import { toFootballGameState } from '@/lib/sports/multiSport/footballGameState';
 import type { PropOddsRow } from '@/lib/db/client';
 import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
-import type { ChipDef, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 // Type-only import — `teamDefenseAllowed.ts` itself pulls in `lib/db/client`
 // (Postgres, server-only), so only its TYPE is safe to bring into this
 // client-bundled adapter; the matching logic below is a local pure copy,
@@ -296,39 +296,6 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
       }
     : null;
 
-  // ---- Universal matchup card — CFB's first real matchup card ----
-  const opponentKeyOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  const subjectGamesPlayed = seasonStats && seasonStats.games > 0 ? seasonStats.games : null;
-  const subjectStatsByGroupCfb: Record<string, { key: string; label: string; value: number; decimals: number; rank: null; poolSize: null }[]> = {
-    passing: seasonStats && subjectGamesPlayed && seasonStats.passingYards > 0 ? [{ key: 'passingYdsAllowed', label: 'Pass Yds/Gm', value: seasonStats.passingYards / subjectGamesPlayed, decimals: 1, rank: null, poolSize: null }] : [],
-    rushing: seasonStats && subjectGamesPlayed && seasonStats.rushingYards > 0 ? [{ key: 'rushingYdsAllowed', label: 'Rush Yds/Gm', value: seasonStats.rushingYards / subjectGamesPlayed, decimals: 1, rank: null, poolSize: null }] : [],
-    receiving: seasonStats && subjectGamesPlayed && seasonStats.receivingYards > 0 ? [{ key: 'receivingYdsAllowed', label: 'Rec Yds/Gm', value: seasonStats.receivingYards / subjectGamesPlayed, decimals: 1, rank: null, poolSize: null }] : [],
-  };
-  const matchupExplorer: MatchupExplorerData | null =
-    teamDefenseAllowed.length > 0
-      ? {
-          subjectName: active.subjectName,
-          subjectHeadshotUrl: headshotUrl,
-          subjectTeamAbbr: teamAbbr,
-          subjectTeamLogoUrl: teamLogoUrl,
-          positionGroups: [...CFB_MATCHUP_GROUPS],
-          subjectStatsByGroup: subjectStatsByGroupCfb,
-          defaultOpponentId: (() => {
-            const match = opponentAbbr ? fuzzyMatchCfbTeamName(teamDefenseAllowed, opponentAbbr) : (opponentName ? fuzzyMatchCfbTeamName(teamDefenseAllowed, opponentName) : null);
-            return match ? opponentKeyOf(match.teamName) : opponentKeyOf(teamDefenseAllowed[0].teamName);
-          })(),
-          opponentOptions: teamDefenseAllowed.map((t) => ({ id: opponentKeyOf(t.teamName), abbr: t.teamName.slice(0, 4).toUpperCase(), name: t.teamName, logoUrl: t.logoUrl })),
-          // Real logo for every real opponent (2026-08-24 fix) — CFB's
-          // matchup card never had logos at all before this;
-          // `teamDefenseAllowed` now carries a real one per team via
-          // `cfbTeamLogoByCfbdName` (teamDefenseAllowed.ts).
-          opponentMeta: Object.fromEntries(teamDefenseAllowed.map((t) => [opponentKeyOf(t.teamName), { id: opponentKeyOf(t.teamName), abbr: t.teamName.slice(0, 4).toUpperCase(), name: t.teamName, logoUrl: t.logoUrl }])),
-          opponentStatsByGroup: Object.fromEntries(
-            teamDefenseAllowed.map((t) => [opponentKeyOf(t.teamName), Object.fromEntries(CFB_MATCHUP_GROUPS.map((g) => [g.key, cfbDefenseRow(t, g.key)]))]),
-          ),
-          contextLine: opponentName ? `Real next-game opponent: ${opponentName}` : null,
-        }
-      : null;
 
 
 
@@ -378,7 +345,6 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
     priceCandidate,
     gameState,
     liveMatchup: null,
-    matchupExplorer,
     seasonStatsCard: null,
     golfFormHoles: null,
     nflSeasonStats,

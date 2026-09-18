@@ -5,7 +5,8 @@
  * as renaming four `PlayerDetailData` fields (`pitchMix` -> `usageMix`,
  * `zoneProfile` -> `spatialGrid`, and so on). **None of those fields exist.**
  * `PlayerDetailData`'s sport-specific slots are `hitterStats`, `liveGame`,
- * `liveMatchup`, `matchupExplorer`, `liveLineTracker`, `seasonStatsCard`,
+ * `liveMatchup`, `liveLineTracker`, `seasonStatsCard` (a `matchupExplorer` slot
+ * existed too, until R10's compare replaced it),
  * `golfFormHoles`, `nflSeasonStats` and `lineControl`. The four names came from
  * the design mockups, not the codebase. So this is six NEW fields and the
  * adapter work to fill them — materially larger than the plan implied, and

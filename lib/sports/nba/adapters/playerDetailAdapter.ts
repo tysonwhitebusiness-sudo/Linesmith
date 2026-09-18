@@ -22,7 +22,7 @@ import type { NbaLiveGameDetail } from '@/lib/sports/nba/liveGame';
 import type { PropOddsRow } from '@/lib/db/client';
 import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
-import type { ChipDef, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import type { NbaTeamDefenseAllowed } from '@/lib/sports/nba/teamDefenseAllowed';
 import { MIDDOT, fmt } from '@/components/charts/tokens';
 import { toRoleStat, type OpponentUnitRole, type SpatialGridRole, type UsageMixRole } from '@/lib/sports/shared/playerRoles';
@@ -256,34 +256,6 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
       }
     : null;
 
-  // ---- Universal matchup card — NBA's first real matchup card ----
-  const subjectPtsPerGame = seasonStats && seasonStats.games > 0 ? seasonStats.points / seasonStats.games : null;
-  const matchupExplorer: MatchupExplorerData | null =
-    teamDefenseAllowed.length > 0
-      ? {
-          subjectName: active.subjectName,
-          subjectHeadshotUrl: headshotUrl,
-          subjectTeamAbbr: teamAbbr,
-          subjectTeamLogoUrl: teamLogoUrl,
-          positionGroups: [...NBA_MATCHUP_GROUPS],
-          subjectStatsByGroup: Object.fromEntries(
-            NBA_MATCHUP_GROUPS.map((g) => [
-              g.key,
-              subjectPtsPerGame != null ? [{ key: `ptsAllowed${g.key}`, label: 'Pts/Gm', value: subjectPtsPerGame, decimals: 1, rank: null, poolSize: null }] : [],
-            ]),
-          ),
-          defaultOpponentId: opponentAbbr && teamDefenseAllowed.some((t) => t.abbr === opponentAbbr) ? opponentAbbr : teamDefenseAllowed[0].abbr,
-          opponentOptions: teamDefenseAllowed.map((t) => ({ id: t.abbr, abbr: t.abbr, name: t.abbr })),
-          // Real logo for every real opponent option, not just today's
-          // matched one (2026-08-24 fix) — `nbaTeamLogoUrl` is a plain
-          // predictable ESPN CDN template, no per-team fetch needed, so
-          // there's no reason the custom-opponent picker's other entries
-          // should ever fall back to a text-initials avatar.
-          opponentMeta: Object.fromEntries(teamDefenseAllowed.map((t) => [t.abbr, { id: t.abbr, abbr: t.abbr, name: t.abbr, logoUrl: nbaTeamLogoUrl(t.abbr) }])),
-          opponentStatsByGroup: Object.fromEntries(teamDefenseAllowed.map((t) => [t.abbr, Object.fromEntries(NBA_MATCHUP_GROUPS.map((g) => [g.key, nbaDefenseRow(t, g.key)]))])),
-          contextLine: opponentAbbr ? `Real next-game opponent: ${opponentAbbr}` : null,
-        }
-      : null;
 
 
 
@@ -334,7 +306,6 @@ export function toPlayerDetailData(input: NbaPlayerDetailInput): PlayerDetailDat
     priceCandidate,
     gameState,
     liveMatchup: null,
-    matchupExplorer,
     seasonStatsCard: null,
     golfFormHoles: null,
     nflSeasonStats,

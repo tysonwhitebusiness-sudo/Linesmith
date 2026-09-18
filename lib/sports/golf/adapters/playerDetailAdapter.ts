@@ -328,7 +328,6 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
     lineControl: { kind: 'category', dimension: active.dimension, value: effectiveGolfCategory, categories: ['birdie', 'par', 'bogey'] },
     gameState: null,
     liveMatchup,
-    matchupExplorer: null,
     seasonStatsCard: golfStats
       ? {
           strokesGained: golfStats.strokesGained,

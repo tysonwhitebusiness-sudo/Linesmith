@@ -280,7 +280,6 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
     // position groups), and no ranked-player list exists in this codebase
     // yet for a "pick any opponent" head-to-head picker (see
     // docs/matchup-card-rebuild-gameplan-2026-08-23.md §6/§9 phase 5).
-    matchupExplorer: null,
     seasonStatsCard: null,
     golfFormHoles: null,
     nflSeasonStats: null,

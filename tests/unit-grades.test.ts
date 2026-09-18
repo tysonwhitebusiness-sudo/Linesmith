@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   unitGradeFromRanked,
   letterFromPercentile,
@@ -324,4 +324,7 @@ test('CLAUDE.md section 4 only cites fields that still exist', () => {
   assert.doesNotMatch(ruleParagraph, /mlbContextMatchup/, 'section 4 cites mlbContextMatchup again — matchupExplorer replaced it');
   assert.doesNotMatch(gameAdapter, /bars\?: Array</, 'StatComparisonData carries `bars` again');
   assert.doesNotMatch(playerAdapter, /\n\s+mlbContextMatchup\??:/, 'PlayerDetailData declares mlbContextMatchup again');
+  // R10: compare replaced the universal matchup card, and both were deleted.
+  assert.doesNotMatch(playerAdapter, /\n\s+matchupExplorer\??:/, 'PlayerDetailData declares matchupExplorer again — R10 compare replaced it');
+  assert.ok(!existsSync('components/MatchupExplorerCard.tsx'), 'MatchupExplorerCard is back — R10 compare replaced it');
 });

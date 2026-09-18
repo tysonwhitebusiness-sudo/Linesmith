@@ -39,7 +39,7 @@ import type { PropOddsRow } from '@/lib/db/client';
 import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
 import { toRoleStat, type OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
-import type { ChipDef, GameStateSlot, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, GameStateSlot, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { isTeamNameMatch } from '@/lib/sports/shared/teamNameMatch';
 
@@ -340,40 +340,6 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
       }
     : null;
 
-  // Team-wide only — real per-position (striker/midfielder/defender) split
-  // needs match-level shot data joined to the scorer's position, which
-  // Understat's team-aggregate endpoints don't expose; not attempted
-  // tonight rather than fabricate a plausible-looking split (see
-  // docs/matchup-card-rebuild-gameplan-2026-08-23.md §6's soccer row).
-  const matchupExplorer: MatchupExplorerData | null =
-    seasonStats && opponentDefense && opponentAbbr
-      ? {
-          subjectName: active.subjectName,
-          subjectHeadshotUrl: headshotUrl,
-          subjectTeamAbbr: teamAbbr,
-          subjectTeamLogoUrl: teamLogoUrl,
-          positionGroups: null,
-          subjectStatsByGroup: {
-            _default: [
-              { key: 'goals', label: 'Goals/Gm', value: seasonStats.games > 0 ? seasonStats.goals / seasonStats.games : 0, decimals: 2, rank: null, poolSize: null },
-              { key: 'shots', label: 'Shots/Gm', value: seasonStats.games > 0 ? seasonStats.shots / seasonStats.games : 0, decimals: 2, rank: null, poolSize: null },
-              { key: 'xG', label: 'xG/Gm', value: seasonStats.games > 0 ? seasonStats.xG / seasonStats.games : 0, decimals: 2, rank: null, poolSize: null },
-            ],
-          },
-          defaultOpponentId: 'today',
-          opponentOptions: null,
-          opponentMeta: { today: { id: 'today', abbr: opponentAbbr, name: opponentAbbr, logoUrl: opponentLogoUrl } },
-          opponentStatsByGroup: {
-            today: {
-              _default: [
-                { key: 'goals', label: 'Goals Allowed/Gm', value: opponentDefense.goalsAgainstPerGame, decimals: 2, rank: opponentDefense.rank, poolSize: opponentDefense.poolSize },
-                { key: 'xG', label: 'xG Allowed/Gm', value: opponentDefense.xGAPerGame, decimals: 2, rank: opponentDefense.rank, poolSize: opponentDefense.poolSize },
-              ],
-            },
-          },
-          contextLine: null,
-        }
-      : null;
 
 
 
@@ -410,7 +376,6 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     priceCandidate,
     gameState,
     liveMatchup: null,
-    matchupExplorer,
     seasonStatsCard: null,
     golfFormHoles: null,
     nflSeasonStats,

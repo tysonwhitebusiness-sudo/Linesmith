@@ -62,7 +62,6 @@ import { BookLogo } from './BookLogo';
 import { usePropOdds, resolveCandidateEdge } from './usePropOdds';
 import { PropOddsBoard } from './PropOddsPanel';
 import { SegmentedToggle } from './SegmentedToggle';
-import { MatchupExplorerCard } from './MatchupExplorerCard';
 import { LiveLineTrackerCard } from './LiveLineTrackerCard';
 import { useTeamDefenseAllowed } from './useTeamDefenseAllowed';
 import { GolfPlayerStatsCard } from './GolfPlayerStatsCard';
@@ -2006,10 +2005,6 @@ export function PlayerDetail({
             />
           ) : null}
 
-          {/* Universal matchup card — every sport (see
-              docs/matchup-card-rebuild-gameplan-2026-08-23.md). Replaces the
-              old MLB `matchups`/NFL `nflMatchup` cards outright. */}
-          {data.matchupExplorer ? <MatchupExplorerCard data={data.matchupExplorer} /> : null}
 
           {/* THE BOARD DECIDES WHICH COLUMN, NOT THE ORDER THESE WERE WRITTEN IN.
               `docs/design/_ps-body.html` lays the page out as `1fr 288px` and
@@ -2070,11 +2065,8 @@ export function PlayerDetail({
           />
           {/* Golf keeps its own genuinely different context-rail card
               (§3 of the matchup-card rebuild gameplan). Every other sport's
-              equivalent content now lives in the universal
-              `MatchupExplorerCard` rendered in the main column above —
-              the old MLB-only context-rail "Matchup →" card was fully
-              subsumed by it (same data, more views), so it isn't
-              duplicated here. */}
+              opponent comparison lives in the Compare section (R10), which
+              replaced the universal matchup card outright. */}
           {active.sport === 'golf' ? <PastRoundMatchupsCard active={active} meta={meta} /> : null}
 
           {/* Season stats — NFL, CFB, soccer and the others' ranked season

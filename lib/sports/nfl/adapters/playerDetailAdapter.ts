@@ -44,11 +44,9 @@ import { toRoleStat, type OpponentUnitRole, type SpatialGridRole } from '@/lib/s
 import { nflTargetsSection, type NflTargetsInput } from '@/lib/sports/nfl/targetShapes';
 import { MIDDOT, fmt } from '@/components/charts/tokens';
 import type { PlayerSeasonStats } from '@/lib/sports/nfl/nflverse';
-import { MATCHUP_GROUP_BY_POSITION, playerMatchupRows } from '@/components/NflPlayerVsDefenseCard';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import type {
   ChipDef,
-  MatchupExplorerData,
   PlayerDetailChart,
   PlayerDetailData,
   PropOddsBoardProps,
@@ -257,19 +255,10 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   // ---- Form (NflPlayerDetail.tsx:559-571 — same `active.supportingSplits`, already sport-agnostic) ----
   const formWindows = active.supportingSplits ?? null;
 
-  // ---- Universal matchup card (was "Vs. Defense", NflPlayerDetail.tsx:406-419)
-  // — no player-level rank source exists for NFL (only the real 32-team
-  // defense ranks do, per NflPlayerVsDefenseCard's own header comment), so
-  // `subjectStatsByGroup` rows carry `rank: null` while `opponentStatsByGroup`
-  // rows carry the real rank/poolSize `toStatRow` already attaches.
-  // `positionGroups: null` (single implicit group) — `MATCHUP_GROUP_BY_POSITION`
-  // already narrows the shown categories to the ones relevant to this
-  // player's own position, so there's nothing left to tab between for one
-  // specific player (unlike CFB/NBA/NHL's team-wide scouting view, which
-  // tabs across every group since any team could be picked as the opponent).
-  const matchupOwnRows = playerMatchupRows(seasonStats, position);
+  // The defence's allowed stats, which the opponentUnit role below reads. (The
+  // universal matchup card that also used them was deleted in R10: compare
+  // replaced it.)
   const matchupOpponentStats = opponentDefenseAllowed.map(toStatRow);
-  const matchupGroup = position ? MATCHUP_GROUP_BY_POSITION[position] : undefined;
 
   // ---- Role 1 | opponentUnit: the defense this player faces.
   // `opponentDefenseAllowed` is already filtered to THIS player's position
@@ -285,32 +274,6 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
           logoUrl: opponentLogoUrl,
           stats: matchupOpponentStats.map((st) => toRoleStat(st)),
           emptyMessage: 'No defensive splits for this opponent yet.',
-        }
-      : null;
-  const nflOpponentId = 'today';
-  const matchupExplorer: MatchupExplorerData | null =
-    opponentAbbr && matchupGroup
-      ? {
-          subjectName: active.subjectName,
-          subjectHeadshotUrl: headshotUrl,
-          subjectFallbackUrl: teamLogoUrl,
-          subjectTeamAbbr: teamAbbr,
-          subjectTeamLogoUrl: teamLogoUrl,
-          subjectRoleLabel: 'Produces',
-          opponentRoleLabel: 'Allows',
-          positionGroups: null,
-          subjectStatsByGroup: {
-            _default: matchupOwnRows.map((r) => ({ key: r.label.toLowerCase().replace(/[^a-z0-9]+/g, '-'), label: r.label, value: r.value, decimals: r.decimals, rank: null, poolSize: null })),
-          },
-          defaultOpponentId: nflOpponentId,
-          opponentOptions: null,
-          opponentMeta: {
-            [nflOpponentId]: { id: nflOpponentId, abbr: opponentAbbr, name: `${opponentAbbr} defense`, logoUrl: opponentLogoUrl },
-          },
-          opponentStatsByGroup: {
-            [nflOpponentId]: { _default: matchupOpponentStats.map((s) => ({ key: s.key, label: s.label, value: s.value, decimals: s.decimals, rank: s.rank ?? null, poolSize: s.poolSize ?? null })) },
-          },
-          contextLine: null,
         }
       : null;
 
@@ -379,7 +342,6 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     priceCandidate,
     gameState,
     liveMatchup: null,
-    matchupExplorer,
     seasonStatsCard: null,
     golfFormHoles: null,
     nflSeasonStats,

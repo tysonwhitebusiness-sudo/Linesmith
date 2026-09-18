@@ -104,8 +104,49 @@ test('the hero counts rounds, in event order, with each round to par', () => {
   assert.equal(r.hero.tiles.find((t) => t.label === 'Best round')?.value, '-5');
 });
 
+// By id, not position: R10.4e put "Against the field" first on the golf page.
+const byId = (r: NonNullable<ReturnType<typeof ready>>, id: string) => r.sections.find((s) => s.id === id)!;
+
+test('against the field: each round beside the field average, strokes gained toned, him marked on the board', () => {
+  const r = ready({
+    field: [
+      {
+        eventId: '1',
+        name: 'Test Championship',
+        course: 'Test Course',
+        roundsHeld: 2,
+        fieldSize: 3,
+        position: 2,
+        tied: true,
+        rounds: [
+          { round: 1, me: -3, field: -1 },
+          { round: 2, me: 1, field: -0.5 },
+        ],
+        leaders: [
+          { espnId: '9', name: 'Leader', toPar: -4, me: false },
+          { espnId: '1', name: 'Him', toPar: -2, me: true },
+        ],
+      },
+    ],
+  });
+  const sec = byId(r, 'field');
+  assert.equal(sec.state.kind, 'ready');
+  const [rounds, board] = sec.rows[0];
+  assert.ok(rounds.kind === 'table' && board.kind === 'table');
+  assert.match(rounds.scope ?? '', /T2nd of 3 who played every round/);
+  assert.match(rounds.scope ?? '', /2 of 4 rounds held/);
+  assert.deepEqual(rounds.rows.map((x) => x.values.gain), ['+2.00', '-1.50'], 'field minus him: beating the field is positive');
+  assert.deepEqual(rounds.rows.map((x) => x.tones?.gain), ['good', 'bad']);
+  assert.equal(board.rows.find((x) => x.label === 'Him')?.highlight, true);
+});
+
+test('a golfer with no event held gets a reason, not an empty field', () => {
+  const sec = byId(ready({ field: [] }), 'field');
+  assert.equal(sec.state.kind, 'empty');
+});
+
 test('scoring by par reads the score against par, not the source’s category', () => {
-  const card = ready().sections[0].rows[0][1];
+  const card = byId(ready(), 'scoring').rows[0][1];
   assert.ok(card.kind === 'table');
   const par5 = card.rows.find((x) => x.key === 'par5')!;
   assert.equal(par5.values.eagle, 1, 'an eagle the category column would have called a birdie');
@@ -114,14 +155,14 @@ test('scoring by par reads the score against par, not the source’s category', 
 });
 
 test('the rounds table is newest first and says when weather was not recorded', () => {
-  const card = ready().sections[0].rows[0][0];
+  const card = byId(ready(), 'scoring').rows[0][0];
   assert.ok(card.kind === 'table');
   assert.deepEqual(card.rows.map((x) => x.values.toPar), ['-3', '+2', '-5']);
   assert.equal(card.rows[1].values.wind, null);
 });
 
 test('the shot section says which seasons it draws on, every time', () => {
-  const sec = ready().sections[1];
+  const sec = byId(ready(), 'shots');
   assert.equal(sec.state.kind, 'ready');
   assert.match(sec.sub ?? '', /2021/);
   assert.match(sec.note ?? '', /2021 PGA TOUR shot seed/);
@@ -129,7 +170,7 @@ test('the shot section says which seasons it draws on, every time', () => {
 });
 
 test('a golfer the seed does not hold gets a reason, not an empty chart', () => {
-  const sec = ready({ shots: null }).sections[1];
+  const sec = byId(ready({ shots: null }), 'shots');
   assert.equal(sec.state.kind, 'empty');
   assert.match(sec.state.kind === 'empty' ? sec.state.reason : '', /2020–2022/);
 });

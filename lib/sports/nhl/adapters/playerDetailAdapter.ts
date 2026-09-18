@@ -22,7 +22,7 @@ import type { NhlLiveGameDetail } from '@/lib/sports/nhl/liveGame';
 import type { PropOddsRow } from '@/lib/db/client';
 import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
-import type { ChipDef, MatchupExplorerData, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
+import type { ChipDef, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import type { NhlTeamDefenseAllowed } from '@/lib/sports/nhl/teamDefenseAllowed';
 import { MIDDOT, fmt } from '@/components/charts/tokens';
 import { toRoleStat, type OpponentUnitRole, type SpatialGridRole, type UsageMixRole } from '@/lib/sports/shared/playerRoles';
@@ -242,37 +242,6 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
       }
     : null;
 
-  // ---- Universal matchup card — NHL's first real matchup card. Goalies
-  // skip this: "points allowed to forwards/D" is a skater-vs-skater-defense
-  // framing that doesn't translate to a goalie's own performance. ----
-  const isGoalieSubject = seasonStats ? seasonStats.saves > 0 || seasonStats.goalsAgainst > 0 : false;
-  const subjectPtsPerGame = seasonStats && seasonStats.games > 0 && !isGoalieSubject ? seasonStats.points / seasonStats.games : null;
-  const matchupExplorer: MatchupExplorerData | null =
-    !isGoalieSubject && teamDefenseAllowed.length > 0
-      ? {
-          subjectName: active.subjectName,
-          subjectHeadshotUrl: headshotUrl,
-          subjectTeamAbbr: teamAbbr,
-          subjectTeamLogoUrl: teamLogoUrl,
-          positionGroups: [...NHL_MATCHUP_GROUPS],
-          subjectStatsByGroup: Object.fromEntries(
-            NHL_MATCHUP_GROUPS.map((g) => [
-              g.key,
-              subjectPtsPerGame != null ? [{ key: `ptsAllowed${g.key}`, label: 'Pts/Gm', value: subjectPtsPerGame, decimals: 1, rank: null, poolSize: null }] : [],
-            ]),
-          ),
-          defaultOpponentId: opponentAbbr && teamDefenseAllowed.some((t) => t.abbr === opponentAbbr) ? opponentAbbr : teamDefenseAllowed[0].abbr,
-          opponentOptions: teamDefenseAllowed.map((t) => ({ id: t.abbr, abbr: t.abbr, name: t.abbr })),
-          // Real logo for every real opponent option (2026-08-24 fix), not
-          // just today's matched one — `teamDefenseAllowed` now carries its
-          // own real `logoUrl` per team (teamDefenseAllowed.ts), so there's
-          // no reason the custom-opponent picker's other entries should
-          // ever fall back to a text-initials avatar.
-          opponentMeta: Object.fromEntries(teamDefenseAllowed.map((t) => [t.abbr, { id: t.abbr, abbr: t.abbr, name: t.abbr, logoUrl: t.logoUrl ?? (t.abbr === opponentAbbr ? opponentLogoUrl : undefined) }])),
-          opponentStatsByGroup: Object.fromEntries(teamDefenseAllowed.map((t) => [t.abbr, Object.fromEntries(NHL_MATCHUP_GROUPS.map((g) => [g.key, nhlDefenseRow(t, g.key)]))])),
-          contextLine: opponentAbbr ? `Real next-game opponent: ${opponentAbbr}` : null,
-        }
-      : null;
 
 
 
@@ -325,7 +294,6 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
     priceCandidate,
     gameState,
     liveMatchup: null,
-    matchupExplorer,
     seasonStatsCard: null,
     golfFormHoles: null,
     nflSeasonStats,
