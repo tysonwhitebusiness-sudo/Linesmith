@@ -142,7 +142,7 @@ export async function readAllowCard(
  * page already makes, one per team rather than one per player.
  */
 /** ESPN's sport/league path per rollup sport, for the roster name lookup. */
-const ESPN_PATH: Partial<Record<TeamProductionSport, [string, string]>> = {
+export const ESPN_PATH: Partial<Record<TeamProductionSport, [string, string]>> = {
   nfl: ['football', 'nfl'],
   cfb: ['football', 'college-football'],
   nba: ['basketball', 'nba'],
@@ -153,6 +153,46 @@ const ESPN_PATH: Partial<Record<TeamProductionSport, [string, string]>> = {
 
 /** How many peers a picker offers. Beyond this the list is a scroll, not a choice. */
 const PEER_LIMIT = 120;
+
+/**
+ * Names for a list of athletes — the crosswalk where it has them, each league's
+ * team rosters for the rest. Shared by the peer picker (R10.2) and the Players
+ * index (R10.5), which have the same problem: `player_game_history` holds ids,
+ * not names.
+ */
+export async function resolveAthleteNames(
+  sport: TeamProductionSport,
+  rows: ReadonlyArray<{ athlete_id: string; team_id: string | null }>,
+): Promise<Map<string, string>> {
+  const named = new Map<string, string>();
+  if (!rows.length) return named;
+  const ids = rows.map((r) => String(r.athlete_id));
+  for (const r of await pgAll<{ athlete_id: string; athlete_name: string }>(
+    `SELECT athlete_id, athlete_name FROM athlete_crosswalk WHERE sport = ? AND athlete_id = ANY(?) AND athlete_name IS NOT NULL`,
+    [sport, ids],
+  )) {
+    named.set(String(r.athlete_id), r.athlete_name);
+  }
+  const path = ESPN_PATH[sport];
+  const missingTeams = [...new Set(rows.filter((r) => !named.has(String(r.athlete_id)) && r.team_id).map((r) => String(r.team_id)))];
+  if (path && missingTeams.length) {
+    const { espnAthleteNames } = await import('@/lib/sports/multiSport/teamSportEspn');
+    // One roster call per team, and only for teams with someone still unnamed.
+    // The helper caches per athlete, so a second call costs nothing.
+    const perTeam = await Promise.all(
+      missingTeams.map(async (teamId) => {
+        const wanted = rows.filter((r) => String(r.team_id) === teamId).map((r) => String(r.athlete_id));
+        try {
+          return await espnAthleteNames(path[0], path[1], teamId, wanted);
+        } catch {
+          return new Map<string, { name: string; position: string | null }>();
+        }
+      }),
+    );
+    for (const map of perTeam) for (const [id, v] of map) if (!named.has(id)) named.set(id, v.name);
+  }
+  return named;
+}
 
 export async function readPeers(sport: TeamProductionSport, group: string | null, season: number): Promise<ComparePeer[]> {
   // MLB has no position rows, so its two kinds are told apart by whether the
@@ -175,33 +215,7 @@ export async function readPeers(sport: TeamProductionSport, group: string | null
   );
   if (!rows.length) return [];
 
-  const named = new Map<string, string>();
-  const ids = rows.map((r) => String(r.athlete_id));
-  for (const r of await pgAll<{ athlete_id: string; athlete_name: string }>(
-    `SELECT athlete_id, athlete_name FROM athlete_crosswalk WHERE sport = ? AND athlete_id = ANY(?) AND athlete_name IS NOT NULL`,
-    [sport, ids],
-  )) {
-    named.set(String(r.athlete_id), r.athlete_name);
-  }
-
-  const path = ESPN_PATH[sport];
-  const missingTeams = [...new Set(rows.filter((r) => !named.has(String(r.athlete_id)) && r.team_id).map((r) => String(r.team_id)))];
-  if (path && missingTeams.length) {
-    const { espnAthleteNames } = await import('@/lib/sports/multiSport/teamSportEspn');
-    // One roster call per team, and only for teams with someone still unnamed.
-    // The helper caches per athlete, so a second sport-season costs nothing.
-    const perTeam = await Promise.all(
-      missingTeams.map(async (teamId) => {
-        const wanted = rows.filter((r) => String(r.team_id) === teamId).map((r) => String(r.athlete_id));
-        try {
-          return await espnAthleteNames(path[0], path[1], teamId, wanted);
-        } catch {
-          return new Map<string, { name: string; position: string | null }>();
-        }
-      }),
-    );
-    for (const map of perTeam) for (const [id, v] of map) if (!named.has(id)) named.set(id, v.name);
-  }
+  const named = await resolveAthleteNames(sport, rows);
 
   return rows
     .map((r) => ({

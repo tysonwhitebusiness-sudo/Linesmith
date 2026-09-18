@@ -8,6 +8,9 @@ import { PlayerDetail, FilterChip } from './PlayerDetail';
 import { PlayerSkeleton } from './Skeleton';
 import { useGolfPlayerStats } from './useGolfPlayerStats';
 import { useSyntheticPlayerCandidates } from './useSyntheticPlayerCandidates';
+import { usePlayerIndex } from './usePlayerIndex';
+import { espnHeadshot, mlbHeadshot } from '@/lib/sports/shared/identity';
+import { athleteIdOf } from '@/lib/sports/shared/playerResearchShapes';
 
 /** Sports with a real GET /api/{sport}/player/[id]/candidates route wired — see useSyntheticPlayerCandidates.ts. */
 const SYNTHETIC_CANDIDATES_SPORTS = new Set<Sport>(['nhl', 'nba', 'tennis', 'cfb', 'soccer']);
@@ -38,11 +41,35 @@ export interface PlayerDetailPanelProps {
   league?: string;
 }
 
+/**
+ * A face for a player the index lists (R10.5), so the slate-independent rows
+ * are not a column of grey silhouettes. Soccer has none on ESPN's path (R9a-F1)
+ * and golf is not on the index.
+ */
+function faceFor(sport: string, league: string | null, athleteId: string): string | null {
+  if (sport === 'mlb') return mlbHeadshot(athleteId);
+  if (sport === 'nfl') return espnHeadshot('nfl', athleteId);
+  if (sport === 'cfb') return espnHeadshot('college-football', athleteId);
+  if (sport === 'nba') return espnHeadshot('nba', athleteId);
+  if (sport === 'tennis') return espnHeadshot('tennis', athleteId);
+  // The NHL's mugshots need a season and a team the index row does not carry.
+  void league;
+  return null;
+}
+
 export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, addedKeys, loading = false, league }: PlayerDetailPanelProps) {
   const [search, setSearch] = useState('');
   const [positionFilter, setPositionFilter] = useState<string | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [market, setMarket] = useState<string | undefined>(undefined);
+
+  /**
+   * R10.5 — the sport's own players, so this tab works on a day with no games.
+   * The slate still leads the list (those are the players with a game and a
+   * price today, which is what the tab is for), and everyone else follows, so
+   * "no games" costs a badge rather than the whole page.
+   */
+  const index = usePlayerIndex(sport === 'golf' ? null : sport, league ?? null);
 
   const candidateCountBySubject = useMemo(() => {
     const counts = new Map<string, number>();
@@ -53,34 +80,56 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
   // Generic over any sport that populates subjects[].meta.position (NFL
   // does; a sport that doesn't just never shows this row) — same
   // All/QB/RB/... chip pattern the Team Detail roster already uses.
+  /**
+   * The slate's subjects, then the index's players that are not already on it.
+   * An index row carries the same shape a subject does, so everything below —
+   * search, the position chips, the detail pane — reads one list and cannot
+   * tell where a player came from.
+   */
+  const allSubjects = useMemo(() => {
+    const slate = (snapshot?.subjects ?? []).map((s) => ({ subjectId: s.subjectId, subjectName: s.subjectName, statusLine: s.statusLine ?? null, meta: (s.meta ?? {}) as Record<string, unknown>, onSlate: true }));
+    // The slate keys players by the sport's NAMESPACED id ("espn:basketball:
+    // 4278073") and the index by the bare one, so they are matched on the bare
+    // id — matching the raw strings listed 461 NBA players twice.
+    const seen = new Set(slate.map((s) => athleteIdOf(s.subjectId)));
+    const rest = (index.data?.players ?? [])
+      .filter((p) => !seen.has(p.athleteId))
+      .map((p) => ({
+        subjectId: p.athleteId,
+        subjectName: p.name,
+        statusLine: null,
+        meta: { position: p.position ?? undefined, headshotUrl: faceFor(sport, league ?? null, p.athleteId) ?? undefined } as Record<string, unknown>,
+        onSlate: false,
+      }));
+    return [...slate, ...rest];
+  }, [snapshot, index.data, sport, league]);
+
   const availablePositions = useMemo(() => {
     const present = new Set<string>();
-    for (const s of snapshot?.subjects ?? []) {
-      const p = (s.meta as Record<string, unknown> | undefined)?.position;
+    for (const s of allSubjects) {
+      const p = s.meta?.position;
       if (typeof p === 'string' && p) present.add(p);
     }
     return [...present].sort();
-  }, [snapshot]);
+  }, [allSubjects]);
 
   const subjects = useMemo(() => {
-    const list = snapshot?.subjects ?? [];
     const query = search.trim().toLowerCase();
-    const filtered = list.filter((s) => {
+    const filtered = allSubjects.filter((s) => {
       if (query && !s.subjectName.toLowerCase().includes(query)) return false;
-      if (positionFilter) {
-        const p = (s.meta as Record<string, unknown> | undefined)?.position;
-        if (p !== positionFilter) return false;
-      }
+      if (positionFilter && s.meta?.position !== positionFilter) return false;
       return true;
     });
-    // Players with tracked patterns first — that's what this tab is for.
+    // Players with tracked patterns first — that's what this tab is for — then
+    // the rest of the slate, then everyone else the sport holds.
     return [...filtered].sort((a, b) => {
       const ac = candidateCountBySubject.get(a.subjectId) ?? 0;
       const bc = candidateCountBySubject.get(b.subjectId) ?? 0;
       if (ac !== bc) return bc - ac;
+      if (a.onSlate !== b.onSlate) return a.onSlate ? -1 : 1;
       return a.subjectName.localeCompare(b.subjectName);
     });
-  }, [snapshot, search, positionFilter, candidateCountBySubject]);
+  }, [allSubjects, search, positionFilter, candidateCountBySubject]);
 
   const activeSubjectId = selectedSubjectId ?? subjects[0]?.subjectId ?? null;
 
@@ -106,7 +155,7 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
   }, [candidates, activeSubjectId, sport, snapshot]);
   const golfPlayerStats = useGolfPlayerStats(sport === 'golf' ? activeSubjectId : null);
 
-  const activeSubject = snapshot?.subjects.find((s) => s.subjectId === activeSubjectId) ?? null;
+  const activeSubject = allSubjects.find((s) => s.subjectId === activeSubjectId) ?? null;
   const activeMeta = (activeSubject?.meta ?? {}) as Record<string, unknown>;
   const synthetic = useSyntheticPlayerCandidates({
     sport,
@@ -123,7 +172,7 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
   const effectiveCandidates = mine.length > 0 ? mine : synthetic.candidates;
   const waitingOnSynthetic = mine.length === 0 && synthetic.loading && SYNTHETIC_CANDIDATES_SPORTS.has(sport);
 
-  if (loading && (snapshot?.subjects ?? []).length === 0) return <PlayerSkeleton />;
+  if (loading && index.loading && allSubjects.length === 0) return <PlayerSkeleton />;
 
   return (
     <div className="grid gap-3 lg:grid-cols-[260px_1fr] lg:items-start">
@@ -202,7 +251,9 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
 
       <div className="min-w-0 space-y-3">
         {!activeSubjectId ? (
-          <div className="lb-card p-8 text-center text-sm text-ink-muted">No players on today&apos;s slate.</div>
+          <div className="lb-card p-8 text-center text-sm text-ink-muted">
+            {index.loading ? 'Loading players…' : 'No players held for this sport yet.'}
+          </div>
         ) : (
           <PlayerDetail
             candidates={effectiveCandidates}

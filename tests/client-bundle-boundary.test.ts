@@ -47,6 +47,9 @@ const DB_MODULES = [
   // R10: the compare control's server half. Its spec and types live in
   // `compareShapes.ts`, which is what the section and the hook import.
   '@/lib/sports/shared/compareServer',
+  // R10.5: the Players tab's slate-independent list. Its types are declared in
+  // the same file but imported `import type` by the hook, which is erased.
+  '@/lib/sports/shared/playerIndexServer',
   // R5d: NFL team target map read. Types live in `teamTargetShapes.ts`.
   '@/lib/sports/nfl/teamTargets',
   // R6.1a: the player page's history and bio readers. Types and the pure
@@ -160,6 +163,8 @@ const SELF = [
   // R10: the compare control's team list and allowed-to-position read, which
   // span every rollup sport — the same reason again.
   'lib/sports/shared/compareServer.ts',
+  // R10.5: every sport's player list, the same reason again.
+  'lib/sports/shared/playerIndexServer.ts',
 ];
 
 function walk(dir: string): string[] {

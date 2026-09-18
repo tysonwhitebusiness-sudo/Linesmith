@@ -2401,6 +2401,31 @@ meeting to show.
   covering the denominators, a match with no serve row, and the empty cases)
   rather than by render, and the render check is owed.
 
+**R10.5 FIXED 2026-09-18 — the Players tab loads with no games on, every
+sport.** The operator has asked three times for players and teams to load
+whatever the slate. Team pages already did; player DETAIL pages were freed in
+R6.1a; the Players INDEX never was: it built its whole list from
+`snapshot.subjects`, so a day with no games said "No players on today's slate"
+and left the search box nothing to search.
+
+- `/api/player-index` lists every player a sport holds — `player_season_production`
+  for the seven rollup sports, `player_game_history` for tennis — named by the
+  resolver R10.2 built (crosswalk, then team rosters; a player nobody can name is
+  left out). Today's slate still leads the list; the index follows it, so "no
+  games" costs a badge, not the page. Golf keeps its tournament field.
+- **Two duplicates caught in the render, both fixed:** the slate keys players
+  by the namespaced id and the index by the bare one, so matching raw strings
+  listed **461 NBA players twice**; and the rollup is one row per player PER
+  TEAM, so a traded player (Cam Thomas, Jaden Ivey, ten more) appeared once per
+  stint. The index is now one row per player, his current team the last he
+  played for.
+
+**Verified:** all nine leagues answer (NFL, CFB, MLB 600 each; NBA 582; NHL 593;
+EPL 382; MLS 585; ATP 296; WTA 334) with no repeated id, and the NFL tab — the
+operator's screenshot, no games scheduled — lists every player with position
+chips and opens A.J. Brown's page. The one name still twice in the NBA list is
+two different Brandon Williamses.
+
 - **Delete:** `MatchupExplorerCard` and the `matchupExplorer` field (R1h's floor
   goes with it). **NOT DONE — deliberately left for the operator's return:** it
   spans eight sport adapters, `playerRoles.ts` and the old prop block, and it is
