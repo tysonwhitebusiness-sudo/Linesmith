@@ -116,7 +116,11 @@ async def load_mlb_games() -> list[Game]:
                 home_team_name=home_name,
                 away_abbr=away_abbr,
                 home_abbr=home_abbr,
-                game_date=g.get("firstPitch") or "",
+                # R11b (B3): the TS snapshot's `firstPitch` is being renamed
+                # `startTime` for every sport. Read the new name first so the
+                # worker is ready before the TypeScript side changes; drop the
+                # fallback once no cached snapshot carries `firstPitch`.
+                game_date=g.get("startTime") or g.get("firstPitch") or "",
                 is_final=bool(re.search(r"final", state, re.IGNORECASE)),
                 roster=_roster_for_mlb_game(subjects, game_pk),
             )

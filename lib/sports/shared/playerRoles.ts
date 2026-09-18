@@ -7,7 +7,7 @@
  * `PlayerDetailData`'s sport-specific slots are `hitterStats`, `liveGame`,
  * `liveMatchup`, `liveLineTracker`, `seasonStatsCard` (a `matchupExplorer` slot
  * existed too, until R10's compare replaced it),
- * `golfFormHoles`, `nflSeasonStats` and `lineControl`. The four names came from
+ * `golfFormHoles`, `seasonStats` (then `nflSeasonStats`) and `lineControl`. The four names came from
  * the design mockups, not the codebase. So this is six NEW fields and the
  * adapter work to fill them — materially larger than the plan implied, and
  * accepted as such by the operator on 2026-08-30.

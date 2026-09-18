@@ -315,7 +315,6 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
     candidates,
     market: active.dimension,
     chips,
-    windows: null,
     roundScores,
     chart,
     propOddsBoard,
@@ -323,10 +322,7 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
     // team abbreviation, so the "Today's line" game-model lookup that powers
     // this field for MLB/NFL structurally never resolves for golf. Modeled
     // as `null` rather than reproducing a lookup that can never succeed.
-    model: null,
-    formWindows: null,
     lineControl: { kind: 'category', dimension: active.dimension, value: effectiveGolfCategory, categories: ['birdie', 'par', 'bogey'] },
-    gameState: null,
     liveMatchup,
     seasonStatsCard: golfStats
       ? {
@@ -337,11 +333,9 @@ export function toPlayerDetailData(input: GolfPlayerDetailInput): PlayerDetailDa
         }
       : null,
     golfFormHoles,
-    nflSeasonStats: null,
     // No live-game concept at all for golf (individual, round-based, not a
     // head-to-head game with a gameId) — the round-in-progress equivalent
     // already lives in `liveMatchup` above, a genuinely different feature.
-    liveLineTracker: null,
   };
 }
 

@@ -283,7 +283,7 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   // it. Its extra was a rank per stat, and ranks left the player page with D3
   // ("Where this sits") in R6 by decision. NBA, NHL and CFB still fill this
   // slot until their own sub-phases.
-  const nflSeasonStats = null;
+  const railSeasonStats = null;
 
 
 
@@ -333,18 +333,13 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     market: active.dimension,
     chips,
     windows,
-    roundScores: null,
     chart,
     propOddsBoard,
-    model: null,
     formWindows,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,
     gameState,
-    liveMatchup: null,
-    seasonStatsCard: null,
-    golfFormHoles: null,
-    nflSeasonStats,
+    seasonStats: railSeasonStats,
     liveLineTracker: {
       subjectId: active.subjectId,
       sport: 'nfl',

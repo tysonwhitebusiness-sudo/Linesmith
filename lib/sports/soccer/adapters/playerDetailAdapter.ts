@@ -325,7 +325,7 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
         }
       : null;
 
-  const nflSeasonStats: PlayerDetailData['nflSeasonStats'] = seasonStats
+  const railSeasonStats: PlayerDetailData['seasonStats'] = seasonStats
     ? {
         rows: [
           { key: 'games', label: 'Games', value: seasonStats.games, decimals: 0 },
@@ -367,18 +367,13 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     market: active.dimension,
     chips,
     windows,
-    roundScores: null,
     chart,
     propOddsBoard,
-    model: null,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,
     gameState,
-    liveMatchup: null,
-    seasonStatsCard: null,
-    golfFormHoles: null,
-    nflSeasonStats,
+    seasonStats: railSeasonStats,
     // No player-level live data source — ESPN's soccer summary endpoint
     // carries no `boxscore.players` for this sport (verified live, see
     // lib/sports/soccer/liveGame.ts's header comment), a real data-shape
@@ -386,7 +381,6 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     // the slot) would still need a live gameId to be honest about "why
     // empty" — simpler and equally honest to leave the whole slot null
     // until soccer gets a real per-player live source.
-    liveLineTracker: null,
   };
 }
 

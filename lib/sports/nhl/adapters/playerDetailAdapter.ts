@@ -221,7 +221,7 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
   const seasonStats = meta.seasonStats as
     | { games: number; goals: number; assists: number; points: number; shots: number; hits: number; blockedShots: number; saves: number; goalsAgainst: number }
     | undefined;
-  const nflSeasonStats: PlayerDetailData['nflSeasonStats'] = seasonStats
+  const railSeasonStats: PlayerDetailData['seasonStats'] = seasonStats
     ? {
         rows: [
           { key: 'games', label: 'Games', value: seasonStats.games, decimals: 0 },
@@ -285,18 +285,13 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
     market: active.dimension,
     chips,
     windows,
-    roundScores: null,
     chart,
     propOddsBoard,
-    model: null,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,
     gameState,
-    liveMatchup: null,
-    seasonStatsCard: null,
-    golfFormHoles: null,
-    nflSeasonStats,
+    seasonStats: railSeasonStats,
     liveLineTracker: {
       subjectId: active.subjectId,
       sport: 'nhl',

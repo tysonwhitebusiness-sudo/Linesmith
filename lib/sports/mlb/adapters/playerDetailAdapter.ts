@@ -308,8 +308,14 @@ export interface PlayerDetailData {
   } | null;
   /** Golf only — every hole this golfer has scored identically in every round played so far (`ConsistentHolesForm`'s own filter, `PlayerDetail.tsx:760-762`), precomputed as a convenience since it's otherwise re-derivable from `candidates` alone. */
   golfFormHoles?: PickCandidate[] | null;
-  /** PHASE 2 ADDITION — NFL only. Position-gated season totals, ranked where a real rank exists (`seasonTotalsRows`, `NflPlayerDetail.tsx:104-136`). MLB/golf have no equivalent "raw season totals" card (MLB's own season numbers live in the gamelog summary strip instead). */
-  nflSeasonStats?: {
+  /**
+   * The context rail's "Season stats" card: one season's totals, ranked where a
+   * real rank exists. Named `nflSeasonStats` until R11b (C1): NFL was ported
+   * first, but CFB, NBA, NHL and soccer fill it, and NFL no longer does (R6.2
+   * dropped it for repeating "Season by season"). MLB, golf and tennis leave it
+   * null.
+   */
+  seasonStats?: {
     rows: Array<{ key: string; label: string; value: number; decimals: number; rank?: { rank: number; poolSize: number } }>;
     /** e.g. "WR" — appended as "ranked among {label}s" in the card header when any row carries a rank. */
     rankedAmongLabel?: string;
@@ -770,7 +776,6 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     market: active.dimension,
     chips,
     windows,
-    roundScores: null,
     chart,
     propOddsBoard,
     model: { todaysLine },
@@ -778,15 +783,10 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     lineControl: { kind: 'stepper', line, baseLine, wantOver, model },
     priceCandidate,
     gameState,
-    liveMatchup: null,
-    seasonStatsCard: null,
-    golfFormHoles: null,
-    nflSeasonStats: null,
     opponentUnit,
     conditions,
     usageMix,
     spatialGrid,
-    binarySplit: null,
     careerH2H,
     liveLineTracker: {
       subjectId: active.subjectId,

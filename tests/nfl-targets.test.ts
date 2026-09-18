@@ -161,7 +161,7 @@ test('the prop block no longer repeats the target map or one season of the Seaso
   // The 2x3 share grid and the ranked "Season stats" rail card both said less
   // than the sections that replaced them; the rows behind them are unchanged.
   assert.match(NFL_ADAPTER, /const spatialGrid = null;/, 'NFL rebuilt a prop-block target grid beside the section');
-  assert.match(NFL_ADAPTER, /const nflSeasonStats = null;/, 'NFL rebuilt the rail season card beside "Season by season"');
+  assert.match(NFL_ADAPTER, /const railSeasonStats = null;/, 'NFL rebuilt the rail season card beside "Season by season"');
   assert.doesNotMatch(NFL_ADAPTER, /toNflTargetMap|targetMapShapes/, 'the deleted grid is still referenced');
 });
 

@@ -2032,16 +2032,16 @@ export function PlayerDetail({
 
           {/* Season stats — NFL, CFB, soccer and the others' ranked season
               card, in the context rail until each sport's own sub-phase. */}
-          {data.nflSeasonStats ? (
+          {data.seasonStats ? (
             <section className="lb-card overflow-hidden">
               <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
                 Season stats
-                {data.nflSeasonStats.rankedAmongLabel ? (
-                  <span className="ml-1.5 font-normal normal-case text-ink-muted">· ranked among {data.nflSeasonStats.rankedAmongLabel}s</span>
+                {data.seasonStats.rankedAmongLabel ? (
+                  <span className="ml-1.5 font-normal normal-case text-ink-muted">· ranked among {data.seasonStats.rankedAmongLabel}s</span>
                 ) : null}
               </h3>
               <div className="space-y-1.5 p-3">
-                {data.nflSeasonStats.rows.map((r) =>
+                {data.seasonStats.rows.map((r) =>
                   r.rank ? (
                     <StatRankRow key={r.key} stat={{ key: r.key, label: r.label, value: r.value, decimals: r.decimals, rank: r.rank.rank, poolSize: r.rank.poolSize }} />
                   ) : (

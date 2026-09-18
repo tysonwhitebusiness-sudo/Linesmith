@@ -267,27 +267,20 @@ export function toPlayerDetailData(input: TennisPlayerDetailInput): PlayerDetail
     market: active.dimension,
     chips,
     windows,
-    roundScores: null,
     chart,
     propOddsBoard,
-    model: null,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,
     gameState,
-    liveMatchup: null,
     // No matchup card yet — tennis is a player-vs-player sport (no team
     // position groups), and no ranked-player list exists in this codebase
     // yet for a "pick any opponent" head-to-head picker (see
     // docs/matchup-card-rebuild-gameplan-2026-08-23.md §6/§9 phase 5).
-    seasonStatsCard: null,
-    golfFormHoles: null,
-    nflSeasonStats: null,
     // No per-player live stat source for tennis beyond set/game score
     // (which lives on the match, not a per-player "stat" a line can
     // target) — `statistics[]` (serve stats) was confirmed empty on every
     // real match checked while building Part 1's TennisLiveTab.
-    liveLineTracker: null,
   };
 }
 

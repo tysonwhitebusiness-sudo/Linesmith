@@ -281,7 +281,7 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
 
   // ---- Real season totals (CollegeFootballData.com, summed across every real game — adapter.ts) ----
   const seasonStats = meta.seasonStats as CfbSeasonStats | undefined;
-  const nflSeasonStats: PlayerDetailData['nflSeasonStats'] = seasonStats
+  const railSeasonStats: PlayerDetailData['seasonStats'] = seasonStats
     ? {
         rows: [
           { key: 'games', label: 'Games', value: seasonStats.games, decimals: 0 },
@@ -336,18 +336,13 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
     market: active.dimension,
     chips,
     windows,
-    roundScores: null,
     chart,
     propOddsBoard,
-    model: null,
     formWindows: active.supportingSplits ?? null,
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,
     gameState,
-    liveMatchup: null,
-    seasonStatsCard: null,
-    golfFormHoles: null,
-    nflSeasonStats,
+    seasonStats: railSeasonStats,
     liveLineTracker: {
       subjectId: active.subjectId,
       sport: 'cfb',
