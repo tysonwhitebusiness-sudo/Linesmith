@@ -40,7 +40,7 @@ export async function GET(request: Request) {
   const name = rawName || null;
 
   return cachedRoute({
-    cacheKey: `golf:player-research:${espnId}:${(name ?? '').toLowerCase()}`,
+    cacheKey: `golf:player-research:v2:${espnId}:${(name ?? '').toLowerCase()}`,
     ttlMs: CACHE_TTL_MS,
     routeName: 'golf/player-research',
     build: () => getGolfPlayerResearch(espnId, name),

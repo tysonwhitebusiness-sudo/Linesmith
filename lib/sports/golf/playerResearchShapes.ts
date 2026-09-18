@@ -107,6 +107,28 @@ export interface GolfShotSummary {
   byLie: Array<{ key: string; label: string; shots: number; medianLeftYds: number | null }>;
 }
 
+/**
+ * One event against its field — R10.4e, G2's golf compare. Golf has no single
+ * opponent, so each round is measured against everyone who played it.
+ */
+export interface GolfFieldEvent {
+  eventId: string;
+  name: string;
+  course: string | null;
+  /** Rounds the event has held so far (4 once it is over). */
+  roundsHeld: number;
+  /** Players who played EVERY held round — the field a round is averaged over. */
+  fieldSize: number;
+  /** His finishing place among them; `null` when he did not play every round. */
+  position: number | null;
+  /** He shares that place, so it prints as "T12" the way a leaderboard does. */
+  tied?: boolean;
+  /** Round by round, both to par: his score and the field's average. */
+  rounds: Array<{ round: number; me: number | null; field: number }>;
+  /** The top of that field by total to par, him marked where he is in it. */
+  leaders: Array<{ espnId: string; name: string; toPar: number; me: boolean }>;
+}
+
 export interface GolfResearchPayload {
   espnId: string;
   /** The name the shot seed was searched under. */
@@ -115,6 +137,8 @@ export interface GolfResearchPayload {
   rounds: GolfRound[];
   holes: GolfHole[];
   shots: GolfShotSummary | null;
+  /** Each event he played, against its field (R10.4e). */
+  field?: GolfFieldEvent[];
   asOf: string | null;
 }
 
@@ -519,6 +543,82 @@ export function toGolfResearch(input: { bio: PlayerBio | null; golf: GolfResearc
         : [],
     },
     ...empty,
-    sections: [scoringSection(data), shotSection(data)],
+    sections: [fieldSection(data), scoringSection(data), shotSection(data)],
   };
+}
+
+const toParNum = (v: number) => (v > 0 ? `+${v}` : v === 0 ? 'E' : String(v));
+
+/**
+ * "Against the field" — R10.4e, golf's compare (G2 `golfCompare`). One card per
+ * event he played: his score each round beside the average of everyone who
+ * played every round, the strokes he gained on them, and the leaderboard of
+ * that field with him marked. Strokes gained is field minus him, so a positive
+ * number is a round better than the field, and it is toned that way.
+ */
+function fieldSection(data: GolfResearchPayload): ResearchSection {
+  const base = { id: 'field', navLabel: 'vs field', title: 'Against the field', sub: 'every round, against the players who completed each round held' };
+  const events = data.field ?? [];
+  if (!events.length) {
+    return { ...base, rows: [], state: { kind: 'empty', title: 'No events held for this golfer', reason: 'The round tables hold no event he played.' } };
+  }
+  const cards: ResearchCard[] = events.flatMap((e) => {
+    const roundsCard: ResearchCard = {
+      kind: 'table',
+      key: `field-${e.eventId}`,
+      title: e.name,
+      scope: [e.course, e.position != null ? `${e.tied ? 'T' : ''}${ordinalOf(e.position)} of ${e.fieldSize} who played every round` : `${e.fieldSize} played every round`, e.roundsHeld < 4 ? `${e.roundsHeld} of 4 rounds held` : null]
+        .filter(Boolean)
+        .join(' · '),
+      labelHeader: 'Round',
+      fixedOrder: true,
+      columns: [
+        { key: 'me', label: data.name?.split(' ').pop() ?? 'Him', decimals: 0 },
+        { key: 'field', label: 'Field average', decimals: 2 },
+        { key: 'gain', label: 'Strokes gained on field', decimals: 2 },
+      ],
+      rows: e.rounds.map((r) => {
+        const gain = r.me == null ? null : r.field - r.me;
+        return {
+          key: String(r.round),
+          label: `R${r.round}`,
+          values: {
+            me: r.me == null ? '—' : toParNum(r.me),
+            field: `${r.field > 0 ? '+' : ''}${r.field.toFixed(2)}`,
+            gain: gain == null ? '—' : `${gain > 0 ? '+' : ''}${gain.toFixed(2)}`,
+          },
+          ...(gain != null && gain !== 0 ? { tones: { gain: gain > 0 ? ('good' as const) : ('bad' as const) } } : {}),
+        };
+      }),
+      caption: 'To par. Strokes gained is the field average minus his score, so a positive number beat the field.',
+    };
+    const leadersCard: ResearchCard = {
+      kind: 'table',
+      key: `leaders-${e.eventId}`,
+      title: 'Leaderboard',
+      scope: `${e.name} · top ${Math.min(8, e.fieldSize)}${e.leaders.some((l) => l.me) && e.position != null && e.position > 8 ? ', and him' : ''}`,
+      labelHeader: 'Player',
+      fixedOrder: true,
+      columns: [{ key: 'toPar', label: 'To par', decimals: 0, leader: 'low' }],
+      rows: e.leaders.map((l) => ({
+        key: l.espnId,
+        label: l.name,
+        imageUrl: `https://a.espncdn.com/i/headshots/golf/players/full/${l.espnId}.png`,
+        imageKind: 'player' as const,
+        highlight: l.me,
+        values: { toPar: l.toPar },
+      })),
+    };
+    return [roundsCard, leadersCard];
+  });
+  // Two cards per event, side by side.
+  const rows: ResearchCard[][] = [];
+  for (let i = 0; i < cards.length; i += 2) rows.push(cards.slice(i, i + 2));
+  return { ...base, rows, state: { kind: 'ready' } };
+}
+
+function ordinalOf(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return `${n}${s[(v - 20) % 10] ?? s[v] ?? s[0]}`;
 }

@@ -17,11 +17,12 @@
 
 import { pgAll } from '@/lib/db/pgClient';
 import { summariseGolfShots, type GolfResearchPayload } from './playerResearchShapes';
+import { readGolfField } from './fieldCompare';
 
 const num = (v: string | number | null) => (v == null ? null : Number(v));
 
 export async function getGolfPlayerResearch(espnId: string, name: string | null): Promise<GolfResearchPayload> {
-  const [rounds, holes, shots] = await Promise.all([
+  const [rounds, holes, shots, field] = await Promise.all([
     pgAll<{
       event_id: string;
       name: string | null;
@@ -63,6 +64,9 @@ export async function getGolfPlayerResearch(espnId: string, name: string | null)
           [name],
         )
       : Promise.resolve([]),
+    // R10.4e — each event he played, against its field. A failure costs that
+    // section, never the rounds and shots above it.
+    readGolfField(espnId).catch(() => []),
   ]);
 
   const events = new Map<string, { eventId: string; name: string; season: number | null }>();
@@ -73,6 +77,7 @@ export async function getGolfPlayerResearch(espnId: string, name: string | null)
   return {
     espnId,
     name,
+    field,
     events: [...events.values()],
     rounds: rounds.map((r) => ({
       eventId: r.event_id,

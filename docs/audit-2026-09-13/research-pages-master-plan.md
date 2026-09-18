@@ -2455,6 +2455,44 @@ Compare shortens the page from 9,492 to 7,846px and showing it restores all
 four cards; the Dodgers page has seven collapsible sections and marks LAD ahead
 on runs, AVG, OBP and SLG against the Yankees.
 
+**R10.4e BUILT 2026-09-18 — golf against the field** (G2 `golfCompare`). Golf
+has no opponent, so its compare is a section on the golf page: for each event
+he played, his score each round beside the average of everyone who played every
+round held (a missed cut drops out, so a later round is not averaged over a
+weaker set of players), the strokes he gained on them, and the field's
+leaderboard with him marked — appended below the top eight when outside it.
+Names come from ESPN's event leaderboard, one call per event, because the round
+table holds ids only.
+
+- **Refereed against G2's own dataset** for 9478: field size and every round's
+  field average match to three decimals at all three playoff events. The one
+  difference was a TIE — G2 numbered tied golfers by sort order (BMW: 13th); a
+  leaderboard gives them the same place, so it now reads **T12th**.
+- Verified by building the section end to end against the database (six cards,
+  toned strokes gained, named leaderboards). **Render owed:** the isolated
+  `linesmith-dev-verify` server answered 404 to every route (R10-F6, tooling),
+  and the prod server was left alone while the operator tested.
+
+**R10 G2 SWEEP DONE 2026-09-18.** Every sport's "what they give up" spec against
+`matchup-<sport>.json`, every team, on a season that was over when G2 was built:
+
+| sport | sides | result |
+|---|---|---|
+| NFL 2025 | QB, RB, WR, TE by position | exact — 0 of 576 values differ |
+| CFB 2025 | whole defence | exact — 0 of 924 |
+| NHL 2024 | skaters, goalies' opponents | exact — 0 of 352 |
+| MLB 2025 | staff allowed, lineup for | exact — 0 of 300 |
+| EPL 2025 | goalkeeper (the opponent's attack) | exact — 0 of 60 |
+| NBA 2025, EPL 2025 | allowed BY POSITION | differ — see R10-F5 |
+
+- **R10-F5 — the reference is incomplete, not this app.** The NBA and EPL
+  position splits read higher here than in G2 on every group, while the
+  whole-team totals match exactly. Measured: G2's position groups hold only
+  **89.6%** of NBA team points and **78.6%** of EPL team shots — G2 dropped every
+  player it had no position for — where this app's hold **100%**, because
+  `athlete_positions` finished filling after G2 was built. Treat G2's
+  position-split numbers as a lower bound, not a target.
+
 - **Delete:** `MatchupExplorerCard` and the `matchupExplorer` field (R1h's floor
   goes with it). **NOT DONE — deliberately left for the operator's return:** it
   spans eight sport adapters, `playerRoles.ts` and the old prop block, and it is

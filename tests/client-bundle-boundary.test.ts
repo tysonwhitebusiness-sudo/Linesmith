@@ -62,6 +62,8 @@ const DB_MODULES = [
   // R6.6: golf's player research read. Types and the shot summary live in
   // `playerResearchShapes.ts`, which the hook and the adapter import.
   '@/lib/sports/golf/playerResearch',
+  // R10.4e: golf against the field reads the round table and ESPN's leaderboard.
+  '@/lib/sports/golf/fieldCompare',
   // 6.16: `components/useLineHistory.ts` takes its result type from here. That
   // is an `import type` and erased — a VALUE import would bundle `pg`.
   '@/lib/odds/props/lineHistory',
