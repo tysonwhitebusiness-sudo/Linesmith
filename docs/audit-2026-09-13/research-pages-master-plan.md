@@ -2619,6 +2619,16 @@ rebuilt pages use.
    - `cachedRoute()` with a day TTL.
 3. **Build** in the design's sub-phases. **Stop** between them.
 
+**R12 steps 1-2 DONE 2026-09-18: measured, and the design is written —
+[`r12-deep-history-design.md`](r12-deep-history-design.md). AWAITING
+APPROVAL; nothing built.** Headline measurements: team ids 94-100% filled
+(the gaps are relocated franchises and exhibitions); cross-source duplicates
+in every sport, and **MLB 217 / NBA 4 days where two sources disagree on the
+score**, which R2's merge rule would double-count over a deep window — so the
+design proposes one source per sport-season; no index on the team-id
+columns; Elo deep only for MLB; venue names too sparse for stadium splits.
+Four questions for the operator at the end of the design.
+
 ---
 
 ## R-deferred — not in this build
