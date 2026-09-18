@@ -2533,6 +2533,69 @@ drop out of this list.
 **Verify:** `tsc`, then render one player, team and game page per sport. A
 rename that type-checks can still drop a card. **Stop.**
 
+### R11 — DONE 2026-09-18 (built while the operator was away), awaiting sign-off
+
+**Step 0 found the phase bigger than its list.** The old `GameDetail` page was
+rendered by no route (every game route has used `GameResearchPage` since R8);
+only type imports kept it compiling. So R11 opened with the deletion, found by
+an import-graph reachability pass from `app/**` rather than by pattern.
+
+- **R11a part 1 (`8bdd411`)** — deleted `GameDetail.tsx` (2,440 lines),
+  `GameHeroCard`, the pitching/batter/NFL-defense matchup cards, the five live
+  tabs, 12 hooks, the seven `gameDetailAdapter.ts` files (MLB's research half
+  moved to `mlbGameResearch.ts`, like every other sport's), **17 API routes**
+  only those hooks called (the `/live` routes stay: live hooks poll them), and
+  what that left dead — including the whole `/api/season-ranks` machinery
+  (`seasonAggregates*`) and unit grades. Seven files already orphaned by
+  earlier deletions went too. PlayerDetail's `embedded`/`sharedPropOdds`
+  props (only GameDetail set them) are gone and `subject` is required.
+  `GameDetailGame` moved to `lib/sports/mlb/slateGameShapes.ts` as
+  `MlbSlateGame`.
+- **R11a part 2 (`6dc28cb`)** — 138 unused exports removed (a comment-aware
+  scan, cut with the TypeScript parser, cascaded to a fixed point in two
+  rounds). Among them **TypeScript writers with no callers**: `writePropOdds`,
+  the game-pick set, `logSurfaced`/`writeGrades`, `writePitcherGameScore`,
+  `writeGameSimCache`, and `writeGameOddsBookLines` with its producer
+  `recordEspnPregameLine` — which **wrote on GET** from the old per-sport game
+  routes. Those tables are Python-only now (recorded in
+  `table-ownership.md`'s preface; CLAUDE.md's normalisation paragraph
+  updated). Kept on purpose: `runDevigBacktest` (6.24's research tool) and ten
+  exports only tests use.
+- **R11b (`f74d737`, `7bfe807`)** — **C1:** `nflSeasonStats` -> `seasonStats`
+  (`hitterStats` was already gone). **C2:** 45 explicit `field: null` lines
+  removed from the player adapters — except the six role keys, which are
+  returned as `null` on purpose (`tests/player-roles.test.ts`). **C6:** moot,
+  `pregameLines` went with GameDetail. **B3:** step 1 only, see F2.
+  **Docs:** CLAUDE.md §4's worked example is now the scatter card's
+  `surface`; the `seasonAggregates.ts` row-count fix is moot (file deleted).
+- **Verified:** tsc clean, 478/478 tests, production build clean; rendered on
+  prod in fresh tabs — player, team and game for MLB, NFL, CFB, NBA, NHL,
+  soccer (EPL) and tennis (ATP; no team page), plus golf's player page. Every
+  page drew every section with no error and no stuck skeleton, and the
+  renamed "Season stats" rail card still shows on CFB, NBA, NHL and soccer.
+
+**Findings:**
+
+- **R11b-F1 (operator decision):** the rail "Season stats" card survives on
+  CFB, NBA, NHL and soccer. R6.2 removed NFL's for repeating "Season by
+  season" and said the others would follow in their sub-phases; they did not.
+  It is **not** a pure duplicate for them — NBA steals/blocks/turnovers,
+  soccer xG/xA/key passes, CFB kicking points and longest plays are not in
+  "Season by season" — so dropping it needs those columns added to the
+  Seasons spec first, or a decision to keep the card.
+- **R11b-F2 (blocked on a worker deploy):** B3 `firstPitch` -> `startTime` is
+  a cross-language contract: `python-odds-service/src/game_context.py` reads
+  the MLB snapshot's `firstPitch` to date games for the odds-lines cycle.
+  Step 1 is committed (Python reads `startTime` first, falls back to
+  `firstPitch`; checked read-only against the live snapshot, 15/15 dated).
+  **Step 2, the TypeScript rename, waits until the worker is redeployed** —
+  renaming first would blank MLB game dates in the worker.
+- **R11-F3 (small, routed to R12's build):** every game reader turns a failed
+  upstream fetch into `null`, so an upstream hiccup reads "This game was not
+  found" instead of "couldn't load". Fixed for NHL (`4030e75`, seen in the
+  render); NBA, football, soccer, tennis and MLB share the pattern. Retry
+  recovers, so nothing is stuck.
+
 ---
 
 ## R12 — Deep history on team and game pages ◆ large, design first
