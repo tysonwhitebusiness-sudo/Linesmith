@@ -787,6 +787,7 @@ export function toPlayerDetailData(input: MlbPlayerDetailInput): PlayerDetailDat
     conditions,
     usageMix,
     spatialGrid,
+    binarySplit: null,
     careerH2H,
     liveLineTracker: {
       subjectId: active.subjectId,
