@@ -250,7 +250,7 @@ test('the page prices, charts and slips the same candidate at the same line', ()
   assert.match(PD, /resolveCandidateEdge\(priced,/);
   assert.match(PD, /onAdd\(priced, addOdds\)/);
   assert.match(PD, /data\?\.priceCandidate\?\.line \?\? active\?\.line \?\? null,\s*started \? startIso : null,/, 'line movement is pinned to the line on screen and cut at the start');
-  assert.match(PD, /usePropOdds\(gamePkStr, snapshot\?\.fetchedAt, !sharedPropOdds, startIso\)/, 'a started game reads the rows that stood at the start');
+  assert.match(PD, /usePropOdds\(gamePkStr, snapshot\?\.fetchedAt, true, startIso\)/, 'a started game reads the rows that stood at the start');
 });
 
 test('the rail no longer carries the odds cards the section replaced, and the old MLB live block is gone', () => {

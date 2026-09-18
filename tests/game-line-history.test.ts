@@ -9,12 +9,12 @@ import { GAME_HISTORY_MARKETS } from '../lib/odds/gameLineHistory';
  * The read itself is a Postgres query and is verified by running it (20 books
  * and 17 buckets on a real event, DraftKings moving -124 to -237). What is
  * asserted here is the part that can go wrong silently: the SQL-safety guards
- * on the two values this module interpolates rather than parameterises, and
- * the route's own allowlists.
+ * on the two values this module interpolates rather than parameterises. (The
+ * route and its allowlists went in R11a; the game pages call the module
+ * server-side with fixed markets.)
  */
 
 const SRC = readFileSync('lib/odds/gameLineHistory.ts', 'utf8');
-const ROUTE = readFileSync('app/api/odds/game-line-history/route.ts', 'utf8');
 
 test('the two interpolated values are both guarded before reaching SQL', () => {
   // `bucketSeconds` and `hours` go into a divisor and an interval literal,
@@ -35,34 +35,15 @@ test('every caller-supplied value is parameterised, never interpolated', () => {
   }
 });
 
-test('the route allowlists market and side rather than pattern-matching them', () => {
-  // Both reach equality filters. An allowlist is the only thing that keeps the
-  // set closed as the table grows new values.
-  assert.match(ROUTE, /GAME_HISTORY_MARKETS as readonly string\[\]\)\.includes\(market\)/);
-  assert.match(ROUTE, /SIDES\.has\(side\)/);
-  assert.match(ROUTE, /new Set\(\['home', 'away', 'over', 'under', 'draw'\]\)/);
-});
-
 test('the markets are the three the table actually holds', () => {
   // Measured 2026-08-31: moneyline 558 events, total 277, spread 68.
   assert.deepEqual([...GAME_HISTORY_MARKETS], ['moneyline', 'total', 'spread']);
-});
-
-test('hours is bounded at both ends', () => {
-  assert.match(ROUTE, /hours < 1 \|\| hours > MAX_HOURS/);
-  assert.match(ROUTE, /MAX_HOURS = 24 \* 30/);
 });
 
 test('the bucket takes the LAST observation in each window, not the first', () => {
   // A bucket should read as "where the price ended up". Ascending order here
   // would make it "where it happened to start".
   assert.match(SRC, /ORDER BY bookmaker, bucket, observed_at DESC/);
-});
-
-test('the default market is moneyline, because spread is absent from most games', () => {
-  // 558 of 559 events have a moneyline; 68 have a spread. Defaulting to spread
-  // renders a blank card on almost every game.
-  assert.match(ROUTE, /get\('market'\) \?\? 'moneyline'/);
 });
 
 // R2 — the pre-start split. On the G2 fixture (MLB KC @ BOS, pk 824711) 1,790 of
@@ -93,9 +74,4 @@ test('no split before the start, or without a real start time', () => {
     assert.equal(w.inGame, null, String(startsAt));
     assert.equal(w.pre.to.toISOString(), now.toISOString());
   }
-});
-
-test('the route parses startsAt rather than passing caller text through', () => {
-  assert.match(ROUTE, /startsAt = new Date\(t\)\.toISOString\(\)/);
-  assert.match(ROUTE, /!rawStartsAt\.includes\('T'\)/);
 });

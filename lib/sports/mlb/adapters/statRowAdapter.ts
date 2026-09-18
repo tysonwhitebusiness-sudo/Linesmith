@@ -1,4 +1,4 @@
-import type { GameDetailGame, StatKeyDef } from '@/components/GameDetail';
+import type { MlbSlateGame, StatKeyDef } from '@/lib/sports/mlb/slateGameShapes';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 
 /** `forRanks` are pre-formatted ordinal strings ("28th") — pulls the raw int back out. */
@@ -17,7 +17,7 @@ function parseRank(s: string | null | undefined): number | null {
  * hardcode, defaulted to 30 so existing call sites need no argument change.
  */
 export function teamSeasonStatRows(
-  team: GameDetailGame['home'],
+  team: MlbSlateGame['home'],
   statKeys: StatKeyDef[],
   poolSize = 30,
 ): OpposingStarterStat[] {

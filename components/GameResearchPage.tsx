@@ -8,18 +8,18 @@ import { asOfText, ResearchSectionBody, SourcesCard } from './PlayerResearchSect
 import { useGameResearch } from './useGameResearch';
 import { useStickyHeaderHeight } from './useStickyHeaderHeight';
 import type { GameResearchData, GameResearchPayload, GameSide, GameState } from '@/lib/sports/shared/gameResearchShapes';
-import { toGameResearchData as toMlbGameResearchData } from '@/lib/sports/mlb/adapters/gameDetailAdapter';
+import { toGameResearchData as toMlbGameResearchData } from '@/lib/sports/mlb/adapters/mlbGameResearch';
 import type { MlbGameResearchPayload } from '@/lib/sports/mlb/gameResearch';
-import { toGameResearchData as toNflGameResearchData } from '@/lib/sports/nfl/adapters/gameDetailAdapter';
-import { toGameResearchData as toCfbGameResearchData } from '@/lib/sports/cfb/adapters/gameDetailAdapter';
+import { toGameResearchData as toNflGameResearchData } from '@/lib/sports/nfl/adapters/footballGameResearch';
+import { toGameResearchData as toCfbGameResearchData } from '@/lib/sports/nfl/adapters/footballGameResearch';
 import type { FootballGameResearchPayload } from '@/lib/sports/multiSport/footballGameResearch';
-import { toGameResearchData as toSoccerGameResearchData } from '@/lib/sports/soccer/adapters/gameDetailAdapter';
+import { toGameResearchData as toSoccerGameResearchData } from '@/lib/sports/soccer/adapters/soccerGameResearch';
 import type { SoccerGameResearchPayload } from '@/lib/sports/soccer/gameResearch';
-import { toGameResearchData as toTennisGameResearchData } from '@/lib/sports/tennis/adapters/gameDetailAdapter';
+import { toGameResearchData as toTennisGameResearchData } from '@/lib/sports/tennis/adapters/tennisGameResearch';
 import type { TennisGameResearchPayload } from '@/lib/sports/tennis/gameResearch';
-import { toGameResearchData as toNbaGameResearchData } from '@/lib/sports/nba/adapters/gameDetailAdapter';
+import { toGameResearchData as toNbaGameResearchData } from '@/lib/sports/nba/adapters/nbaGameResearch';
 import type { NbaGameResearchPayload } from '@/lib/sports/nba/gameResearch';
-import { toGameResearchData as toNhlGameResearchData } from '@/lib/sports/nhl/adapters/gameDetailAdapter';
+import { toGameResearchData as toNhlGameResearchData } from '@/lib/sports/nhl/adapters/nhlGameResearch';
 import type { NhlGameResearchPayload } from '@/lib/sports/nhl/gameResearch';
 
 /**

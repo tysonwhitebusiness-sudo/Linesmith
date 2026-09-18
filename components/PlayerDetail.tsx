@@ -813,8 +813,6 @@ export interface PlayerDetailProps {
   onMarketChange?: (market: string) => void;
   onAdd?: (candidate: PickCandidate, odds?: { americanOdds: string; source: string; bookmaker?: string }) => void;
   addedKeys?: Set<string>;
-  /** Hides the header block when the host already shows one. */
-  embedded?: boolean;
   /** Golf only — season/advanced stats, rendered inside the main column below
       everything else so it sits beside the context rail instead of spanning
       full-width underneath it. Omitted entirely for MLB/NFL. */
@@ -824,16 +822,6 @@ export interface PlayerDetailProps {
     advancedStats: AdvancedStat[];
     loading: boolean;
   };
-  /**
-   * Reuse a parent's already-fetched `usePropOdds` result instead of this
-   * component fetching its own copy of the exact same game's data — set by
-   * `GameDetail` when it mounts this component nested (for a selected player
-   * within a game already on screen), which has already called the hook with
-   * the same gameId/refreshKey for its own use (LeftRail, PicksPanel). Omitted by every other caller (the
-   * standalone player page, PlayerDetailPanel), which fall back to fetching
-   * their own as before.
-   */
-  sharedPropOdds?: ReturnType<typeof usePropOdds>;
   /**
    * Fires whenever this component's OWN data-fetching hooks (live game,
    * opponent team Statcast, prop odds — see the "Hooks
@@ -845,13 +833,14 @@ export interface PlayerDetailProps {
    */
   onReadyChange?: (ready: boolean) => void;
   /**
-   * R6.1a — the player the page is about, independent of any market. With it
-   * the page renders the player's hero and research sections whether or not a
-   * candidate exists; the prop block becomes one section that can be empty.
-   * `league` is soccer's league or tennis's tour. Omitted by the embedded
-   * game-page host, which shows only the prop block.
+   * R6.1a — the player the page is about, independent of any market. The page
+   * renders the player's hero and research sections whether or not a candidate
+   * exists; the prop block becomes one section that can be empty. `league` is
+   * soccer's league or tennis's tour. Required since R11a: the old game page,
+   * which embedded this component with no subject to show the prop block
+   * alone, was the only caller that left it out.
    */
-  subject?: { sport: string; id: string; league?: string | null; name?: string | null };
+  subject: { sport: string; id: string; league?: string | null; name?: string | null };
   /** The host's slate is still loading: the prop section shows a skeleton rather than claiming no line was posted. */
   marketsLoading?: boolean;
 }
@@ -864,9 +853,7 @@ export function PlayerDetail({
   onMarketChange,
   onAdd,
   addedKeys,
-  embedded = false,
   golfStats,
-  sharedPropOdds,
   onReadyChange,
   subject,
   marketsLoading = false,
@@ -946,10 +933,10 @@ export function PlayerDetail({
   const isFootball = active?.sport === 'nfl' || active?.sport === 'cfb';
   const footballLive = useFootballLiveGame(active?.sport === 'cfb' ? 'cfb' : 'nfl', isFootball ? gamePkStr : undefined, isFootball && started, 15_000);
   // Soccer's own live feed: score, clock and key events (decision 5).
-  const soccerLeague = typeof meta.league === 'string' ? meta.league : subject?.league ?? undefined;
+  const soccerLeague = typeof meta.league === 'string' ? meta.league : subject.league ?? undefined;
   const soccerLive = useSoccerLiveGame(soccerLeague, active?.sport === 'soccer' ? gamePkStr : undefined, active?.sport === 'soccer' && started, 25_000);
   // Tennis: set scores are the whole live picture (R4 — no point-by-point source).
-  const tennisTour = typeof meta.tour === 'string' ? (meta.tour as 'atp' | 'wta') : subject?.league === 'wta' ? 'wta' : 'atp';
+  const tennisTour = typeof meta.tour === 'string' ? (meta.tour as 'atp' | 'wta') : subject.league === 'wta' ? 'wta' : 'atp';
   const tennisLive = useTennisLiveGame(tennisTour, active?.sport === 'tennis' ? gamePkStr : undefined, active?.sport === 'tennis' && started, 25_000);
   const opponentTeamStatcast = useTeamStatcast(isPitcherSubject ? opponentId : undefined);
 
@@ -1007,19 +994,17 @@ export function PlayerDetail({
   const nbaTeamDefense = useTeamDefenseAllowed<import('@/lib/sports/nba/teamDefenseAllowed').NbaTeamDefenseAllowed>('/api/nba/team-defense-allowed', active?.sport === 'nba');
   const nhlTeamDefense = useTeamDefenseAllowed<import('@/lib/sports/nhl/teamDefenseAllowed').NhlTeamDefenseAllowed>('/api/nhl/team-defense-allowed', active?.sport === 'nhl');
 
-  const propOddsFetched = usePropOdds(gamePkStr, snapshot?.fetchedAt, !sharedPropOdds, startIso);
-  const propOdds = sharedPropOdds ?? propOddsFetched;
+  const propOdds = usePropOdds(gamePkStr, snapshot?.fetchedAt, true, startIso);
   // Market calibration is no longer fetched here (R6.1d): its only reader, a
   // trust-tier value, had not been rendered since the page's R3 rebuild, and
   // a cold `/api/props/calibration` takes 60+ seconds.
 
-  // R6.1a — the player, independent of any market. The embedded game-page host
-  // passes no subject and keeps the prop block alone; every other host gets the
-  // hero and the research sections, which load on their own and never gate the
-  // page's loader (each renders its own skeleton).
-  const researchSport = subject?.sport ?? null;
-  const researchLeague = subject?.league ?? null;
-  const researchAthleteId = subject ? athleteIdOf(subject.id) : null;
+  // R6.1a — the player, independent of any market. The hero and the research
+  // sections load on their own and never gate the page's loader (each renders
+  // its own skeleton).
+  const researchSport = subject.sport;
+  const researchLeague = subject.league ?? null;
+  const researchAthleteId = athleteIdOf(subject.id);
   const historySport = researchSport ? historySportFor(researchSport, researchLeague) : null;
   const bioState = usePlayerBio(researchSport === 'golf' ? 'golf' : historySport, researchAthleteId);
   const historyState = usePlayerHistory(historySport, researchAthleteId);
@@ -1045,7 +1030,7 @@ export function PlayerDetail({
   // route resolves the nflverse id; idle for every other sport.
   // Understat's shots and matches for an EPL player (R6.3), by his own name —
   // Understat publishes no id this app can join on, and covers no MLS.
-  const understatName = historySport === 'soccer_epl' ? bioState.data?.name ?? subject?.name ?? undefined : undefined;
+  const understatName = historySport === 'soccer_epl' ? bioState.data?.name ?? subject.name ?? undefined : undefined;
   const soccerUnderstat = useSoccerUnderstat(understatName);
   const soccerChances = useMemo<SoccerChancesInput | undefined>(
     () =>
@@ -1088,7 +1073,7 @@ export function PlayerDetail({
         : { data: golfResearch.data, loading: golfResearch.loading || (bioState.loading && !bioState.data), error: golfResearch.error },
     [researchSport, golfResearch, bioState.loading, bioState.data],
   );
-  const tennisArchive = useTennisArchive(tennisHistoryTour, tennisHistoryTour ? bioState.data?.name ?? subject?.name ?? undefined : undefined);
+  const tennisArchive = useTennisArchive(tennisHistoryTour, tennisHistoryTour ? bioState.data?.name ?? subject.name ?? undefined : undefined);
 
   // NBA's and NHL's shot sections (R6.5): every located attempt, not the 3x3
   // grid that stood in for them (deleted with their routes and hooks). Both key
@@ -1240,7 +1225,7 @@ export function PlayerDetail({
     }
     if (historySport === 'tennis_atp' || historySport === 'tennis_wta') {
       return tennisCompareCards({
-        subjectName: bioState.data?.name ?? subject?.name ?? 'This player',
+        subjectName: bioState.data?.name ?? subject.name ?? 'This player',
         subjectMatches: tennisArchive.data?.matches ?? [],
         peerName: peerParam,
         peerMatches: tennisPeerArchive.data?.matches ?? null,
@@ -1265,7 +1250,7 @@ export function PlayerDetail({
     const groupLabel = { G: 'guards', F: 'forwards', C: 'centers' }[compareState.data.group] ?? 'his position';
     const card = nbaZoneCompareCard({ shots: nbaShots.data.shots, allowed, teamAbbr: abbr, groupLabel });
     return card ? [card] : [];
-  }, [historySport, nbaShots.data, compareShotProfile.data, compareState.data, compareTeamId, compareTargets.data, nflTargets.data, bioState.data, compareStatcast, tennisArchive.data, tennisPeerArchive.data, peerParam, subject?.name]);
+  }, [historySport, nbaShots.data, compareShotProfile.data, compareState.data, compareTeamId, compareTargets.data, nflTargets.data, bioState.data, compareStatcast, tennisArchive.data, tennisPeerArchive.data, peerParam, subject.name]);
   // The peer's page data, built by the same adapter with no sport extras: the
   // compare lines up seasons and a trend, which every sport's history carries.
   const peerResearch = useMemo(
@@ -1282,7 +1267,7 @@ export function PlayerDetail({
   const setCompareTeam = (next: string | null) => setCompareParam('vs', next);
   const setComparePeer = (next: string | null) => setCompareParam('peer', next);
 
-  const stickyTop = useStickyHeaderHeight(Boolean(subject) && !embedded);
+  const stickyTop = useStickyHeaderHeight(true);
   const sectionIds = (research?.sections ?? []).map((x) => `${x.id}:${x.navLabel}`).join('|');
   const sectionNav = useMemo(() => (sectionIds ? sectionIds.split('|').map((x) => ({ id: x.split(':')[0], label: x.split(':')[1] })) : []), [sectionIds]);
   // Whether the live section exists at all, for the nav — the card itself comes
@@ -1508,7 +1493,7 @@ export function PlayerDetail({
 
   /**
    * The page around the prop block: hero, section nav, research sections, odds,
-   * sources. The embedded game-page host gets the prop block and the odds.
+   * sources.
    */
   const renderPage = (
     propBlock: React.ReactNode,
@@ -1540,14 +1525,6 @@ export function PlayerDetail({
         gameLine={oddsCards?.gameLine ?? null}
       />
     );
-    if (!subject || embedded) {
-      return (
-        <div className="space-y-3">
-          {propBlock}
-          {odds}
-        </div>
-      );
-    }
     return (
       <div className="space-y-4">
         <PlayerHero
@@ -1581,7 +1558,7 @@ export function PlayerDetail({
               teamId={compareTeamId}
               onTeam={setCompareTeam}
               subjectId={researchAthleteId}
-              subjectName={bioState.data?.name ?? subject?.name ?? 'This player'}
+              subjectName={bioState.data?.name ?? subject.name ?? 'This player'}
               peers={historySport.startsWith('tennis') ? tennisPeers : peersState.data?.peers ?? []}
               peerId={peerParam}
               onPeer={setComparePeer}
@@ -1628,7 +1605,7 @@ export function PlayerDetail({
   };
 
   if (!active || !data) {
-    if (subject && !embedded && marketsLoading) {
+    if (marketsLoading) {
       return renderPage(
         <div className="rounded-card border border-line-soft bg-card p-4 shadow-card" aria-busy>
           <SkeletonLines lines={5} />
@@ -1639,23 +1616,20 @@ export function PlayerDetail({
         null,
       );
     }
-    if (subject && !embedded) {
-      const seasonStatus = snapshot?.seasonStatus;
-      const reason =
-        seasonStatus && !seasonStatus.started
-          ? `${seasonStatus.label ?? 'The season has not started'}${seasonStatus.nextGameDate ? ` — first games ${new Date(seasonStatus.nextGameDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}` : ''}. The research below is the player's own record and needs no line.`
-          : "No book has posted a line for this player's next game, so there is nothing to measure the games against yet. The research below is the player's own record and needs no line.";
-      return renderPage(
-        <div className="rounded-card border border-line-soft bg-card shadow-card">
-          <EmptyState title="No line posted for this player today" reason={reason} />
-        </div>,
-        null,
-        null,
-        null,
-        null,
-      );
-    }
-    return <div className="lb-card p-8 text-center text-sm text-ink-muted">No tracked markets for this player.</div>;
+    const seasonStatus = snapshot?.seasonStatus;
+    const reason =
+      seasonStatus && !seasonStatus.started
+        ? `${seasonStatus.label ?? 'The season has not started'}${seasonStatus.nextGameDate ? ` — first games ${new Date(seasonStatus.nextGameDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}` : ''}. The research below is the player's own record and needs no line.`
+        : "No book has posted a line for this player's next game, so there is nothing to measure the games against yet. The research below is the player's own record and needs no line.";
+    return renderPage(
+      <div className="rounded-card border border-line-soft bg-card shadow-card">
+        <EmptyState title="No line posted for this player today" reason={reason} />
+      </div>,
+      null,
+      null,
+      null,
+      null,
+    );
   }
 
   // Prop Score v1 — this player-page prop never had its own edge/score

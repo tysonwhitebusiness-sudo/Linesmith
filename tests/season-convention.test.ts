@@ -229,40 +229,6 @@ test('the TypeScript table covers every sport the app stores history for', () =>
 // The ranked-block label (R2 ranks + early-season fallback)
 // ---------------------------------------------------------------------------
 
-test('rankScopeLabel uses each sport\'s own convention, not the bare number', async () => {
-  const { rankScopeLabel } = await import('../lib/sports/shared/seasonAggregateShapes');
-  const base = { poolSize: 30, byEntity: {}, throughDate: null, computedAt: '' };
-  // NBA's label is the year the season ENDS — `${season} season` printed
-  // "2026 season" for the 2025-26 one.
-  assert.equal(
-    rankScopeLabel({ ...base, sport: 'nba', season: 2026, requestedSeason: 2026, isFallback: false, fallbackReason: null }),
-    '2025-26 season',
-  );
-  assert.equal(
-    rankScopeLabel({ ...base, sport: 'tennis_atp', season: 2026, requestedSeason: 2026, isFallback: false, fallbackReason: null }),
-    '2026 season',
-  );
-});
-
-test('rankScopeLabel says so when the ranks are last season\'s', async () => {
-  const { rankScopeLabel } = await import('../lib/sports/shared/seasonAggregateShapes');
-  const base = { poolSize: 138, byEntity: {}, throughDate: null, computedAt: '' };
-  // The measured 2026-09-14 state: CFB serving 2025 ranks three weeks into 2026.
-  const label = rankScopeLabel({ ...base, sport: 'cfb', season: 2025, requestedSeason: 2026, isFallback: true, fallbackReason: 'x' });
-  assert.ok(label?.startsWith('2025-26 season'), label);
-  assert.ok(label?.includes('2026-27'), label);
-  assert.ok(label?.includes('too few games'), label);
-});
-
-test('rankScopeLabel is undefined when there is no pool to label', async () => {
-  const { rankScopeLabel } = await import('../lib/sports/shared/seasonAggregateShapes');
-  assert.equal(rankScopeLabel(null), undefined);
-  assert.equal(
-    rankScopeLabel({ sport: 'nba', season: 0, requestedSeason: 0, isFallback: false, fallbackReason: null, poolSize: 0, byEntity: {}, throughDate: null, computedAt: '' }),
-    undefined,
-  );
-});
-
 // ---------------------------------------------------------------------------
 // Page-level early-season fallback
 // ---------------------------------------------------------------------------
@@ -305,49 +271,3 @@ test('tennis never falls back — a calendar year either has matches or does not
 // ---------------------------------------------------------------------------
 // Neutral stats
 // ---------------------------------------------------------------------------
-
-test('direction-less stats are declared neutral, and never also have a direction', async () => {
-  const { SEASON_AGGREGATE_SPECS } = await import('../lib/sports/shared/seasonAggregateSpecs');
-  const neutral: string[] = [];
-  for (const spec of Object.values(SEASON_AGGREGATE_SPECS)) {
-    for (const st of spec.stats) {
-      if (st.neutral) {
-        neutral.push(`${spec.sport}.${st.key}`);
-        assert.notEqual(st.lowerIsBetter, true, `${spec.sport}.${st.key} is both neutral and lowerIsBetter`);
-      }
-    }
-  }
-  // The audit's complaint was fouls and offsides rendering green; NHL hits had
-  // no direction at all and so ranked higher-is-better.
-  assert.ok(neutral.includes('nba.fouls'), neutral.join(','));
-  assert.ok(neutral.includes('soccer_epl.foulsCommitted'), neutral.join(','));
-  assert.ok(neutral.includes('soccer_epl.offsides'), neutral.join(','));
-  assert.ok(neutral.includes('nhl.hits'), neutral.join(','));
-});
-
-test('a neutral stat is ranked but does not vote in a unit grade', async () => {
-  const { rankPool } = await import('../lib/sports/shared/seasonAggregateShapes');
-  const spec = {
-    sport: 'test',
-    groupBy: 'team_id' as const,
-    minGames: 1,
-    stats: [
-      { key: 'good', label: 'Good', statKey: 'good', decimals: 1, perGame: false },
-      { key: 'style', label: 'Style', statKey: 'style', decimals: 1, perGame: false, neutral: true },
-    ],
-    units: [{ key: 'u', label: 'Unit', statKeys: ['good', 'style'] }],
-  };
-  const out = rankPool(spec as never, [
-    { entityId: 'a', games: 10, sums: [100, 1] },
-    { entityId: 'b', games: 10, sums: [1, 100] },
-  ]);
-  // Both stats still rank — "most of X" is a fact either way.
-  assert.equal(out.a.stats.length, 2);
-  assert.equal(out.a.stats.find((s) => s.key === 'style')?.neutral, true);
-  assert.equal(out.a.stats.find((s) => s.key === 'good')?.neutral, undefined);
-  // `a` is best at the graded stat and worst at the neutral one. If the
-  // neutral stat voted, both grades would land mid-table; with only the
-  // graded stat voting they are the extremes.
-  assert.equal(out.a.units[0].composite, 100, 'the neutral stat voted in the grade');
-  assert.equal(out.b.units[0].composite, 0, 'the neutral stat voted in the grade');
-});

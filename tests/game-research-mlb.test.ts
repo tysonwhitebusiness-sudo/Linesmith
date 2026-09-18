@@ -5,7 +5,7 @@ import { inGameLinesFrom, mainGameLine, type GameQuote } from '../lib/odds/gameL
 import { mlbMarketResult, parseMlbBox } from '../lib/sports/mlb/liveFeedParsers';
 import { mlbGameState } from '../lib/sports/mlb/gameResearch';
 import { gameStates, resolveState } from '../lib/sports/shared/gameResearch';
-import { mlbLineChips, toGameResearchData } from '../lib/sports/mlb/adapters/gameDetailAdapter';
+import { mlbLineChips, toGameResearchData } from '../lib/sports/mlb/adapters/mlbGameResearch';
 import { marketValue, rankOf } from '../lib/sports/mlb/gamePregame';
 import type { MlbGameResearchPayload } from '../lib/sports/mlb/gameResearch';
 

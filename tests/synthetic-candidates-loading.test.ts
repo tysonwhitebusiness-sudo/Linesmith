@@ -45,7 +45,7 @@ test('the panel still gates the empty prop state behind that flag', () => {
   // state only after. Both halves have to hold.
   assert.ok(/marketsLoading=\{waitingOnSynthetic\}/.test(PANEL), 'the panel must pass the flag to PlayerDetail');
   const DETAIL = readFileSync('components/PlayerDetail.tsx', 'utf8');
-  const skeletonAt = DETAIL.search(/if \(subject && !embedded && marketsLoading\)/);
+  const skeletonAt = DETAIL.search(/if \(marketsLoading\)/);
   const emptyAt = DETAIL.indexOf('No line posted for this player today');
   assert.ok(skeletonAt > 0 && emptyAt > skeletonAt, 'the loading branch must come before the empty state, or the fix is inert');
   assert.ok(

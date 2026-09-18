@@ -58,7 +58,7 @@ import { toOpposingStarterFromProfile, toUsageMixRole } from './pitchRoles';
 import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
 import type { PitchProfile } from '@/lib/sports/mlb/pitchProfileShapes';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
-import type { GameDetailGame, StatKeyDef } from '@/components/GameDetail';
+import type { MlbSlateGame, StatKeyDef } from '@/lib/sports/mlb/slateGameShapes';
 import type { TeamStatcastState } from '@/components/useTeamStatcast';
 import type { LiveGameState } from '@/components/useLiveGame';
 import type { UnifiedLinesResult } from '@/lib/odds/types';

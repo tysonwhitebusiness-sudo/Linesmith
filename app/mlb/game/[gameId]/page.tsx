@@ -7,7 +7,7 @@ import { useSnapshot } from '@/components/useSnapshot';
 import { useSlip } from '@/components/useSlip';
 import { GamesStrip } from '@/components/GamesStrip';
 import { TopBar } from '@/components/TopBar';
-import type { GameDetailGame } from '@/components/GameDetail';
+import type { MlbSlateGame } from '@/lib/sports/mlb/slateGameShapes';
 import SlipModal from '@/components/SlipModal';
 import { GameResearchPage } from '@/components/GameResearchPage';
 
@@ -27,7 +27,7 @@ export default function GameDetailPage() {
   const slip = useSlip(sport);
   const [slipOpen, setSlipOpen] = useState(false);
 
-  const games = useMemo(() => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as GameDetailGame[], [snapshot]);
+  const games = useMemo(() => ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as MlbSlateGame[], [snapshot]);
   const eventContext = snapshot ? [snapshot.eventName, snapshot.eventDetail].filter(Boolean).join(' · ') : null;
   const onAdd = (candidate: PickCandidate, oddsInfo?: { americanOdds: string; source: string }) => {
     void slip.addPick(candidate, eventContext, oddsInfo);

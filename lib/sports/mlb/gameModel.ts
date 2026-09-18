@@ -151,7 +151,7 @@ type FittedDiagnostics = Pick<
  * Same feature order as modelFit.ts's MONEYLINE_FEATURE_NAMES — shared by the
  * point-estimate and confidence-interval paths below so they can never drift
  * apart. `simWinProb` (added for the sim engine plan, docs/mlb-sim-engine-plan.md)
- * is the real per-game simulation once gameSimCache.ts has one cached for
+ * is the real per-game simulation once the Python worker (`ensure_game_sims`, task 2.9) has one cached for
  * this matchup — see its own header for the refresh cadence (piggybacks on
  * getMlbSnapshot's rebuild cycle, not a new schedule). Falls back to 0.5
  * (neutral) for a game with no cached sim yet (see
@@ -335,7 +335,7 @@ const NEUTRAL_BULLPEN_ERA = 4.3;
  * to the neutral reference individually when unavailable — same neutral-
  * impute convention as the rest. `simOverProb` (sim engine plan) is the real
  * per-game simulation's expected total, converted to an over-probability
- * against today's actual line, once gameSimCache.ts has one cached for this
+ * against today's actual line, once the Python worker (`ensure_game_sims`, task 2.9) has one cached for this
  * matchup — same live-wiring shape as `simWinProb`, see fittedFeatureVector's
  * comment in this same file. Falls back to rawOverProb's own value (the
  * sim contributing "no additional signal beyond the existing formula" is

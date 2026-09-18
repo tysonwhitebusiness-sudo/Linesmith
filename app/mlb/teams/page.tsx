@@ -9,7 +9,7 @@ import { GamesStrip } from '@/components/GamesStrip';
 import { TopBar } from '@/components/TopBar';
 import SlipModal from '@/components/SlipModal';
 import { TeamDetailPanel } from '@/components/TeamDetailPanel';
-import type { GameDetailGame } from '@/components/GameDetail';
+import type { MlbSlateGame } from '@/lib/sports/mlb/slateGameShapes';
 
 /**
  * `/mlb/teams` — the Teams tab's landing page. Same split-view shell as
@@ -26,7 +26,7 @@ export default function TeamsIndexPage() {
   const slip = useSlip(sport);
   const [slipOpen, setSlipOpen] = useState(false);
 
-  const games = ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as GameDetailGame[];
+  const games = ((snapshot?.context?.other as Record<string, unknown> | undefined)?.games ?? []) as MlbSlateGame[];
 
   const onAdd = (candidate: PickCandidate, oddsInfo?: { americanOdds: string; source: string }) => {
     const eventContext = snapshot ? [snapshot.eventName, snapshot.eventDetail].filter(Boolean).join(' · ') : null;

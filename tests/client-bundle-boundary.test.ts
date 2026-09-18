@@ -16,6 +16,8 @@ import { join } from 'node:path';
  *   ./lib/db/client.ts -> nfl/nflTeamGrades.ts -> nfl/gameDetailAdapter.ts
  *     -> components/GameDetail.tsx                                     (6.1)
  *
+ * (R11a deleted every file in both chains; the lesson stands.)
+ *
  * **`tsc --noEmit` passes it. All 103 other tests pass it.** It is a bundling
  * boundary, not a type error, and the tests import the modules directly under
  * Node where `pg` resolves fine. Only a real build or a running dev server
@@ -39,7 +41,6 @@ const DB_MODULES = [
   // `venueFactorShapes.ts`, which is what a client component may import.
   '@/lib/sports/shared/venueFactor',
   '@/lib/db/client',
-  '@/lib/sports/shared/seasonAggregates',
   // R5a: the Statcast rollup reads. Types live in `statcastRollupShapes.ts`.
   '@/lib/sports/mlb/statcastRollups',
   // R5b: strength rollup reads. Types live in `teamProductionShapes.ts`.
@@ -67,7 +68,6 @@ const DB_MODULES = [
   // 6.16: `components/useLineHistory.ts` takes its result type from here. That
   // is an `import type` and erased — a VALUE import would bundle `pg`.
   '@/lib/odds/props/lineHistory',
-  '@/lib/sports/nfl/nflTeamGrades',
   // R6.5: NHL's api-web builder value-imports `writeSnapshotCache`. Its two
   // pure game-state predicates live in `gameStates.ts`, which is what the
   // player page's live gate and `hoopsHockeyGameState.ts` import. Importing
@@ -122,7 +122,7 @@ const DB_MODULES = [
  *   - `components/**` — every shared component and hook.
  *   - `lib/sports/{sport}/adapters/**` (PLURAL) — the pure sport-adapter
  *     transforms `CLAUDE.md`'s sport-adapter convention defines, imported
- *     directly by PlayerDetail/TeamDetail/GameDetail.
+ *     directly by PlayerDetail/TeamResearchPage/GameResearchPage.
  *   - `lib/sports/shared/**` — cross-sport helpers, which the adapters import.
  *
  * Both real bugs crossed exactly this line: a shared helper and a sport
@@ -140,7 +140,7 @@ function isClientReachable(file: string): boolean {
 /**
  * The db modules themselves are allowed to import db modules.
  *
- * Both entries are cross-sport SERVER halves that live under `lib/sports/shared/`
+ * Every entry is a cross-sport SERVER half that live under `lib/sports/shared/`
  * because their subject genuinely spans sports — one `team_elo_history` table,
  * one aggregation — so there is no `lib/sports/{sport}/` to put them in. Being
  * listed here exempts the file from the scan; being listed in `DB_MODULES`
@@ -148,9 +148,8 @@ function isClientReachable(file: string): boolean {
  * both, or it is exempted without being guarded.
  */
 const SELF = [
-  'lib/sports/shared/seasonAggregates.ts',
   // 6.10: one `venue_factors` table across six sports, so there is no
-  // `lib/sports/{sport}/` to put it in — the same reason the two above live here.
+  // `lib/sports/{sport}/` to put it in.
   'lib/sports/shared/venueFactor.ts',
   // R5b: the strength rollup tables span seven sports, the same reason again.
   'lib/sports/shared/teamProduction.ts',
@@ -223,7 +222,7 @@ test('no client-reachable module value-imports a database module', () => {
       `fail with "Module not found: Can't resolve 'dns'". tsc will NOT catch this.\n\n` +
       `  ${offences.join('\n  ')}\n\n` +
       `Fix: split the pure part into its own module (see\n` +
-      `lib/sports/shared/seasonAggregateShapes.ts and lib/sports/nfl/nflUnitGrades.ts),\n` +
+      `lib/sports/shared/venueFactorShapes.ts and lib/sports/mlb/statcastRollupShapes.ts),\n` +
       `or make the import \`import type\` if only types are needed.\n`,
   );
 });
@@ -248,8 +247,10 @@ test('the import parser tells a type import from a value import', () => {
   );
 });
 
-test('the two modules split out for this reason stay pure', () => {
-  for (const file of ['lib/sports/shared/seasonAggregateShapes.ts', 'lib/sports/nfl/nflUnitGrades.ts']) {
+test('the modules split out for this reason stay pure', () => {
+  // The original two (`seasonAggregateShapes.ts`, `nflUnitGrades.ts`) went with
+  // GameDetail in R11a; these are split the same way for the same reason.
+  for (const file of ['lib/sports/shared/venueFactorShapes.ts', 'lib/sports/mlb/statcastRollupShapes.ts', 'lib/sports/shared/compareShapes.ts']) {
     const source = readFileSync(file, 'utf8');
     for (const imp of valueImportsOf(source)) {
       assert.ok(
