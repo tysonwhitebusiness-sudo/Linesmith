@@ -143,13 +143,22 @@ async def fetch_finished_games(client: httpx.AsyncClient, config: SportEloConfig
     but not unlimited in practice — callers walk multi-month backfills in
     chunks (see backfill_sport_elo) rather than requesting a whole season
     in one call."""
+    # ONE DATE PER REQUEST: ESPN answers every team-sport `dates=A-B` range with
+    # HTTP 400 since ~2026-09-15 (game_context.EspnScheduleError has the story).
+    # A day that cannot be read raises: an empty answer here means "nothing to
+    # grade", which is how every non-MLB pick went ungraded from 2026-09-15.
     url = f"{_ESPN_BASE}/{config.espn_sport}/{config.espn_league}/scoreboard"
-    res = await client.get(url, params={"dates": f"{start_date}-{end_date}", "limit": 1000}, timeout=httpx.Timeout(15.0))
-    if res.status_code != 200:
-        return []
-    data = res.json()
+    day = datetime.strptime(start_date, "%Y%m%d").date()
+    last = datetime.strptime(end_date, "%Y%m%d").date()
+    events: list[dict] = []
+    while day <= last:
+        res = await client.get(url, params={"dates": f"{day:%Y%m%d}", "limit": 1000}, timeout=httpx.Timeout(15.0))
+        if res.status_code != 200:
+            raise RuntimeError(f"ESPN scoreboard {config.espn_sport}/{config.espn_league} {day:%Y%m%d}: HTTP {res.status_code}")
+        events.extend(res.json().get("events") or [])
+        day += timedelta(days=1)
     games: list[FinishedGame] = []
-    for ev in data.get("events") or []:
+    for ev in events:
         comp = (ev.get("competitions") or [{}])[0]
         status = ((comp.get("status") or {}).get("type") or {}).get("name")
         if status != "STATUS_FINAL" and status != "STATUS_FULL_TIME":

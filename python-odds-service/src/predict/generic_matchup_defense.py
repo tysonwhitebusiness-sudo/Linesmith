@@ -477,18 +477,19 @@ async def _fetch_nfl_current_teams(client: httpx.AsyncClient) -> list[tuple[str,
     literally every day) rather than ESPN's dedicated /teams list, same
     reasoning _fetch_nba_current_teams already documents for why a
     scoreboard sweep beats that endpoint."""
-    now = datetime.now(timezone.utc)
-    start = now - timedelta(days=31)
-    try:
-        res = await client.get(
-            f"{_NFL_ESPN_BASE}/scoreboard",
-            params={"dates": f"{start:%Y%m%d}-{now:%Y%m%d}", "limit": 1000},
-            timeout=httpx.Timeout(15.0),
-        )
-        data = res.json() if res.status_code == 200 else {}
-    except httpx.HTTPError:
-        data = {}
-    events = data.get("events") or []
+    # ONE DATE PER REQUEST: ESPN answers every team-sport `dates=A-B` range with
+    # HTTP 400 since ~2026-09-15 (game_context.EspnScheduleError has the story).
+    today = datetime.now(timezone.utc).date()
+    events: list[dict] = []
+    for i in range(32):
+        day = today - timedelta(days=i)
+        try:
+            res = await client.get(f"{_NFL_ESPN_BASE}/scoreboard", params={"dates": f"{day:%Y%m%d}", "limit": 1000},
+                                   timeout=httpx.Timeout(15.0))
+            data = res.json() if res.status_code == 200 else {}
+        except httpx.HTTPError:
+            data = {}
+        events.extend(data.get("events") or [])
     pairs: dict[str, str] = {}
     for e in events:
         comps = (e.get("competitions") or [{}])[0].get("competitors") or []

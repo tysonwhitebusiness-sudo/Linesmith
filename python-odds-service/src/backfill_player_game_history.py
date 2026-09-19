@@ -539,17 +539,21 @@ async def discover_espn(client, limiter, cfg: SportConfig, season: int) -> list[
     cur = start
     while cur <= end:
         wnd_end = min(cur + step - timedelta(days=1), end)
-        params = {"dates": f"{cur:%Y%m%d}-{wnd_end:%Y%m%d}", "limit": 1000}
-        if cfg.espn_groups:
-            params["groups"] = cfg.espn_groups
+        # ONE DATE PER REQUEST inside each window: ESPN answers every
+        # team-sport `dates=A-B` range with HTTP 400 since ~2026-09-15.
         url = f"{_ESPN_SITE}/{cfg.espn_sport}/{cfg.espn_league}/scoreboard"
-        try:
-            data = await fetch_json(client, limiter, url, params=params)
-        except FetchError as e:
-            print(f"  [discover] {cfg.sport} {season} window {cur}..{wnd_end} failed: {e}", flush=True)
-            cur += step
-            continue
-        events = data.get("events") or []
+        events = []
+        day = cur
+        while day <= wnd_end:
+            params = {"dates": f"{day:%Y%m%d}", "limit": 1000}
+            if cfg.espn_groups:
+                params["groups"] = cfg.espn_groups
+            try:
+                data = await fetch_json(client, limiter, url, params=params)
+                events.extend(data.get("events") or [])
+            except FetchError as e:
+                print(f"  [discover] {cfg.sport} {season} day {day} failed: {e}", flush=True)
+            day += timedelta(days=1)
         if len(events) >= 1000:
             print(f"  [discover] WARNING {cfg.sport} {season} {cur}..{wnd_end} hit 1000-event cap", flush=True)
         for ev in events:

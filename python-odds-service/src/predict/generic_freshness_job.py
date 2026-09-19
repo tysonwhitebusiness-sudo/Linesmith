@@ -55,6 +55,10 @@ import db
 LOOKBACK_DAYS = 3
 
 
+class DiscoveryError(RuntimeError):
+    """A day's scoreboard could not be read; see _discover_recent."""
+
+
 async def _discover_recent(
     client: httpx.AsyncClient, limiter: "bph.RateLimiter", cfg: "bph.SportConfig", start: date, end: date
 ) -> list[tuple[str, str, int]]:
@@ -91,15 +95,28 @@ async def _discover_recent(
             cur += timedelta(days=1)
         return [(eid, d, s) for eid, (d, s) in found.items()]
 
-    params = {"dates": f"{start:%Y%m%d}-{end:%Y%m%d}", "limit": 1000}
-    if cfg.espn_groups:
-        params["groups"] = cfg.espn_groups
+    # ONE DATE PER REQUEST: ESPN answers every team-sport `dates=A-B` range with
+    # HTTP 400 since ~2026-09-15 (game_context.EspnScheduleError has the story).
+    # A day that cannot be read raises DiscoveryError once every other day has
+    # been tried: before, a failure read as "no completed games" and this job
+    # quietly wrote nothing for NFL, CFB, EPL and MLS from 2026-09-15.
     url = f"{bph._ESPN_SITE}/{cfg.espn_sport}/{cfg.espn_league}/scoreboard"
-    try:
-        data = await bph.fetch_json(client, limiter, url, params=params)
-    except bph.FetchError:
-        data = {}
-    for ev in data.get("events") or []:
+    events: list[dict] = []
+    failed_days: list[str] = []
+    cur = start
+    while cur <= end:
+        params = {"dates": f"{cur:%Y%m%d}", "limit": 1000}
+        if cfg.espn_groups:
+            params["groups"] = cfg.espn_groups
+        try:
+            data = await bph.fetch_json(client, limiter, url, params=params)
+            events.extend(data.get("events") or [])
+        except bph.FetchError as e:
+            failed_days.append(f"{cur:%Y%m%d} ({e})")
+        cur += timedelta(days=1)
+    if failed_days:
+        raise DiscoveryError(f"{cfg.sport}: {len(failed_days)} day(s) unreadable: {', '.join(failed_days[:3])}")
+    for ev in events:
         s = ev.get("season") or {}
         if cfg.espn_regular_only and s.get("type") != 2:
             continue
@@ -277,9 +294,16 @@ async def run_freshness_pass(client: httpx.AsyncClient, rps: float = 3.0, start:
     # skipped automatically rather than crashing this.
     handled = [cfg for cfg in bph.SCOPE if cfg.parser in bph.PARSERS and (sports is None or cfg.sport in sports)]
 
+    discovery_errors: list[str] = []
     for cfg in handled:
         parser = bph.PARSERS[cfg.parser]
-        discovered = await _discover_recent(client, limiter, cfg, start, today)
+        try:
+            discovered = await _discover_recent(client, limiter, cfg, start, today)
+        except DiscoveryError as e:
+            # Every other sport still runs; the run is failed at the end.
+            discovery_errors.append(str(e))
+            per_sport[cfg.sport] = {**_empty(), "discovery_error": str(e)}
+            continue
         seasons_needed = {season for _eid, _date, season in discovered}
         done: set[str] = set()
         for season in seasons_needed:
@@ -318,4 +342,9 @@ async def run_freshness_pass(client: httpx.AsyncClient, rps: float = 3.0, start:
         if cfg.discover == "tennis" and (sports is None or cfg.sport in sports):
             per_sport[cfg.sport] = await _tennis_pass(client, limiter, cfg, start, today)
 
+    if discovery_errors:
+        # Raised after every sport has had its pass, so one broken schedule
+        # does not stop the others; the job's run log records a failure,
+        # which health_check reports, instead of a quiet zero.
+        raise DiscoveryError("; ".join(discovery_errors))
     return per_sport

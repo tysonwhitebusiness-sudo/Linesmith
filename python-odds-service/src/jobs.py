@@ -504,16 +504,26 @@ async def _grade_finished_generic_picks_inner() -> dict:
     end = today.strftime("%Y%m%d")
 
     per_sport: dict[str, dict] = {}
+    errors: list[str] = []
     async with httpx.AsyncClient() as client:
         for sport_key, app_sport in _APP_SPORT_BY_KEY.items():
             config = gte.SPORT_CONFIGS[sport_key]
-            games = await gte.fetch_finished_games(client, config, start, end)
+            try:
+                games = await gte.fetch_finished_games(client, config, start, end)
+            except Exception as e:
+                # An unreadable schedule is a failure, not "nothing finished";
+                # the other sports still grade, and the run fails at the end.
+                errors.append(f"{sport_key}: {type(e).__name__}: {e}")
+                per_sport[sport_key] = {"error": str(e)}
+                continue
             finished = [
                 FinishedGameInput(game_id=g.game_id, is_final=True, home_score=g.home_score, away_score=g.away_score)
                 for g in games
             ]
             await grade_finished_game_picks(app_sport, finished)
             per_sport[sport_key] = {"finished": len(finished)}
+    if errors:
+        raise RuntimeError("; ".join(errors))
     return {"per_sport": per_sport}
 
 
