@@ -164,24 +164,30 @@ async def job_sportsgameodds(yield_fn=None) -> dict:
         )
 
 
-async def _job_multisport(job_name: str, sport: str, yield_fn) -> dict:
+async def _job_multisport(job_name: str, sport: str, yield_fn=None, specs=None, concurrent: bool = True) -> dict:
     # The free ESPN schedule fetch (game_context.py) always runs every cycle
     # regardless of tier — it's what tells us which tier we're even in.
     # Only the paid provider fetch below is gated. See gameday.py's docstring
     # for the real numbers behind why (flat cadence spent the same 1 credit
     # whether the nearest game was 6 minutes or 6 days out).
-    # Same is_final filter MLB's job_tier1/job_sportsgameodds already apply —
-    # now real for these sports too (2026-08-20), not always-False.
-    games = [g for g in await load_sport_games(sport) if not g.is_final]
-    tier, should_fetch = await gameday.should_fetch_paid_providers(sport, games)
-    if not should_fetch:
-        return await _run_timed(job_name, _return_dict(gameday.skip_summary(games, tier)))
+    #
+    # THE SCHEDULE LOAD RUNS INSIDE _run_timed. It used to run before it, and
+    # the loader returned [] when ESPN failed, so a broken schedule read as a
+    # cold week: four days of NFL/CFB/EPL/MLS props were skipped from
+    # 2026-09-15 as "cold tier" (game_context.EspnScheduleError). The loader
+    # now raises, and inside _run_timed that is a failed run in the job log,
+    # which health_check reports as one.
+    async def body() -> dict:
+        # Same is_final filter MLB's job_tier1/job_sportsgameodds already apply.
+        games = [g for g in await load_sport_games(sport) if not g.is_final]
+        tier, should_fetch = await gameday.should_fetch_paid_providers(sport, games)
+        if not should_fetch:
+            return gameday.skip_summary(games, tier)
+        async with httpx.AsyncClient() as client:
+            return await run_provider_specs(client, games, specs if specs is not None else specs_for(sport, yield_fn),
+                                            yield_fn=yield_fn, concurrent=concurrent)
 
-    specs = specs_for(sport, yield_fn)
-    async with httpx.AsyncClient() as client:
-        return await _run_timed(
-            job_name, run_provider_specs(client, games, specs, yield_fn=yield_fn, concurrent=True)
-        )
+    return await _run_timed(job_name, body())
 
 
 async def _return_dict(d: dict) -> dict:
@@ -281,29 +287,11 @@ async def job_nba(yield_fn=None) -> dict:
 async def job_soccer_epl(yield_fn=None) -> dict:
     # Propline has no per-minute cap in config.ts (dailyLimit only) — no
     # pacing-wait shape to yield at, same as Tier 1.
-    games = [g for g in await load_sport_games("soccer_epl") if not g.is_final]
-    tier, should_fetch = await gameday.should_fetch_paid_providers("soccer_epl", games)
-    if not should_fetch:
-        return await _run_timed("refreshSoccerEplJob", _return_dict(gameday.skip_summary(games, tier)))
-
-    async with httpx.AsyncClient() as client:
-        return await _run_timed(
-            "refreshSoccerEplJob", run_provider_specs(client, games, specs_for("soccer_epl"), concurrent=False)
-        )
+    return await _job_multisport("refreshSoccerEplJob", "soccer_epl", specs=specs_for("soccer_epl"), concurrent=False)
 
 
 async def job_soccer_mls(yield_fn=None) -> dict:
-    games = [g for g in await load_sport_games("soccer_mls") if not g.is_final]
-    tier, should_fetch = await gameday.should_fetch_paid_providers("soccer_mls", games)
-    if not should_fetch:
-        return await _run_timed("refreshSoccerMlsJob", _return_dict(gameday.skip_summary(games, tier)))
-
-    async with httpx.AsyncClient() as client:
-        return await _run_timed(
-            "refreshSoccerMlsJob",
-            run_provider_specs(client, games, specs_for("soccer_mls", yield_fn),
-                               yield_fn=yield_fn, concurrent=False),
-        )
+    return await _job_multisport("refreshSoccerMlsJob", "soccer_mls", yield_fn, concurrent=False)
 
 
 async def _job_tennis(job_name: str, sport_key: str, tour: str, yield_fn) -> dict:

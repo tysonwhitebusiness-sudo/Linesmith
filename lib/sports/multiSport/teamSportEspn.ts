@@ -80,19 +80,75 @@ interface RawCompetitor {
 }
 
 /**
- * ESPN files every game under its US EASTERN date, so the range must be built
- * from the Eastern date too, never from UTC.
+ * ESPN files every game under its US EASTERN date, so the days asked for are
+ * Eastern dates too, never UTC.
  *
- * It used to use UTC, and after 00:00Z (8pm Eastern) the range started on the
+ * It used to use UTC, and after 00:00Z (8pm Eastern) the window started on the
  * next day. The in-progress Sunday night game (DAL @ NYG, 401872930, kickoff
  * 00:20Z) then vanished mid-game: ESPN returned it for `dates=20260913` and not
- * for `20260914-…`, so the NFL games strip dropped it and its game page
- * rendered "Game not found". Every primetime game hit this, every week.
+ * for `20260914`, so the NFL games strip dropped it and its game page rendered
+ * "Game not found". Every primetime game hit this, every week.
  */
-function dateRangeParam(daysAhead: number, daysBack: number): string {
+function scoreboardDays(daysAhead: number, daysBack: number): string[] {
   const today = easternDate();
-  const ymd = (isoDate: string) => isoDate.replace(/-/g, '');
-  return `${ymd(shiftDate(today, -daysBack))}-${ymd(shiftDate(today, daysAhead))}`;
+  const days: string[] = [];
+  for (let i = -daysBack; i <= daysAhead; i++) days.push(shiftDate(today, i).replace(/-/g, ''));
+  return days;
+}
+
+/**
+ * ESPN's scoreboard could not be read. Never the same thing as "no games".
+ *
+ * Until 2026-09-19 a failed fetch returned `[]`. ESPN began answering every
+ * team-sport date RANGE (`?dates=20260919-20261003`) with HTTP 400 around
+ * 2026-09-15 20:13 UTC, and an empty list read as an off week: the Python
+ * worker skipped four days of NFL, CFB, EPL and MLS props, closing lines and
+ * results. Throwing lets a cached caller keep its last good answer instead of
+ * replacing it with an empty slate. `game_context.EspnScheduleError` is the
+ * Python half.
+ */
+export class EspnScheduleError extends Error {}
+
+/**
+ * ONE DATE PER REQUEST. Every `dates=A-B` form tried on 2026-09-19 (past,
+ * future, one day, with `limit`, on both site hosts) returned 400 for NFL, CFB,
+ * EPL, MLS, NBA, NHL and MLB; a single `dates=YYYYMMDD` still works. The month
+ * form `YYYYMM` answers 200 but is incomplete (CFB's September came back as one
+ * Saturday's 25 games), so it is not used. Tennis ranges still work.
+ *
+ * Per-day requests multiply the call count, so each day's answer is kept in
+ * this process for a while: a minute for yesterday, today and tomorrow (scores,
+ * finals), half an hour for any day further out (kickoff times rarely move).
+ */
+const DAY_CACHE_NEAR_MS = 60_000;
+const DAY_CACHE_FAR_MS = 30 * 60_000;
+const DAY_CONCURRENCY = 4;
+const dayCache = new Map<string, { at: number; games: EspnTeamSportGame[] }>();
+
+async function fetchScoreboardDay(espnSport: string, espnLeague: string, ymd: string, near: boolean): Promise<EspnTeamSportGame[]> {
+  const key = `${espnSport}/${espnLeague}/${ymd}`;
+  const hit = dayCache.get(key);
+  if (hit && Date.now() - hit.at < (near ? DAY_CACHE_NEAR_MS : DAY_CACHE_FAR_MS)) return hit.games;
+
+  let last = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(`${BASE}/${espnSport}/${espnLeague}/scoreboard?dates=${ymd}`, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.ok) {
+        const games = parseScoreboard(await res.json());
+        dayCache.set(key, { at: Date.now(), games });
+        return games;
+      }
+      last = `HTTP ${res.status}`;
+    } catch (e) {
+      last = e instanceof Error ? e.message : String(e);
+    }
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 1_000));
+  }
+  throw new EspnScheduleError(`ESPN scoreboard ${espnSport}/${espnLeague} ${ymd}: ${last}`);
 }
 
 /**
@@ -106,19 +162,41 @@ function dateRangeParam(daysAhead: number, daysBack: number): string {
  * before this param was added only ever wanted upcoming games. A caller
  * that also needs real recent/past results (a team page's "recent form")
  * passes a real `daysBack` explicitly.
+ *
+ * Throws `EspnScheduleError` if any day could not be read: a schedule with a
+ * hole in it is how a real game day reads as an empty one.
  */
 export async function fetchScoreboard(espnSport: string, espnLeague: string, daysAhead = 14, daysBack = 0): Promise<EspnTeamSportGame[]> {
-  let res: Response;
-  try {
-    res = await fetch(`${BASE}/${espnSport}/${espnLeague}/scoreboard?dates=${dateRangeParam(daysAhead, daysBack)}`, {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(10_000),
-    });
-  } catch {
-    return [];
+  const days = scoreboardDays(daysAhead, daysBack);
+  const today = easternDate();
+  const near = new Set([-1, 0, 1].map((d) => shiftDate(today, d).replace(/-/g, '')));
+
+  const results: EspnTeamSportGame[][] = new Array(days.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(DAY_CONCURRENCY, days.length) }, async () => {
+      while (next < days.length) {
+        const i = next++;
+        results[i] = await fetchScoreboardDay(espnSport, espnLeague, days[i], near.has(days[i]));
+      }
+    }),
+  );
+
+  // A game sits under one Eastern date, but a postponed game can surface on two; keep the first.
+  const seen = new Set<string>();
+  const games: EspnTeamSportGame[] = [];
+  for (const dayGames of results) {
+    for (const g of dayGames) {
+      if (seen.has(g.gameId)) continue;
+      seen.add(g.gameId);
+      games.push(g);
+    }
   }
-  if (!res.ok) return [];
-  const json = (await res.json()) as {
+  return games;
+}
+
+function parseScoreboard(raw: unknown): EspnTeamSportGame[] {
+  const json = raw as {
     events?: Array<{
       id: string;
       date: string;
@@ -179,18 +257,34 @@ export async function fetchScoreboard(espnSport: string, espnLeague: string, day
  * Real "has this sport's season actually started" signal — same purpose
  * CFB's own `cfbd.ts`'s `fetchSeasonStatus` serves, generalized here since
  * NBA/NHL's real off-season timing is exactly this same question and ESPN
- * already has the answer for any sport on this fetcher. Queries a wide
- * window (60 days back covers a season that just ended; 120 days ahead
- * covers preseason through the real regular-season opener) so a call made
- * deep in the off-season still finds the real next kickoff date, not an
- * empty list.
+ * already has the answer for any sport on this fetcher.
+ *
+ * Reads the league's own calendar (`leagues[0].calendar`, one entry per date
+ * with a game) off the undated scoreboard: ONE request. It used to ask for a
+ * 180-day range, which ESPN now rejects (see `fetchScoreboard`) and which would
+ * be 181 requests one date at a time. "Started" is now "a date on the current
+ * season's calendar has passed", where it was "a game in the last 60 days is
+ * final"; so in the summer gap a league reads as not started, with its first
+ * date, rather than as started because of June's finals.
  */
 export async function fetchSeasonStatus(espnSport: string, espnLeague: string): Promise<{ started: boolean; nextGameDate: string | null }> {
-  const games = await fetchScoreboard(espnSport, espnLeague, 120, 60);
-  if (games.length === 0) return { started: true, nextGameDate: null }; // unknown — don't claim "not started" without real data
-  const started = games.some((g) => g.status?.completed === true);
-  const upcoming = games.filter((g) => g.status?.state !== 'post').map((g) => g.date).sort();
-  return { started, nextGameDate: started ? null : (upcoming[0] ?? null) };
+  const unknown = { started: true, nextGameDate: null }; // don't claim "not started" without real data
+  let calendar: unknown[] = [];
+  try {
+    const res = await fetch(`${BASE}/${espnSport}/${espnLeague}/scoreboard`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return unknown;
+    const json = (await res.json()) as { leagues?: Array<{ calendar?: unknown[] }> };
+    calendar = json.leagues?.[0]?.calendar ?? [];
+  } catch {
+    return unknown;
+  }
+  // Entries are ISO timestamps at the Eastern date's start (`2026-10-03T07:00Z`), so the first ten characters are the date.
+  const dates = calendar.filter((d): d is string => typeof d === 'string').sort();
+  if (dates.length === 0) return unknown;
+  const today = easternDate();
+  const started = dates.some((d) => d.slice(0, 10) < today);
+  const upcoming = dates.find((d) => d.slice(0, 10) >= today) ?? null;
+  return { started, nextGameDate: started ? null : upcoming };
 }
 
 export interface EspnInjuryRow {

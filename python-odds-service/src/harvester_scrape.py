@@ -1145,7 +1145,13 @@ async def _run_harvester_cli(target: ScrapeTarget,
 
 
 async def run_target(target: ScrapeTarget) -> dict:
-    games = await target.load_games()
+    try:
+        games = await target.load_games()
+    except Exception as e:
+        # A schedule that could not be read is a failure, not an empty slate
+        # (game_context.EspnScheduleError). Say so in this target's own health row.
+        await _write_health(target.sport, healthy=False, status=f"game load failed: {type(e).__name__}: {e}", matched=0, records=0)
+        raise
     if not games:
         return {"sport": target.sport, "ok": False, "reason": "no games loaded from snapshot"}
 

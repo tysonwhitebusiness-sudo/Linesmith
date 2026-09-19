@@ -30,6 +30,7 @@ it's a string.
 import asyncio
 import json
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -150,48 +151,58 @@ def _int_or_none(v) -> int | None:
         return None
 
 
-# ESPN files every game under its US EASTERN date, so a date range has to be
-# built from the Eastern date, never from UTC. `teamSportEspn.ts` was fixed the
-# same way 2026-09-14; this is the Python half of R1d.
+# ESPN files every game under its US EASTERN date, so the days asked for are
+# Eastern dates, never UTC. After 00:00Z (8pm Eastern) a UTC "today" has
+# already rolled to tomorrow and drops the evening's primetime game: ESPN
+# returned DAL @ NYG (kickoff 00:20Z) for `dates=20260913` and not for
+# 20260914. `teamSportEspn.ts` does the same (R1d, 2026-09-14).
 _ESPN_TZ = ZoneInfo("America/New_York")
 
 
-def _date_range_param(days_ahead: int) -> str:
-    """ESPN wants YYYYMMDD-YYYYMMDD with the EARLIER date first.
+class EspnScheduleError(RuntimeError):
+    """ESPN's scoreboard could not be read. Never the same thing as "no games".
 
-    THE RANGE IS BUILT FROM THE US EASTERN DATE. It used to use UTC, so after
-    00:00Z -- 8pm Eastern -- "today" rolled over to tomorrow and the window no
-    longer covered the evening's own games. Every NFL and CFB primetime game
-    hit this, every week: ESPN returned DAL @ NYG (kickoff 00:20Z) for
-    `dates=20260913` and not for a range starting 20260914, so the job simply
-    did not see it.
+    Until 2026-09-19 a failed fetch returned [], and that is how four days of
+    NFL, CFB, EPL and MLS props, closing lines and results went missing
+    without an error. ESPN started answering every team-sport date RANGE
+    (`?dates=20260919-20261003`) with HTTP 400 around 2026-09-15 20:13 UTC;
+    the loader read that as an empty schedule, the gameday tier went "cold",
+    and every job skipped its paid providers as if it were an off week.
+    Raising puts the failure in the job's own run log, where health_check
+    reports it as a failed run instead of a quiet skip.
+    """
 
-    A negative `days_ahead` still has to swap the ends, not just subtract:
-    passing -3 naively yields "20260903-20260831", which is a backwards range
-    and returns nothing. archiveResultsJob asks for a backwards window, so this
-    orders the pair rather than assuming the caller wants the future.
+
+def _espn_days(days_ahead: int) -> list:
+    """Every Eastern date from today to today + days_ahead, both ends included.
+
+    A negative days_ahead walks backwards (archiveResultsJob wants the last few
+    days of finals). Ordered oldest first either way.
     """
     today = datetime.now(_ESPN_TZ).date()
-    other = today + timedelta(days=days_ahead)
-    start, end = (today, other) if days_ahead >= 0 else (other, today)
-    return f"{start.strftime('%Y%m%d')}-{end.strftime('%Y%m%d')}"
+    step = 1 if days_ahead >= 0 else -1
+    days = [today + timedelta(days=i) for i in range(0, days_ahead + step, step)]
+    return sorted(days)
 
 
-async def _fetch_espn_scoreboard(client: httpx.AsyncClient, espn_sport: str, espn_league: str, days_ahead: int) -> list[dict]:
-    """Direct port of teamSportEspn.ts's fetchScoreboard — same URL, same
-    date-range window, same graceful-empty-on-failure behavior (a fetch
-    failure here must never crash the job; the caller just sees no games
-    this cycle and tries again next cycle)."""
-    try:
-        res = await client.get(
-            f"{_ESPN_BASE}/{espn_sport}/{espn_league}/scoreboard?dates={_date_range_param(days_ahead)}",
-            timeout=httpx.Timeout(10.0),
-        )
-    except httpx.HTTPError:
-        return []
-    if res.status_code != 200:
-        return []
-    data = res.json()
+# ONE DATE PER REQUEST. ESPN no longer accepts a range for team sports: every
+# `dates=A-B` form tried on 2026-09-19 (past, future, one day, with `limit`, on
+# both site hosts) returned 400, for NFL, CFB, EPL, MLS, NBA, NHL and MLB. A
+# single `dates=YYYYMMDD` still works. The month form `dates=YYYYMM` answers
+# 200 but is not complete (CFB's September came back as one Saturday's 25
+# games), so it is not used. Tennis ranges still work and live elsewhere.
+#
+# Per-day requests multiply the call count, and the archival bridge loads
+# every sport every five minutes, so each day's answer is kept in-process for
+# a while. Today and yesterday change minute to minute (scores, finals); a day
+# further out changes when a kickoff time moves, which half an hour covers.
+_DAY_CACHE_NEAR_S = 60
+_DAY_CACHE_FAR_S = 30 * 60
+_DAY_CONCURRENCY = 4
+_day_cache: dict[tuple[str, str, str], tuple[float, list[dict]]] = {}
+
+
+def _parse_scoreboard_events(data: dict) -> list[dict]:
     games: list[dict] = []
     for ev in data.get("events") or []:
         competitions = ev.get("competitions") or []
@@ -202,12 +213,8 @@ async def _fetch_espn_scoreboard(client: httpx.AsyncClient, espn_sport: str, esp
         if not home or not away:
             continue
         # Real, live-confirmed shape (2026-08-20): comp.status.type.completed.
-        # Ported from nothing — the old snapshot-based path (and TS's own
-        # GameLookupContext type, which has no isFinal field at all) never
-        # tracked this for NFL/CFB/Soccer, unlike MLB's real is_final
-        # parsing. Real gap: SportsGameOdds bills per-game, so a finished
-        # game left in the list means a genuinely wasted live HTTP request
-        # (and rate-limit consumption) for a market that's already closed.
+        # A finished game left in the list costs SportsGameOdds a real,
+        # per-game-billed request for a market that is already closed.
         status = ((comp.get("status") or {}).get("type") or {})
         games.append(
             {
@@ -220,16 +227,74 @@ async def _fetch_espn_scoreboard(client: httpx.AsyncClient, espn_sport: str, esp
                 "awayTeamName": away["team"]["displayName"],
                 "awayAbbr": away["team"]["abbreviation"],
                 "isFinal": bool(status.get("completed")),
-                # SCORES, added 2026-09-03 for archiveResultsJob. They were
-                # always in this payload and always discarded: ESPN puts them on
-                # the competitor, beside the team block this already reads. A
-                # completed game with no score is left as None rather than 0 —
-                # 0-0 is a real scoreline in soccer, so coercing would
-                # manufacture results.
+                # SCORES, added 2026-09-03 for archiveResultsJob. A completed
+                # game with no score is left as None rather than 0 — 0-0 is a
+                # real scoreline in soccer, so coercing would manufacture results.
                 "homeScore": _int_or_none(home.get("score")),
                 "awayScore": _int_or_none(away.get("score")),
             }
         )
+    return games
+
+
+async def _fetch_espn_scoreboard_day(client: httpx.AsyncClient, espn_sport: str, espn_league: str, day) -> list[dict]:
+    """One Eastern date's games. Retries once, then raises EspnScheduleError."""
+    ymd = day.strftime("%Y%m%d")
+    key = (espn_sport, espn_league, ymd)
+    today = datetime.now(_ESPN_TZ).date()
+    ttl = _DAY_CACHE_NEAR_S if abs((day - today).days) <= 1 else _DAY_CACHE_FAR_S
+    hit = _day_cache.get(key)
+    now = time.monotonic()
+    if hit and now - hit[0] < ttl:
+        return hit[1]
+
+    url = f"{_ESPN_BASE}/{espn_sport}/{espn_league}/scoreboard?dates={ymd}"
+    last = ""
+    for attempt in range(2):
+        try:
+            res = await client.get(url, timeout=httpx.Timeout(10.0))
+        except httpx.HTTPError as e:
+            last = f"{type(e).__name__}: {e}"
+        else:
+            if res.status_code == 200:
+                games = _parse_scoreboard_events(res.json())
+                _day_cache[key] = (time.monotonic(), games)
+                return games
+            last = f"HTTP {res.status_code}: {res.text[:120]}"
+        if attempt == 0:
+            await asyncio.sleep(1.0)
+    raise EspnScheduleError(f"ESPN scoreboard {espn_sport}/{espn_league} {ymd}: {last}")
+
+
+async def _fetch_espn_scoreboard(client: httpx.AsyncClient, espn_sport: str, espn_league: str, days_ahead: int) -> list[dict]:
+    """Every game from today to today + days_ahead (negative walks back).
+
+    Raises EspnScheduleError if ANY day could not be read: a schedule with a
+    hole in it is how a real game day reads as a cold one, so a partial answer
+    is not returned as if it were whole. The job fails this cycle and the next
+    cycle retries.
+    """
+    days = _espn_days(days_ahead)
+    sem = asyncio.Semaphore(_DAY_CONCURRENCY)
+
+    async def one(day):
+        async with sem:
+            return await _fetch_espn_scoreboard_day(client, espn_sport, espn_league, day)
+
+    results = await asyncio.gather(*(one(d) for d in days), return_exceptions=True)
+    failures = [r for r in results if isinstance(r, BaseException)]
+    if failures:
+        raise EspnScheduleError(f"{len(failures)} of {len(days)} days unreadable; first: {failures[0]}")
+
+    # A game sits under one Eastern date, but a postponed game can surface on
+    # two; keep the first.
+    seen: set[str] = set()
+    games: list[dict] = []
+    for day_games in results:
+        for g in day_games:
+            if g["gameId"] not in seen:
+                seen.add(g["gameId"])
+                games.append(g)
     return games
 
 
@@ -285,8 +350,7 @@ async def completed_espn_games(sport: str, days_back: int = 3) -> list[dict]:
     """
     espn_sport, espn_league = _ESPN_SPORT_CONFIG[sport]
     async with httpx.AsyncClient() as client:
-        # Negative days_ahead walks backwards from today — the same range param,
-        # which already accepts a start earlier than the end.
+        # Negative days_ahead walks backwards from today, one date per request.
         raw = await _fetch_espn_scoreboard(client, espn_sport, espn_league, -days_back)
     return [g for g in raw
             if g.get("isFinal") and g.get("homeScore") is not None and g.get("awayScore") is not None]

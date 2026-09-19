@@ -33,8 +33,17 @@ The Scan page becomes a sectioned Slate Sheet (Games · Movers · Props board ·
 Spotlights · Specials · Model card · Your lines). It is built on the U kit after
 U2, then old Scan is deleted. The handoff for both threads is
 `docs/design/HANDOFF-ui-and-slate-2026-09-19.md`.
-**Open finding: football and soccer props stopped arriving on 2026-09-15 at
-20:13 UTC** (nothing in `prop_odds` since); see the handoff §2b.
+**FIXED 2026-09-19: football and soccer props, closes and results stopped on
+2026-09-15 at 20:13 UTC.** ESPN began answering every team-sport scoreboard
+date RANGE with HTTP 400; our loaders read that as "no games", so the NFL/CFB/
+EPL/MLS jobs went "cold tier" and the archival bridge captured nothing. Fixed in
+`game_context.py`, `teamSportEspn.ts` and NBA team discovery: one date per
+request with a short per-day cache, and an unreadable day now RAISES
+(`EspnScheduleError`) so it shows as a failed run, not a quiet skip. Needs the
+worker deploy to take effect. **Owed after deploy:** football/soccer rows back
+in `prop_odds` and `odds_archive`; backfill the missed `game_result` finals
+(2026-09-13 → deploy) with `completed_espn_games`-style single-date reads.
+Closing lines for those days are lost.
 
 ---
 

@@ -314,7 +314,24 @@ Dependencies:
 - Don't scrape sportsbook sites for promos.
 - Don't put ranking math in TypeScript.
 
-### 2g. Open questions for the operator
+### 2g. Operator answers (2026-09-19, second session)
+
+1. Rollout: **all sports, in phases** (not MLB-only first).
+2. **Keep** Scan's full player table as the Props board's main table.
+3. The §2c-5 Specials rankings are the **pilot set**; add more later if needed.
+   (The admin-entered "specials at the books" list is not wanted for now.)
+4. **Wait for U2** before building the Slate Sheet.
+5. Props outage, **diagnosed**: not game-day cadence. ESPN's scoreboard
+   started rejecting `?dates=A-B` ranges (HTTP 400) around 2026-09-15 20:13
+   UTC. `_fetch_espn_scoreboard` (Python) and `fetchScoreboard` (TS) return
+   `[]` on a non-200, so NFL/CFB/EPL/MLS saw 0 games → "cold tier" → no paid
+   props. The archival bridge's closes and results for those sports stopped too
+   (last `odds_archive` rows 09-15/16, last `game_result` rows 09-13/15).
+   Single dates still work. Fix awaiting the operator's go-ahead.
+
+Next: specify each sport's exact cards from measured data (no guesswork).
+
+### 2g-old. Open questions for the operator (answered above)
 
 1. **Rollout:** MLB first (deepest props, a real model), or every sport
    together? Recommended: MLB first.

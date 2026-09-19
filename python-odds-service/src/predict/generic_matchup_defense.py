@@ -53,7 +53,11 @@ _SNAPSHOT_TTL_LEADERBOARD_S = 24 * 60 * 60
 # query comes back genuinely empty (off-season) — real, verified-live
 # dates from the most recently completed season, not a guess.
 _NHL_FALLBACK_STANDINGS_DATE = "2025-04-15"
-_NBA_FALLBACK_SCOREBOARD_RANGE = "20250401-20250415"
+# A month, not a range: ESPN answers every team-sport `dates=A-B` range with
+# 400 since 2026-09-15. The month form is not complete for every league
+# (CFB), but April 2025 was checked on 2026-09-19 to hold all 30 NBA teams.
+_NBA_FALLBACK_SCOREBOARD_MONTH = "202504"
+_NBA_TEAM_WINDOW_DAYS = 14
 
 
 @dataclass
@@ -265,17 +269,22 @@ async def _fetch_nba_current_teams(client: httpx.AsyncClient) -> list[tuple[str,
     pipeline (game_context.py's _fetch_espn_scoreboard) and every team
     plays multiple games in any real 2-week window, so this is more
     reliable, not just a workaround."""
-    now = datetime.now(timezone.utc)
-    date_range = f"{now.strftime('%Y%m%d')}-{(now.replace(day=1)).strftime('%Y%m%d')}"
-    try:
-        res = await client.get(f"{_NBA_ESPN_BASE}/scoreboard?dates={now.strftime('%Y%m%d')}-{now.strftime('%Y%m%d')}", timeout=httpx.Timeout(15.0))
-        data = res.json() if res.status_code == 200 else {}
-    except httpx.HTTPError:
-        data = {}
-    events = data.get("events") or []
+    # One date per request over the last two weeks; every team plays in that
+    # window during the season. The window used to be `today-today`, which
+    # found only the teams playing today.
+    today = datetime.now(timezone.utc).date()
+    events: list[dict] = []
+    for i in range(_NBA_TEAM_WINDOW_DAYS + 1):
+        day = (today - timedelta(days=i)).strftime("%Y%m%d")
+        try:
+            res = await client.get(f"{_NBA_ESPN_BASE}/scoreboard?dates={day}", timeout=httpx.Timeout(15.0))
+            data = res.json() if res.status_code == 200 else {}
+        except httpx.HTTPError:
+            data = {}
+        events.extend(data.get("events") or [])
     if not events:
         try:
-            res = await client.get(f"{_NBA_ESPN_BASE}/scoreboard?dates={_NBA_FALLBACK_SCOREBOARD_RANGE}", timeout=httpx.Timeout(15.0))
+            res = await client.get(f"{_NBA_ESPN_BASE}/scoreboard?dates={_NBA_FALLBACK_SCOREBOARD_MONTH}&limit=1000", timeout=httpx.Timeout(15.0))
             data = res.json() if res.status_code == 200 else {}
         except httpx.HTTPError:
             data = {}
