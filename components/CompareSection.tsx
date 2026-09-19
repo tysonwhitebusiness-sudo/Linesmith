@@ -1,11 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Avatar, Card, DataTable, EmptyState, LeagueStripRow, SelectBox, Skeleton, type Column } from './ui';
 import { formatResearchValue, type PlayerResearchData, type ResearchCard, type ResearchLogRow } from '@/lib/sports/shared/playerResearchShapes';
 import { ResearchCardView } from './PlayerResearchSections';
 import { CompareView, type CompareViewRow } from './CompareView';
-import type { ComparePeer, PlayerComparePayload } from '@/lib/sports/shared/compareShapes';
+import { searchPeers, type ComparePeer, type PlayerComparePayload } from '@/lib/sports/shared/compareShapes';
 
 /**
  * Compare — R10. The page answers "how has he done"; this answers "against THIS
@@ -40,6 +40,8 @@ export interface CompareSectionProps {
   subjectId: string | null;
   subjectName: string;
   peers: ComparePeer[];
+  /** The list is last season's: early in a season nobody has reached the floor. */
+  peersLastSeason?: boolean;
   peerId: string | null;
   onPeer: (athleteId: string | null) => void;
   peerResearch: PlayerResearchData | null;
@@ -72,6 +74,7 @@ export function CompareSection({
   subjectId,
   subjectName,
   peers,
+  peersLastSeason = false,
   peerId,
   onPeer,
   peerResearch,
@@ -213,6 +216,7 @@ export function CompareSection({
         subjectId={subjectId}
         subjectName={subjectName}
         peers={peers}
+        lastSeason={peersLastSeason}
         peerId={peerId}
         onPeer={onPeer}
         peerResearch={peerResearch}
@@ -237,6 +241,7 @@ function PeerCompare({
   subjectId,
   subjectName,
   peers,
+  lastSeason,
   peerId,
   onPeer,
   peerResearch,
@@ -248,6 +253,7 @@ function PeerCompare({
   subjectId: string | null;
   subjectName: string;
   peers: ComparePeer[];
+  lastSeason: boolean;
   peerId: string | null;
   onPeer: (id: string | null) => void;
   peerResearch: PlayerResearchData | null;
@@ -261,15 +267,23 @@ function PeerCompare({
   // the cached answer.
   const others = useMemo(() => peers.filter((p) => p.athleteId !== subjectId), [peers, subjectId]);
   const peer = others.find((p) => p.athleteId === peerId) ?? null;
+  const [query, setQuery] = useState('');
+  const shown = useMemo(() => searchPeers(others, query, peerId), [others, query, peerId]);
+  // Matches other than the one already picked: what the search actually found.
+  const found = shown.filter((p) => p.athleteId !== peerId);
   const mineSeasons = research?.seasons.rows ?? [];
   const theirs = peerResearch?.seasons.rows ?? [];
   const columns = (research?.seasons.columns ?? []).filter((c) => !c.text).slice(0, MAX_STATS);
 
-  // The newest season both players have, which is the only one worth lining up.
+  // The page's own scope season where both players have it — early in a season
+  // that is last season, as every other section opens (without it an NFL page
+  // in week 2 lined up one game against one) — else the newest season both have.
+  const scopeSeason = research?.splits.defaultSeason ?? null;
   const shared = useMemo(() => {
     const theirSeasons = new Set(theirs.map((r) => r.season));
-    return mineSeasons.filter((r) => theirSeasons.has(r.season)).sort((a, b) => b.season - a.season)[0] ?? null;
-  }, [mineSeasons, theirs]);
+    const both = mineSeasons.filter((r) => theirSeasons.has(r.season)).sort((a, b) => b.season - a.season);
+    return both.find((r) => r.season === scopeSeason) ?? both[0] ?? null;
+  }, [mineSeasons, theirs, scopeSeason]);
   const theirRow = shared ? theirs.find((r) => r.season === shared.season) ?? null : null;
 
   // R10.6 — each player's Overall split for that season: the spec's rate and
@@ -294,16 +308,47 @@ function PeerCompare({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
+        {others.length ? (
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter takes the first match, so typing a name and pressing
+              // Enter picks him without opening the dropdown.
+              if (e.key === 'Enter' && query.trim() && found.length) {
+                e.preventDefault();
+                onPeer(found[0].athleteId);
+                setQuery('');
+              }
+            }}
+            placeholder={`Search ${others.length} players…`}
+            aria-label={`Search ${label.toLowerCase()} players`}
+            className="w-44 max-w-full rounded-ctl border border-line bg-card px-2.5 py-[7px] text-body-sm text-ink placeholder:text-ink-muted hover:border-ink-faint focus:border-masters focus:outline-none"
+          />
+        ) : null}
         <SelectBox
           label={label}
           value={peerId ?? ''}
-          onChange={(v) => onPeer(v || null)}
+          onChange={(v) => {
+            onPeer(v || null);
+            setQuery('');
+          }}
           options={[
-            { value: '', label: others.length ? 'Pick a player' : 'No comparable players held' },
-            ...others.map((p) => ({ value: p.athleteId, label: `${p.name}${p.position ? ` · ${p.position}` : ''}` })),
+            {
+              value: '',
+              label: !others.length
+                ? 'No comparable players held'
+                : query.trim()
+                  ? found.length
+                    ? `${found.length} ${found.length === 1 ? 'match' : 'matches'}`
+                    : 'No player matches'
+                  : 'Pick a player',
+            },
+            ...shown.map((p) => ({ value: p.athleteId, label: `${p.name}${p.position ? ` · ${p.position}` : ''}` })),
           ]}
         />
-        {peer ? <span className="text-body-sm text-ink-secondary">{peer.games} games held this season</span> : null}
+        {peer ? <span className="text-body-sm text-ink-secondary">{peer.games} games held {lastSeason ? 'last season' : 'this season'}</span> : null}
       </div>
       {peerId && seasonsCard ? (
         <Card

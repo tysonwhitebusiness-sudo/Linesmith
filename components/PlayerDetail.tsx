@@ -1548,6 +1548,7 @@ export function PlayerDetail({
               subjectId={researchAthleteId}
               subjectName={bioState.data?.name ?? subject.name ?? 'This player'}
               peers={historySport.startsWith('tennis') ? tennisPeers : peersState.data?.peers ?? []}
+              peersLastSeason={!historySport.startsWith('tennis') && !!peersState.data?.earlierSeason}
               peerId={peerParam}
               onPeer={setComparePeer}
               peerResearch={peerResearch}

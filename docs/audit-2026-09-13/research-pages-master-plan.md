@@ -2477,6 +2477,45 @@ table holds ids only.
   toned strokes gained, named leaderboards). **Render owed:** the isolated
   `linesmith-dev-verify` server answered 404 to every route (R10-F6, tooling),
   and the prod server was left alone while the operator tested.
+- **RENDERED on prod 2026-09-19** (9478, fresh browser, 1440 and 400 px): all
+  three playoff events, each round's score summing to the leaderboard total
+  (St. Jude -17, BMW -7 at T12th and appended below the top eight, TOUR -16);
+  no page overflow at 400 px, the tables scroll inside their cards.
+
+**R10.2 amended 2026-09-19 — the peer picker gets its search, and three faults
+the render found.** The spec asked for a picker "filtered to position, with
+search"; R10.2 shipped the dropdown without the search. Now a search box sits
+beside it (`searchPeers` in `compareShapes.ts`, tested): every word typed must
+appear in the name, accents and punctuation ignored and also against the name
+run together ("deaaron", "stbrown"); the dropdown narrows to the matches and
+says how many; Enter takes the first match; the chosen peer always stays in the
+list.
+
+- **R10-F7, fixed:** the peer list was one row per player PER TEAM, so a traded
+  player was offered once per stint (NBA guards: James Harden 44 + 26 games,
+  CJ McCollum), and the repeated id left stale options behind in the dropdown
+  once the search narrowed it. `readPeers` now collapses to one row per player
+  (games and season score summed — `score` is a season total, not per game —
+  team the last he played for), as R10.5's index already did. 120 unique of
+  120 for NBA, MLB hitters and pitchers, NHL; 57 of 57 EPL forwards.
+- **R10-F8, fixed:** in a season's first weeks nobody reaches the games floor,
+  so the list was empty (NFL 2026 on 2026-09-19: every player at one game, "No
+  comparable players held" on every NFL page). The route now falls back to
+  last season (payload `earlierSeason`; the picker says "games held last
+  season"), and the side-by-side card opens on the page's scope season where
+  both players have it rather than the newest (it had lined up Chase's one
+  2026 game against Nacua's). Chase v Nacua now reads 2025-26, 16 and 16
+  games, matching the Seasons table (185 targets, 1,412 yards).
+  Cache key to `player-peers:route:v3:`.
+- **R10-F9, OPEN — operator decision:** CFB's peer list has always been empty.
+  `playerGroup` returns `'all'` for CFB (the allow card's whole-defence group)
+  and the peers query asks for `position_group = 'all'`, but CFB rows carry no
+  position at all — `position` and `position_group` NULL on all 9,747 2026
+  rows, `athlete_positions` holds 0 CFB rows. A list across every position
+  would line a quarterback up against receivers. Options: infer a kind from
+  the stats he records (passing / rushing / receiving / defence / kicking, the
+  way MLB tells pitchers by innings pitched), or leave CFB without a peer
+  picker and say so.
 
 **R10 G2 SWEEP DONE 2026-09-18.** Every sport's "what they give up" spec against
 `matchup-<sport>.json`, every team, on a season that was over when G2 was built:
@@ -2624,9 +2663,14 @@ rebuilt pages use.
    - `cachedRoute()` with a day TTL.
 3. **Build** in the design's sub-phases. **Stop** between them.
 
+**R12 STATUS 2026-09-19: approved, and ALL SUB-PHASES BUILT (a-e), awaiting
+the operator's sign-off.** The operator's answers, the build records of
+R12a-R12e and finding R12e-F1 (routed to the model track) are at the end of
+[`r12-deep-history-design.md`](r12-deep-history-design.md); this section is not
+repeated there. The paragraph below is the pre-approval summary.
+
 **R12 steps 1-2 DONE 2026-09-18: measured, and the design is written —
-[`r12-deep-history-design.md`](r12-deep-history-design.md). AWAITING
-APPROVAL; nothing built.** Headline measurements: team ids 94-100% filled
+[`r12-deep-history-design.md`](r12-deep-history-design.md).** Headline measurements: team ids 94-100% filled
 (the gaps are relocated franchises and exhibitions); cross-source duplicates
 in every sport, and **MLB 217 / NBA 4 days where two sources disagree on the
 score**, which R2's merge rule would double-count over a deep window — so the

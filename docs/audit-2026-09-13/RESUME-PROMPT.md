@@ -24,7 +24,10 @@ runs by its own sequencing rules (its §10).
 - **R10 (compare control)** — built 2026-09-17/18: player vs team (`?vs=`),
   player vs peer (`?peer=`), team vs team, sport compare cards, golf against
   the field, Table/Bars/Lines views, collapsible sections, the Players tab
-  without a slate. `MatchupExplorerCard` deleted.
+  without a slate. `MatchupExplorerCard` deleted. **Amended 2026-09-19:** the
+  peer picker's search (the spec's "with search"), R10-F7 (a traded player
+  offered once per stint) and R10-F8 (empty list early in a season) fixed,
+  golf against the field rendered on prod. Record: plan's R10.2 amendment.
 - **R11 (port-artifact cleanup)** — `GameDetail` and ~60 files only it used
   deleted, 17 API routes, then 138 unused exports incl. TypeScript writers with
   no callers (five tables are Python-only now; `docs/table-ownership.md`
@@ -39,7 +42,7 @@ runs by its own sequencing rules (its §10).
   tennis head to head before 2024 by name, verified by dates.
 - Last commits: `443484c` (R12e + R12d route fix), `62b886f` (R12d),
   `caf381f` (R12c), `0e89ecf` (R12b), `a7edd93`/`faccb64` (R12a). Pushed.
-- tsc clean, **506/506** tests, `npm run build` passes. Prod runs locally via
+- tsc clean, **511/511** tests, `npm run build` passes. Prod runs locally via
   the `linesmith-prod` preview (port 3000); rebuild after changes.
 
 ## Waiting on the operator
@@ -52,7 +55,11 @@ runs by its own sequencing rules (its §10).
    `startTime` first (`python-odds-service/src/game_context.py`); renaming TS
    before the deploy would blank MLB game dates in the worker. The deploy also
    ships `db.upsert_game_results` (same behaviour).
-3. **R12e-F1 (model track, routed):** `import_tennis.py` drops retirements with
+3. **R10-F9 (decision):** CFB's peer picker has always been empty — CFB rows
+   carry no position at all. Infer a kind from his stats (as MLB tells
+   pitchers), or leave CFB without a peer picker and say so. Plan's R10.2
+   amendment.
+4. **R12e-F1 (model track, routed):** `import_tennis.py` drops retirements with
    the sets level because `game_result` can't store a winner for a level score
    (e.g. Djokovic v Medvedev, Astana 2022 SF). A winner column would fix it;
    it touches a Python-owned table and every `home_score > away_score` reader.
@@ -88,6 +95,13 @@ runs by its own sequencing rules (its §10).
   Close tabs as you go: the pane caps the tab count.
 - **The browser pane can't screenshot while hidden** — measure layout with
   `javascript_tool` (widths, overflow at 400 px via `resize_window`) instead.
+  **On 2026-09-19 a hidden pane ran no page effects at all** (a fresh tab made
+  no `/api/` calls; `requestAnimationFrame` never fired). The Playwright MCP
+  browser (`mcp__playwright__*`) renders headless and screenshots into
+  `.playwright-mcp/` (gitignored); use it when the pane is hidden.
+- **A route's cache fills the moment you probe it.** Hitting a new cache key
+  before the fix is in caches the old answer for the whole TTL (the peers v2
+  key held an empty NFL list for 6 hours); bump again, or probe only after.
 - **Diff against the source of truth, not against our own rows.** R12's
   "conflicts" were mostly real doubleheaders and UTC-dated neighbours; the real
   MLB problem (missing games, spring training) only showed by comparing each

@@ -28,6 +28,7 @@
  */
 
 import type { TeamProductionSport } from './teamProductionShapes';
+import { normalizeName } from '@/lib/core/normalizeName';
 
 /** Which half of the rollup a card reads. */
 export type AllowSide = `allowedPos:${string}` | 'allowed' | 'for';
@@ -290,10 +291,32 @@ export interface ComparePeer {
   position: string | null;
 }
 
+/**
+ * The peer picker's search (R10.2's "with search"). A position group runs to
+ * hundreds of names (NBA guards, NFL receivers), too many to scroll a
+ * dropdown for. Every word typed must appear in the name, accents and
+ * punctuation ignored, so "doncic", "Luka D" and "st brown" all find their man.
+ * The chosen peer is always kept, so narrowing the list never un-picks him.
+ */
+export function searchPeers(peers: ComparePeer[], query: string, keepId: string | null = null): ComparePeer[] {
+  const words = normalizeName(query).split(' ').filter(Boolean);
+  if (!words.length) return peers;
+  return peers.filter((p) => {
+    if (p.athleteId === keepId) return true;
+    const name = normalizeName(p.name);
+    // Also against the name run together, so "deaaron" finds De'Aaron.
+    const joined = name.replace(/ /g, '');
+    return words.every((w) => name.includes(w) || joined.includes(w));
+  });
+}
+
 export interface PlayerPeersPayload {
   sport: string;
   group: string | null;
+  /** The season the list was drawn from. */
   season: number | null;
+  /** True when the newest season had no one over the floor yet, so `season` is last season. */
+  earlierSeason: boolean;
   peers: ComparePeer[];
   fetchedAt: string;
 }

@@ -198,19 +198,36 @@ export async function readPeers(sport: TeamProductionSport, group: string | null
   // MLB has no position rows, so its two kinds are told apart by whether the
   // player has pitched — the same rule `playerGroup` uses.
   const mlbRole = sport === 'mlb' ? (group === 'pitcher' ? 'pitcher' : 'hitter') : null;
+  // The rollup holds one row per player PER TEAM, so a player traded mid-season
+  // was offered once per stint (measured 2026-09-19: James Harden and CJ
+  // McCollum twice among NBA guards), and the repeated id left stale options in
+  // the dropdown. One row per player, as the Players index does (R10.5): games
+  // and score summed across stints, his team the one he played for last.
   const rows = await pgAll<{ athlete_id: string; team_id: string | null; games: number; score: number; position: string | null }>(
     sport === 'mlb'
-      ? `SELECT p.athlete_id, p.team_id, p.games, p.score, p.position
-           FROM player_season_production p
-          WHERE p.sport = 'mlb' AND p.season = ? AND p.games >= 5
-            AND (EXISTS (SELECT 1 FROM player_game_history h
-                          WHERE h.sport = 'mlb' AND h.athlete_id = p.athlete_id AND h.season = p.season
-                            AND (h.stats->>'pit_inningsPitched') IS NOT NULL)) = ?
-          ORDER BY p.score DESC LIMIT ${PEER_LIMIT}`
-      : `SELECT athlete_id, team_id, games, score, position
-           FROM player_season_production
-          WHERE sport = ? AND season = ? AND games >= 3 AND position_group = ?
-          ORDER BY score DESC LIMIT ${PEER_LIMIT}`,
+      ? `SELECT athlete_id, team_id, games, score, position FROM (
+           SELECT DISTINCT ON (p.athlete_id) p.athlete_id, p.team_id, p.position,
+                  sum(p.games) OVER (PARTITION BY p.athlete_id) AS games,
+                  sum(p.score) OVER (PARTITION BY p.athlete_id) AS score
+             FROM player_season_production p
+            WHERE p.sport = 'mlb' AND p.season = ?
+              AND (EXISTS (SELECT 1 FROM player_game_history h
+                            WHERE h.sport = 'mlb' AND h.athlete_id = p.athlete_id AND h.season = p.season
+                              AND (h.stats->>'pit_inningsPitched') IS NOT NULL)) = ?
+            ORDER BY p.athlete_id, p.last_game_date DESC NULLS LAST
+         ) one
+         WHERE games >= 5
+         ORDER BY score DESC LIMIT ${PEER_LIMIT}`
+      : `SELECT athlete_id, team_id, games, score, position FROM (
+           SELECT DISTINCT ON (athlete_id) athlete_id, team_id, position,
+                  sum(games) OVER (PARTITION BY athlete_id) AS games,
+                  sum(score) OVER (PARTITION BY athlete_id) AS score
+             FROM player_season_production
+            WHERE sport = ? AND season = ? AND position_group = ?
+            ORDER BY athlete_id, last_game_date DESC NULLS LAST
+         ) one
+         WHERE games >= 3
+         ORDER BY score DESC LIMIT ${PEER_LIMIT}`,
     sport === 'mlb' ? [season, mlbRole === 'pitcher'] : [sport, season, group ?? ''],
   );
   if (!rows.length) return [];

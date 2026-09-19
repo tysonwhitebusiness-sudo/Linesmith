@@ -13,7 +13,7 @@
  * producers ordered by a score the rollup rewrites once a day, and the names
  * behind it change when a roster does.
  *
- * CACHE KEY — `player-peers:route:v1:{sport}:{group}:{season}`. Keyed on the
+ * CACHE KEY — `player-peers:route:v3:{sport}:{group}:{season}`. Keyed on the
  * GROUP, not the player: every guard in the league shares one list, so a page
  * for any of them warms it for the rest.
  */
@@ -46,15 +46,24 @@ export async function GET(req: Request) {
     const season = seasonRow[0]?.season != null ? Number(seasonRow[0].season) : null;
 
     return await cachedRoute<PlayerPeersPayload>({
-      cacheKey: `player-peers:route:v1:${sport}:${group ?? 'none'}:${season ?? 'none'}`,
+      cacheKey: `player-peers:route:v3:${sport}:${group ?? 'none'}:${season ?? 'none'}`,
       ttlMs: CACHE_TTL_MS,
-      build: async () => ({
-        sport,
-        group,
-        season,
-        peers: season != null && group ? await readPeers(sport, group, season) : [],
-        fetchedAt: new Date().toISOString(),
-      }),
+      build: async () => {
+        let used = season;
+        let peers = season != null && group ? await readPeers(sport, group, season) : [];
+        // In a season's first weeks nobody has reached the games floor (NFL
+        // 2026 on 2026-09-19: every player at one game, so no one was offered).
+        // Offer last season's producers instead, the way the page's own
+        // sections open on last season early on (R6's `sectionOpeningSeason`).
+        if (!peers.length && season != null && group) {
+          const prev = await readPeers(sport, group, season - 1);
+          if (prev.length) {
+            peers = prev;
+            used = season - 1;
+          }
+        }
+        return { sport, group, season: used, earlierSeason: used !== season, peers, fetchedAt: new Date().toISOString() };
+      },
     });
   } catch (e) {
     if (e instanceof BadRequest) return NextResponse.json({ error: e.message }, { status: 400 });
