@@ -80,6 +80,7 @@ function payload(state: 'final' | 'pre', archive: boolean): TennisGameResearchPa
       surface: {},
       form: {},
       h2h: [{ eventId: '1', date: '2025-01-21', opponentId: '2375', opponentName: 'Alexander Zverev', won: false, setsWon: 1, setsLost: 3, gamesWon: 19, gamesLost: 22 }],
+      deepH2h: null,
       storedLines: [],
       props: [],
       propsAltOnly: 0,

@@ -126,7 +126,10 @@ export async function readMlbGameResearch(gamePk: number, now: Date = new Date()
   // game data), so a null feed is always a failed request — "couldn't load" —
   // and only an answer with no game in it is "not found".
   if (!feed) throw new Error(`MLB live feed unavailable for ${gamePk}`);
-  if (!feed.gameData?.game?.pk && !feed.gameData?.teams) return null;
+  // An unknown game comes back as a placeholder — game.pk 0, team ids 0, status
+  // "Unknown" (measured on 999999999) — so the pk is the test, not the presence
+  // of a teams object, which the placeholder has too.
+  if (!feed.gameData?.game?.pk) return null;
   const state = mlbGameState(feed.gameData?.status?.abstractGameState ?? '', feed.gameData?.status?.detailedState ?? '');
   const start: string = feed.gameData?.datetime?.dateTime ?? '';
   const started = state === 'live' || state === 'final';

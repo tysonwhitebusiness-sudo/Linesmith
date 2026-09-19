@@ -250,6 +250,42 @@ function tennisH2hSection(payload: Payload): ResearchSection {
   const t = payload.tennis;
   const rows = [...t.h2h].reverse();
   const w = rows.filter((r) => r.won).length;
+  const columns: ResearchColumn[] = [
+    { key: 'won', label: 'Won', decimals: 0 },
+    { key: 'sets', label: `Sets ${payload.away.abbr}–${payload.home.abbr}`, decimals: 0 },
+    { key: 'games', label: 'Games', decimals: 0 },
+  ];
+  const recentRows: ResearchTableRow[] = rows.map((r) => ({
+    key: r.eventId,
+    label: shortDay(r.date),
+    href: `/tennis/${t.tour}/game/${r.eventId}`,
+    values: { won: r.won ? payload.away.abbr : payload.home.abbr, sets: `${r.setsWon}–${r.setsLost}`, games: `${r.gamesWon}–${r.gamesLost}` },
+  }));
+  // R12e: meetings before 2024, from the archive by verified name (`deepHeadToHead.ts`).
+  const deep = t.deepH2h;
+  const older: ResearchTableRow[] = (deep?.status === 'ok' ? deep.meetings : []).map((m, i) => {
+    // The source lists the winner first, so the sets read from the away side flip on a loss.
+    const [hi, lo] = m.sets.split('–');
+    return {
+      key: `deep-${m.date}-${i}`,
+      label: shortDay(m.date),
+      labelNote: [m.tournament, m.round].filter(Boolean).join(' · ') || null,
+      values: { won: m.awayWon ? payload.away.abbr : payload.home.abbr, sets: m.awayWon ? `${hi}–${lo}` : `${lo}–${hi}`, games: '—' },
+    };
+  });
+  const olderWins = (deep?.status === 'ok' ? deep.meetings : []).filter((m) => m.awayWon).length;
+  const allW = w + olderWins;
+  const allN = rows.length + older.length;
+  const first = older.length ? older[older.length - 1].label.slice(-4) : null;
+  const scope = older.length
+    ? `${payload.away.abbr} ${allW}-${allN - allW} against ${payload.home.abbr} since ${first}${rows.length ? ` · ${w}-${rows.length - w} since 2024` : ''}`
+    : rows.length
+      ? `${payload.away.abbr} ${w}-${rows.length - w} against ${payload.home.abbr}`
+      : undefined;
+  const caption = [
+    older.length ? 'Meetings before 2024 come from the results archive, matched by name and confirmed against each player’s own match dates. They are tour-level matches only (no Davis Cup or ATP/United Cup), leave out retirements with the sets level, carry sets but not games, and are not linked.' : null,
+    deep?.status === 'unverified' && deep.reason ? deep.reason : null,
+  ].filter(Boolean).join(' ') || undefined;
   return {
     id: 'h2h',
     navLabel: 'Head to head',
@@ -260,27 +296,29 @@ function tennisH2hSection(payload: Payload): ResearchSection {
           kind: 'table',
           key: 'h2h',
           title: 'Earlier meetings',
-          scope: rows.length ? `${payload.away.abbr} ${w}-${rows.length - w} against ${payload.home.abbr}` : undefined,
+          scope,
           labelHeader: 'Date',
           fixedOrder: true,
-          emptyText: `${payload.away.name} and ${payload.home.name} have not met in the matches held (from 2024)`,
-          columns: [
-            { key: 'won', label: 'Won', decimals: 0 },
-            { key: 'sets', label: `Sets ${payload.away.abbr}–${payload.home.abbr}`, decimals: 0 },
-            { key: 'games', label: 'Games', decimals: 0 },
-          ],
-          rows: rows.map((r) => ({
-            key: r.eventId,
-            label: new Date(`${r.date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }),
-            href: `/tennis/${t.tour}/game/${r.eventId}`,
-            values: { won: r.won ? payload.away.abbr : payload.home.abbr, sets: `${r.setsWon}–${r.setsLost}`, games: `${r.gamesWon}–${r.gamesLost}` },
-          })),
+          emptyText: `${payload.away.name} and ${payload.home.name} have not met in the matches held (from ${older.length || deep?.status === 'ok' ? '2015' : '2024'})`,
+          columns,
+          rows: recentRows.length ? recentRows : older,
+          ...(older.length
+            ? {
+                views: [
+                  ...(recentRows.length ? [{ key: 'recent', label: 'Since 2024', labelHeader: 'Date', columns, rows: recentRows }] : []),
+                  { key: 'all', label: `All ${allN} meetings`, labelHeader: 'Date', columns, rows: [...recentRows, ...older] },
+                ],
+              }
+            : {}),
+          ...(caption ? { caption } : {}),
         },
       ],
     ],
     state: { kind: 'ready' },
   };
 }
+
+const shortDay = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 
 function tennisLinesSection(payload: Payload, state: GameState): ResearchSection {
   const t = payload.tennis;

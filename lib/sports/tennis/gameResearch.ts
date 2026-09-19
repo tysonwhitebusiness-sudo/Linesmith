@@ -33,6 +33,7 @@ import { loadTennisSeasonContext, matchTennisIndex, type TennisMatch } from './t
 import { readPropHistory } from '@/lib/sports/shared/gamePregameServer';
 import type { GameResearchPayload, GameSide, GameState } from '@/lib/sports/shared/gameResearchShapes';
 import { seasonForDate } from '@/lib/sports/shared/season';
+import { readTennisDeepHeadToHead, type TennisDeepHeadToHead } from './deepHeadToHead';
 
 export type TennisTourSport = 'tennis_atp' | 'tennis_wta';
 type Tour = 'atp' | 'wta';
@@ -113,6 +114,8 @@ export interface TennisGameResearchPayload extends GameResearchPayload {
     surface: Record<string, TennisSurfaceRecord | null>;
     form: Record<string, TennisFormRow[]>;
     h2h: TennisFormRow[];
+    /** R12e: meetings before 2024 from `game_result`, matched by name and verified by dates; null if the read failed. */
+    deepH2h: TennisDeepHeadToHead | null;
     storedLines: GameLineOpenClose[];
     props: TennisPropResult[];
     propsAltOnly: number;
@@ -327,12 +330,13 @@ export async function readTennisGameResearch(sport: TennisTourSport, matchId: st
   const season = seasonForDate(sport, new Date(start || now));
   const fetchedAt = now.toISOString();
 
-  const [storedLines, propRows, inGame, forms, arch] = await Promise.all([
+  const [storedLines, propRows, inGame, forms, arch, deepH2h] = await Promise.all([
     readPreGameOpenClose(matchId, start).catch((): GameLineOpenClose[] => []),
     readPreGamePropOddsForGame(matchId, start).catch((): PropOddsRow[] => []),
     state === 'live' ? readInGameLines(matchId, start, now).catch((): InGameLines => ({ now: [], moneyline: [] })) : Promise.resolve(null),
     readForm(sport, [away.id, home.id], start.slice(0, 10)).catch(() => ({ form: {}, h2h: [] })),
     readArchive(tour, season, start, away, home),
+    readTennisDeepHeadToHead(sport, { id: away.id, name: away.name }, { id: home.id, name: home.name }).catch(() => null),
   ]);
 
   const { lines, yesNo, altOnly } = gameMainLines(propRows, start, now.getTime());
@@ -393,6 +397,7 @@ export async function readTennisGameResearch(sport: TennisTourSport, matchId: st
       surface: arch.surface,
       form: forms.form,
       h2h: forms.h2h,
+      deepH2h,
       storedLines,
       props,
       propsAltOnly: altOnly,

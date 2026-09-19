@@ -373,3 +373,55 @@ Tested with a mocked fetch (404, timeout then failed probe, failure then
 recovery, MLB's empty 200). Checked on prod: real games for all seven game
 sports return 200; bogus ids for NFL, NBA, EPL, MLB and NHL still return 404.
 502/502 tests.
+
+**R12d, amended the same day:** checking it end to end found the ROUTE still
+answered a failed state lookup with 404 before the strict reader ran (the state
+lookups use lenient fetches) — so an ESPN outage still read "not found". The
+route now asks the strict reader when the state is empty: null is the source's
+own 404, a throw is 502, a payload supplies its own state. That exposed a
+second fault the old route had hidden: StatsAPI answers an unknown game with a
+placeholder (pk 0, team ids 0, status "Unknown") that carries a `teams` object,
+which the MLB reader accepted; the test is now the non-zero pk. A route-level
+test calls the real handler with fetch mocked (outage 502, ESPN 404 stays 404).
+On prod: real games 200 and bogus ids 404 for NFL, CFB, NBA, EPL, MLB, NHL;
+tennis 200.
+
+## R12e — DONE 2026-09-19, awaiting sign-off
+
+**Tennis head to head before 2024, on the match page.** The page's own list
+reads `player_game_history` by ESPN id from January 2024; `game_result`'s
+`tennis_data` rows go back to 2015 by NAME only ("Zverev A.", "Lee C.Y.",
+"Pliskova Kr." — the source's own disambiguation). `lib/sports/tennis/
+deepHeadToHead.ts` matches a raw name to the player's full name (every
+surname/given split, either order) and **trusts it only once the dates agree:
+at least 80% of that name's rows since 2024 must fall within three days of the
+player's own matches** — the crosswalk's "name and game date" test; an
+unverified player gets no deep history and the caption says why. Only rows
+before 2024-01-01 are read, so no meeting is counted twice. The card gains an
+"All N meetings" switch; archive rows carry tournament and round, sets but not
+games, and are not linked. Game-research cache key to v10 (the payload gained
+the field).
+
+**Refereed against TennisMyLife (independent, 2015-2023, tour-level):**
+Zverev v Medvedev 7-10 over 17, Tsitsipas v Zverev 8-4 over 12, Sabalenka v
+Swiatek 3-6 over 9 — all exact. Djokovic v Medvedev reads 7-5 over 12 against
+8-5 over 13: the missing match is Astana 2022 SF, a retirement at one set all,
+which `import_tennis.py` drops on purpose (a level score cannot say who won).
+
+**Limits, stated in the card's caption:** tour-level only — `tennis_data` has
+no Davis Cup or ATP/United Cup (Djokovic v Medvedev's 2017 Davis Cup and 2020
+ATP Cup meetings); retirements with the sets level are not held.
+
+**Finding R12e-F1 (model track, not fixed here):** `import_tennis.py` drops
+retirements with the sets level (269 first-set retirements and others) because
+`game_result` cannot store the winner of a level score. A winner column would
+recover them; it touches the Python-owned table and every consumer's
+`home_score > away_score` reading, so it is routed, not patched.
+
+**Verified on prod, fresh tabs:** ATP 164479 (Zverev v Medvedev, Paris 2025) —
+"Zverev 7-13 against Medvedev since 2016 · 0-3 since 2024", 20 meetings, the
+seam between Jan 2024 (linked, games) and Nov 2023 (archive, tournament and
+round); WTA 157236 (Swiatek v Sabalenka, Roland-Garros 2025) — "Swiatek 8-4
+since 2021 · 2-1 since 2024", 12 meetings. 506/506 tests.
+
+## R12 — ALL SUB-PHASES BUILT (a-e), awaiting the operator's sign-off

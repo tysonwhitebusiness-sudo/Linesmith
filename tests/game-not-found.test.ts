@@ -53,6 +53,10 @@ test('MLB: a failed live feed throws; an answer with no game in it is "not found
   // StatsAPI answers 200 for a game that does not exist, with no game data.
   globalThis.fetch = (async () => new Response(JSON.stringify({ gameData: {}, liveData: {} }), { status: 200 })) as typeof fetch;
   assert.equal(await readMlbGameResearch(999999999), null);
+  // The real placeholder (measured): pk 0 and zero team ids, which DOES carry a teams object.
+  const placeholder = { gamePk: 999999999, gameData: { game: { pk: 0 }, teams: { away: { id: 0 }, home: { id: 0 } }, status: { abstractGameState: 'Other', detailedState: 'Unknown' } }, liveData: {} };
+  globalThis.fetch = (async () => new Response(JSON.stringify(placeholder), { status: 200 })) as typeof fetch;
+  assert.equal(await readMlbGameResearch(999999999), null);
 });
 
 test('the three ESPN readers use the strict fetch; tennis throws when no scoreboard answered', () => {
@@ -63,4 +67,19 @@ test('the three ESPN readers use the strict fetch; tennis throws when no scorebo
   assert.match(tennis, /if \(!value && answered === 0\) throw/, 'tennis reads "no scoreboard answered" as "not found" again');
   assert.match(tennis, /findCompetition\(tourOf\(sport\), matchId\)\.catch\(\(\) => null\)/, 'the route\'s state lookup must not throw');
   assert.match(readFileSync('lib/sports/nhl/gameResearch.ts', 'utf8'), /if \(probe\?\.status === 404\) return null;/, 'NHL (R11) keeps its probe');
+});
+
+test('the route: an outage during the state lookup is 502 ("couldn\'t load"), the source\'s own 404 stays 404', async () => {
+  // The state lookups use lenient fetches; the route used to answer their null
+  // with 404 before the strict reader ever ran (found checking R12d).
+  const { GET } = await import('../app/api/game-research/route');
+  globalThis.fetch = (async () => {
+    throw new Error('network down');
+  }) as typeof fetch;
+  const down = await GET(new Request('http://localhost/api/game-research?sport=nfl&gameId=401772890'));
+  assert.equal(down.status, 502);
+  clearEspnSummaryCache();
+  globalThis.fetch = (async () => new Response('not found', { status: 404 })) as typeof fetch;
+  const missing = await GET(new Request('http://localhost/api/game-research?sport=nba&gameId=999999999'));
+  assert.equal(missing.status, 404);
 });

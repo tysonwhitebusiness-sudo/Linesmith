@@ -15,7 +15,7 @@
  * A game that turns live mid-TTL is caught by the status lookup: the key carries
  * the state, so a new state is a new entry rather than a stale one.
  *
- * CACHE KEY — `game-research:route:v9:{sport}:{gameId}:{state}` (v9: R9b form and margin bars carry the opponent crest), grepped before it
+ * CACHE KEY — `game-research:route:v10:{sport}:{gameId}:{state}` (v10: R12e adds tennis's pre-2024 head to head to the payload; v9: R9b opponent crests), grepped before it
  * was chosen: nothing in `lib/`, `app/` or `components/` used a `game-research`
  * prefix. The game id is bounded in shape before it reaches the key (task 3.5),
  * and a reader returns `null` for an id the source does not know, which
@@ -82,10 +82,22 @@ export async function GET(request: Request) {
     if (error instanceof BadRequest) return NextResponse.json({ error: error.message }, { status: 400 });
     throw error;
   }
-  const state = await reader.state(gameId).catch(() => null);
-  if (!state) return NextResponse.json({ error: `No ${sport} game ${gameId}` }, { status: 404 });
+  let state = await reader.state(gameId).catch(() => null);
+  if (!state) {
+    // R12d: the state lookups use lenient fetches, so a null here is either "no
+    // such game" or "the source did not answer" — and this line used to call
+    // both 404, undoing the readers' own distinction. The strict reader tells
+    // them apart: null is the source's own "no such game", a throw is an outage.
+    try {
+      const probe = (await reader.read(gameId)) as { state?: GameState } | null;
+      if (!probe?.state) return NextResponse.json({ error: `No ${sport} game ${gameId}` }, { status: 404 });
+      state = probe.state;
+    } catch {
+      return NextResponse.json({ error: 'Game research lookup failed' }, { status: 502 });
+    }
+  }
   return cachedRoute({
-    cacheKey: `game-research:route:v9:${sport}:${gameId}:${state}`,
+    cacheKey: `game-research:route:v10:${sport}:${gameId}:${state}`,
     ttlMs: TTL[state],
     routeName: 'game-research',
     build: () => reader.read(gameId),
