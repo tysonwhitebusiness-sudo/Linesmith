@@ -78,6 +78,10 @@ export interface GameResultRow {
  * write finals. Where both exist the final is the one to keep.
  */
 const SOURCE_RANK: Record<string, number> = {
+  // R12a: MLB's own finals outrank every other source. Ranked below them, a
+  // StatsAPI row lost R2's merge to its `mlb_long_csv` twin, and the season's
+  // authority rule then dropped the survivor — whole seasons read as 3 games.
+  mlb_statsapi: -1,
   nflverse: 0,
   cfbd: 0,
   mlb_long_csv: 0,
@@ -134,6 +138,11 @@ export function dedupeGameResults(rows: GameResultRow[]): GameResultRow[] {
     const key = identityKey(row);
     const existing = kept.find(
       (k) =>
+        // R12a: two rows from ONE source are two games. The ±1-day window
+        // otherwise merged back-to-back games of a series that ended with the
+        // same score (measured over MLB's official finals: 2010 read 2,442 of
+        // 2,462).
+        k.source !== row.source &&
         identityKey(k) === key &&
         k.homeScore === row.homeScore &&
         k.awayScore === row.awayScore &&

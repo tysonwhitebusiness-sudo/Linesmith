@@ -47,6 +47,13 @@
 > | `game_odds_book_lines` | `writeGameOddsBookLines`, `recordEspnPregameLine` (`espnBookLines.ts`) — **a write on GET** from the old per-sport `game/[gameId]` routes | row 13's ⚠, and a GET-writes exception — Python only |
 > | `pitcher_game_score_history` | `writePitcherGameScore` (the "dead path" row 25 names) | row 25 — Python only |
 > | `game_sim_cache` | `writeGameSimCache` (read-only since 2.9) | row 21 — the reader went too |
+>
+> **R12a (2026-09-19), `game_result`:** still Python-owned. New source
+> `mlb_statsapi` (37,960 rows, MLB's official finals 2010-2025) written by
+> `python-odds-service/backfill_mlb_statsapi_results.py` through the new
+> `db.upsert_game_results(rows, source)` (`upsert_live_results` now wraps it).
+> New indexes `(sport, home_team_id, game_date)` / `(sport, away_team_id,
+> game_date)` (migration `20260919120000`) add no writer.
 > | `odds_import_staging` | rows pruned, table kept | Python importers write; `scripts/gate/promote_odds.mjs` drains |
 > | `prop_odds_dedup_backup_20260829` | **DROPPED** | — |
 > | `team_elo_history_int_backup_20260901` | **DROPPED** | — |

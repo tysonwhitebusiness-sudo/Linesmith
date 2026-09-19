@@ -252,3 +252,34 @@ Hockey Club" (unresolved) and id 59 -> 68, the id the app uses for Utah
 (`game_result` stores today's Mammoth as 59, so without this Utah's page finds
 no history). Arizona (53) is NOT Utah: the NHL treats Utah as a new franchise
 and the Coyotes' record stays Arizona's.
+
+## R12a — DONE 2026-09-19, awaiting sign-off
+
+Built: `lib/history/deepHistory.ts` (lineage, game type with per-team openers,
+exhibitions, the NBA/NHL conflict rule, MLB authority), the generated
+`lib/history/seasonWindows.ts`, `lib/history/teamHistoryShapes.ts`, the route's
+`view=history` and `vs=` views, the team-id indexes (applied), and the MLB
+StatsAPI backfill — **run on the operator's go-ahead: 37,960 rows.**
+
+Two merge bugs surfaced by the backfill and fixed: `mlb_statsapi` must outrank
+every source in R2's merge (ranked below `mlb_long_csv` it lost the merge and
+the authority rule then dropped the survivor — whole seasons read as 3 games),
+and two rows from ONE source are two games (the ±1-day window merged
+back-to-back same-score games of a series: MLB 2010 read 2,442 of 2,462).
+
+**Verified:**
+- MLB, every season 2010-2025, reads exactly StatsAPI's official finals
+  (2010: 2,462; 2025: 2,477); every team at 162 except real rainouts (161)
+  and 2020's shortened schedule.
+- NFL refereed against nflverse: Eagles 1999-2025, 28 seasons, regular season
+  and playoffs, 0 mismatches; PHI v DAL 29-26-0 both ways
+  (`scripts/verify-deep-history.ts`).
+- EPL exactly 380 games, 38 a team, every season; NBA/NHL at 82 plus playoffs.
+- Lineage: Winnipeg's history opens with the Thrashers (2007-08 34-48), OKC's
+  with Seattle (2007-08 20-62), Utah's 2024-25 is the Hockey Club's 82 games,
+  Arizona stays Arizona.
+
+**Known limits, to say on the page (R12b):** NHL records are W-L — overtime
+and shootout losses count as losses, because `game_result` does not mark
+overtime (the Thrashers' 2007-08 reads 34-48, officially 34-40-8). One NHL
+2020-21 team reads 55 of 56 games.

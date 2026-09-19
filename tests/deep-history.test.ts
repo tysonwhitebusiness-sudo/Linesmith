@@ -105,3 +105,14 @@ test('a league that opens abroad: a game is preseason until both teams have open
   assert.deepEqual(phaseOf('nhl', '2024-10-09', w, ['52', '20']), { season: 2024, phase: 'regular' });
   assert.equal(refineDeepHistory('nhl', [g('2024-10-05', '20', '52'), g('2024-10-09', '52', '20')], w).length, 1);
 });
+
+test('the merge: two rows from one source are two games, and StatsAPI wins the merge it is in', () => {
+  // Back-to-back games of a series that both ended 3-2 are two games; R2's
+  // ±1-day window merged them (MLB 2010 read 2,442 of 2,462 official finals).
+  const g = (id: number, d: string, source: string) => ({ ...row({ sport: 'mlb', gameDate: d, homeTeamId: '147', awayTeamId: '111', homeScore: 3, awayScore: 2, source }), id, venue: null, eventStart: null }) as GameResultRow;
+  assert.equal(dedupeGameResults([g(1, '2010-05-01', MLB_AUTHORITY), g(2, '2010-05-02', MLB_AUTHORITY)]).length, 2);
+  // Across sources it is still one game — and StatsAPI's row is the one kept, or
+  // the season authority rule would drop the survivor (whole seasons read as 3 games).
+  const merged = dedupeGameResults([g(1, '2010-05-01', 'mlb_long_csv'), g(2, '2010-05-01', MLB_AUTHORITY)]);
+  assert.deepEqual(merged.map((r) => r.source), [MLB_AUTHORITY]);
+});
