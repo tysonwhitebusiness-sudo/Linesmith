@@ -1,7 +1,10 @@
 # UI system overhaul — master prompt (the U track)
 
 **Status (2026-09-19):** decisions LOCKED by the operator; nothing built. Next:
-U0. Update this line and the phase's status row at the end of every phase.
+U0.
+**Build order and scope now live in `docs/design/master-gameplan-ui-and-slate.md`**
+(U5 moves ahead of U3/U4; the Slate's new sections are built on this kit; the
+Scan table and its filters stay untouched and out of scope). Update this line and the phase's status row at the end of every phase.
 
 **Scope:** the research pages (player, team, game, teams lists), schedules,
 bets, the shell, login, privacy and diagnostics. **Not Scan and not the sport

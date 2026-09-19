@@ -1,6 +1,9 @@
 # Slate Sheet — every card, per sport, from measured data
 
-**Status (2026-09-19):** specification; nothing built. It follows the handoff
+**Status (2026-09-19):** specification; nothing built. **Build order:**
+`docs/design/master-gameplan-ui-and-slate.md`. **The Scan table is unchanged**
+(operator): the Props board IS today's `ScanTable` and its toolbar, as is;
+§3.3's column list describes it, it does not restyle it. It follows the handoff
 `docs/design/HANDOFF-ui-and-slate-2026-09-19.md` (§2) and, where the two disagree,
 **this file wins**: every number here was measured on 2026-09-19 against the live
 database, ESPN and the code, and six of the handoff's premises turned out wrong (§1).

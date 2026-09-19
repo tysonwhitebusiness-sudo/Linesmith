@@ -47,6 +47,13 @@ dep-danbvjmgekts738fhbh0); verified: CFB/EPL props, lines, closes and finals
 flowing. **Caught up from 2026-09-11:** 446 finals, 11 games of history, 80 games
 regraded. Closing lines for 09-15 → 09-19 are lost.
 
+**MASTER GAMEPLAN (approved direction 2026-09-19):**
+`docs/design/master-gameplan-ui-and-slate.md` sequences the U track and the Slate
+(S0-S7). Next actions: S0 (data cleanup; Q1 on Elo picks) and S1 (the
+`slate_rankings` job) can start now, no UI files. U0 waits for R10-R12 sign-off.
+The mockup `docs/design/slate/slate.html` is approved except its Props board:
+**the Scan table must not change at all** (operator).
+
 **Slate Sheet cards are specified per sport from measured data:**
 `docs/design/slate-sheet-cards.md` (supersedes the handoff where they differ:
 golf has no model, no edge columns, "since first seen" not "since open", weather
