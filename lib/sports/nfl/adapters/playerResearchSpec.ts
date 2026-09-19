@@ -244,7 +244,58 @@ function defender(sport: Football): ResearchSpec {
   };
 }
 
+/**
+ * Kickers — added when the context rail's "Season stats" card was dropped
+ * (R11b-F1): for a CFB kicker that card was the only place his kicking numbers
+ * showed, and without a spec of his own a kicker fell to whichever group his
+ * box scores matched best. NFL and CFB box scores carry the same `kicking.*`
+ * keys (measured 2026-09-18: 568 NFL and 2,272 CFB kicker-games since 2025).
+ */
+function kicker(sport: Football): ResearchSpec {
+  const fgm = total('kicking.fieldGoalsMade');
+  const fga = total('kicking.fieldGoalAttempts');
+  return {
+    kind: 'kicker',
+    gameHref: href(sport),
+    tiles: [
+      col('g', 'G', games()),
+      col('fgm', 'FG made', fgm),
+      col('fga', 'FG att', fga),
+      col('fgp', 'FG %', ratio(fgm, fga, 100), 1, { format: 'percent' }),
+      col('long', 'Long FG', maxOf('kicking.longFieldGoalMade')),
+      col('xp', 'XP made', total('kicking.extraPointsMade')),
+      col('pts', 'Points', total('kicking.totalKickingPoints')),
+    ],
+    seasonColumns: [
+      col('fgm', 'FGM', fgm),
+      col('fga', 'FGA', fga),
+      col('fgp', 'FG %', ratio(fgm, fga, 100), 1, { format: 'percent' }),
+      col('long', 'Long', maxOf('kicking.longFieldGoalMade')),
+      col('xp', 'XPM', total('kicking.extraPointsMade')),
+      col('xpa', 'XPA', total('kicking.extraPointAttempts')),
+      col('pts', 'Pts', total('kicking.totalKickingPoints')),
+    ],
+    splitColumns: [
+      col('pts', 'Pts/G', perGame('kicking.totalKickingPoints'), 1),
+      col('fgm', 'FGM/G', perGame('kicking.fieldGoalsMade'), 2),
+      col('fgp', 'FG %', ratio(fgm, fga, 100), 1, { format: 'percent' }),
+    ],
+    trends: [
+      { key: 'pts', label: 'Kicking points', decimals: 0, of: one('kicking.totalKickingPoints') },
+      { key: 'fgm', label: 'Field goals made', decimals: 0, of: one('kicking.fieldGoalsMade') },
+    ],
+    logColumns: [
+      logCol('fg', 'FG', one('kicking.fieldGoalsMade')),
+      logCol('fga', 'FGA', one('kicking.fieldGoalAttempts')),
+      logCol('long', 'Long', one('kicking.longFieldGoalMade')),
+      logCol('xp', 'XP', one('kicking.extraPointsMade')),
+      logCol('pts', 'Pts', one('kicking.totalKickingPoints')),
+    ],
+  };
+}
+
 const QB = new Set(['QB']);
+const KICKER = new Set(['K', 'PK']);
 const RECEIVER = new Set(['WR', 'TE']);
 const RUSHER = new Set(['RB', 'FB', 'HB']);
 
@@ -254,12 +305,14 @@ export function footballResearchSpec(sport: Football, bio: PlayerBio | null, his
   if (QB.has(pos)) return quarterback(sport);
   if (RECEIVER.has(pos)) return receiver(sport);
   if (RUSHER.has(pos)) return rusher(sport);
+  if (KICKER.has(pos)) return kicker(sport);
   const n = (prefix: string, key: string) => count((g) => g.stats[`${prefix}.${key}`] != null)(history) ?? 0;
   const counts: Array<[number, () => ResearchSpec]> = [
     [n('passing', 'passingAttempts'), () => quarterback(sport)],
     [n('receiving', 'receptions'), () => receiver(sport)],
     [n('rushing', 'rushingAttempts'), () => rusher(sport)],
     [n('defensive', 'totalTackles'), () => defender(sport)],
+    [n('kicking', 'fieldGoalAttempts'), () => kicker(sport)],
   ];
   counts.sort((a, b) => b[0] - a[0]);
   if (counts[0][0] === 0) return genericResearchSpec(bio?.position?.toLowerCase() ?? 'player', history, href(sport));

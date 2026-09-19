@@ -12,7 +12,7 @@ import { liveLinePricing } from '@/lib/sports/shared/liveLine';
 import { athleteIdOf, type PlayerBio, type PlayerHistory, type PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { nhlResearchSpec } from './playerResearchSpec';
-import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
+import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import { repriceAtMainLine } from '@/lib/odds/props/mainLine';
@@ -24,7 +24,6 @@ import { marketText } from '@/components/MarketLabel';
 import { toVenueBinarySplit } from '@/lib/sports/shared/venueSplit';
 import type { ChipDef, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import type { NhlTeamDefenseAllowed } from '@/lib/sports/nhl/teamDefenseAllowed';
-import { MIDDOT, fmt } from '@/components/charts/tokens';
 import { toRoleStat, type OpponentUnitRole, type SpatialGridRole, type UsageMixRole } from '@/lib/sports/shared/playerRoles';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toRestConditions } from '@/lib/sports/shared/restConditions';
@@ -211,39 +210,12 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
           wantOver,
         };
 
-
   const propOddsBoard: PropOddsBoardProps | null =
     activeMarketKey && propOdds
       ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: marketLine ?? active.line ?? null, userSportsbook: propOdds.userSportsbook }
       : null;
 
   // ---- Real season totals (nhle.ts, summed across every real game — adapter.ts) ----
-  const seasonStats = meta.seasonStats as
-    | { games: number; goals: number; assists: number; points: number; shots: number; hits: number; blockedShots: number; saves: number; goalsAgainst: number }
-    | undefined;
-  const railSeasonStats: PlayerDetailData['seasonStats'] = seasonStats
-    ? {
-        rows: [
-          { key: 'games', label: 'Games', value: seasonStats.games, decimals: 0 },
-          ...(seasonStats.saves > 0 || seasonStats.goalsAgainst > 0
-            ? [
-                { key: 'saves', label: 'Saves', value: seasonStats.saves, decimals: 0 },
-                { key: 'goalsAgainst', label: 'Goals Against', value: seasonStats.goalsAgainst, decimals: 0 },
-              ]
-            : [
-                { key: 'goals', label: 'Goals', value: seasonStats.goals, decimals: 0 },
-                { key: 'assists', label: 'Assists', value: seasonStats.assists, decimals: 0 },
-                { key: 'points', label: 'Points', value: seasonStats.points, decimals: 0 },
-                { key: 'shots', label: 'Shots on Goal', value: seasonStats.shots, decimals: 0 },
-                { key: 'hits', label: 'Hits', value: seasonStats.hits, decimals: 0 },
-                { key: 'blockedShots', label: 'Blocked Shots', value: seasonStats.blockedShots, decimals: 0 },
-              ]),
-        ],
-      }
-    : null;
-
-
-
 
   // ---- C4 game state (R6.5) ----
   // "Your lines so far" from the live box score, which the plan asks for by
@@ -291,7 +263,6 @@ export function toPlayerDetailData(input: NhlPlayerDetailInput): PlayerDetailDat
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,
     gameState,
-    seasonStats: railSeasonStats,
     liveLineTracker: {
       subjectId: active.subjectId,
       sport: 'nhl',

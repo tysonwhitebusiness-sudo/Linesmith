@@ -19,7 +19,7 @@ import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { footballResearchSpec } from '@/lib/sports/nfl/adapters/playerResearchSpec';
 import { cfbEfficiencySection } from '@/lib/sports/nfl/targetShapes';
-import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
+import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
 import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
 import { categoriseByLine, fixedWindow, openWindow, OVER, subsetWindow, UNDER } from '@/lib/core/windowedStat';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
@@ -36,21 +36,7 @@ import type { ChipDef, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, 
 import type { CfbTeamDefenseAllowed } from '@/lib/sports/cfb/teamDefenseAllowed';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toRoleStat, type OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
-import { isTeamNameMatch, normalizeTeamName } from '@/lib/sports/shared/teamNameMatch';
-
-function fuzzyMatchCfbTeamName(teams: CfbTeamDefenseAllowed[], espnName: string): CfbTeamDefenseAllowed | null {
-  const normalizedEspn = normalizeTeamName(espnName);
-  if (!normalizedEspn) return null;
-  for (const t of teams) {
-    const normalizedCfbd = normalizeTeamName(t.teamName);
-    if (normalizedCfbd === normalizedEspn) return t;
-  }
-  for (const t of teams) {
-    const normalizedCfbd = normalizeTeamName(t.teamName);
-    if (normalizedCfbd && (normalizedEspn.includes(normalizedCfbd) || normalizedCfbd.includes(normalizedEspn))) return t;
-  }
-  return null;
-}
+import { isTeamNameMatch } from '@/lib/sports/shared/teamNameMatch';
 
 const CFB_MATCHUP_GROUPS = [
   { key: 'passing', label: 'Passing' },
@@ -66,17 +52,6 @@ function cfbDefenseRow(team: CfbTeamDefenseAllowed, groupKey: string): { key: st
 
 function rawOf(entry: PickCandidate['history'][number]): Record<string, unknown> {
   return (entry.raw ?? {}) as Record<string, unknown>;
-}
-
-interface CfbSeasonStats {
-  games: number;
-  passingYards: number;
-  rushingYards: number;
-  receivingYards: number;
-  receptions: number;
-  longestRush: number;
-  longestReception: number;
-  kickingPoints: number;
 }
 
 /**
@@ -273,31 +248,12 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
           logoFor,
         };
 
-
   const propOddsBoard: PropOddsBoardProps | null =
     activeMarketKey && propOdds
       ? { allRows: propOdds.rows, subjectId: active.subjectId, marketKey: activeMarketKey, line: marketLine ?? active.line ?? null, userSportsbook: propOdds.userSportsbook }
       : null;
 
   // ---- Real season totals (CollegeFootballData.com, summed across every real game — adapter.ts) ----
-  const seasonStats = meta.seasonStats as CfbSeasonStats | undefined;
-  const railSeasonStats: PlayerDetailData['seasonStats'] = seasonStats
-    ? {
-        rows: [
-          { key: 'games', label: 'Games', value: seasonStats.games, decimals: 0 },
-          ...(seasonStats.passingYards > 0 ? [{ key: 'passingYards', label: 'Pass Yds', value: seasonStats.passingYards, decimals: 0 }] : []),
-          ...(seasonStats.rushingYards > 0 ? [{ key: 'rushingYards', label: 'Rush Yds', value: seasonStats.rushingYards, decimals: 0 }] : []),
-          ...(seasonStats.receivingYards > 0 ? [{ key: 'receivingYards', label: 'Rec Yds', value: seasonStats.receivingYards, decimals: 0 }] : []),
-          ...(seasonStats.receptions > 0 ? [{ key: 'receptions', label: 'Receptions', value: seasonStats.receptions, decimals: 0 }] : []),
-          ...(seasonStats.kickingPoints > 0 ? [{ key: 'kickingPoints', label: 'Kicking Pts', value: seasonStats.kickingPoints, decimals: 0 }] : []),
-          ...(seasonStats.longestRush > 0 ? [{ key: 'longestRush', label: 'Long Rush', value: seasonStats.longestRush, decimals: 0 }] : []),
-          ...(seasonStats.longestReception > 0 ? [{ key: 'longestReception', label: 'Long Rec', value: seasonStats.longestReception, decimals: 0 }] : []),
-        ],
-      }
-    : null;
-
-
-
 
   // ---- C4 game state (R6.2) ----
   // The live route is ESPN's summary for both football leagues, so one builder
@@ -342,7 +298,6 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,
     gameState,
-    seasonStats: railSeasonStats,
     liveLineTracker: {
       subjectId: active.subjectId,
       sport: 'cfb',

@@ -2576,13 +2576,18 @@ an import-graph reachability pass from `app/**` rather than by pattern.
 
 **Findings:**
 
-- **R11b-F1 (operator decision):** the rail "Season stats" card survives on
-  CFB, NBA, NHL and soccer. R6.2 removed NFL's for repeating "Season by
-  season" and said the others would follow in their sub-phases; they did not.
-  It is **not** a pure duplicate for them — NBA steals/blocks/turnovers,
-  soccer xG/xA/key passes, CFB kicking points and longest plays are not in
-  "Season by season" — so dropping it needs those columns added to the
-  Seasons spec first, or a decision to keep the card.
+- **R11b-F1 — CLOSED 2026-09-18, operator: drop the card.** The rail
+  "Season stats" card is gone for every sport (field, render and four
+  builders). **Correction to the finding as first written:** it said the card
+  was not a pure duplicate for NBA, NHL and soccer — wrong; that check read
+  the trend-chart labels, not the season columns. NBA's Seasons table already
+  has STL/BLK/TOV, NHL's has assists, and soccer's "Per 90 by season"
+  (Chances & finishing) has xG, xA and key passes. The one real gap was **CFB
+  kickers**: the card was the only place their kicking showed, and with no
+  spec of their own they fell into another group. Closed with a `kicker`
+  football spec (NFL and CFB; by position K/PK or by box score): FGM, FGA,
+  FG %, long, XPM, XPA, points. Rendered: Drew Klein (CFB) 6/6, long 56,
+  31 points, matching `player_game_history`.
 - **R11b-F2 (blocked on a worker deploy):** B3 `firstPitch` -> `startTime` is
   a cross-language contract: `python-odds-service/src/game_context.py` reads
   the MLB snapshot's `firstPitch` to date games for the odds-lines cycle.

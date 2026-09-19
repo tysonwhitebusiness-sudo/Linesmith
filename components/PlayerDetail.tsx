@@ -51,7 +51,6 @@ import { footballResearchSpec } from '@/lib/sports/nfl/adapters/playerResearchSp
 import { useLineHistory } from './useLineHistory';
 import { candidateCategoryToSide, candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import { LineMovementCard } from './LineMovementCard';
-import { StatRankRow } from './StatRankRow';
 import { PlayerRoleMainSections, PlayerRoleRailSections } from './PlayerRoleSections';
 import type { UnifiedLinesResult } from '@/lib/odds/types';
 import { SubjectAvatar, TeamLogo } from './SubjectAvatar';
@@ -2029,35 +2028,6 @@ export function PlayerDetail({
               opponent comparison lives in the Compare section (R10), which
               replaced the universal matchup card outright. */}
           {active.sport === 'golf' ? <PastRoundMatchupsCard active={active} meta={meta} /> : null}
-
-          {/* Season stats — NFL, CFB, soccer and the others' ranked season
-              card, in the context rail until each sport's own sub-phase. */}
-          {data.seasonStats ? (
-            <section className="lb-card overflow-hidden">
-              <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
-                Season stats
-                {data.seasonStats.rankedAmongLabel ? (
-                  <span className="ml-1.5 font-normal normal-case text-ink-muted">· ranked among {data.seasonStats.rankedAmongLabel}s</span>
-                ) : null}
-              </h3>
-              <div className="space-y-1.5 p-3">
-                {data.seasonStats.rows.map((r) =>
-                  r.rank ? (
-                    <StatRankRow key={r.key} stat={{ key: r.key, label: r.label, value: r.value, decimals: r.decimals, rank: r.rank.rank, poolSize: r.rank.poolSize }} />
-                  ) : (
-                    <div key={r.key} className="flex items-baseline justify-between gap-2 text-[12px]">
-                      <span className="w-20 shrink-0 text-ink-muted">{r.label}</span>
-                      {/* F-B6: this branch printed the raw number and ignored
-                          `r.decimals`, which the ranked branch beside it has
-                          always honoured — so soccer's unranked xG rendered as
-                          "3.4237903356552124". */}
-                      <span className="font-semibold tabular-nums">{r.value.toFixed(r.decimals)}</span>
-                    </div>
-                  ),
-                )}
-              </div>
-            </section>
-          ) : null}
 
           {active.sport === 'golf' ? (
             <ConsistentHolesForm holes={data.golfFormHoles ?? []} />

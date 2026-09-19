@@ -42,21 +42,6 @@ import { toRoleStat, type OpponentUnitRole } from '@/lib/sports/shared/playerRol
 import type { ChipDef, GameStateSlot, PlayerDetailChart, PlayerDetailData, PropOddsBoardProps, WindowedStat5 } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { isTeamNameMatch } from '@/lib/sports/shared/teamNameMatch';
-
-interface SoccerSeasonStats {
-  games: number;
-  goals: number;
-  xG: number;
-  assists: number;
-  xA: number;
-  shots: number;
-  keyPasses: number;
-}
-interface SoccerSeasonRank {
-  rank: number;
-  poolSize: number;
-  positionLabel: string;
-}
 interface SoccerOpponentDefense {
   teamTitle: string;
   gamesPlayed: number;
@@ -254,7 +239,6 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
           logoFor,
         };
 
-
   // ---- C4 game state (R6.3) ----
   // Soccer's live feed carries the score, the clock and the key events, and no
   // per-player stats at all (operator decision 5), so the card's own band says
@@ -288,8 +272,6 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
       : null;
 
   // ---- Real season totals + opponent defense (Understat, EPL) ----
-  const seasonStats = meta.seasonStats as SoccerSeasonStats | undefined;
-  const seasonRank = meta.seasonRank as SoccerSeasonRank | undefined;
   const opponentDefense = meta.opponentDefense as SoccerOpponentDefense | undefined;
 
   // ---- Role 1 | opponentUnit: the back line and keeper this player faces.
@@ -325,24 +307,6 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
         }
       : null;
 
-  const railSeasonStats: PlayerDetailData['seasonStats'] = seasonStats
-    ? {
-        rows: [
-          { key: 'games', label: 'Games', value: seasonStats.games, decimals: 0 },
-          { key: 'goals', label: 'Goals', value: seasonStats.goals, decimals: 0, rank: seasonRank ? { rank: seasonRank.rank, poolSize: seasonRank.poolSize } : undefined },
-          { key: 'xG', label: 'xG', value: seasonStats.xG, decimals: 2 },
-          { key: 'assists', label: 'Assists', value: seasonStats.assists, decimals: 0 },
-          { key: 'xA', label: 'xA', value: seasonStats.xA, decimals: 2 },
-          { key: 'shots', label: 'Shots', value: seasonStats.shots, decimals: 0 },
-          { key: 'keyPasses', label: 'Key Passes', value: seasonStats.keyPasses, decimals: 0 },
-        ],
-        rankedAmongLabel: seasonRank?.positionLabel,
-      }
-    : null;
-
-
-
-
   return {
     opponentUnit,
     usageMix,
@@ -373,7 +337,6 @@ export function toPlayerDetailData(input: SoccerPlayerDetailInput): PlayerDetail
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,
     gameState,
-    seasonStats: railSeasonStats,
     // No player-level live data source — ESPN's soccer summary endpoint
     // carries no `boxscore.players` for this sport (verified live, see
     // lib/sports/soccer/liveGame.ts's header comment), a real data-shape

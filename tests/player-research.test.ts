@@ -188,3 +188,17 @@ test('formatResearchValue: rates drop the leading zero, outs print as innings, p
   assert.equal(formatResearchValue(12.345, { decimals: 1, format: 'percent' }), '12.3%');
   assert.equal(formatResearchValue(null, { decimals: 1 }), '—');
 });
+
+test('football: a kicker gets the kicker spec, by position and by box score', () => {
+  // R11b-F1: the rail "Season stats" card was the only place a CFB kicker's
+  // numbers showed; dropping it needed a spec of his own.
+  const kickerGame = (id: string, fgm: number, fga: number, pts: number): PlayerGame =>
+    ({ eventId: id, gameDate: '2025-10-04', season: 2025, teamId: '1', opponentId: '2', isHome: true, stats: { 'kicking.fieldGoalsMade': fgm, 'kicking.fieldGoalAttempts': fga, 'kicking.totalKickingPoints': pts, 'kicking.longFieldGoalMade': 48, 'kicking.extraPointsMade': 2, 'kicking.extraPointAttempts': 2 } }) as unknown as PlayerGame;
+  const games = [kickerGame('1', 2, 3, 8), kickerGame('2', 1, 1, 5)];
+  assert.equal(footballResearchSpec('cfb', null, games).kind, 'kicker', 'by box score, with no bio');
+  const byPos = footballResearchSpec('nfl', { positionAbbr: 'K' } as never, games);
+  assert.equal(byPos.kind, 'kicker', 'by listed position');
+  const fgPct = byPos.seasonColumns.find((c) => c.key === 'fgp')!;
+  assert.equal(Math.round(fgPct.of(games as never)! * 10) / 10, 75, '3 of 4 field goals');
+  assert.equal(byPos.seasonColumns.find((c) => c.key === 'long')!.of(games as never), 48);
+});

@@ -21,7 +21,7 @@ import { liveLinePricing } from '@/lib/sports/shared/liveLine';
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { footballResearchSpec } from './playerResearchSpec';
-import type { PickCandidate, Sport, SportSnapshot } from '@/lib/core/types';
+import type { PickCandidate, SportSnapshot } from '@/lib/core/types';
 import { toCareerH2H } from '@/lib/sports/shared/careerH2H';
 import { toConditionsRole } from '@/lib/sports/shared/conditionsRole';
 import {
@@ -40,10 +40,8 @@ import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution
 import { repriceAtMainLine } from '@/lib/odds/props/mainLine';
 import { toFootballGameState } from '@/lib/sports/multiSport/footballGameState';
 import type { PropOddsRow } from '@/lib/db/client';
-import { toRoleStat, type OpponentUnitRole, type SpatialGridRole } from '@/lib/sports/shared/playerRoles';
+import { toRoleStat, type OpponentUnitRole } from '@/lib/sports/shared/playerRoles';
 import { nflTargetsSection, type NflTargetsInput } from '@/lib/sports/nfl/targetShapes';
-import { MIDDOT, fmt } from '@/components/charts/tokens';
-import type { PlayerSeasonStats } from '@/lib/sports/nfl/nflverse';
 import type { OpposingStarterStat } from '@/components/PlayerDetail';
 import type {
   ChipDef,
@@ -89,7 +87,6 @@ function ordinal(rank: number): string {
   const suffix = rank % 100 >= 11 && rank % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][rank % 10] ?? 'th');
   return `${rank}${suffix}`;
 }
-
 
 // ---------------------------------------------------------------------------
 // Input shape
@@ -140,7 +137,6 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
   const opponentLogoUrl = typeof meta.opponentLogoUrl === 'string' ? meta.opponentLogoUrl : (nflTeamLogoUrl(opponentAbbr) ?? undefined);
 
   const richMeta = (snapshot?.subjects.find((s) => s.subjectId === active.subjectId)?.meta ?? {}) as Record<string, unknown>;
-  const seasonStats = richMeta.seasonStats as PlayerSeasonStats | undefined;
   const opponentDefenseAllowed = (richMeta.opponentDefenseAllowed as NflvStatLine[] | undefined) ?? [];
   const positionRank = typeof richMeta.positionRank === 'number' ? richMeta.positionRank : null;
   const positionPoolSize = typeof richMeta.positionPoolSize === 'number' ? richMeta.positionPoolSize : null;
@@ -245,7 +241,6 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     logoFor: (entry) => nflTeamLogoUrl(rawOf(entry).opponentAbbr as string | undefined),
   };
 
-
   // ---- Prop odds board (universal, no branch) ----
   const propOddsBoard: PropOddsBoardProps | null =
     activeMarketKey && propOdds
@@ -276,16 +271,6 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
           emptyMessage: 'No defensive splits for this opponent yet.',
         }
       : null;
-
-  // ---- Season stats card: GONE for NFL (R6.2) ----
-  // "Season by season" reads every season of `player_game_history` and shows
-  // the same totals with more of them, so the rail card repeated one season of
-  // it. Its extra was a rank per stat, and ranks left the player page with D3
-  // ("Where this sits") in R6 by decision. NBA, NHL and CFB still fill this
-  // slot until their own sub-phases.
-  const railSeasonStats = null;
-
-
 
   // ---- C4 game state (R6.2) ----
   // The live route is ESPN's summary for both football leagues, so one builder
@@ -339,7 +324,6 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
     lineControl: { kind: 'stepper', line, baseLine, wantOver },
     priceCandidate,
     gameState,
-    seasonStats: railSeasonStats,
     liveLineTracker: {
       subjectId: active.subjectId,
       sport: 'nfl',
