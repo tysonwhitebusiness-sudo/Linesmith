@@ -4373,7 +4373,15 @@ async def upsert_live_capture(rows: list[dict], batch: int = 500) -> int:
 
 
 async def upsert_live_results(rows: list[dict], batch: int = 500) -> int:
-    """Settled scores into game_result, from archiveResultsJob.
+    """Settled scores into game_result, from archiveResultsJob (`live_capture`)."""
+    return await upsert_game_results(rows, "live_capture", batch)
+
+
+async def upsert_game_results(rows: list[dict], source: str, batch: int = 500) -> int:
+    """Settled scores into game_result under `source`.
+
+    Generalised from `upsert_live_results` for R12a's StatsAPI backfill
+    (`mlb_statsapi`), which needs the same insert under its own source.
 
     ON CONFLICT DO NOTHING, not DO UPDATE: a final score does not change, and an
     imported row for the same game is at least as trustworthy as a freshly
@@ -4389,13 +4397,13 @@ async def upsert_live_results(rows: list[dict], batch: int = 500) -> int:
         INSERT INTO game_result
           (sport, event_ref, game_date, event_start, home_team_id, away_team_id,
            home_team_raw, away_team_raw, home_score, away_score, venue, source)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'live_capture')
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
         ON CONFLICT DO NOTHING
     """
     payload = [
         (r["sport"], r["event_ref"], r["game_date"], r["event_start"],
          r["home_team_id"], r["away_team_id"], r["home_team_raw"], r["away_team_raw"],
-         r["home_score"], r["away_score"], r.get("venue"))
+         r["home_score"], r["away_score"], r.get("venue"), source)
         for r in rows
     ]
     pool = await get_pool()

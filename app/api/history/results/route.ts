@@ -1,5 +1,7 @@
 /**
  * GET /api/history/results?sport=nfl[&teamId=13][&from=2023-01-01][&to=…]
+ * GET /api/history/results?sport=nfl&teamId=13&view=history   — R12a: record by season
+ * GET /api/history/results?sport=nfl&teamId=13&vs=21            — R12a: head to head
  *
  * De-duplicated real results from `game_result`, through the one read module
  * (`lib/history/gameResults.ts`). Every page that wants a record, a form
@@ -27,11 +29,19 @@
  * unbounded id mints a permanent cache row per value). Sport is checked
  * against the real list, dates must parse as ISO dates in a sane range, and
  * `teamId` is length-capped and character-restricted.
+ *
+ * R12a — DEEP VIEWS. `view=history` and `vs` read every season held (NFL from
+ * 1999) and return a SUMMARY built server-side (`teamHistoryShapes.ts`), not
+ * the games: a franchise's MLB history is ~2,600 rows. Their keys are
+ * `history:team:route:{sport}:{teamId}` and `history:h2h:route:{sport}:{a}:{b}`
+ * (grepped: unused). The rows are R2's merge plus R12a's rules — preseason and
+ * exhibitions out, playoffs marked, relocated franchises folded in.
  */
 
 import { NextResponse } from 'next/server';
 import { cachedRoute } from '@/lib/cachedRoute';
 import { readGameResults } from '@/lib/history/gameResults';
+import { buildHeadToHead, buildTeamHistory } from '@/lib/history/teamHistoryShapes';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +51,8 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const SPORTS = new Set(['mlb', 'nfl', 'cfb', 'nba', 'nhl', 'soccer_epl', 'soccer_mls', 'tennis_atp', 'tennis_wta']);
 
 const DEFAULT_FROM = '2023-01-01';
+/** The deep views read everything held; `game_result` starts in 1999 (NFL). */
+const DEEP_FROM = '1990-01-01';
 
 function parseDate(raw: string | null): string | null | undefined {
   if (raw == null) return null;
@@ -74,6 +86,33 @@ export async function GET(request: Request) {
 
   const to = parseDate(url.searchParams.get('to'));
   if (to === undefined) return NextResponse.json({ error: 'to must be an ISO date (YYYY-MM-DD)' }, { status: 400 });
+
+  const vs = parseTeamId(url.searchParams.get('vs'));
+  if (vs === undefined) return NextResponse.json({ error: 'vs is not a team id' }, { status: 400 });
+  const view = url.searchParams.get('view');
+  if (view != null && view !== 'history') return NextResponse.json({ error: 'view must be "history"' }, { status: 400 });
+  if ((vs || view) && !teamId) return NextResponse.json({ error: 'vs and view need a teamId' }, { status: 400 });
+
+  if (teamId && vs) {
+    return cachedRoute({
+      cacheKey: `history:h2h:route:${sport}:${teamId}:${vs}`,
+      ttlMs: CACHE_TTL_MS,
+      routeName: 'history/results',
+      errorMessage: 'Head-to-head read failed',
+      request,
+      build: async () => ({ ...buildHeadToHead(sport, teamId, vs, await readGameResults({ sport, teamId, from: DEEP_FROM })), fetchedAt: new Date().toISOString() }),
+    });
+  }
+  if (teamId && view === 'history') {
+    return cachedRoute({
+      cacheKey: `history:team:route:${sport}:${teamId}`,
+      ttlMs: CACHE_TTL_MS,
+      routeName: 'history/results',
+      errorMessage: 'Team history read failed',
+      request,
+      build: async () => ({ ...buildTeamHistory(sport, teamId, await readGameResults({ sport, teamId, from: DEEP_FROM })), fetchedAt: new Date().toISOString() }),
+    });
+  }
 
   const effectiveFrom = from ?? DEFAULT_FROM;
 

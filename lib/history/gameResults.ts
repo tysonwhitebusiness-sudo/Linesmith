@@ -43,6 +43,7 @@
  */
 
 import { pgAll } from '@/lib/db/pgClient';
+import { applyLineage, lineageOf, refineDeepHistory, type GamePhase } from './deepHistory';
 
 /** One real game, after de-duplication. */
 export interface GameResultRow {
@@ -58,6 +59,10 @@ export interface GameResultRow {
   venue: string | null;
   source: string;
   eventStart: string | null;
+  /** R12a: regular season or playoffs, from the league-season windows; null where a sport has none (soccer). */
+  phase?: GamePhase | null;
+  /** R12a: this app's season label for the game, where a window placed it. */
+  season?: number | null;
 }
 
 /**
@@ -165,7 +170,7 @@ export interface ReadGameResultsOptions {
  */
 export async function readGameResults(opts: ReadGameResultsOptions): Promise<GameResultRow[]> {
   const { sport, teamId, from = '2023-01-01', to } = opts;
-  const params: (string | number)[] = [sport, from];
+  const params: unknown[] = [sport, from];
   let sql = `
     SELECT id, sport, game_date, home_team_id, away_team_id, home_team_raw, away_team_raw,
            home_score, away_score, venue, source, event_start
@@ -178,8 +183,17 @@ export async function readGameResults(opts: ReadGameResultsOptions): Promise<Gam
     sql += ` AND game_date <= $${params.length}`;
   }
   if (teamId) {
-    params.push(teamId);
-    sql += ` AND (home_team_id = $${params.length} OR away_team_id = $${params.length})`;
+    // Every id and unresolved name the franchise is stored under (R12a lineage:
+    // the Thrashers' rows are raw "Atlanta" with no id; Utah is 59 in the table).
+    const { ids, raws } = lineageOf(sport, teamId);
+    params.push(ids);
+    const idsAt = params.length;
+    sql += ` AND (home_team_id = ANY($${idsAt}) OR away_team_id = ANY($${idsAt})`;
+    if (raws.length) {
+      params.push(raws);
+      sql += ` OR (home_team_id IS NULL AND home_team_raw = ANY($${params.length})) OR (away_team_id IS NULL AND away_team_raw = ANY($${params.length}))`;
+    }
+    sql += ')';
   }
   sql += ' ORDER BY game_date, id';
 
@@ -198,8 +212,8 @@ export async function readGameResults(opts: ReadGameResultsOptions): Promise<Gam
     event_start: Date | string | null;
   }>(sql, params);
 
-  return dedupeGameResults(
-    raw.map((r) => ({
+  const merged = dedupeGameResults(
+    applyLineage(raw.map((r) => ({
       id: r.id,
       sport: r.sport,
       gameDate: typeof r.game_date === 'string' ? r.game_date.slice(0, 10) : r.game_date.toISOString().slice(0, 10),
@@ -212,8 +226,11 @@ export async function readGameResults(opts: ReadGameResultsOptions): Promise<Gam
       venue: r.venue,
       source: r.source,
       eventStart: r.event_start == null ? null : typeof r.event_start === 'string' ? r.event_start : r.event_start.toISOString(),
-    })),
+    }))),
   );
+  // R12a: preseason out, playoffs marked, same-date conflicts settled, MLB's
+  // authoritative source standing alone where it covers a season.
+  return refineDeepHistory(sport, merged);
 }
 
 /**
