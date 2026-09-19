@@ -11,7 +11,8 @@ database, ESPN and the code, and six of the handoff's premises turned out wrong 
 - The §2c-5 Specials rankings are the pilot set.
 - Build after U2 (the Hybrid `DataTable`), on the Untitled UI kit in
   `docs/design/ui-system-master-prompt.md`.
-- Mockups next: one page per sport, 1:1 with what ships (`docs/design/slate/`).
+- Mockups: `docs/design/slate/slate.html` (every sport, real data; build with
+  `tools/build_data.py` then `tools/build.py`).
 
 **The honesty rules every card obeys:**
 - Movement, price gaps and rankings are **not** edges.
@@ -45,21 +46,32 @@ Also measured, not in the handoff:
 
 ## 2. The page, every sport
 
+**The Slate replaces Scan in place** (operator, 2026-09-19). It is not a new page:
+`/{sport}` keeps the app's chrome exactly as it is today, and only the body
+under the date strip changes.
+
 ```
-┌ TopBar (AppShell chrome, unchanged) ──────────────────────────────────────────┐
-│ Slate header                                                                   │
-│  [MLB ▾ sport]  Sat Sep 19  ‹ Fri · Sat · Sun ›                                 │
-│  15 games · first pitch 1:05 PM ET · lines from 25 books · updated 2 min ago    │
-│ SectionNav (sticky): Games 15 · Movers · Props 3,412 · Spotlights · Specials ·  │
-│                      Model · Your lines                                         │
+┌ TopBar (TopBar.tsx, unchanged except the nav label) ──────────────────────────┐
+│ [LS] Linesmith [MLB ▾]           Slate · Players · Teams      ⚙ 🎟 🔍 ⟳ Slip Sign in │
+├ date strip (DateGameStrip / GolferStrip / TennisMatchStrip, unchanged) ───────┤
+│ [Today] [Tomorrow] [📅] [‹]  [All] [DET@CWS 2:10] [MIL@BAL 4:05] …  ⏸          │
 ├───────────────────────────────────────────────────────────────────────────────┤
+│ SectionNav (sticky): Games 15 · Movers · Props 3,127 · Spotlights · Specials ·  │
+│                      Model · Your lines                                         │
 │ sections in that order; a hidden section drops out of the nav too              │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
+- **No second sport picker, no separate date control, no page title.** Sport and
+  league/tour come from the TopBar's own selects; the date and the game scroller
+  are the existing strip, which stays part of the top bar.
+- The TopBar tab **"Scan" is renamed "Slate"**; Players and Teams (Schedule for
+  golf and tennis) are unchanged.
+- What Scan's body carried moves into sections: Today's Picks → Model; the Home
+  Runs tab → Specials (HR rankings); Watchlist → Your lines; the Players/Games
+  toggle is gone (Games is always a section); Scan's table → the Props board.
+
 **Kit (U track), exactly:**
-- Sport switcher: `Select` (rich rows: the sport's pictogram, name, today's game count).
-- Date strip: `SegmentedToggle` `sm` of three dates, plus `IconButton`s ‹ › (§2c: 32px).
 - SectionNav: our `Tabs` with `count`, as anchor links; sticky under the TopBar.
 - Every section is a `Card` with `count` and, for tables, `flush`.
 - Every table is the Hybrid `DataTable` (§3 of the UI spec): 36px rows, header
@@ -121,6 +133,8 @@ Each sport's section in §4 names which of these it uses and what it fills them 
 - **Two summary cards above it** (side by side ≥1024, stacked below):
   - **Price outliers:** one book ≥ 4 implied-prob points off the median of the others,
     same prop and line, **minimum 5 books quoting** (MLB has ~23,400 such lines today).
+    **Gaps above 15 points are dropped as stale quotes** (measured: Kalshi at +9900
+    against a −156 median on 2026-09-19).
     Columns: player · market · line · book · its price · median · gap. Caption:
     "A price gap between books, not a model edge."
   - **Line disagreements:** books split on the line itself (0.5 at one, 1.5 at the rest).

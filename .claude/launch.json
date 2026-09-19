@@ -4,29 +4,52 @@
     {
       "name": "linesmith-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3000,
       "autoPort": true
     },
     {
       "name": "linesmith-prod",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "start"],
+      "runtimeArgs": [
+        "run",
+        "start"
+      ],
       "port": 3000
     },
     {
       "name": "design-preview",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["scripts/design-preview-server.js"],
+      "runtimeArgs": [
+        "scripts/design-preview-server.js"
+      ],
       "port": 8123,
       "autoPort": true
     },
     {
       "name": "linesmith-dev-verify",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["scripts/dev-verify.js"],
+      "runtimeArgs": [
+        "scripts/dev-verify.js"
+      ],
       "port": 3001,
       "autoPort": true
+    },
+    {
+      "name": "slate-mockup",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8124",
+        "--directory",
+        "docs/design/slate"
+      ],
+      "port": 8124,
+      "autoPort": false
     }
   ]
 }
