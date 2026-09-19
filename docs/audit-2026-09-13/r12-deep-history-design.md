@@ -1,6 +1,7 @@
 # R12 — Deep history on team and game pages: design for approval
 
-**Status: DESIGN ONLY. Nothing is built.** The plan says R12 is "large, design
+**Status: APPROVED 2026-09-19, with the operator's answers (below). R12a in
+progress.** Original status line: DESIGN ONLY. Nothing is built. The plan says R12 is "large, design
 first": measure, write this, get the operator's approval, then build in
 sub-phases with a stop between each. Measured 2026-09-18 against the live
 database (read-only queries). Every number below is from that run.
@@ -187,3 +188,67 @@ Proposed as a later, separate sub-phase if wanted (Q3).
    seasons?
 4. **Precedence (D1):** approve "one source per sport-season" over merging,
    accepting that a season's record is exactly as good as its chosen source.
+
+## Operator's answers (2026-09-19)
+
+1. **Relocations count:** Thrashers -> Jets, SuperSonics -> Thunder.
+2. **Depth:** last 10 seasons by default, the rest one click away.
+3. **Tennis:** build R12e.
+4. **Sources:** merge them, with a conflict rule (not one source per season).
+
+## R12a Step 0 — measured 2026-09-19, and it changed the conflict rule
+
+`scripts/measure-deep-history.ts` counts games per team per season through
+R2's read; then each sport was diffed game by game against the league's own
+schedule (MLB StatsAPI, ESPN team schedules, NHL api-web).
+
+**Every sport but MLB is exact.** One team-season per sport per era, regular
+season and playoffs: NBA (DEN 2012, 2019), NFL (21: 2005, 2018), CFB (ALA 2015,
+2022), EPL (ARS 2016, 2021), MLS (LA 2014, 2019) and NHL (COL 2010, 2018) all
+match game for game; one MLS score differs. R2's merge is right for them.
+
+**The "conflicts" were mostly not conflicts.** Of four MLB same-day
+disagreements checked against StatsAPI, three are real doubleheaders (2021's
+seven-inning ones) where each source held one game; one is a wrong score
+(`sbr_mlb` 5-3 for an official 6-3). The 2025 "conflicts" are ESPN's UTC dating
+putting a West Coast night game on the next day beside that day's game — two
+real games. The NBA ones are `sbr` errors (ESPN matches the official score in
+both checked), yet R2 ranks `sbr` above `espn_core`.
+
+**MLB's real problems are completeness and preseason:**
+
+| season | official | held | missing (all regular season) | extra |
+|---|---|---|---|---|
+| 2010-2021 | ~2,465 | ~2,440 | 19-33 a season | 0-7 |
+| 2022 | 2,470 | 2,369 | 101 | 0 |
+| 2023 | 2,471 | 2,412 | 59 | 0 |
+| 2024 | 2,472 | 2,413 | 59 | 0 |
+| 2025 | 2,477 | 2,528 | 18 | 69 (67 spring training) |
+
+The Yankees' 2025 has all 169 official games; the extras are five
+spring-training games from `espn_core` (one a 3-3 tie).
+
+**So the conflict rule is:**
+
+- **Game type from league-season windows.** Preseason dropped; postseason
+  marked. Windows are generated once into a checked-in file from ESPN's
+  `seasons/{y}/types` (every league, back to 2007 measured) and MLB's own
+  season dates (ESPN's 2025 window starts after the Tokyo Series). Finished
+  seasons never change, so it costs nothing at request time.
+- **MLB: an authoritative source per season.** A Python backfill writes
+  StatsAPI's finals into `game_result` (`source = 'mlb_statsapi'`); where a
+  season has them, they are the season, and the other sources' rows for it
+  are dropped. This fixes the missing games and any wrong score at once.
+  **The backfill writes to the production table and waits for the operator's
+  go-ahead.**
+- **Sports with no doubleheaders (NBA, NHL):** two sources disagreeing on the
+  same pair on the same date is one game with a wrong score; keep ESPN's.
+  (Same DATE, not ±1 day: the NBA plays two-game series on consecutive days.)
+- **Everything else:** R2's merge, unchanged.
+
+**Lineage, measured ids:** NHL raw "Atlanta" (164 home games, 2007-11) ->
+Winnipeg 52; NBA raw "Seattle" (41, 2007-08) -> Oklahoma City 25; NHL "Utah
+Hockey Club" (unresolved) and id 59 -> 68, the id the app uses for Utah
+(`game_result` stores today's Mammoth as 59, so without this Utah's page finds
+no history). Arizona (53) is NOT Utah: the NHL treats Utah as a new franchise
+and the Coyotes' record stays Arizona's.
