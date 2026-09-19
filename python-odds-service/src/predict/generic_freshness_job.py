@@ -105,7 +105,9 @@ async def _discover_recent(
     failed_days: list[str] = []
     cur = start
     while cur <= end:
-        params = {"dates": f"{cur:%Y%m%d}", "limit": 1000}
+        # limit 500, not 1000: above ~500 ESPN silently falls back to its
+        # default page of 25 (CFB 2026-09-19: 71 games at 500, 25 at 900).
+        params = {"dates": f"{cur:%Y%m%d}", "limit": 500}
         if cfg.espn_groups:
             params["groups"] = cfg.espn_groups
         try:

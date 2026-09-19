@@ -152,7 +152,7 @@ async def fetch_finished_games(client: httpx.AsyncClient, config: SportEloConfig
     last = datetime.strptime(end_date, "%Y%m%d").date()
     events: list[dict] = []
     while day <= last:
-        res = await client.get(url, params={"dates": f"{day:%Y%m%d}", "limit": 1000}, timeout=httpx.Timeout(15.0))
+        res = await client.get(url, params={"dates": f"{day:%Y%m%d}", "limit": 500}, timeout=httpx.Timeout(15.0))
         if res.status_code != 200:
             raise RuntimeError(f"ESPN scoreboard {config.espn_sport}/{config.espn_league} {day:%Y%m%d}: HTTP {res.status_code}")
         events.extend(res.json().get("events") or [])

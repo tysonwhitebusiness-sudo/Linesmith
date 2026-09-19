@@ -545,7 +545,7 @@ async def discover_espn(client, limiter, cfg: SportConfig, season: int) -> list[
         events = []
         day = cur
         while day <= wnd_end:
-            params = {"dates": f"{day:%Y%m%d}", "limit": 1000}
+            params = {"dates": f"{day:%Y%m%d}", "limit": 500}
             if cfg.espn_groups:
                 params["groups"] = cfg.espn_groups
             try:

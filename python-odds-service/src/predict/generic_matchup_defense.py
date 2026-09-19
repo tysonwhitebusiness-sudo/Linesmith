@@ -284,7 +284,7 @@ async def _fetch_nba_current_teams(client: httpx.AsyncClient) -> list[tuple[str,
         events.extend(data.get("events") or [])
     if not events:
         try:
-            res = await client.get(f"{_NBA_ESPN_BASE}/scoreboard?dates={_NBA_FALLBACK_SCOREBOARD_MONTH}&limit=1000", timeout=httpx.Timeout(15.0))
+            res = await client.get(f"{_NBA_ESPN_BASE}/scoreboard?dates={_NBA_FALLBACK_SCOREBOARD_MONTH}&limit=500", timeout=httpx.Timeout(15.0))
             data = res.json() if res.status_code == 200 else {}
         except httpx.HTTPError:
             data = {}
@@ -484,7 +484,7 @@ async def _fetch_nfl_current_teams(client: httpx.AsyncClient) -> list[tuple[str,
     for i in range(32):
         day = today - timedelta(days=i)
         try:
-            res = await client.get(f"{_NFL_ESPN_BASE}/scoreboard", params={"dates": f"{day:%Y%m%d}", "limit": 1000},
+            res = await client.get(f"{_NFL_ESPN_BASE}/scoreboard", params={"dates": f"{day:%Y%m%d}", "limit": 500},
                                    timeout=httpx.Timeout(15.0))
             data = res.json() if res.status_code == 200 else {}
         except httpx.HTTPError:
