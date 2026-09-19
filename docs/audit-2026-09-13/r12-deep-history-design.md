@@ -351,3 +351,25 @@ DAL since 1999", 54 meetings; Compare PHI v DAL — 29-26 over 55, 16-11 home,
 13-15 away, postseason 0-1 (the 55th is that game itself: consistent). COL v
 CGY 39-37 over 76 since 2007; CIN v LAD 40-60 over 100 since 2010. 497/497
 tests.
+
+## R12d — DONE 2026-09-19 (R11-F3 closed)
+
+Every game reader now tells "no such game" from "the source did not answer";
+before, a slow or failed upstream read as "This game was not found".
+
+- **NBA, NFL/CFB, EPL/MLS:** one shared `fetchEspnSummaryStrict` (the plain
+  fetch keeps its null for every other caller): on a null it probes once;
+  ESPN's own 404 is "not found" (measured: a bogus event is 404 on all
+  three), an answer is used, anything else throws.
+- **MLB:** StatsAPI answers 200 even for a game that does not exist, so a
+  null feed is always a failed request and now throws; an answer with no game
+  in it stays "not found".
+- **Tennis:** the match search walks several days of scoreboards; if not one
+  answered it throws and caches nothing (the route's state lookup still reads
+  that as "state unknown", not an error).
+- **NHL** was fixed in R11 (`4030e75`).
+
+Tested with a mocked fetch (404, timeout then failed probe, failure then
+recovery, MLB's empty 200). Checked on prod: real games for all seven game
+sports return 200; bogus ids for NFL, NBA, EPL, MLB and NHL still return 404.
+502/502 tests.

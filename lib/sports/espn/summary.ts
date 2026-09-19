@@ -74,6 +74,23 @@ export async function fetchEspnSummary<T = unknown>(leaguePath: EspnLeaguePath, 
   return (await request) as T | null;
 }
 
+/**
+ * `fetchEspnSummary` for a page that must tell "no such game" from "ESPN did
+ * not answer" (R12d). The plain fetch folds a 404 and a timeout into one
+ * `null`, which a game page read as "not found" whenever ESPN was slow (R11-F3;
+ * seen on NHL). On a `null` this probes once: ESPN's own 404 is "not found"
+ * (measured: a bogus event id is 404 on NBA, NFL and EPL), an answer now is
+ * used, and anything else throws, so the route says "couldn't load".
+ */
+export async function fetchEspnSummaryStrict<T = unknown>(leaguePath: EspnLeaguePath, eventId: string): Promise<T | null> {
+  const json = await fetchEspnSummary<T>(leaguePath, eventId);
+  if (json != null) return json;
+  const probe = await fetch(`${BASE}/${leaguePath}/summary?event=${encodeURIComponent(eventId)}`, { cache: 'no-store', signal: AbortSignal.timeout(TIMEOUT_MS) }).catch(() => null);
+  if (probe?.status === 404) return null;
+  if (probe?.ok) return (await probe.json()) as T;
+  throw new Error(`ESPN summary unavailable for ${leaguePath} ${eventId}`);
+}
+
 /** Test hook: drop every cached summary. */
 export function clearEspnSummaryCache(): void {
   memo.clear();

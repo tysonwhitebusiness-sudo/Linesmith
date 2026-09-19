@@ -122,7 +122,11 @@ function propResults(rows: PropOddsRow[], start: string, box: MlbGameResearchPay
 
 export async function readMlbGameResearch(gamePk: number, now: Date = new Date()): Promise<MlbGameResearchPayload | null> {
   const feed = await getLiveFeed(gamePk);
-  if (!feed?.gameData?.game?.pk && !feed?.gameData?.teams) return null;
+  // R12d: StatsAPI answers 200 even for a game that does not exist (with empty
+  // game data), so a null feed is always a failed request — "couldn't load" —
+  // and only an answer with no game in it is "not found".
+  if (!feed) throw new Error(`MLB live feed unavailable for ${gamePk}`);
+  if (!feed.gameData?.game?.pk && !feed.gameData?.teams) return null;
   const state = mlbGameState(feed.gameData?.status?.abstractGameState ?? '', feed.gameData?.status?.detailedState ?? '');
   const start: string = feed.gameData?.datetime?.dateTime ?? '';
   const started = state === 'live' || state === 'final';

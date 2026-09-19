@@ -19,7 +19,7 @@
  * Server-only: reads Postgres.
  */
 
-import { fetchEspnSummary, type EspnLeaguePath } from '@/lib/sports/espn/summary';
+import { fetchEspnSummary, fetchEspnSummaryStrict, type EspnLeaguePath } from '@/lib/sports/espn/summary';
 import { parseDrives, parseGameLines, parseInjuries, parseWinProbability, type Drive, type GameLines, type InjuryReport, type WinProbabilityPoint } from '@/lib/sports/espn/summaryParsers';
 import { readPreGamePropOddsForGame, type PropOddsRow } from '@/lib/db/client';
 import { readInGameLines, readPreGameOpenClose, type GameLineOpenClose, type InGameLines } from '@/lib/odds/gameLineHistory';
@@ -206,7 +206,8 @@ function side(comp: J | undefined, league: FootballLeague, state: GameState): Ga
 const PERIOD = (i: number) => (i < 4 ? `Q${i + 1}` : i === 4 ? 'OT' : `${i - 3}OT`);
 
 export async function readFootballGameResearch(league: FootballLeague, eventId: string, now: Date = new Date()): Promise<FootballGameResearchPayload | null> {
-  const summary: J = await fetchEspnSummary(LEAGUE_PATH[league], eventId);
+  const summary: J = await fetchEspnSummaryStrict(LEAGUE_PATH[league], eventId);
+  // R12d: null is ESPN's own 404; a failed fetch throws, so the page says "couldn't load", not "not found".
   const comp = summary?.header?.competitions?.[0];
   const state = footballGameState(summary);
   if (!comp || !state) return null;

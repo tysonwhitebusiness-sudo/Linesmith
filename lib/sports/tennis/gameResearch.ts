@@ -146,9 +146,11 @@ async function findCompetition(tour: Tour, matchId: string): Promise<Competition
   const day = (base: number, offset: number) => ymd(new Date(base + offset * 86_400_000));
   const days = known[0] ? [0, 1, -1].map((o) => day(Date.parse(known[0].d), o)) : [0, -1, 1, -2, 2, 3, 4, 5, 6, 7].map((o) => day(Date.now(), o));
   let value: Competition | null = null;
+  let answered = 0;
   for (const d of days) {
     const res = await fetch(`${BASE}/${tour}/scoreboard?dates=${d}`, { cache: 'no-store', signal: AbortSignal.timeout(15_000) }).catch(() => null);
     if (!res?.ok) continue;
+    answered++;
     const json = (await res.json()) as J;
     for (const ev of json.events ?? []) {
       for (const g of ev.groupings ?? []) {
@@ -159,6 +161,10 @@ async function findCompetition(tour: Tour, matchId: string): Promise<Competition
     }
     if (value) break;
   }
+  // R12d: not one scoreboard answered, so the match is not "not found" — ESPN
+  // did not answer. Throw (the route says "couldn't load") and cache nothing,
+  // so the next request tries again.
+  if (!value && answered === 0) throw new Error(`ESPN ${tour} scoreboard unavailable for match ${matchId}`);
   compCache.set(key, { at: Date.now(), value });
   return value;
 }
@@ -173,7 +179,8 @@ export function tennisGameState(comp: J): GameState | null {
 }
 
 export async function tennisStateOf(sport: TennisTourSport, matchId: string): Promise<GameState | null> {
-  const found = await findCompetition(tourOf(sport), matchId);
+  // The route's TTL lookup: an unanswered scoreboard means "state unknown", not an error.
+  const found = await findCompetition(tourOf(sport), matchId).catch(() => null);
   return found ? tennisGameState(found.comp) : null;
 }
 

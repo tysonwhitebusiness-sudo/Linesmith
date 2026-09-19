@@ -22,7 +22,7 @@
  * Server-only: reads Postgres.
  */
 
-import { fetchEspnSummary, type EspnLeaguePath } from '@/lib/sports/espn/summary';
+import { fetchEspnSummary, fetchEspnSummaryStrict, type EspnLeaguePath } from '@/lib/sports/espn/summary';
 import { parseCommentary, parseGameLines, parseInjuries, parseLineups, type CommentaryEvent, type GameLines, type InjuryReport, type Lineup } from '@/lib/sports/espn/summaryParsers';
 import { readPreGamePropOddsForGame, type PropOddsRow } from '@/lib/db/client';
 import { readInGameLines, readPreGameOpenClose, type GameLineOpenClose, type InGameLines } from '@/lib/odds/gameLineHistory';
@@ -179,7 +179,8 @@ const MEMO_MS = 30 * 60_000;
 const memo = new Map<string, { value: SoccerPregame; expiresAt: number }>();
 
 export async function readSoccerGameResearch(sport: SoccerGameSport, eventId: string, now: Date = new Date()): Promise<SoccerGameResearchPayload | null> {
-  const summary: J = await fetchEspnSummary(leaguePath(sport), eventId);
+  const summary: J = await fetchEspnSummaryStrict(leaguePath(sport), eventId);
+  // R12d: null is ESPN's own 404; a failed fetch throws, so the page says "couldn't load", not "not found".
   const comp = summary?.header?.competitions?.[0];
   const state = soccerGameState(summary);
   if (!comp || !state) return null;
