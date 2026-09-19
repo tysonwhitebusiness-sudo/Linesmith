@@ -283,3 +283,40 @@ back-to-back same-score games of a series: MLB 2010 read 2,442 of 2,462).
 and shootout losses count as losses, because `game_result` does not mark
 overtime (the Thrashers' 2007-08 reads 34-48, officially 34-40-8). One NHL
 2020-21 team reads 55 of 56 games.
+
+## R12b — DONE 2026-09-19, awaiting sign-off
+
+**The team page's History section**, placed after Results & schedule, on
+every team sport (MLB, NFL, CFB, NBA, NHL, EPL, MLS): a note with the all-time
+and last-10 records and the postseason record; win % by season as a line
+(points per game for soccer, which ranks on points); a season-by-season table
+— W-L (W-D-L and points for soccer), home, away, scored/allowed/diff per game,
+postseason — opening on the last 10 with an "All N" switch. Completed seasons
+only: the current one is the page's own sections' job (R7-C1), and
+`game_result` lags on it. It does not follow the page's season switch and says
+so. The NHL note says overtime/shootout losses count as losses.
+
+Built from the shared card renderer (table views, series) — no new UI and no
+sport branch in the page: `lib/history/teamHistorySection.ts` (pure, tested),
+`components/useTeamHistory.ts`, and three lines in `TeamResearchPage.tsx`.
+
+**Found in the render and fixed:**
+- MLS playoff games read as regular season (soccer had no windows). Added
+  MLS windows from ESPN's usa.1 type 1 — with the start set to 1 January,
+  because ESPN's 2024 regular season begins 03-04 while the season opened
+  02-21 (the Galaxy read 32 of 34 games). Every MLS team now reads its full
+  34 plus playoffs, every season.
+- The EPL showed a Postseason column of dashes; the column now appears only
+  where a season had postseason games. "Playoffs" became "Postseason" (CFB's
+  are bowls).
+- The route's cache keys went to `v2` so no summary built under the old rules
+  is served for a day.
+
+**Verified on prod** (fresh tabs; the pane was hidden, so layout was checked
+by measurement, not screenshot): PHI 27 completed seasons 258-177-2, 2024-25
+14-3 with 4-0 postseason, "All 27" switches to 27 rows back to 1999-00 (5-11),
+no page overflow at 400 px, chart 342x220 at 400 px; NYY 2024 and 2025 94-68;
+WPG opens with the Thrashers' 2007-08; OKC with Seattle's 2007-08; UTA two
+seasons; ALA 146-16 with 12-8 in bowls; ARS W-D-L and points, no postseason
+column; LA Galaxy 2024 19-7-8, 64 points, postseason 5-0 (the official
+record). 493/493 tests.

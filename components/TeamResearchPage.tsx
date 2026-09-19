@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Avatar, cx, ErrorState, Section, SectionNav, SegmentedToggle, Skeleton } from './ui';
 import { asOfText, ResearchSectionBody, SourcesCard } from './PlayerResearchSections';
 import { useTeamResearch } from './useTeamResearch';
+import { useTeamHistory } from './useTeamHistory';
+import { HISTORY_SPORTS, teamHistorySection } from '@/lib/history/teamHistorySection';
 import { TeamCompareSection } from './TeamCompareSection';
 import { useCompareTeams } from './usePlayerCompare';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -72,12 +74,25 @@ export function TeamResearchPage({ sport, teamId, onReadyChange }: TeamResearchP
   const stickyTop = useStickyHeaderHeight(true);
 
   const data = useMemo(() => (research.data ? teamResearchFor(sport, research.data, season) : null), [sport, research.data, season]);
+  // R12b — every completed season held, from its own day-cached read; it does
+  // not follow the season switch, and idles for a sport with no history.
+  const history = useTeamHistory(HISTORY_SPORTS.has(sport) ? sport : undefined, teamId);
+  const sections = useMemo(() => {
+    if (!data) return [];
+    const hist = teamHistorySection({ sport, teamAbbr: data.team.abbr, history: history.data, loading: history.loading, error: history.error });
+    if (!hist) return data.sections;
+    // Below Results, where the design puts it: the long view beside this season's.
+    const at = data.sections.findIndex((x) => x.id === 'results');
+    const out = [...data.sections];
+    out.splice(at >= 0 ? at + 1 : out.length, 0, hist);
+    return out;
+  }, [data, sport, history.data, history.loading, history.error]);
   const ready = !research.loading;
   useEffect(() => onReadyChange?.(ready), [ready, onReadyChange]);
 
   const navItems = useMemo(
-    () => [{ id: 'compare', label: 'Compare' }, ...(data?.sections ?? []).map((s) => ({ id: s.id, label: s.navLabel })), { id: 'sources', label: 'Sources' }],
-    [data],
+    () => [{ id: 'compare', label: 'Compare' }, ...sections.map((s) => ({ id: s.id, label: s.navLabel })), { id: 'sources', label: 'Sources' }],
+    [sections],
   );
 
   if (research.error && !research.data) {
@@ -127,7 +142,7 @@ export function TeamResearchPage({ sport, teamId, onReadyChange }: TeamResearchP
           />
         </Section>
       ) : null}
-      {data.sections.map((sec) => (
+      {sections.map((sec) => (
         <Section key={sec.id} id={sec.id} title={sec.title} sub={sec.sub}>
           <ResearchSectionBody section={sec} onSeason={setSeason} />
         </Section>

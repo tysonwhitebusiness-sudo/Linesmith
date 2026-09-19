@@ -20,8 +20,8 @@
  * SOURCES. MLB from StatsAPI (its own season dates; ESPN's 2025 regular season
  * starts 03-26, after the Tokyo Series). NHL openers from the NHL stats API's
  * season game list (one call a season). Windows otherwise from ESPN's core API
- * `seasons/{y}/types` (2 regular, 3 post). Soccer has no preseason or
- * postseason in `game_result` and is not listed.
+ * `seasons/{y}/types` (2 regular, 3 post); MLS from its type 1 (see below).
+ * The EPL has no preseason or postseason in `game_result` and is not listed.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -105,6 +105,18 @@ async function main() {
         ...(teamStart && Object.keys(teamStart).length ? { teamStart } : {}),
       };
     }
+  }
+  // MLS: ESPN's type 1 is the regular season (2 is the All-Star Game), and the
+  // playoffs start the day after it ends and finish with the MLS Cup in early
+  // December. Without a window MLS playoff games read as regular season (the
+  // Galaxy's 2024 Cup run did). The EPL has no postseason and stays unlisted.
+  for (let season = 2012; season <= 2026; season++) {
+    const reg = await json(`https://sports.core.api.espn.com/v2/sports/soccer/leagues/usa.1/seasons/${season}/types/1`);
+    if (!reg?.startDate) continue;
+    // The START is 1 January, not ESPN's: its 2024 regular season begins 03-04,
+    // but the season opened 02-21, and `game_result` holds no MLS preseason
+    // (measured: the Galaxy's 2024 read 32 of 34 games). Only the end matters.
+    (out.soccer_mls ??= {})[season] = { regularStart: `${season}-01-01`, regularEnd: endDay(String(reg.endDate)), postEnd: `${season}-12-31` };
   }
   const body = Object.entries(out)
     .map(([sport, seasons]) => `  ${sport}: {\n${Object.entries(seasons).map(([y, w]) => `    ${y}: ${render(w)},`).join('\n')}\n  },`)

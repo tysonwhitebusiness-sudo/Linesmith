@@ -33,7 +33,7 @@
  * R12a — DEEP VIEWS. `view=history` and `vs` read every season held (NFL from
  * 1999) and return a SUMMARY built server-side (`teamHistoryShapes.ts`), not
  * the games: a franchise's MLB history is ~2,600 rows. Their keys are
- * `history:team:route:{sport}:{teamId}` and `history:h2h:route:{sport}:{a}:{b}`
+ * `history:team:route:v2:{sport}:{teamId}` and `history:h2h:route:v2:{sport}:{a}:{b}` (v2: R12b added MLS windows)
  * (grepped: unused). The rows are R2's merge plus R12a's rules — preseason and
  * exhibitions out, playoffs marked, relocated franchises folded in.
  */
@@ -95,7 +95,7 @@ export async function GET(request: Request) {
 
   if (teamId && vs) {
     return cachedRoute({
-      cacheKey: `history:h2h:route:${sport}:${teamId}:${vs}`,
+      cacheKey: `history:h2h:route:v2:${sport}:${teamId}:${vs}`,
       ttlMs: CACHE_TTL_MS,
       routeName: 'history/results',
       errorMessage: 'Head-to-head read failed',
@@ -105,7 +105,7 @@ export async function GET(request: Request) {
   }
   if (teamId && view === 'history') {
     return cachedRoute({
-      cacheKey: `history:team:route:${sport}:${teamId}`,
+      cacheKey: `history:team:route:v2:${sport}:${teamId}`,
       ttlMs: CACHE_TTL_MS,
       routeName: 'history/results',
       errorMessage: 'Team history read failed',
