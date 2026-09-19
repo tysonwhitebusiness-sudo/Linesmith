@@ -28,6 +28,14 @@ landing pages, which are out of scope (operator, 2026-09-19). It uses Untitled U
 touches nearly every file, so don't start it while another session is editing
 UI; see its §10 for the order against R10–R12.
 
+**Fourth thread, GAMEPLAN awaiting operator answers 2026-09-19: the Slate Sheet.**
+The Scan page becomes a sectioned Slate Sheet (Games · Movers · Props board ·
+Spotlights · Specials · Model card · Your lines). It is built on the U kit after
+U2, then old Scan is deleted. The handoff for both threads is
+`docs/design/HANDOFF-ui-and-slate-2026-09-19.md`.
+**Open finding: football and soccer props stopped arriving on 2026-09-15 at
+20:13 UTC** (nothing in `prop_odds` since); see the handoff §2b.
+
 ---
 
 ## THE ONE HABIT THAT KEEPS PAYING: audit a phase's premises before building
