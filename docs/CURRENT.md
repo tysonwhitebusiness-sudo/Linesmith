@@ -39,11 +39,19 @@ date RANGE with HTTP 400; our loaders read that as "no games", so the NFL/CFB/
 EPL/MLS jobs went "cold tier" and the archival bridge captured nothing. Fixed in
 `game_context.py`, `teamSportEspn.ts` and NBA team discovery: one date per
 request with a short per-day cache, and an unreadable day now RAISES
-(`EspnScheduleError`) so it shows as a failed run, not a quiet skip. Needs the
-worker deploy to take effect. **Owed after deploy:** football/soccer rows back
-in `prop_odds` and `odds_archive`; backfill the missed `game_result` finals
-(2026-09-13 → deploy) with `completed_espn_games`-style single-date reads.
-Closing lines for those days are lost.
+(`EspnScheduleError`) so it shows as a failed run, not a quiet skip. A second
+commit (`8dab195`) fixed four more range callers: game-history discovery (NFL/
+CFB/EPL/MLS histories had frozen), generic pick grading, NFL team discovery and
+the season backfill. **Both DEPLOYED 2026-09-19** (dep-danbq52jnfac7383ti9g,
+dep-danbvjmgekts738fhbh0); verified: CFB/EPL props, lines, closes and finals
+flowing. **Caught up from 2026-09-11:** 446 finals, 11 games of history, 80 games
+regraded. Closing lines for 09-15 → 09-19 are lost.
+
+**Slate Sheet cards are specified per sport from measured data:**
+`docs/design/slate-sheet-cards.md` (supersedes the handoff where they differ:
+golf has no model, no edge columns, "since first seen" not "since open", weather
+IS held for outdoor MLB/NFL/CFB). Next: 1:1 mockups per sport in
+`docs/design/slate/`.
 
 ---
 
