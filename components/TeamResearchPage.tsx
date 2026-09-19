@@ -6,6 +6,8 @@ import { Avatar, cx, ErrorState, Section, SectionNav, SegmentedToggle, Skeleton 
 import { asOfText, ResearchSectionBody, SourcesCard } from './PlayerResearchSections';
 import { useTeamResearch } from './useTeamResearch';
 import { useTeamHistory } from './useTeamHistory';
+import { useHeadToHead } from './useHeadToHead';
+import { compareHeadToHeadCard } from '@/lib/history/headToHeadCards';
 import { HISTORY_SPORTS, teamHistorySection } from '@/lib/history/teamHistorySection';
 import { TeamCompareSection } from './TeamCompareSection';
 import { useCompareTeams } from './usePlayerCompare';
@@ -77,6 +79,17 @@ export function TeamResearchPage({ sport, teamId, onReadyChange }: TeamResearchP
   // R12b — every completed season held, from its own day-cached read; it does
   // not follow the season switch, and idles for a sport with no history.
   const history = useTeamHistory(HISTORY_SPORTS.has(sport) ? sport : undefined, teamId);
+  // R12c — Compare's all-time head to head, from this team's side.
+  const allTimeH2h = useHeadToHead(HISTORY_SPORTS.has(sport) ? sport : undefined, String(teamId), vsTeamId);
+  const allTimeCard = useMemo(() => {
+    if (!allTimeH2h.data || !data || !vsTeamId) return null;
+    const theirs = otherResearch.data?.team;
+    return compareHeadToHeadCard({
+      history: allTimeH2h.data,
+      team: { id: String(teamId), abbr: data.team.abbr, logoUrl: data.team.logoUrl ?? null },
+      other: { id: vsTeamId, abbr: theirs?.abbr ?? 'Them', logoUrl: theirs?.logoUrl ?? null },
+    });
+  }, [allTimeH2h.data, data, vsTeamId, teamId, otherResearch.data]);
   const sections = useMemo(() => {
     if (!data) return [];
     const hist = teamHistorySection({ sport, teamAbbr: data.team.abbr, history: history.data, loading: history.loading, error: history.error });
@@ -139,6 +152,7 @@ export function TeamResearchPage({ sport, teamId, onReadyChange }: TeamResearchP
             otherLoading={otherResearch.loading}
             vsTeamId={vsTeamId}
             onTeam={setCompareTeam}
+            allTime={allTimeCard}
           />
         </Section>
       ) : null}

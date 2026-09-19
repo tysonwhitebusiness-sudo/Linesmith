@@ -320,3 +320,34 @@ WPG opens with the Thrashers' 2007-08; OKC with Seattle's 2007-08; UTA two
 seasons; ALA 146-16 with 12-8 in bowls; ARS W-D-L and points, no postseason
 column; LA Galaxy 2024 19-7-8, 64 points, postseason 5-0 (the official
 record). 493/493 tests.
+
+## R12c — DONE 2026-09-19, awaiting sign-off
+
+**Deep head to head, on the game page and in team Compare.**
+
+- **Game page:** the matchup's "Head to head" card keeps its own list (this
+  season and last, from the league schedule) and gains every earlier meeting
+  from the archive behind an "All N meetings" switch, with the all-time
+  record, the home split before last season, and the recent record in its
+  line. **No game is counted twice:** the archive adds only meetings before
+  the start of last season (the seam), so the two lists never overlap and the
+  lagging current season is never read from the archive. Archive rows are not
+  linked (no game page id) and a postseason meeting is marked.
+- **Team Compare:** "Head to head, all time" below the comparison — the
+  record from this team's side, home and away, postseason, last 10 meetings
+  with an "All N" switch.
+- Built as pure functions over the shared table card
+  (`lib/history/headToHeadCards.ts`, tested), one hook (`useHeadToHead`), a
+  few lines in each page; no sport branch.
+
+**Found in the render and fixed:** once a game has started its matchup
+section is re-keyed `pre-matchup` ("Matchup · at the start"); the first cut
+matched the section id `matchup` and missed every final. The card is now
+found by its own key, `h2h`, which only the shared matchup builder uses (tennis
+has one too, but the hook never runs for tennis).
+
+**Verified on prod, fresh tabs:** PHI at DAL 2025-11-23 — "PHI 29-25 against
+DAL since 1999", 54 meetings; Compare PHI v DAL — 29-26 over 55, 16-11 home,
+13-15 away, postseason 0-1 (the 55th is that game itself: consistent). COL v
+CGY 39-37 over 76 since 2007; CIN v LAD 40-60 over 100 since 2010. 497/497
+tests.

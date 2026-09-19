@@ -3,6 +3,8 @@
 import { useMemo } from 'react';
 import { Avatar, Card, DataTable, EmptyState, SelectBox, Skeleton, type Column } from './ui';
 import { CompareView } from './CompareView';
+import { ResearchCardView } from './PlayerResearchSections';
+import type { ResearchCard } from '@/lib/sports/shared/playerResearchShapes';
 import { formatResearchValue } from '@/lib/sports/shared/playerResearchShapes';
 import type { TeamGame, TeamResearchPayload, TeamSeasonData, TeamStatValue } from '@/lib/sports/shared/teamResearchShapes';
 
@@ -36,6 +38,8 @@ export interface TeamCompareSectionProps {
   other: TeamResearchPayload | null;
   otherLoading: boolean;
   vsTeamId: string | null;
+  /** R12c: every meeting in the results archive, built by the page; unset hides it. */
+  allTime?: ResearchCard | null;
   onTeam: (teamId: string | null) => void;
 }
 
@@ -57,7 +61,7 @@ function leagueTeams(data: TeamSeasonData | null): Array<{ id: string; name: str
   return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function TeamCompareSection({ payload, allTeams, season, other, otherLoading, vsTeamId, onTeam }: TeamCompareSectionProps) {
+export function TeamCompareSection({ payload, allTeams, season, other, otherLoading, vsTeamId, onTeam, allTime }: TeamCompareSectionProps) {
   const mineSeason = useMemo(() => seasonOf(payload, season), [payload, season]);
   const theirSeason = useMemo(() => seasonOf(other, season), [other, season]);
   // The rollup's list covers the whole sport; the standings only cover this
@@ -183,6 +187,7 @@ export function TeamCompareSection({ payload, allTeams, season, other, otherLoad
           </div>
         </div>
       )}
+      {vsTeamId && allTime ? <ResearchCardView card={allTime} /> : null}
     </div>
   );
 }

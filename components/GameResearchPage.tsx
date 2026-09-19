@@ -6,6 +6,9 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Avatar, Chip, ErrorState, Section, SectionNav, SegmentedToggle, Skeleton, cx } from './ui';
 import { asOfText, ResearchSectionBody, SourcesCard } from './PlayerResearchSections';
 import { useGameResearch } from './useGameResearch';
+import { useHeadToHead } from './useHeadToHead';
+import { HISTORY_SPORTS } from '@/lib/history/teamHistorySection';
+import { headToHeadSeam, withDeepHeadToHead } from '@/lib/history/headToHeadCards';
 import { useStickyHeaderHeight } from './useStickyHeaderHeight';
 import type { GameResearchData, GameResearchPayload, GameSide, GameState } from '@/lib/sports/shared/gameResearchShapes';
 import { toGameResearchData as toMlbGameResearchData } from '@/lib/sports/mlb/adapters/mlbGameResearch';
@@ -61,7 +64,16 @@ export function GameResearchPage({ sport, gameId, onReadyChange }: GameResearchP
   const requested = search?.get('state') ?? null;
   const stickyTop = useStickyHeaderHeight(true);
 
-  const data = useMemo(() => (research.data ? gameResearchFor(sport, research.data, requested) : null), [sport, research.data, requested]);
+  // R12c — every earlier meeting of the two teams, from the away side (the card's
+  // side). Idle for a sport with no history (tennis) and until the payload names both.
+  const deep = useHeadToHead(HISTORY_SPORTS.has(sport) ? sport : undefined, research.data?.away.id, research.data?.home.id);
+  const data = useMemo(() => {
+    const built = research.data ? gameResearchFor(sport, research.data, requested) : null;
+    if (!built || !deep.data || !research.data) return built;
+    const side = (s: typeof built.hero.away) => ({ id: s.id, abbr: s.abbr, logoUrl: s.logoUrl });
+    const seam = headToHeadSeam(sport, research.data.start);
+    return { ...built, sections: withDeepHeadToHead(built.sections, { history: deep.data, away: side(built.hero.away), home: side(built.hero.home), seam }) };
+  }, [sport, research.data, requested, deep.data]);
   const ready = !research.loading || research.data != null;
   useEffect(() => onReadyChange?.(ready), [ready, onReadyChange]);
   const navItems = useMemo(() => [...(data?.sections ?? []).map((s) => ({ id: s.id, label: s.navLabel })), { id: 'sources', label: 'Sources' }], [data]);
