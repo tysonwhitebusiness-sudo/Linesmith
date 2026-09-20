@@ -6,6 +6,7 @@ import type { Sport, SoccerLeague, TennisTour } from '@/lib/core/types';
 import { SPORTS, SPORT_LABEL, SOCCER_LEAGUES, SOCCER_LEAGUE_LABEL, TENNIS_TOURS, TENNIS_TOUR_LABEL } from '@/lib/core/types';
 import { BrandedLoader } from './BrandedLoader';
 import { AccountMenu } from './AccountMenu';
+import { Button, IconButton, cx } from './ui';
 
 /**
  * The application chrome, one row tall.
@@ -153,80 +154,84 @@ export function TopBar({
                 (t !== 'Teams' || sport === 'mlb' || sport === 'nfl' || sport === 'soccer' || sport === 'cfb' || sport === 'nba' || sport === 'nhl') &&
                 (t !== 'Schedule' || sport === 'golf' || sport === 'tennis'),
             ).map((t) => (
-              <button
+              // The shell's nav, not a content tab strip: the underline is its
+              // own, and it keeps `aria-current="page"` rather than
+              // `aria-selected`, because these navigate.
+              <Button
                 key={t}
-                type="button"
-                onClick={() => {
+                variant="tertiary"
+                size="sm"
+                onPress={() => {
                   if (t === 'Teams') navigate(t, sport === 'soccer' ? `/soccer/${league}/teams` : `/${sport}/teams`);
                   else if (t === 'Schedule') navigate(t, sport === 'tennis' ? `/tennis/${league}/schedule` : '/golf/schedule');
                   else onTabChange(t);
                 }}
                 aria-current={t === tab ? 'page' : undefined}
-                className={`relative flex items-center gap-1.5 whitespace-nowrap px-2.5 py-3 text-[13px] transition-colors ${
+                className={cx(
+                  'relative h-auto rounded-none px-2.5 py-3 text-body-sm font-normal hover:bg-transparent',
                   t === tab
                     ? 'font-semibold text-ink after:absolute after:inset-x-2.5 after:bottom-2 after:h-[2px] after:rounded-full after:bg-masters'
-                    : 'text-ink-muted hover:text-ink'
-                }`}
+                    : 'text-ink-muted hover:text-ink',
+                )}
               >
                 {t}
                 {(isPending && pendingTarget === t) || pendingTab === t ? <BrandedLoader size="inline" label={`Loading ${t}`} /> : null}
-              </button>
+              </Button>
             ))
           : null}
       </nav>
 
       {/* Utilities */}
       <div className="flex shrink-0 items-center gap-1">
-        <button
-          type="button"
-          onClick={() => router.push('/diagnostics')}
+        <IconButton
+          size="sm"
+          href="/diagnostics"
           aria-label="Diagnostics"
-          title="Diagnostics — odds provider status, budgets, unresolved rows"
-          className="hidden rounded-md p-1.5 text-ink-muted transition-colors hover:bg-ink/5 hover:text-ink sm:block"
-        >
-          <svg viewBox="0 0 16 16" width={15} height={15} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
-            <path d="M8 1.5v3M8 11.5v3M2.6 4.6l2.1 2.1M11.3 9.3l2.1 2.1M1.5 8h3M11.5 8h3M2.6 11.4l2.1-2.1M11.3 6.7l2.1-2.1" strokeLinecap="round" />
-            <circle cx="8" cy="8" r="2.2" />
-          </svg>
-        </button>
+          className="hidden sm:inline-flex"
+          icon={
+            <svg viewBox="0 0 16 16" width={15} height={15} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+              <path d="M8 1.5v3M8 11.5v3M2.6 4.6l2.1 2.1M11.3 9.3l2.1 2.1M1.5 8h3M11.5 8h3M2.6 11.4l2.1-2.1M11.3 6.7l2.1-2.1" strokeLinecap="round" />
+              <circle cx="8" cy="8" r="2.2" />
+            </svg>
+          }
+        />
 
-        <button
-          type="button"
-          onClick={() => router.push('/bets')}
+        <IconButton
+          size="sm"
+          href="/bets"
           aria-label="Live Bets"
-          title="Live Bets — every bet you've submitted, with live progress"
-          className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-ink/5 hover:text-ink"
-        >
-          <svg viewBox="0 0 16 16" width={15} height={15} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
-            <path d="M2 5.5a1.5 1.5 0 0 1 1.5-1.5h9A1.5 1.5 0 0 1 14 5.5v1a1 1 0 0 0 0 2v1a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 9.5v-1a1 1 0 0 0 0-2v-1Z" strokeLinejoin="round" />
-            <path d="M6 4v8" strokeDasharray="1.6 1.6" strokeLinecap="round" />
-          </svg>
-        </button>
+          icon={
+            <svg viewBox="0 0 16 16" width={15} height={15} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+              <path d="M2 5.5a1.5 1.5 0 0 1 1.5-1.5h9A1.5 1.5 0 0 1 14 5.5v1a1 1 0 0 0 0 2v1a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 9.5v-1a1 1 0 0 0 0-2v-1Z" strokeLinejoin="round" />
+              <path d="M6 4v8" strokeDasharray="1.6 1.6" strokeLinecap="round" />
+            </svg>
+          }
+        />
 
         {onOpenSearch ? (
-          <button
-            type="button"
-            onClick={onOpenSearch}
+          <IconButton
+            size="sm"
+            onPress={onOpenSearch}
             aria-label="Search players"
-            className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-ink/5 hover:text-ink"
-          >
-            <svg viewBox="0 0 16 16" width={15} height={15} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
-              <circle cx="7" cy="7" r="4.5" />
-              <path d="M10.5 10.5 14 14" strokeLinecap="round" />
-            </svg>
-          </button>
+            icon={
+              <svg viewBox="0 0 16 16" width={15} height={15} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+                <circle cx="7" cy="7" r="4.5" />
+                <path d="M10.5 10.5 14 14" strokeLinecap="round" />
+              </svg>
+            }
+          />
         ) : null}
 
-        <button
-          type="button"
-          onClick={onRefresh}
-          // The timestamp is the label: a bare refresh icon says an update is
-          // possible, this says whether one is needed.
-          // Hidden below `sm` for width: `useSnapshot` already re-polls on an
-          // interval and on tab focus, so a phone loses no data by it.
-          title={lastFetched ? `Last updated ${lastFetched.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : 'Refresh'}
+        {/* The timestamp is the label: a bare refresh icon says an update is
+            possible, this says whether one is needed. Hidden below `sm` for
+            width — `useSnapshot` already re-polls on an interval and on tab
+            focus, so a phone loses no data by it. */}
+        <Button
+          variant="tertiary"
+          size="sm"
+          onPress={onRefresh}
           aria-label="Refresh data"
-          className="hidden items-center gap-1 rounded-md px-1.5 py-1.5 text-[11px] text-ink-muted transition-colors hover:bg-ink/5 hover:text-ink-muted sm:flex"
+          className="hidden gap-1 px-1.5 text-overline font-normal text-ink-muted hover:text-ink-muted sm:inline-flex"
         >
           <svg
             viewBox="0 0 16 16"
@@ -248,16 +253,12 @@ export function TopBar({
                 ? lastFetched.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
                 : 'Refresh'}
           </span>
-        </button>
+        </Button>
 
-        <button
-          type="button"
-          onClick={onOpenSlip}
-          className="lb-btn-primary flex items-center gap-1.5 rounded-md bg-masters px-2.5 py-1.5 text-[12px] font-semibold text-white shadow-card"
-        >
+        <Button variant="primary" size="sm" onPress={onOpenSlip}>
           Slip
-          <span className="rounded bg-white/20 px-1 tabular-nums">{slipCount}</span>
-        </button>
+          <span className="rounded-xs bg-white/20 px-1 tabular-nums">{slipCount}</span>
+        </Button>
 
         <AccountMenu />
       </div>

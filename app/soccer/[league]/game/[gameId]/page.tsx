@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { BackLink } from '@/components/ui';
 import { useParams, useRouter } from 'next/navigation';
 import type { PickCandidate, SoccerLeague } from '@/lib/core/types';
 import { SOCCER_LEAGUES } from '@/lib/core/types';
@@ -49,9 +50,7 @@ function SoccerGamePage({ league, gameId }: { league: SoccerLeague; gameId: stri
           league={league}
           onLeagueChange={(next) => router.push(`/soccer/${next}`)}
           leading={
-            <button type="button" onClick={() => router.push(`/soccer/${league}`)} className="whitespace-nowrap px-2 py-3 text-[13px] font-medium text-masters">
-              ← Scan
-            </button>
+            <BackLink href={`/soccer/${league}`} label="Scan" />
           }
           slipCount={slip.picks.length}
           onOpenSlip={() => setSlipOpen(true)}

@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui';
 
 /**
  * The app's route-level error boundary.
@@ -42,20 +43,12 @@ export default function RouteError({ error, reset }: { error: Error & { digest?:
         </p>
 
         <div className="mt-5 flex items-center justify-center gap-2">
-          <button
-            type="button"
-            onClick={reset}
-            className="lb-btn-primary rounded-full bg-masters px-4 py-2 text-body font-medium text-white"
-          >
+          <Button variant="primary" onPress={reset}>
             Try again
-          </button>
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="rounded-full border border-line px-4 py-2 text-body font-medium text-ink-secondary transition-colors hover:bg-accent-soft"
-          >
+          </Button>
+          <Button variant="secondary" onPress={() => router.back()}>
             Go back
-          </button>
+          </Button>
         </div>
 
         <details className="mt-5 text-left">

@@ -459,7 +459,7 @@ history. One phase per sport, each entering the register as `baseline`.
 | 4 | M3 `slate_rankings` job | M | M0 | no | **done** | **DONE 2026-09-20** (`737620b`, deployed; 30 rows written 07:45) — first receipts 2026-09-21 |
 | 4b | M3b Elo for soccer, tennis, golf | M | M1 | no | **done** | **DONE 2026-09-20** (`c5baee4`, deployed) — every sport predicts a game |
 | 5 | U0 Tailwind 4 + kit base | U | R10–R12 sign-off | all (mechanical) | no | **DONE 2026-09-20** — config deleted, theme in `@theme`, `cx` merges, `/kit` live; verified by emitted-CSS diff, not screenshots |
-| 6 | U1 Buttons | U | U0 | yes | no | not started |
+| 6 | U1 Buttons | U | U0 | yes | no | **DONE 2026-09-20** — Button/IconButton/CloseButton on react-aria; 73 of 96 raw buttons moved; `.lb-btn-primary` deleted |
 | 7 | U2 Hybrid table | U | U1 | yes | no | not started |
 | 8 | U5 Borrowed pieces | U | U2 | yes | no | not started |
 | 9 | S1 Shell + Games + Props | S | U2, U5, M1 | yes | no | not started |

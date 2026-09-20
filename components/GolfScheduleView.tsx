@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { Button, cx } from './ui';
 import Link from 'next/link';
 import type { ScheduleEvent } from '@/lib/sports/golf/schedule';
 import type { PickCandidate, SportSnapshot, SubjectSummary, WeatherContext, WeatherForecastHour } from '@/lib/core/types';
@@ -231,13 +232,14 @@ function HeroSpotlightCarousel({ cards }: { cards: SpotlightCard[] }) {
       {cards.length > 1 ? (
         <div className="flex justify-center gap-1 pb-1.5">
           {cards.map((c, i) => (
-            <button
+            <Button
               key={c.key}
-              type="button"
-              onClick={() => setIndex(i)}
+              variant="tertiary"
+              size="sm"
+              onPress={() => setIndex(i)}
               aria-label={`Show ${c.label}`}
               aria-current={i === safeIndex}
-              className={`h-1.5 w-1.5 rounded-full transition-colors ${i === safeIndex ? 'bg-masters' : 'bg-ink/15'}`}
+              className={cx('h-1.5 w-1.5 min-w-0 rounded-full px-0', i === safeIndex ? 'bg-masters hover:bg-masters' : 'bg-ink/15 hover:bg-ink/15')}
             />
           ))}
         </div>
@@ -374,9 +376,9 @@ function LiveLeaderboardCard({
       <div className="flex items-center justify-between gap-2 bg-accent-soft px-3 py-1.5">
         <h2 className="text-[12px] font-semibold text-masters">Leaderboard</h2>
         {ordered.length > 15 ? (
-          <button type="button" onClick={() => setShowAll((v) => !v)} className="text-[11px] font-medium text-masters hover:underline">
+          <Button variant="link" size="sm" onPress={() => setShowAll((v) => !v)} className="text-overline">
             {showAll ? 'Show top 15' : `Show all ${ordered.length}`}
-          </button>
+          </Button>
         ) : null}
       </div>
       <div className="lb-scroll-x overflow-auto">
@@ -536,11 +538,12 @@ function AllMatchupsCard({
             const isOpen = expanded === g.key;
             return (
               <div key={g.key}>
-                <button
-                  type="button"
-                  onClick={() => setExpanded(isOpen ? null : g.key)}
+                <Button
+                  variant="tertiary"
+                  size="sm"
+                  onPress={() => setExpanded(isOpen ? null : g.key)}
                   aria-expanded={isOpen}
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-surface-subtle"
+                  className="h-auto w-full justify-start gap-3 rounded-none px-3 py-2 text-left font-normal hover:bg-surface-subtle"
                 >
                   <span className="flex shrink-0 -space-x-2">
                     {g.members.map((m) => (
@@ -561,7 +564,7 @@ function AllMatchupsCard({
                     {g.thru != null && g.thru > 0 ? `thru ${g.thru}` : (formatTeeTime(g.teeTime) ?? '–')}
                   </span>
                   <span className={`shrink-0 text-ink-muted transition-transform ${isOpen ? 'rotate-180' : ''}`}>▾</span>
-                </button>
+                </Button>
 
                 {isOpen ? (
                   <div className="border-t border-line-soft bg-surface-subtle p-2.5">
@@ -902,9 +905,9 @@ function CourseInsightsCard({
         <div>
           <div className="mb-1.5 flex items-center justify-between gap-2">
             <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Scoring distribution ({distribution.total} holes played)</span>
-            <button type="button" onClick={() => setShowByHole((v) => !v)} className="shrink-0 text-[10px] font-medium text-masters hover:underline">
+            <Button variant="link" size="sm" onPress={() => setShowByHole((v) => !v)} className="text-overline">
               {showByHole ? 'Hide by hole' : 'By hole'}
-            </button>
+            </Button>
           </div>
           <div className="flex h-3 w-full overflow-hidden rounded-full bg-ink/5">
             <div className="bg-good" style={{ width: `${distribution.birdiePct}%` }} title={`Birdie or better: ${distribution.birdiePct.toFixed(1)}%`} />
@@ -1105,14 +1108,16 @@ function WeatherCard({ weather }: { weather: WeatherContext }) {
             {forecast.map((f, i) => {
               const isSelected = selected === i;
               return (
-                <button
+                <Button
                   key={f.time}
-                  type="button"
-                  onClick={() => setSelected(isSelected ? null : i)}
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => setSelected(isSelected ? null : i)}
                   aria-pressed={isSelected}
-                  className={`flex min-w-[62px] shrink-0 flex-col items-center gap-0.5 rounded-lg border px-2 py-1.5 text-center transition-colors ${
-                    isSelected ? 'border-masters bg-accent-soft' : 'border-line hover:border-masters/30'
-                  }`}
+                  className={cx(
+                    'h-auto min-w-[62px] flex-col gap-0.5 border px-2 py-1.5 text-center font-normal ring-0',
+                    isSelected ? 'border-masters bg-accent-soft hover:bg-accent-soft' : 'border-line hover:border-masters/30 hover:bg-card',
+                  )}
                 >
                   <span className="text-[9px] font-semibold text-ink-muted">
                     {i === 0 ? 'Now' : new Date(f.time).toLocaleTimeString('en-US', { hour: 'numeric' })}
@@ -1121,7 +1126,7 @@ function WeatherCard({ weather }: { weather: WeatherContext }) {
                   <span className="text-[12px] font-bold tabular-nums text-ink">{f.windMph}</span>
                   <span className="text-[8px] text-ink-muted">{f.windDir} mph</span>
                   {f.tempF != null ? <span className="text-[10px] text-ink-muted">{f.tempF}°</span> : null}
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -1167,17 +1172,16 @@ function TopStandingsCard({ subjects }: { subjects: SubjectSummary[] }) {
         <h2 className="text-[12px] font-semibold text-masters">Top {view}</h2>
         <span className="inline-flex items-center gap-0.5 rounded-lg bg-ink/[0.05] p-0.5">
           {([5, 10] as const).map((n) => (
-            <button
+            <Button
               key={n}
-              type="button"
-              onClick={() => setView(n)}
+              size="sm"
+              variant="tertiary"
+              onPress={() => setView(n)}
               aria-pressed={view === n}
-              className={`rounded-md px-2 py-0.5 text-[10.5px] font-semibold transition-colors ${
-                view === n ? 'bg-card text-ink shadow-card' : 'text-ink-muted'
-              }`}
+              className={cx('h-auto rounded-md px-2 py-0.5 text-overline', view === n ? 'bg-card text-ink shadow-card hover:bg-card' : 'text-ink-muted')}
             >
               Top {n}
-            </button>
+            </Button>
           ))}
         </span>
       </div>
@@ -1253,14 +1257,16 @@ function OurLinesCard({
                 </div>
               </div>
               {onAdd ? (
-                <button
-                  type="button"
-                  onClick={() => onAdd(c)}
-                  disabled={added}
-                  className={`shrink-0 rounded px-2 py-1 text-[11px] font-semibold ${added ? 'bg-accent-soft text-masters' : 'bg-masters text-white'}`}
+                <Button
+                  size="sm"
+                  variant={added ? 'secondary' : 'primary'}
+                  onPress={() => onAdd(c)}
+                  isDisabled={added}
+                  aria-label={added ? 'On slip' : 'Add to slip'}
+                  className="h-auto px-2 py-1 text-overline"
                 >
                   {added ? '✓' : '+'}
-                </button>
+                </Button>
               ) : null}
             </li>
           );

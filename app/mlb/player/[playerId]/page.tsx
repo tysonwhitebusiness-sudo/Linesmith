@@ -8,7 +8,7 @@ import { useGameLines } from '@/components/useGameLines';
 import { TopBar } from '@/components/TopBar';
 import { GamesStrip } from '@/components/GamesStrip';
 import { PlayerDetail } from '@/components/PlayerDetail';
-import { ErrorState } from '@/components/ui';
+import { Button, ErrorState } from '@/components/ui';
 import { sameSubject } from '@/lib/sports/shared/playerResearchShapes';
 import SlipModal from '@/components/SlipModal';
 import type { SlateGame } from '@/lib/odds/matching';
@@ -67,13 +67,9 @@ export default function PlayerDetailPage() {
         <TopBar
           sport={sport}
           leading={
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="whitespace-nowrap px-2 py-3 text-[13px] font-medium text-masters"
-            >
-              ← Back
-            </button>
+            <Button variant="link" size="sm" onPress={() => router.back()} className="min-h-[44px] px-2">
+              <span aria-hidden>←</span> Back
+            </Button>
           }
           slipCount={slip.picks.length}
           onOpenSlip={() => setSlipOpen(true)}

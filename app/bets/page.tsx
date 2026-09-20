@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { BackLink, Button } from '@/components/ui';
 import { useRouter } from 'next/navigation';
 import { TopBar } from '@/components/TopBar';
 import { SubjectAvatar, TeamLogo, mlbHeadshotUrl, mlbTeamLogoUrl } from '@/components/SubjectAvatar';
@@ -146,13 +147,7 @@ export default function LiveBetsPage() {
         <TopBar
           sport="mlb"
           leading={
-            <button
-              type="button"
-              onClick={() => router.push('/mlb')}
-              className="whitespace-nowrap px-2 py-3 text-[13px] font-medium text-masters"
-            >
-              ← Scan
-            </button>
+            <BackLink href="/mlb" label="Scan" />
           }
           slipCount={0}
           onOpenSlip={() => {}}
@@ -166,16 +161,16 @@ export default function LiveBetsPage() {
           <h1 className="text-[17px] font-bold">Live Bets</h1>
           <div className="flex gap-1">
             {FILTERS.map((f) => (
-              <button
+              <Button
                 key={f}
-                type="button"
-                onClick={() => setFilter(f)}
-                className={`rounded-full px-2.5 py-1 text-[12px] font-medium ${
-                  f === filter ? 'bg-masters text-white' : 'bg-ink/5 text-ink-muted'
-                }`}
+                size="sm"
+                variant={f === filter ? 'primary' : 'tertiary'}
+                onPress={() => setFilter(f)}
+                aria-pressed={f === filter}
+                className={f === filter ? 'rounded-full' : 'rounded-full bg-ink/5'}
               >
                 {f}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -196,10 +191,10 @@ export default function LiveBetsPage() {
           <ul className="space-y-2">
             {filtered.map((bet) => (
               <li key={bet.id}>
-                <button
-                  type="button"
-                  onClick={() => router.push(`/bet/${bet.id}`)}
-                  className="lb-card-interactive flex w-full items-center gap-3 p-3 text-left"
+                <Button
+                  variant="tertiary"
+                  href={`/bet/${bet.id}`}
+                  className="lb-card-interactive h-auto w-full justify-start gap-3 rounded-none p-3 text-left hover:bg-transparent"
                 >
                   <SubjectAvatar
                     name={bet.subjectName}
@@ -230,7 +225,7 @@ export default function LiveBetsPage() {
                     </Chip>
                     <LiveProgress bet={bet} />
                   </div>
-                </button>
+                </Button>
               </li>
             ))}
           </ul>

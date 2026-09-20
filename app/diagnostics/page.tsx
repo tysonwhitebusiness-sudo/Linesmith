@@ -6,6 +6,7 @@ import type { ModelStatusRow } from '@/lib/models/modelStatus';
 import { SubjectAvatar, TeamLogo, mlbHeadshotUrl, mlbTeamLogoUrl } from '@/components/SubjectAvatar';
 import { ConfidenceChip } from '@/components/ConfidenceChip';
 import { LockIcon, ClockIcon } from '@/components/icons';
+import { Button } from '@/components/ui';
 import { formatAmerican, americanToDecimal } from '@/lib/odds/display';
 
 interface OddsApiLine {
@@ -1517,14 +1518,9 @@ export default function DiagnosticsPage() {
               API health, scraper status, and line data
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleForceRefresh}
-            disabled={forcing}
-            className="lb-btn-primary rounded-xl bg-masters px-4 py-2 text-sm font-semibold text-white shadow-card disabled:opacity-50"
-          >
+          <Button variant="primary" loading={forcing} onPress={handleForceRefresh}>
             {forcing ? 'Refreshing…' : 'Rescan now'}
-          </button>
+          </Button>
         </div>
         <nav className="mt-2 flex gap-1 overflow-x-auto text-[12px]">
           {ADMIN_GROUPS.map((g) => (
@@ -2999,16 +2995,18 @@ export default function DiagnosticsPage() {
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-line p-3">
               {nhlNbaPromptCopied ? <span className="text-[12px] text-good">Copied</span> : null}
-              <button
-                type="button"
-                onClick={() => copyResumePromptToClipboard(NHL_NBA_RESUME_PROMPT, () => {
-                  setNhlNbaPromptCopied(true);
-                  setTimeout(() => setNhlNbaPromptCopied(false), 2000);
-                })}
-                className="lb-btn-primary rounded-md bg-masters px-3 py-1.5 text-[12px] font-semibold text-white"
+              <Button
+                variant="primary"
+                size="sm"
+                onPress={() =>
+                  copyResumePromptToClipboard(NHL_NBA_RESUME_PROMPT, () => {
+                    setNhlNbaPromptCopied(true);
+                    setTimeout(() => setNhlNbaPromptCopied(false), 2000);
+                  })
+                }
               >
                 Copy prompt
-              </button>
+              </Button>
             </div>
           </div>
         </div>

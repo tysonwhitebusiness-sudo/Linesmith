@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Button } from './ui';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
@@ -42,45 +43,45 @@ export function AccountMenu() {
 
   if (email === null) {
     return (
-      <button
-        type="button"
-        onClick={() => router.push('/login')}
-        className="rounded-md px-2 py-1.5 text-[12px] font-medium text-ink-muted transition-colors hover:bg-ink/5 hover:text-ink"
-      >
+      <Button variant="tertiary" size="sm" href="/login">
         Sign in
-      </button>
+      </Button>
     );
   }
 
   return (
     <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
+      {/* U4 moves this whole menu onto `Dropdown`; the trigger is a Button now
+          so it presses, focuses and disables like every other one. */}
+      <Button
+        variant="tertiary"
+        size="sm"
+        onPress={() => setOpen((v) => !v)}
         aria-label="Account"
-        title={email}
-        className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-soft text-[12px] font-semibold text-masters transition-colors hover:bg-accent-soft/70"
+        aria-expanded={open}
+        className="h-7 w-7 rounded-full bg-accent-soft px-0 text-label font-semibold text-masters hover:bg-accent-soft/70"
       >
         {email.charAt(0).toUpperCase()}
-      </button>
+      </Button>
       {open ? (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="lb-card absolute right-0 z-20 mt-1.5 w-52 p-1.5">
             <p className="truncate px-2 py-1.5 text-[12px] text-ink-muted">{email}</p>
-            <button
-              type="button"
-              onClick={async () => {
+            <Button
+              variant="tertiary"
+              size="sm"
+              onPress={async () => {
                 const supabase = createClient();
                 await supabase.auth.signOut();
                 setOpen(false);
                 router.push('/');
                 router.refresh();
               }}
-              className="w-full rounded-md px-2 py-1.5 text-left text-[13px] text-ink transition-colors hover:bg-ink/5"
+              className="w-full justify-start text-ink"
             >
               Sign out
-            </button>
+            </Button>
           </div>
         </>
       ) : null}

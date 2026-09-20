@@ -1,6 +1,7 @@
 'use client';
 
 import type { SlateGame } from '@/lib/odds/matching';
+import { Button, cx } from './ui';
 import { liveFor } from '@/lib/odds/matching';
 
 /**
@@ -59,18 +60,15 @@ export function GamesStrip({ games, selectedGamePk, onSelectGame, onNavigateToGa
 
   return (
     <div className="lb-scroll-x flex gap-1.5 border-t border-line bg-ink/[0.02] px-3 py-1.5">
-      <button
-        type="button"
-        onClick={() => onSelectGame(null)}
+      <Button
+        size="sm"
+        variant={selectedGamePk == null ? 'primary' : 'secondary'}
+        onPress={() => onSelectGame(null)}
         aria-pressed={selectedGamePk == null}
-        className={`flex shrink-0 items-center rounded-lg px-3 text-[11px] font-semibold transition-colors ${
-          selectedGamePk == null
-            ? 'bg-masters text-white shadow-card'
-            : 'border border-line bg-card text-ink-muted hover:border-masters/30'
-        }`}
+        className="h-auto self-stretch text-overline"
       >
         All
-      </button>
+      </Button>
 
       {ordered.map((game) => {
         const gamePk = Number(game.gamePk);
@@ -84,16 +82,18 @@ export function GamesStrip({ games, selectedGamePk, onSelectGame, onNavigateToGa
         const score = live.liveScore ? `${live.liveScore.away}–${live.liveScore.home}` : null;
 
         return (
-          <button
+          <Button
             key={gamePk}
-            type="button"
-            onClick={() => (onNavigateToGame ? onNavigateToGame(gamePk) : onSelectGame(gamePk))}
+            size="sm"
+            variant="secondary"
+            onPress={() => (onNavigateToGame ? onNavigateToGame(gamePk) : onSelectGame(gamePk))}
             aria-pressed={selected}
-            className={`flex w-[104px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border px-1.5 py-1 leading-tight transition-colors ${
+            className={cx(
+              'h-auto w-[104px] flex-col justify-center gap-0.5 px-1.5 py-1 font-normal leading-tight ring-0',
               selected
-                ? 'border-masters bg-accent-soft text-masters'
-                : 'border-line bg-card text-ink-muted hover:border-masters/30'
-            }`}
+                ? 'border border-masters bg-accent-soft text-masters hover:bg-accent-soft'
+                : 'border border-line text-ink-muted hover:border-masters/30 hover:bg-card',
+            )}
           >
             <span className="flex items-center gap-1 text-[11px] font-semibold">
               {logoFor ? (
@@ -126,7 +126,7 @@ export function GamesStrip({ games, selectedGamePk, onSelectGame, onNavigateToGa
                 <span className="text-ink-muted">{formatGameTime(game.firstPitch)}</span>
               )}
             </span>
-          </button>
+          </Button>
         );
       })}
     </div>

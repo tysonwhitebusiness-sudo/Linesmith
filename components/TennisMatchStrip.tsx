@@ -1,6 +1,7 @@
 'use client';
 
 import type { DrawMatch } from '@/lib/sports/tennis/schedule';
+import { Button } from './ui';
 import { SubjectAvatar } from './SubjectAvatar';
 
 /**
@@ -33,11 +34,12 @@ export function TennisMatchStrip({ matches, onSelectMatch }: { matches: DrawMatc
       {relevant.slice(0, 20).map((m) => {
         const scoreLine = m.state === 'in' ? m.home.sets.map((s) => s.value).join('-') + ' / ' + m.away.sets.map((s) => s.value).join('-') : null;
         return (
-          <button
+          <Button
             key={m.matchId}
-            type="button"
-            onClick={() => onSelectMatch?.(m.matchId)}
-            className="flex w-[190px] shrink-0 flex-col justify-center gap-1 rounded-xl border border-line bg-card px-2.5 py-1.5 text-left shadow-card transition-all duration-150 hover:-translate-y-0.5 hover:border-masters/30 hover:shadow-card-hover"
+            variant="secondary"
+            size="sm"
+            onPress={() => onSelectMatch?.(m.matchId)}
+            className="h-auto w-[190px] flex-col justify-center gap-1 rounded-card border border-line px-2.5 py-1.5 text-left font-normal shadow-card ring-0 hover:border-masters/30 hover:bg-card hover:shadow-card-hover"
           >
             <span className="flex items-center justify-between gap-1">
               {m.state === 'in' ? <span className="lb-chip bg-good/10 text-good">Live</span> : <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{m.round}</span>}
@@ -51,7 +53,7 @@ export function TennisMatchStrip({ matches, onSelectMatch }: { matches: DrawMatc
               <SubjectAvatar name={m.away.name} headshotUrl={undefined} fallbackUrl={m.away.flagUrl ?? undefined} size={16} />
               <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-ink">{m.away.name}</span>
             </span>
-          </button>
+          </Button>
         );
       })}
     </div>

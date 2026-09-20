@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Avatar, Card, Chip, DataTable, Skeleton, cx } from './ui';
+import { Avatar, Button, Card, Chip, DataTable, Skeleton, cx } from './ui';
 import { BookLogo } from './BookLogo';
 import { fmt } from './charts/tokens';
 import type { GameStateSlot } from '@/lib/sports/mlb/adapters/playerDetailAdapter';
@@ -140,9 +140,9 @@ export function GameStateCard({ state, subjectName }: { state: GameStateSlot; su
               </ul>
             ) : null}
             {plays.length > 2 ? (
-              <button type="button" onClick={() => setAllPlays((v) => !v)} className="mt-1 text-label font-semibold text-ink-secondary underline">
+              <Button variant="link" size="sm" onPress={() => setAllPlays((v) => !v)} className="mt-1 text-label text-ink-secondary">
                 {allPlays ? 'Show fewer' : `Show all ${plays.length}`}
-              </button>
+              </Button>
             ) : null}
           </>
         ) : (

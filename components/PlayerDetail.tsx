@@ -2,7 +2,7 @@
 
 import { useStickyHeaderHeight } from './useStickyHeaderHeight';
 import { useEffect, useMemo, useState } from 'react';
-import { Card, Chip, EmptyState, Section, SectionNav, SkeletonLines, StatusPill, Tabs } from './ui';
+import { Button, Card, Chip, EmptyState, Section, SectionNav, SkeletonLines, StatusPill, Tabs } from './ui';
 import { GameStateCard } from './GameStateCard';
 import { PlayerOddsSection } from './PlayerOddsSection';
 import { playerPriceRows } from '@/lib/odds/props/playerPrices';
@@ -1808,25 +1808,27 @@ export function PlayerDetail({
           <GolfCategoryPicker dimension={active.dimension} value={effectiveGolfCategory} onChange={setSelectedGolfCategory} />
         ) : (
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setLineOffset((v) => v - 1)}
+            <Button
+              variant="secondary"
+              size="sm"
+              onPress={() => setLineOffset((v) => v - 1)}
               aria-label="Lower the line"
-              className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border border-line text-[14px] leading-none text-ink-muted hover:border-masters/40 hover:text-masters"
+              className="h-[26px] w-[26px] rounded-full px-0 text-body font-normal ring-0 hover:border-masters/40 hover:bg-card hover:text-masters"
             >
               −
-            </button>
+            </Button>
             <span className="min-w-[64px] rounded-lg border border-line px-3 py-1.5 text-center text-[14px] font-bold tabular-nums" aria-live="polite">
               {lineText}
             </span>
-            <button
-              type="button"
-              onClick={() => setLineOffset((v) => v + 1)}
+            <Button
+              variant="secondary"
+              size="sm"
+              onPress={() => setLineOffset((v) => v + 1)}
               aria-label="Raise the line"
-              className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border border-line text-[14px] leading-none text-ink-muted hover:border-masters/40 hover:text-masters"
+              className="h-[26px] w-[26px] rounded-full px-0 text-body font-normal ring-0 hover:border-masters/40 hover:bg-card hover:text-masters"
             >
               +
-            </button>
+            </Button>
           </div>
         )}
 
@@ -1864,39 +1866,32 @@ export function PlayerDetail({
           ) : null}
 
           {lineOffset !== 0 ? (
-            <button
-              type="button"
-              onClick={() => setLineOffset(0)}
-              className="text-[11px] text-masters underline"
-            >
+            <Button variant="link" size="sm" onPress={() => setLineOffset(0)} className="text-overline">
               Reset to {baseLine}
-            </button>
+            </Button>
           ) : previewingOtherGolfCategory ? (
-            <button
-              type="button"
-              onClick={() => setSelectedGolfCategory(null)}
-              className="text-[11px] text-masters underline"
-            >
+            <Button variant="link" size="sm" onPress={() => setSelectedGolfCategory(null)} className="text-overline">
               Back to {active.categoryLabel}
-            </button>
+            </Button>
           ) : null}
         </div>
 
         {onAdd ? (
           <>
             <span className="hidden h-[26px] w-px shrink-0 bg-line-soft sm:block" />
-            <button
-              type="button"
-              onClick={() => onAdd(priced, addOdds)}
-              className="lb-btn-primary ml-auto rounded-lg bg-masters px-3 py-1.5 text-[12px] font-semibold text-white"
-              title={previewingOtherGolfCategory ? `Adds this golfer's tracked pattern (${active.categoryLabel}), not the ${golfCategoryLabel(active.dimension, effectiveGolfCategory)} preview.` : undefined}
+            <Button
+              variant="primary"
+              size="sm"
+              onPress={() => onAdd(priced, addOdds)}
+              className="ml-auto"
+              aria-description={previewingOtherGolfCategory ? `Adds this golfer's tracked pattern (${active.categoryLabel}), not the ${golfCategoryLabel(active.dimension, effectiveGolfCategory)} preview.` : undefined}
             >
               {addedKeys?.has(`${active.sport}:${active.subjectId}:${active.dimension}:${active.category}`)
                 ? 'On slip ✓'
                 : previewingOtherGolfCategory
                   ? `Add ${active.categoryLabel} to slip`
                   : 'Add to slip'}
-            </button>
+            </Button>
           </>
         ) : null}
       </section>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { Button, IconButton, cx } from './ui';
 import type { SubjectSummary } from '@/lib/core/types';
 import { SubjectAvatar } from './SubjectAvatar';
 import { PauseIcon, PlayIcon } from './icons';
@@ -152,16 +153,15 @@ export function GolferStrip({ subjects, selectedPlayerId, onSelectPlayer, onNavi
         onClickCapture={onClickCapture}
         className="lb-scroll-x flex min-w-0 flex-1 cursor-grab select-none items-center gap-1.5 active:cursor-grabbing"
       >
-        <button
-          type="button"
-          onClick={() => onSelectPlayer(null)}
+        <Button
+          size="sm"
+          variant={selectedPlayerId === null ? 'primary' : 'secondary'}
+          onPress={() => onSelectPlayer(null)}
           aria-pressed={selectedPlayerId === null}
-          className={`shrink-0 self-stretch rounded-xl px-3 text-[12px] font-semibold transition-colors ${
-            selectedPlayerId === null ? 'bg-masters text-white shadow-card' : 'border border-line bg-card text-ink-muted hover:border-masters/30'
-          }`}
+          className="h-auto self-stretch rounded-card text-label"
         >
           All
-        </button>
+        </Button>
 
         {ordered.map((s) => {
           const selected = s.subjectId === selectedPlayerId;
@@ -170,14 +170,16 @@ export function GolferStrip({ subjects, selectedPlayerId, onSelectPlayer, onNavi
           const [score, thru] = splitStatusLine(s.statusLine);
 
           return (
-            <button
+            <Button
               key={s.subjectId}
-              type="button"
-              onClick={() => (onNavigateToPlayer ? onNavigateToPlayer(s.subjectId) : onSelectPlayer(s.subjectId))}
+              size="sm"
+              variant="secondary"
+              onPress={() => (onNavigateToPlayer ? onNavigateToPlayer(s.subjectId) : onSelectPlayer(s.subjectId))}
               aria-pressed={selected}
-              className={`flex w-[150px] shrink-0 flex-col justify-center gap-0.5 rounded-xl border px-2 py-1.5 leading-tight shadow-card transition-all duration-150 hover:-translate-y-0.5 hover:shadow-card-hover ${
-                selected ? 'border-masters bg-masters text-white' : 'border-line bg-card text-ink-muted hover:border-masters/30'
-              }`}
+              className={cx(
+                'h-auto w-[150px] flex-col justify-center gap-0.5 rounded-card border px-2 py-1.5 font-normal leading-tight shadow-card ring-0 hover:shadow-card-hover',
+                selected ? 'border-masters bg-masters text-white hover:bg-masters-dark' : 'border-line text-ink-muted hover:border-masters/30 hover:bg-card',
+              )}
             >
               <span className="flex w-full items-center gap-1.5">
                 <SubjectAvatar
@@ -197,21 +199,19 @@ export function GolferStrip({ subjects, selectedPlayerId, onSelectPlayer, onNavi
                 <span className={`ml-auto font-bold tabular-nums ${selected ? 'text-white' : 'text-ink'}`}>{score}</span>
                 {thru ? <span className={`shrink-0 ${selected ? 'text-white/75' : 'text-ink-muted'}`}>{thru}</span> : null}
               </span>
-            </button>
+            </Button>
           );
         })}
       </div>
 
       {/* Discreet — barely there until you look for it or hover it, same as DateGameStrip's. */}
-      <button
-        type="button"
-        onClick={() => setPlaying((v) => !v)}
+      <IconButton
+        size="sm"
+        onPress={() => setPlaying((v) => !v)}
         aria-label={playing ? 'Pause field auto-scroll' : 'Resume field auto-scroll'}
-        title={playing ? 'Pause auto-scroll' : 'Resume auto-scroll'}
-        className="shrink-0 rounded-full p-1.5 text-ink-muted opacity-40 transition-opacity hover:opacity-100"
-      >
-        {playing ? <PauseIcon size={11} /> : <PlayIcon size={11} />}
-      </button>
+        className="rounded-full opacity-40 hover:opacity-100"
+        icon={playing ? <PauseIcon size={11} /> : <PlayIcon size={11} />}
+      />
     </div>
   );
 }

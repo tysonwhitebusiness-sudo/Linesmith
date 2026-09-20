@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { BackLink } from '@/components/ui';
 import { useParams, useRouter } from 'next/navigation';
 import type { PickCandidate } from '@/lib/core/types';
 import { useSnapshot } from '@/components/useSnapshot';
@@ -35,9 +36,7 @@ export default function CfbGameDetailPage() {
         <TopBar
           sport={sport}
           leading={
-            <button type="button" onClick={() => router.push('/cfb')} className="whitespace-nowrap px-2 py-3 text-[13px] font-medium text-masters">
-              ← Scan
-            </button>
+            <BackLink href="/cfb" label="Scan" />
           }
           slipCount={slip.picks.length}
           onOpenSlip={() => setSlipOpen(true)}

@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useState } from 'react';
+import { Button } from '@/components/ui';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { safeNext } from '@/lib/core/safeNext';
@@ -108,27 +109,25 @@ function LoginForm() {
 
             {error ? <p className="text-[12px] text-bad">{error}</p> : null}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full rounded-lg bg-masters px-3 py-2 text-[14px] font-medium text-white shadow-card disabled:opacity-50"
-            >
+            {/* U spec 2c: `lg` on login — 44px is the touch floor. */}
+            <Button type="submit" variant="primary" size="lg" loading={loading} className="w-full">
               {loading ? 'Please wait…' : mode === 'signIn' ? 'Sign in' : 'Sign up'}
-            </button>
+            </Button>
           </form>
         )}
 
-        <button
-          type="button"
-          onClick={() => {
+        <Button
+          variant="link"
+          size="sm"
+          onPress={() => {
             setMode(mode === 'signIn' ? 'signUp' : 'signIn');
             setError(null);
             setCheckEmail(false);
           }}
-          className="mt-4 w-full text-center text-[12px] font-medium text-masters"
+          className="mt-4 w-full"
         >
           {mode === 'signIn' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { Button, cx } from './ui';
 import Link from 'next/link';
 import type { PickCandidate, SportSnapshot, TennisTour, WeatherContext } from '@/lib/core/types';
 import type { ScheduleEvent, DrawMatch, DrawSetScore, TournamentDraw } from '@/lib/sports/tennis/schedule';
@@ -99,12 +100,13 @@ function MatchHeroCarousel({ matches, tour }: { matches: DrawMatch[]; tour: Tenn
       {cards.length > 1 ? (
         <div className="flex justify-center gap-1 pb-1.5">
           {cards.map((c, i) => (
-            <button
+            <Button
               key={c.matchId}
-              type="button"
-              onClick={() => setIndex(i)}
+              variant="tertiary"
+              size="sm"
+              onPress={() => setIndex(i)}
               aria-label={`Show match ${i + 1}`}
-              className={`h-1.5 w-1.5 rounded-full transition-colors ${i === safeIndex ? 'bg-masters' : 'bg-ink/15'}`}
+              className={cx('h-1.5 w-1.5 min-w-0 rounded-full px-0', i === safeIndex ? 'bg-masters hover:bg-masters' : 'bg-ink/15 hover:bg-ink/15')}
             />
           ))}
         </div>
@@ -261,9 +263,10 @@ function DrawBracketCard({ matches, tour }: { matches: DrawMatch[]; tour: Tennis
           const isOpen = openRounds.has(round);
           return (
             <div key={round}>
-              <button
-                type="button"
-                onClick={() =>
+              <Button
+                variant="tertiary"
+                size="sm"
+                onPress={() =>
                   setOpenRounds((prev) => {
                     const next = new Set(prev);
                     if (next.has(round)) next.delete(round);
@@ -272,14 +275,14 @@ function DrawBracketCard({ matches, tour }: { matches: DrawMatch[]; tour: Tennis
                   })
                 }
                 aria-expanded={isOpen}
-                className="flex w-full items-center justify-between px-3 py-2 text-left transition-colors hover:bg-surface-subtle"
+                className="h-auto w-full justify-between rounded-none px-3 py-2 text-left font-normal hover:bg-surface-subtle"
               >
                 <span className="text-[12px] font-semibold text-ink">{round}</span>
                 <span className="flex items-center gap-2 text-[10px] text-ink-muted">
                   {roundMatches.length} match{roundMatches.length === 1 ? '' : 'es'}
                   <span className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}>▾</span>
                 </span>
-              </button>
+              </Button>
               {isOpen ? (
                 <div className="space-y-0.5 border-t border-line-soft bg-surface-subtle p-1.5">
                   {roundMatches.map((m) => (
@@ -330,15 +333,16 @@ function TournamentInsightsCard({
           <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Season leaders (tour-wide)</span>
           <span className="inline-flex items-center gap-0.5 rounded-lg bg-ink/[0.05] p-0.5">
             {(['aces', 'gamesWon'] as const).map((s) => (
-              <button
+              <Button
                 key={s}
-                type="button"
-                onClick={() => onChangeLeaderStat(s)}
+                variant="tertiary"
+                size="sm"
+                onPress={() => onChangeLeaderStat(s)}
                 aria-pressed={leaderStat === s}
-                className={`rounded-md px-2 py-0.5 text-[10.5px] font-semibold transition-colors ${leaderStat === s ? 'bg-card text-ink shadow-card' : 'text-ink-muted'}`}
+                className={cx('h-auto rounded-md px-2 py-0.5 text-overline', leaderStat === s ? 'bg-card text-ink shadow-card hover:bg-card' : 'text-ink-muted')}
               >
                 {s === 'aces' ? 'Aces' : 'Games won'}
-              </button>
+              </Button>
             ))}
           </span>
         </div>
@@ -480,15 +484,16 @@ function WorldRankingsCard({ tour, rankings, loading }: { tour: TennisTour; rank
         <h2 className="text-[12px] font-semibold text-masters">World rankings</h2>
         <span className="inline-flex items-center gap-0.5 rounded-lg bg-ink/[0.05] p-0.5">
           {([10, 25] as const).map((n) => (
-            <button
+            <Button
               key={n}
-              type="button"
-              onClick={() => setView(n)}
+              variant="tertiary"
+              size="sm"
+              onPress={() => setView(n)}
               aria-pressed={view === n}
-              className={`rounded-md px-2 py-0.5 text-[10.5px] font-semibold transition-colors ${view === n ? 'bg-card text-ink shadow-card' : 'text-ink-muted'}`}
+              className={cx('h-auto rounded-md px-2 py-0.5 text-overline', view === n ? 'bg-card text-ink shadow-card hover:bg-card' : 'text-ink-muted')}
             >
               Top {n}
-            </button>
+            </Button>
           ))}
         </span>
       </div>
@@ -538,14 +543,16 @@ function OurLinesCard({ candidates, onAdd, addedKeys }: { candidates: PickCandid
                 </div>
               </div>
               {onAdd ? (
-                <button
-                  type="button"
-                  onClick={() => onAdd(c)}
-                  disabled={added}
-                  className={`shrink-0 rounded px-2 py-1 text-[11px] font-semibold ${added ? 'bg-accent-soft text-masters' : 'bg-masters text-white'}`}
+                <Button
+                  size="sm"
+                  variant={added ? 'secondary' : 'primary'}
+                  onPress={() => onAdd(c)}
+                  isDisabled={added}
+                  aria-label={added ? 'On slip' : 'Add to slip'}
+                  className="h-auto px-2 py-1 text-overline"
                 >
                   {added ? '✓' : '+'}
-                </button>
+                </Button>
               ) : null}
             </li>
           );

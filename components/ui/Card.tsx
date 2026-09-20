@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { IconButton } from './Button';
 import { cx } from './cx';
 import { EmptyState, ErrorState, SkeletonLines, type EmptyStateProps } from './States';
 import { Tooltip } from './Tooltip';
@@ -66,6 +67,12 @@ export function Card({ title, scope, info, onExpand, caption, dense, state = { k
         <h3 className="min-w-[9em] flex-1 text-card-title text-ink">{title}</h3>
         {scope ? <div className="min-w-0 text-right text-label text-ink-muted">{scope}</div> : null}
         {info ? (
+          // U1: this ONE stays a raw `<button>`. `Tooltip` opens by cloning its
+          // child and attaching `onPointerEnter` / `onPointerMove` /
+          // `onPointerLeave` to it; React Aria's `Button` does not forward
+          // arbitrary pointer handlers, so an `IconButton` here would stop
+          // opening on hover — silently, since focus and tap would still work.
+          // Teaching `Tooltip` to wrap rather than clone belongs to U4.
           <Tooltip content={<div className="max-w-[240px]">{info}</div>}>
             <button type="button" aria-label={`About ${TITLE_TEXT(title)}`} className="grid h-[30px] w-[30px] place-items-center rounded-ctl text-ink-muted transition-colors duration-instant hover:bg-card-sunk hover:text-ink">
               <InfoGlyph />
@@ -73,9 +80,8 @@ export function Card({ title, scope, info, onExpand, caption, dense, state = { k
           </Tooltip>
         ) : null}
         {onExpand ? (
-          <button type="button" onClick={onExpand} aria-label={`Expand ${TITLE_TEXT(title)}`} className="grid h-[30px] w-[30px] place-items-center rounded-ctl text-ink-muted transition-colors duration-instant hover:bg-card-sunk hover:text-ink">
-            <ExpandGlyph />
-          </button>
+          // The card-header icon button stays 30px, not the kit's 32 (U spec §2c).
+          <IconButton size="sm" className="h-[30px] w-[30px]" onPress={onExpand} aria-label={`Expand ${TITLE_TEXT(title)}`} icon={<ExpandGlyph />} />
         ) : null}
       </header>
       <div className={cx(hero ? 'p-6' : dense ? 'p-3' : 'p-4', bodyClassName)}>{body}</div>

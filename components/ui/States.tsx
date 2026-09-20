@@ -1,5 +1,5 @@
-import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { Button } from './Button';
 import { cx } from './cx';
 
 /**
@@ -39,15 +39,9 @@ export function EmptyState({ title, reason, action, className }: EmptyStateProps
       <p className="text-body font-semibold text-ink">{title}</p>
       <p className="mt-1 text-body-sm text-ink-muted">{reason}</p>
       {action ? (
-        action.href ? (
-          <Link href={action.href} className="mt-3 inline-block rounded-ctl border border-line bg-card px-3 py-2 text-body-sm font-semibold text-ink hover:bg-card-sunk">
-            {action.label}
-          </Link>
-        ) : (
-          <button type="button" onClick={action.onClick} className="mt-3 rounded-ctl border border-line bg-card px-3 py-2 text-body-sm font-semibold text-ink transition-colors duration-instant hover:bg-card-sunk">
-            {action.label}
-          </button>
-        )
+        <Button variant="secondary" size="sm" href={action.href} onPress={action.onClick} className="mt-3">
+          {action.label}
+        </Button>
       ) : null}
     </div>
   );
@@ -72,9 +66,9 @@ export function ErrorState({ message, onRetry, stale, className }: ErrorStatePro
           {stale ? <span className="text-ink-muted"> Showing the last data we had.</span> : null}
         </p>
         {onRetry ? (
-          <button type="button" onClick={onRetry} className="rounded-ctl border border-line bg-card px-2.5 py-1.5 text-label font-semibold text-ink hover:bg-card-sunk">
+          <Button variant="secondary" size="sm" onPress={onRetry}>
             Retry
-          </button>
+          </Button>
         ) : null}
       </div>
       {stale}

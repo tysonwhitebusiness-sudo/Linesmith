@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Button } from './ui';
 import type { Sport, SoccerLeague } from '@/lib/core/types';
 import { TeamLogo } from './SubjectAvatar';
 import { TeamResearchPage } from './TeamResearchPage';
@@ -98,13 +99,13 @@ function TeamListShell({
           <p className="p-3 text-[11px] text-bad">
             Couldn’t load teams.{' '}
             {onRetry ? (
-              <button type="button" onClick={onRetry} className="underline underline-offset-2">
+              <Button variant="link" size="sm" onPress={onRetry}>
                 Retry
-              </button>
+              </Button>
             ) : (
-              <button type="button" onClick={() => window.location.reload()} className="underline underline-offset-2">
+              <Button variant="link" size="sm" onPress={() => window.location.reload()}>
                 Retry
-              </button>
+              </Button>
             )}
           </p>
         ) : null}

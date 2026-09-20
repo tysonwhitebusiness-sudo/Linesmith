@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import {
   Avatar,
+  Button,
+  CloseButton,
+  IconButton,
   Card,
   Chip,
   DataTable,
@@ -107,6 +110,22 @@ const COLUMNS: Column<KitRow>[] = [
   { key: 'diff', label: 'Diff', numeric: true, render: (r) => (r.diff > 0 ? `+${r.diff}` : String(r.diff)) },
 ];
 
+function PlusGlyph() {
+  return (
+    <svg width={16} height={16} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
+      <path d="M8 3.5v9M3.5 8h9" />
+    </svg>
+  );
+}
+
+function ChevronGlyph() {
+  return (
+    <svg width={16} height={16} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M6 3.5 10.5 8 6 12.5" />
+    </svg>
+  );
+}
+
 export default function KitPage() {
   const [seg, setSeg] = useState('l10');
   const [tab, setTab] = useState('all');
@@ -203,9 +222,7 @@ export default function KitPage() {
           <span className="rounded-ctl bg-card px-3 py-1.5 text-body-sm text-ink ring-2 ring-line">ring-2 ring-line</span>
         </Row>
         <Row name="outline-hidden" note="v4's `outline-none` sets outline-style:none; `outline-hidden` is v3's behaviour">
-          <button type="button" className="rounded-ctl border border-line bg-card px-3 py-1.5 text-body-sm text-ink outline-hidden">
-            Tab to me — the focus ring must still show
-          </button>
+          <Button variant="secondary" size="sm">Tab to me — the focus ring must still show</Button>
         </Row>
         <Row name="named motion" note="v4 has no duration namespace, so these are @utility rules">
           {['duration-instant', 'duration-quick', 'duration-smooth', 'duration-data', 'duration-live'].map((d) => (
@@ -227,6 +244,51 @@ export default function KitPage() {
           <span className="grid h-14 w-24 place-items-center rounded-card bg-card text-label text-ink-muted shadow-card-hover">hover</span>
           <span className="grid h-14 w-24 place-items-center rounded-card bg-card text-label text-ink-muted shadow-pop">pop</span>
           <span className="grid h-14 w-24 place-items-center rounded-card bg-card text-label text-ink-muted shadow-drawer">drawer</span>
+        </Row>
+      </Group>
+
+      <Group
+        id="button"
+        title="Button"
+        sub="One primary per view — it is the main action. Behaviour is React Aria's: press, focus, and href routed through the root layout's RouterProvider, so a link-button navigates client-side rather than reloading the app."
+      >
+        <Row name="Variants" note="md, the default size">
+          <Button variant="primary">Primary</Button>
+          <Button variant="secondary">Secondary</Button>
+          <Button variant="tertiary">Tertiary</Button>
+          <Button variant="link">Link</Button>
+          <Button variant="destructive">Destructive</Button>
+          <Button variant="destructive-secondary">Destructive secondary</Button>
+        </Row>
+        <Row name="Sizes" note="32 / 36 / 44 — 44 is the touch floor">
+          <Button variant="primary" size="sm">Small</Button>
+          <Button variant="primary" size="md">Medium</Button>
+          <Button variant="primary" size="lg">Large</Button>
+        </Row>
+        <Row name="With icons" note="16px in sm, 18px in md and lg">
+          <Button variant="secondary" icon={<PlusGlyph />}>Add to slip</Button>
+          <Button variant="secondary" iconTrailing={<ChevronGlyph />}>Game page</Button>
+          <Button variant="secondary" size="sm" icon={<PlusGlyph />}>Small with icon</Button>
+        </Row>
+        <Row name="Loading and disabled" note="a loading button keeps its label and its width, and ignores presses">
+          <Button variant="primary" loading>Submitting</Button>
+          <Button variant="secondary" loading>Refreshing</Button>
+          <Button variant="primary" isDisabled>Disabled</Button>
+          <Button variant="secondary" isDisabled>Disabled</Button>
+        </Row>
+        <Row name="As a link" note="href goes through RouterProvider — a client-side navigation">
+          <Button variant="secondary" href="/kit#type">Jump to Type</Button>
+        </Row>
+        <Row name="IconButton" note="square, and aria-label is not optional">
+          <IconButton size="sm" aria-label="Add" icon={<PlusGlyph />} />
+          <IconButton size="md" aria-label="Add" icon={<PlusGlyph />} />
+          <IconButton size="lg" aria-label="Add" icon={<PlusGlyph />} />
+          <IconButton size="md" variant="secondary" aria-label="Add" icon={<PlusGlyph />} />
+        </Row>
+        <Row name="CloseButton">
+          <CloseButton size="sm" />
+          <CloseButton size="md" />
+          <CloseButton size="lg" />
         </Row>
       </Group>
 

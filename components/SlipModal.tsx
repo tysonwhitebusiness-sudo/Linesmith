@@ -6,6 +6,7 @@ import type { PickCandidate, Sport, SubjectSummary } from '@/lib/core/types';
 import { SPORT_LABEL } from '@/lib/core/types';
 import type { PickRow } from './useSlip';
 import { SubjectAvatar } from './SubjectAvatar';
+import { Button, CloseButton } from './ui';
 import { MarketLabel } from './MarketLabel';
 import { BookLogo, bookLabel } from './BookLogo';
 
@@ -136,19 +137,17 @@ function ScanLegRow({
           </p>
         )}
       </div>
-      <button
-        type="button"
-        disabled={added}
-        onClick={() => {
+      <Button
+        size="sm"
+        variant={added ? 'secondary' : 'primary'}
+        isDisabled={added}
+        onPress={() => {
           onAdd(selected, { americanOdds, source: 'screenshot' });
           setAdded(true);
         }}
-        className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[12px] font-semibold ${
-          added ? 'bg-accent-soft text-masters' : 'bg-masters text-white'
-        }`}
       >
         {added ? 'Added ✓' : 'Add'}
-      </button>
+      </Button>
     </li>
   );
 }
@@ -297,27 +296,20 @@ export function SlipModal({
           <h2 className="text-base font-semibold">Slip · {picks.length}</h2>
           <div className="flex items-center gap-3">
             {picks.length > 0 ? (
-              <button type="button" onClick={onClear} className="text-sm text-bad">
+              <Button variant="link" size="sm" onPress={onClear} className="text-bad">
                 Clear
-              </button>
+              </Button>
             ) : null}
-            <button type="button" onClick={onClose} aria-label="Close" className="text-lg leading-none text-ink-muted">
-              ×
-            </button>
+            <CloseButton size="sm" onPress={onClose} aria-label="Close" />
           </div>
         </header>
 
         <div className="space-y-3 overflow-y-auto p-4">
           {/* Scan is the primary way in — promoted above the pick list rather than buried under it. */}
           <div>
-            <button
-              type="button"
-              onClick={() => fileInput.current?.click()}
-              disabled={importing}
-              className="lb-btn-primary flex w-full items-center justify-center gap-2 rounded-xl bg-masters px-3 py-3 text-[14px] font-semibold text-white shadow-card disabled:opacity-60"
-            >
+            <Button variant="primary" size="lg" loading={importing} onPress={() => fileInput.current?.click()} className="w-full">
               {importing ? 'Reading your screenshot…' : 'Scan a bet slip'}
-            </button>
+            </Button>
             <p className="mt-1.5 text-center text-[11px] text-ink-muted">
               Reads odds from a screenshot you took. Never connects to a sportsbook.
             </p>
@@ -411,14 +403,7 @@ export function SlipModal({
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <div className="flex items-center gap-2">
                         <OddsField pick={pick} onSetOdds={onSetOdds} />
-                        <button
-                          type="button"
-                          onClick={() => onRemove(pick.id)}
-                          aria-label={`Remove ${pick.subjectName}`}
-                          className="px-1 text-lg leading-none text-ink-muted"
-                        >
-                          ×
-                        </button>
+                        <CloseButton size="sm" onPress={() => onRemove(pick.id)} aria-label={`Remove ${pick.subjectName}`} />
                       </div>
                       {pick.americanOdds ? (
                         <OddsProvenance pick={pick} />
@@ -433,26 +418,17 @@ export function SlipModal({
           )}
 
           {picks.length > 0 ? (
-            <button
-              type="button"
-              onClick={copyList}
-              className="w-full rounded-lg border border-line px-3 py-2 text-sm font-medium text-ink-muted"
-            >
+            <Button variant="secondary" onPress={copyList} className="w-full">
               {copied ? 'Copied ✓' : 'Copy list'}
-            </button>
+            </Button>
           ) : null}
         </div>
 
         {picks.length > 0 ? (
           <footer className="border-t border-line p-4">
-            <button
-              type="button"
-              onClick={submit}
-              disabled={submitting}
-              className="lb-btn-primary w-full rounded-xl bg-masters px-3 py-3 text-[14px] font-semibold text-white shadow-card disabled:opacity-60"
-            >
+            <Button variant="primary" size="lg" loading={submitting} onPress={submit} className="w-full">
               {submitting ? 'Submitting…' : `Submit ${picks.length} to Live Bets`}
-            </button>
+            </Button>
           </footer>
         ) : null}
       </section>

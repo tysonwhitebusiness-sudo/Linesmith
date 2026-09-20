@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useTrackedLines } from './useTrackedLines';
 import { useLiveLineValues } from './useLiveLineValues';
 import { heatFill, heatInk } from '@/lib/ui/heat';
-import { Card, SelectBox } from './ui';
+import { Button, Card, CloseButton, SelectBox } from './ui';
 
 export interface LiveLineTrackerData {
   subjectId: string;
@@ -45,9 +45,7 @@ function ProgressRow({
           >
             {hasValue ? liveValue : loadingValue ? '…' : '—'}
           </span>
-          <button type="button" onClick={onRemove} className="text-label text-ink-muted hover:text-bad" aria-label="Remove tracked line">
-            ✕
-          </button>
+          <CloseButton size="sm" onPress={onRemove} aria-label="Remove tracked line" className="hover:text-bad" />
         </div>
       </div>
       <div className="h-1.5 rounded-full bg-line-soft">
@@ -112,12 +110,12 @@ function AddLineForm({
       </div>
       {error ? <p className="text-label text-bad">{error}</p> : null}
       <div className="flex items-center gap-2">
-        <button type="button" onClick={submit} disabled={submitting} className="rounded-full bg-masters px-3 py-1.5 text-label font-medium text-white disabled:opacity-50">
+        <Button variant="primary" size="sm" loading={submitting} onPress={submit}>
           {submitting ? 'Adding…' : 'Track this line'}
-        </button>
-        <button type="button" onClick={onCancel} className="rounded-full border border-line px-3 py-1.5 text-label text-ink-muted">
+        </Button>
+        <Button variant="secondary" size="sm" onPress={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -148,9 +146,9 @@ export function LiveLineTrackerCard({ data, subjectName }: { data: LiveLineTrack
       bodyClassName="p-0"
       scope={
         !adding && data.availableStats.length > 0 ? (
-          <button type="button" onClick={() => setAdding(true)} className="text-label font-semibold text-ink-secondary underline-offset-2 hover:underline">
+          <Button variant="link" size="sm" onPress={() => setAdding(true)} className="text-label text-ink-secondary">
             + Track a line
-          </button>
+          </Button>
         ) : undefined
       }
     >

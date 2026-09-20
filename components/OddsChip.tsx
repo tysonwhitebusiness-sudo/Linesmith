@@ -1,5 +1,6 @@
 'use client';
 import { STALE_AFTER_MS, relativeAge } from '@/lib/odds/priceFreshness';
+import { Button } from './ui';
 import { formatAmerican } from '@/lib/odds/display';
 import { Chip } from './Chip';
 import { Skeleton } from './Skeleton';
@@ -245,7 +246,7 @@ export function NoOddsCell({ pending, onAdd }: { pending: boolean; onAdd?: () =>
   }
   if (!onAdd) return <span className="text-ink-muted">—</span>;
   return (
-    <button type="button" onClick={onAdd} className="transition-opacity hover:opacity-80">
+    <Button variant="tertiary" size="sm" onPress={onAdd} className="h-auto px-0 hover:bg-transparent">
       <Chip
         tone="warn"
         className="whitespace-nowrap"
@@ -253,7 +254,7 @@ export function NoOddsCell({ pending, onAdd }: { pending: boolean; onAdd?: () =>
       >
         No Odds — Check Book
       </Chip>
-    </button>
+    </Button>
   );
 }
 
@@ -265,14 +266,15 @@ export function NoOddsCell({ pending, onAdd }: { pending: boolean; onAdd?: () =>
  */
 export function GetOddsButton({ onClick, label = 'Get odds' }: { onClick?: () => void; label?: string }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      className="rounded-md border border-dashed border-line px-1.5 py-0.5 text-[10px] text-ink-muted transition-colors hover:border-masters/40 hover:text-masters disabled:hover:border-line disabled:hover:text-ink-muted"
+    <Button
+      variant="secondary"
+      size="sm"
+      onPress={onClick}
+      isDisabled={!onClick}
+      className="h-auto rounded-md border border-dashed border-line px-1.5 py-0.5 text-overline font-normal text-ink-muted ring-0 hover:border-masters/40 hover:bg-card hover:text-masters"
     >
       {label}
-    </button>
+    </Button>
   );
 }
 

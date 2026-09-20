@@ -7,6 +7,7 @@
  * literals outside the shared palette, and no text lighter than `ink-muted`.
  */
 export { cx } from './cx';
+export { Button, IconButton, CloseButton, iconPx, type ButtonProps, type IconButtonProps, type ButtonVariant, type ButtonSize } from './Button';
 export { Tooltip, TipRow, type TooltipProps } from './Tooltip';
 export { Skeleton, SkeletonLines, EmptyState, ErrorState, type EmptyStateProps, type ErrorStateProps } from './States';
 export { Card, type CardProps, type CardState } from './Card';

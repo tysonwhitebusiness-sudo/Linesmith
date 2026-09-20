@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { BackLink } from '@/components/ui';
 import { useParams, useRouter } from 'next/navigation';
 import { TopBar } from '@/components/TopBar';
 import { SubjectAvatar, TeamLogo, mlbHeadshotUrl, mlbTeamLogoUrl } from '@/components/SubjectAvatar';
@@ -122,13 +123,7 @@ export default function BetDetailPage() {
         <TopBar
           sport="mlb"
           leading={
-            <button
-              type="button"
-              onClick={() => router.push('/bets')}
-              className="whitespace-nowrap px-2 py-3 text-[13px] font-medium text-masters"
-            >
-              ← Live Bets
-            </button>
+            <BackLink href="/bets" label="Live Bets" />
           }
           slipCount={0}
           onOpenSlip={() => {}}

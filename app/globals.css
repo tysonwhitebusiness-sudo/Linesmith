@@ -438,23 +438,6 @@
     @apply mt-1 text-overline uppercase text-ink-muted;
   }
 
-  /* Primary CTA press feel (Slip, Add to slip, Submit, Rescan): a graphite
-     glow lifts on hover and the button presses down on tap. Layers on top
-     of each button's own bg-masters/sizing classes rather than replacing
-     them, since CTA buttons vary in size across the app. */
-  .lb-btn-primary {
-    @apply transition-all duration-300;
-  }
-  @media (hover: hover) {
-    .lb-btn-primary:hover {
-      box-shadow: 7px 5px 32px -10px oklch(20% 0.006 260 / 0.55);
-    }
-  }
-  .lb-btn-primary:active {
-    transform: scale(0.97);
-    box-shadow: 7px 5px 32px -6px oklch(20% 0.006 260 / 0.6);
-  }
-
   .lb-skel {
     @apply rounded bg-card-sunk;
     background-image: linear-gradient(
