@@ -2375,6 +2375,77 @@ def _as_date(v):
     return _date.fromisoformat(v)
 
 
+async def write_slate_rankings(rows: list[dict]) -> int:
+    """M3 — today's rankings, refreshed until the sport's first game starts.
+
+    A frozen row is never touched again: `WHERE frozen_at IS NULL` is what makes
+    a receipt mean anything, because a ranking that kept moving through the
+    evening would be graded against games it had already seen."""
+    if not rows:
+        return 0
+    pool = await get_pool()
+    await pool.executemany(
+        """
+        INSERT INTO slate_rankings (sport, slate_date, ranking_id, subject_id, rank, score,
+                                    subject_name, team, opponent, game_id, factors, computed_at)
+        VALUES ($1, $2::date, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, now())
+        ON CONFLICT (sport, slate_date, ranking_id, subject_id) DO UPDATE SET
+          rank = excluded.rank, score = excluded.score, subject_name = excluded.subject_name,
+          team = excluded.team, opponent = excluded.opponent, game_id = excluded.game_id,
+          factors = excluded.factors, computed_at = now()
+        WHERE slate_rankings.frozen_at IS NULL
+        """,
+        [(r["sport"], r["slate_date"], r["ranking_id"], r["subject_id"], r["rank"], r["score"],
+          r["subject_name"], r["team"], r["opponent"], r["game_id"], r["factors"]) for r in rows],
+    )
+    return len(rows)
+
+
+async def freeze_slate_rankings(sport: str, slate_date, ranking_ids: list[str]) -> int:
+    """Stamp `frozen_at` once the sport's first game has started."""
+    pool = await get_pool()
+    res = await pool.execute(
+        """
+        UPDATE slate_rankings SET frozen_at = now()
+         WHERE sport = $1 AND slate_date = $2::date AND ranking_id = ANY($3::text[]) AND frozen_at IS NULL
+        """,
+        sport, slate_date, ranking_ids,
+    )
+    try:
+        return int(str(res).split()[-1])
+    except (ValueError, IndexError):
+        return 0
+
+
+async def ungraded_frozen_rankings(slate_date, top_n: int = 5) -> list[dict]:
+    """The frozen top N for a past slate that has no outcome yet."""
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT sport, slate_date, ranking_id, subject_id, rank, subject_name, game_id
+          FROM slate_rankings
+         WHERE slate_date = $1::date AND frozen_at IS NOT NULL AND outcome IS NULL AND rank <= $2
+         ORDER BY sport, ranking_id, rank
+        """,
+        slate_date, top_n,
+    )
+    return [dict(r) for r in rows]
+
+
+async def write_ranking_outcomes(rows: list[dict]) -> int:
+    if not rows:
+        return 0
+    pool = await get_pool()
+    await pool.executemany(
+        """
+        UPDATE slate_rankings SET outcome = $5::jsonb
+         WHERE sport = $1 AND slate_date = $2::date AND ranking_id = $3 AND subject_id = $4
+        """,
+        [(r["sport"], r["slate_date"], r["ranking_id"], r["subject_id"], r["outcome"]) for r in rows],
+    )
+    return len(rows)
+
+
 async def write_model_status(rows: list[dict]) -> int:
     """M1's register, mirrored for TypeScript to read (/api/model-status).
 

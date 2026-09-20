@@ -22,6 +22,7 @@
 > | table | change | owner |
 > |---|---|---|
 > | `team_name_index` | **NEW** (migration `20260910180000`) | Python — `build_team_name_index.py` / `teamNameIndexJob`; read by `archival_bridge` |
+> | `slate_rankings` | **NEW** (migration `20260920060000`) | Python — `slateRankingsJob`; frozen at each sport's first start, graded the next morning; read by `/api/slate` |
 > | `model_status` | **NEW** (migration `20260920030000`) | Python — `modelStatusJob` mirrors `src/model_status.py`, `modelGateJob` moves a row on evidence; read by `/api/model-status` and `lib/models/modelStatus.ts` |
 > | `index_usage_snapshot` | **NEW** | Python — `audit_index_usage.py --snapshot` |
 > | `player_history_summary` | NEW in 5.2 | Python — `mlbHistorySummaryJob` |
@@ -120,6 +121,7 @@ from `golfPredictionsJob`) as their sole writer.
 
 | # | Table | Owner | Writers today — TypeScript | Writers today — Python | Task |
 |---|---|---|---|---|---|
+| 0 | `slate_rankings` | **Python** | — (read only, `/api/slate`) | `write_slate_rankings`, `freeze_slate_rankings`, `write_ranking_outcomes` ← `slateRankingsJob` | — (M3, new `20260920060000`) |
 | 0 | `model_status` | **Python** | — (read only, `/api/model-status` → `readModelStatus`) | `write_model_status` ← `modelStatusJob`; `apply_gate_results`/`record_gate_runs` ← `modelGateJob` | — (M1, new `20260920030000`) |
 | 1 | `bets` | **TS · user** | `submitPicksAsBets` ← `/api/bets`; `markBetsLive`, `writeBetGrades` ← `betGrading.ts` | — | — |
 | 2 | `picks` | **TS · user** | `addPick`/`deletePick`/`clearPicks`/`updatePickOdds` ← `/api/picks` + every sport page | — | — |

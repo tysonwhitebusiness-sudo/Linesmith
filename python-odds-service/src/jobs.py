@@ -1023,6 +1023,24 @@ async def _player_history_freshness_inner() -> dict:
     return {"per_sport": per_sport}
 
 
+async def job_slate_rankings(yield_fn=None) -> dict:
+    """M3 — the Slate's odds-free rankings, refreshed until first pitch.
+
+    15 minutes, and the cadence is the design rather than a preference: each
+    ranking must be FROZEN before its sport's first game, and a slate's first
+    start can be any quarter hour. A coarser tick would freeze a ranking minutes
+    after the games began, which is exactly the self-grading this table exists to
+    prevent. Cheap either way — a few reads plus at most ten rows per ranking.
+
+    No lock: the worker runs its jobs sequentially in one process (SequentialQueue),
+    so this cannot overlap itself, and nothing else writes slate_rankings.
+    Each pass also grades yesterday's frozen top five from player_game_history.
+    """
+    import slate_rankings
+
+    return await _run_timed("slateRankingsJob", slate_rankings.run())
+
+
 async def job_model_status(yield_fn=None) -> dict:
     """M1 — mirror the model register (src/model_status.py) for the app to read.
 
@@ -1327,6 +1345,8 @@ JOB_REGISTRY = [
     ("retentionJob", job_retention, 24 * 60 * 60),
     # M1 — the model register the app reads; see job_model_status.
     ("modelStatusJob", job_model_status, 24 * 60 * 60),
+    # M3 — the Slate's rankings; see job_slate_rankings for why 15 minutes.
+    ("slateRankingsJob", job_slate_rankings, 15 * 60),
     # M4 — the promotion test. Weekly; see job_model_gate.
     ("modelGateJob", job_model_gate, 7 * 24 * 60 * 60),
     # Phase 5.S.7 — hourly, because a new team spelling is only visible in

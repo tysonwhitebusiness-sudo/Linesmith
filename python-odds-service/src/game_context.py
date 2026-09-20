@@ -52,6 +52,9 @@ class Game:
         game_date: str,
         is_final: bool = False,
         roster: list[RosterEntry] | None = None,
+        home_team_id: str | None = None,
+        away_team_id: str | None = None,
+        venue: str | None = None,
     ):
         self.sport = sport
         self.game_id = game_id
@@ -62,6 +65,12 @@ class Game:
         self.game_date = game_date
         self.is_final = is_final
         self.roster = roster or []
+        # M3: the rankings join on real team ids (ESPN's for the team sports,
+        # StatsAPI's for MLB) and read the park by venue. Both were parsed and
+        # dropped, so every consumer had to re-fetch or guess.
+        self.home_team_id = home_team_id
+        self.away_team_id = away_team_id
+        self.venue = venue
 
 
 def _roster_for_mlb_game(subjects: list[dict], game_pk) -> list[RosterEntry]:
@@ -131,6 +140,9 @@ async def load_mlb_games() -> list[Game]:
                 game_date=g.get("startTime") or g.get("firstPitch") or "",
                 is_final=bool(re.search(r"final", state, re.IGNORECASE)),
                 roster=_roster_for_mlb_game(subjects, game_pk),
+                home_team_id=str(g.get("homeTeamId")) if g.get("homeTeamId") is not None else None,
+                away_team_id=str(g.get("awayTeamId")) if g.get("awayTeamId") is not None else None,
+                venue=g.get("venue"),
             )
         )
     return games
@@ -234,6 +246,7 @@ def _parse_scoreboard_events(data: dict) -> list[dict]:
                 "awayTeamName": away["team"]["displayName"],
                 "awayAbbr": away["team"]["abbreviation"],
                 "isFinal": bool(status.get("completed")),
+                "venue": ((comp.get("venue") or {}).get("fullName")),
                 # SCORES, added 2026-09-03 for archiveResultsJob. A completed
                 # game with no score is left as None rather than 0 — 0-0 is a
                 # real scoreline in soccer, so coercing would manufacture results.
@@ -402,6 +415,9 @@ async def load_sport_games(sport: str) -> list[Game]:
                     game_date=g["date"] or "",
                     is_final=g.get("isFinal", False),
                     roster=roster,
+                    home_team_id=g.get("homeTeamId"),
+                    away_team_id=g.get("awayTeamId"),
+                    venue=g.get("venue"),
                 )
             )
     return games
