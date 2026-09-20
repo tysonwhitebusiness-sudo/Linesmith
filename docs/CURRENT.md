@@ -1,142 +1,184 @@
 # CURRENT — pick up here
 
-**Rewritten 2026-09-20.** The previous version had grown to 493 append-only
-lines, which is the thing this file is explicitly not supposed to become. Its
-content was not lost: every track's detail lives in that track's own plan, which
-this file now points at rather than duplicating. If you want the old text, it is
-in git (`git show c5baee4:docs/CURRENT.md`).
+**Rewritten 2026-09-20, end of the unattended run.**
 
 ---
 
-# START HERE
+# WHAT HAPPENED WHILE YOU WERE OUT
 
-**The build is running unattended.** The operator left 2026-09-20 for several
-hours and asked for the gameplan to be worked through while they are away.
+Five phases of `docs/design/master-gameplan-ui-and-slate.md` were built,
+verified and pushed: **U0, U1, U2, U5 and S1.** Nothing was deployed —
+`render.yaml` has `autoDeploy: false`, so pushing is safe and the worker is
+still on `c5baee4`. Every phase is on `main`.
 
-**Your prompt is `docs/design/HANDOFF-autonomous-build-2026-09-20.md`.** Read it
-before anything else. It says what to build, in what order, what to do instead
-of stopping for sign-off, and the short list of things that genuinely stop you.
+**The headline: `/{sport}` is the Slate now.** The tab says Slate, the body is
+sections, and the Games section is real on every sport.
 
-**The plan is `docs/design/master-gameplan-ui-and-slate.md`.** Phases 1–4 are
-done and deployed. **Start at phase 5 (U0).**
-
-**Decisions you would have asked about go in `docs/design/SIGNOFF-QUEUE.md`**,
-not into a stop.
-
----
-
-## What is true this morning (measured, 2026-09-20 07:48 UTC)
-
-**Every sport can predict a game.** That was the last thing the operator asked
-for and it is done, deployed (`c5baee4`, `dep-danoti942hec73f7n6i0`, live 07:45)
-and verified against production:
-
-| sport | game model | verified live |
+| commit | phase | what |
 |---|---|---|
-| MLB | its own ensemble | 5 picks |
-| NFL · CFB · NBA · NHL | generic Elo | NFL 14, NHL 7 captured 07:48 |
-| soccer (EPL, MLS) | generic Elo, **three-way** | capture resumed — EPL 4, MLS 1 at 07:48 |
-| tennis (ATP, WTA) | the surface-weighted engine, finally wired | 55 WTA picks at 07:45; ATP has no matches until 09-23 |
-| golf | event-as-field Elo over a 235-event backfill | 1,863 golfers rated; ranks only, publishes no win probability |
+| `d3b1f4c` | U0 | Tailwind 3.4 → 4, the token bridge, `cx` on tailwind-merge, `RouterProvider`, `/kit` |
+| `689f600` | U1 | `Button` / `IconButton` / `CloseButton`; 73 of 96 raw buttons moved; `.lb-btn-primary` deleted |
+| `96defca` | U2 | the Hybrid `DataTable`, `Card.count` / `flush`, `Pagination`, the kit's table fixtures |
+| `9bb8867` | U5 | `Chip.dot`, `Tag`, `Tabs.count`, `SegmentedToggle.icon`, `AvatarLabel`, `AvatarGroup`, `FeaturedIcon` |
+| `a458a17` | S1 | `/api/slate`, 7 sport adapters, SectionNav, GameCards, the props board |
 
-Register: **16 rows — 1 gated, 10 baseline, 1 failed, 4 none.** All 46 jobs ran
-after the deploy, including the three new ones (`tennisPicksJob`,
-`slateRankingsJob`, `modelStatusJob`) and `modelGateJob`.
-
-**The model vocabulary is internal.** `baseline` / `gated` / `simple` /
-`advanced` / "not validated" decide what a page may show; **none of them may
-appear on a customer surface.** Operator, 2026-09-20, unambiguous. M1's spec
-originally said the opposite and is corrected in the gameplan. `/diagnostics` is
-the one allowed exception.
-
-**Player props are out of scope.** The Elo work was about games only. Render
-what exists; build no prop model.
+**Decisions taken on a default are in `docs/design/SIGNOFF-QUEUE.md`** — nine
+rows now (Q0–Q8). The expensive ones to reverse are **Q6** (soccer and tennis
+show no lines block) and **Q7** (the Games section is one DAY, not a week).
 
 ---
 
-## The three tracks
+## What renders now that did not before
 
-| track | plan | state |
-|---|---|---|
-| **Models (M)** | `docs/design/master-gameplan-ui-and-slate.md` §4 Stage 0, and `docs/master-plan-2026-09-06.md` for the Phase 6/7 close-outs | M0–M3 **done and deployed**. M4 (promotion tests) runs on its own. M5 unapproved |
-| **UI system (U)** | `docs/design/ui-system-master-prompt.md` | Not started. **U0 is the next thing to build** |
-| **Slate (S)** | `docs/design/slate-sheet-cards.md`, mockup `docs/design/slate/slate.html` | Not started. Needs U2 and U5 first |
-| Research pages (R) | `docs/audit-2026-09-13/RESUME-PROMPT.md` | R1–R12 all **built and pushed**. R10/R11/R12 await sign-off, and gate nothing |
+Open `/mlb` and you get, under the unchanged top bar and date strip:
 
----
+- a **sticky section nav** — Games 15 · Props 902 — derived from the data, so a
+  section that has nothing drops out of the nav too;
+- a **Games grid**, 3-up at 1440 and 1-up at 400, with a status filter carrying
+  real counts (All 15 · Upcoming 1 · Live 5 · Final 9). Each card has the
+  status, the venue, both teams with crests and probable starters, live or
+  final scores, a three-column lines block (spread · total · moneyline) with
+  the consensus, the best price and its book and the book count, a weather
+  chip, and links to the game page and the prop count;
+- the **props board**, with its tabs rebuilt on the kit and carrying real
+  counts. **The table itself is untouched** and a content-hash test now pins it.
 
-## Owed by the operator
+Every sport has it. NFL shows 14 Sunday games with five Elo model rows; NBA and
+CFB show their real empty days and name the next one (2026-10-03, 2026-09-24);
+NHL its preseason; WTA five matches; ATP its "next matches are on 09-23"; golf
+has no Games section at all, and its winner prices became a section of their
+own — so golf no longer loses the props board to look at them.
 
-- **Rebuild and restart the port-3000 production server.** It predates the
-  2026-09-19 ESPN range fix and will blank NFL/CFB/soccer again on its next
-  rebuild. Carried since M0; no agent can do it.
-- **Sign-off** on R10/R11/R12, M1's seeded statuses, M2's CFB calibration, and
-  M3's first frozen rankings (real receipts land 2026-09-21). All four are rows
-  in `docs/design/SIGNOFF-QUEUE.md`.
-
----
-
-## Open findings worth knowing before you build
-
-- **SL-7:** CFB's game gate cannot run at all — 136 picks considered, **0**
-  matched a reference close. Re-confirmed live 07:46. Same for soccer (75
-  considered, 0 matched), NBA, NHL, tennis and golf (0 considered each).
-- **SL-9:** the blend-weight fit (M2 fit 2) had no inputs because
-  `initial_ml_features_json` was NULL on every generic-Elo row. Fixed forward —
-  the capture stores them from 2026-09-20, so the fit becomes possible once a
-  few weeks accumulate. `MARKET_BLEND_WEIGHT` 0.5 and `ELO_BLEND_WEIGHT` 0.2 are
-  still hand-set placeholders.
-- **SL-1:** stale and exchange quotes are in the game-line data (a +10000
-  moneyline and a `0` price, both live 2026-09-19). S1 drops `|odds| < 100` and
-  anything >15 implied points from the median.
-- **SL-4:** `game_odds_history` holds NHL API ids, not ESPN's. The S1 adapter
-  must bridge them.
-- **MLB's game model is below the close** — mean −0.0563 prob-points, 38.0%
-  positive on 305/448 matched picks (re-measured 07:46). It is `baseline`, so
-  S5 shows its picks but no probability beside a price. See queue row Q0.
-- `refreshTier1` overruns its 150s interval (171.75s) on the one cycle where all
-  five provider throttle windows open at once.
-- `price` holds a copy of `line` on espn_core spread rows; 0 of 988 are
-  plausible odds. Guard: a price outside ±100…100000 is not a price.
-- `athlete_name` is NULL on all 25,420 NBA prop rows. `athlete_id` joins fine.
-- The corpus refresh and OddsHarvester only run while the operator's machine is
-  awake (Phase 10 scope arriving early).
+`/kit` (dev only) is the whole design system on one page: tokens, the Tailwind
+4 traps, the Button family, the Hybrid table with the research reference types
+AND the Slate's own tables on fixtures, and the borrowed pieces.
 
 ---
 
-## Habits that keep paying
+## Start here
 
-- **Audit a phase's premises before building it.** Phase 6's brief had four
-  false premises and Phase 7's had four more, one of which decided the phase.
-  Three of M0–M3's task premises were wrong too. Any claim about where data
-  lives, or how much of it there is, is stale by default.
-- **Pre-register the test before the code that runs it.** It turned a "promising
-  pocket" into a recorded untestable instead of a false positive.
-- **Render before believing.** A test built on the same wrong model as the code
-  agrees with the bug. Open the page — in a **fresh tab**, because worn
-  browser-pane tabs stop running effects and have already produced one false
-  "nothing loads" finding.
-- **If a whole sweep 500s at once, restart the dev server before debugging.**
-  Its render workers die ("Jest worker encountered 2 child process exceptions")
-  and every route 500s, including pages that rendered a minute earlier.
+1. `docs/design/master-gameplan-ui-and-slate.md` — §5's phase table is current.
+   **Next phase: S2 (Movers, Price outliers, Line disagreements).**
+2. `docs/design/SIGNOFF-QUEUE.md` — Q0–Q8, and the phase sign-offs owed.
+3. `docs/design/ui-system-master-prompt.md` — the U track's status line and its
+   findings ledger (U-1 … U-10) are current.
+4. This file's "What is not done" below, which is the honest list.
+
+**S2's premise was measured before anything was built on it** and it HOLDS —
+see `scripts/probe-odds-history.ts`, which carries the numbers in its header:
+3,769 movable book+market+side combinations across 52 games in 36h, and 120,495
+movable prop lines. `game_odds_history` has no `sport` column; it is keyed by
+`event_id`, so a per-sport read joins through the snapshot's game ids.
+
+---
+
+## What is NOT done, honestly
+
+**In S1, and on the ledger rather than quietly dropped:**
+
+- The props **filter pills and search** are untouched. S1's spec says they
+  become `Select`s and the kit input — both are U3 components, and the gameplan
+  runs U3 *after* S1 (SL-16). The tabs were rebuilt; the pills still work as
+  they did.
+- **Team records** ("92-63") are absent on every card: the snapshot's
+  `SlateGame` does not carry one (SL-17).
+- The lines block has **no "since first seen" movement** yet — that is S2's
+  aggregation.
+- "N props →" is a **label, not a link**; it does not yet set the Games filter.
+
+**In U2, as a named ratchet, not a zero:** six hand-rolled tables remain, each
+with the phase that takes it — diagnostics' eleven and golf's four go to U6,
+and two are things `DataTable` genuinely cannot express yet: a grouped header
+row for the pitch table (U-7) and a per-cell gradient wash for golf's scorecard
+(U-8).
+
+**In U1, likewise:** 23 raw buttons survive, each named in
+`tests/ui-buttons.test.ts` with its phase — five listbox options (U3), the slip
+scrim (U4), the old glider toggle (U5's file, kept while Scan uses it), 14
+diagnostics controls (U6) and `global-error.tsx`, which runs when the
+stylesheet may never have loaded and is right to use inline styles.
+
+**Soccer and tennis show NO lines block** (Q6). Measured: one EPL match carried
+totals of 0.5, 1.5, 2.5, 3, 3.25, 3.5, 5.5, 6.5, 7.5 and 8.5 across 21 books,
+because `game_odds_book_lines` holds alternative and derivative markets beside
+the main one and the per-book merge does not record which is which. Grouping on
+the modal point rescues football and baseball; it does not rescue a sport where
+a "moneyline" can be a goal line. The card says so. **S2 is where this gets
+sorted**, because S2 reads that family of tables in anger.
+
+**No signed-in surface was verified** — there are no credentials in the repo
+beyond Supabase's public anon key, and none were created. S5's "Your lines" is
+not built yet; when it is, the signed-out half (the section is HIDDEN, not an
+empty card) is the half that can be checked here.
+
+---
+
+## Owed by you
+
+- **Rebuild and restart the port-3000 production server.** Still outstanding,
+  carried since M0. It predates the 2026-09-19 ESPN range fix and will blank
+  NFL/CFB/soccer again on its next rebuild. No agent can do it.
+- **A deploy, if you want any of this live.** Nothing in U or S needs the
+  worker, so nothing was deployed and nothing is waiting on one.
+- **Sign-off:** the nine queue rows, plus R10/R11/R12 and M1–M3 from before.
+
+---
+
+## Findings worth knowing before the next phase
+
+All five of these were found by RENDERING, not by typing — the tests came
+after, and each is pinned by one now (`tests/slate-shell.test.ts`).
+
+- **Every price on a `BookmakerOdds` is DECIMAL**, not just the moneyline. Only
+  `homeOdds` carries a comment saying so. Spreads and totals had vanished from
+  every card (SL-12).
+- **`game_odds_book_lines.sport` is the GENERIC key** — `soccer`, never
+  `soccer_epl`, while `game_picks` is granular. `db.py` warns about exactly this
+  and it still bit (SL-13).
+- **A live game's `state` is a phrase**, not a keyword: "In Progress", "Manager
+  challenge", "Delayed". Equality put five live MLB games in the Final bucket
+  (SL-15).
+- **The median of American odds is not a price.** One card's consensus read "0".
+- **One book is not a consensus.** An NFL card printed a +30.5 spread off a
+  single quote.
+- **`/mlb` takes 60–90 seconds to settle in dev** (SL-11) — `/api/mlb` is 26 MB
+  and `/api/props/lines` is 23.7 MB, fetched twice. Until then the page honestly
+  reads "No candidates match these filters", which cost half an hour chasing a
+  regression that was not one. **Wait for `table tbody tr` before judging a
+  Scan/Slate render.** `/api/slate` exists partly because of this: MLB's is
+  10.8 KB and the top of the page draws in a second.
+- **Two tint classes were DEAD under Tailwind 3 and work under 4** (U-1,
+  queue Q4): v3's opacity scale had no `8` or `12`, so `bg-good/12` compiled to
+  nothing and the won-game chip rendered with no green while the lost-game chip
+  beside it had `bg-bad/10`.
+
+---
+
+## Habits that kept paying
+
+- **Audit a phase's premises before building it.** S2's was measured first and
+  held; S1's line-reading premises were measured and three of them were wrong.
+- **Render before believing.** Every one of S1's five bugs type-checked
+  perfectly and passed every existing test.
+- **Diff the bytes, not the status code.** U0 was verified by comparing the
+  emitted stylesheets rule by rule (`scripts/css-diff.js`,
+  `scripts/css-classes.js`) rather than by screenshots — 806 class names before,
+  798 after, every difference accounted for. It caught Q4, which no screenshot
+  of a Scan page would have.
+- **A guard can be a ratchet.** Exact per-file counts with a reason and a phase
+  beside each one: it fails on a new offender immediately, and it cannot
+  quietly absorb one.
 
 ---
 
 ## Standing constraints
 
-- **Ask before deploying to Render.** `render.yaml` has `autoDeploy: false`, so
-  `git push` does **not** deploy — pushing is safe and needs no permission.
+- **Ask before deploying to Render.** `git push` does not deploy.
 - **Never `git add -A` or `git add docs/`** — `docs/discord-community-prompt.md`
-  is the operator's. Add named files only (`git add docs/CURRENT.md` is fine).
-- **Back up before deleting.** `prune_corpus` verifies every row is in the
-  corpus by id and content fingerprint first, and refuses while the corpus is
-  local-only.
-- The Postgres pooler caps at **15 connections** — check for running fits before
-  starting DB work.
+  is the operator's. Add named files only.
+- **Do not render against port 3000's `linesmith-prod`.** Use
+  `preview_start {name: "linesmith-dev"}`, which builds from the working tree.
+- **If a whole sweep 500s at once, restart the dev server** before debugging.
+- The Postgres pooler caps at **15 connections** — check for running fits first.
 - Python tests and fits are standalone: `.venv/Scripts/python.exe <file>.py`.
-- Corpus reads cost ~300 MB and are **barred from the Render worker**; they run
-  on the operator's machine. `fit_nba_minutes.py` peaks ~850 MB, takes ~25 min,
-  and needs no database connection (parquet only).
-- **Do not pipe a long Python run through `tail`** — it buffers and you get
-  nothing until the process exits. Use `-u` and redirect to a file.
 - **At ~92% context, stop and hand off** by rewriting this file.
