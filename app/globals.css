@@ -417,19 +417,6 @@
     @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
   }
 
-  .lb-tab {
-    @apply whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors;
-  }
-
-  /* Compact filter control: icon + label + current value, in one scrollable row. */
-  .lb-filter {
-    @apply inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-line
-      bg-card px-3 py-1.5 text-xs font-medium text-ink-muted transition-colors;
-  }
-  .lb-filter-active {
-    @apply border-masters bg-accent-soft text-masters;
-  }
-
   /* A number that is meant to be the first thing the eye lands on. */
   .lb-stat {
     @apply text-lg font-semibold leading-none tabular-nums;
@@ -460,15 +447,6 @@
 }
 .lb-scroll-x::-webkit-scrollbar {
   display: none;
-}
-
-/* Dense table view: header row sticks while a long list scrolls under it. */
-.lb-dense th {
-  @apply sticky top-0 z-10 bg-paper/95 px-2 py-1.5 text-left text-overline uppercase
-    text-ink-muted backdrop-blur;
-}
-.lb-dense td {
-  @apply border-t border-line px-2 py-2 align-middle text-[13px];
 }
 
 /* R3 3a: reduced motion falls back to fades only. Tweens and movement collapse

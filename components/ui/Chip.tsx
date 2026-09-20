@@ -52,9 +52,16 @@ export interface ChipProps {
   className?: string;
   /** Kept for existing callers. New code: wrap the chip in `Tooltip`. */
   title?: string;
+  /**
+   * U5: a leading 6px dot in a named token colour — the modern badge's dot,
+   * borrowed for SPORT AND STATUS IDENTITY. It is not a tone: a sport has no
+   * good or bad, and tinting the whole chip to say "NHL" would spend the
+   * semantic palette on a label. Any CSS colour, so a team's own colour works.
+   */
+  dot?: string;
 }
 
-export function Chip({ children, tone = 'neutral', size = 'sm', shape = 'pill', onClick, selected, style, className, title }: ChipProps) {
+export function Chip({ children, tone = 'neutral', size = 'sm', shape = 'pill', onClick, selected, style, className, title, dot }: ChipProps) {
   const effectiveTone: ChipTone = onClick && selected ? 'strong' : tone;
   const classes = cx(
     'inline-flex items-center gap-1.5 whitespace-nowrap border font-semibold tabular-nums',
@@ -62,7 +69,13 @@ export function Chip({ children, tone = 'neutral', size = 'sm', shape = 'pill', 
     style ? 'border-transparent' : TONE[effectiveTone],
     className,
   );
-  const dot = tone === 'live' ? <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-good animate-lb-pulse" /> : null;
+  // A `live` chip's dot pulses and is drawn from the tone; an identity dot is
+  // a plain mark in whatever colour the caller named.
+  const mark = dot ? (
+    <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: dot }} />
+  ) : tone === 'live' ? (
+    <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-good animate-lb-pulse" />
+  ) : null;
 
   if (onClick) {
     return (
@@ -74,14 +87,14 @@ export function Chip({ children, tone = 'neutral', size = 'sm', shape = 'pill', 
         style={style}
         className={cx(classes, 'transition-colors duration-instant ease-standard', !selected && 'hover:border-ink-faint hover:text-ink')}
       >
-        {dot}
+        {mark}
         {children}
       </button>
     );
   }
   return (
     <span title={title} style={style} className={classes}>
-      {dot}
+      {mark}
       {children}
     </span>
   );

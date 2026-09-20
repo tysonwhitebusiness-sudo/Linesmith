@@ -3,12 +3,15 @@
 import { useState } from 'react';
 import {
   Avatar,
+  AvatarGroup,
+  AvatarLabel,
   Button,
   CloseButton,
   IconButton,
   Card,
   Chip,
   EmptyState,
+  FeaturedIcon,
   ErrorState,
   SegmentedToggle,
   SelectBox,
@@ -17,6 +20,7 @@ import {
   StatValue,
   StatusPill,
   Tabs,
+  Tag,
   Tooltip,
   cx,
 } from '@/components/ui';
@@ -262,7 +266,7 @@ export default function KitPage() {
         </Row>
       </Group>
 
-      <Group id="chip" title="Chip" sub="Semantic tones only. U5 adds `dot`, and the 33 in-scope `.lb-chip` uses move here.">
+      <Group id="chip" title="Chip" sub="Semantic tones only, plus an identity dot. U5 moved every in-scope legacy chip here and deleted the three dead CSS recipes; diagnostics keeps its 16 until U6.">
         <Row name="Tones">
           {(['neutral', 'good', 'bad', 'warn', 'live', 'cmpA', 'cmpB', 'masters'] as const).map((t) => (
             <Chip key={t} tone={t}>
@@ -309,6 +313,16 @@ export default function KitPage() {
               { value: 'season', label: 'Season' },
             ]}
           />
+          <SegmentedToggle
+            label="View"
+            value={seg}
+            onChange={setSeg}
+            options={[
+              { value: 'l5', label: 'Table', icon: <PlusGlyph /> },
+              { value: 'l10', label: 'Bars', icon: <PlusGlyph /> },
+              { value: 'season', label: 'Lines', icon: <PlusGlyph /> },
+            ]}
+          />
         </Row>
         <Row name="Tabs">
           <Tabs
@@ -316,9 +330,10 @@ export default function KitPage() {
             value={tab}
             onChange={setTab}
             items={[
-              { value: 'all', label: 'All' },
-              { value: 'home', label: 'Home' },
-              { value: 'away', label: 'Away' },
+              { value: 'all', label: 'All', count: 2726 },
+              { value: 'home', label: 'Home', count: 68 },
+              { value: 'away', label: 'Away', count: 65 },
+              { value: 'none', label: 'No count' },
             ]}
           />
         </Row>
@@ -340,12 +355,52 @@ export default function KitPage() {
         </Row>
       </Group>
 
-      <Group id="avatar" title="Avatar" sub="Silhouette fallback, never initials. U5 adds AvatarLabel and AvatarGroup.">
-        <Row name="Sizes">
+      <Group
+        id="pieces"
+        title="Borrowed pieces"
+        sub="Untitled UI's look on components we already own the rules for. The Avatar still falls back to a silhouette and never to initials; the Chip still only carries semantic tones."
+      >
+        <Row name="Avatar" note="silhouette fallback, never initials">
           <Avatar label="No photo" size={24} />
           <Avatar label="No photo" size={32} />
           <Avatar label="No photo" size={40} />
           <Avatar label="No logo" size={32} kind="logo" />
+        </Row>
+        <Row name="AvatarLabel" note="the standard person-or-team row: a photo, a name, and ONE sub-line">
+          <AvatarLabel name="Marcus Semien" sub="NYM · 2B" size={24} />
+          <AvatarLabel name="Marcus Semien" sub="NYM · 2B" size={32} />
+          <AvatarLabel name="Marcus Semien" sub="NYM · 2B" size={40} />
+        </Row>
+        <Row name="AvatarGroup" note="overlapped, then +N">
+          <AvatarGroup people={[{ key: 'a', name: 'Neal Shipley' }, { key: 'b', name: 'Ben Kohles' }, { key: 'c', name: 'Eric Cole' }]} />
+          <AvatarGroup
+            people={[
+              { key: 'a', name: 'Neal Shipley' },
+              { key: 'b', name: 'Ben Kohles' },
+              { key: 'c', name: 'Eric Cole' },
+              { key: 'd', name: 'Ricky Castillo' },
+              { key: 'e', name: 'Max Greyserman' },
+              { key: 'f', name: 'Marco Penge' },
+            ]}
+          />
+        </Row>
+        <Row name="Chip.dot" note="sport and status IDENTITY — a dot, not a tone, because a sport has no good or bad">
+          <Chip dot="rgb(var(--good))">Grass</Chip>
+          <Chip dot="rgb(var(--bad))">Clay</Chip>
+          <Chip dot="oklch(var(--ink-muted))">Hard</Chip>
+          <Chip dot="rgb(var(--cmp-a))">MLB</Chip>
+        </Row>
+        <Row name="Tag" note="removable — the compare targets on the player and team pages">
+          <Tag label="Aaron Judge" onRemove={() => {}} />
+          <Tag label="New York" dot="rgb(var(--cmp-a))" onRemove={() => {}} />
+          <Tag label="Not removable" />
+        </Row>
+        <Row name="FeaturedIcon" note="40px; what an empty or error state leads with instead of grey text">
+          <FeaturedIcon icon={<PlusGlyph />} />
+          <FeaturedIcon icon={<PlusGlyph />} tone="good" />
+          <FeaturedIcon icon={<PlusGlyph />} tone="bad" />
+          <FeaturedIcon icon={<PlusGlyph />} tone="warn" />
+          <FeaturedIcon icon={<PlusGlyph />} variant="outline" />
         </Row>
       </Group>
 
@@ -388,10 +443,10 @@ export default function KitPage() {
 
       <Group id="states" title="States on their own">
         <Row name="EmptyState" note="a reason is required">
-          <EmptyState title="Nothing to show" reason="NHL has no props before the season starts." />
+          <EmptyState title="Nothing to show" reason="NHL has no props before the season starts." icon={<PlusGlyph />} />
         </Row>
         <Row name="ErrorState" note="stale data is kept under the message">
-          <ErrorState message="Could not refresh the lines." />
+          <ErrorState message="Could not refresh the lines." icon={<PlusGlyph />} />
         </Row>
         <Row name="Skeleton">
           <Skeleton w={180} />

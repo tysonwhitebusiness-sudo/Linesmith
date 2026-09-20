@@ -1,5 +1,7 @@
 'use client';
 
+import { Chip } from './ui';
+
 import Link from 'next/link';
 import type { SubjectSummary } from '@/lib/core/types';
 import type { GolfOutrightLine } from '@/lib/odds/golfLines';
@@ -17,10 +19,10 @@ function parsePosition(position: string | undefined): number | null {
 function PositionBadge({ position }: { position: number | null }) {
   if (position == null) return null;
   if (position <= 5) {
-    return <span className="lb-chip bg-good/10 text-good">Top 5</span>;
+    return <Chip tone="good" size="sm">Top 5</Chip>;
   }
   if (position <= 10) {
-    return <span className="lb-chip bg-accent-soft text-masters">Top 10</span>;
+    return <Chip tone="neutral" size="sm">Top 10</Chip>;
   }
   return null;
 }

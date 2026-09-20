@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Button } from './Button';
+import { FeaturedIcon } from './Pieces';
 import { cx } from './cx';
 
 /**
@@ -30,12 +31,19 @@ export interface EmptyStateProps {
   reason: string;
   /** The nearest real data, when there is some: "Show 2025". */
   action?: { label: string; onClick?: () => void; href?: string };
+  /** U5: a `FeaturedIcon` above the title, so an empty card is not bare grey text. */
+  icon?: ReactNode;
   className?: string;
 }
 
-export function EmptyState({ title, reason, action, className }: EmptyStateProps) {
+export function EmptyState({ title, reason, action, icon, className }: EmptyStateProps) {
   return (
     <div className={cx('px-4 py-8 text-center', className)}>
+      {icon ? (
+        <span className="mb-3 inline-block">
+          <FeaturedIcon icon={icon} />
+        </span>
+      ) : null}
       <p className="text-body font-semibold text-ink">{title}</p>
       <p className="mt-1 text-body-sm text-ink-muted">{reason}</p>
       {action ? (
@@ -50,6 +58,8 @@ export function EmptyState({ title, reason, action, className }: EmptyStateProps
 export interface ErrorStateProps {
   /** Human text. Never the raw API or exception message. */
   message: string;
+  /** U5: a `FeaturedIcon` in the `bad` tone, left of the message. */
+  icon?: ReactNode;
   onRetry?: () => void;
   /** Cached content to keep showing under the error, when there is some. */
   stale?: ReactNode;
@@ -57,10 +67,11 @@ export interface ErrorStateProps {
 }
 
 /** An error that keeps what the page already had: the message sits above the cached content rather than replacing it. */
-export function ErrorState({ message, onRetry, stale, className }: ErrorStateProps) {
+export function ErrorState({ message, icon, onRetry, stale, className }: ErrorStateProps) {
   return (
     <div className={className}>
       <div role="alert" className={cx('flex items-center gap-3 rounded-ctl border border-bad/25 bg-bad/5 px-3 py-2', stale ? 'mb-3' : '')}>
+        {icon ? <FeaturedIcon icon={icon} tone="bad" /> : null}
         <p className="flex-1 text-body-sm text-ink">
           {message}
           {stale ? <span className="text-ink-muted"> Showing the last data we had.</span> : null}

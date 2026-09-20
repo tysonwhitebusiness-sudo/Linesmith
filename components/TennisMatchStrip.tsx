@@ -1,7 +1,7 @@
 'use client';
 
 import type { DrawMatch } from '@/lib/sports/tennis/schedule';
-import { Button } from './ui';
+import { Button, Chip } from './ui';
 import { SubjectAvatar } from './SubjectAvatar';
 
 /**
@@ -42,7 +42,7 @@ export function TennisMatchStrip({ matches, onSelectMatch }: { matches: DrawMatc
             className="h-auto w-[190px] flex-col justify-center gap-1 rounded-card border border-line px-2.5 py-1.5 text-left font-normal shadow-card ring-0 hover:border-masters/30 hover:bg-card hover:shadow-card-hover"
           >
             <span className="flex items-center justify-between gap-1">
-              {m.state === 'in' ? <span className="lb-chip bg-good/10 text-good">Live</span> : <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{m.round}</span>}
+              {m.state === 'in' ? <Chip tone="live" size="sm">Live</Chip> : <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{m.round}</span>}
               {scoreLine ? <span className="text-[10px] font-bold tabular-nums text-ink">{scoreLine}</span> : null}
             </span>
             <span className="flex items-center gap-1.5">

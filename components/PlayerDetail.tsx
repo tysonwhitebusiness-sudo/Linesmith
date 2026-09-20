@@ -2,7 +2,7 @@
 
 import { useStickyHeaderHeight } from './useStickyHeaderHeight';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Card, Chip, EmptyState, Section, SectionNav, SkeletonLines, StatusPill, Tabs } from './ui';
+import { Button, Card, Chip, EmptyState, Section, SectionNav, SegmentedToggle, SkeletonLines, StatusPill, Tabs } from './ui';
 import { GameStateCard } from './GameStateCard';
 import { PlayerOddsSection } from './PlayerOddsSection';
 import { playerPriceRows } from '@/lib/odds/props/playerPrices';
@@ -60,7 +60,6 @@ import { OddsChip, GetOddsButton, EdgeBadge } from './OddsChip';
 import { BookLogo } from './BookLogo';
 import { usePropOdds, resolveCandidateEdge } from './usePropOdds';
 import { PropOddsBoard } from './PropOddsPanel';
-import { SegmentedToggle } from './SegmentedToggle';
 import { LiveLineTrackerCard } from './LiveLineTrackerCard';
 import { useTeamDefenseAllowed } from './useTeamDefenseAllowed';
 import { GolfPlayerStatsCard } from './GolfPlayerStatsCard';
@@ -409,12 +408,10 @@ function GolfCategoryPicker({
   const labels = dimension === 'round-score' ? ROUND_CATEGORY_LABEL : HOLE_CATEGORY_LABEL;
   return (
     <SegmentedToggle
-      options={(['birdie', 'par', 'bogey'] as const).map((key) => ({ key, label: labels[key] }))}
+      label="Scoring category"
+      options={(['birdie', 'par', 'bogey'] as const).map((value) => ({ value, label: labels[value] }))}
       value={value}
       onChange={onChange}
-      className="rounded-xl border border-line p-1 text-[12px]"
-      buttonClassName="whitespace-nowrap rounded-lg px-2.5 py-1.5"
-      gliderClassName="rounded-lg"
     />
   );
 }

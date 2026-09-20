@@ -461,7 +461,7 @@ history. One phase per sport, each entering the register as `baseline`.
 | 5 | U0 Tailwind 4 + kit base | U | R10–R12 sign-off | all (mechanical) | no | **DONE 2026-09-20** — config deleted, theme in `@theme`, `cx` merges, `/kit` live; verified by emitted-CSS diff, not screenshots |
 | 6 | U1 Buttons | U | U0 | yes | no | **DONE 2026-09-20** — Button/IconButton/CloseButton on react-aria; 73 of 96 raw buttons moved; `.lb-btn-primary` deleted |
 | 7 | U2 Hybrid table | U | U1 | yes | no | **DONE 2026-09-20** — DataTable v2, Card.count/flush, Pagination; kit carries the Slate's tables on fixtures; 6 hand-rolled tables left on a named ratchet |
-| 8 | U5 Borrowed pieces | U | U2 | yes | no | not started |
+| 8 | U5 Borrowed pieces | U | U2 | yes | no | **DONE 2026-09-20** — Chip.dot, Tag, Tabs.count, SegmentedToggle.icon, AvatarLabel, AvatarGroup, FeaturedIcon; one chip / one toggle / one skeleton in scope |
 | 9 | S1 Shell + Games + Props | S | U2, U5, M1 | yes | no | not started |
 | 10 | S2 Movers + price gaps | S | S1 | yes | no | not started |
 | 11 | S3 Spotlights | S | S1, M3 | yes | no | not started |

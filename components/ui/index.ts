@@ -14,6 +14,7 @@ export { Card, type CardProps, type CardState } from './Card';
 export { SegmentedToggle, Tabs, SelectBox, type Option } from './Controls';
 export { Chip, StatusPill, type ChipProps, type ChipTone, type ChipSize, type ChipShape } from './Chip';
 export { Avatar, type AvatarProps } from './Avatar';
+export { Tag, AvatarLabel, AvatarGroup, FeaturedIcon, type TagProps, type AvatarLabelProps, type AvatarGroupProps, type FeaturedIconProps, type FeaturedIconTone } from './Pieces';
 export { StatValue, StatGrid, RankRow, LeagueStripRow, FactList, VizLegend, goodness, percentileColor, ordinal, type StatDirection, type StatValueProps, type RankRowProps } from './Stats';
 export { DataTable, type Column, type DataTableProps, type Density, type HeatSpec } from './DataTable';
 export { Pagination, type PaginationProps, type PagingOptions, type PagingMode } from './Pagination';

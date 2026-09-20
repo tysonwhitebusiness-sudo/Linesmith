@@ -1,5 +1,7 @@
 'use client';
 
+import { Chip } from './ui';
+
 /**
  * Golf's "field not released yet" empty state — shown on Scan, Players and
  * Schedule whenever ESPN hasn't published tee times/pairings for the
@@ -30,7 +32,7 @@ export function TournamentNotStartedNotice({
         />
       </div>
       <div className="max-w-sm space-y-1.5">
-        <span className="lb-chip bg-accent-soft text-masters">Pre-tournament</span>
+        <Chip tone="neutral" size="sm">Pre-tournament</Chip>
         <h2 className="text-[15px] font-semibold text-ink">
           {eventName ? `${eventName} hasn't started yet` : "This tournament hasn't started yet"}
         </h2>

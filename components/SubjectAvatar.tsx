@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Chip } from './ui';
 import { Avatar } from './ui/Avatar';
 
 export interface SubjectAvatarProps {
@@ -55,7 +56,7 @@ export function TeamLogo({ logoUrl, abbreviation, size = 16 }: TeamLogoProps) {
   }, [logoUrl]);
 
   if (!logoUrl || failed) {
-    return abbreviation ? <span className="lb-chip bg-ink/5 text-ink-muted">{abbreviation}</span> : null;
+    return abbreviation ? <Chip tone="neutral" size="sm">{abbreviation}</Chip> : null;
   }
 
   return (

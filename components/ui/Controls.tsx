@@ -21,6 +21,17 @@ export interface Option<T extends string | number> {
   value: T;
   label: ReactNode;
   disabled?: boolean;
+  /**
+   * U5: a count badge inside the tab — "Games 15", "Props 2,726". It is the
+   * number of things behind the tab, so it belongs to the tab rather than to a
+   * line of text under it. `Tabs` draws it; `SegmentedToggle` ignores it.
+   */
+  count?: number;
+  /**
+   * U5: a leading 16px icon, which is what turns `SegmentedToggle` into the
+   * ButtonGroup look. `Tabs` ignores it.
+   */
+  icon?: ReactNode;
 }
 
 export function SegmentedToggle<T extends string | number>({
@@ -56,7 +67,14 @@ export function SegmentedToggle<T extends string | number>({
               on ? 'bg-card text-ink shadow-[0_1px_2px_rgba(0,0,0,0.12)]' : 'text-ink-muted hover:text-ink',
             )}
           >
-            {o.label}
+            <span className="inline-flex items-center gap-1.5">
+              {o.icon ? (
+                <span aria-hidden className="inline-grid h-4 w-4 place-items-center">
+                  {o.icon}
+                </span>
+              ) : null}
+              {o.label}
+            </span>
           </button>
         );
       })}
@@ -118,7 +136,19 @@ export function Tabs<T extends string>({
               on ? 'border-ink text-ink' : 'border-transparent text-ink-muted hover:text-ink',
             )}
           >
-            {it.label}
+            <span className="inline-flex items-center gap-1.5">
+              {it.label}
+              {it.count != null ? (
+                <span
+                  className={cx(
+                    'rounded-[6px] px-1.5 py-px text-overline font-semibold tabular-nums',
+                    on ? 'bg-card text-ink ring-1 ring-line ring-inset' : 'bg-card-sunk text-ink-muted',
+                  )}
+                >
+                  {it.count.toLocaleString()}
+                </span>
+              ) : null}
+            </span>
           </button>
         );
       })}

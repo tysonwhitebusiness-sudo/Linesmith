@@ -6,6 +6,7 @@ import type { UnifiedLinesResult } from '@/lib/odds/types';
 import { SubjectAvatar, TeamLogo } from './SubjectAvatar';
 import { PlayerDetail, FilterChip } from './PlayerDetail';
 import { PlayerSkeleton } from './Skeleton';
+import { Chip } from './ui';
 import { useGolfPlayerStats } from './useGolfPlayerStats';
 import { useSyntheticPlayerCandidates } from './useSyntheticPlayerCandidates';
 import { usePlayerIndex } from './usePlayerIndex';
@@ -231,7 +232,7 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
                           {s.subjectName}
                         </span>
                         {typeof meta.position === 'string' ? (
-                          <span className="lb-chip shrink-0 bg-ink/5 text-[9px] text-ink-muted">{meta.position}</span>
+                          <Chip tone="neutral" size="sm" className="shrink-0">{meta.position}</Chip>
                         ) : null}
                       </span>
                       {s.statusLine ? <span className="block truncate text-[10px] text-ink-muted">{s.statusLine}</span> : null}

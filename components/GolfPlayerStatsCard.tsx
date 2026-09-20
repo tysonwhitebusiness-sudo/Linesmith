@@ -5,7 +5,7 @@ import type { AdvancedStat, AdvancedStatCategory, GolferStrokesGained } from '@/
 import type { PlayerSeasonLog } from '@/lib/sports/golf/playerSeason';
 import { StatRankRow } from './StatRankRow';
 import { ordinal, type OpposingStarterStat } from './PlayerDetail';
-import { SegmentedToggle } from './SegmentedToggle';
+import { SegmentedToggle } from './ui';
 import { SubjectAvatar } from './SubjectAvatar';
 
 /**
@@ -100,14 +100,14 @@ function GolfStatRangeRow({
   );
 }
 
-const CATEGORY_TABS: Array<{ key: AdvancedStatCategory; label: string }> = [
-  { key: 'strokesGained', label: 'SG' },
-  { key: 'driving', label: 'Driving' },
-  { key: 'approach', label: 'Approach' },
-  { key: 'shortGame', label: 'Short Game' },
-  { key: 'putting', label: 'Putting' },
-  { key: 'scoring', label: 'Scoring' },
-  { key: 'rankings', label: 'Rankings' },
+const CATEGORY_TABS: Array<{ value: AdvancedStatCategory; label: string }> = [
+  { value: 'strokesGained', label: 'SG' },
+  { value: 'driving', label: 'Driving' },
+  { value: 'approach', label: 'Approach' },
+  { value: 'shortGame', label: 'Short Game' },
+  { value: 'putting', label: 'Putting' },
+  { value: 'scoring', label: 'Scoring' },
+  { value: 'rankings', label: 'Rankings' },
 ];
 
 export function GolfPlayerStatsCard({
@@ -169,14 +169,7 @@ export function GolfPlayerStatsCard({
         </h3>
 
         <div className="lb-scroll-x mb-3 overflow-x-auto">
-          <SegmentedToggle
-            options={CATEGORY_TABS}
-            value={tab}
-            onChange={setTab}
-            className="w-max rounded-lg border border-line p-0.5 text-[11px]"
-            buttonClassName="whitespace-nowrap rounded-md px-2.5 py-1"
-            gliderClassName="rounded-md"
-          />
+          <SegmentedToggle label="Stat category" size="sm" options={CATEGORY_TABS} value={tab} onChange={setTab} className="w-max" />
         </div>
 
         {tabRows.length === 0 ? (

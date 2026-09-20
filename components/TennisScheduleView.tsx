@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Button, cx } from './ui';
+import { Button, Chip, cx } from './ui';
 import Link from 'next/link';
 import type { PickCandidate, SportSnapshot, TennisTour, WeatherContext } from '@/lib/core/types';
 import type { ScheduleEvent, DrawMatch, DrawSetScore, TournamentDraw } from '@/lib/sports/tennis/schedule';
@@ -46,21 +46,24 @@ function formatDateRange(start: string, end: string): string {
 }
 
 function StatusChip({ status, completed }: { status: ScheduleEvent['status']; completed: boolean }) {
-  if (status === 'in') return <span className="lb-chip bg-good/10 text-good">Live</span>;
-  if (completed || status === 'post') return <span className="lb-chip bg-ink/5 text-ink-muted">Final</span>;
-  return <span className="lb-chip bg-accent-soft text-masters">Upcoming</span>;
+  if (status === 'in') return <Chip tone="live" size="sm">Live</Chip>;
+  if (completed || status === 'post') return <Chip tone="neutral" size="sm">Final</Chip>;
+  return <Chip tone="neutral" size="sm">Upcoming</Chip>;
 }
 
 const SURFACE_LABEL: Record<CourtSurface, string> = { hard: 'Hard', clay: 'Clay', grass: 'Grass' };
-const SURFACE_CLASS: Record<CourtSurface, string> = {
-  hard: 'bg-accent-soft text-masters',
-  clay: 'bg-bad/10 text-bad',
-  grass: 'bg-good/10 text-good',
+// The surface is IDENTITY, not a verdict, so it is a `dot` on a neutral chip
+// rather than a tinted fill — spending the semantic palette on "clay" would
+// make a clay match read as a bad one (U5, Chip.dot).
+const SURFACE_DOT: Record<CourtSurface, string> = {
+  hard: 'oklch(var(--ink-muted))',
+  clay: 'rgb(var(--bad))',
+  grass: 'rgb(var(--good))',
 };
 
 function SurfaceChip({ surface }: { surface: CourtSurface | null }) {
   if (!surface) return null;
-  return <span className={`lb-chip ${SURFACE_CLASS[surface]}`}>{SURFACE_LABEL[surface]}</span>;
+  return <Chip tone="neutral" size="sm" dot={SURFACE_DOT[surface]}>{SURFACE_LABEL[surface]}</Chip>;
 }
 
 function formatSetScore(sets: DrawSetScore[]): string {
@@ -131,7 +134,7 @@ function MatchHeroCard({ event, draw, tour }: { event: ScheduleEvent; draw: Tour
           <div className="mb-1 flex flex-wrap items-center gap-2">
             <h1 className="truncate text-[22px] font-bold leading-tight text-ink">{draw.eventName}</h1>
             <StatusChip status={event.status} completed={event.completed} />
-            {draw.major ? <span className="lb-chip bg-masters text-white">Grand Slam</span> : null}
+            {draw.major ? <Chip tone="masters" size="sm">Grand Slam</Chip> : null}
             <SurfaceChip surface={surface} />
           </div>
           <p className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-muted">
@@ -179,7 +182,7 @@ function TodaysMatchesCard({ matches, tour, moneylines }: { matches: DrawMatch[]
           return (
             <Link key={m.matchId} href={`/tennis/${tour}/game/${m.matchId}`} className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-surface-subtle">
               <div className="w-16 shrink-0 text-[10px] text-ink-muted">
-                {m.state === 'in' ? <span className="lb-chip bg-good/10 text-good">Live</span> : m.court || m.round}
+                {m.state === 'in' ? <Chip tone="live" size="sm">Live</Chip> : m.court || m.round}
               </div>
               <div className="min-w-0 flex-1 space-y-0.5">
                 <div className="flex items-center gap-1.5 text-[12.5px]">

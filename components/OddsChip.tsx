@@ -1,9 +1,8 @@
 'use client';
 import { STALE_AFTER_MS, relativeAge } from '@/lib/odds/priceFreshness';
-import { Button } from './ui';
+import { Button, Skeleton } from './ui';
 import { formatAmerican } from '@/lib/odds/display';
 import { Chip } from './Chip';
-import { Skeleton } from './Skeleton';
 
 /**
  * A price, with where it came from.
@@ -242,7 +241,7 @@ export function OddsChip({
  */
 export function NoOddsCell({ pending, onAdd }: { pending: boolean; onAdd?: () => void }) {
   if (pending) {
-    return <Skeleton w={74} h={18} rounded="rounded-full" className="inline-block" />;
+    return <Skeleton w={74} h={18} round="rounded-full" className="inline-block" />;
   }
   if (!onAdd) return <span className="text-ink-muted">—</span>;
   return (

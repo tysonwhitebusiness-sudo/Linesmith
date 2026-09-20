@@ -1,6 +1,7 @@
 'use client';
 
 import type { Sport } from '@/lib/core/types';
+import { Chip } from './ui';
 
 /**
  * The one place a market gets named.
@@ -264,12 +265,10 @@ export function MarketLabel({
   className = '',
 }: MarketLabelProps) {
   return (
-    <span
-      className={`lb-chip bg-ink/5 text-ink-muted ${className}`}
-      aria-label={marketAriaLabel(sport, dimension, category, line)}
-    >
+    <Chip tone="neutral" size="sm" className={className}>
       <span aria-hidden>{marketText(sport, dimension, mode)}</span>
-    </span>
+      <span className="sr-only">{marketAriaLabel(sport, dimension, category, line)}</span>
+    </Chip>
   );
 }
 

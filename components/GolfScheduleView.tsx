@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Button, cx } from './ui';
+import { Button, Chip, cx } from './ui';
 import Link from 'next/link';
 import type { ScheduleEvent } from '@/lib/sports/golf/schedule';
 import type { PickCandidate, SportSnapshot, SubjectSummary, WeatherContext, WeatherForecastHour } from '@/lib/core/types';
@@ -138,9 +138,9 @@ function formatDateRange(start: string, end: string): string {
 }
 
 function StatusChip({ status, completed }: { status: ScheduleEvent['status']; completed: boolean }) {
-  if (status === 'in') return <span className="lb-chip bg-good/10 text-good">Live</span>;
-  if (completed || status === 'post') return <span className="lb-chip bg-ink/5 text-ink-muted">Final</span>;
-  return <span className="lb-chip bg-accent-soft text-masters">Upcoming</span>;
+  if (status === 'in') return <Chip tone="live" size="sm">Live</Chip>;
+  if (completed || status === 'post') return <Chip tone="neutral" size="sm">Final</Chip>;
+  return <Chip tone="neutral" size="sm">Upcoming</Chip>;
 }
 
 // ---------------------------------------------------------------------------
@@ -276,7 +276,7 @@ function TournamentHeroCard({
             <TournamentLogo name={event.name} size={26} />
             <h1 className="truncate text-[22px] font-bold leading-tight text-ink">{event.name}</h1>
             <StatusChip status={event.status} completed={event.completed} />
-            {currentRound != null ? <span className="lb-chip bg-ink/5 text-ink-muted">Round {currentRound}</span> : null}
+            {currentRound != null ? <Chip tone="neutral" size="sm">Round {currentRound}</Chip> : null}
           </div>
           <p className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-muted">
             <span>{formatDateRange(event.startDate, event.endDate)}</span>
