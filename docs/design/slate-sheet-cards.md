@@ -3,7 +3,8 @@
 **Status (2026-09-19):** specification; nothing built. **Build order:**
 `docs/design/master-gameplan-ui-and-slate.md`. **The Scan table is unchanged**
 (operator): the Props board IS today's `ScanTable` and its toolbar, as is;
-§3.3's column list describes it, it does not restyle it. It follows the handoff
+§3.3's column list describes it, it does not restyle it. Scan's tabs,
+search and filter pills ARE rebuilt on the kit (operator). It follows the handoff
 `docs/design/HANDOFF-ui-and-slate-2026-09-19.md` (§2) and, where the two disagree,
 **this file wins**: every number here was measured on 2026-09-19 against the live
 database, ESPN and the code, and six of the handoff's premises turned out wrong (§1).
@@ -444,8 +445,8 @@ built).
 
 ## 6. Open questions for the operator
 
-1. **Generic-Elo game picks for NFL, CFB and NHL** are still captured though never
-   gated — the reason soccer's were stopped. Stop them too (recommended), or show them?
-   Until answered, the Slate shows none of them.
-2. The **Specials receipts** grade "top 5 by the ranking" against what happened. Is
-   top-5 the right unit, or top-3 to match "pick 3" promos?
+1. **ANSWERED (2026-09-19): the Elo picks stay,** NFL/CFB/NHL, Slate-only, as a
+   green ring on the picked team's logo, with no model card. Measured: it picks the
+   market favorite on 95-100% of games (CFB 216 picks / 6 underdogs / -1.3% per
+   unit), so the card marks the rare pick that goes against the favorite.
+2. **ANSWERED: top 5.**

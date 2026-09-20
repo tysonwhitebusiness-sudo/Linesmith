@@ -22,19 +22,21 @@ the two specs disagree, this file wins on **order and scope**; the specs win on
 |---|---|
 | D1 | The Slate **replaces Scan in place** at `/{sport}`. It is not a new page. |
 | D2 | The app chrome is unchanged: `TopBar` (its **Scan** tab is renamed **Slate**) and the date strip with the game scroller (`DateGameStrip`, `GolferStrip`, `TennisMatchStrip`), which is always part of the top bar. **No second sport picker, date control or page title.** |
-| D3 | **The Scan table does not change at all.** `ScanTable`, its cells, colors, columns, heat, rank chips, filters and toolbar render exactly as today, and become the Props section. The mockup's restyled Props board is a stand-in; the build uses the real one. |
+| D3 | **The Scan TABLE does not change at all** — `ScanTable` itself: its columns, cells, colors, heat, rank chips and row layout render exactly as today, and it becomes the Props section's table. **Everything else about Scan may change** to fit the new UI (operator, 2026-09-19): its tabs (All · Coming up · Watchlist · Home Runs), search, view toggles and filter pills are rebuilt on the kit. The mockup's restyled table is a stand-in; the build uses the real `ScanTable`. |
 | D4 | The mockup's design is approved for everything else: the section order, the GameCard, Movers, Price outliers, Line disagreements, Spotlights, Specials, Model, Your lines, and the sticky section links. |
 | D5 | All sports, in phases: each S phase ships its sections for **every** sport at once, through one adapter per sport. |
 | D6 | Build the Slate's new sections **on the U kit, after U2** (the Hybrid table). |
 | D7 | The Specials pilot set is the list in the spec; more later. No admin-entered "specials at the books" list. |
 | D8 | U track decisions stand as locked (Untitled UI free set copied into `components/ui/`, Hybrid tables, our Tooltip/Card/charts). |
+| D9 | **Keep the simple Elo guesser** for NFL, CFB and NHL, shown **only on the Slate**, as a **green highlight on the picked team's logo** in its GameCard. No model card, no probability column, no record chips: it is deliberately shallower than MLB's and golf's models. **Measured 2026-09-19:** it picks the market favorite on 95–100% of games (CFB 216 picks, 6 underdogs, 84.7% win rate, −1.3% per unit; NFL 47 picks, 2 underdogs; NHL 14 picks, 0 underdogs), so the card also marks the ~1-in-30 game where **the pick is not the market favorite** — the only case it adds information — and the section caption says so. |
+| D10 | **Receipts grade the top 5.** |
 
 **Scope, precisely.** The U spec's §0b put Scan and the landing pages out of
 scope. That now splits:
 
-| stays out of the U track, untouched | built on the U kit (new) |
+| frozen, untouched | rebuilt on the U kit |
 |---|---|
-| `ScanTable`, `ScanCard`, `FilterBar`, `FilterSidebar`, `PlayerFilterDrawer`, `useFilters`, Scan's toolbar and tabs (All · Coming up · Watchlist · Home Runs), `DateGameStrip`, `GolferStrip`, `TennisMatchStrip` | `SlatePage` and every section in it except Props: `GameCard`, Movers, `PriceOutliersCard`, `LineDisagreementsCard`, Spotlights, Specials, Model, Your lines, `SectionNav` |
+| **`ScanTable` only** (plus `ScanCard`, its phone card), and the strips `DateGameStrip`, `GolferStrip`, `TennisMatchStrip` | `SlatePage` and every section: `GameCard`, Movers, `PriceOutliersCard`, `LineDisagreementsCard`, Spotlights, Specials, Model, Your lines, `SectionNav`, **and Scan's own controls** — `FilterBar`, `FilterSidebar`, `PlayerFilterDrawer`, the tabs and search (`useFilters` keeps its API; only its UI changes) |
 
 Tailwind 4 (U0) still reaches the untouched files mechanically; they must look
 identical before and after (U spec §0b rule 1). The `OUT_OF_SCOPE` list in
@@ -102,10 +104,14 @@ Slate needs `Chip.dot`, `AvatarLabel`, `FeaturedIcon`, `Tabs.count` and
 
 The outage fix is done and deployed (`10a1647`, `8dab195`, `f2232c7`). What remains:
 
-- **Q1 answered, then acted on:** NFL, CFB and NHL generic-Elo game picks
-  (never gated; soccer's were stopped for that reason).
-- `generic_pick_capture.py` sends `limit=1000` on a single date, so it sees 25
-  CFB games a day. Fix (to 500) or delete with Q1.
+- **Q1 resolved (D9): the Elo picks stay,** for NFL, CFB and NHL, Slate-only.
+  Soccer's stay stopped (Phase 8, 2026-09-13). Nothing to delete.
+- `generic_pick_capture.py` sends `limit=1000` on a single date, so it captures
+  picks for only 25 CFB games a day (ESPN's silent fallback). Fix to 500 — with
+  D9 the capture is kept, so this is now a real gap, not a candidate for deletion.
+- **Pre-register the honesty check** the Slate's caption rests on: the share of
+  Elo picks that differ from the market favorite, per sport, recomputed weekly.
+  If it reaches zero for a sport over a full season, that sport's highlight goes.
 - **R6-F8:** ParlayAPI files pitchers' strikeouts under `batter-strikeouts` and
   walks allowed under `walks`. Map them in the Python writer.
 - The 9 CFB teams with no `team_name_index` entry (closing lines and results
@@ -179,21 +185,22 @@ Unchanged, plus what the Slate needs: `Chip.dot` (Upcoming / Live / Final),
   section drops out.
 - **Games section:** `GameCard` grid (3 · 2 · 1 up), status filter
   (`SegmentedToggle` with counts), lines block (consensus, best price and book,
-  move since first seen, book count), MLB model row, context chips (park,
+  move since first seen, book count), MLB model row, **the Elo highlight for
+  NFL/CFB/NHL (D9): the picked team's logo ringed green, plus a "against the
+  favorite" chip when the pick is not the market favorite**, context chips (park,
   area-forecast weather where outdoor, injuries), "Game page →" and
   "N props →". Golf: the leaderboard + winner prices. Tennis: matches. The
   game-line sanity rule (drop quotes > 15 implied points from the median, and
   invalid odds) lives in the read.
-- **Props section = Scan's Players view, unchanged:** its tabs (All · Coming up
-  · Watchlist · Home Runs), search, view toggles, filter pills and `ScanTable`,
-  mounted as-is inside the section. "N props →" sets Scan's existing Games
-  filter.
-- **Delete in this phase:** the Players/Games toggle, `GameLinesView`,
-  `GameLine`.
-- **Guard:** a test that fails if `ScanTable.tsx`, `ScanCard.tsx`,
-  `FilterBar.tsx`, `FilterSidebar.tsx`, `PlayerFilterDrawer.tsx` or
-  `useFilters` change outside an explicitly approved commit (a content hash
-  recorded in the test).
+- **Props section:** `ScanTable` mounted unchanged (D3), under controls rebuilt
+  on the kit — the tabs become `Tabs` with counts, the filter pills become
+  `Select`s, search becomes the kit's input. `useFilters` keeps its API so the
+  table receives exactly the rows it does today. "N props →" sets the existing
+  Games filter.
+- **Delete in this phase:** the Players/Games toggle, `GameLinesView`, `GameLine`.
+- **Guard:** a test that fails if `ScanTable.tsx` or `ScanCard.tsx` change
+  outside an explicitly approved commit (a content hash recorded in the test),
+  and a render diff of the table at 1440/400 before and after.
 
 **Done when:** every sport's page renders the chrome, the section links, Games
 and the unchanged Scan table at 1440/400; Scan's table is pixel-identical to
@@ -224,7 +231,7 @@ history starts Aug 15; NBA/NHL until their seasons).
 Reads `slate_rankings`. `Tabs` across the rankings; every factor a column with
 `info`; the Score bar; the "why" line from each factor's percentile over the
 whole pool; not-held notes (red-zone role, first-score rate, penalty takers,
-lineups, strokes gained). **Receipts:** yesterday's frozen top five and what
+lineups, strokes gained). **Receipts:** yesterday's frozen **top five** (D10) and what
 happened, plus the running 7-day count. Needs S1's backtest to have set weights,
 or the page says "equal weights" as the mockup does.
 
@@ -285,12 +292,14 @@ Each row ends with a stop for the operator's sign-off.
 
 ## 6. Open questions
 
-1. **Q1:** stop NFL/CFB/NHL generic-Elo game picks (recommended), or show them?
-2. **Scan's toolbar inside Props:** this plan keeps Scan's tabs (All · Coming up
-   · Watchlist · Home Runs), search, view toggles and filters exactly as they are
-   (D3). Confirm, or say which of them should go now that Watchlist and Home
-   Runs also have Slate sections.
-3. **Receipts unit:** top 5, or top 3 to match "pick 3" promos?
+All three of the first round are answered (D9, D3, D10). Open now:
+
+1. **CFB's Elo highlight:** it is the one sport with a real graded sample, and it
+   is 97% market favorites at **−1.3% per unit**. Keep the green highlight there
+   (D9 as written), or show it only on the games where the pick differs from the
+   favorite?
+2. **Watchlist and Home Runs:** both are Scan tabs today and both now have Slate
+   sections (Your lines, Specials). Keep the tabs as well, or drop them in S2?
 
 ## 7. Findings ledger
 
@@ -300,3 +309,4 @@ Each row ends with a stop for the operator's sign-off.
 | SL-2 | mockup build | Soccer draw not in the live per-book feed | S0 | open |
 | SL-3 | mockup build | ESPN `limit` above ~500 silently returns 25 events | fixed `f2232c7`; `generic_pick_capture` in S0 | partly fixed |
 | SL-4 | mockup build | `game_odds_history` holds no NHL ids matching ESPN's (NHL API ids) | S2 adapter (NHL reads its own ids) | open |
+| SL-5 | Q1 measurement | The Elo guesser picks the market favorite on 95–100% of games; CFB's 196 graded picks return −1.3% per unit | D9 presentation + S0 weekly check | open |
