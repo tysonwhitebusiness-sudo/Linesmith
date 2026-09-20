@@ -1,401 +1,473 @@
-# Master gameplan — UI system + the Slate
+# Master gameplan — models, UI system, Slate
 
-**Status (2026-09-19):** approved direction, nothing built. This is the build
-order for two tracks that share one kit:
+**Status: 2026-09-20. M0–M3 BUILT (not deployed); U and S not started.** One ordered plan for
+three tracks that ship together:
 
-- **U track** — the UI system overhaul. Its locked spec is
-  `docs/design/ui-system-master-prompt.md` (U0–U7). This plan does not restate
-  it; it sequences it and records what changed.
-- **S track** — the Slate, which replaces Scan's body on every sport's page.
-  Its card-by-card spec is `docs/design/slate-sheet-cards.md`; the approved
-  look is the mockup `docs/design/slate/slate.html`.
+- **M — models and data.** What the app is allowed to claim, and the data the
+  Slate needs. Python only; no UI files; can start now.
+- **U — the UI system.** The locked kit (`docs/design/ui-system-master-prompt.md`).
+- **S — the Slate.** Scan's body becomes the Slate on every sport's page
+  (`docs/design/slate-sheet-cards.md`; approved look:
+  `docs/design/slate/slate.html`).
 
-Update the status column of §5 at the end of every phase. Where this file and
-the two specs disagree, this file wins on **order and scope**; the specs win on
-**detail**.
+**How to use this file.** Work the stages in §4 top to bottom. Each phase is a
+build prompt: what to read, what to build, what "done" means, the guard test it
+adds, how to verify, what to stop for. Update its row in §5 when it ends. Where
+this file and a track spec disagree, this file wins on **order and scope**, the
+spec wins on **detail**.
 
 ---
 
-## 1. Decisions (all operator, 2026-09-19)
+## 1. Decisions (operator, 2026-09-19)
 
 | # | decision |
 |---|---|
-| D1 | The Slate **replaces Scan in place** at `/{sport}`. It is not a new page. |
-| D2 | The app chrome is unchanged: `TopBar` (its **Scan** tab is renamed **Slate**) and the date strip with the game scroller (`DateGameStrip`, `GolferStrip`, `TennisMatchStrip`), which is always part of the top bar. **No second sport picker, date control or page title.** |
-| D3 | **The Scan TABLE does not change at all** — `ScanTable` itself: its columns, cells, colors, heat, rank chips and row layout render exactly as today, and it becomes the Props section's table. **Everything else about Scan may change** to fit the new UI (operator, 2026-09-19): its tabs (All · Coming up · Watchlist · Home Runs), search, view toggles and filter pills are rebuilt on the kit. The mockup's restyled table is a stand-in; the build uses the real `ScanTable`. |
-| D4 | The mockup's design is approved for everything else: the section order, the GameCard, Movers, Price outliers, Line disagreements, Spotlights, Specials, Model, Your lines, and the sticky section links. |
-| D5 | All sports, in phases: each S phase ships its sections for **every** sport at once, through one adapter per sport. |
-| D6 | Build the Slate's new sections **on the U kit, after U2** (the Hybrid table). |
-| D7 | The Specials pilot set is the list in the spec; more later. No admin-entered "specials at the books" list. |
-| D8 | U track decisions stand as locked (Untitled UI free set copied into `components/ui/`, Hybrid tables, our Tooltip/Card/charts). |
-| D9 | **Keep the simple Elo guesser** for NFL, CFB and NHL, shown **only on the Slate**, as a **green highlight on the picked team's logo** in its GameCard. No model card, no probability column, no record chips: it is deliberately shallower than MLB's and golf's models. **Measured 2026-09-19:** it picks the market favorite on 95–100% of games (CFB 216 picks, 6 underdogs, 84.7% win rate, −1.3% per unit; NFL 47 picks, 2 underdogs; NHL 14 picks, 0 underdogs), so the card also marks the ~1-in-30 game where **the pick is not the market favorite** — the only case it adds information — and the section caption says so. |
+| D1 | The Slate **replaces Scan in place** at `/{sport}`. Not a new page. |
+| D2 | The chrome is unchanged: `TopBar` (its **Scan** tab renamed **Slate**) and the date strip with the game scroller, which is always part of the top bar. No second sport picker, date control or page title. |
+| D3 | **The Scan TABLE does not change at all** — `ScanTable` and `ScanCard`: columns, cells, colors, heat, rank chips, row layout. **Everything else about Scan may change** to fit the new UI: its tabs, search, view toggles and filter pills are rebuilt on the kit. |
+| D4 | The mockup's design is approved for everything else: section order, GameCard, Movers, Price outliers, Line disagreements, Spotlights, Specials, Model, Your lines, sticky section links. |
+| D5 | All sports, in phases: each S phase ships for **every** sport at once, through one adapter per sport. |
+| D6 | The Slate's new sections are built **on the U kit, after U2**. |
+| D7 | The Specials pilot set is the list in the spec. No admin-entered "specials at the books" list. |
+| D8 | U track decisions stand as locked. |
+| D9 | **Keep the simple Elo guesser** (NFL, CFB, NHL), **Slate only**, as a green ring on the picked team's logo. No model card, no probability, no record. Measured: it picks the market favorite on 95–100% of games, so the card marks the rare pick that goes against the favorite. |
 | D10 | **Receipts grade the top 5.** |
-| D11 | **Simple models stand in until a researched one passes its gate** (operator, 2026-09-19). They are separate code, not a slice of the researched ones: `predict/generic_team_elo.py` (game picks, NFL/CFB/NBA/NHL) vs MLB's own ensemble and the per-sport prop engines. The standing-in is made a policy, not a habit, by S0.5: a status register, display tied to status, and a scheduled promotion test. |
+| D11 | **Simple models stand in until a researched one passes its gate.** They are separate code, not a slice of the researched ones. Made a policy by M1: a register, display tied to status, a scheduled promotion test. |
 
-**Scope, precisely.** The U spec's §0b put Scan and the landing pages out of
-scope. That now splits:
+## 2. Standing rules for every phase
 
-| frozen, untouched | rebuilt on the U kit |
-|---|---|
-| **`ScanTable` only** (plus `ScanCard`, its phone card), and the strips `DateGameStrip`, `GolferStrip`, `TennisMatchStrip` | `SlatePage` and every section: `GameCard`, Movers, `PriceOutliersCard`, `LineDisagreementsCard`, Spotlights, Specials, Model, Your lines, `SectionNav`, **and Scan's own controls** — `FilterBar`, `FilterSidebar`, `PlayerFilterDrawer`, the tabs and search (`useFilters` keeps its API; only its UI changes) |
-
-Tailwind 4 (U0) still reaches the untouched files mechanically; they must look
-identical before and after (U spec §0b rule 1). The `OUT_OF_SCOPE` list in
-`tests/ui-primitives.test.ts` keeps every left-column file.
-
-**Removed from Scan's body** (their content becomes a section): the
-Players/Games toggle (Games is always a section), `GameLinesView` / `GameLine`
-(the market grid), and `TodaysPicksModal` with its "Today's Picks" button
-(→ the Model section). Nothing else of Scan is removed.
-
-## 2. Rules for every phase
-
-The research plan's §2, the U spec's §6 and CLAUDE.md all apply. In short:
-
-1. **Build, type-check, test, render, compare, commit by explicit path, stop for
-   sign-off.** `tsc --noEmit` clean; every TS test and the touched Python tests
-   pass; `npm run build` passes (`LB_DIST_DIR=.next-verify` while a dev server
-   holds `.next`).
-2. **Render in a fresh tab** at 1440 and 400, for every sport the phase touches
-   (MLB, NFL, CFB, EPL, MLS, NBA, NHL, ATP, WTA, golf). A sport that is off or
-   empty today renders its real empty state; say which.
-3. **Subtract in the same phase.** A phase that replaces something deletes the
-   old one in the same commit.
+1. **Build → `tsc --noEmit` → tests → `npm run build` → render → compare →
+   commit by explicit path → stop for sign-off.** Use `LB_DIST_DIR=.next-verify`
+   while a dev server holds `.next`.
+2. **Render in a fresh tab** (`tabs_create`) at 1440 and 400, for every sport the
+   phase touches: MLB, NFL, CFB, EPL, MLS, NBA, NHL, ATP, WTA, golf. A sport out
+   of season renders its real empty state; name it in the write-up.
+3. **Subtract in the same phase.** Replacing something deletes the old thing in
+   the same commit.
 4. **Python writes, TypeScript renders.** New tables get a
    `docs/table-ownership.md` row. No GET handler writes.
-5. **API routes** go through `cachedRoute()`; grep the cache key first.
-6. **Sport adapters:** `SlatePage` never branches on sport. Each sport has
-   `lib/sports/{sport}/adapters/slateAdapter.ts` → `toSlateData`; a sport with
-   no data for a section leaves it unset and the section hides.
-7. **Honesty guards:** no edge column; `Model %` beside `IP`, never their
-   difference (`tests/scan-no-edge.test.ts` is extended to the Slate);
-   movement, gaps and rankings are captioned as not predictions.
-8. **Never edit** `ScanTable` and the other left-column files of §1, except the
-   mechanical Tailwind 4 conversion in U0. A guard test enforces it (S2).
+5. **Routes go through `cachedRoute()`.** Grep the cache key first — one flat
+   `snapshot_cache` table, no namespacing.
+6. **Sport adapters.** `SlatePage` never branches on sport:
+   `lib/sports/{sport}/adapters/slateAdapter.ts` → `toSlateData`. A sport with no
+   data for a section leaves it unset; the section hides.
+7. **Honesty.** No edge anywhere. `Model %` may sit beside `IP` only where M1's
+   register says `gated`; nothing computes, sorts by or colors their difference
+   (`tests/scan-no-edge.test.ts`). Movement, price gaps and rankings are captioned
+   as market information, not predictions.
+8. **`ScanTable` and `ScanCard` are frozen** (D3), except U0's mechanical
+   Tailwind conversion. A content-hash guard enforces it from S1.
 9. **Ask before any Render deploy.** Check the 15-connection pooler before DB
-   work.
-10. **At ~92% context, hand off** (CLAUDE.md): rewrite `docs/CURRENT.md`.
+   work; a harvester cycle or a fit may be holding connections.
+10. **Pre-register every model claim:** the test and its pass/fail rule are
+    committed before the code that runs it.
+11. **At ~92% context, hand off:** rewrite `docs/CURRENT.md`, commit, push.
 
-## 3. The two tracks side by side
+## 3. Where things stand (measured 2026-09-19)
 
-```
- now ─────────────────────────────────────────────────────────────────────────▶
- S0  cleanup (data)          ┐
- S0.5 model status register  ├─ Python/config only, no UI files: can run now
- S0.6 fit the baseline (CFB) │   (per sport, as graded picks reach 200)
- S1  ranking + slate data    │
-     (Python, deploy)        ┘
-                     [R10–R12 sign-off]
- U0  Tailwind 4 + kit base ─▶ U1 Buttons ─▶ U2 Hybrid table ─▶ U5 borrowed pieces
-                                                              │
-                                             S2 shell + Games + Props (Scan, as is)
-                                             S3 Movers + outliers + disagreements
-                                             S4 Spotlights
-                                             S5 Specials + receipts
-                                             S6 Model + Your lines
-                              U3 form controls / U4 overlays (interleave with S3–S6)
- U6 page sweep ─▶ S7 Slate close ─▶ U7 close
-```
+So a fresh session doesn't re-derive it:
 
-U5 moves ahead of U3/U4 (the U spec allows U3–U5 in any order) because the
-Slate needs `Chip.dot`, `AvatarLabel`, `FeaturedIcon`, `Tabs.count` and
-`SegmentedToggle`.
+- **The ESPN outage is fixed and deployed** (`10a1647`, `8dab195`, `f2232c7`).
+  ESPN rejects team-sport date ranges; every caller now asks one date at a time
+  with `limit=500` (above ~500 it silently returns 25 events), and an unreadable
+  day raises instead of reading as "no games". Caught up from 09-11: 446 finals,
+  11 games of history, 80 games regraded. **Closing lines for 09-15 → 09-19 are
+  lost.**
+- **Models today:** MLB game (gated, its own ensemble) and MLB props (gated, 12
+  markets, 14 Platt calibrations). NHL props and NFL props are baselines (NFL
+  shows projections with no probability, decision 4.6). Generic Elo covers
+  NFL/CFB/NBA/NHL game picks. CFB game (Phase 6), NBA props (Phase 7) and soccer
+  (Dixon-Coles) **failed** their gates. Golf's model was **deleted** 2026-09-13.
+  Tennis has a rating engine wired to nothing.
+- **The generic Elo blends 50% with the market price** (`MARKET_BLEND_WEIGHT`
+  0.5, `ELO_BLEND_WEIGHT` 0.2, hand-set placeholders), which is why it picks the
+  favorite 95–100% of the time. Graded picks: CFB 196 (84.7% wins, −1.3% per
+  unit), NFL 32, NHL 3, soccer 54 (capture stopped 2026-09-13).
+- **Slate data** is measured per sport in `slate-sheet-cards.md` §4. Highlights:
+  MLB 16 prop markets (up to 21 books); NFL 18 (pre-outage week); CFB 13; soccer
+  7 per league; tennis 3; NHL none yet (preseason); NBA from October. Opening
+  lines are **not held**, so Movers measures "since first seen". Weather **is**
+  held (area forecast) for outdoor MLB/NFL/CFB venues.
 
-## 4. Phases
+## 4. The build, in order
 
-### S0 — Data cleanup before anything is built (Python/data; no UI)
+### Stage 0 — models and data (now; no UI files; runs while R10–R12 await sign-off)
 
-The outage fix is done and deployed (`10a1647`, `8dab195`, `f2232c7`). What remains:
+#### M0 — Close out the outage and the data gaps
 
-- **Q1 resolved (D9): the Elo picks stay,** for NFL, CFB and NHL, Slate-only.
-  Soccer's stay stopped (Phase 8, 2026-09-13). Nothing to delete.
-- `generic_pick_capture.py` sends `limit=1000` on a single date, so it captures
-  picks for only 25 CFB games a day (ESPN's silent fallback). Fix to 500 — with
-  D9 the capture is kept, so this is now a real gap, not a candidate for deletion.
-- **Pre-register the honesty check** the Slate's caption rests on: the share of
-  Elo picks that differ from the market favorite, per sport, recomputed weekly.
-  If it reaches zero for a sport over a full season, that sport's highlight goes.
-- **The Elo baseline's display changes (D9), none of which change a pick:**
-  ring only at 65%+, so the ring means conviction; mark the pick that goes
-  against the favorite. (Showing the model's win % beside the market's implied %
-  is a `gated` privilege under S0.5's display rule, so it waits for a gate.)
-- **Fitting the baseline against real outcomes is S0.6,** not this phase.
-- **R6-F8:** ParlayAPI files pitchers' strikeouts under `batter-strikeouts` and
-  walks allowed under `walks`. Map them in the Python writer.
-- The 9 CFB teams with no `team_name_index` entry (closing lines and results
-  skipped: Ohio, South Alabama, Stonehill, UMass, UL Monroe, Sacred Heart,
-  Southern Utah, West Georgia, Arkansas State). Add them.
-- Soccer draw prices: the live per-book feed carries none; only the archive has
-  them (harvester). Check whether a provider we pay for returns a 3-way market
-  that is being dropped, and map it; else the GameCard shows the archive draw.
-- **Operator:** rebuild and restart the port-3000 production server; it predates
-  the ESPN fix and will blank NFL/CFB/soccer again on its next rebuild.
+**Why first:** every later phase reads this data, and two of these silently
+shrink a sport's coverage.
+
+**Read:** `docs/CURRENT.md` top section; `slate-sheet-cards.md` §5.
+
+**Build:**
+1. `predict/generic_pick_capture.py:57` sends `limit=1000` on a single date, so
+   ESPN returns 25 events. Set 500. (Same bug class as `f2232c7`; left alone then
+   because Q1 was open.)
+2. **R6-F8:** ParlayAPI files pitchers' strikeouts under `batter-strikeouts` and
+   walks allowed under `walks`. Map them in the Python writer so pitcher markets
+   stop missing those books.
+3. Add the 9 CFB teams missing from `team_name_index` (Ohio, South Alabama,
+   Stonehill, UMass, UL Monroe, Sacred Heart, Southern Utah, West Georgia,
+   Arkansas State). Their closing lines and results are being skipped.
+4. **Soccer draw:** the live per-book feed carries no draw price; only the
+   archive has one, from the harvester. Check whether a paid provider returns a
+   3-way market we drop at ingest and map it; otherwise record it as
+   archive-only.
+5. **Operator:** rebuild and restart the port-3000 production server. It predates
+   the fix and will blank NFL/CFB/soccer again on its next rebuild.
 
 **Done when:** each item is fixed, deployed (asked first) or recorded as not
-held; the spec's §5 table is updated.
+held; `slate-sheet-cards.md` §5 updated; one CFB slate shows lines and results
+for the previously-missing teams.
 
-### S0.5 — Model status: a register, a display rule, a promotion test (D11)
+**Guard:** a test asserting no ESPN call in the repo sends `limit` > 500.
 
-The knowledge of which model is real lives across plan documents today, and the
-app cannot read it. This makes it one fact in one place.
+**Stop for:** confirmation the production server was rebuilt.
 
-**1. The register.** One row per `sport × kind` (`game`, `prop`), in config with
-a DB mirror the app reads:
+#### M1 — Model status: a register, a display rule, a promotion test (D11)
 
-| field | meaning |
-|---|---|
-| `engine` | `generic_elo`, `mlb_ensemble`, `mlb_pa_sim`, `count_prop_engine`, … |
-| `status` | `none` · `baseline` (simple, unvalidated) · `gated` (passed a pre-registered test) · `failed` (attempted, did not pass) |
-| `evidence` | the test, its result, the date, the commit |
-| `since` | when it entered this status |
+**Why here:** it decides what every later page may claim. Building the Slate
+first would bake today's habits into new code.
 
-Seeded from what is true on 2026-09-19: MLB game **gated**; MLB props **gated**
-(14 Platt calibrations); NHL props **baseline** (projections, temperature
-calibration, never gated); NFL props **baseline** (projections, no probability,
-decision 4.6); NFL/CFB/NBA/NHL game **baseline** (generic Elo); CFB game
-**failed** (Phase 6), NBA props **failed** (Phase 7), soccer game **failed**
-(Dixon-Coles; capture stopped 2026-09-13); golf **none** (model deleted
-2026-09-13); tennis **none**; soccer/CFB/tennis/golf props **none**.
+**Read:** `predict/generic_team_elo.py` header; `predict/calibration.py`;
+`docs/master-plan-2026-09-06.md` Phase 6 and 7 close-outs (the failed gates).
 
-**2. Display tied to status** — one rule the pages read from the register, so no
-page decides for itself:
+**Build:**
+1. **The register.** One row per `sport × kind` (`game`, `prop`): `engine`,
+   `status` (`none` · `baseline` · `gated` · `failed`), `evidence` (test, result,
+   date, commit), `since`, `fitted_at`. Config in Python with a DB mirror the app
+   reads through one `cachedRoute()` endpoint.
+2. **Seed from what is true today** (§3), each row citing its evidence.
+3. **The display rule**, in one shared helper every page calls:
 
-| status | may show | must not show |
-|---|---|---|
-| `gated` | probability beside the market's implied probability, projection, pick, record | the difference between them (standing rule) |
-| `baseline` | the pick (the green ring), a projection, hit rates | a probability beside a price, a record framed as a track record, any edge |
-| `failed` / `none` | nothing; the section hides and says why | anything implying a model exists |
+   | status | may show | must not show |
+   |---|---|---|
+   | `gated` | probability beside the market's implied probability, projection, pick, graded record | the difference between the two |
+   | `baseline` | the pick (green ring), projection, hit rates, sample sizes | a probability beside a price, a record framed as a track record, any edge |
+   | `failed` / `none` | nothing — the section hides and says why | anything implying a model exists |
 
-Each page says which it is in plain words ("baseline model, not validated").
-`tests/scan-no-edge.test.ts` grows a case per status.
+4. Every surface says its status in plain words ("baseline model, not validated").
+5. **The promotion test:** each sport × kind carries pre-registered gate
+   criteria; a scheduled job re-runs them, updates `status`, writes the evidence.
+   Demotion works the same way.
+6. **`game_picks` gains a `source` column** — the generic baseline and MLB's own
+   model both write that table, told apart only by sport today. Backfill from
+   sport.
 
-**3. The promotion test.** Each sport and kind carries its gate criteria,
-written **before** the attempt (the project's pre-registration habit), and a
-scheduled job re-runs them and updates `status` with its evidence. A sport moves
-baseline → gated when it earns it, not when someone remembers to look; a gated
-model that stops clearing its own bar moves back.
+**Done when:** the register is seeded, read by at least one page and enforced by
+tests; the promotion job has run once and recorded evidence;
+`table-ownership.md` rows added.
 
-**Also in this phase:** `game_picks` gains a `source` column (the generic
-baseline and MLB's own model both write that table today, told apart only by
-sport), backfilled from sport.
+**Guard:** `tests/scan-no-edge.test.ts` gains a case per status; a test fails if
+a page renders a probability for a non-`gated` row.
 
-**Done when:** the register is seeded and read by one page; the three display
-rules are enforced by a test; the promotion job runs and records its evidence;
-`docs/table-ownership.md` has the new rows.
+**Stop for:** sign-off on the seeded statuses — this is the list of what the app
+claims.
 
-### S0.6 — Fit the simple models against real outcomes (per sport, as data allows)
+#### M2 — Fit the simple models against real outcomes (per sport, as data allows)
 
-The baseline's numbers were hand-set and never fitted; its own file says so.
-Two different fits, both pre-registered, **neither of which promotes anything** —
-a fitted baseline is still `baseline` in the register until it passes a gate.
+**Why here:** after M1, so a fit cannot quietly promote anything; before the
+Slate shows the ring.
 
-| fit | what it changes | effect on the pick |
-|---|---|---|
-| **Calibration** (Platt, the module MLB already uses) | the probability, so 68% means 68% — CFB's average pick reads 68.5% and has never been checked against how often those picks won | none |
-| **Blend weights** (`MARKET_BLEND_WEIGHT` 0.5, `ELO_BLEND_WEIGHT` 0.2, both placeholders) | how far the prediction leans on the market vs the rating | **can move picks**; a fit that says lean harder on the market makes the ring rarer, which is a legitimate result |
+**Read:** `predict/probability_blend.py` (the placeholders),
+`predict/platt_calibration.py`, `predict/walkforward.py`.
 
-**Gated on sample, per sport.** Graded moneyline picks as of 2026-09-19: CFB 196,
-soccer 54 (capture stopped), NFL 32, NHL 3. Rule: **fit a sport at ≥ 200 graded
-picks, refit quarterly, hold the placeholders until then, and say in the register
-which sports are fitted.** So CFB is first (at ~200 now), NFL around midseason,
-NHL after a few months, NBA from its season. Each fit is walk-forward — fit on
-what was known before each game, never on the outcome it predicts.
+**Build:**
+1. **Calibration.** Platt against graded picks, per sport. Changes the number,
+   never the pick. CFB's average pick reads 68.5% and has never been checked
+   against how often those picks won.
+2. **Blend weights.** Fit `MARKET_BLEND_WEIGHT` (0.5) and `ELO_BLEND_WEIGHT`
+   (0.2); the file itself calls them placeholders awaiting a fitting pass.
+   **This one can move picks.** A fit that says lean harder on the market makes
+   the ring rarer — a legitimate result, not a failure.
+3. **Walk-forward only:** fit on what was known before each game.
+4. **Sample gate: fit a sport at ≥ 200 graded picks; refit quarterly.** Today CFB
+   196 (first), NFL 32, NHL 3, NBA from its season. Hold the placeholders
+   otherwise and record in the register which sports are fitted.
+5. Pre-register both criteria and the failure path: placeholders stay, the
+   attempt is recorded.
 
-**Pre-register before the code:** the criteria (a calibration measure for the
-first fit, and for the second whether the fitted weights beat the placeholders
-out of sample), and what happens if the fit fails, which is that the placeholders
-stay and the register records the attempt.
+**Done when:** CFB is fitted and calibrated with its evidence in the register;
+the other sports' thresholds and expected dates are recorded.
 
-**Done when:** CFB is fitted and calibrated, its evidence is in the register, and
-the other sports' thresholds are recorded with their expected dates.
+**Guard:** a test that fitted weights are read from the register, never
+hard-coded; a walk-forward leakage check.
 
-### S1 — The Slate's data layer (Python; deploy; no UI)
+**Stop for:** the fit's numbers before they go live.
 
-- **`slate_rankings`** table (migration + `docs/table-ownership.md` row):
-  `sport, slate_date, ranking_id, subject_id, rank, score, factors jsonb,
-  frozen_at, outcome jsonb`. One writer: a new `slateRankingsJob` in
-  `JOB_REGISTRY` (health_check picks it up by itself).
-- The job computes every Spotlight and Specials ranking in the spec §4 for every
-  sport with games today, with the factor columns the mockup shows, and
-  **freezes** each ranking at its sport's first start (receipts need a ranking
-  that existed before the games). A grading pass fills `outcome` next morning.
-- Inputs it must build that nothing holds yet (spec §5): team K% vs pitcher
-  hand (pitch corpus); TennisMyLife serve stats (fetched and stored); optional
-  Understat xG for EPL.
-- **Weights:** equal until a **pre-registered backtest** (commit the test and
-  its pass/fail rule before the code that runs it; CURRENT.md's habit) sets
-  them per ranking.
-- `withJobLock` if it can overlap itself.
+#### M3 — The Slate's rankings (`slate_rankings`)
 
-**Done when:** a day of rankings is frozen and graded for MLB and at least one
-other sport; the backtest spec is committed; deploy approved and run.
+**Why here:** Spotlights (S3) and Specials (S4) read it, and it needs a day or
+two of real frozen rankings before those pages can be judged.
 
-### U0 — Tailwind 4 and the kit's foundation (U spec §6)
+**Read:** `slate-sheet-cards.md` §4 (every ranking's factors, per sport) and §5.
 
-Unchanged from the U spec. Additions for the Slate:
-- The before/after screenshots include **one `/{sport}` Scan page per sport**:
-  `ScanTable`, `FilterBar` and the strips must be pixel-identical.
-- `OUT_OF_SCOPE` gains nothing and loses nothing yet.
+**Build:**
+1. **Table** `slate_rankings`: `sport, slate_date, ranking_id, subject_id, rank,
+   score, factors jsonb, frozen_at, outcome jsonb`. One writer.
+2. **`slateRankingsJob`** in `JOB_REGISTRY` (health_check picks it up itself). It
+   computes every Spotlight and Specials ranking for each sport with games today,
+   **freezes** each at that sport's first start, and grades the frozen top 5
+   (D10) next morning into `outcome`.
+3. **Inputs nothing holds yet:** team K% vs pitcher hand (pitch corpus);
+   TennisMyLife serve stats, fetched and stored; optionally Understat xG for EPL.
+4. **Weights equal** until a pre-registered backtest sets them; the page says so.
+5. `withJobLock` if it can overlap itself. Corpus reads stay off the Render
+   worker (~300 MB each).
 
-**Gate:** R10–R12 signed off and no other session editing UI files (U spec §10).
+**Done when:** a full day is frozen and graded for MLB and at least one other
+sport; the backtest spec is committed; deployed (asked first).
 
-### U1 — Button family · U2 — the Hybrid table (U spec §6)
+**Guard:** a test that a ranking row's `frozen_at` is never after its sport's
+first start.
 
-Unchanged. U2's reference set (§7 of the U spec) gains the Slate's tables as
-fixtures on the kit page: Movers, Price outliers, Line disagreements, a
-Spotlight (with `bar` and `streak`), a Specials ranking (with `score` bar and
-`info` on every factor), and the Model picks table.
+**Stop for:** one day's rankings reviewed against the mockup's columns.
 
-### U5 — Borrowed pieces (moved ahead of U3/U4)
+### Stage 1 — the UI foundation (after R10–R12 sign-off; no other session editing UI)
 
-Unchanged, plus what the Slate needs: `Chip.dot` (Upcoming / Live / Final),
-`AvatarLabel`, `FeaturedIcon` in `EmptyState`, `Tabs.count`, `Card.count` and
-`flush`. **Scan's files keep their old kit** (the glider `SegmentedToggle`,
-`components/Skeleton.tsx`, `.lb-chip`) exactly as today.
+#### U0 — Tailwind 4 and the kit's base (U spec §6, §9)
 
-### S2 — The Slate shell, Games and Props (every sport)
+**Why here:** everything in U and S depends on it, and it touches nearly every
+file, so it must not overlap another UI session.
 
-- **Route and chrome:** AppShell's Scan body becomes `SlatePage`. `TopBar`'s
-  tab label **Scan → Slate** (the `Tab` type, `?tab=` value and any test that
-  names it; keep `?tab=Scan` working as an alias). The strips are untouched.
-- **`/api/slate?sport=&date=`** through `cachedRoute()` (key
-  `slate:route:{sport}:{date}`, grep first). TTLs: games 60 s, lines/props
-  120 s, rankings once per slate. It reads; it never writes.
-- **Adapters:** `toSlateData` per sport returns `SlateData` (shared shape in
-  `lib/sports/shared/slateShapes.ts`): games, movers, outliers, disagreements,
-  spotlights, specials, model, with each unset where the sport has none.
-- **`SectionNav`:** sticky under the header, anchor `Tabs` with counts; a hidden
-  section drops out.
-- **Games section:** `GameCard` grid (3 · 2 · 1 up), status filter
-  (`SegmentedToggle` with counts), lines block (consensus, best price and book,
-  move since first seen, book count), MLB model row, **the Elo highlight for
-  NFL/CFB/NHL (D9): the picked team's logo ringed green, plus a "against the
-  favorite" chip when the pick is not the market favorite**, context chips (park,
-  area-forecast weather where outdoor, injuries), "Game page →" and
-  "N props →". Golf: the leaderboard + winner prices. Tennis: matches. The
-  game-line sanity rule (drop quotes > 15 implied points from the median, and
-  invalid odds) lives in the read.
-- **Props section:** `ScanTable` mounted unchanged (D3), under controls rebuilt
-  on the kit — the tabs become `Tabs` with counts, the filter pills become
-  `Select`s, search becomes the kit's input. `useFilters` keeps its API so the
-  table receives exactly the rows it does today. "N props →" sets the existing
-  Games filter.
-- **Delete in this phase:** the Players/Games toggle, `GameLinesView`, `GameLine`.
-- **Guard:** a test that fails if `ScanTable.tsx` or `ScanCard.tsx` change
-  outside an explicitly approved commit (a content hash recorded in the test),
-  and a render diff of the table at 1440/400 before and after.
+**Build:** the U spec's U0 exactly — Tailwind 3.4 → 4, config into `@theme`, the
+Untitled UI token bridge, the `field` type token, `react-aria-components`,
+`tailwind-merge` (extended so our font-size tokens survive), the icon set after
+its license check, `RouterProvider` in the root layout, the dev-only `/kit` page
+skeleton.
 
-**Done when:** every sport's page renders the chrome, the section links, Games
-and the unchanged Scan table at 1440/400; Scan's table is pixel-identical to
-before; the old toggle and market grid are gone.
+**Extra here:** before/after screenshots include **one `/{sport}` page per
+sport**; `ScanTable`, the filter bar and the strips must be pixel-identical.
 
-### S3 — Movers, Price outliers, Line disagreements (every sport)
+**Done when:** no size moved and no color changed anywhere; each trap in U spec
+§9 is checked by eye on the kit page (`bg-good/10`, `border-cmp-a/30`,
+`bg-ink/[0.08]`, bare `border`, `ring`, `outline-none`).
 
-- Read from `game_odds_history` and `prop_odds_history` (first observation per
-  book = "first seen"; the opener is not held) and the current `prop_odds`.
-  Aggregation SQL in the `/api/slate` build; no new table.
-- Movers: `Tabs` Game lines · Props; window `SegmentedToggle` (Since first seen ·
-  3h · 1h, all real); Move bar; Steam and Split chips; sparkline.
-- Outliers: ≥ 5 books, gap 4–15 implied points (larger = stale, dropped).
-  Disagreements: books split on the line.
-- Captions per the spec. Hidden for golf.
+**Guard:** the Tailwind 4 build; `cx` merge cases.
 
-### S4 — Spotlights (every sport)
+#### U1 — Buttons · U2 — the Hybrid table · U5 — borrowed pieces
 
-Reads `slate_rankings` (S1). Hit-rate leaders and Active streaks for every
-sport, plus each sport's own (spec §4): MLB platoon, K spots, HR parks; NFL
-receivers vs pass D, rushers vs run D; CFB rushers (team level); NBA pace-up,
-usage bumps, shot zones (from October); NHL shot volume; soccer shot takers;
-tennis form and serve vs return; golf low rounds. Empty states say why (MLS
-history starts Aug 15; NBA/NHL until their seasons).
+Three phases in this order, from the U spec §6. What belongs to this plan:
 
-### S5 — Specials and receipts (every sport)
+- **U1** first: the table footer uses Buttons.
+- **U2** is the biggest visual change. Its kit-page fixtures gain the Slate's
+  tables — Movers, Price outliers, Line disagreements, a Spotlight (with `bar`
+  and `streak`), a Specials ranking (score bar, `info` on every factor), the
+  Model picks table — so S1–S5 build on proven columns.
+- **U5 moves ahead of U3/U4** (the U spec allows any order among U3–U5) because
+  the Slate needs `Chip.dot`, `AvatarLabel`, `FeaturedIcon`, `Tabs.count`,
+  `Card.count`/`flush` and `SegmentedToggle`. Scan's own files keep the old kit
+  until S1 rebuilds their controls.
 
-Reads `slate_rankings`. `Tabs` across the rankings; every factor a column with
-`info`; the Score bar; the "why" line from each factor's percentile over the
-whole pool; not-held notes (red-zone role, first-score rate, penalty takers,
-lineups, strokes gained). **Receipts:** yesterday's frozen **top five** (D10) and what
-happened, plus the running 7-day count. Needs S1's backtest to have set weights,
-or the page says "equal weights" as the mockup does.
+**Done when:** each phase's "done when" in the U spec, plus the kit page renders
+the Slate fixtures at 1440 and 400.
 
-### S6 — Model section and Your lines
+### Stage 2 — the Slate (every sport per phase)
 
-- **Model (MLB only):** today's picks (Model % beside IP, no difference), the
-  total pick, yesterday's graded chips, 7- and 30-day records, calibration note.
-  **Delete `TodaysPicksModal` and the "Today's Picks" button.**
-- **Your lines** (signed in only): tracked lines, watchlist, slip legs and bets
-  on today's slate, live status, best price now vs when tracked. Hidden when
-  signed out. Uses the four user tables (TS-written, unchanged).
+#### S1 — Shell, Games, and Props (Scan's table unchanged)
 
-### U3 — Form controls · U4 — Overlays (U spec §6)
+**Why here:** it needs U2's table and U5's pieces; everything else in S hangs off
+this shell.
 
-Unchanged; interleave with S3–S6. The Slate's filters (Movers window, Games
-status) are already `SegmentedToggle`; nothing in the Slate waits on U3/U4.
+**Read:** `slate-sheet-cards.md` §2, §3.1, §3.3; the mockup; `AppShell.tsx` (the
+slate body), `TopBar.tsx`, `DateGameStrip.tsx`.
 
-### U6 — Page sweep (U spec §6, §8)
+**Build:**
+1. **Route and chrome.** AppShell's Scan body → `SlatePage`. `TopBar`'s tab label
+   **Scan → Slate** (the `Tab` type, the `?tab=` value, any test naming it; keep
+   `?tab=Scan` working as an alias). The strips are untouched.
+2. **`GET /api/slate?sport=&date=`** via `cachedRoute()` (key
+   `slate:route:{sport}:{date}` — grep first). TTLs: games 60 s, lines and props
+   120 s, rankings once per slate. It reads; it never writes.
+3. **Shared shape** `lib/sports/shared/slateShapes.ts`; one `toSlateData` per
+   sport; sections hide when unset.
+4. **`SectionNav`:** sticky under the header, `Tabs` with counts, anchor links; a
+   hidden section drops out of the nav.
+5. **Games section:** `GameCard` grid (3 / 2 / 1 up), status filter with counts,
+   lines block (consensus, best price and book, move since first seen, book
+   count), MLB model row, **the Elo ring for NFL/CFB/NHL at 65%+ with the
+   against-the-favorite chip** (D9, under M1's rule), context chips (park,
+   area-forecast weather outdoors, injuries), "Game page →", "N props →". Golf:
+   leaderboard + winner prices. Tennis: matches.
+   **Line sanity, in the read:** drop quotes with `|odds| < 100` and any quote
+   more than 15 implied points from the median (measured: a +10000 moneyline and
+   a `0` price on 2026-09-19).
+6. **Props section:** `ScanTable` mounted **unchanged** (D3) under controls
+   rebuilt on the kit — tabs → `Tabs` with counts, filter pills → `Select`s,
+   search → the kit input. `useFilters` keeps its API so the table receives
+   exactly the rows it does today. "N props →" sets the existing Games filter.
+7. **Delete:** the Players/Games toggle, `GameLinesView`, `GameLine`.
 
-Unchanged, plus the Slate sections in the page inventory. Scan's untouched
-files stay on `OUT_OF_SCOPE`.
+**Done when:** every sport renders chrome, nav, Games and the unchanged table at
+1440/400; NBA shows its off-season state, NHL its no-props state, ATP its
+no-matches state; the deleted files are gone.
 
-### S7 — Slate close
+**Guard:** content-hash test on `ScanTable.tsx` / `ScanCard.tsx`; a render diff of
+the table before and after.
 
-- Every sport, every section, 1440/400, fresh tab, in-season and off-season
-  states. Mockup vs page compared section by section.
-- `tests/scan-no-edge.test.ts` covers every Slate section.
-- `CLAUDE.md` gains the Slate adapter pattern (one line in the adapter section)
-  and the "Scan table is frozen" rule.
-- The handoff and `docs/CURRENT.md` updated; the mockup marked historical.
+**Stop for:** sign-off per sport.
 
-### U7 — Close (U spec §6)
+#### S2 — Movers, Price outliers, Line disagreements
 
-Unchanged. `OUT_OF_SCOPE` remains, with the Scan files named and the reason.
+**Read:** `slate-sheet-cards.md` §3.2 and §3.3 (the two summary cards).
+
+**Build:**
+1. Aggregations in the `/api/slate` build, no new table: the first observation per
+   book in `game_odds_history` / `prop_odds_history` is **"first seen"**; the
+   opener is not held and the caption says so.
+2. **Movers:** `Tabs` Game lines · Props; window `SegmentedToggle` (since first
+   seen · 3h · 1h, all real); Move in implied-probability points as the sort key
+   with a magnitude bar; Steam (3+ books the same way within 30 minutes) and
+   Split (line one way, price the other) chips; a sparkline from the history rows.
+3. **Price outliers:** ≥ 5 books on the line, gap 4–15 points against the median
+   of the rest; above 15 is a stale or exchange quote and is dropped.
+4. **Line disagreements:** books split on the line itself.
+5. Hidden for golf (winner prices are cached, not stored as history).
+
+**Done when:** all three render for every sport with history; MLB and EPL show
+real movers; captions present.
+
+**Guard:** a test that "since open" never appears in Slate copy.
+
+#### S3 — Spotlights
+
+**Read:** `slate-sheet-cards.md` §3.4 and each sport's list in §4.
+
+**Build:** read `slate_rankings` (M3). Hit-rate leaders and Active streaks for
+every sport, plus each sport's own: MLB platoon / K spots / HR parks; NFL
+receivers vs pass defenses and rushers vs run defenses; CFB rushers (team level —
+CFB holds only the `all` position group); NBA pace-up, usage bumps, shot zones
+(October); NHL shot volume; soccer shot takers; tennis form and serve vs return;
+golf low rounds. Every factor is a column with an `info` tooltip naming its
+source; each card carries a "why" line.
+
+**Done when:** every sport shows its spotlights or a real empty state that says
+why (MLS logs start 2026-08-15; NBA and NHL until their seasons).
+
+#### S4 — Specials and receipts
+
+**Read:** `slate-sheet-cards.md` §3.5 and the per-sport table in §4.
+
+**Build:** `Tabs` across the sport's rankings; every factor a column; a score bar;
+the "why" from each factor's percentile across the whole pool; not-held notes
+(red-zone role, first-score rate, penalty takers, lineups, strokes gained).
+**Receipts:** yesterday's frozen **top 5** and what happened, plus a running
+7-day count. Weights stay equal until M3's backtest sets them, and the caption
+says so.
+
+**Done when:** MLB's four rankings and at least one other sport's render with
+real receipts from a frozen day.
+
+#### S5 — Model section and Your lines
+
+**Read:** `slate-sheet-cards.md` §3.6 and §3.7; M1's display rule.
+
+**Build:**
+1. **Model (MLB only, `gated`):** today's picks with Model % beside IP and
+   nothing between them, the total pick, yesterday's graded chips, 7- and 30-day
+   records, the calibration note. **Delete `TodaysPicksModal` and its button.**
+2. **Your lines** (signed in only): tracked lines, watchlist, slip legs and bets
+   on today's slate; live status; best price now against the price when tracked;
+   link to the bet page. Hidden when signed out.
+3. Baseline sports show **no** model section — their ring is on the GameCard.
+
+**Done when:** MLB's section matches the mockup; a signed-out load hides Your
+lines; no baseline sport renders a probability.
+
+### Stage 3 — finish the UI system
+
+#### U3 — Form controls · U4 — Overlays · U6 — Page sweep
+
+From the U spec §6, unchanged. U3 and U4 may interleave with S2–S5 (nothing in
+the Slate waits on them). **U6** needs U1–U5 and now also sweeps the Slate's
+sections; Scan's frozen files stay on `OUT_OF_SCOPE`; diagnostics goes last.
+
+### Stage 4 — close
+
+#### S6 — Slate close
+
+Every sport, every section, 1440/400, in-season and off-season states, compared
+against the mockup section by section. `tests/scan-no-edge.test.ts` covers every
+Slate section. `CLAUDE.md` gains the Slate adapter rule and "the Scan table is
+frozen". The mockup is marked historical; `docs/CURRENT.md` and the handoff are
+rewritten.
+
+#### U7 — UI close
+
+From the U spec: remove the remaining allowlists (not `OUT_OF_SCOPE`), complete
+the kit page, add the "UI primitives" section to `CLAUDE.md`.
+
+#### M4 — Promotion tests running (ongoing, not a stop)
+
+M1's scheduled job re-runs each sport's gate criteria and moves statuses on
+evidence. First real decisions expected: CFB game after M2's fit; NBA props once
+a full season of prices exists (Phase 7's reopen condition); NHL props after its
+season.
+
+#### M5 — A simple prop baseline where none exists (optional; needs approval)
+
+NBA, CFB, soccer, tennis and golf have no prop model at all. The counting engine
+NFL and NHL use is sport-agnostic, but each sport needs its own stat mapping and
+history. One phase per sport, each entering the register as `baseline`.
 
 ## 5. Phase table
 
-| phase | track | depends on | touches UI files | deploy | status |
-|---|---|---|---|---|---|
-| S0 | data | — | no | yes (ask) | not started |
-| S0.5 | data + one rule | S0 | a status line only | yes (ask) | not started |
-| S0.6 | model fit | S0.5, ≥200 graded picks for that sport | no | yes (ask) | not started (CFB first) |
-| S1 | data | S0 (Q1) | no | yes (ask) | not started |
-| U0 | UI | R10–R12 sign-off | all (mechanical) | no | not started |
-| U1 | UI | U0 | yes | no | not started |
-| U2 | UI | U1 | yes | no | not started |
-| U5 | UI | U2 | yes | no | not started |
-| S2 | Slate | U2, U5 | yes | no | not started |
-| S3 | Slate | S2 | yes | no | not started |
-| S4 | Slate | S2, S1 | yes | no | not started |
-| S5 | Slate | S2, S1 | yes | no | not started |
-| S6 | Slate | S2 | yes | no | not started |
-| U3 | UI | U0 | yes | no | not started |
-| U4 | UI | U0 | yes | no | not started |
-| U6 | UI | U1–U5 | yes | no | not started |
-| S7 | Slate | S2–S6 | tests/docs | no | not started |
-| U7 | UI | U6, S7 | tests/docs | no | not started |
+| # | phase | track | depends on | UI files | deploy | status |
+|---|---|---|---|---|---|---|
+| 1 | M0 outage and data close-out | M | — | no | **owed** | **BUILT 2026-09-20** (`603f65b`) — awaiting deploy |
+| 2 | M1 model status register | M | M0 | diagnostics section | **owed** | **BUILT 2026-09-20** (`bd365e0`) — statuses need sign-off |
+| 3 | M2 fit the baseline (CFB first) | M | M1, ≥200 graded picks | no | **owed** | **BUILT 2026-09-20** (`56db642`) — CFB calibrated; fit 2 blocked, see M2a |
+| 4 | M3 `slate_rankings` job | M | M0 | no | **owed** | **BUILT 2026-09-20** (`737620b`) — first receipts 2026-09-21 |
+| 5 | U0 Tailwind 4 + kit base | U | R10–R12 sign-off | all (mechanical) | no | not started |
+| 6 | U1 Buttons | U | U0 | yes | no | not started |
+| 7 | U2 Hybrid table | U | U1 | yes | no | not started |
+| 8 | U5 Borrowed pieces | U | U2 | yes | no | not started |
+| 9 | S1 Shell + Games + Props | S | U2, U5, M1 | yes | no | not started |
+| 10 | S2 Movers + price gaps | S | S1 | yes | no | not started |
+| 11 | S3 Spotlights | S | S1, M3 | yes | no | not started |
+| 12 | S4 Specials + receipts | S | S1, M3 | yes | no | not started |
+| 13 | S5 Model + Your lines | S | S1, M1 | yes | no | not started |
+| 14 | U3 Form controls | U | U0 | yes | no | not started |
+| 15 | U4 Overlays | U | U0 | yes | no | not started |
+| 16 | U6 Page sweep | U | U1–U5 | yes | no | not started |
+| 17 | S6 Slate close | S | S1–S5 | tests/docs | no | not started |
+| 18 | U7 UI close | U | U6, S6 | tests/docs | no | not started |
+| — | M4 promotion tests | M | M1 | no | — | ongoing |
+| — | M5 simple prop baselines | M | approval | no | yes (ask) | not started |
 
-Each row ends with a stop for the operator's sign-off.
+Every numbered phase ends with a stop for sign-off.
 
 ## 6. Open questions
 
-All three of the first round are answered (D9, D3, D10). Open now:
+**From the M0–M3 build (2026-09-20):**
 
-1. **CFB's Elo highlight:** it is the one sport with a real graded sample, and it
-   is 97% market favorites at **−1.3% per unit**. Keep the green highlight there
-   (D9 as written), or show it only on the games where the pick differs from the
-   favorite?
-2. **Watchlist and Home Runs:** both are Scan tabs today and both now have Slate
-   sections (Your lines, Specials). Keep the tabs as well, or drop them in S2?
-3. **A simple prop baseline for the sports with none** (NBA, CFB, soccer, tennis,
-   golf): the counting engine NFL and NHL use is sport-agnostic, but each sport
-   needs its own stat mapping and history. Worth a phase after S6, or leave those
-   sports with prices and hit rates only?
+0. **MLB's game model is a `baseline`, not `gated`** — its own CLV backtest puts
+   it below the close (mean −0.0571 prob-points, 37.9% positive on 290 matched
+   picks). Under M1's display rule that means the Slate's Model section (S5, D4)
+   may show its picks but **not** a probability beside a price, and no record.
+   Confirm, or say the Model section should show something else.
+
+
+1. **CFB's green ring.** CFB is the only sport with a real graded sample: 216
+   picks, 97% market favorites, **−1.3% per unit**. Ring every game, or only the
+   games where the pick differs from the favorite?
+2. **Watchlist and Home Runs.** Both are Scan tabs today and both now have Slate
+   sections (Your lines, Specials). Keep the tabs too, or drop them in S1?
+3. **M5.** Build a simple prop baseline for the five sports with none, or leave
+   them with prices and hit rates only?
 
 ## 7. Findings ledger
 
 | id | found in | what | goes to | status |
 |---|---|---|---|---|
-| SL-1 | mockup build | Game lines include stale/exchange quotes (+10000 moneyline, `0` odds) | S2 read rule | open |
-| SL-2 | mockup build | Soccer draw not in the live per-book feed | S0 | open |
-| SL-3 | mockup build | ESPN `limit` above ~500 silently returns 25 events | fixed `f2232c7`; `generic_pick_capture` in S0 | partly fixed |
-| SL-4 | mockup build | `game_odds_history` holds no NHL ids matching ESPN's (NHL API ids) | S2 adapter (NHL reads its own ids) | open |
-| SL-5 | Q1 measurement | The Elo guesser picks the market favorite on 95–100% of games; CFB's 196 graded picks return −1.3% per unit | D9 presentation + S0 weekly check | open |
+| SL-1 | mockup build | Game lines include stale/exchange quotes (+10000 moneyline, `0` odds) | S1 read rule | open |
+| SL-2 | mockup build | Soccer draw price is not in the live per-book feed | M0 | open |
+| SL-3 | mockup build | ESPN `limit` above ~500 silently returns 25 events | fixed `f2232c7`; `generic_pick_capture` in M0 | partly fixed |
+| SL-4 | mockup build | `game_odds_history` has no NHL ids matching ESPN's (NHL API ids) | S1 adapter | open |
+| SL-5 | Q1 measurement | The Elo baseline picks the market favorite on 95–100% of games; CFB's 196 graded picks return −1.3% per unit | D9 display + M2 fit | open |
+| SL-6 | this plan | `game_picks` holds two systems' output, told apart only by sport | M1 `source` column | **fixed** `bd365e0` |
+| SL-7 | M1 gate run | CFB: 136 picks considered, **0 matched a reference close**, so its game gate cannot run at all | M4 (a reference book CFB actually has) | open |
+| SL-8 | M1 gate run | The prop gate is only runnable for MLB; NHL and NFL props cannot pass or fail theirs | M4 / M5 | open |
+| SL-9 | M2 | `game_picks.initial_ml_features_json` was NULL on every generic-Elo row, so the blend-weight fit had no inputs | M2a stores them from 2026-09-20 | **fixed forward** |
+| SL-10 | M3 | NFL implied points were absent (that slate had no lines yet), so the TD ranking scored on three factors | expected; the score skips missing factors | closed |
