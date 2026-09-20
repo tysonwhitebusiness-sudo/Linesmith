@@ -30,6 +30,7 @@ the two specs disagree, this file wins on **order and scope**; the specs win on
 | D8 | U track decisions stand as locked (Untitled UI free set copied into `components/ui/`, Hybrid tables, our Tooltip/Card/charts). |
 | D9 | **Keep the simple Elo guesser** for NFL, CFB and NHL, shown **only on the Slate**, as a **green highlight on the picked team's logo** in its GameCard. No model card, no probability column, no record chips: it is deliberately shallower than MLB's and golf's models. **Measured 2026-09-19:** it picks the market favorite on 95–100% of games (CFB 216 picks, 6 underdogs, 84.7% win rate, −1.3% per unit; NFL 47 picks, 2 underdogs; NHL 14 picks, 0 underdogs), so the card also marks the ~1-in-30 game where **the pick is not the market favorite** — the only case it adds information — and the section caption says so. |
 | D10 | **Receipts grade the top 5.** |
+| D11 | **Simple models stand in until a researched one passes its gate** (operator, 2026-09-19). They are separate code, not a slice of the researched ones: `predict/generic_team_elo.py` (game picks, NFL/CFB/NBA/NHL) vs MLB's own ensemble and the per-sport prop engines. The standing-in is made a policy, not a habit, by S0.5: a status register, display tied to status, and a scheduled promotion test. |
 
 **Scope, precisely.** The U spec's §0b put Scan and the landing pages out of
 scope. That now splits:
@@ -80,7 +81,8 @@ The research plan's §2, the U spec's §6 and CLAUDE.md all apply. In short:
 ```
  now ─────────────────────────────────────────────────────────────────────────▶
  S0  cleanup (data)          ┐
- S1  ranking + slate data    ├─ Python only, no UI files: can run now
+ S0.5 model status register  ├─ Python/config only, no UI files: can run now
+ S1  ranking + slate data    │
      (Python, deploy)        ┘
                      [R10–R12 sign-off]
  U0  Tailwind 4 + kit base ─▶ U1 Buttons ─▶ U2 Hybrid table ─▶ U5 borrowed pieces
@@ -112,6 +114,18 @@ The outage fix is done and deployed (`10a1647`, `8dab195`, `f2232c7`). What rema
 - **Pre-register the honesty check** the Slate's caption rests on: the share of
   Elo picks that differ from the market favorite, per sport, recomputed weekly.
   If it reaches zero for a sport over a full season, that sport's highlight goes.
+- **The Elo baseline's four changes (D9), in order of what they touch.** Three
+  are display and change no pick: (a) show the model's win % beside the market's
+  implied %, MLB-style, nothing computed between them — **allowed only if the
+  register says `baseline` may show it; by S0.5's rule it may not, so this one
+  waits for a gate**; (b) ring only at 65%+, so the ring means conviction;
+  (c) mark the pick that goes against the favorite. The fourth changes the
+  number, not the pick: (d) **calibrate** the probabilities against the picks
+  already graded (CFB's average pick reads 68.5% and has never been checked).
+- **The one change that moves picks:** `MARKET_BLEND_WEIGHT = 0.5` and
+  `ELO_BLEND_WEIGHT = 0.2` are hand-set placeholders the code itself says should
+  be fitted to graded outcomes. Fit them (pre-registered). The fit may say lean
+  harder on the market, which would make the ring rarer — a legitimate result.
 - **R6-F8:** ParlayAPI files pitchers' strikeouts under `batter-strikeouts` and
   walks allowed under `walks`. Map them in the Python writer.
 - The 9 CFB teams with no `team_name_index` entry (closing lines and results
@@ -125,6 +139,55 @@ The outage fix is done and deployed (`10a1647`, `8dab195`, `f2232c7`). What rema
 
 **Done when:** each item is fixed, deployed (asked first) or recorded as not
 held; the spec's §5 table is updated.
+
+### S0.5 — Model status: a register, a display rule, a promotion test (D11)
+
+The knowledge of which model is real lives across plan documents today, and the
+app cannot read it. This makes it one fact in one place.
+
+**1. The register.** One row per `sport × kind` (`game`, `prop`), in config with
+a DB mirror the app reads:
+
+| field | meaning |
+|---|---|
+| `engine` | `generic_elo`, `mlb_ensemble`, `mlb_pa_sim`, `count_prop_engine`, … |
+| `status` | `none` · `baseline` (simple, unvalidated) · `gated` (passed a pre-registered test) · `failed` (attempted, did not pass) |
+| `evidence` | the test, its result, the date, the commit |
+| `since` | when it entered this status |
+
+Seeded from what is true on 2026-09-19: MLB game **gated**; MLB props **gated**
+(14 Platt calibrations); NHL props **baseline** (projections, temperature
+calibration, never gated); NFL props **baseline** (projections, no probability,
+decision 4.6); NFL/CFB/NBA/NHL game **baseline** (generic Elo); CFB game
+**failed** (Phase 6), NBA props **failed** (Phase 7), soccer game **failed**
+(Dixon-Coles; capture stopped 2026-09-13); golf **none** (model deleted
+2026-09-13); tennis **none**; soccer/CFB/tennis/golf props **none**.
+
+**2. Display tied to status** — one rule the pages read from the register, so no
+page decides for itself:
+
+| status | may show | must not show |
+|---|---|---|
+| `gated` | probability beside the market's implied probability, projection, pick, record | the difference between them (standing rule) |
+| `baseline` | the pick (the green ring), a projection, hit rates | a probability beside a price, a record framed as a track record, any edge |
+| `failed` / `none` | nothing; the section hides and says why | anything implying a model exists |
+
+Each page says which it is in plain words ("baseline model, not validated").
+`tests/scan-no-edge.test.ts` grows a case per status.
+
+**3. The promotion test.** Each sport and kind carries its gate criteria,
+written **before** the attempt (the project's pre-registration habit), and a
+scheduled job re-runs them and updates `status` with its evidence. A sport moves
+baseline → gated when it earns it, not when someone remembers to look; a gated
+model that stops clearing its own bar moves back.
+
+**Also in this phase:** `game_picks` gains a `source` column (the generic
+baseline and MLB's own model both write that table today, told apart only by
+sport), backfilled from sport.
+
+**Done when:** the register is seeded and read by one page; the three display
+rules are enforced by a test; the promotion job runs and records its evidence;
+`docs/table-ownership.md` has the new rows.
 
 ### S1 — The Slate's data layer (Python; deploy; no UI)
 
@@ -272,6 +335,7 @@ Unchanged. `OUT_OF_SCOPE` remains, with the Scan files named and the reason.
 | phase | track | depends on | touches UI files | deploy | status |
 |---|---|---|---|---|---|
 | S0 | data | — | no | yes (ask) | not started |
+| S0.5 | data + one rule | S0 | a status line only | yes (ask) | not started |
 | S1 | data | S0 (Q1) | no | yes (ask) | not started |
 | U0 | UI | R10–R12 sign-off | all (mechanical) | no | not started |
 | U1 | UI | U0 | yes | no | not started |
@@ -300,6 +364,10 @@ All three of the first round are answered (D9, D3, D10). Open now:
    favorite?
 2. **Watchlist and Home Runs:** both are Scan tabs today and both now have Slate
    sections (Your lines, Specials). Keep the tabs as well, or drop them in S2?
+3. **A simple prop baseline for the sports with none** (NBA, CFB, soccer, tennis,
+   golf): the counting engine NFL and NHL use is sport-agnostic, but each sport
+   needs its own stat mapping and history. Worth a phase after S6, or leave those
+   sports with prices and hit rates only?
 
 ## 7. Findings ledger
 
