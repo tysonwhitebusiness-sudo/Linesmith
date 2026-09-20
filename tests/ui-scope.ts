@@ -36,3 +36,13 @@ export function outOfScope(path: string): boolean {
   const p = path.replace(/\\/g, '/');
   return OUT_OF_SCOPE.some((f) => p === f || p.endsWith('/' + f));
 }
+
+/**
+ * Strips block and line comments, so a guard that counts `<button` or `<table`
+ * does not count the word in a comment explaining why one is gone. Found the
+ * hard way twice: the kit page NAMES the renamed utilities in prose, and
+ * `GameResearchPage`'s migration note says "it was a hand-rolled `<table>`".
+ */
+export function code(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+}

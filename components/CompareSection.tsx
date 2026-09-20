@@ -196,7 +196,6 @@ export function CompareSection({
                 columns={logColumns}
                 rows={[...vsRows].reverse()}
                 rowKey={(r) => r.eventId}
-                dense
                 maxHeight={320}
               />
             ) : null}

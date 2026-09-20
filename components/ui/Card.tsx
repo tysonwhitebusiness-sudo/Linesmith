@@ -43,6 +43,16 @@ export interface CardProps {
   state?: CardState;
   /** The page-level hero card: 16px radius, 24px padding. */
   hero?: boolean;
+  /**
+   * U2: a count badge after the title — "Game log [148]". A number, not a
+   * string: it is how many rows are behind this card, and it reads as one.
+   */
+  count?: number;
+  /**
+   * U2: the body has NO padding, so a table's header band runs edge to edge
+   * and its sticky first column pins against the card's own border.
+   */
+  flush?: boolean;
   className?: string;
   bodyClassName?: string;
   id?: string;
@@ -51,7 +61,7 @@ export interface CardProps {
 
 const TITLE_TEXT = (title: ReactNode) => (typeof title === 'string' ? title : 'this card');
 
-export function Card({ title, scope, info, onExpand, caption, dense, state = { kind: 'ready' }, hero, className, bodyClassName, id, children }: CardProps) {
+export function Card({ title, scope, info, onExpand, caption, dense, state = { kind: 'ready' }, hero, count, flush, className, bodyClassName, id, children }: CardProps) {
   let body: ReactNode = children;
   if (state.kind === 'loading') body = state.skeleton ?? <SkeletonLines lines={state.lines} />;
   else if (state.kind === 'empty') body = <EmptyState title={state.title} reason={state.reason} action={state.action} className="py-4" />;
@@ -64,7 +74,14 @@ export function Card({ title, scope, info, onExpand, caption, dense, state = { k
       className={cx('min-w-0 border border-line-soft bg-card shadow-card', hero ? 'rounded-card-hero' : 'rounded-card', className)}
     >
       <header className="flex min-h-[44px] flex-wrap items-center gap-x-2 gap-y-1 border-b border-line-soft py-1.5 pl-4 pr-2">
-        <h3 className="min-w-[9em] flex-1 text-card-title text-ink">{title}</h3>
+        <h3 className="flex min-w-[9em] flex-1 items-center gap-1.5 text-card-title text-ink">
+          {title}
+          {count != null ? (
+            <span className="rounded-[6px] px-1.5 py-px text-overline font-semibold text-ink-secondary ring-1 ring-line ring-inset tabular-nums">
+              {count}
+            </span>
+          ) : null}
+        </h3>
         {scope ? <div className="min-w-0 text-right text-label text-ink-muted">{scope}</div> : null}
         {info ? (
           // U1: this ONE stays a raw `<button>`. `Tooltip` opens by cloning its
@@ -84,7 +101,7 @@ export function Card({ title, scope, info, onExpand, caption, dense, state = { k
           <IconButton size="sm" className="h-[30px] w-[30px]" onPress={onExpand} aria-label={`Expand ${TITLE_TEXT(title)}`} icon={<ExpandGlyph />} />
         ) : null}
       </header>
-      <div className={cx(hero ? 'p-6' : dense ? 'p-3' : 'p-4', bodyClassName)}>{body}</div>
+      <div className={cx(flush ? 'overflow-hidden' : hero ? 'p-6' : dense ? 'p-3' : 'p-4', bodyClassName)}>{body}</div>
       {caption && state.kind !== 'loading' ? <footer className="px-4 pb-3 text-label text-ink-muted">{caption}</footer> : null}
     </section>
   );

@@ -157,7 +157,6 @@ export function GameStateCard({ state, subjectName }: { state: GameStateSlot; su
         ) : (
           <DataTable
             caption={`${subjectName}'s markets against their line, live`}
-            dense
             rows={state.lines}
             rowKey={(r) => r.key}
             rowClassName={(r) => (r.cleared ? '[&>td]:bg-good/10' : undefined)}

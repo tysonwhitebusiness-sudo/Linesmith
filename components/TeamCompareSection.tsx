@@ -160,7 +160,7 @@ export function TeamCompareSection({ payload, allTeams, season, other, otherLoad
               state={meetings.length ? { kind: 'ready' } : { kind: 'empty', title: 'No meetings this season', reason: 'The league schedule holds no completed game between these two in this season.' }}
             >
               {meetings.length ? (
-                <DataTable caption="Meetings" columns={meetingColumns} rows={meetings} rowKey={(g) => g.id} dense maxHeight={220} />
+                <DataTable caption="Meetings" columns={meetingColumns} rows={meetings} rowKey={(g) => g.id} maxHeight={220} />
               ) : null}
             </Card>
             <Card title="Top producers" scope="by the season production score" state={topFive(theirSeason).length ? { kind: 'ready' } : { kind: 'loading', lines: 3 }}>

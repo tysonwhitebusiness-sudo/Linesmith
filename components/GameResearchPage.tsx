@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Avatar, Chip, ErrorState, Section, SectionNav, SegmentedToggle, Skeleton, cx } from './ui';
+import { Avatar, Chip, DataTable, ErrorState, Section, SectionNav, SegmentedToggle, Skeleton, cx, type Column } from './ui';
 import { asOfText, ResearchSectionBody, SourcesCard } from './PlayerResearchSections';
 import { useGameResearch } from './useGameResearch';
 import { useHeadToHead } from './useHeadToHead';
@@ -146,6 +146,42 @@ function TeamSide({ side, home }: { side: GameSide; home?: boolean }) {
   );
 }
 
+/**
+ * The line score — a matrix, so `compact` (28px rows, 12px text) is REQUIRED
+ * rather than optional: 9 innings plus R/H/E is 12 columns of two characters,
+ * and at default density it would scroll on a phone for no reason.
+ *
+ * U2: it was a hand-rolled `<table>`; it is the same grid through `DataTable`,
+ * so it inherits the sticky label column, the header band and the scroll
+ * behaviour the rest of the app's tables have.
+ */
+function LineScore({ hero, ls }: { hero: GameResearchData['hero']; ls: NonNullable<GameResearchData['hero']['lineScore']> }) {
+  const rows = [
+    { key: 'away', abbr: hero.away.abbr, values: ls.away },
+    { key: 'home', abbr: hero.home.abbr, values: ls.home },
+  ];
+  type LineRow = (typeof rows)[number];
+  const columns: Column<LineRow>[] = [
+    { key: 'abbr', label: '', sortable: false, render: (r) => r.abbr },
+    ...ls.periods.map<Column<LineRow>>((p, i) => ({
+      key: `p${i}`,
+      label: p,
+      sortable: false,
+      align: 'center',
+      render: (r) => r.values[i] ?? '',
+    })),
+    ...ls.totals.map<Column<LineRow>>((t, i) => ({
+      key: `t${i}`,
+      label: t,
+      sortable: false,
+      align: 'center',
+      // R, H and E are the numbers the eye goes to; the innings are the detail.
+      render: (r) => <span className="font-semibold text-ink">{r.values[ls.periods.length + i] ?? ''}</span>,
+    })),
+  ];
+  return <DataTable caption="Line score" columns={columns} rows={rows} rowKey={(r) => r.key} density="compact" className="mx-auto max-w-full" />;
+}
+
 function GameHero({ data }: { data: GameResearchData }) {
   const { hero } = data;
   const ls = hero.lineScore;
@@ -163,41 +199,7 @@ function GameHero({ data }: { data: GameResearchData }) {
       </div>
       {ls ? (
         <div className="mt-4 overflow-x-auto border-t border-line-soft pt-3">
-          <table className="mx-auto text-body-sm tabular-nums">
-            <caption className="sr-only">Line score</caption>
-            <thead>
-              <tr className="text-label text-ink-muted">
-                <th className="px-2 text-left font-normal" scope="col" />
-                {ls.periods.map((p) => (
-                  <th key={p} className="w-7 px-1 text-center font-normal" scope="col">
-                    {p}
-                  </th>
-                ))}
-                {ls.totals.map((t) => (
-                  <th key={t} className="w-9 px-1 text-center font-semibold text-ink-secondary" scope="col">
-                    {t}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {([
-                [hero.away.abbr, ls.away],
-                [hero.home.abbr, ls.home],
-              ] as const).map(([abbr, row]) => (
-                <tr key={abbr}>
-                  <th className="px-2 text-left font-semibold text-ink" scope="row">
-                    {abbr}
-                  </th>
-                  {row.map((v, i) => (
-                    <td key={i} className={cx('px-1 text-center', i >= ls.periods.length ? 'font-semibold text-ink' : 'text-ink-secondary')}>
-                      {v ?? ''}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <LineScore hero={hero} ls={ls} />
         </div>
       ) : null}
       {hero.chips.length ? (

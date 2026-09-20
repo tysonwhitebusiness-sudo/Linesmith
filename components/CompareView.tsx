@@ -109,7 +109,7 @@ function CompareTable({ rows, aLabel, bLabel, label }: { rows: CompareViewRow[];
       },
     },
   ];
-  return <DataTable caption={label} columns={columns} rows={rows} rowKey={(r) => r.key} dense />;
+  return <DataTable caption={label} columns={columns} rows={rows} rowKey={(r) => r.key} />;
 }
 
 function CompareBars({ rows, aLabel, bLabel }: { rows: CompareViewRow[]; aLabel: string; bLabel: string }) {

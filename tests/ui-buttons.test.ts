@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
-import { OUT_OF_SCOPE } from './ui-scope';
+import { OUT_OF_SCOPE, code } from './ui-scope';
 
 /**
  * U1's guard — one Button component, and no page styles its own.
@@ -45,11 +45,6 @@ const ALLOWED: Record<string, { count: number; why: string }> = {
   // and a kit Button would render unstyled. Inline styles are correct here.
   'app/global-error.tsx': { count: 1, why: 'runs when the stylesheet may not have loaded' },
 };
-
-/** Strips comments, so the word `<button` in a code comment is not a button. */
-function code(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-}
 
 function sources(): string[] {
   const out: string[] = [];

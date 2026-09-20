@@ -211,8 +211,14 @@ export function PlayerHero({ bio, bioState, research, researchState, fallbackNam
 // ---------------------------------------------------------------------------
 
 export function SeasonsCard({ research, state }: { research: PlayerResearchData | null; state: LoadState }) {
-  const rows = research?.seasons.rows ?? [];
-  const held = rows.find((r) => r.season === 0)?.games ?? rows.reduce((s, r) => s + r.games, 0);
+  const all = research?.seasons.rows ?? [];
+  // U2: season 0 is the "All held" row. It is a TOTAL, not a season — it moves
+  // out of the body into `totals`, where it is ruled off and excluded from
+  // sorting, bars and leaders instead of sitting in the list pretending to be
+  // another season.
+  const rows = all.filter((r) => r.season !== 0);
+  const totals = all.filter((r) => r.season === 0);
+  const held = all.find((r) => r.season === 0)?.games ?? all.reduce((s, r) => s + r.games, 0);
   const columns: Column<ResearchSeasonRow>[] = [
     { key: 'label', label: 'Season', sortable: false },
     { key: 'games', label: 'GP', numeric: true, sortable: false },
@@ -221,12 +227,13 @@ export function SeasonsCard({ research, state }: { research: PlayerResearchData 
   return (
     <Card
       title="Season stats"
+      count={rows.length || undefined}
       scope={research ? `${held} games held` : undefined}
-      dense
-      state={cardState(state, rows.length > 0, { title: 'No games held for this player', reason: 'The history table has no box scores under this id — a player new to the league, or one the history jobs do not cover.' })}
+      flush
+      state={cardState(state, all.length > 0, { title: 'No games held for this player', reason: 'The history table has no box scores under this id — a player new to the league, or one the history jobs do not cover.' })}
       caption="Totals and per-game rates from every game held. The last row is every season together."
     >
-      <DataTable caption="Season by season" columns={columns} rows={rows} rowKey={(r) => String(r.season)} dense />
+      <DataTable caption="Season by season" columns={columns} rows={rows} totals={totals} rowKey={(r) => String(r.season)} />
     </Card>
   );
 }
@@ -320,11 +327,12 @@ export function SplitsCard({ research, state }: { research: PlayerResearchData |
       key: 'label',
       label: 'Split',
       sortable: false,
+      // U2: the group is a ROW now (`groupBy` below), not a muted word tacked
+      // onto the first label of each block.
       render: (r) => (
         <span className="flex items-center gap-2">
           {r.imageUrl ? <Avatar kind="logo" label={r.label} src={r.imageUrl} size={18} decorative /> : null}
           <span>{r.label}</span>
-          {rows.find((x) => x.group === r.group) === r && r.group !== 'Overall' ? <span className="text-label text-ink-muted">{r.group}</span> : null}
         </span>
       ),
     },
@@ -341,11 +349,11 @@ export function SplitsCard({ research, state }: { research: PlayerResearchData |
           labelOf(active)
         ) : undefined
       }
-      dense
+      flush
       state={cardState(state, rows.length > 0, { title: 'No games in this season', reason: 'Splits are built from the games held for the season chosen.' })}
       caption="Per-game averages. Home and away, results, rest, months and opponents from the game logs."
     >
-      <DataTable caption="Situational splits" columns={columns} rows={rows} rowKey={(r) => r.key} dense maxHeight={520} />
+      <DataTable caption="Situational splits" columns={columns} rows={rows} rowKey={(r) => r.key} groupBy={(r) => r.group} maxHeight={520} />
     </Card>
   );
 }
@@ -389,15 +397,11 @@ export function GameLogCard({ research, state }: { research: PlayerResearchData 
       key: 'result',
       label: 'Result',
       sortable: false,
-      render: (r) =>
-        r.result ? (
-          <span className={r.result === 'W' ? 'font-semibold text-good' : r.result === 'L' ? 'font-semibold text-bad' : 'font-semibold text-ink-secondary'}>
-            {r.result}
-            {r.score ? ` ${r.score}` : ''}
-          </span>
-        ) : (
-          '—'
-        ),
+      // U2: the W/L is a tone chip and the score follows it in `ink-secondary`,
+      // rather than the whole string carrying the colour — so the outcome is
+      // readable without it.
+      tone: (r) => (r.result === 'W' ? 'good' : r.result === 'L' ? 'bad' : null),
+      render: (r) => (r.result ? (r.score ?? (r.result === 'W' || r.result === 'L' ? '' : r.result)) : '—'),
     },
     ...valueColumns<ResearchLogRow>(research?.gameLog.columns ?? []),
   ];
@@ -412,12 +416,19 @@ export function GameLogCard({ research, state }: { research: PlayerResearchData 
   return (
     <Card
       title="Game log"
+      count={rows.length || undefined}
       scope={seasonControl}
-      dense
+      flush
       state={cardState(state, rows.length > 0, { title: 'No games held for this player', reason: 'The history table has no box scores under this id.' }, 8)}
       caption={rows.length ? `${rows.length} games${rows.some((r) => r.href) ? ' · the date opens the game' : ''}` : undefined}
     >
-      <DataTable caption="Game log" columns={columns} rows={rows} rowKey={(r) => r.eventId} dense maxHeight={620} />
+      <DataTable
+        caption="Game log"
+        columns={columns}
+        rows={rows}
+        rowKey={(r) => r.eventId}
+        paging={{ mode: 'minimal', pageSize: 10, pageSizes: [10, 25, 50], noun: 'games' }}
+      />
     </Card>
   );
 }
@@ -601,22 +612,20 @@ function TableCard({ card }: { card: Extract<ResearchCard, { kind: 'table' }> })
       ) : (
         c.label
       ),
-      title: c.info ?? (c.imageUrl ? c.label : undefined),
+      // U2: `info` is a real Tooltip in the header, not a native `title` that
+      // never opened on touch. `title` stays only as the accessible name for a
+      // header whose label is an image.
+      info: c.info,
+      title: c.imageUrl && typeof c.label === 'string' ? c.label : undefined,
       numeric: !c.text,
+      wrap: c.text,
       sortable,
+      streak: c.streak ? (r: TableRow) => r.streaks?.[c.key] ?? null : undefined,
       render: (r: TableRow) => {
-        const run = c.streak ? r.streaks?.[c.key] : undefined;
-        if (run) {
-          return run.outcomes.length ? (
-            <StreakStrip outcomes={run.outcomes} titles={run.titles} label={`${r.label}: ${typeof c.label === 'string' ? c.label : c.key}`} className="inline-flex justify-end" />
-          ) : (
-            '—'
-          );
-        }
         const tone = r.tones?.[c.key];
         const text = formatResearchValue(r.values[c.key], c);
         if (tone) return <span className={cx('font-semibold', tone === 'good' ? 'text-good' : 'text-bad')}>{text}</span>;
-        return c.text ? <span className="block min-w-[8rem] whitespace-normal">{text}</span> : text;
+        return text;
       },
       sortValue: (r: TableRow) => {
         if (c.streak) return (r.streaks?.[c.key]?.outcomes ?? []).filter((o) => o === true).length;
@@ -628,25 +637,31 @@ function TableCard({ card }: { card: Extract<ResearchCard, { kind: 'table' }> })
   return (
     <Card
       title={card.title}
-      scope={card.scope}
+      count={view.rows.length || undefined}
+      scope={
+        views.length > 1 ? (
+          <SegmentedToggle label={`${card.title} view`} size="sm" value={view.key} onChange={setViewKey} options={views.map((v) => ({ value: v.key, label: v.label }))} />
+        ) : (
+          card.scope
+        )
+      }
       info={card.info}
       caption={card.caption}
-      dense
+      // U2: a flush body, so the header band runs edge to edge and the sticky
+      // first column pins against the card's own border rather than against a
+      // 12px gutter.
+      flush
       state={view.rows.length ? { kind: 'ready' } : { kind: 'empty', title: card.emptyText ?? 'Nothing to list', reason: 'The source has no rows for this season.' }}
     >
-      {views.length > 1 ? (
-        <SegmentedToggle label={`${card.title} view`} size="sm" value={view.key} onChange={setViewKey} options={views.map((v) => ({ value: v.key, label: v.label }))} className="mb-2" />
-      ) : null}
       <DataTable
         key={view.key}
         caption={`${card.title}${views.length > 1 ? `: ${view.label}` : ''}`}
         columns={columns}
         rows={view.rows}
         rowKey={(r) => r.key}
-        dense
         maxHeight={card.views ? 560 : 420}
         initialSort={view.sortKey ? { key: view.sortKey, desc: true } : undefined}
-        rowClassName={(r) => (r.highlight ? 'bg-card-sunk' : undefined)}
+        highlight={(r) => r.highlight === true}
       />
     </Card>
   );

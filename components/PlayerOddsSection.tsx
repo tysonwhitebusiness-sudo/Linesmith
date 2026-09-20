@@ -65,7 +65,6 @@ export function PlayerOddsSection({
       >
         <DataTable
           caption="Best prices for this player, by market, at the main line"
-          dense
           rows={prices}
           rowKey={(r) => r.marketKey}
           onRowClick={onPickMarket ? (r) => onPickMarket(r.marketKey) : undefined}

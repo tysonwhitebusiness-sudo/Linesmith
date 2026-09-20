@@ -8,7 +8,6 @@ import {
   IconButton,
   Card,
   Chip,
-  DataTable,
   EmptyState,
   ErrorState,
   SegmentedToggle,
@@ -20,8 +19,8 @@ import {
   Tabs,
   Tooltip,
   cx,
-  type Column,
 } from '@/components/ui';
+import { KitTables } from './KitTables';
 
 /** One labelled block. The kit is a long page; every row says what it is. */
 function Row({ name, note, children }: { name: string; note?: string; children: React.ReactNode }) {
@@ -79,35 +78,6 @@ const SEMANTIC: Array<[string, string]> = [
   ['warn', 'caution'],
   ['cmp-a', 'compare slot A'],
   ['cmp-b', 'compare slot B'],
-];
-
-interface KitRow {
-  team: string;
-  games: number;
-  rate: number;
-  diff: number;
-}
-
-const ROWS: KitRow[] = [
-  { team: 'New York', games: 148, rate: 0.62, diff: 41 },
-  { team: 'Boston', games: 147, rate: 0.55, diff: 12 },
-  { team: 'Toronto', games: 149, rate: 0.48, diff: -6 },
-  { team: 'Baltimore', games: 148, rate: 0.41, diff: -33 },
-];
-
-const COLUMNS: Column<KitRow>[] = [
-  { key: 'team', label: 'Team', sortable: false },
-  { key: 'games', label: 'G', numeric: true },
-  {
-    key: 'rate',
-    label: 'Win%',
-    numeric: true,
-    render: (r) => `${(r.rate * 100).toFixed(1)}%`,
-    sortValue: (r) => r.rate,
-    bar: (r) => r.rate,
-    strong: (r) => r.rate === Math.max(...ROWS.map((x) => x.rate)),
-  },
-  { key: 'diff', label: 'Diff', numeric: true, render: (r) => (r.diff > 0 ? `+${r.diff}` : String(r.diff)) },
 ];
 
 function PlusGlyph() {
@@ -389,18 +359,7 @@ export default function KitPage() {
         </Row>
       </Group>
 
-      <Group id="table" title="DataTable" sub="U2 replaces this with the Hybrid and adds the fifteen reference tables.">
-        <Row name="Default">
-          <div className="w-full">
-            <DataTable caption="Kit demo table" columns={COLUMNS} rows={ROWS} rowKey={(r) => r.team} initialSort={{ key: 'rate', desc: true }} />
-          </div>
-        </Row>
-        <Row name="Dense">
-          <div className="w-full">
-            <DataTable caption="Kit demo table, dense" columns={COLUMNS} rows={ROWS} rowKey={(r) => r.team} dense />
-          </div>
-        </Row>
-      </Group>
+      <KitTables />
 
       <Group id="card" title="Card and its states" sub="Loading, empty and error are built in, so a card cannot forget one.">
         <Row name="Ready">
