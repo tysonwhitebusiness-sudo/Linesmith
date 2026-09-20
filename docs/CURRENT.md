@@ -1,493 +1,142 @@
 # CURRENT — pick up here
 
-**Phases 1–4 COMPLETE. Phase 5 OPEN (monitoring only). Phase 6 CLOSED (CFB,
-measured NO). Phase 7 CLOSED 2026-09-13 (NBA: props measured NO, game model not
-built, decision recorded). Phase 8 EXECUTED 2026-09-13: all five operator
-decisions done and deployed; three checks owed before closing it.
-Research pages: R1-R5 and R6.1 (MLB) signed off; R6.2 (NFL/CFB), R6.3 (soccer),
-R6.4 (tennis), R6.5 (NBA/NHL) and R6.6 (golf) complete — **R6 done** — with
-live renders owed on the next slates; R7 (team page) next (second track, below).**
-
-`docs/master-plan-2026-09-06.md` is the authority on build order **and now holds
-the full Phase 6 and Phase 7 close-outs**, including the numbers, the decisions
-and the reopen conditions. Don't duplicate them here.
-
-**Second track, APPROVED 2026-09-14: research pages.**
-`docs/audit-2026-09-13/research-pages-master-plan.md` rebuilds the player, team
-and game pages to the G2 mockups (`docs/design/phase-g2/`), phases R0–R12. It
-covers only those pages and adds no new surface; the model and product order
-above is unchanged. That thread's own baton is
-`docs/audit-2026-09-13/RESUME-PROMPT.md`; read it before any R-phase work.
-
-**Third track, DECISIONS LOCKED 2026-09-19: UI system overhaul (U0–U7).**
-`docs/design/ui-system-master-prompt.md` is both the spec and the resume prompt.
-It sets one component per job across every page except Scan and the sport
-landing pages, which are out of scope (operator, 2026-09-19). It uses Untitled UI's free set
-(copied into `components/ui/`) for buttons, form controls and overlays, and the
-"Hybrid" `DataTable` for every table. Nothing is built yet. U0 (Tailwind 4)
-touches nearly every file, so don't start it while another session is editing
-UI; see its §10 for the order against R10–R12.
-
-**Fourth thread, GAMEPLAN awaiting operator answers 2026-09-19: the Slate Sheet.**
-The Scan page becomes a sectioned Slate Sheet (Games · Movers · Props board ·
-Spotlights · Specials · Model card · Your lines). It is built on the U kit after
-U2, then old Scan is deleted. The handoff for both threads is
-`docs/design/HANDOFF-ui-and-slate-2026-09-19.md`.
-**FIXED 2026-09-19: football and soccer props, closes and results stopped on
-2026-09-15 at 20:13 UTC.** ESPN began answering every team-sport scoreboard
-date RANGE with HTTP 400; our loaders read that as "no games", so the NFL/CFB/
-EPL/MLS jobs went "cold tier" and the archival bridge captured nothing. Fixed in
-`game_context.py`, `teamSportEspn.ts` and NBA team discovery: one date per
-request with a short per-day cache, and an unreadable day now RAISES
-(`EspnScheduleError`) so it shows as a failed run, not a quiet skip. A second
-commit (`8dab195`) fixed four more range callers: game-history discovery (NFL/
-CFB/EPL/MLS histories had frozen), generic pick grading, NFL team discovery and
-the season backfill. **Both DEPLOYED 2026-09-19** (dep-danbq52jnfac7383ti9g,
-dep-danbvjmgekts738fhbh0); verified: CFB/EPL props, lines, closes and finals
-flowing. **Caught up from 2026-09-11:** 446 finals, 11 games of history, 80 games
-regraded. Closing lines for 09-15 → 09-19 are lost.
-
-**M0-M3 BUILT 2026-09-20, NOT DEPLOYED** (`603f65b`, `bd365e0`, `56db642`, `737620b`).
-M0: pitcher markets remapped (R6-F8), team_name_index seeded from ESPN (+2,616
-pairs, CFB 250 -> 762 teams), soccer draw no longer dropped at ingest, ESPN
-limit guard. M1: `model_status` register + display rule + `modelGateJob`;
-`game_picks.source`. M2: CFB calibrated (said 68.0%, won 83.9%; log loss 0.471
--> 0.397) and the capture now stores the Elo/market components fit 2 needs.
-M3: `slate_rankings` + `slateRankingsJob`, frozen at first pitch, first receipts
-2026-09-21. **THE WORKER NEEDS A DEPLOY** for any of it to run, and the
-port-3000 production server still needs its rebuild.
-
-**MASTER GAMEPLAN (approved direction 2026-09-19):**
-`docs/design/master-gameplan-ui-and-slate.md` sequences the U track and the Slate
-(S0-S7). Next actions: S0 (data cleanup; Q1 on Elo picks) and S1 (the
-`slate_rankings` job) can start now, no UI files. U0 waits for R10-R12 sign-off.
-The mockup `docs/design/slate/slate.html` is approved except its Props board:
-**the Scan table must not change at all** (operator).
-
-**Slate Sheet cards are specified per sport from measured data:**
-`docs/design/slate-sheet-cards.md` (supersedes the handoff where they differ:
-golf has no model, no edge columns, "since first seen" not "since open", weather
-IS held for outdoor MLB/NFL/CFB). Next: 1:1 mockups per sport in
-`docs/design/slate/`.
+**Rewritten 2026-09-20.** The previous version had grown to 493 append-only
+lines, which is the thing this file is explicitly not supposed to become. Its
+content was not lost: every track's detail lives in that track's own plan, which
+this file now points at rather than duplicating. If you want the old text, it is
+in git (`git show c5baee4:docs/CURRENT.md`).
 
 ---
 
-## THE ONE HABIT THAT KEEPS PAYING: audit a phase's premises before building
+# START HERE
 
-Phase 6's brief had four false premises, and Phase 7's had four more, one of
-which (prices stop after six weeks) decided the phase. Every brief was written
-before Phase 5 moved data into the Parquet corpus, so **any claim about where data
-lives, or how much of it there is, is stale by default.**
+**The build is running unattended.** The operator left 2026-09-20 for several
+hours and asked for the gameplan to be worked through while they are away.
 
-The second habit, which Phase 7 added: **pre-register a test in a commit before
-the code that runs it exists.** It turned a "promising pocket" into a recorded
-untestable, instead of a false positive.
+**Your prompt is `docs/design/HANDOFF-autonomous-build-2026-09-20.md`.** Read it
+before anything else. It says what to build, in what order, what to do instead
+of stopping for sign-off, and the short list of things that genuinely stop you.
+
+**The plan is `docs/design/master-gameplan-ui-and-slate.md`.** Phases 1–4 are
+done and deployed. **Start at phase 5 (U0).**
+
+**Decisions you would have asked about go in `docs/design/SIGNOFF-QUEUE.md`**,
+not into a stop.
 
 ---
 
-# START HERE — the exact next action
+## What is true this morning (measured, 2026-09-20 07:48 UTC)
 
-## Research pages track — R6 COMPLETE 2026-09-16 (every sport); R7 next
+**Every sport can predict a game.** That was the last thing the operator asked
+for and it is done, deployed (`c5baee4`, `dep-danoti942hec73f7n6i0`, live 07:45)
+and verified against production:
 
-R1-R5 and R6.1 signed off; R6.2-R6.6 done. **R7 (team page rebuild) STARTED
-2026-09-16 on the operator's go-ahead: Step 0 done and recorded in the plan's R7
-section. R7-C1: results & schedule read each league's schedule, not
-`game_result` (preseason, postseason, no OTL, MLB gaps). Sub-phases R7.1
-(skeleton on MLB) → R7.2 football → R7.3 NBA/NHL → R7.4 soccer, stop after each.
-**R7 SIGNED OFF 2026-09-16; R8 (game page) STARTED — MLB first (operator). R8.1 (MLB) closed 2026-09-17: shared shell, final recap, before-start research and live state (Right now, props tracker, in-game odds), MLB game-log links on. R8.2 (football) in progress: 8.2a-c built and committed (shell + recap, before-start research, live; shared with MLB). OWED: render the live state on TNF DET @ BUF (401872932, Thu 8:15 PM ET) and a Saturday CFB game, then stop for football sign-off. R8.3a (soccer: EPL and MLS) and R8.3b (tennis: ATP and WTA, verified live on Guadalajara) committed; soccer's live render is scheduled for ARS @ BHA Saturday; then stop for soccer/tennis sign-off. R8.4a (NBA) and R8.4b (NHL) committed: every sport is on GameResearchPage; NBA/NHL live renders owed in October; then delete the old GameDetail and its hooks and routes. R8.3-F1 FIXED (strength goals count own goals; soccer rollups rebuilt). R8.3b-F1 writers FIXED and DEPLOYED to the worker (dep-daltnt0u01pc73e0f2dg, fa501e7); the cleanup RAN 2026-09-17: exactly 46,356 doubles/other-tour rows deleted, backfill recovered 652 singles rows, and the table now holds 0 doubles, 0 rows shared across tours and 0 matches under both. **R9 (visual density) SIGNED OFF 2026-09-17: R9a identity (faces, crests, one-sided headers), R9b charts that fit their data (minBand + scroll, crest axis ticks), R9c emphasis in tables (magnitude bars, marked leader, heavier key column), R9d the last five as a hit/miss strip and Home vs away as a dumbbell. R9's own findings: R9a-F1 (ESPN has no soccer headshots, 1 of 12 — soccer keeps crests only), and `range`/`contribution` not built for want of per-book prices and any model output. R9 signed off by the operator 2026-09-17. **R10 (compare control) BUILT, awaiting operator sign-off (2026-09-18):** R10.1-R10.4e (player vs team `?vs=`, player vs peer `?peer=`, team vs team, NBA zone / NFL target / MLB handedness / tennis serve-return cards, golf against the field), R10.5 (Players tab loads with no games, every sport), R10.6 (Table/Bars/Lines views on split rate stats; every section collapses). G2 sweep done (R10-F5: G2's NBA/EPL position groups dropped unpositioned players). `MatchupExplorerCard` and `matchupExplorer` DELETED on the operator's word (b8a4f30). **R10-F4 WITHDRAWN:** "tennis player page makes no fetches" was the browser pane's stale-tab quirk; tennis compare rendered on prod in a fresh tab, and the render found R10.4d-F1 (head-to-head dates "Invalid Date"), fixed. **Always verify renders in a fresh tab (`tabs_create`).** **R11 (port-artifact cleanup) DONE 2026-09-18, awaiting operator sign-off** (built while they were away; full record in the plan's R11 section). The old `GameDetail` page and everything only it used are deleted (17 API routes, ~60 files), then 138 unused exports incl. TypeScript writers with no callers — `prop_odds`, `game_picks`, `pick_history`, `game_odds_book_lines` (a GET-writer), `pitcher_game_score_history` are Python-only now. C1 `nflSeasonStats`->`seasonStats`, C2 explicit nulls removed, C6 moot. Rendered player/team/game for all seven team+tennis sports and golf's player page on prod: all clean. **Operator items:** R11b-F1 CLOSED (card dropped; CFB kickers got a spec). R11b-F2: the operator is redeploying the worker by hand; once confirmed, do B3 step 2 (the TS `firstPitch`->`startTime` rename). R11-F3 approved into R12 (R12d). **R12 (deep history) APPROVED 2026-09-19** (lineage counts; last 10 seasons by default; build tennis R12e; merge sources with a conflict rule). **R12 COMPLETE (a-e), awaiting sign-off** (R12b: the team page's History section; R12c: deep head to head on the game page and in team Compare; R12d: every game page says "couldn't load" on a source failure, route included; R12e: tennis head to head before 2024 by verified name; record in the design doc; finding R12e-F1 routed to the model track) — — the read, windows, lineage, indexes and the MLB StatsAPI backfill (run on the operator's go-ahead, 37,960 rows); MLB now reads exactly the official finals and the NFL referee is exact. Record in the design doc. NEXT: the operator's sign-off on R10, R11 and R12; then the UI overhaul (U0) per its own sequencing. Note: `python-odds-service/src/db.py` changed (upsert_game_results; upsert_live_results wraps it) — same behaviour, ships with the next worker deploy.** Record in the plan's R8 and R9 sections.** R7: every team sport is on `TeamResearchPage`; `TeamDetail.tsx` and its hooks, adapters and four routes are deleted.** R7-F1 routed to the model track: MLS 2026 game logs start 2026-08-15, so MLS team stats and rosters cover 4-5 of ~25 games (the page says so). Also fixed: the NHL team-id map sent Utah to its old id (59, not 68). R7.1: `/api/team-research` +
-`buildTeamResearch` + `TeamResearchPage`; every team sport uses it. Record in the
-plan's R7 section. R2-F7 fixed.** The handoff is
-`docs/audit-2026-09-13/RESUME-PROMPT.md`; the record is the plan's status block.
-
-- **R6 audit, 2026-09-16** (after R6.6, before R7): four cross-sport defects,
-  all fixed in one commit. (1) The live card marked an under still below its
-  line as HIT (green check) in every builder; an under cannot hit while the game
-  is on — one rule, `liveLineHit` in `lib/sports/shared/liveLine.ts`.
-  (2) `repriceAtMainLine` attached the OVER's price to a re-lined MLB under /
-  no-hit / no-run. (3) NFL and CFB each carried a copy of live-card pricing and
-  NBA/NHL had none (stale line, no price) — one `liveLinePricing`, four callers.
-  (4) Only NFL's section followed the early-season rule; NBA, NHL, soccer and
-  tennis opened on the newest season under a hero saying it showed last season.
-  Every section now opens on the page's scope season (`sectionOpeningSeason`),
-  numbering checked per sport. Also: `soccer/understat` cache key namespaced
-  `route:`, four server reads added to the bundle-boundary test. Rendered
-  Haaland, Cunha, MLS, Lamb, SGA, MacKinnon, Alcaraz, Sabalenka; 528 tests,
-  tsc and build clean.
-  - **The dev server's render workers died mid-check** ("Jest worker
-    encountered 2 child process exceptions"): every route 500'd, including
-    pages that had rendered a minute earlier. A restart fixed it. If a whole
-    sweep 500s at once, restart before debugging.
-
-- **R6.6:** golf had no research at all (no `player_game_history`); it now
-  reads its own tables through `/api/golf/player-research` — Scoring (recent
-  rounds, scoring by par) and Shot profile (the 2020-2022 seed: driving,
-  first-putt distance, putting, make % by distance, by lie). Measured first:
-  the round tables hold only the three 2026 playoff events; the seed's
-  `tournament_id` repeats every year, so a hole needs the season (G2 merged
-  them); a putt's distance is its roll, not its start; and the hole `category`
-  column misfiles eagles and doubles (R6-F12). The old lie grid chain is deleted.
-
-- **R6.5:** NBA's shot chart on a real half court and NHL's rink map, both from
-  every located attempt (new `/api/nba/shots`, `/api/nhl/shots`), with a zone
-  table whose last column is points per shot, a shot-type table, and — for NHL —
-  **the league's own season totals**, off the landing the bio already fetches,
-  reaching back to 2015-16 where this app's history starts in 2023. A goalie
-  takes no shots, so that read falls back to `goalie_id` and the card becomes
-  "Shots faced". Two of the plan's premises turned out stale and are corrected
-  there: both shot tables hold the CURRENT season, and the NHL totals were
-  already parsed. **R6-F9 and C4 are now done for every sport.** The 3x3 grid
-  both pages used is deleted with its whole chain (two routes, two hooks, two
-  reads, two shapes files, two test files) after grepping showed this page was
-  its only caller.
-  - **One app-breaking bug, fixed in the same commit:** importing
-    `isNhlGameLive` from `nhle.ts` pulled `pg` into the client bundle — `tsc`
-    and 504 tests passed, the dev server returned 500 on every route. The
-    predicates moved to a client-safe `gameStates.ts` and the boundary test now
-    lists `nhle.ts`.
-
-- **R6.4:** "Surface & serve" from the TennisMyLife archive (new
-  `/api/tennis/archive`, resolved by name) — by surface with today's court
-  marked, **by level** (slam / Masters 1000 / 500 / 250, with the deepest round
-  reached, which is R6-F3 answered on the page), ranking at each match, and
-  serve against return as a 10-match rolling pair. The section states how far
-  the archive reaches, because it lags: the ATP file ends 2026-08-30 with the US
-  Open missing. Tennis also re-prices on the current main line (R6-F9 closed for
-  it), fills the game-state card with set scores and says point-by-point is not
-  held, and fills the game log's unnamed opponents from the archive.
-  Rendering caught three defects, all fixed: a ranking axis that printed the
-  same rank twice, copy that said "he" on a WTA page, and an "@ / vs" prefix
-  plus a Home/Away split on a sport with no home side.
-
-- **R6.3:** an outfield player's "Chances & finishing" draws every Understat
-  shot on the attacking half (new `/api/soccer/understat`, resolved by name),
-  with finishing by body part, goals against xG and per 90 by season; a keeper
-  gets the not-held state; MLS says Understat does not cover it. Soccer also
-  re-prices on the current main line, fills the live card (score, clock and
-  events only) and opens on the market its position plays for.
-
-- **R6.2:** a receiver's "Usage & depth" and a quarterback's "Where he throws"
-  draw every located pass at its own air yards (new `/api/nfl/targets`, keyed
-  by the page's own ESPN id); CFB says what is not held; NFL and CFB re-price
-  on the current main line and fill the game-state card. The old target-map
-  route, grid, hook and the rail's NFL season card are deleted.
-- **Hero and live card reworked 2026-09-15** (operator pivot, `35d6be5`): the
-  hero is dense rather than two thin columns with a gap, the live card is its
-  own section under the hero with the sport's situation and a lines table that
-  tints a cleared line, and the player page has one card header instead of two.
-  Plan and mockups: `docs/design/hero-live-rework.md`, `docs/design/hero-live/`.
-- **OWED Thursday 2026-09-18:** NFL's game-state card and its prop block on a
-  player with a market — no live game or priced NFL player was on the slate
-  when they landed. CFB's, Saturday 2026-09-19.
-- **OWED next EPL match day:** soccer's live card, and R2-F9 — the
-  `soccer:snapshot:epl` row does write, but today's slate was empty (~0 MB), so
-  the 22 MB write is still unproven.
-- **OWED the next tennis match day:** tennis's game-state card (set scores) and
-  its re-priced line. Nothing was on the ATP or WTA slate on 2026-09-15, so all
-  three verified players rendered the no-market path.
-- **OWED at the next tournament:** golf's prop block and live view, which have
-  always been held for one.
-- **OWED in October:** NBA's and NHL's game-state cards and their re-priced
-  lines. Neither league is in season, so both sub-phases rendered the no-market
-  path; the plan always marked these two unverified until October.
-
-- **R6.1d:** the player page names one line (R2's main line, re-priced from
-  current rows; MLB's model chip names its own board line), a started game's
-  prices are the ones at the start, line movement is pinned to that line, all
-  odds sit in an "Odds & prices" section, and a sport-neutral game-state card
-  replaces the MLB-only live block.
-- **R6.1a:** the player is the page for every sport — hero from the league bio,
-  Seasons / Trends / Splits / Game log from every season of
-  `player_game_history`, the prop block as one section. Nothing deployed (no
-  Python change). Verified against all 24 G2 player datasets and refereed
-  against the leagues.
-- **Affects the model track (Python writers, not fixed in R6):**
-  - R6-F5: MLB `game_result` has no game pk before the 2026-08 live capture,
-    dates night games by UTC and misses some games, so it cannot be joined to
-    MLB games by date (25 of Witt's 449 took a neighbour's score). The player
-    page reads StatsAPI finals instead. Anything else joining MLB results by
-    date inherits the error.
-  - R6-F3 (**answered on the page in R6.4** — By level reads TennisMyLife's own
-    `level` column): `is_major` is 0 on every tennis row (`backfill_player_game_history.py:854`
-    looks for "grand slam" in slam names).
-  - R6-F4: MLB history stores no sacrifice flies, so OBP from it is over PA.
-  - **R6-F11: `nfl_target_events.interception` is false on all 36,375 rows**
-    (the writer never sets it), so the NFL sections state that interceptions
-    are not held rather than showing an all-zero column.
-  - **R6-F8: ParlayAPI files a pitcher's strikeouts under `batter-strikeouts`
-    (29 pitchers on 2026-09-15) and walks allowed under `walks` (9).** Pitcher
-    markets miss those books; a market-mapping fix in the Python writer.
-  - **R6-F7: the pitch corpus holds some games only in part.** 281 of 2,229
-    regular-season 2026 games in `corpus/mlb_pitch_events` have under three
-    pitch rows per plate appearance, every month, 2025 too; Statcast rollups
-    cover 91-94% of a hitter's plate appearances (Judge: 14 Statcast HR to 18
-    in the box scores). Every corpus-based model input inherits this. The
-    player page states the coverage.
-- **Still for the model track from R5:** R5-F5, the worker OOM loop (512 MB,
-  4-9 kills an hour since 2026-09-11). Read the service's `server_failed`
-  events before touching jobs. R5-F1/F2/F4 and 5e as recorded in the plan.
-- `mlb:full-raw:<date>` rows are no longer written (R6-F2); the existing
-  Python prune removes the old ones after three days — they were among the
-  large `snapshot_cache` rows Phase 5 flagged.
-
-**Owed:** MLB live state (R8) before the
-regular season ends late September; a look at `refreshCfbJob` on Saturday
-2026-09-19.
-
-Each R-phase ends with a stop for sign-off (plan §2).
-
-## Model track — Phase 8
-
-**Phase 8 — all five decisions DONE and deployed 2026-09-13.** Close the phase once the owed checks below are done, then read the master plan for Phase 9. Decisions and
-progress (audit detail in the master plan's Phase 8 section, 8.0–8.3):
-
-| # | decision | state |
+| sport | game model | verified live |
 |---|---|---|
-| 1 | fix soccer bridge key bug + deploy | **DONE + DEPLOYED** (99d65f2, deploy dep-dajhgne7bikc73c3ol20). Verified in prod: first-ever soccer live_capture rows, EPL 803 / MLS 953 at 21:42:55 UTC |
-| 2 | delete the golf model layer; keep leaderboard, Match Winner lines, schedule, shot profile; back up golf tables first | **DONE + DEPLOYED** bc18db2. Prediction tables left frozen (operator). Backup CSVs at `python-odds-service/golf_model_layer_backup_20260913/` (local, uncommitted) |
-| 3 | `golf_shot_events` (230 MB): keep for now | no action |
-| 4 | stop soccer generic-Elo picks | **DONE + DEPLOYED** 669eefa; verified in prod and on the page |
-| 5 | BUILD tennis capture (player resolution for the bridge) | **DONE + DEPLOYED** c34dacd + de8ccca. Verified in prod 22:54 UTC: 57 tennis_wta closes; results ATP 232 / WTA 362; 13 retirements/walkovers skipped as designed; no insert failures |
+| MLB | its own ensemble | 5 picks |
+| NFL · CFB · NBA · NHL | generic Elo | NFL 14, NHL 7 captured 07:48 |
+| soccer (EPL, MLS) | generic Elo, **three-way** | capture resumed — EPL 4, MLS 1 at 07:48 |
+| tennis (ATP, WTA) | the surface-weighted engine, finally wired | 55 WTA picks at 07:45; ATP has no matches until 09-23 |
+| golf | event-as-field Elo over a 235-event backfill | 1,863 golfers rated; ranks only, publishes no win probability |
 
-**Checks still owed:**
-- **Golf with a live field:** the golf Scan and PlayerDetail have not been
-  rendered since the model was removed, because no tournament was in progress.
-  Open them during the next event.
-- **`orphanJobBreadcrumbs` will name `golfPredictionsJob`.** That's the rename,
-  deliberate, not a dropped job.
-- **Reversed-orientation bug (de8ccca):** fixed going forward, but how many
-  archived closes it mis-sided in team sports is UNMEASURED; see the master
-  plan's 8.3 decisions note.
+Register: **16 rows — 1 gated, 10 baseline, 1 failed, 4 none.** All 46 jobs ran
+after the deploy, including the three new ones (`tennisPicksJob`,
+`slateRankingsJob`, `modelStatusJob`) and `modelGateJob`.
 
-**Worker is live at `c34dacd`** (Render deploy dep-dajiiae7bikc73c78ltg, 22:53 UTC).
-Three API deploys went out this session, each approved first: 99d65f2, then
-bc18db2, then c34dacd.
+**The model vocabulary is internal.** `baseline` / `gated` / `simple` /
+`advanced` / "not validated" decide what a page may show; **none of them may
+appear on a customer surface.** Operator, 2026-09-20, unambiguous. M1's spec
+originally said the opposite and is corrected in the gameplan. `/diagnostics` is
+the one allowed exception.
 
----
-
-# Phase 7 — NBA — CLOSED 2026-09-13 (full record in the master plan)
-
-One-paragraph version: priced props cover only six weeks (2025-10-21 →
-2025-12-01). A rate × minutes model was built on `count_prop_engine` with a
-walk-forward minutes model that beats rolling-5 by 6%. It is calibrated, but the
-pre-registered edge test FAILED: ROI −8.78%, 7.25pt worse than always betting the
-under. The "edge" was the model's shrinkage toward 50%. **Reopen props only with a
-full season of prices AND an active-roster feed.** H2 (Total Assists 55–60% fade
-the over) is pre-registered for 2026-27 prices. The game model was not built;
-timestamped NBA closes start accumulating from tip-off via the archival bridge
-with no new work.
-
-**Checks to run once the 2026-27 season starts (late October):**
-1. `odds_archive` rows with `source='live_capture'`, `sport='nba'`, non-null
-   `captured_at`. This confirms the bridge captures NBA; it's unverified until
-   real games run.
-2. `prop_odds_archive` nba rows keep non-null `over_price`/`under_price` past
-   December. The DraftKings switch zeroed them last season.
-
-Scripts (all in `python-odds-service/`): `build_nba_prop_training_set.py`,
-`build_nba_player_panel.py`, `fit_nba_minutes.py`, `fit_nba_prop_rates.py`,
-`test_nba_prop_edge.py`. Local artefacts `nba_panel.parquet`,
-`nba_props_train.csv`, `nba_minutes_pred.parquet`, `nba_prop_probs.csv` exist on
-the operator's machine. `nba_prop_probs.csv` is **not** gitignored; don't commit
-it.
-
-**Any NBA prop-to-result join must use `event_ref`**, not `(athlete_id,
-game_date)`: 1,863 pairs carry two real games under one date.
+**Player props are out of scope.** The Elo work was about games only. Render
+what exists; build no prop model.
 
 ---
 
-# Phase 5 — OPEN, monitoring only
+## The three tracks
 
-Left open at the operator's direction to retest egress over several days rather
-than close on one reading.
-
-| ceiling | state |
-|---|---|
-| database | **WATCH — growing again**, see below |
-| worker RAM | **CLEARED** — 248 MB resting of 512, peak 380 across 40 jobs |
-| egress | **halved, not yet at target — OPERATOR MUST LOOK** |
-
-```
-  before the fixes   ~19.1 GB/day
-  2026-09-13          7.051 GB at ~17h  ->  ~10 GB/day projected
-  target              <= 8.3 GB/day
-```
-
-**WHAT TO CHECK:** the Supabase egress graph, over several days. One day is not
-a trend and 13 Sep was partly a deploy day. **There is no API token for it — the
-operator must look.** This was NOT checked during the 2026-09-13 session.
-
-**DATABASE GROWTH MOVED THE WRONG WAY and this is new.** `health_check` on
-2026-09-13 read **3,571 MB (43.6%), +164.1 MB/day over 2.6d, 28 days of
-headroom**. The previous handoff recorded the prune loop as closed and the
-ceiling as "CLEARED and SUSTAINABLE" at 42.4%. It is growing at 164 MB/day —
-much better than the +469.6 it was, but **not flat, and 28 days is not a lot.**
-Nobody has looked at what is growing.
-
-**Known contributor, routed here from R2 (2026-09-14):** `snapshot_cache` holds
-several very large, very old rows — `mlb:full-raw:*` at 79/78/52 MB and
-`mlb:snapshot:2026-08-16` at 22 MB, 29 days old. Check whether anything still
-reads those keys before pruning them.
-
-**THE LARGEST REMAINING EGRESS LEVER, independent of any byte estimate:**
-`SELECT fetched_at FROM snapshot_cache` runs **424,958 times/day** — 5 a second,
-by far the highest call count of anything. It is the blob cache's validation
-query. Memoising it in-process for a few seconds would collapse burst reads of
-one key into one query, with no staleness risk beyond seconds (the payload is
-already versioned by `fetched_at`). **NOT BUILT. Size unknown.**
-
-## What shipped in Phase 5 (all deployed, all gated)
-
-- **blob validation-cache** — `read_snapshot`/`read_snapshot_with_age` ask
-  Postgres only for `fetched_at` and serve the payload from local disk when the
-  stamp matches. **99.5% hit rate in production.** Disk, not memory, to protect
-  the RAM ceiling.
-- **prop archive server-side** — `INSERT … SELECT`; 36,361 rows, 7 sports, 0
-  mismatches.
-- **closing-lines archive server-side** — 2,104 rows, 0 mismatches, 6.62s.
-- **hot-window aggregation** — `load_hot_window_agg`; 1,958,099 rows → 17,118
-  (99.1% fewer). Gated at 17,118 athlete-markets, 0 diffs, plus
-  `summary == prefix + hot` on 15,642.
-- **team-elo per-game read** — was loading the whole sport then discarding all
-  but one game, *while being called once per game* (12,432 calls/day).
-- **reference points server-side** — and it fixed a NON-DETERMINISM: 68
-  candidate rows share 4 `fetched_at` values, books disagree (8.0/8.5/9.5), so
-  "freshest wins" returned whatever an unordered SELECT gave first. Now each
-  book's freshest quote then the MEDIAN across books; `percentile_disc` so the
-  answer is a really-quoted line. Differed from the old pick on 39% of keys.
-- **corpus prune loop closed** — `refresh_corpus --prune` runs `prune_corpus`
-  daily after export+upload. Before this the database grew +469.6 MB/day with 10
-  days of headroom, because the 7,282 → 3,200 MB reduction came from running
-  those tools BY HAND and nothing repeated them.
-- **corpusFreshness heartbeat** — the old alarm sat BELOW the floor of normal
-  operation (250k threshold vs ~407k rows per cycle) and went red every cycle
-  regardless of health.
+| track | plan | state |
+|---|---|---|
+| **Models (M)** | `docs/design/master-gameplan-ui-and-slate.md` §4 Stage 0, and `docs/master-plan-2026-09-06.md` for the Phase 6/7 close-outs | M0–M3 **done and deployed**. M4 (promotion tests) runs on its own. M5 unapproved |
+| **UI system (U)** | `docs/design/ui-system-master-prompt.md` | Not started. **U0 is the next thing to build** |
+| **Slate (S)** | `docs/design/slate-sheet-cards.md`, mockup `docs/design/slate/slate.html` | Not started. Needs U2 and U5 first |
+| Research pages (R) | `docs/audit-2026-09-13/RESUME-PROMPT.md` | R1–R12 all **built and pushed**. R10/R11/R12 await sign-off, and gate nothing |
 
 ---
 
-## MEASUREMENT LESSONS — read before measuring anything
+## Owed by the operator
 
-**1. A SHORT WINDOW CANNOT PROVE A QUERY IS DEAD.** A query running 73×/day
-appears **0.35 times** in 420 seconds. On that basis a query was declared dead;
-it was the largest line on the bill.
-
-**2. A MINIMUM-CALL THRESHOLD DOES NOT CATCH A BURSTY JOB.** A 600s window
-reported 99M rows/day for a query whose lifetime rate is 7.4M. **Cross-check
-window rate against lifetime rate (`rows / stats_since`); disagreement >3× means
-discard the window figure, not average it.**
-
-**3. THE WIDTH MODEL FAILS IN BOTH DIRECTIONS.** Flat 109 B/row said 4.08
-GB/day; per-table width said 24.63; the graph said ~10. **A correct estimator
-needs SELECTED-COLUMN widths. Nobody has built one.**
-
-**4. psutil WIRE MEASUREMENT FAILS BELOW A FEW MB.** `SELECT 1` measured at
-19,417 B/call, which is impossible.
-
-**5. BLOCKS TOUCHED ARE NOT BYTES SENT.** `shared_blks` counts index and heap
-pages; it was off by 100×.
-
-**THE RULE: the Supabase graph is the authority on bytes. The RANKING from
-pg_stat_statements is actionable; its absolute numbers are not.**
-
-**6. A 100%-OF-EXPECTED JOIN IS A BUG, NOT A SUCCESS.** Step 1 returned 100.4%
-and that is the only reason a wrong-game grading bug was ever seen. **Print the
-ratio, not just the count.**
+- **Rebuild and restart the port-3000 production server.** It predates the
+  2026-09-19 ESPN range fix and will blank NFL/CFB/soccer again on its next
+  rebuild. Carried since M0; no agent can do it.
+- **Sign-off** on R10/R11/R12, M1's seeded statuses, M2's CFB calibration, and
+  M3's first frozen rankings (real receipts land 2026-09-21). All four are rows
+  in `docs/design/SIGNOFF-QUEUE.md`.
 
 ---
 
-# Phase 6 — CLOSED, measured NO
+## Open findings worth knowing before you build
 
-Ridge margin rating, 13,650 games, refit per season-week with no leakage, 90-cell
-sweep. Three benchmarks all negative: vs closing spread (t +0.23), vs opening
-spread (t +0.20), and predicting the market's own move (t −0.77).
-
-The high-edge band is recorded rather than buried: monotone 51.59 → 55.00%
-across thresholds, balanced by side, sensible by week — but every Wilson interval
-spans break-even, **2024 sits at 49.08%**, ROI is +0.74%, and validating it would
-need **~80 seasons**. Unfalsifiable at CFB volumes.
-
-**Pre-registered reopening hypothesis: week 5+, |edge| ≥ 16, large spreads. Test
-that and nothing else.** Closes the APPROACH, not the sport.
-
-Tooling kept: `build_cfb_training_set.py`, `fit_cfb_ratings.py`,
-`sweep_cfb_ratings.py`, `test_cfb_edge.py`, `test_cfb_edge_open.py`,
-`test_cfb_high_edge.py`.
-
----
-
-## health_check, as of 2026-09-13
-
-5 failing, **none of them new breakage**:
-- `refreshNbaJob`, `refreshNhlJob` — cold-tier skips, **off-season, expected**.
-- `refreshCfbJob` + `harvesterScrapes: cfb` — the parked cfb discovery issue below.
-- `databaseGrowth` — see Phase 5. **This is the one worth attention.**
-
-`corpusFreshness` healthy (export ran 0.8h before the check). `workerMemory`
-healthy. The laptop was awake, so the usual "corpus and harvester go stale when
-the machine is closed" did not apply this time.
+- **SL-7:** CFB's game gate cannot run at all — 136 picks considered, **0**
+  matched a reference close. Re-confirmed live 07:46. Same for soccer (75
+  considered, 0 matched), NBA, NHL, tennis and golf (0 considered each).
+- **SL-9:** the blend-weight fit (M2 fit 2) had no inputs because
+  `initial_ml_features_json` was NULL on every generic-Elo row. Fixed forward —
+  the capture stores them from 2026-09-20, so the fit becomes possible once a
+  few weeks accumulate. `MARKET_BLEND_WEIGHT` 0.5 and `ELO_BLEND_WEIGHT` 0.2 are
+  still hand-set placeholders.
+- **SL-1:** stale and exchange quotes are in the game-line data (a +10000
+  moneyline and a `0` price, both live 2026-09-19). S1 drops `|odds| < 100` and
+  anything >15 implied points from the median.
+- **SL-4:** `game_odds_history` holds NHL API ids, not ESPN's. The S1 adapter
+  must bridge them.
+- **MLB's game model is below the close** — mean −0.0563 prob-points, 38.0%
+  positive on 305/448 matched picks (re-measured 07:46). It is `baseline`, so
+  S5 shows its picks but no probability beside a price. See queue row Q0.
+- `refreshTier1` overruns its 150s interval (171.75s) on the one cycle where all
+  five provider throttle windows open at once.
+- `price` holds a copy of `line` on espn_core spread rows; 0 of 988 are
+  plausible odds. Guard: a price outside ±100…100000 is not a price.
+- `athlete_name` is NULL on all 25,420 NBA prop rows. `athlete_id` joins fine.
+- The corpus refresh and OddsHarvester only run while the operator's machine is
+  awake (Phase 10 scope arriving early).
 
 ---
 
-## PARKED — Scan at phone width
+## Habits that keep paying
 
-Scan pages overflow a 400px screen (`/mlb` 776px, `/soccer/mls` 837px), found
-in R2's sign-off pass. Scan is out of the research-pages plan's scope, so no
-R-phase owns it. The player/game/team pages' top bar was fixed in `fcaef2c`;
-Scan's own layout was not.
-
-## PARKED — cfb harvester and provider coverage
-
-Deferred at the operator's request; all measured, none urgent.
-
-- **cfb discovery cost FIXED** — was walking all 85 league fixtures at >21s each
-  into the 1800s cap. Now filtered via schema.org JSON-LD. **STILL OPEN:** the
-  fallback filter only takes 85 → 72 (we track 166 cfb games), so it completes on
-  a good day and times out on a slow one. **The real fix is bounded rotation** —
-  scrape the N most imminent games per cycle.
-- **Blocked/dashed moneylines are silently discarded.** A real cfb page returns
-  `{"1": "-", "2": "41.00", "blocked_outcomes": ["1","2"]}`.
-  `_parse_decimal_odds("-")` returns None, indistinguishable from a parse
-  failure. Count them explicitly.
-- **SharpAPI 429s mid-pagination** (page 12, free tier 12 req/min) — the leading
-  explanation for cfb's thin game-line coverage. Correlated, **not proven causal**.
-- **Propline's absence from cfb is DELIBERATE** and documented in
-  `provider_matrix.py`: 1+N requests per cycle means a 178-game slate is ~179
-  requests vs SharpAPI's 1. Do not "fix" without redoing that arithmetic.
+- **Audit a phase's premises before building it.** Phase 6's brief had four
+  false premises and Phase 7's had four more, one of which decided the phase.
+  Three of M0–M3's task premises were wrong too. Any claim about where data
+  lives, or how much of it there is, is stale by default.
+- **Pre-register the test before the code that runs it.** It turned a "promising
+  pocket" into a recorded untestable instead of a false positive.
+- **Render before believing.** A test built on the same wrong model as the code
+  agrees with the bug. Open the page — in a **fresh tab**, because worn
+  browser-pane tabs stop running effects and have already produced one false
+  "nothing loads" finding.
+- **If a whole sweep 500s at once, restart the dev server before debugging.**
+  Its render workers die ("Jest worker encountered 2 child process exceptions")
+  and every route 500s, including pages that rendered a minute earlier.
 
 ---
 
-## OPEN ITEMS
+## Standing constraints
 
-- **`refreshTier1` overruns its interval** — 171.75s against 150s, but only on
-  the cycle where all five provider throttle windows open at once. Optional fix:
-  make the staleness rule `2 × interval + last_run_duration`.
-- **`price` holds a copy of `line` on espn_core spread rows** (`line = -30.5,
-  price = -30`); zero of 988 are plausible odds. The guard is that a price
-  outside ±100…100000 is not a price.
-- **`athlete_name` is NULL on every NBA prop row** — all 25,420. `athlete_id`
-  joins fine, but any diagnostic built on the prop set prints blank names until
-  something backfills them.
-- **The corpus refresh and harvester only run while the operator's machine is
-  awake.** That is Phase 10 scope ("move OddsHarvester off the laptop") arriving
-  early.
-
----
-
-## STANDING CONSTRAINTS
-
-- **Ask before deploying to Render.** Note `render.yaml` has **`autoDeploy:
-  false`**, so `git push` does NOT deploy — pushing is safe and does not need
-  permission.
+- **Ask before deploying to Render.** `render.yaml` has `autoDeploy: false`, so
+  `git push` does **not** deploy — pushing is safe and needs no permission.
 - **Never `git add -A` or `git add docs/`** — `docs/discord-community-prompt.md`
   is the operator's. Add named files only (`git add docs/CURRENT.md` is fine).
-- **Back up before deleting.** `prune_corpus` verifies every row is in the corpus
-  by id and content fingerprint before deleting, and refuses while the corpus is
+- **Back up before deleting.** `prune_corpus` verifies every row is in the
+  corpus by id and content fingerprint first, and refuses while the corpus is
   local-only.
 - The Postgres pooler caps at **15 connections** — check for running fits before
   starting DB work.
-- Python tests and fits are standalone scripts: `.venv/Scripts/python.exe <file>.py`.
-- Corpus reads cost ~300 MB of RAM and are **barred from the Render worker** —
-  they run on the operator's machine. `fit_nba_minutes.py` peaks around **850 MB**
-  and takes ~25 minutes; it needs no database connection at all (parquet only).
-- **Do not pipe a long Python run through `tail`** — it buffers everything and
-  you get no output until the process exits. Use `-u` and redirect to a file.
+- Python tests and fits are standalone: `.venv/Scripts/python.exe <file>.py`.
+- Corpus reads cost ~300 MB and are **barred from the Render worker**; they run
+  on the operator's machine. `fit_nba_minutes.py` peaks ~850 MB, takes ~25 min,
+  and needs no database connection (parquet only).
+- **Do not pipe a long Python run through `tail`** — it buffers and you get
+  nothing until the process exits. Use `-u` and redirect to a file.
 - **At ~92% context, stop and hand off** by rewriting this file.

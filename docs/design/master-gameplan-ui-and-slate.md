@@ -1,6 +1,7 @@
 # Master gameplan — models, UI system, Slate
 
-**Status: 2026-09-20. M0–M3 BUILT (not deployed); U and S not started.** One ordered plan for
+**Status: 2026-09-20. M0–M3 BUILT AND DEPLOYED (`dep-danoti942hec73f7n6i0`,
+live 07:45 UTC); every sport now has a game model; U and S not started.** One ordered plan for
 three tracks that ship together:
 
 - **M — models and data.** What the app is allowed to claim, and the data the
@@ -62,6 +63,12 @@ spec wins on **detail**.
 10. **Pre-register every model claim:** the test and its pass/fail rule are
     committed before the code that runs it.
 11. **At ~92% context, hand off:** rewrite `docs/CURRENT.md`, commit, push.
+12. **The model vocabulary is internal** (operator, 2026-09-20). `baseline`,
+    `gated`, `simple`, `advanced`, "not validated" and the register itself are
+    how WE decide what a page may show. **None of those words may appear on a
+    customer surface.** The status decides what renders; it never becomes
+    copy. `/diagnostics` is the one place the vocabulary is allowed, because it
+    is the operator's own page. A guard test enforces this from S1.
 
 ## 3. Where things stand (measured 2026-09-19)
 
@@ -73,16 +80,33 @@ So a fresh session doesn't re-derive it:
   day raises instead of reading as "no games". Caught up from 09-11: 446 finals,
   11 games of history, 80 games regraded. **Closing lines for 09-15 → 09-19 are
   lost.**
-- **Models today:** MLB game (gated, its own ensemble) and MLB props (gated, 12
-  markets, 14 Platt calibrations). NHL props and NFL props are baselines (NFL
-  shows projections with no probability, decision 4.6). Generic Elo covers
-  NFL/CFB/NBA/NHL game picks. CFB game (Phase 6), NBA props (Phase 7) and soccer
-  (Dixon-Coles) **failed** their gates. Golf's model was **deleted** 2026-09-13.
-  Tennis has a rating engine wired to nothing.
+- **Models today (re-measured 2026-09-20, after the Elo extension shipped).**
+  **Every sport can now predict a game** — that was the point of the extension,
+  and it is done. The register holds 16 rows: **1 gated** (MLB props: 12 markets,
+  14 Platt calibrations), **10 baseline**, **1 failed** (NBA props), **4 none**.
+  - Game: MLB (its own ensemble), NFL, CFB, NBA, NHL on the generic Elo; and as
+    of `c5baee4` **soccer** (three-way, measured draw rates EPL 24.03% / MLS
+    25.12%, grading settles draws), **tennis** (`predict/tennis_serving.py`
+    finally wires the surface-weighted engine that had sat unused since Phase
+    2.2 — 57,155 matches replayed, 55 WTA picks live in production at 07:45)
+    and **golf** (event-as-field Elo over a 235-event backfill; it RANKS, and
+    publishes no win probability because no scale has been fitted).
+  - **MLB's game model is `baseline`, not `gated`** — its own CLV backtest puts
+    it below the close. Re-run live by `modelGateJob` at 07:46: mean −0.0563
+    prob-points, positive-CLV rate **38.0% on 305/448** matched picks. See
+    open question 0.
+  - Props remain MLB-only as a gated model; NFL and NHL props are baselines and
+    the other five sports have **no prop model at all** (M5, unapproved). The
+    operator's instruction of 2026-09-20 stands: **the Elo work was about games
+    only. Do not touch player props in any U or S phase** beyond rendering what
+    already exists.
 - **The generic Elo blends 50% with the market price** (`MARKET_BLEND_WEIGHT`
-  0.5, `ELO_BLEND_WEIGHT` 0.2, hand-set placeholders), which is why it picks the
-  favorite 95–100% of the time. Graded picks: CFB 196 (84.7% wins, −1.3% per
-  unit), NFL 32, NHL 3, soccer 54 (capture stopped 2026-09-13).
+  0.5, `ELO_BLEND_WEIGHT` 0.2, still hand-set placeholders — M2's fit 2 is
+  blocked on SL-9's data, which only starts accumulating 2026-09-20), which is
+  why it picks the favorite 95–100% of the time. Graded picks: CFB 216, NFL 35,
+  NHL 3, soccer 54 (capture resumed 2026-09-20), tennis 1 graded so far.
+  **CFB is calibrated** (M2 fit 1: it said 68.0%, won 83.9%; log loss 0.471 →
+  0.397).
 - **Slate data** is measured per sport in `slate-sheet-cards.md` §4. Highlights:
   MLB 16 prop markets (up to 21 books); NFL 18 (pre-outage week); CFB 13; soccer
   7 per league; tennis 3; NHL none yet (preseason); NBA from October. Opening
@@ -147,7 +171,12 @@ first would bake today's habits into new code.
    | `baseline` | the pick (green ring), projection, hit rates, sample sizes | a probability beside a price, a record framed as a track record, any edge |
    | `failed` / `none` | nothing — the section hides and says why | anything implying a model exists |
 
-4. Every surface says its status in plain words ("baseline model, not validated").
+4. ~~Every surface says its status in plain words ("baseline model, not
+   validated").~~ **REVERSED by the operator 2026-09-20, before any page used
+   it:** that vocabulary is internal (rule 12). A surface says nothing about
+   model tiers; the status decides what it renders and the page reads as
+   ordinary research either way. `statusLabel()` exists for `/diagnostics`
+   only, and today nothing else calls it.
 5. **The promotion test:** each sport × kind carries pre-registered gate
    criteria; a scheduled job re-runs them, updates `status`, writes the evidence.
    Demotion works the same way.
@@ -230,6 +259,15 @@ first start.
 
 **Why here:** everything in U and S depends on it, and it touches nearly every
 file, so it must not overlap another UI session.
+
+**On the "after R10–R12 sign-off" dependency (resolved 2026-09-20):** its real
+content is *don't run two UI sessions at once*, plus *don't rebase the R track's
+work out from under it*. R10, R11 and R12 are built, committed and pushed
+(`443484c` and earlier); nothing is uncommitted and no other session is editing
+UI. **Proceed.** Sign-off on the R pages is still owed and is on the queue, but
+it gates nothing here — U0 is a mechanical Tailwind conversion that must not
+change a single pixel, so it cannot invalidate a page the operator has yet to
+look at.
 
 **Build:** the U spec's U0 exactly — Tailwind 3.4 → 4, config into `@theme`, the
 Untitled UI token bridge, the `field` type token, `react-aria-components`,
@@ -415,10 +453,11 @@ history. One phase per sport, each entering the register as `baseline`.
 
 | # | phase | track | depends on | UI files | deploy | status |
 |---|---|---|---|---|---|---|
-| 1 | M0 outage and data close-out | M | — | no | **owed** | **BUILT 2026-09-20** (`603f65b`) — awaiting deploy |
-| 2 | M1 model status register | M | M0 | diagnostics section | **owed** | **BUILT 2026-09-20** (`bd365e0`) — statuses need sign-off |
-| 3 | M2 fit the baseline (CFB first) | M | M1, ≥200 graded picks | no | **owed** | **BUILT 2026-09-20** (`56db642`) — CFB calibrated; fit 2 blocked, see M2a |
-| 4 | M3 `slate_rankings` job | M | M0 | no | **owed** | **BUILT 2026-09-20** (`737620b`) — first receipts 2026-09-21 |
+| 1 | M0 outage and data close-out | M | — | no | **done** | **DONE 2026-09-20** (`603f65b`, deployed 07:45) |
+| 2 | M1 model status register | M | M0 | diagnostics section | **done** | **DONE 2026-09-20** (`bd365e0`, deployed) — statuses need sign-off |
+| 3 | M2 fit the baseline (CFB first) | M | M1, ≥200 graded picks | no | **done** | **DONE 2026-09-20** (`56db642`, deployed) — CFB calibrated; fit 2 blocked, see M2a |
+| 4 | M3 `slate_rankings` job | M | M0 | no | **done** | **DONE 2026-09-20** (`737620b`, deployed; 30 rows written 07:45) — first receipts 2026-09-21 |
+| 4b | M3b Elo for soccer, tennis, golf | M | M1 | no | **done** | **DONE 2026-09-20** (`c5baee4`, deployed) — every sport predicts a game |
 | 5 | U0 Tailwind 4 + kit base | U | R10–R12 sign-off | all (mechanical) | no | not started |
 | 6 | U1 Buttons | U | U0 | yes | no | not started |
 | 7 | U2 Hybrid table | U | U1 | yes | no | not started |
@@ -440,6 +479,14 @@ Every numbered phase ends with a stop for sign-off.
 
 ## 6. Open questions
 
+**How an unattended session handles these (operator away, 2026-09-20).** Each
+one below now carries a **DEFAULT**: the reading a careful build would pick,
+chosen so that being wrong costs a small, named, reversible edit rather than a
+rebuilt phase. Build on the default, put a line in the sign-off queue
+(`docs/design/SIGNOFF-QUEUE.md`) naming the question, the default taken, the
+files it touched and what reversing it costs, and **keep going**. Do not stop
+the build for any of these.
+
 **From the M0–M3 build (2026-09-20):**
 
 0. **MLB's game model is a `baseline`, not `gated`** — its own CLV backtest puts
@@ -447,15 +494,36 @@ Every numbered phase ends with a stop for sign-off.
    picks). Under M1's display rule that means the Slate's Model section (S5, D4)
    may show its picks but **not** a probability beside a price, and no record.
    Confirm, or say the Model section should show something else.
+   **Re-measured live 2026-09-20 07:46** by `modelGateJob`: mean −0.0563
+   prob-points, 38.0% positive on **305/448** matched picks. A bigger sample,
+   the same answer.
+   **DEFAULT: follow the rule literally.** S5 renders MLB's picks, the total
+   pick and the calibration note, and no probability, no `Model %` beside `IP`,
+   no record. Reversing it later is additive — the columns get switched on, not
+   rebuilt.
 
 
 1. **CFB's green ring.** CFB is the only sport with a real graded sample: 216
    picks, 97% market favorites, **−1.3% per unit**. Ring every game, or only the
    games where the pick differs from the favorite?
+   **DEFAULT: only where the pick differs from the favorite**, which is what D9
+   already says in its own words ("the card marks the rare pick that goes
+   against the favorite"). A ring on every game would be a green mark on the
+   favorite 97% of the time — decoration that reads as a recommendation. Build
+   it as one boolean on the adapter's game row so switching to ring-everything
+   is a one-line change.
 2. **Watchlist and Home Runs.** Both are Scan tabs today and both now have Slate
    sections (Your lines, Specials). Keep the tabs too, or drop them in S1?
+   **DEFAULT: keep both tabs.** S1's "delete" list names three things and
+   neither of these is among them, and rule 3 (subtract in the same phase) is
+   about replacing something, not about removing a working surface nobody asked
+   to lose. Deleting them later is cheap; rebuilding them is not.
 3. **M5.** Build a simple prop baseline for the five sports with none, or leave
    them with prices and hit rates only?
+   **NO DEFAULT — DO NOT BUILD.** M5 is marked "needs approval" and the
+   operator's instruction of 2026-09-20 was explicit: the Elo work was about
+   **games only**, and player props are not to be touched. An unattended
+   session builds no prop model. Prices and hit rates render as they do today.
 
 ## 7. Findings ledger
 
