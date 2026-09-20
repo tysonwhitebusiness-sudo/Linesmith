@@ -23,9 +23,9 @@ what the real payload actually contains.
 Roster parsing added to feed entity_resolution.resolve_player — MLB's roster
 is built by filtering the snapshot's top-level `subjects[]` down to whichever
 ones have `meta.gamePk` equal to this game's gamePk (ported directly from
-gameContext.ts's buildContextForGame, no role/batter-vs-pitcher filtering,
-matching the TS reference exactly), pulling `teamAbbr` from `meta.team` when
-it's a string.
+gameContext.ts's buildContextForGame), pulling `teamAbbr` from `meta.team`
+when it's a string and `position` from `meta.role` (R6-F8: the role is what
+separates a pitcher's strikeouts from a batter's).
 """
 import asyncio
 import json
@@ -79,11 +79,18 @@ def _roster_for_mlb_game(subjects: list[dict], game_pk) -> list[RosterEntry]:
         if meta.get("gamePk") != game_pk:
             continue
         team = meta.get("team")
+        # R6-F8: the role is what tells a pitcher's strikeouts from a batter's.
+        # ParlayAPI sends one generic "strikeouts"/"walks" market for both, and
+        # without a position every pitcher row landed under the batter market
+        # (29 pitchers under `batter-strikeouts` on 2026-09-15, 9 under `walks`).
+        # The snapshot has carried `meta.role` all along; it was simply dropped.
+        role = meta.get("role")
         roster.append(
             RosterEntry(
                 subject_id=s.get("subjectId"),
                 subject_name=s.get("subjectName"),
                 team_abbr=team if isinstance(team, str) else None,
+                position="P" if role == "pitcher" else None,
             )
         )
     return roster

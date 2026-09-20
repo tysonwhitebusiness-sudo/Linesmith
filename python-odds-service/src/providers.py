@@ -29,6 +29,7 @@ import httpx
 import rate_limit
 from db import GameOddsBookLineInput, PropOddsInput
 from entity_resolution import (
+    RosterEntry,
     RosterIndex,
     UnresolvedRow,
     build_roster_index,
@@ -229,6 +230,16 @@ def _team_match(row_home: str, row_away: str, game: Game) -> bool:
     return _team_orientation(row_home, row_away, game) is not None
 
 
+# Soccer's moneyline is three-way. Both paid builders used to drop any side
+# that was not home/away, so the draw price never reached
+# `game_odds_book_lines` — the table has allowed `side = 'draw'` all along
+# (`gobl_side_valid`), and only OddsHarvester ever wrote one. Measured
+# 2026-09-19: 44 EPL draw rows in the archive, all from the harvester, against
+# 140 home. A provider that genuinely sends no draw now shows as absent data
+# rather than as a filter of ours.
+_THREE_WAY_SPORTS = frozenset({"soccer", "soccer_epl", "soccer_mls"})
+
+
 _FLIP_SIDE = {"home": "away", "away": "home"}
 
 
@@ -303,6 +314,23 @@ def _team_orientation(row_home: str, row_away: str, game: Game) -> str | None:
     return None
 
 
+# R6-F8. A provider that sends one generic market for both sides of the ball
+# (ParlayAPI's `strikeouts` and `walks`) files a starting pitcher's strikeouts
+# under the BATTER market. Measured 2026-09-15: 29 pitchers under
+# `batter-strikeouts`, 9 under `walks`, so every pitcher market missed those
+# books. Fixed here, at the one shared writer, rather than per provider: the
+# roster already knows who pitches (game_context carries `meta.role`).
+_PITCHER_REMAP = {"batter-strikeouts": "pitcher-strikeouts", "walks": "pitcher-walks-allowed"}
+_PITCHER_POSITIONS = frozenset({"P", "SP", "RP", "LHP", "RHP"})
+
+
+def _pitcher_market(market_key: str, game: Game, player: RosterEntry) -> str:
+    if game.sport != "mlb" or market_key not in _PITCHER_REMAP:
+        return market_key
+    pos = (player.position or "").upper()
+    return _PITCHER_REMAP[market_key] if pos in _PITCHER_POSITIONS else market_key
+
+
 def _normalize_row(
     out: FetchOutcome,
     game: Game,
@@ -342,6 +370,7 @@ def _normalize_row(
     if not player:
         out.unresolved.append(unresolved_player(raw_player_name, context))
         return
+    market_key = _pitcher_market(market_key, game, player)
     out.rows.append(
         PropOddsInput(
             provider_id=out.provider_id,
@@ -572,9 +601,12 @@ def _sharpapi_game_line_rows(
                 team_side = _FLIP_SIDE.get(team_side, team_side)
 
             if market_type == _SHARPAPI_MONEYLINE_TYPE:
-                if team_side not in ("home", "away"):
+                if team_side == "draw" and game.sport in _THREE_WAY_SPORTS:
+                    market, side, point = "moneyline", "draw", None
+                elif team_side not in ("home", "away"):
                     continue
-                market, side, point = "moneyline", team_side, None
+                else:
+                    market, side, point = "moneyline", team_side, None
             elif market_type in _SHARPAPI_SPREAD_TYPES:
                 if team_side not in ("home", "away") or line is None:
                     continue
@@ -901,9 +933,12 @@ def _sgo_game_line_rows(event: dict, sport: str, game_id: str,
                 continue
 
             if bet_type == "ml":
-                if side_id not in ("home", "away"):
+                if side_id == "draw" and sport in _THREE_WAY_SPORTS:
+                    market, side, point = "moneyline", "draw", None
+                elif side_id not in ("home", "away"):
                     continue
-                market, side, point = "moneyline", side_id, None
+                else:
+                    market, side, point = "moneyline", side_id, None
             elif bet_type == "sp":
                 if side_id not in ("home", "away"):
                     continue
@@ -1213,6 +1248,8 @@ def _propline_game_line_rows(bookmakers: list[dict], game: Game, sport: str) -> 
                         side = "home"
                     elif name == game.away_team_name:
                         side = "away"
+                    elif market_key == "h2h" and sport in _THREE_WAY_SPORTS and name.strip().lower() in ("draw", "tie"):
+                        side = "draw"
                     else:
                         continue  # outcome name didn't match either team — don't guess
                     if market_key == "h2h":

@@ -239,7 +239,10 @@ async def _tennis_pass(client, limiter, cfg, start: date, end: date) -> dict:
     slug = bph._TENNIS_SINGLES_SLUG[cfg.sport]  # the tour's own singles draw (R8.3b-F1)
     url = f"{bph._ESPN_SITE}/tennis/{tour}/scoreboard"
     try:
-        payload = await bph.fetch_json(client, limiter, url, params={"dates": f"{start:%Y%m%d}-{end:%Y%m%d}", "limit": 1000})
+        # espn-limit-ok: tennis honours a high limit and still accepts ranges
+        # (measured 2026-09-19: 500 and 1000 both return the month's 967 matches).
+        payload = await bph.fetch_json(client, limiter, url,
+                                       params={"dates": f"{start:%Y%m%d}-{end:%Y%m%d}", "limit": 1000})  # espn-limit-ok
     except bph.FetchError:
         return _empty(failed=1)
     done: set[str] = set()

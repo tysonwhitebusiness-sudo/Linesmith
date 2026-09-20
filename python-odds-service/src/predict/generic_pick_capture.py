@@ -54,7 +54,7 @@ async def fetch_scheduled_games(client: httpx.AsyncClient, config: "gte.SportElo
     every real game regardless of status (scheduled, in-progress, final),
     since a capture run might reasonably catch a game at any of those."""
     url = f"{gte._ESPN_BASE}/{config.espn_sport}/{config.espn_league}/scoreboard"
-    res = await client.get(url, params={"dates": date, "limit": 1000}, timeout=httpx.Timeout(15.0))
+    res = await client.get(url, params={"dates": date, "limit": 500}, timeout=httpx.Timeout(15.0))
     if res.status_code != 200:
         return []
     data = res.json()

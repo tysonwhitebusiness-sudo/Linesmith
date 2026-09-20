@@ -91,7 +91,64 @@ def _corpus_pairs() -> dict:
     return _pairs_from(rows, lambda r, c: r[cols.index(c)])
 
 
-async def main(apply: bool, seed: bool) -> int:
+# ---------------------------------------------------------------------------
+# ESPN's own team list (M0, 2026-09-19)
+# ---------------------------------------------------------------------------
+# The index only ever learned a team from an ODDS row, so a school nobody priced
+# had no id and every closing line and result for its games was skipped —
+# silently, into `odds_unresolved`. Measured 2026-09-19: 9 CFB games in one day
+# ("Ohio Bobcats @ South Alabama Jaguars", "Stonehill Skyhawks @ UMass" …), and
+# the index held 250 of the 762 teams ESPN lists.
+#
+# ONLY the sports whose team ids ARE ESPN's. Measured before writing this:
+#   cfb/nfl/nba/soccer  ESPN ids      (Alabama 333, Cardinals 22, Lakers 13, Arsenal 359)
+#   mlb                 StatsAPI ids  (Tigers 116; ESPN's Tigers is 6)
+#   nhl                 NHL API ids   (Bruins 6, Maple Leafs 10)
+# Seeding MLB or NHL from ESPN would write the wrong id space into the one table
+# the archival bridge trusts, so they are excluded by construction.
+_ESPN_TEAM_SOURCES = {
+    "cfb": "football/college-football",
+    "nfl": "football/nfl",
+    "nba": "basketball/nba",
+    "soccer_epl": "soccer/eng.1",
+    "soccer_mls": "soccer/usa.1",
+}
+
+
+async def _espn_pairs() -> dict:
+    """{(sport, name_key): (team_id, raw_sample)} from ESPN's team lists."""
+    import httpx
+
+    out: dict = {}
+    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+        for sport, path in _ESPN_TEAM_SOURCES.items():
+            url = f"https://site.api.espn.com/apis/site/v2/sports/{path}/teams"
+            try:
+                res = await client.get(url, params={"limit": 1000})
+                res.raise_for_status()
+                data = res.json()
+            except Exception as e:                            # noqa: BLE001
+                print(f"  espn {sport:<12} FAILED: {type(e).__name__}: {e}")
+                continue
+            teams = [t["team"] for s in data.get("sports", []) for lg in s.get("leagues", [])
+                     for t in lg.get("teams", [])]
+            for t in teams:
+                tid = str(t.get("id") or "")
+                if not tid:
+                    continue
+                loc, name = t.get("location") or "", t.get("name") or ""
+                for raw in (t.get("displayName"), t.get("shortDisplayName"), t.get("nickname"),
+                            t.get("abbreviation"), loc, name, f"{loc} {name}".strip()):
+                    if not raw:
+                        continue
+                    key = normalize_team_name(str(raw))
+                    if key:
+                        out.setdefault((sport, key), (tid, str(raw)))
+            print(f"  espn {sport:<12}{len(teams):>6,} teams")
+    return out
+
+
+async def main(apply: bool, seed: bool, espn: bool) -> int:
     pool = await db.get_pool()
     async with pool.acquire(timeout=900.0) as conn:
         await conn.execute("SET statement_timeout = '15min'")
@@ -105,19 +162,31 @@ async def main(apply: bool, seed: bool) -> int:
         found = dict(live)
         print(f"\n{'=' * 78}\n5.S.7  team_name_index\n{'=' * 78}")
         print(f"  live tail          {len(live):>6,} pairs")
+        if espn:
+            espn_pairs = await _espn_pairs()
+            print(f"  espn total         {len(espn_pairs):>6,} pairs")
+            # Live observations win: a spelling we have actually seen priced is
+            # the stronger evidence, and this must never silently rewrite an id.
+            found = {**espn_pairs, **found}
         if seed:
             corpus = await asyncio.to_thread(_corpus_pairs)
             print(f"  corpus             {len(corpus):>6,} pairs")
             # Live wins on a conflict: it is the newer observation of the same
             # spelling, and a team id that has genuinely changed should follow
             # the newer row rather than the archive's oldest memory of it.
-            found = {**corpus, **live}
+            found = {**found, **corpus, **live}
         existing = {(r["sport"], r["name_key"]): r["team_id"] for r in
                     await conn.fetch("SELECT sport, name_key, team_id FROM team_name_index")}
         print(f"  already stored     {len(existing):>6,} pairs")
         new = {k: v for k, v in found.items() if k not in existing}
         changed = {k: v for k, v in found.items()
                    if k in existing and existing[k] != v[0]}
+        if changed:
+            # An id that changed under an existing spelling is either a real
+            # rename or two id spaces colliding. Print it; never write it blind.
+            for (sp, key), v in list(changed.items())[:10]:
+                print(f"      CONFLICT {sp} {key}: stored {existing[(sp, key)]} vs found {v[0]} ({v[1]})")
+            found = {k: v for k, v in found.items() if k not in changed}
         print(f"  new                {len(new):>6,}")
         print(f"  id changed         {len(changed):>6,}")
         by_sport: dict[str, int] = {}
@@ -158,7 +227,10 @@ async def _close(pool) -> None:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--espn", action="store_true",
+                    help="also seed from ESPN's own team lists (cfb/nfl/nba/soccer only — "
+                         "mlb and nhl use other id spaces)")
     ap.add_argument("--seed", action="store_true",
                     help="also read the Parquet corpus (run once, or after a re-export)")
     a = ap.parse_args()
-    raise SystemExit(asyncio.run(main(a.apply, a.seed)))
+    raise SystemExit(asyncio.run(main(a.apply, a.seed, a.espn)))

@@ -890,7 +890,7 @@ async def run_season_tennis(client, limiter: RateLimiter, cfg: SportConfig, seas
         end = date(season + 1, 1, 1) - timedelta(days=1) if month == 12 else date(season, month + 1, 1) - timedelta(days=1)
         url = (
             f"{_ESPN_SITE}/tennis/{tour}/scoreboard"
-            f"?dates={start.strftime('%Y%m%d')}-{end.strftime('%Y%m%d')}&limit=1000"
+            f"?dates={start.strftime('%Y%m%d')}-{end.strftime('%Y%m%d')}&limit=1000"  # espn-limit-ok: tennis honours it (measured 2026-09-19: 500 and 1000 both return the month's 967 matches) and ranges still work on this endpoint
         )
         try:
             payload = await fetch_json(client, limiter, url)
