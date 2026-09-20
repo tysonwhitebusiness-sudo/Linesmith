@@ -36,8 +36,12 @@ app.
    wins on order and scope; this file wins on detail.
 4. `docs/design/slate-sheet-cards.md` — the S track's spec, including §4's
    per-sport measurements of what data actually exists.
-5. `docs/design/slate/slate.html` — the approved mockup. Open it. This is what
-   the Slate is supposed to look like.
+5. `docs/design/slate/slate.html` — the approved mockup. **Open it** — serve it
+   with `preview_start {name: "slate-mockup"}` and look at every sport's tab.
+   This is what the Slate is supposed to look like, and you will be comparing
+   against it in six separate phases. Reading the spec instead of opening the
+   mockup is the single easiest way to build the right components in the wrong
+   arrangement.
 6. `docs/design/SIGNOFF-QUEUE.md` — where your decisions go instead of stopping.
 7. `docs/CURRENT.md` — the baton. Where everything stands.
 
@@ -78,6 +82,68 @@ This list is exhaustive. If it is not on here, decide it and keep building.
    more broken work on top.
 5. **~92% context.** Hand off: rewrite `docs/CURRENT.md`, commit, push. Do not
    start a phase you cannot finish before that line.
+
+## How to run the thing (read this before the first phase)
+
+Nobody can unblock you for hours, so these are the commands, not a description
+of them.
+
+| | |
+|---|---|
+| typecheck | `npx tsc --noEmit` (or `npm run typecheck`) |
+| TS tests | `npm test` — 68 files under `tests/`, ~530 cases |
+| Python tests | standalone scripts: `cd python-odds-service && .venv/Scripts/python.exe src/test_<name>.py` |
+| production build | `npm run build`, or `LB_DIST_DIR=.next-verify npm run build` if a dev server is holding `.next` |
+| **the app** | `preview_start {name: "linesmith-dev"}` — **never** `npm run dev` through Bash |
+| the mockup | `preview_start {name: "slate-mockup"}` → `localhost:8124/slate.html` |
+
+**The one that will cost you hours if you get it wrong: do not render against
+port 3000.** `.claude/launch.json` has a `linesmith-prod` config on 3000, and
+**that server is stale** — it predates the 2026-09-19 ESPN range fix and serves
+blank NFL, CFB and soccer data. The operator has to rebuild it by hand and has
+not yet. If you point a render at it you will spend a long time debugging data
+that is fine in the code. Use `linesmith-dev`; it takes its own port
+(`autoPort`) and builds from your working tree.
+
+**If a whole sweep 500s at once, restart the dev server before debugging
+anything.** Its render workers die ("Jest worker encountered 2 child process
+exceptions") and then every route 500s, including pages that rendered a minute
+earlier. This has already happened once and wasted a session's time.
+
+**Push after every phase, not at the end.** `render.yaml` has
+`autoDeploy: false`, so pushing does **not** deploy and needs no permission. An
+unpushed six-hour run is one crash away from being worth nothing.
+
+## What is actually in season (so an empty page does not look like a bug)
+
+You are told to render every sport. Several of them will be legitimately empty,
+and you need to know which before you start chasing it:
+
+- **NBA** — no regular season until October. Its pages render the off-season
+  state, and that IS the passing result.
+- **NHL** — preseason only.
+- **ATP** — no matches until **2026-09-23**. WTA has a full slate (54 matches
+  on 09-20).
+- **MLS** — this app's game logs only start **2026-08-15**, so team stats cover
+  4–5 of ~25 games. The page says so; that is correct, not missing data.
+- **Golf** — between events much of the time; the prop block and live view have
+  always been owed "at the next tournament".
+- **MLB, NFL, CFB, EPL** — all live and full right now.
+
+Check the date strip for the real count on the day rather than assuming.
+
+## What you cannot verify, and what to do instead
+
+**Signed-in surfaces.** S5's "Your lines" is signed-in only, and you have no
+credentials — the repo has Supabase's public anon key and nothing else, and no
+previous phase ever verified a signed-in surface. Do not try to create an
+account and do not ask for a password.
+
+Build it, then verify the half you can: **signed out, the section must be
+hidden** (not an empty card — the spec is explicit). Cover the signed-in shape
+with tests against the adapter instead of a render, and put a row in the queue
+saying the signed-in render is owed. That is a real limitation to name in the
+final write-up, not a failure.
 
 ## The loop, for every phase
 
