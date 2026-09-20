@@ -324,7 +324,7 @@ function PeerCompare({
             }}
             placeholder={`Search ${others.length} players…`}
             aria-label={`Search ${label.toLowerCase()} players`}
-            className="w-44 max-w-full rounded-ctl border border-line bg-card px-2.5 py-[7px] text-body-sm text-ink placeholder:text-ink-muted hover:border-ink-faint focus:border-masters focus:outline-none"
+            className="w-44 max-w-full rounded-ctl border border-line bg-card px-2.5 py-[7px] text-body-sm text-ink placeholder:text-ink-muted hover:border-ink-faint focus:border-masters focus:outline-hidden"
           />
         ) : null}
         <SelectBox

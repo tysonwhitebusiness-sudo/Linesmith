@@ -1877,7 +1877,7 @@ export default function DiagnosticsPage() {
                       value={pitcherSearch}
                       onChange={(e) => setPitcherSearch(e.target.value)}
                       placeholder="Search pitcher name…"
-                      className="min-w-[180px] flex-1 rounded-md border border-line px-2 py-1.5 text-[13px] outline-none focus:border-masters"
+                      className="min-w-[180px] flex-1 rounded-md border border-line px-2 py-1.5 text-[13px] outline-hidden focus:border-masters"
                     />
                     <div className="flex items-center gap-1">
                       {(['all', 'starter', 'closer', 'reliever'] as const).map((role) => (
@@ -1936,7 +1936,7 @@ export default function DiagnosticsPage() {
                       value={batterSearch}
                       onChange={(e) => setBatterSearch(e.target.value)}
                       placeholder="Search batter name…"
-                      className="min-w-[180px] flex-1 rounded-md border border-line px-2 py-1.5 text-[13px] outline-none focus:border-masters"
+                      className="min-w-[180px] flex-1 rounded-md border border-line px-2 py-1.5 text-[13px] outline-hidden focus:border-masters"
                     />
                     <div className="flex items-center gap-1">
                       {BATTER_POSITION_FILTERS.map((position) => (

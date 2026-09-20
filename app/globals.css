@@ -1,9 +1,259 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/*
+ * U0 (2026-09-20): Tailwind 3.4 -> 4. The `tailwind.config.ts` that used to sit
+ * beside this file is GONE; everything it declared lives in the `@theme` block
+ * below. The conversion is mechanical and must not move a single pixel — see
+ * `scripts/css-diff.js`, which compares the emitted stylesheet rule by rule
+ * against the v3 output kept for the purpose.
+ *
+ * Three things about v4 that decide how this file is written:
+ *  - `<alpha-value>` is gone. A color is now a plain value and the opacity
+ *    modifiers (`bg-good/10`) compile to `color-mix(..., transparent)`.
+ *  - There is no `--duration-*` theme namespace, so the five named motion
+ *    tokens are `@utility` rules further down rather than theme variables.
+ *  - Source detection is automatic in v4 and would sweep `lib/`, `docs/` and
+ *    `tests/` as well. `source(none)` plus two explicit `@source` lines keeps
+ *    exactly the v3 `content` globs, so no new utility appears from a string
+ *    that was never a class name.
+ */
+@import 'tailwindcss' source(none);
+@source '../app/**/*.{ts,tsx}';
+@source '../components/**/*.{ts,tsx}';
+
+@theme {
+  /* R3 3d BREAKPOINTS: 400 / 768 / 1024 / 1440 are the design targets. The
+     whole ordered set is declared (after clearing the namespace) because an
+     `xs` added to the defaults would emit after `2xl` and lose every cascade.
+     The default values are kept in px, exactly as v3 emitted them. */
+  --breakpoint-*: initial;
+  --breakpoint-xs: 400px;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-wide: 1440px;
+  --breakpoint-2xl: 1536px;
+
+  /* Graphite theme (2026-08): neutral grey brand identity replacing the old
+     "Masters green" palette. Token *names* are unchanged on purpose — every
+     page/component references these by name, so repointing the values here is
+     what actually reskins the app. */
+  --color-masters: oklch(20% 0.006 260);
+  --color-masters-dark: oklch(14% 0.005 260);
+  --color-masters-deep: oklch(10% 0.004 260);
+  --color-accent: oklch(55% 0.005 260);
+  --color-accent-soft: oklch(89% 0.004 260);
+
+  /* Result semantics: green = good, red = bad, amber = caution. Functional
+     signals, not brand identity; untouched by the graphite reskin.
+     R3: EVERY PALETTE VALUE LIVES IN A CSS VARIABLE (`:root`, below) and these
+     entries only point at it, so a component needing a color outside a class
+     (inline style, SVG attribute) reads the same value the classes do.
+     RAISED ELEVATION: paper is DARKER than card.
+     TEXT ROLES: `ink-muted` is the lightest gray allowed for text;
+     `ink-faint` / `ink-disabled` are DECORATION ONLY. */
+  --color-good: rgb(var(--good));
+  --color-bad: rgb(var(--bad));
+  --color-warn: rgb(var(--warn));
+  --color-paper: oklch(var(--paper));
+  --color-card: oklch(var(--card));
+  /* Inset surfaces inside a card: toggle tracks, hover rows, skeletons. */
+  --color-card-sunk: oklch(var(--card-sunk));
+  /* Kept as names for existing callers; both resolve to `card-sunk`. */
+  --color-surface-subtle: oklch(var(--card-sunk));
+  --color-surface-header: oklch(var(--card-sunk));
+  --color-ink: oklch(var(--ink));
+  --color-ink-secondary: oklch(var(--ink-secondary));
+  --color-ink-muted: oklch(var(--ink-muted));
+  --color-ink-soft: oklch(var(--ink-muted));
+  --color-ink-faint: oklch(var(--ink-faint));
+  --color-ink-disabled: oklch(var(--ink-disabled));
+  --color-line: oklch(var(--line));
+  --color-line-soft: oklch(var(--line-soft));
+  --color-line-hair: oklch(var(--line-hair));
+  /* Compare slots (R10). Validated: worst colorblind deltaE 22.2. */
+  --color-cmp-a: rgb(var(--cmp-a));
+  --color-cmp-b: rgb(var(--cmp-b));
+  --color-focus: oklch(var(--ink));
+  /* Placeholder fill behind subject initials (SubjectAvatar) — between `card`
+     and `line` in lightness, distinct enough from both to read as a deliberate
+     placeholder rather than a stray surface. */
+  --color-avatar: oklch(82% 0.005 260);
+  /* The one surface dark enough to need its own scale rather than a token
+     remap — GameHeroCard's live-inning band. */
+  --color-live-bg: oklch(18% 0.004 260);
+  --color-live-green: oklch(88% 0.004 260);
+  --color-live-muted: oklch(45% 0.006 260);
+  --color-live-secondary: oklch(60% 0.005 260);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* R3: the IBM Plex Mono load is gone (F2: loaded on every page, used by one
+     element). Numbers are sans with tabular figures. */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* THE TYPE RAMP (R3 3a, F2 section 1). Eight steps. Nothing below 11px
+     outside `components/charts/` (chart ticks are 10px, `text-tick`).
+     Hierarchy by size first, weight second, uppercase only with `overline`. */
+  --text-display: 32px;
+  --text-display--line-height: 1.1;
+  --text-display--font-weight: 700;
+  --text-display--letter-spacing: -0.01em;
+  --text-heading: 22px;
+  --text-heading--line-height: 1.2;
+  --text-heading--font-weight: 600;
+  --text-heading--letter-spacing: -0.005em;
+  --text-title: 17px;
+  --text-title--line-height: 1.3;
+  --text-title--font-weight: 600;
+  --text-card-title: 14px;
+  --text-card-title--line-height: 1.3;
+  --text-card-title--font-weight: 600;
+  --text-body: 14px;
+  --text-body--line-height: 1.5;
+  --text-body-sm: 13px;
+  --text-body-sm--line-height: 1.45;
+  --text-label: 12px;
+  --text-label--line-height: 1.35;
+  --text-label--font-weight: 500;
+  --text-overline: 11px;
+  --text-overline--line-height: 1.3;
+  --text-overline--font-weight: 600;
+  --text-overline--letter-spacing: 0.04em;
+  /* Chart ticks only, inside `components/charts/`. */
+  --text-tick: 10px;
+  --text-tick--line-height: 1.2;
+  /* U spec 2b: FORM FIELDS ONLY, below 768px. iOS zooms any input under 16px
+     on focus. From 768px up, fields use `body`. */
+  --text-field: 16px;
+  --text-field--line-height: 1.4;
+
+  /* Neutral now that the page itself is graphite grey rather than warm cream —
+     a tinted shadow would read as arbitrary on a neutral ground.
+     Raised elevation (G2 pick): a soft lift on every card. */
+  --shadow-card: 0 1px 2px rgba(15, 18, 24, 0.05), 0 2px 8px -4px rgba(15, 18, 24, 0.08);
+  --shadow-card-hover: 0 2px 6px rgba(0, 0, 0, 0.1), 0 12px 24px -8px rgba(0, 0, 0, 0.16);
+  /* Expanded disclosures sit above the card they came from. */
+  --shadow-pop: 0 8px 28px -8px rgba(15, 18, 24, 0.28), 0 2px 6px rgba(15, 18, 24, 0.08);
+  /* Inner glow marking the one thing on the page that's actually live — the
+     pulse dot carries the "live" signal, this glow is just depth. */
+  --shadow-live: inset 0 0 0 1px rgba(0, 0, 0, 0.16), inset 0 1px 10px rgba(0, 0, 0, 0.1);
+  --shadow-drawer: 0 -8px 32px rgba(0, 0, 0, 0.18);
+  /* The one card allowed real elevation — see .lb-card-hero below. */
+  --shadow-hero: 0 1px 2px rgba(0, 0, 0, 0.04);
+
+  /* Radius: 12 card, 16 hero, 8 controls. Tailwind's own `rounded-lg` (8),
+     `rounded-xl` (12) and `rounded-2xl` (16) already equal ctl / card /
+     card-hero, which is why the U spec's radius bridge needs no remap. */
+  --radius-card: 12px;
+  --radius-card-hero: 16px;
+  --radius-ctl: 8px;
+
+  /* Motion (R3 3a). `live` is the value tween; the flash is `lb-flash`. The
+     durations themselves are `@utility` rules below — v4 has no duration
+     namespace. */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
+
+  /* Slower and shallower than Tailwind's stock pulse: a live indicator should
+     register in peripheral vision, not compete with the numbers. */
+  --animate-lb-pulse: lb-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-lb-shimmer: lb-shimmer 1.6s ease-in-out infinite;
+  --animate-lb-fade-slide: lb-fade-slide 0.4s ease-out;
+  --animate-lb-flash: lb-flash 1.2s cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---- The Untitled UI bridge (U spec 2a) --------------------------------
+     Untitled UI's files name semantic colors. Defining those names here means a
+     component copied into `components/ui/` needs no color edits, and the no-hex
+     rule in `tests/ui-primitives.test.ts` still holds. Nothing uses them yet,
+     so they emit no CSS until U1 copies the first file.
+     `utility-*` hues are deliberately NOT bridged: badge hues are replaced by
+     `Chip` tones. */
+  --color-error: rgb(var(--bad));
+  --color-success: rgb(var(--good));
+  --color-warning: rgb(var(--warn));
+  --color-brand-solid: oklch(20% 0.006 260);
+  --color-brand-solid_hover: oklch(14% 0.005 260);
+  --shadow-xs-skeuomorphic: 0 1px 2px rgba(15, 18, 24, 0.05), 0 2px 8px -4px rgba(15, 18, 24, 0.08);
+  /* Their popover/modal elevations collapse onto our one `pop`. Neither name is
+     used anywhere in this app today (measured: 0 uses of `shadow-lg`,
+     `shadow-xl`), so repointing them costs nothing and saves an edit per file. */
+  --shadow-lg: 0 8px 28px -8px rgba(15, 18, 24, 0.28), 0 2px 6px rgba(15, 18, 24, 0.08);
+  --shadow-xl: 0 8px 28px -8px rgba(15, 18, 24, 0.28), 0 2px 6px rgba(15, 18, 24, 0.08);
+}
+
+/* The five named motion durations. v4 has no `--duration-*` theme namespace, so
+   these are static utilities rather than theme variables; the class names are
+   unchanged from v3. */
+@utility duration-instant {
+  transition-duration: 100ms;
+}
+@utility duration-quick {
+  transition-duration: 180ms;
+}
+@utility duration-smooth {
+  transition-duration: 280ms;
+}
+@utility duration-data {
+  transition-duration: 450ms;
+}
+@utility duration-live {
+  transition-duration: 400ms;
+}
+
+/* The Untitled UI bridge, part two: the role names that are ambiguous as plain
+   colors, because the same word means a different thing on a background, on
+   text and on a border. Each emits nothing until a copied file uses it. */
+@utility bg-primary {
+  background-color: var(--color-card);
+}
+@utility bg-primary_hover {
+  background-color: var(--color-card-sunk);
+}
+@utility bg-secondary {
+  background-color: var(--color-card-sunk);
+}
+@utility bg-active {
+  background-color: var(--color-card-sunk);
+}
+@utility text-primary {
+  color: var(--color-ink);
+}
+@utility text-secondary {
+  color: var(--color-ink-secondary);
+}
+@utility text-tertiary {
+  color: var(--color-ink-muted);
+}
+/* NEVER `ink-faint` for text (R3 text roles). */
+@utility text-quaternary {
+  color: var(--color-ink-muted);
+}
+@utility text-brand-secondary {
+  color: var(--color-ink);
+}
+/* Decorative icons only. */
+@utility fg-quaternary {
+  color: var(--color-ink-faint);
+}
+@utility border-primary {
+  border-color: var(--color-line);
+}
+@utility border-secondary {
+  border-color: var(--color-line-soft);
+}
+@utility ring-primary {
+  --tw-ring-color: var(--color-line);
+}
+/* Their focus ring collapses onto our one ring: 2px `ink`, offset 2. */
+@utility outline-brand {
+  outline-color: var(--color-ink);
+}
+@utility focus-ring {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
 
 @layer base {
-  /* R3 PALETTE — the single source. `tailwind.config.ts` colors point here, and
+  /* R3 PALETTE — the single source. The `@theme` colors above point here, and
      components needing a color outside a class (inline style, SVG) use
      `rgb(var(--good))` / `oklch(var(--ink-muted))`. oklch values are
      "lightness chroma hue"; rgb values are space-separated channels, so both
@@ -29,6 +279,38 @@
     --ease-emphasized: cubic-bezier(0.3, 0, 0, 1);
   }
 
+  /* v4 PREFLIGHT COMPATIBILITY. Three of v4's resets are visible changes rather
+     than cleanups, and U0 is not allowed to move a pixel. Each is restored to
+     its v3 behaviour here; the comment names the phase that moves it onto a
+     palette token for real.
+       1. The default border color became `currentColor`. Measured: every bare
+          `border` in this app already names a color through a sibling class or
+          a ternary (5 class strings, all covered), so this rule is a net rather
+          than a repaint — and it lands on our own `line` instead of a stray
+          grey if one ever slips in.
+       2. Placeholders became `currentColor` at 50%. Seven inputs carry no
+          `placeholder:` class (diagnostics x2, LiveLineTrackerCard,
+          PlayerDetailPanel, PlayerFilterDrawer, SlipModal, TeamDetailPanel);
+          U3 moves them onto `ink-muted` when it rebuilds the field family.
+       3. Buttons became `cursor: default`. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-line);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: rgb(156 163 175); /* Tailwind v3's default placeholder grey */
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
   }
@@ -45,11 +327,60 @@
   }
 
   /* R3 3d: ONE visible focus ring, everywhere — 2px, offset 2px. F2 probed 300
-     keyboard focus stops and most had no visible indicator. */
-  :focus-visible {
+     keyboard focus stops and most had no visible indicator.
+     U0: React Aria marks its own focus with `data-focus-visible` rather than
+     relying on `:focus-visible`, so the two focus systems are styled
+     identically here instead of diverging per component (U spec 9). */
+  :focus-visible,
+  [data-focus-visible] {
     outline: 2px solid oklch(var(--ink));
     outline-offset: 2px;
     border-radius: 4px;
+  }
+}
+
+@keyframes lb-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+
+@keyframes lb-shimmer {
+  0% {
+    background-position: -160% 0;
+  }
+  100% {
+    background-position: 260% 0;
+  }
+}
+
+/* The hero spotlight carousel's between-card transition — a small
+   slide-in-from-right paired with a fade, so cycling through Leader / Top 3 /
+   Movers reads as one card handing off to the next rather than a hard cut. */
+@keyframes lb-fade-slide {
+  0% {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* A live value that just changed. */
+@keyframes lb-flash {
+  0% {
+    background-color: rgb(15 122 79 / 0.22);
+  }
+  100% {
+    background-color: transparent;
   }
 }
 

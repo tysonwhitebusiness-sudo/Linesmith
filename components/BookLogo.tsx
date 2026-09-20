@@ -85,7 +85,7 @@ export function BookLogo({ bookId, size = 14, withLabel = false, className = '' 
         decoding="async"
         style={{ width: size, height: size }}
         onError={() => setFailed(true)}
-        className="shrink-0 rounded-sm object-contain"
+        className="shrink-0 rounded-xs object-contain"
       />
       {withLabel ? <span className="text-[10px] text-ink-muted">{bookLabel(bookId)}</span> : null}
     </span>

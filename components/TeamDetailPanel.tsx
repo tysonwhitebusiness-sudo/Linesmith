@@ -85,7 +85,7 @@ function TeamListShell({
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search teams…"
             aria-label="Search teams"
-            className="w-full rounded-lg border border-line bg-card px-2.5 py-1.5 text-[13px] shadow-card focus:border-masters focus:outline-none"
+            className="w-full rounded-lg border border-line bg-card px-2.5 py-1.5 text-[13px] shadow-card focus:border-masters focus:outline-hidden"
           />
         </div>
         {/* D5/R1e. This printed the raw API error text straight onto the page,

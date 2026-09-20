@@ -143,8 +143,13 @@ export function DataTable<Row>({ columns, rows, rowKey, initialSort, onRowClick,
                       'relative whitespace-nowrap border-b border-line-soft text-ink',
                       cell,
                       c.numeric && 'text-right tabular-nums',
-                      leads && 'font-semibold',
+                      // U0: the label column's own weight comes FIRST and the
+                      // leader mark after it, because `cx` now merges — the
+                      // last conflicting class wins outright instead of racing
+                      // `font-medium` and `font-semibold` in the cascade (where
+                      // 600 happened to be emitted second, and won).
                       i === 0 && 'sticky left-0 bg-card font-medium group-hover:bg-card-sunk',
+                      leads && 'font-semibold',
                     )}
                   >
                     {share != null && share > 0 ? (

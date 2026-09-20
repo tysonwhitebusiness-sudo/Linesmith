@@ -458,7 +458,7 @@ history. One phase per sport, each entering the register as `baseline`.
 | 3 | M2 fit the baseline (CFB first) | M | M1, ≥200 graded picks | no | **done** | **DONE 2026-09-20** (`56db642`, deployed) — CFB calibrated; fit 2 blocked, see M2a |
 | 4 | M3 `slate_rankings` job | M | M0 | no | **done** | **DONE 2026-09-20** (`737620b`, deployed; 30 rows written 07:45) — first receipts 2026-09-21 |
 | 4b | M3b Elo for soccer, tennis, golf | M | M1 | no | **done** | **DONE 2026-09-20** (`c5baee4`, deployed) — every sport predicts a game |
-| 5 | U0 Tailwind 4 + kit base | U | R10–R12 sign-off | all (mechanical) | no | not started |
+| 5 | U0 Tailwind 4 + kit base | U | R10–R12 sign-off | all (mechanical) | no | **DONE 2026-09-20** — config deleted, theme in `@theme`, `cx` merges, `/kit` live; verified by emitted-CSS diff, not screenshots |
 | 6 | U1 Buttons | U | U0 | yes | no | not started |
 | 7 | U2 Hybrid table | U | U1 | yes | no | not started |
 | 8 | U5 Borrowed pieces | U | U2 | yes | no | not started |
@@ -539,3 +539,4 @@ the build for any of these.
 | SL-8 | M1 gate run | The prop gate is only runnable for MLB; NHL and NFL props cannot pass or fail theirs | M4 / M5 | open |
 | SL-9 | M2 | `game_picks.initial_ml_features_json` was NULL on every generic-Elo row, so the blend-weight fit had no inputs | M2a stores them from 2026-09-20 | **fixed forward** |
 | SL-10 | M3 | NFL implied points were absent (that slate had no lines yet), so the TD ranking scored on three factors | expected; the score skips missing factors | closed |
+| SL-11 | U0 render | `/mlb` takes **60–90 seconds** to settle in dev: `/api/mlb` is 26 MB and `/api/props/lines?sport=mlb` is 23.7 MB, and the latter is fetched twice (the hook's `refreshKey` is the snapshot's `fetchedAt`, so it refires when the snapshot lands). Until then the page honestly reads "No candidates match these filters." Cost half an hour chasing a regression that wasn't one — **wait for `table tbody tr` to be non-empty before judging a Scan render** | S1 (the `/api/slate` route should not ship a 24 MB body); note in the handoff | open |

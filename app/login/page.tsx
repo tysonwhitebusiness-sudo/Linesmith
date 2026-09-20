@@ -87,7 +87,7 @@ function LoginForm() {
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-line bg-card px-3 py-2 text-[14px] shadow-card focus:border-masters focus:outline-none"
+                className="w-full rounded-lg border border-line bg-card px-3 py-2 text-[14px] shadow-card focus:border-masters focus:outline-hidden"
               />
             </div>
             <div>
@@ -102,7 +102,7 @@ function LoginForm() {
                 autoComplete={mode === 'signIn' ? 'current-password' : 'new-password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-line bg-card px-3 py-2 text-[14px] shadow-card focus:border-masters focus:outline-none"
+                className="w-full rounded-lg border border-line bg-card px-3 py-2 text-[14px] shadow-card focus:border-masters focus:outline-hidden"
               />
             </div>
 

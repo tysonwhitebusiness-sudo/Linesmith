@@ -13,7 +13,7 @@ import { Tooltip } from '@/components/ui/Tooltip';
 export function MarkTip({ tip, children }: { tip: ReactNode; children: ReactNode }) {
   return (
     <Tooltip content={tip}>
-      <g className="outline-none focus-visible:opacity-80">{children}</g>
+      <g className="outline-hidden focus-visible:opacity-80">{children}</g>
     </Tooltip>
   );
 }

@@ -25,7 +25,7 @@ export function ConfidenceChip({ letter, pct, size = 'md' }: ConfidenceChipProps
       shape="pill"
       size={size}
       style={{ backgroundColor: heatFill(clamped / 100), color: '#fff' }}
-      className="font-semibold shadow-sm"
+      className="font-semibold shadow-xs"
       title={`${pct}% confidence`}
     >
       {letter} · {pct}%

@@ -98,7 +98,7 @@ export function FilterSearchBox({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="w-full bg-transparent text-[13px] outline-none placeholder:text-ink-muted"
+        className="w-full bg-transparent text-[13px] outline-hidden placeholder:text-ink-muted"
       />
     </span>
   );
@@ -129,7 +129,7 @@ export function FilterOddsRangeInputs({
         onChange={(e) => onChange(parse(e.target.value), max)}
         placeholder="-300"
         aria-label="Minimum odds"
-        className="w-16 rounded-lg border border-line bg-transparent px-2 py-1.5 text-[13px] outline-none placeholder:text-ink-muted focus:border-masters"
+        className="w-16 rounded-lg border border-line bg-transparent px-2 py-1.5 text-[13px] outline-hidden placeholder:text-ink-muted focus:border-masters"
       />
       <span className="text-ink-muted">to</span>
       <input
@@ -139,7 +139,7 @@ export function FilterOddsRangeInputs({
         onChange={(e) => onChange(min, parse(e.target.value))}
         placeholder="+300"
         aria-label="Maximum odds"
-        className="w-16 rounded-lg border border-line bg-transparent px-2 py-1.5 text-[13px] outline-none placeholder:text-ink-muted focus:border-masters"
+        className="w-16 rounded-lg border border-line bg-transparent px-2 py-1.5 text-[13px] outline-hidden placeholder:text-ink-muted focus:border-masters"
       />
     </div>
   );

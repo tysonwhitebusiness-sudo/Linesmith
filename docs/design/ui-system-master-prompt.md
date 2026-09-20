@@ -1,7 +1,8 @@
 # UI system overhaul — master prompt (the U track)
 
-**Status (2026-09-19):** decisions LOCKED by the operator; nothing built. Next:
-U0.
+**Status (2026-09-20):** decisions LOCKED by the operator. **U0 is DONE** —
+Tailwind 4, the token bridge, `cx` on tailwind-merge, `RouterProvider` and the
+kit page skeleton. Next: U1 (Buttons).
 **Build order and scope now live in `docs/design/master-gameplan-ui-and-slate.md`**
 (U5 moves ahead of U3/U4; the Slate's new sections are built on this kit; the
 Scan table and its filters stay untouched and out of scope). Update this line and the phase's status row at the end of every phase.
@@ -87,7 +88,9 @@ Two rules follow:
    Tailwind 4 move converts their classes mechanically. They must render
    exactly as before; that is the only change they get.
 2. **Every guard test reads one shared list, `OUT_OF_SCOPE`,** in
-   `tests/ui-primitives.test.ts`, and skips those files. The old-kit pieces
+   `tests/ui-scope.ts` (U0 put it in its own module rather than inside
+   `tests/ui-primitives.test.ts`, so more than one test file can import it
+   without importing a suite), and skips those files. The old-kit pieces
    they use (`components/Skeleton.tsx`, the glider `SegmentedToggle`,
    `.lb-chip`) stay for as long as they do. Every in-scope caller moves off them.
 
@@ -459,7 +462,7 @@ phase. Plus these:
 
 | phase | what | done when | guard added | status |
 |---|---|---|---|---|
-| **U0** | **Foundations, no visual change.** Tailwind 3.4 → 4 (`@tailwindcss/upgrade`, then by hand). Config moves into `@theme` in `globals.css`. Add the bridge (§2a) and the `field` token. Add `react-aria-components`, `tailwind-merge`, `tailwindcss-react-aria-components`, `@untitledui/icons` (after the license check). `cx` becomes `tailwind-merge`, extended so our font-size tokens (`text-label`, `text-body-sm` …) aren't mistaken for colors. `RouterProvider` goes in the root layout. Kit page skeleton. | Before and after screenshots of the kit page and one player, team and game page per sport match. No size moved, no color changed. | the Tailwind 4 build; `cx` merge cases (`text-label` + `text-ink` both survive) | not started |
+| **U0** | **Foundations, no visual change.** Tailwind 3.4 → 4 (by hand; `@tailwindcss/upgrade` was not used — see the note below). Config moved into `@theme` in `globals.css` and `tailwind.config.ts` is deleted. The bridge (§2a) and the `field` token are in. Added `react-aria-components`, `tailwind-merge`, `tailwindcss-react-aria-components`, `@untitledui/icons` (license checked: MIT, v0.0.22). `cx` is `tailwind-merge`, extended so our font-size tokens and the five named durations aren't mistaken for colors and numbers. `RouterProvider` is in the root layout. Kit page skeleton at `/kit`. | **DONE 2026-09-20.** Verified by `scripts/css-diff.js` + `scripts/css-classes.js` (rule-by-rule and class-name diff of the emitted stylesheet, v3 vs v4) rather than by screenshots, and by rendering `/kit`, `/mlb`, `/nfl`, `/mlb/player/[id]` and `/golf/schedule`. Two classes changed on purpose (finding U-1). | `tests/ui-tailwind4.test.ts`: the config is gone, globals.css is a v4 sheet with the v3 globs, postcss runs the v4 plugin, the five durations exist, no renamed utility survives, and the `cx` merge cases | **done** |
 | **U1** | **Button family.** `Button`, `IconButton`, `CloseButton`. Move the 99 in-scope raw buttons, file group by file group. Delete `.lb-btn-primary`. The buttons inside `EmptyState` / `ErrorState` / `Card` go first. | No raw `<button>` outside `components/ui/`, except chart marks (each allowlisted in the test with a reason). | no raw `<button>` (allowlist) | not started |
 | **U2** | **Tables: the Hybrid** (§3). `DataTable` v2 (`density`, `groupBy`, `totals`, `highlight`, `expand`, `paging`, `heat`, `tone`, `streak`, `info`); `Card` gains `count` and `flush`; `Pagination`. Migrate §3g in order: research cards, direct callers, then the hand-rolled tables. | Every in-scope table except diagnostics renders through `DataTable`, and all 15 reference types (§7) look right on the kit page and on their real pages. | no `<table>` outside `DataTable` / `StatTable` (skips `OUT_OF_SCOPE`; diagnostics allowlisted until U6) | not started |
 | **U3** | **Form controls.** `Field`, `Input`, `InputGroup`, `Textarea`, `Checkbox`, `RadioGroup`, `Toggle`, `Select`, `ComboBox`. Migrate login, SlipModal's inputs, the player and team panels' controls, and the compare pickers. | No raw `<input>` / `<select>` / `<textarea>` outside `components/ui/` (SelectBox's native select is inside it). Nothing zooms on iOS focus. | no raw form elements | not started |
@@ -575,4 +578,7 @@ finding that breaks the app is fixed on the spot and still gets a row.
 
 | id | found in | what | goes to | status |
 |---|---|---|---|---|
-| — | — | — | — | — |
+| U-1 | U0 | **Two tint classes were dead in v3 and now work.** v3's opacity scale had no 8 or 12, so `bg-good/12` (a won-game chip in `PlayerResearchSections.tsx:172` and `TeamResearchPage.tsx:191`) and `bg-ink/8` (two diagnostics chips) generated **no rule at all** — the W chip has been rendering with no green behind it while the L chip beside it had `bg-bad/10`. v4's opacity is dynamic, so both now apply. Left applying: the author's evident intent, and the sibling proves it | queue row Q4; U6 may normalise 12 → 10 | **decided, applying** |
+| U-2 | U0 | v4 wraps every `hover:` variant in `@media (hover: hover)`. Identical on a desktop; on a touch device a hover style no longer sticks after a tap. This is a v4 default, not a choice, and it is an improvement — but it is a real behaviour change and it is not recorded anywhere else | U6 (check the tap states on a phone) | open |
+| U-3 | U0 | `@layer components` classes are no longer tree-shaken in v4, so `.lb-tab`, `.lb-filter` and `.lb-filter-active` are emitted although the U spec §0 measured them as dead (0 uses). Zero pixels, ~10 lines of CSS | U5 deletes them, as already planned | open |
+| U-4 | U0 render | At 400px the Scan page scrolls horizontally (`scrollWidth` 774 vs `clientWidth` 385) — the dense table widens the page instead of scrolling inside its card. Believed pre-existing (U0 moved no widths) and exactly what §3f legislates against | U2 §3f / S1 | open |

@@ -184,7 +184,7 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search players…"
             aria-label="Search players"
-            className="w-full rounded-lg border border-line bg-card px-2.5 py-1.5 text-[13px] shadow-card focus:border-masters focus:outline-none"
+            className="w-full rounded-lg border border-line bg-card px-2.5 py-1.5 text-[13px] shadow-card focus:border-masters focus:outline-hidden"
           />
         </div>
         {availablePositions.length > 1 ? (

@@ -60,7 +60,7 @@ export function PercentileRing({
       </svg>
       <SubjectAvatar name={name} headshotUrl={headshotUrl} size={size - strokeWidth * 2 - 6} />
       {teamLogoUrl ? (
-        <span className="absolute -top-1 -left-1 flex h-5 w-5 items-center justify-center rounded-full border border-card bg-card shadow-sm">
+        <span className="absolute -top-1 -left-1 flex h-5 w-5 items-center justify-center rounded-full border border-card bg-card shadow-xs">
           <img src={teamLogoUrl} alt="" className="h-3.5 w-3.5 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }} />
         </span>
       ) : null}

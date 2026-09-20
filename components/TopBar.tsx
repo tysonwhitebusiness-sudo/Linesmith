@@ -95,7 +95,7 @@ export function TopBar({
             navigate('sport', e.target.value === 'soccer' ? '/soccer/epl' : e.target.value === 'tennis' ? '/tennis/atp' : `/${e.target.value}`)
           }
           disabled={isPending && pendingTarget === 'sport'}
-          className="max-w-[5.5rem] cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-none disabled:cursor-wait disabled:opacity-70 sm:max-w-none"
+          className="max-w-[5.5rem] cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-hidden disabled:cursor-wait disabled:opacity-70 sm:max-w-none"
         >
           {SPORTS.map((s) => (
             <option key={s} value={s}>
@@ -112,7 +112,7 @@ export function TopBar({
               id="lb-league"
               value={league}
               onChange={(e) => onLeagueChange(e.target.value as SoccerLeague)}
-              className="max-w-[5.5rem] cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-none sm:max-w-none"
+              className="max-w-[5.5rem] cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-hidden sm:max-w-none"
             >
               {SOCCER_LEAGUES.map((l) => (
                 <option key={l} value={l}>
@@ -131,7 +131,7 @@ export function TopBar({
               id="lb-tour"
               value={league}
               onChange={(e) => onLeagueChange(e.target.value as TennisTour)}
-              className="max-w-[5.5rem] cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-none sm:max-w-none"
+              className="max-w-[5.5rem] cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-hidden sm:max-w-none"
             >
               {TENNIS_TOURS.map((t) => (
                 <option key={t} value={t}>

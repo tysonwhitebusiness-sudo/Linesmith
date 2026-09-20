@@ -53,7 +53,7 @@ export function PlayerFilterDrawer({
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search"
             aria-label="Search players"
-            className="mt-2 w-full rounded-lg border border-line px-3 py-2 text-sm focus:border-masters focus:outline-none"
+            className="mt-2 w-full rounded-lg border border-line px-3 py-2 text-sm focus:border-masters focus:outline-hidden"
           />
           <div className="mt-2 flex gap-3 text-sm">
             <button type="button" onClick={() => onSetAll(filtered.map((s) => s.subjectId))} className="text-masters">

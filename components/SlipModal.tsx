@@ -76,7 +76,7 @@ function OddsField({ pick, onSetOdds }: { pick: PickRow; onSetOdds: SlipModalPro
       inputMode="text"
       placeholder="+250"
       aria-label={`Odds for ${pick.subjectName}`}
-      className="w-20 rounded-lg border border-line px-2 py-1 text-right text-sm tabular-nums focus:border-masters focus:outline-none"
+      className="w-20 rounded-lg border border-line px-2 py-1 text-right text-sm tabular-nums focus:border-masters focus:outline-hidden"
     />
   );
 }
