@@ -24,12 +24,14 @@ CLAUDE.md's own job-runner-architecture section already establishes for
 provider jobs, applied here to capture instead.
 """
 from dataclasses import dataclass
+import json
 from datetime import datetime, timedelta, timezone
 
 import httpx
 
 import db
 from . import generic_team_elo as gte
+from .probability_blend import ELO_BLEND_WEIGHT, MARKET_BLEND_WEIGHT
 
 # How close to kickoff a 'final' capture is attempted — mirrors
 # game_pick_lock.py's own FINAL_LOCK_HOURS_BEFORE=3 for MLB; reused as a
@@ -130,7 +132,20 @@ async def _capture_slot(sport_key: str, app_sport: str, g: ScheduledGame, season
     if ml.blended_home_prob is not None:
         side = "home" if ml.blended_home_prob >= 0.5 else "away"
         prob = ml.blended_home_prob if side == "home" else 1 - ml.blended_home_prob
-        await db.capture_moneyline_pick(db.MoneylinePickCapture(sport=app_sport, game_id=g.game_id, slot=slot, side=side, prob=prob, late=False))
+        # M2a: keep the two components and the weights that combined them.
+        # `predict_moneyline` has always computed both and the capture threw
+        # them away, so every graded pick recorded WHAT was predicted and not
+        # WHY — which is exactly what a weight fit needs, and why fit 2 of
+        # docs/design/m2-fit-preregistration.md cannot run on the rows we have.
+        features = json.dumps({
+            "elo_home_prob": ml.elo_home_prob,
+            "market_home_prob": ml.market_home_prob,
+            "blended_home_prob": ml.blended_home_prob,
+            "market_blend_weight": MARKET_BLEND_WEIGHT,
+            "elo_blend_weight": ELO_BLEND_WEIGHT,
+        })
+        await db.capture_moneyline_pick(db.MoneylinePickCapture(sport=app_sport, game_id=g.game_id, slot=slot, side=side,
+                                                                prob=prob, late=False, features_json=features))
         ml_captured = True
 
     total = await gte.predict_total_market_only(app_sport, g.game_id)

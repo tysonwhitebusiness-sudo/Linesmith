@@ -25,6 +25,7 @@ fit against this app's own real outcomes yet — same "hand-set placeholder,
 not yet fit" honesty predict/probability_blend.py already discloses for
 its own weights. Real per-sport fitting is real future work, not done here.
 """
+import json
 import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -33,6 +34,7 @@ import httpx
 
 import db
 from .odds_math import american_to_decimal, devig_two_way, is_plausible_decimal_odds
+from .platt_calibration import apply_platt
 from .probability_blend import MARKET_BLEND_WEIGHT, blend_probability
 
 ELO_SCALE = 400
@@ -360,7 +362,60 @@ async def predict_moneyline(sport_key: str, app_sport: str, home_team_id: int, a
         blended = market_home_prob
     else:
         blended = blend_probability(elo_prob, market_home_prob, MARKET_BLEND_WEIGHT)
+    # M2 fit 1: the baseline's probability was never checked against how often
+    # its picks won. CFB's said 68.0% on average while those picks won 83.9% —
+    # under-confident, because blending toward the market pulls a heavy
+    # favourite down. The calibration is fitted on the BLENDED number (that is
+    # what `game_picks` stores and what the walk-forward scored), so it applies
+    # here, after the blend, not before it the way MLB's own path does.
+    #
+    # It cannot change a pick. Platt is monotone and a pick's probability is
+    # always >= 0.5 by construction; CFB's fit puts the calibrated 50% at a raw
+    # 0.473, so 0 of 211 picks flip. `test_generic_calibration.py` holds that.
+    if blended is not None:
+        blended = await _apply_active_calibration(app_sport, blended)
     return MoneylinePrediction(elo_home_prob=elo_prob, market_home_prob=market_home_prob, blended_home_prob=blended)
+
+
+# One read per sport per TTL rather than per game: a calibration changes when a
+# fit runs, not between two games of the same slate.
+_CALIBRATION_TTL_S = 15 * 60
+_calibration_cache: dict[str, tuple[tuple[float, float] | None, float]] = {}
+
+
+async def _apply_active_calibration(app_sport: str, prob: float) -> float:
+    import time as _time
+
+    hit = _calibration_cache.get(app_sport)
+    if hit is None or _time.monotonic() > hit[1]:
+        params = None
+        try:
+            row = await db.get_active_calibration(app_sport, "moneyline")
+            if row is not None:
+                raw = row.params if isinstance(row.params, dict) else json.loads(row.params)
+                if raw.get("a") is not None and raw.get("b") is not None:
+                    params = (float(raw["a"]), float(raw["b"]))
+        except Exception:                                     # noqa: BLE001
+            params = None                                     # a calibration read must never break a prediction
+        _calibration_cache[app_sport] = (params, _time.monotonic() + _CALIBRATION_TTL_S)
+        hit = _calibration_cache[app_sport]
+    if hit[0] is None:
+        return prob
+    a, b = hit[0]
+    # APPLIED ON THE SCALE IT WAS FITTED ON. The fit's rows are "the captured
+    # probability, and whether that pick won" — always the PICKED side, so
+    # always >= 0.5. Applying that curve straight to a home probability would
+    # extrapolate it into a region it never saw and break symmetry: a raw home
+    # 0.37 became 0.283 while its mirror gave 0.227, so the two sides of one
+    # game no longer summed to 1. Calibrate the favoured side and mirror back.
+    #
+    # One edge: an exact 0.5 maps to CFB's 0.559 rather than staying 0.5. That is
+    # what the fit measured — the picks this model calls a coin flip won 56% —
+    # and the caller asks once per game, deriving the other side as 1 - this, so
+    # the pair still sums to 1.
+    if prob >= 0.5:
+        return apply_platt(prob, a, b)
+    return 1 - apply_platt(1 - prob, a, b)
 
 
 # ---------------------------------------------------------------------------

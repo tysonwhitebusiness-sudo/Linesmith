@@ -109,9 +109,11 @@ REGISTRY: tuple[ModelRow, ...] = (
       for s in ("nfl", "nba", "nhl")],
     ModelRow("cfb", "game", "generic_elo", BASELINE,
              "Never gated: 216 picks, 6 on underdogs, 84.7% wins, -1.3% per unit (2026-09-19). "
+             "CALIBRATED 2026-09-20 (M2 fit 1): it said 68.0% while those picks won 83.9%; "
+             "walk-forward log loss 0.47081 -> 0.39678, ECE 0.159 -> 0.054 on 161 scored picks. "
              "The researched attempt FAILED: Phase 6 ridge margin ratings, three benchmarks "
              "negative, every Wilson interval spanning break-even",
-             "2026-08-27", GAME_GATE,
+             "2026-08-27", GAME_GATE, fitted_at="2026-09-20",
              notes="Reopen only on the pre-registered hypothesis: week 5+, |edge| >= 16, large spreads."),
     ModelRow("soccer", "game", None, FAILED,
              "Dixon-Coles failed its gate (t=+3.05 the wrong way); pick capture stopped "
