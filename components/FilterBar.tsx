@@ -405,27 +405,26 @@ export function ScanScopeToggle({
 }
 
 /**
- * Golf-only: a single 3-way switch replacing what used to be two separate
- * pill toggles (Hole Props/Round Score, and a golf-relabeled
- * `ScanScopeToggle` for Field/Match Winner) — collapsed into one control
- * since "Field" was never a distinct destination, just the absence of
- * "Match Winner". Built on the same glider `SegmentedToggle` MLB's Game/Team
- * Detail tabs use, rather than the plain color-swap pill the old two toggles
- * used.
+ * Golf-only: which market the props board is showing.
+ *
+ * It was a 3-way switch whose third option ("Match Winner") swapped the whole
+ * board for the winner prices. S1 made those a SECTION of their own above the
+ * board, always visible, so the switch is back to the two things it is
+ * actually choosing between — and you no longer lose the props to look at the
+ * prices.
  */
 export function GolfScanModeToggle({
   mode,
   onChange,
 }: {
-  mode: 'holes' | 'rounds' | 'match-winner';
-  onChange: (mode: 'holes' | 'rounds' | 'match-winner') => void;
+  mode: 'holes' | 'rounds';
+  onChange: (mode: 'holes' | 'rounds') => void;
 }) {
   return (
     <SegmentedToggle
       options={[
         { key: 'holes' as const, label: 'Hole Props' },
         { key: 'rounds' as const, label: 'Round Score' },
-        { key: 'match-winner' as const, label: 'Match Winner' },
       ]}
       value={mode}
       onChange={onChange}

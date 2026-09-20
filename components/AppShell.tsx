@@ -37,9 +37,11 @@ import { TopBar, TABS, type Tab } from './TopBar';
 import { PlayerDetailPanel } from './PlayerDetailPanel';
 import { ScanTable, ScanTableSkeleton, type ScanTableProps } from './ScanTable';
 import { PlayerSkeleton, ScanListSkeleton } from './Skeleton';
+import { useSlate } from './slate/useSlate';
+import { SlateGames, SlateSectionNav } from './slate/SlateSections';
+import { slateSections } from '@/lib/sports/shared/slateShapes';
 import {
   DensityToggle,
-  ScanScopeToggle,
   GolfScanModeToggle,
   FilterBar,
   FilterDropdown,
@@ -53,13 +55,13 @@ import {
 } from './FilterBar';
 import { FilterSidebar } from './FilterSidebar';
 import { PeopleIcon, BarsIcon, ShieldIcon, TargetIcon, SlidersIcon, FlameIcon, SidebarIcon, BookIcon, SnowflakeIcon, CheckCircleIcon } from './icons';
-import { GameLinesView } from './GameLinesView';
 import { useGolfLines } from './useGolfLines';
 import { TournamentLinesView } from './TournamentLinesView';
 import { TournamentNotStartedNotice } from './TournamentNotStartedNotice';
 import { TeamLogo, GameMatchupLabel, nflTeamLogoUrl } from './SubjectAvatar';
 import { buildSlate, type SlateEntry, type SlateGame } from '@/lib/odds/matching';
 import { useFilters, applyFilters, filtersActive, activeFilterCount } from './useFilters';
+import { Tabs } from './ui';
 import { easternDate, shiftDate } from '@/lib/sports/mlb/statsapi';
 
 /**
@@ -196,7 +198,9 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
 
   // Lets the Teams pages' tab row link straight back to Players (not just
   // Scan) without Teams needing to live inside this component's own state.
-  const [tab, setTab] = useState<Tab>(() => (searchParams.get('tab') === 'Players' ? 'Players' : 'Scan'));
+  // `?tab=Scan` is kept as an alias for `Slate` (S1): the tab was renamed, and
+  // a link written before the rename should still land where it meant to.
+  const [tab, setTab] = useState<Tab>(() => (searchParams.get('tab') === 'Players' ? 'Players' : 'Slate'));
   // NFL's candidate set is now ~2,099 items — re-scoring/re-sorting that on
   // a synchronous setState was a real, felt freeze on click, not just a
   // navigation-related gap. `startTransition` lets React paint the pending
@@ -221,7 +225,10 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // hooks: always called, mostly idle).
   const projections = useProjections(sport);
   const gamePickHistory = useGamePickHistory(sport);
-  const [scanScope, setScanScope] = useState<'players' | 'games'>('players');
+  // S1 — the Slate's own read. Ten kilobytes, fetched beside the snapshot
+  // rather than inside it, so the top of the page draws while the props
+  // board's own 20-odd megabytes are still arriving (SL-11).
+  const slateRead = useSlate(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
   // Golf only: Hole Props (the existing per-hole pattern-scan market) vs.
   // Round Score (one row per golfer, betting on the round total). Filters
   // the base candidate list itself, so every existing tab/filter (Good Bets,
@@ -232,16 +239,11 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // Props/Round Score, and a golf-relabeled Field/Match Winner). Collapsed
   // into one 3-way control — derived from the two pieces of state above so
   // nothing else that reads scanScope/golfMarketView has to change.
-  const golfScanMode: 'holes' | 'rounds' | 'match-winner' =
-    scanScope === 'games' ? 'match-winner' : golfMarketView;
-  const setGolfScanMode = (mode: 'holes' | 'rounds' | 'match-winner') => {
-    if (mode === 'match-winner') {
-      setScanScope('games');
-    } else {
-      setScanScope('players');
-      setGolfMarketView(mode);
-    }
-  };
+  // S1: the third mode ("Match Winner") is gone from this control — golf's
+  // winner prices are now a SECTION above the props board, always visible,
+  // rather than a view you had to switch to and lose the props to see.
+  const golfScanMode: 'holes' | 'rounds' = golfMarketView;
+  const setGolfScanMode = (mode: 'holes' | 'rounds') => setGolfMarketView(mode);
   const [slipOpen, setSlipOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   // Redesign Brief — default (button row) vs. sidebar filter layout.
@@ -693,7 +695,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
           </details>
         ) : null}
 
-        {tab === 'Scan' ? (
+        {tab === 'Slate' ? (
           <>
             {hasTodaysPicks ? (
               <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -702,42 +704,38 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
               </div>
             ) : null}
 
-            {/* Golf's one Scan-mode switch — rendered once, above the games/players
-                branch below, so it stays visible and in the same spot no matter
-                which mode is active (it's what drives scanScope in the first
-                place for golf, so it can't live inside a branch scanScope gates). */}
+            {/* Golf's props-board mode: Hole Props or Round Score. Since S1 the
+                winner prices are their own section above, so this is two
+                options rather than three. */}
             {sport === 'golf' ? (
               <div className="mb-2 flex items-center justify-end">
                 <GolfScanModeToggle mode={golfScanMode} onChange={setGolfScanMode} />
               </div>
             ) : null}
 
-            {scanScope === 'games' ? (
-              <>
-                {sport === 'golf' ? null : (
-                  <div className="mb-2 flex items-center justify-end">
-                    <ScanScopeToggle scope={scanScope} onChange={setScanScope} />
-                  </div>
-                )}
-                {sport === 'golf' ? (
-                  <TournamentLinesView
-                    lines={golfLines.result?.lines ?? []}
-                    subjects={snapshot?.subjects ?? []}
-                    eventName={golfLines.result?.eventName ?? null}
-                    loading={golfLines.loading}
-                    warnings={golfLines.result?.warnings ?? []}
-                  />
-                ) : (
-                  <GameLinesView
-                    entries={slate.entries}
-                    sport={sport}
-                    onNavigate={(gamePk) =>
-                      router.push(sport === 'soccer' || sport === 'tennis' ? `/${sport}/${league}/game/${gamePk}` : `/${sport}/game/${gamePk}`)
-                    }
-                  />
-                )}
-              </>
-            ) : golfFieldPending ? (
+            {/* S1 — THE SLATE. Scan's body is now sections: the sticky nav, the
+                Games section, and the props board below it. What used to be a
+                Players/Games TOGGLE is gone (D1): games are always a section,
+                not a view you had to leave the table to see. `GameLinesView`
+                and `GameLine` went with it. */}
+            <SlateSectionNav sections={slateSections(slateRead.data, views.all.length || null)} />
+
+            {sport === 'golf' ? (
+              <section id="slate-games" className="mb-6 scroll-mt-[72px]">
+                <h2 className="mb-2 text-title text-ink">Winner prices</h2>
+                <TournamentLinesView
+                  lines={golfLines.result?.lines ?? []}
+                  subjects={snapshot?.subjects ?? []}
+                  eventName={golfLines.result?.eventName ?? null}
+                  loading={golfLines.loading}
+                  warnings={golfLines.result?.warnings ?? []}
+                />
+              </section>
+            ) : (
+              <SlateGames data={slateRead.data} loading={slateRead.loading} />
+            )}
+
+            {golfFieldPending ? (
               <TournamentNotStartedNotice eventName={snapshot?.eventName} />
             ) : (
               <div className="flex items-start gap-4">
@@ -778,36 +776,31 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                   />
                 ) : null}
 
-                <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex items-center justify-between gap-3 border-b border-line">
-                    <div className="lb-scroll-x flex items-center gap-6">
-                      {/* Home Runs is the standalone home-run model's board — an
-                          MLB-only dimension (the streak signals never
-                          produces one for golf), so the tab is hidden for golf
-                          rather than opening onto a permanently-empty list.
-                          Good Bets is hidden for NFL too — its scoring engine
-                          has no calibrated threshold for a sport with no
-                          graded history yet (see scanView default above). */}
-                      {SCAN_VIEWS.filter((v) => v !== 'Home Runs' || sport === 'mlb').map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => setScanView(v)}
-                          aria-current={v === scanView ? 'page' : undefined}
-                          className={`relative shrink-0 whitespace-nowrap px-1 pb-3 pt-2 text-[14px] transition-colors ${
-                            v === scanView
-                              ? 'font-semibold text-ink after:absolute after:inset-x-0 after:bottom-0 after:h-[3px] after:rounded-full after:bg-masters'
-                              : 'text-ink-muted hover:text-ink'
-                          }`}
-                        >
-                          {v}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-2 pb-2">
-                      {sport === 'golf' ? null : <ScanScopeToggle scope={scanScope} onChange={setScanScope} />}
-                    </div>
-                  </div>
+                <div id="slate-props" className="min-w-0 flex-1 scroll-mt-[72px]">
+                  <h2 className="mb-2 text-title text-ink">Props</h2>
+                  {/* S1: Scan's own tabs, rebuilt on the kit's `Tabs` with real
+                      counts (D3 freezes the TABLE, not the controls around it).
+                      Home Runs is the standalone home-run model's board — an
+                      MLB-only dimension — so the tab is hidden elsewhere rather
+                      than opening onto a permanently empty list. */}
+                  <Tabs
+                    label="Props view"
+                    value={scanView}
+                    onChange={(v) => setScanView(v as ScanView)}
+                    className="mb-1"
+                    items={SCAN_VIEWS.filter((v) => v !== 'Home Runs' || sport === 'mlb').map((v) => ({
+                      value: v,
+                      label: v,
+                      count:
+                        v === 'All'
+                          ? views.all.length
+                          : v === 'Coming up'
+                            ? views.comingUp.length
+                            : v === 'Watchlist'
+                              ? views.watchlist.length
+                              : views.homeRuns.length,
+                    }))}
+                  />
 
                   {/* Controls row — search, card/list view, overflow menu, sidebar toggle. */}
                   <div className="mb-3 mt-3 flex items-center gap-2">

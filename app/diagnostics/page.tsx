@@ -57,7 +57,7 @@ const NHL_NBA_RESUME_PROMPT = `NHL and NBA Game Detail/Scan-page verification wa
 
 1. Confirm real rows are landing: check /diagnostics's "Game Odds Book Lines" card (System Health tab) shows nhl/nba as healthy with a recent fetched_at, or query game_odds_book_lines directly for sport IN ('nhl','nba') with fetched_at in the last 24h.
 2. Open a real NHL game's Game Detail page (/nhl/game/{gameId}) and a real NBA game's (/nba/game/{gameId}). Confirm the "Line shopping" card's Game tab renders a real bookmaker grid — multiple real books, moneyline at minimum, spread/total if the sport's sources provide them, correct best-price highlighting (only the actual best price per row marked, not a gradient).
-3. Open each sport's Scan page, switch to the "Games" scope, and confirm the same real per-game data renders there too (GameLinesView).
+3. Open each sport's Slate page and confirm the same real per-game data renders in the Games section.
 4. If either sport shows no data despite games being scheduled: both nhl and nba already have a real ScrapeTarget in harvester_scrape.py's SCRAPE_CONFIG as of 2026-08-26 (confirmed by reading the file, not assumed), so a gap here points at the OddsHarvester Scheduled Task not actually running for that sport, or the Render worker (line-buddy-odds-worker) being down/not landing real rows from refreshNbaJob/refreshSportsGameOddsJob — check job_health_checks and the worker's own logs before assuming the code itself is missing something.
 5. Once both sports show real, correct data on both pages, close out Phase 5 (NHL) and the NHL/NBA portion of Phase 8.4 in the odds-architecture rebuild plan.`;
 

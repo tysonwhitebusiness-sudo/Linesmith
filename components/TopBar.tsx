@@ -22,7 +22,15 @@ import { Button, IconButton, cx } from './ui';
  * noisy. Only the current view is emphasised.
  */
 
-export const TABS = ['Scan', 'Players', 'Teams', 'Schedule'] as const;
+/**
+ * S1 (D2): the first tab is the SLATE. It was "Scan", and the rename is the
+ * only change the chrome gets — the strip, the sport picker and the utilities
+ * are untouched, because the Slate replaces Scan's BODY, not its page.
+ *
+ * `?tab=Scan` still works, and is read as `Slate` (`AppShell`): links, saved
+ * tabs and anything the operator has bookmarked keep working.
+ */
+export const TABS = ['Slate', 'Players', 'Teams', 'Schedule'] as const;
 export type Tab = (typeof TABS)[number];
 
 export interface TopBarProps {
