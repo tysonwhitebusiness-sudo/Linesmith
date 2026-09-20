@@ -336,6 +336,55 @@ async def best_market_moneyline_prob(app_sport: str, game_id: str) -> tuple[floa
     return devig_two_way(home_best, away_best)
 
 
+# Soccer's moneyline has three outcomes, and a two-way Elo cannot express the
+# middle one. Re-enabling soccer picks (operator, 2026-09-20 — reversing Phase
+# 8's decision 4, which stopped them because Dixon-Coles had failed its gate)
+# therefore needs a draw probability, or a quarter of every slate is a pick that
+# can only lose.
+#
+# MEASURED on this app's own results, 2026-09-20, every match we hold:
+#   EPL  1,112 draws of 4,627 (24.03%)   — 24.35% over 2022+
+#   MLS  1,773 draws of 7,058 (25.12%)   — 25.56% over 2022+
+#
+# A flat rate per league, deliberately: a gap-dependent draw rate needs each
+# match's rating AS IT STOOD, and `team_elo_history` only reaches back a few
+# hundred rows. Refining it is a real follow-up, not a guess to make now.
+_DRAW_RATE = {"soccer_epl": 0.2403, "soccer_mls": 0.2512}
+
+
+@dataclass
+class ThreeWayPrediction:
+    """Home / draw / away, for a sport where a tie is a real result."""
+
+    home_prob: float
+    draw_prob: float
+    away_prob: float
+
+    def best(self) -> tuple[str, float]:
+        pairs = (("home", self.home_prob), ("draw", self.draw_prob), ("away", self.away_prob))
+        return max(pairs, key=lambda kv: kv[1])
+
+
+def three_way_from_two(home_prob_decisive: float, sport_key: str) -> ThreeWayPrediction:
+    """Split a two-way probability into three outcomes.
+
+    The Elo number answers "who is better", which in a drawing sport is really
+    "who wins IF someone does". So it scales the decisive share, and the draw
+    takes the rest. This adds no skill at telling a draw from a win — it stops
+    the model claiming a certainty the sport does not offer.
+    """
+    d = _DRAW_RATE.get(sport_key, 0.0)
+    decisive = 1.0 - d
+    return ThreeWayPrediction(home_prob=decisive * home_prob_decisive,
+                              draw_prob=d,
+                              away_prob=decisive * (1.0 - home_prob_decisive))
+
+
+def allows_draw(sport_key: str) -> bool:
+    cfg = SPORT_CONFIGS.get(sport_key)
+    return bool(cfg and cfg.allow_draw)
+
+
 @dataclass
 class MoneylinePrediction:
     elo_home_prob: float | None

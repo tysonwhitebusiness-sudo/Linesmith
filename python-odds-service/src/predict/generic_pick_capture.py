@@ -130,20 +130,31 @@ async def _capture_slot(sport_key: str, app_sport: str, g: ScheduledGame, season
     ml_captured = total_captured = False
     ml = await gte.predict_moneyline(sport_key, app_sport, g.home_team_id, g.away_team_id, season, g.game_id)
     if ml.blended_home_prob is not None:
-        side = "home" if ml.blended_home_prob >= 0.5 else "away"
-        prob = ml.blended_home_prob if side == "home" else 1 - ml.blended_home_prob
+        if gte.allows_draw(sport_key):
+            # Three outcomes, so the pick is the likeliest of three rather than
+            # the better of two — see generic_team_elo's own note on the
+            # measured draw rate.
+            three = gte.three_way_from_two(ml.blended_home_prob, sport_key)
+            side, prob = three.best()
+        else:
+            side = "home" if ml.blended_home_prob >= 0.5 else "away"
+            prob = ml.blended_home_prob if side == "home" else 1 - ml.blended_home_prob
         # M2a: keep the two components and the weights that combined them.
         # `predict_moneyline` has always computed both and the capture threw
         # them away, so every graded pick recorded WHAT was predicted and not
         # WHY — which is exactly what a weight fit needs, and why fit 2 of
         # docs/design/m2-fit-preregistration.md cannot run on the rows we have.
-        features = json.dumps({
+        features = {
             "elo_home_prob": ml.elo_home_prob,
             "market_home_prob": ml.market_home_prob,
             "blended_home_prob": ml.blended_home_prob,
             "market_blend_weight": MARKET_BLEND_WEIGHT,
             "elo_blend_weight": ELO_BLEND_WEIGHT,
-        })
+        }
+        if gte.allows_draw(sport_key):
+            three = gte.three_way_from_two(ml.blended_home_prob, sport_key)
+            features["three_way"] = {"home": three.home_prob, "draw": three.draw_prob, "away": three.away_prob}
+        features = json.dumps(features)
         await db.capture_moneyline_pick(db.MoneylinePickCapture(sport=app_sport, game_id=g.game_id, slot=slot, side=side,
                                                                 prob=prob, late=False, features_json=features))
         ml_captured = True
@@ -215,12 +226,18 @@ async def capture_today_for_sport(client: httpx.AsyncClient, sport_key: str, app
 # team_elo_history needs the two rating pools kept separate.
 _APP_SPORT_BY_KEY = {"nfl": "nfl", "cfb": "cfb", "nba": "nba", "nhl": "nhl", "soccer_epl": "soccer", "soccer_mls": "soccer"}
 
-# NO NEW PICKS for these, by operator decision (master plan Phase 8, 2026-09-13).
-# Soccer's Dixon-Coles model FAILED its gate (t=+3.05), and generic Elo is the
-# simpler model, never gated at all. It was still putting a W-L record on Scan.
-# Excluded from CAPTURE only: _APP_SPORT_BY_KEY still drives grading and price
-# attachment, so picks already captured settle normally instead of hanging open.
-CAPTURE_EXCLUDED = frozenset({"soccer_epl", "soccer_mls"})
+# RE-ENABLED 2026-09-20 (operator), reversing Phase 8's decision 4.
+#
+# That decision stopped soccer picks because Dixon-Coles had failed its gate and
+# the simple Elo was never gated at all, yet a W-L record was showing on Scan.
+# What changed is the goal, not the evidence: every sport should be able to
+# predict a game in a simple way, and the display rule (M1) now decides
+# separately what may be SHOWN — a baseline gets a pick and no record.
+#
+# Soccer is the one sport here with three outcomes, so the pick is the likeliest
+# of home/draw/away using a measured draw rate, and grading settles a drawn game
+# instead of skipping it.
+CAPTURE_EXCLUDED: frozenset[str] = frozenset()
 
 
 async def capture_all_sports_today(client: httpx.AsyncClient) -> list[dict]:

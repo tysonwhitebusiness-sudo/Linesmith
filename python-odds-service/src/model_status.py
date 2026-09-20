@@ -115,10 +115,15 @@ REGISTRY: tuple[ModelRow, ...] = (
              "negative, every Wilson interval spanning break-even",
              "2026-08-27", GAME_GATE, fitted_at="2026-09-20",
              notes="Reopen only on the pre-registered hypothesis: week 5+, |edge| >= 16, large spreads."),
-    ModelRow("soccer", "game", None, FAILED,
-             "Dixon-Coles failed its gate (t=+3.05 the wrong way); pick capture stopped "
-             "2026-09-13 (Phase 8, decision 4)",
-             "2026-09-13", GAME_GATE),
+    ModelRow("soccer", "game", "generic_elo", BASELINE,
+             "RE-ENABLED 2026-09-20 on the simple Elo, reversing Phase 8's decision 4. The "
+             "researched attempt still FAILED (Dixon-Coles, t=+3.05 the wrong way), which is why "
+             "this is the baseline and not that. Three-way: the draw takes its measured rate "
+             "(EPL 24.03% of 4,627 matches, MLS 25.12% of 7,058) and a drawn game now grades "
+             "instead of being skipped",
+             "2026-09-20", GAME_GATE,
+             notes="The draw never leads at that rate, so the pick is still a side - but its "
+                   "probability is the honest one, and a draw counts as a loss."),
     # ---- props -------------------------------------------------------------
     ModelRow("nhl", "prop", "nhl_prop_serving", BASELINE,
              "Five markets (goals, assists, points, shots on goal, hits) with temperature "
@@ -136,17 +141,28 @@ REGISTRY: tuple[ModelRow, ...] = (
     ModelRow("cfb", "prop", None, NONE, "No prop model has been attempted", "2026-09-19", PROP_GATE),
     ModelRow("soccer", "prop", None, NONE, "No prop model has been attempted", "2026-09-19", PROP_GATE),
     ModelRow("tennis", "prop", None, NONE, "No prop model has been attempted", "2026-09-19", PROP_GATE),
-    ModelRow("tennis", "game", None, NONE,
-             "predict/tennis_elo.py is a rating engine with tests, wired to no job",
-             "2026-09-19", GAME_GATE),
+    ModelRow("tennis", "game", "tennis_elo", BASELINE,
+             "WIRED 2026-09-20. The surface-weighted engine was built and FITTED 2026-09-04 "
+             "(k 35.06, per-surface weights, held-out log loss 0.62317 -> 0.62210) and called by "
+             "nothing. It now replays 57,155 matches back to 2015 and blends toward the market "
+             "like every other baseline",
+             "2026-09-20", GAME_GATE, fitted_at="2026-09-04",
+             notes="Surface is left unknown for a scheduled match - the engine answers with the "
+                   "overall rating, which is the only defensible number for an uncalibrated court."),
     # ---- golf --------------------------------------------------------------
     ModelRow("golf", "prop", None, NONE,
              "The golf model layer was DELETED 2026-09-13 (Phase 8, decision 2); the prediction "
              "tables are frozen at 2026-08-30/09-01",
              "2026-09-13", PROP_GATE),
-    ModelRow("golf", "game", None, NONE,
-             "Deleted with the rest of the golf model layer 2026-09-13",
-             "2026-09-13", GAME_GATE),
+    ModelRow("golf", "game", "golf_elo", BASELINE,
+             "BUILT 2026-09-20. Golf has no head-to-head game, so each event is treated as its "
+             "field playing each other: a player's result is the share of the field he beat. It "
+             "held 149 rows across 3 events until backfill_golf_results.py filled 235 events "
+             "(28,206 rows, 2022-2026) from ESPN's season view. 1,863 golfers rated; Scheffler "
+             "leads at 1778.6, then Fleetwood, Henley, McIlroy",
+             "2026-09-20", GAME_GATE,
+             notes="It RANKS the field and publishes no win probability: turning ratings into "
+                   "tournament win odds needs a scale nobody has fitted."),
 )
 
 _BY_KEY = {(r.sport, r.kind): r for r in REGISTRY}

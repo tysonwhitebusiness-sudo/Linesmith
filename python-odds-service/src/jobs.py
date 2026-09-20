@@ -1023,6 +1023,22 @@ async def _player_history_freshness_inner() -> dict:
     return {"per_sport": per_sport}
 
 
+async def job_tennis_picks(yield_fn=None) -> dict:
+    """Tennis's simple game model — capture today's matches, settle finished ones.
+
+    Tennis is not on the team-sport capture path (`generic_pick_capture` walks
+    an ESPN team scoreboard), so it has its own small job. 15 minutes matches
+    that path's own cadence: matches start through the day, and a capture that
+    arrives after the first ball is a pick made with the result half known.
+
+    The rating engine has existed since Phase 2.2, fitted, tested and wired to
+    nothing — this is what finally calls it (operator, 2026-09-20).
+    """
+    from predict import tennis_serving
+
+    return await _run_timed("tennisPicksJob", tennis_serving.run())
+
+
 async def job_slate_rankings(yield_fn=None) -> dict:
     """M3 — the Slate's odds-free rankings, refreshed until first pitch.
 
@@ -1347,6 +1363,8 @@ JOB_REGISTRY = [
     ("modelStatusJob", job_model_status, 24 * 60 * 60),
     # M3 — the Slate's rankings; see job_slate_rankings for why 15 minutes.
     ("slateRankingsJob", job_slate_rankings, 15 * 60),
+    # Tennis's own capture path; see job_tennis_picks.
+    ("tennisPicksJob", job_tennis_picks, 15 * 60),
     # M4 — the promotion test. Weekly; see job_model_gate.
     ("modelGateJob", job_model_gate, 7 * 24 * 60 * 60),
     # Phase 5.S.7 — hourly, because a new team spelling is only visible in

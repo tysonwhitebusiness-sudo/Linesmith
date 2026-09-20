@@ -346,11 +346,33 @@ class FinishedGameInput:
     away_score: float | None
 
 
+def _allows_draw(app_sport: str) -> bool:
+    """`game_picks` uses one 'soccer' key for both leagues, while the Elo config
+    is per league — either league answering yes is enough here."""
+    from .generic_team_elo import SPORT_CONFIGS
+
+    if app_sport == "soccer":
+        return True
+    cfg = SPORT_CONFIGS.get(app_sport)
+    return bool(cfg and cfg.allow_draw)
+
+
 async def grade_finished_game_picks(sport: str, games: list[FinishedGameInput]) -> None:
     """Grades against the locked (final) pick, falling back to the initial
     one if a final lock never happened."""
+    drawing_sport = _allows_draw(sport)
     for g in games:
-        if not g.is_final or g.home_score is None or g.away_score is None or g.home_score == g.away_score:
+        if not g.is_final or g.home_score is None or g.away_score is None:
+            continue
+        # A LEVEL SCORE USED TO SKIP THE ROW ENTIRELY, which was harmless while
+        # soccer picks were switched off and quietly wrong the moment they came
+        # back (operator, 2026-09-20): a quarter of every soccer slate would sit
+        # ungraded for ever, so the record would be drawn from the three
+        # quarters that happened to be decisive. In a drawing sport the tie is a
+        # real result and grades like any other; everywhere else it stays a
+        # skip, because a tie in those sports is a push at the book rather than
+        # a loss.
+        if g.home_score == g.away_score and not drawing_sport:
             continue
         row = await db.get_game_pick(sport, g.game_id)
         if not row or row.graded_at:
@@ -362,7 +384,8 @@ async def grade_finished_game_picks(sport: str, games: list[FinishedGameInput]) 
 
         ml_outcome = None
         if ml_side:
-            winner = "home" if g.home_score > g.away_score else "away"
+            winner = ("draw" if g.home_score == g.away_score
+                      else "home" if g.home_score > g.away_score else "away")
             ml_outcome = "win" if ml_side == winner else "loss"
 
         total_outcome = None

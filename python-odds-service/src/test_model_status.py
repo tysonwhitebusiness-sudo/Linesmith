@@ -50,16 +50,19 @@ check("gated may show a probability", ms.may_show_probability("mlb", "prop"), Tr
 check("baseline may not", ms.may_show_probability("nhl", "prop"), False)
 check("baseline may still show a pick", ms.may_show_pick("cfb", "game"), True)
 check("baseline may not show a record", ms.may_show_record("nfl", "game"), False)
-check("failed shows nothing", ms.may_show_pick("soccer", "game"), False)
+check("failed shows nothing", ms.may_show_pick("nba", "prop"), False)
 check("none shows nothing", ms.may_show_pick("golf", "prop"), False)
 check("an unknown sport is none, not a default yes", ms.may_show_probability("cricket", "prop"), False)
 check("leagues fold onto their sport", ms.status_of("soccer_epl", "game"), ms.status_of("soccer", "game"))
+print("every in-season sport can predict a game (operator, 2026-09-20)")
+for sp in ("mlb", "nfl", "cfb", "nba", "nhl", "soccer", "tennis", "golf"):
+    ok(f"{sp} has a game model", ms.may_show_pick(sp, "game"), f"— status {ms.status_of(sp, 'game')}")
 check("tours fold onto their sport", ms.status_of("tennis_wta", "prop"), ms.status_of("tennis", "prop"))
 
 print("what the page says")
 check("gated label", ms.label("mlb", "prop"), "validated model")
 check("baseline label", ms.label("mlb", "game"), "baseline model, not validated")
-ok("a failed label says why", "did not pass" in ms.label("soccer", "game"))
+ok("a failed label says why", "did not pass" in ms.label("nba", "prop"))
 
 print("MLB's game model is a baseline on purpose")
 # Its own CLV backtest puts it below the close (mean -0.0571 prob-points,
