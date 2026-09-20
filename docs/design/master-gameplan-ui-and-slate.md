@@ -82,6 +82,7 @@ The research plan's §2, the U spec's §6 and CLAUDE.md all apply. In short:
  now ─────────────────────────────────────────────────────────────────────────▶
  S0  cleanup (data)          ┐
  S0.5 model status register  ├─ Python/config only, no UI files: can run now
+ S0.6 fit the baseline (CFB) │   (per sport, as graded picks reach 200)
  S1  ranking + slate data    │
      (Python, deploy)        ┘
                      [R10–R12 sign-off]
@@ -114,18 +115,11 @@ The outage fix is done and deployed (`10a1647`, `8dab195`, `f2232c7`). What rema
 - **Pre-register the honesty check** the Slate's caption rests on: the share of
   Elo picks that differ from the market favorite, per sport, recomputed weekly.
   If it reaches zero for a sport over a full season, that sport's highlight goes.
-- **The Elo baseline's four changes (D9), in order of what they touch.** Three
-  are display and change no pick: (a) show the model's win % beside the market's
-  implied %, MLB-style, nothing computed between them — **allowed only if the
-  register says `baseline` may show it; by S0.5's rule it may not, so this one
-  waits for a gate**; (b) ring only at 65%+, so the ring means conviction;
-  (c) mark the pick that goes against the favorite. The fourth changes the
-  number, not the pick: (d) **calibrate** the probabilities against the picks
-  already graded (CFB's average pick reads 68.5% and has never been checked).
-- **The one change that moves picks:** `MARKET_BLEND_WEIGHT = 0.5` and
-  `ELO_BLEND_WEIGHT = 0.2` are hand-set placeholders the code itself says should
-  be fitted to graded outcomes. Fit them (pre-registered). The fit may say lean
-  harder on the market, which would make the ring rarer — a legitimate result.
+- **The Elo baseline's display changes (D9), none of which change a pick:**
+  ring only at 65%+, so the ring means conviction; mark the pick that goes
+  against the favorite. (Showing the model's win % beside the market's implied %
+  is a `gated` privilege under S0.5's display rule, so it waits for a gate.)
+- **Fitting the baseline against real outcomes is S0.6,** not this phase.
 - **R6-F8:** ParlayAPI files pitchers' strikeouts under `batter-strikeouts` and
   walks allowed under `walks`. Map them in the Python writer.
 - The 9 CFB teams with no `team_name_index` entry (closing lines and results
@@ -188,6 +182,32 @@ sport), backfilled from sport.
 **Done when:** the register is seeded and read by one page; the three display
 rules are enforced by a test; the promotion job runs and records its evidence;
 `docs/table-ownership.md` has the new rows.
+
+### S0.6 — Fit the simple models against real outcomes (per sport, as data allows)
+
+The baseline's numbers were hand-set and never fitted; its own file says so.
+Two different fits, both pre-registered, **neither of which promotes anything** —
+a fitted baseline is still `baseline` in the register until it passes a gate.
+
+| fit | what it changes | effect on the pick |
+|---|---|---|
+| **Calibration** (Platt, the module MLB already uses) | the probability, so 68% means 68% — CFB's average pick reads 68.5% and has never been checked against how often those picks won | none |
+| **Blend weights** (`MARKET_BLEND_WEIGHT` 0.5, `ELO_BLEND_WEIGHT` 0.2, both placeholders) | how far the prediction leans on the market vs the rating | **can move picks**; a fit that says lean harder on the market makes the ring rarer, which is a legitimate result |
+
+**Gated on sample, per sport.** Graded moneyline picks as of 2026-09-19: CFB 196,
+soccer 54 (capture stopped), NFL 32, NHL 3. Rule: **fit a sport at ≥ 200 graded
+picks, refit quarterly, hold the placeholders until then, and say in the register
+which sports are fitted.** So CFB is first (at ~200 now), NFL around midseason,
+NHL after a few months, NBA from its season. Each fit is walk-forward — fit on
+what was known before each game, never on the outcome it predicts.
+
+**Pre-register before the code:** the criteria (a calibration measure for the
+first fit, and for the second whether the fitted weights beat the placeholders
+out of sample), and what happens if the fit fails, which is that the placeholders
+stay and the register records the attempt.
+
+**Done when:** CFB is fitted and calibrated, its evidence is in the register, and
+the other sports' thresholds are recorded with their expected dates.
 
 ### S1 — The Slate's data layer (Python; deploy; no UI)
 
@@ -336,6 +356,7 @@ Unchanged. `OUT_OF_SCOPE` remains, with the Scan files named and the reason.
 |---|---|---|---|---|---|
 | S0 | data | — | no | yes (ask) | not started |
 | S0.5 | data + one rule | S0 | a status line only | yes (ask) | not started |
+| S0.6 | model fit | S0.5, ≥200 graded picks for that sport | no | yes (ask) | not started (CFB first) |
 | S1 | data | S0 (Q1) | no | yes (ask) | not started |
 | U0 | UI | R10–R12 sign-off | all (mechanical) | no | not started |
 | U1 | UI | U0 | yes | no | not started |
