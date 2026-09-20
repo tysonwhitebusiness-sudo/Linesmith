@@ -23,6 +23,7 @@
  */
 
 import { pgGet, pgAll, pgRun, pgTransaction } from './pgClient';
+import type { ModelStatusRow } from '@/lib/models/modelStatus';
 import type { BookmakerOdds, UnifiedGameLine } from '../odds/types';
 import { americanToDecimal, bestMoneylineFromBooks, bestSpreadFromBooks, bestTotalFromBooks } from '../odds/display';
 import { simulatedProfit } from '../picks/bankroll';
@@ -751,6 +752,33 @@ export async function readGameOddsBookLinesHealth(): Promise<GameOddsBookLinesHe
      GROUP BY sport, source
      ORDER BY sport, source`,
   );
+}
+
+/**
+ * M1's model register (`model_status`), written by Python's `modelStatusJob`.
+ *
+ * Read-only here, and deliberately a direct table read (CLAUDE.md pattern 2):
+ * the table is kept fresh by that job, not by a request. The display rule that
+ * consumes these rows lives in `lib/models/modelStatus.ts`.
+ */
+export async function readModelStatus(): Promise<ModelStatusRow[]> {
+  const rows = await pgAll<any>(
+    `SELECT sport, kind, engine, status, evidence, since, fitted_at, notes,
+            gate_test, gate_criteria, gate_min_sample, checked_at
+       FROM model_status ORDER BY sport, kind`,
+  );
+  return rows.map((r) => ({
+    sport: String(r.sport),
+    kind: r.kind as ModelStatusRow['kind'],
+    engine: r.engine ?? null,
+    status: r.status as ModelStatusRow['status'],
+    evidence: String(r.evidence ?? ''),
+    since: r.since instanceof Date ? r.since.toISOString().slice(0, 10) : String(r.since ?? ''),
+    fittedAt: r.fitted_at ? (r.fitted_at instanceof Date ? r.fitted_at.toISOString().slice(0, 10) : String(r.fitted_at)) : null,
+    notes: r.notes ?? null,
+    gate: { test: r.gate_test ?? null, criteria: r.gate_criteria ?? null, minSample: r.gate_min_sample ?? null },
+    checkedAt: r.checked_at instanceof Date ? r.checked_at.toISOString() : String(r.checked_at ?? ''),
+  }));
 }
 
 export async function readPropOddsForGame(gameId: string): Promise<PropOddsRow[]> {

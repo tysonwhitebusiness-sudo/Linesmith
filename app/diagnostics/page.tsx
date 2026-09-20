@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+
+import type { ModelStatusRow } from '@/lib/models/modelStatus';
 import { SubjectAvatar, TeamLogo, mlbHeadshotUrl, mlbTeamLogoUrl } from '@/components/SubjectAvatar';
 import { ConfidenceChip } from '@/components/ConfidenceChip';
 import { LockIcon, ClockIcon } from '@/components/icons';
@@ -1133,6 +1135,23 @@ export default function DiagnosticsPage() {
   const [showNhlNbaResumeModal, setShowNhlNbaResumeModal] = useState(false);
   const [nhlNbaPromptCopied, setNhlNbaPromptCopied] = useState(false);
 
+  // M1 — the model register: what each sport's model is, and what a page may
+  // claim from it. One table, one rule (lib/models/modelStatus.ts); this is the
+  // first surface to read it.
+  const [modelStatus, setModelStatus] = useState<ModelStatusRow[] | null>(null);
+  const [modelStatusError, setModelStatusError] = useState<string | null>(null);
+  const fetchModelStatus = useCallback(async () => {
+    setModelStatusError(null);
+    try {
+      const res = await fetch('/api/model-status', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as { rows: ModelStatusRow[] };
+      setModelStatus(json.rows);
+    } catch (err) {
+      setModelStatusError(err instanceof Error ? err.message : 'Fetch failed');
+    }
+  }, []);
+
   const fetchHealthChecks = useCallback(async () => {
     setHealthChecksError(null);
     try {
@@ -1445,6 +1464,7 @@ export default function DiagnosticsPage() {
     void fetchEloSanity();
     void fetchSystemHealth();
     void fetchHealthChecks();
+    void fetchModelStatus();
     void fetchAiSummary();
   }, [
     fetchData,
@@ -1459,6 +1479,7 @@ export default function DiagnosticsPage() {
     fetchEloSanity,
     fetchSystemHealth,
     fetchHealthChecks,
+    fetchModelStatus,
     fetchAiSummary,
   ]);
 
@@ -1552,6 +1573,59 @@ export default function DiagnosticsPage() {
                       View resume instructions
                     </button>
                   </div>
+                </section>
+
+                {/* M1 — the model register. The status is what decides whether a page
+                    may put a probability beside a price; the evidence is why. */}
+                <section className="lb-card p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="text-sm font-semibold">Model status</h2>
+                    <span className="text-[11px] text-ink-muted">gated = may show a probability beside a price · baseline = pick only</span>
+                  </div>
+                  {modelStatusError ? (
+                    <p className="text-sm text-bad">Failed: {modelStatusError}</p>
+                  ) : modelStatus === null ? (
+                    <p className="text-sm text-ink-muted">Loading…</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[12px]">
+                        <thead>
+                          <tr className="border-b border-line text-left text-ink-muted">
+                            <th className="py-1 pr-3 font-medium">Sport</th>
+                            <th className="py-1 pr-3 font-medium">Kind</th>
+                            <th className="py-1 pr-3 font-medium">Status</th>
+                            <th className="py-1 pr-3 font-medium">Engine</th>
+                            <th className="py-1 pr-3 font-medium">Evidence</th>
+                            <th className="py-1 font-medium">Since</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {modelStatus.map((r) => (
+                            <tr key={`${r.sport}-${r.kind}`} className="border-b border-line-soft align-top">
+                              <td className="py-1 pr-3 font-medium text-ink">{r.sport}</td>
+                              <td className="py-1 pr-3 text-ink-muted">{r.kind}</td>
+                              <td className="py-1 pr-3">
+                                <span
+                                  className={
+                                    r.status === 'gated'
+                                      ? 'rounded bg-good/10 px-1.5 py-0.5 font-semibold text-good'
+                                      : r.status === 'baseline'
+                                        ? 'rounded bg-warn/10 px-1.5 py-0.5 font-semibold text-warn'
+                                        : 'rounded bg-ink/5 px-1.5 py-0.5 font-semibold text-ink-muted'
+                                  }
+                                >
+                                  {r.status}
+                                </span>
+                              </td>
+                              <td className="py-1 pr-3 text-ink-muted">{r.engine ?? '—'}</td>
+                              <td className="py-1 pr-3 text-ink-muted">{r.evidence}</td>
+                              <td className="py-1 text-ink-muted">{r.since}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </section>
 
                 {/* Phase 05 — DeepSeek plain-English summary over job_health_checks + provider_usage + recent system_events. Summarizer only, never autonomous triage — see docs/four-feature-gameplan-2026-08-22.md's Phase 05 scope note. */}

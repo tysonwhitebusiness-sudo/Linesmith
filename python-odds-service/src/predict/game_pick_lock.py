@@ -161,6 +161,7 @@ async def run_moneyline_lock_cycle(sport: str, games: list[MoneylineLockInput], 
             away_team_name=g.away_team_name,
             matchup=g.matchup,
             commence_time=g.commence_time,
+            source="mlb_ensemble" if sport == "mlb" else "generic_elo",
         )
         await db.ensure_game_pick_row(identity)
 
@@ -276,6 +277,7 @@ async def run_total_lock_cycle(sport: str, games: list[TotalLockInput], now: dat
                 away_team_name=g.away_team_name,
                 matchup=g.matchup,
                 commence_time=g.commence_time,
+                source="mlb_ensemble" if sport == "mlb" else "generic_elo",
             )
         )
 

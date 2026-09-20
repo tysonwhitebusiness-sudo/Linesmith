@@ -2331,6 +2331,77 @@ def _iso_or_none(v) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+async def apply_gate_results(moves: list[dict]) -> int:
+    """M4 — the promotion test moved a row. Status and evidence change together:
+    a status without its measurement is the thing this register exists to stop."""
+    if not moves:
+        return 0
+    pool = await get_pool()
+    await pool.executemany(
+        """
+        UPDATE model_status
+           SET status = $3, evidence = $4, since = current_date, checked_at = now()
+         WHERE sport = $1 AND kind = $2
+        """,
+        [(m["sport"], m["kind"], m["status"], m["evidence"]) for m in moves],
+    )
+    return len(moves)
+
+
+async def record_gate_runs(runs: list[dict]) -> int:
+    """Every gate run, moved or not — including the ones that could not run,
+    with the reason. A gate that cannot run has not been passed."""
+    if not runs:
+        return 0
+    pool = await get_pool()
+    await pool.executemany(
+        """
+        UPDATE model_status
+           SET gate_result = $3, gate_sample = $4, gate_checked_at = now()
+         WHERE sport = $1 AND kind = $2
+        """,
+        [(r["sport"], r["kind"],
+          ("PASS · " if r["passed"] else "fail · " if r["passed"] is False else "not run · ") + r["detail"],
+          r["sample"]) for r in runs],
+    )
+    return len(runs)
+
+
+def _as_date(v):
+    """asyncpg binds a real date, not the ISO string the register carries."""
+    if v is None or not isinstance(v, str):
+        return v
+    from datetime import date as _date
+    return _date.fromisoformat(v)
+
+
+async def write_model_status(rows: list[dict]) -> int:
+    """M1's register, mirrored for TypeScript to read (/api/model-status).
+
+    Python owns it; the app never writes it. Upsert, never replace: a row that
+    the promotion job (M4) has moved keeps its evidence until the job moves it
+    again."""
+    if not rows:
+        return 0
+    pool = await get_pool()
+    await pool.executemany(
+        """
+        INSERT INTO model_status (sport, kind, engine, status, evidence, since, fitted_at, notes,
+                                  gate_test, gate_criteria, gate_min_sample, checked_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+        ON CONFLICT (sport, kind) DO UPDATE SET
+          engine = excluded.engine, status = excluded.status, evidence = excluded.evidence,
+          since = excluded.since, fitted_at = excluded.fitted_at, notes = excluded.notes,
+          gate_test = excluded.gate_test, gate_criteria = excluded.gate_criteria,
+          gate_min_sample = excluded.gate_min_sample, checked_at = now()
+        """,
+        [(r["sport"], r["kind"], r["engine"], r["status"], r["evidence"], _as_date(r["since"]),
+          _as_date(r["fitted_at"]), r["notes"], r["gate_test"], r["gate_criteria"],
+          r["gate_min_sample"]) for r in rows],
+    )
+    return len(rows)
+
+
 @dataclass
 class GamePickIdentity:
     sport: str
@@ -2341,6 +2412,10 @@ class GamePickIdentity:
     away_team_name: str | None
     matchup: str | None
     commence_time: str | None
+    # M1: which model produced this pick. The generic Elo baseline and MLB's own
+    # ensemble both write this table and were told apart only by sport, so any
+    # later query could average a validated model with an unvalidated one.
+    source: str = "generic_elo"
 
 
 async def ensure_game_pick_row(identity: GamePickIdentity) -> None:
@@ -2349,12 +2424,13 @@ async def ensure_game_pick_row(identity: GamePickIdentity) -> None:
     pool = await get_pool()
     await pool.execute(
         """
-        INSERT INTO game_picks (sport, game_id, home_team_id, away_team_id, home_team_name, away_team_name, matchup, commence_time)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO game_picks (sport, game_id, home_team_id, away_team_id, home_team_name, away_team_name, matchup, commence_time, source)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (sport, game_id) DO UPDATE SET
           home_team_id = excluded.home_team_id, away_team_id = excluded.away_team_id,
           home_team_name = excluded.home_team_name, away_team_name = excluded.away_team_name,
-          matchup = excluded.matchup, commence_time = excluded.commence_time
+          matchup = excluded.matchup, commence_time = excluded.commence_time,
+          source = excluded.source
         """,
         identity.sport,
         identity.game_id,
@@ -2364,6 +2440,7 @@ async def ensure_game_pick_row(identity: GamePickIdentity) -> None:
         identity.away_team_name,
         identity.matchup,
         _to_datetime(identity.commence_time) if identity.commence_time else None,
+        identity.source,
     )
 
 

@@ -168,6 +168,7 @@ async def capture_today_for_sport(client: httpx.AsyncClient, sport_key: str, app
                 away_team_name=g.away_team_name,
                 matchup=f"{g.away_team_name} @ {g.home_team_name}",
                 commence_time=g.commence_time,
+                source="generic_elo",
             )
         )
 

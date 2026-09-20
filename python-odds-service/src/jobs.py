@@ -1023,6 +1023,45 @@ async def _player_history_freshness_inner() -> dict:
     return {"per_sport": per_sport}
 
 
+async def job_model_status(yield_fn=None) -> dict:
+    """M1 — mirror the model register (src/model_status.py) for the app to read.
+
+    "Which model is real" used to live across plan documents, so every surface
+    decided for itself what to render: a baseline could show a probability beside
+    a price as readily as a gated model could. This job is the one writer of
+    `model_status`; TypeScript reads it through /api/model-status and the display
+    rule follows the status.
+
+    Daily is plenty — a status changes when a fit or a promotion test says so
+    (M2, M4), not on its own — and the write is a handful of rows.
+    """
+    import model_status
+
+    return await _run_timed("modelStatusJob", _model_status_inner(model_status))
+
+
+async def _model_status_inner(model_status) -> dict:
+    rows = model_status.as_rows()
+    written = await db.write_model_status(rows)
+    by_status: dict[str, int] = {}
+    for r in rows:
+        by_status[r["status"]] = by_status.get(r["status"], 0) + 1
+    return {"rows": written, "by_status": by_status}
+
+
+async def job_model_gate(yield_fn=None) -> dict:
+    """M4 — re-run each model's own pre-registered gate and move it on evidence.
+
+    Weekly: a gate's inputs are graded games and closing prices, which arrive a
+    slate at a time, and a status that flickers daily is worse than one that
+    moves deliberately. Promotion and demotion both happen here, so a model that
+    stops clearing its own bar loses the probability it was allowed to show.
+    """
+    import model_gate
+
+    return await _run_timed("modelGateJob", model_gate.evaluate(apply=True))
+
+
 async def job_retention(yield_fn=None) -> dict:
     """Phase 0.2 — the database had reached 1,563 MB against the Free tier's
     500 MB ceiling, and Supabase enforces read-only above quota. Nothing was
@@ -1286,6 +1325,10 @@ JOB_REGISTRY = [
     # its own, per CLAUDE.md's job architecture — a claim the Phase 0 gate
     # tests rather than assumes.
     ("retentionJob", job_retention, 24 * 60 * 60),
+    # M1 — the model register the app reads; see job_model_status.
+    ("modelStatusJob", job_model_status, 24 * 60 * 60),
+    # M4 — the promotion test. Weekly; see job_model_gate.
+    ("modelGateJob", job_model_gate, 7 * 24 * 60 * 60),
     # Phase 5.S.7 — hourly, because a new team spelling is only visible in
     # odds_archive's unfrozen tail before the prune reaches it.
     ("teamNameIndexJob", job_team_name_index, 60 * 60),
