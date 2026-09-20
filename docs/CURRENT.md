@@ -47,6 +47,16 @@ dep-danbvjmgekts738fhbh0); verified: CFB/EPL props, lines, closes and finals
 flowing. **Caught up from 2026-09-11:** 446 finals, 11 games of history, 80 games
 regraded. Closing lines for 09-15 → 09-19 are lost.
 
+**M0-M3 BUILT 2026-09-20, NOT DEPLOYED** (`603f65b`, `bd365e0`, `56db642`, `737620b`).
+M0: pitcher markets remapped (R6-F8), team_name_index seeded from ESPN (+2,616
+pairs, CFB 250 -> 762 teams), soccer draw no longer dropped at ingest, ESPN
+limit guard. M1: `model_status` register + display rule + `modelGateJob`;
+`game_picks.source`. M2: CFB calibrated (said 68.0%, won 83.9%; log loss 0.471
+-> 0.397) and the capture now stores the Elo/market components fit 2 needs.
+M3: `slate_rankings` + `slateRankingsJob`, frozen at first pitch, first receipts
+2026-09-21. **THE WORKER NEEDS A DEPLOY** for any of it to run, and the
+port-3000 production server still needs its rebuild.
+
 **MASTER GAMEPLAN (approved direction 2026-09-19):**
 `docs/design/master-gameplan-ui-and-slate.md` sequences the U track and the Slate
 (S0-S7). Next actions: S0 (data cleanup; Q1 on Elo picks) and S1 (the
