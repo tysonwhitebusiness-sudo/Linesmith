@@ -65,7 +65,13 @@ four rounds of mockup edits. No open questions remain.
   Q19 and Q14 change what you see the most. Q15 and `/diagnostics` need a
   signed-in session.
 - `docs/design/movers-and-spotlights-gameplan.md` (commit `7c38e0d`): Movers
-  and sport-specific Spotlights. **Queued behind track C**, not started.
+  and sport-specific Spotlights. **Another session was building Movers on
+  2026-09-21**, with uncommitted edits to `components/AppShell.tsx`,
+  `lib/slate/marketMoves.ts` and `lib/sports/shared/slateShapes.ts`, plus new
+  `components/slate/SlateMovers.tsx` and `app/api/slate/movers/`. Run
+  `git status` first. **Don't start C6 (which rewrites `AppShell.tsx`'s Props
+  controls) or C4 (`SlateMarket`/`marketMoves`) until that work is committed
+  or abandoned.** C7, C0, C1, C2, C3 and C5 don't touch those files.
 - M4 (promotion tests) and M5 (prop baselines, needs approval).
 
 ## Findings worth knowing
