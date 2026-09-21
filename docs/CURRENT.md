@@ -6,8 +6,8 @@
 
 # WHAT HAPPENED WHILE YOU WERE OUT
 
-Six phases of `docs/design/master-gameplan-ui-and-slate.md` were built,
-verified and pushed: **U0, U1, U2, U5, S1 and two thirds of S2.** Nothing was deployed —
+Seven phases of `docs/design/master-gameplan-ui-and-slate.md` were built,
+verified and pushed: **U0, U1, U2, U5, S1, two thirds of S2, and S3.** Nothing was deployed —
 `render.yaml` has `autoDeploy: false`, so pushing is safe and the worker is
 still on `c5baee4`. Every phase is on `main`.
 
@@ -22,15 +22,24 @@ sections, and the Games section is real on every sport.
 | `9bb8867` | U5 | `Chip.dot`, `Tag`, `Tabs.count`, `SegmentedToggle.icon`, `AvatarLabel`, `AvatarGroup`, `FeaturedIcon` |
 | `a458a17` | S1 | `/api/slate`, 7 sport adapters, SectionNav, GameCards, the props board |
 | `170c06e` | S2 (part) | Price outliers and Line disagreements. **Movers deliberately not built** — see below |
+| `ed04d76` | S3 | Hit-rate leaders and Active streaks, every sport, from the candidates — S3's `slate_rankings` premise was false |
 
 **Decisions taken on a default are in `docs/design/SIGNOFF-QUEUE.md`** — ten
 rows now (Q0–Q9). The expensive ones to reverse are **Q6** (soccer and tennis
 show no lines block) and **Q7** (the Games section is one DAY, not a week).
 **Q9 is the one to read first**: Movers was measured and not built.
 
-**Seven numbered phases remain**: S3 Spotlights, S4 Specials and receipts, S5
-Model and Your lines, U3 Form controls, U4 Overlays, U6 Page sweep, and the two
-closes S6 and U7. Movers is the open piece of S2.
+**Six numbered phases remain**: S4 Specials and receipts, S5 Model and Your
+lines, U3 Form controls, U4 Overlays, U6 Page sweep, and the two closes S6 and
+U7. Movers is the open piece of S2; the sport-specific spotlights are the open
+piece of S3.
+
+**S4's data is measured and ready.** `slate_rankings` holds exactly the four
+Specials rankings — `mlb-hr-of-the-day` (10 rows), `mlb-most-strikeouts` (10),
+`nfl-anytime-td` (18) and `soccer-anytime-goalscorer` (EPL 15, MLS 10) — each
+with its factors and percentiles as jsonb. What it does NOT have yet is a
+single graded row: receipts need `outcome` filled, and the gameplan expects the
+first ones on 2026-09-21.
 
 ---
 
@@ -68,8 +77,8 @@ AND the Slate's own tables on fixtures, and the borrowed pieces.
 ## Start here
 
 1. `docs/design/master-gameplan-ui-and-slate.md` — §5's phase table is current.
-   **Next phase: S3 (Spotlights).** S2 is part-done; its open piece is Movers,
-   and Q9 explains why it is open.
+   **Next phase: S4 (Specials and receipts).** Its rows already exist; its
+   receipts do not until a day has been graded.
 2. `docs/design/SIGNOFF-QUEUE.md` — Q0–Q9, and the phase sign-offs owed.
 3. `docs/design/ui-system-master-prompt.md` — the U track's status line and its
    findings ledger (U-1 … U-10) are current.
@@ -140,7 +149,7 @@ empty card) is the half that can be checked here.
   dev, and `/kit` correctly 404s. Restart it after any future `npm run build`.
 - **A deploy, if you want any of this live.** Nothing in U or S needs the
   worker, so nothing was deployed and nothing is waiting on one.
-- **Sign-off:** the ten queue rows, plus R10/R11/R12 and M1–M3 from before.
+- **Sign-off:** the twelve queue rows, plus R10/R11/R12 and M1–M3 from before.
 
 ---
 
