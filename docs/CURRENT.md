@@ -1,85 +1,85 @@
 # CURRENT — pick up here
 
-**Rewritten 2026-09-21, mid-run (checkpoint before U6).** If this is the last
-rewrite you see, the session ended during U6 — check `git log` for anything
-after `9846360`.
+**Rewritten 2026-09-21, end of the unattended run. The U and S tracks are
+finished.**
 
 ---
 
 ## Where the work is
 
-`docs/design/master-gameplan-ui-and-slate.md` §5 is current. **Done:** U0, U1,
-U2, U5, S1, S2 (part — Movers not built, Q9), S3, **S4, S5, U3, U4**.
-**Left:** U6 (page sweep), S6 (Slate close), U7 (UI close). Nothing deployed —
-`render.yaml` is `autoDeploy: false`; pushing is safe. The worker is still on
-`c5baee4`.
+Every phase of `docs/design/master-gameplan-ui-and-slate.md` §5 rows 5–18 is
+done except the one piece measured and left out: **S2's Movers** (queue Q9).
+Nothing was deployed — `render.yaml` is `autoDeploy: false`; the worker is
+still on `c5baee4`. Prod on port 3000 was rebuilt from `fb9498e` and is running.
 
 | commit | phase | what |
 |---|---|---|
-| `3973f18` | S4 | Specials from `slate_rankings` (MLB HR + K, NFL TD, EPL/MLS goalscorer), receipts under each; **and the right-edge page cutoff fixed** (SL-25) |
-| `403e790` | S5 | MLB Model section (pick + price + lock; no probability/record, Q0); Your lines (signed-in only); `TodaysPicksModal`, `useGamePickRecord` and the win–loss chips deleted |
-| `a23c96e` | U3 | the field family; 0 raw input/select/textarea in scope; five hand-built listboxes → `PickList`; every field 16px on phones |
-| `9846360` | U4 | Modal / SlideoutMenu / Dropdown / Popover on React Aria; slip, account menu, diagnostics dialog and `DrillDownPanel` moved |
+| `3973f18` | S4 | Specials (MLB HR + K, NFL TD, EPL/MLS goalscorer) with receipts; **the right-edge cutoff fixed** |
+| `403e790` | S5 | MLB Model section (pick, price, lock — no probability/record); Your lines (signed-in only); `TodaysPicksModal` deleted |
+| `a23c96e` | U3 | the field family; every field 16px on phones; `PickList` |
+| `9846360` | U4 | Modal / SlideoutMenu / Dropdown / Popover on React Aria |
+| `66c050a` | U6 | page sweep: 378 sizes, 47 native titles, hex, every hand-rolled table/button/chip onto the kit |
+| `73ab808` | S6 | no-edge guard over every Slate file; `CLAUDE.md` Slate section + Scan freeze; mockup historical |
+| `fb9498e` | U7 | no allowlist left in scope; `/kit` complete; `CLAUDE.md` UI primitives section |
 
-## What renders now that did not before
+## What renders now
 
-- `/mlb` Slate nav: **Games · Books · Spotlights · Specials · Model · Props**.
-- **Specials**: tabs per ranking, every factor a column with its source, score
-  bar, "why" on expand, and **real receipts** — 2026-09-20's HR top five
-  graded (2 of 5 who played). Caption: a ranking, not a probability; equal
-  weights until a pre-registered backtest.
-- **Model** (MLB only, declared by the slate adapter): today's locked picks,
-  the price taken, "Can still move / Locked". MLB's game cards now name the
-  SAME locked pick (they disagreed on 2 of 3 games — SL-27).
-- **Your lines**: hidden signed out (verified — no section, no nav entry, no
-  `/api/bets` request). Signed-in render is **owed** (Q15).
-- **The operator's "right portion cut off" report** (2026-09-20): `sr-only`
-  labels in table cells escaped their scroller and stretched the document
-  (/nfl at 390px was 853px wide). Swept 8 pages × 7 widths after the fix:
-  document width = viewport everywhere.
-- Every select is a React Aria popover (no iOS focus zoom); the slip is a
-  bottom sheet on phones and traps focus.
+- **`/mlb`**: Games · Books · Spotlights · Specials · Model · Props. Specials
+  carry real receipts (2026-09-20's HR top five: 2 of 5 who played). The game
+  cards and the Model section name the same locked pick.
+- **Every sport** swept at 1440 and 400 on 2026-09-21 in fresh tabs: no page
+  errors, document width = viewport. In season: MLB, NFL (Monday's one game +
+  Specials), CFB, MLS, WTA. Off season, with honest empty states: NBA (first
+  game 10-03), NHL, ATP, golf (tournament finished), EPL (no Monday match).
+- **The "right portion cut off" report**: fixed in S4 (SL-25). `sr-only`
+  labels escaped their scroller and widened the page; /nfl at 390px was 853px.
+- Selects are React Aria popovers (no iOS zoom), the slip is a bottom sheet on
+  phones with a real focus trap, and nothing on a page is under 11px outside
+  charts and the frozen Scan board.
 
-## Queue rows added this run (`docs/design/SIGNOFF-QUEUE.md`)
+## Read first: the queue (`docs/design/SIGNOFF-QUEUE.md`, Q0–Q19)
 
-Q12 did-not-play counts as neither · Q13 CFB ranking has no rows · **Q14 phone
-header on soccer/tennis is cramped** (design call) · **Q15 signed-in render of
-Your lines owed** · **Q16 the win–loss chips are gone for every sport** · Q17
-no graded-picks record in the Model section.
+The ones that change what you see and cost the most to reverse:
+- **Q16** — the ML/O/U win–loss chips are gone for **every** sport (a record;
+  Q0's default shows none for an ungated model).
+- **Q18** — sizes snapped to the ramp; 8–10px text grew to 11px (golf/tennis
+  schedules, diagnostics).
+- **Q19** — golf scores are coloured numbers now, not a gradient wash.
+- **Q14** — the soccer/tennis phone header is cramped; a design call.
+- Q15 and the diagnostics render are **owed**: both need a signed-in session.
 
-## Findings this run (ledgers)
+## Findings worth knowing (full ledgers in the two plan docs)
 
-SL-24 (factor units), SL-25 (the cutoff), SL-26 (no game-model row in
-`model_calibration`, so the calibration note has no source), SL-27 (card vs
-pick disagreement), SL-28 (`commence_time` arrives as a `Date`); U-11
-(listboxes were PickLists, not Selects), U-12 (SelectBox zoomed iOS), U-13
-(slip had no focus trap), **U-14 (a worn tab stalls React Aria's exit
-animation — verify overlays in a fresh tab)**.
-
-## Next: U6, then S6, then U7
-
-U6 = the ratchets to zero in scope: `text-[Npx]` outside charts, native
-`title=`, hex literals; diagnostics last (13 raw buttons, 11 tables, 16 legacy
-chips). Golf's leaderboard + three hole grids onto `DataTable`. Read §8 of
-`docs/design/ui-system-master-prompt.md` for the page list and
-`tests/ui-primitives.test.ts` for the current ratchet numbers.
+- **`DataTable.tone` is a RESULT chip ("W 6–3"), not a colour.** Use `ink` for
+  a value good/bad by definition, `heat` for a rank (U-15).
+- **Scan's cell components are part of the freeze** — `StatCells`, `OddsChip`
+  (U-16), and the glider `SegmentedToggle` (now `OUT_OF_SCOPE`).
+- **A worn browser tab stalls React Aria's exit animation** (U-14). Render in
+  a fresh tab (`context.newPage()`).
+- **`model_calibration` has no game-model row** (SL-26); `game_picks`'
+  `commence_time` arrives as a `Date` (SL-28).
+- Bash heredocs eat backslashes in this environment: write regex-bearing
+  scripts with the Write tool (`scripts/u6_*.py` are examples).
 
 ## Owed by you
 
 - **A deploy**, only if you want any of this live. Nothing needs the worker.
-- **Signed-in check of Your lines** (Q15).
-- Sign-off on the queue (Q0–Q17) and the phase rows.
+- **Signed-in checks**: Your lines (Q15) and `/diagnostics` (redirects to
+  login signed-out; covered by tests only).
+- Sign-off on the queue rows and phase rows.
+
+## What's next (not started)
+
+M4 (promotion tests, ongoing) and M5 (prop baselines, needs approval) in the
+gameplan; Movers once a per-book quote-quality pass exists (Q9); sport-specific
+spotlights (SL-23), one data phase per sport.
 
 ## Standing constraints
 
 - Ask before deploying to Render. `git push` does not deploy.
 - Never `git add -A` or `git add docs/` — `docs/discord-community-prompt.md`
   is the operator's. Add named files only.
-- Prod on port 3000 serves `.next`: stop it, `npm run build`, restart
-  (`linesmith-prod`) after every phase. `/kit` is dev-only — use
-  `linesmith-dev-verify` (port 3001).
-- **Render in a fresh tab** (Playwright `context.newPage()`); worn tabs stop
-  running effects and animations.
-- `/mlb` takes a while to settle; wait for data before judging a render.
+- Prod on :3000 serves `.next`: stop it, `npm run build`, restart
+  `linesmith-prod`. `/kit` is dev-only — `linesmith-dev-verify` on :3001.
 - The Postgres pooler caps at 15 connections.
 - At ~92% context, stop and hand off by rewriting this file.
