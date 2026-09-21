@@ -113,13 +113,7 @@ doesn't recur. Measure it first (MV0 below).
 
 **Effort:** MV0 half a day; MV1–MV4 one phase. No Python, no migration.
 
-**Decisions for you:**
-- **D-M1** Exchanges in the consensus or out? Default: out (they're
-  off-median 11–40% of the time here).
-- **D-M2** Default window: since first seen (spec) or 3h? Default: since
-  first seen.
-- **D-M3** Show a per-book mover row when the consensus hasn't moved (one
-  book re-pricing alone)? Default: no, only in the row expand.
+**Decisions:** D-M1 taken (exchanges out). D-M2 and D-M3 defaults stand; see Part 4.
 
 ---
 
@@ -162,53 +156,102 @@ That gives every spotlight frozen-at-first-game rows, percentiles and the
 | Golf | **Scoring by par type** | field average on par 3/4/5 this week | `golf_hole_scores` (18k rows) | **buildable** |
 | Golf | **Course history** | this golfer's past finishes at this course | `golf_tournament_results` has 235 events, but `golf_tournaments` names a course for only 4 | **blocked**: needs the tournament→course metadata backfilled |
 
-### Order: season value first
 
-1. **Now (in season, data held):** NFL targets + rushers, CFB rushers,
-   soccer shot takers, MLB platoon + K spots + HR parks, tennis form, golf
-   round movers. MLB's regular season ends in about a week, so its three are
-   worth it only if the postseason matters to you (decision D-S1).
-2. **Before 2026-10-03:** NBA pace-up, usage bumps, shot zones; NHL shot
-   volume. Built in late September on last season's data, so they're live on
-   opening night.
-3. **Data jobs first:** tennis surface/serve (a TML ingest), golf course
-   history (a tournament-metadata backfill). Each is a Python job with a
-   `docs/table-ownership.md` row, then the spotlight is one `RankingDef`.
+### The eight new spotlights (all approved, 2026-09-21)
 
-**Phase shape (per sport, repeatable):**
-- SP-a: add the `RankingDef`(s) and factors in Python, run once, measure rows
-  and freshness.
-- SP-b: the drift test picks up the labels automatically.
-- SP-c: render on the Slate, check at 1440/400, write the ledger row.
+Each is a fact about tonight, not a prediction, and none compares a model to a
+price.
 
-About one short phase per sport. The first (NFL) also carries the `kind`
-field and generalising the test.
+| # | spotlight | what it lists | sports | source (held today) |
+|---|---|---|---|---|
+| N1 | **Role changes** | players whose last-3 usage is well above their season rate: minutes (NBA), TOI (NHL), targets + carries (NFL/CFB), starts + shots (soccer), plate appearances (MLB) | NFL, CFB, NBA, NHL, soccer, MLB | `player_game_history` |
+| N2 | **Back in the lineup** | on yesterday's injury report, not on today's | NFL, CFB, NBA, NHL, MLB | `injury_report` (20 daily captures) |
+| N3 | **Teammate out, usage up** | a starter ruled out → the teammates who absorb most of their share | NBA, NFL, NHL | `injury_report` × `player_season_production.team_share` |
+| N4 | **Hot bat vs cold arm** | a batter's last-10 form against the opposing starter's last-3 Game Score | MLB | `player_game_history`, `pitcher_game_score_history` |
+| N5 | **Weather games** | wind over 15 mph or rain over 50% | MLB, NFL, CFB (where held) | the game cards' forecast |
+| N6 | **Rest and travel** | back-to-backs, third road game in four nights (NBA/NHL), short weeks (NFL) | NBA, NHL, NFL | schedule dates in `team_game_production` |
+| N7 | **Revenge games** | a player facing a team they played for recently | all team sports | team changes in `player_game_history` |
+| N8 | **Milestone watch** | players within one game's worth of a round number (1,000 yards, 30 HR, 100 points) | all team sports | season totals in `player_season_production` |
 
-### New ideas beyond the spec (need your go-ahead)
+N5 is a flag, not a ranking: it shows as a chip and a short list, never
+ordered.
 
-- **"Role changes"** (every sport): players whose minutes, snaps, targets or
-  TOI over the last 3 games are well above their season rate. Held for NBA,
-  NHL and soccer in `player_game_history`. NFL snaps aren't held.
-- **"Back in the lineup"**: a player off the injury report since the last
-  slate. `injury_report` has 20 daily captures, so this is a diff between
-  two days.
-- **"Hot bat vs cold arm"** (MLB): a batter's last-10 form × the starter's
-  last-3 Game Score (`pitcher_game_score_history` is held).
-- **"Weather games"** (MLB, NFL): wind over 15 mph or rain over 50%, from the
-  weather already on the game cards. It's context, not a ranking, so it's
-  flagged rather than ordered.
-- **Not proposed:** anything that ranks players by model probability minus
-  price. That's the edge the Slate doesn't make.
+---
 
-**Decisions for you:**
-- **D-S1** Build MLB's three now for the postseason, or skip to NFL? Default:
-  NFL first, MLB second.
-- **D-S2** Spotlights frozen at first game like Specials (so they get
-  receipts), or live until tip-off? Default: frozen. Same code path,
-  honest.
-- **D-S3** Approve the two data jobs (tennis TML ingest, golf course
-  backfill)? They're Python writers and need Render deploys.
-- **D-S4** Any of the new ideas above.
+## Part 3 — Where everything shows up
+
+**Computed once, shown in several places.** Every spotlight lives as rows in
+the Python ranking job (`slate_rankings`, `kind = 'spotlight'`), each row
+carrying its player, team and game. Every page reads those rows, so a player
+cannot be "back in the lineup" on the Slate and not on their own page.
+
+| spotlight | Slate (main home) | player page | team page | game page | Slate game card |
+|---|---|---|---|---|---|
+| Sport spotlights (Part 2 table) | ranked card | chip where the player appears | — | matchup note | — |
+| N1 Role changes | ranked card | "Role trend" chip | "Rising roles" list | both teams' risers | — |
+| N2 Back in the lineup | ranked card | "Returning" chip | injury section shows who's back | both lineups | — |
+| N3 Teammate out, usage up | ranked card | "Usage up: X out" chip | "Who absorbs the gap" | both teams | — |
+| N4 Hot bat vs cold arm | ranked card | matchup note | — | matchup card | — |
+| N5 Weather games | flag list | — | — | conditions card (exists) | chip (exists) |
+| N6 Rest and travel | ranked card | — | schedule note | both teams' rest | "B2B" / "3-in-4" chip |
+| N7 Revenge games | ranked card | "vs former team" chip | — | note | — |
+| N8 Milestone watch | ranked card | "12 yds from 1,000" chip | team milestones | both teams | — |
+
+**How the research pages get them:**
+- One shared `ResearchFlags` card and chip row reads the rows for its player,
+  team or game through `/api/slate/flags?subject=|team=|game=` (a
+  `cachedRoute`). It's one component, not one per sport (sport-adapter rule).
+- On the player, team and game pages they're stat context ("12 yards from
+  1,000", "back from injury"), never betting framing. Those pages are
+  research pages.
+- Slate game cards get only short chips (weather, rest), so the grid stays
+  compact.
+
+---
+
+## Part 4 — The phases
+
+Rules for every phase:
+- Measure first, then build, typecheck, test, build, and render at 1440 and
+  400 in a fresh tab.
+- Commit by explicit path, and push after each phase.
+- **Every Python change needs a Render deploy, and each deploy is asked for,
+  never assumed.**
+- Check the pooler (15 connections) before DB work.
+- A new table gets a `docs/table-ownership.md` row.
+
+| # | phase | what | depends on | Python / deploy | done when |
+|---|---|---|---|---|---|
+| **F0** | Foundation | `kind` (`special`/`spotlight`) on `RankingDef`; the ranking job writes spotlights with player/team/game ids; `/api/slate/flags` (cachedRoute); the shared `ResearchFlags` card + chips; the Slate's Spotlights section merges the two TS universal cards with the Python ones; the drift test covers both kinds | — | yes / yes | an empty spotlight registry renders nothing anywhere, and a fixture spotlight renders on the Slate and on a player page |
+| **MV0** | Movers re-measure | the pre-game table for NFL and soccer; soccer/tennis game lines after cutting at kickoff (Q6); a sample check of today's top 10 movers for a public reason | — | no | numbers in the ledger; the thresholds confirmed or changed |
+| **MV1–4** | Movers | pre-game only, net first→latest, consensus of ≥3 books with exchanges and pick'em excluded (D-M1); Steam and Split flags; the card per spec §3.2; guards | MV0 | no | Movers shows on MLB/NFL with believable top rows; tests pin post-start, flicker, single-book and PrizePicks |
+| **SP-NFL** | NFL | Targets vs weak pass defences · Rushers vs worst run defences · N1 · N2 · N3 · N5 · N6 (short weeks) · N7 · N8; chips on NFL player/team/game pages | F0 | yes / yes | every NFL card renders on Sunday's slate with its factors and a why; chips on the pages |
+| **SP-CFB** | CFB | Rushers vs worst run defences (team-level) · N1 · N2 · N5 · N7 · N8 | SP-NFL | yes / yes | same, on a Saturday slate |
+| **SP-SOC** | Soccer (EPL, MLS) | Shot takers vs weak defences · N1 · N7 · N8 | F0 | yes / yes | same, EPL and MLS |
+| **SP-MLB** | MLB | Platoon spots · Pitcher K spots · HR-friendly parks · N1 · N2 · N4 · N5 · N7 · N8 | F0 | yes / yes | same; postseason slates included |
+| **SP-NBA** | NBA (**before 2026-10-03**) | Pace-up games · Usage bumps (= N3) · Shot-zone matchups · N1 · N2 · N6 · N7 · N8 | F0 | yes / yes | live on opening night, built on last season's data until this season's exists |
+| **SP-NHL** | NHL (before opening night) | Shot volume vs most shots allowed · N1 · N2 · N3 · N6 · N7 · N8 | F0 | yes / yes | same |
+| **DJ-TEN** | Tennis data job | ingest Sackmann/TML match data: surface, aces, service/return points, hold/break; new table + ownership row | — | yes / yes | a full season per tour held, refreshed on a schedule |
+| **SP-TEN** | Tennis | Form (last 10) · Surface record · Serve vs return | DJ-TEN (Form can ship before it) | yes / yes | ATP and WTA slates show all three |
+| **DJ-GOLF** | Golf data job | backfill the tournament→course mapping for the 235 events in `golf_tournament_results` | — | yes / yes | ≥90% of events have a course |
+| **SP-GOLF** | Golf | Round movers (TS, from the live candidates) · Scoring by par type · Course history | DJ-GOLF (the first two can ship before it) | yes / yes | a live tournament week shows all three |
+| **SPC** | Close | receipts for frozen spotlights (graded the next morning, like Specials); `scan-no-edge` covers the new files; `CLAUDE.md` note on flags and where they render; queue rows | all of the above | no | every guard green; handoff rewritten |
+
+**Order:**
+1. F0.
+2. MV0 → Movers, alongside SP-NFL.
+3. SP-CFB and SP-SOC.
+4. SP-MLB, while the postseason runs.
+5. SP-NBA and SP-NHL, finished before their openers.
+6. DJ-TEN → SP-TEN and DJ-GOLF → SP-GOLF, which can run in parallel with
+   steps 3–5 because they only touch Python.
+7. SPC.
+
+**Decisions still open** (defaults taken unless you say otherwise):
+- D-M2: default Movers window is since first seen.
+- D-M3: a single book re-pricing alone shows only in the row expand.
+- D-F1: research-page chips appear only when the player/team is on
+  **today's** slate. Default: yes; a flag is about tonight.
 
 ---
 
@@ -217,5 +260,5 @@ field and generalising the test.
 - **D-M1 — yes:** exchanges and DFS pick'em stay out of the Movers consensus.
 - **D-S1 — all sports in this build, starting with NFL.**
 - **D-S2 — default:** spotlights freeze at the first game, like Specials, and get receipts.
-- **D-S3 — yes:** build the tennis TML ingest and the golf tournament→course backfill (Python jobs, Render deploys).
-- **D-S4 — pending:** the new-ideas list, awaiting the operator's picks.
+- **D-S3 — yes:** build the tennis TML ingest and the golf tournament→course backfill.
+- **D-S4 — all eight new ideas approved**, placed on the Slate with chips/cards on the research pages (Part 3).
