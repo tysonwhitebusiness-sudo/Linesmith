@@ -209,3 +209,13 @@ field and generalising the test.
 - **D-S3** Approve the two data jobs (tennis TML ingest, golf course
   backfill)? They're Python writers and need Render deploys.
 - **D-S4** Any of the new ideas above.
+
+---
+
+## Decisions taken (operator, 2026-09-21)
+
+- **D-M1 — yes:** exchanges and DFS pick'em stay out of the Movers consensus.
+- **D-S1 — all sports in this build, starting with NFL.**
+- **D-S2 — default:** spotlights freeze at the first game, like Specials, and get receipts.
+- **D-S3 — yes:** build the tennis TML ingest and the golf tournament→course backfill (Python jobs, Render deploys).
+- **D-S4 — pending:** the new-ideas list, awaiting the operator's picks.
