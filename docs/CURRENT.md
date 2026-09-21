@@ -45,11 +45,30 @@ is answered. Start at phase 1 (C7) of the run order and don't stop to ask.**
 
 Update this table and the run doc's §2 after every phase commit, then push.
 
+## In flight: C2 (player hero), uncommitted until done
+
+Design decided 2026-09-21, so a rotated session can continue without
+re-deriving it:
+- **Tile ranks come from `player_season_production`**, the position-grouped
+  season rollup the peer picker (`compareServer.readPeers`) already reads.
+  The plan's "34th of 142 RB" (`subject.rankDetail`) is an NFL-only composite
+  that exists only when a market does, so it could not be the source. A new
+  `/api/player-pool` (cachedRoute, keyed on sport + group) returns each pool
+  player's season `stats` and `games`; `buildPlayerResearch` evaluates each
+  tile's OWN `of()` on those totals spread evenly over the player's games.
+- **A tile only gets a rank if its aggregation is sum-based**, checked
+  automatically: the tile is evaluated on two different splits of the same
+  totals (even, and all in game one); if the two disagree (a count of games,
+  a max), the tile gets no rank rather than a wrong one. `games()` tiles get
+  no rank (the plan says so). Direction: `leader: 'low'` means lower is better.
+- `formLine` per spec for `lastFive.line`; `scopeChip` built in
+  `buildPlayerResearch`; `next` structured from `data.subject`.
+
 ## Deploys
 
 | when | commit | service | what it enables |
 |---|---|---|---|
-| — | — | — | none yet. The worker is on `c5baee4`. |
+| 2026-09-21 21:31 UTC | `5e6568d` (PY-A) | line-buddy-odds-worker (`dep-daoq3i6k1f9s738ael6g`, live) | hit rules + leader rows + stat lines + `_read`; longest HR, longest reception, NHL two goals; wind out + temperature from the park table; `kind` and team ids on every row. Was on `c5baee4`. |
 
 ## Decisions that bind this run
 
