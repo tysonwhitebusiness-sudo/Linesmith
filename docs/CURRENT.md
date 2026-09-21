@@ -1,85 +1,97 @@
 # CURRENT — pick up here
 
-**Rewritten 2026-09-21, end of the unattended run. The U and S tracks are
-finished.**
+**Rewritten 2026-09-21. The U and S tracks are finished. Track C (card
+redesign) is approved and planned, and no code has been written for it yet.
+Start with C7.**
 
 ---
 
 ## Where the work is
 
-Every phase of `docs/design/master-gameplan-ui-and-slate.md` §5 rows 5–18 is
-done except the one piece measured and left out: **S2's Movers** (queue Q9).
-Nothing was deployed — `render.yaml` is `autoDeploy: false`; the worker is
-still on `c5baee4`. Prod on port 3000 was rebuilt from `fb9498e` and is running.
+**Track C, the card redesign.** Approved by the operator on 2026-09-21 after
+four rounds of mockup edits. No open questions remain.
 
-| commit | phase | what |
+- **Target, built 1:1:** `docs/design/card-redesign-2026-09-21.html`.
+  Open it in a browser. It shows 8 surfaces at 1440 and 390.
+- **Plan:** `docs/design/card-redesign-gameplan-2026-09-21.md`. It has phases
+  C0–C8, file paths and line numbers checked against the tree, data sources,
+  guards, "done when" for each phase, and the operator's answers in §9.
+- **Order:** C7 → C0 → C1 → C2 → C3 → C4 → C6, with **C5's Python half
+  starting alongside C2** (it needs real slates graded before its UI can
+  show anything true). One commit per phase, named `C{n}: …`. Update the
+  table below after each one.
+
+| phase | what | status |
 |---|---|---|
-| `3973f18` | S4 | Specials (MLB HR + K, NFL TD, EPL/MLS goalscorer) with receipts; **the right-edge cutoff fixed** |
-| `403e790` | S5 | MLB Model section (pick, price, lock — no probability/record); Your lines (signed-in only); `TodaysPicksModal` deleted |
-| `a23c96e` | U3 | the field family; every field 16px on phones; `PickList` |
-| `9846360` | U4 | Modal / SlideoutMenu / Dropdown / Popover on React Aria |
-| `66c050a` | U6 | page sweep: 378 sizes, 47 native titles, hex, every hand-rolled table/button/chip onto the kit |
-| `73ab808` | S6 | no-edge guard over every Slate file; `CLAUDE.md` Slate section + Scan freeze; mockup historical |
-| `fb9498e` | U7 | no allowlist left in scope; `/kit` complete; `CLAUDE.md` UI primitives section |
+| C7 | delete the live line tracker (six role keys → five) | **next** |
+| C0 | Electric Turf tokens + `-ink` text tokens, one ESPN team-colour source, kit pieces | — |
+| C1 | charcoal band section headers (variant A) | — |
+| C2 | player hero: team band, ranked tiles, collapsible body with a one-time peek | — |
+| C3 | player rail: one row shape, adapter-chosen headline stat, kit filters | — |
+| C4 | Slate imagery: logos, team stripes, headshots, book marks | — |
+| C6 | props: tabs → filters, Home Runs deleted, ≤ 2 control rows on phones | — |
+| C5 | receipts breakdown + MLB longest HR / NFL longest reception / NHL 2+ goals | — |
+| C8 | guards, `/kit`, render sweep, CLAUDE.md | — |
 
-## What renders now
+## Decisions that bind track C (all answered in plan §9)
 
-- **`/mlb`**: Games · Books · Spotlights · Specials · Model · Props. Specials
-  carry real receipts (2026-09-20's HR top five: 2 of 5 who played). The game
-  cards and the Model section name the same locked pick.
-- **Every sport** swept at 1440 and 400 on 2026-09-21 in fresh tabs: no page
-  errors, document width = viewport. In season: MLB, NFL (Monday's one game +
-  Specials), CFB, MLS, WTA. Off season, with honest empty states: NBA (first
-  game 10-03), NHL, ATP, golf (tournament finished), EPL (no Monday match).
-- **The "right portion cut off" report**: fixed in S4 (SL-25). `sr-only`
-  labels escaped their scroller and widened the page; /nfl at 390px was 853px.
-- Selects are React Aria popovers (no iOS zoom), the slip is a bottom sheet on
-  phones with a real focus trap, and nothing on a page is under 11px outside
-  charts and the frozen Scan board.
+- **Electric Turf**: good `#00d26a` / bad `#ff4d4f` / warn `#ffb020`. Text
+  always uses the darker **ink** shade; the fill used as text fails
+  contrast.
+  - **It recolours the frozen Scan table too.** That's approved. The
+    file-length pins on `ScanTable`/`ScanCard` stay.
+- **Green never marks structure.** Headers are pure charcoal with a 2px
+  `#6e727a` top line. Colour comes from team and player content.
+- **Stats never look like buttons**: labelled values with a percentile, never
+  chips.
+- **Specials are forecasts** (a ranked top five, graded the next morning),
+  never leaderboards of what already happened.
+- **Home Runs** tab and board: deleted outright.
+- **Weather** comes from the linked Open-Meteo feed
+  (`python-odds-service/src/predict/weather.py`). Never add a second client.
+  Wind *out/in* waits on a 30-park orientation table that the operator
+  spot-checks before it ships.
 
-## Read first: the queue (`docs/design/SIGNOFF-QUEUE.md`, Q0–Q19)
+## What renders now (unchanged since the S/U close)
 
-The ones that change what you see and cost the most to reverse:
-- **Q16** — the ML/O/U win–loss chips are gone for **every** sport (a record;
-  Q0's default shows none for an ungated model).
-- **Q18** — sizes snapped to the ramp; 8–10px text grew to 11px (golf/tennis
-  schedules, diagnostics).
-- **Q19** — golf scores are coloured numbers now, not a gradient wash.
-- **Q14** — the soccer/tennis phone header is cramped; a design call.
-- Q15 and the diagnostics render are **owed**: both need a signed-in session.
+- The Slate on every sport: Games · Books · Spotlights · Specials · Model ·
+  Props. Swept at 1440 and 400 on 2026-09-21, clean.
+- Nothing was deployed. `render.yaml` is `autoDeploy: false`; the worker is
+  on `c5baee4`. Prod on :3000 was built from `fb9498e`.
 
-## Findings worth knowing (full ledgers in the two plan docs)
+## Still open from before track C
 
-- **`DataTable.tone` is a RESULT chip ("W 6–3"), not a colour.** Use `ink` for
-  a value good/bad by definition, `heat` for a rank (U-15).
-- **Scan's cell components are part of the freeze** — `StatCells`, `OddsChip`
-  (U-16), and the glider `SegmentedToggle` (now `OUT_OF_SCOPE`).
-- **A worn browser tab stalls React Aria's exit animation** (U-14). Render in
-  a fresh tab (`context.newPage()`).
-- **`model_calibration` has no game-model row** (SL-26); `game_picks`'
-  `commence_time` arrives as a `Date` (SL-28).
-- Bash heredocs eat backslashes in this environment: write regex-bearing
-  scripts with the Write tool (`scripts/u6_*.py` are examples).
+- `docs/design/SIGNOFF-QUEUE.md` Q0–Q19: the operator's sign-off. Q16, Q18,
+  Q19 and Q14 change what you see the most. Q15 and `/diagnostics` need a
+  signed-in session.
+- `docs/design/movers-and-spotlights-gameplan.md` (commit `7c38e0d`): Movers
+  and sport-specific Spotlights. **Queued behind track C**, not started.
+- M4 (promotion tests) and M5 (prop baselines, needs approval).
 
-## Owed by you
+## Findings worth knowing
 
-- **A deploy**, only if you want any of this live. Nothing needs the worker.
-- **Signed-in checks**: Your lines (Q15) and `/diagnostics` (redirects to
-  login signed-out; covered by tests only).
-- Sign-off on the queue rows and phase rows.
-
-## What's next (not started)
-
-M4 (promotion tests, ongoing) and M5 (prop baselines, needs approval) in the
-gameplan; Movers once a per-book quote-quality pass exists (Q9); sport-specific
-spotlights (SL-23), one data phase per sport.
+- **`DataTable.tone` is a RESULT chip ("W 6–3"), not a colour.** Use `ink`
+  for a value that's good or bad by definition, and `heat` for a rank.
+- **Scan's cell components stay frozen** (`StatCells`, `OddsChip`). C6
+  unfreezes only the filter bar files (`FilterBar`, `FilterSidebar`,
+  `PlayerFilterDrawer`, `DateGameStrip`, `useFilters`, `SegmentedToggle`).
+- **A worn browser tab stalls effects** and React Aria's exit animations.
+  Render in a fresh tab.
+- **The mockup's stat lines are illustrative.** Its player IDs, logos and
+  teams were checked against ESPN's athlete API on 2026-09-21 (three were
+  wrong and got fixed). Don't sign off C5 on placeholder data.
+- **Bash heredocs eat backslashes and quotes** in this environment. Write
+  scripts with the Write tool and run them.
+- **The browser pane can't load `file://` pages in Playwright.** To check the
+  mockup, serve `docs/design` with `python -m http.server`.
 
 ## Standing constraints
 
 - Ask before deploying to Render. `git push` does not deploy.
-- Never `git add -A` or `git add docs/` — `docs/discord-community-prompt.md`
+- Never `git add -A` or `git add docs/`: `docs/discord-community-prompt.md`
   is the operator's. Add named files only.
 - Prod on :3000 serves `.next`: stop it, `npm run build`, restart
-  `linesmith-prod`. `/kit` is dev-only — `linesmith-dev-verify` on :3001.
-- The Postgres pooler caps at 15 connections.
+  `linesmith-prod`. `/kit` is dev-only: `linesmith-dev-verify` on :3001.
+- The Postgres pooler caps at 15 connections. Check for long-running
+  fits/scripts before running DB-touching Python.
 - At ~92% context, stop and hand off by rewriting this file.

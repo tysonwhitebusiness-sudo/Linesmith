@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Card Redesign Mockups</title>
+<!--
+  Card redesign mockups, 2026-09-21. 1:1 targets for the next build.
+  Decisions this reflects (operator, 2026-09-21):
+   - Electric Turf replaces the forest good/bad/warn ramp everywhere.
+   - Team colour is the colour source for player/team content; charcoal stays the frame.
+   - Section headers: two variants shown (A band, B tab) — pick one.
+   - Live line tracker deleted everywhere (watchlist already covers tracked_lines).
+   - Props: the All / Coming up / Watchlist / Home Runs tabs become filters.
+   - Receipts: a graded breakdown, not a row of pills.
+  Stat lines in the receipts and specials are ILLUSTRATIVE placeholders.
+-->
+<style>
+:root{
+  --paper:#eceef1; --card:#fbfbfc; --sunk:#f3f4f6; --line:#dfe1e5; --line-soft:#e9eaed;
+  --ink:#1b1c1f; --ink2:#43464c; --ink3:#6a6d74; --ink4:#a9abb0;
+  --char:#1d1f23; --char2:#27292e; --char3:#34373d; --char-ink:#f4f5f7; --char-ink2:#a7abb3;
+  /* Electric Turf */
+  --good:#00d26a; --good-ink:#00873f; --good-tint:#d4fbe5;
+  --bad:#ff4d4f;  --bad-ink:#c4161c;  --bad-tint:#ffe3e3;
+  --warn:#ffb020; --warn-ink:#9a6200; --warn-tint:#fff1d6;
+  --r:14px;
+}
+*{box-sizing:border-box} html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+img{display:block}
+.wrap{max-width:1280px;margin:0 auto;padding:24px 16px 80px}
+.doc-h{font-size:32px;font-weight:700;letter-spacing:-.01em;margin:0 0 4px}
+.doc-p{color:var(--ink3);margin:0 0 24px;max-width:760px}
+.mock{margin:40px 0 0}
+.mock-label{display:flex;gap:10px;align-items:baseline;margin-bottom:12px;padding-bottom:8px;border-bottom:1px dashed #c7c9ce}
+.mock-label b{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
+.mock-label span{font-size:13px;color:var(--ink2)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:0 1px 2px rgba(15,18,24,.05),0 2px 8px -4px rgba(15,18,24,.08)}
+.ov{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3)}
+.num{font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:500;padding:2px 8px;border-radius:999px;background:var(--sunk);border:1px solid var(--line);color:var(--ink2);white-space:nowrap}
+.chip.good{background:var(--good-tint);color:var(--good-ink);border-color:#9ff0c5}
+.chip.bad{background:var(--bad-tint);color:var(--bad-ink);border-color:#ffc2c3}
+.chip.warn{background:var(--warn-tint);color:var(--warn-ink);border-color:#ffdc9a}
+.av{border-radius:50%;background:#d6d8dc;object-fit:cover;flex:none}
+.logo{object-fit:contain;flex:none}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:900px){.grid2{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:700px){.rc-top{grid-template-columns:minmax(0,1fr)}.rc-top>div:last-child{text-align:left}}
+
+/* palette strip */
+.pal{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.sw{border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--card)}
+.sw i{display:block;height:44px}
+.sw div{padding:8px 10px;font-size:12px;color:var(--ink2)}
+.sw code{font-size:11px;color:var(--ink3)}
+@media (max-width:700px){.pal{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ---------- Section headers ---------- */
+.band{background:var(--char);color:var(--char-ink);margin:0 -16px 14px;padding:16px 24px;display:flex;align-items:center;gap:12px;border-top:2px solid #6e727a;border-bottom:1px solid var(--char3)}
+.band h2{margin:0;font-size:22px;font-weight:650;letter-spacing:-.005em}
+.band .cnt{font-size:12px;background:var(--char3);color:var(--char-ink2);padding:2px 8px;border-radius:999px}
+.band .sub{font-size:13px;color:var(--char-ink2)}
+.band .right{margin-left:auto;display:flex;gap:8px}
+.band .btn{font-size:13px;color:var(--char-ink);background:var(--char3);border:1px solid #454850;border-radius:8px;padding:5px 10px}
+@media (max-width:640px){.band{flex-wrap:wrap;row-gap:6px;padding:14px 16px}.band h2{font-size:19px}.band .right{margin-left:0;width:100%}}
+.tabwrap{margin-bottom:14px}
+.tab{display:inline-flex;align-items:center;gap:10px;background:var(--char);color:var(--char-ink);padding:10px 16px 10px 14px;border-radius:12px 12px 0 0;position:relative}
+.tab::before{content:"";width:4px;height:18px;border-radius:2px;background:var(--char-ink2)}
+.tab h2{margin:0;font-size:17px;font-weight:650}
+.tab .cnt{font-size:12px;color:var(--char-ink2)}
+.tabbody{border-top-left-radius:0;border-top:3px solid var(--char)}
+
+/* ---------- Hero ---------- */
+.hero{overflow:hidden;position:relative}
+.hero-top{position:relative;padding:20px 24px 18px;color:#fff;display:flex;gap:20px;align-items:flex-end;min-height:150px;overflow:hidden}
+.hero-top .wm{position:absolute;right:-30px;top:-40px;width:260px;height:260px;opacity:.14}
+.hero-top .shot{width:132px;height:132px;border-radius:50%;background:rgba(255,255,255,.12);border:3px solid rgba(255,255,255,.85);object-fit:cover;margin-bottom:-44px;position:relative;z-index:1}
+.hero-id{position:relative;z-index:1;flex:1;min-width:0}
+.hero-id h1{margin:0;font-size:32px;line-height:1.1;font-weight:700;letter-spacing:-.01em}
+.hero-id .meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
+.hchip{font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28)}
+.hchip.acc{background:var(--acc2);color:var(--acc2ink);border-color:transparent}
+.hero-next{position:relative;z-index:1;text-align:right;font-size:13px}
+.hero-next .opp{display:flex;align-items:center;gap:8px;justify-content:flex-end;font-size:15px;font-weight:600}
+.hero-next .when{opacity:.8}
+.bio{display:flex;flex-wrap:wrap;gap:6px 18px;padding:12px 24px 12px 176px;font-size:13px;color:var(--ink2);border-bottom:1px solid var(--line-soft)}
+.bio b{color:var(--ink);font-weight:600}
+.hb-bar{all:unset;box-sizing:border-box;width:100%;display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:11px 24px;cursor:pointer;font-size:13px;color:var(--ink2);border-top:1px solid var(--line-soft)}
+.bio{border-bottom:0!important}
+.hb-bar:hover{background:var(--sunk)}
+.hb-bar:focus-visible{outline:2px solid var(--ink);outline-offset:-2px}
+.hb-sum b{color:var(--ink);font-size:14px}
+.hb-rk{color:var(--good-ink);font-weight:600;margin-left:4px;font-size:12px}
+.hb-dots{display:flex;gap:3px}.hb-dots i{width:8px;height:8px;border-radius:2px;background:var(--good)}.hb-dots i.l{background:var(--bad)}
+.hb-go{margin-left:auto;font-weight:600;color:var(--ink);display:flex;gap:6px;align-items:center}
+.chev{display:inline-block;transition:transform .3s ease}
+.hb-bar[aria-expanded="true"] .chev{transform:rotate(180deg)}
+.hb-bar[aria-expanded="true"] .hb-sum,.hb-bar[aria-expanded="true"] .hb-dots{opacity:0;pointer-events:none}
+.hb-sum,.hb-dots{transition:opacity .2s}
+.hb{max-height:0;overflow:hidden;transition:max-height .45s cubic-bezier(.3,.7,.2,1);border-top:1px solid transparent}
+.hb.open{max-height:900px;border-top-color:var(--line-soft)}
+.hb.peek{animation:hbPeek 1.5s cubic-bezier(.3,.7,.2,1)}
+.hb-bar.peek .chev{animation:hbNudge 1.5s ease}
+@keyframes hbPeek{0%{max-height:0}32%{max-height:96px}62%{max-height:96px}100%{max-height:0}}
+@keyframes hbNudge{0%,100%{transform:translateY(0)}32%,62%{transform:translateY(3px)}}
+@media (prefers-reduced-motion:reduce){.hb,.chev{transition:none}.hb.peek,.hb-bar.peek .chev{animation:none}}
+.hero-body{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:0}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:16px 24px}
+.tile{border-radius:10px;padding:10px 12px;background:var(--sunk);border:1px solid var(--line-soft);position:relative;overflow:hidden}
+.tile .v{font-size:24px;font-weight:700;line-height:1.1;margin-top:2px}
+.tile .rk{font-size:12px;font-weight:600;margin-top:4px}
+.tile .bar{position:absolute;left:0;bottom:0;height:3px}
+.form{padding:16px 20px;border-left:1px solid var(--line-soft)}
+.form .season{font-size:13px;color:var(--ink2);margin:4px 0 12px}
+.fl{display:flex;flex-direction:column;gap:6px}
+.fr{display:grid;grid-template-columns:22px 26px 1fr auto;align-items:center;gap:8px;font-size:13px}
+.res{width:22px;height:22px;border-radius:6px;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.res.w{background:var(--good);color:#04311a}.res.l{background:var(--bad);color:#fff}
+@media (max-width:900px){
+  .hero-body{grid-template-columns:1fr}.form{border-left:0;border-top:1px solid var(--line-soft)}
+  .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hero-top{flex-wrap:wrap}.hero-top .shot{width:96px;height:96px;margin-bottom:0}
+  .bio{padding-left:24px}.hero-next{text-align:left}.hero-next .opp{justify-content:flex-start}
+}
+
+/* ---------- Player list ---------- */
+.pl{width:320px;max-width:100%;padding:12px}
+.srch{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 10px;color:var(--ink3);font-size:14px}
+.fbar{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.sel{display:inline-flex;align-items:center;gap:6px;font-size:13px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 9px;color:var(--ink2)}
+.sel.on{background:var(--char);color:var(--char-ink);border-color:var(--char)}
+.sel .x{opacity:.6}
+.sort{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--ink3);padding:4px 2px 8px;border-bottom:1px solid var(--line-soft)}
+.prow{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 8px;border-radius:10px;position:relative}
+.prow.act{background:var(--sunk)}
+.prow.act::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--tc)}
+.prow .avw{position:relative;width:40px;height:40px}
+.prow .avw .tl{position:absolute;right:-4px;bottom:-4px;width:18px;height:18px;background:#fff;border-radius:50%;padding:1px;border:1px solid var(--line)}
+.prow .nm{font-weight:600;display:flex;gap:6px;align-items:center;white-space:nowrap;overflow:hidden}
+.prow .nm span:first-child{overflow:hidden;text-overflow:ellipsis}
+.prow .ctx{font-size:12px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.prow .hl{text-align:right}
+.prow .hl b{display:block;font-size:15px;line-height:1.1}
+.prow .hl small{font-size:11px;color:var(--ink3)}
+.pos{font-size:11px;font-weight:700;padding:1px 6px;border-radius:5px;background:var(--sunk);border:1px solid var(--line);color:var(--ink2)}
+.mk{font-size:11px;font-weight:600;color:var(--good-ink);background:var(--good-tint);padding:1px 6px;border-radius:5px}
+.pl-note{font-size:12px;color:var(--ink3);max-width:560px}
+
+/* ---------- Slate games ---------- */
+.games{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:1000px){.games{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.games{grid-template-columns:1fr}}
+.gc{overflow:hidden}
+.gc .stripe{display:flex;height:5px}.gc .stripe i{flex:1}
+.gc .gh{display:flex;justify-content:space-between;padding:10px 14px 0;font-size:12px;color:var(--ink3)}
+.gt{display:grid;grid-template-columns:36px minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:8px 14px}
+.gt .tn{font-weight:650}.gt .rec{font-size:12px;color:var(--ink3)}
+.gt .ln{font-size:13px;text-align:right;min-width:52px}
+.gt .ml{font-size:13px;font-weight:600;min-width:44px;text-align:right}
+.gc .gf{display:flex;gap:10px;align-items:center;justify-content:space-between;border-top:1px solid var(--line-soft);padding:8px 14px;font-size:12px;color:var(--ink3)}
+.gc .books{display:flex}
+.gc .books img{width:18px;height:18px;border-radius:5px;border:2px solid var(--card);margin-left:-5px;background:#fff}
+.gc .books img:first-child{margin-left:0}
+.live{display:inline-flex;align-items:center;gap:5px;color:var(--bad-ink);font-weight:600}
+.live::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--bad)}
+
+/* ---------- Books tables ---------- */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--ink3);text-align:left;padding:8px 12px;background:var(--sunk);border-bottom:1px solid var(--line)}
+.tbl td{padding:8px 12px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:0}
+.tbl .r{text-align:right}
+.who{display:flex;gap:9px;align-items:center}
+.who b{display:block;font-weight:600;line-height:1.2}.who small{font-size:12px;color:var(--ink3)}
+.bk{display:flex;align-items:center;gap:7px}
+.bk img{width:18px;height:18px;border-radius:5px;background:#fff;border:1px solid var(--line)}
+.stack{display:flex;align-items:center}
+.stack img{width:20px;height:20px;border-radius:6px;border:2px solid var(--card);background:#fff;margin-left:-6px}
+.stack img:first-child{margin-left:0}
+.stack span{font-size:12px;color:var(--ink3);margin-left:6px}
+.gap{display:inline-block;min-width:54px;text-align:right;font-weight:600;padding:2px 7px;border-radius:6px;background:var(--warn-tint);color:var(--warn-ink)}
+.tcard-h{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.tcard-h b{font-size:14px}.tcard-h .chip{margin-left:2px}.tcard-h small{margin-left:auto;color:var(--ink3);font-size:12px}
+.tcard-f{padding:8px 14px;font-size:12px;color:var(--ink3);border-top:1px solid var(--line-soft)}
+.scroll{overflow-x:auto}
+
+/* ---------- Receipts ---------- */
+.rc-top{display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line-soft)}
+.big{font-size:32px;font-weight:700;line-height:1}
+.big small{font-size:14px;font-weight:500;color:var(--ink3)}
+.meter{display:flex;gap:4px}
+.meter i{flex:1;height:10px;border-radius:3px;background:var(--line)}
+.meter i.g{background:var(--good)}.meter i.b{background:var(--bad)}.meter i.n{background:repeating-linear-gradient(45deg,var(--line) 0 4px,#eef0f2 4px 8px)}
+.wk{display:flex;gap:4px;align-items:flex-end;height:40px}
+.wk div{width:14px;border-radius:3px 3px 0 0;background:var(--good)}
+.wk div.m{background:var(--line)}
+.rtbl td.rank{width:40px;font-weight:700;color:var(--ink3)}
+.outc{display:flex;align-items:center;gap:6px;font-weight:600}
+.dot{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+.dot.g{background:var(--good);color:#04311a}.dot.b{background:var(--bad);color:#fff}.dot.n{background:var(--sunk);color:var(--ink3);border:1px dashed var(--ink4)}
+tr.dnp td{color:var(--ink3)} tr.dnp .who b{color:var(--ink3);font-weight:500}
+.rc-note{padding:10px 18px;font-size:12px;color:var(--ink3);border-top:1px solid var(--line-soft)}
+.specials{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+.sp{padding:0!important;overflow:hidden}.sp .ph{padding:14px 16px 12px;margin:0!important;border-bottom:1px solid var(--line)}
+.sp .rcpt,.sp .gate{margin:10px 16px!important}.sp .rcpt{padding-top:0!important;border-top:0!important}
+.stbl th{white-space:nowrap}.stbl td{padding:10px 12px}
+.stbl .rk{width:28px;font-weight:800;font-size:15px;color:var(--ink3);text-align:center}
+.stbl tr:first-child .rk{color:var(--ink)}
+.stbl .pcell{min-width:260px}
+.stbl .read{font-size:12px;color:var(--ink2);margin-top:4px;max-width:330px;line-height:1.35}
+.sv{font-weight:650;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sp-pct{display:block;font-size:11px;font-weight:600;margin-top:1px;white-space:nowrap}
+.mbar{display:block;height:3px;border-radius:2px;background:var(--line-soft);margin-top:4px;min-width:44px;overflow:hidden}.mbar i{display:block;height:100%}
+.colsub{display:block;font-size:11px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--ink3)}
+
+.sp{padding:14px}
+.sp h3{margin:0;font-size:15px}.sp .ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.sp .top{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line-soft)}
+.sp .top:last-of-type{border-bottom:0}
+.sp .top b{display:block;line-height:1.2}.sp .top small{color:var(--ink3);font-size:12px}
+.sp .metric{text-align:right;font-weight:700;font-size:15px}
+.sp .metric small{display:block;font-weight:500;font-size:11px;color:var(--ink3)}
+.sp .q{font-size:12px;color:var(--ink3);margin-top:2px}
+.sp .ph{align-items:flex-start}
+.sp .top{grid-template-columns:18px 40px minmax(0,1fr)}
+.sp .rk{font-weight:800;font-size:15px;color:var(--ink3);text-align:center}
+.sp .top:first-child .rk{color:var(--ink)}
+.sp .why{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.sp .why span{font-size:11px;font-weight:500;padding:1px 6px;border-radius:5px;background:var(--sunk);border:1px solid var(--line-soft);color:var(--ink2)}
+.sp .rcpt{margin-top:10px;font-size:12px;color:var(--ink2);padding-top:8px;border-top:1px solid var(--line-soft)}
+.sp .rcpt .hit{color:var(--good-ink);font-weight:600}.sp .rcpt .miss{color:var(--bad-ink);font-weight:600}
+.sp .gate{margin-top:10px;font-size:12px;color:var(--warn-ink);background:var(--warn-tint);border-radius:8px;padding:6px 9px}
+
+/* ---------- Props controls ---------- */
+.pc{padding:14px}
+.pc-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.pc-row + .pc-row{margin-top:10px}
+.pc .srch{flex:1;min-width:220px;max-width:340px}
+.seg{display:inline-flex;background:var(--sunk);border:1px solid var(--line);border-radius:9px;padding:2px}
+.seg span{font-size:13px;padding:4px 10px;border-radius:7px;color:var(--ink2)}
+.seg span.on{background:var(--char);color:var(--char-ink)}
+.tog{display:inline-flex;align-items:center;gap:6px;font-size:13px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:5px 10px;color:var(--ink2)}
+.tog i{width:26px;height:15px;border-radius:999px;background:var(--line);position:relative}
+.tog i::after{content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:#fff}
+.tog.on i{background:var(--good)}.tog.on i::after{left:13px}
+.spacer{flex:1}
+.ic{width:34px;height:34px;border:1px solid var(--line);border-radius:8px;background:#fff;display:inline-flex;align-items:center;justify-content:center;color:var(--ink3);font-size:15px}
+.ic.on{background:var(--char);color:#fff;border-color:var(--char)}
+.active{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid var(--line-soft);font-size:12px;color:var(--ink3)}
+.fbtn{display:none;align-items:center;gap:6px;font-size:13px;font-weight:600;border:1px solid var(--char);background:var(--char);color:var(--char-ink);border-radius:8px;padding:6px 10px;white-space:nowrap}
+.fbtn b{background:var(--char-ink);color:var(--char);border-radius:999px;font-size:11px;padding:0 6px}
+.fbtn.show{display:inline-flex}
+.brk{display:none}
+@media (max-width:1023px){
+  .pc-filters{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent)}
+  .pc-filters .sel{flex:none}
+}
+@media (max-width:639px){
+  .pc .pc-filters{display:none}
+  .pc .fbtn{display:inline-flex}
+  .pc .ic:not(:last-child){display:none}
+  .pc .spacer{display:none}
+  .pc .srch{min-width:0;flex:1 1 140px}
+  .pc .seg{flex:1}.pc .seg span{flex:1;text-align:center}
+  .pc .active{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;white-space:nowrap}
+  .pc .pc-row:first-child .srch{order:1;flex:1 1 0}.pc .fbtn{order:2}.pc .ic:last-child{order:3}
+  .pc .brk{display:block;order:4;flex-basis:100%;height:0}.pc .seg{order:5}.pc .tog{order:6}
+  .pc .active .chip{flex:none}
+}
+.phones{display:flex;gap:24px;flex-wrap:wrap}
+.phone{width:390px;max-width:100%}
+.pcap{font-size:12px;font-weight:600;color:var(--ink3);margin-bottom:6px}
+.pscreen{border:8px solid #111;border-radius:28px;background:var(--paper);height:560px;overflow:hidden;position:relative}
+.pband{background:var(--char);color:var(--char-ink);border-top:2px solid #6e727a;padding:12px 14px;display:flex;gap:8px;align-items:center}
+.pband b{font-size:19px}.pband span{font-size:12px;background:var(--char3);color:var(--char-ink2);padding:1px 7px;border-radius:999px}
+.pctl{background:var(--card);border-bottom:1px solid var(--line);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.prow1{display:flex;gap:6px;align-items:center}
+.prow1 .srch{flex:1;min-width:0;padding:7px 9px}
+.seg.grow{flex:1;display:flex}.seg.grow span{flex:1;text-align:center}
+.tog.sm{padding:5px 8px}
+.pchips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;white-space:nowrap}
+.pchips .chip{flex:none}
+.pfrozen{margin:10px 12px;height:300px;border:2px dashed #c7c9ce;border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:13px}
+.pscreen.dim::after{content:"";position:absolute;inset:0;background:rgba(10,12,16,.45);z-index:1}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:2;background:var(--card);border-radius:18px 18px 0 0;padding:6px 14px 14px;box-shadow:0 -8px 24px rgba(0,0,0,.2)}
+.grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:4px auto 8px}
+.sh-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}.sh-h b{font-size:17px}.sh-h span{font-size:13px;color:var(--ink2);text-decoration:underline}
+.sh-list div{display:flex;justify-content:space-between;align-items:center;padding:10px 2px;border-bottom:1px solid var(--line-soft);font-size:14px}
+.sh-list div span{color:var(--ink3);font-size:13px}.sh-list div span.on{color:var(--ink);font-weight:600}
+.sh-go{margin-top:12px;background:var(--char);color:var(--char-ink);border-radius:10px;text-align:center;padding:11px;font-weight:600}
+.frozen{margin-top:12px;border:2px dashed #c7c9ce;border-radius:12px;padding:28px;text-align:center;color:var(--ink3);background:repeating-linear-gradient(135deg,transparent 0 10px,rgba(0,0,0,.02) 10px 20px)}
+.note{font-size:13px;color:var(--ink2);background:var(--card);border:1px solid var(--line);border-left:3px solid var(--char);border-radius:0 10px 10px 0;padding:10px 14px;margin-top:12px}
+.note b{font-weight:650}
+.del{display:flex;gap:10px;align-items:center;padding:12px 16px;opacity:.55;text-decoration:line-through;text-decoration-color:var(--bad)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1 class="doc-h">Card redesign — mockups</h1>
+<p class="doc-p">Built 2026-09-21 from the operator's answers. Charcoal stays the frame; team colour, headshots, logos and Electric Turf carry the colour. Anything with a stat line in the receipts or specials is an illustrative placeholder, not real data.</p>
+
+<!-- ============ 0. Palette ============ -->
+<section class="mock">
+  <div class="mock-label"><b>0 · Palette</b><span>Electric Turf replaces <code>--good/--bad/--warn</code> and the <code>lib/ui/heat.ts</code> ramp in one change.</span></div>
+  <div class="pal">
+    <div class="sw"><i style="background:var(--good)"></i><div>Good fill<br><code>#00d26a</code> · ink <code>#00873f</code></div></div>
+    <div class="sw"><i style="background:var(--bad)"></i><div>Bad fill<br><code>#ff4d4f</code> · ink <code>#c4161c</code></div></div>
+    <div class="sw"><i style="background:var(--warn)"></i><div>Caution fill<br><code>#ffb020</code> · ink <code>#9a6200</code></div></div>
+    <div class="sw"><i style="background:var(--char)"></i><div>Charcoal frame<br><code>--masters</code> (unchanged)</div></div>
+  </div>
+  <div class="note"><b>Rule that comes with it:</b> the fill is for bars, dots and solid badges; text on a tint always uses the <i>ink</i> shade. <code>#00d26a</code> as text on white is ~1.9:1 and fails — the ink shade is what keeps chips legible.</div>
+</section>
+
+<!-- ============ 1. Section headers ============ -->
+<section class="mock">
+  <div class="mock-label"><b>1 · Section headers</b><span>Two variants. Pick one; both keep the kit's type ramp.</span></div>
+
+  <div class="ov" style="margin-bottom:8px">Variant A — full-bleed charcoal band</div>
+  <div class="band"><h2>Where the books differ</h2><span class="cnt">23</span><span class="sub">NFL · Monday · 1 game</span><div class="right"><span class="btn">Receptions ▾</span><span class="btn">Collapse</span></div></div>
+  <div class="grid2" style="margin-bottom:28px">
+    <div class="card" style="height:90px"></div><div class="card" style="height:90px"></div>
+  </div>
+
+  <div class="ov" style="margin-bottom:8px">Variant B — charcoal tab welded to the section's card</div>
+  <div class="tabwrap"><div class="tab"><h2>Spotlights</h2><span class="cnt">4 players</span></div>
+    <div class="card tabbody" style="height:110px"></div>
+  </div>
+  <div class="note"><b>A</b> reads as a chapter break and survives any number of cards under it; <b>B</b> is tighter but only works when a section is one card (Books is two). The sticky section nav is already dark — with A, the nav gets a 1px <code>--char3</code> bottom line so the two don't merge when a band scrolls under it.</div>
+</section>
+
+<!-- ============ 2. Player hero ============ -->
+<section class="mock">
+  <div class="mock-label"><b>2 · Player hero</b><span>Team-colour band, overlapping headshot, logo watermark, ranked tiles, opponent-logo form.</span></div>
+
+  <div class="card hero" style="--tc:#4F2683;--acc2:#FFC62F;--acc2ink:#3a2a00">
+    <div class="hero-top" style="background:linear-gradient(115deg,#4F2683 0%,#3a1c63 70%,#2a1449 100%)">
+      <img class="wm logo" src="https://a.espncdn.com/i/teamlogos/nfl/500/min.png" alt="">
+      <img class="shot" src="https://a.espncdn.com/i/headshots/nfl/players/full/3042519.png" alt="Aaron Jones Sr.">
+      <div class="hero-id">
+        <h1>Aaron Jones Sr.</h1>
+        <div class="meta"><span class="hchip acc">RB</span><span class="hchip">#33</span><span class="hchip">Minnesota Vikings</span><span class="hchip">Healthy</span></div>
+      </div>
+      <div class="hero-next">
+        <div class="ov" style="color:rgba(255,255,255,.7)">Next</div>
+        <div class="opp">@ <img class="logo" width="26" height="26" src="https://a.espncdn.com/i/teamlogos/nfl/500/tb.png" alt=""> Buccaneers</div>
+        <div class="when">Sun 3:05 PM · Raymond James</div>
+      </div>
+    </div>
+    <div class="bio"><span><b>31</b> yrs</span><span><b>5'10"</b> 208 lb</span><span>El Paso, TX</span><span><b>UTEP</b></span><span>2017 · R5 P182 (GB)</span><span><b>10th</b> season</span></div>
+    <button class="hb-bar" id="hbBar" aria-expanded="false" aria-controls="hb">
+      <span class="ov">2025-26 season &amp; form</span>
+      <span class="hb-sum"><b class="num">548</b> rush yds <span class="hb-rk">34th of 142 RB</span></span>
+      <span class="hb-sum"><b class="num">62.3</b> scrim / g</span>
+      <span class="hb-dots"><i class="l"></i><i></i><i></i><i></i><i></i></span>
+      <span class="hb-go"><span id="hbLbl">Show</span> <span class="chev">▾</span></span>
+    </button>
+    <div class="hb" id="hb">
+    <div class="hero-body">
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 24px 0">
+          <span class="ov">2025-26 season</span><span class="chip">2026-27: 2 games so far</span>
+        </div>
+        <div class="tiles" id="tiles"></div>
+      </div>
+      <div class="form">
+        <div class="ov">Last 5</div>
+        <div class="season">6–6 in games played</div>
+        <div class="fl" id="form"></div>
+      </div>
+    </div>
+    </div>
+  </div>
+  <div style="margin-top:8px;font-size:12px;color:var(--ink3)">Demo: <a href="#" id="hbReplay" style="color:var(--ink2)">replay the peek</a> · the peek plays once per viewer (remembered), never with reduced motion on.</div>
+
+  <div class="ov" style="margin:20px 0 8px">Same component, MLB — colours come from <code>lib/sports/mlb/teamColors.ts</code>, no sport branch</div>
+  <div class="card hero" style="--acc2:#C4CED3;--acc2ink:#0C2340">
+    <div class="hero-top" style="background:linear-gradient(115deg,#0C2340 0%,#0a1b31 100%);min-height:120px">
+      <img class="wm logo" src="https://a.espncdn.com/i/teamlogos/mlb/500/nyy.png" alt="">
+      <img class="shot" style="width:110px;height:110px;margin-bottom:-36px" src="https://a.espncdn.com/i/headshots/mlb/players/full/33192.png" alt="Aaron Judge">
+      <div class="hero-id"><h1>Aaron Judge</h1><div class="meta"><span class="hchip acc">RF</span><span class="hchip">#99</span><span class="hchip">New York Yankees</span></div></div>
+      <div class="hero-next"><div class="ov" style="color:rgba(255,255,255,.7)">Tonight</div><div class="opp">vs <img class="logo" width="26" height="26" src="https://a.espncdn.com/i/teamlogos/mlb/500/bal.png" alt=""> Orioles</div><div class="when">7:05 PM · RHP opposing</div></div>
+    </div>
+    <div class="bio" style="padding-left:152px"><span><b>34</b> yrs</span><span><b>6'7"</b> 282 lb</span><span><b>Fresno State</b></span><span>2013 · R1 P32</span><span><b>11th</b> season</span></div>
+  </div>
+  <div class="note"><b>Tile colour</b> is the stat's league-rank heat (Electric Turf ramp) as a 3px base bar plus the rank text — the value stays ink. <b>The "2026-27 is 2 games old" sentence</b> becomes the chip beside the season label. The band gradient is the team primary darkened ~30% so white text holds 4.5:1 for every team; teams with a light primary (NO gold, LV black) fall back to their secondary/charcoal.</div>
+</section>
+
+<!-- ============ 3. Player list ============ -->
+<section class="mock">
+  <div class="mock-label"><b>3 · Player search rail</b><span>One row shape for every sport; filters on the kit, same pattern as the props bar (§6).</span></div>
+  <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start">
+    <div class="card pl">
+      <div class="srch">⌕ <span>Search players…</span></div>
+      <div class="fbar">
+        <span class="sel on">RB <span class="x">✕</span></span>
+        <span class="sel">Team ▾</span>
+        <span class="sel">Game ▾</span>
+        <span class="sel on">Has props <span class="x">✕</span></span>
+        <span class="sel">Injury ▾</span>
+      </div>
+      <div class="sort"><span>18 players</span><span>Sort: <b style="color:var(--ink2)">Rush yds ▾</b></span></div>
+      <div id="plist" style="margin-top:6px"></div>
+    </div>
+    <div class="pl-note">
+      <p style="margin-top:0"><b>Row, every sport:</b> headshot with team-logo badge · name + position · today's matchup and time · one headline stat on the right with its unit · green count of markets open (replaces the unlabelled "5").</p>
+      <p><b>The headline stat is the adapter's choice, not the component's:</b> RB rush yds, QB pass yds, WR rec yds, MLB hitter OPS, pitcher ERA, golfer SG:Tot, NBA PPG. The row reads the same; only the number differs — the same rule as <code>surface</code> in the research cards.</p>
+      <p><b>Filters:</b> position (multi), team, game, has-props-today, injury status; sort by the headline stat, name, or markets. Active filters render charcoal with a clear ✕.</p>
+      <p><b>Active row:</b> sunk background plus a 3px bar in the player's team colour.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4. Slate: Games + Books ============ -->
+<section class="mock">
+  <div class="mock-label"><b>4 · Slate — Games and Books</b><span>Team logos, team-colour stripe, book marks. Shown under header variant A.</span></div>
+
+  <div class="band"><h2>Games</h2><span class="cnt">3</span><span class="sub">Eastern day · Mon Sep 21</span></div>
+  <div class="games" id="games"></div>
+
+  <div class="band" style="margin-top:28px"><h2>Where the books differ</h2><span class="cnt">23</span></div>
+  <div class="grid2">
+    <div class="card">
+      <div class="tcard-h"><b>Price outliers</b><span class="chip">11</span><small>At least 5 books</small></div>
+      <div class="scroll"><table class="tbl"><thead><tr><th>Player</th><th>Book</th><th class="r">Price</th><th class="r">Others</th><th class="r">Gap</th><th class="r">Books</th></tr></thead><tbody id="outliers"></tbody></table></div>
+      <div class="tcard-f">A price gap between books, not a model edge.</div>
+    </div>
+    <div class="card">
+      <div class="tcard-h"><b>Line disagreements</b><span class="chip">12</span><small>Books split on the line</small></div>
+      <div class="scroll"><table class="tbl"><thead><tr><th>Player</th><th class="r">Most books</th><th class="r">Others</th><th>At the other line</th></tr></thead><tbody id="disagree"></tbody></table></div>
+      <div class="tcard-f">Where books disagree on the line itself.</div>
+    </div>
+  </div>
+  <div class="note"><b>Gap</b> stays a neutral caution tint — it's a spread between books, never green/red, per the no-edge rule. The "At the other line" text list becomes a stack of book marks with a count; hover names them (kit <code>Tooltip</code>).</div>
+</section>
+
+<!-- ============ 5. Receipts + new specials ============ -->
+<section class="mock">
+  <div class="mock-label"><b>5 · Specials receipts</b><span>A graded breakdown per player, not a row of pills.</span></div>
+
+  <div class="card" style="overflow:hidden">
+    <div class="rc-top">
+      <div><div class="ov">Anytime TD · Sun Sep 20</div><div class="big num">2<small> of 5 who played scored</small></div></div>
+      <div>
+        <div class="meter" id="meter"></div>
+        <div style="display:flex;gap:14px;margin-top:6px;font-size:12px;color:var(--ink3)"><span><b style="color:var(--good-ink)">■</b> scored</span><span><b style="color:var(--bad-ink)">■</b> played, no TD</span><span>▨ did not play (not counted)</span></div>
+      </div>
+      <div style="text-align:right"><div class="ov">Last 7 slates</div><div class="wk" id="wk" title="hits per slate"></div><div style="font-size:12px;color:var(--ink3)">9 of 31 who played</div></div>
+    </div>
+    <div class="scroll"><table class="tbl rtbl"><thead><tr><th>Rank</th><th>Player</th><th>Game</th><th>What happened</th><th class="r">Result</th></tr></thead><tbody id="receipts"></tbody></table></div>
+    <div class="rc-note">Each player is graded on their own — this is a ranking of five separate calls, not a parlay. A player who didn't play is neither a hit nor a miss. Ties share a rank.</div>
+  </div>
+
+  <div class="ov" style="margin:24px 0 10px">New specials — forward-looking like Anytime TD: today's ranked top five, graded tomorrow</div>
+  <div class="specials">
+    <div class="card sp">
+      <div class="ph"><div><h3>Longest home run</h3><div class="q">Who hits the day's longest HR · 12 games</div></div><span class="chip">MLB</span></div>
+      <div class="scroll"><table class="tbl stbl" id="sp-hr"></table></div>
+      <div class="rcpt"><b>Yesterday:</b> longest was 468 ft · K. Schwarber — <span class="hit">our #3</span></div>
+      <div class="gate">Grading needs per-HR Statcast distance, pulled the morning after.</div>
+    </div>
+    <div class="card sp">
+      <div class="ph"><div><h3>Longest reception</h3><div class="q">Who has the slate's longest catch · 14 games</div></div><span class="chip">NFL</span></div>
+      <div class="scroll"><table class="tbl stbl" id="sp-rec"></table></div>
+      <div class="rcpt"><b>Last week:</b> longest was 71 yds · T. Hill — <span class="miss">not in our top 5</span></div>
+      <div class="gate">Grading from play-by-play. A longest-reception line needs a provider that carries the market.</div>
+    </div>
+    <div class="card sp">
+      <div class="ph"><div><h3>2+ goals</h3><div class="q">Who scores twice tonight · opens Oct 7</div></div><span class="chip">NHL</span></div>
+      <div class="scroll"><table class="tbl stbl" id="sp-nhl"></table></div>
+      <div class="rcpt"><b>No receipts yet</b> — the first graded night is Oct 8.</div>
+      <div class="gate">Off-season: this card is a preview of the shape. Graded from game logs; each player is his own call, like Anytime TD.</div>
+    </div>
+  </div>
+  <div class="note"><b>How they read:</b> the rank is the call; the columns are the evidence, each with its league percentile (the same Electric Turf ramp as the hero tiles) and a one-line plain-English read — the same factor ranking as Anytime TD, never a probability or a price comparison. Longest HR and longest reception have <i>one</i> winner per slate, so their receipt is "where did the actual leader sit in our ranking" plus each top-five player's own longest; 2+ goals grades each player on his own.</div>
+  <div class="note"><b>Also fixes a live bug:</b> the current receipts render <code>4. 4241372 · no</code> — an unresolved ESPN athlete id in place of a name. The breakdown table needs the name resolved, and falls back to "Unknown player" rather than an id.</div>
+</section>
+
+<!-- ============ 6. Props controls ============ -->
+<section class="mock">
+  <div class="mock-label"><b>6 · Props controls</b><span>No tabs. All / Coming up / Watchlist / Home Runs become filters. The table itself stays frozen (D3).</span></div>
+
+  <div class="band"><h2>Props</h2><span class="cnt">33</span><span class="sub">NFL · Mon Sep 21</span></div>
+  <div class="card pc">
+    <div class="pc-row">
+      <div class="srch">⌕ <span>Search players</span></div>
+      <span class="fbtn">⚲ Filters <b>3</b></span>
+      <span class="seg"><span class="on">All</span><span>Upcoming</span><span>Live</span></span>
+      <span class="tog on"><i></i>Watchlist only</span>
+      <span class="brk"></span>
+      <span class="spacer"></span>
+      <span class="ic">▦</span><span class="ic on">☰</span><span class="ic">⋯</span>
+    </div>
+    <div class="pc-row pc-filters">
+      <span class="sel">Games <b style="color:var(--ink)">All 1</b> ▾</span>
+      <span class="sel on">Market: Receptions <span class="x">✕</span></span>
+      <span class="sel">Team ▾</span>
+      <span class="sel">Position ▾</span>
+      <span class="sel on">Hit rate ≥ 60% <span class="x">✕</span></span>
+      <span class="sel">Odds ▾</span>
+      <span class="sel">Streak ▾</span>
+      <span class="sel">Book: Best available ▾</span>
+    </div>
+    <div class="active">Showing 9 of 33 · <span class="chip">Receptions</span><span class="chip">Hit rate ≥ 60%</span><span class="chip">Watchlist</span><a style="color:var(--ink2);text-decoration:underline;margin-left:4px">Clear all</a></div>
+  </div>
+  <div class="frozen">ScanTable — unchanged (D3 freeze on the table, columns, cells and colours)</div>
+
+  <div class="ov" style="margin:24px 0 10px">Phone (390px) — never more than two rows of controls, plus one swipe row only when filters are on</div>
+  <div class="phones">
+    <div class="phone">
+      <div class="pcap">Closed</div>
+      <div class="pscreen">
+        <div class="pband"><b>Props</b><span>33</span></div>
+        <div class="pctl">
+          <div class="prow1"><div class="srch">⌕ <span>Search</span></div><span class="fbtn show">⚲ Filters <b>3</b></span><span class="ic">⋯</span></div>
+          <div class="prow1"><span class="seg grow"><span class="on">All</span><span>Upcoming</span><span>Live</span></span><span class="tog on sm"><i></i>Watchlist</span></div>
+          <div class="pchips"><span class="chip">Receptions ✕</span><span class="chip">Hit rate ≥ 60% ✕</span><span class="chip">Watchlist ✕</span><span class="chip">Clear</span></div>
+        </div>
+        <div class="pfrozen">ScanCard list (unchanged)</div>
+      </div>
+    </div>
+    <div class="phone">
+      <div class="pcap">Filters sheet open</div>
+      <div class="pscreen dim">
+        <div class="pband"><b>Props</b><span>33</span></div>
+        <div class="pfrozen" style="height:120px"></div>
+        <div class="sheet">
+          <div class="grab"></div>
+          <div class="sh-h"><b>Filters</b><span>Reset</span></div>
+          <div class="sh-list" id="sheet"></div>
+          <div class="sh-go">Show 9 props</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="note"><b>Breakpoints:</b> <b>≥1024</b> — the two rows above. <b>640–1023</b> — the filter row stops wrapping and scrolls sideways in one line (edge fade shows there's more). <b>&lt;640</b> — row 1 is search + <i>Filters (n)</i> + the view menu (grid/list/columns fold into ⋯); row 2 is status + Watchlist; every other filter lives in the kit's <code>SlideoutMenu</code> bottom sheet with its current value shown, applied with one "Show 9 props" button. Active filters are one swipe row of removable chips, and it's absent when nothing is on. Worst case on a phone: three rows, never twelve.</div>
+  <div class="note">
+    <b>What maps where:</b> <i>All / Coming up</i> → the <b>status</b> segmented control (adds <i>Live</i>, which didn't exist). <i>Watchlist</i> → a toggle, so it combines with any other filter. <i>Home Runs</i> → gone; HR props are one value of the Market filter, and the HR ranking lives in Specials. The count badges on the old tabs become the "Showing 9 of 33" line.<br>
+    <b>Unfreezing:</b> <code>FilterBar</code>, <code>FilterSidebar</code>, <code>PlayerFilterDrawer</code>, <code>DateGameStrip</code>, <code>useFilters</code> and <code>SegmentedToggle</code> come off <code>tests/ui-scope.ts</code>'s <code>OUT_OF_SCOPE</code> and move onto the kit; <code>ScanTable</code>/<code>ScanCard</code> stay on it.
+  </div>
+</section>
+
+<!-- ============ 7. Tracker ============ -->
+<section class="mock">
+  <div class="mock-label"><b>7 · Live line tracker</b><span>Deleted on every page. The watchlist already owns <code>tracked_lines</code>.</span></div>
+  <div class="card del"><b>Live line tracker</b><span style="margin-left:auto">+ Track a line</span></div>
+  <div class="note">Removes <code>components/LiveLineTrackerCard.tsx</code>, its mount at <code>PlayerDetail.tsx:1957</code>, and the <code>liveLineTracker</code> field every player adapter fills. <code>tracked_lines</code> and its API stay — they back the watchlist.</div>
+</section>
+
+</div>
+
+<script>
+const H = (sport, id) => `https://a.espncdn.com/i/headshots/${sport}/players/full/${id}.png`;
+const L = (sport, ab) => `https://a.espncdn.com/i/teamlogos/${sport}/500/${ab}.png`;
+const B = (d) => `https://www.google.com/s2/favicons?domain=${d}&sz=64`;
+const BOOK = {dk:'draftkings.com',fd:'fanduel.com',mgm:'betmgm.com',czr:'caesars.com',kal:'kalshi.com',px:'prophetx.co',hr:'hardrock.bet',br:'betrivers.com',pin:'pinnacle.com'};
+const BOOKNAME = {dk:'DraftKings',fd:'FanDuel',mgm:'BetMGM',czr:'Caesars',kal:'Kalshi',px:'ProphetX',hr:'Hard Rock',br:'BetRivers',pin:'Pinnacle'};
+const onerr = `onerror="this.style.visibility='hidden'"`;
+const $ = (id) => document.getElementById(id);
+
+/* hero tiles — value, label, rank of N, rank fraction (1 = best) */
+const tiles = [['132','Carries','29th of 142 RB',.80],['548','Rush yds','34th of 142 RB',.76],['4.2','Yds / carry','61st of 142 RB',.57],['2','Rush TD','78th of 142 RB',.45],['28','Receptions','22nd of 142 RB',.85],['199','Rec yds','31st of 142 RB',.78],['62.3','Scrimmage / G','27th of 142 RB',.81],['12','Games','',null]];
+const heat = (t) => t==null?'var(--line)': t>=.7?'var(--good)': t>=.4?'var(--warn)':'var(--bad)';
+const heatInk = (t) => t==null?'var(--ink3)': t>=.7?'var(--good-ink)': t>=.4?'var(--warn-ink)':'var(--bad-ink)';
+$('tiles').innerHTML = tiles.map(([v,l,r,t])=>`<div class="tile"><div class="ov">${l}</div><div class="v num">${v}</div><div class="rk" style="color:${heatInk(t)}">${r||'&nbsp;'}</div><div class="bar" style="width:${t==null?0:Math.round(t*100)}%;background:${heat(t)}"></div></div>`).join('');
+
+const form = [['l','car','Panthers','14 car · 38 yds'],['w','det','Lions','17 car · 92 yds'],['w','gb','Packers','12 car · 61 yds · TD'],['w','chi','Bears','15 car · 70 yds'],['w','sea','Seahawks','11 car · 44 yds']];
+$('form').innerHTML = form.map(([r,ab,n,s])=>`<div class="fr"><span class="res ${r}">${r.toUpperCase()}</span><img class="logo" width="22" height="22" src="${L('nfl',ab)}" ${onerr}><span>${n}</span><span class="num" style="color:var(--ink3);font-size:12px">${s}</span></div>`).join('');
+
+/* player rail */
+const players = [
+  ['3042519','min','#4F2683','Aaron Jones Sr.','RB','@ TB · Sun 3:05','548','rush yds',6,true],
+  ['3054850','no','#D3BC8D','Alvin Kamara','RB','vs ATL · Sun 1:00','471','rush yds',5],
+  ['3043078','bal','#241773','Derrick Henry','RB','vs CLE · Sun 1:00','812','rush yds',7],
+  ['4430807','atl','#A71930','Bijan Robinson','RB','@ NO · Sun 1:00','744','rush yds',7],
+  ['3117251','sf','#AA0000','Christian McCaffrey','RB','@ LAR · Sun 4:25','688','rush yds',6],
+  ['4239934','phi','#004C54','AJ Dillon','RB','—  no game today','60','rush yds',0],
+];
+$('plist').innerHTML = players.map(([id,ab,tc,n,pos,ctx,v,u,m,act])=>`<div class="prow ${act?'act':''}" style="--tc:${tc}">
+  <div class="avw"><img class="av" width="40" height="40" src="${H('nfl',id)}" ${onerr}><img class="tl logo" src="${L('nfl',ab)}" ${onerr}></div>
+  <div style="min-width:0"><div class="nm"><span>${n}</span><span class="pos">${pos}</span></div><div class="ctx">${ctx}</div></div>
+  <div class="hl"><b class="num">${v}</b><small>${u}</small>${m?`<div style="margin-top:3px"><span class="mk">${m} mkts</span></div>`:''}</div></div>`).join('');
+
+/* games */
+const TC = {min:'#4F2683',tb:'#D50A0A',kc:'#E31837',lac:'#0080C6',dal:'#003594',nyg:'#0B2265'};
+const games = [
+  ['min','Vikings','3–0','tb','Buccaneers','2–1','-2.5','+120','-142','Sun 3:05 PM','O/U 44.5',['dk','fd','mgm','czr','kal'],false],
+  ['kc','Chiefs','2–1','lac','Chargers','3–0','+1.5','-105','-115','LIVE · Q2 7:41','O/U 47.5',['dk','fd','mgm','pin'],true],
+  ['dal','Cowboys','1–2','nyg','Giants','0–3','-6.5','-280','+230','Mon 8:15 PM','O/U 40.5',['dk','fd','czr','hr','br','px'],false],
+];
+$('games').innerHTML = games.map(([a,an,ar,h,hn,hr,sp,aml,hml,when,tot,bks,live])=>`<div class="card gc">
+  <div class="stripe"><i style="background:${TC[a]}"></i><i style="background:${TC[h]}"></i></div>
+  <div class="gh"><span>${live?`<span class="live">${when}</span>`:when}</span><span>${tot}</span></div>
+  <div class="gt"><img class="logo" width="36" height="36" src="${L('nfl',a)}" ${onerr}><div><div class="tn">${an}</div><div class="rec">${ar}</div></div><div class="ln num">${sp}</div><div class="ml num">${aml}</div></div>
+  <div class="gt" style="padding-top:0"><img class="logo" width="36" height="36" src="${L('nfl',h)}" ${onerr}><div><div class="tn">${hn}</div><div class="rec">${hr}</div></div><div class="ln num">${(-parseFloat(sp)>0?'+':'')+(-parseFloat(sp))}</div><div class="ml num">${hml}</div></div>
+  <div class="gf"><span class="books">${bks.map(b=>`<img src="${B(BOOK[b])}" alt="${BOOKNAME[b]}" ${onerr}>`).join('')}</span><span>${bks.length} books · consensus</span><span style="color:var(--ink2);font-weight:600">Research →</span></div></div>`).join('');
+
+/* outliers */
+const out = [['4696981','nyg','Cam Skattebo','Receptions O 1.5','kal','-122','-154','5.7',9],['4361050','nyg','Isaiah Likely','Receptions O 4.5','kal','+122','-102','5.5',9],['4682648','nyg','Malachi Fields','Receptions O 2.5','px','+138','+115','4.5',8],['16800','lar','Davante Adams','Receptions O 3.5','kal','-245','-372','7.8',6],['4595348','nyg','Malik Nabers','Receptions O 4.5','kal','-194','-240','4.6',6]];
+$('outliers').innerHTML = out.map(([id,ab,n,m,bk,p,o,g,c])=>`<tr><td><div class="who"><img class="av" width="30" height="30" src="${H('nfl',id)}" ${onerr}><div><b>${n}</b><small>${m}</small></div></div></td><td><div class="bk"><img src="${B(BOOK[bk])}" ${onerr}>${BOOKNAME[bk]}</div></td><td class="r num" style="font-weight:600">${p}</td><td class="r num">${o}</td><td class="r"><span class="gap num">${g} pts</span></td><td class="r num">${c}</td></tr>`).join('');
+
+const dis = [['16800','Davante Adams','Receptions','5.5',9,'2.5',6,['br','dk','fd','hr','kal','px']],['4595348','Malik Nabers','Receptions','5.5',9,'4.5',6,['br','dk','fd','hr','kal','px']],['4361050','Isaiah Likely','Receptions','4.5',9,'5.5',6,['br','dk','fd','hr','kal','px']],['4696981','Cam Skattebo','Receptions','1.5',9,'2.5',5,['br','dk','fd','hr','px']],['12483','Matthew Stafford','Pass attempts','32.5',5,'25.5',1,['dk']]];
+$('disagree').innerHTML = dis.map(([id,n,m,a,ac,b,bc,bks])=>`<tr><td><div class="who"><img class="av" width="30" height="30" src="${H('nfl',id)}" ${onerr}><div><b>${n}</b><small>${m}</small></div></div></td><td class="r num"><b>${a}</b> <span style="color:var(--ink3)">(${ac})</span></td><td class="r num">${b} <span style="color:var(--ink3)">(${bc})</span></td><td><div class="stack">${bks.slice(0,5).map(k=>`<img src="${B(BOOK[k])}" title="${BOOKNAME[k]}" ${onerr}>`).join('')}<span>${bks.length>5?'+'+(bks.length-5)+' · ':''}${bks.length} book${bks.length>1?'s':''}</span></div></td></tr>`).join('');
+
+/* receipts: rank, id, team, name, game, what happened, result g/b/n */
+const rc = [[1,'4430807','atl','Bijan Robinson','ATL @ CAR','18 car · 71 yds · 4 rec · 0 TD','b'],[2,'3043078','bal','Derrick Henry','BAL vs DET','22 car · 118 yds · 1 rush TD','g'],[3,'3117251','sf','Christian McCaffrey','SF vs ARI','15 car · 64 yds · 1 rec TD','g'],[3,'3139477','kc','Patrick Mahomes','KC vs NYG','Inactive','n'],[4,'4428331','kc','Rashee Rice','KC vs NYG','Suspended','n'],[4,'','','Unknown player','—','0 TD','b'],[5,'15847','kc','Travis Kelce','KC vs NYG','Inactive','n'],[5,'4426502','atl','Drake London','ATL @ CAR','7 rec · 88 yds · 0 TD','b']];
+$('receipts').innerHTML = rc.map(([r,id,ab,n,g,w,res])=>`<tr class="${res==='n'?'dnp':''}"><td class="rank">${r}</td><td><div class="who">${id?`<img class="av" width="32" height="32" src="${H('nfl',id)}" ${onerr}>`:'<span class="av" style="width:32px;height:32px"></span>'}<div><b>${n}</b>${ab?`<small style="display:flex;gap:4px;align-items:center"><img class="logo" width="14" height="14" src="${L('nfl',ab)}" ${onerr}>${ab.toUpperCase()}</small>`:''}</div></div></td><td>${g}</td><td class="num">${w}</td><td class="r"><span class="outc" style="justify-content:flex-end">${res==='g'?'<span style="color:var(--good-ink)">Scored</span><span class="dot g">✓</span>':res==='b'?'<span style="color:var(--bad-ink)">No TD</span><span class="dot b">✕</span>':'<span>Did not play</span><span class="dot n">–</span>'}</span></td></tr>`).join('');
+$('meter').innerHTML = rc.map(x=>`<i class="${x[6]==='g'?'g':x[6]==='b'?'b':'n'}"></i>`).join('');
+$('wk').innerHTML = [1,2,0,1,2,1,2].map(v=>`<div class="${v?'':'m'}" style="height:${v?v*16+6:4}px"></div>`).join('');
+
+/* new specials */
+$('sheet').innerHTML = [['Games','All (1)'],['Market','Receptions',1],['Team','Any'],['Position','Any'],['Hit rate','≥ 60%',1],['Odds','Any'],['Streak','Any'],['Book','Best available']].map(([k,v,on])=>`<div>${k}<span class="${on?'on':''}">${v} ›</span></div>`).join('');
+
+/* collapsible hero body: closed by default, a one-time peek shows it's there */
+(() => {
+  const bar = $('hbBar'), hb = $('hb'), lbl = $('hbLbl');
+  const set = (open) => { hb.classList.toggle('open', open); bar.setAttribute('aria-expanded', open); lbl.textContent = open ? 'Hide' : 'Show'; };
+  bar.addEventListener('click', () => set(!hb.classList.contains('open')));
+  const peek = () => {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches || hb.classList.contains('open')) return;
+    hb.classList.remove('peek'); bar.classList.remove('peek'); void hb.offsetWidth;
+    hb.classList.add('peek'); bar.classList.add('peek');
+    hb.addEventListener('animationend', () => { hb.classList.remove('peek'); bar.classList.remove('peek'); }, { once: true });
+  };
+  let seen = false; try { seen = localStorage.getItem('lb.heroPeekSeen') === '1'; } catch {}
+  if (!seen) { setTimeout(peek, 700); try { localStorage.setItem('lb.heroPeekSeen', '1'); } catch {} }
+  $('hbReplay').addEventListener('click', (e) => { e.preventDefault(); set(false); setTimeout(peek, 350); });
+})();
+
+/* specials: cols = [label, unit]; each stat = [display, league percentile 0-100 or null] */
+const pctTxt = (p) => { const n = Math.round(p); const sfx = (n % 100 >= 11 && n % 100 <= 13) ? 'th' : ({1:'st',2:'nd',3:'rd'}[n % 10] || 'th'); return n + sfx + ' pct'; };
+const sp = (el, sport, cols, rows) => {
+  const head = `<thead><tr><th></th><th>Player · matchup</th>${cols.map(([l,sub])=>`<th class="r">${l}<span class="colsub">${sub}</span></th>`).join('')}</tr></thead>`;
+  const body = rows.map(([id,ab,n,ctx,read,stats],i)=>`<tr><td class="rk">${i+1}</td>
+    <td class="pcell"><div class="who"><img class="av" width="40" height="40" src="${H(sport,id)}" ${onerr}><div><b>${n}</b><small style="display:flex;gap:4px;align-items:center"><img class="logo" width="14" height="14" src="${L(sport,ab)}" ${onerr}>${ctx}</small></div></div><div class="read">${read}</div></td>
+    ${stats.map(([v,p])=>{ const t = p==null ? null : p/100; return `<td class="r"><span class="sv">${v}</span>${p==null?'':`<span class="sp-pct" style="color:${heatInk(t)}">${pctTxt(p)}</span><span class="mbar"><i style="width:${p}%;background:${heat(t)}"></i></span>`}</td>`; }).join('')}</tr>`).join('');
+  $(el).innerHTML = head + '<tbody>' + body + '</tbody>';
+};
+sp('sp-hr','mlb',
+  [['Barrel %','season'],['Max EV','mph'],['Avg HR','distance'],['HR 430+ ft','season'],['Park','distance factor'],['Wind','at first pitch'],['Opp SP','HR/9 allowed']],
+  [
+  ['39832','lad','Shohei Ohtani','@ COL · Coors Field',"Coors adds ~20 ft to every fly ball, and tonight the wind is blowing out.",[['21.8%',96],['119.1',99],['418 ft',95],['11',97],['+6%',100],['Out 11',92],['1.42',78]]],
+  ['33192','nyy','Aaron Judge','vs BAL · Yankee Stadium',"Best barrel rate in baseball against a fly-ball righty.",[['24.1%',99],['117.4',97],['414 ft',92],['9',95],['0%',50],['Calm',50],['1.61',86]]],
+  ['33712','phi','Kyle Schwarber','@ ATL · Truist Park',"Pull-side power plus a warm, humid night at Truist.",[['19.9%',93],['116.2',95],['412 ft',90],['7',89],['+1%',62],['Cross 6',55],['1.18',64]]],
+  ['41292','sea','Cal Raleigh','@ TEX · Globe Life',"Roof open in Arlington, facing a lefty who gives up home runs.",[['19.2%',91],['114.8',88],['405 ft',80],['6',84],['+2%',70],['Roof open',null],['1.55',83]]],
+  ['37498','bal','Pete Alonso','@ NYY · Yankee Stadium',"Hitting it hard lately, with a short porch in left.",[['16.4%',82],['116.0',94],['408 ft',85],['5',76],['0%',50],['Calm',50],['1.02',52]]],
+  ]);
+sp('sp-rec','nfl',
+  [['aDOT','yds / target'],['Deep tgts','20+ air yds / g'],['Air-yd share','of team'],['YAC','per rec'],['Season long','yds'],['Opp explosives','20+ passes allowed']],
+  [
+  ['4362628','cin','Ja’Marr Chase','vs PIT · Sun 1:00',"Gets the most deep targets in the league, and Pittsburgh gives up the most 20+ yard passes.",[['13.1',88],['2.4',98],['38%',94],['5.9',72],['52',80],['8 (1st)',100]]],
+  ['4262921','min','Justin Jefferson','@ TB · Sun 3:05',"Two in five of Minnesota’s air yards go to him, and Tampa plays a single deep safety most snaps.",[['12.2',83],['2.1',95],['41%',99],['5.1',60],['58',92],['6 (5th)',85]]],
+  ['4372016','den','Jaylen Waddle','vs LV · Sun 4:05',"Makes his long plays after the catch, not with deep targets.",[['10.4',64],['1.3',70],['29%',75],['7.2',95],['64',98],['5 (9th)',72]]],
+  ['4426515','lar','Puka Nacua','@ SF · Sun 4:25',"Gets the most targets of anyone here, and more of them are going deep lately.",[['9.8',55],['1.6',82],['36%',90],['6.1',78],['44',60],['4 (15th)',50]]],
+  ['4430878','sea','Jaxon Smith-Njigba','vs ARI · Sun 4:05',"Arizona’s No. 2 cornerback has given up the most yards per target.",[['12.4',85],['1.7',85],['31%',80],['5.4',65],['47',70],['6 (4th)',88]]],
+  ]);
+sp('sp-nhl','nhl',
+  [['Shots','per game'],['xG','per 60'],['PP TOI','per game'],['2+ goal gms','last season'],['Opp GA','per game'],['Opp goalie','sv% last season']],
+  [
+  ['4024123','tor','Auston Matthews','vs MTL · Oct 7',"Takes the most shots in the league, against one of its weakest goalies.",[['4.6',100],['1.52',99],['3:41',88],['9',97],['3.41',90],['.892',88]]],
+  ['3895074','edm','Connor McDavid','vs CGY · Oct 8',"On the ice for nearly every power play, and scoring chances run through him.",[['4.1',95],['1.40',96],['4:12',99],['7',90],['3.02',62],['.905',55]]],
+  ['3114778','bos','David Pastrnak','vs CHI · Oct 7',"Plays on the top power play, and Chicago’s penalty kill was the worst in the league.",[['4.3',98],['1.31',92],['3:55',94],['8',94],['3.55',96],['.894',84]]],
+  ['3114727','edm','Leon Draisaitl','vs CGY · Oct 8',"Gets the most shots from right in front of the net.",[['3.4',84],['1.44',97],['4:05',97],['10',99],['3.02',62],['.905',55]]],
+  ['2563060','tb','Nikita Kucherov','vs FLA · Oct 7',"Scores more points per game than anyone here, but the Florida goalie he faces is tougher.",[['3.2',80],['1.18',85],['3:48',91],['6',85],['2.71',30],['.912',35]]],
+  ]);
+</script>
+</body>
+</html>
