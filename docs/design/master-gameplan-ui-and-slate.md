@@ -468,7 +468,7 @@ history. One phase per sport, each entering the register as `baseline`.
 | 12 | S4 Specials + receipts | S | S1, M3 | yes | no | **done** — reads `slate_rankings` (MLB HR + K, NFL TD, EPL/MLS goalscorer; CFB defined, no rows); receipts live from 2026-09-20; labels drift-tested against the Python; page-width cutoff fixed (SL-25) |
 | 13 | S5 Model + Your lines | S | S1, M1 | yes | no | **done** — MLB Model section (picks + price + lock state; no probability, grade, stake or record, per Q0); `TodaysPicksModal`, `useGamePickRecord` and the on-page record deleted; MLB cards now name the locked pick; Your lines signed-in only (signed-in render owed, Q15) |
 | 14 | U3 Form controls | U | U0 | yes | no | **done** — field family in the kit; 0 raw `<input>`/`<select>`/`<textarea>` in scope; five hand-built listboxes are the kit `PickList`; every field 16px below 768px |
-| 15 | U4 Overlays | U | U0 | yes | no | not started |
+| 15 | U4 Overlays | U | U0 | yes | no | **done** — Modal / SlideoutMenu / Dropdown / Popover on React Aria; DrillDownPanel is the SlideoutMenu (props kept); slip, account menu and diagnostics dialog moved; 0 portals or dialogs outside the kit |
 | 16 | U6 Page sweep | U | U1–U5 | yes | no | not started |
 | 17 | S6 Slate close | S | S1–S5 | tests/docs | no | not started |
 | 18 | U7 UI close | U | U6, S6 | tests/docs | no | not started |

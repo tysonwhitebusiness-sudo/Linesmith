@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PickCandidate, Sport, SubjectSummary } from '@/lib/core/types';
 import { SPORT_LABEL } from '@/lib/core/types';
 import type { PickRow } from './useSlip';
 import { SubjectAvatar } from './SubjectAvatar';
-import { Button, CloseButton, FileTrigger, Input, Select } from './ui';
+import { Button, CloseButton, FileTrigger, Input, Modal, Select } from './ui';
 import { MarketLabel } from './MarketLabel';
 import { BookLogo, bookLabel } from './BookLogo';
 
@@ -41,8 +41,6 @@ export interface SlipModalProps {
   onAdd: (candidate: PickCandidate, odds?: { americanOdds: string; source: string }) => void;
   onSubmit: (ids: number[]) => Promise<unknown>;
 }
-
-const TRANSITION_MS = 180;
 
 function collisions(picks: PickRow[]): Map<string, number> {
   const counts = new Map<string, number>();
@@ -169,20 +167,6 @@ export function SlipModal({
   const [copied, setCopied] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const [mounted, setMounted] = useState(open);
-  const [shown, setShown] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setMounted(true);
-      const raf = requestAnimationFrame(() => setShown(true));
-      return () => cancelAnimationFrame(raf);
-    }
-    setShown(false);
-    const timeout = setTimeout(() => setMounted(false), TRANSITION_MS);
-    return () => clearTimeout(timeout);
-  }, [open]);
-
   const counts = useMemo(() => collisions(picks), [picks]);
 
   const imageIndex = useMemo(() => {
@@ -271,37 +255,31 @@ export function SlipModal({
     (leg) => !picks.some((p) => p.subjectId === leg.subjectId && p.americanOdds),
   );
 
-  if (!mounted) return null;
-
+  // U4: the kit Modal — focus trap, Escape, scrim, scroll lock and focus
+  // return from React Aria; a bottom sheet below 768px. The hand-built scrim
+  // button and the mount/shown animation state machine are gone.
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
-      <button
-        type="button"
-        aria-label="Close slip"
-        onClick={onClose}
-        className={`absolute inset-0 bg-ink/40 backdrop-blur-[2px] transition-opacity duration-[180ms] ${
-          shown ? 'opacity-100' : 'opacity-0'
-        }`}
-      />
-
-      <section
-        className={`relative flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-paper shadow-drawer transition-all duration-[180ms] ${
-          shown ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-2 scale-95 opacity-0'
-        }`}
-      >
-        <header className="flex items-center justify-between border-b border-line px-4 py-3">
-          <h2 className="text-base font-semibold">Slip · {picks.length}</h2>
-          <div className="flex items-center gap-3">
-            {picks.length > 0 ? (
-              <Button variant="link" size="sm" onPress={onClear} className="text-bad">
-                Clear
-              </Button>
-            ) : null}
-            <CloseButton size="sm" onPress={onClose} aria-label="Close" />
-          </div>
-        </header>
-
-        <div className="space-y-3 overflow-y-auto p-4">
+    <Modal
+      isOpen={open}
+      onClose={onClose}
+      width={400}
+      title={`Slip · ${picks.length}`}
+      headerExtra={
+        picks.length > 0 ? (
+          <Button variant="link" size="sm" onPress={onClear} className="text-bad">
+            Clear
+          </Button>
+        ) : null
+      }
+      footer={
+        picks.length > 0 ? (
+          <Button variant="primary" size="lg" loading={submitting} onPress={submit}>
+            {submitting ? 'Submitting…' : `Submit ${picks.length} to Live Bets`}
+          </Button>
+        ) : undefined
+      }
+    >
+        <div className="space-y-3">
           {/* Scan is the primary way in — promoted above the pick list rather than buried under it. */}
           <div>
             {/* U3: React Aria's FileTrigger opens the picker from the kit
@@ -418,16 +396,7 @@ export function SlipModal({
             </Button>
           ) : null}
         </div>
-
-        {picks.length > 0 ? (
-          <footer className="border-t border-line p-4">
-            <Button variant="primary" size="lg" loading={submitting} onPress={submit} className="w-full">
-              {submitting ? 'Submitting…' : `Submit ${picks.length} to Live Bets`}
-            </Button>
-          </footer>
-        ) : null}
-      </section>
-    </div>
+    </Modal>
   );
 }
 

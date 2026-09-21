@@ -11,6 +11,11 @@ import {
   Card,
   Checkbox,
   Chip,
+  DrillDownPanel,
+  Dropdown,
+  Modal,
+  Popover,
+  SlideoutMenu,
   ComboBox,
   Field,
   Input,
@@ -120,6 +125,10 @@ export default function KitPage() {
   const [on, setOn] = useState(false);
   const [sport, setSport] = useState('mlb');
   const [pick, setPick] = useState('a');
+  const [modal, setModal] = useState(false);
+  const [slide, setSlide] = useState(false);
+  const [drill, setDrill] = useState(false);
+  const [lastAction, setLastAction] = useState<string | null>(null);
 
   return (
     <main className="mx-auto max-w-[1100px] px-4 py-8">
@@ -132,7 +141,7 @@ export default function KitPage() {
         <p className="mt-2 max-w-[70ch] text-body-sm text-ink-muted">
           U0 built the skeleton: the tokens, the primitives that exist today, and the Tailwind 4
           traps below. U1 adds the Button family, U2 the Hybrid table and the fifteen reference
-          tables, U3 the field family, U5 the borrowed pieces.
+          tables, U3 the field family, U4 the overlays, U5 the borrowed pieces.
         </p>
       </header>
 
@@ -494,6 +503,68 @@ export default function KitPage() {
               ]}
             />
           </div>
+        </Row>
+      </Group>
+
+      <Group
+        id="overlays"
+        title="Overlays"
+        sub="U4. React Aria's: focus in on open and back on close, Tab trapped, Escape and the scrim close, the page stops scrolling. Below 768px a Modal is a bottom sheet and a SlideoutMenu is full width."
+      >
+        <Row name="Modal" note="400 · 560 · 720; footer right-aligned, stacked on a phone">
+          <Button variant="secondary" onPress={() => setModal(true)}>
+            Open a modal
+          </Button>
+          <Modal
+            isOpen={modal}
+            onClose={() => setModal(false)}
+            width={400}
+            title="Track this line"
+            description="We will tell you when a book moves it."
+            icon={<FeaturedIcon tone="neutral" icon={<PlusGlyph />} />}
+            footer={
+              <>
+                <Button variant="secondary" onPress={() => setModal(false)}>
+                  Cancel
+                </Button>
+                <Button variant="primary" onPress={() => setModal(false)}>
+                  Track
+                </Button>
+              </>
+            }
+          >
+            <p className="text-body text-ink-secondary">Aaron Judge · Hits · Over 1.5</p>
+          </Modal>
+        </Row>
+        <Row name="SlideoutMenu · DrillDownPanel" note="560 by default; DrillDownPanel is the SlideoutMenu with its old props">
+          <Button variant="secondary" onPress={() => setSlide(true)}>
+            Open a slideout
+          </Button>
+          <SlideoutMenu isOpen={slide} onClose={() => setSlide(false)} title="Every book" subtitle="Hits · Over 1.5" footer={<Button variant="secondary" onPress={() => setSlide(false)}>Done</Button>}>
+            <p className="text-body text-ink-secondary">The body scrolls; the footer stays.</p>
+          </SlideoutMenu>
+          <Button variant="secondary" onPress={() => setDrill(true)}>
+            Open a DrillDownPanel
+          </Button>
+          <DrillDownPanel open={drill} onClose={() => setDrill(false)} title="Line movement" subtitle="All books">
+            <p className="text-body text-ink-secondary">Same panel, same props as before U4.</p>
+          </DrillDownPanel>
+        </Row>
+        <Row name="Dropdown" note={lastAction ? `last action: ${lastAction}` : 'min width 240; sections; overline headers'}>
+          <Dropdown
+            label="Row actions"
+            header="aaron.judge@example.com"
+            trigger={<Button variant="secondary" iconTrailing={<ChevronGlyph />}>Actions</Button>}
+            sections={[
+              { id: 'a', items: [{ id: 'track', label: 'Track line', shortcut: 'T', onAction: () => setLastAction('track') }, { id: 'copy', label: 'Copy link', onAction: () => setLastAction('copy') }] },
+              { id: 'b', title: 'Danger', items: [{ id: 'remove', label: 'Remove', onAction: () => setLastAction('remove') }] },
+            ]}
+          />
+        </Row>
+        <Row name="Popover" note="non-modal content from a trigger">
+          <Popover label="What Heat means" trigger={<Button variant="tertiary">What is heat?</Button>}>
+            <p className="text-body-sm text-ink-secondary">A cell tinted by where it sits in the column, not by whether it is good.</p>
+          </Popover>
         </Row>
       </Group>
 

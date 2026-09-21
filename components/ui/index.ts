@@ -41,5 +41,16 @@ export { StatValue, StatGrid, RankRow, LeagueStripRow, FactList, VizLegend, good
 export { DataTable, type Column, type DataTableProps, type Density, type HeatSpec } from './DataTable';
 export { Pagination, type PaginationProps, type PagingOptions, type PagingMode } from './Pagination';
 export { DrillDownPanel, type DrillDownPanelProps } from './DrillDownPanel';
+export {
+  Modal,
+  SlideoutMenu,
+  Dropdown,
+  Popover,
+  type ModalProps,
+  type ModalWidth,
+  type SlideoutMenuProps,
+  type DropdownItem,
+  type DropdownSection,
+} from './Overlays';
 export { Section, SectionNav } from './Section';
 export { BackLink, useUrlState } from './Navigation';

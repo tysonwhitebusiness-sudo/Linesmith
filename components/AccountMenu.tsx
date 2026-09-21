@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button } from './ui';
+import { Button, Dropdown } from './ui';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
@@ -14,7 +14,6 @@ import { createClient } from '@/lib/supabase/client';
 export function AccountMenu() {
   const router = useRouter();
   const [email, setEmail] = useState<string | null | undefined>(undefined); // undefined = not yet checked
-  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,43 +48,40 @@ export function AccountMenu() {
     );
   }
 
+  // U4: the kit Dropdown — a real menu (arrow keys, Escape, focus return),
+  // where this was a click-catching full-screen div and a card.
   return (
-    <div className="relative">
-      {/* U4 moves this whole menu onto `Dropdown`; the trigger is a Button now
-          so it presses, focuses and disables like every other one. */}
-      <Button
-        variant="tertiary"
-        size="sm"
-        onPress={() => setOpen((v) => !v)}
-        aria-label="Account"
-        aria-expanded={open}
-        className="h-7 w-7 rounded-full bg-accent-soft px-0 text-label font-semibold text-masters hover:bg-accent-soft/70"
-      >
-        {email.charAt(0).toUpperCase()}
-      </Button>
-      {open ? (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="lb-card absolute right-0 z-20 mt-1.5 w-52 p-1.5">
-            <p className="truncate px-2 py-1.5 text-[12px] text-ink-muted">{email}</p>
-            <Button
-              variant="tertiary"
-              size="sm"
-              onPress={async () => {
+    <Dropdown
+      label="Account"
+      header={email}
+      trigger={
+        <Button
+          variant="tertiary"
+          size="sm"
+          aria-label="Account"
+          className="h-7 w-7 rounded-full bg-accent-soft px-0 text-label font-semibold text-masters hover:bg-accent-soft/70"
+        >
+          {email.charAt(0).toUpperCase()}
+        </Button>
+      }
+      sections={[
+        {
+          id: 'account',
+          items: [
+            {
+              id: 'sign-out',
+              label: 'Sign out',
+              onAction: async () => {
                 const supabase = createClient();
                 await supabase.auth.signOut();
-                setOpen(false);
                 router.push('/');
                 router.refresh();
-              }}
-              className="w-full justify-start text-ink"
-            >
-              Sign out
-            </Button>
-          </div>
-        </>
-      ) : null}
-    </div>
+              },
+            },
+          ],
+        },
+      ]}
+    />
   );
 }
 

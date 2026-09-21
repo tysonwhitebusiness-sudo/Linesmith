@@ -19,10 +19,6 @@ import { OUT_OF_SCOPE, code } from './ui-scope';
 const ALLOWED: Record<string, { count: number; why: string }> = {
   // (U3 removed the five listbox options: they are the kit `PickList` now.)
 
-  // The slip's scrim: a full-bleed dismiss target that belongs to the Modal
-  // primitive, which U4 builds. It has no label, no text and no size of its own.
-  'components/SlipModal.tsx': { count: 1, why: 'modal scrim — U4 Modal owns it' },
-
   // The old glider toggle, kept only while `OUT_OF_SCOPE` files still import
   // it. U5 moves the in-scope callers off and deletes the file.
   'components/SegmentedToggle.tsx': { count: 1, why: 'the old-kit duplicate — U5 deletes it' },
@@ -31,7 +27,7 @@ const ALLOWED: Record<string, { count: number; why: string }> = {
   // ("diagnostics allowlisted until U6"). Its two `.lb-btn-primary` buttons
   // were converted in U1 so the class could be deleted; the remaining 14 are
   // admin controls that move with the rest of that page.
-  'app/diagnostics/page.tsx': { count: 14, why: 'U6 sweeps diagnostics last' },
+  'app/diagnostics/page.tsx': { count: 13, why: 'U6 sweeps diagnostics last' },
 
   // The last-resort boundary renders its own <html>: at that point the root
   // layout is the thing that failed, so the stylesheet may never have applied

@@ -159,6 +159,16 @@
   --animate-lb-shimmer: lb-shimmer 1.6s ease-in-out infinite;
   --animate-lb-fade-slide: lb-fade-slide 0.4s ease-out;
   --animate-lb-flash: lb-flash 1.2s cubic-bezier(0.2, 0, 0, 1);
+  /* U4 overlays: enter and exit on the `smooth` duration (280ms). React Aria
+     waits for an exit ANIMATION (not a transition) before unmounting. */
+  --animate-lb-fade-in: lb-fade-in 280ms cubic-bezier(0.2, 0, 0, 1);
+  --animate-lb-fade-out: lb-fade-out 180ms cubic-bezier(0.2, 0, 0, 1) forwards;
+  --animate-lb-slide-in: lb-slide-in 280ms cubic-bezier(0.3, 0, 0, 1);
+  --animate-lb-slide-out: lb-slide-out 180ms cubic-bezier(0.2, 0, 0, 1) forwards;
+  --animate-lb-pop-in: lb-pop-in 280ms cubic-bezier(0.3, 0, 0, 1);
+  --animate-lb-pop-out: lb-pop-out 180ms cubic-bezier(0.2, 0, 0, 1) forwards;
+  --animate-lb-sheet-in: lb-sheet-in 280ms cubic-bezier(0.3, 0, 0, 1);
+  --animate-lb-sheet-out: lb-sheet-out 180ms cubic-bezier(0.2, 0, 0, 1) forwards;
 
   /* ---- The Untitled UI bridge (U spec 2a) --------------------------------
      Untitled UI's files name semantic colors. Defining those names here means a
@@ -461,6 +471,16 @@
   display: none;
 }
 
+/* U4 overlay motion. */
+@keyframes lb-fade-in { from { opacity: 0; } }
+@keyframes lb-fade-out { to { opacity: 0; } }
+@keyframes lb-slide-in { from { transform: translateX(104%); } }
+@keyframes lb-slide-out { to { transform: translateX(104%); } }
+@keyframes lb-pop-in { from { opacity: 0; transform: translateY(8px) scale(0.97); } }
+@keyframes lb-pop-out { to { opacity: 0; transform: translateY(8px) scale(0.97); } }
+@keyframes lb-sheet-in { from { transform: translateY(100%); } }
+@keyframes lb-sheet-out { to { transform: translateY(100%); } }
+
 /* R3 3a: reduced motion falls back to fades only. Tweens and movement collapse
    to near-instant; opacity changes still read. */
 @media (prefers-reduced-motion: reduce) {
@@ -475,5 +495,12 @@
     transition-property: opacity !important;
     transition-duration: 1ms !important;
     scroll-behavior: auto !important;
+  }
+  /* An overlay that MOVES (slide, sheet, pop) fades instead. */
+  .lb-overlay-move[data-entering] {
+    animation: lb-fade-in 180ms ease-out !important;
+  }
+  .lb-overlay-move[data-exiting] {
+    animation: lb-fade-out 120ms ease-out forwards !important;
   }
 }

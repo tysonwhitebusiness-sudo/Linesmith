@@ -6,7 +6,7 @@ import type { ModelStatusRow } from '@/lib/models/modelStatus';
 import { SubjectAvatar, TeamLogo, mlbHeadshotUrl, mlbTeamLogoUrl } from '@/components/SubjectAvatar';
 import { ConfidenceChip } from '@/components/ConfidenceChip';
 import { LockIcon, ClockIcon } from '@/components/icons';
-import { Button, Input, SearchIcon } from '@/components/ui';
+import { Button, Input, Modal, SearchIcon } from '@/components/ui';
 import { formatAmerican, americanToDecimal } from '@/lib/odds/display';
 
 interface OddsApiLine {
@@ -2962,51 +2962,32 @@ export default function DiagnosticsPage() {
         ) : null}
       </main>
 
-      {showNhlNbaResumeModal ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setShowNhlNbaResumeModal(false)}
-          role="presentation"
-        >
-          <div
-            className="lb-card flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden shadow-pop"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="nhl-nba-resume-title"
-          >
-            <div className="flex items-center justify-between border-b border-line p-4">
-              <h2 id="nhl-nba-resume-title" className="text-sm font-semibold">NHL/NBA verification — resume instructions</h2>
-              <button
-                type="button"
-                onClick={() => setShowNhlNbaResumeModal(false)}
-                className="text-ink-muted hover:text-ink"
-                aria-label="Close"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="overflow-y-auto p-4">
-              <pre className="whitespace-pre-wrap text-[12px] leading-relaxed text-ink-muted">{NHL_NBA_RESUME_PROMPT}</pre>
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-line p-3">
-              {nhlNbaPromptCopied ? <span className="text-[12px] text-good">Copied</span> : null}
-              <Button
-                variant="primary"
-                size="sm"
-                onPress={() =>
-                  copyResumePromptToClipboard(NHL_NBA_RESUME_PROMPT, () => {
-                    setNhlNbaPromptCopied(true);
-                    setTimeout(() => setNhlNbaPromptCopied(false), 2000);
-                  })
-                }
-              >
-                Copy prompt
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {/* U4: the kit Modal. */}
+      <Modal
+        isOpen={showNhlNbaResumeModal}
+        onClose={() => setShowNhlNbaResumeModal(false)}
+        width={560}
+        title="NHL/NBA verification — resume instructions"
+        footer={
+          <>
+            {nhlNbaPromptCopied ? <span className="self-center text-label text-good">Copied</span> : null}
+            <Button
+              variant="primary"
+              size="sm"
+              onPress={() =>
+                copyResumePromptToClipboard(NHL_NBA_RESUME_PROMPT, () => {
+                  setNhlNbaPromptCopied(true);
+                  setTimeout(() => setNhlNbaPromptCopied(false), 2000);
+                })
+              }
+            >
+              Copy prompt
+            </Button>
+          </>
+        }
+      >
+        <pre className="whitespace-pre-wrap text-[12px] leading-relaxed text-ink-muted">{NHL_NBA_RESUME_PROMPT}</pre>
+      </Modal>
     </div>
   );
 }
