@@ -594,3 +594,13 @@ Each phase is one commit, named `C{n}: …`. After each commit, rewrite
 `docs/CURRENT.md`'s "Where the work is" row. C5's Python half is **not done
 until it has graded a real slate**, so its checkpoint names the next slate
 date it is waiting on.
+
+## 11. Run order and corrections (2026-09-21 audit)
+
+The unattended run interleaves this plan with the Spotlights track. **Follow
+`docs/design/unattended-run-2026-09-21.md` §2 for the order and §3 for five
+corrections to this plan:** Movers is in C1/C4, `AppShell` line numbers have
+moved, `hit_distance_sc` is already parsed, and the C5 Python work is shared
+with the spotlights in phase PY-A. The operator's standing answers (deploys
+authorised, park table ships on cited sources, deletions approved) are in its
+§1.

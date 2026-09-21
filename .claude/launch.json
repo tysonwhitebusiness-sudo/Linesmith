@@ -50,6 +50,19 @@
       ],
       "port": 8124,
       "autoPort": false
+    },
+    {
+      "name": "design-mockups",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8125",
+        "--directory",
+        "docs/design"
+      ],
+      "port": 8125,
+      "autoPort": false
     }
   ]
 }

@@ -301,3 +301,14 @@ there.
 
 **Measured on 2026-09-21:** MLB 47 props + 4 game lines across 3 upcoming
 games. NFL (MNF) 8 props + 1 line. Cold build 2–7 s, then served from cache.
+
+---
+
+## Run order (2026-09-21)
+
+The remaining phases (F0, SP-*, DJ-*, SPC) run interleaved with Track C.
+**Follow `docs/design/unattended-run-2026-09-21.md`**:
+- F0's Python half is folded into **PY-A**;
+- all sports' spotlight rankings are **PY-B**, NBA/NHL first;
+- F0-UI comes after C4, so the cards use Track C's new parts;
+- tennis uses TML-Database (licence check first).
