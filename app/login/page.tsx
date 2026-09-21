@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useState } from 'react';
-import { Button } from '@/components/ui';
+import { Button, Field, Input } from '@/components/ui';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { safeNext } from '@/lib/core/safeNext';
@@ -77,35 +77,22 @@ function LoginForm() {
           </div>
         ) : (
           <form onSubmit={onSubmit} className="mt-5 space-y-3">
-            <div>
-              <label htmlFor="email" className="mb-1 block text-[12px] font-medium text-ink-muted">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                required
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-line bg-card px-3 py-2 text-[14px] shadow-card focus:border-masters focus:outline-hidden"
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="mb-1 block text-[12px] font-medium text-ink-muted">
-                Password
-              </label>
-              <input
+            {/* U3: `lg` fields on login, 16px text on a phone so iOS does not zoom. */}
+            <Field label="Email" htmlFor="email">
+              <Input id="email" type="email" size="lg" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </Field>
+            <Field label="Password" htmlFor="password">
+              <Input
                 id="password"
                 type="password"
+                size="lg"
                 required
                 minLength={6}
                 autoComplete={mode === 'signIn' ? 'current-password' : 'new-password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-line bg-card px-3 py-2 text-[14px] shadow-card focus:border-masters focus:outline-hidden"
               />
-            </div>
+            </Field>
 
             {error ? <p className="text-[12px] text-bad">{error}</p> : null}
 

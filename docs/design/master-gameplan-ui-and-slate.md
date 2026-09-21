@@ -467,7 +467,7 @@ history. One phase per sport, each entering the register as `baseline`.
 | 11 | S3 Spotlights | S | S1, M3 | yes | no | **DONE 2026-09-20** — the two universal spotlights for every sport, derived from the candidates (S3's `slate_rankings` premise was false — SL-21); sport-specific spotlights not built |
 | 12 | S4 Specials + receipts | S | S1, M3 | yes | no | **done** — reads `slate_rankings` (MLB HR + K, NFL TD, EPL/MLS goalscorer; CFB defined, no rows); receipts live from 2026-09-20; labels drift-tested against the Python; page-width cutoff fixed (SL-25) |
 | 13 | S5 Model + Your lines | S | S1, M1 | yes | no | **done** — MLB Model section (picks + price + lock state; no probability, grade, stake or record, per Q0); `TodaysPicksModal`, `useGamePickRecord` and the on-page record deleted; MLB cards now name the locked pick; Your lines signed-in only (signed-in render owed, Q15) |
-| 14 | U3 Form controls | U | U0 | yes | no | not started |
+| 14 | U3 Form controls | U | U0 | yes | no | **done** — field family in the kit; 0 raw `<input>`/`<select>`/`<textarea>` in scope; five hand-built listboxes are the kit `PickList`; every field 16px below 768px |
 | 15 | U4 Overlays | U | U0 | yes | no | not started |
 | 16 | U6 Page sweep | U | U1–U5 | yes | no | not started |
 | 17 | S6 Slate close | S | S1–S5 | tests/docs | no | not started |

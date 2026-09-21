@@ -6,7 +6,10 @@ import type { Sport, SoccerLeague, TennisTour } from '@/lib/core/types';
 import { SPORTS, SPORT_LABEL, SOCCER_LEAGUES, SOCCER_LEAGUE_LABEL, TENNIS_TOURS, TENNIS_TOUR_LABEL } from '@/lib/core/types';
 import { BrandedLoader } from './BrandedLoader';
 import { AccountMenu } from './AccountMenu';
-import { Button, IconButton, cx } from './ui';
+import { Button, IconButton, Select, cx } from './ui';
+
+/** The header's selects: one 28px row, `body-sm`, muted until opened. */
+const HEADER_SELECT = 'h-7 max-w-[7rem] px-2 text-body-sm text-ink-secondary sm:max-w-none';
 
 /**
  * The application chrome, one row tall.
@@ -105,61 +108,40 @@ export function TopBar({
         <span className="hidden select-none text-[15px] font-semibold tracking-tight text-ink sm:inline">
           Linesmith
         </span>
-        <label className="sr-only" htmlFor="lb-sport">
-          Sport
-        </label>
-        <select
-          id="lb-sport"
+        {/* U3: the kit Select — a button trigger and a popover list, so the
+            sport picker no longer zooms an iPhone on focus. Compact here:
+            the header is one 48px row. */}
+        <Select
+          label="Sport"
+          size="sm"
+          className="min-w-[3.5rem] shrink"
+          triggerClassName={HEADER_SELECT}
           value={sport}
-          onChange={(e) =>
-            navigate('sport', e.target.value === 'soccer' ? '/soccer/epl' : e.target.value === 'tennis' ? '/tennis/atp' : `/${e.target.value}`)
-          }
-          disabled={isPending && pendingTarget === 'sport'}
-          className="min-w-[3.25rem] max-w-[5.5rem] shrink cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-hidden disabled:cursor-wait disabled:opacity-70 sm:max-w-none"
-        >
-          {SPORTS.map((s) => (
-            <option key={s} value={s}>
-              {SPORT_LABEL[s]}
-            </option>
-          ))}
-        </select>
+          isDisabled={isPending && pendingTarget === 'sport'}
+          onChange={(v) => navigate('sport', v === 'soccer' ? '/soccer/epl' : v === 'tennis' ? '/tennis/atp' : `/${v}`)}
+          options={SPORTS.map((s) => ({ value: s, label: SPORT_LABEL[s] }))}
+        />
         {sport === 'soccer' && league && onLeagueChange ? (
-          <>
-            <label className="sr-only" htmlFor="lb-league">
-              League
-            </label>
-            <select
-              id="lb-league"
-              value={league}
-              onChange={(e) => onLeagueChange(e.target.value as SoccerLeague)}
-              className="min-w-[3.25rem] max-w-[5.5rem] shrink cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-hidden sm:max-w-none"
-            >
-              {SOCCER_LEAGUES.map((l) => (
-                <option key={l} value={l}>
-                  {SOCCER_LEAGUE_LABEL[l]}
-                </option>
-              ))}
-            </select>
-          </>
+          <Select
+            label="League"
+            size="sm"
+            className="min-w-[3.5rem] shrink"
+            triggerClassName={HEADER_SELECT}
+            value={league as SoccerLeague}
+            onChange={(v) => onLeagueChange(v)}
+            options={SOCCER_LEAGUES.map((l) => ({ value: l, label: SOCCER_LEAGUE_LABEL[l] }))}
+          />
         ) : null}
         {sport === 'tennis' && league && onLeagueChange ? (
-          <>
-            <label className="sr-only" htmlFor="lb-tour">
-              Tour
-            </label>
-            <select
-              id="lb-tour"
-              value={league}
-              onChange={(e) => onLeagueChange(e.target.value as TennisTour)}
-              className="min-w-[3.25rem] max-w-[5.5rem] shrink cursor-pointer truncate rounded-md border border-line bg-card py-0.5 pl-1.5 pr-5 text-[12px] font-medium text-ink-muted focus:border-masters focus:outline-hidden sm:max-w-none"
-            >
-              {TENNIS_TOURS.map((t) => (
-                <option key={t} value={t}>
-                  {TENNIS_TOUR_LABEL[t]}
-                </option>
-              ))}
-            </select>
-          </>
+          <Select
+            label="Tour"
+            size="sm"
+            className="min-w-[3.5rem] shrink"
+            triggerClassName={HEADER_SELECT}
+            value={league as TennisTour}
+            onChange={(v) => onLeagueChange(v)}
+            options={TENNIS_TOURS.map((t) => ({ value: t, label: TENNIS_TOUR_LABEL[t] }))}
+          />
         ) : null}
         {isPending && pendingTarget === 'sport' ? <BrandedLoader size="inline" label="Switching sport" /> : null}
       </div>

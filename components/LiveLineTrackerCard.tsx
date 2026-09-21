@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useTrackedLines } from './useTrackedLines';
 import { useLiveLineValues } from './useLiveLineValues';
 import { heatFill, heatInk } from '@/lib/ui/heat';
-import { Button, Card, CloseButton, SelectBox } from './ui';
+import { Button, Card, CloseButton, Input, SelectBox } from './ui';
 
 export interface LiveLineTrackerData {
   subjectId: string;
@@ -95,17 +95,18 @@ function AddLineForm({
   return (
     <div className="flex flex-col gap-2 border-t border-line-soft bg-surface-subtle p-3">
       <div className="flex items-center gap-2">
-        {/* R3: SelectBox — a named, styled native select. */}
         <SelectBox label="Stat" className="min-w-0 flex-1" value={statKey} onChange={setStatKey} options={availableStats.map((s) => ({ value: s.key, label: s.label }))} />
         <SelectBox<'over' | 'under'> label="Side" value={side} onChange={setSide} options={[{ value: 'over', label: 'Over' }, { value: 'under', label: 'Under' }]} />
-        <input
+        <Input
           type="number"
+          size="sm"
           inputMode="decimal"
           step="0.5"
           value={lineText}
           onChange={(e) => setLineText(e.target.value)}
           placeholder="Line"
-          className="w-20 rounded-md border border-line px-2 py-1.5 text-label"
+          aria-label="Line"
+          className="w-20"
         />
       </div>
       {error ? <p className="text-label text-bad">{error}</p> : null}

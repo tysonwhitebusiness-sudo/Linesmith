@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { Select } from './Fields';
 import { cx } from './cx';
 
 /**
@@ -156,6 +157,12 @@ export function Tabs<T extends string>({
   );
 }
 
+/**
+ * The compact select every card header uses. Since U3 it is the kit `Select`
+ * (React Aria: a button trigger and a popover list) rather than a native
+ * `<select>` — so it no longer zooms the page on an iPhone, and it looks the
+ * same in every browser. The API is unchanged, so no caller moved.
+ */
 export function SelectBox<T extends string>({
   options,
   value,
@@ -171,22 +178,13 @@ export function SelectBox<T extends string>({
   className?: string;
 }) {
   return (
-    <span className={cx('relative inline-flex max-w-full', className)}>
-      <select
-        aria-label={label}
-        value={value}
-        onChange={(e) => onChange(e.target.value as T)}
-        className="max-w-full cursor-pointer appearance-none truncate rounded-ctl border border-line bg-card py-[7px] pl-2.5 pr-7 text-body-sm font-medium text-ink transition-colors duration-instant hover:border-ink-faint"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value} disabled={o.disabled}>
-            {typeof o.label === 'string' ? o.label : String(o.value)}
-          </option>
-        ))}
-      </select>
-      <svg aria-hidden viewBox="0 0 10 6" width={10} height={6} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-muted">
-        <path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </span>
+    <Select<T>
+      label={label}
+      size="sm"
+      value={value}
+      onChange={onChange}
+      className={className}
+      options={options.map((o) => ({ value: o.value as T, label: typeof o.label === 'string' ? o.label : String(o.value), disabled: o.disabled }))}
+    />
   );
 }

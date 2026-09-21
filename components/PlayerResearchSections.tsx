@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
-import { Avatar, Card, Chip, cx, DataTable, EmptyState, ErrorState, LeagueStripRow, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column } from './ui';
+import { Avatar, Card, Chip, cx, DataTable, EmptyState, ErrorState, LeagueStripRow, PickList, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column } from './ui';
 import { CATEGORICAL, CourtScatter, FieldLanes, FieldScatter, FullPitchScatter, Histogram, MatchTimeline, PitchScatter, RinkScatter, SeriesChart, SIDE_COLOR, SplitDumbbell, SprayScatter, StreakStrip, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import {
@@ -778,40 +778,25 @@ export function ResearchCardView({ card }: { card: ResearchCard }) {
 function DrilldownCard({ card }: { card: Extract<ResearchCard, { kind: 'drilldown' }> }) {
   const [picked, setPicked] = useState(card.defaultKey ?? card.items[0]?.key);
   const item = card.items.find((i) => i.key === picked) ?? card.items[0];
-  const groups = [...new Set(card.items.map((i) => i.group))];
   if (!item) return <Card title={card.title} state={{ kind: 'empty', title: 'Nothing to list', reason: 'The source has no items for this game.' }} />;
   return (
     <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
       <Card title={card.title} scope={card.scope} dense>
-        <div className="max-h-[560px] overflow-y-auto pr-1" role="listbox" aria-label={card.title}>
-          {groups.map((g) => (
-            <div key={g}>
-              <div className="sticky top-0 bg-card px-1 pb-1 pt-2 text-overline uppercase text-ink-muted">{g}</div>
-              {card.items
-                .filter((i) => i.group === g)
-                .map((i) => (
-                  <button
-                    key={i.key}
-                    type="button"
-                    role="option"
-                    aria-selected={i.key === item.key}
-                    onClick={() => setPicked(i.key)}
-                    className={cx(
-                      'flex w-full items-center gap-2 rounded-ctl px-2 py-1.5 text-left transition-colors duration-instant',
-                      i.key === item.key ? 'bg-accent-soft' : 'hover:bg-card-sunk',
-                    )}
-                  >
-                    {i.imageUrl ? <Avatar kind="player" label={i.label} src={i.imageUrl} size={26} decorative /> : null}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-body-sm font-semibold text-ink">{i.label}</span>
-                      {i.sub ? <span className="block truncate text-label text-ink-muted">{i.sub}</span> : null}
-                    </span>
-                    {i.badge ? <span className="shrink-0 text-label tabular-nums text-ink-secondary">{i.badge}</span> : null}
-                  </button>
-                ))}
-            </div>
-          ))}
-        </div>
+        {/* U3: the kit PickList (React Aria ListBox), grouped. */}
+        <PickList
+          label={card.title}
+          className="max-h-[560px] overflow-y-auto pr-1"
+          value={item.key}
+          onChange={setPicked}
+          items={card.items.map((i) => ({
+            key: i.key,
+            label: i.label,
+            sub: i.sub ?? undefined,
+            group: i.group,
+            image: i.imageUrl ? <Avatar kind="player" label={i.label} src={i.imageUrl} size={26} decorative /> : undefined,
+            badge: i.badge ?? undefined,
+          }))}
+        />
       </Card>
       <div className="min-w-0 space-y-3">
         {item.cards.map((c) => (

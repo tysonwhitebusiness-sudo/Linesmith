@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Avatar, Card, DataTable, EmptyState, LeagueStripRow, SelectBox, Skeleton, type Column } from './ui';
+import { Avatar, Card, ComboBox, DataTable, EmptyState, LeagueStripRow, SelectBox, Skeleton, Tag, type Column } from './ui';
 import { formatResearchValue, type PlayerResearchData, type ResearchCard, type ResearchLogRow } from '@/lib/sports/shared/playerResearchShapes';
 import { ResearchCardView } from './PlayerResearchSections';
 import { CompareView, type CompareViewRow } from './CompareView';
@@ -307,46 +307,27 @@ function PeerCompare({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
+        {/* U3: one ComboBox where a search box sat beside a select of its
+            results. It filters as you type (the same `searchPeers` ranking),
+            Enter or a click picks, and the pick shows as a removable Tag. */}
         {others.length ? (
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              // Enter takes the first match, so typing a name and pressing
-              // Enter picks him without opening the dropdown.
-              if (e.key === 'Enter' && query.trim() && found.length) {
-                e.preventDefault();
-                onPeer(found[0].athleteId);
-                setQuery('');
-              }
-            }}
+          <ComboBox
+            label={`Search ${label.toLowerCase()} players`}
             placeholder={`Search ${others.length} players…`}
-            aria-label={`Search ${label.toLowerCase()} players`}
-            className="w-44 max-w-full rounded-ctl border border-line bg-card px-2.5 py-[7px] text-body-sm text-ink placeholder:text-ink-muted hover:border-ink-faint focus:border-masters focus:outline-hidden"
+            className="w-60 max-w-full"
+            size="sm"
+            inputValue={query}
+            onInputChange={setQuery}
+            onPick={(id) => {
+              onPeer(id);
+              setQuery('');
+            }}
+            options={found.map((p) => ({ value: p.athleteId, label: p.name, sub: p.position || undefined }))}
           />
-        ) : null}
-        <SelectBox
-          label={label}
-          value={peerId ?? ''}
-          onChange={(v) => {
-            onPeer(v || null);
-            setQuery('');
-          }}
-          options={[
-            {
-              value: '',
-              label: !others.length
-                ? 'No comparable players held'
-                : query.trim()
-                  ? found.length
-                    ? `${found.length} ${found.length === 1 ? 'match' : 'matches'}`
-                    : 'No player matches'
-                  : 'Pick a player',
-            },
-            ...shown.map((p) => ({ value: p.athleteId, label: `${p.name}${p.position ? ` · ${p.position}` : ''}` })),
-          ]}
-        />
+        ) : (
+          <span className="text-body-sm text-ink-muted">No comparable players held</span>
+        )}
+        {peer ? <Tag label={peer.name} onRemove={() => onPeer(null)} /> : null}
         {peer ? <span className="text-body-sm text-ink-secondary">{peer.games} games held {lastSeason ? 'last season' : 'this season'}</span> : null}
       </div>
       {peerId && seasonsCard ? (

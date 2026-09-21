@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PickCandidate, Sport, SubjectSummary } from '@/lib/core/types';
 import { SPORT_LABEL } from '@/lib/core/types';
 import type { PickRow } from './useSlip';
 import { SubjectAvatar } from './SubjectAvatar';
-import { Button, CloseButton } from './ui';
+import { Button, CloseButton, FileTrigger, Input, Select } from './ui';
 import { MarketLabel } from './MarketLabel';
 import { BookLogo, bookLabel } from './BookLogo';
 
@@ -68,7 +68,8 @@ function OddsProvenance({ pick }: { pick: PickRow }) {
 function OddsField({ pick, onSetOdds }: { pick: PickRow; onSetOdds: SlipModalProps['onSetOdds'] }) {
   const [value, setValue] = useState(pick.americanOdds ?? '');
   return (
-    <input
+    <Input
+      size="sm"
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onBlur={() => {
@@ -77,7 +78,7 @@ function OddsField({ pick, onSetOdds }: { pick: PickRow; onSetOdds: SlipModalPro
       inputMode="text"
       placeholder="+250"
       aria-label={`Odds for ${pick.subjectName}`}
-      className="w-20 rounded-lg border border-line px-2 py-1 text-right text-sm tabular-nums focus:border-masters focus:outline-hidden"
+      className="w-20 [&>input]:text-right [&>input]:tabular-nums"
     />
   );
 }
@@ -120,17 +121,14 @@ function ScanLegRow({
           Screenshot said “{dimensionLabel} {categoryLabel}” @ {americanOdds}
         </p>
         {options.length > 1 ? (
-          <select
+          <Select
+            label={`Which ${matchedName} line`}
+            size="sm"
+            className="mt-1 w-full"
             value={selectedKey || `${options[0].dimension}:${options[0].category}`}
-            onChange={(e) => setSelectedKey(e.target.value)}
-            className="mt-1 w-full rounded-md border border-line bg-card px-1.5 py-1 text-[11px]"
-          >
-            {options.map((c) => (
-              <option key={`${c.dimension}:${c.category}`} value={`${c.dimension}:${c.category}`}>
-                {c.dimensionLabel} — {c.categoryLabel}
-              </option>
-            ))}
-          </select>
+            onChange={setSelectedKey}
+            options={options.map((c) => ({ value: `${c.dimension}:${c.category}`, label: `${c.dimensionLabel} — ${c.categoryLabel}` }))}
+          />
         ) : (
           <p className="mt-0.5 text-[11px] text-ink-muted">
             Attach to: {selected.dimensionLabel} — {selected.categoryLabel}
@@ -166,7 +164,6 @@ export function SlipModal({
   onSubmit,
 }: SlipModalProps) {
   const router = useRouter();
-  const fileInput = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResponse | null>(null);
   const [copied, setCopied] = useState(false);
@@ -307,25 +304,23 @@ export function SlipModal({
         <div className="space-y-3 overflow-y-auto p-4">
           {/* Scan is the primary way in — promoted above the pick list rather than buried under it. */}
           <div>
-            <Button variant="primary" size="lg" loading={importing} onPress={() => fileInput.current?.click()} className="w-full">
-              {importing ? 'Reading your screenshot…' : 'Scan a bet slip'}
-            </Button>
+            {/* U3: React Aria's FileTrigger opens the picker from the kit
+                Button, so there is no hidden `<input type="file">` to wire. */}
+            <FileTrigger
+              acceptedFileTypes={['image/png', 'image/jpeg', 'image/gif', 'image/webp']}
+              onSelect={(files) => {
+                const file = files?.[0];
+                if (file) void runImport(file);
+              }}
+            >
+              <Button variant="primary" size="lg" loading={importing} className="w-full">
+                {importing ? 'Reading your screenshot…' : 'Scan a bet slip'}
+              </Button>
+            </FileTrigger>
             <p className="mt-1.5 text-center text-[11px] text-ink-muted">
               Reads odds from a screenshot you took. Never connects to a sportsbook.
             </p>
           </div>
-
-          <input
-            ref={fileInput}
-            type="file"
-            accept="image/png,image/jpeg,image/gif,image/webp"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void runImport(file);
-              e.target.value = '';
-            }}
-          />
 
           {importResult ? (
             <div className="space-y-2">

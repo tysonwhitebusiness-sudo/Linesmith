@@ -9,7 +9,17 @@ import {
   CloseButton,
   IconButton,
   Card,
+  Checkbox,
   Chip,
+  ComboBox,
+  Field,
+  Input,
+  PickList,
+  RadioGroup,
+  SearchIcon,
+  Select,
+  Textarea,
+  Toggle,
   EmptyState,
   FeaturedIcon,
   ErrorState,
@@ -104,6 +114,12 @@ export default function KitPage() {
   const [seg, setSeg] = useState('l10');
   const [tab, setTab] = useState('all');
   const [sel, setSel] = useState('2026');
+  const [text, setText] = useState('');
+  const [check, setCheck] = useState(true);
+  const [radio, setRadio] = useState<'over' | 'under'>('over');
+  const [on, setOn] = useState(false);
+  const [sport, setSport] = useState('mlb');
+  const [pick, setPick] = useState('a');
 
   return (
     <main className="mx-auto max-w-[1100px] px-4 py-8">
@@ -116,7 +132,7 @@ export default function KitPage() {
         <p className="mt-2 max-w-[70ch] text-body-sm text-ink-muted">
           U0 built the skeleton: the tokens, the primitives that exist today, and the Tailwind 4
           traps below. U1 adds the Button family, U2 the Hybrid table and the fifteen reference
-          tables, U5 the borrowed pieces.
+          tables, U3 the field family, U5 the borrowed pieces.
         </p>
       </header>
 
@@ -290,7 +306,7 @@ export default function KitPage() {
         </Row>
       </Group>
 
-      <Group id="controls" title="Controls" sub="U1 adds the Button family, U3 the field family. These are what exists today.">
+      <Group id="controls" title="Controls" sub="U1 added the Button family; the field family is its own group below.">
         <Row name="SegmentedToggle">
           <SegmentedToggle
             label="Window"
@@ -401,6 +417,83 @@ export default function KitPage() {
           <FeaturedIcon icon={<PlusGlyph />} tone="bad" />
           <FeaturedIcon icon={<PlusGlyph />} tone="warn" />
           <FeaturedIcon icon={<PlusGlyph />} variant="outline" />
+        </Row>
+      </Group>
+
+      <Group
+        id="fields"
+        title="Fields"
+        sub="U3. Every field is 16px below 768px so iOS does not zoom on focus, and body above. Select and ComboBox are React Aria: a button trigger and a popover list."
+      >
+        <Row name="Input" note="sm 32 · md 36 · lg 44; leading icon; hint; error">
+          <Field label="Player" hint="Search by name." htmlFor="kit-in" className="w-64">
+            <Input id="kit-in" leading={SearchIcon} placeholder="Search players…" value={text} onChange={(e) => setText(e.target.value)} />
+          </Field>
+          <Field label="Line" error="A line is a number like 1.5." htmlFor="kit-bad" className="w-40">
+            <Input id="kit-bad" size="sm" invalid defaultValue="one and a half" />
+          </Field>
+          <Input size="lg" placeholder="lg — login" aria-label="Large input" className="w-56" />
+        </Row>
+        <Row name="Textarea">
+          <Textarea aria-label="Notes" placeholder="Notes…" className="w-80" />
+        </Row>
+        <Row name="Checkbox · Radio · Toggle">
+          <Checkbox isSelected={check} onChange={setCheck} hint="Hides players without a line.">
+            Only priced
+          </Checkbox>
+          <RadioGroup
+            label="Side"
+            orientation="horizontal"
+            value={radio}
+            onChange={setRadio}
+            options={[
+              { value: 'over', label: 'Over' },
+              { value: 'under', label: 'Under' },
+            ]}
+          />
+          <Toggle isSelected={on} onChange={setOn}>
+            Dense rows
+          </Toggle>
+        </Row>
+        <Row name="Select" note="sizes sm and md; the header passes its own compact trigger">
+          <Select
+            label="Sport"
+            value={sport}
+            onChange={setSport}
+            options={[
+              { value: 'mlb', label: 'MLB' },
+              { value: 'nfl', label: 'NFL', sub: 'Week 3' },
+              { value: 'golf', label: 'Golf' },
+            ]}
+          />
+          <Select label="Season" size="sm" value={sel} onChange={setSel} options={[{ value: '2026', label: '2026' }, { value: '2025', label: '2025' }]} />
+        </Row>
+        <Row name="ComboBox" note="filters as you type">
+          <ComboBox
+            label="Compare with"
+            placeholder="Search 3 players…"
+            className="w-64"
+            onPick={setPick}
+            options={[
+              { value: 'a', label: 'Aaron Judge', sub: 'RF' },
+              { value: 'b', label: 'Juan Soto', sub: 'RF' },
+              { value: 'c', label: 'Cal Raleigh', sub: 'C' },
+            ]}
+          />
+        </Row>
+        <Row name="PickList" note="the master side of a master/detail page">
+          <div className="w-64 rounded-card border border-line-soft p-1.5">
+            <PickList
+              label="Players"
+              value={pick}
+              onChange={setPick}
+              items={[
+                { key: 'a', label: 'Aaron Judge', sub: 'NYY · RF', badge: 12, group: 'Hitters' },
+                { key: 'b', label: 'Juan Soto', sub: 'NYM · RF', badge: 9, group: 'Hitters' },
+                { key: 'c', label: 'Tarik Skubal', sub: 'DET · SP', badge: 4, group: 'Pitchers' },
+              ]}
+            />
+          </div>
         </Row>
       </Group>
 

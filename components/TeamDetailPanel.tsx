@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Button } from './ui';
+import { Button, Input, PickList, SearchIcon } from './ui';
 import type { Sport, SoccerLeague } from '@/lib/core/types';
 import { TeamLogo } from './SubjectAvatar';
 import { TeamResearchPage } from './TeamResearchPage';
@@ -80,13 +80,14 @@ function TeamListShell({
     <div className="grid gap-3 lg:grid-cols-[260px_1fr] lg:items-start">
       <div className={`lb-card overflow-hidden lg:sticky lg:top-4 ${listOnPhone ? '' : 'hidden lg:block'}`}>
         <div className="border-b border-line p-2.5">
-          <input
+          <Input
             type="search"
+            size="sm"
+            leading={SearchIcon}
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search teams…"
             aria-label="Search teams"
-            className="w-full rounded-lg border border-line bg-card px-2.5 py-1.5 text-[13px] shadow-card focus:border-masters focus:outline-hidden"
           />
         </div>
         {/* D5/R1e. This printed the raw API error text straight onto the page,
@@ -109,43 +110,28 @@ function TeamListShell({
             )}
           </p>
         ) : null}
-        <ul className="max-h-[70vh] overflow-y-auto p-1.5" role="listbox" aria-label="Teams">
-          {loading && sortedTeams.length === 0 ? (
-            <li className="p-4 text-center text-[12px] text-ink-muted">Loading…</li>
-          ) : error && sortedTeams.length === 0 ? (
-            <li className="p-4 text-center text-[12px] text-ink-muted">Teams unavailable right now.</li>
-          ) : filtered.length === 0 ? (
-            <li className="p-4 text-center text-[12px] text-ink-muted">
-              {search.trim() ? `No teams match “${search.trim()}”.` : 'No teams to show.'}
-            </li>
-          ) : (
-            filtered.map((t) => {
-              const selected = t.teamId === activeTeamId;
-              return (
-                <li key={t.teamId}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    onClick={() => onSelect(t.teamId)}
-                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${
-                      selected ? 'bg-accent-soft' : 'hover:bg-ink/[0.03]'
-                    }`}
-                  >
-                    <TeamLogo logoUrl={t.logoUrl} abbreviation={t.abbreviation} size={26} />
-                    <span className="min-w-0 flex-1">
-                      <span className={`block truncate text-[13px] ${selected ? 'font-semibold text-masters' : ''}`}>{t.name}</span>
-                      <span className="block truncate text-[10px] text-ink-muted">{t.divisionShortName}</span>
-                    </span>
-                    <span className="shrink-0 text-[10px] tabular-nums text-ink-muted">
-                      {t.wins}-{t.losses}
-                    </span>
-                  </button>
-                </li>
-              );
-            })
-          )}
-        </ul>
+        {loading && sortedTeams.length === 0 ? (
+          <p className="p-4 text-center text-body-sm text-ink-muted">Loading…</p>
+        ) : error && sortedTeams.length === 0 ? (
+          <p className="p-4 text-center text-body-sm text-ink-muted">Teams unavailable right now.</p>
+        ) : (
+          // U3: the kit PickList (React Aria ListBox) — arrow keys, typeahead
+          // and a real selected option, where this was buttons claiming to be.
+          <PickList
+            label="Teams"
+            className="max-h-[70vh] overflow-y-auto p-1.5"
+            value={String(activeTeamId)}
+            onChange={(k) => onSelect(Number(k))}
+            empty={search.trim() ? `No teams match “${search.trim()}”.` : 'No teams to show.'}
+            items={filtered.map((t) => ({
+              key: String(t.teamId),
+              label: t.name,
+              sub: t.divisionShortName,
+              image: <TeamLogo logoUrl={t.logoUrl} abbreviation={t.abbreviation} size={26} />,
+              badge: `${t.wins}-${t.losses}`,
+            }))}
+          />
+        )}
       </div>
 
       <div className="min-w-0">{children}</div>

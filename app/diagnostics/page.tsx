@@ -6,7 +6,7 @@ import type { ModelStatusRow } from '@/lib/models/modelStatus';
 import { SubjectAvatar, TeamLogo, mlbHeadshotUrl, mlbTeamLogoUrl } from '@/components/SubjectAvatar';
 import { ConfidenceChip } from '@/components/ConfidenceChip';
 import { LockIcon, ClockIcon } from '@/components/icons';
-import { Button } from '@/components/ui';
+import { Button, Input, SearchIcon } from '@/components/ui';
 import { formatAmerican, americanToDecimal } from '@/lib/odds/display';
 
 interface OddsApiLine {
@@ -1868,12 +1868,15 @@ export default function DiagnosticsPage() {
               {pitcherRanks ? (
                 <>
                   <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <input
+                    <Input
                       type="search"
+                      size="sm"
+                      leading={SearchIcon}
                       value={pitcherSearch}
                       onChange={(e) => setPitcherSearch(e.target.value)}
                       placeholder="Search pitcher name…"
-                      className="min-w-[180px] flex-1 rounded-md border border-line px-2 py-1.5 text-[13px] outline-hidden focus:border-masters"
+                      aria-label="Search pitcher name"
+                      className="min-w-[180px] flex-1"
                     />
                     <div className="flex items-center gap-1">
                       {(['all', 'starter', 'closer', 'reliever'] as const).map((role) => (
@@ -1927,12 +1930,15 @@ export default function DiagnosticsPage() {
               {batterRanks ? (
                 <>
                   <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <input
+                    <Input
                       type="search"
+                      size="sm"
+                      leading={SearchIcon}
                       value={batterSearch}
                       onChange={(e) => setBatterSearch(e.target.value)}
                       placeholder="Search batter name…"
-                      className="min-w-[180px] flex-1 rounded-md border border-line px-2 py-1.5 text-[13px] outline-hidden focus:border-masters"
+                      aria-label="Search batter name"
+                      className="min-w-[180px] flex-1"
                     />
                     <div className="flex items-center gap-1">
                       {BATTER_POSITION_FILTERS.map((position) => (
@@ -1987,21 +1993,11 @@ export default function DiagnosticsPage() {
               <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
                 <label className="flex items-center gap-1 text-ink-muted">
                   From
-                  <input
-                    type="date"
-                    value={pickHistoryFrom}
-                    onChange={(e) => setPickHistoryFrom(e.target.value)}
-                    className="rounded border border-line bg-card px-1.5 py-0.5"
-                  />
+                  <Input type="date" size="sm" value={pickHistoryFrom} onChange={(e) => setPickHistoryFrom(e.target.value)} className="w-auto" />
                 </label>
                 <label className="flex items-center gap-1 text-ink-muted">
                   To
-                  <input
-                    type="date"
-                    value={pickHistoryTo}
-                    onChange={(e) => setPickHistoryTo(e.target.value)}
-                    className="rounded border border-line bg-card px-1.5 py-0.5"
-                  />
+                  <Input type="date" size="sm" value={pickHistoryTo} onChange={(e) => setPickHistoryTo(e.target.value)} className="w-auto" />
                 </label>
                 <button
                   type="button"

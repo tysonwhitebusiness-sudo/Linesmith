@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Button, Chip, cx } from './ui';
+import { Button, Chip, PickList, cx } from './ui';
 import Link from 'next/link';
 import type { PickCandidate, SportSnapshot, TennisTour, WeatherContext } from '@/lib/core/types';
 import type { ScheduleEvent, DrawMatch, DrawSetScore, TournamentDraw } from '@/lib/sports/tennis/schedule';
@@ -638,35 +638,23 @@ export function TennisScheduleView({
             ))}
           </div>
         ) : null}
-        <ul className="max-h-[75vh] overflow-y-auto p-1.5" role="listbox" aria-label="Schedule">
-          {events.length === 0 ? (
-            <li className="p-4 text-center text-[12px] text-ink-muted">No schedule data available.</li>
-          ) : (
-            events.map((e) => {
-              const selected = e.id === selectedEventId;
-              return (
-                <li key={e.id}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    onClick={() => onSelectEvent(e)}
-                    className={`flex w-full flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors ${selected ? 'bg-accent-soft' : 'hover:bg-ink/[0.03]'}`}
-                  >
-                    <span className="flex items-center justify-between gap-2">
-                      <span className={`truncate text-[13px] ${selected ? 'font-semibold text-masters' : 'text-ink'}`}>
-                        {e.major ? '🏆 ' : ''}
-                        {e.name}
-                      </span>
-                      <StatusChip status={e.status} completed={e.completed} />
-                    </span>
-                    <span className="text-[10px] text-ink-muted">{formatDateRange(e.startDate, e.endDate)}</span>
-                  </button>
-                </li>
-              );
-            })
-          )}
-        </ul>
+        {/* U3: the kit PickList (React Aria ListBox). */}
+        <PickList
+          label="Schedule"
+          className="max-h-[75vh] overflow-y-auto p-1.5"
+          value={selectedEventId ?? null}
+          onChange={(id) => {
+            const e = events.find((x) => x.id === id);
+            if (e) onSelectEvent(e);
+          }}
+          empty="No schedule data available."
+          items={events.map((e) => ({
+            key: e.id,
+            label: `${e.major ? '🏆 ' : ''}${e.name}`,
+            badge: <StatusChip status={e.status} completed={e.completed} />,
+            sub: formatDateRange(e.startDate, e.endDate),
+          }))}
+        />
       </div>
 
       <div className="min-w-0">

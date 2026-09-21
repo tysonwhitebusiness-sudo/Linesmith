@@ -6,7 +6,7 @@ import type { UnifiedLinesResult } from '@/lib/odds/types';
 import { SubjectAvatar, TeamLogo } from './SubjectAvatar';
 import { PlayerDetail, FilterChip } from './PlayerDetail';
 import { PlayerSkeleton } from './Skeleton';
-import { Chip } from './ui';
+import { Chip, Input, PickList, SearchIcon } from './ui';
 import { useGolfPlayerStats } from './useGolfPlayerStats';
 import { useSyntheticPlayerCandidates } from './useSyntheticPlayerCandidates';
 import { usePlayerIndex } from './usePlayerIndex';
@@ -179,13 +179,14 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
     <div className="grid gap-3 lg:grid-cols-[260px_1fr] lg:items-start">
       <div className="lb-card overflow-hidden lg:sticky lg:top-4">
         <div className="border-b border-line p-2.5">
-          <input
+          <Input
             type="search"
+            size="sm"
+            leading={SearchIcon}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search players…"
             aria-label="Search players"
-            className="w-full rounded-lg border border-line bg-card px-2.5 py-1.5 text-[13px] shadow-card focus:border-masters focus:outline-hidden"
           />
         </div>
         {availablePositions.length > 1 ? (
@@ -198,56 +199,36 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
             ))}
           </div>
         ) : null}
-        <ul className="max-h-[70vh] overflow-y-auto p-1.5" role="listbox" aria-label="Players">
-          {subjects.length === 0 ? (
-            <li className="p-4 text-center text-[12px] text-ink-muted">No players match.</li>
-          ) : (
-            subjects.map((s) => {
-              const count = candidateCountBySubject.get(s.subjectId) ?? 0;
-              const selected = s.subjectId === activeSubjectId;
-              const meta = (s.meta ?? {}) as Record<string, unknown>;
-              return (
-                <li key={s.subjectId}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    onClick={() => {
-                      setSelectedSubjectId(s.subjectId);
-                      setMarket(undefined);
-                    }}
-                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors ${
-                      selected ? 'bg-accent-soft' : 'hover:bg-ink/[0.03]'
-                    }`}
-                  >
-                    <SubjectAvatar
-                      name={s.subjectName}
-                      headshotUrl={typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined}
-                      fallbackUrl={typeof (meta.flagUrl ?? meta.teamLogoUrl) === 'string' ? ((meta.flagUrl ?? meta.teamLogoUrl) as string) : undefined}
-                      size={26}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5">
-                        <span className={`truncate text-[13px] ${selected ? 'font-semibold text-masters' : ''}`}>
-                          {s.subjectName}
-                        </span>
-                        {typeof meta.position === 'string' ? (
-                          <Chip tone="neutral" size="sm" className="shrink-0">{meta.position}</Chip>
-                        ) : null}
-                      </span>
-                      {s.statusLine ? <span className="block truncate text-[10px] text-ink-muted">{s.statusLine}</span> : null}
-                    </span>
-                    {count > 0 ? (
-                      <span className="shrink-0 rounded-full bg-ink/5 px-1.5 py-0.5 text-[10px] font-medium text-ink-muted">
-                        {count}
-                      </span>
-                    ) : null}
-                  </button>
-                </li>
-              );
-            })
-          )}
-        </ul>
+        {/* U3: the kit PickList (React Aria ListBox). */}
+        <PickList
+          label="Players"
+          className="max-h-[70vh] overflow-y-auto p-1.5"
+          value={activeSubjectId ?? null}
+          onChange={(id) => {
+            setSelectedSubjectId(id);
+            setMarket(undefined);
+          }}
+          empty="No players match."
+          items={subjects.map((s) => {
+            const count = candidateCountBySubject.get(s.subjectId) ?? 0;
+            const meta = (s.meta ?? {}) as Record<string, unknown>;
+            return {
+              key: s.subjectId,
+              label: s.subjectName,
+              sub: s.statusLine || undefined,
+              tag: typeof meta.position === 'string' ? <Chip tone="neutral" size="sm">{meta.position}</Chip> : undefined,
+              image: (
+                <SubjectAvatar
+                  name={s.subjectName}
+                  headshotUrl={typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined}
+                  fallbackUrl={typeof (meta.flagUrl ?? meta.teamLogoUrl) === 'string' ? ((meta.flagUrl ?? meta.teamLogoUrl) as string) : undefined}
+                  size={26}
+                />
+              ),
+              badge: count > 0 ? count : undefined,
+            };
+          })}
+        />
       </div>
 
       <div className="min-w-0 space-y-3">

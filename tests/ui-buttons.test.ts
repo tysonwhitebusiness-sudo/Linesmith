@@ -17,14 +17,7 @@ import { OUT_OF_SCOPE, code } from './ui-scope';
  */
 
 const ALLOWED: Record<string, { count: number; why: string }> = {
-  // Listbox options, not buttons. `role="option"` inside a `role="listbox"` is
-  // a Select/ComboBox in all but name, and U3 adopts both — converting them to
-  // Button now would mean writing the same listbox behaviour twice.
-  'components/TeamDetailPanel.tsx': { count: 1, why: 'listbox option — U3 Select' },
-  'components/PlayerDetailPanel.tsx': { count: 1, why: 'listbox option — U3 ComboBox' },
-  'components/PlayerResearchSections.tsx': { count: 1, why: 'listbox option — U3 Select' },
-  'components/GolfScheduleView.tsx': { count: 1, why: 'listbox option — U3 Select' },
-  'components/TennisScheduleView.tsx': { count: 1, why: 'listbox option — U3 Select' },
+  // (U3 removed the five listbox options: they are the kit `PickList` now.)
 
   // The slip's scrim: a full-bleed dismiss target that belongs to the Modal
   // primitive, which U4 builds. It has no label, no text and no size of its own.

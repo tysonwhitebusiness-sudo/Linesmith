@@ -12,6 +12,28 @@ export { Tooltip, TipRow, type TooltipProps } from './Tooltip';
 export { Skeleton, SkeletonLines, EmptyState, ErrorState, type EmptyStateProps, type ErrorStateProps } from './States';
 export { Card, type CardProps, type CardState } from './Card';
 export { SegmentedToggle, Tabs, SelectBox, type Option } from './Controls';
+export {
+  Field,
+  Input,
+  Textarea,
+  Checkbox,
+  RadioGroup,
+  Toggle,
+  Select,
+  ComboBox,
+  PickList,
+  FileTrigger,
+  SearchIcon,
+  FIELD_TEXT,
+  type FieldProps,
+  type InputProps,
+  type TextareaProps,
+  type FieldSize,
+  type SelectOption,
+  type SelectProps,
+  type ComboBoxProps,
+  type PickItem,
+} from './Fields';
 export { Chip, StatusPill, type ChipProps, type ChipTone, type ChipSize, type ChipShape } from './Chip';
 export { Avatar, type AvatarProps } from './Avatar';
 export { Tag, AvatarLabel, AvatarGroup, FeaturedIcon, type TagProps, type AvatarLabelProps, type AvatarGroupProps, type FeaturedIconProps, type FeaturedIconTone } from './Pieces';
