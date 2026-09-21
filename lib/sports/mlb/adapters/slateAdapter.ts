@@ -17,7 +17,7 @@
 
 import type { SlateGame } from '@/lib/odds/matching';
 import type { UnifiedGameLine } from '@/lib/odds/types';
-import { buildSlateGames, type SlateSpec } from '../../shared/buildSlate';
+import { buildSlateGames, type EloPick, type SlateSpec } from '../../shared/buildSlate';
 import type { SlateData, SlateModelRow } from '../../shared/slateShapes';
 import { mlbLogo, splitMatchup } from '../../shared/slateLogos';
 
@@ -53,16 +53,25 @@ function weatherPhrase(game: SlateGame): string | null {
   return parts.length ? parts.join(' · ') : null;
 }
 
-function modelRow(game: SlateGame): SlateModelRow | null {
+/**
+ * The card's model row names the LOCKED pick from `game_picks` — the same pick
+ * the Slate's Model section lists — and only falls back to the snapshot's
+ * win probability when the pick job has not written one yet. Deriving it
+ * from the snapshot alone put TOR/SF on the cards while the Model section
+ * said BAL/MIN (S5, SL-27): two near-coin-flip games, two sources, one page.
+ * Expected runs are printed away–home, which is a forecast rather than a
+ * second pick.
+ */
+function modelRow(game: SlateGame, locked: EloPick | undefined): SlateModelRow | null {
   const m = game.gameModel;
-  if (!m) return null;
-  const home = m.homeWinProb >= m.awayWinProb;
   const [awayAbbr, homeAbbr] = splitMatchup(game.matchup);
-  const pick = home ? homeAbbr || (game.homeTeamName ?? '') : awayAbbr || (game.awayTeamName ?? '');
+  const side = locked?.side ?? (m ? (m.homeWinProb >= m.awayWinProb ? 'home' : 'away') : null);
+  if (!side) return null;
+  const pick = side === 'home' ? homeAbbr || (game.homeTeamName ?? '') : awayAbbr || (game.awayTeamName ?? '');
   if (!pick) return null;
   const runs =
-    Number.isFinite(m.homeExpectedRuns) && Number.isFinite(m.awayExpectedRuns)
-      ? `${(home ? m.homeExpectedRuns : m.awayExpectedRuns).toFixed(1)}–${(home ? m.awayExpectedRuns : m.homeExpectedRuns).toFixed(1)} runs`
+    m && Number.isFinite(m.homeExpectedRuns) && Number.isFinite(m.awayExpectedRuns)
+      ? `${awayAbbr || 'Away'} ${m.awayExpectedRuns.toFixed(1)} · ${homeAbbr || 'Home'} ${m.homeExpectedRuns.toFixed(1)} runs`
       : null;
   return {
     pick,
@@ -71,6 +80,14 @@ function modelRow(game: SlateGame): SlateModelRow | null {
     note: 'Expected runs from season form, the starters and the park. It is not a price and it is not compared to one.',
   };
 }
+
+/**
+ * What the Model section says about itself. No record and no probability:
+ * against the closing price the picks have not yet shown an advantage (Q0).
+ * Plain words — the model's tier names are internal.
+ */
+export const MODEL_NOTE =
+  'The picks lock before first pitch. They are shown without a probability or a record until they beat the closing price over a measured sample.';
 
 export const MLB_SLATE_SPEC: SlateSpec = {
   noun: 'games',
@@ -83,7 +100,7 @@ export const MLB_SLATE_SPEC: SlateSpec = {
     return w ? [w] : [];
   },
   href: (g) => (g.gamePk != null ? `/mlb/game/${g.gamePk}` : null),
-  model: modelRow,
+  model: (g) => modelRow(g, undefined),
 };
 
 export function toSlateData(input: {
@@ -91,13 +108,19 @@ export function toSlateData(input: {
   games: SlateGame[];
   lines: UnifiedGameLine[];
   propCounts?: Map<string, number>;
+  /** Locked picks from `game_picks`, by game id. */
+  picks?: Map<string, EloPick>;
   warnings?: string[];
 }): SlateData {
+  const spec: SlateSpec = { ...MLB_SLATE_SPEC, model: (g) => modelRow(g, g.gamePk != null ? input.picks?.get(String(g.gamePk)) : undefined) };
   return {
     sport: 'mlb',
     date: input.date,
     fetchedAt: new Date().toISOString(),
-    games: buildSlateGames({ games: input.games, lines: input.lines, date: input.date, propCounts: input.propCounts, spec: MLB_SLATE_SPEC }),
+    games: buildSlateGames({ games: input.games, lines: input.lines, date: input.date, propCounts: input.propCounts, spec }),
+    // The Model section (S5) lists these picks; declared here so the shell
+    // asks for it by data, not by sport.
+    modelPicks: { note: MODEL_NOTE },
     warnings: input.warnings ?? [],
   };
 }

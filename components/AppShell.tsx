@@ -25,8 +25,6 @@ import { nhlMatchupFavorableFor } from '@/lib/sports/nhl/matchupFavorable';
 import { mergeMatchupFavorable } from '@/lib/odds/props/matchupFavorable';
 import { useMarketCalibration } from './useMarketCalibration';
 import { useProjections, projectionKey } from './useProjections';
-import { useGamePickHistory } from './useGamePickRecord';
-import { TodaysPicksButton } from './TodaysPicksModal';
 import { candidateDimensionToMarketKey } from '@/lib/odds/props/entityResolution';
 import ScanCard from './ScanCard';
 import SlipModal from './SlipModal';
@@ -42,6 +40,9 @@ import { SlateGames, SlateSectionNav } from './slate/SlateSections';
 import { SlateMarket, useSlateMarket } from './slate/SlateMarket';
 import { SlateSpotlights } from './slate/SlateSpotlights';
 import { SlateSpecials, useSlateSpecials } from './slate/SlateSpecials';
+import { SlateModel, useSlateModel } from './slate/SlateModel';
+import { SlateYourLines, useSignedIn, useYourLineSources } from './slate/SlateYourLines';
+import { toYourLines } from '@/lib/slate/yourLines';
 import { buildSpotlights } from '@/lib/slate/spotlights';
 import { slateSections } from '@/lib/sports/shared/slateShapes';
 import {
@@ -102,46 +103,6 @@ type ScanView = (typeof SCAN_VIEWS)[number];
 const LAST_SPORT_KEY = 'linesmith:last-sport';
 const DENSE_KEY = 'linesmith:dense';
 
-/**
- * Top-of-Scan record — the Linesmith Pick lock system's real, forward-only
- * record (see components/useGamePickRecord.ts): moneyline and O/U tracked
- * separately, since a strong week on one market shouldn't hide a bad one on
- * the other. Starts empty and grows from the day this system launched —
- * intentionally not backfilled from the old edge-gated Good Bets record,
- * which graded a different, retroactive question.
- */
-function RecordChip({ label, wins, losses }: { label: string; wins: number; losses: number }) {
-  const total = wins + losses;
-  const winRate = total > 0 ? (wins / total) * 100 : null;
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full border border-line bg-card px-2.5 py-1 text-[11px]"
-      title={`${label} picks locked 3 hours before first pitch, graded once final.`}
-    >
-      <span className="font-medium text-ink-muted">{label}</span>
-      {total > 0 ? (
-        <>
-          <span className="font-semibold tabular-nums text-ink">
-            {wins}-{losses}
-          </span>
-          {winRate != null ? <span className="text-ink-muted">({winRate.toFixed(1)}%)</span> : null}
-        </>
-      ) : (
-        <span className="text-ink-muted">no graded picks yet</span>
-      )}
-    </span>
-  );
-}
-
-function LinesmithRecordBar({ record }: { record: { moneyline: { wins: number; losses: number }; total: { wins: number; losses: number } } | null }) {
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <RecordChip label="ML" wins={record?.moneyline.wins ?? 0} losses={record?.moneyline.losses ?? 0} />
-      <RecordChip label="O/U" wins={record?.total.wins ?? 0} losses={record?.total.losses ?? 0} />
-    </div>
-  );
-}
-
 export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeague | TennisTour }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -156,17 +117,6 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // path — /api/props/lines is MLB-scoped underneath (loadAllGameContexts()
   // only knows MLB games), so it wouldn't return anything for soccer anyway.
   const hasPropsPipeline = sport === 'mlb' || sport === 'nfl';
-  // Today's Picks (docs/daily-picks-full-model-build-2026-08-27.md) —
-  // real game/prop/rare-market picks now exist in pick_history for every
-  // sport predict/generic_prop_production.py covers, not just MLB/NFL's
-  // own live-odds pipeline above (a genuinely separate concern: this flag
-  // gates the Today's Picks button, hasPropsPipeline gates the Scan
-  // tab's slate-wide book-price table). Golf/Tennis stay out — no daily-
-  // games concept (golf) or no design yet (tennis), same as the rest of
-  // this build. Soccer OUT by operator decision (master plan Phase 8,
-  // 2026-09-13): its picks came from generic Elo, a model never gated, while
-  // the richer Dixon-Coles failed its gate.
-  const hasTodaysPicks = sport === 'mlb' || sport === 'nfl' || sport === 'cfb' || sport === 'nba' || sport === 'nhl';
   const { snapshot, loading, error, lastFetched, refresh } = useSnapshot(sport, sport === 'mlb' ? scanDate : undefined, league);
   const slip = useSlip(sport);
 
@@ -228,7 +178,6 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // the seven with no fitted model, same as every other hook here (rules of
   // hooks: always called, mostly idle).
   const projections = useProjections(sport);
-  const gamePickHistory = useGamePickHistory(sport);
   // S1 — the Slate's own read. Ten kilobytes, fetched beside the snapshot
   // rather than inside it, so the top of the page draws while the props
   // board's own 20-odd megabytes are still arriving (SL-11).
@@ -239,6 +188,11 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   const marketRead = useSlateMarket(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
   // S4 — the Specials, from `slate_rankings` (the table M3 actually wrote).
   const specialsRead = useSlateSpecials(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
+  // S5 — the Model section, only when the slate's adapter declares one.
+  const modelRead = useSlateModel(sport, !!slateRead.data?.modelPicks, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
+  // S5 — Your lines. Signed out, nothing is fetched and nothing renders.
+  const signedIn = useSignedIn();
+  const yourLineSources = useYourLineSources(sport, signedIn);
   // Golf only: Hole Props (the existing per-hole pattern-scan market) vs.
   // Round Score (one row per golfer, betting on the round total). Filters
   // the base candidate list itself, so every existing tab/filter (Good Bets,
@@ -475,6 +429,23 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   const spotlights = useMemo(
     () => buildSpotlights(filteredBeforePriceGate, { sport, league: league ?? null }),
     [filteredBeforePriceGate, sport, league],
+  );
+
+  // S5 — Your lines, joined against the same candidates the board draws.
+  const yourLines = useMemo(
+    () =>
+      signedIn
+        ? toYourLines({
+            sport,
+            date: scanDate ?? easternDate(),
+            candidates: filteredBeforePriceGate,
+            bets: yourLineSources.bets,
+            slip: slip.picks,
+            tracked: yourLineSources.tracked,
+            watchlist: slip.watchlist,
+          })
+        : null,
+    [signedIn, sport, scanDate, filteredBeforePriceGate, yourLineSources.bets, yourLineSources.tracked, slip.picks, slip.watchlist],
   );
 
   const views = useMemo(() => {
@@ -716,13 +687,6 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
 
         {tab === 'Slate' ? (
           <>
-            {hasTodaysPicks ? (
-              <div className="mb-2 flex flex-wrap items-center gap-2">
-                <TodaysPicksButton sport={sport} date={easternDate()} />
-                <LinesmithRecordBar record={gamePickHistory.record} />
-              </div>
-            ) : null}
-
             {/* Golf's props-board mode: Hole Props or Round Score. Since S1 the
                 winner prices are their own section above, so this is two
                 options rather than three. */}
@@ -744,6 +708,8 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                 (marketRead.data?.outliers.length ?? 0) + (marketRead.data?.disagreements.length ?? 0) || null,
                 spotlights.reduce((n, c) => n + c.rows.length, 0) || null,
                 specialsRead.data?.rankings.length || null,
+                modelRead.data?.rows.length || null,
+                yourLines?.length || null,
               )}
             />
 
@@ -770,6 +736,12 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
             <SlateSpotlights cards={spotlights} loading={loading && filteredBeforePriceGate.length === 0} />
 
             <SlateSpecials data={specialsRead.data} loading={specialsRead.loading} />
+
+            {slateRead.data?.modelPicks ? (
+              <SlateModel data={modelRead.data} note={slateRead.data.modelPicks.note} loading={modelRead.loading} />
+            ) : null}
+
+            <SlateYourLines rows={yourLines} />
 
             {golfFieldPending ? (
               <TournamentNotStartedNotice eventName={snapshot?.eventName} />

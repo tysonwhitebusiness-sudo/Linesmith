@@ -24,7 +24,6 @@ export const OUT_OF_SCOPE: readonly string[] = [
   'components/FilterSidebar.tsx',
   'components/PlayerFilterDrawer.tsx',
   'components/DateGameStrip.tsx',
-  'components/TodaysPicksModal.tsx',
   'components/useFilters.ts',
   'components/AppShell.tsx',
 ];

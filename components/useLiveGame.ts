@@ -11,7 +11,7 @@ export interface LiveGameState {
 
 /**
  * Polls `/api/mlb/game/:id/live` while `enabled` — the Live tab is open on a
- * game that's actually in progress. Matches `useGamePickRecord.ts`'s plain
+ * game that's actually in progress. A plain
  * fetch+interval shape rather than `useSnapshot.ts`'s stale-while-revalidate
  * one: there's no cached-paint need for a single game's live poll, and the
  * design spec's "refreshes at each half-inning" cadence is well served by a

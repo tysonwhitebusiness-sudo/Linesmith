@@ -163,7 +163,7 @@ async function buildSlate(sport: string, league: string | null, tour: string | n
   const key = `${sport}:snapshot`;
   const [games, lines, propCounts] = await Promise.all([readGames(key), readGameOddsBookLinesForSport(sport), readPropCounts(key)]);
 
-  if (sport === 'mlb') return toMlbSlateData({ date, games, lines, propCounts });
+  if (sport === 'mlb') return toMlbSlateData({ date, games, lines, propCounts, picks: await readEloPicks('mlb') });
   const picks = await readEloPicks(sport);
   if (sport === 'nba') return toNbaSlateData({ date, games, lines, picks, propCounts });
   if (sport === 'nhl') return toNhlSlateData({ date, games, lines, picks, propCounts });

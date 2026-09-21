@@ -107,6 +107,11 @@ export interface SlateData {
   date: string;
   fetchedAt: string;
   games?: SlateGamesSection | null;
+  /**
+   * S5 — set by a sport whose picks the Slate lists in a Model section. Unset
+   * means no section: the shell asks the data, never the sport.
+   */
+  modelPicks?: { note: string } | null;
   /** Anything the build could not do, in the reader's words. */
   warnings: string[];
 }
@@ -131,6 +136,8 @@ export function slateSections(
   marketCount?: number | null,
   spotlightCount?: number | null,
   specialsCount?: number | null,
+  modelCount?: number | null,
+  yourLinesCount?: number | null,
 ): SlateSection[] {
   const out: SlateSection[] = [];
   if (data?.games && data.games.cards.length > 0) {
@@ -141,6 +148,8 @@ export function slateSections(
   if (marketCount != null && marketCount > 0) out.push({ id: 'market', label: 'Books', count: marketCount });
   if (spotlightCount != null && spotlightCount > 0) out.push({ id: 'spotlights', label: 'Spotlights', count: spotlightCount });
   if (specialsCount != null && specialsCount > 0) out.push({ id: 'specials', label: 'Specials', count: specialsCount });
+  if (data?.modelPicks && modelCount != null && modelCount > 0) out.push({ id: 'model', label: 'Model', count: modelCount });
+  if (yourLinesCount != null && yourLinesCount > 0) out.push({ id: 'your-lines', label: 'Your lines', count: yourLinesCount });
   if (propCount != null && propCount > 0) out.push({ id: 'props', label: 'Props', count: propCount });
   return out;
 }
