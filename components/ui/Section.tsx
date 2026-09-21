@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Button } from './Button';
 import { cx } from './cx';
 
 /**
@@ -27,28 +28,63 @@ import { cx } from './cx';
  * refetches when it is shown again. Charts measure with a ResizeObserver, so one
  * that was hidden re-measures to its real width on the way back.
  */
+/**
+ * C1 (D-C3, variant A): the one section header. A full-bleed charcoal band
+ * with a 2px `char-rule` top line; green never marks structure. It bleeds to
+ * the page gutter each `<main>` declares as `--lb-gutter`, so it never
+ * overflows a page with a narrower gutter (the right-edge bug, SL-25).
+ * Research sections render it through `Section`; the Slate's sections use it
+ * directly. `tests/ui-primitives` bans a page's own `<h2 className="text-title`.
+ */
+export function SectionBand({
+  title,
+  count,
+  sub,
+  right,
+  className,
+}: {
+  title: ReactNode;
+  count?: number | null;
+  sub?: ReactNode;
+  /** Controls at the band's right; on a phone they drop to their own row. */
+  right?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cx(
+        'mb-3.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t-2 border-b border-t-char-rule border-b-char3 bg-char px-4 py-3.5 text-char-ink sm:flex-nowrap sm:px-6 sm:py-4',
+        className,
+      )}
+      style={{ marginInline: 'calc(var(--lb-gutter, 0px) * -1)' }}
+    >
+      <h2 className="text-title text-char-ink sm:text-heading">{title}</h2>
+      {count != null ? <span className="rounded-full bg-char3 px-2 py-0.5 text-label tabular-nums text-char-ink2">{count}</span> : null}
+      {sub ? <span className="text-body-sm text-char-ink2">{sub}</span> : null}
+      {right ? <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:flex-nowrap">{right}</div> : null}
+    </div>
+  );
+}
+
 export function Section({ id, title, sub, children, className }: { id: string; title: ReactNode; sub?: ReactNode; children: ReactNode; className?: string }) {
   const [collapsed, setCollapsed] = useState(false);
   const bodyId = `sec-body-${id}`;
   return (
     <section id={`sec-${id}`} data-sec={id} className={cx('mt-8 scroll-mt-[110px] first:mt-0', className)}>
-      <div className={cx('flex flex-wrap items-baseline gap-3', collapsed ? 'mb-0' : 'mb-3')}>
-        <h2 className="text-title text-ink">{title}</h2>
-        {sub ? <span className="text-label text-ink-muted">{sub}</span> : null}
-        <button
-          type="button"
-          onClick={() => setCollapsed((c) => !c)}
-          aria-expanded={!collapsed}
-          aria-controls={bodyId}
-          className="ml-auto inline-flex items-center gap-1 rounded-ctl px-2 py-1 text-label text-ink-muted transition-colors hover:bg-card-sunk hover:text-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
-        >
-          <svg aria-hidden width="12" height="12" viewBox="0 0 12 12" className={cx('transition-transform', collapsed ? '-rotate-90' : '')}>
-            <path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          {collapsed ? 'Show' : 'Hide'}
-          <span className="sr-only"> {typeof title === 'string' ? title : 'section'}</span>
-        </button>
-      </div>
+      <SectionBand
+        title={title}
+        sub={sub}
+        className={collapsed ? 'mb-0' : undefined}
+        right={
+          <Button variant="onDark" size="sm" onPress={() => setCollapsed((c) => !c)} aria-expanded={!collapsed} aria-controls={bodyId}>
+            <svg aria-hidden width="12" height="12" viewBox="0 0 12 12" className={cx('transition-transform', collapsed ? '-rotate-90' : '')}>
+              <path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {collapsed ? 'Show' : 'Hide'}
+            <span className="sr-only"> {typeof title === 'string' ? title : 'section'}</span>
+          </Button>
+        }
+      />
       <div id={bodyId} className="space-y-3" hidden={collapsed}>
         {children}
       </div>
@@ -116,7 +152,7 @@ export function SectionNav({
   };
 
   return (
-    <nav aria-label={label} style={{ top }} className={cx('sticky z-20 border-b border-line bg-paper/90 backdrop-blur', bleed && '-mx-4 px-4 md:-mx-6 md:px-6', className)}>
+    <nav aria-label={label} style={{ top }} className={cx('sticky z-20 border-b border-char3 bg-paper/90 backdrop-blur', bleed && '-mx-4 px-4 md:-mx-6 md:px-6', className)}>
       <div ref={barRef} className="flex gap-4 overflow-x-auto lb-scroll-x">
         {items.map((it) => {
           const on = it.id === active;

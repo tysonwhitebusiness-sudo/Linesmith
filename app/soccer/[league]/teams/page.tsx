@@ -46,7 +46,7 @@ export default function SoccerTeamsIndexPage() {
         />
       </header>
 
-      <main className="px-3 py-3">
+      <main className="px-3 py-3 [--lb-gutter:12px]">
         <TeamDetailPanel sport={sport} league={league} />
       </main>
 

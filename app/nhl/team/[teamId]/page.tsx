@@ -40,7 +40,7 @@ export default function NhlTeamPage() {
         />
       </header>
 
-      <main className="px-3 py-3">
+      <main className="px-3 py-3 [--lb-gutter:12px]">
         {error ? <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad-ink">{error}</div> : null}
         <TeamDetailPanel sport={sport} initialTeamId={teamId} />
       </main>

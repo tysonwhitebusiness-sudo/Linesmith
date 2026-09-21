@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AvatarLabel, Card, Chip, DataTable, EmptyState, Tabs, type Column } from '@/components/ui';
+import { AvatarLabel, Card, Chip, DataTable, EmptyState, Tabs, type Column, SectionBand } from '@/components/ui';
 import type { SpecialRanking, SpecialRow, SpecialsData } from '@/lib/slate/specials';
 import { formatFactor } from '@/lib/slate/specialsFormat';
 
@@ -106,7 +106,7 @@ export function SlateSpecials({ data, loading }: { data: SpecialsData | null; lo
 
   return (
     <section id="slate-specials" className="mb-6 scroll-mt-[150px]">
-      <h2 className="mb-2 text-title text-ink">Specials</h2>
+      <SectionBand title="Specials" />
       {loading && !active ? (
         <Card title="Specials" state={{ kind: 'loading', lines: 6 }} />
       ) : active ? (

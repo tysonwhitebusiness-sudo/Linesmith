@@ -67,7 +67,7 @@ import { TournamentNotStartedNotice } from './TournamentNotStartedNotice';
 import { TeamLogo, GameMatchupLabel, nflTeamLogoUrl } from './SubjectAvatar';
 import { buildSlate, type SlateEntry, type SlateGame } from '@/lib/odds/matching';
 import { useFilters, applyFilters, filtersActive, activeFilterCount } from './useFilters';
-import { Tabs } from './ui';
+import { Tabs, SectionBand } from './ui';
 import { easternDate, shiftDate } from '@/lib/sports/mlb/statsapi';
 
 /**
@@ -638,7 +638,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
         ) : null}
       </header>
 
-      <main className="px-4 py-3">
+      <main className="px-4 py-3 [--lb-gutter:16px]">
         {error ? (
           <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad">
             {error}
@@ -719,7 +719,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
 
             {sport === 'golf' ? (
               <section id="slate-games" className="mb-6 scroll-mt-[150px]">
-                <h2 className="mb-2 text-title text-ink">Winner prices</h2>
+                <SectionBand title="Winner prices" />
                 <TournamentLinesView
                   lines={golfLines.result?.lines ?? []}
                   subjects={snapshot?.subjects ?? []}
@@ -791,7 +791,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                 ) : null}
 
                 <div id="slate-props" className="min-w-0 flex-1 scroll-mt-[150px]">
-                  <h2 className="mb-2 text-title text-ink">Props</h2>
+                  <SectionBand title="Props" />
                   {/* S1: Scan's own tabs, rebuilt on the kit's `Tabs` with real
                       counts (D3 freezes the TABLE, not the controls around it).
                       Home Runs is the standalone home-run model's board — an

@@ -53,5 +53,5 @@ export {
   type DropdownItem,
   type DropdownSection,
 } from './Overlays';
-export { Section, SectionNav } from './Section';
+export { Section, SectionBand, SectionNav } from './Section';
 export { BackLink, useUrlState } from './Navigation';

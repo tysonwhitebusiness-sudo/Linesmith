@@ -59,6 +59,12 @@
   --color-bad-ink: rgb(var(--bad-ink));
   --color-warn-ink: rgb(var(--warn-ink));
   --color-good-on: rgb(var(--good-on));
+  --color-char: rgb(var(--char));
+  --color-char3: rgb(var(--char3));
+  --color-char-ink: rgb(var(--char-ink));
+  --color-char-ink2: rgb(var(--char-ink2));
+  --color-char-rule: rgb(var(--char-rule));
+  --color-char-btn: rgb(var(--char-btn));
   --color-paper: oklch(var(--paper));
   --color-card: oklch(var(--card));
   /* Inset surfaces inside a card: toggle tracks, hover rows, skeletons. */
@@ -295,6 +301,13 @@
     --warn-ink: 154 98 0; /* #9a6200 */
     /* Dark text ON a solid good fill (the W square, a hit dot): #04311a. */
     --good-on: 4 49 26;
+    /* C1: the charcoal band (variant A). */
+    --char: 29 31 35; /* #1d1f23 */
+    --char3: 52 55 61; /* #34373d */
+    --char-ink: 244 245 247; /* #f4f5f7 */
+    --char-ink2: 167 171 179; /* #a7abb3 */
+    --char-rule: 110 114 122; /* #6e727a, the 2px top line */
+    --char-btn: 69 72 80; /* #454850, a band button's border */
     --cmp-a: 47 111 179; /* #2f6fb3 */
     --cmp-b: 197 106 28; /* #c56a1c */
     --ease-standard: cubic-bezier(0.2, 0, 0, 1);

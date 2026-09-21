@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { EmptyState, FeaturedIcon, SegmentedToggle, Skeleton, cx } from '@/components/ui';
+import { EmptyState, FeaturedIcon, SegmentedToggle, Skeleton, cx, SectionBand } from '@/components/ui';
 import type { SlateData, SlateSection, SlateStatus } from '@/lib/sports/shared/slateShapes';
 import { GameCard } from './GameCard';
 
@@ -61,7 +61,7 @@ export function SlateSectionNav({ sections }: { sections: SlateSection[] }) {
     <nav
       aria-label="Slate sections"
       style={{ top: headerH }}
-      className="lb-scroll-x sticky z-10 -mx-4 mb-3 flex gap-1 bg-paper/95 px-4 py-2 backdrop-blur"
+      className="lb-scroll-x sticky z-10 -mx-4 mb-3 flex gap-1 border-b border-char3 bg-paper/95 px-4 py-2 backdrop-blur"
     >
       {sections.map((s) => {
         const on = s.id === active;
@@ -105,7 +105,7 @@ export function SlateGames({ data, loading }: { data: SlateData | null; loading:
   if (loading && !games) {
     return (
       <section id="slate-games" className="mb-6 scroll-mt-[150px]">
-        <h2 className="mb-2 text-title text-ink">Games</h2>
+        <SectionBand title="Games" />
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 wide:grid-cols-3">
           {[0, 1, 2].map((i) => (
             <div key={i} className="rounded-card border border-line-soft bg-card p-4 shadow-card">
@@ -131,18 +131,20 @@ export function SlateGames({ data, loading }: { data: SlateData | null; loading:
 
   return (
     <section id="slate-games" className="mb-6 scroll-mt-[150px]">
-      <div className="mb-2 flex flex-wrap items-center gap-3">
-        <h2 className="text-title text-ink">{games.noun === 'matches' ? 'Matches' : 'Games'}</h2>
-        {games.cards.length > 0 ? (
-          <SegmentedToggle
-            label="Game status"
-            size="sm"
-            value={filter}
-            onChange={setFilter}
-            options={FILTERS.map((f) => ({ value: f.value, label: `${f.label} ${count(f.value)}` }))}
-          />
-        ) : null}
-      </div>
+      <SectionBand
+        title={games.noun === 'matches' ? 'Matches' : 'Games'}
+        right={
+          games.cards.length > 0 ? (
+            <SegmentedToggle
+              label="Game status"
+              size="sm"
+              value={filter}
+              onChange={setFilter}
+              options={FILTERS.map((f) => ({ value: f.value, label: `${f.label} ${count(f.value)}` }))}
+            />
+          ) : null
+        }
+      />
 
       {games.cards.length === 0 ? (
         <div className="rounded-card border border-line-soft bg-card shadow-card">

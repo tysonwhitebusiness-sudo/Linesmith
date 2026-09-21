@@ -60,7 +60,7 @@ function SoccerGamePage({ league, gameId }: { league: SoccerLeague; gameId: stri
         />
       </header>
 
-      <main className="mx-auto max-w-[1280px] px-3 py-3 md:px-6">
+      <main className="mx-auto max-w-[1280px] px-3 py-3 [--lb-gutter:12px] md:px-6 md:[--lb-gutter:24px]">
         <GameResearchPage sport={league === 'mls' ? 'soccer_mls' : 'soccer_epl'} gameId={gameId} />
       </main>
 

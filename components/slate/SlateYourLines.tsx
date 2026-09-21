@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Card, Chip, DataTable, type Column, type ChipTone } from '@/components/ui';
+import { Card, Chip, DataTable, type Column, type ChipTone, SectionBand } from '@/components/ui';
 import { createClient } from '@/lib/supabase/client';
 import type { BetLeg, TrackedLeg, YourLineRow } from '@/lib/slate/yourLines';
 
@@ -67,7 +67,7 @@ export function SlateYourLines({ rows }: { rows: YourLineRow[] | null }) {
   if (!rows || rows.length === 0) return null;
   return (
     <section id="slate-your-lines" className="mb-6 scroll-mt-[150px]">
-      <h2 className="mb-2 text-title text-ink">Your lines</h2>
+      <SectionBand title="Your lines" />
       <Card title="On today's slate" count={rows.length} flush>
         <DataTable caption="Your lines on today's slate" columns={COLUMNS} rows={rows} rowKey={(r) => r.key} />
       </Card>

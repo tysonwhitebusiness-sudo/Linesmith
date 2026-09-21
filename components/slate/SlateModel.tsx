@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, Chip, DataTable, type Column } from '@/components/ui';
+import { Card, Chip, DataTable, type Column, SectionBand } from '@/components/ui';
 import type { ModelPickRow, ModelPicksData } from '@/lib/slate/modelPicks';
 
 /**
@@ -65,7 +65,7 @@ export function SlateModel({ data, note, loading }: { data: ModelPicksData | nul
   if (!loading && rows.length === 0) return null;
   return (
     <section id="slate-model" className="mb-6 scroll-mt-[150px]">
-      <h2 className="mb-2 text-title text-ink">Model</h2>
+      <SectionBand title="Model" />
       <Card
         title="Today's picks"
         count={rows.length || undefined}

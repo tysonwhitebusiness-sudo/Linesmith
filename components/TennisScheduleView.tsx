@@ -657,7 +657,7 @@ export function TennisScheduleView({
         />
       </div>
 
-      <div className="min-w-0">
+      <div className="min-w-0 lg:[--lb-gutter:0px]">
         {!active ? (
           <div className="lb-card p-8 text-center text-sm text-ink-muted">Select a tournament to see its details.</div>
         ) : drawLoading && !draw ? (

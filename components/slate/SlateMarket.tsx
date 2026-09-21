@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card, DataTable, EmptyState, cx, type Column } from '@/components/ui';
+import { Card, DataTable, EmptyState, cx, type Column, SectionBand } from '@/components/ui';
 import type { DisagreementRow, OutlierRow } from '@/lib/slate/marketMoves';
 
 /**
@@ -110,7 +110,7 @@ export function SlateMarket({ data, loading }: { data: SlateMarketData | null; l
 
   return (
     <section id="slate-market" className="mb-6 scroll-mt-[150px]">
-      <h2 className="mb-2 text-title text-ink">Where the books differ</h2>
+      <SectionBand title="Where the books differ" />
       <div className={cx('grid grid-cols-1 gap-3 lg:grid-cols-2')}>
         <Card
           title="Price outliers"

@@ -1,6 +1,6 @@
 'use client';
 
-import { AvatarLabel, Card, DataTable, EmptyState, type Column } from '@/components/ui';
+import { AvatarLabel, Card, DataTable, EmptyState, type Column, SectionBand } from '@/components/ui';
 import type { SpotlightCard, SpotlightRow } from '@/lib/slate/spotlights';
 
 /**
@@ -52,7 +52,7 @@ export function SlateSpotlights({ cards, loading }: { cards: SpotlightCard[]; lo
 
   return (
     <section id="slate-spotlights" className="mb-6 scroll-mt-[150px]">
-      <h2 className="mb-2 text-title text-ink">Spotlights</h2>
+      <SectionBand title="Spotlights" />
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         {cards.map((card) => (
           <Card

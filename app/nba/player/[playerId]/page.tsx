@@ -110,7 +110,7 @@ export default function NbaPlayerDetailPage() {
         />
       </header>
 
-      <main className="px-3 py-3">
+      <main className="px-3 py-3 [--lb-gutter:12px]">
         {error ? (
           // R3: human text and a retry, never the raw error string (D5).
           <ErrorState className="mb-3" message="We couldn't refresh today's markets for this player." onRetry={refresh} />

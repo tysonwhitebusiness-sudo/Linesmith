@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Card, Chip, DataTable, EmptyState, SegmentedToggle, Tabs, type Column } from '@/components/ui';
+import { Card, Chip, DataTable, EmptyState, SegmentedToggle, Tabs, type Column, SectionBand } from '@/components/ui';
 import { Sparkline } from '@/components/charts';
 import type { ConsensusMover, MoverKind, MoverWindow } from '@/lib/slate/marketMoves';
 
@@ -179,7 +179,7 @@ export function SlateMovers({ data, loading }: { data: SlateMoversData | null; l
 
   return (
     <section id="slate-movers" className="mb-6 scroll-mt-[150px]">
-      <h2 className="mb-2 text-title text-ink">Movers</h2>
+      <SectionBand title="Movers" />
       <Card
         title="How the market has moved"
         count={rows.length || undefined}

@@ -231,7 +231,7 @@ export function PlayerDetailPanel({ sport, snapshot, candidates, odds, onAdd, ad
         />
       </div>
 
-      <div className="min-w-0 space-y-3">
+      <div className="min-w-0 space-y-3 lg:[--lb-gutter:0px]">
         {!activeSubjectId ? (
           <div className="lb-card p-8 text-center text-sm text-ink-muted">
             {index.loading ? 'Loading players…' : 'No players held for this sport yet.'}

@@ -26,9 +26,9 @@ is answered. Start at phase 1 (C7) of the run order and don't stop to ask.**
 | # | phase | status |
 |---|---|---|
 | 1 | C7 delete the live line tracker (the role keys stay six: the tracker was never one) | **done** |
-| 2 | C0 Electric Turf + `-ink` tokens, ESPN team colours, kit pieces | **next** |
-| 3 | C1 charcoal section bands (Movers included) | **next** |
-| 4 | PY-A shared Python: C5 grading + 3 new Specials + park table + spotlight `kind` (**deploy**) | — |
+| 2 | C0 Electric Turf + `-ink` tokens, ESPN team colours, kit pieces | **done** |
+| 3 | C1 charcoal section bands (Movers included) | **done** |
+| 4 | PY-A shared Python: C5 grading + 3 new Specials + park table + spotlight `kind` (**deploy**) | **next** |
 | 5 | C2 player hero | — |
 | 5b | C2b team hero, same rework as the player hero | — |
 | 6 | PY-B spotlight rankings, NFL/NBA/NHL first (**deploy**) | — |
@@ -90,6 +90,14 @@ Update this table and the run doc's §2 after every phase commit, then push.
   for good/bad-by-definition values, and `heat` for a rank.
 - **Scan's cell components stay frozen** (`StatCells`, `OddsChip`). C6
   unfreezes only the filter-bar files.
+- **C1: a HIDDEN Browser pane never fires `requestAnimationFrame`**, and
+  React 19's streaming reveal (`$RC` -> `$RB` -> rAF -> `$RV`) waits on it, so
+  every Suspense page (player, team) sits in `<div hidden id="S:0">` with
+  zero-width bands. It is not a page bug. Verify in the Playwright browser, or
+  call `$RV($RB)` from the console to inspect.
+- **C1: band bleed is per column.** Each `<main>` declares `--lb-gutter`; a
+  two-column layout (team list + detail) resets it to 0 on the detail column
+  at `lg`, so the band stays inside its column instead of touching the list.
 - **A worn browser tab stalls effects** and React Aria's exit animations.
   Render in a fresh tab.
 - **The Playwright browser can be locked by another session.** Fall back to

@@ -31,7 +31,7 @@ import { cx } from './cx';
  * secondary, tertiary or link.
  */
 
-export type ButtonVariant = 'primary' | 'secondary' | 'tertiary' | 'link' | 'destructive' | 'destructive-secondary';
+export type ButtonVariant = 'primary' | 'secondary' | 'tertiary' | 'link' | 'destructive' | 'destructive-secondary' | 'onDark';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 const VARIANT: Record<ButtonVariant, string> = {
@@ -41,6 +41,8 @@ const VARIANT: Record<ButtonVariant, string> = {
   link: 'bg-transparent p-0! h-auto! text-ink underline-offset-2 hover:underline',
   destructive: 'bg-bad text-white shadow-card hover:brightness-95',
   'destructive-secondary': 'bg-card text-bad-ink ring-1 ring-bad/25 ring-inset hover:bg-bad/5',
+  // C1: a control on a charcoal section band (the mockup's `.band .btn`).
+  onDark: 'bg-char3 text-char-ink ring-1 ring-char-btn ring-inset hover:brightness-110',
 };
 
 const SIZE: Record<ButtonSize, string> = {

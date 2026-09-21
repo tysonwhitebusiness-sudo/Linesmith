@@ -134,7 +134,7 @@ function TeamListShell({
         )}
       </div>
 
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0 lg:[--lb-gutter:0px]">{children}</div>
     </div>
   );
 }
