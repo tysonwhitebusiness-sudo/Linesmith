@@ -54,7 +54,7 @@ export interface StatValueProps {
 }
 
 export function StatValue({ label, value, unit, rank, percentile, delta, direction = 'neutral', size = 'default', info, className }: StatValueProps) {
-  const valueClass = size === 'display' ? 'text-display' : size === 'compact' ? 'text-body font-semibold' : 'text-[22px] font-semibold leading-[1.15] tracking-[-0.01em]';
+  const valueClass = size === 'display' ? 'text-display' : size === 'compact' ? 'text-body font-semibold' : 'text-heading';
   const tile = (
     <div className={cx('min-w-0 rounded-ctl px-2 py-1.5 transition-colors duration-instant hover:bg-card-sunk', className)}>
       <div className="truncate text-label text-ink-muted">{label}</div>

@@ -23,7 +23,7 @@ export default function ComplianceFooter() {
   return (
     <footer
       role="contentinfo"
-      className="mt-12 border-t border-line bg-card px-4 py-6 text-[11px] leading-relaxed text-ink-muted sm:px-6"
+      className="mt-12 border-t border-line bg-card px-4 py-6 text-overline font-normal tracking-normal leading-relaxed text-ink-muted sm:px-6"
     >
       <div className="mx-auto flex max-w-3xl flex-col gap-2">
       <p className="text-ink-secondary">

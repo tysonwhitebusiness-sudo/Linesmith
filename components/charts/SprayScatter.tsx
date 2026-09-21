@@ -58,7 +58,7 @@ export function SprayScatter({
       <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label} style={{ display: 'block', margin: '0 auto', maxWidth: '100%', fontFamily: FONT_STACK }}>
         <path d={arc(400)} fill="oklch(95.5% 0.03 150)" stroke="oklch(80% 0.04 150)" />
         <path d={arc(150)} fill="oklch(92% 0.035 70)" opacity={0.7} />
-        <path d={`M${diamond.map(([x, y]) => `${x},${y}`).join(' L')} Z`} fill="none" stroke="#fff" strokeWidth={2} />
+        <path d={`M${diamond.map(([x, y]) => `${x},${y}`).join(' L')} Z`} fill="none" stroke="white" strokeWidth={2} />
         {[300, 350, 400].map((r) => {
           const [tx, ty] = P(0, r);
           return (

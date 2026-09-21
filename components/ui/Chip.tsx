@@ -1,6 +1,7 @@
 import type { CSSProperties, MouseEventHandler, ReactNode } from 'react';
 import { cx } from './cx';
 
+import { Tooltip } from './Tooltip';
 /**
  * Chip — R3 3b: tone × size × shape. The one chip, pill or badge.
  *
@@ -79,24 +80,23 @@ export function Chip({ children, tone = 'neutral', size = 'sm', shape = 'pill', 
 
   if (onClick) {
     return (
-      <button
+      <Tooltip content={title}><button
         type="button"
         onClick={onClick}
         aria-pressed={selected}
-        title={title}
         style={style}
         className={cx(classes, 'transition-colors duration-instant ease-standard', !selected && 'hover:border-ink-faint hover:text-ink')}
       >
         {mark}
         {children}
-      </button>
+      </button></Tooltip>
     );
   }
   return (
-    <span title={title} style={style} className={classes}>
+    <Tooltip content={title}><span style={style} className={classes}>
       {mark}
       {children}
-    </span>
+    </span></Tooltip>
   );
 }
 

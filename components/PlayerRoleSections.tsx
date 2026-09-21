@@ -1,6 +1,6 @@
 'use client';
 
-import { Card } from './ui';
+import { Card, DataTable, Tooltip, type Column } from './ui';
 
 import { SpatialSurface } from './charts/SpatialSurface';
 import { SplitDumbbell } from './charts/SplitDumbbell';
@@ -16,6 +16,7 @@ import type {
   PlayerRoles,
   SpatialGridRole,
   UsageMixRole,
+  UsageMixSlice,
 } from '@/lib/sports/shared/playerRoles';
 
 /**
@@ -111,7 +112,7 @@ function OpponentUnitSection({ role }: { role: OpponentUnitRole }) {
           // eslint-disable-next-line @next/next/no-img-element
           <img src={role.headshotUrl ?? role.logoUrl} alt="" className="h-7 w-7 rounded-full object-cover" />
         ) : null}
-        <span className="text-[13px] font-semibold text-ink">{role.name}</span>
+        <span className="text-body-sm font-semibold text-ink">{role.name}</span>
       </div>
       <StatTable
         rows={role.stats.map((s) => ({
@@ -156,7 +157,7 @@ function UsageMixSection({ role }: { role: UsageMixRole }) {
   if (slices.length === 0) {
     return (
       <RoleCard title={role.title}>
-        <p className="py-3 text-center text-[11px] text-ink-muted">
+        <p className="py-3 text-center text-overline font-normal tracking-normal text-ink-muted">
           {role.emptyMessage ?? 'No usage breakdown available yet.'}
         </p>
       </RoleCard>
@@ -175,86 +176,68 @@ function UsageMixSection({ role }: { role: UsageMixRole }) {
     >
       <div className="mb-2 flex h-3 w-full overflow-hidden rounded-[3px]">
         {slices.map((s, i) => (
-          <div
-            key={s.key}
+          <Tooltip key={s.key} content={`${s.label} ${s.share.toFixed(1)}%`}><div
             style={{ width: `${s.share}%`, background: heatFill(1 - i / Math.max(1, slices.length - 1), 0.55) }}
-            title={`${s.label} ${s.share.toFixed(1)}%`}
-          />
+          /></Tooltip>
         ))}
       </div>
-      <table className="w-full border-collapse">
-        {/* THE COMPARISON HEADER ONLY EXISTS WHEN THERE IS SOMETHING TO
-            COMPARE. Without `compare` this is the same two-column mix it
-            always was, and adding a header row to that would be chrome over
-            nothing. */}
-        {cmp ? (
-          <thead>
-            <tr className="border-b border-line text-[9px] uppercase tracking-wide text-ink-muted">
-              <th className="py-1 pr-2 text-left font-semibold">Pitch</th>
-              <th className="py-1 text-right font-semibold" colSpan={2}>{cmp.label}</th>
-              <th className="py-1 pl-3 text-right font-semibold" colSpan={2}>{cmp.subjectLabel}</th>
-            </tr>
-          </thead>
-        ) : null}
-        <tbody>
-          {slices.map((s, i) => (
-            <tr key={s.key} className="border-b border-line-hair last:border-b-0">
-              <td className="py-[3px] pr-2">
-                <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-muted">
-                  <span
-                    className="inline-block h-2 w-2 rounded-[2px]"
-                    style={{ background: heatFill(1 - i / Math.max(1, slices.length - 1), 0.55) }}
-                  />
-                  {s.label}
-                </span>
-              </td>
-              {/* The other side first, because it is the thing being faced:
-                  how often he throws it, and what he gives up on it. A pitch
-                  he does not throw prints an em-dash rather than 0.0% -- "not
-                  in his arsenal" and "throws it and gets hit" are different
-                  facts and a zero reads as the second. */}
-              {cmp ? (
-                <>
-                  <td className="w-[52px] py-[3px] text-right text-[11.5px] font-semibold tabular-nums text-ink">
-                    {cmpByKey.get(s.key) ? `${cmpByKey.get(s.key)!.share.toFixed(1)}%` : '—'}
-                  </td>
-                  <td className="w-[56px] py-[3px] pl-1 text-right text-[10.5px] tabular-nums text-ink-muted">
-                    {(() => {
-                      const o = cmpByKey.get(s.key);
-                      return o && o.value != null && Number.isFinite(o.value)
-                        ? (role.valueFormat ?? ((v: number) => v.toFixed(2)))(o.value)
-                        : '—';
-                    })()}
-                  </td>
-                </>
-              ) : null}
-              <td className={`w-[52px] py-[3px] text-right text-[11.5px] font-semibold tabular-nums${cmp ? ' pl-3' : ''}`}>
-                {s.share.toFixed(1)}%
-              </td>
-              <td className="w-[64px] py-[3px] pl-2 text-right text-[10.5px] tabular-nums text-ink-muted">
-                {s.value != null && Number.isFinite(s.value)
-                  ? `${(role.valueFormat ?? ((v: number) => v.toFixed(s.decimals ?? 2)))(s.value)}${
-                      s.valueLabel ? ` ${s.valueLabel}` : ''
-                    }`
-                  : '—'}
-              </td>
-              {/*
-                The sample sits BESIDE the value, never in a tooltip. `share` is
-                counted off every observation and `value` often is not — for MLB
-                only 22% of balls in play carry an expected wOBA — so a slice's
-                outcome read against its share overstates the sample severalfold.
-                Column collapses entirely when no slice carries one, so a sport
-                whose outcome is as dense as its share pays nothing for this.
-              */}
-              {anySample ? (
-                <td className="w-[46px] py-[3px] pl-1 text-right text-[9.5px] tabular-nums text-ink-muted">
-                  {s.valueSample != null && s.valueSample > 0 ? `n=${s.valueSample}` : ''}
-                </td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {/* U6: the kit DataTable, with a group header only when there is a
+          side to compare (`columnGroups`, finding U-7). Without `compare`
+          it is the same two-column mix it always was. The other side comes
+          first because it is the thing being faced; a pitch he does not
+          throw prints an em-dash, not 0.0% ("not in his arsenal" and "throws
+          it and gets hit" are different facts). The sample sits BESIDE the
+          value, never in a tooltip — `share` counts every observation and
+          `value` often does not (22% of MLB balls in play carry an xwOBA). */}
+      <DataTable<UsageMixSlice>
+        caption={role.title}
+        density="compact"
+        rows={slices}
+        rowKey={(s) => s.key}
+        columnGroups={cmp ? [{ label: 'Pitch', span: 1 }, { label: cmp.label, span: 2 }, { label: cmp.subjectLabel, span: anySample ? 3 : 2 }] : undefined}
+        columns={[
+          {
+            key: 'pitch',
+            label: 'Pitch',
+            sortable: false,
+            render: (s) => (
+              <span className="inline-flex items-center gap-1.5 text-ink-muted">
+                <span className="inline-block h-2 w-2 rounded-[2px]" style={{ background: heatFill(1 - slices.indexOf(s) / Math.max(1, slices.length - 1), 0.55) }} />
+                {s.label}
+              </span>
+            ),
+          },
+          ...(cmp
+            ? ([
+                { key: 'cmpShare', label: 'Share', numeric: true, sortable: false, render: (s) => { const o = cmpByKey.get(s.key); return o ? `${o.share.toFixed(1)}%` : '—'; } },
+                {
+                  key: 'cmpValue',
+                  label: 'Outcome',
+                  numeric: true,
+                  sortable: false,
+                  render: (s) => {
+                    const o = cmpByKey.get(s.key);
+                    return o && o.value != null && Number.isFinite(o.value) ? (role.valueFormat ?? ((v: number) => v.toFixed(2)))(o.value) : '—';
+                  },
+                },
+              ] satisfies Column<UsageMixSlice>[])
+            : []),
+          { key: 'share', label: 'Share', numeric: true, sortable: false, render: (s) => <span className="font-semibold">{s.share.toFixed(1)}%</span> },
+          {
+            key: 'value',
+            label: 'Outcome',
+            numeric: true,
+            sortable: false,
+            render: (s) =>
+              s.value != null && Number.isFinite(s.value)
+                ? `${(role.valueFormat ?? ((v: number) => v.toFixed(s.decimals ?? 2)))(s.value)}${s.valueLabel ? ` ${s.valueLabel}` : ''}`
+                : '—',
+          },
+          ...(anySample
+            ? ([{ key: 'n', label: 'n', numeric: true, sortable: false, render: (s) => (s.valueSample != null && s.valueSample > 0 ? `n=${s.valueSample}` : '') }] satisfies Column<UsageMixSlice>[])
+            : []),
+        ]}
+      />
     </RoleCard>
   );
 }
@@ -325,20 +308,20 @@ function CareerH2HSection({ role }: { role: CareerH2HRole }) {
           with no percent sign, sitting directly above an average of "2.0", so
           the two numbers looked like the same kind of quantity and neither
           said what it was. */}
-      <div className="text-[12px] font-semibold text-ink">{role.opponentLabel}</div>
+      <div className="text-label font-semibold text-ink">{role.opponentLabel}</div>
       {role.headline ? (
         <div className="mt-1.5 flex items-baseline gap-2">
-          <span className="text-[22px] font-bold leading-none tabular-nums text-ink">
+          <span className="text-heading font-bold leading-none tabular-nums text-ink">
             {pct}
-            <span className="text-[13px] font-semibold">%</span>
+            <span className="text-body-sm font-semibold">%</span>
           </span>
-          <span className="text-[11px] text-ink-muted">{role.headline.text}</span>
+          <span className="text-overline font-normal tracking-normal text-ink-muted">{role.headline.text}</span>
         </div>
       ) : null}
 
       {role.meetings && role.meetings.length > 0 ? (
         <div className="mt-2.5">
-          <div className="mb-1 text-[9.5px] uppercase tracking-wide text-ink-muted">
+          <div className="mb-1 text-overline font-normal uppercase tracking-wide text-ink-muted">
             Oldest {MIDDOT} newest
           </div>
           <StreakStrip
@@ -353,7 +336,7 @@ function CareerH2HSection({ role }: { role: CareerH2HRole }) {
               "05-08 vs Washington Nationals", and two of those under a strip of
               eleven squares wrapped onto three lines and buried the squares.
               The whole label is still on each square's own tooltip. */}
-          <div className="mt-1 flex justify-between gap-2 text-[9.5px] text-ink-muted">
+          <div className="mt-1 flex justify-between gap-2 text-overline font-normal tracking-normal text-ink-muted">
             <span className="truncate">{shortMeetingDate(role.meetings[0]?.date)}</span>
             {role.meetings.length > 1 ? (
               <span className="truncate">{shortMeetingDate(role.meetings[role.meetings.length - 1]?.date)}</span>
@@ -392,7 +375,7 @@ function ConditionsSection({ role }: { role: ConditionsRole }) {
   if (role.facts.length === 0) {
     return (
       <RoleCard title={role.title}>
-        <p className="py-3 text-center text-[11px] text-ink-muted">
+        <p className="py-3 text-center text-overline font-normal tracking-normal text-ink-muted">
           {role.emptyMessage ?? 'No venue conditions available.'}
         </p>
       </RoleCard>
@@ -403,17 +386,16 @@ function ConditionsSection({ role }: { role: ConditionsRole }) {
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5">
         {role.facts.map((f) => (
           <div key={f.key} className="min-w-0">
-            <dt className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{f.label}</dt>
-            <dd className="truncate text-[12px] text-ink">
+            <dt className="text-overline font-semibold uppercase tracking-wide text-ink-muted">{f.label}</dt>
+            <dd className="truncate text-label font-normal text-ink">
               {f.value}
               {f.impact ? (
-                <span
-                  className="ml-1 text-[10px] font-semibold tabular-nums"
+                <Tooltip content={f.impact.label}><span
+                  className="ml-1 text-overline tracking-normal font-semibold tabular-nums"
                   style={{ color: heatInk(rankToHeat(f.impact.value, 0.9, 1.1)) }}
-                  title={f.impact.label}
                 >
                   {fmt.signed2(f.impact.value)}
-                </span>
+                </span></Tooltip>
               ) : null}
             </dd>
           </div>

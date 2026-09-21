@@ -123,7 +123,7 @@ export function GolferStrip({ subjects, selectedPlayerId, onSelectPlayer, onNavi
 
   if (subjects.length === 0) {
     return (
-      <div className="border-t border-line bg-ink/[0.02] py-2 text-center text-[11px] text-ink-muted">
+      <div className="border-t border-line bg-ink/[0.02] py-2 text-center text-overline font-normal tracking-normal text-ink-muted">
         No field posted yet
       </div>
     );
@@ -188,11 +188,11 @@ export function GolferStrip({ subjects, selectedPlayerId, onSelectPlayer, onNavi
                   fallbackUrl={typeof meta.flagUrl === 'string' ? meta.flagUrl : undefined}
                   size={18}
                 />
-                <span className={`min-w-0 flex-1 truncate text-[11.5px] font-semibold ${selected ? 'text-white' : 'text-ink'}`}>
+                <span className={`min-w-0 flex-1 truncate text-overline tracking-normal font-semibold ${selected ? 'text-white' : 'text-ink'}`}>
                   {s.subjectName}
                 </span>
               </span>
-              <span className="flex w-full items-center gap-1 text-[10px]">
+              <span className="flex w-full items-center gap-1 text-overline font-normal tracking-normal">
                 <span className={`font-semibold uppercase tracking-wide ${selected ? 'text-white/80' : 'text-ink-muted'}`}>
                   {position ?? '—'}
                 </span>

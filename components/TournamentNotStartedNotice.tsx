@@ -33,10 +33,10 @@ export function TournamentNotStartedNotice({
       </div>
       <div className="max-w-sm space-y-1.5">
         <Chip tone="neutral" size="sm">Pre-tournament</Chip>
-        <h2 className="text-[15px] font-semibold text-ink">
+        <h2 className="text-body font-semibold text-ink">
           {eventName ? `${eventName} hasn't started yet` : "This tournament hasn't started yet"}
         </h2>
-        <p className="text-[12.5px] leading-relaxed text-ink-muted">
+        <p className="text-label font-normal leading-relaxed text-ink-muted">
           {detail ? `Tees off ${detail}. ` : ''}
           Player data, matchups and props show up here as soon as the field goes live — check back once the
           tournament has started.

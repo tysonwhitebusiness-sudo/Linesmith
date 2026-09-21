@@ -23,11 +23,8 @@ const ALLOWED: Record<string, { count: number; why: string }> = {
   // it. U5 moves the in-scope callers off and deletes the file.
   'components/SegmentedToggle.tsx': { count: 1, why: 'the old-kit duplicate — U5 deletes it' },
 
-  // Diagnostics is swept last, exactly as the U spec sequences its tables
-  // ("diagnostics allowlisted until U6"). Its two `.lb-btn-primary` buttons
-  // were converted in U1 so the class could be deleted; the remaining 14 are
-  // admin controls that move with the rest of that page.
-  'app/diagnostics/page.tsx': { count: 13, why: 'U6 sweeps diagnostics last' },
+  // (U6 moved diagnostics' last thirteen onto Button, Tabs and SegmentedToggle.)
+
 
   // The last-resort boundary renders its own <html>: at that point the root
   // layout is the thing that failed, so the stylesheet may never have applied

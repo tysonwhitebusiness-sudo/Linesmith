@@ -307,7 +307,7 @@ export function MarketLine({
   return (
     <span
       className={`inline-flex items-baseline gap-1 font-medium tabular-nums ${
-        size === 'md' ? 'text-[15px]' : 'text-[13px]'
+        size === 'md' ? 'text-body' : 'text-body-sm'
       } ${className}`}
       aria-label={text}
     >

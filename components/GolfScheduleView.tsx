@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { Button, Chip, PickList, cx } from './ui';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Button, Chip, DataTable, PickList, cx, Tooltip, type Column } from './ui';
 import Link from 'next/link';
 import type { ScheduleEvent } from '@/lib/sports/golf/schedule';
 import type { PickCandidate, SportSnapshot, SubjectSummary, WeatherContext, WeatherForecastHour } from '@/lib/core/types';
@@ -95,18 +95,6 @@ function splitStatusLine(statusLine: string | undefined): [string, string | null
   if (!statusLine) return ['—', null];
   const [score, ...rest] = statusLine.split(' · ');
   return [score, rest.length > 0 ? rest.join(' · ') : null];
-}
-
-function MiniHoleCell({ value }: { value: number | null }) {
-  if (value === null) {
-    return <td className="bg-ink/5 px-1 py-1 text-center align-middle text-ink-muted">–</td>;
-  }
-  const gradient = gradientCardStyle(golfScoreHeat(value));
-  return (
-    <td className="px-1 py-1 text-center align-middle font-bold tabular-nums" style={{ backgroundImage: gradient.tableWash, color: gradient.valueColor }}>
-      {relDisplay(value)}
-    </td>
-  );
 }
 
 /** This golfer's hole-by-hole line for one round, read off the full candidate list (every golfer's every hole) rather than just "mine" — needed for All Matchups, where every card is comparing golfers other than whichever one you navigated in from. */
@@ -224,10 +212,10 @@ function HeroSpotlightCarousel({ cards }: { cards: SpotlightCard[] }) {
       >
         <SubjectAvatar name={card.name} headshotUrl={card.headshotUrl} fallbackUrl={card.flagUrl} size={30} />
         <div className="min-w-0 text-left">
-          <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{card.label}</div>
-          <div className="max-w-[110px] truncate text-[12.5px] font-semibold text-ink">{card.name}</div>
+          <div className="text-overline font-semibold uppercase tracking-wide text-ink-muted">{card.label}</div>
+          <div className="max-w-[110px] truncate text-label font-semibold text-ink">{card.name}</div>
         </div>
-        <div className={`shrink-0 text-[18px] font-bold tabular-nums ${toneClass}`}>{card.value}</div>
+        <div className={`shrink-0 text-title font-bold tabular-nums ${toneClass}`}>{card.value}</div>
       </Link>
       {cards.length > 1 ? (
         <div className="flex justify-center gap-1 pb-1.5">
@@ -266,19 +254,19 @@ function TournamentHeroCard({
       className="lb-card-hero lb-card-interactive overflow-hidden"
       style={{
         background:
-          'radial-gradient(120% 140% at 100% 0%, rgba(15,122,79,0.22) 0%, rgba(15,122,79,0.05) 45%, #ffffff 75%), linear-gradient(135deg, rgba(20,22,25,0.05) 0%, #ffffff 60%)',
-        borderTop: '3px solid #141619',
+          'radial-gradient(120% 140% at 100% 0%, rgba(15,122,79,0.22) 0%, rgba(15,122,79,0.05) 45%, white 75%), linear-gradient(135deg, rgba(20,22,25,0.05) 0%, white 60%)',
+        borderTop: '3px solid var(--color-masters)',
       }}
     >
       <div className="flex flex-wrap items-center gap-4 px-4 py-4">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-2">
             <TournamentLogo name={event.name} size={26} />
-            <h1 className="truncate text-[22px] font-bold leading-tight text-ink">{event.name}</h1>
+            <h1 className="truncate text-heading font-bold leading-tight text-ink">{event.name}</h1>
             <StatusChip status={event.status} completed={event.completed} />
             {currentRound != null ? <Chip tone="neutral" size="sm">Round {currentRound}</Chip> : null}
           </div>
-          <p className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-muted">
+          <p className="flex flex-wrap items-center gap-1.5 text-label font-normal text-ink-muted">
             <span>{formatDateRange(event.startDate, event.endDate)}</span>
             {courseName ? (
               <>
@@ -326,13 +314,154 @@ function buildMoveMap(candidates: PickCandidate[], currentRound: number | null, 
   return move;
 }
 
-function MoveCell({ move }: { move: number | null }) {
-  if (move == null || move === 0) return <td className="px-1.5 py-1.5 text-center text-[11px] tabular-nums text-ink-muted">–</td>;
-  return (
-    <td className={`px-1.5 py-1.5 text-center text-[11px] font-bold tabular-nums ${move > 0 ? 'text-good' : 'text-bad'}`}>
-      {move > 0 ? `▲${move}` : `▼${Math.abs(move)}`}
-    </td>
-  );
+interface LeaderboardRow {
+  id: string;
+  position: string;
+  name: string;
+  headshotUrl?: string;
+  flagUrl?: string;
+  rounds: Array<number | null>;
+  avg: number | null;
+  score: string;
+  thru: string;
+  move: number | null;
+}
+
+function leaderboardRow(s: SubjectSummary, i: number, roundCandidate: PickCandidate | undefined, roundsPresent: number[], move: number | null): LeaderboardRow {
+  const meta = (s.meta ?? {}) as Record<string, unknown>;
+  const [score] = splitStatusLine(s.statusLine);
+  const thru = typeof meta.thru === 'number' ? meta.thru : null;
+  const teeTime = typeof meta.teeTime === 'string' ? meta.teeTime : null;
+  const rounds = roundsPresent.map((r) => {
+    const entry = roundCandidate?.history.find((h) => h.period === r);
+    return entry ? entryValue(entry) : null;
+  });
+  const played = rounds.filter((v): v is number => v !== null);
+  return {
+    id: s.subjectId,
+    position: typeof meta.position === 'string' ? meta.position : String(i + 1),
+    name: s.subjectName,
+    headshotUrl: typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined,
+    flagUrl: typeof meta.flagUrl === 'string' ? meta.flagUrl : undefined,
+    rounds,
+    avg: played.length > 0 ? played.reduce((x, y) => x + y, 0) / played.length : null,
+    score,
+    thru: thru != null && thru > 0 ? `thru ${thru}` : (formatTeeTime(teeTime) ?? '–'),
+    move,
+  };
+}
+
+/** Under par is good, over par bad, par nothing — categorical, as golf reads it. */
+const parTone = (v: number | null | undefined): 'good' | 'bad' | null => (v == null || v === 0 ? null : v < 0 ? 'good' : 'bad');
+
+function leaderboardColumns(roundsPresent: number[]): Column<LeaderboardRow>[] {
+  return [
+    { key: 'pos', label: 'Pos', sortable: false, render: (r) => <span className="font-bold text-ink-muted">{r.position}</span> },
+    {
+      key: 'player',
+      label: 'Player',
+      sortable: false,
+      render: (r) => (
+        <Link href={`/golf/player/${r.id}`} className="flex max-w-[150px] items-center gap-1.5 hover:underline">
+          <SubjectAvatar name={r.name} headshotUrl={r.headshotUrl} fallbackUrl={r.flagUrl} size={20} />
+          <span className="truncate font-medium text-ink">{r.name}</span>
+        </Link>
+      ),
+    },
+    ...roundsPresent.map<Column<LeaderboardRow>>((round, idx) => ({
+      key: `r${round}`,
+      label: `R${round}`,
+      numeric: true,
+      align: 'center',
+      sortValue: (r) => r.rounds[idx],
+      render: (r) => relDisplay(r.rounds[idx]),
+      ink: (r) => parTone(r.rounds[idx]),
+    })),
+    { key: 'avg', label: 'Avg', numeric: true, align: 'center', sortValue: (r) => r.avg, render: (r) => (r.avg != null ? relDisplayAvg(r.avg) : '–') },
+    { key: 'total', label: 'Total', numeric: true, align: 'center', sortValue: (r) => leaderboardScore(r.score), render: (r) => <span className="font-bold text-ink">{r.score}</span> },
+    { key: 'thru', label: 'Thru', align: 'center', sortable: false, render: (r) => <span className="text-ink-muted">{r.thru}</span> },
+    {
+      key: 'move',
+      label: 'Move',
+      numeric: true,
+      align: 'center',
+      sortValue: (r) => r.move,
+      render: (r) => (r.move == null || r.move === 0 ? '–' : r.move > 0 ? `▲${r.move}` : `▼${Math.abs(r.move)}`),
+      ink: (r) => (r.move == null || r.move === 0 ? null : r.move > 0 ? 'good' : 'bad'),
+    },
+  ];
+}
+
+/* ---------------------------------------------------------------- HoleGrid */
+
+interface HoleGridHole {
+  n: number;
+  par?: number | null;
+}
+
+interface HoleGridRow {
+  id: string;
+  label: ReactNode;
+  cells: Array<number | null>;
+  total?: number | null;
+}
+
+/**
+ * U6: every 18-hole grid on this page is one `DataTable` — the group
+ * scorecard, course difficulty by round and the course card. Each hole's
+ * header links to that hole's market on the Slate. Scores carry the
+ * categorical par tone (`parTone`); plain numbers (par, yards) carry none.
+ */
+function HoleGrid({
+  caption,
+  holes,
+  rows,
+  totals,
+  format,
+  toned = true,
+  showTotal = true,
+}: {
+  caption: string;
+  holes: HoleGridHole[];
+  rows: HoleGridRow[];
+  totals?: HoleGridRow[];
+  format: (v: number | null) => ReactNode;
+  toned?: boolean;
+  showTotal?: boolean;
+}) {
+  const columns: Column<HoleGridRow>[] = [
+    { key: 'label', label: '', sortable: false, render: (r) => <span className="font-semibold text-ink">{r.label}</span> },
+    ...holes.map<Column<HoleGridRow>>((h, idx) => ({
+      key: `h${h.n}`,
+      sortable: false,
+      numeric: true,
+      align: 'center',
+      label: (
+        <Tooltip content={`See every golfer's hole ${h.n} market on the Slate`}>
+          <Link href={`/golf?market=hole-${h.n}`} className="block hover:text-ink hover:underline">
+            {h.n}
+            {h.par != null ? <span className="block font-normal">Par {h.par}</span> : null}
+          </Link>
+        </Tooltip>
+      ),
+      render: (r) => format(r.cells[idx] ?? null),
+      ink: toned ? (r) => parTone(r.cells[idx]) : undefined,
+    })),
+    ...(showTotal
+      ? [
+          {
+            key: 'total',
+            label: 'Total',
+            sortable: false,
+            numeric: true,
+            align: 'center',
+            render: (r) => format(r.total ?? null),
+            ink: toned ? (r) => parTone(r.total) : undefined,
+          } satisfies Column<HoleGridRow>,
+        ]
+      : []),
+  ];
+  return <DataTable caption={caption} density="compact" columns={columns} rows={rows} totals={totals} rowKey={(r) => r.id} />;
 }
 
 function LiveLeaderboardCard({
@@ -374,78 +503,24 @@ function LiveLeaderboardCard({
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
       <div className="flex items-center justify-between gap-2 bg-accent-soft px-3 py-1.5">
-        <h2 className="text-[12px] font-semibold text-masters">Leaderboard</h2>
+        <h2 className="text-label font-semibold text-masters">Leaderboard</h2>
         {ordered.length > 15 ? (
           <Button variant="link" size="sm" onPress={() => setShowAll((v) => !v)} className="text-overline">
             {showAll ? 'Show top 15' : `Show all ${ordered.length}`}
           </Button>
         ) : null}
       </div>
-      <div className="lb-scroll-x overflow-auto">
-        <table className="w-full border-collapse text-[11.5px]">
-          <thead>
-            <tr>
-              <th className="sticky left-0 z-10 w-10 bg-paper px-2 py-1.5 text-left font-semibold text-ink-muted">Pos</th>
-              <th className="sticky left-10 z-10 bg-paper px-2 py-1.5 text-left font-semibold text-ink-muted">Player</th>
-              {roundsPresent.map((r) => (
-                <th key={r} className="px-1.5 py-1.5 text-center font-semibold text-ink-muted">
-                  R{r}
-                </th>
-              ))}
-              <th className="px-1.5 py-1.5 text-center font-semibold text-ink-muted">Avg</th>
-              <th className="px-1.5 py-1.5 text-center font-semibold text-ink-muted">Total</th>
-              <th className="px-1.5 py-1.5 text-center font-semibold text-ink-muted">Thru</th>
-              <th className="px-1.5 py-1.5 text-center font-semibold text-ink-muted">Move</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((s, i) => {
-              const meta = (s.meta ?? {}) as Record<string, unknown>;
-              const position = typeof meta.position === 'string' ? meta.position : String(i + 1);
-              const [score] = splitStatusLine(s.statusLine);
-              const thru = typeof meta.thru === 'number' ? meta.thru : null;
-              const teeTime = typeof meta.teeTime === 'string' ? meta.teeTime : null;
-              const roundCandidate = roundScoreById.get(s.subjectId);
-              const roundValues = roundsPresent.map((r) => {
-                const entry = roundCandidate?.history.find((h) => h.period === r);
-                return entry ? entryValue(entry) : null;
-              });
-              const played = roundValues.filter((v): v is number => v !== null);
-              const avg = played.length > 0 ? played.reduce((a, b) => a + b, 0) / played.length : null;
-
-              return (
-                <tr key={s.subjectId} className="group border-b border-line-soft transition-colors last:border-0 hover:bg-surface-subtle">
-                  <td className="sticky left-0 z-10 bg-card px-2 py-1.5 text-center font-bold text-ink-muted transition-colors group-hover:bg-surface-subtle">
-                    {position}
-                  </td>
-                  <td className="sticky left-10 z-10 max-w-[150px] bg-card px-2 py-1.5 transition-colors group-hover:bg-surface-subtle">
-                    <Link href={`/golf/player/${s.subjectId}`} className="flex items-center gap-1.5 hover:underline">
-                      <SubjectAvatar
-                        name={s.subjectName}
-                        headshotUrl={typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined}
-                        fallbackUrl={typeof meta.flagUrl === 'string' ? meta.flagUrl : undefined}
-                        size={20}
-                      />
-                      <span className="truncate font-medium text-ink">{s.subjectName}</span>
-                    </Link>
-                  </td>
-                  {roundValues.map((v, idx) => (
-                    <MiniHoleCell key={idx} value={v} />
-                  ))}
-                  <td className="px-1.5 py-1.5 text-center font-semibold tabular-nums text-ink-muted">
-                    {avg != null ? relDisplayAvg(avg) : '–'}
-                  </td>
-                  <td className="px-1.5 py-1.5 text-center text-[13px] font-bold tabular-nums text-ink">{score}</td>
-                  <td className="px-1.5 py-1.5 text-center text-[10.5px] tabular-nums text-ink-muted">
-                    {thru != null && thru > 0 ? `thru ${thru}` : (formatTeeTime(teeTime) ?? '–')}
-                  </td>
-                  <MoveCell move={moveMap.get(s.subjectId) ?? null} />
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {/* U6: the kit DataTable. Round scores carry a categorical TONE —
+          under par good, over par bad, par plain — which is what the old
+          gradient wash encoded; a rank-based heat would have called a
+          birdie neutral in a field of birdies. */}
+      <DataTable
+        caption="Leaderboard"
+        density="compact"
+        columns={leaderboardColumns(roundsPresent)}
+        rows={rows.map((s, i) => leaderboardRow(s, i, roundScoreById.get(s.subjectId), roundsPresent, moveMap.get(s.subjectId) ?? null))}
+        rowKey={(r) => r.id}
+      />
     </section>
   );
 }
@@ -527,11 +602,11 @@ function AllMatchupsCard({
 
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
-      <h2 className="bg-accent-soft px-3 py-1.5 text-[12px] font-semibold text-masters">
+      <h2 className="bg-accent-soft px-3 py-1.5 text-label font-semibold text-masters">
         All matchups{currentRound != null ? ` · Round ${currentRound}` : ''}
       </h2>
       {groups.length === 0 ? (
-        <p className="p-4 text-center text-[12px] text-ink-muted">No tee-time pairings posted yet.</p>
+        <p className="p-4 text-center text-label font-normal text-ink-muted">No tee-time pairings posted yet.</p>
       ) : (
         <div className="divide-y divide-line-soft">
           {groups.map((g) => {
@@ -552,15 +627,15 @@ function AllMatchupsCard({
                       </span>
                     ))}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-ink">
+                  <span className="min-w-0 flex-1 truncate text-label font-medium text-ink">
                     {g.members
                       .map((m) => `${m.name}${m.position ? ` (${m.position})` : ''}`)
                       .join(' · ')}
                   </span>
-                  <span className="shrink-0 flex items-center gap-2 text-[11px] tabular-nums text-ink-muted">
+                  <span className="shrink-0 flex items-center gap-2 text-overline font-normal tracking-normal tabular-nums text-ink-muted">
                     {g.members.map((m) => splitStatusLine(m.totalScore)[0]).join(' / ')}
                   </span>
-                  <span className="shrink-0 w-24 text-right text-[10.5px] tabular-nums text-ink-muted">
+                  <span className="shrink-0 w-24 text-right text-overline font-normal tracking-normal tabular-nums text-ink-muted">
                     {g.thru != null && g.thru > 0 ? `thru ${g.thru}` : (formatTeeTime(g.teeTime) ?? '–')}
                   </span>
                   <span className={`shrink-0 text-ink-muted transition-transform ${isOpen ? 'rotate-180' : ''}`}>▾</span>
@@ -568,39 +643,21 @@ function AllMatchupsCard({
 
                 {isOpen ? (
                   <div className="border-t border-line-soft bg-surface-subtle p-2.5">
-                    <div className="lb-scroll-x overflow-auto">
-                      <table className="w-full border-collapse text-[10.5px]">
-                        <thead>
-                          <tr>
-                            <th className="sticky left-0 z-10 bg-surface-subtle px-1.5 py-1 text-left font-semibold text-ink-muted" />
-                            {Array.from({ length: 18 }, (_, i) => i + 1).map((h) => (
-                              <th key={h} className="px-1 py-1 text-center font-semibold text-ink-muted">
-                                {h}
-                              </th>
-                            ))}
-                            <th className="px-1.5 py-1 text-center font-semibold text-ink-muted">Total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {g.members.map((m) => {
-                            const line = holeLineFor(m.id, currentRound, holesByGolfer);
-                            const played = line.filter((h) => h.value !== null);
-                            const total = played.reduce((sum, h) => sum + (h.value ?? 0), 0);
-                            return (
-                              <tr key={m.id}>
-                                <td className="sticky left-0 z-10 max-w-[100px] truncate bg-surface-subtle px-1.5 py-1 text-left font-semibold text-ink">
-                                  {m.name}
-                                </td>
-                                {line.map((h) => (
-                                  <MiniHoleCell key={h.hole} value={h.value} />
-                                ))}
-                                <MiniHoleCell value={played.length > 0 ? total : null} />
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                    <HoleGrid
+                      caption={`Scorecard, ${g.members.map((m) => m.name).join(', ')}`}
+                      holes={Array.from({ length: 18 }, (_, i) => ({ n: i + 1 }))}
+                      format={relDisplay}
+                      rows={g.members.map((m) => {
+                        const line = holeLineFor(m.id, currentRound, holesByGolfer);
+                        const played = line.filter((h) => h.value !== null);
+                        return {
+                          id: m.id,
+                          label: <span className="block max-w-[100px] truncate">{m.name}</span>,
+                          cells: line.map((h) => h.value),
+                          total: played.length > 0 ? played.reduce((sum, h) => sum + (h.value ?? 0), 0) : null,
+                        };
+                      })}
+                    />
                   </div>
                 ) : null}
               </div>
@@ -650,13 +707,13 @@ function MoverRow({ row }: { row: MoverRowData }) {
   const gradient = gradientCardStyle(golfScoreHeat(row.total));
   return (
     <li>
-      <Link href={`/golf/player/${row.id}`} className="flex items-center gap-2 rounded-lg px-1 py-1 text-[12px] transition-colors hover:bg-surface-subtle">
+      <Link href={`/golf/player/${row.id}`} className="flex items-center gap-2 rounded-lg px-1 py-1 text-label font-normal transition-colors hover:bg-surface-subtle">
         <SubjectAvatar name={row.name} headshotUrl={row.headshotUrl} size={20} />
         <span className="min-w-0 flex-1 truncate text-ink">{row.name}</span>
         <span className="shrink-0 font-bold tabular-nums" style={{ color: gradient.valueColor }}>
           {relDisplay(row.total)}
         </span>
-        <span className="w-14 shrink-0 text-right text-[10px] text-ink-muted">thru {row.thru}</span>
+        <span className="w-14 shrink-0 text-right text-overline font-normal tracking-normal text-ink-muted">thru {row.thru}</span>
       </Link>
     </li>
   );
@@ -679,10 +736,10 @@ function BigMoversCard({
 
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
-      <h2 className="bg-accent-soft px-3 py-1.5 text-[12px] font-semibold text-masters">Big movers · Round {currentRound}</h2>
+      <h2 className="bg-accent-soft px-3 py-1.5 text-label font-semibold text-masters">Big movers · Round {currentRound}</h2>
       <div className="grid grid-cols-1 gap-4 p-3 sm:grid-cols-2">
         <div>
-          <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-good">Climbing today</div>
+          <div className="mb-1.5 text-overline font-semibold uppercase tracking-wide text-good">Climbing today</div>
           <ul className="space-y-1.5">
             {climbing.map((r) => (
               <MoverRow key={r.id} row={r} />
@@ -690,7 +747,7 @@ function BigMoversCard({
           </ul>
         </div>
         <div>
-          <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-bad">Falling today</div>
+          <div className="mb-1.5 text-overline font-semibold uppercase tracking-wide text-bad">Falling today</div>
           <ul className="space-y-1.5">
             {falling.map((r) => (
               <MoverRow key={r.id} row={r} />
@@ -810,18 +867,6 @@ function buildHoleScoringDistribution(candidates: PickCandidate[]): HoleDistribu
     .sort((a, b) => a.hole - b.hole);
 }
 
-function DifficultyCell({ value }: { value: number | null }) {
-  if (value === null) {
-    return <td className="bg-ink/5 px-1 py-1 text-center align-middle text-ink-muted">–</td>;
-  }
-  const gradient = gradientCardStyle(golfScoreHeat(value));
-  return (
-    <td className="px-1 py-1 text-center align-middle font-semibold tabular-nums" style={{ backgroundImage: gradient.tableWash, color: gradient.valueColor }}>
-      {relDisplayAvg(value)}
-    </td>
-  );
-}
-
 function CourseInsightsCard({
   candidates,
   rounds,
@@ -852,69 +897,41 @@ function CourseInsightsCard({
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 bg-accent-soft px-3 py-1.5">
-        <h2 className="text-[12px] font-semibold text-masters">How the course is playing</h2>
-        <span className="text-[10px] text-masters/70">
+        <h2 className="text-label font-semibold text-masters">How the course is playing</h2>
+        <span className="text-overline font-normal tracking-normal text-masters/70">
           Hardest: Hole {hardest.hole} ({relDisplayAvg(hardest.total)}) · Easiest: Hole {easiest.hole} ({relDisplayAvg(easiest.total)})
         </span>
       </div>
 
-      <div className="lb-scroll-x overflow-auto p-2.5">
-        <table className="w-full border-collapse text-[10.5px]">
-          <thead>
-            <tr>
-              <th className="sticky left-0 z-10 bg-card px-1.5 py-1 text-left font-semibold text-ink-muted" />
-              {holes.map((h) => (
-                <th key={h.hole} className="p-0 text-center font-semibold text-ink-muted">
-                  <Link href={`/golf?market=hole-${h.hole}`} className="block px-1 py-1 transition-colors hover:bg-accent-soft hover:text-masters" title={`See every golfer's hole ${h.hole} market in Scan`}>
-                    {h.hole}
-                    {h.par != null ? <div className="text-[8px] font-normal text-ink-muted">Par {h.par}</div> : null}
-                  </Link>
-                </th>
-              ))}
-              <th className="px-1.5 py-1 text-center font-semibold text-ink-muted">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rounds.map((r) => {
-              const roundTotal = avgOf(holes.map((h) => h.byRound[r]).filter((v): v is number => v !== null));
-              return (
-                <tr key={r} className="border-t border-line-soft">
-                  <td className="sticky left-0 z-10 bg-card px-1.5 py-1 text-left font-semibold text-ink-muted">R{r}</td>
-                  {holes.map((h) => (
-                    <DifficultyCell key={h.hole} value={h.byRound[r] ?? null} />
-                  ))}
-                  <DifficultyCell value={roundTotal} />
-                </tr>
-              );
-            })}
-            <tr className="border-t border-line">
-              <td className="sticky left-0 z-10 bg-card px-1.5 py-1 text-left font-bold text-ink">All</td>
-              {holes.map((h) => (
-                <DifficultyCell key={h.hole} value={h.total} />
-              ))}
-              {(() => {
-                const overall = avgOf(scored.map((h) => h.total));
-                return <DifficultyCell value={overall} />;
-              })()}
-            </tr>
-          </tbody>
-        </table>
+      <div className="p-2.5">
+        <HoleGrid
+          caption="Course difficulty by round"
+          holes={holes.map((h) => ({ n: h.hole, par: h.par }))}
+          format={(v) => (v == null ? '–' : relDisplayAvg(v))}
+          rows={rounds.map((r) => ({
+            id: `r${r}`,
+            label: `R${r}`,
+            cells: holes.map((h) => h.byRound[r] ?? null),
+            total: avgOf(holes.map((h) => h.byRound[r]).filter((v): v is number => v !== null)),
+          }))}
+          totals={[{ id: 'all', label: 'All', cells: holes.map((h) => h.total), total: avgOf(scored.map((h) => h.total)) }]}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-4 border-t border-line-soft p-3 sm:grid-cols-2">
         <div>
           <div className="mb-1.5 flex items-center justify-between gap-2">
-            <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Scoring distribution ({distribution.total} holes played)</span>
+            <span className="text-overline font-semibold uppercase tracking-wide text-ink-muted">Scoring distribution ({distribution.total} holes played)</span>
             <Button variant="link" size="sm" onPress={() => setShowByHole((v) => !v)} className="text-overline">
               {showByHole ? 'Hide by hole' : 'By hole'}
             </Button>
           </div>
           <div className="flex h-3 w-full overflow-hidden rounded-full bg-ink/5">
-            <div className="bg-good" style={{ width: `${distribution.birdiePct}%` }} title={`Birdie or better: ${distribution.birdiePct.toFixed(1)}%`} />
-            <div className="bg-warn" style={{ width: `${distribution.parPct}%` }} title={`Par: ${distribution.parPct.toFixed(1)}%`} />
-            <div className="bg-bad" style={{ width: `${distribution.bogeyPct}%` }} title={`Bogey or worse: ${distribution.bogeyPct.toFixed(1)}%`} />
+            <Tooltip content={`Birdie or better: ${distribution.birdiePct.toFixed(1)}%`}><div className="bg-good" style={{ width: `${distribution.birdiePct}%` }} /></Tooltip>
+            <Tooltip content={`Par: ${distribution.parPct.toFixed(1)}%`}><div className="bg-warn" style={{ width: `${distribution.parPct}%` }} /></Tooltip>
+            <Tooltip content={`Bogey or worse: ${distribution.bogeyPct.toFixed(1)}%`}><div className="bg-bad" style={{ width: `${distribution.bogeyPct}%` }} /></Tooltip>
           </div>
-          <div className="mt-1.5 flex justify-between text-[10px] text-ink-muted">
+          <div className="mt-1.5 flex justify-between text-overline font-normal tracking-normal text-ink-muted">
             <span>Birdie {distribution.birdiePct.toFixed(0)}%</span>
             <span>Par {distribution.parPct.toFixed(0)}%</span>
             <span>Bogey {distribution.bogeyPct.toFixed(0)}%</span>
@@ -925,15 +942,14 @@ function CourseInsightsCard({
               <div className="flex min-w-full gap-1">
                 {holeDistribution.map((h) => (
                   <div key={h.hole} className="flex min-w-[22px] flex-1 flex-col items-center gap-0.5">
-                    <div
+                    <Tooltip content={`Hole ${h.hole}: ${h.birdiePct.toFixed(0)}% birdie, ${h.parPct.toFixed(0)}% par, ${h.bogeyPct.toFixed(0)}% bogey`}><div
                       className="flex h-14 w-3 flex-col-reverse overflow-hidden rounded-full bg-ink/5"
-                      title={`Hole ${h.hole}: ${h.birdiePct.toFixed(0)}% birdie, ${h.parPct.toFixed(0)}% par, ${h.bogeyPct.toFixed(0)}% bogey`}
                     >
                       <div className="bg-good" style={{ height: `${h.birdiePct}%` }} />
                       <div className="bg-warn" style={{ height: `${h.parPct}%` }} />
                       <div className="bg-bad" style={{ height: `${h.bogeyPct}%` }} />
-                    </div>
-                    <span className="text-[8px] text-ink-muted">{h.hole}</span>
+                    </div></Tooltip>
+                    <span className="text-overline font-normal tracking-normal text-ink-muted">{h.hole}</span>
                   </div>
                 ))}
               </div>
@@ -942,19 +958,19 @@ function CourseInsightsCard({
         </div>
 
         <div>
-          <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">
+          <div className="mb-1.5 text-overline font-semibold uppercase tracking-wide text-ink-muted">
             Season SG leaders in this field{fieldStats ? ` · ${new Date().getFullYear()}` : ''}
           </div>
           {fieldStatsLoading && sgLeaders.length === 0 ? (
-            <p className="text-[11px] text-ink-muted">Loading…</p>
+            <p className="text-overline font-normal tracking-normal text-ink-muted">Loading…</p>
           ) : sgLeaders.length === 0 ? (
-            <p className="text-[11px] text-ink-muted">No strokes-gained data matched to this field yet.</p>
+            <p className="text-overline font-normal tracking-normal text-ink-muted">No strokes-gained data matched to this field yet.</p>
           ) : (
             <ul className="space-y-1">
               {sgLeaders.map((g) => (
                 <li key={g.pgaTourPlayerId}>
                   {g.espnId ? (
-                    <Link href={`/golf/player/${g.espnId}`} className="flex items-center justify-between gap-2 rounded-md px-1 py-0.5 text-[11px] transition-colors hover:bg-surface-subtle">
+                    <Link href={`/golf/player/${g.espnId}`} className="flex items-center justify-between gap-2 rounded-md px-1 py-0.5 text-overline font-normal tracking-normal transition-colors hover:bg-surface-subtle">
                       <span className="truncate text-ink">
                         #{g.rank} {g.playerName}
                       </span>
@@ -965,7 +981,7 @@ function CourseInsightsCard({
               ))}
             </ul>
           )}
-          <p className="mt-1 text-[9px] text-ink-muted">Season strokes-gained, not tournament-specific — pgatour.com official stats.</p>
+          <p className="mt-1 text-overline font-normal tracking-normal text-ink-muted">Season strokes-gained, not tournament-specific — pgatour.com official stats.</p>
         </div>
       </div>
     </section>
@@ -991,53 +1007,31 @@ function CourseOverviewCard({
 }) {
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
-      <h2 className="bg-accent-soft px-3 py-1.5 text-[12px] font-semibold text-masters">Course overview</h2>
+      <h2 className="bg-accent-soft px-3 py-1.5 text-label font-semibold text-masters">Course overview</h2>
       <div className="p-3">
         {courseName ? (
-          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-body-sm">
             <span className="font-semibold text-ink">{courseName}</span>
             {par != null ? <span className="text-ink-muted">Par {par}</span> : null}
             {yards != null ? <span className="text-ink-muted">{yards.toLocaleString()} yds</span> : null}
             {city ? <span className="text-ink-muted">{city}</span> : null}
           </div>
         ) : (
-          <p className="mb-2 text-[12px] text-ink-muted">No course record for this event yet.</p>
+          <p className="mb-2 text-label font-normal text-ink-muted">No course record for this event yet.</p>
         )}
 
         {holes.length > 0 ? (
-          <div className="lb-scroll-x overflow-auto">
-            <table className="w-full border-collapse text-[11px]">
-              <thead>
-                <tr>
-                  {holes.map((h) => (
-                    <th key={h.number} className="border-b border-line p-0 text-center font-semibold text-ink-muted">
-                      <Link href={`/golf?market=hole-${h.number}`} className="block px-1.5 py-1 transition-colors hover:bg-accent-soft hover:text-masters" title={`See every golfer's hole ${h.number} market in Scan`}>
-                        {h.number}
-                      </Link>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  {holes.map((h) => (
-                    <td key={h.number} className="px-1.5 py-1 text-center tabular-nums text-ink">
-                      {h.shotsToPar}
-                    </td>
-                  ))}
-                </tr>
-                {holes.some((h) => h.totalYards) ? (
-                  <tr>
-                    {holes.map((h) => (
-                      <td key={h.number} className="px-1.5 py-1 text-center tabular-nums text-ink-muted">
-                        {h.totalYards ?? '—'}
-                      </td>
-                    ))}
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
+          <HoleGrid
+            caption="Course"
+            toned={false}
+            showTotal={false}
+            holes={holes.map((h) => ({ n: h.number }))}
+            format={(v) => (v == null ? '—' : v)}
+            rows={[
+              { id: 'par', label: 'Par', cells: holes.map((h) => (typeof h.shotsToPar === 'number' ? h.shotsToPar : Number(h.shotsToPar) || null)) },
+              ...(holes.some((h) => h.totalYards) ? [{ id: 'yards', label: 'Yards', cells: holes.map((h) => h.totalYards ?? null) }] : []),
+            ]}
+          />
         ) : null}
       </div>
     </section>
@@ -1091,9 +1085,9 @@ function WeatherCard({ weather }: { weather: WeatherContext }) {
 
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
-      <h2 className="bg-accent-soft px-3 py-1.5 text-[12px] font-semibold text-masters">Weather</h2>
+      <h2 className="bg-accent-soft px-3 py-1.5 text-label font-semibold text-masters">Weather</h2>
       <div className="p-3">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-body-sm">
           <WeatherIcon windMph={weather.windMph} rainPct={weather.rainPct} size={18} className="text-masters" />
           <span className="font-bold text-ink">
             {weather.windMph} mph {weather.windDir}
@@ -1101,7 +1095,7 @@ function WeatherCard({ weather }: { weather: WeatherContext }) {
           <span className="text-ink-muted">{weather.rainPct}% rain</span>
           {weather.tempF != null ? <span className="text-ink-muted">{weather.tempF}°F</span> : null}
         </div>
-        <p className="mt-1 text-[10px] text-ink-muted">{weather.approximateLocation ? 'City-level estimate' : 'Course-exact'}</p>
+        <p className="mt-1 text-overline font-normal tracking-normal text-ink-muted">{weather.approximateLocation ? 'City-level estimate' : 'Course-exact'}</p>
 
         {forecast.length > 1 ? (
           <div className="mt-3 flex gap-2 overflow-x-auto lb-scroll-x">
@@ -1119,13 +1113,13 @@ function WeatherCard({ weather }: { weather: WeatherContext }) {
                     isSelected ? 'border-masters bg-accent-soft hover:bg-accent-soft' : 'border-line hover:border-masters/30 hover:bg-card',
                   )}
                 >
-                  <span className="text-[9px] font-semibold text-ink-muted">
+                  <span className="text-overline tracking-normal font-semibold text-ink-muted">
                     {i === 0 ? 'Now' : new Date(f.time).toLocaleTimeString('en-US', { hour: 'numeric' })}
                   </span>
                   <WeatherIcon windMph={f.windMph} rainPct={f.rainPct} size={16} className={isSelected ? 'text-masters' : 'text-ink-muted'} />
-                  <span className="text-[12px] font-bold tabular-nums text-ink">{f.windMph}</span>
-                  <span className="text-[8px] text-ink-muted">{f.windDir} mph</span>
-                  {f.tempF != null ? <span className="text-[10px] text-ink-muted">{f.tempF}°</span> : null}
+                  <span className="text-label font-bold tabular-nums text-ink">{f.windMph}</span>
+                  <span className="text-overline font-normal tracking-normal text-ink-muted">{f.windDir} mph</span>
+                  {f.tempF != null ? <span className="text-overline font-normal tracking-normal text-ink-muted">{f.tempF}°</span> : null}
                 </Button>
               );
             })}
@@ -1134,14 +1128,14 @@ function WeatherCard({ weather }: { weather: WeatherContext }) {
 
         {selectedHour ? (
           <div className="mt-3 rounded-lg border border-line-soft bg-surface-subtle p-2.5">
-            <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] font-semibold text-ink">
+            <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-overline tracking-normal font-semibold text-ink">
               <span>{selected === 0 ? 'Right now' : new Date(selectedHour.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
               <span className="font-normal text-ink-muted">
                 {selectedHour.windMph} mph {selectedHour.windDir} · {selectedHour.rainPct}% rain
                 {selectedHour.tempF != null ? ` · ${selectedHour.tempF}°F` : ''}
               </span>
             </div>
-            <p className="text-[11.5px] leading-snug text-ink-muted">{weatherImpactText(selectedHour)}</p>
+            <p className="text-overline font-normal tracking-normal leading-snug text-ink-muted">{weatherImpactText(selectedHour)}</p>
           </div>
         ) : null}
       </div>
@@ -1169,7 +1163,7 @@ function TopStandingsCard({ subjects }: { subjects: SubjectSummary[] }) {
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
       <div className="flex items-center justify-between gap-2 bg-accent-soft px-3 py-1.5">
-        <h2 className="text-[12px] font-semibold text-masters">Top {view}</h2>
+        <h2 className="text-label font-semibold text-masters">Top {view}</h2>
         <span className="inline-flex items-center gap-0.5 rounded-lg bg-ink/[0.05] p-0.5">
           {([5, 10] as const).map((n) => (
             <Button
@@ -1191,7 +1185,7 @@ function TopStandingsCard({ subjects }: { subjects: SubjectSummary[] }) {
           const [score] = splitStatusLine(s.statusLine);
           return (
             <li key={s.subjectId}>
-              <Link href={`/golf/player/${s.subjectId}`} className="flex items-center gap-2 px-3 py-1.5 text-[12px] transition-colors hover:bg-surface-subtle">
+              <Link href={`/golf/player/${s.subjectId}`} className="flex items-center gap-2 px-3 py-1.5 text-label font-normal transition-colors hover:bg-surface-subtle">
                 <span className="w-6 shrink-0 text-center font-bold text-ink-muted">{i + 1}</span>
                 <SubjectAvatar
                   name={s.subjectName}
@@ -1206,7 +1200,7 @@ function TopStandingsCard({ subjects }: { subjects: SubjectSummary[] }) {
           );
         })}
       </ul>
-      <p className="border-t border-line-soft px-3 py-1.5 text-[9px] text-ink-muted">
+      <p className="border-t border-line-soft px-3 py-1.5 text-overline font-normal tracking-normal text-ink-muted">
         Current standing, not a priced line — no free Top 5/Top 10 odds source exists yet.
       </p>
     </section>
@@ -1241,18 +1235,18 @@ function OurLinesCard({
 
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
-      <h2 className="bg-accent-soft px-3 py-1.5 text-[12px] font-semibold text-masters">Our lines</h2>
+      <h2 className="bg-accent-soft px-3 py-1.5 text-label font-semibold text-masters">Our lines</h2>
       <ul className="divide-y divide-line-soft">
         {rows.map((c) => {
           const meta = (c.subjectMeta ?? {}) as Record<string, unknown>;
           const key = `${c.sport}:${c.subjectId}:${c.dimension}:${c.category}`;
           const added = addedKeys?.has(key);
           return (
-            <li key={key} className="flex items-center gap-2 px-3 py-1.5 text-[12px]">
+            <li key={key} className="flex items-center gap-2 px-3 py-1.5 text-label font-normal">
               <SubjectAvatar name={c.subjectName} headshotUrl={typeof meta.headshotUrl === 'string' ? meta.headshotUrl : undefined} size={20} />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium text-ink">{c.subjectName}</div>
-                <div className="truncate text-[10px] text-ink-muted">
+                <div className="truncate text-overline font-normal tracking-normal text-ink-muted">
                   {c.categoryLabel} · {c.sampleSize}/{c.sampleSize} rounds
                 </div>
               </div>
@@ -1353,7 +1347,7 @@ export function GolfScheduleView({
     <div className="grid gap-3 lg:grid-cols-[280px_1fr] lg:items-start">
       <div className="lb-card overflow-hidden lg:sticky lg:top-4">
         {warnings.length > 0 ? (
-          <div className="border-b border-warn/30 bg-warn/5 p-2 text-[11px] text-warn">
+          <div className="border-b border-warn/30 bg-warn/5 p-2 text-overline font-normal tracking-normal text-warn">
             {warnings.map((w) => (
               <p key={w}>{w}</p>
             ))}
@@ -1383,12 +1377,12 @@ export function GolfScheduleView({
           <div className="space-y-3">
             <div className="lb-card p-3">
               <div className="mb-1 flex items-center justify-between gap-2">
-                <h2 className="text-[15px] font-semibold text-ink">{active.name}</h2>
+                <h2 className="text-body font-semibold text-ink">{active.name}</h2>
                 <StatusChip status={active.status} completed={active.completed} />
               </div>
-              <p className="text-[12px] text-ink-muted">{formatDateRange(active.startDate, active.endDate)}</p>
+              <p className="text-label font-normal text-ink-muted">{formatDateRange(active.startDate, active.endDate)}</p>
             </div>
-            <div className="lb-card p-3 text-[12px] text-ink-muted">
+            <div className="lb-card p-3 text-label font-normal text-ink-muted">
               Detailed course info, leaderboard, matchups and weather are only available once this becomes the active
               tournament — ESPN&apos;s schedule feed doesn&apos;t carry that detail for future or past weeks. Check back
               when {active.name} is live.

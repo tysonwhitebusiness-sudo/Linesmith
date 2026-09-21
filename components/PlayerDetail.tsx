@@ -2,7 +2,7 @@
 
 import { useStickyHeaderHeight } from './useStickyHeaderHeight';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, Card, Chip, EmptyState, Section, SectionNav, SegmentedToggle, SkeletonLines, StatusPill, Tabs } from './ui';
+import { Button, Card, Chip, DataTable, EmptyState, Section, SectionNav, SegmentedToggle, SkeletonLines, StatusPill, Tabs, Tooltip } from './ui';
 import { GameStateCard } from './GameStateCard';
 import { PlayerOddsSection } from './PlayerOddsSection';
 import { playerPriceRows } from '@/lib/odds/props/playerPrices';
@@ -204,7 +204,7 @@ export function DistributionChart({
           style={{ bottom: footer + scale(line) }}
           aria-hidden
         >
-          <span className="absolute -top-2 right-0 rounded bg-masters px-1 text-[9px] font-semibold text-white">
+          <span className="absolute -top-2 right-0 rounded bg-masters px-1 text-overline tracking-normal font-semibold text-white">
             {line}
           </span>
         </div>
@@ -229,31 +229,30 @@ export function DistributionChart({
               onMouseEnter={() => setHovered(index)}
               onMouseLeave={() => setHovered((h) => (h === index ? null : h))}
             >
-              <div
+              <Tooltip content={`${point.label}: ${value ?? 'unrecorded'}`}><div
                 className="relative w-full rounded-t-[2px] transition-[height,opacity] duration-500 ease-out"
                 style={{
                   height: barHeight,
                   background: value == null ? 'rgb(147 162 154 / 0.35)' : deltaGradientStyle(signedDelta).fillBackground,
                   opacity: value == null ? (dimmed ? 0.25 : 0.5) : dimmed ? 0.3 : 0.85,
                 }}
-                title={`${point.label}: ${value ?? 'unrecorded'}`}
               >
                 {/* Value lives inside the bar, subtle, hover-only — a label
                     floating above it competed with neighboring bars for
                     space at high game counts. */}
                 <span
-                  className="absolute inset-0 flex items-center justify-center text-[8px] font-semibold text-white/90 transition-opacity duration-150"
+                  className="absolute inset-0 flex items-center justify-center text-overline tracking-normal font-semibold text-white/90 transition-opacity duration-150"
                   style={{ opacity: isHovered ? 1 : 0 }}
                 >
                   {value ?? '–'}
                 </span>
-              </div>
+              </div></Tooltip>
               {point.logoUrl ? (
                 <TeamLogo logoUrl={point.logoUrl} size={12} />
               ) : (
                 <span className="h-3 w-3 shrink-0" aria-hidden />
               )}
-              <span className="w-full truncate text-center text-[8px] leading-none text-ink-muted">
+              <span className="w-full truncate text-center text-overline font-normal tracking-normal leading-none text-ink-muted">
                 {/* periodLabel is "MM-DD vs/@ Opponent Name" (adapter.ts) — the
                     logo above already says who, so only the date needs to fit
                     here; the full label is still on the bar's own title. */}
@@ -288,8 +287,8 @@ export function WindowBox({
   if (stat.status === 'insufficient') {
     return (
       <div className="relative min-w-[76px] flex-1 overflow-hidden rounded-[10px] border border-line bg-card px-1.5 py-2 text-center transition-all duration-150 ease-out hover:-translate-y-0.5 hover:border-masters/30">
-        <div className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{label}</div>
-        <div className="mt-1 text-[14px] font-bold">
+        <div className="text-overline font-semibold uppercase tracking-wide text-ink-muted">{label}</div>
+        <div className="mt-1 text-body font-bold">
           <InsufficientMark available={stat.available} required={stat.required} />
         </div>
         <div className="mt-[5px] h-1 rounded-full bg-ink/[0.06]" />
@@ -301,24 +300,23 @@ export function WindowBox({
   const caption = showCount ? `${stat.hits}/${stat.total}` : `Avg ${stat.average.toFixed(2)}`;
 
   return (
-    <div
+    <Tooltip content={`${stat.hits} of ${stat.total}`}><div
       className="relative min-w-[76px] flex-1 overflow-hidden rounded-[10px] border border-black/[0.06] bg-card px-1.5 py-2 text-center transition-all duration-150 ease-out hover:-translate-y-0.5"
       style={{ boxShadow: gradient.boxShadow }}
-      title={`${stat.hits} of ${stat.total}`}
     >
       <div className="pointer-events-none absolute -inset-2" style={{ background: gradient.labelGlow }} />
-      <div className="relative text-[14px] font-bold leading-tight" style={{ color: gradient.valueColor }}>
+      <div className="relative text-body font-bold leading-tight" style={{ color: gradient.valueColor }}>
         {formatRate(stat.rate)}
       </div>
-      <div className="relative mt-px text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{label}</div>
-      <div className="relative mt-[3px] text-[8px] tabular-nums text-ink-muted/80">{caption}</div>
+      <div className="relative mt-px text-overline font-semibold uppercase tracking-wide text-ink-muted">{label}</div>
+      <div className="relative mt-[3px] text-overline font-normal tracking-normal tabular-nums text-ink-muted/80">{caption}</div>
       <div className="relative mt-1 h-1 rounded-full bg-black/[0.06]">
         <div
           className="h-full rounded-full"
           style={{ width: `${Math.round(stat.rate * 100)}%`, background: gradient.fillBackground }}
         />
       </div>
-    </div>
+    </div></Tooltip>
   );
 }
 
@@ -354,20 +352,25 @@ function relDisplay(v: number | null): string {
   return v > 0 ? `+${v}` : String(v);
 }
 
+
 /**
  * Categorical, not continuous: birdie-or-better sits solidly in the green
  * end of the ramp, bogey-or-worse solidly in the red end, par flat at the
- * amber midpoint — a flatter per-stroke scale (the original version) left a
- * single-stroke birdie or bogey reading as barely-tinted amber, which is the
- * one distinction (birdie vs. par vs. bogey) this chart exists to show.
- * Magnitude still nudges within each band, so an eagle reads greener than a
- * birdie without diluting the birdie/par/bogey split itself.
+ * amber midpoint. Still used by the hole-by-hole chart; the scorecard table
+ * uses `parTone` below since U6.
  */
 function golfScoreHeat(relativeToPar: number): number {
   if (relativeToPar === 0) return 0.5;
   if (relativeToPar < 0) return Math.min(1, 0.78 + (Math.abs(relativeToPar) - 1) * 0.12);
   return Math.max(0, 0.22 - (relativeToPar - 1) * 0.12);
 }
+
+/**
+ * Under par is good, over par bad, par nothing — categorical, as golf reads
+ * it. The scorecard table's tone since U6: the one distinction a scorecard
+ * exists to show is birdie vs par vs bogey, and a tone says exactly that.
+ */
+const parTone = (v: number | null | undefined): 'good' | 'bad' | null => (v == null || v === 0 ? null : v < 0 ? 'good' : 'bad');
 
 /**
  * A hole/round-score candidate only ever carries the ONE category that's
@@ -416,24 +419,6 @@ function GolfCategoryPicker({
   );
 }
 
-function MatchupHoleCell({ value }: { value: number | null }) {
-  if (value === null) {
-    return (
-      <td className="bg-ink/5 px-1.5 py-1 text-center align-middle text-ink-muted" title="Not played yet">
-        –
-      </td>
-    );
-  }
-  const gradient = gradientCardStyle(golfScoreHeat(value));
-  return (
-    <td
-      className="px-1.5 py-1 text-center align-middle text-[11px] font-bold tabular-nums"
-      style={{ backgroundImage: gradient.tableWash, color: gradient.valueColor }}
-    >
-      {relDisplay(value)}
-    </td>
-  );
-}
 
 /**
  * Hole-by-hole scorecard for the round happening right now — golfer vs. the
@@ -460,10 +445,10 @@ function LiveMatchupCard({
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
       <div className="flex items-center justify-between gap-2 bg-accent-soft px-3 py-1.5">
-        <h2 className="text-[12px] font-semibold text-masters">Round {matchup.round} live matchup</h2>
+        <h2 className="text-label font-semibold text-masters">Round {matchup.round} live matchup</h2>
       </div>
       <div className="p-2.5">
-        <div className="mb-2 flex items-center justify-center gap-2 text-[12px]">
+        <div className="mb-2 flex items-center justify-center gap-2 text-label font-normal">
           <span className="flex items-center gap-1.5 font-semibold text-ink">
             <SubjectAvatar name={selfName} headshotUrl={selfHeadshotUrl} size={20} />
             {selfName}
@@ -474,44 +459,32 @@ function LiveMatchupCard({
             {matchup.opponent.name}
           </span>
         </div>
-        <div className="lb-scroll-x overflow-auto">
-          <table className="w-full border-collapse text-[11px]">
-            <thead>
-              <tr>
-                <th className="sticky left-0 z-10 bg-paper px-1.5 py-1 text-left font-semibold text-ink-muted" />
-                {matchup.holes.map((h) => (
-                  <th key={h.hole} className="px-1.5 py-1 text-center font-semibold text-ink-muted">
-                    {h.hole}
-                  </th>
-                ))}
-                <th className="px-1.5 py-1 text-center font-semibold text-ink-muted">Thru</th>
-                <th className="px-1.5 py-1 text-center font-semibold text-ink-muted">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="sticky left-0 z-10 max-w-[76px] truncate bg-card px-1.5 py-1 text-left font-semibold text-ink">
-                  {selfName}
-                </td>
-                {matchup.holes.map((h) => (
-                  <MatchupHoleCell key={h.hole} value={h.self} />
-                ))}
-                <td className="px-1.5 py-1 text-center font-semibold tabular-nums">{selfThru}</td>
-                <MatchupHoleCell value={selfThru > 0 ? selfTotal : null} />
-              </tr>
-              <tr>
-                <td className="sticky left-0 z-10 max-w-[76px] truncate bg-card px-1.5 py-1 text-left font-semibold text-ink">
-                  {matchup.opponent.name}
-                </td>
-                {matchup.holes.map((h) => (
-                  <MatchupHoleCell key={h.hole} value={h.opponent} />
-                ))}
-                <td className="px-1.5 py-1 text-center font-semibold tabular-nums">{opponentThru}</td>
-                <MatchupHoleCell value={opponentThru > 0 ? opponentTotal : null} />
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        {/* U6: the kit DataTable. Each hole carries golf's categorical par
+            TONE — under par good, over par bad — which is what the old
+            gradient wash said (finding U-8). */}
+        <DataTable<{ id: string; name: string; cells: Array<number | null>; thru: number; total: number | null }>
+          caption={`Round ${matchup.round} scorecard`}
+          density="compact"
+          rowKey={(r) => r.id}
+          rows={[
+            { id: 'self', name: selfName, cells: matchup.holes.map((h) => h.self), thru: selfThru, total: selfThru > 0 ? selfTotal : null },
+            { id: 'opp', name: matchup.opponent.name, cells: matchup.holes.map((h) => h.opponent), thru: opponentThru, total: opponentThru > 0 ? opponentTotal : null },
+          ]}
+          columns={[
+            { key: 'name', label: '', sortable: false, render: (r) => <span className="block max-w-[76px] truncate font-semibold text-ink">{r.name}</span> },
+            ...matchup.holes.map((h, idx) => ({
+              key: `h${h.hole}`,
+              label: String(h.hole),
+              sortable: false,
+              numeric: true,
+              align: 'center' as const,
+              render: (r: { cells: Array<number | null> }) => relDisplay(r.cells[idx] ?? null),
+              ink: (r: { cells: Array<number | null> }) => parTone(r.cells[idx]),
+            })),
+            { key: 'thru', label: 'Thru', sortable: false, numeric: true, align: 'center', render: (r) => r.thru },
+            { key: 'total', label: 'Total', sortable: false, numeric: true, align: 'center', render: (r) => relDisplay(r.total), ink: (r) => parTone(r.total) },
+          ]}
+        />
       </div>
     </section>
   );
@@ -528,25 +501,25 @@ function PastRoundMatchupsCard({ active, meta }: { active: PickCandidate; meta: 
 
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
-      <h3 className="bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">Past round matchups</h3>
+      <h3 className="bg-accent-soft px-3 py-1.5 text-overline font-bold uppercase tracking-wide text-masters">Past round matchups</h3>
       {rounds.length === 0 ? (
-        <p className="p-3 text-[12px] text-ink-muted">No completed rounds with pairing data yet.</p>
+        <p className="p-3 text-label font-normal text-ink-muted">No completed rounds with pairing data yet.</p>
       ) : (
         <div className="divide-y divide-line-soft">
           {rounds.map((r) => (
             <div key={r.round} className="p-3">
-              <div className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Round {r.round}</div>
+              <div className="mb-1.5 text-overline font-semibold uppercase tracking-wide text-ink-muted">Round {r.round}</div>
               <ul className="space-y-1.5">
                 <li className="flex items-center gap-2 rounded-lg bg-accent-soft px-1.5 py-1">
                   <SubjectAvatar name={active.subjectName} headshotUrl={headshotUrl} size={24} />
-                  <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-masters">{active.subjectName}</span>
-                  <span className="shrink-0 text-[12px] font-bold tabular-nums">{relDisplay(r.selfRelative)}</span>
+                  <span className="min-w-0 flex-1 truncate text-label font-semibold text-masters">{active.subjectName}</span>
+                  <span className="shrink-0 text-label font-bold tabular-nums">{relDisplay(r.selfRelative)}</span>
                 </li>
                 {r.opponents.map((o) => (
                   <li key={o.id} className="flex items-center gap-2 rounded-lg px-1.5 py-1">
                     <SubjectAvatar name={o.name} headshotUrl={o.headshotUrl} size={24} />
-                    <span className="min-w-0 flex-1 truncate text-[12px] text-ink">{o.name}</span>
-                    <span className="shrink-0 text-[12px] font-bold tabular-nums">{relDisplay(o.relative)}</span>
+                    <span className="min-w-0 flex-1 truncate text-label font-normal text-ink">{o.name}</span>
+                    <span className="shrink-0 text-label font-bold tabular-nums">{relDisplay(o.relative)}</span>
                   </li>
                 ))}
               </ul>
@@ -567,16 +540,16 @@ function PastRoundMatchupsCard({ active, meta }: { active: PickCandidate; meta: 
 function ConsistentHolesForm({ holes }: { holes: PickCandidate[] }) {
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
-      <h3 className="flex items-center gap-1.5 bg-accent-soft px-3 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-masters">
+      <h3 className="flex items-center gap-1.5 bg-accent-soft px-3 py-1.5 text-overline font-bold uppercase tracking-wide text-masters">
         <PulseIcon />
         Form
       </h3>
       <ul className="space-y-2 p-3">
         {holes.length === 0 ? (
-          <li className="text-[12px] text-ink-muted">No hole has the same result in every round yet.</li>
+          <li className="text-label font-normal text-ink-muted">No hole has the same result in every round yet.</li>
         ) : (
           holes.slice(0, 5).map((c) => (
-            <li key={c.dimension} className="flex items-baseline justify-between gap-2 text-[12px]">
+            <li key={c.dimension} className="flex items-baseline justify-between gap-2 text-label font-normal">
               <span className="truncate text-ink-muted">{c.dimensionLabel}</span>
               <span className={`shrink-0 font-semibold tabular-nums ${TONE_CLASS[markFor(c.category).tone]}`}>
                 {c.categoryLabel} · {c.sampleSize}/{c.sampleSize}
@@ -619,8 +592,8 @@ function RoundScoreBox({
   if (value === null) {
     return (
       <div className="relative min-w-[76px] flex-1 overflow-hidden rounded-[10px] border border-line bg-card px-1.5 py-2 text-center">
-        <div className="text-[14px] font-bold text-ink-muted">–</div>
-        <div className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{label}</div>
+        <div className="text-body font-bold text-ink-muted">–</div>
+        <div className="mt-1 text-overline font-semibold uppercase tracking-wide text-ink-muted">{label}</div>
       </div>
     );
   }
@@ -632,10 +605,10 @@ function RoundScoreBox({
       style={{ boxShadow: gradient.boxShadow }}
     >
       <div className="pointer-events-none absolute -inset-2" style={{ background: gradient.labelGlow }} />
-      <div className="relative text-[14px] font-bold leading-tight" style={{ color: gradient.valueColor }}>
+      <div className="relative text-body font-bold leading-tight" style={{ color: gradient.valueColor }}>
         {format(value)}
       </div>
-      <div className="relative mt-px text-[9px] font-semibold uppercase tracking-wide text-ink-muted">
+      <div className="relative mt-px text-overline font-semibold uppercase tracking-wide text-ink-muted">
         {label}
         {hit != null ? <span className="ml-1" style={{ color: gradient.valueColor }}>{hit ? '✓' : '✕'}</span> : null}
       </div>
@@ -686,19 +659,18 @@ function ScorecardChart({
           const gradient = v == null ? null : gradientCardStyle(golfScoreHeat(v));
           return (
             <div key={h.hole} className="flex min-w-[28px] flex-1 flex-col items-center justify-end gap-0.5">
-              <span className="text-[11px] font-bold leading-none tabular-nums" style={{ color: gradient?.valueColor }}>
+              <span className="text-overline tracking-normal font-bold leading-none tabular-nums" style={{ color: gradient?.valueColor }}>
                 {h.strokes ?? '–'}
               </span>
-              <span className="text-[8px] font-semibold leading-none" style={{ color: gradient?.valueColor }}>
+              <span className="text-overline tracking-normal font-semibold leading-none" style={{ color: gradient?.valueColor }}>
                 {v == null ? '' : relDisplay(v)}
               </span>
-              <span
+              <Tooltip content={h.strokes != null ? `${h.strokes} shot${h.strokes === 1 ? '' : 's'}${v != null ? ` (${relDisplay(v)})` : ''}` : 'Not played yet'}><span
                 className="mt-0.5 w-full max-w-[22px] origin-bottom rounded-t-[3px] transition-[height,transform,filter] duration-300 ease-out hover:scale-110 hover:brightness-110"
                 style={{ height: barHeight(h.strokes), background: v == null ? 'rgb(147 162 154 / 0.35)' : gradient?.fillBackground }}
-                title={h.strokes != null ? `${h.strokes} shot${h.strokes === 1 ? '' : 's'}${v != null ? ` (${relDisplay(v)})` : ''}` : 'Not played yet'}
-              />
-              <span className="mt-0.5 text-[9px] font-semibold text-ink-muted">{h.hole}</span>
-              <span className="text-[10px] font-bold text-ink-muted">{h.par != null ? `Par ${h.par}` : '–'}</span>
+              /></Tooltip>
+              <span className="mt-0.5 text-overline tracking-normal font-semibold text-ink-muted">{h.hole}</span>
+              <span className="text-overline tracking-normal font-bold text-ink-muted">{h.par != null ? `Par ${h.par}` : '–'}</span>
             </div>
           );
         })}
@@ -1814,7 +1786,7 @@ export function PlayerDetail({
             >
               −
             </Button>
-            <span className="min-w-[64px] rounded-lg border border-line px-3 py-1.5 text-center text-[14px] font-bold tabular-nums" aria-live="polite">
+            <span className="min-w-[64px] rounded-lg border border-line px-3 py-1.5 text-center text-body font-bold tabular-nums" aria-live="polite">
               {lineText}
             </span>
             <Button
@@ -1848,9 +1820,9 @@ export function PlayerDetail({
               {started ? <span className="text-label text-ink-muted">price at the start</span> : null}
             </>
           ) : lineOffset !== 0 ? (
-            <span className="text-[11px] text-ink-muted">No price recorded at this alternate line.</span>
+            <span className="text-overline font-normal tracking-normal text-ink-muted">No price recorded at this alternate line.</span>
           ) : previewingOtherGolfCategory ? (
-            <span className="text-[11px] text-ink-muted">
+            <span className="text-overline font-normal tracking-normal text-ink-muted">
               Previewing {golfCategoryLabel(active.dimension, effectiveGolfCategory)} — this golfer&apos;s tracked pattern is {active.categoryLabel}.
             </span>
           ) : priced.lineStatus === 'alternates-only' ? (
@@ -2029,7 +2001,7 @@ export function PlayerDetail({
               <ul className="space-y-2">
                 {(data.formWindows ?? []).slice(0, 4).map((split) => (
                   <li key={`${split.kind}-${split.label}`}>
-                    <div className="flex items-baseline justify-between gap-2 text-[12px]">
+                    <div className="flex items-baseline justify-between gap-2 text-label font-normal">
                       <span className="truncate text-ink-muted">{split.label}</span>
                       <span className="shrink-0 font-semibold tabular-nums">
                         {isOk(split.stat) ? (

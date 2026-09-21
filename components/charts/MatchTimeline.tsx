@@ -2,7 +2,7 @@
 
 import { MarkTip } from './MarkTip';
 import { SIDE_COLOR } from './FieldLanes';
-import { FONT_STACK, GRID, INK3, SIZE } from './tokens';
+import { FONT_STACK, GRID, INK3, SIZE, CARD_RED, CARD_YELLOW } from './tokens';
 import { useChartWidth } from './useChartWidth';
 
 export interface TimelineEvent {
@@ -58,13 +58,13 @@ export function MatchTimeline({ events, teams, label, className }: { events: rea
             mark = (
               <g>
                 <circle cx={x} cy={y} r={10} fill={colour} stroke="oklch(var(--card))" strokeWidth={2} />
-                <text x={x} y={y + 4} fill="#fff" fontSize={11} fontWeight={700} textAnchor="middle">
+                <text x={x} y={y + 4} fill="white" fontSize={11} fontWeight={700} textAnchor="middle">
                   G
                 </text>
               </g>
             );
           } else if (e.kind === 'red' || e.kind === 'yellow') {
-            mark = <rect x={x - 4} y={y - 8} width={8} height={12} rx={1.5} fill={e.kind === 'red' ? '#d0312d' : '#e8b90c'} stroke="oklch(var(--card))" />;
+            mark = <rect x={x - 4} y={y - 8} width={8} height={12} rx={1.5} fill={e.kind === 'red' ? CARD_RED : CARD_YELLOW} stroke="oklch(var(--card))" />;
           } else if (e.kind === 'sub') {
             mark = <path d={`M${x - 6},${y - 4} h12 m-3,-3 l3,3 l-3,3 M${x + 6},${y + 5} h-12 m3,-3 l-3,3 l3,3`} stroke={INK3} strokeWidth={1.5} fill="none" />;
           } else {

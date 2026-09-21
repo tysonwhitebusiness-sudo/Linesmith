@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { Avatar, cx, ErrorState, Section, SectionNav, SegmentedToggle, Skeleton } from './ui';
+import { Avatar, cx, ErrorState, Section, SectionNav, SegmentedToggle, Skeleton, Tooltip } from './ui';
 import { asOfText, ResearchSectionBody, SourcesCard } from './PlayerResearchSections';
 import { useTeamResearch } from './useTeamResearch';
 import { useTeamHistory } from './useTeamHistory';
@@ -183,16 +183,14 @@ function TeamHero({ data }: { data: TeamResearchData }) {
                 <span className="text-overline uppercase text-ink-muted">Last {hero.lastTen.length}</span>
                 <span className="flex flex-wrap gap-1">
                   {hero.lastTen.map((g, i) => (
-                    <span
-                      key={i}
-                      title={g.tip}
+                    <Tooltip key={i} content={g.tip}><span
                       className={cx(
                         'grid h-6 min-w-6 place-items-center rounded-ctl px-1 text-label font-semibold',
                         g.result === 'W' ? 'bg-good/12 text-good' : g.result === 'D' ? 'bg-card-sunk text-ink-secondary' : 'bg-bad/10 text-bad',
                       )}
                     >
                       {g.result}
-                    </span>
+                    </span></Tooltip>
                   ))}
                 </span>
               </div>
@@ -225,10 +223,10 @@ function TeamHero({ data }: { data: TeamResearchData }) {
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-line-soft pt-4 sm:grid-cols-4 lg:grid-cols-8">
         {hero.tiles.map((t) => (
-          <div key={t.label} title={t.info}>
+          <Tooltip key={t.label} content={t.info}><div>
             <dt className="truncate text-overline uppercase text-ink-muted">{t.label}</dt>
             <dd className="mt-0.5 text-title tabular-nums text-ink">{t.value}</dd>
-          </div>
+          </div></Tooltip>
         ))}
       </dl>
     </section>

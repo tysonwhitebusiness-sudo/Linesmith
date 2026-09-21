@@ -141,7 +141,7 @@ export interface InsightRowProps {
 
 export function InsightRow({ kind, label, figure, heat, className = '' }: InsightRowProps) {
   return (
-    <li className={`flex items-center gap-1.5 text-[12px] leading-tight ${className}`}>
+    <li className={`flex items-center gap-1.5 text-label font-normal leading-tight ${className}`}>
       <InsightIcon kind={kind} />
       <span className="min-w-0 flex-1 truncate text-ink-muted">{label}</span>
       {figure ? (
@@ -178,7 +178,7 @@ function heatFor(rate: number): number {
 export function SplitInsightRow({ split, className = '' }: { split: SplitEvidence; className?: string }) {
   if (split.stat.status === 'insufficient') {
     return (
-      <li className={`flex items-center gap-1.5 text-[12px] leading-tight ${className}`}>
+      <li className={`flex items-center gap-1.5 text-label font-normal leading-tight ${className}`}>
         <InsightIcon kind={split.kind} />
         <span className="min-w-0 flex-1 truncate text-ink-muted">{split.label}</span>
         <InsufficientMark available={split.stat.available} required={split.stat.required} />

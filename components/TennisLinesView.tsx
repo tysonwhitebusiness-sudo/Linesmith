@@ -49,14 +49,14 @@ export function TennisLinesView({
   return (
     <div className="space-y-2">
       {warnings.length > 0 ? (
-        <div className="lb-card border-warn/30 bg-warn/5 p-2 text-[11px] text-warn">
+        <div className="lb-card border-warn/30 bg-warn/5 p-2 text-overline font-normal tracking-normal text-warn">
           {warnings.map((w) => (
             <p key={w}>{w}</p>
           ))}
         </div>
       ) : null}
 
-      {eventName ? <p className="px-1 text-[11px] text-ink-muted">{eventName} · Tournament Winner</p> : null}
+      {eventName ? <p className="px-1 text-overline font-normal tracking-normal text-ink-muted">{eventName} · Tournament Winner</p> : null}
 
       <div className="lb-card divide-y divide-line overflow-hidden">
         {lines.map((line) => {
@@ -64,7 +64,7 @@ export function TennisLinesView({
             <div className="flex items-center gap-3 px-3 py-2">
               <SubjectAvatar name={line.playerName} size={28} />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-medium text-ink">{line.playerName}</div>
+                <div className="truncate text-body-sm font-medium text-ink">{line.playerName}</div>
               </div>
               {line.bestPrice ? (
                 <div className="flex flex-col items-end gap-0.5">
@@ -72,7 +72,7 @@ export function TennisLinesView({
                   <BookLogo bookId={line.bestPrice.bookmaker} size={11} withLabel />
                 </div>
               ) : (
-                <span className="text-[11px] text-ink-muted">—</span>
+                <span className="text-overline font-normal tracking-normal text-ink-muted">—</span>
               )}
             </div>
           );

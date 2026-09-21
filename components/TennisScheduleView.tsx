@@ -88,13 +88,13 @@ function MatchHeroCarousel({ matches, tour }: { matches: DrawMatch[]; tour: Tenn
   return (
     <div className="shrink-0 overflow-hidden rounded-xl border border-line bg-card/90">
       <Link href={`/tennis/${tour}/game/${m.matchId}`} className="flex flex-col gap-1 px-3 py-2 transition-colors hover:bg-surface-subtle">
-        <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{label}</span>
-        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-ink">
+        <span className="text-overline font-semibold uppercase tracking-wide text-ink-muted">{label}</span>
+        <span className="flex items-center gap-1.5 text-label font-semibold text-ink">
           <SubjectAvatar name={m.home.name} fallbackUrl={m.home.flagUrl ?? undefined} size={18} />
           {m.home.name}
           {m.state === 'in' ? <span className="ml-auto font-bold tabular-nums text-masters">{formatSetScore(m.home.sets)}</span> : null}
         </span>
-        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-ink">
+        <span className="flex items-center gap-1.5 text-label font-semibold text-ink">
           <SubjectAvatar name={m.away.name} fallbackUrl={m.away.flagUrl ?? undefined} size={18} />
           {m.away.name}
           {m.state === 'in' ? <span className="ml-auto font-bold tabular-nums text-masters">{formatSetScore(m.away.sets)}</span> : null}
@@ -125,19 +125,19 @@ function MatchHeroCard({ event, draw, tour }: { event: ScheduleEvent; draw: Tour
       className="lb-card-hero lb-card-interactive overflow-hidden"
       style={{
         background:
-          'radial-gradient(120% 140% at 100% 0%, rgba(15,122,79,0.22) 0%, rgba(15,122,79,0.05) 45%, #ffffff 75%), linear-gradient(135deg, rgba(20,22,25,0.05) 0%, #ffffff 60%)',
-        borderTop: '3px solid #141619',
+          'radial-gradient(120% 140% at 100% 0%, rgba(15,122,79,0.22) 0%, rgba(15,122,79,0.05) 45%, white 75%), linear-gradient(135deg, rgba(20,22,25,0.05) 0%, white 60%)',
+        borderTop: '3px solid var(--color-masters)',
       }}
     >
       <div className="flex flex-wrap items-center gap-4 px-4 py-4">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-2">
-            <h1 className="truncate text-[22px] font-bold leading-tight text-ink">{draw.eventName}</h1>
+            <h1 className="truncate text-heading font-bold leading-tight text-ink">{draw.eventName}</h1>
             <StatusChip status={event.status} completed={event.completed} />
             {draw.major ? <Chip tone="masters" size="sm">Grand Slam</Chip> : null}
             <SurfaceChip surface={surface} />
           </div>
-          <p className="flex flex-wrap items-center gap-1.5 text-[12px] text-ink-muted">
+          <p className="flex flex-wrap items-center gap-1.5 text-label font-normal text-ink-muted">
             <span>{formatDateRange(event.startDate, event.endDate)}</span>
             {draw.venueCity ? (
               <>
@@ -170,28 +170,28 @@ function TodaysMatchesCard({ matches, tour, moneylines }: { matches: DrawMatch[]
   );
 
   if (rows.length === 0) {
-    return <p className="lb-card p-4 text-center text-[12px] text-ink-muted">No live or upcoming matches in this draw right now.</p>;
+    return <p className="lb-card p-4 text-center text-label font-normal text-ink-muted">No live or upcoming matches in this draw right now.</p>;
   }
 
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
-      <h2 className="bg-accent-soft px-3 py-1.5 text-[12px] font-semibold text-masters">Today&apos;s matches</h2>
+      <h2 className="bg-accent-soft px-3 py-1.5 text-label font-semibold text-masters">Today&apos;s matches</h2>
       <div className="divide-y divide-line-soft">
         {rows.map((m) => {
           const ml = moneylineByMatch.get(m.matchId);
           return (
             <Link key={m.matchId} href={`/tennis/${tour}/game/${m.matchId}`} className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-surface-subtle">
-              <div className="w-16 shrink-0 text-[10px] text-ink-muted">
+              <div className="w-16 shrink-0 text-overline font-normal tracking-normal text-ink-muted">
                 {m.state === 'in' ? <Chip tone="live" size="sm">Live</Chip> : m.court || m.round}
               </div>
               <div className="min-w-0 flex-1 space-y-0.5">
-                <div className="flex items-center gap-1.5 text-[12.5px]">
+                <div className="flex items-center gap-1.5 text-label font-normal">
                   <SubjectAvatar name={m.home.name} fallbackUrl={m.home.flagUrl ?? undefined} size={16} />
                   <span className="min-w-0 flex-1 truncate font-medium text-ink">{m.home.name}</span>
                   {m.state === 'in' ? <span className="shrink-0 font-bold tabular-nums text-ink">{formatSetScore(m.home.sets)}</span> : null}
                   {ml?.home.bestPrice ? <OddsChip price={ml.home.bestPrice.americanOdds} source="sharpapi" /> : null}
                 </div>
-                <div className="flex items-center gap-1.5 text-[12.5px]">
+                <div className="flex items-center gap-1.5 text-label font-normal">
                   <SubjectAvatar name={m.away.name} fallbackUrl={m.away.flagUrl ?? undefined} size={16} />
                   <span className="min-w-0 flex-1 truncate font-medium text-ink">{m.away.name}</span>
                   {m.state === 'in' ? <span className="shrink-0 font-bold tabular-nums text-ink">{formatSetScore(m.away.sets)}</span> : null}
@@ -212,12 +212,12 @@ function TodaysMatchesCard({ matches, tour, moneylines }: { matches: DrawMatch[]
 
 function SeedBadge({ seed }: { seed: number | null }) {
   if (seed == null) return null;
-  return <span className="shrink-0 text-[9px] font-semibold text-ink-muted">({seed})</span>;
+  return <span className="shrink-0 text-overline tracking-normal font-semibold text-ink-muted">({seed})</span>;
 }
 
 function DrawMatchRow({ match, tour }: { match: DrawMatch; tour: TennisTour }) {
   return (
-    <Link href={`/tennis/${tour}/game/${match.matchId}`} className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-[12px] transition-colors hover:bg-surface-subtle">
+    <Link href={`/tennis/${tour}/game/${match.matchId}`} className="flex items-center gap-3 rounded-lg px-2 py-1.5 text-label font-normal transition-colors hover:bg-surface-subtle">
       <div className="min-w-0 flex-1 space-y-0.5">
         {[match.home, match.away].map((c) => (
           <div key={c.athleteId} className="flex items-center gap-1.5">
@@ -229,7 +229,7 @@ function DrawMatchRow({ match, tour }: { match: DrawMatch; tour: TennisTour }) {
         ))}
       </div>
       {!match.completed && match.state !== 'in' ? (
-        <span className="shrink-0 text-[10px] text-ink-muted">{new Date(match.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+        <span className="shrink-0 text-overline font-normal tracking-normal text-ink-muted">{new Date(match.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
       ) : null}
     </Link>
   );
@@ -255,12 +255,12 @@ function DrawBracketCard({ matches, tour }: { matches: DrawMatch[]; tour: Tennis
   const [openRounds, setOpenRounds] = useState<Set<string>>(() => new Set(defaultOpenRound ? [defaultOpenRound] : []));
 
   if (byRound.length === 0) {
-    return <p className="lb-card p-4 text-center text-[12px] text-ink-muted">Draw hasn&apos;t been released yet.</p>;
+    return <p className="lb-card p-4 text-center text-label font-normal text-ink-muted">Draw hasn&apos;t been released yet.</p>;
   }
 
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
-      <h2 className="bg-accent-soft px-3 py-1.5 text-[12px] font-semibold text-masters">Draw</h2>
+      <h2 className="bg-accent-soft px-3 py-1.5 text-label font-semibold text-masters">Draw</h2>
       <div className="divide-y divide-line-soft">
         {byRound.map(([round, roundMatches]) => {
           const isOpen = openRounds.has(round);
@@ -280,8 +280,8 @@ function DrawBracketCard({ matches, tour }: { matches: DrawMatch[]; tour: Tennis
                 aria-expanded={isOpen}
                 className="h-auto w-full justify-between rounded-none px-3 py-2 text-left font-normal hover:bg-surface-subtle"
               >
-                <span className="text-[12px] font-semibold text-ink">{round}</span>
-                <span className="flex items-center gap-2 text-[10px] text-ink-muted">
+                <span className="text-label font-semibold text-ink">{round}</span>
+                <span className="flex items-center gap-2 text-overline font-normal tracking-normal text-ink-muted">
                   {roundMatches.length} match{roundMatches.length === 1 ? '' : 'es'}
                   <span className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}>▾</span>
                 </span>
@@ -323,9 +323,9 @@ function TournamentInsightsCard({
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 bg-accent-soft px-3 py-1.5">
-        <h2 className="text-[12px] font-semibold text-masters">Tournament insights</h2>
+        <h2 className="text-label font-semibold text-masters">Tournament insights</h2>
         {conditions.completedCount > 0 ? (
-          <span className="text-[10px] text-masters/70">
+          <span className="text-overline font-normal tracking-normal text-masters/70">
             {conditions.straightSetsPct.toFixed(0)}% straight sets · {conditions.probableRetirements} retirement{conditions.probableRetirements === 1 ? '' : 's'} so far
           </span>
         ) : null}
@@ -333,7 +333,7 @@ function TournamentInsightsCard({
 
       <div className="p-3">
         <div className="mb-1.5 flex items-center justify-between gap-2">
-          <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">Season leaders (tour-wide)</span>
+          <span className="text-overline font-semibold uppercase tracking-wide text-ink-muted">Season leaders (tour-wide)</span>
           <span className="inline-flex items-center gap-0.5 rounded-lg bg-ink/[0.05] p-0.5">
             {(['aces', 'gamesWon'] as const).map((s) => (
               <Button
@@ -350,13 +350,13 @@ function TournamentInsightsCard({
           </span>
         </div>
         {seasonLeadersLoading && seasonLeaders.length === 0 ? (
-          <p className="text-[11px] text-ink-muted">Loading…</p>
+          <p className="text-overline font-normal tracking-normal text-ink-muted">Loading…</p>
         ) : seasonLeaders.length === 0 ? (
-          <p className="text-[11px] text-ink-muted">No season data yet.</p>
+          <p className="text-overline font-normal tracking-normal text-ink-muted">No season data yet.</p>
         ) : (
           <ul className="space-y-1">
             {seasonLeaders.slice(0, 5).map((row, i) => (
-              <li key={row.name} className="flex items-center justify-between gap-2 rounded-md px-1 py-0.5 text-[11px]">
+              <li key={row.name} className="flex items-center justify-between gap-2 rounded-md px-1 py-0.5 text-overline font-normal tracking-normal">
                 <span className="truncate text-ink">
                   #{i + 1} {row.name}
                 </span>
@@ -367,7 +367,7 @@ function TournamentInsightsCard({
             ))}
           </ul>
         )}
-        <p className="mt-1 text-[9px] text-ink-muted">Season totals across all real matches this year — not tournament-specific.</p>
+        <p className="mt-1 text-overline font-normal tracking-normal text-ink-muted">Season totals across all real matches this year — not tournament-specific.</p>
       </div>
     </section>
   );
@@ -387,8 +387,8 @@ function TournamentInfoCard({ draw, tour }: { draw: TournamentDraw; tour: Tennis
 
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
-      <h2 className="bg-accent-soft px-3 py-1.5 text-[12px] font-semibold text-masters">Tournament info</h2>
-      <div className="space-y-2 p-3 text-[12px]">
+      <h2 className="bg-accent-soft px-3 py-1.5 text-label font-semibold text-masters">Tournament info</h2>
+      <div className="space-y-2 p-3 text-label font-normal">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className="text-ink-muted">Surface</span>
           {surface ? <SurfaceChip surface={surface} /> : <span className="text-ink-muted">Not on file yet</span>}
@@ -440,9 +440,9 @@ function WeatherIcon({ windMph, rainPct, size = 15, className = '' }: { windMph:
 function WeatherCard({ weather }: { weather: WeatherContext }) {
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
-      <h2 className="bg-accent-soft px-3 py-1.5 text-[12px] font-semibold text-masters">Weather</h2>
+      <h2 className="bg-accent-soft px-3 py-1.5 text-label font-semibold text-masters">Weather</h2>
       <div className="p-3">
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-body-sm">
           <WeatherIcon windMph={weather.windMph} rainPct={weather.rainPct} size={18} className="text-masters" />
           <span className="font-bold text-ink">
             {weather.windMph} mph {weather.windDir}
@@ -450,7 +450,7 @@ function WeatherCard({ weather }: { weather: WeatherContext }) {
           <span className="text-ink-muted">{weather.rainPct}% rain</span>
           {weather.tempF != null ? <span className="text-ink-muted">{weather.tempF}°F</span> : null}
         </div>
-        <p className="mt-1 text-[10px] text-ink-muted">{weather.approximateLocation ? 'City-level estimate' : 'Venue-exact'}</p>
+        <p className="mt-1 text-overline font-normal tracking-normal text-ink-muted">{weather.approximateLocation ? 'City-level estimate' : 'Venue-exact'}</p>
       </div>
     </section>
   );
@@ -461,9 +461,9 @@ function WeatherCard({ weather }: { weather: WeatherContext }) {
 // ---------------------------------------------------------------------------
 
 function TrendArrow({ current, previous }: { current: number; previous: number | null }) {
-  if (previous == null || previous === current) return <span className="text-[10px] text-ink-muted">–</span>;
+  if (previous == null || previous === current) return <span className="text-overline font-normal tracking-normal text-ink-muted">–</span>;
   const up = previous > current; // a lower rank number is better
-  return <span className={`text-[10px] font-bold ${up ? 'text-good' : 'text-bad'}`}>{up ? `▲${previous - current}` : `▼${current - previous}`}</span>;
+  return <span className={`text-overline tracking-normal font-bold ${up ? 'text-good' : 'text-bad'}`}>{up ? `▲${previous - current}` : `▼${current - previous}`}</span>;
 }
 
 function WorldRankingsCard({ tour, rankings, loading }: { tour: TennisTour; rankings: RankingRow[]; loading: boolean }) {
@@ -484,7 +484,7 @@ function WorldRankingsCard({ tour, rankings, loading }: { tour: TennisTour; rank
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
       <div className="flex items-center justify-between gap-2 bg-accent-soft px-3 py-1.5">
-        <h2 className="text-[12px] font-semibold text-masters">World rankings</h2>
+        <h2 className="text-label font-semibold text-masters">World rankings</h2>
         <span className="inline-flex items-center gap-0.5 rounded-lg bg-ink/[0.05] p-0.5">
           {([10, 25] as const).map((n) => (
             <Button
@@ -503,7 +503,7 @@ function WorldRankingsCard({ tour, rankings, loading }: { tour: TennisTour; rank
       <ul className="divide-y divide-line-soft">
         {rows.map((r) => (
           <li key={r.athleteId}>
-            <Link href={`/tennis/${tour}/player/${encodeURIComponent(r.athleteId)}`} className="flex items-center gap-2 px-3 py-1.5 text-[12px] transition-colors hover:bg-surface-subtle">
+            <Link href={`/tennis/${tour}/player/${encodeURIComponent(r.athleteId)}`} className="flex items-center gap-2 px-3 py-1.5 text-label font-normal transition-colors hover:bg-surface-subtle">
               <span className="w-6 shrink-0 text-center font-bold text-ink-muted">{r.rank}</span>
               <SubjectAvatar name={r.name} size={20} />
               <span className="min-w-0 flex-1 truncate text-ink">{r.name}</span>
@@ -513,7 +513,7 @@ function WorldRankingsCard({ tour, rankings, loading }: { tour: TennisTour; rank
           </li>
         ))}
       </ul>
-      <p className="border-t border-line-soft px-3 py-1.5 text-[9px] text-ink-muted">Official ATP/WTA ranking points — not a priced market.</p>
+      <p className="border-t border-line-soft px-3 py-1.5 text-overline font-normal tracking-normal text-ink-muted">Official ATP/WTA ranking points — not a priced market.</p>
     </section>
   );
 }
@@ -531,17 +531,17 @@ function OurLinesCard({ candidates, onAdd, addedKeys }: { candidates: PickCandid
 
   return (
     <section className="lb-card lb-card-interactive overflow-hidden">
-      <h2 className="bg-accent-soft px-3 py-1.5 text-[12px] font-semibold text-masters">Our lines</h2>
+      <h2 className="bg-accent-soft px-3 py-1.5 text-label font-semibold text-masters">Our lines</h2>
       <ul className="divide-y divide-line-soft">
         {rows.map((c) => {
           const key = `${c.sport}:${c.subjectId}:${c.dimension}:${c.category}`;
           const added = addedKeys?.has(key);
           return (
-            <li key={key} className="flex items-center gap-2 px-3 py-1.5 text-[12px]">
+            <li key={key} className="flex items-center gap-2 px-3 py-1.5 text-label font-normal">
               <SubjectAvatar name={c.subjectName} size={20} />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium text-ink">{c.subjectName}</div>
-                <div className="truncate text-[10px] text-ink-muted">
+                <div className="truncate text-overline font-normal tracking-normal text-ink-muted">
                   {c.dimensionLabel} · {c.categoryLabel} · {c.sampleSize} match{c.sampleSize === 1 ? '' : 'es'}
                 </div>
               </div>
@@ -632,7 +632,7 @@ export function TennisScheduleView({
     <div className="grid gap-3 lg:grid-cols-[280px_1fr] lg:items-start">
       <div className="lb-card overflow-hidden lg:sticky lg:top-4">
         {scheduleWarnings.length > 0 ? (
-          <div className="border-b border-warn/30 bg-warn/5 p-2 text-[11px] text-warn">
+          <div className="border-b border-warn/30 bg-warn/5 p-2 text-overline font-normal tracking-normal text-warn">
             {scheduleWarnings.map((w) => (
               <p key={w}>{w}</p>
             ))}
@@ -663,7 +663,7 @@ export function TennisScheduleView({
         ) : drawLoading && !draw ? (
           <div className="lb-card h-48 animate-pulse" />
         ) : !draw ? (
-          <div className="lb-card p-3 text-[12px] text-ink-muted">
+          <div className="lb-card p-3 text-label font-normal text-ink-muted">
             {drawWarnings[0] ?? `Couldn't load ${active.name}'s draw right now.`}
           </div>
         ) : (

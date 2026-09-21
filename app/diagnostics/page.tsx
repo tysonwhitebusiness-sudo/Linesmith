@@ -6,7 +6,7 @@ import type { ModelStatusRow } from '@/lib/models/modelStatus';
 import { SubjectAvatar, TeamLogo, mlbHeadshotUrl, mlbTeamLogoUrl } from '@/components/SubjectAvatar';
 import { ConfidenceChip } from '@/components/ConfidenceChip';
 import { LockIcon, ClockIcon } from '@/components/icons';
-import { Button, Input, Modal, SearchIcon } from '@/components/ui';
+import { Button, Chip, DataTable, Input, Modal, SearchIcon, SegmentedToggle, Tabs, Tooltip, type ChipTone } from '@/components/ui';
 import { formatAmerican, americanToDecimal } from '@/lib/odds/display';
 
 interface OddsApiLine {
@@ -508,49 +508,36 @@ function LockStatus({ locked, late, commenceTime }: { locked: boolean; late: boo
   const t = commenceTime ? Date.parse(commenceTime) : NaN;
   const lockAt = Number.isFinite(t) ? new Date(t - 3 * 60 * 60 * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null;
   return (
-    <span className="inline-flex items-center gap-1" title="This lean can still move until it locks 3 hours before first pitch.">
+    <Tooltip content={"This lean can still move until it locks 3 hours before first pitch."}><span className="inline-flex items-center gap-1">
       <ClockIcon size={9} /> {lockAt ? `Locks at ${lockAt}` : 'Not yet locked'}
       {late ? ' (late read)' : ''}
-    </span>
+    </span></Tooltip>
   );
 }
 
 function GamePickHistoryTable({ rows }: { rows: GamePickView[] }) {
   if (rows.length === 0) {
-    return <p className="text-[12px] text-ink-muted">No games have gone through the pick lock system yet.</p>;
+    return <p className="text-label font-normal text-ink-muted">No games have gone through the pick lock system yet.</p>;
   }
   return (
     <div className="max-h-[520px] overflow-y-auto">
-      <table className="w-full border-collapse text-[12px]">
-        <thead>
-          <tr className="sticky top-0 bg-paper text-left text-ink-muted">
-            <th className="py-1.5 pr-2">Matchup</th>
-            <th className="py-1.5 pr-2">Date</th>
-            <th className="py-1.5 pr-2">Start</th>
-            <th className="py-1.5 pr-2">Score</th>
-            <th className="py-1.5 pr-2">Moneyline pick</th>
-            <th className="py-1.5">O/U pick</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.gameId} className="border-b border-line/50 align-top">
-              <td className="py-1.5 pr-2 font-medium">
-                <div className="flex items-center gap-1.5">
+      <DataTable
+  caption="Game pick history"
+  density="compact"
+  rows={rows}
+  rowKey={(r) => String(r.gameId)}
+  columns={[
+    { key: 'c0', label: 'Matchup', sortable: false, render: (r) => (<span className="font-medium"><div className="flex items-center gap-1.5">
                   <TeamLogo logoUrl={teamLogoUrl(r.awayTeamId)} size={16} />
                   {r.awayTeamName ?? '?'}
                   <span className="text-ink-muted">@</span>
                   <TeamLogo logoUrl={teamLogoUrl(r.homeTeamId)} size={16} />
                   {r.homeTeamName ?? '?'}
-                </div>
-              </td>
-              <td className="py-1.5 pr-2 text-ink-muted">{pickDate(r.commenceTime)}</td>
-              <td className="py-1.5 pr-2 text-ink-muted">{pickTime(r.commenceTime)}</td>
-              <td className="py-1.5 pr-2 tabular-nums">
-                {r.finalScore ? `${r.finalScore.away}-${r.finalScore.home}` : '—'}
-              </td>
-              <td className="py-1.5 pr-2">
-                {r.moneyline.pickTeamName ? (
+                </div></span>) },
+    { key: 'c1', label: 'Date', sortable: false, render: (r) => (<span className="text-ink-muted">{pickDate(r.commenceTime)}</span>) },
+    { key: 'c2', label: 'Start', sortable: false, render: (r) => (<span className="text-ink-muted">{pickTime(r.commenceTime)}</span>) },
+    { key: 'c3', label: 'Score', sortable: false, render: (r) => (<span className="tabular-nums">{r.finalScore ? `${r.finalScore.away}-${r.finalScore.home}` : '—'}</span>) },
+    { key: 'c4', label: 'Moneyline pick', sortable: false, render: (r) => (<>{r.moneyline.pickTeamName ? (
                   <div className={`inline-flex flex-col gap-1 rounded-md px-1.5 py-1.5 ${outcomeClass(r.moneyline.outcome)}`}>
                     <span className="font-semibold">
                       {r.moneyline.pickTeamName}
@@ -558,45 +545,39 @@ function GamePickHistoryTable({ rows }: { rows: GamePickView[] }) {
                         <span className="ml-1 font-normal opacity-80 tabular-nums">{formatAmerican(r.moneyline.price)}</span>
                       ) : null}
                     </span>
-                    <div className="flex flex-wrap items-center gap-1 text-[10px] opacity-90">
+                    <div className="flex flex-wrap items-center gap-1 text-overline font-normal tracking-normal opacity-90">
                       {r.moneyline.confidence ? <ConfidenceChip letter={r.moneyline.confidence.letter} pct={r.moneyline.confidence.pct} size="sm" /> : null}
                       <LockStatus locked={r.moneyline.locked} late={r.moneyline.late} commenceTime={r.commenceTime} />
                       {r.moneyline.changed ? (
-                        <span
-                          className="lb-chip bg-warn/15 text-warn"
-                          title={`Changed from the 6am pick: ${r.moneyline.initialTeamName ?? '—'}`}
-                        >
+                        <Chip title={`Changed from the 6am pick: ${r.moneyline.initialTeamName ?? '—'}`} tone="warn" size="sm">
                           ↺ changed
-                        </span>
+                        </Chip>
                       ) : null}
                     </div>
                     {r.moneyline.probLower != null || r.moneyline.stake ? (
-                      <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-ink-muted">
+                      <div className="flex flex-wrap items-center gap-1.5 text-overline font-normal tracking-normal text-ink-muted">
                         {r.moneyline.probLower != null && r.moneyline.probUpper != null ? (
-                          <span title={`90% confidence interval: ${(r.moneyline.probLower * 100).toFixed(0)}%–${(r.moneyline.probUpper * 100).toFixed(0)}%`}>
+                          <Tooltip content={`90% confidence interval: ${(r.moneyline.probLower * 100).toFixed(0)}%–${(r.moneyline.probUpper * 100).toFixed(0)}%`}><span>
                             ±{Math.round(((r.moneyline.probUpper - r.moneyline.probLower) / 2) * 100)}%
-                          </span>
+                          </span></Tooltip>
                         ) : null}
                         {r.moneyline.stake ? (
-                          <span
-                            title={
+                          <Tooltip content={
                               r.moneyline.stake.conservativeStake != null
                                 ? 'Half-Kelly stake, sized off the confidence interval’s lower bound'
                                 : 'Half-Kelly stake off the point-probability estimate (no confidence interval available)'
-                            }
+                            }><span
                           >
                             stake {((r.moneyline.stake.conservativeStake ?? r.moneyline.stake.pointStake) * 100).toFixed(1)}%
-                          </span>
+                          </span></Tooltip>
                         ) : null}
                       </div>
                     ) : null}
                   </div>
                 ) : (
                   <span className="text-ink-muted">—</span>
-                )}
-              </td>
-              <td className="py-1.5">
-                {r.total.pickSide ? (
+                )}</>) },
+    { key: 'c5', label: 'O/U pick', sortable: false, render: (r) => (<>{r.total.pickSide ? (
                   <div className={`inline-flex flex-col gap-1 rounded-md px-1.5 py-1.5 ${outcomeClass(r.total.outcome)}`}>
                     <span className="font-semibold">
                       {r.total.pickSide === 'over' ? 'Over' : 'Under'} {r.total.line ?? ''}
@@ -604,47 +585,40 @@ function GamePickHistoryTable({ rows }: { rows: GamePickView[] }) {
                         <span className="ml-1 font-normal opacity-80 tabular-nums">{formatAmerican(r.total.price)}</span>
                       ) : null}
                     </span>
-                    <div className="flex flex-wrap items-center gap-1 text-[10px] opacity-90">
+                    <div className="flex flex-wrap items-center gap-1 text-overline font-normal tracking-normal opacity-90">
                       {r.total.confidence ? <ConfidenceChip letter={r.total.confidence.letter} pct={r.total.confidence.pct} size="sm" /> : null}
                       <LockStatus locked={r.total.locked} late={r.total.late} commenceTime={r.commenceTime} />
                       {r.total.changed ? (
-                        <span
-                          className="lb-chip bg-warn/15 text-warn"
-                          title={`Changed from the 6am pick: ${r.total.initialSide === 'over' ? 'Over' : 'Under'} ${r.total.initialLine ?? ''}`}
-                        >
+                        <Chip title={`Changed from the 6am pick: ${r.total.initialSide === 'over' ? 'Over' : 'Under'} ${r.total.initialLine ?? ''}`} tone="warn" size="sm">
                           ↺ changed
-                        </span>
+                        </Chip>
                       ) : null}
                     </div>
                     {r.total.probLower != null || r.total.stake ? (
-                      <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-ink-muted">
+                      <div className="flex flex-wrap items-center gap-1.5 text-overline font-normal tracking-normal text-ink-muted">
                         {r.total.probLower != null && r.total.probUpper != null ? (
-                          <span title={`90% confidence interval: ${(r.total.probLower * 100).toFixed(0)}%–${(r.total.probUpper * 100).toFixed(0)}%`}>
+                          <Tooltip content={`90% confidence interval: ${(r.total.probLower * 100).toFixed(0)}%–${(r.total.probUpper * 100).toFixed(0)}%`}><span>
                             ±{Math.round(((r.total.probUpper - r.total.probLower) / 2) * 100)}%
-                          </span>
+                          </span></Tooltip>
                         ) : null}
                         {r.total.stake ? (
-                          <span
-                            title={
+                          <Tooltip content={
                               r.total.stake.conservativeStake != null
                                 ? 'Half-Kelly stake, sized off the confidence interval’s lower bound'
                                 : 'Half-Kelly stake off the point-probability estimate (no confidence interval available)'
-                            }
+                            }><span
                           >
                             stake {((r.total.stake.conservativeStake ?? r.total.stake.pointStake) * 100).toFixed(1)}%
-                          </span>
+                          </span></Tooltip>
                         ) : null}
                       </div>
                     ) : null}
                   </div>
                 ) : (
                   <span className="text-ink-muted">—</span>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                )}</>) }
+  ]}
+/>
     </div>
   );
 }
@@ -720,16 +694,16 @@ function PickRecordAnalysis({ rows }: { rows: GamePickView[] }) {
         const trend = recentWinRate(rows, market, 10);
         return (
           <div key={market}>
-            <h3 className="mb-2 text-[12px] font-semibold text-ink-muted">{market === 'moneyline' ? 'Moneyline' : 'Total (O/U)'}</h3>
+            <h3 className="mb-2 text-label font-semibold text-ink-muted">{market === 'moneyline' ? 'Moneyline' : 'Total (O/U)'}</h3>
 
             {tiers.length === 0 ? (
-              <p className="text-[11px] text-ink-muted">No graded picks with a confidence grade yet.</p>
+              <p className="text-overline font-normal tracking-normal text-ink-muted">No graded picks with a confidence grade yet.</p>
             ) : (
               <div className="mb-2 space-y-1">
                 {tiers.map((t) => {
                   const rate = t.n > 0 ? t.wins / t.n : 0;
                   return (
-                    <div key={t.tier} className="flex items-center gap-2 text-[11px]">
+                    <div key={t.tier} className="flex items-center gap-2 text-overline font-normal tracking-normal">
                       <span className="w-6 shrink-0 font-medium text-ink-muted">{t.tier}</span>
                       <div className="relative h-2.5 flex-1 rounded-full bg-line/30">
                         <div
@@ -746,18 +720,18 @@ function PickRecordAnalysis({ rows }: { rows: GamePickView[] }) {
               </div>
             )}
 
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-ink-muted">
-              <span title="Last 10 graded picks, most recent first">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-overline font-normal tracking-normal text-ink-muted">
+              <Tooltip content={"Last 10 graded picks, most recent first"}><span>
                 Last 10: <span className="font-medium text-ink-muted">{trend.n > 0 ? `${trend.wins}-${trend.n - trend.wins}` : '—'}</span>
-              </span>
-              <span title="Net bankroll change if half-Kelly (conservative, CI-lower-bound where available) had been staked on every locked, graded, priced pick, starting from 1.0 unit">
+              </span></Tooltip>
+              <Tooltip content={"Net bankroll change if half-Kelly (conservative, CI-lower-bound where available) had been staked on every locked, graded, priced pick, starting from 1.0 unit"}><span>
                 Kelly ROI:{' '}
                 <span className={`font-medium ${roi.netUnits > 0 ? 'text-good' : roi.netUnits < 0 ? 'text-bad' : 'text-ink-muted'}`}>
                   {roi.netUnits >= 0 ? '+' : ''}
                   {(roi.netUnits * 100).toFixed(1)}%
                 </span>{' '}
                 ({roi.bets} bets)
-              </span>
+              </span></Tooltip>
             </div>
           </div>
         );
@@ -839,35 +813,29 @@ function playerPropCalibrationReadiness(earliest: string | null): { targetDate: 
   return { targetDate, daysElapsed, daysRemaining, ready: now >= targetDate };
 }
 
-function statusBadge(status: string) {
-  const map: Record<string, string> = {
-    live: 'bg-good text-white',
-    cached: 'bg-warn text-white',
-    disabled: 'bg-bad text-white',
-    unknown: 'bg-ink/10 text-ink-muted',
-  };
-  return `lb-chip text-[11px] font-semibold ${map[status] ?? map.unknown}`;
+function statusTone(status: string): ChipTone {
+  const map: Record<string, ChipTone> = { live: 'good', cached: 'warn', disabled: 'bad' };
+  return map[status] ?? 'neutral';
 }
 
 function HealthDot({ ok }: { ok: boolean }) {
   return (
-    <span
+    <Tooltip content={ok ? 'OK' : 'Not OK'}><span
       className={`inline-block h-2 w-2 rounded-full ${ok ? 'bg-good' : 'bg-bad'}`}
-      title={ok ? 'OK' : 'Not OK'}
-    />
+    /></Tooltip>
   );
 }
 
 /** One market's reliability diagram — predicted-probability bucket vs. realized rate. Extracted so moneyline and total can each get their own instead of being blended into one bucket set. */
 function ReliabilityDiagram({ buckets }: { buckets: CalibrationBucket[] }) {
-  if (buckets.length === 0) return <p className="text-[11px] text-ink-muted">No graded rows yet.</p>;
+  if (buckets.length === 0) return <p className="text-overline font-normal tracking-normal text-ink-muted">No graded rows yet.</p>;
   return (
     <div className="space-y-1">
       {buckets.map((b) => {
         const actual = b.n > 0 ? b.wins / b.n : 0;
         const gap = actual - b.bucket;
         return (
-          <div key={b.bucket} className="flex items-center gap-2 text-[11px]">
+          <div key={b.bucket} className="flex items-center gap-2 text-overline font-normal tracking-normal">
             <span className="w-9 shrink-0 tabular-nums text-ink-muted">{Math.round(b.bucket * 100)}%</span>
             <div className="relative h-3 flex-1 rounded-full bg-line/30">
               <div
@@ -888,11 +856,11 @@ function ReliabilityDiagram({ buckets }: { buckets: CalibrationBucket[] }) {
   );
 }
 
-const DOMINANCE_STYLE: Record<FeatureExplanation['label'], string> = {
-  dominant: 'bg-masters/15 text-masters',
-  meaningful: 'bg-good/15 text-good',
-  minor: 'bg-ink/10 text-ink-muted',
-  negligible: 'bg-ink/5 text-ink-muted',
+const DOMINANCE_TONE: Record<FeatureExplanation['label'], ChipTone> = {
+  dominant: 'strong',
+  meaningful: 'good',
+  minor: 'neutral',
+  negligible: 'neutral',
 };
 
 /** One active model's coefficients, translated to a plain-language dominance read — see lib/sports/mlb/featureExplain.ts for the "why" behind the bucketing. */
@@ -901,20 +869,20 @@ function FeatureWeightsList({ explanations }: { explanations: FeatureExplanation
   return (
     <div className="space-y-1.5">
       {sorted.map((f) => (
-        <div key={f.name} className="flex items-center justify-between gap-2 text-[12px]" title={f.note}>
+        <Tooltip key={f.name} content={f.note}><div className="flex items-center justify-between gap-2 text-label font-normal">
           <span className="text-ink-muted">{f.displayName}</span>
-          <span className={`lb-chip text-[10px] font-semibold ${DOMINANCE_STYLE[f.label]}`}>{f.label}</span>
-        </div>
+          <Chip tone={DOMINANCE_TONE[f.label]} size="sm">{f.label}</Chip>
+        </div></Tooltip>
       ))}
     </div>
   );
 }
 
-const DRIFT_STATUS_STYLE: Record<DriftResult['status'], string> = {
-  'on-track': 'bg-good/15 text-good',
-  underperforming: 'bg-bad/15 text-bad',
-  'insufficient-sample': 'bg-ink/10 text-ink-muted',
-  'no-active-model': 'bg-ink/5 text-ink-muted',
+const DRIFT_STATUS_TONE: Record<DriftResult['status'], ChipTone> = {
+  'on-track': 'good',
+  underperforming: 'bad',
+  'insufficient-sample': 'neutral',
+  'no-active-model': 'neutral',
 };
 
 const DRIFT_STATUS_LABEL: Record<DriftResult['status'], string> = {
@@ -947,10 +915,10 @@ const PITCHER_ROLE_LABEL: Record<RankedPitcherRow['role'], string> = {
   reliever: 'Reliever',
 };
 
-const PITCHER_ROLE_BADGE_CLASS: Record<RankedPitcherRow['role'], string> = {
-  starter: 'bg-accent-soft text-masters',
-  closer: 'bg-warn/15 text-warn',
-  reliever: 'bg-ink/8 text-ink-muted',
+const PITCHER_ROLE_TONE: Record<RankedPitcherRow['role'], ChipTone> = {
+  starter: 'strong',
+  closer: 'warn',
+  reliever: 'neutral',
 };
 
 function renderPitcherRankingsTable(rows: RankedPitcherRow[]) {
@@ -959,52 +927,35 @@ function renderPitcherRankingsTable(rows: RankedPitcherRow[]) {
   }
   return (
     <div className="max-h-[480px] overflow-y-auto">
-      <table className="w-full border-collapse text-[12px]">
-        <thead>
-          <tr className="border-b border-line text-center text-ink-muted">
-            <th className="py-1.5 px-2 text-left">Pitcher</th>
-            <th className="py-1.5 px-2">Role</th>
-            <th className="py-1.5 px-2">Rank</th>
-            <th className="py-1.5 px-2">Score</th>
-            {PITCHER_RANK_COLUMNS.map((c) => (
-              <th key={c.key} className="py-1.5 px-2">
-                {c.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((p) => (
-            <tr key={p.personId} className="border-b border-line/50">
-              <td className="py-1.5 px-2 text-left">
-                <div className="flex items-center gap-2">
+      <DataTable
+  caption="Pitcher ranks"
+  density="compact"
+  rows={rows}
+  rowKey={(p) => String(p.personId)}
+  columns={[
+    { key: 'c0', label: 'Pitcher', sortable: false, render: (p) => (<span className="text-left"><div className="flex items-center gap-2">
                   <SubjectAvatar name={p.fullName} headshotUrl={mlbHeadshotUrl(p.personId)} size={24} />
                   <TeamLogo logoUrl={mlbTeamLogoUrl(p.raw.teamId)} size={16} />
                   <span className="font-medium">{p.fullName}</span>
-                </div>
-              </td>
-              <td className="py-1.5 px-2 text-center">
-                <span className={`lb-chip text-[10px] font-semibold ${PITCHER_ROLE_BADGE_CLASS[p.role]}`}>
+                </div></span>) },
+    { key: 'c1', label: 'Role', sortable: false, align: 'center', render: (p) => (<><Chip tone={PITCHER_ROLE_TONE[p.role]} size="sm">
                   {PITCHER_ROLE_LABEL[p.role]}
-                </span>
-              </td>
-              <td className="py-1.5 px-2 text-center tabular-nums font-semibold text-masters">
-                {p.overallRank != null ? `${ordinal(p.overallRank)} of ${p.poolSize}` : '—'}
-              </td>
-              <td className="py-1.5 px-2 text-center tabular-nums">{p.composite != null ? p.composite.toFixed(0) : '—'}</td>
-              {PITCHER_RANK_COLUMNS.map((c) => {
-                const value = p.values[c.key];
-                const rank = p.ranks[c.key];
-                return (
-                  <td key={c.key} className="py-1.5 px-2 text-center tabular-nums text-ink-muted">
-                    {value != null ? `${value.toFixed(c.decimals)}${rank != null ? ` (${rank}/${p.poolSize})` : ''}` : '—'}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                </Chip></>) },
+    { key: 'c2', label: 'Rank', sortable: false, align: 'center', render: (p) => (<span className="tabular-nums font-semibold text-masters">{p.overallRank != null ? `${ordinal(p.overallRank)} of ${p.poolSize}` : '—'}</span>) },
+    { key: 'c3', label: 'Score', sortable: false, align: 'center', render: (p) => (<span className="tabular-nums">{p.composite != null ? p.composite.toFixed(0) : '—'}</span>) },
+    ...PITCHER_RANK_COLUMNS.map((c) => ({
+      key: c.key,
+      label: c.label,
+      sortable: false,
+      align: 'center' as const,
+      render: (p: (typeof rows)[number]) => {
+        const value = p.values[c.key];
+        const rank = p.ranks[c.key];
+        return <span className="tabular-nums text-ink-muted">{value != null ? `${value.toFixed(c.decimals)}${rank != null ? ` (${rank}/${p.poolSize})` : ''}` : '—'}</span>;
+      },
+    }))
+  ]}
+/>
     </div>
   );
 }
@@ -1025,56 +976,60 @@ function renderBatterRankingsTable(rows: RankedBatterRow[], showPositionRank: bo
   }
   return (
     <div className="max-h-[480px] overflow-y-auto">
-      <table className="w-full border-collapse text-[12px]">
-        <thead>
-          <tr className="border-b border-line text-center text-ink-muted">
-            <th className="py-1.5 px-2 text-left">Batter</th>
-            <th className="py-1.5 px-2">Pos</th>
-            <th className="py-1.5 px-2">{showPositionRank ? 'Position rank' : 'Overall rank'}</th>
-            <th className="py-1.5 px-2">Score</th>
-            {BATTER_RANK_COLUMNS.map((c) => (
-              <th key={c.key} className="py-1.5 px-2">
-                {c.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((b) => {
-            const rank = showPositionRank ? b.positionRank : b.overallRank;
-            const poolSize = showPositionRank ? b.positionPoolSize : b.poolSize;
-            const composite = showPositionRank ? b.positionComposite : b.composite;
-            const ranks = showPositionRank ? b.positionRanks : b.overallRanks;
-            return (
-              <tr key={b.personId} className="border-b border-line/50">
-                <td className="py-1.5 px-2 text-left">
-                  <div className="flex items-center gap-2">
-                    <SubjectAvatar name={b.fullName} headshotUrl={mlbHeadshotUrl(b.personId)} size={24} />
-                    <TeamLogo logoUrl={mlbTeamLogoUrl(b.teamId)} size={16} />
-                    <span className="font-medium">{b.fullName}</span>
-                  </div>
-                </td>
-                <td className="py-1.5 px-2 text-center">
-                  <span className="lb-chip bg-ink/8 text-[10px] font-semibold text-ink-muted">{b.position}</span>
-                </td>
-                <td className="py-1.5 px-2 text-center tabular-nums font-semibold text-masters">
-                  {rank != null ? `${ordinal(rank)} of ${poolSize}` : '—'}
-                </td>
-                <td className="py-1.5 px-2 text-center tabular-nums">{composite != null ? composite.toFixed(0) : '—'}</td>
-                {BATTER_RANK_COLUMNS.map((c) => {
-                  const value = b.values[c.key];
-                  const statRank = ranks[c.key];
-                  return (
-                    <td key={c.key} className="py-1.5 px-2 text-center tabular-nums text-ink-muted">
-                      {value != null ? `${value.toFixed(c.decimals)}${statRank != null ? ` (${statRank}/${poolSize})` : ''}` : '—'}
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <DataTable<RankedBatterRow>
+        caption="Batter ranks"
+        density="compact"
+        rows={rows}
+        rowKey={(b) => String(b.personId)}
+        columns={[
+          {
+            key: 'batter',
+            label: 'Batter',
+            sortable: false,
+            render: (b) => (
+              <div className="flex items-center gap-2">
+                <SubjectAvatar name={b.fullName} headshotUrl={mlbHeadshotUrl(b.personId)} size={24} />
+                <TeamLogo logoUrl={mlbTeamLogoUrl(b.teamId)} size={16} />
+                <span className="font-medium">{b.fullName}</span>
+              </div>
+            ),
+          },
+          { key: 'pos', label: 'Pos', sortable: false, align: 'center', render: (b) => <Chip size="sm">{b.position}</Chip> },
+          {
+            key: 'rank',
+            label: showPositionRank ? 'Position rank' : 'Overall rank',
+            sortable: false,
+            align: 'center',
+            render: (b) => {
+              const rank = showPositionRank ? b.positionRank : b.overallRank;
+              const poolSize = showPositionRank ? b.positionPoolSize : b.poolSize;
+              return <span className="font-semibold tabular-nums text-masters">{rank != null ? `${ordinal(rank)} of ${poolSize}` : '—'}</span>;
+            },
+          },
+          {
+            key: 'score',
+            label: 'Score',
+            sortable: false,
+            align: 'center',
+            render: (b) => {
+              const composite = showPositionRank ? b.positionComposite : b.composite;
+              return composite != null ? composite.toFixed(0) : '—';
+            },
+          },
+          ...BATTER_RANK_COLUMNS.map((c) => ({
+            key: c.key,
+            label: c.label,
+            sortable: false,
+            align: 'center' as const,
+            render: (b: RankedBatterRow) => {
+              const value = b.values[c.key];
+              const poolSize = showPositionRank ? b.positionPoolSize : b.poolSize;
+              const statRank = (showPositionRank ? b.positionRanks : b.overallRanks)[c.key];
+              return <span className="tabular-nums text-ink-muted">{value != null ? `${value.toFixed(c.decimals)}${statRank != null ? ` (${statRank}/${poolSize})` : ''}` : '—'}</span>;
+            },
+          })),
+        ]}
+      />
     </div>
   );
 }
@@ -1522,20 +1477,13 @@ export default function DiagnosticsPage() {
             {forcing ? 'Refreshing…' : 'Rescan now'}
           </Button>
         </div>
-        <nav className="mt-2 flex gap-1 overflow-x-auto text-[12px]">
-          {ADMIN_GROUPS.map((g) => (
-            <button
-              key={g.id}
-              type="button"
-              onClick={() => setActiveGroup(g.id)}
-              className={`shrink-0 rounded-md px-2.5 py-1.5 font-medium transition-colors ${
-                activeGroup === g.id ? 'bg-masters text-white' : 'text-ink-muted hover:bg-accent-soft/40 hover:text-ink'
-              }`}
-            >
-              {g.label}
-            </button>
-          ))}
-        </nav>
+        <Tabs<AdminGroup>
+          className="mt-2"
+          label="Admin sections"
+          value={activeGroup}
+          onChange={setActiveGroup}
+          items={ADMIN_GROUPS.map((g) => ({ value: g.id, label: g.label }))}
+        />
       </header>
 
       <main className="mx-auto max-w-3xl space-y-4 px-4 py-4">
@@ -1557,17 +1505,13 @@ export default function DiagnosticsPage() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <h2 className="text-sm font-semibold text-warn">Deferred: NHL/NBA odds verification</h2>
-                      <p className="mt-0.5 text-[12px] text-ink-muted">
+                      <p className="mt-0.5 text-label font-normal text-ink-muted">
                         Both sports were off-season on 2026-08-26 — no live game existed to verify the odds grid against. Everything else checks out; this is the one open item once their seasons start.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowNhlNbaResumeModal(true)}
-                      className="shrink-0 rounded-md border border-warn/40 bg-warn/10 px-3 py-1.5 text-[12px] font-semibold text-warn transition-colors hover:bg-warn/20"
-                    >
+                    <Button variant="secondary" size="sm" className="shrink-0 text-warn" onPress={() => setShowNhlNbaResumeModal(true)}>
                       View resume instructions
-                    </button>
+                    </Button>
                   </div>
                 </section>
 
@@ -1576,7 +1520,7 @@ export default function DiagnosticsPage() {
                 <section className="lb-card p-4">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-sm font-semibold">Model status</h2>
-                    <span className="text-[11px] text-ink-muted">gated = may show a probability beside a price · baseline = pick only</span>
+                    <span className="text-overline font-normal tracking-normal text-ink-muted">gated = may show a probability beside a price · baseline = pick only</span>
                   </div>
                   {modelStatusError ? (
                     <p className="text-sm text-bad">Failed: {modelStatusError}</p>
@@ -1584,24 +1528,15 @@ export default function DiagnosticsPage() {
                     <p className="text-sm text-ink-muted">Loading…</p>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="w-full text-[12px]">
-                        <thead>
-                          <tr className="border-b border-line text-left text-ink-muted">
-                            <th className="py-1 pr-3 font-medium">Sport</th>
-                            <th className="py-1 pr-3 font-medium">Kind</th>
-                            <th className="py-1 pr-3 font-medium">Status</th>
-                            <th className="py-1 pr-3 font-medium">Engine</th>
-                            <th className="py-1 pr-3 font-medium">Evidence</th>
-                            <th className="py-1 font-medium">Since</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {modelStatus.map((r) => (
-                            <tr key={`${r.sport}-${r.kind}`} className="border-b border-line-soft align-top">
-                              <td className="py-1 pr-3 font-medium text-ink">{r.sport}</td>
-                              <td className="py-1 pr-3 text-ink-muted">{r.kind}</td>
-                              <td className="py-1 pr-3">
-                                <span
+                      <DataTable
+  caption="Model status"
+  density="compact"
+  rows={modelStatus}
+  rowKey={(r) => `${r.sport}-${r.kind}`}
+  columns={[
+    { key: 'c0', label: 'Sport', sortable: false, render: (r) => (<span className="font-medium text-ink">{r.sport}</span>) },
+    { key: 'c1', label: 'Kind', sortable: false, render: (r) => (<span className="text-ink-muted">{r.kind}</span>) },
+    { key: 'c2', label: 'Status', sortable: false, render: (r) => (<><span
                                   className={
                                     r.status === 'gated'
                                       ? 'rounded bg-good/10 px-1.5 py-0.5 font-semibold text-good'
@@ -1611,15 +1546,12 @@ export default function DiagnosticsPage() {
                                   }
                                 >
                                   {r.status}
-                                </span>
-                              </td>
-                              <td className="py-1 pr-3 text-ink-muted">{r.engine ?? '—'}</td>
-                              <td className="py-1 pr-3 text-ink-muted">{r.evidence}</td>
-                              <td className="py-1 text-ink-muted">{r.since}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                                </span></>) },
+    { key: 'c3', label: 'Engine', sortable: false, render: (r) => (<span className="text-ink-muted">{r.engine ?? '—'}</span>) },
+    { key: 'c4', label: 'Evidence', sortable: false, render: (r) => (<span className="text-ink-muted">{r.evidence}</span>) },
+    { key: 'c5', label: 'Since', sortable: false, render: (r) => (<span className="text-ink-muted">{r.since}</span>) }
+  ]}
+/>
                     </div>
                   )}
                 </section>
@@ -1628,14 +1560,9 @@ export default function DiagnosticsPage() {
                 <section className="lb-card p-4">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-sm font-semibold">AI Summary</h2>
-                    <button
-                      type="button"
-                      onClick={() => fetchAiSummary(true)}
-                      disabled={aiSummaryLoading}
-                      className="rounded-md border border-line px-2.5 py-1 text-[12px] font-medium text-ink-muted transition-colors hover:bg-accent-soft/30 disabled:opacity-50"
-                    >
+                    <Button variant="secondary" size="sm" isDisabled={aiSummaryLoading} onPress={() => fetchAiSummary(true)}>
                       {aiSummaryLoading ? 'Asking…' : 'Ask again'}
-                    </button>
+                    </Button>
                   </div>
                   {aiSummaryError ? (
                     <p className="text-sm text-bad">Failed: {aiSummaryError}</p>
@@ -1644,16 +1571,16 @@ export default function DiagnosticsPage() {
                   ) : (
                     <>
                       <div className="mb-2 flex items-center gap-2">
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${AI_SEVERITY_CLASS[aiSummary.severity]}`}>
+                        <span className={`rounded-full px-2 py-0.5 text-overline font-semibold uppercase tracking-wide ${AI_SEVERITY_CLASS[aiSummary.severity]}`}>
                           {aiSummary.severity}
                         </span>
-                        <span className="text-[11px] text-ink-muted">
+                        <span className="text-overline font-normal tracking-normal text-ink-muted">
                           {new Date(aiSummary.generatedAt).toLocaleString()} · {aiSummary.tokensUsed} tokens
                         </span>
                       </div>
-                      <p className="mb-2 text-[13px] text-ink">{aiSummary.summary}</p>
+                      <p className="mb-2 text-body-sm text-ink">{aiSummary.summary}</p>
                       {aiSummary.highlights.length > 0 ? (
-                        <ul className="list-inside list-disc space-y-0.5 text-[12px] text-ink-muted">
+                        <ul className="list-inside list-disc space-y-0.5 text-label font-normal text-ink-muted">
                           {aiSummary.highlights.map((h, i) => (
                             <li key={i}>{h}</li>
                           ))}
@@ -1677,18 +1604,18 @@ export default function DiagnosticsPage() {
                     </p>
                   ) : (
                     <>
-                      <div className="mb-3 flex gap-3 text-[12px]">
-                        <span className="lb-chip bg-good/15 text-good">
+                      <div className="mb-3 flex gap-3 text-label font-normal">
+                        <Chip tone="good" size="sm">
                           {healthChecks.filter((c) => c.healthy).length} healthy
-                        </span>
-                        <span className="lb-chip bg-bad/10 text-bad">
+                        </Chip>
+                        <Chip tone="bad" size="sm">
                           {healthChecks.filter((c) => !c.healthy).length} unhealthy
-                        </span>
+                        </Chip>
                         <span className="text-ink-muted">as of {new Date(healthChecks[0].checkedAt).toLocaleString()}</span>
                       </div>
                       <div className="space-y-1.5">
                         {healthChecks.map((c) => (
-                          <div key={c.name} className="flex items-start gap-2 text-[12px]">
+                          <div key={c.name} className="flex items-start gap-2 text-label font-normal">
                             <HealthDot ok={c.healthy} />
                             <div>
                               <span className="font-medium">{c.name}</span>
@@ -1705,7 +1632,7 @@ export default function DiagnosticsPage() {
                     rate takes years, which is why it earns dashboard space. */}
                 <section className="lb-card p-4">
                   <h2 className="mb-1 text-sm font-semibold">Closing Line Value</h2>
-                  <p className="mb-3 text-[11px] text-ink-muted">
+                  <p className="mb-3 text-overline font-normal tracking-normal text-ink-muted">
                     Did the market move toward our side after we picked? Reference close ={' '}
                     {clv?.referenceDefinition ?? 'the last observed price before the game starts'}.
                   </p>
@@ -1725,19 +1652,19 @@ export default function DiagnosticsPage() {
                           const mean = m.meanClvProbPoints;
                           const rate = m.positiveClvRate;
                           return (
-                            <div key={m.market} className="text-[12px]">
+                            <div key={m.market} className="text-label font-normal">
                               <div className="flex items-center gap-2">
                                 <span className="font-medium capitalize">{m.market}</span>
                                 {m.picksWithClose === 0 ? (
-                                  <span className="lb-chip bg-ink-faint/10 text-ink-muted">no close matched</span>
+                                  <Chip tone="neutral" size="sm">no close matched</Chip>
                                 ) : (
                                   <>
-                                    <span className={`lb-chip ${mean != null && mean > 0 ? 'bg-good/15 text-good' : 'bg-bad/10 text-bad'}`}>
+                                    <Chip tone={mean != null && mean > 0 ? 'good' : 'bad'} size="sm">
                                       {mean != null ? `${mean > 0 ? '+' : ''}${mean.toFixed(4)} prob-pts mean` : '—'}
-                                    </span>
-                                    <span className="lb-chip bg-ink-faint/10 text-ink-muted">
+                                    </Chip>
+                                    <Chip tone="neutral" size="sm">
                                       {rate != null ? `${(rate * 100).toFixed(1)}% beat the close` : '—'}
-                                    </span>
+                                    </Chip>
                                   </>
                                 )}
                               </div>
@@ -1752,7 +1679,7 @@ export default function DiagnosticsPage() {
                         })}
                       </div>
                       {clv.computedAt && (
-                        <p className="mt-3 text-[11px] text-ink-muted">
+                        <p className="mt-3 text-overline font-normal tracking-normal text-ink-muted">
                           Computed {new Date(clv.computedAt).toLocaleString()} by the worker&rsquo;s clvSummaryJob.
                           The mean is skewed by a few large moves; the median is the more robust read.
                         </p>
@@ -1764,7 +1691,7 @@ export default function DiagnosticsPage() {
                 {/* Status overview */}
                 <section className="lb-card p-4">
                   <h2 className="mb-3 text-sm font-semibold">Status Overview</h2>
-              <div className="grid grid-cols-2 gap-3 text-[13px] sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 text-body-sm sm:grid-cols-4">
                 <div>
                   <div className="text-ink-muted">Odds API</div>
                   <div className="mt-1 flex items-center gap-1.5">
@@ -1824,7 +1751,7 @@ export default function DiagnosticsPage() {
                   </div>
                 </div>
               </div>
-              <div className="mt-3 text-[11px] text-ink-muted">
+              <div className="mt-3 text-overline font-normal tracking-normal text-ink-muted">
                 Last checked: {formatTime(data.timestamp)}
                 {forcing ? ' (refreshing…)' : ''}
               </div>
@@ -1843,18 +1770,13 @@ export default function DiagnosticsPage() {
                     ? ` (${pitcherRanks.starters.length} starters, ${pitcherRanks.closers.length} closers, ${pitcherRanks.relievers.length} relievers)`
                     : ''}
                 </h2>
-                <div className="flex items-center gap-3 text-[12px] text-ink-muted">
+                <div className="flex items-center gap-3 text-label font-normal text-ink-muted">
                   {pitcherRanks ? (
                     <span>Computed {new Date(pitcherRanks.computedAt).toLocaleString()} · season {pitcherRanks.season}</span>
                   ) : null}
-                  <button
-                    type="button"
-                    disabled={pitcherRanksLoading}
-                    onClick={() => void fetchPitcherRanks(pitcherRanksLoaded)}
-                    className="rounded-md border border-line px-2 py-1 font-semibold text-ink hover:bg-accent-soft/30 disabled:opacity-50"
-                  >
+                  <Button variant="secondary" size="sm" isDisabled={pitcherRanksLoading} onPress={() => void fetchPitcherRanks(pitcherRanksLoaded)}>
                     {pitcherRanksLoading ? 'Loading…' : pitcherRanksLoaded ? 'Refresh now' : 'Load pitcher rankings'}
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -1878,20 +1800,13 @@ export default function DiagnosticsPage() {
                       aria-label="Search pitcher name"
                       className="min-w-[180px] flex-1"
                     />
-                    <div className="flex items-center gap-1">
-                      {(['all', 'starter', 'closer', 'reliever'] as const).map((role) => (
-                        <button
-                          key={role}
-                          type="button"
-                          onClick={() => setPitcherRoleFilter(role)}
-                          className={`rounded-md border px-2 py-1.5 text-[12px] font-semibold ${
-                            pitcherRoleFilter === role ? 'border-masters bg-accent-soft text-masters' : 'border-line text-ink-muted hover:bg-accent-soft/30'
-                          }`}
-                        >
-                          {role === 'all' ? 'All' : PITCHER_ROLE_LABEL[role]}
-                        </button>
-                      ))}
-                    </div>
+                    <SegmentedToggle
+                      label="Pitcher role"
+                      size="sm"
+                      value={pitcherRoleFilter}
+                      onChange={setPitcherRoleFilter}
+                      options={(['all', 'starter', 'closer', 'reliever'] as const).map((role) => ({ value: role, label: role === 'all' ? 'All' : PITCHER_ROLE_LABEL[role] }))}
+                    />
                   </div>
                   {renderPitcherRankingsTable(filteredPitcherRanks)}
                 </>
@@ -1905,18 +1820,13 @@ export default function DiagnosticsPage() {
                   Batter Rankings
                   {batterRanks ? ` (${batterRanks.batters.length} batters)` : ''}
                 </h2>
-                <div className="flex items-center gap-3 text-[12px] text-ink-muted">
+                <div className="flex items-center gap-3 text-label font-normal text-ink-muted">
                   {batterRanks ? (
                     <span>Computed {new Date(batterRanks.computedAt).toLocaleString()} · season {batterRanks.season}</span>
                   ) : null}
-                  <button
-                    type="button"
-                    disabled={batterRanksLoading}
-                    onClick={() => void fetchBatterRanks(batterRanksLoaded)}
-                    className="rounded-md border border-line px-2 py-1 font-semibold text-ink hover:bg-accent-soft/30 disabled:opacity-50"
-                  >
+                  <Button variant="secondary" size="sm" isDisabled={batterRanksLoading} onPress={() => void fetchBatterRanks(batterRanksLoaded)}>
                     {batterRanksLoading ? 'Loading…' : batterRanksLoaded ? 'Refresh now' : 'Load batter rankings'}
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -1940,20 +1850,13 @@ export default function DiagnosticsPage() {
                       aria-label="Search batter name"
                       className="min-w-[180px] flex-1"
                     />
-                    <div className="flex items-center gap-1">
-                      {BATTER_POSITION_FILTERS.map((position) => (
-                        <button
-                          key={position}
-                          type="button"
-                          onClick={() => setBatterPositionFilter(position)}
-                          className={`rounded-md border px-2 py-1.5 text-[12px] font-semibold ${
-                            batterPositionFilter === position ? 'border-masters bg-accent-soft text-masters' : 'border-line text-ink-muted hover:bg-accent-soft/30'
-                          }`}
-                        >
-                          {position === 'all' ? 'All' : position}
-                        </button>
-                      ))}
-                    </div>
+                    <SegmentedToggle
+                      label="Batter position"
+                      size="sm"
+                      value={batterPositionFilter}
+                      onChange={setBatterPositionFilter}
+                      options={BATTER_POSITION_FILTERS.map((position) => ({ value: position, label: position === 'all' ? 'All' : position }))}
+                    />
                   </div>
                   {renderBatterRankingsTable(filteredBatterRanks, batterPositionFilter !== 'all')}
                 </>
@@ -1969,7 +1872,7 @@ export default function DiagnosticsPage() {
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold">Pick History</h2>
                 {pickHistory ? (
-                  <div className="flex gap-3 text-[12px]">
+                  <div className="flex gap-3 text-label font-normal">
                     <span>
                       ML{' '}
                       <span className="font-semibold tabular-nums">
@@ -1985,12 +1888,12 @@ export default function DiagnosticsPage() {
                   </div>
                 ) : null}
               </div>
-              <p className="mb-3 text-[11px] text-ink-muted">
+              <p className="mb-3 text-overline font-normal tracking-normal text-ink-muted">
                 Picks lock 3 hours before first pitch (initial read ~6am CT). Green/red shows the graded result of the
                 locked pick; &quot;changed&quot; means the 3-hour lock differs from the 6am read.
               </p>
 
-              <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
+              <div className="mb-3 flex flex-wrap items-center gap-2 text-overline font-normal tracking-normal">
                 <label className="flex items-center gap-1 text-ink-muted">
                   From
                   <Input type="date" size="sm" value={pickHistoryFrom} onChange={(e) => setPickHistoryFrom(e.target.value)} className="w-auto" />
@@ -1999,32 +1902,28 @@ export default function DiagnosticsPage() {
                   To
                   <Input type="date" size="sm" value={pickHistoryTo} onChange={(e) => setPickHistoryTo(e.target.value)} className="w-auto" />
                 </label>
-                <button
-                  type="button"
-                  onClick={() => void fetchPickHistory(pickHistoryFrom || undefined, pickHistoryTo || undefined)}
-                  className="rounded-md border border-line px-2 py-0.5 font-medium text-ink-muted hover:border-masters/40 hover:text-masters"
-                >
+                <Button variant="secondary" size="sm" onPress={() => void fetchPickHistory(pickHistoryFrom || undefined, pickHistoryTo || undefined)}>
                   Apply
-                </button>
+                </Button>
                 {pickHistoryFrom || pickHistoryTo ? (
-                  <button
-                    type="button"
-                    onClick={() => {
+                  <Button
+                    variant="link"
+                    size="sm"
+                    onPress={() => {
                       setPickHistoryFrom('');
                       setPickHistoryTo('');
                       void fetchPickHistory();
                     }}
-                    className="text-ink-muted underline hover:text-masters"
                   >
                     Clear
-                  </button>
+                  </Button>
                 ) : null}
               </div>
 
               {pickHistoryError ? (
-                <p className="text-[12px] text-bad">{pickHistoryError}</p>
+                <p className="text-label font-normal text-bad">{pickHistoryError}</p>
               ) : !pickHistory ? (
-                <p className="text-[12px] text-ink-muted">Loading…</p>
+                <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : (
                 <>
                   <GamePickHistoryTable rows={pickHistory.rows} />
@@ -2042,99 +1941,78 @@ export default function DiagnosticsPage() {
               <h2 className="mb-3 text-sm font-semibold">
                 Player Prop Providers
                 {propsData ? (
-                  <span className="ml-2 text-[11px] font-normal text-ink-muted">
+                  <span className="ml-2 text-overline tracking-normal font-normal text-ink-muted">
                     your book: {propsData.userSportsbook}
                   </span>
                 ) : null}
               </h2>
 
               {propsError ? (
-                <p className="text-[12px] text-bad">{propsError}</p>
+                <p className="text-label font-normal text-bad">{propsError}</p>
               ) : !propsData ? (
-                <p className="text-[12px] text-ink-muted">Loading…</p>
+                <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : (
                 <>
                   <div className="overflow-x-auto">
-                    <table className="w-full border-collapse text-[12px]">
-                      <thead>
-                        <tr className="border-b border-line text-left text-ink-muted">
-                          <th className="py-1.5 pr-2">Provider</th>
-                          <th className="py-1.5 pr-2">Schedule</th>
-                          <th className="py-1.5 pr-2">Status</th>
-                          <th className="py-1.5 pr-2">Delay</th>
-                          <th className="py-1.5 pr-2 text-right">Budget used</th>
-                          <th className="py-1.5 text-right">Remaining</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {propsData.providers.map((p) => {
-                          const budget = propsData.budgets[p.id];
-                          return (
-                            <tr key={p.id} className="border-b border-line/50">
-                              <td className="py-1.5 pr-2 font-medium">{p.label}</td>
-                              <td className="py-1.5 pr-2">
-                                <span className="lb-chip bg-ink/5 text-ink-muted">{p.scheduled ? 'Scheduled' : 'Manual'}</span>
-                              </td>
-                              <td className="py-1.5 pr-2">
-                                <div className="flex items-center gap-1.5">
-                                  <HealthDot ok={p.enabled} />
-                                  <span>{p.enabled ? 'Enabled' : 'Disabled'}</span>
-                                </div>
-                              </td>
-                              <td className="py-1.5 pr-2 text-ink-muted">
-                                {p.delaySeconds != null ? `~${p.delaySeconds}s` : 'not disclosed'}
-                              </td>
-                              <td className="py-1.5 pr-2 text-right tabular-nums">
-                                {budget ? (
-                                  <span className={budget.exhausted ? 'text-bad' : budget.overSoftCap ? 'text-warn' : ''}>
-                                    {budget.used} / {budget.limit}
-                                  </span>
-                                ) : (
-                                  '—'
-                                )}
-                              </td>
-                              <td className="py-1.5 text-right tabular-nums">{budget?.remaining ?? '—'}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                    <DataTable<(typeof propsData.providers)[number]>
+                      caption="Player prop providers"
+                      density="compact"
+                      rows={propsData.providers}
+                      rowKey={(p) => p.id}
+                      columns={[
+                        { key: 'provider', label: 'Provider', sortable: false, render: (p) => <span className="font-medium">{p.label}</span> },
+                        { key: 'schedule', label: 'Schedule', sortable: false, render: (p) => <Chip size="sm">{p.scheduled ? 'Scheduled' : 'Manual'}</Chip> },
+                        {
+                          key: 'status',
+                          label: 'Status',
+                          sortable: false,
+                          render: (p) => (
+                            <div className="flex items-center gap-1.5">
+                              <HealthDot ok={p.enabled} />
+                              <span>{p.enabled ? 'Enabled' : 'Disabled'}</span>
+                            </div>
+                          ),
+                        },
+                        { key: 'delay', label: 'Delay', sortable: false, render: (p) => <span className="text-ink-muted">{p.delaySeconds != null ? `~${p.delaySeconds}s` : 'not disclosed'}</span> },
+                        {
+                          key: 'used',
+                          label: 'Budget used',
+                          numeric: true,
+                          sortable: false,
+                          render: (p) => {
+                            const budget = propsData.budgets[p.id];
+                            return budget ? <span className={budget.exhausted ? 'text-bad' : budget.overSoftCap ? 'text-warn' : ''}>{budget.used} / {budget.limit}</span> : '—';
+                          },
+                        },
+                        { key: 'remaining', label: 'Remaining', numeric: true, sortable: false, render: (p) => propsData.budgets[p.id]?.remaining ?? '—' },
+                      ]}
+                    />
                   </div>
 
                   {/* Unresolved players/markets/books — the coverage-gap visibility update-09 §6 asked for */}
                   <div className="mt-3 border-t border-line pt-3">
-                    <h3 className="mb-2 text-[12px] font-semibold text-ink-muted">
+                    <h3 className="mb-2 text-label font-semibold text-ink-muted">
                       Unresolved from most recent fetches ({propsData.unresolved.length})
                     </h3>
                     {propsData.unresolved.length === 0 ? (
-                      <p className="text-[12px] text-ink-muted">
+                      <p className="text-label font-normal text-ink-muted">
                         Nothing unresolved — every player, market, and bookmaker from the last fetch per provider
                         matched cleanly.
                       </p>
                     ) : (
                       <div className="max-h-[300px] overflow-y-auto">
-                        <table className="w-full border-collapse text-[11px]">
-                          <thead>
-                            <tr className="border-b border-line text-left text-ink-muted">
-                              <th className="py-1 pr-2">Provider</th>
-                              <th className="py-1 pr-2">Kind</th>
-                              <th className="py-1 pr-2">Raw value</th>
-                              <th className="py-1">Context</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {propsData.unresolved.map((u) => (
-                              <tr key={u.id} className="border-b border-line/50">
-                                <td className="py-1 pr-2 text-ink-muted">{u.providerId}</td>
-                                <td className="py-1 pr-2">
-                                  <span className="lb-chip bg-warn/10 text-warn">{u.kind}</span>
-                                </td>
-                                <td className="py-1 pr-2 font-medium">{u.rawValue}</td>
-                                <td className="py-1 text-ink-muted">{u.context ?? '—'}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                        <DataTable
+  caption="Unresolved provider values"
+  density="compact"
+  rows={propsData.unresolved}
+  rowKey={(u) => String(u.id)}
+  columns={[
+    { key: 'c0', label: 'Provider', sortable: false, render: (u) => (<span className="text-ink-muted">{u.providerId}</span>) },
+    { key: 'c1', label: 'Kind', sortable: false, render: (u) => (<><Chip tone="warn" size="sm">{u.kind}</Chip></>) },
+    { key: 'c2', label: 'Raw value', sortable: false, render: (u) => (<span className="font-medium">{u.rawValue}</span>) },
+    { key: 'c3', label: 'Context', sortable: false, render: (u) => (<span className="text-ink-muted">{u.context ?? '—'}</span>) }
+  ]}
+/>
                       </div>
                     )}
                   </div>
@@ -2150,30 +2028,24 @@ export default function DiagnosticsPage() {
             <section className="lb-card p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold">Model Calibration</h2>
-                <button
-                  type="button"
-                  disabled={backfillRunning}
-                  onClick={() => void runBackfill()}
-                  title="Reconstructs what the model would have predicted using only prior games, then grades against real outcomes — walk-forward, no lookahead."
-                  className="rounded-md border border-line px-2 py-0.5 text-[11px] font-medium text-ink-muted hover:border-masters/40 hover:text-masters disabled:opacity-40"
-                >
+                <Tooltip content={"Reconstructs what the model would have predicted using only prior games, then grades against real outcomes — walk-forward, no lookahead."}><Button variant="secondary" size="sm" isDisabled={backfillRunning} onPress={() => void runBackfill()}>
                   {backfillRunning ? 'Running backfill…' : 'Run historical backfill'}
-                </button>
+                </Button></Tooltip>
               </div>
-              {backfillResult ? <p className="mb-2 text-[11px] text-ink-muted">{backfillResult}</p> : null}
+              {backfillResult ? <p className="mb-2 text-overline font-normal tracking-normal text-ink-muted">{backfillResult}</p> : null}
 
               {calibrationError ? (
-                <p className="text-[12px] text-bad">{calibrationError}</p>
+                <p className="text-label font-normal text-bad">{calibrationError}</p>
               ) : !calibration ? (
-                <p className="text-[12px] text-ink-muted">Loading…</p>
+                <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : calibration.counts.withModelProb === 0 ? (
-                <p className="text-[12px] text-ink-muted">
+                <p className="text-label font-normal text-ink-muted">
                   No graded predictions with a model probability yet. Run the historical backfill, or wait for live
                   games to finish and get graded automatically.
                 </p>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px] sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-body-sm sm:grid-cols-4">
                     <div>
                       <span className="text-ink-muted">Surfaced</span>
                       <div className="font-semibold tabular-nums">{calibration.counts.totalRows.toLocaleString()}</div>
@@ -2182,7 +2054,7 @@ export default function DiagnosticsPage() {
                       <span className="text-ink-muted">Graded</span>
                       <div className="font-semibold tabular-nums">
                         {calibration.counts.gradedRows.toLocaleString()}
-                        <span className="ml-1 text-[11px] font-normal text-ink-muted">
+                        <span className="ml-1 text-overline tracking-normal font-normal text-ink-muted">
                           ({calibration.counts.ungradedRows.toLocaleString()} pending)
                         </span>
                       </div>
@@ -2194,16 +2066,16 @@ export default function DiagnosticsPage() {
                       </div>
                     </div>
                     <div>
-                      <span className="text-ink-muted" title="Mean squared error between predicted probability and outcome. Lower is better; 0.25 is what guessing 50/50 always scores.">
+                      <Tooltip content={"Mean squared error between predicted probability and outcome. Lower is better; 0.25 is what guessing 50/50 always scores."}><span className="text-ink-muted">
                         Brier score
-                      </span>
+                      </span></Tooltip>
                       <div className="font-semibold tabular-nums">{calibration.overallBrierScore?.toFixed(4) ?? '—'}</div>
                     </div>
                   </div>
 
                   {/* Reliability diagram — predicted probability bucket vs. realized win rate */}
                   <div className="mt-4 border-t border-line pt-3">
-                    <h3 className="mb-2 text-[12px] font-semibold text-ink-muted">
+                    <h3 className="mb-2 text-label font-semibold text-ink-muted">
                       Reliability — predicted vs. realized
                     </h3>
                     <div className="space-y-1">
@@ -2211,7 +2083,7 @@ export default function DiagnosticsPage() {
                         const actual = b.n > 0 ? b.wins / b.n : 0;
                         const gap = actual - b.bucket;
                         return (
-                          <div key={b.bucket} className="flex items-center gap-2 text-[11px]">
+                          <div key={b.bucket} className="flex items-center gap-2 text-overline font-normal tracking-normal">
                             <span className="w-10 shrink-0 tabular-nums text-ink-muted">{Math.round(b.bucket * 100)}%</span>
                             <div className="relative h-3 flex-1 rounded-full bg-line/30">
                               <div
@@ -2231,7 +2103,7 @@ export default function DiagnosticsPage() {
                         );
                       })}
                     </div>
-                    <p className="mt-2 text-[10px] text-ink-muted">
+                    <p className="mt-2 text-overline font-normal tracking-normal text-ink-muted">
                       Dark bar = predicted probability, green/masters bar = what actually happened. A well-calibrated
                       model has the two ending in about the same place at every bucket.
                     </p>
@@ -2239,28 +2111,20 @@ export default function DiagnosticsPage() {
 
                   {/* Per-market breakdown */}
                   <div className="mt-4 border-t border-line pt-3">
-                    <h3 className="mb-2 text-[12px] font-semibold text-ink-muted">By market</h3>
+                    <h3 className="mb-2 text-label font-semibold text-ink-muted">By market</h3>
                     <div className="overflow-x-auto">
-                      <table className="w-full border-collapse text-[11px]">
-                        <thead>
-                          <tr className="border-b border-line text-left text-ink-muted">
-                            <th className="py-1 pr-2">Market</th>
-                            <th className="py-1 pr-2 text-right">N</th>
-                            <th className="py-1 pr-2 text-right">Win rate</th>
-                            <th className="py-1 text-right">Brier</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {calibration.byMarket.map((m) => (
-                            <tr key={m.dimension} className="border-b border-line/50">
-                              <td className="py-1 pr-2 font-medium">{m.dimension}</td>
-                              <td className="py-1 pr-2 text-right tabular-nums">{m.n.toLocaleString()}</td>
-                              <td className="py-1 pr-2 text-right tabular-nums">{((m.wins / m.n) * 100).toFixed(1)}%</td>
-                              <td className="py-1 text-right tabular-nums">{m.brierScore?.toFixed(4) ?? '—'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                      <DataTable
+  caption="By market"
+  density="compact"
+  rows={calibration.byMarket}
+  rowKey={(m) => String(m.dimension)}
+  columns={[
+    { key: 'c0', label: 'Market', sortable: false, render: (m) => (<span className="font-medium">{m.dimension}</span>) },
+    { key: 'c1', label: 'N', sortable: false, align: 'right', render: (m) => (<span className="tabular-nums">{m.n.toLocaleString()}</span>) },
+    { key: 'c2', label: 'Win rate', sortable: false, align: 'right', render: (m) => (<span className="tabular-nums">{((m.wins / m.n) * 100).toFixed(1)}%</span>) },
+    { key: 'c3', label: 'Brier', sortable: false, align: 'right', render: (m) => (<span className="tabular-nums">{m.brierScore?.toFixed(4) ?? '—'}</span>) }
+  ]}
+/>
                     </div>
                   </div>
                 </>
@@ -2271,9 +2135,9 @@ export default function DiagnosticsPage() {
             <section id="model-health" className="lb-card p-4">
               <h2 className="mb-3 text-sm font-semibold">Model Versions</h2>
               {modelVersionsError ? (
-                <p className="text-[12px] text-bad">{modelVersionsError}</p>
+                <p className="text-label font-normal text-bad">{modelVersionsError}</p>
               ) : !modelVersions ? (
-                <p className="text-[12px] text-ink-muted">Loading…</p>
+                <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {(['moneyline', 'total', 'homeRun'] as const).map((market) => {
@@ -2283,55 +2147,40 @@ export default function DiagnosticsPage() {
                     const staleness = active ? trainingStaleness(active) : null;
                     return (
                       <div key={market}>
-                        <h3 className="mb-2 text-[12px] font-semibold text-ink-muted">
+                        <h3 className="mb-2 text-label font-semibold text-ink-muted">
                           {market === 'moneyline' ? 'Moneyline' : market === 'total' ? 'Total (O/U)' : 'Home Run'}
                         </h3>
                         {staleness ? (
-                          <p className="mb-2 rounded-md border border-warn/30 bg-warn/5 px-2 py-1 text-[11px] text-warn">
+                          <p className="mb-2 rounded-md border border-warn/30 bg-warn/5 px-2 py-1 text-overline font-normal tracking-normal text-warn">
                             Active model&apos;s newest season is {staleness.newestSeason} — {staleness.missingSeasons.join(', ')}{' '}
                             {staleness.missingSeasons.length === 1 ? 'is' : 'are'} available but not trained on yet.
                           </p>
                         ) : null}
                         {versions.length === 0 ? (
-                          <p className="text-[12px] text-ink-muted">No fit has ever run for this market.</p>
+                          <p className="text-label font-normal text-ink-muted">No fit has ever run for this market.</p>
                         ) : (
                           <div className="overflow-x-auto">
-                            <table className="w-full border-collapse text-[11px]">
-                              <thead>
-                                <tr className="border-b border-line text-left text-ink-muted">
-                                  <th className="py-1 pr-2">v</th>
-                                  <th className="py-1 pr-2">Fitted</th>
-                                  <th className="py-1 pr-2">Seasons (train / holdout)</th>
-                                  <th className="py-1 pr-2 text-right">Train / holdout</th>
-                                  <th className="py-1 pr-2 text-right">Holdout Brier</th>
-                                  <th className="py-1 pr-2 text-right">vs. baseline</th>
-                                  <th className="py-1 text-right">Active</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {versions.map((v) => (
-                                  <tr key={v.id} className={`border-b border-line/50 ${v.active ? 'bg-good/5' : ''}`}>
-                                    <td className="py-1 pr-2 font-medium">{v.version}</td>
-                                    <td className="py-1 pr-2 text-ink-muted">{formatDate(v.fittedAt)}</td>
-                                    <td className="py-1 pr-2 text-ink-muted">{formatSeasonRange(v.trainSeasons)} / {formatSeasonRange(v.holdoutSeasons)}</td>
-                                    <td className="py-1 pr-2 text-right tabular-nums text-ink-muted">
-                                      {v.trainGames.toLocaleString()} / {v.holdoutGames.toLocaleString()}
-                                    </td>
-                                    <td className="py-1 pr-2 text-right tabular-nums font-medium">{v.holdoutBrier.toFixed(4)}</td>
-                                    <td className="py-1 pr-2 text-right tabular-nums text-ink-muted">
-                                      {v.baselineHoldoutBrier != null ? v.baselineHoldoutBrier.toFixed(4) : '—'}
-                                    </td>
-                                    <td className="py-1 text-right">{v.active ? <HealthDot ok /> : null}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                            <DataTable
+  caption="Model Versions"
+  density="compact"
+  rows={versions}
+  rowKey={(v) => String(v.id)}
+  columns={[
+    { key: 'c0', label: 'v', sortable: false, render: (v) => (<span className="font-medium">{v.version}</span>) },
+    { key: 'c1', label: 'Fitted', sortable: false, render: (v) => (<span className="text-ink-muted">{formatDate(v.fittedAt)}</span>) },
+    { key: 'c2', label: 'Seasons (train / holdout)', sortable: false, render: (v) => (<span className="text-ink-muted">{formatSeasonRange(v.trainSeasons)} / {formatSeasonRange(v.holdoutSeasons)}</span>) },
+    { key: 'c3', label: 'Train / holdout', sortable: false, align: 'right', render: (v) => (<span className="tabular-nums text-ink-muted">{v.trainGames.toLocaleString()} / {v.holdoutGames.toLocaleString()}</span>) },
+    { key: 'c4', label: 'Holdout Brier', sortable: false, align: 'right', render: (v) => (<span className="tabular-nums font-medium">{v.holdoutBrier.toFixed(4)}</span>) },
+    { key: 'c5', label: 'vs. baseline', sortable: false, align: 'right', render: (v) => (<span className="tabular-nums text-ink-muted">{v.baselineHoldoutBrier != null ? v.baselineHoldoutBrier.toFixed(4) : '—'}</span>) },
+    { key: 'c6', label: 'Active', sortable: false, align: 'right', render: (v) => (<>{v.active ? <HealthDot ok /> : null}</>) }
+  ]}
+/>
                           </div>
                         )}
 
                         {explanations ? (
                           <div className="mt-3 border-t border-line pt-2">
-                            <p className="mb-1.5 text-[10px] uppercase tracking-wide text-ink-muted">Active feature weights</p>
+                            <p className="mb-1.5 text-overline font-normal uppercase tracking-wide text-ink-muted">Active feature weights</p>
                             <FeatureWeightsList explanations={explanations} />
                           </div>
                         ) : null}
@@ -2346,16 +2195,16 @@ export default function DiagnosticsPage() {
             <section className="lb-card p-4">
               <h2 className="mb-3 text-sm font-semibold">Live Drift Check</h2>
               {driftCheckError ? (
-                <p className="text-[12px] text-bad">{driftCheckError}</p>
+                <p className="text-label font-normal text-bad">{driftCheckError}</p>
               ) : !driftCheck ? (
-                <p className="text-[12px] text-ink-muted">Loading…</p>
+                <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2">
                   {[driftCheck.moneyline, driftCheck.total].map((d) => (
                     <div key={d.market} className="flex items-center justify-between gap-2 rounded-md border border-line px-3 py-2">
                       <div>
-                        <div className="text-[12px] font-semibold">{d.market === 'moneyline' ? 'Moneyline' : 'Total (O/U)'}</div>
-                        <div className="text-[11px] text-ink-muted">
+                        <div className="text-label font-semibold">{d.market === 'moneyline' ? 'Moneyline' : 'Total (O/U)'}</div>
+                        <div className="text-overline font-normal tracking-normal text-ink-muted">
                           {d.liveGames > 0 ? (
                             <>
                               live Brier {d.liveBrier?.toFixed(4) ?? '—'} over last {d.liveGames} · expected{' '}
@@ -2366,14 +2215,14 @@ export default function DiagnosticsPage() {
                           )}
                         </div>
                       </div>
-                      <span className={`lb-chip shrink-0 text-[10px] font-semibold ${DRIFT_STATUS_STYLE[d.status]}`}>
+                      <Chip tone={DRIFT_STATUS_TONE[d.status]} size="sm" className="shrink-0">
                         {DRIFT_STATUS_LABEL[d.status]}
-                      </span>
+                      </Chip>
                     </div>
                   ))}
                 </div>
               )}
-              <p className="mt-3 text-[10px] text-ink-muted">
+              <p className="mt-3 text-overline font-normal tracking-normal text-ink-muted">
                 Rolling Brier from the last {driftCheck?.rollingWindow ?? 100} real (non-backfill) graded picks, compared
                 against the active model's own holdout Brier. Below {driftCheck?.minSample ?? 20} live picks this reads
                 &quot;not enough live picks yet&quot; rather than a false alarm either direction.
@@ -2384,37 +2233,36 @@ export default function DiagnosticsPage() {
             <section className="lb-card p-4">
               <h2 className="mb-3 text-sm font-semibold">Elo Ratings</h2>
               {eloSanityError ? (
-                <p className="text-[12px] text-bad">{eloSanityError}</p>
+                <p className="text-label font-normal text-bad">{eloSanityError}</p>
               ) : !eloSanity ? (
-                <p className="text-[12px] text-ink-muted">Loading…</p>
+                <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : (
                 <div className="max-h-[360px] overflow-y-auto">
-                  <table className="w-full border-collapse text-[11px]">
-                    <thead>
-                      <tr className="border-b border-line text-left text-ink-muted">
-                        <th className="py-1 pr-2">#</th>
-                        <th className="py-1 pr-2">Team</th>
-                        <th className="py-1 pr-2 text-right">Elo</th>
-                        <th className="py-1 text-right">Games</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {eloSanity.teams.map((t, i) => (
-                        <tr key={t.teamId} className="border-b border-line/50">
-                          <td className="py-1 pr-2 text-ink-muted">{i + 1}</td>
-                          <td className="py-1 pr-2 font-medium">
+                  <DataTable<(typeof eloSanity.teams)[number]>
+                    caption="Elo ratings"
+                    density="compact"
+                    rows={eloSanity.teams}
+                    rowKey={(t) => String(t.teamId)}
+                    columns={[
+                      { key: 'n', label: '#', sortable: false, render: (t) => <span className="text-ink-muted">{eloSanity.teams.indexOf(t) + 1}</span> },
+                      {
+                        key: 'team',
+                        label: 'Team',
+                        sortable: false,
+                        render: (t) => (
+                          <span className="font-medium">
                             {t.name}
                             <span className="ml-1 text-ink-muted">{t.abbreviation}</span>
-                          </td>
-                          <td className="py-1 pr-2 text-right tabular-nums font-medium">{t.elo}</td>
-                          <td className="py-1 text-right tabular-nums text-ink-muted">{t.gamesPlayed}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </span>
+                        ),
+                      },
+                      { key: 'elo', label: 'Elo', numeric: true, sortable: false, render: (t) => <span className="font-medium">{t.elo}</span> },
+                      { key: 'games', label: 'Games', numeric: true, sortable: false, render: (t) => <span className="text-ink-muted">{t.gamesPlayed}</span> },
+                    ]}
+                  />
                 </div>
               )}
-              <p className="mt-3 text-[10px] text-ink-muted">
+              <p className="mt-3 text-overline font-normal tracking-normal text-ink-muted">
                 1500 is the starting value every team is regressed toward each off-season. A team still sitting near
                 1500 mid-season with real games played, or an outlier score with almost no games played, is worth a
                 second look.
@@ -2426,11 +2274,11 @@ export default function DiagnosticsPage() {
               <h2 className="mb-3 text-sm font-semibold">Game Model Calibration</h2>
 
               {gameCalibrationError ? (
-                <p className="text-[12px] text-bad">{gameCalibrationError}</p>
+                <p className="text-label font-normal text-bad">{gameCalibrationError}</p>
               ) : !gameCalibration ? (
-                <p className="text-[12px] text-ink-muted">Loading…</p>
+                <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : (
-                <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px] sm:grid-cols-4">
+                <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-2 text-body-sm sm:grid-cols-4">
                   <div>
                     <span className="text-ink-muted">Surfaced (both markets)</span>
                     <div className="font-semibold tabular-nums">{gameCalibration.counts.totalRows.toLocaleString()}</div>
@@ -2439,7 +2287,7 @@ export default function DiagnosticsPage() {
                     <span className="text-ink-muted">Graded</span>
                     <div className="font-semibold tabular-nums">
                       {gameCalibration.counts.gradedRows.toLocaleString()}
-                      <span className="ml-1 text-[11px] font-normal text-ink-muted">
+                      <span className="ml-1 text-overline tracking-normal font-normal text-ink-muted">
                         ({gameCalibration.counts.ungradedRows.toLocaleString()} pending)
                       </span>
                     </div>
@@ -2451,9 +2299,9 @@ export default function DiagnosticsPage() {
                     </div>
                   </div>
                   <div>
-                    <span className="text-ink-muted" title="Mean squared error between predicted probability and outcome. Lower is better; 0.25 is what guessing 50/50 always scores.">
+                    <Tooltip content={"Mean squared error between predicted probability and outcome. Lower is better; 0.25 is what guessing 50/50 always scores."}><span className="text-ink-muted">
                       Brier by market
-                    </span>
+                    </span></Tooltip>
                     <div className="font-semibold tabular-nums">
                       {gameCalibration.byMarket
                         .filter((m) => m.dimension === 'moneyline' || m.dimension === 'total')
@@ -2468,24 +2316,18 @@ export default function DiagnosticsPage() {
                 {/* Moneyline */}
                 <div>
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <h3 className="text-[12px] font-semibold text-ink-muted">Moneyline</h3>
-                    <button
-                      type="button"
-                      disabled={gameBackfillRunning}
-                      onClick={() => void runGameBackfill()}
-                      title="Walks the season chronologically, predicting each game from only prior results, then grades against real final scores — no lookahead."
-                      className="rounded-md border border-line px-2 py-0.5 text-[11px] font-medium text-ink-muted hover:border-masters/40 hover:text-masters disabled:opacity-40"
-                    >
-                      {gameBackfillRunning ? 'Running…' : 'Backfill'}
-                    </button>
+                    <h3 className="text-label font-semibold text-ink-muted">Moneyline</h3>
+                    <Tooltip content={"Walks the season chronologically, predicting each game from only prior results, then grades against real final scores — no lookahead."}><Button variant="secondary" size="sm" isDisabled={gameBackfillRunning} onPress={() => void runGameBackfill()}>
+                  {gameBackfillRunning ? 'Running…' : 'Backfill'}
+                </Button></Tooltip>
                   </div>
-                  {gameBackfillResult ? <p className="mb-2 text-[11px] text-ink-muted">{gameBackfillResult}</p> : null}
+                  {gameBackfillResult ? <p className="mb-2 text-overline font-normal tracking-normal text-ink-muted">{gameBackfillResult}</p> : null}
                   {moneylineCalibrationError ? (
-                    <p className="text-[12px] text-bad">{moneylineCalibrationError}</p>
+                    <p className="text-label font-normal text-bad">{moneylineCalibrationError}</p>
                   ) : !moneylineCalibration ? (
-                    <p className="text-[12px] text-ink-muted">Loading…</p>
+                    <p className="text-label font-normal text-ink-muted">Loading…</p>
                   ) : moneylineCalibration.counts.withModelProb === 0 ? (
-                    <p className="text-[12px] text-ink-muted">No graded moneyline predictions yet.</p>
+                    <p className="text-label font-normal text-ink-muted">No graded moneyline predictions yet.</p>
                   ) : (
                     <ReliabilityDiagram buckets={moneylineCalibration.buckets} />
                   )}
@@ -2494,30 +2336,24 @@ export default function DiagnosticsPage() {
                 {/* Total (O/U) */}
                 <div>
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <h3 className="text-[12px] font-semibold text-ink-muted">Total (O/U)</h3>
-                    <button
-                      type="button"
-                      disabled={totalBackfillRunning}
-                      onClick={() => void runTotalBackfill()}
-                      title="Grades against real historical total lines (2010-2025 ingested odds) — the season in progress has no historical line to grade against yet, so this only ever covers past seasons."
-                      className="rounded-md border border-line px-2 py-0.5 text-[11px] font-medium text-ink-muted hover:border-masters/40 hover:text-masters disabled:opacity-40"
-                    >
-                      {totalBackfillRunning ? 'Running…' : 'Backfill'}
-                    </button>
+                    <h3 className="text-label font-semibold text-ink-muted">Total (O/U)</h3>
+                    <Tooltip content={"Grades against real historical total lines (2010-2025 ingested odds) — the season in progress has no historical line to grade against yet, so this only ever covers past seasons."}><Button variant="secondary" size="sm" isDisabled={totalBackfillRunning} onPress={() => void runTotalBackfill()}>
+                  {totalBackfillRunning ? 'Running…' : 'Backfill'}
+                </Button></Tooltip>
                   </div>
-                  {totalBackfillResult ? <p className="mb-2 text-[11px] text-ink-muted">{totalBackfillResult}</p> : null}
+                  {totalBackfillResult ? <p className="mb-2 text-overline font-normal tracking-normal text-ink-muted">{totalBackfillResult}</p> : null}
                   {totalCalibrationError ? (
-                    <p className="text-[12px] text-bad">{totalCalibrationError}</p>
+                    <p className="text-label font-normal text-bad">{totalCalibrationError}</p>
                   ) : !totalCalibration ? (
-                    <p className="text-[12px] text-ink-muted">Loading…</p>
+                    <p className="text-label font-normal text-ink-muted">Loading…</p>
                   ) : totalCalibration.counts.withModelProb === 0 ? (
-                    <p className="text-[12px] text-ink-muted">No graded total predictions yet.</p>
+                    <p className="text-label font-normal text-ink-muted">No graded total predictions yet.</p>
                   ) : (
                     <ReliabilityDiagram buckets={totalCalibration.buckets} />
                   )}
                 </div>
               </div>
-              <p className="mt-3 text-[10px] text-ink-muted">
+              <p className="mt-3 text-overline font-normal tracking-normal text-ink-muted">
                 Dark bar = predicted probability, green/masters bar = what actually happened. A well-calibrated
                 model has the two ending in about the same place at every bucket.
               </p>
@@ -2525,21 +2361,15 @@ export default function DiagnosticsPage() {
               {/* Formula vs. market vs. old blend vs. fitted — the real "does this actually beat the market" check for totals. Button-triggered only: this re-fits against the full 2010-2025 span (~90s, ~480 external bullpen-ERA calls), never auto-fetched. */}
               <div className="mt-4 border-t border-line pt-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <h3 className="text-[12px] font-semibold text-ink-muted">Total: does the model actually beat the market?</h3>
-                  <button
-                    type="button"
-                    disabled={totalBaselinesRunning}
-                    onClick={() => void runTotalBaselinesCheck()}
-                    title="Re-scores formula-alone, market-alone, the old pre-fit blend, and the fitted model on the same 2024-2025 holdout games — takes about 90 seconds."
-                    className="rounded-md border border-line px-2 py-0.5 text-[11px] font-medium text-ink-muted hover:border-masters/40 hover:text-masters disabled:opacity-40"
-                  >
+                  <h3 className="text-label font-semibold text-ink-muted">Total: does the model actually beat the market?</h3>
+                  <Tooltip content={"Re-scores formula-alone, market-alone, the old pre-fit blend, and the fitted model on the same 2024-2025 holdout games — takes about 90 seconds."}><Button variant="secondary" size="sm" isDisabled={totalBaselinesRunning} onPress={() => void runTotalBaselinesCheck()}>
                     {totalBaselinesRunning ? 'Running (~90s)…' : 'Check vs. market'}
-                  </button>
+                  </Button></Tooltip>
                 </div>
                 {totalBaselinesError ? (
-                  <p className="text-[12px] text-bad">Failed: {totalBaselinesError}</p>
+                  <p className="text-label font-normal text-bad">Failed: {totalBaselinesError}</p>
                 ) : totalBaselines ? (
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px] sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-body-sm sm:grid-cols-4">
                     <div>
                       <span className="text-ink-muted">Formula alone</span>
                       <div className="font-semibold tabular-nums">{totalBaselines.formulaBrier.toFixed(4)}</div>
@@ -2548,7 +2378,7 @@ export default function DiagnosticsPage() {
                       <span className="text-ink-muted">Market alone</span>
                       <div className="font-semibold tabular-nums">
                         {totalBaselines.marketOnlyBrier.toFixed(4)}
-                        <span className="ml-1 text-[11px] font-normal text-ink-muted">n={totalBaselines.marketOnlyGames}</span>
+                        <span className="ml-1 text-overline tracking-normal font-normal text-ink-muted">n={totalBaselines.marketOnlyGames}</span>
                       </div>
                     </div>
                     <div>
@@ -2560,15 +2390,15 @@ export default function DiagnosticsPage() {
                       <div className="font-semibold tabular-nums">
                         {totalBaselines.fittedBrier.toFixed(4)}
                         {totalBaselines.fittedBrier < totalBaselines.marketOnlyBrier ? (
-                          <span className="ml-1 text-[11px] font-normal text-good">beats market</span>
+                          <span className="ml-1 text-overline tracking-normal font-normal text-good">beats market</span>
                         ) : (
-                          <span className="ml-1 text-[11px] font-normal text-ink-muted">≈ market</span>
+                          <span className="ml-1 text-overline tracking-normal font-normal text-ink-muted">≈ market</span>
                         )}
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-[11px] text-ink-muted">Not run yet this session — click Check vs. market for a fresh read on {gameCalibration ? '2024-2025 holdout games' : 'the holdout set'}.</p>
+                  <p className="text-overline font-normal tracking-normal text-ink-muted">Not run yet this session — click Check vs. market for a fresh read on {gameCalibration ? '2024-2025 holdout games' : 'the holdout set'}.</p>
                 )}
               </div>
             </section>
@@ -2582,9 +2412,9 @@ export default function DiagnosticsPage() {
               <h2 className="mb-3 text-sm font-semibold">Data Sources &amp; System</h2>
 
               {systemHealthError ? (
-                <p className="text-[12px] text-bad">{systemHealthError}</p>
+                <p className="text-label font-normal text-bad">{systemHealthError}</p>
               ) : !systemHealth ? (
-                <p className="text-[12px] text-ink-muted">Loading…</p>
+                <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : (
                 <>
                   {/* Task 3.2 (P5 E3), scoped by Q19 to no external error
@@ -2595,12 +2425,12 @@ export default function DiagnosticsPage() {
                       where they surface. */}
                   <div className="mb-2 flex items-center gap-2">
                     <HealthDot ok={(systemHealth.cacheFailures?.last24h ?? 0) === 0} />
-                    <h3 className="text-[12px] font-semibold text-ink-muted">Cache writes</h3>
+                    <h3 className="text-label font-semibold text-ink-muted">Cache writes</h3>
                   </div>
                   {!systemHealth.cacheFailures || systemHealth.cacheFailures.last24h === 0 ? (
-                    <p className="mb-3 text-[12px] text-ink-muted">No cache-write failures in the last 24 hours.</p>
+                    <p className="mb-3 text-label font-normal text-ink-muted">No cache-write failures in the last 24 hours.</p>
                   ) : (
-                    <div className="mb-3 rounded-md border border-bad/20 bg-bad/5 p-2 text-[12px]">
+                    <div className="mb-3 rounded-md border border-bad/20 bg-bad/5 p-2 text-label font-normal">
                       <p className="mb-1 font-semibold text-bad">
                         {systemHealth.cacheFailures.last24h} cache-write failure
                         {systemHealth.cacheFailures.last24h === 1 ? '' : 's'} in 24h
@@ -2609,12 +2439,12 @@ export default function DiagnosticsPage() {
                         {systemHealth.cacheFailures.distinctKeys} distinct key
                         {systemHealth.cacheFailures.distinctKeys === 1 ? '' : 's'}
                       </p>
-                      <p className="mb-2 text-[11px] text-ink-muted">
+                      <p className="mb-2 text-overline font-normal tracking-normal text-ink-muted">
                         Requests still succeed — but nothing is being cached, so every request pays a full rebuild.
                         Many keys failing at once usually means the database is refusing writes (quota or read-only).
                       </p>
                       {systemHealth.cacheFailures.topKeys.map((k) => (
-                        <div key={k.key} className="border-b border-bad/10 py-1 text-[11px] last:border-0">
+                        <div key={k.key} className="border-b border-bad/10 py-1 text-overline font-normal tracking-normal last:border-0">
                           <span className="tabular-nums text-bad">{k.failures}x</span>{' '}
                           <span className="text-ink-muted">{k.key}</span>
                         </div>
@@ -2624,14 +2454,14 @@ export default function DiagnosticsPage() {
 
                   <div className="mb-2 flex items-center gap-2 border-t border-line pt-3">
                     <HealthDot ok={systemHealth.statsApiErrors.length === 0} />
-                    <h3 className="text-[12px] font-semibold text-ink-muted">MLB Stats API</h3>
+                    <h3 className="text-label font-semibold text-ink-muted">MLB Stats API</h3>
                   </div>
                   {systemHealth.statsApiErrors.length === 0 ? (
-                    <p className="mb-3 text-[12px] text-ink-muted">No fetch failures recorded since the process started.</p>
+                    <p className="mb-3 text-label font-normal text-ink-muted">No fetch failures recorded since the process started.</p>
                   ) : (
                     <div className="mb-3 max-h-[160px] overflow-y-auto rounded-md border border-bad/20 bg-bad/5 p-2">
                       {systemHealth.statsApiErrors.map((e, i) => (
-                        <div key={i} className="border-b border-bad/10 py-1 text-[11px] last:border-0">
+                        <div key={i} className="border-b border-bad/10 py-1 text-overline font-normal tracking-normal last:border-0">
                           <span className="text-ink-muted">{formatDate(e.at)}</span> · <span className="text-bad">{e.reason}</span>{' '}
                           <span className="text-ink-muted">{e.url}</span>
                         </div>
@@ -2639,8 +2469,8 @@ export default function DiagnosticsPage() {
                     </div>
                   )}
 
-                  <h3 className="mb-2 border-t border-line pt-3 text-[12px] font-semibold text-ink-muted">Pipeline freshness</h3>
-                  <div className="mb-3 grid gap-4 text-[12px] sm:grid-cols-3">
+                  <h3 className="mb-2 border-t border-line pt-3 text-label font-semibold text-ink-muted">Pipeline freshness</h3>
+                  <div className="mb-3 grid gap-4 text-label font-normal sm:grid-cols-3">
                     <div>
                       <div className="mb-1 text-ink-muted">Historical odds</div>
                       <div className="font-semibold tabular-nums">
@@ -2670,8 +2500,8 @@ export default function DiagnosticsPage() {
                     </div>
                   </div>
 
-                  <h3 className="mb-2 border-t border-line pt-3 text-[12px] font-semibold text-ink-muted">DB row counts</h3>
-                  <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] sm:grid-cols-3">
+                  <h3 className="mb-2 border-t border-line pt-3 text-label font-semibold text-ink-muted">DB row counts</h3>
+                  <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-overline font-normal tracking-normal sm:grid-cols-3">
                     {systemHealth.tables.map((t) => (
                       <div key={t.table} className="flex justify-between gap-2">
                         <span className="text-ink-muted">{t.table}</span>
@@ -2691,49 +2521,40 @@ export default function DiagnosticsPage() {
                     already has rows is the actual "something stopped"
                     signal.
                   */}
-                  <h3 className="mb-2 border-t border-line pt-3 text-[12px] font-semibold text-ink-muted">
+                  <h3 className="mb-2 border-t border-line pt-3 text-label font-semibold text-ink-muted">
                     Own data accumulation
                   </h3>
-                  <p className="mb-2 text-[11px] text-ink-muted">
+                  <p className="mb-2 text-overline font-normal tracking-normal text-ink-muted">
                     No historical player-prop odds exist anywhere to backfill — this is what we&apos;ve collected ourselves,
                     growing forward from whenever this app first ran. A stalled row here (rows &gt; 0 but nothing in the
                     last 24h) means ingestion silently stopped, not that there&apos;s simply nothing to collect yet.
                   </p>
                   <div className="mb-3 overflow-x-auto">
-                    <table className="w-full border-collapse text-[11px]">
-                      <thead>
-                        <tr className="border-b border-line text-left text-ink-muted">
-                          <th className="py-1 pr-2">Table</th>
-                          <th className="py-1 pr-2 text-right">Rows</th>
-                          <th className="py-1 pr-2 text-right">Earliest</th>
-                          <th className="py-1 pr-2 text-right">Latest</th>
-                          <th className="py-1 pr-2 text-right">Last 24h</th>
-                          <th className="py-1 pr-2 text-right">Last 7d</th>
-                          <th className="py-1 text-right">Growing</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {systemHealth.dataAccumulation.map((d) => {
-                          const stalled = d.rows > 0 && d.last24h === 0;
-                          return (
-                            <tr key={d.table} className="border-b border-line/50">
-                              <td className="py-1 pr-2">
-                                <div className="font-medium">{d.table}</div>
-                                <div className="text-[10px] text-ink-muted">{d.label}</div>
-                              </td>
-                              <td className="py-1 pr-2 text-right tabular-nums font-medium">{d.rows.toLocaleString()}</td>
-                              <td className="py-1 pr-2 text-right text-ink-muted">{formatDate(d.earliest)}</td>
-                              <td className="py-1 pr-2 text-right text-ink-muted">{formatDate(d.latest)}</td>
-                              <td className="py-1 pr-2 text-right tabular-nums">{d.last24h.toLocaleString()}</td>
-                              <td className="py-1 pr-2 text-right tabular-nums">{d.last7d.toLocaleString()}</td>
-                              <td className="py-1 text-right">
-                                <HealthDot ok={!stalled} />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                    <DataTable<(typeof systemHealth.dataAccumulation)[number]>
+                      caption="Own data accumulation"
+                      density="compact"
+                      rows={systemHealth.dataAccumulation}
+                      rowKey={(d) => d.table}
+                      columns={[
+                        {
+                          key: 'table',
+                          label: 'Table',
+                          sortable: false,
+                          render: (d) => (
+                            <>
+                              <div className="font-medium">{d.table}</div>
+                              <div className="text-ink-muted">{d.label}</div>
+                            </>
+                          ),
+                        },
+                        { key: 'rows', label: 'Rows', numeric: true, sortable: false, render: (d) => <span className="font-medium">{d.rows.toLocaleString()}</span> },
+                        { key: 'earliest', label: 'Earliest', numeric: true, sortable: false, render: (d) => <span className="text-ink-muted">{formatDate(d.earliest)}</span> },
+                        { key: 'latest', label: 'Latest', numeric: true, sortable: false, render: (d) => <span className="text-ink-muted">{formatDate(d.latest)}</span> },
+                        { key: 'd1', label: 'Last 24h', numeric: true, sortable: false, render: (d) => d.last24h.toLocaleString() },
+                        { key: 'd7', label: 'Last 7d', numeric: true, sortable: false, render: (d) => d.last7d.toLocaleString() },
+                        { key: 'growing', label: 'Growing', numeric: true, sortable: false, render: (d) => <HealthDot ok={!(d.rows > 0 && d.last24h === 0)} /> },
+                      ]}
+                    />
                   </div>
 
                   {(() => {
@@ -2742,7 +2563,7 @@ export default function DiagnosticsPage() {
                     if (!readiness) return null;
                     return (
                       <div
-                        className={`mb-3 rounded border px-3 py-2 text-[11px] ${
+                        className={`mb-3 rounded border px-3 py-2 text-overline font-normal tracking-normal ${
                           readiness.ready ? 'border-warn/40 bg-warn/10 text-warn' : 'border-line bg-panel-muted text-ink-muted'
                         }`}
                       >
@@ -2764,17 +2585,17 @@ export default function DiagnosticsPage() {
                     );
                   })()}
 
-                  <h3 className="mb-2 border-t border-line pt-3 text-[12px] font-semibold text-ink-muted">
+                  <h3 className="mb-2 border-t border-line pt-3 text-label font-semibold text-ink-muted">
                     Recent errors ({systemHealth.recentEvents.length})
                   </h3>
                   {systemHealth.recentEvents.length === 0 ? (
-                    <p className="text-[12px] text-ink-muted">Nothing logged yet.</p>
+                    <p className="text-label font-normal text-ink-muted">Nothing logged yet.</p>
                   ) : (
                     <div className="max-h-[200px] overflow-y-auto">
                       {systemHealth.recentEvents.map((e) => (
-                        <div key={e.id} className="border-b border-line/50 py-1 text-[11px]">
+                        <div key={e.id} className="border-b border-line/50 py-1 text-overline font-normal tracking-normal">
                           <span className="text-ink-muted">{formatDate(e.occurredAt)}</span>{' '}
-                          <span className="lb-chip bg-bad/10 text-bad text-[10px]">{e.source}</span>{' '}
+                          <Chip tone="bad" size="sm">{e.source}</Chip>{' '}
                           <span className="text-ink-muted">{e.message}</span>
                         </div>
                       ))}
@@ -2788,9 +2609,9 @@ export default function DiagnosticsPage() {
             <section className="lb-card p-4">
               <h2 className="mb-3 text-sm font-semibold">
                 Odds API
-                <span className={statusBadge(data.oddsApi.status)}>{data.oddsApi.status}</span>
+                <Chip tone={statusTone(data.oddsApi.status)} size="sm">{data.oddsApi.status}</Chip>
               </h2>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px] sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-body-sm sm:grid-cols-3">
                 <div>
                   <span className="text-ink-muted">Credits used</span>
                   <div className="font-semibold tabular-nums">
@@ -2831,12 +2652,12 @@ export default function DiagnosticsPage() {
               {data.oddsApi.warnings.length > 0 ? (
                 <div className="mt-3 space-y-1 border-t border-line pt-3">
                   {data.oddsApi.warnings.map((w, i) => (
-                    <p key={i} className="text-[12px] text-warn">{w}</p>
+                    <p key={i} className="text-label font-normal text-warn">{w}</p>
                   ))}
                 </div>
               ) : null}
               {data.oddsApi.cache ? (
-                <div className="mt-3 border-t border-line pt-3 text-[11px] text-ink-muted">
+                <div className="mt-3 border-t border-line pt-3 text-overline font-normal tracking-normal text-ink-muted">
                   SQLite cache: {formatDate(data.oddsApi.cache.fetchedAt)} ·{' '}
                   {(data.oddsApi.cache.payloadBytes / 1024).toFixed(1)} KB
                 </div>
@@ -2865,15 +2686,15 @@ export default function DiagnosticsPage() {
                   >
                     <div className="flex items-center gap-2">
                       <HealthDot ok={s.healthy} />
-                      <span className="text-[13px] font-semibold uppercase">{s.sport}</span>
+                      <span className="text-body-sm font-semibold uppercase">{s.sport}</span>
                     </div>
-                    <p className={`mt-1 text-[11px] ${s.healthy ? 'text-ink-muted' : 'text-bad'}`}>{s.status}</p>
+                    <p className={`mt-1 text-overline font-normal tracking-normal ${s.healthy ? 'text-ink-muted' : 'text-bad'}`}>{s.status}</p>
                     {s.sources.length > 0 ? (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {s.sources.map((src) => (
-                          <span key={src.source} className="lb-chip bg-ink/5 text-[10px] text-ink-muted" title={`freshest ${src.ageHours.toFixed(1)}h ago`}>
+                          <Chip key={src.source} title={`freshest ${src.ageHours.toFixed(1)}h ago`} tone="neutral" size="sm">
                             {src.source}: {src.count}
-                          </span>
+                          </Chip>
                         ))}
                       </div>
                     ) : null}
@@ -2888,7 +2709,7 @@ export default function DiagnosticsPage() {
               <>
             {/* Debug drawer — raw dumps and env vars, demoted below everything a normal check-in actually needs. */}
             <div id="debug" className="space-y-4">
-            <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">Debug</p>
+            <p className="px-1 text-overline font-semibold uppercase tracking-wide text-ink-muted">Debug</p>
 
             {/* Per-source detail */}
             <details className="lb-card cursor-pointer p-4">
@@ -2897,38 +2718,19 @@ export default function DiagnosticsPage() {
                 <p className="mt-2 text-sm text-ink-muted">No lines from Odds API.</p>
               ) : (
                 <div className="mt-3 max-h-[400px] overflow-y-auto">
-                  <table className="w-full border-collapse text-[12px]">
-                    <thead>
-                      <tr className="border-b border-line text-left text-ink-muted">
-                        <th className="py-1.5 pr-2">Matchup</th>
-                        <th className="py-1.5 pr-2 text-right">ML Home</th>
-                        <th className="py-1.5 pr-2 text-right">ML Away</th>
-                        <th className="py-1.5 pr-2 text-right">Total</th>
-                        <th className="py-1.5 text-right">Books</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.oddsApi.lines.map((line, i) => (
-                        <tr key={i} className="border-b border-line/50">
-                          <td className="py-1.5 pr-2 font-medium">{line.matchup}</td>
-                          <td className="py-1.5 pr-2 text-right tabular-nums">
-                            {line.moneyline?.home != null
-                              ? `${line.moneyline.home > 0 ? '+' : ''}${line.moneyline.home}`
-                              : '—'}
-                          </td>
-                          <td className="py-1.5 pr-2 text-right tabular-nums">
-                            {line.moneyline?.away != null
-                              ? `${line.moneyline.away > 0 ? '+' : ''}${line.moneyline.away}`
-                              : '—'}
-                          </td>
-                          <td className="py-1.5 pr-2 text-right tabular-nums">
-                            {line.total != null ? line.total : '—'}
-                          </td>
-                          <td className="py-1.5 text-right tabular-nums">{line.bookCount}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <DataTable<(typeof data.oddsApi.lines)[number]>
+                    caption="Raw Odds API lines"
+                    density="compact"
+                    rows={data.oddsApi.lines}
+                    rowKey={(line) => `${line.matchup}-${data.oddsApi.lines.indexOf(line)}`}
+                    columns={[
+                      { key: 'matchup', label: 'Matchup', sortable: false, render: (line) => <span className="font-medium">{line.matchup}</span> },
+                      { key: 'mlh', label: 'ML Home', numeric: true, sortable: false, render: (line) => (line.moneyline?.home != null ? `${line.moneyline.home > 0 ? '+' : ''}${line.moneyline.home}` : '—') },
+                      { key: 'mla', label: 'ML Away', numeric: true, sortable: false, render: (line) => (line.moneyline?.away != null ? `${line.moneyline.away > 0 ? '+' : ''}${line.moneyline.away}` : '—') },
+                      { key: 'total', label: 'Total', numeric: true, sortable: false, render: (line) => (line.total != null ? line.total : '—') },
+                      { key: 'books', label: 'Books', numeric: true, sortable: false, render: (line) => line.bookCount },
+                    ]}
+                  />
                 </div>
               )}
             </details>
@@ -2936,7 +2738,7 @@ export default function DiagnosticsPage() {
             {/* Environment */}
             <details className="lb-card cursor-pointer p-4">
               <summary className="text-sm font-semibold">Environment</summary>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-[13px]">
+              <div className="mt-3 grid grid-cols-2 gap-2 text-body-sm">
                 <div>
                   <span className="text-ink-muted">ODDS_API_KEY</span>
                   <div>{data.env.oddsApiKeyConfigured ? 'Configured ✓' : 'Not set ✗'}</div>
@@ -2986,7 +2788,7 @@ export default function DiagnosticsPage() {
           </>
         }
       >
-        <pre className="whitespace-pre-wrap text-[12px] leading-relaxed text-ink-muted">{NHL_NBA_RESUME_PROMPT}</pre>
+        <pre className="whitespace-pre-wrap text-label font-normal leading-relaxed text-ink-muted">{NHL_NBA_RESUME_PROMPT}</pre>
       </Modal>
     </div>
   );

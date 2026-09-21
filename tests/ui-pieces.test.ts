@@ -14,9 +14,7 @@ import { OUT_OF_SCOPE, code } from './ui-scope';
  */
 
 const CHIP_ALLOWED: Record<string, { count: number; why: string }> = {
-  // U6 sweeps diagnostics last, the same sequencing the button and table
-  // guards already use.
-  'app/diagnostics/page.tsx': { count: 16, why: 'U6 sweeps diagnostics last' },
+  // (U6 moved diagnostics' sixteen onto Chip with semantic tones.)
 };
 
 const TOGGLE_ALLOWED: Record<string, string> = {

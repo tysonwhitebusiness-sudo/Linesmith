@@ -66,15 +66,15 @@ export function FullPitchScatter({
           <g key={side}>
             <rect x={side ? X(100 - boxDepth) : 0} y={Y(20.4)} width={X(boxDepth)} height={Y(79.6) - Y(20.4)} {...line} />
             <rect x={side ? X(100 - sixDepth) : 0} y={Y(36.8)} width={X(sixDepth)} height={Y(63.2) - Y(36.8)} {...line} />
-            <rect x={side ? W - 4 : 0} y={Y(44.6)} width={4} height={Y(55.4) - Y(44.6)} fill="#fff" />
+            <rect x={side ? W - 4 : 0} y={Y(44.6)} width={4} height={Y(55.4) - Y(44.6)} fill="white" />
           </g>
         ))}
         {ends ? (
           <>
-            <text x={X(25)} y={16} fill="#fff" fontSize={SIZE.label} fontWeight={600} textAnchor="middle">
+            <text x={X(25)} y={16} fill="white" fontSize={SIZE.label} fontWeight={600} textAnchor="middle">
               ← {ends.left}
             </text>
-            <text x={X(75)} y={16} fill="#fff" fontSize={SIZE.label} fontWeight={600} textAnchor="middle">
+            <text x={X(75)} y={16} fill="white" fontSize={SIZE.label} fontWeight={600} textAnchor="middle">
               {ends.right} →
             </text>
           </>
@@ -87,7 +87,7 @@ export function FullPitchScatter({
           return (
             <MarkTip key={i} tip={tips?.[i]?.join(' · ') ?? ''}>
               {goal ? (
-                <circle cx={X(x)} cy={Y(y)} r={8} fill="#fff" stroke={colour} strokeWidth={4} />
+                <circle cx={X(x)} cy={Y(y)} r={8} fill="white" stroke={colour} strokeWidth={4} />
               ) : (
                 <circle cx={X(x)} cy={Y(y)} r={on ? 5.5 : 5} fill={on ? colour : 'none'} stroke={colour} strokeWidth={2} />
               )}

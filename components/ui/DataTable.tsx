@@ -89,6 +89,13 @@ export interface Column<Row> {
   /** A result column: a tone chip, then the rest in `ink-secondary`. */
   tone?: (row: Row) => 'good' | 'bad' | null;
   /**
+   * A CATEGORICAL colour on the value itself — golf's under par / over par.
+   * Not a result (`tone` draws a W/L chip) and not a rank (`heat` tints by
+   * where the value sits in its pool): the value is good or bad by
+   * definition, whatever the rest of the column holds. (U6.)
+   */
+  ink?: (row: Row) => 'good' | 'bad' | null;
+  /**
    * Last 5 / Last 10 squares, drawn by the chart grammar's own `StreakStrip`
    * so there is one implementation of "a run of binary outcomes" in the app.
    * `null` inside `outcomes` is a real third state: the game happened but has
@@ -133,6 +140,13 @@ export interface DataTableProps<Row> {
   rowClassName?: (row: Row) => string | undefined;
   className?: string;
   maxHeight?: number;
+  /**
+   * A header row ABOVE the columns, for a table that compares two sides
+   * ("His arsenal" over two columns, "Faced" over two). Spans must add up to
+   * the column count. The group row scrolls away; the column row stays
+   * sticky. (U6, finding U-7.)
+   */
+  columnGroups?: Array<{ label: ReactNode; span: number }>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -188,6 +202,7 @@ export function DataTable<Row>({
   className,
   maxHeight,
   rowClassName,
+  columnGroups,
 }: DataTableProps<Row>) {
   const compact = density === 'compact' || (density === undefined && dense === true);
   const [sort, setSort] = useState<{ key: string; desc: boolean } | null>(initialSort ?? null);
@@ -321,6 +336,7 @@ export function DataTable<Row>({
             const share = isTotals ? null : (c.bar?.(row) ?? null);
             const leads = !isTotals && leaders.get(c.key) === row;
             const tone = isTotals ? null : (c.tone?.(row) ?? null);
+            const ink = c.ink?.(row) ?? null;
             const run = isTotals ? null : (c.streak?.(row) ?? null);
 
             let style: CSSProperties | undefined;
@@ -401,6 +417,8 @@ export function DataTable<Row>({
                     ) : (
                       '—'
                     )
+                  ) : ink ? (
+                    <span className={cx('font-semibold', ink === 'good' ? 'text-good' : 'text-bad')}>{v ?? '—'}</span>
                   ) : (
                     (v ?? '—')
                   )}
@@ -430,6 +448,20 @@ export function DataTable<Row>({
         <table className="w-full border-collapse">
           <caption className="sr-only">{caption}</caption>
           <thead>
+            {columnGroups ? (
+              <tr>
+                {columnGroups.map((g, i) => (
+                  <th
+                    key={i}
+                    scope="colgroup"
+                    colSpan={g.span}
+                    className={cx('border-b border-line-soft bg-card-sunk pt-1.5 text-overline uppercase text-ink-muted', i === 0 ? firstPad : cellPad, i === 0 ? 'text-left' : 'text-right')}
+                  >
+                    {g.label}
+                  </th>
+                ))}
+              </tr>
+            ) : null}
             <tr className={bandH}>
               {columns.map((c, i) => {
                 const sortable = c.sortable !== false;
@@ -468,7 +500,7 @@ export function DataTable<Row>({
                           <span className={cx(active ? 'text-ink' : 'fg-quaternary')}>{active ? ARROW(sort!.desc) : SORT_ICON}</span>
                         </button>
                       ) : (
-                        <span title={c.title}>{c.label}</span>
+                        <Tooltip content={c.title}><span>{c.label}</span></Tooltip>
                       )}
                       {c.info ? (
                         <Tooltip content={<div className="max-w-[240px]">{c.info}</div>}>

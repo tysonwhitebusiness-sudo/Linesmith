@@ -66,13 +66,13 @@ function LoginForm() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-paper px-4">
       <div className="lb-card w-full max-w-sm p-6">
-        <h1 className="text-[20px] font-semibold text-ink">{mode === 'signIn' ? 'Sign in' : 'Create an account'}</h1>
-        <p className="mt-1 text-[13px] text-ink-muted">
+        <h1 className="text-heading font-semibold text-ink">{mode === 'signIn' ? 'Sign in' : 'Create an account'}</h1>
+        <p className="mt-1 text-body-sm text-ink-muted">
           {mode === 'signIn' ? 'Welcome back to Linesmith.' : 'Your picks, bets, and watchlist stay yours once you sign up.'}
         </p>
 
         {checkEmail ? (
-          <div className="mt-5 rounded-lg border border-line bg-accent-soft/40 p-3 text-[13px] text-ink">
+          <div className="mt-5 rounded-lg border border-line bg-accent-soft/40 p-3 text-body-sm text-ink">
             Check <strong>{email}</strong> for a confirmation link, then sign in.
           </div>
         ) : (
@@ -94,7 +94,7 @@ function LoginForm() {
               />
             </Field>
 
-            {error ? <p className="text-[12px] text-bad">{error}</p> : null}
+            {error ? <p className="text-label font-normal text-bad">{error}</p> : null}
 
             {/* U spec 2c: `lg` on login — 44px is the touch floor. */}
             <Button type="submit" variant="primary" size="lg" loading={loading} className="w-full">

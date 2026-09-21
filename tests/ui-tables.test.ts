@@ -21,15 +21,10 @@ import { OUT_OF_SCOPE, code } from './ui-scope';
  */
 
 const ALLOWED: Record<string, { count: number; why: string }> = {
-  // U6 sweeps diagnostics last, exactly as the U spec sequences it.
-  'app/diagnostics/page.tsx': { count: 11, why: 'U6 sweeps diagnostics last' },
-  // The leaderboard and three hole grids. The kit page proves `compact` + `heat`
-  // + a par row works for the grids; moving the real ones is U6's page sweep.
-  'components/GolfScheduleView.tsx': { count: 4, why: 'leaderboard + 3 hole grids — U6' },
-  // Needs a grouped header row; see the note above.
-  'components/PlayerRoleSections.tsx': { count: 1, why: 'grouped header (colSpan) — DataTable has none' },
-  // Needs a per-cell gradient wash; see the note above.
-  'components/PlayerDetail.tsx': { count: 1, why: 'golf scorecard gradient wash — DataTable heat is a flat tint' },
+  // U6 closed this ratchet: diagnostics' eleven, golf's four, the pitch
+  // table (DataTable gained `columnGroups`, U-7) and the golf scorecard (par
+  // TONE rather than a gradient wash, U-8). Empty on purpose — a new
+  // hand-rolled <table> fails immediately.
 };
 
 function sources(): string[] {

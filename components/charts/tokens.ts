@@ -104,3 +104,11 @@ export function volumeInk(t: number): string {
  * should be grouped, not given a seventh colour.
  */
 export const CATEGORICAL = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300'] as const;
+
+/**
+ * A football card is its colour: red and yellow are the object itself, not a
+ * tone, so they live here with the other fixed chart hues rather than in the
+ * semantic palette.
+ */
+export const CARD_RED = '#d0312d';
+export const CARD_YELLOW = '#e8b90c';

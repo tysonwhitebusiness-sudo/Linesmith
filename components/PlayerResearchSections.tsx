@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
-import { Avatar, Card, Chip, cx, DataTable, EmptyState, ErrorState, LeagueStripRow, PickList, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column } from './ui';
+import { Avatar, Card, Chip, cx, DataTable, EmptyState, ErrorState, LeagueStripRow, PickList, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column, Tooltip } from './ui';
 import { CATEGORICAL, CourtScatter, FieldLanes, FieldScatter, FullPitchScatter, Histogram, MatchTimeline, PitchScatter, RinkScatter, SeriesChart, SIDE_COLOR, SplitDumbbell, SprayScatter, StreakStrip, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import {
@@ -162,9 +162,7 @@ export function PlayerHero({ bio, bioState, research, researchState, fallbackNam
                   <div className="mt-3 text-overline uppercase text-ink-muted">Last {hero.lastFive.length}</div>
                   <div className="mt-1 flex gap-1">
                     {hero.lastFive.map((g) => (
-                      <span
-                        key={(g.date ?? '') + g.opponent}
-                        title={`${g.date ? `${shortDate(g.date)} ` : ''}${g.opponent}${g.result ? ` · ${g.result}` : g.mark ? ` · ${g.mark}` : ''}`}
+                      <Tooltip key={(g.date ?? '') + g.opponent} content={`${g.date ? `${shortDate(g.date)} ` : ''}${g.opponent}${g.result ? ` · ${g.result}` : g.mark ? ` · ${g.mark}` : ''}`}><span
                         className={cx(
                           // A mark ("-4") can be two characters, so the chip grows rather than clips.
                           'grid h-6 min-w-6 place-items-center rounded-ctl px-1 text-label font-semibold tabular-nums',
@@ -176,7 +174,7 @@ export function PlayerHero({ bio, bioState, research, researchState, fallbackNam
                         )}
                       >
                         {g.result ?? g.mark ?? '·'}
-                      </span>
+                      </span></Tooltip>
                     ))}
                   </div>
                 </>
@@ -191,10 +189,10 @@ export function PlayerHero({ bio, bioState, research, researchState, fallbackNam
       {hero && hero.tiles.length ? (
         <dl className="mt-4 grid grid-cols-3 gap-x-4 gap-y-3 border-t border-line-soft pt-4 sm:grid-cols-4 lg:grid-cols-6">
           {hero.tiles.map((t) => (
-            <div key={t.label} title={t.info}>
+            <Tooltip key={t.label} content={t.info}><div>
               <dt className="text-overline uppercase text-ink-muted">{t.label}</dt>
               <dd className="mt-0.5 text-title tabular-nums text-ink">{t.value}</dd>
-            </div>
+            </div></Tooltip>
           ))}
         </dl>
       ) : researchState.loading ? (

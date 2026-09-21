@@ -20,7 +20,7 @@ export function PropOddsBoard({
 }) {
   const rows = rowsFor(allRows, subjectId, marketKey, line);
   if (rows.length === 0) {
-    return <p className="text-[12px] text-ink-muted">No prices fetched yet for this market/line.</p>;
+    return <p className="text-label font-normal text-ink-muted">No prices fetched yet for this market/line.</p>;
   }
 
   const byBook = new Map<string, { over?: PropOddsRow; under?: PropOddsRow }>();
@@ -49,7 +49,7 @@ export function PropOddsBoard({
       {sorted.map(([book, { over, under }]) => (
         <li
           key={book}
-          className={`flex items-center justify-between gap-2 rounded-md px-2 py-1 text-[12px] transition-all duration-150 hover:-translate-y-px hover:shadow-[0_6px_16px_-6px_rgba(0,0,0,0.35)] ${book === userSportsbook ? 'bg-accent-soft' : 'hover:bg-surface-subtle'}`}
+          className={`flex items-center justify-between gap-2 rounded-md px-2 py-1 text-label font-normal transition-all duration-150 hover:-translate-y-px hover:shadow-[0_6px_16px_-6px_rgba(0,0,0,0.35)] ${book === userSportsbook ? 'bg-accent-soft' : 'hover:bg-surface-subtle'}`}
         >
           <span className={`flex items-center gap-1.5 ${book === userSportsbook ? 'font-semibold text-masters' : 'text-ink-muted'}`}>
             {book === userSportsbook ? '★' : null}
@@ -60,19 +60,19 @@ export function PropOddsBoard({
             {over ? (
               <OddsChip price={over.americanOdds} source={over.providerId} side="O" capturedAt={over.fetchedAt} isDelayed={over.isDelayed} delaySeconds={over.delaySeconds} />
             ) : (
-              <span className="text-ink-muted text-[11px]">—</span>
+              <span className="text-ink-muted text-overline font-normal tracking-normal">—</span>
             )}
             {under ? (
               <OddsChip price={under.americanOdds} source={under.providerId} side="U" capturedAt={under.fetchedAt} isDelayed={under.isDelayed} delaySeconds={under.delaySeconds} />
             ) : (
-              <span className="text-ink-muted text-[11px]">—</span>
+              <span className="text-ink-muted text-overline font-normal tracking-normal">—</span>
             )}
           </span>
         </li>
       ))}
     </ul>
     {summary ? (
-      <p className={`mt-1.5 text-[9.5px] ${coverage.stale > 0 ? 'text-warn' : 'text-ink-muted'}`}>{summary}</p>
+      <p className={`mt-1.5 text-overline font-normal tracking-normal ${coverage.stale > 0 ? 'text-warn' : 'text-ink-muted'}`}>{summary}</p>
     ) : null}
     </>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { Card, Chip, DataTable } from './ui';
+import { Card, Chip, DataTable, Tooltip } from './ui';
 import { BookLogo, bookLabel } from './BookLogo';
 import { fmt } from './charts/tokens';
 import { relativeAge } from '@/lib/odds/priceFreshness';
@@ -91,9 +91,9 @@ export function PlayerOddsSection({
                 ) : r.kind === 'yes-no' ? (
                   <span className="text-ink-muted">yes</span>
                 ) : (
-                  <span className="text-ink-muted" title="No book quotes both sides of any line">
+                  <Tooltip content={"No book quotes both sides of any line"}><span className="text-ink-muted">
                     alternates {r.availableLines.length > 1 ? `${r.availableLines[0]}–${r.availableLines[r.availableLines.length - 1]}` : r.availableLines[0]}
-                  </span>
+                  </span></Tooltip>
                 ),
             },
             { key: 'over', label: 'Best over', numeric: true, sortValue: (r) => r.over?.americanOdds, render: (r) => <Quote q={r.over} /> },
@@ -115,9 +115,9 @@ export function PlayerOddsSection({
 function Quote({ q }: { q: PlayerPriceQuote | null }) {
   if (!q) return <span className="text-ink-muted">—</span>;
   return (
-    <span className="inline-flex items-center justify-end gap-1.5" title={`${bookLabel(q.bookmaker)}, ${new Date(q.capturedAt).toLocaleString()}`}>
+    <Tooltip content={`${bookLabel(q.bookmaker)}, ${new Date(q.capturedAt).toLocaleString()}`}><span className="inline-flex items-center justify-end gap-1.5">
       <span className="font-semibold text-ink">{fmt.american(q.americanOdds)}</span>
       <BookLogo bookId={q.bookmaker} size={14} />
-    </span>
+    </span></Tooltip>
   );
 }

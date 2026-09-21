@@ -47,7 +47,7 @@ export interface GamesStripProps {
 export function GamesStrip({ games, selectedGamePk, onSelectGame, onNavigateToGame, logoFor }: GamesStripProps) {
   if (games.length === 0) {
     return (
-      <div className="border-t border-line bg-ink/[0.02] py-2 text-center text-[11px] text-ink-muted">
+      <div className="border-t border-line bg-ink/[0.02] py-2 text-center text-overline font-normal tracking-normal text-ink-muted">
         No games scheduled
       </div>
     );
@@ -95,14 +95,14 @@ export function GamesStrip({ games, selectedGamePk, onSelectGame, onNavigateToGa
                 : 'border border-line text-ink-muted hover:border-masters/30 hover:bg-card',
             )}
           >
-            <span className="flex items-center gap-1 text-[11px] font-semibold">
+            <span className="flex items-center gap-1 text-overline tracking-normal font-semibold">
               {logoFor ? (
                 <TeamMark logoUrl={logoFor(awayAbbrev)} />
               ) : game.awayTeamId ? (
                 <TeamMark teamId={game.awayTeamId} />
               ) : null}
               <span>{awayAbbrev}</span>
-              <span className="text-[9px] font-normal text-ink-muted">@</span>
+              <span className="text-overline tracking-normal font-normal text-ink-muted">@</span>
               <span>{homeAbbrev}</span>
               {logoFor ? (
                 <TeamMark logoUrl={logoFor(homeAbbrev)} />
@@ -111,7 +111,7 @@ export function GamesStrip({ games, selectedGamePk, onSelectGame, onNavigateToGa
               ) : null}
             </span>
 
-            <span className="text-[10px]">
+            <span className="text-overline font-normal tracking-normal">
               {isLive ? (
                 <span className="inline-flex items-center gap-1 font-semibold text-good">
                   <span className="inline-block h-1.5 w-1.5 animate-lb-pulse rounded-full bg-good" />

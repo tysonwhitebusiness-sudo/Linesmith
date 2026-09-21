@@ -57,10 +57,10 @@ const SOURCE_LABEL: Record<string, string> = {
 function OddsProvenance({ pick }: { pick: PickRow }) {
   if (!pick.americanOdds) return null;
   if (pick.bookmaker) {
-    return <BookLogo bookId={pick.bookmaker} size={13} withLabel className="text-[10px]" />;
+    return <BookLogo bookId={pick.bookmaker} size={13} withLabel className="text-overline font-normal tracking-normal" />;
   }
   const label = pick.oddsSource ? (SOURCE_LABEL[pick.oddsSource] ?? (bookLabel(pick.oddsSource) || pick.oddsSource)) : null;
-  return label ? <span className="text-[10px] text-ink-muted">{label}</span> : null;
+  return label ? <span className="text-overline font-normal tracking-normal text-ink-muted">{label}</span> : null;
 }
 
 function OddsField({ pick, onSetOdds }: { pick: PickRow; onSetOdds: SlipModalProps['onSetOdds'] }) {
@@ -114,8 +114,8 @@ function ScanLegRow({
   return (
     <li className="lb-card flex items-center gap-2 p-2.5">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[13px] font-semibold">{matchedName}</p>
-        <p className="truncate text-[11px] text-ink-muted">
+        <p className="truncate text-body-sm font-semibold">{matchedName}</p>
+        <p className="truncate text-overline font-normal tracking-normal text-ink-muted">
           Screenshot said “{dimensionLabel} {categoryLabel}” @ {americanOdds}
         </p>
         {options.length > 1 ? (
@@ -128,7 +128,7 @@ function ScanLegRow({
             options={options.map((c) => ({ value: `${c.dimension}:${c.category}`, label: `${c.dimensionLabel} — ${c.categoryLabel}` }))}
           />
         ) : (
-          <p className="mt-0.5 text-[11px] text-ink-muted">
+          <p className="mt-0.5 text-overline font-normal tracking-normal text-ink-muted">
             Attach to: {selected.dimensionLabel} — {selected.categoryLabel}
           </p>
         )}
@@ -295,7 +295,7 @@ export function SlipModal({
                 {importing ? 'Reading your screenshot…' : 'Scan a bet slip'}
               </Button>
             </FileTrigger>
-            <p className="mt-1.5 text-center text-[11px] text-ink-muted">
+            <p className="mt-1.5 text-center text-overline font-normal tracking-normal text-ink-muted">
               Reads odds from a screenshot you took. Never connects to a sportsbook.
             </p>
           </div>
@@ -369,7 +369,7 @@ export function SlipModal({
                           <MarketLabel sport={sport} dimension={pick.dimension} category={pick.category} />
                         </p>
                         {(counts.get(pick.subjectId) ?? 0) > 1 ? (
-                          <p className="mt-1 text-[11px] text-warn">Same subject appears more than once on this slip.</p>
+                          <p className="mt-1 text-overline font-normal tracking-normal text-warn">Same subject appears more than once on this slip.</p>
                         ) : null}
                       </div>
                     </div>
@@ -381,7 +381,7 @@ export function SlipModal({
                       {pick.americanOdds ? (
                         <OddsProvenance pick={pick} />
                       ) : (
-                        <span className="text-[10px] font-semibold text-warn">Needs odds — enter manually</span>
+                        <span className="text-overline tracking-normal font-semibold text-warn">Needs odds — enter manually</span>
                       )}
                     </div>
                   </div>

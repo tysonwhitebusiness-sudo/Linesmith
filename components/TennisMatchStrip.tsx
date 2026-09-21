@@ -23,7 +23,7 @@ export function TennisMatchStrip({ matches, onSelectMatch }: { matches: DrawMatc
 
   if (relevant.length === 0) {
     return (
-      <div className="border-t border-line bg-ink/[0.02] py-2 text-center text-[11px] text-ink-muted">
+      <div className="border-t border-line bg-ink/[0.02] py-2 text-center text-overline font-normal tracking-normal text-ink-muted">
         No live or upcoming matches in this draw
       </div>
     );
@@ -42,16 +42,16 @@ export function TennisMatchStrip({ matches, onSelectMatch }: { matches: DrawMatc
             className="h-auto w-[190px] flex-col justify-center gap-1 rounded-card border border-line px-2.5 py-1.5 text-left font-normal shadow-card ring-0 hover:border-masters/30 hover:bg-card hover:shadow-card-hover"
           >
             <span className="flex items-center justify-between gap-1">
-              {m.state === 'in' ? <Chip tone="live" size="sm">Live</Chip> : <span className="text-[9px] font-semibold uppercase tracking-wide text-ink-muted">{m.round}</span>}
-              {scoreLine ? <span className="text-[10px] font-bold tabular-nums text-ink">{scoreLine}</span> : null}
+              {m.state === 'in' ? <Chip tone="live" size="sm">Live</Chip> : <span className="text-overline font-semibold uppercase tracking-wide text-ink-muted">{m.round}</span>}
+              {scoreLine ? <span className="text-overline tracking-normal font-bold tabular-nums text-ink">{scoreLine}</span> : null}
             </span>
             <span className="flex items-center gap-1.5">
               <SubjectAvatar name={m.home.name} headshotUrl={undefined} fallbackUrl={m.home.flagUrl ?? undefined} size={16} />
-              <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-ink">{m.home.name}</span>
+              <span className="min-w-0 flex-1 truncate text-overline tracking-normal font-medium text-ink">{m.home.name}</span>
             </span>
             <span className="flex items-center gap-1.5">
               <SubjectAvatar name={m.away.name} headshotUrl={undefined} fallbackUrl={m.away.flagUrl ?? undefined} size={16} />
-              <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-ink">{m.away.name}</span>
+              <span className="min-w-0 flex-1 truncate text-overline tracking-normal font-medium text-ink">{m.away.name}</span>
             </span>
           </Button>
         );

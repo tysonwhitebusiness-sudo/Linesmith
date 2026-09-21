@@ -73,7 +73,7 @@ export function ZoneScatter({
               {mark != null ? (
                 <g>
                   <circle cx={X(x)} cy={Y(z)} r={10} fill={colorOf.get(group) ?? INK3} stroke="oklch(var(--card))" strokeWidth={2} />
-                  <text x={X(x)} y={Y(z) + 3.5} fill="#fff" fontSize={10} fontWeight={700} textAnchor="middle">
+                  <text x={X(x)} y={Y(z) + 3.5} fill="white" fontSize={10} fontWeight={700} textAnchor="middle">
                     {mark}
                   </text>
                 </g>

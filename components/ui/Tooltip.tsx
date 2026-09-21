@@ -67,6 +67,9 @@ export function Tooltip({ content, children, maxWidth = 280 }: TooltipProps) {
   }, [open]);
 
   if (!isValidElement(children)) return children;
+  // No content, no tooltip: U6 moved conditional native `title`s here, and a
+  // `title={x ? '…' : undefined}` must not turn into a focusable empty tip.
+  if (content == null || content === '' || content === false) return children;
   const child = children as ReactElement<Record<string, unknown>>;
   const props = child.props as Record<string, unknown>;
 

@@ -105,7 +105,7 @@ export function TopBar({
         {/* Wordmark and Diagnostics drop below `sm`: at 400px the bar was 31px
             wider than the screen on every page, so phones scrolled sideways.
             The mark stays as the identity; Diagnostics is an admin tool. */}
-        <span className="hidden select-none text-[15px] font-semibold tracking-tight text-ink sm:inline">
+        <span className="hidden select-none text-body font-semibold tracking-tight text-ink sm:inline">
           Linesmith
         </span>
         {/* U3: the kit Select — a button trigger and a popover list, so the

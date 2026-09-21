@@ -2,6 +2,7 @@
 
 import { SubjectAvatar } from './SubjectAvatar';
 
+import { Tooltip } from '@/components/ui';
 /**
  * Shared percentile-comparison primitives — originally built inside
  * `PitchingMatchupCard.tsx` for its two-pitcher comparison, extracted here so
@@ -65,13 +66,12 @@ export function PercentileRing({
         </span>
       ) : null}
       {percentile != null ? (
-        <span
+        <Tooltip content={`${percentile}th percentile overall`}><span
           className="absolute -bottom-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-card px-1 text-label font-bold text-white"
           style={{ backgroundColor: color }}
-          title={`${percentile}th percentile overall`}
         >
           {percentile}
-        </span>
+        </span></Tooltip>
       ) : null}
     </span>
   );

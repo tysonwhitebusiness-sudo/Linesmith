@@ -72,7 +72,7 @@ export function BookLogo({ bookId, size = 14, withLabel = false, className = '' 
   if (!bookId) return null;
 
   if (!url || failed) {
-    return <span className={`text-[10px] font-medium text-ink-muted ${className}`}>{bookLabel(bookId)}</span>;
+    return <span className={`text-overline tracking-normal font-medium text-ink-muted ${className}`}>{bookLabel(bookId)}</span>;
   }
 
   return (
@@ -87,7 +87,7 @@ export function BookLogo({ bookId, size = 14, withLabel = false, className = '' 
         onError={() => setFailed(true)}
         className="shrink-0 rounded-xs object-contain"
       />
-      {withLabel ? <span className="text-[10px] text-ink-muted">{bookLabel(bookId)}</span> : null}
+      {withLabel ? <span className="text-overline font-normal tracking-normal text-ink-muted">{bookLabel(bookId)}</span> : null}
     </span>
   );
 }
