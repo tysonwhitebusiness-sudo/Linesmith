@@ -41,8 +41,7 @@ import {
   Tabs,
   Tag,
   Tooltip,
-  cx,
-} from '@/components/ui';
+  cx, DisclosureBar } from '@/components/ui';
 import { KitTables } from './KitTables';
 import { bandColors, bandGradient } from '@/lib/sports/shared/teamColors';
 import { TEAM_COLOR_SAMPLES, VIKINGS } from '@/lib/sports/shared/teamColorSamples';
@@ -688,10 +687,15 @@ export default function KitPage() {
           <PercentileCell value="—" percentile={null} />
         </Row>
         <Row name="Collapse · peek" note="once per viewer; not remembered; never with reduced motion">
-          <div className="w-full max-w-md rounded-card border border-line-soft">
-            <Button variant="tertiary" className="w-full justify-between" aria-expanded={heroOpen} aria-controls="kit-collapse" onPress={() => setHeroOpen((v) => !v)}>
-              2026 season & form <span>{heroOpen ? 'Hide ▴' : 'Show ▾'}</span>
-            </Button>
+          <div className="w-full max-w-md overflow-hidden rounded-card border border-line-soft">
+            {/* C2: DisclosureBar — the player and team heroes' summary bar. */}
+            <DisclosureBar
+              label="2026 season & form"
+              summary={<span><b className="text-ink">548</b> rush yds</span>}
+              open={heroOpen}
+              onToggle={() => setHeroOpen((v) => !v)}
+              controls="kit-collapse"
+            />
             <Collapse id="kit-collapse" open={heroOpen} peek="lb.kitPeekSeen">
               <div className="grid grid-cols-2 gap-3 p-3">
                 <PercentileCell value="548 yds" percentile={76} align="left" />

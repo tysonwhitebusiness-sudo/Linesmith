@@ -30,6 +30,7 @@ import type {
   ResearchSplitRow,
 } from './playerResearchShapes';
 import { formatResearchValue } from './playerResearchShapes';
+import { rankTiles, type PlayerPool } from './playerPool';
 import { seasonForDate, seasonLabel, seasonScope } from './season';
 
 export type Agg = (games: readonly PlayerGame[]) => number | null;
@@ -66,6 +67,13 @@ export interface ResearchSpec {
   resultSplits?: boolean;
   /** Where a game log row links. `null` when the sport has no game page for that id. */
   gameHref?: (game: PlayerGame) => string | null;
+  /**
+   * C2.1: one game's stat line for the hero's form rows, in the sport's own
+   * shorthand ("14 car · 38 yds", "2-4 · HR · 3 RBI"). Keys are
+   * `player_game_history`'s, the same the Specials receipts print from
+   * (`slate_rankings.detail_line`).
+   */
+  formLine?: (game: PlayerGame) => string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -233,7 +241,14 @@ function splitRows(spec: ResearchSpec, scoped: readonly PlayerGame[], scopeLabel
   return rows;
 }
 
-export function buildPlayerResearch(input: { sport: HistorySport; history: PlayerHistory; spec: ResearchSpec; now?: Date }): PlayerResearchData | null {
+export function buildPlayerResearch(input: {
+  sport: HistorySport;
+  history: PlayerHistory;
+  spec: ResearchSpec;
+  now?: Date;
+  /** C2.1: the position group's season pool, for tile ranks. Absent = no ranks. */
+  pool?: PlayerPool | null;
+}): PlayerResearchData | null {
   const { sport, history, spec } = input;
   const now = input.now ?? new Date();
   const all = history.games.filter(spec.played ?? (() => true));
@@ -252,10 +267,17 @@ export function buildPlayerResearch(input: { sport: HistorySport; history: Playe
     scopeReason = scopeSeason !== current ? `No games held for ${seasonLabel(sport, scope.season)}; this shows ${seasonLabel(sport, scopeSeason)}, the latest held.` : null;
   }
   const scoped = all.filter((g) => g.season === scopeSeason);
-  const scopeLabel =
+  // C2: the label is the season alone. How much of the current season exists
+  // moved to `scopeChip`, beside it, rather than a parenthesis inside it.
+  const scopeLabel = `${seasonLabel(sport, scopeSeason)} season`;
+
+  // The chip is the reason in a few words: which season is really under way,
+  // and how little of it there is yet.
+  const scopeChip =
     scopeSeason !== current && currentGames.length > 0
-      ? `${seasonLabel(sport, scopeSeason)} season (${seasonLabel(sport, current)}: ${currentGames.length} ${currentGames.length === 1 ? 'game' : 'games'})`
-      : `${seasonLabel(sport, scopeSeason)} season`;
+      ? `${seasonLabel(sport, current)}: ${currentGames.length} ${currentGames.length === 1 ? 'game' : 'games'} so far`
+      : null;
+  const ranks = rankTiles(spec.tiles, input.pool, scopeSeason, history.athleteId);
 
   const restBefore = new Map<string, number | null>();
   all.forEach((g, i) => restBefore.set(g.eventId, i === 0 ? null : daysBetween(all[i - 1].date, g.date)));
@@ -293,10 +315,23 @@ export function buildPlayerResearch(input: { sport: HistorySport; history: Playe
     hero: {
       scopeLabel,
       scopeReason,
+      scopeChip,
       record: recordOf(scoped),
       games: scoped.length,
-      lastFive: scoped.slice(-5).map((g) => ({ date: g.date, opponent: `${g.isHome === false ? '@' : 'vs'} ${opponentLabel(g)}`, result: g.result })),
-      tiles: spec.tiles.map((c) => ({ label: c.label, value: formatResearchValue(scoped.length ? c.of(scoped) : null, c), ...(c.info ? { info: c.info } : {}) })),
+      lastFive: scoped.slice(-5).map((g) => ({
+        date: g.date,
+        opponent: `${g.isHome === false ? '@' : 'vs'} ${opponentLabel(g)}`,
+        result: g.result,
+        opponentAbbr: g.opponent.abbr ?? null,
+        opponentLogo: g.opponent.logoUrl,
+        line: spec.formLine ? spec.formLine(g) : null,
+      })),
+      tiles: spec.tiles.map((c, i) => ({
+        label: c.label,
+        value: formatResearchValue(scoped.length ? c.of(scoped) : null, c),
+        ...(c.info ? { info: c.info } : {}),
+        ...(ranks[i] ? { rank: ranks[i] } : {}),
+      })),
     },
     seasons: { columns: spec.seasonColumns.map(strip), rows: seasonRows, caption: null },
     trends: {

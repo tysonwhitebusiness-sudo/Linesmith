@@ -154,7 +154,8 @@ test('builder: one NFL game into a season opens on last season, and says why', (
   const h = historyFrom('nfl-chase', 'nfl');
   const data = buildPlayerResearch({ sport: 'nfl', history: h, spec: footballResearchSpec('nfl', null, h.games), now: new Date(AT) })!;
   assert.equal(data.kind, 'receiver');
-  assert.equal(data.hero.scopeLabel, '2025-26 season (2026-27: 1 game)');
+  assert.equal(data.hero.scopeLabel, '2025-26 season');
+  assert.equal(data.hero.scopeChip, '2026-27: 1 game so far');
   assert.match(data.hero.scopeReason ?? '', /2026-27 is 1 game old, so this shows 2025-26/);
   assert.equal(data.splits.defaultSeason, 2025);
 });

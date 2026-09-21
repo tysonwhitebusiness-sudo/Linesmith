@@ -17,6 +17,7 @@
  * already take.
  */
 
+import type { PlayerPool } from '@/lib/sports/shared/playerPool';
 import { liveLinePricing } from '@/lib/sports/shared/liveLine';
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
@@ -334,8 +335,8 @@ export function toPlayerDetailData(input: NflPlayerDetailInput): PlayerDetailDat
  * The columns are this sport's `playerResearchSpec.ts`; the work is
  * `buildPlayerResearch`, shared by every sport.
  */
-export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date; targets?: NflTargetsInput }): PlayerResearchData | null {
-  const research = buildPlayerResearch({ sport: 'nfl', history: input.history, spec: footballResearchSpec('nfl', input.bio, input.history.games), now: input.now });
+export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date; pool?: PlayerPool | null; targets?: NflTargetsInput }): PlayerResearchData | null {
+  const research = buildPlayerResearch({ sport: 'nfl', history: input.history, spec: footballResearchSpec('nfl', input.bio, input.history.games), now: input.now, pool: input.pool });
   // NFL's own section (R6.2). The role is the player's, not the market's: a
   // quarterback's chart is what he threw and a receiver's what was thrown to
   // him, and the page renders either without a line.

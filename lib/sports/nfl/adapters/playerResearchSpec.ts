@@ -9,6 +9,7 @@
  * second copy: the sport differs in which columns exist, not in what they mean.
  */
 
+import { quarterbackLine, receiverLine, rusherLine } from '@/lib/sports/shared/formLine';
 import type { PlayerBio, PlayerGame } from '@/lib/sports/shared/playerResearchShapes';
 import { col, count, games, genericResearchSpec, logCol, one, perGame, ratio, stat, sumOf, total, type Agg, type ResearchSpec } from '@/lib/sports/shared/playerResearch';
 
@@ -43,6 +44,7 @@ function quarterback(sport: Football): ResearchSpec {
   const yds = total('passing.passingYards');
   return {
     kind: 'quarterback',
+    formLine: quarterbackLine,
     gameHref: href(sport),
     tiles: [
       col('g', 'G', games()),
@@ -51,9 +53,9 @@ function quarterback(sport: Football): ResearchSpec {
       col('cp', 'Cmp %', ratio(cmp, att, 100), 1, { format: 'percent' }),
       col('y', 'Pass yds', yds),
       col('td', 'Pass TD', total('passing.passingTouchdowns')),
-      col('int', 'INT', total('passing.interceptions')),
+      col('int', 'INT', total('passing.interceptions'), 0, { leader: 'low' }),
       col('ya', 'Y / A', ratio(yds, att), 1),
-      ...(nfl ? [col('rt', 'QB rating', avgOf('passing.QBRating'), 1, { info: 'Average of game ratings' }), col('sk', 'Sacks', total('passing.sacks'))] : []),
+      ...(nfl ? [col('rt', 'QB rating', avgOf('passing.QBRating'), 1, { info: 'Average of game ratings' }), col('sk', 'Sacks', total('passing.sacks'), 0, { leader: 'low' })] : []),
       col('ry', 'Rush yds', total('rushing.rushingYards')),
       col('rtd', 'Rush TD', total('rushing.rushingTouchdowns')),
     ],
@@ -102,6 +104,7 @@ function receiver(sport: Football): ResearchSpec {
   const yds = total('receiving.receivingYards');
   return {
     kind: 'receiver',
+    formLine: receiverLine,
     gameHref: href(sport),
     tiles: [
       col('g', 'G', games()),
@@ -159,6 +162,7 @@ function rusher(sport: Football): ResearchSpec {
   const scrimmage: Agg = (gs) => sumOf(gs, (g) => (g.stats['rushing.rushingYards'] == null && g.stats['receiving.receivingYards'] == null ? null : (stat(g, 'rushing.rushingYards') ?? 0) + (stat(g, 'receiving.receivingYards') ?? 0)));
   return {
     kind: 'running back',
+    formLine: rusherLine,
     gameHref: href(sport),
     tiles: [
       col('g', 'G', games()),

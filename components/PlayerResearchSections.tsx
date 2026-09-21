@@ -2,7 +2,11 @@
 
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
-import { Avatar, Card, Chip, cx, DataTable, ResultMark, EmptyState, ErrorState, LeagueStripRow, PickList, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column, Tooltip } from './ui';
+import { bandColors, bandGradient, type TeamColor } from '@/lib/sports/shared/teamColors';
+import type { TileRank } from '@/lib/sports/shared/playerPool';
+import { heatFill, heatInk } from '@/lib/ui/heat';
+import { TeamLogo } from './SubjectAvatar';
+import { Avatar, Card, Chip, Collapse, cx, DisclosureBar, DataTable, ResultMark, EmptyState, ErrorState, LeagueStripRow, PickList, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column, Tooltip } from './ui';
 import { CATEGORICAL, CourtScatter, FieldLanes, FieldScatter, FullPitchScatter, Histogram, MatchTimeline, PitchScatter, RinkScatter, SeriesChart, SIDE_COLOR, SplitDumbbell, SprayScatter, StreakStrip, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import {
@@ -59,6 +63,18 @@ function valueColumns<Row extends { values: Record<string, number | string | nul
 // Hero
 // ---------------------------------------------------------------------------
 
+/** C2.1: the hero's "NEXT" block, as data. `PlayerDetail` builds it from today's game. */
+export interface HeroNext {
+  homeAway: '@' | 'vs';
+  opponent: { name: string | null; abbr: string | null; logoUrl: string | null };
+  /** ISO start time, printed "Sun 3:05 PM". */
+  startsAt: string | null;
+  /** The venue or the game's status, printed after the time. */
+  detail: string | null;
+  /** While the game is on: "BAL 3 – NYY 2 · Top 5", shown instead of the time. */
+  live: string | null;
+}
+
 export interface PlayerHeroProps {
   bio: PlayerBio | null;
   bioState: LoadState;
@@ -67,131 +83,225 @@ export interface PlayerHeroProps {
   /** What to call the player before the bio lands, or when the league does not know the id. */
   fallbackName: string | null;
   teamHref: string | null;
-  /** "@ MIN · 6:40 PM · Scheduled", from today's candidate when there is one. */
-  nextGame: ReactNode;
+  /** Today's game, when there is one. */
+  next: HeroNext | null;
+  /** The player's team colours (`teamColor()`), or null: golf, tennis, or not loaded yet. The band is charcoal then. */
+  colors: TeamColor | null;
+}
+
+const HERO_PEEK_KEY = 'lb.heroPeekSeen';
+
+function heroWhen(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' }).replace(',', '');
+}
+
+/** "34th of 142 RB". */
+function rankLine(r: TileRank): string {
+  const n = r.rank;
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th');
+  return `${n}${suffix} of ${r.of} ${r.pool}`;
 }
 
 /**
- * The hero — R6.3 rework (mockup `docs/design/hero-live/index.html`, variant C5).
+ * The hero — C2 (mockup `docs/design/card-redesign-2026-09-21.html` §2).
  *
- * WHAT WAS WRONG, MEASURED at 1440 on 2026-09-15: the card was 1416 x 332 with a
- * 448px fact list at one edge, a 220px season block at the other and ~700px of
- * nothing between them, because the facts were a label-left / value-right list
- * inside a narrow column. The tile strip then ran 11 wide and wrapped to 10 + 1
- * at the width the operator actually uses.
- *
- * So: the headshot sits with the name and team, the facts run the FULL width of
- * the left block beneath them as label-above-value cells, and the season panel
- * is a real right-hand column with the record and the last five games. The tiles
- * sit on a fixed grid (6 / 4 / 3) so a row is never left with one orphan.
+ * A team-colour band (charcoal where a sport has no team, or a team's colours
+ * cannot carry white text), the headshot hanging below it, the bio as one
+ * line, and a summary bar that opens the season tiles and the last five
+ * games. The body starts closed and peeks open once per viewer. Every part is
+ * data: no sport is named here, and a sport that lacks a piece leaves it out.
  */
-export function PlayerHero({ bio, bioState, research, researchState, fallbackName, teamHref, nextGame }: PlayerHeroProps) {
+export function PlayerHero({ bio, bioState, research, researchState, fallbackName, teamHref, next, colors }: PlayerHeroProps) {
   const name = bio?.name ?? fallbackName;
-  const facts: Array<[string, string]> = [
-    ...(bio?.age != null ? [['Age', String(bio.age)] as [string, string]] : []),
-    ...(bio?.facts ?? []).map((f) => [f.label, f.value] as [string, string]),
-  ];
   const hero = research?.hero;
-  return (
-    <section aria-label={name ?? 'Player'} className="rounded-card-hero border border-line-soft bg-card p-5 shadow-card">
-      <div className="grid grid-cols-1 gap-x-6 gap-y-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-        <div className="min-w-0">
-          <div className="flex items-start gap-4">
-            {bioState.loading && !bio ? (
-              <Skeleton w={76} h={76} round="rounded-xl" />
-            ) : (
-              <Avatar label={name ?? 'Player'} src={bio?.headshotUrl ?? undefined} fallbackSrc={bio?.team?.logoUrl ?? undefined} size={76} rounded />
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-heading text-ink">{name ?? (bioState.loading ? <Skeleton w={180} h={22} /> : 'Unknown player')}</h1>
-                {bio?.jersey ? <Chip>#{bio.jersey}</Chip> : null}
-                {bio?.positionAbbr || bio?.position ? <Chip>{bio.positionAbbr ?? bio.position}</Chip> : null}
-              </div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-body-sm text-ink-secondary">
-                {bio?.team ? (
-                  <>
-                    {bio.team.logoUrl ? <Avatar kind="logo" label={bio.team.name ?? 'Team'} src={bio.team.logoUrl} size={22} decorative /> : null}
-                    {teamHref ? (
-                      <Link href={teamHref} className="font-medium text-ink underline-offset-2 hover:underline">
-                        {bio.team.name}
-                      </Link>
-                    ) : (
-                      <span className="font-medium text-ink">{bio.team.name}</span>
-                    )}
-                  </>
-                ) : null}
-                {nextGame}
-              </div>
-              {bio?.injury ? (
-                <div role="status" className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-ctl border border-bad/25 bg-bad/5 px-2.5 py-1 text-body-sm text-ink">
-                  <span className="font-semibold text-bad-ink">{bio.injury.status}</span>
-                  {bio.injury.detail ? <span>{bio.injury.detail}</span> : null}
-                  {bio.injury.returnDate ? <span className="text-ink-muted">· expected back {shortDate(bio.injury.returnDate)}</span> : null}
-                  {bio.injury.date ? <span className="text-ink-muted">· reported {shortDate(bio.injury.date)}</span> : null}
-                </div>
-              ) : null}
-            </div>
-          </div>
-          {facts.length ? (
-            <dl className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
-              {facts.map(([label, value]) => (
-                // A long value (a birthplace) takes two cells rather than
-                // wrapping its own row and dragging the grid taller.
-                <div key={label} className={value.length > 34 ? 'col-span-2' : undefined}>
-                  <dt className="text-overline uppercase text-ink-muted">{label}</dt>
-                  <dd className="mt-0.5 text-body-sm tabular-nums text-ink">{value}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : null}
-          {bioState.error && !bio ? <ErrorState className="mt-3" message={bioState.error} onRetry={bioState.reload} /> : null}
-        </div>
+  const band = bandColors(colors);
+  const [open, setOpen] = useState(false);
+  const [peeking, setPeeking] = useState(false);
+  const bodyId = 'player-hero-body';
+  const facts: Array<{ label: string; value: string }> = [
+    ...(bio?.age != null ? [{ label: 'Age', value: String(bio.age) }] : []),
+    ...(bio?.facts ?? []),
+  ];
+  const position = bio?.positionAbbr ?? bio?.position ?? null;
+  const tiles = hero?.tiles ?? [];
+  // The bar's two numbers: the first ranked tiles, else the first tiles after
+  // the games count (which is never ranked, so it never leads).
+  const ranked = tiles.filter((t) => t.rank);
+  const summary = (ranked.length >= 2 ? ranked : [...ranked, ...tiles.slice(1).filter((t) => !t.rank)]).slice(0, 2);
+  const hasBody = Boolean(hero && tiles.length);
 
-        <div className="lg:border-l lg:border-line-soft lg:pl-5">
-          {hero ? (
+  return (
+    <section aria-label={name ?? 'Player'} className="overflow-hidden rounded-card-hero border border-line-soft bg-card shadow-card">
+      <div className="relative flex min-h-[150px] flex-wrap items-end gap-5 overflow-hidden px-6 pb-[18px] pt-5 text-white min-[900px]:flex-nowrap" style={{ background: bandGradient(band) }}>
+        {bio?.team?.logoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={bio.team.logoUrl} alt="" aria-hidden className="pointer-events-none absolute -right-[30px] -top-10 size-[260px] object-contain opacity-[.14]" />
+        ) : null}
+        <div className="relative z-[1] min-[900px]:-mb-11">
+          {bioState.loading && !bio ? (
+            <Skeleton w={132} h={132} round="rounded-full" />
+          ) : (
             <>
-              <div className="text-overline uppercase text-ink-muted">{hero.scopeLabel}</div>
-              <div className="mt-0.5 text-title text-ink">
-                {hero.games} {hero.games === 1 ? (hero.unit?.one ?? 'game') : (hero.unit?.many ?? 'games')}
-              </div>
-              {hero.record ? <div className="text-label text-ink-secondary">{hero.record} in games played</div> : null}
-              {hero.scopeReason ? <div className="mt-0.5 text-label text-ink-muted">{hero.scopeReason}</div> : null}
-              {hero.lastFive.length ? (
-                <>
-                  <div className="mt-3 text-overline uppercase text-ink-muted">Last {hero.lastFive.length}</div>
-                  <div className="mt-1 flex gap-1">
-                    {hero.lastFive.map((g) => (
-                      <Tooltip key={(g.date ?? '') + g.opponent} content={`${g.date ? `${shortDate(g.date)} ` : ''}${g.opponent}${g.result ? ` · ${g.result}` : g.mark ? ` · ${g.mark}` : ''}`}><span>
-                        <ResultMark
-                          result={g.result ?? (g.tone === 'good' ? 'W' : g.tone === 'bad' ? 'L' : null)}
-                          mark={g.result ? undefined : (g.mark ?? undefined)}
-                          label={`${g.opponent}${g.result ? ` ${g.result}` : g.mark ? ` ${g.mark}` : ''}`}
-                        />
-                      </span></Tooltip>
-                    ))}
-                  </div>
-                </>
-              ) : null}
+              <span className="hidden min-[900px]:block">
+                <Avatar label={name ?? 'Player'} src={bio?.headshotUrl ?? undefined} fallbackSrc={bio?.team?.logoUrl ?? undefined} size={132} ring />
+              </span>
+              <span className="min-[900px]:hidden">
+                <Avatar label={name ?? 'Player'} src={bio?.headshotUrl ?? undefined} fallbackSrc={bio?.team?.logoUrl ?? undefined} size={96} ring decorative />
+              </span>
             </>
-          ) : researchState.loading ? (
-            <Skeleton w={160} h={14} />
-          ) : null}
+          )}
         </div>
+        <div className="relative z-[1] min-w-0 flex-1">
+          <h1 className="text-display text-white">{name ?? (bioState.loading ? <Skeleton w={220} h={30} /> : 'Unknown player')}</h1>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {position ? (
+              band.accent ? (
+                <span className="rounded-full px-[9px] py-[3px] text-label font-semibold" style={{ background: band.accent.bg, color: band.accent.ink }}>
+                  {position}
+                </span>
+              ) : (
+                <Chip tone="onColor">{position}</Chip>
+              )
+            ) : null}
+            {bio?.jersey ? <Chip tone="onColor">#{bio.jersey}</Chip> : null}
+            {bio?.team?.name ? (
+              teamHref ? (
+                <Link href={teamHref} className="rounded-full underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-white">
+                  <Chip tone="onColor">{bio.team.name}</Chip>
+                </Link>
+              ) : (
+                <Chip tone="onColor">{bio.team.name}</Chip>
+              )
+            ) : null}
+            {bio ? (
+              bio.injury ? (
+                <Chip tone="bad">{bio.injury.status}</Chip>
+              ) : (
+                <Chip tone="onColor">Healthy</Chip>
+              )
+            ) : null}
+          </div>
+        </div>
+        {next ? (
+          <div className="relative z-[1] w-full text-body-sm min-[900px]:w-auto min-[900px]:text-right">
+            <div className="text-overline uppercase text-white/70">Next</div>
+            <div className="flex items-center gap-2 text-body font-semibold min-[900px]:justify-end">
+              <span>{next.homeAway}</span>
+              {next.opponent.logoUrl ? <TeamLogo logoUrl={next.opponent.logoUrl} size={26} /> : null}
+              <span>{next.opponent.name ?? next.opponent.abbr}</span>
+            </div>
+            <div className="text-white/80">{next.live ?? [heroWhen(next.startsAt), next.detail].filter(Boolean).join(' · ')}</div>
+          </div>
+        ) : null}
       </div>
 
-      {hero && hero.tiles.length ? (
-        <dl className="mt-4 grid grid-cols-3 gap-x-4 gap-y-3 border-t border-line-soft pt-4 sm:grid-cols-4 lg:grid-cols-6">
-          {hero.tiles.map((t) => (
-            <Tooltip key={t.label} content={t.info}><div>
-              <dt className="text-overline uppercase text-ink-muted">{t.label}</dt>
-              <dd className="mt-0.5 text-title tabular-nums text-ink">{t.value}</dd>
-            </div></Tooltip>
+      {bio?.injury && (bio.injury.detail || bio.injury.returnDate) ? (
+        <div role="status" className="border-b border-line-soft bg-bad/5 px-6 py-2 text-body-sm text-ink min-[900px]:pl-[176px]">
+          <span className="font-semibold text-bad-ink">{bio.injury.status}</span>
+          {bio.injury.detail ? <span> · {bio.injury.detail}</span> : null}
+          {bio.injury.returnDate ? <span className="text-ink-muted"> · expected back {shortDate(bio.injury.returnDate)}</span> : null}
+        </div>
+      ) : null}
+
+      {facts.length ? (
+        <dl className="flex flex-wrap gap-x-[18px] gap-y-1.5 px-6 py-3 text-body-sm text-ink-secondary min-[900px]:pl-[176px]">
+          {facts.map((f) => (
+            <div key={f.label} className="flex gap-1">
+              <dt>{f.label}</dt>
+              <dd className="font-semibold text-ink">{f.value}</dd>
+            </div>
           ))}
         </dl>
+      ) : (
+        <div className="h-3 min-[900px]:h-12" />
+      )}
+      {bioState.error && !bio ? <ErrorState className="mx-6 mb-3" message={bioState.error} onRetry={bioState.reload} /> : null}
+
+      {hasBody && hero ? (
+        <>
+          <DisclosureBar
+            label={<>{hero.scopeLabel} &amp; form</>}
+            open={open}
+            onToggle={() => setOpen((o) => !o)}
+            controls={bodyId}
+            nudge={peeking}
+            summary={
+              <>
+                {summary.map((t, i) => (
+                  <span key={t.label}>
+                    <b className="text-body tabular-nums text-ink">{t.value}</b> {t.label}
+                    {i === 0 && t.rank ? <span className="ml-1 text-label font-semibold text-good-ink">{rankLine(t.rank)}</span> : null}
+                  </span>
+                ))}
+                {hero.lastFive.length ? (
+                  <span aria-hidden className="flex gap-[3px]">
+                    {hero.lastFive.map((g, i) => (
+                      <i key={i} className={cx('size-2 rounded-[2px]', g.result === 'L' || g.tone === 'bad' ? 'bg-bad' : g.result === 'W' || g.tone === 'good' ? 'bg-good' : 'bg-line')} />
+                    ))}
+                  </span>
+                ) : null}
+              </>
+            }
+          />
+          <Collapse open={open} id={bodyId} peek={HERO_PEEK_KEY} onPeek={setPeeking} className={cx('border-t', open ? 'border-line-soft' : 'border-transparent')}>
+            <div className="grid grid-cols-1 min-[900px]:grid-cols-[minmax(0,1fr)_300px]">
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-2 px-6 pt-3.5">
+                  <span className="text-overline uppercase text-ink-muted">{hero.scopeLabel}</span>
+                  {hero.scopeChip ? <Chip>{hero.scopeChip}</Chip> : null}
+                </div>
+                <dl className="grid grid-cols-2 gap-2.5 px-6 py-4 min-[900px]:grid-cols-4">
+                  {tiles.map((t) => (
+                    <div key={t.label} className="relative overflow-hidden rounded-[10px] border border-line-soft bg-card-sunk px-3 py-2.5">
+                      <dt className="text-overline uppercase text-ink-muted">
+                        {t.info ? (
+                          <Tooltip content={t.info}>
+                            <span className="underline decoration-dotted underline-offset-2">{t.label}</span>
+                          </Tooltip>
+                        ) : (
+                          t.label
+                        )}
+                      </dt>
+                      <dd className="mt-0.5 text-heading font-bold tabular-nums text-ink">{t.value}</dd>
+                      {t.rank ? (
+                        <>
+                          <dd className="mt-1 text-label font-semibold" style={{ color: heatInk(t.rank.percentile / 100) }}>
+                            {rankLine(t.rank)}
+                          </dd>
+                          <span aria-hidden className="absolute bottom-0 left-0 h-[3px]" style={{ width: `${Math.max(4, t.rank.percentile)}%`, background: heatFill(t.rank.percentile / 100) }} />
+                        </>
+                      ) : null}
+                    </div>
+                  ))}
+                </dl>
+              </div>
+              <div className="border-t border-line-soft px-5 py-4 min-[900px]:border-l min-[900px]:border-t-0">
+                <div className="text-overline uppercase text-ink-muted">Last {hero.lastFive.length}</div>
+                {hero.record ? <div className="mb-3 mt-1 text-body-sm text-ink-secondary">{hero.record} in games played</div> : <div className="mb-3" />}
+                <ul className="flex flex-col gap-1.5">
+                  {hero.lastFive.map((g) => (
+                    <li key={(g.date ?? '') + g.opponent} className="grid grid-cols-[22px_26px_minmax(0,1fr)_auto] items-center gap-2 text-body-sm">
+                      <ResultMark
+                        result={g.result ?? (g.tone === 'good' ? 'W' : g.tone === 'bad' ? 'L' : null)}
+                        mark={g.result ? undefined : (g.mark ?? undefined)}
+                        label={`${g.opponent}${g.result ? ` ${g.result}` : g.mark ? ` ${g.mark}` : ''}`}
+                      />
+                      {g.opponentLogo ? <Avatar kind="logo" label={g.opponentAbbr ?? g.opponent} src={g.opponentLogo} size={22} decorative /> : <span />}
+                      <span className="truncate text-ink">{g.opponent}</span>
+                      <span className="tabular-nums text-ink-secondary">{g.line ?? (g.date ? shortDate(g.date) : '')}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </Collapse>
+        </>
       ) : researchState.loading ? (
-        <div className="mt-4 border-t border-line-soft pt-4">
-          <Skeleton h={40} />
+        <div className="border-t border-line-soft px-6 py-3">
+          <Skeleton h={18} />
         </div>
       ) : null}
     </section>

@@ -12,6 +12,7 @@
  * `seasonAggregateSpecs.ts`). Tournament level comes from TennisMyLife in R6.4.
  */
 
+import { tennisLine } from '@/lib/sports/shared/formLine';
 import type { PlayerGame } from '@/lib/sports/shared/playerResearchShapes';
 import { col, count, games, logCol, one, perGame, ratio, stat, total, type Agg, type ResearchSpec } from '@/lib/sports/shared/playerResearch';
 
@@ -22,6 +23,7 @@ const losses: Agg = count((g) => g.result === 'L');
 export function tennisResearchSpec(tour: 'atp' | 'wta'): ResearchSpec {
   return {
     kind: 'player',
+    formLine: tennisLine,
     venueSplits: false,
     // Every stat is conditional on the result in tennis, so an "in wins" row only restates the win.
     resultSplits: false,

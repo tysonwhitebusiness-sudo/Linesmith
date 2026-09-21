@@ -8,6 +8,7 @@
  * for NBA yet. `propOddsBoard` is real and independent of history.
  */
 
+import type { PlayerPool } from '@/lib/sports/shared/playerPool';
 import { liveLinePricing } from '@/lib/sports/shared/liveLine';
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
@@ -285,9 +286,10 @@ export function toPlayerResearchData(input: {
   history: PlayerHistory;
   bio: PlayerBio | null;
   now?: Date;
+  pool?: PlayerPool | null;
   shots?: NbaShotsInput;
 }): PlayerResearchData | null {
-  const research = buildPlayerResearch({ sport: 'nba', history: input.history, spec: NBA_SPEC, now: input.now });
+  const research = buildPlayerResearch({ sport: 'nba', history: input.history, spec: NBA_SPEC, now: input.now, pool: input.pool });
   if (!research || !input.shots) return research;
   return { ...research, sections: [nbaShotSection({ ...input.shots, scopeSeason: research.splits.defaultSeason })] };
 }

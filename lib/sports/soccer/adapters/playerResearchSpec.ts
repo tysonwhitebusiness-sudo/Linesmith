@@ -6,6 +6,7 @@
  * here pretends a per-appearance rate is a per-90 one.
  */
 
+import { keeperLine, soccerLine } from '@/lib/sports/shared/formLine';
 import type { PlayerBio, PlayerGame } from '@/lib/sports/shared/playerResearchShapes';
 import { col, count, logCol, one, perGame, ratio, stat, total, type ResearchSpec } from '@/lib/sports/shared/playerResearch';
 
@@ -14,6 +15,7 @@ const href = (league: 'epl' | 'mls') => (g: PlayerGame) => `/soccer/${league}/ga
 function outfield(league: 'epl' | 'mls'): ResearchSpec {
   return {
     kind: 'outfield player',
+    formLine: soccerLine,
     gameHref: href(league),
     tiles: [
       col('app', 'Apps', total('appearances')),
@@ -78,15 +80,16 @@ function keeper(league: 'epl' | 'mls'): ResearchSpec {
   const cleanSheet = (g: PlayerGame) => (stat(g, 'appearances') ?? 0) > 0 && stat(g, 'goalsConceded') === 0;
   return {
     kind: 'goalkeeper',
+    formLine: keeperLine,
     gameHref: href(league),
     tiles: [
       col('app', 'Apps', total('appearances')),
       col('sv', 'Saves', saves),
-      col('ga', 'Goals conceded', conceded),
+      col('ga', 'Goals conceded', conceded, 0, { leader: 'low' }),
       col('svp', 'Save %', savePct, 1, { format: 'percent', info: 'Saves / (saves + goals conceded)' }),
       col('cs', 'Clean sheets', count(cleanSheet)),
       col('svpg', 'Saves / app', perGame('saves'), 1),
-      col('gapg', 'GA / app', perGame('goalsConceded'), 2),
+      col('gapg', 'GA / app', perGame('goalsConceded'), 2, { leader: 'low' }),
     ],
     seasonColumns: [
       col('app', 'Apps', total('appearances')),

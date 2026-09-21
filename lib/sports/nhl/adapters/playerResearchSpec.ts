@@ -5,6 +5,7 @@
  * averaged over games with a faceoff taken, as G2 did.
  */
 
+import { skaterLine } from '@/lib/sports/shared/formLine';
 import type { PlayerBio, PlayerGame } from '@/lib/sports/shared/playerResearchShapes';
 import { col, count, games, logCol, one, perGame, ratio, stat, total, type Agg, type ResearchSpec } from '@/lib/sports/shared/playerResearch';
 
@@ -23,6 +24,7 @@ const faceoffPct: Agg = (gs) => {
 
 export const NHL_SKATER_SPEC: ResearchSpec = {
   kind: 'skater',
+  formLine: skaterLine,
   restSplits: true,
   gameHref,
   tiles: [
@@ -92,7 +94,7 @@ export const NHL_GOALIE_SPEC: ResearchSpec = {
   tiles: [
     col('gp', 'GP', games()),
     col('svp', 'SV %', svPct, 3, { format: 'rate3' }),
-    col('gaa', 'GAA', gaa, 2),
+    col('gaa', 'GAA', gaa, 2, { leader: 'low' }),
     col('sv', 'Saves', total('saves')),
     col('sa', 'Shots against', total('shotsAgainst')),
     col('ga', 'GA', total('goalsAgainst')),

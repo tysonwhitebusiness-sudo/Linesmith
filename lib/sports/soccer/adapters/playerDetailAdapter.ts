@@ -27,6 +27,7 @@
  * `propOddsBoard` is real and independent of history, same as before.
  */
 
+import type { PlayerPool } from '@/lib/sports/shared/playerPool';
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { soccerResearchSpec } from './playerResearchSpec';
@@ -358,11 +359,12 @@ export function toPlayerResearchData(input: {
   history: PlayerHistory;
   bio: PlayerBio | null;
   now?: Date;
+  pool?: PlayerPool | null;
   understat?: SoccerChancesInput;
 }): PlayerResearchData | null {
   const league = input.history.sport === 'soccer_mls' ? 'mls' : 'epl';
   const spec = soccerResearchSpec(league, input.bio, input.history.games);
-  const research = buildPlayerResearch({ sport: input.history.sport, history: input.history, spec, now: input.now });
+  const research = buildPlayerResearch({ sport: input.history.sport, history: input.history, spec, now: input.now, pool: input.pool });
   if (!research) return research;
   // A keeper's shot list is his own goals and deflections, not his work
   // (Pickford: one shot, an own goal), so he gets the state G2 gives him.

@@ -14,6 +14,7 @@
  * `awayAbbr`/`homeAbbr`.
  */
 
+import type { PlayerPool } from '@/lib/sports/shared/playerPool';
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
 import { tennisResearchSpec } from './playerResearchSpec';
@@ -295,6 +296,7 @@ export function toPlayerResearchData(input: {
   history: PlayerHistory;
   bio: PlayerBio | null;
   now?: Date;
+  pool?: PlayerPool | null;
   archive?: TennisSurfaceInput;
 }): PlayerResearchData | null {
   const tour = input.history.sport === 'tennis_wta' ? 'wta' : 'atp';
@@ -304,7 +306,7 @@ export function toPlayerResearchData(input: {
   // that means nothing on a neutral court. Dropping it empties both venue
   // groups, so the split stops being offered at all.
   const history: PlayerHistory = { ...input.history, games: input.history.games.map((g) => ({ ...g, isHome: null })) };
-  const research = buildPlayerResearch({ sport: history.sport, history, spec: tennisResearchSpec(tour), now: input.now });
+  const research = buildPlayerResearch({ sport: history.sport, history, spec: tennisResearchSpec(tour), now: input.now, pool: input.pool });
   if (!research || !input.archive) return research;
   // The archive names every opponent; `player_game_history` can name only
   // 66% of them through `athlete_crosswalk` (66,134 of 100,468 rows, measured

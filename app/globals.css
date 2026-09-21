@@ -497,6 +497,12 @@
 }
 
 /* C0 `Collapse` peek (C2.4): open a little, hold, close — once per viewer. */
+/* C2.4: the hero's chevron dips while the body peeks. */
+@keyframes lb-nudge {
+  0%, 100% { transform: translateY(0); }
+  32%, 62% { transform: translateY(3px); }
+}
+
 @keyframes lb-peek {
   0% { max-height: 0; }
   32% { max-height: 96px; }

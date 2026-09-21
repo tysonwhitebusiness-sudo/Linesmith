@@ -5,6 +5,7 @@
  * numbers matter is the reader's call, not a position filter's.
  */
 
+import { nbaLine } from '@/lib/sports/shared/formLine';
 import type { PlayerGame } from '@/lib/sports/shared/playerResearchShapes';
 import { col, games, logCol, one, perGame, ratio, stat, sumOf, total, type Agg, type ResearchSpec } from '@/lib/sports/shared/playerResearch';
 
@@ -24,6 +25,7 @@ const madeOf = (made: string, att: string) => (g: PlayerGame) => (g.stats[att] =
 
 export const NBA_SPEC: ResearchSpec = {
   kind: 'player',
+  formLine: nbaLine,
   restSplits: true,
   gameHref: (g) => `/nba/game/${encodeURIComponent(g.eventId)}`,
   tiles: [
@@ -39,7 +41,7 @@ export const NBA_SPEC: ResearchSpec = {
     col('ts', 'TS %', trueShooting, 1, { format: 'percent', info: 'True shooting: points per shooting possession (FGA + 0.44 FTA)' }),
     col('stl', 'STL', perGame('steals'), 1),
     col('blk', 'BLK', perGame('blocks'), 1),
-    col('tov', 'TOV', perGame('turnovers'), 1),
+    col('tov', 'TOV', perGame('turnovers'), 1, { leader: 'low' }),
     col('pm', '+/-', perGame('plusMinus'), 1),
   ],
   seasonColumns: [

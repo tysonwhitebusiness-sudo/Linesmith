@@ -14,6 +14,7 @@
  * and independent of history, same as every other sport's adapter.
  */
 
+import type { PlayerPool } from '@/lib/sports/shared/playerPool';
 import { liveLinePricing } from '@/lib/sports/shared/liveLine';
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
@@ -308,9 +309,9 @@ export function toPlayerDetailData(input: CfbPlayerDetailInput): PlayerDetailDat
  * The columns are this sport's `playerResearchSpec.ts`; the work is
  * `buildPlayerResearch`, shared by every sport.
  */
-export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date }): PlayerResearchData | null {
+export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date; pool?: PlayerPool | null }): PlayerResearchData | null {
   const spec = footballResearchSpec('cfb', input.bio, input.history.games);
-  const research = buildPlayerResearch({ sport: 'cfb', history: input.history, spec, now: input.now });
+  const research = buildPlayerResearch({ sport: 'cfb', history: input.history, spec, now: input.now, pool: input.pool });
   // College play-by-play is not ingested, so a quarterback's efficiency
   // section says so rather than being absent (R6.2, G2's own CFB state).
   return research && spec.kind === 'quarterback' ? { ...research, sections: [cfbEfficiencySection()] } : research;

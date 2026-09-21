@@ -28,6 +28,7 @@
  * JSX inside `PlayerDetail.tsx`.
  */
 
+import type { PlayerPool } from '@/lib/sports/shared/playerPool';
 import { liveLineHit } from '@/lib/sports/shared/liveLine';
 import type { PlayerBio, PlayerHistory, PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
@@ -769,9 +770,9 @@ export { isOk };
  * The columns are this sport's `playerResearchSpec.ts`; the work is
  * `buildPlayerResearch`, shared by every sport.
  */
-export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date; statcast?: MlbStatcastInput }): PlayerResearchData | null {
+export function toPlayerResearchData(input: { history: PlayerHistory; bio: PlayerBio | null; now?: Date; pool?: PlayerPool | null; statcast?: MlbStatcastInput }): PlayerResearchData | null {
   const spec = mlbResearchSpec(input.bio, input.history.games);
-  const research = buildPlayerResearch({ sport: 'mlb', history: input.history, spec, now: input.now });
+  const research = buildPlayerResearch({ sport: 'mlb', history: input.history, spec, now: input.now, pool: input.pool });
   if (!research || !input.statcast) return research;
   // MLB's own sections: the hitter's contact quality (R6.1b), the pitcher's arsenal (R6.1c).
   const season = input.history.games.filter((g) => g.season === input.statcast!.season);

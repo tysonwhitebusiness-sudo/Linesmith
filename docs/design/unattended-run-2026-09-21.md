@@ -52,7 +52,7 @@ authorised.
 | 2 | **C0** Electric Turf + `-ink` tokens, one ESPN team-colour source, kit pieces | C | 1 | no | **done** |
 | 3 | **C1** Charcoal section bands: research pages and EVERY Slate section, **Movers included** | C | 2 | no | **done** |
 | 4 | **PY-A** Shared Python phase: C5's grading (`hit_rule`, `__leader__` rows, `outcome.detail`, `_read`), the three new Specials (MLB longest HR, NFL longest reception, NHL 2+ goals), the park-orientation table, and F0's Python half (`kind` = special/spotlight; every row carries player/team/game ids) | C+S | — | **yes** | **done** |
-| 5 | **C2** Player hero | C | 3 | no | — |
+| 5 | **C2** Player hero | C | 3 | no | **done** |
 | 5b | **C2b** Team hero: the **same rework as the player hero** (operator, 2026-09-21). `TeamHero` in `components/TeamResearchPage.tsx:171`: team-colour band from `bandColors()`, logo (no headshot) with the same ring and overhang, logo watermark, chip row (conference/division, standing), NEXT game on the right with the opponent logo, ranked tiles with percentile bars (from the team pool `teamResearchSpec` already ranks against), opponent-logo form rows (the existing `hero.lastTen`), and the same collapsible body with the one-time peek (its own `lb.teamHeroPeekSeen` key). One data change: add `rank` to the team hero's tiles, the same shape as C2.1. No `sport ===`. | C | 5 | no | — |
 | 6 | **PY-B** Spotlight rankings in Python: NFL, NBA, NHL first (A2), then CFB, soccer, MLB, incl. the eight new ideas N1–N8 where each sport holds the data | S | 4 | **yes** | — |
 | 7 | **C3** Player search rail | C | 5 | no | — |

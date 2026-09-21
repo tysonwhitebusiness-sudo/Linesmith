@@ -51,6 +51,9 @@ const DB_MODULES = [
   // R10.5: the Players tab's slate-independent list. Its types are declared in
   // the same file but imported `import type` by the hook, which is erased.
   '@/lib/sports/shared/playerIndexServer',
+  // C2.1: the hero's rank pool read. Its types and the ranking live in
+  // `playerPool.ts`, which is what the builder and the hook import.
+  '@/lib/sports/shared/playerPoolServer',
   // R5d: NFL team target map read. Types live in `teamTargetShapes.ts`.
   '@/lib/sports/nfl/teamTargets',
   // R6.1a: the player page's history and bio readers. Types and the pure
@@ -166,6 +169,8 @@ const SELF = [
   'lib/sports/shared/compareServer.ts',
   // R10.5: every sport's player list, the same reason again.
   'lib/sports/shared/playerIndexServer.ts',
+  // C2.1: every rollup sport's position pools, the same reason again.
+  'lib/sports/shared/playerPoolServer.ts',
 ];
 
 function walk(dir: string): string[] {

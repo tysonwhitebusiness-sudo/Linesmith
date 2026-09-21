@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { PlayerComparePayload, PlayerPeersPayload } from '@/lib/sports/shared/compareShapes';
 import { isTeamProductionSport } from '@/lib/sports/shared/teamProductionShapes';
+import type { PlayerPool } from '@/lib/sports/shared/playerPool';
 
 /**
  * The compare control's fetch — R10. Idle for a sport with no team rollups
@@ -116,4 +117,33 @@ export function useCompareTeams(sport: string | null) {
     };
   }, [active, sport]);
   return teams;
+}
+
+/**
+ * C2.1 — the season pool the hero's tiles are ranked in (`/api/player-pool`).
+ * Null until it loads and for sports with no rollup (golf, tennis); the hero
+ * then shows its tiles without ranks, which is also what it did before C2.
+ */
+export function usePlayerPool(sport: string | null, athleteId: string | null): PlayerPool | null {
+  const [pool, setPool] = useState<PlayerPool | null>(null);
+  const active = !!sport && isTeamProductionSport(sport) && !!athleteId;
+  useEffect(() => {
+    if (!active) {
+      setPool(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/player-pool?sport=${encodeURIComponent(String(sport))}&athleteId=${encodeURIComponent(String(athleteId))}`)
+      .then((res) => (res.ok ? (res.json() as Promise<{ pool: PlayerPool | null }>) : { pool: null }))
+      .then((j) => {
+        if (!cancelled) setPool(j.pool ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setPool(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active, sport, athleteId]);
+  return pool;
 }

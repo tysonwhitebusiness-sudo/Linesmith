@@ -7,9 +7,12 @@ import { GameStateCard } from './GameStateCard';
 import { PlayerOddsSection } from './PlayerOddsSection';
 import { playerPriceRows } from '@/lib/odds/props/playerPrices';
 import { usePlayerBio, usePlayerHistory } from './usePlayerResearch';
-import { GameLogCard, PlayerHero, ResearchSectionBody, SeasonsCard, SourcesCard, SplitsCard, TrendsCard, asOfText } from './PlayerResearchSections';
+import { GameLogCard, PlayerHero, ResearchSectionBody, SeasonsCard, SourcesCard, SplitsCard, TrendsCard, asOfText, type HeroNext } from './PlayerResearchSections';
+import { useTeamColors } from './useTeamColors';
+import { teamColor } from '@/lib/sports/shared/teamColors';
+import type { PlayerPool } from '@/lib/sports/shared/playerPool';
 import { CompareSection } from './CompareSection';
-import { usePlayerCompare, usePlayerPeers } from './usePlayerCompare';
+import { usePlayerCompare, usePlayerPeers, usePlayerPool } from './usePlayerCompare';
 import { useTeamShotProfile } from './useTeamShotProfile';
 import { useNflTeamTargets } from './useNflTeamTargets';
 import { useMlbTeamStatcastSeason } from './useMlbTeamStatcastSeason';
@@ -728,12 +731,14 @@ function toResearchData(
     tennisSurface?: TennisSurfaceInput;
     nbaShots?: NbaShotsInput;
     nhlShots?: NhlShotMapInput;
+    /** C2.1: the position group's season pool, for the hero's tile ranks. */
+    pool?: PlayerPool | null;
   },
 ): PlayerResearchData | null {
   // Golf reads its own tables (R6.6); every other sport needs its history.
   if (sport === 'golf') return extras.golf ? toGolfPlayerResearchData({ bio, golf: extras.golf }) : null;
   if (!history) return null;
-  const input = { history, bio };
+  const input = { history, bio, pool: extras.pool };
   switch (sport) {
     case 'mlb':
       return toMlbPlayerResearchData({ ...input, statcast: extras.mlbStatcast });
@@ -1111,6 +1116,11 @@ export function PlayerDetail({
       error: statcastForSection.error,
     };
   }, [researchSport, historyState.data, statcastNowSeason, sportSectionSeason, statcastForSection, mlbPlayerId]);
+  // C2: the hero's rank pool and team colours. Both idle where a sport has none.
+  const playerPool = usePlayerPool(historySport, researchAthleteId);
+  const teamColorIndex = useTeamColors(researchSport ?? '', researchLeague);
+  const heroTeam = bioState.data?.team ?? null;
+  const heroColors = heroTeam ? teamColor(teamColorIndex, { id: heroTeam.id, abbr: heroTeam.abbr }) : null;
   const research = useMemo(
     () =>
       researchSport && (historyState.data || golfInput)
@@ -1122,9 +1132,10 @@ export function PlayerDetail({
             tennisSurface,
             nbaShots: nbaShotsInput,
             nhlShots: nhlShotsInput,
+            pool: playerPool,
           })
         : null,
-    [researchSport, historyState.data, bioState.data, golfInput, mlbStatcastInput, nflTargetsInput, soccerChances, tennisSurface, nbaShotsInput, nhlShotsInput],
+    [researchSport, historyState.data, bioState.data, golfInput, mlbStatcastInput, nflTargetsInput, soccerChances, tennisSurface, nbaShotsInput, nhlShotsInput, playerPool],
   );
   // The opponent compare opens on: the URL's, else today's opponent from the
   // slate, else the last team he played. `meta.opponentId` is the slate's, so it
@@ -1454,7 +1465,7 @@ export function PlayerDetail({
   const renderPage = (
     propBlock: React.ReactNode,
     propSub: React.ReactNode,
-    nextGame: React.ReactNode,
+    next: HeroNext | null,
     oddsCards: { movement: React.ReactNode; books: React.ReactNode; gameLine: React.ReactNode } | null,
     live: React.ReactNode,
   ) => {
@@ -1490,7 +1501,8 @@ export function PlayerDetail({
           researchState={historyState}
           fallbackName={subject.name ?? active?.subjectName ?? null}
           teamHref={bioState.data?.team?.id ? teamHrefFor(subject.sport, subject.league ?? null, bioState.data.team.id) : null}
-          nextGame={nextGame}
+          next={next}
+          colors={heroColors}
         />
         <SectionNav items={navItems} top={stickyTop} label="Player sections" />
         {/* C4 sits between the hero and the prop block, and only while a game
@@ -1642,28 +1654,19 @@ export function PlayerDetail({
 
   // Today's game and the market in view, now that the hero is the player's (R6.1a).
   const live = data.gameState?.status === 'live' ? data.gameState : null;
-  const nextGame = data.subject.opponentAbbr ? (
-    <span className="inline-flex items-center gap-1.5">
-      <span>{meta.isHome === true ? 'vs' : '@'}</span>
-      {/* No `abbreviation`: the text beside it is the abbreviation, and a failed
-          logo printed it twice ("@ HOU HOU", found rendering R6.3). */}
-      <TeamLogo logoUrl={data.subject.opponentLogoUrl} size={14} />
-      <span>{data.subject.opponentAbbr}</span>
-      {live ? (
-        // While the game is on, the hero shows the score rather than a start
-        // time, and the live section below carries the detail.
-        <Chip tone="live">
-          {live.away.abbr} {live.away.score ?? '—'} – {live.home.abbr} {live.home.score ?? '—'}
-          {live.periodLabel ? ` · ${live.periodLabel}` : ''}
-        </Chip>
-      ) : (
-        <>
-          {data.subject.gameStartTime ? <span>· {new Date(data.subject.gameStartTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span> : null}
-          {data.subject.gameStatus ? <span>· {data.subject.gameStatus}</span> : null}
-        </>
-      )}
-    </span>
-  ) : null;
+  // C2.1: the hero's NEXT block as data. The opponent's full name and the
+  // venue are not on the candidate, so the crest and code stand in for them.
+  const next: HeroNext | null = data.subject.opponentAbbr
+    ? {
+        homeAway: meta.isHome === true ? 'vs' : '@',
+        opponent: { name: null, abbr: data.subject.opponentAbbr, logoUrl: data.subject.opponentLogoUrl ?? null },
+        startsAt: data.subject.gameStartTime ?? null,
+        detail: data.subject.gameStatus ?? null,
+        live: live
+          ? `${live.away.abbr} ${live.away.score ?? '—'} – ${live.home.abbr} ${live.home.score ?? '—'}${live.periodLabel ? ` · ${live.periodLabel}` : ''}`
+          : null,
+      }
+    : null;
   const propSub = (
     <>
       {marketText(active.sport, active.dimension, 'full')} · {data.lineControl?.kind === 'category' ? golfCategoryLabel(active.dimension, effectiveGolfCategory) : lineText}
@@ -2032,7 +2035,7 @@ export function PlayerDetail({
       </div>
     </div>,
     propSub,
-    nextGame,
+    next,
     oddsCards,
     data.gameState ? <GameStateCard state={data.gameState} subjectName={active.subjectName} /> : null,
   );

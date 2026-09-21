@@ -29,8 +29,8 @@ is answered. Start at phase 1 (C7) of the run order and don't stop to ask.**
 | 2 | C0 Electric Turf + `-ink` tokens, ESPN team colours, kit pieces | **done** |
 | 3 | C1 charcoal section bands (Movers included) | **done** |
 | 4 | PY-A shared Python: C5 grading + 3 new Specials + park table + spotlight `kind` (**deploy**) | **done** |
-| 5 | C2 player hero | **next** |
-| 5b | C2b team hero, same rework as the player hero | — |
+| 5 | C2 player hero | **done** |
+| 5b | C2b team hero, same rework as the player hero | **next** |
 | 6 | PY-B spotlight rankings, NFL/NBA/NHL first (**deploy**) | — |
 | 7 | C3 player search rail | — |
 | 8 | C4 Slate imagery (Movers included) | — |
@@ -44,25 +44,6 @@ is answered. Start at phase 1 (C7) of the run order and don't stop to ask.**
 | 16 | SPC close Spotlights | — |
 
 Update this table and the run doc's §2 after every phase commit, then push.
-
-## In flight: C2 (player hero), uncommitted until done
-
-Design decided 2026-09-21, so a rotated session can continue without
-re-deriving it:
-- **Tile ranks come from `player_season_production`**, the position-grouped
-  season rollup the peer picker (`compareServer.readPeers`) already reads.
-  The plan's "34th of 142 RB" (`subject.rankDetail`) is an NFL-only composite
-  that exists only when a market does, so it could not be the source. A new
-  `/api/player-pool` (cachedRoute, keyed on sport + group) returns each pool
-  player's season `stats` and `games`; `buildPlayerResearch` evaluates each
-  tile's OWN `of()` on those totals spread evenly over the player's games.
-- **A tile only gets a rank if its aggregation is sum-based**, checked
-  automatically: the tile is evaluated on two different splits of the same
-  totals (even, and all in game one); if the two disagree (a count of games,
-  a max), the tile gets no rank rather than a wrong one. `games()` tiles get
-  no rank (the plan says so). Direction: `leader: 'low'` means lower is better.
-- `formLine` per spec for `lastFive.line`; `scopeChip` built in
-  `buildPlayerResearch`; `next` structured from `data.subject`.
 
 ## Deploys
 
@@ -109,6 +90,19 @@ re-deriving it:
   for good/bad-by-definition values, and `heat` for a rank.
 - **Scan's cell components stay frozen** (`StatCells`, `OddsChip`). C6
   unfreezes only the filter-bar files.
+- **C2: hero tile ranks come from `player_season_production`**, the
+  position-grouped rollup the peer picker reads (`/api/player-pool`), NOT
+  the plan's "34th of 142 RB" (`subject.rankDetail`), which is an NFL-only
+  composite that exists only when a market does. `playerPool.ts` ranks each
+  tile with its OWN `of()` on the pool's season totals and refuses a rank
+  (no rank, no bar) when the tile reads a key the rollup lacks (MLB RBI, HBP,
+  innings; NBA minutes), is not a sum (counts, maxima), reads no stat
+  (games), or is a lower-is-better TOTAL (fewest walks = pitched least). The
+  floor is 30% of the pool's 95th-percentile games: MLB's pitcher pool holds
+  position players who pitched once with 142 games each. C2b's team tiles
+  should rank against the team pool `teamResearchSpec` already uses.
+- **C2: `DisclosureBar` is a kit piece** (the hero's summary bar), because U7
+  closed the raw-`<button>` list. C2b reuses it.
 - **PY-A: per-HR distance was already stored.** `mlb_statcast_player_season`
   payload `hrList[]` carries `distance` (5,019 of 5,027 in 2026), so the
   planned `hit_distance_sc` column and backfill were skipped. The rollup

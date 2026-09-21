@@ -8,6 +8,7 @@
  * NHL yet. `propOddsBoard` is real and independent of history.
  */
 
+import type { PlayerPool } from '@/lib/sports/shared/playerPool';
 import { liveLinePricing } from '@/lib/sports/shared/liveLine';
 import { athleteIdOf, type PlayerBio, type PlayerHistory, type PlayerResearchData } from '@/lib/sports/shared/playerResearchShapes';
 import { buildPlayerResearch } from '@/lib/sports/shared/playerResearch';
@@ -277,9 +278,10 @@ export function toPlayerResearchData(input: {
   history: PlayerHistory;
   bio: PlayerBio | null;
   now?: Date;
+  pool?: PlayerPool | null;
   shots?: NhlShotMapInput;
 }): PlayerResearchData | null {
-  const research = buildPlayerResearch({ sport: 'nhl', history: input.history, spec: nhlResearchSpec(input.bio, input.history.games), now: input.now });
+  const research = buildPlayerResearch({ sport: 'nhl', history: input.history, spec: nhlResearchSpec(input.bio, input.history.games), now: input.now, pool: input.pool });
   if (!research || !input.shots) return research;
   // The official totals come off the same landing the bio already fetched.
   return { ...research, sections: [nhlShotMapSection({ ...input.shots, scopeSeason: research.splits.defaultSeason, officialSeasons: input.bio?.nhlSeasons ?? null })] };

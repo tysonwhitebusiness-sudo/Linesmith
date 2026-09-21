@@ -8,6 +8,7 @@
  * innings (ERA, WHIP, K/9) divide outs by three.
  */
 
+import { hitterLine, pitcherLine } from '@/lib/sports/shared/formLine';
 import { inningsPitchedToOuts } from '@/lib/sports/mlb/innings';
 import type { PlayerBio, PlayerGame } from '@/lib/sports/shared/playerResearchShapes';
 import { col, count, games, logCol, one, perGame, ratio, stat, sumOf, total, type Agg, type ResearchSpec } from '@/lib/sports/shared/playerResearch';
@@ -49,6 +50,7 @@ const gameHref = (g: PlayerGame): string | null => (/^\d+$/.test(g.eventId) ? `/
 
 export const MLB_HITTER_SPEC: ResearchSpec = {
   kind: 'hitter',
+  formLine: hitterLine,
   played: (g) => g.stats.bat_plateAppearances != null,
   restSplits: true,
   gameHref,
@@ -62,7 +64,7 @@ export const MLB_HITTER_SPEC: ResearchSpec = {
     col('rbi', 'RBI', total('bat_rbi')),
     col('r', 'R', total('bat_runs')),
     col('sb', 'SB', total('bat_stolenBases')),
-    col('kpct', 'K%', ratio(total('bat_strikeOuts'), PA, 100), 1, { format: 'percent', info: 'Strikeouts per plate appearance' }),
+    col('kpct', 'K%', ratio(total('bat_strikeOuts'), PA, 100), 1, { format: 'percent', info: 'Strikeouts per plate appearance', leader: 'low' }),
     col('bbpct', 'BB%', ratio(total('bat_baseOnBalls'), PA, 100), 1, { format: 'percent', info: 'Walks per plate appearance' }),
   ],
   seasonColumns: [
@@ -116,18 +118,19 @@ const perNine = (key: string): Agg => ratio(total(key), innings, 9);
 
 export const MLB_PITCHER_SPEC: ResearchSpec = {
   kind: 'pitcher',
+  formLine: pitcherLine,
   played: (g) => g.stats.pit_inningsPitched != null,
   restSplits: false,
   gameHref,
   tiles: [
     col('gs', 'GS', total('pit_gamesStarted')),
     col('ip', 'IP', outs, 0, { format: 'ip' }),
-    col('era', 'ERA', perNine('pit_earnedRuns'), 2),
-    col('whip', 'WHIP', ratio((gs) => sumOf(gs, (g) => (stat(g, 'pit_hits') ?? 0) + (stat(g, 'pit_baseOnBalls') ?? 0)), innings), 2),
+    col('era', 'ERA', perNine('pit_earnedRuns'), 2, { leader: 'low' }),
+    col('whip', 'WHIP', ratio((gs) => sumOf(gs, (g) => (stat(g, 'pit_hits') ?? 0) + (stat(g, 'pit_baseOnBalls') ?? 0)), innings), 2, { leader: 'low' }),
     col('k', 'K', total('pit_strikeOuts')),
-    col('bb', 'BB', total('pit_baseOnBalls')),
+    col('bb', 'BB', total('pit_baseOnBalls'), 0, { leader: 'low' }),
     col('k9', 'K/9', perNine('pit_strikeOuts'), 1),
-    col('hr', 'HR', total('pit_homeRuns')),
+    col('hr', 'HR', total('pit_homeRuns'), 0, { leader: 'low' }),
     col('ipgs', 'IP/start', ratio(innings, total('pit_gamesStarted')), 1, { info: 'Innings per start, as a decimal' }),
   ],
   seasonColumns: [

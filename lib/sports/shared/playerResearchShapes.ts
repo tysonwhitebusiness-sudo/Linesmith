@@ -20,6 +20,8 @@
  * `playerHistoryServer.ts`, which touch the network and the database.
  */
 
+import type { TileRank } from './playerPool';
+
 /** `player_game_history.sport` — the league, not the app's sport route. */
 export type HistorySport = 'mlb' | 'nfl' | 'cfb' | 'nba' | 'nhl' | 'soccer_epl' | 'soccer_mls' | 'tennis_atp' | 'tennis_wta';
 
@@ -152,6 +154,13 @@ export interface ResearchTile {
   label: string;
   value: string;
   info?: string;
+  /**
+   * C2.1: where this number sits in the player's position group this season
+   * ("34th of 142 RB"). Absent where it cannot be ranked honestly — a
+   * games-played tile, a stat the season rollup does not hold, a count of
+   * games (`playerPool.ts` explains the checks). No rank, no bar.
+   */
+  rank?: TileRank;
 }
 
 /** One number the way every research card prints it. Pure, shared by the adapters and the component. */
@@ -220,6 +229,11 @@ export interface PlayerResearchData {
     scopeLabel: string;
     /** Why the page opened on last season, when it did. */
     scopeReason: string | null;
+    /**
+     * C2.1: the short form of `scopeReason` for the hero's chip, "2026-27: 2
+     * games so far". Null when the page is on the current season.
+     */
+    scopeChip?: string | null;
     /** "72-51 in games played". `null` where results do not join. */
     record: string | null;
     /** Games in the scope season — the hero's headline number. */
@@ -243,6 +257,11 @@ export interface PlayerResearchData {
       /** Printed instead of the result where a sport has none — golf's round to par ("-4"). */
       mark?: string;
       tone?: 'good' | 'bad' | null;
+      /** C2.1: the opponent's code and crest for the form row. */
+      opponentAbbr?: string | null;
+      opponentLogo?: string | null;
+      /** C2.1: that game's stat line, from the spec's `formLine` ("14 car · 38 yds"). */
+      line?: string | null;
     }>;
     tiles: ResearchTile[];
   };
