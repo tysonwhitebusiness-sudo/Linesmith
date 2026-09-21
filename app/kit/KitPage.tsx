@@ -11,6 +11,7 @@ import {
   Card,
   Checkbox,
   Chip,
+  DataTable,
   DrillDownPanel,
   Dropdown,
   Modal,
@@ -141,7 +142,7 @@ export default function KitPage() {
         <p className="mt-2 max-w-[70ch] text-body-sm text-ink-muted">
           U0 built the skeleton: the tokens, the primitives that exist today, and the Tailwind 4
           traps below. U1 adds the Button family, U2 the Hybrid table and the fifteen reference
-          tables, U3 the field family, U4 the overlays, U5 the borrowed pieces.
+          tables, U3 the field family, U4 the overlays, U5 the borrowed pieces, U6 the two table additions below.
         </p>
       </header>
 
@@ -565,6 +566,59 @@ export default function KitPage() {
           <Popover label="What Heat means" trigger={<Button variant="tertiary">What is heat?</Button>}>
             <p className="text-body-sm text-ink-secondary">A cell tinted by where it sits in the column, not by whether it is good.</p>
           </Popover>
+        </Row>
+      </Group>
+
+      <Group
+        id="table-additions"
+        title="Table additions"
+        sub="U6. columnGroups puts a header row over the columns when a table compares two sides; ink colours a value that is good or bad by definition (under par), where tone would draw a W/L chip and heat would rank it."
+      >
+        <Row name="columnGroups" note="the pitch mix: what he throws beside what the batter sees">
+          <div className="w-full max-w-md">
+            <DataTable<{ k: string; p: string; a: string; av: string; b: string; bv: string }>
+              caption="Pitch mix"
+              density="compact"
+              rowKey={(r) => r.k}
+              columnGroups={[{ label: '', span: 1 }, { label: 'Skubal throws', span: 2 }, { label: 'Judge sees', span: 2 }]}
+              rows={[
+                { k: 'ff', p: 'Four-seam', a: '38.2%', av: '.301', b: '35.0%', bv: '.412' },
+                { k: 'ch', p: 'Changeup', a: '27.5%', av: '.214', b: '11.8%', bv: '.288' },
+              ]}
+              columns={[
+                { key: 'p', label: 'Pitch', sortable: false },
+                { key: 'a', label: 'Share', numeric: true, sortable: false },
+                { key: 'av', label: 'Outcome', numeric: true, sortable: false },
+                { key: 'b', label: 'Share', numeric: true, sortable: false },
+                { key: 'bv', label: 'Outcome', numeric: true, sortable: false },
+              ]}
+            />
+          </div>
+        </Row>
+        <Row name="ink" note="under par good, over par bad, par plain">
+          <div className="w-full max-w-md">
+            <DataTable<{ id: string; name: string; h: number[] }>
+              caption="Scorecard"
+              density="compact"
+              rowKey={(r) => r.id}
+              rows={[
+                { id: 'a', name: 'Bridgeman', h: [-1, 0, 1, -2, 0] },
+                { id: 'b', name: 'James', h: [0, -1, 0, 0, 2] },
+              ]}
+              columns={[
+                { key: 'name', label: '', sortable: false },
+                ...[0, 1, 2, 3, 4].map((i) => ({
+                  key: `h${i}`,
+                  label: String(i + 1),
+                  numeric: true,
+                  sortable: false,
+                  align: 'center' as const,
+                  render: (r: { h: number[] }) => (r.h[i] === 0 ? 'E' : r.h[i] > 0 ? `+${r.h[i]}` : String(r.h[i])),
+                  ink: (r: { h: number[] }) => (r.h[i] === 0 ? null : r.h[i] < 0 ? ('good' as const) : ('bad' as const)),
+                })),
+              ]}
+            />
+          </div>
         </Row>
       </Group>
 

@@ -471,7 +471,7 @@ history. One phase per sport, each entering the register as `baseline`.
 | 15 | U4 Overlays | U | U0 | yes | no | **done** — Modal / SlideoutMenu / Dropdown / Popover on React Aria; DrillDownPanel is the SlideoutMenu (props kept); slip, account menu and diagnostics dialog moved; 0 portals or dialogs outside the kit |
 | 16 | U6 Page sweep | U | U1–U5 | yes | no | **done** — in scope: 0 hand-typed sizes (378 before), 0 native titles (47), hex only in its three named homes (29 → 15); 0 hand-rolled tables, 0 raw buttons, 0 legacy chips; Scan's own cells (`StatCells`, `OddsChip`) left frozen |
 | 17 | S6 Slate close | S | S1–S5 | tests/docs | no | **done** — every sport × 1440/400 swept on 2026-09-21 (no errors, no overflow; in-season MLB/NFL/CFB/MLS/WTA show their sections, off-season NBA/NHL/ATP/golf their honest empty states); `scan-no-edge` covers every Slate file; `CLAUDE.md` has the Slate section and the Scan freeze; the mockup is marked historical |
-| 18 | U7 UI close | U | U6, S6 | tests/docs | no | not started |
+| 18 | U7 UI close | U | U6, S6 | tests/docs | no | **done** — no ratchet left in scope; the glider toggle joined `OUT_OF_SCOPE` with Scan's filter bar; `global-error.tsx` is the one permanent exemption; `/kit` shows every primitive incl. `columnGroups` and `ink`; `CLAUDE.md` has the UI primitives section |
 | — | M4 promotion tests | M | M1 | no | — | ongoing |
 | — | M5 simple prop baselines | M | approval | no | yes (ask) | not started |
 

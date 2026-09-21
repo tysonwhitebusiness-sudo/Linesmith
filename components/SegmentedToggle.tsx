@@ -2,7 +2,6 @@
 
 import { useLayoutEffect, useRef, useState } from 'react';
 
-import { Tooltip } from '@/components/ui';
 /**
  * Shared segmented pill toggle — a graphite glider slides behind whichever
  * option is active instead of the two states swapping color instantly.
@@ -52,7 +51,8 @@ export function SegmentedToggle<T extends string>({
         />
       ) : null}
       {options.map((o) => (
-        <Tooltip key={o.key} content={o.title}><button
+        <button
+          key={o.key}
           ref={(el) => {
             if (el) buttonRefs.current.set(o.key, el);
             else buttonRefs.current.delete(o.key);
@@ -60,12 +60,13 @@ export function SegmentedToggle<T extends string>({
           type="button"
           onClick={() => onChange(o.key)}
           aria-pressed={value === o.key}
+          title={o.title}
           className={`relative z-10 font-medium transition-colors ${buttonClassName} ${
             value === o.key ? 'text-white' : 'text-ink-muted hover:text-ink'
           }`}
         >
           {o.label}
-        </button></Tooltip>
+        </button>
       ))}
     </div>
   );

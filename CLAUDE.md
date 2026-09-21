@@ -114,6 +114,16 @@ The sport home page is the **Slate**: a sticky section nav over sections (Games 
 
 **The Scan table is frozen (decision D3).** `components/ScanTable.tsx` and `components/ScanCard.tsx` — columns, cells, colours, heat, rank chips, row layout — do not change, and neither do the cell components they draw with (`StatCells.tsx`, `OddsChip.tsx`). `tests/slate-shell.test.ts` pins both files by content hash; `tests/ui-scope.ts`'s `OUT_OF_SCOPE` keeps them out of the UI sweeps. The Slate replaced Scan's page *around* the table, not the table.
 
+## UI primitives — one component per job
+
+**The one rule: a page never styles a primitive.** If a page needs a button, field, table, chip, overlay or tooltip, it uses the kit in `components/ui/` (import from `components/ui`, never by file path), and if the kit cannot say what the page needs, the kit gains a prop. The U track (U0–U7, `docs/design/ui-system-master-prompt.md`) moved every in-scope page onto it; the guards below keep it there.
+
+- **Where it lives:** `components/ui/` — `Button`/`IconButton`/`CloseButton`; the field family (`Field`, `Input`, `Textarea`, `Checkbox`, `RadioGroup`, `Toggle`, `Select`, `ComboBox`, `PickList`, `FileTrigger`; every field is 16px below 768px so iOS does not zoom); `DataTable` (the Hybrid table: density, groupBy, totals, highlight, expand, paging, `heat` = a rank tint that needs a direction, `tone` = a W/L result chip, `ink` = a categorical good/bad colour, `columnGroups`); `Card`; `Chip` (semantic tones, `dot` for identity); overlays (`Modal`, `SlideoutMenu`, `Dropdown`, `Popover`, `DrillDownPanel`); `Tooltip` (never a native `title=`). Controls and overlays are React Aria underneath.
+- **See it:** `/kit` (dev only; `linesmith-dev-verify` on :3001) renders every primitive in every state. Check it at 1440 and 400 after changing one.
+- **Type, colour, motion:** sizes come from the ramp (`display` … `overline`, nothing below 11px outside `components/charts/`); colours from the palette tokens (hex lives only in `components/charts/tokens.ts`, `app/global-error.tsx` and the layout's `themeColor`); durations are the five named utilities.
+- **Adding a prop:** add it to the primitive with a comment saying which page needed it and why the existing props could not say it (see `Column.ink` and `columnGroups` in `DataTable.tsx`), show it on `/kit`, and pin it in the phase's guard.
+- **Guards:** `tests/ui-buttons`, `ui-fields`, `ui-overlays`, `ui-tables`, `ui-pieces`, `ui-sweep`, `ui-primitives`, `ui-tailwind4`. Each reads `tests/ui-scope.ts`'s `OUT_OF_SCOPE` — Scan's frozen table, its filter bar and their helpers — and nothing else is exempt except the named, reasoned exceptions in `ui-sweep` (Scan's cell components) and `ui-buttons` (`global-error.tsx`).
+
 ## Backend provider-job architecture (`python-odds-service/`)
 
 The Python odds-refresh worker (Render background worker, replacing the TS proactive scheduler's odds-provider jobs — see `docs/phase2-hardening-gameplan-2026-08-20.md`) uses the same plug-and-play principle as the frontend's sport-adapter architecture above, applied to jobs instead of pages: **one shared runner, one declared list of providers per job — never a hand-rolled copy of the cap-check/fetch/record-spend/write sequence.**

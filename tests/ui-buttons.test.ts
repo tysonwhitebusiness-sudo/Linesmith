@@ -17,15 +17,11 @@ import { OUT_OF_SCOPE, code } from './ui-scope';
  */
 
 const ALLOWED: Record<string, { count: number; why: string }> = {
-  // (U3 removed the five listbox options: they are the kit `PickList` now.)
-
-  // The old glider toggle, kept only while `OUT_OF_SCOPE` files still import
-  // it. U5 moves the in-scope callers off and deletes the file.
-  'components/SegmentedToggle.tsx': { count: 1, why: 'the old-kit duplicate — U5 deletes it' },
-
-  // (U6 moved diagnostics' last thirteen onto Button, Tabs and SegmentedToggle.)
-
-
+  // U7 closed this list. U3 took the listbox options (PickList), U4 the
+  // slip scrim (Modal), U6 diagnostics' thirteen, and the glider toggle
+  // moved to OUT_OF_SCOPE with Scan's filter bar, its last importer.
+  //
+  // What remains is not a ratchet but a permanent exemption:
   // The last-resort boundary renders its own <html>: at that point the root
   // layout is the thing that failed, so the stylesheet may never have applied
   // and a kit Button would render unstyled. Inline styles are correct here.

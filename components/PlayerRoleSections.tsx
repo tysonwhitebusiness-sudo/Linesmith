@@ -194,7 +194,7 @@ function UsageMixSection({ role }: { role: UsageMixRole }) {
         density="compact"
         rows={slices}
         rowKey={(s) => s.key}
-        columnGroups={cmp ? [{ label: 'Pitch', span: 1 }, { label: cmp.label, span: 2 }, { label: cmp.subjectLabel, span: anySample ? 3 : 2 }] : undefined}
+        columnGroups={cmp ? [{ label: '', span: 1 }, { label: cmp.label, span: 2 }, { label: cmp.subjectLabel, span: anySample ? 3 : 2 }] : undefined}
         columns={[
           {
             key: 'pitch',
