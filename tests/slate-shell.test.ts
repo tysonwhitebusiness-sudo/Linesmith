@@ -4,6 +4,8 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { code } from './ui-scope';
 import { buildSlateGames, sanePrices } from '../lib/sports/shared/buildSlate';
 import { slateSections } from '../lib/sports/shared/slateShapes';
+import { buildSpotlights, hitRateLeaders, activeStreaks } from '../lib/slate/spotlights';
+import type { PickCandidate } from '../lib/core/types';
 import type { SlateGame } from '../lib/odds/matching';
 import type { UnifiedGameLine } from '../lib/odds/types';
 
@@ -38,6 +40,23 @@ const line = (books: Array<Record<string, number>>): UnifiedGameLine =>
     bookmakers: books.map((b, i) => ({ bookmaker: `book${i}`, ...b })),
     bookCount: books.length,
   }) as UnifiedGameLine;
+
+/** A candidate with a run of history, for the spotlight cases. */
+const spotCandidate = (id: string, name: string, results: string[], category = 'hit'): PickCandidate =>
+  ({
+    sport: 'mlb',
+    subjectId: id,
+    subjectName: name,
+    dimension: 'hits',
+    dimensionLabel: 'Hits',
+    category,
+    categoryLabel: 'Records a hit',
+    line: 0.5,
+    history: results.map((result, i) => ({ period: i + 1, result, category: result })),
+    consistent: false,
+    sampleSize: results.length,
+    liveState: { status: 'pending' },
+  }) as unknown as PickCandidate;
 
 /* -------------------------------------------------------------------------- */
 
@@ -267,4 +286,96 @@ test('the slate day defaults to Eastern, not UTC', () => {
     assert.match(src, /if \(raw == null\) return easternDate\(\);/, `${f} must default the slate day to Eastern`);
     assert.doesNotMatch(code(src), /new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/, `${f} must not default the slate day to UTC`);
   }
+});
+
+/* -------------------------------------------------------------------------- */
+/* S3                                                                         */
+/* -------------------------------------------------------------------------- */
+
+test('Spotlights are derived from candidates, not from slate_rankings', () => {
+  // S3's own premise was wrong and this is the correction. Measured
+  // 2026-09-20: `slate_rankings` holds four rankings across three sports —
+  // mlb-hr-of-the-day, mlb-most-strikeouts, nfl-anytime-td and
+  // soccer-anytime-goalscorer. Those are the SPECIALS pilot set (S4). The two
+  // spotlights the spec asks every sport for have no rows there and never did.
+  const src = readFileSync('lib/slate/spotlights.ts', 'utf8');
+  assert.doesNotMatch(code(src), /slate_rankings/, 'spotlights must read the candidates the board already holds');
+  assert.match(src, /THE PHASE'S OWN PREMISE WAS WRONG/, 'the correction must stay explained');
+});
+
+test('a hit rate needs a real sample, and says how big it is', () => {
+  // "100% in 2 of 2" outranks "80% in 8 of 10" on rate alone and says far
+  // less. The sample is a filter AND a column.
+  const card = hitRateLeaders(
+    [
+      spotCandidate('short', 'Two Games', ['hit', 'hit']),
+      spotCandidate('long', 'Ten Games', ['hit', 'hit', 'hit', 'hit', 'hit', 'hit', 'hit', 'hit', 'miss', 'hit']),
+    ],
+    { sport: 'mlb' },
+  );
+  assert.deepEqual(
+    card.rows.map((r) => r.subjectName),
+    ['Ten Games'],
+    'a two-game record is not a hit rate',
+  );
+  assert.ok(card.columns.some((c) => c.key === 'sample'), 'the sample must be a column');
+});
+
+test('every spotlight factor names its source', () => {
+  const cards = buildSpotlights([], { sport: 'mlb' });
+  for (const card of cards) {
+    assert.ok(card.columns.length > 0, `${card.id} has no factor columns`);
+    for (const c of card.columns) {
+      assert.ok(c.info && c.info.length > 20, `${card.id}.${c.key} must say where the number came from`);
+    }
+    // An empty state always says WHY, never just "nothing".
+    assert.ok(card.empty && card.empty.length > 20, `${card.id} needs a real empty state`);
+    assert.match(card.caption, /not a prediction|says nothing about the next one/);
+  }
+});
+
+test('one row per player, and both streak directions get half the card', () => {
+  // Each record is MIXED, with the run at the end: a candidate that never
+  // goes the other way is filtered out by the rule below, because a run that
+  // is the whole record is the shape of the data rather than form.
+  const many = [
+    spotCandidate('a', 'Player A', ['miss', ...Array(11).fill('hit')], 'hit'),
+    spotCandidate('b', 'Player B', ['hit', ...Array(9).fill('miss')], 'hit'),
+    spotCandidate('c', 'Player C', ['hit', ...Array(8).fill('miss')], 'hit'),
+  ];
+  // Same subjectId twice -> one row.
+  const dupHistory = ['miss', ...Array(11).fill('hit')];
+  const dup = [spotCandidate('x', 'Dup', dupHistory, 'hit'), spotCandidate('x', 'Dup', dupHistory, 'hit')];
+  assert.equal(hitRateLeaders(dup, { sport: 'mlb' }).rows.length, 1, 'three of the top five rows were one relief pitcher before this');
+
+  const streaks = activeStreaks(many, { sport: 'mlb', limit: 4 });
+  const directions = new Set(streaks.rows.map((r) => r.values.direction.text));
+  assert.ok(directions.has('Cleared') && directions.has('Missed'), 'sorting on magnitude alone filled the card with misses');
+});
+
+test('a run that IS the whole record is not a streak', () => {
+  // WTA's card came back as eight rows of "Missed this line in each of the
+  // last 91 matches" on "To Win a Set · Yes" — the category never matches in
+  // that sport's history, so every period is a miss and the "run" is the
+  // record. A miss-run needs the player to have cleared the line at least
+  // once, ever.
+  const never = [spotCandidate('n', 'Never', Array(20).fill('miss'), 'hit')];
+  assert.equal(activeStreaks(never, { sport: 'tennis' }).rows.length, 0);
+  const always = [spotCandidate('a', 'Always', Array(20).fill('hit'), 'hit')];
+  assert.equal(activeStreaks(always, { sport: 'tennis' }).rows.length, 0);
+  const real = [spotCandidate('r', 'Real', ['hit', ...Array(9).fill('miss')], 'hit')];
+  assert.equal(activeStreaks(real, { sport: 'tennis' }).rows.length, 1);
+});
+
+test('the period is a round in golf and a match in tennis', () => {
+  // `readForm` counts periods. Calling a golf round a "game" in the empty
+  // state would explain the wrong thing — golf has 2,489 candidates today and
+  // no spotlight rows, because a golfer rarely has ten rounds of one hole.
+  assert.match(hitRateLeaders([], { sport: 'golf' }).empty ?? '', /rounds/);
+  assert.match(hitRateLeaders([], { sport: 'tennis' }).empty ?? '', /matches/);
+  assert.match(hitRateLeaders([], { sport: 'mlb' }).empty ?? '', /games/);
+  // And the singular is a real singular: stripping an "s" gives "matche".
+  const tennisSeason = hitRateLeaders([], { sport: 'tennis' }).columns.find((c) => c.key === 'season');
+  assert.match(tennisSeason?.info ?? '', /every match held/);
+  assert.doesNotMatch(tennisSeason?.info ?? '', /matche /);
 });

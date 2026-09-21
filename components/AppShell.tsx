@@ -40,6 +40,8 @@ import { PlayerSkeleton, ScanListSkeleton } from './Skeleton';
 import { useSlate } from './slate/useSlate';
 import { SlateGames, SlateSectionNav } from './slate/SlateSections';
 import { SlateMarket, useSlateMarket } from './slate/SlateMarket';
+import { SlateSpotlights } from './slate/SlateSpotlights';
+import { buildSpotlights } from '@/lib/slate/spotlights';
 import { slateSections } from '@/lib/sports/shared/slateShapes';
 import {
   DensityToggle,
@@ -463,6 +465,15 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
     [filtered, filters.oddsMin, filters.oddsMax, filters.showNoOdds, filters.hotStreak, filters.coldStreak, slateProps.rows, effectiveSportsbook],
   );
 
+  // S3 — the Spotlights, derived from the same candidates the props board
+  // holds rather than from `slate_rankings` (which turned out to hold the
+  // Specials pilot set, not these). Deriving them here means a spotlight can
+  // never disagree with the table underneath it.
+  const spotlights = useMemo(
+    () => buildSpotlights(filteredBeforePriceGate, { sport, league: league ?? null }),
+    [filteredBeforePriceGate, sport, league],
+  );
+
   const views = useMemo(() => {
     const comingUp = scanComingUp(narrowed, { maxDistance: 6, minSampleSize: 2 });
     const watchlist = sortByComingUp(narrowed.filter((c) => slip.watchedIds.has(c.subjectId)));
@@ -728,6 +739,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                 slateRead.data,
                 views.all.length || null,
                 (marketRead.data?.outliers.length ?? 0) + (marketRead.data?.disagreements.length ?? 0) || null,
+                spotlights.reduce((n, c) => n + c.rows.length, 0) || null,
               )}
             />
 
@@ -750,6 +762,8 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                 not stored per book, so there is no book-by-book spread to
                 compare (slate-sheet-cards.md §4.8). */}
             {sport === 'golf' ? null : <SlateMarket data={marketRead.data} loading={marketRead.loading} />}
+
+            <SlateSpotlights cards={spotlights} loading={loading && filteredBeforePriceGate.length === 0} />
 
             {golfFieldPending ? (
               <TournamentNotStartedNotice eventName={snapshot?.eventName} />
