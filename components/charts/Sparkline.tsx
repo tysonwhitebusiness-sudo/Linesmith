@@ -35,6 +35,11 @@ export interface SparklineProps {
    * Defaults to `'up'`, the ordinary "more is better" reading.
    */
   goodDirection?: 'up' | 'down';
+  /**
+   * No direction is good: the end dot is plain ink. For a line move, which is
+   * market information and not a verdict (Movers, MV3).
+   */
+  neutral?: boolean;
   /** Accessible description — required, since there is no visible label. */
   label: string;
   className?: string;
@@ -45,6 +50,7 @@ export function Sparkline({
   width = 46,
   height = 15,
   goodDirection = 'up',
+  neutral = false,
   label,
   className,
 }: SparklineProps) {
@@ -87,7 +93,7 @@ export function Sparkline({
         strokeLinejoin="round"
       />
       <circle cx={x(lastIndex)} cy={y(last)} r={3.6} fill={SURFACE} />
-      <circle cx={x(lastIndex)} cy={y(last)} r={2.4} fill={compareInk(heat)} />
+      <circle cx={x(lastIndex)} cy={y(last)} r={2.4} fill={neutral ? INK4 : compareInk(heat)} />
     </svg>
   );
 }

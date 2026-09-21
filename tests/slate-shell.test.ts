@@ -5,6 +5,16 @@ import { code } from './ui-scope';
 import { buildSlateGames, sanePrices } from '../lib/sports/shared/buildSlate';
 import { slateSections } from '../lib/sports/shared/slateShapes';
 import { buildSpotlights, hitRateLeaders, activeStreaks } from '../lib/slate/spotlights';
+import {
+  CONSENSUS_EXCLUDED,
+  MIN_BOOKS_MOVED,
+  MIN_CONSENSUS_BOOKS,
+  americanFromImplied,
+  collapseMovers,
+  isSplit,
+  isSteam,
+  type ConsensusKeyRow,
+} from '../lib/slate/marketMoves';
 import type { PickCandidate } from '../lib/core/types';
 import type { SlateGame } from '../lib/odds/matching';
 import type { UnifiedGameLine } from '../lib/odds/types';
@@ -268,12 +278,116 @@ test('the market cards call a price gap a price gap, not an edge', () => {
   assert.doesNotMatch(code(src), /\bedge\b(?!\.)/i.source ? /edgePts|modelEdge|\bEdge\b/ : /$^/, 'no edge column');
 });
 
-test('Movers is not built, and the reason is written down', () => {
-  // S2's third card. The movement data is real; the signal is not extractable
-  // from it yet. If someone builds it, they must remove this test and say why.
-  const route = readFileSync('app/api/slate/market/route.ts', 'utf8');
-  assert.match(route, /WHAT IS NOT HERE: Movers/, 'the absence must stay explained');
-  assert.ok(!existsSync('components/slate/SlateMovers.tsx'));
+/* ------------------------------------------------------------ MV4: Movers */
+
+const moverKey = (over: Partial<ConsensusKeyRow> = {}): ConsensusKeyRow => ({
+  gameId: 'g1',
+  subjectId: 'p1',
+  market: 'receptions',
+  line: 5.5,
+  side: 'over',
+  books: 6,
+  moved: 5,
+  mFirst: 0.4,
+  m3h: 0.45,
+  m1h: 0.5,
+  mLast: 0.52,
+  firstMoveAt: '2026-09-21T15:00:00.000Z',
+  steps: [],
+  ...over,
+});
+
+test('Movers reads pre-game quotes only, and only games still to start', () => {
+  // SL-29: more than half of all logged changes happen after the start, and
+  // they were the noise S2 found (18.1% of live prop changes over 10 pts vs
+  // 0.3% pre-game).
+  const src = readFileSync('lib/slate/marketMoves.ts', 'utf8');
+  assert.match(src, /t\.observed_at < s\.starts_at/);
+  assert.match(src, /s\.starts_at > now\(\)/);
+  const route = readFileSync('app/api/slate/movers/route.ts', 'utf8');
+  assert.match(route, /Date\.parse\(g\.firstPitch\) > Date\.now\(\)/);
+});
+
+test('a flicker nets to nothing: each book counts first price and latest, not every tick', () => {
+  const src = readFileSync('lib/slate/marketMoves.ts', 'utf8');
+  assert.match(src, /\(array_agg\(p ORDER BY observed_at\)\)\[1\] AS p_first/);
+  assert.match(src, /\(array_agg\(p ORDER BY observed_at DESC\)\)\[1\] AS p_last/);
+  // A key back where it started has no move, so it cannot be listed.
+  const [row] = collapseMovers('props', [moverKey({ mFirst: 0.5, m3h: 0.5, m1h: 0.5, mLast: 0.5 })], new Map());
+  assert.equal(row.moves.first, 0);
+});
+
+test('one book cannot make a row, and a consensus needs three books', () => {
+  assert.equal(MIN_CONSENSUS_BOOKS, 3);
+  assert.equal(MIN_BOOKS_MOVED, 2);
+  const src = readFileSync('lib/slate/marketMoves.ts', 'utf8');
+  assert.match(src, /HAVING count\(\*\) >= \$\{MIN_CONSENSUS_BOOKS\}/);
+  assert.match(src, /WHERE moved >= \$\{MIN_BOOKS_MOVED\}/);
+});
+
+test("pick'em apps and exchanges never enter the consensus (D-M1)", () => {
+  for (const b of ['prizepicks', 'underdog', 'prophetx', 'novig', 'kalshi', 'polymarket', 'smarkets', 'matchbook']) {
+    assert.ok((CONSENSUS_EXCLUDED as readonly string[]).includes(b), b);
+  }
+  assert.match(readFileSync('lib/slate/marketMoves.ts', 'utf8'), /lower\(t\.bookmaker\) <> ALL\(\?\)/);
+});
+
+test("over and under, and a player's alternate lines, collapse to one row at the main line", () => {
+  const keys = [
+    moverKey({ line: 5.5, side: 'over', books: 7 }),
+    moverKey({ line: 5.5, side: 'under', mFirst: 0.6, mLast: 0.48 }),
+    moverKey({ line: 4.5, side: 'over', books: 5 }),
+    moverKey({ line: 6.5, side: 'over', books: 4 }),
+  ];
+  const rows = collapseMovers('props', keys, new Map([['g1|p1|receptions', { first: 4.5, now: 5.5 }]]));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].side, 'over');
+  assert.equal(rows[0].line, 5.5);
+  assert.equal(rows[0].lineFirst, 4.5);
+  assert.equal(rows[0].otherLinesMoved, 2);
+  assert.ok(Math.abs(rows[0].moves.first - 12) < 1e-9);
+});
+
+test('a moneyline row is the side the money moved toward', () => {
+  const rows = collapseMovers(
+    'lines',
+    [
+      moverKey({ subjectId: null, market: 'moneyline', line: null, side: 'home', mFirst: 0.55, mLast: 0.52 }),
+      moverKey({ subjectId: null, market: 'moneyline', line: null, side: 'away', mFirst: 0.45, mLast: 0.48 }),
+    ],
+    new Map(),
+  );
+  assert.equal(rows[0].side, 'away');
+  assert.equal(rows[0].split, false);
+});
+
+test('Steam needs three books moving the same way inside 30 minutes', () => {
+  assert.equal(isSteam([{ t: 0, sign: 1 }, { t: 600, sign: 1 }, { t: 1700, sign: 1 }]), true);
+  assert.equal(isSteam([{ t: 0, sign: 1 }, { t: 600, sign: 1 }, { t: 2000, sign: 1 }]), false);
+  assert.equal(isSteam([{ t: 0, sign: 1 }, { t: 600, sign: -1 }, { t: 900, sign: 1 }]), false);
+  assert.equal(isSteam([{ t: 0, sign: 1 }, { t: 60, sign: 1 }]), false);
+});
+
+test('Split: the line one way, the price the other (a home spread leans home going down)', () => {
+  assert.equal(isSplit(4.5, 5.5, -3), true); // line up, over less likely
+  assert.equal(isSplit(4.5, 5.5, 3), false);
+  assert.equal(isSplit(5.5, 5.5, 3), false);
+  assert.equal(isSplit(-3.5, -4.5, 2, -1), false); // home more favoured and home price up
+  assert.equal(isSplit(-3.5, -4.5, -2, -1), true);
+});
+
+test('the consensus price is shown as American odds', () => {
+  assert.equal(americanFromImplied(0.5), -100);
+  assert.equal(americanFromImplied(0.6), -150);
+  assert.equal(americanFromImplied(0.4), 150);
+});
+
+test('Movers is captioned as market information, and its sparkline passes no verdict', () => {
+  const src = readFileSync('components/slate/SlateMovers.tsx', 'utf8');
+  assert.match(src, /Movement is market information, not a prediction/);
+  assert.ok(/<Sparkline [^\n]*neutral/.test(src), 'the trend sparkline is neutral');
+  assert.doesNotMatch(code(src), /since open/i);
+  assert.doesNotMatch(code(src), /sharp money|sharp side|reverse line/i);
 });
 
 test('the slate day defaults to Eastern, not UTC', () => {
@@ -378,4 +492,20 @@ test('the period is a round in golf and a match in tennis', () => {
   const tennisSeason = hitRateLeaders([], { sport: 'tennis' }).columns.find((c) => c.key === 'season');
   assert.match(tennisSeason?.info ?? '', /every match held/);
   assert.doesNotMatch(tennisSeason?.info ?? '', /matche /);
+});
+
+test('Split and the line history only describe a row shown at the main line', () => {
+  // First render: DJ Herz's row sat at 11.5, a line that never changed, yet
+  // carried a Split flag earned by the MAIN line moving somewhere else.
+  const off = collapseMovers('props', [moverKey({ line: 11.5, mFirst: 0.52, mLast: 0.47 })], new Map([['g1|p1|receptions', { first: 12.5, now: 13.5 }]]));
+  assert.equal(off[0].split, false);
+  assert.equal(off[0].lineFirst, 11.5);
+  const on = collapseMovers('props', [moverKey({ line: 13.5, mFirst: 0.52, mLast: 0.47 })], new Map([['g1|p1|receptions', { first: 12.5, now: 13.5 }]]));
+  assert.equal(on[0].split, true);
+  assert.equal(on[0].lineFirst, 12.5);
+});
+
+test("the nav's Movers count is the rows the card lists", () => {
+  const src = readFileSync('components/AppShell.tsx', 'utf8');
+  assert.match(src, /moversShown\(moversRead\.data\)/);
 });

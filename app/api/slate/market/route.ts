@@ -9,13 +9,9 @@
  * the page wait for the bottom of it, which is the problem `/api/slate` exists
  * to solve.
  *
- * WHAT IS NOT HERE: Movers. S2's third card is not built, and the reason is
- * measured rather than assumed — see the ledger row SL-18 and queue row Q9.
- * The movement data is real (3,769 moved game lines and 120,495 moved prop
- * lines in 36 hours), but every one of the largest moves, at every threshold
- * tried, is one of two books quoting badly rather than a market changing its
- * mind. A card that puts "Fanatics moved 25 points" at the top of the page
- * every time is worse than no card.
+ * Movers has its own route, `/api/slate/movers` (MV3). S2 left it out because
+ * the biggest moves were a few books swinging 25 points; re-measured, that was
+ * live in-game pricing the old readers never cut (ledger SL-29).
  *
  * CACHING — pattern 1 (`cachedRoute`). Both tables are written by the Python
  * odds worker, never by a request. 120 s is the spec's own TTL for lines and

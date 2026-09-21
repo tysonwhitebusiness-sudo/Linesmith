@@ -40,6 +40,7 @@ import { SlateGames, SlateSectionNav } from './slate/SlateSections';
 import { SlateMarket, useSlateMarket } from './slate/SlateMarket';
 import { SlateSpotlights } from './slate/SlateSpotlights';
 import { SlateSpecials, useSlateSpecials } from './slate/SlateSpecials';
+import { SlateMovers, moversShown, useSlateMovers } from './slate/SlateMovers';
 import { SlateModel, useSlateModel } from './slate/SlateModel';
 import { SlateYourLines, useSignedIn, useYourLineSources } from './slate/SlateYourLines';
 import { toYourLines } from '@/lib/slate/yourLines';
@@ -186,6 +187,8 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
   // to six seconds against the real tables and must not delay either of the
   // two sections that matter.
   const marketRead = useSlateMarket(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
+  // MV3 — consensus line movement on the games still to start.
+  const moversRead = useSlateMovers(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
   // S4 — the Specials, from `slate_rankings` (the table M3 actually wrote).
   const specialsRead = useSlateSpecials(sport, league ?? null, sport === 'mlb' ? (scanDate ?? null) : null, snapshot?.fetchedAt ?? null);
   // S5 — the Model section, only when the slate's adapter declares one.
@@ -710,6 +713,7 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
                 specialsRead.data?.rankings.length || null,
                 modelRead.data?.rows.length || null,
                 yourLines?.length || null,
+                moversShown(moversRead.data) || null,
               )}
             />
 
@@ -727,6 +731,8 @@ export function AppShell({ sport, league }: { sport: Sport; league?: SoccerLeagu
             ) : (
               <SlateGames data={slateRead.data} loading={slateRead.loading} />
             )}
+
+            <SlateMovers data={moversRead.data} loading={moversRead.loading} />
 
             {/* Golf has no prop-market cards: its winner prices are cached,
                 not stored per book, so there is no book-by-book spread to

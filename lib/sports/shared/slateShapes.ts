@@ -138,13 +138,15 @@ export function slateSections(
   specialsCount?: number | null,
   modelCount?: number | null,
   yourLinesCount?: number | null,
+  moversCount?: number | null,
 ): SlateSection[] {
   const out: SlateSection[] = [];
   if (data?.games && data.games.cards.length > 0) {
     out.push({ id: 'games', label: 'Games', count: data.games.counts.all });
   }
-  // S2's two market cards. `Movers` is deliberately not here — see
-  // `app/api/slate/market/route.ts` and ledger SL-18.
+  // MV3: Movers sits right under the games it moved on (spec §3 order).
+  if (moversCount != null && moversCount > 0) out.push({ id: 'movers', label: 'Movers', count: moversCount });
+  // S2's two market-shape cards.
   if (marketCount != null && marketCount > 0) out.push({ id: 'market', label: 'Books', count: marketCount });
   if (spotlightCount != null && spotlightCount > 0) out.push({ id: 'spotlights', label: 'Spotlights', count: spotlightCount });
   if (specialsCount != null && specialsCount > 0) out.push({ id: 'specials', label: 'Specials', count: specialsCount });

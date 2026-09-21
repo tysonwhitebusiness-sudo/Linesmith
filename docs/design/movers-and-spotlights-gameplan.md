@@ -223,8 +223,8 @@ Rules for every phase:
 | # | phase | what | depends on | Python / deploy | done when |
 |---|---|---|---|---|---|
 | **F0** | Foundation | `kind` (`special`/`spotlight`) on `RankingDef`; the ranking job writes spotlights with player/team/game ids; `/api/slate/flags` (cachedRoute); the shared `ResearchFlags` card + chips; the Slate's Spotlights section merges the two TS universal cards with the Python ones; the drift test covers both kinds | — | yes / yes | an empty spotlight registry renders nothing anywhere, and a fixture spotlight renders on the Slate and on a player page |
-| **MV0** | Movers re-measure | the pre-game table for NFL and soccer; soccer/tennis game lines after cutting at kickoff (Q6); a sample check of today's top 10 movers for a public reason | — | no | numbers in the ledger; the thresholds confirmed or changed |
-| **MV1–4** | Movers | pre-game only, net first→latest, consensus of ≥3 books with exchanges and pick'em excluded (D-M1); Steam and Split flags; the card per spec §3.2; guards | MV0 | no | Movers shows on MLB/NFL with believable top rows; tests pin post-start, flicker, single-book and PrizePicks |
+| **MV0** ✅ | Movers re-measure | the pre-game table for NFL and soccer; soccer/tennis game lines after cutting at kickoff (Q6); a sample check of today's top 10 movers for a public reason | — | no | numbers in the ledger; the thresholds confirmed or changed |
+| **MV1–4** ✅ | Movers | pre-game only, net first→latest, consensus of ≥3 books with exchanges and pick'em excluded (D-M1); Steam and Split flags; the card per spec §3.2; guards | MV0 | no | Movers shows on MLB/NFL with believable top rows; tests pin post-start, flicker, single-book and PrizePicks |
 | **SP-NFL** | NFL | Targets vs weak pass defences · Rushers vs worst run defences · N1 · N2 · N3 · N5 · N6 (short weeks) · N7 · N8; chips on NFL player/team/game pages | F0 | yes / yes | every NFL card renders on Sunday's slate with its factors and a why; chips on the pages |
 | **SP-CFB** | CFB | Rushers vs worst run defences (team-level) · N1 · N2 · N5 · N7 · N8 | SP-NFL | yes / yes | same, on a Saturday slate |
 | **SP-SOC** | Soccer (EPL, MLS) | Shot takers vs weak defences · N1 · N7 · N8 | F0 | yes / yes | same, EPL and MLS |
@@ -262,3 +262,42 @@ Rules for every phase:
 - **D-S2 — default:** spotlights freeze at the first game, like Specials, and get receipts.
 - **D-S3 — yes:** build the tennis TML ingest and the golf tournament→course backfill.
 - **D-S4 — all eight new ideas approved**, placed on the Slate with chips/cards on the research pages (Part 3).
+
+---
+
+## MV0–MV4 — built 2026-09-21
+
+**MV0 measured** (`scripts/probe-movers-mv0.ts`): pre-game is clean in every
+sport (≤1.3% of prop changes over 10 pts). Live WTA quotes were 43–57% big
+jumps, which confirms the cut at the start. The top consensus movers read as
+real market moves (Davante Adams receptions +15–24 pts on 5–7 of 7 books at
+every line). CFB and ATP hold almost no pre-game prop history, so Movers hides
+there.
+
+**Built:**
+- `lib/slate/marketMoves.ts` `readConsensusMovers`: pre-game only, upcoming
+  games only, net first → latest per book, the median of ≥3 books, ≥2 books
+  moved, exchanges and pick'em out (D-M1). Windows are since first seen, 3h
+  and 1h. Steam and Split flags. One row per player-market at its main line,
+  with an "also moved at N other lines" count.
+- `/api/slate/movers` (cachedRoute, 120 s).
+- `components/slate/SlateMovers.tsx`, the card per spec §3.2. It sits under
+  Games in the nav.
+- `Sparkline` gained `neutral`, so a line move never gets a good/bad colour.
+- MV4 guards in `tests/slate-shell.test.ts`: pre-game only, flicker nets to
+  zero, one book can't make a row, pick'em and exchanges out, collapse, Steam,
+  Split, the caption, and the nav count.
+
+**Found while building** (ledger SL-30):
+- **The "main line" must be the one priced nearest even money**, not the most
+  common line or each book's first quote. Books post alternate lines first,
+  so Davante Adams read as moving 1.5 → 5.5.
+- **The trend window must end at now**, not at the start. Games two days out
+  had no sparkline.
+- **Split and "line first → now" only describe the main line.** One row sat at
+  a line that never changed but carried a Split flag earned elsewhere.
+- **The Movers nav count is the rows the card lists** in the default window,
+  not every row returned.
+
+**Measured on 2026-09-21:** MLB 47 props + 4 game lines across 3 upcoming
+games. NFL (MNF) 8 props + 1 line. Cold build 2–7 s, then served from cache.

@@ -199,54 +199,60 @@ const HOLE_COLUMNS: Column<HoleRow>[] = [
 /* The Slate's tables (S1–S5 build on these columns)                          */
 /* -------------------------------------------------------------------------- */
 
+/** MV3's shape: the CONSENSUS move (median of ≥3 books), not one book's. */
 interface MoverRow {
   id: string;
   subject: string;
   market: string;
-  book: string;
-  firstSeen: number;
-  now: number;
+  priceFirst: number;
+  priceNow: number;
   movePts: number;
+  booksMoved: number;
+  booksQuoting: number;
   steam: boolean;
   split: boolean;
 }
 
 const MOVERS: MoverRow[] = [
-  { id: '1', subject: 'Chandler Simpson', market: 'Stolen bases o0.5', book: 'DraftKings', firstSeen: 185, now: 240, movePts: 6.2, steam: true, split: false },
-  { id: '2', subject: 'Luis Arraez', market: 'Singles o0.5', book: 'FanDuel', firstSeen: -165, now: -200, movePts: -4.4, steam: false, split: true },
-  { id: '3', subject: 'Pete Crow-Armstrong', market: 'Stolen bases o0.5', book: 'BetMGM', firstSeen: 210, now: 250, movePts: -3.1, steam: false, split: false },
-  { id: '4', subject: 'Kyle Schwarber', market: 'Home runs o0.5', book: 'Caesars', firstSeen: 320, now: 285, movePts: 2.7, steam: true, split: false },
+  { id: '1', subject: 'Davante Adams', market: 'Receptions o5.5', priceFirst: 275, priceNow: 115, movePts: 19.8, booksMoved: 6, booksQuoting: 7, steam: true, split: false },
+  { id: '2', subject: 'Isaiah Likely', market: 'Receptions o4.5', priceFirst: -136, priceNow: -100, movePts: -7.6, booksMoved: 7, booksQuoting: 7, steam: true, split: false },
+  { id: '3', subject: 'Zebby Matthews', market: 'Pitcher strikeouts o4.5', priceFirst: -130, priceNow: -112, movePts: -3.6, booksMoved: 5, booksQuoting: 8, steam: false, split: true },
+  { id: '4', subject: 'Hao-Yu Lee', market: 'Hits o0.5', priceFirst: -210, priceNow: -175, movePts: -5.6, booksMoved: 8, booksQuoting: 8, steam: false, split: false },
 ];
 
 const maxMove = Math.max(...MOVERS.map((m) => Math.abs(m.movePts)));
 
 const MOVER_COLUMNS: Column<MoverRow>[] = [
-  { key: 'subject', label: 'Player', sortable: false },
+  {
+    key: 'subject',
+    label: 'Player',
+    sortable: false,
+    render: (r) => (
+      <span className="inline-flex items-center gap-1.5">
+        {r.subject}
+        {r.steam ? <Chip tone="neutral" shape="box" size="sm">Steam</Chip> : null}
+        {r.split ? <Chip tone="neutral" shape="box" size="sm">Split</Chip> : null}
+      </span>
+    ),
+  },
   { key: 'market', label: 'Market', sortable: false },
-  { key: 'book', label: 'Book', sortable: false },
-  { key: 'firstSeen', label: 'First seen', numeric: true, info: 'The first price this book was observed at. The OPENER is not held, so this is "since first seen", not "since open".', render: (r) => (r.firstSeen > 0 ? `+${r.firstSeen}` : String(r.firstSeen)) },
-  { key: 'now', label: 'Now', numeric: true, render: (r) => (r.now > 0 ? `+${r.now}` : String(r.now)) },
+  {
+    key: 'price',
+    label: 'Price',
+    numeric: true,
+    sortable: false,
+    info: 'The consensus price, first seen and now: the median implied probability across at least three books.',
+    render: (r) => `${r.priceFirst > 0 ? '+' : ''}${r.priceFirst} → ${r.priceNow > 0 ? '+' : ''}${r.priceNow}`,
+  },
   {
     key: 'movePts',
     label: 'Move',
     numeric: true,
-    info: 'Implied-probability points, first seen to now. Market information, not a prediction.',
+    info: 'Implied-probability points, consensus. Market information, not a prediction.',
     render: (r) => `${r.movePts > 0 ? '+' : ''}${r.movePts.toFixed(1)}`,
     bar: (r) => Math.abs(r.movePts) / maxMove,
   },
-  {
-    key: 'flags',
-    label: 'Flags',
-    sortable: false,
-    align: 'right',
-    render: (r) => (
-      <span className="inline-flex gap-1">
-        {r.steam ? <Chip tone="neutral" shape="box" size="sm">Steam</Chip> : null}
-        {r.split ? <Chip tone="neutral" shape="box" size="sm">Split</Chip> : null}
-        {!r.steam && !r.split ? '—' : null}
-      </span>
-    ),
-  },
+  { key: 'books', label: 'Books', numeric: true, sortable: false, render: (r) => `${r.booksMoved}/${r.booksQuoting}` },
 ];
 
 interface OutlierRow {

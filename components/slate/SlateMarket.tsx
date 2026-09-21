@@ -14,10 +14,8 @@ import type { DisagreementRow, OutlierRow } from '@/lib/slate/marketMoves';
  * is mispriced, and nothing here computes, sorts by or colours a difference
  * against a model.
  *
- * Movers — S2's third card — is deliberately absent. See the route's own note
- * and ledger SL-18: the movement data is real, the signal is not extractable
- * from it yet, and a card whose top row is always the same book quoting badly
- * is worse than no card.
+ * Movers, S2's third card, is its own section now (`SlateMovers.tsx`, MV3):
+ * the noise that kept it out was live in-game pricing, cut since (SL-29).
  */
 
 export interface SlateMarketData {
