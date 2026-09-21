@@ -29,16 +29,16 @@ interface Rgb {
  * punch. Matches the `good`/`warn`/`bad` Tailwind tokens exactly.
  */
 const FILL_STOPS: Rgb[] = [
-  { r: 0xc2, g: 0x3b, b: 0x2c }, // bad
-  { r: 0xc9, g: 0x8a, b: 0x1f }, // warn
-  { r: 0x0f, g: 0x7a, b: 0x4f }, // good
+  { r: 0xff, g: 0x4d, b: 0x4f }, // bad  #ff4d4f (C0, Electric Turf)
+  { r: 0xff, g: 0xb0, b: 0x20 }, // warn #ffb020
+  { r: 0x00, g: 0xd2, b: 0x6a }, // good #00d26a
 ];
 
-/** Text ramp: same hues, darkened enough to stay legible on paper/white. */
+/** Text ramp: the `-ink` tokens, legible on paper/white (C0). */
 const INK_STOPS: Rgb[] = [
-  { r: 0x8f, g: 0x2b, b: 0x20 },
-  { r: 0x8f, g: 0x62, b: 0x15 },
-  { r: 0x0b, g: 0x5c, b: 0x3c },
+  { r: 0xc4, g: 0x16, b: 0x1c }, // bad-ink  #c4161c
+  { r: 0x9a, g: 0x62, b: 0x00 }, // warn-ink #9a6200
+  { r: 0x00, g: 0x87, b: 0x3f }, // good-ink #00873f
 ];
 
 const clamp01 = (t: number) => (Number.isFinite(t) ? Math.min(1, Math.max(0, t)) : 0.5);

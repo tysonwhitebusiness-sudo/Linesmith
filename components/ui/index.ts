@@ -36,8 +36,9 @@ export {
 } from './Fields';
 export { Chip, StatusPill, type ChipProps, type ChipTone, type ChipSize, type ChipShape } from './Chip';
 export { Avatar, type AvatarProps } from './Avatar';
-export { Tag, AvatarLabel, AvatarGroup, FeaturedIcon, type TagProps, type AvatarLabelProps, type AvatarGroupProps, type FeaturedIconProps, type FeaturedIconTone } from './Pieces';
-export { StatValue, StatGrid, RankRow, LeagueStripRow, FactList, VizLegend, goodness, percentileColor, ordinal, type StatDirection, type StatValueProps, type RankRowProps } from './Stats';
+export { Tag, AvatarLabel, AvatarGroup, FeaturedIcon, ResultMark, type TagProps, type AvatarLabelProps, type AvatarGroupProps, type FeaturedIconProps, type FeaturedIconTone, type ResultKind } from './Pieces';
+export { Collapse } from './Collapse';
+export { StatValue, StatGrid, RankRow, LeagueStripRow, FactList, VizLegend, PercentileCell, goodness, percentileColor, ordinal, type StatDirection, type StatValueProps, type RankRowProps } from './Stats';
 export { DataTable, type Column, type DataTableProps, type Density, type HeatSpec } from './DataTable';
 export { Pagination, type PaginationProps, type PagingOptions, type PagingMode } from './Pagination';
 export { DrillDownPanel, type DrillDownPanelProps } from './DrillDownPanel';

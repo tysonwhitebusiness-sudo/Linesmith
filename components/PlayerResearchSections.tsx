@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
-import { Avatar, Card, Chip, cx, DataTable, EmptyState, ErrorState, LeagueStripRow, PickList, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column, Tooltip } from './ui';
+import { Avatar, Card, Chip, cx, DataTable, ResultMark, EmptyState, ErrorState, LeagueStripRow, PickList, RankRow, SegmentedToggle, SelectBox, Skeleton, VizLegend, type CardState, type Column, Tooltip } from './ui';
 import { CATEGORICAL, CourtScatter, FieldLanes, FieldScatter, FullPitchScatter, Histogram, MatchTimeline, PitchScatter, RinkScatter, SeriesChart, SIDE_COLOR, SplitDumbbell, SprayScatter, StreakStrip, ZoneScatter } from './charts';
 import { SpatialSurface } from './charts/SpatialSurface';
 import {
@@ -125,7 +125,7 @@ export function PlayerHero({ bio, bioState, research, researchState, fallbackNam
               </div>
               {bio?.injury ? (
                 <div role="status" className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-ctl border border-bad/25 bg-bad/5 px-2.5 py-1 text-body-sm text-ink">
-                  <span className="font-semibold text-bad">{bio.injury.status}</span>
+                  <span className="font-semibold text-bad-ink">{bio.injury.status}</span>
                   {bio.injury.detail ? <span>{bio.injury.detail}</span> : null}
                   {bio.injury.returnDate ? <span className="text-ink-muted">· expected back {shortDate(bio.injury.returnDate)}</span> : null}
                   {bio.injury.date ? <span className="text-ink-muted">· reported {shortDate(bio.injury.date)}</span> : null}
@@ -162,18 +162,12 @@ export function PlayerHero({ bio, bioState, research, researchState, fallbackNam
                   <div className="mt-3 text-overline uppercase text-ink-muted">Last {hero.lastFive.length}</div>
                   <div className="mt-1 flex gap-1">
                     {hero.lastFive.map((g) => (
-                      <Tooltip key={(g.date ?? '') + g.opponent} content={`${g.date ? `${shortDate(g.date)} ` : ''}${g.opponent}${g.result ? ` · ${g.result}` : g.mark ? ` · ${g.mark}` : ''}`}><span
-                        className={cx(
-                          // A mark ("-4") can be two characters, so the chip grows rather than clips.
-                          'grid h-6 min-w-6 place-items-center rounded-ctl px-1 text-label font-semibold tabular-nums',
-                          g.result === 'W' || g.tone === 'good'
-                            ? 'bg-good/12 text-good'
-                            : g.result === 'L' || g.tone === 'bad'
-                              ? 'bg-bad/10 text-bad'
-                              : 'bg-card-sunk text-ink-secondary',
-                        )}
-                      >
-                        {g.result ?? g.mark ?? '·'}
+                      <Tooltip key={(g.date ?? '') + g.opponent} content={`${g.date ? `${shortDate(g.date)} ` : ''}${g.opponent}${g.result ? ` · ${g.result}` : g.mark ? ` · ${g.mark}` : ''}`}><span>
+                        <ResultMark
+                          result={g.result ?? (g.tone === 'good' ? 'W' : g.tone === 'bad' ? 'L' : null)}
+                          mark={g.result ? undefined : (g.mark ?? undefined)}
+                          label={`${g.opponent}${g.result ? ` ${g.result}` : g.mark ? ` ${g.mark}` : ''}`}
+                        />
                       </span></Tooltip>
                     ))}
                   </div>
@@ -622,7 +616,7 @@ function TableCard({ card }: { card: Extract<ResearchCard, { kind: 'table' }> })
       render: (r: TableRow) => {
         const tone = r.tones?.[c.key];
         const text = formatResearchValue(r.values[c.key], c);
-        if (tone) return <span className={cx('font-semibold', tone === 'good' ? 'text-good' : 'text-bad')}>{text}</span>;
+        if (tone) return <span className={cx('font-semibold', tone === 'good' ? 'text-good-ink' : 'text-bad-ink')}>{text}</span>;
         return text;
       },
       sortValue: (r: TableRow) => {

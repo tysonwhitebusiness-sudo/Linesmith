@@ -49,7 +49,7 @@ authorised.
 | # | Phase | Track | Needs | Deploy | Status |
 |---|---|---|---|---|---|
 | 1 | **C7** Delete the live line tracker. The plan said six role keys → five; measured, `liveLineTracker` was never a role key, so the keys stay six | C | — | no | **done** |
-| 2 | **C0** Electric Turf + `-ink` tokens, one ESPN team-colour source, kit pieces | C | 1 | no | — |
+| 2 | **C0** Electric Turf + `-ink` tokens, one ESPN team-colour source, kit pieces | C | 1 | no | **done** |
 | 3 | **C1** Charcoal section bands: research pages and EVERY Slate section, **Movers included** | C | 2 | no | — |
 | 4 | **PY-A** Shared Python phase: C5's grading (`hit_rule`, `__leader__` rows, `outcome.detail`, `_read`), the three new Specials (MLB longest HR, NFL longest reception, NHL 2+ goals), the park-orientation table, and F0's Python half (`kind` = special/spotlight; every row carries player/team/game ids) | C+S | — | **yes** | — |
 | 5 | **C2** Player hero | C | 3 | no | — |

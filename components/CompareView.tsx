@@ -105,7 +105,7 @@ function CompareTable({ rows, aLabel, bLabel, label }: { rows: CompareViewRow[];
         const d = r.a - r.b;
         const lead = leader(r);
         const text = `${d > 0 ? '+' : d < 0 ? '−' : ''}${r.format(Math.abs(d))}`;
-        return <span className={cx(lead === 'a' ? 'text-good' : lead === 'b' ? 'text-bad' : 'text-ink-secondary')}>{text}</span>;
+        return <span className={cx(lead === 'a' ? 'text-good-ink' : lead === 'b' ? 'text-bad-ink' : 'text-ink-secondary')}>{text}</span>;
       },
     },
   ];

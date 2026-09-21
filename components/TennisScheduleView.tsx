@@ -463,7 +463,7 @@ function WeatherCard({ weather }: { weather: WeatherContext }) {
 function TrendArrow({ current, previous }: { current: number; previous: number | null }) {
   if (previous == null || previous === current) return <span className="text-overline font-normal tracking-normal text-ink-muted">–</span>;
   const up = previous > current; // a lower rank number is better
-  return <span className={`text-overline tracking-normal font-bold ${up ? 'text-good' : 'text-bad'}`}>{up ? `▲${previous - current}` : `▼${current - previous}`}</span>;
+  return <span className={`text-overline tracking-normal font-bold ${up ? 'text-good-ink' : 'text-bad-ink'}`}>{up ? `▲${previous - current}` : `▼${current - previous}`}</span>;
 }
 
 function WorldRankingsCard({ tour, rankings, loading }: { tour: TennisTour; rankings: RankingRow[]; loading: boolean }) {
@@ -632,7 +632,7 @@ export function TennisScheduleView({
     <div className="grid gap-3 lg:grid-cols-[280px_1fr] lg:items-start">
       <div className="lb-card overflow-hidden lg:sticky lg:top-4">
         {scheduleWarnings.length > 0 ? (
-          <div className="border-b border-warn/30 bg-warn/5 p-2 text-overline font-normal tracking-normal text-warn">
+          <div className="border-b border-warn/30 bg-warn/5 p-2 text-overline font-normal tracking-normal text-warn-ink">
             {scheduleWarnings.map((w) => (
               <p key={w}>{w}</p>
             ))}

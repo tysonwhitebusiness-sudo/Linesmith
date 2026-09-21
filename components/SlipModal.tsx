@@ -266,7 +266,7 @@ export function SlipModal({
       title={`Slip · ${picks.length}`}
       headerExtra={
         picks.length > 0 ? (
-          <Button variant="link" size="sm" onPress={onClear} className="text-bad">
+          <Button variant="link" size="sm" onPress={onClear} className="text-bad-ink">
             Clear
           </Button>
         ) : null
@@ -302,9 +302,9 @@ export function SlipModal({
 
           {importResult ? (
             <div className="space-y-2">
-              {importResult.error ? <p className="text-xs text-bad">{importResult.error}</p> : null}
+              {importResult.error ? <p className="text-xs text-bad-ink">{importResult.error}</p> : null}
               {importResult.warnings?.map((w) => (
-                <p key={w} className="text-xs text-warn">
+                <p key={w} className="text-xs text-warn-ink">
                   {w}
                 </p>
               ))}
@@ -369,7 +369,7 @@ export function SlipModal({
                           <MarketLabel sport={sport} dimension={pick.dimension} category={pick.category} />
                         </p>
                         {(counts.get(pick.subjectId) ?? 0) > 1 ? (
-                          <p className="mt-1 text-overline font-normal tracking-normal text-warn">Same subject appears more than once on this slip.</p>
+                          <p className="mt-1 text-overline font-normal tracking-normal text-warn-ink">Same subject appears more than once on this slip.</p>
                         ) : null}
                       </div>
                     </div>
@@ -381,7 +381,7 @@ export function SlipModal({
                       {pick.americanOdds ? (
                         <OddsProvenance pick={pick} />
                       ) : (
-                        <span className="text-overline tracking-normal font-semibold text-warn">Needs odds — enter manually</span>
+                        <span className="text-overline tracking-normal font-semibold text-warn-ink">Needs odds — enter manually</span>
                       )}
                     </div>
                   </div>

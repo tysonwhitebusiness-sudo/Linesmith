@@ -13,6 +13,7 @@
 
 import type { ReactNode } from 'react';
 import { Avatar } from './Avatar';
+import { Tooltip } from './Tooltip';
 import { cx } from './cx';
 
 /* -------------------------------------------------------------------------- */
@@ -102,7 +103,9 @@ export interface AvatarGroupProps {
   people: Array<{ key: string; name: string; src?: string; fallbackSrc?: string; kind?: 'player' | 'logo' }>;
   /** Everyone beyond this becomes the "+N" circle. */
   max?: number;
-  size?: 24 | 32;
+  size?: 18 | 20 | 24 | 32;
+  /** C0.3: name every mark in a Tooltip on the group (book marks, whose logos aren't self-explanatory). */
+  tooltip?: boolean;
   className?: string;
 }
 
@@ -110,10 +113,10 @@ export interface AvatarGroupProps {
  * `AvatarGroup` — an overlapped stack, then a "+N". A golf group, a game's
  * scratched players, the books quoting a line.
  */
-export function AvatarGroup({ people, max = 4, size = 24, className }: AvatarGroupProps) {
+export function AvatarGroup({ people, max = 4, size = 24, tooltip, className }: AvatarGroupProps) {
   const shown = people.slice(0, max);
   const rest = people.length - shown.length;
-  return (
+  const group = (
     <span className={cx('inline-flex items-center', className)} role="img" aria-label={people.map((p) => p.name).join(', ')}>
       {/* No explicit z-index: DOM order stacks each avatar over the one before
           it, which is what keeps the "+N" fully visible at the end. Stacking
@@ -134,6 +137,7 @@ export function AvatarGroup({ people, max = 4, size = 24, className }: AvatarGro
       ) : null}
     </span>
   );
+  return tooltip ? <Tooltip content={people.map((p) => p.name).join(', ')}>{group}</Tooltip> : group;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -150,9 +154,9 @@ export interface FeaturedIconProps {
 
 const TONE_SOFT: Record<FeaturedIconTone, string> = {
   neutral: 'bg-card-sunk text-ink-secondary',
-  good: 'bg-good/10 text-good',
-  bad: 'bg-bad/10 text-bad',
-  warn: 'bg-warn/10 text-warn',
+  good: 'bg-good/10 text-good-ink',
+  bad: 'bg-bad/10 text-bad-ink',
+  warn: 'bg-warn/10 text-warn-ink',
 };
 
 /**
@@ -173,6 +177,60 @@ export function FeaturedIcon({ icon, variant = 'soft', tone = 'neutral', classNa
       )}
     >
       {icon}
+    </span>
+  );
+}
+
+/* ---------------------------------------------------------------- ResultMark */
+
+export type ResultKind = 'W' | 'L' | 'D' | 'hit' | 'miss' | 'dnp';
+
+/**
+ * C0.3 `ResultMark`: the one mark for "what happened". Replaces the W/L
+ * squares hand-rolled in the player hero and the Specials receipts.
+ *
+ * `square` (22px, radius 6) for a game result: W on the solid good fill with
+ * dark text, L on solid bad with white, D neutral. `dot` (18px circle) for a
+ * graded call: a tick for a hit, a cross for a miss, a dash for did not play.
+ * A `mark` ("-4" for a golf round) replaces the letter; the square grows.
+ */
+export function ResultMark({
+  result,
+  mark,
+  kind = 'square',
+  label,
+  className,
+}: {
+  result: ResultKind | null;
+  mark?: string;
+  kind?: 'square' | 'dot';
+  label?: string;
+  className?: string;
+}) {
+  const good = result === 'W' || result === 'hit';
+  const bad = result === 'L' || result === 'miss';
+  const tone = good ? 'bg-good text-good-on' : bad ? 'bg-bad text-white' : 'bg-card-sunk text-ink-secondary';
+  const glyph =
+    kind === 'dot'
+      ? good
+        ? '\u2713'
+        : bad
+          ? '\u2715'
+          : '\u2013'
+      : (mark ?? (result === 'hit' ? 'W' : result === 'miss' ? 'L' : result === 'dnp' ? '\u2013' : (result ?? '\u00b7')));
+  const name = label ?? (good ? 'Win' : bad ? 'Loss' : result === 'D' ? 'Draw' : result === 'dnp' ? 'Did not play' : 'No result');
+  return (
+    <span
+      role="img"
+      aria-label={name}
+      className={cx(
+        'inline-grid shrink-0 place-items-center font-bold tabular-nums',
+        kind === 'dot' ? 'h-[18px] w-[18px] rounded-full text-overline' : 'h-[22px] min-w-[22px] rounded-[6px] px-1 text-label',
+        tone,
+        className,
+      )}
+    >
+      <span aria-hidden>{glyph}</span>
     </span>
   );
 }

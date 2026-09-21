@@ -101,7 +101,7 @@ export function GameCard({ card }: { card: SlateGameCard }) {
                 'cursor-help rounded-md px-1.5 py-0.5 text-overline font-semibold',
                 // D9's ring: only where the pick differs from the market
                 // favourite. Everywhere else it is a plain label.
-                card.model.againstFavourite ? 'bg-good/10 text-good ring-1 ring-good/30 ring-inset' : 'bg-card-sunk text-ink-secondary',
+                card.model.againstFavourite ? 'bg-good/10 text-good-ink ring-1 ring-good/30 ring-inset' : 'bg-card-sunk text-ink-secondary',
               )}
             >
               Model

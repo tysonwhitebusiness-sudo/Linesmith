@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type R
 import { heatFill, heatInk } from '@/lib/ui/heat';
 import { StreakStrip } from '@/components/charts/StreakStrip';
 import { Chip } from './Chip';
+import { PercentileCell } from './Stats';
 import { Pagination, type PagingOptions } from './Pagination';
 import { Tooltip } from './Tooltip';
 import { cx } from './cx';
@@ -95,6 +96,13 @@ export interface Column<Row> {
    * definition, whatever the rest of the column holds. (U6.)
    */
   ink?: (row: Row) => 'good' | 'bad' | null;
+  /**
+   * C0.3: a value with its percentile under it (`PercentileCell`): the
+   * Specials factor tables (C5). 0-100 within the pool; null prints the
+   * value alone. `percentileDirection` flips the colour where less is better.
+   */
+  percentile?: (row: Row) => number | null | undefined;
+  percentileDirection?: 'higher' | 'lower' | 'neutral';
   /**
    * Last 5 / Last 10 squares, drawn by the chart grammar's own `StreakStrip`
    * so there is one implementation of "a run of binary outcomes" in the app.
@@ -337,6 +345,7 @@ export function DataTable<Row>({
             const leads = !isTotals && leaders.get(c.key) === row;
             const tone = isTotals ? null : (c.tone?.(row) ?? null);
             const ink = c.ink?.(row) ?? null;
+            const pct = isTotals || !c.percentile ? undefined : c.percentile(row);
             const run = isTotals ? null : (c.streak?.(row) ?? null);
 
             let style: CSSProperties | undefined;
@@ -417,8 +426,10 @@ export function DataTable<Row>({
                     ) : (
                       '—'
                     )
+                  ) : c.percentile && pct !== undefined ? (
+                    <PercentileCell value={v ?? '—'} percentile={pct} direction={c.percentileDirection} align={align(c) === 'left' ? 'left' : 'right'} />
                   ) : ink ? (
-                    <span className={cx('font-semibold', ink === 'good' ? 'text-good' : 'text-bad')}>{v ?? '—'}</span>
+                    <span className={cx('font-semibold', ink === 'good' ? 'text-good-ink' : 'text-bad-ink')}>{v ?? '—'}</span>
                   ) : (
                     (v ?? '—')
                   )}

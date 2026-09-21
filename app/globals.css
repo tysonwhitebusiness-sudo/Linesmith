@@ -54,6 +54,11 @@
   --color-good: rgb(var(--good));
   --color-bad: rgb(var(--bad));
   --color-warn: rgb(var(--warn));
+  /* C0: the text shades. `text-good-ink` etc. are what a page writes. */
+  --color-good-ink: rgb(var(--good-ink));
+  --color-bad-ink: rgb(var(--bad-ink));
+  --color-warn-ink: rgb(var(--warn-ink));
+  --color-good-on: rgb(var(--good-on));
   --color-paper: oklch(var(--paper));
   --color-card: oklch(var(--card));
   /* Inset surfaces inside a card: toggle tracks, hover rows, skeletons. */
@@ -280,9 +285,16 @@
     --ink-muted: 47% 0.005 260; /* lightest gray allowed for text */
     --ink-faint: 72% 0.004 260; /* decoration only */
     --ink-disabled: 80% 0.004 260;
-    --good: 15 122 79; /* #0f7a4f */
-    --bad: 194 59 44; /* #c23b2c */
-    --warn: 183 121 31; /* #b7791f */
+    /* C0 (D-C1) ELECTRIC TURF. The fill is for bars, dots and solid badges;
+       TEXT always uses the -ink shade (#00d26a on white is ~1.9:1 and fails). */
+    --good: 0 210 106; /* #00d26a */
+    --bad: 255 77 79; /* #ff4d4f */
+    --warn: 255 176 32; /* #ffb020 */
+    --good-ink: 0 135 63; /* #00873f */
+    --bad-ink: 196 22 28; /* #c4161c */
+    --warn-ink: 154 98 0; /* #9a6200 */
+    /* Dark text ON a solid good fill (the W square, a hit dot): #04311a. */
+    --good-on: 4 49 26;
     --cmp-a: 47 111 179; /* #2f6fb3 */
     --cmp-b: 197 106 28; /* #c56a1c */
     --ease-standard: cubic-bezier(0.2, 0, 0, 1);
@@ -471,6 +483,14 @@
   display: none;
 }
 
+/* C0 `Collapse` peek (C2.4): open a little, hold, close — once per viewer. */
+@keyframes lb-peek {
+  0% { max-height: 0; }
+  32% { max-height: 96px; }
+  62% { max-height: 96px; }
+  100% { max-height: 0; }
+}
+
 /* U4 overlay motion. */
 @keyframes lb-fade-in { from { opacity: 0; } }
 @keyframes lb-fade-out { to { opacity: 0; } }
@@ -480,6 +500,23 @@
 @keyframes lb-pop-out { to { opacity: 0; transform: translateY(8px) scale(0.97); } }
 @keyframes lb-sheet-in { from { transform: translateY(100%); } }
 @keyframes lb-sheet-out { to { transform: translateY(100%); } }
+
+/* C0: the bare `text-good` / `text-bad` / `text-warn` classes render the INK
+   shade, never the fill. In-scope code writes `text-*-ink` (guarded in
+   tests/ui-sweep); this catches the frozen Scan files, whose bytes are pinned
+   and whose recolour through tokens is approved (plan §9 Q2).
+   UNLAYERED ON PURPOSE: unlayered CSS beats Tailwind's utilities layer, so
+   these win over the theme-generated `.text-good{color:var(--color-good)}`.
+   An `@utility text-good` was tried first and Tailwind kept its own rule. */
+.text-good {
+  color: rgb(var(--good-ink));
+}
+.text-bad {
+  color: rgb(var(--bad-ink));
+}
+.text-warn {
+  color: rgb(var(--warn-ink));
+}
 
 /* R3 3a: reduced motion falls back to fades only. Tweens and movement collapse
    to near-instant; opacity changes still read. */

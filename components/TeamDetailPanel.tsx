@@ -97,7 +97,7 @@ function TeamListShell({
             are different things and now say so. R3's `ErrorState` replaces
             this with the shared primitive. */}
         {error ? (
-          <p className="p-3 text-overline font-normal tracking-normal text-bad">
+          <p className="p-3 text-overline font-normal tracking-normal text-bad-ink">
             Couldn’t load teams.{' '}
             {onRetry ? (
               <Button variant="link" size="sm" onPress={onRetry}>

@@ -94,10 +94,11 @@ test('there is one Skeleton primitive', () => {
 test('Chip.dot is identity, not a tone', () => {
   const src = readFileSync('components/ui/Chip.tsx', 'utf8');
   assert.match(src, /dot\?: string;/, 'dot takes a colour, not a tone name');
-  // The tone list is unchanged: a dot must not have added a hue to it.
+  // The tone list gained no hue for a dot. C0 added `onColor`, which is a
+  // SURFACE (a translucent chip on a coloured hero band), not a hue.
   assert.match(
     src,
-    /export type ChipTone = 'neutral' \| 'good' \| 'bad' \| 'warn' \| 'live' \| 'cmpA' \| 'cmpB' \| 'strong' \| 'masters';/,
+    /export type ChipTone = 'neutral' \| 'good' \| 'bad' \| 'warn' \| 'live' \| 'cmpA' \| 'cmpB' \| 'strong' \| 'masters' \| 'onColor';/,
   );
 });
 

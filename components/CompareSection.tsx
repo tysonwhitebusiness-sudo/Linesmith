@@ -132,7 +132,7 @@ export function CompareSection({
         sortable: false,
         render: (r) =>
           r.result ? (
-            <span className={r.result === 'W' ? 'font-semibold text-good' : r.result === 'L' ? 'font-semibold text-bad' : 'font-semibold text-ink-secondary'}>
+            <span className={r.result === 'W' ? 'font-semibold text-good-ink' : r.result === 'L' ? 'font-semibold text-bad-ink' : 'font-semibold text-ink-secondary'}>
               {r.result}
               {r.score ? ` ${r.score}` : ''}
             </span>

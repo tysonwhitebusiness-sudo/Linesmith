@@ -282,5 +282,5 @@ test('share data is volume, never judged good or bad (D4)', () => {
   // "2% of targets deep right" rendered as BAD on the red-green ramp.
   const markup = renderToStaticMarkup(<SpatialSurface role={shareRole('field', 2, 3)} />);
   assert.match(markup, /color-mix\(in oklch, oklch\(var\(--ink\)\)/, 'share cells use the single-hue volume ramp');
-  assert.doesNotMatch(markup, /var\(--good\)|var\(--bad\)|#0f7a4f|#c23b2c/, 'share cells must not carry good/bad color');
+  assert.doesNotMatch(markup, /var\(--good\)|var\(--bad\)|#0f7a4f|#c23b2c|#00d26a|#ff4d4f/, 'share cells must not carry good/bad color');
 });

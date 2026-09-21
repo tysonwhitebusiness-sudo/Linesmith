@@ -27,7 +27,7 @@ is answered. Start at phase 1 (C7) of the run order and don't stop to ask.**
 |---|---|---|
 | 1 | C7 delete the live line tracker (the role keys stay six: the tracker was never one) | **done** |
 | 2 | C0 Electric Turf + `-ink` tokens, ESPN team colours, kit pieces | **next** |
-| 3 | C1 charcoal section bands (Movers included) | — |
+| 3 | C1 charcoal section bands (Movers included) | **next** |
 | 4 | PY-A shared Python: C5 grading + 3 new Specials + park table + spotlight `kind` (**deploy**) | — |
 | 5 | C2 player hero | — |
 | 5b | C2b team hero, same rework as the player hero | — |
@@ -74,6 +74,17 @@ Update this table and the run doc's §2 after every phase commit, then push.
 - M4 (promotion tests) and M5 (prop baselines, needs approval).
 
 ## Findings worth knowing
+
+- **C0: `@utility text-good` does NOT override Tailwind's theme-generated
+  `.text-good`**; Tailwind kept its own rule. The frozen Scan files get the
+  ink shade from a plain UNLAYERED `.text-good{}` rule in `globals.css`
+  (unlayered beats `@layer utilities`). Verified in the browser:
+  Scan's `text-warn` went `rgb(183,121,31)` → `rgb(154,98,0)`.
+- **C0: team colours.** `bandColors()` falls back to charcoal only for true
+  blacks and too-light golds (LV, NO, PIT, Pirates, White Sox). A relative
+  saturation test keeps dark hues (GB green, SD brown). The oklch
+  `gradientCardStyle` ramp in `heat.ts` already sits on Electric Turf's three
+  hues and was left alone.
 
 - **`DataTable.tone` is a RESULT chip ("W 6–3"), not a colour.** Use `ink`
   for good/bad-by-definition values, and `heat` for a rank.

@@ -76,7 +76,7 @@ export function Field({ label, hint, error, htmlFor, className, children }: Fiel
       ) : null}
       {children}
       {error ? (
-        <p role="alert" className="flex items-center gap-1 text-label text-bad">
+        <p role="alert" className="flex items-center gap-1 text-label text-bad-ink">
           <svg aria-hidden viewBox="0 0 16 16" width={12} height={12} fill="none" stroke="currentColor" strokeWidth="1.6">
             <circle cx="8" cy="8" r="6.5" />
             <path d="M8 4.5v4M8 11v.5" strokeLinecap="round" />

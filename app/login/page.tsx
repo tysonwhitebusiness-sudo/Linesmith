@@ -94,7 +94,7 @@ function LoginForm() {
               />
             </Field>
 
-            {error ? <p className="text-label font-normal text-bad">{error}</p> : null}
+            {error ? <p className="text-label font-normal text-bad-ink">{error}</p> : null}
 
             {/* U spec 2c: `lg` on login — 44px is the touch floor. */}
             <Button type="submit" variant="primary" size="lg" loading={loading} className="w-full">

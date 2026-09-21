@@ -112,7 +112,7 @@ export function TeamCompareSection({ payload, allTeams, season, other, otherLoad
       sortable: false,
       render: (g) => {
         const won = (g.us ?? 0) > (g.them ?? 0);
-        return <span className={won ? 'font-semibold text-good' : 'font-semibold text-bad'}>{`${g.us}–${g.them}`}</span>;
+        return <span className={won ? 'font-semibold text-good-ink' : 'font-semibold text-bad-ink'}>{`${g.us}–${g.them}`}</span>;
       },
     },
   ];

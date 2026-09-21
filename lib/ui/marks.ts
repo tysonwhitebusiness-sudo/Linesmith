@@ -34,7 +34,7 @@ export function markFor(category: string): MarkStyle {
 }
 
 export const TONE_CLASS: Record<MarkTone, string> = {
-  good: 'text-good border-good',
-  bad: 'text-bad border-bad',
+  good: 'text-good-ink border-good',
+  bad: 'text-bad-ink border-bad',
   neutral: 'text-ink-muted border-line',
 };

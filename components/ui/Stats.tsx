@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { cx } from './cx';
 import { Tooltip, TipRow } from './Tooltip';
+import { heatFill, heatInk } from '@/lib/ui/heat';
 
 /**
  * StatValue, StatGrid, RankRow, FactList — R3 3b. Replace the ad hoc
@@ -66,7 +67,7 @@ export function StatValue({ label, value, unit, rank, percentile, delta, directi
         <div className="flex flex-wrap items-center gap-x-2 text-label">
           {rank ? <span className="tabular-nums text-ink-secondary">{ordinal(rank.rank)} of {rank.of}</span> : null}
           {delta ? (
-            <span className={cx('font-semibold tabular-nums', delta.better == null ? 'text-ink-muted' : delta.better ? 'text-good' : 'text-bad')}>{delta.value}</span>
+            <span className={cx('font-semibold tabular-nums', delta.better == null ? 'text-ink-muted' : delta.better ? 'text-good-ink' : 'text-bad-ink')}>{delta.value}</span>
           ) : null}
         </div>
       ) : null}
@@ -239,5 +240,49 @@ export function VizLegend({ items, className }: { items: Array<{ label: ReactNod
         </span>
       ))}
     </div>
+  );
+}
+
+/* ---------------------------------------------------------------- PercentileCell */
+
+/**
+ * C0.3 `PercentileCell`: a value, then its percentile ("98th pct") in the heat
+ * ink, then a 3px bar in the heat fill. Hero tiles use it (C2) and the
+ * Specials tables as a column (C5, `Column.percentile`).
+ *
+ * THE COLOUR IS THE PERCENTILE, not a verdict on the value: 98th is green
+ * because it ranks high in its pool, `direction: 'lower'` flips it for a stat
+ * where less is better, and a `neutral` stat gets the ramp's midpoint.
+ */
+export function PercentileCell({
+  value,
+  percentile,
+  direction = 'higher',
+  align = 'right',
+  className,
+}: {
+  value: ReactNode;
+  /** 0-100 within the pool; null prints the value alone. */
+  percentile: number | null | undefined;
+  direction?: StatDirection;
+  align?: 'left' | 'right';
+  className?: string;
+}) {
+  if (percentile == null || !Number.isFinite(percentile)) {
+    return <span className={cx('tabular-nums text-ink', className)}>{value}</span>;
+  }
+  const p = Math.max(0, Math.min(100, Math.round(percentile)));
+  const g = goodness(p, direction);
+  const t = g == null ? 0.5 : g / 100;
+  return (
+    <span className={cx('inline-flex min-w-[64px] flex-col gap-0.5', align === 'right' ? 'items-end' : 'items-start', className)}>
+      <span className="font-semibold tabular-nums text-ink">{value}</span>
+      <span className="text-overline font-semibold tabular-nums" style={{ color: heatInk(t) }}>
+        {ordinal(p)} pct
+      </span>
+      <span aria-hidden className="block h-[3px] w-full overflow-hidden rounded-full bg-card-sunk">
+        <span className="block h-full rounded-full" style={{ width: `${p}%`, background: heatFill(t) }} />
+      </span>
+    </span>
   );
 }

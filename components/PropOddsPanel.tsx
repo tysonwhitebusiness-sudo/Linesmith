@@ -72,7 +72,7 @@ export function PropOddsBoard({
       ))}
     </ul>
     {summary ? (
-      <p className={`mt-1.5 text-overline font-normal tracking-normal ${coverage.stale > 0 ? 'text-warn' : 'text-ink-muted'}`}>{summary}</p>
+      <p className={`mt-1.5 text-overline font-normal tracking-normal ${coverage.stale > 0 ? 'text-warn-ink' : 'text-ink-muted'}`}>{summary}</p>
     ) : null}
     </>
   );

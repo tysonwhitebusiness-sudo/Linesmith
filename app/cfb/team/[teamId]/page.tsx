@@ -41,7 +41,7 @@ export default function CfbTeamPage() {
       </header>
 
       <main className="px-3 py-3">
-        {error ? <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad">{error}</div> : null}
+        {error ? <div className="lb-card mb-3 border-bad/30 bg-bad/5 p-3 text-sm text-bad-ink">{error}</div> : null}
         <TeamDetailPanel sport={sport} initialTeamId={teamId} />
       </main>
 

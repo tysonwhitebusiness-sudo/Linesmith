@@ -135,7 +135,7 @@ export default function BetDetailPage() {
         {loading ? (
           <div className="lb-card h-40 animate-pulse" />
         ) : error || !bet ? (
-          <div className="lb-card p-6 text-center text-sm text-bad">{error ?? 'Bet not found.'}</div>
+          <div className="lb-card p-6 text-center text-sm text-bad-ink">{error ?? 'Bet not found.'}</div>
         ) : (
           <div className="space-y-3">
             <section className="lb-card-hero p-4">
@@ -174,7 +174,7 @@ export default function BetDetailPage() {
                       <OddsChip price={bet.americanOdds} source={bet.oddsSource ?? undefined} size="md" />
                     </span>
                   ) : (
-                    <span className="text-warn">Needs odds</span>
+                    <span className="text-warn-ink">Needs odds</span>
                   )}
                 </div>
               ) : null}

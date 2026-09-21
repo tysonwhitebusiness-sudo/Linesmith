@@ -134,7 +134,7 @@ export function GameStateCard({ state, subjectName }: { state: GameStateSlot; su
                   <li key={p.label} className="flex items-baseline gap-2 text-body-sm">
                     <span className="shrink-0 font-semibold text-ink">{p.label}</span>
                     <span className="min-w-0 flex-1 text-ink-secondary">{p.text}</span>
-                    {p.note ? <span className="shrink-0 font-semibold text-good">{p.note}</span> : null}
+                    {p.note ? <span className="shrink-0 font-semibold text-good-ink">{p.note}</span> : null}
                   </li>
                 ))}
               </ul>
@@ -177,7 +177,7 @@ export function GameStateCard({ state, subjectName }: { state: GameStateSlot; su
                 label: 'Now',
                 numeric: true,
                 render: (r) => (
-                  <span className={r.cleared ? 'font-semibold text-good' : undefined}>
+                  <span className={r.cleared ? 'font-semibold text-good-ink' : undefined}>
                     {r.value}
                     {r.cleared ? <span aria-label="cleared"> ✓</span> : null}
                   </span>

@@ -113,7 +113,7 @@ export function GamesStrip({ games, selectedGamePk, onSelectGame, onNavigateToGa
 
             <span className="text-overline font-normal tracking-normal">
               {isLive ? (
-                <span className="inline-flex items-center gap-1 font-semibold text-good">
+                <span className="inline-flex items-center gap-1 font-semibold text-good-ink">
                   <span className="inline-block h-1.5 w-1.5 animate-lb-pulse rounded-full bg-good" />
                   {score ?? formatGameTime(game.firstPitch)}
                   {live.livePeriod ? <span className="font-normal opacity-70">{live.livePeriod}</span> : null}

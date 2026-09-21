@@ -18,21 +18,23 @@ import { Tooltip } from './Tooltip';
  * Pass `onClick` and it becomes a real button with `aria-pressed` from
  * `selected`: the G2 window chips (Last 5 / Last 10 / Season).
  */
-export type ChipTone = 'neutral' | 'good' | 'bad' | 'warn' | 'live' | 'cmpA' | 'cmpB' | 'strong' | 'masters';
+export type ChipTone = 'neutral' | 'good' | 'bad' | 'warn' | 'live' | 'cmpA' | 'cmpB' | 'strong' | 'masters' | 'onColor';
 /** `sm` the G2 chip (11px); `md` a compact body-size chip; `lg` the G2 window chip (Last 5 / Last 10 / Season). */
 export type ChipSize = 'sm' | 'md' | 'lg';
 export type ChipShape = 'pill' | 'box';
 
 const TONE: Record<ChipTone, string> = {
   neutral: 'border-line-soft bg-card-sunk text-ink-secondary',
-  good: 'border-good/25 bg-good/10 text-good',
-  bad: 'border-bad/25 bg-bad/10 text-bad',
-  warn: 'border-warn/30 bg-warn/10 text-warn',
-  live: 'border-good/25 bg-good/10 text-good',
+  good: 'border-good/25 bg-good/10 text-good-ink',
+  bad: 'border-bad/25 bg-bad/10 text-bad-ink',
+  warn: 'border-warn/30 bg-warn/10 text-warn-ink',
+  live: 'border-good/25 bg-good/10 text-good-ink',
   cmpA: 'border-cmp-a/30 bg-cmp-a/10 text-cmp-a',
   cmpB: 'border-cmp-b/30 bg-cmp-b/10 text-cmp-b',
   strong: 'border-masters bg-masters text-white',
   masters: 'border-masters bg-masters text-white',
+  // C0.3: a translucent white chip on a coloured band (the player/team hero).
+  onColor: 'border-white/20 bg-white/15 text-white',
 };
 
 const SIZE: Record<ChipShape, Record<ChipSize, string>> = {

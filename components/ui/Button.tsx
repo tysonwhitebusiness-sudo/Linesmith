@@ -40,7 +40,7 @@ const VARIANT: Record<ButtonVariant, string> = {
   tertiary: 'bg-transparent text-ink-secondary hover:bg-card-sunk hover:text-ink',
   link: 'bg-transparent p-0! h-auto! text-ink underline-offset-2 hover:underline',
   destructive: 'bg-bad text-white shadow-card hover:brightness-95',
-  'destructive-secondary': 'bg-card text-bad ring-1 ring-bad/25 ring-inset hover:bg-bad/5',
+  'destructive-secondary': 'bg-card text-bad-ink ring-1 ring-bad/25 ring-inset hover:bg-bad/5',
 };
 
 const SIZE: Record<ButtonSize, string> = {

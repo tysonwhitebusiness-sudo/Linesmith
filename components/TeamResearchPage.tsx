@@ -186,7 +186,7 @@ function TeamHero({ data }: { data: TeamResearchData }) {
                     <Tooltip key={i} content={g.tip}><span
                       className={cx(
                         'grid h-6 min-w-6 place-items-center rounded-ctl px-1 text-label font-semibold',
-                        g.result === 'W' ? 'bg-good/12 text-good' : g.result === 'D' ? 'bg-card-sunk text-ink-secondary' : 'bg-bad/10 text-bad',
+                        g.result === 'W' ? 'bg-good/12 text-good-ink' : g.result === 'D' ? 'bg-card-sunk text-ink-secondary' : 'bg-bad/10 text-bad-ink',
                       )}
                     >
                       {g.result}

@@ -106,9 +106,9 @@ interface AiSummary {
 }
 
 const AI_SEVERITY_CLASS: Record<AiSummary['severity'], string> = {
-  ok: 'bg-good/15 text-good border border-good/30',
-  warning: 'bg-warn/10 text-warn border border-warn/30',
-  critical: 'bg-bad/10 text-bad border border-bad/30',
+  ok: 'bg-good/15 text-good-ink border border-good/30',
+  warning: 'bg-warn/10 text-warn-ink border border-warn/30',
+  critical: 'bg-bad/10 text-bad-ink border border-bad/30',
 };
 
 interface DiagnosticsData {
@@ -491,8 +491,8 @@ function pickTime(iso: string | null): string {
 
 /** Green when the pick is graded a win, red when a loss, neutral otherwise (ungraded/pushed/no pick). */
 function outcomeClass(outcome: 'win' | 'loss' | null): string {
-  if (outcome === 'win') return 'bg-good/15 text-good border border-good/30';
-  if (outcome === 'loss') return 'bg-bad/10 text-bad border border-bad/30';
+  if (outcome === 'win') return 'bg-good/15 text-good-ink border border-good/30';
+  if (outcome === 'loss') return 'bg-bad/10 text-bad-ink border border-bad/30';
   return 'bg-ink/5 text-ink-muted border border-line';
 }
 
@@ -726,7 +726,7 @@ function PickRecordAnalysis({ rows }: { rows: GamePickView[] }) {
               </span></Tooltip>
               <Tooltip content={"Net bankroll change if half-Kelly (conservative, CI-lower-bound where available) had been staked on every locked, graded, priced pick, starting from 1.0 unit"}><span>
                 Kelly ROI:{' '}
-                <span className={`font-medium ${roi.netUnits > 0 ? 'text-good' : roi.netUnits < 0 ? 'text-bad' : 'text-ink-muted'}`}>
+                <span className={`font-medium ${roi.netUnits > 0 ? 'text-good-ink' : roi.netUnits < 0 ? 'text-bad-ink' : 'text-ink-muted'}`}>
                   {roi.netUnits >= 0 ? '+' : ''}
                   {(roi.netUnits * 100).toFixed(1)}%
                 </span>{' '}
@@ -1488,7 +1488,7 @@ export default function DiagnosticsPage() {
 
       <main className="mx-auto max-w-3xl space-y-4 px-4 py-4">
         {error ? (
-          <div className="lb-card border-bad/30 bg-bad/5 p-4 text-sm text-bad">{error}</div>
+          <div className="lb-card border-bad/30 bg-bad/5 p-4 text-sm text-bad-ink">{error}</div>
         ) : null}
 
         {data ? (
@@ -1504,12 +1504,12 @@ export default function DiagnosticsPage() {
                 <section className="lb-card border-warn/30 bg-warn/5 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <h2 className="text-sm font-semibold text-warn">Deferred: NHL/NBA odds verification</h2>
+                      <h2 className="text-sm font-semibold text-warn-ink">Deferred: NHL/NBA odds verification</h2>
                       <p className="mt-0.5 text-label font-normal text-ink-muted">
                         Both sports were off-season on 2026-08-26 — no live game existed to verify the odds grid against. Everything else checks out; this is the one open item once their seasons start.
                       </p>
                     </div>
-                    <Button variant="secondary" size="sm" className="shrink-0 text-warn" onPress={() => setShowNhlNbaResumeModal(true)}>
+                    <Button variant="secondary" size="sm" className="shrink-0 text-warn-ink" onPress={() => setShowNhlNbaResumeModal(true)}>
                       View resume instructions
                     </Button>
                   </div>
@@ -1523,7 +1523,7 @@ export default function DiagnosticsPage() {
                     <span className="text-overline font-normal tracking-normal text-ink-muted">gated = may show a probability beside a price · baseline = pick only</span>
                   </div>
                   {modelStatusError ? (
-                    <p className="text-sm text-bad">Failed: {modelStatusError}</p>
+                    <p className="text-sm text-bad-ink">Failed: {modelStatusError}</p>
                   ) : modelStatus === null ? (
                     <p className="text-sm text-ink-muted">Loading…</p>
                   ) : (
@@ -1539,9 +1539,9 @@ export default function DiagnosticsPage() {
     { key: 'c2', label: 'Status', sortable: false, render: (r) => (<><span
                                   className={
                                     r.status === 'gated'
-                                      ? 'rounded bg-good/10 px-1.5 py-0.5 font-semibold text-good'
+                                      ? 'rounded bg-good/10 px-1.5 py-0.5 font-semibold text-good-ink'
                                       : r.status === 'baseline'
-                                        ? 'rounded bg-warn/10 px-1.5 py-0.5 font-semibold text-warn'
+                                        ? 'rounded bg-warn/10 px-1.5 py-0.5 font-semibold text-warn-ink'
                                         : 'rounded bg-ink/5 px-1.5 py-0.5 font-semibold text-ink-muted'
                                   }
                                 >
@@ -1565,7 +1565,7 @@ export default function DiagnosticsPage() {
                     </Button>
                   </div>
                   {aiSummaryError ? (
-                    <p className="text-sm text-bad">Failed: {aiSummaryError}</p>
+                    <p className="text-sm text-bad-ink">Failed: {aiSummaryError}</p>
                   ) : aiSummary === null ? (
                     <p className="text-sm text-ink-muted">{aiSummaryLoading ? 'Asking DeepSeek…' : 'No summary yet.'}</p>
                   ) : (
@@ -1594,7 +1594,7 @@ export default function DiagnosticsPage() {
                 <section className="lb-card p-4">
                   <h2 className="mb-3 text-sm font-semibold">Job Health Checks</h2>
                   {healthChecksError ? (
-                    <p className="text-sm text-bad">Failed to load: {healthChecksError}</p>
+                    <p className="text-sm text-bad-ink">Failed to load: {healthChecksError}</p>
                   ) : healthChecks === null ? (
                     <p className="text-sm text-ink-muted">Loading…</p>
                   ) : healthChecks.length === 0 ? (
@@ -1637,7 +1637,7 @@ export default function DiagnosticsPage() {
                     {clv?.referenceDefinition ?? 'the last observed price before the game starts'}.
                   </p>
                   {clvError ? (
-                    <p className="text-sm text-bad">Failed to load: {clvError}</p>
+                    <p className="text-sm text-bad-ink">Failed to load: {clvError}</p>
                   ) : clv === null ? (
                     <p className="text-sm text-ink-muted">Loading…</p>
                   ) : !clv.available ? (
@@ -1780,7 +1780,7 @@ export default function DiagnosticsPage() {
                 </div>
               </div>
 
-              {pitcherRanksError ? <p className="mb-2 text-sm text-bad">{pitcherRanksError}</p> : null}
+              {pitcherRanksError ? <p className="mb-2 text-sm text-bad-ink">{pitcherRanksError}</p> : null}
               {pitcherRanksLoading && !pitcherRanks ? (
                 <p className="py-6 text-center text-sm text-ink-muted">
                   First run pulls a season of Statcast data — can take a couple minutes. Cached for 24h after that.
@@ -1830,7 +1830,7 @@ export default function DiagnosticsPage() {
                 </div>
               </div>
 
-              {batterRanksError ? <p className="mb-2 text-sm text-bad">{batterRanksError}</p> : null}
+              {batterRanksError ? <p className="mb-2 text-sm text-bad-ink">{batterRanksError}</p> : null}
               {batterRanksLoading && !batterRanks ? (
                 <p className="py-6 text-center text-sm text-ink-muted">
                   First run pulls a season of Statcast data — can take a couple minutes. Cached for 24h after that.
@@ -1921,7 +1921,7 @@ export default function DiagnosticsPage() {
               </div>
 
               {pickHistoryError ? (
-                <p className="text-label font-normal text-bad">{pickHistoryError}</p>
+                <p className="text-label font-normal text-bad-ink">{pickHistoryError}</p>
               ) : !pickHistory ? (
                 <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : (
@@ -1948,7 +1948,7 @@ export default function DiagnosticsPage() {
               </h2>
 
               {propsError ? (
-                <p className="text-label font-normal text-bad">{propsError}</p>
+                <p className="text-label font-normal text-bad-ink">{propsError}</p>
               ) : !propsData ? (
                 <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : (
@@ -1981,7 +1981,7 @@ export default function DiagnosticsPage() {
                           sortable: false,
                           render: (p) => {
                             const budget = propsData.budgets[p.id];
-                            return budget ? <span className={budget.exhausted ? 'text-bad' : budget.overSoftCap ? 'text-warn' : ''}>{budget.used} / {budget.limit}</span> : '—';
+                            return budget ? <span className={budget.exhausted ? 'text-bad-ink' : budget.overSoftCap ? 'text-warn-ink' : ''}>{budget.used} / {budget.limit}</span> : '—';
                           },
                         },
                         { key: 'remaining', label: 'Remaining', numeric: true, sortable: false, render: (p) => propsData.budgets[p.id]?.remaining ?? '—' },
@@ -2035,7 +2035,7 @@ export default function DiagnosticsPage() {
               {backfillResult ? <p className="mb-2 text-overline font-normal tracking-normal text-ink-muted">{backfillResult}</p> : null}
 
               {calibrationError ? (
-                <p className="text-label font-normal text-bad">{calibrationError}</p>
+                <p className="text-label font-normal text-bad-ink">{calibrationError}</p>
               ) : !calibration ? (
                 <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : calibration.counts.withModelProb === 0 ? (
@@ -2135,7 +2135,7 @@ export default function DiagnosticsPage() {
             <section id="model-health" className="lb-card p-4">
               <h2 className="mb-3 text-sm font-semibold">Model Versions</h2>
               {modelVersionsError ? (
-                <p className="text-label font-normal text-bad">{modelVersionsError}</p>
+                <p className="text-label font-normal text-bad-ink">{modelVersionsError}</p>
               ) : !modelVersions ? (
                 <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : (
@@ -2151,7 +2151,7 @@ export default function DiagnosticsPage() {
                           {market === 'moneyline' ? 'Moneyline' : market === 'total' ? 'Total (O/U)' : 'Home Run'}
                         </h3>
                         {staleness ? (
-                          <p className="mb-2 rounded-md border border-warn/30 bg-warn/5 px-2 py-1 text-overline font-normal tracking-normal text-warn">
+                          <p className="mb-2 rounded-md border border-warn/30 bg-warn/5 px-2 py-1 text-overline font-normal tracking-normal text-warn-ink">
                             Active model&apos;s newest season is {staleness.newestSeason} — {staleness.missingSeasons.join(', ')}{' '}
                             {staleness.missingSeasons.length === 1 ? 'is' : 'are'} available but not trained on yet.
                           </p>
@@ -2195,7 +2195,7 @@ export default function DiagnosticsPage() {
             <section className="lb-card p-4">
               <h2 className="mb-3 text-sm font-semibold">Live Drift Check</h2>
               {driftCheckError ? (
-                <p className="text-label font-normal text-bad">{driftCheckError}</p>
+                <p className="text-label font-normal text-bad-ink">{driftCheckError}</p>
               ) : !driftCheck ? (
                 <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : (
@@ -2233,7 +2233,7 @@ export default function DiagnosticsPage() {
             <section className="lb-card p-4">
               <h2 className="mb-3 text-sm font-semibold">Elo Ratings</h2>
               {eloSanityError ? (
-                <p className="text-label font-normal text-bad">{eloSanityError}</p>
+                <p className="text-label font-normal text-bad-ink">{eloSanityError}</p>
               ) : !eloSanity ? (
                 <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : (
@@ -2274,7 +2274,7 @@ export default function DiagnosticsPage() {
               <h2 className="mb-3 text-sm font-semibold">Game Model Calibration</h2>
 
               {gameCalibrationError ? (
-                <p className="text-label font-normal text-bad">{gameCalibrationError}</p>
+                <p className="text-label font-normal text-bad-ink">{gameCalibrationError}</p>
               ) : !gameCalibration ? (
                 <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : (
@@ -2323,7 +2323,7 @@ export default function DiagnosticsPage() {
                   </div>
                   {gameBackfillResult ? <p className="mb-2 text-overline font-normal tracking-normal text-ink-muted">{gameBackfillResult}</p> : null}
                   {moneylineCalibrationError ? (
-                    <p className="text-label font-normal text-bad">{moneylineCalibrationError}</p>
+                    <p className="text-label font-normal text-bad-ink">{moneylineCalibrationError}</p>
                   ) : !moneylineCalibration ? (
                     <p className="text-label font-normal text-ink-muted">Loading…</p>
                   ) : moneylineCalibration.counts.withModelProb === 0 ? (
@@ -2343,7 +2343,7 @@ export default function DiagnosticsPage() {
                   </div>
                   {totalBackfillResult ? <p className="mb-2 text-overline font-normal tracking-normal text-ink-muted">{totalBackfillResult}</p> : null}
                   {totalCalibrationError ? (
-                    <p className="text-label font-normal text-bad">{totalCalibrationError}</p>
+                    <p className="text-label font-normal text-bad-ink">{totalCalibrationError}</p>
                   ) : !totalCalibration ? (
                     <p className="text-label font-normal text-ink-muted">Loading…</p>
                   ) : totalCalibration.counts.withModelProb === 0 ? (
@@ -2367,7 +2367,7 @@ export default function DiagnosticsPage() {
                   </Button></Tooltip>
                 </div>
                 {totalBaselinesError ? (
-                  <p className="text-label font-normal text-bad">Failed: {totalBaselinesError}</p>
+                  <p className="text-label font-normal text-bad-ink">Failed: {totalBaselinesError}</p>
                 ) : totalBaselines ? (
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-body-sm sm:grid-cols-4">
                     <div>
@@ -2390,7 +2390,7 @@ export default function DiagnosticsPage() {
                       <div className="font-semibold tabular-nums">
                         {totalBaselines.fittedBrier.toFixed(4)}
                         {totalBaselines.fittedBrier < totalBaselines.marketOnlyBrier ? (
-                          <span className="ml-1 text-overline tracking-normal font-normal text-good">beats market</span>
+                          <span className="ml-1 text-overline tracking-normal font-normal text-good-ink">beats market</span>
                         ) : (
                           <span className="ml-1 text-overline tracking-normal font-normal text-ink-muted">≈ market</span>
                         )}
@@ -2412,7 +2412,7 @@ export default function DiagnosticsPage() {
               <h2 className="mb-3 text-sm font-semibold">Data Sources &amp; System</h2>
 
               {systemHealthError ? (
-                <p className="text-label font-normal text-bad">{systemHealthError}</p>
+                <p className="text-label font-normal text-bad-ink">{systemHealthError}</p>
               ) : !systemHealth ? (
                 <p className="text-label font-normal text-ink-muted">Loading…</p>
               ) : (
@@ -2431,7 +2431,7 @@ export default function DiagnosticsPage() {
                     <p className="mb-3 text-label font-normal text-ink-muted">No cache-write failures in the last 24 hours.</p>
                   ) : (
                     <div className="mb-3 rounded-md border border-bad/20 bg-bad/5 p-2 text-label font-normal">
-                      <p className="mb-1 font-semibold text-bad">
+                      <p className="mb-1 font-semibold text-bad-ink">
                         {systemHealth.cacheFailures.last24h} cache-write failure
                         {systemHealth.cacheFailures.last24h === 1 ? '' : 's'} in 24h
                         {systemHealth.cacheFailures.lastHour > 0 ? ` (${systemHealth.cacheFailures.lastHour} in the last hour)` : ''}
@@ -2445,7 +2445,7 @@ export default function DiagnosticsPage() {
                       </p>
                       {systemHealth.cacheFailures.topKeys.map((k) => (
                         <div key={k.key} className="border-b border-bad/10 py-1 text-overline font-normal tracking-normal last:border-0">
-                          <span className="tabular-nums text-bad">{k.failures}x</span>{' '}
+                          <span className="tabular-nums text-bad-ink">{k.failures}x</span>{' '}
                           <span className="text-ink-muted">{k.key}</span>
                         </div>
                       ))}
@@ -2462,7 +2462,7 @@ export default function DiagnosticsPage() {
                     <div className="mb-3 max-h-[160px] overflow-y-auto rounded-md border border-bad/20 bg-bad/5 p-2">
                       {systemHealth.statsApiErrors.map((e, i) => (
                         <div key={i} className="border-b border-bad/10 py-1 text-overline font-normal tracking-normal last:border-0">
-                          <span className="text-ink-muted">{formatDate(e.at)}</span> · <span className="text-bad">{e.reason}</span>{' '}
+                          <span className="text-ink-muted">{formatDate(e.at)}</span> · <span className="text-bad-ink">{e.reason}</span>{' '}
                           <span className="text-ink-muted">{e.url}</span>
                         </div>
                       ))}
@@ -2564,7 +2564,7 @@ export default function DiagnosticsPage() {
                     return (
                       <div
                         className={`mb-3 rounded border px-3 py-2 text-overline font-normal tracking-normal ${
-                          readiness.ready ? 'border-warn/40 bg-warn/10 text-warn' : 'border-line bg-panel-muted text-ink-muted'
+                          readiness.ready ? 'border-warn/40 bg-warn/10 text-warn-ink' : 'border-line bg-panel-muted text-ink-muted'
                         }`}
                       >
                         <span className="font-semibold">Player-prop model (non-HR) is still v1 (hand-set priors, not fit).</span>{' '}
@@ -2652,7 +2652,7 @@ export default function DiagnosticsPage() {
               {data.oddsApi.warnings.length > 0 ? (
                 <div className="mt-3 space-y-1 border-t border-line pt-3">
                   {data.oddsApi.warnings.map((w, i) => (
-                    <p key={i} className="text-label font-normal text-warn">{w}</p>
+                    <p key={i} className="text-label font-normal text-warn-ink">{w}</p>
                   ))}
                 </div>
               ) : null}
@@ -2688,7 +2688,7 @@ export default function DiagnosticsPage() {
                       <HealthDot ok={s.healthy} />
                       <span className="text-body-sm font-semibold uppercase">{s.sport}</span>
                     </div>
-                    <p className={`mt-1 text-overline font-normal tracking-normal ${s.healthy ? 'text-ink-muted' : 'text-bad'}`}>{s.status}</p>
+                    <p className={`mt-1 text-overline font-normal tracking-normal ${s.healthy ? 'text-ink-muted' : 'text-bad-ink'}`}>{s.status}</p>
                     {s.sources.length > 0 ? (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {s.sources.map((src) => (
@@ -2772,7 +2772,7 @@ export default function DiagnosticsPage() {
         title="NHL/NBA verification — resume instructions"
         footer={
           <>
-            {nhlNbaPromptCopied ? <span className="self-center text-label text-good">Copied</span> : null}
+            {nhlNbaPromptCopied ? <span className="self-center text-label text-good-ink">Copied</span> : null}
             <Button
               variant="primary"
               size="sm"

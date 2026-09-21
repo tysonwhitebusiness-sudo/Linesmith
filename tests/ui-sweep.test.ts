@@ -111,3 +111,19 @@ test('golf colours par with `ink`, never with the W/L `tone` chip', () => {
   }
   assert.match(readFileSync('components/ui/DataTable.tsx', 'utf8'), /ink\?: \(row: Row\) => 'good' \| 'bad' \| null;/);
 });
+
+test('C0: the Electric Turf fill is never text in scope; text uses the -ink shade', () => {
+  // #00d26a on white is ~1.9:1. The fill is for bars, dots and solid badges.
+  const hits: string[] = [];
+  for (const p of sources()) {
+    if (SCAN_CELLS.has(p)) continue;
+    for (const m of code(readFileSync(p, 'utf8')).matchAll(/(?<![\w-])(?:[a-z-]+:)*text-(good|bad|warn)(?![\w-])/g)) hits.push(`${p}: ${m[0]}`);
+  }
+  assert.deepEqual(hits, []);
+  const css = readFileSync('app/globals.css', 'utf8');
+  for (const t of ['good', 'bad', 'warn']) {
+    assert.match(css, new RegExp(`--${t}-ink:`), `${t}-ink token`);
+    const rule = css.replace(/\r/g, '').includes(`\n.text-${t} {\n  color: rgb(var(--${t}-ink));`);
+    assert.ok(rule, `bare text-${t} renders ink for the frozen Scan files`);
+  }
+});

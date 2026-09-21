@@ -201,7 +201,7 @@ function HeroSpotlightCarousel({ cards }: { cards: SpotlightCard[] }) {
   if (cards.length === 0) return null;
   const safeIndex = index % cards.length;
   const card = cards[safeIndex];
-  const toneClass = card.tone === 'good' ? 'text-good' : card.tone === 'bad' ? 'text-bad' : 'text-masters';
+  const toneClass = card.tone === 'good' ? 'text-good-ink' : card.tone === 'bad' ? 'text-bad-ink' : 'text-masters';
 
   return (
     <div className="shrink-0 overflow-hidden rounded-xl border border-line bg-card/90">
@@ -739,7 +739,7 @@ function BigMoversCard({
       <h2 className="bg-accent-soft px-3 py-1.5 text-label font-semibold text-masters">Big movers · Round {currentRound}</h2>
       <div className="grid grid-cols-1 gap-4 p-3 sm:grid-cols-2">
         <div>
-          <div className="mb-1.5 text-overline font-semibold uppercase tracking-wide text-good">Climbing today</div>
+          <div className="mb-1.5 text-overline font-semibold uppercase tracking-wide text-good-ink">Climbing today</div>
           <ul className="space-y-1.5">
             {climbing.map((r) => (
               <MoverRow key={r.id} row={r} />
@@ -747,7 +747,7 @@ function BigMoversCard({
           </ul>
         </div>
         <div>
-          <div className="mb-1.5 text-overline font-semibold uppercase tracking-wide text-bad">Falling today</div>
+          <div className="mb-1.5 text-overline font-semibold uppercase tracking-wide text-bad-ink">Falling today</div>
           <ul className="space-y-1.5">
             {falling.map((r) => (
               <MoverRow key={r.id} row={r} />
@@ -1347,7 +1347,7 @@ export function GolfScheduleView({
     <div className="grid gap-3 lg:grid-cols-[280px_1fr] lg:items-start">
       <div className="lb-card overflow-hidden lg:sticky lg:top-4">
         {warnings.length > 0 ? (
-          <div className="border-b border-warn/30 bg-warn/5 p-2 text-overline font-normal tracking-normal text-warn">
+          <div className="border-b border-warn/30 bg-warn/5 p-2 text-overline font-normal tracking-normal text-warn-ink">
             {warnings.map((w) => (
               <p key={w}>{w}</p>
             ))}

@@ -75,7 +75,7 @@ export function TournamentLinesView({
   return (
     <div className="space-y-2">
       {warnings.length > 0 ? (
-        <div className="lb-card border-warn/30 bg-warn/5 p-2 text-overline font-normal tracking-normal text-warn">
+        <div className="lb-card border-warn/30 bg-warn/5 p-2 text-overline font-normal tracking-normal text-warn-ink">
           {warnings.map((w) => (
             <p key={w}>{w}</p>
           ))}

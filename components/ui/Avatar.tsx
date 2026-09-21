@@ -31,12 +31,14 @@ export interface AvatarProps {
   href?: string;
   /** When the avatar sits beside its own visible name, hide it from assistive tech. */
   decorative?: boolean;
+  /** C0.3: a 3px white ring on a translucent disc, for a headshot overlapping a coloured hero band. */
+  ring?: boolean;
   className?: string;
 }
 
 const SILHOUETTE = 'M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-4.4 0-8 2.3-8 5.2V21h16v-1.8c0-2.9-3.6-5.2-8-5.2Z';
 
-export function Avatar({ label, src, fallbackSrc, size = 32, kind = 'player', rounded, teamColor, href, decorative, className }: AvatarProps) {
+export function Avatar({ label, src, fallbackSrc, size = 32, kind = 'player', rounded, teamColor, href, decorative, ring, className }: AvatarProps) {
   const sources = [src, fallbackSrc].filter((s): s is string => Boolean(s));
   const [index, setIndex] = useState(0);
   // A recycled row must restart the chain, or one subject's failure hides the next one's photo.
@@ -48,6 +50,7 @@ export function Avatar({ label, src, fallbackSrc, size = 32, kind = 'player', ro
     'relative inline-grid shrink-0 place-items-center overflow-hidden',
     shape,
     kind === 'logo' ? 'border border-line-soft bg-card' : '',
+    ring && 'bg-white/12 ring-[3px] ring-white/85',
     className,
   );
   const style = { width: size, height: size, background: current || kind === 'logo' ? undefined : teamColor ?? 'oklch(62% 0.01 260)' };
